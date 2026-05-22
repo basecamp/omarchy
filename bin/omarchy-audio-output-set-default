@@ -12,9 +12,9 @@ if [[ -z $node_id || -z $sink_name ]]; then
   exit 1
 fi
 
-wpctl set-default "$node_id" 2>/dev/null || true
-pactl set-default-sink "$sink_name" 2>/dev/null || true
+timeout 2 wpctl set-default "$node_id" 2>/dev/null || true
+timeout 2 pactl set-default-sink "$sink_name" 2>/dev/null || true
 
-pactl list short sink-inputs 2>/dev/null | awk '{ print $1 }' | while read -r input; do
-  [[ -n $input ]] && pactl move-sink-input "$input" "$sink_name" 2>/dev/null || true
+timeout 2 pactl list short sink-inputs 2>/dev/null | awk '{ print $1 }' | while read -r input; do
+  [[ -n $input ]] && timeout 2 pactl move-sink-input "$input" "$sink_name" 2>/dev/null || true
 done

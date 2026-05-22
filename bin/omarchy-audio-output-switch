@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# omarchy:summary=Switch between audio outputs while preserving the mute status. By default mapped to Super + Mute.
+# omarchy:summary=Switch between audio outputs while preserving the mute status
 
-sinks=$(pactl -f json list sinks | jq '[.[] | select((.ports | length == 0) or ([.ports[]? | .availability != "not available"] | any))]')
+sinks=$(timeout 2 pactl -f json list sinks | jq '[.[] | select((.ports | length == 0) or ([.ports[]? | .availability != "not available"] | any))]')
 sinks_count=$(jq 'length' <<<"$sinks")
 
 if (( sinks_count == 0 )); then
@@ -10,7 +10,7 @@ if (( sinks_count == 0 )); then
   exit 1
 fi
 
-current_sink_name=$(pactl get-default-sink)
+current_sink_name=$(timeout 2 pactl get-default-sink)
 current_sink_index=$(jq -r --arg name "$current_sink_name" 'map(.name) | index($name)' <<<"$sinks")
 
 if [[ $current_sink_index != "null" ]]; then
@@ -36,7 +36,7 @@ else
 fi
 
 if [[ $next_sink_name != $current_sink_name ]]; then
-  pactl set-default-sink "$next_sink_name"
+  omarchy-audio-output-set-default "$(jq -r '.index' <<<"$next_sink")" "$next_sink_name"
 fi
 
 omarchy-osd -i "volume-${icon_state}" -m "$next_sink_description"
