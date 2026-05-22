@@ -9,35 +9,45 @@ EOF
   # Detect boot mode
   [[ -d /sys/firmware/efi ]] && EFI=true
 
-  # Find config location
-  if [[ -f /boot/EFI/arch-limine/limine.conf ]]; then
-    limine_config="/boot/EFI/arch-limine/limine.conf"
-  elif [[ -f /boot/EFI/BOOT/limine.conf ]]; then
-    limine_config="/boot/EFI/BOOT/limine.conf"
-  elif [[ -f /boot/EFI/limine/limine.conf ]]; then
-    limine_config="/boot/EFI/limine/limine.conf"
-  elif [[ -f /boot/limine/limine.conf ]]; then
-    limine_config="/boot/limine/limine.conf"
-  elif [[ -f /boot/limine.conf ]]; then
-    limine_config="/boot/limine.conf"
+  # If /etc/default/limine is already populated with a real cmdline (the ISO
+  # orchestrator pre-writes it from the live install config), skip the
+  # find+harvest+template-copy dance — we already have what we need. The
+  # harvest path stays as a fallback for online reinstalls and any flow where
+  # /etc/default/limine wasn't pre-populated.
+  if [[ -f /etc/default/limine ]] && ! grep -q "@@CMDLINE@@" /etc/default/limine; then
+    CMDLINE=$(grep '^KERNEL_CMDLINE\[default\]+=' /etc/default/limine | head -1 |
+              sed 's|^KERNEL_CMDLINE\[default\]+="||; s|"$||')
   else
-    echo "Error: Limine config not found" >&2
-    exit 1
-  fi
+    # Find config location written by archinstall (legacy harvest path)
+    if [[ -f /boot/EFI/arch-limine/limine.conf ]]; then
+      limine_config="/boot/EFI/arch-limine/limine.conf"
+    elif [[ -f /boot/EFI/BOOT/limine.conf ]]; then
+      limine_config="/boot/EFI/BOOT/limine.conf"
+    elif [[ -f /boot/EFI/limine/limine.conf ]]; then
+      limine_config="/boot/EFI/limine/limine.conf"
+    elif [[ -f /boot/limine/limine.conf ]]; then
+      limine_config="/boot/limine/limine.conf"
+    elif [[ -f /boot/limine.conf ]]; then
+      limine_config="/boot/limine.conf"
+    else
+      echo "Error: Limine config not found" >&2
+      exit 1
+    fi
 
-  CMDLINE=$(grep "^[[:space:]]*cmdline:" "$limine_config" | head -1 | sed 's/^[[:space:]]*cmdline:[[:space:]]*//')
+    CMDLINE=$(grep "^[[:space:]]*cmdline:" "$limine_config" | head -1 | sed 's/^[[:space:]]*cmdline:[[:space:]]*//')
 
-  if [[ -z ${CMDLINE// } ]]; then
-    echo "Error: failed to extract kernel cmdline from $limine_config" >&2
-    exit 1
-  fi
-  if [[ $CMDLINE != *root=* ]]; then
-    echo "Error: extracted kernel cmdline has no root=: $CMDLINE" >&2
-    exit 1
-  fi
+    if [[ -z ${CMDLINE// } ]]; then
+      echo "Error: failed to extract kernel cmdline from $limine_config" >&2
+      exit 1
+    fi
+    if [[ $CMDLINE != *root=* ]]; then
+      echo "Error: extracted kernel cmdline has no root=: $CMDLINE" >&2
+      exit 1
+    fi
 
-  sudo cp $OMARCHY_PATH/default/limine/default.conf /etc/default/limine
-  sudo sed -i "s|@@CMDLINE@@|$CMDLINE|g" /etc/default/limine
+    sudo cp $OMARCHY_PATH/default/limine/default.conf /etc/default/limine
+    sudo sed -i "s|@@CMDLINE@@|$CMDLINE|g" /etc/default/limine
+  fi
 
   # Append any drop-in kernel cmdline configs (from hardware fix scripts, etc.)
   for dropin in /etc/limine-entry-tool.d/*.conf; do
