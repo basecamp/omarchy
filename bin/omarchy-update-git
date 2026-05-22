@@ -12,7 +12,16 @@ omarchy-update-time
 hyprctl keyword debug:suppress_errors true &>/dev/null || true
 hyprctl eval 'hl.config({ debug = { suppress_errors = true } })' &>/dev/null || true
 
-git -C $OMARCHY_PATH pull --autostash
-git -C $OMARCHY_PATH --no-pager diff --check || git -C $OMARCHY_PATH reset --merge
+# Use the actual tagged release for stable, not master
+channel=$(omarchy-version-channel 2>/dev/null || echo "stable")
+
+if [[ $channel == "stable" ]]; then
+  latest_tag=$(gh release list --repo basecamp/omarchy --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName')
+  git -C $OMARCHY_PATH fetch --tags
+  git -C $OMARCHY_PATH checkout --detach "$latest_tag"
+else
+  git -C $OMARCHY_PATH pull --autostash
+  git -C $OMARCHY_PATH --no-pager diff --check || git -C $OMARCHY_PATH reset --merge
+fi
 
 hyprctl reload &>/dev/null || true
