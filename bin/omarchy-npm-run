@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# omarchy:summary=Run a pnpm dlx-backed npm package wrapper.
+# omarchy:args=<package> <command-name> <bin-name> [args...]
+# omarchy:hidden=true
+
+if (($# < 3)); then
+  echo "Usage: omarchy-npm-run <package> <command-name> <bin-name> [args...]"
+  exit 1
+fi
+
+package=$1
+command=$2
+bin=$3
+shift 3
+
+package_spec=$package
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/npm-wrappers"
+version_file="$state_dir/$command.version"
+pin_ttl=7200
+uses_pinned_version=0
+
+if [[ -s $version_file ]]; then
+  now=$(date +%s)
+  pinned_at=$(stat -c %Y "$version_file" 2>/dev/null || printf '0\n')
+
+  if ((now - pinned_at < pin_ttl)); then
+    pinned_version=$(<"$version_file")
+    package_spec="$package@$pinned_version"
+    uses_pinned_version=1
+  else
+    rm -f "$version_file"
+  fi
+fi
+
+if ! node_root=$(mise where node@latest 2>/dev/null); then
+  mise use -g node@latest >/dev/null
+  node_root=$(mise where node@latest)
+fi
+
+export PATH="$node_root/bin:$PATH"
+
+if omarchy-cmd-missing pnpm; then
+  echo "Installing pnpm for $package..."
+  omarchy-pkg-add pnpm
+  hash -r
+fi
+
+# pnpm reads npm_config_* env vars for CLI configuration.
+export npm_config_minimum_release_age=$pin_ttl
+export npm_config_dlx_cache_max_age=$pin_ttl
+
+if (( uses_pinned_version )); then
+  export npm_config_minimum_release_age=0
+fi
+
+if (($# == 1)) && [[ $1 == "update" ]]; then
+  export npm_config_minimum_release_age=0
+  export npm_config_dlx_cache_max_age=0
+
+  if ! latest_version=$(env -u npm_config_minimum_release_age -u npm_config_dlx_cache_max_age pnpm view "$package@latest" version); then
+    echo "Could not resolve latest npm version for $package" >&2
+    exit 1
+  fi
+
+  mkdir -p "$state_dir"
+  printf '%s\n' "$latest_version" >"$version_file"
+  package_spec="$package@$latest_version"
+
+  pnpm dlx --package "$package_spec" true
+
+  echo "Updated $command to $latest_version"
+  exit 0
+fi
+
+exec pnpm dlx --package "$package_spec" "$bin" "$@"
