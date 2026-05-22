@@ -67,6 +67,7 @@ run_logged $OMARCHY_INSTALL/config/hardware/apple/fix-t2.sh
 
 run_logged $OMARCHY_INSTALL/config/hardware/lenovo/fix-yoga-pro7-bass-speakers.sh
 
+run_logged $OMARCHY_INSTALL/config/hardware/hid-modules.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-bcm43xx.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-surface-keyboard.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-yt6801-ethernet-adapter.sh
