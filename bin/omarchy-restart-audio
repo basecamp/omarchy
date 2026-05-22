@@ -56,6 +56,60 @@ append_unique() {
   printf '%s\n' "$value"
 }
 
+audio_process_blocked_on_usb() {
+  local pid
+  local name
+  local wchan
+
+  for pid in /proc/[0-9]*; do
+    [[ -r $pid/comm && -r $pid/wchan ]] || continue
+
+    name=$(cat "$pid/comm" 2>/dev/null || true)
+    [[ $name == "wireplumber" || $name == "pipewire" ]] || continue
+
+    wchan=$(cat "$pid/wchan" 2>/dev/null || true)
+    [[ $wchan == usb_* || $wchan == *usb* ]] && return 0
+  done
+
+  return 1
+}
+
+usb_audio_devices() {
+  local card
+  local device
+  local devices=()
+  local unique
+
+  for card in /sys/class/sound/card*; do
+    [[ -e $card && $card =~ /card([0-9]+)$ ]] || continue
+
+    device=$(usb_device_for_card "${BASH_REMATCH[1]}" || true)
+    unique=$(append_unique "$device" "${devices[@]}")
+    [[ -n $unique ]] && devices+=("$unique")
+  done
+
+  printf '%s\n' "${devices[@]}"
+}
+
+clear_usb_audio_defaults() {
+  local state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/wireplumber"
+
+  [[ -d $state_dir ]] || return 0
+
+  if [[ -f $state_dir/default-nodes ]]; then
+    cp "$state_dir/default-nodes" "$state_dir/default-nodes.bak.$(date +%s)" 2>/dev/null || true
+    sed -i \
+      -e '/^default\.configured\.audio\.sink=alsa_output\.usb-/d' \
+      -e '/^default\.configured\.audio\.sink\.[0-9]\+=alsa_output\.usb-/d' \
+      "$state_dir/default-nodes" 2>/dev/null || true
+  fi
+
+  if [[ -f $state_dir/default-routes ]]; then
+    cp "$state_dir/default-routes" "$state_dir/default-routes.bak.$(date +%s)" 2>/dev/null || true
+    sed -i '/^alsa_card\.usb-/d' "$state_dir/default-routes" 2>/dev/null || true
+  fi
+}
+
 stuck_usb_audio_devices() {
   local status
   local state
@@ -121,11 +175,24 @@ reset_usb_audio_device() {
 recover_stuck_usb_audio() {
   local devices=()
   local device
+  local detected=()
   local reset_count=0
 
   while IFS= read -r device; do
-    [[ -n $device ]] && devices+=("$device")
+    [[ -n $device ]] && detected+=("$device")
   done < <(stuck_usb_audio_devices)
+
+  if (( ${#detected[@]} == 0 )) && audio_process_blocked_on_usb; then
+    echo "Audio service is blocked in USB I/O; resetting USB audio devices..."
+    clear_usb_audio_defaults
+    while IFS= read -r device; do
+      [[ -n $device ]] && detected+=("$device")
+    done < <(usb_audio_devices)
+  fi
+
+  for device in "${detected[@]}"; do
+    [[ -n $(append_unique "$device" "${devices[@]}") ]] && devices+=("$device")
+  done
 
   (( ${#devices[@]} > 0 )) || return 1
 
