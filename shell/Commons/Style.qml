@@ -19,12 +19,10 @@ import Quickshell.Io
 // Typography, spacing, and bar size come from theme/shell.toml.
 // `[font] base-size` is the rem root; every `Style.font.<token>` derives
 // from it via the scale multipliers below unless the theme pins that
-// specific token. `[spacing] scale` multiplies shared margins, gaps,
-// padding, controls, and panel dimensions while preserving each component's
-// proportions; by default it also tracks `base-size`. `[bar]
+// specific token. `[spacing] scale` multiplies shared margins, gaps, and
+// padding while preserving each component's proportions. `[bar]
 // size-horizontal` / `size-vertical` set the cross-axis dimension for
-// top/bottom and left/right bars at the default 12px font size; by default
-// those dimensions scale with `base-size` so larger fonts don't clip.
+// top/bottom and left/right bars respectively.
 QtObject {
   id: root
 
@@ -206,14 +204,12 @@ QtObject {
   // fractional geometry); themes can make the shell denser or roomier
   // with `[spacing] scale`, or pin individual tokens.
   property real spacingScale: 1.0
-  property bool spacingScaleWithFont: true
   property var spacingOverrides: ({})
-  readonly property real effectiveSpacingScale: spacingScale * (spacingScaleWithFont ? fontScale : 1)
 
   function spaceReal(px) {
     var n = Number(px)
     if (!isFinite(n) || n <= 0) return 0
-    return n * effectiveSpacingScale
+    return n * spacingScale
   }
 
   function space(px) {
@@ -229,7 +225,7 @@ QtObject {
   }
 
   readonly property QtObject spacing: QtObject {
-    readonly property real scale: root.effectiveSpacingScale
+    readonly property real scale: root.spacingScale
 
     readonly property int hairline: root.space(1)
     readonly property int xxs: root.spacingToken("xxs", 2)
@@ -274,14 +270,12 @@ QtObject {
   // read `resolvedFontFamily` when you want to *display* what's drawing.
   property string resolvedFontFamily: "monospace"
 
-  // The only sanity floor is 1px. Themes and users can make this as large
-  // as they like; if the shell gets ridiculous, that's their call.
+  // Clamped 11..13 by applyShellValues — some row heights remain fixed,
+  // so unbounded type growth can still clip even with scalable spacing.
   property int fontBaseSize: 12
 
   property var fontOverrides: ({})
   property var barOverrides: ({})
-  property bool barScaleWithFont: true
-  readonly property real fontScale: Math.max(1 / 12, fontBaseSize / 12)
 
   function fontPx(mult) {
     return Math.max(1, Math.round(fontBaseSize * mult))
@@ -296,17 +290,7 @@ QtObject {
   function barToken(key, fallback) {
     var v = barOverrides[key]
     var n = Number(v)
-    var base = (isFinite(n) && n > 0) ? n : fallback
-    if (barScaleWithFont) base *= fontScale
-    return Math.max(1, Math.round(base))
-  }
-
-  function boolToken(value, fallback) {
-    if (value === undefined || value === null) return fallback
-    var s = String(value).replace(/^\s+|\s+$/g, "").toLowerCase()
-    if (s === "true" || s === "1" || s === "yes" || s === "on") return true
-    if (s === "false" || s === "0" || s === "no" || s === "off") return false
-    return fallback
+    return (isFinite(n) && n > 0) ? Math.round(n) : fallback
   }
 
   // The launcher, menu, polkit, emojis, and clipboard surfaces honor an
@@ -384,8 +368,6 @@ QtObject {
     var spacingOut = {}
     var nextBase = 12
     var nextSpacingScale = 1.0
-    var nextSpacingScaleWithFont = true
-    var nextBarScaleWithFont = true
     var v = values || {}
     for (var fullKey in v) {
       var dot = fullKey.indexOf(".")
@@ -398,38 +380,28 @@ QtObject {
         if (!isFinite(ival)) continue
         if (key === "base-size") nextBase = ival
         else fontOut[key] = ival
-      } else if (section === "bar") {
-        if (key === "scale-with-font") {
-          nextBarScaleWithFont = boolToken(raw, nextBarScaleWithFont)
-        } else if (key === "size-horizontal" || key === "size-vertical") {
-          var b = parseInt(raw, 10)
-          if (isFinite(b)) barOut[key] = b
-        }
+      } else if (section === "bar" && (key === "size-horizontal" || key === "size-vertical")) {
+        var b = parseInt(raw, 10)
+        if (isFinite(b)) barOut[key] = b
       } else if (section === "spacing") {
-        if (key === "scale-with-font") {
-          nextSpacingScaleWithFont = boolToken(raw, nextSpacingScaleWithFont)
-        } else {
-          var fval = parseFloat(raw)
-          if (!isFinite(fval)) continue
-          if (key === "scale") nextSpacingScale = fval
-          else spacingOut[key] = fval
-        }
+        var fval = parseFloat(raw)
+        if (!isFinite(fval)) continue
+        if (key === "scale") nextSpacingScale = fval
+        else spacingOut[key] = fval
       } else if (section === "controls") {
         // Strings are passed through; styleRawNum/styleString coerce on read.
         styleOut[key] = raw
       }
     }
-    // Keep only a 1px sanity floor. Per-token overrides aren't clamped
-    // either — a theme that wants display-large = 64 should be allowed to
-    // ship it.
-    if (!isFinite(nextBase) || nextBase < 1) nextBase = 1
+    // Clamp the rem root. Per-token overrides aren't clamped — a theme
+    // that wants display-large = 64 should be allowed to ship it.
+    if (nextBase < 11) nextBase = 11
+    if (nextBase > 13) nextBase = 13
     if (!isFinite(nextSpacingScale) || nextSpacingScale < 0) nextSpacingScale = 1.0
     spacingScale = nextSpacingScale
-    spacingScaleWithFont = nextSpacingScaleWithFont
     fontBaseSize = nextBase
     fontOverrides = fontOut
     barOverrides = barOut
-    barScaleWithFont = nextBarScaleWithFont
     spacingOverrides = spacingOut
     styleOverrides = styleOut
   }

@@ -357,7 +357,6 @@ Panel {
     bar: root.bar
     text: root.displays.length > 1 ? "󰍺" : "󰍹"
     fontSize: Style.font.subtitle
-    horizontalMargin: 5
     onPressed: function(b) { root.toggle() }
     onWheelMoved: function(delta) {
       if (root.brightnessAvailable) root.setBrightness(root.brightnessPercent + (delta > 0 ? 5 : -5))
