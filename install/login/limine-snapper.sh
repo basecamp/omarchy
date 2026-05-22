@@ -17,6 +17,15 @@ EOF
   if [[ -f /etc/default/limine ]] && ! grep -q "@@CMDLINE@@" /etc/default/limine; then
     CMDLINE=$(grep '^KERNEL_CMDLINE\[default\]+=' /etc/default/limine | head -1 |
               sed 's|^KERNEL_CMDLINE\[default\]+="||; s|"$||')
+
+    if [[ -z ${CMDLINE// } ]]; then
+      echo "Error: /etc/default/limine has no KERNEL_CMDLINE[default]+= line" >&2
+      exit 1
+    fi
+    if [[ $CMDLINE != *root=* ]]; then
+      echo "Error: cmdline parsed from /etc/default/limine has no root=: $CMDLINE" >&2
+      exit 1
+    fi
   else
     # Find config location written by archinstall (legacy harvest path)
     if [[ -f /boot/EFI/arch-limine/limine.conf ]]; then
