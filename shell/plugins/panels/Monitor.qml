@@ -210,7 +210,7 @@ Panel {
     }
 
     root.brightnessSetQueued = false
-    setBrightnessProc.command = ["bash", "-lc", "omarchy-brightness-display " + percent + "%"]
+    setBrightnessProc.command = ["bash", "-lc", "omarchy-brightness-display --no-osd " + percent + "%"]
     setBrightnessProc.running = true
   }
 
