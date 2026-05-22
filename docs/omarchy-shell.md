@@ -173,13 +173,17 @@ both `[controls]` and `[style]`.
 
 ### Spacing
 
-`[spacing] scale` multiplies the shell's shared margins, gaps, and
-padding. The default is `1.0`; values above `1.0` create more breathing
-room while values below `1.0` make controls denser.
+`[spacing] scale` multiplies the shell's shared margins, gaps, padding,
+control sizes, and panel dimensions. The default is `1.0`; values above
+`1.0` create more breathing room while values below `1.0` make controls
+dense. By default `scale-with-font = true`, so increasing `[font]
+base-size` also scales buttons, popup widths, row heights, and panel
+padding proportionally.
 
 ```toml
 [spacing]
-scale = 1.15  # roomier panels and controls
+scale = 1.15
+scale-with-font = true  # grow controls and panels with [font] base-size
 ```
 
 QML components should prefer semantic tokens where possible:
@@ -203,10 +207,11 @@ Popout placement deliberately follows Hyprland's `general:gaps_out`
 interior breathing room.
 
 For one-off proportional constants, use `Style.space(px)` to preserve the
-old default at scale `1.0` while still responding to the theme scale. Use
-`Style.spaceReal(px)` only for fractional geometry that should not be
-rounded, such as bar widget text margins. Themes can override any semantic
-token directly in `[spacing]`, e.g.:
+old default at scale `1.0` and `base-size = 12` while still responding to
+the theme scale and font scale. Use `Style.spaceReal(px)` only for
+fractional geometry that should not be rounded, such as bar widget text
+margins. Themes can override any semantic token directly in `[spacing]`,
+e.g.:
 
 ```toml
 [spacing]
@@ -256,21 +261,26 @@ Recognized override keys: `base-size`, `caption`, `body-small`,
 `body`, `subtitle`, `title`, `heading`, `display`, `display-large`,
 `icon-small`, `icon`, `icon-large`.
 
-`base-size` is clamped to **11..13** because some row heights and the bar
-cross-axis size remain fixed; per-token overrides aren't clamped. The
-shell font family is the fontconfig `monospace` alias — themes don't
-set it, the user does via `omarchy font set <name>`.
+`base-size` has no upper clamp; the shell only floors it at **1px** to
+avoid nonsensical zero/negative sizes. Per-token overrides aren't clamped
+either. The shell font family is the fontconfig `monospace` alias —
+themes don't set it, the user does via `omarchy font set <name>`.
 
 ### Bar size
 
 `[bar] size-horizontal` / `size-vertical` set the cross-axis dimension
-of top/bottom and left/right bars respectively (in px):
+of top/bottom and left/right bars respectively, measured at the default
+12px font base. By default `scale-with-font = true`, so increasing
+`[font] base-size` also increases the bar's cross-axis size:
 
 ```toml
 [bar]
-size-horizontal = 26   # top/bottom bar height
-size-vertical   = 28   # left/right bar width
+scale-with-font = true
+size-horizontal = 26   # top/bottom bar height at base-size 12
+size-vertical   = 28   # left/right bar width at base-size 12
 ```
+
+Set `scale-with-font = false` to keep those bar sizes as fixed pixels.
 
 ## Custom bar modules
 
