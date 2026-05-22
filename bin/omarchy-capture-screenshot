@@ -36,7 +36,7 @@ open_editor() {
       --output-filename "$filepath" \
       --actions-on-enter save-to-clipboard \
       --save-after-copy \
-      --copy-command 'wl-copy'
+      --copy-command 'wl-copy --type image/png'
   else
     $SCREENSHOT_EDITOR "$filepath"
   fi
@@ -130,7 +130,7 @@ case "$PROCESSING" in
   slurp)
     grim -g "$SELECTION" "$FILEPATH" || exit 1
     echo "$FILEPATH"
-    wl-copy <"$FILEPATH"
+    wl-copy --type image/png <"$FILEPATH"
 
     (
       ACTION=$(notify-send -a omarchy-action "Screenshot saved to clipboard and file" "Edit with Super + Alt + , (or click this)" -t 10000 --hint="string:image-path:$FILEPATH" -A "default=edit")
@@ -138,7 +138,7 @@ case "$PROCESSING" in
     ) >/dev/null 2>&1 &
     ;;
   copy)
-    grim -g "$SELECTION" - | wl-copy
+    grim -g "$SELECTION" - | wl-copy --type image/png
     ;;
   save)
     grim -g "$SELECTION" "$FILEPATH" || exit 1
