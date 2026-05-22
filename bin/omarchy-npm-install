@@ -29,7 +29,9 @@ if omarchy-cmd-missing pnpm; then
   hash -r
 fi
 
-export PNPM_CONFIG_MINIMUM_RELEASE_AGE=7200
+# pnpm reads npm_config_* env vars for CLI configuration.
+export npm_config_minimum_release_age=7200
+export npm_config_dlx_cache_max_age=7200
 
 ensure_bin_runtime() {
   local bin_path=\$1
