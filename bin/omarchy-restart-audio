@@ -1,0 +1,158 @@
+#!/bin/bash
+
+# omarchy:summary=Restart audio services and recover stuck USB audio devices.
+# omarchy:examples=omarchy restart audio | omarchy-restart-audio
+
+services=(wireplumber.service pipewire.service pipewire-pulse.service)
+
+restart_audio_services() {
+  echo -e "Restarting audio services...\n"
+
+  if timeout 25s systemctl --user restart "${services[@]}"; then
+    return 0
+  fi
+
+  echo -e "\nAudio services did not restart cleanly. Forcing stuck services down...\n"
+  systemctl --user cancel >/dev/null 2>&1 || true
+  systemctl --user kill --kill-whom=all --signal=KILL "${services[@]}" >/dev/null 2>&1 || true
+  systemctl --user reset-failed "${services[@]}" >/dev/null 2>&1 || true
+
+  timeout 25s systemctl --user start pipewire.service pipewire-pulse.service wireplumber.service
+}
+
+wpctl_healthy() {
+  timeout 5s wpctl status >/dev/null 2>&1
+}
+
+usb_device_for_card() {
+  local card="$1"
+  local path
+
+  path=$(readlink -f "/sys/class/sound/card$card" 2>/dev/null) || return 1
+
+  while [[ $path != "/" ]]; do
+    if [[ -f $path/idVendor && -f $path/idProduct && -f $path/busnum && -f $path/devnum ]]; then
+      basename "$path"
+      return 0
+    fi
+
+    path=$(dirname "$path")
+  done
+
+  return 1
+}
+
+append_unique() {
+  local value="$1"
+  shift
+  local existing
+
+  [[ -z $value ]] && return
+
+  for existing in "$@"; do
+    [[ $existing == "$value" ]] && return
+  done
+
+  printf '%s\n' "$value"
+}
+
+stuck_usb_audio_devices() {
+  local status
+  local state
+  local owner_pid
+  local owner_name
+  local card
+  local device
+  local devices=()
+  local unique
+
+  for status in /proc/asound/card*/pcm*p/sub*/status; do
+    [[ -e $status ]] || continue
+
+    state=$(awk '/^state:/ { print $2; exit }' "$status")
+    [[ $state == "SETUP" ]] || continue
+
+    owner_pid=$(awk '/^owner_pid[[:space:]]*:/ { print $3; exit }' "$status")
+    [[ -n $owner_pid && -r /proc/$owner_pid/comm ]] || continue
+
+    owner_name=$(cat "/proc/$owner_pid/comm" 2>/dev/null || true)
+    [[ $owner_name == "wireplumber" || $owner_name == "pipewire" ]] || continue
+    [[ $status =~ /card([0-9]+)/ ]] || continue
+
+    card="${BASH_REMATCH[1]}"
+    device=$(usb_device_for_card "$card" || true)
+    unique=$(append_unique "$device" "${devices[@]}")
+    [[ -n $unique ]] && devices+=("$unique")
+  done
+
+  printf '%s\n' "${devices[@]}"
+}
+
+reset_usb_audio_device() {
+  local device="$1"
+  local sysfs="/sys/bus/usb/devices/$device"
+  local busnum
+  local devnum
+  local bus_device
+  local product
+
+  [[ -d $sysfs ]] || return 1
+
+  if ! omarchy-cmd-present usbreset; then
+    echo "usbreset is not installed; replug or power-cycle $device to recover it."
+    return 1
+  fi
+
+  busnum=$(cat "$sysfs/busnum" 2>/dev/null) || return 1
+  devnum=$(cat "$sysfs/devnum" 2>/dev/null) || return 1
+  product=$(cat "$sysfs/product" 2>/dev/null || echo "$device")
+  bus_device=$(printf '%03d/%03d' "$busnum" "$devnum")
+
+  echo -e "\nResetting stuck USB audio device: $product ($bus_device)..."
+
+  if timeout 25s sudo usbreset "$bus_device"; then
+    return 0
+  fi
+
+  echo "Could not reset $product automatically. Replug or power-cycle it, then run omarchy-restart-audio again."
+  return 1
+}
+
+recover_stuck_usb_audio() {
+  local devices=()
+  local device
+  local reset_count=0
+
+  while IFS= read -r device; do
+    [[ -n $device ]] && devices+=("$device")
+  done < <(stuck_usb_audio_devices)
+
+  (( ${#devices[@]} > 0 )) || return 1
+
+  for device in "${devices[@]}"; do
+    reset_usb_audio_device "$device" && reset_count=$((reset_count + 1))
+  done
+
+  (( reset_count > 0 ))
+}
+
+restart_audio_services || true
+
+if ! wpctl_healthy; then
+  echo -e "\nPipeWire is still not responding. Checking for stuck USB audio devices..."
+
+  if recover_stuck_usb_audio; then
+    echo -e "\nRestarting audio services after USB audio reset...\n"
+    restart_audio_services || true
+  else
+    echo "No stuck USB audio device was detected automatically."
+  fi
+fi
+
+sleep 2
+
+echo -e "\nAudio status:\n"
+if ! timeout 5s wpctl status; then
+  echo "Audio services are still not responding. Try replugging or power-cycling the selected USB audio device."
+  exit 1
+fi
