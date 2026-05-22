@@ -40,8 +40,11 @@ if [[ $shell_output == "true" ]]; then
   printf 'size\t%s\n' "${capacity}Wh"
   printf 'time\t%s\n' "$time_remaining"
 
+  cycles=$(cat /sys/class/power_supply/BAT*/cycle_count 2>/dev/null | head -1)
   end=$(cat /sys/class/power_supply/BAT*/charge_control_end_threshold 2>/dev/null | head -1)
   start=$(cat /sys/class/power_supply/BAT*/charge_control_start_threshold 2>/dev/null | head -1)
+
+  [[ -n $cycles ]] && printf 'cycles\t%s\n' "$cycles"
 
   if [[ -n $end ]]; then
     if [[ -n $start && $start != $end ]]; then
