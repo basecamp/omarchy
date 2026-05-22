@@ -16,7 +16,10 @@ Item {
   property bool hasProgress: true
   property int duration: 1200
   readonly property int cardWidth: Style.space(269)
+  readonly property int mediaCardWidth: Math.round(cardWidth * 1.5)
   readonly property int messageWidth: Style.space(190)
+  readonly property int mediaMessageWidth: messageWidth + mediaCardWidth - cardWidth
+  readonly property bool mediaOsd: iconKey.indexOf("media") === 0 || iconKey.indexOf("player") === 0
 
   function iconFor(name, percent) {
     var n = String(name || "").toLowerCase()
@@ -31,6 +34,7 @@ Item {
     if (n === "touchpad") return "󰟸"
     if (n === "touch" || n === "touchscreen") return "󰜉"
     if (n === "media" || n === "player") return "󰝚"
+    if (n === "media-source" || n === "player-source") return "󰝚"
     if (n === "media-play" || n === "player-play") return "󰐊"
     if (n === "media-pause" || n === "player-pause") return "󰏤"
     if (n === "media-next" || n === "player-next") return "󰒭"
@@ -95,7 +99,7 @@ Item {
 
     Rectangle {
       id: card
-      width: root.cardWidth
+      width: root.mediaOsd ? root.mediaCardWidth : root.cardWidth
       height: Math.max(Style.space(68), Style.font.displayLarge + Style.spacing.panelGap)
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
@@ -133,7 +137,7 @@ Item {
           }
         }
         Text {
-          width: root.hasProgress ? Style.space(41) : root.messageWidth
+          width: root.hasProgress ? Style.space(41) : (root.mediaOsd ? root.mediaMessageWidth : root.messageWidth)
           anchors.verticalCenter: parent.verticalCenter
           text: root.message
           font.family: Style.font.family
