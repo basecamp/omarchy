@@ -64,6 +64,7 @@ Panel {
     var device = UPower.displayDevice
     return device && device.isPresent && device.state === UPowerDeviceState.FullyCharged
   }
+  readonly property bool batteryFull: fullyCharged || (!UPower.onBattery && batteryFraction >= 1)
 
   // 0..1 charge level, used by the visual progress bar.
   readonly property real batteryFraction: {
@@ -406,14 +407,14 @@ Panel {
             width: (parent.width - parent.spacing) / 2
             spacing: Style.spacing.labelGap
             InfoPair { label: "Battery size"; value: root.batteryInfo.size || "" }
-            InfoPair { label: "Threshold"; value: root.batteryInfo.threshold || "—" }
+            InfoPair { label: "Charge cycles"; value: root.batteryInfo.cycles || "—" }
           }
 
           Column {
             width: (parent.width - parent.spacing) / 2
             spacing: Style.spacing.labelGap
-            InfoPair { label: UPower.onBattery ? "Time left" : "Time to full"; value: root.batteryInfo.time || "—" }
-            InfoPair { label: UPower.onBattery ? "Discharging" : "Charging"; value: root.batteryInfo.rate || "" }
+            InfoPair { label: UPower.onBattery ? "Time left" : "Time to full"; value: root.batteryFull ? "-" : (root.batteryInfo.time || "—") }
+            InfoPair { label: UPower.onBattery ? "Discharging" : "Charging"; value: root.batteryFull ? "-" : (root.batteryInfo.rate || "") }
           }
         }
 
