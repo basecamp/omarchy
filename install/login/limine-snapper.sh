@@ -96,18 +96,24 @@ EOF
     [[ -f $stale ]] && sudo rm -f "$stale"
   done
 
-  sudo cp $OMARCHY_PATH/default/limine/limine.conf /boot/limine.conf
+  limine_esp_path=/boot
+  if [[ -f /etc/default/limine ]]; then
+    # shellcheck disable=SC1091
+    source /etc/default/limine
+    limine_esp_path="${ESP_PATH:-/boot}"
+  fi
+  sudo cp "$OMARCHY_PATH/default/limine/limine.conf" "$limine_esp_path/limine.conf"
 
   # limine-mkinitcpio-hook fired its post-transaction UKI build when archinstall
   # pacstrapped it (via omarchy-limine's depends) BEFORE /etc/default/limine and
   # /etc/kernel/cmdline existed, so the UKI on disk was built with an empty
   # cmdline. Delete every stale UKI for installed kernels so limine-update only
   # finds our about-to-be-rebuilt one.
-  if [[ -d /boot/EFI/Linux ]]; then
+  if [[ -d "$limine_esp_path/EFI/Linux" ]]; then
     while IFS= read -r kname; do
       [[ -n $kname ]] || continue
-      sudo rm -f "/boot/EFI/Linux/"*"_${kname}.efi" \
-                 "/boot/EFI/Linux/"*"_${kname}-fallback.efi"
+      sudo rm -f "$limine_esp_path/EFI/Linux/"*"_${kname}.efi" \
+                 "$limine_esp_path/EFI/Linux/"*"_${kname}-fallback.efi"
     done < <(cat /usr/lib/modules/*/pkgbase 2>/dev/null)
   fi
 
