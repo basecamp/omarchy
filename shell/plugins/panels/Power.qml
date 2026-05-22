@@ -293,10 +293,10 @@ Panel {
         anchors.top: parent.top
         spacing: Style.space(14)
 
-        // ---------- Hero: battery icon · status · percentage ----------
+        // ---------- Hero: battery icon · title/status · percentage ----------
         Item {
           width: parent.width
-          implicitHeight: Math.max(heroIcon.implicitHeight, heroPercent.implicitHeight)
+          implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, heroPercent.implicitHeight)
 
           Text {
             id: heroIcon
@@ -310,20 +310,36 @@ Panel {
             Behavior on color { ColorAnimation { duration: 200 } }
           }
 
-          Text {
-            id: heroStatus
-            text: root.heroStatusText.toUpperCase()
-            color: Qt.darker(root.bar.foreground, 1.4)
-            font.family: root.bar.fontFamily
-            font.pixelSize: Style.font.caption
-            font.bold: true
-            font.letterSpacing: 1.2
+          Column {
+            id: heroLabels
             anchors.left: heroIcon.right
             anchors.leftMargin: Style.space(14)
             anchors.right: heroPercent.left
             anchors.rightMargin: Style.space(10)
             anchors.verticalCenter: parent.verticalCenter
-            elide: Text.ElideRight
+            spacing: Style.space(2)
+
+            Text {
+              text: "Battery"
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.title
+              font.bold: true
+              elide: Text.ElideRight
+              width: parent.width
+            }
+
+            Text {
+              id: heroStatus
+              text: root.heroStatusText.toUpperCase()
+              color: Qt.darker(root.bar.foreground, 1.4)
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.caption
+              font.bold: true
+              font.letterSpacing: 1.2
+              elide: Text.ElideRight
+              width: parent.width
+            }
           }
 
           Text {
