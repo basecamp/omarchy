@@ -95,7 +95,10 @@ Item {
 
   function requestPopout(owner) {
     if (activePopout === owner) return
-    if (activePopout && "close" in activePopout) activePopout.close()
+    if (activePopout) {
+      if ("closeForPopoutSwitch" in activePopout) activePopout.closeForPopoutSwitch()
+      else if ("close" in activePopout) activePopout.close()
+    }
     activePopout = owner
   }
 

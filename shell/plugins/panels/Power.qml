@@ -418,10 +418,6 @@ Panel {
           }
         }
 
-        PanelSeparator {
-          foreground: root.bar.foreground
-        }
-
         // ---------- Power profile picker ----------
         Column {
           width: parent.width

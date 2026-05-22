@@ -399,11 +399,11 @@ Panel {
           width: scrollArea.availableWidth
           spacing: Style.space(14)
 
-          // ---------- Hero: display icon · title/status · percentage ----------
+          // ---------- Hero: display icon · title/status ----------
           Item {
             width: parent.width
             visible: root.brightnessAvailable
-            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, heroPercent.implicitHeight)
+            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight)
 
             Text {
               id: heroIcon
@@ -419,8 +419,7 @@ Panel {
               id: heroLabels
               anchors.left: heroIcon.right
               anchors.leftMargin: Style.space(14)
-              anchors.right: heroPercent.left
-              anchors.rightMargin: Style.space(10)
+              anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
               spacing: Style.space(2)
 
@@ -446,53 +445,73 @@ Panel {
                 width: parent.width
               }
             }
-
-            Text {
-              id: heroPercent
-              text: Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent) + "%"
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.displayLarge
-              font.bold: true
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-            }
           }
 
-          // ---------- Brightness slider (full width below hero) ----------
-          CursorSurface {
-            id: brightnessRow
+          // ---------- Brightness ----------
+          Column {
             visible: root.brightnessAvailable
             width: parent.width
-            height: brightnessSlider.implicitHeight + Style.spacing.controlGap
-            hasCursor: root.cursorActive && root.focusSection === "brightness" && root.selectedIndex === -1
-            onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(brightnessRow)
-            foreground: root.bar.foreground
-            outline: true
+            spacing: Style.space(6)
 
-            PanelSlider {
-              id: brightnessSlider
-              bar: root.bar
-              anchors.fill: parent
-              anchors.leftMargin: Style.space(6)
-              anchors.rightMargin: Style.space(6)
-              minimum: 1
-              maximum: 100
-              step: 1
-              value: root.brightnessPercent
-              integer: true
-              onMoved: function(v) { root.previewBrightness(v) }
-              onReleased: function(v) {
-                brightnessDebounce.stop()
-                root.setBrightness(v)
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(brightnessHeader.implicitHeight, brightnessPercent.implicitHeight)
+
+              PanelSectionHeader {
+                id: brightnessHeader
+                text: "BRIGHTNESS"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                id: brightnessPercent
+                text: Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent) + "%"
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
               }
             }
 
-            HoverHandler {
-              onHoveredChanged: if (hovered) {
-                root.cursorActive = true
-                root.focusSection = "brightness"
-                root.selectedIndex = -1
+            CursorSurface {
+              id: brightnessRow
+              width: parent.width
+              height: brightnessSlider.implicitHeight + Style.spacing.controlGap
+              hasCursor: root.cursorActive && root.focusSection === "brightness" && root.selectedIndex === -1
+              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(brightnessRow)
+              foreground: root.bar.foreground
+              outline: true
+
+              PanelSlider {
+                id: brightnessSlider
+                bar: root.bar
+                anchors.fill: parent
+                anchors.leftMargin: Style.space(6)
+                anchors.rightMargin: Style.space(6)
+                minimum: 1
+                maximum: 100
+                step: 1
+                value: root.brightnessPercent
+                integer: true
+                onMoved: function(v) { root.previewBrightness(v) }
+                onReleased: function(v) {
+                  brightnessDebounce.stop()
+                  root.setBrightness(v)
+                }
+              }
+
+              HoverHandler {
+                onHoveredChanged: if (hovered) {
+                  root.cursorActive = true
+                  root.focusSection = "brightness"
+                  root.selectedIndex = -1
+                }
               }
             }
           }
@@ -503,11 +522,6 @@ Panel {
             color: Qt.darker(root.bar.foreground, 1.5)
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.bodySmall
-          }
-
-          PanelSeparator {
-            visible: root.brightnessAvailable
-            foreground: root.bar.foreground
           }
 
           // ---------- Scale ----------
@@ -543,11 +557,6 @@ Panel {
                 }
               }
             }
-          }
-
-          PanelSeparator {
-            visible: root.displays.length > 1
-            foreground: root.bar.foreground
           }
 
           // ---------- Monitors ----------

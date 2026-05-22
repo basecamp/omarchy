@@ -573,7 +573,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(370))
+    contentWidth: panel.fittedContentWidth(Style.space(380))
     contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(560))
 
     PanelKeyCatcher {
@@ -616,11 +616,11 @@ Panel {
           width: scrollArea.availableWidth
           spacing: Style.space(14)
 
-          // ---------- Hero: speaker icon · title/status · % ----------
+          // ---------- Hero: speaker icon · title/status ----------
           Item {
             id: heroItem
             width: parent.width
-            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, heroPercent.implicitHeight)
+            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight)
 
             Text {
               id: heroIcon
@@ -643,8 +643,7 @@ Panel {
               id: heroLabels
               anchors.left: heroIcon.right
               anchors.leftMargin: Style.space(14)
-              anchors.right: heroPercent.left
-              anchors.rightMargin: Style.space(10)
+              anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
               spacing: Style.space(2)
 
@@ -673,37 +672,40 @@ Panel {
                 width: parent.width
               }
             }
-
-            Text {
-              id: heroPercent
-              text: Math.round((outputSlider.dragging ? outputSlider.liveValue : root.outputVolume) * 100) + "%"
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.displayLarge
-              font.bold: true
-              opacity: root.outputMuted ? 0.5 : 1.0
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-            }
           }
 
-          // ---- Output ----
+          // ---- Output devices ----
           Column {
             width: parent.width
             spacing: Style.space(6)
 
-            Text {
-              text: root.sink ? "Output · " + root.nodeLabel(root.sink) : "Output"
-              color: Qt.darker(root.bar.foreground, 1.6)
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              elide: Text.ElideRight
+            Item {
               width: parent.width
+              implicitHeight: Math.max(outputHeader.implicitHeight, outputPercent.implicitHeight)
+
+              PanelSectionHeader {
+                id: outputHeader
+                text: "OUTPUT"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                id: outputPercent
+                text: Math.round((outputSlider.dragging ? outputSlider.liveValue : root.outputVolume) * 100) + "%"
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+                opacity: root.outputMuted ? 0.5 : 1.0
+              }
             }
 
-            // Output slider row — keyboard cursor target (selectedIndex === -1
-            // when focusSection === "output"). Icon/percent live in the hero
-            // above, so the slider takes the full row width.
             CursorSurface {
               id: outputSliderRow
               width: parent.width
@@ -751,95 +753,67 @@ Panel {
             }
           }
 
-          PanelSeparator {
-            visible: root.audioSources.length > 0 || !!root.source
-            foreground: root.bar.foreground
-          }
-
           // ---- Input ----
           Column {
             width: parent.width
             spacing: Style.space(6)
             visible: root.audioSources.length > 0 || !!root.source
 
-            Text {
-              text: root.source ? "Input · " + root.nodeLabel(root.source) : "Input"
-              color: Qt.darker(root.bar.foreground, 1.6)
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              elide: Text.ElideRight
+            Item {
               width: parent.width
+              implicitHeight: Math.max(microphoneHeader.implicitHeight, microphonePercent.implicitHeight)
+
+              PanelSectionHeader {
+                id: microphoneHeader
+                text: "INPUT"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                id: microphonePercent
+                text: Math.round((inputSlider.dragging ? inputSlider.liveValue : root.inputVolume) * 100) + "%"
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+                opacity: root.inputMuted ? 0.5 : 1.0
+              }
             }
 
             CursorSurface {
               id: inputSliderRow
               visible: !!root.source
               width: parent.width
-              height: inputSliderInner.implicitHeight + Style.spacing.controlGap
+              height: inputSlider.implicitHeight + Style.spacing.controlGap
               hasCursor: root.cursorActive && root.focusSection === "input" && root.selectedIndex === -1
               onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(inputSliderRow)
               foreground: root.bar.foreground
               outline: true
 
-              Row {
-                id: inputSliderInner
+              PanelSlider {
+                id: inputSlider
+                bar: root.bar
                 anchors.fill: parent
                 anchors.leftMargin: Style.space(6)
                 anchors.rightMargin: Style.space(6)
-                spacing: Style.space(8)
+                minimum: 0
+                maximum: 1
+                step: 0.05
+                value: root.inputVolume
+                opacity: root.inputMuted ? 0.5 : 1.0
+                enabled: !!root.source
 
-                Text {
-                  id: inputIconText
-                  text: root.inputIcon()
-                  color: root.bar.foreground
-                  font.family: root.bar.fontFamily
-                  font.pixelSize: Style.font.heading
-                  width: Style.space(22)
-                  horizontalAlignment: Text.AlignHCenter
-                  anchors.verticalCenter: parent.verticalCenter
-                  opacity: root.inputMuted ? 0.5 : 1.0
-
-                  MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.toggleInputMute()
-                  }
-                }
-
-                PanelSlider {
-                  id: inputSlider
-                  bar: root.bar
-                  width: parent.width - inputIconText.width - inputPercent.width - Style.space(16)
-                  anchors.verticalCenter: parent.verticalCenter
-                  minimum: 0
-                  maximum: 1
-                  step: 0.05
-                  value: root.inputVolume
-                  opacity: root.inputMuted ? 0.5 : 1.0
-                  enabled: !!root.source
-
-                  onMoved: function(v) { root.setInputVolume(v) }
-                }
-
-                Text {
-                  id: inputPercent
-                  text: Math.round((inputSlider.dragging ? inputSlider.liveValue : root.inputVolume) * 100) + "%"
-                  color: root.bar.foreground
-                  font.family: root.bar.fontFamily
-                  font.pixelSize: Style.font.bodySmall
-                  width: Style.space(36)
-                  horizontalAlignment: Text.AlignRight
-                  anchors.verticalCenter: parent.verticalCenter
-                  opacity: root.inputMuted ? 0.5 : 1.0
-                }
+                onMoved: function(v) { root.setInputVolume(v) }
               }
 
-              MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                acceptedButtons: Qt.NoButton
-                propagateComposedEvents: true
-                onContainsMouseChanged: if (containsMouse) {
+              HoverHandler {
+                onHoveredChanged: if (hovered) {
                   root.cursorActive = true
                   root.focusSection = "input"
                   root.selectedIndex = -1
@@ -858,11 +832,6 @@ Panel {
                 rowIndex: index
               }
             }
-          }
-
-          PanelSeparator {
-            visible: root.audioStreams.length > 0
-            foreground: root.bar.foreground
           }
 
           // ---- Per-app streams ----
