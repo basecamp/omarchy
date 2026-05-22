@@ -87,6 +87,22 @@ catch_errors() {
   fi
 
   stop_log_output
+
+  if [[ -n ${OMARCHY_CHROOT_FINALIZER:-} ]]; then
+    show_cursor
+    {
+      echo "Omarchy installation stopped inside offline finalizer."
+      echo "This command halted with exit code $exit_code:"
+      if [[ -n ${CURRENT_SCRIPT:-} ]]; then
+        echo "Failed script: $CURRENT_SCRIPT"
+      else
+        echo "$BASH_COMMAND"
+      fi
+      echo "The live ISO orchestrator will show the visible error screen."
+    } >&2
+    exit "$exit_code"
+  fi
+
   restore_outputs
 
   clear_logo
