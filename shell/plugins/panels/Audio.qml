@@ -285,6 +285,7 @@ Panel {
     // Match the old Waybar pulseaudio glyph set. The Material Design speaker
     // icons render visually smaller in JetBrainsMono Nerd Font.
     if (!sink || !sink.audio) return ""
+    if (isHeadphones(sink)) return "󰋋"
     if (outputMuted) return ""
     var v = outputVolume
     if (v >= 0.67) return ""
@@ -397,15 +398,32 @@ Panel {
     return node && node.ready && node.properties ? node.properties : {}
   }
 
+  function isHeadphones(node) {
+    if (!node) return false
+    var p = nodeProps(node)
+    var blob = String([
+      node.name, node.description, node.nickname,
+      p["device.icon-name"] || "",
+      p["device.product.name"] || "",
+      p["node.description"] || "",
+      p["node.nick"] || ""
+    ].join(" ")).toLowerCase()
+    return blob.indexOf("headphone") !== -1
+      || blob.indexOf("headset") !== -1
+      || blob.indexOf("earbud") !== -1
+      || blob.indexOf("earphone") !== -1
+      || blob.indexOf("airpod") !== -1
+  }
+
   function sinkGlyph(node) {
     if (!node) return "󰓃"
+    if (isHeadphones(node)) return "󰋋"
     var p = nodeProps(node)
     var blob = String([
       node.name, node.description, node.nickname,
       p["device.icon-name"] || "",
       p["device.product.name"] || ""
     ].join(" ")).toLowerCase()
-    if (blob.indexOf("headphone") !== -1 || blob.indexOf("headset") !== -1) return "󰋋"
     if (blob.indexOf("bluetooth") !== -1) return "󰂯"
     if (blob.indexOf("hdmi") !== -1 || blob.indexOf("display") !== -1) return "󰍹"
     return "󰓃"
