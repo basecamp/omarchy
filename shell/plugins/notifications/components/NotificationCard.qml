@@ -40,6 +40,9 @@ Rectangle {
   readonly property string smallIconSource: image.length > 0 ? image : appIcon
   readonly property bool hasGlyph: glyph.length > 0
   readonly property bool hasSmallIcon: smallIconSource.length > 0 || hasGlyph
+  readonly property bool summaryStartsWithGlyph: /^\s*\S\s{2,}/.test(summary)
+  readonly property bool singleLineToast: sanitizedBody.length === 0
+  readonly property bool collapseRedundantIcon: singleLineToast && !hasGlyph && summaryStartsWithGlyph
   readonly property bool chromiumDerived: {
     var source = (app + "\n" + appIcon).toLowerCase()
     return source.indexOf("chrom") >= 0 || source.indexOf("brave") >= 0 ||
@@ -99,19 +102,19 @@ Rectangle {
       Layout.fillWidth: true
       Layout.leftMargin: Style.space(12)
       Layout.rightMargin: Style.space(12)
-      Layout.topMargin: Style.space(10)
-      Layout.bottomMargin: Style.space(10)
-      spacing: Style.space(12)
+      Layout.topMargin: root.singleLineToast ? Style.space(7) : Style.space(10)
+      Layout.bottomMargin: root.singleLineToast ? Style.space(7) : Style.space(10)
+      spacing: root.collapseRedundantIcon ? 0 : Style.space(12)
 
       Item {
         id: smallIconSlot
-        Layout.preferredWidth: Style.space(40)
-        Layout.preferredHeight: Style.space(40)
+        Layout.preferredWidth: visible ? Style.space(40) : 0
+        Layout.preferredHeight: visible ? Style.space(40) : 0
         Layout.alignment: Qt.AlignVCenter
         // Hide the slot when the icon failed to resolve (themed-icon name
         // not in the user's icon theme) AND we don't have a glyph fallback
         // — prevents rendering Qt's pink broken-image placeholder.
-        visible: root.hasSmallIcon && (root.hasGlyph || smallIconImage.status !== Image.Error)
+        visible: !root.collapseRedundantIcon && root.hasSmallIcon && (root.hasGlyph || smallIconImage.status !== Image.Error)
 
         Image {
           id: smallIconImage
