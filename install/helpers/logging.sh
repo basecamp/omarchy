@@ -57,6 +57,7 @@ start_install_log() {
   sudo chmod 666 "$OMARCHY_INSTALL_LOG_FILE"
 
   export OMARCHY_START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+  export OMARCHY_START_EPOCH=$(date +%s)
 
   echo "=== Omarchy Installation Started: $OMARCHY_START_TIME ===" >>"$OMARCHY_INSTALL_LOG_FILE"
   start_log_output
@@ -68,6 +69,7 @@ stop_install_log() {
 
   if [[ -n ${OMARCHY_INSTALL_LOG_FILE:-} ]]; then
     OMARCHY_END_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+    OMARCHY_END_EPOCH=$(date +%s)
     echo "=== Omarchy Installation Completed: $OMARCHY_END_TIME ===" >>"$OMARCHY_INSTALL_LOG_FILE"
     echo "" >>"$OMARCHY_INSTALL_LOG_FILE"
     echo "=== Installation Time Summary ===" >>"$OMARCHY_INSTALL_LOG_FILE"
@@ -93,9 +95,11 @@ stop_install_log() {
         sed 's/^=== Omarchy Installation Started: \(.*\) ===$/\1/' || true)
     fi
 
-    if [[ -n ${OMARCHY_START_TIME:-} ]]; then
+    if [[ -z ${OMARCHY_START_EPOCH:-} && -n ${OMARCHY_START_TIME:-} ]]; then
       OMARCHY_START_EPOCH=$(date -d "$OMARCHY_START_TIME" +%s)
-      OMARCHY_END_EPOCH=$(date -d "$OMARCHY_END_TIME" +%s)
+    fi
+
+    if [[ -n ${OMARCHY_START_EPOCH:-} ]]; then
       OMARCHY_DURATION=$((OMARCHY_END_EPOCH - OMARCHY_START_EPOCH))
 
       OMARCHY_MINS=$((OMARCHY_DURATION / 60))
