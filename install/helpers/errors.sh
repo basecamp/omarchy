@@ -74,8 +74,10 @@ restore_outputs() {
 
 # Error handler
 catch_errors() {
-  # Store exit code before any conditionals or assignments overwrite $?.
-  local exit_code=$?
+  # Store exit code before any conditionals or assignments overwrite $?. EXIT
+  # trap callers pass their already-preserved code because calling this function
+  # would otherwise reset $? before we can read it.
+  local exit_code="${1:-$?}"
 
   # Prevent recursive error handling
   if [[ $ERROR_HANDLING == "true" ]]; then
@@ -147,7 +149,7 @@ exit_handler() {
 
   # Only run if we're exiting with an error and haven't already handled it
   if (( exit_code != 0 )) && [[ $ERROR_HANDLING != "true" ]]; then
-    catch_errors
+    catch_errors "$exit_code"
   else
     stop_log_output
     show_cursor
