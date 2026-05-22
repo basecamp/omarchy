@@ -15,7 +15,17 @@ QtObject {
     "PowerPanel":         { displayName: "Power",              description: "Battery, power profile, and system stats",    category: "System",   allowMultiple: false, sourceDir: "../panels", sourceName: "Power" },
     "BluetoothPanel":     { displayName: "Bluetooth",          description: "Bluetooth device list with connect/disconnect", category: "Network", allowMultiple: false, sourceDir: "../panels", sourceName: "Bluetooth" },
     "Clock":              { displayName: "Clock",              description: "Day/time label; click to toggle alternate format", category: "Time",  allowMultiple: false, settingsForm: "clockSettings" },
-    "Indicators":         { displayName: "Indicators",         description: "Manual state indicators",                     category: "Status",   allowMultiple: false },
+    "Indicators":         { displayName: "Indicators",         description: "Manual state indicators",                     category: "Status",   allowMultiple: true,
+      schema: [
+        { key: "items", type: "multiselect", label: "Indicators", description: "Choose which indicators this widget instance should show. Leave empty to show all indicators.", noSelectionText: "All indicators", placeholderText: "Search indicators...", emptyText: "No indicators",
+          options: [
+            { value: "Dnd", label: "Do not disturb", description: "Notification silencing" },
+            { value: "NightLight", label: "Night light", description: "Blue-light filter" },
+            { value: "StayAwake", label: "Stay awake", description: "Idle lock and screensaver override" },
+            { value: "ScreenRecording", label: "Screen recording", description: "GPU screen recorder status" },
+            { value: "Dictation", label: "Dictation", description: "Voice typing status" }
+          ] }
+      ] },
     "NotificationCenter": { displayName: "Notification center", description: "Recent notifications + DND",                category: "Status",   allowMultiple: false },
     "SystemUpdate":       { displayName: "System update",       description: "Indicates available system updates",         category: "System",   allowMultiple: false },
     "SystemStats":        { displayName: "System stats",       description: "CPU icon — hover for graphs, click to open btop", category: "System", allowMultiple: false },
@@ -52,6 +62,7 @@ QtObject {
       category: meta.category || "Misc",
       allowMultiple: meta.allowMultiple === true,
       settingsForm: meta.settingsForm || "",
+      schema: Array.isArray(meta.schema) ? meta.schema : [],
       source: "first-party"
     }
     var comp = Qt.createComponent(url, Component.Asynchronous)

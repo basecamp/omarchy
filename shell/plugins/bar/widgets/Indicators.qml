@@ -9,6 +9,7 @@ BarWidget {
   moduleName: "Indicators"
 
   readonly property int indicatorSlotExtent: Style.space(22)
+  readonly property var defaultIndicatorEntries: [ "Dnd", "NightLight", "StayAwake", "ScreenRecording", "Dictation" ]
   readonly property int inactiveSlotExtent: indicatorEntries.length * indicatorSlotExtent
   readonly property var indicatorEntries: indicatorEntriesFromSettings(settings)
   property var activeIndicatorIds: []
@@ -41,9 +42,9 @@ BarWidget {
   }
 
   function indicatorEntriesFromSettings(settings) {
-    var source = []
-    if (settings.items && typeof settings.items.length === "number") source = settings.items
-    else if (settings.indicators && typeof settings.indicators.length === "number") source = settings.indicators
+    var source = defaultIndicatorEntries
+    if (settings.items && typeof settings.items.length === "number" && settings.items.length > 0) source = settings.items
+    else if (settings.indicators && typeof settings.indicators.length === "number" && settings.indicators.length > 0) source = settings.indicators
 
     var result = []
     for (var i = 0; i < source.length; i++) {
