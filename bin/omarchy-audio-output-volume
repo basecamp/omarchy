@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# omarchy:summary=Adjust output volume with OSD, unmuting first so volume keys recover from a muted sink in a single press.
+# omarchy:args=raise|lower|(±)number
+
+# Raising or lowering the volume while the sink is muted should unmute it, the
+# way hardware volume keys behave on other desktops. swayosd's --output-volume
+# only changes the level and leaves the mute flag set, so a muted laptop stays
+# silent until the user separately hits mute. Clear the flag first, then let
+# swayosd apply the change and render the OSD (which reflects the unmuted state).
+wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 >/dev/null 2>&1
+
+omarchy-swayosd-client --output-volume "$1"
