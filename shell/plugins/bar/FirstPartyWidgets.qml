@@ -24,7 +24,8 @@ QtObject {
             { value: "StayAwake", label: "Stay awake", description: "Idle lock and screensaver override" },
             { value: "ScreenRecording", label: "Screen recording", description: "GPU screen recorder status" },
             { value: "Dictation", label: "Dictation", description: "Voice typing status" }
-          ] }
+          ] },
+        { key: "alwaysShow", type: "boolean", label: "Always Show", description: "Show inactive indicators without waiting for hover.", defaultValue: false }
       ] },
     "NotificationCenter": { displayName: "Notification center", description: "Recent notifications + DND",                category: "Status",   allowMultiple: false },
     "SystemUpdate":       { displayName: "System update",       description: "Indicates available system updates",         category: "System",   allowMultiple: false },

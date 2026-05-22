@@ -486,6 +486,8 @@ Item {
     var copy = Util.cloneJson(widgetDialogEntry)
     copy[key] = value
     widgetDialogEntry = copy
+    if (widgetDialogFormLoader.item && "entry" in widgetDialogFormLoader.item)
+      widgetDialogFormLoader.item.entry = widgetDialogEntry
   }
 
   FloatingWindow {
