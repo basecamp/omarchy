@@ -445,11 +445,12 @@ Item {
             }
             Text {
               text: "Style.font.* is the shell-wide type scale. Themes ship a single "
-                + "[font] base-size in shell.toml (clamped 11..13); every token derives from "
-                + "it via a fixed multiplier, so changing base-size rescales the whole shell "
-                + "proportionally. Themes can also pin individual tokens (caption, heading, "
-                + "display, etc.) for stylistic emphasis. The family follows the fontconfig "
-                + "monospace alias \u2014 set it with `omarchy font set <name>`."
+                + "[font] base-size in shell.toml; every token derives from it via a "
+                + "fixed multiplier, so changing base-size rescales the whole shell "
+                + "proportionally. There is no upper clamp. Themes can also pin "
+                + "individual tokens (caption, heading, display, etc.) for stylistic "
+                + "emphasis. The family follows the fontconfig monospace alias \u2014 "
+                + "set it with `omarchy font set <name>`."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall

@@ -9,8 +9,10 @@ background-alpha = 1.0
 text             = "{{ foreground }}"
 # Modules calling attention to themselves (recording, voxtype, alerts, updates)
 active           = "{{ color1 }}"
-# Cross-axis size in px. size-horizontal is the height of top/bottom bars;
-# size-vertical is the width of left/right bars.
+# Cross-axis size at font base-size 12. size-horizontal is the height of
+# top/bottom bars; size-vertical is the width of left/right bars. With
+# scale-with-font enabled, these grow/shrink with [font] base-size.
+scale-with-font  = true
 size-horizontal  = 26
 size-vertical    = 28
 
@@ -49,11 +51,13 @@ pressed-fill-alpha   = 0.22
 selection-fill-alpha = 0.35
 
 [spacing]
-# `scale` multiplies shared margins, gaps, and padding; components keep
-# their proportions. Per-token overrides (in px) below pin individual
-# values without affecting the rest of the scale. Uncomment any to tune
-# a specific surface.
+# `scale` multiplies shared margins, gaps, padding, controls, and panel
+# dimensions; components keep their proportions. With scale-with-font
+# enabled, those dimensions grow/shrink with [font] base-size too. Per-token
+# overrides (in px) below pin individual values without affecting the rest
+# of the scale. Uncomment any to tune a specific surface.
 scale = 1.0
+scale-with-font = true
 # xxs                       = 2
 # xs                        = 3
 # sm                        = 4
@@ -83,8 +87,8 @@ scale = 1.0
 [font]
 # base-size is the rem root for the type scale. Every Style.font.<token>
 # derives from it (e.g. body = base, subtitle ≈ base * 1.083,
-# heading ≈ base * 1.333). Clamped 11..13 by the shell because some
-# row heights remain fixed, so larger type can clip.
+# heading ≈ base * 1.333). The shell only floors this at 1px; increase it
+# as much as you want.
 base-size = 12
 # Per-token overrides, in px. Uncomment any to pin a specific size without
 # affecting the rest of the scale. Useful for stylistic emphasis (a

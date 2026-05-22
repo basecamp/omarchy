@@ -644,8 +644,7 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: root.icon
-    horizontalMargin: 8.5
-    rightExtraMargin: 2
+    horizontalMargin: 5
 
     onPressed: function(b) {
       if (root.opened) root.close()
