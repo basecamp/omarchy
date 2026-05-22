@@ -1,39 +1,19 @@
 configure_snapper_root() {
   if install_mode_is offline; then
-    # snapper create-config talks to snapperd over DBus, which is unavailable
-    # inside arch-chroot during ISO installs. Recreate the simple root config
-    # directly instead: a /.snapshots subvolume, config file, and conf.d entry.
-    if ! sudo btrfs subvolume show /.snapshots >/dev/null 2>&1; then
-      if sudo test -e /.snapshots; then
-        if sudo find /.snapshots -mindepth 1 -maxdepth 1 | grep -q .; then
-          echo "Error: /.snapshots exists and is not an empty Btrfs subvolume" >&2
-          exit 1
-        fi
-        sudo rmdir /.snapshots
-      fi
-
-      sudo btrfs subvolume create /.snapshots
-      sudo chmod 750 /.snapshots
+    # ISO installs configure Snapper in the orchestrator/archinstall phase with
+    # `snapper --no-dbus`, before this finalizer runs. snapperd/DBus are not
+    # available inside arch-chroot, so do not call plain `snapper` here.
+    if [[ ! -f /etc/snapper/configs/root ]]; then
+      echo "Error: offline install reached finalizer without /etc/snapper/configs/root" >&2
+      exit 1
     fi
-
-    sudo install -d /etc/snapper/configs /etc/conf.d
-    sudo install -m 644 "$OMARCHY_PATH/default/snapper/root" /etc/snapper/configs/root
-
-    if sudo test -f /etc/conf.d/snapper; then
-      if grep -q '^SNAPPER_CONFIGS=' /etc/conf.d/snapper; then
-        sudo sed -i 's/^SNAPPER_CONFIGS=.*/SNAPPER_CONFIGS="root"/' /etc/conf.d/snapper
-      else
-        echo 'SNAPPER_CONFIGS="root"' | sudo tee -a /etc/conf.d/snapper >/dev/null
-      fi
-    else
-      echo 'SNAPPER_CONFIGS="root"' | sudo tee /etc/conf.d/snapper >/dev/null
-    fi
-  else
-    if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
-      sudo snapper -c root create-config /
-    fi
-    sudo cp "$OMARCHY_PATH/default/snapper/root" /etc/snapper/configs/root
+    return
   fi
+
+  if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
+    sudo snapper -c root create-config /
+  fi
+  sudo cp "$OMARCHY_PATH/default/snapper/root" /etc/snapper/configs/root
 }
 
 if command -v limine &>/dev/null; then
