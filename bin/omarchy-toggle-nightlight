@@ -5,7 +5,7 @@
 # omarchy:examples=omarchy toggle nightlight
 
 ON_TEMP=4000
-OFF_TEMP=6000
+OFF_TEMP=6500
 
 current_temp() {
   local output
