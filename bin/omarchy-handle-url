@@ -12,7 +12,7 @@
 #   the current workspace.
 
 if (($# == 0)); then
-  echo "Usage: omarchy-link-handler <url>" >&2
+  echo "Usage: omarchy-handle-url <url>" >&2
   exit 1
 fi
 
