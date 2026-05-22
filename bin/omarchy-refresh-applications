@@ -3,21 +3,21 @@
 # omarchy:summary=Ensure all default .desktop, web apps, TUIs, and npm wrappers are installed.
 
 mkdir -p ~/.local/share/icons/hicolor/48x48/apps/
-cp ~/.local/share/omarchy/applications/icons/*.png ~/.local/share/icons/hicolor/48x48/apps/
+cp "$OMARCHY_PATH"/applications/icons/*.png ~/.local/share/icons/hicolor/48x48/apps/
 gtk-update-icon-cache ~/.local/share/icons/hicolor &>/dev/null
 
 # Copy .desktop declarations
 mkdir -p ~/.local/share/applications
-cp ~/.local/share/omarchy/applications/*.desktop ~/.local/share/applications/
+cp "$OMARCHY_PATH"/applications/*.desktop ~/.local/share/applications/
 
 if omarchy-cmd-present alacritty; then
-  cp ~/.local/share/omarchy/default/alacritty/alacritty.desktop ~/.local/share/applications/
+  cp "$OMARCHY_PATH/default/alacritty/Alacritty.desktop" ~/.local/share/applications/
 fi
 
 # Refresh the webapps, TUIs, and npm wrappers
-bash $OMARCHY_PATH/install/packaging/icons.sh
-bash $OMARCHY_PATH/install/packaging/webapps.sh
-bash $OMARCHY_PATH/install/packaging/tuis.sh
-bash $OMARCHY_PATH/install/packaging/npm.sh
+bash "$OMARCHY_PATH/install/packaging/icons.sh"
+bash "$OMARCHY_PATH/install/packaging/webapps.sh"
+bash "$OMARCHY_PATH/install/packaging/tuis.sh"
+bash "$OMARCHY_PATH/install/packaging/npm.sh"
 
 update-desktop-database ~/.local/share/applications
