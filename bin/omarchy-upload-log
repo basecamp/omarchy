@@ -28,7 +28,7 @@ else
     echo "========================================="
     echo "SYSTEM INFORMATION"
     echo "========================================="
-    echo "Hostname: $(hostname)"
+    echo "Hostname: $(uname -n)"
     echo "Kernel: $(uname -r)"
     echo "Date: $(date)"
     echo ""
