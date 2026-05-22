@@ -80,7 +80,7 @@ Column {
       spacing: Style.spacing.labelGap
 
       Text {
-        visible: text !== ""
+        visible: text !== "" && String(modelData && modelData.type ? modelData.type : "") !== "boolean"
         text: modelData && modelData.label ? modelData.label : (modelData && modelData.key ? modelData.key : "")
         color: Qt.darker(root.foreground, 1.3)
         font.family: root.fontFamily
@@ -89,7 +89,7 @@ Column {
       }
 
       Text {
-        visible: !!(modelData && modelData.description)
+        visible: !!(modelData && modelData.description) && String(modelData && modelData.type ? modelData.type : "") !== "boolean"
         text: modelData ? (modelData.description || "") : ""
         color: Qt.darker(root.foreground, 1.6)
         font.family: root.fontFamily
@@ -155,7 +155,8 @@ Column {
       property var field: ({})
 
       width: parent.width
-      label: "Enabled"
+      label: field && field.label ? String(field.label) : "Enabled"
+      description: field && field.description ? String(field.description) : ""
       foreground: root.foreground
       accent: root.accent
       fontFamily: root.fontFamily

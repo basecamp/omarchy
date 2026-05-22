@@ -16,7 +16,8 @@ BarWidget {
   property var indicatorActiveStates: ({})
   property bool indicatorAreaHovered: false
   property bool indicatorItemHovered: false
-  readonly property bool revealInactiveIndicators: indicatorAreaHovered || indicatorItemHovered
+  readonly property bool alwaysShowIndicators: setting("alwaysShow", false) === true
+  readonly property bool revealInactiveIndicators: alwaysShowIndicators || indicatorAreaHovered || indicatorItemHovered
 
   signal refreshRequested()
 

@@ -76,7 +76,7 @@ Example `shell.json` (bar subtree only shown):
 | `panels.bluetooth` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio · middle = bluetoothctl TUI |
 | `panels.monitor` | Brightness and laptop display controls | left = popup |
 
-The `Indicators` widget loads individual bar indicators from `indicators/`. Omit `items` (or set it to an empty array) to show all indicators in the default order, or set `items` to a subset such as `["Dnd", "NightLight"]`. Multiple `Indicators` instances are allowed, so different sections can show different subsets. Rich panels such as `PowerPanel`, `NetworkPanel`, and `AudioPanel` live in `../panels/` above.
+The `Indicators` widget loads individual bar indicators from `indicators/`. Omit `items` (or set it to an empty array) to show all indicators in the default order, or set `items` to a subset such as `["Dnd", "NightLight"]`. Set `alwaysShow` to `true` to keep inactive indicators visible instead of revealing them only on hover. Multiple `Indicators` instances are allowed, so different sections can show different subsets. Rich panels such as `PowerPanel`, `NetworkPanel`, and `AudioPanel` live in `../panels/` above.
 
 ## Orientation
 
