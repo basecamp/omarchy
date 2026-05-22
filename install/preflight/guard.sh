@@ -1,6 +1,9 @@
 abort() {
   echo -e "\e[31mOmarchy install requires: $1\e[0m"
   echo
+  if [[ -n ${OMARCHY_CHROOT_FINALIZER:-} ]]; then
+    exit 1
+  fi
   gum confirm "Proceed anyway on your own accord and without assistance?" || exit 1
 }
 
