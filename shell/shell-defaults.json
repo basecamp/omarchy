@@ -28,14 +28,7 @@
           "id": "Weather"
         },
         {
-          "id": "Indicators",
-          "items": [
-            "Dnd",
-            "NightLight",
-            "StayAwake",
-            "ScreenRecording",
-            "Dictation"
-          ]
+          "id": "Indicators"
         },
         {
           "id": "SystemUpdate"

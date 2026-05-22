@@ -133,7 +133,7 @@ Item {
         left: [{ id: "Omarchy" }, { id: "Workspaces" }],
         center: [
           { id: "Clock", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n\u2014\nmm" },
-          { id: "Weather" }, { id: "Indicators", items: [ "Dnd", "NightLight", "StayAwake", "ScreenRecording", "Dictation" ] }, { id: "SystemUpdate" }
+          { id: "Weather" }, { id: "Indicators" }, { id: "SystemUpdate" }
         ],
         right: [
           { id: "Tray" }, { id: "BluetoothPanel" }, { id: "NetworkPanel" },
@@ -281,8 +281,21 @@ Item {
     mutateSection(section, function(a) { a.splice(index, 1) })
   }
 
+  function defaultEntryForWidget(id) {
+    var bar = defaultBarDraft()
+    var layout = bar && bar.layout ? bar.layout : {}
+    var sections = ["left", "center", "right"]
+    for (var s = 0; s < sections.length; s++) {
+      var entries = layout[sections[s]] || []
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].id === id) return Util.cloneJson(entries[i])
+      }
+    }
+    return { id: id }
+  }
+
   function addEntry(section, id) {
-    mutateSection(section, function(a) { a.push({ id: id }) })
+    mutateSection(section, function(a) { a.push(defaultEntryForWidget(id)) })
   }
 
   function updateEntry(section, index, newEntry) {
