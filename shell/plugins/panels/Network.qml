@@ -30,8 +30,8 @@ Panel {
   property string prevIface: ""
   property real downloadRate: 0  // bytes/sec
   property real uploadRate: 0    // bytes/sec
-  property int ethernetPhraseIndex: 0
-  readonly property var ethernetPhrases: [
+  property int connectionPhraseIndex: 0
+  readonly property var connectionPhrases: [
     "Wiring bits",
     "Handling packets",
     "Sorting frames",
@@ -40,7 +40,7 @@ Panel {
     "Counting collisions",
     "Bending light",
   ]
-  readonly property string ethernetPhrase: ethernetPhrases[ethernetPhraseIndex % ethernetPhrases.length]
+  readonly property string connectionPhrase: connectionPhrases[connectionPhraseIndex % connectionPhrases.length]
   readonly property bool networkManagerAvailable: Networking.backend === NetworkBackendType.NetworkManager
   readonly property var networkDevices: Networking.devices ? Networking.devices.values : []
   readonly property var wifiDevice: findDevice(DeviceType.Wifi)
@@ -82,11 +82,8 @@ Panel {
   property string focusSection: "dns"  // "header" | "dns" | "wifi"
   property int headerIndex: 0
   readonly property bool canDisconnect: !!connectedWifiNetwork
-  // The disconnect button is suppressed on ethernet (see disconnectBtn.visible).
-  // headerActionCount/nav must agree, so the keyboard cursor never lands on a
-  // hidden button.
-  readonly property bool headerHasDisconnect: canDisconnect && info.type !== "ethernet"
-  readonly property int headerActionCount: headerHasDisconnect ? 1 : 0
+  readonly property bool headerHasDisconnect: false
+  readonly property int headerActionCount: 0
   readonly property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
   property int dnsIndex: 0
 
@@ -272,17 +269,24 @@ Panel {
     syncWifiNetworks()
   }
 
-  function formatSpeed(mbps) {
+  function formatHeaderSpeed(mbps) {
     var v = parseInt(mbps, 10)
     if (!v || v < 0) return ""
-    if (v >= 1000) return (v / 1000).toFixed(v % 1000 === 0 ? 0 : 1) + " Gbps"
-    return v + " Mbps"
+    if (v >= 1000) return (v / 1000).toFixed(v % 1000 === 0 ? 0 : 1) + "gbit"
+    return v + "mbit"
   }
 
-  function formatFreq(mhz) {
+  function formatHeaderFreq(mhz) {
     var v = parseFloat(mhz)
     if (!v) return ""
-    return (v / 1000).toFixed(1) + " GHz"
+    var ghz = v / 1000
+    return ghz.toFixed(ghz % 1 === 0 ? 0 : 1) + "ghz"
+  }
+
+  function headerDetail() {
+    if (info.type === "ethernet") return formatHeaderSpeed(info.speed || "")
+    if (info.type === "wifi") return formatHeaderFreq(info.freq || "")
+    return ""
   }
 
   function updateDetails(raw) {
@@ -585,21 +589,21 @@ Panel {
   }
 
   Timer {
-    id: ethernetPhraseTimer
+    id: connectionPhraseTimer
     interval: 2800
-    running: root.opened && root.info.type === "ethernet"
+    running: root.opened && (root.info.type === "ethernet" || (root.info.type === "wifi" && root.canDisconnect))
     repeat: true
-    onTriggered: ethernetPhraseSwap.restart()
+    onTriggered: connectionPhraseSwap.restart()
   }
 
   SequentialAnimation {
-    id: ethernetPhraseSwap
+    id: connectionPhraseSwap
     PropertyAnimation {
       target: heroMeta; property: "opacity"
       to: 0.0; duration: 180; easing.type: Easing.OutQuad
     }
     ScriptAction {
-      script: root.ethernetPhraseIndex = (root.ethernetPhraseIndex + 1) % root.ethernetPhrases.length
+      script: root.connectionPhraseIndex = (root.connectionPhraseIndex + 1) % root.connectionPhrases.length
     }
     PropertyAnimation {
       target: heroMeta; property: "opacity"
@@ -610,8 +614,8 @@ Panel {
   Connections {
     target: root
     function onInfoChanged() {
-      if (root.info.type !== "ethernet") {
-        ethernetPhraseSwap.stop()
+      if (!(root.info.type === "ethernet" || (root.info.type === "wifi" && root.canDisconnect))) {
+        connectionPhraseSwap.stop()
         heroMeta.opacity = 1.0
       }
     }
@@ -734,7 +738,7 @@ Panel {
       // ---------- Hero: network icon · SSID + state · actions ----------
       Item {
         width: parent.width
-        implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, headerActions.implicitHeight)
+        implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight)
 
         Text {
           id: heroIcon
@@ -769,24 +773,54 @@ Panel {
           id: heroLabels
           anchors.left: heroIcon.right
           anchors.leftMargin: Style.space(14)
-          anchors.right: headerActions.left
-          anchors.rightMargin: Style.space(10)
+          anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
           spacing: Style.space(2)
 
-          Text {
+          Row {
             id: heroSsid
             width: parent.width
-            text: {
+
+            readonly property string title: {
               if (root.info.type === "wifi") return root.info.ssid || "Wi-Fi"
               if (root.info.type === "ethernet") return "Ethernet"
               return root.info.iface || (root.kind === "disconnected" ? "Disconnected" : "No connection")
             }
-            color: root.bar.foreground
-            font.family: root.bar.fontFamily
-            font.pixelSize: Style.font.title
-            font.bold: true
-            elide: Text.ElideRight
+            readonly property string detail: root.headerDetail()
+
+            Text {
+              text: heroSsid.title
+              width: Math.min(implicitWidth, Math.max(0, parent.width - (heroDetailPill.visible ? heroDetailPill.implicitWidth + Style.space(8) : 0)))
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.title
+              font.bold: true
+              elide: Text.ElideRight
+            }
+
+            Item { width: Math.max(0, parent.width - parent.children[0].width - heroDetailPill.implicitWidth); height: 1 }
+
+            Rectangle {
+              id: heroDetailPill
+              visible: heroSsid.detail !== ""
+              implicitWidth: heroDetail.implicitWidth + Style.space(10)
+              implicitHeight: heroDetail.implicitHeight + Style.space(4)
+              anchors.verticalCenter: parent.verticalCenter
+              color: "transparent"
+              border.color: Style.normalBorderFor(root.bar.foreground)
+              border.width: Style.normalBorderWidth
+              radius: Style.cornerRadius
+
+              Text {
+                id: heroDetail
+                anchors.centerIn: parent
+                text: heroSsid.detail
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.body
+                font.bold: true
+              }
+            }
           }
 
           Text {
@@ -794,11 +828,11 @@ Panel {
             width: parent.width
             text: {
               if (root.info.type === "wifi") {
-                if (root.canDisconnect) return "CONNECTED"
+                if (root.canDisconnect) return root.connectionPhrase.toUpperCase()
                 if (root.kind === "disconnected") return "NOT CONNECTED"
                 return ""
               }
-              if (root.info.type === "ethernet") return root.ethernetPhrase.toUpperCase()
+              if (root.info.type === "ethernet") return root.connectionPhrase.toUpperCase()
               if (root.kind === "disconnected") return "NOT CONNECTED"
               return ""
             }
@@ -812,115 +846,57 @@ Panel {
           }
         }
 
-        Row {
-          id: headerActions
-          anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.space(4)
-
-          PanelActionButton {
-            id: disconnectBtn
-            // Hide on ethernet — the panel can't disconnect a wired link, and
-            // a wifi-off glyph next to the ethernet hero icon reads as a state
-            // contradiction.
-            visible: root.canDisconnect && root.info.type !== "ethernet"
-            enabled: !root.busy
-            hasCursor: root.cursorActive && root.focusSection === "header" && root.headerIndex === 0
-            iconText: "󰖪"
-            fontSize: Style.font.heading
-            size: Style.space(30)
-            tooltipText: "Disconnect"
-            foreground: root.bar.foreground
-            hoverColor: root.bar.urgent
-            fontFamily: root.bar.fontFamily
-            anchors.verticalCenter: parent.verticalCenter
-            onHovered: function(h) {
-              if (!h) return
-              root.cursorActive = true
-              root.focusSection = "header"
-              root.headerIndex = 0
-            }
-            onClicked: root.disconnect(root.connectedWifiNetwork)
-          }
-
-        }
       }
 
-      // Connection details: IP, gateway, link speed, etc. Two equal-width
-      // columns spanning the panel — matches the Power panel's stats grid.
-      Row {
+      // Connection details: transfer metrics first, then IP/Gateway.
+      Column {
         visible: !!root.info.iface
         width: parent.width
-        spacing: Style.space(20)
+        spacing: Style.spacing.labelGap
 
-        Column {
-          width: (parent.width - parent.spacing) / 2
-          spacing: Style.spacing.labelGap
-          InfoPair {
-            visible: !!root.info.ip
-            label: "IP"
-            value: root.info.ip || ""
-            copyable: true
-            tooltipText: "Copy IP"
-          }
-          InfoPair {
-            visible: !!root.info.gateway
-            label: "Gateway"
-            value: root.info.gateway || ""
-            copyable: true
-            tooltipText: "Copy gateway"
-          }
-        }
+        Row {
+          visible: root.info.rx_bytes !== undefined
+          width: parent.width
+          spacing: Style.space(20)
 
-        Column {
-          width: (parent.width - parent.spacing) / 2
-          spacing: Style.spacing.labelGap
-
-          // Ethernet details
-          InfoPair {
-            visible: root.info.type === "ethernet" && !!root.info.speed
-            label: "Link"
-            value: root.formatSpeed(root.info.speed || "")
+          Column {
+            width: (parent.width - parent.spacing) / 2
+            spacing: Style.spacing.labelGap
+            InfoPair { label: "Receiving"; value: root.formatRate(root.downloadRate) }
+            InfoPair { label: "Downloaded"; value: root.formatBytes(parseFloat(root.info.rx_bytes || "0")) }
           }
 
-          // Wi-Fi details
-          InfoPair {
-            visible: root.info.type === "wifi" && !!root.info.freq
-            label: "Band"
-            value: root.formatFreq(root.info.freq || "")
-          }
-          InfoPair {
-            visible: root.info.type === "wifi" && !!root.info.bitrate
-            label: "Link"
-            value: root.info.bitrate || ""
+          Column {
+            width: (parent.width - parent.spacing) / 2
+            spacing: Style.spacing.labelGap
+            InfoPair { label: "Sending"; value: root.formatRate(root.uploadRate) }
+            InfoPair { label: "Uploaded"; value: root.formatBytes(parseFloat(root.info.tx_bytes || "0")) }
           }
         }
-      }
 
-      PanelSeparator {
-        visible: !!root.info.iface && root.info.rx_bytes !== undefined
-        foreground: root.bar.foreground
-      }
-
-      // Throughput: instantaneous rate (from sample-to-sample delta) plus
-      // cumulative bytes since the interface came up.
-      Row {
-        visible: !!root.info.iface && root.info.rx_bytes !== undefined
-        width: parent.width
-        spacing: Style.space(20)
-
-        Column {
-          width: (parent.width - parent.spacing) / 2
-          spacing: Style.spacing.labelGap
-          InfoPair { label: "Receiving"; value: root.formatRate(root.downloadRate) }
-          InfoPair { label: "Downloaded"; value: root.formatBytes(parseFloat(root.info.rx_bytes || "0")) }
-        }
-
-        Column {
-          width: (parent.width - parent.spacing) / 2
-          spacing: Style.spacing.labelGap
-          InfoPair { label: "Sending"; value: root.formatRate(root.uploadRate) }
-          InfoPair { label: "Uploaded"; value: root.formatBytes(parseFloat(root.info.tx_bytes || "0")) }
+        Row {
+          width: parent.width
+          spacing: Style.space(20)
+          Column {
+            width: (parent.width - parent.spacing) / 2
+            InfoPair {
+              visible: !!root.info.ip
+              label: "IP Address"
+              value: root.info.ip || ""
+              copyable: true
+              tooltipText: "Copy IP"
+            }
+          }
+          Column {
+            width: (parent.width - parent.spacing) / 2
+            InfoPair {
+              visible: !!root.info.gateway
+              label: "Gateway"
+              value: root.info.gateway || ""
+              copyable: true
+              tooltipText: "Copy gateway"
+            }
+          }
         }
       }
 
