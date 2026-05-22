@@ -33,8 +33,6 @@ zen) desktop_id="zen.desktop"; name="Zen"; glyph="󰖟" ;;
 esac
 
 xdg-settings set default-web-browser "$desktop_id"
-xdg-mime default "$desktop_id" x-scheme-handler/http
-xdg-mime default "$desktop_id" x-scheme-handler/https
 xdg-mime default "$desktop_id" text/html
 
 notify-send -u low "$glyph    $name is now the default browser"

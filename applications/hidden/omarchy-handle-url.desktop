@@ -1,0 +1,8 @@
+[Desktop Entry]
+NoDisplay=true
+Type=Application
+Name=Omarchy URL Handler
+Comment=Open URLs with Omarchy's workspace-aware browser launcher
+Exec=omarchy-handle-url %u
+Terminal=false
+MimeType=x-scheme-handler/http;x-scheme-handler/https;
