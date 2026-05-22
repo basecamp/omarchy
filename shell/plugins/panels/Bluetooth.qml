@@ -558,7 +558,7 @@ Panel {
             // Connected devices.
             PanelSectionHeader {
               visible: root.connectedDevices.length > 0
-              text: "Connected"
+              text: "CONNECTED"
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
             }
@@ -579,7 +579,7 @@ Panel {
             // Remembered devices.
             PanelSectionHeader {
               visible: root.knownDevices.length > 0
-              text: "Paired"
+              text: "PAIRED"
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
             }
@@ -600,7 +600,7 @@ Panel {
             // Discovered (unpaired) devices, only shown while scanning.
             PanelSectionHeader {
               visible: root.adapter && root.adapter.discovering && root.discoveredDevices.length > 0
-              text: "Available"
+              text: "AVAILABLE"
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
             }
