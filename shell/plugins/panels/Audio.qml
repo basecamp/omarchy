@@ -16,6 +16,8 @@ Panel {
   readonly property var source: Pipewire.defaultAudioSource
   readonly property var nodes: Pipewire.nodes ? Pipewire.nodes.values : []
   readonly property var mprisPlayers: Mpris.players ? Mpris.players.values : []
+  readonly property var mediaService: bar && bar.shell ? bar.shell.firstPartyServiceFor("omarchy.media") : null
+  readonly property var activeMediaPlayer: mediaService ? mediaService.activePlayer : null
 
   readonly property var candidateSinks: {
     var list = []
@@ -30,7 +32,7 @@ Panel {
     var list = []
     for (var i = 0; i < nodes.length; i++) {
       var n = nodes[i]
-      if (n && !n.isSink && !n.isStream && n.audio) {
+      if (n && !n.isSink && !n.isStream && isAudioSource(n)) {
         var name = n.name || ""
         if (name === "quickshell") continue
         list.push(n)
@@ -68,14 +70,35 @@ Panel {
       || mediaClass.indexOf("Output") !== -1
   }
 
-  readonly property var audioSinks: {
+  function isAudioSource(node) {
+    if (!node) return false
+    if (node.audio) return true
+
+    var mediaClass = String(node.type || "")
+    return mediaClass.indexOf("Audio/Source") !== -1
+      || mediaClass.indexOf("AudioSource") !== -1
+      || mediaClass.indexOf("Source") !== -1
+  }
+
+  property var cachedAudioSinks: []
+  property var cachedAudioSources: []
+
+  readonly property var rawAudioSinks: {
     var list = []
     for (var i = 0; i < candidateSinks.length; i++)
-      if (candidateSinks[i].audio && sinkAvailable(candidateSinks[i])) list.push(candidateSinks[i])
+      if (sinkAvailable(candidateSinks[i])) list.push(candidateSinks[i])
+    if (sink && list.indexOf(sink) < 0) list.unshift(sink)
     return list
   }
 
-  readonly property var audioSources: candidateSources
+  readonly property var rawAudioSources: {
+    var list = candidateSources.slice()
+    if (source && list.indexOf(source) < 0) list.unshift(source)
+    return list
+  }
+
+  readonly property var audioSinks: rawAudioSinks.length > 0 ? rawAudioSinks : cachedAudioSinks
+  readonly property var audioSources: rawAudioSources.length > 0 ? rawAudioSources : cachedAudioSources
 
   readonly property var audioStreams: {
     var list = []
@@ -88,6 +111,9 @@ Panel {
   readonly property bool outputMuted: sink && sink.audio ? sink.audio.muted : false
   readonly property real inputVolume: source && source.audio ? source.audio.volume : 0
   readonly property bool inputMuted: source && source.audio ? source.audio.muted : false
+
+  onRawAudioSinksChanged: if (rawAudioSinks.length > 0) cachedAudioSinks = rawAudioSinks
+  onRawAudioSourcesChanged: if (rawAudioSources.length > 0) cachedAudioSources = rawAudioSources
 
   // Single cursor model shared by keyboard and mouse. Sections:
   //   "output"  — output slider + sink device list
@@ -492,19 +518,29 @@ Panel {
   }
 
   function mprisLabelsFor(predicate) {
+    var playingCandidates = []
     var candidates = []
+    var playingProxyCandidates = []
     var proxyCandidates = []
     for (var i = 0; i < mprisPlayers.length; i++) {
       var player = mprisPlayers[i]
-      if (!player || !player.isPlaying) continue
+      if (!player) continue
+      if (!player.isPlaying && !player.canPlay) continue
 
       var playerLabel = mprisPlayerLabel(player)
       if (!playerLabel || !predicate(playerLabel)) continue
 
-      if (mprisPlayerIsProxy(player)) proxyCandidates.push(playerLabel)
-      else candidates.push(playerLabel)
+      if (mprisPlayerIsProxy(player)) {
+        if (player.isPlaying) playingProxyCandidates.push(playerLabel)
+        proxyCandidates.push(playerLabel)
+      } else {
+        if (player.isPlaying) playingCandidates.push(playerLabel)
+        candidates.push(playerLabel)
+      }
     }
 
+    if (playingCandidates.length === 1) return playingCandidates[0]
+    if (playingCandidates.length === 0 && playingProxyCandidates.length === 1) return playingProxyCandidates[0]
     if (candidates.length === 1) return candidates[0]
     if (candidates.length === 0 && proxyCandidates.length === 1) return proxyCandidates[0]
     return ""
@@ -543,12 +579,28 @@ Panel {
       || label) || "Stream"
   }
 
+  function streamRepresentsPlayer(node, player) {
+    if (!node || !player) return false
+    var playerLabel = mprisPlayerLabel(player)
+    if (!playerLabel) return false
+
+    var label = rawStreamLabel(node)
+    if (!streamLabelIsGeneric(label)) return streamRepresentsMprisPlayer(label, playerLabel)
+    return streamRepresentsMprisPlayer(streamLabel(node), playerLabel)
+  }
+
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
   PwObjectTracker { objects: root.candidateSinks }
   PwObjectTracker { objects: root.candidateSources }
   PwObjectTracker { objects: root.audioStreams }
+
+  PwNodePeakMonitor {
+    id: inputPeakMonitor
+    node: root.source
+    enabled: root.opened && !!root.source
+  }
 
   Process {
     id: sinkAvailabilityProc
@@ -808,26 +860,46 @@ Panel {
               id: inputSliderRow
               visible: !!root.source
               width: parent.width
-              height: inputSlider.implicitHeight + Style.spacing.controlGap
+              height: inputControls.implicitHeight + Style.spacing.controlGap
               hasCursor: root.cursorActive && root.focusSection === "input" && root.selectedIndex === -1
               onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(inputSliderRow)
               foreground: root.bar.foreground
               outline: true
 
-              PanelSlider {
-                id: inputSlider
-                bar: root.bar
+              Column {
+                id: inputControls
                 anchors.fill: parent
                 anchors.leftMargin: Style.space(6)
                 anchors.rightMargin: Style.space(6)
-                minimum: 0
-                maximum: 1
-                step: 0.05
-                value: root.inputVolume
-                opacity: root.inputMuted ? 0.5 : 1.0
-                enabled: !!root.source
+                spacing: Style.space(5)
 
-                onMoved: function(v) { root.setInputVolume(v) }
+                PanelSlider {
+                  id: inputSlider
+                  bar: root.bar
+                  width: parent.width
+                  minimum: 0
+                  maximum: 1
+                  step: 0.05
+                  value: root.inputVolume
+                  opacity: root.inputMuted ? 0.5 : 1.0
+                  enabled: !!root.source
+
+                  onMoved: function(v) { root.setInputVolume(v) }
+                }
+
+                Rectangle {
+                  width: parent.width
+                  height: Math.max(Style.space(5), Style.spacing.xs)
+                  color: Util.alpha(root.bar.foreground, 0.18)
+                  opacity: root.inputMuted ? 0.35 : 1.0
+
+                  Rectangle {
+                    height: parent.height
+                    width: parent.width * Math.max(0, Math.min(1, inputPeakMonitor.peak))
+                    color: root.bar.foreground
+                    Behavior on width { NumberAnimation { duration: 70 } }
+                  }
+                }
               }
 
               HoverHandler {
@@ -859,7 +931,7 @@ Panel {
             visible: root.audioStreams.length > 0
 
             PanelSectionHeader {
-              text: "NOW PLAYING"
+              text: "SOURCES"
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
             }
@@ -1014,13 +1086,15 @@ Panel {
 
     readonly property real streamVolume: node && node.audio ? node.audio.volume : 0
     readonly property bool streamMuted: node && node.audio ? node.audio.muted : false
+    readonly property bool isActive: root.streamRepresentsPlayer(node, root.activeMediaPlayer)
 
     hasCursor: root.cursorActive && root.focusSection === "streams" && root.selectedIndex === rowIndex
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(streamRow)
+    current: isActive
     foreground: root.bar.foreground
     fill: root.hoverFill
     currentFill: root.selectedFill
-    implicitHeight: streamColumn.implicitHeight + Style.spacing.rowGap
+    implicitHeight: streamColumn.implicitHeight + Style.spacing.xl
 
     Column {
       id: streamColumn
@@ -1033,15 +1107,15 @@ Panel {
 
       Row {
         width: parent.width
-        spacing: Style.space(6)
+        spacing: Style.space(8)
 
         Text {
           id: streamMuteIcon
           text: streamRow.streamMuted ? "󰝟" : "󰕾"
           color: root.bar.foreground
           font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.body
-          width: Style.space(14)
+          font.pixelSize: Style.font.title
+          width: Style.space(22)
           horizontalAlignment: Text.AlignHCenter
           anchors.verticalCenter: parent.verticalCenter
           opacity: streamRow.streamMuted ? 0.5 : 1.0
@@ -1060,9 +1134,10 @@ Panel {
           text: root.streamLabel(streamRow.node)
           color: root.bar.foreground
           font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.bodySmall
+          font.pixelSize: Style.font.body
+          font.bold: streamRow.isActive
           elide: Text.ElideRight
-          width: parent.width - streamMuteIcon.width - streamPct.width - Style.space(12)
+          width: parent.width - streamMuteIcon.width - streamPct.width - Style.space(16)
           anchors.verticalCenter: parent.verticalCenter
         }
 
@@ -1071,10 +1146,12 @@ Panel {
           text: Math.round(streamRow.streamVolume * 100) + "%"
           color: Qt.darker(root.bar.foreground, 1.5)
           font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.bodySmall
+          font.pixelSize: Style.font.caption
+          font.bold: true
           width: Style.space(36)
           horizontalAlignment: Text.AlignRight
           anchors.verticalCenter: parent.verticalCenter
+          opacity: streamRow.streamMuted ? 0.5 : 1.0
         }
       }
 
