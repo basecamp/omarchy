@@ -24,8 +24,8 @@ o.bind("ALT + XF86MonBrightnessDown", "Brightness down precise", "omarchy-bright
 o.bind("XF86AudioNext", "Next track", "omarchy-shell media next", { locked = true })
 o.bind("XF86AudioPause", "Pause", "omarchy-shell media playPause", { locked = true })
 o.bind("XF86AudioPlay", "Play", "omarchy-shell media playPause", { locked = true })
-o.bind("SHIFT + XF86AudioPause", "Switch media source", "omarchy-audio-source-switch", { locked = true })
-o.bind("SHIFT + XF86AudioPlay", "Switch media source", "omarchy-audio-source-switch", { locked = true })
 o.bind("XF86AudioPrev", "Previous track", "omarchy-shell media previous", { locked = true })
 
-o.bind("ALT + XF86AudioMute", "Switch audio output", "omarchy-audio-output-switch", { locked = true })
+o.bind("SHIFT + XF86AudioMute", "Switch audio output", "omarchy-audio-output-switch", { locked = true })
+o.bind("SHIFT + XF86AudioPause", "Switch media source", "omarchy-audio-source-switch", { locked = true })
+o.bind("SHIFT + XF86AudioPlay", "Switch media source", "omarchy-audio-source-switch", { locked = true })
