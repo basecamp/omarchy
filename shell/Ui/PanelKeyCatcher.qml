@@ -39,6 +39,7 @@ Item {
   signal activateRequested()
   signal closeRequested()
   signal deleteRequested()
+  signal tabRequested(int direction)
   signal textKey(string text)
 
   focus: true
@@ -48,6 +49,11 @@ Item {
 
     if (event.key === Qt.Key_Escape) {
       closeRequested(); event.accepted = true; return
+    }
+    if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+      tabRequested((event.modifiers & Qt.ShiftModifier) || event.key === Qt.Key_Backtab ? -1 : 1)
+      event.accepted = true
+      return
     }
     if (event.key === Qt.Key_Down || event.text === "j") {
       moveRequested(0, 1); event.accepted = true; return
