@@ -18,9 +18,7 @@ BarWidget {
   readonly property var drawerItems: bucket("drawer")
   readonly property var allItems: bucket("all")
   readonly property int drawerCount: drawerItems.length
-  readonly property int trayItemExtent: Style.space(16)
-  readonly property int trayItemGap: Style.space(6)
-  readonly property int drawerExtent: drawerCount > 0 ? drawerCount * trayItemExtent + (drawerCount - 1) * trayItemGap : 0
+  readonly property int drawerExtent: drawerCount > 0 ? drawerCount * 16 + (drawerCount - 1) * 17 : 0
   // Match Waybar's group/tray-expander drawer transition-duration.
   readonly property int animationDuration: 600
   property real revealProgress: expanded ? 1 : 0
@@ -156,7 +154,7 @@ BarWidget {
           height: implicitHeight
           x: root.drawerExtent - root.revealExtent
           text: "\uf053"
-          horizontalMargin: 5
+          horizontalMargin: 9
           verticalPadding: 6
           onPressed: function(button) {
             if (button === Qt.RightButton) root.managePopupOpen = !root.managePopupOpen
@@ -175,7 +173,7 @@ BarWidget {
             id: trayIcons
             x: root.drawerExtent - root.revealExtent
             anchors.verticalCenter: parent.verticalCenter
-            spacing: root.trayItemGap
+            spacing: Style.space(17)
             layer.enabled: true
 
             Repeater {
@@ -190,8 +188,8 @@ BarWidget {
         id: pinnedRow
         x: drawerArea.x + horizontalTrayRoot.drawerBlockWidth
         anchors.verticalCenter: parent.verticalCenter
-        spacing: root.trayItemGap
-        leftPadding: root.pinnedItems.length > 0 && root.allItems.length > 0 ? root.trayItemGap : 0
+        spacing: Style.space(17)
+        leftPadding: root.pinnedItems.length > 0 && root.allItems.length > 0 ? Style.space(6) : 0
         Repeater {
           model: root.pinnedItems
           TrayItem {}
@@ -241,7 +239,7 @@ BarWidget {
           y: root.drawerExtent - root.revealExtent
           text: "\uf053"
           textRotation: 90
-          horizontalMargin: 5
+          horizontalMargin: 9
           verticalPadding: 6
           onPressed: function(button) {
             if (button === Qt.RightButton) root.managePopupOpen = !root.managePopupOpen
@@ -260,7 +258,7 @@ BarWidget {
             id: trayIcons
             y: root.drawerExtent - root.revealExtent
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: root.trayItemGap
+            spacing: Style.space(17)
             layer.enabled: true
 
             Repeater {
@@ -275,8 +273,8 @@ BarWidget {
         id: pinnedCol
         y: drawerArea.y + verticalTrayRoot.drawerBlockHeight
         anchors.horizontalCenter: parent.horizontalCenter
-        spacing: root.trayItemGap
-        topPadding: root.pinnedItems.length > 0 && root.allItems.length > 0 ? root.trayItemGap : 0
+        spacing: Style.space(17)
+        topPadding: root.pinnedItems.length > 0 && root.allItems.length > 0 ? Style.space(6) : 0
         Repeater {
           model: root.pinnedItems
           TrayItem {}
@@ -409,14 +407,14 @@ BarWidget {
     required property var modelData
 
     visible: modelData.status !== Status.Passive
-    implicitWidth: visible ? root.trayItemExtent : 0
-    implicitHeight: visible ? root.trayItemExtent : 0
+    implicitWidth: visible ? 16 : 0
+    implicitHeight: visible ? 16 : 0
 
     IconImage {
       anchors.centerIn: parent
-      implicitSize: Style.space(12)
-      width: Style.space(12)
-      height: Style.space(12)
+      implicitSize: 12
+      width: 12
+      height: 12
       source: root.trayIconSource(trayItemRoot.modelData.icon)
     }
 
