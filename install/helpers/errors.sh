@@ -74,15 +74,15 @@ restore_outputs() {
 
 # Error handler
 catch_errors() {
+  # Store exit code before any conditionals or assignments overwrite $?.
+  local exit_code=$?
+
   # Prevent recursive error handling
   if [[ $ERROR_HANDLING == "true" ]]; then
     return
   else
     ERROR_HANDLING=true
   fi
-
-  # Store exit code immediately before it gets overwritten
-  local exit_code=$?
 
   stop_log_output
   restore_outputs
