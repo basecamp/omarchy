@@ -7,7 +7,7 @@ export TERMINAL=xdg-terminal-exec
 export BROWSER=omarchy-launch-browser
 
 # Used by terminal programs to open files with the selected Omarchy default editor
-export EDITOR=omarchy-launch-editor
+export EDITOR="omarchy-launch-editor --inline"
 
 # Use a custom directory for screenshots (remember to make the directory!)
 # export OMARCHY_SCREENSHOT_DIR="$HOME/Pictures/Screenshots"
