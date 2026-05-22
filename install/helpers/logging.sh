@@ -88,7 +88,12 @@ stop_install_log() {
       fi
     fi
 
-    if [[ -n $OMARCHY_START_TIME ]]; then
+    if [[ -z ${OMARCHY_START_TIME:-} ]] && [[ -f "$OMARCHY_INSTALL_LOG_FILE" ]]; then
+      OMARCHY_START_TIME=$(grep -m1 '^=== Omarchy Installation Started:' "$OMARCHY_INSTALL_LOG_FILE" 2>/dev/null |
+        sed 's/^=== Omarchy Installation Started: \(.*\) ===$/\1/' || true)
+    fi
+
+    if [[ -n ${OMARCHY_START_TIME:-} ]]; then
       OMARCHY_START_EPOCH=$(date -d "$OMARCHY_START_TIME" +%s)
       OMARCHY_END_EPOCH=$(date -d "$OMARCHY_END_TIME" +%s)
       OMARCHY_DURATION=$((OMARCHY_END_EPOCH - OMARCHY_START_EPOCH))
