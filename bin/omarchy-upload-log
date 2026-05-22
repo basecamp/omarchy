@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Upload logs to 0x0.st
+# omarchy:summary=Upload logs to logs.omarchy.org
 # omarchy:args=<log-file>
 # omarchy:hidden=true
 
@@ -28,7 +28,7 @@ else
     echo "========================================="
     echo "SYSTEM INFORMATION"
     echo "========================================="
-    echo "Hostname: $(hostname)"
+    echo "Hostname: $(uname -n)"
     echo "Kernel: $(uname -r)"
     echo "Date: $(date)"
     echo ""
@@ -41,19 +41,33 @@ fi
 
 case "$LOG_TYPE" in
 install)
+  # In the live ISO before reboot, the target system is mounted at /mnt so the
+  # omarchy install log lives at /mnt/var/log/omarchy-install.log. On the
+  # installed system it's at /var/log/omarchy-install.log. Prefer whichever
+  # exists, with /mnt taking precedence (only present in the ISO context, and
+  # there it's the right one).
   ARCHINSTALL_LOG="/var/log/archinstall/install.log"
-  OMARCHY_LOG="/var/log/omarchy-install.log"
+  if [[ -s /mnt/var/log/omarchy-install.log ]]; then
+    OMARCHY_LOG="/mnt/var/log/omarchy-install.log"
+  else
+    OMARCHY_LOG="/var/log/omarchy-install.log"
+  fi
 
-  # Combine system info with logs
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
-  cat $ARCHINSTALL_LOG $OMARCHY_LOG >>"$TEMP_LOG" 2>/dev/null
+  [[ -s $ARCHINSTALL_LOG ]] && cat "$ARCHINSTALL_LOG" >>"$TEMP_LOG"
+  if [[ -s $OMARCHY_LOG ]]; then
+    printf '\n========================================\nOMARCHY INSTALL LOG (%s)\n========================================\n\n' "$OMARCHY_LOG" >>"$TEMP_LOG"
+    cat "$OMARCHY_LOG" >>"$TEMP_LOG"
+  else
+    echo "Warning: omarchy install log not found (looked at /mnt/var/log/ and /var/log/)" >&2
+  fi
 
   if [[ ! -s $TEMP_LOG ]]; then
     echo "Error: No install logs found"
     exit 1
   fi
 
-  echo "Uploading installation log to 0x0.st..."
+  echo "Uploading installation log to logs.omarchy.org..."
   ;;
 
 this-boot)
@@ -66,7 +80,7 @@ this-boot)
     exit 1
   fi
 
-  echo "Uploading current boot logs to 0x0.st..."
+  echo "Uploading current boot logs to logs.omarchy.org..."
   ;;
 
 last-boot)
@@ -79,7 +93,7 @@ last-boot)
     exit 1
   fi
 
-  echo "Uploading previous boot logs to 0x0.st..."
+  echo "Uploading previous boot logs to logs.omarchy.org..."
   ;;
 
 installed|system-info)
@@ -98,7 +112,7 @@ installed|system-info)
     exit 1
   fi
 
-  echo "Uploading system information to 0x0.st..."
+  echo "Uploading system information to logs.omarchy.org..."
   ;;
 
 *)
@@ -113,15 +127,13 @@ esac
 
 echo ""
 
-URL=$(curl -sF "file=@$TEMP_LOG" -Fexpires=24 https://0x0.st)
+URL=$(curl -sf -F "file=@$TEMP_LOG" https://logs.omarchy.org/)
 
 if (( $? == 0 )) && [[ -n $URL ]]; then
   echo "✓ Log uploaded successfully!"
   echo "Share this URL:"
   echo ""
   echo "  $URL"
-  echo ""
-  echo "This link will expire in 24 hours."
 else
   echo "Error: Failed to upload log file"
   exit 1
