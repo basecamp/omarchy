@@ -1,3 +1,41 @@
+configure_snapper_root() {
+  if install_mode_is offline; then
+    # snapper create-config talks to snapperd over DBus, which is unavailable
+    # inside arch-chroot during ISO installs. Recreate the simple root config
+    # directly instead: a /.snapshots subvolume, config file, and conf.d entry.
+    if ! sudo btrfs subvolume show /.snapshots >/dev/null 2>&1; then
+      if sudo test -e /.snapshots; then
+        if sudo find /.snapshots -mindepth 1 -maxdepth 1 | grep -q .; then
+          echo "Error: /.snapshots exists and is not an empty Btrfs subvolume" >&2
+          exit 1
+        fi
+        sudo rmdir /.snapshots
+      fi
+
+      sudo btrfs subvolume create /.snapshots
+      sudo chmod 750 /.snapshots
+    fi
+
+    sudo install -d /etc/snapper/configs /etc/conf.d
+    sudo install -m 644 "$OMARCHY_PATH/default/snapper/root" /etc/snapper/configs/root
+
+    if sudo test -f /etc/conf.d/snapper; then
+      if grep -q '^SNAPPER_CONFIGS=' /etc/conf.d/snapper; then
+        sudo sed -i 's/^SNAPPER_CONFIGS=.*/SNAPPER_CONFIGS="root"/' /etc/conf.d/snapper
+      else
+        echo 'SNAPPER_CONFIGS="root"' | sudo tee -a /etc/conf.d/snapper >/dev/null
+      fi
+    else
+      echo 'SNAPPER_CONFIGS="root"' | sudo tee /etc/conf.d/snapper >/dev/null
+    fi
+  else
+    if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
+      sudo snapper -c root create-config /
+    fi
+    sudo cp "$OMARCHY_PATH/default/snapper/root" /etc/snapper/configs/root
+  fi
+}
+
 if command -v limine &>/dev/null; then
   sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
@@ -99,11 +137,8 @@ EOF
   # limine's UKI pipeline — only this command does.
   sudo limine-update
 
-  # Only snapshot root — /home is user data; rolling it back loses user work
-  if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
-    sudo snapper -c root create-config /
-  fi
-  sudo cp $OMARCHY_PATH/default/snapper/root /etc/snapper/configs/root
+  # Only snapshot root — /home is user data; rolling it back loses user work.
+  configure_snapper_root
 
   # Disable btrfs quotas — full qgroup accounting is a major performance drag
   sudo btrfs quota disable / 2>/dev/null || true
