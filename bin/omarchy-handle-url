@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# omarchy:summary=Open links in a browser for the current Hyprland workspace
+# omarchy:args=<url>
+
+# This script is meant to be registered as the XDG handler for http/https links.
+# It keeps Omarchy's normal browser behavior, but adds one workspace-aware decision
+# before launching:
+#
+# - If there is already a browser window on the current workspace, focus it and open
+#   the URL there.
+# - Otherwise, ask the default browser for a new window, which Hyprland will place on
+#   the current workspace.
+
+if (($# == 0)); then
+  echo "Usage: omarchy-link-handler <url>" >&2
+  exit 1
+fi
+
+# New browser windows open on the active Hyprland workspace by default.
+CURRENT_WORKSPACE=$(hyprctl activeworkspace -j | jq -r '.id')
+
+BROWSER_TAG='^(chromium|firefox)-based-browser\*?$'
+
+# Find a Chromium- or Firefox-based browser already tagged on this workspace.
+BROWSER_ADDRESS=$(
+  hyprctl clients -j | jq -r \
+    --argjson workspace "$CURRENT_WORKSPACE" \
+    --arg tag "$BROWSER_TAG" '
+      .[]
+      | select(.workspace.id == $workspace)
+      | select(any(.tags[]?; test($tag)))
+      | .address
+    ' | head -1
+)
+
+if [[ -n $BROWSER_ADDRESS ]]; then
+  # Focus the current workspace's browser so the URL is opened there.
+  hyprctl dispatch focuswindow "address:$BROWSER_ADDRESS" >/dev/null
+  exec omarchy-launch-browser "$1"
+else
+  # No browser exists in this workspace, so create a new default browser window here.
+  exec omarchy-launch-browser --new-window "$1"
+fi
