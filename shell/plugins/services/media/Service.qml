@@ -8,8 +8,11 @@ Item {
 
   property var shell: null
   property string preferredPlayerKey: ""
+  property var playerStartedAt: ({})
+  property int playSerial: 0
 
   readonly property var players: Mpris.players ? Mpris.players.values : []
+  readonly property var sourcePlayers: orderedSourcePlayers()
   readonly property var activePlayer: selectActivePlayer()
   readonly property bool hasMedia: activePlayer !== null && (activePlayer.trackTitle || activePlayer.trackArtist)
   readonly property string title: activePlayer ? (activePlayer.trackTitle || "") : ""
@@ -37,8 +40,95 @@ Item {
     return String(player.dbusName || player.desktopEntry || player.identity || "")
   }
 
-  function selectActivePlayer() {
+  function playerForKey(key) {
+    if (!key) return null
+    for (var i = 0; i < players.length; i++) {
+      var p = players[i]
+      if (playerKey(p) === key) return p
+    }
+    return null
+  }
+
+  function playerOrder(player, fallback) {
+    var key = playerKey(player)
+    var value = key ? playerStartedAt[key] : undefined
+    return value === undefined ? fallback : value
+  }
+
+  function syncPlayingOrder() {
+    var next = {}
+    var alive = {}
+    var serial = playSerial
+
+    for (var i = 0; i < players.length; i++) {
+      var p = players[i]
+      var key = playerKey(p)
+      if (!key) continue
+
+      alive[key] = true
+      if (!p.isPlaying) continue
+
+      if (playerStartedAt[key] === undefined) {
+        serial += 1
+        next[key] = serial
+      } else {
+        next[key] = playerStartedAt[key]
+      }
+    }
+
+    if (preferredPlayerKey && !alive[preferredPlayerKey]) preferredPlayerKey = ""
+
+    playSerial = serial
+    playerStartedAt = next
+  }
+
+  function orderedSourcePlayers() {
+    var list = []
+    for (var i = 0; i < players.length; i++) {
+      var p = players[i]
+      if (hasMetadata(p)) list.push(p)
+    }
+
+    list.sort(function(a, b) {
+      if (!!a.isPlaying !== !!b.isPlaying) return a.isPlaying ? -1 : 1
+      if (isProxyPlayer(a) !== isProxyPlayer(b)) return isProxyPlayer(a) ? 1 : -1
+      if (a.isPlaying && b.isPlaying) {
+        var orderDelta = playerOrder(a, 1000) - playerOrder(b, 1000)
+        if (orderDelta !== 0) return orderDelta
+      }
+      return labelFor(a).localeCompare(labelFor(b))
+    })
+
+    return list
+  }
+
+  function oldestPlayingPlayer() {
+    var oldest = null
+    var oldestOrder = 0
     var playingProxy = null
+    var proxyOrder = 0
+
+    for (var i = 0; i < players.length; i++) {
+      var p = players[i]
+      if (!p) continue
+
+      var proxyPlayer = isProxyPlayer(p)
+      if (p.isPlaying) {
+        var order = playerOrder(p, i + 1000)
+        if (!proxyPlayer && (!oldest || order < oldestOrder)) {
+          oldest = p
+          oldestOrder = order
+        } else if (proxyPlayer && (!playingProxy || order < proxyOrder)) {
+          playingProxy = p
+          proxyOrder = order
+        }
+      }
+    }
+
+    return oldest || playingProxy || null
+  }
+
+  function selectActivePlayer() {
     var preferred = null
     var trackPlayer = null
     var trackProxy = null
@@ -50,10 +140,6 @@ Item {
       if (!p) continue
 
       var proxy = isProxyPlayer(p)
-      if (p.isPlaying) {
-        if (!proxy) return p
-        if (!playingProxy) playingProxy = p
-      }
 
       if (preferredPlayerKey && playerKey(p) === preferredPlayerKey && hasMetadata(p)) preferred = p
 
@@ -66,7 +152,8 @@ Item {
       }
     }
 
-    return playingProxy || preferred || trackPlayer || trackProxy || identityPlayer || identityProxy || null
+    if (preferred && preferred.isPlaying) return preferred
+    return oldestPlayingPlayer() || preferred || trackPlayer || trackProxy || identityPlayer || identityProxy || null
   }
 
   function labelFor(player) {
@@ -81,16 +168,53 @@ Item {
     return label || fallback
   }
 
-  function showOsd(actionLabel, iconName) {
+  function showOsd(actionLabel, iconName, player) {
     if (!shell) return
     shell.summon("omarchy.osd", JSON.stringify({
       icon: iconName || "media",
-      message: osdMessage(activePlayer, actionLabel)
+      message: osdMessage(player || activePlayer, actionLabel)
     }))
   }
 
-  function runAction(action, showFeedback) {
-    var player = activePlayer
+  function selectPlayer(key) {
+    var player = playerForKey(key)
+    if (!player || !hasMetadata(player)) return false
+    preferredPlayerKey = playerKey(player)
+    return true
+  }
+
+  function switchSource(delta) {
+    var list = sourcePlayers
+    if (!list || list.length === 0) return false
+
+    var activeKey = playerKey(activePlayer)
+    var index = 0
+    for (var i = 0; i < list.length; i++) {
+      if (playerKey(list[i]) === activeKey) {
+        index = i
+        break
+      }
+    }
+
+    index = (index + delta + list.length) % list.length
+    preferredPlayerKey = playerKey(list[index])
+    return true
+  }
+
+  function playerForAction(action, targetKey) {
+    var targeted = playerForKey(targetKey)
+    if (targeted) return targeted
+
+    if (action === "pause" || action === "playPause") {
+      var oldest = oldestPlayingPlayer()
+      if (oldest) return oldest
+    }
+
+    return activePlayer
+  }
+
+  function runAction(action, showFeedback, targetKey) {
+    var player = playerForAction(action, targetKey)
     var key = playerKey(player)
     var actionLabel = "Play/pause"
     var iconName = "media"
@@ -146,8 +270,16 @@ Item {
     }
 
     if (handled && key) preferredPlayerKey = key
-    if (showFeedback !== false) Qt.callLater(function() { root.showOsd(actionLabel, iconName) })
+    if (showFeedback !== false) Qt.callLater(function() { root.showOsd(actionLabel, iconName, player) })
     return handled
+  }
+
+  Timer {
+    interval: 500
+    running: true
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.syncPlayingOrder()
   }
 
   function statusJson() {
@@ -193,6 +325,14 @@ Item {
 
     function pause(): string {
       return root.runAction("pause", true) ? "ok" : "unhandled"
+    }
+
+    function sourceNext(): string {
+      return root.switchSource(1) ? "ok" : "unhandled"
+    }
+
+    function sourcePrevious(): string {
+      return root.switchSource(-1) ? "ok" : "unhandled"
     }
 
     function ping(): string {
