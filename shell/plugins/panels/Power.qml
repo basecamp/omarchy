@@ -28,15 +28,15 @@ Panel {
 
   function batteryIcon() {
     var device = UPower.displayDevice
-    if (!device || !device.isPresent) return ""
+    if (!device || !device.isPresent) return ""
 
     var chargingIcons = ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"]
     var defaultIcons = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
     var index = Math.max(0, Math.min(9, Math.floor(device.percentage * 10)))
 
     if (device.state === UPowerDeviceState.FullyCharged) return "󰂅"
-    if (!UPower.onBattery && device.state !== UPowerDeviceState.Charging) return ""
-    if (device.state === UPowerDeviceState.Charging) return chargingIcons[index]
+    if (device.state === UPowerDeviceState.Charging || root.chargeThresholdActive) return chargingIcons[index]
+    if (!UPower.onBattery) return ""
     return defaultIcons[index]
   }
 
@@ -44,7 +44,9 @@ Panel {
     var device = UPower.displayDevice
     var percentage = device && device.isPresent ? device.percentage : 0
 
-    if (!UPower.onBattery && percentage >= 1) {
+    if (chargeThresholdActive) {
+      return "Threshold"
+    } else if (!UPower.onBattery && percentage >= 1) {
       return "Fully charged"
     } else if (UPower.onBattery) {
       return "On battery"
@@ -64,7 +66,12 @@ Panel {
     var device = UPower.displayDevice
     return device && device.isPresent && device.state === UPowerDeviceState.FullyCharged
   }
+  readonly property bool chargeThresholdActive: {
+    var device = UPower.displayDevice
+    return !!(device && device.isPresent && !UPower.onBattery && device.state === UPowerDeviceState.Discharging)
+  }
   readonly property bool batteryFull: fullyCharged || (!UPower.onBattery && batteryFraction >= 1)
+  readonly property bool batteryFlowIdle: batteryFull || chargeThresholdActive
 
   // 0..1 charge level, used by the visual progress bar.
   readonly property real batteryFraction: {
@@ -113,7 +120,7 @@ Panel {
   readonly property var activePhrases: {
     if (fullyCharged) return []
     if (charging) return chargingPhrases
-    if (UPower.onBattery) return onBatteryPhrases
+    if (UPower.onBattery || chargeThresholdActive) return onBatteryPhrases
     return []
   }
   readonly property bool rotatingPhrases: activePhrases.length > 0
@@ -413,8 +420,8 @@ Panel {
           Column {
             width: (parent.width - parent.spacing) / 2
             spacing: Style.spacing.labelGap
-            InfoPair { label: UPower.onBattery ? "Time left" : "Time to full"; value: root.batteryFull ? "-" : (root.batteryInfo.time || "—") }
-            InfoPair { label: UPower.onBattery ? "Discharging" : "Charging"; value: root.batteryFull ? "-" : (root.batteryInfo.rate || "") }
+            InfoPair { label: UPower.onBattery ? "Time left" : "Time to full"; value: root.batteryFlowIdle ? "-" : (root.batteryInfo.time || "—") }
+            InfoPair { label: UPower.onBattery ? "Discharging" : "Charging"; value: root.chargeThresholdActive ? "Holding" : (root.batteryFull ? "-" : (root.batteryInfo.rate || "")) }
           }
         }
 
