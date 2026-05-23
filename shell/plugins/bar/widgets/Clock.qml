@@ -19,7 +19,6 @@ BarWidget {
   readonly property int firstWeekday: localeFirstWeekday()
   readonly property var weekdayLabels: buildWeekdayLabels()
   readonly property var calendarCells: buildCalendarCells()
-  readonly property string monthLabel: Qt.formatDate(monthStart, "MMMM yyyy")
   readonly property color popupForeground: Color.popups.text
   readonly property color popupDim: Qt.darker(popupForeground, 1.45)
   readonly property color popupMuted: Qt.darker(popupForeground, 1.8)
@@ -157,29 +156,15 @@ BarWidget {
       anchors.fill: parent
       spacing: Style.space(12)
 
-      Column {
+      Text {
         width: parent.width
-        spacing: Style.space(3)
-
-        Text {
-          width: parent.width
-          text: root.monthLabel
-          color: root.popupForeground
-          font.family: root.popupFontFamily
-          font.pixelSize: Style.font.title
-          font.bold: true
-          horizontalAlignment: Text.AlignHCenter
-        }
-
-        Text {
-          width: parent.width
-          text: root.formatted(root.displayDate, root.dateFormat)
-          color: root.popupDim
-          font.family: root.popupFontFamily
-          font.pixelSize: Style.font.caption
-          horizontalAlignment: Text.AlignHCenter
-          elide: Text.ElideRight
-        }
+        text: root.formatted(root.displayDate, root.dateFormat)
+        color: root.popupForeground
+        font.family: root.popupFontFamily
+        font.pixelSize: Style.font.title
+        font.bold: true
+        horizontalAlignment: Text.AlignHCenter
+        elide: Text.ElideRight
       }
 
       Rectangle {
