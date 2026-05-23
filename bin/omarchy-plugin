@@ -2,8 +2,8 @@
 
 # omarchy:summary=Manage Omarchy shell plugins and bar widgets
 # omarchy:group=plugin
-# omarchy:args=<list|rescan|enable|disable|clone|bar> [...]
-# omarchy:examples=omarchy plugin list | omarchy plugin clone omarchy.clock local.clock --open pi | omarchy plugin enable acme.weather --section right | omarchy plugin bar move omarchy.clock --section center --index 0 | omarchy plugin bar edit
+# omarchy:args=<list|rescan|enable|disable|clone|edit|bar> [...]
+# omarchy:examples=omarchy plugin list | omarchy plugin clone omarchy.clock local.clock --with ai | omarchy plugin edit local.clock --with editor | omarchy plugin enable acme.weather --section right | omarchy plugin bar edit
 
 set -euo pipefail
 
@@ -19,10 +19,13 @@ Plugin commands:
   enable <id> [placement]               Enable a plugin
   disable <id>                          Disable a plugin
   clone [source] [new-id] [options]      Clone a built-in or user plugin
+  edit [id] [--with <ai|editor>] [--prompt <prompt>]
+                                        Open a user plugin for editing
 
 Clone options:
   --name <name>                         Display name for the clone
-  --open <tool>                         Open with pi, claude, nvim, tdl, editor, or none
+  --with <ai|editor>                    Open the clone with AI or editor
+  --prompt <prompt>                     Initial prompt when opening with AI
   --replace                             Replace the first source bar instance
   --add [placement]                     Add cloned bar widget to the bar
 
@@ -45,7 +48,9 @@ Examples:
   omarchy plugin list
   omarchy plugin rescan
   omarchy plugin clone
-  omarchy plugin clone omarchy.clock local.clock --name "My Clock" --replace --open pi
+  omarchy plugin clone omarchy.clock local.clock --name "My Clock" --replace --with ai --prompt "Customize this clock"
+  omarchy plugin edit local.clock --with editor
+  omarchy plugin edit local.clock --with ai --prompt "Customize this clock"
   omarchy plugin enable acme.weather --section right
   omarchy plugin bar add acme.weather --section right --before omarchy.tray
   omarchy plugin bar move omarchy.clock --section center --index 0
@@ -84,29 +89,7 @@ validate_index() {
 }
 
 canonical_widget_id() {
-  case "$1" in
-  Omarchy) printf 'omarchy.menu' ;;
-  Workspaces) printf 'omarchy.workspaces' ;;
-  Media) printf 'omarchy.media' ;;
-  AudioPanel) printf 'omarchy.audio' ;;
-  MonitorPanel) printf 'omarchy.monitor' ;;
-  NetworkPanel) printf 'omarchy.network' ;;
-  PowerPanel) printf 'omarchy.power' ;;
-  BluetoothPanel) printf 'omarchy.bluetooth' ;;
-  Clock) printf 'omarchy.clock' ;;
-  Indicators) printf 'omarchy.indicators' ;;
-  NotificationCenter) printf 'omarchy.notifications' ;;
-  SystemUpdate) printf 'omarchy.system-update' ;;
-  SystemStats) printf 'omarchy.system-stats' ;;
-  Tray) printf 'omarchy.tray' ;;
-  Weather) printf 'omarchy.weather' ;;
-  Microphone) printf 'omarchy.microphone' ;;
-  ActiveWindow) printf 'omarchy.active-window' ;;
-  KeyboardLayout) printf 'omarchy.keyboard-layout' ;;
-  LockKeys) printf 'omarchy.lock-keys' ;;
-  Spacer) printf 'omarchy.spacer' ;;
-  *) printf '%s' "$1" ;;
-  esac
+  printf '%s' "$1"
 }
 
 validate_plugin_id() {
@@ -174,6 +157,8 @@ plugin_enabled() {
   if [[ $enabled != "true" && $# -gt 0 ]]; then
     fail "disable does not take placement options"
   fi
+
+  id=$(canonical_widget_id "$id")
 
   omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
   omarchy-shell shell setPluginEnabled "$id" "$enabled" || fail "could not update plugin; is omarchy-shell running?"
@@ -366,32 +351,8 @@ from copy import deepcopy
 
 source = sys.argv[1]
 operation = os.environ["OPERATION"]
-aliases = {
-    "Omarchy": "omarchy.menu",
-    "Workspaces": "omarchy.workspaces",
-    "Media": "omarchy.media",
-    "AudioPanel": "omarchy.audio",
-    "MonitorPanel": "omarchy.monitor",
-    "NetworkPanel": "omarchy.network",
-    "PowerPanel": "omarchy.power",
-    "BluetoothPanel": "omarchy.bluetooth",
-    "Clock": "omarchy.clock",
-    "Indicators": "omarchy.indicators",
-    "NotificationCenter": "omarchy.notifications",
-    "SystemUpdate": "omarchy.system-update",
-    "SystemStats": "omarchy.system-stats",
-    "Tray": "omarchy.tray",
-    "Weather": "omarchy.weather",
-    "Microphone": "omarchy.microphone",
-    "ActiveWindow": "omarchy.active-window",
-    "KeyboardLayout": "omarchy.keyboard-layout",
-    "LockKeys": "omarchy.lock-keys",
-    "Spacer": "omarchy.spacer",
-}
-
-
 def canonical(value):
-    return aliases.get(str(value or ""), str(value or ""))
+    return str(value or "")
 
 
 widget_id = canonical(os.environ.get("WIDGET_ID", ""))
@@ -659,46 +620,58 @@ slug_id() {
   tr '[:upper:]' '[:lower:]' <<<"$1" | sed -E 's/^omarchy\.//; s/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
 }
 
-builtin_widget_info() {
+first_party_manifest_paths() {
   require_omarchy_path
-  local id
-  id=$(canonical_widget_id "$1")
-  case "$id" in
-  omarchy.menu) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Omarchy.qml" "Omarchy menu" "Compositor" "false" ;;
-  omarchy.workspaces) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Workspaces.qml" "Workspaces" "Compositor" "false" ;;
-  omarchy.media) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Media.qml" "Media" "Media" "false" ;;
-  omarchy.audio) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/panels/Audio.qml" "Audio" "Audio" "false" ;;
-  omarchy.monitor) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/panels/Monitor.qml" "Display" "System" "false" ;;
-  omarchy.network) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/panels/Network.qml" "Network" "Network" "false" ;;
-  omarchy.power) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/panels/Power.qml" "Power" "System" "false" ;;
-  omarchy.bluetooth) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/panels/Bluetooth.qml" "Bluetooth" "Network" "false" ;;
-  omarchy.clock) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Clock.qml" "Clock" "Time" "false" ;;
-  omarchy.indicators) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Indicators.qml" "Indicators" "Status" "true" ;;
-  omarchy.notifications) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/NotificationCenter.qml" "Notification center" "Status" "false" ;;
-  omarchy.system-update) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/SystemUpdate.qml" "System update" "System" "false" ;;
-  omarchy.system-stats) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/SystemStats.qml" "System stats" "System" "false" ;;
-  omarchy.tray) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Tray.qml" "System tray" "Status" "false" ;;
-  omarchy.weather) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Weather.qml" "Weather" "Info" "false" ;;
-  omarchy.microphone) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Microphone.qml" "Microphone" "Audio" "false" ;;
-  omarchy.active-window) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/ActiveWindow.qml" "Active window" "Compositor" "false" ;;
-  omarchy.keyboard-layout) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/KeyboardLayout.qml" "Keyboard layout" "Compositor" "false" ;;
-  omarchy.lock-keys) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/LockKeys.qml" "Lock keys" "System" "false" ;;
-  omarchy.spacer) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Spacer.qml" "Spacer" "Layout" "true" ;;
-  *) return 1 ;;
-  esac
+  find "$OMARCHY_PATH/shell/plugins" -mindepth 2 -maxdepth 3 -type f \( -name manifest.json -o -name '*.manifest.json' \) 2>/dev/null | sort
+}
+
+manifest_source_dir() {
+  local manifest="$1"
+  if [[ ${manifest##*/} == "manifest.json" ]]; then
+    dirname -- "$manifest"
+  else
+    dirname -- "$manifest"
+  fi
+}
+
+builtin_widget_info() {
+  require_command jq
+  local wanted
+  wanted=$(canonical_widget_id "$1")
+
+  local manifest id entry source_dir source_path name category multiple
+  while IFS= read -r manifest; do
+    if ! jq -e --arg id "$wanted" '
+      (.id == $id or ((.barWidget.aliases // []) | index($id))) and
+      ((.kinds // []) | index("bar-widget"))
+    ' "$manifest" >/dev/null 2>&1; then
+      continue
+    fi
+
+    id=$(jq -r '.id' "$manifest")
+    entry=$(jq -r '.entryPoints.barWidget // empty' "$manifest")
+    [[ -n $entry ]] || return 1
+    source_dir=$(manifest_source_dir "$manifest")
+    source_path="$source_dir/$entry"
+    name=$(jq -r '.barWidget.displayName // .name // .id' "$manifest")
+    category=$(jq -r '.barWidget.category // "Plugin"' "$manifest")
+    multiple=$(jq -r 'if .barWidget.allowMultiple == true then "true" else "false" end' "$manifest")
+    printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$source_path" "$name" "$category" "$multiple"
+    return 0
+  done < <(first_party_manifest_paths)
+
+  return 1
 }
 
 clone_source_options() {
-  local id path name category multiple
-  for id in omarchy.menu omarchy.workspaces omarchy.clock omarchy.weather omarchy.indicators omarchy.system-update omarchy.tray omarchy.audio omarchy.network omarchy.bluetooth omarchy.monitor omarchy.power omarchy.media omarchy.notifications omarchy.system-stats omarchy.microphone omarchy.active-window omarchy.keyboard-layout omarchy.lock-keys omarchy.spacer; do
-    IFS=$'\t' read -r _ path name category multiple < <(builtin_widget_info "$id")
-    printf '%s\tBuilt-in widget\t%s\n' "$id" "$name"
-  done
-
-  find "$OMARCHY_PATH/shell/plugins" -path '*/manifest.json' -print 2>/dev/null | sort | while IFS= read -r manifest; do
+  local id name
+  first_party_manifest_paths | while IFS= read -r manifest; do
     id=$(jq -r '.id // empty' "$manifest" 2>/dev/null || true)
-    name=$(jq -r '.name // .id // empty' "$manifest" 2>/dev/null || true)
-    if [[ -n $id && $id != "omarchy.bar" ]] && ! builtin_widget_info "$id" >/dev/null 2>&1; then
+    name=$(jq -r '.barWidget.displayName // .name // .id // empty' "$manifest" 2>/dev/null || true)
+    [[ -n $id && $id != "omarchy.bar" ]] || continue
+    if jq -e '(.kinds // []) | index("bar-widget")' "$manifest" >/dev/null 2>&1; then
+      printf '%s\tBuilt-in widget\t%s\n' "$id" "${name:-$id}"
+    else
       printf '%s\tBuilt-in plugin\t%s\n' "$id" "${name:-$id}"
     fi
   done
@@ -736,32 +709,159 @@ input_value() {
 
 choose_clone_source() {
   local selected
-  if command -v fzf >/dev/null 2>&1; then
+  if command -v gum >/dev/null 2>&1; then
+    selected=$(clone_source_options | awk -F '\t' '{ printf "%-32s  %-15s  %s\n", $3, $2, $1 }' | gum filter --header "Clone plugin" --placeholder "Search built-in and user plugins..." --limit 1) || return 1
+    awk '{ print $NF }' <<<"$selected"
+  elif command -v fzf >/dev/null 2>&1; then
     selected=$(clone_source_options | fzf --delimiter=$'\t' --with-nth=1,2,3 --prompt "Clone plugin > ") || return 1
     cut -f1 <<<"$selected"
   else
-    clone_source_options | cut -f1 | gum choose --header "Clone plugin"
+    fail "gum or fzf is required for interactive clone selection"
   fi
+}
+
+edit_source_options() {
+  if [[ -d $HOME/.config/omarchy/plugins ]]; then
+    find "$HOME/.config/omarchy/plugins" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) 2>/dev/null | sort | while IFS= read -r dir; do
+      [[ -f $dir/manifest.json ]] || continue
+      id=$(jq -r '.id // empty' "$dir/manifest.json" 2>/dev/null || true)
+      name=$(jq -r '.name // .id // empty' "$dir/manifest.json" 2>/dev/null || true)
+      [[ -n $id ]] && printf '%s\t%s\t%s\n' "$id" "${name:-$id}" "$dir"
+    done
+  fi
+}
+
+choose_edit_source() {
+  local selected
+  if command -v gum >/dev/null 2>&1; then
+    selected=$(edit_source_options | awk -F '\t' '{ printf "%-32s  %s\n", $2, $1 }' | gum filter --header "Edit plugin" --placeholder "Search user plugins..." --limit 1) || return 1
+    awk '{ print $NF }' <<<"$selected"
+  elif command -v fzf >/dev/null 2>&1; then
+    selected=$(edit_source_options | fzf --delimiter=$'\t' --with-nth=2,1 --prompt "Edit plugin > ") || return 1
+    cut -f1 <<<"$selected"
+  else
+    fail "gum or fzf is required for interactive plugin selection"
+  fi
+}
+
+validate_user_plugin_dir() {
+  local dir="$1"
+  local requested_id="${2:-}"
+  local root="$HOME/.config/omarchy/plugins"
+  local dir_abs root_abs manifest_id
+
+  require_command jq
+  require_command python3
+  [[ -d $dir ]] || fail "plugin directory not found: $dir"
+
+  dir_abs=$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).expanduser().resolve(strict=False))' "$dir")
+  root_abs=$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).expanduser().resolve(strict=False))' "$root")
+  [[ $dir_abs == $root_abs/* ]] || fail "plugin edit only opens user plugins under $root"
+  [[ -f $dir_abs/manifest.json ]] || fail "plugin directory missing manifest.json: $dir_abs"
+
+  manifest_id=$(jq -r '.id // empty' "$dir_abs/manifest.json" 2>/dev/null || true)
+  [[ -n $manifest_id ]] || fail "plugin manifest missing id: $dir_abs/manifest.json"
+  [[ $manifest_id != omarchy.* && $(canonical_widget_id "$manifest_id") == $manifest_id ]] || fail "$manifest_id is built in; clone it first with: omarchy plugin clone $manifest_id local.$(slug_id "$manifest_id")"
+  if [[ -n $requested_id && $manifest_id != $requested_id ]]; then
+    fail "plugin id mismatch: requested $requested_id but manifest declares $manifest_id"
+  fi
+
+  printf '%s' "$dir_abs"
+}
+
+plugin_dir_for_id() {
+  local id="$1"
+
+  if [[ $id == */* ]]; then
+    validate_user_plugin_dir "$id"
+    return
+  fi
+
+  id=$(canonical_widget_id "$id")
+  if builtin_widget_info "$id" >/dev/null 2>&1 || [[ $id == omarchy.* ]]; then
+    fail "$id is built in; clone it first with: omarchy plugin clone $id local.$(slug_id "$id")"
+  fi
+
+  validate_user_plugin_dir "$HOME/.config/omarchy/plugins/$id" "$id"
 }
 
 open_plugin_dir() {
   local tool="$1"
   local dir="$2"
+  local prompt="${3:-}"
+
   case "$tool" in
   "" | none)
+    printf 'Plugin directory: %s\n' "$dir"
     return
     ;;
-  pi | claude | nvim | tdl)
-    command -v "$tool" >/dev/null 2>&1 || fail "$tool is not installed"
-    "$tool" "$dir"
+  ai)
+    omarchy-launch-ai --path "$dir" --prompt "$prompt"
     ;;
   editor)
-    "${VISUAL:-${EDITOR:-nvim}}" "$dir"
+    omarchy-launch-editor "$dir"
     ;;
   *)
-    fail "unknown open tool: $tool"
+    fail "unknown edit target: $tool (use ai, editor, or none)"
     ;;
   esac
+}
+
+edit_command() {
+  local id=""
+  if (( $# > 0 )) && [[ $1 != --* ]]; then
+    id="$1"
+    shift
+  fi
+
+  local open_tool=""
+  local prompt=""
+  while (( $# > 0 )); do
+    case "$1" in
+    --with)
+      open_tool="${2:-}"
+      [[ -n $open_tool ]] || fail "--with requires a value"
+      shift 2
+      ;;
+    --open)
+      open_tool="${2:-}"
+      [[ -n $open_tool ]] || fail "--open requires a value"
+      shift 2
+      ;;
+    --prompt)
+      prompt="${2:-}"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      return
+      ;;
+    *)
+      fail "unknown edit option: $1"
+      ;;
+    esac
+  done
+
+  if [[ -z $id ]]; then
+    if [[ -t 0 && -t 1 ]]; then
+      id=$(choose_edit_source) || fail "edit cancelled"
+    else
+      fail "plugin id is required"
+    fi
+  fi
+
+  local dir
+  dir=$(plugin_dir_for_id "$id")
+
+  if [[ -z $open_tool ]]; then
+    if [[ -t 0 && -t 1 ]]; then
+      open_tool=$(choose_value "Edit with" ai editor)
+    else
+      open_tool="editor"
+    fi
+  fi
+
+  open_plugin_dir "$open_tool" "$dir" "$prompt"
 }
 
 rewrite_cloned_qml() {
@@ -779,12 +879,35 @@ text = re.sub(r'moduleName:\s*"[^"]+"', f'moduleName: "{plugin_id}"', text, coun
 
 def resolve_relative(match):
     rel = match.group(1)
-    if rel.startswith(("../", "./")):
+    if rel.startswith(("../", "./")) or (not rel.startswith("/") and "://" not in rel):
         resolved = (source_path.parent / rel).resolve()
         return '"' + resolved.as_uri() + '"'
     return match.group(0)
 
 text = re.sub(r'Qt\.resolvedUrl\("([^"]+)"\)', resolve_relative, text)
+
+# Indicators dynamically loads sibling indicator components via string
+# concatenation, so the simple Qt.resolvedUrl("literal") rewrite above cannot
+# see it. Point the clone back at Omarchy's bundled indicator directory.
+if source_path.name == "Indicators.qml":
+    indicators_url = (source_path.parent.parent / "indicators").resolve().as_uri() + "/"
+    text = text.replace(
+        'Qt.resolvedUrl("../indicators/" + indicatorSlot.indicatorId + ".qml")',
+        f'"{indicators_url}" + indicatorSlot.indicatorId + ".qml"',
+    )
+
+# Panel-backed clones should not register the same global IPC target as the
+# built-in widget. Direct panel clones can disable Panel.manageIpc themselves;
+# wrapper widgets such as Weather disable it on the loaded panel instance.
+if "ipcTarget:" in text and "manageIpc:" not in text:
+    text = text.replace("  id: root\n", "  id: root\n  manageIpc: false\n", 1)
+if "function injectPanel()" in text and '"manageIpc" in target' not in text:
+    text = text.replace(
+        "    if (!target) return\n",
+        "    if (!target) return\n    if (\"manageIpc\" in target) target.manageIpc = false\n",
+        1,
+    )
+
 open(path, "w", encoding="utf-8").write(text)
 PY
 }
@@ -854,13 +977,20 @@ clone_command() {
   require_command python3
   require_omarchy_path
 
-  local source_id="${1:-}"
-  local new_id="${2:-}"
-  if (( $# > 0 )) && [[ $1 != --* ]]; then shift; fi
-  if (( $# > 0 )) && [[ $1 != --* ]]; then shift; fi
+  local source_id=""
+  local new_id=""
+  if (( $# > 0 )) && [[ $1 != --* ]]; then
+    source_id="$1"
+    shift
+  fi
+  if (( $# > 0 )) && [[ $1 != --* ]]; then
+    new_id="$1"
+    shift
+  fi
 
   local display_name=""
   local open_tool=""
+  local prompt=""
   local replace="false"
   local add="false"
   local placement=()
@@ -872,9 +1002,18 @@ clone_command() {
       [[ -n $display_name ]] || fail "--name requires a value"
       shift 2
       ;;
+    --with)
+      open_tool="${2:-}"
+      [[ -n $open_tool ]] || fail "--with requires a value"
+      shift 2
+      ;;
     --open)
       open_tool="${2:-}"
       [[ -n $open_tool ]] || fail "--open requires a value"
+      shift 2
+      ;;
+    --prompt)
+      prompt="${2:-}"
       shift 2
       ;;
     --replace)
@@ -900,14 +1039,22 @@ clone_command() {
   done
 
   if [[ -z $source_id ]]; then
-    source_id=$(choose_clone_source) || fail "clone cancelled"
+    if [[ -t 0 && -t 1 ]]; then
+      source_id=$(choose_clone_source) || fail "clone cancelled"
+    else
+      fail "clone source is required"
+    fi
   fi
   source_id=$(canonical_widget_id "$source_id")
 
   local default_slug
   default_slug=$(slug_id "$source_id")
   if [[ -z $new_id ]]; then
-    new_id=$(input_value "New plugin id:" "local.$default_slug")
+    if [[ -t 0 && -t 1 ]]; then
+      new_id=$(input_value "New plugin id:" "local.$default_slug")
+    else
+      fail "new plugin id is required"
+    fi
   fi
   validate_plugin_id "$new_id"
 
@@ -936,7 +1083,13 @@ clone_command() {
   fi
 
   [[ -n $source_type ]] || fail "unknown clone source: $source_id"
-  [[ -n $display_name ]] || display_name=$(input_value "Display name:" "${source_name:-$new_id}")
+  if [[ -z $display_name ]]; then
+    if [[ -t 0 && -t 1 ]]; then
+      display_name=$(input_value "Display name:" "${source_name:-$new_id}")
+    else
+      display_name="${source_name:-$new_id}"
+    fi
+  fi
   [[ -n $display_name ]] || fail "display name is required"
 
   mkdir -p "$target_dir"
@@ -970,9 +1123,11 @@ clone_command() {
   fi
 
   if [[ -z $open_tool && -t 0 && -t 1 ]]; then
-    open_tool=$(choose_value "Open with" none pi claude nvim tdl editor)
+    open_tool=$(choose_value "Edit with" ai editor)
   fi
-  open_plugin_dir "$open_tool" "$target_dir"
+  if [[ -n $open_tool ]]; then
+    edit_command "$new_id" --with "$open_tool" --prompt "$prompt"
+  fi
 }
 
 bar_command() {
@@ -1029,6 +1184,10 @@ disable)
 clone)
   shift
   clone_command "$@"
+  ;;
+edit)
+  shift
+  edit_command "$@"
   ;;
 bar | widget | widgets)
   shift
