@@ -31,7 +31,7 @@ Item {
   property var fallbackBarConfig: ({
     position: "top",
     transparent: false,
-    centerAnchor: "Clock",
+    centerAnchor: "omarchy.clock",
     layout: { left: [], center: [], right: [] }
   })
   property var layoutConfig: fallbackBarConfig.layout
@@ -133,7 +133,7 @@ Item {
     var trayEntry = null
     var result = []
     for (var i = 0; i < entries.length; i++) {
-      if (entryId(entries[i]) === "Tray") trayEntry = entries[i]
+      if (entryId(entries[i]) === "omarchy.tray") trayEntry = entries[i]
       else result.push(entries[i])
     }
     if (trayEntry) {
@@ -148,7 +148,7 @@ Item {
 
     position = normalizePosition(config.position)
     transparent = config.transparent === true
-    centerAnchor = String(config.centerAnchor || "")
+    centerAnchor = Util.canonicalWidgetId(config.centerAnchor || "")
     layoutConfig = normalizeLayout(config.layout)
     barConfigSerial++
   }
@@ -208,7 +208,7 @@ Item {
   }
 
   function canonicalWidgetId(name) {
-    return String(name)
+    return Util.canonicalWidgetId(name)
   }
 
   function expandPath(path) {

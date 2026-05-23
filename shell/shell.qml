@@ -44,11 +44,11 @@ ShellRoot {
     bar: {
       position: "top",
       transparent: false,
-      centerAnchor: "Clock",
+      centerAnchor: "omarchy.clock",
       layout: {
-        left: [{ id: "Omarchy" }, { id: "Workspaces" }],
-        center: [{ id: "Clock", format: "dddd HH:mm" }],
-        right: [{ id: "AudioPanel" }]
+        left: [{ id: "omarchy.menu" }, { id: "omarchy.workspaces" }],
+        center: [{ id: "omarchy.clock", format: "dddd HH:mm" }],
+        right: [{ id: "omarchy.audio" }]
       }
     },
     plugins: []
@@ -264,7 +264,7 @@ ShellRoot {
   // new shellConfig in a local clone, and only persist if anything actually
   // changed so reactive bindings do not dirty shell.json unnecessarily.
   function updateEntryInline(moduleName, settings) {
-    var stripped = String(moduleName)
+    var stripped = Util.canonicalWidgetId(moduleName)
     var copy = JSON.parse(JSON.stringify(shellConfig || builtinShellConfig))
     if (!Util.isPlainObject(copy.bar)) copy.bar = { layout: { left: [], center: [], right: [] } }
     if (!Util.isPlainObject(copy.bar.layout)) copy.bar.layout = { left: [], center: [], right: [] }
@@ -276,7 +276,7 @@ ShellRoot {
     for (var s = 0; s < sections.length; s++) {
       var arr = copy.bar.layout[sections[s]] || []
       for (var i = 0; i < arr.length; i++) {
-        if (arr[i] && arr[i].id === stripped) {
+        if (arr[i] && Util.canonicalWidgetId(arr[i].id) === stripped) {
           var next = { id: stripped }
           for (var k in settings) if (k !== "id") next[k] = settings[k]
           if (JSON.stringify(arr[i]) !== JSON.stringify(next)) {

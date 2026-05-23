@@ -41,9 +41,13 @@ Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegis
 
 1. Drop into `~/.config/omarchy/plugins/<id>/` with a `manifest.json`
    plus the QML referenced from `entryPoints`.
-2. `omarchy-shell-ipc shell rescanPlugins`
-3. `omarchy-shell-ipc shell setPluginEnabled <id> true`
-4. Bar widgets also need adding to a section via bar settings.
+2. `omarchy plugin rescan`
+3. `omarchy plugin enable <id>`
+4. Bar widgets also need adding to a section with `omarchy plugin bar add <id>`
+   or the visual editor (`omarchy plugin bar edit`).
+
+The lower-level IPC methods remain available through `omarchy-shell shell ...`
+for callers that need to talk directly to the running shell.
 
 ## IPC
 
@@ -77,9 +81,9 @@ individual plugins (`bar`, `image-selector`, …).
     "centerAnchor": "calendar",
     "fontFamily": "JetBrainsMono Nerd Font",
     "layout": {
-      "left":   [ { "id": "Omarchy" } ],
-      "center": [ { "id": "calendar", "format": "HH:mm" } ],
-      "right":  [ { "id": "AudioPanel" } ]
+      "left":   [ { "id": "omarchy.menu" } ],
+      "center": [ { "id": "omarchy.clock", "format": "HH:mm" } ],
+      "right":  [ { "id": "omarchy.audio" } ]
     }
   },
   "plugins": [
@@ -94,10 +98,12 @@ Rules:
    bar widgets, `plugins[]` for everything else.
 2. Settings are inline on the entry. No `config:` sub-object, no
    merge layers.
-3. Third-party enabled ⇔ present; first-party plugins are always enabled.
-4. `allowMultiple: true` in the manifest permits multiple instances.
-5. `idle.screensaver` and `idle.lock` are seconds since user idle began.
-6. `version: 1` is required.
+3. Built-in bar widget ids are namespaced (`omarchy.clock`, `omarchy.audio`, …);
+   legacy ids such as `Clock` and `AudioPanel` are accepted as aliases.
+4. Third-party enabled ⇔ present; first-party plugins are always enabled.
+5. `allowMultiple: true` in the manifest permits multiple instances.
+6. `idle.screensaver` and `idle.lock` are seconds since user idle began.
+7. `version: 1` is required.
 
 `shell-defaults.json` describes the fresh-install state. When no
 user `shell.json` exists, defaults are used verbatim. Once the user
