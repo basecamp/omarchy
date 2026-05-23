@@ -34,8 +34,9 @@ Panel {
     var defaultIcons = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
     var index = Math.max(0, Math.min(9, Math.floor(device.percentage * 10)))
 
+    if (root.chargeThresholdActive) return defaultIcons[index]
     if (device.state === UPowerDeviceState.FullyCharged) return "󰂅"
-    if (device.state === UPowerDeviceState.Charging || root.chargeThresholdActive) return chargingIcons[index]
+    if (device.state === UPowerDeviceState.Charging) return chargingIcons[index]
     if (!UPower.onBattery) return ""
     return defaultIcons[index]
   }
@@ -64,11 +65,18 @@ Panel {
 
   readonly property bool fullyCharged: {
     var device = UPower.displayDevice
-    return device && device.isPresent && device.state === UPowerDeviceState.FullyCharged
+    return device && device.isPresent && device.state === UPowerDeviceState.FullyCharged && !root.chargeThresholdActive
   }
   readonly property bool chargeThresholdActive: {
     var device = UPower.displayDevice
-    return !!(device && device.isPresent && !UPower.onBattery && device.state === UPowerDeviceState.Discharging)
+    if (!(device && device.isPresent && !UPower.onBattery)) return false
+
+    var fraction = Math.max(0, Math.min(1, device.percentage))
+    if (device.state === UPowerDeviceState.Discharging || device.state === UPowerDeviceState.PendingCharge) return true
+    if (device.state === UPowerDeviceState.FullyCharged && fraction < 0.99) return true
+    if (device.state !== UPowerDeviceState.Charging || fraction >= 0.99) return false
+
+    return Number(device.changeRate || 0) <= 0.2 || Number(device.timeToFull || 0) >= 8 * 60 * 60
   }
   readonly property bool batteryFull: fullyCharged || (!UPower.onBattery && batteryFraction >= 1)
   readonly property bool batteryFlowIdle: batteryFull || chargeThresholdActive
@@ -82,7 +90,7 @@ Panel {
   readonly property bool batteryLow: UPower.onBattery && batteryFraction > 0 && batteryFraction <= 0.2
   readonly property bool charging: {
     var d = UPower.displayDevice
-    return d && d.isPresent && d.state === UPowerDeviceState.Charging
+    return d && d.isPresent && d.state === UPowerDeviceState.Charging && !root.chargeThresholdActive
   }
 
   readonly property color batteryFillColor: {
@@ -420,8 +428,14 @@ Panel {
           Column {
             width: (parent.width - parent.spacing) / 2
             spacing: Style.spacing.labelGap
-            InfoPair { label: UPower.onBattery ? "Time left" : "Time to full"; value: root.batteryFlowIdle ? "-" : (root.batteryInfo.time || "—") }
-            InfoPair { label: UPower.onBattery ? "Discharging" : "Charging"; value: root.chargeThresholdActive ? "Holding" : (root.batteryFull ? "-" : (root.batteryInfo.rate || "")) }
+            InfoPair {
+              label: root.chargeThresholdActive ? "Charge limit" : (UPower.onBattery ? "Time left" : "Time to full")
+              value: root.chargeThresholdActive ? (root.batteryInfo.threshold || "-") : (root.batteryFlowIdle ? "-" : (root.batteryInfo.time || "—"))
+            }
+            InfoPair {
+              label: root.chargeThresholdActive ? "Battery state" : (UPower.onBattery ? "Discharging" : "Charging")
+              value: root.chargeThresholdActive ? "Holding" : (root.batteryFull ? "-" : (root.batteryInfo.rate || ""))
+            }
           }
         }
 
