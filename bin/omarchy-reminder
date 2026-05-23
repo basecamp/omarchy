@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Set and show lightweight desktop notification reminders
-# omarchy:args=<minutes> [message] | show | clear
-# omarchy:examples=omarchy reminder 5 | omarchy reminder 30 "Check the oven" | omarchy reminder show | omarchy reminder clear
+# omarchy:args=[-i|--interactive] | <minutes> [message] | show [-j|--json] | clear
+# omarchy:examples=omarchy reminder -i | omarchy reminder 5 | omarchy reminder 30 "Check the oven" | omarchy reminder show | omarchy reminder show --json | omarchy reminder clear
 
 set -euo pipefail
 
@@ -20,31 +20,9 @@ format_remaining() {
   fi
 }
 
-parse_systemd_timespan() {
-  local timespan="$1"
-  local total=0
-  local value unit whole
-
-  while read -r value unit; do
-    whole=${value%.*}
-
-    case $unit in
-    d) total=$((total + whole * 86400)) ;;
-    h) total=$((total + whole * 3600)) ;;
-    min) total=$((total + whole * 60)) ;;
-    s) total=$((total + whole)) ;;
-    ms | us) ;;
-    esac
-  done < <(grep -oE '[0-9]+([.][0-9]+)?(d|h|min|s|ms|us)' <<<"$timespan" | sed -E 's/^([0-9.]+)([a-z]+)$/\1 \2/')
-
-  echo "$total"
-}
-
-show_reminders() {
-  local timer next remaining body=""
-  local reminder_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-reminders"
-  local reminder_message=""
-  local now=$(date +%s)
+active_reminder_timers() {
+  local now=${1:-$(date +%s)}
+  local timer next
 
   while IFS=$'\t' read -r timer next; do
     [[ -z $timer || -z $next ]] && continue
@@ -52,10 +30,28 @@ show_reminders() {
     next=$((next / 1000000))
     ((next <= now)) && continue
 
+    printf "%s\t%s\n" "$timer" "$next"
+  done < <(systemctl --user list-timers --all --output=json "omarchy-reminder-*.timer" 2>/dev/null | jq -r '.[] | [.unit, .next] | @tsv')
+}
+
+refresh_indicator() {
+  omarchy-shell -q omarchy.indicators refresh >/dev/null 2>&1 || true
+}
+
+open_interactive() {
+  omarchy-shell shell summon omarchy.reminders "{}"
+}
+
+show_reminders() {
+  local timer next remaining reminder reminder_minutes body=""
+  local reminder_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-reminders"
+  local reminder_message=""
+  local now=$(date +%s)
+
+  while IFS=$'\t' read -r timer next; do
     remaining=$((next - now))
     reminder=${timer%.timer}
     reminder=${reminder#omarchy-reminder-}
-    set_at=${reminder##*-}
     reminder_minutes=${reminder%%m-*}
     reminder_message=""
     [[ -f $reminder_dir/${timer%.timer}.message ]] && reminder_message=$(<"$reminder_dir/${timer%.timer}.message")
@@ -65,13 +61,60 @@ show_reminders() {
     else
       body+="${reminder_minutes}-min reminder in $(format_remaining $remaining) ($(date -d "@$next" +%-H:%M))"$'\n'
     fi
-  done < <(systemctl --user list-timers --all --output=json "omarchy-reminder-*.timer" 2>/dev/null | jq -r '.[] | [.unit, .next] | @tsv')
+  done < <(active_reminder_timers "$now")
 
   if [[ -z $body ]]; then
-    omarchy-notification-send -g 󰔛 "Upcoming reminders" "No outstanding reminders"
+    omarchy-notification-send -g 󰢌 "Upcoming reminders" "No outstanding reminders"
   else
-    omarchy-notification-send -g 󰔛 "Upcoming reminders" "${body%$'\n'}"
+    omarchy-notification-send -g 󰢌 "Upcoming reminders" "${body%$'\n'}"
   fi
+}
+
+show_json() {
+  local timer next remaining reminder reminder_minutes unit reminder_message label item_json reminders_json="[]"
+  local reminder_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-reminders"
+  local now=$(date +%s)
+  local count=0
+  local tooltip="Set Reminder"
+
+  while IFS=$'\t' read -r timer next; do
+    count=$((count + 1))
+
+    unit=${timer%.timer}
+    reminder=${unit#omarchy-reminder-}
+    reminder_minutes=${reminder%%m-*}
+    [[ ! $reminder_minutes =~ ^[0-9]+$ ]] && reminder_minutes=0
+    remaining=$((next - now))
+    reminder_message=""
+    [[ -f $reminder_dir/$unit.message ]] && reminder_message=$(<"$reminder_dir/$unit.message")
+
+    if [[ -n $reminder_message ]]; then
+      label=$reminder_message
+    else
+      label="${reminder_minutes}-min reminder"
+    fi
+
+    item_json=$(jq -cn \
+      --arg unit "$unit" \
+      --arg timer "$timer" \
+      --arg label "$label" \
+      --arg message "$reminder_message" \
+      --arg remaining "$(format_remaining "$remaining")" \
+      --arg atTime "$(date -d "@$next" +%-H:%M)" \
+      --argjson minutes "$reminder_minutes" \
+      --argjson at "$next" \
+      --argjson remainingSeconds "$remaining" \
+      '{unit:$unit,timer:$timer,minutes:$minutes,message:$message,label:$label,remaining:$remaining,remainingSeconds:$remainingSeconds,at:$at,atTime:$atTime}')
+    reminders_json=$(jq -cn --argjson reminders "$reminders_json" --argjson item "$item_json" '$reminders + [$item]')
+  done < <(active_reminder_timers "$now")
+
+  if ((count == 1)); then
+    tooltip="1 reminder"
+  elif ((count > 1)); then
+    tooltip="$count reminders"
+  fi
+
+  jq -cn --argjson count "$count" --arg tooltip "$tooltip" --argjson reminders "$reminders_json" '{count:$count,active:($count > 0),tooltip:$tooltip,reminders:$reminders}'
 }
 
 clear_reminders() {
@@ -85,12 +128,35 @@ clear_reminders() {
   fi
 
   rm -f "$reminder_dir"/omarchy-reminder-*.message 2>/dev/null || true
-  omarchy-notification-send -g 󰔛 "All reminders have been cleared"
+  refresh_indicator
+  omarchy-notification-send -g 󰢌 "All reminders have been cleared"
+}
+
+usage() {
+  echo "Usage: omarchy-reminder [-i|--interactive]"
+  echo "       omarchy-reminder <minutes> [message]"
+  echo "       omarchy-reminder show [-j|--json]"
+  echo "       omarchy-reminder clear"
 }
 
 case ${1:-} in
+-i | --interactive)
+  open_interactive
+  exit 0
+  ;;
 show | list)
-  show_reminders
+  case ${2:-} in
+  -j | --json)
+    show_json
+    ;;
+  "")
+    show_reminders
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+  esac
   exit 0
   ;;
 clear)
@@ -105,9 +171,7 @@ message="$*"
 custom_message="$message"
 
 if [[ -z $minutes ]] || [[ ! $minutes =~ ^[0-9]+$ ]] || ((minutes == 0)); then
-  echo "Usage: omarchy-reminder <minutes> [message]"
-  echo "       omarchy-reminder show"
-  echo "       omarchy-reminder clear"
+  usage
   exit 1
 fi
 
@@ -131,6 +195,7 @@ if [[ -n $custom_message ]]; then
 fi
 
 systemd-run --user --quiet --collect --on-active="${minutes}m" --unit="$unit" \
-  bash -c 'omarchy-notification-send -g 󰔛 "Reminder" "$1" -u critical; rm -f "$2"' bash "$message" "$message_file"
+  bash -c 'omarchy-notification-send -g 󰢌 "Reminder" "$1"; rm -f "$2"; omarchy-shell -q omarchy.indicators refresh >/dev/null 2>&1 || true' bash "$message" "$message_file"
 
-omarchy-notification-send -g 󰔛 "$confirmation_title" "$confirmation"
+refresh_indicator
+omarchy-notification-send -g 󰢌 "$confirmation_title" "$confirmation"

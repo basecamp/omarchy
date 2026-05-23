@@ -1,0 +1,168 @@
+import Quickshell
+import Quickshell.Wayland
+import QtQuick
+import qs.Commons
+
+Item {
+  id: root
+
+  property var shell: null
+  property var manifest: null
+
+  property bool opened: false
+  property string step: "minutes"
+  property string minutes: ""
+  property string filterText: ""
+  property string fontFamily: Style.font.menuFamily
+
+  property color background: Color.menu.background
+  property color foreground: Color.menu.text
+  property color border: Color.menu.border
+  property color scrim: Color.menu.scrim
+  readonly property int cornerRadius: Style.cornerRadius
+  property int contentMargin: Style.spacing.panelPadding
+  property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
+  property int cardWidth: Math.min(Style.space(300), panel.width - Style.gapsOut * 2)
+  property int cardHeight: Math.min(contentMargin * 2 + headerHeight, panel.height - Style.gapsOut * 2)
+  readonly property string promptText: root.step === "message" ? "Reminder message" : "Remind in minutes"
+
+  function open(payloadJson) {
+    var payload = ({})
+    try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
+    if (payload.fontFamily) root.fontFamily = payload.fontFamily
+
+    root.opened = true
+    root.step = "minutes"
+    root.minutes = ""
+    root.filterText = ""
+
+    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  function close() {
+    root.opened = false
+  }
+
+  function dismiss() {
+    root.opened = false
+    if (root.shell && typeof root.shell.hide === "function")
+      root.shell.hide((root.manifest && root.manifest.id) || "omarchy.reminders")
+  }
+
+  function toggle() {
+    if (root.opened) root.dismiss()
+    else root.open("{}")
+  }
+
+  function setFilter(nextFilter) {
+    root.filterText = nextFilter
+  }
+
+  function submit() {
+    var selection = root.filterText
+
+    if (root.step === "minutes") {
+      var nextMinutes = selection.trim()
+
+      if (!nextMinutes) {
+        root.dismiss()
+        return
+      }
+
+      if (!/^[0-9]+$/.test(nextMinutes) || Number(nextMinutes) <= 0) {
+        Quickshell.execDetached(["bash", "-lc", "omarchy-notification-send 'Invalid reminder' 'Enter the number of minutes'"])
+        return
+      }
+
+      root.minutes = nextMinutes
+      root.step = "message"
+      root.filterText = ""
+      Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+      return
+    }
+
+    if (root.step === "message") {
+      var command = "omarchy-reminder " + Util.shellQuote(root.minutes)
+      if (selection.length > 0)
+        command += " " + Util.shellQuote(selection)
+
+      root.dismiss()
+      Quickshell.execDetached(["bash", "-lc", command])
+    }
+  }
+
+  PanelWindow {
+    id: panel
+    visible: root.opened
+    anchors { top: true; bottom: true; left: true; right: true }
+    color: "transparent"
+    WlrLayershell.namespace: "omarchy-reminders"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+    exclusionMode: ExclusionMode.Ignore
+
+    Rectangle {
+      anchors.fill: parent
+      color: root.scrim
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      onClicked: root.dismiss()
+    }
+
+    Rectangle {
+      id: card
+      width: root.cardWidth
+      height: root.cardHeight
+      radius: root.cornerRadius
+      anchors.centerIn: parent
+      color: root.background
+      border.color: root.border
+      border.width: Math.max(1, Style.space(2))
+
+      MouseArea { anchors.fill: parent; onClicked: {} }
+
+      Item {
+        id: keyCatcher
+        anchors.fill: parent
+        focus: true
+
+        Keys.priority: Keys.BeforeItem
+        Keys.onPressed: function(event) {
+          if (event.key === Qt.Key_Escape) {
+            if (root.filterText) root.setFilter("")
+            else root.dismiss()
+            event.accepted = true
+          } else if (event.key === Qt.Key_Backspace) {
+            if (root.filterText.length > 0) root.setFilter(root.filterText.slice(0, -1))
+            event.accepted = true
+          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            root.submit()
+            event.accepted = true
+          } else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127) {
+            root.setFilter(root.filterText + event.text)
+            event.accepted = true
+          }
+        }
+      }
+
+      Item {
+        anchors.fill: parent
+        anchors.margins: root.contentMargin
+
+        Text {
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          text: root.filterText || (root.promptText + "...")
+          color: root.foreground
+          opacity: root.filterText ? 1 : 0.58
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.heading
+          elide: Text.ElideRight
+        }
+      }
+    }
+  }
+}
