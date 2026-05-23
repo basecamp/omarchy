@@ -89,7 +89,6 @@ catch_errors() {
   stop_log_output
 
   if [[ -n ${OMARCHY_CHROOT_FINALIZER:-} ]]; then
-    show_cursor
     {
       echo "Omarchy installation stopped inside offline finalizer."
       echo "This command halted with exit code $exit_code:"
@@ -168,7 +167,7 @@ exit_handler() {
     catch_errors "$exit_code"
   else
     stop_log_output
-    show_cursor
+    [[ -n ${OMARCHY_CHROOT_FINALIZER:-} ]] || show_cursor
   fi
 }
 
