@@ -60,6 +60,7 @@ individual plugins (`bar`, `image-selector`, …).
 | `summon <id> <payloadJson>`           | load + open a plugin            |
 | `hide <id>`                           | close a previously-summoned     |
 | `toggle <id> <payloadJson>`           | summon if closed, hide if open  |
+| `call <id> <method> <arg>`            | call an already-loaded plugin   |
 | `rescanPlugins`                       | re-walk plugin dirs             |
 | `setPluginEnabled <id> <"true"\|…>`   | flip enabled bit                |
 | `listPlugins`                         | JSON of every discovered plugin |
@@ -98,8 +99,8 @@ Rules:
    bar widgets, `plugins[]` for everything else.
 2. Settings are inline on the entry. No `config:` sub-object, no
    merge layers.
-3. Built-in bar widget ids are namespaced (`omarchy.clock`, `omarchy.audio`, …);
-   legacy ids such as `Clock` and `AudioPanel` are accepted as aliases.
+3. Built-in bar widget ids are namespaced (`omarchy.clock`, `omarchy.audio`, …).
+   The migration rewrites older ids such as `Clock` and `AudioPanel` forward.
 4. Third-party enabled ⇔ present; first-party plugins are always enabled.
 5. `allowMultiple: true` in the manifest permits multiple instances.
 6. `idle.screensaver` and `idle.lock` are seconds since user idle began.

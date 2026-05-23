@@ -6,10 +6,18 @@
   "author": "Omarchy",
   "description": "Notification daemon, popups, and history",
   "kinds": [
-    "service"
+    "service",
+    "bar-widget"
   ],
   "keepLoaded": true,
   "entryPoints": {
-    "service": "Service.qml"
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Notification center",
+    "description": "Recent notifications + DND",
+    "category": "Status",
+    "allowMultiple": false
   }
 }

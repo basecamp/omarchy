@@ -6,7 +6,7 @@ import qs.Commons
 
 BarWidget {
   id: root
-  moduleName: "SystemStats"
+  moduleName: "omarchy.system-stats"
 
 
   property real cpuPercent: 0

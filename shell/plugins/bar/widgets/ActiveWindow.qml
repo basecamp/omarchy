@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "ActiveWindow"
+  moduleName: "omarchy.active-window"
 
 
   readonly property var toplevel: ToplevelManager.activeToplevel

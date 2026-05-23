@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "SystemUpdate"
+  moduleName: "omarchy.system-update"
 
   property bool updateAvailable: false
 
@@ -18,7 +18,7 @@ BarWidget {
   implicitHeight: button.implicitHeight
 
   IpcHandler {
-    target: "SystemUpdate"
+    target: "omarchy.system-update"
 
     function refresh(): void {
       root.refresh()

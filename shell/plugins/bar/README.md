@@ -7,8 +7,8 @@ the shell for its whole session.
 
 - `manifest.json` declares the plugin (`id: omarchy.bar`, `kind: bar`) and points at `Bar.qml` as the entry point.
 - `Bar.qml` is Omarchy-owned bar engine code, loaded by the omarchy-shell host. Users should not edit it directly.
-- `widgets/` holds first-party bar widgets.
-- `../panels/` holds first-party panels that the bar can toggle by id.
+- `widgets/` holds simple first-party bar widgets with sibling manifests.
+- Feature plugins such as `../audio/`, `../network/`, and `../power/` provide richer popup bar widgets.
 - The bar receives its config from the host shell as a `barConfig` property; the host loads it from `~/.config/omarchy/shell.json` (or `shell-defaults.json` when the user has no file).
 - `omarchy-style-bar-position` updates only the user shell.json file.
 
@@ -66,17 +66,13 @@ Example `shell.json` (bar subtree only shown):
 | `omarchy.weather` | Weather icon + popup with forecast | left = popup · right = full notification |
 | `omarchy.microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio panel · scroll = source volume |
 
-### First-party panels (in `../panels/`)
+| `omarchy.audio` | Volume icon + popup with master slider, output-device picker, per-app mixer | left = popup · right = mute · middle = popup · scroll = volume |
+| `omarchy.network` | Wi-Fi/Ethernet icon + popup with Wi-Fi scan, signal, connect, DNS provider selection | left = popup · right = nmtui |
+| `omarchy.power` | Battery/AC icon + popup with battery stats, power profiles, and system info | left = popup |
+| `omarchy.bluetooth` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio · middle = bluetoothctl TUI |
+| `omarchy.monitor` | Brightness and laptop display controls | left = popup |
 
-| Name | What it does | Interactions |
-|---|---|---|
-| `panels.audio` | Volume icon + popup with master slider, output-device picker, per-app mixer | left = popup · right = mute · middle = popup · scroll = volume |
-| `panels.network` | Wi-Fi/Ethernet icon + popup with Wi-Fi scan, signal, connect, DNS provider selection | left = popup · right = nmtui |
-| `panels.power` | Battery/AC icon + popup with battery stats, power profiles, and system info | left = popup |
-| `panels.bluetooth` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio · middle = bluetoothctl TUI |
-| `panels.monitor` | Brightness and laptop display controls | left = popup |
-
-The `omarchy.indicators` widget loads individual bar indicators from `indicators/`. Omit `items` (or set it to an empty array) to show all indicators in the default order, or set `items` to a subset such as `["Dnd", "NightLight"]`. Set `alwaysShow` to `true` to keep inactive indicators visible instead of revealing them only on hover. Multiple `omarchy.indicators` instances are allowed, so different sections can show different subsets. Rich popup widgets such as `omarchy.power`, `omarchy.network`, and `omarchy.audio` live in `../panels/` above.
+The `omarchy.indicators` widget loads individual bar indicators from `indicators/`. Omit `items` (or set it to an empty array) to show all indicators in the default order, or set `items` to a subset such as `["Dnd", "NightLight"]`. Set `alwaysShow` to `true` to keep inactive indicators visible instead of revealing them only on hover. Multiple `omarchy.indicators` instances are allowed, so different sections can show different subsets.
 
 ## Orientation
 
@@ -169,12 +165,15 @@ Widgets receive `bar` (the shell root), `moduleName` (string), and `settings` (o
 - `bar.showTooltip(target, text)` / `bar.hideTooltip(target)` — shared tooltip popup
 - `bar.requestPopout(owner)` / `bar.releasePopout(owner)` — one-popup-at-a-time coordinator
 
-First-party bar widgets live in `widgets/<Name>.qml`; richer popup widgets
-live in `../panels/<Name>.qml` and expose IPC targets such as
-`panels.audio`. Bar layout ids are namespaced, e.g. `omarchy.audio`,
-`omarchy.network`, and `omarchy.clock`. Legacy UpperCamelCase ids such as
-`AudioPanel` and `Clock` are still accepted as aliases, but new configs should
-use the namespaced ids.
+First-party bar widgets are manifest-backed just like third-party widgets.
+Simple widgets carry sibling manifests such as `widgets/Clock.manifest.json`;
+richer popup widgets live in feature directories such as `../audio/` and
+`../network/`; and feature plugins such as `omarchy.menu`, `omarchy.media`, and
+`omarchy.notifications` declare their bar-widget entry points in their own
+`manifest.json`. Bar layout ids are namespaced, e.g. `omarchy.audio`,
+`omarchy.network`, and `omarchy.clock`. Older UpperCamelCase ids such as
+`AudioPanel` and `Clock` are migrated forward; new configs should use the
+namespaced ids.
 
 Third-party widgets ship as separate plugins under
 `~/.config/omarchy/plugins/<plugin-id>/` with their own `manifest.json`

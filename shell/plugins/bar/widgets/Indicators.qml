@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "Indicators"
+  moduleName: "omarchy.indicators"
 
   readonly property int indicatorSlotExtent: Style.space(22)
   readonly property var defaultIndicatorEntries: [ "Dnd", "NightLight", "StayAwake", "ScreenRecording", "Dictation" ]
@@ -160,7 +160,7 @@ BarWidget {
   implicitHeight: root.vertical ? verticalIndicators.implicitHeight : horizontalIndicators.implicitHeight
 
   IpcHandler {
-    target: "Indicators"
+    target: "omarchy.indicators"
 
     function refresh(): void {
       root.refreshRequested()

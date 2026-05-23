@@ -1,10 +1,10 @@
 import QtQuick
 import Quickshell.Io
 
-// Base item for shell panels. Panels are not bar widgets, but the bar may host
-// or toggle them and injects the same ambient context while doing so. The base
-// owns the shared IPC-backed open/close lifecycle; panel implementations own
-// their button behavior, keyboard navigation, and content.
+// Base item for plugin popup widgets. Many first-party plugins expose a bar
+// button plus a popup from one QML entry point; this base owns the shared
+// IPC-backed open/close lifecycle while implementations own button behavior,
+// keyboard navigation, and content.
 Item {
   id: root
 
@@ -51,4 +51,5 @@ Item {
       function toggle(): void { root.toggle() }
     }
   }
+
 }

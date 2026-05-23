@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "LockKeys"
+  moduleName: "omarchy.lock-keys"
 
 
   property bool capsOn: false
