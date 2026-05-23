@@ -4,6 +4,7 @@
 
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import qs.Commons
 
 Rectangle {
@@ -31,13 +32,9 @@ Rectangle {
 
   signal closeRequested()
   signal cardClicked()
-  // Use only what the notification explicitly carries — no themed-icon
-  // theme-lookup fallback because Quickshell's icon image provider returns
-  // a placeholder for missing names (rather than erroring), which means
-  // we'd render Qt's pink "broken image" pattern for any unknown app.
-  // Apps that send their own icon via `image` (image-data hint) or
-  // `appIcon` (-i flag) still get one.
-  readonly property string smallIconSource: image.length > 0 ? image : appIcon
+  // Prefer per-notification media/avatar data, then fall back to the app icon.
+  // The `check` flag avoids Qt's missing-texture placeholder for unknown names.
+  readonly property string smallIconSource: image.length > 0 ? image : iconSource(appIcon)
   readonly property bool hasGlyph: glyph.length > 0
   readonly property bool hasSmallIcon: smallIconSource.length > 0 || hasGlyph
   readonly property bool summaryStartsWithGlyph: /^\s*\S\s{2,}/.test(summary)
@@ -65,6 +62,14 @@ Rectangle {
     return text
       .replace(/^\s*<a\b[^>]*>\s*(?:https?:\/\/|www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/[^<\s]*)?\s*<\/a>\s*/i, "")
       .replace(/^\s*(?:https?:\/\/|www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/\S*)?\s+/i, "")
+  }
+
+  function iconSource(icon) {
+    var value = String(icon || "")
+    if (value.length === 0) return ""
+    if (value.indexOf("file://") === 0 || value.indexOf("image://") === 0) return value
+    if (value.charAt(0) === "/") return Util.fileUrl(value)
+    return Quickshell.iconPath(value, true)
   }
 
   implicitWidth: Style.space(380)
