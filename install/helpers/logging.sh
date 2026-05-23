@@ -70,7 +70,7 @@ start_install_log() {
 
 stop_install_log() {
   stop_log_output
-  show_cursor
+  [[ -n ${OMARCHY_CHROOT_FINALIZER:-} ]] || show_cursor
 
   if [[ -n ${OMARCHY_INSTALL_LOG_FILE:-} ]]; then
     OMARCHY_END_TIME=$(date '+%Y-%m-%d %H:%M:%S')
