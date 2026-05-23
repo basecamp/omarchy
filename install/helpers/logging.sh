@@ -112,7 +112,7 @@ stop_install_log() {
 
       echo "Omarchy:     ${OMARCHY_MINS}m ${OMARCHY_SECS}s" >>"$OMARCHY_INSTALL_LOG_FILE"
 
-      if [[ -n $ARCH_DURATION ]]; then
+      if [[ -n ${ARCH_DURATION:-} ]]; then
         TOTAL_DURATION=$((ARCH_DURATION + OMARCHY_DURATION))
         TOTAL_MINS=$((TOTAL_DURATION / 60))
         TOTAL_SECS=$((TOTAL_DURATION % 60))
