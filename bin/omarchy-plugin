@@ -1,0 +1,1043 @@
+#!/bin/bash
+
+# omarchy:summary=Manage Omarchy shell plugins and bar widgets
+# omarchy:group=plugin
+# omarchy:args=<list|rescan|enable|disable|clone|bar> [...]
+# omarchy:examples=omarchy plugin list | omarchy plugin clone omarchy.clock local.clock --open pi | omarchy plugin enable acme.weather --section right | omarchy plugin bar move omarchy.clock --section center --index 0 | omarchy plugin bar edit
+
+set -euo pipefail
+
+CONFIG_FILE="$HOME/.config/omarchy/shell.json"
+
+usage() {
+  cat <<USAGE
+Usage: omarchy-plugin <command> [args...]
+
+Plugin commands:
+  list [--json]                         List discovered shell plugins
+  rescan                                Rescan ~/.config/omarchy/plugins
+  enable <id> [placement]               Enable a plugin
+  disable <id>                          Disable a plugin
+  clone [source] [new-id] [options]      Clone a built-in or user plugin
+
+Clone options:
+  --name <name>                         Display name for the clone
+  --open <tool>                         Open with pi, claude, nvim, tdl, editor, or none
+  --replace                             Replace the first source bar instance
+  --add [placement]                     Add cloned bar widget to the bar
+
+Bar widget commands:
+  bar edit                              Open the visual bar settings panel
+  bar list [--json]                     List current bar layout
+  bar add <id> [placement] [--duplicate]
+  bar move <id> [placement] [--from-section SECTION] [--from-index N]
+  bar remove <id> [--section SECTION] [--all]
+  bar remove --section SECTION --index N
+  bar set <id> <key> <value> [--json] [--section SECTION] [--index N]
+
+Placement options:
+  --section <left|center|right>         Target bar section
+  --index <n>                           Insert at index in the target section
+  --before <id>                         Insert before the first matching widget
+  --after <id>                          Insert after the first matching widget
+
+Examples:
+  omarchy plugin list
+  omarchy plugin rescan
+  omarchy plugin clone
+  omarchy plugin clone omarchy.clock local.clock --name "My Clock" --replace --open pi
+  omarchy plugin enable acme.weather --section right
+  omarchy plugin bar add acme.weather --section right --before omarchy.tray
+  omarchy plugin bar move omarchy.clock --section center --index 0
+  omarchy plugin bar remove acme.weather
+  omarchy plugin bar set omarchy.clock format HH:mm
+  omarchy plugin bar set omarchy.indicators items '["Dnd","NightLight"]' --json
+USAGE
+}
+
+fail() {
+  echo "omarchy-plugin: $*" >&2
+  exit 1
+}
+
+require_omarchy_path() {
+  [[ -n ${OMARCHY_PATH:-} ]] || fail "OMARCHY_PATH is not set"
+}
+
+require_command() {
+  local command_name="$1"
+  command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is required"
+}
+
+section_valid() {
+  [[ $1 =~ ^(left|center|right)$ ]]
+}
+
+validate_section() {
+  local section="$1"
+  section_valid "$section" || fail "section must be left, center, or right"
+}
+
+validate_index() {
+  local value="$1"
+  [[ $value =~ ^[0-9]+$ ]] || fail "index must be a non-negative integer"
+}
+
+canonical_widget_id() {
+  case "$1" in
+  Omarchy) printf 'omarchy.menu' ;;
+  Workspaces) printf 'omarchy.workspaces' ;;
+  Media) printf 'omarchy.media' ;;
+  AudioPanel) printf 'omarchy.audio' ;;
+  MonitorPanel) printf 'omarchy.monitor' ;;
+  NetworkPanel) printf 'omarchy.network' ;;
+  PowerPanel) printf 'omarchy.power' ;;
+  BluetoothPanel) printf 'omarchy.bluetooth' ;;
+  Clock) printf 'omarchy.clock' ;;
+  Indicators) printf 'omarchy.indicators' ;;
+  NotificationCenter) printf 'omarchy.notifications' ;;
+  SystemUpdate) printf 'omarchy.system-update' ;;
+  SystemStats) printf 'omarchy.system-stats' ;;
+  Tray) printf 'omarchy.tray' ;;
+  Weather) printf 'omarchy.weather' ;;
+  Microphone) printf 'omarchy.microphone' ;;
+  ActiveWindow) printf 'omarchy.active-window' ;;
+  KeyboardLayout) printf 'omarchy.keyboard-layout' ;;
+  LockKeys) printf 'omarchy.lock-keys' ;;
+  Spacer) printf 'omarchy.spacer' ;;
+  *) printf '%s' "$1" ;;
+  esac
+}
+
+validate_plugin_id() {
+  local id="$1"
+  [[ $id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "plugin id must contain only letters, numbers, dots, underscores, and dashes"
+  [[ $id == *.* ]] || fail "plugin id must be namespaced, e.g. local.clock"
+  [[ $id != omarchy.* ]] || fail "plugin ids beginning with omarchy. are reserved for built-ins"
+  [[ $(canonical_widget_id "$id") == "$id" ]] || fail "$id is a reserved built-in widget id"
+}
+
+print_plugins() {
+  local json="false"
+
+  while (( $# > 0 )); do
+    case "$1" in
+    --json)
+      json="true"
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      fail "unknown list option: $1"
+      ;;
+    esac
+    shift
+  done
+
+  local plugins
+  plugins=$(omarchy-shell shell listPlugins) || fail "could not list plugins; is omarchy-shell running?"
+
+  if [[ $json == "true" ]]; then
+    printf '%s\n' "$plugins"
+    return
+  fi
+
+  require_command jq
+  jq -r '
+    sort_by(.id)[] |
+    [ .id,
+      (if .enabled then "enabled" else "disabled" end),
+      (if .firstParty then "first-party" else "third-party" end),
+      ((.kinds // []) | join(",")),
+      (.name // "")
+    ] | @tsv
+  ' <<<"$plugins" | awk -F '\t' '
+    BEGIN { printf "%-32s %-9s %-11s %-18s %s\n", "ID", "STATE", "SOURCE", "KINDS", "NAME" }
+    { printf "%-32s %-9s %-11s %-18s %s\n", $1, $2, $3, $4, $5 }
+  '
+}
+
+rescan_plugins() {
+  (( $# == 0 )) || fail "rescan does not take arguments"
+  omarchy-shell shell rescanPlugins || fail "could not rescan plugins; is omarchy-shell running?"
+  echo "Plugins rescanned"
+}
+
+plugin_enabled() {
+  local enabled="$1"
+  local id="${2:-}"
+  [[ -n $id ]] || fail "plugin id is required"
+  shift 2
+
+  if [[ $enabled != "true" && $# -gt 0 ]]; then
+    fail "disable does not take placement options"
+  fi
+
+  omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+  omarchy-shell shell setPluginEnabled "$id" "$enabled" || fail "could not update plugin; is omarchy-shell running?"
+
+  if [[ $enabled == "true" && $# -gt 0 ]]; then
+    mutate_bar move --id "$id" "$@"
+    echo "Enabled and moved $id"
+  else
+    if [[ $enabled == "true" ]]; then
+      echo "Enabled $id"
+    else
+      echo "Disabled $id"
+    fi
+  fi
+}
+
+config_source() {
+  require_omarchy_path
+  local defaults_file="$OMARCHY_PATH/shell/shell-defaults.json"
+
+  if [[ -s $CONFIG_FILE ]] && jq -e 'type == "object" and .version == 1' "$CONFIG_FILE" >/dev/null 2>&1; then
+    printf '%s' "$CONFIG_FILE"
+  elif [[ -s $defaults_file ]] && jq -e 'type == "object" and .version == 1' "$defaults_file" >/dev/null 2>&1; then
+    printf '%s' "$defaults_file"
+  else
+    fail "could not find a valid shell config or defaults file"
+  fi
+}
+
+bar_list() {
+  local json="false"
+
+  while (( $# > 0 )); do
+    case "$1" in
+    --json)
+      json="true"
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      fail "unknown bar list option: $1"
+      ;;
+    esac
+    shift
+  done
+
+  require_command jq
+  local source
+  source=$(config_source)
+
+  if [[ $json == "true" ]]; then
+    jq '.bar.layout // { left: [], center: [], right: [] }' "$source"
+    return
+  fi
+
+  jq -r '
+    (.bar.layout // { left: [], center: [], right: [] }) as $layout |
+    ["left", "center", "right"][] as $section |
+    ($layout[$section] // []) as $entries |
+    if ($entries | length) == 0 then
+      "\($section)\t-\t-"
+    else
+      $entries | to_entries[] | "\($section)\t\(.key)\t\(.value.id // "<missing>")"
+    end
+  ' "$source" | awk '
+    BEGIN { printf "%-8s %-5s %s\n", "SECTION", "INDEX", "WIDGET" }
+    { printf "%-8s %-5s %s\n", $1, $2, $3 }
+  '
+}
+
+mutate_bar() {
+  require_command jq
+  require_command python3
+  require_omarchy_path
+
+  local operation="$1"
+  shift
+  local id=""
+  local section=""
+  local index=""
+  local before=""
+  local after=""
+  local from_section=""
+  local from_index=""
+  local duplicate="false"
+  local all="false"
+  local key=""
+  local value=""
+  local value_is_json="false"
+  local new_id=""
+
+  while (( $# > 0 )); do
+    case "$1" in
+    --id)
+      id="${2-}"
+      shift 2
+      ;;
+    --section)
+      section="${2:-}"
+      validate_section "$section"
+      shift 2
+      ;;
+    --index)
+      index="${2:-}"
+      validate_index "$index"
+      shift 2
+      ;;
+    --before)
+      before="${2:-}"
+      [[ -n $before ]] || fail "--before requires a widget id"
+      shift 2
+      ;;
+    --after)
+      after="${2:-}"
+      [[ -n $after ]] || fail "--after requires a widget id"
+      shift 2
+      ;;
+    --from-section)
+      from_section="${2:-}"
+      validate_section "$from_section"
+      shift 2
+      ;;
+    --from-index)
+      from_index="${2:-}"
+      validate_index "$from_index"
+      shift 2
+      ;;
+    --duplicate)
+      duplicate="true"
+      shift
+      ;;
+    --all)
+      all="true"
+      shift
+      ;;
+    --key)
+      key="${2:-}"
+      [[ -n $key ]] || fail "--key requires a value"
+      shift 2
+      ;;
+    --new-id)
+      new_id="${2:-}"
+      [[ -n $new_id ]] || fail "--new-id requires a value"
+      shift 2
+      ;;
+    --value)
+      value="${2:-}"
+      shift 2
+      ;;
+    --json)
+      value_is_json="true"
+      shift
+      ;;
+    *)
+      fail "unknown option: $1"
+      ;;
+    esac
+  done
+
+  if [[ -n $before && -n $after ]]; then
+    fail "use only one of --before or --after"
+  fi
+
+  local source tmp
+  source=$(config_source)
+  mkdir -p "$(dirname "$CONFIG_FILE")"
+  tmp=$(mktemp)
+
+  OPERATION="$operation" \
+  WIDGET_ID="$id" \
+  TARGET_SECTION="$section" \
+  TARGET_INDEX="$index" \
+  TARGET_BEFORE="$before" \
+  TARGET_AFTER="$after" \
+  FROM_SECTION="$from_section" \
+  FROM_INDEX="$from_index" \
+  ALLOW_DUPLICATE="$duplicate" \
+  REMOVE_ALL="$all" \
+  SET_KEY="$key" \
+  SET_VALUE="$value" \
+  SET_VALUE_IS_JSON="$value_is_json" \
+  NEW_WIDGET_ID="$new_id" \
+  python3 - "$source" >"$tmp" <<'PY'
+import json
+import os
+import sys
+from copy import deepcopy
+
+source = sys.argv[1]
+operation = os.environ["OPERATION"]
+aliases = {
+    "Omarchy": "omarchy.menu",
+    "Workspaces": "omarchy.workspaces",
+    "Media": "omarchy.media",
+    "AudioPanel": "omarchy.audio",
+    "MonitorPanel": "omarchy.monitor",
+    "NetworkPanel": "omarchy.network",
+    "PowerPanel": "omarchy.power",
+    "BluetoothPanel": "omarchy.bluetooth",
+    "Clock": "omarchy.clock",
+    "Indicators": "omarchy.indicators",
+    "NotificationCenter": "omarchy.notifications",
+    "SystemUpdate": "omarchy.system-update",
+    "SystemStats": "omarchy.system-stats",
+    "Tray": "omarchy.tray",
+    "Weather": "omarchy.weather",
+    "Microphone": "omarchy.microphone",
+    "ActiveWindow": "omarchy.active-window",
+    "KeyboardLayout": "omarchy.keyboard-layout",
+    "LockKeys": "omarchy.lock-keys",
+    "Spacer": "omarchy.spacer",
+}
+
+
+def canonical(value):
+    return aliases.get(str(value or ""), str(value or ""))
+
+
+widget_id = canonical(os.environ.get("WIDGET_ID", ""))
+target_section = os.environ.get("TARGET_SECTION", "")
+target_index = os.environ.get("TARGET_INDEX", "")
+target_before = canonical(os.environ.get("TARGET_BEFORE", ""))
+target_after = canonical(os.environ.get("TARGET_AFTER", ""))
+from_section = os.environ.get("FROM_SECTION", "")
+from_index = os.environ.get("FROM_INDEX", "")
+allow_duplicate = os.environ.get("ALLOW_DUPLICATE") == "true"
+remove_all = os.environ.get("REMOVE_ALL") == "true"
+set_key = os.environ.get("SET_KEY", "")
+set_value = os.environ.get("SET_VALUE", "")
+set_value_is_json = os.environ.get("SET_VALUE_IS_JSON") == "true"
+new_widget_id = os.environ.get("NEW_WIDGET_ID", "")
+sections = ["left", "center", "right"]
+
+
+def die(message):
+    print(f"omarchy-plugin: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def load_config(path):
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    if not isinstance(data, dict):
+        die("shell config must be a JSON object")
+    data = deepcopy(data)
+    data["version"] = 1
+    data.setdefault("bar", {})
+    if not isinstance(data["bar"], dict):
+        data["bar"] = {}
+    data["bar"].setdefault("layout", {})
+    if not isinstance(data["bar"]["layout"], dict):
+        data["bar"]["layout"] = {}
+    for section in sections:
+        entries = data["bar"]["layout"].get(section)
+        if not isinstance(entries, list):
+            data["bar"]["layout"][section] = []
+    data.setdefault("plugins", [])
+    if not isinstance(data["plugins"], list):
+        data["plugins"] = []
+    return data
+
+
+config = load_config(source)
+layout = config["bar"]["layout"]
+
+
+def find_entries(id_value=None, only_section=""):
+    found = []
+    for section in sections:
+        if only_section and section != only_section:
+            continue
+        for index, entry in enumerate(layout[section]):
+            if id_value is None or (isinstance(entry, dict) and canonical(entry.get("id")) == id_value):
+                found.append((section, index, entry))
+    return found
+
+
+def entry_at(section, index):
+    if section not in sections:
+        die("section must be left, center, or right")
+    if index < 0 or index >= len(layout[section]):
+        die(f"no widget at {section}[{index}]")
+    return layout[section][index]
+
+
+def parse_index(value):
+    if value == "":
+        return None
+    try:
+        parsed = int(value)
+    except ValueError:
+        die("index must be a non-negative integer")
+    if parsed < 0:
+        die("index must be a non-negative integer")
+    return parsed
+
+
+def resolve_target(default_section="right"):
+    if target_before or target_after:
+        target_id = target_before or target_after
+        matches = find_entries(target_id, target_section)
+        if not matches:
+            scope = f" in {target_section}" if target_section else ""
+            die(f"could not find target widget {target_id}{scope}")
+        section, index, _entry = matches[0]
+        if target_after:
+            index += 1
+        return section, index
+
+    section = target_section or default_section
+    if section not in sections:
+        die("section must be left, center, or right")
+    index = parse_index(target_index)
+    if index is None:
+        index = len(layout[section])
+    if index > len(layout[section]):
+        index = len(layout[section])
+    return section, index
+
+
+def source_location():
+    if from_index != "":
+        if not from_section:
+            die("--from-index requires --from-section")
+        index = parse_index(from_index)
+        entry = entry_at(from_section, index)
+        if widget_id and (not isinstance(entry, dict) or canonical(entry.get("id")) != widget_id):
+            die(f"widget at {from_section}[{index}] is not {widget_id}")
+        return from_section, index, entry
+
+    if not widget_id:
+        die("widget id is required")
+    matches = find_entries(widget_id, from_section)
+    if not matches:
+        scope = f" in {from_section}" if from_section else ""
+        die(f"could not find widget {widget_id}{scope}")
+    return matches[0]
+
+
+if operation == "add":
+    if not widget_id:
+        die("widget id is required")
+    if not allow_duplicate and find_entries(widget_id):
+        die(f"{widget_id} is already in the bar; use 'bar move' or pass --duplicate")
+    section, index = resolve_target("right")
+    layout[section].insert(index, {"id": widget_id})
+
+elif operation == "move":
+    old_section, old_index, entry = source_location()
+    entry = deepcopy(entry)
+    if isinstance(entry, dict):
+        entry["id"] = widget_id
+    del layout[old_section][old_index]
+    default_section = target_section or old_section
+    section, index = resolve_target(default_section)
+    layout[section].insert(index, entry)
+
+elif operation == "remove":
+    if from_index != "":
+        old_section, old_index, _entry = source_location()
+        del layout[old_section][old_index]
+    elif target_index != "":
+        if not target_section:
+            die("--index requires --section for bar remove")
+        index = parse_index(target_index)
+        entry = entry_at(target_section, index)
+        if widget_id and (not isinstance(entry, dict) or canonical(entry.get("id")) != widget_id):
+            die(f"widget at {target_section}[{index}] is not {widget_id}")
+        del layout[target_section][index]
+    else:
+        if not widget_id:
+            die("widget id is required")
+        matches = find_entries(widget_id, target_section)
+        if not matches:
+            scope = f" in {target_section}" if target_section else ""
+            die(f"could not find widget {widget_id}{scope}")
+        if remove_all:
+            for section, index, _entry in reversed(matches):
+                del layout[section][index]
+        else:
+            section, index, _entry = matches[0]
+            del layout[section][index]
+
+elif operation == "replace":
+    if not widget_id:
+        die("source widget id is required")
+    if not new_widget_id:
+        die("replacement widget id is required")
+    section, index, entry = source_location()
+    if not isinstance(entry, dict):
+        die("widget entry must be an object")
+    entry["id"] = new_widget_id
+    layout[section][index] = entry
+
+elif operation == "set":
+    if not widget_id:
+        die("widget id is required")
+    if not set_key:
+        die("setting key is required")
+    if from_index != "":
+        section, index, entry = source_location()
+    elif target_index != "":
+        if not target_section:
+            die("--index requires --section for bar set")
+        index = parse_index(target_index)
+        entry = entry_at(target_section, index)
+        if not isinstance(entry, dict) or canonical(entry.get("id")) != widget_id:
+            die(f"widget at {target_section}[{index}] is not {widget_id}")
+        section = target_section
+    else:
+        matches = find_entries(widget_id, target_section)
+        if not matches:
+            scope = f" in {target_section}" if target_section else ""
+            die(f"could not find widget {widget_id}{scope}")
+        section, index, entry = matches[0]
+    if not isinstance(entry, dict):
+        die("widget entry must be an object")
+    if set_value_is_json:
+        try:
+            parsed_value = json.loads(set_value)
+        except json.JSONDecodeError as error:
+            die(f"invalid JSON value: {error}")
+    else:
+        parsed_value = set_value
+    layout[section][index][set_key] = parsed_value
+
+else:
+    die(f"unknown operation: {operation}")
+
+json.dump(config, sys.stdout, indent=2)
+sys.stdout.write("\n")
+PY
+
+  mv "$tmp" "$CONFIG_FILE"
+  omarchy-shell -q shell rescanPlugins >/dev/null 2>&1 || true
+}
+
+bar_add() {
+  local id="${1:-}"
+  [[ -n $id ]] || fail "bar add requires a widget id"
+  shift
+  mutate_bar add --id "$id" "$@"
+  echo "Added $id to the bar"
+}
+
+bar_move() {
+  local id="${1:-}"
+  [[ -n $id ]] || fail "bar move requires a widget id"
+  shift
+  mutate_bar move --id "$id" "$@"
+  echo "Moved $id"
+}
+
+bar_remove() {
+  local id=""
+  if (( $# > 0 )) && [[ $1 != --* ]]; then
+    id="$1"
+    shift
+  fi
+  mutate_bar remove --id "$id" "$@"
+  if [[ -n $id ]]; then
+    echo "Removed $id from the bar"
+  else
+    echo "Removed bar widget"
+  fi
+}
+
+bar_set() {
+  local id="${1:-}"
+  local key="${2:-}"
+  local value="${3:-}"
+  [[ -n $id ]] || fail "bar set requires a widget id"
+  [[ -n $key ]] || fail "bar set requires a setting key"
+  (( $# >= 3 )) || fail "bar set requires a value"
+  shift 3
+  mutate_bar set --id "$id" --key "$key" --value "$value" "$@"
+  echo "Set $key on $(canonical_widget_id "$id")"
+}
+
+slug_id() {
+  tr '[:upper:]' '[:lower:]' <<<"$1" | sed -E 's/^omarchy\.//; s/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
+}
+
+builtin_widget_info() {
+  require_omarchy_path
+  local id
+  id=$(canonical_widget_id "$1")
+  case "$id" in
+  omarchy.menu) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Omarchy.qml" "Omarchy menu" "Compositor" "false" ;;
+  omarchy.workspaces) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Workspaces.qml" "Workspaces" "Compositor" "false" ;;
+  omarchy.media) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Media.qml" "Media" "Media" "false" ;;
+  omarchy.audio) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/panels/Audio.qml" "Audio" "Audio" "false" ;;
+  omarchy.monitor) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/panels/Monitor.qml" "Display" "System" "false" ;;
+  omarchy.network) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/panels/Network.qml" "Network" "Network" "false" ;;
+  omarchy.power) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/panels/Power.qml" "Power" "System" "false" ;;
+  omarchy.bluetooth) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/panels/Bluetooth.qml" "Bluetooth" "Network" "false" ;;
+  omarchy.clock) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Clock.qml" "Clock" "Time" "false" ;;
+  omarchy.indicators) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Indicators.qml" "Indicators" "Status" "true" ;;
+  omarchy.notifications) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/NotificationCenter.qml" "Notification center" "Status" "false" ;;
+  omarchy.system-update) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/SystemUpdate.qml" "System update" "System" "false" ;;
+  omarchy.system-stats) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/SystemStats.qml" "System stats" "System" "false" ;;
+  omarchy.tray) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Tray.qml" "System tray" "Status" "false" ;;
+  omarchy.weather) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Weather.qml" "Weather" "Info" "false" ;;
+  omarchy.microphone) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Microphone.qml" "Microphone" "Audio" "false" ;;
+  omarchy.active-window) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/ActiveWindow.qml" "Active window" "Compositor" "false" ;;
+  omarchy.keyboard-layout) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/KeyboardLayout.qml" "Keyboard layout" "Compositor" "false" ;;
+  omarchy.lock-keys) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/LockKeys.qml" "Lock keys" "System" "false" ;;
+  omarchy.spacer) printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$OMARCHY_PATH/shell/plugins/bar/widgets/Spacer.qml" "Spacer" "Layout" "true" ;;
+  *) return 1 ;;
+  esac
+}
+
+clone_source_options() {
+  local id path name category multiple
+  for id in omarchy.menu omarchy.workspaces omarchy.clock omarchy.weather omarchy.indicators omarchy.system-update omarchy.tray omarchy.audio omarchy.network omarchy.bluetooth omarchy.monitor omarchy.power omarchy.media omarchy.notifications omarchy.system-stats omarchy.microphone omarchy.active-window omarchy.keyboard-layout omarchy.lock-keys omarchy.spacer; do
+    IFS=$'\t' read -r _ path name category multiple < <(builtin_widget_info "$id")
+    printf '%s\tBuilt-in widget\t%s\n' "$id" "$name"
+  done
+
+  find "$OMARCHY_PATH/shell/plugins" -path '*/manifest.json' -print 2>/dev/null | sort | while IFS= read -r manifest; do
+    id=$(jq -r '.id // empty' "$manifest" 2>/dev/null || true)
+    name=$(jq -r '.name // .id // empty' "$manifest" 2>/dev/null || true)
+    if [[ -n $id && $id != "omarchy.bar" ]] && ! builtin_widget_info "$id" >/dev/null 2>&1; then
+      printf '%s\tBuilt-in plugin\t%s\n' "$id" "${name:-$id}"
+    fi
+  done
+
+  if [[ -d $HOME/.config/omarchy/plugins ]]; then
+    find "$HOME/.config/omarchy/plugins" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) 2>/dev/null | sort | while IFS= read -r dir; do
+      [[ -f $dir/manifest.json ]] || continue
+      id=$(jq -r '.id // empty' "$dir/manifest.json" 2>/dev/null || true)
+      name=$(jq -r '.name // .id // empty' "$dir/manifest.json" 2>/dev/null || true)
+      [[ -n $id ]] && printf '%s\tUser plugin\t%s\n' "$id" "${name:-$id}"
+    done
+  fi
+}
+
+choose_value() {
+  local prompt="$1"
+  shift
+  if command -v gum >/dev/null 2>&1; then
+    gum choose --header "$prompt" "$@"
+  else
+    printf '%s\n' "$@" | fzf --prompt "$prompt > "
+  fi
+}
+
+input_value() {
+  local prompt="$1"
+  local value="${2:-}"
+  if command -v gum >/dev/null 2>&1; then
+    gum input --prompt "$prompt " --value "$value"
+  else
+    read -r -p "$prompt " value
+    printf '%s' "$value"
+  fi
+}
+
+choose_clone_source() {
+  local selected
+  if command -v fzf >/dev/null 2>&1; then
+    selected=$(clone_source_options | fzf --delimiter=$'\t' --with-nth=1,2,3 --prompt "Clone plugin > ") || return 1
+    cut -f1 <<<"$selected"
+  else
+    clone_source_options | cut -f1 | gum choose --header "Clone plugin"
+  fi
+}
+
+open_plugin_dir() {
+  local tool="$1"
+  local dir="$2"
+  case "$tool" in
+  "" | none)
+    return
+    ;;
+  pi | claude | nvim | tdl)
+    command -v "$tool" >/dev/null 2>&1 || fail "$tool is not installed"
+    "$tool" "$dir"
+    ;;
+  editor)
+    "${VISUAL:-${EDITOR:-nvim}}" "$dir"
+    ;;
+  *)
+    fail "unknown open tool: $tool"
+    ;;
+  esac
+}
+
+rewrite_cloned_qml() {
+  local file="$1"
+  local id="$2"
+  local source_path="$3"
+  python3 - "$file" "$id" "$source_path" <<'PY'
+import pathlib
+import re
+import sys
+path, plugin_id, source_path = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])
+text = open(path, encoding="utf-8").read()
+text = re.sub(r'moduleName:\s*"[^"]+"', f'moduleName: "{plugin_id}"', text, count=1)
+
+
+def resolve_relative(match):
+    rel = match.group(1)
+    if rel.startswith(("../", "./")):
+        resolved = (source_path.parent / rel).resolve()
+        return '"' + resolved.as_uri() + '"'
+    return match.group(0)
+
+text = re.sub(r'Qt\.resolvedUrl\("([^"]+)"\)', resolve_relative, text)
+open(path, "w", encoding="utf-8").write(text)
+PY
+}
+
+write_clone_manifest() {
+  local file="$1"
+  local id="$2"
+  local name="$3"
+  local description="$4"
+  local category="$5"
+  local multiple="$6"
+  local source_id="$7"
+  local source_path="$8"
+  python3 - "$file" "$id" "$name" "$description" "$category" "$multiple" "$source_id" "$source_path" <<'PY'
+import json
+import sys
+file, plugin_id, name, description, category, multiple, source_id, source_path = sys.argv[1:]
+data = {
+  "schemaVersion": 1,
+  "id": plugin_id,
+  "name": name,
+  "version": "1.0.0",
+  "author": "Local",
+  "description": description,
+  "kinds": ["bar-widget"],
+  "entryPoints": {"barWidget": "Widget.qml"},
+  "barWidget": {
+    "displayName": name,
+    "description": description,
+    "category": category,
+    "allowMultiple": multiple == "true"
+  },
+  "omarchy": {
+    "clonedFrom": source_id,
+    "clonedFromPath": source_path
+  }
+}
+open(file, "w", encoding="utf-8").write(json.dumps(data, indent=2) + "\n")
+PY
+}
+
+update_cloned_manifest() {
+  local file="$1"
+  local id="$2"
+  local name="$3"
+  local source_id="$4"
+  local source_path="$5"
+  python3 - "$file" "$id" "$name" "$source_id" "$source_path" <<'PY'
+import json
+import sys
+file, plugin_id, name, source_id, source_path = sys.argv[1:]
+with open(file, encoding="utf-8") as handle:
+    data = json.load(handle)
+data["id"] = plugin_id
+data["name"] = name
+if "barWidget" in data and isinstance(data["barWidget"], dict):
+    data["barWidget"]["displayName"] = name
+meta = data.get("omarchy") if isinstance(data.get("omarchy"), dict) else {}
+meta.update({"clonedFrom": source_id, "clonedFromPath": source_path})
+data["omarchy"] = meta
+open(file, "w", encoding="utf-8").write(json.dumps(data, indent=2) + "\n")
+PY
+}
+
+clone_command() {
+  require_command jq
+  require_command python3
+  require_omarchy_path
+
+  local source_id="${1:-}"
+  local new_id="${2:-}"
+  if (( $# > 0 )) && [[ $1 != --* ]]; then shift; fi
+  if (( $# > 0 )) && [[ $1 != --* ]]; then shift; fi
+
+  local display_name=""
+  local open_tool=""
+  local replace="false"
+  local add="false"
+  local placement=()
+
+  while (( $# > 0 )); do
+    case "$1" in
+    --name)
+      display_name="${2:-}"
+      [[ -n $display_name ]] || fail "--name requires a value"
+      shift 2
+      ;;
+    --open)
+      open_tool="${2:-}"
+      [[ -n $open_tool ]] || fail "--open requires a value"
+      shift 2
+      ;;
+    --replace)
+      replace="true"
+      shift
+      ;;
+    --add)
+      add="true"
+      shift
+      ;;
+    --section | --index | --before | --after)
+      placement+=("$1" "${2:-}")
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      return
+      ;;
+    *)
+      fail "unknown clone option: $1"
+      ;;
+    esac
+  done
+
+  if [[ -z $source_id ]]; then
+    source_id=$(choose_clone_source) || fail "clone cancelled"
+  fi
+  source_id=$(canonical_widget_id "$source_id")
+
+  local default_slug
+  default_slug=$(slug_id "$source_id")
+  if [[ -z $new_id ]]; then
+    new_id=$(input_value "New plugin id:" "local.$default_slug")
+  fi
+  validate_plugin_id "$new_id"
+
+  local target_dir="$HOME/.config/omarchy/plugins/$new_id"
+  [[ ! -e $target_dir && ! -L $target_dir ]] || fail "$target_dir already exists"
+
+  local source_path=""
+  local source_name=""
+  local source_category="Plugin"
+  local source_multiple="false"
+  local source_type=""
+
+  if IFS=$'\t' read -r _ source_path source_name source_category source_multiple < <(builtin_widget_info "$source_id"); then
+    source_type="builtin-widget"
+  elif [[ -f $HOME/.config/omarchy/plugins/$source_id/manifest.json ]]; then
+    source_type="user-plugin"
+    source_path="$HOME/.config/omarchy/plugins/$source_id"
+    source_name=$(jq -r '.name // .id' "$source_path/manifest.json")
+  else
+    source_path=$(find "$OMARCHY_PATH/shell/plugins" -path '*/manifest.json' -print0 | xargs -0 jq -r --arg id "$source_id" 'select(.id == $id) | input_filename' 2>/dev/null | head -1 || true)
+    if [[ -n $source_path ]]; then
+      source_type="builtin-plugin"
+      source_path=$(dirname "$source_path")
+      source_name=$(jq -r '.name // .id' "$source_path/manifest.json")
+    fi
+  fi
+
+  [[ -n $source_type ]] || fail "unknown clone source: $source_id"
+  [[ -n $display_name ]] || display_name=$(input_value "Display name:" "${source_name:-$new_id}")
+  [[ -n $display_name ]] || fail "display name is required"
+
+  mkdir -p "$target_dir"
+  if [[ $source_type == "builtin-widget" ]]; then
+    cp "$source_path" "$target_dir/Widget.qml"
+    rewrite_cloned_qml "$target_dir/Widget.qml" "$new_id" "$source_path"
+    write_clone_manifest "$target_dir/manifest.json" "$new_id" "$display_name" "Cloned from $source_id" "$source_category" "$source_multiple" "$source_id" "$source_path"
+  else
+    cp -aL "$source_path/." "$target_dir/"
+    update_cloned_manifest "$target_dir/manifest.json" "$new_id" "$display_name" "$source_id" "$source_path"
+  fi
+
+  {
+    printf '# %s\n\n' "$display_name"
+    printf 'Cloned from `%s`.\n\n' "$source_id"
+    printf 'Source: `%s`\n\n' "$source_path"
+    printf 'The original remains built into Omarchy. Remove this plugin directory or swap\n'
+    printf 'your bar entry back to `%s` whenever you want to return to the built-in.\n' "$source_id"
+  } >"$target_dir/UPSTREAM.md"
+
+  omarchy-shell -q shell rescanPlugins >/dev/null 2>&1 || true
+
+  if [[ $replace == "true" ]]; then
+    mutate_bar replace --id "$source_id" --new-id "$new_id"
+    echo "Cloned $source_id to $new_id and replaced the first bar instance"
+  elif [[ $add == "true" ]]; then
+    bar_add "$new_id" "${placement[@]}"
+    echo "Cloned $source_id to $new_id"
+  else
+    echo "Cloned $source_id to $new_id"
+  fi
+
+  if [[ -z $open_tool && -t 0 && -t 1 ]]; then
+    open_tool=$(choose_value "Open with" none pi claude nvim tdl editor)
+  fi
+  open_plugin_dir "$open_tool" "$target_dir"
+}
+
+bar_command() {
+  local command="${1:-list}"
+  [[ $# -gt 0 ]] && shift || true
+
+  case "$command" in
+  edit | settings)
+    (( $# == 0 )) || fail "bar edit does not take arguments"
+    exec omarchy-launch-bar-settings
+    ;;
+  list)
+    bar_list "$@"
+    ;;
+  add)
+    bar_add "$@"
+    ;;
+  move)
+    bar_move "$@"
+    ;;
+  remove | rm)
+    bar_remove "$@"
+    ;;
+  set)
+    bar_set "$@"
+    ;;
+  -h | --help | help)
+    usage
+    ;;
+  *)
+    fail "unknown bar command: $command"
+    ;;
+  esac
+}
+
+command="${1:-}"
+case "$command" in
+list | ls)
+  shift
+  print_plugins "$@"
+  ;;
+rescan)
+  shift
+  rescan_plugins "$@"
+  ;;
+enable)
+  shift
+  plugin_enabled true "$@"
+  ;;
+disable)
+  shift
+  plugin_enabled false "$@"
+  ;;
+clone)
+  shift
+  clone_command "$@"
+  ;;
+bar | widget | widgets)
+  shift
+  bar_command "$@"
+  ;;
+-h | --help | help | "")
+  usage
+  ;;
+*)
+  fail "unknown command: $command"
+  ;;
+esac
