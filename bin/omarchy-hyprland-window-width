@@ -1,0 +1,168 @@
+#!/bin/bash
+
+# omarchy:summary=Save or restore the focused Hyprland window width
+# omarchy:args=<save|restore>
+# omarchy:examples=omarchy hyprland window width save | omarchy-hyprland-window-width restore
+
+set -euo pipefail
+
+STATE_DIR="$HOME/.local/state/omarchy/windows"
+
+usage() {
+  echo "Usage: omarchy-hyprland-window-width save|restore" >&2
+  exit 1
+}
+
+active_window() {
+  hyprctl activewindow -j 2>/dev/null
+}
+
+window_key() {
+  jq -r '[.class, .initialClass, .title] | map(select(. != null and . != "")) | first // empty' <<<"$1"
+}
+
+workspace_key() {
+  jq -r '.workspace.id // .workspace.name // empty' <<<"$1"
+}
+
+state_file_for() {
+  local key="$1"
+  local workspace="$2"
+  local filename="workspace-${workspace}-${key}"
+
+  filename="${filename//\//_}"
+  filename="${filename//$'\n'/_}"
+
+  printf '%s/%s.width' "$STATE_DIR" "$filename"
+}
+
+notify_missing_width() {
+  local key="$1"
+  local workspace="$2"
+
+  omarchy-notification-send -g  "No saved width found for $key on workspace $workspace" "Use Super + Alt + Home to save one for this workspace."
+}
+
+notify_saved_width() {
+  local key="$1"
+  local workspace="$2"
+
+  omarchy-notification-send -g  "Saved width for $key on workspace $workspace" "Restore using Super + Home on this workspace."
+}
+
+hypr_dispatch() {
+  local lua="$1"
+  shift
+
+  hyprctl dispatch "$lua" >/dev/null 2>&1 || hyprctl dispatch "$@" >/dev/null
+}
+
+window_width() {
+  local address="$1"
+
+  hyprctl clients -j | jq -er --arg address "$address" '.[] | select(.address == $address) | .size[0]'
+}
+
+resize_width_by() {
+  local window="$1"
+  local delta="$2"
+
+  hypr_dispatch "hl.dsp.window.resize({ window = \"$window\", x = $delta, y = 0, relative = true })" resizeactive "$delta" 0 "$window"
+}
+
+save_width() {
+  local active="$1"
+  local key="$2"
+  local workspace="$3"
+  local state_file="$4"
+  local tmp=""
+  local width=""
+
+  width=$(jq -er '.size[0]' <<<"$active")
+
+  mkdir -p "$STATE_DIR"
+  tmp=$(mktemp "$STATE_DIR/.width.XXXXXX")
+  printf '%s\n' "$width" >"$tmp"
+  mv "$tmp" "$state_file"
+
+  notify_saved_width "$key" "$workspace"
+  echo "Saved width for $key on workspace $workspace"
+}
+
+restore_width() {
+  local active="$1"
+  local key="$2"
+  local workspace="$3"
+  local state_file="$4"
+  local address=""
+  local current_width=""
+  local delta=""
+  local direction=""
+  local next_width=""
+  local probe=""
+  local probe_delta=""
+  local width=""
+  local window=""
+
+  if [[ ! -f $state_file ]]; then
+    notify_missing_width "$key" "$workspace"
+    exit 1
+  fi
+
+  width=$(<"$state_file")
+  [[ $width =~ ^[0-9]+$ ]] || exit 1
+
+  address=$(jq -r '.address // empty' <<<"$active")
+  [[ -n $address ]] || exit 1
+
+  window="address:$address"
+
+  current_width=$(window_width "$address")
+  ((current_width == width)) && return
+
+  for probe in 10 -10; do
+    resize_width_by "$window" "$probe"
+    next_width=$(window_width "$address")
+
+    if ((next_width != current_width)); then
+      if (((next_width - current_width) * probe > 0)); then
+        direction=1
+      else
+        direction=-1
+      fi
+
+      current_width=$next_width
+      break
+    fi
+  done
+
+  [[ -n $direction ]] || exit 1
+
+  for _ in {1..6}; do
+    delta=$((width - current_width))
+    ((delta == 0)) && break
+
+    probe_delta=$((delta * direction))
+    resize_width_by "$window" "$probe_delta"
+    next_width=$(window_width "$address")
+
+    ((next_width == current_width)) && break
+    current_width=$next_width
+  done
+}
+
+action=${1:-}
+[[ $action == "save" || $action == "restore" ]] || usage
+
+active=$(active_window)
+key=$(window_key "$active")
+[[ -n $key ]] || exit 1
+workspace=$(workspace_key "$active")
+[[ -n $workspace ]] || exit 1
+
+state_file=$(state_file_for "$key" "$workspace")
+
+case "$action" in
+save) save_width "$active" "$key" "$workspace" "$state_file" ;;
+restore) restore_width "$active" "$key" "$workspace" "$state_file" ;;
+esac
