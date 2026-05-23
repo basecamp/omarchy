@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Set the default editor for $EDITOR
-# omarchy:args=[code|cursor|zed|sublime_text|helix|vim|emacs|nvim]
+# omarchy:args=[antigravity|code|cursor|zed|sublime_text|helix|vim|emacs|nvim]
 # omarchy:examples=omarchy default editor | omarchy default editor code | omarchy default editor helix
 
 if (($# == 0)); then
@@ -10,6 +10,7 @@ if (($# == 0)); then
 fi
 
 case "$1" in
+antigravity) editor="antigravity"; name="Antigravity"; glyph="" ;;
 code) editor="code"; name="VSCode"; glyph="" ;;
 cursor) editor="cursor"; name="Cursor"; glyph="" ;;
 zed | zeditor) editor="zeditor"; name="Zed"; glyph="" ;;
@@ -19,7 +20,7 @@ vim) editor="vim"; name="Vim"; glyph="" ;;
 emacs) editor="emacs"; name="Emacs"; glyph="" ;;
 nvim) editor="nvim"; name="Neovim"; glyph="" ;;
 *)
-  echo "Usage: omarchy-default-editor <code|cursor|zed|sublime_text|helix|vim|emacs|nvim>"
+  echo "Usage: omarchy-default-editor <antigravity|code|cursor|zed|sublime_text|helix|vim|emacs|nvim>"
   exit 1
   ;;
 esac
