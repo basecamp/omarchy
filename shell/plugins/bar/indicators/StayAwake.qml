@@ -29,13 +29,16 @@ BarIndicator {
 
   Process {
     id: statusProc
-    command: ["bash", "-lc", "omarchy-shell idle status 2>/dev/null"]
+    command: ["omarchy-toggle-idle", "--status"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
         var data = root.extractData(text)
-        root.active = data && data.enabled === false
+        root.active = data && data.enabled === true
       }
+    }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) root.active = false
     }
   }
 
