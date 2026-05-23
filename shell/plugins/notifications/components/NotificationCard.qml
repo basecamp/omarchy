@@ -47,6 +47,7 @@ Rectangle {
            source.indexOf("opera") >= 0
   }
   readonly property string sanitizedBody: sanitizeBody(body)
+  readonly property string styledBody: sanitizedBody.replace(/\r\n|\r|\n/g, "<br/>")
 
   readonly property color dimColor: Qt.darker(Color.notifications.text, 1.4)
   readonly property color bodyColor: Qt.darker(Color.notifications.text, 1.15)
@@ -167,7 +168,7 @@ Rectangle {
           Layout.fillWidth: true
           Layout.topMargin: Style.space(2)
           visible: root.sanitizedBody.length > 0
-          text: root.sanitizedBody
+          text: root.styledBody
           textFormat: Text.StyledText
           font.family: "Liberation Sans"
           color: root.bodyColor
