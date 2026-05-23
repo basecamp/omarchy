@@ -153,7 +153,7 @@ catch_errors() {
       omarchy-upload-log
       ;;
     "Exit" | "")
-      exit 1
+      exit "$exit_code"
       ;;
     esac
   done
