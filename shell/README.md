@@ -19,7 +19,6 @@ The runtime layout:
 ```
 shell/
   shell.qml              entry point (ShellRoot)
-  shell-defaults.json    canonical out-of-the-box config
   services/
     PluginRegistry.qml   discovers, validates plugins, looks up enabled state in shell.json
     BarWidgetRegistry.qml unified registry for bar widgets (1p + 3p)
@@ -168,12 +167,12 @@ customization from the shipped defaults lives in it.
 | `~/.config/omarchy/shell.json`    | the shell      | full layout + per-entry settings + enabled plugin list |
 | `~/.config/omarchy/plugins/<id>/` | user           | drop-in third-party plugin source files                |
 
-The `shell-defaults.json` bundled with the shell describes the
+The `config/omarchy/shell.json` default config describes the
 fresh-install state. When the user has no `shell.json`, the shell uses
 the defaults verbatim. Once the user customizes anything, `shell.json`
 becomes the authoritative file — we do **not** deep-merge defaults back
 in. Pressing **Reset bar to defaults** in `omarchy launch bar settings`
-rewrites the `bar` subtree from the current `shell-defaults.json`.
+rewrites the `bar` subtree from the current default shell config.
 
 ### shell.json shape
 

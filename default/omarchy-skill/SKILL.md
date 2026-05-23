@@ -58,7 +58,7 @@ This directory contains Omarchy's source files managed by git. Any changes will 
 
 **Reading `~/.local/share/omarchy/` is SAFE and useful** - do it freely to:
 - Understand how omarchy commands work: `omarchy theme set --help` or `cat $(which omarchy-theme-set)`
-- See default configs before customizing: `cat ~/.local/share/omarchy/shell/shell-defaults.json`
+- See default configs before customizing: `cat ~/.local/share/omarchy/config/omarchy/shell.json`
 - Check stock theme files to copy for customization
 - Reference default hyprland settings: `cat ~/.local/share/omarchy/default/hypr/*`
 
@@ -154,7 +154,7 @@ inside a single long-running Quickshell process (`omarchy-shell`).
 
 ```
 ~/.config/omarchy/shell.json      # User overrides: bar.position, bar.layout, plugins[]
-~/.local/share/omarchy/shell/shell-defaults.json   # Canonical defaults
+~/.local/share/omarchy/config/omarchy/shell.json   # Canonical defaults
 ```
 
 The shell hot-reloads `shell.json` on save — no restart needed for layout

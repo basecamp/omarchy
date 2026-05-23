@@ -7,7 +7,7 @@
 set -e
 
 CONFIG_FILE="$HOME/.config/omarchy/shell.json"
-DEFAULTS_FILE="$OMARCHY_PATH/shell/shell-defaults.json"
+DEFAULTS_FILE="$OMARCHY_PATH/config/omarchy/shell.json"
 position=$1
 
 if [[ ! $position =~ ^(top|bottom|left|right)$ ]]; then
@@ -18,7 +18,7 @@ fi
 mkdir -p "$(dirname "$CONFIG_FILE")"
 tmp=$(mktemp)
 
-# Seed from shell-defaults.json when the user has no shell.json yet (or it's
+# Seed from the default shell.json when the user has no shell.json yet (or it's
 # malformed). Writing just `{ bar: { position } }` would leave the bar with
 # no layout, since the shell treats any valid user config as authoritative
 # and does not deep-merge defaults.

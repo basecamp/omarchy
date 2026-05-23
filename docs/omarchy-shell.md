@@ -106,7 +106,7 @@ Rules:
 6. `idle.screensaver` and `idle.lock` are seconds since user idle began.
 7. `version: 1` is required.
 
-`shell-defaults.json` describes the fresh-install state. When no
+`config/omarchy/shell.json` describes the fresh-install state. When no
 user `shell.json` exists, defaults are used verbatim. Once the user
 customizes, `shell.json` is canonical — there is no deep-merge.
 

@@ -35,8 +35,8 @@ own `manifest.json`.
 
 The status bar. Mounted at startup, lives forever. Layout lives in the
 top-level `bar:` subtree of `~/.config/omarchy/shell.json` (with the shell
-providing [`shell-defaults.json`](../shell-defaults.json) when the user has
-no file). See [`bar/README.md`](bar/README.md) for the widget catalogue
+providing [`config/omarchy/shell.json`](../../config/omarchy/shell.json) when
+the user has no file). See [`bar/README.md`](bar/README.md) for the widget catalogue
 and customization schema.
 
 ## Bar settings
