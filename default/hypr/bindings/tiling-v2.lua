@@ -1,4 +1,18 @@
-o.bind("SUPER + W", "Close window", hl.dsp.window.close())
+local function close_active_window_or_chromium_tab()
+  local window = hl.get_active_window()
+
+  if window and window.class == "chromium" then
+    hl.dispatch(hl.dsp.send_key_state({ mods = "CTRL", key = "W", state = "down", window = "activewindow" }))
+
+    hl.timer(function()
+      hl.dispatch(hl.dsp.send_key_state({ mods = "CTRL", key = "W", state = "up", window = "activewindow" }))
+    end, { timeout = 50, type = "oneshot" })
+  else
+    hl.dispatch(hl.dsp.window.close())
+  end
+end
+
+o.bind("SUPER + W", "Close window or Chromium tab", close_active_window_or_chromium_tab)
 o.bind("CTRL + ALT + DELETE", "Close all windows", "omarchy-hyprland-window-close-all")
 
 o.bind("SUPER + J", "Toggle window split", hl.dsp.layout("togglesplit"))
