@@ -32,6 +32,11 @@
             "description": "Notification silencing"
           },
           {
+            "value": "Reminder",
+            "label": "Reminder",
+            "description": "Queued reminder status"
+          },
+          {
             "value": "NightLight",
             "label": "Night light",
             "description": "Blue-light filter"

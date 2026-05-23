@@ -43,7 +43,7 @@
   "learn.bash": {"icon":"󱆃","label":"Bash","keywords":"shell cheatsheet","action":"omarchy-launch-webapp 'https://devhints.io/bash'"},
 
   // Trigger
-  "trigger.reminder": {"icon":"󰔛","label":"Reminder","aliases":["reminder"],"keywords":"timer notification remind"},
+  "trigger.reminder": {"icon":"󰢌","label":"Reminder","aliases":["reminder"],"keywords":"timer notification remind"},
   "trigger.capture": {"icon":"","label":"Capture","aliases":["capture","screenshot","screenrecord","screen-record","screenrecording"],"keywords":"color text extraction"},
   "trigger.capture.screenshot": {"icon":"","label":"Screenshot","keywords":"picture","action":"omarchy-capture-screenshot"},
   "trigger.capture.screenrecord.stop": {"icon":"","label":"Stop Screenrecording","keywords":"recording video","when":"pgrep -f '^gpu-screen-recorder' >/dev/null","action":"omarchy-capture-screenrecording --stop-recording"},
@@ -67,9 +67,9 @@
   "trigger.hardware.touchpad-haptics.mid": {"icon":"󰌌","label":"mid","keywords":"medium","when":"omarchy-hw-dell-xps-haptic-touchpad >/dev/null && omarchy-cmd-present dell-xps-touchpad-haptics","checked":"[[ \"$(dell-xps-touchpad-haptics get)\" == \"mid\" ]]","action":"dell-xps-touchpad-haptics set mid"},
   "trigger.hardware.touchpad-haptics.high": {"icon":"󰌌","label":"high","when":"omarchy-hw-dell-xps-haptic-touchpad >/dev/null && omarchy-cmd-present dell-xps-touchpad-haptics","checked":"[[ \"$(dell-xps-touchpad-haptics get)\" == \"high\" ]]","action":"dell-xps-touchpad-haptics set high"},
   "trigger.hardware.touchscreen": {"icon":"󰆽","label":"Touchscreen","keywords":"tablet","when":"omarchy-hw-touchscreen >/dev/null","action":"omarchy-toggle-touchscreen"},
-  "trigger.reminder.set": {"icon":"󰔛","label":"Set one","aliases":["reminder-set","remind"],"keywords":"timer","action":"omarchy-reminder-set-interactive"},
-  "trigger.reminder.show": {"icon":"󰔛","label":"Show all","keywords":"list","action":"omarchy-reminder show"},
-  "trigger.reminder.clear": {"icon":"󰔛","label":"Clear all","keywords":"delete","action":"omarchy-reminder clear"},
+  "trigger.reminder.set": {"icon":"󰢌","label":"Set one","aliases":["reminder-set","remind"],"keywords":"timer","action":"omarchy-reminder -i"},
+  "trigger.reminder.show": {"icon":"󰢌","label":"Show all","keywords":"list","action":"omarchy-reminder show"},
+  "trigger.reminder.clear": {"icon":"󰢌","label":"Clear all","keywords":"delete","action":"omarchy-reminder clear"},
   "trigger.share.clipboard": {"icon":"","label":"Clipboard","action":"omarchy-menu-share clipboard"},
   "trigger.share.file": {"icon":"","label":"File","action":"xdg-terminal-exec --app-id=org.omarchy.terminal bash -c 'omarchy-menu-share file'"},
   "trigger.share.folder": {"icon":"","label":"Folder","keywords":"directory","action":"xdg-terminal-exec --app-id=org.omarchy.terminal bash -c 'omarchy-menu-share folder'"},

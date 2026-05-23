@@ -2,7 +2,7 @@
 
 # omarchy:summary=Send an Omarchy desktop notification
 # omarchy:args=[-g <glyph>] [-u <low|normal|critical>] <headline> [description] [notify-send options]
-# omarchy:examples=omarchy notification send "Reminder" "5 minutes are up" -g 󰔛 -u critical
+# omarchy:examples=omarchy notification send "Reminder" "5 minutes are up" -g 󰢌
 
 set -euo pipefail
 

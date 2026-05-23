@@ -116,6 +116,13 @@ Item {
     resultProc.running = true
   }
 
+  function runAction(action) {
+    var command = String(action || "")
+    if (!command) return
+
+    Quickshell.execDetached(["bash", "-lc", command])
+  }
+
   function rowHeightForDetail(detail) {
     return root.filterText && detail ? root.detailRowHeight : root.baseRowHeight
   }
@@ -733,10 +740,11 @@ Item {
 
   function applySelected(id, action) {
     if (!id) { cancel(); return }
+
     applySerial = requestSerial
     opened = false
     filterText = ""
-    if (action) Quickshell.execDetached(["bash", "-lc", action])
+    root.runAction(action)
   }
 
   function cancel() {
@@ -815,7 +823,7 @@ Item {
     // instead of opening an action with no children.
     if (entry && entry.kind === "action" && entry.action) {
       root.cancel()
-      Quickshell.execDetached(["bash", "-lc", entry.action])
+      root.runAction(entry.action)
       return "ok"
     }
     // If it's a link (a redirect to another menu), follow the link.

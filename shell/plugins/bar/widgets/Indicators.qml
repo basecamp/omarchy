@@ -9,7 +9,7 @@ BarWidget {
   moduleName: "omarchy.indicators"
 
   readonly property int indicatorSlotExtent: Style.space(22)
-  readonly property var defaultIndicatorEntries: [ "Dnd", "NightLight", "StayAwake", "ScreenRecording", "Dictation" ]
+  readonly property var defaultIndicatorEntries: [ "Dnd", "Reminder", "NightLight", "StayAwake", "ScreenRecording", "Dictation" ]
   readonly property int inactiveSlotExtent: indicatorEntries.length * indicatorSlotExtent
   readonly property var indicatorEntries: indicatorEntriesFromSettings(settings)
   property var activeIndicatorIds: []
