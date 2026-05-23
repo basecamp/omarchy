@@ -177,8 +177,7 @@ Item {
   }
 
   function normalizeKeywords(id, aliases, raw) {
-    function space(s) { return String(s || "").replace(/[._-]+/g, " ") }
-    var parts = [space(id), aliases.map(space).join(" "), raw || ""].join(" ").split(/\s+/)
+    var parts = String(raw || "").split(/\s+/)
     var seen = {}
     var out = []
     for (var i = 0; i < parts.length; i++) {
@@ -467,15 +466,51 @@ Item {
     return entry.label
   }
 
+  function searchableToken(value) {
+    return String(value || "").replace(/[._-]+/g, " ")
+  }
+
+  function leafIdFor(id) {
+    var parts = String(id || "").split(".")
+    return parts.length > 0 ? parts[parts.length - 1] : id
+  }
+
+  function nameSearchText(entry) {
+    if (!entry) return ""
+    var aliases = []
+    for (var i = 0; i < entry.aliases.length; i++) aliases.push(root.searchableToken(entry.aliases[i]))
+    return [entry.label, root.searchableToken(root.leafIdFor(entry.id)), aliases.join(" ")].join(" ").toLowerCase()
+  }
+
+  function termInSearchWords(term, text) {
+    var words = String(text || "").toLowerCase().split(/\s+/)
+    for (var i = 0; i < words.length; i++) {
+      if (words[i] === term) return true
+    }
+    return false
+  }
+
+  function keywordTextMatches(query, text) {
+    var terms = query.toLowerCase().trim().split(/\s+/)
+    for (var i = 0; i < terms.length; i++) {
+      if (terms[i] && !root.termInSearchWords(terms[i], text)) return false
+    }
+    return true
+  }
+
   function matchesQuery(entry, query) {
     if (!entry || entry.id === "root") return false
     if (!root.isVisible(entry)) return false
 
-    var haystack = (entry.label + " " + root.pathFor(entry.id) + " " + entry.keywords + " " + entry.description).toLowerCase()
+    var nameText = root.nameSearchText(entry)
+    var keywordText = (entry.keywords + " " + entry.description).toLowerCase()
     var terms = query.toLowerCase().trim().split(/\s+/)
 
     for (var i = 0; i < terms.length; i++) {
-      if (terms[i] && haystack.indexOf(terms[i]) === -1) return false
+      if (!terms[i]) continue
+      if (nameText.indexOf(terms[i]) >= 0) continue
+      if (root.termInSearchWords(terms[i], keywordText)) continue
+      return false
     }
 
     return true
@@ -484,19 +519,15 @@ Item {
   function searchScore(entry, query) {
     var needle = query.toLowerCase().trim()
     var label = entry.label.toLowerCase()
-    var path = root.pathFor(entry.id).toLowerCase()
-    var keywords = entry.keywords.toLowerCase()
-    var parent = root.item(entry.parent)
-    var parentLabel = parent ? parent.label.toLowerCase() : ""
+    var nameText = root.nameSearchText(entry)
+    var keywordText = (entry.keywords + " " + entry.description).toLowerCase()
     var score = 80
 
     if (label === needle) score = entry.parent === "root" ? 2 : 0
     else if (label.indexOf(needle) === 0) score = 10
-    else if (path.indexOf(needle) === 0) score = entry.kind === "action" ? 12 : 14
-    else if (parentLabel === needle) score = entry.kind === "action" ? 18 : 20
     else if (label.indexOf(needle) >= 0) score = 30
-    else if (path.indexOf(needle) >= 0) score = 40
-    else if (keywords.indexOf(needle) >= 0) score = 50
+    else if (nameText.indexOf(needle) >= 0) score = 40
+    else if (root.keywordTextMatches(needle, keywordText)) score = 60
 
     if (entry.kind === "menu" || entry.kind === "link") score -= 2
 
