@@ -229,11 +229,13 @@ QtObject {
 
     var merged = {}
     for (var fk in firstParty) merged[fk] = firstParty[fk]
-    // Third-party plugins never shadow a first-party one with the same id.
+    // Third-party plugins never shadow first-party ids. The whole
+    // `omarchy.*` namespace is reserved for built-ins, including bar widgets
+    // registered outside the manifest-based plugin registry.
     for (var tk in thirdParty) {
-      if (firstParty[tk]) {
+      if (firstParty[tk] || String(tk).indexOf("omarchy.") === 0) {
         console.warn("PluginRegistry: plugin " + tk
-          + " rejected: id collides with first-party plugin")
+          + " rejected: id is reserved for first-party Omarchy plugins")
         continue
       }
       merged[tk] = thirdParty[tk]

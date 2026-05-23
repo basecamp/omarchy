@@ -70,7 +70,8 @@ BarWidget {
 
   function persistTrayState(pinned, hidden) {
     if (!root.bar || !root.bar.shell || typeof root.bar.shell.updateEntryInline !== "function") return
-    root.bar.shell.updateEntryInline("Tray", { id: "Tray", pinned: pinned, hidden: hidden })
+    var id = root.moduleName || "omarchy.tray"
+    root.bar.shell.updateEntryInline(id, { id: id, pinned: pinned, hidden: hidden })
   }
 
   function togglePin(iid) {

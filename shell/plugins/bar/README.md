@@ -16,7 +16,7 @@ the shell for its whole session.
 
 The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](../../README.md#shelljson-shape). Out of the box the shell uses [`shell-defaults.json`](../../shell-defaults.json). Once you customize anything via `omarchy launch bar settings` or by editing shell.json directly, your file is canonical — there is no deep-merge.
 
-Launch the visual editor with `omarchy launch bar settings` (or run `omarchy-launch-bar-settings`) to reorder widgets, add/remove them, and tweak per-widget options without editing JSON by hand. You can also right-click empty space to the left or right of the centered clock module to open it; double-left-click the same empty space to toggle bar transparency.
+Launch the visual editor with `omarchy launch bar settings` / `omarchy plugin bar edit` (or run `omarchy-launch-bar-settings`) to reorder widgets, add/remove them, and tweak per-widget options without editing JSON by hand. For scriptable changes, use `omarchy plugin bar list`, `omarchy plugin bar add`, `omarchy plugin bar move`, `omarchy plugin bar remove`, and `omarchy plugin bar set`. You can also right-click empty space to the left or right of the centered clock module to open it; double-left-click the same empty space to toggle bar transparency.
 
 Example `shell.json` (bar subtree only shown):
 
@@ -26,20 +26,20 @@ Example `shell.json` (bar subtree only shown):
   "bar": {
     "position": "top",
     "transparent": false,
-    "centerAnchor": "Clock",
+    "centerAnchor": "omarchy.clock",
     "layout": {
       "left": [
-        { "id": "Omarchy" },
-        { "id": "Spacer", "size": 12 },
-        { "id": "Workspaces" }
+        { "id": "omarchy.menu" },
+        { "id": "omarchy.spacer", "size": 12 },
+        { "id": "omarchy.workspaces" }
       ],
       "center": [
-        { "id": "Media" },
-        { "id": "Clock", "format": "HH:mm" }
+        { "id": "omarchy.media" },
+        { "id": "omarchy.clock", "format": "HH:mm" }
       ],
       "right": [
-        { "id": "AudioPanel" },
-        { "id": "PowerPanel" }
+        { "id": "omarchy.audio" },
+        { "id": "omarchy.power" }
       ]
     }
   }
@@ -54,17 +54,17 @@ Example `shell.json` (bar subtree only shown):
 
 | Name | What it does | Interactions |
 |---|---|---|
-| `Omarchy` | Omarchy menu launcher | left = menu · right = terminal |
-| `Workspaces` | Hyprland workspace switcher | left = focus workspace |
-| `Clock` | Date/time label | left = alternate format · right = timezone selector |
-| `Media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
-| `Indicators` | Manual state indicators | left = indicator action |
-| `NotificationCenter` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
-| `SystemUpdate` | Available update indicator | left = update |
-| `SystemStats` | Inline CPU + memory sparklines, popup with detail | left = popup · right = terminal |
-| `Tray` | System tray | hover = reveal drawer · right on chevron = manage |
-| `Weather` | Weather icon + popup with forecast | left = popup · right = full notification |
-| `Microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio panel · scroll = source volume |
+| `omarchy.menu` | Omarchy menu launcher | left = menu · right = terminal |
+| `omarchy.workspaces` | Hyprland workspace switcher | left = focus workspace |
+| `omarchy.clock` | Date/time label | left = alternate format · right = timezone selector |
+| `omarchy.media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
+| `omarchy.indicators` | Manual state indicators | left = indicator action |
+| `omarchy.notifications` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
+| `omarchy.system-update` | Available update indicator | left = update |
+| `omarchy.system-stats` | Inline CPU + memory sparklines, popup with detail | left = popup · right = terminal |
+| `omarchy.tray` | System tray | hover = reveal drawer · right on chevron = manage |
+| `omarchy.weather` | Weather icon + popup with forecast | left = popup · right = full notification |
+| `omarchy.microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio panel · scroll = source volume |
 
 ### First-party panels (in `../panels/`)
 
@@ -76,7 +76,7 @@ Example `shell.json` (bar subtree only shown):
 | `panels.bluetooth` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio · middle = bluetoothctl TUI |
 | `panels.monitor` | Brightness and laptop display controls | left = popup |
 
-The `Indicators` widget loads individual bar indicators from `indicators/`. Omit `items` (or set it to an empty array) to show all indicators in the default order, or set `items` to a subset such as `["Dnd", "NightLight"]`. Set `alwaysShow` to `true` to keep inactive indicators visible instead of revealing them only on hover. Multiple `Indicators` instances are allowed, so different sections can show different subsets. Rich panels such as `PowerPanel`, `NetworkPanel`, and `AudioPanel` live in `../panels/` above.
+The `omarchy.indicators` widget loads individual bar indicators from `indicators/`. Omit `items` (or set it to an empty array) to show all indicators in the default order, or set `items` to a subset such as `["Dnd", "NightLight"]`. Set `alwaysShow` to `true` to keep inactive indicators visible instead of revealing them only on hover. Multiple `omarchy.indicators` instances are allowed, so different sections can show different subsets. Rich popup widgets such as `omarchy.power`, `omarchy.network`, and `omarchy.audio` live in `../panels/` above.
 
 ## Orientation
 
@@ -94,9 +94,9 @@ Command module:
   "bar": {
     "layout": {
       "right": [
-        { "id": "Tray" },
+        { "id": "omarchy.tray" },
         { "id": "vpn", "type": "command", "exec": "~/.config/omarchy/bar/scripts/vpn-status", "interval": 5, "tooltip": "VPN", "onClick": "nm-connection-editor" },
-        { "id": "AudioPanel" }
+        { "id": "omarchy.audio" }
       ]
     }
   }
@@ -118,7 +118,7 @@ QML module:
     "layout": {
       "right": [
         { "id": "gpu", "type": "qml" },
-        { "id": "AudioPanel" }
+        { "id": "omarchy.audio" }
       ]
     }
   }
@@ -169,15 +169,16 @@ Widgets receive `bar` (the shell root), `moduleName` (string), and `settings` (o
 - `bar.showTooltip(target, text)` / `bar.hideTooltip(target)` — shared tooltip popup
 - `bar.requestPopout(owner)` / `bar.releasePopout(owner)` — one-popup-at-a-time coordinator
 
-First-party bar widgets live in `widgets/<Name>.qml`; first-party panels
+First-party bar widgets live in `widgets/<Name>.qml`; richer popup widgets
 live in `../panels/<Name>.qml` and expose IPC targets such as
-`panels.audio`. Bar layout ids use UpperCamelCase names such as `AudioPanel`,
-`NetworkPanel`, and so on, and are picked up by the shell's
-`BarWidgetRegistry` at startup; reference one by `id` in any layout list.
+`panels.audio`. Bar layout ids are namespaced, e.g. `omarchy.audio`,
+`omarchy.network`, and `omarchy.clock`. Legacy UpperCamelCase ids such as
+`AudioPanel` and `Clock` are still accepted as aliases, but new configs should
+use the namespaced ids.
 
 Third-party widgets ship as separate plugins under
 `~/.config/omarchy/plugins/<plugin-id>/` with their own `manifest.json`
 declaring `kinds: ["bar-widget"]` and a `barWidget` entry point. See
-[../../README.md](../../README.md) for the manifest schema. Enable or
-rescan third-party plugins with `omarchy-shell shell setPluginEnabled`
-and `omarchy-shell shell rescanPlugins`.
+[../../README.md](../../README.md) for the manifest schema. Enable,
+rescan, and place third-party plugins with `omarchy plugin enable`,
+`omarchy plugin rescan`, and `omarchy plugin bar add`.

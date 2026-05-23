@@ -128,16 +128,16 @@ Item {
     bar: {
       position: "top",
       transparent: false,
-      centerAnchor: "Clock",
+      centerAnchor: "omarchy.clock",
       layout: {
-        left: [{ id: "Omarchy" }, { id: "Workspaces" }],
+        left: [{ id: "omarchy.menu" }, { id: "omarchy.workspaces" }],
         center: [
-          { id: "Clock", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n\u2014\nmm" },
-          { id: "Weather" }, { id: "Indicators" }, { id: "SystemUpdate" }
+          { id: "omarchy.clock", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n\u2014\nmm" },
+          { id: "omarchy.weather" }, { id: "omarchy.indicators" }, { id: "omarchy.system-update" }
         ],
         right: [
-          { id: "Tray" }, { id: "BluetoothPanel" }, { id: "NetworkPanel" },
-          { id: "AudioPanel" }, { id: "MonitorPanel" }, { id: "PowerPanel" }
+          { id: "omarchy.tray" }, { id: "omarchy.bluetooth" }, { id: "omarchy.network" },
+          { id: "omarchy.audio" }, { id: "omarchy.monitor" }, { id: "omarchy.power" }
         ]
       }
     },
@@ -145,7 +145,7 @@ Item {
   })
 
   property var defaultConfig: builtinShellConfig
-  property var draft: ({ version: 1, bar: { position: "top", transparent: false, centerAnchor: "Clock", layout: { left: [], center: [], right: [] } }, plugins: [] })
+  property var draft: ({ version: 1, bar: { position: "top", transparent: false, centerAnchor: "omarchy.clock", layout: { left: [], center: [], right: [] } }, plugins: [] })
   property int draftRevision: 0
   property bool suppressReload: false
 
@@ -179,7 +179,7 @@ Item {
       bar: {
         position: String(bar.position || "top"),
         transparent: bar.transparent === true,
-        centerAnchor: String(bar.centerAnchor || ""),
+        centerAnchor: Util.canonicalWidgetId(bar.centerAnchor || ""),
         layout: Util.normalizeLayout(bar.layout || {})
       },
       plugins: plugins
@@ -320,7 +320,7 @@ Item {
   }
 
   function canonicalWidgetId(id) {
-    return String(id || "")
+    return Util.canonicalWidgetId(id)
   }
 
   function widgetMetadata(id) {
@@ -380,7 +380,7 @@ Item {
   function widgetAllowsMultiple(id) {
     var meta = widgetMetadata(id)
     if (meta.allowMultiple === true) return true
-    return String(id) === "Spacer"
+    return canonicalWidgetId(id) === "omarchy.spacer"
   }
 
   function catalogIds() {

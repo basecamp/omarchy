@@ -89,9 +89,24 @@ The full schema lives in `services/PluginRegistry.qml`.
 1. Drop the plugin into `~/.config/omarchy/plugins/<plugin-id>/`.
    The directory must contain a `manifest.json` plus the QML files
    referenced from its `entryPoints`.
-2. `omarchy-shell shell rescanPlugins`.
-3. Enable the plugin with `omarchy-shell shell setPluginEnabled <id> true`.
-4. If it's a `bar-widget`, add it to a layout section from the bar editor.
+2. `omarchy plugin rescan`.
+3. Enable the plugin with `omarchy plugin enable <id>`.
+4. If it's a `bar-widget`, place it with `omarchy plugin bar add <id>` or
+   open the visual editor with `omarchy plugin bar edit`.
+
+The lower-level IPC equivalents are still available via `omarchy-shell shell rescanPlugins`,
+`omarchy-shell shell setPluginEnabled <id> true`, and `omarchy-shell shell listPlugins`.
+The `omarchy plugin` command wraps those calls and can also edit the persisted
+bar layout in `shell.json`.
+
+To hack on an existing widget safely, clone it into a user plugin instead of
+editing the built-in source. Third-party ids must be namespaced and may not use
+the reserved `omarchy.*` prefix.
+
+```bash
+omarchy plugin clone omarchy.clock local.clock --replace --open pi
+omarchy plugin clone                 # interactive source/name/tool picker
+```
 
 First-party plugins under `shell/plugins/`
 are discovered the same way and cannot be disabled.
@@ -168,12 +183,12 @@ rewrites the `bar` subtree from the current `shell-defaults.json`.
   "bar": {
     "position": "top",
     "transparent": false,
-    "centerAnchor": "Clock",
+    "centerAnchor": "omarchy.clock",
     "layout": {
-      "left":   [ { "id": "Omarchy" }, { "id": "Workspaces" } ],
-      "center": [ { "id": "Clock", "format": "HH:mm" } ],
+      "left":   [ { "id": "omarchy.menu" }, { "id": "omarchy.workspaces" } ],
+      "center": [ { "id": "omarchy.clock", "format": "HH:mm" } ],
       "right": [
-        { "id": "AudioPanel" }
+        { "id": "omarchy.audio" }
       ]
     }
   },
@@ -189,18 +204,21 @@ rewrites the `bar` subtree from the current `shell-defaults.json`.
 2. **Settings are inline on the entry.** No `config:` sub-object, no
    separate per-plugin settings file, no merge layers. The fields on each
    entry are the values the plugin sees.
-3. **Third-party enabled ⇔ present.** A third-party plugin is enabled iff
+3. **Built-in widget ids are namespaced.** Use ids such as `omarchy.clock`,
+   `omarchy.audio`, and `omarchy.network`. Legacy ids like `Clock` and
+   `AudioPanel` are accepted as aliases and migrated forward.
+4. **Third-party enabled ⇔ present.** A third-party plugin is enabled iff
    its id appears somewhere in shell.json. For bar widgets, the bar
    settings UI adds/removes layout entries; other plugin kinds are enabled
    with the shell IPC. First-party plugins are always enabled.
-4. **Multiple instances** are allowed when a manifest sets
+5. **Multiple instances** are allowed when a manifest sets
    `allowMultiple: true`. Each instance is independent — e.g. two clock
-   widgets in different timezones are just two `{"id":"Clock", "timezone": ...}`
+   widgets in different timezones are just two `{"id":"omarchy.clock", "timezone": ...}`
    entries with their own values.
-5. **Idle timings are top-level.** `idle.screensaver` and `idle.lock`
+6. **Idle timings are top-level.** `idle.screensaver` and `idle.lock`
    are seconds since user idle began, so the default lock fires at 300s
    even if the 150s screensaver starts first.
-6. **`version: 1` is required** at the top level. The shell will fall back
+7. **`version: 1` is required** at the top level. The shell will fall back
    to defaults rather than load an unknown version.
 
 ## Implementation history
