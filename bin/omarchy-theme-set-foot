@@ -3,22 +3,14 @@
 # omarchy:summary=Apply current Omarchy theme colors to running Foot terminals
 # omarchy:hidden=true
 
-foot_theme=~/.config/omarchy/current/theme/foot.ini
+colors_toml=~/.config/omarchy/current/theme/colors.toml
 
-if [[ ! -f $foot_theme ]] || ! pgrep -x foot >/dev/null; then
+if [[ ! -f $colors_toml ]] || ! pgrep -x foot >/dev/null; then
   exit 0
 fi
 
-foot_osc=$(awk -F= '
-  function color(value) { return "#" value }
-  /^foreground=/ { printf "\033]10;%s\007", color($2) }
-  /^background=/ { printf "\033]11;%s\007", color($2) }
-  /^cursor=/ { split($2, parts, " "); printf "\033]12;%s\007", color(parts[2]) }
-  /^selection-background=/ { printf "\033]17;%s\007", color($2) }
-  /^selection-foreground=/ { printf "\033]19;%s\007", color($2) }
-  /^regular[0-7]=/ { split($1, parts, "regular"); printf "\033]4;%d;%s\007", parts[2], color($2) }
-  /^bright[0-7]=/ { split($1, parts, "bright"); printf "\033]4;%d;%s\007", parts[2] + 8, color($2) }
-' "$foot_theme")
+foot_osc=$(omarchy-theme-osc "$colors_toml")
+[[ -n $foot_osc ]] || exit 0
 
 for foot_pid in $(pgrep -x foot); do
   for child_pid in $(pgrep -P "$foot_pid"); do

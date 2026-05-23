@@ -172,6 +172,7 @@ post_theme_commands=(
   omarchy-restart-opencode
   omarchy-restart-helix
   omarchy-theme-set-foot
+  omarchy-theme-set-tmux
   omarchy-theme-set-gnome
   omarchy-theme-set-pi
   omarchy-theme-set-browser
