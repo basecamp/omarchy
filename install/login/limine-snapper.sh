@@ -133,18 +133,22 @@ EOF
   LIMINE_CONFIGURED=true
 fi
 
-echo "Re-enabling mkinitcpio hooks..."
+# Restore legacy hook moves from older offline installer paths. Current ISO
+# installs mask/unmask hooks in the orchestrator, so these files usually do not
+# exist; stay quiet unless there is real cleanup to do.
+if [[ -f /usr/share/libalpm/hooks/90-mkinitcpio-install.hook.disabled || -f /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook.disabled ]]; then
+  echo "Re-enabling mkinitcpio hooks..."
 
-# Restore the specific mkinitcpio pacman hooks
-if [[ -f /usr/share/libalpm/hooks/90-mkinitcpio-install.hook.disabled ]]; then
-  sudo mv /usr/share/libalpm/hooks/90-mkinitcpio-install.hook.disabled /usr/share/libalpm/hooks/90-mkinitcpio-install.hook
+  if [[ -f /usr/share/libalpm/hooks/90-mkinitcpio-install.hook.disabled ]]; then
+    sudo mv /usr/share/libalpm/hooks/90-mkinitcpio-install.hook.disabled /usr/share/libalpm/hooks/90-mkinitcpio-install.hook
+  fi
+
+  if [[ -f /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook.disabled ]]; then
+    sudo mv /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook.disabled /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook
+  fi
+
+  echo "mkinitcpio hooks re-enabled"
 fi
-
-if [[ -f /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook.disabled ]]; then
-  sudo mv /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook.disabled /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook
-fi
-
-echo "mkinitcpio hooks re-enabled"
 
 # Final sanity check: assert the Limine config and UKI actually contain what
 # they need to boot. Run AFTER snapper setup and hook re-enable so a

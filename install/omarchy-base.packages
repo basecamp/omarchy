@@ -72,6 +72,7 @@ libqalculate
 libreoffice-fresh
 llvm
 localsend
+lua51
 luarocks
 man-db
 mariadb-libs
