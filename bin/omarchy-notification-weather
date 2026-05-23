@@ -2,4 +2,4 @@
 
 # omarchy:summary=Toggle the current weather panel
 
-omarchy-shell Weather toggle
+omarchy-shell omarchy.weather toggle

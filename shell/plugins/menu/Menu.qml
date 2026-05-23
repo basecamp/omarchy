@@ -23,14 +23,21 @@ Item {
     if (payload.mode === "select" || payload.mode === "input") {
       root.openDmenu(payload)
     } else {
-      root.pendingInitialMenu = payload.initialMenu || payload.menu || "root"
-      root.openExistingMenu(root.pendingInitialMenu)
+      root.openRoute(payload.initialMenu || payload.menu || "root")
     }
   }
 
   function close() {
     root.cancel()
   }
+
+  function refresh() {
+    defaultMenuFile.reload()
+    userMenuFile.reload()
+    return "ok"
+  }
+
+  function ping() { return "ok" }
 
   property string fontFamily: Style.font.menuFamily
   // JSONC menu definitions. The shell parses both at startup and merges
@@ -761,17 +768,13 @@ Item {
   }
   ListModel { id: displayModel }
 
-  // ----------------------------------------------------------- IPC surface
+  // ----------------------------------------------------------- route surface
   //
-  // `omarchy-shell menu summon <id>` is the keybind hot path — the
-  // Hyprland bindings call straight into here, no bash hops. `refresh` is
-  // a manual nudge for when watchChanges isn't enough (e.g. someone wired
-  // a CI step that re-emits the JSONC).
-
-  // Mirrors `route_target` in the old bash bin: caller may pass a real id
-  // (`system`, `setup.power`) or an alias declared in JSONC (`power`,
-  // `reminder-set`). Unknown strings fall through to the id-as-route
-  // behavior so misspellings still attempt to open the literal id.
+  // The menu is opened through the standard plugin lifecycle:
+  // `omarchy-shell shell summon omarchy.menu '{"menu":"system"}'`.
+  // Callers may pass a real id (`system`, `setup.power`) or an alias declared
+  // in JSONC (`power`, `reminder-set`). Unknown strings fall through to the
+  // id-as-route behavior so misspellings still attempt to open the literal id.
   function resolveRoute(input) {
     var raw = String(input || "").toLowerCase().replace(/_/g, "-")
     if (!raw || raw === "go" || raw === "menu") return "root"
@@ -786,49 +789,22 @@ Item {
     return raw
   }
 
-  IpcHandler {
-    target: "menu"
-
-    function summon(initialMenu: string): string {
-      var id = root.resolveRoute(initialMenu)
-      var entry = root.items[id]
-      // If the resolved id is an action (i.e. the user invoked an alias for
-      // a leaf, e.g. `omarchy-shell menu summon screenrecord-stop`),
-      // run it directly instead of opening an action with no children.
-      if (entry && entry.kind === "action" && entry.action) {
-        Quickshell.execDetached(["bash", "-lc", entry.action])
-        return "ok"
-      }
-      // If it's a link (a redirect to another menu), follow the link.
-      if (entry && entry.kind === "link" && entry.target) id = entry.target
-      var payload = JSON.stringify({ menu: id })
-      root.open(payload)
-      return "ok"
-    }
-
-    // Hitting the same menu keybind while the menu is already visible should
-    // close it — even if the requested target differs from the active one.
-    // Matches the old bash bin's `close_visible_quickshell_menu` short-circuit.
-    function toggle(initialMenu: string): string {
-      if (root.opened) {
-        root.cancel()
-        return "closed"
-      }
-      return summon(initialMenu)
-    }
-
-    function refresh(): string {
-      defaultMenuFile.reload()
-      userMenuFile.reload()
-      return "ok"
-    }
-
-    function close(): string {
+  function openRoute(initialMenu) {
+    var id = root.resolveRoute(initialMenu)
+    var entry = root.items[id]
+    // If the resolved id is an action (i.e. the user invoked an alias for
+    // a leaf, e.g. `omarchy menu summon screenrecord-stop`), run it directly
+    // instead of opening an action with no children.
+    if (entry && entry.kind === "action" && entry.action) {
       root.cancel()
+      Quickshell.execDetached(["bash", "-lc", entry.action])
       return "ok"
     }
-
-    function ping(): string { return "ok" }
+    // If it's a link (a redirect to another menu), follow the link.
+    if (entry && entry.kind === "link" && entry.target) id = entry.target
+    root.pendingInitialMenu = id
+    root.openExistingMenu(id)
+    return "ok"
   }
 
   Process {

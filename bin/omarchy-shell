@@ -2,7 +2,7 @@
 
 # omarchy:summary=Send an IPC call to the running Omarchy shell
 # omarchy:args=[-q] <target> <method> [args...]
-# omarchy:examples=omarchy shell shell ping | omarchy-shell menu toggle root
+# omarchy:examples=omarchy shell shell ping | omarchy-shell shell toggle omarchy.menu '{"menu":"root"}'
 
 QUIET=0
 if [[ ${1:-} == "-q" ]]; then
@@ -26,7 +26,7 @@ Examples:
   omarchy-shell shell summon omarchy.settings "{}"
   omarchy-shell -q Indicators refresh
   omarchy-shell shell listPlugins
-  omarchy-shell menu toggle root
+  omarchy-shell shell toggle omarchy.menu '{"menu":"root"}'
 USAGE
   exit 0
 fi

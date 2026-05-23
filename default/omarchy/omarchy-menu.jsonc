@@ -7,7 +7,7 @@
   // Dotted IDs define the tree. Use provider:"name" only when the submenu
   // calls provider_name() or a command named "name" to return JSON rows.
   // Optional fields:
-  //   aliases        alternate `omarchy-shell menu summon <name>` routes; also searchable
+  //   aliases        alternate `omarchy menu summon <name>` routes; also searchable
   //   keywords       extra search terms beyond id/label/aliases
   //   when           shell condition; hide row when it fails
   //   checked        shell condition; append ✓ when it succeeds
