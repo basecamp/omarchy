@@ -9,13 +9,17 @@ BarWidget {
   moduleName: "omarchy.clock"
 
   property bool calendarOpen: false
+  property bool popoutSwitchClosing: false
   property date displayDate: clock.date
+  property date calendarDate: clock.date
 
   readonly property string timeFormat: bar && bar.vertical
     ? setting("verticalFormat", "HH\n—\nmm")
     : setting("format", "dddd HH:mm")
   readonly property string dateFormat: setting("formatAlt", "dd MMMM 'W'ww yyyy")
-  readonly property var monthStart: new Date(displayDate.getFullYear(), displayDate.getMonth(), 1)
+  readonly property int calendarColumns: 7
+  readonly property int calendarRows: 6
+  readonly property var monthStart: new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1)
   readonly property int firstWeekday: localeFirstWeekday()
   readonly property var weekdayLabels: buildWeekdayLabels()
   readonly property var calendarCells: buildCalendarCells()
@@ -30,6 +34,7 @@ BarWidget {
 
   function openCalendar() {
     refresh()
+    resetCalendarDate()
     calendarOpen = true
   }
 
@@ -38,12 +43,29 @@ BarWidget {
   }
 
   function closeForPopoutSwitch() {
+    popoutSwitchClosing = true
     close()
+    Qt.callLater(function() { popoutSwitchClosing = false })
   }
 
   function toggleCalendar() {
     if (calendarOpen) close()
     else openCalendar()
+  }
+
+  function resetCalendarDate() {
+    calendarDate = new Date(displayDate.getFullYear(), displayDate.getMonth(), displayDate.getDate())
+  }
+
+  function daysInMonth(year, month) {
+    return new Date(year, month + 1, 0).getDate()
+  }
+
+  function moveCalendar(monthDelta, yearDelta) {
+    var year = calendarDate.getFullYear() + yearDelta
+    var month = calendarDate.getMonth() + monthDelta
+    var day = Math.min(calendarDate.getDate(), daysInMonth(year, month))
+    calendarDate = new Date(year, month, day)
   }
 
   function isoWeek(date) {
@@ -97,7 +119,7 @@ BarWidget {
     var start = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1 - offset)
     var today = dateKey(displayDate)
 
-    for (var i = 0; i < 42; ++i) {
+    for (var i = 0; i < calendarRows * calendarColumns; ++i) {
       var day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i)
       cells.push({
         day: day.getDate(),
@@ -141,102 +163,131 @@ BarWidget {
     }
   }
 
-  PopupCard {
-    id: calendarPopup
+  KeyboardPanel {
+    id: calendarPanel
     anchorItem: button
     owner: root
     bar: root.bar
     open: root.calendarOpen
-    triggerMode: "click"
-    contentWidth: calendarPopup.fittedContentWidth(Style.space(300))
-    contentHeight: calendarPopup.fittedContentHeight(calendarColumn.implicitHeight)
+    focusTarget: keyCatcher
+    contentWidth: calendarPanel.fittedContentWidth(Style.space(300))
+    contentHeight: calendarPanel.fittedContentHeight(calendarColumn.implicitHeight)
 
-    Column {
-      id: calendarColumn
+    Item {
+      id: keyCatcher
       anchors.fill: parent
-      spacing: Style.space(12)
+      focus: true
 
-      Text {
-        width: parent.width
-        text: root.formatted(root.displayDate, root.dateFormat)
-        color: root.popupForeground
-        font.family: root.popupFontFamily
-        font.pixelSize: Style.font.title
-        font.bold: true
-        horizontalAlignment: Text.AlignHCenter
-        elide: Text.ElideRight
-      }
-
-      Rectangle {
-        width: parent.width
-        height: Style.spacing.hairline
-        color: root.popupForeground
-        opacity: 0.12
-      }
-
-      Grid {
-        id: weekdayGrid
-        width: parent.width
-        columns: 7
-        rowSpacing: 0
-        columnSpacing: Style.space(4)
-
-        readonly property int cellSize: Math.floor((width - columnSpacing * 6) / 7)
-
-        Repeater {
-          model: root.weekdayLabels
-
-          Text {
-            required property var modelData
-            width: weekdayGrid.cellSize
-            height: Style.space(16)
-            text: modelData
-            color: root.popupDim
-            font.family: root.popupFontFamily
-            font.pixelSize: Style.font.caption
-            font.bold: true
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-          }
+      Keys.priority: Keys.BeforeItem
+      Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Escape) {
+          root.close()
+          event.accepted = true
+        } else if (event.key === Qt.Key_Left) {
+          root.moveCalendar(-1, 0)
+          event.accepted = true
+        } else if (event.key === Qt.Key_Right) {
+          root.moveCalendar(1, 0)
+          event.accepted = true
+        } else if (event.key === Qt.Key_Up) {
+          root.moveCalendar(0, -1)
+          event.accepted = true
+        } else if (event.key === Qt.Key_Down) {
+          root.moveCalendar(0, 1)
+          event.accepted = true
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+          root.resetCalendarDate()
+          event.accepted = true
         }
       }
 
-      Grid {
-        id: calendarGrid
-        width: parent.width
-        columns: 7
-        rowSpacing: Style.space(4)
-        columnSpacing: Style.space(4)
+      Column {
+        id: calendarColumn
+        anchors.fill: parent
+        spacing: Style.space(12)
 
-        readonly property int cellSize: Math.floor((width - columnSpacing * 6) / 7)
+        Text {
+          width: parent.width
+          text: root.formatted(root.calendarDate, root.dateFormat)
+          color: root.popupForeground
+          font.family: root.popupFontFamily
+          font.pixelSize: Style.font.title
+          font.bold: true
+          horizontalAlignment: Text.AlignHCenter
+          elide: Text.ElideRight
+        }
 
-        Repeater {
-          model: root.calendarCells
+        Rectangle {
+          width: parent.width
+          height: Style.spacing.hairline
+          color: root.popupForeground
+          opacity: 0.12
+        }
 
-          Item {
-            required property var modelData
+        Grid {
+          id: weekdayGrid
+          width: parent.width
+          columns: root.calendarColumns
+          rowSpacing: 0
+          columnSpacing: Style.space(4)
 
-            width: calendarGrid.cellSize
-            height: Style.space(28)
+          readonly property int cellSize: Math.floor((width - columnSpacing * (root.calendarColumns - 1)) / root.calendarColumns)
 
-            Rectangle {
-              anchors.fill: parent
-              radius: Math.min(Style.cornerRadius, Style.space(6))
-              color: modelData.today ? Style.selectedFillFor(root.popupForeground, Color.accent) : "transparent"
-              border.color: modelData.today ? Style.selectedBorderFor(root.popupForeground, Color.accent) : "transparent"
-              border.width: modelData.today ? Style.selectedBorderWidth : 0
-            }
+          Repeater {
+            model: root.weekdayLabels
 
             Text {
-              anchors.centerIn: parent
-              text: String(modelData.day)
-              color: modelData.inMonth ? root.popupForeground : root.popupMuted
-              opacity: modelData.inMonth ? 1.0 : 0.45
+              required property var modelData
+              width: weekdayGrid.cellSize
+              height: Style.space(16)
+              text: modelData
+              color: root.popupDim
               font.family: root.popupFontFamily
-              font.pixelSize: Style.font.body
-              font.bold: modelData.today
+              font.pixelSize: Style.font.caption
+              font.bold: true
               horizontalAlignment: Text.AlignHCenter
               verticalAlignment: Text.AlignVCenter
+            }
+          }
+        }
+
+        Grid {
+          id: calendarGrid
+          width: parent.width
+          columns: root.calendarColumns
+          rowSpacing: Style.space(4)
+          columnSpacing: Style.space(4)
+
+          readonly property int cellSize: Math.floor((width - columnSpacing * (root.calendarColumns - 1)) / root.calendarColumns)
+
+          Repeater {
+            model: root.calendarCells
+
+            Item {
+              required property var modelData
+
+              width: calendarGrid.cellSize
+              height: Style.space(28)
+
+              Rectangle {
+                anchors.fill: parent
+                radius: Math.min(Style.cornerRadius, Style.space(6))
+                color: modelData.today ? Style.selectedFillFor(root.popupForeground, Color.accent) : "transparent"
+                border.color: modelData.today ? Style.selectedBorderFor(root.popupForeground, Color.accent) : "transparent"
+                border.width: modelData.today ? Style.selectedBorderWidth : 0
+              }
+
+              Text {
+                anchors.centerIn: parent
+                text: String(modelData.day)
+                color: modelData.inMonth ? root.popupForeground : root.popupMuted
+                opacity: modelData.inMonth ? 1.0 : 0.45
+                font.family: root.popupFontFamily
+                font.pixelSize: Style.font.body
+                font.bold: modelData.today
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+              }
             }
           }
         }
