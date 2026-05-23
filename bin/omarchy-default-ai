@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# omarchy:summary=Set the default AI harness used by omarchy-launch-ai
+# omarchy:args=[pi|claude|codex|opencode]
+# omarchy:examples=omarchy default ai | omarchy default ai pi | omarchy default ai claude
+
+ai_file="$HOME/.local/state/omarchy/defaults/ai"
+
+if (( $# == 0 )); then
+  if [[ -f $ai_file ]]; then
+    read -r harness <"$ai_file"
+  fi
+
+  [[ -n ${harness:-} ]] && echo "$harness" || echo "pi"
+  exit 0
+fi
+
+case "$1" in
+pi) harness="pi"; name="Pi"; glyph=󰚩 ;;
+claude) harness="claude"; name="Claude Code"; glyph=󰚩 ;;
+codex) harness="codex"; name="Codex"; glyph=󰚩 ;;
+opencode) harness="opencode"; name="OpenCode"; glyph=󰚩 ;;
+*)
+  echo "Usage: omarchy-default-ai <pi|claude|codex|opencode>" >&2
+  exit 1
+  ;;
+esac
+
+mkdir -p "$(dirname "$ai_file")"
+printf '%s\n' "$harness" >"$ai_file"
+
+omarchy-notification-send -g "$glyph" "$name is now the default AI harness"
