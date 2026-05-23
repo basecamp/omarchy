@@ -590,6 +590,7 @@ Item {
             contentHeight: contentColumn.implicitHeight
             boundsBehavior: Flickable.StopAtBounds
             flickableDirection: Flickable.VerticalFlick
+            interactive: !root.widgetDialogVisible
 
             ColumnLayout {
               id: contentColumn
@@ -616,6 +617,7 @@ Item {
       MouseArea {
         anchors.fill: parent
         onClicked: root.discardWidgetSettings()
+        onWheel: function(wheel) { wheel.accepted = true }
         acceptedButtons: Qt.LeftButton | Qt.RightButton
       }
 
@@ -1205,15 +1207,15 @@ Item {
         onEditingFinished: if (fieldKey) clockForm.fieldChanged(fieldKey, text)
       }
 
-      Text {
-        text: "Horizontal format"
-        color: Qt.darker(root.foreground, 1.4)
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
-      }
-      ClockField {
-        fieldKey: "format"
-        text: clockForm.entry.format || "dddd HH:mm"
+      Toggle {
+        width: parent.width
+        label: "Start week on Monday"
+        description: "Start calendar weeks on Monday instead of the locale default."
+        foreground: root.foreground
+        accent: root.accent
+        fontFamily: root.fontFamily
+        checked: clockForm.entry.mondayFirstDayOfWeek === true
+        onClicked: clockForm.fieldChanged("mondayFirstDayOfWeek", !checked)
       }
 
       Text {
@@ -1228,6 +1230,17 @@ Item {
       }
 
       Text {
+        text: "Horizontal format"
+        color: Qt.darker(root.foreground, 1.4)
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.bodySmall
+      }
+      ClockField {
+        fieldKey: "format"
+        text: clockForm.entry.format || "dddd HH:mm"
+      }
+
+      Text {
         text: "Vertical format (left/right bars)"
         color: Qt.darker(root.foreground, 1.4)
         font.family: root.fontFamily
@@ -1236,17 +1249,6 @@ Item {
       ClockField {
         fieldKey: "verticalFormat"
         text: clockForm.entry.verticalFormat || "HH\n—\nmm"
-      }
-
-      Toggle {
-        width: parent.width
-        label: "Start week on Monday"
-        description: "Start calendar weeks on Monday instead of the locale default."
-        foreground: root.foreground
-        accent: root.accent
-        fontFamily: root.fontFamily
-        checked: clockForm.entry.mondayFirstDayOfWeek === true
-        onClicked: clockForm.fieldChanged("mondayFirstDayOfWeek", !checked)
       }
     }
   }
