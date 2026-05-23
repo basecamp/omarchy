@@ -17,10 +17,11 @@ BarWidget {
     ? setting("verticalFormat", "HH\n—\nmm")
     : setting("format", "dddd HH:mm")
   readonly property string dateFormat: setting("formatAlt", "dd MMMM 'W'ww yyyy")
+  readonly property bool mondayFirstDayOfWeek: setting("mondayFirstDayOfWeek", false) === true
   readonly property int calendarColumns: 7
   readonly property int calendarRows: 6
   readonly property var monthStart: new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1)
-  readonly property int firstWeekday: localeFirstWeekday()
+  readonly property int firstWeekday: mondayFirstDayOfWeek ? 1 : localeFirstWeekday()
   readonly property var weekdayLabels: buildWeekdayLabels()
   readonly property var calendarCells: buildCalendarCells()
   readonly property color popupForeground: Color.popups.text

@@ -1237,6 +1237,17 @@ Item {
         fieldKey: "verticalFormat"
         text: clockForm.entry.verticalFormat || "HH\n—\nmm"
       }
+
+      Toggle {
+        width: parent.width
+        label: "Start week on Monday"
+        description: "Start calendar weeks on Monday instead of the locale default."
+        foreground: root.foreground
+        accent: root.accent
+        fontFamily: root.fontFamily
+        checked: clockForm.entry.mondayFirstDayOfWeek === true
+        onClicked: clockForm.fieldChanged("mondayFirstDayOfWeek", !checked)
+      }
     }
   }
 
