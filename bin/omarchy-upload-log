@@ -39,6 +39,23 @@ else
   } >"$SYSTEM_INFO"
 fi
 
+same_or_prefix_log() {
+  local a="$1" b="$2" size_a size_b min_size
+  [[ -s $a && -s $b ]] || return 1
+  cmp -s "$a" "$b" && return 0
+
+  size_a=$(stat -c '%s' "$a" 2>/dev/null) || return 1
+  size_b=$(stat -c '%s' "$b" 2>/dev/null) || return 1
+  if (( size_a < size_b )); then
+    min_size=$size_a
+  else
+    min_size=$size_b
+  fi
+  (( min_size > 0 )) || return 1
+
+  cmp -n "$min_size" "$a" "$b" >/dev/null 2>&1
+}
+
 case "$LOG_TYPE" in
 install)
   # In the live ISO before reboot, the target system is mounted at /mnt so the
@@ -58,7 +75,7 @@ install)
     cat "$LIVE_OMARCHY_LOG" >>"$TEMP_LOG"
   fi
 
-  if [[ -s $TARGET_OMARCHY_LOG ]] && ! cmp -s "$LIVE_OMARCHY_LOG" "$TARGET_OMARCHY_LOG" 2>/dev/null; then
+  if [[ -s $TARGET_OMARCHY_LOG ]] && ! same_or_prefix_log "$LIVE_OMARCHY_LOG" "$TARGET_OMARCHY_LOG"; then
     printf '\n========================================\nTARGET OMARCHY INSTALL LOG (%s)\n========================================\n\n' "$TARGET_OMARCHY_LOG" >>"$TEMP_LOG"
     cat "$TARGET_OMARCHY_LOG" >>"$TEMP_LOG"
   fi

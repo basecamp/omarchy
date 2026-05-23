@@ -154,7 +154,9 @@ echo "$THEME_NAME" >"$HOME/.config/omarchy/current/theme.name"
 # the theme hooks run.
 colors_payload=$([[ -f $CURRENT_THEME_PATH/colors.toml ]] && base64 -w 0 "$CURRENT_THEME_PATH/colors.toml")
 shell_payload=$([[ -f $CURRENT_THEME_PATH/shell.toml ]] && base64 -w 0 "$CURRENT_THEME_PATH/shell.toml")
-if [[ $OMARCHY_THEME_SKIP_BACKGROUND == "1" ]]; then
+if [[ ${OMARCHY_THEME_OFFLINE:-} == "1" ]]; then
+  : # No shell/session bus exists during ISO chroot finalization.
+elif [[ $OMARCHY_THEME_SKIP_BACKGROUND == "1" ]]; then
   shell_ipc shell applyTheme "$colors_payload" "$shell_payload" || true
 else
   set_theme_background
@@ -181,13 +183,15 @@ post_theme_commands=(
   omarchy-theme-set-keyboard
 )
 
-run_parallel "${post_theme_commands[@]}"
+if [[ ${OMARCHY_THEME_OFFLINE:-} != "1" ]]; then
+  run_parallel "${post_theme_commands[@]}"
 
-# Call hook on theme set
-omarchy-hook theme-set "$THEME_NAME" >/dev/null
+  # Call hook on theme set
+  omarchy-hook theme-set "$THEME_NAME" >/dev/null
 
-# Warm selector caches after the theme is applied. The shell hot-reloads theme
-# colors/backgrounds, so keep the running instance alive and preload the picker
-# rows/selection to avoid first-open carousel settling after a theme change.
-omarchy-theme-switcher --preload >/dev/null 2>&1
-omarchy-theme-bg-cache >/dev/null 2>&1 &
+  # Warm selector caches after the theme is applied. The shell hot-reloads theme
+  # colors/backgrounds, so keep the running instance alive and preload the picker
+  # rows/selection to avoid first-open carousel settling after a theme change.
+  omarchy-theme-switcher --preload >/dev/null 2>&1
+  omarchy-theme-bg-cache >/dev/null 2>&1 &
+fi
