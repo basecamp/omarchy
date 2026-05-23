@@ -27,6 +27,8 @@ Item {
   property int failedAttempts: 0
   property string backgroundPath: ""
   property int backgroundVersion: 0
+  property string lastEvent: "init"
+  property string lastEventAt: ""
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
@@ -37,6 +39,12 @@ Item {
 
   function refreshFingerprintStatus() {
     if (!fingerprintCheckProc.running) fingerprintCheckProc.running = true
+  }
+
+  function logEvent(event) {
+    lastEvent = event
+    lastEventAt = new Date().toISOString()
+    console.log("omarchy lock " + lastEventAt + " " + event)
   }
 
   function resetAuthenticationState() {
@@ -52,14 +60,22 @@ Item {
   }
 
   function beginLock() {
-    if (!passwordPamConfigured) return false
+    if (!passwordPamConfigured) {
+      logEvent("lock-denied: missing-pam")
+      return false
+    }
 
     resetAuthenticationState()
-    refreshBackground()
-    refreshFingerprintStatus()
     lockRequested = true
     sessionLock.locked = true
     idleBlankTimer.restart()
+    logEvent("lock-requested")
+
+    Qt.callLater(function() {
+      root.refreshBackground()
+      root.refreshFingerprintStatus()
+    })
+
     return true
   }
 
@@ -70,6 +86,7 @@ Item {
     resetAuthenticationState()
     idleBlankTimer.stop()
     sessionLock.locked = false
+    logEvent("unlocked")
     runWake()
   }
 
@@ -142,10 +159,13 @@ Item {
     locked: false
 
     onSecureStateChanged: {
+      root.logEvent("secure=" + secure)
       if (secure) root.startFingerprint()
     }
 
     onLockStateChanged: {
+      root.logEvent("session-locked=" + locked)
+
       if (!locked && root.lockRequested) {
         root.lockRequested = false
         root.resetAuthenticationState()
@@ -331,10 +351,14 @@ Item {
     function status(): string {
       return JSON.stringify({
         locked: root.locked,
+        requested: root.lockRequested,
+        sessionLocked: sessionLock.locked,
         secure: sessionLock.secure,
         passwordPam: root.passwordPamConfigured,
         fingerprint: root.fingerprintConfigured,
-        authenticating: root.authenticating
+        authenticating: root.authenticating,
+        lastEvent: root.lastEvent,
+        lastEventAt: root.lastEventAt
       })
     }
 
