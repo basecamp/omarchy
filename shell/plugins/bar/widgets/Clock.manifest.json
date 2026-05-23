@@ -4,7 +4,7 @@
   "name": "Clock",
   "version": "1.0.0",
   "author": "Omarchy",
-  "description": "Day/time label; click to toggle alternate format",
+  "description": "Day/time label with a mini calendar popup",
   "kinds": [
     "bar-widget"
   ],
@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "Clock",
-    "description": "Day/time label; click to toggle alternate format",
+    "description": "Day/time label with a mini calendar popup",
     "category": "Time",
     "allowMultiple": false
   }

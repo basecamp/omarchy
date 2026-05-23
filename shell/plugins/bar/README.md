@@ -56,7 +56,7 @@ Example `shell.json` (bar subtree only shown):
 |---|---|---|
 | `omarchy.menu` | Omarchy menu launcher | left = menu · right = terminal |
 | `omarchy.workspaces` | Hyprland workspace switcher | left = focus workspace |
-| `omarchy.clock` | Date/time label | left = alternate format · right = timezone selector |
+| `omarchy.clock` | Date/time label + mini calendar | left = calendar · right = timezone selector |
 | `omarchy.media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
 | `omarchy.indicators` | Manual state indicators | left = indicator action |
 | `omarchy.notifications` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |

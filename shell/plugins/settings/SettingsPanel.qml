@@ -1217,7 +1217,7 @@ Item {
       }
 
       Text {
-        text: "Alternate format (click to toggle)"
+        text: "Calendar date format"
         color: Qt.darker(root.foreground, 1.4)
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
