@@ -173,33 +173,15 @@ BarWidget {
     contentWidth: calendarPanel.fittedContentWidth(Style.space(300))
     contentHeight: calendarPanel.fittedContentHeight(calendarColumn.implicitHeight)
 
-    Item {
+    PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      focus: true
-
-      Keys.priority: Keys.BeforeItem
-      Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) {
-          root.close()
-          event.accepted = true
-        } else if (event.key === Qt.Key_Left) {
-          root.moveCalendar(-1, 0)
-          event.accepted = true
-        } else if (event.key === Qt.Key_Right) {
-          root.moveCalendar(1, 0)
-          event.accepted = true
-        } else if (event.key === Qt.Key_Up) {
-          root.moveCalendar(0, -1)
-          event.accepted = true
-        } else if (event.key === Qt.Key_Down) {
-          root.moveCalendar(0, 1)
-          event.accepted = true
-        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-          root.resetCalendarDate()
-          event.accepted = true
-        }
+      onMoveRequested: function(dx, dy) {
+        if (dx !== 0) root.moveCalendar(dx, 0)
+        else if (dy !== 0) root.moveCalendar(0, dy)
       }
+      onActivateRequested: root.resetCalendarDate()
+      onCloseRequested: root.close()
 
       Column {
         id: calendarColumn
