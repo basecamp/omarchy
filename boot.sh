@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # Set install mode to online since boot.sh is used for curl installations
 export OMARCHY_ONLINE_INSTALL=true
 
@@ -38,13 +40,9 @@ sudo pacman -Syu --noconfirm --needed git
 OMARCHY_REPO="${OMARCHY_REPO:-basecamp/omarchy}"
 
 echo -e "\nCloning Omarchy from: https://github.com/${OMARCHY_REPO}.git"
-rm -rf ~/.local/share/omarchy/
-git clone "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/null
-
 echo -e "\e[32mUsing branch: $OMARCHY_REF\e[0m"
-cd ~/.local/share/omarchy
-git fetch origin "${OMARCHY_REF}" && git checkout "${OMARCHY_REF}"
-cd -
+rm -rf ~/.local/share/omarchy/
+git clone --branch "$OMARCHY_REF" "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/null
 
 echo -e "\nInstallation starting..."
 source ~/.local/share/omarchy/install.sh
