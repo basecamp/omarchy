@@ -7,8 +7,8 @@ import qs.Ui
 
 Panel {
   id: root
-  moduleName: "PowerPanel"
-  ipcTarget: "panels.power"
+  moduleName: "omarchy.power"
+  ipcTarget: "omarchy.power"
   property var batteryInfo: ({})
   property var systemInfo: ({})
   property var profiles: []

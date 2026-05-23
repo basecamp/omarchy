@@ -4,7 +4,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "Weather"
+  moduleName: "omarchy.weather"
 
   function injectPanel() {
     var target = panelLoader.item
@@ -32,7 +32,7 @@ BarWidget {
   Loader {
     id: panelLoader
     active: true
-    source: Qt.resolvedUrl("../../panels/Weather.qml")
+    source: Qt.resolvedUrl("Panel.qml")
     visible: false
     onLoaded: {
       root.injectPanel()

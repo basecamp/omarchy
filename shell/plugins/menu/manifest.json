@@ -6,10 +6,18 @@
   "author": "Omarchy",
   "description": "Quickshell-powered Omarchy command menu",
   "kinds": [
-    "menu"
+    "menu",
+    "bar-widget"
   ],
   "keepLoaded": true,
   "entryPoints": {
-    "menu": "Menu.qml"
+    "menu": "Menu.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Omarchy menu",
+    "description": "Launches the Omarchy menu",
+    "category": "Compositor",
+    "allowMultiple": false
   }
 }

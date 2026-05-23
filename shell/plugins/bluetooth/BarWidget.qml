@@ -8,8 +8,8 @@ import qs.Commons
 
 Panel {
   id: root
-  moduleName: "BluetoothPanel"
-  ipcTarget: "panels.bluetooth"
+  moduleName: "omarchy.bluetooth"
+  ipcTarget: "omarchy.bluetooth"
 
   // Address -> "connecting" | "disconnecting" | "forgetting".
   // The actual Bluetooth sequencing lives in bin/omarchy-bluetooth-device;

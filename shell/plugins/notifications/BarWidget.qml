@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "NotificationCenter"
+  moduleName: "omarchy.notifications"
 
 
   property bool popupOpen: false

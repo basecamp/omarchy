@@ -5,7 +5,7 @@ import qs.Commons
 
 BarWidget {
   id: root
-  moduleName: "Media"
+  moduleName: "omarchy.media"
 
   readonly property var mediaService: bar && bar.shell ? bar.shell.firstPartyServiceFor("omarchy.media") : null
   readonly property var activePlayer: mediaService ? mediaService.activePlayer : null

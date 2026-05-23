@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "Tray"
+  moduleName: "omarchy.tray"
 
   property bool expanded: false
   property bool managePopupOpen: false

@@ -7,8 +7,8 @@ import qs.Commons
 
 Panel {
   id: root
-  moduleName: "MonitorPanel"
-  ipcTarget: "panels.monitor"
+  moduleName: "omarchy.monitor"
+  ipcTarget: "omarchy.monitor"
   manageIpc: false
 
   // manageIpc: false so this panel can own the single IpcHandler the target
@@ -169,25 +169,27 @@ Panel {
       flick.contentY = bottom + margin - flick.height
   }
 
+  function brightnessIpc(percent) {
+    var value = Number(percent)
+    root.setBrightness(value)
+    return "got " + root.pendingBrightnessPercent
+  }
+
+  function stateIpc() {
+    return JSON.stringify({
+      brightness: root.brightnessPercent,
+      brightnessAvailable: root.brightnessAvailable,
+      focusedMonitor: root.focusedMonitor,
+      scale: root.monitorScale,
+      displays: root.displays
+    })
+  }
+
   IpcHandler {
-    target: "panels.monitor"
+    target: "omarchy.monitor"
 
-    function brightness(percent: string): string {
-      var value = Number(percent)
-      root.setBrightness(value)
-      return "got " + root.pendingBrightnessPercent
-    }
-
-    function state(): string {
-      return JSON.stringify({
-        brightness: root.brightnessPercent,
-        brightnessAvailable: root.brightnessAvailable,
-        focusedMonitor: root.focusedMonitor,
-        scale: root.monitorScale,
-        displays: root.displays
-      })
-    }
-
+    function brightness(percent: string): string { return root.brightnessIpc(percent) }
+    function state(): string { return root.stateIpc() }
     function open(): void { root.open() }
     function close(): void { root.close() }
     function toggle(): void { root.toggle() }

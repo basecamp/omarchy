@@ -6,8 +6,8 @@ import qs.Ui
 
 Panel {
   id: root
-  moduleName: "WeatherPanel"
-  ipcTarget: "Weather"
+  moduleName: "omarchy.weather"
+  ipcTarget: "omarchy.weather"
 
   property var anchorItem: null
 
@@ -19,12 +19,6 @@ Panel {
   function toggle() {
     if (root.opened) root.close()
     else root.open()
-  }
-
-  IpcHandler {
-    target: "Weather"
-    function show(): void { root.open() }
-    function toggle(): void { root.toggle() }
   }
 
   // Parsed wttr.in j1 response. Kept on failure so stale data stays visible.

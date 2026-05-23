@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.clock",
+  "name": "Clock",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Day/time label; click to toggle alternate format",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Clock.qml"
+  },
+  "barWidget": {
+    "displayName": "Clock",
+    "description": "Day/time label; click to toggle alternate format",
+    "category": "Time",
+    "allowMultiple": false
+  }
+}

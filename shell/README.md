@@ -104,8 +104,10 @@ editing the built-in source. Third-party ids must be namespaced and may not use
 the reserved `omarchy.*` prefix.
 
 ```bash
-omarchy plugin clone omarchy.clock local.clock --replace --open pi
+omarchy plugin clone omarchy.clock local.clock --replace --with ai --prompt "Customize this clock widget"
 omarchy plugin clone                 # interactive source/name/tool picker
+omarchy plugin edit local.clock --with editor  # edit with `omarchy launch editor`
+omarchy plugin edit local.clock --with ai      # edit with `omarchy launch ai`
 ```
 
 First-party plugins under `shell/plugins/`
@@ -125,6 +127,7 @@ running a separate Quickshell instance.
 | `summon <id> <payloadJson>`              | `ok` / `unknown` | load + open a panel/overlay plugin           |
 | `hide <id>`                              | —       | close a previously-summoned plugin                    |
 | `toggle <id> <payloadJson>`              | —       | summon if closed, hide if open                        |
+| `call <id> <method> <arg>`               | string  | call a method on an already-loaded plugin             |
 | `rescanPlugins`                          | —       | re-walk plugin dirs and pick up new/changed manifests |
 | `setPluginEnabled <id> <enabled>`        | —       | flip the persisted enabled bit (see note)             |
 | `listPlugins`                            | JSON    | every discovered plugin (id, name, kinds, enabled)    |
@@ -145,6 +148,7 @@ calls to the running shell. It does not start the shell.
 ```
 omarchy-shell shell ping
 omarchy-shell shell summon omarchy.settings "{}"
+omarchy-shell shell toggle omarchy.menu '{"menu":"root"}'
 omarchy-shell shell listPlugins
 omarchy-shell shell rescanPlugins
 ```
@@ -205,8 +209,8 @@ rewrites the `bar` subtree from the current `shell-defaults.json`.
    separate per-plugin settings file, no merge layers. The fields on each
    entry are the values the plugin sees.
 3. **Built-in widget ids are namespaced.** Use ids such as `omarchy.clock`,
-   `omarchy.audio`, and `omarchy.network`. Legacy ids like `Clock` and
-   `AudioPanel` are accepted as aliases and migrated forward.
+   `omarchy.audio`, and `omarchy.network`. The migration rewrites older ids
+   like `Clock` and `AudioPanel` forward.
 4. **Third-party enabled ⇔ present.** A third-party plugin is enabled iff
    its id appears somewhere in shell.json. For bar widgets, the bar
    settings UI adds/removes layout entries; other plugin kinds are enabled

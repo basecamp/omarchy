@@ -8,8 +8,8 @@ import qs.Commons
 
 Panel {
   id: root
-  moduleName: "NetworkPanel"
-  ipcTarget: "panels.network"
+  moduleName: "omarchy.network"
+  ipcTarget: "omarchy.network"
 
   // Centralized close so callers can't forget to drop the passphrase prompt.
   function close() {

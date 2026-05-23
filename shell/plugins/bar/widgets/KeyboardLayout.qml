@@ -7,7 +7,7 @@ import qs.Commons
 
 BarWidget {
   id: root
-  moduleName: "KeyboardLayout"
+  moduleName: "omarchy.keyboard-layout"
 
 
   property string layoutLabel: ""

@@ -407,7 +407,7 @@ Item {
                   color: Qt.darker(root.foreground, 1.4)
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.bodySmall
-                  text: "Single cursor. Most reusable panel primitives expose hasCursor: bool and emit hovered(bool); composed rows (including sliders) wrap their content in CursorSurface. The panel root owns cursorActive + focusSection + selectedIndex; each element binds hasCursor: root.cursorActive && root.focusSection === 'X' && root.selectedIndex === N, and onHovered flips cursorActive on while updating the same state. No initial highlight, then one highlight on screen once the keyboard or mouse enters. See plugins/panels/Audio.qml for the canonical recipe."
+                  text: "Single cursor. Most reusable panel primitives expose hasCursor: bool and emit hovered(bool); composed rows (including sliders) wrap their content in CursorSurface. The panel root owns cursorActive + focusSection + selectedIndex; each element binds hasCursor: root.cursorActive && root.focusSection === 'X' && root.selectedIndex === N, and onHovered flips cursorActive on while updating the same state. No initial highlight, then one highlight on screen once the keyboard or mouse enters. See plugins/audio/BarWidget.qml for the canonical recipe."
                 }
                 Text {
                   width: parent.width
@@ -1524,7 +1524,7 @@ Item {
                   width: Style.spacing.dropdownWidth
                   label: "Center anchor"
                   fontFamily: root.fontFamily
-                  options: ["Clock", "Weather", "PowerPanel"]
+                  options: ["omarchy.clock", "omarchy.weather", "omarchy.power"]
                   value: root.dropdownDemoValue
                   hasCursor: root.focusSection === "dropdown" && root.selectedIndex === 0
                   onHovered: function(h) {
@@ -1589,7 +1589,7 @@ Item {
                   options: [
                     { value: "Clock", label: "Clock", description: "Time + date display" },
                     { value: "Weather", label: "Weather", description: "Local conditions and forecast" },
-                    { value: "PowerPanel", label: "Power", description: "Charge level + power profile" },
+                    { value: "omarchy.power", label: "Power", description: "Charge level + power profile" },
                     { value: "audio", label: "Audio", description: "Output sink + volume" },
                     { value: "network", label: "Network", description: "Wi-Fi + ethernet status" },
                     { value: "bluetooth", label: "Bluetooth", description: "Paired and nearby devices" },

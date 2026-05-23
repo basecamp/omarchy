@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.keyboard-layout",
+  "name": "Keyboard layout",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Current xkb layout, click cycles",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "KeyboardLayout.qml"
+  },
+  "barWidget": {
+    "displayName": "Keyboard layout",
+    "description": "Current xkb layout, click cycles",
+    "category": "Compositor",
+    "allowMultiple": false
+  }
+}

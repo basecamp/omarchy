@@ -119,19 +119,20 @@ QtObject {
 
   function findEntryLocation(config, id) {
     if (!Util.isPlainObject(config)) return { found: false }
+    var key = Util.canonicalWidgetId(String(id))
     if (Util.isPlainObject(config.bar) && Util.isPlainObject(config.bar.layout)) {
       var sections = ["left", "center", "right"]
       for (var s = 0; s < sections.length; s++) {
         var arr = config.bar.layout[sections[s]]
         if (!Array.isArray(arr)) continue
         for (var i = 0; i < arr.length; i++) {
-          if (arr[i] && arr[i].id === id) return { found: true, kind: "bar", section: sections[s], index: i }
+          if (arr[i] && Util.canonicalWidgetId(arr[i].id) === key) return { found: true, kind: "bar", section: sections[s], index: i }
         }
       }
     }
     if (Array.isArray(config.plugins)) {
       for (var j = 0; j < config.plugins.length; j++) {
-        if (config.plugins[j] && config.plugins[j].id === id) return { found: true, kind: "plugin", index: j }
+        if (config.plugins[j] && Util.canonicalWidgetId(config.plugins[j].id) === key) return { found: true, kind: "plugin", index: j }
       }
     }
     return { found: false }
@@ -141,7 +142,7 @@ QtObject {
   // kinds. Bar widgets default to the right section; panels/overlays/menus/
   // services go into the plugins[] array.
   function setEnabled(id, value) {
-    var key = String(id)
+    var key = Util.canonicalWidgetId(String(id))
     if (!shellConfigMutator) {
       console.warn("PluginRegistry.setEnabled called before shellConfigMutator wired")
       return
@@ -267,16 +268,20 @@ QtObject {
     scanning = true
     // $0 = first-party dir, $1 = third-party dir. Some bash versions need the explicit -- separator.
     // First-party plugins may be grouped one level deeper, e.g. services/battery.
+    // First-party bar widgets can also carry sibling manifests such as
+    // widgets/Clock.manifest.json so multiple widgets can live in one source
+    // directory without wrapper folders.
     // Third-party plugins stay at the top level of ~/.config/omarchy/plugins.
     var script = ""
-      + "emit_manifest() { local kind=\"$1\"; local manifest=\"$2\"; local sub=\"${manifest%/manifest.json}\"; "
+      + "emit_manifest() { local kind=\"$1\"; local manifest=\"$2\"; local sub; "
+      + "  if [[ ${manifest##*/} == \"manifest.json\" ]]; then sub=\"${manifest%/manifest.json}\"; else sub=\"$(dirname -- \"$manifest\")\"; fi; "
       + "  printf '===%s::%s===\\n' \"$kind\" \"$sub\"; "
       + "  cat \"$manifest\"; "
       + "  printf '\\n=== EOM ===\\n'; "
       + "}; "
       + "scan_firstparty() { local dir=\"$1\"; "
       + "  [[ -d \"$dir\" ]] || return 0; "
-      + "  while IFS= read -r manifest; do emit_manifest firstparty \"$manifest\"; done < <(find \"$dir\" -mindepth 2 -maxdepth 3 -name manifest.json -type f | sort); "
+      + "  while IFS= read -r manifest; do emit_manifest firstparty \"$manifest\"; done < <(find \"$dir\" -mindepth 2 -maxdepth 3 -type f \\( -name manifest.json -o -name '*.manifest.json' \\) | sort); "
       + "}; "
       + "scan_thirdparty() { local dir=\"$1\"; "
       + "  [[ -d \"$dir\" ]] || return 0; "

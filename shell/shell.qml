@@ -17,9 +17,6 @@ ShellRoot {
   // own empty copies.
   property PluginRegistry pluginRegistry: PluginRegistry { }
   property BarWidgetRegistry barWidgetRegistry: BarWidgetRegistry { }
-  property FirstPartyWidgets firstPartyWidgets: FirstPartyWidgets {
-    barWidgetRegistry: shell.barWidgetRegistry
-  }
 
   property string home: Quickshell.env("HOME")
 
@@ -362,9 +359,17 @@ ShellRoot {
     return true
   }
 
+  function isPluginOpen(pluginId) {
+    var id = String(pluginId || "")
+    var loader = panelLoaders[id]
+    if (loader && loader.item && loader.item.opened !== undefined)
+      return loader.item.opened === true
+    return openPanelIds[id] === true
+  }
+
   function toggle(pluginId, payloadJson) {
     var id = String(pluginId || "")
-    return openPanelIds[id] ? hide(id) : summon(id, payloadJson)
+    return isPluginOpen(id) ? hide(id) : summon(id, payloadJson)
   }
 
   // Map of pluginId -> Loader, populated by the Instantiator delegate below.
@@ -408,6 +413,19 @@ ShellRoot {
     if (typeof loader.item[method] !== "function") return
     try { loader.item[method](arg) } catch (e) {
       console.warn("plugin " + pluginId + " " + method + "() threw:", e)
+    }
+  }
+
+  function callIfLoaded(pluginId, method, arg) {
+    var loader = panelLoaders[pluginId]
+    if (!loader || !loader.item) return "unknown"
+    if (typeof loader.item[method] !== "function") return "unknown"
+    try {
+      var result = loader.item[method](arg)
+      return result === undefined || result === null ? "ok" : String(result)
+    } catch (e) {
+      console.warn("plugin " + pluginId + " " + method + "() threw:", e)
+      return "error"
     }
   }
 
@@ -490,10 +508,8 @@ ShellRoot {
 
   // Mirror plugin registry state into BarWidgetRegistry whenever it changes.
   // Each enabled plugin with kind "bar-widget" gets a Component created from
-  // its manifest entry point and registered under its plain manifest id.
-  // First-party widget ids (clock, weather, etc.) are short and don't
-  // collide with namespaced plugin ids, so we don't need a separate
-  // "plugin:" namespace anymore.
+  // its manifest entry point and registered under its manifest id. Built-in
+  // widgets use the same first-party manifest contract as third-party widgets.
   Connections {
     target: shell.pluginRegistry
     function onPluginsChanged() { shell.syncPluginWidgets() }
@@ -527,6 +543,7 @@ ShellRoot {
         category: meta.category || "Plugin",
         allowMultiple: meta.allowMultiple === true,
         defaults: meta.defaults || {},
+        settingsForm: meta.settingsForm || "",
         schema: meta.schema || [],
         pluginId: manifest.id,
         sourceDir: manifest.__sourceDir || "",
@@ -640,6 +657,10 @@ ShellRoot {
 
     function toggle(id: string, payloadJson: string): void {
       shell.toggle(id, payloadJson)
+    }
+
+    function call(id: string, method: string, arg: string): string {
+      return shell.callIfLoaded(id, method, arg)
     }
   }
 }

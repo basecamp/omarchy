@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "Clock"
+  moduleName: "omarchy.clock"
 
   property bool alt: false
   property date displayDate: clock.date
@@ -46,7 +46,7 @@ BarWidget {
   }
 
   IpcHandler {
-    target: "Clock"
+    target: "omarchy.clock"
     function refresh(): void { root.refresh() }
   }
 

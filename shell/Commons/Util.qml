@@ -42,32 +42,8 @@ QtObject {
     return value !== null && typeof value === "object" && !Array.isArray(value)
   }
 
-  readonly property var builtinWidgetAliases: ({
-    "Omarchy": "omarchy.menu",
-    "Workspaces": "omarchy.workspaces",
-    "Media": "omarchy.media",
-    "AudioPanel": "omarchy.audio",
-    "MonitorPanel": "omarchy.monitor",
-    "NetworkPanel": "omarchy.network",
-    "PowerPanel": "omarchy.power",
-    "BluetoothPanel": "omarchy.bluetooth",
-    "Clock": "omarchy.clock",
-    "Indicators": "omarchy.indicators",
-    "NotificationCenter": "omarchy.notifications",
-    "SystemUpdate": "omarchy.system-update",
-    "SystemStats": "omarchy.system-stats",
-    "Tray": "omarchy.tray",
-    "Weather": "omarchy.weather",
-    "Microphone": "omarchy.microphone",
-    "ActiveWindow": "omarchy.active-window",
-    "KeyboardLayout": "omarchy.keyboard-layout",
-    "LockKeys": "omarchy.lock-keys",
-    "Spacer": "omarchy.spacer"
-  })
-
   function canonicalWidgetId(id) {
-    var key = String(id || "")
-    return builtinWidgetAliases[key] || key
+    return String(id || "")
   }
 
   // Best-effort base64 decode. Returns "" on parse failure rather than

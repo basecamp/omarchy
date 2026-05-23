@@ -9,8 +9,8 @@ import qs.Commons
 
 Panel {
   id: root
-  moduleName: "AudioPanel"
-  ipcTarget: "panels.audio"
+  moduleName: "omarchy.audio"
+  ipcTarget: "omarchy.audio"
 
   readonly property var sink: Pipewire.defaultAudioSink
   readonly property var source: Pipewire.defaultAudioSource
