@@ -1,10 +1,9 @@
 #!/bin/bash
 #
-# The in-target portion of an Omarchy install: package-level setup, system
-# configuration, login wiring, post-install. Self-contained — works whether
-# invoked by install.sh (online) or by the Python orchestrator (offline, via
-# arch-chroot). The caller is responsible for system sanity checks (guards),
-# UI styling, and log capture.
+# The in-target portion of an Omarchy install. This is intentionally boring:
+# the caller has already prepared the system; all this script does is run the
+# target-side setup scripts. The ISO parent owns UI/error handling, while the
+# online path re-establishes its tty-backed traps below.
 
 set -eEo pipefail
 
@@ -14,11 +13,23 @@ export OMARCHY_INSTALL="${OMARCHY_INSTALL:-$_OMARCHY_INSTALLER_DIR/install}"
 export OMARCHY_INSTALL_LOG_FILE="${OMARCHY_INSTALL_LOG_FILE:-/var/log/omarchy-install.log}"
 export PATH="$_OMARCHY_INSTALLER_DIR/bin:$OMARCHY_PATH/bin:$PATH"
 
+# Do not source helpers/all.sh here. That bundle unconditionally pulls in
+# presentation and interactive error handling, both of which assume a
+# controlling tty. The ISO runs this file through arch-chroot with
+# stdout/stderr captured by the parent. Keep the offline bootstrap to the
+# non-interactive primitives the scripts below use.
 source "$OMARCHY_INSTALL/helpers/mode.sh"
 detect_install_mode
 export_legacy_mode_flags
+source "$OMARCHY_INSTALL/helpers/chroot.sh"
+source "$OMARCHY_INSTALL/helpers/logging.sh"
 
-source "$OMARCHY_INSTALL/helpers/all.sh"
+# Online installs still run finalize.sh directly after install.sh execs it, so
+# re-establish the interactive UI/error traps only for that tty-backed path.
+if install_mode_is online; then
+  source "$OMARCHY_INSTALL/helpers/presentation.sh"
+  source "$OMARCHY_INSTALL/helpers/errors.sh"
+fi
 
 # Mark every shipped migration as "done" so future updates only run the new
 # ones. Idempotent; safe to re-run.
