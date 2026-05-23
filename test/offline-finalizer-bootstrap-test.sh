@@ -88,4 +88,45 @@ if [[ $output == *'Inappropriate ioctl'* || $output == *'/dev/tty'* ]]; then
   exit 1
 fi
 
+rm -f "$TMP/home/finalizer-completed" "$TMP/omarchy-install.log"
+debug_output="$({
+  setsid -w env \
+    OMARCHY_INSTALL_DEBUG=1 \
+    OMARCHY_INSTALL="$TMP/install" \
+    OMARCHY_PATH="$TMP/omarchy" \
+    OMARCHY_INSTALL_MODE=offline \
+    OMARCHY_CHROOT_FINALIZER=1 \
+    OMARCHY_INSTALL_LOG_FILE="$TMP/omarchy-install.log" \
+    HOME="$TMP/home" \
+    USER=ryan \
+    bash "$ROOT/finalize.sh" </dev/null
+} 2>&1)"
+
+printf '%s\n' "$debug_output"
+
+if [[ ! -f "$TMP/home/finalizer-completed" ]]; then
+  echo "expected debug finalizer completion marker" >&2
+  exit 1
+fi
+
+if ! grep -q '\[finalize-debug\] tracing enabled' "$TMP/omarchy-install.log"; then
+  echo "expected finalize debug trace marker in install log" >&2
+  exit 1
+fi
+
+if ! grep -q 'source .*/helpers/mode.sh' "$TMP/omarchy-install.log"; then
+  echo "expected helper source trace in debug install log" >&2
+  exit 1
+fi
+
+if ! grep -q 'packaging-marker' "$TMP/omarchy-install.log"; then
+  echo "expected debug run_logged script output in install log" >&2
+  exit 1
+fi
+
+if [[ $debug_output == *'Inappropriate ioctl'* || $debug_output == *'/dev/tty'* ]]; then
+  echo "debug offline finalizer attempted tty access" >&2
+  exit 1
+fi
+
 echo "offline finalizer bootstrap test passed"
