@@ -427,11 +427,6 @@ Item {
     return root.pathFor(entry.parent)
   }
 
-  function breadcrumbFor(id) {
-    var path = root.pathFor(id)
-    return path ? ("Go › " + path) : "Go"
-  }
-
   function isDescendantOf(id, ancestorId) {
     if (ancestorId === "root") return id !== "root"
 
@@ -611,12 +606,6 @@ Item {
       }
       rows = currentRows.concat(drilldownRows)
     } else {
-      if (active !== "root") {
-        var parentTarget = root.item(active).parent || "root"
-        var backTarget = root.navStack.length > 0 ? root.navStack[root.navStack.length - 1] : parentTarget
-        rows.push({ itemId: "__back", kind: "back", icon: "", label: "Back", target: backTarget, detail: root.breadcrumbFor(backTarget), path: "", childCount: 0, action: "", score: -1, section: "" })
-      }
-
       for (var j = 0; j < root.itemOrder.length; j++) {
         var child = root.item(root.itemOrder[j])
         if (!child || child.parent !== active) continue
@@ -652,7 +641,7 @@ Item {
   function setFilter(nextFilter) {
     root.filterText = nextFilter
     root.selectedIndex = 0
-    root.cursorActive = false
+    root.cursorActive = root.mode !== "input"
     if (!root.dmenuActive && root.filterText.trim()) root.loadProvidersForSearch()
     root.rebuildDisplay()
   }
@@ -663,7 +652,7 @@ Item {
     root.activeMenu = id
     root.filterText = ""
     root.selectedIndex = 0
-    root.cursorActive = false
+    root.cursorActive = true
     root.rebuildDisplay()
     root.loadProviderForMenu(id)
   }
@@ -697,9 +686,7 @@ Item {
     if (index < 0 || index >= displayModel.count) return
 
     var row = displayModel.get(index)
-    if (row.kind === "back") {
-      root.goBack()
-    } else if (row.kind === "menu" || row.kind === "link") {
+    if (row.kind === "menu" || row.kind === "link") {
       root.setActiveMenu(row.target || row.itemId, true)
     } else {
       root.applySelected(row.itemId, row.action)
@@ -737,7 +724,7 @@ Item {
     navStack = []
     filterText = ""
     selectedIndex = 0
-    cursorActive = false
+    cursorActive = true
     root.evaluateGuards()
     opened = true
     rebuildDisplay()
@@ -760,7 +747,7 @@ Item {
     navStack = []
     filterText = ""
     selectedIndex = 0
-    cursorActive = false
+    cursorActive = mode !== "input"
     opened = true
     rebuildDisplay()
 
@@ -972,9 +959,6 @@ Item {
           } else if (event.key === Qt.Key_PageDown) {
             root.select(6)
             event.accepted = true
-          } else if (event.key === Qt.Key_Left) {
-            if (!root.filterText) root.goBack()
-            event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right) {
             if (root.dmenuActive) {
               if (root.mode === "input") root.applyDmenuSelection(root.filterText)
@@ -1086,7 +1070,6 @@ Item {
                 visible: row.hasIcon
                 text: row.icon
                 color: row.hasCursor ? root.selectedText : root.foreground
-                opacity: row.kind === "back" ? 0.7 : 1
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.iconLarge
                 width: Style.space(36)
