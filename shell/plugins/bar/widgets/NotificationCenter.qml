@@ -44,6 +44,14 @@ BarWidget {
       .replace(/^\s*(?:https?:\/\/|www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/\S*)?\s+/i, "")
   }
 
+  function notificationIconSource(icon) {
+    var value = String(icon || "")
+    if (value.length === 0) return ""
+    if (value.indexOf("file://") === 0 || value.indexOf("image://") === 0) return value
+    if (value.charAt(0) === "/") return Util.fileUrl(value)
+    return Quickshell.iconPath(value, true)
+  }
+
   readonly property int pendingCount: notificationService ? notificationService.pendingModel.count : 0
   readonly property int pastCount: notificationService ? notificationService.pastModel.count : 0
   readonly property bool dnd: notificationService ? notificationService.doNotDisturb : false
@@ -284,7 +292,7 @@ BarWidget {
 
           readonly property bool hasMedia: image.length > 0 && (
             image.indexOf("image://icon//") === 0 || image.indexOf("file://") === 0)
-          readonly property string smallIconSource: image.length > 0 ? image : appIcon
+          readonly property string smallIconSource: image.length > 0 ? image : root.notificationIconSource(appIcon)
           readonly property bool hasIcon: !hasMedia && smallIconSource.length > 0
           readonly property string sanitizedBody: root.sanitizeBody(body, app, appIcon)
 
