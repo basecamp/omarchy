@@ -134,7 +134,12 @@ run_logged() {
 
   # Use a clean subshell, but keep errexit so failures inside sourced scripts
   # cannot be hidden by a later successful command in the same script.
-  bash -eE -c 'source "$1"' bash "$script" </dev/null >>"$OMARCHY_INSTALL_LOG_FILE" 2>&1
+  if [[ ${OMARCHY_INSTALL_DEBUG:-} == "1" ]]; then
+    PS4='+ ${BASH_SOURCE[0]##*/}:${LINENO}:${FUNCNAME[0]:-main}: ' \
+      bash -x -eE -c 'source "$1"' bash "$script" </dev/null >>"$OMARCHY_INSTALL_LOG_FILE" 2>&1
+  else
+    bash -eE -c 'source "$1"' bash "$script" </dev/null >>"$OMARCHY_INSTALL_LOG_FILE" 2>&1
+  fi
 
   local exit_code=$?
 
