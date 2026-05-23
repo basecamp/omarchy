@@ -26,10 +26,10 @@ ShellRoot {
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   readonly property string shellPath: omarchyPath + "/shell"
   readonly property string firstPartyPluginsDir: shellPath + "/plugins"
-  readonly property string defaultsPath: shellPath + "/shell-defaults.json"
+  readonly property string defaultsPath: omarchyPath + "/config/omarchy/shell.json"
   readonly property string userConfigPath: home + "/.config/omarchy/shell.json"
 
-  // Bundled fallback so the shell can start even when shell-defaults.json is
+  // Bundled fallback so the shell can start even when the default shell.json is
   // missing or unreadable. The bar config here mirrors the on-disk defaults
   // closely enough to render a usable bar; not authoritative.
   readonly property var builtinShellConfig: ({
@@ -85,7 +85,7 @@ ShellRoot {
       if (Util.isPlainObject(parsed) && parsed.version === 1) defaultsConfig = parsed
       else defaultsConfig = builtinShellConfig
     } catch (e) {
-      console.warn("shell-defaults.json parse failed, using builtin:", e)
+      console.warn("default shell.json parse failed, using builtin:", e)
       defaultsConfig = builtinShellConfig
     }
     applyShellConfig()
@@ -107,7 +107,7 @@ ShellRoot {
     printErrors: false
     onLoaded: shell.loadDefaults(text())
     onLoadFailed: function(error) {
-      console.warn("shell-defaults load failed: " + error + " path=" + shell.defaultsPath)
+      console.warn("default shell.json load failed: " + error + " path=" + shell.defaultsPath)
       shell.loadDefaults("")
     }
     onFileChanged: reload()

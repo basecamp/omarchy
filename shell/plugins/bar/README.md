@@ -9,12 +9,12 @@ the shell for its whole session.
 - `Bar.qml` is Omarchy-owned bar engine code, loaded by the omarchy-shell host. Users should not edit it directly.
 - `widgets/` holds simple first-party bar widgets with sibling manifests.
 - Feature plugins such as `../audio/`, `../network/`, and `../power/` provide richer popup bar widgets.
-- The bar receives its config from the host shell as a `barConfig` property; the host loads it from `~/.config/omarchy/shell.json` (or `shell-defaults.json` when the user has no file).
+- The bar receives its config from the host shell as a `barConfig` property; the host loads it from `~/.config/omarchy/shell.json` (or `config/omarchy/shell.json` when the user has no file).
 - `omarchy-style-bar-position` updates only the user shell.json file.
 
 ## Customizing
 
-The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](../../README.md#shelljson-shape). Out of the box the shell uses [`shell-defaults.json`](../../shell-defaults.json). Once you customize anything via `omarchy launch bar settings` or by editing shell.json directly, your file is canonical — there is no deep-merge.
+The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](../../README.md#shelljson-shape). Out of the box the shell uses [`config/omarchy/shell.json`](../../../config/omarchy/shell.json). Once you customize anything via `omarchy launch bar settings` or by editing shell.json directly, your file is canonical — there is no deep-merge.
 
 Launch the visual editor with `omarchy launch bar settings` / `omarchy plugin bar edit` (or run `omarchy-launch-bar-settings`) to reorder widgets, add/remove them, and tweak per-widget options without editing JSON by hand. For scriptable changes, use `omarchy plugin bar list`, `omarchy plugin bar add`, `omarchy plugin bar move`, `omarchy plugin bar remove`, and `omarchy plugin bar set`. You can also right-click empty space to the left or right of the centered clock module to open it; double-left-click the same empty space to toggle bar transparency.
 

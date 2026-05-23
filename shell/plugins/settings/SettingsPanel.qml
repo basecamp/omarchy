@@ -35,7 +35,7 @@ Item {
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   readonly property string home: Quickshell.env("HOME")
   readonly property string userConfigPath: home + "/.config/omarchy/shell.json"
-  readonly property string defaultsPath: omarchyPath + "/shell/shell-defaults.json"
+  readonly property string defaultsPath: omarchyPath + "/config/omarchy/shell.json"
 
   // ---------------- theme --------------------------------------------------
   // Bar settings deliberately isn't a themable surface in shell.toml — it
@@ -201,7 +201,7 @@ Item {
         var parsed = JSON.parse(diskText)
         if (Util.isPlainObject(parsed) && parsed.version === 1) defaults = parsed
       } catch (e) {
-        console.warn("Bad shell-defaults JSON, falling back to builtin:", e)
+        console.warn("Bad default shell JSON, falling back to builtin:", e)
         defaults = builtinShellConfig
       }
     }

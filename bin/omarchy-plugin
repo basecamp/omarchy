@@ -177,7 +177,7 @@ plugin_enabled() {
 
 config_source() {
   require_omarchy_path
-  local defaults_file="$OMARCHY_PATH/shell/shell-defaults.json"
+  local defaults_file="$OMARCHY_PATH/config/omarchy/shell.json"
 
   if [[ -s $CONFIG_FILE ]] && jq -e 'type == "object" and .version == 1' "$CONFIG_FILE" >/dev/null 2>&1; then
     printf '%s' "$CONFIG_FILE"
