@@ -1,6 +1,71 @@
 #!/bin/bash
 
 # omarchy:summary=Toggle idle behavior so the system either idles normally or stays awake
+# omarchy:group=toggle
+# omarchy:args=[toggle|stay-awake|allow-idle|status]
+# omarchy:examples=omarchy toggle idle | omarchy toggle idle stay-awake | omarchy-toggle-idle --status
 
-omarchy-shell idle toggle
-omarchy-shell -q Indicators refresh
+STATE_DIR="$HOME/.local/state/omarchy/indicators"
+STATE_FILE="$STATE_DIR/stay-awake"
+
+stay_awake_enabled() {
+  [[ -f $STATE_FILE ]]
+}
+
+print_status() {
+  if stay_awake_enabled; then
+    printf '{"enabled":true,"class":"enabled","tooltip":"Allow Idle Lock & Screensaver"}\n'
+  else
+    printf '{"enabled":false,"class":"disabled","tooltip":"Stay Awake"}\n'
+  fi
+}
+
+print_idle_state() {
+  if stay_awake_enabled; then
+    printf 'disabled\n'
+  else
+    printf 'enabled\n'
+  fi
+}
+
+apply_state() {
+  case "$1" in
+    stay-awake)
+      mkdir -p "$STATE_DIR"
+      touch "$STATE_FILE"
+      omarchy-shell -q idle disable
+      ;;
+    allow-idle)
+      rm -f "$STATE_FILE"
+      omarchy-shell -q idle enable
+      ;;
+  esac
+
+  omarchy-shell -q omarchy.indicators refresh
+}
+
+case "${1:-toggle}" in
+  toggle)
+    if stay_awake_enabled; then
+      apply_state allow-idle
+    else
+      apply_state stay-awake
+    fi
+    print_idle_state
+    ;;
+  stay-awake|awake|on)
+    apply_state stay-awake
+    print_idle_state
+    ;;
+  allow-idle|idle|off)
+    apply_state allow-idle
+    print_idle_state
+    ;;
+  status|--status)
+    print_status
+    ;;
+  *)
+    echo "Usage: omarchy-toggle-idle [toggle|stay-awake|allow-idle|status]" >&2
+    exit 1
+    ;;
+esac

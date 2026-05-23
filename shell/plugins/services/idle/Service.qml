@@ -10,6 +10,9 @@ Item {
   // Injected by omarchy-shell (the first-party service loader).
   property var shell: null
 
+  readonly property string home: Quickshell.env("HOME")
+  readonly property string stayAwakeStateDir: home + "/.local/state/omarchy/indicators"
+  readonly property string stayAwakeStatePath: stayAwakeStateDir + "/stay-awake"
   readonly property int defaultScreensaverSeconds: 150
   readonly property int defaultLockSeconds: 300
   readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle : ({})
@@ -18,21 +21,19 @@ Item {
   readonly property int firstIdleTimeoutSeconds: Math.min(screensaverTimeoutSeconds, lockTimeoutSeconds)
   readonly property int screensaverDelaySeconds: Math.max(0, screensaverTimeoutSeconds - firstIdleTimeoutSeconds)
   readonly property int lockDelaySeconds: Math.max(0, lockTimeoutSeconds - firstIdleTimeoutSeconds)
-  readonly property bool idleEnabled: persisted.idleEnabled
+  readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
   readonly property string screensaverClass: "org.omarchy.screensaver"
 
+  property bool stayAwake: false
+  property bool stayAwakeStateLoaded: false
+  property bool hasPendingStayAwakePersist: false
+  property bool pendingStayAwakePersist: false
   property bool idledThisCycle: false
   property bool screensaverStartedThisCycle: false
   property string lastEvent: "starting"
   property string lastEventAt: ""
   property var screensaverWindows: ({})
   property int screensaverWindowCount: 0
-
-  PersistentProperties {
-    id: persisted
-    reloadableId: "omarchy-idle"
-    property bool idleEnabled: true
-  }
 
   function secondsFromConfig(value, fallback) {
     var n = Number(value)
@@ -199,6 +200,9 @@ Item {
   function statusJson() {
     return JSON.stringify({
       enabled: root.idleEnabled,
+      stayAwake: root.stayAwake,
+      stayAwakeStateLoaded: root.stayAwakeStateLoaded,
+      stayAwakeStatePath: root.stayAwakeStatePath,
       idle: idleMonitor.isIdle,
       inIdleCycle: root.idledThisCycle,
       screensaverStarted: root.screensaverStartedThisCycle,
@@ -222,16 +226,45 @@ Item {
     })
   }
 
-  function setIdleEnabled(value) {
-    var enabled = !!value
-    if (persisted.idleEnabled === enabled) return enabled ? "enabled" : "disabled"
+  function persistStayAwake(value) {
+    var command = value
+      ? "mkdir -p \"$HOME/.local/state/omarchy/indicators\" && touch \"$HOME/.local/state/omarchy/indicators/stay-awake\""
+      : "rm -f \"$HOME/.local/state/omarchy/indicators/stay-awake\""
 
-    persisted.idleEnabled = enabled
-    logEvent("idle-enabled", enabled ? "enabled" : "disabled")
-    if (!enabled) cancelIdleCycle("disabled")
+    if (stayAwakeStateWriter.running) {
+      root.pendingStayAwakePersist = !!value
+      root.hasPendingStayAwakePersist = true
+      return
+    }
+
+    stayAwakeStateWriter.command = ["bash", "-lc", command]
+    stayAwakeStateWriter.running = true
+  }
+
+  function refreshStayAwakeState() {
+    if (!stayAwakeStateProbe.running) stayAwakeStateProbe.running = true
+  }
+
+  function applyStayAwake(value, persist, reason) {
+    var enabled = !!value
+    var changed = !root.stayAwakeStateLoaded || root.stayAwake !== enabled
+
+    if (persist) persistStayAwake(enabled)
+
+    root.stayAwake = enabled
+    root.stayAwakeStateLoaded = true
+
+    if (!changed) return enabled ? "disabled" : "enabled"
+
+    logEvent("stay-awake", (enabled ? "enabled" : "disabled") + (reason ? " " + reason : ""))
+    if (enabled) cancelIdleCycle("stay-awake")
     else Qt.callLater(root.handleIdleChanged)
 
-    return enabled ? "enabled" : "disabled"
+    return enabled ? "disabled" : "enabled"
+  }
+
+  function setIdleEnabled(value) {
+    return applyStayAwake(!value, true, "ipc")
   }
 
   IdleMonitor {
@@ -285,9 +318,40 @@ Item {
     onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "wake exitCode=" + exitCode + " status=" + exitStatus) }
   }
 
+  Process {
+    id: stayAwakeStateProbe
+    command: ["bash", "-lc", "mkdir -p \"$HOME/.local/state/omarchy/indicators\"; if [[ -f $HOME/.local/state/omarchy/indicators/stay-awake ]]; then echo yes; else echo no; fi"]
+    stdout: SplitParser {
+      onRead: function(line) { root.applyStayAwake(String(line).trim() === "yes", false, "state-file") }
+    }
+    onExited: function() { stayAwakeStateDirWatcher.reload() }
+  }
+
+  Process {
+    id: stayAwakeStateWriter
+    onExited: function() {
+      if (root.hasPendingStayAwakePersist) {
+        var pending = root.pendingStayAwakePersist
+        root.hasPendingStayAwakePersist = false
+        root.persistStayAwake(pending)
+        return
+      }
+
+      root.refreshStayAwakeState()
+    }
+  }
+
+  FileView {
+    id: stayAwakeStateDirWatcher
+    path: root.stayAwakeStateDir
+    watchChanges: true
+    printErrors: false
+    onFileChanged: root.refreshStayAwakeState()
+  }
+
   Component.onCompleted: {
     logEvent("service-ready")
-    Qt.callLater(root.handleIdleChanged)
+    refreshStayAwakeState()
   }
 
   IpcHandler {
