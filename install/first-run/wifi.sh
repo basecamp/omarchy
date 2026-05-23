@@ -8,7 +8,7 @@ notify_update() {
 notify_wifi() {
   (
     action=$(notify-send -a omarchy-action -u critical --hint=string:omarchy-glyph:󰖩 "Click to Setup Wi-Fi" -A "default=Setup")
-    [[ $action == "default" ]] && omarchy-shell panels.network toggle
+    [[ $action == "default" ]] && omarchy-shell omarchy.network toggle
   ) >/dev/null 2>&1 &
 }
 

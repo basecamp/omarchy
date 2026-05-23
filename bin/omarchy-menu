@@ -4,19 +4,30 @@
 # omarchy:args=[toggle|summon|close|refresh|ping] [route]
 # omarchy:examples=omarchy menu | omarchy menu toggle system | omarchy menu summon style.theme | omarchy menu refresh
 
-# Thin wrapper around `omarchy-shell menu`. Keybinds and the bar icon
-# call omarchy-shell directly to skip the omarchy-CLI dispatch hop;
-# this exists so humans get `omarchy menu toggle X` etc.
+# Thin wrapper around the standard plugin IPC surface. The menu is the
+# first-party `omarchy.menu` plugin; routes are passed as JSON payload.
+
+set -euo pipefail
 
 verb="${1-toggle}"
 route="${2-root}"
 
+menu_payload() {
+  perl -MEncode=decode -MJSON::PP=encode_json -e 'print encode_json({ menu => decode("UTF-8", $ARGV[0]) })' "$1"
+}
+
 case "$verb" in
-  toggle | summon)
-    exec omarchy-shell menu "$verb" "$route"
+  toggle)
+    exec omarchy-shell shell toggle omarchy.menu "$(menu_payload "$route")"
     ;;
-  close | refresh | ping)
-    exec omarchy-shell menu "$verb"
+  summon)
+    exec omarchy-shell shell summon omarchy.menu "$(menu_payload "$route")"
+    ;;
+  close)
+    exec omarchy-shell shell hide omarchy.menu
+    ;;
+  refresh | ping)
+    exec omarchy-shell shell call omarchy.menu "$verb" "{}"
     ;;
   -h | --help | help)
     cat <<USAGE
