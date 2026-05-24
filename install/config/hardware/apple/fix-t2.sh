@@ -12,7 +12,7 @@ if lspci -nn | grep -q "106b:180[12]"; then
     tiny-dfr
 
   # Add user to video group (required for tiny-dfr to access /dev/dri devices)
-  usermod -aG video "${OMARCHY_INSTALL_USER:-${USER:-}}"
+  usermod -aG video "$OMARCHY_INSTALL_USER"
 
   # Enable T2 services
   systemctl enable t2fanrd.service
