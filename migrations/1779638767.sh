@@ -1,4 +1,3 @@
-#!/bin/bash
 
 echo "Install ghostty-nautilus for the 'Open in Ghostty' Nautilus right-click extension"
 
