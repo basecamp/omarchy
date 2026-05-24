@@ -1,13 +1,12 @@
 # Setup sudo-less access for the privileged first-run system one-shot. The
 # install user's ~/.local/state/omarchy/first-run.mode marker is created by
 # finalize.sh while running as that user.
-install_user="${OMARCHY_INSTALL_USER:-${USER:-}}"
+install_user="$OMARCHY_INSTALL_USER"
 install_mode_is offline || exit 0
-[[ -n $install_user ]] || exit 0
 
 mkdir -p /etc/sudoers.d
 cat > /etc/sudoers.d/first-run <<EOF
-Cmnd_Alias FIRST_RUN_CLEANUP = /bin/rm -f /etc/sudoers.d/first-run
+Cmnd_Alias FIRST_RUN_CLEANUP = /usr/bin/rm -f /etc/sudoers.d/first-run, /bin/rm -f /etc/sudoers.d/first-run
 Cmnd_Alias SYMLINK_RESOLVED = /usr/bin/ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 $install_user ALL=(ALL) NOPASSWD: /usr/bin/systemctl
 $install_user ALL=(ALL) NOPASSWD: /usr/bin/ufw

@@ -6,7 +6,7 @@ This branch is easiest to review as a behavior migration: each row below maps an
 
 | Phase | Entry point | Runs as | Runs when | Owns |
 |---|---|---|---|---|
-| System install | `system-finalize.sh` -> `install/system/all.sh` | root | once at install/finalize time | machine config, services, login manager, root-owned post-install cleanup |
+| System install | `system-finalize.sh` -> `install/system/all.sh` | root with `OMARCHY_INSTALL_USER` set to the non-root target user | once at install/finalize time | machine config, services, login manager, root-owned post-install cleanup |
 | User setup | `omarchy-setup-user` -> `install/user/all.sh` | target user | install user during `finalize.sh`, and every future user on first login | home config, AI skills, XDG dirs, app launchers, user services, user/session hardware tweaks |
 | User finalization | `finalize.sh` | target user | once during install | marks shipped migrations done, creates offline first-run marker, calls `omarchy-setup-user --force`, shows finish/reboot UI |
 | First run system one-shot | `omarchy-first-run` when `~/.local/state/omarchy/first-run.mode` exists | install user with temporary sudoers | first graphical login after offline install | firewall/DNS/icon-cache/voxtype work that needs a live boot |
@@ -16,14 +16,14 @@ This branch is easiest to review as a behavior migration: each row below maps an
 Rules of thumb:
 
 - `install/system/**` should not write a user's home directory except through explicit target-user metadata like `OMARCHY_INSTALL_USER`.
-- `omarchy-setup-user` is the canonical path for current and future users. `/etc/skel` seeds new homes, but setup-user keeps existing users and first-login users aligned.
+- `omarchy-setup-user` is the canonical path for current and future users. `/etc/skel` seeds new homes, but setup-user keeps existing users and first-login users aligned. The runtime `omarchy` package depends on `omarchy-installer` so `/usr/share/omarchy/install/user/**` is present for future users.
 - `install/user/**` contains reusable user setup pieces, but callers should normally invoke `omarchy-setup-user` rather than source those files directly.
 
 ## Crosswalk
 
 | Old file / behavior | New owner(s) | Phase | Review status / verification |
 |---|---|---|---|
-| `install.sh` ran package install then directly entered `finalize.sh`. | `install.sh` now runs root `system-finalize.sh`, then user `finalize.sh`. | system -> user | `rg 'system-finalize|finalize.sh' install.sh` |
+| `install.sh` ran package install then directly entered `finalize.sh`. | `install.sh` now runs root `system-finalize.sh` with `OMARCHY_INSTALL_USER=$USER`, then user `finalize.sh`. Offline callers must do the same root-before-user handoff. | system -> user | `rg 'system-finalize|OMARCHY_INSTALL_USER|finalize.sh' install.sh system-finalize.sh` |
 | `finalize.sh` ran all system/user/post-install phases. | `system-finalize.sh` owns system phases; `finalize.sh` now calls `omarchy-setup-user --force` and `post-install/finished.sh`. | split | `rg 'omarchy-setup-user|finished.sh|system/all' finalize.sh system-finalize.sh` |
 | `install/packaging/all.sh` mixed hardware package work and user app setup. | `install/packaging/system.sh` for hardware-gated packages; `install/packaging/user.sh` for user package setup (`nvim`). App launchers/npm wrappers are driven through `omarchy-refresh-applications` in setup-user. | split | `cat install/packaging/{all,system,user}.sh` |
 | `install/config/config.sh` copied `config/**` and bashrc into the install user's home. | `omarchy-settings` seeds `/etc/skel`; `omarchy-setup-user` copies `config/**`, `.bashrc`, and `.bash_profile` for existing/current users. | user setup + package/skel | `rg 'cp -R .*config|bashrc' bin/omarchy-setup-user` |

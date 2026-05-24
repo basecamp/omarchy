@@ -7,7 +7,7 @@ autologin_conf=/etc/sddm.conf.d/autologin.conf
 if [[ ! -f $autologin_conf ]]; then
   cat > "$autologin_conf" <<EOF
 [Autologin]
-User=${OMARCHY_INSTALL_USER:-${USER:-}}
+User=$OMARCHY_INSTALL_USER
 Session=omarchy
 EOF
 else
