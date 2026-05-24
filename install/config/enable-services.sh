@@ -1,12 +1,11 @@
-# _only variant skips --now to avoid starting iwd/docker/power-profiles-daemon
-# during install (existing iwd would be interrupted; the others should defer
-# to first boot). sddm, ufw, and hardware-gated services stay in their own
-# scripts.
-chrootable_systemctl_enable      bluetooth.service
-chrootable_systemctl_enable      cups.service
-chrootable_systemctl_enable      cups-browsed.service
-chrootable_systemctl_enable      avahi-daemon.service
-chrootable_systemctl_enable      linux-modules-cleanup.service
-chrootable_systemctl_enable_only docker.socket
-chrootable_systemctl_enable_only iwd.service
-chrootable_systemctl_enable_only power-profiles-daemon.service
+# Enable services only. Installs are followed by reboot, so don't start/reload
+# daemons mid-install. UFW and hardware-gated services stay in their own scripts.
+systemctl enable bluetooth.service
+systemctl enable cups.service
+systemctl enable cups-browsed.service
+systemctl enable avahi-daemon.service
+systemctl enable linux-modules-cleanup.service
+systemctl enable docker.socket
+systemctl enable NetworkManager.service
+systemctl enable power-profiles-daemon.service
+systemctl enable sddm.service
