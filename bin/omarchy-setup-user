@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # omarchy:summary=Set up Omarchy for the current user (~/.config, ~/.local, etc.)
-# omarchy:group=install
+# omarchy:group=setup
 # omarchy:examples=omarchy setup user | omarchy setup user --force
 
 set -euo pipefail
 
-if [[ $EUID -eq 0 ]]; then
+if (( EUID == 0 )); then
   echo "Error: run omarchy-setup-user as the user being configured, not as root." >&2
   exit 1
 fi
@@ -38,7 +38,34 @@ if [[ -f $marker && $force -eq 0 ]]; then
   exit 0
 fi
 
-OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+export OMARCHY_INSTALL="${OMARCHY_INSTALL:-$OMARCHY_PATH/install}"
+export PATH="$OMARCHY_PATH/bin:$PATH"
+
+if [[ -f $OMARCHY_INSTALL/helpers/mode.sh ]]; then
+  source "$OMARCHY_INSTALL/helpers/mode.sh"
+  detect_install_mode
+  export_legacy_mode_flags
+else
+  install_mode_is() { [[ ${OMARCHY_INSTALL_MODE:-online} == "$1" ]]; }
+  export -f install_mode_is
+fi
+
+if [[ -n ${OMARCHY_INSTALL_LOG_FILE:-} && -f $OMARCHY_INSTALL/helpers/logging.sh ]]; then
+  source "$OMARCHY_INSTALL/helpers/logging.sh"
+else
+  run_logged() {
+    local script="$1"
+    bash -eE -c 'source "$1"' bash "$script"
+  }
+fi
+
+# Copy over Omarchy configs for this user. /etc/skel handles newly-created
+# users, but existing users installing Omarchy need the same defaults seeded.
+mkdir -p ~/.config
+cp -R "$OMARCHY_PATH/config/." ~/.config/
+cp "$OMARCHY_PATH/default/bashrc" ~/.bashrc
+echo '[[ -f ~/.bashrc ]] && . ~/.bashrc' > ~/.bash_profile
 
 # AI assistant skill symlinks. Each agent has its own conventional skills
 # directory; we drop an 'omarchy' entry into each so the skill is loaded.
@@ -72,13 +99,17 @@ xdg-user-dirs-update --set DESKTOP "$HOME"
 rmdir ~/Templates ~/Public ~/Desktop 2>/dev/null || true
 touch ~/.config/gtk-3.0/bookmarks
 for dir in Downloads Projects Pictures Videos; do
-  printf 'file://%s/%s %s\n' "$HOME" "$dir" "$dir" >>~/.config/gtk-3.0/bookmarks
+  bookmark="file://$HOME/$dir $dir"
+  grep -qxF "$bookmark" ~/.config/gtk-3.0/bookmarks || echo "$bookmark" >>~/.config/gtk-3.0/bookmarks
 done
 
 # Hyprland keyboard layout from /etc/vconsole.conf
 conf=/etc/vconsole.conf
 hyprlua="$HOME/.config/hypr/input.lua"
 if [[ -f $conf && -f $hyprlua ]]; then
+  sed -i '/^[[:space:]]*kb_layout[[:space:]]*=/d' "$hyprlua"
+  sed -i '/^[[:space:]]*kb_variant[[:space:]]*=/d' "$hyprlua"
+
   if grep -q '^XKBLAYOUT=' "$conf"; then
     layout=$(grep '^XKBLAYOUT=' "$conf" | cut -d= -f2 | tr -d '"')
     sed -i "/^[[:space:]]*kb_options *=/i\    kb_layout = \"$layout\"," "$hyprlua"
@@ -89,7 +120,12 @@ if [[ -f $conf && -f $hyprlua ]]; then
   fi
 fi
 
-# Application catalog + MIME defaults
+# Reusable per-user install phase: theme, shell/user services, default keyring,
+# hardware-specific user session fixes, and other current-user setup.
+source "$OMARCHY_INSTALL/user/all.sh"
+
+# Application catalog + MIME defaults. Run after mise/node setup from user/all
+# so npm-backed wrappers can be installed for each user.
 omarchy-refresh-applications
 xdg-settings set default-web-browser chromium.desktop
 xdg-mime default HEY.desktop x-scheme-handler/mailto
