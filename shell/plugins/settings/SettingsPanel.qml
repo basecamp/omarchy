@@ -1230,7 +1230,7 @@ Item {
       }
 
       Text {
-        text: "Horizontal format"
+        text: "Horizontal clock format"
         color: Qt.darker(root.foreground, 1.4)
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
@@ -1241,7 +1241,7 @@ Item {
       }
 
       Text {
-        text: "Vertical format (left/right bars)"
+        text: "Vertical clock format (left/right bars)"
         color: Qt.darker(root.foreground, 1.4)
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall

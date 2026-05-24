@@ -49,7 +49,7 @@ o.bind("SUPER + CTRL + R", "Set reminder", "omarchy-menu toggle reminder-set")
 o.bind("SUPER + CTRL + ALT + R", "Show reminders", "omarchy-reminder show")
 o.bind("SUPER + SHIFT + CTRL + R", "Clear reminders", "omarchy-reminder clear")
 
-o.bind("SUPER + CTRL + ALT + T", "Toggle calendar", "omarchy-shell omarchy.clock toggle")
+o.bind("SUPER + CTRL + ALT + T", "Toggle mini calendar", "omarchy-shell omarchy.clock toggle")
 o.bind("SUPER + CTRL + ALT + B", "Show battery remaining", "omarchy-notification-battery")
 o.bind("SUPER + CTRL + ALT + W", "Toggle weather", "omarchy-notification-weather")
 
