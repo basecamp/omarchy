@@ -7,7 +7,7 @@
 
 set -e
 
-target_user=${SUDO_USER:-}
+target_user=${OMARCHY_INSTALL_USER:-${SUDO_USER:-}}
 if [[ -z $target_user && -n ${PKEXEC_UID:-} ]]; then
   target_user=$(getent passwd "$PKEXEC_UID" | cut -d: -f1)
 fi
