@@ -27,6 +27,7 @@ Panel {
   readonly property color popupDim: Qt.darker(popupForeground, 1.45)
   readonly property color popupMuted: Qt.darker(popupForeground, 1.8)
   readonly property string popupFontFamily: bar ? bar.fontFamily : Style.font.family
+  readonly property string moonPhaseMarker: moonPhaseGlyph(displayDate)
 
   function refresh() {
     displayDate = new Date()
@@ -126,6 +127,50 @@ Panel {
     return cells
   }
 
+  function moonPhaseIndex(date, phaseCount) {
+    var synodicMonth = 29.530588853
+    var knownNewMoon = Date.UTC(2000, 0, 6, 18, 14)
+    var noonUtc = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 12)
+    var days = (noonUtc - knownNewMoon) / 86400000
+    var phase = days / synodicMonth
+    phase = phase - Math.floor(phase)
+    return Math.floor(phase * phaseCount + 0.5) % phaseCount
+  }
+
+  function moonPhaseGlyph(date) {
+    var glyphs = [
+      "\uE38D", // nf-weather-moon_new
+      "\uE38E", // nf-weather-moon_waxing_crescent_1
+      "\uE38F", // nf-weather-moon_waxing_crescent_2
+      "\uE390", // nf-weather-moon_waxing_crescent_3
+      "\uE391", // nf-weather-moon_waxing_crescent_4
+      "\uE392", // nf-weather-moon_waxing_crescent_5
+      "\uE393", // nf-weather-moon_waxing_crescent_6
+      "\uE394", // nf-weather-moon_first_quarter
+      "\uE395", // nf-weather-moon_waxing_gibbous_1
+      "\uE396", // nf-weather-moon_waxing_gibbous_2
+      "\uE397", // nf-weather-moon_waxing_gibbous_3
+      "\uE398", // nf-weather-moon_waxing_gibbous_4
+      "\uE399", // nf-weather-moon_waxing_gibbous_5
+      "\uE39A", // nf-weather-moon_waxing_gibbous_6
+      "\uE39B", // nf-weather-moon_full
+      "\uE39C", // nf-weather-moon_waning_gibbous_1
+      "\uE39D", // nf-weather-moon_waning_gibbous_2
+      "\uE39E", // nf-weather-moon_waning_gibbous_3
+      "\uE39F", // nf-weather-moon_waning_gibbous_4
+      "\uE3A0", // nf-weather-moon_waning_gibbous_5
+      "\uE3A1", // nf-weather-moon_waning_gibbous_6
+      "\uE3A2", // nf-weather-moon_third_quarter
+      "\uE3A3", // nf-weather-moon_waning_crescent_1
+      "\uE3A4", // nf-weather-moon_waning_crescent_2
+      "\uE3A5", // nf-weather-moon_waning_crescent_3
+      "\uE3A6", // nf-weather-moon_waning_crescent_4
+      "\uE3A7", // nf-weather-moon_waning_crescent_5
+      "\uE3A8"  // nf-weather-moon_waning_crescent_6
+    ]
+    return glyphs[moonPhaseIndex(date, glyphs.length)]
+  }
+
   SystemClock {
     id: clock
     precision: SystemClock.Minutes
@@ -167,15 +212,36 @@ Panel {
         anchors.fill: parent
         spacing: Style.space(12)
 
-        Text {
+        Item {
           width: parent.width
-          text: root.formatted(root.calendarDate, root.dateFormat)
-          color: root.popupForeground
-          font.family: root.popupFontFamily
-          font.pixelSize: Style.font.title
-          font.bold: true
-          horizontalAlignment: Text.AlignHCenter
-          elide: Text.ElideRight
+          implicitHeight: Math.max(dateHeading.implicitHeight, moonPhase.implicitHeight)
+
+          Text {
+            id: dateHeading
+            anchors.centerIn: parent
+            width: Math.max(1, parent.width - (moonPhase.implicitWidth + Style.space(8)) * 2)
+            text: root.formatted(root.calendarDate, root.dateFormat)
+            color: root.popupForeground
+            font.family: root.popupFontFamily
+            font.pixelSize: Style.font.title
+            font.bold: true
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideRight
+          }
+
+          Text {
+            id: moonPhase
+            anchors.top: parent.top
+            anchors.right: parent.right
+            text: root.moonPhaseMarker
+            color: root.popupMuted
+            opacity: 0.82
+            font.family: root.popupFontFamily
+            font.pixelSize: Style.font.title
+            font.bold: true
+            horizontalAlignment: Text.AlignRight
+            verticalAlignment: Text.AlignTop
+          }
         }
 
         Rectangle {
