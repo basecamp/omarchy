@@ -127,13 +127,37 @@ Panel {
     return cells
   }
 
+  function normalizedDegrees(degrees) {
+    var normalized = degrees % 360
+    return normalized < 0 ? normalized + 360 : normalized
+  }
+
+  function sinDegrees(degrees) {
+    return Math.sin(degrees * Math.PI / 180)
+  }
+
   function moonPhaseIndex(date, phaseCount) {
-    var synodicMonth = 29.530588853
-    var knownNewMoon = Date.UTC(2000, 0, 6, 18, 14)
-    var noonUtc = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 12)
-    var days = (noonUtc - knownNewMoon) / 86400000
-    var phase = days / synodicMonth
-    phase = phase - Math.floor(phase)
+    var sample = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 12))
+    var days = sample.getTime() / 86400000 + 2440587.5 - 2451545.0
+    var sunMeanLongitude = normalizedDegrees(280.46646 + 0.98564736 * days)
+    var sunMeanAnomaly = normalizedDegrees(357.52911 + 0.98560028 * days)
+    var sunLongitude = normalizedDegrees(
+      sunMeanLongitude
+      + 1.914602 * sinDegrees(sunMeanAnomaly)
+      + 0.019993 * sinDegrees(2 * sunMeanAnomaly)
+    )
+    var moonMeanLongitude = normalizedDegrees(218.3164477 + 13.17639648 * days)
+    var moonMeanAnomaly = normalizedDegrees(134.9633964 + 13.06499295 * days)
+    var moonElongation = normalizedDegrees(297.8501921 + 12.19074912 * days)
+    var moonLongitude = normalizedDegrees(
+      moonMeanLongitude
+      + 6.289 * sinDegrees(moonMeanAnomaly)
+      + 1.274 * sinDegrees(2 * moonElongation - moonMeanAnomaly)
+      + 0.658 * sinDegrees(2 * moonElongation)
+      + 0.214 * sinDegrees(2 * moonMeanAnomaly)
+      - 0.186 * sinDegrees(sunMeanAnomaly)
+    )
+    var phase = normalizedDegrees(moonLongitude - sunLongitude) / 360
     return Math.floor(phase * phaseCount + 0.5) % phaseCount
   }
 
