@@ -10,6 +10,7 @@ else
   omarchy-theme-set "Tokyo Night"
 fi
 rm -rf ~/.config/chromium/SingletonLock # otherwise archiso will own the chromium singleton
+omarchy-theme-set-pi --activate
 
 # Set specific app links for current theme
 mkdir -p ~/.config/btop/themes
