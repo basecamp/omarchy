@@ -5,12 +5,10 @@ if omarchy-hw-match "XPS" && omarchy-hw-intel-ptl; then
   echo "Detected Dell XPS Panther Lake, installing PTL kernel..."
 
   omarchy-pkg-add linux-ptl linux-ptl-headers
-  for pkg in linux linux-headers; do
-    sudo pacman -Rdd --noconfirm "$pkg" 2>/dev/null || true
-  done
+  pacman -Rdd --noconfirm linux linux-headers 2>/dev/null || true
 
-  sudo mkdir -p /etc/limine-entry-tool.d
-  cat <<EOF | sudo tee /etc/limine-entry-tool.d/dell-xps-panther-lake.conf >/dev/null
+  mkdir -p /etc/limine-entry-tool.d
+  cat > /etc/limine-entry-tool.d/dell-xps-panther-lake.conf <<'EOF'
 # Only show Panther Lake kernel in boot menu on Dell XPS Panther Lake
 BOOT_ORDER="linux-ptl*, *fallback, Snapshots"
 EOF

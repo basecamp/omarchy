@@ -2,5 +2,5 @@
 
 if grep -qi synaptics /proc/bus/input/devices \
    && ! lsmod | grep -q '^psmouse'; then
-    modprobe psmouse synaptics_intertouch=1
+  modprobe psmouse synaptics_intertouch=1
 fi

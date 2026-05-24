@@ -4,7 +4,8 @@
 # Reference: https://wiki.archlinux.org/title/Lenovo_Yoga_9i_2022_(14AiPI7)
 
 if omarchy-hw-match "Yoga Pro 7 14IAH10"; then
-  sudo tee /etc/modprobe.d/lenovo-yoga-pro7-bass.conf <<'EOF'
+  mkdir -p /etc/modprobe.d
+  cat > /etc/modprobe.d/lenovo-yoga-pro7-bass.conf <<'EOF'
 options snd-sof-intel-hda-generic hda_model=alc287-yoga9-bass-spk-pin
 EOF
 fi
