@@ -403,6 +403,7 @@ BarWidget {
     property bool activeStateObserved: false
     readonly property string indicatorId: root.entryId(entry)
     readonly property var indicatorSettings: root.entrySettings(entry)
+    readonly property var barRef: root.bar
 
     implicitWidth: indicatorSource.item && indicatorSource.item.visible ? indicatorSource.item.implicitWidth : 0
     implicitHeight: indicatorSource.item && indicatorSource.item.visible ? indicatorSource.item.implicitHeight : 0
@@ -415,8 +416,12 @@ BarWidget {
     }
     onIndicatorBlockChanged: injectProps()
     onIndicatorSettingsChanged: injectProps()
-    onIndicatorsModuleChanged: syncActiveState()
+    onIndicatorsModuleChanged: {
+      injectProps()
+      syncActiveState()
+    }
     onReportActiveStateChanged: syncActiveState()
+    onBarRefChanged: injectProps()
 
     Loader {
       id: indicatorSource
