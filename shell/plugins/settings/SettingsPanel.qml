@@ -133,7 +133,7 @@ Item {
         left: [{ id: "omarchy.menu" }, { id: "omarchy.workspaces" }],
         center: [
           { id: "omarchy.clock", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n\u2014\nmm" },
-          { id: "omarchy.weather" }, { id: "omarchy.indicators" }, { id: "omarchy.system-update" }
+          { id: "omarchy.weather" }, { id: "omarchy.system-update" }, { id: "omarchy.indicators" }
         ],
         right: [
           { id: "omarchy.tray" }, { id: "omarchy.bluetooth" }, { id: "omarchy.network" },

@@ -28,10 +28,10 @@
           "id": "omarchy.weather"
         },
         {
-          "id": "omarchy.indicators"
+          "id": "omarchy.system-update"
         },
         {
-          "id": "omarchy.system-update"
+          "id": "omarchy.indicators"
         }
       ],
       "right": [
