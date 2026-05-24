@@ -1,13 +1,6 @@
-# Install omarchy SDDM theme
-rm -rf /usr/share/sddm/themes/omarchy
-mkdir -p /usr/share/sddm/themes
-cp -r "$OMARCHY_PATH/default/sddm/omarchy" /usr/share/sddm/themes/omarchy
-
-# Setup SDDM login service
-mkdir -p /usr/local/share/wayland-sessions
-cp -f "$OMARCHY_PATH/default/wayland-sessions/omarchy.desktop" /usr/local/share/wayland-sessions/omarchy.desktop
-cp -f "$OMARCHY_PATH/default/sddm/hyprland.lua" /usr/share/sddm/hyprland.lua
-rm -rf /usr/share/sddm/hyprland.conf
+# Static SDDM theme/session files and wayland config are package-owned. This
+# script keeps only install-specific autologin and legacy cleanup.
+rm -f /usr/share/sddm/hyprland.conf
 
 mkdir -p /etc/sddm.conf.d
 autologin_conf=/etc/sddm.conf.d/autologin.conf
