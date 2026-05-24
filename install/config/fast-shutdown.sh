@@ -1,1 +1,0 @@
-sudo systemctl daemon-reload
