@@ -4,18 +4,17 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-BarWidget {
+Panel {
   id: root
   moduleName: "omarchy.clock"
+  ipcTarget: "omarchy.clock"
+  manageIpc: false
 
-  property bool calendarOpen: false
-  property bool popoutSwitchClosing: false
+  property var anchorItem: null
+  property var host: null
   property date displayDate: clock.date
   property date calendarDate: clock.date
 
-  readonly property string timeFormat: bar && bar.vertical
-    ? setting("verticalFormat", "HH\n—\nmm")
-    : setting("format", "dddd HH:mm")
   readonly property string dateFormat: setting("formatAlt", "dd MMMM 'W'ww yyyy")
   readonly property bool mondayFirstDayOfWeek: setting("mondayFirstDayOfWeek", false) === true
   readonly property int calendarColumns: 7
@@ -31,27 +30,22 @@ BarWidget {
 
   function refresh() {
     displayDate = new Date()
+    if (host && host.refresh) host.refresh()
   }
 
-  function openCalendar() {
+  function open() {
     refresh()
     resetCalendarDate()
-    calendarOpen = true
+    root.controller.show()
   }
 
   function close() {
-    calendarOpen = false
+    root.controller.hide()
   }
 
-  function closeForPopoutSwitch() {
-    popoutSwitchClosing = true
-    close()
-    Qt.callLater(function() { popoutSwitchClosing = false })
-  }
-
-  function toggleCalendar() {
-    if (calendarOpen) close()
-    else openCalendar()
+  function toggle() {
+    if (root.opened) root.close()
+    else root.open()
   }
 
   function resetCalendarDate() {
@@ -132,9 +126,6 @@ BarWidget {
     return cells
   }
 
-  implicitWidth: button.implicitWidth
-  implicitHeight: button.implicitHeight
-
   SystemClock {
     id: clock
     precision: SystemClock.Minutes
@@ -143,33 +134,20 @@ BarWidget {
 
   IpcHandler {
     target: "omarchy.clock"
-    function refresh(): void { root.refresh() }
-    function open(): void { root.openCalendar() }
-    function close(): void { root.close() }
-    function toggle(): void { root.toggleCalendar() }
-  }
-
-  WidgetButton {
-    id: button
-    anchors.fill: parent
-    bar: root.bar
-    text: root.formatted(root.displayDate, root.timeFormat)
-    horizontalMargin: 8.75
-    verticalPadding: 8.75
-    tooltipText: ""
-    onPressed: function(button) {
-      if (!root.bar) return
-      if (button === Qt.RightButton) root.bar.run("omarchy-menu-timezone")
-      else root.toggleCalendar()
-    }
+    function refresh() { root.refresh() }
+    function open() { root.open() }
+    function close() { root.close() }
+    function show() { root.open() }
+    function hide() { root.close() }
+    function toggle() { root.toggle() }
   }
 
   KeyboardPanel {
     id: calendarPanel
-    anchorItem: button
+    anchorItem: root.anchorItem
     owner: root
     bar: root.bar
-    open: root.calendarOpen
+    open: root.opened
     focusTarget: keyCatcher
     contentWidth: calendarPanel.fittedContentWidth(Style.space(300))
     contentHeight: calendarPanel.fittedContentHeight(calendarColumn.implicitHeight)

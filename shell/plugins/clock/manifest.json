@@ -9,7 +9,7 @@
     "bar-widget"
   ],
   "entryPoints": {
-    "barWidget": "Clock.qml"
+    "barWidget": "BarWidget.qml"
   },
   "barWidget": {
     "displayName": "Clock",
@@ -17,6 +17,5 @@
     "category": "Time",
     "allowMultiple": false,
     "settingsForm": "clockSettings"
-
   }
 }

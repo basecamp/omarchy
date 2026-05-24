@@ -13,6 +13,7 @@ User-installed plugins live alongside these conceptually but on disk under
 |---------------|---------------------------|-------------------------|---------------------------------------|
 | Bar           | `omarchy.bar`             | `bar`                   | `bar/Bar.qml`                         |
 | Bar settings  | `omarchy.settings`        | `panel`                 | `settings/SettingsPanel.qml`          |
+| Clock         | `omarchy.clock`           | `bar-widget`            | `clock/BarWidget.qml`                 |
 | Launcher      | `omarchy.launcher`        | `overlay`               | `launcher/Launcher.qml`               |
 | Image picker  | `omarchy.image-picker`    | `overlay`               | `image-picker/ImagePicker.qml`        |
 | Emojis        | `omarchy.emojis`          | `overlay`               | `emojis/Emojis.qml`                   |
@@ -27,10 +28,10 @@ User-installed plugins live alongside these conceptually but on disk under
 | OSD           | `omarchy.osd`             | `panel`                 | `osd/Osd.qml`                         |
 | Polkit agent  | `omarchy.polkit`          | `service`               | `polkit/PolkitAgent.qml`              |
 
-First-party bar-only widgets also carry manifests next to their QML files,
-e.g. `bar/widgets/Clock.manifest.json`. Rich popup widgets live in feature
-plugin directories such as `audio/`, `network/`, and `power/`, each with its
-own `manifest.json`.
+First-party bar-only widgets either carry manifests next to their QML files,
+e.g. `bar/widgets/Spacer.manifest.json`, or live in feature plugin directories
+such as `clock/`, `audio/`, `network/`, and `power/`, each with its own
+`manifest.json`.
 
 ## Bar
 
