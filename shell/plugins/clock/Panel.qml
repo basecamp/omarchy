@@ -235,7 +235,7 @@ Panel {
             anchors.right: parent.right
             text: root.moonPhaseMarker
             color: root.popupMuted
-            opacity: 0.82
+            opacity: 0.45
             font.family: root.popupFontFamily
             font.pixelSize: Style.font.title
             font.bold: true
