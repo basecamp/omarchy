@@ -14,6 +14,7 @@ BarWidget {
     if (!updateProc.running) updateProc.running = true
   }
 
+  visible: updateAvailable
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
