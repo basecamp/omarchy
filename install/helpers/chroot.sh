@@ -1,15 +1,9 @@
-# In offline (ISO chroot) mode systemd isn't running, so skip --now.
+# Installs are followed by reboot, so enable units without starting/reloading
+# running services during the install.
 chrootable_systemctl_enable() {
-  if install_mode_is offline; then
-    sudo systemctl enable $1
-  else
-    sudo systemctl enable --now $1
-  fi
+  sudo systemctl enable $1
 }
 
-# Like chrootable_systemctl_enable but never passes --now. Use for services
-# we shouldn't (re)start mid-install (iwd interrupts the network; docker and
-# power-profiles-daemon should defer to first boot).
 chrootable_systemctl_enable_only() {
   sudo systemctl enable $1
 }

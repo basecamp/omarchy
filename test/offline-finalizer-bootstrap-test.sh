@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Ensure the offline/chroot finalizer reaches target-side scripts with no
 # controlling tty. This specifically protects against finalize.sh sourcing the
 # interactive helper bundle (presentation/errors) before the parent can capture
@@ -12,37 +12,84 @@ trap 'rm -rf "$TMP"' EXIT
 mkdir -p \
   "$TMP/install/helpers" \
   "$TMP/install/packaging" \
+  "$TMP/install/user" \
   "$TMP/install/config" \
   "$TMP/install/login" \
   "$TMP/install/post-install" \
+  "$TMP/omarchy/applications/icons" \
+  "$TMP/omarchy/bin" \
+  "$TMP/omarchy/config" \
+  "$TMP/omarchy/default/alacritty" \
+  "$TMP/omarchy/default/hypr/toggles" \
+  "$TMP/omarchy/default/nautilus-python/extensions" \
+  "$TMP/omarchy/default/omarchy-skill" \
   "$TMP/omarchy/migrations" \
   "$TMP/home"
 
 cp "$ROOT/install/helpers/mode.sh" "$TMP/install/helpers/"
 cp "$ROOT/install/helpers/chroot.sh" "$TMP/install/helpers/"
 cp "$ROOT/install/helpers/logging.sh" "$TMP/install/helpers/"
+ln -s "$TMP/install" "$TMP/omarchy/install"
 
-cat >"$TMP/install/packaging/all.sh" <<'SCRIPT'
+cat >"$TMP/install/user/all.sh" <<'SCRIPT'
 run_logged "$OMARCHY_INSTALL/packaging/marker.sh"
+install_mode_is offline
+echo user-marker >>"$OMARCHY_INSTALL_LOG_FILE"
+stop_install_log
+touch "$HOME/finalizer-completed"
 SCRIPT
 
 cat >"$TMP/install/packaging/marker.sh" <<'SCRIPT'
 echo packaging-marker
 SCRIPT
 
-cat >"$TMP/install/config/all.sh" <<'SCRIPT'
-echo config-marker >>"$OMARCHY_INSTALL_LOG_FILE"
+for script in icons webapps tuis npm; do
+  cat >"$TMP/install/packaging/$script.sh" <<'SCRIPT'
+:
 SCRIPT
+done
 
-cat >"$TMP/install/login/all.sh" <<'SCRIPT'
-install_mode_is offline
-echo login-marker >>"$OMARCHY_INSTALL_LOG_FILE"
-SCRIPT
-
-cat >"$TMP/install/post-install/all.sh" <<'SCRIPT'
+cat >"$TMP/install/post-install/finished.sh" <<'SCRIPT'
 stop_install_log
 touch "$HOME/finalizer-completed"
+return 0 2>/dev/null || exit 0
 SCRIPT
+
+cat >"$TMP/omarchy/default/bashrc" <<'EOF'
+# test bashrc
+EOF
+cat >"$TMP/omarchy/default/alacritty/Alacritty.desktop" <<'EOF'
+[Desktop Entry]
+Name=Alacritty
+Type=Application
+Exec=true
+EOF
+cat >"$TMP/omarchy/default/hypr/toggles/flags.lua" <<'EOF'
+return {}
+EOF
+: >"$TMP/omarchy/default/nautilus-python/extensions/localsend.py"
+: >"$TMP/omarchy/default/nautilus-python/extensions/transcode.py"
+cat >"$TMP/omarchy/icon.txt" <<'EOF'
+icon
+EOF
+cat >"$TMP/omarchy/logo.txt" <<'EOF'
+logo
+EOF
+cat >"$TMP/omarchy/applications/test.desktop" <<'EOF'
+[Desktop Entry]
+Name=Test
+Type=Application
+Exec=true
+EOF
+: >"$TMP/omarchy/applications/icons/Test.png"
+
+for cmd in gtk-update-icon-cache update-desktop-database xdg-mime xdg-settings xdg-user-dirs-update; do
+  cat >"$TMP/omarchy/bin/$cmd" <<'SCRIPT'
+#!/bin/bash
+:
+SCRIPT
+  chmod +x "$TMP/omarchy/bin/$cmd"
+done
 
 if grep -Eq '^[[:space:]]*(source|\.)[[:space:]].*helpers/all\.sh' "$ROOT/finalize.sh"; then
   echo "finalize.sh must not source helpers/all.sh" >&2
@@ -73,8 +120,8 @@ if ! grep -q 'packaging-marker' "$TMP/omarchy-install.log"; then
   exit 1
 fi
 
-if ! grep -q 'login-marker' "$TMP/omarchy-install.log"; then
-  echo "expected sourced target scripts to run" >&2
+if ! grep -q 'user-marker' "$TMP/omarchy-install.log"; then
+  echo "expected sourced user scripts to run" >&2
   exit 1
 fi
 
