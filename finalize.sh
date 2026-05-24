@@ -52,7 +52,13 @@ for _f in "$OMARCHY_PATH/migrations"/*.sh; do
   [[ -f $_f ]] && touch ~/.local/state/omarchy/migrations/"$(basename "$_f")"
 done
 
-source "$OMARCHY_INSTALL/packaging/all.sh"
-source "$OMARCHY_INSTALL/config/all.sh"
-source "$OMARCHY_INSTALL/login/all.sh"
-source "$OMARCHY_INSTALL/post-install/all.sh"
+# Offline installs need the privileged system first-run block on the install
+# user's first login. The sudoers shim is written by system-finalize.sh; this
+# per-user marker ensures only the install user consumes it.
+if install_mode_is offline; then
+  mkdir -p ~/.local/state/omarchy
+  touch ~/.local/state/omarchy/first-run.mode
+fi
+
+omarchy-setup-user --force
+source "$OMARCHY_INSTALL/post-install/finished.sh"

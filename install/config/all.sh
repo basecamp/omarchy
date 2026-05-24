@@ -1,21 +1,9 @@
-run_logged $OMARCHY_INSTALL/config/theme.sh
-run_logged $OMARCHY_INSTALL/config/git.sh
-run_logged $OMARCHY_INSTALL/config/gpg.sh
+run_logged $OMARCHY_INSTALL/config/theme-system.sh
 run_logged $OMARCHY_INSTALL/config/increase-lockout-limit.sh
 run_logged $OMARCHY_INSTALL/config/lockscreen-pam.sh
-run_logged $OMARCHY_INSTALL/config/sleep-lock.sh
-run_logged $OMARCHY_INSTALL/config/increase-file-watchers.sh
-run_logged $OMARCHY_INSTALL/config/increase-fd-limit.sh
-run_logged $OMARCHY_INSTALL/config/xcompose.sh
-run_logged $OMARCHY_INSTALL/config/mise-work.sh
 run_logged $OMARCHY_INSTALL/config/fix-powerprofilesctl-shebang.sh
 run_logged $OMARCHY_INSTALL/config/docker.sh
-run_logged $OMARCHY_INSTALL/config/localdb.sh
-run_logged $OMARCHY_INSTALL/config/fast-shutdown.sh
 run_logged $OMARCHY_INSTALL/config/input-group.sh
-run_logged $OMARCHY_INSTALL/config/pi.sh
-run_logged $OMARCHY_INSTALL/config/powerprofilesctl-rules.sh
-run_logged $OMARCHY_INSTALL/config/wifi-powersave-rules.sh
 
 # Service enables centralized; run after all drop-in files are in place.
 run_logged $OMARCHY_INSTALL/config/enable-services.sh
@@ -23,6 +11,7 @@ run_logged $OMARCHY_INSTALL/config/enable-services.sh
 run_logged $OMARCHY_INSTALL/config/hardware/network.sh
 run_logged $OMARCHY_INSTALL/config/hardware/set-wireless-regdom.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-fkeys.sh
+run_logged $OMARCHY_INSTALL/config/hardware/fix-synaptic-touchpad.sh
 run_logged $OMARCHY_INSTALL/config/hardware/bluetooth.sh
 run_logged $OMARCHY_INSTALL/config/hardware/nvidia.sh
 run_logged $OMARCHY_INSTALL/config/hardware/vulkan.sh
@@ -39,11 +28,8 @@ run_logged $OMARCHY_INSTALL/config/hardware/intel/sof-firmware.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-asus-ptl-display-backlight.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-asus-ptl-b9406-display.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-asus-ptl-b9406-touchpad.sh
-run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-audio-mixer.sh
-run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-mic.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-z13-touchpad.sh
 
-run_logged $OMARCHY_INSTALL/config/hardware/framework/fix-f13-amd-audio-input.sh
 run_logged $OMARCHY_INSTALL/config/hardware/framework/qmk-hid.sh
 
 run_logged $OMARCHY_INSTALL/config/hardware/apple/fix-spi-keyboard.sh
@@ -55,5 +41,4 @@ run_logged $OMARCHY_INSTALL/config/hardware/lenovo/fix-yoga-pro7-bass-speakers.s
 run_logged $OMARCHY_INSTALL/config/hardware/fix-bcm43xx.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-surface-keyboard.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-yt6801-ethernet-adapter.sh
-run_logged $OMARCHY_INSTALL/config/hardware/fix-synaptic-touchpad.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-tuxedo-backlight.sh

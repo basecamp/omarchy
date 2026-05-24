@@ -5,26 +5,41 @@
 
 set -e
 
-# Run user-level setup FIRST so its outcome (→ branding files, AI skill
-# symlinks, xdg dirs, etc.) isn't held hostage to whether one of the
-# privileged first-run steps below aborts under set -e. omarchy-setup-user
-# is idempotent and gated on its own marker.
+# Always: refresh per-user defaults (skel-derived configs, AI skills, XDG
+# dirs, branding, MIME defaults, etc.). Idempotent via its own marker.
 omarchy-setup-user || true
 
-FIRST_RUN_MODE=~/.local/state/omarchy/first-run.mode
+# Online installs grant a one-time passwordless reboot from the installer.
+# Clean it up after first login without prompting future users for sudo.
+bash "$OMARCHY_PATH/install/first-run/cleanup-reboot-sudoers.sh"
 
-if [[ -f $FIRST_RUN_MODE ]]; then
-  rm -f "$FIRST_RUN_MODE"
+state_dir=~/.local/state/omarchy
+mkdir -p "$state_dir"
 
-  bash "$OMARCHY_PATH/install/first-run/recover-internal-monitor.sh"
-  bash "$OMARCHY_PATH/install/first-run/cleanup-reboot-sudoers.sh"
+# System-wide one-shot. Gated on first-run.mode (created by finalize.sh during
+# ISO installs). The install user is the only one whose /etc/sudoers.d/first-run
+# shim grants the passwordless commands these scripts need, so only that user
+# clears this marker.
+SYSTEM_MARKER="$state_dir/first-run.mode"
+if [[ -f $SYSTEM_MARKER ]]; then
+  rm -f "$SYSTEM_MARKER"
+
   bash "$OMARCHY_PATH/install/first-run/firewall.sh"
   bash "$OMARCHY_PATH/install/first-run/dns-resolver.sh"
-  bash "$OMARCHY_PATH/install/first-run/gnome-theme.sh"
-  bash "$OMARCHY_PATH/install/first-run/gtk-primary-paste.sh"
+  bash "$OMARCHY_PATH/install/first-run/gnome-theme-system.sh"
   omarchy-hook-install post-update "$OMARCHY_PATH/install/first-run/install-voxtype.hook"
-  sudo /bin/rm -f /etc/sudoers.d/first-run
+  sudo rm -f /etc/sudoers.d/first-run
+fi
 
+# Per-user one-shot. Runs on the first login for every user, including any
+# users created after install. Touches only $HOME / user dbus, no sudo.
+USER_MARKER="$state_dir/first-run-user.done"
+if [[ ! -f $USER_MARKER ]]; then
+  bash "$OMARCHY_PATH/install/first-run/recover-internal-monitor.sh"
+  bash "$OMARCHY_PATH/install/first-run/gnome-theme-user.sh"
+  bash "$OMARCHY_PATH/install/first-run/gtk-primary-paste.sh"
   bash "$OMARCHY_PATH/install/first-run/welcome.sh"
   bash "$OMARCHY_PATH/install/first-run/wifi.sh"
+
+  touch "$USER_MARKER"
 fi

@@ -35,4 +35,20 @@ _omarchy_runtime_pkg="${OMARCHY_RUNTIME_PACKAGE:-omarchy}"
 mapfile -t _omarchy_base_pkgs < <(grep -v '^#\|^$' "$OMARCHY_PATH/install/omarchy-base.packages")
 sudo pacman -Syu --noconfirm --needed "$_omarchy_runtime_pkg" "${_omarchy_base_pkgs[@]}"
 
+# Root/system setup first; user-home setup remains in finalize.sh below.
+sudo env \
+  OMARCHY_INSTALL_MODE="${OMARCHY_INSTALL_MODE:-}" \
+  OMARCHY_ONLINE_INSTALL="${OMARCHY_ONLINE_INSTALL:-}" \
+  OMARCHY_CHROOT_INSTALL="${OMARCHY_CHROOT_INSTALL:-}" \
+  OMARCHY_PATH="$OMARCHY_PATH" \
+  OMARCHY_INSTALL="$OMARCHY_INSTALL" \
+  OMARCHY_INSTALL_LOG_FILE="$OMARCHY_INSTALL_LOG_FILE" \
+  OMARCHY_START_TIME="${OMARCHY_START_TIME:-}" \
+  OMARCHY_START_EPOCH="${OMARCHY_START_EPOCH:-}" \
+  OMARCHY_USER_NAME="${OMARCHY_USER_NAME:-}" \
+  OMARCHY_USER_EMAIL="${OMARCHY_USER_EMAIL:-}" \
+  OMARCHY_MIRROR="${OMARCHY_MIRROR:-}" \
+  OMARCHY_INSTALL_USER="$USER" \
+  bash "$OMARCHY_PATH/system-finalize.sh"
+
 exec bash "$OMARCHY_PATH/finalize.sh"

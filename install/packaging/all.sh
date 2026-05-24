@@ -1,9 +1,2 @@
-run_logged $OMARCHY_INSTALL/packaging/nvim.sh
-run_logged $OMARCHY_INSTALL/packaging/icons.sh
-run_logged $OMARCHY_INSTALL/packaging/webapps.sh
-run_logged $OMARCHY_INSTALL/packaging/tuis.sh
-run_logged $OMARCHY_INSTALL/packaging/mise.sh
-run_logged $OMARCHY_INSTALL/packaging/asus-rog.sh
-run_logged $OMARCHY_INSTALL/packaging/framework16.sh
-run_logged $OMARCHY_INSTALL/packaging/dell-xps-touchpad-haptics.sh
-run_logged $OMARCHY_INSTALL/packaging/surface.sh
+source $OMARCHY_INSTALL/packaging/system.sh
+source $OMARCHY_INSTALL/packaging/user.sh
