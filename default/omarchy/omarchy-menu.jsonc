@@ -197,7 +197,6 @@
   "install.gaming.geforce-now": {"icon":"󰢹","label":"NVIDIA GeForce NOW","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-geforce-now"},
   "install.gaming.xbox-cloud": {"icon":"","label":"Xbox Cloud Gaming","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-xbox-cloud"},
   "install.gaming.xbox-controller": {"icon":"󰂯","label":"Xbox Controller","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-xbox-controllers"},
-  "install.gaming.moonlight": {"icon":"󰍹","label":"Moonlight (GameStream)","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-moonlight"},
   "install.gaming.battlenet": {"icon":"","label":"Battle.net","keywords":"blizzard wow overwatch diablo","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-battlenet"},
   "install.gaming.lutris": {"icon":"","label":"Lutris","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-lutris"},
   "install.gaming.heroic": {"icon":"󱓟","label":"Heroic (Epic Games)","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-heroic"},
