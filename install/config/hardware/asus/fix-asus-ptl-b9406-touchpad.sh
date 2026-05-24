@@ -10,8 +10,8 @@
 # Asus UX302LA entry in libinput's shipped 50-system-asus.quirks.
 
 if omarchy-hw-asus-expertbook-b9406; then
-  sudo mkdir -p /etc/libinput
-  sudo tee /etc/libinput/asus-expertbook-b9406.quirks >/dev/null <<EOF
+  mkdir -p /etc/libinput
+  cat > /etc/libinput/asus-expertbook-b9406.quirks <<'EOF'
 [ASUS ExpertBook B9406 Touchpad]
 MatchBus=i2c
 MatchUdevType=touchpad
