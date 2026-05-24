@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Returns true when an external monitor is physically connected.
-# Uses kernel DRM state so the result is independent of Hyprland's startup timing.
+# omarchy:summary=Returns true when an external monitor is physically connected.
 
 for status in /sys/class/drm/card*-*/status; do
   [[ "$status" == *-eDP-*/status ]] && continue

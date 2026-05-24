@@ -7,18 +7,13 @@ base
 base-devel
 broadcom-wl
 btrfs-progs
-dart
 dkms
 egl-wayland
 git
 gst-plugin-pipewire
 gtk4-layer-shell
-htop
-intltool
-iwd
 jdk-openjdk
 libpulse
-libsass
 intel-ipu7-camera
 intel-lpmd
 intel-media-driver
@@ -45,11 +40,10 @@ pipewire-alsa
 pipewire-jack
 pipewire-pulse
 qt6-wayland
-sassc
 snapper
+sof-firmware
 thermald
 webp-pixbuf-loader
-wget
 yay-debug
 tuxedo-drivers-nocompatcheck-dkms
 yt6801-dkms
@@ -66,6 +60,9 @@ vulkan-asahi
 
 # Surface laptop support packages
 linux-firmware-marvell
+
+# Dell laptop support packages
+dell-xps-touchpad-haptics
 
 # T2 MacBook support packages
 apple-bcm-firmware

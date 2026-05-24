@@ -4,7 +4,6 @@
 1password-beta
 1password-cli
 aether
-alacritty
 alsa-utils
 asdcontrol
 avahi
@@ -17,6 +16,7 @@ btop
 chromium
 clang
 claude-code
+cliamp
 cups
 cups-browsed
 cups-filters
@@ -38,6 +38,7 @@ fcitx5-qt
 fd
 ffmpegthumbnailer
 fontconfig
+foot
 fzf
 github-cli
 gnome-calculator
@@ -81,6 +82,7 @@ man-db
 mariadb-libs
 mise
 mpv
+mpv-mpris
 nautilus
 nautilus-python
 gnome-disk-utility
@@ -104,7 +106,9 @@ power-profiles-daemon
 python-gobject
 python-poetry-core
 python-terminaltexteffects
+qemu-user-static-binfmt
 qt5-wayland
+quickshell
 ripgrep
 ruby
 rust
@@ -119,6 +123,8 @@ sushi
 swaybg
 swayosd
 system-config-printer
+tesseract
+tesseract-data-eng
 tldr
 tree-sitter-cli
 tmux

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Add or remove an EFI boot entry for the Omarchy UKI, allowing the system to boot directly
-# without a bootloader like Limine. Requires UEFI firmware and a built UKI.
+# omarchy:summary=Add or remove an EFI boot entry for the Omarchy UKI, allowing the system to boot directly
+# omarchy:requires-sudo=true
 
 if [[ ! -d /sys/firmware/efi ]]; then
   echo "Error: System is not booted in UEFI mode" >&2

@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# omarchy:summary=Apply an Omarchy theme
+# omarchy:args=<theme-name>
+# omarchy:examples=omarchy theme list | omarchy theme set "Tokyo Night"
+
 if [[ -z $1 ]]; then
   echo "Usage: omarchy-theme-set <theme-name>"
   exit 1
@@ -41,7 +45,9 @@ mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"
 echo "$THEME_NAME" >"$HOME/.config/omarchy/current/theme.name"
 
 # Change background with theme
-omarchy-theme-bg-next
+if [[ $OMARCHY_THEME_SKIP_BACKGROUND != "1" ]]; then
+  omarchy-theme-bg-next
+fi
 
 # Restart components to apply new theme
 if pgrep -x waybar >/dev/null; then
@@ -53,8 +59,10 @@ omarchy-restart-hyprctl
 omarchy-restart-btop
 omarchy-restart-opencode
 omarchy-restart-mako
+omarchy-restart-helix
 
 # Change app-specific themes
+omarchy-theme-set-foot
 omarchy-theme-set-gnome
 omarchy-theme-set-browser
 omarchy-theme-set-vscode
@@ -62,4 +70,7 @@ omarchy-theme-set-obsidian
 omarchy-theme-set-keyboard
 
 # Call hook on theme set
-omarchy-hook theme-set "$THEME_NAME"
+omarchy-hook theme-set "$THEME_NAME" >/dev/null
+
+# Warm the background selector cache after the theme is applied, off the critical path.
+omarchy-theme-bg-cache >/dev/null 2>&1 &

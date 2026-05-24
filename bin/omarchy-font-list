@@ -1,5 +1,6 @@
 #!/bin/bash
 
-# Returns a list of all the monospace fonts available on the system that can be set using omarchy-font-set.
+# omarchy:summary=List available monospace fonts
+# omarchy:examples=omarchy font list | omarchy font set "CaskaydiaMono Nerd Font"
 
 fc-list :spacing=100 -f "%{family[0]}\n" | grep -v -i -E 'emoji|signwriting|omarchy' | sort -u

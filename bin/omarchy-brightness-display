@@ -1,9 +1,25 @@
 #!/bin/bash
 
-# Adjust brightness on the most likely display device.
-# Usage: omarchy-brightness-display <step>
+# omarchy:summary=Adjust brightness on the most likely display device.
+# omarchy:args=<+N%|N%-|N%|off|on>
+# omarchy:examples=omarchy brightness display +5% | omarchy brightness display 5%- | omarchy brightness display 50% | omarchy brightness display off | omarchy brightness display on
 
 step="${1:-+5%}"
+
+if [[ $step == "off" ]]; then
+  hyprctl dispatch 'hl.dsp.dpms({ action = "disable" })' >/dev/null 2>&1 || hyprctl dispatch dpms off >/dev/null 2>&1
+  exit 0
+elif [[ $step == "on" ]]; then
+  hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })' >/dev/null 2>&1 || hyprctl dispatch dpms on >/dev/null 2>&1
+  exit 0
+fi
+
+runtime_dir="${XDG_RUNTIME_DIR:-/tmp}"
+
+# Drop overlapping brightness key events so concurrent invocations do not race.
+# Hardware key repeat present on some devices can otherwise glitch SwayOSD rendering.
+exec 9>"$runtime_dir/omarchy-brightness-display.lock"
+flock -n 9 || exit 0
 
 # Start with the first possible output, then refine to the most likely given an order heuristic.
 device="$(ls -1 /sys/class/backlight 2>/dev/null | head -n1)"
@@ -13,6 +29,37 @@ for candidate in amdgpu_bl* intel_backlight acpi_video*; do
     break
   fi
 done
+
+
+if omarchy-hyprland-monitor-focused-apple; then
+  omarchy-brightness-display-apple "$step"
+  exit
+fi
+
+# Current brightness percentage
+current=$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')
+
+# Apply non-uniform step size: 1% steps if at or below 5%, otherwise set an
+# absolute target percentage to avoid raw backlight rounding causing uneven OSD steps.
+if [[ $step == "+5%" ]]; then
+  if (( current < 5 )); then
+    (( target = current + 1 ))
+  else
+    (( target = current + 5 ))
+  fi
+
+  (( target > 100 )) && target=100
+  step="$target%"
+elif [[ $step == "5%-" ]]; then
+  if (( current <= 5 )); then
+    (( target = current - 1 ))
+  else
+    (( target = current - 5 ))
+  fi
+
+  (( target < 1 )) && target=1
+  step="$target%"
+fi
 
 # Set the actual brightness of the display device.
 brightnessctl -d "$device" set "$step" >/dev/null

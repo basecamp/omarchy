@@ -3,6 +3,9 @@
 # Install other terminals via Install > Terminal
 export TERMINAL=xdg-terminal-exec
 
+# Used by terminal programs (like gh) to open URLs detached from the terminal process tree
+export BROWSER=omarchy-launch-browser
+
 # Use code for VSCode
 export EDITOR=nvim
 

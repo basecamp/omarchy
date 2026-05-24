@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Returns true if all the commands passed in as arguments exit on the system.
+# omarchy:summary=Check whether all required commands are available
 
 for cmd in "$@"; do
   command -v "$cmd" &>/dev/null || exit 1

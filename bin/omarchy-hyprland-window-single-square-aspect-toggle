@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Toggle single-window square aspect ratio.
+# omarchy:summary=Toggle single-window square aspect ratio.
 
-omarchy-hyprland-toggle \
-  --enabled-notification "      Enable single-window square aspect ratio" \
-  --disabled-notification "      Disable single-window square aspect ratio" \
-  single-window-aspect-ratio
+case $(omarchy-hyprland-toggle single-window-aspect-ratio) in
+  on) omarchy-notification-send -g  "Enable single-window square aspect ratio" ;;
+  off) omarchy-notification-send -g  "Disable single-window square aspect ratio" ;;
+esac

@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Returns a formatted battery status string with percentage and power draw/charge.
-# Used by the battery notification hotkey (Ctrl + Shift + Super + B).
+# omarchy:summary=Returns a formatted battery status string with percentage and power draw/charge.
 
 battery_info=$(upower -i $(upower -e | grep BAT))
 
@@ -28,5 +27,5 @@ if [[ $state == "charging" || $state == "fully-charged" ]]; then
         echo "󰁹    Battery ${percentage}%  ·  ${time_remaining} to full  ·   ${power_rate}W / ${capacity}Wh"
     fi
 else
-    echo "󰁹    Battery ${percentage}%  ·  ${time_remaining} left  ·   ${power_rate}W / ${capacity}Wh"
+    echo "Battery ${percentage}%  ·  ${time_remaining} left  ·   ${power_rate}W / ${capacity}Wh"
 fi
