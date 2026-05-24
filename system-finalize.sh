@@ -23,4 +23,14 @@ if (( EUID != 0 )); then
   exit 1
 fi
 
+if [[ -z ${OMARCHY_INSTALL_USER:-} || ${OMARCHY_INSTALL_USER:-} == "root" ]]; then
+  echo "Error: system-finalize.sh requires OMARCHY_INSTALL_USER to name the target non-root user" >&2
+  exit 1
+fi
+
+if ! getent passwd "$OMARCHY_INSTALL_USER" >/dev/null; then
+  echo "Error: OMARCHY_INSTALL_USER=$OMARCHY_INSTALL_USER does not exist" >&2
+  exit 1
+fi
+
 source "$OMARCHY_INSTALL/system/all.sh"

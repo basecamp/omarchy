@@ -1,1 +1,1 @@
-usermod -aG docker "${OMARCHY_INSTALL_USER:-${USER:-}}"
+usermod -aG docker "$OMARCHY_INSTALL_USER"
