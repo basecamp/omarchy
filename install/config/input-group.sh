@@ -1,2 +1,2 @@
 # Give this user privileged input access for dictation tools + xbox controllers to work
-sudo usermod -aG input ${USER}
+usermod -aG input "${OMARCHY_INSTALL_USER:-${USER:-}}"
