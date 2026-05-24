@@ -27,6 +27,10 @@ echo "Installing $package..."
 
 # Install package
 if omarchy-pkg-add $package; then
+  # Install nautilus extension for ghostty
+  if [[ $package == "ghostty" ]]; then
+    omarchy-pkg-add ghostty-nautilus
+  fi
   # Copy custom desktop entries with X-TerminalArg* keys
   if [[ $package == "alacritty" ]]; then
     mkdir -p ~/.local/share/applications
