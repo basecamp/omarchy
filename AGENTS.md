@@ -104,7 +104,7 @@ Run focused automated tests for the area you changed. Current test entry points:
 - `bash test/cli.sh` - CLI routing, command metadata, theme helpers, and safe dispatch coverage
 - `bash test/shell.sh` - all Omarchy shell tests under `test/shell/`
 
-New Omarchy shell tests should live in `test/shell/*-test.sh` so `test/shell.sh` picks them up automatically.
+New Omarchy shell tests should live in `test/shell/*-test.sh` so `test/shell.sh` picks them up automatically. Source `test/shell/base-test.sh` for shared root-path discovery, assertions, and Node test helpers.
 
 For visual changes, such as omarchy-shell styling, desktop appearance, screenshots, or screen recording flows, verify with the running UI in addition to automated tests. Take and analyze screenshots with `omarchy capture screenshot fullscreen save`. For animation, transitions, capture, or screen recording behavior, make a short recording with `omarchy screenrecord --fullscreen`, stop it with `omarchy screenrecord --stop-recording`, and review the output before finishing.
 

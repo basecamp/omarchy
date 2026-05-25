@@ -2,26 +2,10 @@
 
 set -euo pipefail
 
-ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
-export ROOT
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
-node <<'JS'
-const search = require(`${process.env.ROOT}/shell/plugins/launcher/LauncherSearch.js`)
-
-function fail(description, detail) {
-  if (detail) console.error(detail)
-  console.error(`not ok - ${description}`)
-  process.exit(1)
-}
-
-function pass(description) {
-  console.log(`ok - ${description}`)
-}
-
-function assert(condition, description, detail) {
-  if (!condition) fail(description, detail)
-  pass(description)
-}
+run_node_test <<'JS'
+const search = requireFromRoot('shell/plugins/launcher/LauncherSearch.js')
 
 const entries = [
   {
@@ -69,11 +53,7 @@ const entries = [
 ]
 
 const contactMatches = search.sortedEntries(entries, 'contact').map(row => search.entryName(row.entry))
-assert(
-  contactMatches.length === 1 && contactMatches[0] === 'Google Contacts',
-  'contact search only returns direct contact matches',
-  `matches: ${contactMatches.join(', ')}`
-)
+assertDeepEqual(contactMatches, ['Google Contacts'], 'contact search only returns direct contact matches')
 
 assert(
   search.fuzzyScore(entries[1], 'contact') < 0,
@@ -81,14 +61,8 @@ assert(
 )
 
 const acronymMatches = search.sortedEntries(entries, 'gc').map(row => search.entryName(row.entry))
-assert(
-  acronymMatches[0] === 'Google Contacts',
-  'short acronym matching still works'
-)
+assertEqual(acronymMatches[0], 'Google Contacts', 'short acronym matching still works')
 
 const directMatches = search.sortedEntries(entries, 'obs').map(row => search.entryName(row.entry))
-assert(
-  directMatches[0] === 'OBS Studio',
-  'direct app-name matching still works'
-)
+assertEqual(directMatches[0], 'OBS Studio', 'direct app-name matching still works')
 JS

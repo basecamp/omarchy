@@ -3,6 +3,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
 import qs.Commons
+import "EmojiSearch.js" as EmojiSearch
 
 Item {
   id: root
@@ -65,26 +66,12 @@ Item {
   }
 
   function loadEmojis(raw) {
-    try {
-      var data = JSON.parse(raw)
-      root.emojis = data || []
-    } catch (e) {
-      console.warn("Failed to parse emojis.json:", e)
-      root.emojis = []
-    }
+    root.emojis = EmojiSearch.parseEmojis(raw)
     if (root.opened) root.rebuildDisplay()
   }
 
   function rebuildDisplay() {
-    var query = root.filterText.trim().toLowerCase()
-    var out = []
-    for (var i = 0; i < root.emojis.length; i++) {
-      var item = root.emojis[i]
-      if (!query || item.k.indexOf(query) >= 0) {
-        out.push(item)
-        if (out.length >= 1000) break // limit to keep it fast
-      }
-    }
+    var out = EmojiSearch.filterEmojis(root.emojis, root.filterText, 1000)
     root.filteredEmojis = out
 
     displayModel.clear()
