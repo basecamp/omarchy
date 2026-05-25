@@ -15,6 +15,10 @@ Panel {
   property string activeProfile: ""
   property int profileIndex: 0
   property bool cursorActive: false
+  readonly property bool batteryPresent: {
+    var device = UPower.displayDevice
+    return !!(device && device.isPresent)
+  }
 
   function selectProfileByDelta(delta) {
     if (profiles.length === 0) { profileIndex = 0; return }
@@ -28,7 +32,7 @@ Panel {
 
   function batteryIcon() {
     var device = UPower.displayDevice
-    if (!device || !device.isPresent) return ""
+    if (!root.batteryPresent) return ""
 
     var chargingIcons = ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"]
     var defaultIcons = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
@@ -43,6 +47,8 @@ Panel {
 
   function modeLabel() {
     var device = UPower.displayDevice
+    if (!root.batteryPresent) return ""
+
     var percentage = device && device.isPresent ? device.percentage : 0
 
     if (chargeThresholdActive) {
@@ -140,6 +146,8 @@ Panel {
   }
 
   function refresh() {
+    if (!batteryPresent) return
+
     if (!batteryProc.running) batteryProc.running = true
     if (!profilesProc.running) profilesProc.running = true
     if (!systemProc.running) systemProc.running = true
@@ -191,6 +199,11 @@ Panel {
 
   onOpenedChanged: {
     if (opened) {
+      if (!batteryPresent) {
+        close()
+        return
+      }
+
       refresh()
       var idx = profiles.indexOf(activeProfile)
       profileIndex = idx >= 0 ? idx : 0
@@ -198,8 +211,11 @@ Panel {
     }
   }
 
-  implicitWidth: button.implicitWidth
-  implicitHeight: button.implicitHeight
+  onBatteryPresentChanged: if (!batteryPresent) close()
+
+  visible: batteryPresent
+  implicitWidth: batteryPresent ? button.implicitWidth : 0
+  implicitHeight: batteryPresent ? button.implicitHeight : 0
 
   Process {
     id: batteryProc
@@ -276,9 +292,9 @@ Panel {
     text: root.batteryIcon()
     horizontalMargin: 8.5
     rightExtraMargin: 2
-    active: UPower.displayDevice && UPower.displayDevice.percentage <= 0.2 && UPower.onBattery
+    active: root.batteryPresent && UPower.displayDevice.percentage <= 0.2 && UPower.onBattery
     tooltipText: ""
-    onPressed: function(b) { root.toggle() }
+    onPressed: function(b) { if (root.batteryPresent) root.toggle() }
   }
 
   KeyboardPanel {
@@ -286,7 +302,7 @@ Panel {
     anchorItem: button
     owner: root
     bar: root.bar
-    open: root.opened
+    open: root.opened && root.batteryPresent
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(380))
     contentHeight: panel.fittedContentHeight(column.implicitHeight)
