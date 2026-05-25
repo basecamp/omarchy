@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# omarchy:summary=Install a small pnpm dlx wrapper for a given npm package.
+# omarchy:summary=Install a small mise-backed wrapper for a given tool.
 # omarchy:args=<package> [command-name [bin-name]]
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-npm-install <package> [command-name [bin-name]]"
+  echo "Usage: omarchy-mise-install <package> [command-name [bin-name]]"
   exit 1
 fi
 
@@ -16,7 +16,8 @@ mkdir -p "$HOME/.local/bin"
 
 cat >"$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
-exec omarchy-npm-run "$package" "$command" "$bin" "\$@"
+mise use -g "$package"
+exec "$bin" "\$@"
 EOF
 
 chmod +x "$HOME/.local/bin/$command"
