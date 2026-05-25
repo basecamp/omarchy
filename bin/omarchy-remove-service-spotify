@@ -1,9 +1,0 @@
-#!/bin/bash
-
-# omarchy:summary=Remove Spotify.
-# omarchy:requires-sudo=true
-
-omarchy-pkg-drop spotify
-
-echo ""
-echo "Spotify has been removed."
