@@ -14,7 +14,7 @@ if gum confirm "Are you sure you want to remove all preinstalled web apps, TUI w
 
   # Remove mise stubs
   rm -f ~/.local/bin/codex ~/.local/bin/claude ~/.local/bin/gemini ~/.local/bin/copilot \
-       ~/.local/bin/opencode ~/.local/bin/playwright ~/.local/bin/playwright-cli ~/.local/bin/pi \
+       ~/.local/bin/gh ~/.local/bin/opencode ~/.local/bin/playwright ~/.local/bin/playwright-cli ~/.local/bin/pi \
        ~/.local/bin/ghui ~/.local/bin/hunk
 
   omarchy-pkg-drop \
@@ -33,5 +33,6 @@ if gum confirm "Are you sure you want to remove all preinstalled web apps, TUI w
     kdenlive \
     lazydocker \
     opencode \
-    claude-code
+    claude-code \
+    github-cli
 fi
