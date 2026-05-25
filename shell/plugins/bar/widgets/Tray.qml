@@ -1,3 +1,4 @@
+import Quickshell
 import QtQuick
 import Quickshell.Services.SystemTray
 import Quickshell.Widgets
@@ -10,6 +11,9 @@ BarWidget {
 
   property bool expanded: false
   property bool managePopupOpen: false
+  property bool trayMenuOpen: false
+  property var activeTrayItem: null
+  property var activeTrayAnchor: null
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property var pinnedIds: Array.isArray(settings.pinned) ? settings.pinned : []
@@ -19,8 +23,8 @@ BarWidget {
   readonly property var allItems: bucket("all")
   readonly property int drawerCount: drawerItems.length
   readonly property int trayItemExtent: Style.space(16)
-  readonly property int trayItemGap: Style.space(17)
-  readonly property int trayJoinGap: Style.space(6)
+  readonly property int trayItemGap: Style.space(9)
+  readonly property int trayJoinGap: Style.space(4)
   readonly property int drawerExtent: drawerCount > 0 ? drawerCount * trayItemExtent + (drawerCount - 1) * trayItemGap : 0
   // Match Waybar's group/tray-expander drawer transition-duration.
   readonly property int animationDuration: 600
@@ -29,6 +33,19 @@ BarWidget {
 
   function close() {
     managePopupOpen = false
+    trayMenuOpen = false
+  }
+
+  function openTrayMenu(item, anchorItem, mouse) {
+    if (!item || !item.menu) {
+      var point = anchorItem.QsWindow.contentItem.mapFromItem(anchorItem, mouse.x, mouse.y)
+      item.display(anchorItem.QsWindow.window, point.x, point.y)
+      return
+    }
+
+    activeTrayItem = item
+    activeTrayAnchor = anchorItem
+    trayMenuOpen = true
   }
 
   function trayIconSource(icon) {
@@ -405,6 +422,136 @@ BarWidget {
     }
   }
 
+  QsMenuOpener {
+    id: trayMenuOpener
+    menu: root.activeTrayItem ? root.activeTrayItem.menu : null
+  }
+
+  PopupCard {
+    id: trayMenuPopup
+    anchorItem: root.activeTrayAnchor || root
+    owner: root
+    bar: root.bar
+    open: root.trayMenuOpen
+    padding: Style.space(8)
+    borderColor: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.45)
+    contentWidth: trayMenuPopup.fittedContentWidth(Style.space(232))
+    contentHeight: trayMenuPopup.fittedContentHeight(trayMenuColumn.implicitHeight, Style.space(420))
+
+    Column {
+      id: trayMenuColumn
+      anchors.fill: parent
+      spacing: 0
+
+      Repeater {
+        model: trayMenuOpener.children
+
+        delegate: Item {
+          id: menuRow
+          required property var modelData
+          required property int index
+
+          readonly property string rowText: String(modelData.text || "")
+          readonly property string activeTitle: root.activeTrayItem ? String(root.activeTrayItem.title || root.activeTrayItem.id || "") : ""
+          readonly property bool rootTitleEntry: index === 0 && modelData.hasChildren && rowText.toLowerCase() === activeTitle.toLowerCase()
+          readonly property bool leadingSeparator: modelData.isSeparator && index <= 1
+          readonly property bool hiddenRow: rootTitleEntry || leadingSeparator
+
+          visible: !hiddenRow
+          width: trayMenuColumn.width
+          implicitHeight: hiddenRow ? 0 : (modelData.isSeparator ? Style.space(11) : Style.space(30))
+          opacity: modelData.enabled ? 1.0 : 0.45
+
+          Rectangle {
+            visible: menuRow.modelData.isSeparator
+            anchors.left: parent.left
+            anchors.leftMargin: Style.space(10)
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(10)
+            anchors.verticalCenter: parent.verticalCenter
+            height: 1
+            color: Color.popups.border
+            opacity: 0.45
+          }
+
+          Rectangle {
+            visible: !menuRow.modelData.isSeparator
+            anchors.fill: parent
+            radius: Math.max(2, Style.cornerRadius)
+            color: rowMouse.containsMouse && menuRow.modelData.enabled ? Style.hoverFillFor(root.foreground, root.foreground) : "transparent"
+          }
+
+          Text {
+            visible: !menuRow.modelData.isSeparator && menuRow.modelData.buttonType !== QsMenuButtonType.None
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: parent.left
+            width: Style.space(22)
+            horizontalAlignment: Text.AlignHCenter
+            text: menuRow.modelData.checkState === Qt.Checked ? "\uf00c" : ""
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+          }
+
+          IconImage {
+            id: menuIcon
+            visible: !menuRow.modelData.isSeparator && String(menuRow.modelData.icon || "") !== ""
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: parent.left
+            anchors.leftMargin: Style.space(24)
+            implicitSize: Style.space(16)
+            width: Style.space(16)
+            height: Style.space(16)
+            source: menuRow.modelData.icon
+          }
+
+          Text {
+            visible: !menuRow.modelData.isSeparator
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: parent.left
+            anchors.leftMargin: menuIcon.visible ? Style.space(46) : Style.space(28)
+            anchors.right: submenuGlyph.left
+            anchors.rightMargin: Style.space(8)
+            text: menuRow.rowText
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            elide: Text.ElideRight
+          }
+
+          Text {
+            id: submenuGlyph
+            visible: !menuRow.modelData.isSeparator && menuRow.modelData.hasChildren
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(10)
+            text: "\u203a"
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+          }
+
+          MouseArea {
+            id: rowMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            enabled: !menuRow.modelData.isSeparator && menuRow.modelData.enabled
+            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: {
+              if (menuRow.modelData.hasChildren) {
+                var point = menuRow.QsWindow.contentItem.mapFromItem(menuRow, menuRow.width, menuRow.height / 2)
+                menuRow.modelData.display(menuRow.QsWindow.window, point.x, point.y)
+              } else {
+                menuRow.modelData.triggered()
+                root.close()
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   component TrayItem: Item {
     id: trayItemRoot
 
@@ -413,6 +560,10 @@ BarWidget {
     visible: modelData.status !== Status.Passive
     implicitWidth: visible ? root.trayItemExtent : 0
     implicitHeight: visible ? root.trayItemExtent : 0
+
+    function displayMenu(mouse) {
+      root.openTrayMenu(trayItemRoot.modelData, trayItemRoot, mouse)
+    }
 
     IconImage {
       anchors.centerIn: parent
@@ -430,12 +581,19 @@ BarWidget {
       cursorShape: Qt.PointingHandCursor
       onEntered: if (root.bar) root.bar.showTooltip(trayItemRoot, root.trayTooltip(modelData))
       onExited: if (root.bar) root.bar.hideTooltip(trayItemRoot)
+      onPressed: function(mouse) {
+        if (mouse.button === Qt.RightButton) {
+          trayItemRoot.displayMenu(mouse)
+          mouse.accepted = true
+        }
+      }
       onClicked: function(mouse) {
-        if (mouse.button === Qt.RightButton && trayItemRoot.modelData.hasMenu) {
-          var point = trayItemRoot.QsWindow.contentItem.mapFromItem(trayItemRoot, mouse.x, mouse.y)
-          trayItemRoot.modelData.display(trayItemRoot.QsWindow.window, point.x, point.y)
+        if (mouse.button === Qt.RightButton) {
+          mouse.accepted = true
         } else if (mouse.button === Qt.MiddleButton) {
           trayItemRoot.modelData.secondaryActivate()
+        } else if (trayItemRoot.modelData.onlyMenu) {
+          trayItemRoot.displayMenu(mouse)
         } else {
           trayItemRoot.modelData.activate()
         }
