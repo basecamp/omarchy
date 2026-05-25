@@ -18,7 +18,7 @@ if [[ -f $FIRST_RUN_MODE ]]; then
   bash "$OMARCHY_PATH/install/first-run/gdk-scale.sh"
   bash "$OMARCHY_PATH/install/first-run/gtk-primary-paste.sh"
   omarchy-hook-install post-update "$OMARCHY_PATH/install/first-run/install-voxtype.hook"
-  sudo rm -f /etc/sudoers.d/first-run
+  sudo /bin/rm -f /etc/sudoers.d/first-run
 
   bash "$OMARCHY_PATH/install/first-run/welcome.sh"
   bash "$OMARCHY_PATH/install/first-run/wifi.sh"
