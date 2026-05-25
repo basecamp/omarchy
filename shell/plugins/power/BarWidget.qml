@@ -4,6 +4,7 @@ import Quickshell.Io
 import Quickshell.Services.UPower
 import qs.Commons
 import qs.Ui
+import "PowerModel.js" as PowerModel
 
 Panel {
   id: root
@@ -20,9 +21,17 @@ Panel {
     return !!(device && device.isPresent)
   }
 
+  function upowerStates() {
+    return {
+      Charging: UPowerDeviceState.Charging,
+      Discharging: UPowerDeviceState.Discharging,
+      FullyCharged: UPowerDeviceState.FullyCharged,
+      PendingCharge: UPowerDeviceState.PendingCharge
+    }
+  }
+
   function selectProfileByDelta(delta) {
-    if (profiles.length === 0) { profileIndex = 0; return }
-    profileIndex = Math.max(0, Math.min(profiles.length - 1, profileIndex + delta))
+    profileIndex = PowerModel.selectProfileIndex(profileIndex, delta, profiles)
   }
 
   function activateSelectedProfile() {
@@ -32,41 +41,16 @@ Panel {
 
   function batteryIcon() {
     var device = UPower.displayDevice
-    if (!root.batteryPresent) return ""
-
-    var chargingIcons = ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"]
-    var defaultIcons = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
-    var index = Math.max(0, Math.min(9, Math.floor(device.percentage * 10)))
-
-    if (root.chargeThresholdActive) return defaultIcons[index]
-    if (device.state === UPowerDeviceState.FullyCharged) return "󰂅"
-    if (device.state === UPowerDeviceState.Charging) return chargingIcons[index]
-    if (!UPower.onBattery) return ""
-    return defaultIcons[index]
+    return PowerModel.batteryIcon(device, UPower.onBattery, upowerStates())
   }
 
   function modeLabel() {
     var device = UPower.displayDevice
-    if (!root.batteryPresent) return ""
-
-    var percentage = device && device.isPresent ? device.percentage : 0
-
-    if (chargeThresholdActive) {
-      return "Threshold"
-    } else if (!UPower.onBattery && percentage >= 1) {
-      return "Fully charged"
-    } else if (UPower.onBattery) {
-      return "On battery"
-    } else {
-      return "Charging"
-    }
+    return PowerModel.modeLabel(device, UPower.onBattery, upowerStates())
   }
 
   function profileIcon(name) {
-    if (name === "power-saver") return "󰌪"
-    if (name === "balanced") return "󰊚"
-    if (name === "performance") return "󰓅"
-    return "󰂄"
+    return PowerModel.profileIcon(name)
   }
 
   readonly property bool fullyCharged: {
@@ -75,14 +59,7 @@ Panel {
   }
   readonly property bool chargeThresholdActive: {
     var device = UPower.displayDevice
-    if (!(device && device.isPresent && !UPower.onBattery)) return false
-
-    var fraction = Math.max(0, Math.min(1, device.percentage))
-    if (device.state === UPowerDeviceState.Discharging || device.state === UPowerDeviceState.PendingCharge) return true
-    if (device.state === UPowerDeviceState.FullyCharged && fraction < 0.99) return true
-    if (device.state !== UPowerDeviceState.Charging || fraction >= 0.99) return false
-
-    return Number(device.changeRate || 0) <= 0.2 || Number(device.timeToFull || 0) >= 8 * 60 * 60
+    return PowerModel.chargeThresholdActive(device, UPower.onBattery, upowerStates())
   }
   readonly property bool batteryFull: fullyCharged || (!UPower.onBattery && batteryFraction >= 1)
   readonly property bool batteryFlowIdle: batteryFull || chargeThresholdActive
@@ -90,7 +67,7 @@ Panel {
   // 0..1 charge level, used by the visual progress bar.
   readonly property real batteryFraction: {
     var d = UPower.displayDevice
-    return d && d.isPresent ? Math.max(0, Math.min(1, d.percentage)) : 0
+    return PowerModel.batteryFraction(d)
   }
 
   readonly property bool batteryLow: UPower.onBattery && batteryFraction > 0 && batteryFraction <= 0.2
@@ -154,13 +131,7 @@ Panel {
   }
 
   function updateKeyValue(raw, targetName) {
-    var next = {}
-    var lines = String(raw || "").split("\n")
-    for (var i = 0; i < lines.length; i++) {
-      var idx = lines[i].indexOf("\t")
-      if (idx <= 0) continue
-      next[lines[i].substring(0, idx)] = lines[i].substring(idx + 1).trim()
-    }
+    var next = PowerModel.parseKeyValue(raw)
     // Keep last known good data if a refresh briefly returns nothing — happens
     // around AC plug/unplug events. Avoids the section collapsing mid-transition.
     if (Object.keys(next).length === 0) return
@@ -169,22 +140,13 @@ Panel {
   }
 
   function updateProfiles(raw) {
-    var lines = String(raw || "").split("\n")
-    var list = []
-    var active = ""
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i].trim()
-      if (!line) continue
-      var parts = line.split("\t")
-      list.push(parts[0])
-      if (parts[1] === "1") active = parts[0]
-    }
+    var parsed = PowerModel.parseProfiles(raw, profileIndex)
     // Same guard as battery: preserve the last known profile list across
     // transient empty payloads so the buttons don't blink out.
-    if (list.length === 0) return
-    profiles = list
-    activeProfile = active
-    if (profileIndex >= profiles.length) profileIndex = Math.max(0, profiles.length - 1)
+    if (parsed.profiles.length === 0) return
+    profiles = parsed.profiles
+    activeProfile = parsed.activeProfile
+    profileIndex = parsed.profileIndex
     if (opened && activeProfile !== "") {
       var idx = profiles.indexOf(activeProfile)
       if (idx >= 0) profileIndex = idx

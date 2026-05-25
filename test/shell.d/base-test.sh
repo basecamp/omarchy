@@ -1,12 +1,12 @@
 #!/bin/bash
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
-  echo "source test/shell/base-test.sh from a shell test; do not run it directly" >&2
+  echo "source test/shell.d/base-test.sh from a shell test; do not run it directly" >&2
   exit 1
 fi
 
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
-SHELL_TEST_DIR="$ROOT/test/shell"
+SHELL_TEST_DIR="$ROOT/test/shell.d"
 
 export ROOT
 

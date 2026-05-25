@@ -5,6 +5,7 @@ import Quickshell.Io
 import Quickshell.Bluetooth
 import qs.Ui
 import qs.Commons
+import "BluetoothModel.js" as BluetoothModel
 
 Panel {
   id: root
@@ -20,66 +21,25 @@ Panel {
   readonly property var devices: Bluetooth.devices ? Bluetooth.devices.values : []
 
   function deviceLabel(device) {
-    if (!device) return ""
-    return String(device.deviceName || device.name || "").trim()
+    return BluetoothModel.deviceLabel(device)
   }
 
   function isUuidLike(value) {
-    var text = (value || "").trim()
-    if (text === "") return false
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text)
-      || /^[0-9a-f]{32}$/i.test(text)
-      || /^0x[0-9a-f]{4,32}$/i.test(text)
-      || /^0000[0-9a-f]{4}-0000-1000-8000-00805f9b34fb$/i.test(text)
+    return BluetoothModel.isUuidLike(value)
   }
 
   function isAddressLike(value) {
-    var text = (value || "").trim()
-    return /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i.test(text)
+    return BluetoothModel.isAddressLike(value)
   }
 
   function hasHumanName(device) {
-    var label = deviceLabel(device)
-    return label !== "" && !isUuidLike(label) && !isAddressLike(label)
+    return BluetoothModel.hasHumanName(device)
   }
 
-  readonly property var connectedDevices: {
-    var list = []
-    for (var i = 0; i < devices.length; i++) {
-      var d = devices[i]
-      if (d && d.connected && hasHumanName(d)) list.push(d)
-    }
-    list.sort(function(a, b) {
-      return deviceLabel(a).localeCompare(deviceLabel(b))
-    })
-    return list
-  }
-
-  readonly property var knownDevices: {
-    var list = []
-    for (var i = 0; i < devices.length; i++) {
-      var d = devices[i]
-      if (d && hasHumanName(d) && !d.connected && (d.paired || d.bonded || d.trusted)) list.push(d)
-    }
-    list.sort(function(a, b) {
-      return deviceLabel(a).localeCompare(deviceLabel(b))
-    })
-    return list
-  }
-
-  readonly property var discoveredDevices: {
-    var list = []
-    for (var i = 0; i < devices.length; i++) {
-      var d = devices[i]
-      if (!d || !hasHumanName(d)) continue
-      if (d.connected || d.paired || d.bonded || d.trusted) continue
-      list.push(d)
-    }
-    list.sort(function(a, b) {
-      return deviceLabel(a).localeCompare(deviceLabel(b))
-    })
-    return list
-  }
+  readonly property var deviceGroups: BluetoothModel.deviceLists(devices)
+  readonly property var connectedDevices: deviceGroups.connected || []
+  readonly property var knownDevices: deviceGroups.known || []
+  readonly property var discoveredDevices: deviceGroups.discovered || []
 
   readonly property string icon: {
     if (!adapter) return ""
@@ -145,18 +105,11 @@ Panel {
   }
 
   readonly property var visibleSections: {
-    var list = []
-    if (sectionVisible("connected")) list.push("connected")
-    if (sectionVisible("known")) list.push("known")
-    if (sectionVisible("discovered")) list.push("discovered")
-    return list
+    return BluetoothModel.visibleSections(deviceGroups, adapter && adapter.discovering)
   }
 
   function devicesForSection(section) {
-    if (section === "connected") return connectedDevices
-    if (section === "known") return knownDevices
-    if (section === "discovered") return discoveredDevices
-    return []
+    return BluetoothModel.sectionDevices(deviceGroups, section)
   }
 
   function deviceAt(section, index) {
@@ -165,21 +118,16 @@ Panel {
   }
 
   function cloneMap(map) {
-    var next = ({})
-    for (var key in map) next[key] = map[key]
-    return next
+    return BluetoothModel.cloneMap(map)
   }
 
   function pendingAction(address) {
-    return address && pendingActions[address] ? pendingActions[address] : ""
+    return BluetoothModel.pendingAction(pendingActions, address)
   }
 
   function setPendingAction(address, action) {
     if (!address) return
-    var next = cloneMap(pendingActions)
-    if (action) next[address] = action
-    else delete next[address]
-    pendingActions = next
+    pendingActions = BluetoothModel.withPendingAction(pendingActions, address, action)
     if (action) pendingTimeout.restart()
   }
 

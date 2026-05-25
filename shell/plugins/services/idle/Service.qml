@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
+import "IdleModel.js" as IdleModel
 
 Item {
   id: root
@@ -36,9 +37,7 @@ Item {
   property int screensaverWindowCount: 0
 
   function secondsFromConfig(value, fallback) {
-    var n = Number(value)
-    if (!isFinite(n) || n < 0) return fallback
-    return Math.floor(n)
+    return IdleModel.secondsFromConfig(value, fallback)
   }
 
   function nowIso() {
@@ -117,25 +116,9 @@ Item {
   }
 
   function setScreensaverWindow(address, visible) {
-    var key = String(address || "")
-    if (!key) return
-
-    var next = {}
-    var count = 0
-    for (var existing in root.screensaverWindows) {
-      if (existing !== key && root.screensaverWindows[existing]) {
-        next[existing] = true
-        count++
-      }
-    }
-
-    if (visible) {
-      next[key] = true
-      count++
-    }
-
-    root.screensaverWindows = next
-    root.screensaverWindowCount = count
+    var next = IdleModel.screensaverWindowsAfter(root.screensaverWindows, address, visible)
+    root.screensaverWindows = next.windows
+    root.screensaverWindowCount = next.count
   }
 
   function handleScreensaverWindowOpened(address) {
@@ -156,10 +139,7 @@ Item {
   }
 
   function eventParts(event, count) {
-    try {
-      if (event && event.parse) return event.parse(count)
-    } catch (error) {}
-    return String(event && event.data ? event.data : "").split(",")
+    return IdleModel.eventParts(event, count)
   }
 
   function handleHyprlandEvent(event) {

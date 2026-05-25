@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Ui
 import qs.Commons
+import "MonitorModel.js" as MonitorModel
 
 Panel {
   id: root
@@ -202,7 +203,7 @@ Panel {
   }
 
   function setBrightness(value) {
-    var percent = Math.max(1, Math.min(100, Math.round(value)))
+    var percent = MonitorModel.clampBrightness(value)
     root.brightnessPercent = percent
     root.pendingBrightnessPercent = percent
 
@@ -217,42 +218,25 @@ Panel {
   }
 
   function previewBrightness(value) {
-    root.brightnessPercent = Math.max(1, Math.min(100, Math.round(value)))
+    root.brightnessPercent = MonitorModel.clampBrightness(value)
     brightnessDebounce.restart()
   }
 
   function normalizeScale(scale) {
-    var n = parseFloat(String(scale || ""))
-    if (!isFinite(n)) return ""
-    return String(Math.round(n * 100) / 100)
+    return MonitorModel.normalizeScale(scale)
   }
 
   // Playful mood-name for a given brightness percent. Bands intentionally
   // span ~10–20 points so casual tweaks change the label, while small
   // nudges within one band don't.
   function brightnessName(percent) {
-    var p = Math.round(percent)
-    if (p >= 95) return "Sun blast"
-    if (p >= 80) return "Solar flare"
-    if (p >= 65) return "Golden hour"
-    if (p >= 45) return "Even day"
-    if (p >= 30) return "Soft glow"
-    if (p >= 20) return "Lamp light"
-    if (p >= 10) return "Candlelit"
-    return "Night owl"
+    return MonitorModel.brightnessName(percent)
   }
 
   function updateDisplays(displaysJson) {
-    try {
-      root.displays = displaysJson ? JSON.parse(displaysJson) : []
-    } catch(e) {
-      root.displays = []
-    }
-
-    var count = 0
-    for (var i = 0; i < root.displays.length; i++)
-      if (root.displays[i] && root.displays[i].enabled) count++
-    root.enabledDisplayCount = count
+    var parsed = MonitorModel.parseDisplays(displaysJson)
+    root.displays = parsed.displays
+    root.enabledDisplayCount = parsed.enabledDisplayCount
   }
 
   function toggleDisplay(name, enabled) {

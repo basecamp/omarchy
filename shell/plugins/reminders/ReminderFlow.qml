@@ -2,10 +2,12 @@ import Quickshell
 import Quickshell.Wayland
 import QtQuick
 import qs.Commons
+import "ReminderFlowModel.js" as ReminderFlowModel
 
 Item {
   id: root
 
+  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   property var shell: null
   property var manifest: null
 
@@ -62,15 +64,15 @@ Item {
     var selection = root.filterText
 
     if (root.step === "minutes") {
-      var nextMinutes = selection.trim()
+      var nextMinutes = ReminderFlowModel.validMinutes(selection)
 
-      if (!nextMinutes) {
+      if (!selection.trim()) {
         root.dismiss()
         return
       }
 
-      if (!/^[0-9]+$/.test(nextMinutes) || Number(nextMinutes) <= 0) {
-        Quickshell.execDetached(["bash", "-lc", "omarchy-notification-send 'Invalid reminder' 'Enter the number of minutes'"])
+      if (!nextMinutes) {
+        Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-notification-send", "Invalid reminder", "Enter the number of minutes"])
         return
       }
 
@@ -82,12 +84,9 @@ Item {
     }
 
     if (root.step === "message") {
-      var command = "omarchy-reminder " + Util.shellQuote(root.minutes)
-      if (selection.length > 0)
-        command += " " + Util.shellQuote(selection)
-
+      var args = [root.omarchyPath + "/bin/omarchy-reminder"].concat(ReminderFlowModel.reminderArgs(root.minutes, selection))
       root.dismiss()
-      Quickshell.execDetached(["bash", "-lc", command])
+      Quickshell.execDetached(args)
     }
   }
 

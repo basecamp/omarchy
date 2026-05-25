@@ -9,6 +9,7 @@ import Quickshell.Services.Notifications
 import qs.Commons
 
 import "components"
+import "NotificationLogic.js" as NotificationLogic
 
 Item {
   id: service
@@ -112,36 +113,11 @@ Item {
   //     chat apps set app_name to their brand (Discord/Slack/Vesktop), which
   //     falls outside this rule.
   function shouldBypassDnd(notification) {
-    var appName = String(notification.appName || "")
-    if (appName === "omarchy-action") return true
-    if (appName === "notify-send" && notification.urgency === NotificationUrgency.Critical) return true
-    return false
+    return NotificationLogic.shouldBypassDnd(notification, NotificationUrgency.Critical)
   }
 
   function snapshotOf(notification) {
-    var glyph = ""
-    try {
-      if (notification.hints) {
-        var hintGlyph = notification.hints["omarchy-glyph"]
-        if (hintGlyph !== undefined && hintGlyph !== null)
-          glyph = String(hintGlyph)
-      }
-    } catch (e) { glyph = "" }
-    var summary = String(notification.summary || "")
-
-    return {
-      id: notification.id,
-      originalId: notification.id,
-      app: notification.appName || "",
-      appIcon: notification.appIcon || "",
-      summary: summary,
-      body: notification.body || "",
-      image: notification.image || "",
-      glyph: glyph,
-      urgency: notification.urgency,
-      timestamp: Date.now(),
-      ref: notification
-    }
+    return NotificationLogic.snapshotOf(notification, Date.now())
   }
 
   function handleNotification(notification) {
@@ -384,12 +360,7 @@ Item {
   // and skip them for v1.
 
   function imageExtension(srcPath) {
-    var lower = srcPath.toLowerCase()
-    var dot = lower.lastIndexOf(".")
-    if (dot < 0) return "png"
-    var ext = lower.substring(dot + 1)
-    if (ext.length === 0 || ext.length > 5) return "png"
-    return ext
+    return NotificationLogic.imageExtension(srcPath)
   }
 
   function maybeCacheImage(snapshot) {
@@ -541,78 +512,31 @@ Item {
     // guard, the second fire appends a second copy of every persisted row
     // to the in-memory model.
     if (service.historyLoaded) return
-    var text = String(raw || "").trim()
-    if (!text) { service.historyLoaded = true; return }
-    try {
-      var parsed = JSON.parse(text)
-      if (parsed && typeof parsed.dnd === "boolean") {
-        service._hydrating = true
-        persisted.doNotDisturb = parsed.dnd
-        service._hydrating = false
-      }
-      var pending = (parsed && Array.isArray(parsed.pending)) ? parsed.pending : []
-      var past = (parsed && Array.isArray(parsed.past)) ? parsed.past : []
-      // v1 backwards compat: the old schema had a single `entries` array.
-      // Treat all of those as past since the user already presumably saw
-      // them (and DND-suppressed notifications from before the split are
-      // a rare edge case).
-      if (parsed && Array.isArray(parsed.entries)) past = past.concat(parsed.entries)
 
-      function entryFor(e) {
-        return {
-          id: e.id || 0,
-          originalId: e.originalId || e.id || 0,
-          app: e.app || "",
-          appIcon: e.appIcon || "",
-          summary: e.summary || "",
-          body: e.body || "",
-          image: e.image || "",
-          glyph: e.glyph || "",
-          urgency: typeof e.urgency === "number" ? e.urgency : NotificationUrgency.Normal,
-          timestamp: e.timestamp || 0,
-          ref: null
-        }
-      }
-      // Older builds didn't dedupe chat-app replacements, so hydrated files
-      // can hold hundreds of identical rows (same originalId). Collapse on
-      // load — keep the newest occurrence (highest timestamp) and drop the
-      // rest. Save is rescheduled below so the disk file rewrites cleanly.
-      function dedupeByOriginalId(rows) {
-        var keep = {}
-        for (var k = 0; k < rows.length; k++) {
-          var r = rows[k]
-          if (!r) continue
-          var key = r.originalId
-          if (key === undefined || key === null) { keep["_" + k] = r; continue }
-          var prior = keep[key]
-          if (!prior || (r.timestamp || 0) >= (prior.timestamp || 0)) keep[key] = r
-        }
-        var out = []
-        for (var id in keep) out.push(keep[id])
-        out.sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0) })
-        return out
-      }
-      var pendingDeduped = dedupeByOriginalId(pending)
-      var pastDeduped = dedupeByOriginalId(past)
-      var hadDuplicates = pendingDeduped.length !== pending.length
-                       || pastDeduped.length !== past.length
-      // Newest-first on disk; insert in order so models match.
-      Qt.callLater(function() {
-        for (var i = 0; i < pendingDeduped.length; i++) {
-          pendingModel.append(entryFor(pendingDeduped[i]))
-          if (pendingModel.count > service.historyCap) pendingModel.remove(pendingModel.count - 1)
-        }
-        for (var j = 0; j < pastDeduped.length; j++) {
-          pastModel.append(entryFor(pastDeduped[j]))
-          if (pastModel.count > service.historyCap) pastModel.remove(pastModel.count - 1)
-        }
-        service.historyLoaded = true
-        if (hadDuplicates) service.scheduleHistorySave()
-      })
-    } catch (e) {
-      console.warn("notifications: history parse failed:", e)
+    var parsed = NotificationLogic.parseHistory(raw, NotificationUrgency.Normal, service.historyCap)
+    if (parsed.empty) {
       service.historyLoaded = true
+      return
     }
+    if (parsed.error) {
+      console.warn("notifications: history parse failed:", parsed.errorMessage || "")
+      service.historyLoaded = true
+      return
+    }
+
+    if (parsed.dnd !== null) {
+      service._hydrating = true
+      persisted.doNotDisturb = parsed.dnd
+      service._hydrating = false
+    }
+
+    // Newest-first on disk; append in order so models match.
+    Qt.callLater(function() {
+      for (var i = 0; i < parsed.pending.length; i++) pendingModel.append(parsed.pending[i])
+      for (var j = 0; j < parsed.past.length; j++) pastModel.append(parsed.past[j])
+      service.historyLoaded = true
+      if (parsed.hadDuplicates) service.scheduleHistorySave()
+    })
   }
 
   function flushHistory() {

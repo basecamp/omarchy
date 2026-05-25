@@ -5,6 +5,7 @@ import Quickshell.Io
 import Quickshell.Networking
 import qs.Ui
 import qs.Commons
+import "NetworkModel.js" as NetworkModel
 
 Panel {
   id: root
@@ -228,11 +229,11 @@ Panel {
   property string frequency: ""
 
   function updateNetwork(raw) {
-    var parts = String(raw || "disconnected\t\t\t").replace(/\r?\n+$/, "").split("\t")
-    kind = parts[0] || "disconnected"
-    label = parts[1] || ""
-    signalStrength = parts[2] ? parseInt(parts[2], 10) : -1
-    frequency = parts[3] || ""
+    var parsed = NetworkModel.parseNetworkStatus(raw)
+    kind = parsed.kind
+    label = parsed.label
+    signalStrength = parsed.signalStrength
+    frequency = parsed.frequency
   }
 
   function copyToClipboard(value) {
@@ -240,15 +241,7 @@ Panel {
     Quickshell.execDetached(["bash", "-lc", "printf %s " + Util.shellQuote(value) + " | wl-copy"])
   }
 
-  readonly property string icon: {
-    if (kind === "wifi") {
-      var icons = ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"]
-      var index = Math.max(0, Math.min(4, Math.ceil(signalStrength / 20) - 1))
-      return icons[index]
-    }
-    if (kind === "ethernet") return "󰈀"
-    return "󰤮"
-  }
+  readonly property string icon: NetworkModel.connectionIcon(kind, signalStrength)
 
   function refresh(scanWifi) {
     if (scanWifi === undefined) scanWifi = false
@@ -270,79 +263,47 @@ Panel {
   }
 
   function formatHeaderSpeed(mbps) {
-    var v = parseInt(mbps, 10)
-    if (!v || v < 0) return ""
-    if (v >= 1000) return (v / 1000).toFixed(v % 1000 === 0 ? 0 : 1) + "gbit"
-    return v + "mbit"
+    return NetworkModel.formatHeaderSpeed(mbps)
   }
 
   function formatHeaderFreq(mhz) {
-    var v = parseFloat(mhz)
-    if (!v) return ""
-    var ghz = v / 1000
-    return ghz.toFixed(ghz % 1 === 0 ? 0 : 1) + "ghz"
+    return NetworkModel.formatHeaderFreq(mhz)
   }
 
   function headerDetail() {
-    if (info.type === "ethernet") return formatHeaderSpeed(info.speed || "")
-    if (info.type === "wifi") return formatHeaderFreq(info.freq || "")
-    return ""
+    return NetworkModel.headerDetail(info)
   }
 
   function updateDetails(raw) {
-    var next = {}
-    var lines = String(raw || "").split("\n")
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i]
-      if (!line) continue
-      var idx = line.indexOf("\t")
-      if (idx === -1) continue
-      next[line.substring(0, idx)] = line.substring(idx + 1).trim()
-    }
+    var next = NetworkModel.parseKeyValue(raw)
     info = next
     updateThroughput(next)
   }
 
   function updateThroughput(next) {
-    var iface = next.iface || ""
-    var rx = parseFloat(next.rx_bytes || "0")
-    var tx = parseFloat(next.tx_bytes || "0")
-    var now = Date.now() / 1000
+    var state = NetworkModel.throughputState({
+      prevIface: prevIface,
+      prevRxBytes: prevRxBytes,
+      prevTxBytes: prevTxBytes,
+      prevSampleTime: prevSampleTime,
+      downloadRate: downloadRate,
+      uploadRate: uploadRate
+    }, next, Date.now() / 1000)
 
-    // Interface changed (or first sample) — reseed without emitting a rate;
-    // raw counters from two different NICs are meaningless to subtract.
-    if (iface !== prevIface || prevSampleTime === 0) {
-      prevIface = iface
-      prevRxBytes = rx
-      prevTxBytes = tx
-      prevSampleTime = now
-      downloadRate = 0
-      uploadRate = 0
-      return
-    }
-
-    var dt = now - prevSampleTime
-    if (dt > 0) {
-      // Math.max guards against counter wrap or reset to 0 (interface flap).
-      downloadRate = Math.max(0, (rx - prevRxBytes) / dt)
-      uploadRate = Math.max(0, (tx - prevTxBytes) / dt)
-    }
-    prevRxBytes = rx
-    prevTxBytes = tx
-    prevSampleTime = now
+    prevIface = state.prevIface
+    prevRxBytes = state.prevRxBytes
+    prevTxBytes = state.prevTxBytes
+    prevSampleTime = state.prevSampleTime
+    downloadRate = state.downloadRate
+    uploadRate = state.uploadRate
   }
 
   function formatBytes(bytes) {
-    var n = Number(bytes)
-    if (!isFinite(n) || n < 0) n = 0
-    if (n < 1024) return Math.round(n) + " B"
-    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB"
-    if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB"
-    return (n / (1024 * 1024 * 1024)).toFixed(2) + " GB"
+    return NetworkModel.formatBytes(bytes)
   }
 
   function formatRate(bytesPerSec) {
-    return formatBytes(bytesPerSec) + "/s"
+    return NetworkModel.formatRate(bytesPerSec)
   }
 
   function findDevice(type) {
@@ -369,42 +330,20 @@ Panel {
       var network = networks[i]
       if (!network) continue
       checkActionCompletion(network)
-      var isConnected = network.connected
-      var ssid = network.name || ""
-      nets.push({
-        network: network,
-        connected: isConnected,
-        known: network.known,
-        ssid: ssid,
-        signal: Math.round((network.signalStrength || 0) * 100),
-        security: network.security
-      })
+      var row = NetworkModel.wifiRow(network)
+      if (row) nets.push(row)
     }
-    nets.sort(function(a, b) {
-      if (a.connected !== b.connected) return a.connected ? -1 : 1
-      if (a.known !== b.known) return a.known ? -1 : 1
-      return b.signal - a.signal
-    })
-    wifiNetworks = nets
+    wifiNetworks = NetworkModel.sortWifiRows(nets)
     wifiStationAvailable = !!wifiDevice
     scanning = false
   }
 
   function wifiSectionTitle(index) {
-    if (index < 0 || index >= wifiNetworks.length) return ""
-
-    var net = wifiNetworks[index]
-    if (!net) return ""
-
-    if (net.known && index === 0) return "KNOWN NETWORKS"
-    if (!net.known && (index === 0 || (wifiNetworks[index - 1] && wifiNetworks[index - 1].known))) return "OTHER NETWORKS"
-    return ""
+    return NetworkModel.wifiSectionTitle(wifiNetworks, index)
   }
 
   function wifiIconFor(strength) {
-    var icons = ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"]
-    var index = Math.max(0, Math.min(4, Math.ceil(strength / 20) - 1))
-    return icons[index]
+    return NetworkModel.wifiIconFor(strength)
   }
 
   function updateDns(raw) {
@@ -435,7 +374,7 @@ Panel {
   }
 
   function isProtected(security) {
-    return security !== WifiSecurityType.Open
+    return NetworkModel.isProtected(security, WifiSecurityType.Open)
   }
 
   function openPasswordPrompt(ssid) {
@@ -493,12 +432,13 @@ Panel {
   }
 
   function networkFailureReason(reason) {
-    if (reason === ConnectionFailReason.NoSecrets) return "Passphrase required"
-    if (reason === ConnectionFailReason.WifiAuthTimeout) return "Wrong password"
-    if (reason === ConnectionFailReason.WifiNetworkLost) return "Network lost"
-    if (reason === ConnectionFailReason.WifiClientDisconnected) return "Disconnected"
-    if (reason === ConnectionFailReason.WifiClientFailed) return "Connection failed"
-    return "Failed to connect"
+    return NetworkModel.networkFailureReason(reason, {
+      NoSecrets: ConnectionFailReason.NoSecrets,
+      WifiAuthTimeout: ConnectionFailReason.WifiAuthTimeout,
+      WifiNetworkLost: ConnectionFailReason.WifiNetworkLost,
+      WifiClientDisconnected: ConnectionFailReason.WifiClientDisconnected,
+      WifiClientFailed: ConnectionFailReason.WifiClientFailed
+    })
   }
 
   function checkActionCompletion(network) {

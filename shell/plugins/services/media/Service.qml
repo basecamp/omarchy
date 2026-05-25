@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Mpris
 import Quickshell.Services.Pipewire
+import "MediaModel.js" as MediaModel
 
 Item {
   id: root
@@ -33,97 +34,55 @@ Item {
   readonly property string identity: activePlayer ? (activePlayer.identity || activePlayer.desktopEntry || "") : ""
 
   function isProxyPlayer(player) {
-    var dbusName = String(player && player.dbusName || "").toLowerCase()
-    var desktopEntry = String(player && player.desktopEntry || "").toLowerCase()
-    return dbusName.indexOf("playerctld") !== -1 || desktopEntry === "playerctld"
+    return MediaModel.isProxyPlayer(player)
   }
 
   function hasMetadata(player) {
-    return !!(player && (player.trackTitle || player.trackArtist || player.identity || player.desktopEntry))
+    return MediaModel.hasMetadata(player)
   }
 
   function hasTrackMetadata(player) {
-    return !!(player && (player.trackTitle || player.trackArtist || player.trackAlbum || player.trackArtUrl))
+    return MediaModel.hasTrackMetadata(player)
   }
 
   function playerCanControl(player) {
-    return !!(player && (player.canTogglePlaying || player.canPlay || player.canPause || player.canGoNext || player.canGoPrevious))
+    return MediaModel.playerCanControl(player)
   }
 
   function canHandleAction(player, action) {
-    if (!player) return false
-    if (action === "next") return !!player.canGoNext
-    if (action === "previous") return !!player.canGoPrevious
-    if (action === "play") return !!(player.canPlay || player.canTogglePlaying)
-    if (action === "pause") return !!(player.canPause || player.canTogglePlaying)
-    if (action === "playPause") return !!(player.canTogglePlaying || player.canPlay || player.canPause)
-    return false
+    return MediaModel.canHandleAction(player, action)
   }
 
   function canCycleSource(player) {
-    return !!(player && hasMetadata(player) && (player.isPlaying || player.canPlay))
+    return MediaModel.canCycleSource(player)
   }
 
   function nodeProps(node) {
-    return node && node.ready && node.properties ? node.properties : {}
+    return MediaModel.nodeProps(node)
   }
 
   function isPlaybackStream(node) {
-    if (!node || !node.isStream) return false
-    if (node.isSink === true) return true
-
-    var mediaClass = String(node.type || "")
-    return mediaClass.indexOf("Stream/Output/Audio") !== -1
-      || mediaClass.indexOf("AudioOutStream") !== -1
-      || mediaClass.indexOf("Output") !== -1
+    return MediaModel.isPlaybackStream(node)
   }
 
   function streamLabelKey(label) {
-    var key = String(label || "").toLowerCase()
-    key = key.replace(/^pipewire alsa \[/, "")
-    key = key.replace(/\]$/, "")
-    key = key.replace(/^alsa playback \[/, "")
-    key = key.replace(/[^a-z0-9]+/g, "")
-    return key
+    return MediaModel.streamLabelKey(label)
   }
 
   function rawStreamLabel(node) {
-    if (!node) return ""
-    var p = nodeProps(node)
-    return p["application.name"]
-      || node.description
-      || p["media.name"]
-      || p["node.name"]
-      || node.name
+    return MediaModel.rawStreamLabel(node)
   }
 
   function playerAppLabel(player) {
-    if (!player) return ""
-    var dbus = String(player.dbusName || "")
-    dbus = dbus.replace(/^org\.mpris\.MediaPlayer2\./, "")
-    dbus = dbus.replace(/\.instance[0-9]+$/, "")
-    return player.desktopEntry || player.identity || dbus
+    return MediaModel.playerAppLabel(player)
   }
 
   function playerHasPlaybackStream(player) {
-    var playerKey = streamLabelKey(playerAppLabel(player))
-    if (!playerKey) return false
-
-    for (var i = 0; i < playbackStreams.length; i++) {
-      var streamKey = streamLabelKey(rawStreamLabel(playbackStreams[i]))
-      if (!streamKey) continue
-      if (streamKey === playerKey
-          || streamKey.indexOf(playerKey) !== -1
-          || playerKey.indexOf(streamKey) !== -1)
-        return true
-    }
-
-    return false
+    return MediaModel.playerHasPlaybackStream(player, playbackStreams)
   }
 
   function playerKey(player) {
-    if (!player) return ""
-    return String(player.dbusName || player.desktopEntry || player.identity || "")
+    return MediaModel.playerKey(player)
   }
 
   function playerForKey(key) {
@@ -272,15 +231,11 @@ Item {
   }
 
   function labelFor(player) {
-    if (!player) return ""
-    return player.trackTitle || player.identity || player.desktopEntry || ""
+    return MediaModel.labelFor(player)
   }
 
   function osdMessage(player, fallback) {
-    if (!player) return fallback
-    var label = labelFor(player)
-    if (label && player.trackArtist) return label + " - " + player.trackArtist
-    return label || fallback
+    return MediaModel.osdMessage(player, fallback)
   }
 
   function showOsd(actionLabel, iconName, player) {
