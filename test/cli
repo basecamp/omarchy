@@ -6,6 +6,7 @@ ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 CLI="$ROOT/bin/omarchy"
 TMPDIR=""
 PI_TMPDIR=""
+THEME_TMPDIR=""
 
 export PATH="$ROOT/bin:$PATH"
 
@@ -35,6 +36,7 @@ assert_output_contains() {
 cleanup() {
   [[ -n $TMPDIR && -d $TMPDIR ]] && rm -rf "$TMPDIR"
   [[ -n $PI_TMPDIR && -d $PI_TMPDIR ]] && rm -rf "$PI_TMPDIR"
+  [[ -n $THEME_TMPDIR && -d $THEME_TMPDIR ]] && rm -rf "$THEME_TMPDIR"
 }
 trap cleanup EXIT
 
@@ -258,6 +260,14 @@ mv "$PI_TMPDIR/settings.json.tmp" "$PI_TMPDIR/.pi/agent/settings.json"
 HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-pi" --activate
 jq -e '.theme == "omarchy-system" and .model == "keep-me"' "$PI_TMPDIR/.pi/agent/settings.json" >/dev/null
 pass "pi theme activation preserves existing settings"
+
+THEME_TMPDIR=$(mktemp -d)
+OMARCHY_PATH="$ROOT" HOME="$THEME_TMPDIR" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" "Tokyo Night"
+background_path=$(readlink -f "$THEME_TMPDIR/.config/omarchy/current/background" 2>/dev/null || true)
+expected_background="$THEME_TMPDIR/.config/omarchy/current/theme/backgrounds/0-swirl-buck.jpg"
+[[ $background_path == "$expected_background" ]] || fail "headless theme set creates current background symlink"
+[[ -f $background_path ]] || fail "headless theme background target exists"
+pass "headless theme set creates current background symlink"
 
 for binary in \
   omarchy-update \

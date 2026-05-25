@@ -71,7 +71,6 @@ export OMARCHY_INSTALL_LOG_FILE="${OMARCHY_INSTALL_LOG_FILE:-/var/log/omarchy-in
 export PATH="$OMARCHY_PATH/bin:$PATH"
 
 source "$OMARCHY_INSTALL/helpers/logging.sh"
-source "$OMARCHY_INSTALL/helpers/chroot.sh"
 start_install_log
 
 run_logged "$OMARCHY_INSTALL/config/theme-system.sh"
@@ -86,7 +85,6 @@ omarchy-setup-hardware --install-user "$install_user"
 
 run_logged "$OMARCHY_INSTALL/login/sddm.sh"
 
-run_logged "$OMARCHY_INSTALL/post-install/dns-resolver.sh"
 run_logged "$OMARCHY_INSTALL/post-install/pacman.sh"
 run_logged "$OMARCHY_INSTALL/post-install/udev.sh"
 run_logged "$OMARCHY_INSTALL/post-install/localdb.sh"
