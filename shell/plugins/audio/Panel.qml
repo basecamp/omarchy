@@ -6,7 +6,7 @@ import Quickshell.Services.Mpris
 import Quickshell.Services.Pipewire
 import qs.Ui
 import qs.Commons
-import "AudioModel.js" as AudioModel
+import "Model.js" as Model
 
 Panel {
   id: root
@@ -62,11 +62,11 @@ Panel {
   // playback streams consistently accept audio input from clients and publish
   // `isSink: true`; capture streams publish as stream sources.
   function isPlaybackStream(node) {
-    return AudioModel.isPlaybackStream(node)
+    return Model.isPlaybackStream(node)
   }
 
   function isAudioSource(node) {
-    return AudioModel.isAudioSource(node)
+    return Model.isAudioSource(node)
   }
 
   property var cachedAudioSinks: []
@@ -263,7 +263,7 @@ Panel {
   onAudioStreamsChanged: scheduleDisplayAudioModelRefresh()
 
   function listSnapshot(list) {
-    return AudioModel.listSnapshot(list)
+    return Model.listSnapshot(list)
   }
 
   function refreshDisplayAudioModels() {
@@ -354,7 +354,7 @@ Panel {
   // panel's brightnessName ladder; bands are wide enough that small
   // tweaks don't rename the room you're in.
   function outputVolumeName(volume, muted) {
-    return AudioModel.outputVolumeName(volume, muted)
+    return Model.outputVolumeName(volume, muted)
   }
 
   function setOutputVolume(v) {
@@ -406,83 +406,83 @@ Panel {
   }
 
   function updateSinkAvailability(raw) {
-    sinkAvailability = AudioModel.parseSinkAvailability(raw)
+    sinkAvailability = Model.parseSinkAvailability(raw)
     sinkAvailabilityLoaded = true
   }
 
   function friendlyDeviceLabel(text) {
-    return AudioModel.friendlyDeviceLabel(text)
+    return Model.friendlyDeviceLabel(text)
   }
 
   function nodeLabel(node) {
-    return AudioModel.nodeLabel(node)
+    return Model.nodeLabel(node)
   }
 
   function nodeProps(node) {
-    return AudioModel.nodeProps(node)
+    return Model.nodeProps(node)
   }
 
   function isHeadphones(node) {
-    return AudioModel.isHeadphones(node)
+    return Model.isHeadphones(node)
   }
 
   function sinkGlyph(node) {
-    return AudioModel.sinkGlyph(node)
+    return Model.sinkGlyph(node)
   }
 
   function sourceGlyph(node) {
-    return AudioModel.sourceGlyph(node)
+    return Model.sourceGlyph(node)
   }
 
   function friendlyStreamLabel(label) {
-    return AudioModel.friendlyStreamLabel(label)
+    return Model.friendlyStreamLabel(label)
   }
 
   function streamLabelKey(label) {
-    return AudioModel.streamLabelKey(label)
+    return Model.streamLabelKey(label)
   }
 
   function streamLabelIsGeneric(label) {
-    return AudioModel.streamLabelIsGeneric(label)
+    return Model.streamLabelIsGeneric(label)
   }
 
   function rawStreamLabel(node) {
-    return AudioModel.rawStreamLabel(node)
+    return Model.rawStreamLabel(node)
   }
 
   function mprisPlayerLabel(player) {
-    return AudioModel.mprisPlayerLabel(player)
+    return Model.mprisPlayerLabel(player)
   }
 
   function mprisPlayerIsProxy(player) {
-    return AudioModel.mprisPlayerIsProxy(player)
+    return Model.mprisPlayerIsProxy(player)
   }
 
   function streamRepresentsMprisPlayer(streamLabel, playerLabel) {
-    return AudioModel.streamRepresentsMprisPlayer(streamLabel, playerLabel)
+    return Model.streamRepresentsMprisPlayer(streamLabel, playerLabel)
   }
 
   function mprisLabelsFor(predicate) {
-    return AudioModel.mprisLabelsFor(mprisPlayers, predicate)
+    return Model.mprisLabelsFor(mprisPlayers, predicate)
   }
 
   function matchingMprisStreamLabel(label) {
-    return AudioModel.matchingMprisStreamLabel(label, mprisPlayers)
+    return Model.matchingMprisStreamLabel(label, mprisPlayers)
   }
 
   function unmatchedMprisStreamLabel(label) {
     // Spotify exposes its PipeWire stream as "audio-src". For generic stream
     // names, use the one MPRIS player not already represented by another audio
     // stream (e.g. Chromium, or ALSA apps like cliamp).
-    return AudioModel.unmatchedMprisStreamLabel(label, mprisPlayers, displayAudioStreams)
+    return Model.unmatchedMprisStreamLabel(label, mprisPlayers, displayAudioStreams)
   }
 
   function streamLabel(node) {
-    return AudioModel.streamLabel(node, mprisPlayers, displayAudioStreams)
+    return Model.streamLabel(node, mprisPlayers, displayAudioStreams)
   }
 
   function streamRepresentsPlayer(node, player) {
-    return AudioModel.streamRepresentsPlayer(node, player, mprisPlayers, displayAudioStreams)
+    return Model.streamRepresentsPlayer(node, player, mprisPlayers, displayAudioStreams)
   }
 
   implicitWidth: button.implicitWidth
