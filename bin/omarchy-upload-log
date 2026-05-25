@@ -68,7 +68,10 @@ install)
   TARGET_OMARCHY_LOG="/mnt/var/log/omarchy-install.log"
 
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
-  [[ -s $ARCHINSTALL_LOG ]] && cat "$ARCHINSTALL_LOG" >>"$TEMP_LOG"
+  if [[ -s $ARCHINSTALL_LOG ]]; then
+    printf '\n========================================\nARCHINSTALL SUBSYSTEM LOG (%s)\n========================================\n\n' "$ARCHINSTALL_LOG" >>"$TEMP_LOG"
+    cat "$ARCHINSTALL_LOG" >>"$TEMP_LOG"
+  fi
 
   if [[ -s $LIVE_OMARCHY_LOG ]]; then
     printf '\n========================================\nOMARCHY INSTALL LOG (%s)\n========================================\n\n' "$LIVE_OMARCHY_LOG" >>"$TEMP_LOG"

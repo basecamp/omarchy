@@ -5,6 +5,7 @@ systemctl enable cups-browsed.service
 systemctl enable avahi-daemon.service
 systemctl enable linux-modules-cleanup.service
 systemctl enable docker.socket
+systemctl enable systemd-resolved.service
 systemctl enable NetworkManager.service
 systemctl enable power-profiles-daemon.service
 systemctl enable sddm.service

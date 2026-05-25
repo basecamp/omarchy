@@ -4,6 +4,10 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+grep -q '^ConditionPathIsDirectory=/sys/class/bluetooth$' "$ROOT/config/systemd/user/bt-agent.service" || \
+  fail "bt-agent is skipped on machines without Bluetooth hardware"
+pass "bt-agent is skipped on machines without Bluetooth hardware"
+
 run_node_test <<'JS'
 const bluetooth = requireFromRoot('shell/plugins/panels/bluetooth/Model.js')
 

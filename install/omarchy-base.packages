@@ -57,6 +57,7 @@ hyprsunset
 imagemagick
 imv
 inetutils
+inotify-tools
 inxi
 networkmanager
 jq
