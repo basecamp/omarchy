@@ -2,24 +2,19 @@
 
 set -euo pipefail
 
-ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
+
 TMPDIR=""
 
 export PATH="$ROOT/bin:$PATH"
-
-pass() {
-  printf 'ok - %s\n' "$1"
-}
-
-fail() {
-  printf 'not ok - %s\n' "$1" >&2
-  exit 1
-}
 
 cleanup() {
   [[ -n $TMPDIR && -d $TMPDIR ]] && rm -rf "$TMPDIR"
 }
 trap cleanup EXIT
+
+require_command jq
+require_command python3
 
 jq empty "$ROOT/config/omarchy/shell.json"
 pass "default shell.json is valid JSON"
@@ -94,7 +89,7 @@ if missing or bad:
 PY
 pass "default bar widget ids resolve to manifests and entry points"
 
-migration=$(grep -rl 'Place the system update indicator next to weather in the bar' "$ROOT/migrations" | head -n 1)
+migration=$(grep -rl 'Place the system update indicator next to weather in the bar' "$ROOT/migrations" | head -n 1 || true)
 [[ -n $migration ]] || fail "update placement migration exists"
 
 TMPDIR=$(mktemp -d)
