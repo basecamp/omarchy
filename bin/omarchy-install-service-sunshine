@@ -13,8 +13,6 @@ SUNSHINE_ADMIN_APP="Sunshine Admin"
 SUNSHINE_ADMIN_URL="https://localhost:47990"
 SUNSHINE_ADMIN_EXEC="omarchy-launch-webapp $SUNSHINE_ADMIN_URL --ignore-certificate-errors"
 SUNSHINE_ICON_SOURCE="/usr/share/sunshine/web/images/logo-sunshine-45.png"
-SUNSHINE_ICON_NAME="Sunshine Admin.png"
-WEBAPP_ICON_DIR="$HOME/.local/share/applications/icons"
 HYPR_AUTOSTART_FILE="$HOME/.config/hypr/autostart.lua"
 HYPR_AUTOSTART_ENTRY='o.launch_on_start("sunshine")'
 
@@ -59,9 +57,7 @@ open_ufw_ports() {
 }
 
 install_admin_webapp() {
-  mkdir -p "$WEBAPP_ICON_DIR"
-  cp "$SUNSHINE_ICON_SOURCE" "$WEBAPP_ICON_DIR/$SUNSHINE_ICON_NAME"
-  omarchy-webapp-install "$SUNSHINE_ADMIN_APP" "$SUNSHINE_ADMIN_URL" "$SUNSHINE_ICON_NAME" "$SUNSHINE_ADMIN_EXEC"
+  omarchy-webapp-install "$SUNSHINE_ADMIN_APP" "$SUNSHINE_ADMIN_URL" "$SUNSHINE_ICON_SOURCE" "$SUNSHINE_ADMIN_EXEC"
 }
 
 enable_hyprland_autostart() {

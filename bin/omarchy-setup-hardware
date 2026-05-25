@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# omarchy:summary=Apply Omarchy hardware-specific packages and system configuration
+# omarchy:group=setup
+# omarchy:requires-sudo=true
+# omarchy:examples=omarchy setup hardware --install-user dhh
+
+set -euo pipefail
+
+usage() {
+  cat <<USAGE
+Usage: omarchy setup hardware --install-user USER
+
+Runs idempotent hardware detection/setup for the installed machine. This is
+called by omarchy-setup-system during ISO finalization and can be rerun later
+for diagnostics or after hardware/package updates.
+USAGE
+}
+
+install_user="${OMARCHY_INSTALL_USER:-}"
+while (($#)); do
+  case "$1" in
+    --install-user)
+      install_user="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if (( EUID != 0 )); then
+  echo "Error: omarchy-setup-hardware must run as root" >&2
+  exit 1
+fi
+
+if [[ -z $install_user || $install_user == "root" ]]; then
+  echo "Error: --install-user must name the target non-root user" >&2
+  exit 1
+fi
+
+if ! getent passwd "$install_user" >/dev/null; then
+  echo "Error: user '$install_user' does not exist" >&2
+  exit 1
+fi
+
+export OMARCHY_INSTALL_USER="$install_user"
+export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+export OMARCHY_INSTALL="${OMARCHY_INSTALL:-$OMARCHY_PATH/install}"
+export OMARCHY_INSTALL_LOG_FILE="${OMARCHY_INSTALL_LOG_FILE:-/var/log/omarchy-install.log}"
+export PATH="$OMARCHY_PATH/bin:$PATH"
+
+source "$OMARCHY_INSTALL/helpers/logging.sh"
+source "$OMARCHY_INSTALL/helpers/chroot.sh"
+source "$OMARCHY_INSTALL/hardware/all.sh"

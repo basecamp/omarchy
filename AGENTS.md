@@ -63,20 +63,21 @@ Example:
 - `$OMARCHY_PATH` is set at the top level by the uwsm session environment and is always available to Omarchy runtime code.
 - Commands in `bin/` and Quickshell QML should rely on `$OMARCHY_PATH` / `Quickshell.env("OMARCHY_PATH")`; do not derive fallback paths from `HOME`, `Quickshell.shellDir`, or re-export/default `OMARCHY_PATH` manually.
 
-# Install Scripts
+# Setup Scripts
 
-Install entry points (`install.sh`, `boot.sh`) use `#!/bin/bash`. Many scripts under `install/` are sourced via `run_logged` and intentionally do not have shebangs.
+The ISO owns installation orchestration. This repo ships target-side setup commands and reusable setup leaves:
 
-Install stage files follow this pattern:
+- `bin/omarchy-setup-system` runs root-owned system setup during ISO finalization.
+- `bin/omarchy-setup-hardware` runs idempotent hardware-specific setup and is called by `omarchy-setup-system`.
+- `bin/omarchy-setup-user` runs user setup for the initial user and future users.
+- leaf scripts under `install/` are sourced by `run_logged $OMARCHY_INSTALL/path/to/script.sh` and intentionally do not have shebangs.
+- avoid `exit` in sourced setup scripts unless intentionally aborting setup.
+- use `$OMARCHY_INSTALL` and `$OMARCHY_PATH` instead of hard-coded Omarchy paths.
+- keep root-scoped hardware setup under `install/hardware/` and orchestrate it through `install/hardware/all.sh`.
+- keep every per-user setup leaf under `install/user/` (including `install/user/hardware/` and `install/user/first-run/`) so it is clear what must run for each user.
+- prefer helper commands for package and command checks where available.
 
-- `install/*/all.sh` lists scripts in execution order
-- leaf scripts are sourced by `run_logged $OMARCHY_INSTALL/path/to/script.sh`
-- avoid `exit` in sourced install scripts unless intentionally aborting the install
-- use `$OMARCHY_INSTALL` and `$OMARCHY_PATH` instead of hard-coded Omarchy paths
-- keep hardware-specific logic under `install/config/hardware/`
-- prefer helper commands for package and command checks where available
-
-Raw `command -v`, `pacman`, and `pacman-key` are acceptable in bootstrap/preflight/package-helper contexts where the helper commands may not be available yet or where direct package-manager behavior is the point of the script.
+Raw `command -v`, `pacman`, and `pacman-key` are acceptable in package-helper contexts where direct package-manager behavior is the point of the script.
 
 # Helper Commands
 
@@ -89,7 +90,7 @@ Use these instead of raw shell commands:
 - `omarchy-notification-send` - send desktop notifications; do not call `notify-send` directly
 - `omarchy-hw-asus-rog` - detect ASUS ROG hardware (and similar `hw-*` commands)
 
-Exceptions are allowed for bootstrap, preflight, migration, and package-helper scripts where the helper may not be available yet, where the helper itself is being implemented, or where direct package-manager behavior is required.
+Exceptions are allowed for migration and package-helper scripts where the helper may not be available yet, where the helper itself is being implemented, or where direct package-manager behavior is required.
 
 # Config Structure
 
@@ -161,7 +162,7 @@ To copy a default config to user config with automatic backup:
 omarchy-refresh-config hypr/hyprlock.conf
 ```
 
-This copies `~/.local/share/omarchy/config/hypr/hyprlock.conf` to `~/.config/hypr/hyprlock.conf`.
+This copies `$OMARCHY_PATH/config/hypr/hyprlock.conf` to `~/.config/hypr/hyprlock.conf`.
 
 # Migrations
 
@@ -174,6 +175,6 @@ New migration format:
 - Use `$OMARCHY_PATH` to reference the omarchy directory
 - Prefer helper commands such as `omarchy-cmd-present`, `omarchy-cmd-missing`, `omarchy-pkg-present`, and `omarchy-pkg-missing`
 
-Some older migrations predate these rules. Do not copy older migrations that start with shebangs, omit the leading `echo`, or hard-code `~/.local/share/omarchy`.
+Omarchy 4.0 intentionally collapses historical migrations into a single package-layout migration. Do not add compatibility migrations for old installer layouts.
 
-Migrations may use raw `pacman`, `command -v`, or direct config edits when needed for historical compatibility or one-off repair work.
+Migrations may use raw `pacman`, `command -v`, or direct config edits when needed for one-off repair work.

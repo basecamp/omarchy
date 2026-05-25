@@ -70,12 +70,6 @@
     },
     {
       "type": "command",
-      "key": "│ ├󰘬",
-      "keyColor": "blue",
-      "text": "branch=$(omarchy-version-branch); echo \"$branch\""
-    },
-    {
-      "type": "command",
       "key": "│ ├󰔫",
       "keyColor": "blue",
       "text": "channel=$(omarchy-version-channel); echo \"$channel\""

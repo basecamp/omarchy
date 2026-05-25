@@ -1,10 +1,9 @@
 # Changes require a restart to take effect.
 
 # Source /etc/omarchy.conf so omarchy-dev-link (which writes
-# OMARCHY_PATH=<checkout> there) wins over the default. install.sh's
-# script-mode export still wins because the file uses the same :- guard.
-# UWSM doesn't source /etc/profile.d/, so this duplicates that logic for the
-# Hyprland session.
+# OMARCHY_PATH=<checkout> there) wins over the packaged default. UWSM doesn't
+# source /etc/profile.d/, so this duplicates that logic for the Hyprland
+# session.
 [ -f /etc/omarchy.conf ] && . /etc/omarchy.conf
 export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 export PATH="$OMARCHY_PATH/bin:$PATH:$HOME/.local/bin"

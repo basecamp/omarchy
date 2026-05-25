@@ -4,14 +4,7 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
-TMPDIR=""
-
 export PATH="$ROOT/bin:$PATH"
-
-cleanup() {
-  [[ -n $TMPDIR && -d $TMPDIR ]] && rm -rf "$TMPDIR"
-}
-trap cleanup EXIT
 
 require_command jq
 require_command python3
@@ -89,56 +82,6 @@ if missing or bad:
 PY
 pass "default bar widget ids resolve to manifests and entry points"
 
-migration=$(grep -rl 'Place the system update indicator next to weather in the bar' "$ROOT/migrations" | head -n 1 || true)
-[[ -n $migration ]] || fail "update placement migration exists"
-
-TMPDIR=$(mktemp -d)
-mkdir -p "$TMPDIR/home/.config/omarchy"
-cat >"$TMPDIR/home/.config/omarchy/shell.json" <<'JSON'
-{
-  "version": 1,
-  "bar": {
-    "position": "top",
-    "transparent": false,
-    "centerAnchor": "omarchy.clock",
-    "layout": {
-      "left": [{ "id": "omarchy.menu" }],
-      "center": [
-        { "id": "omarchy.clock", "format": "HH:mm" },
-        { "id": "omarchy.weather", "refreshMinutes": 30 },
-        { "id": "omarchy.indicators", "items": ["Dnd", "NightLight"] },
-        { "id": "omarchy.system-update", "custom": true }
-      ],
-      "right": [{ "id": "omarchy.audio" }]
-    }
-  },
-  "plugins": [{ "id": "custom.plugin", "enabled": true }]
-}
-JSON
-
-HOME="$TMPDIR/home" bash "$migration"
-
-jq -e '
-  def ids: map(.id // .);
-  .bar.layout.center | ids == [
-    "omarchy.clock",
-    "omarchy.weather",
-    "omarchy.system-update",
-    "omarchy.indicators"
-  ]
-' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
-pass "update placement migration moves update after weather"
-
-jq -e '
-  .bar.layout.center[1].refreshMinutes == 30 and
-  .bar.layout.center[2].custom == true and
-  .bar.layout.center[3].items == ["Dnd", "NightLight"] and
-  .plugins == [{ "id": "custom.plugin", "enabled": true }]
-' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
-pass "update placement migration preserves unrelated settings"
-
-before=$(sha256sum "$TMPDIR/home/.config/omarchy/shell.json" | awk '{print $1}')
-HOME="$TMPDIR/home" bash "$migration"
-after=$(sha256sum "$TMPDIR/home/.config/omarchy/shell.json" | awk '{print $1}')
-[[ $before == "$after" ]] || fail "update placement migration is idempotent"
-pass "update placement migration is idempotent"
+mapfile -t migrations < <(find "$ROOT/migrations" -maxdepth 1 -type f -name '*.sh' -printf '%f\n' | sort)
+[[ ${#migrations[@]} -eq 1 && ${migrations[0]} == "1780000000_4_0.sh" ]] || fail "historical migrations are collapsed"
+pass "historical migrations are collapsed into the 4.0 migration"

@@ -51,11 +51,7 @@ desktop_name="$game_name"
 desktop_id=$(printf '%s' "$desktop_name" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/^-//; s/-$//')
 desktop_dir="$HOME/.local/share/applications"
 desktop_file="$desktop_dir/$desktop_id.desktop"
-icon_dir="$desktop_dir/icons"
-icon_path="$icon_dir/Retro Gaming.png"
-
-mkdir -p "$desktop_dir" "$icon_dir"
-[[ -f $icon_path ]] || cp "$OMARCHY_PATH/applications/icons/Retro Gaming.png" "$icon_path"
+mkdir -p "$desktop_dir"
 
 cat >"$desktop_file" <<EOF
 [Desktop Entry]
@@ -65,7 +61,7 @@ Comment=Play $game_name with RetroArch
 Exec=retroarch -L "$core_path" "$game_path"
 Terminal=false
 Type=Application
-Icon=$icon_path
+Icon=retro-gaming
 StartupNotify=true
 Categories=Game;Emulator;
 EOF
