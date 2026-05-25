@@ -1,4 +1,5 @@
 omarchy-mise-install codex
+omarchy-mise-install claude
 omarchy-mise-install gemini
 omarchy-mise-install copilot
 omarchy-mise-install opencode
