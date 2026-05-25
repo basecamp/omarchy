@@ -7,6 +7,9 @@ Requires=dbus.socket
 
 [Service]
 Type=simple
+# If bluetoothd is unavailable (for example in VMs or machines without a
+# usable adapter), skip cleanly instead of entering a restart loop.
+ExecCondition=/usr/bin/systemctl is-active --quiet bluetooth.service
 # NoInputNoOutput auto-accepts pair requests. Safe because the adapter
 # is only `pairable: true` when the user explicitly opens the omarchy
 # bluetoothPanel and starts scanning; outside that window bluez refuses
