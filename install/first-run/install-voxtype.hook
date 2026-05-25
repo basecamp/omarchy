@@ -2,9 +2,11 @@
 
 set -e
 
-# Remove this hook after use
-rm -f "$0"
+(
+  if [[ -n $(omarchy-notification-send -u critical -g  "Install Dictation with Voxtype" "Click to install voice dictation for Omarchy." -a) ]]; then
+    omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install
+  fi
+) >/dev/null 2>&1 &
 
-if [[ -n $(omarchy-notification-send -u critical -g  "Install Dictation with Voxtype" "Click to install voice dictation for Omarchy." -a) ]]; then
-  omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install
-fi >/dev/null 2>&1 &
+# Remove this hook after scheduling the background notification action.
+rm -f "$0"
