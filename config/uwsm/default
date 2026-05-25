@@ -15,6 +15,8 @@ export EDITOR=nvim
 # Use a custom directory for screenrecordings (remember to make the directory!)
 # export OMARCHY_SCREENRECORD_DIR="$HOME/Videos/Screencasts"
 
-# Change the nightlight and daylight temperature (lower is warmer, higher is cooler) 
-export OMARCHY_NIGHTLIGHT_ON_TEMPERATURE=4000
-export OMARCHY_NIGHTLIGHT_OFF_TEMPERATURE=6000
+# Use a custom temperature for nightlight mode
+# export OMARCHY_NIGHTLIGHT_ON_TEMPERATURE=4000
+
+# Use a custom temperature for daylight mode
+# export OMARCHY_NIGHTLIGHT_OFF_TEMPERATURE=6000
