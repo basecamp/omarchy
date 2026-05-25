@@ -61,6 +61,8 @@ Item {
   property int tooltipRequest: 0
   property var activePopout: null
   property var clickTargets: []
+  property var debugModuleSlots: []
+
   function registerClickTarget(target) {
     if (!target || clickTargets.indexOf(target) !== -1) return
     var next = clickTargets.slice()
@@ -71,6 +73,44 @@ Item {
   function unregisterClickTarget(target) {
     var next = clickTargets.filter(function(item) { return item !== target })
     clickTargets = next
+  }
+
+  function registerDebugModuleSlot(slot) {
+    if (!slot || debugModuleSlots.indexOf(slot) !== -1) return
+    var next = debugModuleSlots.slice()
+    next.push(slot)
+    debugModuleSlots = next
+  }
+
+  function unregisterDebugModuleSlot(slot) {
+    var next = debugModuleSlots.filter(function(item) { return item !== slot })
+    debugModuleSlots = next
+  }
+
+  function debugBarGeometry() {
+    var out = []
+    for (var i = 0; i < debugModuleSlots.length; i++) {
+      var slot = debugModuleSlots[i]
+      if (!slot || !slot.activeItem) continue
+      var point = { x: slot.x, y: slot.y }
+      try {
+        point = slot.mapToItem(null, 0, 0)
+      } catch (e) {
+      }
+      out.push({
+        id: slot.moduleName,
+        section: slot.region,
+        x: Math.round(point.x),
+        y: Math.round(point.y),
+        width: Math.round(slot.width),
+        height: Math.round(slot.height),
+        visible: slot.visible === true && slot.width > 0 && slot.height > 0,
+        itemVisible: slot.activeItem.visible === true,
+        itemWidth: Math.round(slot.activeItem.implicitWidth || 0),
+        itemHeight: Math.round(slot.activeItem.implicitHeight || 0)
+      })
+    }
+    return out
   }
 
   function targetWindow(target) {
@@ -452,10 +492,12 @@ Item {
 
   component LeftModules: ModuleList {
     entries: root.layoutEntries("left")
+    region: "left"
   }
 
   component RightModules: ModuleList {
     entries: root.layoutEntries("right")
+    region: "right"
   }
 
   component CenterModules: Item {
@@ -481,12 +523,14 @@ Item {
         ModuleList {
           visible: !centerRoot.hasAnchor
           entries: centerRoot.entries
+          region: "center"
           anchors.centerIn: parent
         }
 
         ModuleList {
           visible: centerRoot.hasAnchor
           entries: root.entriesBefore(centerRoot.entries, root.centerAnchor)
+          region: "center"
           anchors.right: centerAnchorModule.left
           anchors.verticalCenter: centerAnchorModule.verticalCenter
         }
@@ -495,12 +539,14 @@ Item {
           id: centerAnchorModule
           visible: centerRoot.hasAnchor
           entry: centerRoot.anchorEntry
+          region: "center"
           anchors.centerIn: parent
         }
 
         ModuleList {
           visible: centerRoot.hasAnchor
           entries: root.entriesAfter(centerRoot.entries, root.centerAnchor)
+          region: "center"
           anchors.left: centerAnchorModule.right
           anchors.verticalCenter: centerAnchorModule.verticalCenter
         }
@@ -518,12 +564,14 @@ Item {
         ModuleList {
           visible: !centerRoot.hasAnchor
           entries: centerRoot.entries
+          region: "center"
           anchors.centerIn: parent
         }
 
         ModuleList {
           visible: centerRoot.hasAnchor
           entries: root.entriesBefore(centerRoot.entries, root.centerAnchor)
+          region: "center"
           anchors.bottom: centerAnchorModule.top
           anchors.horizontalCenter: centerAnchorModule.horizontalCenter
         }
@@ -532,12 +580,14 @@ Item {
           id: centerAnchorModule
           visible: centerRoot.hasAnchor
           entry: centerRoot.anchorEntry
+          region: "center"
           anchors.centerIn: parent
         }
 
         ModuleList {
           visible: centerRoot.hasAnchor
           entries: root.entriesAfter(centerRoot.entries, root.centerAnchor)
+          region: "center"
           anchors.top: centerAnchorModule.bottom
           anchors.horizontalCenter: centerAnchorModule.horizontalCenter
         }
@@ -567,6 +617,7 @@ Item {
     id: moduleListRoot
 
     property var entries: []
+    property string region: ""
 
     visible: entries.length > 0
     sourceComponent: root.vertical ? verticalModuleList : horizontalModuleList
@@ -585,6 +636,7 @@ Item {
           ModuleSlot {
             required property var modelData
             entry: modelData
+            region: moduleListRoot.region
           }
         }
       }
@@ -602,6 +654,7 @@ Item {
           ModuleSlot {
             required property var modelData
             entry: modelData
+            region: moduleListRoot.region
           }
         }
       }
@@ -612,6 +665,7 @@ Item {
     id: slot
 
     required property var entry
+    property string region: ""
     readonly property string moduleName: root.entryId(entry)
     readonly property var moduleSettings: root.entrySettings(entry)
     readonly property string customType: root.customModuleType(entry)
@@ -637,6 +691,9 @@ Item {
     implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
     width: implicitWidth
     height: implicitHeight
+
+    Component.onCompleted: root.registerDebugModuleSlot(slot)
+    Component.onDestruction: root.unregisterDebugModuleSlot(slot)
 
     Loader {
       id: componentLoader
