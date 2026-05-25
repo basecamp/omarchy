@@ -6,7 +6,11 @@ ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 TEST_DIR="$ROOT/test/shell"
 
 shopt -s nullglob
-tests=("$TEST_DIR"/*-test.sh)
+tests=()
+for test in "$TEST_DIR"/*-test.sh; do
+  [[ $(basename "$test") == "base-test.sh" ]] && continue
+  tests+=("$test")
+done
 shopt -u nullglob
 
 if (( ${#tests[@]} == 0 )); then
