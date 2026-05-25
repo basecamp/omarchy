@@ -17,7 +17,7 @@ if lspci | grep -qi 'nvidia'; then
 
   omarchy-pkg-add "${PACKAGES[@]}"
 
-  # Per-user Hyprland NVIDIA env vars are handled by nvidia-user.sh.
+  # Per-session Hyprland NVIDIA env vars are handled by default/hypr/nvidia.lua.
 
   # Configure modprobe for early KMS
   mkdir -p /etc/modprobe.d

@@ -6,6 +6,21 @@ local function shell_quote(value)
   return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
 end
 
+o.shell_quote = shell_quote
+
+function o.shell_succeeds(command)
+  local ok, _, code = os.execute(command .. " >/dev/null 2>&1")
+  return ok == true or ok == 0 or code == 0
+end
+
+function o.cmd_present(command)
+  return o.shell_succeeds("command -v " .. shell_quote(command))
+end
+
+function o.cmd_missing(command)
+  return not o.cmd_present(command)
+end
+
 local function command_from(value, description)
   if type(value) ~= "table" then
     return value
