@@ -191,11 +191,11 @@ Panel {
 
     function brightness(percent: string): string { return root.brightnessIpc(percent) }
     function state(): string { return root.stateIpc() }
-    function open(): void { root.open() }
-    function close(): void { root.close() }
-    function toggle(): void { root.toggle() }
-    function show(): void { root.open() }
-    function hide(): void { root.close() }
+    function open() { root.open() }
+    function close() { root.close() }
+    function toggle() { root.toggle() }
+    function show() { root.open() }
+    function hide() { root.close() }
   }
 
   function refresh() {

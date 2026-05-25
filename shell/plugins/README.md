@@ -20,6 +20,12 @@ User-installed plugins live alongside these conceptually but on disk under
 | Reminders     | `omarchy.reminders`       | `overlay`               | `reminders/ReminderFlow.qml`          |
 | Omarchy menu  | `omarchy.menu`            | `menu`, `bar-widget`    | `menu/Menu.qml`, `menu/BarWidget.qml` |
 | Notifications | `omarchy.notifications`   | `service`, `bar-widget` | `notifications/Service.qml`, `notifications/BarWidget.qml` |
+| Audio         | `omarchy.audio`           | `bar-widget`            | `panels/audio/Panel.qml`              |
+| Bluetooth     | `omarchy.bluetooth`       | `bar-widget`            | `panels/bluetooth/Panel.qml`          |
+| Monitor       | `omarchy.monitor`         | `bar-widget`            | `panels/monitor/Panel.qml`            |
+| Network       | `omarchy.network`         | `bar-widget`            | `panels/network/Panel.qml`            |
+| Power         | `omarchy.power`           | `bar-widget`            | `panels/power/Panel.qml`              |
+| Weather       | `omarchy.weather`         | `bar-widget`            | `panels/weather/BarWidget.qml`        |
 | Media         | `omarchy.media`           | `service`, `bar-widget` | `services/media/Service.qml`, `services/media/BarWidget.qml` |
 | Battery       | `omarchy.battery`         | `service`               | `services/battery/Service.qml`        |
 | Idle          | `omarchy.idle`            | `service`               | `services/idle/Service.qml`           |
@@ -28,9 +34,8 @@ User-installed plugins live alongside these conceptually but on disk under
 | Polkit agent  | `omarchy.polkit`          | `service`               | `polkit/PolkitAgent.qml`              |
 
 First-party bar-only widgets also carry manifests next to their QML files,
-e.g. `bar/widgets/Clock.manifest.json`. Rich popup widgets live in feature
-plugin directories such as `audio/`, `network/`, and `power/`, each with its
-own `manifest.json`.
+e.g. `bar/widgets/Clock.manifest.json`. Rich popup widgets live under
+`panels/`, each with its own `manifest.json`.
 
 ## Bar
 

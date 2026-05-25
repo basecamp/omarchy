@@ -59,24 +59,29 @@ function assertSafeEntryPoint(manifest, manifestPath, key, value) {
 const manifests = walk(pluginsDir)
 const manifestPaths = manifests.map(relativeFromPlugins)
 const manifestSet = new Set(manifestPaths)
+const groupedPluginRoots = new Set(['panels', 'services'])
 
 assert(manifests.length > 0, 'plugin manifests are present')
 
 for (const entry of fs.readdirSync(pluginsDir, { withFileTypes: true })) {
-  if (!entry.isDirectory() || entry.name === 'services') continue
+  if (!entry.isDirectory() || groupedPluginRoots.has(entry.name)) continue
   check(
     manifestSet.has(`${entry.name}/manifest.json`),
     `top-level plugin ${entry.name} must have a manifest`
   )
 }
 
-const serviceRoot = path.join(pluginsDir, 'services')
-for (const entry of fs.readdirSync(serviceRoot, { withFileTypes: true })) {
-  if (!entry.isDirectory()) continue
-  check(
-    manifestSet.has(`services/${entry.name}/manifest.json`),
-    `service plugin ${entry.name} must have a manifest`
-  )
+for (const groupName of groupedPluginRoots) {
+  const groupRoot = path.join(pluginsDir, groupName)
+  if (!fs.existsSync(groupRoot)) continue
+
+  for (const entry of fs.readdirSync(groupRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    check(
+      manifestSet.has(`${groupName}/${entry.name}/manifest.json`),
+      `${groupName} plugin ${entry.name} must have a manifest`
+    )
+  }
 }
 
 for (const manifestPath of manifestPaths) {

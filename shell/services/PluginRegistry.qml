@@ -267,7 +267,8 @@ QtObject {
     if (scanning) return
     scanning = true
     // $0 = first-party dir, $1 = third-party dir. Some bash versions need the explicit -- separator.
-    // First-party plugins may be grouped one level deeper, e.g. services/battery.
+    // First-party plugins may be grouped one level deeper, e.g. panels/audio
+    // or services/battery.
     // First-party bar widgets can also carry sibling manifests such as
     // widgets/Clock.manifest.json so multiple widgets can live in one source
     // directory without wrapper folders.

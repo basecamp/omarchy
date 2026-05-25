@@ -5,7 +5,7 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 run_node_test <<'JS'
-const power = requireFromRoot('shell/plugins/power/Model.js')
+const power = requireFromRoot('shell/plugins/panels/power/Model.js')
 const states = { Charging: 1, Discharging: 2, FullyCharged: 3, PendingCharge: 4 }
 
 assertEqual(power.selectProfileIndex(0, 1, ['balanced', 'performance']), 1, 'power advances profile selection')
