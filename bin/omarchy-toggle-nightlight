@@ -3,8 +3,8 @@
 # omarchy:summary=Toggle nightlight screen temperature
 # omarchy:examples=omarchy toggle nightlight
 
-ON_TEMP=4000
-OFF_TEMP=6000
+ON_TEMP=${OMARCHY_NIGHTLIGHT_ON_TEMPERATURE:-4000}
+OFF_TEMP=${OMARCHY_NIGHTLIGHT_OFF_TEMPERATURE:-6000}
 
 # Ensure hyprsunset is running
 if ! pgrep -x hyprsunset; then
