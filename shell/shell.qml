@@ -647,6 +647,10 @@ ShellRoot {
       return JSON.stringify(shell.shellConfig || {})
     }
 
+    function debugBarGeometry(): string {
+      return JSON.stringify(shell.bar && shell.bar.debugBarGeometry ? shell.bar.debugBarGeometry() : [])
+    }
+
     function summon(id: string, payloadJson: string): string {
       return shell.summon(id, payloadJson) ? "ok" : "unknown"
     }
