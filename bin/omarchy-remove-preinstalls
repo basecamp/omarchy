@@ -23,6 +23,7 @@ if gum confirm "Are you sure you want to remove all preinstalled web apps, TUI w
     typora \
     spotify \
     libreoffice-fresh \
+    1password \
     1password-beta \
     1password-cli \
     xournalpp \

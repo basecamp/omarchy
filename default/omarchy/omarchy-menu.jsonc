@@ -170,6 +170,7 @@
   "install.browser.brave-origin": {"icon":"","label":"Brave Origin","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-browser brave-origin'"},
   "install.browser.firefox": {"icon":"","label":"Firefox","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-browser firefox'"},
   "install.browser.zen": {"icon":"󰖟","label":"Zen","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-browser zen'"},
+  "install.service.1password": {"icon":"󰢁","label":"1Password","keywords":"password","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-service-1password"},
   "install.service.dropbox": {"icon":"","label":"Dropbox","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-dropbox"},
   "install.service.tailscale": {"icon":"","label":"Tailscale","keywords":"vpn","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-tailscale"},
   "install.service.nordvpn": {"icon":"󱇱","label":"NordVPN [AUR]","keywords":"vpn","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-nordvpn"},
