@@ -4,7 +4,7 @@ touch ~/.local/state/omarchy/first-run.mode
 
 # Setup sudo-less access for first-run
 sudo tee /etc/sudoers.d/first-run >/dev/null <<EOF
-Cmnd_Alias FIRST_RUN_CLEANUP = /bin/rm -f /etc/sudoers.d/first-run
+Cmnd_Alias FIRST_RUN_CLEANUP = /bin/rm -f /etc/sudoers.d/first-run, /bin/rm -f /etc/sudoers.d/99-omarchy-installer-reboot
 Cmnd_Alias SYMLINK_RESOLVED = /usr/bin/ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl
 $USER ALL=(ALL) NOPASSWD: /usr/bin/ufw
