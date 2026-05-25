@@ -88,5 +88,5 @@ PY
 pass "default bar widget ids resolve to manifests and entry points"
 
 mapfile -t migrations < <(find "$ROOT/migrations" -maxdepth 1 -type f -name '*.sh' -printf '%f\n' | sort)
-[[ ${#migrations[@]} -eq 1 && ${migrations[0]} == "1780000000_4_0.sh" ]] || fail "historical migrations are collapsed"
-pass "historical migrations are collapsed into the 4.0 migration"
+[[ ${#migrations[@]} -eq 0 ]] || fail "4.0 upgrade is not modeled as a migration"
+pass "4.0 upgrade is handled outside the migration runner"

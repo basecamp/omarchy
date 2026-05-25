@@ -1,0 +1,410 @@
+#!/bin/bash
+
+# omarchy:summary=Upgrade a legacy Omarchy install to the package-backed Omarchy 4 layout.
+# omarchy:args=[--yes] [--channel stable|rc|edge] [--user USER]
+# omarchy:examples=omarchy upgrade to 4
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: omarchy-upgrade-to-4 [--yes] [--channel stable|rc|edge] [--user USER]
+
+Upgrade any pre-4 Omarchy install to the package-backed Omarchy 4 layout.
+This script is intentionally self-contained so it can be shipped as a command
+in Omarchy 3.8.x or run directly with curl | bash on older systems.
+
+Options:
+  -y, --yes                 Do not prompt before upgrading
+  --channel stable|rc|edge  Override detected Omarchy package channel
+  --user USER               User account to refresh after package install
+  -h, --help                Show this help
+USAGE
+}
+
+log() {
+  printf '\033[32m==>\033[0m %s\n' "$*"
+}
+
+warn() {
+  printf '\033[33mWarning:\033[0m %s\n' "$*" >&2
+}
+
+fail() {
+  printf '\033[31mError:\033[0m %s\n' "$*" >&2
+  exit 1
+}
+
+normalize_channel() {
+  case "${1:-}" in
+    stable|master|main) echo stable ;;
+    rc) echo rc ;;
+    edge|dev) echo edge ;;
+    *) return 1 ;;
+  esac
+}
+
+valid_channel() {
+  normalize_channel "$1" >/dev/null 2>&1
+}
+
+channel_override="${OMARCHY_UPGRADE_CHANNEL:-${OMARCHY_CHANNEL:-${OMARCHY_MIRROR:-}}}"
+target_user="${OMARCHY_INSTALL_USER:-}"
+yes=0
+
+while (($#)); do
+  case "$1" in
+    -y|--yes)
+      yes=1
+      shift
+      ;;
+    --channel)
+      channel_override="${2:-}"
+      shift 2
+      ;;
+    --user)
+      target_user="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      fail "Unknown option: $1"
+      ;;
+  esac
+done
+
+if ! command -v pacman >/dev/null 2>&1; then
+  fail "This upgrade is only supported on Arch/Omarchy systems with pacman."
+fi
+
+if ! command -v sudo >/dev/null 2>&1 && (( EUID != 0 )); then
+  fail "sudo is required when not running as root."
+fi
+
+if [[ -z $target_user ]]; then
+  if (( EUID == 0 )); then
+    target_user="${SUDO_USER:-}"
+  else
+    target_user="${USER:-$(id -un)}"
+  fi
+fi
+
+if [[ -z $target_user || $target_user == root ]]; then
+  fail "Could not determine the non-root Omarchy user. Re-run with --user USER."
+fi
+
+if ! getent passwd "$target_user" >/dev/null; then
+  fail "User '$target_user' does not exist."
+fi
+
+target_home=$(getent passwd "$target_user" | cut -d: -f6)
+[[ -n $target_home && -d $target_home ]] || fail "Home directory for '$target_user' was not found."
+
+run_as_user() {
+  if (( EUID == 0 )); then
+    sudo -u "$target_user" -H "$@"
+  else
+    "$@"
+  fi
+}
+
+detect_channel() {
+  local candidate="${channel_override:-}"
+
+  if [[ -n $candidate ]] && valid_channel "$candidate"; then
+    normalize_channel "$candidate"
+    return 0
+  fi
+
+  if command -v omarchy-version-channel >/dev/null 2>&1; then
+    candidate=$(omarchy-version-channel 2>/dev/null | awk '{ print $1 }' || true)
+    if [[ -n $candidate ]] && valid_channel "$candidate"; then
+      normalize_channel "$candidate"
+      return 0
+    fi
+  fi
+
+  if [[ -f /etc/pacman.conf ]]; then
+    if grep -q 'https://pkgs\.omarchy\.org/rc/' /etc/pacman.conf; then
+      echo rc
+      return 0
+    elif grep -q 'https://pkgs\.omarchy\.org/edge/' /etc/pacman.conf; then
+      echo edge
+      return 0
+    elif grep -q 'https://pkgs\.omarchy\.org/stable/' /etc/pacman.conf; then
+      echo stable
+      return 0
+    fi
+  fi
+
+  if [[ -f /etc/pacman.d/mirrorlist ]]; then
+    if grep -q 'https://rc-mirror\.omarchy\.org/' /etc/pacman.d/mirrorlist; then
+      echo rc
+      return 0
+    elif grep -q 'https://mirror\.omarchy\.org/' /etc/pacman.d/mirrorlist; then
+      echo edge
+      return 0
+    elif grep -q 'https://stable-mirror\.omarchy\.org/' /etc/pacman.d/mirrorlist; then
+      echo stable
+      return 0
+    fi
+  fi
+
+  if [[ -d $target_home/.local/share/omarchy/.git ]]; then
+    if (( EUID == 0 )); then
+      candidate=$(sudo -u "$target_user" -H git -C "$target_home/.local/share/omarchy" branch --show-current 2>/dev/null || true)
+    else
+      candidate=$(git -C "$target_home/.local/share/omarchy" branch --show-current 2>/dev/null || true)
+    fi
+    if [[ -n $candidate ]] && valid_channel "$candidate"; then
+      normalize_channel "$candidate"
+      return 0
+    fi
+  fi
+
+  echo stable
+}
+
+channel=$(detect_channel)
+if ! valid_channel "$channel"; then
+  fail "Invalid channel '$channel'. Use stable, rc, or edge."
+fi
+
+case "$channel" in
+  stable)
+    mirror_server='https://stable-mirror.omarchy.org/$repo/os/$arch'
+    package_server='https://pkgs.omarchy.org/stable/$arch'
+    ;;
+  rc)
+    mirror_server='https://rc-mirror.omarchy.org/$repo/os/$arch'
+    package_server='https://pkgs.omarchy.org/rc/$arch'
+    ;;
+  edge)
+    mirror_server='https://mirror.omarchy.org/$repo/os/$arch'
+    package_server='https://pkgs.omarchy.org/edge/$arch'
+    ;;
+esac
+
+if (( ! yes )); then
+  cat <<EOF
+
+This will upgrade Omarchy for user '$target_user' to Omarchy 4 using the '$channel' channel.
+
+It will install the package-backed Omarchy 4 stack, overwrite files previously
+written by the legacy installer, remove retired default packages, and refresh
+system/user setup. A reboot is strongly recommended afterward.
+EOF
+
+  if [[ -r /dev/tty ]]; then
+    printf '\nContinue? [y/N] ' >/dev/tty
+    read -r answer </dev/tty
+    [[ $answer =~ ^[Yy]$ ]] || exit 0
+  else
+    fail "No TTY available for confirmation. Re-run with --yes to proceed non-interactively."
+  fi
+fi
+
+if (( EUID != 0 )); then
+  sudo -v
+  while true; do sudo -n true; sleep 60; done 2>/dev/null &
+  sudo_keepalive_pid=$!
+  trap 'kill "$sudo_keepalive_pid" 2>/dev/null || true' EXIT
+fi
+
+backup_suffix=$(date +%Y%m%d%H%M%S)
+
+configure_pacman_channel() {
+  log "Configuring Omarchy pacman repositories ($channel)"
+
+  sudo install -d -m 0755 /etc/pacman.d
+  if [[ -f /etc/pacman.d/mirrorlist ]]; then
+    sudo cp -f /etc/pacman.d/mirrorlist "/etc/pacman.d/mirrorlist.omarchy-upgrade-to-4.$backup_suffix.bak"
+  fi
+  printf 'Server = %s\n' "$mirror_server" | sudo tee /etc/pacman.d/mirrorlist >/dev/null
+
+  if [[ ! -f /etc/pacman.conf ]]; then
+    fail "/etc/pacman.conf does not exist."
+  fi
+
+  sudo cp -f /etc/pacman.conf "/etc/pacman.conf.omarchy-upgrade-to-4.$backup_suffix.bak"
+
+  tmp=$(mktemp)
+  awk -v server="$package_server" '
+    BEGIN { in_omarchy = 0; wrote = 0 }
+    /^\[omarchy\]$/ {
+      if (!wrote) {
+        print "[omarchy]"
+        print "SigLevel = Optional TrustAll"
+        print "Server = " server
+        wrote = 1
+      }
+      in_omarchy = 1
+      next
+    }
+    /^\[/ && in_omarchy { in_omarchy = 0 }
+    !in_omarchy { print }
+    END {
+      if (!wrote) {
+        print ""
+        print "[omarchy]"
+        print "SigLevel = Optional TrustAll"
+        print "Server = " server
+      }
+    }
+  ' /etc/pacman.conf >"$tmp"
+  sudo install -m 0644 "$tmp" /etc/pacman.conf
+  rm -f "$tmp"
+}
+
+install_keyrings() {
+  log "Refreshing package databases and keyrings"
+  sudo pacman -Sy --noconfirm archlinux-keyring omarchy-keyring || {
+    warn "Keyring package install failed; attempting to trust the Omarchy packaging key directly."
+    sudo pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org || true
+    sudo pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571 || true
+    sudo pacman -Sy --noconfirm archlinux-keyring omarchy-keyring
+  }
+}
+
+remove_legacy_installer_package() {
+  if pacman -Q omarchy-installer >/dev/null 2>&1; then
+    log "Removing legacy omarchy-installer package"
+    # The pre-4 omarchy meta package may depend on omarchy-installer. Ignore
+    # that edge temporarily; the next transaction installs the Omarchy 4 meta.
+    sudo pacman -Rdd --noconfirm omarchy-installer
+  fi
+}
+
+install_omarchy_4_packages() {
+  local core_packages=(
+    omarchy-keyring
+    omarchy-settings
+    omarchy-limine
+    omarchy-nvim
+    omarchy
+  )
+
+  log "Installing Omarchy 4 packages"
+  sudo pacman -Syu --needed --noconfirm --overwrite='*' "${core_packages[@]}"
+
+  if [[ -f /usr/share/omarchy/install/omarchy-base.packages ]]; then
+    log "Installing Omarchy 4 default package set"
+    mapfile -t base_packages < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' /usr/share/omarchy/install/omarchy-base.packages)
+    if (( ${#base_packages[@]} )); then
+      sudo pacman -S --needed --noconfirm --overwrite='*' "${base_packages[@]}"
+    fi
+  else
+    warn "/usr/share/omarchy/install/omarchy-base.packages was not found; skipping default package set install."
+  fi
+}
+
+remove_retired_default_packages() {
+  local retired_packages=(
+    1password-beta
+    1password-cli
+    alacritty
+    bluetui
+    claude-code
+    github-cli
+    hypridle
+    hyprlock
+    impala
+    iwd
+    mako
+    omarchy-walker
+    playerctl
+    polkit-gnome
+    signal-desktop
+    spotify
+    swaybg
+    swayosd
+    waybar
+    wiremix
+  )
+
+  log "Removing packages retired from the Omarchy 4 default install"
+  local pkg
+  for pkg in "${retired_packages[@]}"; do
+    if pacman -Q "$pkg" >/dev/null 2>&1; then
+      sudo pacman -Rns --noconfirm "$pkg" || warn "Could not remove retired package '$pkg'; leaving it installed."
+    fi
+  done
+}
+
+cleanup_legacy_user_paths() {
+  log "Cleaning legacy user command shims"
+  run_as_user env TARGET_HOME="$target_home" bash <<'USER_CLEANUP'
+set -euo pipefail
+local_bin="$TARGET_HOME/.local/bin"
+legacy_root="$TARGET_HOME/.local/share/omarchy/bin/"
+[[ -d $local_bin ]] || exit 0
+shopt -s nullglob
+for link in "$local_bin"/omarchy*; do
+  [[ -L $link ]] || continue
+  target=$(readlink "$link" || true)
+  case "$target" in
+    "$legacy_root"*|../share/omarchy/bin/*|*.local/share/omarchy/bin/*)
+      rm -f "$link"
+      ;;
+  esac
+done
+USER_CLEANUP
+}
+
+cleanup_retired_services() {
+  log "Disabling services retired by Omarchy 4"
+
+  # Do not stop iwd mid-upgrade; disabling is enough and avoids dropping a
+  # running Wi-Fi connection before the user can reboot into NetworkManager.
+  sudo systemctl disable iwd.service >/dev/null 2>&1 || true
+
+  run_as_user systemctl --user disable \
+    omarchy-battery-monitor.timer \
+    swayosd-server.service \
+    elephant.service \
+    app-walker@autostart.service \
+    >/dev/null 2>&1 || true
+}
+
+run_omarchy_4_setup() {
+  log "Running Omarchy 4 system setup"
+  [[ -x /usr/bin/omarchy-setup-system ]] || fail "/usr/bin/omarchy-setup-system was not installed."
+  sudo env \
+    OMARCHY_PATH=/usr/share/omarchy \
+    OMARCHY_INSTALL=/usr/share/omarchy/install \
+    OMARCHY_INSTALL_USER="$target_user" \
+    OMARCHY_MIRROR="$channel" \
+    /usr/bin/omarchy-setup-system --install-user "$target_user" --upgrade
+
+  log "Running Omarchy 4 user setup"
+  [[ -x /usr/bin/omarchy-setup-user ]] || fail "/usr/bin/omarchy-setup-user was not installed."
+  run_as_user env \
+    OMARCHY_PATH=/usr/share/omarchy \
+    OMARCHY_INSTALL=/usr/share/omarchy/install \
+    OMARCHY_SETUP_CONTEXT=runtime \
+    /usr/bin/omarchy-setup-user --force
+
+  if [[ -x /usr/bin/omarchy-refresh-applications ]]; then
+    run_as_user env OMARCHY_PATH=/usr/share/omarchy /usr/bin/omarchy-refresh-applications
+  fi
+}
+
+configure_pacman_channel
+install_keyrings
+remove_legacy_installer_package
+install_omarchy_4_packages
+cleanup_legacy_user_paths
+run_omarchy_4_setup
+cleanup_retired_services
+remove_retired_default_packages
+
+cat <<EOF
+
+Omarchy 4 upgrade complete.
+
+Please reboot to finish switching to the package-backed Omarchy 4 session.
+EOF
