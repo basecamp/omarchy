@@ -27,6 +27,9 @@ Item {
   property string launchOsdMessage: ""
   property var configuredHiddenEntryIds: ({})
   property var desktopHiddenEntryIds: ({})
+  property bool deleteConfirmOpen: false
+  property var deleteEntry: null
+  property int deleteConfirmIndex: 1
 
   // Bound to the central [launcher] section in shell.toml via Color.qml.
   // Each color already includes its alpha companion (composed in the
@@ -75,6 +78,7 @@ Item {
   }
 
   function dismiss() {
+    root.deleteConfirmOpen = false
     root.opened = false
     if (root.shell && typeof root.shell.hide === "function")
       root.shell.hide((root.manifest && root.manifest.id) || "omarchy.launcher")
@@ -196,12 +200,40 @@ Item {
   }
 
   function activateIndex(index) {
+    if (root.deleteConfirmOpen) return
     if (index < 0 || index >= root.filteredEntries.length) return
     var entry = root.filteredEntries[index]
     if (!entry) return
     root.beginLaunchFeedback(entry)
     root.dismiss()
     entry.execute()
+  }
+
+  function requestDeleteIndex(index) {
+    if (index < 0 || index >= root.filteredEntries.length) return
+    var entry = root.filteredEntries[index]
+    if (!entry) return
+    root.deleteEntry = entry
+    root.deleteConfirmIndex = 1
+    root.deleteConfirmOpen = true
+  }
+
+  function cancelDelete() {
+    root.deleteConfirmOpen = false
+    root.deleteEntry = null
+    root.deleteConfirmIndex = 1
+    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  function confirmDelete() {
+    var entry = root.deleteEntry
+    if (!entry) return
+
+    var desktopId = String(entry.id || "")
+    var name = root.entryName(entry)
+    root.cancelDelete()
+    root.dismiss()
+    Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-remove-launcher-entry", desktopId, name])
   }
 
   function beginLaunchFeedback(entry) {
@@ -327,10 +359,26 @@ Item {
       Item {
         id: keyCatcher
         anchors.fill: parent
+        z: root.deleteConfirmOpen ? 20 : 0
         focus: true
 
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
+          if (root.deleteConfirmOpen) {
+            if (event.key === Qt.Key_Escape) {
+              root.cancelDelete()
+              event.accepted = true
+            } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right || event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+              root.deleteConfirmIndex = root.deleteConfirmIndex === 0 ? 1 : 0
+              event.accepted = true
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+              if (root.deleteConfirmIndex === 0) root.cancelDelete()
+              else root.confirmDelete()
+              event.accepted = true
+            }
+            return
+          }
+
           if (event.key === Qt.Key_Escape) {
             if (root.filterText.length > 0) root.setFilter("")
             else root.dismiss()
@@ -367,9 +415,98 @@ Item {
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             root.activateIndex(root.selectedIndex)
             event.accepted = true
+          } else if (event.key === Qt.Key_Delete) {
+            root.requestDeleteIndex(root.selectedIndex)
+            event.accepted = true
           } else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
             root.setFilter(root.filterText + event.text)
             event.accepted = true
+          }
+        }
+
+        Rectangle {
+          anchors.fill: parent
+          visible: root.deleteConfirmOpen
+          z: 10
+          color: root.scrim
+
+          MouseArea { anchors.fill: parent; onClicked: root.cancelDelete() }
+
+          Rectangle {
+            width: Math.min(parent.width - 96, 370)
+            height: 132
+            anchors.centerIn: parent
+            color: root.background
+            border.color: root.selectedText
+            border.width: 1
+            radius: Style.cornerRadius
+
+            MouseArea { anchors.fill: parent; onClicked: {} }
+
+            Item {
+              anchors.fill: parent
+              anchors.margins: 18
+
+              Text {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                text: "Do you want to uninstall " + root.entryName(root.deleteEntry) + "?"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: 16
+                wrapMode: Text.WordWrap
+              }
+
+              Row {
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                spacing: 10
+
+                Repeater {
+                  model: ["Cancel", "Uninstall"]
+
+                  Rectangle {
+                    required property int index
+                    required property string modelData
+
+                    readonly property bool selected: root.deleteConfirmIndex === index
+                    readonly property bool destructive: index === 1
+
+                    width: 88
+                    height: 34
+                    color: selected
+                      ? (destructive ? Util.alpha(Color.urgent, 0.22) : root.selectedBackground)
+                      : "transparent"
+                    border.color: destructive
+                      ? (selected ? Color.urgent : Util.alpha(Color.urgent, 0.56))
+                      : (selected ? root.selectedText : Util.alpha(root.foreground, 0.38))
+                    border.width: 1
+                    radius: 0
+
+                    Text {
+                      id: buttonText
+                      anchors.centerIn: parent
+                      text: modelData
+                      color: destructive ? (selected ? Color.urgent : root.foreground) : (selected ? root.selectedText : root.foreground)
+                      font.family: root.fontFamily
+                      font.pixelSize: 14
+                    }
+
+                    MouseArea {
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      cursorShape: Qt.PointingHandCursor
+                      onEntered: root.deleteConfirmIndex = index
+                      onClicked: {
+                        if (index === 0) root.cancelDelete()
+                        else root.confirmDelete()
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
