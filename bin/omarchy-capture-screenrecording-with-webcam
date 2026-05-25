@@ -17,17 +17,16 @@ webcam_list() {
   done
 }
 
-devices=$(webcam_list)
-if [[ -z $devices ]]; then
+mapfile -t devices < <(webcam_list)
+if (( ${#devices[@]} == 0 )); then
   omarchy-notification-send "No webcam devices found" -u critical -t 3000
   exit 1
 fi
 
-count=$(grep -c . <<<"$devices")
-if (( count == 1 )); then
-  device="${devices%%[[:space:]]*}"
+if (( ${#devices[@]} == 1 )); then
+  device="${devices[0]%%[[:space:]]*}"
 else
-  selection=$(omarchy-menu-select "Select Webcam" "$devices") || exit 1
+  selection=$(omarchy-menu-select "Select Webcam" "${devices[@]}" -- --width 520 --maxheight 520) || exit 1
   device="${selection%%[[:space:]]*}"
 fi
 
