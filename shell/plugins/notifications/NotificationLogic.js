@@ -37,6 +37,11 @@ function shouldBypassDnd(notification, criticalUrgency) {
   return appName === "notify-send" && notification && notification.urgency === criticalUrgency
 }
 
+function isEphemeralApp(appName) {
+  var name = String(appName || "")
+  return name === "notify-send" || name === "omarchy-action"
+}
+
 function glyphFromHints(hints) {
   try {
     if (hints) {
@@ -167,6 +172,7 @@ if (typeof module !== "undefined") {
     sanitizeBody: sanitizeBody,
     summaryStartsWithGlyph: summaryStartsWithGlyph,
     shouldBypassDnd: shouldBypassDnd,
+    isEphemeralApp: isEphemeralApp,
     glyphFromHints: glyphFromHints,
     snapshotOf: snapshotOf,
     historyEntry: historyEntry,

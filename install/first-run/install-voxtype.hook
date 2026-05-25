@@ -5,7 +5,6 @@ set -e
 # Remove this hook after use
 rm -f "$0"
 
-(
-  action=$(notify-send -a omarchy-action -u critical --hint=string:omarchy-glyph: "Install Dictation with Voxtype" "Click to install voice dictation for Omarchy." -A "default=Install")
-  [[ $action == "default" ]] && omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install
-) >/dev/null 2>&1 &
+if [[ -n $(omarchy-notification-send -u critical -g  "Install Dictation with Voxtype" "Click to install voice dictation for Omarchy." -a) ]]; then
+  omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install
+fi >/dev/null 2>&1 &

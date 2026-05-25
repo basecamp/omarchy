@@ -133,8 +133,9 @@ case "$PROCESSING" in
     wl-copy --type image/png <"$FILEPATH"
 
     (
-      ACTION=$(notify-send -a omarchy-action "Screenshot saved to clipboard and file" "Edit with Super + Alt + , (or click this)" -t 10000 --hint="string:image-path:$FILEPATH" -A "default=edit")
-      [[ $ACTION == "default" ]] && open_editor "$FILEPATH"
+      if [[ -n $(omarchy-notification-send "Screenshot saved to clipboard and file" "Edit with Super + Alt + , (or click this)" -t 10000 --image "$FILEPATH" -a) ]]; then
+        open_editor "$FILEPATH"
+      fi
     ) >/dev/null 2>&1 &
     ;;
   copy)

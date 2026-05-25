@@ -1,4 +1,5 @@
 (
-  action=$(notify-send -a omarchy-action -u critical --hint=string:omarchy-glyph: "Learn Keybindings" "Super + K for cheatsheet.\nSuper + Space for application launcher.\nSuper + Alt + Space for Omarchy Menu." -A "default=Open")
-  [[ $action == "default" ]] && omarchy-menu-keybindings
+  if [[ -n $(omarchy-notification-send -u critical -g  "Learn Keybindings" "Super + K for cheatsheet.\nSuper + Space for application launcher.\nSuper + Alt + Space for Omarchy Menu." -a) ]]; then
+    omarchy-menu-keybindings
+  fi
 ) >/dev/null 2>&1 &

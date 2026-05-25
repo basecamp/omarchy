@@ -133,15 +133,15 @@ Item {
     //   - app_name is "notify-send" (the CLI default — means the sender
     //     didn't bother declaring an identity, so it's almost certainly
     //     ephemeral test/feedback noise)
-    //   - app_name is "omarchy-action" (omarchy's own user-action
-    //     confirmation toasts — the user just triggered them, they don't
+    //   - app_name is "omarchy-action" (Omarchy's own user-action
+    //     toasts — the user just triggered them, they don't
     //     need to be archived)
     var transient = false
     try {
       transient = !!(notification.hints && notification.hints["transient"])
     } catch (e) { transient = false }
     var appName = String(notification.appName || "")
-    var ephemeralApp = appName === "notify-send" || appName === "omarchy-action"
+    var ephemeralApp = NotificationLogic.isEphemeralApp(appName)
     if (transient || ephemeralApp) {
       if (service.doNotDisturb && !shouldBypassDnd(notification)) {
         notification.tracked = false
