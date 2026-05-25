@@ -6,6 +6,17 @@ set -e
 
 omarchy-setup-user || true
 
+wait_for_notifications() {
+  command -v omarchy-shell >/dev/null || return 0
+
+  for _ in {1..50}; do
+    omarchy-shell notifications ping >/dev/null 2>&1 && return 0
+    sleep 0.1
+  done
+
+  return 0
+}
+
 state_dir=~/.local/state/omarchy
 mkdir -p "$state_dir"
 
@@ -16,6 +27,8 @@ if [[ ! -f $USER_MARKER ]]; then
   bash "$OMARCHY_PATH/install/user/hardware/recover-internal-monitor.sh"
   bash "$OMARCHY_PATH/install/user/first-run/gnome-theme.sh"
   bash "$OMARCHY_PATH/install/user/first-run/gtk-primary-paste.sh"
+
+  wait_for_notifications
   bash "$OMARCHY_PATH/install/user/first-run/welcome.sh"
   bash "$OMARCHY_PATH/install/user/first-run/wifi.sh"
 

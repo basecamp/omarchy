@@ -56,21 +56,18 @@ snapshot_current_background() {
   snapshot_background_path "$current_background" "previous"
 }
 
-set_theme_background() {
+choose_theme_background() {
   local backgrounds=()
-  local current_background index new_background next_index new_background_snapshot
+  local current_background index next_index i
 
+  CHOSEN_THEME_BACKGROUND=""
   mapfile -d '' -t backgrounds < <(
     find -L "$HOME/.config/omarchy/backgrounds/$THEME_NAME/" "$CURRENT_THEME_PATH/backgrounds/" -maxdepth 1 -type f \
       \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) \
       -print0 2>/dev/null | sort -z
   )
 
-  if (( ${#backgrounds[@]} == 0 )); then
-    omarchy-notification-send "No background was found for theme" -t 2000
-    shell_ipc shell applyTheme "$colors_payload" "$shell_payload" || true
-    return
-  fi
+  (( ${#backgrounds[@]} > 0 )) || return 1
 
   current_background=$(readlink "$CURRENT_BACKGROUND_LINK" 2>/dev/null || true)
   index=-1
@@ -82,12 +79,28 @@ set_theme_background() {
   done
 
   if (( index == -1 )); then
-    new_background="${backgrounds[0]}"
+    CHOSEN_THEME_BACKGROUND="${backgrounds[0]}"
   else
     next_index=$(((index + 1) % ${#backgrounds[@]}))
-    new_background="${backgrounds[$next_index]}"
+    CHOSEN_THEME_BACKGROUND="${backgrounds[$next_index]}"
+  fi
+}
+
+set_theme_background_link() {
+  choose_theme_background || return 1
+  ln -nsf "$CHOSEN_THEME_BACKGROUND" "$CURRENT_BACKGROUND_LINK"
+}
+
+set_theme_background() {
+  local new_background new_background_snapshot
+
+  if ! choose_theme_background; then
+    omarchy-notification-send "No background was found for theme" -t 2000
+    shell_ipc shell applyTheme "$colors_payload" "$shell_payload" || true
+    return
   fi
 
+  new_background="$CHOSEN_THEME_BACKGROUND"
   new_background_snapshot=$(snapshot_background_path "$new_background" "next")
 
   if [[ -f $OLD_BACKGROUND_SNAPSHOT && -f $new_background_snapshot ]]; then
@@ -159,7 +172,10 @@ echo "$THEME_NAME" >"$HOME/.config/omarchy/current/theme.name"
 colors_payload=$([[ -f $CURRENT_THEME_PATH/colors.toml ]] && base64 -w 0 "$CURRENT_THEME_PATH/colors.toml")
 shell_payload=$([[ -f $CURRENT_THEME_PATH/shell.toml ]] && base64 -w 0 "$CURRENT_THEME_PATH/shell.toml")
 if [[ $THEME_HEADLESS == "1" ]]; then
-  : # No shell/session bus exists during ISO chroot finalization.
+  # No shell/session bus exists during ISO chroot finalization, but the first
+  # real login still needs a current background symlink for omarchy-shell to
+  # render.
+  [[ $OMARCHY_THEME_SKIP_BACKGROUND == "1" ]] || set_theme_background_link || true
 elif [[ $OMARCHY_THEME_SKIP_BACKGROUND == "1" ]]; then
   shell_ipc shell applyTheme "$colors_payload" "$shell_payload" || true
 else
