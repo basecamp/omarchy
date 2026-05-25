@@ -4,6 +4,7 @@ import Quickshell.Wayland
 import Quickshell.Widgets
 import QtQuick
 import qs.Commons
+import "LauncherSearch.js" as LauncherSearch
 
 Item {
   id: root
@@ -88,15 +89,15 @@ Item {
   }
 
   function entryName(entry) {
-    return String((entry && entry.name) || (entry && entry.id) || "")
+    return LauncherSearch.entryName(entry)
   }
 
   function entrySubtext(entry) {
-    return String((entry && entry.genericName) || "")
+    return LauncherSearch.entrySubtext(entry)
   }
 
   function entrySortKey(entry) {
-    return root.entryName(entry).toLowerCase()
+    return LauncherSearch.entrySortKey(entry)
   }
 
   function toplevelCount() {
@@ -104,10 +105,7 @@ Item {
   }
 
   function entrySearchText(entry) {
-    if (!entry) return ""
-    var keywords = ""
-    try { keywords = (entry.keywords || []).join(" ") } catch (e) { keywords = "" }
-    return [entry.name, entry.genericName, entry.comment, keywords, entry.id].join(" ").toLowerCase()
+    return LauncherSearch.entrySearchText(entry)
   }
 
   function isHiddenEntry(entry) {
@@ -150,60 +148,12 @@ Item {
   }
 
   function fuzzyScore(entry, query) {
-    var q = String(query || "").trim().toLowerCase()
-    if (!q) return 0
-
-    var name = root.entryName(entry).toLowerCase()
-    var id = String((entry && entry.id) || "").toLowerCase()
-    var haystack = root.entrySearchText(entry)
-    var directName = name.indexOf(q)
-    var directId = id.indexOf(q)
-    if (directName === 0) return 10000 - name.length
-    if (directId === 0) return 9500 - id.length
-    if (directName > 0) return 8000 - directName * 10 - name.length
-    if (directId > 0) return 7600 - directId * 10 - id.length
-
-    var hayIndex = haystack.indexOf(q)
-    if (hayIndex >= 0) return 6000 - hayIndex
-
-    var pos = 0
-    var first = -1
-    var last = -1
-    for (var i = 0; i < haystack.length && pos < q.length; i++) {
-      if (haystack.charAt(i) !== q.charAt(pos)) continue
-      if (first < 0) first = i
-      last = i
-      pos++
-    }
-    if (pos !== q.length) return -1
-    return 3000 - (last - first) - haystack.length * 0.01
+    return LauncherSearch.fuzzyScore(entry, query)
   }
 
   function sortedEntries(query) {
     var values = DesktopEntries.applications.values || []
-    var q = String(query || "").trim()
-    var rows = []
-
-    for (var i = 0; i < values.length; i++) {
-      var entry = values[i]
-      if (!entry || entry.noDisplay || root.isHiddenEntry(entry)) continue
-      var name = root.entryName(entry)
-      if (!name) continue
-      var score = root.fuzzyScore(entry, q)
-      if (score < 0) continue
-      rows.push({ entry: entry, score: score, key: root.entrySortKey(entry), name: name.toLowerCase() })
-    }
-
-    rows.sort(function(a, b) {
-      if (q && a.score !== b.score) return b.score - a.score
-      if (a.key < b.key) return -1
-      if (a.key > b.key) return 1
-      if (a.name < b.name) return -1
-      if (a.name > b.name) return 1
-      return 0
-    })
-
-    return rows
+    return LauncherSearch.sortedEntries(values, query, function(entry) { return root.isHiddenEntry(entry) })
   }
 
   function rebuildDisplay() {
