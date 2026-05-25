@@ -3,7 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
-import "WeatherModel.js" as WeatherModel
+import "Model.js" as Model
 
 Panel {
   id: root
@@ -32,7 +32,7 @@ Panel {
   property string klass: ""
 
   function updateWeather(raw) {
-    var data = WeatherModel.parseWeatherStatus(raw)
+    var data = Model.parseWeatherStatus(raw)
     label = data.label
     klass = data.klass
   }
@@ -83,54 +83,54 @@ Panel {
   }
 
   function buildForecastDays() {
-    return WeatherModel.buildForecastDays(report, dailyForecastReport, Qt.formatDate(new Date(), "yyyy-MM-dd"))
+    return Model.buildForecastDays(report, dailyForecastReport, Qt.formatDate(new Date(), "yyyy-MM-dd"))
   }
 
   function openMeteoForecastDays() {
-    return WeatherModel.openMeteoForecastDays(dailyForecastReport, Qt.formatDate(new Date(), "yyyy-MM-dd"))
+    return Model.openMeteoForecastDays(dailyForecastReport, Qt.formatDate(new Date(), "yyyy-MM-dd"))
   }
 
   function wttrNextForecastDays() {
-    return WeatherModel.wttrNextForecastDays(report, Qt.formatDate(new Date(), "yyyy-MM-dd"))
+    return Model.wttrNextForecastDays(report, Qt.formatDate(new Date(), "yyyy-MM-dd"))
   }
 
   function isFutureForecastDate(dateString) {
-    return WeatherModel.isFutureForecastDate(dateString, Qt.formatDate(new Date(), "yyyy-MM-dd"))
+    return Model.isFutureForecastDate(dateString, Qt.formatDate(new Date(), "yyyy-MM-dd"))
   }
 
   function roundedTemp(value) {
-    return WeatherModel.roundedTemp(value)
+    return Model.roundedTemp(value)
   }
 
   function celsiusToFahrenheit(value) {
-    return WeatherModel.celsiusToFahrenheit(value)
+    return Model.celsiusToFahrenheit(value)
   }
 
   function formatTemp(value) {
-    return WeatherModel.formatTemp(value, useImperial)
+    return Model.formatTemp(value, useImperial)
   }
 
   function dayName(dateString) {
-    return WeatherModel.dayName(dateString, function(date) { return Qt.formatDate(date, "dddd") })
+    return Model.dayName(dateString, function(date) { return Qt.formatDate(date, "dddd") })
   }
 
   // Bare degree value (no unit letter), used in the forecast row.
   function bareTempForDay(day, kind) {
-    return WeatherModel.bareTempForDay(day, kind, useImperial)
+    return Model.bareTempForDay(day, kind, useImperial)
   }
 
   // Representative icon for a forecast day: the hourly entry nearest noon.
   function dayIcon(day) {
-    return WeatherModel.dayIcon(day)
+    return Model.dayIcon(day)
   }
 
   function iconForOpenMeteoCode(code) {
-    return WeatherModel.iconForOpenMeteoCode(code)
+    return Model.iconForOpenMeteoCode(code)
   }
 
   // Mirrors omarchy-weather-icon's wttr.in code → nerd-font glyph mapping.
   function iconForCode(code, night) {
-    return WeatherModel.iconForCode(code, night)
+    return Model.iconForCode(code, night)
   }
 
   Process {

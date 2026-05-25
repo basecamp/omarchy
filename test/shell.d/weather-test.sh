@@ -5,7 +5,7 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 run_node_test <<'JS'
-const weather = requireFromRoot('shell/plugins/weather/WeatherModel.js')
+const weather = requireFromRoot('shell/plugins/weather/Model.js')
 
 assertDeepEqual(
   weather.parseWeatherStatus('{"text":"☀","class":"sunny"}'),

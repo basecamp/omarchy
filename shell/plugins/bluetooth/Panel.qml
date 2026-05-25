@@ -5,7 +5,7 @@ import Quickshell.Io
 import Quickshell.Bluetooth
 import qs.Ui
 import qs.Commons
-import "BluetoothModel.js" as BluetoothModel
+import "Model.js" as Model
 
 Panel {
   id: root
@@ -21,22 +21,22 @@ Panel {
   readonly property var devices: Bluetooth.devices ? Bluetooth.devices.values : []
 
   function deviceLabel(device) {
-    return BluetoothModel.deviceLabel(device)
+    return Model.deviceLabel(device)
   }
 
   function isUuidLike(value) {
-    return BluetoothModel.isUuidLike(value)
+    return Model.isUuidLike(value)
   }
 
   function isAddressLike(value) {
-    return BluetoothModel.isAddressLike(value)
+    return Model.isAddressLike(value)
   }
 
   function hasHumanName(device) {
-    return BluetoothModel.hasHumanName(device)
+    return Model.hasHumanName(device)
   }
 
-  readonly property var deviceGroups: BluetoothModel.deviceLists(devices)
+  readonly property var deviceGroups: Model.deviceLists(devices)
   readonly property var connectedDevices: deviceGroups.connected || []
   readonly property var knownDevices: deviceGroups.known || []
   readonly property var discoveredDevices: deviceGroups.discovered || []
@@ -105,11 +105,11 @@ Panel {
   }
 
   readonly property var visibleSections: {
-    return BluetoothModel.visibleSections(deviceGroups, adapter && adapter.discovering)
+    return Model.visibleSections(deviceGroups, adapter && adapter.discovering)
   }
 
   function devicesForSection(section) {
-    return BluetoothModel.sectionDevices(deviceGroups, section)
+    return Model.sectionDevices(deviceGroups, section)
   }
 
   function deviceAt(section, index) {
@@ -118,16 +118,16 @@ Panel {
   }
 
   function cloneMap(map) {
-    return BluetoothModel.cloneMap(map)
+    return Model.cloneMap(map)
   }
 
   function pendingAction(address) {
-    return BluetoothModel.pendingAction(pendingActions, address)
+    return Model.pendingAction(pendingActions, address)
   }
 
   function setPendingAction(address, action) {
     if (!address) return
-    pendingActions = BluetoothModel.withPendingAction(pendingActions, address, action)
+    pendingActions = Model.withPendingAction(pendingActions, address, action)
     if (action) pendingTimeout.restart()
   }
 

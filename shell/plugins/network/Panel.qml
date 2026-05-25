@@ -5,7 +5,7 @@ import Quickshell.Io
 import Quickshell.Networking
 import qs.Ui
 import qs.Commons
-import "NetworkModel.js" as NetworkModel
+import "Model.js" as Model
 
 Panel {
   id: root
@@ -229,7 +229,7 @@ Panel {
   property string frequency: ""
 
   function updateNetwork(raw) {
-    var parsed = NetworkModel.parseNetworkStatus(raw)
+    var parsed = Model.parseNetworkStatus(raw)
     kind = parsed.kind
     label = parsed.label
     signalStrength = parsed.signalStrength
@@ -241,7 +241,7 @@ Panel {
     Quickshell.execDetached(["bash", "-lc", "printf %s " + Util.shellQuote(value) + " | wl-copy"])
   }
 
-  readonly property string icon: NetworkModel.connectionIcon(kind, signalStrength)
+  readonly property string icon: Model.connectionIcon(kind, signalStrength)
 
   function refresh(scanWifi) {
     if (scanWifi === undefined) scanWifi = false
@@ -263,25 +263,25 @@ Panel {
   }
 
   function formatHeaderSpeed(mbps) {
-    return NetworkModel.formatHeaderSpeed(mbps)
+    return Model.formatHeaderSpeed(mbps)
   }
 
   function formatHeaderFreq(mhz) {
-    return NetworkModel.formatHeaderFreq(mhz)
+    return Model.formatHeaderFreq(mhz)
   }
 
   function headerDetail() {
-    return NetworkModel.headerDetail(info)
+    return Model.headerDetail(info)
   }
 
   function updateDetails(raw) {
-    var next = NetworkModel.parseKeyValue(raw)
+    var next = Model.parseKeyValue(raw)
     info = next
     updateThroughput(next)
   }
 
   function updateThroughput(next) {
-    var state = NetworkModel.throughputState({
+    var state = Model.throughputState({
       prevIface: prevIface,
       prevRxBytes: prevRxBytes,
       prevTxBytes: prevTxBytes,
@@ -299,11 +299,11 @@ Panel {
   }
 
   function formatBytes(bytes) {
-    return NetworkModel.formatBytes(bytes)
+    return Model.formatBytes(bytes)
   }
 
   function formatRate(bytesPerSec) {
-    return NetworkModel.formatRate(bytesPerSec)
+    return Model.formatRate(bytesPerSec)
   }
 
   function findDevice(type) {
@@ -330,20 +330,20 @@ Panel {
       var network = networks[i]
       if (!network) continue
       checkActionCompletion(network)
-      var row = NetworkModel.wifiRow(network)
+      var row = Model.wifiRow(network)
       if (row) nets.push(row)
     }
-    wifiNetworks = NetworkModel.sortWifiRows(nets)
+    wifiNetworks = Model.sortWifiRows(nets)
     wifiStationAvailable = !!wifiDevice
     scanning = false
   }
 
   function wifiSectionTitle(index) {
-    return NetworkModel.wifiSectionTitle(wifiNetworks, index)
+    return Model.wifiSectionTitle(wifiNetworks, index)
   }
 
   function wifiIconFor(strength) {
-    return NetworkModel.wifiIconFor(strength)
+    return Model.wifiIconFor(strength)
   }
 
   function updateDns(raw) {
@@ -374,7 +374,7 @@ Panel {
   }
 
   function isProtected(security) {
-    return NetworkModel.isProtected(security, WifiSecurityType.Open)
+    return Model.isProtected(security, WifiSecurityType.Open)
   }
 
   function openPasswordPrompt(ssid) {
@@ -432,7 +432,7 @@ Panel {
   }
 
   function networkFailureReason(reason) {
-    return NetworkModel.networkFailureReason(reason, {
+    return Model.networkFailureReason(reason, {
       NoSecrets: ConnectionFailReason.NoSecrets,
       WifiAuthTimeout: ConnectionFailReason.WifiAuthTimeout,
       WifiNetworkLost: ConnectionFailReason.WifiNetworkLost,

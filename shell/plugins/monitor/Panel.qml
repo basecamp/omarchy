@@ -4,7 +4,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Ui
 import qs.Commons
-import "MonitorModel.js" as MonitorModel
+import "Model.js" as Model
 
 Panel {
   id: root
@@ -203,7 +203,7 @@ Panel {
   }
 
   function setBrightness(value) {
-    var percent = MonitorModel.clampBrightness(value)
+    var percent = Model.clampBrightness(value)
     root.brightnessPercent = percent
     root.pendingBrightnessPercent = percent
 
@@ -218,23 +218,23 @@ Panel {
   }
 
   function previewBrightness(value) {
-    root.brightnessPercent = MonitorModel.clampBrightness(value)
+    root.brightnessPercent = Model.clampBrightness(value)
     brightnessDebounce.restart()
   }
 
   function normalizeScale(scale) {
-    return MonitorModel.normalizeScale(scale)
+    return Model.normalizeScale(scale)
   }
 
   // Playful mood-name for a given brightness percent. Bands intentionally
   // span ~10–20 points so casual tweaks change the label, while small
   // nudges within one band don't.
   function brightnessName(percent) {
-    return MonitorModel.brightnessName(percent)
+    return Model.brightnessName(percent)
   }
 
   function updateDisplays(displaysJson) {
-    var parsed = MonitorModel.parseDisplays(displaysJson)
+    var parsed = Model.parseDisplays(displaysJson)
     root.displays = parsed.displays
     root.enabledDisplayCount = parsed.enabledDisplayCount
   }

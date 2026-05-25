@@ -4,7 +4,7 @@ import Quickshell.Io
 import Quickshell.Services.UPower
 import qs.Commons
 import qs.Ui
-import "PowerModel.js" as PowerModel
+import "Model.js" as Model
 
 Panel {
   id: root
@@ -31,7 +31,7 @@ Panel {
   }
 
   function selectProfileByDelta(delta) {
-    profileIndex = PowerModel.selectProfileIndex(profileIndex, delta, profiles)
+    profileIndex = Model.selectProfileIndex(profileIndex, delta, profiles)
   }
 
   function activateSelectedProfile() {
@@ -41,16 +41,16 @@ Panel {
 
   function batteryIcon() {
     var device = UPower.displayDevice
-    return PowerModel.batteryIcon(device, UPower.onBattery, upowerStates())
+    return Model.batteryIcon(device, UPower.onBattery, upowerStates())
   }
 
   function modeLabel() {
     var device = UPower.displayDevice
-    return PowerModel.modeLabel(device, UPower.onBattery, upowerStates())
+    return Model.modeLabel(device, UPower.onBattery, upowerStates())
   }
 
   function profileIcon(name) {
-    return PowerModel.profileIcon(name)
+    return Model.profileIcon(name)
   }
 
   readonly property bool fullyCharged: {
@@ -59,7 +59,7 @@ Panel {
   }
   readonly property bool chargeThresholdActive: {
     var device = UPower.displayDevice
-    return PowerModel.chargeThresholdActive(device, UPower.onBattery, upowerStates())
+    return Model.chargeThresholdActive(device, UPower.onBattery, upowerStates())
   }
   readonly property bool batteryFull: fullyCharged || (!UPower.onBattery && batteryFraction >= 1)
   readonly property bool batteryFlowIdle: batteryFull || chargeThresholdActive
@@ -67,7 +67,7 @@ Panel {
   // 0..1 charge level, used by the visual progress bar.
   readonly property real batteryFraction: {
     var d = UPower.displayDevice
-    return PowerModel.batteryFraction(d)
+    return Model.batteryFraction(d)
   }
 
   readonly property bool batteryLow: UPower.onBattery && batteryFraction > 0 && batteryFraction <= 0.2
@@ -131,7 +131,7 @@ Panel {
   }
 
   function updateKeyValue(raw, targetName) {
-    var next = PowerModel.parseKeyValue(raw)
+    var next = Model.parseKeyValue(raw)
     // Keep last known good data if a refresh briefly returns nothing — happens
     // around AC plug/unplug events. Avoids the section collapsing mid-transition.
     if (Object.keys(next).length === 0) return
@@ -140,7 +140,7 @@ Panel {
   }
 
   function updateProfiles(raw) {
-    var parsed = PowerModel.parseProfiles(raw, profileIndex)
+    var parsed = Model.parseProfiles(raw, profileIndex)
     // Same guard as battery: preserve the last known profile list across
     // transient empty payloads so the buttons don't blink out.
     if (parsed.profiles.length === 0) return
