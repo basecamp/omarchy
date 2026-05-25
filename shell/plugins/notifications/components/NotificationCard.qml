@@ -66,7 +66,7 @@ Rectangle {
   implicitHeight: mainColumn.implicitHeight + border.width * 2
   radius: cornerRadius
   color: Color.notifications.background
-  border.color: urgency === 2 ? Color.urgent : Color.notifications.border
+  border.color: Color.notifications.border
   border.width: Math.max(1, Style.space(2))
   clip: true
 
