@@ -5,7 +5,7 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 run_node_test <<'JS'
-const monitor = requireFromRoot('shell/plugins/monitor/Model.js')
+const monitor = requireFromRoot('shell/plugins/panels/monitor/Model.js')
 
 assertEqual(monitor.clampBrightness(0), 1, 'monitor clamps minimum brightness')
 assertEqual(monitor.clampBrightness(101), 100, 'monitor clamps maximum brightness')

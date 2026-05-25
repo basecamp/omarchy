@@ -29,6 +29,13 @@ shell/
     image-picker/
     menu/
     notifications/
+    panels/
+      audio/
+      bluetooth/
+      monitor/
+      network/
+      power/
+      weather/
     services/
       battery/
       idle/
