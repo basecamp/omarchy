@@ -16,7 +16,7 @@ Item {
   property var history: []
 
   property string historyPath: Quickshell.env("HOME") + "/.local/state/omarchy/clipboard-history.json"
-  property string captureScript: root.omarchyPath + "/shell/scripts/clipboard-capture.sh"
+  property string captureScript: root.omarchyPath + "/shell/plugins/clipboard/capture.sh"
   property string watchCommand: "script=$1\ntrap 'kill $(jobs -p) 2>/dev/null' EXIT\nwl-paste --watch \"$script\" &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/png wl-paste --type image/png --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/jpeg wl-paste --type image/jpeg --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/webp wl-paste --type image/webp --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/gif wl-paste --type image/gif --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/bmp wl-paste --type image/bmp --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/tiff wl-paste --type image/tiff --watch \"$script\" 2>/dev/null &\nwait"
   // Shares the [menu] surface tokens — themes that style the menu also
   // style the clipboard. Selected-row colors composed in the
