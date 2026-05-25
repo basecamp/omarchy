@@ -1,24 +1,15 @@
 #!/bin/bash
 
-# omarchy:summary=Get remote tag
+# omarchy:summary=Check whether the Omarchy package has an available update.
 
-latest_tag=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
-if [[ -z $latest_tag ]]; then
-  echo "Error: Could not retrieve latest tag."
-  exit 1
-fi
+set -e
 
-# Get local tag
-current_tag=$(git -C "$OMARCHY_PATH" describe --tags $(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1))
-if [[ -z $current_tag ]]; then
-  echo "Error: Could not retrieve current tag."
-  exit 1
-fi
-
-if [[ $current_tag != $latest_tag ]]; then
-  echo "Omarchy update available ($latest_tag)"
+if pacman -Qu omarchy >/tmp/omarchy-update-available.$$ 2>/dev/null; then
+  cat /tmp/omarchy-update-available.$$
+  rm -f /tmp/omarchy-update-available.$$
   exit 0
-else
-  echo "Omarchy is up to date ($current_tag)"
-  exit 1
 fi
+
+rm -f /tmp/omarchy-update-available.$$
+echo "Omarchy is up to date"
+exit 1

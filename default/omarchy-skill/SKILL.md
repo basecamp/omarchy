@@ -8,7 +8,7 @@ description: >
   blur, opacity, omarchy-shell, bar, terminal config, themes, background,
   night light, idle, lock screen, screenshots, reminders, layer rules, workspace
   settings, display config, and user-facing omarchy commands. Excludes Omarchy
-  source development in ~/.local/share/omarchy/ and `omarchy dev` workflows.
+  source development through `omarchy dev link` workflows.
 ---
 
 # Omarchy Skill
@@ -34,11 +34,11 @@ It is not for contributing to Omarchy source code.
 
 **If you're about to edit a config file in ~/.config/ on this system, STOP and use this skill first.**
 
-**Do NOT use this skill for Omarchy development tasks** (editing files in `~/.local/share/omarchy/`, creating migrations, or running `omarchy dev ...` workflows).
+**Do NOT use this skill for Omarchy development tasks** (editing the Omarchy source tree, creating migrations, or running `omarchy dev ...` workflows).
 
 ## Critical Safety Rules
 
-**For end-user customization tasks, NEVER modify anything in `~/.local/share/omarchy/`** - but READING is safe and encouraged.
+**For end-user customization tasks, NEVER modify anything in `/usr/share/omarchy/`** - but READING is safe and encouraged.
 
 This directory contains Omarchy's source files managed by git. Any changes will be:
 - Lost on next `omarchy update`
@@ -46,7 +46,7 @@ This directory contains Omarchy's source files managed by git. Any changes will 
 - Break the system's update mechanism
 
 ```
-~/.local/share/omarchy/     # READ-ONLY - NEVER EDIT (reading is OK)
+/usr/share/omarchy/     # READ-ONLY - NEVER EDIT (reading is OK)
 ├── bin/                    # Source scripts (symlinked to PATH)
 ├── config/                 # Default config templates
 ├── themes/                 # Stock themes
@@ -56,11 +56,11 @@ This directory contains Omarchy's source files managed by git. Any changes will 
 └── install/                # Installation scripts
 ```
 
-**Reading `~/.local/share/omarchy/` is SAFE and useful** - do it freely to:
+**Reading `/usr/share/omarchy/` is SAFE and useful** - do it freely to:
 - Understand how omarchy commands work: `omarchy theme set --help` or `cat $(which omarchy-theme-set)`
-- See default configs before customizing: `cat ~/.local/share/omarchy/config/omarchy/shell.json`
+- See default configs before customizing: `cat /usr/share/omarchy/config/omarchy/shell.json`
 - Check stock theme files to copy for customization
-- Reference default hyprland settings: `cat ~/.local/share/omarchy/default/hypr/*`
+- Reference default hyprland settings: `cat /usr/share/omarchy/default/hypr/*`
 
 **Always use these safe locations instead:**
 - `~/.config/` - User configuration (safe to edit)
@@ -154,7 +154,7 @@ inside a single long-running Quickshell process (`omarchy-shell`).
 
 ```
 ~/.config/omarchy/shell.json      # User overrides: bar.position, bar.layout, plugins[]
-~/.local/share/omarchy/config/omarchy/shell.json   # Canonical defaults
+/usr/share/omarchy/config/omarchy/shell.json   # Canonical defaults
 ```
 
 The shell hot-reloads `shell.json` on save — no restart needed for layout
@@ -208,7 +208,7 @@ cp ~/.config/hypr/bindings.conf ~/.config/hypr/bindings.conf.bak.$(date +%s)
 ### Pattern 2: Make a new theme
 
 1. Create a directory under ~/.config/omarchy/themes.
-2. See how an existing theme is done via ~/.local/share/omarchy/themes/catppuccin.
+2. See how an existing theme is done via /usr/share/omarchy/themes/catppuccin.
 3. Download a matching background (or several) from the internet and put them in ~/.config/omarchy/themes/[name-of-new-theme]
 4. When done with the theme, run `omarchy theme set "Name of new theme"`
 
@@ -243,7 +243,7 @@ omarchy refresh hyprland
 
 # The refresh command:
 # 1. Backs up current config with timestamp
-# 2. Copies default from ~/.local/share/omarchy/config/
+# 2. Copies default from /usr/share/omarchy/config/
 # 3. Restarts the component
 ```
 
@@ -354,7 +354,7 @@ omarchy reinstall
 When user requests system changes:
 
 1. **Is it a stock omarchy command?** Use it directly
-2. **Is it a config edit?** Edit in `~/.config/`, never `~/.local/share/omarchy/`
+2. **Is it a config edit?** Edit in `~/.config/`, never `/usr/share/omarchy/`
 3. **Is it a theme customization?** Create a NEW custom theme directory
 4. **Is it automation?** Use hooks in `~/.config/omarchy/hooks/`
 5. **Is it a package install?** Use `omarchy pkg add <pkgs...>` (or `omarchy pkg aur add <pkgs...>` for AUR-only packages)
@@ -374,7 +374,7 @@ omarchy reminder clear
 ## Out of Scope
 
 This skill intentionally does not cover Omarchy source development. Do not use this skill for:
-- Editing files in `~/.local/share/omarchy/` (`bin/`, `config/`, `default/`, `shell/`, `themes/`, `migrations/`, etc.)
+- Editing files in `/usr/share/omarchy/` (`bin/`, `config/`, `default/`, `shell/`, `themes/`, `migrations/`, etc.)
 - Creating or editing migrations
 - Running `omarchy dev ...` commands
 

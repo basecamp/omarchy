@@ -1,9 +1,0 @@
-run_logged $OMARCHY_INSTALL/config/theme-user.sh
-run_logged $OMARCHY_INSTALL/config/git.sh
-run_logged $OMARCHY_INSTALL/config/xcompose.sh
-run_logged $OMARCHY_INSTALL/config/mise-work.sh
-run_logged $OMARCHY_INSTALL/config/sleep-lock.sh
-run_logged $OMARCHY_INSTALL/config/hardware/bluetooth-user.sh
-run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-audio-mixer.sh
-run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-mic.sh
-run_logged $OMARCHY_INSTALL/config/hardware/framework/fix-f13-amd-audio-input.sh

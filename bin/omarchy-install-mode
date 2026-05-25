@@ -1,8 +1,0 @@
-#!/bin/bash
-
-# omarchy:summary=Print the OMARCHY_INSTALL_MODE in the current env
-# omarchy:group=install
-
-# install.sh exports this during the install flow. Not persisted post-install,
-# so this prints 'unknown' outside the installer.
-echo "${OMARCHY_INSTALL_MODE:-unknown}"
