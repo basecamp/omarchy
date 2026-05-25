@@ -3,6 +3,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
 import qs.Commons
+import "ClipboardHistory.js" as ClipboardHistory
 
 Item {
   id: root
@@ -55,48 +56,15 @@ Item {
   }
 
   function normalizeEntry(value) {
-    if (typeof value === "string") {
-      return value.length > 0 ? { type: "text", text: value } : null
-    }
-    if (!value || typeof value !== "object") return null
-
-    var type = String(value.type || value.kind || "")
-    if (type === "text") {
-      var text = String(value.text || "")
-      return text.length > 0 ? { type: "text", text: text } : null
-    }
-    if (type === "image") {
-      var path = String(value.path || "")
-      if (!path) return null
-      return {
-        type: "image",
-        path: path,
-        mime: String(value.mime || "image/png")
-      }
-    }
-    return null
+    return ClipboardHistory.normalizeEntry(value)
   }
 
   function entryKey(entry) {
-    if (!entry) return ""
-    if (entry.type === "image") return "image:" + String(entry.path || "")
-    return "text:" + String(entry.text || "")
+    return ClipboardHistory.entryKey(entry)
   }
 
   function loadHistory(raw) {
-    try {
-      var parsed = JSON.parse(String(raw || "[]"))
-      var next = []
-      if (Array.isArray(parsed)) {
-        for (var i = 0; i < parsed.length; i++) {
-          var entry = root.normalizeEntry(parsed[i])
-          if (entry) next.push(entry)
-        }
-      }
-      root.history = next
-    } catch (e) {
-      root.history = []
-    }
+    root.history = ClipboardHistory.parseHistory(raw)
     if (root.opened) root.rebuildDisplay()
   }
 
@@ -105,52 +73,33 @@ Item {
   }
 
   function addClipboardEntry(entry) {
-    var normalized = root.normalizeEntry(entry)
+    var normalized = ClipboardHistory.normalizeEntry(entry)
     if (!normalized) return
 
-    var key = root.entryKey(normalized)
-    var next = [normalized]
-    for (var i = 0; i < root.history.length && next.length < 100; i++) {
-      var existing = root.normalizeEntry(root.history[i])
-      if (!existing || root.entryKey(existing) === key) continue
-      next.push(existing)
-    }
-    root.history = next
+    root.history = ClipboardHistory.addEntry(root.history, normalized, 100)
     root.saveHistory()
     if (root.opened) root.rebuildDisplay()
   }
 
   function addClipboardJson(line) {
-    var raw = String(line || "").trim()
-    if (!raw) return
-    try { root.addClipboardEntry(JSON.parse(raw)) } catch (e) {}
+    root.addClipboardEntry(ClipboardHistory.parseEntryJson(line))
   }
 
   function rebuildDisplay() {
-    var query = root.filterText.trim().toLowerCase()
+    var rows = ClipboardHistory.displayRows(root.history, root.filterText, 50)
 
     displayModel.clear()
-    var outCount = 0
-
-    for (var i = 0; i < root.history.length; i++) {
-      var entry = root.normalizeEntry(root.history[i])
-      if (!entry) continue
-
-      var isImage = entry.type === "image"
-      var searchable = isImage ? ("image " + String(entry.mime || "")) : String(entry.text || "")
-      if (query && searchable.toLowerCase().indexOf(query) < 0) continue
-
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i]
       displayModel.append({
-        entryType: entry.type,
-        fullText: isImage ? "" : String(entry.text || ""),
-        previewText: isImage ? "Image" : String(entry.text || "").replace(/\s+/g, " "),
-        previewImage: isImage ? Util.fileUrl(entry.path) : "",
-        path: isImage ? String(entry.path || "") : "",
-        mime: isImage ? String(entry.mime || "image/png") : "text/plain",
-        index: outCount
+        entryType: row.entryType,
+        fullText: row.fullText,
+        previewText: row.previewText,
+        previewImage: row.previewImage ? Util.fileUrl(row.previewImage) : "",
+        path: row.path,
+        mime: row.mime,
+        index: row.index
       })
-      outCount++
-      if (outCount >= 50) break
     }
 
     if (displayModel.count === 0) selectedIndex = 0

@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
 import qs.Commons
+import "ImagePickerModel.js" as ImagePickerModel
 
 Item {
   id: root
@@ -70,11 +71,11 @@ Item {
   }
 
   function nameForPath(path) {
-    return path.split("/").pop().replace(/\.[^/.]+$/, "")
+    return ImagePickerModel.nameForPath(path)
   }
 
   function labelForPath(path) {
-    return nameForPath(path).replace(/[-_]+/g, " ").replace(/\b\w/g, function(match) { return match.toUpperCase() })
+    return ImagePickerModel.labelForPath(path)
   }
 
   function currentLabel() {
@@ -85,37 +86,19 @@ Item {
   }
 
   function itemMatches(index) {
-    if (index < 0 || index >= imageArray.length) return false
-    if (!filterText) return true
-
-    var path = imageArray[index].filePath
-    var needle = filterText.toLowerCase()
-    return nameForPath(path).toLowerCase().indexOf(needle) !== -1 || labelForPath(path).toLowerCase().indexOf(needle) !== -1
+    return ImagePickerModel.itemMatches(imageArray, index, filterText)
   }
 
   function firstMatchingIndex() {
-    for (var i = 0; i < imageArray.length; i++) {
-      if (itemMatches(i)) return i
-    }
-
-    return -1
+    return ImagePickerModel.firstMatchingIndex(imageArray, filterText)
   }
 
   function filteredPosition(index) {
-    if (!filterText) return index
-
-    var position = 0
-    for (var i = 0; i < index; i++) {
-      if (itemMatches(i)) position++
-    }
-
-    return position
+    return ImagePickerModel.filteredPosition(imageArray, index, filterText)
   }
 
   function selectedFilteredPosition() {
-    if (!filterText) return selectedIndex
-
-    return itemMatches(selectedIndex) ? filteredPosition(selectedIndex) : 0
+    return ImagePickerModel.selectedFilteredPosition(imageArray, selectedIndex, filterText)
   }
 
   function select(index, immediate) {
@@ -146,7 +129,7 @@ Item {
     filterText = nextFilterText
 
     if (!itemMatches(selectedIndex)) {
-      var first = firstMatchingIndex()
+      var first = ImagePickerModel.nextSelectedIndexForFilter(imageArray, selectedIndex, filterText)
       if (first >= 0) selectedIndex = first
     }
   }
@@ -210,25 +193,7 @@ Item {
   }
 
   function loadRows(rows, reveal) {
-    var newImages = []
-    var seen = {}
-    var paths = rows.split("\n")
-    for (var i = 0; i < paths.length; i++) {
-      var row = paths[i]
-      if (!row) continue
-
-      var columns = row.split("\t")
-      var path = columns[0]
-      if (!path) continue
-      var fileName = path.split("/").pop()
-      if (seen[fileName]) continue
-      seen[fileName] = true
-      newImages.push({
-        filePath: path,
-        fileName: fileName,
-        thumbnailPath: columns[1] || path
-      })
-    }
+    var newImages = ImagePickerModel.loadRows(rows)
 
     root.loadedImageRows = rows
     root.selectedIndex = root.indexForSelectedImage(newImages)
@@ -304,12 +269,7 @@ Item {
   }
 
   function indexForSelectedImage(images) {
-    for (var i = 0; i < images.length; i++) {
-      if (images[i].filePath === selectedImage)
-        return i
-    }
-
-    return 0
+    return ImagePickerModel.indexForSelectedImage(images, selectedImage)
   }
 
   function selectedImageIndex() {

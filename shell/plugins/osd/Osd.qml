@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
+import "OsdModel.js" as OsdModel
 
 Item {
   id: root
@@ -22,40 +23,18 @@ Item {
   readonly property bool mediaOsd: iconKey.indexOf("media") === 0 || iconKey.indexOf("player") === 0
 
   function iconFor(name, percent) {
-    var n = String(name || "").toLowerCase()
-    if (n === "volume-muted" || n === "volume-mute" || n === "muted" || n === "mute") return ""
-    if (n === "volume-low") return ""
-    if (n === "volume-medium") return ""
-    if (n === "volume-high" || n === "volume") return ""
-    if (n === "microphone-muted" || n === "microphone-off" || n === "mic-muted" || n === "mic-off") return "󰍭"
-    if (n === "microphone" || n === "mic") return "󰍬"
-    if (n === "keyboard") return "󰌌"
-    if (n === "brightness" || n === "display") return "󰍹"
-    if (n === "touchpad") return "󰟸"
-    if (n === "touch" || n === "touchscreen") return "󰜉"
-    if (n === "media" || n === "player") return "󰝚"
-    if (n === "media-source" || n === "player-source") return "󰝚"
-    if (n === "media-play" || n === "player-play") return "󰐊"
-    if (n === "media-pause" || n === "player-pause") return "󰏤"
-    if (n === "media-next" || n === "player-next") return "󰒭"
-    if (n === "media-previous" || n === "player-previous") return "󰒮"
-    if (n.length > 0) return name
-    if (percent <= 0) return ""
-    if (percent <= 33) return ""
-    if (percent <= 66) return ""
-    return ""
+    return OsdModel.iconFor(name, percent)
   }
 
   function show(iconName, rawMessage, rawValue, rawMax, rawProgressText, rawDuration) {
-    iconKey = String(iconName || "").toLowerCase()
-    maxValue = Math.max(1, parseInt(rawMax || "100", 10))
-    var parsed = parseInt(rawValue || "0", 10)
-    hasProgress = rawValue !== "" && !isNaN(parsed) && rawMessage === ""
-    value = hasProgress ? Util.clamp(parsed, 0, maxValue) : 0
-    message = String(rawMessage || (hasProgress ? (rawProgressText || Math.round(value * 100 / maxValue) + "%") : ""))
-    icon = iconFor(iconName, hasProgress ? Math.round(value * 100 / maxValue) : -1)
-    var parsedDuration = parseInt(rawDuration || "1200", 10)
-    duration = isNaN(parsedDuration) ? 1200 : Math.max(0, parsedDuration)
+    var next = OsdModel.stateForShow(iconName, rawMessage, rawValue, rawMax, rawProgressText, rawDuration)
+    iconKey = next.iconKey
+    maxValue = next.maxValue
+    hasProgress = next.hasProgress
+    value = next.value
+    message = next.message
+    icon = next.icon
+    duration = next.duration
     opened = true
     if (duration > 0) hideTimer.restart()
     else hideTimer.stop()

@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui
+import "BarModel.js" as BarModel
 
 Item {
   id: root
@@ -110,8 +111,7 @@ Item {
   readonly property int barSize: vertical ? Style.bar.sizeVertical : Style.bar.sizeHorizontal
 
   function normalizePosition(value) {
-    var next = String(value || "").trim()
-    return /^(top|bottom|left|right)$/.test(next) ? next : "top"
+    return BarModel.normalizePosition(value)
   }
 
   // Apply tray-pinning on top of the shared layout normalization so the
@@ -130,17 +130,7 @@ Item {
   // sections. The drawer's reserved space then sits next to the bar center,
   // not stranded mid-section.
   function pinTrayToInner(entries, section) {
-    var trayEntry = null
-    var result = []
-    for (var i = 0; i < entries.length; i++) {
-      if (entryId(entries[i]) === "omarchy.tray") trayEntry = entries[i]
-      else result.push(entries[i])
-    }
-    if (trayEntry) {
-      if (section === "right") result.unshift(trayEntry)
-      else result.push(trayEntry)
-    }
-    return result
+    return BarModel.pinTrayToInner(entries, section)
   }
 
   function applyBarConfig() {
@@ -162,49 +152,27 @@ Item {
   }
 
   function entrySettings(entry) {
-    if (!Util.isPlainObject(entry)) return {}
-    var copy = {}
-    for (var key in entry) {
-      if (key === "id") continue
-      copy[key] = entry[key]
-    }
-    return copy
+    return BarModel.entrySettings(entry)
   }
 
   function entryId(entry) {
-    if (typeof entry === "string") return entry
-    if (Util.isPlainObject(entry)) {
-      var id = entry["id"]
-      if (id !== undefined && id !== null && String(id) !== "") return String(id)
-    }
-    return ""
+    return BarModel.entryId(entry)
   }
 
   function moduleString(entry, key, fallback) {
-    var settings = entrySettings(entry)
-    var value = settings[key]
-    return value === undefined || value === null ? fallback : String(value)
+    return BarModel.moduleString(entry, key, fallback)
   }
 
   function entryIndex(entries, name) {
-    if (!Array.isArray(entries)) return -1
-
-    for (var i = 0; i < entries.length; i++) {
-      if (entryId(entries[i]) === name)
-        return i
-    }
-
-    return -1
+    return BarModel.entryIndex(entries, name)
   }
 
   function entriesBefore(entries, name) {
-    var index = entryIndex(entries, name)
-    return index <= 0 ? [] : entries.slice(0, index)
+    return BarModel.entriesBefore(entries, name)
   }
 
   function entriesAfter(entries, name) {
-    var index = entryIndex(entries, name)
-    return index === -1 ? [] : entries.slice(index + 1)
+    return BarModel.entriesAfter(entries, name)
   }
 
   function canonicalWidgetId(name) {
@@ -212,34 +180,19 @@ Item {
   }
 
   function expandPath(path) {
-    var value = String(path || "")
-    if (value === "") return ""
-    if (value.indexOf("~/") === 0) return home + value.substring(1)
-    if (value.indexOf("$HOME/") === 0) return home + value.substring(5)
-    return value
+    return BarModel.expandPath(path, home)
   }
 
   function customModuleSafeName(name) {
-    var value = String(name || "")
-    return value !== "" && value.indexOf("..") === -1 && value[0] !== "/"
+    return BarModel.customModuleSafeName(name)
   }
 
   function customModuleType(entry) {
-    var settings = entrySettings(entry)
-    var type = String(settings.type || "")
-    if (type) return type
-    if (settings.exec) return "command"
-    if (settings.source) return "qml"
-    return ""
+    return BarModel.customModuleType(entry)
   }
 
   function customModuleSource(entry) {
-    var settings = entrySettings(entry)
-    var name = entryId(entry)
-    var source = settings.source ? expandPath(settings.source) : ""
-    if (!source && customModuleSafeName(name))
-      source = omarchyConfigDir + "/bar/modules/" + String(name) + ".qml"
-
+    var source = BarModel.customModulePath(entry, home, omarchyConfigDir)
     return source ? Util.fileUrl(source) : ""
   }
 

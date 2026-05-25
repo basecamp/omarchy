@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import Quickshell
 import qs.Commons
 import qs.Ui
+import "NotificationLogic.js" as NotificationLogic
 
 BarWidget {
   id: root
@@ -29,19 +30,11 @@ BarWidget {
     : null
 
   function isChromiumDerived(app, appIcon) {
-    var source = (String(app || "") + "\n" + String(appIcon || "")).toLowerCase()
-    return source.indexOf("chrom") >= 0 || source.indexOf("brave") >= 0 ||
-           source.indexOf("vivaldi") >= 0 || source.indexOf("microsoft-edge") >= 0 ||
-           source.indexOf("opera") >= 0
+    return NotificationLogic.isChromiumDerived(app, appIcon)
   }
 
   function sanitizeBody(s, app, appIcon) {
-    var text = String(s || "").replace(/<img[^>]*>/gi, "")
-    if (!isChromiumDerived(app, appIcon)) return text
-
-    return text
-      .replace(/^\s*<a\b[^>]*>\s*(?:https?:\/\/|www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/[^<\s]*)?\s*<\/a>\s*/i, "")
-      .replace(/^\s*(?:https?:\/\/|www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/\S*)?\s+/i, "")
+    return NotificationLogic.sanitizeBody(s, app, appIcon)
   }
 
   function notificationIconSource(icon) {

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-TEST_DIR="$ROOT/test/shell"
+TEST_DIR="$ROOT/test/shell.d"
 
 shopt -s nullglob
 tests=()

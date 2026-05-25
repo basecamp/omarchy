@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.UPower
+import "BatteryModel.js" as BatteryModel
 
 Item {
   id: root
@@ -18,33 +19,17 @@ Item {
   }
 
   function batteryPercentage() {
-    var device = UPower.displayDevice
-    if (!device || !device.isPresent) return -1
-    return Math.round(Number(device.percentage || 0) * 100)
+    return BatteryModel.batteryPercentage(UPower.displayDevice)
   }
 
   function isDischarging() {
-    var device = UPower.displayDevice
-    return !!(device && device.isPresent
-      && UPower.onBattery
-      && device.state === UPowerDeviceState.Discharging)
+    return BatteryModel.isDischarging(UPower.displayDevice, UPower.onBattery, UPowerDeviceState.Discharging)
   }
 
   function checkBattery() {
-    var level = batteryPercentage()
-    if (level < 0) {
-      persisted.notifiedLowBattery = false
-      return
-    }
-
-    if (isDischarging() && level <= batteryThreshold) {
-      if (!persisted.notifiedLowBattery) {
-        persisted.notifiedLowBattery = true
-        sendLowBatteryWarning(level)
-      }
-    } else {
-      persisted.notifiedLowBattery = false
-    }
+    var state = BatteryModel.shouldWarnLowBattery(UPower.displayDevice, UPower.onBattery, UPowerDeviceState.Discharging, batteryThreshold, persisted.notifiedLowBattery)
+    persisted.notifiedLowBattery = state.notifiedLowBattery
+    if (state.notify) sendLowBatteryWarning(state.level)
   }
 
   function sendLowBatteryWarning(level) {

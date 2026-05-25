@@ -6,6 +6,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import qs.Commons
+import "../NotificationLogic.js" as NotificationLogic
 
 Rectangle {
   id: root
@@ -37,15 +38,9 @@ Rectangle {
   readonly property string smallIconSource: image.length > 0 ? image : iconSource(appIcon)
   readonly property bool hasGlyph: glyph.length > 0
   readonly property bool hasSmallIcon: smallIconSource.length > 0 || hasGlyph
-  readonly property bool summaryStartsWithGlyph: /^\s*\S\s{2,}/.test(summary)
+  readonly property bool summaryStartsWithGlyph: NotificationLogic.summaryStartsWithGlyph(summary)
   readonly property bool singleLineToast: sanitizedBody.length === 0
   readonly property bool collapseRedundantIcon: singleLineToast && !hasGlyph && summaryStartsWithGlyph
-  readonly property bool chromiumDerived: {
-    var source = (app + "\n" + appIcon).toLowerCase()
-    return source.indexOf("chrom") >= 0 || source.indexOf("brave") >= 0 ||
-           source.indexOf("vivaldi") >= 0 || source.indexOf("microsoft-edge") >= 0 ||
-           source.indexOf("opera") >= 0
-  }
   readonly property string sanitizedBody: sanitizeBody(body)
   readonly property string styledBody: sanitizedBody.replace(/\r\n|\r|\n/g, "<br/>")
 
@@ -54,15 +49,7 @@ Rectangle {
   readonly property color accentColor: urgency === 2 ? Color.urgent : (urgency === 0 ? dimColor : Color.notifications.countdown)
 
   function sanitizeBody(s) {
-    var text = String(s).replace(/<img[^>]*>/gi, "")
-    if (!chromiumDerived) return text
-
-    // Chromium web notifications often prefix the body with the sending
-    // origin, sometimes as a hyperlink. The browser icon already identifies
-    // the source, so drop only that leading URL/domain.
-    return text
-      .replace(/^\s*<a\b[^>]*>\s*(?:https?:\/\/|www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/[^<\s]*)?\s*<\/a>\s*/i, "")
-      .replace(/^\s*(?:https?:\/\/|www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/\S*)?\s+/i, "")
+    return NotificationLogic.sanitizeBody(s, app, appIcon)
   }
 
   function iconSource(icon) {

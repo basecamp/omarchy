@@ -4,6 +4,7 @@ import Quickshell.Io
 import Quickshell.Services.Polkit
 import Quickshell.Wayland
 import qs.Commons
+import "PolkitModel.js" as PolkitModel
 
 Item {
   id: root
@@ -38,20 +39,11 @@ Item {
   readonly property int cardHeight: panel.height > 0 ? Math.min(fieldHeight + contentMargin * 2, panel.height - Style.gapsOut * 2) : fieldHeight + contentMargin * 2
 
   function promptLooksFingerprint(text) {
-    var s = String(text || "").toLowerCase()
-    return s.indexOf("finger") !== -1 || s.indexOf("fprint") !== -1 || s.indexOf("swipe") !== -1
+    return PolkitModel.promptLooksFingerprint(text)
   }
 
   function loadPamConfig(raw) {
-    fingerprintFirst = false
-    var lines = String(raw || "").split("\n")
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i].replace(/^\s+|\s+$/g, "")
-      if (!line || line.charAt(0) === "#") continue
-      if (!line.match(/^auth\s+/)) continue
-      fingerprintFirst = line.indexOf("pam_fprintd.so") !== -1
-      return
-    }
+    fingerprintFirst = PolkitModel.fingerprintFirstFromPamConfig(raw)
   }
 
   function resetSnapshot() {
