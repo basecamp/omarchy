@@ -40,7 +40,6 @@ Item {
   property color scrim: Color.launcher.scrim
   property color selectedBackground: Color.launcher.selectedBackground
   property color selectedText: Color.launcher.selectedText
-  property color selectedBorder: Color.launcher.selectedBorder
   property string fontFamily: Style.font.menuFamily
 
   property int cardWidth: 644
@@ -562,8 +561,7 @@ Item {
               height: root.rowHeight
               radius: 0
               color: row.hasCursor ? root.selectedBackground : "transparent"
-              border.color: row.hasCursor ? root.selectedBorder : "transparent"
-              border.width: (row.hasCursor && root.selectedBorder.a > 0) ? Math.max(1, Style.normalBorderWidth) : 0
+              border.width: 0
 
               Item {
                 id: iconSlot

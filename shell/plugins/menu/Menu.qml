@@ -80,7 +80,6 @@ Item {
   property color scrim: Color.menu.scrim
   property color selectedBackground: Color.menu.selectedBackground
   property color selectedText: Color.menu.selectedText
-  property color selectedBorder: Color.menu.selectedBorder
   readonly property int cornerRadius: Style.cornerRadius
   property int contentMargin: Style.spacing.panelPadding
   property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
@@ -919,8 +918,7 @@ Item {
               height: root.rowHeightForDetail(row.detail)
               radius: root.cornerRadius
               color: row.hasCursor ? root.selectedBackground : "transparent"
-              border.color: row.hasCursor ? root.selectedBorder : "transparent"
-              border.width: (row.hasCursor && root.selectedBorder.a > 0) ? Style.hoverBorderWidth : 0
+              border.width: 0
 
               Rectangle {
                 visible: false
