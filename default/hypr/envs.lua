@@ -35,6 +35,9 @@ end
 table.insert(kept, 1, bin_dir)
 hl.env("PATH", table.concat(kept, ":"))
 
+-- Hardware-specific environment.
+require("default.hypr.nvidia")
+
 hl.config({
   xwayland = {
     force_zero_scaling = true,

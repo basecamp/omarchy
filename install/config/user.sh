@@ -7,4 +7,3 @@ run_logged $OMARCHY_INSTALL/config/hardware/bluetooth-user.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-audio-mixer.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-mic.sh
 run_logged $OMARCHY_INSTALL/config/hardware/framework/fix-f13-amd-audio-input.sh
-run_logged $OMARCHY_INSTALL/config/hardware/nvidia-user.sh
