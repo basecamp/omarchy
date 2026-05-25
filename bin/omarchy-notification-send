@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Send an Omarchy desktop notification
-# omarchy:args=[-g <glyph>] [-u <low|normal|critical>] <headline> [description] [notify-send options]
+# omarchy:args=[-a] [--app-name <app-name>] [-g <glyph>] [-u <low|normal|critical>] [--image <path-or-uri>] <headline> [description] [notify-send options]
 # omarchy:examples=omarchy notification send "Reminder" "5 minutes are up" -g 󰢌
 
 set -euo pipefail
@@ -10,7 +10,11 @@ headline=""
 description=""
 glyph=
 urgency="low"
+app_name="omarchy-action"
+image=
+click_action=0
 args=()
+parsed_option_args=0
 
 parse_omarchy_option() {
   case $1 in
@@ -20,6 +24,7 @@ parse_omarchy_option() {
       exit 1
     fi
     glyph=$2
+    parsed_option_args=2
     return 0
     ;;
   -u | --urgency)
@@ -28,6 +33,30 @@ parse_omarchy_option() {
       exit 1
     fi
     urgency="$2"
+    parsed_option_args=2
+    return 0
+    ;;
+  --app-name)
+    if (($# < 2)); then
+      echo "Missing value for $1" >&2
+      exit 1
+    fi
+    app_name=$2
+    parsed_option_args=2
+    return 0
+    ;;
+  --image)
+    if (($# < 2)); then
+      echo "Missing value for $1" >&2
+      exit 1
+    fi
+    image=$2
+    parsed_option_args=2
+    return 0
+    ;;
+  -a | --action)
+    click_action=1
+    parsed_option_args=1
     return 0
     ;;
   esac
@@ -37,14 +66,14 @@ parse_omarchy_option() {
 
 while (($# > 0)); do
   if parse_omarchy_option "$@"; then
-    shift 2
+    shift "$parsed_option_args"
   else
     break
   fi
 done
 
 if (($# < 1)); then
-  echo "Usage: omarchy-notification-send [-g <glyph>] [-u <low|normal|critical>] <headline> [description] [notify-send options]"
+  echo "Usage: omarchy-notification-send [-a] [--app-name <app-name>] [-g <glyph>] [-u <low|normal|critical>] [--image <path-or-uri>] <headline> [description] [notify-send options]"
   exit 1
 fi
 
@@ -58,20 +87,26 @@ fi
 
 while (($# > 0)); do
   if parse_omarchy_option "$@"; then
-    shift 2
+    shift "$parsed_option_args"
   else
     args+=("$1")
     shift
   fi
 done
 
-# Tag as a user-action toast so it pops through DND. See dnd-fix-plan.md.
-args+=("-a" "omarchy-action" "-u" "$urgency")
+# Tag as a user-action toast so it pops through DND.
+args+=("-a" "$app_name" "-u" "$urgency")
 
-# Keep Omarchy action toasts compact by rendering glyphs inline instead of
-# forcing the notification card's icon slot.
 if [[ -n $glyph ]]; then
-  headline="$glyph    $headline"
+  args+=("--hint=string:omarchy-glyph:$glyph")
+fi
+
+if [[ -n $image ]]; then
+  args+=("--hint=string:image-path:$image")
+fi
+
+if ((click_action)); then
+  args+=("-A" "default=default")
 fi
 
 if [[ -n $description ]]; then

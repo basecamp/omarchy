@@ -1,14 +1,16 @@
 notify_update() {
   (
-    action=$(notify-send -a omarchy-action -u critical --hint=string:omarchy-glyph: "Update System" "$1" -A "default=Update")
-    [[ $action == "default" ]] && omarchy-launch-floating-terminal-with-presentation omarchy-update
+    if [[ -n $(omarchy-notification-send -u critical -g  "Update System" "$1" -a) ]]; then
+      omarchy-launch-floating-terminal-with-presentation omarchy-update
+    fi
   ) >/dev/null 2>&1 &
 }
 
 notify_wifi() {
   (
-    action=$(notify-send -a omarchy-action -u critical --hint=string:omarchy-glyph:󰖩 "Click to Setup Wi-Fi" -A "default=Setup")
-    [[ $action == "default" ]] && omarchy-shell omarchy.network toggle
+    if [[ -n $(omarchy-notification-send -u critical -g 󰖩 "Click to Setup Wi-Fi" -a) ]]; then
+      omarchy-shell omarchy.network toggle
+    fi
   ) >/dev/null 2>&1 &
 }
 

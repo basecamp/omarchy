@@ -245,8 +245,9 @@ stop_screenrecording() {
     ffmpeg -y -i "$filename" -ss 00:00:00.1 -vframes 1 -q:v 2 "$preview" -loglevel quiet 2>/dev/null
 
     (
-      ACTION=$(notify-send -a omarchy-action "Screen recording saved" "Open with Super + Alt + , (or click this)" -t 10000 --hint="string:image-path:${preview:-$filename}" -A "default=open")
-      [[ $ACTION == "default" ]] && mpv "$filename"
+      if [[ -n $(omarchy-notification-send "Screen recording saved" "Open with Super + Alt + , (or click this)" -t 10000 --image "${preview:-$filename}" -a) ]]; then
+        mpv "$filename"
+      fi
       rm -f "$preview"
     ) &
   fi
