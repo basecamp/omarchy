@@ -27,7 +27,6 @@ Item {
   property color scrim: Color.menu.scrim
   property color selectedBackground: Color.menu.selectedBackground
   property color selectedText: Color.menu.selectedText
-  property color selectedBorder: Color.menu.selectedBorder
   readonly property int cornerRadius: Style.cornerRadius
   property string fontFamily: Style.font.menuFamily
   property int contentMargin: Style.spacing.panelPadding
@@ -310,8 +309,7 @@ Item {
                 height: root.rowHeight
                 radius: root.cornerRadius
                 color: hasCursor ? root.selectedBackground : "transparent"
-                border.color: hasCursor ? root.selectedBorder : "transparent"
-                border.width: (hasCursor && root.selectedBorder.a > 0) ? Style.hoverBorderWidth : 0
+                border.width: 0
 
                 Row {
                   anchors.fill: parent
