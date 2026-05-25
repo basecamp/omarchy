@@ -175,6 +175,6 @@ New migration format:
 - Use `$OMARCHY_PATH` to reference the omarchy directory
 - Prefer helper commands such as `omarchy-cmd-present`, `omarchy-cmd-missing`, `omarchy-pkg-present`, and `omarchy-pkg-missing`
 
-Omarchy 4.0 intentionally collapses historical migrations into a single package-layout migration. Do not add compatibility migrations for old installer layouts.
+Omarchy 4.0 is upgraded through `bin/omarchy-upgrade-to-4`, not through the normal migration runner. Do not add compatibility migrations for old installer layouts; put pre-4 package-layout transition work in the upgrade command instead.
 
 Migrations may use raw `pacman`, `command -v`, or direct config edits when needed for one-off repair work.
