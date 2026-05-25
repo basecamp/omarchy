@@ -46,16 +46,16 @@ Supported metadata keys:
 - `# omarchy:hidden=true` - hide from default command listings
 - `# omarchy:requires-sudo=true` - mark commands that require sudo
 
+Only use `omarchy:examples` where there are args that need explaining.
+
 Prefer explicit metadata for user-facing commands. Keep routes consistent with the filename unless there is a deliberate alias or compatibility route.
 
 Example:
 
 ```bash
 # omarchy:summary=Take a screenshot
-# omarchy:group=capture
 # omarchy:args=[smart|region|windows|fullscreen] [slurp|copy]
 # omarchy:examples=omarchy screenshot | omarchy capture screenshot region
-# omarchy:aliases=omarchy screenshot
 ```
 
 # Runtime Environment
@@ -83,7 +83,7 @@ Raw `command -v`, `pacman`, and `pacman-key` are acceptable in bootstrap/preflig
 Use these instead of raw shell commands:
 
 - `omarchy-cmd-missing` / `omarchy-cmd-present` - check for commands
-- `omarchy-pkg-missing` / `omarchy-pkg-present` - check for packages
+- `omarchy-pkg-missing` / `omarchy-pkg-present` - check for packages (don't use these if you can just use `omarchy-pkg-add`/`omarchy-pkg-drop`)
 - `omarchy-pkg-add` - install packages (handles both pacman and AUR)
 - `omarchy-pkg-drop` - remove packages; use this instead of raw `pacman -R*`
 - `omarchy-notification-send` - send desktop notifications; do not call `notify-send` directly
@@ -97,9 +97,16 @@ Exceptions are allowed for bootstrap, preflight, migration, and package-helper s
 - `default/themed/*.tpl` - templates with `{{ variable }}` placeholders for theme colors
 - `themes/*/colors.toml` - theme color definitions (accent, background, foreground, color0-15)
 
-# Visual Changes
+# Tests
 
-When making visual changes, such as omarchy-shell styling or desktop appearance, always take and analyze a screenshot after applying the change to verify the result. Use `omarchy capture screenshot fullscreen save` for fullscreen screenshots.
+Run focused automated tests for the area you changed. Current test entry points:
+
+- `bash test/cli.sh` - CLI routing, command metadata, theme helpers, and safe dispatch coverage
+- `bash test/shell.sh` - all Omarchy shell tests under `test/shell/`
+
+New Omarchy shell tests should live in `test/shell/*-test.sh` so `test/shell.sh` picks them up automatically.
+
+For visual changes, such as omarchy-shell styling, desktop appearance, screenshots, or screen recording flows, verify with the running UI in addition to automated tests. Take and analyze screenshots with `omarchy capture screenshot fullscreen save`. For animation, transitions, capture, or screen recording behavior, make a short recording with `omarchy screenrecord --fullscreen`, stop it with `omarchy screenrecord --stop-recording`, and review the output before finishing.
 
 For interactive UI work, use `wtype` to simulate keyboard input when available. Example: start the UI in the background, wait briefly for focus, then run `wtype -k Right -k Return` to exercise keyboard selection and confirm the resulting command output or state change. Prefer this over manual-only verification when a UI returns a selected value or changes a symlink/config.
 
