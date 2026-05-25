@@ -39,7 +39,6 @@ if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; 
       echo "Fixing empty resume_offset ($RESUME_OFFSET)"
       sudo sed -i "s/resume_offset=\"$/resume_offset=$RESUME_OFFSET\"/" "$RESUME_DROP_IN"
       if ! $NO_REBUILD; then
-        sudo sed -i "s/resume_offset=\"$/resume_offset=$RESUME_OFFSET\"/" /etc/default/limine
         sudo limine-mkinitcpio
       fi
     fi
@@ -102,7 +101,6 @@ if [[ ! -f $RESUME_DROP_IN ]]; then
   if [[ -n $RESUME_OFFSET ]]; then
     sudo mkdir -p /etc/limine-entry-tool.d
     echo "KERNEL_CMDLINE[default]+=\" resume=$RESUME_DEVICE resume_offset=$RESUME_OFFSET\"" | sudo tee "$RESUME_DROP_IN" >/dev/null
-    $NO_REBUILD || sudo tee -a /etc/default/limine < "$RESUME_DROP_IN" >/dev/null
   else
     echo "Warning: Could not determine resume offset for $SWAP_FILE" >&2
   fi
@@ -115,7 +113,6 @@ if grep -q "\[s2idle\]" /sys/power/mem_sleep 2>/dev/null; then
     echo "Enabling ACPI RTC alarm for s2idle suspend"
     sudo mkdir -p /etc/limine-entry-tool.d
     echo 'KERNEL_CMDLINE[default]+=" rtc_cmos.use_acpi_alarm=1"' | sudo tee "$LIMINE_DROP_IN" >/dev/null
-    $NO_REBUILD || sudo tee -a /etc/default/limine < "$LIMINE_DROP_IN" >/dev/null
   fi
 fi
 

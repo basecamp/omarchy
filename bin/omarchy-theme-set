@@ -110,6 +110,10 @@ set_theme_background() {
 }
 
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+THEME_HEADLESS=0
+if [[ ${OMARCHY_THEME_HEADLESS:-} == "1" || ${OMARCHY_THEME_OFFLINE:-} == "1" ]]; then
+  THEME_HEADLESS=1
+fi
 
 if [[ ! -d $OMARCHY_THEMES_PATH/$THEME_NAME ]] && [[ ! -d $USER_THEMES_PATH/$THEME_NAME ]]; then
   echo "Theme '$THEME_NAME' does not exist"
@@ -139,7 +143,7 @@ fi
 omarchy-theme-set-templates
 
 OLD_BACKGROUND_SNAPSHOT=""
-if [[ $OMARCHY_THEME_SKIP_BACKGROUND != "1" ]]; then
+if [[ $THEME_HEADLESS != "1" && $OMARCHY_THEME_SKIP_BACKGROUND != "1" ]]; then
   OLD_BACKGROUND_SNAPSHOT=$(snapshot_current_background)
 fi
 
@@ -154,7 +158,7 @@ echo "$THEME_NAME" >"$HOME/.config/omarchy/current/theme.name"
 # the theme hooks run.
 colors_payload=$([[ -f $CURRENT_THEME_PATH/colors.toml ]] && base64 -w 0 "$CURRENT_THEME_PATH/colors.toml")
 shell_payload=$([[ -f $CURRENT_THEME_PATH/shell.toml ]] && base64 -w 0 "$CURRENT_THEME_PATH/shell.toml")
-if [[ ${OMARCHY_THEME_OFFLINE:-} == "1" ]]; then
+if [[ $THEME_HEADLESS == "1" ]]; then
   : # No shell/session bus exists during ISO chroot finalization.
 elif [[ $OMARCHY_THEME_SKIP_BACKGROUND == "1" ]]; then
   shell_ipc shell applyTheme "$colors_payload" "$shell_payload" || true
@@ -183,7 +187,7 @@ post_theme_commands=(
   omarchy-theme-set-keyboard
 )
 
-if [[ ${OMARCHY_THEME_OFFLINE:-} != "1" ]]; then
+if [[ $THEME_HEADLESS != "1" ]]; then
   run_parallel "${post_theme_commands[@]}"
 
   # Call hook on theme set

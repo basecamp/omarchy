@@ -5,7 +5,7 @@ Requires=dbus.socket
 
 [Service]
 Type=simple
-ExecStart=%h/.local/share/omarchy/bin/omarchy-system-sleep-monitor
+ExecStart=/usr/bin/omarchy-system-sleep-monitor
 Restart=always
 RestartSec=2
 

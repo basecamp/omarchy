@@ -10,11 +10,4 @@ if [[ -f $OMARCHY_PATH/etc-overrides/cups-cups-browsed.conf && -d /etc/cups ]]; 
   rm -f /etc/cups/cups-browsed.conf.pacnew
 fi
 
-if lspci -nn | grep -q "106b:180[12]"; then
-  cat >> /etc/pacman.conf <<'EOF'
-
-[arch-mact2]
-Server = https://github.com/NoaHimesaka1873/arch-mact2-mirror/releases/download/release
-SigLevel = Never
-EOF
-fi
+source "$OMARCHY_INSTALL/hardware/pacman.sh"

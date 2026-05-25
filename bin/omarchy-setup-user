@@ -6,28 +6,51 @@
 
 set -euo pipefail
 
+usage() {
+  cat <<USAGE
+Usage: omarchy setup user [--force] [--first-install]
+
+Idempotent user-level setup: copies/symlinks defaults from \$OMARCHY_PATH
+into \$HOME, installs user services/session defaults, refreshes app launchers,
+and applies user-scoped hardware/session tweaks.
+
+--first-install is used by the ISO in the target chroot. It marks shipped
+migrations complete for the freshly-created user and enables the first graphical
+login one-shot.
+
+Idempotency marker: ~/.local/state/omarchy/setup-user.done
+USAGE
+}
+
 if (( EUID == 0 )); then
   echo "Error: run omarchy-setup-user as the user being configured, not as root." >&2
   exit 1
 fi
 
 force=0
-if [[ ${1:-} == "--force" ]]; then
-  force=1
-elif [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
-  cat <<USAGE
-Usage: omarchy setup user [--force]
-
-Idempotent user-level setup: copies/symlinks defaults from \$OMARCHY_PATH
-into \$HOME (config files, AI skills, nautilus extensions, branding, MIME
-defaults, etc.). Runs automatically on first user login via the omarchy
-first-run flow; rerun manually after creating a new user, or with --force
-to refresh after a dev-link.
-
-Idempotency marker: ~/.local/state/omarchy/setup-user.done
-USAGE
-  exit 0
-fi
+first_install=0
+while (($#)); do
+  case "$1" in
+    --force)
+      force=1
+      shift
+      ;;
+    --first-install)
+      first_install=1
+      force=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
 
 state_dir="$HOME/.local/state/omarchy"
 marker="$state_dir/setup-user.done"
@@ -40,15 +63,11 @@ fi
 
 export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 export OMARCHY_INSTALL="${OMARCHY_INSTALL:-$OMARCHY_PATH/install}"
+export OMARCHY_SETUP_CONTEXT="${OMARCHY_SETUP_CONTEXT:-runtime}"
 export PATH="$OMARCHY_PATH/bin:$PATH"
 
-if [[ -f $OMARCHY_INSTALL/helpers/mode.sh ]]; then
-  source "$OMARCHY_INSTALL/helpers/mode.sh"
-  detect_install_mode
-  export_legacy_mode_flags
-else
-  install_mode_is() { [[ ${OMARCHY_INSTALL_MODE:-online} == "$1" ]]; }
-  export -f install_mode_is
+if (( first_install )); then
+  export OMARCHY_SETUP_CONTEXT=iso-chroot
 fi
 
 if [[ -n ${OMARCHY_INSTALL_LOG_FILE:-} && -f $OMARCHY_INSTALL/helpers/logging.sh ]]; then
@@ -60,38 +79,60 @@ else
   }
 fi
 
-# Copy over Omarchy configs for this user. /etc/skel handles newly-created
-# users, but existing users installing Omarchy need the same defaults seeded.
+omarchy_user_systemctl_enable() {
+  local unit="$1" unit_path target
+  local -a targets=()
+
+  if systemctl --user enable "$unit" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # ISO chroot setup has no running user systemd manager. Enabling a user unit
+  # is just creating the [Install] WantedBy symlinks, so do that directly.
+  unit_path="$HOME/.config/systemd/user/$unit"
+  if [[ -f $unit_path ]]; then
+    mapfile -t targets < <(awk -F= '
+      /^\[Install\]/ { in_install=1; next }
+      /^\[/ { in_install=0 }
+      in_install && $1 == "WantedBy" {
+        n=split($2, values, /[[:space:]]+/)
+        for (i = 1; i <= n; i++) if (values[i] != "") print values[i]
+      }
+    ' "$unit_path")
+  fi
+  ((${#targets[@]})) || targets=(default.target)
+
+  for target in "${targets[@]}"; do
+    mkdir -p "$HOME/.config/systemd/user/$target.wants"
+    ln -sfn "../$unit" "$HOME/.config/systemd/user/$target.wants/$unit"
+  done
+}
+export -f omarchy_user_systemctl_enable
+
 mkdir -p ~/.config
 cp -R "$OMARCHY_PATH/config/." ~/.config/
 cp "$OMARCHY_PATH/default/bashrc" ~/.bashrc
 echo '[[ -f ~/.bashrc ]] && . ~/.bashrc' > ~/.bash_profile
 
-# AI assistant skill symlinks. Each agent has its own conventional skills
-# directory; we drop an 'omarchy' entry into each so the skill is loaded.
 mkdir -p ~/.agents/skills ~/.claude/skills ~/.codex/skills ~/.pi/agent/skills
 ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.agents/skills/omarchy
 ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.claude/skills/omarchy
 ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.codex/skills/omarchy
 ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.pi/agent/skills/omarchy
 
-# Toggle state and flags
 mkdir -p ~/.local/state/omarchy/toggles/hypr
 cp "$OMARCHY_PATH/default/hypr/toggles/flags.lua" ~/.local/state/omarchy/toggles/hypr/
 
-# Nautilus python extensions
 mkdir -p "$HOME/.local/share/nautilus-python/extensions"
 cp "$OMARCHY_PATH/default/nautilus-python/extensions/localsend.py" \
    "$HOME/.local/share/nautilus-python/extensions/"
 cp "$OMARCHY_PATH/default/nautilus-python/extensions/transcode.py" \
    "$HOME/.local/share/nautilus-python/extensions/"
 
-# Branding (fastfetch about + screensaver text)
 mkdir -p ~/.config/omarchy/branding
 cp "$OMARCHY_PATH/icon.txt" ~/.config/omarchy/branding/about.txt
 cp "$OMARCHY_PATH/logo.txt" ~/.config/omarchy/branding/screensaver.txt
 
-# XDG user dirs (folder layout, gtk bookmarks)
 mkdir -p ~/Downloads ~/Pictures ~/Videos ~/.config/gtk-3.0
 xdg-user-dirs-update --set TEMPLATES "$HOME"
 xdg-user-dirs-update --set PUBLICSHARE "$HOME"
@@ -103,7 +144,6 @@ for dir in Downloads Projects Pictures Videos; do
   grep -qxF "$bookmark" ~/.config/gtk-3.0/bookmarks || echo "$bookmark" >>~/.config/gtk-3.0/bookmarks
 done
 
-# Hyprland keyboard layout from /etc/vconsole.conf
 conf=/etc/vconsole.conf
 hyprlua="$HOME/.config/hypr/input.lua"
 if [[ -f $conf && -f $hyprlua ]]; then
@@ -120,15 +160,18 @@ if [[ -f $conf && -f $hyprlua ]]; then
   fi
 fi
 
-# Reusable per-user install phase: theme, shell/user services, default keyring,
-# hardware-specific user session fixes, and other current-user setup.
 source "$OMARCHY_INSTALL/user/all.sh"
 
-# Application catalog + MIME defaults. Run after mise/node setup from user/all
-# so npm-backed wrappers can be installed for each user.
 omarchy-refresh-applications
 xdg-settings set default-web-browser chromium.desktop
 xdg-mime default HEY.desktop x-scheme-handler/mailto
+
+if (( first_install )); then
+  mkdir -p "$state_dir/migrations"
+  for migration in "$OMARCHY_PATH"/migrations/*.sh; do
+    [[ -f $migration ]] && touch "$state_dir/migrations/$(basename "$migration")"
+  done
+fi
 
 touch "$marker"
 echo "User setup complete."

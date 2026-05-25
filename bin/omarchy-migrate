@@ -1,28 +1,19 @@
 #!/bin/bash
 
-# omarchy:summary=Run all pending migrations to bring the system in line with the installed version.
+# omarchy:summary=Run pending Omarchy migrations for the current user.
+
+set -euo pipefail
 
 STATE_DIR="$HOME/.local/state/omarchy/migrations"
 mkdir -p "$STATE_DIR"
 
-# Skipped migrations are tracked separately
-mkdir -p "$STATE_DIR/skipped"
-
-# Run any pending migrations
-for file in $OMARCHY_PATH/migrations/*.sh; do
+for file in "$OMARCHY_PATH"/migrations/*.sh; do
+  [[ -f $file ]] || continue
   filename=$(basename "$file")
 
-  if [[ ! -f $STATE_DIR/$filename && ! -f $STATE_DIR/skipped/$filename ]]; then
+  if [[ ! -f $STATE_DIR/$filename ]]; then
     echo -e "\e[32m\nRunning migration (${filename%.sh})\e[0m"
-
-    if bash $file; then
-      touch "$STATE_DIR/$filename"
-    else
-      if gum confirm "Migration ${filename%.sh} failed. Skip and continue?"; then
-        touch "$STATE_DIR/skipped/$filename"
-      else
-        exit 1
-      fi
-    fi
+    bash "$file"
+    touch "$STATE_DIR/$filename"
   fi
 done

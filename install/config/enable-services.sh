@@ -1,6 +1,5 @@
 # Enable services only. Installs are followed by reboot, so don't start/reload
 # daemons mid-install. UFW and hardware-gated services stay in their own scripts.
-systemctl enable bluetooth.service
 systemctl enable cups.service
 systemctl enable cups-browsed.service
 systemctl enable avahi-daemon.service

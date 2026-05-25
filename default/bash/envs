@@ -7,8 +7,8 @@ export MANROFFOPT="-c"
 export MANPAGER="sh -c 'col -bx | bat -l man -p'"
 
 # Duplicated from .config/uwsm/env so SSH/non-login shells also see the
-# override. /etc/omarchy.conf wins (omarchy-dev-link writes it);
-# install.sh's script-mode export wins over that via the :- guard.
+# override. /etc/omarchy.conf wins (omarchy-dev-link writes it); otherwise
+# the packaged runtime under /usr/share/omarchy is used.
 [ -f /etc/omarchy.conf ] && . /etc/omarchy.conf
 export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 export PATH="$OMARCHY_PATH/bin:$PATH:$HOME/.local/bin"

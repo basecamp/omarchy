@@ -12,9 +12,7 @@ sleep 1
 
 rm -rf "$PREFIX"
 rm -f "$HOME/.local/share/applications/battlenet.desktop"
-rm -f "$HOME/.local/share/icons/hicolor/48x48/apps/Battle.net.png"
 rm -f "$HOME/.cache/omarchy/Battle.net-Setup.exe"
-gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" &>/dev/null || true
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 
 echo
