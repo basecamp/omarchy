@@ -2,18 +2,10 @@
 
 set -euo pipefail
 
-ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
+
 TMPDIR=""
 QS_PID=""
-
-pass() {
-  printf 'ok - %s\n' "$1"
-}
-
-fail() {
-  printf 'not ok - %s\n' "$1" >&2
-  exit 1
-}
 
 cleanup() {
   if [[ -n $QS_PID ]] && kill -0 "$QS_PID" 2>/dev/null; then
@@ -33,6 +25,8 @@ if ! command -v quickshell >/dev/null 2>&1; then
   pass "quickshell not installed; skipping shell runtime smoke test"
   exit 0
 fi
+
+require_command jq
 
 TMPDIR=$(mktemp -d)
 test_root="$TMPDIR/omarchy"
