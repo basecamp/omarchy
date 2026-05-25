@@ -48,7 +48,7 @@ Item {
   onOpenedChanged: if (!opened) layoutSettled = false
 
   function scriptPath(name) {
-    return omarchyPath + "/shell/scripts/" + name
+    return omarchyPath + "/shell/plugins/image-picker/" + name
   }
 
   function focusPicker() {
@@ -264,7 +264,7 @@ Item {
     loadImagesProc.activeSerial = serial
     loadImagesProc.queuedSerial = 0
     loadImagesProc.queuedDirs = ""
-    loadImagesProc.command = [root.scriptPath("image-picker-list.sh"), dirs]
+    loadImagesProc.command = [root.scriptPath("list.sh"), dirs]
     loadImagesProc.running = true
   }
 
