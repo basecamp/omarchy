@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.tailscale",
+  "name": "Tailscale",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "license": "MIT",
+  "description": "Tailscale status, account switching, peer browsing, and quick copy actions in the Omarchy bar.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Widget.qml"
+  },
+  "barWidget": {
+    "displayName": "Tailscale",
+    "description": "Toggle Tailscale, switch accounts, browse peers, and copy peer IPs or names.",
+    "category": "Network",
+    "allowMultiple": false,
+    "defaults": {
+      "refreshIntervalSec": 30
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 5,
+        "max": 3600,
+        "step": 5,
+        "defaultValue": 30
+      }
+    ]
+  }
+}
