@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Upgrade a legacy Omarchy install to the package-backed Omarchy 4 layout.
-# omarchy:args=[--yes] [--channel stable|rc|edge] [--user USER]
+# omarchy:args=[--yes] [--reboot] [--channel stable|rc|edge] [--user USER]
 # omarchy:examples=omarchy upgrade to 4
 # omarchy:requires-sudo=true
 
@@ -9,7 +9,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: omarchy-upgrade-to-4 [--yes] [--channel stable|rc|edge] [--user USER]
+Usage: omarchy-upgrade-to-4 [--yes] [--reboot] [--channel stable|rc|edge] [--user USER]
 
 Upgrade any pre-4 Omarchy install to the package-backed Omarchy 4 layout.
 This script is intentionally self-contained so it can be shipped as a command
@@ -17,6 +17,7 @@ in Omarchy 3.8.x or run directly with curl | bash on older systems.
 
 Options:
   -y, --yes                 Do not prompt before upgrading
+  --reboot                  Reboot automatically after a successful upgrade
   --channel stable|rc|edge  Override detected Omarchy package channel
   --user USER               User account to refresh after package install
   -h, --help                Show this help
@@ -52,11 +53,16 @@ valid_channel() {
 channel_override="${OMARCHY_UPGRADE_CHANNEL:-${OMARCHY_CHANNEL:-${OMARCHY_MIRROR:-}}}"
 target_user="${OMARCHY_INSTALL_USER:-}"
 yes=0
+auto_reboot=0
 
 while (($#)); do
   case "$1" in
     -y|--yes)
       yes=1
+      shift
+      ;;
+    --reboot)
+      auto_reboot=1
       shift
       ;;
     --channel)
@@ -103,6 +109,8 @@ fi
 
 target_home=$(getent passwd "$target_user" | cut -d: -f6)
 [[ -n $target_home && -d $target_home ]] || fail "Home directory for '$target_user' was not found."
+target_uid=$(id -u "$target_user")
+target_runtime_dir="/run/user/$target_uid"
 
 as_root() {
   if (( EUID == 0 )); then
@@ -122,6 +130,84 @@ run_as_user() {
   else
     "$@"
   fi
+}
+
+run_as_user_session() {
+  run_as_user env \
+    HOME="$target_home" \
+    USER="$target_user" \
+    LOGNAME="$target_user" \
+    XDG_RUNTIME_DIR="$target_runtime_dir" \
+    DBUS_SESSION_BUS_ADDRESS="unix:path=$target_runtime_dir/bus" \
+    XDG_CURRENT_DESKTOP=Hyprland \
+    XDG_SESSION_DESKTOP=Hyprland \
+    DESKTOP_SESSION=hyprland \
+    "$@"
+}
+
+target_hyprland_pid() {
+  pgrep -u "$target_uid" -x Hyprland 2>/dev/null | head -n1 || true
+}
+
+target_process_env() {
+  local name="$1" pid value
+  pid=$(target_hyprland_pid)
+  [[ -n $pid && -r /proc/$pid/environ ]] || return 1
+  value=$(tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | awk -v name="$name" '
+    BEGIN { prefix = name "=" }
+    index($0, prefix) == 1 { print substr($0, length(prefix) + 1); exit }
+  ' || true)
+  [[ -n $value ]] || return 1
+  printf '%s\n' "$value"
+}
+
+valid_wayland_display() {
+  [[ -n ${1:-} && -S $target_runtime_dir/$1 ]]
+}
+
+discover_wayland_display() {
+  local candidate
+  candidate="${WAYLAND_DISPLAY:-}"
+  if valid_wayland_display "$candidate"; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  candidate=$(target_process_env WAYLAND_DISPLAY || true)
+  if valid_wayland_display "$candidate"; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  local candidates=()
+  mapfile -t candidates < <(find "$target_runtime_dir" -maxdepth 1 -type s -name 'wayland-*' -printf '%f\n' 2>/dev/null || true)
+  (( ${#candidates[@]} == 1 )) || return 1
+  printf '%s\n' "${candidates[0]}"
+}
+
+valid_hyprland_signature() {
+  [[ -n ${1:-} ]] || return 1
+  [[ -S $target_runtime_dir/hypr/$1/.socket.sock || -S $target_runtime_dir/hypr/$1/.socket2.sock ]]
+}
+
+discover_hyprland_signature() {
+  local candidate
+  candidate="${HYPRLAND_INSTANCE_SIGNATURE:-}"
+  if valid_hyprland_signature "$candidate"; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  candidate=$(target_process_env HYPRLAND_INSTANCE_SIGNATURE || true)
+  if valid_hyprland_signature "$candidate"; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  local candidates=()
+  mapfile -t candidates < <(find "$target_runtime_dir/hypr" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null || true)
+  (( ${#candidates[@]} == 1 )) || return 1
+  printf '%s\n' "${candidates[0]}"
 }
 
 detect_channel() {
@@ -471,6 +557,32 @@ done
 USER_CLEANUP
 }
 
+cleanup_retired_user_unit_files() {
+  run_as_user bash <<'USER_UNITS'
+set -euo pipefail
+units=(
+  hyprpolkitagent.service
+  mako.service
+  omarchy-battery-monitor.service
+  omarchy-battery-monitor.timer
+  omarchy-shell.service
+  swayosd-server.service
+  elephant.service
+  app-walker@autostart.service
+)
+shopt -s nullglob
+for base in "$HOME/.config/systemd/user" "$HOME/.local/share/systemd/user"; do
+  [[ -d $base ]] || continue
+  for unit in "${units[@]}"; do
+    rm -f "$base/$unit"
+    for link in "$base"/*.wants/"$unit" "$base"/*.requires/"$unit"; do
+      rm -f "$link"
+    done
+  done
+done
+USER_UNITS
+}
+
 cleanup_retired_services() {
   log "Disabling services retired by Omarchy 4"
 
@@ -478,17 +590,107 @@ cleanup_retired_services() {
   # running Wi-Fi connection before the user can reboot into NetworkManager.
   as_root systemctl disable iwd.service >/dev/null 2>&1 || true
 
-  run_as_user systemctl --user disable \
-    hyprpolkitagent.service \
-    mako.service \
-    omarchy-battery-monitor.service \
-    omarchy-battery-monitor.timer \
-    omarchy-shell.service \
-    swayosd-server.service \
-    elephant.service \
-    app-walker@autostart.service \
-    >/dev/null 2>&1 || true
-  run_as_user systemctl --user daemon-reload >/dev/null 2>&1 || true
+  cleanup_retired_user_unit_files
+  if [[ -S $target_runtime_dir/bus ]]; then
+    run_as_user_session systemctl --user disable \
+      hyprpolkitagent.service \
+      mako.service \
+      omarchy-battery-monitor.service \
+      omarchy-battery-monitor.timer \
+      omarchy-shell.service \
+      swayosd-server.service \
+      elephant.service \
+      app-walker@autostart.service \
+      >/dev/null 2>&1 || true
+    run_as_user_session systemctl --user daemon-reload >/dev/null 2>&1 || true
+  fi
+}
+
+stop_retired_session_processes() {
+  log "Stopping retired Omarchy 3 session processes"
+
+  if [[ -S $target_runtime_dir/bus ]]; then
+    run_as_user_session systemctl --user stop \
+      hyprpolkitagent.service \
+      mako.service \
+      omarchy-battery-monitor.service \
+      omarchy-battery-monitor.timer \
+      omarchy-shell.service \
+      swayosd-server.service \
+      elephant.service \
+      app-walker@autostart.service \
+      >/dev/null 2>&1 || true
+  fi
+
+  # Removed packages do not stop already-running processes. Stop the old UI
+  # only after the new Quickshell has been verified, so users are not left
+  # without a bar/launcher if current-session shell startup fails.
+  run_as_user pkill -x waybar >/dev/null 2>&1 || true
+  run_as_user pkill -x walker >/dev/null 2>&1 || true
+  run_as_user pkill -x elephant >/dev/null 2>&1 || true
+  run_as_user pkill -x mako >/dev/null 2>&1 || true
+  run_as_user pkill -x swayosd-server >/dev/null 2>&1 || true
+  run_as_user_session systemctl --user daemon-reload >/dev/null 2>&1 || true
+}
+
+start_omarchy_shell_session() {
+  # Omarchy 4 starts Quickshell from Hyprland autostart, not a user service.
+  # Reboot is still the real cutover, but start the new shell in the current
+  # Wayland session when possible so users do not sit without a bar after the
+  # retired waybar/walker/elephant processes are stopped.
+  command -v quickshell >/dev/null 2>&1 || { warn "quickshell is not available; Omarchy shell will start after reboot."; return 1; }
+  [[ -d /usr/share/omarchy/shell ]] || { warn "/usr/share/omarchy/shell is missing; Omarchy shell will start after reboot."; return 1; }
+  [[ -d $target_runtime_dir ]] || { warn "No running user session found; Omarchy shell will start after reboot."; return 1; }
+
+  local wayland_display hyprland_signature
+  wayland_display=$(discover_wayland_display || true)
+  [[ -n $wayland_display ]] || { warn "No Wayland display found; Omarchy shell will start after reboot."; return 1; }
+
+  hyprland_signature=$(discover_hyprland_signature || true)
+  [[ -n $hyprland_signature ]] || { warn "No Hyprland session found; Omarchy shell will start after reboot."; return 1; }
+
+  log "Starting Omarchy shell in the current session"
+  run_as_user env \
+    HOME="$target_home" \
+    USER="$target_user" \
+    LOGNAME="$target_user" \
+    XDG_RUNTIME_DIR="$target_runtime_dir" \
+    WAYLAND_DISPLAY="$wayland_display" \
+    HYPRLAND_INSTANCE_SIGNATURE="$hyprland_signature" \
+    DBUS_SESSION_BUS_ADDRESS="unix:path=$target_runtime_dir/bus" \
+    XDG_CURRENT_DESKTOP=Hyprland \
+    XDG_SESSION_DESKTOP=Hyprland \
+    XDG_SESSION_TYPE=wayland \
+    DESKTOP_SESSION=hyprland \
+    OMARCHY_PATH=/usr/share/omarchy \
+    PATH="/usr/share/omarchy/bin:$PATH" \
+    bash -c '
+      if [[ $(omarchy-shell lock isLocked 2>/dev/null || true) == "true" ]]; then
+        exit 2
+      fi
+      pkill -x quickshell 2>/dev/null || true
+      sleep 0.2
+      setsid quickshell -n -p /usr/share/omarchy/shell >/dev/null 2>&1 &
+    ' || { warn "Could not start Omarchy shell in the current session; it will start after reboot."; return 1; }
+
+  local attempt
+  for attempt in {1..20}; do
+    if run_as_user env \
+      HOME="$target_home" \
+      USER="$target_user" \
+      LOGNAME="$target_user" \
+      XDG_RUNTIME_DIR="$target_runtime_dir" \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=$target_runtime_dir/bus" \
+      OMARCHY_PATH=/usr/share/omarchy \
+      PATH="/usr/share/omarchy/bin:$PATH" \
+      omarchy-shell shell ping >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.25
+  done
+
+  warn "Omarchy shell did not respond in the current session; it will start after reboot."
+  return 1
 }
 
 enable_system_service() {
@@ -890,10 +1092,34 @@ apply_system_transition
 apply_user_transition
 cleanup_retired_services
 remove_retired_default_packages
+if start_omarchy_shell_session; then
+  stop_retired_session_processes
+else
+  warn "Leaving retired Omarchy 3 session processes running until reboot."
+fi
 
 cat <<EOF
 
 Omarchy 4 upgrade complete.
 
-Please reboot to finish switching to the package-backed Omarchy 4 session.
+IMPORTANT: Review the output above before rebooting. If there are ANY errors
+above, do not reboot yet; fix the errors or ask for help first.
+
+A reboot is required to finish switching to the package-backed Omarchy 4 session.
 EOF
+
+if (( auto_reboot )); then
+  log "Rebooting because --reboot was passed"
+  as_root systemctl reboot
+elif { exec {tty_fd}<>/dev/tty; } 2>/dev/null; then
+  printf '\nReboot now? [y/N] ' >&$tty_fd
+  read -r reboot_answer <&$tty_fd || reboot_answer=""
+  exec {tty_fd}>&-
+  if [[ $reboot_answer =~ ^[Yy]([Ee][Ss])?$ ]]; then
+    as_root systemctl reboot
+  else
+    echo "Not rebooting. Please reboot manually after confirming there were no errors."
+  fi
+else
+  echo "No TTY available for reboot prompt. Please reboot manually after confirming there were no errors."
+fi
