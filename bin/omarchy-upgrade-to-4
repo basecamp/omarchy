@@ -428,9 +428,25 @@ remove_retired_default_packages() {
 
   log "Removing packages retired from the Omarchy 4 default install"
   local pkg
+  local installed_retired=()
   for pkg in "${retired_packages[@]}"; do
     if pacman -Q "$pkg" >/dev/null 2>&1; then
-      as_root pacman -Rns --noconfirm "$pkg" || warn "Could not remove retired package '$pkg'; leaving it installed."
+      installed_retired+=("$pkg")
+    fi
+  done
+
+  ((${#installed_retired[@]})) || return 0
+
+  # Remove as one transaction so dependency anchors like omarchy-walker and all
+  # of its elephant-* modules disappear together instead of failing one-by-one.
+  if as_root pacman -Rns --noconfirm --ask 4 "${installed_retired[@]}"; then
+    return 0
+  fi
+
+  warn "Batch retired-package removal failed; retrying packages individually."
+  for pkg in "${installed_retired[@]}"; do
+    if pacman -Q "$pkg" >/dev/null 2>&1; then
+      as_root pacman -Rns --noconfirm --ask 4 "$pkg" || warn "Could not remove retired package '$pkg'; leaving it installed."
     fi
   done
 }
