@@ -120,7 +120,7 @@ Item {
     var command = String(action || "")
     if (!command) return
 
-    Quickshell.execDetached(["bash", "-lc", command])
+    Quickshell.execDetached(Util.hyprExecCommand(command))
   }
 
   function rowHeightForDetail(detail) {
