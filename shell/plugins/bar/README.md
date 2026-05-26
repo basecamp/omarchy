@@ -8,7 +8,7 @@ the shell for its whole session.
 - `manifest.json` declares the plugin (`id: omarchy.bar`, `kind: bar`) and points at `Bar.qml` as the entry point.
 - `Bar.qml` is Omarchy-owned bar engine code, loaded by the omarchy-shell host. Users should not edit it directly.
 - `widgets/` holds simple first-party bar widgets with sibling manifests.
-- Feature plugins such as `../panels/audio/`, `../panels/network/`, and `../panels/power/` provide richer popup bar widgets.
+- Feature plugins such as `../panels/audio/`, `../panels/network/`, `../panels/power/`, and `../tailscale/` provide richer popup bar plugins.
 - The bar receives its config from the host shell as a `barConfig` property; the host loads it from `~/.config/omarchy/shell.json` (or `config/omarchy/shell.json` when the user has no file).
 - `omarchy-style-bar-position` updates only the user shell.json file.
 
@@ -68,6 +68,7 @@ Example `shell.json` (bar subtree only shown):
 
 | `omarchy.audio` | Volume icon + popup with master slider, output-device picker, per-app mixer | left = popup · right = mute · middle = popup · scroll = volume |
 | `omarchy.network` | Wi-Fi/Ethernet icon + popup with Wi-Fi scan, signal, connect, DNS provider selection | left = popup · right = nmtui |
+| `omarchy.tailscale` | Tailscale status, account switcher, peer browser, and copy actions | left = popup · right = toggle · middle = refresh |
 | `omarchy.power` | Battery/AC icon + popup with battery stats, power profiles, and system info | left = popup |
 | `omarchy.bluetooth` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio · middle = bluetoothctl TUI |
 | `omarchy.monitor` | Brightness and laptop display controls | left = popup |
@@ -167,8 +168,8 @@ Widgets receive `bar` (the shell root), `moduleName` (string), and `settings` (o
 
 First-party bar widgets are manifest-backed just like third-party widgets.
 Simple widgets carry sibling manifests such as `widgets/Clock.manifest.json`;
-richer popup widgets live in feature directories such as `../panels/audio/` and
-`../panels/network/`; and feature plugins such as `omarchy.menu`, `omarchy.media`, and
+richer popup plugins live in feature directories such as `../panels/audio/`,
+`../panels/network/`, and `../tailscale/`; and feature plugins such as `omarchy.menu`, `omarchy.media`, and
 `omarchy.notifications` declare their bar-widget entry points in their own
 `manifest.json`. Bar layout ids are namespaced, e.g. `omarchy.audio`,
 `omarchy.network`, and `omarchy.clock`. Older UpperCamelCase ids such as
