@@ -241,7 +241,7 @@ Item {
   function run(command) {
     if (!command) return
 
-    launcher.command = ["bash", "-lc", command]
+    launcher.command = Util.hyprExecCommand(command)
     launcher.startDetached()
   }
 

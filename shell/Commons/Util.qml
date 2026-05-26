@@ -38,6 +38,17 @@ QtObject {
     return "'" + String(value || "").replace(/'/g, "'\\''") + "'"
   }
 
+  function luaQuote(value) {
+    return "\"" + String(value || "")
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, "\\\"")
+      .replace(/\n/g, "\\n") + "\""
+  }
+
+  function hyprExecCommand(command) {
+    return ["hyprctl", "dispatch", "hl.dsp.exec_cmd(" + luaQuote(command) + ")"]
+  }
+
   function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value)
   }
