@@ -8,7 +8,7 @@ hl.config({
     -- Use a specific keyboard variant if needed (e.g. intl for international keyboards).
     -- kb_variant = "intl",
 
-    kb_options = "compose:caps", -- ,grp:alts_toggle
+    kb_options = "compose:caps,shift:both_capslock", -- ,grp:alts_toggle
 
     -- Change speed of keyboard repeat.
     repeat_rate = 40,

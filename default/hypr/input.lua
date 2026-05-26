@@ -4,7 +4,7 @@ hl.config({
     kb_layout = "us",
     kb_variant = "",
     kb_model = "",
-    kb_options = "compose:caps",
+    kb_options = "compose:caps,shift:both_capslock",
     kb_rules = "",
     follow_mouse = 1,
     sensitivity = 0,
