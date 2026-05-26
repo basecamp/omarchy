@@ -541,16 +541,59 @@ remove_retired_default_packages() {
 
   ((${#installed_retired[@]})) || return 0
 
-  # Remove as one transaction so dependency anchors like omarchy-walker and all
-  # of its elephant-* modules disappear together instead of failing one-by-one.
-  if as_root pacman -Rns --noconfirm --ask 4 "${installed_retired[@]}"; then
-    return 0
+  # Remove as one transaction so dependency anchors like waybar/playerctl and
+  # omarchy-walker/elephant-* disappear together instead of failing one-by-one.
+  # Preflight first so dependency failures do not print scary pacman errors in
+  # the middle of an otherwise successful upgrade.
+  if pacman -Rs --print "${installed_retired[@]}" >/dev/null 2>&1; then
+    if as_root pacman -Rns --noconfirm --ask 4 "${installed_retired[@]}"; then
+      return 0
+    fi
+    warn "Batch retired-package removal failed; retrying dependency-aware groups."
+  else
+    warn "Some retired packages are still required by non-retired packages; retrying dependency-aware groups."
   fi
 
-  warn "Batch retired-package removal failed; retrying packages individually."
+  local group group_pkg required_by_line
+  local group_packages=()
+  local installed_group=()
+  local fallback_groups=(
+    "omarchy-walker walker elephant-all elephant elephant-bluetooth elephant-calc elephant-clipboard elephant-desktopapplications elephant-files elephant-menus elephant-providerlist elephant-runner elephant-symbols elephant-todo elephant-unicode elephant-websearch"
+    "waybar playerctl"
+    "impala iwd"
+    "blueberry bluetui"
+    "wiremix pavucontrol"
+  )
+
+  for group in "${fallback_groups[@]}"; do
+    read -r -a group_packages <<<"$group"
+    installed_group=()
+    for group_pkg in "${group_packages[@]}"; do
+      if pacman -Q "$group_pkg" >/dev/null 2>&1; then
+        installed_group+=("$group_pkg")
+      fi
+    done
+    ((${#installed_group[@]})) || continue
+
+    if pacman -Rs --print "${installed_group[@]}" >/dev/null 2>&1; then
+      as_root pacman -Rns --noconfirm --ask 4 "${installed_group[@]}" || warn "Could not remove retired package group: ${installed_group[*]}"
+    else
+      warn "Leaving retired package group installed because other packages still depend on it: ${installed_group[*]}"
+    fi
+  done
+
   for pkg in "${installed_retired[@]}"; do
-    if pacman -Q "$pkg" >/dev/null 2>&1; then
+    pacman -Q "$pkg" >/dev/null 2>&1 || continue
+
+    if pacman -Rs --print "$pkg" >/dev/null 2>&1; then
       as_root pacman -Rns --noconfirm --ask 4 "$pkg" || warn "Could not remove retired package '$pkg'; leaving it installed."
+    else
+      required_by_line=$(LC_ALL=C pacman -Qi "$pkg" 2>/dev/null | awk -F: '/^Required By/ { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit }')
+      if [[ -n $required_by_line && $required_by_line != None ]]; then
+        warn "Leaving retired package '$pkg' installed because it is still required by: $required_by_line"
+      else
+        warn "Leaving retired package '$pkg' installed because pacman reports remaining dependency constraints."
+      fi
     fi
   done
 }
