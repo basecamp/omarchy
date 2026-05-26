@@ -104,9 +104,21 @@ fi
 target_home=$(getent passwd "$target_user" | cut -d: -f6)
 [[ -n $target_home && -d $target_home ]] || fail "Home directory for '$target_user' was not found."
 
+as_root() {
+  if (( EUID == 0 )); then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
 run_as_user() {
   if (( EUID == 0 )); then
-    sudo -u "$target_user" -H "$@"
+    if command -v sudo >/dev/null 2>&1; then
+      sudo -u "$target_user" -H "$@"
+    else
+      runuser -u "$target_user" -- "$@"
+    fi
   else
     "$@"
   fi
@@ -156,7 +168,7 @@ detect_channel() {
 
   if [[ -d $target_home/.local/share/omarchy/.git ]]; then
     if (( EUID == 0 )); then
-      candidate=$(sudo -u "$target_user" -H git -C "$target_home/.local/share/omarchy" branch --show-current 2>/dev/null || true)
+      candidate=$(run_as_user git -C "$target_home/.local/share/omarchy" branch --show-current 2>/dev/null || true)
     else
       candidate=$(git -C "$target_home/.local/share/omarchy" branch --show-current 2>/dev/null || true)
     fi
@@ -195,8 +207,8 @@ if (( ! yes )); then
 This will upgrade Omarchy for user '$target_user' to Omarchy 4 using the '$channel' channel.
 
 It will install the package-backed Omarchy 4 stack, overwrite files previously
-written by the legacy installer, remove retired default packages, and refresh
-system/user setup. A reboot is strongly recommended afterward.
+written by the legacy installer, remove retired default packages, and apply the
+Omarchy 4 system/user transition inline. A reboot is strongly recommended afterward.
 EOF
 
   if [[ -r /dev/tty ]]; then
@@ -220,17 +232,17 @@ backup_suffix=$(date +%Y%m%d%H%M%S)
 configure_pacman_channel() {
   log "Configuring Omarchy pacman repositories ($channel)"
 
-  sudo install -d -m 0755 /etc/pacman.d
+  as_root install -d -m 0755 /etc/pacman.d
   if [[ -f /etc/pacman.d/mirrorlist ]]; then
-    sudo cp -f /etc/pacman.d/mirrorlist "/etc/pacman.d/mirrorlist.omarchy-upgrade-to-4.$backup_suffix.bak"
+    as_root cp -f /etc/pacman.d/mirrorlist "/etc/pacman.d/mirrorlist.omarchy-upgrade-to-4.$backup_suffix.bak"
   fi
-  printf 'Server = %s\n' "$mirror_server" | sudo tee /etc/pacman.d/mirrorlist >/dev/null
+  printf 'Server = %s\n' "$mirror_server" | as_root tee /etc/pacman.d/mirrorlist >/dev/null
 
   if [[ ! -f /etc/pacman.conf ]]; then
     fail "/etc/pacman.conf does not exist."
   fi
 
-  sudo cp -f /etc/pacman.conf "/etc/pacman.conf.omarchy-upgrade-to-4.$backup_suffix.bak"
+  as_root cp -f /etc/pacman.conf "/etc/pacman.conf.omarchy-upgrade-to-4.$backup_suffix.bak"
 
   tmp=$(mktemp)
   awk -v server="$package_server" '
@@ -256,17 +268,17 @@ configure_pacman_channel() {
       }
     }
   ' /etc/pacman.conf >"$tmp"
-  sudo install -m 0644 "$tmp" /etc/pacman.conf
+  as_root install -m 0644 "$tmp" /etc/pacman.conf
   rm -f "$tmp"
 }
 
 install_keyrings() {
   log "Refreshing package databases and keyrings"
-  sudo pacman -Sy --noconfirm archlinux-keyring omarchy-keyring || {
+  as_root pacman -Sy --noconfirm archlinux-keyring omarchy-keyring || {
     warn "Keyring package install failed; attempting to trust the Omarchy packaging key directly."
-    sudo pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org || true
-    sudo pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571 || true
-    sudo pacman -Sy --noconfirm archlinux-keyring omarchy-keyring
+    as_root pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org || true
+    as_root pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571 || true
+    as_root pacman -Sy --noconfirm archlinux-keyring omarchy-keyring
   }
 }
 
@@ -275,8 +287,38 @@ remove_legacy_installer_package() {
     log "Removing legacy omarchy-installer package"
     # The pre-4 omarchy meta package may depend on omarchy-installer. Ignore
     # that edge temporarily; the next transaction installs the Omarchy 4 meta.
-    sudo pacman -Rdd --noconfirm omarchy-installer
+    as_root pacman -Rdd --noconfirm omarchy-installer
   fi
+}
+
+remove_conflicting_legacy_packages() {
+  # Remove legacy packages that are known to conflict with Omarchy 4 defaults
+  # before the main package transaction. Broader retired-package cleanup runs
+  # after NetworkManager and the rest of the new stack are installed.
+  local conflicting_packages=(
+    asdcontrol-git
+    lazydocker-bin
+    localsend-bin
+    omarchy-chromium
+    omarchy-lazyvim
+    openai-codex-bin
+    ttf-jetbrains-mono
+    ttf-jetbrains-mono-nerd
+    wayfreeze
+    wayfreeze-git
+  )
+
+  local pkg
+  for pkg in "${conflicting_packages[@]}"; do
+    if pacman -Q "$pkg" >/dev/null 2>&1; then
+      # Some pre-4 meta packages depend on these retired/default packages. We
+      # intentionally break those old dependency edges before installing the
+      # Omarchy 4 meta, otherwise pacman prompts to remove conflicts (for
+      # example ttf-jetbrains-mono-nerd -> ttf-jetbrains-mono-nerd-basic) and
+      # --noconfirm answers "no".
+      as_root pacman -Rdd --noconfirm "$pkg" || warn "Could not remove conflicting legacy package '$pkg'; continuing."
+    fi
+  done
 }
 
 install_omarchy_4_packages() {
@@ -289,17 +331,34 @@ install_omarchy_4_packages() {
   )
 
   log "Installing Omarchy 4 packages"
-  sudo pacman -Syu --needed --noconfirm --overwrite='*' "${core_packages[@]}"
+  # --noconfirm answers "no" to conflict-removal prompts. --ask 4 preselects
+  # removing the conflicting package, which is required for legacy packages like
+  # ttf-jetbrains-mono-nerd -> ttf-jetbrains-mono-nerd-basic.
+  as_root pacman -Syu --needed --noconfirm --ask 4 --overwrite='*' "${core_packages[@]}"
 
   if [[ -f /usr/share/omarchy/install/omarchy-base.packages ]]; then
     log "Installing Omarchy 4 default package set"
     mapfile -t base_packages < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' /usr/share/omarchy/install/omarchy-base.packages)
     if (( ${#base_packages[@]} )); then
-      sudo pacman -S --needed --noconfirm --overwrite='*' "${base_packages[@]}"
+      as_root pacman -S --needed --noconfirm --ask 4 --overwrite='*' "${base_packages[@]}"
     fi
   else
     warn "/usr/share/omarchy/install/omarchy-base.packages was not found; skipping default package set install."
   fi
+
+  # Archinstall installs the audio application during fresh ISO installs, so
+  # legacy upgrades need to ensure the same PipeWire stack is present without
+  # depending on Archinstall or Omarchy setup helpers.
+  local audio_packages=(
+    pipewire
+    pipewire-alsa
+    pipewire-jack
+    pipewire-pulse
+    gst-plugin-pipewire
+    libpulse
+    wireplumber
+  )
+  as_root pacman -S --needed --noconfirm --ask 4 --overwrite='*' "${audio_packages[@]}"
 }
 
 remove_retired_default_packages() {
@@ -307,30 +366,71 @@ remove_retired_default_packages() {
     1password-beta
     1password-cli
     alacritty
+    asdcontrol-git
+    blueberry
     bluetui
+    chaotic-keyring
+    chaotic-mirrorlist
     claude-code
+    elephant
+    elephant-all
+    elephant-bluetooth
+    elephant-calc
+    elephant-clipboard
+    elephant-desktopapplications
+    elephant-files
+    elephant-menus
+    elephant-providerlist
+    elephant-runner
+    elephant-symbols
+    elephant-todo
+    elephant-unicode
+    elephant-websearch
+    fcitx5-configtool
+    gcc14
     github-cli
     hypridle
     hyprlock
     impala
     iwd
+    lazydocker-bin
+    lmstudio
+    lmstudio-bin
+    localsend-bin
+    makima-bin
     mako
+    omarchy-chromium
+    omarchy-lazyvim
     omarchy-walker
+    openai-codex
+    openai-codex-bin
+    opencode
+    pavucontrol
     playerctl
     polkit-gnome
+    qt5-remoteobjects
     signal-desktop
     spotify
     swaybg
     swayosd
+    ttf-jetbrains-mono
+    ttf-jetbrains-mono-nerd
+    vlc
     waybar
+    wayfreeze
+    wayfreeze-git
+    wf-recorder
     wiremix
+    wl-screenrec
+    yay-bin-debug
+    zoom
   )
 
   log "Removing packages retired from the Omarchy 4 default install"
   local pkg
   for pkg in "${retired_packages[@]}"; do
     if pacman -Q "$pkg" >/dev/null 2>&1; then
-      sudo pacman -Rns --noconfirm "$pkg" || warn "Could not remove retired package '$pkg'; leaving it installed."
+      as_root pacman -Rns --noconfirm "$pkg" || warn "Could not remove retired package '$pkg'; leaving it installed."
     fi
   done
 }
@@ -360,45 +460,418 @@ cleanup_retired_services() {
 
   # Do not stop iwd mid-upgrade; disabling is enough and avoids dropping a
   # running Wi-Fi connection before the user can reboot into NetworkManager.
-  sudo systemctl disable iwd.service >/dev/null 2>&1 || true
+  as_root systemctl disable iwd.service >/dev/null 2>&1 || true
 
   run_as_user systemctl --user disable \
+    hyprpolkitagent.service \
+    mako.service \
+    omarchy-battery-monitor.service \
     omarchy-battery-monitor.timer \
+    omarchy-shell.service \
     swayosd-server.service \
     elephant.service \
     app-walker@autostart.service \
     >/dev/null 2>&1 || true
+  run_as_user systemctl --user daemon-reload >/dev/null 2>&1 || true
 }
 
-run_omarchy_4_setup() {
-  log "Running Omarchy 4 system setup"
-  [[ -x /usr/bin/omarchy-setup-system ]] || fail "/usr/bin/omarchy-setup-system was not installed."
-  sudo env \
-    OMARCHY_PATH=/usr/share/omarchy \
-    OMARCHY_INSTALL=/usr/share/omarchy/install \
-    OMARCHY_INSTALL_USER="$target_user" \
-    OMARCHY_MIRROR="$channel" \
-    /usr/bin/omarchy-setup-system --install-user "$target_user" --upgrade
+enable_system_service() {
+  local unit="$1"
+  as_root systemctl enable "$unit" >/dev/null 2>&1 || warn "Could not enable $unit; it may not be installed on this system."
+}
 
-  log "Running Omarchy 4 user setup"
-  [[ -x /usr/bin/omarchy-setup-user ]] || fail "/usr/bin/omarchy-setup-user was not installed."
-  run_as_user env \
-    OMARCHY_PATH=/usr/share/omarchy \
-    OMARCHY_INSTALL=/usr/share/omarchy/install \
-    OMARCHY_SETUP_CONTEXT=runtime \
-    /usr/bin/omarchy-setup-user --force
-
-  if [[ -x /usr/bin/omarchy-refresh-applications ]]; then
-    run_as_user env OMARCHY_PATH=/usr/share/omarchy /usr/bin/omarchy-refresh-applications
+apply_firewall_defaults() {
+  if ! command -v ufw >/dev/null 2>&1; then
+    warn "ufw is not installed; skipping firewall defaults."
+    return 0
   fi
+
+  log "Applying Omarchy firewall defaults"
+  as_root ufw default deny incoming >/dev/null || true
+  as_root ufw default allow outgoing >/dev/null || true
+  as_root ufw allow 53317/udp >/dev/null || true
+  as_root ufw allow 53317/tcp >/dev/null || true
+  as_root ufw allow in proto udp from 172.16.0.0/12 to 172.17.0.1 port 53 comment 'allow-docker-dns' >/dev/null || true
+  as_root ufw allow in proto udp from 192.168.0.0/16 to 172.17.0.1 port 53 comment 'allow-docker-dns' >/dev/null || true
+  as_root sed -i 's/^ENABLED=.*/ENABLED=yes/' /etc/ufw/ufw.conf 2>/dev/null || true
+  enable_system_service ufw.service
+}
+
+apply_system_transition() {
+  log "Applying Omarchy 4 system transition"
+  [[ -d /usr/share/omarchy ]] || fail "/usr/share/omarchy was not installed."
+
+  as_root install -d -m 0755 /usr/share/icons/Yaru/scalable/actions
+  as_root ln -snf /usr/share/icons/Adwaita/symbolic/actions/go-previous-symbolic.svg \
+    /usr/share/icons/Yaru/scalable/actions/go-previous-symbolic.svg
+  as_root ln -snf /usr/share/icons/Adwaita/symbolic/actions/go-next-symbolic.svg \
+    /usr/share/icons/Yaru/scalable/actions/go-next-symbolic.svg
+  as_root gtk-update-icon-cache /usr/share/icons/Yaru >/dev/null 2>&1 || true
+
+  as_root install -d -m 0777 /etc/chromium/policies/managed
+  as_root install -d -m 0755 /usr/lib/chromium
+  printf '%s\n' '{"browser":{"theme":{"color_scheme":0,"color_scheme2":0}}}' | \
+    as_root tee /usr/lib/chromium/initial_preferences >/dev/null
+
+  if getent group docker >/dev/null; then
+    as_root usermod -aG docker "$target_user"
+  fi
+
+  if [[ -f /usr/bin/powerprofilesctl ]]; then
+    as_root sed -i '/env python3/ c\#!/bin/python3' /usr/bin/powerprofilesctl || true
+  fi
+
+  as_root install -d -m 0755 /etc/systemd/resolved.conf.d /etc/docker
+  cat <<'EOF' | as_root tee /etc/systemd/resolved.conf.d/10-disable-multicast.conf >/dev/null
+[Resolve]
+LLMNR=no
+MulticastDNS=no
+EOF
+  cat <<'EOF' | as_root tee /etc/systemd/resolved.conf.d/20-docker-dns.conf >/dev/null
+[Resolve]
+DNSStubListenerExtra=172.17.0.1
+EOF
+  cat <<'EOF' | as_root tee /etc/docker/daemon.json >/dev/null
+{
+    "log-driver": "json-file",
+    "log-opts": { "max-size": "10m", "max-file": "5" },
+    "dns": ["172.17.0.1"],
+    "bip": "172.17.0.1/16"
+}
+EOF
+
+  enable_system_service cups.service
+  enable_system_service cups-browsed.service
+  enable_system_service avahi-daemon.service
+  enable_system_service linux-modules-cleanup.service
+  enable_system_service docker.socket
+  enable_system_service systemd-resolved.service
+  enable_system_service NetworkManager.service
+  enable_system_service power-profiles-daemon.service
+  enable_system_service sddm.service
+
+  apply_firewall_defaults
+
+  log "Normalizing SDDM login configuration"
+  as_root install -d -m 0755 /etc/sddm.conf.d
+  printf '[Theme]\nCurrent=omarchy\n' | as_root tee /etc/sddm.conf.d/10-theme.conf >/dev/null
+  cat <<'EOF' | as_root tee /etc/sddm.conf.d/10-wayland.conf >/dev/null
+[General]
+DisplayServer=wayland
+
+[Wayland]
+CompositorCommand=start-hyprland -- --config /usr/share/sddm/hyprland.lua
+EOF
+  cat <<'EOF' | as_root tee /etc/sddm.conf.d/99-omarchy-login.conf >/dev/null
+[Theme]
+Current=omarchy
+
+[Users]
+RememberLastUser=true
+RememberLastSession=true
+EOF
+
+  if as_root test -f /etc/sddm.conf.d/autologin.conf; then
+    local autologin_user
+    autologin_user=$(as_root awk -F= '/^User=/ { print $2; exit }' /etc/sddm.conf.d/autologin.conf 2>/dev/null || true)
+    [[ -n $autologin_user ]] || autologin_user="$target_user"
+    cat <<EOF | as_root tee /etc/sddm.conf.d/autologin.conf >/dev/null
+[Autologin]
+User=$autologin_user
+Session=omarchy.desktop
+EOF
+  fi
+
+  as_root install -d -m 0755 -o sddm -g sddm /var/lib/sddm 2>/dev/null || as_root install -d -m 0755 /var/lib/sddm
+  cat <<EOF | as_root tee /var/lib/sddm/state.conf >/dev/null
+[Last]
+Session=omarchy.desktop
+User=$target_user
+EOF
+  as_root chown sddm:sddm /var/lib/sddm /var/lib/sddm/state.conf 2>/dev/null || true
+
+  as_root rm -f /etc/systemd/system/getty@tty1.service.d/autologin.conf
+  as_root rm -f /etc/systemd/system/plymouth-quit.service.d/wait-for-graphical.conf
+  as_root rm -f /etc/systemd/system/omarchy-seamless-login.service
+  as_root rm -f /usr/local/bin/seamless-login
+  as_root systemctl disable omarchy-seamless-login.service >/dev/null 2>&1 || true
+
+  as_root systemctl disable makima.service >/dev/null 2>&1 || true
+  as_root rm -rf /etc/systemd/system/makima.service.d
+  as_root rm -f /etc/udev/rules.d/99-uinput.rules
+  as_root systemctl disable dell-xps-haptic-touchpad.service >/dev/null 2>&1 || true
+  as_root rm -f /etc/systemd/system/dell-xps-haptic-touchpad.service
+  as_root rm -f /etc/systemd/system/multi-user.target.wants/dell-xps-haptic-touchpad.service
+  as_root rm -rf /etc/systemd/system/dell-xps-haptic-touchpad.service.d
+  as_root rm -f /etc/udev/rules.d/99-dell-xps-haptic-touchpad.rules
+  as_root rm -f /etc/omarchy-dell-haptic-touchpad.env
+  as_root rm -f /etc/pacman.d/hooks/walker-restart.hook
+  as_root systemctl daemon-reload >/dev/null 2>&1 || true
+
+  if [[ -f /etc/pam.d/sddm ]]; then
+    as_root sed -i '/-auth.*pam_gnome_keyring\.so/d' /etc/pam.d/sddm
+    as_root sed -i '/-password.*pam_gnome_keyring\.so/d' /etc/pam.d/sddm
+  fi
+
+  if [[ -f /etc/pam.d/system-auth ]]; then
+    as_root sed -i 's|^\(auth\s\+required\s\+pam_faillock.so\)\s\+preauth.*$|\1 preauth silent deny=10 unlock_time=120|' /etc/pam.d/system-auth
+    as_root sed -i 's|^\(auth\s\+\[default=die\]\s\+pam_faillock.so\)\s\+authfail.*$|\1 authfail deny=10 unlock_time=120|' /etc/pam.d/system-auth
+  fi
+  if [[ -f /etc/pam.d/sddm-autologin ]]; then
+    as_root sed -i '/pam_faillock\.so preauth/d' /etc/pam.d/sddm-autologin
+    as_root sed -i '/pam_faillock\.so authsucc/d' /etc/pam.d/sddm-autologin
+    as_root sed -i '/auth.*pam_permit\.so/a auth        required    pam_faillock.so authsucc' /etc/pam.d/sddm-autologin
+  fi
+}
+
+apply_user_transition() {
+  log "Applying Omarchy 4 user transition"
+  [[ -d /usr/share/omarchy ]] || fail "/usr/share/omarchy was not installed."
+
+  run_as_user env \
+    TARGET_HOME="$target_home" \
+    BACKUP_SUFFIX="$backup_suffix" \
+    OMARCHY_USER_NAME="${OMARCHY_USER_NAME:-}" \
+    OMARCHY_USER_EMAIL="${OMARCHY_USER_EMAIL:-}" \
+    bash <<'USER_SETUP'
+set -euo pipefail
+root=/usr/share/omarchy
+state_dir="$HOME/.local/state/omarchy"
+mkdir -p "$state_dir" "$HOME/.config"
+
+if [[ -d $root/config ]]; then
+  cp -R "$root/config/." "$HOME/.config/"
+fi
+if [[ -f $root/default/bashrc ]]; then
+  cp "$root/default/bashrc" "$HOME/.bashrc"
+  echo '[[ -f ~/.bashrc ]] && . ~/.bashrc' >"$HOME/.bash_profile"
+fi
+
+mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills" "$HOME/.pi/agent/skills"
+if [[ -d $root/default/omarchy-skill ]]; then
+  ln -sfn "$root/default/omarchy-skill" "$HOME/.agents/skills/omarchy"
+  ln -sfn "$root/default/omarchy-skill" "$HOME/.claude/skills/omarchy"
+  ln -sfn "$root/default/omarchy-skill" "$HOME/.codex/skills/omarchy"
+  ln -sfn "$root/default/omarchy-skill" "$HOME/.pi/agent/skills/omarchy"
+fi
+
+mkdir -p "$HOME/.local/state/omarchy/toggles/hypr"
+if [[ -f $root/default/hypr/toggles/flags.lua ]]; then
+  cp "$root/default/hypr/toggles/flags.lua" "$HOME/.local/state/omarchy/toggles/hypr/"
+fi
+
+mkdir -p "$HOME/.local/share/nautilus-python/extensions"
+for extension in localsend.py transcode.py; do
+  if [[ -f $root/default/nautilus-python/extensions/$extension ]]; then
+    cp "$root/default/nautilus-python/extensions/$extension" "$HOME/.local/share/nautilus-python/extensions/"
+  fi
+done
+
+mkdir -p "$HOME/.config/omarchy/branding"
+[[ -f $root/icon.txt ]] && cp "$root/icon.txt" "$HOME/.config/omarchy/branding/about.txt"
+[[ -f $root/logo.txt ]] && cp "$root/logo.txt" "$HOME/.config/omarchy/branding/screensaver.txt"
+
+mkdir -p "$HOME/Downloads" "$HOME/Pictures" "$HOME/Videos" "$HOME/Projects" "$HOME/.config/gtk-3.0"
+if command -v xdg-user-dirs-update >/dev/null 2>&1; then
+  xdg-user-dirs-update --set TEMPLATES "$HOME" || true
+  xdg-user-dirs-update --set PUBLICSHARE "$HOME" || true
+  xdg-user-dirs-update --set DESKTOP "$HOME" || true
+fi
+rmdir "$HOME/Templates" "$HOME/Public" "$HOME/Desktop" 2>/dev/null || true
+touch "$HOME/.config/gtk-3.0/bookmarks"
+for dir in Downloads Projects Pictures Videos; do
+  bookmark="file://$HOME/$dir $dir"
+  grep -qxF "$bookmark" "$HOME/.config/gtk-3.0/bookmarks" || echo "$bookmark" >>"$HOME/.config/gtk-3.0/bookmarks"
+done
+
+conf=/etc/vconsole.conf
+hyprlua="$HOME/.config/hypr/input.lua"
+if [[ -f $conf && -f $hyprlua ]]; then
+  sed -i '/^[[:space:]]*kb_layout[[:space:]]*=/d' "$hyprlua"
+  sed -i '/^[[:space:]]*kb_variant[[:space:]]*=/d' "$hyprlua"
+  if grep -q '^XKBLAYOUT=' "$conf"; then
+    layout=$(grep '^XKBLAYOUT=' "$conf" | cut -d= -f2 | tr -d '"')
+    sed -i "/^[[:space:]]*kb_options *=/i\    kb_layout = \"$layout\"," "$hyprlua"
+  fi
+  if grep -q '^XKBVARIANT=' "$conf"; then
+    variant=$(grep '^XKBVARIANT=' "$conf" | cut -d= -f2 | tr -d '"')
+    sed -i "/^[[:space:]]*kb_options *=/i\    kb_variant = \"$variant\"," "$hyprlua"
+  fi
+fi
+
+if [[ -n ${OMARCHY_USER_NAME//[[:space:]]/} ]]; then
+  git config --global user.name "$OMARCHY_USER_NAME" || true
+fi
+if [[ -n ${OMARCHY_USER_EMAIL//[[:space:]]/} ]]; then
+  git config --global user.email "$OMARCHY_USER_EMAIL" || true
+fi
+if [[ ! -f $HOME/.XCompose ]]; then
+  cat >"$HOME/.XCompose" <<EOF
+# Run omarchy-restart-xcompose to apply changes
+
+# Include fast emoji access
+include "/usr/share/omarchy/default/xcompose"
+
+# Identification
+<Multi_key> <space> <n> : "$OMARCHY_USER_NAME"
+<Multi_key> <space> <e> : "$OMARCHY_USER_EMAIL"
+EOF
+fi
+
+mkdir -p "$HOME/.config/omarchy/themes" "$HOME/.config/btop/themes"
+ln -snf "$HOME/.config/omarchy/current/theme/btop.theme" "$HOME/.config/btop/themes/current.theme"
+if [[ ! -e $HOME/.config/omarchy/current/background && -d $HOME/.config/omarchy/current/theme/backgrounds ]]; then
+  background=$(find "$HOME/.config/omarchy/current/theme/backgrounds" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) | sort | head -n1)
+  [[ -n ${background:-} ]] && ln -snf "$background" "$HOME/.config/omarchy/current/background"
+fi
+
+mkdir -p "$HOME/.config/wireplumber/wireplumber.conf.d"
+if [[ -f $root/default/wireplumber/wireplumber.conf.d/bluetooth-a2dp-autoconnect.conf ]]; then
+  cp "$root/default/wireplumber/wireplumber.conf.d/bluetooth-a2dp-autoconnect.conf" "$HOME/.config/wireplumber/wireplumber.conf.d/"
+fi
+
+enable_user_unit() {
+  local unit="$1" unit_path="$HOME/.config/systemd/user/$1" target
+  local -a targets=()
+  [[ -f $unit_path ]] || return 0
+  mapfile -t targets < <(awk -F= '
+    /^\[Install\]/ { in_install=1; next }
+    /^\[/ { in_install=0 }
+    in_install && $1 == "WantedBy" {
+      n=split($2, values, /[[:space:]]+/)
+      for (i = 1; i <= n; i++) if (values[i] != "") print values[i]
+    }
+  ' "$unit_path")
+  ((${#targets[@]})) || targets=(default.target)
+  for target in "${targets[@]}"; do
+    mkdir -p "$HOME/.config/systemd/user/$target.wants"
+    ln -sfn "../$unit" "$HOME/.config/systemd/user/$target.wants/$unit"
+  done
+}
+enable_user_unit bt-agent.service
+enable_user_unit omarchy-sleep-lock.service
+mkdir -p "$HOME/.config/systemd/user/default.target.wants"
+for unit in pipewire-pulse.service pipewire-pulse.socket; do
+  if [[ -e /usr/lib/systemd/user/$unit ]]; then
+    ln -sfn "/usr/lib/systemd/user/$unit" "$HOME/.config/systemd/user/default.target.wants/$unit"
+  fi
+done
+
+keyring_dir="$HOME/.local/share/keyrings"
+keyring_file="$keyring_dir/Default_keyring.keyring"
+default_file="$keyring_dir/default"
+mkdir -p "$keyring_dir"
+if [[ ! -f $keyring_file ]]; then
+  cat >"$keyring_file" <<EOF
+[keyring]
+display-name=Default keyring
+ctime=$(date +%s)
+mtime=0
+lock-on-idle=false
+lock-after=false
+EOF
+fi
+if [[ ! -f $default_file ]]; then
+  printf 'Default_keyring\n' >"$default_file"
+fi
+chmod 700 "$keyring_dir"
+chmod 600 "$keyring_file"
+chmod 644 "$default_file"
+
+mkdir -p "$HOME/.local/share/applications"
+rm -f "$HOME/.config/autostart/walker.desktop"
+rm -rf "$HOME/.config/elephant" "$HOME/.config/makima" "$HOME/.config/wiremix"
+rm -rf "$HOME/.config/systemd/user/app-walker@autostart.service.d"
+rm -f \
+  "$HOME/.config/systemd/user/omarchy-battery-monitor.service" \
+  "$HOME/.config/systemd/user/omarchy-battery-monitor.timer" \
+  "$HOME/.config/systemd/user/omarchy-shell.service" \
+  "$HOME/.config/systemd/user/swayosd-server.service" \
+  "$HOME/.config/systemd/user/elephant.service"
+rm -f \
+  "$HOME/.local/state/omarchy/toggles/mako.ini" \
+  "$HOME/.local/state/omarchy/toggles/waybar-off" \
+  "$HOME/.local/state/omarchy/toggles/hyprlock.conf" \
+  "$HOME/.local/state/omarchy/toggles/lock.conf" \
+  "$HOME/.local/state/omarchy/toggles/hypr/rounded-corners.lua"
+
+for desktop in \
+  About.desktop \
+  Activity.desktop \
+  Alacritty.desktop \
+  Cliamp.desktop \
+  blueberry.desktop \
+  nvim.desktop \
+  omarchy.desktop \
+  org.pulseaudio.pavucontrol.desktop \
+  vlc.desktop \
+  wiremix.desktop; do
+  rm -f "$HOME/.local/share/applications/$desktop"
+done
+
+legacy_icons_dir="$HOME/.local/share/applications/icons"
+legacy_icons_backup="$HOME/.local/share/applications/icons.omarchy-upgrade-to-4.$BACKUP_SUFFIX.bak"
+if [[ -d $legacy_icons_dir ]]; then
+  mkdir -p "$legacy_icons_backup"
+  for icon in \
+    Basecamp.png \
+    Battle.net.png \
+    ChatGPT.png \
+    Cliamp.png \
+    Discord.png \
+    "Disk Usage.png" \
+    Docker.png \
+    Figma.png \
+    Fizzy.png \
+    GitHub.png \
+    "Google Contacts.png" \
+    "Google Maps.png" \
+    "Google Messages.png" \
+    "Google Photos.png" \
+    HEY.png \
+    imv.png \
+    "Retro Gaming.png" \
+    WhatsApp.png \
+    windows.png \
+    X.png \
+    YouTube.png \
+    Zoom.png; do
+    if [[ -e $legacy_icons_dir/$icon ]]; then
+      mv -f "$legacy_icons_dir/$icon" "$legacy_icons_backup/"
+    fi
+  done
+  rmdir "$legacy_icons_dir" 2>/dev/null || true
+  rmdir "$legacy_icons_backup" 2>/dev/null || true
+fi
+
+if [[ -d $root/applications ]]; then
+  find "$root/applications" -maxdepth 1 -type f -name '*.desktop' -exec cp -f {} "$HOME/.local/share/applications/" \;
+fi
+if [[ -f $root/default/alacritty/Alacritty.desktop && ! -f $HOME/.local/share/applications/Alacritty.desktop ]]; then
+  cp "$root/default/alacritty/Alacritty.desktop" "$HOME/.local/share/applications/"
+fi
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
+fi
+if command -v xdg-settings >/dev/null 2>&1; then
+  xdg-settings set default-web-browser chromium.desktop || true
+fi
+if command -v xdg-mime >/dev/null 2>&1; then
+  xdg-mime default HEY.desktop x-scheme-handler/mailto || true
+fi
+
+touch "$state_dir/setup-user.done"
+USER_SETUP
 }
 
 configure_pacman_channel
 install_keyrings
 remove_legacy_installer_package
+remove_conflicting_legacy_packages
 install_omarchy_4_packages
 cleanup_legacy_user_paths
-run_omarchy_4_setup
+apply_system_transition
+apply_user_transition
 cleanup_retired_services
 remove_retired_default_packages
 
