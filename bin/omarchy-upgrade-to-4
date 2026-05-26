@@ -111,6 +111,7 @@ target_home=$(getent passwd "$target_user" | cut -d: -f6)
 [[ -n $target_home && -d $target_home ]] || fail "Home directory for '$target_user' was not found."
 target_uid=$(id -u "$target_user")
 target_runtime_dir="/run/user/$target_uid"
+package_path="/usr/share/omarchy/bin:/usr/local/bin:/usr/bin:/bin:$target_home/.local/bin"
 
 as_root() {
   if (( EUID == 0 )); then
@@ -306,11 +307,28 @@ EOF
   fi
 fi
 
+sudo_keepalive_pid=""
+hyprland_config_reload_suppressed=0
+
+cleanup_on_exit() {
+  local exit_status=$?
+
+  if (( hyprland_config_reload_suppressed )) && declare -F restore_hyprland_config_reload >/dev/null; then
+    restore_hyprland_config_reload >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n ${sudo_keepalive_pid:-} ]]; then
+    kill "$sudo_keepalive_pid" 2>/dev/null || true
+  fi
+
+  exit "$exit_status"
+}
+trap cleanup_on_exit EXIT
+
 if (( EUID != 0 )); then
   sudo -v
   while true; do sudo -n true; sleep 60; done 2>/dev/null &
   sudo_keepalive_pid=$!
-  trap 'kill "$sudo_keepalive_pid" 2>/dev/null || true' EXIT
 fi
 
 backup_suffix=$(date +%Y%m%d%H%M%S)
@@ -539,21 +557,40 @@ remove_retired_default_packages() {
 
 cleanup_legacy_user_paths() {
   log "Cleaning legacy user command shims"
-  run_as_user env TARGET_HOME="$target_home" bash <<'USER_CLEANUP'
+  run_as_user env TARGET_HOME="$target_home" BACKUP_SUFFIX="$backup_suffix" bash <<'USER_CLEANUP'
 set -euo pipefail
 local_bin="$TARGET_HOME/.local/bin"
-legacy_root="$TARGET_HOME/.local/share/omarchy/bin/"
-[[ -d $local_bin ]] || exit 0
-shopt -s nullglob
-for link in "$local_bin"/omarchy*; do
-  [[ -L $link ]] || continue
-  target=$(readlink "$link" || true)
-  case "$target" in
-    "$legacy_root"*|../share/omarchy/bin/*|*.local/share/omarchy/bin/*)
-      rm -f "$link"
-      ;;
-  esac
-done
+legacy_root="$TARGET_HOME/.local/share/omarchy"
+legacy_bin="$legacy_root/bin/"
+if [[ -d $local_bin ]]; then
+  shopt -s nullglob
+  for link in "$local_bin"/omarchy*; do
+    [[ -L $link ]] || continue
+    target=$(readlink "$link" || true)
+    case "$target" in
+      "$legacy_bin"*|../share/omarchy/bin/*|*.local/share/omarchy/bin/*)
+        rm -f "$link"
+        ;;
+    esac
+  done
+fi
+
+# Existing terminals still have OMARCHY_PATH=$HOME/.local/share/omarchy and
+# often have $OMARCHY_PATH/bin early in PATH. Make that stale path resolve to
+# the package-backed tree for the rest of the live session, while backing up
+# the old git checkout for inspection/rollback.
+if [[ -e /usr/share/omarchy ]]; then
+  mkdir -p "$TARGET_HOME/.local/share"
+  if [[ -L $legacy_root ]]; then
+    ln -sfn /usr/share/omarchy "$legacy_root"
+  elif [[ -e $legacy_root ]]; then
+    backup="$legacy_root.omarchy-upgrade-to-4.$BACKUP_SUFFIX.bak"
+    mv "$legacy_root" "$backup"
+    ln -sfn /usr/share/omarchy "$legacy_root"
+  else
+    ln -sfn /usr/share/omarchy "$legacy_root"
+  fi
+fi
 USER_CLEANUP
 }
 
@@ -638,9 +675,17 @@ start_omarchy_shell_session() {
   # Reboot is still the real cutover, but start the new shell in the current
   # Wayland session when possible so users do not sit without a bar after the
   # retired waybar/walker/elephant processes are stopped.
-  command -v quickshell >/dev/null 2>&1 || { warn "quickshell is not available; Omarchy shell will start after reboot."; return 1; }
-  [[ -d /usr/share/omarchy/shell ]] || { warn "/usr/share/omarchy/shell is missing; Omarchy shell will start after reboot."; return 1; }
+  local quickshell_bin omarchy_shell_bin shell_log
+  quickshell_bin=$(command -v quickshell || true)
+  [[ -n $quickshell_bin ]] || { warn "quickshell is not available; Omarchy shell will start after reboot."; return 1; }
+  omarchy_shell_bin=/usr/bin/omarchy-shell
+  [[ -x $omarchy_shell_bin ]] || omarchy_shell_bin=$(command -v omarchy-shell || true)
+  [[ -n $omarchy_shell_bin ]] || { warn "omarchy-shell is not available; Omarchy shell will start after reboot."; return 1; }
+  [[ -f /usr/share/omarchy/shell/shell.qml ]] || { warn "/usr/share/omarchy/shell is missing; Omarchy shell will start after reboot."; return 1; }
   [[ -d $target_runtime_dir ]] || { warn "No running user session found; Omarchy shell will start after reboot."; return 1; }
+
+  shell_log="$target_home/.local/state/omarchy/omarchy-shell-upgrade.log"
+  run_as_user mkdir -p "$target_home/.local/state/omarchy" >/dev/null 2>&1 || true
 
   local wayland_display hyprland_signature
   wayland_display=$(discover_wayland_display || true)
@@ -661,20 +706,27 @@ start_omarchy_shell_session() {
     XDG_CURRENT_DESKTOP=Hyprland \
     XDG_SESSION_DESKTOP=Hyprland \
     XDG_SESSION_TYPE=wayland \
+    QT_QPA_PLATFORM=wayland \
+    GDK_BACKEND=wayland,x11,* \
     DESKTOP_SESSION=hyprland \
     OMARCHY_PATH=/usr/share/omarchy \
-    PATH="/usr/share/omarchy/bin:$PATH" \
+    PATH="$package_path" \
     bash -c '
-      if [[ $(omarchy-shell lock isLocked 2>/dev/null || true) == "true" ]]; then
+      omarchy_shell_bin=$1
+      quickshell_bin=$2
+      shell_log=$3
+      if [[ $("$omarchy_shell_bin" lock isLocked 2>/dev/null || true) == "true" ]]; then
         exit 2
       fi
       pkill -x quickshell 2>/dev/null || true
       sleep 0.2
-      setsid quickshell -n -p /usr/share/omarchy/shell >/dev/null 2>&1 &
-    ' || { warn "Could not start Omarchy shell in the current session; it will start after reboot."; return 1; }
+      : >"$shell_log"
+      setsid "$quickshell_bin" -n -p /usr/share/omarchy/shell >>"$shell_log" 2>&1 &
+    ' bash "$omarchy_shell_bin" "$quickshell_bin" "$shell_log" \
+    || { warn "Could not start Omarchy shell in the current session; it will start after reboot. See $shell_log"; return 1; }
 
   local attempt
-  for attempt in {1..20}; do
+  for attempt in {1..60}; do
     if run_as_user env \
       HOME="$target_home" \
       USER="$target_user" \
@@ -682,15 +734,90 @@ start_omarchy_shell_session() {
       XDG_RUNTIME_DIR="$target_runtime_dir" \
       DBUS_SESSION_BUS_ADDRESS="unix:path=$target_runtime_dir/bus" \
       OMARCHY_PATH=/usr/share/omarchy \
-      PATH="/usr/share/omarchy/bin:$PATH" \
-      omarchy-shell shell ping >/dev/null 2>&1; then
+      PATH="$package_path" \
+      "$omarchy_shell_bin" shell ping >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.25
   done
 
-  warn "Omarchy shell did not respond in the current session; it will start after reboot."
+  warn "Omarchy shell did not respond in the current session; it will start after reboot. See $shell_log"
   return 1
+}
+
+run_hyprctl_session() {
+  local wayland_display hyprland_signature hyprctl_bin
+  [[ -d $target_runtime_dir ]] || return 1
+
+  hyprctl_bin=/usr/bin/hyprctl
+  [[ -x $hyprctl_bin ]] || hyprctl_bin=$(command -v hyprctl || true)
+  [[ -n $hyprctl_bin ]] || return 1
+
+  wayland_display=$(discover_wayland_display || true)
+  [[ -n $wayland_display ]] || return 1
+
+  hyprland_signature=$(discover_hyprland_signature || true)
+  [[ -n $hyprland_signature ]] || return 1
+
+  run_as_user env \
+    HOME="$target_home" \
+    USER="$target_user" \
+    LOGNAME="$target_user" \
+    XDG_RUNTIME_DIR="$target_runtime_dir" \
+    WAYLAND_DISPLAY="$wayland_display" \
+    HYPRLAND_INSTANCE_SIGNATURE="$hyprland_signature" \
+    DBUS_SESSION_BUS_ADDRESS="unix:path=$target_runtime_dir/bus" \
+    XDG_CURRENT_DESKTOP=Hyprland \
+    XDG_SESSION_DESKTOP=Hyprland \
+    XDG_SESSION_TYPE=wayland \
+    DESKTOP_SESSION=hyprland \
+    OMARCHY_PATH=/usr/share/omarchy \
+    PATH="$package_path" \
+    "$hyprctl_bin" "$@"
+}
+
+suppress_hyprland_config_reload() {
+  log "Suppressing live Hyprland reloads during the config swap"
+
+  local changed=0
+  if run_hyprctl_session keyword misc:disable_autoreload true >/dev/null 2>&1; then
+    changed=1
+  fi
+  if run_hyprctl_session eval 'hl.config({ misc = { disable_autoreload = true }, debug = { suppress_errors = true } })' >/dev/null 2>&1; then
+    changed=1
+  fi
+  run_hyprctl_session keyword debug:suppress_errors true >/dev/null 2>&1 || true
+
+  if (( changed )); then
+    hyprland_config_reload_suppressed=1
+  else
+    warn "Could not disable Hyprland auto-reload; the live session may briefly report config errors."
+  fi
+}
+
+restore_hyprland_config_reload() {
+  (( hyprland_config_reload_suppressed )) || return 0
+
+  run_hyprctl_session keyword misc:disable_autoreload false >/dev/null 2>&1 || true
+  run_hyprctl_session eval 'hl.config({ misc = { disable_autoreload = false } })' >/dev/null 2>&1 || true
+  run_hyprctl_session keyword debug:suppress_errors false >/dev/null 2>&1 || true
+  run_hyprctl_session eval 'hl.config({ debug = { suppress_errors = false } })' >/dev/null 2>&1 || true
+  hyprland_config_reload_suppressed=0
+}
+
+reload_hyprland_config_after_upgrade() {
+  log "Reloading Hyprland config with a full reset"
+
+  if run_hyprctl_session reload full-reset >/dev/null 2>&1; then
+    restore_hyprland_config_reload
+    return 0
+  fi
+
+  warn "hyprctl reload full-reset failed; trying a regular Hyprland reload. If this session is still running an older Hyprland, reboot will complete the cutover."
+  if ! run_hyprctl_session reload >/dev/null 2>&1; then
+    warn "Could not reload the live Hyprland session; the new config will load after reboot."
+  fi
+  restore_hyprland_config_reload
 }
 
 enable_system_service() {
@@ -1089,9 +1216,11 @@ remove_conflicting_legacy_packages
 install_omarchy_4_packages
 cleanup_legacy_user_paths
 apply_system_transition
+suppress_hyprland_config_reload
 apply_user_transition
 cleanup_retired_services
 remove_retired_default_packages
+reload_hyprland_config_after_upgrade
 if start_omarchy_shell_session; then
   stop_retired_session_processes
 else
@@ -1102,8 +1231,8 @@ cat <<EOF
 
 Omarchy 4 upgrade complete.
 
-IMPORTANT: Review the output above before rebooting. If there are ANY errors
-above, do not reboot yet; fix the errors or ask for help first.
+IMPORTANT: Review the output above before rebooting.
+DO NOT REBOOT IF THERE ARE ERRORS above; fix the errors or ask for help first.
 
 A reboot is required to finish switching to the package-backed Omarchy 4 session.
 EOF
