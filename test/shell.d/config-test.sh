@@ -94,6 +94,56 @@ migration=$(grep -rl 'Place the system update indicator next to weather in the b
 
 TMPDIR=$(mktemp -d)
 mkdir -p "$TMPDIR/home/.config/omarchy"
+
+cat >"$TMPDIR/home/.config/omarchy/shell.json" <<'JSON'
+{
+  "version": 1,
+  "bar": {
+    "layout": {
+      "left": [{ "id": "omarchy.menu" }, { "id": "omarchy.workspaces" }],
+      "center": [{ "id": "omarchy.clock" }, { "id": "omarchy.weather" }],
+      "right": [{ "id": "omarchy.tray" }, { "id": "omarchy.bluetooth" }]
+    }
+  },
+  "plugins": []
+}
+JSON
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell append right omarchy.tailscale
+jq -e '
+  def ids: map(.id // .);
+  .bar.layout.right | ids == ["omarchy.tray", "omarchy.tailscale", "omarchy.bluetooth"]
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config appends right widgets after tray"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell append left local.left
+jq -e '
+  def ids: map(.id // .);
+  .bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces", "local.left"]
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config appends left widgets after workspaces"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell append center local.center
+jq -e '
+  def ids: map(.id // .);
+  .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "local.center"]
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config appends center widgets after weather"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell prepend right local.first
+jq -e '
+  def ids: map(.id // .);
+  .bar.layout.right | ids == ["local.first", "omarchy.tray", "omarchy.tailscale", "omarchy.bluetooth"]
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config prepends widgets to section start"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell append right local.first
+jq -e '
+  def ids: map(.id // .);
+  .bar.layout.right | ids == ["omarchy.tray", "local.first", "omarchy.tailscale", "omarchy.bluetooth"]
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config moves existing widgets without duplicates"
+
 cat >"$TMPDIR/home/.config/omarchy/shell.json" <<'JSON'
 {
   "version": 1,

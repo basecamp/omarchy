@@ -13,4 +13,7 @@ sudo tailscale up --accept-routes
 echo -e "\nAllowing $USER to manage Tailscale..."
 sudo tailscale set --operator="$USER"
 
+echo -e "\nAdding Tailscale to the bar..."
+omarchy-config-shell append right omarchy.tailscale
+
 omarchy-webapp-install "Tailscale" "https://login.tailscale.com/admin/machines" https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/tailscale-light.png

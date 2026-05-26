@@ -68,7 +68,7 @@ Example `shell.json` (bar subtree only shown):
 
 | `omarchy.audio` | Volume icon + popup with master slider, output-device picker, per-app mixer | left = popup · right = mute · middle = popup · scroll = volume |
 | `omarchy.network` | Wi-Fi/Ethernet icon + popup with Wi-Fi scan, signal, connect, DNS provider selection | left = popup · right = nmtui |
-| `omarchy.tailscale` | Tailscale status, account switcher, peer browser, and copy actions | left = popup · right = toggle · middle = refresh |
+| `omarchy.tailscale` | Tailscale status, connection switcher, machine browser, and copy actions | left = popup · right = toggle · middle = refresh |
 | `omarchy.power` | Battery/AC icon + popup with battery stats, power profiles, and system info | left = popup |
 | `omarchy.bluetooth` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio · middle = bluetoothctl TUI |
 | `omarchy.monitor` | Brightness and laptop display controls | left = popup |
