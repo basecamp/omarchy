@@ -18,6 +18,7 @@ Panel {
   property int peerIndex: 0
   property int exitNodeIndex: 0
   property bool cursorActive: false
+  property bool copyMenuOpen: false
   property int phraseIndex: 0
   readonly property var activePhrases: [
     "Encrypting connections",
@@ -129,7 +130,7 @@ Panel {
       var account = selectedAccount()
       if (account) tailscale.switchAccount(account.id)
     } else if (focusSection === "peers") {
-      tailscale.copyPeerIp(selectedPeer())
+      openSelectedPeerCopyMenu()
     } else if (focusSection === "exitNodes") {
       tailscale.setExitNode(selectedExitNode())
     }
@@ -161,6 +162,12 @@ Panel {
     focusSection = "peers"
     peerIndex = index
     scrollCursorIntoView()
+  }
+
+  function openSelectedPeerCopyMenu() {
+    if (!peerColumn || peerIndex < 0 || peerIndex >= peerColumn.children.length) return
+    var item = peerColumn.children[peerIndex]
+    if (item && item.openCopyMenu) item.openCopyMenu()
   }
 
   function setExitNodeCursor(index) {
@@ -224,7 +231,7 @@ Panel {
   Item {
     id: button
     anchors.fill: parent
-    implicitWidth: root.bar && root.bar.vertical ? root.bar.barSize : Style.space(26)
+    implicitWidth: root.bar && root.bar.vertical ? root.bar.barSize : Style.space(32)
     implicitHeight: root.bar && root.bar.vertical ? Style.space(26) : (root.bar ? root.bar.barSize : Style.space(26))
 
     property var registeredBar: null
@@ -282,6 +289,7 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
+      blocked: root.copyMenuOpen
       onMoveRequested: function(dx, dy) {
         if (!root.cursorActive) { root.cursorActive = true; return }
         root.moveCursor(dx, dy)
@@ -626,16 +634,14 @@ Panel {
         width: Style.space(22)
         horizontalAlignment: Text.AlignHCenter
         anchors.verticalCenter: parent.verticalCenter
+        opacity: accountRow.switchingAccount ? 0.45 : 1.0
 
-        NumberAnimation on rotation {
+        SequentialAnimation on opacity {
           running: accountRow.switchingAccount
-          from: 0
-          to: 360
-          duration: 900
+          NumberAnimation { to: 1.0; duration: 420; easing.type: Easing.InOutQuad }
+          NumberAnimation { to: 0.45; duration: 420; easing.type: Easing.InOutQuad }
           loops: Animation.Infinite
         }
-
-        onRotationChanged: if (!accountRow.switchingAccount && rotation !== 0) rotation = 0
       }
 
       Text {
@@ -670,11 +676,49 @@ Panel {
       return String(peer.TailscaleIPv6[0] || "")
     }
     readonly property string peerDns: peer ? String(peer.DNSName || "") : ""
+    readonly property var copyOptions: {
+      var options = []
+      if (peerName !== "") options.push({ kind: "name", label: peerName })
+      if (peerDns !== "") options.push({ kind: "dns", label: peerDns })
+      if (peerIpv6 !== "") options.push({ kind: "ipv6", label: peerIpv6 })
+      if (peerIp !== "") options.push({ kind: "ip", label: peerIp })
+      return options
+    }
+    property int copyIndex: 0
 
     hasCursor: root.cursorActive && root.focusSection === "peers" && root.peerIndex === rowIndex
     foreground: root.foreground
 
     implicitHeight: Math.max(peerContent.implicitHeight, copyButton.implicitHeight) + Style.spacing.rowPaddingX
+
+    function clampCopyIndex() {
+      copyIndex = Math.max(0, Math.min(copyIndex, copyOptions.length - 1))
+    }
+
+    function openCopyMenu() {
+      if (copyOptions.length === 0) return
+      clampCopyIndex()
+      copyPopup.open()
+    }
+
+    function moveCopyCursor(delta) {
+      if (copyOptions.length === 0) return
+      copyIndex = Math.max(0, Math.min(copyOptions.length - 1, copyIndex + delta))
+    }
+
+    function copyOption(kind) {
+      if (kind === "name") tailscale.copyPeerName(peer)
+      else if (kind === "dns") tailscale.copyPeerDnsName(peer)
+      else if (kind === "ipv6") tailscale.copyToClipboard(peerIpv6, peerName + " IPv6")
+      else if (kind === "ip") tailscale.copyPeerIp(peer)
+      copyPopup.close()
+    }
+
+    function copyCurrentOption() {
+      clampCopyIndex()
+      if (copyOptions.length === 0) return
+      copyOption(copyOptions[copyIndex].kind)
+    }
 
     MouseArea {
       anchors.fill: parent
@@ -736,7 +780,7 @@ Panel {
         fontFamily: root.fontFamily
         enabled: peerRow.peerIp !== "" || peerRow.peerName !== "" || peerRow.peerDns !== "" || peerRow.peerIpv6 !== ""
         Layout.alignment: Qt.AlignVCenter
-        onClicked: copyPopup.open()
+        onClicked: peerRow.openCopyMenu()
       }
 
       Popup {
@@ -748,6 +792,34 @@ Panel {
         modal: false
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onOpenedChanged: {
+          root.copyMenuOpen = opened
+          if (opened) {
+            peerRow.clampCopyIndex()
+            forceActiveFocus()
+          }
+        }
+        Keys.onPressed: function(event) {
+          if (event.key === Qt.Key_Escape) {
+            close()
+            event.accepted = true
+            return
+          }
+          if (event.key === Qt.Key_Down || event.text === "j") {
+            peerRow.moveCopyCursor(1)
+            event.accepted = true
+            return
+          }
+          if (event.key === Qt.Key_Up || event.text === "k") {
+            peerRow.moveCopyCursor(-1)
+            event.accepted = true
+            return
+          }
+          if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+            peerRow.copyCurrentOption()
+            event.accepted = true
+          }
+        }
         background: Rectangle {
           color: Color.background
           border.color: root.dim
@@ -758,43 +830,16 @@ Panel {
         contentItem: Column {
           width: parent.width
 
-          CopyChoice {
-            width: parent.width
-            label: peerRow.peerName
-            enabled: peerRow.peerName !== ""
-            onChosen: {
-              copyPopup.close()
-              tailscale.copyPeerName(peerRow.peer)
-            }
-          }
-
-          CopyChoice {
-            width: parent.width
-            label: peerRow.peerDns
-            enabled: peerRow.peerDns !== ""
-            onChosen: {
-              copyPopup.close()
-              tailscale.copyPeerDnsName(peerRow.peer)
-            }
-          }
-
-          CopyChoice {
-            width: parent.width
-            label: peerRow.peerIpv6
-            enabled: peerRow.peerIpv6 !== ""
-            onChosen: {
-              copyPopup.close()
-              tailscale.copyToClipboard(peerRow.peerIpv6, peerRow.peerName + " IPv6")
-            }
-          }
-
-          CopyChoice {
-            width: parent.width
-            label: peerRow.peerIp
-            enabled: peerRow.peerIp !== ""
-            onChosen: {
-              copyPopup.close()
-              tailscale.copyPeerIp(peerRow.peer)
+          Repeater {
+            model: peerRow.copyOptions
+            CopyChoice {
+              required property var modelData
+              required property int index
+              width: parent.width
+              label: String(modelData.label || "")
+              selected: peerRow.copyIndex === index
+              onHovered: peerRow.copyIndex = index
+              onChosen: peerRow.copyOption(String(modelData.kind || ""))
             }
           }
         }
@@ -805,10 +850,13 @@ Panel {
   component CopyChoice: CursorSurface {
     id: copyChoice
     signal chosen()
+    signal hovered()
     property string label: ""
+    property bool selected: false
 
     visible: enabled
     foreground: root.foreground
+    hasCursor: selected
     implicitHeight: Style.space(48)
     radius: 0
 
@@ -816,6 +864,7 @@ Panel {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
+      onEntered: copyChoice.hovered()
       onClicked: copyChoice.chosen()
     }
 
