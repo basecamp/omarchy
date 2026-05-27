@@ -4,6 +4,7 @@ import Quickshell.Services.SystemTray
 import Quickshell.Widgets
 import qs.Commons
 import qs.Ui
+import "TrayModel.js" as TrayModel
 
 BarWidget {
   id: root
@@ -70,12 +71,18 @@ BarWidget {
     return "drawer"
   }
 
+  function ownedByDedicatedWidget(item) {
+    var layout = root.bar && root.bar.layoutConfig ? root.bar.layoutConfig : null
+    return TrayModel.ownedByDedicatedWidget(item, layout)
+  }
+
   function bucket(category) {
     var values = SystemTray.items.values
     var result = []
     for (var i = 0; i < values.length; i++) {
       var item = values[i]
       if (item.status === Status.Passive) continue
+      if (ownedByDedicatedWidget(item)) continue
       if (category === "all") {
         result.push(item)
         continue
