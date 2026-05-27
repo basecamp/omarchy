@@ -5,8 +5,9 @@
   "spacing": 0,
   "height": 26,
   "modules-left": ["custom/omarchy", "hyprland/workspaces", "hyprland/window"],
-  "modules-center": ["clock", "custom/update", "custom/screenrecording-indicator", "custom/idle-indicator", "custom/notification-silencing-indicator"],
+  "modules-center": ["clock", "custom/update", "custom/voxtype", "custom/screenrecording-indicator", "custom/idle-indicator", "custom/notification-silencing-indicator"],
   "modules-right": [
+    "mpris",
     "tray",
     "custom/weather",
     "memory",
@@ -108,18 +109,6 @@
       "default": ["", "", ""]
     }
   },
-  "group/tray-expander": {
-    "orientation": "inherit",
-    "drawer": {
-      "transition-duration": 600,
-      "children-class": "tray-group-item"
-    },
-    "modules": ["custom/expand-icon", ]
-  },
-  "custom/expand-icon": {
-    "format": "",
-    "tooltip": false
-  },
   "custom/screenrecording-indicator": {
     "on-click": "omarchy-capture-screenrecording",
     "exec": "$OMARCHY_PATH/default/waybar/indicators/screen-recording.sh",
@@ -138,6 +127,19 @@
     "signal": 10,
     "return-type": "json"
   },
+  "custom/voxtype": {
+    "exec": "omarchy-voxtype-status",
+    "return-type": "json",
+    "format": "{icon}",
+    "format-icons": {
+      "idle": "",
+      "recording": "󰍬",
+      "transcribing": "󰔟"
+    },
+    "tooltip": true,
+    "on-click-right": "omarchy-voxtype-config",
+    "on-click": "omarchy-voxtype-model"
+  },
   "tray": {
     "icon-size": 14,
     "spacing": 6
@@ -155,7 +157,7 @@
     "format": "{}°",
     "tooltip": true,
     "interval": 600,
-    "exec": "omarchy-cmd-present wttrbar && wttrbar || true",
+    "exec": "wttrbar --nerd --location Changchun",
     "return-type": "json"
   },
   "mpris": {

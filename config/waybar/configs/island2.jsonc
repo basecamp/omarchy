@@ -4,54 +4,67 @@
   "position": "top",
   "spacing": 0,
   "height": 26,
-  "modules-left": ["group/left1", "group/left2"],
-  
+  "modules-left": [
+    "group/left1",
+    "group/left2"
+  ],
   "group/left1": {
     "orientation": "inherit",
     "modules": [
-    "custom/omarchy",
-    "hyprland/workspaces"
-  ]
+      "custom/omarchy",
+      "hyprland/workspaces"
+    ]
   },
   "group/left2": {
     "orientation": "inherit",
-    "modules": ["hyprland/window"]
+    "modules": [
+      "hyprland/window"
+    ]
   },
-  "modules-center": ["clock", "custom/update", "custom/screenrecording-indicator", "custom/idle-indicator", "custom/notification-silencing-indicator"],
+  "modules-center": [
+    "clock",
+    "custom/update",
+    "custom/voxtype",
+    "custom/screenrecording-indicator",
+    "custom/idle-indicator",
+    "custom/notification-silencing-indicator"
+  ],
   "modules-right": [
     "group/right1",
     "group/right2",
     "group/right3"
   ],
-"group/right3": {
+  "group/right3": {
     "orientation": "inherit",
     "modules": [
-    "backlight",
-    "network",
-    "bluetooth",
-    "pulseaudio",
-    "cpu",
-    "battery"
-  ]
+      "backlight",
+      "network",
+      "bluetooth",
+      "pulseaudio",
+      "cpu",
+      "battery"
+    ]
   },
   "group/right2": {
     "orientation": "inherit",
     "modules": [
-    "tray",
-    "memory",
-    "custom/weather"
-  ]
+      "tray",
+      "memory",
+      "custom/weather"
+    ]
   },
-    "group/right1": {
+  "group/right1": {
     "orientation": "inherit",
-    "modules": ["mpris"]
+    "modules": [
+      "mpris"
+    ]
   },
   "hyprland/workspaces": {
     "disable-scroll": true,
     "all-outputs": true,
     "cursor": true,
     "format": "{icon}",
-      "persistent-workspaces": {
+    "persistent-workspaces": {
       "*": 5
     }
   },
@@ -82,7 +95,13 @@
     "on-click-right": "omarchy-launch-floating-terminal-with-presentation omarchy-tz-select"
   },
   "network": {
-    "format-icons": ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"],
+    "format-icons": [
+      "󰤯",
+      "󰤟",
+      "󰤢",
+      "󰤥",
+      "󰤨"
+    ],
     "format": "{icon} {essid}",
     "format-wifi": "{icon} {essid}",
     "format-ethernet": "󰀂",
@@ -100,8 +119,30 @@
     "format-charging": "{capacity}% {icon}",
     "format-plugged": "",
     "format-icons": {
-      "charging": ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"],
-      "default": ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
+      "charging": [
+        "󰢜",
+        "󰂆",
+        "󰂇",
+        "󰂈",
+        "󰢝",
+        "󰂉",
+        "󰢞",
+        "󰂊",
+        "󰂋",
+        "󰂅"
+      ],
+      "default": [
+        "󰁺",
+        "󰁻",
+        "󰁼",
+        "󰁽",
+        "󰁾",
+        "󰁿",
+        "󰂀",
+        "󰂁",
+        "󰂂",
+        "󰁹"
+      ]
     },
     "format-full": "󰂅",
     "tooltip-format-discharging": "{power:>1.0f}W↓ {capacity}%",
@@ -133,7 +174,11 @@
     "format-icons": {
       "headphone": "",
       "headset": "",
-      "default": ["", "", ""]
+      "default": [
+        "",
+        "",
+        ""
+      ]
     }
   },
   "group/tray-expander": {
@@ -142,7 +187,9 @@
       "transition-duration": 600,
       "children-class": "tray-group-item"
     },
-    "modules": ["custom/expand-icon", ]
+    "modules": [
+      "custom/expand-icon",
+    ]
   },
   "custom/expand-icon": {
     "format": "",
@@ -166,13 +213,32 @@
     "signal": 10,
     "return-type": "json"
   },
+  "custom/voxtype": {
+    "exec": "omarchy-voxtype-status",
+    "return-type": "json",
+    "format": "{icon}",
+    "format-icons": {
+      "idle": "",
+      "recording": "󰍬",
+      "transcribing": "󰔟"
+    },
+    "tooltip": true,
+    "on-click-right": "omarchy-voxtype-config",
+    "on-click": "omarchy-voxtype-model"
+  },
   "tray": {
     "icon-size": 14,
     "spacing": 6
   },
   "backlight": {
     "format": "{percent}% {icon}",
-    "format-icons": ["🌑", "🌘", "🌗", "🌖", "🌕"]
+    "format-icons": [
+      "🌑",
+      "🌘",
+      "🌗",
+      "🌖",
+      "🌕"
+    ]
   },
   "memory": {
     "format": " {used:0.1f}gb",
@@ -183,13 +249,15 @@
     "format": "{}°",
     "tooltip": true,
     "interval": 600,
-    "exec": "omarchy-cmd-present wttrbar && wttrbar || true",
+    "exec": "wttrbar --nerd --location Changchun",
     "return-type": "json"
   },
   "mpris": {
     "format": "{player_icon} {artist} - {title}",
     "format-paused": "{status_icon} <i>{artist} - {title}</i>",
-    "ignored-players": ["chromium"],
+    "ignored-players": [
+      "chromium"
+    ],
     "max-length": 35,
     "player-icons": {
       "default": "🎵",
@@ -202,5 +270,5 @@
   "hyprland/window": {
     "format": "{}",
     "max-length": 45
-  },
+  }
 }
