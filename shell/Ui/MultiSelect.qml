@@ -332,7 +332,7 @@ Item {
       QQC.Popup {
         id: popup
         // Reparent to the window's content item so the popup is free of any
-        // clipping ancestor (e.g. the bar settings dialog Flickable). Position
+        // clipping ancestor. Position
         // and available height are recomputed on open and any time the
         // trigger's geometry changes, since a binding on mapToItem alone
         // won't reliably re-evaluate when ancestors scroll or resize.

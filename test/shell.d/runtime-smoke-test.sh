@@ -95,7 +95,7 @@ done
 
 jq -e '
   map(.id) as $ids |
-  all(["omarchy.menu", "omarchy.settings", "omarchy.notifications", "omarchy.clock"][]; $ids | index(.)) and
+  all(["omarchy.menu", "omarchy.notifications", "omarchy.clock", "omarchy.osd"][]; $ids | index(.)) and
   all(.[]; (.kinds | type == "array") and (.enabled | type == "boolean") and (.firstParty | type == "boolean"))
 ' <<<"$plugins" >/dev/null || {
   printf 'Plugins:\n%s\n' "$plugins" | jq . >&2
@@ -115,8 +115,7 @@ jq -e '
 }
 pass "shell IPC returns effective shell config"
 
-[[ $(shell_ipc shell summon omarchy.settings "{}") == "ok" ]] || fail_with_log "shell IPC summons settings panel"
-shell_ipc_quiet shell hide omarchy.settings >/dev/null
+[[ $(shell_ipc shell openBarConfig) == "ok" ]] || fail_with_log "shell IPC opens bar config panel"
 [[ $(shell_ipc shell summon omarchy.launcher '{"query":"term"}') == "ok" ]] || fail_with_log "shell IPC summons launcher overlay"
 shell_ipc_quiet shell hide omarchy.launcher >/dev/null
 [[ $(shell_ipc shell summon missing.plugin "{}") == "unknown" ]] || fail_with_log "shell IPC rejects unknown plugin"

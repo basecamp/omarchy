@@ -1,5 +1,5 @@
 #!/bin/bash
 
-# omarchy:summary=Launch the Omarchy bar settings panel
+# omarchy:summary=Open the Omarchy bar config panel
 
-exec omarchy-shell shell summon omarchy.settings "{}"
+exec omarchy-shell shell openBarConfig

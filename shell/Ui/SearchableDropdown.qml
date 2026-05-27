@@ -5,7 +5,7 @@ import qs.Commons
 // Searchable single-select dropdown. Same trigger shape as Dropdown, but
 // the popup leads with an embedded TextField that filters the option
 // list in real time. Use for pickers with enough options that scanning
-// is friction (e.g. bar settings "+ Add widget").
+// is friction.
 //
 // Filtering is case-insensitive substring against each option's label.
 // Options can be string[] or [{ value, label, description? }] — the same

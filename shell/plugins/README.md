@@ -12,7 +12,6 @@ User-installed plugins live alongside these conceptually but on disk under
 | Plugin        | id                        | kinds                   | entry point                           |
 |---------------|---------------------------|-------------------------|---------------------------------------|
 | Bar           | `omarchy.bar`             | `bar`                   | `bar/Bar.qml`                         |
-| Bar settings  | `omarchy.settings`        | `panel`                 | `settings/SettingsPanel.qml`          |
 | Launcher      | `omarchy.launcher`        | `overlay`               | `launcher/Launcher.qml`               |
 | Image picker  | `omarchy.image-picker`    | `overlay`               | `image-picker/ImagePicker.qml`        |
 | Emojis        | `omarchy.emojis`          | `overlay`               | `emojis/Emojis.qml`                   |
@@ -45,17 +44,6 @@ top-level `bar:` subtree of `~/.config/omarchy/shell.json` (with the shell
 providing [`config/omarchy/shell.json`](../../config/omarchy/shell.json) when
 the user has no file). See [`bar/README.md`](bar/README.md) for the widget catalogue
 and customization schema.
-
-## Bar settings
-
-Visual editor for the bar layout. Summoned by
-`omarchy-shell shell summon omarchy.settings "{}"` (which is what
-`omarchy launch bar settings` ultimately calls). Provides:
-
-- bar position and center-anchor controls
-- per-section add/move/remove/edit of bar widget entries
-- dynamic per-widget settings forms that write inline back to the
-  corresponding shell.json entry
 
 ## Launcher
 
