@@ -39,14 +39,7 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property bool showConnections: tailscale.accounts.length > 1 || tailscale.accountsAccessDenied
   readonly property bool showPeers: tailscale.running && tailscale.peers.length > 0
-  readonly property var exitNodes: {
-    var nodes = []
-    for (var i = 0; i < tailscale.peers.length; i++) {
-      var peer = tailscale.peers[i]
-      if (peer && peer.ExitNodeOption === true) nodes.push(peer)
-    }
-    return nodes
-  }
+  readonly property var exitNodes: tailscale.exitNodes
   readonly property bool showExitNodes: tailscale.running && exitNodes.length > 0
   readonly property color iconColor: tailscale.running ? foreground : dim
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
@@ -877,7 +870,7 @@ Panel {
 
       Text {
         id: exitNodeGlyph
-        text: tailscale.osIcon(peer ? peer.OS : "")
+        text: "󱇢"
         color: exitNodeRow.activeExitNode || exitNodeRow.settingExitNode ? root.foreground : root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
