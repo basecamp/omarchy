@@ -25,6 +25,7 @@ User-installed plugins live alongside these conceptually but on disk under
 | Network       | `omarchy.network`         | `bar-widget`            | `panels/network/Panel.qml`            |
 | Power         | `omarchy.power`           | `bar-widget`            | `panels/power/Panel.qml`              |
 | Tailscale     | `omarchy.tailscale`       | `bar-widget`            | `panels/tailscale/Panel.qml`          |
+| Model usage   | `omarchy.model-usage`     | `bar-widget`            | `model-usage/Widget.qml`              |
 | Weather       | `omarchy.weather`         | `bar-widget`            | `panels/weather/BarWidget.qml`        |
 | Media         | `omarchy.media`           | `service`, `bar-widget` | `services/media/Service.qml`, `services/media/BarWidget.qml` |
 | Battery       | `omarchy.battery`         | `service`               | `services/battery/Service.qml`        |
@@ -34,8 +35,8 @@ User-installed plugins live alongside these conceptually but on disk under
 | Polkit agent  | `omarchy.polkit`          | `service`               | `polkit/PolkitAgent.qml`              |
 
 First-party bar-only widgets also carry manifests next to their QML files,
-e.g. `bar/widgets/Clock.manifest.json`. Rich popup widgets live under
-`panels/`, each with its own `manifest.json`.
+e.g. `bar/widgets/Clock.manifest.json`. Rich popup widgets live in their
+own plugin directories, each with its own `manifest.json`.
 
 ## Bar
 

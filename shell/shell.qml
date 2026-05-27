@@ -55,6 +55,11 @@ ShellRoot {
   property var shellConfig: builtinShellConfig
   property bool suppressUserReload: false
 
+  onShellConfigChanged: {
+    pluginRegistry.registryRevision++
+    pluginRegistry.pluginsChanged()
+  }
+
   function applyShellConfig() {
     // Decide which source is canonical: a valid user shell.json overrides
     // defaults entirely; otherwise fall back to defaults. We do not deep-merge.
@@ -619,6 +624,11 @@ ShellRoot {
 
     function rescanPlugins(): void {
       shell.pluginRegistry.rescan()
+    }
+
+    function reloadConfig(): string {
+      userConfigFile.reload()
+      return "ok"
     }
 
     function setPluginEnabled(id: string, enabled: string): void {
