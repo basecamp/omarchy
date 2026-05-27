@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Install and launch Geforce Now.
+# omarchy:group=install
+# omarchy:name=gaming geforce-now
 
 set -e
 

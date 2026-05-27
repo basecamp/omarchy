@@ -74,6 +74,24 @@ pass "benchmark command is discoverable in all commands"
 "$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-pkg-add" and .route == "omarchy pkg add" and .filename_route == "omarchy pkg add" and (.routes | index("omarchy pkg add")))' >/dev/null
 pass "JSON exposes direct pkg add route"
 
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-install-gaming-xbox-cloud" and .route == "omarchy install gaming xbox-cloud" and .filename_route == "omarchy install gaming xbox cloud" and (.routes | index("omarchy install gaming xbox cloud")))' >/dev/null
+pass "Xbox Cloud installer keeps hyphenated canonical route"
+
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-install-gaming-xbox-controllers" and .route == "omarchy install gaming xbox-controllers" and .filename_route == "omarchy install gaming xbox controllers" and (.routes | index("omarchy install gaming xbox controllers")))' >/dev/null
+pass "Xbox controller installer keeps hyphenated canonical route"
+
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-remove-gaming-xbox-controllers" and .route == "omarchy remove gaming xbox-controllers" and .filename_route == "omarchy remove gaming xbox controllers" and (.routes | index("omarchy remove gaming xbox controllers")))' >/dev/null
+pass "Xbox controller remover keeps hyphenated canonical route"
+
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-install-gaming-geforce-now" and .route == "omarchy install gaming geforce-now" and .filename_route == "omarchy install gaming geforce now" and (.routes | index("omarchy install gaming geforce now")))' >/dev/null
+pass "GeForce NOW installer keeps hyphenated canonical route"
+
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-remove-gaming-geforce-now" and .route == "omarchy remove gaming geforce-now" and .filename_route == "omarchy remove gaming geforce now" and (.routes | index("omarchy remove gaming geforce now")))' >/dev/null
+pass "GeForce NOW remover keeps hyphenated canonical route"
+
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-install-gaming-gpu-lib32" and .route == "omarchy install gaming gpu-lib32" and .filename_route == "omarchy install gaming gpu lib32" and (.routes | index("omarchy install gaming gpu lib32")))' >/dev/null
+pass "GPU lib32 installer keeps hyphenated canonical route"
+
 "$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-refresh-pacman" and .requires_sudo == true)' >/dev/null
 pass "sudo metadata marks sudo commands"
 
