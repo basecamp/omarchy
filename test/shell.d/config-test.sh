@@ -109,35 +109,28 @@ cat >"$TMPDIR/home/.config/omarchy/shell.json" <<'JSON'
 }
 JSON
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell append right omarchy.tailscale
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell right omarchy.tailscale
 jq -e '
   def ids: map(.id // .);
   .bar.layout.right | ids == ["omarchy.tray", "omarchy.tailscale", "omarchy.bluetooth"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config appends right widgets after tray"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell append left local.left
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell left local.left
 jq -e '
   def ids: map(.id // .);
   .bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces", "local.left"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config appends left widgets after workspaces"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell append center local.center
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell center local.center
 jq -e '
   def ids: map(.id // .);
   .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "local.center"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config appends center widgets after weather"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell prepend right local.first
-jq -e '
-  def ids: map(.id // .);
-  .bar.layout.right | ids == ["local.first", "omarchy.tray", "omarchy.tailscale", "omarchy.bluetooth"]
-' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
-pass "shell config prepends widgets to section start"
-
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell append right local.first
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell right local.first
 jq -e '
   def ids: map(.id // .);
   .bar.layout.right | ids == ["omarchy.tray", "local.first", "omarchy.tailscale", "omarchy.bluetooth"]
