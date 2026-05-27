@@ -932,8 +932,10 @@ Item {
     id: configControl
 
     property bool clockHovered: false
+    property bool openWhenReady: false
 
-    readonly property bool panelOpen: configPanel.opened
+    readonly property var panelItem: configPanelLoader.item
+    readonly property bool panelOpen: panelItem ? panelItem.opened === true : false
     readonly property bool revealed: visible && (clockHovered || controlHover.hovered || panelOpen)
 
     implicitWidth: button.implicitWidth
@@ -952,8 +954,26 @@ Item {
     Component.onCompleted: root.registerConfigControl(configControl)
     Component.onDestruction: root.unregisterConfigControl(configControl)
 
+    function configurePanel(panel) {
+      if (!panel) return
+      panel.bar = root
+      panel.anchorItem = button
+    }
+
     function openPanel() {
-      configPanel.open()
+      if (!panelItem) {
+        openWhenReady = true
+        return
+      }
+      panelItem.open()
+    }
+
+    function togglePanel() {
+      if (!panelItem) {
+        openPanel()
+        return
+      }
+      panelItem.toggle()
     }
 
     WidgetButton {
@@ -969,15 +989,22 @@ Item {
       verticalPadding: 6
       tooltipText: "Bar config"
       onPressed: function(b) {
-        if (b === Qt.LeftButton) configPanel.toggle()
+        if (b === Qt.LeftButton) configControl.togglePanel()
       }
     }
 
-    BarConfigPanel {
-      id: configPanel
+    Loader {
+      id: configPanelLoader
 
-      bar: root
-      anchorItem: button
+      active: true
+      source: Qt.resolvedUrl("BarConfigPanel.qml")
+      onLoaded: {
+        configControl.configurePanel(item)
+        if (configControl.openWhenReady) {
+          configControl.openWhenReady = false
+          item.open()
+        }
+      }
     }
   }
 
