@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# omarchy:summary=Install and enable ydotool mouse automation for Omarchy development
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+RULE_FILE="/etc/udev/rules.d/80-uinput.rules"
+
+if ! getent group input >/dev/null; then
+  echo "omarchy-dev-install-ydoo: input group does not exist" >&2
+  exit 1
+fi
+
+if ! id -nG "$USER" | tr ' ' '\n' | grep -qx input; then
+  echo "Adding $USER to the input group. You may need to log out and back in before this applies."
+  pkexec usermod -aG input "$USER"
+fi
+
+if omarchy-cmd-missing ydotool || omarchy-pkg-missing ydotool; then
+  omarchy-pkg-add ydotool
+fi
+
+pkexec /bin/bash -c '
+set -euo pipefail
+
+cat >"'"$RULE_FILE"'" <<'"'"'EOF'"'"'
+KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"
+EOF
+
+modprobe uinput
+udevadm control --reload-rules
+udevadm trigger /dev/uinput 2>/dev/null || true
+
+if [[ -e /dev/uinput ]]; then
+  chgrp input /dev/uinput
+  chmod 0660 /dev/uinput
+fi
+'
+
+systemctl --user reset-failed ydotool.service >/dev/null 2>&1 || true
+systemctl --user start ydotool.service
+
+if ! systemctl --user is-active --quiet ydotool.service; then
+  echo "omarchy-dev-install-ydoo: ydotool.service did not start" >&2
+  systemctl --user status ydotool.service --no-pager >&2 || true
+  exit 1
+fi
+
+echo "ydotool is ready."
