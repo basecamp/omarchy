@@ -53,12 +53,12 @@ echo -e "\e[32mSetting up fingerprint scanner for authentication.\n\e[0m"
 # Install required packages
 echo "Installing required packages..."
 
+installed_libfprint=$(pacman -Qq libfprint 2>/dev/null || true)
+
 # libfprint-git provides+conflicts libfprint; pacman -S --noconfirm
-# defaults the conflict prompt to N and aborts. Pre-remove libfprint
-# with -Rdd so the install goes silent. -Rdd (not omarchy-pkg-drop's
-# -Rns) is required because fprintd requires libfprint; the dep is
-# re-satisfied immediately by libfprint-git's provides=libfprint.
-if omarchy-pkg-present libfprint; then
+# defaults the conflict prompt to N and aborts. Pre-remove the exact
+# libfprint package, but not an installed provider like libfprint-git.
+if [[ $installed_libfprint == "libfprint" ]]; then
   sudo pacman -Rdd --noconfirm libfprint
 fi
 
