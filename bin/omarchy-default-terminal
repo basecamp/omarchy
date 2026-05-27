@@ -5,7 +5,8 @@
 # omarchy:examples=omarchy default terminal ghostty | omarchy default terminal kitty
 
 if (($# == 0)); then
-  desktop_id=$(grep -vE '^($|#)' ~/.config/xdg-terminals.list 2>/dev/null | head -n 1)
+  desktop_id=$(xdg-terminal-exec --print-id 2>/dev/null || true)
+  desktop_id=${desktop_id%%:*}
   case "$desktop_id" in
   Alacritty.desktop) echo "alacritty" ;;
   foot.desktop) echo "foot" ;;
