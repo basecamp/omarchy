@@ -664,6 +664,7 @@ Panel {
         }
       }
       onCloseRequested: root.close()
+      onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
         if (t === "r" || t === "R") root.refresh()
       }
