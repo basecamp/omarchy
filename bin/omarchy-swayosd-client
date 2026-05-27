@@ -1,6 +1,37 @@
 #!/bin/bash
 
 # omarchy:summary=Wrapper for swayosd-client that targets the currently focused monitor.
+# omarchy:summary=When --playerctl is used without an explicit --player, automatically
+# omarchy:summary=prefers dedicated music players (e.g. cliamp, spotify) over browser
+# omarchy:summary=instances (chromium, firefox) that register as MPRIS players even when
+# omarchy:summary=no media is playing.
 # omarchy:args=<swayosd-client-args...>
+
+# If --playerctl is requested without an explicit --player, inject the best active player.
+has_playerctl=false
+has_player=false
+for arg in "$@"; do
+  [[ "$arg" == "--playerctl" ]] && has_playerctl=true
+  [[ "$arg" == "--player" ]]    && has_player=true
+done
+
+if $has_playerctl && ! $has_player; then
+  music_playing="" music_paused="" browser_playing="" browser_paused=""
+  while IFS= read -r p; do
+    status=$(playerctl --player="$p" status 2>/dev/null)
+    is_browser=false
+    [[ "$p" == chromium* || "$p" == firefox* ]] && is_browser=true
+    if [[ "$status" == "Playing" ]]; then
+      $is_browser && [[ -z "$browser_playing" ]] && browser_playing="$p" \
+                  || [[ -z "$music_playing"   ]] && music_playing="$p"
+    elif [[ "$status" == "Paused" ]]; then
+      $is_browser && [[ -z "$browser_paused" ]] && browser_paused="$p" \
+                  || [[ -z "$music_paused"   ]] && music_paused="$p"
+    fi
+  done < <(playerctl -l 2>/dev/null)
+  # Priority: dedicated music playing > browser playing > dedicated music paused > browser paused
+  best_player="${music_playing:-${browser_playing:-${music_paused:-$browser_paused}}}"
+  [[ -n "$best_player" ]] && set -- "--player" "$best_player" "$@"
+fi
 
 exec swayosd-client --monitor "$(omarchy-hyprland-monitor-focused)" "$@"
