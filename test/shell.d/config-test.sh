@@ -144,6 +144,18 @@ HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar show | jq -e '
 ' >/dev/null
 pass "shell config shows only bar json"
 
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar list --json | jq -e '
+  any(.[]; .id == "omarchy.system-stats" and .addable == true and .inBar == false) and
+  all(.[]; .id != "omarchy.tailscale")
+' >/dev/null
+pass "shell config lists addable bar widgets"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar list --json --all | jq -e '
+  any(.[]; .id == "omarchy.tailscale" and .inBar == true and .addable == false) and
+  any(.[]; .id == "omarchy.indicators" and .addable == true)
+' >/dev/null
+pass "shell config list --all includes current widget status"
+
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar position bottom
 jq -e '
   .bar.position == "bottom" and
@@ -167,6 +179,13 @@ jq -e '
   (.bar.layout.right | ids == ["omarchy.tray", "local.first", "omarchy.tailscale", "omarchy.bluetooth"])
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config drops widgets from any section"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar remove local.center
+jq -e '
+  def ids: map(.id // .);
+  .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather"]
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config removes widgets with remove alias"
 
 cat >"$TMPDIR/home/.config/omarchy/shell.json" <<'JSON'
 {
