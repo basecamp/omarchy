@@ -3,7 +3,7 @@
 # omarchy:summary=Manage Omarchy shell plugins and bar widgets
 # omarchy:group=plugin
 # omarchy:args=<list|rescan|enable|disable|clone|edit|bar> [...]
-# omarchy:examples=omarchy plugin list | omarchy plugin clone omarchy.clock local.clock --with ai | omarchy plugin edit local.clock --with editor | omarchy plugin enable acme.weather --section right | omarchy plugin bar edit
+# omarchy:examples=omarchy plugin list | omarchy plugin clone omarchy.clock local.clock --with ai | omarchy plugin edit local.clock --with editor | omarchy plugin enable acme.weather --section right | omarchy plugin bar settings
 
 set -euo pipefail
 
@@ -30,7 +30,7 @@ Clone options:
   --add [placement]                     Add cloned bar widget to the bar
 
 Bar widget commands:
-  bar edit                              Open the visual bar settings panel
+  bar settings                          Open the inline bar config panel
   bar list [--json]                     List current bar layout
   bar add <id> [placement] [--duplicate]
   bar move <id> [placement] [--from-section SECTION] [--from-index N]
@@ -1136,7 +1136,7 @@ bar_command() {
 
   case "$command" in
   edit | settings)
-    (( $# == 0 )) || fail "bar edit does not take arguments"
+    (( $# == 0 )) || fail "bar settings does not take arguments"
     exec omarchy-launch-bar-settings
     ;;
   list)

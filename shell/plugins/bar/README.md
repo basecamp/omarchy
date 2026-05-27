@@ -14,9 +14,9 @@ the shell for its whole session.
 
 ## Customizing
 
-The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](../../README.md#shelljson-shape). Out of the box the shell uses [`config/omarchy/shell.json`](../../../config/omarchy/shell.json). Once you customize anything via `omarchy launch bar settings` or by editing shell.json directly, your file is canonical — there is no deep-merge.
+The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](../../README.md#shelljson-shape). Out of the box the shell uses [`config/omarchy/shell.json`](../../../config/omarchy/shell.json). Once you customize anything via the inline bar config panel, `omarchy plugin bar ...`, or by editing shell.json directly, your file is canonical — there is no deep-merge.
 
-Launch the visual editor with `omarchy launch bar settings` / `omarchy plugin bar edit` (or run `omarchy-launch-bar-settings`) to reorder widgets, add/remove them, and tweak per-widget options without editing JSON by hand. For scriptable changes, use `omarchy plugin bar list`, `omarchy plugin bar add`, `omarchy plugin bar move`, `omarchy plugin bar remove`, and `omarchy plugin bar set`. You can also right-click empty space to the left or right of the centered clock module to open it; double-left-click the same empty space to toggle bar transparency.
+Open quick position and transparency controls with `omarchy launch bar settings` / `omarchy plugin bar settings` (or run `omarchy-launch-bar-settings`). You can also hover the centered clock module to reveal the inline bar config button. For scriptable widget changes, use `omarchy plugin bar list`, `omarchy plugin bar add`, `omarchy plugin bar move`, `omarchy plugin bar remove`, and `omarchy plugin bar set`. Double-left-click empty center-bar space to toggle bar transparency.
 
 Example `shell.json` (bar subtree only shown):
 

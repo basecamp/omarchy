@@ -12,8 +12,7 @@ Item {
 
   // The omarchy-shell host injects omarchyPath from OMARCHY_PATH.
   required property string omarchyPath
-  // Injected by the host shell. Shared with the bar settings panel so both
-  // see the same widget catalogue.
+  // Injected by the host shell so bar slots can resolve enabled widgets.
   required property var barWidgetRegistry
   // Injected by the host shell every time shell.json is reloaded. Holds the
   // `bar:` subtree: position, centerAnchor, layout. The host owns file IO;
@@ -69,6 +68,7 @@ Item {
   property var activePopout: null
   property var barDragTarget: null
   property bool barDragAfter: false
+  property var configControls: []
   property var clickTargets: []
   property var debugModuleSlots: []
 
@@ -94,6 +94,18 @@ Item {
   function unregisterDebugModuleSlot(slot) {
     var next = debugModuleSlots.filter(function(item) { return item !== slot })
     debugModuleSlots = next
+  }
+
+  function registerConfigControl(control) {
+    if (!control || configControls.indexOf(control) !== -1) return
+    var next = configControls.slice()
+    next.push(control)
+    configControls = next
+  }
+
+  function unregisterConfigControl(control) {
+    var next = configControls.filter(function(item) { return item !== control })
+    configControls = next
   }
 
   function debugBarGeometry() {
@@ -164,7 +176,7 @@ Item {
   }
 
   // Apply tray-pinning on top of the shared layout normalization so the
-  // bar host and the bar settings panel can't drift on entry shape.
+  // bar host and scriptable config helpers can't drift on entry shape.
   function normalizeLayout(layout) {
     var normalized = Util.normalizeLayout(Util.isPlainObject(layout) ? layout : fallbackBarConfig.layout)
     return {
@@ -305,12 +317,14 @@ Item {
     launcher.startDetached()
   }
 
-  function openBarSettings() {
-    if (root.shell && typeof root.shell.summon === "function") {
-      root.shell.summon("omarchy.settings", "{}")
-    } else {
-      root.run("omarchy-launch-bar-settings")
+  function openConfigPanel() {
+    for (var i = 0; i < configControls.length; i++) {
+      var control = configControls[i]
+      if (!control || control.visible !== true || typeof control.openPanel !== "function") continue
+      control.openPanel()
+      return true
     }
+    return false
   }
 
   function toggleTransparency() {
@@ -821,7 +835,7 @@ Item {
           visible: centerRoot.hasAnchor
           entries: root.entriesBefore(centerRoot.entries, root.centerAnchor)
           region: "center"
-          anchors.right: centerAnchorModule.left
+          anchors.right: centerConfigControl.visible ? centerConfigControl.left : centerAnchorModule.left
           anchors.verticalCenter: centerAnchorModule.verticalCenter
         }
 
@@ -831,6 +845,15 @@ Item {
           entry: centerRoot.anchorEntry
           region: "center"
           anchors.centerIn: parent
+        }
+
+        BarConfigControl {
+          id: centerConfigControl
+
+          visible: centerRoot.hasAnchor && centerAnchorModule.moduleName === "omarchy.clock"
+          clockHovered: centerAnchorModule.hovered
+          anchors.right: centerAnchorModule.left
+          anchors.verticalCenter: centerAnchorModule.verticalCenter
         }
 
         ModuleList {
@@ -862,7 +885,7 @@ Item {
           visible: centerRoot.hasAnchor
           entries: root.entriesBefore(centerRoot.entries, root.centerAnchor)
           region: "center"
-          anchors.bottom: centerAnchorModule.top
+          anchors.bottom: centerConfigControl.visible ? centerConfigControl.top : centerAnchorModule.top
           anchors.horizontalCenter: centerAnchorModule.horizontalCenter
         }
 
@@ -872,6 +895,15 @@ Item {
           entry: centerRoot.anchorEntry
           region: "center"
           anchors.centerIn: parent
+        }
+
+        BarConfigControl {
+          id: centerConfigControl
+
+          visible: centerRoot.hasAnchor && centerAnchorModule.moduleName === "omarchy.clock"
+          clockHovered: centerAnchorModule.hovered
+          anchors.bottom: centerAnchorModule.top
+          anchors.horizontalCenter: centerAnchorModule.horizontalCenter
         }
 
         ModuleList {
@@ -886,20 +918,66 @@ Item {
   }
 
   component CenterGestureArea: MouseArea {
-    acceptedButtons: Qt.LeftButton | Qt.RightButton
-
-    onClicked: function(mouse) {
-      if (mouse.button === Qt.RightButton) {
-        root.openBarSettings()
-        mouse.accepted = true
-      }
-    }
+    acceptedButtons: Qt.LeftButton
 
     onDoubleClicked: function(mouse) {
-      if (mouse.button !== Qt.RightButton) {
+      if (mouse.button === Qt.LeftButton) {
         root.toggleTransparency()
         mouse.accepted = true
       }
+    }
+  }
+
+  component BarConfigControl: Item {
+    id: configControl
+
+    property bool clockHovered: false
+
+    readonly property bool panelOpen: configPanel.opened
+    readonly property bool revealed: visible && (clockHovered || controlHover.hovered || panelOpen)
+
+    implicitWidth: button.implicitWidth
+    implicitHeight: button.implicitHeight
+    width: implicitWidth
+    height: implicitHeight
+    opacity: revealed ? 1.0 : 0
+    z: 500
+
+    Behavior on opacity {
+      NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+    }
+
+    HoverHandler { id: controlHover }
+
+    Component.onCompleted: root.registerConfigControl(configControl)
+    Component.onDestruction: root.unregisterConfigControl(configControl)
+
+    function openPanel() {
+      configPanel.open()
+    }
+
+    WidgetButton {
+      id: button
+
+      anchors.fill: parent
+      bar: root
+      text: ""
+      keepSpace: true
+      concealed: !configControl.revealed
+      interactive: configControl.revealed
+      horizontalMargin: 6.5
+      verticalPadding: 6
+      tooltipText: "Bar config"
+      onPressed: function(b) {
+        if (b === Qt.LeftButton) configPanel.toggle()
+      }
+    }
+
+    BarConfigPanel {
+      id: configPanel
+
+      bar: root
+      anchorItem: button
     }
   }
 
@@ -976,6 +1054,7 @@ Item {
       if (qmlCustom) return qmlLoader.item
       return componentLoader.item
     }
+    readonly property bool hovered: moduleHover.hovered
 
     implicitWidth: activeItem && activeItem.visible ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
     implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
@@ -985,6 +1064,8 @@ Item {
 
     Component.onCompleted: root.registerDebugModuleSlot(slot)
     Component.onDestruction: root.unregisterDebugModuleSlot(slot)
+
+    HoverHandler { id: moduleHover }
 
     Loader {
       id: componentLoader

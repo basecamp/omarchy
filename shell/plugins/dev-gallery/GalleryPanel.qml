@@ -1550,7 +1550,7 @@ Item {
               font.bold: true
             }
             Text {
-              text: "Dropdown with an embedded filter input. Type to narrow the list, Down to jump from the search to the first match, Enter to select. Use this for the bar settings \"+ Add widget\" picker and any other long-list selector."
+              text: "Dropdown with an embedded filter input. Type to narrow the list, Down to jump from the search to the first match, Enter to select. Use this for long option lists where plain scrolling is friction."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption

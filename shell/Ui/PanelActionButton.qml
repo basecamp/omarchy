@@ -15,7 +15,7 @@ import qs.Commons
 //
 // Set `focusable: true` to make the button keyboard-tabbable with the
 // shared hover-cursor/focus tokens. Use this
-// in form contexts (the bar settings widget cards) where Tab walks a list
+// in form contexts where Tab walks a list
 // of controls; leave it false for the right-edge actions on panel rows
 // where the row's CursorSurface owns the keyboard cursor.
 //

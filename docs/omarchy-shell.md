@@ -26,7 +26,7 @@ first call.
 | Kind         | What it is                                  |
 |--------------|---------------------------------------------|
 | `bar-widget` | Component the bar drops into a section      |
-| `panel`      | Floating window (e.g. bar settings)         |
+| `panel`      | Floating window (e.g. OSD)                  |
 | `overlay`    | Fullscreen overlay (e.g. background picker) |
 | `menu`       | Summoned menu surface                       |
 | `service`    | Headless singleton, no UI                   |
@@ -43,8 +43,7 @@ Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegis
    plus the QML referenced from `entryPoints`.
 2. `omarchy plugin rescan`
 3. `omarchy plugin enable <id>`
-4. Bar widgets also need adding to a section with `omarchy plugin bar add <id>`
-   or the visual editor (`omarchy plugin bar edit`).
+4. Bar widgets also need adding to a section with `omarchy plugin bar add <id>`.
 
 The lower-level IPC methods remain available through `omarchy-shell shell ...`
 for callers that need to talk directly to the running shell.
