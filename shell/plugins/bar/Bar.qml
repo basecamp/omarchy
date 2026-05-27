@@ -60,6 +60,8 @@ Item {
   property bool tooltipShown: false
   property int tooltipRequest: 0
   property var activePopout: null
+  property var barDragTarget: null
+  property bool barDragAfter: false
   property var clickTargets: []
   property var debugModuleSlots: []
 
@@ -314,6 +316,148 @@ Item {
     } else {
       root.transparent = nextTransparent
     }
+  }
+
+  function rawLayoutSection(config, region) {
+    if (!Util.isPlainObject(config.bar)) config.bar = {}
+    if (!Util.isPlainObject(config.bar.layout)) config.bar.layout = {}
+    if (!Array.isArray(config.bar.layout[region])) config.bar.layout[region] = []
+
+    return config.bar.layout[region]
+  }
+
+  function rawEntryIndex(entries, name) {
+    for (var i = 0; i < entries.length; i++) {
+      if (root.entryId(entries[i]) === name) return i
+    }
+
+    return -1
+  }
+
+  function moveModuleInConfig(config, fromRegion, fromName, toRegion, beforeName) {
+    var fromEntries = rawLayoutSection(config, fromRegion)
+    var toEntries = rawLayoutSection(config, toRegion)
+    var fromIndex = rawEntryIndex(fromEntries, fromName)
+    if (fromIndex < 0) return false
+
+    var toIndex = beforeName ? rawEntryIndex(toEntries, beforeName) : toEntries.length
+    if (toIndex < 0) toIndex = toEntries.length
+
+    if (fromRegion === toRegion && fromIndex === toIndex) return false
+
+    var movedEntry = fromEntries[fromIndex]
+    fromEntries.splice(fromIndex, 1)
+
+    if (fromRegion === toRegion && fromIndex < toIndex) toIndex -= 1
+    if (toIndex < 0) toIndex = 0
+    if (toIndex > toEntries.length) toIndex = toEntries.length
+    if (fromRegion === toRegion && fromIndex === toIndex) {
+      fromEntries.splice(fromIndex, 0, movedEntry)
+      return false
+    }
+
+    toEntries.splice(toIndex, 0, movedEntry)
+    return true
+  }
+
+  function dropBarModule(source, toRegion, beforeName) {
+    if (!source || !source.region || !source.moduleName || !toRegion) return false
+    if (source.region === toRegion && source.moduleName === beforeName) return false
+    if (!root.shell || typeof root.shell.mutateShellConfig !== "function") return false
+
+    var changed = false
+    root.shell.mutateShellConfig(function(config) {
+      changed = moveModuleInConfig(config, source.region, source.moduleName, toRegion, beforeName)
+    })
+    return changed
+  }
+
+  function moduleDropAtScene(scenePoint, sourceSlot) {
+    for (var i = 0; i < debugModuleSlots.length; i++) {
+      var slot = debugModuleSlots[i]
+      if (!slot || slot === sourceSlot || !slot.visible || slot.width <= 0 || slot.height <= 0) continue
+
+      var slotPoint = { x: slot.x, y: slot.y }
+      try {
+        slotPoint = slot.mapToItem(null, 0, 0)
+      } catch (e) {
+      }
+
+      if (scenePoint.x >= slotPoint.x && scenePoint.x <= slotPoint.x + slot.width &&
+          scenePoint.y >= slotPoint.y && scenePoint.y <= slotPoint.y + slot.height) {
+        return {
+          slot: slot,
+          after: root.vertical ? scenePoint.y > slotPoint.y + slot.height / 2 : scenePoint.x > slotPoint.x + slot.width / 2
+        }
+      }
+    }
+
+    return null
+  }
+
+  function visibleModuleSlot(region, name, sourceSlot) {
+    for (var i = 0; i < debugModuleSlots.length; i++) {
+      var slot = debugModuleSlots[i]
+      if (slot && slot !== sourceSlot && slot.region === region && slot.moduleName === name &&
+          slot.visible && slot.width > 0 && slot.height > 0) {
+        return slot
+      }
+    }
+
+    return null
+  }
+
+  function nextVisibleModuleName(region, afterName, sourceSlot) {
+    var entries = layoutEntries(region)
+    var found = false
+    for (var i = 0; i < entries.length; i++) {
+      var name = entryId(entries[i])
+      if (!found) {
+        found = name === afterName
+        continue
+      }
+
+      if (visibleModuleSlot(region, name, sourceSlot)) return name
+    }
+
+    return ""
+  }
+
+  function dropBarModuleAtTarget(sourceSlot, targetSlot, afterTarget) {
+    if (!sourceSlot || !targetSlot) return false
+
+    var beforeName = afterTarget ? nextVisibleModuleName(targetSlot.region, targetSlot.moduleName, sourceSlot) : targetSlot.moduleName
+    return dropBarModule(sourceSlot, targetSlot.region, beforeName)
+  }
+
+  function moduleClickTargetAt(slot, localX, localY) {
+    for (var i = clickTargets.length - 1; i >= 0; i--) {
+      var target = clickTargets[i]
+      if (!target || target.visible === false || target.opacity === 0 || typeof target.triggerPress !== "function") continue
+
+      var targetPoint = { x: localX, y: localY }
+      try {
+        targetPoint = slot.mapToItem(target, localX, localY)
+      } catch (e) {
+        continue
+      }
+
+      if (targetPoint.x >= 0 && targetPoint.x <= target.width &&
+          targetPoint.y >= 0 && targetPoint.y <= target.height) {
+        return target
+      }
+    }
+
+    if (slot.activeItem && typeof slot.activeItem.triggerPress === "function") return slot.activeItem
+    return null
+  }
+
+  function pressModuleClickTarget(slot, button, localX, localY) {
+    var target = moduleClickTargetAt(slot, localX, localY)
+    if (!target) return false
+
+    target.triggerPress(button)
+    return true
   }
 
   function runProcess(process) {
@@ -742,6 +886,7 @@ Item {
     implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
     width: implicitWidth
     height: implicitHeight
+    z: modulePointer.dragging ? 100 : 0
 
     Component.onCompleted: root.registerDebugModuleSlot(slot)
     Component.onDestruction: root.unregisterDebugModuleSlot(slot)
@@ -776,6 +921,135 @@ Item {
       onLoaded: {
         slot.injectProps()
         Qt.callLater(slot.injectProps)
+      }
+    }
+
+    Rectangle {
+      visible: !root.vertical && root.barDragTarget === slot && !root.barDragAfter
+      anchors {
+        left: parent.left
+        top: parent.top
+        bottom: parent.bottom
+      }
+      width: 2
+      color: root.foreground
+      opacity: 0.9
+    }
+
+    Rectangle {
+      visible: !root.vertical && root.barDragTarget === slot && root.barDragAfter
+      anchors {
+        right: parent.right
+        top: parent.top
+        bottom: parent.bottom
+      }
+      width: 2
+      color: root.foreground
+      opacity: 0.9
+    }
+
+    Rectangle {
+      visible: root.vertical && root.barDragTarget === slot && !root.barDragAfter
+      anchors {
+        left: parent.left
+        right: parent.right
+        top: parent.top
+      }
+      height: 2
+      color: root.foreground
+      opacity: 0.9
+    }
+
+    Rectangle {
+      visible: root.vertical && root.barDragTarget === slot && root.barDragAfter
+      anchors {
+        left: parent.left
+        right: parent.right
+        bottom: parent.bottom
+      }
+      height: 2
+      color: root.foreground
+      opacity: 0.9
+    }
+
+    MouseArea {
+      id: modulePointer
+
+      property bool dragging: false
+      property bool suppressClick: false
+      property real pressedX: 0
+      property real pressedY: 0
+
+      anchors.fill: parent
+      acceptedButtons: Qt.LeftButton
+      enabled: slot.visible && slot.width > 0 && slot.height > 0
+      propagateComposedEvents: true
+      drag.target: root.shell && typeof root.shell.mutateShellConfig === "function" ? slot : null
+      drag.axis: Drag.XAndYAxis
+      drag.threshold: Style.space(4)
+
+      onPressed: function(mouse) {
+        dragging = false
+        suppressClick = false
+        pressedX = mouse.x
+        pressedY = mouse.y
+        root.barDragTarget = null
+        root.barDragAfter = false
+      }
+
+      onPositionChanged: function(mouse) {
+        if (!(mouse.buttons & Qt.LeftButton)) return
+
+        var distance = Math.abs(mouse.x - pressedX) + Math.abs(mouse.y - pressedY)
+        if (distance >= drag.threshold) {
+          dragging = true
+          root.hideTooltip(slot.activeItem)
+        }
+
+        if (dragging) {
+          var scenePoint = slot.mapToItem(null, mouse.x, mouse.y)
+          var drop = root.moduleDropAtScene(scenePoint, slot)
+          root.barDragTarget = drop ? drop.slot : null
+          root.barDragAfter = drop ? drop.after : false
+        }
+      }
+
+      onReleased: function(mouse) {
+        if (dragging) {
+          suppressClick = true
+        }
+
+        if (dragging && root.barDragTarget) {
+          root.dropBarModuleAtTarget(slot, root.barDragTarget, root.barDragAfter)
+          mouse.accepted = true
+        } else if (!dragging) {
+          mouse.accepted = false
+        }
+
+        dragging = false
+        root.barDragTarget = null
+        root.barDragAfter = false
+        slot.x = 0
+        slot.y = 0
+      }
+
+      onCanceled: {
+        dragging = false
+        suppressClick = false
+        root.barDragTarget = null
+        root.barDragAfter = false
+        slot.x = 0
+        slot.y = 0
+      }
+
+      onClicked: function(mouse) {
+        if (suppressClick) {
+          suppressClick = false
+          mouse.accepted = true
+          return
+        }
+
+        if (!root.pressModuleClickTarget(slot, mouse.button, mouse.x, mouse.y)) mouse.accepted = false
       }
     }
 
