@@ -63,7 +63,11 @@ Example:
 - `$OMARCHY_PATH` is set at the top level by the uwsm session environment and is always available to Omarchy runtime code.
 - Commands in `bin/` and Quickshell QML should rely on `$OMARCHY_PATH` / `Quickshell.env("OMARCHY_PATH")`; do not derive fallback paths from `HOME`, `Quickshell.shellDir`, or re-export/default `OMARCHY_PATH` manually.
 
-# Setup Scripts
+# Privileged Commands
+
+- Whenever you need to trigger a sudo command, use `pkexec` so it results in a user prompt they can approve.
+
+# Install Scripts
 
 The ISO owns installation orchestration. This repo ships target-side setup commands and reusable setup leaves:
 

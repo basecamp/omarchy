@@ -12,7 +12,6 @@ User-installed plugins live alongside these conceptually but on disk under
 | Plugin        | id                        | kinds                   | entry point                           |
 |---------------|---------------------------|-------------------------|---------------------------------------|
 | Bar           | `omarchy.bar`             | `bar`                   | `bar/Bar.qml`                         |
-| Bar settings  | `omarchy.settings`        | `panel`                 | `settings/SettingsPanel.qml`          |
 | Launcher      | `omarchy.launcher`        | `overlay`               | `launcher/Launcher.qml`               |
 | Image picker  | `omarchy.image-picker`    | `overlay`               | `image-picker/ImagePicker.qml`        |
 | Emojis        | `omarchy.emojis`          | `overlay`               | `emojis/Emojis.qml`                   |
@@ -25,7 +24,8 @@ User-installed plugins live alongside these conceptually but on disk under
 | Monitor       | `omarchy.monitor`         | `bar-widget`            | `panels/monitor/Panel.qml`            |
 | Network       | `omarchy.network`         | `bar-widget`            | `panels/network/Panel.qml`            |
 | Power         | `omarchy.power`           | `bar-widget`            | `panels/power/Panel.qml`              |
-| Tailscale     | `omarchy.tailscale`       | `bar-widget`            | `tailscale/Widget.qml`                |
+| Tailscale     | `omarchy.tailscale`       | `bar-widget`            | `panels/tailscale/Panel.qml`          |
+| Model usage   | `omarchy.model-usage`     | `bar-widget`            | `model-usage/Widget.qml`              |
 | Weather       | `omarchy.weather`         | `bar-widget`            | `panels/weather/BarWidget.qml`        |
 | Media         | `omarchy.media`           | `service`, `bar-widget` | `services/media/Service.qml`, `services/media/BarWidget.qml` |
 | Battery       | `omarchy.battery`         | `service`               | `services/battery/Service.qml`        |
@@ -35,8 +35,8 @@ User-installed plugins live alongside these conceptually but on disk under
 | Polkit agent  | `omarchy.polkit`          | `service`               | `polkit/PolkitAgent.qml`              |
 
 First-party bar-only widgets also carry manifests next to their QML files,
-e.g. `bar/widgets/Clock.manifest.json`. Rich popup widgets live under
-`panels/`, each with its own `manifest.json`.
+e.g. `bar/widgets/Clock.manifest.json`. Rich popup widgets live in their
+own plugin directories, each with its own `manifest.json`.
 
 ## Bar
 
@@ -45,17 +45,6 @@ top-level `bar:` subtree of `~/.config/omarchy/shell.json` (with the shell
 providing [`config/omarchy/shell.json`](../../config/omarchy/shell.json) when
 the user has no file). See [`bar/README.md`](bar/README.md) for the widget catalogue
 and customization schema.
-
-## Bar settings
-
-Visual editor for the bar layout. Summoned by
-`omarchy-shell shell summon omarchy.settings "{}"` (which is what
-`omarchy launch bar settings` ultimately calls). Provides:
-
-- bar position and center-anchor controls
-- per-section add/move/remove/edit of bar widget entries
-- dynamic per-widget settings forms that write inline back to the
-  corresponding shell.json entry
 
 ## Launcher
 

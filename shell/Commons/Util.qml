@@ -83,7 +83,7 @@ QtObject {
     }
   }
 
-  // Layout normalization shared by the bar host and the bar settings panel
+  // Layout normalization shared by bar config consumers
   // so the two never drift. Entries are deep-cloned to decouple from the
   // input config; consumers can mutate without leaking back to shell.json.
   function normalizeLayoutEntry(entry) {

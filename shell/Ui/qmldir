@@ -13,6 +13,7 @@ Panel 1.0 Panel.qml
 PanelActionButton 1.0 PanelActionButton.qml
 PanelController 1.0 PanelController.qml
 PanelKeyCatcher 1.0 PanelKeyCatcher.qml
+PanelHero 1.0 PanelHero.qml
 PanelSectionHeader 1.0 PanelSectionHeader.qml
 PanelSeparator 1.0 PanelSeparator.qml
 PanelSlider 1.0 PanelSlider.qml

@@ -1,0 +1,445 @@
+#!/bin/bash
+
+# omarchy:summary=Mutate the user shell.json bar layout
+# omarchy:args=show | list [--json] [--all] | add [plugin] [left|center|right] | remove [plugin] | drop [plugin] | position <top|bottom|left|right> | transparent <true|false>
+# omarchy:examples=omarchy config shell bar show | omarchy config shell bar list | omarchy config shell bar add | omarchy config shell bar remove | omarchy config shell bar add omarchy.tailscale | omarchy config shell bar position top | omarchy config shell bar transparent true
+
+set -euo pipefail
+
+CONFIG_FILE="$HOME/.config/omarchy/shell.json"
+OMARCHY_ROOT="${OMARCHY_PATH:-}"
+DEFAULTS_FILE="$OMARCHY_ROOT/config/omarchy/shell.json"
+
+usage() {
+  echo "Usage: omarchy-config-shell-bar show | list [--json] [--all] | add [plugin] [left|center|right] | remove [plugin] | drop [plugin] | position <top|bottom|left|right> | transparent <true|false>" >&2
+}
+
+fail() {
+  echo "omarchy-config-shell-bar: $*" >&2
+  exit 1
+}
+
+refresh_shell_config() {
+  if ! omarchy-shell shell reloadConfig >/dev/null 2>&1; then
+    omarchy-shell -q shell rescanPlugins >/dev/null 2>&1 || true
+  fi
+}
+
+source_file() {
+  local source="$CONFIG_FILE"
+
+  if [[ ! -s $source ]]; then
+    [[ -n $OMARCHY_ROOT ]] || fail "OMARCHY_PATH is not set"
+    source="$DEFAULTS_FILE"
+  fi
+
+  [[ -s $source ]] || fail "could not find shell config or defaults"
+  printf '%s\n' "$source"
+}
+
+bar_widget_manifest_paths() {
+  {
+    if [[ -n $OMARCHY_ROOT && -d $OMARCHY_ROOT/shell/plugins ]]; then
+      find "$OMARCHY_ROOT/shell/plugins" -mindepth 2 -maxdepth 4 -type f \( -name manifest.json -o -name '*.manifest.json' \) 2>/dev/null
+    fi
+
+    if [[ -d $HOME/.config/omarchy/plugins ]]; then
+      find -L "$HOME/.config/omarchy/plugins" -mindepth 2 -maxdepth 2 -type f -name manifest.json 2>/dev/null
+    fi
+  } | sort -u
+}
+
+current_bar_ids_json() {
+  jq -c '
+    def array_or_empty: if type == "array" then . else [] end;
+    def entry_id: if type == "object" then (.id // "" | tostring) else tostring end;
+
+    ["left", "center", "right"] as $sections |
+    [ $sections[] as $section |
+      ((.bar.layout[$section] // []) | array_or_empty)[] |
+      entry_id |
+      select(length > 0)
+    ]
+  ' "$(source_file)"
+}
+
+current_bar_entries_json() {
+  jq -c '
+    def array_or_empty: if type == "array" then . else [] end;
+    def entry_id($entry): if ($entry | type) == "object" then ($entry.id // "" | tostring) else ($entry | tostring) end;
+
+    ["left", "center", "right"] as $sections |
+    [ $sections[] as $section |
+      ((.bar.layout[$section] // []) | array_or_empty | to_entries[]) |
+      { section: $section, index: .key, id: entry_id(.value) } |
+      select(.id | length > 0)
+    ]
+  ' "$(source_file)"
+}
+
+available_widgets_json() {
+  local include_all="$1"
+  local current_ids
+  local manifest_paths=()
+
+  current_ids=$(current_bar_ids_json)
+  mapfile -t manifest_paths < <(bar_widget_manifest_paths)
+
+  if (( ${#manifest_paths[@]} == 0 )); then
+    printf '[]\n'
+    return
+  fi
+
+  jq -s --argjson currentIds "$current_ids" --argjson includeAll "$include_all" '
+    map(
+      select(((.kinds // []) | index("bar-widget")) and ((.entryPoints.barWidget // "") != "")) |
+      {
+        id: (.id // ""),
+        name: (.barWidget.displayName // .name // .id // ""),
+        description: (.barWidget.description // .description // ""),
+        category: (.barWidget.category // "Plugin"),
+        allowMultiple: (.barWidget.allowMultiple == true)
+      } |
+      select(.id != "")
+    ) |
+    unique_by(.id) |
+    map(. as $widget |
+      $widget + {
+        inBar: (($currentIds | index($widget.id)) != null),
+        addable: ($widget.allowMultiple or (($currentIds | index($widget.id)) == null))
+      }
+    ) |
+    map(select($includeAll or .addable)) |
+    sort_by(.category, .name, .id)
+  ' "${manifest_paths[@]}"
+}
+
+print_available_widgets() {
+  local include_all="false"
+  local json="false"
+
+  while (( $# > 0 )); do
+    case "$1" in
+      --all)
+        include_all="true"
+        ;;
+      --json)
+        json="true"
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        fail "unknown list option: $1"
+        ;;
+    esac
+    shift
+  done
+
+  if [[ $json == "true" ]]; then
+    available_widgets_json "$include_all"
+    return
+  fi
+
+  available_widgets_json "$include_all" | jq -r '
+    .[] |
+    [
+      .id,
+      (if .inBar and .allowMultiple then "addable*" elif .inBar then "in-bar" else "addable" end),
+      .category,
+      .name,
+      .description
+    ] | @tsv
+  ' | awk -F '\t' '
+    BEGIN { printf "%-28s %-10s %-14s %-22s %s\n", "ID", "STATUS", "CATEGORY", "NAME", "DESCRIPTION" }
+    { printf "%-28s %-10s %-14s %-22s %s\n", $1, $2, $3, $4, $5 }
+  '
+}
+
+choose_widget() {
+  local widgets
+  local options=()
+  local selected=""
+
+  widgets=$(available_widgets_json false)
+
+  if ! jq -e 'length > 0' <<<"$widgets" >/dev/null; then
+    fail "no addable bar widgets found"
+  fi
+
+  mapfile -t options < <(jq -r '
+    .[] |
+    [.id, .name, .category, .description] | @tsv
+  ' <<<"$widgets" | awk -F '\t' '{ printf "%-28s  %-22s  [%s] %s\n", $1, $2, $3, $4 }')
+
+  if [[ -t 0 || -t 2 ]]; then
+    if omarchy-cmd-present gum; then
+      selected=$(printf '%s\n' "${options[@]}" | gum filter --header "Add bar widget" --placeholder "Search addable widgets..." --limit 1 --height 14) || return 1
+    elif omarchy-cmd-present fzf; then
+      selected=$(printf '%s\n' "${options[@]}" | fzf --prompt "Add bar widget > " --height 40% --layout reverse --border) || return 1
+    else
+      print_available_widgets >&2
+      fail "gum or fzf is required for interactive widget selection"
+    fi
+  else
+    print_available_widgets >&2
+    fail "widget id is required; use list to see addable widgets"
+  fi
+
+  selected="${selected%%[[:space:]]*}"
+  [[ -n $selected ]] || return 1
+  printf '%s\n' "$selected"
+}
+
+choose_removal() {
+  local entries
+  local widgets
+  local options=()
+  local selected=""
+  local location=""
+  local section=""
+  local index=""
+
+  entries=$(current_bar_entries_json)
+  widgets=$(available_widgets_json true)
+
+  if ! jq -e 'length > 0' <<<"$entries" >/dev/null; then
+    fail "no bar widgets are currently configured"
+  fi
+
+  mapfile -t options < <(jq -r --argjson widgets "$widgets" '
+    def widget_meta($id): first($widgets[]? | select(.id == $id)) // {};
+
+    .[] as $entry |
+    (widget_meta($entry.id)) as $meta |
+    [
+      "\($entry.section)[\($entry.index)]",
+      $entry.id,
+      ($meta.name // $entry.id),
+      ($meta.category // "")
+    ] | @tsv
+  ' <<<"$entries" | awk -F '\t' '{ printf "%-10s  %-28s  %-22s  %s\n", $1, $2, $3, $4 }')
+
+  if [[ -t 0 || -t 2 ]]; then
+    if omarchy-cmd-present gum; then
+      selected=$(printf '%s\n' "${options[@]}" | gum filter --header "Remove bar widget" --placeholder "Search current widgets..." --limit 1 --height 14) || return 1
+    elif omarchy-cmd-present fzf; then
+      selected=$(printf '%s\n' "${options[@]}" | fzf --prompt "Remove bar widget > " --height 40% --layout reverse --border) || return 1
+    else
+      jq -r '.[] | "\(.section)[\(.index)]\t\(.id)"' <<<"$entries" >&2
+      fail "gum or fzf is required for interactive widget selection"
+    fi
+  else
+    jq -r '.[] | "\(.section)[\(.index)]\t\(.id)"' <<<"$entries" >&2
+    fail "widget id is required; use show to see current widgets"
+  fi
+
+  location="${selected%%[[:space:]]*}"
+  section="${location%%[*}"
+  index="${location#*[}"
+  index="${index%]}"
+
+  [[ $section =~ ^(left|center|right)$ ]] || return 1
+  [[ $index =~ ^[0-9]+$ ]] || return 1
+  printf '%s\t%s\n' "$section" "$index"
+}
+
+command="${1:-}"
+
+case "$command" in
+  show|current)
+    if (( $# != 1 )); then
+      usage
+      exit 1
+    fi
+
+    jq '.bar // {}' "$(source_file)"
+    ;;
+  list|available|options)
+    shift
+    print_available_widgets "$@"
+    ;;
+  add)
+    if (( $# > 3 )); then
+      usage
+      exit 1
+    fi
+
+    if (( $# == 1 )); then
+      plugin=$(choose_widget) || exit 1
+    else
+      plugin="${2:-}"
+    fi
+    section="${3:-right}"
+
+    [[ -n $plugin ]] || fail "plugin is required"
+    [[ $section =~ ^(left|center|right)$ ]] || fail "section must be left, center, or right"
+
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+
+    source="$(source_file)"
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+
+    jq --arg section "$section" --arg plugin "$plugin" '
+      def object_or_empty: if type == "object" then . else {} end;
+      def array_or_empty: if type == "array" then . else [] end;
+      def entry_id: if type == "object" then (.id // "" | tostring) else tostring end;
+      def append_anchor($section):
+        {
+          left: "omarchy.workspaces",
+          center: "omarchy.weather",
+          right: "omarchy.tray"
+        }[$section];
+      def insert_after_anchor($entries; $entry; $anchor):
+        ($entries | map(entry_id) | index($anchor)) as $index
+        | if $index == null then
+            $entries + [$entry]
+          else
+            $entries[0:$index + 1] + [$entry] + $entries[$index + 1:]
+          end;
+
+      object_or_empty
+      | .version = 1
+      | .bar = (.bar | object_or_empty)
+      | .bar.layout = (.bar.layout | object_or_empty)
+      | .bar.layout.left = (.bar.layout.left | array_or_empty | map(select(entry_id != $plugin)))
+      | .bar.layout.center = (.bar.layout.center | array_or_empty | map(select(entry_id != $plugin)))
+      | .bar.layout.right = (.bar.layout.right | array_or_empty | map(select(entry_id != $plugin)))
+      | .plugins = (.plugins | array_or_empty)
+      | .bar.layout[$section] = insert_after_anchor(.bar.layout[$section]; { id: $plugin }; append_anchor($section))
+    ' "$source" >"$tmp"
+
+    mv "$tmp" "$CONFIG_FILE"
+    trap - EXIT
+    refresh_shell_config
+    ;;
+  position)
+    if (( $# != 2 )); then
+      usage
+      exit 1
+    fi
+
+    position="${2:-}"
+
+    [[ $position =~ ^(top|bottom|left|right)$ ]] || fail "position must be top, bottom, left, or right"
+
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+
+    source="$(source_file)"
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+
+    jq --arg position "$position" '
+      def object_or_empty: if type == "object" then . else {} end;
+
+      object_or_empty
+      | .version = 1
+      | .bar = (.bar | object_or_empty)
+      | .bar.position = $position
+    ' "$source" >"$tmp"
+
+    mv "$tmp" "$CONFIG_FILE"
+    trap - EXIT
+    refresh_shell_config
+    ;;
+  transparent)
+    if (( $# != 2 )); then
+      usage
+      exit 1
+    fi
+
+    transparent="${2:-}"
+
+    [[ $transparent =~ ^(true|false)$ ]] || fail "transparent must be true or false"
+
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+
+    source="$(source_file)"
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+
+    jq --argjson transparent "$transparent" '
+      def object_or_empty: if type == "object" then . else {} end;
+
+      object_or_empty
+      | .version = 1
+      | .bar = (.bar | object_or_empty)
+      | .bar.transparent = $transparent
+    ' "$source" >"$tmp"
+
+    mv "$tmp" "$CONFIG_FILE"
+    trap - EXIT
+    refresh_shell_config
+    ;;
+  drop|remove|rm)
+    if (( $# > 2 )); then
+      usage
+      exit 1
+    fi
+
+    plugin=""
+    target_section=""
+    target_index=""
+
+    if (( $# == 1 )); then
+      removal=$(choose_removal) || exit 1
+      target_section="${removal%%$'\t'*}"
+      target_index="${removal#*$'\t'}"
+    else
+      plugin="${2:-}"
+      [[ -n $plugin ]] || fail "plugin is required"
+    fi
+
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+
+    source="$(source_file)"
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+
+    if [[ -n $target_section ]]; then
+      jq --arg section "$target_section" --argjson index "$target_index" '
+        def object_or_empty: if type == "object" then . else {} end;
+        def array_or_empty: if type == "array" then . else [] end;
+
+        object_or_empty
+        | .version = 1
+        | .bar = (.bar | object_or_empty)
+        | .bar.layout = (.bar.layout | object_or_empty)
+        | .bar.layout.left = (.bar.layout.left | array_or_empty)
+        | .bar.layout.center = (.bar.layout.center | array_or_empty)
+        | .bar.layout.right = (.bar.layout.right | array_or_empty)
+        | if (.bar.layout[$section] | length) <= $index then
+            error("no widget at " + $section + "[" + ($index | tostring) + "]")
+          else
+            .bar.layout[$section] = (.bar.layout[$section][0:$index] + .bar.layout[$section][($index + 1):])
+          end
+        | .plugins = (.plugins | array_or_empty)
+      ' "$source" >"$tmp"
+    else
+      jq --arg plugin "$plugin" '
+        def object_or_empty: if type == "object" then . else {} end;
+        def array_or_empty: if type == "array" then . else [] end;
+        def entry_id: if type == "object" then (.id // "" | tostring) else tostring end;
+
+        object_or_empty
+        | .version = 1
+        | .bar = (.bar | object_or_empty)
+        | .bar.layout = (.bar.layout | object_or_empty)
+        | .bar.layout.left = (.bar.layout.left | array_or_empty | map(select(entry_id != $plugin)))
+        | .bar.layout.center = (.bar.layout.center | array_or_empty | map(select(entry_id != $plugin)))
+        | .bar.layout.right = (.bar.layout.right | array_or_empty | map(select(entry_id != $plugin)))
+        | .plugins = (.plugins | array_or_empty)
+      ' "$source" >"$tmp"
+    fi
+
+    mv "$tmp" "$CONFIG_FILE"
+    trap - EXIT
+    refresh_shell_config
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac

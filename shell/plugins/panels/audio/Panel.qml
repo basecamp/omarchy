@@ -559,7 +559,7 @@ Panel {
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
       onCloseRequested: root.close()
-      onTabRequested: function(direction) { root.moveSection(direction) }
+      onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
         // 'm' mutes whatever the cursor is on: focused section's slider
         // for output/input, the focused stream for streams.

@@ -117,6 +117,101 @@ if errors:
 PY
 pass "package-owned defaults live outside config"
 
+TMPDIR=$(mktemp -d)
+mkdir -p "$TMPDIR/home/.config/omarchy"
+
+cat >"$TMPDIR/home/.config/omarchy/shell.json" <<'JSON'
+{
+  "version": 1,
+  "bar": {
+    "layout": {
+      "left": [{ "id": "omarchy.menu" }, { "id": "omarchy.workspaces" }],
+      "center": [{ "id": "omarchy.clock" }, { "id": "omarchy.weather" }],
+      "right": [{ "id": "omarchy.tray" }, { "id": "omarchy.bluetooth" }]
+    }
+  },
+  "plugins": []
+}
+JSON
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar add omarchy.tailscale
+jq -e '
+  def ids: map(.id // .);
+  .bar.layout.right | ids == ["omarchy.tray", "omarchy.tailscale", "omarchy.bluetooth"]
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config appends widgets to right by default"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar add local.left left
+jq -e '
+  def ids: map(.id // .);
+  .bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces", "local.left"]
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config appends left widgets after workspaces"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar add local.center center
+jq -e '
+  def ids: map(.id // .);
+  .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "local.center"]
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config appends center widgets after weather"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar add local.first right
+jq -e '
+  def ids: map(.id // .);
+  .bar.layout.right | ids == ["omarchy.tray", "local.first", "omarchy.tailscale", "omarchy.bluetooth"]
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config moves existing widgets without duplicates"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar show | jq -e '
+  def ids: map(.id // .);
+  (.layout.right | ids == ["omarchy.tray", "local.first", "omarchy.tailscale", "omarchy.bluetooth"]) and
+  has("version") | not
+' >/dev/null
+pass "shell config shows only bar json"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar list --json | jq -e '
+  any(.[]; .id == "omarchy.system-stats" and .addable == true and .inBar == false) and
+  all(.[]; .id != "omarchy.tailscale")
+' >/dev/null
+pass "shell config lists addable bar widgets"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar list --json --all | jq -e '
+  any(.[]; .id == "omarchy.tailscale" and .inBar == true and .addable == false) and
+  any(.[]; .id == "omarchy.indicators" and .addable == true)
+' >/dev/null
+pass "shell config list --all includes current widget status"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar position bottom
+jq -e '
+  .bar.position == "bottom" and
+  .plugins == []
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config sets bar position"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar transparent true
+jq -e '
+  .bar.transparent == true and
+  .bar.position == "bottom" and
+  .plugins == []
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config sets bar transparency"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar drop local.left
+jq -e '
+  def ids: map(.id // .);
+  (.bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces"]) and
+  (.bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "local.center"]) and
+  (.bar.layout.right | ids == ["omarchy.tray", "local.first", "omarchy.tailscale", "omarchy.bluetooth"])
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config drops widgets from any section"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar remove local.center
+jq -e '
+  def ids: map(.id // .);
+  .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather"]
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config removes widgets with remove alias"
+
 mapfile -t migrations < <(find "$ROOT/migrations" -maxdepth 1 -type f -name '*.sh' -printf '%f\n' | sort)
 [[ ${#migrations[@]} -eq 0 ]] || fail "4.0 upgrade is not modeled as a migration"
 pass "4.0 upgrade is handled outside the migration runner"

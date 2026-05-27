@@ -55,6 +55,11 @@ ShellRoot {
   property var shellConfig: builtinShellConfig
   property bool suppressUserReload: false
 
+  onShellConfigChanged: {
+    pluginRegistry.registryRevision++
+    pluginRegistry.pluginsChanged()
+  }
+
   function applyShellConfig() {
     // Decide which source is canonical: a valid user shell.json overrides
     // defaults entirely; otherwise fall back to defaults. We do not deep-merge.
@@ -621,6 +626,11 @@ ShellRoot {
       shell.pluginRegistry.rescan()
     }
 
+    function reloadConfig(): string {
+      userConfigFile.reload()
+      return "ok"
+    }
+
     function setPluginEnabled(id: string, enabled: string): void {
       shell.pluginRegistry.setEnabled(id, enabled === "true")
     }
@@ -649,6 +659,10 @@ ShellRoot {
 
     function debugBarGeometry(): string {
       return JSON.stringify(shell.bar && shell.bar.debugBarGeometry ? shell.bar.debugBarGeometry() : [])
+    }
+
+    function openBarConfig(): string {
+      return shell.bar && shell.bar.openConfigPanel && shell.bar.openConfigPanel() ? "ok" : "unknown"
     }
 
     function summon(id: string, payloadJson: string): string {

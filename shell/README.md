@@ -2,9 +2,8 @@
 
 `omarchy-shell` is a single long-running [Quickshell](https://quickshell.org/)
 instance that hosts the Omarchy desktop. Hyprland autostart launches one shell
-per graphical session; everything else — the bar, the bar settings UI, the
-background switcher, future panels and overlays — runs **inside** the shell as
-a plugin.
+per graphical session; everything else — the bar, background switcher, panels,
+and overlays — runs **inside** the shell as a plugin.
 
 Hosting everything inside one shell means:
 
@@ -24,7 +23,6 @@ shell/
     BarWidgetRegistry.qml unified registry for bar widgets (1p + 3p)
   plugins/
     bar/                 first-party plugins (see plugins/README.md)
-    settings/            settings panel + plugin-declared widget forms
     launcher/
     image-picker/
     menu/
@@ -36,6 +34,7 @@ shell/
       network/
       power/
       weather/
+    model-usage/
     services/
       battery/
       idle/
@@ -77,7 +76,7 @@ Supported `kinds`:
 | Kind         | What it is                                                   |
 |--------------|--------------------------------------------------------------|
 | `bar-widget` | A component that the bar can drop into a section             |
-| `panel`      | A persistent or summoned floating window (e.g. bar settings) |
+| `panel`      | A persistent or summoned floating window (e.g. OSD)          |
 | `overlay`    | A fullscreen overlay (e.g. background switcher)              |
 | `menu`       | A summoned menu surface                                      |
 | `service`    | A headless singleton, no UI                                  |
@@ -97,8 +96,7 @@ The full schema lives in `services/PluginRegistry.qml`.
    referenced from its `entryPoints`.
 2. `omarchy plugin rescan`.
 3. Enable the plugin with `omarchy plugin enable <id>`.
-4. If it's a `bar-widget`, place it with `omarchy plugin bar add <id>` or
-   open the visual editor with `omarchy plugin bar edit`.
+4. If it's a `bar-widget`, place it with `omarchy plugin bar add <id>`.
 
 The lower-level IPC equivalents are still available via `omarchy-shell shell rescanPlugins`,
 `omarchy-shell shell setPluginEnabled <id> true`, and `omarchy-shell shell listPlugins`.
@@ -135,6 +133,7 @@ running a separate Quickshell instance.
 | `toggle <id> <payloadJson>`              | —       | summon if closed, hide if open                        |
 | `call <id> <method> <arg>`               | string  | call a method on an already-loaded plugin             |
 | `rescanPlugins`                          | —       | re-walk plugin dirs and pick up new/changed manifests |
+| `reloadConfig`                           | `ok`    | reload `~/.config/omarchy/shell.json`                 |
 | `setPluginEnabled <id> <enabled>`        | —       | flip the persisted enabled bit (see note)             |
 | `listPlugins`                            | JSON    | every discovered plugin (id, name, kinds, enabled)    |
 
@@ -153,7 +152,7 @@ calls to the running shell. It does not start the shell.
 
 ```
 omarchy-shell shell ping
-omarchy-shell shell summon omarchy.settings "{}"
+omarchy-shell shell openBarConfig
 omarchy-shell shell toggle omarchy.menu '{"menu":"root"}'
 omarchy-shell shell listPlugins
 omarchy-shell shell rescanPlugins
@@ -177,9 +176,7 @@ customization from the shipped defaults lives in it.
 The `config/omarchy/shell.json` default config describes the
 fresh-install state. When the user has no `shell.json`, the shell uses
 the defaults verbatim. Once the user customizes anything, `shell.json`
-becomes the authoritative file — we do **not** deep-merge defaults back
-in. Pressing **Reset bar to defaults** in `omarchy launch bar settings`
-rewrites the `bar` subtree from the current default shell config.
+becomes the authoritative file — we do **not** deep-merge defaults back in.
 
 ### shell.json shape
 

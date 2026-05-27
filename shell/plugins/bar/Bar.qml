@@ -12,8 +12,7 @@ Item {
 
   // The omarchy-shell host injects omarchyPath from OMARCHY_PATH.
   required property string omarchyPath
-  // Injected by the host shell. Shared with the bar settings panel so both
-  // see the same widget catalogue.
+  // Injected by the host shell so bar slots can resolve enabled widgets.
   required property var barWidgetRegistry
   // Injected by the host shell every time shell.json is reloaded. Holds the
   // `bar:` subtree: position, centerAnchor, layout. The host owns file IO;
@@ -37,6 +36,8 @@ Item {
   })
   property var layoutConfig: fallbackBarConfig.layout
   property string centerAnchor: ""
+  property bool requestedTransparent: false
+  property bool useTransparentForeground: false
   property bool transparent: false
   property int barConfigSerial: 0
   property string position: "top"
@@ -46,11 +47,16 @@ Item {
   property string fontFamily: Style.font.family
   // Bound to the central Color singleton so the bar tracks shell.toml's
   // [bar] section. Property names kept for the rest of this file's bindings.
-  property color foreground: Color.bar.text
+  property color themeForeground: Color.bar.text
+  property color themeContrastForeground: Color.background
+  property color transparentForeground: Color.bar.text
+  property color foreground: themeForeground
+  property color barForeground: useTransparentForeground ? transparentForeground : themeForeground
+  property bool foregroundAnimationEnabled: true
   property color background: Color.bar.background
   property color urgent: Color.bar.active
 
-  Behavior on foreground { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  Behavior on barForeground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on background { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on urgent { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   property var tooltipTarget: null
@@ -60,6 +66,9 @@ Item {
   property bool tooltipShown: false
   property int tooltipRequest: 0
   property var activePopout: null
+  property var barDragTarget: null
+  property bool barDragAfter: false
+  property var configControls: []
   property var clickTargets: []
   property var debugModuleSlots: []
 
@@ -85,6 +94,18 @@ Item {
   function unregisterDebugModuleSlot(slot) {
     var next = debugModuleSlots.filter(function(item) { return item !== slot })
     debugModuleSlots = next
+  }
+
+  function registerConfigControl(control) {
+    if (!control || configControls.indexOf(control) !== -1) return
+    var next = configControls.slice()
+    next.push(control)
+    configControls = next
+  }
+
+  function unregisterConfigControl(control) {
+    var next = configControls.filter(function(item) { return item !== control })
+    configControls = next
   }
 
   function debugBarGeometry() {
@@ -155,7 +176,7 @@ Item {
   }
 
   // Apply tray-pinning on top of the shared layout normalization so the
-  // bar host and the bar settings panel can't drift on entry shape.
+  // bar host and scriptable config helpers can't drift on entry shape.
   function normalizeLayout(layout) {
     var normalized = Util.normalizeLayout(Util.isPlainObject(layout) ? layout : fallbackBarConfig.layout)
     return {
@@ -177,7 +198,7 @@ Item {
     var config = Util.isPlainObject(barConfig) ? barConfig : fallbackBarConfig
 
     position = normalizePosition(config.position)
-    transparent = config.transparent === true
+    setRequestedTransparency(config.transparent === true)
     centerAnchor = Util.canonicalWidgetId(config.centerAnchor || "")
     layoutConfig = normalizeLayout(config.layout)
     barConfigSerial++
@@ -189,6 +210,57 @@ Item {
     var serial = barConfigSerial
     var entries = layoutConfig ? layoutConfig[region] : null
     return Array.isArray(entries) ? entries : []
+  }
+
+  function panelNavigationSlots(region) {
+    var entries = layoutEntries(region)
+    var slots = []
+    for (var i = 0; i < entries.length; i++) {
+      var id = entryId(entries[i])
+      for (var j = 0; j < debugModuleSlots.length; j++) {
+        var slot = debugModuleSlots[j]
+        if (!slot || slot.region !== region || slot.moduleName !== id) continue
+        var item = slot.activeItem
+        if (!item || item.visible !== true || slot.visible !== true || slot.width <= 0 || slot.height <= 0) continue
+        if (typeof item.open !== "function" || typeof item.close !== "function" || item.opened === undefined) continue
+        slots.push(slot)
+        break
+      }
+    }
+    return slots
+  }
+
+  function switchPanelFrom(owner, direction) {
+    if (!owner) return false
+
+    var currentSlot = null
+    for (var i = 0; i < debugModuleSlots.length; i++) {
+      var slot = debugModuleSlots[i]
+      if (slot && slot.activeItem === owner) {
+        currentSlot = slot
+        break
+      }
+    }
+    if (!currentSlot) return false
+
+    var slots = panelNavigationSlots(currentSlot.region)
+    if (slots.length < 2) return false
+
+    var currentIndex = -1
+    for (var j = 0; j < slots.length; j++) {
+      if (slots[j] === currentSlot) {
+        currentIndex = j
+        break
+      }
+    }
+    if (currentIndex < 0) return false
+
+    var step = direction < 0 ? -1 : 1
+    var nextSlot = slots[(currentIndex + step + slots.length) % slots.length]
+    if (!nextSlot || !nextSlot.activeItem || nextSlot.activeItem === owner) return false
+
+    nextSlot.activeItem.open()
+    return true
   }
 
   function entrySettings(entry) {
@@ -245,24 +317,256 @@ Item {
     launcher.startDetached()
   }
 
-  function openBarSettings() {
-    if (root.shell && typeof root.shell.summon === "function") {
-      root.shell.summon("omarchy.settings", "{}")
-    } else {
-      root.run("omarchy-launch-bar-settings")
+  function openConfigPanel() {
+    for (var i = 0; i < configControls.length; i++) {
+      var control = configControls[i]
+      if (!control || control.visible !== true || typeof control.openPanel !== "function") continue
+      control.openPanel()
+      return true
     }
+    return false
   }
 
   function toggleTransparency() {
-    var nextTransparent = !(root.transparent === true)
+    var nextTransparent = !(root.requestedTransparent === true)
     if (root.shell && typeof root.shell.mutateShellConfig === "function") {
       root.shell.mutateShellConfig(function(config) {
         if (!Util.isPlainObject(config.bar)) config.bar = {}
         config.bar.transparent = nextTransparent
       })
     } else {
-      root.transparent = nextTransparent
+      root.setRequestedTransparency(nextTransparent)
     }
+  }
+
+  function rawLayoutSection(config, region) {
+    if (!Util.isPlainObject(config.bar)) config.bar = {}
+    if (!Util.isPlainObject(config.bar.layout)) config.bar.layout = {}
+    if (!Array.isArray(config.bar.layout[region])) config.bar.layout[region] = []
+
+    return config.bar.layout[region]
+  }
+
+  function rawEntryIndex(entries, name) {
+    for (var i = 0; i < entries.length; i++) {
+      if (root.entryId(entries[i]) === name) return i
+    }
+
+    return -1
+  }
+
+  function moveModuleInConfig(config, fromRegion, fromName, toRegion, beforeName) {
+    var fromEntries = rawLayoutSection(config, fromRegion)
+    var toEntries = rawLayoutSection(config, toRegion)
+    var fromIndex = rawEntryIndex(fromEntries, fromName)
+    if (fromIndex < 0) return false
+
+    var toIndex = beforeName ? rawEntryIndex(toEntries, beforeName) : toEntries.length
+    if (toIndex < 0) toIndex = toEntries.length
+
+    if (fromRegion === toRegion && fromIndex === toIndex) return false
+
+    var movedEntry = fromEntries[fromIndex]
+    fromEntries.splice(fromIndex, 1)
+
+    if (fromRegion === toRegion && fromIndex < toIndex) toIndex -= 1
+    if (toIndex < 0) toIndex = 0
+    if (toIndex > toEntries.length) toIndex = toEntries.length
+    if (fromRegion === toRegion && fromIndex === toIndex) {
+      fromEntries.splice(fromIndex, 0, movedEntry)
+      return false
+    }
+
+    toEntries.splice(toIndex, 0, movedEntry)
+    return true
+  }
+
+  function dropBarModule(source, toRegion, beforeName) {
+    if (!source || !source.region || !source.moduleName || !toRegion) return false
+    if (source.region === toRegion && source.moduleName === beforeName) return false
+    if (!root.shell || typeof root.shell.mutateShellConfig !== "function") return false
+
+    var changed = false
+    root.shell.mutateShellConfig(function(config) {
+      changed = moveModuleInConfig(config, source.region, source.moduleName, toRegion, beforeName)
+    })
+    return changed
+  }
+
+  function moduleDropAtScene(scenePoint, sourceSlot) {
+    for (var i = 0; i < debugModuleSlots.length; i++) {
+      var slot = debugModuleSlots[i]
+      if (!slot || slot === sourceSlot || !slot.visible || slot.width <= 0 || slot.height <= 0) continue
+
+      var slotPoint = { x: slot.x, y: slot.y }
+      try {
+        slotPoint = slot.mapToItem(null, 0, 0)
+      } catch (e) {
+      }
+
+      if (scenePoint.x >= slotPoint.x && scenePoint.x <= slotPoint.x + slot.width &&
+          scenePoint.y >= slotPoint.y && scenePoint.y <= slotPoint.y + slot.height) {
+        return {
+          slot: slot,
+          after: root.vertical ? scenePoint.y > slotPoint.y + slot.height / 2 : scenePoint.x > slotPoint.x + slot.width / 2
+        }
+      }
+    }
+
+    return null
+  }
+
+  function visibleModuleSlot(region, name, sourceSlot) {
+    for (var i = 0; i < debugModuleSlots.length; i++) {
+      var slot = debugModuleSlots[i]
+      if (slot && slot !== sourceSlot && slot.region === region && slot.moduleName === name &&
+          slot.visible && slot.width > 0 && slot.height > 0) {
+        return slot
+      }
+    }
+
+    return null
+  }
+
+  function nextVisibleModuleName(region, afterName, sourceSlot) {
+    var entries = layoutEntries(region)
+    var found = false
+    for (var i = 0; i < entries.length; i++) {
+      var name = entryId(entries[i])
+      if (!found) {
+        found = name === afterName
+        continue
+      }
+
+      if (visibleModuleSlot(region, name, sourceSlot)) return name
+    }
+
+    return ""
+  }
+
+  function dropBarModuleAtTarget(sourceSlot, targetSlot, afterTarget) {
+    if (!sourceSlot || !targetSlot) return false
+
+    var beforeName = afterTarget ? nextVisibleModuleName(targetSlot.region, targetSlot.moduleName, sourceSlot) : targetSlot.moduleName
+    return dropBarModule(sourceSlot, targetSlot.region, beforeName)
+  }
+
+  function moduleClickTargetAt(slot, localX, localY) {
+    for (var i = clickTargets.length - 1; i >= 0; i--) {
+      var target = clickTargets[i]
+      if (!target || target.visible === false || target.opacity === 0 || typeof target.triggerPress !== "function") continue
+
+      var targetPoint = { x: localX, y: localY }
+      try {
+        targetPoint = slot.mapToItem(target, localX, localY)
+      } catch (e) {
+        continue
+      }
+
+      if (targetPoint.x >= 0 && targetPoint.x <= target.width &&
+          targetPoint.y >= 0 && targetPoint.y <= target.height) {
+        return target
+      }
+    }
+
+    if (slot.activeItem && typeof slot.activeItem.triggerPress === "function") return slot.activeItem
+    return null
+  }
+
+  function pressModuleClickTarget(slot, button, localX, localY) {
+    var target = moduleClickTargetAt(slot, localX, localY)
+    if (!target) return false
+
+    target.triggerPress(button)
+    return true
+  }
+
+  function colorHex(colorValue) {
+    var c = colorValue
+    if (typeof c === "string") c = Qt.color(c)
+    function hexChannel(value) {
+      var s = Math.round(Util.clamp(value, 0, 1) * 255).toString(16)
+      return s.length < 2 ? "0" + s : s
+    }
+    return "#" + hexChannel(c.r) + hexChannel(c.g) + hexChannel(c.b)
+  }
+
+  function setRequestedTransparency(value) {
+    var nextTransparent = value === true
+    requestedTransparent = nextTransparent
+    if (!nextTransparent) {
+      foregroundAnimationEnabled = false
+      useTransparentForeground = false
+      transparent = false
+      transparentForeground = themeForeground
+      restoreForegroundAnimation()
+      return
+    }
+    scheduleTransparentForegroundRefresh()
+  }
+
+  function restoreForegroundAnimation() {
+    Qt.callLater(function() {
+      Qt.callLater(function() { root.foregroundAnimationEnabled = true })
+    })
+  }
+
+  function scheduleTransparentForegroundRefresh() {
+    if (!requestedTransparent) {
+      transparentForeground = themeForeground
+      return
+    }
+    transparentForegroundTimer.restart()
+  }
+
+  function refreshTransparentForeground() {
+    if (!requestedTransparent || transparentForegroundProc.running) return
+
+    transparentForegroundProc.command = [
+      "omarchy-shell-bar-text-color",
+      root.position,
+      String(root.barSize),
+      colorHex(root.themeForeground),
+      colorHex(root.themeContrastForeground)
+    ]
+    transparentForegroundProc.running = true
+  }
+
+  onRequestedTransparentChanged: scheduleTransparentForegroundRefresh()
+  onPositionChanged: scheduleTransparentForegroundRefresh()
+  onThemeForegroundChanged: scheduleTransparentForegroundRefresh()
+  onThemeContrastForegroundChanged: scheduleTransparentForegroundRefresh()
+
+  Timer {
+    id: transparentForegroundTimer
+    interval: 120
+    repeat: false
+    onTriggered: root.refreshTransparentForeground()
+  }
+
+  Process {
+    id: transparentForegroundProc
+    stdout: SplitParser {
+      onRead: function(line) {
+        var value = String(line || "").trim()
+        if (!/^#[0-9A-Fa-f]{6}$/.test(value)) return
+
+        root.foregroundAnimationEnabled = false
+        root.transparentForeground = value
+        if (root.requestedTransparent) {
+          root.useTransparentForeground = true
+          root.transparent = true
+        }
+        root.restoreForegroundAnimation()
+      }
+    }
+  }
+
+  FileView {
+    path: root.home + "/.config/omarchy/current"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: root.scheduleTransparentForegroundRefresh()
   }
 
   function runProcess(process) {
@@ -531,7 +835,7 @@ Item {
           visible: centerRoot.hasAnchor
           entries: root.entriesBefore(centerRoot.entries, root.centerAnchor)
           region: "center"
-          anchors.right: centerAnchorModule.left
+          anchors.right: centerConfigControl.visible ? centerConfigControl.left : centerAnchorModule.left
           anchors.verticalCenter: centerAnchorModule.verticalCenter
         }
 
@@ -541,6 +845,15 @@ Item {
           entry: centerRoot.anchorEntry
           region: "center"
           anchors.centerIn: parent
+        }
+
+        BarConfigControl {
+          id: centerConfigControl
+
+          visible: centerRoot.hasAnchor && centerAnchorModule.moduleName === "omarchy.clock"
+          clockHovered: centerAnchorModule.hovered
+          anchors.right: centerAnchorModule.left
+          anchors.verticalCenter: centerAnchorModule.verticalCenter
         }
 
         ModuleList {
@@ -572,7 +885,7 @@ Item {
           visible: centerRoot.hasAnchor
           entries: root.entriesBefore(centerRoot.entries, root.centerAnchor)
           region: "center"
-          anchors.bottom: centerAnchorModule.top
+          anchors.bottom: centerConfigControl.visible ? centerConfigControl.top : centerAnchorModule.top
           anchors.horizontalCenter: centerAnchorModule.horizontalCenter
         }
 
@@ -582,6 +895,15 @@ Item {
           entry: centerRoot.anchorEntry
           region: "center"
           anchors.centerIn: parent
+        }
+
+        BarConfigControl {
+          id: centerConfigControl
+
+          visible: centerRoot.hasAnchor && centerAnchorModule.moduleName === "omarchy.clock"
+          clockHovered: centerAnchorModule.hovered
+          anchors.bottom: centerAnchorModule.top
+          anchors.horizontalCenter: centerAnchorModule.horizontalCenter
         }
 
         ModuleList {
@@ -596,19 +918,92 @@ Item {
   }
 
   component CenterGestureArea: MouseArea {
-    acceptedButtons: Qt.LeftButton | Qt.RightButton
+    acceptedButtons: Qt.LeftButton
 
-    onClicked: function(mouse) {
-      if (mouse.button === Qt.RightButton) {
-        root.openBarSettings()
+    onDoubleClicked: function(mouse) {
+      if (mouse.button === Qt.LeftButton) {
+        root.toggleTransparency()
         mouse.accepted = true
       }
     }
+  }
 
-    onDoubleClicked: function(mouse) {
-      if (mouse.button !== Qt.RightButton) {
-        root.toggleTransparency()
-        mouse.accepted = true
+  component BarConfigControl: Item {
+    id: configControl
+
+    property bool clockHovered: false
+    property bool openWhenReady: false
+
+    readonly property var panelItem: configPanelLoader.item
+    readonly property bool panelOpen: panelItem ? panelItem.opened === true : false
+    readonly property bool revealed: visible && (clockHovered || controlHover.hovered || panelOpen)
+
+    implicitWidth: button.implicitWidth
+    implicitHeight: button.implicitHeight
+    width: implicitWidth
+    height: implicitHeight
+    opacity: revealed ? 1.0 : 0
+    z: 500
+
+    Behavior on opacity {
+      NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+    }
+
+    HoverHandler { id: controlHover }
+
+    Component.onCompleted: root.registerConfigControl(configControl)
+    Component.onDestruction: root.unregisterConfigControl(configControl)
+
+    function configurePanel(panel) {
+      if (!panel) return
+      panel.bar = root
+      panel.anchorItem = button
+    }
+
+    function openPanel() {
+      if (!panelItem) {
+        openWhenReady = true
+        return
+      }
+      panelItem.open()
+    }
+
+    function togglePanel() {
+      if (!panelItem) {
+        openPanel()
+        return
+      }
+      panelItem.toggle()
+    }
+
+    WidgetButton {
+      id: button
+
+      anchors.fill: parent
+      bar: root
+      text: ""
+      keepSpace: true
+      concealed: !configControl.revealed
+      interactive: configControl.revealed
+      horizontalMargin: 6.5
+      verticalPadding: 6
+      tooltipText: "Bar config"
+      onPressed: function(b) {
+        if (b === Qt.LeftButton) configControl.togglePanel()
+      }
+    }
+
+    Loader {
+      id: configPanelLoader
+
+      active: true
+      source: Qt.resolvedUrl("BarConfigPanel.qml")
+      onLoaded: {
+        configControl.configurePanel(item)
+        if (configControl.openWhenReady) {
+          configControl.openWhenReady = false
+          item.open()
+        }
       }
     }
   }
@@ -686,14 +1081,18 @@ Item {
       if (qmlCustom) return qmlLoader.item
       return componentLoader.item
     }
+    readonly property bool hovered: moduleHover.hovered
 
     implicitWidth: activeItem && activeItem.visible ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
     implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
     width: implicitWidth
     height: implicitHeight
+    z: modulePointer.dragging ? 100 : 0
 
     Component.onCompleted: root.registerDebugModuleSlot(slot)
     Component.onDestruction: root.unregisterDebugModuleSlot(slot)
+
+    HoverHandler { id: moduleHover }
 
     Loader {
       id: componentLoader
@@ -725,6 +1124,143 @@ Item {
       onLoaded: {
         slot.injectProps()
         Qt.callLater(slot.injectProps)
+      }
+    }
+
+    Rectangle {
+      visible: !root.vertical && root.barDragTarget === slot && !root.barDragAfter
+      anchors {
+        left: parent.left
+        top: parent.top
+        bottom: parent.bottom
+      }
+      width: 2
+      color: root.barForeground
+      opacity: 0.9
+    }
+
+    Rectangle {
+      visible: !root.vertical && root.barDragTarget === slot && root.barDragAfter
+      anchors {
+        right: parent.right
+        top: parent.top
+        bottom: parent.bottom
+      }
+      width: 2
+      color: root.barForeground
+      opacity: 0.9
+    }
+
+    Rectangle {
+      visible: root.vertical && root.barDragTarget === slot && !root.barDragAfter
+      anchors {
+        left: parent.left
+        right: parent.right
+        top: parent.top
+      }
+      height: 2
+      color: root.barForeground
+      opacity: 0.9
+    }
+
+    Rectangle {
+      visible: root.vertical && root.barDragTarget === slot && root.barDragAfter
+      anchors {
+        left: parent.left
+        right: parent.right
+        bottom: parent.bottom
+      }
+      height: 2
+      color: root.barForeground
+      opacity: 0.9
+    }
+
+    MouseArea {
+      id: modulePointer
+
+      property bool dragging: false
+      property bool suppressClick: false
+      property real pressedX: 0
+      property real pressedY: 0
+
+      anchors.fill: parent
+      acceptedButtons: Qt.LeftButton
+      enabled: slot.visible && slot.width > 0 && slot.height > 0
+      propagateComposedEvents: true
+      drag.target: root.shell && typeof root.shell.mutateShellConfig === "function" ? slot : null
+      drag.axis: Drag.XAndYAxis
+      drag.threshold: Style.space(4)
+
+      onPressed: function(mouse) {
+        dragging = false
+        suppressClick = false
+        pressedX = mouse.x
+        pressedY = mouse.y
+        root.barDragTarget = null
+        root.barDragAfter = false
+      }
+
+      onPositionChanged: function(mouse) {
+        if (!(mouse.buttons & Qt.LeftButton)) return
+
+        var distance = Math.abs(mouse.x - pressedX) + Math.abs(mouse.y - pressedY)
+        if (distance >= drag.threshold) {
+          dragging = true
+          root.hideTooltip(slot.activeItem)
+        }
+
+        if (dragging) {
+          var scenePoint = slot.mapToItem(null, mouse.x, mouse.y)
+          var drop = root.moduleDropAtScene(scenePoint, slot)
+          root.barDragTarget = drop ? drop.slot : null
+          root.barDragAfter = drop ? drop.after : false
+        }
+      }
+
+      onReleased: function(mouse) {
+        var wasDragging = dragging
+        if (dragging) {
+          suppressClick = true
+        }
+
+        if (dragging && root.barDragTarget) {
+          root.dropBarModuleAtTarget(slot, root.barDragTarget, root.barDragAfter)
+          mouse.accepted = true
+        } else if (!dragging) {
+          mouse.accepted = false
+        }
+
+        dragging = false
+        root.barDragTarget = null
+        root.barDragAfter = false
+        if (wasDragging) {
+          slot.x = 0
+          slot.y = 0
+          if (slot.parent && typeof slot.parent.forceLayout === "function") slot.parent.forceLayout()
+        }
+      }
+
+      onCanceled: {
+        var wasDragging = dragging
+        dragging = false
+        suppressClick = false
+        root.barDragTarget = null
+        root.barDragAfter = false
+        if (wasDragging) {
+          slot.x = 0
+          slot.y = 0
+          if (slot.parent && typeof slot.parent.forceLayout === "function") slot.parent.forceLayout()
+        }
+      }
+
+      onClicked: function(mouse) {
+        if (suppressClick) {
+          suppressClick = false
+          mouse.accepted = true
+          return
+        }
+
+        if (!root.pressModuleClickTarget(slot, mouse.button, mouse.x, mouse.y)) mouse.accepted = false
       }
     }
 

@@ -8,7 +8,7 @@ Item {
   property string text: ""
   property string fontFamily: bar ? bar.fontFamily : Style.font.family
   property real fontSize: Style.font.body
-  property color foreground: bar ? bar.foreground : Color.foreground
+  property color foreground: bar ? bar.barForeground : Color.foreground
   property color activeColor: bar ? bar.urgent : Color.urgent
   property bool active: false
   property real horizontalMargin: 8.5
@@ -83,6 +83,7 @@ Item {
     verticalAlignment: Text.AlignVCenter
 
     Behavior on color {
+      enabled: !root.bar || root.bar.foregroundAnimationEnabled
       ColorAnimation { duration: 160 }
     }
   }

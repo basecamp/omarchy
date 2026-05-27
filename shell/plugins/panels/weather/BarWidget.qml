@@ -23,7 +23,7 @@ BarWidget {
   }
 
   visible: panelLoader.item && panelLoader.item.label !== ""
-  implicitWidth: bar && bar.vertical ? button.implicitWidth : button.implicitWidth + Style.spacing.controlGap
+  implicitWidth: bar && bar.vertical ? button.implicitWidth : button.implicitWidth + Style.spacing.labelGap
   implicitHeight: button.implicitHeight
 
   onBarChanged: injectPanel()
@@ -49,7 +49,7 @@ BarWidget {
     bar: root.bar
     text: panelLoader.item ? panelLoader.item.label : ""
     active: panelLoader.item && panelLoader.item.klass === "active"
-    horizontalMargin: 1
+    horizontalMargin: 5
     // Tooltip suppressed because the panel is the detail view.
     tooltipText: ""
 

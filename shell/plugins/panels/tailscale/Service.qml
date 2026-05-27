@@ -2,10 +2,10 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import "Model.js" as Model
 
 Item {
   id: root
-  visible: false
 
   property var settings: ({})
 
@@ -20,18 +20,24 @@ Item {
   property string selfIp: ""
   property string authUrl: ""
   property var peers: []
+  property var exitNodes: []
   property var accounts: []
   property string selectedAccountId: ""
   property string selectedAccountLabel: ""
+  property string switchingAccountId: ""
+  property string settingExitNodeId: ""
+  property bool accountsAccessDenied: false
   property string actionStatus: ""
   property string lastError: ""
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
-  readonly property bool busy: whichProcess.running || statusProcess.running || accountsProcess.running || actionProcess.running || loginProcess.running || switchProcess.running
+  readonly property bool busy: whichProcess.running || statusProcess.running || accountsProcess.running || actionProcess.running || loginProcess.running || switchProcess.running || operatorProcess.running || exitNodeProcess.running
+  readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME")
 
   property string _statusOutput: ""
   property string _statusError: ""
   property string _accountsOutput: ""
+  property string _accountsError: ""
   property string _actionOutput: ""
   property string _actionError: ""
   property string _loginOutput: ""
@@ -42,6 +48,10 @@ Item {
   property double _lastAccountsRefreshMs: 0
   property string _switchOutput: ""
   property string _switchError: ""
+  property string _exitNodeOutput: ""
+  property string _exitNodeError: ""
+  property string _operatorOutput: ""
+  property string _operatorError: ""
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
@@ -57,56 +67,33 @@ Item {
   }
 
   function filterIPv4(ips) {
-    var result = []
-    if (!ips || typeof ips.length !== "number") return result
-    for (var i = 0; i < ips.length; i++) {
-      var ip = String(ips[i] || "")
-      if (/^100\./.test(ip)) result.push(ip)
-    }
-    return result
+    return Model.filterIPv4(ips)
   }
 
   function cleanDnsName(name) {
-    var value = String(name || "")
-    return value.charAt(value.length - 1) === "." ? value.slice(0, -1) : value
+    return Model.cleanDnsName(name)
   }
 
   function shortDnsName(name) {
-    var clean = cleanDnsName(name)
-    if (clean === "") return ""
-    return clean.split(".")[0] || clean
+    return Model.shortDnsName(name)
   }
 
   function displayHostName(hostName, dnsName) {
-    var host = String(hostName || "")
-    if (host !== "" && host.toLowerCase() !== "localhost") return host
-    return shortDnsName(dnsName) || host || "Unknown"
+    return Model.displayHostName(hostName, dnsName)
   }
 
   function osIcon(os) {
-    var value = String(os || "").toLowerCase()
-    if (value === "linux") return "󰌽"
-    if (value === "macos" || value === "ios") return "󰀵"
-    if (value === "windows") return "󰍲"
-    if (value === "android") return "󰀲"
-    return "󰟀"
+    return Model.osIcon(os)
   }
 
   function accountLabel(account) {
-    if (!account) return "Unknown account"
-    var parts = []
-    if (account.nickname) parts.push(String(account.nickname))
-    if (account.tailnet && String(account.tailnet) !== String(account.nickname || "")) parts.push(String(account.tailnet))
-    if (account.account) parts.push(String(account.account))
-    return parts.length > 0 ? parts.join(" · ") : String(account.id || "Unknown account")
+    return Model.accountLabel(account)
   }
 
   function copyToClipboard(value, label) {
     var text = String(value || "")
     if (text === "") return
     Quickshell.execDetached(["bash", "-c", "printf %s " + Util.shellQuote(text) + " | wl-copy"])
-    actionStatus = elideStatus("Copied " + (label || text))
-    actionStatusTimer.restart()
   }
 
   function copyPeerIp(peer) {
@@ -150,6 +137,7 @@ Item {
     var shouldRefreshAccounts = forceAccounts === true || accounts.length === 0 || now - _lastAccountsRefreshMs > 60000
     if (shouldRefreshAccounts && !accountsProcess.running) {
       _accountsOutput = ""
+      _accountsError = ""
       _lastAccountsRefreshMs = now
       accountsProcess.command = ["tailscale", "switch", "--list", "--json"]
       accountsProcess.running = true
@@ -171,119 +159,66 @@ Item {
     selfIp = ""
     authUrl = ""
     peers = []
+    exitNodes = []
     accounts = []
     selectedAccountId = ""
     selectedAccountLabel = ""
+    switchingAccountId = ""
+    settingExitNodeId = ""
+    accountsAccessDenied = false
   }
 
   function parseStatus(raw) {
-    var text = String(raw || "").trim()
-    if (text === "") {
-      resetUnavailable("Disconnected")
+    var parsed = Model.parseStatus(raw)
+    if (!parsed.ok) {
+      resetUnavailable(parsed.message || "Status error")
+      lastError = parsed.error || "Failed to parse tailscale status"
+      console.warn("tailscale", lastError)
+      return
+    }
+    if (parsed.unavailable) {
+      resetUnavailable(parsed.message || "Disconnected")
       return
     }
 
-    try {
-      var data = JSON.parse(text)
-      backendState = String(data.BackendState || "Unknown")
-      running = backendState === "Running"
-      needsLogin = backendState === "NeedsLogin"
-      authUrl = String(data.AuthURL || "")
-      if (needsLogin && _loginInProgress && !_loginUrlOpened && authUrl !== "" && authUrl !== _preLoginAuthUrl) {
-        openAuthUrlFrom(authUrl, false)
-      }
+    backendState = parsed.backendState
+    running = parsed.running
+    needsLogin = parsed.needsLogin
+    authUrl = parsed.authUrl
+    if (needsLogin && _loginInProgress && !_loginUrlOpened && authUrl !== "" && authUrl !== _preLoginAuthUrl) openAuthUrlFrom(authUrl, false)
+    selfName = parsed.selfName
+    selfDnsName = parsed.selfDnsName
+    selfIp = parsed.selfIp
+    peers = parsed.running ? parsed.peers : []
+    exitNodes = parsed.running ? parsed.exitNodes : []
 
-      var self = data.Self || {}
-      selfName = displayHostName(self.HostName, self.DNSName)
-      selfDnsName = cleanDnsName(self.DNSName)
-      var selfIps = filterIPv4(self.TailscaleIPs || data.TailscaleIPs || [])
-      selfIp = selfIps.length > 0 ? selfIps[0] : ""
-
-      var nextPeers = []
-      var rawPeers = data.Peer || {}
-      for (var id in rawPeers) {
-        var peer = rawPeers[id] || {}
-        var ipv4s = filterIPv4(peer.TailscaleIPs || [])
-        nextPeers.push({
-          id: id,
-          HostName: displayHostName(peer.HostName, peer.DNSName),
-          DNSName: cleanDnsName(peer.DNSName),
-          TailscaleIPs: ipv4s,
-          Online: peer.Online === true,
-          OS: String(peer.OS || ""),
-          Tags: peer.Tags || [],
-          ExitNodeOption: peer.ExitNodeOption === true,
-          ExitNode: peer.ExitNode === true
-        })
-      }
-      nextPeers.sort(function(a, b) {
-        if (a.Online !== b.Online) return a.Online ? -1 : 1
-        return String(a.HostName).localeCompare(String(b.HostName))
-      })
-      peers = nextPeers
-
-      if (needsLogin) statusText = "Needs login"
-      else if (running) {
-        statusText = "Connected"
-        _loginInProgress = false
-        _loginUrlOpened = false
-        _preLoginAuthUrl = ""
-        loginTimeoutTimer.stop()
-      } else if (backendState === "Stopped") statusText = "Disconnected"
-      else statusText = backendState
-      lastError = ""
-    } catch (e) {
-      resetUnavailable("Status error")
-      lastError = "Failed to parse tailscale status"
-      console.warn("tailscale", lastError, e)
+    if (needsLogin) statusText = "Needs login"
+    else if (running) {
+      statusText = "Connected"
+      _loginInProgress = false
+      _loginUrlOpened = false
+      _preLoginAuthUrl = ""
+      loginTimeoutTimer.stop()
+    } else if (backendState === "Stopped") {
+      statusText = "Disconnected"
+    } else {
+      statusText = backendState
     }
+    lastError = ""
   }
 
   function parseAccounts(raw) {
-    var text = String(raw || "").trim()
-    if (text === "") {
-      accounts = []
-      selectedAccountId = ""
-      selectedAccountLabel = ""
-      return
-    }
-
-    try {
-      var parsed = JSON.parse(text)
-      var next = []
-      var selected = null
-      if (parsed && typeof parsed.length === "number") {
-        for (var i = 0; i < parsed.length; i++) {
-          var raw = parsed[i] || {}
-          var account = {
-            id: String(raw.id || raw.ID || ""),
-            nickname: String(raw.nickname || raw.Nickname || raw.name || raw.Name || ""),
-            tailnet: String(raw.tailnet || raw.Tailnet || ""),
-            account: String(raw.account || raw.Account || raw.loginName || raw.LoginName || raw.user || raw.User || ""),
-            selected: raw.selected === true || raw.Selected === true
-          }
-          next.push(account)
-          if (account.selected === true) selected = account
-        }
-      }
-      accounts = next
-      selectedAccountId = selected ? String(selected.id || "") : ""
-      selectedAccountLabel = selected ? accountLabel(selected) : ""
-    } catch (e) {
-      accounts = []
-      selectedAccountId = ""
-      selectedAccountLabel = ""
-      console.warn("tailscale", "Failed to parse account list", e)
-    }
+    var parsed = Model.parseAccounts(raw)
+    accounts = parsed.accounts
+    selectedAccountId = parsed.selectedAccountId
+    selectedAccountLabel = parsed.selectedAccountLabel
+    accountsAccessDenied = false
   }
 
   function toggleTailscale() {
     if (!installed) return
-    if (running) {
-      runAction(["tailscale", "down"], "Turning Tailscale off…")
-    } else {
-      loginOrUp()
-    }
+    if (running) runAction(["tailscale", "down"], "Turning Tailscale off…")
+    else loginOrUp()
   }
 
   function loginOrUp() {
@@ -306,9 +241,38 @@ Item {
     if (!installed || accountId === "" || accountId === selectedAccountId || switchProcess.running) return
     _switchOutput = ""
     _switchError = ""
-    actionStatus = "Switching Tailscale account…"
+    switchingAccountId = accountId
     switchProcess.command = ["tailscale", "switch", accountId]
     switchProcess.running = true
+  }
+
+  function exitNodeTarget(peer) {
+    if (!peer) return ""
+    if (peer.DNSName) return cleanDnsName(peer.DNSName)
+    if (peer.HostName) return String(peer.HostName)
+    var ips = filterIPv4(peer.TailscaleIPs || [])
+    return ips.length > 0 ? ips[0] : ""
+  }
+
+  function setExitNode(peer) {
+    if (!installed || !running || !peer || exitNodeProcess.running) return
+    var active = peer.ExitNode === true
+    var target = active ? "" : exitNodeTarget(peer)
+    if (!active && target === "") return
+    _exitNodeOutput = ""
+    _exitNodeError = ""
+    settingExitNodeId = String(peer.id || "")
+    exitNodeProcess.command = ["tailscale", "set", "--exit-node=" + target]
+    exitNodeProcess.running = true
+  }
+
+  function authorizeProfileSwitching() {
+    if (!installed || operatorProcess.running || userName === "") return
+    _operatorOutput = ""
+    _operatorError = ""
+    actionStatus = "Authorizing Tailscale profiles…"
+    operatorProcess.command = ["pkexec", "tailscale", "set", "--operator=" + userName]
+    operatorProcess.running = true
   }
 
   function runAction(command, label) {
@@ -416,10 +380,20 @@ Item {
     running: false
     command: []
     stdout: StdioCollector { id: accountsStdout; waitForEnd: true; onStreamFinished: root._accountsOutput = text }
+    stderr: StdioCollector { id: accountsStderr; waitForEnd: true; onStreamFinished: root._accountsError = text }
     onExited: function(exitCode) {
       var stdout = String(accountsStdout.text || root._accountsOutput || "")
+      var stderr = String(accountsStderr.text || root._accountsError || "")
       if (exitCode === 0) root.parseAccounts(stdout)
-      else root.parseAccounts("")
+      else {
+        root.parseAccounts("")
+        if (/profiles access denied/i.test(stderr) || /profiles access denied/i.test(stdout)) {
+          root.accountsAccessDenied = true
+          root.lastError = "Authorize Tailscale profiles to show connections"
+        } else {
+          root.lastError = elideStatus(stderr || stdout || "Could not list Tailscale connections")
+        }
+      }
     }
   }
 
@@ -478,20 +452,55 @@ Item {
         root.actionStatus = root.lastError
       } else {
         root.lastError = ""
-        root.actionStatus = "Switched account"
+        root.actionStatus = ""
+        root._lastAccountsRefreshMs = 0
+      }
+      root.switchingAccountId = ""
+      delayedRefresh.restart()
+    }
+  }
+
+  Process {
+    id: exitNodeProcess
+    running: false
+    command: []
+    stdout: StdioCollector { id: exitNodeStdout; waitForEnd: true; onStreamFinished: root._exitNodeOutput = text }
+    stderr: StdioCollector { id: exitNodeStderr; waitForEnd: true; onStreamFinished: root._exitNodeError = text }
+    onExited: function(exitCode) {
+      var stdout = String(exitNodeStdout.text || root._exitNodeOutput || "")
+      var stderr = String(exitNodeStderr.text || root._exitNodeError || "")
+      if (exitCode !== 0) {
+        root.lastError = elideStatus(stderr || stdout || "Exit node selection failed")
+        root.actionStatus = root.lastError
+      } else {
+        root.lastError = ""
+        root.actionStatus = ""
+      }
+      root.settingExitNodeId = ""
+      delayedRefresh.restart()
+    }
+  }
+
+  Process {
+    id: operatorProcess
+    running: false
+    command: []
+    stdout: StdioCollector { id: operatorStdout; waitForEnd: true; onStreamFinished: root._operatorOutput = text }
+    stderr: StdioCollector { id: operatorStderr; waitForEnd: true; onStreamFinished: root._operatorError = text }
+    onExited: function(exitCode) {
+      var stdout = String(operatorStdout.text || root._operatorOutput || "")
+      var stderr = String(operatorStderr.text || root._operatorError || "")
+      if (exitCode !== 0) {
+        root.lastError = elideStatus(stderr || stdout || "Tailscale authorization failed")
+        root.actionStatus = root.lastError
+      } else {
+        root.accountsAccessDenied = false
+        root.lastError = ""
+        root.actionStatus = "Tailscale profiles authorized"
         actionStatusTimer.restart()
         root._lastAccountsRefreshMs = 0
       }
       delayedRefresh.restart()
     }
-  }
-
-  IpcHandler {
-    target: "omarchy.tailscale"
-    function refresh(): string { root.refresh(); return "ok" }
-    function toggle(): string { root.toggleTailscale(); return "ok" }
-    function up(): string { root.loginOrUp(); return "ok" }
-    function down(): string { root.runAction(["tailscale", "down"], "Turning Tailscale off…"); return "ok" }
-    function status(): string { return root.statusText }
   }
 }

@@ -87,7 +87,7 @@ BarWidget {
     property bool active: false
 
     text: glyph
-    color: active ? (root.bar ? root.bar.foreground : Color.foreground) : Qt.rgba(0.7, 0.7, 0.7, 0.3)
+    color: active ? (root.bar ? root.bar.barForeground : Color.foreground) : Qt.rgba(0.7, 0.7, 0.7, 0.3)
     font.family: root.bar ? root.bar.fontFamily : Style.font.family
     font.pixelSize: Style.font.bodySmall
   }

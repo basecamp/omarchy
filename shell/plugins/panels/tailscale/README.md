@@ -7,9 +7,9 @@ Native Omarchy bar widget for Tailscale.
 - Shows Tailscale connection state in the bar
 - Left click opens a keyboard-friendly panel
 - Right click toggles Tailscale on/off
-- Switch between logged-in Tailscale accounts when multiple are available
-- Browse peers from `tailscale status --json`
-- Copy a peer's Tailscale IP, host name, or DNS name
+- Switch between available Tailscale connections when multiple are available
+- Browse machines from `tailscale status --json`
+- Copy a machine's Tailscale IP, host name, or DNS name
 
 ## Keyboard shortcuts
 
@@ -35,4 +35,4 @@ Renders the Tailscale mark natively as a theme-colored 3×3 dot grid, matching t
 
 ## Add to the bar
 
-This widget ships as first-party plugin `omarchy.tailscale`. Add it through Omarchy's bar settings UI, or add an entry such as `{ "id": "omarchy.tailscale" }` to one of the `bar.layout` sections in `~/.config/omarchy/shell.json` and restart the shell.
+This widget ships as first-party plugin `omarchy.tailscale`. Add it with `omarchy plugin bar add omarchy.tailscale`, or add an entry such as `{ "id": "omarchy.tailscale" }` to one of the `bar.layout` sections in `~/.config/omarchy/shell.json` and restart the shell.

@@ -3,7 +3,7 @@ import QtQuick
 // Instance, not a singleton — instantiated once by shell.qml and injected into
 // plugins that need to read or extend the widget catalogue. Relative-path
 // singleton imports were creating per-importer instances which prevented the
-// bar settings panel from seeing what the bar registered.
+// shell host from seeing what the bar registered.
 QtObject {
   id: registry
 

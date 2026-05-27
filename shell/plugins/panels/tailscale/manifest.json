@@ -5,16 +5,16 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "license": "MIT",
-  "description": "Tailscale status, account switching, peer browsing, and quick copy actions in the Omarchy bar.",
+  "description": "Tailscale status, connection switching, machine browsing, and quick copy actions in the Omarchy bar.",
   "kinds": [
     "bar-widget"
   ],
   "entryPoints": {
-    "barWidget": "Widget.qml"
+    "barWidget": "Panel.qml"
   },
   "barWidget": {
     "displayName": "Tailscale",
-    "description": "Toggle Tailscale, switch accounts, browse peers, and copy peer IPs or names.",
+    "description": "Toggle Tailscale, switch connections, browse machines, and copy machine IPs or names.",
     "category": "Network",
     "allowMultiple": false,
     "defaults": {

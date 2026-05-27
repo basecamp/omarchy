@@ -34,10 +34,13 @@ BarWidget {
       id: glyph
       anchors.verticalCenter: parent.verticalCenter
       text: root.playIcon
-      color: activePlayer && activePlayer.isPlaying ? root.bar.foreground : Qt.darker(root.bar.foreground, 1.5)
+      color: activePlayer && activePlayer.isPlaying ? root.bar.barForeground : Qt.darker(root.bar.barForeground, 1.5)
       font.family: root.bar.fontFamily
       font.pixelSize: Style.font.body
-      Behavior on color { ColorAnimation { duration: 160 } }
+      Behavior on color {
+        enabled: !root.bar || root.bar.foregroundAnimationEnabled
+        ColorAnimation { duration: 160 }
+      }
     }
 
     Item {
@@ -51,7 +54,7 @@ BarWidget {
       Text {
         id: labelText
         text: root.title + (root.artist ? "  ·  " + root.artist : "")
-        color: root.bar.foreground
+        color: root.bar.barForeground
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.body
         anchors.verticalCenter: parent.verticalCenter

@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell.Io
+import qs.Commons
 
 // Base item for plugin popup widgets. Many first-party plugins expose a bar
 // button plus a popup from one QML entry point; this base owns the shared
@@ -18,6 +19,7 @@ Item {
   property bool popoutSwitchClosing: false
 
   readonly property bool opened: panelController.open
+  readonly property color barForeground: bar ? bar.barForeground : Color.foreground
 
   function open() { panelController.show() }
   function close() { panelController.hide() }
@@ -27,6 +29,10 @@ Item {
     Qt.callLater(function() { popoutSwitchClosing = false })
   }
   function toggle() { opened ? close() : open() }
+  function switchPanel(direction) {
+    if (bar && typeof bar.switchPanelFrom === "function") return bar.switchPanelFrom(root, direction)
+    return false
+  }
 
   // Read a single value from this panel's inline shell.json entry, with a
   // fallback for missing/null values. Matches BarWidget.setting().

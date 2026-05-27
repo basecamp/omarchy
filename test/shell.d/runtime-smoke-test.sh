@@ -96,7 +96,7 @@ done
 
 jq -e '
   map(.id) as $ids |
-  all(["omarchy.menu", "omarchy.settings", "omarchy.notifications", "omarchy.clock"][]; $ids | index(.)) and
+  all(["omarchy.menu", "omarchy.notifications", "omarchy.clock", "omarchy.osd"][]; $ids | index(.)) and
   all(.[]; (.kinds | type == "array") and (.enabled | type == "boolean") and (.firstParty | type == "boolean"))
 ' <<<"$plugins" >/dev/null || {
   printf 'Plugins:\n%s\n' "$plugins" | jq . >&2
@@ -116,8 +116,7 @@ jq -e '
 }
 pass "shell IPC returns effective shell config"
 
-[[ $(shell_ipc shell summon omarchy.settings "{}") == "ok" ]] || fail_with_log "shell IPC summons settings panel"
-shell_ipc_quiet shell hide omarchy.settings >/dev/null
+[[ $(shell_ipc shell openBarConfig) == "ok" ]] || fail_with_log "shell IPC opens bar config panel"
 [[ $(shell_ipc shell summon omarchy.launcher '{"query":"term"}') == "ok" ]] || fail_with_log "shell IPC summons launcher overlay"
 shell_ipc_quiet shell hide omarchy.launcher >/dev/null
 [[ $(shell_ipc shell summon missing.plugin "{}") == "unknown" ]] || fail_with_log "shell IPC rejects unknown plugin"
@@ -194,3 +193,31 @@ jq -e '
 }
 
 pass "runtime geometry places visible update between weather and indicators"
+
+HOME="$test_home" OMARCHY_PATH="$test_root" PATH="$ROOT/bin:$PATH" "$ROOT/bin/omarchy-config-shell-bar" remove omarchy.audio
+
+for _ in {1..80}; do
+  shell_config=$(shell_ipc shell listShellConfig 2>/dev/null || true)
+  geometry=$(shell_ipc shell debugBarGeometry 2>/dev/null || true)
+  if jq -e 'all(.bar.layout.right[]; (.id // .) != "omarchy.audio")' <<<"$shell_config" >/dev/null 2>&1 && \
+     jq -e 'all(.[]; .id != "omarchy.audio")' <<<"$geometry" >/dev/null 2>&1; then
+    break
+  fi
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited before reloaded bar geometry settled"
+  fi
+  sleep 0.1
+done
+
+jq -e 'all(.bar.layout.right[]; (.id // .) != "omarchy.audio")' <<<"$shell_config" >/dev/null || {
+  printf 'Shell config after reload:\n%s\n' "$shell_config" | jq . >&2
+  fail_with_log "config shell bar remove reloads shell config"
+}
+
+jq -e 'all(.[]; .id != "omarchy.audio")' <<<"$geometry" >/dev/null || {
+  printf 'Geometry after reload:\n' >&2
+  jq . <<<"$geometry" >&2
+  fail_with_log "runtime bar layout updates after shell config reload"
+}
+
+pass "config shell bar remove reloads shell config and updates bar layout"

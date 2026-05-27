@@ -37,6 +37,8 @@ assertEqual(
 
 assert(notifications.summaryStartsWithGlyph('󰂚  Silenced'), 'notifications detect glyph-prefixed summaries')
 assert(!notifications.summaryStartsWithGlyph('Normal summary'), 'notifications ignore normal summaries as glyph-prefixed')
+assert(notifications.shouldRenderCompactGlyph('K', ''), 'notifications render glyph-only hints compactly')
+assert(!notifications.shouldRenderCompactGlyph('K', 'file:///tmp/image.png'), 'notifications keep image-backed glyph hints in the icon slot')
 
 assert(notifications.shouldBypassDnd({ appName: 'omarchy-action', urgency: 1 }, 2), 'omarchy action toasts bypass DND')
 assert(notifications.shouldBypassDnd({ appName: 'notify-send', urgency: 2 }, 2), 'critical notify-send bypasses DND')
@@ -53,7 +55,8 @@ const notification = {
   body: 'Body',
   image: 'file:///tmp/mail.png',
   hints: { 'omarchy-glyph': '!' },
-  urgency: 1
+  urgency: 1,
+  expireTimeout: 1.5
 }
 const snapshot = notifications.snapshotOf(notification, 12345)
 assertDeepEqual(
@@ -67,6 +70,7 @@ assertDeepEqual(
     image: snapshot.image,
     glyph: snapshot.glyph,
     urgency: snapshot.urgency,
+    expireTimeout: snapshot.expireTimeout,
     timestamp: snapshot.timestamp
   },
   {
@@ -79,6 +83,7 @@ assertDeepEqual(
     image: 'file:///tmp/mail.png',
     glyph: '!',
     urgency: 1,
+    expireTimeout: 1.5,
     timestamp: 12345
   },
   'notifications create stable snapshots'
