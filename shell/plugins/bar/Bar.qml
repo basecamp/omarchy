@@ -1109,6 +1109,7 @@ Item {
       }
 
       onReleased: function(mouse) {
+        var wasDragging = dragging
         if (dragging) {
           suppressClick = true
         }
@@ -1123,17 +1124,24 @@ Item {
         dragging = false
         root.barDragTarget = null
         root.barDragAfter = false
-        slot.x = 0
-        slot.y = 0
+        if (wasDragging) {
+          slot.x = 0
+          slot.y = 0
+          if (slot.parent && typeof slot.parent.forceLayout === "function") slot.parent.forceLayout()
+        }
       }
 
       onCanceled: {
+        var wasDragging = dragging
         dragging = false
         suppressClick = false
         root.barDragTarget = null
         root.barDragAfter = false
-        slot.x = 0
-        slot.y = 0
+        if (wasDragging) {
+          slot.x = 0
+          slot.y = 0
+          if (slot.parent && typeof slot.parent.forceLayout === "function") slot.parent.forceLayout()
+        }
       }
 
       onClicked: function(mouse) {
