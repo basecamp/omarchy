@@ -71,6 +71,8 @@ default/limine/default.conf    ──►  omarchy-limine      /usr/share/omarchy
 default/snapper/root           ──►  omarchy-limine      /etc/snapper/config-templates/omarchy
 
 default/**                     ──►  omarchy-settings    /usr/share/omarchy/default/  (excluding default/{limine,snapper})
+  ├─ bash/env-bootstrap                                 /usr/share/omarchy/default/bash/env-bootstrap
+  │                                                       (sourced by every shell/session entry point; see "Env bootstrap")
   ├─ bashrc                                             /usr/share/omarchy/etc-overrides/dot.bashrc
   │                                                       → /etc/skel/.bashrc (post_install cp -f)
   ├─ hypr/toggles/flags.lua                             /etc/skel/.local/state/omarchy/toggles/hypr/
@@ -110,6 +112,28 @@ them via pacman without a file conflict. Instead they ship at
 Tradeoff: user edits to those files get clobbered on every `omarchy-settings`
 upgrade. This is documented in the PKGBUILD.
 
+## Env bootstrap (`default/bash/env-bootstrap`)
+
+Single source of truth for `OMARCHY_PATH` and dev-link-aware `PATH`. It:
+
+- Sources `/etc/omarchy.conf` (written by `omarchy-dev-link`) if present;
+  otherwise forces `OMARCHY_PATH=/usr/share/omarchy` so a stale inherited
+  value can't survive an `omarchy-dev-unlink`.
+- Prepends `$OMARCHY_PATH/bin` to `PATH` **only when** `OMARCHY_PATH` is
+  not `/usr/share/omarchy`. On a production install the binaries are
+  already on `PATH` as `/usr/bin/omarchy-*` via the `omarchy` package.
+
+Sourced by every entry point that needs the env set:
+
+```
+/etc/profile.d/omarchy.sh                      (system login shells)
+/etc/skel/.bashrc                              (interactive shells)
+/usr/share/uwsm/env.d/10-omarchy               (Hyprland session via uwsm)
+/usr/share/omarchy/default/bash/envs           (SSH / non-login bash)
+```
+
+Idempotent — safe to source more than once in the same shell.
+
 ## Runtime finalization (`omarchy-finalize-user`)
 
 Runs once per user. It does **not** copy `~/.config/**`, `~/.bashrc`,
@@ -127,7 +151,7 @@ It only does the things `/etc/skel` can't:
   `xdg-mime default HEY.desktop x-scheme-handler/mailto` (XDG-aware paths).
 - `omarchy-refresh-applications` (composes generated `.desktop` launchers).
 - Sources `install/user/all.sh` — theme, git, mise, keyring, per-user
-  hardware quirks (bluetooth, asus mic/mixer, framework f13 audio, …).
+  hardware quirks (asus mic/mixer, framework f13 audio, …).
 - On `--first-install`, marks every shipped migration as already applied
   for the freshly-created user.
 
@@ -136,6 +160,29 @@ Idempotency marker: `~/.local/state/omarchy/finalize-user.done`.
 The ISO calls it as `omarchy-finalize-user --force --first-install` in the
 target chroot as the install user, after `omarchy-setup-system` has finished
 the root-side work.
+
+## First-run (`omarchy-first-run`)
+
+Runs once on first interactive login, after the user manager is live. Used
+for steps that need a running graphical session and/or a working user
+systemd instance:
+
+- `omarchy-hook-install post-update install-voxtype.hook` — register the
+  Voxtype post-update hook.
+- `install/user/first-run/enable-user-units.sh` — `systemctl --user enable`
+  the shipped user units (`bt-agent`, `omarchy-sleep-lock`,
+  `omarchy-recover-internal-monitor`). Done here, not at finalize, because
+  the user manager isn't reachable from the ISO chroot; `ConditionPath*`
+  in the unit files keeps them inert on hardware they don't apply to.
+- `install/user/first-run/gnome-theme.sh`,
+  `install/user/first-run/gtk-primary-paste.sh` — GNOME/GTK settings that
+  need the dconf daemon.
+- `install/user/first-run/welcome.sh`,
+  `install/user/first-run/wifi.sh` — welcome and Wi-Fi/update toasts
+  (waits for a live notification server before firing).
+
+Idempotency marker: `~/.local/state/omarchy/first-run-user.done`. On
+failure the marker is not written and the failed step retries next login.
 
 ## Root-side install orchestration
 
