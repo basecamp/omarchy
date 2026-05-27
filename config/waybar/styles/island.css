@@ -102,6 +102,7 @@ opacity: 0.75;
 #custom-screenrecording-indicator,
 #custom-idle-indicator,
 #custom-notification-silencing-indicator,
+#custom-voxtype,
 #custom-update{
   background-color: alpha(@foreground, 0.1);
   padding: 5px 12px;
@@ -139,6 +140,7 @@ opacity: 0.75;
   padding: 0 2px;
 }
 
+#custom-voxtype,
 #custom-update,
 #custom-screenrecording-indicator,
 #custom-idle-indicator,
@@ -161,6 +163,7 @@ opacity: 0.75;
   opacity: 0;
 }
 
+#custom-voxtype.recording,
 #custom-screenrecording-indicator.active,
 #custom-idle-indicator.active,
 #custom-notification-silencing-indicator.active {
@@ -224,4 +227,25 @@ tooltip {
   border-radius: 15px;
   background: @background;
   border: 2px solid alpha(@foreground, .5);
+}
+
+#custom-screenrecording-indicator {
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+  color: transparent;
+}
+
+#custom-screenrecording-indicator.active {
+  background-color: alpha(@foreground, .2);
+  padding: 0 13px 0 10px;
+  color: #eb7087;
+  animation-name: blink-recording;
+  animation-duration: 0.5s;
+}
+
+@keyframes blink-recording {
+    to {
+        color: @foreground;
+    }
 }

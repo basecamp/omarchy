@@ -43,7 +43,7 @@ mpris.empty {
     background: @background;
     border: .5px solid alpha(@foreground, .4);
     padding: 0px;
-    margin: 5px 6px;
+    margin: 5px 2px;
     border-radius: 4px;
 }
 
@@ -107,8 +107,10 @@ color: @background;
 #bluetooth,
 #pulseaudio,
 #custom-screenrecording-indicator,
+#custom-screenrecording-indicator.active,
 #custom-idle-indicator,
 #custom-notification-silencing-indicator,
+#custom-voxtype,
 #custom-update{
   background-color: @background;
   color: @foreground;
@@ -134,6 +136,7 @@ color: @background;
   transition: .7s;
 }
 
+#custom-voxtype,
 #custom-update,
 #custom-screenrecording-indicator,
 #custom-idle-indicator,
@@ -155,10 +158,12 @@ color: @background;
   opacity: 0;
 }
 
+#custom-voxtype.recording,
 #custom-screenrecording-indicator.active,
 #custom-idle-indicator.active,
 #custom-notification-silencing-indicator.active {
   color: #a55555;
+  background: @background;
 }
 
 #custom-omarchy,
@@ -169,7 +174,7 @@ color: @background;
   min-width: 10px;
   border-radius: 4px;
   padding: 0 8px;
-  margin: 5px 0 5px 0px;
+  margin: 5px 2px;
 }
 
 #battery {
@@ -182,7 +187,7 @@ color: @background;
   color: @foreground;
   border: .5px solid alpha(@foreground, .4);
   padding: 5px 12px;
-  margin: 5px 1px;
+  margin: 5px 2px;
   border-radius: 4px;
 }
 
@@ -198,4 +203,25 @@ tooltip {
   border-radius: 5px;
   background: @background;
   border: 2px solid alpha(@foreground, .5);
+}
+
+#custom-screenrecording-indicator {
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+  color: transparent;
+}
+
+#custom-screenrecording-indicator.active {
+  background-color: @background;
+  padding: 0 13px 0 10px;
+  color: #eb7087;
+  animation-name: blink-recording;
+  animation-duration: 0.5s;
+}
+
+@keyframes blink-recording {
+    to {
+        color: @foreground;
+    }
 }
