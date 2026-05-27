@@ -92,15 +92,25 @@ Item {
   readonly property int historyCap: 100
   property var imageCacheQueue: []
 
-  function durationFor(urgency) {
+  readonly property int lowPopupDuration: 5000
+  readonly property int normalPopupDuration: 8000
+  readonly property int maxPopupDuration: 30000
+
+  function durationFor(urgency, expireTimeout) {
     switch (urgency) {
     case NotificationUrgency.Critical:
       return 0
     case NotificationUrgency.Low:
-      return 3000
+      return Math.min(maxPopupDuration, Math.max(lowPopupDuration, requestedDuration(expireTimeout)))
     default:
-      return 5000
+      return Math.min(maxPopupDuration, Math.max(normalPopupDuration, requestedDuration(expireTimeout)))
     }
+  }
+
+  function requestedDuration(expireTimeout) {
+    var seconds = Number(expireTimeout || 0)
+    if (!isFinite(seconds) || seconds <= 0) return 0
+    return Math.round(seconds * 1000)
   }
 
   // DND bypass: only let through notifications we trust to be intentional
@@ -237,6 +247,7 @@ Item {
       image: row.image,
       glyph: row.glyph || "",
       urgency: row.urgency,
+      expireTimeout: row.expireTimeout || 0,
       timestamp: row.timestamp
     }
   }
@@ -257,6 +268,14 @@ Item {
   }
 
   function dismissPopup(index) {
+    removePopup(index, "dismiss")
+  }
+
+  function expirePopup(index) {
+    removePopup(index, "expire")
+  }
+
+  function removePopup(index, reason) {
     if (index < 0 || index >= popupModel.count) return
     var entry = popupModel.get(index)
     var ref = entry ? entry.ref : null
@@ -264,7 +283,10 @@ Item {
     popupModel.remove(index)
     if (ref) {
       try {
-        if (ref.tracked) ref.dismiss()
+        if (ref.tracked) {
+          if (reason === "expire" && typeof ref.expire === "function") ref.expire()
+          else ref.dismiss()
+        }
       } catch (e) {
         // Object already torn down by the server — nothing to dismiss.
       }
@@ -555,6 +577,7 @@ Item {
           image: r.image,
           glyph: r.glyph || "",
           urgency: r.urgency,
+          expireTimeout: r.expireTimeout || 0,
           timestamp: r.timestamp
         })
       }
@@ -753,6 +776,7 @@ Item {
             required property string image
             required property string glyph
             required property int urgency
+            required property double expireTimeout
             required property double timestamp
 
             // Each card sizes itself based on mode (text vs media); the slot
@@ -761,7 +785,7 @@ Item {
             Layout.alignment: Qt.AlignRight
             implicitHeight: card.implicitHeight
 
-            readonly property real lifetime: service.durationFor(cardSlot.urgency)
+            readonly property real lifetime: service.durationFor(cardSlot.urgency, cardSlot.expireTimeout)
             property real remainingLifetime: 1.0
             readonly property bool ticking: cardSlot.lifetime > 0 && !card.hovered
 
@@ -774,7 +798,7 @@ Item {
                 cardSlot.remainingLifetime -= 50.0 / cardSlot.lifetime
                 if (cardSlot.remainingLifetime <= 0) {
                   cardSlot.remainingLifetime = 0
-                  service.dismissPopup(cardSlot.index)
+                  service.expirePopup(cardSlot.index)
                 }
               }
             }

@@ -53,7 +53,8 @@ const notification = {
   body: 'Body',
   image: 'file:///tmp/mail.png',
   hints: { 'omarchy-glyph': '!' },
-  urgency: 1
+  urgency: 1,
+  expireTimeout: 1.5
 }
 const snapshot = notifications.snapshotOf(notification, 12345)
 assertDeepEqual(
@@ -67,6 +68,7 @@ assertDeepEqual(
     image: snapshot.image,
     glyph: snapshot.glyph,
     urgency: snapshot.urgency,
+    expireTimeout: snapshot.expireTimeout,
     timestamp: snapshot.timestamp
   },
   {
@@ -79,6 +81,7 @@ assertDeepEqual(
     image: 'file:///tmp/mail.png',
     glyph: '!',
     urgency: 1,
+    expireTimeout: 1.5,
     timestamp: 12345
   },
   'notifications create stable snapshots'

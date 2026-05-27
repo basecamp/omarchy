@@ -56,6 +56,8 @@ function glyphFromHints(hints) {
 function snapshotOf(notification, timestamp) {
   var n = notification || {}
   var id = n.id || 0
+  var expireTimeout = Number(n.expireTimeout || 0)
+  if (!isFinite(expireTimeout) || expireTimeout < 0) expireTimeout = 0
   return {
     id: id,
     originalId: id,
@@ -66,6 +68,7 @@ function snapshotOf(notification, timestamp) {
     image: n.image || "",
     glyph: glyphFromHints(n.hints),
     urgency: n.urgency,
+    expireTimeout: expireTimeout,
     timestamp: timestamp === undefined ? Date.now() : timestamp,
     ref: notification
   }
@@ -83,6 +86,7 @@ function historyEntry(value, normalUrgency) {
     image: e.image || "",
     glyph: e.glyph || "",
     urgency: typeof e.urgency === "number" ? e.urgency : normalUrgency,
+    expireTimeout: 0,
     timestamp: e.timestamp || 0,
     ref: null
   }
