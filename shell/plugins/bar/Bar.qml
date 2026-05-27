@@ -37,6 +37,8 @@ Item {
   })
   property var layoutConfig: fallbackBarConfig.layout
   property string centerAnchor: ""
+  property bool requestedTransparent: false
+  property bool useTransparentForeground: false
   property bool transparent: false
   property int barConfigSerial: 0
   property string position: "top"
@@ -46,11 +48,15 @@ Item {
   property string fontFamily: Style.font.family
   // Bound to the central Color singleton so the bar tracks shell.toml's
   // [bar] section. Property names kept for the rest of this file's bindings.
-  property color foreground: Color.bar.text
+  property color themeForeground: Color.bar.text
+  property color themeContrastForeground: Color.background
+  property color transparentForeground: Color.bar.text
+  property color foreground: useTransparentForeground ? transparentForeground : themeForeground
+  property bool foregroundAnimationEnabled: true
   property color background: Color.bar.background
   property color urgent: Color.bar.active
 
-  Behavior on foreground { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  Behavior on foreground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on background { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on urgent { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   property var tooltipTarget: null
@@ -179,7 +185,7 @@ Item {
     var config = Util.isPlainObject(barConfig) ? barConfig : fallbackBarConfig
 
     position = normalizePosition(config.position)
-    transparent = config.transparent === true
+    setRequestedTransparency(config.transparent === true)
     centerAnchor = Util.canonicalWidgetId(config.centerAnchor || "")
     layoutConfig = normalizeLayout(config.layout)
     barConfigSerial++
@@ -307,14 +313,14 @@ Item {
   }
 
   function toggleTransparency() {
-    var nextTransparent = !(root.transparent === true)
+    var nextTransparent = !(root.requestedTransparent === true)
     if (root.shell && typeof root.shell.mutateShellConfig === "function") {
       root.shell.mutateShellConfig(function(config) {
         if (!Util.isPlainObject(config.bar)) config.bar = {}
         config.bar.transparent = nextTransparent
       })
     } else {
-      root.transparent = nextTransparent
+      root.setRequestedTransparency(nextTransparent)
     }
   }
 
@@ -458,6 +464,94 @@ Item {
 
     target.triggerPress(button)
     return true
+  }
+
+  function colorHex(colorValue) {
+    var c = colorValue
+    if (typeof c === "string") c = Qt.color(c)
+    function hexChannel(value) {
+      var s = Math.round(Util.clamp(value, 0, 1) * 255).toString(16)
+      return s.length < 2 ? "0" + s : s
+    }
+    return "#" + hexChannel(c.r) + hexChannel(c.g) + hexChannel(c.b)
+  }
+
+  function setRequestedTransparency(value) {
+    var nextTransparent = value === true
+    requestedTransparent = nextTransparent
+    if (!nextTransparent) {
+      foregroundAnimationEnabled = false
+      useTransparentForeground = false
+      transparent = false
+      transparentForeground = themeForeground
+      restoreForegroundAnimation()
+      return
+    }
+    scheduleTransparentForegroundRefresh()
+  }
+
+  function restoreForegroundAnimation() {
+    Qt.callLater(function() {
+      Qt.callLater(function() { root.foregroundAnimationEnabled = true })
+    })
+  }
+
+  function scheduleTransparentForegroundRefresh() {
+    if (!requestedTransparent) {
+      transparentForeground = themeForeground
+      return
+    }
+    transparentForegroundTimer.restart()
+  }
+
+  function refreshTransparentForeground() {
+    if (!requestedTransparent || transparentForegroundProc.running) return
+
+    transparentForegroundProc.command = [
+      "omarchy-shell-bar-text-color",
+      root.position,
+      String(root.barSize),
+      colorHex(root.themeForeground),
+      colorHex(root.themeContrastForeground)
+    ]
+    transparentForegroundProc.running = true
+  }
+
+  onRequestedTransparentChanged: scheduleTransparentForegroundRefresh()
+  onPositionChanged: scheduleTransparentForegroundRefresh()
+  onThemeForegroundChanged: scheduleTransparentForegroundRefresh()
+  onThemeContrastForegroundChanged: scheduleTransparentForegroundRefresh()
+
+  Timer {
+    id: transparentForegroundTimer
+    interval: 120
+    repeat: false
+    onTriggered: root.refreshTransparentForeground()
+  }
+
+  Process {
+    id: transparentForegroundProc
+    stdout: SplitParser {
+      onRead: function(line) {
+        var value = String(line || "").trim()
+        if (!/^#[0-9A-Fa-f]{6}$/.test(value)) return
+
+        root.foregroundAnimationEnabled = false
+        root.transparentForeground = value
+        if (root.requestedTransparent) {
+          root.useTransparentForeground = true
+          root.transparent = true
+        }
+        root.restoreForegroundAnimation()
+      }
+    }
+  }
+
+  FileView {
+    path: root.home + "/.config/omarchy/current"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: root.scheduleTransparentForegroundRefresh()
   }
 
   function runProcess(process) {
