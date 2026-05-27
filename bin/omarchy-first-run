@@ -15,12 +15,12 @@ USAGE
 }
 
 force=0
-setup_user_args=()
+finalize_user_args=()
 while (($#)); do
   case "$1" in
     --force)
       force=1
-      setup_user_args+=(--force)
+      finalize_user_args+=(--force)
       shift
       ;;
     -h|--help)
@@ -35,7 +35,7 @@ while (($#)); do
   esac
 done
 
-omarchy-setup-user "${setup_user_args[@]}" || true
+omarchy-finalize-user "${finalize_user_args[@]}" || true
 
 state_dir=~/.local/state/omarchy
 mkdir -p "$state_dir"
@@ -97,8 +97,8 @@ if [[ ! -f $USER_MARKER || $force -eq 1 ]]; then
   run_first_run_step "install Voxtype post-update hook" \
     omarchy-hook-install post-update "$OMARCHY_PATH/install/user/first-run/install-voxtype.hook"
 
-  run_first_run_step "recover internal monitor" \
-    bash "$OMARCHY_PATH/install/user/hardware/recover-internal-monitor.sh"
+  run_first_run_step "enable user systemd units" \
+    bash "$OMARCHY_PATH/install/user/first-run/enable-user-units.sh"
   run_first_run_step "set GNOME theme" \
     bash "$OMARCHY_PATH/install/user/first-run/gnome-theme.sh"
   run_first_run_step "set GTK primary paste" \

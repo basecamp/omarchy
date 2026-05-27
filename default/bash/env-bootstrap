@@ -1,0 +1,27 @@
+# Single source of truth for OMARCHY_PATH + PATH adjustments. Sourced by:
+#   /etc/profile.d/omarchy.sh                 (system login shells)
+#   /etc/skel/.bashrc                         (interactive shells)
+#   /usr/share/uwsm/env.d/10-omarchy          (Hyprland session via uwsm)
+#   /usr/share/omarchy/default/bash/envs      (bash rc chain; SSH/non-login)
+
+# /etc/omarchy.conf is written by omarchy-dev-link. When absent, force the
+# packaged default instead of preserving a stale inherited value.
+if [ -f /etc/omarchy.conf ]; then
+  . /etc/omarchy.conf
+  : "${OMARCHY_PATH:=/usr/share/omarchy}"
+else
+  OMARCHY_PATH=/usr/share/omarchy
+fi
+export OMARCHY_PATH
+
+# Only prepend in dev-link mode. On a production install, the binaries are
+# already on PATH as /usr/bin/omarchy-* via the omarchy package — prepending
+# /usr/share/omarchy/bin would just be noise. omarchy-dev-unlink strips its
+# checkout bin/ from the active PATH explicitly, so we don't dedupe here.
+if [ "$OMARCHY_PATH" != /usr/share/omarchy ]; then
+  case ":$PATH:" in
+    *":${OMARCHY_PATH%/}/bin:"*) ;;
+    *) PATH="${OMARCHY_PATH%/}/bin:$PATH" ;;
+  esac
+  export PATH
+fi

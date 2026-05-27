@@ -1,0 +1,20 @@
+# Changes require a restart to take effect.
+
+# UWSM doesn't source /etc/profile.d, so pull the env bootstrap in directly.
+[ -r /usr/share/omarchy/default/bash/env-bootstrap ] && . /usr/share/omarchy/default/bash/env-bootstrap
+
+# Omarchy session defaults. Users can override these in ~/.config/uwsm/default
+# or, preferably, ~/.config/uwsm/env.d/*.
+if [ -f "${OMARCHY_PATH%/}/default/uwsm/default" ]; then
+  . "${OMARCHY_PATH%/}/default/uwsm/default"
+else
+  export TERMINAL=xdg-terminal-exec
+  export BROWSER=omarchy-launch-browser
+  export EDITOR="omarchy-launch-editor --inline"
+fi
+
+# Optional user overrides kept for compatibility with older installs.
+[ -f "$HOME/.config/uwsm/default" ] && . "$HOME/.config/uwsm/default"
+
+# Activate mise if present on the system
+omarchy-cmd-present mise && eval "$(mise activate bash --shims)"

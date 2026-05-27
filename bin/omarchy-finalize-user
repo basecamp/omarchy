@@ -1,29 +1,31 @@
 #!/bin/bash
 
-# omarchy:summary=Set up Omarchy for the current user (~/.config, ~/.local, etc.)
-# omarchy:group=setup
-# omarchy:examples=omarchy setup user | omarchy setup user --force
+# omarchy:summary=Finalize Omarchy user setup (runtime tweaks /etc/skel can't do)
+# omarchy:group=finalize
+# omarchy:examples=omarchy finalize user | omarchy finalize user --force
 
 set -euo pipefail
 
 usage() {
   cat <<USAGE
-Usage: omarchy setup user [--force] [--first-install]
+Usage: omarchy finalize user [--force] [--first-install]
 
-Idempotent user-level setup: copies/symlinks defaults from \$OMARCHY_PATH
-into \$HOME, installs user services/session defaults, refreshes app launchers,
-and applies user-scoped hardware/session tweaks.
+Runs the per-user setup steps that /etc/skel can't seed:
+dev-aware skill symlinks, xdg-user-dirs + gtk bookmarks (need \$HOME),
+vconsole→hypr keyboard sync, default browser/mailto, and install/user/all.sh.
+
+For shipped configs see /etc/skel (new users) and omarchy-reinstall-configs
+(existing users explicitly resyncing).
 
 --first-install is used by the ISO in the target chroot. It marks shipped
-migrations complete for the freshly-created user and enables the first graphical
-login one-shot.
+migrations complete for the freshly-created user.
 
-Idempotency marker: ~/.local/state/omarchy/setup-user.done
+Idempotency marker: ~/.local/state/omarchy/finalize-user.done
 USAGE
 }
 
 if (( EUID == 0 )); then
-  echo "Error: run omarchy-setup-user as the user being configured, not as root." >&2
+  echo "Error: run omarchy-finalize-user as the user being configured, not as root." >&2
   exit 1
 fi
 
@@ -53,11 +55,11 @@ while (($#)); do
 done
 
 state_dir="$HOME/.local/state/omarchy"
-marker="$state_dir/setup-user.done"
+marker="$state_dir/finalize-user.done"
 mkdir -p "$state_dir"
 
 if [[ -f $marker && $force -eq 0 ]]; then
-  echo "User setup already complete (rerun with --force to refresh)."
+  echo "User finalization already complete (rerun with --force to refresh)."
   exit 0
 fi
 
@@ -79,59 +81,13 @@ else
   }
 fi
 
-omarchy_user_systemctl_enable() {
-  local unit="$1" unit_path target
-  local -a targets=()
-
-  if systemctl --user enable "$unit" >/dev/null 2>&1; then
-    return 0
-  fi
-
-  # ISO chroot setup has no running user systemd manager. Enabling a user unit
-  # is just creating the [Install] WantedBy symlinks, so do that directly.
-  unit_path="$HOME/.config/systemd/user/$unit"
-  if [[ -f $unit_path ]]; then
-    mapfile -t targets < <(awk -F= '
-      /^\[Install\]/ { in_install=1; next }
-      /^\[/ { in_install=0 }
-      in_install && $1 == "WantedBy" {
-        n=split($2, values, /[[:space:]]+/)
-        for (i = 1; i <= n; i++) if (values[i] != "") print values[i]
-      }
-    ' "$unit_path")
-  fi
-  ((${#targets[@]})) || targets=(default.target)
-
-  for target in "${targets[@]}"; do
-    mkdir -p "$HOME/.config/systemd/user/$target.wants"
-    ln -sfn "../$unit" "$HOME/.config/systemd/user/$target.wants/$unit"
-  done
-}
-export -f omarchy_user_systemctl_enable
-
-mkdir -p ~/.config
-cp -R "$OMARCHY_PATH/config/." ~/.config/
-cp "$OMARCHY_PATH/default/bashrc" ~/.bashrc
-echo '[[ -f ~/.bashrc ]] && . ~/.bashrc' > ~/.bash_profile
-
+# Dev-aware skill symlinks. Cannot live in /etc/skel because OMARCHY_PATH may
+# point at a dev checkout (omarchy dev link) where the target differs.
 mkdir -p ~/.agents/skills ~/.claude/skills ~/.codex/skills ~/.pi/agent/skills
 ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.agents/skills/omarchy
 ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.claude/skills/omarchy
 ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.codex/skills/omarchy
 ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.pi/agent/skills/omarchy
-
-mkdir -p ~/.local/state/omarchy/toggles/hypr
-cp "$OMARCHY_PATH/default/hypr/toggles/flags.lua" ~/.local/state/omarchy/toggles/hypr/
-
-mkdir -p "$HOME/.local/share/nautilus-python/extensions"
-cp "$OMARCHY_PATH/default/nautilus-python/extensions/localsend.py" \
-   "$HOME/.local/share/nautilus-python/extensions/"
-cp "$OMARCHY_PATH/default/nautilus-python/extensions/transcode.py" \
-   "$HOME/.local/share/nautilus-python/extensions/"
-
-mkdir -p ~/.config/omarchy/branding
-cp "$OMARCHY_PATH/icon.txt" ~/.config/omarchy/branding/about.txt
-cp "$OMARCHY_PATH/logo.txt" ~/.config/omarchy/branding/screensaver.txt
 
 mkdir -p ~/Downloads ~/Pictures ~/Videos ~/.config/gtk-3.0
 xdg-user-dirs-update --set TEMPLATES "$HOME"
@@ -174,4 +130,4 @@ if (( first_install )); then
 fi
 
 touch "$marker"
-echo "User setup complete."
+echo "User finalization complete."
