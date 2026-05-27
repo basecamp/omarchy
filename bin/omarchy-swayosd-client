@@ -16,22 +16,26 @@ for arg in "$@"; do
 done
 
 if $has_playerctl && ! $has_player; then
-  music_playing="" music_paused="" browser_playing="" browser_paused=""
+  music_playing="" music_paused="" browser_playing=""
   while IFS= read -r p; do
     status=$(playerctl --player="$p" status 2>/dev/null)
     is_browser=false
     [[ "$p" == chromium* || "$p" == firefox* ]] && is_browser=true
     if [[ "$status" == "Playing" ]]; then
-      $is_browser && [[ -z "$browser_playing" ]] && browser_playing="$p" \
-                  || [[ -z "$music_playing"   ]] && music_playing="$p"
+      $is_browser && : "${browser_playing:=$p}" || : "${music_playing:=$p}"
     elif [[ "$status" == "Paused" ]]; then
-      $is_browser && [[ -z "$browser_paused" ]] && browser_paused="$p" \
-                  || [[ -z "$music_paused"   ]] && music_paused="$p"
+      $is_browser || : "${music_paused:=$p}"
     fi
   done < <(playerctl -l 2>/dev/null)
-  # Priority: dedicated music playing > browser playing > dedicated music paused > browser paused
-  best_player="${music_playing:-${browser_playing:-${music_paused:-$browser_paused}}}"
-  [[ -n "$best_player" ]] && set -- "--player" "$best_player" "$@"
+  # Override playerctld only when a dedicated music player should take control:
+  # 1. A music player is Playing (wins over a browser, even if browser also plays)
+  # 2. No browser is Playing but a music player is Paused (resume it)
+  # Otherwise let playerctld decide naturally (e.g. YouTube actively playing).
+  if [[ -n "$music_playing" ]]; then
+    set -- "--player" "$music_playing" "$@"
+  elif [[ -z "$browser_playing" && -n "$music_paused" ]]; then
+    set -- "--player" "$music_paused" "$@"
+  fi
 fi
 
 exec swayosd-client --monitor "$(omarchy-hyprland-monitor-focused)" "$@"
