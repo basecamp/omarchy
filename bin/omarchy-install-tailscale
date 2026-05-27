@@ -14,6 +14,6 @@ echo -e "\nAllowing $USER to manage Tailscale..."
 sudo tailscale set --operator="$USER"
 
 echo -e "\nAdding Tailscale to the bar..."
-omarchy-config-shell right omarchy.tailscale
+omarchy-config-shell-bar add omarchy.tailscale
 
 omarchy-webapp-install "Tailscale" "https://login.tailscale.com/admin/machines" https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/tailscale-light.png
