@@ -37,7 +37,8 @@ Rectangle {
   // The `check` flag avoids Qt's missing-texture placeholder for unknown names.
   readonly property string smallIconSource: image.length > 0 ? image : iconSource(appIcon)
   readonly property bool hasGlyph: glyph.length > 0
-  readonly property bool hasSmallIcon: smallIconSource.length > 0 || hasGlyph
+  readonly property bool compactGlyph: NotificationLogic.shouldRenderCompactGlyph(glyph, smallIconSource)
+  readonly property bool hasSmallIcon: smallIconSource.length > 0
   readonly property bool summaryStartsWithGlyph: NotificationLogic.summaryStartsWithGlyph(summary)
   readonly property bool singleLineToast: sanitizedBody.length === 0
   readonly property bool collapseRedundantIcon: singleLineToast && !hasGlyph && summaryStartsWithGlyph
@@ -97,7 +98,7 @@ Rectangle {
       Layout.rightMargin: Style.space(12)
       Layout.topMargin: root.singleLineToast ? Style.space(7) : Style.space(10)
       Layout.bottomMargin: root.singleLineToast ? Style.space(7) : Style.space(10)
-      spacing: root.collapseRedundantIcon ? 0 : Style.space(12)
+      spacing: root.collapseRedundantIcon ? 0 : (root.compactGlyph ? Style.space(8) : Style.space(12))
 
       Item {
         id: smallIconSlot
@@ -107,7 +108,7 @@ Rectangle {
         // Hide the slot when the icon failed to resolve (themed-icon name
         // not in the user's icon theme) AND we don't have a glyph fallback
         // — prevents rendering Qt's pink broken-image placeholder.
-        visible: !root.collapseRedundantIcon && root.hasSmallIcon && (root.hasGlyph || smallIconImage.status !== Image.Error)
+        visible: !root.collapseRedundantIcon && !root.compactGlyph && root.hasSmallIcon && (root.hasGlyph || smallIconImage.status !== Image.Error)
 
         Image {
           id: smallIconImage
@@ -131,6 +132,15 @@ Rectangle {
           font.family: root.fontFamily
           font.pixelSize: Style.font.iconLarge
         }
+      }
+
+      Text {
+        Layout.alignment: Qt.AlignVCenter
+        visible: root.compactGlyph
+        text: root.glyph
+        color: Color.notifications.text
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.icon
       }
 
       ColumnLayout {
