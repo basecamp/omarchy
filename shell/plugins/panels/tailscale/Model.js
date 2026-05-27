@@ -52,6 +52,21 @@ function accountLabel(account) {
   return String(account.id || "Unknown account")
 }
 
+function peerFromStatus(id, peer) {
+  return {
+    id: id,
+    HostName: displayHostName(peer.HostName, peer.DNSName),
+    DNSName: cleanDnsName(peer.DNSName),
+    TailscaleIPs: filterIPv4(peer.TailscaleIPs || []),
+    TailscaleIPv6: filterIPv6(peer.TailscaleIPs || []),
+    Online: peer.Online === true,
+    OS: String(peer.OS || ""),
+    Tags: peer.Tags || [],
+    ExitNodeOption: peer.ExitNodeOption === true,
+    ExitNode: peer.ExitNode === true
+  }
+}
+
 function parseStatus(raw) {
   var text = String(raw || "").trim()
   if (text === "") return { ok: true, unavailable: true, message: "Disconnected" }
@@ -62,26 +77,22 @@ function parseStatus(raw) {
     var self = data.Self || {}
     var selfIps = filterIPv4(self.TailscaleIPs || data.TailscaleIPs || [])
     var peers = []
+    var exitNodes = []
     var rawPeers = data.Peer || {}
 
     for (var id in rawPeers) {
       var peer = rawPeers[id] || {}
-      if (peer.Online !== true) continue
-      peers.push({
-        id: id,
-        HostName: displayHostName(peer.HostName, peer.DNSName),
-        DNSName: cleanDnsName(peer.DNSName),
-        TailscaleIPs: filterIPv4(peer.TailscaleIPs || []),
-        TailscaleIPv6: filterIPv6(peer.TailscaleIPs || []),
-        Online: true,
-        OS: String(peer.OS || ""),
-        Tags: peer.Tags || [],
-        ExitNodeOption: peer.ExitNodeOption === true,
-        ExitNode: peer.ExitNode === true
-      })
+      var normalized = peerFromStatus(id, peer)
+      if (normalized.Online) {
+        peers.push(normalized)
+        if (normalized.ExitNodeOption) exitNodes.push(normalized)
+      }
     }
 
     peers.sort(function(a, b) {
+      return String(a.HostName).localeCompare(String(b.HostName))
+    })
+    exitNodes.sort(function(a, b) {
       return String(a.HostName).localeCompare(String(b.HostName))
     })
 
@@ -95,7 +106,8 @@ function parseStatus(raw) {
       selfName: displayHostName(self.HostName, self.DNSName),
       selfDnsName: cleanDnsName(self.DNSName),
       selfIp: selfIps.length > 0 ? selfIps[0] : "",
-      peers: peers
+      peers: peers,
+      exitNodes: exitNodes
     }
   } catch (e) {
     return { ok: false, unavailable: true, message: "Status error", error: "Failed to parse tailscale status" }
@@ -143,6 +155,7 @@ if (typeof module !== "undefined") {
     displayHostName: displayHostName,
     osIcon: osIcon,
     accountLabel: accountLabel,
+    peerFromStatus: peerFromStatus,
     parseStatus: parseStatus,
     parseAccounts: parseAccounts
   }

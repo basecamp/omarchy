@@ -47,6 +47,15 @@ const status = tailscale.parseStatus(JSON.stringify({
       Online: false,
       OS: 'linux'
     },
+    offlineExit: {
+      HostName: 'mbu-ser9',
+      DNSName: 'mbu-ser9.tail32f559.ts.net.',
+      TailscaleIPs: ['100.125.28.77', 'fd7a:115c:a1e0::1037:1c4d'],
+      Online: false,
+      OS: 'linux',
+      ExitNodeOption: true,
+      ExitNode: false
+    },
     onlineA: {
       HostName: 'alpha',
       DNSName: 'alpha.tail32f559.ts.net.',
@@ -62,6 +71,7 @@ assertEqual(status.selfIp, '100.74.97.73', 'tailscale parses self IP')
 assertDeepEqual(status.peers.map(peer => peer.HostName), ['alpha', 'zed'], 'tailscale filters offline peers and sorts online peers')
 assertDeepEqual(status.peers[0].TailscaleIPv6, ['fd7a:115c:a1e0::1901:334b'], 'tailscale preserves peer IPv6 addresses for copy menu')
 assert(status.peers[1].ExitNodeOption && status.peers[1].ExitNode, 'tailscale preserves exit node flags')
+assertDeepEqual(status.exitNodes.map(peer => peer.HostName), ['zed'], 'tailscale lists only online exit nodes')
 
 const stopped = tailscale.parseStatus(JSON.stringify({
   BackendState: 'Stopped',

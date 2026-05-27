@@ -20,6 +20,7 @@ Item {
   property string selfIp: ""
   property string authUrl: ""
   property var peers: []
+  property var exitNodes: []
   property var accounts: []
   property string selectedAccountId: ""
   property string selectedAccountLabel: ""
@@ -158,6 +159,7 @@ Item {
     selfIp = ""
     authUrl = ""
     peers = []
+    exitNodes = []
     accounts = []
     selectedAccountId = ""
     selectedAccountLabel = ""
@@ -188,6 +190,7 @@ Item {
     selfDnsName = parsed.selfDnsName
     selfIp = parsed.selfIp
     peers = parsed.running ? parsed.peers : []
+    exitNodes = parsed.running ? parsed.exitNodes : []
 
     if (needsLogin) statusText = "Needs login"
     else if (running) {
@@ -253,8 +256,9 @@ Item {
 
   function setExitNode(peer) {
     if (!installed || !running || !peer || exitNodeProcess.running) return
-    var target = exitNodeTarget(peer)
-    if (target === "") return
+    var active = peer.ExitNode === true
+    var target = active ? "" : exitNodeTarget(peer)
+    if (!active && target === "") return
     _exitNodeOutput = ""
     _exitNodeError = ""
     settingExitNodeId = String(peer.id || "")
