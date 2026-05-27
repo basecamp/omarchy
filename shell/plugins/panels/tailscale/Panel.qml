@@ -43,6 +43,7 @@ Panel {
   readonly property var exitNodes: tailscale.exitNodes
   readonly property bool showExitNodes: tailscale.running && exitNodes.length > 0
   readonly property color iconColor: tailscale.running ? foreground : dim
+  readonly property color barIconColor: tailscale.running ? barForeground : Qt.darker(barForeground, 1.55)
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
 
@@ -260,7 +261,7 @@ Panel {
       anchors.centerIn: parent
       anchors.verticalCenterOffset: -Style.space(1)
       iconSize: Style.space(12) * 0.85
-      color: root.iconColor
+      color: root.barIconColor
       badgeColor: root.urgent
       crossed: !tailscale.running && !tailscale.needsLogin
       warning: tailscale.needsLogin

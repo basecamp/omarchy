@@ -36,6 +36,7 @@ Panel {
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property color iconColor: dropbox.authenticated ? foreground : dim
+  readonly property color barIconColor: dropbox.authenticated ? barForeground : Qt.darker(barForeground, 1.55)
 
   function ensureCursor() {
     if (!dropbox.authenticated) {
@@ -168,7 +169,7 @@ Panel {
     DropboxIcon {
       anchors.centerIn: parent
       iconSize: Style.space(12)
-      color: root.iconColor
+      color: root.barIconColor
       opacity: dropbox.authenticated ? 1.0 : 0.6
     }
 

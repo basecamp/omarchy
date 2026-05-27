@@ -51,12 +51,13 @@ Item {
   property color themeForeground: Color.bar.text
   property color themeContrastForeground: Color.background
   property color transparentForeground: Color.bar.text
-  property color foreground: useTransparentForeground ? transparentForeground : themeForeground
+  property color foreground: themeForeground
+  property color barForeground: useTransparentForeground ? transparentForeground : themeForeground
   property bool foregroundAnimationEnabled: true
   property color background: Color.bar.background
   property color urgent: Color.bar.active
 
-  Behavior on foreground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  Behavior on barForeground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on background { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on urgent { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   property var tooltipTarget: null
@@ -1026,7 +1027,7 @@ Item {
         bottom: parent.bottom
       }
       width: 2
-      color: root.foreground
+      color: root.barForeground
       opacity: 0.9
     }
 
@@ -1038,7 +1039,7 @@ Item {
         bottom: parent.bottom
       }
       width: 2
-      color: root.foreground
+      color: root.barForeground
       opacity: 0.9
     }
 
@@ -1050,7 +1051,7 @@ Item {
         top: parent.top
       }
       height: 2
-      color: root.foreground
+      color: root.barForeground
       opacity: 0.9
     }
 
@@ -1062,7 +1063,7 @@ Item {
         bottom: parent.bottom
       }
       height: 2
-      color: root.foreground
+      color: root.barForeground
       opacity: 0.9
     }
 
