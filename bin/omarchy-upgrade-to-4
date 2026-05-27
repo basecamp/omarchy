@@ -1027,13 +1027,389 @@ root=/usr/share/omarchy
 state_dir="$HOME/.local/state/omarchy"
 mkdir -p "$state_dir" "$HOME/.config"
 
-if [[ -d $root/config ]]; then
-  cp -R "$root/config/." "$HOME/.config/"
+file_sha256() {
+  sha256sum "$1" | awk '{print $1}'
+}
+
+known_config_default_hashes() {
+  cat <<'DEFAULT_HASHES'
+# action<TAB>relative ~/.config path<TAB>sha256
+# refresh: hash-matched shipped defaults
+refresh	alacritty/alacritty.toml	d43ab27e10ba1fd0505d50fe374b9bd02fa2e1d888fe2252c5208542fe5ddc8f
+refresh	alacritty/alacritty.toml	4e627909552ceebc80f5839955a09a7f804c501fee9a1fe76e13d95ad6cf5030
+refresh	alacritty/alacritty.toml	73dc34be744039613ef522aab84c27468b61ff13d7bc0ed2d57a83904e13f613
+refresh	alacritty/alacritty.toml	e25fae44db040d97714cf4ca3d77e48f0ae32fed9e02e6b3db9ad4d705bdaed5
+refresh	alacritty/alacritty.toml	999562ef35642910bec05c2444c3acdcd6e29bc60ec541529d9c69a20cad5c88
+refresh	alacritty/alacritty.toml	8bf6dee79e634949617cd7acdd2756da52f7c3031b8eac98a7948f2fef0cf07e
+refresh	alacritty/alacritty.toml	e4d201b6b9afd2f591d64f98eb50eb19247b8b839c2eaacfe2623628203c486f
+refresh	autostart/org.fcitx.Fcitx5.desktop	a0260e7f35579a73f77e257e9e3795abd8b33119a17b931ca6016a07036e1670
+refresh	btop/btop.conf	e6b86ddda073e06bf64cfbbde9652f9335171d8ca8c622e617478a3c696a6a3d
+refresh	btop/btop.conf	7f4122f2ed5f4c95489950cce2c0b192e19ae6fa74b0666d25e0b10040b2cee8
+refresh	btop/btop.conf	4e17dd28c43948af48a408ed9b0901c008e57dfe3b8fcf09649ec10f28746137
+refresh	chromium/Default/Preferences	67aef8ae3a6e0ee1180057198f47f2ea412ea1f01051d77edce4c465fb83d887
+refresh	chromium-flags.conf	3a8fe5b85bc42b27f5a0f36f3b674dc8e22a7d670a6aabbdc4f2d4057b97a1d4
+refresh	chromium-flags.conf	3d52925a48ac3704f9427ecec70310d9c89be5442c41ece183122a9246837be4
+refresh	chromium-flags.conf	4bc8710615d2151464e9bd6d1123fbfbb8f56dea4cf0568320bc7b50d24ad205
+refresh	chromium-flags.conf	1df1a5282f9525bfbb97a697c8169c08c1adb2b5a4de5ae94d84df7b4a78f2fc
+refresh	chromium-flags.conf	0408c524892830f5cf43e94c389b897cbc093ede312f49a4627bfabf692653c2
+refresh	fastfetch/config.jsonc	6adebf87d93902fb4bc68824a8e7c71e482846af23fea199e489c5496f791590
+refresh	fastfetch/config.jsonc	fe61d9f7cfac800adb7bd21f75f1bfcca266c609b6efa02a6e25303ac192e86e
+refresh	fastfetch/config.jsonc	62fa26fa5fb8e11d31c5ec9f3a53b9b6b1124b29134b19329a092878ff624581
+refresh	fastfetch/config.jsonc	22565532d139ab8c2ddb21dcfe56460dc9f2f8a712b8d29f125c1c8b29beca37
+refresh	fastfetch/config.jsonc	b65cb9ca36eed45929bfc35443762b14957d3847f6bed361a338224a87450e3a
+refresh	fastfetch/config.jsonc	3d153225131d3031b99b2e1a07e84d22cd0e51fcae1e701b08f6b6a558bc7a9c
+refresh	fastfetch/config.jsonc	404d0273c380cfdad4a037fa87202fc1d96be178c867e8a9d27b0a772f6e2fa1
+refresh	fastfetch/config.jsonc	4a98ff77ed46109d08ef7301249ea6823d1abba6c39c0871680feebf96620bf2
+refresh	fastfetch/config.jsonc	c827c3a24f64c418d309244a8a967def0c522d824addf65d8ee0741afbc970bd
+refresh	fastfetch/config.jsonc	c909b43ba000887cd418d9eaf98c1c9c5ba938aa27f9246cf8fa5662946c4e87
+refresh	fastfetch/config.jsonc	b2e5757851f0703edb8bcfc4b51a00bf5e303c1df26b8c63e6b7df6be4ead4ed
+refresh	fcitx5/conf/clipboard.conf	2d53b40811ee7ceb71c7db0422a3ed733647f389379a57dbf2915d522dff4193
+refresh	fcitx5/conf/xcb.conf	f5cf059182c4361fa7b16d5149f20a09eb1e0915f4463ba60dae626b86df7d9c
+refresh	foot/foot.ini	52e30647172522459b2179af714c19b62a35fe11bc23c49839fda5dca3253e84
+refresh	foot/foot.ini	ac16453a4b4ebc997ff6732e7e4448dc759c25587fdb8aa1d1a7eee92b518987
+refresh	ghostty/config	ed589d69296f5aa083e4dba43fc3d40cfbe2f6d10b382f3d0dc2ff76d5ec8fe5
+refresh	ghostty/config	2832c9c27cdcd735e913d538c3c61005fd90e909541bdcb746bb454851ae79ca
+refresh	ghostty/config	8200bc34b7ced8170d512c619f0408ac7dd7d7b4e64021ac66393d8a8bf1d951
+refresh	ghostty/config	006fbe4048de02fc040eeefd0974081c6f7df5dae419f8d542fc1adf08b0d6fb
+refresh	ghostty/config	e55a409a490d4f80c19c9242a59db8e00e271e01feddb8fda6a5a7102d39af20
+refresh	ghostty/config	b65e4903813d442a25540eef5a24313121c640a57114ee3d76d1ec7408d86b27
+refresh	ghostty/config	4e6ccba3d0584832cedf22713842f8ce7eca383c2ea3bfe61286d2b8df73f3fe
+refresh	git/config	3e1bdf77aa65b7bb412cc25c02bac4734e98c10e4a63815b98737bf817b6f682
+refresh	hypr/hyprsunset.conf	3ac2e9fe716fb8c612f07ca608ba7eee491921c2386118aae54ff9c8121726f2
+refresh	hypr/hyprsunset.conf	e6fa7d909a90b64df7f75e8842bc2541e75463a47bbc7213ec79a56364f563f2
+refresh	hypr/hyprsunset.conf	afe595d9d31574bde0f3ab8f7d370d0710bc188d6e5643f73255ffa7a202b647
+refresh	hypr/hyprsunset.conf	3042e4a923030239f4edf7b1943f41f4ed57107550177130c96f3b215b226e22
+refresh	hypr/xdph.conf	637899cd3926c4b8c758d3cb812cc1e7ac7643aca83a8e5030208234d064c839
+refresh	hypr/xdph.conf	2fded88a27b89f33cbc2b64a1258117df74b591f39a84c78ec3504a7d3b09136
+refresh	hyprland-preview-share-picker/config.yaml	cb7f8768566ce41f8b09249b504ea8f6dbd6ed830637eef24c4e94e94486d113
+refresh	hyprland-preview-share-picker/config.yaml	cf88364e497e4af2adaff9a0b7ca12227d29f831bc7e18846dd8f03bf4c618a8
+refresh	imv/config	58fd37d4862eb484d50c2c0cc507836e685a776d8da8dd9f20bd894809c31cd6
+refresh	imv/config	569b52b9614a78be67ce9f0a828ff1a7a73e4741d4751577ec6b247ab78e29ea
+refresh	imv/config	832b19821b4c69f9381aea6902b1b80c5682c30091e6d4a59493c8edf827bf72
+refresh	kitty/kitty.conf	69d6cbd2f8adcaec09407b5fb71ec7956cd510f6d64c36600ab7f7e7d3812cc6
+refresh	kitty/kitty.conf	6c5fe293bb92b1ea5fd955afcec126597ae0a665395db1d38b9beb6461c587d1
+refresh	kitty/kitty.conf	68779240358653a03ede95c4c872d94e3ab3742cf64a982b17e94f42aa2b74d4
+refresh	kitty/kitty.conf	9599cfd1f1fbd7e14fe1ba48196137be3cf8bcfa95f6c24d15d8053d88f73f0a
+refresh	kitty/kitty.conf	ea3bc5e353f7312d774362310f7c511584efd6076c163b4cad1a9cc05c0f80ab
+refresh	kitty/kitty.conf	8984216fe0c0d006b969a7494dd4aad79ac78e9d15bd7a82ccbf5f10eac48fa6
+refresh	lazygit/config.yml	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+refresh	obsidian/user-flags.conf	6c00f4daeff2b018bda247151a8edee44115273f554cfda00909bc5e56a3ae85
+refresh	omarchy/hooks/battery-low.d/play-warning-sound.sample	9623f5534cd52f76a51cfbb4e8a0699a550bf7f0f5f2ff54a1c78534d907fdf1
+refresh	omarchy/hooks/font-set.d/show-font-notification.sample	d28090fd796b02fa799dcf7160e46ce9fc8d7a17b476ef87639d0b83a347dc37
+refresh	omarchy/hooks/post-boot.d/weather.sample	fe37567a09046f1e4fcff9a9c74e4a036270cdf6da73dcc5cd3aa617f9a7c2ba
+refresh	omarchy/hooks/post-update.d/show-update-notification.sample	7995adc93a0ac6cd1afcd7ed9ac6d0ff058751ce4df4594aa78855603a613815
+refresh	omarchy/hooks/theme-set.d/show-theme-notification.sample	b9d6754d95057bdb2f37595fd2f40055872118cb2f442bdc7b0b900317bac332
+refresh	omarchy/themed/alacritty.toml.tpl.sample	ea5889bf79e273aa9cf1e7a1b2916dae7751fc0dced2cd53af36a2ebeecb4f1e
+refresh	omarchy/themed/alacritty.toml.tpl.sample	a05d015227a406470b571d9d8f372eb8042df94b32cf746e71fd2f513c9880ac
+refresh	opencode/opencode.json	3806450805c8661a729c46aea325826e9ee7d158d650c9d750f5d0a763ec2c03
+refresh	opencode/opencode.json	fb067af039252d48ef5b5c573a5e12c17357af4324b218aca5efa36f882846dd
+refresh	starship.toml	b17c9b5f096fc125e97050e359171c6011d6b3c7d7e9ac28f630e75b4d4bb9db
+refresh	tmux/tmux.conf	345abaa3f128529abbbe4da3a24c227170c9679fb0af1f3d87eb15959e183219
+refresh	tmux/tmux.conf	93088311b8b67eb10ede3040b55e81193ff43fe16c5b2a6e3799300e00f39e3d
+refresh	tmux/tmux.conf	02d7c3914b73b8fec139316b9e1e88a40764617c6f4f1b6a3c05ad9c4a68b944
+refresh	tmux/tmux.conf	6633a3c59441087fdead8c30601e50c39fc7e74a66a32514296657332ff6cde9
+refresh	tmux/tmux.conf	473abae53d3aa7da59be65cc6301a15f6cc878045ae3f4c5e180ee013a0a04a7
+refresh	tmux/tmux.conf	bf881713284aa2cc6722a199e42d57c005ae5922ef4eb6305593ead09b13ca7c
+refresh	Typora/themes/ia_typora.css	8bb2493c1dc24c8217c35ce9c0d29054b3733316923a0ddd2e63908b11ec073e
+refresh	Typora/themes/ia_typora_night.css	ff3d670351fdaf64aca339fbb94453c4962feae4705be9ed7ff31237e6da5791
+refresh	Typora/themes/ia_typora_night.css	d3708c850dcedf2ec210454c38bd1fa19b390e51bfce42ebac73d5f469aa1462
+refresh	xournalpp/settings.xml	47eafeeb3c246af1a5fb2cd1d87a748ce127d13410c351194c5d89bbaefb623d
+refresh	xournalpp/settings.xml	1c1a9efbf1b6dc7813bf3440fd5bf8409fc283e8d0192ca297dc36a10e12c846
+# retire: nothing is actually copied. The new package owns the file at the
+# system path below (shipped by omarchy-settings / omarchy-limine), so once
+# the user's hash-matched copy in ~/.config is removed, the system path takes
+# effect via the usual XDG/fontconfig/systemd lookup order. User overrides
+# (hash mismatch) are kept active as backups.
+# Legacy ~/.config path -> package-owned destination (where the file now lives):
+# environment.d/fcitx.conf -> /usr/lib/environment.d/10-omarchy-fcitx.conf
+# fontconfig/fonts.conf -> /usr/share/fontconfig/conf.avail/30-omarchy.conf
+# mimeapps.list -> /usr/share/applications/mimeapps.list
+# omarchy.ttf -> /usr/share/fonts/omarchy/omarchy.ttf
+# systemd/user/bt-agent.service -> /usr/lib/systemd/user/bt-agent.service
+# systemd/user/omarchy-recover-internal-monitor.service -> /usr/lib/systemd/user/omarchy-recover-internal-monitor.service
+# systemd/user/omarchy-sleep-lock.service -> /usr/lib/systemd/user/omarchy-sleep-lock.service
+# uwsm/default -> /usr/share/omarchy/default/uwsm/default
+# uwsm/env -> /usr/share/uwsm/env.d/10-omarchy
+# xdg-terminals.list -> /usr/share/xdg-terminal-exec/hyprland-xdg-terminals.list
+retire	environment.d/fcitx.conf	faacbd703a8f797013968b235fec6289a9c921d3ec7b7f8b4e1cd24392f68b9c
+retire	environment.d/fcitx.conf	8b077b6ea2594dc1d4b57592a3bc62703df4959e86b93ea0fc488b6686309095
+retire	fontconfig/fonts.conf	7db33b0f8673f71f42604255cad222194294cd401315fecde6b83151eecebe91
+retire	fontconfig/fonts.conf	f35b5b4bd0d8d3926f5d9a49ca791fc66b00793786420508d4a4c41ae9ccbefc
+retire	fontconfig/fonts.conf	6dec98b539388b95ecfdb3c7ab951001c712820eb0581002832cb7bfdde1a654
+retire	fontconfig/fonts.conf	3545f6c5a8c1465df7a4e251b3c2047d4ba03654c86636794f64cb0d8ea8ef63
+retire	fontconfig/fonts.conf	0f085b449f1cbe8eda3b59a6235bf2a3ddb6e982ab5d22fa642248916e63bafc
+retire	mimeapps.list	3b574cef135b5deb7a8a0c7e17139037cf1fe155300e3809f60bed0e04120975
+retire	omarchy.ttf	e55e67119e82f56f92d90cbf54b7ccc1b2946b32c535a29370439d7ef5215966
+retire	systemd/user/bt-agent.service	0406b577a1225dc2a9f86638d3c346eb3635168576f04050be50ebcc0be6be12
+retire	systemd/user/omarchy-recover-internal-monitor.service	b9b92cedc44cf3cb6216948629be55b53d16746e31896dc6469fd49ba55e82f4
+retire	systemd/user/omarchy-recover-internal-monitor.service	e1483079b9f2aefcd43b4722c75a31643e5f3bb5a2eada5f52f1d7d201e8c289
+retire	systemd/user/omarchy-sleep-lock.service	bcd1a76cb5c63514922bc5e11af22ae480fc6d06a99863364e02bdf3c7bdceaf
+retire	uwsm/default	2e89b03a3710b70cf754ea0c8db4388bb35a7519870036abff5ea8a584eafbc0
+retire	uwsm/default	3622ba134d29b639a155424a5226215e213c8508144e98001ffe128a8967c9b5
+retire	uwsm/default	73712c5a677532bd4afcee5800ae9b76e3d02a2130659a96a8b7fbe2fd2c3d53
+retire	uwsm/default	56f968d461da1b8360bc21d5fb7d5375121b772dd06d9397ebcda55a9097c2a0
+retire	uwsm/default	f7558795e1f6b89357a780ad4e1c63ffdd56e423f31c9a888738afe894e16623
+retire	uwsm/env	60eae2629f2dbc70bb068de7bcb245032a429dd989f98b573eb315c0760b4ea5
+retire	uwsm/env	daf70280edd80bae94660f8509d294df2aaa242d3428320bf6542341efff5a6d
+retire	uwsm/env	61a4147404a2b6b920f6f414a8c9bcef69b8bcf2a1251e1ddd2fbc37fe45e04d
+retire	uwsm/env	32130b0033e1d3229d89e6f73394e272eb3adad07314f740f8df9629c1f89beb
+retire	uwsm/env	278df755a1679f2735742c61de9789614cdb2021fbbb4e802f056c0403d1a6b8
+retire	uwsm/env	7be477d4e734d30ebc2caf9dbad6133dcb4aef38d64eb0979beab46f1c0e2464
+retire	uwsm/env	0c2cd9c32bd8aea26c62bc18c4a287a29999d4b2ec2b3216b666fb204ab3c471
+retire	uwsm/env	957dc0a95f8e909a378ce82967d7a55eb474e2fe5b2672212272e88530c4d4aa
+retire	uwsm/env	425036ed11f004f59a5fca324305b13189a6aca4b4dd1582532f075d14413d93
+retire	uwsm/env	9eb186609afce36a525e58e0b0858eb586869c5d067a7e5545bb5be606ab8a44
+retire	xdg-terminals.list	7303fa8d1d74eda73cf5fb4c90183a8608c191bb80d7fb9d96ab60f9df06022e
+retire	xdg-terminals.list	d035da571a6bfc7d626d4a88846ea86a8adb6f6662f1f8b4abe2330e53ceb71b
+DEFAULT_HASHES
+}
+
+declare -A known_config_default_hashes_by_key=()
+while IFS=$'	' read -r action rel hash; do
+  [[ -n ${action:-} && $action != \#* ]] || continue
+  known_config_default_hashes_by_key["$action:$rel:$hash"]=1
+done < <(known_config_default_hashes)
+
+default_hash_paths() {
+  local action_filter="$1" action rel hash
+  known_config_default_hashes | while IFS=$'	' read -r action rel hash; do
+    [[ -n ${action:-} && $action != \#* ]] || continue
+    [[ $action == "$action_filter" ]] || continue
+    printf '%s\n' "$rel"
+  done | sort -u
+}
+
+is_known_default_hash() {
+  local action="$1" rel="$2" file="$3" hash
+  [[ -f $file ]] || return 1
+  hash=$(file_sha256 "$file")
+  [[ -n ${known_config_default_hashes_by_key["$action:$rel:$hash"]+set} ]]
+}
+
+backup_config_file() {
+  local file="$1"
+  [[ -e $file || -L $file ]] || return 0
+  cp -af "$file" "$file.omarchy-upgrade-to-4.$BACKUP_SUFFIX.bak"
+}
+
+mapfile -t retired_config_files < <(default_hash_paths retire)
+
+# These are new Omarchy 4 config entry points. Older installs cannot have an
+# Omarchy-shipped legacy copy to hash-match, so always install the v4 default.
+always_copy_config_files=(
+  hypr/.luarc.json
+  hypr/autostart.lua
+  hypr/bindings.lua
+  hypr/hyprland.lua
+  hypr/input.lua
+  hypr/looknfeel.lua
+  hypr/monitors.lua
+  omarchy/bar.json
+  omarchy/extensions/omarchy-menu.jsonc
+  omarchy/hooks/pre-refresh-pacman.d/add-custom-repo.sample
+  omarchy/shell.json
+)
+
+migrate_uwsm_env_customizations() {
+  local source="$1" dest="$HOME/.config/uwsm/env.d/99-omarchy-upgrade-env" tmp
+  [[ -f $source ]] || return 0
+  is_known_default_hash retire uwsm/env "$source" && return 0
+
+  tmp=$(mktemp)
+  awk '
+    function omitted(reason) { print ": # omarchy-upgrade omitted legacy Omarchy " reason; next }
+
+    /^[[:space:]]*export[[:space:]]+OMARCHY_PATH=\$HOME\/\.local\/share\/omarchy[[:space:]]*$/ { omitted("OMARCHY_PATH") }
+    /^[[:space:]]*export[[:space:]]+OMARCHY_PATH="\$\{OMARCHY_PATH:-\/usr\/share\/omarchy\}"[[:space:]]*$/ { omitted("OMARCHY_PATH") }
+    /^[[:space:]]*\[ -f \/etc\/omarchy\.conf \] && \. \/etc\/omarchy\.conf[[:space:]]*$/ { omitted("/etc/omarchy.conf source") }
+    /^[[:space:]]*export[[:space:]]+PATH=\$OMARCHY_PATH\/bin:\$PATH:\$HOME\/\.local\/bin[[:space:]]*$/ { omitted("PATH setup") }
+    /^[[:space:]]*export[[:space:]]+PATH="\$OMARCHY_PATH\/bin:\$PATH:\$HOME\/\.local\/bin"[[:space:]]*$/ { omitted("PATH setup") }
+    /^[[:space:]]*source[[:space:]]+~\/\.config\/uwsm\/default[[:space:]]*$/ { omitted("uwsm/default source") }
+    /^[[:space:]]*\[ -f "\$HOME\/\.config\/uwsm\/default" \] && \. "\$HOME\/\.config\/uwsm\/default"[[:space:]]*$/ { omitted("uwsm/default source") }
+    /^[[:space:]]*omarchy-cmd-present[[:space:]]+mise && eval "\$\(mise activate bash --shims\)"[[:space:]]*$/ { omitted("mise activation") }
+
+    { print }
+  ' "$source" >"$tmp"
+
+  if [[ -s $tmp ]]; then
+    if ! sh -n "$tmp" >/dev/null 2>&1; then
+      cp -f "$source" "$tmp"
+    fi
+
+    mkdir -p "$(dirname "$dest")"
+    {
+      echo '# Preserved custom ~/.config/uwsm/env content during Omarchy 4 upgrade.'
+      echo '# Exact legacy Omarchy-managed setup lines were replaced with no-op markers where safe.'
+      cat "$tmp"
+    } >"$dest"
+  fi
+
+  rm -f "$tmp"
+}
+
+is_retired_config_file() {
+  local rel="$1" retired
+  [[ $rel == systemd/user/* ]] && return 0
+
+  for retired in "${retired_config_files[@]}"; do
+    [[ $rel == "$retired" ]] && return 0
+  done
+
+  return 1
+}
+
+copy_config_default() {
+  local rel="$1" source="$root/config/$1" target="$HOME/.config/$1"
+  [[ -e $source || -L $source ]] || return 0
+
+  if [[ -e $target || -L $target ]]; then
+    if [[ -f $source && -f $target ]] && cmp -s "$source" "$target"; then
+      return 0
+    fi
+    backup_config_file "$target"
+    rm -f "$target"
+  fi
+
+  mkdir -p "$(dirname "$target")"
+  cp -P "$source" "$target"
+}
+
+copy_missing_config_defaults() {
+  local source_dir="$1" target_dir="$2" source_path rel target_path
+  [[ -d $source_dir ]] || return 0
+
+  while IFS= read -r -d '' source_path; do
+    rel="${source_path#$source_dir/}"
+    is_retired_config_file "$rel" && continue
+
+    target_path="$target_dir/$rel"
+    [[ -e $target_path || -L $target_path ]] && continue
+
+    mkdir -p "$(dirname "$target_path")"
+    cp -P "$source_path" "$target_path"
+  done < <(find "$source_dir" \( -type f -o -type l \) -print0)
+}
+
+refresh_known_config_defaults() {
+  local rel file default
+
+  while IFS= read -r rel; do
+    file="$HOME/.config/$rel"
+    default="$root/config/$rel"
+    [[ -f $file && -f $default ]] || continue
+    is_known_default_hash refresh "$rel" "$file" || continue
+    copy_config_default "$rel"
+  done < <(default_hash_paths refresh)
+}
+
+copy_always_config_defaults() {
+  local rel
+  for rel in "${always_copy_config_files[@]}"; do
+    copy_config_default "$rel"
+  done
+}
+
+is_known_bashrc_default() {
+  local file="$1" hash
+  [[ -f $file ]] || return 1
+  hash=$(file_sha256 "$file")
+
+  case "$hash" in
+    06ef4dcaa0530d7410513b65b82eea45f147d386a7689dcf1f5636fdad7561ff|\
+    907d367c7589361788a2b0456003f6ef0a2e049548b77b9acf5b0f8cecc2ab0f|\
+    7f46fdc7e3016ab2309d49607a9dddc907b06066cebcf23a63e0110f5d962d73|\
+    322f495563435da1dc70e16968ee33f6a9d81ab361b79ebfd97814b83a89e011|\
+    56009cd83e46e0715911877f173bf1dab966f3e22b6995c530937f2feb18b667|\
+    1a8c98df85360a85acde31effa33c419ce9d27bc17e3a0d5900d4a6cb1743bcc)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+install_bash_startup() {
+  local bashrc="$HOME/.bashrc" bash_profile="$HOME/.bash_profile"
+  [[ -f $root/default/bashrc ]] || return 0
+
+  backup_config_file "$bashrc"
+
+  if [[ ! -e $bashrc && ! -L $bashrc ]] || is_known_bashrc_default "$bashrc"; then
+    cp "$root/default/bashrc" "$bashrc"
+  elif grep -qxF 'source ~/.local/share/omarchy/default/bash/rc' "$bashrc" || grep -qxF 'source "$OMARCHY_PATH/default/bash/rc"' "$bashrc"; then
+    python3 - "$bashrc" <<'BASHRC_PATCH_PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+new_block = '''# /etc/omarchy.conf is written by omarchy-dev-link. When absent, force the
+# package default instead of preserving a stale inherited dev-link value before
+# we decide which rc file to source.
+if [[ -f /etc/omarchy.conf ]]; then
+  source /etc/omarchy.conf
+  export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+else
+  export OMARCHY_PATH=/usr/share/omarchy
 fi
-if [[ -f $root/default/bashrc ]]; then
-  cp "$root/default/bashrc" "$HOME/.bashrc"
-  echo '[[ -f ~/.bashrc ]] && . ~/.bashrc' >"$HOME/.bash_profile"
+source "$OMARCHY_PATH/default/bash/rc"
+'''
+text = text.replace('source ~/.local/share/omarchy/default/bash/rc\n', new_block)
+text = text.replace(': "${OMARCHY_PATH:=/usr/share/omarchy}"\nsource "$OMARCHY_PATH/default/bash/rc"\n', new_block)
+path.write_text(text)
+BASHRC_PATCH_PY
+  fi
+
+  if [[ ! -e $bash_profile && ! -L $bash_profile ]]; then
+    echo '[[ -f ~/.bashrc ]] && . ~/.bashrc' >"$bash_profile"
+  fi
+}
+
+# Some former ~/.config defaults are now package-owned elsewhere so future
+# updates can change defaults without rewriting user files. Back them up before
+# cleanup, then keep only real user customizations active.
+uwsm_env="$HOME/.config/uwsm/env"
+if [[ -f $uwsm_env ]]; then
+  cp -f "$uwsm_env" "$uwsm_env.omarchy-upgrade-to-4.$BACKUP_SUFFIX.bak"
+  migrate_uwsm_env_customizations "$uwsm_env"
 fi
+
+for rel in "${retired_config_files[@]}"; do
+  file="$HOME/.config/$rel"
+  backup_config_file "$file"
+done
+
+# Existing user config may be customized. Refresh only files whose hash matches
+# a default Omarchy has shipped before, fill in missing defaults for old installs,
+# and always write the v4-only entry points that older installs cannot have.
+refresh_known_config_defaults
+copy_missing_config_defaults "$root/config" "$HOME/.config"
+copy_always_config_defaults
+
+for rel in "${retired_config_files[@]}"; do
+  file="$HOME/.config/$rel"
+  backup="$file.omarchy-upgrade-to-4.$BACKUP_SUFFIX.bak"
+
+  # UWSM env was hardcoded to the legacy checkout on older installs. Custom
+  # non-Omarchy lines were migrated to env.d above; never keep the active file.
+  if [[ $rel == uwsm/env ]]; then
+    rm -f "$file"
+    continue
+  fi
+
+  if [[ -f $backup ]] && ! is_known_default_hash retire "$rel" "$backup"; then
+    # Keep intentional user overrides active; package defaults remain lower
+    # priority under /usr/lib or /usr/share.
+    mkdir -p "$(dirname "$file")"
+    cp -af "$backup" "$file"
+  else
+    rm -f "$file"
+  fi
+done
+install_bash_startup
+
+unset rel file backup retired_config_files always_copy_config_files uwsm_env known_config_default_hashes_by_key
+unset -f file_sha256 known_config_default_hashes default_hash_paths is_known_default_hash backup_config_file migrate_uwsm_env_customizations is_retired_config_file copy_config_default copy_missing_config_defaults refresh_known_config_defaults copy_always_config_defaults is_known_bashrc_default install_bash_startup
 
 mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills" "$HOME/.pi/agent/skills"
 if [[ -d $root/default/omarchy-skill ]]; then
@@ -1119,9 +1495,22 @@ if [[ -f $root/default/wireplumber/wireplumber.conf.d/bluetooth-a2dp-autoconnect
 fi
 
 enable_user_unit() {
-  local unit="$1" unit_path="$HOME/.config/systemd/user/$1" target
+  local unit="$1" unit_path link_target target
   local -a targets=()
-  [[ -f $unit_path ]] || return 0
+
+  if [[ -f $HOME/.config/systemd/user/$unit ]]; then
+    unit_path="$HOME/.config/systemd/user/$unit"
+    link_target="../$unit"
+  elif [[ -f /usr/lib/systemd/user/$unit ]]; then
+    unit_path="/usr/lib/systemd/user/$unit"
+    link_target="$unit_path"
+  elif [[ -f $root/default/systemd/user/$unit ]]; then
+    unit_path="$root/default/systemd/user/$unit"
+    link_target="$unit_path"
+  else
+    return 0
+  fi
+
   mapfile -t targets < <(awk -F= '
     /^\[Install\]/ { in_install=1; next }
     /^\[/ { in_install=0 }
@@ -1133,11 +1522,12 @@ enable_user_unit() {
   ((${#targets[@]})) || targets=(default.target)
   for target in "${targets[@]}"; do
     mkdir -p "$HOME/.config/systemd/user/$target.wants"
-    ln -sfn "../$unit" "$HOME/.config/systemd/user/$target.wants/$unit"
+    ln -sfn "$link_target" "$HOME/.config/systemd/user/$target.wants/$unit"
   done
 }
 enable_user_unit bt-agent.service
 enable_user_unit omarchy-sleep-lock.service
+enable_user_unit omarchy-recover-internal-monitor.service
 mkdir -p "$HOME/.config/systemd/user/default.target.wants"
 for unit in pipewire-pulse.service pipewire-pulse.socket; do
   if [[ -e /usr/lib/systemd/user/$unit ]]; then
@@ -1248,7 +1638,7 @@ if command -v xdg-mime >/dev/null 2>&1; then
   xdg-mime default HEY.desktop x-scheme-handler/mailto || true
 fi
 
-touch "$state_dir/setup-user.done"
+touch "$state_dir/finalize-user.done"
 USER_SETUP
 }
 

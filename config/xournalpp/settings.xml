@@ -6,9 +6,9 @@
   <property name="pressureMultiplier" value="1"/>
   <property name="zoomGesturesEnabled" value="true"/>
   <property name="selectedToolbar" value="Portrait"/>
-  <property name="lastSavePath" value="/home/dhh/Downloads"/>
+  <property name="lastSavePath" value=""/>
   <property name="lastOpenPath" value=""/>
-  <property name="lastImagePath" value="/home/dhh/Dropbox/Images"/>
+  <property name="lastImagePath" value=""/>
   <property name="edgePanSpeed" value="20"/>
   <property name="edgePanMaxMult" value="5"/>
   <property name="zoomStep" value="10"/>

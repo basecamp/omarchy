@@ -82,6 +82,41 @@ if missing or bad:
 PY
 pass "default bar widget ids resolve to manifests and entry points"
 
+ROOT="$ROOT" python3 <<'PY'
+import os
+import sys
+from pathlib import Path
+
+root = Path(os.environ["ROOT"])
+pkgbuild = (root.parent / "omarchy-pkgs/pkgbuilds/omarchy-settings/PKGBUILD").read_text()
+errors = []
+package_defaults = [
+  ("default/uwsm/env.d/10-omarchy", "/usr/share/uwsm/env.d/10-omarchy", "uwsm/env"),
+  ("default/uwsm/default", None, "uwsm/default"),
+  ("default/environment.d/10-omarchy-fcitx.conf", "/usr/lib/environment.d/10-omarchy-fcitx.conf", "environment.d/fcitx.conf"),
+  ("default/fontconfig/conf.avail/30-omarchy.conf", "/usr/share/fontconfig/conf.avail/30-omarchy.conf", "fontconfig/fonts.conf"),
+  ("default/xdg-terminal-exec/hyprland-xdg-terminals.list", "/usr/share/xdg-terminal-exec/hyprland-xdg-terminals.list", "xdg-terminals.list"),
+  ("default/applications/mimeapps.list", "/usr/share/applications/mimeapps.list", "mimeapps.list"),
+  ("default/systemd/user/bt-agent.service", "/usr/lib/systemd/user/bt-agent.service", "systemd/user/bt-agent.service"),
+  ("default/systemd/user/omarchy-sleep-lock.service", "/usr/lib/systemd/user/omarchy-sleep-lock.service", "systemd/user/omarchy-sleep-lock.service"),
+  ("default/systemd/user/omarchy-recover-internal-monitor.service", "/usr/lib/systemd/user/omarchy-recover-internal-monitor.service", "systemd/user/omarchy-recover-internal-monitor.service"),
+  ("default/fonts/omarchy/omarchy.ttf", "/usr/share/fonts/omarchy/omarchy.ttf", "omarchy.ttf"),
+]
+
+for source, destination, legacy in package_defaults:
+  if not (root / source).exists():
+    errors.append(f"missing package default source: {source}")
+  if (root / "config" / legacy).exists():
+    errors.append(f"legacy path still in config/: {legacy}")
+  if destination and (source not in pkgbuild or destination not in pkgbuild):
+    errors.append(f"PKGBUILD does not explicitly install {source} -> {destination}")
+
+if errors:
+  print("\n".join(errors), file=sys.stderr)
+  sys.exit(1)
+PY
+pass "package-owned defaults live outside config"
+
 mapfile -t migrations < <(find "$ROOT/migrations" -maxdepth 1 -type f -name '*.sh' -printf '%f\n' | sort)
 [[ ${#migrations[@]} -eq 0 ]] || fail "4.0 upgrade is not modeled as a migration"
 pass "4.0 upgrade is handled outside the migration runner"
