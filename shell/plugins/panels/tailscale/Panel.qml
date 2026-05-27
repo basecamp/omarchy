@@ -251,7 +251,8 @@ Panel {
 
     TailscaleIcon {
       anchors.centerIn: parent
-      iconSize: Style.space(12)
+      anchors.verticalCenterOffset: -Style.space(1)
+      iconSize: Style.space(12) * 0.85
       color: root.iconColor
       badgeColor: root.urgent
       crossed: !tailscale.running && !tailscale.needsLogin
