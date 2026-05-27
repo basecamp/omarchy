@@ -23,7 +23,7 @@ BarWidget {
   }
 
   visible: panelLoader.item && panelLoader.item.label !== ""
-  implicitWidth: bar && bar.vertical ? button.implicitWidth : button.implicitWidth + Style.spacing.controlGap
+  implicitWidth: bar && bar.vertical ? button.implicitWidth : button.implicitWidth + Style.spacing.labelGap
   implicitHeight: button.implicitHeight
 
   onBarChanged: injectPanel()
