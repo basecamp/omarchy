@@ -5,20 +5,26 @@ system.
 
 ## Mental model
 
-Four Arch packages are built from this one repo (PKGBUILDs live in
+Two Arch packages are built from this one repo (PKGBUILDs live in
 `omarchy-pkgs/pkgbuilds/`):
 
-- **`omarchy`** — runtime binaries (`bin/`), install/finalize scripts
-  (`install/`), migrations, themes, and the Quickshell desktop (`shell/`).
-- **`omarchy-settings`** — user defaults (seeded via `/etc/skel`), `/etc/`
-  drop-ins, package-owned system files under `/usr/share` and `/usr/lib`,
-  fonts, plymouth theme, sddm theme, branding. Carves out `default/limine/`
-  and `default/snapper/` (owned by `omarchy-limine`).
-- **`omarchy-dev-tools`** — just `bin/omarchy-dev-*`. Optional dep of
-  `omarchy`; installed for contributors, not end users.
-- **`omarchy-limine`** — `default/limine/` and `default/snapper/` from this
-  repo, plus mkinitcpio and limine-entry-tool drop-ins that live alongside
-  the PKGBUILD in `omarchy-pkgs/`. Owns the boot/snapshot story end-to-end.
+- **`omarchy`** — runtime binaries (`bin/`, including `bin/omarchy-dev-*`),
+  install/finalize scripts (`install/`), migrations, themes, and the
+  Quickshell desktop (`shell/`). Depends on `omarchy-settings`.
+- **`omarchy-settings`** — everything that has to be on the target *before*
+  the omarchy package installs (specifically before `useradd -m` and the
+  limine bootloader install): all `/etc/skel/**`, `/etc/` drop-ins,
+  package-owned system files under `/usr/share` and `/usr/lib`, fonts,
+  plymouth theme, sddm theme, branding, plus the limine/snapper configs
+  (mkinitcpio hooks, limine-entry-tool drop-ins, snapper template, the
+  `default/limine/` and `default/snapper/` trees, and the boot/snapshot
+  story end-to-end). Also ships the three debug binaries
+  (`omarchy-debug`, `omarchy-debug-idle`, `omarchy-upload-log`) needed by
+  the live ISO env.
+
+Two other packages live in `omarchy-pkgs/` but stand alone:
+`omarchy-keyring` (GPG keys for pacman) and `omarchy-nvim` (the Neovim
+setup; independently seeds `/etc/skel`).
 
 Three layers populate `$HOME`:
 
@@ -44,7 +50,6 @@ omarchy/                            built into          installed at
 
 bin/omarchy-*                  ──►  omarchy             /usr/bin/omarchy-*
                                                         (and symlinks in /usr/share/omarchy/bin/)
-bin/omarchy-dev-*              ──►  omarchy-dev-tools   /usr/bin/omarchy-dev-*
 bin/omarchy-debug,
 bin/omarchy-debug-idle,
 bin/omarchy-upload-log         ──►  omarchy-settings    /usr/bin/  (needed before omarchy is installed)
@@ -65,12 +70,19 @@ applications/icons/*           ──►  omarchy-settings    /usr/share/icons/h
 
 etc/**                         ──►  omarchy-settings    /etc/**           (drop-ins we own outright)
 
-default/limine/limine.conf     ──►  omarchy-limine      /usr/share/omarchy/default/limine/limine.conf
-default/limine/default.conf    ──►  omarchy-limine      /usr/share/omarchy/default/limine/default.conf
+default/limine/limine.conf     ──►  omarchy-settings    /usr/share/omarchy/default/limine/limine.conf
+default/limine/default.conf    ──►  omarchy-settings    /usr/share/omarchy/default/limine/default.conf
                                                         (template; ISO substitutes @@CMDLINE@@ → /etc/default/limine)
-default/snapper/root           ──►  omarchy-limine      /etc/snapper/config-templates/omarchy
+default/snapper/root           ──►  omarchy-settings    /etc/snapper/config-templates/omarchy
+                                                        (+ /usr/share/omarchy/default/snapper/root)
 
-default/**                     ──►  omarchy-settings    /usr/share/omarchy/default/  (excluding default/{limine,snapper})
+omarchy-pkgs/omarchy-settings/
+  omarchy_hooks.conf,
+  thunderbolt_module.conf       ──►  omarchy-settings    /etc/mkinitcpio.conf.d/
+  omarchy-defaults.conf,
+  omarchy-uki.conf              ──►  omarchy-settings    /etc/limine-entry-tool.d/
+
+default/**                     ──►  omarchy-settings    /usr/share/omarchy/default/
   ├─ bash/env-bootstrap                                 /usr/share/omarchy/default/bash/env-bootstrap
   │                                                       (sourced by every shell/session entry point; see "Env bootstrap")
   ├─ bashrc                                             /usr/share/omarchy/etc-overrides/dot.bashrc
