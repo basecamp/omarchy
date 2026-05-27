@@ -62,16 +62,54 @@ const status = tailscale.parseStatus(JSON.stringify({
       TailscaleIPs: ['100.1.1.1', 'fd7a:115c:a1e0::1901:334b'],
       Online: true,
       OS: 'macos'
+    },
+    mullvadExit: {
+      HostName: 'al-tia-wg-003',
+      DNSName: 'al-tia-wg-003.mullvad.ts.net.',
+      TailscaleIPs: ['100.95.87.11'],
+      Online: true,
+      OS: 'linux',
+      ExitNodeOption: true,
+      ExitNode: false
     }
   }
 }))
 
 assert(status.ok && status.running, 'tailscale parses running status')
 assertEqual(status.selfIp, '100.74.97.73', 'tailscale parses self IP')
-assertDeepEqual(status.peers.map(peer => peer.HostName), ['alpha', 'zed'], 'tailscale filters offline peers and sorts online peers')
+assertDeepEqual(status.peers.map(peer => peer.HostName), ['alpha', 'zed'], 'tailscale filters offline and Mullvad peers and sorts online peers')
 assertDeepEqual(status.peers[0].TailscaleIPv6, ['fd7a:115c:a1e0::1901:334b'], 'tailscale preserves peer IPv6 addresses for copy menu')
 assert(status.peers[1].ExitNodeOption && status.peers[1].ExitNode, 'tailscale preserves exit node flags')
-assertDeepEqual(status.exitNodes.map(peer => peer.HostName), ['zed'], 'tailscale lists only online exit nodes')
+assertDeepEqual(status.exitNodes.map(peer => peer.HostName), ['zed'], 'tailscale lists only online tailnet exit nodes')
+assert(tailscale.isMullvadPeer({ HostName: 'al-tia-wg-003', DNSName: 'al-tia-wg-003.mullvad.ts.net.' }), 'tailscale detects Mullvad status peers')
+
+const mullvadNodes = tailscale.parseExitNodeList(`
+ IP                  HOSTNAME                         COUNTRY            CITY                   STATUS
+ 100.65.216.13       au-adl-wg-301.mullvad.ts.net     Australia          Any                    -
+ 100.65.216.13       au-adl-wg-301.mullvad.ts.net     Australia          Adelaide               -
+ 100.66.11.119       dk-cph-wg-001.mullvad.ts.net     Denmark            Copenhagen             -
+ 100.1.2.3           office.tailnet.ts.net             Denmark            Office                 -
+
+# To use an exit node, use tailscale set --exit-node=
+`)
+
+assertDeepEqual(
+  mullvadNodes.map(node => node.DisplayName),
+  ['Adelaide, Australia', 'Copenhagen, Denmark'],
+  'tailscale parses Mullvad exit nodes and skips duplicate country rows'
+)
+assertEqual(mullvadNodes[1].DNSName, 'dk-cph-wg-001.mullvad.ts.net', 'tailscale preserves Mullvad hostname as exit node target')
+assertDeepEqual(mullvadNodes[1].TailscaleIPs, ['100.66.11.119'], 'tailscale preserves Mullvad exit node IP')
+assert(mullvadNodes.every(node => node.Mullvad === true && node.ExitNodeOption === true), 'tailscale marks Mullvad rows as exit nodes')
+
+const mullvadCountries = tailscale.mullvadCountryOptions(mullvadNodes)
+assertDeepEqual(
+  mullvadCountries.map(node => node.DisplayName),
+  ['Australia', 'Denmark'],
+  'tailscale groups Mullvad exit nodes by country'
+)
+assertEqual(mullvadCountries[0].DNSName, 'au-adl-wg-301.mullvad.ts.net', 'tailscale uses a country endpoint for grouped countries')
+assertEqual(mullvadCountries[1].DNSName, 'dk-cph-wg-001.mullvad.ts.net', 'tailscale falls back to first city endpoint without Any')
 
 const stopped = tailscale.parseStatus(JSON.stringify({
   BackendState: 'Stopped',

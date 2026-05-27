@@ -19,6 +19,8 @@ Panel {
   property int exitNodeIndex: 0
   property bool cursorActive: false
   property bool copyMenuOpen: false
+  property bool mullvadPickerOpen: false
+  property string mullvadQuery: ""
   property int phraseIndex: 0
   readonly property var activePhrases: [
     "Encrypting connections",
@@ -40,8 +42,11 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property bool showConnections: tailscale.accounts.length > 1 || tailscale.accountsAccessDenied
   readonly property bool showPeers: tailscale.running && tailscale.peers.length > 0
-  readonly property var exitNodes: tailscale.exitNodes
-  readonly property bool showExitNodes: tailscale.running && exitNodes.length > 0
+  readonly property var recentMullvadCountries: Array.isArray(settings.recentMullvadCountries) ? settings.recentMullvadCountries : []
+  readonly property var recentMullvadExitNodes: recentMullvadNodes()
+  readonly property var exitNodes: displayExitNodes()
+  readonly property bool showExitNodes: tailscale.running && (exitNodes.length > 0 || tailscale.mullvadCountries.length > 0)
+  readonly property var filteredMullvadCountries: filteredMullvadCountryNodes()
   readonly property color iconColor: tailscale.running ? foreground : dim
   readonly property color barIconColor: tailscale.running ? barForeground : Qt.darker(barForeground, 1.55)
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
@@ -55,6 +60,83 @@ Panel {
   function selectedExitNode() {
     if (exitNodes.length === 0) return null
     return exitNodes[Math.max(0, Math.min(exitNodeIndex, exitNodes.length - 1))]
+  }
+
+  function displayExitNodes() {
+    var nodes = []
+    for (var i = 0; i < tailscale.tailnetExitNodes.length; i++) nodes.push(tailscale.tailnetExitNodes[i])
+    for (var j = 0; j < recentMullvadExitNodes.length; j++) nodes.push(recentMullvadExitNodes[j])
+    if (tailscale.mullvadCountries.length > 0) nodes.push({ id: "mullvad:add", AddMullvad: true, DisplayName: "Choose Mullvad region" })
+    return nodes
+  }
+
+  function recentMullvadNodes() {
+    var nodes = []
+    var seen = {}
+    for (var a = 0; a < tailscale.mullvadCountries.length && nodes.length < 5; a++) {
+      var active = tailscale.mullvadCountries[a]
+      var activeCountry = String(active.Country || "")
+      if (active.ExitNode === true && activeCountry !== "" && !seen[activeCountry]) {
+        nodes.push(active)
+        seen[activeCountry] = true
+      }
+    }
+    for (var i = 0; i < recentMullvadCountries.length && nodes.length < 5; i++) {
+      var country = String(recentMullvadCountries[i] || "")
+      if (country === "" || seen[country]) continue
+      var node = mullvadCountryNode(country)
+      if (node) {
+        nodes.push(node)
+        seen[country] = true
+      }
+    }
+    return nodes
+  }
+
+  function mullvadCountryNode(country) {
+    for (var i = 0; i < tailscale.mullvadCountries.length; i++) {
+      var node = tailscale.mullvadCountries[i]
+      if (String(node.Country || "") === String(country || "")) return node
+    }
+    return null
+  }
+
+  function filteredMullvadCountryNodes() {
+    var query = String(mullvadQuery || "").trim().toLowerCase()
+    var result = []
+    for (var i = 0; i < tailscale.mullvadCountries.length; i++) {
+      var node = tailscale.mullvadCountries[i]
+      var label = String(node.DisplayName || node.Country || "").toLowerCase()
+      if (query === "" || label.indexOf(query) !== -1) result.push(node)
+    }
+    return result
+  }
+
+  function persistRecentMullvad(country) {
+    var name = String(country || "")
+    if (name === "") return
+    var next = [name]
+    for (var i = 0; i < recentMullvadCountries.length && next.length < 5; i++) {
+      var existing = String(recentMullvadCountries[i] || "")
+      if (existing !== "" && existing !== name && next.indexOf(existing) === -1) next.push(existing)
+    }
+    if (!root.bar || !root.bar.shell || typeof root.bar.shell.updateEntryInline !== "function") return
+    var entry = { id: root.moduleName }
+    for (var key in settings) if (key !== "id") entry[key] = settings[key]
+    entry.recentMullvadCountries = next
+    root.bar.shell.updateEntryInline(root.moduleName, entry)
+  }
+
+  function chooseExitNode(peer) {
+    if (!peer) return
+    if (peer.AddMullvad === true) {
+      mullvadPickerOpen = !mullvadPickerOpen
+      if (mullvadPickerOpen) Qt.callLater(function() { if (mullvadSearch) mullvadSearch.forceActiveFocus() })
+      return
+    }
+    if (peer.Mullvad === true) persistRecentMullvad(peer.Country)
+    tailscale.setExitNode(peer)
+    mullvadPickerOpen = false
   }
 
   function selectedAccount() {
@@ -133,7 +215,7 @@ Panel {
     } else if (focusSection === "peers") {
       openSelectedPeerCopyMenu()
     } else if (focusSection === "exitNodes") {
-      tailscale.setExitNode(selectedExitNode())
+      chooseExitNode(selectedExitNode())
     }
   }
 
@@ -459,6 +541,43 @@ Panel {
                   rowIndex: index
                 }
               }
+
+              Column {
+                visible: root.mullvadPickerOpen
+                width: parent.width
+                spacing: Style.space(6)
+
+                TextField {
+                  id: mullvadSearch
+                  width: parent.width
+                  foreground: root.foreground
+                  placeholderText: "Search countries"
+                  text: root.mullvadQuery
+                  onTextChanged: root.mullvadQuery = text
+                  onAccepted: {
+                    if (root.filteredMullvadCountries.length > 0) root.chooseExitNode(root.filteredMullvadCountries[0])
+                  }
+                }
+
+                Text {
+                  visible: root.filteredMullvadCountries.length === 0
+                  width: parent.width
+                  text: "No Mullvad regions found."
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  horizontalAlignment: Text.AlignHCenter
+                }
+
+                Repeater {
+                  model: root.filteredMullvadCountries
+                  MullvadCountryRow {
+                    required property var modelData
+                    width: parent.width
+                    peer: modelData
+                  }
+                }
+              }
             }
           }
 
@@ -671,7 +790,7 @@ Panel {
     id: peerRow
     property var peer: null
     property int rowIndex: 0
-    readonly property string peerName: peer ? String(peer.HostName || "Unknown") : "Unknown"
+    readonly property string peerName: peer ? String(peer.DisplayName || peer.HostName || "Unknown") : "Unknown"
     readonly property string peerIp: peer && peer.TailscaleIPs && peer.TailscaleIPs.length > 0 ? String(peer.TailscaleIPs[0]) : ""
     readonly property string peerIpv6: {
       if (!peer || !peer.TailscaleIPv6 || peer.TailscaleIPv6.length === 0) return ""
@@ -826,7 +945,7 @@ Panel {
           color: Color.background
           border.color: root.dim
           border.width: 1
-          radius: Style.radius.md
+          radius: Style.cornerRadius
         }
 
         contentItem: Column {
@@ -899,12 +1018,13 @@ Panel {
     id: exitNodeRow
     property var peer: null
     property int rowIndex: 0
+    readonly property bool addMullvad: peer && peer.AddMullvad === true
     readonly property bool activeExitNode: peer && peer.ExitNode === true
     readonly property bool settingExitNode: peer && tailscale.settingExitNodeId === String(peer.id || "")
-    readonly property string peerName: peer ? String(peer.HostName || "Unknown") : "Unknown"
+    readonly property string peerName: peer ? String(peer.DisplayName || peer.HostName || "Unknown") : "Unknown"
 
     hasCursor: root.cursorActive && root.focusSection === "exitNodes" && root.exitNodeIndex === rowIndex
-    current: activeExitNode || settingExitNode
+    current: activeExitNode || settingExitNode || (addMullvad && root.mullvadPickerOpen)
     foreground: root.foreground
     fill: root.hoverFill
     currentFill: root.selectedFill
@@ -922,8 +1042,8 @@ Panel {
 
       Text {
         id: exitNodeGlyph
-        text: "󱇢"
-        color: exitNodeRow.activeExitNode || exitNodeRow.settingExitNode ? root.foreground : root.dim
+        text: exitNodeRow.addMullvad ? "+" : (peer && peer.Mullvad === true ? "󰖂" : "󱇢")
+        color: exitNodeRow.activeExitNode || exitNodeRow.settingExitNode || exitNodeRow.addMullvad ? root.foreground : root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
         width: Style.space(22)
@@ -958,7 +1078,74 @@ Panel {
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onEntered: root.setExitNodeCursor(exitNodeRow.rowIndex)
-      onClicked: if (exitNodeRow.peer) tailscale.setExitNode(exitNodeRow.peer)
+      onClicked: root.chooseExitNode(exitNodeRow.peer)
+    }
+  }
+
+  component MullvadCountryRow: CursorSurface {
+    id: countryRow
+
+    property var peer: null
+    readonly property string countryName: peer ? String(peer.DisplayName || peer.Country || "Unknown") : "Unknown"
+    readonly property bool activeExitNode: peer && peer.ExitNode === true
+    readonly property bool settingExitNode: peer && tailscale.settingExitNodeId === String(peer.id || "")
+
+    foreground: root.foreground
+    fill: root.hoverFill
+    currentFill: root.selectedFill
+    current: activeExitNode || settingExitNode
+    implicitHeight: row.implicitHeight + Style.spacing.lg
+
+    Row {
+      id: row
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.space(6)
+      anchors.rightMargin: Style.space(6)
+      spacing: Style.space(8)
+
+      Text {
+        text: "󰖂"
+        color: countryRow.current ? root.foreground : root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+        width: Style.space(22)
+        horizontalAlignment: Text.AlignHCenter
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Column {
+        width: parent.width - Style.space(30)
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: Style.space(1)
+
+        Text {
+          width: parent.width
+          text: countryRow.countryName
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          font.bold: countryRow.activeExitNode
+          elide: Text.ElideRight
+        }
+
+        Text {
+          width: parent.width
+          text: peer && peer.City === "Any" ? "Best available city" : String(peer && peer.City ? peer.City : "")
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          elide: Text.ElideRight
+        }
+      }
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: root.chooseExitNode(countryRow.peer)
     }
   }
 }
