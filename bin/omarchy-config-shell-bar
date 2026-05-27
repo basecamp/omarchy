@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Mutate the user shell.json bar layout
-# omarchy:args=add <plugin> [left|center|right] | drop <plugin> | show
-# omarchy:examples=omarchy config shell bar add omarchy.tailscale | omarchy config shell bar drop omarchy.tailscale | omarchy config shell bar show
+# omarchy:args=add <plugin> [left|center|right] | drop <plugin> | position <top|bottom|left|right> | transparent <true|false> | show
+# omarchy:examples=omarchy config shell bar add omarchy.tailscale | omarchy config shell bar position top | omarchy config shell bar transparent true | omarchy config shell bar show
 
 set -euo pipefail
 
@@ -11,7 +11,7 @@ OMARCHY_ROOT="${OMARCHY_PATH:-}"
 DEFAULTS_FILE="$OMARCHY_ROOT/config/omarchy/shell.json"
 
 usage() {
-  echo "Usage: omarchy-config-shell-bar add <plugin> [left|center|right] | drop <plugin> | show" >&2
+  echo "Usage: omarchy-config-shell-bar add <plugin> [left|center|right] | drop <plugin> | position <top|bottom|left|right> | transparent <true|false> | show" >&2
 }
 
 fail() {
@@ -40,7 +40,7 @@ case "$command" in
       exit 1
     fi
 
-    jq . "$(source_file)"
+    jq '.bar // {}' "$(source_file)"
     ;;
   add)
     if (( $# < 2 || $# > 3 )); then
@@ -92,6 +92,62 @@ case "$command" in
     mv "$tmp" "$CONFIG_FILE"
     trap - EXIT
     omarchy-shell -q shell rescanPlugins >/dev/null 2>&1 || true
+    ;;
+  position)
+    if (( $# != 2 )); then
+      usage
+      exit 1
+    fi
+
+    position="${2:-}"
+
+    [[ $position =~ ^(top|bottom|left|right)$ ]] || fail "position must be top, bottom, left, or right"
+
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+
+    source="$(source_file)"
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+
+    jq --arg position "$position" '
+      def object_or_empty: if type == "object" then . else {} end;
+
+      object_or_empty
+      | .version = 1
+      | .bar = (.bar | object_or_empty)
+      | .bar.position = $position
+    ' "$source" >"$tmp"
+
+    mv "$tmp" "$CONFIG_FILE"
+    trap - EXIT
+    ;;
+  transparent)
+    if (( $# != 2 )); then
+      usage
+      exit 1
+    fi
+
+    transparent="${2:-}"
+
+    [[ $transparent =~ ^(true|false)$ ]] || fail "transparent must be true or false"
+
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+
+    source="$(source_file)"
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+
+    jq --argjson transparent "$transparent" '
+      def object_or_empty: if type == "object" then . else {} end;
+
+      object_or_empty
+      | .version = 1
+      | .bar = (.bar | object_or_empty)
+      | .bar.transparent = $transparent
+    ' "$source" >"$tmp"
+
+    mv "$tmp" "$CONFIG_FILE"
+    trap - EXIT
     ;;
   drop)
     if (( $# != 2 )); then
