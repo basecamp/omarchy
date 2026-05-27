@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Install Xbox Cloud Gaming as a web app and launch it.
+# omarchy:group=install
+# omarchy:name=gaming xbox-cloud
 
 set -e
 
