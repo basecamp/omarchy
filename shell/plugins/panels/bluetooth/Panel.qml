@@ -434,6 +434,7 @@ Panel {
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
       onCloseRequested: root.close()
+      onTabRequested: function(direction) { root.switchPanel(direction) }
       onDeleteRequested: if (root.cursorActive) root.deleteSelected()
 
       Column {

@@ -191,6 +191,57 @@ Item {
     return Array.isArray(entries) ? entries : []
   }
 
+  function panelNavigationSlots(region) {
+    var entries = layoutEntries(region)
+    var slots = []
+    for (var i = 0; i < entries.length; i++) {
+      var id = entryId(entries[i])
+      for (var j = 0; j < debugModuleSlots.length; j++) {
+        var slot = debugModuleSlots[j]
+        if (!slot || slot.region !== region || slot.moduleName !== id) continue
+        var item = slot.activeItem
+        if (!item || item.visible !== true || slot.visible !== true || slot.width <= 0 || slot.height <= 0) continue
+        if (typeof item.open !== "function" || typeof item.close !== "function" || item.opened === undefined) continue
+        slots.push(slot)
+        break
+      }
+    }
+    return slots
+  }
+
+  function switchPanelFrom(owner, direction) {
+    if (!owner) return false
+
+    var currentSlot = null
+    for (var i = 0; i < debugModuleSlots.length; i++) {
+      var slot = debugModuleSlots[i]
+      if (slot && slot.activeItem === owner) {
+        currentSlot = slot
+        break
+      }
+    }
+    if (!currentSlot) return false
+
+    var slots = panelNavigationSlots(currentSlot.region)
+    if (slots.length < 2) return false
+
+    var currentIndex = -1
+    for (var j = 0; j < slots.length; j++) {
+      if (slots[j] === currentSlot) {
+        currentIndex = j
+        break
+      }
+    }
+    if (currentIndex < 0) return false
+
+    var step = direction < 0 ? -1 : 1
+    var nextSlot = slots[(currentIndex + step + slots.length) % slots.length]
+    if (!nextSlot || !nextSlot.activeItem || nextSlot.activeItem === owner) return false
+
+    nextSlot.activeItem.open()
+    return true
+  }
+
   function entrySettings(entry) {
     return BarModel.entrySettings(entry)
   }
