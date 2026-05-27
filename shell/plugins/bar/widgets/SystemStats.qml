@@ -89,7 +89,7 @@ BarWidget {
     onTriggered: root.refresh()
   }
 
-  readonly property color statColor: bar ? bar.foreground : Color.foreground
+  readonly property color statColor: bar ? bar.barForeground : Color.foreground
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -167,7 +167,7 @@ BarWidget {
         title: "CPU"
         value: Math.round(root.cpuPercent) + "%"
         history: root.cpuHistory
-        barFg: root.statColor
+        barFg: root.bar.foreground
         fontFamily: root.bar.fontFamily
         width: parent.width
       }
@@ -176,7 +176,7 @@ BarWidget {
         title: "Memory"
         value: Math.round(root.memPercent) + "%"
         history: root.memHistory
-        barFg: root.statColor
+        barFg: root.bar.foreground
         fontFamily: root.bar.fontFamily
         width: parent.width
       }
