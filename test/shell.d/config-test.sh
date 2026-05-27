@@ -109,33 +109,48 @@ cat >"$TMPDIR/home/.config/omarchy/shell.json" <<'JSON'
 }
 JSON
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell right omarchy.tailscale
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar add omarchy.tailscale
 jq -e '
   def ids: map(.id // .);
   .bar.layout.right | ids == ["omarchy.tray", "omarchy.tailscale", "omarchy.bluetooth"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
-pass "shell config appends right widgets after tray"
+pass "shell config appends widgets to right by default"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell left local.left
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar add local.left left
 jq -e '
   def ids: map(.id // .);
   .bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces", "local.left"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config appends left widgets after workspaces"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell center local.center
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar add local.center center
 jq -e '
   def ids: map(.id // .);
   .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "local.center"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config appends center widgets after weather"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell right local.first
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar add local.first right
 jq -e '
   def ids: map(.id // .);
   .bar.layout.right | ids == ["omarchy.tray", "local.first", "omarchy.tailscale", "omarchy.bluetooth"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config moves existing widgets without duplicates"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar show | jq -e '
+  def ids: map(.id // .);
+  .bar.layout.right | ids == ["omarchy.tray", "local.first", "omarchy.tailscale", "omarchy.bluetooth"]
+' >/dev/null
+pass "shell config shows bar json"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar drop local.left
+jq -e '
+  def ids: map(.id // .);
+  (.bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces"]) and
+  (.bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "local.center"]) and
+  (.bar.layout.right | ids == ["omarchy.tray", "local.first", "omarchy.tailscale", "omarchy.bluetooth"])
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config drops widgets from any section"
 
 cat >"$TMPDIR/home/.config/omarchy/shell.json" <<'JSON'
 {
