@@ -53,6 +53,10 @@ function glyphFromHints(hints) {
   return ""
 }
 
+function shouldRenderCompactGlyph(glyph, iconSource) {
+  return String(glyph || "").length > 0 && String(iconSource || "").length === 0
+}
+
 function snapshotOf(notification, timestamp) {
   var n = notification || {}
   var id = n.id || 0
@@ -178,6 +182,7 @@ if (typeof module !== "undefined") {
     shouldBypassDnd: shouldBypassDnd,
     isEphemeralApp: isEphemeralApp,
     glyphFromHints: glyphFromHints,
+    shouldRenderCompactGlyph: shouldRenderCompactGlyph,
     snapshotOf: snapshotOf,
     historyEntry: historyEntry,
     dedupeByOriginalId: dedupeByOriginalId,
