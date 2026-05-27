@@ -139,9 +139,25 @@ pass "shell config moves existing widgets without duplicates"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar show | jq -e '
   def ids: map(.id // .);
-  .bar.layout.right | ids == ["omarchy.tray", "local.first", "omarchy.tailscale", "omarchy.bluetooth"]
+  (.layout.right | ids == ["omarchy.tray", "local.first", "omarchy.tailscale", "omarchy.bluetooth"]) and
+  has("version") | not
 ' >/dev/null
-pass "shell config shows bar json"
+pass "shell config shows only bar json"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar position bottom
+jq -e '
+  .bar.position == "bottom" and
+  .plugins == []
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config sets bar position"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar transparent true
+jq -e '
+  .bar.transparent == true and
+  .bar.position == "bottom" and
+  .plugins == []
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config sets bar transparency"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar drop local.left
 jq -e '
