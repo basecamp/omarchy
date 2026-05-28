@@ -3,6 +3,18 @@ function deviceLabel(device) {
   return String(device.deviceName || device.name || "").trim()
 }
 
+function toArray(values) {
+  if (!values) return []
+  if (Array.isArray(values)) return values.slice()
+
+  var length = Number(values.length || 0)
+  if (!isFinite(length) || length <= 0) return []
+
+  var list = []
+  for (var i = 0; i < length; i++) list.push(values[i])
+  return list
+}
+
 function isUuidLike(value) {
   var text = String(value || "").trim()
   if (text === "") return false
@@ -23,13 +35,13 @@ function hasHumanName(device) {
 }
 
 function sortedByLabel(devices) {
-  var list = Array.isArray(devices) ? devices.slice() : []
+  var list = toArray(devices)
   list.sort(function(a, b) { return deviceLabel(a).localeCompare(deviceLabel(b)) })
   return list
 }
 
 function deviceLists(devices) {
-  var values = Array.isArray(devices) ? devices : []
+  var values = toArray(devices)
   var connected = []
   var known = []
   var discovered = []
@@ -86,6 +98,7 @@ function sectionDevices(lists, section) {
 if (typeof module !== "undefined") {
   module.exports = {
     deviceLabel: deviceLabel,
+    toArray: toArray,
     isUuidLike: isUuidLike,
     isAddressLike: isAddressLike,
     hasHumanName: hasHumanName,
