@@ -4,6 +4,11 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+if perl -0ne 'exit(/drag\s*\.\s*target\s*:\s*[^;]*\bslot\b/s ? 0 : 1)' "$ROOT/shell/plugins/bar/Bar.qml"; then
+  fail "bar module dragging must not mutate ModuleSlot positions"
+fi
+pass "bar module dragging leaves layout-managed slots in place"
+
 run_node_test <<'JS'
 const bar = requireFromRoot('shell/plugins/bar/BarModel.js')
 
