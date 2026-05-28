@@ -489,7 +489,23 @@ show_setup_default_editor_menu() {
 }
 
 show_setup_config_menu() {
-  case $(menu "Setup" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
+  local options="  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose"
+
+  omarchy-cmd-present ghostty && options="${options:+$options\n}  Ghostty"
+  omarchy-cmd-present foot && options="${options:+$options\n}󰆍  Foot"
+  omarchy-cmd-present kitty && options="${options:+$options\n}󰄛  Kitty"
+
+  omarchy-cmd-present nvim && options="${options:+$options\n}  Neovim"
+  omarchy-cmd-present hx && options="${options:+$options\n}󰘦  Helix"
+  omarchy-cmd-present emacs && options="${options:+$options\n}  Emacs"
+
+  omarchy-cmd-present zed && options="${options:+$options\n}  Zed"
+  omarchy-cmd-present code && options="${options:+$options\n}󰨞  VSCode"
+  omarchy-cmd-present cursor && options="${options:+$options\n}󰚩  Cursor"
+
+  omarchy-cmd-present tmux && options="${options:+$options\n}  Tmux"
+
+  case $(menu "Setup" "$options") in
   *Hyprland*) open_in_editor "$(hypr_config_file hyprland)" ;;
   *Hypridle*) open_in_editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
   *Hyprlock*) open_in_editor ~/.config/hypr/hyprlock.conf ;;
@@ -498,6 +514,19 @@ show_setup_config_menu() {
   *Walker*) open_in_editor ~/.config/walker/config.toml && omarchy-restart-walker ;;
   *Waybar*) open_in_editor ~/.config/waybar/config.jsonc && omarchy-restart-waybar ;;
   *XCompose*) open_in_editor ~/.XCompose && omarchy-restart-xcompose ;;
+
+  *Ghostty*) open_in_editor ~/.config/ghostty/config ;;
+  *Foot*) open_in_editor ~/.config/foot/foot.ini ;;
+  *Kitty*) open_in_editor ~/.config/kitty/kitty.conf ;;
+  *Tmux*) open_in_editor ~/.config/tmux/tmux.conf && tmux source-file ~/.config/tmux/tmux.conf ;;
+
+  *Neovim*) open_in_editor ~/.config/nvim/init.lua ;;
+  *Helix*) open_in_editor ~/.config/helix/config.toml ;;
+  *Emacs*) open_in_editor ~/.config/emacs/init.el ;;
+  *Zed*) open_in_editor ~/.config/zed/settings.json ;;
+  *VSCode*) open_in_editor ~/.config/Code/User/settings.json ;;
+  *Cursor*) open_in_editor ~/.config/Cursor/User/settings.json ;;
+
   *) show_setup_menu ;;
   esac
 }
