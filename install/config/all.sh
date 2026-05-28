@@ -51,6 +51,8 @@ run_logged $OMARCHY_INSTALL/config/hardware/intel/fred.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/fix-wifi7-eht.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/sof-firmware.sh
 
+run_logged $OMARCHY_INSTALL/config/hardware/amd/strix-halo-chromium-vaapi.sh
+
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-asus-ptl-display-backlight.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-asus-ptl-b9406-display.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-asus-ptl-b9406-touchpad.sh
