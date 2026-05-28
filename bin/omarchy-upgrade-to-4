@@ -426,10 +426,14 @@ remove_conflicting_legacy_packages() {
 }
 
 install_omarchy_4_packages() {
+  # omarchy-limine and omarchy-dev-tools are no longer separate packages:
+  # omarchy-limine's content (bootloader + snapper configs) folded into
+  # omarchy-settings, and bin/omarchy-dev-* now ships with omarchy itself.
+  # The bootloader stack (limine, snapper, etc.) is hard-depended by
+  # the omarchy package, so it'll be pulled in automatically.
   local core_packages=(
     omarchy-keyring
     omarchy-settings
-    omarchy-limine
     omarchy-nvim
     omarchy
   )
@@ -1116,9 +1120,9 @@ refresh	Typora/themes/ia_typora_night.css	d3708c850dcedf2ec210454c38bd1fa19b390e
 refresh	xournalpp/settings.xml	47eafeeb3c246af1a5fb2cd1d87a748ce127d13410c351194c5d89bbaefb623d
 refresh	xournalpp/settings.xml	1c1a9efbf1b6dc7813bf3440fd5bf8409fc283e8d0192ca297dc36a10e12c846
 # retire: nothing is actually copied. The new package owns the file at the
-# system path below (shipped by omarchy-settings / omarchy-limine), so once
-# the user's hash-matched copy in ~/.config is removed, the system path takes
-# effect via the usual XDG/fontconfig/systemd lookup order. User overrides
+# system path below (shipped by omarchy-settings), so once the user's
+# hash-matched copy in ~/.config is removed, the system path takes effect
+# via the usual XDG/fontconfig/systemd lookup order. User overrides
 # (hash mismatch) are kept active as backups.
 # Legacy ~/.config path -> package-owned destination (where the file now lives):
 # environment.d/fcitx.conf -> /usr/lib/environment.d/10-omarchy-fcitx.conf
