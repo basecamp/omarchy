@@ -87,7 +87,10 @@ const mullvadNodes = tailscale.parseExitNodeList(`
  IP                  HOSTNAME                         COUNTRY            CITY                   STATUS
  100.65.216.13       au-adl-wg-301.mullvad.ts.net     Australia          Any                    -
  100.65.216.13       au-adl-wg-301.mullvad.ts.net     Australia          Adelaide               -
+ 100.70.240.117      au-bne-wg-301.mullvad.ts.net     Australia          Brisbane               -
  100.66.11.119       dk-cph-wg-001.mullvad.ts.net     Denmark            Copenhagen             -
+ 100.101.10.10       us-chi-wg-001.mullvad.ts.net     United States      Chicago                -
+ 100.102.10.10       us-nyc-wg-001.mullvad.ts.net     United States      New York               -
  100.1.2.3           office.tailnet.ts.net             Denmark            Office                 -
 
 # To use an exit node, use tailscale set --exit-node=
@@ -95,21 +98,26 @@ const mullvadNodes = tailscale.parseExitNodeList(`
 
 assertDeepEqual(
   mullvadNodes.map(node => node.DisplayName),
-  ['Adelaide, Australia', 'Copenhagen, Denmark'],
+  ['Adelaide, Australia', 'Brisbane, Australia', 'Copenhagen, Denmark', 'Chicago, United States', 'New York, United States'],
   'tailscale parses Mullvad exit nodes and skips duplicate country rows'
 )
-assertEqual(mullvadNodes[1].DNSName, 'dk-cph-wg-001.mullvad.ts.net', 'tailscale preserves Mullvad hostname as exit node target')
-assertDeepEqual(mullvadNodes[1].TailscaleIPs, ['100.66.11.119'], 'tailscale preserves Mullvad exit node IP')
+assertEqual(mullvadNodes[2].DNSName, 'dk-cph-wg-001.mullvad.ts.net', 'tailscale preserves Mullvad hostname as exit node target')
+assertDeepEqual(mullvadNodes[2].TailscaleIPs, ['100.66.11.119'], 'tailscale preserves Mullvad exit node IP')
 assert(mullvadNodes.every(node => node.Mullvad === true && node.ExitNodeOption === true), 'tailscale marks Mullvad rows as exit nodes')
 
-const mullvadCountries = tailscale.mullvadCountryOptions(mullvadNodes)
+const mullvadRegions = tailscale.mullvadRegionOptions(mullvadNodes)
 assertDeepEqual(
-  mullvadCountries.map(node => node.DisplayName),
-  ['Australia', 'Denmark'],
-  'tailscale groups Mullvad exit nodes by country'
+  mullvadRegions.map(node => node.DisplayName),
+  ['Adelaide, Australia', 'Brisbane, Australia', 'Copenhagen, Denmark', 'Chicago, United States', 'New York, United States'],
+  'tailscale groups Mullvad exit nodes by unique city region'
 )
-assertEqual(mullvadCountries[0].DNSName, 'au-adl-wg-301.mullvad.ts.net', 'tailscale uses a country endpoint for grouped countries')
-assertEqual(mullvadCountries[1].DNSName, 'dk-cph-wg-001.mullvad.ts.net', 'tailscale falls back to first city endpoint without Any')
+assertDeepEqual(
+  mullvadRegions.filter(node => node.Country === 'United States').map(node => node.City),
+  ['Chicago', 'New York'],
+  'tailscale keeps multiple Mullvad cities within a country'
+)
+assertEqual(mullvadRegions[0].DNSName, 'au-adl-wg-301.mullvad.ts.net', 'tailscale uses a concrete city endpoint for grouped regions')
+assertEqual(mullvadRegions[2].DNSName, 'dk-cph-wg-001.mullvad.ts.net', 'tailscale preserves first available city endpoint')
 
 const stopped = tailscale.parseStatus(JSON.stringify({
   BackendState: 'Stopped',

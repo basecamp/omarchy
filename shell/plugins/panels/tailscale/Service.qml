@@ -23,7 +23,7 @@ Item {
   property var exitNodes: []
   property var tailnetExitNodes: []
   property var mullvadExitNodes: []
-  property var mullvadCountries: []
+  property var mullvadRegions: []
   property var accounts: []
   property string selectedAccountId: ""
   property string selectedAccountLabel: ""
@@ -173,7 +173,7 @@ Item {
     exitNodes = []
     tailnetExitNodes = []
     mullvadExitNodes = []
-    mullvadCountries = []
+    mullvadRegions = []
     accounts = []
     selectedAccountId = ""
     selectedAccountLabel = ""
@@ -205,7 +205,7 @@ Item {
     selfIp = parsed.selfIp
     peers = parsed.running ? parsed.peers : []
     tailnetExitNodes = parsed.running ? parsed.exitNodes : []
-    exitNodes = parsed.running ? tailnetExitNodes.concat(mullvadCountries) : []
+    exitNodes = parsed.running ? tailnetExitNodes.concat(mullvadRegions) : []
 
     if (needsLogin) statusText = "Needs login"
     else if (running) {
@@ -232,8 +232,8 @@ Item {
 
   function parseMullvadExitNodes(raw) {
     mullvadExitNodes = Model.parseExitNodeList(raw)
-    mullvadCountries = Model.mullvadCountryOptions(mullvadExitNodes)
-    exitNodes = running ? tailnetExitNodes.concat(mullvadCountries) : []
+    mullvadRegions = Model.mullvadRegionOptions(mullvadExitNodes)
+    exitNodes = running ? tailnetExitNodes.concat(mullvadRegions) : []
   }
 
   function toggleTailscale() {
@@ -269,6 +269,10 @@ Item {
 
   function exitNodeTarget(peer) {
     if (!peer) return ""
+    if (peer.Mullvad === true) {
+      var mullvadIps = filterIPv4(peer.TailscaleIPs || [])
+      if (mullvadIps.length > 0) return mullvadIps[0]
+    }
     if (peer.DNSName) return cleanDnsName(peer.DNSName)
     if (peer.HostName) return String(peer.HostName)
     var ips = filterIPv4(peer.TailscaleIPs || [])

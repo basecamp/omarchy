@@ -17,6 +17,7 @@ Panel {
   property int accountIndex: 0
   property int peerIndex: 0
   property int exitNodeIndex: 0
+  property int mullvadRegionIndex: 0
   property bool cursorActive: false
   property bool copyMenuOpen: false
   property bool mullvadPickerOpen: false
@@ -42,11 +43,11 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property bool showConnections: tailscale.accounts.length > 1 || tailscale.accountsAccessDenied
   readonly property bool showPeers: tailscale.running && tailscale.peers.length > 0
-  readonly property var recentMullvadCountries: Array.isArray(settings.recentMullvadCountries) ? settings.recentMullvadCountries : []
+  readonly property var recentMullvadRegions: Array.isArray(settings.recentMullvadRegions) ? settings.recentMullvadRegions : (Array.isArray(settings.recentMullvadCountries) ? settings.recentMullvadCountries : [])
   readonly property var recentMullvadExitNodes: recentMullvadNodes()
   readonly property var exitNodes: displayExitNodes()
-  readonly property bool showExitNodes: tailscale.running && (exitNodes.length > 0 || tailscale.mullvadCountries.length > 0)
-  readonly property var filteredMullvadCountries: filteredMullvadCountryNodes()
+  readonly property bool showExitNodes: tailscale.running && (exitNodes.length > 0 || tailscale.mullvadRegions.length > 0)
+  readonly property var filteredMullvadRegions: filteredMullvadRegionNodes()
   readonly property color iconColor: tailscale.running ? foreground : dim
   readonly property color barIconColor: tailscale.running ? barForeground : Qt.darker(barForeground, 1.55)
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
@@ -62,68 +63,95 @@ Panel {
     return exitNodes[Math.max(0, Math.min(exitNodeIndex, exitNodes.length - 1))]
   }
 
+  function selectedMullvadRegion() {
+    if (filteredMullvadRegions.length === 0) return null
+    return filteredMullvadRegions[Math.max(0, Math.min(mullvadRegionIndex, filteredMullvadRegions.length - 1))]
+  }
+
   function displayExitNodes() {
     var nodes = []
     for (var i = 0; i < tailscale.tailnetExitNodes.length; i++) nodes.push(tailscale.tailnetExitNodes[i])
     for (var j = 0; j < recentMullvadExitNodes.length; j++) nodes.push(recentMullvadExitNodes[j])
-    if (tailscale.mullvadCountries.length > 0) nodes.push({ id: "mullvad:add", AddMullvad: true, DisplayName: "Choose Mullvad region" })
+    if (tailscale.mullvadRegions.length > 0) nodes.push({ id: "mullvad:add", AddMullvad: true, DisplayName: "Choose Mullvad region" })
     return nodes
   }
 
   function recentMullvadNodes() {
     var nodes = []
     var seen = {}
-    for (var a = 0; a < tailscale.mullvadCountries.length && nodes.length < 5; a++) {
-      var active = tailscale.mullvadCountries[a]
-      var activeCountry = String(active.Country || "")
-      if (active.ExitNode === true && activeCountry !== "" && !seen[activeCountry]) {
+    for (var a = 0; a < tailscale.mullvadRegions.length && nodes.length < 5; a++) {
+      var active = tailscale.mullvadRegions[a]
+      var activeKey = mullvadRegionKey(active)
+      if (active.ExitNode === true && activeKey !== "" && !seen[activeKey]) {
         nodes.push(active)
-        seen[activeCountry] = true
+        seen[activeKey] = true
       }
     }
-    for (var i = 0; i < recentMullvadCountries.length && nodes.length < 5; i++) {
-      var country = String(recentMullvadCountries[i] || "")
-      if (country === "" || seen[country]) continue
-      var node = mullvadCountryNode(country)
+    for (var i = 0; i < recentMullvadRegions.length && nodes.length < 5; i++) {
+      var region = String(recentMullvadRegions[i] || "")
+      if (region === "" || seen[region]) continue
+      var node = mullvadRegionNode(region)
       if (node) {
         nodes.push(node)
-        seen[country] = true
+        seen[region] = true
       }
     }
     return nodes
   }
 
-  function mullvadCountryNode(country) {
-    for (var i = 0; i < tailscale.mullvadCountries.length; i++) {
-      var node = tailscale.mullvadCountries[i]
-      if (String(node.Country || "") === String(country || "")) return node
+  function mullvadRegionKey(node) {
+    if (!node) return ""
+    var country = String(node.Country || "")
+    var city = String(node.City || "")
+    if (country === "" || city === "") return ""
+    return country + "\n" + city
+  }
+
+  function mullvadRegionNode(region) {
+    for (var i = 0; i < tailscale.mullvadRegions.length; i++) {
+      var node = tailscale.mullvadRegions[i]
+      if (mullvadRegionKey(node) === String(region || "")) return node
+      if (String(node.Country || "") === String(region || "")) return node
     }
     return null
   }
 
-  function filteredMullvadCountryNodes() {
+  function filteredMullvadRegionNodes() {
     var query = String(mullvadQuery || "").trim().toLowerCase()
     var result = []
-    for (var i = 0; i < tailscale.mullvadCountries.length; i++) {
-      var node = tailscale.mullvadCountries[i]
-      var label = String(node.DisplayName || node.Country || "").toLowerCase()
+    for (var i = 0; i < tailscale.mullvadRegions.length; i++) {
+      var node = tailscale.mullvadRegions[i]
+      var label = (String(node.City || "") + " " + String(node.Country || "")).toLowerCase()
       if (query === "" || label.indexOf(query) !== -1) result.push(node)
     }
     return result
   }
 
-  function persistRecentMullvad(country) {
-    var name = String(country || "")
+  function mullvadRegionTitle(peer) {
+    if (!peer) return "Unknown"
+    var city = String(peer.City || "").trim()
+    var country = String(peer.Country || "").trim()
+    if (city === "" || city === "Any") return country || String(peer.DisplayName || "Unknown")
+    return city
+  }
+
+  function mullvadRegionSubtitle(peer) {
+    if (!peer) return ""
+    return String(peer.Country || "").trim()
+  }
+
+  function persistRecentMullvad(region) {
+    var name = String(region || "")
     if (name === "") return
     var next = [name]
-    for (var i = 0; i < recentMullvadCountries.length && next.length < 5; i++) {
-      var existing = String(recentMullvadCountries[i] || "")
+    for (var i = 0; i < recentMullvadRegions.length && next.length < 5; i++) {
+      var existing = String(recentMullvadRegions[i] || "")
       if (existing !== "" && existing !== name && next.indexOf(existing) === -1) next.push(existing)
     }
     if (!root.bar || !root.bar.shell || typeof root.bar.shell.updateEntryInline !== "function") return
     var entry = { id: root.moduleName }
     for (var key in settings) if (key !== "id") entry[key] = settings[key]
-    entry.recentMullvadCountries = next
+    entry.recentMullvadRegions = next
     root.bar.shell.updateEntryInline(root.moduleName, entry)
   }
 
@@ -131,10 +159,11 @@ Panel {
     if (!peer) return
     if (peer.AddMullvad === true) {
       mullvadPickerOpen = !mullvadPickerOpen
+      mullvadRegionIndex = 0
       if (mullvadPickerOpen) Qt.callLater(function() { if (mullvadSearch) mullvadSearch.forceActiveFocus() })
       return
     }
-    if (peer.Mullvad === true) persistRecentMullvad(peer.Country)
+    if (peer.Mullvad === true) persistRecentMullvad(mullvadRegionKey(peer))
     tailscale.setExitNode(peer)
     mullvadPickerOpen = false
   }
@@ -150,6 +179,7 @@ Panel {
     if (accountIndex >= tailscale.accounts.length) accountIndex = Math.max(0, tailscale.accounts.length - 1)
     if (peerIndex >= tailscale.peers.length) peerIndex = Math.max(0, tailscale.peers.length - 1)
     if (exitNodeIndex >= exitNodes.length) exitNodeIndex = Math.max(0, exitNodes.length - 1)
+    if (mullvadRegionIndex >= filteredMullvadRegions.length) mullvadRegionIndex = Math.max(0, filteredMullvadRegions.length - 1)
     if (focusSection === "auth" && !tailscale.accountsAccessDenied) focusSection = tailscale.accounts.length > 1 ? "accounts" : (showExitNodes ? "exitNodes" : (showPeers ? "peers" : "header"))
     if (focusSection === "accounts" && tailscale.accounts.length <= 1) focusSection = tailscale.accountsAccessDenied ? "auth" : (showExitNodes ? "exitNodes" : (showPeers ? "peers" : "header"))
     if (focusSection === "peers" && !showPeers) focusSection = showExitNodes ? "exitNodes" : (tailscale.accountsAccessDenied ? "auth" : (tailscale.accounts.length > 1 ? "accounts" : "header"))
@@ -219,6 +249,18 @@ Panel {
     }
   }
 
+  function moveMullvadRegionCursor(delta) {
+    if (filteredMullvadRegions.length === 0) return
+    cursorActive = true
+    mullvadRegionIndex = Math.max(0, Math.min(filteredMullvadRegions.length - 1, mullvadRegionIndex + delta))
+    scrollMullvadRegionCursorIntoView()
+  }
+
+  function activateMullvadRegionCursor() {
+    var region = selectedMullvadRegion()
+    if (region) chooseExitNode(region)
+  }
+
   function scrollItemIntoView(item) {
     if (!panelFlick || !item) return
     Qt.callLater(function() {
@@ -238,6 +280,10 @@ Panel {
   function scrollCursorIntoView() {
     if (focusSection === "peers" && peerColumn && peerIndex >= 0 && peerIndex < peerColumn.children.length) scrollItemIntoView(peerColumn.children[peerIndex])
     else if (focusSection === "exitNodes" && exitNodeColumn && exitNodeIndex >= 0 && exitNodeIndex < exitNodeColumn.children.length) scrollItemIntoView(exitNodeColumn.children[exitNodeIndex])
+  }
+
+  function scrollMullvadRegionCursorIntoView() {
+    if (mullvadRegionColumn && mullvadRegionIndex >= 0 && mullvadRegionIndex < mullvadRegionColumn.children.length) scrollItemIntoView(mullvadRegionColumn.children[mullvadRegionIndex])
   }
 
   function setPeerCursor(index) {
@@ -282,9 +328,11 @@ Panel {
   }
   onPeerIndexChanged: scrollCursorIntoView()
   onExitNodeIndexChanged: scrollCursorIntoView()
+  onMullvadRegionIndexChanged: if (mullvadPickerOpen) scrollMullvadRegionCursorIntoView()
   onShowConnectionsChanged: ensureCursor()
   onShowPeersChanged: ensureCursor()
   onShowExitNodesChanged: ensureCursor()
+  onFilteredMullvadRegionsChanged: ensureCursor()
 
   Service {
     id: tailscale
@@ -551,16 +599,41 @@ Panel {
                   id: mullvadSearch
                   width: parent.width
                   foreground: root.foreground
-                  placeholderText: "Search countries"
+                  placeholderText: "Search regions"
                   text: root.mullvadQuery
-                  onTextChanged: root.mullvadQuery = text
+                  onTextChanged: {
+                    root.mullvadQuery = text
+                    root.mullvadRegionIndex = 0
+                  }
                   onAccepted: {
-                    if (root.filteredMullvadCountries.length > 0) root.chooseExitNode(root.filteredMullvadCountries[0])
+                    root.activateMullvadRegionCursor()
+                  }
+                  Keys.onPressed: function(event) {
+                    if (event.key === Qt.Key_Down || event.text === "j") {
+                      root.moveMullvadRegionCursor(1)
+                      event.accepted = true
+                      return
+                    }
+                    if (event.key === Qt.Key_Up || event.text === "k") {
+                      root.moveMullvadRegionCursor(-1)
+                      event.accepted = true
+                      return
+                    }
+                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                      root.activateMullvadRegionCursor()
+                      event.accepted = true
+                      return
+                    }
+                    if (event.key === Qt.Key_Escape) {
+                      root.mullvadPickerOpen = false
+                      keyCatcher.forceActiveFocus()
+                      event.accepted = true
+                    }
                   }
                 }
 
                 Text {
-                  visible: root.filteredMullvadCountries.length === 0
+                  visible: root.filteredMullvadRegions.length === 0
                   width: parent.width
                   text: "No Mullvad regions found."
                   color: root.dim
@@ -569,12 +642,20 @@ Panel {
                   horizontalAlignment: Text.AlignHCenter
                 }
 
-                Repeater {
-                  model: root.filteredMullvadCountries
-                  MullvadCountryRow {
-                    required property var modelData
-                    width: parent.width
-                    peer: modelData
+                Column {
+                  id: mullvadRegionColumn
+                  width: parent.width
+                  spacing: Style.space(6)
+
+                  Repeater {
+                    model: root.filteredMullvadRegions
+                    MullvadRegionRow {
+                      required property var modelData
+                      required property int index
+                      width: parent.width
+                      peer: modelData
+                      rowIndex: index
+                    }
                   }
                 }
               }
@@ -1082,18 +1163,21 @@ Panel {
     }
   }
 
-  component MullvadCountryRow: CursorSurface {
-    id: countryRow
+  component MullvadRegionRow: CursorSurface {
+    id: regionRow
 
     property var peer: null
-    readonly property string countryName: peer ? String(peer.DisplayName || peer.Country || "Unknown") : "Unknown"
+    property int rowIndex: 0
+    readonly property string regionName: root.mullvadRegionTitle(peer)
+    readonly property string regionDetail: root.mullvadRegionSubtitle(peer)
     readonly property bool activeExitNode: peer && peer.ExitNode === true
     readonly property bool settingExitNode: peer && tailscale.settingExitNodeId === String(peer.id || "")
+    readonly property bool selectedRegion: root.mullvadPickerOpen && root.mullvadRegionIndex === rowIndex
 
     foreground: root.foreground
     fill: root.hoverFill
     currentFill: root.selectedFill
-    current: activeExitNode || settingExitNode
+    current: activeExitNode || settingExitNode || selectedRegion
     implicitHeight: row.implicitHeight + Style.spacing.lg
 
     Row {
@@ -1107,7 +1191,7 @@ Panel {
 
       Text {
         text: "󰖂"
-        color: countryRow.current ? root.foreground : root.dim
+        color: regionRow.current ? root.foreground : root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
         width: Style.space(22)
@@ -1122,17 +1206,18 @@ Panel {
 
         Text {
           width: parent.width
-          text: countryRow.countryName
+          text: regionRow.regionName
           color: root.foreground
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
-          font.bold: countryRow.activeExitNode
+          font.bold: regionRow.activeExitNode
           elide: Text.ElideRight
         }
 
         Text {
           width: parent.width
-          text: peer && peer.City === "Any" ? "Best available city" : String(peer && peer.City ? peer.City : "")
+          text: regionRow.regionDetail
+          visible: text !== ""
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -1145,7 +1230,8 @@ Panel {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onClicked: root.chooseExitNode(countryRow.peer)
+      onEntered: root.mullvadRegionIndex = regionRow.rowIndex
+      onClicked: root.chooseExitNode(regionRow.peer)
     }
   }
 }
