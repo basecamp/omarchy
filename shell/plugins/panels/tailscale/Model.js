@@ -143,32 +143,42 @@ function parseExitNodeList(raw) {
   return result
 }
 
-function mullvadCountryOptions(nodes) {
-  var byCountry = {}
+function mullvadRegionOptions(nodes) {
+  var byRegion = {}
   var values = Array.isArray(nodes) ? nodes : []
   for (var i = 0; i < values.length; i++) {
     var node = values[i] || {}
     if (node.Mullvad !== true) continue
     var country = String(node.Country || "").trim()
+    var city = String(node.City || "").trim()
     if (country === "") continue
-    var current = byCountry[country]
-    if (!current || node.City === "Any") {
-      var option = {}
-      for (var key in node) option[key] = node[key]
-      option.id = "mullvad-country:" + country
-      option.DisplayName = country
-      option.Country = country
-      option.MullvadCountry = true
-      byCountry[country] = option
-    }
+    if (city === "" || city === "Any") continue
+
+    var key = country + "\n" + city
+    if (byRegion[key]) continue
+
+    var option = {}
+    for (var propertyName in node) option[propertyName] = node[propertyName]
+    option.id = "mullvad-region:" + key
+    option.DisplayName = city + ", " + country
+    option.Country = country
+    option.City = city
+    option.MullvadRegion = true
+    byRegion[key] = option
   }
 
   var result = []
-  for (var name in byCountry) result.push(byCountry[name])
+  for (var name in byRegion) result.push(byRegion[name])
   result.sort(function(a, b) {
-    return String(a.Country).localeCompare(String(b.Country))
+    var countryCompare = String(a.Country).localeCompare(String(b.Country))
+    if (countryCompare !== 0) return countryCompare
+    return String(a.City).localeCompare(String(b.City))
   })
   return result
+}
+
+function mullvadCountryOptions(nodes) {
+  return mullvadRegionOptions(nodes)
 }
 
 function parseStatus(raw) {
@@ -263,6 +273,7 @@ if (typeof module !== "undefined") {
     isMullvadPeer: isMullvadPeer,
     peerFromStatus: peerFromStatus,
     parseExitNodeList: parseExitNodeList,
+    mullvadRegionOptions: mullvadRegionOptions,
     mullvadCountryOptions: mullvadCountryOptions,
     parseStatus: parseStatus,
     parseAccounts: parseAccounts
