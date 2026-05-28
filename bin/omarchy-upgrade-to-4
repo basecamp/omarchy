@@ -348,23 +348,44 @@ configure_pacman_channel() {
 
   as_root cp -f /etc/pacman.conf "/etc/pacman.conf.omarchy-upgrade-to-4.$backup_suffix.bak"
 
+  # TEMPORARY: also inject [omarchy-dev] above [omarchy] so dev-built
+  # packages from share.heyoodle.com (see omarchy-pkgs/bin/publish-dev-repo)
+  # take precedence while the omarchy-4 stack is being iterated on. Revert
+  # this block once the production edge/stable/rc channels have caught up.
+  local dev_server='https://share.heyoodle.com/omarchy/dev/$arch'
+
   tmp=$(mktemp)
-  awk -v server="$package_server" '
-    BEGIN { in_omarchy = 0; wrote = 0 }
+  awk -v server="$package_server" -v dev_server="$dev_server" '
+    BEGIN { in_omarchy = 0; in_dev = 0; wrote = 0 }
+    /^\[omarchy-dev\]$/ {
+      # Drop any existing [omarchy-dev] block; we re-emit it next to [omarchy].
+      in_dev = 1
+      in_omarchy = 0
+      next
+    }
     /^\[omarchy\]$/ {
       if (!wrote) {
+        print "[omarchy-dev]"
+        print "SigLevel = Never"
+        print "Server = " dev_server
+        print ""
         print "[omarchy]"
         print "SigLevel = Optional TrustAll"
         print "Server = " server
         wrote = 1
       }
       in_omarchy = 1
+      in_dev = 0
       next
     }
-    /^\[/ && in_omarchy { in_omarchy = 0 }
-    !in_omarchy { print }
+    /^\[/ { in_omarchy = 0; in_dev = 0 }
+    !in_omarchy && !in_dev { print }
     END {
       if (!wrote) {
+        print ""
+        print "[omarchy-dev]"
+        print "SigLevel = Never"
+        print "Server = " dev_server
         print ""
         print "[omarchy]"
         print "SigLevel = Optional TrustAll"
