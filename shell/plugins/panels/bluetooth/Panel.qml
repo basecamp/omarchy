@@ -219,9 +219,9 @@ Panel {
 
   function moveCursorH(delta) {
     if (!cursorActive) { cursorActive = true; return }
-    if (focusSection !== "known") return
+    if (focusSection !== "known" && focusSection !== "connected") return
     var dev = deviceAt(focusSection, selectedIndex)
-    if (!dev || dev.connected) return
+    if (!dev || !dev.address) return
     if (delta > 0) actionFocused = true
     else if (delta < 0) actionFocused = false
   }
@@ -246,11 +246,10 @@ Panel {
     }
   }
 
-  // 'x' forgets remembered devices. Connected rows toggle connection via
-  // Enter/click, so the destructive forget action is intentionally unavailable
-  // while connected.
+  // 'x' forgets remembered devices. For connected devices this first
+  // disconnects, then removes the BlueZ pairing record via omarchy-bluetooth-device.
   function deleteSelected() {
-    if (focusSection !== "known") return
+    if (focusSection !== "known" && focusSection !== "connected") return
     var dev = deviceAt(focusSection, selectedIndex)
     if (!dev) return
     forgetDevice(dev)
@@ -626,7 +625,7 @@ Panel {
     }
 
     readonly property bool rowSelected: root.cursorActive && root.focusSection === sectionName && root.selectedIndex === rowIndex
-    readonly property bool forgetAvailable: sectionName === "known" && !isConnected && !isDiscovered
+    readonly property bool forgetAvailable: (sectionName === "known" || sectionName === "connected") && !isDiscovered
     readonly property bool showForgetButton: forgetAvailable && (rowMouse.containsMouse || rowSelected)
 
     hasCursor: rowSelected && !root.actionFocused
