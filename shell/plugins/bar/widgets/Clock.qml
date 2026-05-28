@@ -55,7 +55,7 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: root.formatted(root.displayDate)
-    horizontalMargin: 2
+    horizontalMargin: 8.75
     verticalPadding: 8.75
     onPressed: function(button) {
       if (!root.bar) return
