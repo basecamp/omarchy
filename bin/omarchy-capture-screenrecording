@@ -3,7 +3,7 @@
 # omarchy:summary=Start or stop screen recording
 # omarchy:group=capture
 # omarchy:args=[--fullscreen] [--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--webcam-size=<small|medium|large>] [--resolution=<size>] [--stop-recording]
-# omarchy:examples=omarchy screenrecord | omarchy capture screenrecord --with-desktop-audio
+# omarchy:examples=omarchy screenrecord | omarchy capture screenrecording --with-desktop-audio
 # omarchy:aliases=omarchy screenrecord
 #
 # Env: OMARCHY_SCREENRECORD_USE_PORTAL=true skips the built-in slurp picker and
