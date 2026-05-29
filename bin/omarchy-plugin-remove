@@ -1,0 +1,107 @@
+#!/bin/bash
+
+# omarchy:summary=Remove an installed Omarchy shell plugin
+# omarchy:group=plugin
+# omarchy:args=[plugin-id] [--yes]
+# omarchy:examples=omarchy plugin remove | omarchy plugin remove orbit --yes
+
+# Disables a plugin and removes it from ~/.config/omarchy/plugins/. A real
+# install is moved to a timestamped backup so it can be restored; a dev symlink
+# is just unlinked (the files it points at are left alone).
+
+set -o pipefail
+
+PLUGINS_DIR="$HOME/.config/omarchy/plugins"
+
+fail() {
+  echo "omarchy-plugin-remove: $*" >&2
+  exit 1
+}
+
+interactive() {
+  [[ -t 0 && -t 1 ]]
+}
+
+PLUGIN_ID=""
+ASSUME_YES=0
+while (($# > 0)); do
+  case "$1" in
+  --yes | -y) ASSUME_YES=1; shift ;;
+  -h | --help)
+    cat <<USAGE
+Usage: omarchy plugin remove [plugin-id] [--yes]
+
+Disables the plugin and removes it from ~/.config/omarchy/plugins/.
+A real install is backed up to .<id>.bak.<timestamp>/; a symlink is unlinked.
+USAGE
+    exit 0
+    ;;
+  -*) fail "unknown option: $1" ;;
+  *)
+    [[ -z $PLUGIN_ID ]] || fail "unexpected argument: $1"
+    PLUGIN_ID="$1"; shift ;;
+  esac
+done
+
+confirm() {
+  local prompt="$1"
+  ((ASSUME_YES)) && return 0
+  if command -v gum >/dev/null 2>&1 && interactive; then gum confirm "$prompt"; return; fi
+  if interactive; then local reply; read -r -p "$prompt [y/N] " reply; [[ $reply == [yY]* ]]; return; fi
+  fail "refusing to remove without confirmation; pass --yes"
+}
+
+[[ -d $PLUGINS_DIR ]] || fail "no plugins installed"
+
+if [[ -z $PLUGIN_ID ]]; then
+  mapfile -t ids < <(find "$PLUGINS_DIR" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) ! -name '.*' -printf '%f\n' 2>/dev/null | sort)
+  ((${#ids[@]})) || fail "no plugins installed"
+  interactive || fail "a plugin-id is required"
+  if command -v gum >/dev/null 2>&1; then
+    PLUGIN_ID=$(printf '%s\n' "${ids[@]}" | gum choose --header="Remove which plugin?") || fail "cancelled"
+  elif command -v fzf >/dev/null 2>&1; then
+    PLUGIN_ID=$(printf '%s\n' "${ids[@]}" | fzf --prompt "Remove which plugin > ") || fail "cancelled"
+  else
+    fail "a plugin-id is required (gum or fzf needed for an interactive picker)"
+  fi
+  [[ -n $PLUGIN_ID ]] || fail "nothing selected"
+fi
+
+# The id becomes a path under PLUGINS_DIR that we mv/rm, so reject anything that
+# could escape it (matches the id rules in omarchy-plugin-validate).
+[[ $PLUGIN_ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $PLUGIN_ID != *"/"* && $PLUGIN_ID != *".."* ]] \
+  || fail "invalid plugin id '$PLUGIN_ID'"
+
+target="$PLUGINS_DIR/$PLUGIN_ID"
+[[ -e $target || -L $target ]] || fail "plugin '$PLUGIN_ID' is not installed"
+
+was_enabled=""
+if shell_plugins=$(omarchy-shell shell listPlugins 2>/dev/null) && [[ -n $shell_plugins ]]; then
+  was_enabled=$(jq -r --arg id "$PLUGIN_ID" '.[] | select(.id == $id) | .enabled' <<<"$shell_plugins" 2>/dev/null)
+fi
+
+if [[ -L $target ]]; then
+  confirm "Unlink '$PLUGIN_ID' (symlink -> $(readlink "$target"))?" || fail "aborted"
+else
+  confirm "Remove '$PLUGIN_ID'? The folder will be backed up." || fail "aborted"
+fi
+
+[[ $was_enabled == "true" ]] && omarchy-shell shell setPluginEnabled "$PLUGIN_ID" false >/dev/null 2>&1 || true
+
+if [[ -L $target ]]; then
+  rm -f "$target" || fail "failed to unlink $target"
+  echo "Unlinked $PLUGIN_ID."
+else
+  base="$PLUGINS_DIR/.${PLUGIN_ID}.bak.$(date -u +%Y%m%d%H%M%S)"
+  backup="$base"; n=1
+  while [[ -e $backup ]]; do backup="${base}-${n}"; n=$((n + 1)); done
+  mv "$target" "$backup" || fail "failed to move $target to backup"
+  echo "Removed $PLUGIN_ID. Backup at: $backup"
+fi
+
+omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+
+if [[ $was_enabled == "true" ]]; then
+  echo "Plugin was enabled; restart the shell to fully unload it:"
+  echo "  omarchy restart shell"
+fi
