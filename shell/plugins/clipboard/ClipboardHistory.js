@@ -100,7 +100,7 @@ function imagePreviewText(entry) {
   if (!timestamp) return "Image"
 
   var label = String(entry && entry.mime || "") === "image/png" ? "Screenshot" : "Image"
-  return label + " " + timestamp
+  return label + " from " + timestamp
 }
 
 function previewText(entry) {

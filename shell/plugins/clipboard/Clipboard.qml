@@ -19,7 +19,7 @@ Item {
 
   property string historyPath: Quickshell.env("HOME") + "/.local/state/omarchy/clipboard-history.json"
   property string captureScript: root.omarchyPath + "/shell/plugins/clipboard/capture.sh"
-  property string watchCommand: "script=$1\ntrap 'kill $(jobs -p) 2>/dev/null' EXIT\nwl-paste --watch \"$script\" &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/png wl-paste --type image/png --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/jpeg wl-paste --type image/jpeg --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/webp wl-paste --type image/webp --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/gif wl-paste --type image/gif --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/bmp wl-paste --type image/bmp --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/tiff wl-paste --type image/tiff --watch \"$script\" 2>/dev/null &\nwait"
+  property string watchCommand: "script=$1\ntrap 'kill $(jobs -p) 2>/dev/null' EXIT\nwl-paste --watch \"$script\" &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/png wl-paste --type image/png --watch \"$script\" 2>/dev/null &\nwait"
   // Shares the [menu] surface tokens — themes that style the menu also
   // style the clipboard. Selected-row colors composed in the
   // singleton so consumers drop them straight into Rectangle bindings.
@@ -182,6 +182,12 @@ Item {
     root.copySelected(row)
   }
 
+  function openIndex(index) {
+    if (index < 0 || index >= displayModel.count) return
+    var row = displayModel.get(index)
+    root.openSelected(row)
+  }
+
   function applySelected(row) {
     if (!row) return
     root.opened = false
@@ -200,6 +206,12 @@ Item {
     } else if (row.fullText) {
       Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--copy-only", "--history-index", String(row.historyIndex)])
     }
+  }
+
+  function openSelected(row) {
+    if (!row) return
+    root.opened = false
+    Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-open", "--history-index", String(row.historyIndex)])
   }
 
   Component.onCompleted: initProc.running = true
@@ -312,7 +324,8 @@ Item {
             root.select(6)
             event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            if (root.cursorActive && (event.modifiers & Qt.ShiftModifier)) root.copyIndex(root.selectedIndex)
+            if (root.cursorActive && (event.modifiers & Qt.AltModifier)) root.openIndex(root.selectedIndex)
+            else if (root.cursorActive && (event.modifiers & Qt.ShiftModifier)) root.copyIndex(root.selectedIndex)
             else if (root.cursorActive) root.activateIndex(root.selectedIndex)
             else if (displayModel.count > 0) root.cursorActive = true
             event.accepted = true
