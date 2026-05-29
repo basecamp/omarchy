@@ -73,13 +73,13 @@ assertDeepEqual(
 
 assertDeepEqual(
   clipboard.displayRows([{ type: 'image', path: '/tmp/a.png', mime: 'image/png', capturedAt: 'Friday 14:42' }], '', 50)[0].previewText,
-  'Screenshot Friday 14:42',
+  'Screenshot from Friday 14:42',
   'clipboard labels timestamped png image entries as screenshots'
 )
 
 assertDeepEqual(
   clipboard.displayRows([{ type: 'image', path: '/tmp/a.jpg', mime: 'image/jpeg', capturedAt: 'Friday 14:42' }], '', 50)[0].previewText,
-  'Image Friday 14:42',
+  'Image from Friday 14:42',
   'clipboard labels timestamped non-png image entries as images'
 )
 
@@ -114,7 +114,23 @@ cat >"$TMPDIR/bin/wtype" <<'SH'
 printf '%s\n' "$*" >"$WTYPE_OUT"
 SH
 
-chmod +x "$TMPDIR/bin/wl-copy" "$TMPDIR/bin/wtype"
+cat >"$TMPDIR/bin/omarchy-launch-browser" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >"$BROWSER_OUT"
+SH
+
+cat >"$TMPDIR/bin/omarchy-launch-editor" <<'SH'
+#!/bin/bash
+printf '%s\n' "$1" >"$EDITOR_PATH_OUT"
+cat "$1" >"$EDITOR_TEXT_OUT"
+SH
+
+cat >"$TMPDIR/bin/satty" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >"$SATTY_OUT"
+SH
+
+chmod +x "$TMPDIR/bin/wl-copy" "$TMPDIR/bin/wtype" "$TMPDIR/bin/omarchy-launch-browser" "$TMPDIR/bin/omarchy-launch-editor" "$TMPDIR/bin/satty"
 
 jq -n --arg text "$(printf 'large block line 1\nlarge block line 2\n')" '[{type:"text", text:"ignored"}, {type:"text", text:$text}]' >"$TMPDIR/home/.local/state/omarchy/clipboard-history.json"
 
@@ -147,3 +163,27 @@ pass "clipboard file paste helper copy-only copies file content"
 
 [[ ! -e "$TMPDIR/wtype" ]] || fail "clipboard file paste helper copy-only skips paste keystroke"
 pass "clipboard file paste helper copy-only skips paste keystroke"
+
+jq -n --arg url 'https://example.com/docs' --arg text "$(printf 'plain text\nsecond line')" --arg image "$TMPDIR/image.png" \
+  '[{type:"text", text:$url}, {type:"text", text:$text}, {type:"image", mime:"image/png", path:$image}]' >"$TMPDIR/home/.local/state/omarchy/clipboard-history.json"
+
+BROWSER_OUT="$TMPDIR/browser" HOME="$TMPDIR/home" PATH="$TMPDIR/bin:$PATH" \
+  "$ROOT/bin/omarchy-clipboard-open" --history-index 0
+
+[[ $(<"$TMPDIR/browser") == "https://example.com/docs" ]] || fail "clipboard open helper opens URL entries in browser"
+pass "clipboard open helper opens URL entries in browser"
+
+EDITOR_PATH_OUT="$TMPDIR/editor-path" EDITOR_TEXT_OUT="$TMPDIR/editor-text" HOME="$TMPDIR/home" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" \
+  "$ROOT/bin/omarchy-clipboard-open" --history-index 1
+
+[[ $(<"$TMPDIR/editor-text") == "$(printf 'plain text\nsecond line')" ]] || fail "clipboard open helper opens text entries in editor"
+pass "clipboard open helper opens text entries in editor"
+
+[[ $(<"$TMPDIR/editor-path") == "$TMPDIR"/state/omarchy/clipboard-open/clipboard.*.txt ]] || fail "clipboard open helper writes text entries to a temporary file"
+pass "clipboard open helper writes text entries to a temporary file"
+
+SATTY_OUT="$TMPDIR/satty" HOME="$TMPDIR/home" PATH="$TMPDIR/bin:$PATH" \
+  "$ROOT/bin/omarchy-clipboard-open" --history-index 2
+
+[[ $(<"$TMPDIR/satty") == "--filename $TMPDIR/image.png --output-filename $TMPDIR/image.png" ]] || fail "clipboard open helper opens image entries in satty"
+pass "clipboard open helper opens image entries in satty"
