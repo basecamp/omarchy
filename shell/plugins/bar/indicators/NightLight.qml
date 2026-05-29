@@ -23,6 +23,7 @@ BarIndicator {
   }
 
   function toggle() {
+    nightlight = !nightlight
     if (root.bar) root.bar.run("omarchy-toggle-nightlight")
     refreshTimer.restart()
   }

@@ -22,7 +22,7 @@ WidgetButton {
   }
 
   function syncIndicatorOpacity() {
-    root.opacity = !belongsInBlock ? 0 : (active ? 1 : (inactiveRevealed ? 0.45 : 0))
+    root.opacity = !belongsInBlock ? 0 : (effectiveActive ? 1 : (inactiveRevealed ? 0.45 : 0))
   }
 
   Component.onCompleted: syncIndicatorOpacity()

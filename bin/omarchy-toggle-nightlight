@@ -6,6 +6,7 @@
 
 ON_TEMP=4000
 OFF_TEMP=6500
+IDENTITY_TEMP=6000
 
 current_temp() {
   local output
@@ -18,7 +19,7 @@ status_json() {
   local temp enabled
 
   temp=$(current_temp)
-  if [[ -n $temp && $temp != $OFF_TEMP ]]; then
+  if [[ -n $temp ]] && (( temp < IDENTITY_TEMP )); then
     enabled=true
   else
     enabled=false
@@ -48,4 +49,4 @@ else
   hyprctl hyprsunset temperature $OFF_TEMP
 fi
 
-omarchy-shell -q Indicators refresh
+omarchy-shell -q omarchy.indicators refresh
