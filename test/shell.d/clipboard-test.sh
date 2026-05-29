@@ -57,6 +57,7 @@ assertDeepEqual(
 )
 
 assertDeepEqual(clipboard.removeEntryAt(history, 10), history, 'clipboard removeEntryAt ignores invalid indexes')
+assertDeepEqual(clipboard.clearHistory(), [], 'clipboard clearHistory returns an empty history')
 
 assertDeepEqual(
   clipboard.displayRows(history, 'image', 50).map(row => ({ type: row.entryType, preview: row.previewText, mime: row.mime })),
