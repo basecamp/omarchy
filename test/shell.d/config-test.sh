@@ -94,6 +94,7 @@ from pathlib import Path
 
 root = Path(os.environ["ROOT"])
 pkgbuild = (root.parent / "omarchy-pkgs/pkgbuilds/omarchy-settings/PKGBUILD").read_text()
+omarchy_pkgbuild = (root.parent / "omarchy-pkgs/pkgbuilds/omarchy/PKGBUILD").read_text()
 errors = []
 package_defaults = [
   ("default/uwsm/env.d/10-omarchy", "/usr/share/uwsm/env.d/10-omarchy", "uwsm/env"),
@@ -105,6 +106,8 @@ package_defaults = [
   ("default/systemd/user/bt-agent.service", "/usr/lib/systemd/user/bt-agent.service", "systemd/user/bt-agent.service"),
   ("default/systemd/user/omarchy-sleep-lock.service", "/usr/lib/systemd/user/omarchy-sleep-lock.service", "systemd/user/omarchy-sleep-lock.service"),
   ("default/systemd/user/omarchy-recover-internal-monitor.service", "/usr/lib/systemd/user/omarchy-recover-internal-monitor.service", "systemd/user/omarchy-recover-internal-monitor.service"),
+  ("default/systemd/user/omarchy-update-user-notify.service", "/usr/lib/systemd/user/omarchy-update-user-notify.service", "systemd/user/omarchy-update-user-notify.service"),
+  ("default/systemd/user/omarchy-update-user-notify.path", "/usr/lib/systemd/user/omarchy-update-user-notify.path", "systemd/user/omarchy-update-user-notify.path"),
   ("default/fonts/omarchy/omarchy.ttf", "/usr/share/fonts/omarchy/omarchy.ttf", "omarchy.ttf"),
 ]
 
@@ -115,6 +118,13 @@ for source, destination, legacy in package_defaults:
     errors.append(f"legacy path still in config/: {legacy}")
   if destination and (source not in pkgbuild or destination not in pkgbuild):
     errors.append(f"PKGBUILD does not explicitly install {source} -> {destination}")
+
+guard_hook = "default/libalpm/hooks/00-omarchy-update-guard.hook"
+guard_destination = "/usr/share/libalpm/hooks/00-omarchy-update-guard.hook"
+if not (root / guard_hook).exists():
+  errors.append(f"missing package default source: {guard_hook}")
+if guard_hook not in omarchy_pkgbuild or guard_destination not in omarchy_pkgbuild:
+  errors.append(f"omarchy PKGBUILD does not install {guard_hook} -> {guard_destination}")
 
 if errors:
   print("\n".join(errors), file=sys.stderr)

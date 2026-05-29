@@ -23,4 +23,4 @@ sudo cp -f "$OMARCHY_PATH/default/pacman/mirrorlist-$channel" /etc/pacman.d/mirr
 omarchy-hook pre-refresh-pacman
 
 # Reset all package DBs and then update
-sudo pacman -Syyuu --noconfirm
+sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syyuu --noconfirm
