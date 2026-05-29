@@ -448,16 +448,20 @@ Item {
               }
             }
 
-            Rectangle {
+            Item {
               width: parent.width / 2 - root.contentSpacing / 2
               height: parent.height
-              radius: root.cornerRadius
-              color: Util.alpha(root.background, 0.5)
-              border.color: Util.alpha(root.border, 0.1)
-              border.width: Style.normalBorderWidth
               clip: true
 
               property var activeRow: displayModel.count > 0 && root.selectedIndex >= 0 && root.selectedIndex < displayModel.count ? displayModel.get(root.selectedIndex) : null
+
+              Rectangle {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: Style.normalBorderWidth
+                color: Util.alpha(root.border, 0.28)
+              }
 
               Text {
                 visible: parent.activeRow && parent.activeRow.entryType === "text"
@@ -478,6 +482,7 @@ Item {
                 anchors.margins: Style.space(16)
                 source: parent.activeRow ? parent.activeRow.previewImage : ""
                 fillMode: Image.PreserveAspectFit
+                verticalAlignment: Image.AlignTop
                 asynchronous: true
                 smooth: true
               }
