@@ -67,6 +67,7 @@ version                        ──►  omarchy             /usr/share/omarchy
 
 config/**                      ──►  omarchy-settings    /etc/skel/.config/**         (seeds new users)
                                                         /usr/share/omarchy/config/** (resync source)
+etc/fastfetch/config.jsonc     ──►  omarchy-settings    /etc/fastfetch/config.jsonc
 
 applications/*.desktop         ──►  omarchy-settings    /etc/skel/.local/share/applications/
                                                         /usr/share/omarchy/applications/
@@ -267,8 +268,10 @@ brand-new user, so this one copy resyncs `.bashrc`, `.config/**`,
 branding files, and the shipped migration markers in a single pass.
 
 Then it runs `omarchy-refresh-limine`, `omarchy-refresh-plymouth`, and the
-nvim refresh. Destructive: existing user files at these paths are clobbered
-without backup.
+nvim refresh. Destructive: existing user files copied from `/etc/skel` are
+clobbered without backup. Fastfetch is package-owned at
+`/etc/fastfetch/config.jsonc`; delete `~/.config/fastfetch/config.jsonc` to
+return to the packaged default.
 
 ## Quick reference: where does X live?
 

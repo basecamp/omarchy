@@ -4,13 +4,6 @@ Omarchy migrations are one-time repair scripts for existing installs. They are
 used when a package update needs to change state that pacman cannot safely own by
 itself.
 
-They are for both humans and agents:
-
-- Users should know when migrations run, where state is stored, and how to retry
-  or inspect pending work.
-- Agents should know which migration scope to use, how to write safe migration
-  scripts, and what should **not** be a migration.
-
 ## The two migration scopes
 
 Omarchy migrations are split by execution context:
@@ -31,6 +24,8 @@ Use system migrations for machine-wide state, for example:
 - systemd system units or service state
 - hardware quirks
 - package-owned layout transitions
+
+Note that it's not necessary to write a migration for any file that will be package-owned.
 
 State lives in:
 
@@ -177,6 +172,8 @@ Migrations are plain shell files:
 - no shebang
 - start with an `echo` describing the migration
 - use `$OMARCHY_PATH` for Omarchy-owned files
+- should be idempotent
+- should be as simple as possible to accomplish the task
 
 Example system migration:
 
