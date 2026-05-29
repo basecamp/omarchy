@@ -29,6 +29,8 @@ assertDeepEqual(
   'clipboard history parser drops invalid entries'
 )
 
+assertDeepEqual(clipboard.parseHistory(JSON.stringify([' ', '\n', { type: 'text', text: '\t' }])), [], 'clipboard history parser drops whitespace-only text')
+
 const history = [
   { type: 'text', text: 'old' },
   { type: 'text', text: 'new' },
@@ -52,6 +54,12 @@ assertDeepEqual(
 )
 
 assertDeepEqual(
+  clipboard.displayRows(history, 'image', 50).map(row => row.index),
+  [2],
+  'clipboard display rows preserve original history indexes'
+)
+
+assertDeepEqual(
   clipboard.displayRows([{ type: 'text', text: 'line one\nline two' }], '', 50)[0].previewText,
   'line one line two',
   'clipboard display rows collapse text whitespace'
@@ -60,3 +68,31 @@ assertDeepEqual(
 assertDeepEqual(clipboard.displayRows(history, '', 0), [], 'clipboard display rows supports zero result limit')
 assertDeepEqual(clipboard.addEntry(history, 'next', 0), [], 'clipboard addEntry supports zero history limit')
 JS
+
+TMPDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR"' EXIT
+
+mkdir -p "$TMPDIR/bin" "$TMPDIR/home/.local/state/omarchy"
+
+cat >"$TMPDIR/bin/wl-copy" <<'SH'
+#!/bin/bash
+cat >"$WL_COPY_OUT"
+SH
+
+cat >"$TMPDIR/bin/wtype" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >"$WTYPE_OUT"
+SH
+
+chmod +x "$TMPDIR/bin/wl-copy" "$TMPDIR/bin/wtype"
+
+jq -n --arg text "$(printf 'large block line 1\nlarge block line 2\n')" '[{type:"text", text:"ignored"}, {type:"text", text:$text}]' >"$TMPDIR/home/.local/state/omarchy/clipboard-history.json"
+
+WL_COPY_OUT="$TMPDIR/copied" WTYPE_OUT="$TMPDIR/wtype" HOME="$TMPDIR/home" PATH="$TMPDIR/bin:$PATH" \
+  "$ROOT/bin/omarchy-clipboard-paste-text" --shift-insert --history-index 1
+
+[[ $(<"$TMPDIR/copied") == "$(printf 'large block line 1\nlarge block line 2')" ]] || fail "clipboard paste helper copies history entry text"
+pass "clipboard paste helper copies history entry text"
+
+[[ $(<"$TMPDIR/wtype") == "-M shift -k Insert -m shift" ]] || fail "clipboard paste helper pastes history entries with shift insert"
+pass "clipboard paste helper pastes history entries with shift insert"

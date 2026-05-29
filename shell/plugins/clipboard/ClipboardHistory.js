@@ -1,13 +1,13 @@
 function normalizeEntry(value) {
   if (typeof value === "string")
-    return value.length > 0 ? { type: "text", text: value } : null
+    return value.trim().length > 0 ? { type: "text", text: value } : null
 
   if (!value || typeof value !== "object") return null
 
   var type = String(value.type || value.kind || "")
   if (type === "text") {
     var text = String(value.text || "")
-    return text.length > 0 ? { type: "text", text: text } : null
+    return text.trim().length > 0 ? { type: "text", text: text } : null
   }
 
   if (type === "image") {
@@ -107,7 +107,7 @@ function displayRows(history, query, limit) {
       previewImage: isImage ? String(entry.path || "") : "",
       path: isImage ? String(entry.path || "") : "",
       mime: isImage ? String(entry.mime || "image/png") : "text/plain",
-      index: rows.length
+      index: i
     })
     if (rows.length >= max) break
   }
