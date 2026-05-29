@@ -21,6 +21,9 @@ Item {
   property string authUrl: ""
   property var peers: []
   property var exitNodes: []
+  property var tailnetExitNodes: []
+  property var mullvadExitNodes: []
+  property var mullvadRegions: []
   property var accounts: []
   property string selectedAccountId: ""
   property string selectedAccountLabel: ""
@@ -31,13 +34,15 @@ Item {
   property string lastError: ""
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
-  readonly property bool busy: whichProcess.running || statusProcess.running || accountsProcess.running || actionProcess.running || loginProcess.running || switchProcess.running || operatorProcess.running || exitNodeProcess.running
+  readonly property bool busy: whichProcess.running || statusProcess.running || mullvadExitNodesProcess.running || accountsProcess.running || actionProcess.running || loginProcess.running || switchProcess.running || operatorProcess.running || exitNodeProcess.running
   readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME")
 
   property string _statusOutput: ""
   property string _statusError: ""
   property string _accountsOutput: ""
   property string _accountsError: ""
+  property string _mullvadExitNodesOutput: ""
+  property string _mullvadExitNodesError: ""
   property string _actionOutput: ""
   property string _actionError: ""
   property string _loginOutput: ""
@@ -133,6 +138,12 @@ Item {
       statusProcess.command = ["tailscale", "status", "--json"]
       statusProcess.running = true
     }
+    if (!mullvadExitNodesProcess.running) {
+      _mullvadExitNodesOutput = ""
+      _mullvadExitNodesError = ""
+      mullvadExitNodesProcess.command = ["tailscale", "exit-node", "list"]
+      mullvadExitNodesProcess.running = true
+    }
     var now = Date.now()
     var shouldRefreshAccounts = forceAccounts === true || accounts.length === 0 || now - _lastAccountsRefreshMs > 60000
     if (shouldRefreshAccounts && !accountsProcess.running) {
@@ -160,6 +171,9 @@ Item {
     authUrl = ""
     peers = []
     exitNodes = []
+    tailnetExitNodes = []
+    mullvadExitNodes = []
+    mullvadRegions = []
     accounts = []
     selectedAccountId = ""
     selectedAccountLabel = ""
@@ -190,7 +204,8 @@ Item {
     selfDnsName = parsed.selfDnsName
     selfIp = parsed.selfIp
     peers = parsed.running ? parsed.peers : []
-    exitNodes = parsed.running ? parsed.exitNodes : []
+    tailnetExitNodes = parsed.running ? parsed.exitNodes : []
+    exitNodes = parsed.running ? tailnetExitNodes.concat(mullvadRegions) : []
 
     if (needsLogin) statusText = "Needs login"
     else if (running) {
@@ -213,6 +228,12 @@ Item {
     selectedAccountId = parsed.selectedAccountId
     selectedAccountLabel = parsed.selectedAccountLabel
     accountsAccessDenied = false
+  }
+
+  function parseMullvadExitNodes(raw) {
+    mullvadExitNodes = Model.parseExitNodeList(raw)
+    mullvadRegions = Model.mullvadRegionOptions(mullvadExitNodes)
+    exitNodes = running ? tailnetExitNodes.concat(mullvadRegions) : []
   }
 
   function toggleTailscale() {
@@ -248,6 +269,10 @@ Item {
 
   function exitNodeTarget(peer) {
     if (!peer) return ""
+    if (peer.Mullvad === true) {
+      var mullvadIps = filterIPv4(peer.TailscaleIPs || [])
+      if (mullvadIps.length > 0) return mullvadIps[0]
+    }
     if (peer.DNSName) return cleanDnsName(peer.DNSName)
     if (peer.HostName) return String(peer.HostName)
     var ips = filterIPv4(peer.TailscaleIPs || [])
@@ -394,6 +419,19 @@ Item {
           root.lastError = elideStatus(stderr || stdout || "Could not list Tailscale connections")
         }
       }
+    }
+  }
+
+  Process {
+    id: mullvadExitNodesProcess
+    running: false
+    command: []
+    stdout: StdioCollector { id: mullvadExitNodesStdout; waitForEnd: true; onStreamFinished: root._mullvadExitNodesOutput = text }
+    stderr: StdioCollector { id: mullvadExitNodesStderr; waitForEnd: true; onStreamFinished: root._mullvadExitNodesError = text }
+    onExited: function(exitCode) {
+      var stdout = String(mullvadExitNodesStdout.text || root._mullvadExitNodesOutput || "")
+      if (exitCode === 0) root.parseMullvadExitNodes(stdout)
+      else root.parseMullvadExitNodes("")
     }
   }
 
