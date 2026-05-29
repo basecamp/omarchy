@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Install a supported browser
-# omarchy:args=<chrome|brave|brave-origin|edge|firefox|zen>
-# omarchy:examples=omarchy install browser firefox | omarchy install browser brave
+# omarchy:args=<chrome|chrome-beta|brave|brave-origin|edge|firefox|zen>
+# omarchy:examples=omarchy install browser firefox | omarchy install browser chrome-beta
 
 setup_policy_directory() {
   sudo mkdir -p "$1"
@@ -40,6 +40,17 @@ chrome)
   copy_chromium_flags ~/.config/chrome-flags.conf
   omarchy-theme-set-browser
   announce_browser_installed "Chrome"
+  ;;
+chrome-beta)
+  # Opt-in only: tracks upstream Chromium closely for browser automation
+  # (Playwright / Chrome DevTools Protocol). Does not change the default browser.
+  echo "Installing Chrome Beta..."
+  omarchy-pkg-aur-add google-chrome-beta || exit 1
+
+  setup_policy_directory /etc/opt/chrome/policies/managed
+  copy_chromium_flags ~/.config/chrome-beta-flags.conf
+  omarchy-theme-set-browser
+  announce_browser_installed "Chrome Beta"
   ;;
 edge)
   echo "Installing Edge..."
@@ -87,7 +98,7 @@ zen)
   announce_browser_installed "Zen"
   ;;
 *)
-  echo "Usage: omarchy-install-browser <chrome|brave|brave-origin|edge|firefox|zen>"
+  echo "Usage: omarchy-install-browser <chrome|chrome-beta|brave|brave-origin|edge|firefox|zen>"
   exit 1
   ;;
 esac

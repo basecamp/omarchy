@@ -35,6 +35,7 @@ refresh_running_browser chromium chromium
 
 set_browser_policy /etc/opt/chrome/policies/managed
 refresh_running_browser chrome google-chrome-stable || refresh_running_browser chrome google-chrome
+refresh_running_browser chrome-beta google-chrome-beta
 
 set_browser_policy /etc/opt/edge/policies/managed
 refresh_running_browser msedge microsoft-edge-stable
