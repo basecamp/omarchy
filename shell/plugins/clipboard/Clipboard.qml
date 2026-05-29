@@ -84,6 +84,23 @@ Item {
     root.addClipboardEntry(ClipboardHistory.parseEntryJson(line))
   }
 
+  function removeDisplayIndex(index) {
+    if (index < 0 || index >= displayModel.count) return
+
+    var row = displayModel.get(index)
+    root.history = ClipboardHistory.removeEntryAt(root.history, row.index)
+    root.saveHistory()
+
+    if (displayModel.count <= 1) {
+      root.selectedIndex = 0
+      root.cursorActive = false
+    } else if (root.selectedIndex >= displayModel.count - 1) {
+      root.selectedIndex = displayModel.count - 2
+    }
+
+    root.rebuildDisplay()
+  }
+
   function rebuildDisplay() {
     var rows = ClipboardHistory.displayRows(root.history, root.filterText, 50)
 
@@ -230,6 +247,9 @@ Item {
             event.accepted = true
           } else if (event.key === Qt.Key_Backspace) {
             if (root.filterText.length > 0) root.setFilter(root.filterText.slice(0, -1))
+            event.accepted = true
+          } else if (event.key === Qt.Key_Delete) {
+            root.removeDisplayIndex(root.selectedIndex)
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
             root.select(-1)

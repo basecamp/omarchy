@@ -66,6 +66,16 @@ function addEntry(history, entry, limit) {
   return next
 }
 
+function removeEntryAt(history, index) {
+  var values = Array.isArray(history) ? history : []
+  var target = Number(index)
+  if (isNaN(target) || target < 0 || target >= values.length) return values.slice()
+
+  var next = values.slice()
+  next.splice(target, 1)
+  return next
+}
+
 function parseEntryJson(line) {
   var raw = String(line || "").trim()
   if (!raw) return null
@@ -121,6 +131,7 @@ if (typeof module !== "undefined") {
     entryKey: entryKey,
     parseHistory: parseHistory,
     addEntry: addEntry,
+    removeEntryAt: removeEntryAt,
     parseEntryJson: parseEntryJson,
     searchableText: searchableText,
     previewText: previewText,
