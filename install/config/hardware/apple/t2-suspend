@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# Apple T2 suspend/resume helper. Runs as a Before=sleep.target
+# systemd service so the T2 coprocessor is fully active during pre.
+
+# Pre:
+#   - unbinds aaudio (releases ALSA FDs held by userspace)
+#   - stops tiny-dfr (prevents spurious wake-ups)
+#   - unloads T2 modules (reverse dep order; brcmfmac for D3)
+# Post:
+#   - reloads apple_bce, then sleeps to let T2 firmware init
+#   - reloads T2 modules (forward dep order), restarts tiny-dfr
+
+PRE_MODS=(appletbdrm hid_appletb_kbd hid_appletb_bl brcmfmac_wcc brcmfmac)
+POST_MODS=(brcmfmac brcmfmac_wcc hid_appletb_bl hid_appletb_kbd appletbdrm)
+
+set -euo pipefail
+
+LOG_TAG="t2-suspend"
+
+log()     { logger -t "$LOG_TAG" "$1"; }
+
+mod_ld()  { [[ -d /sys/module/$1 ]]; }
+
+unload()  {
+  mod_ld "$1" && modprobe -r "$1" 2>/dev/null &&
+    log "Unloaded $1" || true
+}
+
+load()    {
+  mod_ld "$1" || {
+    modprobe "$1" 2>/dev/null && log "Loaded $1" || true
+  }
+}
+
+case "${1:-}" in
+  pre)
+    for d in /sys/bus/pci/drivers/aaudio/0000:*; do
+      [[ -e $d ]] || continue
+      echo "${d##*/}" > /sys/bus/pci/drivers/aaudio/unbind 2>/dev/null &&
+        log "${d##*/} Unbound" || true
+    done
+
+    systemctl stop tiny-dfr 2>/dev/null || true
+
+    for m in "${PRE_MODS[@]}"; do unload "$m"; done
+    unload apple_bce
+
+    if ! udevadm settle --timeout=5; then
+      log "Timed out waiting for udev queue to settle"
+    fi
+
+    log "Ready to suspend"
+    ;;
+  post)
+    load apple_bce; sleep 2
+
+    for m in "${POST_MODS[@]}"; do load "$m"; done
+
+    systemctl start tiny-dfr 2>/dev/null || true
+
+    log "Resume complete"
+    ;;
+  *)
+    echo "Usage: $0 {pre|post}"; exit 1 ;;
+esac
