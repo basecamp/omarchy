@@ -48,6 +48,17 @@ assertDeepEqual(
 )
 
 assertDeepEqual(
+  clipboard.removeEntryAt(history, 1),
+  [
+    { type: 'text', text: 'old' },
+    { type: 'image', path: '/tmp/a.png', mime: 'image/png' }
+  ],
+  'clipboard removeEntryAt removes the requested entry'
+)
+
+assertDeepEqual(clipboard.removeEntryAt(history, 10), history, 'clipboard removeEntryAt ignores invalid indexes')
+
+assertDeepEqual(
   clipboard.displayRows(history, 'image', 50).map(row => ({ type: row.entryType, preview: row.previewText, mime: row.mime })),
   [{ type: 'image', preview: 'Image', mime: 'image/png' }],
   'clipboard display rows search image metadata'
