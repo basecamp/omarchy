@@ -44,7 +44,7 @@ Item {
     root.opened = true
     root.filterText = ""
     root.selectedIndex = 0
-    root.cursorActive = false
+    root.cursorActive = true
     root.rebuildDisplay()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -81,6 +81,7 @@ Item {
     if (displayModel.count === 0) selectedIndex = 0
     else if (selectedIndex >= displayModel.count) selectedIndex = displayModel.count - 1
     else if (selectedIndex < 0) selectedIndex = 0
+    cursorActive = displayModel.count > 0
 
     Qt.callLater(function() {
       if (displayModel.count > 0) resultGrid.positionViewAtIndex(root.selectedIndex, GridView.Contain)
@@ -132,7 +133,7 @@ Item {
   function setFilter(nextFilter) {
     root.filterText = nextFilter
     root.selectedIndex = 0
-    root.cursorActive = false
+    root.cursorActive = true
     root.rebuildDisplay()
   }
 
@@ -145,8 +146,9 @@ Item {
   function applySelected(emoji) {
     if (!emoji) return
     root.dismiss()
-    Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", emoji])
+    Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-menu-emoji-insert", emoji])
   }
+
   ListModel { id: displayModel }
 
   FileView {

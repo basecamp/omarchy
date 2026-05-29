@@ -3,6 +3,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
 import qs.Commons
+import qs.Ui
 import "ClipboardHistory.js" as ClipboardHistory
 
 Item {
@@ -13,11 +14,12 @@ Item {
   property string filterText: ""
   property int selectedIndex: 0
   property bool cursorActive: false
+  property bool clearConfirmOpen: false
   property var history: []
 
   property string historyPath: Quickshell.env("HOME") + "/.local/state/omarchy/clipboard-history.json"
   property string captureScript: root.omarchyPath + "/shell/plugins/clipboard/capture.sh"
-  property string watchCommand: "script=$1\ntrap 'kill $(jobs -p) 2>/dev/null' EXIT\nwl-paste --watch \"$script\" &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/png wl-paste --type image/png --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/jpeg wl-paste --type image/jpeg --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/webp wl-paste --type image/webp --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/gif wl-paste --type image/gif --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/bmp wl-paste --type image/bmp --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/tiff wl-paste --type image/tiff --watch \"$script\" 2>/dev/null &\nwait"
+  property string watchCommand: "script=$1\ntrap 'kill $(jobs -p) 2>/dev/null' EXIT\nwl-paste --watch \"$script\" &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/png wl-paste --type image/png --watch \"$script\" 2>/dev/null &\nwait"
   // Shares the [menu] surface tokens — themes that style the menu also
   // style the clipboard. Selected-row colors composed in the
   // singleton so consumers drop them straight into Rectangle bindings.
@@ -32,20 +34,22 @@ Item {
   property int contentMargin: Style.spacing.panelPadding
   property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
   property int contentSpacing: Style.spacing.md
-  property int cardWidth: Math.min(Style.space(800), panel.width - Style.gapsOut * 2)
+  property int cardWidth: Math.min(Style.space(875), panel.width - Style.gapsOut * 2)
   property int cardHeight: Math.min(Style.space(600), panel.height - Style.gapsOut * 2)
   property int rowHeight: Math.max(Style.space(50), Style.font.body + Style.font.caption + Style.spacing.rowPaddingX * 2)
+  property int historyLimit: 300
 
   function open(payloadJson) {
     root.opened = true
     root.filterText = ""
     root.selectedIndex = 0
-    root.cursorActive = false
+    root.cursorActive = true
     root.rebuildDisplay()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
   function close() {
+    root.cancelClearHistory()
     root.opened = false
   }
 
@@ -68,20 +72,58 @@ Item {
   }
 
   function saveHistory() {
-    historyFile.setText(JSON.stringify(root.history.slice(0, 100), null, 2) + "\n")
+    historyFile.setText(JSON.stringify(root.history.slice(0, root.historyLimit), null, 2) + "\n")
   }
 
   function addClipboardEntry(entry) {
     var normalized = ClipboardHistory.normalizeEntry(entry)
     if (!normalized) return
 
-    root.history = ClipboardHistory.addEntry(root.history, normalized, 100)
+    root.history = ClipboardHistory.addEntry(root.history, normalized, root.historyLimit)
     root.saveHistory()
     if (root.opened) root.rebuildDisplay()
   }
 
   function addClipboardJson(line) {
     root.addClipboardEntry(ClipboardHistory.parseEntryJson(line))
+  }
+
+  function requestClearHistory() {
+    if (root.history.length === 0) return
+    clearConfirm.selectedIndex = 1
+    root.clearConfirmOpen = true
+  }
+
+  function cancelClearHistory() {
+    root.clearConfirmOpen = false
+    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  function confirmClearHistory() {
+    root.history = ClipboardHistory.clearHistory()
+    root.saveHistory()
+    root.selectedIndex = 0
+    root.cursorActive = false
+    root.clearConfirmOpen = false
+    root.rebuildDisplay()
+    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  function removeDisplayIndex(index) {
+    if (index < 0 || index >= displayModel.count) return
+
+    var row = displayModel.get(index)
+    root.history = ClipboardHistory.removeEntryAt(root.history, row.historyIndex)
+    root.saveHistory()
+
+    if (displayModel.count <= 1) {
+      root.selectedIndex = 0
+      root.cursorActive = false
+    } else if (root.selectedIndex >= displayModel.count - 1) {
+      root.selectedIndex = displayModel.count - 2
+    }
+
+    root.rebuildDisplay()
   }
 
   function rebuildDisplay() {
@@ -97,7 +139,7 @@ Item {
         previewImage: row.previewImage ? Util.fileUrl(row.previewImage) : "",
         path: row.path,
         mime: row.mime,
-        index: row.index
+        historyIndex: row.index
       })
     }
 
@@ -124,7 +166,7 @@ Item {
   function setFilter(nextFilter) {
     root.filterText = nextFilter
     root.selectedIndex = 0
-    root.cursorActive = false
+    root.cursorActive = true
     root.rebuildDisplay()
   }
 
@@ -134,14 +176,42 @@ Item {
     root.applySelected(row)
   }
 
+  function copyIndex(index) {
+    if (index < 0 || index >= displayModel.count) return
+    var row = displayModel.get(index)
+    root.copySelected(row)
+  }
+
+  function openIndex(index) {
+    if (index < 0 || index >= displayModel.count) return
+    var row = displayModel.get(index)
+    root.openSelected(row)
+  }
+
   function applySelected(row) {
     if (!row) return
     root.opened = false
     if (row.entryType === "image") {
       Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-file", row.mime, row.path])
     } else if (row.fullText) {
-      Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--shift-insert", row.fullText])
+      Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--shift-insert", "--history-index", String(row.historyIndex)])
     }
+  }
+
+  function copySelected(row) {
+    if (!row) return
+    root.opened = false
+    if (row.entryType === "image") {
+      Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-file", "--copy-only", row.mime, row.path])
+    } else if (row.fullText) {
+      Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--copy-only", "--history-index", String(row.historyIndex)])
+    }
+  }
+
+  function openSelected(row) {
+    if (!row) return
+    root.opened = false
+    Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-open", "--history-index", String(row.historyIndex)])
   }
 
   Component.onCompleted: initProc.running = true
@@ -161,7 +231,7 @@ Item {
 
   Process {
     id: initProc
-    command: ["bash", "-c", "mkdir -p ~/.local/state/omarchy\nscript=$1\nfor pid in $(pgrep -x wl-paste || true); do\n  cmdline=$(tr '\\0' ' ' <\"/proc/$pid/cmdline\" 2>/dev/null || true)\n  if [[ $cmdline == *\"wl-paste --watch $script \"* || $cmdline == *\"wl-paste --type \"*\" --watch $script \"* ]]; then\n    kill \"$pid\" 2>/dev/null || true\n  fi\ndone", "clipboard-init", root.captureScript]
+    command: ["bash", "-c", "mkdir -p ~/.local/state/omarchy\nscript=$1\nfor pid in $(pgrep -x wl-paste || true); do\n  cmdline=$(tr '\\0' ' ' <\"/proc/$pid/cmdline\" 2>/dev/null || true)\n  if [[ $cmdline == *\"wl-paste --watch $script \"* || $cmdline == *\"wl-paste --type \"*\" --watch $script \"* || $cmdline == *\"/shell/plugins/clipboard/capture.sh\"* ]]; then\n    kill \"$pid\" 2>/dev/null || true\n  fi\ndone", "clipboard-init", root.captureScript]
     onExited: {
       currentProc.command = [root.captureScript]
       currentProc.running = true
@@ -220,16 +290,26 @@ Item {
       Item {
         id: keyCatcher
         anchors.fill: parent
+        z: root.clearConfirmOpen ? 20 : 0
         focus: true
 
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
+          if (root.clearConfirmOpen) {
+            if (clearConfirm.handleKey(event)) event.accepted = true
+            return
+          }
+
           if (event.key === Qt.Key_Escape) {
             if (root.filterText) root.setFilter("")
             else root.close()
             event.accepted = true
           } else if (event.key === Qt.Key_Backspace) {
             if (root.filterText.length > 0) root.setFilter(root.filterText.slice(0, -1))
+            event.accepted = true
+          } else if (event.key === Qt.Key_Delete) {
+            if (event.modifiers & Qt.ShiftModifier) root.requestClearHistory()
+            else root.removeDisplayIndex(root.selectedIndex)
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
             root.select(-1)
@@ -244,13 +324,34 @@ Item {
             root.select(6)
             event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            if (root.cursorActive) root.activateIndex(root.selectedIndex)
+            if (root.cursorActive && (event.modifiers & Qt.AltModifier)) root.openIndex(root.selectedIndex)
+            else if (root.cursorActive && (event.modifiers & Qt.ShiftModifier)) root.copyIndex(root.selectedIndex)
+            else if (root.cursorActive) root.activateIndex(root.selectedIndex)
             else if (displayModel.count > 0) root.cursorActive = true
             event.accepted = true
           } else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127) {
             root.setFilter(root.filterText + event.text)
             event.accepted = true
           }
+        }
+
+        ConfirmDialog {
+          id: clearConfirm
+
+          anchors.fill: parent
+          opened: root.clearConfirmOpen
+          z: 10
+          message: "Delete entire clipboard history?"
+          confirmText: "Delete"
+          background: root.background
+          foreground: root.foreground
+          scrim: root.scrim
+          selectedBackground: root.selectedBackground
+          selectedText: root.selectedText
+          fontFamily: root.fontFamily
+          cornerRadius: root.cornerRadius
+          onCanceled: root.cancelClearHistory()
+          onConfirmed: root.confirmClearHistory()
         }
       }
 
@@ -285,97 +386,109 @@ Item {
 
           Row {
             anchors.fill: parent
-            spacing: root.contentSpacing
+            spacing: 0
 
-            ListView {
-              id: resultList
-              width: parent.width / 2 - root.contentSpacing / 2
+            Item {
+              width: parent.width / 2
               height: parent.height
-              model: displayModel
               clip: true
-              spacing: Style.space(4)
-              boundsBehavior: Flickable.StopAtBounds
 
-              delegate: Rectangle {
-                required property int index
-                required property string entryType
-                required property string previewText
-                required property string fullText
-                required property string previewImage
+              ListView {
+                id: resultList
+                anchors.fill: parent
+                anchors.rightMargin: root.contentMargin
+                model: displayModel
+                clip: true
+                spacing: Style.space(4)
+                boundsBehavior: Flickable.StopAtBounds
 
-                readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
+                delegate: Rectangle {
+                  required property int index
+                  required property string entryType
+                  required property string previewText
+                  required property string fullText
+                  required property string previewImage
 
-                width: ListView.view.width
-                height: root.rowHeight
-                radius: root.cornerRadius
-                color: hasCursor ? root.selectedBackground : "transparent"
-                border.width: 0
+                  readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
 
-                Row {
-                  anchors.fill: parent
-                  anchors.leftMargin: Style.space(12)
-                  anchors.rightMargin: Style.space(12)
-                  anchors.topMargin: Style.space(8)
-                  anchors.bottomMargin: Style.space(8)
-                  spacing: Style.space(10)
+                  width: ListView.view.width
+                  height: root.rowHeight
+                  radius: root.cornerRadius
+                  color: hasCursor ? root.selectedBackground : "transparent"
+                  border.width: 0
 
-                  Image {
-                    visible: parent.parent.entryType === "image"
-                    width: visible ? parent.height : 0
-                    height: parent.height
-                    source: parent.parent.previewImage
-                    fillMode: Image.PreserveAspectFit
-                    asynchronous: true
-                    smooth: true
+                  Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: Style.space(12)
+                    anchors.rightMargin: Style.space(12)
+                    anchors.topMargin: Style.space(8)
+                    anchors.bottomMargin: Style.space(8)
+                    spacing: Style.space(10)
+
+                    Image {
+                      visible: parent.parent.previewImage.length > 0
+                      width: visible ? parent.height : 0
+                      height: parent.height
+                      source: parent.parent.previewImage
+                      fillMode: Image.PreserveAspectFit
+                      asynchronous: true
+                      smooth: true
+                    }
+
+                    Text {
+                      width: parent.width - (parent.parent.previewImage.length > 0 ? parent.height + parent.spacing : 0)
+                      height: parent.height
+                      text: parent.parent.previewText
+                      color: parent.parent.hasCursor ? root.selectedText : root.foreground
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.title
+                      opacity: parent.parent.entryType === "image" || parent.parent.entryType === "file" ? 0.72 : 1.0
+                      elide: Text.ElideRight
+                      wrapMode: Text.NoWrap
+                      verticalAlignment: Text.AlignVCenter
+                    }
                   }
 
-                  Text {
-                    width: parent.width - (parent.parent.entryType === "image" ? parent.height + parent.spacing : 0)
-                    height: parent.height
-                    text: parent.parent.previewText
-                    color: parent.parent.hasCursor ? root.selectedText : root.foreground
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.title
-                    font.italic: parent.parent.entryType === "image"
-                    opacity: parent.parent.entryType === "image" ? 0.72 : 1.0
-                    elide: Text.ElideRight
-                    wrapMode: Text.NoWrap
-                    verticalAlignment: Text.AlignVCenter
-                  }
-                }
-
-                MouseArea {
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onContainsMouseChanged: if (containsMouse) {
-                    root.cursorActive = true
-                    root.selectedIndex = index
-                  }
-                  onClicked: {
-                    root.cursorActive = true
-                    root.selectedIndex = index
-                    root.activateIndex(index)
+                  MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onContainsMouseChanged: if (containsMouse) {
+                      root.cursorActive = true
+                      root.selectedIndex = index
+                    }
+                    onClicked: {
+                      root.cursorActive = true
+                      root.selectedIndex = index
+                      root.activateIndex(index)
+                    }
                   }
                 }
               }
             }
 
-            Rectangle {
-              width: parent.width / 2 - root.contentSpacing / 2
+            Item {
+              width: parent.width / 2
               height: parent.height
-              radius: root.cornerRadius
-              color: Util.alpha(root.background, 0.5)
-              border.color: Util.alpha(root.border, 0.1)
-              border.width: Style.normalBorderWidth
               clip: true
 
               property var activeRow: displayModel.count > 0 && root.selectedIndex >= 0 && root.selectedIndex < displayModel.count ? displayModel.get(root.selectedIndex) : null
 
+              Rectangle {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: Style.normalBorderWidth
+                color: Util.alpha(root.border, 0.28)
+              }
+
               Text {
-                visible: parent.activeRow && parent.activeRow.entryType === "text"
+                visible: parent.activeRow && !parent.activeRow.previewImage
                 anchors.fill: parent
-                anchors.margins: Style.space(16)
+                anchors.leftMargin: root.contentMargin
+                anchors.rightMargin: 0
+                anchors.topMargin: 0
+                anchors.bottomMargin: 0
                 text: parent.activeRow ? parent.activeRow.fullText : ""
                 color: root.foreground
                 font.family: root.fontFamily
@@ -386,11 +499,15 @@ Item {
               }
 
               Image {
-                visible: parent.activeRow && parent.activeRow.entryType === "image"
+                visible: parent.activeRow && parent.activeRow.previewImage
                 anchors.fill: parent
-                anchors.margins: Style.space(16)
+                anchors.leftMargin: root.contentMargin
+                anchors.rightMargin: 0
+                anchors.topMargin: 0
+                anchors.bottomMargin: 0
                 source: parent.activeRow ? parent.activeRow.previewImage : ""
                 fillMode: Image.PreserveAspectFit
+                verticalAlignment: Image.AlignTop
                 asynchronous: true
                 smooth: true
               }

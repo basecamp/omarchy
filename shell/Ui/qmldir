@@ -4,6 +4,7 @@ BarIndicator 1.0 BarIndicator.qml
 BarWidget 1.0 BarWidget.qml
 Button 1.0 Button.qml
 ButtonGroup 1.0 ButtonGroup.qml
+ConfirmDialog 1.0 ConfirmDialog.qml
 CursorSurface 1.0 CursorSurface.qml
 Dropdown 1.0 Dropdown.qml
 KeyboardPanel 1.0 KeyboardPanel.qml

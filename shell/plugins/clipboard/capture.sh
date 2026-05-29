@@ -8,6 +8,10 @@ mkdir -p "$IMAGE_DIR"
 
 types=$(wl-paste --list-types 2>/dev/null || true)
 
+if [[ ${CLIPBOARD_STATE:-} == "sensitive" ]] || grep -qx 'x-kde-passwordManagerHint' <<<"$types"; then
+  exit 0
+fi
+
 emit_image() {
   local mime="$1"
   local ext="$2"
@@ -29,7 +33,8 @@ emit_image() {
     mv "$tmp" "$file"
   fi
 
-  jq -cn --arg mime "$mime" --arg path "$file" '{type:"image", mime:$mime, path:$path}'
+  jq -cn --arg mime "$mime" --arg path "$file" --arg captured_at "$(date +'%A %H:%M')" \
+    '{type:"image", mime:$mime, path:$path, capturedAt:$captured_at}'
 }
 
 emit_image_stream() {
@@ -54,7 +59,8 @@ emit_image_stream() {
     mv "$tmp" "$file"
   fi
 
-  jq -cn --arg mime "$mime" --arg path "$file" '{type:"image", mime:$mime, path:$path}'
+  jq -cn --arg mime "$mime" --arg path "$file" --arg captured_at "$(date +'%A %H:%M')" \
+    '{type:"image", mime:$mime, path:$path, capturedAt:$captured_at}'
 }
 
 case "${OMARCHY_CLIPBOARD_WATCH_MIME:-}" in
