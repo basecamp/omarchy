@@ -34,9 +34,10 @@ Item {
   property int contentMargin: Style.spacing.panelPadding
   property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
   property int contentSpacing: Style.spacing.md
-  property int cardWidth: Math.min(Style.space(800), panel.width - Style.gapsOut * 2)
+  property int cardWidth: Math.min(Style.space(875), panel.width - Style.gapsOut * 2)
   property int cardHeight: Math.min(Style.space(600), panel.height - Style.gapsOut * 2)
   property int rowHeight: Math.max(Style.space(50), Style.font.body + Style.font.caption + Style.spacing.rowPaddingX * 2)
+  property int historyLimit: 300
 
   function open(payloadJson) {
     root.opened = true
@@ -71,14 +72,14 @@ Item {
   }
 
   function saveHistory() {
-    historyFile.setText(JSON.stringify(root.history.slice(0, 100), null, 2) + "\n")
+    historyFile.setText(JSON.stringify(root.history.slice(0, root.historyLimit), null, 2) + "\n")
   }
 
   function addClipboardEntry(entry) {
     var normalized = ClipboardHistory.normalizeEntry(entry)
     if (!normalized) return
 
-    root.history = ClipboardHistory.addEntry(root.history, normalized, 100)
+    root.history = ClipboardHistory.addEntry(root.history, normalized, root.historyLimit)
     root.saveHistory()
     if (root.opened) root.rebuildDisplay()
   }
@@ -112,7 +113,7 @@ Item {
     if (index < 0 || index >= displayModel.count) return
 
     var row = displayModel.get(index)
-    root.history = ClipboardHistory.removeEntryAt(root.history, row.index)
+    root.history = ClipboardHistory.removeEntryAt(root.history, row.historyIndex)
     root.saveHistory()
 
     if (displayModel.count <= 1) {
@@ -138,7 +139,7 @@ Item {
         previewImage: row.previewImage ? Util.fileUrl(row.previewImage) : "",
         path: row.path,
         mime: row.mime,
-        index: row.index
+        historyIndex: row.index
       })
     }
 
@@ -165,7 +166,7 @@ Item {
   function setFilter(nextFilter) {
     root.filterText = nextFilter
     root.selectedIndex = 0
-    root.cursorActive = false
+    root.cursorActive = true
     root.rebuildDisplay()
   }
 
@@ -187,7 +188,7 @@ Item {
     if (row.entryType === "image") {
       Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-file", row.mime, row.path])
     } else if (row.fullText) {
-      Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--shift-insert", "--history-index", String(row.index)])
+      Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--shift-insert", "--history-index", String(row.historyIndex)])
     }
   }
 
@@ -197,7 +198,7 @@ Item {
     if (row.entryType === "image") {
       Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-file", "--copy-only", row.mime, row.path])
     } else if (row.fullText) {
-      Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--copy-only", "--history-index", String(row.index)])
+      Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--copy-only", "--history-index", String(row.historyIndex)])
     }
   }
 
@@ -218,7 +219,7 @@ Item {
 
   Process {
     id: initProc
-    command: ["bash", "-c", "mkdir -p ~/.local/state/omarchy\nscript=$1\nfor pid in $(pgrep -x wl-paste || true); do\n  cmdline=$(tr '\\0' ' ' <\"/proc/$pid/cmdline\" 2>/dev/null || true)\n  if [[ $cmdline == *\"wl-paste --watch $script \"* || $cmdline == *\"wl-paste --type \"*\" --watch $script \"* ]]; then\n    kill \"$pid\" 2>/dev/null || true\n  fi\ndone", "clipboard-init", root.captureScript]
+    command: ["bash", "-c", "mkdir -p ~/.local/state/omarchy\nscript=$1\nfor pid in $(pgrep -x wl-paste || true); do\n  cmdline=$(tr '\\0' ' ' <\"/proc/$pid/cmdline\" 2>/dev/null || true)\n  if [[ $cmdline == *\"wl-paste --watch $script \"* || $cmdline == *\"wl-paste --type \"*\" --watch $script \"* || $cmdline == *\"/shell/plugins/clipboard/capture.sh\"* ]]; then\n    kill \"$pid\" 2>/dev/null || true\n  fi\ndone", "clipboard-init", root.captureScript]
     onExited: {
       currentProc.command = [root.captureScript]
       currentProc.running = true
@@ -372,84 +373,89 @@ Item {
 
           Row {
             anchors.fill: parent
-            spacing: root.contentSpacing
+            spacing: 0
 
-            ListView {
-              id: resultList
-              width: parent.width / 2 - root.contentSpacing / 2
+            Item {
+              width: parent.width / 2
               height: parent.height
-              model: displayModel
               clip: true
-              spacing: Style.space(4)
-              boundsBehavior: Flickable.StopAtBounds
 
-              delegate: Rectangle {
-                required property int index
-                required property string entryType
-                required property string previewText
-                required property string fullText
-                required property string previewImage
+              ListView {
+                id: resultList
+                anchors.fill: parent
+                anchors.rightMargin: root.contentMargin
+                model: displayModel
+                clip: true
+                spacing: Style.space(4)
+                boundsBehavior: Flickable.StopAtBounds
 
-                readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
+                delegate: Rectangle {
+                  required property int index
+                  required property string entryType
+                  required property string previewText
+                  required property string fullText
+                  required property string previewImage
 
-                width: ListView.view.width
-                height: root.rowHeight
-                radius: root.cornerRadius
-                color: hasCursor ? root.selectedBackground : "transparent"
-                border.width: 0
+                  readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
 
-                Row {
-                  anchors.fill: parent
-                  anchors.leftMargin: Style.space(12)
-                  anchors.rightMargin: Style.space(12)
-                  anchors.topMargin: Style.space(8)
-                  anchors.bottomMargin: Style.space(8)
-                  spacing: Style.space(10)
+                  width: ListView.view.width
+                  height: root.rowHeight
+                  radius: root.cornerRadius
+                  color: hasCursor ? root.selectedBackground : "transparent"
+                  border.width: 0
 
-                  Image {
-                    visible: parent.parent.entryType === "image"
-                    width: visible ? parent.height : 0
-                    height: parent.height
-                    source: parent.parent.previewImage
-                    fillMode: Image.PreserveAspectFit
-                    asynchronous: true
-                    smooth: true
+                  Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: Style.space(12)
+                    anchors.rightMargin: Style.space(12)
+                    anchors.topMargin: Style.space(8)
+                    anchors.bottomMargin: Style.space(8)
+                    spacing: Style.space(10)
+
+                    Image {
+                      visible: parent.parent.entryType === "image"
+                      width: visible ? parent.height : 0
+                      height: parent.height
+                      source: parent.parent.previewImage
+                      fillMode: Image.PreserveAspectFit
+                      asynchronous: true
+                      smooth: true
+                    }
+
+                    Text {
+                      width: parent.width - (parent.parent.entryType === "image" ? parent.height + parent.spacing : 0)
+                      height: parent.height
+                      text: parent.parent.previewText
+                      color: parent.parent.hasCursor ? root.selectedText : root.foreground
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.title
+                      opacity: parent.parent.entryType === "image" ? 0.72 : 1.0
+                      elide: Text.ElideRight
+                      wrapMode: Text.NoWrap
+                      verticalAlignment: Text.AlignVCenter
+                    }
                   }
 
-                  Text {
-                    width: parent.width - (parent.parent.entryType === "image" ? parent.height + parent.spacing : 0)
-                    height: parent.height
-                    text: parent.parent.previewText
-                    color: parent.parent.hasCursor ? root.selectedText : root.foreground
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.title
-                    font.italic: parent.parent.entryType === "image"
-                    opacity: parent.parent.entryType === "image" ? 0.72 : 1.0
-                    elide: Text.ElideRight
-                    wrapMode: Text.NoWrap
-                    verticalAlignment: Text.AlignVCenter
-                  }
-                }
-
-                MouseArea {
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onContainsMouseChanged: if (containsMouse) {
-                    root.cursorActive = true
-                    root.selectedIndex = index
-                  }
-                  onClicked: {
-                    root.cursorActive = true
-                    root.selectedIndex = index
-                    root.activateIndex(index)
+                  MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onContainsMouseChanged: if (containsMouse) {
+                      root.cursorActive = true
+                      root.selectedIndex = index
+                    }
+                    onClicked: {
+                      root.cursorActive = true
+                      root.selectedIndex = index
+                      root.activateIndex(index)
+                    }
                   }
                 }
               }
             }
 
             Item {
-              width: parent.width / 2 - root.contentSpacing / 2
+              width: parent.width / 2
               height: parent.height
               clip: true
 
@@ -466,7 +472,10 @@ Item {
               Text {
                 visible: parent.activeRow && parent.activeRow.entryType === "text"
                 anchors.fill: parent
-                anchors.margins: Style.space(16)
+                anchors.leftMargin: root.contentMargin
+                anchors.rightMargin: 0
+                anchors.topMargin: 0
+                anchors.bottomMargin: 0
                 text: parent.activeRow ? parent.activeRow.fullText : ""
                 color: root.foreground
                 font.family: root.fontFamily
@@ -479,7 +488,10 @@ Item {
               Image {
                 visible: parent.activeRow && parent.activeRow.entryType === "image"
                 anchors.fill: parent
-                anchors.margins: Style.space(16)
+                anchors.leftMargin: root.contentMargin
+                anchors.rightMargin: 0
+                anchors.topMargin: 0
+                anchors.bottomMargin: 0
                 source: parent.activeRow ? parent.activeRow.previewImage : ""
                 fillMode: Image.PreserveAspectFit
                 verticalAlignment: Image.AlignTop
