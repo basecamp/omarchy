@@ -31,9 +31,8 @@ BarIndicator {
     }
   }
 
-  onPressed: function(button) {
+  onPressed: function() {
     if (!root.bar) return
-    if (button === Qt.RightButton) root.bar.run("omarchy-voxtype-config")
-    else root.bar.run("omarchy-voxtype-model")
+    root.bar.run("omarchy-voxtype-config")
   }
 }

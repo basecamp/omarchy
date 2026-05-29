@@ -142,8 +142,8 @@ ShellRoot {
         root.injectBar(dictation)
         dictation.triggerPress(Qt.LeftButton)
         dictation.triggerPress(Qt.RightButton)
-        root.assertTrue(root.commandCount("omarchy-voxtype-model") === 1, "Dictation left click runs model command")
-        root.assertTrue(root.commandCount("omarchy-voxtype-config") === 1, "Dictation right click runs config command")
+        root.assertTrue(root.commandCount("omarchy-voxtype-config") === 2, "Dictation clicks run config command")
+        root.assertTrue(root.commandCount("omarchy-voxtype-model") === 0, "Dictation clicks do not run model command")
       }
 
       var stayAwake = root.createIndicator("StayAwake")
