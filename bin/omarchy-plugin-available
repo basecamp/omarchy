@@ -1,0 +1,98 @@
+#!/bin/bash
+
+# omarchy:summary=List plugins available across trusted sources and their install status
+# omarchy:group=plugin
+# omarchy:args=[--json] [--no-refresh]
+# omarchy:examples=omarchy plugin available | omarchy plugin available --json
+
+set -o pipefail
+
+PLUGINS_DIR="$HOME/.config/omarchy/plugins"
+
+fail() {
+  echo "omarchy-plugin-available: $*" >&2
+  exit 1
+}
+
+command -v jq >/dev/null 2>&1 || fail "jq is required"
+
+JSON=0
+NO_REFRESH=0
+while (($# > 0)); do
+  case "$1" in
+  --json) JSON=1; shift ;;
+  --no-refresh) NO_REFRESH=1; shift ;;
+  -h | --help)
+    cat <<USAGE
+Usage: omarchy plugin available [--json] [--no-refresh]
+
+Lists every plugin found across your trusted sources, with whether it is
+installed and whether an update is available. Add one with:
+  omarchy plugin add <plugin-id>
+USAGE
+    exit 0
+    ;;
+  *) fail "unknown option: $1" ;;
+  esac
+done
+
+if ((!NO_REFRESH)); then
+  omarchy-plugin-source refresh >/dev/null 2>&1 || true
+fi
+
+CATALOG=$(omarchy-plugin-scan)
+
+# Annotate each catalogue entry with a stable status token (available |
+# installed | update-available | local-newer, matching omarchy-plugin-update's
+# vocabulary) plus the installed version, by comparing the installed manifest
+# version (if any) against the upstream version. Entries are read as compact
+# JSON objects so an empty version field never shifts the parse.
+rows='[]'
+while IFS= read -r row; do
+  [[ -n $row ]] || continue
+  id=$(jq -r '.id' <<<"$row")
+  name=$(jq -r '.name' <<<"$row")
+  version=$(jq -r '.version' <<<"$row")
+  source=$(jq -r '.source' <<<"$row")
+
+  installed=""
+  [[ -f "$PLUGINS_DIR/$id/manifest.json" ]] && installed=$(jq -r '.version // ""' "$PLUGINS_DIR/$id/manifest.json" 2>/dev/null)
+  if [[ -z $installed ]]; then
+    status="available"
+  elif [[ $installed == "$version" ]]; then
+    status="installed"
+  elif [[ $(printf '%s\n%s\n' "$installed" "$version" | sort -V | tail -n1) == "$version" ]]; then
+    status="update-available"
+  else
+    status="local-newer"
+  fi
+
+  entry=$(jq -n --arg id "$id" --arg name "$name" --arg version "$version" \
+    --arg installed "$installed" --arg source "$source" --arg status "$status" \
+    '{id:$id, name:$name, version:$version, installedVersion:$installed, source:$source, status:$status}')
+  rows=$(jq --argjson e "$entry" '. + [$e]' <<<"$rows")
+done < <(jq -c '.[] | {id: .manifest.id, name: (.manifest.name // .manifest.id), version: (.manifest.version // ""), source: .sourceId}' <<<"$CATALOG")
+
+if ((JSON)); then
+  echo "$rows"
+  exit 0
+fi
+
+if [[ $(jq 'length' <<<"$rows") -eq 0 ]]; then
+  echo "No plugins available. Add a source with: omarchy plugin source add <git-url>"
+  exit 0
+fi
+
+# Render the human status from the token + versions (ASCII arrow, matching update).
+jq -r '.[] | [.id, .name, .version, .source, .status, .installedVersion] | @tsv' <<<"$rows" |
+  awk -F '\t' '
+    function human(st, inst, ver) {
+      if (st == "update-available") return "update (" inst " -> " ver ")"
+      if (st == "local-newer") return "local-newer (" inst ")"
+      return st
+    }
+    BEGIN { printf "%-26s %-26s %-10s %-30s %s\n", "ID", "NAME", "VERSION", "SOURCE", "STATUS" }
+    { printf "%-26s %-26s %-10s %-30s %s\n", $1, $2, ("v" ($3=="" ? "?" : $3)), $4, human($5, $6, $3) }'
+
+echo
+echo "Add with: omarchy plugin add <id>"
