@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# omarchy:summary=Insert an emoji into the focused application
+# omarchy:group=menu
+# omarchy:args=<emoji>
+# omarchy:hidden=true
+
+emoji="${1:-}"
+emoji_ignore_file="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/omarchy-emoji-insert-ignore"
+copy_pid=""
+
+[[ -n $emoji ]] || exit
+
+mkdir -p "${emoji_ignore_file%/*}"
+printf '%s' "$emoji" >"$emoji_ignore_file"
+printf '%s' "$emoji" | wl-copy --type text/plain --sensitive --foreground &
+copy_pid=$!
+
+sleep 0.15
+wtype -M shift -k Insert -m shift 2>/dev/null || true
+sleep 0.2
+
+kill "$copy_pid" 2>/dev/null || true
