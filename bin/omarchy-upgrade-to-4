@@ -1334,6 +1334,47 @@ copy_always_config_defaults() {
   done
 }
 
+repair_chromium_copy_url_extension_flags() {
+  local file
+  local -a flag_files=(
+    "$HOME/.config/chromium-flags.conf"
+    "$HOME/.config/chrome-flags.conf"
+    "$HOME/.config/google-chrome-flags.conf"
+    "$HOME/.config/google-chrome-stable-flags.conf"
+    "$HOME/.config/brave-flags.conf"
+    "$HOME/.config/brave-browser-flags.conf"
+    "$HOME/.config/brave-origin-beta-flags.conf"
+    "$HOME/.config/microsoft-edge-flags.conf"
+    "$HOME/.config/microsoft-edge-stable-flags.conf"
+    "$HOME/.config/opera-flags.conf"
+    "$HOME/.config/vivaldi-flags.conf"
+    "$HOME/.config/helium-flags.conf"
+  )
+
+  for file in "${flag_files[@]}"; do
+    [[ -f $file ]] || continue
+    grep -qF '.local/share/omarchy/default/chromium/extensions/copy-url' "$file" || continue
+
+    backup_config_file "$file"
+    python3 - "$file" <<'CHROMIUM_FLAGS_PATCH_PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+new_path = "/usr/share/omarchy/default/chromium/extensions/copy-url"
+legacy_paths = [
+    "~/.local/share/omarchy/default/chromium/extensions/copy-url",
+    "$HOME/.local/share/omarchy/default/chromium/extensions/copy-url",
+    str(Path.home() / ".local/share/omarchy/default/chromium/extensions/copy-url"),
+]
+text = path.read_text()
+for legacy_path in legacy_paths:
+    text = text.replace(legacy_path, new_path)
+path.write_text(text)
+CHROMIUM_FLAGS_PATCH_PY
+  done
+}
+
 is_known_bashrc_default() {
   local file="$1" hash
   [[ -f $file ]] || return 1
@@ -1410,6 +1451,7 @@ done
 refresh_known_config_defaults
 copy_missing_config_defaults "$root/config" "$HOME/.config"
 copy_always_config_defaults
+repair_chromium_copy_url_extension_flags
 
 for rel in "${retired_config_files[@]}"; do
   file="$HOME/.config/$rel"
@@ -1434,7 +1476,7 @@ done
 install_bash_startup
 
 unset rel file backup retired_config_files always_copy_config_files uwsm_env known_config_default_hashes_by_key
-unset -f file_sha256 known_config_default_hashes default_hash_paths is_known_default_hash backup_config_file migrate_uwsm_env_customizations is_retired_config_file copy_config_default copy_missing_config_defaults refresh_known_config_defaults copy_always_config_defaults is_known_bashrc_default install_bash_startup
+unset -f file_sha256 known_config_default_hashes default_hash_paths is_known_default_hash backup_config_file migrate_uwsm_env_customizations is_retired_config_file copy_config_default copy_missing_config_defaults refresh_known_config_defaults copy_always_config_defaults repair_chromium_copy_url_extension_flags is_known_bashrc_default install_bash_startup
 
 mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills" "$HOME/.pi/agent/skills"
 if [[ -d $root/default/omarchy-skill ]]; then
