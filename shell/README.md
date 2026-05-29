@@ -91,14 +91,50 @@ The full schema lives in `services/PluginRegistry.qml`.
 
 ## Installing a third-party plugin
 
-1. Drop the plugin into `~/.config/omarchy/plugins/<plugin-id>/`.
-   The directory must contain a `manifest.json` plus the QML files
-   referenced from its `entryPoints`.
-2. `omarchy plugin rescan`.
-3. Enable the plugin with `omarchy plugin enable <id>`.
-4. If it's a `bar-widget`, place it with `omarchy plugin bar add <id>`.
+Plugins are distributed as **source repos**: a git repo where every top-level
+folder is one plugin with its own `manifest.json`. Trust a repo, then install
+individual plugins from it. Everything lands in `~/.config/omarchy/plugins/<id>/`.
 
-The lower-level IPC equivalents are still available via `omarchy-shell shell rescanPlugins`,
+```bash
+omarchy plugin source add https://github.com/owner/omarchy-plugins.git
+omarchy plugin available                 # list what your sources offer
+omarchy plugin add some-widget           # validate, copy, offer to enable
+omarchy plugin update some-widget        # shows a diff of changes first
+omarchy plugin update --all
+omarchy plugin remove some-widget
+```
+
+> ⚠️ **Plugins run as unsandboxed code inside `omarchy-shell`.** Adding a source
+> and installing both warn you and let you review the manifest, the files, and
+> (on update) a diff of the changes before anything is copied or enabled. Only
+> trust sources and plugins whose code you are willing to run.
+
+Each command is **interactive** when run bare in a terminal (gum/fzf pickers,
+confirmation, a diff to review) and fully **non-interactive** when given
+arguments. Pass `--yes` to skip every prompt — this is the path for scripts and
+AI agents:
+
+```bash
+omarchy plugin source add <url> --as acme --yes
+omarchy plugin add acme-weather --from acme --enable --yes
+omarchy plugin update --all --yes
+```
+
+Sources live in `~/.config/omarchy/plugins/sources.json`; their clones are
+cached under `~/.cache/omarchy/plugin-sources/`. The installer never runs
+plugin code, install hooks, or sudo — it only copies files and toggles enabled
+state over shell IPC.
+
+### Installing by hand
+
+You can still drop a plugin in without a source:
+
+1. Put it in `~/.config/omarchy/plugins/<plugin-id>/` with a `manifest.json`
+   plus the QML referenced from its `entryPoints`.
+2. `omarchy plugin rescan`.
+3. `omarchy plugin enable <id>` (bar widgets also need `omarchy plugin bar add <id>`).
+
+The lower-level IPC equivalents remain available via `omarchy-shell shell rescanPlugins`,
 `omarchy-shell shell setPluginEnabled <id> true`, and `omarchy-shell shell listPlugins`.
 The `omarchy plugin` command wraps those calls and can also edit the persisted
 bar layout in `shell.json`.

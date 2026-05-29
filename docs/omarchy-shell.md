@@ -39,14 +39,28 @@ Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegis
 
 ## Installing a third-party plugin
 
-1. Drop into `~/.config/omarchy/plugins/<id>/` with a `manifest.json`
-   plus the QML referenced from `entryPoints`.
-2. `omarchy plugin rescan`
-3. `omarchy plugin enable <id>`
-4. Bar widgets also need adding to a section with `omarchy plugin bar add <id>`.
+Plugins come from **source repos** — a git repo where every top-level folder is
+a plugin with its own `manifest.json`. Trust a repo, then install from it:
 
-The lower-level IPC methods remain available through `omarchy-shell shell ...`
-for callers that need to talk directly to the running shell.
+```bash
+omarchy plugin source add https://github.com/owner/omarchy-plugins.git
+omarchy plugin available             # what your sources offer
+omarchy plugin add some-widget       # validate, copy, offer to enable
+omarchy plugin update --all          # shows a diff before applying
+omarchy plugin remove some-widget
+```
+
+Plugins run as **unsandboxed code** inside `omarchy-shell`. Adding a source and
+installing both warn you and let you review the manifest, the files, and (on
+update) a diff before anything is copied or enabled. Commands prompt when run
+bare in a terminal and run unattended when given arguments — add `--yes` to skip
+every prompt (the path for scripts and agents).
+
+Sources are recorded in `~/.config/omarchy/plugins/sources.json` and cloned into
+`~/.cache/omarchy/plugin-sources/`. You can still install by hand: drop a plugin
+into `~/.config/omarchy/plugins/<id>/`, run `omarchy plugin rescan`, then
+`omarchy plugin enable <id>` (bar widgets also need `omarchy plugin bar add <id>`).
+The lower-level IPC methods remain available through `omarchy-shell shell ...`.
 
 ## IPC
 

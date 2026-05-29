@@ -22,6 +22,19 @@ Plugin commands:
   edit [id] [--with <ai|editor>] [--prompt <prompt>]
                                         Open a user plugin for editing
 
+Add from sources (see 'omarchy plugin <command> --help'):
+  source <add|list|remove|refresh>      Manage trusted plugin source repos
+  available                             List plugins offered by your sources
+  add [id] [--from <src>] [--enable] [--review] [--yes]
+                                        Add a plugin from a trusted source
+  update [id] [--all] [--review] [--yes]
+                                        Update added plugins (shows a diff)
+  remove [id] [--yes]                   Remove an installed plugin
+  validate <plugin-folder>              Check a plugin's manifest (for authors)
+
+  Source/add commands run their own binaries; the rest are handled here.
+  Plugins are unsandboxed code — review what you add and enable.
+
 Clone options:
   --name <name>                         Display name for the clone
   --with <ai|editor>                    Open the clone with AI or editor
@@ -574,10 +587,34 @@ PY
   omarchy-shell -q shell rescanPlugins >/dev/null 2>&1 || true
 }
 
+# Canonical ids of every known bar widget, read from manifests on disk
+# (first-party + user). This is the same set `omarchy plugin list` reports, but
+# read straight from disk so it works with the shell down and never races an
+# in-flight rescan.
+bar_widget_ids() {
+  require_command jq
+  first_party_manifest_paths | while IFS= read -r manifest; do
+    jq -r 'select((.kinds // []) | index("bar-widget")) | .id' "$manifest" 2>/dev/null
+  done
+  local user_dir="$HOME/.config/omarchy/plugins"
+  if [[ -d $user_dir ]]; then
+    find "$user_dir" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) 2>/dev/null | while IFS= read -r dir; do
+      [[ -f $dir/manifest.json ]] || continue
+      jq -r 'select((.kinds // []) | index("bar-widget")) | .id' "$dir/manifest.json" 2>/dev/null
+    done
+  fi
+}
+
 bar_add() {
   local id="${1:-}"
   [[ -n $id ]] || fail "bar add requires a widget id"
   shift
+  id=$(canonical_widget_id "$id")
+  # Only let real bar widgets into the layout — a typo'd or non-widget id just
+  # renders as a dead entry (this is how a stray "--help" once got in).
+  if ! bar_widget_ids | grep -qxF -- "$id"; then
+    fail "$id is not a known bar widget; run 'omarchy plugin list' to see valid ids"
+  fi
   mutate_bar add --id "$id" "$@"
   echo "Added $id to the bar"
 }
@@ -1192,6 +1229,15 @@ edit)
 bar | widget | widgets)
   shift
   bar_command "$@"
+  ;;
+source | available | add | update | remove | validate)
+  # These live in sibling binaries (omarchy-plugin-<command>). The `omarchy`
+  # dispatcher normally routes straight to them; delegate here too so invoking
+  # this base binary directly matches the commands its --help advertises.
+  shift
+  sibling="$(dirname -- "${BASH_SOURCE[0]}")/omarchy-plugin-$command"
+  [[ -x $sibling ]] || fail "missing helper: omarchy-plugin-$command"
+  exec "$sibling" "$@"
   ;;
 -h | --help | help | "")
   usage

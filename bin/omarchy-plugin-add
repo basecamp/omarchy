@@ -1,0 +1,297 @@
+#!/bin/bash
+
+# omarchy:summary=Add an Omarchy shell plugin from a trusted source
+# omarchy:group=plugin
+# omarchy:args=[plugin-id] [--from <source-id>] [--enable] [--no-enable] [--review] [--no-refresh] [--yes]
+# omarchy:examples=omarchy plugin add | omarchy plugin add orbit --enable | omarchy plugin add model-usage --from owner-plugins --yes
+
+# Copies a plugin folder out of a trusted source's local clone into
+# ~/.config/omarchy/plugins/<id>/. It never runs plugin code, never runs install
+# hooks, and never uses sudo — it only copies files, validates the manifest, and
+# toggles enabled state over shell IPC. Reviewing and trusting the code is the
+# user's call; --yes opts out of every prompt for scripts/agents.
+
+set -o pipefail
+
+PLUGINS_DIR="$HOME/.config/omarchy/plugins"
+OMARCHY_PATH="${OMARCHY_PATH:-$HOME/.local/share/omarchy}"
+
+fail() {
+  echo "omarchy-plugin-add: $*" >&2
+  exit 1
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
+}
+
+interactive() {
+  [[ -t 0 && -t 1 ]]
+}
+
+PLUGIN_ID=""
+FROM_SOURCE=""
+ENABLE_AFTER="" # "", "true", or "false"
+DO_REVIEW=0
+NO_REFRESH=0
+ASSUME_YES=0
+
+while (($# > 0)); do
+  case "$1" in
+  --from) FROM_SOURCE="${2:-}"; shift 2 ;;
+  --enable) ENABLE_AFTER=true; shift ;;
+  --no-enable) ENABLE_AFTER=false; shift ;;
+  --review) DO_REVIEW=1; shift ;;
+  --no-refresh) NO_REFRESH=1; shift ;;
+  --yes | -y) ASSUME_YES=1; shift ;;
+  -h | --help)
+    cat <<USAGE
+Usage: omarchy plugin add [plugin-id] [--from <source-id>] [--enable] [--no-enable] [--review] [--no-refresh] [--yes]
+
+Adds a plugin from a trusted source into ~/.config/omarchy/plugins/<id>/.
+Without a plugin-id, an interactive picker lists everything available.
+  --from       disambiguate when the same id exists in multiple sources
+  --enable     enable the plugin afterward (bar widgets land in the bar)
+  --no-enable  add but leave disabled
+  --review     open the plugin's files before adding (always in a TTY)
+  --no-refresh use the cached clones as-is, skip the network refresh
+  --yes        skip every confirmation (review, add, enable)
+USAGE
+    exit 0
+    ;;
+  -*) fail "unknown option: $1" ;;
+  *)
+    [[ -z $PLUGIN_ID ]] || fail "unexpected argument: $1"
+    PLUGIN_ID="$1"; shift ;;
+  esac
+done
+
+require_command jq
+
+confirm() {
+  local prompt="$1"
+  ((ASSUME_YES)) && return 0
+  if command -v gum >/dev/null 2>&1 && interactive; then
+    gum confirm "$prompt"; return
+  fi
+  if interactive; then
+    local reply; read -r -p "$prompt [y/N] " reply; [[ $reply == [yY]* ]]; return
+  fi
+  fail "refusing to add without confirmation; pass --yes"
+}
+
+if ((!NO_REFRESH)); then
+  omarchy-plugin-source refresh >/dev/null 2>&1 || true
+fi
+
+CATALOG=$(omarchy-plugin-scan)
+if [[ $(jq 'length' <<<"$CATALOG") -eq 0 ]]; then
+  fail "no plugins available; add a source with: omarchy plugin source add <git-url>"
+fi
+
+# ---------------------------------------------------------------- resolve id
+
+if [[ -z $PLUGIN_ID ]]; then
+  interactive || fail "a plugin-id is required (try: omarchy plugin available)"
+  choices=$(jq -r '.[] | "\(.manifest.id)\t\(.manifest.name // .manifest.id)\t\(.manifest.version // "?")\t\(.sourceId)"' <<<"$CATALOG")
+  rows=$(awk -F '\t' '{ printf "%-26s  %-26s  v%-8s  [%s]\n", $1, $2, $3, $4 }' <<<"$choices")
+  if command -v gum >/dev/null 2>&1; then
+    pick=$(gum choose --header="Add which plugin?" <<<"$rows") || fail "cancelled"
+  elif command -v fzf >/dev/null 2>&1; then
+    pick=$(fzf --prompt "Add which plugin > " <<<"$rows") || fail "cancelled"
+  else
+    fail "a plugin-id is required (gum or fzf needed for an interactive picker)"
+  fi
+  [[ -n $pick ]] || fail "nothing selected"
+  PLUGIN_ID=$(awk '{print $1}' <<<"$pick")
+fi
+
+if [[ -n $FROM_SOURCE ]]; then
+  matches=$(jq --arg id "$PLUGIN_ID" --arg src "$FROM_SOURCE" '[.[] | select(.manifest.id == $id and .sourceId == $src)]' <<<"$CATALOG")
+else
+  matches=$(jq --arg id "$PLUGIN_ID" '[.[] | select(.manifest.id == $id)]' <<<"$CATALOG")
+fi
+
+match_count=$(jq 'length' <<<"$matches")
+if ((match_count == 0)); then
+  if [[ -n $FROM_SOURCE ]]; then
+    fail "no plugin '$PLUGIN_ID' in source '$FROM_SOURCE'"
+  fi
+  fail "no plugin '$PLUGIN_ID' in any configured source (try: omarchy plugin available)"
+fi
+if ((match_count > 1)); then
+  echo "omarchy-plugin-add: '$PLUGIN_ID' is available from multiple sources:" >&2
+  jq -r '.[] | "  - " + .sourceId' <<<"$matches" >&2
+  fail "pick one with: --from <source-id>"
+fi
+
+entry=$(jq -c '.[0]' <<<"$matches")
+src_id=$(jq -r '.sourceId' <<<"$entry")
+src_url=$(jq -r '.sourceUrl' <<<"$entry")
+src_path=$(jq -r '.path' <<<"$entry")
+m_id=$(jq -r '.manifest.id' <<<"$entry")
+m_name=$(jq -r '.manifest.name // .manifest.id' <<<"$entry")
+m_version=$(jq -r '.manifest.version // "?"' <<<"$entry")
+m_author=$(jq -r '.manifest.author // ""' <<<"$entry")
+m_license=$(jq -r '.manifest.license // ""' <<<"$entry")
+m_desc=$(jq -r '.manifest.description // ""' <<<"$entry")
+m_kinds=$(jq -r '(.manifest.kinds // []) | join(", ")' <<<"$entry")
+
+# ---------------------------------------------------------------- validate
+
+omarchy-plugin-validate "$src_path" || fail "refusing to add: validation failed"
+
+target="$PLUGINS_DIR/$m_id"
+replacing=0
+target_is_link=0
+if [[ -L $target ]]; then
+  target_is_link=1
+  replacing=1
+elif [[ -d $target ]]; then
+  replacing=1
+fi
+
+# Soft warning: a third-party id that matches a built-in's alias installs as a
+# separate widget rather than replacing the built-in.
+alias_owner=""
+while IFS= read -r fp_manifest; do
+  [[ -f $fp_manifest ]] || continue
+  if jq -e --arg id "$m_id" '((.barWidget.aliases // []) | index($id)) != null' "$fp_manifest" >/dev/null 2>&1; then
+    alias_owner=$(jq -r '.id' "$fp_manifest")
+    break
+  fi
+done < <(find "$OMARCHY_PATH/shell/plugins" -type f \( -name manifest.json -o -name '*.manifest.json' \) 2>/dev/null)
+
+# Always surface an alias collision, even under --yes, since it changes what the
+# added plugin actually shadows.
+if [[ -n $alias_owner ]]; then
+  echo "Note: '$m_id' is also an alias of the built-in $alias_owner; it is added as a separate plugin and does not replace the built-in." >&2
+fi
+
+# ---------------------------------------------------------------- summary
+
+print_summary() {
+  cat <<INFO
+
+  Plugin:    $m_name ($m_id)
+  Version:   $m_version${m_author:+
+  Author:    $m_author}${m_license:+
+  License:   $m_license}
+  Kinds:     $m_kinds
+  Source:    $src_id ($src_url)${m_desc:+
+  About:     $m_desc}
+INFO
+  if ((target_is_link)); then
+    echo "  Target:    $target (REPLACING a symlink -> $(readlink "$target"))"
+  elif ((replacing)); then
+    echo "  Target:    $target (REPLACING existing install)"
+  else
+    echo "  Target:    $target"
+  fi
+  echo
+  echo "  Plugins run as unsandboxed code inside omarchy-shell. Review before enabling."
+  echo
+}
+
+review_files() {
+  echo "Files in $m_id:"
+  find "$src_path" -type f -printf '%P\n' 2>/dev/null | sort | sed 's/^/  /'
+  echo
+  # Only spawn an editor in a real terminal; a headless run just prints the path
+  # so it never launches a detached window.
+  if interactive && command -v omarchy-launch-editor >/dev/null 2>&1; then
+    omarchy-launch-editor "$src_path"
+  else
+    echo "Source folder: $src_path"
+  fi
+}
+
+if ((!ASSUME_YES)); then
+  print_summary
+
+  if ((DO_REVIEW)); then
+    review_files
+    confirm "Add $m_id $m_version now?" || fail "aborted"
+  elif interactive && command -v gum >/dev/null 2>&1; then
+    action=$(gum choose --header="Add $m_id $m_version?" "Add" "Review files first" "Cancel") || fail "aborted"
+    case "$action" in
+    "Review files first")
+      review_files
+      confirm "Add $m_id $m_version now?" || fail "aborted"
+      ;;
+    Add) ;;
+    *) fail "aborted" ;;
+    esac
+  else
+    confirm "Add $m_id $m_version?" || fail "aborted"
+  fi
+fi
+
+# ---------------------------------------------------------------- install files
+
+mkdir -p "$PLUGINS_DIR"
+
+stage="$PLUGINS_DIR/.${m_id}.tmp.$$"
+rm -rf "$stage"
+if ! cp -a "$src_path/." "$stage/"; then
+  rm -rf "$stage"
+  fail "failed to stage plugin into $stage"
+fi
+
+backup=""
+if ((replacing)); then
+  if ((target_is_link)); then
+    # Don't drag a (possibly large) dev-symlink target into a backup; just drop
+    # the link. The real files it points at are untouched.
+    rm -f "$target"
+  else
+    base="$PLUGINS_DIR/.${m_id}.bak.$(date -u +%Y%m%d%H%M%S)"
+    backup="$base"
+    n=1
+    while [[ -e $backup ]]; do backup="${base}-${n}"; n=$((n + 1)); done
+    if ! mv "$target" "$backup"; then
+      rm -rf "$stage"
+      fail "failed to back up existing $target"
+    fi
+  fi
+fi
+
+if ! mv "$stage" "$target"; then
+  rm -rf "$stage"
+  [[ -n $backup && -d $backup ]] && mv "$backup" "$target"
+  fail "failed to move staged plugin into place"
+fi
+
+echo "Added $m_id $m_version into $target"
+[[ -n $backup ]] && echo "Previous version backed up to: $backup"
+
+omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+
+# ---------------------------------------------------------------- enable
+
+if [[ -z $ENABLE_AFTER ]]; then
+  if ((ASSUME_YES)) || ! interactive; then
+    ENABLE_AFTER=false
+  elif confirm "Enable '$m_id' now?"; then
+    ENABLE_AFTER=true
+  else
+    ENABLE_AFTER=false
+  fi
+fi
+
+if [[ $ENABLE_AFTER == true ]]; then
+  if omarchy-shell shell setPluginEnabled "$m_id" true >/dev/null 2>&1; then
+    echo "Enabled $m_id."
+    if [[ $m_kinds == *bar-widget* ]]; then
+      echo "It was added to the bar; arrange it with: omarchy plugin bar move $m_id --section <left|center|right>"
+    fi
+  else
+    echo "Could not enable $m_id over IPC (is omarchy-shell running?). Enable later with: omarchy plugin enable $m_id" >&2
+  fi
+else
+  echo "Enable it later with: omarchy plugin enable $m_id"
+fi
+
+# Reaching here means the files are in place; never let a falsy trailing test
+# leak a non-zero status to callers like `omarchy plugin update`.
+exit 0
