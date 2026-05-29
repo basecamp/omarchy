@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# omarchy:summary=Compatibility wrapper for omarchy-migrate-notify.
+# omarchy:hidden=true
+
+exec omarchy-migrate-notify "$@"

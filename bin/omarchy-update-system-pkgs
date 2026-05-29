@@ -10,7 +10,7 @@ echo -e "\e[32m\nUpdate system packages\e[0m"
 # Transition --overwrite: previous script-installed Omarchy wrote these paths
 # as unowned files; pacman would refuse the omarchy-settings upgrade on first
 # encounter. Drop each entry once the transition release is the baseline.
-sudo pacman -Syyu --noconfirm \
+sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm \
   --overwrite '/etc/docker/daemon.json' \
   --overwrite '/etc/gnupg/dirmngr.conf' \
   --overwrite '/etc/modprobe.d/omarchy-usb-autosuspend.conf' \

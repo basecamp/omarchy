@@ -177,7 +177,10 @@ assert_output_contains "theme set help names binary" "$output" "omarchy-theme-se
 
 output=$(timeout 5 "$CLI" update --help)
 assert_output_contains "mutating command help does not execute target" "$output" "omarchy-update"
-assert_output_contains "root command help shows related child commands" "$output" "omarchy update perform"
+if [[ $output == *"omarchy update perform"* ]]; then
+  fail "hidden update perform compatibility wrapper is not shown"
+fi
+pass "hidden update perform compatibility wrapper is not shown"
 
 output=$("$CLI" screenshot --help)
 assert_output_contains "root alias resolves to command help" "$output" "omarchy-capture-screenshot"

@@ -1,12 +1,29 @@
 #!/bin/bash
 
 # omarchy:summary=Create a new Omarchy migration in the current source tree.
+# omarchy:args=<system|user> [--no-edit]
 
 set -euo pipefail
 
+scope="${1:-}"
+case "$scope" in
+  system|user)
+    shift
+    ;;
+  -h|--help|"")
+    echo "Usage: omarchy-dev-add-migration <system|user> [--no-edit]"
+    exit 0
+    ;;
+  *)
+    echo "Unknown migration scope: $scope" >&2
+    echo "Usage: omarchy-dev-add-migration <system|user> [--no-edit]" >&2
+    exit 1
+    ;;
+esac
+
 cd "${OMARCHY_PATH:-$(pwd)}"
-mkdir -p migrations
-migration_file="migrations/$(git log -1 --format=%cd --date=unix).sh"
+mkdir -p "migrations/$scope"
+migration_file="migrations/$scope/$(git log -1 --format=%cd --date=unix).sh"
 touch "$migration_file"
 
 if [[ ${1:-} != "--no-edit" ]]; then

@@ -14,4 +14,5 @@ set -euo pipefail
 systemctl --user enable --now \
   bt-agent.service \
   omarchy-recover-internal-monitor.service \
-  omarchy-sleep-lock.service
+  omarchy-sleep-lock.service \
+  omarchy-update-user-notify.path

@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch for Omarchy user migrations
+
+[Path]
+PathExistsGlob=/usr/share/omarchy/migrations/user/*.sh
+PathModified=/usr/share/omarchy/migrations/user
+Unit=omarchy-update-user-notify.service
+
+[Install]
+WantedBy=graphical-session.target
