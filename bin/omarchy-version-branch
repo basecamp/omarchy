@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# omarchy:summary=Print the active Omarchy dev-link git branch
+# omarchy:hidden=true
+
+omarchy_path=${OMARCHY_PATH:-/usr/share/omarchy}
+omarchy_path=${omarchy_path%/}
+
+[[ $omarchy_path != "/usr/share/omarchy" ]] || exit 1
+
+branch=$(git -C "$omarchy_path" branch --show-current 2>/dev/null || true)
+if [[ -z $branch ]]; then
+  hash=$(git -C "$omarchy_path" rev-parse --short HEAD 2>/dev/null || true)
+  [[ -n $hash ]] || exit 1
+  branch="detached@$hash"
+fi
+
+echo "$branch"
