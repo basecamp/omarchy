@@ -49,7 +49,7 @@ JS
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-mkdir -p "$TMPDIR/bin" "$TMPDIR/runtime"
+mkdir -p "$TMPDIR/bin"
 
 cat >"$TMPDIR/bin/wl-copy" <<'SH'
 #!/bin/bash
@@ -76,15 +76,12 @@ SH
 chmod +x "$TMPDIR/bin/wl-copy" "$TMPDIR/bin/wtype" "$TMPDIR/bin/sleep"
 
 WL_COPY_OUT="$TMPDIR/copy" WL_COPY_EMOJI_OUT="$TMPDIR/emoji" WTYPE_OUT="$TMPDIR/wtype" PATH="$TMPDIR/bin:$PATH" \
-  XDG_RUNTIME_DIR="$TMPDIR/runtime" "$ROOT/bin/omarchy-menu-emoji-insert" "😀"
+  "$ROOT/bin/omarchy-menu-emoji-insert" "😀"
 
 [[ $(<"$TMPDIR/emoji") == "😀" ]] || fail "emoji insert helper copies emoji transiently"
 pass "emoji insert helper copies emoji transiently"
 
-[[ $(<"$TMPDIR/runtime/omarchy-emoji-insert-ignore") == "😀" ]] || fail "emoji insert helper marks transient emoji for history ignore"
-pass "emoji insert helper marks transient emoji for history ignore"
-
-[[ $(<"$TMPDIR/emoji.args") == "--type text/plain --sensitive --foreground" ]] || fail "emoji insert helper serves transient clipboard in foreground"
+[[ $(<"$TMPDIR/emoji.args") == "--type text/plain --sensitive --foreground" ]] || fail "emoji insert helper serves sensitive transient clipboard in foreground"
 pass "emoji insert helper serves transient clipboard in foreground"
 
 [[ $(<"$TMPDIR/wtype") == "-M shift -k Insert -m shift" ]] || fail "emoji insert helper pastes with shift insert"

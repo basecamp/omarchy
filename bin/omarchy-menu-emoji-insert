@@ -6,13 +6,10 @@
 # omarchy:hidden=true
 
 emoji="${1:-}"
-emoji_ignore_file="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/omarchy-emoji-insert-ignore"
 copy_pid=""
 
 [[ -n $emoji ]] || exit
 
-mkdir -p "${emoji_ignore_file%/*}"
-printf '%s' "$emoji" >"$emoji_ignore_file"
 printf '%s' "$emoji" | wl-copy --type text/plain --sensitive --foreground &
 copy_pid=$!
 
