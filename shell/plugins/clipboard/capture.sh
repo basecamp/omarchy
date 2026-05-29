@@ -4,27 +4,13 @@ set -o pipefail
 
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
 IMAGE_DIR="$STATE_DIR/clipboard-images"
-EMOJI_IGNORE_FILE="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/omarchy-emoji-insert-ignore"
 mkdir -p "$IMAGE_DIR"
 
-should_ignore_next_copy() {
-  local marker_mtime=0
-
-  [[ -f $EMOJI_IGNORE_FILE ]] || return 1
-
-  marker_mtime=$(stat -c %Y "$EMOJI_IGNORE_FILE" 2>/dev/null || printf '0')
-  if (( $(date +%s) - marker_mtime > 5 )); then
-    rm -f "$EMOJI_IGNORE_FILE"
-    return 1
-  fi
-
-  rm -f "$EMOJI_IGNORE_FILE"
-  return 0
-}
-
-should_ignore_next_copy && exit 0
-
 types=$(wl-paste --list-types 2>/dev/null || true)
+
+if [[ ${CLIPBOARD_STATE:-} == "sensitive" ]] || grep -qx 'x-kde-passwordManagerHint' <<<"$types"; then
+  exit 0
+fi
 
 emit_image() {
   local mime="$1"

@@ -138,7 +138,7 @@ SH
 cat >"$TMPDIR/bin/wl-paste" <<'SH'
 #!/bin/bash
 if [[ $1 == "--list-types" ]]; then
-  printf 'text/plain\n'
+  printf '%b' "${WL_PASTE_TYPES:-text/plain\n}"
 elif [[ $1 == "--type" && $2 == "text" ]]; then
   printf '%s' "${WL_PASTE_TEXT:-terminal copy}"
 fi
@@ -167,17 +167,17 @@ SH
 
 chmod +x "$TMPDIR/bin/wl-copy" "$TMPDIR/bin/wl-paste" "$TMPDIR/bin/wtype" "$TMPDIR/bin/omarchy-launch-browser" "$TMPDIR/bin/omarchy-launch-editor" "$TMPDIR/bin/satty"
 
+capture_output=$(XDG_RUNTIME_DIR="$TMPDIR" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
+[[ $capture_output == '{"type":"text","text":"terminal copy"}' ]] || fail "clipboard capture records normal text events"
+pass "clipboard capture records normal text events"
+
 capture_output=$(CLIPBOARD_STATE=sensitive XDG_RUNTIME_DIR="$TMPDIR" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
-[[ $capture_output == '{"type":"text","text":"terminal copy"}' ]] || fail "clipboard capture records sensitive text events"
-pass "clipboard capture records sensitive text events"
+[[ -z $capture_output ]] || fail "clipboard capture ignores sensitive clipboard events"
+pass "clipboard capture ignores sensitive clipboard events"
 
-printf '😀' >"$TMPDIR/omarchy-emoji-insert-ignore"
-capture_output=$(WL_PASTE_TEXT="😀" XDG_RUNTIME_DIR="$TMPDIR" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
-[[ -z $capture_output ]] || fail "clipboard capture ignores transient emoji insert"
-pass "clipboard capture ignores transient emoji insert"
-
-[[ ! -e "$TMPDIR/omarchy-emoji-insert-ignore" ]] || fail "clipboard capture consumes transient emoji marker"
-pass "clipboard capture consumes transient emoji marker"
+capture_output=$(WL_PASTE_TYPES="text/plain\nx-kde-passwordManagerHint\n" XDG_RUNTIME_DIR="$TMPDIR" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
+[[ -z $capture_output ]] || fail "clipboard capture ignores password manager hint"
+pass "clipboard capture ignores password manager hint"
 
 jq -n --arg text "$(printf 'large block line 1\nlarge block line 2\n')" '[{type:"text", text:"ignored"}, {type:"text", text:$text}]' >"$TMPDIR/home/.local/state/omarchy/clipboard-history.json"
 
