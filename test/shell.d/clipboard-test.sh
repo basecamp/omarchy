@@ -95,6 +95,32 @@ assertDeepEqual(
   'clipboard display rows collapse text whitespace'
 )
 
+assertDeepEqual(
+  clipboard.displayRows([{ type: 'text', text: 'file:///home/dhh/Videos/screenrecording-2026-05-29_13-56-43-720p.gif\n' }], '', 50)[0],
+  {
+    entryType: 'file',
+    fullText: '/home/dhh/Videos/screenrecording-2026-05-29_13-56-43-720p.gif',
+    previewText: 'screenrecording-2026-05-29_13-56-43-720p.gif',
+    previewImage: '/home/dhh/Videos/screenrecording-2026-05-29_13-56-43-720p.gif',
+    path: '/home/dhh/Videos/screenrecording-2026-05-29_13-56-43-720p.gif',
+    mime: 'text/plain',
+    index: 0
+  },
+  'clipboard display rows show file uri entries as files'
+)
+
+assertDeepEqual(
+  clipboard.displayRows([{ type: 'text', text: 'file:///home/dhh/One.txt\nfile:///home/dhh/Two.txt\n' }], '', 50)[0].previewText,
+  '2 files',
+  'clipboard display rows summarize multiple file uri entries'
+)
+
+assertDeepEqual(
+  clipboard.displayRows([{ type: 'text', text: 'file:///home/dhh/Videos/demo.mp4\n' }], '', 50)[0].previewImage,
+  '',
+  'clipboard display rows do not preview video file uri entries inline'
+)
+
 assertDeepEqual(clipboard.displayRows(history, '', 0), [], 'clipboard display rows supports zero result limit')
 assertDeepEqual(clipboard.addEntry(history, 'next', 0), [], 'clipboard addEntry supports zero history limit')
 JS
