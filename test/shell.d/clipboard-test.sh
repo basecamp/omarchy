@@ -135,6 +135,15 @@ cat >"$TMPDIR/bin/wl-copy" <<'SH'
 cat >"$WL_COPY_OUT"
 SH
 
+cat >"$TMPDIR/bin/wl-paste" <<'SH'
+#!/bin/bash
+if [[ $1 == "--list-types" ]]; then
+  printf 'text/plain\n'
+elif [[ $1 == "--type" && $2 == "text" ]]; then
+  printf '%s' "${WL_PASTE_TEXT:-terminal copy}"
+fi
+SH
+
 cat >"$TMPDIR/bin/wtype" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >"$WTYPE_OUT"
@@ -156,7 +165,19 @@ cat >"$TMPDIR/bin/satty" <<'SH'
 printf '%s\n' "$*" >"$SATTY_OUT"
 SH
 
-chmod +x "$TMPDIR/bin/wl-copy" "$TMPDIR/bin/wtype" "$TMPDIR/bin/omarchy-launch-browser" "$TMPDIR/bin/omarchy-launch-editor" "$TMPDIR/bin/satty"
+chmod +x "$TMPDIR/bin/wl-copy" "$TMPDIR/bin/wl-paste" "$TMPDIR/bin/wtype" "$TMPDIR/bin/omarchy-launch-browser" "$TMPDIR/bin/omarchy-launch-editor" "$TMPDIR/bin/satty"
+
+capture_output=$(CLIPBOARD_STATE=sensitive XDG_RUNTIME_DIR="$TMPDIR" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
+[[ $capture_output == '{"type":"text","text":"terminal copy"}' ]] || fail "clipboard capture records sensitive text events"
+pass "clipboard capture records sensitive text events"
+
+printf '😀' >"$TMPDIR/omarchy-emoji-insert-ignore"
+capture_output=$(WL_PASTE_TEXT="😀" XDG_RUNTIME_DIR="$TMPDIR" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
+[[ -z $capture_output ]] || fail "clipboard capture ignores transient emoji insert"
+pass "clipboard capture ignores transient emoji insert"
+
+[[ ! -e "$TMPDIR/omarchy-emoji-insert-ignore" ]] || fail "clipboard capture consumes transient emoji marker"
+pass "clipboard capture consumes transient emoji marker"
 
 jq -n --arg text "$(printf 'large block line 1\nlarge block line 2\n')" '[{type:"text", text:"ignored"}, {type:"text", text:$text}]' >"$TMPDIR/home/.local/state/omarchy/clipboard-history.json"
 
