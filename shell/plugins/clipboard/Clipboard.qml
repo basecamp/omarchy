@@ -426,7 +426,7 @@ Item {
                     spacing: Style.space(10)
 
                     Image {
-                      visible: parent.parent.entryType === "image"
+                      visible: parent.parent.previewImage.length > 0
                       width: visible ? parent.height : 0
                       height: parent.height
                       source: parent.parent.previewImage
@@ -436,13 +436,13 @@ Item {
                     }
 
                     Text {
-                      width: parent.width - (parent.parent.entryType === "image" ? parent.height + parent.spacing : 0)
+                      width: parent.width - (parent.parent.previewImage.length > 0 ? parent.height + parent.spacing : 0)
                       height: parent.height
                       text: parent.parent.previewText
                       color: parent.parent.hasCursor ? root.selectedText : root.foreground
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.title
-                      opacity: parent.parent.entryType === "image" ? 0.72 : 1.0
+                      opacity: parent.parent.entryType === "image" || parent.parent.entryType === "file" ? 0.72 : 1.0
                       elide: Text.ElideRight
                       wrapMode: Text.NoWrap
                       verticalAlignment: Text.AlignVCenter
@@ -483,7 +483,7 @@ Item {
               }
 
               Text {
-                visible: parent.activeRow && parent.activeRow.entryType === "text"
+                visible: parent.activeRow && !parent.activeRow.previewImage
                 anchors.fill: parent
                 anchors.leftMargin: root.contentMargin
                 anchors.rightMargin: 0
@@ -499,7 +499,7 @@ Item {
               }
 
               Image {
-                visible: parent.activeRow && parent.activeRow.entryType === "image"
+                visible: parent.activeRow && parent.activeRow.previewImage
                 anchors.fill: parent
                 anchors.leftMargin: root.contentMargin
                 anchors.rightMargin: 0
