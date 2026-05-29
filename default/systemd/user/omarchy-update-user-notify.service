@@ -1,0 +1,7 @@
+[Unit]
+Description=Notify about pending Omarchy user migrations
+ConditionPathExistsGlob=/usr/share/omarchy/migrations/user/*.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/omarchy-migrate-notify

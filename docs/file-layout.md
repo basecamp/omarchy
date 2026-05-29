@@ -54,12 +54,16 @@ bin/omarchy-debug,
 bin/omarchy-debug-idle,
 bin/omarchy-upload-log         ──►  omarchy-settings    /usr/bin/  (needed before omarchy is installed)
 
+default/libalpm/hooks/00-omarchy-update-guard.hook
+                                ──►  omarchy             /usr/share/libalpm/hooks/00-omarchy-update-guard.hook
+
 install/**                     ──►  omarchy             /usr/share/omarchy/install/
-migrations/**                  ──►  omarchy             /usr/share/omarchy/migrations/
+migrations/system/**           ──►  omarchy             /usr/share/omarchy/migrations/system/
+migrations/user/**             ──►  omarchy             /usr/share/omarchy/migrations/user/
 themes/**                      ──►  omarchy             /usr/share/omarchy/themes/
 shell/**                       ──►  omarchy             /usr/share/omarchy/shell/
 version                        ──►  omarchy             /usr/share/omarchy/version
-                                                        + /etc/skel/.local/state/omarchy/migrations/*
+                                                        + /etc/skel/.local/state/omarchy/migrations/user/*
 
 config/**                      ──►  omarchy-settings    /etc/skel/.config/**         (seeds new users)
                                                         /usr/share/omarchy/config/** (resync source)
@@ -95,7 +99,7 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   │                                                       + symlink /etc/fonts/conf.d/30-omarchy.conf
   ├─ xdg-terminal-exec/*.list                           /usr/share/xdg-terminal-exec/
   ├─ applications/mimeapps.list                         /usr/share/applications/mimeapps.list
-  ├─ systemd/user/*.service                             /usr/lib/systemd/user/
+  ├─ systemd/user/*.{service,path}                      /usr/lib/systemd/user/
   ├─ systemd/system-sleep/unmount-fuse                  /usr/lib/systemd/system-sleep/
   ├─ fonts/omarchy/omarchy.ttf                          /usr/share/fonts/omarchy/
   ├─ sddm/omarchy/                                      /usr/share/sddm/themes/omarchy/
@@ -164,7 +168,7 @@ It only does the things `/etc/skel` can't:
 - `omarchy-refresh-applications` (composes generated `.desktop` launchers).
 - Sources `install/user/all.sh` — theme, git, mise, keyring, per-user
   hardware quirks (asus mic/mixer, framework f13 audio, …).
-- On `--first-install`, marks every shipped migration as already applied
+- On `--first-install`, marks every shipped user migration as already applied
   for the freshly-created user.
 
 Idempotency marker: `~/.local/state/omarchy/finalize-user.done`.
@@ -172,6 +176,43 @@ Idempotency marker: `~/.local/state/omarchy/finalize-user.done`.
 The ISO calls it as `omarchy-finalize-user --force --first-install` in the
 target chroot as the install user, after `omarchy-setup-system` has finished
 the root-side work.
+
+## Migrations (`omarchy-migrate`)
+
+See [`migrations.md`](migrations.md) for the full migration model, authoring
+guidelines, and troubleshooting notes.
+
+Omarchy migrations are split by scope:
+
+- `migrations/system/*.sh` — root, noninteractive, safe to run from pacman.
+  The `omarchy` package `post_upgrade()` runs `omarchy-migrate-system` after an
+  `omarchy` package upgrade, so even explicit direct-pacman bypasses still get
+  system migrations applied. Completion state lives in
+  `/var/lib/omarchy/migrations/system/`.
+- `migrations/user/*.sh` — current user/session, may be interactive, and may
+  touch `~/.config`, `~/.local`, user systemd, DBus, browser prefs, etc.
+  Completion state lives in `~/.local/state/omarchy/migrations/user/`.
+
+Package upgrades happen as root, but user migrations must run as each user and
+may be interactive. There is no root-owned "user migration required" marker. A
+user migration is pending only when a script exists in `migrations/user/` and
+that user's matching state file is missing.
+
+Each graphical user has `omarchy-update-user-notify.path` watching the packaged
+user migration directory. When that directory changes, or when the path unit is
+started on login, `omarchy-update-user-notify.service` runs
+`omarchy-migrate-notify` as that user. The notifier checks
+`omarchy-migrate --pending user`. If this user has missing migration state, it
+shows a notification that opens a terminal for `omarchy-migrate`. The notifier
+never runs user migrations in the background.
+
+`omarchy-migrate` waits for any active pacman transaction to finish, runs
+pending system migrations, then runs pending user migrations. It does not need
+`--force`; migrations happen when state files are missing. For watchers and
+diagnostics, `omarchy-migrate --pending [all|system|user]` prints
+scope-prefixed pending migration filenames and exits `0` when any are pending.
+`omarchy update` runs `omarchy-migrate` after the package transaction in the
+already-visible update terminal, then runs `omarchy-hook post-update`.
 
 ## First-run (`omarchy-first-run`)
 
@@ -183,9 +224,9 @@ systemd instance:
   Voxtype post-update hook.
 - `install/user/first-run/enable-user-units.sh` — `systemctl --user enable`
   the shipped user units (`bt-agent`, `omarchy-sleep-lock`,
-  `omarchy-recover-internal-monitor`). Done here, not at finalize, because
+  `omarchy-recover-internal-monitor`, `omarchy-update-user-notify.path`). Done here, not at finalize, because
   the user manager isn't reachable from the ISO chroot; `ConditionPath*`
-  in the unit files keeps them inert on hardware they don't apply to.
+  in the unit files keeps services inert when they don't apply.
 - `install/user/first-run/gnome-theme.sh`,
   `install/user/first-run/gtk-primary-paste.sh` — GNOME/GTK settings that
   need the dconf daemon.
@@ -236,10 +277,11 @@ without backup.
 | Default file at `~/.config/foo/` | `config/foo/` |
 | `/etc/` drop-in we own outright | `etc/` |
 | `/etc/` file owned by an upstream package | `default/`, then add to `etc-overrides` in `omarchy-settings` PKGBUILD + scriptlet |
-| Package-owned system file (e.g. systemd user service in `/usr/lib`) | `default/`, document the mapping in `default/package-defaults.tsv`, then add the `install -Dm644` line in `omarchy-settings` PKGBUILD |
+| Package-owned system file (e.g. systemd user service/path in `/usr/lib`) | `default/`, document the mapping in `default/package-defaults.tsv`, then add the `install -Dm644` line in `omarchy-settings` PKGBUILD |
 | Per-user file that's static but lives outside `~/.config` | `default/`, then add `install -Dm644 ... $pkgdir/etc/skel/...` in `omarchy-settings` PKGBUILD |
 | Runtime tweak that needs `$HOME` or live system state | extend `omarchy-finalize-user`, or add a per-user leaf under `install/user/` and wire into `install/user/all.sh` |
 | One-time root-side setup step | `install/config/*.sh` or `install/hardware/*.sh`, wire into `omarchy-setup-system` or `install/hardware/all.sh` |
+| Noninteractive root fix for existing installs | `migrations/system/<unix-timestamp>.sh` |
+| User/session fix for existing installs | `migrations/user/<unix-timestamp>.sh` |
 | User-facing `omarchy-*` command | `bin/omarchy-<group>-<verb>` — see `GROUP_DESCRIPTIONS` in `bin/omarchy` |
 | New theme | `themes/<name>/` (+ matching templates under `default/themed/` if they need theme colors) |
-| One-shot fix for installed systems | `migrations/<unix-timestamp>.sh` (use `omarchy-dev-add-migration --no-edit`) |

@@ -1,15 +1,119 @@
 #!/bin/bash
 
-# omarchy:summary=Check whether the Omarchy package has an available update.
+# omarchy:summary=Check whether system or AUR packages have available updates.
 
-set -e
+set -euo pipefail
 
-if pacman -Qu omarchy >/tmp/omarchy-update-available.$$ 2>/dev/null; then
-  cat /tmp/omarchy-update-available.$$
-  rm -f /tmp/omarchy-update-available.$$
+CHECK_TIMEOUT="${OMARCHY_UPDATE_CHECK_TIMEOUT:-60}"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/updates"
+TMP_PARENT="${TMPDIR:-/tmp}"
+
+mkdir -p "$STATE_DIR"
+
+tmp_dir=$(mktemp -d "$TMP_PARENT/omarchy-update-available.XXXXXX")
+trap 'rm -rf "$tmp_dir"' EXIT
+
+packages_raw="$tmp_dir/packages.raw"
+packages_tmp="$tmp_dir/packages"
+aur_raw="$tmp_dir/aur.raw"
+aur_tmp="$tmp_dir/aur"
+errors_tmp="$tmp_dir/errors"
+
+packages_file="$STATE_DIR/packages"
+aur_file="$STATE_DIR/aur"
+available_file="$STATE_DIR/available"
+checked_at_file="$STATE_DIR/checked-at"
+error_file="$STATE_DIR/error"
+
+: >"$packages_raw"
+: >"$packages_tmp"
+: >"$aur_raw"
+: >"$aur_tmp"
+: >"$errors_tmp"
+
+strip_update_output() {
+  local source="$1"
+  local destination="$2"
+
+  sed -E 's/\x1B\[[0-9;]*m//g' "$source" | sed '/^[[:space:]]*$/d' >"$destination"
+}
+
+check_system_packages() {
+  local status=0
+
+  if command -v checkupdates >/dev/null 2>&1 && command -v fakeroot >/dev/null 2>&1; then
+    CHECKUPDATES_DB="$tmp_dir/checkupdates-db" timeout "$CHECK_TIMEOUT" checkupdates --nocolor >"$packages_raw" 2>"$tmp_dir/checkupdates.err" || status=$?
+
+    case "$status" in
+      0|2)
+        ;;
+      124)
+        echo "System package update check timed out" >>"$errors_tmp"
+        ;;
+      *)
+        echo "System package update check failed" >>"$errors_tmp"
+        sed '/^[[:space:]]*$/d' "$tmp_dir/checkupdates.err" >>"$errors_tmp" || true
+        ;;
+    esac
+  elif command -v pacman >/dev/null 2>&1; then
+    # Fallback for systems that have not picked up pacman-contrib/fakeroot yet.
+    # This only reports updates already known to the local sync database.
+    pacman -Qu --color never >"$packages_raw" 2>/dev/null || true
+  else
+    echo "pacman is not available" >>"$errors_tmp"
+  fi
+
+  strip_update_output "$packages_raw" "$packages_tmp"
+}
+
+check_aur_packages() {
+  local status=0
+
+  command -v pacman >/dev/null 2>&1 || return 0
+  command -v yay >/dev/null 2>&1 || return 0
+  pacman -Qem >/dev/null 2>&1 || return 0
+
+  timeout "$CHECK_TIMEOUT" yay --color never -Qua >"$aur_raw" 2>"$tmp_dir/yay.err" || status=$?
+
+  case "$status" in
+    0|1)
+      ;;
+    124)
+      echo "AUR package update check timed out" >>"$errors_tmp"
+      ;;
+    *)
+      echo "AUR package update check failed" >>"$errors_tmp"
+      sed '/^[[:space:]]*$/d' "$tmp_dir/yay.err" >>"$errors_tmp" || true
+      ;;
+  esac
+
+  strip_update_output "$aur_raw" "$aur_tmp"
+  grep -vw '\[ignored\]$' "$aur_tmp" >"$aur_tmp.filtered" || true
+  mv "$aur_tmp.filtered" "$aur_tmp"
+}
+
+check_system_packages
+check_aur_packages
+
+cp "$packages_tmp" "$packages_file"
+cp "$aur_tmp" "$aur_file"
+cat "$packages_tmp" "$aur_tmp" >"$available_file"
+date --iso-8601=seconds >"$checked_at_file"
+
+if [[ -s $errors_tmp ]]; then
+  cp "$errors_tmp" "$error_file"
+else
+  rm -f "$error_file"
+fi
+
+if [[ -s $available_file ]]; then
+  cat "$available_file"
   exit 0
 fi
 
-rm -f /tmp/omarchy-update-available.$$
-echo "Omarchy is up to date"
+if [[ -s $error_file ]]; then
+  cat "$error_file" >&2
+fi
+
+echo "System is up to date"
 exit 1

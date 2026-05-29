@@ -170,10 +170,17 @@ This copies `/etc/skel/.config/hypr/hyprlock.conf` to `~/.config/hypr/hyprlock.c
 
 # Migrations
 
-To create a new migration, run `omarchy-dev-add-migration --no-edit`. This creates a migration file named after the unix timestamp of the last commit.
+Read `docs/migrations.md` before creating or changing migrations.
+
+Migrations are split by execution scope:
+
+- `migrations/system/<timestamp>.sh` — root, noninteractive, safe to run from pacman via `omarchy-migrate-system` (`omarchy` `post_upgrade` calls it). Use for `/etc`, `/usr`, `/boot`, services, hardware quirks, and other system state. Do not prompt.
+- `migrations/user/<timestamp>.sh` — current user/session, may touch `~/.config`, `~/.local`, user systemd, browser prefs, DBus/session state, and may prompt if necessary. Runs through `omarchy-migrate` / `omarchy-migrate-user`; pending state is per-user based on missing files under `~/.local/state/omarchy/migrations/user/`.
+
+To create a new migration, run `omarchy-dev-add-migration system --no-edit` or `omarchy-dev-add-migration user --no-edit` based on scope.
 
 New migration format:
-- File permissions must be `0644` (`-rw-r--r--`); migrations are sourced, not executed directly
+- File permissions must be `0644` (`-rw-r--r--`); migration runners execute them with `bash -euo pipefail`, not through executable bits
 - No shebang line
 - Start with an `echo` describing what the migration does
 - Use `$OMARCHY_PATH` to reference the omarchy directory

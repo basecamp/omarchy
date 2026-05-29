@@ -30,6 +30,7 @@ evince
 exfatprogs
 expac
 eza
+fakeroot
 fastfetch
 fcitx5
 fcitx5-gtk
@@ -91,6 +92,7 @@ nvim
 obs-studio
 obsidian
 omarchy-nvim
+pacman-contrib
 pamixer
 pinta
 plocate
