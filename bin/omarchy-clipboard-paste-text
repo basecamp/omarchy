@@ -2,10 +2,11 @@
 
 # omarchy:summary=Copy text to the clipboard and type or paste it
 # omarchy:group=clipboard
-# omarchy:args=[--shift-insert] [--history-index <index>|<text>]
+# omarchy:args=[--shift-insert] [--copy-only] [--history-index <index>|<text>]
 # omarchy:examples=omarchy clipboard paste text "hello" | omarchy clipboard paste text --shift-insert "hello"
 
 use_shift_insert=false
+copy_only=false
 history_index=""
 text=""
 
@@ -13,6 +14,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --shift-insert)
       use_shift_insert=true
+      shift
+      ;;
+    --copy-only)
+      copy_only=true
       shift
       ;;
     --history-index)
@@ -35,11 +40,17 @@ copy_history_entry() {
 
 if [[ -n $history_index ]]; then
   copy_history_entry
-  use_shift_insert=true
+  if [[ $copy_only != "true" ]]; then
+    use_shift_insert=true
+  fi
 else
   text=${1:-}
   [[ -n $text ]] || exit
   printf '%s' "$text" | wl-copy
+fi
+
+if [[ $copy_only == "true" ]]; then
+  exit
 fi
 
 sleep 0.15
