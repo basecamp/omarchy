@@ -20,6 +20,12 @@ assertDeepEqual(
 )
 
 assertDeepEqual(
+  clipboard.normalizeEntry({ type: 'image', path: '/tmp/a.png', mime: 'image/png', capturedAt: 'Friday 14:42' }),
+  { type: 'image', path: '/tmp/a.png', mime: 'image/png', capturedAt: 'Friday 14:42' },
+  'clipboard keeps image capture timestamps'
+)
+
+assertDeepEqual(
   clipboard.parseHistory(JSON.stringify(['one', '', { type: 'text', text: 'two' }, { type: 'image', path: '/tmp/a.jpg', mime: 'image/jpeg' }])),
   [
     { type: 'text', text: 'one' },
@@ -63,6 +69,18 @@ assertDeepEqual(
   clipboard.displayRows(history, 'image', 50).map(row => ({ type: row.entryType, preview: row.previewText, mime: row.mime })),
   [{ type: 'image', preview: 'Image', mime: 'image/png' }],
   'clipboard display rows search image metadata'
+)
+
+assertDeepEqual(
+  clipboard.displayRows([{ type: 'image', path: '/tmp/a.png', mime: 'image/png', capturedAt: 'Friday 14:42' }], '', 50)[0].previewText,
+  'Screenshot Friday 14:42',
+  'clipboard labels timestamped png image entries as screenshots'
+)
+
+assertDeepEqual(
+  clipboard.displayRows([{ type: 'image', path: '/tmp/a.jpg', mime: 'image/jpeg', capturedAt: 'Friday 14:42' }], '', 50)[0].previewText,
+  'Image Friday 14:42',
+  'clipboard labels timestamped non-png image entries as images'
 )
 
 assertDeepEqual(

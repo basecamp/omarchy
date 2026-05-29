@@ -13,11 +13,14 @@ function normalizeEntry(value) {
   if (type === "image") {
     var path = String(value.path || "")
     if (!path) return null
-    return {
+    var entry = {
       type: "image",
       path: path,
       mime: String(value.mime || "image/png")
     }
+    if (value.capturedAt !== undefined && value.capturedAt !== null)
+      entry.capturedAt = String(value.capturedAt)
+    return entry
   }
 
   return null
@@ -88,13 +91,21 @@ function parseEntryJson(line) {
 
 function searchableText(entry) {
   if (!entry) return ""
-  if (entry.type === "image") return "image " + String(entry.mime || "")
+  if (entry.type === "image") return "image screenshot " + String(entry.mime || "") + " " + String(entry.capturedAt || "")
   return String(entry.text || "")
+}
+
+function imagePreviewText(entry) {
+  var timestamp = String(entry && entry.capturedAt || "")
+  if (!timestamp) return "Image"
+
+  var label = String(entry && entry.mime || "") === "image/png" ? "Screenshot" : "Image"
+  return label + " " + timestamp
 }
 
 function previewText(entry) {
   if (!entry) return ""
-  if (entry.type === "image") return "Image"
+  if (entry.type === "image") return imagePreviewText(entry)
   return String(entry.text || "").replace(/\s+/g, " ")
 }
 
@@ -140,6 +151,7 @@ if (typeof module !== "undefined") {
     parseEntryJson: parseEntryJson,
     searchableText: searchableText,
     previewText: previewText,
+    imagePreviewText: imagePreviewText,
     displayRows: displayRows
   }
 }

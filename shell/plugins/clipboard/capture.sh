@@ -29,7 +29,8 @@ emit_image() {
     mv "$tmp" "$file"
   fi
 
-  jq -cn --arg mime "$mime" --arg path "$file" '{type:"image", mime:$mime, path:$path}'
+  jq -cn --arg mime "$mime" --arg path "$file" --arg captured_at "$(date +'%A %H:%M')" \
+    '{type:"image", mime:$mime, path:$path, capturedAt:$captured_at}'
 }
 
 emit_image_stream() {
@@ -54,7 +55,8 @@ emit_image_stream() {
     mv "$tmp" "$file"
   fi
 
-  jq -cn --arg mime "$mime" --arg path "$file" '{type:"image", mime:$mime, path:$path}'
+  jq -cn --arg mime "$mime" --arg path "$file" --arg captured_at "$(date +'%A %H:%M')" \
+    '{type:"image", mime:$mime, path:$path, capturedAt:$captured_at}'
 }
 
 case "${OMARCHY_CLIPBOARD_WATCH_MIME:-}" in
