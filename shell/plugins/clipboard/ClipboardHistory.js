@@ -76,6 +76,10 @@ function removeEntryAt(history, index) {
   return next
 }
 
+function clearHistory() {
+  return []
+}
+
 function parseEntryJson(line) {
   var raw = String(line || "").trim()
   if (!raw) return null
@@ -132,6 +136,7 @@ if (typeof module !== "undefined") {
     parseHistory: parseHistory,
     addEntry: addEntry,
     removeEntryAt: removeEntryAt,
+    clearHistory: clearHistory,
     parseEntryJson: parseEntryJson,
     searchableText: searchableText,
     previewText: previewText,
