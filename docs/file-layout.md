@@ -74,18 +74,14 @@ applications/*.desktop         ──►  omarchy-settings    /etc/skel/.local/s
 applications/icons/*           ──►  omarchy-settings    /usr/share/icons/hicolor/{48,256,scalable}/apps/
 
 etc/**                         ──►  omarchy-settings    /etc/**           (drop-ins we own outright)
+  ├─ mkinitcpio.conf.d/{omarchy_hooks,thunderbolt_module}.conf
+  └─ limine-entry-tool.d/{omarchy-defaults,omarchy-uki}.conf
 
 default/limine/limine.conf     ──►  omarchy-settings    /usr/share/omarchy/default/limine/limine.conf
 default/limine/default.conf    ──►  omarchy-settings    /usr/share/omarchy/default/limine/default.conf
                                                         (template; ISO substitutes @@CMDLINE@@ → /etc/default/limine)
 default/snapper/root           ──►  omarchy-settings    /etc/snapper/config-templates/omarchy
                                                         (+ /usr/share/omarchy/default/snapper/root)
-
-omarchy-pkgs/omarchy-settings/
-  omarchy_hooks.conf,
-  thunderbolt_module.conf       ──►  omarchy-settings    /etc/mkinitcpio.conf.d/
-  omarchy-defaults.conf,
-  omarchy-uki.conf              ──►  omarchy-settings    /etc/limine-entry-tool.d/
 
 default/**                     ──►  omarchy-settings    /usr/share/omarchy/default/
   ├─ bash/env-bootstrap                                 /usr/share/omarchy/default/bash/env-bootstrap
