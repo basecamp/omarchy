@@ -18,14 +18,50 @@ check_fingerprint_hardware() {
   return 0
 }
 
+# True only on machines with an ACPI lid button (i.e. laptops). Desktops fall
+# through and keep the plain "fingerprint first" behavior, untouched.
+has_lid() {
+  local f
+  for f in /proc/acpi/button/lid/*/state; do
+    [[ -e "$f" ]] && return 0
+  done
+  return 1
+}
+
+# Install the lid-state helper that pam_exec consults before pam_fprintd.
+# Lives in /usr/local/bin so PAM (root) has a stable path independent of $PATH.
+install_lid_helper() {
+  echo "Installing lid-state helper for fingerprint gating..."
+  sudo tee /usr/local/bin/omarchy-lid-open >/dev/null <<'EOF'
+#!/bin/bash
+# omarchy:summary=Exit 0 if the laptop lid is open (used by PAM to gate fingerprint auth)
+for f in /proc/acpi/button/lid/*/state; do
+  [[ -r "$f" ]] || continue
+  grep -q open "$f" && exit 0 || exit 1
+done
+exit 0
+EOF
+  sudo chmod 755 /usr/local/bin/omarchy-lid-open
+}
+
 setup_pam_config() {
-  # Configure sudo
+  # Configure sudo. On laptops, gate pam_fprintd behind the lid state so a
+  # closed-lid / clamshell session falls straight through to the password
+  # prompt instead of blocking on an unreachable reader.
   if ! grep -q pam_fprintd.so /etc/pam.d/sudo; then
     echo "Configuring sudo for fingerprint authentication..."
     sudo sed -i '1i auth    sufficient pam_fprintd.so' /etc/pam.d/sudo
   fi
 
-  # Configure polkit
+  if has_lid && ! grep -q omarchy-lid-open /etc/pam.d/sudo; then
+    echo "Gating sudo fingerprint behind lid state..."
+    install_lid_helper
+    sudo sed -i '/pam_fprintd\.so/i auth    [success=ignore default=1] pam_exec.so quiet /usr/local/bin/omarchy-lid-open' /etc/pam.d/sudo
+  fi
+
+  # Configure polkit (unchanged). The polkit agent shows a password field in
+  # parallel with fingerprint, so it never blocks the way terminal sudo does
+  # and needs no lid guard.
   if [[ -f /etc/pam.d/polkit-1 ]] && ! grep -q 'pam_fprintd.so' /etc/pam.d/polkit-1; then
     echo "Configuring polkit for fingerprint authentication..."
     sudo sed -i '1i auth      sufficient pam_fprintd.so' /etc/pam.d/polkit-1
