@@ -15,7 +15,7 @@ if grep -q pam_fprintd.so /etc/pam.d/sudo && ! grep -q omarchy-lid-open /etc/pam
 # omarchy:summary=Exit 0 if the laptop lid is open (used by PAM to gate fingerprint auth)
 for f in /proc/acpi/button/lid/*/state; do
   [[ -r "$f" ]] || continue
-  grep -q open "$f" && exit 0 || exit 1
+  if grep -q open "$f"; then exit 0; else exit 1; fi
 done
 exit 0
 EOF
