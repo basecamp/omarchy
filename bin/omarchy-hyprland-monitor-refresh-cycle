@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# omarchy:summary=Cycle focused Hyprland monitor through its available refresh rates (e.g. 120Hz ↔ 60Hz)
+
+# Cycles the focused monitor's refresh rate through every rate its current
+# resolution supports (read live from Hyprland's availableModes). Lowering the
+# refresh rate is a simple, reversible way to save power on a laptop panel.
+#
+# Pass --reverse to cycle the other way.
+
+MONITOR_INFO=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true)')
+ACTIVE_MONITOR=$(echo "$MONITOR_INFO" | jq -r '.name')
+CURRENT_RATE=$(echo "$MONITOR_INFO" | jq -r '.refreshRate')
+CURRENT_SCALE=$(echo "$MONITOR_INFO" | jq -r '.scale')
+WIDTH=$(echo "$MONITOR_INFO" | jq -r '.width')
+HEIGHT=$(echo "$MONITOR_INFO" | jq -r '.height')
+
+# Collect the refresh rates available at the *current* resolution, sorted
+# high → low and de-duplicated. availableModes entries look like
+# "2880x1800@120.00Hz".
+mapfile -t RATES < <(
+  echo "$MONITOR_INFO" |
+    jq -r --arg res "${WIDTH}x${HEIGHT}" \
+      '.availableModes[] | select(startswith($res + "@")) | sub("^.*@"; "") | sub("Hz$"; "")' |
+    sort -t. -k1,1nr -k2,2nr |
+    awk '!seen[$0]++'
+)
+
+# Nothing to cycle through if the panel only exposes one rate.
+if [[ ${#RATES[@]} -lt 2 ]]; then
+  notify-send -u low "󰍹    Only one refresh rate available (${CURRENT_RATE%.*}Hz)"
+  exit 0
+fi
+
+# Find the index of the rate closest to the current one (Hyprland reports
+# 120.00000 while availableModes says 120.00, so we match on nearest value).
+CURRENT_IDX=$(awk -v c="$CURRENT_RATE" -v list="${RATES[*]}" 'BEGIN {
+  n = split(list, arr, " ")
+  best = 0; best_diff = 1e9
+  for (i = 1; i <= n; i++) {
+    d = c - arr[i]; if (d < 0) d = -d
+    if (d < best_diff) { best_diff = d; best = i - 1 }
+  }
+  print best
+}')
+
+if [[ "$1" == "--reverse" ]]; then
+  NEW_IDX=$(( (CURRENT_IDX - 1 + ${#RATES[@]}) % ${#RATES[@]} ))
+else
+  NEW_IDX=$(( (CURRENT_IDX + 1) % ${#RATES[@]} ))
+fi
+
+NEW_RATE=${RATES[$NEW_IDX]}
+
+hyprctl keyword monitor "$ACTIVE_MONITOR,${WIDTH}x${HEIGHT}@${NEW_RATE},auto,$CURRENT_SCALE"
+
+notify-send -u low "󰍹    Refresh rate set to ${NEW_RATE%.*}Hz"
