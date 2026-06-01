@@ -1,5 +1,7 @@
 # Accent and UI colors
 accent = "#b59790"
+hyprland_active_border = "rgba(8a8588ee) rgba(e2dddcee)"
+hyprland_inactive_border = "rgba(584e51aa)"
 active_border_color = "#d6d3de"
 active_tab_background = "#a5a0b6"
 

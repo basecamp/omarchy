@@ -1,5 +1,5 @@
 # last-horizon preserves the historical behavior of matching notification
-# borders to the theme's Hyprland active-window border ($activeBorderColor
-# in hyprland.conf), rather than the accent.
+# borders to the theme's Hyprland active-window border (hyprland_active_border
+# in colors.toml), rather than the accent.
 [notifications]
 border = "#8a8588"

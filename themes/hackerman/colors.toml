@@ -1,4 +1,5 @@
 accent = "#82FB9C"
+hyprland_active_border = "rgba(26a269ee) rgba(2ec27eee) 45deg"
 cursor = "#ddf7ff"
 foreground = "#ddf7ff"
 background = "#0B0C16"
