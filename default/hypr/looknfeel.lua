@@ -127,3 +127,9 @@ hl.config({
     hide_special_on_workspace_change = true,
   },
 })
+
+-- Prevent the transparent bar from flickering solid when windows behind it
+-- redraw (e.g. terminal text selection). Blur on the bar forces a full
+-- recomputation every time content beneath is damaged, causing a one-frame
+-- solid flash. Disabling blur on the bar surface stops the flicker.
+hl.layer_rule({ match = { namespace = "omarchy-bar" }, blur = false })
