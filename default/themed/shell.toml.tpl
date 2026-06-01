@@ -126,8 +126,10 @@ border-alpha     = 1.0
 background       = "{{ background }}"
 background-alpha = 1.0
 text             = "{{ foreground }}"
-# Conventionally matches the Hyprland active-window border
-border           = "{{ accent }}"
+# Conventionally matches the Hyprland active-window border. If a theme
+# defines a gradient active border, the shell uses its first stop because
+# QML Rectangle borders are flat colors.
+border           = "{{ gradient_start hyprland_active_border accent }}"
 border-alpha     = 1.0
 countdown        = "{{ accent }}"
 

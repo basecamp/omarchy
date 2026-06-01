@@ -59,6 +59,120 @@ mix_color() {
   '
 }
 
+trim() {
+  local value="$1"
+
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf "%s" "$value"
+}
+
+resolve_theme_ref() {
+  local ref="$1"
+  local fallback="${2:-}"
+
+  if [[ -n ${THEME_COLORS[$ref]+_} ]]; then
+    printf "%s" "${THEME_COLORS[$ref]}"
+  elif [[ -n $fallback && -n ${THEME_COLORS[$fallback]+_} ]]; then
+    printf "%s" "${THEME_COLORS[$fallback]}"
+  elif [[ -n $fallback ]]; then
+    printf "%s" "$fallback"
+  else
+    printf "%s" "$ref"
+  fi
+}
+
+resolve_gradient_color() {
+  local color
+
+  color=$(trim "$1")
+  if [[ -n ${THEME_COLORS[$color]+_} ]]; then
+    color="${THEME_COLORS[$color]}"
+  fi
+
+  printf "%s" "$color"
+}
+
+parse_gradient() {
+  local spec="$1"
+  local part color
+  local -a parts
+
+  GRADIENT_COLORS=()
+  GRADIENT_ANGLE=""
+
+  read -ra parts <<<"$spec"
+  for part in "${parts[@]}"; do
+    [[ -n $part ]] || continue
+
+    if [[ $part =~ ^-?[0-9]+([.][0-9]+)?deg$ ]]; then
+      GRADIENT_ANGLE="${part%deg}"
+    else
+      color=$(resolve_gradient_color "$part")
+      GRADIENT_COLORS+=("$color")
+    fi
+  done
+}
+
+color_to_shell_hex() {
+  local color r g b
+
+  color=$(resolve_gradient_color "$1")
+
+  if [[ $color =~ ^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$ ]]; then
+    printf "#%s" "${color:1:6}"
+  elif [[ $color =~ ^[Rr][Gg][Bb][Aa]?\(([0-9A-Fa-f]{6})([0-9A-Fa-f]{2})?\)$ ]]; then
+    printf "#%s" "${BASH_REMATCH[1]}"
+  elif [[ $color =~ ^[Rr][Gg][Bb][Aa]?\(([0-9]+),([0-9]+),([0-9]+)(,[0-9.]+)?\)$ ]]; then
+    r=${BASH_REMATCH[1]}
+    g=${BASH_REMATCH[2]}
+    b=${BASH_REMATCH[3]}
+    (( r > 255 )) && r=255
+    (( g > 255 )) && g=255
+    (( b > 255 )) && b=255
+    printf "#%02x%02x%02x" "$r" "$g" "$b"
+  elif [[ $color =~ ^0x[0-9A-Fa-f]{8}$ ]]; then
+    printf "#%s" "${color:4:6}"
+  else
+    printf "%s" "$color"
+  fi
+}
+
+hypr_gradient_value() {
+  local spec color index
+
+  spec=$(resolve_theme_ref "$1" "${2:-}")
+  parse_gradient "$spec"
+
+  if (( ${#GRADIENT_COLORS[@]} == 0 )); then
+    printf '"%s"' "$spec"
+  elif (( ${#GRADIENT_COLORS[@]} == 1 )); then
+    printf '"%s"' "${GRADIENT_COLORS[0]}"
+  else
+    printf '{ colors = {'
+    for index in "${!GRADIENT_COLORS[@]}"; do
+      (( index > 0 )) && printf ','
+      printf ' "%s"' "${GRADIENT_COLORS[$index]}"
+    done
+    printf ' }'
+    [[ -n $GRADIENT_ANGLE ]] && printf ', angle = %s' "$GRADIENT_ANGLE"
+    printf ' }'
+  fi
+}
+
+gradient_start_value() {
+  local spec
+
+  spec=$(resolve_theme_ref "$1" "${2:-}")
+  parse_gradient "$spec"
+
+  if (( ${#GRADIENT_COLORS[@]} == 0 )); then
+    color_to_shell_hex "$spec"
+  else
+    color_to_shell_hex "${GRADIENT_COLORS[0]}"
+  fi
+}
+
 add_template_value() {
   local key="$1"
   local value="$2"
@@ -118,6 +232,42 @@ add_mix_values() {
   done
 }
 
+add_gradient_function_value() {
+  local token="$1"
+  local content fn key fallback value
+
+  content="${token#\{\{}"
+  content="${content%\}\}}"
+  read -r fn key fallback <<<"$content"
+
+  case "$fn" in
+    hypr_gradient)
+      value=$(hypr_gradient_value "$key" "$fallback")
+      ;;
+    gradient_start)
+      value=$(gradient_start_value "$key" "$fallback")
+      ;;
+    *)
+      return
+      ;;
+  esac
+
+  printf 's|%s|%s|g\n' "$token" "$value" >>"$sed_script"
+}
+
+add_gradient_function_values() {
+  local tpl token
+  local -A seen=()
+
+  for tpl in "${template_files[@]}"; do
+    while IFS= read -r token; do
+      [[ -n ${seen[$token]:-} ]] && continue
+      seen[$token]=1
+      add_gradient_function_value "$token"
+    done < <(grep -hEo '\{\{[[:space:]]*(hypr_gradient|gradient_start)[[:space:]]+[^}]+[[:space:]]*\}\}' "$tpl" 2>/dev/null || true)
+  done
+}
+
 # Only generate dynamic templates for themes with a colors.toml definition
 if [[ -f $COLORS_FILE ]]; then
   sed_script=$(mktemp)
@@ -136,6 +286,7 @@ if [[ -f $COLORS_FILE ]]; then
   done <"$COLORS_FILE"
 
   add_mix_values
+  add_gradient_function_values
 
   # Process user templates first, then built-in templates (user overrides built-in)
   for tpl in "${template_files[@]}"; do
