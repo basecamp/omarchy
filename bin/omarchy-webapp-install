@@ -1,26 +1,120 @@
 #!/bin/bash
 
 # omarchy:summary=Create a desktop launcher for a web app
-# omarchy:args=[name url icon [custom-exec] [mime-types]]
+# omarchy:args=[name url [icon [custom-exec] [mime-types]]]
 
 set -e
 
 ICON_DIR="$HOME/.local/share/applications/icons"
 
-if (( $# < 3 )); then
+normalize_url() {
+  local url="$1"
+
+  if [[ -z $url ]]; then
+    return
+  fi
+
+  if [[ ! $url =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]]; then
+    url="https://$url"
+  fi
+
+  printf '%s\n' "$url"
+}
+
+url_origin() {
+  local url="$1"
+  local scheme="${url%%://*}"
+  local rest="${url#*://}"
+  local host="${rest%%/*}"
+
+  printf '%s://%s\n' "$scheme" "$host"
+}
+
+url_directory() {
+  local url="$1"
+  local origin rest path
+
+  origin=$(url_origin "$url")
+  rest="${url#*://}"
+  path="${rest#*/}"
+
+  if [[ $path == "$rest" ]]; then
+    printf '%s/\n' "$origin"
+    return
+  fi
+
+  path="/${path%%[?#]*}"
+  if [[ $path == */ ]]; then
+    printf '%s%s\n' "$origin" "$path"
+  else
+    printf '%s%s/\n' "$origin" "${path%/*}"
+  fi
+}
+
+absolute_icon_url() {
+  local icon_ref="$1"
+  local app_url="$2"
+
+  if [[ $icon_ref =~ ^https?:// ]]; then
+    printf '%s\n' "$icon_ref"
+  elif [[ $icon_ref == //* ]]; then
+    printf '%s:%s\n' "${app_url%%://*}" "$icon_ref"
+  elif [[ $icon_ref == /* ]]; then
+    printf '%s%s\n' "$(url_origin "$app_url")" "$icon_ref"
+  else
+    printf '%s%s\n' "$(url_directory "$app_url")" "$icon_ref"
+  fi
+}
+
+discover_icon_url() {
+  local app_url="$1"
+  local icon_ref
+
+  icon_ref=$(curl -fsSL "$app_url" |
+    tr '\n' ' ' |
+    grep -Eio '<link[^>]+>' |
+    grep -Eim1 'rel=["'\''"][^"'\'']*(apple-touch-icon|icon)[^"'\'']*["'\''"]' |
+    grep -Eio 'href=["'\''"][^"'\'']+["'\''"]' |
+    head -n1 |
+    sed -E 's/^href=["'\''"]([^"'\'']+)["'\''"]$/\1/')
+
+  [[ -n $icon_ref ]] && absolute_icon_url "$icon_ref" "$app_url"
+}
+
+download_icon() {
+  local icon_url="$1"
+  local icon_path="$ICON_DIR/$APP_NAME.png"
+
+  curl -fsSL -o "$icon_path" "$icon_url" && [[ -s $icon_path ]]
+}
+
+use_default_icon() {
+  local icon_url
+
+  mkdir -p "$ICON_DIR"
+
+  if icon_url=$(discover_icon_url "$APP_URL") && [[ -n $icon_url ]] && download_icon "$icon_url"; then
+    ICON_REF="$APP_NAME.png"
+    return 0
+  fi
+
+  icon_url="https://www.google.com/s2/favicons?domain=${APP_URL}&sz=128"
+  if download_icon "$icon_url"; then
+    ICON_REF="$APP_NAME.png"
+    return 0
+  fi
+
+  return 1
+}
+
+if (( $# == 0 )); then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
-  if [[ ! $APP_URL =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]]; then
-    APP_URL="https://$APP_URL"
-  fi
+  APP_URL=$(normalize_url "$APP_URL")
 
   # Try to fetch favicon automatically first.
-  FAVICON_URL="https://www.google.com/s2/favicons?domain=${APP_URL}&sz=128"
-  mkdir -p "$ICON_DIR"
-  if curl -fsSL -o "$ICON_DIR/$APP_NAME.png" "$FAVICON_URL" && [[ -s $ICON_DIR/$APP_NAME.png ]]; then
-    ICON_REF="$APP_NAME.png"
-  else
+  if ! use_default_icon; then
     ICON_REF=$(gum input --prompt "Icon URL> " --placeholder "Could not fetch favicon automatically. Enter PNG icon URL (see https://dashboardicons.com)")
   fi
 
@@ -30,9 +124,7 @@ if (( $# < 3 )); then
 else
   APP_NAME="$1"
   APP_URL="$2"
-  if [[ ! $APP_URL =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]]; then
-    APP_URL="https://$APP_URL"
-  fi
+  APP_URL=$(normalize_url "$APP_URL")
   ICON_REF="$3"
   CUSTOM_EXEC="$4" # Optional custom exec command
   MIME_TYPES="$5"  # Optional mime types
@@ -48,8 +140,9 @@ fi
 # Resolve icon from URL or from a local icon name.
 mkdir -p "$ICON_DIR"
 
-if [[ -z $ICON_REF ]]; then
-  ICON_REF="https://www.google.com/s2/favicons?domain=${APP_URL}&sz=128"
+if [[ -z $ICON_REF ]] && ! use_default_icon; then
+  echo "Error: Failed to discover or download icon. Pass an icon URL or local icon name."
+  exit 1
 fi
 
 if [[ $ICON_REF =~ ^https?:// ]]; then
