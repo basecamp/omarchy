@@ -12,7 +12,7 @@ BarWidget {
   property date displayDate: clock.date
 
   readonly property string activeFormat: alt
-    ? setting("formatAlt", "dd MMMM 'W'ww yyyy")
+    ? setting("formatAlt", "d MMMM 'W'ww yyyy")
     : (bar && bar.vertical ? setting("verticalFormat", "HH\n—\nmm") : setting("format", "dddd HH:mm"))
 
   function refresh() {

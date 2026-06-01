@@ -39,6 +39,11 @@ jq -e '
 ' "$ROOT/config/omarchy/shell.json" >/dev/null
 pass "default center anchor exists in center layout"
 
+jq -e '
+  any(.bar.layout.center[]; (.id // .) == "omarchy.clock" and (.formatAlt // "") == "d MMMM \u0027W\u0027ww yyyy")
+' "$ROOT/config/omarchy/shell.json" >/dev/null
+pass "default clock date format has no leading zero"
+
 ROOT="$ROOT" python3 <<'PY'
 import json
 import os
@@ -235,3 +240,39 @@ HOME="$TMPDIR/home" bash "$migration"
 after=$(sha256sum "$TMPDIR/home/.config/omarchy/shell.json" | awk '{print $1}')
 [[ $before == "$after" ]] || fail "update placement migration is idempotent"
 pass "update placement migration is idempotent"
+
+clock_migration=$(grep -rl 'Remove leading zero from bar clock date' "$ROOT/migrations" | head -n 1 || true)
+[[ -n $clock_migration ]] || fail "clock date format migration exists"
+
+cat >"$TMPDIR/home/.config/omarchy/shell.json" <<'JSON'
+{
+  "version": 1,
+  "bar": {
+    "layout": {
+      "left": [],
+      "center": [
+        { "id": "omarchy.clock", "formatAlt": "dd MMMM 'W'ww yyyy" },
+        { "id": "omarchy.weather" }
+      ],
+      "right": [
+        { "id": "local.clock", "formatAlt": "dd MMMM 'W'ww yyyy" }
+      ]
+    }
+  },
+  "plugins": []
+}
+JSON
+
+HOME="$TMPDIR/home" bash "$clock_migration"
+
+jq -e '
+  .bar.layout.center[0].formatAlt == "d MMMM \u0027W\u0027ww yyyy" and
+  .bar.layout.right[0].formatAlt == "dd MMMM \u0027W\u0027ww yyyy"
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "clock date format migration removes leading zero from clock"
+
+before=$(sha256sum "$TMPDIR/home/.config/omarchy/shell.json" | awk '{print $1}')
+HOME="$TMPDIR/home" bash "$clock_migration"
+after=$(sha256sum "$TMPDIR/home/.config/omarchy/shell.json" | awk '{print $1}')
+[[ $before == "$after" ]] || fail "clock date format migration is idempotent"
+pass "clock date format migration is idempotent"
