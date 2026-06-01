@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle lockscreen availability
+# omarchy:group=toggle
+# omarchy:name=lockscreen
+
+omarchy-toggle \
+  --enabled-notification "   Lockscreen disabled (Screensaver only)" \
+  --disabled-notification "   Lockscreen enabled" \
+  lockscreen-off
+
+# Refresh Waybar to update indicator if it exists
+pkill -RTMIN+9 waybar

@@ -14,3 +14,6 @@ o.exec_on_start("dbus-update-activation-environment --systemd --all")
 
 -- Run post-boot hooks after startup config has loaded.
 o.exec_on_start("sleep 2 && omarchy-hook post-boot")
+
+-- Reset transient toggles on startup.
+o.exec_on_start("rm -f ~/.local/state/omarchy/toggles/lockscreen-off")
