@@ -182,24 +182,6 @@ selection_background=${selection_background:-$foreground}
 selection_foreground=${selection_foreground:-$background}
 accent=$color4
 
-# Remap ANSI slots to semantic names for the output palette
-bg=$color0
-red=$color1
-green=$color2
-yellow=$color3
-blue=$color4
-purple=$color5
-cyan=$color6
-fg=$color7
-muted=$color8
-bright_red=$color9
-bright_green=$color10
-bright_yellow=$color11
-bright_blue=$color12
-bright_purple=$color13
-bright_cyan=$color14
-bright_fg=$color15
-
 mkdir -p "$THEME_SOURCE"
 
 cat > "$COLORS_OUTPUT" <<EOF
@@ -210,20 +192,20 @@ background = "$background"
 selection_foreground = "$selection_foreground"
 selection_background = "$selection_background"
 
-color0 = "$bg"
-color1 = "$red"
-color2 = "$green"
-color3 = "$yellow"
-color4 = "$blue"
-color5 = "$purple"
-color6 = "$cyan"
-color7 = "$fg"
-color8 = "$muted"
-color9 = "$bright_red"
-color10 = "$bright_green"
-color11 = "$bright_yellow"
-color12 = "$bright_blue"
-color13 = "$bright_purple"
-color14 = "$bright_cyan"
-color15 = "$bright_fg"
+color0 = "$color0"
+color1 = "$color1"
+color2 = "$color2"
+color3 = "$color3"
+color4 = "$color4"
+color5 = "$color5"
+color6 = "$color6"
+color7 = "$color7"
+color8 = "$color8"
+color9 = "$color9"
+color10 = "$color10"
+color11 = "$color11"
+color12 = "$color12"
+color13 = "$color13"
+color14 = "$color14"
+color15 = "$color15"
 EOF

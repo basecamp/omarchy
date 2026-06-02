@@ -3,20 +3,19 @@
 # omarchy:summary=Apply the current theme to GNOME color mode and icon settings
 # omarchy:hidden=true
 
-# Detect mode (light|dark) with this precedence:
-#   1. `mode` key in the active theme's colors.toml
-#   2. legacy `light.mode` file shipped beside the theme
 THEME_DIR=~/.config/omarchy/current/theme
 COLORS_FILE="$THEME_DIR/colors.toml"
 
-theme_color() {
-  local key="$1"
+# In-tree light themes now declare `mode = "light"` in colors.toml instead of
+# shipping a separate light.mode marker. Keep light.mode as a user-theme fallback.
+theme_mode() {
+  [[ -f $COLORS_FILE ]] || return
 
-  awk -F= -v key="$key" '
+  awk -F= '
     {
       field = $1
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", field)
-      if (field == key) {
+      if (field == "mode") {
         value = $2
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
         if (value ~ /^"/) {
@@ -30,10 +29,7 @@ theme_color() {
   ' "$COLORS_FILE"
 }
 
-mode=""
-if [[ -f $COLORS_FILE ]]; then
-  mode=$(theme_color mode)
-fi
+mode=$(theme_mode)
 if [[ -z $mode && -f $THEME_DIR/light.mode ]]; then
   mode="light"
 fi
