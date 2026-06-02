@@ -51,7 +51,7 @@ fi
 
 # Restart components to apply new theme
 if pgrep -x waybar >/dev/null; then
-  omarchy-restart-waybar
+  OMARCHY_WAYBAR_HOT_RELOAD=1 omarchy-restart-waybar
 fi
 omarchy-restart-swayosd
 omarchy-restart-terminal
