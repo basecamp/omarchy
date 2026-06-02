@@ -183,41 +183,14 @@ Item {
       visible: true
       anchors { top: true; bottom: true; left: true; right: true }
       color: "transparent"
-      // The wallpaper is static outside of image loads/transitions. Disabling
-      // render updates keeps animations in other shell windows from repainting
-      // this background layer and wasting GPU cycles.
-      updatesEnabled: frozenBackgroundVersion !== root.backgroundVersion
-        || root.incomingBackground !== ""
-        || root.finishingTransition
-        || root.revealProgress < 1
-        || base.status === Image.Loading
-        || oldFrame.status === Image.Loading
-        || incomingFrame.status === Image.Loading
+      // Keep render updates enabled. The background layer has been observed to
+      // lose its committed buffer while parked with updatesEnabled=false,
+      // leaving a black desktop until omarchy-shell is restarted. The wallpaper
+      // itself is static, so this favors correctness over a small render-loop
+      // optimization.
+      updatesEnabled: true
 
       property bool maskReady: false
-      property int frozenBackgroundVersion: -1
-
-      function backgroundIsStable() {
-        // Don't freeze before the wallpaper has actually painted at least
-        // once. base.status === Image.Null on startup (empty source) reports
-        // "stable" but the surface hasn't committed a frame yet — freezing
-        // there leaves the wallpaper invisible until something else forces a
-        // repaint.
-        return base.status === Image.Ready
-          && !root.incomingBackground
-          && !root.finishingTransition
-          && root.revealProgress >= 1
-          && oldFrame.status !== Image.Loading
-          && incomingFrame.status !== Image.Loading
-      }
-
-      function scheduleUpdatesFreeze() {
-        if (!backgroundIsStable()) {
-          freezeUpdatesTimer.stop()
-          return
-        }
-        freezeUpdatesTimer.restart()
-      }
 
       function maybeStartReveal() {
         if (!root.incomingBackground || root.revealProgress !== 0 || maskReady) return
@@ -234,15 +207,6 @@ Item {
       WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
       exclusionMode: ExclusionMode.Ignore
 
-      Timer {
-        id: freezeUpdatesTimer
-        interval: 100
-        repeat: false
-        onTriggered: {
-          if (panel.backgroundIsStable()) panel.frozenBackgroundVersion = root.backgroundVersion
-        }
-      }
-
       Image {
         id: base
         anchors.fill: parent
@@ -256,7 +220,6 @@ Item {
             root.oldBackground = ""
             root.finishingTransition = false
           }
-          panel.scheduleUpdatesFreeze()
         }
       }
 
@@ -270,10 +233,7 @@ Item {
         smooth: true
         mipmap: true
         visible: root.oldBackground !== "" && root.revealProgress < 1
-        onStatusChanged: {
-          panel.maybeStartReveal()
-          panel.scheduleUpdatesFreeze()
-        }
+        onStatusChanged: panel.maybeStartReveal()
       }
 
       Item {
@@ -298,10 +258,7 @@ Item {
           cache: false
           smooth: true
           mipmap: true
-          onStatusChanged: {
-            panel.maybeStartReveal()
-            panel.scheduleUpdatesFreeze()
-          }
+          onStatusChanged: panel.maybeStartReveal()
         }
       }
 
@@ -335,17 +292,10 @@ Item {
 
       Connections {
         target: root
-        function onBackgroundVersionChanged() {
-          panel.frozenBackgroundVersion = -1
-          panel.scheduleUpdatesFreeze()
-        }
-        function onFinishingTransitionChanged() { panel.scheduleUpdatesFreeze() }
         function onIncomingBackgroundChanged() {
           panel.maskReady = false
           panel.maybeStartReveal()
-          panel.scheduleUpdatesFreeze()
         }
-        function onRevealProgressChanged() { panel.scheduleUpdatesFreeze() }
       }
 
       MouseArea {
