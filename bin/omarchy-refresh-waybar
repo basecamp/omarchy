@@ -5,4 +5,4 @@
 
 omarchy-refresh-config waybar/config.jsonc
 omarchy-refresh-config waybar/style.css
-omarchy-restart-waybar
+OMARCHY_WAYBAR_FULL_RESTART=1 omarchy-restart-waybar

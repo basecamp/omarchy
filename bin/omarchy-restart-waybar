@@ -3,5 +3,22 @@
 # omarchy:summary=Restart Waybar
 # omarchy:examples=omarchy restart waybar
 
-pkill -9 -x waybar
-setsid uwsm-app -- waybar >/dev/null 2>&1 &
+# By default, hot-reload waybar's CSS to preserve tray icons.
+# Set OMARCHY_WAYBAR_FULL_RESTART=1 to force a full restart (e.g. for config changes).
+if [[ ${OMARCHY_WAYBAR_FULL_RESTART:-0} == 1 ]]; then
+  pkill -x waybar
+  sleep 0.5
+  setsid uwsm-app -- waybar >/dev/null 2>&1 &
+else
+  style_css=~/.config/waybar/style.css
+  if [[ -f $style_css ]] && head -1 "$style_css" | grep -qE "^\s*@import"; then
+    # Add a timestamp comment to the first @import to trigger the file monitor.
+    # Waybar's reload_style_on_change watches style.css and re-applies on change.
+    sed -i "1s|\(@import[^;]*\);|\1; /* reloaded: $(date +%s) */|" "$style_css"
+  else
+    # Fall back to full restart if style.css is missing or doesn't start with @import
+    pkill -x waybar
+    sleep 0.5
+    setsid uwsm-app -- waybar >/dev/null 2>&1 &
+  fi
+fi
