@@ -61,12 +61,12 @@ brave)
   ;;
 brave-origin)
   echo "Installing Brave Origin..."
-  omarchy-pkg-aur-add brave-origin-beta-bin || exit 1
+  omarchy-pkg-aur-add brave-origin-bin || exit 1
 
   setup_policy_directory /etc/brave/policies/managed
   mkdir -p ~/.config
   # FIXME: Use normal chromium flags when Brave Origin wrapper has been fixed
-  echo "--load-extension=~/.local/share/omarchy/default/chromium/extensions/copy-url" > ~/.config/brave-origin-beta-flags.conf
+  echo "--load-extension=~/.local/share/omarchy/default/chromium/extensions/copy-url" > ~/.config/brave-origin-flags.conf
   omarchy-theme-set-browser
   announce_browser_installed "Brave Origin"
   ;;

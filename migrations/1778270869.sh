@@ -15,6 +15,6 @@ remove_chromium_vaapi_features() {
     "$file"
 }
 
-for flags_file in "$HOME"/.config/{chromium,chrome,google-chrome,google-chrome-beta,google-chrome-unstable,brave,brave-beta,brave-nightly,brave-origin-beta,microsoft-edge-stable,microsoft-edge-beta,microsoft-edge-dev,vivaldi-stable,vivaldi-snapshot,opera,opera-beta,opera-developer}-flags.conf; do
+for flags_file in "$HOME"/.config/{chromium,chrome,google-chrome,google-chrome-beta,google-chrome-unstable,brave,brave-beta,brave-nightly,brave-origin,microsoft-edge-stable,microsoft-edge-beta,microsoft-edge-dev,vivaldi-stable,vivaldi-snapshot,opera,opera-beta,opera-developer}-flags.conf; do
   remove_chromium_vaapi_features "$flags_file"
 done
