@@ -37,8 +37,11 @@ sync_theme_environment() {
 
 sync_colorfgbg() {
   local colorfgbg="15;0"
+  local mode
 
-  if [[ -f $CURRENT_THEME_PATH/light.mode ]]; then
+  mode=$(theme_color mode)
+
+  if [[ $mode == "light" ]] || [[ -z $mode && -f $CURRENT_THEME_PATH/light.mode ]]; then
     colorfgbg="0;15"
   fi
 

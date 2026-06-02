@@ -17,21 +17,56 @@ awk -F= '
     return value
   }
 
+  function alias_color(target, source) {
+    if (colors[target] == "" && colors[source] != "") colors[target] = colors[source]
+  }
+
+  function emit_color(color_index, key) {
+    if (colors[key] != "") printf "\033]4;%d;%s\007", color_index, colors[key]
+  }
+
   {
     key = $1
     gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
     value = clean($2)
+    colors[key] = value
   }
 
-  key == "foreground" { printf "\033]10;%s\007", value }
-  key == "background" { printf "\033]11;%s\007", value }
-  key == "cursor" { printf "\033]12;%s\007", value }
-  key == "selection_background" { printf "\033]17;%s\007", value }
-  key == "selection_foreground" { printf "\033]19;%s\007", value }
-  key ~ /^color[0-9]+$/ {
-    color_index = substr(key, 6) + 0
-    if (color_index >= 0 && color_index <= 15) {
-      printf "\033]4;%d;%s\007", color_index, value
-    }
+  END {
+    alias_color("color0", "bg")
+    alias_color("color0", "background")
+    alias_color("color1", "red")
+    alias_color("color2", "green")
+    alias_color("color3", "yellow")
+    alias_color("color4", "blue")
+    alias_color("color5", "purple")
+    alias_color("color6", "cyan")
+    alias_color("color7", "fg")
+    alias_color("color7", "foreground")
+    alias_color("color8", "muted")
+    alias_color("color8", "dark_fg")
+    alias_color("color8", "foreground")
+    alias_color("color9", "bright_red")
+    alias_color("color9", "red")
+    alias_color("color10", "bright_green")
+    alias_color("color10", "green")
+    alias_color("color11", "bright_yellow")
+    alias_color("color11", "yellow")
+    alias_color("color12", "bright_blue")
+    alias_color("color12", "blue")
+    alias_color("color13", "bright_purple")
+    alias_color("color13", "purple")
+    alias_color("color14", "bright_cyan")
+    alias_color("color14", "cyan")
+    alias_color("color15", "bright_fg")
+    alias_color("color15", "foreground")
+
+    if (colors["foreground"] != "") printf "\033]10;%s\007", colors["foreground"]
+    if (colors["background"] != "") printf "\033]11;%s\007", colors["background"]
+    if (colors["cursor"] != "") printf "\033]12;%s\007", colors["cursor"]
+    if (colors["selection_background"] != "") printf "\033]17;%s\007", colors["selection_background"]
+    if (colors["selection_foreground"] != "") printf "\033]19;%s\007", colors["selection_foreground"]
+
+    for (i = 0; i <= 15; i++) emit_color(i, "color" i)
   }
 ' "$theme"

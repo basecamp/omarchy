@@ -337,6 +337,20 @@ if [[ -f $COLORS_FILE ]]; then
   [[ ${THEME_COLORS[bright_blue]} ]]   || THEME_COLORS[bright_blue]=$(mix_color "${THEME_COLORS[blue]}" "#ffffff" 20%)
   [[ ${THEME_COLORS[bright_purple]} ]] || THEME_COLORS[bright_purple]=$(mix_color "${THEME_COLORS[purple]}" "#ffffff" 20%)
 
+  # Keep semantic themes compatible with user templates that still reference
+  # the legacy ANSI placeholders directly.
+  declare -A ansi_alias=(
+    [color0]=bg          [color1]=red           [color2]=green
+    [color3]=yellow      [color4]=blue          [color5]=purple
+    [color6]=cyan        [color7]=fg            [color8]=muted
+    [color9]=bright_red  [color10]=bright_green [color11]=bright_yellow
+    [color12]=bright_blue [color13]=bright_purple [color14]=bright_cyan
+    [color15]=bright_fg
+  )
+  for key in "${!ansi_alias[@]}"; do
+    [[ ${THEME_COLORS[$key]} ]] || THEME_COLORS[$key]="${THEME_COLORS[${ansi_alias[$key]}]}"
+  done
+
   # Resolve theme mode (dark|light) with this precedence:
   #   1. `mode` key in colors.toml
   #   2. legacy `light.mode` file shipped beside the theme

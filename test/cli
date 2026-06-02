@@ -215,6 +215,7 @@ USER_THEMED="$PI_TMPDIR/.config/omarchy/themed"
 mkdir -p "$NEXT_THEME" "$CURRENT_THEME" "$USER_THEMED"
 
 cat >"$NEXT_THEME/colors.toml" <<'EOF'
+mode = "light"
 accent = "#336699"
 hyprland_active_border = "rgba(010203ee) rgba(040506ee) 45deg"
 cursor = "#ffffff"
@@ -253,11 +254,26 @@ fallback-shell={{ gradient_start missing accent }}
 fallback-shell-gradient={{ shell_gradient missing accent }}
 EOF
 
+cat >"$USER_THEMED/alias-test.txt.tpl" <<'EOF'
+color={{ color1 }}
+strip={{ color1_strip }}
+rgb={{ color1_rgb }}
+EOF
+
 OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-templates"
 grep -qx 'mix=#808080' "$NEXT_THEME/mix-test.txt" || fail "theme template mix helper works"
 grep -qx 'strip=808080' "$NEXT_THEME/mix-test.txt" || fail "theme template mix_strip helper works"
 grep -qx 'rgb=128,128,128' "$NEXT_THEME/mix-test.txt" || fail "theme template mix_rgb helper works"
 pass "theme template color mix helpers work"
+
+grep -qx 'color=#ff0000' "$NEXT_THEME/alias-test.txt" || fail "theme template semantic aliases expose legacy colorN"
+grep -qx 'strip=ff0000' "$NEXT_THEME/alias-test.txt" || fail "theme template legacy colorN_strip works"
+grep -qx 'rgb=255,0,0' "$NEXT_THEME/alias-test.txt" || fail "theme template legacy colorN_rgb works"
+pass "theme template semantic aliases expose legacy colorN helpers"
+
+osc_summary=$("$ROOT/bin/omarchy-theme-osc" "$NEXT_THEME/colors.toml" | python -c 'import sys; data = sys.stdin.buffer.read(); print(data.count(b"]4;"), b"]4;1;#ff0000" in data, b"]4;15;#eeeeee" in data)')
+[[ $osc_summary == "16 True True" ]] || fail "theme OSC aliases semantic colors to ANSI palette"
+pass "theme OSC aliases semantic colors to ANSI palette"
 
 grep -qx 'hypr={ colors = { "rgba(010203ee)", "rgba(040506ee)" }, angle = 45 }' "$NEXT_THEME/gradient-test.txt" || fail "theme template hypr_gradient helper works"
 grep -qx 'shell=#010203' "$NEXT_THEME/gradient-test.txt" || fail "theme template gradient_start helper works"
@@ -295,6 +311,63 @@ mv "$PI_TMPDIR/settings.json.tmp" "$PI_TMPDIR/.pi/agent/settings.json"
 HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-pi" --activate
 jq -e '.theme == "omarchy-system" and .model == "keep-me"' "$PI_TMPDIR/.pi/agent/settings.json" >/dev/null
 pass "pi theme activation preserves existing settings"
+
+cp "$NEXT_THEME/colors.toml" "$CURRENT_THEME/colors.toml"
+cp "$NEXT_THEME/vscode-theme.json" "$CURRENT_THEME/vscode-theme.json"
+
+FAKE_BIN="$PI_TMPDIR/fake-bin"
+mkdir -p "$FAKE_BIN"
+
+cat >"$FAKE_BIN/tmux" <<'EOF'
+#!/bin/bash
+case "$1" in
+  list-sessions)
+    [[ $2 == "-F" ]] && echo "session-1"
+    exit 0
+    ;;
+  set-environment|set-option|refresh-client)
+    echo "$*" >>"${TMUX_LOG:-/dev/null}"
+    exit 0
+    ;;
+  list-panes|list-clients)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+EOF
+chmod +x "$FAKE_BIN/tmux"
+
+TMUX_LOG="$PI_TMPDIR/tmux.log" PATH="$FAKE_BIN:$ROOT/bin:$PATH" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-tmux"
+grep -q 'set-environment -g COLORFGBG 0;15' "$PI_TMPDIR/tmux.log" || fail "tmux sync reads mode from colors.toml"
+pass "tmux sync reads mode from colors.toml"
+
+cat >"$FAKE_BIN/gsettings" <<'EOF'
+#!/bin/bash
+echo "$*" >>"${GSETTINGS_LOG:-/dev/null}"
+EOF
+chmod +x "$FAKE_BIN/gsettings"
+
+GSETTINGS_LOG="$PI_TMPDIR/gsettings.log" PATH="$FAKE_BIN:$ROOT/bin:$PATH" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-gnome"
+grep -q 'org.gnome.desktop.interface color-scheme prefer-light' "$PI_TMPDIR/gsettings.log" || fail "gnome sync reads mode from colors.toml"
+pass "gnome sync reads mode from colors.toml"
+
+cat >"$FAKE_BIN/omarchy-cmd-present" <<'EOF'
+#!/bin/bash
+[[ $1 == "code" ]]
+EOF
+chmod +x "$FAKE_BIN/omarchy-cmd-present"
+
+cat >"$FAKE_BIN/omarchy-toggle-enabled" <<'EOF'
+#!/bin/bash
+exit 1
+EOF
+chmod +x "$FAKE_BIN/omarchy-toggle-enabled"
+
+PATH="$FAKE_BIN:$ROOT/bin:$PATH" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-vscode"
+jq -e '.contributes.themes[0].uiTheme == "vs"' "$PI_TMPDIR/.vscode/extensions/omarchy-theme/package.json" >/dev/null || fail "vscode generated light theme uses VS Code light uiTheme"
+pass "vscode generated light theme uses VS Code light uiTheme"
 
 for binary in \
   omarchy-update \
