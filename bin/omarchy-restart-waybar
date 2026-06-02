@@ -5,6 +5,11 @@
 
 # By default, hot-reload waybar's CSS to preserve tray icons.
 # Set OMARCHY_WAYBAR_FULL_RESTART=1 to force a full restart (e.g. for config changes).
+if [[ -z ${DBUS_SESSION_BUS_ADDRESS:-} && -z ${XDG_RUNTIME_DIR:-} ]]; then
+  echo "omarchy-restart-waybar: no D-Bus session; skipping waybar restart" >&2
+  exit 0
+fi
+
 if [[ ${OMARCHY_WAYBAR_FULL_RESTART:-0} == 1 ]]; then
   pkill -x waybar
   sleep 0.5
