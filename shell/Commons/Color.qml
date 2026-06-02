@@ -2,11 +2,12 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "BorderGeometry.js" as Geometry
 
 // Color surfaces for the shell. Foundational palette (foreground, background,
 // accent, urgent) comes from theme/colors.toml. Per-surface roles come from
 // theme/shell.toml — generated per theme from default/themed/shell.toml.tpl,
-// or shipped directly by a theme to override individual keys. Surfaces that
+// or shipped directly by a theme to replace the generated file. Surfaces that
 // don't appear in shell.toml fall back to the foundational palette.
 QtObject {
   id: root
@@ -34,9 +35,32 @@ QtObject {
     return Util.clampAlpha(n)
   }
 
-  // Compose a color from a base-color key and its `-alpha` companion.
+  function firstColorToken(value) {
+    var parts = String(value || "").replace(/^\s+|\s+$/g, "").split(/\s+/)
+    for (var i = 0; i < parts.length; i++) {
+      if (!parts[i].match(/^-?\d+(?:\.\d+)?deg$/)) return parts[i]
+    }
+    return value
+  }
+
+  function flatColor(value, fallback) {
+    var token = firstColorToken(value)
+    var role = String(token || "").replace(/^\s+|\s+$/g, "").toLowerCase()
+    if (role === "foreground" || role === "text") return root.foreground
+    if (role === "accent") return root.accent
+    if (role === "urgent") return root.urgent
+    if (role === "background") return root.background
+    if (role === "transparent") return Qt.rgba(0, 0, 0, 0)
+
+    var color = Geometry.canonicalColor(token, 1)
+    if (typeof color === "string" && color === token && token.charAt(0) !== "#") return fallback
+    return color
+  }
+
+  // Compose a color from a base-color key and its `-alpha` companion. If the
+  // base token is a gradient, color-only consumers use the first stop.
   function composed(colorKey, alphaKey, colorFallback, alphaFallback) {
-    return Util.alpha(pick(colorKey, colorFallback), pickAlpha(alphaKey, alphaFallback))
+    return Util.alpha(flatColor(pick(colorKey, colorFallback), colorFallback), pickAlpha(alphaKey, alphaFallback))
   }
 
   readonly property QtObject bar: QtObject {
@@ -130,8 +154,9 @@ QtObject {
 
   // Single TOML walker for shell.toml. Both Color (surface roles) and Style
   // (typography, spacing, bar, control states) consume the resulting dict.
-  // Accepts quoted strings and bare numeric values; tolerates inline comments.
-  // Numbers are kept as strings here — readers coerce when they pull a value.
+  // Accepts quoted strings, bare numeric values, bare width lists, and bare
+  // role names; tolerates inline comments. Numbers are kept as strings here —
+  // readers coerce when they pull a value.
   function loadShell(raw) {
     var parsed = {}
     var text = String(raw || "")
@@ -145,8 +170,9 @@ QtObject {
         if (sectionMatch) { section = sectionMatch[1]; continue }
         var stringKv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*["']([^"']+)["']\s*(#.*)?$/)
         var numKv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(-?\d+(?:\.\d+)?)\s*(#.*)?$/)
+        var widthKv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(-?\d+(?:\.\d+)?(?:\s+-?\d+(?:\.\d+)?){1,3})\s*(#.*)?$/)
         var bareKv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*([A-Za-z][A-Za-z0-9_-]*)\s*(#.*)?$/)
-        var kv = stringKv || numKv || bareKv
+        var kv = stringKv || numKv || widthKv || bareKv
         if (!kv || !section) continue
         parsed[section + "." + kv[1]] = kv[2]
       }

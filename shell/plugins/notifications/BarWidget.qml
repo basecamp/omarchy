@@ -130,14 +130,13 @@ BarWidget {
 
         Item { Layout.fillWidth: true }
 
-        Rectangle {
+        BorderSurface {
           id: dndPill
           Layout.preferredHeight: Math.max(Style.space(24), Style.font.bodySmall + Style.spacing.controlPaddingY * 2)
           Layout.preferredWidth: dndLabel.implicitWidth + dndGlyph.implicitWidth + Style.space(18)
           radius: Math.min(Style.space(12), root.cardRadius + Style.space(6))
           color: dndOn ? root.colAccent : root.colSurface
-          border.color: dndOn ? root.colAccent : root.colBorder
-          border.width: Style.normalBorderWidth
+          borderSpec: Border.flat(dndOn ? root.colAccent : root.colBorder, Style.normalBorderWidth)
 
           readonly property bool dndOn: !!root.notificationService && root.notificationService.doNotDisturb
 
@@ -228,13 +227,12 @@ BarWidget {
 
         Item { Layout.fillWidth: true }
 
-        Rectangle {
+        BorderSurface {
           Layout.preferredWidth: actionLabel.implicitWidth + Style.space(16)
           Layout.preferredHeight: Math.max(Style.space(22), Style.font.bodySmall + Style.spacing.controlPaddingY * 2)
           radius: Math.min(Style.space(6), root.cardRadius)
           color: actionArea.containsMouse ? root.colBorder : "transparent"
-          border.color: root.colBorder
-          border.width: Style.normalBorderWidth
+          borderSpec: Border.flat(root.colBorder, Style.normalBorderWidth)
 
           Text {
             id: actionLabel
@@ -272,7 +270,7 @@ BarWidget {
               : (onPending ? root.notificationService.pendingModel : root.notificationService.pastModel)
         visible: count > 0
 
-        delegate: Rectangle {
+        delegate: BorderSurface {
           id: rowCard
           required property int index
           required property string app
@@ -293,8 +291,7 @@ BarWidget {
           implicitHeight: rowContent.implicitHeight + Style.spacing.panelGap
           radius: root.cardRadius
           color: "transparent"
-          border.color: root.colBorder
-          border.width: Style.normalBorderWidth
+          borderSpec: Border.flat(root.colBorder, Style.normalBorderWidth)
 
           MouseArea {
             anchors.fill: parent
@@ -307,8 +304,8 @@ BarWidget {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: Style.space(12)
-            anchors.rightMargin: Style.space(12)
+            anchors.leftMargin: rowCard.borderLeft + Style.space(12)
+            anchors.rightMargin: rowCard.borderRight + Style.space(12)
             spacing: Style.space(10)
 
             Item {

@@ -12,7 +12,7 @@ import qs.Commons
 // `rounded` auto-detects from Style.cornerRadius so the switch follows
 // the theme: pill shape when Hyprland corners are rounded, square on sharp.
 // Callers can override per-instance.
-Rectangle {
+BorderSurface {
   id: root
 
   property string label: ""
@@ -52,10 +52,10 @@ Rectangle {
   radius: Style.cornerRadius
 
   readonly property bool _hot: hasCursor || mouse.containsMouse
+  readonly property var _borderSpec: Border.controlSpec(activeFocus ? "focus" : (_hot ? "hover-cursor" : "normal"), foreground, accent)
 
   color: Style.controlFill(activeFocus, _hot, foreground, accent)
-  border.color: Style.controlBorder(activeFocus, _hot, foreground, accent)
-  border.width: Style.controlBorderWidth(activeFocus, _hot)
+  borderSpec: _borderSpec
 
   Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -64,8 +64,8 @@ Rectangle {
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.verticalCenter: parent.verticalCenter
-    anchors.leftMargin: Style.spacing.rowPaddingX
-    anchors.rightMargin: Style.spacing.rowPaddingX
+    anchors.leftMargin: root.borderLeft + Style.spacing.rowPaddingX
+    anchors.rightMargin: root.borderRight + Style.spacing.rowPaddingX
     spacing: Style.spacing.rowPaddingX
 
     Column {
@@ -94,7 +94,7 @@ Rectangle {
       }
     }
 
-    Rectangle {
+    BorderSurface {
       id: track
       width: root.trackWidth
       height: root.trackHeight
@@ -102,10 +102,9 @@ Rectangle {
       color: root.checked
         ? Style.selectedFillFor(root.foreground, root.accent)
         : Style.normalFillFor(root.foreground, root.accent)
-      border.color: root.checked
-        ? Style.selectedBorderFor(root.foreground, root.accent)
-        : Style.normalBorderFor(root.foreground, root.accent)
-      border.width: root.checked ? Style.selectedBorderWidth : Style.normalBorderWidth
+      borderSpec: root.checked
+        ? Border.controlSpec("selected", root.foreground, root.accent)
+        : Border.controlSpec("normal", root.foreground, root.accent)
       anchors.verticalCenter: parent.verticalCenter
 
       Behavior on color { ColorAnimation { duration: 120 } }

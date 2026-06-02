@@ -37,6 +37,7 @@ Item {
   property color background: Color.popups.background
   property color popupBorder: Color.popups.border
   property color accent: Color.accent
+  readonly property var popupBorderSpec: Border.localOrSurfaceSpec("popups", "border", popupBorder, Color.popups.border, Style.normalBorderWidth)
   property string fontFamily: Style.font.family
   property int rowHeight: Style.spacing.controlHeight
   property int popupRowHeight: Style.spacing.popupRowHeight
@@ -266,7 +267,7 @@ Item {
       font.bold: true
     }
 
-    Rectangle {
+    BorderSurface {
       id: trigger
       width: parent.width
       height: root.rowHeight
@@ -274,10 +275,10 @@ Item {
 
       readonly property bool _focused: trigger.activeFocus
       readonly property bool _hot: triggerHover.hovered || root.hasCursor
+      readonly property var _borderSpec: Border.controlSpec(trigger._focused ? "focus" : (trigger._hot ? "hover-cursor" : "normal"), root.foreground, root.accent)
 
       color: Style.controlFill(trigger._focused, trigger._hot, root.foreground, root.accent)
-      border.color: Style.controlBorder(trigger._focused, trigger._hot, root.foreground, root.accent)
-      border.width: Style.controlBorderWidth(trigger._focused, trigger._hot)
+      borderSpec: _borderSpec
 
       activeFocusOnTab: true
 
@@ -300,8 +301,8 @@ Item {
         anchors.left: parent.left
         anchors.right: chevron.left
         anchors.verticalCenter: parent.verticalCenter
-        anchors.leftMargin: Style.spacing.controlPaddingX
-        anchors.rightMargin: Style.spacing.md
+        anchors.leftMargin: trigger.borderLeft + Style.spacing.controlPaddingX
+        anchors.rightMargin: trigger.borderRight + Style.spacing.md
         text: root.selectionLabel() || root.triggerLabel || root.noSelectionText
         color: root.selectionLabel() ? root.foreground : Qt.darker(root.foreground, 1.5)
         font.family: root.fontFamily
@@ -313,7 +314,7 @@ Item {
         id: chevron
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        anchors.rightMargin: Style.spacing.controlGap
+        anchors.rightMargin: trigger.borderRight + Style.spacing.controlGap
         text: "󰅀"
         color: Qt.darker(root.foreground, 1.2)
         font.family: root.fontFamily
@@ -359,6 +360,10 @@ Item {
         // when there isn't room, otherwise the popup overflows the window.
         implicitHeight: Math.min(_availableBelow, _idealContent, _maxRowsHeight)
         padding: Style.spacing.hairline
+        leftPadding: Border.left(root.popupBorderSpec) + Style.spacing.hairline
+        rightPadding: Border.right(root.popupBorderSpec) + Style.spacing.hairline
+        topPadding: Border.top(root.popupBorderSpec) + Style.spacing.hairline
+        bottomPadding: Border.bottom(root.popupBorderSpec) + Style.spacing.hairline
         focus: true
 
         Connections {
@@ -369,10 +374,9 @@ Item {
           function onHeightChanged() { popup.reposition() }
         }
 
-        background: Rectangle {
+        background: BorderSurface {
           color: root.background
-          border.color: root.popupBorder
-          border.width: Style.normalBorderWidth
+          borderSpec: root.popupBorderSpec
           radius: Style.cornerRadius
         }
 
@@ -432,7 +436,7 @@ Item {
                 }
               }
 
-              Rectangle {
+              BorderSurface {
                 id: refreshButton
                 visible: root.arrayFrom(root.optionsCommand).length > 0
                 enabled: !root.loadingOptions
@@ -442,10 +446,9 @@ Item {
                 color: refreshHover.hovered
                   ? Style.hoverFillFor(root.foreground, root.accent)
                   : Style.normalFillFor(root.foreground, root.accent)
-                border.color: refreshHover.hovered
-                  ? Style.hoverBorderFor(root.foreground, root.accent)
-                  : Style.normalBorderFor(root.foreground, root.accent)
-                border.width: refreshHover.hovered ? Style.hoverBorderWidth : Style.normalBorderWidth
+                borderSpec: refreshHover.hovered
+                  ? Border.controlSpec("hover-cursor", root.foreground, root.accent)
+                  : Border.controlSpec("normal", root.foreground, root.accent)
 
                 Text {
                   anchors.centerIn: parent
@@ -550,17 +553,16 @@ Item {
                   anchors.rightMargin: Style.spacing.controlPaddingX
                   spacing: Style.spacing.rowGap
 
-                  Rectangle {
+                  BorderSurface {
                     id: checkbox
                     width: Style.space(16)
                     height: Style.space(16)
                     radius: Math.max(2, Style.cornerRadius / 2)
                     anchors.verticalCenter: parent.verticalCenter
                     color: selected ? Style.selectedFillFor(root.foreground, root.accent) : "transparent"
-                    border.color: selected
-                      ? Style.selectedBorderFor(root.foreground, root.accent)
-                      : Style.normalBorderFor(root.foreground, root.accent)
-                    border.width: selected ? Style.selectedBorderWidth : Style.normalBorderWidth
+                    borderSpec: selected
+                      ? Border.controlSpec("selected", root.foreground, root.accent)
+                      : Border.controlSpec("normal", root.foreground, root.accent)
 
                     Text {
                       anchors.centerIn: parent

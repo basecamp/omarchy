@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Ui
 
 Item {
   id: root
@@ -42,7 +43,7 @@ Item {
     rotation: -45
   }
 
-  Rectangle {
+  BorderSurface {
     visible: root.warning
     width: Math.max(7, parent.width * 0.42)
     height: width
@@ -50,8 +51,7 @@ Item {
     color: root.badgeColor
     anchors.right: parent.right
     anchors.bottom: parent.bottom
-    border.color: Color.popups.background
-    border.width: 1
+    borderSpec: Border.flat(Color.popups.background, 1)
 
     Text {
       anchors.centerIn: parent

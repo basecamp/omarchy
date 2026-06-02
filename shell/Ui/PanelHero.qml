@@ -56,15 +56,14 @@ Item {
         height: 1
       }
 
-      Rectangle {
+      BorderSurface {
         id: detailPill
         visible: root.detail !== ""
         implicitWidth: detailText.implicitWidth + Style.space(10)
         implicitHeight: detailText.implicitHeight + Style.space(4)
         anchors.verticalCenter: parent.verticalCenter
         color: "transparent"
-        border.color: Style.normalBorderFor(root.foreground)
-        border.width: Style.normalBorderWidth
+        borderSpec: Border.controlSpec("normal", root.foreground, Color.accent)
         radius: Style.cornerRadius
 
         Text {

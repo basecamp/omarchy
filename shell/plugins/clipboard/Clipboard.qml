@@ -26,6 +26,7 @@ Item {
   property color background: Color.menu.background
   property color foreground: Color.menu.text
   property color border: Color.menu.border
+  property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
   property color scrim: Color.menu.scrim
   property color selectedBackground: Color.menu.selectedBackground
   property color selectedText: Color.menu.selectedText
@@ -275,15 +276,15 @@ Item {
       onClicked: root.close()
     }
 
-    Rectangle {
+    BorderSurface {
       id: card
       width: root.cardWidth
       height: root.cardHeight
       radius: root.cornerRadius
       anchors.centerIn: parent
       color: root.background
-      border.color: root.border
-      border.width: Math.max(1, Style.space(2))
+      borderSpec: root.borderSpec
+      padding: root.contentMargin
 
       MouseArea { anchors.fill: parent; onClicked: {} }
 
@@ -357,7 +358,10 @@ Item {
 
       Column {
         anchors.fill: parent
-        anchors.margins: root.contentMargin
+        anchors.topMargin: card.contentTopInset
+        anchors.rightMargin: card.contentRightInset
+        anchors.bottomMargin: card.contentBottomInset
+        anchors.leftMargin: card.contentLeftInset
         spacing: root.contentSpacing
 
         Rectangle {
@@ -365,7 +369,6 @@ Item {
           height: root.headerHeight
           radius: root.cornerRadius
           color: "transparent"
-          border.width: 0
 
           Text {
             anchors.left: parent.left
@@ -415,7 +418,6 @@ Item {
                   height: root.rowHeight
                   radius: root.cornerRadius
                   color: hasCursor ? root.selectedBackground : "transparent"
-                  border.width: 0
 
                   Row {
                     anchors.fill: parent

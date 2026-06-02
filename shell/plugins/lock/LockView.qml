@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 import qs.Commons
+import qs.Ui
 
 Item {
   id: root
@@ -26,6 +27,9 @@ Item {
   readonly property int fieldFontSize: Style.font.heading
   readonly property int passwordDotFontSize: Math.round(fieldFontSize * 1.3)
   readonly property bool showPasswordCursor: inputEnabled && !authenticatingPassword && failureMessage.length === 0
+  readonly property string borderToken: failureMessage.length > 0 ? "border-error" : (authenticatingPassword ? "border-active" : "border")
+  readonly property color borderFallback: failureMessage.length > 0 ? Color.lock.borderError : (authenticatingPassword ? Color.lock.borderActive : Color.lock.border)
+  readonly property var inputBorderSpec: Border.surfaceSpec("lock", borderToken, borderFallback, root.outlineThickness, "border-alpha")
 
   signal submitPassword(string password)
   signal passwordTextEdited(string password)
@@ -97,22 +101,23 @@ Item {
       onPositionChanged: root.wakeRequested()
     }
 
-    Rectangle {
+    BorderSurface {
       id: inputField
       width: root.fieldWidth
       height: root.fieldHeight
       anchors.centerIn: parent
       color: Color.lock.background
-      border.color: root.failureMessage.length > 0 ? Color.lock.borderError : (root.authenticatingPassword ? Color.lock.borderActive : Color.lock.border)
-      border.width: root.outlineThickness
+      borderSpec: root.inputBorderSpec
       radius: Style.cornerRadius
       clip: true
 
       TextInput {
         id: passwordInput
         anchors.fill: parent
-        anchors.leftMargin: root.outlineThickness + 18
-        anchors.rightMargin: root.outlineThickness + 18
+        anchors.topMargin: inputField.borderTop
+        anchors.rightMargin: inputField.borderRight + 18
+        anchors.bottomMargin: inputField.borderBottom
+        anchors.leftMargin: inputField.borderLeft + 18
         verticalAlignment: TextInput.AlignVCenter
         horizontalAlignment: TextInput.AlignHCenter
         activeFocusOnPress: true

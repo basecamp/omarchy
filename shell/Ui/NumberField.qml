@@ -44,15 +44,20 @@ Column {
     font.family: root.fontFamily
     font.pixelSize: root.fontSize
 
+    readonly property bool _focused: spin.activeFocus
+    readonly property bool _hot: root._hovered || root.hasCursor
+    readonly property var _borderSpec: Border.controlSpec(_focused ? "focus" : (_hot ? "hover-cursor" : "normal"), root.foreground, root.accent)
+
+    leftPadding: Border.left(_borderSpec) + Style.spacing.controlPaddingX
+    rightPadding: Border.right(_borderSpec) + Style.spacing.controlPaddingX
+    topPadding: Border.top(_borderSpec)
+    bottomPadding: Border.bottom(_borderSpec)
+
     onValueModified: root.modified(value)
 
-    background: Rectangle {
-      readonly property bool _focused: spin.activeFocus
-      readonly property bool _hot: root._hovered || root.hasCursor
-
-      color: Style.controlFill(_focused, _hot, root.foreground, root.accent)
-      border.color: Style.controlBorder(_focused, _hot, root.foreground, root.accent)
-      border.width: Style.controlBorderWidth(_focused, _hot)
+    background: BorderSurface {
+      color: Style.controlFill(spin._focused, spin._hot, root.foreground, root.accent)
+      borderSpec: spin._borderSpec
       radius: Style.cornerRadius
 
       HoverHandler {

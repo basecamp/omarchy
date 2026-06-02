@@ -46,20 +46,24 @@ Item {
 
     MouseArea { anchors.fill: parent; onClicked: root.canceled() }
 
-    Rectangle {
+    BorderSurface {
+      id: card
       width: Math.min(parent.width - Style.space(96), Style.space(370))
       height: Style.space(132)
       anchors.centerIn: parent
       color: root.background
-      border.color: root.selectedText
-      border.width: Style.normalBorderWidth
+      borderSpec: Border.flat(root.selectedText, Style.normalBorderWidth)
+      padding: Style.space(18)
       radius: root.cornerRadius
 
       MouseArea { anchors.fill: parent; onClicked: {} }
 
       Item {
         anchors.fill: parent
-        anchors.margins: Style.space(18)
+        anchors.topMargin: card.contentTopInset
+        anchors.rightMargin: card.contentRightInset
+        anchors.bottomMargin: card.contentBottomInset
+        anchors.leftMargin: card.contentLeftInset
 
         Text {
           anchors.left: parent.left
@@ -80,7 +84,7 @@ Item {
           Repeater {
             model: [root.cancelText, root.confirmText]
 
-            Rectangle {
+            BorderSurface {
               required property int index
               required property string modelData
 
@@ -92,10 +96,9 @@ Item {
               color: selected
                 ? (destructive ? Util.alpha(Color.urgent, 0.22) : root.selectedBackground)
                 : "transparent"
-              border.color: destructive
+              borderSpec: Border.flat(destructive
                 ? (selected ? Color.urgent : Util.alpha(Color.urgent, 0.56))
-                : (selected ? root.selectedText : Util.alpha(root.foreground, 0.38))
-              border.width: Style.normalBorderWidth
+                : (selected ? root.selectedText : Util.alpha(root.foreground, 0.38)), Style.normalBorderWidth)
               radius: 0
 
               Text {

@@ -126,10 +126,13 @@ customizes, `shell.json` is canonical — there is no deep-merge.
 
 ## Theme tokens
 
+See [`theming.md`](theming.md) for the full theme/template workflow,
+including generated `*.tpl` files, gradient helpers, and shell border syntax.
+
 Themes ship colors in `themes/<name>/colors.toml` and surface roles +
 sizing in `themes/<name>/shell.toml`. Defaults are generated from
 `default/themed/shell.toml.tpl`; a theme may also drop a hand-written
-`shell.toml` next to its `colors.toml` to override individual keys.
+`shell.toml` next to its `colors.toml` to replace the generated file.
 
 The shell exposes these tokens to QML via two singletons in
 `qs.Commons`:
@@ -143,29 +146,34 @@ The shell exposes these tokens to QML via two singletons in
   state tokens/helpers, spacing (`Style.spacing.*` / `Style.space(px)`),
   the type scale (`Style.font.*`), and bar dimensions
   (`Style.bar.sizeHorizontal` / `Style.bar.sizeVertical`).
+- `Border` — border-spec helpers for QML surfaces. Use with
+  `BorderSurface` from `qs.Ui` when a border should honor shell theme
+  gradients or per-side widths. `Color.<section>.border` is only the
+  flat-color fallback for code that cannot render a real border.
 
 ### Interactive states
 
 `[controls]` standardizes reusable control chrome (buttons, dropdowns,
 tab strips, etc.) around four states: `normal`, `hover-cursor`, `focus`,
-and `selected`. State colors accept palette roles (`foreground`,
-`accent`, `urgent`, `background`) or hex strings; the default template
-ships hex values. Fill/border alphas are applied to that state's color.
+and `selected`. State colors and border tokens accept palette roles
+(`foreground`, `accent`, `urgent`, `background`) or hex strings; border
+values may also be gradients. Fill alpha applies to the state color;
+border alpha applies to the state's border token.
 
 Surfaces like `[menu]`, `[launcher]`, and `[image-picker]` define
 their own `selected-*` tokens and do **not** inherit from `[controls]`.
 `[controls]` only governs the shared button/dropdown chrome.
 
-| State | Color token | Fill alpha | Border width | Border alpha |
-|-------|-------------|------------|--------------|--------------|
-| Normal idle chrome | `normal-color` | `normal-fill-alpha` | `normal-border-width` | `normal-border-alpha` |
-| Hover / keyboard cursor | `hover-cursor-color` | `hover-cursor-fill-alpha` | `hover-cursor-border-width` | `hover-cursor-border-alpha` |
-| Qt activeFocus | `focus-color` | `focus-fill-alpha` | `focus-border-width` | `focus-border-alpha` |
-| Persistent selected/current | `selected-color` | `selected-fill-alpha` | `selected-border-width` | `selected-border-alpha` |
+| State | Color token | Fill alpha | Border token | Border width | Border alpha |
+|-------|-------------|------------|--------------|--------------|--------------|
+| Normal idle chrome | `normal-color` | `normal-fill-alpha` | `normal-border` | `normal-border-width` | `normal-border-alpha` |
+| Hover / keyboard cursor | `hover-cursor-color` | `hover-cursor-fill-alpha` | `hover-cursor-border` | `hover-cursor-border-width` | `hover-cursor-border-alpha` |
+| Qt activeFocus | `focus-color` | `focus-fill-alpha` | `focus-border` | `focus-border-width` | `focus-border-alpha` |
+| Persistent selected/current | `selected-color` | `selected-fill-alpha` | `selected-border` | `selected-border-width` | `selected-border-alpha` |
 
 The template ships `focus-*` adjacent to `hover-cursor-*` with the same
 values so mouse hover, keyboard cursor, and tab focus read identically.
-Themes that want focus to stand out override the four `focus-*` keys.
+Themes that want focus to stand out override the `focus-*` keys.
 
 Border widths are the theme-level on/off switches for state borders; set
 a width to `0` to keep the fill while removing that state border. The
@@ -178,6 +186,7 @@ default keeps selected borders off globally (`selected-border-width =
 hover-cursor-color = "accent"
 focus-color        = "accent"
 selected-color     = "foreground"
+focus-border       = "rgba(33ccffee) rgba(00ff99ee) 45deg"
 
 # Keep selected fills but remove selected-state borders.
 selected-border-width = 0

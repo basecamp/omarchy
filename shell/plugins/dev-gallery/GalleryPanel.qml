@@ -376,13 +376,12 @@ Item {
               font.bold: true
             }
 
-            Rectangle {
+            BorderSurface {
               width: parent.width
               implicitHeight: conventionsCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.width: 1
+              borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10), 1)
 
               Column {
                 id: conventionsCol
@@ -458,13 +457,12 @@ Item {
               wrapMode: Text.WordWrap
             }
 
-            Rectangle {
+            BorderSurface {
               width: parent.width
               implicitHeight: typeCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.width: 1
+              borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10), 1)
 
               Column {
                 id: typeCol
@@ -676,13 +674,12 @@ Item {
               font.pixelSize: Style.font.caption
             }
 
-            Rectangle {
+            BorderSurface {
               width: parent.width
               implicitHeight: shCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.width: 1
+              borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10), 1)
 
               Column {
                 id: shCol
@@ -732,13 +729,12 @@ Item {
               font.pixelSize: Style.font.caption
             }
 
-            Rectangle {
+            BorderSurface {
               width: parent.width
               implicitHeight: sepCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.width: 1
+              borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10), 1)
 
               Column {
                 id: sepCol
@@ -777,13 +773,12 @@ Item {
               wrapMode: Text.WordWrap
             }
 
-            Rectangle {
+            BorderSurface {
               width: parent.width
               implicitHeight: csCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.width: 1
+              borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10), 1)
 
               Column {
                 id: csCol
@@ -862,13 +857,12 @@ Item {
               wrapMode: Text.WordWrap
             }
 
-            Rectangle {
+            BorderSurface {
               width: parent.width
               implicitHeight: buttonRow.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.width: 1
+              borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10), 1)
 
               Row {
                 id: buttonRow
@@ -1019,13 +1013,12 @@ Item {
               wrapMode: Text.WordWrap
             }
 
-            Rectangle {
+            BorderSurface {
               width: parent.width
               implicitHeight: choiceRow.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.width: 1
+              borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10), 1)
 
               ButtonGroup {
                 id: choiceRow
@@ -1070,13 +1063,12 @@ Item {
               wrapMode: Text.WordWrap
             }
 
-            Rectangle {
+            BorderSurface {
               width: parent.width
               implicitHeight: pabCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.width: 1
+              borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10), 1)
 
               Row {
                 id: pabCol
@@ -1162,7 +1154,7 @@ Item {
               wrapMode: Text.WordWrap
             }
 
-            Rectangle {
+            BorderSurface {
               id: tipSwatch
               width: Style.space(140)
               height: Style.space(36)
@@ -1170,10 +1162,9 @@ Item {
               color: tipMouse.containsMouse || focused
                 ? Style.hoverFillFor(root.foreground, root.accent)
                 : Style.normalFillFor(root.foreground, root.accent)
-              border.color: focused
-                ? Style.hoverBorderFor(root.foreground, root.accent)
-                : Style.normalBorderFor(root.foreground, root.accent)
-              border.width: focused ? Style.hoverBorderWidth : Style.normalBorderWidth
+              borderSpec: focused
+                ? Border.controlSpec("hover-cursor", root.foreground, root.accent)
+                : Border.controlSpec("normal", root.foreground, root.accent)
               radius: Style.cornerRadius
               onFocusedChanged: if (focused) root.ensureCursorVisible(this)
 
@@ -1306,13 +1297,12 @@ Item {
               wrapMode: Text.WordWrap
             }
 
-            Rectangle {
+            BorderSurface {
               width: parent.width
               implicitHeight: tfCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.width: 1
+              borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10), 1)
 
               Column {
                 id: tfCol
@@ -1390,12 +1380,11 @@ Item {
               wrapMode: Text.WordWrap
             }
 
-            Rectangle {
+            BorderSurface {
               width: parent.width
               implicitHeight: numberDemo.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-              border.width: 1
+              borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12), 1)
               radius: Style.cornerRadius
 
               NumberField {
@@ -1502,13 +1491,12 @@ Item {
               wrapMode: Text.WordWrap
             }
 
-            Rectangle {
+            BorderSurface {
               width: parent.width
               implicitHeight: ddCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.width: 1
+              borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10), 1)
 
               Column {
                 id: ddCol
@@ -1558,13 +1546,12 @@ Item {
               wrapMode: Text.WordWrap
             }
 
-            Rectangle {
+            BorderSurface {
               width: parent.width
               implicitHeight: sddCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.width: 1
+              borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10), 1)
 
               Column {
                 id: sddCol
@@ -1630,13 +1617,12 @@ Item {
               wrapMode: Text.WordWrap
             }
 
-            Rectangle {
+            BorderSurface {
               width: parent.width
               implicitHeight: composedCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.width: 1
+              borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10), 1)
 
               Column {
                 id: composedCol

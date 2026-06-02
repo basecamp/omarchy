@@ -285,15 +285,15 @@ PanelWindow {
 
   // --- card ----------------------------------------------------------------
 
-  Rectangle {
+  BorderSurface {
     id: card
     x: root.cardOrigin.x
     y: root.cardOrigin.y
     width: root.contentWidth
     height: root.contentHeight
     color: Color.popups.background
-    border.color: Color.popups.border
-    border.width: Math.max(1, Style.space(2))
+    borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
+    padding: root.padding
     radius: Style.cornerRadius
     opacity: root.open || root.popoutSwitching ? 1.0 : 0
 
@@ -309,7 +309,10 @@ PanelWindow {
     Item {
       id: contentHolder
       anchors.fill: parent
-      anchors.margins: root.padding
+      anchors.topMargin: card.contentTopInset
+      anchors.rightMargin: card.contentRightInset
+      anchors.bottomMargin: card.contentBottomInset
+      anchors.leftMargin: card.contentLeftInset
       opacity: root.popoutSwitching ? (root.open ? 1.0 : 0) : 1.0
 
       Behavior on opacity {
