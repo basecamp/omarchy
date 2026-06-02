@@ -1022,10 +1022,9 @@ Panel {
             event.accepted = true
           }
         }
-        background: Rectangle {
+        background: BorderSurface {
           color: Color.background
-          border.color: root.dim
-          border.width: 1
+          borderSpec: Border.flat(root.dim, 1)
           radius: Style.cornerRadius
         }
 

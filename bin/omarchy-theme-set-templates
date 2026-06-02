@@ -173,6 +173,25 @@ gradient_start_value() {
   fi
 }
 
+shell_gradient_value() {
+  local spec index
+
+  spec=$(resolve_theme_ref "$1" "${2:-}")
+  parse_gradient "$spec"
+
+  if (( ${#GRADIENT_COLORS[@]} == 0 )); then
+    printf "%s" "$spec"
+    return
+  fi
+
+  for index in "${!GRADIENT_COLORS[@]}"; do
+    (( index > 0 )) && printf " "
+    printf "%s" "${GRADIENT_COLORS[$index]}"
+  done
+
+  [[ -n $GRADIENT_ANGLE ]] && printf " %sdeg" "$GRADIENT_ANGLE"
+}
+
 add_template_value() {
   local key="$1"
   local value="$2"
@@ -247,6 +266,9 @@ add_gradient_function_value() {
     gradient_start)
       value=$(gradient_start_value "$key" "$fallback")
       ;;
+    shell_gradient)
+      value=$(shell_gradient_value "$key" "$fallback")
+      ;;
     *)
       return
       ;;
@@ -264,7 +286,7 @@ add_gradient_function_values() {
       [[ -n ${seen[$token]:-} ]] && continue
       seen[$token]=1
       add_gradient_function_value "$token"
-    done < <(grep -hEo '\{\{[[:space:]]*(hypr_gradient|gradient_start)[[:space:]]+[^}]+[[:space:]]*\}\}' "$tpl" 2>/dev/null || true)
+    done < <(grep -hEo '\{\{[[:space:]]*(hypr_gradient|gradient_start|shell_gradient)[[:space:]]+[^}]+[[:space:]]*\}\}' "$tpl" 2>/dev/null || true)
   done
 }
 

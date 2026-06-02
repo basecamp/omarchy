@@ -1055,7 +1055,7 @@ BarWidget {
     }
   }
 
-  component SectionCard: Rectangle {
+  component SectionCard: BorderSurface {
     id: section
     property string title: ""
     property string subtitle: ""
@@ -1064,17 +1064,20 @@ BarWidget {
 
     Layout.fillWidth: true
     color: card
-    border.color: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.05)
-    border.width: 1
+    borderSpec: Border.flat(Qt.rgba(foreground.r, foreground.g, foreground.b, 0.05), 1)
+    padding: 12
     radius: Style.cornerRadius
-    implicitHeight: body.implicitHeight + 22
+    implicitHeight: body.implicitHeight + contentTopInset + contentBottomInset
 
     ColumnLayout {
       id: body
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: parent.top
-      anchors.margins: 12
+      anchors.topMargin: section.contentTopInset
+      anchors.rightMargin: section.contentRightInset
+      anchors.bottomMargin: section.contentBottomInset
+      anchors.leftMargin: section.contentLeftInset
       spacing: 8
 
       PanelSectionHeader {

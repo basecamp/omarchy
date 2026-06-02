@@ -26,6 +26,7 @@ Item {
   property color background: Color.popups.background
   property color popupBorder: Color.popups.border
   property color accent: Color.accent
+  readonly property var popupBorderSpec: Border.localOrSurfaceSpec("popups", "border", popupBorder, Color.popups.border, Style.normalBorderWidth)
   property string fontFamily: Style.font.family
   property int rowHeight: Style.spacing.controlHeight
   property int popupRowHeight: Style.spacing.popupRowHeight
@@ -78,7 +79,7 @@ Item {
       font.bold: true
     }
 
-    Rectangle {
+    BorderSurface {
       id: trigger
       width: parent.width
       height: root.rowHeight
@@ -86,10 +87,10 @@ Item {
 
       readonly property bool _focused: trigger.activeFocus
       readonly property bool _hot: triggerHover.hovered || root.hasCursor
+      readonly property var _borderSpec: Border.controlSpec(trigger._focused ? "focus" : (trigger._hot ? "hover-cursor" : "normal"), root.foreground, root.accent)
 
       color: Style.controlFill(trigger._focused, trigger._hot, root.foreground, root.accent)
-      border.color: Style.controlBorder(trigger._focused, trigger._hot, root.foreground, root.accent)
-      border.width: Style.controlBorderWidth(trigger._focused, trigger._hot)
+      borderSpec: _borderSpec
 
       activeFocusOnTab: true
 
@@ -112,8 +113,8 @@ Item {
         anchors.left: parent.left
         anchors.right: chevron.left
         anchors.verticalCenter: parent.verticalCenter
-        anchors.leftMargin: Style.spacing.controlPaddingX
-        anchors.rightMargin: Style.spacing.md
+        anchors.leftMargin: trigger.borderLeft + Style.spacing.controlPaddingX
+        anchors.rightMargin: trigger.borderRight + Style.spacing.md
         text: root.currentLabel()
         color: root.foreground
         font.family: root.fontFamily
@@ -125,7 +126,7 @@ Item {
         id: chevron
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        anchors.rightMargin: Style.spacing.controlGap
+        anchors.rightMargin: trigger.borderRight + Style.spacing.controlGap
         text: "󰅀"
         color: Qt.darker(root.foreground, 1.2)
         font.family: root.fontFamily
@@ -149,12 +150,15 @@ Item {
         implicitHeight: Math.min(root.options.length * root.popupRowHeight + Math.max(0, root.options.length - 1) * Style.spacing.labelGap + Style.spacing.xxs,
                                  root.popupRowHeight * 8 + 7 * Style.spacing.labelGap + Style.spacing.xxs)
         padding: Style.spacing.hairline
+        leftPadding: Border.left(root.popupBorderSpec) + Style.spacing.hairline
+        rightPadding: Border.right(root.popupBorderSpec) + Style.spacing.hairline
+        topPadding: Border.top(root.popupBorderSpec) + Style.spacing.hairline
+        bottomPadding: Border.bottom(root.popupBorderSpec) + Style.spacing.hairline
         focus: true
 
-        background: Rectangle {
+        background: BorderSurface {
           color: root.background
-          border.color: root.popupBorder
-          border.width: Style.normalBorderWidth
+          borderSpec: root.popupBorderSpec
           radius: Style.cornerRadius
         }
 

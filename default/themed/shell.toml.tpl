@@ -1,6 +1,6 @@
 # Omarchy shell surfaces. Colors derive from colors.toml; sizes and the
 # typographic scale come from the keys below. Themes can ship
-# themes/<name>/shell.toml to override any individual key.
+# themes/<name>/shell.toml to replace this generated file.
 
 [bar]
 # Alpha companions (where present) range from 0 (invisible) to 1 (opaque).
@@ -20,15 +20,20 @@ size-vertical    = 28
 # Shared state tokens for interactive control chrome (buttons, dropdowns,
 # tab strips, etc).
 
-# Normal: idle control chrome.
+# Normal: idle control chrome. Border widths accept one CSS-style scalar/list:
+# N, "Y X", "T X B", or "T R B L". Per-side keys like
+# normal-border-width-left override the list. Each *-border accepts either a
+# solid color or a Hyprland-style gradient, e.g. "rgba(...) rgba(...) 45deg".
 normal-color        = "{{ foreground }}"
 normal-fill-alpha   = 0.04
+normal-border       = "{{ foreground }}"
 normal-border-width = 1
 normal-border-alpha = 0.4
 
 # Hover-cursor: mouse hover and the panel keyboard cursor.
 hover-cursor-color        = "{{ foreground }}"
 hover-cursor-fill-alpha   = 0.08
+hover-cursor-border       = "{{ foreground }}"
 hover-cursor-border-width = 1
 hover-cursor-border-alpha = 0.25
 
@@ -37,12 +42,14 @@ hover-cursor-border-alpha = 0.25
 # — themes that want focus to stand out override these four lines.
 focus-color        = "{{ foreground }}"
 focus-fill-alpha   = 0.08
+focus-border       = "{{ foreground }}"
 focus-border-width = 1
 focus-border-alpha = 0.25
 
 # Selected: persistent chosen/current state.
 selected-color        = "{{ foreground }}"
 selected-fill-alpha   = 0.18
+selected-border       = "{{ foreground }}"
 selected-border-width = 0
 selected-border-alpha = 1.0
 
@@ -107,11 +114,15 @@ base-size = 12
 
 [popups]
 # Shared by every bar flyout (dropdowns, OSD, popup cards).
+# Border accepts either a solid color or a Hyprland-style gradient. Border
+# widths accept one CSS-style scalar/list: N, "Y X", "T X B", or "T R B L";
+# individual border-width-top/right/bottom/left keys override the list.
 background       = "{{ background }}"
 background-alpha = 1.0
 text             = "{{ foreground }}"
-border           = "{{ accent }}"
+border           = "{{ shell_gradient hyprland_active_border accent }}"
 border-alpha     = 1.0
+# border-width     = 2
 
 [tooltip]
 # Hover tooltips across the bar, panels, and buttons. background-alpha of
@@ -119,18 +130,18 @@ border-alpha     = 1.0
 background       = "{{ background }}"
 background-alpha = 0.97
 text             = "{{ foreground }}"
-border           = "{{ foreground }}"
+border           = "{{ shell_gradient hyprland_active_border foreground }}"
 border-alpha     = 1.0
 
 [notifications]
 background       = "{{ background }}"
 background-alpha = 1.0
 text             = "{{ foreground }}"
-# Conventionally matches the Hyprland active-window border. If a theme
-# defines a gradient active border, the shell uses its first stop because
-# QML Rectangle borders are flat colors.
-border           = "{{ gradient_start hyprland_active_border accent }}"
+# Conventionally matches the Hyprland active-window border. Border accepts
+# either a solid color or the full active-border gradient.
+border           = "{{ shell_gradient hyprland_active_border accent }}"
 border-alpha     = 1.0
+# border-width     = 2
 countdown        = "{{ accent }}"
 
 [launcher]
@@ -141,14 +152,14 @@ countdown        = "{{ accent }}"
 background                = "{{ background }}"
 background-alpha          = 0.95
 text                      = "{{ foreground }}"
-border                    = "{{ foreground }}"
+border                    = "{{ shell_gradient hyprland_active_border foreground }}"
 border-alpha              = 1.0
 scrim                     = "{{ background }}"
 scrim-alpha               = 0.5
 selected-background       = "{{ foreground }}"
 selected-background-alpha = 0.08
 selected-text             = "{{ accent }}"
-selected-border           = "{{ foreground }}"
+selected-border           = "{{ shell_gradient hyprland_active_border foreground }}"
 selected-border-alpha     = 0.25
 
 [menu]
@@ -158,14 +169,14 @@ selected-border-alpha     = 0.25
 background                = "{{ background }}"
 background-alpha          = 1.0
 text                      = "{{ foreground }}"
-border                    = "{{ foreground }}"
+border                    = "{{ shell_gradient hyprland_active_border foreground }}"
 border-alpha              = 1.0
 scrim                     = "{{ background }}"
 scrim-alpha               = 0.5
 selected-background       = "{{ foreground }}"
 selected-background-alpha = 0.08
 selected-text             = "{{ accent }}"
-selected-border           = "{{ foreground }}"
+selected-border           = "{{ shell_gradient hyprland_active_border foreground }}"
 selected-border-alpha     = 0.25
 
 [polkit]
@@ -178,7 +189,7 @@ background       = "{{ background }}"
 background-alpha = 1.0
 text             = "{{ foreground }}"
 text-error       = "{{ color1 }}"
-border           = "{{ accent }}"
+border           = "{{ shell_gradient hyprland_active_border accent }}"
 border-error     = "{{ color1 }}"
 border-alpha     = 1.0
 scrim            = "{{ background }}"
@@ -196,8 +207,8 @@ background       = "{{ background }}"
 background-alpha = 0.8
 text             = "{{ foreground }}"
 text-error       = "{{ color1 }}"
-border           = "{{ foreground }}"
-border-active    = "{{ accent }}"
+border           = "{{ shell_gradient hyprland_active_border foreground }}"
+border-active    = "{{ shell_gradient hyprland_active_border accent }}"
 border-error     = "{{ color1 }}"
 border-alpha     = 1.0
 # selection is the text-selection tint inside the input field.

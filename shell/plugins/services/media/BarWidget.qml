@@ -117,13 +117,12 @@ BarWidget {
         spacing: Style.space(10)
         width: parent.width
 
-        Rectangle {
+        BorderSurface {
           width: Style.space(64)
           height: Style.space(64)
           radius: Style.spacing.labelGap
           color: Style.normalFillFor(root.bar.foreground, Color.accent)
-          border.color: Style.normalBorderFor(root.bar.foreground, Color.accent)
-          border.width: Style.normalBorderWidth
+          borderSpec: Border.controlSpec("normal", root.bar.foreground, Color.accent)
 
           Image {
             anchors.fill: parent
@@ -230,7 +229,7 @@ BarWidget {
         Repeater {
           model: root.sourcePlayers
 
-          Rectangle {
+          BorderSurface {
             id: sourceRow
             required property var modelData
 
@@ -244,16 +243,15 @@ BarWidget {
             height: sourceInner.implicitHeight + Style.space(10)
             radius: Style.spacing.labelGap
             color: selected ? Style.selectedFillFor(root.bar.foreground, Color.accent) : "transparent"
-            border.color: selected ? Style.selectedBorderFor(root.bar.foreground, Color.accent) : "transparent"
-            border.width: selected ? Style.normalBorderWidth : 0
+            borderSpec: selected ? Border.controlSpec("normal", root.bar.foreground, Color.accent) : Border.none()
 
             Row {
               id: sourceInner
               anchors.left: parent.left
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
-              anchors.leftMargin: Style.space(8)
-              anchors.rightMargin: Style.space(8)
+              anchors.leftMargin: sourceRow.borderLeft + Style.space(8)
+              anchors.rightMargin: sourceRow.borderRight + Style.space(8)
               spacing: Style.space(8)
 
               Text {

@@ -741,15 +741,14 @@ Panel {
 
             Item { width: Math.max(0, parent.width - parent.children[0].width - heroDetailPill.implicitWidth); height: 1 }
 
-            Rectangle {
+            BorderSurface {
               id: heroDetailPill
               visible: heroSsid.detail !== ""
               implicitWidth: heroDetail.implicitWidth + Style.space(10)
               implicitHeight: heroDetail.implicitHeight + Style.space(4)
               anchors.verticalCenter: parent.verticalCenter
               color: "transparent"
-              border.color: Style.normalBorderFor(root.bar.foreground)
-              border.width: Style.normalBorderWidth
+              borderSpec: Border.controlSpec("normal", root.bar.foreground, Color.accent)
               radius: Style.cornerRadius
 
               Text {
@@ -1139,12 +1138,11 @@ Panel {
           font.pixelSize: Style.font.subtitle
         }
 
-        Rectangle {
+        BorderSurface {
           anchors.fill: parent
           visible: row.forgetFocused
           color: Style.hoverFillFor(root.bar.urgent, root.bar.urgent)
-          border.color: Style.hoverBorderFor(root.bar.urgent, root.bar.urgent)
-          border.width: Style.hoverBorderWidth
+          borderSpec: Border.controlSpec("hover-cursor", root.bar.urgent, root.bar.urgent)
           radius: Style.cornerRadius
           z: -1
         }
@@ -1256,7 +1254,7 @@ Panel {
         Component.onCompleted: if (visible) Qt.callLater(forceActiveFocus)
       }
 
-      Rectangle {
+      BorderSurface {
         id: statusMsgWrapper
         visible: row.isBusy || row.isFailed
         anchors.left: parent.left
@@ -1264,8 +1262,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
         height: Style.spacing.controlHeight
         color: Style.normalFillFor(root.bar.foreground)
-        border.color: Style.normalBorderFor(root.bar.foreground)
-        border.width: Style.normalBorderWidth
+        borderSpec: Border.controlSpec("normal", root.bar.foreground, Color.accent)
         radius: Style.cornerRadius
 
         Text {

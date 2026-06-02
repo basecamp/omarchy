@@ -34,6 +34,7 @@ TextField {
 
   readonly property bool _focused: activeFocus
   readonly property bool _hot: hovered || hasCursor
+  readonly property var _borderSpec: Border.controlSpec(_focused ? "focus" : (_hot ? "hover-cursor" : "normal"), root.foreground, root.accent)
 
   echoMode: password ? TextInput.Password : TextInput.Normal
   font.family: Style.font.family
@@ -43,15 +44,14 @@ TextField {
   selectedTextColor: foreground
   placeholderTextColor: Qt.darker(foreground, 1.6)
 
-  leftPadding: horizontalPadding
-  rightPadding: horizontalPadding
-  topPadding: verticalPadding
-  bottomPadding: verticalPadding
+  leftPadding: horizontalPadding + Border.left(_borderSpec)
+  rightPadding: horizontalPadding + Border.right(_borderSpec)
+  topPadding: verticalPadding + Border.top(_borderSpec)
+  bottomPadding: verticalPadding + Border.bottom(_borderSpec)
 
-  background: Rectangle {
+  background: BorderSurface {
     color: Style.controlFill(root._focused, root._hot, root.foreground, root.accent)
-    border.color: Style.controlBorder(root._focused, root._hot, root.foreground, root.accent)
-    border.width: Style.controlBorderWidth(root._focused, root._hot)
+    borderSpec: root._borderSpec
     radius: Style.cornerRadius
   }
 }

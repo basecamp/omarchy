@@ -6,9 +6,10 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import qs.Commons
+import qs.Ui
 import "../NotificationLogic.js" as NotificationLogic
 
-Rectangle {
+BorderSurface {
   id: root
 
   property string app: ""
@@ -48,6 +49,7 @@ Rectangle {
   readonly property color dimColor: Qt.darker(Color.notifications.text, 1.4)
   readonly property color bodyColor: Qt.darker(Color.notifications.text, 1.15)
   readonly property color accentColor: urgency === 2 ? Color.urgent : (urgency === 0 ? dimColor : Color.notifications.countdown)
+  readonly property var cardBorderSpec: Border.surfaceSpec("notifications", "border", Color.notifications.border, Math.max(1, Style.space(2)))
 
   function sanitizeBody(s) {
     return NotificationLogic.sanitizeBody(s, app, appIcon)
@@ -62,13 +64,12 @@ Rectangle {
   }
 
   implicitWidth: Style.space(380)
-  // Add 2 * border.width so mainColumn (inset by border.width on top/left/right)
+  // Add vertical border insets so mainColumn (inset by border on top/left/right)
   // doesn't push content under the bottom edge.
-  implicitHeight: mainColumn.implicitHeight + border.width * 2
+  implicitHeight: mainColumn.implicitHeight + borderTop + borderBottom
   radius: cornerRadius
   color: Color.notifications.background
-  border.color: Color.notifications.border
-  border.width: Math.max(1, Style.space(2))
+  borderSpec: cardBorderSpec
   clip: true
 
   HoverHandler { id: hoverTracker }
@@ -86,9 +87,9 @@ Rectangle {
     anchors.top: parent.top
     anchors.left: parent.left
     anchors.right: parent.right
-    anchors.topMargin: root.border.width
-    anchors.leftMargin: root.border.width
-    anchors.rightMargin: root.border.width
+    anchors.topMargin: root.borderTop
+    anchors.leftMargin: root.borderLeft
+    anchors.rightMargin: root.borderRight
     spacing: 0
 
     // Text content.

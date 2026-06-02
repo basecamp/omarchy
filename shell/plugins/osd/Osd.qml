@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
+import qs.Ui
 import "OsdModel.js" as OsdModel
 
 Item {
@@ -79,7 +80,7 @@ Item {
     // never blocks clicks to the desktop below it.
     mask: Region {}
 
-    Rectangle {
+    BorderSurface {
       id: card
       width: root.mediaOsd ? root.mediaCardWidth : root.cardWidth
       height: Math.max(Style.space(68), Style.font.displayLarge + Style.spacing.panelGap)
@@ -87,15 +88,16 @@ Item {
       anchors.bottom: parent.bottom
       anchors.bottomMargin: Style.space(67)
       color: Util.alpha(Color.background, 0.97)
-      border.color: Color.popups.border
-      border.width: Math.max(1, Style.space(2))
+      borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
       radius: Style.cornerRadius
       opacity: root.opened ? 1 : 0
 
       Row {
         anchors.fill: parent
-        anchors.leftMargin: Style.space(16)
-        anchors.rightMargin: Style.space(16)
+        anchors.topMargin: card.borderTop
+        anchors.rightMargin: card.borderRight + Style.space(16)
+        anchors.bottomMargin: card.borderBottom
+        anchors.leftMargin: card.borderLeft + Style.space(16)
         spacing: Style.space(16)
         Text {
           width: Style.space(28)

@@ -37,9 +37,12 @@ Item {
   property color background: Color.launcher.background
   property color foreground: Color.launcher.text
   property color border: Color.launcher.border
+  property var borderSpec: Border.surfaceSpec("launcher", "border", border, 2)
   property color scrim: Color.launcher.scrim
   property color selectedBackground: Color.launcher.selectedBackground
   property color selectedText: Color.launcher.selectedText
+  property color selectedBorder: Color.launcher.selectedBorder
+  property var selectedBorderSpec: Border.surfaceSpec("launcher", "selected-border", selectedBorder, 0)
   property string fontFamily: Style.font.menuFamily
 
   property int cardWidth: 644
@@ -342,15 +345,15 @@ Item {
       onClicked: root.dismiss()
     }
 
-    Rectangle {
+    BorderSurface {
       id: card
       width: Math.min(root.cardWidth, panel.width - Style.gapsOut * 2)
       height: Math.min(root.cardHeight, panel.height - Style.gapsOut * 2)
       radius: Style.cornerRadius
       anchors.centerIn: parent
       color: root.background
-      border.color: root.border
-      border.width: 2
+      borderSpec: root.borderSpec
+      padding: root.contentMargin
       clip: true
 
       MouseArea { anchors.fill: parent; onClicked: {} }
@@ -435,7 +438,10 @@ Item {
 
       Column {
         anchors.fill: parent
-        anchors.margins: root.contentMargin
+        anchors.topMargin: card.contentTopInset
+        anchors.rightMargin: card.contentRightInset
+        anchors.bottomMargin: card.contentBottomInset
+        anchors.leftMargin: card.contentLeftInset
         spacing: root.contentSpacing
 
         Rectangle {
@@ -471,7 +477,7 @@ Item {
             spacing: 0
             boundsBehavior: Flickable.StopAtBounds
 
-            delegate: Rectangle {
+            delegate: BorderSurface {
               id: row
               required property int index
               required property string name
@@ -484,12 +490,12 @@ Item {
               height: root.rowHeight
               radius: 0
               color: row.hasCursor ? root.selectedBackground : "transparent"
-              border.width: 0
+              borderSpec: row.hasCursor ? root.selectedBorderSpec : Border.none()
 
               Item {
                 id: iconSlot
                 anchors.left: parent.left
-                anchors.leftMargin: 14
+                anchors.leftMargin: row.borderLeft + 14
                 anchors.verticalCenter: parent.verticalCenter
                 width: root.iconSlotWidth
                 height: parent.height
@@ -519,7 +525,7 @@ Item {
                 anchors.left: iconSlot.right
                 anchors.leftMargin: 14
                 anchors.right: parent.right
-                anchors.rightMargin: 14
+                anchors.rightMargin: row.borderRight + 14
                 anchors.verticalCenter: parent.verticalCenter
                 text: row.name
                 color: row.hasCursor ? root.selectedText : root.foreground

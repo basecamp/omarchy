@@ -798,13 +798,12 @@ Item {
         }
       }
 
-      Rectangle {
+      BorderSurface {
         id: tooltipBubble
         implicitWidth: tooltipLabel.implicitWidth + 20
         implicitHeight: tooltipLabel.implicitHeight + 14
         color: Color.tooltip.background
-        border.color: Color.tooltip.border
-        border.width: 1
+        borderSpec: Border.surfaceSpec("tooltip", "border", Color.tooltip.border, 1)
         radius: Style.cornerRadius
 
         Text {
@@ -904,11 +903,10 @@ Item {
       width: ghostWindow.ghostWidth + ghostWindow.ghostPadding * 2
       height: ghostWindow.ghostHeight + ghostWindow.ghostPadding * 2
 
-      Rectangle {
+      BorderSurface {
         anchors.fill: parent
         color: root.transparent ? "transparent" : root.background
-        border.color: root.barForeground
-        border.width: 1
+        borderSpec: Border.flat(root.barForeground, 1)
         radius: Math.min(Style.cornerRadius, height / 2)
         opacity: root.transparent ? 0.45 : 0.94
       }
@@ -1234,13 +1232,12 @@ Item {
 
     HoverHandler { id: moduleHover }
 
-    Rectangle {
+    BorderSurface {
       visible: slot.dragSource
       anchors.fill: parent
       anchors.margins: Style.space(1)
       color: root.transparent ? "transparent" : root.background
-      border.color: root.barForeground
-      border.width: 1
+      borderSpec: Border.flat(root.barForeground, 1)
       radius: Math.min(Style.cornerRadius, height / 2)
       opacity: root.transparent ? 0.22 : 0.32
     }

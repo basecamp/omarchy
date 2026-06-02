@@ -17,7 +17,7 @@ import qs.Commons
 //
 // Emits `hovered(bool)` so panels with their own keyboard cursor model
 // can update state on mouse enter/leave.
-Rectangle {
+BorderSurface {
   id: root
 
   property string text: ""
@@ -46,6 +46,11 @@ Rectangle {
   property real verticalPadding: Style.spacing.controlPaddingY
   property bool leftAlign: false
 
+  leftPadding: horizontalPadding
+  rightPadding: horizontalPadding
+  topPadding: verticalPadding
+  bottomPadding: verticalPadding
+
   // Tooltip palette. Auto-rendered if tooltipText is set. Defaults pull
   // from [tooltip] in shell.toml; override per-instance only when a button
   // intentionally wants a tooltip that diverges from the theme.
@@ -62,13 +67,21 @@ Rectangle {
   Keys.onEnterPressed: if (focusable) root.clicked()
   Keys.onSpacePressed: if (focusable) root.clicked()
 
-  implicitWidth: row.implicitWidth + horizontalPadding * 2
-  implicitHeight: row.implicitHeight + verticalPadding * 2
+  implicitWidth: row.implicitWidth + horizontalPadding * 2 + borderLeft + borderRight
+  implicitHeight: row.implicitHeight + verticalPadding * 2 + borderTop + borderBottom
   radius: Style.cornerRadius
 
   readonly property bool hot: mouseArea.containsMouse || hasCursor
   readonly property bool _showFocusRing: focusable && activeFocus
   readonly property color _selectedColor: Style.selectedStateColor(root.foreground, root.accent)
+  readonly property var _tooltipBorderSpec: Border.localOrSurfaceSpec("tooltip", "border", root.tooltipBorder, Color.tooltip.border, Math.max(1, Style.normalBorderWidth))
+  readonly property var _selectedBorderSpec: Border.controlSpec("selected", root.foreground, root.accent)
+  readonly property var _normalBorderSpec: Border.controlSpec("normal", root.foreground, root.accent)
+  readonly property var _borderSpec: _showFocusRing ? Border.controlSpec("focus", root.foreground, root.accent)
+    : hot                      ? Border.controlSpec("hover-cursor", root.foreground, root.accent)
+    : selected                 ? (Border.controlHasWidth("selected") ? _selectedBorderSpec : (bordered ? _normalBorderSpec : Border.none()))
+    : bordered                 ? _normalBorderSpec
+    : Border.none()
 
   color: mouseArea.pressed ? Style.pressedFillFor(root.foreground, root.accent)
     : _showFocusRing       ? Style.focusFillFor(root.foreground, root.accent)
@@ -84,17 +97,7 @@ Rectangle {
   // default for plain buttons; explicitly bordered buttons keep their
   // normal border when selected unless selected-border-width opts in to a
   // dedicated selected border.
-  border.color: _showFocusRing ? Style.focusBorderFor(root.foreground, root.accent)
-    : hot                      ? Style.hoverBorderFor(root.foreground, root.accent)
-    : selected                 ? (Style.selectedBorderWidth > 0 ? Style.selectedBorderFor(root.foreground, root.accent) : Style.normalBorderFor(root.foreground, root.accent))
-    : bordered                 ? Style.normalBorderFor(root.foreground, root.accent)
-    : "transparent"
-
-  border.width: _showFocusRing ? Style.focusBorderWidth
-    : hot                      ? Style.hoverBorderWidth
-    : selected                 ? (Style.selectedBorderWidth > 0 ? Style.selectedBorderWidth : (bordered ? Style.normalBorderWidth : 0))
-    : bordered                 ? Style.normalBorderWidth
-    : 0
+  borderSpec: _borderSpec
 
   Behavior on color { ColorAnimation { duration: 120 } }
 
@@ -103,10 +106,9 @@ Rectangle {
     text: root.tooltipText
     delay: 400
     padding: 0
-    background: Rectangle {
+    background: BorderSurface {
       color: root.tooltipBackground
-      border.color: root.tooltipBorder
-      border.width: Math.max(1, Style.normalBorderWidth)
+      borderSpec: root._tooltipBorderSpec
       radius: 0
     }
     contentItem: Text {
@@ -114,10 +116,10 @@ Rectangle {
       color: root.tooltipForeground
       font.family: root.fontFamily
       font.pixelSize: Style.font.bodySmall
-      leftPadding: Style.spacing.controlPaddingX
-      rightPadding: Style.spacing.controlPaddingX
-      topPadding: Style.spacing.controlPaddingY
-      bottomPadding: Style.spacing.controlPaddingY
+      leftPadding: Border.left(root._tooltipBorderSpec) + Style.spacing.controlPaddingX
+      rightPadding: Border.right(root._tooltipBorderSpec) + Style.spacing.controlPaddingX
+      topPadding: Border.top(root._tooltipBorderSpec) + Style.spacing.controlPaddingY
+      bottomPadding: Border.bottom(root._tooltipBorderSpec) + Style.spacing.controlPaddingY
     }
   }
 
@@ -125,7 +127,7 @@ Rectangle {
     id: row
     anchors.verticalCenter: parent.verticalCenter
     anchors.left: root.leftAlign ? parent.left : undefined
-    anchors.leftMargin: root.leftAlign ? root.horizontalPadding : 0
+    anchors.leftMargin: root.leftAlign ? root.contentLeftInset : 0
     anchors.horizontalCenter: root.leftAlign ? undefined : parent.horizontalCenter
     spacing: Style.spacing.controlGap
 

@@ -11,7 +11,7 @@ import qs.Commons
 // hover-cursor border. `outline` remains as a compatibility flag for
 // callers that used to request border-only rows, but slider rows still
 // receive the same hover-cursor background as every other row.
-Rectangle {
+BorderSurface {
   id: root
 
   property bool hasCursor: false
@@ -27,19 +27,13 @@ Rectangle {
   radius: Style.cornerRadius
 
   color: hasCursor ? fill : (current ? currentFill : "transparent")
-
-  border.color: root.hasCursor
-    ? Style.hoverBorderFor(root.foreground, root.accent)
+  borderSpec: root.hasCursor
+    ? Border.controlSpec("hover-cursor", root.foreground, root.accent)
     : (root.current
-      ? Style.selectedBorderFor(root.foreground, root.accent)
+      ? Border.controlSpec("selected", root.foreground, root.accent)
       : (root.bordered
-        ? Style.normalBorderFor(root.foreground, root.accent)
-        : "transparent"))
-  border.width: root.hasCursor
-    ? Style.hoverBorderWidth
-    : (root.current
-      ? Style.selectedBorderWidth
-      : (root.bordered ? Style.normalBorderWidth : 0))
+        ? Border.controlSpec("normal", root.foreground, root.accent)
+        : Border.none()))
 
   Behavior on color {
     ColorAnimation { duration: 60 }

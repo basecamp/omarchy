@@ -24,7 +24,7 @@ import qs.Commons
 // Use this when a PanelActionButton is itself the cursor target (rather
 // than living inside a CursorSurface row). Emits `hovered(bool)` on
 // pointer enter/leave so the panel can update its cursor state to match.
-Rectangle {
+BorderSurface {
   id: root
 
   property string iconText: ""
@@ -53,22 +53,18 @@ Rectangle {
 
   readonly property bool _showFocusRing: focusable && activeFocus
   readonly property bool _hot: (mouse.containsMouse || root.hasCursor) && root.enabled
+  readonly property var _borderSpec: _showFocusRing
+    ? Border.controlSpec("focus", hoverColor, hoverColor)
+    : (_hot && bordered
+      ? Border.controlSpec("hover-cursor", hoverColor, hoverColor)
+      : (bordered ? Border.controlSpec("normal", foreground, Color.accent) : Border.none()))
 
   color: _showFocusRing
     ? Style.focusFillFor(hoverColor, hoverColor)
     : (_hot
       ? Style.hoverFillFor(hoverColor, hoverColor)
       : "transparent")
-  border.width: _showFocusRing
-    ? Style.focusBorderWidth
-    : (_hot && bordered
-      ? Style.hoverBorderWidth
-      : (bordered ? Style.normalBorderWidth : 0))
-  border.color: _showFocusRing
-    ? Style.focusBorderFor(hoverColor, hoverColor)
-    : (_hot && bordered
-      ? Style.hoverBorderFor(hoverColor, hoverColor)
-      : Style.normalBorderFor(foreground, Color.accent))
+  borderSpec: _borderSpec
 
   Behavior on color { ColorAnimation { duration: 60 } }
 

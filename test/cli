@@ -249,8 +249,10 @@ EOF
 cat >"$USER_THEMED/gradient-test.txt.tpl" <<'EOF'
 hypr={{ hypr_gradient hyprland_active_border accent }}
 shell={{ gradient_start hyprland_active_border accent }}
+shell-gradient={{ shell_gradient hyprland_active_border accent }}
 fallback-hypr={{ hypr_gradient missing accent }}
 fallback-shell={{ gradient_start missing accent }}
+fallback-shell-gradient={{ shell_gradient missing accent }}
 EOF
 
 OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-templates"
@@ -261,8 +263,10 @@ pass "theme template color mix helpers work"
 
 grep -qx 'hypr={ colors = { "rgba(010203ee)", "rgba(040506ee)" }, angle = 45 }' "$NEXT_THEME/gradient-test.txt" || fail "theme template hypr_gradient helper works"
 grep -qx 'shell=#010203' "$NEXT_THEME/gradient-test.txt" || fail "theme template gradient_start helper works"
+grep -qx 'shell-gradient=rgba(010203ee) rgba(040506ee) 45deg' "$NEXT_THEME/gradient-test.txt" || fail "theme template shell_gradient helper works"
 grep -qx 'fallback-hypr="#336699"' "$NEXT_THEME/gradient-test.txt" || fail "theme template hypr_gradient fallback works"
 grep -qx 'fallback-shell=#336699' "$NEXT_THEME/gradient-test.txt" || fail "theme template gradient_start fallback works"
+grep -qx 'fallback-shell-gradient=#336699' "$NEXT_THEME/gradient-test.txt" || fail "theme template shell_gradient fallback works"
 pass "theme template gradient helpers work"
 
 jq -e '.name == "omarchy-system" and .vars.panel == "#0f0f0f" and .vars.border == "#4d4d4d" and .colors.accent == "accent"' "$NEXT_THEME/pi.json" >/dev/null

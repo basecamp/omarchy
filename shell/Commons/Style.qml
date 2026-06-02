@@ -414,8 +414,9 @@ QtObject {
           if (key === "scale") nextSpacingScale = fval
           else spacingOut[key] = fval
         }
-      } else if (section === "controls") {
+      } else if (section === "controls" || section === "style") {
         // Strings are passed through; styleRawNum/styleString coerce on read.
+        // [style] is the legacy name for [controls].
         styleOut[key] = raw
       }
     }

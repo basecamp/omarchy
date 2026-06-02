@@ -4,6 +4,7 @@ import Quickshell.Io
 import Quickshell.Services.Polkit
 import Quickshell.Wayland
 import qs.Commons
+import qs.Ui
 import "PolkitModel.js" as PolkitModel
 
 Item {
@@ -16,6 +17,7 @@ Item {
   property color foreground: Color.polkit.text
   property color border: Color.polkit.border
   property color borderError: Color.polkit.borderError
+  property var borderSpec: Border.surfaceSpec("polkit", errorFlash ? "border-error" : "border", errorFlash ? borderError : border, Math.max(1, Style.space(2)), "border-alpha")
   property color scrim: Color.polkit.scrim
   readonly property int cornerRadius: Style.cornerRadius
   property int contentMargin: Style.spacing.panelPadding
@@ -212,7 +214,7 @@ Item {
       onClicked: root.refocus()
     }
 
-    Rectangle {
+    BorderSurface {
       id: card
       width: root.cardWidth
       height: root.cardHeight
@@ -220,8 +222,8 @@ Item {
       anchors.centerIn: parent
       anchors.horizontalCenterOffset: root.shakeOffset
       color: root.background
-      border.color: root.errorFlash ? root.borderError : root.border
-      border.width: Math.max(1, Style.space(2))
+      borderSpec: root.borderSpec
+      padding: root.contentMargin
 
       MouseArea { anchors.fill: parent; onClicked: root.refocus() }
 
@@ -245,7 +247,10 @@ Item {
       Row {
         id: cardRow
         anchors.fill: parent
-        anchors.margins: root.contentMargin
+        anchors.topMargin: card.contentTopInset
+        anchors.rightMargin: card.contentRightInset
+        anchors.bottomMargin: card.contentBottomInset
+        anchors.leftMargin: card.contentLeftInset
         spacing: Style.space(14)
 
         Text {

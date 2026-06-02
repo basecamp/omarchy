@@ -14,6 +14,7 @@ PopupWindow {
   property int contentWidth: Style.space(280)
   property int contentHeight: Style.space(200)
   property color borderColor: Color.popups.border
+  property var borderSpec: Border.localOrSurfaceSpec("popups", "border", borderColor, Color.popups.border, Math.max(1, Style.space(2)))
   property bool open: false
   property bool centerOnBar: false
   // "click" — uses HyprlandFocusGrab so clicking outside dismisses the popup.
@@ -145,12 +146,12 @@ PopupWindow {
     }
   }
 
-  Rectangle {
+  BorderSurface {
     id: card
     anchors.fill: parent
     color: Color.popups.background
-    border.color: root.borderColor
-    border.width: Math.max(1, Style.space(2))
+    borderSpec: root.borderSpec
+    padding: root.padding
     radius: Style.cornerRadius
     opacity: root.open ? 1.0 : 0
 
@@ -161,7 +162,10 @@ PopupWindow {
     Item {
       id: contentHolder
       anchors.fill: parent
-      anchors.margins: root.padding
+      anchors.topMargin: card.contentTopInset
+      anchors.rightMargin: card.contentRightInset
+      anchors.bottomMargin: card.contentBottomInset
+      anchors.leftMargin: card.contentLeftInset
     }
 
     HoverHandler {

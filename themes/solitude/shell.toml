@@ -1,5 +1,0 @@
-# solitude preserves the historical behavior of matching notification
-# borders to the theme's Hyprland active-window border (hyprland_active_border
-# in colors.toml), rather than the accent.
-[notifications]
-border = "#798186"
