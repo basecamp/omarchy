@@ -8,9 +8,31 @@
 #   2. legacy `light.mode` file shipped beside the theme
 THEME_DIR=~/.config/omarchy/current/theme
 COLORS_FILE="$THEME_DIR/colors.toml"
+
+theme_color() {
+  local key="$1"
+
+  awk -F= -v key="$key" '
+    {
+      field = $1
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", field)
+      if (field == key) {
+        value = $2
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+        if (value ~ /^"/) {
+          sub(/^"/, "", value)
+          sub(/".*$/, "", value)
+        }
+        print value
+        exit
+      }
+    }
+  ' "$COLORS_FILE"
+}
+
 mode=""
-if [[ -f $COLORS_FILE ]] && command -v tomlq >/dev/null; then
-  mode=$(tomlq -r '.mode // empty' "$COLORS_FILE" 2>/dev/null)
+if [[ -f $COLORS_FILE ]]; then
+  mode=$(theme_color mode)
 fi
 if [[ -z $mode && -f $THEME_DIR/light.mode ]]; then
   mode="light"

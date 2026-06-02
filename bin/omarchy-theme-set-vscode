@@ -9,9 +9,14 @@ GENERATED_THEME="$HOME/.config/omarchy/current/theme/vscode-theme.json"
 # Install generated theme as a local extension for a given editor
 install_generated_extension() {
   local ext_dir="$1"
-  local theme_type
+  local theme_type ui_theme
 
   theme_type=$(jq -r '.type // "dark"' "$GENERATED_THEME")
+  if [[ $theme_type == "light" ]]; then
+    ui_theme="vs"
+  else
+    ui_theme="vs-dark"
+  fi
 
   mkdir -p "$ext_dir/themes"
   cp "$GENERATED_THEME" "$ext_dir/themes/omarchy-color-theme.json"
@@ -28,7 +33,7 @@ install_generated_extension() {
     "contributes": {
         "themes": [{
             "label": "Omarchy",
-            "uiTheme": "vs-${theme_type}",
+            "uiTheme": "$ui_theme",
             "path": "./themes/omarchy-color-theme.json"
         }]
     }
