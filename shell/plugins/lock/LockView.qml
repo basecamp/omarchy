@@ -12,6 +12,7 @@ Item {
   property string failureMessage: ""
   property int failedAttempts: 0
   property bool inputEnabled: true
+  property bool loadBackground: true
   property string passwordText: ""
   property real scaleFactor: 1
   property bool syncingPasswordText: false
@@ -71,7 +72,7 @@ Item {
     Image {
       id: wallpaper
       anchors.fill: parent
-      source: root.fileUrl(root.backgroundPath)
+      source: root.loadBackground ? root.fileUrl(root.backgroundPath) : ""
       fillMode: Image.PreserveAspectCrop
       asynchronous: true
       cache: false
@@ -83,7 +84,7 @@ Item {
       anchors.fill: wallpaper
       source: wallpaper
       autoPaddingEnabled: false
-      blurEnabled: wallpaper.status === Image.Ready
+      blurEnabled: root.loadBackground && wallpaper.status === Image.Ready
       blur: 1.0
       blurMax: 64
       blurMultiplier: 1.0
