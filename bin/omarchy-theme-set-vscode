@@ -5,6 +5,56 @@
 
 VS_CODE_THEME_DESCRIPTOR="$HOME/.config/omarchy/current/theme/vscode.json"
 GENERATED_THEME="$HOME/.config/omarchy/current/theme/vscode-theme.json"
+GENERATED_EXTENSION_NAME="omarchy-theme"
+GENERATED_EXTENSION_ID="local.$GENERATED_EXTENSION_NAME"
+GENERATED_EXTENSION_VERSION="1.0.0"
+
+register_generated_extension() {
+  local ext_dir="$1"
+  local ext_base extensions_file obsolete_file relative tmp
+
+  ext_base=$(dirname "$ext_dir")
+  extensions_file="$ext_base/extensions.json"
+  obsolete_file="$ext_base/.obsolete"
+  relative=$(basename "$ext_dir")
+
+  if [[ -f $obsolete_file ]]; then
+    tmp=$(mktemp)
+    if jq --arg key "$GENERATED_EXTENSION_ID-$GENERATED_EXTENSION_VERSION" 'del(.[$key])' "$obsolete_file" >"$tmp"; then
+      mv "$tmp" "$obsolete_file"
+      [[ $(jq 'length' "$obsolete_file") == "0" ]] && rm -f "$obsolete_file"
+    else
+      rm -f "$tmp"
+    fi
+  fi
+
+  [[ -f $extensions_file ]] || printf '[]\n' >"$extensions_file"
+
+  tmp=$(mktemp)
+  if jq \
+    --arg id "$GENERATED_EXTENSION_ID" \
+    --arg version "$GENERATED_EXTENSION_VERSION" \
+    --arg fs_path "$ext_dir" \
+    --arg external "file://$ext_dir" \
+    --arg relative "$relative" \
+    'map(select(.identifier.id != $id)) + [{
+      identifier: { id: $id },
+      version: $version,
+      location: {
+        "$mid": 1,
+        fsPath: $fs_path,
+        external: $external,
+        path: $fs_path,
+        scheme: "file"
+      },
+      relativeLocation: $relative
+    }]' \
+    "$extensions_file" >"$tmp"; then
+    mv "$tmp" "$extensions_file"
+  else
+    rm -f "$tmp"
+  fi
+}
 
 # Install generated theme as a local extension for a given editor
 install_generated_extension() {
@@ -19,15 +69,15 @@ install_generated_extension() {
   fi
 
   mkdir -p "$ext_dir/themes"
-  cp "$GENERATED_THEME" "$ext_dir/themes/omarchy-color-theme.json"
+  ln -sfn "$GENERATED_THEME" "$ext_dir/themes/omarchy-color-theme.json"
 
   cat > "$ext_dir/package.json" <<EOF
 {
-    "name": "omarchy-theme",
+    "name": "$GENERATED_EXTENSION_NAME",
     "displayName": "Omarchy",
     "description": "Omarchy color theme",
     "publisher": "local",
-    "version": "1.0.0",
+    "version": "$GENERATED_EXTENSION_VERSION",
     "engines": { "vscode": "^1.70.0" },
     "categories": ["Themes"],
     "contributes": {
@@ -39,6 +89,8 @@ install_generated_extension() {
     }
 }
 EOF
+
+  register_generated_extension "$ext_dir"
 }
 
 set_theme() {
@@ -61,7 +113,7 @@ set_theme() {
     fi
   elif [[ -f "$GENERATED_THEME" ]]; then
     # VS Code only discovers local color themes through an extension package.
-    install_generated_extension "$ext_base/omarchy-theme"
+    install_generated_extension "$ext_base/$GENERATED_EXTENSION_NAME"
     theme_name="Omarchy"
   fi
 
