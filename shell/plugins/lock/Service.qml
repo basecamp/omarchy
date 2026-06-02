@@ -187,6 +187,7 @@ Item {
         failureMessage: root.failureMessage
         failedAttempts: root.failedAttempts
         inputEnabled: root.lockRequested
+        loadBackground: root.locked
         passwordText: root.enteredPassword
         scaleFactor: lockSurface.screen && lockSurface.screen.devicePixelRatio > 0 ? lockSurface.screen.devicePixelRatio : 1
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
@@ -217,6 +218,7 @@ Item {
       failureMessage: ""
       failedAttempts: 0
       inputEnabled: false
+      loadBackground: root.previewVisible
       passwordText: ""
       scaleFactor: previewWindow.screen && previewWindow.screen.devicePixelRatio > 0 ? previewWindow.screen.devicePixelRatio : 1
     }
