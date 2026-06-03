@@ -8,7 +8,7 @@ background       = "{{ background }}"
 background-alpha = 1.0
 text             = "{{ foreground }}"
 # Modules calling attention to themselves (recording, voxtype, alerts, updates)
-active           = "{{ color1 }}"
+active           = "{{ red }}"
 # Cross-axis size at font base-size 12. size-horizontal is the height of
 # top/bottom bars; size-vertical is the width of left/right bars. With
 # scale-with-font enabled, these grow/shrink with [font] base-size.
@@ -188,9 +188,9 @@ selected-border-alpha     = 0.25
 background       = "{{ background }}"
 background-alpha = 1.0
 text             = "{{ foreground }}"
-text-error       = "{{ color1 }}"
+text-error       = "{{ red }}"
 border           = "{{ shell_gradient hyprland_active_border accent }}"
-border-error     = "{{ color1 }}"
+border-error     = "{{ red }}"
 border-alpha     = 1.0
 scrim            = "{{ background }}"
 scrim-alpha      = 0.5
@@ -206,10 +206,10 @@ accent           = "{{ accent }}"
 background       = "{{ background }}"
 background-alpha = 0.8
 text             = "{{ foreground }}"
-text-error       = "{{ color1 }}"
+text-error       = "{{ red }}"
 border           = "{{ shell_gradient hyprland_active_border foreground }}"
 border-active    = "{{ shell_gradient hyprland_active_border accent }}"
-border-error     = "{{ color1 }}"
+border-error     = "{{ red }}"
 border-alpha     = 1.0
 # selection is the text-selection tint inside the input field.
 selection        = "{{ accent }}"
