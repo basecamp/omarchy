@@ -16,6 +16,7 @@ QtObject {
   property color background: "#101315"
   property color accent: "#cacccc"
   property color urgent: "#a55555"
+  property color muted: "#707880"
 
   // Flat dictionary of "section.key" -> raw string from shell.toml.
   // Reassigning this whole property is what makes surface bindings below
@@ -49,6 +50,7 @@ QtObject {
     if (role === "foreground" || role === "text") return root.foreground
     if (role === "accent") return root.accent
     if (role === "urgent") return root.urgent
+    if (role === "muted") return root.muted
     if (role === "background") return root.background
     if (role === "transparent") return Qt.rgba(0, 0, 0, 0)
 
@@ -117,6 +119,7 @@ QtObject {
   readonly property QtObject lock: QtObject {
     property color background: root.composed("lock.background", "lock.background-alpha", root.background, 0.8)
     property color text: root.pick("lock.text", root.foreground)
+    property color placeholder: root.shellValues["lock.placeholder"] ? root.flatColor(root.shellValues["lock.placeholder"], Util.alpha(root.foreground, 0.66)) : Util.alpha(root.foreground, 0.66)
     property color textError: root.pick("lock.text-error", root.urgent)
     property color border: root.composed("lock.border", "lock.border-alpha", root.foreground, 1.0)
     property color borderActive: root.composed("lock.border-active", "lock.border-alpha", root.accent, 1.0)
@@ -136,7 +139,9 @@ QtObject {
   function loadColors(raw) {
     var lines = String(raw || "").split("\n")
     var foundAccent = false
+    var foundMuted = false
     var color4Value = ""
+    var color8Value = ""
     for (var i = 0; i < lines.length; i++) {
       var match = lines[i].match(/^\s*([A-Za-z0-9_-]+)\s*=\s*["']?(#[0-9A-Fa-f]{6})/)
       if (!match) continue
@@ -146,10 +151,13 @@ QtObject {
       // theme doesn't define a separate accent. color4 appears later in the
       // file so the old single-property approach clobbered accent with it.
       else if (match[1] === "accent") { accent = match[2]; foundAccent = true }
+      else if (match[1] === "muted") { muted = match[2]; foundMuted = true }
       else if (match[1] === "color4") color4Value = match[2]
+      else if (match[1] === "color8") color8Value = match[2]
       else if (match[1] === "red" || match[1] === "color1") urgent = match[2]
     }
     if (!foundAccent && color4Value.length > 0) accent = color4Value
+    if (!foundMuted) muted = color8Value.length > 0 ? color8Value : foreground
   }
 
   // Single TOML walker for shell.toml. Both Color (surface roles) and Style

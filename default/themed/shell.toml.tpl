@@ -206,9 +206,10 @@ accent           = "{{ accent }}"
 background       = "{{ background }}"
 background-alpha = 0.8
 text             = "{{ foreground }}"
+placeholder      = "{{ mix foreground background 34% }}"
 text-error       = "{{ red }}"
-border           = "{{ shell_gradient hyprland_active_border foreground }}"
-border-active    = "{{ shell_gradient hyprland_active_border accent }}"
+border           = "{{ foreground }}"
+border-active    = "{{ accent }}"
 border-error     = "{{ red }}"
 border-alpha     = 1.0
 # selection is the text-selection tint inside the input field.
