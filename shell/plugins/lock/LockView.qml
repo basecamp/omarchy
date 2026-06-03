@@ -18,12 +18,12 @@ Item {
   property bool syncingPasswordText: false
 
   readonly property string placeholderText: "Password"
-  readonly property int fieldWidth: 650
-  readonly property int fieldHeight: 100
-  readonly property int outlineThickness: 4
-  readonly property int fieldFontSize: Style.font.heading
-  readonly property int passwordDotFontSize: Math.round(fieldFontSize * 2.0)
-  readonly property int passwordDotLetterSpacing: Math.round(fieldFontSize * 0.28)
+  readonly property int fieldWidth: 433
+  readonly property int fieldHeight: 67
+  readonly property int outlineThickness: 3
+  readonly property int fieldFontSize: Math.round(Style.font.heading * 1.125)
+  readonly property int passwordDotFontSize: Math.round(Style.font.heading * 1.33)
+  readonly property int passwordDotLetterSpacing: Math.round(Style.font.heading * 0.19)
   readonly property bool showPasswordCursor: inputEnabled && !authenticatingPassword && failureMessage.length === 0
   readonly property string borderToken: failureMessage.length > 0 ? "border-error" : (authenticatingPassword ? "border-active" : "border")
   readonly property color borderFallback: failureMessage.length > 0 ? Color.lock.borderError : (authenticatingPassword ? Color.lock.borderActive : Color.lock.border)
