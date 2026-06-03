@@ -101,6 +101,19 @@ The helper does not choose the first color unless you use `gradient_start`.
 and bar sizing. The default generated file comes from
 `default/themed/shell.toml.tpl`.
 
+Themes can override the entire generated file by shipping `shell.toml`, or just
+one section by shipping `shell.<section>.toml`. For example,
+`shell.lock.toml` replaces only the `[lock]` section after the default
+`shell.toml` has been generated:
+
+```toml
+text        = "#ffffff"
+placeholder = "#ffffff"
+border      = "#ffffff"
+```
+
+The filename decides the target section, so the `[lock]` header is optional.
+
 The running shell reads `shell.toml` into two QML singletons:
 
 - `Color` for palette and surface roles like `Color.menu.border`.

@@ -290,6 +290,83 @@ add_gradient_function_values() {
   done
 }
 
+strip_shell_section_header() {
+  local section="$1"
+  local file="$2"
+
+  awk -v section="$section" '
+    BEGIN { skipping_header = 0 }
+    /^[[:space:]]*\[[^]]+\][[:space:]]*($|#)/ {
+      if ($0 ~ "^[[:space:]]*\\[" section "\\][[:space:]]*($|#)") {
+        skipping_header = 1
+        next
+      }
+    }
+    { print }
+  ' "$file"
+}
+
+apply_shell_section_override() {
+  local override="$1"
+  local section tmp body
+
+  [[ -f $NEXT_THEME_DIR/shell.toml ]] || return
+  [[ -f $override ]] || return
+
+  section=$(basename "$override")
+  section="${section#shell.}"
+  section="${section%.toml}"
+  [[ $section =~ ^[A-Za-z0-9_-]+$ ]] || return
+
+  tmp=$(mktemp)
+  body=$(mktemp)
+
+  strip_shell_section_header "$section" "$override" >"$body"
+
+  awk -v section="$section" -v body="$body" '
+    function emit_override() {
+      if (emitted) return
+      print "[" section "]"
+      while ((getline line < body) > 0) print line
+      close(body)
+      emitted = 1
+    }
+
+    /^[[:space:]]*\[[^]]+\][[:space:]]*($|#)/ {
+      if (in_section) {
+        emit_override()
+        in_section = 0
+      }
+      if ($0 ~ "^[[:space:]]*\\[" section "\\][[:space:]]*($|#)") {
+        in_section = 1
+        next
+      }
+    }
+
+    !in_section { print }
+
+    END {
+      if (in_section || !emitted) {
+        if (NR > 0) print ""
+        emit_override()
+      }
+    }
+  ' "$NEXT_THEME_DIR/shell.toml" >"$tmp"
+
+  mv "$tmp" "$NEXT_THEME_DIR/shell.toml"
+  rm "$body"
+}
+
+apply_shell_section_overrides() {
+  local override
+
+  shopt -s nullglob
+  for override in "$NEXT_THEME_DIR"/shell.*.toml; do
+    [[ $(basename "$override") != "shell.toml" ]] || continue
+    apply_shell_section_override "$override"
+  done
+}
+
 alias_theme_color() {
   local key="$1"
   local fallback="$2"
@@ -426,3 +503,5 @@ if [[ -f $COLORS_FILE ]]; then
 
   rm "$sed_script"
 fi
+
+apply_shell_section_overrides

@@ -40,6 +40,8 @@ Item {
   property bool useTransparentForeground: false
   property bool transparent: false
   property bool centerSectionHovered: false
+  property bool centerSectionRevealHeld: false
+  property bool centerHoverRevealSuppressed: false
   property int barConfigSerial: 0
   property string position: "top"
   // Resolves through fontconfig at paint time (Style.font.family defaults
@@ -373,6 +375,22 @@ Item {
   }
 
   Component.onCompleted: applyBarConfig()
+
+  function setCenterSectionHovered(hovered) {
+    centerSectionHovered = hovered
+    if (hovered) {
+      centerSectionRevealTimer.stop()
+      centerSectionRevealHeld = true
+    } else {
+      centerSectionRevealTimer.restart()
+    }
+  }
+
+  Timer {
+    id: centerSectionRevealTimer
+    interval: 120
+    onTriggered: root.centerSectionRevealHeld = root.centerSectionHovered
+  }
 
   function run(command) {
     if (!command) return
@@ -970,7 +988,7 @@ Item {
         CenterGestureArea { anchors.fill: parent }
 
         HoverHandler {
-          onHoveredChanged: root.centerSectionHovered = hovered
+          onHoveredChanged: root.setCenterSectionHovered(hovered)
         }
 
         ModuleList {
@@ -1001,7 +1019,7 @@ Item {
 
           visible: centerRoot.hasAnchor && centerAnchorModule.moduleName === "omarchy.clock"
           clockHovered: centerAnchorModule.hovered
-          centerHovered: root.centerSectionHovered
+          centerHovered: root.centerSectionRevealHeld && !root.centerHoverRevealSuppressed
           anchors.right: centerAnchorModule.left
           anchors.verticalCenter: centerAnchorModule.verticalCenter
         }
@@ -1025,7 +1043,7 @@ Item {
         CenterGestureArea { anchors.fill: parent }
 
         HoverHandler {
-          onHoveredChanged: root.centerSectionHovered = hovered
+          onHoveredChanged: root.setCenterSectionHovered(hovered)
         }
 
         ModuleList {
@@ -1056,7 +1074,7 @@ Item {
 
           visible: centerRoot.hasAnchor && centerAnchorModule.moduleName === "omarchy.clock"
           clockHovered: centerAnchorModule.hovered
-          centerHovered: root.centerSectionHovered
+          centerHovered: root.centerSectionRevealHeld && !root.centerHoverRevealSuppressed
           anchors.bottom: centerAnchorModule.top
           anchors.horizontalCenter: centerAnchorModule.horizontalCenter
         }
@@ -1098,12 +1116,7 @@ Item {
     implicitHeight: button.implicitHeight
     width: implicitWidth
     height: implicitHeight
-    opacity: revealed ? 1.0 : 0
     z: 500
-
-    Behavior on opacity {
-      NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
-    }
 
     HoverHandler { id: controlHover }
 
