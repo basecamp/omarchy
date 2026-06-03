@@ -99,7 +99,7 @@ Exceptions are allowed for bootstrap, preflight, migration, and package-helper s
 
 - `config/` - default configs copied to `~/.config/`
 - `default/themed/*.tpl` - templates with `{{ variable }}` placeholders for theme colors
-- `themes/*/colors.toml` - theme color definitions (accent, background, foreground, red/green/yellow/blue/purple/cyan and bright_* variants)
+- `themes/*/colors.toml` - theme color definitions (accent, background, foreground, red/green/yellow/blue/magenta/cyan and bright_* variants)
 
 # Tests
 

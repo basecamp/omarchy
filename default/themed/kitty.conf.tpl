@@ -14,7 +14,7 @@ color1 {{ red }}
 color2 {{ green }}
 color3 {{ yellow }}
 color4 {{ blue }}
-color5 {{ purple }}
+color5 {{ magenta }}
 color6 {{ cyan }}
 color7 {{ fg }}
 color8 {{ muted }}
@@ -22,6 +22,6 @@ color9 {{ bright_red }}
 color10 {{ bright_green }}
 color11 {{ bright_yellow }}
 color12 {{ bright_blue }}
-color13 {{ bright_purple }}
+color13 {{ bright_magenta }}
 color14 {{ bright_cyan }}
 color15 {{ bright_fg }}

@@ -26,7 +26,7 @@
 #     color0-7:  Normal colors (black, red, green, yellow, blue, magenta, cyan, white)
 #     color8-15: Bright variants
 #   Semantic aliases are also available: {{ bg }}, {{ fg }}, {{ red }}, {{ green }},
-#   {{ yellow }}, {{ blue }}, {{ purple }}, {{ cyan }}, {{ muted }} and the
+#   {{ yellow }}, {{ blue }}, {{ magenta }}, {{ cyan }}, {{ muted }} and the
 #   {{ bright_* }} variants. The two forms are kept in sync by
 #   bin/omarchy-theme-set-templates.
 #
@@ -75,7 +75,7 @@ red = "{{ red }}"
 green = "{{ green }}"
 yellow = "{{ yellow }}"
 blue = "{{ blue }}"
-magenta = "{{ purple }}"
+magenta = "{{ magenta }}"
 cyan = "{{ cyan }}"
 white = "{{ fg }}"
 
@@ -85,6 +85,6 @@ red = "{{ bright_red }}"
 green = "{{ bright_green }}"
 yellow = "{{ bright_yellow }}"
 blue = "{{ bright_blue }}"
-magenta = "{{ bright_purple }}"
+magenta = "{{ bright_magenta }}"
 cyan = "{{ bright_cyan }}"
 white = "{{ bright_fg }}"

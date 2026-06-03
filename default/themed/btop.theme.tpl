@@ -29,7 +29,7 @@ theme[meter_bg]="{{ selection }}"
 theme[proc_misc]="{{ light_fg }}"
 
 # CPU, Memory, Network, Proc box outline colors
-theme[cpu_box]="{{ purple }}"
+theme[cpu_box]="{{ magenta }}"
 theme[mem_box]="{{ green }}"
 theme[net_box]="{{ red }}"
 theme[proc_box]="{{ accent }}"
@@ -42,20 +42,20 @@ theme[temp_start]="{{ green }}"
 theme[temp_mid]="{{ yellow }}"
 theme[temp_end]="{{ red }}"
 
-# CPU graph colors (Teal -> Blue -> Purple)
+# CPU graph colors (Teal -> Blue -> Magenta)
 theme[cpu_start]="{{ cyan }}"
 theme[cpu_mid]="{{ blue }}"
-theme[cpu_end]="{{ purple }}"
+theme[cpu_end]="{{ magenta }}"
 
 # Mem/Disk free meter
-theme[free_start]="{{ purple }}"
+theme[free_start]="{{ magenta }}"
 theme[free_mid]="{{ blue }}"
 theme[free_end]="{{ cyan }}"
 
 # Mem/Disk cached meter
 theme[cached_start]="{{ blue }}"
 theme[cached_mid]="{{ cyan }}"
-theme[cached_end]="{{ purple }}"
+theme[cached_end]="{{ magenta }}"
 
 # Mem/Disk available meter
 theme[available_start]="{{ yellow }}"
@@ -80,7 +80,7 @@ theme[upload_end]="{{ blue }}"
 # Process box color gradient for threads, mem and cpu usage
 theme[process_start]="{{ cyan }}"
 theme[process_mid]="{{ blue }}"
-theme[process_end]="{{ purple }}"
+theme[process_end]="{{ magenta }}"
 
 # Graph gradient colors (spectrum shades from background to foreground)
 theme[gradient_color_0]="{{ bg }}"

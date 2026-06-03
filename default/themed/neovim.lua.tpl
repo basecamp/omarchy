@@ -23,7 +23,7 @@ return {
         green = "{{ green }}",
         cyan = "{{ cyan }}",
         blue = "{{ blue }}",
-        purple = "{{ purple }}",
+        magenta = "{{ magenta }}",
         brown = "{{ brown }}",
 
         bright_red = "{{ bright_red }}",
@@ -31,7 +31,7 @@ return {
         bright_green = "{{ bright_green }}",
         bright_cyan = "{{ bright_cyan }}",
         bright_blue = "{{ bright_blue }}",
-        bright_purple = "{{ bright_purple }}",
+        bright_magenta = "{{ bright_magenta }}",
 
         accent = "{{ accent }}",
         cursor = "{{ cursor }}",

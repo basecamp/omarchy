@@ -37,7 +37,7 @@
         "boolean": "{{ orange }}",
         "regexp": "{{ bright_cyan }}",
         "operator": "{{ bright_blue }}",
-        "keyword": "{{ bright_purple }}",
+        "keyword": "{{ bright_magenta }}",
         "comment": {"foreground": "{{ muted }}", "fontStyle": "italic"},
         "comment.documentation": {"foreground": "{{ muted }}", "fontStyle": "italic"}
     },
@@ -254,33 +254,33 @@
         "editorInlayHint.foreground": "{{ muted }}",
         "editorInlayHint.typeBackground": "{{ yellow }}15",
         "editorInlayHint.typeForeground": "{{ yellow }}",
-        "editorInlayHint.parameterBackground": "{{ bright_purple }}15",
-        "editorInlayHint.parameterForeground": "{{ bright_purple }}",
+        "editorInlayHint.parameterBackground": "{{ bright_magenta }}15",
+        "editorInlayHint.parameterForeground": "{{ bright_magenta }}",
         "editorRuler.foreground": "{{ muted }}40",
         "editorCodeLens.foreground": "{{ muted }}",
         "editorLightBulb.foreground": "{{ yellow }}",
         "editorLightBulbAutoFix.foreground": "{{ green }}",
-        "editorLightBulbAi.foreground": "{{ purple }}",
+        "editorLightBulbAi.foreground": "{{ magenta }}",
         "editorBracketMatch.background": "{{ accent }}30",
         "editorBracketMatch.border": "{{ accent }}",
         "editorBracketHighlight.foreground1": "{{ blue }}",
         "editorBracketHighlight.foreground2": "{{ yellow }}",
         "editorBracketHighlight.foreground3": "{{ green }}",
         "editorBracketHighlight.foreground4": "{{ cyan }}",
-        "editorBracketHighlight.foreground5": "{{ purple }}",
+        "editorBracketHighlight.foreground5": "{{ magenta }}",
         "editorBracketHighlight.foreground6": "{{ orange }}",
         "editorBracketHighlight.unexpectedBracket.foreground": "{{ red }}",
         "editorBracketPairGuide.activeBackground1": "{{ blue }}60",
         "editorBracketPairGuide.activeBackground2": "{{ yellow }}60",
         "editorBracketPairGuide.activeBackground3": "{{ green }}60",
         "editorBracketPairGuide.activeBackground4": "{{ cyan }}60",
-        "editorBracketPairGuide.activeBackground5": "{{ purple }}60",
+        "editorBracketPairGuide.activeBackground5": "{{ magenta }}60",
         "editorBracketPairGuide.activeBackground6": "{{ orange }}60",
         "editorBracketPairGuide.background1": "{{ blue }}30",
         "editorBracketPairGuide.background2": "{{ yellow }}30",
         "editorBracketPairGuide.background3": "{{ green }}30",
         "editorBracketPairGuide.background4": "{{ cyan }}30",
-        "editorBracketPairGuide.background5": "{{ purple }}30",
+        "editorBracketPairGuide.background5": "{{ magenta }}30",
         "editorBracketPairGuide.background6": "{{ orange }}30",
         "editorOverviewRuler.background": "{{ background }}",
         "editorOverviewRuler.border": "{{ muted }}20",
@@ -510,7 +510,7 @@
         "extensionIcon.starForeground": "{{ yellow }}",
         "extensionIcon.verifiedForeground": "{{ cyan }}",
         "extensionIcon.preReleaseForeground": "{{ yellow }}",
-        "extensionIcon.sponsorForeground": "{{ purple }}",
+        "extensionIcon.sponsorForeground": "{{ magenta }}",
 
         "pickerGroup.border": "{{ muted }}",
         "pickerGroup.foreground": "{{ accent }}",
@@ -546,7 +546,7 @@
         "terminal.ansiGreen": "{{ green }}",
         "terminal.ansiYellow": "{{ yellow }}",
         "terminal.ansiBlue": "{{ blue }}",
-        "terminal.ansiMagenta": "{{ purple }}",
+        "terminal.ansiMagenta": "{{ magenta }}",
         "terminal.ansiCyan": "{{ cyan }}",
         "terminal.ansiWhite": "{{ fg }}",
         "terminal.ansiBrightBlack": "{{ muted }}",
@@ -554,7 +554,7 @@
         "terminal.ansiBrightGreen": "{{ bright_green }}",
         "terminal.ansiBrightYellow": "{{ bright_yellow }}",
         "terminal.ansiBrightBlue": "{{ bright_blue }}",
-        "terminal.ansiBrightMagenta": "{{ bright_purple }}",
+        "terminal.ansiBrightMagenta": "{{ bright_magenta }}",
         "terminal.ansiBrightCyan": "{{ bright_cyan }}",
         "terminal.ansiBrightWhite": "{{ bright_fg }}",
         "terminal.tab.activeBorder": "{{ accent }}",
@@ -573,7 +573,7 @@
         "debugView.valueChangedHighlight": "{{ cyan }}40",
         "debugView.exceptionLabelForeground": "{{ background }}",
         "debugView.exceptionLabelBackground": "{{ red }}",
-        "debugTokenExpression.name": "{{ purple }}",
+        "debugTokenExpression.name": "{{ magenta }}",
         "debugTokenExpression.value": "{{ foreground }}",
         "debugTokenExpression.string": "{{ green }}",
         "debugTokenExpression.boolean": "{{ orange }}",
@@ -612,7 +612,7 @@
         "gitDecoration.untrackedResourceForeground": "{{ green }}",
         "gitDecoration.ignoredResourceForeground": "{{ muted }}",
         "gitDecoration.conflictingResourceForeground": "{{ yellow }}",
-        "gitDecoration.submoduleResourceForeground": "{{ purple }}",
+        "gitDecoration.submoduleResourceForeground": "{{ magenta }}",
 
         "settings.headerForeground": "{{ foreground }}",
         "settings.modifiedItemIndicator": "{{ accent }}",
@@ -661,8 +661,8 @@
         "symbolIcon.folderForeground": "{{ foreground }}",
         "symbolIcon.functionForeground": "{{ blue }}",
         "symbolIcon.interfaceForeground": "{{ yellow }}",
-        "symbolIcon.keyForeground": "{{ bright_purple }}",
-        "symbolIcon.keywordForeground": "{{ bright_purple }}",
+        "symbolIcon.keyForeground": "{{ bright_magenta }}",
+        "symbolIcon.keywordForeground": "{{ bright_magenta }}",
         "symbolIcon.methodForeground": "{{ blue }}",
         "symbolIcon.moduleForeground": "{{ yellow }}",
         "symbolIcon.namespaceForeground": "{{ blue }}",
@@ -672,14 +672,14 @@
         "symbolIcon.operatorForeground": "{{ bright_blue }}",
         "symbolIcon.packageForeground": "{{ yellow }}",
         "symbolIcon.propertyForeground": "{{ foreground }}",
-        "symbolIcon.referenceForeground": "{{ bright_purple }}",
+        "symbolIcon.referenceForeground": "{{ bright_magenta }}",
         "symbolIcon.snippetForeground": "{{ green }}",
         "symbolIcon.stringForeground": "{{ green }}",
         "symbolIcon.structForeground": "{{ yellow }}",
         "symbolIcon.textForeground": "{{ foreground }}",
         "symbolIcon.typeParameterForeground": "{{ yellow }}",
         "symbolIcon.unitForeground": "{{ orange }}",
-        "symbolIcon.variableForeground": "{{ bright_purple }}",
+        "symbolIcon.variableForeground": "{{ bright_magenta }}",
 
         "debugIcon.breakpointForeground": "{{ red }}",
         "debugIcon.breakpointDisabledForeground": "{{ muted }}",
@@ -693,7 +693,7 @@
         "debugIcon.restartForeground": "{{ green }}",
         "debugIcon.stepOverForeground": "{{ blue }}",
         "debugIcon.stepIntoForeground": "{{ cyan }}",
-        "debugIcon.stepOutForeground": "{{ purple }}",
+        "debugIcon.stepOutForeground": "{{ magenta }}",
         "debugIcon.continueForeground": "{{ green }}",
         "debugIcon.stepBackForeground": "{{ yellow }}",
         "debugConsole.infoForeground": "{{ blue }}",
@@ -731,7 +731,7 @@
         "charts.yellow": "{{ yellow }}",
         "charts.orange": "{{ orange }}",
         "charts.green": "{{ green }}",
-        "charts.purple": "{{ purple }}",
+        "charts.purple": "{{ magenta }}",
 
         "ports.iconRunningProcessForeground": "{{ accent }}",
 
@@ -818,7 +818,7 @@
             "name": "Keyword",
             "scope": ["keyword", "storage.type.class", "storage.type.function"],
             "settings": {
-                "foreground": "{{ bright_purple }}"
+                "foreground": "{{ bright_magenta }}"
             }
         },
         {
@@ -832,7 +832,7 @@
             "name": "Keyword Control",
             "scope": ["keyword.control", "keyword.control.flow"],
             "settings": {
-                "foreground": "{{ bright_purple }}"
+                "foreground": "{{ bright_magenta }}"
             }
         },
         {
@@ -974,7 +974,7 @@
             "name": "Constant Character Escape",
             "scope": ["constant.character.escape"],
             "settings": {
-                "foreground": "{{ bright_purple }}"
+                "foreground": "{{ bright_magenta }}"
             }
         },
         {
@@ -1080,7 +1080,7 @@
             "name": "JSON Key Level 3",
             "scope": ["source.json meta.structure.dictionary.json meta.structure.dictionary.value.json meta.structure.dictionary.json meta.structure.dictionary.value.json meta.structure.dictionary.json meta.structure.dictionary.value.json meta.structure.dictionary.json support.type.property-name.json"],
             "settings": {
-                "foreground": "{{ bright_purple }}"
+                "foreground": "{{ bright_magenta }}"
             }
         },
         {
@@ -1319,7 +1319,7 @@
             "name": "SQL Keyword",
             "scope": ["keyword.other.DML.sql", "keyword.other.DDL.sql"],
             "settings": {
-                "foreground": "{{ bright_purple }}"
+                "foreground": "{{ bright_magenta }}"
             }
         },
         {

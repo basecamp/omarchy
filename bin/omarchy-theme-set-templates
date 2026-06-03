@@ -338,18 +338,20 @@ if [[ -f $COLORS_FILE ]]; then
     [green]=color2
     [yellow]=color3
     [blue]=color4
-    [purple]=color5
+    [magenta]=color5
     [cyan]=color6
     [bright_red]=color9
     [bright_green]=color10
     [bright_yellow]=color11
     [bright_blue]=color12
-    [bright_purple]=color13
+    [bright_magenta]=color13
     [bright_cyan]=color14
   )
   for key in "${!legacy_alias[@]}"; do
     alias_theme_color "$key" "${legacy_alias[$key]}"
   done
+  alias_theme_color magenta purple
+  alias_theme_color bright_magenta bright_purple
 
   [[ ${THEME_COLORS[light_fg]} ]]   || THEME_COLORS[light_fg]="${THEME_COLORS[color7]:-${THEME_COLORS[foreground]}}"
   [[ ${THEME_COLORS[bright_fg]} ]]  || THEME_COLORS[bright_fg]="${THEME_COLORS[color15]:-${THEME_COLORS[foreground]}}"
@@ -368,7 +370,9 @@ if [[ -f $COLORS_FILE ]]; then
   [[ ${THEME_COLORS[bright_green]} ]]  || THEME_COLORS[bright_green]=$(mix_color "${THEME_COLORS[green]}" "#ffffff" 20%)
   [[ ${THEME_COLORS[bright_cyan]} ]]   || THEME_COLORS[bright_cyan]=$(mix_color "${THEME_COLORS[cyan]}" "#ffffff" 20%)
   [[ ${THEME_COLORS[bright_blue]} ]]   || THEME_COLORS[bright_blue]=$(mix_color "${THEME_COLORS[blue]}" "#ffffff" 20%)
-  [[ ${THEME_COLORS[bright_purple]} ]] || THEME_COLORS[bright_purple]=$(mix_color "${THEME_COLORS[purple]}" "#ffffff" 20%)
+  [[ ${THEME_COLORS[bright_magenta]} ]] || THEME_COLORS[bright_magenta]=$(mix_color "${THEME_COLORS[magenta]}" "#ffffff" 20%)
+  alias_theme_color purple magenta
+  alias_theme_color bright_purple bright_magenta
 
   # Keep semantic themes compatible with user templates that still reference
   # the legacy ANSI placeholders directly.
@@ -378,7 +382,7 @@ if [[ -f $COLORS_FILE ]]; then
     [color2]=green
     [color3]=yellow
     [color4]=blue
-    [color5]=purple
+    [color5]=magenta
     [color6]=cyan
     [color7]=fg
     [color8]=muted
@@ -386,7 +390,7 @@ if [[ -f $COLORS_FILE ]]; then
     [color10]=bright_green
     [color11]=bright_yellow
     [color12]=bright_blue
-    [color13]=bright_purple
+    [color13]=bright_magenta
     [color14]=bright_cyan
     [color15]=bright_fg
   )

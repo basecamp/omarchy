@@ -227,14 +227,14 @@ red = "#ff0000"
 green = "#00ff00"
 yellow = "#ffff00"
 blue = "#0000ff"
-purple = "#ff00ff"
+magenta = "#ff00ff"
 cyan = "#00ffff"
 muted = "#111111"
 bright_red = "#ff1111"
 bright_green = "#11ff11"
 bright_yellow = "#ffff11"
 bright_blue = "#1111ff"
-bright_purple = "#ff11ff"
+bright_magenta = "#ff11ff"
 bright_cyan = "#11ffff"
 bright_fg = "#eeeeee"
 EOF
@@ -258,6 +258,10 @@ cat >"$USER_THEMED/alias-test.txt.tpl" <<'EOF'
 color={{ color1 }}
 strip={{ color1_strip }}
 rgb={{ color1_rgb }}
+magenta={{ magenta }}
+legacy-purple={{ purple }}
+bright-magenta={{ bright_magenta }}
+legacy-bright-purple={{ bright_purple }}
 EOF
 
 OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-templates"
@@ -269,6 +273,10 @@ pass "theme template color mix helpers work"
 grep -qx 'color=#ff0000' "$NEXT_THEME/alias-test.txt" || fail "theme template semantic aliases expose legacy colorN"
 grep -qx 'strip=ff0000' "$NEXT_THEME/alias-test.txt" || fail "theme template legacy colorN_strip works"
 grep -qx 'rgb=255,0,0' "$NEXT_THEME/alias-test.txt" || fail "theme template legacy colorN_rgb works"
+grep -qx 'magenta=#ff00ff' "$NEXT_THEME/alias-test.txt" || fail "theme template magenta helper works"
+grep -qx 'legacy-purple=#ff00ff' "$NEXT_THEME/alias-test.txt" || fail "theme template purple alias works"
+grep -qx 'bright-magenta=#ff11ff' "$NEXT_THEME/alias-test.txt" || fail "theme template bright magenta helper works"
+grep -qx 'legacy-bright-purple=#ff11ff' "$NEXT_THEME/alias-test.txt" || fail "theme template bright purple alias works"
 pass "theme template semantic aliases expose legacy colorN helpers"
 
 osc_summary=$("$ROOT/bin/omarchy-theme-osc" "$NEXT_THEME/colors.toml" | python -c 'import sys; data = sys.stdin.buffer.read(); print(data.count(b"]4;"), b"]4;1;#ff0000" in data, b"]4;15;#eeeeee" in data)')
