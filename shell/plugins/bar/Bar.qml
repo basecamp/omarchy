@@ -1240,6 +1240,7 @@ Item {
     }
     readonly property bool hovered: moduleHover.hovered
     readonly property bool dragSource: root.barDragSource === slot
+    readonly property bool panelOpen: root.activePopout === slot.activeItem
 
     implicitWidth: activeItem && activeItem.visible ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
     implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
@@ -1298,6 +1299,26 @@ Item {
       onLoaded: {
         slot.injectProps()
         Qt.callLater(slot.injectProps)
+      }
+    }
+
+    Rectangle {
+      id: openPanelIndicator
+
+      readonly property int inset: Style.space(2)
+
+      visible: opacity > 0
+      opacity: slot.panelOpen && !slot.dragSource ? 0.9 : 0
+      color: Color.accent
+      radius: Math.min(width, height) / 2
+      width: root.vertical ? Style.space(2) : Math.max(Style.space(10), Math.round(parent.width * 0.55))
+      height: root.vertical ? Math.max(Style.space(10), Math.round(parent.height * 0.55)) : Style.space(2)
+      x: root.vertical ? (root.position === "left" ? parent.width - width - inset : inset) : Math.round((parent.width - width) / 2)
+      y: root.vertical ? Math.round((parent.height - height) / 2) : (root.position === "top" ? parent.height - height - inset : inset)
+      z: 50
+
+      Behavior on opacity {
+        NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
       }
     }
 
