@@ -7,20 +7,15 @@ base
 base-devel
 broadcom-wl
 btrfs-progs
-dart
 dkms
 egl-wayland
 git
 gst-plugin-pipewire
 gtk4-layer-shell
-htop
-intltool
-iwd
 jdk-openjdk
 libpulse
-libsass
 intel-ipu7-camera
-intel-lmp
+intel-lpmd
 intel-media-driver
 libva-intel-driver
 libva-nvidia-driver
@@ -30,6 +25,8 @@ limine-snapper-sync
 linux
 linux-firmware
 linux-headers
+linux-ptl
+linux-ptl-headers
 macbook12-spi-driver-dkms
 nvidia-580xx-dkms
 nvidia-dkms
@@ -43,15 +40,18 @@ pipewire-alsa
 pipewire-jack
 pipewire-pulse
 qt6-wayland
-sassc
 snapper
+sof-firmware
 thermald
 webp-pixbuf-loader
-wget
 yay-debug
 tuxedo-drivers-nocompatcheck-dkms
 yt6801-dkms
 zram-generator
+
+# Intel encoding processing
+libvpl
+vpl-gpu-rt
 
 # Vulkan drivers (auto-detected by hardware)
 vulkan-intel
@@ -60,6 +60,9 @@ vulkan-asahi
 
 # Surface laptop support packages
 linux-firmware-marvell
+
+# Dell laptop support packages
+dell-xps-touchpad-haptics
 
 # T2 MacBook support packages
 apple-bcm-firmware

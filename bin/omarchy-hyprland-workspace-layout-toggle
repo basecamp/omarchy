@@ -1,16 +1,16 @@
 #!/bin/bash
 
-# Toggle the layout on the current active workspace between dwindle and scrolling
+# omarchy:summary=Toggle the layout on the current active workspace between dwindle and scrolling
 
 # activeworkspace doesn't report special workspaces, so first check monitors instead
 SPECIAL_NAME=$(hyprctl monitors -j | jq -r '.[0].specialWorkspace.name')
 SPECIAL_ID=$(hyprctl monitors -j | jq -r '.[0].specialWorkspace.id')
 
 if [ -n "$SPECIAL_NAME" ] && [ "$SPECIAL_ID" != "0" ]; then
-  WORKSPACE_ID=$SPECIAL_ID
-  CURRENT_LAYOUT=$(hyprctl workspaces -j | jq -r --argjson id "$WORKSPACE_ID" '.[] | select(.id == $id) | .tiledLayout')
+  ACTIVE_WORKSPACE=$SPECIAL_NAME
+  CURRENT_LAYOUT=$(hyprctl workspaces -j | jq -r --argjson id "$SPECIAL_ID" '.[] | select(.id == $id) | .tiledLayout')
 else
-  WORKSPACE_ID=$(hyprctl activeworkspace -j | jq -r '.id')
+  ACTIVE_WORKSPACE=$(hyprctl activeworkspace -j | jq -r '.id')
   CURRENT_LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')
 fi
 
@@ -19,10 +19,5 @@ case "$CURRENT_LAYOUT" in
   *) NEW_LAYOUT=dwindle ;;
 esac
 
-if [ -n "$SPECIAL_NAME" ] && [ "$SPECIAL_ID" != "0" ]; then
-  hyprctl keyword workspace $SPECIAL_NAME, layout:$NEW_LAYOUT
-else
-  hyprctl keyword workspace $WORKSPACE_ID, layout:$NEW_LAYOUT
-fi
-
+hyprctl keyword workspace $ACTIVE_WORKSPACE, layout:$NEW_LAYOUT
 notify-send -u low "󱂬    Workspace layout set to $NEW_LAYOUT"

@@ -1,13 +1,8 @@
 #!/bin/bash
 
-# Check current single_window_aspect_ratio setting
-CURRENT_VALUE=$(hyprctl getoption "layout:single_window_aspect_ratio" 2>/dev/null | head -1)
+# omarchy:summary=Toggle single-window square aspect ratio.
 
-# Parse vec2 output: "vec2: [1, 1]" or "vec2: [0, 0]"
-if [[ $CURRENT_VALUE == *"[1, 1]"* ]]; then
-  hyprctl keyword layout:single_window_aspect_ratio "0 0"
-  notify-send -u low "    Disable single-window square aspect ratio"
-else
-  hyprctl keyword layout:single_window_aspect_ratio "1 1"
-  notify-send -u low "    Enable single-window square aspect"
-fi
+case $(omarchy-hyprland-toggle single-window-aspect-ratio) in
+  on) omarchy-notification-send -g  "Enable single-window square aspect ratio" ;;
+  off) omarchy-notification-send -g  "Disable single-window square aspect ratio" ;;
+esac

@@ -1,13 +1,12 @@
 #!/bin/bash
 
+# omarchy:summary=Run the full Omarchy update pipeline
+# omarchy:requires-sudo=true
+
 set -e
 
 # Ensure screensaver/sleep doesn't set in during updates
-hyprctl dispatch tagwindow +noidle &>/dev/null || true
-
-# Capture update logs (CLICOLOR_FORCE keeps gum styled when stdout is piped through tee)
-export CLICOLOR_FORCE=1
-exec > >(tee "/tmp/omarchy-update.log") 2>&1
+hyprctl dispatch 'hl.dsp.window.tag({ tag = "+noidle" })' &>/dev/null || hyprctl dispatch tagwindow +noidle &>/dev/null || true
 
 # Perform all update steps
 omarchy-update-keyring
@@ -23,4 +22,4 @@ omarchy-update-analyze-logs
 omarchy-update-restart
 
 # Re-enable screensaver/sleep after updates
-hyprctl dispatch tagwindow -- -noidle &>/dev/null || true
+hyprctl dispatch 'hl.dsp.window.tag({ tag = "-noidle" })' &>/dev/null || hyprctl dispatch tagwindow -- -noidle &>/dev/null || true

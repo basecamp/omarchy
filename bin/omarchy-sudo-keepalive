@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# Prompt for sudo once and keep the credential alive in the background.
-# Source this script so the trap applies to the calling shell:
-#   source omarchy-sudo-keepalive
+# omarchy:summary=Prompt for sudo once and keep the credential alive in the background.
+# omarchy:requires-sudo=true
 
 sudo -v
 while true; do sudo -n true; sleep 60; done 2>/dev/null &

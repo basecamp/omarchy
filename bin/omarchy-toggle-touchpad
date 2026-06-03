@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# omarchy:summary=Enable, disable, or toggle the touchpad
+# omarchy:args=[on|off|toggle]
+
+STATE_FILE="$HOME/.local/state/omarchy/toggles/hypr/touchpad-disabled.lua"
+
+device="$(omarchy-hw-touchpad)"
+
+if [[ -z $device ]]; then
+  echo "No touchpad device found" >&2
+  exit 1
+fi
+
+enable() {
+  hyprctl eval "hl.device({ name = \"$device\", enabled = true })" >/dev/null
+  rm -f "$STATE_FILE"
+  omarchy-swayosd-client --custom-icon input-touchpad-symbolic --custom-message "Touchpad enabled"
+}
+
+disable() {
+  hyprctl eval "hl.device({ name = \"$device\", enabled = false })" >/dev/null
+  mkdir -p "$(dirname "$STATE_FILE")"
+  printf 'hl.device({ name = "%s", enabled = false })\n' "$device" >"$STATE_FILE"
+  omarchy-swayosd-client --custom-icon touchpad-disabled-symbolic --custom-message "Touchpad disabled"
+}
+
+case "${1:-toggle}" in
+  on) enable ;;
+  off) disable ;;
+  toggle) if [[ -f $STATE_FILE ]]; then enable; else disable; fi ;;
+esac

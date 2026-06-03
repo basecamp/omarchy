@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# omarchy:summary=Enable, disable, toggle, or recover mirroring the internal display to an external monitor
+# omarchy:args=<on|off|toggle|recover>
+
+TOGGLE="internal-monitor-mirror"
+TOGGLE_FLAG="$HOME/.local/state/omarchy/toggles/hypr/$TOGGLE.lua"
+DISABLE_TOGGLE="internal-monitor-disable"
+
+# Get names dynamically
+INTERNAL=$(hyprctl monitors -j | jq -r '.[] | select(.name | contains("eDP")).name' | head -n 1)
+# Get the first available external monitor
+EXTERNAL=$(hyprctl monitors -j | jq -r '.[] | select(.name | contains("eDP") | not).name' | head -n 1)
+
+on() {
+  if [[ -z $EXTERNAL ]]; then
+    omarchy-notification-send -g 󰍹 "No external monitors found for mirror"
+    exit 1
+  fi
+
+  if [[ -z $INTERNAL ]]; then
+    omarchy-notification-send -g 󰍹 "No laptop monitor found to mirror"
+    exit 1
+  fi
+
+  omarchy-hyprland-toggle $DISABLE_TOGGLE off
+
+  if omarchy-hyprland-toggle-disabled $TOGGLE; then
+    printf 'hl.monitor({ output = "%s", mode = "preferred", position = "auto", scale = 1, mirror = "%s" })\n' "$EXTERNAL" "$INTERNAL" >"$TOGGLE_FLAG"
+    omarchy-notification-send -g 󰍹 "Mirroring enabled ($EXTERNAL)"
+    hyprctl reload
+  fi
+}
+
+off() {
+  if omarchy-hyprland-toggle-enabled $TOGGLE; then
+    omarchy-hyprland-toggle $TOGGLE off
+    omarchy-notification-send -g 󰍹 "Extended mode restored"
+  fi
+}
+
+toggle() {
+  if omarchy-hyprland-toggle-enabled $TOGGLE; then
+    off
+  else
+    on
+  fi
+}
+
+recover() {
+  if ! omarchy-hw-external-monitors && omarchy-hyprland-toggle-enabled $TOGGLE; then
+    omarchy-hyprland-toggle $TOGGLE off
+  fi
+}
+
+case "$1" in
+  on) on ;;
+  off) off ;;
+  toggle) toggle ;;
+  recover) recover ;;
+  *)
+    echo "Usage: $(basename "$0") {on|off|toggle|recover}" >&2
+    exit 1
+    ;;
+esac
