@@ -518,10 +518,20 @@ Item {
     return dropBarModule(sourceSlot, targetSlot.region, beforeName)
   }
 
+  function moduleTargetClickable(target) {
+    return target
+      && target.visible !== false
+      && target.opacity !== 0
+      && target.interactive !== false
+      && target.pressable !== false
+      && target.concealed !== true
+      && typeof target.triggerPress === "function"
+  }
+
   function moduleClickTargetAt(slot, localX, localY) {
     for (var i = clickTargets.length - 1; i >= 0; i--) {
       var target = clickTargets[i]
-      if (!target || target.visible === false || target.opacity === 0 || typeof target.triggerPress !== "function") continue
+      if (!moduleTargetClickable(target)) continue
 
       var targetPoint = { x: localX, y: localY }
       try {
@@ -536,7 +546,7 @@ Item {
       }
     }
 
-    if (slot.activeItem && typeof slot.activeItem.triggerPress === "function") return slot.activeItem
+    if (moduleTargetClickable(slot.activeItem)) return slot.activeItem
     return null
   }
 
@@ -1130,6 +1140,7 @@ Item {
       text: ""
       keepSpace: true
       concealed: !configControl.revealed
+      dimmed: configControl.revealed && !controlHover.hovered && !configControl.panelOpen
       interactive: configControl.revealed
       horizontalMargin: 6.5
       verticalPadding: 6
@@ -1352,7 +1363,7 @@ Item {
       acceptedButtons: Qt.LeftButton
       enabled: slot.visible && slot.width > 0 && slot.height > 0
       propagateComposedEvents: true
-      cursorShape: slot.moduleName === "omarchy.clock" ? Qt.PointingHandCursor : Qt.ArrowCursor
+      cursorShape: root.moduleClickTargetAt(slot, mouseX, mouseY) ? Qt.PointingHandCursor : Qt.ArrowCursor
       // Do not assign drag.target here: ModuleSlot is owned by Row/Column
       // positioners, and mutating slot.x/slot.y can leave stale offsets that
       // make neighboring modules overlap after a small aborted drag.
