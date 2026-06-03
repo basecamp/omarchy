@@ -19,8 +19,8 @@
   --text-title-h2: {{ green }};
   --text-title-h3: {{ yellow }};
   --text-title-h4: {{ blue }};
-  --text-title-h5: {{ purple }};
-  --text-title-h6: {{ purple }};
+  --text-title-h5: {{ magenta }};
+  --text-title-h6: {{ magenta }};
 
   /* Links and accents */
   --text-link: {{ blue }};

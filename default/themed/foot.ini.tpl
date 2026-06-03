@@ -20,6 +20,6 @@ bright1={{ bright_red_strip }}
 bright2={{ bright_green_strip }}
 bright3={{ bright_yellow_strip }}
 bright4={{ bright_blue_strip }}
-bright5={{ bright_purple_strip }}
+bright5={{ bright_magenta_strip }}
 bright6={{ bright_cyan_strip }}
 bright7={{ bright_fg_strip }}
