@@ -324,6 +324,12 @@ Item {
   }
 
   function preloadRows(nextImageRows, nextSelectedImage, nextShowLabels, nextFilterable) {
+    // Theme/background set hooks can warm selector rows after a picker was
+    // dismissed. Ignore those preloads while a user-visible request is open;
+    // otherwise the preload resets layoutSettled without revealing again,
+    // leaving only the fullscreen scrim.
+    if (opened || requestActive) return
+
     requestSerial += 1
     imageRows = nextImageRows
     selectedImage = nextSelectedImage
