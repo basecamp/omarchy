@@ -206,21 +206,33 @@ function ringPath(w, h, radius, widths) {
     blrx: radius, blry: radius,
   })
 
-  var ix = widths.left || 0
-  var iy = widths.top || 0
-  var iw = w - ix - (widths.right || 0)
-  var ih = h - iy - (widths.bottom || 0)
+  // Shape's OddEven fill can collapse to the outer fill when the inner
+  // cutout touches the outer path on one or more zero-width sides. Keep the
+  // cutout strictly inside the outer path with a subpixel inset so one-sided
+  // borders (for example selected-border-width = "0 0 0 4") render as a
+  // strip instead of painting the whole row.
+  var epsilon = 0.001
+  var left = Math.max(0, widths.left || 0)
+  var top = Math.max(0, widths.top || 0)
+  var right = Math.max(0, widths.right || 0)
+  var bottom = Math.max(0, widths.bottom || 0)
+  var ix = Math.max(left, epsilon)
+  var iy = Math.max(top, epsilon)
+  var ir = Math.max(right, epsilon)
+  var ib = Math.max(bottom, epsilon)
+  var iw = w - ix - ir
+  var ih = h - iy - ib
   if (iw <= 0 || ih <= 0) return outer
 
   var inner = roundedRectPath(ix, iy, iw, ih, {
-    tlrx: Math.max(0, radius - (widths.left || 0)),
-    tlry: Math.max(0, radius - (widths.top || 0)),
-    trrx: Math.max(0, radius - (widths.right || 0)),
-    trry: Math.max(0, radius - (widths.top || 0)),
-    brrx: Math.max(0, radius - (widths.right || 0)),
-    brry: Math.max(0, radius - (widths.bottom || 0)),
-    blrx: Math.max(0, radius - (widths.left || 0)),
-    blry: Math.max(0, radius - (widths.bottom || 0)),
+    tlrx: Math.max(0, radius - left),
+    tlry: Math.max(0, radius - top),
+    trrx: Math.max(0, radius - right),
+    trry: Math.max(0, radius - top),
+    brrx: Math.max(0, radius - right),
+    brry: Math.max(0, radius - bottom),
+    blrx: Math.max(0, radius - left),
+    blry: Math.max(0, radius - bottom),
   })
 
   return outer + " " + inner
