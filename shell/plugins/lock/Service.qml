@@ -189,7 +189,6 @@ Item {
         inputEnabled: root.lockRequested
         loadBackground: root.locked
         passwordText: root.enteredPassword
-        scaleFactor: lockSurface.screen && lockSurface.screen.devicePixelRatio > 0 ? lockSurface.screen.devicePixelRatio : 1
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
         onSubmitPassword: function(password) { root.submitPassword(password) }
         onClearFailureRequested: root.failureMessage = ""
@@ -220,7 +219,6 @@ Item {
       inputEnabled: false
       loadBackground: root.previewVisible
       passwordText: ""
-      scaleFactor: previewWindow.screen && previewWindow.screen.devicePixelRatio > 0 ? previewWindow.screen.devicePixelRatio : 1
     }
 
     MouseArea {

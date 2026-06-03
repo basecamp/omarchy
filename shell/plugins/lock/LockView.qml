@@ -15,17 +15,15 @@ Item {
   property bool inputEnabled: true
   property bool loadBackground: true
   property string passwordText: ""
-  property real scaleFactor: 1
   property bool syncingPasswordText: false
 
-  readonly property string fingerprintGlyph: "\uDB80\uDE37"
-  readonly property string placeholderText: fingerprintConfigured ? "Enter Password " + fingerprintGlyph : "Enter Password"
-  readonly property real effectiveScale: Math.max(1, scaleFactor)
-  readonly property int fieldWidth: Math.round(650 / effectiveScale)
-  readonly property int fieldHeight: Math.round(100 / effectiveScale)
-  readonly property int outlineThickness: Math.max(1, Math.round(4 / effectiveScale))
+  readonly property string placeholderText: "Password"
+  readonly property int fieldWidth: 650
+  readonly property int fieldHeight: 100
+  readonly property int outlineThickness: 4
   readonly property int fieldFontSize: Style.font.heading
-  readonly property int passwordDotFontSize: Math.round(fieldFontSize * 1.3)
+  readonly property int passwordDotFontSize: Math.round(fieldFontSize * 2.0)
+  readonly property int passwordDotLetterSpacing: Math.round(fieldFontSize * 0.28)
   readonly property bool showPasswordCursor: inputEnabled && !authenticatingPassword && failureMessage.length === 0
   readonly property string borderToken: failureMessage.length > 0 ? "border-error" : (authenticatingPassword ? "border-active" : "border")
   readonly property color borderFallback: failureMessage.length > 0 ? Color.lock.borderError : (authenticatingPassword ? Color.lock.borderActive : Color.lock.border)
@@ -90,8 +88,9 @@ Item {
       autoPaddingEnabled: false
       blurEnabled: root.loadBackground && wallpaper.status === Image.Ready
       blur: 1.0
-      blurMax: 64
-      blurMultiplier: 1.0
+      blurMax: 128
+      blurMultiplier: 1.25
+      contrast: -0.08
     }
 
     MouseArea {
@@ -108,7 +107,7 @@ Item {
       anchors.centerIn: parent
       color: Color.lock.background
       borderSpec: root.inputBorderSpec
-      radius: Style.cornerRadius
+      radius: 0
       clip: true
 
       TextInput {
@@ -125,16 +124,17 @@ Item {
         enabled: root.inputEnabled && !root.authenticatingPassword
         readOnly: root.authenticatingPassword
         echoMode: TextInput.Password
-        passwordCharacter: "\u2022"
+        passwordCharacter: "\u25CF"
         passwordMaskDelay: 0
         color: Color.lock.text
         selectionColor: Color.lock.selection
         selectedTextColor: Color.lock.text
         font.family: Style.font.family
         font.pixelSize: text.length > 0 ? root.passwordDotFontSize : root.fieldFontSize
+        font.letterSpacing: text.length > 0 ? root.passwordDotLetterSpacing : 0
         cursorVisible: activeFocus && root.showPasswordCursor && text.length > 0
         cursorDelegate: Rectangle {
-          width: Math.max(1, Math.round(2 / root.effectiveScale))
+          width: 2
           color: Color.lock.text
           visible: passwordInput.cursorVisible
         }
@@ -166,7 +166,7 @@ Item {
         anchors.fill: passwordInput
         text: root.authenticatingPassword ? "Checking…" : (root.failureMessage.length > 0 ? root.failureMessage : root.placeholderText)
         visible: passwordInput.text.length === 0
-        color: (!root.authenticatingPassword && root.failureMessage.length > 0) ? Color.lock.textError : Color.lock.text
+        color: root.authenticatingPassword ? Color.lock.text : (root.failureMessage.length > 0 ? Color.lock.textError : Color.lock.placeholder)
         font.family: Style.font.family
         font.pixelSize: root.fieldFontSize
         font.italic: !root.authenticatingPassword && root.failureMessage.length > 0
