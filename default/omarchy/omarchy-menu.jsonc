@@ -9,6 +9,7 @@
   // Optional fields:
   //   aliases        alternate `omarchy menu summon <name>` routes; also searchable
   //   keywords       extra search terms beyond id/label/aliases
+  //   searchLabel    override the default "{parent} {child}" search title; use for edge cases
   //   when           shell condition; hide row when it fails
   //   checked        shell condition; append ✓ when it succeeds
 
@@ -86,7 +87,7 @@
   "trigger.toggle.passwordless-sudo": {"icon":"󰟵","label":"Passwordless Sudo","action":"omarchy-launch-floating-terminal-with-presentation omarchy-sudo-passwordless"},
 
   // Style
-  "style.theme": {"icon":"󰸌","label":"Theme","aliases":["theme","themes"],"keywords":"colors","action":"theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\""},
+  "style.theme": {"icon":"󰸌","label":"Theme","searchLabel":"Switch Theme","aliases":["theme","themes"],"keywords":"colors","action":"theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\""},
   "style.font": {"icon":"","label":"Font","keywords":"typeface","provider":"fonts"},
   "style.background": {"icon":"","label":"Background","aliases":["background","wallpaper"],"action":"background=$(omarchy-theme-bg-switcher); [[ -n $background ]] && omarchy-theme-bg-set \"$background\""},
   "style.bar": {"icon":"󰍜","label":"Bar","keywords":"quickshell top bottom left right settings"},

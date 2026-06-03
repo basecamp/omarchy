@@ -39,6 +39,7 @@ function normalizeItem(id, raw) {
     kind: kind,
     icon: value.icon || "",
     label: value.label || id,
+    searchLabel: value.searchLabel || "",
     target: value.target || "",
     keywords: normalizeKeywords(id, aliases, value.keywords),
     description: value.description || "",
@@ -172,10 +173,21 @@ function childCount(items, itemOrder, id) {
   return count
 }
 
-function labelFor(entry, checkedResults) {
+function searchLabelFor(items, entry) {
   if (!entry) return ""
-  if (entry.checked && checkedResults && checkedResults[entry.id]) return entry.label + " ✓"
+  if (entry.kind !== "action") return entry.label
+  if (entry.searchLabel) return entry.searchLabel
+  var parent = item(items, entry.parent)
+  if (parent && parent.id !== "root")
+    return parent.label + " " + entry.label
   return entry.label
+}
+
+function labelFor(entry, checkedResults, searchLabel) {
+  if (!entry) return ""
+  var base = searchLabel || entry.label
+  if (entry.checked && checkedResults && checkedResults[entry.id]) return base + " ✓"
+  return base
 }
 
 function searchableToken(value) {
@@ -187,12 +199,14 @@ function leafIdFor(id) {
   return parts.length > 0 ? parts[parts.length - 1] : id
 }
 
-function nameSearchText(entry) {
+function nameSearchText(entry, searchLabel) {
   if (!entry) return ""
   var aliases = []
   var values = Array.isArray(entry.aliases) ? entry.aliases : []
   for (var i = 0; i < values.length; i++) aliases.push(searchableToken(values[i]))
-  return [entry.label, searchableToken(leafIdFor(entry.id)), aliases.join(" ")].join(" ").toLowerCase()
+  var parts = [entry.label, searchableToken(leafIdFor(entry.id)), aliases.join(" ")]
+  if (searchLabel) parts.push(searchLabel)
+  return parts.join(" ").toLowerCase()
 }
 
 function termInSearchWords(term, text) {
@@ -211,11 +225,11 @@ function keywordTextMatches(query, text) {
   return true
 }
 
-function matchesQuery(entry, query, visible) {
+function matchesQuery(entry, query, visible, searchLabel) {
   if (!entry || entry.id === "root") return false
   if (!visible) return false
 
-  var nameText = nameSearchText(entry)
+  var nameText = nameSearchText(entry, searchLabel)
   var keywordText = (entry.keywords + " " + entry.description).toLowerCase()
   var terms = String(query || "").toLowerCase().trim().split(/\s+/)
 
@@ -229,16 +243,20 @@ function matchesQuery(entry, query, visible) {
   return true
 }
 
-function searchScore(items, entry, query) {
+function searchScore(items, entry, query, searchLabel) {
   var needle = String(query || "").toLowerCase().trim()
   var label = entry.label.toLowerCase()
-  var nameText = nameSearchText(entry)
+  var sl = (searchLabel || "").toLowerCase()
+  var nameText = nameSearchText(entry, searchLabel)
   var keywordText = (entry.keywords + " " + entry.description).toLowerCase()
   var score = 80
 
   if (label === needle) score = entry.parent === "root" ? 2 : 0
+  else if (sl === needle) score = 1
   else if (label.indexOf(needle) === 0) score = 10
+  else if (sl.indexOf(needle) === 0) score = 11
   else if (label.indexOf(needle) >= 0) score = 30
+  else if (sl.indexOf(needle) >= 0) score = 31
   else if (nameText.indexOf(needle) >= 0) score = 40
   else if (keywordTextMatches(needle, keywordText)) score = 60
 
@@ -247,13 +265,13 @@ function searchScore(items, entry, query) {
   return score * 1000 + depthFor(items, entry.id) * 25 + entry.order
 }
 
-function displayRow(items, itemOrder, checkedResults, entry, detail, score, section) {
+function displayRow(items, itemOrder, checkedResults, entry, detail, score, section, searchLabel) {
   var target = entry.kind === "link" ? entry.target : entry.id
   return {
     itemId: entry.id,
     kind: entry.kind,
     icon: entry.icon,
-    label: labelFor(entry, checkedResults),
+    label: labelFor(entry, checkedResults, searchLabel),
     target: target,
     detail: detail || "",
     path: pathFor(items, entry.id),
@@ -280,6 +298,7 @@ if (typeof module !== "undefined") {
     parentPathFor: parentPathFor,
     isDescendantOf: isDescendantOf,
     childCount: childCount,
+    searchLabelFor: searchLabelFor,
     labelFor: labelFor,
     searchableToken: searchableToken,
     leafIdFor: leafIdFor,

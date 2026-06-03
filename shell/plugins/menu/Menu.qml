@@ -355,8 +355,12 @@ Item {
   }
 
   // Label with the ✓ marker baked in when `checked:` evaluated truthy.
-  function labelFor(entry) {
-    return MenuModel.labelFor(entry, root.checkedResults)
+  function searchLabelFor(entry) {
+    return MenuModel.searchLabelFor(root.items, entry)
+  }
+
+  function labelFor(entry, searchLabel) {
+    return MenuModel.labelFor(entry, root.checkedResults, searchLabel)
   }
 
   function searchableToken(value) {
@@ -379,16 +383,16 @@ Item {
     return MenuModel.keywordTextMatches(query, text)
   }
 
-  function matchesQuery(entry, query) {
-    return MenuModel.matchesQuery(entry, query, root.isVisible(entry))
+  function matchesQuery(entry, query, searchLabel) {
+    return MenuModel.matchesQuery(entry, query, root.isVisible(entry), searchLabel)
   }
 
-  function searchScore(entry, query) {
-    return MenuModel.searchScore(root.items, entry, query)
+  function searchScore(entry, query, searchLabel) {
+    return MenuModel.searchScore(root.items, entry, query, searchLabel)
   }
 
-  function displayRow(entry, detail, score, section) {
-    return MenuModel.displayRow(root.items, root.itemOrder, root.checkedResults, entry, detail, score, section)
+  function displayRow(entry, detail, score, section, searchLabel) {
+    return MenuModel.displayRow(root.items, root.itemOrder, root.checkedResults, entry, detail, score, section, searchLabel)
   }
 
   function rebuildDmenuDisplay() {
@@ -455,10 +459,10 @@ Item {
         var entry = root.item(root.itemOrder[i])
         if (!entry || entry.id === "root") continue
         if (!root.isDescendantOf(entry.id, active)) continue
-        if (!root.matchesQuery(entry, query)) continue
+        var searchLabel = root.searchLabelFor(entry)
+        if (!root.matchesQuery(entry, query, searchLabel)) continue
 
-        var detail = root.parentPathFor(entry.id)
-        var row = root.displayRow(entry, detail, root.searchScore(entry, query))
+        var row = root.displayRow(entry, "", root.searchScore(entry, query, searchLabel), "", searchLabel)
         if (entry.parent === active) currentRows.push(row)
         else drilldownRows.push(row)
       }
