@@ -34,6 +34,18 @@ QtObject {
     return ""
   }
 
+  function resolveValueRef(raw) {
+    var s = String(raw || "").replace(/^\s+|\s+$/g, "")
+    var seen = {}
+    while (s.match(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/) && !seen[s]) {
+      seen[s] = true
+      var next = Color.shellValues[s]
+      if (next === undefined || next === null || String(next).length === 0) break
+      s = String(next).replace(/^\s+|\s+$/g, "")
+    }
+    return s
+  }
+
   function alpha(section, key, fallback) {
     var raw = value(section, key)
     if (String(raw).length === 0) return fallback
@@ -128,11 +140,31 @@ QtObject {
   function surfaceSpec(section, token, fallbackColor, fallbackWidth, alphaKey) {
     var opacity = alpha(section, alphaKey || token + "-alpha", 1.0)
     var legacyGradientRaw = valueOr(section, token === "border" ? ["border-gradient"] : [token + "-gradient", "border-gradient"])
-    var resolved = borderValue(value(section, token), fallbackColor, opacity, legacyGradientRaw)
+    var resolved = borderValue(resolveValueRef(value(section, token)), fallbackColor, opacity, legacyGradientRaw)
 
     return {
       color: resolved.color,
       widths: surfaceWidths(section, token, fallbackWidth),
+      gradient: resolved.gradient,
+    }
+  }
+
+  function hyprlandActiveSpec(fallbackColor, fallbackWidth) {
+    var raw = value("hyprland", "active-border")
+    var opacity = alpha("hyprland", "active-border-alpha", 1.0)
+
+    // Existing generated themes predate [hyprland] and already keep the active
+    // border under [notifications]. Use it as the compatibility source until
+    // the next theme refresh writes the shared token.
+    if (String(raw).length === 0) {
+      raw = value("notifications", "border")
+      opacity = alpha("notifications", "border-alpha", opacity)
+    }
+
+    var resolved = borderValue(resolveValueRef(raw), fallbackColor, opacity, "")
+    return {
+      color: resolved.color,
+      widths: Geometry.parseWidthSpec(value("hyprland", "active-border-width"), fallbackWidth),
       gradient: resolved.gradient,
     }
   }
