@@ -14,11 +14,9 @@ import qs.Commons
 // their parent surface — so keyboard-summoned popups fell flat without it.
 //
 // API is a subset of Common.PopupCard: anchorItem, owner, bar, open,
-// padding, margin, contentWidth/Height, default contentItem. Missing on
-// purpose (for now): centerOnBar, triggerMode ("hover"), containsMouse.
-// Hover-mode popups (system-stats, weather) and centered popups
-// (calendar week-view) need extra plumbing before migrating; converting
-// them is a follow-up.
+// padding, margin, contentWidth/Height, centerOnBar, default contentItem.
+// Missing on purpose (for now): triggerMode ("hover"), containsMouse.
+// Hover-mode popups (system-stats) need extra plumbing before migrating.
 //
 // Positioning: full-screen layer-shell with the card placed inside at
 // `cardOrigin`. We use the bar window's height/width for the perpendicular
@@ -42,6 +40,7 @@ PanelWindow {
   property int padding: Style.spacing.popupPadding
   property int contentWidth: Style.space(280)
   property int contentHeight: Style.space(200)
+  property bool centerOnBar: false
   property bool open: false
   property int gap: Style.gapsOut  // distance between bar edge and panel
   property bool popoutSwitching: false
@@ -173,7 +172,13 @@ PanelWindow {
   readonly property point cardOrigin: {
     if (!anchorItem || !bar) return Qt.point(margin, margin)
     var x = 0, y = 0
-    if (barPos === "bottom") {
+    if (centerOnBar && (barPos === "top" || barPos === "bottom")) {
+      x = screenW / 2 - contentWidth / 2
+      y = barPos === "bottom" ? screenH - barH - contentHeight - gap : barH + gap
+    } else if (centerOnBar) {
+      x = barPos === "left" ? barW + gap : screenW - barW - contentWidth - gap
+      y = screenH / 2 - contentHeight / 2
+    } else if (barPos === "bottom") {
       x = anchorScreenPos.x + anchorW / 2 - contentWidth / 2
       y = screenH - barH - contentHeight - gap
     } else if (barPos === "left") {

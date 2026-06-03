@@ -9,17 +9,38 @@ Panel {
   id: root
   moduleName: "omarchy.weather"
   ipcTarget: "omarchy.weather"
+  manageIpc: false
 
   property var anchorItem: null
+  property bool openedFromHotkey: false
 
   function open() {
+    openedFromHotkey = false
+    setCenterHoverRevealSuppressed(false)
     root.controller.show()
     root.refresh()
   }
 
+  function openFromHotkey() {
+    openedFromHotkey = true
+    setCenterHoverRevealSuppressed(true)
+    root.controller.show()
+    root.refresh()
+  }
+
+  function close() {
+    setCenterHoverRevealSuppressed(false)
+    root.controller.hide()
+  }
+
   function toggle() {
     if (root.opened) root.close()
-    else root.open()
+    else root.openFromHotkey()
+  }
+
+  function setCenterHoverRevealSuppressed(value) {
+    if (root.bar && "centerHoverRevealSuppressed" in root.bar)
+      root.bar.centerHoverRevealSuppressed = value
   }
 
   // Parsed wttr.in j1 response. Kept on failure so stale data stays visible.
@@ -190,29 +211,45 @@ Panel {
     onTriggered: root.refresh()
   }
 
-  PopupCard {
-    id: popup
+  IpcHandler {
+    target: root.ipcTarget
+
+    function open(): void { root.openFromHotkey() }
+    function close(): void { root.close() }
+    function show(): void { root.openFromHotkey() }
+    function hide(): void { root.close() }
+    function toggle(): void { root.toggle() }
+  }
+
+  KeyboardPanel {
+    id: panel
     anchorItem: root.anchorItem
     owner: root
     bar: root.bar
     open: root.opened
     centerOnBar: true
-    triggerMode: "click"
-    contentWidth: popup.fittedContentWidth(Style.space(480))
-    contentHeight: popup.fittedContentHeight(weatherColumn.implicitHeight)
+    focusTarget: keyCatcher
+    contentWidth: panel.fittedContentWidth(Style.space(480))
+    contentHeight: panel.fittedContentHeight(weatherColumn.implicitHeight)
 
-    Flickable {
-      id: weatherScroll
+    PanelKeyCatcher {
+      id: keyCatcher
       anchors.fill: parent
-      contentWidth: width
-      contentHeight: weatherColumn.implicitHeight
-      clip: true
-      boundsBehavior: Flickable.StopAtBounds
+      onCloseRequested: root.close()
+      onTabRequested: function(direction) { root.switchPanel(direction) }
 
-      Column {
-        id: weatherColumn
-        width: weatherScroll.width
-        spacing: Style.space(14)
+      Flickable {
+        id: weatherScroll
+        anchors.fill: parent
+        contentWidth: width
+        contentHeight: weatherColumn.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+
+        Column {
+          id: weatherColumn
+          width: weatherScroll.width
+          spacing: Style.space(14)
 
       // ---- Hero row: big icon + temp on the left; location and stats stacked on the right.
       Item {
@@ -429,6 +466,7 @@ Panel {
         }
       }
     }
+  }
   }
   }
 
