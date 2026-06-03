@@ -3,7 +3,38 @@
 # omarchy:summary=Apply the current theme to GNOME color mode and icon settings
 # omarchy:hidden=true
 
-if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
+THEME_DIR=~/.config/omarchy/current/theme
+COLORS_FILE="$THEME_DIR/colors.toml"
+
+# In-tree light themes now declare `mode = "light"` in colors.toml instead of
+# shipping a separate light.mode marker. Keep light.mode as a user-theme fallback.
+theme_mode() {
+  [[ -f $COLORS_FILE ]] || return
+
+  awk -F= '
+    {
+      field = $1
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", field)
+      if (field == "mode") {
+        value = $2
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+        if (value ~ /^"/) {
+          sub(/^"/, "", value)
+          sub(/".*$/, "", value)
+        }
+        print value
+        exit
+      }
+    }
+  ' "$COLORS_FILE"
+}
+
+mode=$(theme_mode)
+if [[ -z $mode && -f $THEME_DIR/light.mode ]]; then
+  mode="light"
+fi
+
+if [[ $mode == "light" ]]; then
   gsettings set org.gnome.desktop.interface color-scheme "prefer-light"
   gsettings set org.gnome.desktop.interface gtk-theme "Adwaita"
 else
