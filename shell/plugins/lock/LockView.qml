@@ -25,9 +25,10 @@ Item {
   readonly property int passwordDotFontSize: Math.round(Style.font.heading * 1.33)
   readonly property int passwordDotLetterSpacing: Math.round(Style.font.heading * 0.19)
   readonly property bool showPasswordCursor: inputEnabled && !authenticatingPassword && failureMessage.length === 0
-  readonly property string borderToken: failureMessage.length > 0 ? "border-error" : (authenticatingPassword ? "border-active" : "border")
-  readonly property color borderFallback: failureMessage.length > 0 ? Color.lock.borderError : (authenticatingPassword ? Color.lock.borderActive : Color.lock.border)
-  readonly property var inputBorderSpec: Border.surfaceSpec("lock", borderToken, borderFallback, root.outlineThickness, "border-alpha")
+  readonly property bool errorState: failureMessage.length > 0
+  readonly property var inputBorderSpec: errorState
+    ? Border.surfaceSpec("lock", "border-error", Color.lock.borderError, root.outlineThickness, "border-alpha")
+    : Border.hyprlandActiveSpec(Color.accent, root.outlineThickness)
 
   signal submitPassword(string password)
   signal passwordTextEdited(string password)
@@ -107,7 +108,7 @@ Item {
       anchors.centerIn: parent
       color: Color.lock.background
       borderSpec: root.inputBorderSpec
-      radius: 0
+      radius: Style.cornerRadius
       clip: true
 
       TextInput {
