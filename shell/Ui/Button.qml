@@ -67,18 +67,44 @@ BorderSurface {
   Keys.onEnterPressed: if (focusable) root.clicked()
   Keys.onSpacePressed: if (focusable) root.clicked()
 
-  implicitWidth: row.implicitWidth + horizontalPadding * 2 + borderLeft + borderRight
-  implicitHeight: row.implicitHeight + verticalPadding * 2 + borderTop + borderBottom
+  // Reserve the largest border any visual state can paint. Otherwise a
+  // borderless idle button grows by a pixel per side on hover/focus and
+  // relayouts neighboring controls.
+  implicitWidth: row.implicitWidth + horizontalPadding * 2 + _reservedBorderLeft + _reservedBorderRight
+  implicitHeight: row.implicitHeight + verticalPadding * 2 + _reservedBorderTop + _reservedBorderBottom
   radius: Style.cornerRadius
 
   readonly property bool hot: mouseArea.containsMouse || hasCursor
   readonly property bool _showFocusRing: focusable && activeFocus
   readonly property color _selectedColor: Style.selectedStateColor(root.foreground, root.accent)
   readonly property var _tooltipBorderSpec: Border.localOrSurfaceSpec("tooltip", "border", root.tooltipBorder, Color.tooltip.border, Math.max(1, Style.normalBorderWidth))
+  readonly property var _focusBorderSpec: Border.controlSpec("focus", root.foreground, root.accent)
+  readonly property var _hoverBorderSpec: Border.controlSpec("hover-cursor", root.foreground, root.accent)
   readonly property var _selectedBorderSpec: Border.controlSpec("selected", root.foreground, root.accent)
   readonly property var _normalBorderSpec: Border.controlSpec("normal", root.foreground, root.accent)
-  readonly property var _borderSpec: _showFocusRing ? Border.controlSpec("focus", root.foreground, root.accent)
-    : hot                      ? Border.controlSpec("hover-cursor", root.foreground, root.accent)
+  readonly property real _reservedBorderTop: Math.max(
+    focusable ? Border.top(_focusBorderSpec) : 0,
+    Border.top(_hoverBorderSpec),
+    Border.top(_selectedBorderSpec),
+    bordered ? Border.top(_normalBorderSpec) : 0)
+  readonly property real _reservedBorderRight: Math.max(
+    focusable ? Border.right(_focusBorderSpec) : 0,
+    Border.right(_hoverBorderSpec),
+    Border.right(_selectedBorderSpec),
+    bordered ? Border.right(_normalBorderSpec) : 0)
+  readonly property real _reservedBorderBottom: Math.max(
+    focusable ? Border.bottom(_focusBorderSpec) : 0,
+    Border.bottom(_hoverBorderSpec),
+    Border.bottom(_selectedBorderSpec),
+    bordered ? Border.bottom(_normalBorderSpec) : 0)
+  readonly property real _reservedBorderLeft: Math.max(
+    focusable ? Border.left(_focusBorderSpec) : 0,
+    Border.left(_hoverBorderSpec),
+    Border.left(_selectedBorderSpec),
+    bordered ? Border.left(_normalBorderSpec) : 0)
+  readonly property real _reservedContentLeftInset: _reservedBorderLeft + leftPadding
+  readonly property var _borderSpec: _showFocusRing ? _focusBorderSpec
+    : hot                      ? _hoverBorderSpec
     : selected                 ? (Border.controlHasWidth("selected") ? _selectedBorderSpec : (bordered ? _normalBorderSpec : Border.none()))
     : bordered                 ? _normalBorderSpec
     : Border.none()
@@ -127,7 +153,7 @@ BorderSurface {
     id: row
     anchors.verticalCenter: parent.verticalCenter
     anchors.left: root.leftAlign ? parent.left : undefined
-    anchors.leftMargin: root.leftAlign ? root.contentLeftInset : 0
+    anchors.leftMargin: root.leftAlign ? root._reservedContentLeftInset : 0
     anchors.horizontalCenter: root.leftAlign ? undefined : parent.horizontalCenter
     spacing: Style.spacing.controlGap
 
