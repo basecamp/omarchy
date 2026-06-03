@@ -522,13 +522,14 @@ Panel {
               fontFamily: root.bar.fontFamily
             }
 
-            Row {
+            Grid {
               id: scaleRow
               width: parent.width
-              spacing: Style.space(6)
+              columns: root.scaleValues.length
+              spacing: Style.spacing.xs
 
               readonly property real cellWidth: root.scaleValues.length > 0
-                ? (width - spacing * (root.scaleValues.length - 1)) / root.scaleValues.length
+                ? (width - spacing * (columns - 1)) / columns
                 : 0
 
               Repeater {
@@ -571,6 +572,11 @@ Panel {
               }
             }
           }
+
+          Item {
+            width: parent.width
+            height: Style.space(4)
+          }
         }
       }
     }
@@ -582,11 +588,11 @@ Panel {
     required property int scaleIndex
 
     text: scaleValue + "x"
-    fontSize: Style.font.bodySmall
+    fontSize: Style.font.caption
     foreground: root.bar.foreground
     fontFamily: root.bar.fontFamily
-    horizontalPadding: Style.spacing.controlPaddingX
-    verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
+    horizontalPadding: Style.spacing.sm
+    verticalPadding: Style.spacing.controlPaddingY
     bordered: true
 
     active: root.normalizeScale(root.monitorScale) === root.normalizeScale(scaleValue)
