@@ -5,6 +5,7 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 run_node_test <<'JS'
+const fs = require('fs')
 const picker = requireFromRoot('shell/plugins/image-picker/ImagePickerModel.js')
 
 assertEqual(picker.nameForPath('/themes/nord-river.png'), 'nord-river', 'image picker strips directory and extension')
@@ -40,4 +41,10 @@ assertEqual(picker.indexForSelectedImage(images, '/missing.png'), 0, 'image pick
 assertEqual(picker.filteredPosition(images, 2, 'dark'), 1, 'image picker computes filtered position')
 assertEqual(picker.selectedFilteredPosition(images, 2, 'dark'), 0, 'image picker selected filtered position falls back when selected is hidden')
 assertEqual(picker.nextSelectedIndexForFilter(images, 0, 'dark'), 1, 'image picker moves selection to first match when filter hides current item')
+
+const imagePickerQml = fs.readFileSync(path.join(root, 'shell/plugins/image-picker/ImagePicker.qml'), 'utf8')
+assert(
+  /function preloadRows[\s\S]*if \(opened \|\| requestActive\) return/.test(imagePickerQml),
+  'image picker ignores cache preloads while a request is visible'
+)
 JS
