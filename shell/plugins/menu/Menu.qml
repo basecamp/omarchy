@@ -84,6 +84,8 @@ Item {
   property color selectedText: Color.menu.selectedText
   property color selectedBorder: Color.menu.selectedBorder
   property var selectedBorderSpec: Border.surfaceSpec("menu", "selected-border", selectedBorder, 0)
+  readonly property real rowReservedBorderLeft: Border.left(selectedBorderSpec)
+  readonly property real rowReservedBorderRight: Border.right(selectedBorderSpec)
   readonly property int cornerRadius: Style.cornerRadius
   property int contentMargin: Style.spacing.panelPadding
   property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
@@ -933,7 +935,7 @@ Item {
                 radius: Math.min(root.cornerRadius, Style.space(4))
                 color: root.selectedBackground
                 anchors.left: parent.left
-                anchors.leftMargin: row.borderLeft + Style.space(8)
+                anchors.leftMargin: root.rowReservedBorderLeft + Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
               }
 
@@ -948,14 +950,14 @@ Item {
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
                 anchors.left: parent.left
-                anchors.leftMargin: row.borderLeft + Style.space(8)
+                anchors.leftMargin: root.rowReservedBorderLeft + Style.space(8)
                 y: contentColumn.y + labelText.y + (labelText.height - height) / 2
               }
 
               Column {
                 id: contentColumn
                 anchors.left: row.hasIcon ? iconText.right : parent.left
-                anchors.leftMargin: row.hasIcon ? Style.space(6) : row.borderLeft + Style.space(18)
+                anchors.leftMargin: row.hasIcon ? Style.space(6) : root.rowReservedBorderLeft + Style.space(18)
                 anchors.right: trail.left
                 anchors.rightMargin: Style.space(6)
                 anchors.verticalCenter: parent.verticalCenter
@@ -988,7 +990,7 @@ Item {
                 id: trail
                 width: Style.space(14)
                 anchors.right: parent.right
-                anchors.rightMargin: row.borderRight + Style.space(8)
+                anchors.rightMargin: root.rowReservedBorderRight + Style.space(8)
                 y: contentColumn.y + labelText.y + (labelText.height - height) / 2
                 spacing: 0
 

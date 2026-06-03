@@ -38,6 +38,10 @@ const pathData = geometry.ringPath(100, 50, 10, { top: 4, right: 2, bottom: 8, l
 assert(pathData.includes('M 10 0'), 'border geometry emits outer rounded path')
 assert(pathData.includes('M 10 4'), 'border geometry emits inset inner rounded path')
 
+const oneSidedPath = geometry.ringPath(100, 50, 10, { top: 0, right: 0, bottom: 0, left: 4 })
+assert(oneSidedPath.includes('M 10 0.001'), 'border geometry keeps zero-width top inside outer path')
+assert(oneSidedPath.includes('99.999 10.001'), 'border geometry keeps zero-width right inside outer path')
+
 const endpoints = geometry.gradientEndpoints(100, 50, 0)
 assertEqual(Math.round(endpoints.x1), 0, 'border geometry 0deg starts at left edge')
 assertEqual(Math.round(endpoints.x2), 100, 'border geometry 0deg ends at right edge')

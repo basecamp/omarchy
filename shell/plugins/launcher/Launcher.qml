@@ -43,6 +43,8 @@ Item {
   property color selectedText: Color.launcher.selectedText
   property color selectedBorder: Color.launcher.selectedBorder
   property var selectedBorderSpec: Border.surfaceSpec("launcher", "selected-border", selectedBorder, 0)
+  readonly property real rowReservedBorderLeft: Border.left(selectedBorderSpec)
+  readonly property real rowReservedBorderRight: Border.right(selectedBorderSpec)
   property string fontFamily: Style.font.menuFamily
 
   property int cardWidth: 644
@@ -495,7 +497,7 @@ Item {
               Item {
                 id: iconSlot
                 anchors.left: parent.left
-                anchors.leftMargin: row.borderLeft + 14
+                anchors.leftMargin: root.rowReservedBorderLeft + 14
                 anchors.verticalCenter: parent.verticalCenter
                 width: root.iconSlotWidth
                 height: parent.height
@@ -525,7 +527,7 @@ Item {
                 anchors.left: iconSlot.right
                 anchors.leftMargin: 14
                 anchors.right: parent.right
-                anchors.rightMargin: row.borderRight + 14
+                anchors.rightMargin: root.rowReservedBorderRight + 14
                 anchors.verticalCenter: parent.verticalCenter
                 text: row.name
                 color: row.hasCursor ? root.selectedText : root.foreground
