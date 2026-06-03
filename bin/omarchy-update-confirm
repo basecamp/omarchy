@@ -2,8 +2,39 @@
 
 # omarchy:summary=Prompt for confirmation before starting an update
 
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+
+current_version="$(<"$OMARCHY_PATH/version")"
+current_ref="$(git -C "$OMARCHY_PATH" describe --tags --always --dirty 2>/dev/null || true)"
+branch="$(git -C "$OMARCHY_PATH" branch --show-current 2>/dev/null || true)"
+upstream="$(git -C "$OMARCHY_PATH" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+target_version=""
+target_ref=""
+
+if [[ -n $upstream ]]; then
+  git -C "$OMARCHY_PATH" fetch --tags --quiet "${upstream%%/*}" 2>/dev/null || true
+
+  target_version="$(git -C "$OMARCHY_PATH" show "$upstream:version" 2>/dev/null || true)"
+  target_ref="$(git -C "$OMARCHY_PATH" rev-parse --short "$upstream" 2>/dev/null || true)"
+fi
+
+version_lines=(
+  "Current: ${current_version:-unknown}${current_ref:+ ($current_ref)}"
+  "Target:  ${target_version:-unknown}${target_ref:+ ($upstream@$target_ref)}"
+)
+
+if [[ -n $branch ]]; then
+  version_lines+=("Channel: $branch${upstream:+ tracking $upstream}")
+fi
+
+if [[ -n $target_version && $current_version == "$target_version" ]]; then
+  version_lines+=("Note: Omarchy version is already the same; system packages may still update.")
+fi
+
 gum style --border normal --padding "1 2" \
   "Ready to update?" \
+  "" \
+  "${version_lines[@]}" \
   "" \
   "• You cannot stop the update once you start!" \
   "• Make sure you're connected to power or have a full battery" \
