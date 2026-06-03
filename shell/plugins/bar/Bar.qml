@@ -39,6 +39,7 @@ Item {
   property bool requestedTransparent: false
   property bool useTransparentForeground: false
   property bool transparent: false
+  property bool centerSectionHovered: false
   property int barConfigSerial: 0
   property string position: "top"
   // Resolves through fontconfig at paint time (Style.font.family defaults
@@ -958,6 +959,10 @@ Item {
 
         CenterGestureArea { anchors.fill: parent }
 
+        HoverHandler {
+          onHoveredChanged: root.centerSectionHovered = hovered
+        }
+
         ModuleList {
           visible: !centerRoot.hasAnchor
           entries: centerRoot.entries
@@ -986,6 +991,7 @@ Item {
 
           visible: centerRoot.hasAnchor && centerAnchorModule.moduleName === "omarchy.clock"
           clockHovered: centerAnchorModule.hovered
+          centerHovered: root.centerSectionHovered
           anchors.right: centerAnchorModule.left
           anchors.verticalCenter: centerAnchorModule.verticalCenter
         }
@@ -1007,6 +1013,10 @@ Item {
         anchors.fill: parent
 
         CenterGestureArea { anchors.fill: parent }
+
+        HoverHandler {
+          onHoveredChanged: root.centerSectionHovered = hovered
+        }
 
         ModuleList {
           visible: !centerRoot.hasAnchor
@@ -1036,6 +1046,7 @@ Item {
 
           visible: centerRoot.hasAnchor && centerAnchorModule.moduleName === "omarchy.clock"
           clockHovered: centerAnchorModule.hovered
+          centerHovered: root.centerSectionHovered
           anchors.bottom: centerAnchorModule.top
           anchors.horizontalCenter: centerAnchorModule.horizontalCenter
         }
@@ -1066,11 +1077,12 @@ Item {
     id: configControl
 
     property bool clockHovered: false
+    property bool centerHovered: false
     property bool openWhenReady: false
 
     readonly property var panelItem: configPanelLoader.item
     readonly property bool panelOpen: panelItem ? panelItem.opened === true : false
-    readonly property bool revealed: visible && (clockHovered || controlHover.hovered || panelOpen)
+    readonly property bool revealed: visible && (clockHovered || centerHovered || controlHover.hovered || panelOpen)
 
     implicitWidth: button.implicitWidth
     implicitHeight: button.implicitHeight
@@ -1340,6 +1352,7 @@ Item {
       acceptedButtons: Qt.LeftButton
       enabled: slot.visible && slot.width > 0 && slot.height > 0
       propagateComposedEvents: true
+      cursorShape: slot.moduleName === "omarchy.clock" ? Qt.PointingHandCursor : Qt.ArrowCursor
       // Do not assign drag.target here: ModuleSlot is owned by Row/Column
       // positioners, and mutating slot.x/slot.y can leave stale offsets that
       // make neighboring modules overlap after a small aborted drag.
