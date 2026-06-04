@@ -1,0 +1,136 @@
+#!/bin/bash
+
+# omarchy:summary=Native messaging host: download the URL sent by the yt-dlp Chromium extension
+# omarchy:hidden=true
+
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+
+# The browser launches us without Omarchy's environment, so locate the repo from
+# our own path when OMARCHY_PATH isn't already set. Export it — omarchy-shell (used
+# by omarchy-osd) needs it to find the running shell, and silently no-ops without it.
+export OMARCHY_PATH="${OMARCHY_PATH:-$(cd -- "$(dirname -- "$SCRIPT_PATH")/.." && pwd)}"
+
+# Make sure the Omarchy bin and yt-dlp are reachable when launched by the browser.
+export PATH="$OMARCHY_PATH/bin:/usr/local/bin:/usr/bin:$PATH"
+
+DOWNLOAD_DIR="${OMARCHY_YTDLP_DIR:-$HOME/Videos}"
+
+parse_url() {
+  jq -r '.url // empty' 2>/dev/null <<<"$1" || true
+}
+
+valid_url() {
+  [[ $1 =~ ^https?:// ]]
+}
+
+# Drive the Quickshell OSD — a single overlay that updates in place (like the
+# volume/brightness bar), so download progress never stacks like notifications.
+osd_progress() {
+  omarchy-osd -i 󰇚 -p "$1" -d 8000 >/dev/null 2>&1 || true
+}
+
+osd_close() {
+  omarchy-shell -q osd close >/dev/null 2>&1 || true
+}
+
+download_url() {
+  local url="$1"
+
+  mkdir -p "$DOWNLOAD_DIR"
+
+  # Don't show anything until yt-dlp confirms there's actually a video to grab.
+  if ! yt-dlp --no-playlist --simulate --quiet --no-warnings "$url" >/dev/null 2>&1; then
+    omarchy-notification-send -u critical -g 󰅖 "No video found for download" "$url"
+    exit 0
+  fi
+
+  osd_progress 0
+
+  # Stream the download: OMARCHY_PROG carries the percent (drives the OSD),
+  # OMARCHY_FILE (printed only after a successful move) carries title + path.
+  local line rest pct intpct last="" er nowms lastms=0 title="" filepath=""
+  while IFS= read -r line; do
+    case $line in
+    OMARCHY_PROG*)
+      pct=${line#OMARCHY_PROG$'\t'}
+      intpct=${pct%%.*}
+      intpct=${intpct//[^0-9]/}
+      [[ -n $intpct && $intpct != "$last" ]] || continue # skip no-op repeats
+      # Throttle to ~4 redraws/sec so fast downloads don't spawn a flurry of processes.
+      er=$EPOCHREALTIME
+      nowms=$((${er%[.,]*} * 1000 + 10#${er##*[.,]} / 1000))
+      ((nowms - lastms >= 250)) || continue
+      last=$intpct
+      lastms=$nowms
+      osd_progress "$intpct"
+      ;;
+    OMARCHY_FILE*)
+      rest=${line#OMARCHY_FILE$'\t'}
+      title=${rest%%$'\t'*}
+      filepath=${rest#*$'\t'}
+      ;;
+    esac
+  done < <(PYTHONUNBUFFERED=1 yt-dlp --no-playlist --restrict-filenames --no-simulate \
+    --quiet --no-warnings --progress --newline \
+    --progress-template $'download:OMARCHY_PROG\t%(progress._percent_str)s' \
+    --paths "$DOWNLOAD_DIR" -o '%(title)s [%(id)s].%(ext)s' \
+    --print $'after_move:OMARCHY_FILE\t%(title)s\t%(filepath)s' \
+    "$url" 2>&1)
+
+  osd_close
+
+  # after_move only prints on a successful download+move, so a captured path == success.
+  if [[ -n $filepath ]]; then
+    ((${#title} > 50)) && title="${title:0:50}…" # keep the toast compact
+
+    # Square, center-cropped thumbnail so the notification preview isn't stretched.
+    local preview
+    preview="$(mktemp --suffix=.jpg)"
+    ffmpeg -y -i "$filepath" -ss 00:00:00.1 -vframes 1 \
+      -vf "crop='min(iw,ih)':'min(iw,ih)',scale=256:256" -q:v 2 \
+      "$preview" -loglevel quiet 2>/dev/null || true
+
+    # Clicking the toast opens the video in mpv (-a blocks until clicked or timed out).
+    (
+      if [[ -n $(omarchy-notification-send -g 󰄬 "Download complete" "$title" -t 10000 --image "${preview:-$filepath}" -a) ]]; then
+        mpv "$filepath"
+      fi
+      rm -f "$preview"
+    ) &
+  else
+    omarchy-notification-send -u critical -g 󰅖 "Download failed" "$url"
+  fi
+
+  exit 0
+}
+
+main() {
+  local length payload url
+
+  # Detached worker: this is what actually runs yt-dlp and fires notifications.
+  if [[ "${1:-}" == "--download" ]]; then
+    download_url "$2"
+  fi
+
+  # Native messaging frame: 4-byte little-endian length prefix, then UTF-8 JSON.
+  length=$(head -c4 | od -An -v -tu4 --endian=little | tr -d ' ')
+  [[ -n ${length:-} ]] && ((length > 0)) || exit 0
+
+  payload=$(head -c "$length")
+
+  # Ack with an empty message so the extension's sendNativeMessage callback resolves cleanly.
+  printf '\x02\x00\x00\x00{}'
+
+  url=$(parse_url "$payload")
+  [[ -n $url ]] || exit 0
+  valid_url "$url" || exit 0
+
+  # Detach the download so this host exits promptly and frees the browser's port.
+  setsid -f "$SCRIPT_PATH" --download "$url" </dev/null >/dev/null 2>&1
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

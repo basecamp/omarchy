@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Show the Omarchy Quickshell on-screen display
-# omarchy:args=[-i|--icon <icon>] [-m|--message <text>] [-p|--progress <0-100>]
+# omarchy:args=[-i|--icon <icon>] [-m|--message <text>] [-p|--progress <0-100>] [-d|--duration <ms>]
 # omarchy:examples=omarchy osd -i brightness -p 50 | omarchy osd -m "Hello"
 
 set -euo pipefail
@@ -11,12 +11,14 @@ message=""
 progress=""
 progress_text=""
 max="100"
+duration=""
 
 while (($#)); do
   case $1 in
     -i|--icon) icon="${2:-}"; shift 2 ;;
     -m|--message) message="${2:-}"; shift 2 ;;
     -p|--progress) progress="${2:-}"; shift 2 ;;
+    -d|--duration) duration="${2:-}"; shift 2 ;;
     -h|--help) omarchy osd --help; exit 0 ;;
     *) echo "Unknown OSD option: $1" >&2; exit 1 ;;
   esac
@@ -32,6 +34,7 @@ payload=$(jq -cn \
   --arg value "$progress" \
   --arg progressText "$progress_text" \
   --arg max "$max" \
-  '{icon:$icon,message:$message,value:$value,progressText:$progressText,max:$max}')
+  --arg duration "$duration" \
+  '{icon:$icon,message:$message,value:$value,progressText:$progressText,max:$max,duration:$duration}')
 
 omarchy-shell -q osd show "$payload"

@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# omarchy:summary=Install the native messaging host for the yt-dlp Chromium extension
+
+set -euo pipefail
+
+HOST_NAME="com.omarchy.ytdlp"
+HOST_PATH="$OMARCHY_PATH/bin/omarchy-chromium-ytdlp-host"
+TEMPLATE="$OMARCHY_PATH/default/chromium/native-messaging-hosts/$HOST_NAME.json"
+
+# Chromium-based browser profile roots that use the NativeMessagingHosts layout.
+browser_dirs=(
+  "$HOME/.config/chromium"
+  "$HOME/.config/google-chrome"
+  "$HOME/.config/google-chrome-beta"
+  "$HOME/.config/google-chrome-unstable"
+  "$HOME/.config/BraveSoftware/Brave-Browser"
+  "$HOME/.config/BraveSoftware/Brave-Browser-Beta"
+  "$HOME/.config/BraveSoftware/Brave-Browser-Nightly"
+  "$HOME/.config/microsoft-edge"
+  "$HOME/.config/microsoft-edge-dev"
+)
+
+manifest=$(sed "s|__HOST_PATH__|$HOST_PATH|g" "$TEMPLATE")
+
+for dir in "${browser_dirs[@]}"; do
+  mkdir -p "$dir/NativeMessagingHosts"
+  printf '%s\n' "$manifest" >"$dir/NativeMessagingHosts/$HOST_NAME.json"
+done
