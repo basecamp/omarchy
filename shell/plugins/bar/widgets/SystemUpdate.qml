@@ -26,6 +26,7 @@ BarWidget {
   readonly property color urgent: root.bar ? root.bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+  readonly property string changelogUrl: "https://github.com/basecamp/omarchy/releases/latest"
 
   function close() { popupOpen = false }
 
@@ -46,6 +47,10 @@ BarWidget {
 
   function runUpdate() {
     if (root.bar) root.bar.run("omarchy-launch-floating-terminal-with-presentation omarchy-update")
+  }
+
+  function openChangelog() {
+    Qt.openUrlExternally(root.changelogUrl)
   }
 
   function packageName(line) {
@@ -73,6 +78,10 @@ BarWidget {
 
   function countLabel(count) {
     return count === 1 ? "1 update" : count + " updates"
+  }
+
+  function pendingPackageLabel(count) {
+    return count === 1 ? "1 package pending update" : count + " packages pending update"
   }
 
   function parseUpdateText(text) {
@@ -187,8 +196,8 @@ BarWidget {
     bar: root.bar
     open: root.popupOpen && root.updateAvailable
     triggerMode: "hover"
-    contentWidth: popup.fittedContentWidth(Style.space(460))
-    contentHeight: popup.fittedContentHeight(panelColumn.implicitHeight, Style.space(640))
+    contentWidth: popup.fittedContentWidth(Style.space(420))
+    contentHeight: popup.fittedContentHeight(panelColumn.implicitHeight + Style.space(4), Style.space(640))
 
     Flickable {
       id: updateFlick
@@ -243,6 +252,7 @@ BarWidget {
           title: "Omarchy"
           lines: root.omarchyUpdateLines
           important: true
+          showChangelog: true
           width: parent.width
         }
 
@@ -251,9 +261,8 @@ BarWidget {
           foreground: root.foreground
         }
 
-        UpdateSection {
-          title: "Other packages"
-          lines: root.otherUpdateLines
+        OtherPackagesSummary {
+          count: root.otherUpdateLines.length
           width: parent.width
         }
       }
@@ -266,13 +275,14 @@ BarWidget {
     property string title: ""
     property var lines: []
     property bool important: false
+    property bool showChangelog: false
 
     visible: lines.length > 0
     spacing: Style.space(8)
 
     PanelSectionHeader {
       width: section.width
-      text: section.title.toUpperCase() + " (" + section.lines.length + ")"
+      text: section.title.toUpperCase()
       foreground: root.foreground
       fontFamily: root.fontFamily
     }
@@ -290,6 +300,46 @@ BarWidget {
           important: section.important
         }
       }
+    }
+
+    Button {
+      visible: section.showChangelog
+      width: section.width
+      text: "View latest release notes"
+      iconText: "\uf08e"
+      foreground: root.foreground
+      accent: root.urgent
+      fontFamily: root.fontFamily
+      fontSize: Style.font.bodySmall
+      iconSize: Style.font.body
+      bordered: true
+      onClicked: root.openChangelog()
+    }
+  }
+
+  component OtherPackagesSummary: Column {
+    id: summary
+
+    property int count: 0
+
+    visible: count > 0
+    spacing: Style.space(8)
+
+    PanelSectionHeader {
+      width: summary.width
+      text: "OTHER PACKAGES"
+      foreground: root.foreground
+      fontFamily: root.fontFamily
+    }
+
+    Text {
+      width: summary.width
+      text: root.pendingPackageLabel(summary.count)
+      color: root.foreground
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.body
+      font.bold: true
+      elide: Text.ElideRight
     }
   }
 
@@ -326,13 +376,12 @@ BarWidget {
         elide: Text.ElideRight
       }
 
-      RowLayout {
+      Row {
         visible: row.hasVersions
         Layout.fillWidth: true
         spacing: Style.space(7)
 
         Text {
-          Layout.fillWidth: true
           text: row.fromVersion
           color: root.dim
           font.family: root.fontFamily
@@ -349,7 +398,6 @@ BarWidget {
         }
 
         Text {
-          Layout.fillWidth: true
           text: row.toVersion
           color: row.important ? root.urgent : root.foreground
           font.family: root.fontFamily
