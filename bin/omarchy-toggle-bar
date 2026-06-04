@@ -1,48 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Toggle bar visibility without killing the Omarchy shell
-# omarchy:args=[toggle|show|hide]
-# omarchy:examples=omarchy toggle bar | omarchy toggle bar hide | omarchy toggle bar show
+# omarchy:args=[toggle|on|off]
+# omarchy:examples=omarchy toggle bar | omarchy toggle bar off | omarchy toggle bar on
 
-FLAG="$HOME/.local/state/omarchy/toggles/bar-off"
-
-apply_state() {
-  case "$1" in
-    hidden)
-      mkdir -p "$(dirname "$FLAG")"
-      touch "$FLAG"
-      ;;
-    visible)
-      rm -f "$FLAG"
-      ;;
-  esac
-}
-
-case "${1:-toggle}" in
-  hide|off)
-    apply_state hidden
-    state=hidden
-    ;;
-  show|on)
-    apply_state visible
-    state=visible
-    ;;
-  toggle|"")
-    if [[ -f $FLAG ]]; then
-      apply_state visible
-      state=visible
-    else
-      apply_state hidden
-      state=hidden
-    fi
-    ;;
-  *)
-    echo "Usage: omarchy-toggle-bar [toggle|show|hide]" >&2
-    exit 1
-    ;;
-esac
-
-case "$state" in
-  visible) omarchy-notification-send "Bar shown"  -g 󰍜 ;;
-  hidden)  omarchy-notification-send "Bar hidden" -g 󰍜 ;;
-esac
+omarchy-toggle bar-off "${1:-toggle}"
