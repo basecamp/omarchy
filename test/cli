@@ -338,6 +338,14 @@ HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-pi" --activate
 jq -e '.theme == "omarchy-system" and .model == "keep-me"' "$PI_TMPDIR/.pi/agent/settings.json" >/dev/null
 pass "pi theme activation preserves existing settings"
 
+THEME_TMPDIR=$(mktemp -d)
+OMARCHY_PATH="$ROOT" HOME="$THEME_TMPDIR" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" "Tokyo Night"
+background_path=$(readlink -f "$THEME_TMPDIR/.config/omarchy/current/background" 2>/dev/null || true)
+expected_background="$THEME_TMPDIR/.config/omarchy/current/theme/backgrounds/0-swirl-buck.jpg"
+[[ $background_path == "$expected_background" ]] || fail "headless theme set creates current background symlink"
+[[ -f $background_path ]] || fail "headless theme background target exists"
+pass "headless theme set creates current background symlink"
+
 cp "$NEXT_THEME/colors.toml" "$CURRENT_THEME/colors.toml"
 cp "$NEXT_THEME/vscode-theme.json" "$CURRENT_THEME/vscode-theme.json"
 
@@ -375,7 +383,7 @@ echo "$*" >>"${GSETTINGS_LOG:-/dev/null}"
 EOF
 chmod +x "$FAKE_BIN/gsettings"
 
-GSETTINGS_LOG="$PI_TMPDIR/gsettings.log" PATH="$FAKE_BIN:$ROOT/bin:$PATH" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-gnome"
+GSETTINGS_LOG="$PI_TMPDIR/gsettings.log" DBUS_SESSION_BUS_ADDRESS="unix:path=$PI_TMPDIR/bus" PATH="$FAKE_BIN:$ROOT/bin:$PATH" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-gnome"
 grep -q 'org.gnome.desktop.interface color-scheme prefer-light' "$PI_TMPDIR/gsettings.log" || fail "gnome sync reads mode from colors.toml"
 pass "gnome sync reads mode from colors.toml"
 
@@ -403,14 +411,6 @@ pass "vscode generated theme references current theme file"
 pass "vscode generated theme clears obsolete extension marker"
 jq -e '.[] | select(.identifier.id == "local.omarchy-theme" and .relativeLocation == "omarchy-theme")' "$PI_TMPDIR/.vscode/extensions/extensions.json" >/dev/null || fail "vscode generated theme registers local extension"
 pass "vscode generated theme registers local extension"
-
-THEME_TMPDIR=$(mktemp -d)
-OMARCHY_PATH="$ROOT" HOME="$THEME_TMPDIR" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" "Tokyo Night"
-background_path=$(readlink -f "$THEME_TMPDIR/.config/omarchy/current/background" 2>/dev/null || true)
-expected_background="$THEME_TMPDIR/.config/omarchy/current/theme/backgrounds/0-swirl-buck.jpg"
-[[ $background_path == "$expected_background" ]] || fail "headless theme set creates current background symlink"
-[[ -f $background_path ]] || fail "headless theme background target exists"
-pass "headless theme set creates current background symlink"
 
 for binary in \
   omarchy-update \
