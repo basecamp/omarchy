@@ -67,6 +67,11 @@ Example:
 
 - Whenever you need to trigger a sudo command, use `pkexec` so it results in a user prompt they can approve.
 
+# Git
+
+- Commits should be atomic: include only one coherent change or fix, and do not mix unrelated work.
+- Commit messages should be succinct and describe the change being made.
+
 # Install Scripts
 
 Install entry points (`install.sh`, `boot.sh`) use `#!/bin/bash`. Many scripts under `install/` are sourced via `run_logged` and intentionally do not have shebangs.
