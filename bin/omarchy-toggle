@@ -1,19 +1,42 @@
 #!/bin/bash
 
 # omarchy:summary=Toggle Omarchy features between enabled and disabled
-# omarchy:args=<flag-name>
+# omarchy:args=<flag-name> [toggle|on|off]
 
 if (($# < 1)); then
-  echo "Usage: omarchy-toggle <flag-name>" >&2
+  echo "Usage: omarchy-toggle <flag-name> [toggle|on|off]" >&2
   exit 1
 fi
 
 FLAG_NAME="$1"
+ACTION="${2:-toggle}"
 FLAG="$HOME/.local/state/omarchy/toggles/$FLAG_NAME"
 
-if [[ -f $FLAG ]]; then
-  rm -f "$FLAG"
-else
+enable() {
   mkdir -p "$(dirname "$FLAG")"
   touch "$FLAG"
-fi
+}
+
+disable() {
+  rm -f "$FLAG"
+}
+
+case "$ACTION" in
+  toggle|"")
+    if [[ -f $FLAG ]]; then
+      disable
+    else
+      enable
+    fi
+    ;;
+  on)
+    enable
+    ;;
+  off)
+    disable
+    ;;
+  *)
+    echo "Usage: omarchy-toggle <flag-name> [toggle|on|off]" >&2
+    exit 1
+    ;;
+esac
