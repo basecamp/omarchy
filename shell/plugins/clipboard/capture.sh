@@ -63,7 +63,12 @@ emit_image_stream() {
     '{type:"image", mime:$mime, path:$path, capturedAt:$captured_at}'
 }
 
+emit_text_stream() {
+  jq -cRs 'select(length > 0) | {type:"text", text:.}'
+}
+
 case "${OMARCHY_CLIPBOARD_WATCH_MIME:-}" in
+text) emit_text_stream; exit 0 ;;
 image/png) emit_image_stream 'image/png' 'png'; exit 0 ;;
 image/jpeg) emit_image_stream 'image/jpeg' 'jpg'; exit 0 ;;
 image/webp) emit_image_stream 'image/webp' 'webp'; exit 0 ;;
