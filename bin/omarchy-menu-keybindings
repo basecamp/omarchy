@@ -379,6 +379,7 @@ dynamic_bindings() {
 # Hardcoded bindings, like the copy-url extension and such
 static_bindings() {
   echo "SHIFT ALT,L,Copy URL from Web App,sendshortcut,SHIFT ALT,L,"
+  echo "SHIFT ALT,D,Download Video from Web App,sendshortcut,SHIFT ALT,D,"
 }
 
 # Parse and format keybindings
