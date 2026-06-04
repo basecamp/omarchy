@@ -171,6 +171,14 @@ capture_output=$(XDG_RUNTIME_DIR="$TMPDIR" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell
 [[ $capture_output == '{"type":"text","text":"terminal copy"}' ]] || fail "clipboard capture records normal text events"
 pass "clipboard capture records normal text events"
 
+capture_output=$(printf 'closing app copy' | OMARCHY_CLIPBOARD_WATCH_MIME=text WL_PASTE_TEXT="stale read" XDG_RUNTIME_DIR="$TMPDIR" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
+[[ $capture_output == '{"type":"text","text":"closing app copy"}' ]] || fail "clipboard capture records watched text from stdin"
+pass "clipboard capture records watched text from stdin"
+
+capture_output=$(printf 'secret' | CLIPBOARD_STATE=sensitive OMARCHY_CLIPBOARD_WATCH_MIME=text XDG_RUNTIME_DIR="$TMPDIR" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
+[[ -z $capture_output ]] || fail "clipboard capture ignores sensitive watched text"
+pass "clipboard capture ignores sensitive watched text"
+
 capture_output=$(CLIPBOARD_STATE=sensitive XDG_RUNTIME_DIR="$TMPDIR" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
 [[ -z $capture_output ]] || fail "clipboard capture ignores sensitive clipboard events"
 pass "clipboard capture ignores sensitive clipboard events"
