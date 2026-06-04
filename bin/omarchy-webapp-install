@@ -15,13 +15,36 @@ if (( $# < 3 )); then
     APP_URL="https://$APP_URL"
   fi
 
-  # Try to fetch favicon automatically first.
+  # Fetch the favicon to offer as the default icon, and preview it so you can
+  # decide whether to keep it or supply your own.
   FAVICON_URL="https://www.google.com/s2/favicons?domain=${APP_URL}&sz=128"
   mkdir -p "$ICON_DIR"
-  if curl -fsSL -o "$ICON_DIR/$APP_NAME.png" "$FAVICON_URL" && [[ -s $ICON_DIR/$APP_NAME.png ]]; then
+  DEFAULT_ICON="$(mktemp --suffix=.png)"
+  if curl -fsSL -o "$DEFAULT_ICON" "$FAVICON_URL" && [[ -s $DEFAULT_ICON ]]; then
+    if command -v chafa &>/dev/null; then
+      echo -e "Default icon preview:\n"
+      chafa --size=16x16 "$DEFAULT_ICON" || true
+      echo
+    fi
+    ICON_PLACEHOLDER="Press Enter to use the favicon above, or paste a PNG icon URL (see https://dashboardicons.com)"
+  else
+    rm -f "$DEFAULT_ICON"
+    DEFAULT_ICON=""
+    ICON_PLACEHOLDER="Could not fetch favicon automatically. Enter PNG icon URL (see https://dashboardicons.com)"
+  fi
+
+  ICON_INPUT=$(gum input --prompt "Icon URL> " --placeholder "$ICON_PLACEHOLDER")
+
+  if [[ -n $ICON_INPUT ]]; then
+    # A custom icon URL was given; use it instead of the previewed favicon.
+    ICON_REF="$ICON_INPUT"
+    [[ -n $DEFAULT_ICON ]] && rm -f "$DEFAULT_ICON"
+  elif [[ -n $DEFAULT_ICON ]]; then
+    # Keep the previewed favicon as the icon.
+    mv "$DEFAULT_ICON" "$ICON_DIR/$APP_NAME.png"
     ICON_REF="$APP_NAME.png"
   else
-    ICON_REF=$(gum input --prompt "Icon URL> " --placeholder "Could not fetch favicon automatically. Enter PNG icon URL (see https://dashboardicons.com)")
+    ICON_REF=""
   fi
 
   CUSTOM_EXEC=""
