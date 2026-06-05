@@ -17,10 +17,15 @@ if [[ -z $action || $action == "autodetect" ]]; then
   sleep 0.3
 
   action=battery
-  for ps in /sys/class/power_supply/*; do
+  power_supply_dir="${POWER_SUPPLY_DIR:-/sys/class/power_supply}"
+  for ps in "$power_supply_dir"/*; do
     [[ -r $ps/online && -r $ps/type ]] || continue
     type=$(cat "$ps/type")
     [[ $type == "Mains" || $type == "USB" ]] || continue
+    if [[ $type == "USB" && -r $ps/status ]]; then
+      status=$(cat "$ps/status")
+      [[ $status == "Discharging" ]] && continue
+    fi
     if [[ $(cat "$ps/online") == "1" ]]; then
       action=ac
       break
