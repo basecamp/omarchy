@@ -78,10 +78,11 @@ ShellRoot {
   function runChecks() {
     var scan = ""
     scan += block("firstparty", "/first/widgets/clock", manifest("omarchy.first-widget", ["bar-widget"], { barWidget: "Widget.qml" }))
-    scan += block("firstparty", "/first/bar", manifest("omarchy.first-bar", ["bar"], { bar: "Bar.qml" }))
+    scan += block("firstparty", "/first/bar", manifest("omarchy.bar", ["bar"], { bar: "Bar.qml" }))
     scan += block("firstparty", "/first/panels/grouped", manifest("omarchy.grouped-panel", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/panel", manifest("third.panel", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/widget", manifest("third.widget", ["bar-widget"], { barWidget: "Widget.qml" }))
+    scan += block("thirdparty", "/third/bar", manifest("third.bar", ["bar"], { bar: "Bar.qml" }))
     scan += block("thirdparty", "/third/shadow", manifest("omarchy.first-widget", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/reserved", manifest("omarchy.reserved", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/unsafe", manifest("third.unsafe", ["panel"], { panel: "../Panel.qml" }))
@@ -92,9 +93,10 @@ ShellRoot {
     registry.parseScanOutput(scan)
 
     root.assertDeepEqual(pluginIds(), [
-      "omarchy.first-bar",
+      "omarchy.bar",
       "omarchy.first-widget",
       "omarchy.grouped-panel",
+      "third.bar",
       "third.panel",
       "third.widget"
     ], "registry merges valid first-party and third-party manifests")
@@ -111,8 +113,17 @@ ShellRoot {
     root.assertTrue(!has("third.schema"), "unsupported schema versions are rejected")
 
     root.assertTrue(registry.isEnabled("omarchy.first-widget"), "first-party plugins are implicitly enabled")
-    root.assertTrue(registry.isEnabled("omarchy.first-bar"), "bar plugins are implicitly enabled")
+    root.assertTrue(registry.isEnabled("omarchy.bar"), "built-in bar option is active by default")
+    root.assertTrue(!registry.isEnabled("third.bar"), "third-party bar options start inactive")
     root.assertTrue(!registry.isEnabled("third.panel"), "third-party plugins start disabled")
+
+    registry.setEnabled("third.bar", true)
+    root.assertEqual(root.config.bar.id, "third.bar", "enabling third-party bar options writes bar id")
+    root.assertTrue(registry.isEnabled("third.bar"), "selected third-party bar options are enabled")
+    root.assertTrue(!registry.isEnabled("omarchy.bar"), "selecting third-party bar options deactivates built-in bar")
+    registry.setEnabled("third.bar", false)
+    root.assertTrue(root.config.bar.id === undefined, "disabling active bar options resets to built-in")
+    root.assertTrue(registry.isEnabled("omarchy.bar"), "built-in bar option returns after reset")
 
     registry.setEnabled("third.panel", true)
     root.assertDeepEqual(root.config.plugins, [{ id: "third.panel" }], "enabling third-party panels writes plugins array")

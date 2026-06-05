@@ -75,13 +75,15 @@ Supported `kinds`:
 
 | Kind         | What it is                                                   |
 |--------------|--------------------------------------------------------------|
-| `bar-widget` | A component that the bar can drop into a section             |
+| `bar-widget` | A component that the active bar can drop into a section      |
 | `panel`      | A persistent or summoned floating window (e.g. OSD)          |
 | `overlay`    | A fullscreen overlay (e.g. background switcher)              |
 | `menu`       | A summoned menu surface                                      |
 | `service`    | A headless singleton, no UI                                  |
-| `bar`        | Reserved for the first-party bar host (`omarchy.bar`). Third-party plugins should ship `bar-widget`s; they do not replace the host bar. |
+| `bar`        | A full bar option that can replace the built-in `omarchy.bar` |
 
+Only one `bar` plugin is active at a time. Missing or invalid selections fall
+back to the built-in `omarchy.bar`, so users always have a safe path home.
 Panels, overlays, and menus are loaded when summoned. Plugins that need
 to outlive a single summon can set `keepLoaded: true` (e.g. the image
 picker keeps its overlay window mounted between summons). First-party
@@ -132,7 +134,7 @@ You can still drop a plugin in without a source:
 1. Put it in `~/.config/omarchy/plugins/<plugin-id>/` with a `manifest.json`
    plus the QML referenced from its `entryPoints`.
 2. `omarchy plugin rescan`.
-3. `omarchy plugin enable <id>` (bar widgets also need `omarchy plugin bar add <id>`).
+3. `omarchy plugin enable <id>` (bar widgets also need `omarchy plugin bar add <id>`; full bar replacements are selected with `omarchy plugin bar use <id>`).
 
 The lower-level IPC equivalents remain available via `omarchy-shell shell rescanPlugins`,
 `omarchy-shell shell setPluginEnabled <id> true`, and `omarchy-shell shell listPlugins`.
@@ -151,7 +153,9 @@ omarchy plugin edit local.clock --with ai      # edit with `omarchy launch ai`
 ```
 
 First-party plugins under `shell/plugins/`
-are discovered the same way and cannot be disabled.
+are discovered the same way and cannot be disabled, except that the built-in
+bar option can become inactive while a third-party `kind: "bar"` plugin is the
+selected bar.
 
 ## IPC contract
 
@@ -224,6 +228,7 @@ becomes the authoritative file — we do **not** deep-merge defaults back in.
     "lock": 300
   },
   "bar": {
+    "id": "omarchy.bar",
     "position": "top",
     "transparent": false,
     "centerAnchor": "omarchy.clock",
@@ -241,27 +246,31 @@ becomes the authoritative file — we do **not** deep-merge defaults back in.
 
 ### Storage rules
 
-1. **Every plugin instance is one entry.** Either in `bar.layout.<section>`
+1. **The active bar option is `bar.id`.** Omit it or set it to `omarchy.bar`
+   to use the built-in bar. Set it to another plugin id whose manifest declares
+   `kind: "bar"` to replace the full bar.
+2. **Every plugin instance is one entry.** Either in `bar.layout.<section>`
    for bar widgets, or in `plugins[]` for panels, overlays, services,
    menus, and anything else non-bar.
-2. **Settings are inline on the entry.** No `config:` sub-object, no
+3. **Settings are inline on the entry.** No `config:` sub-object, no
    separate per-plugin settings file, no merge layers. The fields on each
    entry are the values the plugin sees.
-3. **Built-in widget ids are namespaced.** Use ids such as `omarchy.clock`,
+4. **Built-in widget ids are namespaced.** Use ids such as `omarchy.clock`,
    `omarchy.audio`, and `omarchy.network`. The migration rewrites older ids
    like `Clock` and `AudioPanel` forward.
-4. **Third-party enabled ⇔ present.** A third-party plugin is enabled iff
-   its id appears somewhere in shell.json. For bar widgets, the bar
-   settings UI adds/removes layout entries; other plugin kinds are enabled
-   with the shell IPC. First-party plugins are always enabled.
-5. **Multiple instances** are allowed when a manifest sets
+5. **Third-party enabled ⇔ present.** A third-party plugin is enabled iff
+   its id appears somewhere in shell.json. For full bar options, that means
+   `bar.id`; for bar widgets, the bar settings UI adds/removes layout entries;
+   other plugin kinds are enabled with the shell IPC. First-party non-bar
+   plugins are always enabled.
+6. **Multiple instances** are allowed when a manifest sets
    `allowMultiple: true`. Each instance is independent — e.g. two clock
    widgets in different timezones are just two `{"id":"omarchy.clock", "timezone": ...}`
    entries with their own values.
-6. **Idle timings are top-level.** `idle.screensaver` and `idle.lock`
+7. **Idle timings are top-level.** `idle.screensaver` and `idle.lock`
    are seconds since user idle began, so the default lock fires at 300s
    even if the 150s screensaver starts first.
-7. **`version: 1` is required** at the top level. The shell will fall back
+8. **`version: 1` is required** at the top level. The shell will fall back
    to defaults rather than load an unknown version.
 
 ## Implementation history
