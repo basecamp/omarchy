@@ -41,9 +41,13 @@ Clone options:
   --prompt <prompt>                     Initial prompt when opening with AI
   --replace                             Replace the first source bar instance
   --add [placement]                     Add cloned bar widget to the bar
+  --use                                 Use cloned bar options as the active bar
 
 Bar widget commands:
   bar settings                          Open the inline bar config panel
+  bar options [--json]                  List available bar options
+  bar use <id>                          Use a bar option as the active bar
+  bar reset                             Return to the built-in Omarchy bar
   bar list [--json]                     List current bar layout
   bar add <id> [placement] [--duplicate]
   bar move <id> [placement] [--from-section SECTION] [--from-index N]
@@ -65,6 +69,9 @@ Examples:
   omarchy plugin edit local.clock --with editor
   omarchy plugin edit local.clock --with ai --prompt "Customize this clock"
   omarchy plugin enable acme.weather --section right
+  omarchy plugin bar options
+  omarchy plugin bar use local.neon-bar
+  omarchy plugin bar reset
   omarchy plugin bar add acme.weather --section right --before omarchy.tray
   omarchy plugin bar move omarchy.clock --section center --index 0
   omarchy plugin bar remove acme.weather
@@ -705,7 +712,7 @@ clone_source_options() {
   first_party_manifest_paths | while IFS= read -r manifest; do
     id=$(jq -r '.id // empty' "$manifest" 2>/dev/null || true)
     name=$(jq -r '.barWidget.displayName // .name // .id // empty' "$manifest" 2>/dev/null || true)
-    [[ -n $id && $id != "omarchy.bar" ]] || continue
+    [[ -n $id ]] || continue
     if jq -e '(.kinds // []) | index("bar-widget")' "$manifest" >/dev/null 2>&1; then
       printf '%s\tBuilt-in widget\t%s\n' "$id" "${name:-$id}"
     else
@@ -1030,6 +1037,7 @@ clone_command() {
   local prompt=""
   local replace="false"
   local add="false"
+  local use_bar="false"
   local placement=()
 
   while (( $# > 0 )); do
@@ -1059,6 +1067,10 @@ clone_command() {
       ;;
     --add)
       add="true"
+      shift
+      ;;
+    --use)
+      use_bar="true"
       shift
       ;;
     --section | --index | --before | --after)
@@ -1155,6 +1167,9 @@ clone_command() {
   elif [[ $add == "true" ]]; then
     bar_add "$new_id" "${placement[@]}"
     echo "Cloned $source_id to $new_id"
+  elif [[ $use_bar == "true" ]]; then
+    omarchy-config-shell-bar use "$new_id"
+    echo "Cloned $source_id to $new_id and selected it as the active bar option"
   else
     echo "Cloned $source_id to $new_id"
   fi
@@ -1175,6 +1190,15 @@ bar_command() {
   edit | settings)
     (( $# == 0 )) || fail "bar settings does not take arguments"
     exec omarchy-launch-bar-settings
+    ;;
+  options | option)
+    exec omarchy-config-shell-bar options "$@"
+    ;;
+  use)
+    exec omarchy-config-shell-bar use "$@"
+    ;;
+  reset)
+    exec omarchy-config-shell-bar reset "$@"
     ;;
   list)
     bar_list "$@"

@@ -97,29 +97,41 @@ QtObject {
   }
 
   // Enabled = the plugin id is referenced somewhere in shell.json. That can
-  // be either a layout entry inside `bar.layout.*` (bar widgets) or a top-level
-  // entry in `plugins[]` (panels, overlays, services).
+  // be either the active bar option in `bar.id`, a layout entry inside
+  // `bar.layout.*` (bar widgets), or a top-level entry in `plugins[]` (panels,
+  // overlays, services).
   //
   // Special cases (implicitly always enabled, no shell.json entry needed):
-  //   - plugins whose `kinds` contains "bar" are mounted directly by the host.
-  //   - first-party plugins are shell infrastructure (settings,
+  //   - the built-in bar option (`omarchy.bar`) is active when `bar.id` is
+  //     missing or set to `omarchy.bar`.
+  //   - first-party non-bar plugins are shell infrastructure (settings,
   //     image-picker, ...). Requiring users to add them to plugins[] just to
   //     summon them was a footgun: a stock shell.json with `plugins: []` would
   //     silently make `omarchy launch bar-settings` a no-op.
   function isEnabled(id) {
     var key = String(id)
     var manifest = installedPlugins[key]
+    var config = shellConfigProvider ? shellConfigProvider() : null
     if (manifest) {
-      if (Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar") !== -1) return true
+      if (Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar") !== -1) {
+        var selectedBar = ""
+        if (Util.isPlainObject(config) && Util.isPlainObject(config.bar))
+          selectedBar = Util.canonicalWidgetId(String(config.bar.id || ""))
+        if (!selectedBar) selectedBar = "omarchy.bar"
+        return selectedBar === key
+      }
       if (manifest.__isFirstParty) return true
     }
-    var config = shellConfigProvider ? shellConfigProvider() : null
     return findEntryLocation(config, key).found
   }
 
   function findEntryLocation(config, id) {
     if (!Util.isPlainObject(config)) return { found: false }
     var key = Util.canonicalWidgetId(String(id))
+    if (Util.isPlainObject(config.bar)) {
+      var selectedBar = Util.canonicalWidgetId(String(config.bar.id || ""))
+      if (selectedBar === key) return { found: true, kind: "bar-option" }
+    }
     if (Util.isPlainObject(config.bar) && Util.isPlainObject(config.bar.layout)) {
       var sections = ["left", "center", "right"]
       for (var s = 0; s < sections.length; s++) {
@@ -148,12 +160,23 @@ QtObject {
       return
     }
     var manifest = installedPlugins[key]
+    var isBarOption = manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar") !== -1
     var isBarWidget = manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar-widget") !== -1
     shellConfigMutator(function(config) {
       // Ensure shape exists.
       if (!Util.isPlainObject(config.bar)) config.bar = { layout: { left: [], center: [], right: [] } }
       if (!Util.isPlainObject(config.bar.layout)) config.bar.layout = { left: [], center: [], right: [] }
       if (!Array.isArray(config.plugins)) config.plugins = []
+
+      if (isBarOption) {
+        if (value) {
+          config.bar.id = key
+        } else if (Util.canonicalWidgetId(String(config.bar.id || "")) === key) {
+          delete config.bar.id
+        }
+        return
+      }
+
       var location = findEntryLocation(config, key)
       if (value && !location.found) {
         var entry = { id: key }
@@ -166,7 +189,7 @@ QtObject {
       } else if (!value && location.found) {
         if (location.kind === "bar") {
           config.bar.layout[location.section].splice(location.index, 1)
-        } else {
+        } else if (location.kind === "plugin") {
           config.plugins.splice(location.index, 1)
         }
       }

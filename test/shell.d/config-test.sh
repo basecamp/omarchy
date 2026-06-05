@@ -114,6 +114,35 @@ cat >"$TMPDIR/home/.config/omarchy/shell.json" <<'JSON'
 }
 JSON
 
+mkdir -p "$TMPDIR/home/.config/omarchy/plugins/local.demo-bar"
+cat >"$TMPDIR/home/.config/omarchy/plugins/local.demo-bar/manifest.json" <<'JSON'
+{
+  "schemaVersion": 1,
+  "id": "local.demo-bar",
+  "name": "Demo bar",
+  "version": "1.0.0",
+  "author": "Test",
+  "description": "Replacement bar for config tests",
+  "kinds": ["bar"],
+  "entryPoints": { "bar": "Bar.qml" }
+}
+JSON
+touch "$TMPDIR/home/.config/omarchy/plugins/local.demo-bar/Bar.qml"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar options --json | jq -e '
+  any(.[]; .id == "omarchy.bar" and .active == true) and
+  any(.[]; .id == "local.demo-bar" and .active == false)
+' >/dev/null
+pass "shell config lists bar options"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar use local.demo-bar
+jq -e '.bar.id == "local.demo-bar"' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config selects a bar option"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar reset
+jq -e '.bar.id == null' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config resets to built-in bar option"
+
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar add omarchy.tailscale
 jq -e '
   def ids: map(.id // .);
