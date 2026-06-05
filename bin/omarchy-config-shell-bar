@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# omarchy:summary=Mutate the user shell.json bar layout
-# omarchy:args=show | list [--json] [--all] | add [plugin] [left|center|right] | remove [plugin] | drop [plugin] | position <top|bottom|left|right> | transparent <true|false>
-# omarchy:examples=omarchy config shell bar show | omarchy config shell bar list | omarchy config shell bar add | omarchy config shell bar remove | omarchy config shell bar add omarchy.tailscale | omarchy config shell bar position top | omarchy config shell bar transparent true
+# omarchy:summary=Mutate the user shell.json bar layout and active bar option
+# omarchy:args=show | options [--json] | use <plugin> | reset | list [--json] [--all] | add [plugin] [left|center|right] | remove [plugin] | drop [plugin] | position <top|bottom|left|right> | transparent <true|false>
+# omarchy:examples=omarchy config shell bar show | omarchy config shell bar options | omarchy config shell bar use local.neon-bar | omarchy config shell bar reset | omarchy config shell bar list | omarchy config shell bar add omarchy.tailscale | omarchy config shell bar position top | omarchy config shell bar transparent true
 
 set -euo pipefail
 
@@ -11,7 +11,7 @@ OMARCHY_ROOT="${OMARCHY_PATH:-}"
 DEFAULTS_FILE="$OMARCHY_ROOT/config/omarchy/shell.json"
 
 usage() {
-  echo "Usage: omarchy-config-shell-bar show | list [--json] [--all] | add [plugin] [left|center|right] | remove [plugin] | drop [plugin] | position <top|bottom|left|right> | transparent <true|false>" >&2
+  echo "Usage: omarchy-config-shell-bar show | options [--json] | use <plugin> | reset | list [--json] [--all] | add [plugin] [left|center|right] | remove [plugin] | drop [plugin] | position <top|bottom|left|right> | transparent <true|false>" >&2
 }
 
 fail() {
@@ -47,6 +47,95 @@ bar_widget_manifest_paths() {
       find -L "$HOME/.config/omarchy/plugins" -mindepth 2 -maxdepth 2 -type f -name manifest.json 2>/dev/null
     fi
   } | sort -u
+}
+
+bar_option_manifest_paths() {
+  {
+    if [[ -n $OMARCHY_ROOT && -d $OMARCHY_ROOT/shell/plugins ]]; then
+      find "$OMARCHY_ROOT/shell/plugins" -mindepth 2 -maxdepth 4 -type f \( -name manifest.json -o -name '*.manifest.json' \) 2>/dev/null
+    fi
+
+    if [[ -d $HOME/.config/omarchy/plugins ]]; then
+      find -L "$HOME/.config/omarchy/plugins" -mindepth 2 -maxdepth 2 -type f -name manifest.json 2>/dev/null
+    fi
+  } | sort -u
+}
+
+current_bar_option_id() {
+  jq -r '(.bar.id // "omarchy.bar") | tostring' "$(source_file)"
+}
+
+available_bar_options_json() {
+  local current_id
+  local manifest_paths=()
+
+  current_id=$(current_bar_option_id)
+  mapfile -t manifest_paths < <(bar_option_manifest_paths)
+
+  if (( ${#manifest_paths[@]} == 0 )); then
+    printf '[]\n'
+    return
+  fi
+
+  jq -s --arg currentId "$current_id" '
+    map(
+      select(((.kinds // []) | index("bar")) and ((.entryPoints.bar // "") != "")) |
+      {
+        id: (.id // ""),
+        name: (.name // .id // ""),
+        description: (.description // ""),
+        firstParty: ((.id // "") | startswith("omarchy.")),
+        active: ((.id // "") == $currentId)
+      } |
+      select(.id != "")
+    ) |
+    unique_by(.id) |
+    sort_by((if .id == "omarchy.bar" then 0 else 1 end), .name, .id)
+  ' "${manifest_paths[@]}"
+}
+
+print_bar_options() {
+  local json="false"
+
+  while (( $# > 0 )); do
+    case "$1" in
+      --json)
+        json="true"
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        fail "unknown options option: $1"
+        ;;
+    esac
+    shift
+  done
+
+  if [[ $json == "true" ]]; then
+    available_bar_options_json
+    return
+  fi
+
+  available_bar_options_json | jq -r '
+    .[] |
+    [
+      .id,
+      (if .active then "active" else "available" end),
+      (if .firstParty then "built-in" else "plugin" end),
+      .name,
+      .description
+    ] | @tsv
+  ' | awk -F '\t' '
+    BEGIN { printf "%-32s %-10s %-8s %-22s %s\n", "ID", "STATUS", "SOURCE", "NAME", "DESCRIPTION" }
+    { printf "%-32s %-10s %-8s %-22s %s\n", $1, $2, $3, $4, $5 }
+  '
+}
+
+bar_option_exists() {
+  local id="$1"
+  available_bar_options_json | jq -e --arg id "$id" 'any(.[]; .id == $id)' >/dev/null
 }
 
 current_bar_ids_json() {
@@ -256,7 +345,88 @@ case "$command" in
 
     jq '.bar // {}' "$(source_file)"
     ;;
-  list|available|options)
+  selected|active)
+    if (( $# != 1 )); then
+      usage
+      exit 1
+    fi
+
+    current_bar_option_id
+    ;;
+  options|option)
+    shift
+    print_bar_options "$@"
+    ;;
+  use)
+    if (( $# != 2 )); then
+      usage
+      exit 1
+    fi
+
+    plugin="${2:-}"
+    [[ -n $plugin ]] || fail "bar option id is required"
+    if [[ $plugin == "default" || $plugin == "built-in" ]]; then
+      plugin="omarchy.bar"
+    fi
+    bar_option_exists "$plugin" || fail "$plugin is not a known bar option; run 'omarchy config shell bar options'"
+
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+
+    source="$(source_file)"
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+
+    if [[ $plugin == "omarchy.bar" ]]; then
+      jq '
+        def object_or_empty: if type == "object" then . else {} end;
+
+        object_or_empty
+        | .version = 1
+        | .bar = (.bar | object_or_empty)
+        | del(.bar.id)
+      ' "$source" >"$tmp"
+    else
+      jq --arg plugin "$plugin" '
+        def object_or_empty: if type == "object" then . else {} end;
+
+        object_or_empty
+        | .version = 1
+        | .bar = (.bar | object_or_empty)
+        | .bar.id = $plugin
+      ' "$source" >"$tmp"
+    fi
+
+    mv "$tmp" "$CONFIG_FILE"
+    trap - EXIT
+    omarchy-shell -q shell rescanPlugins >/dev/null 2>&1 || true
+    refresh_shell_config
+    ;;
+  reset)
+    if (( $# != 1 )); then
+      usage
+      exit 1
+    fi
+
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+
+    source="$(source_file)"
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+
+    jq '
+      def object_or_empty: if type == "object" then . else {} end;
+
+      object_or_empty
+      | .version = 1
+      | .bar = (.bar | object_or_empty)
+      | del(.bar.id)
+    ' "$source" >"$tmp"
+
+    mv "$tmp" "$CONFIG_FILE"
+    trap - EXIT
+    refresh_shell_config
+    ;;
+  list|available|widgets)
     shift
     print_available_widgets "$@"
     ;;

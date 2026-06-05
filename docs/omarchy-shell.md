@@ -25,12 +25,15 @@ first call.
 
 | Kind         | What it is                                  |
 |--------------|---------------------------------------------|
-| `bar-widget` | Component the bar drops into a section      |
-| `panel`      | Floating window (e.g. OSD)                  |
-| `overlay`    | Fullscreen overlay (e.g. background picker) |
-| `menu`       | Summoned menu surface                       |
-| `service`    | Headless singleton, no UI                   |
+| `bar-widget` | Component the active bar drops into a section |
+| `bar`        | Full bar option that can replace `omarchy.bar` |
+| `panel`      | Floating window (e.g. OSD)                     |
+| `overlay`    | Fullscreen overlay (e.g. background picker)    |
+| `menu`       | Summoned menu surface                          |
+| `service`    | Headless singleton, no UI                      |
 
+Only one full bar option is active at a time. The built-in `omarchy.bar` is
+used when `bar.id` is omitted or when a selected third-party bar cannot load.
 Panels, overlays, and menus are loaded when summoned. Plugins can set
 `keepLoaded: true` to survive between summons. First-party services are
 loaded at startup.
@@ -59,7 +62,8 @@ every prompt (the path for scripts and agents).
 Sources are recorded in `~/.config/omarchy/plugins/sources.json` and cloned into
 `~/.cache/omarchy/plugin-sources/`. You can still install by hand: drop a plugin
 into `~/.config/omarchy/plugins/<id>/`, run `omarchy plugin rescan`, then
-`omarchy plugin enable <id>` (bar widgets also need `omarchy plugin bar add <id>`).
+`omarchy plugin enable <id>` (bar widgets also need `omarchy plugin bar add <id>`;
+full bar replacements are selected with `omarchy plugin bar use <id>`).
 The lower-level IPC methods remain available through `omarchy-shell shell ...`.
 
 ## IPC
@@ -91,6 +95,7 @@ individual plugins (`bar`, `image-selector`, …).
     "lock": 300
   },
   "bar": {
+    "id": "omarchy.bar",
     "position": "top",
     "transparent": false,
     "centerAnchor": "calendar",
@@ -109,16 +114,20 @@ individual plugins (`bar`, `image-selector`, …).
 
 Rules:
 
-1. Every plugin instance is one entry — `bar.layout.<section>` for
+1. The active bar option is `bar.id`. Omit it or set it to `omarchy.bar` for
+   the built-in bar; set it to a plugin whose manifest declares `kind: "bar"`
+   to replace the full bar.
+2. Every plugin instance is one entry — `bar.layout.<section>` for
    bar widgets, `plugins[]` for everything else.
-2. Settings are inline on the entry. No `config:` sub-object, no
+3. Settings are inline on the entry. No `config:` sub-object, no
    merge layers.
-3. Built-in bar widget ids are namespaced (`omarchy.clock`, `omarchy.audio`, …).
+4. Built-in bar widget ids are namespaced (`omarchy.clock`, `omarchy.audio`, …).
    The migration rewrites older ids such as `Clock` and `AudioPanel` forward.
-4. Third-party enabled ⇔ present; first-party plugins are always enabled.
-5. `allowMultiple: true` in the manifest permits multiple instances.
-6. `idle.screensaver` and `idle.lock` are seconds since user idle began.
-7. `version: 1` is required.
+5. Third-party enabled ⇔ present; for full bar options that means `bar.id`.
+   First-party non-bar plugins are always enabled.
+6. `allowMultiple: true` in the manifest permits multiple instances.
+7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
+8. `version: 1` is required.
 
 `config/omarchy/shell.json` describes the fresh-install state. When no
 user `shell.json` exists, defaults are used verbatim. Once the user

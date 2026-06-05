@@ -22,6 +22,9 @@ Item {
   // Injected by the host shell. Used for shell-wide actions such as opening
   // settings and persisting inline widget state.
   property var shell: null
+  // Manifest for the active bar option. Present for custom bars and useful for
+  // diagnostics; the built-in bar does not otherwise need it.
+  property var manifest: null
   // Mirrors the on-disk `bar-off` flag so the user can hide the bar without
   // killing the entire shell. Wired to BarPanel.visible below; updated by the
   // FileView watcher further down.
