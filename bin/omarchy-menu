@@ -434,6 +434,7 @@ show_setup_default_terminal_menu() {
   omarchy-cmd-present foot && options="${options:+$options\n}  Foot"
   omarchy-cmd-present ghostty && options="${options:+$options\n}  Ghostty"
   omarchy-cmd-present kitty && options="${options:+$options\n}  Kitty"
+  omarchy-cmd-present wezterm && options="${options:+$options\n}  WezTerm"
 
   local current=""
   case "$(omarchy-default-terminal)" in
@@ -441,6 +442,7 @@ show_setup_default_terminal_menu() {
   foot) current="  Foot" ;;
   ghostty) current="  Ghostty" ;;
   kitty) current="  Kitty" ;;
+  wezterm) current="  WezTerm" ;;
   esac
 
   case $(menu "Default Terminal" "$options" "" "$current") in
@@ -448,6 +450,7 @@ show_setup_default_terminal_menu() {
   *Foot*) omarchy-default-terminal foot ;;
   *Ghostty*) omarchy-default-terminal ghostty ;;
   *Kitty*) omarchy-default-terminal kitty ;;
+  *WezTerm*) omarchy-default-terminal wezterm ;;
   *) show_setup_default_menu ;;
   esac
 }
@@ -583,11 +586,12 @@ show_install_editor_menu() {
 }
 
 show_install_terminal_menu() {
-  case $(menu "Install" "  Alacritty\n  Foot\n  Ghostty\n  Kitty") in
+  case $(menu "Install" "  Alacritty\n  Foot\n  Ghostty\n  Kitty\n  WezTerm") in
   *Alacritty*) install_terminal "alacritty" ;;
   *Foot*) install_terminal "foot" ;;
   *Ghostty*) install_terminal "ghostty" ;;
   *Kitty*) install_terminal "kitty" ;;
+  *WezTerm*) install_terminal "wezterm" ;;
   *) show_install_menu ;;
   esac
 }
