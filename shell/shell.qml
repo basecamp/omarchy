@@ -56,6 +56,7 @@ ShellRoot {
   property bool suppressUserReload: false
 
   onShellConfigChanged: {
+    if (failedBarId !== "") failedBarId = ""
     pluginRegistry.registryRevision++
     pluginRegistry.pluginsChanged()
   }
@@ -105,6 +106,7 @@ ShellRoot {
   }
 
   readonly property var barConfig: shellConfig && Util.isPlainObject(shellConfig.bar) ? shellConfig.bar : builtinShellConfig.bar
+  onBarConfigChanged: if (bar && "barConfig" in bar) bar.barConfig = shell.barConfig
   FileView {
     id: defaultsFile
     path: shell.defaultsPath
@@ -159,15 +161,102 @@ ShellRoot {
   }
 
   // Exposed as a property so child plugins (notifications, future panels)
-  // can read barSize/barHidden/position to anchor relative to the bar.
-  property alias bar: bar
+  // can read barSize/barHidden/position to anchor relative to the active bar.
+  readonly property string defaultBarId: "omarchy.bar"
+  readonly property string selectedBarId: {
+    var config = shell.barConfig
+    if (Util.isPlainObject(config)) {
+      var configured = Util.canonicalWidgetId(String(config.id || ""))
+      if (configured) return configured
+    }
+    return shell.defaultBarId
+  }
+  property string failedBarId: ""
+  readonly property bool selectedBarAvailable: {
+    var revision = shell.pluginRegistry.registryRevision
+    return shell.barOptionAvailable(shell.selectedBarId)
+  }
+  readonly property string activeBarId: selectedBarId !== failedBarId && selectedBarAvailable ? selectedBarId : defaultBarId
+  readonly property var activeBarManifest: {
+    var revision = shell.pluginRegistry.registryRevision
+    return shell.barManifestFor(shell.activeBarId)
+  }
+  readonly property string activeBarSourceUrl: activeBarId === defaultBarId ? "" : shell.pluginRegistry.entryPointUrl(activeBarManifest, "bar")
+  property var bar: null
 
-  Bar {
-    id: bar
-    omarchyPath: shell.omarchyPath
-    barWidgetRegistry: shell.barWidgetRegistry
-    barConfig: shell.barConfig
-    shell: shell
+  onSelectedBarIdChanged: if (failedBarId !== "") failedBarId = ""
+
+  function barManifestFor(pluginId) {
+    var plugins = shell.pluginRegistry ? shell.pluginRegistry.installedPlugins : null
+    return plugins ? plugins[String(pluginId || "")] || null : null
+  }
+
+  function isBarOptionManifest(manifest) {
+    return manifest
+      && Array.isArray(manifest.kinds)
+      && manifest.kinds.indexOf("bar") !== -1
+      && manifest.entryPoints
+      && manifest.entryPoints.bar
+  }
+
+  function barOptionAvailable(pluginId) {
+    var id = String(pluginId || "")
+    if (id === "" || id === shell.defaultBarId) return true
+    var manifest = shell.barManifestFor(id)
+    return shell.isBarOptionManifest(manifest) && shell.pluginRegistry.entryPointUrl(manifest, "bar") !== ""
+  }
+
+  function isActiveBarOption(pluginId) {
+    return String(pluginId || "") === shell.activeBarId
+  }
+
+  function configureBar(target, manifest) {
+    if (!target) return
+    if ("omarchyPath" in target) target.omarchyPath = shell.omarchyPath
+    if ("shell" in target) target.shell = shell
+    if ("manifest" in target) target.manifest = manifest
+    if ("barWidgetRegistry" in target) target.barWidgetRegistry = shell.barWidgetRegistry
+    if ("pluginRegistry" in target) target.pluginRegistry = shell.pluginRegistry
+    if ("barConfig" in target) target.barConfig = shell.barConfig
+    shell.bar = target
+  }
+
+  Component {
+    id: defaultBarComponent
+
+    Bar {
+      omarchyPath: shell.omarchyPath
+      barWidgetRegistry: shell.barWidgetRegistry
+      barConfig: shell.barConfig
+      shell: shell
+      manifest: shell.barManifestFor(shell.defaultBarId)
+    }
+  }
+
+  Loader {
+    id: defaultBarLoader
+
+    active: shell.activeBarId === shell.defaultBarId
+    sourceComponent: defaultBarComponent
+    onLoaded: shell.configureBar(item, shell.barManifestFor(shell.defaultBarId))
+    onActiveChanged: if (!active && shell.activeBarId !== shell.defaultBarId) shell.bar = null
+  }
+
+  Loader {
+    id: pluginBarLoader
+
+    active: shell.activeBarId !== shell.defaultBarId && shell.activeBarSourceUrl !== ""
+    source: shell.activeBarId !== shell.defaultBarId ? shell.activeBarSourceUrl : ""
+    asynchronous: true
+    onLoaded: shell.configureBar(item, shell.activeBarManifest)
+    onActiveChanged: if (!active && shell.activeBarId === shell.defaultBarId) shell.bar = null
+    onStatusChanged: {
+      if (status === Loader.Error) {
+        var detail = errorString && errorString() ? errorString() : ""
+        console.warn("bar option " + shell.activeBarId + " failed to load, falling back to " + shell.defaultBarId + ":", detail)
+        shell.failedBarId = shell.activeBarId
+      }
+    }
   }
 
   // ------------------------------------------------------------- services
@@ -639,11 +728,15 @@ ShellRoot {
       var out = []
       var plugins = shell.pluginRegistry.installedPlugins
       for (var id in plugins) {
+        var kinds = plugins[id].kinds || []
+        var isBarOption = Array.isArray(kinds) && kinds.indexOf("bar") !== -1
+        var active = isBarOption && shell.isActiveBarOption(id)
         out.push({
           id: id,
           name: plugins[id].name,
-          kinds: plugins[id].kinds,
-          enabled: shell.pluginRegistry.isEnabled(id),
+          kinds: kinds,
+          enabled: isBarOption ? active : shell.pluginRegistry.isEnabled(id),
+          active: active,
           firstParty: !!plugins[id].__isFirstParty
         })
       }

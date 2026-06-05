@@ -2,9 +2,11 @@
 
 These plugins ship with Omarchy and are discovered by the shell at startup.
 They use the same `manifest.json` contract as third-party plugins; the
-only difference is that the shell flags them with `__isFirstParty: true`
-so they are always enabled. Services and keep-loaded panels are mounted at
-startup; other panels, overlays, and menus are loaded on demand.
+only difference is that the shell flags them with `__isFirstParty: true`.
+First-party non-bar plugins are always enabled; `omarchy.bar` is the default
+bar option and becomes inactive only while a third-party `kind: "bar"` plugin is
+selected. Services and keep-loaded panels are mounted at startup; other panels,
+overlays, and menus are loaded on demand.
 
 User-installed plugins live alongside these conceptually but on disk under
 `~/.config/omarchy/plugins/<plugin-id>/` rather than in this directory.
@@ -40,7 +42,7 @@ own plugin directories, each with its own `manifest.json`.
 
 ## Bar
 
-The status bar. Mounted at startup, lives forever. Layout lives in the
+The built-in status bar and default full-bar option. Layout lives in the
 top-level `bar:` subtree of `~/.config/omarchy/shell.json` (with the shell
 providing [`config/omarchy/shell.json`](../../config/omarchy/shell.json) when
 the user has no file). See [`bar/README.md`](bar/README.md) for the widget catalogue
