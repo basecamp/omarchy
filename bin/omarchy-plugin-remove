@@ -102,6 +102,5 @@ fi
 omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
 
 if [[ $was_enabled == "true" ]]; then
-  echo "Plugin was enabled; restart the shell to fully unload it:"
-  echo "  omarchy restart shell"
+  echo "Plugin was enabled and was unloaded from omarchy-shell."
 fi

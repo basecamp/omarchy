@@ -172,9 +172,9 @@ running a separate Quickshell instance.
 | `hide <id>`                              | —       | close a previously-summoned plugin                    |
 | `toggle <id> <payloadJson>`              | —       | summon if closed, hide if open                        |
 | `call <id> <method> <arg>`               | string  | call a method on an already-loaded plugin             |
-| `rescanPlugins`                          | —       | re-walk plugin dirs and pick up new/changed manifests |
+| `rescanPlugins`                          | —       | re-walk plugin dirs and hot-reload plugin code        |
 | `reloadConfig`                           | `ok`    | reload `~/.config/omarchy/shell.json`                 |
-| `setPluginEnabled <id> <enabled>`        | —       | flip the persisted enabled bit (see note)             |
+| `setPluginEnabled <id> <enabled>`        | `ok` / `unknown` | flip the persisted enabled bit (see note)    |
 | `listPlugins`                            | JSON    | every discovered plugin (id, name, kinds, enabled)    |
 
 Direct invocation:

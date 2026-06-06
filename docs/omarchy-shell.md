@@ -78,9 +78,9 @@ individual plugins (`bar`, `image-selector`, …).
 | `hide <id>`                           | close a previously-summoned     |
 | `toggle <id> <payloadJson>`           | summon if closed, hide if open  |
 | `call <id> <method> <arg>`            | call an already-loaded plugin   |
-| `rescanPlugins`                       | re-walk plugin dirs             |
+| `rescanPlugins`                       | re-walk plugin dirs and hot-reload plugin code |
 | `reloadConfig`                        | reload shell.json               |
-| `setPluginEnabled <id> <"true"\|…>`   | flip enabled bit                |
+| `setPluginEnabled <id> <"true"\|…>`   | flip enabled bit (`ok` / `unknown`) |
 | `listPlugins`                         | JSON of every discovered plugin |
 
 `setPluginEnabled` takes a string; only literal `"true"` enables.

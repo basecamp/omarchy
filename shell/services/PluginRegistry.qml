@@ -26,6 +26,7 @@ QtObject {
   property bool scanning: false
 
   signal pluginsChanged()
+  signal scanFinished()
   signal pluginLoadFailed(string id, string error)
 
   // ---------------------------------------------------------------- helpers
@@ -157,9 +158,13 @@ QtObject {
     var key = Util.canonicalWidgetId(String(id))
     if (!shellConfigMutator) {
       console.warn("PluginRegistry.setEnabled called before shellConfigMutator wired")
-      return
+      return false
     }
     var manifest = installedPlugins[key]
+    if (value && !manifest) {
+      console.warn("PluginRegistry.setEnabled: unknown plugin " + key)
+      return false
+    }
     var isBarOption = manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar") !== -1
     var isBarWidget = manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar-widget") !== -1
     shellConfigMutator(function(config) {
@@ -196,6 +201,7 @@ QtObject {
     })
     registryRevision++
     pluginsChanged()
+    return true
   }
 
   // ---------------------------------------------------------------- scanning
@@ -269,6 +275,7 @@ QtObject {
     registryRevision++
     scanning = false
     pluginsChanged()
+    scanFinished()
   }
 
   property Process scanProcess: Process {
