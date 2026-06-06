@@ -35,12 +35,15 @@ BarWidget {
     root.bar.run("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ workspace = \"" + id + "\" })"))
   }
 
-  implicitWidth: grid.implicitWidth
+  readonly property real trailingGap: root.vertical ? 0 : Style.spaceReal(1.5)
+
+  implicitWidth: grid.implicitWidth + trailingGap
   implicitHeight: grid.implicitHeight
 
   GridLayout {
     id: grid
     anchors.fill: parent
+    anchors.rightMargin: root.trailingGap
     columns: root.vertical ? 1 : root.workspaceIds().length
     columnSpacing: root.vertical ? 0 : Style.space(1)
     rowSpacing: root.vertical ? Style.space(2) : 0
