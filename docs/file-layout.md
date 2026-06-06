@@ -92,8 +92,8 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   ├─ nautilus-python/extensions/*.py                    /etc/skel/.local/share/nautilus-python/extensions/
   ├─ uwsm/env.d/10-omarchy                              /usr/share/uwsm/env.d/
   ├─ environment.d/*.conf                               /usr/lib/environment.d/
-  ├─ fontconfig/conf.avail/30-omarchy.conf              /usr/share/fontconfig/conf.avail/
-  │                                                       + symlink /etc/fonts/conf.d/30-omarchy.conf
+  ├─ fontconfig/conf.avail/50-omarchy.conf              /usr/share/fontconfig/conf.avail/
+  │                                                       + symlink /etc/fonts/conf.d/50-omarchy.conf
   ├─ xdg-terminal-exec/*.list                           /usr/share/xdg-terminal-exec/
   ├─ applications/mimeapps.list                         /usr/share/applications/mimeapps.list
   ├─ systemd/user/*.{service,path}                      /usr/lib/systemd/user/

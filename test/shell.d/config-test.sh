@@ -107,7 +107,7 @@ package_defaults = [
   ("default/uwsm/env.d/10-omarchy", "/usr/share/uwsm/env.d/10-omarchy", "uwsm/env"),
   ("default/uwsm/default", None, "uwsm/default"),
   ("default/environment.d/10-omarchy-fcitx.conf", "/usr/lib/environment.d/10-omarchy-fcitx.conf", "environment.d/fcitx.conf"),
-  ("default/fontconfig/conf.avail/30-omarchy.conf", "/usr/share/fontconfig/conf.avail/30-omarchy.conf", "fontconfig/fonts.conf"),
+  ("default/fontconfig/conf.avail/50-omarchy.conf", "/usr/share/fontconfig/conf.avail/50-omarchy.conf", "fontconfig/fonts.conf"),
   ("default/xdg-terminal-exec/hyprland-xdg-terminals.list", "/usr/share/xdg-terminal-exec/hyprland-xdg-terminals.list", "xdg-terminals.list"),
   ("default/applications/mimeapps.list", "/usr/share/applications/mimeapps.list", "mimeapps.list"),
   ("etc/fastfetch/config.jsonc", "/etc/fastfetch/config.jsonc", "fastfetch/config.jsonc"),

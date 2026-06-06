@@ -50,7 +50,7 @@ fi
 # is package-owned; create a user override only when the user changes fonts.
 fontconfig_file="$HOME/.config/fontconfig/fonts.conf"
 if [[ ! -f $fontconfig_file ]]; then
-  fontconfig_default="$omarchy_root/default/fontconfig/conf.avail/30-omarchy.conf"
+  fontconfig_default="$omarchy_root/default/fontconfig/conf.avail/50-omarchy.conf"
   if [[ ! -f $fontconfig_default ]]; then
     echo "Default fontconfig file not found: $fontconfig_default" >&2
     exit 1
@@ -59,7 +59,7 @@ if [[ ! -f $fontconfig_file ]]; then
   cp "$fontconfig_default" "$fontconfig_file"
 fi
 
-# We own the markup in 30-omarchy.conf, so the monospace block is predictable:
+# We own the markup in 50-omarchy.conf, so the monospace block is predictable:
 # the <string>FAMILY</string> immediately after <string>monospace</string> is
 # the family we're replacing.
 tmp=$(mktemp)

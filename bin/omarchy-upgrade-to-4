@@ -1381,7 +1381,7 @@ refresh	xournalpp/settings.xml	1c1a9efbf1b6dc7813bf3440fd5bf8409fc283e8d0192ca29
 # Legacy ~/.config path -> package-owned destination (where the file now lives):
 # environment.d/fcitx.conf -> /usr/lib/environment.d/10-omarchy-fcitx.conf
 # fastfetch/config.jsonc -> /etc/fastfetch/config.jsonc
-# fontconfig/fonts.conf -> /usr/share/fontconfig/conf.avail/30-omarchy.conf
+# fontconfig/fonts.conf -> /usr/share/fontconfig/conf.avail/50-omarchy.conf
 # mimeapps.list -> /usr/share/applications/mimeapps.list
 # omarchy.ttf -> /usr/share/fonts/omarchy/omarchy.ttf
 # systemd/user/bt-agent.service -> /usr/lib/systemd/user/bt-agent.service
