@@ -1089,6 +1089,17 @@ restore_hyprland_config_reload() {
   hyprland_config_reload_suppressed=0
 }
 
+ensure_sleep_lock_service() {
+  [[ -S $target_runtime_dir/bus ]] || return 0
+
+  log "Ensuring Omarchy sleep lock service is enabled"
+  run_as_user_session systemctl --user daemon-reload >/dev/null 2>&1 || true
+  run_as_user_session systemctl --user reset-failed omarchy-sleep-lock.service >/dev/null 2>&1 || true
+  if ! run_as_user_session systemctl --user enable --now omarchy-sleep-lock.service >/dev/null 2>&1; then
+    warn "Could not start omarchy-sleep-lock.service; it should start after reboot."
+  fi
+}
+
 
 enable_system_service() {
   local unit="$1"
@@ -1409,7 +1420,7 @@ retire	omarchy.ttf	e55e67119e82f56f92d90cbf54b7ccc1b2946b32c535a29370439d7ef5215
 retire	systemd/user/bt-agent.service	0406b577a1225dc2a9f86638d3c346eb3635168576f04050be50ebcc0be6be12
 retire	systemd/user/omarchy-recover-internal-monitor.service	b9b92cedc44cf3cb6216948629be55b53d16746e31896dc6469fd49ba55e82f4
 retire	systemd/user/omarchy-recover-internal-monitor.service	e1483079b9f2aefcd43b4722c75a31643e5f3bb5a2eada5f52f1d7d201e8c289
-retire	systemd/user/omarchy-sleep-lock.service	bcd1a76cb5c63514922bc5e11af22ae480fc6d06a99863364e02bdf3c7bdceaf
+retire	systemd/user/omarchy-sleep-lock.service	6870b232a6c0474b59187882e6d25ae771bba735098bcbedef8a2b73b97e2b6a
 retire	uwsm/default	2e89b03a3710b70cf754ea0c8db4388bb35a7519870036abff5ea8a584eafbc0
 retire	uwsm/default	3622ba134d29b639a155424a5226215e213c8508144e98001ffe128a8967c9b5
 retire	uwsm/default	73712c5a677532bd4afcee5800ae9b76e3d02a2130659a96a8b7fbe2fd2c3d53
@@ -1616,6 +1627,24 @@ CHROMIUM_FLAGS_PATCH_PY
   done
 }
 
+repair_sleep_lock_unit_override() {
+  local unit="$HOME/.config/systemd/user/omarchy-sleep-lock.service"
+  local legacy_exec='ExecStart=%h/.local/share/omarchy/bin/omarchy-system-sleep-monitor'
+  local current_exec='ExecStart=/usr/bin/omarchy-system-sleep-monitor'
+  local tmp
+  [[ -f $unit ]] || return 0
+
+  if grep -qxF "$legacy_exec" "$unit"; then
+    backup_config_file "$unit"
+    tmp=$(mktemp)
+    LEGACY_EXEC="$legacy_exec" CURRENT_EXEC="$current_exec" awk '
+      $0 == ENVIRON["LEGACY_EXEC"] { print ENVIRON["CURRENT_EXEC"]; next }
+      { print }
+    ' "$unit" >"$tmp" && mv "$tmp" "$unit"
+    rm -f "$tmp"
+  fi
+}
+
 is_known_bashrc_default() {
   local file="$1" hash
   [[ -f $file ]] || return 1
@@ -1754,10 +1783,11 @@ for rel in "${retired_config_files[@]}"; do
     rm -f "$file"
   fi
 done
+repair_sleep_lock_unit_override
 install_bash_startup
 
 unset rel file backup retired_config_files always_copy_config_files uwsm_env known_config_default_hashes_by_key
-unset -f file_sha256 known_config_default_hashes default_hash_paths is_known_default_hash backup_config_file migrate_uwsm_env_customizations is_retired_config_file copy_config_default copy_missing_config_defaults refresh_known_config_defaults copy_always_config_defaults repair_chromium_copy_url_extension_flags is_known_bashrc_default install_bash_startup
+unset -f file_sha256 known_config_default_hashes default_hash_paths is_known_default_hash backup_config_file migrate_uwsm_env_customizations is_retired_config_file copy_config_default copy_missing_config_defaults refresh_known_config_defaults copy_always_config_defaults repair_chromium_copy_url_extension_flags repair_sleep_lock_unit_override is_known_bashrc_default install_bash_startup
 
 mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills" "$HOME/.pi/agent/skills"
 if [[ -d $root/default/omarchy-skill ]]; then
@@ -2096,6 +2126,7 @@ apply_system_transition
 suppress_hyprland_config_reload
 apply_user_transition
 cleanup_retired_services
+ensure_sleep_lock_service
 remove_retired_default_packages
 refresh_current_theme_after_upgrade
 # Do not force-reload Hyprland in the live upgraded session. The legacy

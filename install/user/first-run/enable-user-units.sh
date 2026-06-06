@@ -11,6 +11,7 @@
 
 set -euo pipefail
 
+systemctl --user daemon-reload
 systemctl --user enable --now \
   bt-agent.service \
   omarchy-recover-internal-monitor.service \
