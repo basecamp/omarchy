@@ -41,12 +41,12 @@ Panel {
 
   function batteryIcon() {
     var device = UPower.displayDevice
-    return Model.batteryIcon(device, UPower.onBattery, upowerStates())
+    return Model.batteryIcon(device, root.discharging, upowerStates())
   }
 
   function modeLabel() {
     var device = UPower.displayDevice
-    return Model.modeLabel(device, UPower.onBattery, upowerStates())
+    return Model.modeLabel(device, root.discharging, upowerStates())
   }
 
   function profileIcon(name) {
@@ -57,11 +57,15 @@ Panel {
     var device = UPower.displayDevice
     return device && device.isPresent && device.state === UPowerDeviceState.FullyCharged && !root.chargeThresholdActive
   }
+  readonly property bool discharging: {
+    var device = UPower.displayDevice
+    return !!(device && device.isPresent && (UPower.onBattery || device.state === UPowerDeviceState.Discharging))
+  }
   readonly property bool chargeThresholdActive: {
     var device = UPower.displayDevice
-    return Model.chargeThresholdActive(device, UPower.onBattery, upowerStates())
+    return Model.chargeThresholdActive(device, root.discharging, upowerStates())
   }
-  readonly property bool batteryFull: fullyCharged || (!UPower.onBattery && batteryFraction >= 1)
+  readonly property bool batteryFull: fullyCharged || (!root.discharging && batteryFraction >= 1)
   readonly property bool batteryFlowIdle: batteryFull || chargeThresholdActive
 
   // 0..1 charge level, used by the visual progress bar.
@@ -70,14 +74,12 @@ Panel {
     return Model.batteryFraction(d)
   }
 
-  readonly property bool batteryLow: UPower.onBattery && batteryFraction > 0 && batteryFraction <= 0.2
   readonly property bool charging: {
     var d = UPower.displayDevice
     return d && d.isPresent && d.state === UPowerDeviceState.Charging && !root.chargeThresholdActive
   }
 
   readonly property color batteryFillColor: {
-    if (batteryLow) return Color.urgent
     return root.bar ? root.bar.foreground : Color.foreground
   }
 
@@ -111,7 +113,7 @@ Panel {
   readonly property var activePhrases: {
     if (fullyCharged) return []
     if (charging) return chargingPhrases
-    if (UPower.onBattery || chargeThresholdActive) return onBatteryPhrases
+    if (discharging) return onBatteryPhrases
     return []
   }
   readonly property bool rotatingPhrases: activePhrases.length > 0
@@ -254,7 +256,6 @@ Panel {
     text: root.batteryIcon()
     fixedWidth: root.bar && root.bar.vertical ? -1 : Style.space(27)
     fixedHeight: root.bar && root.bar.vertical ? Style.space(26) : -1
-    active: root.batteryPresent && UPower.displayDevice.percentage <= 0.2 && UPower.onBattery
     tooltipText: ""
     onPressed: function(b) { if (root.batteryPresent) root.toggle() }
   }
@@ -296,7 +297,7 @@ Panel {
           Text {
             id: heroIcon
             text: root.batteryIcon()
-            color: root.batteryLow ? Color.urgent : root.bar.foreground
+            color: root.bar.foreground
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.display
             anchors.left: parent.left
@@ -340,7 +341,7 @@ Panel {
           Text {
             id: heroPercent
             text: root.batteryInfo.percentage || "—"
-            color: root.batteryLow ? Color.urgent : root.bar.foreground
+            color: root.bar.foreground
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.displayLarge
             font.bold: true
@@ -408,17 +409,21 @@ Panel {
             width: (parent.width - parent.spacing) / 2
             spacing: Style.spacing.labelGap
             InfoPair {
-              label: root.chargeThresholdActive ? "Charge limit" : (UPower.onBattery ? "Time left" : "Time to full")
+              label: root.chargeThresholdActive ? "Charge limit" : (root.discharging ? "Time left" : "Time to full")
               value: root.chargeThresholdActive ? (root.batteryInfo.threshold || "-") : (root.batteryFlowIdle ? "-" : (root.batteryInfo.time || "—"))
             }
             InfoPair {
-              label: root.chargeThresholdActive ? "Battery state" : (UPower.onBattery ? "Discharging" : "Charging")
+              label: root.chargeThresholdActive ? "Battery state" : (root.discharging ? "Discharging" : "Charging")
               value: root.chargeThresholdActive ? "Holding" : (root.batteryFull ? "-" : (root.batteryInfo.rate || ""))
             }
           }
         }
 
         // ---------- Power profile picker ----------
+        PanelSeparator {
+          foreground: root.bar.foreground
+        }
+
         Column {
           width: parent.width
           spacing: Style.space(10)
