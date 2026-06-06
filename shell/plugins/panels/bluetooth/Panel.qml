@@ -406,6 +406,8 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: root.icon
+    fixedWidth: root.bar && root.bar.vertical ? -1 : Style.space(27)
+    fixedHeight: root.bar && root.bar.vertical ? Style.space(26) : -1
     onPressed: function(b) {
       if (b === Qt.RightButton) root.toggleBluetooth()
       else if (b === Qt.MiddleButton) root.bar.run("omarchy-launch-bluetooth")

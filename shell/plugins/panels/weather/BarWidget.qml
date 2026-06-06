@@ -49,7 +49,7 @@ BarWidget {
     bar: root.bar
     text: panelLoader.item ? panelLoader.item.label : ""
     active: panelLoader.item && panelLoader.item.klass === "active"
-    horizontalMargin: 5
+    horizontalMargin: 2.5
     // Tooltip suppressed because the panel is the detail view.
     tooltipText: ""
 
