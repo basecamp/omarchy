@@ -238,7 +238,7 @@ Panel {
     if (focusSection === "header") {
       tailscale.toggleTailscale()
     } else if (focusSection === "auth") {
-      tailscale.authorizeProfileSwitching()
+      tailscale.authorizeTailscaleOperator()
     } else if (focusSection === "accounts") {
       var account = selectedAccount()
       if (account) tailscale.switchAccount(account.id)
@@ -748,7 +748,7 @@ Panel {
       cursorShape: tailscale.busy ? Qt.ArrowCursor : Qt.PointingHandCursor
       enabled: !tailscale.busy
       onEntered: root.setAuthCursor()
-      onClicked: tailscale.authorizeProfileSwitching()
+      onClicked: tailscale.authorizeTailscaleOperator()
     }
 
     RowLayout {
@@ -774,7 +774,7 @@ Panel {
 
         Text {
           Layout.fillWidth: true
-          text: "Authorize switching"
+          text: "Authorize Tailscale operator"
           color: root.foreground
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
@@ -783,7 +783,7 @@ Panel {
 
         Text {
           Layout.fillWidth: true
-          text: "Allow this user to see and switch Tailscale connections"
+          text: "Allow this user to operate this Tailscale profile"
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -791,14 +791,6 @@ Panel {
         }
       }
 
-      PanelActionButton {
-        iconText: "󰄬"
-        foreground: root.foreground
-        fontFamily: root.fontFamily
-        enabled: !tailscale.busy
-        Layout.alignment: Qt.AlignVCenter
-        onClicked: tailscale.authorizeProfileSwitching()
-      }
     }
   }
 
@@ -994,14 +986,7 @@ Panel {
         modal: false
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        onOpenedChanged: {
-          root.copyMenuOpen = opened
-          if (opened) {
-            peerRow.clampCopyIndex()
-            forceActiveFocus()
-          }
-        }
-        Keys.onPressed: function(event) {
+        function handleKey(event) {
           if (event.key === Qt.Key_Escape) {
             close()
             event.accepted = true
@@ -1022,6 +1007,15 @@ Panel {
             event.accepted = true
           }
         }
+        onOpenedChanged: {
+          root.copyMenuOpen = opened
+          if (opened) {
+            peerRow.clampCopyIndex()
+            Qt.callLater(function() { copyPopupContent.forceActiveFocus() })
+          } else if (root.opened) {
+            Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+          }
+        }
         background: BorderSurface {
           color: Color.background
           borderSpec: Border.flat(root.dim, 1)
@@ -1029,7 +1023,11 @@ Panel {
         }
 
         contentItem: Column {
+          id: copyPopupContent
           width: parent.width
+          focus: true
+          Keys.priority: Keys.BeforeItem
+          Keys.onPressed: function(event) { copyPopup.handleKey(event) }
 
           Repeater {
             model: peerRow.copyOptions
@@ -1102,6 +1100,7 @@ Panel {
     readonly property bool activeExitNode: peer && peer.ExitNode === true
     readonly property bool settingExitNode: peer && tailscale.settingExitNodeId === String(peer.id || "")
     readonly property string peerName: peer ? String(peer.DisplayName || peer.HostName || "Unknown") : "Unknown"
+    readonly property string actionTooltip: addMullvad ? "" : (activeExitNode ? "Disconnect" : "Connect")
 
     hasCursor: root.cursorActive && root.focusSection === "exitNodes" && root.exitNodeIndex === rowIndex
     current: activeExitNode || settingExitNode || (addMullvad && root.mullvadPickerOpen)
@@ -1154,11 +1153,18 @@ Panel {
     }
 
     MouseArea {
+      id: exitNodeMouse
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onEntered: root.setExitNodeCursor(exitNodeRow.rowIndex)
       onClicked: root.chooseExitNode(exitNodeRow.peer)
+    }
+
+    PanelToolTip {
+      visible: exitNodeRow.actionTooltip !== "" && exitNodeMouse.containsMouse
+      text: exitNodeRow.actionTooltip
+      fontFamily: root.fontFamily
     }
   }
 
@@ -1172,6 +1178,7 @@ Panel {
     readonly property bool activeExitNode: peer && peer.ExitNode === true
     readonly property bool settingExitNode: peer && tailscale.settingExitNodeId === String(peer.id || "")
     readonly property bool selectedRegion: root.mullvadPickerOpen && root.mullvadRegionIndex === rowIndex
+    readonly property string actionTooltip: activeExitNode ? "Disconnect" : "Connect"
 
     foreground: root.foreground
     fill: root.hoverFill
@@ -1226,11 +1233,18 @@ Panel {
     }
 
     MouseArea {
+      id: regionMouse
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onEntered: root.mullvadRegionIndex = regionRow.rowIndex
       onClicked: root.chooseExitNode(regionRow.peer)
+    }
+
+    PanelToolTip {
+      visible: regionMouse.containsMouse
+      text: regionRow.actionTooltip
+      fontFamily: root.fontFamily
     }
   }
 }
