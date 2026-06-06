@@ -12,6 +12,7 @@ Panel {
   ipcTarget: "omarchy.tailscale"
   manageIpc: false
 
+  readonly property real openIndicatorInlineOffset: bar && bar.vertical ? 0 : Style.spaceReal(1.5)
   property string focusSection: "header"
   property int headerIndex: 0
   property int accountIndex: 0
@@ -362,7 +363,7 @@ Panel {
   Item {
     id: button
     anchors.fill: parent
-    implicitWidth: root.bar && root.bar.vertical ? root.bar.barSize : Style.space(32)
+    implicitWidth: root.bar && root.bar.vertical ? root.bar.barSize : Style.space(27)
     implicitHeight: root.bar && root.bar.vertical ? Style.space(26) : (root.bar ? root.bar.barSize : Style.space(26))
 
     property var registeredBar: null
@@ -389,6 +390,7 @@ Panel {
 
     TailscaleIcon {
       anchors.centerIn: parent
+      anchors.horizontalCenterOffset: root.openIndicatorInlineOffset
       anchors.verticalCenterOffset: -Style.space(1)
       iconSize: Style.space(12) * 0.85
       color: root.barIconColor

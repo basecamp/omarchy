@@ -42,7 +42,7 @@ BarWidget {
     id: grid
     anchors.fill: parent
     columns: root.vertical ? 1 : root.workspaceIds().length
-    columnSpacing: root.vertical ? 0 : Style.space(2)
+    columnSpacing: root.vertical ? 0 : Style.space(1)
     rowSpacing: root.vertical ? Style.space(2) : 0
 
     Repeater {
@@ -60,7 +60,7 @@ BarWidget {
         opacity: occupied || focused ? 1 : 0.5
         horizontalMargin: 6
         verticalPadding: 6
-        fixedWidth: root.vertical ? root.barSize : Style.space(22)
+        fixedWidth: root.vertical ? root.barSize : Style.space(20)
         fixedHeight: root.barSize
         onPressed: function() { root.focusWorkspace(modelData) }
       }

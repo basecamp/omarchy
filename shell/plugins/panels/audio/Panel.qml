@@ -528,6 +528,8 @@ Panel {
     bar: root.bar
     text: root.outputIcon()
     fontSize: Style.font.body
+    fixedWidth: root.bar && root.bar.vertical ? -1 : Style.space(27)
+    fixedHeight: root.bar && root.bar.vertical ? Style.space(26) : -1
     onPressed: function(b) {
       if (b === Qt.RightButton) root.toggleOutputMute()
       else root.toggle()
