@@ -11,10 +11,16 @@
 	rebase = true 			 # Rebase (instead of merge) on pull
 [push]
 	autoSetupRemote = true   # Automatically set upstream branch on push
+[core]
+	pager = delta            # Use syntax-highlighted diffs
 [diff]
 	algorithm = histogram    # Clearer diffs on moved/edited lines
 	colorMoved = plain       # Highlight moved blocks in diffs
 	mnemonicPrefix = true    # More intuitive refs in diff output
+[interactive]
+	diffFilter = delta --color-only
+[delta]
+	navigate = true
 [commit]
 	verbose = true           # Include diff comment in commit message template
 [column]
