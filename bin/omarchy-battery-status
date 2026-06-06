@@ -58,7 +58,7 @@ fi
 
 charge_holding=false
 if [[ $ac_online == "true" && -n $threshold_end ]]; then
-  if [[ $state == "discharging" || $state == "pending-charge" ]]; then
+  if [[ $state == "pending-charge" ]]; then
     charge_holding=true
   elif [[ $state == "fully-charged" ]] && (( percentage < 99 )); then
     charge_holding=true
