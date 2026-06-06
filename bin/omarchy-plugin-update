@@ -208,8 +208,7 @@ done
 
 if ((any_enabled)); then
   echo
-  echo "Updated plugins that were enabled may need a shell restart to fully reload:"
-  echo "  omarchy restart shell"
+  echo "Updated enabled plugins were hot-reloaded by omarchy-shell."
 fi
 
 exit $rc

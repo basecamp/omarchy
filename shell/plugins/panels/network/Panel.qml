@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Networking
@@ -584,8 +585,9 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: root.icon
-    horizontalMargin: 8.5
-    rightExtraMargin: 2
+    fixedWidth: root.bar && root.bar.vertical ? -1 : Style.space(27)
+    fixedHeight: root.bar && root.bar.vertical ? Style.space(26) : -1
+    rightExtraMargin: 5.5
 
     onPressed: function(b) {
       if (root.opened) root.close()
@@ -794,48 +796,41 @@ Panel {
         width: parent.width
         spacing: Style.spacing.labelGap
 
-        Row {
-          visible: root.info.rx_bytes !== undefined
+        GridLayout {
           width: parent.width
-          spacing: Style.space(20)
+          columns: 4
+          columnSpacing: Style.space(20)
+          rowSpacing: Style.spacing.labelGap
 
-          Column {
-            width: (parent.width - parent.spacing) / 2
-            spacing: Style.spacing.labelGap
-            InfoPair { label: "Receiving"; value: root.formatRate(root.downloadRate) }
-            InfoPair { label: "Downloaded"; value: root.formatBytes(parseFloat(root.info.rx_bytes || "0")) }
-          }
+          InfoLabel { visible: root.info.rx_bytes !== undefined; text: "Receiving" }
+          DetailValue { visible: root.info.rx_bytes !== undefined; text: root.formatRate(root.downloadRate) }
+          InfoLabel { visible: root.info.rx_bytes !== undefined; text: "Sending" }
+          DetailValue { visible: root.info.rx_bytes !== undefined; text: root.formatRate(root.uploadRate) }
 
-          Column {
-            width: (parent.width - parent.spacing) / 2
-            spacing: Style.spacing.labelGap
-            InfoPair { label: "Sending"; value: root.formatRate(root.uploadRate) }
-            InfoPair { label: "Uploaded"; value: root.formatBytes(parseFloat(root.info.tx_bytes || "0")) }
-          }
-        }
+          InfoLabel { visible: root.info.rx_bytes !== undefined; text: "Downloaded" }
+          DetailValue { visible: root.info.rx_bytes !== undefined; text: root.formatBytes(parseFloat(root.info.rx_bytes || "0")) }
+          InfoLabel { visible: root.info.rx_bytes !== undefined; text: "Uploaded" }
+          DetailValue { visible: root.info.rx_bytes !== undefined; text: root.formatBytes(parseFloat(root.info.tx_bytes || "0")) }
 
-        Row {
-          width: parent.width
-          spacing: Style.space(20)
-          Column {
-            width: (parent.width - parent.spacing) / 2
-            InfoPair {
-              visible: !!root.info.ip
-              label: "IP Address"
-              value: root.info.ip || ""
-              copyable: true
-              tooltipText: "Copy IP"
-            }
+          InfoLabel {
+            visible: !!root.info.ip || !!root.info.gateway
+            text: root.info.ip ? "IP Address" : ""
           }
-          Column {
-            width: (parent.width - parent.spacing) / 2
-            InfoPair {
-              visible: !!root.info.gateway
-              label: "Gateway"
-              value: root.info.gateway || ""
-              copyable: true
-              tooltipText: "Copy gateway"
-            }
+          DetailValue {
+            visible: !!root.info.ip || !!root.info.gateway
+            text: root.info.ip || ""
+            copyable: !!root.info.ip
+            tooltipText: "Copy IP"
+          }
+          InfoLabel {
+            visible: !!root.info.ip || !!root.info.gateway
+            text: root.info.gateway ? "Gateway" : ""
+          }
+          DetailValue {
+            visible: !!root.info.ip || !!root.info.gateway
+            text: root.info.gateway || ""
+            copyable: !!root.info.gateway
+            tooltipText: "Copy gateway"
           }
         }
       }
@@ -1313,35 +1308,26 @@ Panel {
     onTriggered: if (!networkProc.running) networkProc.running = true
   }
 
-  component InfoPair: Row {
-    property string label: ""
-    property string value: ""
+  component DetailValue: InfoValue {
     property bool copyable: false
     property string tooltipText: "Copy to clipboard"
 
-    width: parent.width
-    spacing: Style.space(8)
+    Layout.fillWidth: true
+    horizontalAlignment: Text.AlignRight
 
-    InfoLabel { text: label }
-    Item { width: Math.max(0, parent.width - parent.children[0].implicitWidth - valueText.implicitWidth - parent.spacing * 2); height: 1 }
-    InfoValue {
-      id: valueText
-      text: value
+    MouseArea {
+      id: valueMouse
+      anchors.fill: parent
+      enabled: copyable && parent.text !== ""
+      hoverEnabled: enabled
+      cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onClicked: root.copyToClipboard(parent.text)
+    }
 
-      MouseArea {
-        id: valueMouse
-        anchors.fill: parent
-        enabled: copyable && valueText.text !== ""
-        hoverEnabled: enabled
-        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-        onClicked: root.copyToClipboard(valueText.text)
-      }
-
-      PanelToolTip {
-        visible: valueMouse.enabled && valueMouse.containsMouse
-        text: tooltipText
-        fontFamily: root.bar.fontFamily
-      }
+    PanelToolTip {
+      visible: valueMouse.enabled && valueMouse.containsMouse
+      text: tooltipText
+      fontFamily: root.bar.fontFamily
     }
   }
 
