@@ -141,7 +141,7 @@ Panel {
   Item {
     id: button
     anchors.fill: parent
-    implicitWidth: root.bar && root.bar.vertical ? root.bar.barSize : Style.space(32)
+    implicitWidth: root.bar && root.bar.vertical ? root.bar.barSize : Style.space(27)
     implicitHeight: root.bar && root.bar.vertical ? Style.space(26) : (root.bar ? root.bar.barSize : Style.space(26))
 
     property var registeredBar: null

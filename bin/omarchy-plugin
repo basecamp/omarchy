@@ -94,6 +94,21 @@ require_command() {
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is required"
 }
 
+plugin_discovered() {
+  local id="$1" plugins
+  plugins=$(omarchy-shell shell listPlugins 2>/dev/null) || return 1
+  jq -e --arg id "$id" 'any(.[]; .id == $id)' <<<"$plugins" >/dev/null 2>&1
+}
+
+wait_for_plugin_discovery() {
+  local id="$1" attempt
+  for (( attempt = 0; attempt < 40; attempt++ )); do
+    plugin_discovered "$id" && return 0
+    sleep 0.05
+  done
+  return 1
+}
+
 section_valid() {
   [[ $1 =~ ^(left|center|right)$ ]]
 }
@@ -181,7 +196,14 @@ plugin_enabled() {
   id=$(canonical_widget_id "$id")
 
   omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
-  omarchy-shell shell setPluginEnabled "$id" "$enabled" || fail "could not update plugin; is omarchy-shell running?"
+  if [[ $enabled == "true" ]]; then
+    require_command jq
+    wait_for_plugin_discovery "$id" || fail "plugin '$id' was not discovered; is omarchy-shell running?"
+  fi
+
+  local result
+  result=$(omarchy-shell shell setPluginEnabled "$id" "$enabled") || fail "could not update plugin; is omarchy-shell running?"
+  [[ $result == "ok" ]] || fail "plugin '$id' is not known; run: omarchy plugin rescan"
 
   if [[ $enabled == "true" && $# -gt 0 ]]; then
     mutate_bar move --id "$id" "$@"

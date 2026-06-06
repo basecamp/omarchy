@@ -152,7 +152,7 @@ esac
 
 echo ""
 
-URL=$(curl -sf -F "file=@$TEMP_LOG" https://logs.omarchy.org/)
+URL=$(curl -sf -F "file=@$TEMP_LOG" -Fexpires=24 https://logs.omarchy.org/)
 
 if (( $? == 0 )) && [[ -n $URL ]]; then
   echo "✓ Log uploaded successfully!"

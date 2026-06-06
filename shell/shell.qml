@@ -54,6 +54,8 @@ ShellRoot {
   property var defaultsConfig: builtinShellConfig
   property var shellConfig: builtinShellConfig
   property bool suppressUserReload: false
+  property bool pluginReloading: false
+  property bool pluginReloadPending: false
 
   onShellConfigChanged: {
     if (failedBarId !== "") failedBarId = ""
@@ -245,11 +247,11 @@ ShellRoot {
   Loader {
     id: pluginBarLoader
 
-    active: shell.activeBarId !== shell.defaultBarId && shell.activeBarSourceUrl !== ""
+    active: !shell.pluginReloading && shell.activeBarId !== shell.defaultBarId && shell.activeBarSourceUrl !== ""
     source: shell.activeBarId !== shell.defaultBarId ? shell.activeBarSourceUrl : ""
     asynchronous: true
     onLoaded: shell.configureBar(item, shell.activeBarManifest)
-    onActiveChanged: if (!active && shell.activeBarId === shell.defaultBarId) shell.bar = null
+    onActiveChanged: if (!active) shell.bar = null
     onStatusChanged: {
       if (status === Loader.Error) {
         var detail = errorString && errorString() ? errorString() : ""
@@ -344,9 +346,17 @@ ShellRoot {
     }
   }
 
+  function unloadPluginServices() {
+    for (var existingId in _services) {
+      var inst = _services[existingId]
+      if (inst && typeof inst.destroy === "function") inst.destroy()
+    }
+    _services = ({})
+  }
+
   Connections {
     target: shell.pluginRegistry
-    function onPluginsChanged() { shell._syncServices() }
+    function onPluginsChanged() { if (!shell.pluginReloading) shell._syncServices() }
   }
 
   // Writes inline settings to a bar layout entry or top-level plugin entry in
@@ -484,6 +494,14 @@ ShellRoot {
     panelLoaders = next
   }
 
+  function unloadPanels() {
+    for (var id in panelLoaders) hide(id)
+    panelEntries = []
+    panelLoaders = ({})
+    pendingPayloads = ({})
+    openPanelIds = ({})
+  }
+
   function deliverIfLoaded(pluginId) {
     var loader = panelLoaders[pluginId]
     if (!loader || !loader.item) return
@@ -549,7 +567,7 @@ ShellRoot {
 
   Connections {
     target: shell.pluginRegistry
-    function onPluginsChanged() { shell.panelEntries = shell.computePanelEntries() }
+    function onPluginsChanged() { if (!shell.pluginReloading) shell.panelEntries = shell.computePanelEntries() }
   }
 
   Instantiator {
@@ -606,7 +624,7 @@ ShellRoot {
   // widgets use the same first-party manifest contract as third-party widgets.
   Connections {
     target: shell.pluginRegistry
-    function onPluginsChanged() { shell.syncPluginWidgets() }
+    function onPluginsChanged() { if (!shell.pluginReloading) shell.syncPluginWidgets() }
   }
 
   property var pluginWidgetComponents: ({})
@@ -670,6 +688,49 @@ ShellRoot {
     }
   }
 
+  function unloadPluginWidgets() {
+    for (var id in pluginWidgetComponents) shell.barWidgetRegistry.unregister(id)
+    pluginWidgetComponents = ({})
+  }
+
+  function reloadPlugins() {
+    if (shell.pluginReloading || shell.pluginRegistry.scanning) {
+      shell.pluginReloadPending = true
+      return
+    }
+    shell.pluginReloading = true
+    shell.unloadPanels()
+    shell.unloadPluginServices()
+    shell.unloadPluginWidgets()
+    Qt.callLater(shell.finishPluginReload)
+  }
+
+  function finishPluginReload() {
+    if (!shell.pluginReloading) return
+    if (shell.pluginRegistry.scanning) {
+      shell.pluginReloadPending = true
+      return
+    }
+    if (typeof Qt.clearComponentCache === "function") Qt.clearComponentCache()
+    shell.pluginRegistry.rescan()
+  }
+
+  Connections {
+    target: shell.pluginRegistry
+    function onScanFinished() {
+      if (shell.pluginReloadPending) {
+        shell.pluginReloadPending = false
+        shell.pluginReloading = false
+        Qt.callLater(shell.reloadPlugins)
+        return
+      }
+      shell.pluginReloading = false
+      shell._syncServices()
+      shell.panelEntries = shell.computePanelEntries()
+      shell.syncPluginWidgets()
+    }
+  }
+
   function loadPluginWidget(registryKey, url, meta) {
     var comp = Qt.createComponent(url, Component.Asynchronous)
     function finalize() {
@@ -712,7 +773,7 @@ ShellRoot {
     }
 
     function rescanPlugins(): void {
-      shell.pluginRegistry.rescan()
+      shell.reloadPlugins()
     }
 
     function reloadConfig(): string {
@@ -720,8 +781,8 @@ ShellRoot {
       return "ok"
     }
 
-    function setPluginEnabled(id: string, enabled: string): void {
-      shell.pluginRegistry.setEnabled(id, enabled === "true")
+    function setPluginEnabled(id: string, enabled: string): string {
+      return shell.pluginRegistry.setEnabled(id, enabled === "true") ? "ok" : "unknown"
     }
 
     function listPlugins(): string {

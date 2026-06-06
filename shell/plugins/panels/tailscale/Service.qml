@@ -291,11 +291,11 @@ Item {
     exitNodeProcess.running = true
   }
 
-  function authorizeProfileSwitching() {
+  function authorizeTailscaleOperator() {
     if (!installed || operatorProcess.running || userName === "") return
     _operatorOutput = ""
     _operatorError = ""
-    actionStatus = "Authorizing Tailscale profiles…"
+    actionStatus = "Authorizing Tailscale operator..."
     operatorProcess.command = ["pkexec", "tailscale", "set", "--operator=" + userName]
     operatorProcess.running = true
   }
@@ -414,7 +414,7 @@ Item {
         root.parseAccounts("")
         if (/profiles access denied/i.test(stderr) || /profiles access denied/i.test(stdout)) {
           root.accountsAccessDenied = true
-          root.lastError = "Authorize Tailscale profiles to show connections"
+          root.lastError = "Authorize Tailscale operator to show connections"
         } else {
           root.lastError = elideStatus(stderr || stdout || "Could not list Tailscale connections")
         }
@@ -534,7 +534,7 @@ Item {
       } else {
         root.accountsAccessDenied = false
         root.lastError = ""
-        root.actionStatus = "Tailscale profiles authorized"
+        root.actionStatus = "Tailscale operator authorized"
         actionStatusTimer.restart()
         root._lastAccountsRefreshMs = 0
       }
