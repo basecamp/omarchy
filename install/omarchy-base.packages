@@ -26,7 +26,7 @@ docker-buildx
 docker-compose
 dosfstools
 dotnet-runtime-9.0
-dust
+dua-cli
 evince
 exfatprogs
 expac
