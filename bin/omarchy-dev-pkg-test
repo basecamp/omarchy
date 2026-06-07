@@ -3,7 +3,7 @@
 # omarchy:summary=Build and install an Omarchy package from a local checkout
 # omarchy:group=dev
 # omarchy:args=[package-name] [path-to-checkout]
-# omarchy:examples=omarchy dev pkg-test omarchy-settings | omarchy dev pkg-test omarchy ~/Work/omarchy/omarchy-installer
+# omarchy:examples=omarchy dev pkg-test | omarchy dev pkg-test omarchy-dev ~/Work/omarchy/omarchy-installer
 
 set -euo pipefail
 
@@ -17,8 +17,13 @@ checkout. Use when changes need to land at fixed system paths (/etc/,
 can't shadow.
 
 Defaults:
-  package-name      omarchy-settings
+  packages          omarchy-settings-dev omarchy-dev
   path-to-checkout  ~/Work/omarchy/omarchy-installer
+
+Examples:
+  omarchy dev pkg-test
+  omarchy dev pkg-test omarchy-settings-dev
+  omarchy dev pkg-test omarchy-dev ~/Work/omarchy/omarchy-installer
 
 The pkgver of the built package is tagged 'dev.<short-sha>[.dirty]' so
 'pacman -Q' makes it obvious where the installed version came from.
@@ -28,25 +33,70 @@ USAGE
   exit 0
 fi
 
-PKG="${1:-omarchy-settings}"
-CHECKOUT="${2:-$HOME/Work/omarchy/omarchy-installer}"
+remove_pkgver_function() {
+  local pkgbuild="$1"
+  local tmp="$pkgbuild.tmp"
+
+  awk '
+    /^pkgver\(\)[[:space:]]*\{/ {
+      in_pkgver = 1
+      depth = 0
+    }
+    in_pkgver {
+      line = $0
+      opens = gsub(/\{/, "{", line)
+      line = $0
+      closes = gsub(/\}/, "}", line)
+      depth += opens - closes
+      if (depth <= 0) {
+        in_pkgver = 0
+      }
+      next
+    }
+    { print }
+  ' "$pkgbuild" >"$tmp"
+  mv "$tmp" "$pkgbuild"
+}
+
+dev_package_name() {
+  local pkg="$1"
+
+  case "$pkg" in
+    omarchy | omarchy-settings)
+      printf '%s-dev\n' "$pkg"
+      ;;
+    *)
+      printf '%s\n' "$pkg"
+      ;;
+  esac
+}
+
+if (( $# == 0 )); then
+  PKGS=(omarchy-settings-dev omarchy-dev)
+  CHECKOUT="$HOME/Work/omarchy/omarchy-installer"
+  MAKEPKG_ARGS=()
+else
+  PKGS=("$(dev_package_name "$1")")
+  CHECKOUT="${2:-$HOME/Work/omarchy/omarchy-installer}"
+  MAKEPKG_ARGS=("${@:3}")
+fi
 PKGBUILDS_ROOT="${OMARCHY_PKGBUILDS_DIR:-$HOME/Work/omarchy/omarchy-pkgs/pkgbuilds}"
-PKGBUILD_DIR="$PKGBUILDS_ROOT/$PKG"
 
 if [[ ! -d "$CHECKOUT" ]]; then
   echo "Error: checkout not found at $CHECKOUT" >&2
   exit 1
 fi
-if [[ ! -f "$PKGBUILD_DIR/PKGBUILD" ]]; then
-  echo "Error: PKGBUILD not found at $PKGBUILD_DIR/PKGBUILD" >&2
-  echo "       Pass a different package name as arg 1, or set OMARCHY_PKGBUILDS_DIR." >&2
-  exit 1
-fi
+for PKG in "${PKGS[@]}"; do
+  PKGBUILD_DIR="$PKGBUILDS_ROOT/$PKG"
+  if [[ ! -f "$PKGBUILD_DIR/PKGBUILD" ]]; then
+    echo "Error: PKGBUILD not found at $PKGBUILD_DIR/PKGBUILD" >&2
+    echo "       Pass a different package name as arg 1, or set OMARCHY_PKGBUILDS_DIR." >&2
+    exit 1
+  fi
+done
 
 build_dir=$(mktemp -d -t omarchy-dev-pkg-test.XXXXXX)
 trap 'rm -rf "$build_dir"' EXIT
-
-cp -a "$PKGBUILD_DIR/." "$build_dir/"
 
 # pkgver=dev.<sha>[.dirty] so pacman -Q makes the source obvious.
 short_sha=$(git -C "$CHECKOUT" rev-parse --short HEAD 2>/dev/null || echo "local")
@@ -55,22 +105,33 @@ if [[ -d "$CHECKOUT/.git" ]] && [[ -n "$(git -C "$CHECKOUT" status --porcelain)"
   dirty=".dirty"
 fi
 new_pkgver="dev.${short_sha}${dirty}"
-sed -i "s/^pkgver=.*/pkgver=${new_pkgver}/" "$build_dir/PKGBUILD"
 
-echo "Building $PKG ${new_pkgver} from $CHECKOUT"
-echo "  build dir: $build_dir"
-echo "  PKGBUILD : $PKGBUILD_DIR/PKGBUILD"
-echo
+for PKG in "${PKGS[@]}"; do
+  PKGBUILD_DIR="$PKGBUILDS_ROOT/$PKG"
+  package_build_dir="$build_dir/$PKG"
+  mkdir -p "$package_build_dir"
+  cp -a "$PKGBUILD_DIR/." "$package_build_dir/"
 
-cd "$build_dir"
-OMARCHY_SRC="$CHECKOUT" makepkg -s --skipchecksums --noconfirm "${@:3}"
+  remove_pkgver_function "$package_build_dir/PKGBUILD"
+  sed -i "s/^pkgver=.*/pkgver=${new_pkgver}/" "$package_build_dir/PKGBUILD"
 
-# Install separately so we can pass --overwrite='*' (makepkg -i can't).
-# Dev builds frequently conflict with files left behind by previous
-# script-installed Omarchy versions; the build is the authoritative state.
-built_pkg=$(ls -t "$build_dir"/*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
-if [[ -z $built_pkg ]]; then
-  echo "Error: no built package found in $build_dir" >&2
-  exit 1
-fi
-sudo pacman -U --noconfirm --overwrite='*' "$built_pkg"
+  echo "Building $PKG ${new_pkgver} from $CHECKOUT"
+  echo "  build dir: $package_build_dir"
+  echo "  PKGBUILD : $PKGBUILD_DIR/PKGBUILD"
+  echo
+
+  (
+    cd "$package_build_dir"
+    OMARCHY_SRC="$CHECKOUT" makepkg -s --skipchecksums --noconfirm "${MAKEPKG_ARGS[@]}"
+  )
+
+  # Install separately so we can pass --overwrite='*' (makepkg -i can't).
+  # Dev builds frequently conflict with files left behind by previous
+  # script-installed Omarchy versions; the build is the authoritative state.
+  built_pkg=$(ls -t "$package_build_dir"/*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
+  if [[ -z $built_pkg ]]; then
+    echo "Error: no built package found in $package_build_dir" >&2
+    exit 1
+  fi
+  sudo pacman -U --noconfirm --overwrite='*' "$built_pkg"
+done
