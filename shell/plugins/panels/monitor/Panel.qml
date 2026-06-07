@@ -438,6 +438,11 @@ Panel {
           }
 
           // ---------- Brightness ----------
+          PanelSeparator {
+            visible: root.brightnessAvailable
+            foreground: root.bar.foreground
+          }
+
           Column {
             visible: root.brightnessAvailable
             width: parent.width
@@ -515,6 +520,10 @@ Panel {
           }
 
           // ---------- Scale ----------
+          PanelSeparator {
+            foreground: root.bar.foreground
+          }
+
           Column {
             width: parent.width
             spacing: Style.space(10)
@@ -551,6 +560,11 @@ Panel {
           }
 
           // ---------- Monitors ----------
+          PanelSeparator {
+            visible: root.displays.length > 1
+            foreground: root.bar.foreground
+          }
+
           Column {
             width: parent.width
             spacing: Style.space(10)

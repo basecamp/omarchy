@@ -441,7 +441,7 @@ Panel {
       Column {
         id: column
         anchors.fill: parent
-        spacing: Style.space(10)
+        spacing: Style.space(14)
 
         // ---------- Hero: Bluetooth icon · status ----------
         Item {
@@ -508,6 +508,10 @@ Panel {
 
         // Scrollable device list — capped so a noisy neighborhood doesn't
         // grow the popup past the screen.
+        PanelSeparator {
+          foreground: root.bar.foreground
+        }
+
         Flickable {
           id: deviceFlick
           width: parent.width
@@ -546,6 +550,11 @@ Panel {
             }
 
             // Remembered devices.
+            PanelSeparator {
+              visible: root.connectedDevices.length > 0 && root.knownDevices.length > 0
+              foreground: root.bar.foreground
+            }
+
             PanelSectionHeader {
               visible: root.knownDevices.length > 0
               text: "PAIRED"
@@ -567,6 +576,12 @@ Panel {
             }
 
             // Discovered (unpaired) devices, only shown while scanning.
+            PanelSeparator {
+              visible: root.adapter && root.adapter.discovering && root.discoveredDevices.length > 0
+                       && (root.connectedDevices.length > 0 || root.knownDevices.length > 0)
+              foreground: root.bar.foreground
+            }
+
             PanelSectionHeader {
               visible: root.adapter && root.adapter.discovering && root.discoveredDevices.length > 0
               text: "AVAILABLE"
