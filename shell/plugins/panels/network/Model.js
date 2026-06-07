@@ -30,6 +30,12 @@ function formatHeaderSpeed(mbps) {
 function formatHeaderFreq(mhz) {
   var v = parseFloat(mhz)
   if (!v) return ""
+
+  if (v >= 2400 && v < 2500) return "2.4ghz"
+  if (v >= 4900 && v < 5925) return "5ghz"
+  if (v >= 5925 && v < 7125) return "6ghz"
+  if (v >= 57000 && v < 71000) return "60ghz"
+
   var ghz = v / 1000
   return ghz.toFixed(ghz % 1 === 0 ? 0 : 1) + "ghz"
 }
