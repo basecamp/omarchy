@@ -4,8 +4,9 @@
 #   /usr/share/uwsm/env.d/10-omarchy          (Hyprland session via uwsm)
 #   /usr/share/omarchy/default/bash/envs      (bash rc chain; SSH/non-login)
 
-# /etc/omarchy.conf is written by omarchy-dev-link. When absent, force the
-# packaged default instead of preserving a stale inherited value.
+# /etc/omarchy.conf is written by omarchy-dev-link and reset by
+# omarchy-dev-unlink. When absent, force the packaged default instead of
+# preserving a stale inherited value.
 if [ -f /etc/omarchy.conf ]; then
   . /etc/omarchy.conf
   : "${OMARCHY_PATH:=/usr/share/omarchy}"
