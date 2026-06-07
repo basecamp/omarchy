@@ -129,9 +129,10 @@ upgrade. This is documented in the PKGBUILD.
 
 Single source of truth for `OMARCHY_PATH` and dev-link-aware `PATH`. It:
 
-- Sources `/etc/omarchy.conf` (written by `omarchy-dev-link`) if present;
-  otherwise forces `OMARCHY_PATH=/usr/share/omarchy` so a stale inherited
-  value can't survive an `omarchy-dev-unlink`.
+- Sources `/etc/omarchy.conf` (written by `omarchy-dev-link`, reset to the
+  package path by `omarchy-dev-unlink`) if present; otherwise forces
+  `OMARCHY_PATH=/usr/share/omarchy` so a stale inherited value can't survive
+  an `omarchy-dev-unlink`.
 - Prepends `$OMARCHY_PATH/bin` to `PATH` **only when** `OMARCHY_PATH` is
   not `/usr/share/omarchy`. On a production install the binaries are
   already on `PATH` as `/usr/bin/omarchy-*` via the `omarchy` package.

@@ -4,7 +4,7 @@
 
 local home = os.getenv("HOME")
 
--- /etc/omarchy.conf wins over process env so dev-link survives stale sessions.
+-- /etc/omarchy.conf wins over process env so dev-link/unlink survives stale sessions.
 local function read_dev_link_omarchy_path()
   local f = io.open("/etc/omarchy.conf", "r")
   if not f then return nil end
