@@ -29,9 +29,49 @@ function isAddressLike(value) {
   return /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i.test(text)
 }
 
+function normalizedAddress(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^0-9a-f]/g, "")
+}
+
 function hasHumanName(device) {
   var label = deviceLabel(device)
   return label !== "" && !isUuidLike(label) && !isAddressLike(label)
+}
+
+function nodeProps(node) {
+  return node && node.ready && node.properties ? node.properties : {}
+}
+
+function nodeText(node) {
+  var props = nodeProps(node)
+  return [
+    node ? node.name : "",
+    node ? node.description : "",
+    node ? node.nickname : "",
+    node ? node.nick : "",
+    props["node.name"],
+    props["node.description"],
+    props["node.nick"],
+    props["device.name"],
+    props["device.description"],
+    props["device.product.name"],
+    props["device.alias"],
+    props["device.string"],
+    props["api.bluez5.address"],
+    props["bluez5.address"],
+    props["media.name"]
+  ].join(" ").toLowerCase()
+}
+
+function bluetoothSinkMatchesDevice(node, device) {
+  if (!node || !node.isSink || node.isStream || !device) return false
+
+  var address = normalizedAddress(device.address)
+  var text = nodeText(node)
+  if (address !== "" && normalizedAddress(text).indexOf(address) !== -1) return true
+
+  var label = deviceLabel(device).toLowerCase()
+  return label !== "" && text.indexOf(label) !== -1
 }
 
 function sortedByLabel(devices) {
@@ -101,7 +141,11 @@ if (typeof module !== "undefined") {
     toArray: toArray,
     isUuidLike: isUuidLike,
     isAddressLike: isAddressLike,
+    normalizedAddress: normalizedAddress,
     hasHumanName: hasHumanName,
+    nodeProps: nodeProps,
+    nodeText: nodeText,
+    bluetoothSinkMatchesDevice: bluetoothSinkMatchesDevice,
     sortedByLabel: sortedByLabel,
     deviceLists: deviceLists,
     cloneMap: cloneMap,
