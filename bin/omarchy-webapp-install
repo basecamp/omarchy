@@ -15,18 +15,33 @@ if (( $# < 3 )); then
     APP_URL="https://$APP_URL"
   fi
 
-  # Fetch the favicon to offer as the default icon, and preview it so you can
-  # decide whether to keep it or supply your own.
+  # Fetch the favicon to offer as the default icon. Terminals with a real
+  # graphics protocol (kitty/ghostty via the kitty protocol, foot via sixel)
+  # get an inline preview; on every terminal we also print the favicon as a
+  # clickable link, so even Alacritty (the default, which has no inline-image
+  # support and would only get unreliable ASCII art from chafa) can preview it.
   FAVICON_URL="https://www.google.com/s2/favicons?domain=${APP_URL}&sz=128"
   mkdir -p "$ICON_DIR"
   DEFAULT_ICON="$(mktemp --suffix=.png)"
   if curl -fsSL -o "$DEFAULT_ICON" "$FAVICON_URL" && [[ -s $DEFAULT_ICON ]]; then
-    if command -v chafa &>/dev/null; then
+    # Pick the graphics protocol for the running terminal, if any.
+    PREVIEW_FORMAT=""
+    if [[ -n $KITTY_WINDOW_ID || $TERM == xterm-kitty || -n $GHOSTTY_BIN_DIR || -n $GHOSTTY_RESOURCES_DIR || $TERM == xterm-ghostty ]]; then
+      PREVIEW_FORMAT="kitty" # kitty graphics protocol (kitty, ghostty)
+    elif [[ $TERM == foot* ]]; then
+      PREVIEW_FORMAT="sixel"
+    fi
+
+    if [[ -n $PREVIEW_FORMAT ]] && omarchy-cmd-present chafa; then
       echo -e "Default icon preview:\n"
-      chafa --size=16x16 "$DEFAULT_ICON" || true
+      chafa -f "$PREVIEW_FORMAT" --size=16x16 "$DEFAULT_ICON" || true
       echo
     fi
-    ICON_PLACEHOLDER="Press Enter to use the favicon above, or paste a PNG icon URL (see https://dashboardicons.com)"
+
+    # Emit the favicon URL as an OSC 8 hyperlink: clickable where supported
+    # (all four terminals we ship), and still visible/copyable everywhere else.
+    printf 'Default icon: \e]8;;%s\e\\%s\e]8;;\e\\\n\n' "$FAVICON_URL" "$FAVICON_URL"
+    ICON_PLACEHOLDER="Press Enter to use this favicon, or paste a PNG icon URL (see https://dashboardicons.com)"
   else
     rm -f "$DEFAULT_ICON"
     DEFAULT_ICON=""
