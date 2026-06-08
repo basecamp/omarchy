@@ -1,26 +1,24 @@
 #!/bin/bash
 
-# omarchy:summary=Point Omarchy at a local checkout for live editing
+# omarchy:summary=Point Omarchy at a local checkout after reboot
 # omarchy:group=dev
 # omarchy:args=<path-to-checkout>
 # omarchy:examples=omarchy dev link ~/Work/omarchy/omarchy-installer
 
 set -euo pipefail
 
-# Sudo wipes HYPRLAND_INSTANCE_SIGNATURE, so the live-session refresh below
-# can't reach hyprctl. Run as user; we sudo internally for the conf write.
-if [[ $EUID -eq 0 ]]; then
+if (( EUID == 0 )); then
   echo "Error: run omarchy-dev-link as your user, not under sudo." >&2
   exit 1
 fi
 
-if [[ $# -ne 1 || $1 == "-h" || $1 == "--help" ]]; then
+if (( $# != 1 )) || [[ $1 == "-h" || $1 == "--help" ]]; then
   cat <<USAGE
 Usage: omarchy dev link <path-to-checkout>
 
 Writes /etc/omarchy.conf so OMARCHY_PATH resolves to <path-to-checkout>
-in all new shells, the Hyprland session, and Quickshell. Restarts
-omarchy-shell and reloads hyprctl so changes take effect immediately.
+after reboot. This intentionally does not rewrite the running Hyprland,
+systemd, shell, or app-launcher environment; reboot to make every layer agree.
 
 Affects only \$OMARCHY_PATH-resolved trees: bin/, default/, shell/,
 themes/, applications/, config/. Files installed at fixed system paths
@@ -31,50 +29,33 @@ USAGE
   exit 0
 fi
 
+omarchy_conf_quote() {
+  local value="$1"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//\$/\\\$}
+  value=${value//\`/\\\`}
+  printf '"%s"' "$value"
+}
+
 target=$(realpath -e "$1" 2>/dev/null) || {
   echo "Error: path does not exist: $1" >&2
   exit 1
 }
 
 for required in bin default shell; do
-  if [[ ! -d "$target/$required" ]]; then
+  if [[ ! -d $target/$required ]]; then
     echo "Warning: $target/$required not found — does this look like an Omarchy source checkout?" >&2
   fi
 done
 
-# Strip any previous dev-link's bin/ from PATH before adding the new one,
-# so repeated link calls don't accumulate stale entries.
-prior_target=""
-if [[ -f /etc/omarchy.conf ]]; then
-  prior_target=$(sed -n 's/^[[:space:]]*export[[:space:]]\+OMARCHY_PATH="\?\([^"]*\)"\?/\1/p' /etc/omarchy.conf | tail -1)
-fi
+{
+  printf 'export OMARCHY_PATH='
+  omarchy_conf_quote "$target"
+  printf '\n'
+} | sudo tee /etc/omarchy.conf >/dev/null
 
-echo "Pointing Omarchy at $target"
-printf 'export OMARCHY_PATH="%s"\n' "$target" | sudo tee /etc/omarchy.conf >/dev/null
-
-export OMARCHY_PATH="$target"
-if [[ -n $prior_target && $prior_target != "$target" ]]; then
-  PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vFx "$prior_target/bin" | paste -sd:)
-fi
-export PATH="$target/bin:$PATH"
-
-if command -v hyprctl >/dev/null 2>&1 && hyprctl version &>/dev/null; then
-  hyprctl setenv OMARCHY_PATH "$target" >/dev/null
-  hyprctl setenv PATH "$PATH" >/dev/null
-  echo "  Updated Hyprland session env."
-
-  systemctl --user import-environment OMARCHY_PATH PATH 2>/dev/null || true
-  echo "  Updated systemd --user env."
-
-  if pgrep -x quickshell >/dev/null 2>&1; then
-    omarchy-restart-shell
-    echo "  Restarted omarchy-shell."
-  fi
-
-  hyprctl reload >/dev/null
-  echo "  Reloaded Hyprland config."
-fi
-
+echo "Pointed Omarchy at $target"
 echo
-echo "Done. Open a new shell (or restart existing ones) to pick up the new"
-echo "OMARCHY_PATH. Run 'omarchy dev unlink' to restore the package install."
+echo "Reboot to activate the linked checkout in Hyprland, app launchers, and new shells."
+echo "Run 'omarchy dev unlink' and reboot to restore the package install."
