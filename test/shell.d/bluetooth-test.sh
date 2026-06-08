@@ -13,6 +13,7 @@ const bluetooth = requireFromRoot('shell/plugins/panels/bluetooth/Model.js')
 
 assert(bluetooth.isUuidLike('0000110b-0000-1000-8000-00805f9b34fb'), 'bluetooth detects UUID-like names')
 assert(bluetooth.isAddressLike('AA:BB:CC:DD:EE:FF'), 'bluetooth detects address-like names')
+assertEqual(bluetooth.normalizedAddress('AA:BB_CC-dd-ee-ff'), 'aabbccddeeff', 'bluetooth normalizes BlueZ and PipeWire address formats')
 assert(!bluetooth.hasHumanName({ name: 'AA:BB:CC:DD:EE:FF' }), 'bluetooth rejects address-only device labels')
 assert(bluetooth.hasHumanName({ deviceName: 'MX Master 3S' }), 'bluetooth accepts human device labels')
 
@@ -58,4 +59,35 @@ assertDeepEqual(
   'bluetooth adds pending actions immutably'
 )
 assertDeepEqual(bluetooth.withPendingAction({ a: 'connecting' }, 'a', ''), {}, 'bluetooth clears pending actions immutably')
+
+const bluetoothSink = {
+  isSink: true,
+  isStream: false,
+  ready: true,
+  name: 'bluez_output.AA_BB_CC_DD_EE_FF.1',
+  properties: {
+    'device.product.name': 'JBL Go 3'
+  }
+}
+assert(
+  bluetooth.bluetoothSinkMatchesDevice(bluetoothSink, { address: 'AA:BB:CC:DD:EE:FF', name: 'JBL Go 3' }),
+  'bluetooth matches audio sinks by device address'
+)
+assert(
+  bluetooth.bluetoothSinkMatchesDevice(
+    {
+      isSink: true,
+      isStream: false,
+      ready: true,
+      name: 'alsa_output.usb-speaker',
+      properties: { 'device.product.name': 'JBL Go 3' }
+    },
+    { address: '11:22:33:44:55:66', name: 'JBL Go 3' }
+  ),
+  'bluetooth matches audio sinks by human device label when address is unavailable'
+)
+assert(
+  !bluetooth.bluetoothSinkMatchesDevice({ isSink: false, isStream: false, ready: true, name: 'bluez_output.AA_BB_CC_DD_EE_FF.1', properties: {} }, { address: 'AA:BB:CC:DD:EE:FF', name: 'JBL Go 3' }),
+  'bluetooth ignores non-sink nodes when matching audio outputs'
+)
 JS
