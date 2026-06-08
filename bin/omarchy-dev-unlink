@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# omarchy:summary=Restore Omarchy to the package install (undo omarchy-dev-link)
+# omarchy:summary=Restore Omarchy to the package install after reboot
 # omarchy:group=dev
 
 set -euo pipefail
 
-if [[ $EUID -eq 0 ]]; then
+if (( EUID == 0 )); then
   echo "Error: run omarchy-dev-unlink as your user, not under sudo." >&2
   exit 1
 fi
@@ -14,69 +14,17 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   cat <<USAGE
 Usage: omarchy dev unlink
 
-Writes /etc/omarchy.conf defensively so OMARCHY_PATH resolves to
-/usr/share/omarchy (the package install), even from stale session env.
-Updates Hyprland/systemd session env and restarts omarchy-shell so live
-state matches.
+Writes /etc/omarchy.conf so OMARCHY_PATH resolves to /usr/share/omarchy
+after reboot. This intentionally does not rewrite the running Hyprland,
+systemd, shell, or app-launcher environment; reboot to make every layer agree.
 USAGE
   exit 0
 fi
 
 default_target="/usr/share/omarchy"
-linked=0
-prior_target=""
-
-if [[ -f /etc/omarchy.conf ]]; then
-  # Capture the path dev-link wrote BEFORE we reset the conf, so we know
-  # which bin/ to strip from PATH.
-  prior_target=$(sed -n 's/^[[:space:]]*export[[:space:]]\+OMARCHY_PATH="\?\([^"]*\)"\?/\1/p' /etc/omarchy.conf | tail -1)
-  if [[ $prior_target != "$default_target" ]]; then
-    linked=1
-    echo "Unlinking Omarchy from ${prior_target:-<empty>}"
-  else
-    echo "/etc/omarchy.conf already points at $default_target."
-  fi
-elif [[ ${OMARCHY_PATH:-$default_target} != "$default_target" ]]; then
-  prior_target="$OMARCHY_PATH"
-  echo "Not currently linked: /etc/omarchy.conf is absent."
-  echo "This shell still has OMARCHY_PATH=$OMARCHY_PATH; writing the default guard."
-else
-  echo "Not currently linked. Writing the default OMARCHY_PATH guard."
-fi
 
 printf 'export OMARCHY_PATH="%s"\n' "$default_target" | sudo tee /etc/omarchy.conf >/dev/null
+
 echo "Set /etc/omarchy.conf -> OMARCHY_PATH=$default_target"
-
-export OMARCHY_PATH="$default_target"
-if [[ -n $prior_target && $prior_target != "$default_target" ]]; then
-  PATH=$(printf '%s' "$PATH" | tr ':' '\n' | awk -v drop="$prior_target/bin" '$0 != drop' | paste -sd:)
-  export PATH
-fi
-
-if command -v systemctl >/dev/null 2>&1; then
-  if systemctl --user import-environment OMARCHY_PATH PATH 2>/dev/null; then
-    echo "  Updated systemd --user env."
-  fi
-fi
-
-if command -v hyprctl >/dev/null 2>&1 && hyprctl version &>/dev/null; then
-  hyprctl setenv OMARCHY_PATH "$default_target" >/dev/null
-  hyprctl setenv PATH "$PATH" >/dev/null
-  echo "  Updated Hyprland session env."
-
-  if pgrep -x quickshell >/dev/null 2>&1; then
-    omarchy-restart-shell
-    echo "  Restarted omarchy-shell."
-  fi
-
-  hyprctl reload >/dev/null
-  echo "  Reloaded Hyprland config."
-fi
-
 echo
-if (( linked )) || [[ -n $prior_target ]]; then
-  echo "Done. Existing shells still have the old OMARCHY_PATH until restarted."
-  echo "For this shell, run: export OMARCHY_PATH=$default_target"
-else
-  echo "Done."
-fi
+echo "Reboot to restore the package install in Hyprland, app launchers, and new shells."

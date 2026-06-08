@@ -17,12 +17,11 @@ export OMARCHY_PATH
 
 # Only prepend in dev-link mode. On a production install, the binaries are
 # already on PATH as /usr/bin/omarchy-* via the omarchy package — prepending
-# /usr/share/omarchy/bin would just be noise. omarchy-dev-unlink strips its
-# checkout bin/ from the active PATH explicitly, so we don't dedupe here.
+# /usr/share/omarchy/bin would just be noise.
 if [ "$OMARCHY_PATH" != /usr/share/omarchy ]; then
   case ":$PATH:" in
     *":${OMARCHY_PATH%/}/bin:"*) ;;
-    *) PATH="${OMARCHY_PATH%/}/bin:$PATH" ;;
+    *) PATH="${OMARCHY_PATH%/}/bin${PATH:+:$PATH}" ;;
   esac
   export PATH
 fi
