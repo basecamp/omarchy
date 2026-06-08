@@ -4,6 +4,10 @@
 
 echo
 
+confirm_reboot() {
+  gum confirm "$1" && { omarchy-system-reboot; exit 0; }
+}
+
 running_kernel=$(uname -r)
 kernel_updated=true
 
@@ -19,14 +23,14 @@ for kernel in /usr/lib/modules/*/vmlinuz; do
 done
 
 if [[ $kernel_updated == "true" ]]; then
-  gum confirm "Linux kernel has been updated. Reboot?" && omarchy-system-reboot
+  confirm_reboot "Linux kernel has been updated. Reboot?"
 elif [[ -f $HOME/.local/state/omarchy/reboot-required ]]; then
-  gum confirm "Updates require reboot. Ready?" && omarchy-system-reboot
+  confirm_reboot "Updates require reboot. Ready?"
 fi
 
 running_hyprland=$(readlink /proc/$(pgrep -x Hyprland)/exe 2>/dev/null)
 if [[ $running_hyprland == *"(deleted)"* ]]; then
-  gum confirm "Hyprland has been updated. Reboot?" && omarchy-system-reboot
+  confirm_reboot "Hyprland has been updated. Reboot?"
 fi
 
 for file in "$HOME"/.local/state/omarchy/restart-*-required; do

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether the computer has an NVIDIA GPU.
+
+lspci | grep -qi 'nvidia' &>/dev/null

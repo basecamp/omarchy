@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# omarchy:summary=Update mise-managed tools
+
+if omarchy-cmd-present mise; then
+  echo -e "\e[32m\nUpdate mise tools\e[0m"
+  mise up
+  echo
+fi

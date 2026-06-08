@@ -1,0 +1,87 @@
+#!/bin/bash
+
+# omarchy:summary=Show, set, or adjust focused Hyprland monitor scaling
+# omarchy:args=[up|down|1|1.25|1.6|2|3|4]
+# omarchy:examples=omarchy hyprland monitor scaling | omarchy hyprland monitor scaling 1.6 | omarchy hyprland monitor scaling up | omarchy hyprland monitor scaling down
+
+SCALES=(1 1.25 1.6 2 3 4)
+
+usage() {
+  echo "Usage: omarchy-hyprland-monitor-scaling [up|down|1|1.25|1.6|2|3|4]"
+}
+
+focused_monitor_scale() {
+  hyprctl monitors -j | jq -er '.[] | select(.focused == true) | .scale'
+}
+
+set_scale() {
+  local new_scale="$1"
+  local monitor_info="$(hyprctl monitors -j | jq -e -c '.[] | select(.focused == true)')"
+  local active_monitor="$(echo "$monitor_info" | jq -r '.name')"
+  local width="$(echo "$monitor_info" | jq -r '.width')"
+  local height="$(echo "$monitor_info" | jq -r '.height')"
+  local refresh_rate="$(echo "$monitor_info" | jq -r '.refreshRate')"
+  local monitor_lua="$HOME/.config/hypr/monitors.lua"
+
+  hyprctl eval "hl.monitor({ output = \"$active_monitor\", mode = \"${width}x${height}@${refresh_rate}\", position = \"auto\", scale = $new_scale })" >/dev/null
+
+  # Persist to monitors.lua if the user still has Omarchy's generic catch-all
+  # defaults, so the scale survives reboots.
+  if [[ -f $monitor_lua ]] && grep -q '^local omarchy_monitor_scale = ' "$monitor_lua"; then
+    sed -i -E \
+      -e "s|^local omarchy_monitor_scale = .*|local omarchy_monitor_scale = ${new_scale}|" \
+      -e "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${new_scale}|" \
+      "$monitor_lua"
+  elif [[ -f $monitor_lua ]] && grep -Eq '^hl\.monitor\(\{ output = "", mode = "preferred", position = "auto", scale = ("auto"|[0-9.]+) \}\)' "$monitor_lua"; then
+    sed -i -E \
+      -e "s|^(hl\.monitor\(\{ output = \"\", mode = \"preferred\", position = \"auto\", scale = )([^ ]+)( \}\))|\\1${new_scale}\\3|" \
+      -e 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$new_scale"'")|' \
+      "$monitor_lua"
+  fi
+}
+
+scale_from_current() {
+  local direction="${1:-}"
+
+  # Find the preset closest to the current scale (Hyprland may snap fractional
+  # scales to nearby values, so we can't match exactly).
+  awk -v direction="$direction" -v list="${SCALES[*]}" '
+    NR == 1 { scale = $0; found = 1 }
+    END {
+      if (!found) exit 1
+
+      n = split(list, scales, " ")
+      best = 1; best_diff = 1e9
+      for (i = 1; i <= n; i++) {
+        diff = scale - scales[i]; if (diff < 0) diff = -diff
+        if (diff < best_diff) { best_diff = diff; best = i }
+      }
+
+      if (direction == "next" && best < n) best++
+      else if (direction == "previous" && best > 1) best--
+
+      print scales[best]
+    }'
+}
+
+case "${1:-}" in
+"")
+  focused_monitor_scale | scale_from_current
+  ;;
+-h | --help)
+  usage
+  ;;
+up)
+  set_scale "$(focused_monitor_scale | scale_from_current next)"
+  ;;
+down)
+  set_scale "$(focused_monitor_scale | scale_from_current previous)"
+  ;;
+1 | 1.25 | 1.6 | 2 | 3 | 4)
+  set_scale "$1"
+  ;;
+*)
+  usage >&2
+  exit 1
+  ;;
+esac

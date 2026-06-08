@@ -1,11 +1,31 @@
 #!/bin/bash
 
-# omarchy:summary=Overwrite all the user configs in ~/.config/hypr with the Omarchy defaults.
+# omarchy:summary=Overwrite all the user Hyprland Lua configs in ~/.config/hypr with the Omarchy defaults.
 
-omarchy-refresh-config hypr/autostart.conf
-omarchy-refresh-config hypr/bindings.conf
-omarchy-refresh-config hypr/input.conf
-omarchy-refresh-config hypr/looknfeel.conf
-omarchy-refresh-config hypr/hyprland.conf
-omarchy-refresh-config hypr/monitors.conf
-bash "$OMARCHY_PATH/install/config/detect-keyboard-layout.sh"
+omarchy-refresh-config hypr/.luarc.json
+omarchy-refresh-config hypr/autostart.lua
+omarchy-refresh-config hypr/bindings.lua
+omarchy-refresh-config hypr/input.lua
+omarchy-refresh-config hypr/looknfeel.lua
+omarchy-refresh-config hypr/hyprland.lua
+omarchy-refresh-config hypr/monitors.lua
+
+mkdir -p ~/.local/state/omarchy/toggles/hypr
+cp "$OMARCHY_PATH/default/hypr/toggles/flags.lua" ~/.local/state/omarchy/toggles/hypr/
+
+conf=/etc/vconsole.conf
+hyprlua="$HOME/.config/hypr/input.lua"
+if [[ -f $conf && -f $hyprlua ]]; then
+  sed -i '/^[[:space:]]*kb_layout[[:space:]]*=/d' "$hyprlua"
+  sed -i '/^[[:space:]]*kb_variant[[:space:]]*=/d' "$hyprlua"
+
+  if grep -q '^XKBLAYOUT=' "$conf"; then
+    layout=$(grep '^XKBLAYOUT=' "$conf" | cut -d= -f2 | tr -d '"')
+    sed -i "/^[[:space:]]*kb_options *=/i\    kb_layout = \"$layout\"," "$hyprlua"
+  fi
+
+  if grep -q '^XKBVARIANT=' "$conf"; then
+    variant=$(grep '^XKBVARIANT=' "$conf" | cut -d= -f2 | tr -d '"')
+    sed -i "/^[[:space:]]*kb_options *=/i\    kb_variant = \"$variant\"," "$hyprlua"
+  fi
+fi

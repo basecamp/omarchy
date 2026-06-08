@@ -9,7 +9,7 @@ set_fallback_default_browser() {
   local current_browser
   current_browser=$(xdg-settings get default-web-browser)
 
-  if [[ $current_browser != "$1" ]]; then
+  if [[ $current_browser != $1 ]]; then
     return
   fi
 

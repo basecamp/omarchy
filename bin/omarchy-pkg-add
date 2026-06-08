@@ -6,7 +6,11 @@
 # omarchy:requires-sudo=true
 
 if omarchy-pkg-missing "$@"; then
-  sudo pacman -S --noconfirm --needed "$@" || exit 1
+  if (( EUID == 0 )); then
+    pacman -S --noconfirm --needed "$@" || exit 1
+  else
+    sudo pacman -S --noconfirm --needed "$@" || exit 1
+  fi
 fi
 
 for pkg in "$@"; do

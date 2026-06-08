@@ -8,13 +8,14 @@ if gum confirm "Are you sure you want to remove all preinstalled web apps, TUI w
   omarchy-webapp-remove-all
   omarchy-tui-remove-all
 
-  cp ~/.config/hypr/bindings.conf ~/.config/hypr/bindings.conf.bak
-  cp "$OMARCHY_PATH/default/hypr/plain-bindings.conf" ~/.config/hypr/bindings.conf
+  [[ -f ~/.config/hypr/bindings.lua ]] && cp ~/.config/hypr/bindings.lua ~/.config/hypr/bindings.lua.bak
+  cp "$OMARCHY_PATH/default/hypr/plain-bindings.lua" ~/.config/hypr/bindings.lua
   hyprctl reload
 
-  # Remove npx stubs
-  rm -f ~/.local/bin/codex ~/.local/bin/gemini ~/.local/bin/copilot \
-       ~/.local/bin/opencode ~/.local/bin/playwright-cli ~/.local/bin/pi
+  # Remove mise stubs
+  rm -f ~/.local/bin/codex ~/.local/bin/claude ~/.local/bin/gemini ~/.local/bin/copilot \
+       ~/.local/bin/gh ~/.local/bin/opencode ~/.local/bin/playwright ~/.local/bin/playwright-cli ~/.local/bin/pi \
+       ~/.local/bin/ghui ~/.local/bin/hunk
 
   omarchy-pkg-drop \
     aether \
@@ -22,7 +23,7 @@ if gum confirm "Are you sure you want to remove all preinstalled web apps, TUI w
     typora \
     spotify \
     libreoffice-fresh \
-    1password-beta \
+    1password \
     1password-cli \
     xournalpp \
     signal-desktop \
@@ -32,5 +33,6 @@ if gum confirm "Are you sure you want to remove all preinstalled web apps, TUI w
     kdenlive \
     lazydocker \
     opencode \
-    claude-code
+    claude-code \
+    github-cli
 fi

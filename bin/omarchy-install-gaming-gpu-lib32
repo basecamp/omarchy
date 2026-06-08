@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Install lib32 graphics drivers (Vulkan + NVIDIA) for any detected GPUs.
+# omarchy:group=install
+# omarchy:name=gaming gpu-lib32
 # omarchy:requires-sudo=true
 
 set -e
@@ -25,4 +27,4 @@ elif omarchy-hw-nvidia-without-gsp; then
   PACKAGES+=(lib32-nvidia-580xx-utils)
 fi
 
-[[ ${#PACKAGES[@]} -gt 0 ]] && omarchy-pkg-add "${PACKAGES[@]}"
+(( ${#PACKAGES[@]} > 0 )) && omarchy-pkg-add "${PACKAGES[@]}"

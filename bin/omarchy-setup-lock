@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# omarchy:summary=Configure Quickshell lock screen authentication
+# omarchy:group=setup
+# omarchy:name=lock
+# omarchy:requires-sudo=true
+
+set -e
+
+target_user=${OMARCHY_INSTALL_USER:-${SUDO_USER:-}}
+if [[ -z $target_user && -n ${PKEXEC_UID:-} ]]; then
+  target_user=$(getent passwd "$PKEXEC_UID" | cut -d: -f1)
+fi
+target_user=${target_user:-$USER}
+target_home=$(getent passwd "$target_user" | cut -d: -f6)
+target_group=$(id -gn "$target_user" 2>/dev/null || echo "$target_user")
+
+as_root() {
+  if (( EUID == 0 )); then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+tee_root() {
+  local path="$1"
+
+  if (( EUID == 0 )); then
+    tee "$path"
+  else
+    sudo tee "$path"
+  fi
+}
+
+echo "Configuring lock screen password authentication..."
+
+tee_root /etc/pam.d/omarchy-lock-password >/dev/null <<'EOF'
+#%PAM-1.0
+auth       required                    pam_faillock.so preauth silent deny=10 unlock_time=120
+-auth      [success=2 default=ignore]  pam_systemd_home.so
+auth       [success=1 default=bad]     pam_unix.so try_first_pass nullok
+auth       [default=die]               pam_faillock.so authfail deny=10 unlock_time=120
+auth       optional                    pam_permit.so
+auth       required                    pam_env.so
+auth       required                    pam_faillock.so authsucc
+account    include                     system-local-login
+EOF
+
+if omarchy-cmd-present fprintd-list && fprintd-list "$target_user" 2>/dev/null | grep -qi finger; then
+  echo "Configuring lock screen fingerprint authentication..."
+  tee_root /etc/pam.d/omarchy-lock-fingerprint >/dev/null <<'EOF'
+#%PAM-1.0
+auth       required                    pam_fprintd.so
+account    include                     system-local-login
+EOF
+else
+  as_root rm -f /etc/pam.d/omarchy-lock-fingerprint
+fi
+
+
+# omarchy-shell can't reach a running shell during chroot install. The echo
+# is just confirmation, so swallow the failure rather than letting it become
+# the script's exit code.
+if omarchy-shell lock status >/dev/null 2>&1; then
+  echo "Lock screen authentication configured."
+fi

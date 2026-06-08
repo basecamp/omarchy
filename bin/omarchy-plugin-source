@@ -1,0 +1,372 @@
+#!/bin/bash
+
+# omarchy:summary=Manage trusted git repos that Omarchy plugins are installed from
+# omarchy:group=plugin
+# omarchy:args=<add|list|remove|refresh> [...]
+# omarchy:examples=omarchy plugin source add | omarchy plugin source list | omarchy plugin source add https://github.com/owner/omarchy-plugins.git --as owner-plugins | omarchy plugin source refresh
+
+set -o pipefail
+
+# Never let git block an unattended run on a credential or host-key prompt; fail
+# fast instead so callers' `|| true` / error paths can handle it.
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -oBatchMode=yes}"
+
+SOURCES_FILE="$HOME/.config/omarchy/plugins/sources.json"
+CACHE_ROOT="$HOME/.cache/omarchy/plugin-sources"
+
+fail() {
+  echo "omarchy-plugin-source: $*" >&2
+  exit 1
+}
+
+# A source id becomes a cache directory name and a sources.json key, so it must
+# never contain path separators or traversal. Used for --as, derived ids, and
+# (defensively) any id read back before an rm -rf.
+valid_source_id() {
+  [[ $1 =~ ^[a-z0-9][a-z0-9._-]*$ && $1 != *..* ]]
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
+}
+
+interactive() {
+  [[ -t 0 && -t 1 ]]
+}
+
+# Yes/no prompt. Honours a caller-set ASSUME_YES, falls back to a plain read
+# when gum is missing, and refuses in a non-interactive context so an agent
+# must pass --yes deliberately rather than hang on a prompt.
+confirm() {
+  local prompt="$1"
+  [[ ${ASSUME_YES:-0} == 1 ]] && return 0
+  if command -v gum >/dev/null 2>&1 && interactive; then
+    gum confirm "$prompt"
+    return
+  fi
+  if interactive; then
+    local reply
+    read -r -p "$prompt [y/N] " reply
+    [[ $reply == [yY]* ]]
+    return
+  fi
+  fail "refusing to continue without confirmation; pass --yes"
+}
+
+ask_input() {
+  local prompt="$1"
+  local value=""
+  if command -v gum >/dev/null 2>&1; then
+    gum input --prompt "$prompt " || return 1
+  else
+    read -r -p "$prompt " value || return 1
+    printf '%s' "$value"
+  fi
+}
+
+ensure_sources_file() {
+  mkdir -p "$(dirname "$SOURCES_FILE")"
+  if [[ ! -f $SOURCES_FILE ]]; then
+    # Subshell the umask so it does not leak into the rest of this process.
+    (umask 077; echo '{"version":1,"sources":[]}' >"$SOURCES_FILE")
+  fi
+}
+
+# Persist a jq transform of the sources file, then keep it owner-only.
+write_sources() {
+  local filter="$1"
+  shift
+  local tmp
+  tmp=$(mktemp)
+  if ! jq "$@" "$filter" "$SOURCES_FILE" >"$tmp"; then
+    rm -f "$tmp"
+    fail "failed to update $SOURCES_FILE"
+  fi
+  mv "$tmp" "$SOURCES_FILE"
+  chmod 600 "$SOURCES_FILE" 2>/dev/null || true
+}
+
+# owner-repo, lowercased and sanitized, from any git URL form (scp-like or URL).
+derive_source_id() {
+  local url="$1"
+  url="${url%.git}"
+  url="${url%/}"
+  local path
+  if [[ $url =~ ^[^/]+@[^/]+:(.+)$ ]]; then
+    path="${BASH_REMATCH[1]}"
+  else
+    path="${url#*://}"
+    path="${path#*/}"
+  fi
+  local repo="${path##*/}"
+  local owner_part="${path%/*}"
+  local owner="${owner_part##*/}"
+  local id
+  if [[ -n $owner && $owner != "$path" ]]; then
+    id="${owner}-${repo}"
+  else
+    id="$repo"
+  fi
+  id="${id,,}"
+  id="${id//[^a-z0-9._-]/-}"
+  while [[ $id == -* ]]; do id="${id#-}"; done
+  while [[ $id == *- ]]; do id="${id%-}"; done
+  printf '%s' "$id"
+}
+
+source_exists() {
+  jq -e --arg id "$1" '.sources | map(.id) | index($id) != null' "$SOURCES_FILE" >/dev/null 2>&1
+}
+
+# ---------------------------------------------------------------- add
+
+source_add() {
+  require_command jq
+  require_command git
+
+  local url="" ref="" name=""
+  ASSUME_YES=0
+  while (($# > 0)); do
+    case "$1" in
+    --ref) ref="${2:-}"; shift 2 ;;
+    --as) name="${2:-}"; shift 2 ;;
+    --yes | -y) ASSUME_YES=1; shift ;;
+    -h | --help) usage; return 0 ;;
+    --) shift; break ;;
+    -*) fail "unknown option: $1" ;;
+    *)
+      [[ -z $url ]] || fail "unexpected argument: $1"
+      url="$1"; shift ;;
+    esac
+  done
+
+  if [[ -z $url ]]; then
+    interactive || fail "a git URL is required (e.g. omarchy plugin source add https://github.com/owner/repo.git)"
+    url=$(ask_input "Git URL of the plugin source repo:") || fail "cancelled"
+    [[ -n $url ]] || fail "a git URL is required"
+  fi
+
+  [[ -n $name ]] || name=$(derive_source_id "$url")
+  [[ -n $name ]] || fail "could not derive a source id from '$url'; re-run with --as <name>"
+  valid_source_id "$name" || fail "invalid source id '$name' (lowercase letters, digits, '.', '_', '-'; no '/' or '..')"
+
+  ensure_sources_file
+  if source_exists "$name"; then
+    local existing
+    existing=$(jq -r --arg id "$name" '.sources[] | select(.id == $id) | .url' "$SOURCES_FILE")
+    fail "source '$name' already exists (url: $existing); remove it first with: omarchy plugin source remove $name"
+  fi
+
+  cat >&2 <<WARN
+
+⚠️  You are about to trust a new plugin source.
+
+      Name: $name
+      URL:  $url
+      Ref:  ${ref:-<default branch>}
+
+  Plugins from this repo run as arbitrary code inside your long-lived
+  omarchy-shell process. They are not sandboxed. Only add sources you
+  trust, and review a plugin's code before you install and enable it.
+
+WARN
+  confirm "Trust this source?" || fail "aborted"
+
+  local cache_dir="$CACHE_ROOT/$name"
+  rm -rf "$cache_dir"
+  mkdir -p "$CACHE_ROOT"
+
+  local clone_args=(--depth 1)
+  [[ -n $ref ]] && clone_args+=(--branch "$ref")
+
+  echo "Cloning $url ..."
+  if ! git clone "${clone_args[@]}" -- "$url" "$cache_dir"; then
+    rm -rf "$cache_dir"
+    fail "failed to clone $url"
+  fi
+
+  [[ -n $ref ]] || ref=$(git -C "$cache_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+
+  local ts
+  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  write_sources '.sources += [{id:$id, url:$url, ref:$ref, trustedAt:$ts}]' \
+    --arg id "$name" --arg url "$url" --arg ref "$ref" --arg ts "$ts"
+
+  echo "Added source '$name'${ref:+ (ref: $ref)}."
+  echo "Browse its plugins with: omarchy plugin available"
+}
+
+# ---------------------------------------------------------------- list
+
+source_list() {
+  require_command jq
+  local json=0
+  while (($# > 0)); do
+    case "$1" in
+    --json) json=1; shift ;;
+    -h | --help) usage; return 0 ;;
+    *) fail "unknown list option: $1" ;;
+    esac
+  done
+
+  if [[ ! -f $SOURCES_FILE ]]; then
+    if ((json)); then echo '{"version":1,"sources":[]}'; else echo "No plugin sources configured. Add one with: omarchy plugin source add <git-url>"; fi
+    return 0
+  fi
+
+  if ((json)); then
+    cat "$SOURCES_FILE"
+    return 0
+  fi
+
+  if [[ $(jq '.sources | length' "$SOURCES_FILE") -eq 0 ]]; then
+    echo "No plugin sources configured. Add one with: omarchy plugin source add <git-url>"
+    return 0
+  fi
+
+  jq -r '.sources[] | [.id, .url, (.ref // "")] | @tsv' "$SOURCES_FILE" |
+    while IFS=$'\t' read -r id url ref; do
+      local cache="missing"
+      [[ -d "$CACHE_ROOT/$id/.git" ]] && cache="cached"
+      printf '%s\t%s\t%s\t%s\n' "$id" "$url" "${ref:-?}" "$cache"
+    done |
+    awk -F '\t' '
+      BEGIN { printf "%-34s %-46s %-14s %s\n", "ID", "URL", "REF", "CACHE" }
+      { printf "%-34s %-46s %-14s %s\n", $1, $2, $3, $4 }'
+}
+
+# ---------------------------------------------------------------- remove
+
+source_remove() {
+  require_command jq
+  local id=""
+  ASSUME_YES=0
+  while (($# > 0)); do
+    case "$1" in
+    --yes | -y) ASSUME_YES=1; shift ;;
+    -h | --help) usage; return 0 ;;
+    -*) fail "unknown option: $1" ;;
+    *)
+      [[ -z $id ]] || fail "unexpected argument: $1"
+      id="$1"; shift ;;
+    esac
+  done
+
+  [[ -f $SOURCES_FILE ]] || fail "no plugin sources configured"
+
+  if [[ -z $id ]]; then
+    interactive || fail "a source id is required"
+    if command -v gum >/dev/null 2>&1; then
+      id=$(jq -r '.sources[].id' "$SOURCES_FILE" | gum choose --header="Remove which plugin source?") || fail "cancelled"
+    elif command -v fzf >/dev/null 2>&1; then
+      id=$(jq -r '.sources[].id' "$SOURCES_FILE" | fzf --prompt "Remove which plugin source > ") || fail "cancelled"
+    else
+      fail "a source id is required (install gum or fzf for an interactive picker)"
+    fi
+    [[ -n $id ]] || fail "nothing selected"
+  fi
+
+  source_exists "$id" || fail "no such source: $id"
+  confirm "Remove source '$id'? (installed plugins are left in place)" || fail "aborted"
+
+  write_sources '.sources |= map(select(.id != $id))' --arg id "$id"
+  # Defense in depth: never rm -rf a cache path built from an id that could
+  # contain traversal, even though valid_source_id gates ids on the way in.
+  if valid_source_id "$id"; then
+    rm -rf "${CACHE_ROOT:?}/$id"
+  fi
+  echo "Removed source '$id'."
+}
+
+# ---------------------------------------------------------------- refresh
+
+refresh_one() {
+  local id="$1"
+  valid_source_id "$id" || { echo "omarchy-plugin-source: invalid source id: $id" >&2; return 1; }
+  local url ref cache_dir
+  url=$(jq -r --arg id "$id" '.sources[] | select(.id == $id) | .url' "$SOURCES_FILE")
+  ref=$(jq -r --arg id "$id" '.sources[] | select(.id == $id) | .ref // ""' "$SOURCES_FILE")
+  cache_dir="$CACHE_ROOT/$id"
+
+  [[ -n $url ]] || { echo "omarchy-plugin-source: no such source: $id" >&2; return 1; }
+
+  if [[ ! -d "$cache_dir/.git" ]]; then
+    echo "Cache missing for '$id'; re-cloning ..."
+    rm -rf "$cache_dir"
+    mkdir -p "$CACHE_ROOT"
+    local clone_args=(--depth 1)
+    [[ -n $ref ]] && clone_args+=(--branch "$ref")
+    git clone "${clone_args[@]}" -- "$url" "$cache_dir" || return 1
+    return 0
+  fi
+
+  echo "Refreshing '$id' (${ref:-HEAD}) ..."
+  if ! git -C "$cache_dir" fetch --depth 1 origin "${ref:-HEAD}" >/dev/null 2>&1; then
+    echo "omarchy-plugin-source: fetch failed for '$id'" >&2
+    return 1
+  fi
+  git -C "$cache_dir" reset --hard FETCH_HEAD >/dev/null 2>&1 || return 1
+}
+
+source_refresh() {
+  require_command jq
+  require_command git
+  local id=""
+  while (($# > 0)); do
+    case "$1" in
+    -h | --help) usage; return 0 ;;
+    -*) fail "unknown option: $1" ;;
+    *)
+      [[ -z $id ]] || fail "unexpected argument: $1"
+      id="$1"; shift ;;
+    esac
+  done
+
+  [[ -f $SOURCES_FILE ]] || fail "no plugin sources configured"
+
+  if [[ -n $id ]]; then
+    refresh_one "$id"
+    return $?
+  fi
+
+  local rc=0
+  mapfile -t ids < <(jq -r '.sources[].id' "$SOURCES_FILE")
+  if ((${#ids[@]} == 0)); then
+    echo "No plugin sources configured."
+    return 0
+  fi
+  for sid in "${ids[@]}"; do
+    refresh_one "$sid" || rc=1
+  done
+  return $rc
+}
+
+usage() {
+  cat <<USAGE
+Usage: omarchy plugin source <command> [args...]
+
+  add [<git-url>] [--ref <ref>] [--as <name>] [--yes]
+        Trust a git repo as a plugin source and clone it locally.
+  list [--json]
+        List trusted plugin sources and whether each is cached.
+  remove [<source-id>] [--yes]
+        Forget a source and drop its cache (installed plugins stay).
+  refresh [<source-id>]
+        Pull the latest clone for one source, or all sources.
+
+Sources are stored in ~/.config/omarchy/plugins/sources.json and cloned
+into ~/.cache/omarchy/plugin-sources/<source-id>/.
+USAGE
+}
+
+command="${1:-list}"
+[[ $# -gt 0 ]] && shift || true
+case "$command" in
+add) source_add "$@" ;;
+list | ls) source_list "$@" ;;
+remove | rm) source_remove "$@" ;;
+refresh | update) source_refresh "$@" ;;
+-h | --help | help) usage ;;
+*) fail "unknown command: $command (use add, list, remove, or refresh)" ;;
+esac

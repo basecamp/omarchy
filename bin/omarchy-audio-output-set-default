@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=Set the default audio output and move active streams
+# omarchy:args=<node-id> <sink-name>
+# omarchy:examples=omarchy audio output set default 42 alsa_output.pci-0000_00_1f.3.analog-stereo
+
+node_id=${1:-}
+sink_name=${2:-}
+
+if [[ -z $node_id || -z $sink_name ]]; then
+  echo "Usage: omarchy-audio-output-set-default <node-id> <sink-name>" >&2
+  exit 1
+fi
+
+timeout 2 wpctl set-default "$node_id" 2>/dev/null || true
+timeout 2 pactl set-default-sink "$sink_name" 2>/dev/null || true
+
+timeout 2 pactl list short sink-inputs 2>/dev/null | awk '{ print $1 }' | while read -r input; do
+  [[ -n $input ]] && timeout 2 pactl move-sink-input "$input" "$sink_name" 2>/dev/null || true
+done

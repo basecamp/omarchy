@@ -2,4 +2,6 @@
 
 # omarchy:summary=Toggles transparency for the currently focused window.
 
-hyprctl dispatch setprop "address:$(hyprctl activewindow -j | jq -r '.address')" opaque toggle
+addr=$(hyprctl activewindow -j | jq -r '.address')
+hyprctl dispatch "hl.dsp.window.set_prop({ window = \"address:$addr\", prop = \"opaque\", value = \"toggle\" })" >/dev/null 2>&1 || \
+  hyprctl dispatch setprop "address:$addr" opaque toggle

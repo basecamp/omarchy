@@ -1,15 +1,15 @@
 #!/bin/bash
 
-# omarchy:summary=Pick one option with Walker
+# omarchy:summary=Pick one option from a menu
 # omarchy:group=menu
 # omarchy:name=select
-# omarchy:args=prompt option... [-- walker args...]
+# omarchy:args=prompt [option...] [-- menu args...]
 # omarchy:examples=omarchy menu select Format jpg png|omarchy-menu-select Resolution 4k 1080p 720p -- --width 400
 
 set -euo pipefail
 
-if (( $# < 2 )); then
-  echo "Usage: omarchy-menu-select <prompt> <option>... [-- walker args...]" >&2
+if (( $# < 1 )); then
+  echo "Usage: omarchy-menu-select <prompt> [option...] [-- menu args...]" >&2
   exit 1
 fi
 
@@ -17,12 +17,34 @@ prompt="$1"
 shift
 
 options=()
-walker_args=()
+menu_width=""
+menu_maxheight=""
 
 while (( $# > 0 )); do
   if [[ $1 == "--" ]]; then
     shift
-    walker_args=("$@")
+    while (( $# > 0 )); do
+      case "$1" in
+        --width)
+          shift
+          if (( $# == 0 )); then
+            echo "omarchy-menu-select: --width requires a value" >&2
+            exit 1
+          fi
+          menu_width="$1"
+          ;;
+        --height|--maxheight)
+          arg="$1"
+          shift
+          if (( $# == 0 )); then
+            echo "omarchy-menu-select: $arg requires a value" >&2
+            exit 1
+          fi
+          menu_maxheight="$1"
+          ;;
+      esac
+      shift
+    done
     break
   fi
 
@@ -30,9 +52,42 @@ while (( $# > 0 )); do
   shift
 done
 
+if (( ${#options[@]} == 0 )) && [[ ! -t 0 ]]; then
+  mapfile -t options
+fi
+
 if (( ${#options[@]} == 0 )); then
-  echo "Usage: omarchy-menu-select <prompt> <option>... [-- walker args...]" >&2
+  echo "Usage: omarchy-menu-select <prompt> [option...] [-- menu args...]" >&2
   exit 1
 fi
 
-printf '%s\n' "${options[@]}" | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight 300 -p "$prompt…" "${walker_args[@]}" 2>/dev/null
+selection_file=$(mktemp)
+done_file=$(mktemp)
+rm -f "$done_file"
+trap 'rm -f "$selection_file" "$done_file"' EXIT
+
+options_json=$(perl -MEncode=decode -MJSON::PP=encode_json -e 'print encode_json([map { decode("UTF-8", $_) } @ARGV])' "${options[@]}")
+payload=$(perl -MEncode=decode -MJSON::PP=encode_json,decode_json -e '
+  my $payload = {
+    mode => "select",
+    prompt => decode("UTF-8", $ARGV[0]),
+    options => decode_json($ARGV[1]),
+    selectionFile => decode("UTF-8", $ARGV[2]),
+    doneFile => decode("UTF-8", $ARGV[3])
+  };
+  $payload->{width} = int($ARGV[4]) if length($ARGV[4] // "");
+  $payload->{maxHeight} = int($ARGV[5]) if length($ARGV[5] // "");
+  print encode_json($payload)
+' "$prompt" "$options_json" "$selection_file" "$done_file" "$menu_width" "$menu_maxheight")
+
+omarchy-shell shell summon omarchy.menu "$payload" >/dev/null
+
+while [[ ! -e $done_file ]]; do
+  sleep 0.05
+done
+
+if [[ -s $selection_file ]]; then
+  cat "$selection_file"
+else
+  exit 1
+fi

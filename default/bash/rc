@@ -1,6 +1,7 @@
-source ~/.local/share/omarchy/default/bash/envs
-source ~/.local/share/omarchy/default/bash/shell
-source ~/.local/share/omarchy/default/bash/aliases
-source ~/.local/share/omarchy/default/bash/functions
-source ~/.local/share/omarchy/default/bash/init
-[[ $- == *i* ]] && bind -f ~/.local/share/omarchy/default/bash/inputrc
+: "${OMARCHY_PATH:=/usr/share/omarchy}"
+source "$OMARCHY_PATH/default/bash/envs"
+source "$OMARCHY_PATH/default/bash/shell"
+source "$OMARCHY_PATH/default/bash/aliases"
+source "$OMARCHY_PATH/default/bash/functions"
+source "$OMARCHY_PATH/default/bash/init"
+[[ $- == *i* ]] && bind -f "$OMARCHY_PATH/default/bash/inputrc"

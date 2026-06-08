@@ -1,0 +1,23 @@
+[Unit]
+Description=Bluetooth pairing agent (auto-accept)
+Documentation=man:bt-agent(1)
+ConditionPathIsDirectory=/sys/class/bluetooth
+# bluez must be reachable on the system bus before we can register.
+After=dbus.socket
+Requires=dbus.socket
+
+[Service]
+Type=simple
+# If bluetoothd is unavailable (for example in VMs or machines without a
+# usable adapter), skip cleanly instead of entering a restart loop.
+ExecCondition=/usr/bin/systemctl is-active --quiet bluetooth.service
+# NoInputNoOutput auto-accepts pair requests. Safe because the adapter
+# is only `pairable: true` when the user explicitly opens the omarchy
+# bluetoothPanel and starts scanning; outside that window bluez refuses
+# inbound pair attempts at a lower layer.
+ExecStart=/usr/bin/bt-agent -c NoInputNoOutput
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

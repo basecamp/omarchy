@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# omarchy:summary=Show idle, screensaver, and lock diagnostics
+# omarchy:group=debug
+# omarchy:args=[log-lines]
+# omarchy:examples=omarchy debug idle | omarchy-debug-idle 400
+
+lines=${1:-200}
+if [[ ! $lines =~ ^[0-9]+$ ]]; then
+  lines=200
+fi
+
+section() {
+  printf '\n== %s ==\n' "$1"
+}
+
+section "Time"
+date -Is
+
+section "Idle IPC status"
+omarchy-shell idle status 2>&1 | jq . 2>/dev/null || omarchy-shell idle status 2>&1 || true
+
+section "Quickshell instances"
+quickshell list -p "$OMARCHY_PATH/shell" --any-display 2>&1 || true
+
+section "Recent idle logs"
+quickshell --no-color log -p "$OMARCHY_PATH/shell" --any-display --tail "$lines" --log-times -r 'quickshell.wayland.idle_notify=true' 2>&1 \
+  | grep -Ei 'omarchy idle|idle_notify|screensaver|lock|error|warn|failed' || true
+
+section "Relevant processes"
+ps -eo pid=,args= \
+  | grep -E 'quickshell -n -p|omarchy-system-sleep-monitor|systemd-inhibit.*Lock screen before suspend|org\.omarchy\.screensaver|omarchy-screensaver|(^|/| )tte( |$)' \
+  | grep -v grep || true
+
+section "Sleep lock service"
+systemctl --user status omarchy-sleep-lock.service --no-pager 2>/dev/null || true
+
+section "Hyprland screensaver clients"
+hyprctl clients -j 2>/dev/null \
+  | jq -r '.[] | select(.class == "org.omarchy.screensaver" or .initialClass == "org.omarchy.screensaver") | [.pid,.class,.initialClass,.title,.focusHistoryID] | @tsv' || true
+
+section "Idle inhibitors"
+hyprctl clients -j 2>/dev/null \
+  | jq -r '.[] | select(.inhibitingIdle == true or ((.tags // []) | index("noidle"))) | [.pid,.class,.title,((.tags // []) | join(",")),.inhibitingIdle] | @tsv' || true
+
+section "Screensaver detector"
+if hyprctl clients -j 2>/dev/null | jq -e '.[] | select(.class == "org.omarchy.screensaver" or .initialClass == "org.omarchy.screensaver")' >/dev/null; then
+  echo "running-window"
+elif pgrep -f '[o]rg.omarchy.screensaver' >/dev/null; then
+  echo "running-process"
+elif omarchy-toggle-enabled screensaver-off; then
+  echo "disabled"
+else
+  echo "stopped"
+fi
+
+section "Lock detector"
+omarchy-shell lock status 2>&1 | jq . 2>/dev/null || omarchy-shell lock status 2>&1 || true

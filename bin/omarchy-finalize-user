@@ -1,0 +1,133 @@
+#!/bin/bash
+
+# omarchy:summary=Finalize Omarchy user setup (runtime tweaks /etc/skel can't do)
+# omarchy:group=finalize
+# omarchy:examples=omarchy finalize user | omarchy finalize user --force
+
+set -euo pipefail
+
+usage() {
+  cat <<USAGE
+Usage: omarchy finalize user [--force] [--first-install]
+
+Runs the per-user setup steps that /etc/skel can't seed:
+dev-aware skill symlinks, xdg-user-dirs + gtk bookmarks (need \$HOME),
+vconsole→hypr keyboard sync, default browser/mailto, and install/user/all.sh.
+
+For shipped configs see /etc/skel (new users) and omarchy-reinstall-configs
+(existing users explicitly resyncing).
+
+--first-install is used by the ISO in the target chroot. It marks shipped
+user migrations complete for the freshly-created user.
+
+Idempotency marker: ~/.local/state/omarchy/finalize-user.done
+USAGE
+}
+
+if (( EUID == 0 )); then
+  echo "Error: run omarchy-finalize-user as the user being configured, not as root." >&2
+  exit 1
+fi
+
+force=0
+first_install=0
+while (($#)); do
+  case "$1" in
+    --force)
+      force=1
+      shift
+      ;;
+    --first-install)
+      first_install=1
+      force=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+state_dir="$HOME/.local/state/omarchy"
+marker="$state_dir/finalize-user.done"
+mkdir -p "$state_dir"
+
+if [[ -f $marker && $force -eq 0 ]]; then
+  echo "User finalization already complete (rerun with --force to refresh)."
+  exit 0
+fi
+
+export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+export OMARCHY_INSTALL="${OMARCHY_INSTALL:-$OMARCHY_PATH/install}"
+export OMARCHY_SETUP_CONTEXT="${OMARCHY_SETUP_CONTEXT:-runtime}"
+export PATH="$OMARCHY_PATH/bin:$PATH"
+
+if (( first_install )); then
+  export OMARCHY_SETUP_CONTEXT=iso-chroot
+fi
+
+if [[ -n ${OMARCHY_INSTALL_LOG_FILE:-} && -f $OMARCHY_INSTALL/helpers/logging.sh ]]; then
+  source "$OMARCHY_INSTALL/helpers/logging.sh"
+else
+  run_logged() {
+    local script="$1"
+    bash -eE -c 'source "$1"' bash "$script"
+  }
+fi
+
+# Dev-aware skill symlinks. Cannot live in /etc/skel because OMARCHY_PATH may
+# point at a dev checkout (omarchy dev link) where the target differs.
+mkdir -p ~/.agents/skills ~/.claude/skills ~/.codex/skills ~/.pi/agent/skills
+ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.agents/skills/omarchy
+ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.claude/skills/omarchy
+ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.codex/skills/omarchy
+ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.pi/agent/skills/omarchy
+
+mkdir -p ~/Downloads ~/Pictures ~/Videos ~/.config/gtk-3.0
+xdg-user-dirs-update --set TEMPLATES "$HOME"
+xdg-user-dirs-update --set PUBLICSHARE "$HOME"
+xdg-user-dirs-update --set DESKTOP "$HOME"
+rmdir ~/Templates ~/Public ~/Desktop 2>/dev/null || true
+touch ~/.config/gtk-3.0/bookmarks
+for dir in Downloads Projects Pictures Videos; do
+  bookmark="file://$HOME/$dir $dir"
+  grep -qxF "$bookmark" ~/.config/gtk-3.0/bookmarks || echo "$bookmark" >>~/.config/gtk-3.0/bookmarks
+done
+
+conf=/etc/vconsole.conf
+hyprlua="$HOME/.config/hypr/input.lua"
+if [[ -f $conf && -f $hyprlua ]]; then
+  sed -i '/^[[:space:]]*kb_layout[[:space:]]*=/d' "$hyprlua"
+  sed -i '/^[[:space:]]*kb_variant[[:space:]]*=/d' "$hyprlua"
+
+  if grep -q '^XKBLAYOUT=' "$conf"; then
+    layout=$(grep '^XKBLAYOUT=' "$conf" | cut -d= -f2 | tr -d '"')
+    sed -i "/^[[:space:]]*kb_options *=/i\    kb_layout = \"$layout\"," "$hyprlua"
+  fi
+  if grep -q '^XKBVARIANT=' "$conf"; then
+    variant=$(grep '^XKBVARIANT=' "$conf" | cut -d= -f2 | tr -d '"')
+    sed -i "/^[[:space:]]*kb_options *=/i\    kb_variant = \"$variant\"," "$hyprlua"
+  fi
+fi
+
+source "$OMARCHY_INSTALL/user/all.sh"
+
+omarchy-refresh-applications
+xdg-settings set default-web-browser chromium.desktop
+xdg-mime default HEY.desktop x-scheme-handler/mailto
+
+if (( first_install )); then
+  mkdir -p "$state_dir/migrations/user"
+  for migration in "$OMARCHY_PATH"/migrations/user/*.sh; do
+    [[ -f $migration ]] && touch "$state_dir/migrations/user/$(basename "$migration")"
+  done
+fi
+
+touch "$marker"
+echo "User finalization complete."

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.lock-keys",
+  "name": "Lock keys",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Caps / Num / Scroll lock indicators",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "LockKeys.qml"
+  },
+  "barWidget": {
+    "displayName": "Lock keys",
+    "description": "Caps / Num / Scroll lock indicators",
+    "category": "System",
+    "allowMultiple": false
+  }
+}

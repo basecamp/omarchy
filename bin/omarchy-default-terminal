@@ -5,7 +5,8 @@
 # omarchy:examples=omarchy default terminal ghostty | omarchy default terminal kitty
 
 if (($# == 0)); then
-  desktop_id=$(grep -vE '^($|#)' ~/.config/xdg-terminals.list 2>/dev/null | head -n 1)
+  desktop_id=$(xdg-terminal-exec --print-id 2>/dev/null || true)
+  desktop_id=${desktop_id%%:*}
   case "$desktop_id" in
   Alacritty.desktop) echo "alacritty" ;;
   foot.desktop) echo "foot" ;;
@@ -17,10 +18,10 @@ if (($# == 0)); then
 fi
 
 case "$1" in
-alacritty) desktop_id="Alacritty.desktop"; name="Alacritty"; glyph="" ;;
-foot) desktop_id="foot.desktop"; name="Foot"; glyph="" ;;
-ghostty) desktop_id="com.mitchellh.ghostty.desktop"; name="Ghostty"; glyph="" ;;
-kitty) desktop_id="kitty.desktop"; name="Kitty"; glyph="" ;;
+alacritty) desktop_id="Alacritty.desktop"; name="Alacritty"; glyph= ;;
+foot) desktop_id="foot.desktop"; name="Foot"; glyph= ;;
+ghostty) desktop_id="com.mitchellh.ghostty.desktop"; name="Ghostty"; glyph= ;;
+kitty) desktop_id="kitty.desktop"; name="Kitty"; glyph= ;;
 *)
   echo "Usage: omarchy-default-terminal <alacritty|foot|ghostty|kitty>"
   exit 1
@@ -33,4 +34,4 @@ cat >~/.config/xdg-terminals.list <<EOF
 $desktop_id
 EOF
 
-notify-send -u low "$glyph    $name is now the default terminal"
+omarchy-notification-send -g $glyph "$name is now the default terminal"

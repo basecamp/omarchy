@@ -1,24 +1,28 @@
 #!/bin/bash
 
-# omarchy:summary=Reset all Omarchy user configs to the defaults
-# omarchy:requires-sudo=true
+# omarchy:summary=Reset Omarchy user configs and shipped defaults in $HOME (destructive)
 
-set -e
-
-# Overwrite all user configs with the Omarchy defaults.
+set -euo pipefail
 
 if (( EUID == 0 )); then
   echo "Error: This script should not be run as root"
   exit 1
 fi
 
-echo "Resetting all Omarchy configs"
-cp -R ~/.local/share/omarchy/config/* ~/.config/
-cp ~/.local/share/omarchy/default/bashrc ~/.bashrc
-echo '[[ -f ~/.bashrc ]] && . ~/.bashrc' | tee ~/.bash_profile >/dev/null
+echo "Resetting Omarchy user configs to shipped defaults..."
 
-$(bash $OMARCHY_PATH/install/config/theme.sh)
+# /etc/skel is the same tree useradd -m copies to seed a fresh user's $HOME.
+# Replaying it over an existing user resyncs every package-shipped user
+# default in one pass: .bashrc, .config/**, .local/share/applications,
+# nautilus-python extensions, branding, hypr toggles, and migration markers.
+# Trailing dot copies dotfiles; the shell wouldn't glob them with /etc/skel/*.
+cp -af /etc/skel/. ~/
 
 omarchy-refresh-limine
 omarchy-refresh-plymouth
-omarchy-nvim-setup
+
+if omarchy-cmd-present omarchy-nvim-refresh; then
+  omarchy-nvim-refresh
+elif omarchy-cmd-present omarchy-nvim-setup; then
+  omarchy-nvim-setup --force
+fi

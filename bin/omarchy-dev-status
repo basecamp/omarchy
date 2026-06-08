@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# omarchy:summary=Show the current Omarchy dev-link state
+# omarchy:group=dev
+
+default_target="/usr/share/omarchy"
+configured="$default_target"
+conf_present=0
+linked=0
+
+if [[ -f /etc/omarchy.conf ]]; then
+  conf_present=1
+  configured=$(
+    OMARCHY_PATH=
+    # shellcheck disable=SC1091
+    . /etc/omarchy.conf
+    printf '%s' "${OMARCHY_PATH:-<empty>}"
+  )
+  if [[ $configured != "$default_target" ]]; then
+    linked=1
+  fi
+fi
+
+if (( linked )); then
+  echo "dev-link: ACTIVE"
+  echo "  /etc/omarchy.conf -> OMARCHY_PATH=$configured"
+else
+  echo "dev-link: inactive"
+  if (( conf_present )); then
+    echo "  /etc/omarchy.conf -> OMARCHY_PATH=$configured (default guard)"
+  fi
+fi
+
+echo "  current shell:       OMARCHY_PATH=${OMARCHY_PATH:-<unset>}"
+
+if (( linked )) && [[ ${OMARCHY_PATH:-} != "$configured" ]]; then
+  echo
+  echo "Note: this shell predates dev-link. Open a new shell to pick up the change,"
+  echo "or 'export OMARCHY_PATH=$configured' to update just this shell."
+elif (( ! linked )) && [[ ${OMARCHY_PATH:-$default_target} != "$default_target" ]]; then
+  echo
+  echo "Note: no dev-link is configured, but this shell still has a stale OMARCHY_PATH."
+  echo "Open a new shell or run 'export OMARCHY_PATH=$default_target'."
+fi
+
+if command -v hyprctl >/dev/null 2>&1 && hyprctl version &>/dev/null; then
+  hypr_path=$(hyprctl getoption -j env 2>/dev/null | sed -n 's/.*OMARCHY_PATH=\([^"]*\).*/\1/p' | head -1)
+  if [[ -n "$hypr_path" ]]; then
+    echo "  hyprland session:   OMARCHY_PATH=$hypr_path"
+  fi
+fi

@@ -1,0 +1,214 @@
+#!/bin/bash
+
+# omarchy:summary=Update installed Omarchy plugins from their sources
+# omarchy:group=plugin
+# omarchy:args=[plugin-id] [--all] [--force] [--review] [--no-refresh] [--yes]
+# omarchy:examples=omarchy plugin update | omarchy plugin update orbit --review | omarchy plugin update --all --yes
+
+# Re-pulls a plugin's folder from its source when the upstream manifest version
+# is newer. Updates are just re-installs, so the same "review the code" rule
+# applies — by default this prints a diff of exactly what changed before
+# touching anything. --yes skips the diff and confirmation for scripts/agents.
+
+set -o pipefail
+
+PLUGINS_DIR="$HOME/.config/omarchy/plugins"
+
+fail() {
+  echo "omarchy-plugin-update: $*" >&2
+  exit 1
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
+}
+
+interactive() {
+  [[ -t 0 && -t 1 ]]
+}
+
+PLUGIN_ID=""
+ALL=0
+FORCE=0
+DO_REVIEW=0
+NO_REFRESH=0
+ASSUME_YES=0
+
+while (($# > 0)); do
+  case "$1" in
+  --all | -a) ALL=1; shift ;;
+  --force | -f) FORCE=1; shift ;;
+  --review) DO_REVIEW=1; shift ;;
+  --no-refresh) NO_REFRESH=1; shift ;;
+  --yes | -y) ASSUME_YES=1; shift ;;
+  -h | --help)
+    cat <<USAGE
+Usage: omarchy plugin update [plugin-id] [--all] [--force] [--review] [--no-refresh] [--yes]
+
+Updates installed plugins when their source has a newer version.
+  (no args)    pick from the plugins that have an update available
+  <plugin-id>  update one plugin
+  --all        update every plugin with an available update
+  --force      re-pull even when versions match (or local looks newer)
+  --review     always show the file diff before updating (default in a TTY)
+  --no-refresh use cached clones, skip the network refresh
+  --yes        skip the diff and confirmation
+USAGE
+    exit 0
+    ;;
+  -*) fail "unknown option: $1" ;;
+  *)
+    [[ -z $PLUGIN_ID ]] || fail "unexpected argument: $1"
+    PLUGIN_ID="$1"; shift ;;
+  esac
+done
+
+require_command jq
+((ALL)) && [[ -n $PLUGIN_ID ]] && fail "pass either a plugin-id or --all, not both"
+
+confirm() {
+  local prompt="$1"
+  ((ASSUME_YES)) && return 0
+  if command -v gum >/dev/null 2>&1 && interactive; then gum confirm "$prompt"; return; fi
+  if interactive; then local reply; read -r -p "$prompt [y/N] " reply; [[ $reply == [yY]* ]]; return; fi
+  fail "refusing to update without confirmation; pass --yes"
+}
+
+if ((!NO_REFRESH)); then
+  omarchy-plugin-source refresh >/dev/null 2>&1 || true
+fi
+
+CATALOG=$(omarchy-plugin-scan 2>/dev/null || echo "[]")
+
+# Map of currently enabled third-party plugins, so we can preserve state.
+declare -A enabled_map
+if shell_plugins=$(omarchy-shell shell listPlugins 2>/dev/null) && [[ -n $shell_plugins ]]; then
+  while IFS=$'\t' read -r pid pen; do
+    [[ -n $pid ]] && enabled_map["$pid"]="$pen"
+  done < <(jq -r '.[] | select(.firstParty == false) | [.id, (.enabled|tostring)] | @tsv' <<<"$shell_plugins" 2>/dev/null)
+fi
+
+# Echoes "<status>\t<source-id>\t<installed-version>\t<upstream-version>\t<cache-path>"
+plugin_status() {
+  local id="$1" installed_version="$2"
+  local up
+  up=$(jq -c --arg id "$id" 'map(select(.manifest.id == $id)) | .[0] // empty' <<<"$CATALOG")
+  if [[ -z $up ]]; then
+    printf 'unmanaged\t\t%s\t\t\n' "$installed_version"
+    return
+  fi
+  local upstream_version src_id cache_path status
+  upstream_version=$(jq -r '.manifest.version // ""' <<<"$up")
+  src_id=$(jq -r '.sourceId' <<<"$up")
+  cache_path=$(jq -r '.path' <<<"$up")
+  if [[ -z $installed_version || -z $upstream_version ]]; then
+    status="unknown"
+  elif [[ $installed_version == "$upstream_version" ]]; then
+    status="up-to-date"
+  elif [[ $(printf '%s\n%s\n' "$installed_version" "$upstream_version" | sort -V | tail -n1) == "$upstream_version" ]]; then
+    status="update-available"
+  else
+    status="local-newer"
+  fi
+  printf '%s\t%s\t%s\t%s\t%s\n' "$status" "$src_id" "$installed_version" "$upstream_version" "$cache_path"
+}
+
+installed_version_of() {
+  local id="$1"
+  [[ -f "$PLUGINS_DIR/$id/manifest.json" ]] || return 1
+  jq -r '.version // ""' "$PLUGINS_DIR/$id/manifest.json" 2>/dev/null
+}
+
+# ---------------------------------------------------------------- pick targets
+
+[[ -d $PLUGINS_DIR ]] || fail "no plugins installed"
+
+declare -a targets=()
+if ((ALL)); then
+  for d in "$PLUGINS_DIR"/*/; do
+    [[ -d $d ]] || continue
+    id=$(basename "$d"); [[ $id == .* ]] && continue
+    iv=$(installed_version_of "$id") || continue
+    IFS=$'\t' read -r status _ _ _ _ < <(plugin_status "$id" "$iv")
+    [[ $status == "update-available" ]] && targets+=("$id")
+  done
+  ((${#targets[@]})) || { echo "No updates available."; exit 0; }
+elif [[ -n $PLUGIN_ID ]]; then
+  installed_version_of "$PLUGIN_ID" >/dev/null || fail "plugin '$PLUGIN_ID' is not installed"
+  targets=("$PLUGIN_ID")
+else
+  interactive || fail "a plugin-id is required (or pass --all)"
+  outdated=""
+  for d in "$PLUGINS_DIR"/*/; do
+    [[ -d $d ]] || continue
+    id=$(basename "$d"); [[ $id == .* ]] && continue
+    iv=$(installed_version_of "$id") || continue
+    IFS=$'\t' read -r status _ instv upv _ < <(plugin_status "$id" "$iv")
+    [[ $status == "update-available" ]] && outdated+="$id"$'\t'"$instv -> $upv"$'\n'
+  done
+  [[ -n $outdated ]] || { echo "No updates available."; exit 0; }
+  rows=$(awk -F '\t' 'NF{printf "%-28s  %s\n", $1, $2}' <<<"$outdated")
+  if command -v gum >/dev/null 2>&1; then
+    pick=$(gum choose --no-limit --header="Update which plugins? (space toggles, enter confirms)" <<<"$rows") || fail "cancelled"
+  elif command -v fzf >/dev/null 2>&1; then
+    pick=$(fzf --multi --prompt "Update which plugins (tab to mark) > " <<<"$rows") || fail "cancelled"
+  else
+    fail "a plugin-id is required (install gum or fzf for an interactive picker, or pass --all)"
+  fi
+  [[ -n $pick ]] || { echo "Nothing selected."; exit 0; }
+  mapfile -t targets < <(awk '{print $1}' <<<"$pick")
+fi
+
+# ---------------------------------------------------------------- apply
+
+show_diff() {
+  local installed="$1" cache="$2"
+  echo "Changes for $3 ($4 -> $5):"
+  if command -v delta >/dev/null 2>&1; then
+    diff -ruN "$installed" "$cache" | delta --paging=never
+  else
+    diff -ruN "$installed" "$cache"
+  fi
+  echo
+}
+
+any_enabled=0
+rc=0
+for id in "${targets[@]}"; do
+  iv=$(installed_version_of "$id") || { echo "Skipping $id: not installed." >&2; rc=1; continue; }
+  IFS=$'\t' read -r status src_id instv upv cache_path < <(plugin_status "$id" "$iv")
+
+  case "$status" in
+  unmanaged) echo "Skipping $id: not found in any configured source." >&2; rc=1; continue ;;
+  unknown) echo "Skipping $id: missing version metadata to compare." >&2; rc=1; continue ;;
+  up-to-date)
+    ((FORCE)) || { echo "Skipping $id: already up to date ($instv). Use --force to re-pull."; continue; } ;;
+  local-newer)
+    ((FORCE)) || { echo "Skipping $id: installed $instv is newer than upstream $upv. Use --force to overwrite." >&2; rc=1; continue; } ;;
+  esac
+
+  if ((!ASSUME_YES)); then
+    if ((DO_REVIEW)) || interactive; then
+      show_diff "$PLUGINS_DIR/$id" "$cache_path" "$id" "$instv" "$upv"
+    fi
+    confirm "Update $id ($instv -> $upv)?" || { echo "Skipped $id."; continue; }
+  fi
+
+  echo "Updating $id ..."
+  install_args=("$id" --from "$src_id" --no-refresh --yes)
+  case "${enabled_map[$id]:-}" in
+  true) install_args+=(--enable); any_enabled=1 ;;
+  false) install_args+=(--no-enable) ;;
+  esac
+  if ! omarchy-plugin-add "${install_args[@]}"; then
+    echo "Failed to update $id" >&2
+    rc=1
+  fi
+done
+
+if ((any_enabled)); then
+  echo
+  echo "Updated enabled plugins were hot-reloaded by omarchy-shell."
+fi
+
+exit $rc

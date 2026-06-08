@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.system-update",
+  "name": "System update",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Indicates available system updates",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "SystemUpdate.qml"
+  },
+  "barWidget": {
+    "displayName": "System update",
+    "description": "Indicates available system updates",
+    "category": "System",
+    "allowMultiple": false
+  }
+}

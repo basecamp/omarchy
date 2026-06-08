@@ -3,22 +3,121 @@
 # omarchy:summary=Sync Omarchy theme to VS Code, VSCodium, and Cursor
 # omarchy:hidden=true
 
-VS_CODE_THEME="$HOME/.config/omarchy/current/theme/vscode.json"
+VS_CODE_THEME_DESCRIPTOR="$HOME/.config/omarchy/current/theme/vscode.json"
+GENERATED_THEME="$HOME/.config/omarchy/current/theme/vscode-theme.json"
+GENERATED_EXTENSION_NAME="omarchy-theme"
+GENERATED_EXTENSION_ID="local.$GENERATED_EXTENSION_NAME"
+GENERATED_EXTENSION_VERSION="1.0.0"
+
+register_generated_extension() {
+  local ext_dir="$1"
+  local ext_base extensions_file obsolete_file relative tmp
+
+  ext_base=$(dirname "$ext_dir")
+  extensions_file="$ext_base/extensions.json"
+  obsolete_file="$ext_base/.obsolete"
+  relative=$(basename "$ext_dir")
+
+  if [[ -f $obsolete_file ]]; then
+    tmp=$(mktemp)
+    if jq --arg key "$GENERATED_EXTENSION_ID-$GENERATED_EXTENSION_VERSION" 'del(.[$key])' "$obsolete_file" >"$tmp"; then
+      mv "$tmp" "$obsolete_file"
+      [[ $(jq 'length' "$obsolete_file") == "0" ]] && rm -f "$obsolete_file"
+    else
+      rm -f "$tmp"
+    fi
+  fi
+
+  [[ -f $extensions_file ]] || printf '[]\n' >"$extensions_file"
+
+  tmp=$(mktemp)
+  if jq \
+    --arg id "$GENERATED_EXTENSION_ID" \
+    --arg version "$GENERATED_EXTENSION_VERSION" \
+    --arg fs_path "$ext_dir" \
+    --arg external "file://$ext_dir" \
+    --arg relative "$relative" \
+    'map(select(.identifier.id != $id)) + [{
+      identifier: { id: $id },
+      version: $version,
+      location: {
+        "$mid": 1,
+        fsPath: $fs_path,
+        external: $external,
+        path: $fs_path,
+        scheme: "file"
+      },
+      relativeLocation: $relative
+    }]' \
+    "$extensions_file" >"$tmp"; then
+    mv "$tmp" "$extensions_file"
+  else
+    rm -f "$tmp"
+  fi
+}
+
+# Install generated theme as a local extension for a given editor
+install_generated_extension() {
+  local ext_dir="$1"
+  local theme_type ui_theme
+
+  theme_type=$(jq -r '.type // "dark"' "$GENERATED_THEME")
+  if [[ $theme_type == "light" ]]; then
+    ui_theme="vs"
+  else
+    ui_theme="vs-dark"
+  fi
+
+  mkdir -p "$ext_dir/themes"
+  ln -sfn "$GENERATED_THEME" "$ext_dir/themes/omarchy-color-theme.json"
+
+  cat > "$ext_dir/package.json" <<EOF
+{
+    "name": "$GENERATED_EXTENSION_NAME",
+    "displayName": "Omarchy",
+    "description": "Omarchy color theme",
+    "publisher": "local",
+    "version": "$GENERATED_EXTENSION_VERSION",
+    "engines": { "vscode": "^1.70.0" },
+    "categories": ["Themes"],
+    "contributes": {
+        "themes": [{
+            "label": "Omarchy",
+            "uiTheme": "$ui_theme",
+            "path": "./themes/omarchy-color-theme.json"
+        }]
+    }
+}
+EOF
+
+  register_generated_extension "$ext_dir"
+}
 
 set_theme() {
   local editor_cmd="$1"
   local settings_path="$2"
+  local ext_base="$3"
 
   omarchy-cmd-present "$editor_cmd" || return 0
 
-  if [[ -f $VS_CODE_THEME ]]; then
-    theme_name=$(jq -r '.name' "$VS_CODE_THEME")
-    extension=$(jq -r '.extension' "$VS_CODE_THEME")
+  local theme_name=""
+
+  if [[ -f "$VS_CODE_THEME_DESCRIPTOR" ]]; then
+    # Theme specifies a preferred 3rd-party extension/theme pair.
+    theme_name=$(jq -r '.name' "$VS_CODE_THEME_DESCRIPTOR")
+    local extension
+    extension=$(jq -r '.extension' "$VS_CODE_THEME_DESCRIPTOR")
 
     if [[ -n $extension ]] && ! "$editor_cmd" --list-extensions 2>/dev/null | grep -Fxq "$extension"; then
       "$editor_cmd" --install-extension "$extension" >/dev/null 2>&1
     fi
+  elif [[ -f "$GENERATED_THEME" ]]; then
+    # VS Code only discovers local color themes through an extension package.
+    install_generated_extension "$ext_base/$GENERATED_EXTENSION_NAME"
+    theme_name="Omarchy"
+  fi
 
+  if [[ -n "$theme_name" ]]; then
     mkdir -p "$(dirname "$settings_path")"
     [[ -f $settings_path ]] || printf '{\n}\n' >"$settings_path"
 
@@ -34,7 +133,7 @@ set_theme() {
   fi
 }
 
-! omarchy-toggle-enabled skip-vscode-theme-changes && set_theme "code" "$HOME/.config/Code/User/settings.json"
-! omarchy-toggle-enabled skip-vscode-insiders-theme-changes && set_theme "code-insiders" "$HOME/.config/Code - Insiders/User/settings.json"
-! omarchy-toggle-enabled skip-codium-theme-changes && set_theme "codium" "$HOME/.config/VSCodium/User/settings.json"
-! omarchy-toggle-enabled skip-cursor-theme-changes && set_theme "cursor" "$HOME/.config/Cursor/User/settings.json"
+! omarchy-toggle-enabled skip-vscode-theme-changes && set_theme "code" "$HOME/.config/Code/User/settings.json" "$HOME/.vscode/extensions"
+! omarchy-toggle-enabled skip-vscode-insiders-theme-changes && set_theme "code-insiders" "$HOME/.config/Code - Insiders/User/settings.json" "$HOME/.vscode-insiders/extensions"
+! omarchy-toggle-enabled skip-codium-theme-changes && set_theme "codium" "$HOME/.config/VSCodium/User/settings.json" "$HOME/.vscode-oss/extensions"
+! omarchy-toggle-enabled skip-cursor-theme-changes && set_theme "cursor" "$HOME/.config/Cursor/User/settings.json" "$HOME/.cursor/extensions"

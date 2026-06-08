@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# omarchy:summary=Lock before suspend and wait for the session lock to become secure
+# omarchy:group=system
+# omarchy:hidden=true
+
+wait_attempts=${1:-100}
+
+if [[ ! $wait_attempts =~ ^[0-9]+$ ]] || (( wait_attempts < 1 )); then
+  wait_attempts=100
+fi
+
+omarchy-shell lock lock >/dev/null 2>&1 || exit 1
+
+for (( attempt = 0; attempt < wait_attempts; attempt++ )); do
+  status=$(omarchy-shell lock status 2>/dev/null || true)
+
+  if jq -e '.secure == true' <<<"$status" >/dev/null 2>&1; then
+    exit 0
+  fi
+
+  sleep 0.05
+done
+
+exit 1

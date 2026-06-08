@@ -1,13 +1,33 @@
 #!/bin/bash
 
-# omarchy:summary=Creates a new Omarchy migration named after the unix timestamp of the last commit.
+# omarchy:summary=Create a new Omarchy migration in the current source tree.
+# omarchy:args=<system|user> [--no-edit]
 
-cd ~/.local/share/omarchy
-migration_file="$HOME/.local/share/omarchy/migrations/$(git log -1 --format=%cd --date=unix).sh"
-touch $migration_file
+set -euo pipefail
 
-if [[ $1 != "--no-edit" ]]; then
-  nvim $migration_file
+scope="${1:-}"
+case "$scope" in
+  system|user)
+    shift
+    ;;
+  -h|--help|"")
+    echo "Usage: omarchy-dev-add-migration <system|user> [--no-edit]"
+    exit 0
+    ;;
+  *)
+    echo "Unknown migration scope: $scope" >&2
+    echo "Usage: omarchy-dev-add-migration <system|user> [--no-edit]" >&2
+    exit 1
+    ;;
+esac
+
+cd "${OMARCHY_PATH:-$(pwd)}"
+mkdir -p "migrations/$scope"
+migration_file="migrations/$scope/$(git log -1 --format=%cd --date=unix).sh"
+touch "$migration_file"
+
+if [[ ${1:-} != "--no-edit" ]]; then
+  nvim "$migration_file"
 fi
 
-echo $migration_file
+printf '%s\n' "$PWD/$migration_file"

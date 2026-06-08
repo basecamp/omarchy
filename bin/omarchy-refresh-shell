@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# omarchy:summary=Reset shell.json to Omarchy defaults
+# omarchy:examples=omarchy refresh shell
+
+omarchy-refresh-config omarchy/shell.json
+omarchy-restart-shell

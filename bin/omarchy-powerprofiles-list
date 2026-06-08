@@ -1,7 +1,19 @@
 #!/bin/bash
 
 # omarchy:summary=Returns a list of all the available power profiles on the system.
+# omarchy:args=[--active-state]
 
-powerprofilesctl list |
-  awk '/^\s*[* ]\s*[a-zA-Z0-9\-]+:$/ { gsub(/^[*[:space:]]+|:$/,""); print }' |
-  tac
+if [[ ${1:-} != "" && ${1:-} != "--active-state" ]]; then
+  echo "Usage: omarchy-powerprofiles-list [--active-state]" >&2
+  exit 1
+fi
+
+if [[ ${1:-} == "--active-state" ]]; then
+  powerprofilesctl list 2>/dev/null |
+    awk '/^\s*[* ]\s*[a-zA-Z0-9-]+:$/ { active=($1=="*"); gsub(/^[*[:space:]]+|:$/,""); print $0 "\t" (active ? 1 : 0) }' |
+    tac
+else
+  powerprofilesctl list 2>/dev/null |
+    awk '/^\s*[* ]\s*[a-zA-Z0-9-]+:$/ { gsub(/^[*[:space:]]+|:$/,""); print }' |
+    tac
+fi

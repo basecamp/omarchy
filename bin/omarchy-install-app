@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# omarchy:summary=Install a packaged app, surfacing the install in a floating terminal
+# omarchy:args=<display-name> <packages>
+# omarchy:examples=omarchy install app 'LM Studio' lmstudio-bin
+
+name="${1-}"
+packages="${2-}"
+
+if [[ -z $name || -z $packages ]]; then
+  echo "Usage: omarchy-install-app <display-name> <packages>" >&2
+  exit 1
+fi
+
+exec omarchy-launch-floating-terminal-with-presentation "echo 'Installing ${name}...'; omarchy-pkg-add ${packages}"

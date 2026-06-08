@@ -5,9 +5,14 @@
 # omarchy:requires-sudo=true
 
 installed=()
+declare -A seen=()
 for pkg in "$@"; do
-  if pacman -Q "$pkg" &>/dev/null; then
-    installed+=("$pkg")
+  if package_info=$(pacman -Q "$pkg" 2>/dev/null); then
+    package_name=${package_info%% *}
+    if [[ -z ${seen[$package_name]} ]]; then
+      installed+=("$package_name")
+      seen[$package_name]=1
+    fi
   fi
 done
 

@@ -1,0 +1,164 @@
+#!/bin/bash
+
+# omarchy:summary=Send an IPC call to the running Omarchy shell
+# omarchy:args=[-q] <target> <method> [args...]
+# omarchy:examples=omarchy shell shell ping | omarchy-shell shell toggle omarchy.menu '{"menu":"root"}'
+
+QUIET=0
+if [[ ${1:-} == "-q" ]]; then
+  QUIET=1
+  shift
+fi
+
+if (( $# == 0 )) || [[ $1 == "-h" || $1 == "--help" ]]; then
+  cat <<USAGE
+Usage: omarchy-shell [-q] <target> <method> [args...]
+
+Forwards an IPC call to the running Omarchy shell. The shell is expected
+to already be running; this command does not start it.
+
+Options:
+  -q  Quiet best-effort mode. Suppress output and return success even when
+      the shell, target, method, or arguments are unavailable.
+
+Examples:
+  omarchy-shell shell ping
+  omarchy-shell shell openBarConfig
+  omarchy-shell -q Indicators refresh
+  omarchy-shell shell listPlugins
+  omarchy-shell shell toggle omarchy.menu '{"menu":"root"}'
+USAGE
+  exit 0
+fi
+
+if (( $# < 2 )); then
+  (( QUIET )) && exit 0
+  echo "Usage: omarchy-shell <target> <method> [args...]" >&2
+  exit 1
+fi
+
+if [[ -z ${OMARCHY_PATH:-} ]]; then
+  (( QUIET )) && exit 0
+  echo "OMARCHY_PATH is not set" >&2
+  exit 1
+fi
+
+SHELL_QML="$OMARCHY_PATH/shell/shell.qml"
+
+if [[ $1 == "shell" && ( $2 == "summon" || $2 == "toggle" ) ]] && (( $# == 3 )); then
+  set -- "$1" "$2" "$3" "{}"
+fi
+
+export OMARCHY_SHELL_QUIET="$QUIET"
+
+perl -MCwd=abs_path -MEncode=encode,decode -MSocket -MIO::Handle \
+  -e '
+    binmode STDOUT, ":encoding(UTF-8)";
+    binmode STDERR, ":encoding(UTF-8)";
+    $SIG{PIPE} = "IGNORE";
+
+    sub read_qstring {
+      my ($data, $offset) = @_;
+      return (undef, $offset) if $offset + 4 > length($data);
+      my $length = unpack("N", substr($data, $offset, 4));
+      $offset += 4;
+      return (undef, $offset) if $length == 0xffffffff || $offset + $length > length($data);
+      return (decode("UTF-16BE", substr($data, $offset, $length)), $offset + $length);
+    }
+
+    sub qstring {
+      my $encoded = encode("UTF-16BE", $_[0] // "");
+      return pack("N", length($encoded)) . $encoded;
+    }
+
+    sub write_all {
+      my ($client, $payload) = @_;
+      my $written = 0;
+      while ($written < length($payload)) {
+        my $n = syswrite($client, $payload, length($payload) - $written, $written);
+        return 0 unless defined $n;
+        $written += $n;
+      }
+      return 1;
+    }
+
+    sub print_success {
+      my ($response) = @_;
+      my ($message) = read_qstring($response, 2);
+      return 0 unless defined $message && length($message);
+      print $message;
+      print "\n" unless substr($message, -1) eq "\n";
+      return 0;
+    }
+
+    my $shell_qml_arg = shift @ARGV;
+    my $shell_qml = abs_path($shell_qml_arg);
+    my $target = decode("UTF-8", shift @ARGV);
+    my $function = decode("UTF-8", shift @ARGV);
+    my @args = map { decode("UTF-8", $_) } @ARGV;
+    my $runtime_dir = $ENV{"XDG_RUNTIME_DIR"} || "/run/user/$<";
+    my $quiet = ($ENV{"OMARCHY_SHELL_QUIET"} || "") eq "1";
+    my $payload = chr(3) . qstring($target) . qstring($function) . pack("N", scalar @args) . join("", map { qstring($_) } @args);
+    my @candidates;
+
+    if (!defined $shell_qml) {
+      exit 0 if $quiet;
+      print STDERR "omarchy-shell config not found: $shell_qml_arg\n";
+      exit 1;
+    }
+
+    for my $lock_path (glob("$runtime_dir/quickshell/by-id/*/instance.lock")) {
+      my $data;
+      next unless open(my $lock, "<:raw", $lock_path);
+      { local $/; $data = <$lock>; }
+      close($lock);
+      my (undef, $offset) = read_qstring($data, 0);
+      my ($path) = read_qstring($data, $offset);
+      next unless $path;
+      my $abs_path = abs_path($path);
+      next unless defined $abs_path && $abs_path eq $shell_qml;
+      (my $socket_path = $lock_path) =~ s{/instance\.lock$}{/ipc.sock};
+      push @candidates, [(stat($lock_path))[9] || 0, $socket_path];
+    }
+
+    for my $candidate (sort { $b->[0] <=> $a->[0] } @candidates) {
+      socket(my $client, AF_UNIX, SOCK_STREAM, 0) || next;
+      if (connect($client, sockaddr_un($candidate->[1]))) {
+        unless (write_all($client, $payload)) {
+          close($client);
+          next;
+        }
+
+        my $response = "";
+        while (1) {
+          my $buffer = "";
+          my $n = sysread($client, $buffer, 65536);
+          last unless defined $n && $n > 0;
+          $response .= $buffer;
+        }
+        close($client);
+
+        next unless length($response);
+        my $code = ord(substr($response, 0, 1));
+        if ($code == 5) {
+          exit 0 if $quiet;
+          print_success($response);
+          exit 0;
+        } elsif ($code == 2) {
+          print STDERR "Target not found.\n" unless $quiet;
+        } elsif ($code == 3) {
+          print STDERR "Function not found.\n" unless $quiet;
+        } elsif ($code == 4) {
+          print STDERR "Invalid arguments.\n" unless $quiet;
+        } else {
+          print STDERR "Unexpected IPC response: $code\n" unless $quiet;
+        }
+        exit($quiet ? 0 : 1);
+      }
+      close($client);
+    }
+
+    exit 0 if $quiet;
+    print STDERR "omarchy-shell is not running\n";
+    exit 1;
+  ' "$SHELL_QML" "$@"

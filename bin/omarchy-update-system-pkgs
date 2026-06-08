@@ -6,4 +6,25 @@
 set -e
 
 echo -e "\e[32m\nUpdate system packages\e[0m"
-sudo pacman -Syyu --noconfirm
+
+# Transition --overwrite: previous script-installed Omarchy wrote these paths
+# as unowned files; pacman would refuse the omarchy-settings upgrade on first
+# encounter. Drop each entry once the transition release is the baseline.
+sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm \
+  --overwrite '/etc/docker/daemon.json' \
+  --overwrite '/etc/gnupg/dirmngr.conf' \
+  --overwrite '/etc/modprobe.d/omarchy-usb-autosuspend.conf' \
+  --overwrite '/etc/sudoers.d/omarchy-asdcontrol' \
+  --overwrite '/etc/sudoers.d/omarchy-passwd-tries' \
+  --overwrite '/etc/sudoers.d/omarchy-tzupdate' \
+  --overwrite '/etc/sysctl.d/90-omarchy-file-watchers.conf' \
+  --overwrite '/etc/sysctl.d/99-omarchy-sysctl.conf' \
+  --overwrite '/etc/systemd/logind.conf.d/10-ignore-power-button.conf' \
+  --overwrite '/etc/systemd/resolved.conf.d/10-disable-multicast.conf' \
+  --overwrite '/etc/systemd/resolved.conf.d/20-docker-dns.conf' \
+  --overwrite '/etc/systemd/system.conf.d/10-faster-shutdown.conf' \
+  --overwrite '/etc/systemd/system/user@.service.d/10-faster-shutdown.conf' \
+  --overwrite '/etc/systemd/system/docker.service.d/no-block-boot.conf' \
+  --overwrite '/etc/systemd/system/plocate-updatedb.service.d/ac-only.conf' \
+  --overwrite '/usr/lib/systemd/system-sleep/unmount-fuse' \
+  --overwrite '/usr/share/plymouth/themes/omarchy/*'

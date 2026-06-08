@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle bar visibility without killing the Omarchy shell
+# omarchy:args=[toggle|on|off]
+# omarchy:examples=omarchy toggle bar | omarchy toggle bar off | omarchy toggle bar on
+
+omarchy-toggle bar-off "${1:-toggle}"

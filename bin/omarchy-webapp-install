@@ -1,11 +1,41 @@
 #!/bin/bash
 
 # omarchy:summary=Create a desktop launcher for a web app
-# omarchy:args=[name url icon [custom-exec] [mime-types]]
+# omarchy:args=[name url icon-url-or-name [custom-exec] [mime-types]]
 
 set -e
 
-ICON_DIR="$HOME/.local/share/applications/icons"
+ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
+
+safe_icon_name() {
+  printf '%s\n' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//'
+}
+
+icon_name_from_ref() {
+  local ref="$1"
+  local name
+  name=$(basename "$ref")
+
+  if [[ $name == *.* ]]; then
+    safe_icon_name "${name%.*}"
+  else
+    printf '%s\n' "$name"
+  fi
+}
+
+install_user_icon() {
+  local source="$1"
+  local name="$2"
+  local ext="${source##*.}"
+
+  [[ $ext == "$source" ]] && ext="png"
+  mkdir -p "$ICON_DIR"
+  cp "$source" "$ICON_DIR/$name.$ext"
+  gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" &>/dev/null || true
+  printf '%s\n' "$name"
+}
 
 if (( $# < 3 )); then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
@@ -18,10 +48,12 @@ if (( $# < 3 )); then
   # Try to fetch favicon automatically first.
   FAVICON_URL="https://www.google.com/s2/favicons?domain=${APP_URL}&sz=128"
   mkdir -p "$ICON_DIR"
-  if curl -fsSL -o "$ICON_DIR/$APP_NAME.png" "$FAVICON_URL" && [[ -s $ICON_DIR/$APP_NAME.png ]]; then
-    ICON_REF="$APP_NAME.png"
+  ICON_VALUE=$(safe_icon_name "$APP_NAME")
+  if curl -fsSL -o "$ICON_DIR/$ICON_VALUE.png" "$FAVICON_URL" && [[ -s $ICON_DIR/$ICON_VALUE.png ]]; then
+    gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" &>/dev/null || true
+    ICON_REF="$ICON_VALUE"
   else
-    ICON_REF=$(gum input --prompt "Icon URL> " --placeholder "Could not fetch favicon automatically. Enter PNG icon URL (see https://dashboardicons.com)")
+    ICON_REF=$(gum input --prompt "Icon URL/name> " --placeholder "Could not fetch favicon automatically. Enter PNG icon URL or icon name")
   fi
 
   CUSTOM_EXEC=""
@@ -45,21 +77,24 @@ if [[ -z $APP_NAME || -z $APP_URL ]]; then
   exit 1
 fi
 
-# Resolve icon from URL or from a local icon name.
-mkdir -p "$ICON_DIR"
-
 if [[ -z $ICON_REF ]]; then
   ICON_REF="https://www.google.com/s2/favicons?domain=${APP_URL}&sz=128"
 fi
 
 if [[ $ICON_REF =~ ^https?:// ]]; then
-  ICON_PATH="$ICON_DIR/$APP_NAME.png"
-  if ! curl -fsSL -o "$ICON_PATH" "$ICON_REF" || [[ ! -s $ICON_PATH ]]; then
+  ICON_VALUE=$(safe_icon_name "$APP_NAME")
+  mkdir -p "$ICON_DIR"
+  if ! curl -fsSL -o "$ICON_DIR/$ICON_VALUE.png" "$ICON_REF" || [[ ! -s $ICON_DIR/$ICON_VALUE.png ]]; then
     echo "Error: Failed to download icon."
     exit 1
   fi
+  gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" &>/dev/null || true
+elif [[ -f $ICON_REF ]]; then
+  ICON_VALUE=$(install_user_icon "$ICON_REF" "$(safe_icon_name "$APP_NAME")")
 else
-  ICON_PATH="$ICON_DIR/$ICON_REF"
+  # Bundled Omarchy icons are package-owned under /usr/share/icons/hicolor.
+  # Accept either "HEY" or the historical "HEY.png" argument form.
+  ICON_VALUE=$(icon_name_from_ref "$ICON_REF")
 fi
 
 # Use custom exec if provided, otherwise default behavior
@@ -67,6 +102,7 @@ EXEC_COMMAND="${CUSTOM_EXEC:-omarchy-launch-webapp $APP_URL}"
 
 # Create application .desktop file
 DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
+mkdir -p "$(dirname "$DESKTOP_FILE")"
 
 cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
@@ -76,7 +112,7 @@ Comment=$APP_NAME
 Exec=$EXEC_COMMAND
 Terminal=false
 Type=Application
-Icon=$ICON_PATH
+Icon=$ICON_VALUE
 StartupNotify=true
 EOF
 

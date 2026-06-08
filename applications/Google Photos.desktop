@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Name=Google Photos
+Exec=omarchy-launch-webapp https://photos.google.com/
+Terminal=false
+Type=Application
+Icon=google-photos
+StartupNotify=true

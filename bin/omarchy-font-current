@@ -3,4 +3,7 @@
 # omarchy:summary=Show current monospace font
 # omarchy:examples=omarchy font current
 
-grep -oP 'font-family:\s*["'\'']?\K[^;"'\'']+' ~/.config/waybar/style.css | head -n1
+# fontconfig is the source of truth. fc-match returns a comma-separated
+# alias list (e.g. "JetBrainsMono Nerd Font,JetBrainsMono NF") so take
+# the first entry.
+fc-match monospace -f '%{family}\n' | head -n1 | cut -d, -f1

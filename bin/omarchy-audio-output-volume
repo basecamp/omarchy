@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# omarchy:summary=Adjust output volume and show the Omarchy OSD
+# omarchy:args=<raise|lower|mute-toggle|+N|-N>
+# omarchy:examples=omarchy audio output volume raise | omarchy audio output volume lower | omarchy audio output volume mute-toggle | omarchy audio output volume +1
+
+action="${1:-}"
+
+if [[ -z $action ]]; then
+  echo "Usage: omarchy-audio-output-volume <raise|lower|mute-toggle|+N|-N>"
+  exit 1
+fi
+
+volume_state() {
+  wpctl get-volume @DEFAULT_AUDIO_SINK@
+}
+
+volume_percent() {
+  volume_state | awk '{ for (i=1; i<=NF; i++) if ($i ~ /^[0-9.]+$/) print int($i * 100) }'
+}
+
+volume_muted() {
+  volume_state | grep -q MUTED
+}
+
+unmute_output() {
+  wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 >/dev/null
+}
+
+case "$action" in
+  raise) action="+5" ;;
+  lower) action="-5" ;;
+esac
+
+if [[ $action == "mute-toggle" ]]; then
+  runtime_dir="${XDG_RUNTIME_DIR:-/tmp}"
+  debounce_file="$runtime_dir/omarchy-audio-output-volume-mute-toggle.last"
+  now=$(date +%s%3N)
+  last=0
+  [[ -r $debounce_file ]] && read -r last < "$debounce_file" || true
+  if (( now - last < 250 )); then
+    exit 0
+  fi
+  printf '%s\n' "$now" > "$debounce_file"
+
+  wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle >/dev/null
+elif [[ $action == +* ]]; then
+  step="${action#+}"
+  unmute_output
+  wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ "${step}%+"
+elif [[ $action == -* ]]; then
+  step="${action#-}"
+  unmute_output
+  wpctl set-volume @DEFAULT_AUDIO_SINK@ "${step}%-"
+else
+  echo "Unknown volume action: $action"
+  exit 1
+fi
+
+percent=$(volume_percent)
+if volume_muted || (( percent == 0 )); then
+  icon="volume-muted"
+else
+  icon="volume-high"
+fi
+
+omarchy-osd -i "$icon" -p "$percent"

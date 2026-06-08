@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# omarchy:summary=Install a small mise-backed wrapper for a given tool.
+# omarchy:args=<package> [command-name [bin-name]]
+
+if [[ -z $1 ]]; then
+  echo "Usage: omarchy-mise-install <package> [command-name [bin-name]]"
+  exit 1
+fi
+
+package=$1
+command=${2:-$1}
+bin=${3:-$command}
+
+mkdir -p "$HOME/.local/bin"
+
+cat >"$HOME/.local/bin/$command" <<EOF
+#!/bin/bash
+mise use -g "$package"
+exec "$bin" "\$@"
+EOF
+
+chmod +x "$HOME/.local/bin/$command"

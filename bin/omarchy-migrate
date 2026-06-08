@@ -1,28 +1,97 @@
 #!/bin/bash
 
-# omarchy:summary=Run all pending migrations to bring the system in line with the installed version.
+# omarchy:summary=Run pending Omarchy system and user migrations.
+# omarchy:args=[--pending [all|system|user]]
 
-STATE_DIR="$HOME/.local/state/omarchy/migrations"
-mkdir -p "$STATE_DIR"
+set -euo pipefail
 
-# Skipped migrations are tracked separately
-mkdir -p "$STATE_DIR/skipped"
+mode="run"
+pending_scope="all"
 
-# Run any pending migrations
-for file in $OMARCHY_PATH/migrations/*.sh; do
-  filename=$(basename "$file")
+usage() {
+  echo "Usage: omarchy-migrate [--pending [all|system|user]]"
+}
 
-  if [[ ! -f $STATE_DIR/$filename && ! -f $STATE_DIR/skipped/$filename ]]; then
-    echo -e "\e[32m\nRunning migration (${filename%.sh})\e[0m"
-
-    if bash $file; then
-      touch "$STATE_DIR/$filename"
-    else
-      if gum confirm "Migration ${filename%.sh} failed. Skip and continue?"; then
-        touch "$STATE_DIR/skipped/$filename"
-      else
-        exit 1
+while (($#)); do
+  case "$1" in
+    --pending|--check)
+      mode="pending"
+      shift
+      if [[ ${1:-} == "all" || ${1:-} == "system" || ${1:-} == "user" ]]; then
+        pending_scope="$1"
+        shift
       fi
-    fi
-  fi
+      ;;
+    --pending=all|--pending=system|--pending=user)
+      mode="pending"
+      pending_scope="${1#--pending=}"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 1
+      ;;
+  esac
 done
+
+pending_output=""
+
+append_pending() {
+  local scope="$1"
+  local command="$2"
+  local output=""
+  local migration=""
+
+  if output=$("$command" --pending 2>/dev/null); then
+    while IFS= read -r migration; do
+      [[ -n $migration ]] || continue
+      pending_output+="$scope/$migration"$'\n'
+    done <<<"$output"
+  fi
+}
+
+if [[ $mode == "pending" ]]; then
+  case "$pending_scope" in
+    all)
+      append_pending system omarchy-migrate-system
+      append_pending user omarchy-migrate-user
+      ;;
+    system)
+      append_pending system omarchy-migrate-system
+      ;;
+    user)
+      append_pending user omarchy-migrate-user
+      ;;
+  esac
+
+  if [[ -n $pending_output ]]; then
+    printf '%s' "$pending_output"
+    exit 0
+  else
+    exit 1
+  fi
+fi
+
+wait_for_pacman_transaction() {
+  local lock_file=/var/lib/pacman/db.lck
+
+  [[ -e $lock_file ]] || return 0
+  echo "Waiting for pacman transaction to finish before running Omarchy migrations..."
+
+  for _ in {1..900}; do
+    [[ -e $lock_file ]] || return 0
+    sleep 1
+  done
+
+  echo "Pacman transaction is still running; Omarchy migrations will retry on next login."
+  exit 0
+}
+
+wait_for_pacman_transaction
+
+omarchy-migrate-system
+omarchy-migrate-user

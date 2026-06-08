@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.active-window",
+  "name": "Active window",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Title of the focused window",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "ActiveWindow.qml"
+  },
+  "barWidget": {
+    "displayName": "Active window",
+    "description": "Title of the focused window",
+    "category": "Compositor",
+    "allowMultiple": false
+  }
+}

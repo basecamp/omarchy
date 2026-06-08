@@ -1,0 +1,489 @@
+#!/bin/bash
+
+set -euo pipefail
+
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+CLI="$ROOT/bin/omarchy"
+TMPDIR=""
+PI_TMPDIR=""
+THEME_TMPDIR=""
+
+export PATH="$ROOT/bin:$PATH"
+
+pass() {
+  printf 'ok - %s\n' "$1"
+}
+
+fail() {
+  printf 'not ok - %s\n' "$1" >&2
+  exit 1
+}
+
+assert_output_contains() {
+  local description="$1"
+  local output="$2"
+  local expected="$3"
+
+  if [[ $output != *"$expected"* ]]; then
+    printf 'Expected output to contain: %s\n' "$expected" >&2
+    printf 'Actual output:\n%s\n' "$output" >&2
+    fail "$description"
+  fi
+
+  pass "$description"
+}
+
+cleanup() {
+  [[ -n $TMPDIR && -d $TMPDIR ]] && rm -rf "$TMPDIR"
+  [[ -n $PI_TMPDIR && -d $PI_TMPDIR ]] && rm -rf "$PI_TMPDIR"
+  [[ -n $THEME_TMPDIR && -d $THEME_TMPDIR ]] && rm -rf "$THEME_TMPDIR"
+}
+trap cleanup EXIT
+
+output=$("$CLI" --help)
+assert_output_contains "main help renders" "$output" "Omarchy command center"
+assert_output_contains "main help includes hardware group" "$output" "hw"
+assert_output_contains "main help includes package group" "$output" "pkg"
+if grep -Eq '^  [a-z0-9-]+[[:space:]].*\([0-9]+\)$' <<<"$output"; then
+  fail "main help does not show group counts"
+fi
+pass "main help does not show group counts"
+
+output=$("$CLI" commands)
+assert_output_contains "commands lists documented commands" "$output" "omarchy theme set <theme-name>"
+
+"$CLI" commands --json | jq -e '.ok == true and (.commands | length >= 200)' >/dev/null
+pass "commands --json is valid JSON with full bin coverage"
+
+"$CLI" commands --json | jq -e 'all(.commands[]; .summary != "undocumented")' >/dev/null
+pass "all included commands have summaries"
+
+"$CLI" commands --json | jq -e 'all(.commands[]; has("binary") and has("filename_route") and has("routes") and (has("legacy") | not) and (has("usage") | not) and (has("visibility") | not) and (has("mutates") | not) and (has("interactive") | not))' >/dev/null
+pass "JSON uses binary/routes and omits legacy/usage/extra metadata"
+
+"$CLI" commands --check >/dev/null
+pass "commands --check passes"
+
+"$CLI" commands --all >/dev/null
+pass "commands --all does not crash"
+
+"$CLI" commands --all --json | jq -e '.commands[] | select(.route == "omarchy hyprland window gaps toggle" and .summary != "undocumented")' >/dev/null
+pass "fallback commands are inferred and documented"
+
+"$CLI" commands --all --json | jq -e '.commands[] | select(.route == "omarchy dev benchmark")' >/dev/null
+pass "benchmark command is discoverable in all commands"
+
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-pkg-add" and .route == "omarchy pkg add" and .filename_route == "omarchy pkg add" and (.routes | index("omarchy pkg add")))' >/dev/null
+pass "JSON exposes direct pkg add route"
+
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-install-gaming-xbox-cloud" and .route == "omarchy install gaming xbox-cloud" and .filename_route == "omarchy install gaming xbox cloud" and (.routes | index("omarchy install gaming xbox cloud")))' >/dev/null
+pass "Xbox Cloud installer keeps hyphenated canonical route"
+
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-install-gaming-xbox-controllers" and .route == "omarchy install gaming xbox-controllers" and .filename_route == "omarchy install gaming xbox controllers" and (.routes | index("omarchy install gaming xbox controllers")))' >/dev/null
+pass "Xbox controller installer keeps hyphenated canonical route"
+
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-remove-gaming-xbox-controllers" and .route == "omarchy remove gaming xbox-controllers" and .filename_route == "omarchy remove gaming xbox controllers" and (.routes | index("omarchy remove gaming xbox controllers")))' >/dev/null
+pass "Xbox controller remover keeps hyphenated canonical route"
+
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-install-gaming-geforce-now" and .route == "omarchy install gaming geforce-now" and .filename_route == "omarchy install gaming geforce now" and (.routes | index("omarchy install gaming geforce now")))' >/dev/null
+pass "GeForce NOW installer keeps hyphenated canonical route"
+
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-remove-gaming-geforce-now" and .route == "omarchy remove gaming geforce-now" and .filename_route == "omarchy remove gaming geforce now" and (.routes | index("omarchy remove gaming geforce now")))' >/dev/null
+pass "GeForce NOW remover keeps hyphenated canonical route"
+
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-install-gaming-gpu-lib32" and .route == "omarchy install gaming gpu-lib32" and .filename_route == "omarchy install gaming gpu lib32" and (.routes | index("omarchy install gaming gpu lib32")))' >/dev/null
+pass "GPU lib32 installer keeps hyphenated canonical route"
+
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-refresh-pacman" and .requires_sudo == true)' >/dev/null
+pass "sudo metadata marks sudo commands"
+
+output=$("$CLI" theme --help)
+assert_output_contains "group help renders" "$output" "Theme commands"
+
+output=$("$CLI" install --help)
+assert_output_contains "install group help renders" "$output" "Install commands"
+assert_output_contains "install group includes browser route" "$output" "omarchy install browser"
+
+output=$("$CLI" install)
+assert_output_contains "bare group renders help instead of picker" "$output" "Install commands"
+assert_output_contains "bare group includes browser route" "$output" "omarchy install browser"
+
+output=$("$CLI" toggle)
+assert_output_contains "bare root command with children renders help" "$output" "Toggle commands"
+assert_output_contains "bare toggle help includes child route" "$output" "omarchy toggle nightlight"
+
+output=$("$CLI" pkg --help)
+assert_output_contains "package group includes pkg add fallback route" "$output" "omarchy pkg add <packages...>"
+
+output=$("$CLI" restart --help)
+assert_output_contains "restart group includes inferred commands" "$output" "omarchy restart btop"
+assert_output_contains "restart group includes all restart commands" "$output" "omarchy restart wifi"
+
+output=$("$CLI" hw --help)
+assert_output_contains "hardware group help renders" "$output" "omarchy hw asus rog"
+assert_output_contains "hardware group includes touchpad" "$output" "omarchy hw touchpad"
+
+output=$("$CLI" hw asus)
+assert_output_contains "partial hardware prefix renders matching commands" "$output" "omarchy hw asus rog"
+assert_output_contains "partial hardware prefix includes nested match" "$output" "omarchy hw asus zenbook ux5406aa"
+
+output=$("$CLI" menu --help)
+assert_output_contains "menu group includes share fallback route" "$output" "omarchy menu share"
+
+output=$("$CLI" share)
+assert_output_contains "bare required-arg alias renders CLI help" "$output" "Usage:"
+assert_output_contains "bare share help uses canonical route" "$output" "omarchy share <clipboard|file|folder> [path...]"
+
+output=$("$CLI" menu share)
+assert_output_contains "bare required-arg filename route renders CLI help" "$output" "omarchy share <clipboard|file|folder> [path...]"
+
+CLI="$CLI" python3 <<'PY'
+import json
+import os
+import subprocess
+import sys
+
+cli = os.environ['CLI']
+commands = json.loads(subprocess.check_output([cli, 'commands', '--json'], text=True))['commands']
+by_group = {}
+for command in commands:
+  binary = command['binary']
+  stem = binary.removeprefix('omarchy-')
+  group = stem.split('-', 1)[0]
+  filename_route = 'omarchy ' + stem.replace('-', ' ')
+  by_group.setdefault(group, []).append((binary, filename_route, command['route']))
+
+missing = []
+for group, rows in sorted(by_group.items()):
+  proc = subprocess.run([cli, group, '--help'], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+  output = proc.stdout + proc.stderr
+  if proc.returncode != 0:
+    missing.append((group, '<group-help-failed>', f'exit {proc.returncode}'))
+    continue
+  for binary, filename_route, canonical_route in rows:
+    if filename_route not in output and canonical_route not in output and binary not in output:
+      missing.append((group, binary, filename_route))
+
+if missing:
+  for row in missing:
+    print('\t'.join(row), file=sys.stderr)
+  sys.exit(1)
+PY
+pass "every filename-derived group help represents its bins"
+
+output=$(timeout 5 "$CLI" theme set --help)
+assert_output_contains "command help renders without executing" "$output" "Binary:"
+assert_output_contains "theme set help names binary" "$output" "omarchy-theme-set"
+
+output=$(timeout 5 "$CLI" update --help)
+assert_output_contains "mutating command help does not execute target" "$output" "omarchy-update"
+if [[ $output == *"omarchy update perform"* ]]; then
+  fail "hidden update perform compatibility wrapper is not shown"
+fi
+pass "hidden update perform compatibility wrapper is not shown"
+
+output=$("$CLI" screenshot --help)
+assert_output_contains "root alias resolves to command help" "$output" "omarchy-capture-screenshot"
+
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-capture-screenshot") | .aliases | index("omarchy screenshot")' >/dev/null
+pass "aliases are included in JSON metadata"
+
+output=$("$CLI" pkg add --help)
+assert_output_contains "pkg add help resolves" "$output" "omarchy-pkg-add"
+assert_output_contains "pkg add help shows direct route" "$output" "omarchy pkg add <packages...>"
+
+output=$("$CLI" system reboot --help)
+assert_output_contains "system command help is safe" "$output" "omarchy-system-reboot"
+
+output=$("$CLI" dev benchmark --repeat=1)
+assert_output_contains "benchmark command runs" "$output" "Omarchy CLI benchmark"
+
+"$CLI" theme list >/dev/null
+pass "safe dispatch works for theme list"
+
+"$CLI" theme current >/dev/null
+pass "safe dispatch works for theme current"
+
+"$CLI" font list >/dev/null
+pass "safe dispatch works for font list"
+
+"$CLI" font current >/dev/null
+pass "safe dispatch works for font current"
+
+PI_TMPDIR=$(mktemp -d)
+NEXT_THEME="$PI_TMPDIR/.config/omarchy/current/next-theme"
+CURRENT_THEME="$PI_TMPDIR/.config/omarchy/current/theme"
+USER_THEMED="$PI_TMPDIR/.config/omarchy/themed"
+mkdir -p "$NEXT_THEME" "$CURRENT_THEME" "$USER_THEMED"
+
+cat >"$NEXT_THEME/colors.toml" <<'EOF'
+mode = "light"
+accent = "#336699"
+hyprland_active_border = "rgba(010203ee) rgba(040506ee) 45deg"
+cursor = "#ffffff"
+foreground = "#ffffff"
+background = "#000000"
+selection_foreground = "#000000"
+selection_background = "#808080"
+red = "#ff0000"
+green = "#00ff00"
+yellow = "#ffff00"
+blue = "#0000ff"
+magenta = "#ff00ff"
+cyan = "#00ffff"
+muted = "#111111"
+bright_red = "#ff1111"
+bright_green = "#11ff11"
+bright_yellow = "#ffff11"
+bright_blue = "#1111ff"
+bright_magenta = "#ff11ff"
+bright_cyan = "#11ffff"
+bright_fg = "#eeeeee"
+EOF
+
+cat >"$USER_THEMED/mix-test.txt.tpl" <<'EOF'
+mix={{ mix background foreground 50% }}
+strip={{ mix_strip background foreground 50% }}
+rgb={{ mix_rgb background foreground 50% }}
+EOF
+
+cat >"$USER_THEMED/gradient-test.txt.tpl" <<'EOF'
+hypr={{ hypr_gradient hyprland_active_border accent }}
+shell={{ gradient_start hyprland_active_border accent }}
+shell-gradient={{ shell_gradient hyprland_active_border accent }}
+fallback-hypr={{ hypr_gradient missing accent }}
+fallback-shell={{ gradient_start missing accent }}
+fallback-shell-gradient={{ shell_gradient missing accent }}
+EOF
+
+cat >"$USER_THEMED/alias-test.txt.tpl" <<'EOF'
+color={{ color1 }}
+strip={{ color1_strip }}
+rgb={{ color1_rgb }}
+magenta={{ magenta }}
+legacy-purple={{ purple }}
+bright-magenta={{ bright_magenta }}
+legacy-bright-purple={{ bright_purple }}
+EOF
+
+cat >"$NEXT_THEME/shell.lock.toml" <<'EOF'
+text = "#ffffff"
+placeholder = "#ffffff"
+border = "#ffffff"
+EOF
+
+OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-templates"
+grep -qx 'mix=#808080' "$NEXT_THEME/mix-test.txt" || fail "theme template mix helper works"
+grep -qx 'strip=808080' "$NEXT_THEME/mix-test.txt" || fail "theme template mix_strip helper works"
+grep -qx 'rgb=128,128,128' "$NEXT_THEME/mix-test.txt" || fail "theme template mix_rgb helper works"
+pass "theme template color mix helpers work"
+
+grep -qx 'color=#ff0000' "$NEXT_THEME/alias-test.txt" || fail "theme template semantic aliases expose legacy colorN"
+grep -qx 'strip=ff0000' "$NEXT_THEME/alias-test.txt" || fail "theme template legacy colorN_strip works"
+grep -qx 'rgb=255,0,0' "$NEXT_THEME/alias-test.txt" || fail "theme template legacy colorN_rgb works"
+grep -qx 'magenta=#ff00ff' "$NEXT_THEME/alias-test.txt" || fail "theme template magenta helper works"
+grep -qx 'legacy-purple=#ff00ff' "$NEXT_THEME/alias-test.txt" || fail "theme template purple alias works"
+grep -qx 'bright-magenta=#ff11ff' "$NEXT_THEME/alias-test.txt" || fail "theme template bright magenta helper works"
+grep -qx 'legacy-bright-purple=#ff11ff' "$NEXT_THEME/alias-test.txt" || fail "theme template bright purple alias works"
+pass "theme template semantic aliases expose legacy colorN helpers"
+
+osc_summary=$("$ROOT/bin/omarchy-theme-osc" "$NEXT_THEME/colors.toml" | python -c 'import sys; data = sys.stdin.buffer.read(); print(data.count(b"]4;"), b"]4;1;#ff0000" in data, b"]4;15;#eeeeee" in data)')
+[[ $osc_summary == "16 True True" ]] || fail "theme OSC aliases semantic colors to ANSI palette"
+pass "theme OSC aliases semantic colors to ANSI palette"
+
+grep -qx 'hypr={ colors = { "rgba(010203ee)", "rgba(040506ee)" }, angle = 45 }' "$NEXT_THEME/gradient-test.txt" || fail "theme template hypr_gradient helper works"
+grep -qx 'shell=#010203' "$NEXT_THEME/gradient-test.txt" || fail "theme template gradient_start helper works"
+grep -qx 'shell-gradient=rgba(010203ee) rgba(040506ee) 45deg' "$NEXT_THEME/gradient-test.txt" || fail "theme template shell_gradient helper works"
+grep -qx 'fallback-hypr="#336699"' "$NEXT_THEME/gradient-test.txt" || fail "theme template hypr_gradient fallback works"
+grep -qx 'fallback-shell=#336699' "$NEXT_THEME/gradient-test.txt" || fail "theme template gradient_start fallback works"
+grep -qx 'fallback-shell-gradient=#336699' "$NEXT_THEME/gradient-test.txt" || fail "theme template shell_gradient fallback works"
+pass "theme template gradient helpers work"
+
+awk '
+  /^\[lock\]$/ { in_lock = 1; next }
+  /^\[/ { in_lock = 0 }
+  in_lock && /^text = "#ffffff"$/ { text = 1 }
+  in_lock && /^placeholder = "#ffffff"$/ { placeholder = 1 }
+  in_lock && /^border = "#ffffff"$/ { border = 1 }
+  END { exit(text && placeholder && border ? 0 : 1) }
+' "$NEXT_THEME/shell.toml" || fail "theme shell section override is merged"
+pass "theme shell section override is merged"
+
+jq -e '.name == "omarchy-system" and .vars.panel == "#0f0f0f" and .vars.border == "#4d4d4d" and .colors.accent == "accent"' "$NEXT_THEME/pi.json" >/dev/null
+pass "pi theme template is generated from standard themed templates"
+cp "$NEXT_THEME/pi.json" "$CURRENT_THEME/pi.json"
+
+echo '{"name":"omarchy-system","vars":{"custom":"yes"}}' >"$NEXT_THEME/pi.json"
+OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-templates"
+jq -e '.name == "omarchy-system" and .vars.custom == "yes"' "$NEXT_THEME/pi.json" >/dev/null
+pass "theme-specific pi.json overrides the default template"
+
+HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-pi"
+[[ ! -d $PI_TMPDIR/.pi ]] || fail "pi theme sync skips missing Pi agent when not activating"
+pass "pi theme sync skips missing Pi agent when not activating"
+
+HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-pi" --activate
+[[ -f $PI_TMPDIR/.pi/agent/themes/omarchy-system.json ]] || fail "pi theme file is synced"
+pass "pi theme file is synced"
+[[ -f $PI_TMPDIR/.pi/agent/settings.json ]] || fail "pi settings file is generated"
+pass "pi settings file is generated"
+jq -e '.name == "omarchy-system" and .vars.panel == "#0f0f0f"' "$PI_TMPDIR/.pi/agent/themes/omarchy-system.json" >/dev/null
+pass "pi synced theme JSON is valid"
+jq -e '.theme == "omarchy-system"' "$PI_TMPDIR/.pi/agent/settings.json" >/dev/null
+pass "pi generated theme is activated"
+
+jq '.model = "keep-me"' "$PI_TMPDIR/.pi/agent/settings.json" >"$PI_TMPDIR/settings.json.tmp"
+mv "$PI_TMPDIR/settings.json.tmp" "$PI_TMPDIR/.pi/agent/settings.json"
+HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-pi" --activate
+jq -e '.theme == "omarchy-system" and .model == "keep-me"' "$PI_TMPDIR/.pi/agent/settings.json" >/dev/null
+pass "pi theme activation preserves existing settings"
+
+THEME_TMPDIR=$(mktemp -d)
+OMARCHY_PATH="$ROOT" HOME="$THEME_TMPDIR" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" "Tokyo Night"
+background_path=$(readlink -f "$THEME_TMPDIR/.config/omarchy/current/background" 2>/dev/null || true)
+expected_background="$THEME_TMPDIR/.config/omarchy/current/theme/backgrounds/0-swirl-buck.jpg"
+[[ $background_path == "$expected_background" ]] || fail "headless theme set creates current background symlink"
+[[ -f $background_path ]] || fail "headless theme background target exists"
+pass "headless theme set creates current background symlink"
+
+cp "$NEXT_THEME/colors.toml" "$CURRENT_THEME/colors.toml"
+cp "$NEXT_THEME/vscode-theme.json" "$CURRENT_THEME/vscode-theme.json"
+
+FAKE_BIN="$PI_TMPDIR/fake-bin"
+mkdir -p "$FAKE_BIN"
+
+cat >"$FAKE_BIN/tmux" <<'EOF'
+#!/bin/bash
+case "$1" in
+  list-sessions)
+    [[ $2 == "-F" ]] && echo "session-1"
+    exit 0
+    ;;
+  set-environment|set-option|refresh-client)
+    echo "$*" >>"${TMUX_LOG:-/dev/null}"
+    exit 0
+    ;;
+  list-panes|list-clients)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+EOF
+chmod +x "$FAKE_BIN/tmux"
+
+TMUX_LOG="$PI_TMPDIR/tmux.log" PATH="$FAKE_BIN:$ROOT/bin:$PATH" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-tmux"
+grep -q 'set-environment -g COLORFGBG 0;15' "$PI_TMPDIR/tmux.log" || fail "tmux sync reads mode from colors.toml"
+pass "tmux sync reads mode from colors.toml"
+
+cat >"$FAKE_BIN/gsettings" <<'EOF'
+#!/bin/bash
+echo "$*" >>"${GSETTINGS_LOG:-/dev/null}"
+EOF
+chmod +x "$FAKE_BIN/gsettings"
+
+GSETTINGS_LOG="$PI_TMPDIR/gsettings.log" DBUS_SESSION_BUS_ADDRESS="unix:path=$PI_TMPDIR/bus" PATH="$FAKE_BIN:$ROOT/bin:$PATH" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-gnome"
+grep -q 'org.gnome.desktop.interface color-scheme prefer-light' "$PI_TMPDIR/gsettings.log" || fail "gnome sync reads mode from colors.toml"
+pass "gnome sync reads mode from colors.toml"
+
+cat >"$FAKE_BIN/omarchy-cmd-present" <<'EOF'
+#!/bin/bash
+[[ $1 == "code" ]]
+EOF
+chmod +x "$FAKE_BIN/omarchy-cmd-present"
+
+cat >"$FAKE_BIN/omarchy-toggle-enabled" <<'EOF'
+#!/bin/bash
+exit 1
+EOF
+chmod +x "$FAKE_BIN/omarchy-toggle-enabled"
+
+mkdir -p "$PI_TMPDIR/.vscode/extensions"
+echo '{"local.omarchy-theme-1.0.0":true}' >"$PI_TMPDIR/.vscode/extensions/.obsolete"
+PATH="$FAKE_BIN:$ROOT/bin:$PATH" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-vscode"
+jq -e '.contributes.themes[0].uiTheme == "vs"' "$PI_TMPDIR/.vscode/extensions/omarchy-theme/package.json" >/dev/null || fail "vscode generated light theme uses VS Code light uiTheme"
+pass "vscode generated light theme uses VS Code light uiTheme"
+[[ -L $PI_TMPDIR/.vscode/extensions/omarchy-theme/themes/omarchy-color-theme.json ]] || fail "vscode generated theme references current theme file"
+[[ $(readlink "$PI_TMPDIR/.vscode/extensions/omarchy-theme/themes/omarchy-color-theme.json") == "$PI_TMPDIR/.config/omarchy/current/theme/vscode-theme.json" ]] || fail "vscode generated theme references current theme file"
+pass "vscode generated theme references current theme file"
+[[ ! -f $PI_TMPDIR/.vscode/extensions/.obsolete ]] || fail "vscode generated theme clears obsolete extension marker"
+pass "vscode generated theme clears obsolete extension marker"
+jq -e '.[] | select(.identifier.id == "local.omarchy-theme" and .relativeLocation == "omarchy-theme")' "$PI_TMPDIR/.vscode/extensions/extensions.json" >/dev/null || fail "vscode generated theme registers local extension"
+pass "vscode generated theme registers local extension"
+
+for binary in \
+  omarchy-update \
+  omarchy-theme-set \
+  omarchy-capture-screenshot \
+  omarchy-system-reboot \
+  omarchy-pkg-add; do
+  [[ -x $ROOT/bin/$binary ]] || fail "binary is executable: $binary"
+  pass "binary is executable: $binary"
+done
+
+while IFS= read -r binary_path; do
+  header=$(awk '
+    NR == 1 && /^#!/ { next }
+    /^[[:space:]]*$/ { if (seen) print; next }
+    /^[[:space:]]*#/ { seen=1; print; next }
+    { exit }
+  ' "$binary_path")
+
+  grep -q '^# omarchy:summary=' <<<"$header" || fail "metadata summary is present: $binary_path"
+  ! grep -q '^# omarchy:binary=' <<<"$header" || fail "metadata does not repeat inferred binary: $binary_path"
+  ! grep -q '^# omarchy:args=$' <<<"$header" || fail "metadata does not include empty args: $binary_path"
+  ! grep -Eq '^# omarchy:(legacy|usage|visibility|mutates|interactive)=' <<<"$header" || fail "metadata avoids removed fields: $binary_path"
+  ! grep -Eq '^# omarchy:requires-sudo=false$' <<<"$header" || fail "metadata omits false booleans: $binary_path"
+done < <(find "$ROOT/bin" -maxdepth 1 -type f -executable -name 'omarchy-*' | sort)
+pass "all executable bins have slim self-documenting metadata"
+
+TMPDIR=$(mktemp -d)
+ln -s "$CLI" "$TMPDIR/omarchy"
+
+{
+  printf '#!/bin/bash\n\n'
+  printf '# ordinary comments are fine\n'
+  printf '# omarchy:this malformed line should be ignored\n'
+  printf '# omarchy:group=weird\n'
+  printf '# omarchy:name=test\n'
+  printf '# omarchy:summary=Survives malformed metadata comments\n'
+  printf '# omarchy:made-up=value\n'
+  printf 'echo weird-ok\n'
+} >"$TMPDIR/omarchy-weird-test"
+chmod +x "$TMPDIR/omarchy-weird-test"
+
+{
+  printf '#!/bin/bash\n\n'
+  printf '# a partial metadata header should not destroy fallback routing\n'
+  printf '# omarchy:summary=Partial metadata keeps inferred route\n'
+  printf '# omarchy:made-up=value\n'
+  printf 'echo partial-ok\n'
+} >"$TMPDIR/omarchy-partial-meta-test"
+chmod +x "$TMPDIR/omarchy-partial-meta-test"
+
+{
+  printf '#!/bin/bash\n\n'
+  printf 'echo body-metadata-ok\n'
+  printf '# omarchy:group=wrong\n'
+  printf '# omarchy:name=wrong\n'
+} >"$TMPDIR/omarchy-body-metadata-test"
+chmod +x "$TMPDIR/omarchy-body-metadata-test"
+
+"$TMPDIR/omarchy" commands --all --json | jq -e '.commands[] | select(.route == "omarchy weird test" and .summary == "Survives malformed metadata comments")' >/dev/null
+pass "unknown metadata values are non-fatal"
+
+"$TMPDIR/omarchy" commands --all --json | jq -e '.commands[] | select(.route == "omarchy partial meta test" and .summary == "Partial metadata keeps inferred route")' >/dev/null
+pass "partial metadata keeps inferred fallback route"
+
+"$TMPDIR/omarchy" commands --all --json | jq -e '.commands[] | select(.route == "omarchy body metadata test" and .summary == "Run the body metadata test command")' >/dev/null
+pass "metadata-looking comments after script body are ignored"
+
+output=$("$TMPDIR/omarchy" weird test)
+assert_output_contains "temporary metadata command dispatches" "$output" "weird-ok"
+
+output=$("$TMPDIR/omarchy" partial meta test)
+assert_output_contains "partial metadata command dispatches" "$output" "partial-ok"
+
+output=$("$TMPDIR/omarchy" body metadata test)
+assert_output_contains "body metadata command dispatches by filename" "$output" "body-metadata-ok"

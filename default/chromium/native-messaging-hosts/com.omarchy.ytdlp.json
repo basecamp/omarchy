@@ -1,0 +1,9 @@
+{
+  "name": "com.omarchy.ytdlp",
+  "description": "Omarchy yt-dlp download host",
+  "path": "__HOST_PATH__",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://dedjgknigfeelejglamclffonmophnfl/"
+  ]
+}

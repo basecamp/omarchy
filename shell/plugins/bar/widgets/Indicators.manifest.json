@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.indicators",
+  "name": "Indicators",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Manual state indicators",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Indicators.qml"
+  },
+  "barWidget": {
+    "displayName": "Indicators",
+    "description": "Manual state indicators",
+    "category": "Status",
+    "allowMultiple": true,
+    "schema": [
+      {
+        "key": "items",
+        "type": "multiselect",
+        "label": "Indicators",
+        "description": "Choose which indicators this widget instance should show. Leave empty to show all indicators.",
+        "noSelectionText": "All indicators",
+        "placeholderText": "Search indicators...",
+        "emptyText": "No indicators",
+        "options": [
+          {
+            "value": "Dnd",
+            "label": "Do not disturb",
+            "description": "Notification silencing"
+          },
+          {
+            "value": "Reminder",
+            "label": "Reminder",
+            "description": "Queued reminder status"
+          },
+          {
+            "value": "NightLight",
+            "label": "Night light",
+            "description": "Blue-light filter"
+          },
+          {
+            "value": "StayAwake",
+            "label": "Stay awake",
+            "description": "Idle lock and screensaver override"
+          },
+          {
+            "value": "ScreenRecording",
+            "label": "Screen recording",
+            "description": "GPU screen recorder status"
+          },
+          {
+            "value": "Dictation",
+            "label": "Dictation",
+            "description": "Voice typing status"
+          }
+        ]
+      },
+      {
+        "key": "alwaysShow",
+        "type": "boolean",
+        "label": "Always Show",
+        "description": "Show inactive indicators without waiting for hover.",
+        "defaultValue": false
+      }
+    ]
+  }
+}

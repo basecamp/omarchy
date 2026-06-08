@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=Cycle to the next media source and transfer playback when the current source is playing
+# omarchy:args=[next|previous]
+# omarchy:examples=omarchy audio source switch | omarchy-audio-source-switch previous
+
+direction="${1:-next}"
+
+case "$direction" in
+  next)
+    omarchy-shell media sourceSwitch
+    ;;
+  previous)
+    omarchy-shell media sourceSwitchPrevious
+    ;;
+  *)
+    echo "Usage: omarchy-audio-source-switch [next|previous]" >&2
+    exit 1
+    ;;
+esac

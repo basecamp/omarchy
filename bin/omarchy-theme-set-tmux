@@ -1,0 +1,129 @@
+#!/bin/bash
+
+# omarchy:summary=Sync current Omarchy theme environment into tmux
+# omarchy:hidden=true
+
+CURRENT_THEME_PATH="$HOME/.config/omarchy/current/theme"
+GUM_ENV="$CURRENT_THEME_PATH/gum_env.lua"
+COLORS_TOML="$CURRENT_THEME_PATH/colors.toml"
+
+if ! tmux list-sessions >/dev/null 2>&1; then
+  exit 0
+fi
+
+set_tmux_environment() {
+  local key="$1"
+  local value="$2"
+  local session
+
+  tmux set-environment -g "$key" "$value" 2>/dev/null || return 0
+
+  while IFS= read -r session; do
+    [[ -n $session ]] || continue
+    tmux set-environment -t "$session" "$key" "$value" 2>/dev/null || true
+  done < <(tmux list-sessions -F "#{session_id}" 2>/dev/null)
+}
+
+sync_theme_environment() {
+  local key value
+
+  [[ -f $GUM_ENV ]] || return
+
+  while IFS=$'\t' read -r key value; do
+    [[ -n $key && -n $value ]] || continue
+    set_tmux_environment "$key" "$value"
+  done < <(awk -F'"' '/hl\.env\("[A-Z0-9_]+", "[^"]+"\)/ { print $2 "\t" $4 }' "$GUM_ENV")
+}
+
+sync_colorfgbg() {
+  local colorfgbg="15;0"
+  local mode
+
+  mode=$(theme_color mode)
+
+  if [[ $mode == "light" ]] || [[ -z $mode && -f $CURRENT_THEME_PATH/light.mode ]]; then
+    colorfgbg="0;15"
+  fi
+
+  set_tmux_environment COLORFGBG "$colorfgbg"
+}
+
+theme_osc_sequences() {
+  omarchy-theme-osc "$COLORS_TOML"
+}
+
+theme_color() {
+  local key="$1"
+
+  awk -F= -v key="$key" '
+    {
+      field = $1
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", field)
+      if (field == key) {
+        value = $2
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+        if (value ~ /^"/) {
+          sub(/^"/, "", value)
+          sub(/".*$/, "", value)
+        }
+        print value
+        exit
+      }
+    }
+  ' "$COLORS_TOML"
+}
+
+sync_tmux_window_style() {
+  local background foreground
+
+  [[ -f $COLORS_TOML ]] || return
+
+  foreground=$(theme_color foreground)
+  background=$(theme_color background)
+
+  [[ -n $foreground && -n $background ]] || return
+
+  tmux set-option -g window-style "fg=$foreground,bg=$background" 2>/dev/null || true
+  tmux set-option -g window-active-style "fg=$foreground,bg=$background" 2>/dev/null || true
+}
+
+sync_tmux_pane_colors() {
+  local pane_tty theme_osc
+
+  [[ -f $COLORS_TOML ]] || return
+
+  theme_osc=$(theme_osc_sequences)
+  [[ -n $theme_osc ]] || return
+
+  while IFS= read -r pane_tty; do
+    [[ $pane_tty == /dev/pts/* ]] || continue
+    printf '%b' "$theme_osc" >"$pane_tty" 2>/dev/null || true
+  done < <(tmux list-panes -a -F "#{pane_tty}" 2>/dev/null | sort -u)
+}
+
+signal_tmux_panes() {
+  local pane_tty tpgid
+
+  while IFS= read -r pane_tty; do
+    [[ $pane_tty == /dev/pts/* ]] || continue
+    tpgid=$(ps -o tpgid= -t "${pane_tty#/dev/}" 2>/dev/null | awk 'NF && $1 > 0 { print $1; exit }')
+    [[ -n $tpgid ]] || continue
+    kill -WINCH "-$tpgid" 2>/dev/null || true
+  done < <(tmux list-panes -a -F "#{pane_tty}" 2>/dev/null | sort -u)
+}
+
+refresh_tmux_clients() {
+  local client
+
+  while IFS= read -r client; do
+    [[ -n $client ]] || continue
+    tmux refresh-client -t "$client" 2>/dev/null || true
+  done < <(tmux list-clients -F "#{client_name}" 2>/dev/null)
+}
+
+sync_theme_environment
+sync_colorfgbg
+sync_tmux_window_style
+sync_tmux_pane_colors
+signal_tmux_panes
+refresh_tmux_clients

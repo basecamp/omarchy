@@ -4,18 +4,10 @@
 
 wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle >/dev/null
 
-if pactl get-source-mute @DEFAULT_SOURCE@ | rg -q 'yes'; then
-  led=on
-  osd_message='Microphone muted'
-  osd_icon='microphone-sensitivity-muted-symbolic'
+if wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED; then
+  omarchy-brightness-keyboard-mute on
+  omarchy-osd -i microphone-muted -m "Microphone muted"
 else
-  led=off
-  osd_message='Microphone on'
-  osd_icon='audio-input-microphone-symbolic'
+  omarchy-brightness-keyboard-mute off
+  omarchy-osd -i microphone -m "Microphone on"
 fi
-
-omarchy-brightness-keyboard-mute "$led"
-
-omarchy-swayosd-client \
-  --custom-message "$osd_message" \
-  --custom-icon "$osd_icon"

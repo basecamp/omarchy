@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# omarchy:summary=Print PulseAudio sink availability for the shell
+# omarchy:group=audio
+
+pactl list sinks 2>/dev/null | awk '
+  function emit_sink() {
+    if (name == "") return
+    print name "\t" ((port_count == 0 || available) ? 1 : 0)
+  }
+
+  /^Sink #/ {
+    emit_sink()
+    name = ""
+    in_ports = 0
+    port_count = 0
+    available = 0
+    next
+  }
+
+  /^[[:space:]]*Name:/ {
+    name = $2
+    next
+  }
+
+  /^[[:space:]]*Ports:$/ {
+    in_ports = 1
+    next
+  }
+
+  in_ports && /^\tActive Port:/ {
+    in_ports = 0
+    next
+  }
+
+  in_ports && /^\t\t/ {
+    port_count++
+    if ($0 !~ /not available/) available = 1
+    next
+  }
+
+  END {
+    emit_sink()
+  }
+'

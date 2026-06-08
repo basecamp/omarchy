@@ -1,32 +1,52 @@
 #!/bin/bash
 
 # omarchy:summary=Toggle nightlight screen temperature
+# omarchy:args=[--status]
 # omarchy:examples=omarchy toggle nightlight
 
 ON_TEMP=4000
-OFF_TEMP=6000
+OFF_TEMP=6500
+IDENTITY_TEMP=6000
+
+current_temp() {
+  local output
+
+  output=$(hyprctl hyprsunset temperature 2>/dev/null) || return
+  grep -oE '[0-9]+' <<<"$output" | head -n1
+}
+
+status_json() {
+  local temp enabled
+
+  temp=$(current_temp)
+  if [[ -n $temp ]] && (( temp < IDENTITY_TEMP )); then
+    enabled=true
+  else
+    enabled=false
+  fi
+
+  jq -cn --argjson enabled "$enabled" --arg temp "$temp" \
+    '{enabled:$enabled, temperature:(($temp | tonumber?) // null)}'
+}
+
+if [[ ${1:-} == "--status" ]]; then
+  status_json
+  exit 0
+fi
 
 # Ensure hyprsunset is running
-if ! pgrep -x hyprsunset; then
+if ! pgrep -x hyprsunset >/dev/null; then
   setsid uwsm-app -- hyprsunset &
   sleep 1 # Give it time to register
 fi
 
 # Query the current temperature
-CURRENT_TEMP=$(hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+')
+CURRENT_TEMP=$(current_temp)
 
-restart_nightlighted_waybar() {
-  if grep -q "custom/nightlight" ~/.config/waybar/config.jsonc; then
-    omarchy-restart-waybar # restart waybar in case user has waybar module for hyprsunset
-  fi
-}
-
-if [[ $CURRENT_TEMP == $OFF_TEMP ]]; then
+if [[ -z $CURRENT_TEMP || $CURRENT_TEMP == $OFF_TEMP ]]; then
   hyprctl hyprsunset temperature $ON_TEMP
-  notify-send -u low "  Nightlight screen temperature"
-  restart_nightlighted_waybar
 else
   hyprctl hyprsunset temperature $OFF_TEMP
-  notify-send -u low "   Daylight screen temperature"
-  restart_nightlighted_waybar
 fi
+
+omarchy-shell -q omarchy.indicators refresh

@@ -1,0 +1,13 @@
+[Unit]
+Description=Lock Omarchy before suspend
+After=dbus.socket
+Requires=dbus.socket
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omarchy-system-sleep-monitor
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
