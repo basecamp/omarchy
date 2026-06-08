@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.image-picker",
+  "name": "Image picker",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Image-grid selector overlay used for wallpapers, themes, and any other directory of images",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "ImagePicker.qml"
+  }
+}

@@ -1,27 +1,135 @@
 #!/bin/bash
 
-# omarchy:summary=Finish the installation of Omarchy with items that can only be done after logging in.
-# omarchy:requires-sudo=true
+# omarchy:summary=Finish first-login setup for Omarchy.
+# omarchy:args=[--force]
 
 set -e
 
-FIRST_RUN_MODE=~/.local/state/omarchy/first-run.mode
+usage() {
+  cat <<USAGE
+Usage: omarchy-first-run [--force]
 
-if [[ -f $FIRST_RUN_MODE ]]; then
-  rm -f "$FIRST_RUN_MODE"
+Run first-login user setup and notification hooks. By default this only runs
+once per user. Use --force to rerun the full sequence and refresh user setup.
+USAGE
+}
 
-  bash "$OMARCHY_PATH/install/first-run/battery-monitor.sh"
-  bash "$OMARCHY_PATH/install/first-run/recover-internal-monitor.sh"
-  bash "$OMARCHY_PATH/install/first-run/cleanup-reboot-sudoers.sh"
-  bash "$OMARCHY_PATH/install/first-run/firewall.sh"
-  bash "$OMARCHY_PATH/install/first-run/dns-resolver.sh"
-  bash "$OMARCHY_PATH/install/first-run/gnome-theme.sh"
-  bash "$OMARCHY_PATH/install/first-run/swayosd.sh"
-  bash "$OMARCHY_PATH/install/first-run/gtk-primary-paste.sh"
-  bash "$OMARCHY_PATH/install/first-run/elephant.sh"
-  omarchy-hook-install post-update "$OMARCHY_PATH/install/first-run/install-voxtype.hook"
-  sudo rm -f /etc/sudoers.d/first-run
+force=0
+finalize_user_args=()
+while (($#)); do
+  case "$1" in
+    --force)
+      force=1
+      finalize_user_args+=(--force)
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
 
-  bash "$OMARCHY_PATH/install/first-run/welcome.sh"
-  bash "$OMARCHY_PATH/install/first-run/wifi.sh"
+omarchy-finalize-user "${finalize_user_args[@]}" || true
+
+state_dir=~/.local/state/omarchy
+mkdir -p "$state_dir"
+
+FIRST_RUN_LOG="$state_dir/first-run.log"
+first_run_failed=0
+
+log_first_run() {
+  printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$FIRST_RUN_LOG"
+}
+
+notification_server_ready() {
+  if command -v gdbus >/dev/null 2>&1; then
+    gdbus call --session \
+      --dest org.freedesktop.Notifications \
+      --object-path /org/freedesktop/Notifications \
+      --method org.freedesktop.Notifications.GetServerInformation >/dev/null 2>&1
+  elif command -v busctl >/dev/null 2>&1; then
+    busctl --user call \
+      org.freedesktop.Notifications \
+      /org/freedesktop/Notifications \
+      org.freedesktop.Notifications \
+      GetServerInformation >/dev/null 2>&1
+  else
+    return 0
+  fi
+}
+
+wait_for_notifications() {
+  command -v omarchy-shell >/dev/null || return 0
+
+  for _ in {1..100}; do
+    if omarchy-shell notifications ping >/dev/null 2>&1 && notification_server_ready; then
+      return 0
+    fi
+    sleep 0.1
+  done
+
+  log_first_run "Timed out waiting for notification service; continuing"
+  return 0
+}
+
+run_first_run_step() {
+  local name="$1"
+  shift
+
+  log_first_run "Starting: $name"
+  if "$@"; then
+    log_first_run "Completed: $name"
+  else
+    local status=$?
+    first_run_failed=1
+    log_first_run "Failed: $name (exit code: $status)"
+  fi
+}
+
+wait_for_notifications
+
+MIGRATION_NOTIFY_WATCH_MARKER="$state_dir/user-migration-notify-watch-enabled"
+if [[ ! -f $MIGRATION_NOTIFY_WATCH_MARKER || $force -eq 1 ]]; then
+  if systemctl --user enable --now omarchy-update-user-notify.path >/dev/null 2>&1; then
+    touch "$MIGRATION_NOTIFY_WATCH_MARKER"
+  fi
+fi
+
+run_first_run_step "notify about pending user migrations" omarchy-migrate-notify
+
+USER_MARKER="$state_dir/first-run-user.done"
+if [[ ! -f $USER_MARKER || $force -eq 1 ]]; then
+  run_first_run_step "install Voxtype post-update hook" \
+    omarchy-hook-install post-update "$OMARCHY_PATH/install/user/first-run/install-voxtype.hook"
+
+  run_first_run_step "enable user systemd units" \
+    bash "$OMARCHY_PATH/install/user/first-run/enable-user-units.sh"
+  run_first_run_step "set GNOME theme" \
+    bash "$OMARCHY_PATH/install/user/first-run/gnome-theme.sh"
+  run_first_run_step "set GTK primary paste" \
+    bash "$OMARCHY_PATH/install/user/first-run/gtk-primary-paste.sh"
+
+  wait_for_notifications
+  run_first_run_step "show welcome notification" \
+    bash "$OMARCHY_PATH/install/user/first-run/welcome.sh"
+  # The first-run notification scripts register action callbacks in background
+  # notify-send processes. Give the notification server a tick to ingest the
+  # welcome toast before queueing the Wi-Fi/update toasts.
+  sleep 0.3
+  run_first_run_step "show Wi-Fi/update notifications" \
+    bash "$OMARCHY_PATH/install/user/first-run/wifi.sh"
+
+  if (( first_run_failed == 0 )); then
+    touch "$USER_MARKER"
+  else
+    log_first_run "One or more first-run steps failed; first-run will retry next login"
+  fi
+else
+  echo "First-run already complete (rerun with --force to refresh)."
 fi

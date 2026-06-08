@@ -8,7 +8,7 @@ gum style --border normal --padding "1 2" \
   "• You cannot stop the update once you start!" \
   "• Make sure you're connected to power or have a full battery" \
   "" \
-  "What's new: https://github.com/basecamp/omarchy/releases"
+  "What's new: https://github.com/basecamp/omarchy/releases/latest"
 
 echo
 

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.notifications",
+  "name": "Notifications",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Notification daemon, popups, and history",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Notification center",
+    "description": "Recent notifications + DND",
+    "category": "Status",
+    "allowMultiple": false
+  }
+}

@@ -1,9 +1,8 @@
 #!/bin/bash
 
-# omarchy:summary=Open the Voxtype configuration file
+# omarchy:summary=Open Voxtype configuration
 
 set -e
 
-# Used by Voxtype waybar module to open config on right click
-
-exec omarchy-launch-editor ~/.config/voxtype/config.toml
+omarchy-launch-floating-terminal-with-presentation "voxtype configure"
+omarchy-restart-shell

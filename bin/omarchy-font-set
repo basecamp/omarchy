@@ -4,52 +4,87 @@
 # omarchy:args=<font-name>
 # omarchy:examples=omarchy font list | omarchy font set "CaskaydiaMono Nerd Font"
 
-font_name="$1"
+usage() {
+  echo "Usage: omarchy-font-set <font-name>"
+}
 
-if [[ -n $font_name ]]; then
-  if fc-list | grep -iq "$font_name"; then
-    if [[ -f ~/.config/alacritty/alacritty.toml ]]; then
-      sed -i "s/family = \".*\"/family = \"$font_name\"/g" ~/.config/alacritty/alacritty.toml
-    fi
+font_name="${1:-}"
+omarchy_root="${OMARCHY_PATH:-/usr/share/omarchy}"
 
-    if [[ -f ~/.config/kitty/kitty.conf ]]; then
-      sed -i "s/^font_family .*/font_family $font_name/g" ~/.config/kitty/kitty.conf
-      pkill -USR1 kitty
-    fi
+case "$font_name" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  "")
+    usage >&2
+    exit 1
+    ;;
+esac
 
-    if [[ -f ~/.config/ghostty/config ]]; then
-      sed -i "s/font-family = \".*\"/font-family = \"$font_name\"/g" ~/.config/ghostty/config
-      pkill -SIGUSR2 ghostty
-    fi
+if ! fc-list | grep -Fqi -- "$font_name"; then
+  echo "Font '$font_name' not found."
+  exit 1
+fi
 
-    if [[ -f ~/.config/foot/foot.ini ]]; then
-      sed -i "s/^font=.*/font=$font_name:size=9/g" ~/.config/foot/foot.ini
-    fi
+if [[ -f ~/.config/alacritty/alacritty.toml ]]; then
+  sed -i "s/family = \".*\"/family = \"$font_name\"/g" ~/.config/alacritty/alacritty.toml
+fi
 
-    sed -i "s/font_family = .*/font_family = $font_name/g" ~/.config/hypr/hyprlock.conf
-    sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/waybar/style.css
-    sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/swayosd/style.css
-    xmlstarlet ed -L \
-      -u '//match[@target="pattern"][test/string="monospace"]/edit[@name="family"]/string' \
-      -v "$font_name" \
-      ~/.config/fontconfig/fonts.conf
+if [[ -f ~/.config/kitty/kitty.conf ]]; then
+  sed -i "s/^font_family .*/font_family $font_name/g" ~/.config/kitty/kitty.conf
+  pkill -USR1 kitty
+fi
 
-    omarchy-restart-waybar
-    omarchy-restart-swayosd
+if [[ -f ~/.config/ghostty/config ]]; then
+  sed -i "s/font-family = \".*\"/font-family = \"$font_name\"/g" ~/.config/ghostty/config
+  pkill -SIGUSR2 ghostty
+fi
 
-    if pgrep -x ghostty; then
-      notify-send -u low "    You must restart Ghostty to see font change"
-    fi
+if [[ -f ~/.config/foot/foot.ini ]]; then
+  sed -i "s/^font=.*/font=$font_name:size=9/g" ~/.config/foot/foot.ini
+fi
 
-    if pgrep -x foot; then
-      notify-send -u low "    You must restart Foot to see font change"
-    fi
-
-    omarchy-hook font-set "$font_name"
-  else
-    echo "Font '$font_name' not found."
+# fontconfig is the canonical source of truth — the omarchy shell, Qt apps,
+# and anything resolving "monospace" all read from here. The shipped default
+# is package-owned; create a user override only when the user changes fonts.
+fontconfig_file="$HOME/.config/fontconfig/fonts.conf"
+if [[ ! -f $fontconfig_file ]]; then
+  fontconfig_default="$omarchy_root/default/fontconfig/conf.avail/50-omarchy.conf"
+  if [[ ! -f $fontconfig_default ]]; then
+    echo "Default fontconfig file not found: $fontconfig_default" >&2
     exit 1
   fi
-else
-  echo "Usage: omarchy-font-set <font-name>"
+  mkdir -p "$(dirname "$fontconfig_file")"
+  cp "$fontconfig_default" "$fontconfig_file"
 fi
+
+# We own the markup in 50-omarchy.conf, so the monospace block is predictable:
+# the <string>FAMILY</string> immediately after <string>monospace</string> is
+# the family we're replacing.
+tmp=$(mktemp)
+if ! awk -v new_font="$font_name" '
+  in_mono && /<string>[^<]*<\/string>/ {
+    sub(/<string>[^<]*<\/string>/, "<string>" new_font "</string>")
+    in_mono = 0
+  }
+  /<string>monospace<\/string>/ { in_mono = 1 }
+  { print }
+' "$fontconfig_file" >"$tmp"; then
+  rm -f "$tmp"
+  echo "Failed to update $fontconfig_file" >&2
+  exit 1
+fi
+mv "$tmp" "$fontconfig_file"
+
+omarchy-restart-shell
+
+if pgrep -x ghostty; then
+  omarchy-notification-send -g  "You must restart Ghostty to see font change"
+fi
+
+if pgrep -x foot; then
+  omarchy-notification-send -g  "You must restart Foot to see font change"
+fi
+
+omarchy-hook font-set "$font_name"

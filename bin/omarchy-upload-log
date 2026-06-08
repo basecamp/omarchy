@@ -39,6 +39,23 @@ else
   } >"$SYSTEM_INFO"
 fi
 
+same_or_prefix_log() {
+  local a="$1" b="$2" size_a size_b min_size
+  [[ -s $a && -s $b ]] || return 1
+  cmp -s "$a" "$b" && return 0
+
+  size_a=$(stat -c '%s' "$a" 2>/dev/null) || return 1
+  size_b=$(stat -c '%s' "$b" 2>/dev/null) || return 1
+  if (( size_a < size_b )); then
+    min_size=$size_a
+  else
+    min_size=$size_b
+  fi
+  (( min_size > 0 )) || return 1
+
+  cmp -n "$min_size" "$a" "$b" >/dev/null 2>&1
+}
+
 case "$LOG_TYPE" in
 install)
   # In the live ISO before reboot, the target system is mounted at /mnt so the
@@ -47,19 +64,27 @@ install)
   # exists, with /mnt taking precedence (only present in the ISO context, and
   # there it's the right one).
   ARCHINSTALL_LOG="/var/log/archinstall/install.log"
-  if [[ -s /mnt/var/log/omarchy-install.log ]]; then
-    OMARCHY_LOG="/mnt/var/log/omarchy-install.log"
-  else
-    OMARCHY_LOG="/var/log/omarchy-install.log"
-  fi
+  LIVE_OMARCHY_LOG="/var/log/omarchy-install.log"
+  TARGET_OMARCHY_LOG="/mnt/var/log/omarchy-install.log"
 
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
-  [[ -s $ARCHINSTALL_LOG ]] && cat "$ARCHINSTALL_LOG" >>"$TEMP_LOG"
-  if [[ -s $OMARCHY_LOG ]]; then
-    printf '\n========================================\nOMARCHY INSTALL LOG (%s)\n========================================\n\n' "$OMARCHY_LOG" >>"$TEMP_LOG"
-    cat "$OMARCHY_LOG" >>"$TEMP_LOG"
-  else
-    echo "Warning: omarchy install log not found (looked at /mnt/var/log/ and /var/log/)" >&2
+  if [[ -s $ARCHINSTALL_LOG ]]; then
+    printf '\n========================================\nARCHINSTALL SUBSYSTEM LOG (%s)\n========================================\n\n' "$ARCHINSTALL_LOG" >>"$TEMP_LOG"
+    cat "$ARCHINSTALL_LOG" >>"$TEMP_LOG"
+  fi
+
+  if [[ -s $LIVE_OMARCHY_LOG ]]; then
+    printf '\n========================================\nOMARCHY INSTALL LOG (%s)\n========================================\n\n' "$LIVE_OMARCHY_LOG" >>"$TEMP_LOG"
+    cat "$LIVE_OMARCHY_LOG" >>"$TEMP_LOG"
+  fi
+
+  if [[ -s $TARGET_OMARCHY_LOG ]] && ! same_or_prefix_log "$LIVE_OMARCHY_LOG" "$TARGET_OMARCHY_LOG"; then
+    printf '\n========================================\nTARGET OMARCHY INSTALL LOG (%s)\n========================================\n\n' "$TARGET_OMARCHY_LOG" >>"$TEMP_LOG"
+    cat "$TARGET_OMARCHY_LOG" >>"$TEMP_LOG"
+  fi
+
+  if [[ ! -s $LIVE_OMARCHY_LOG && ! -s $TARGET_OMARCHY_LOG ]]; then
+    echo "Warning: omarchy install log not found (looked at /var/log and /mnt/var/log)" >&2
   fi
 
   if [[ ! -s $TEMP_LOG ]]; then
@@ -127,7 +152,7 @@ esac
 
 echo ""
 
-URL=$(curl -sf -F "file=@$TEMP_LOG" https://logs.omarchy.org/)
+URL=$(curl -sf -F "file=@$TEMP_LOG" -Fexpires=24 https://logs.omarchy.org/)
 
 if (( $? == 0 )) && [[ -n $URL ]]; then
   echo "✓ Log uploaded successfully!"

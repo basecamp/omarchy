@@ -1,34 +1,101 @@
 #!/bin/bash
 
-# omarchy:summary=Adjust the brightness on Apple Studio Displays and Apple XDR Displays using asdcontrol.
-# omarchy:args=<+N%|N%-|N%>
-# omarchy:examples=omarchy brightness display apple +5% | omarchy brightness display apple 5%- | omarchy brightness display apple 50%
+# omarchy:summary=Show or adjust Apple Studio Display and Apple XDR Display brightness using asdcontrol.
+# omarchy:args=[--no-osd] [+N%|N%-|N%]
+# omarchy:examples=omarchy brightness display apple | omarchy brightness display apple +5% | omarchy brightness display apple --no-osd 50%
 
-if (( $# == 0 )); then
-  echo "Adjust Apple Display brightness by passing +5%, 5%-, or 100%"
-else
-  step="$1"
-  if [[ $step =~ ^([0-9]+)%-$ ]]; then
-    step="-${BASH_REMATCH[1]}%"
+device_cache="${XDG_RUNTIME_DIR:-/tmp}/omarchy-brightness-display-apple.device"
+no_osd=0
+args=()
+
+for arg in "$@"; do
+  if [[ $arg == "--no-osd" ]]; then
+    no_osd=1
+  else
+    args+=("$arg")
   fi
+done
 
-  devices=()
+set -- "${args[@]}"
+
+detect_apple_display_device() {
+  local devices=()
+  local path=""
+
   for path in /dev/usb/hiddev* /dev/hiddev*; do
     [[ -e $path ]] && devices+=("$path")
   done
 
-  if (( ${#devices[@]} == 0 )); then
-    echo "No Apple Display HID device found"
-    exit 1
+  (( ${#devices[@]} > 0 )) || return 1
+
+  sudo asdcontrol --detect "${devices[@]}" 2>/dev/null | awk -F: '/^\/dev\/(usb\/)?hiddev/{ print $1; exit }'
+}
+
+find_apple_display_device() {
+  local cached=""
+  local device=""
+
+  if [[ -r $device_cache ]]; then
+    read -r cached <"$device_cache" || true
+    if [[ -n $cached && -e $cached ]]; then
+      printf '%s\n' "$cached"
+      return 0
+    fi
   fi
 
-  device="$(sudo asdcontrol --detect "${devices[@]}" | grep -E '^/dev/(usb/)?hiddev' | cut -d: -f1 | head -n1)"
+  device="$(detect_apple_display_device)" || return 1
+  [[ -n $device ]] || return 1
+
+  printf '%s\n' "$device" >"$device_cache"
+  printf '%s\n' "$device"
+}
+
+current_brightness() {
+  local device="$1"
+
+  sudo asdcontrol "$device" 2>/dev/null | awk -F= '
+    /BRIGHTNESS=/ {
+      print int($2 * 100 / 60000)
+      found = 1
+    }
+
+    END { exit !found }
+  '
+}
+
+retry_with_fresh_device() {
+  rm -f "$device_cache"
+  device="$(find_apple_display_device || true)"
   if [[ -z $device ]]; then
-    echo "No Apple Display HID device found"
+    echo "No Apple Display HID device found" >&2
     exit 1
   fi
+}
 
-  sudo asdcontrol "$device" -- "$step" >/dev/null
-  value="$(sudo asdcontrol "$device" | awk -F= '/BRIGHTNESS=/{print $2+0}')"
-  omarchy-swayosd-brightness "$(( value * 100 / 60000 ))"
+device="$(find_apple_display_device || true)"
+if [[ -z $device ]]; then
+  echo "No Apple Display HID device found" >&2
+  exit 1
 fi
+
+if (( $# == 0 )); then
+  if current_brightness "$device"; then
+    exit
+  else
+    retry_with_fresh_device
+    current_brightness "$device"
+    exit
+  fi
+fi
+
+step="$1"
+if [[ $step =~ ^([0-9]+)%-$ ]]; then
+  step="-${BASH_REMATCH[1]}%"
+fi
+
+if ! sudo asdcontrol "$device" -- "$step" >/dev/null; then
+  retry_with_fresh_device
+  sudo asdcontrol "$device" -- "$step" >/dev/null
+fi
+
+(( no_osd )) || omarchy-osd -i brightness -p "$(current_brightness "$device")"

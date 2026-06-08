@@ -37,7 +37,7 @@ fi
 cat > "$LOG_FILE" <<EOF
 Date: $(date)
 Hostname: $(hostname)
-Omarchy Branch: $(git -C "$OMARCHY_PATH" branch --show-current 2>/dev/null || echo "unknown")
+Omarchy Package: $(pacman -Q omarchy 2>/dev/null || echo "unknown")
 
 =========================================
 SYSTEM INFORMATION
@@ -75,7 +75,7 @@ ACTION=$(gum choose "${OPTIONS[@]}")
 case "$ACTION" in
   "Upload log")
     echo "Uploading debug log to logs.omarchy.org..."
-    URL=$(curl -sf -F "file=@$LOG_FILE" https://logs.omarchy.org/)
+    URL=$(curl -sf -F "file=@$LOG_FILE" -Fexpires=24 https://logs.omarchy.org/)
     if (( $? == 0 )) && [[ -n $URL ]]; then
       echo "✓ Log uploaded successfully!"
       echo "Share this URL:"

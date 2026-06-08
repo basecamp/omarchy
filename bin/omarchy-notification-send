@@ -1,32 +1,116 @@
 #!/bin/bash
 
-# omarchy:summary=Send a desktop notification with Omarchy glyph and body spacing
-# omarchy:args=<glyph> <headline> [description] [notify-send options]
-# omarchy:examples=omarchy notification send "󰔛" "Reminder" "5 minutes are up" -u critical
+# omarchy:summary=Send an Omarchy desktop notification
+# omarchy:args=[-a] [--app-name <app-name>] [-g <glyph>] [-u <low|normal|critical>] [--image <path-or-uri>] <headline> [description] [notify-send options]
+# omarchy:examples=omarchy notification send "Reminder" "5 minutes are up" -g 󰢌
 
 set -euo pipefail
 
-if (($# < 2)); then
-  echo "Usage: omarchy-notification-send <glyph> <headline> [description] [notify-send options]"
+headline=""
+description=""
+glyph=
+urgency="low"
+app_name="omarchy-action"
+image=
+click_action=0
+args=()
+parsed_option_args=0
+
+parse_omarchy_option() {
+  case $1 in
+  -g | --glyph)
+    if (($# < 2)); then
+      echo "Missing value for $1" >&2
+      exit 1
+    fi
+    glyph=$2
+    parsed_option_args=2
+    return 0
+    ;;
+  -u | --urgency)
+    if (($# < 2)); then
+      echo "Missing value for $1" >&2
+      exit 1
+    fi
+    urgency="$2"
+    parsed_option_args=2
+    return 0
+    ;;
+  --app-name)
+    if (($# < 2)); then
+      echo "Missing value for $1" >&2
+      exit 1
+    fi
+    app_name=$2
+    parsed_option_args=2
+    return 0
+    ;;
+  --image)
+    if (($# < 2)); then
+      echo "Missing value for $1" >&2
+      exit 1
+    fi
+    image=$2
+    parsed_option_args=2
+    return 0
+    ;;
+  -a | --action)
+    click_action=1
+    parsed_option_args=1
+    return 0
+    ;;
+  esac
+
+  return 1
+}
+
+while (($# > 0)); do
+  if parse_omarchy_option "$@"; then
+    shift "$parsed_option_args"
+  else
+    break
+  fi
+done
+
+if (($# < 1)); then
+  echo "Usage: omarchy-notification-send [-a] [--app-name <app-name>] [-g <glyph>] [-u <low|normal|critical>] [--image <path-or-uri>] <headline> [description] [notify-send options]"
   exit 1
 fi
 
-glyph=$1
-headline=$2
-description=${3:-}
-shift 2
+headline=$1
+shift
 
 if (($# > 0)) && [[ $1 != -* ]]; then
+  description=$1
   shift
-else
-  description=""
 fi
 
-summary="$glyph    $headline"
+while (($# > 0)); do
+  if parse_omarchy_option "$@"; then
+    shift "$parsed_option_args"
+  else
+    args+=("$1")
+    shift
+  fi
+done
+
+# Tag as a user-action toast so it pops through DND.
+args+=("-a" "$app_name" "-u" "$urgency")
+
+if [[ -n $glyph ]]; then
+  args+=("--hint=string:omarchy-glyph:$glyph")
+fi
+
+if [[ -n $image ]]; then
+  args+=("--hint=string:image-path:$image")
+fi
+
+if ((click_action)); then
+  args+=("-A" "default=default")
+fi
 
 if [[ -n $description ]]; then
-  description=$(sed 's/^/      /' <<<"$description")
-  notify-send "$@" "$summary" "$description"
+  notify-send "${args[@]}" "$headline" "$description"
 else
-  notify-send "$@" "$summary"
+  notify-send "${args[@]}" "$headline"
 fi

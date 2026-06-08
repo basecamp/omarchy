@@ -2,7 +2,7 @@
 
 # omarchy:summary=Set the current background image
 # omarchy:args=<path-to-image>
-# omarchy:examples=omarchy theme bg set ~/Pictures/wallpaper.png
+# omarchy:examples=omarchy theme bg set ~/Pictures/background.png
 
 if [[ -z $1 ]]; then
   echo "Usage: omarchy-theme-bg-set <path-to-image>" >&2
@@ -12,7 +12,7 @@ fi
 BACKGROUND="$(realpath "$1")"
 CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
 
-if [[ ! -f "$BACKGROUND" ]]; then
+if [[ ! -f $BACKGROUND ]]; then
   echo "File does not exist: $BACKGROUND" >&2
   exit 1
 fi
@@ -20,6 +20,6 @@ fi
 # Create symlink to the new background
 ln -nsf "$BACKGROUND" "$CURRENT_BACKGROUND_LINK"
 
-# Kill existing swaybg and start new one
-pkill -x swaybg
-setsid uwsm-app -- swaybg -i "$CURRENT_BACKGROUND_LINK" -m fill >/dev/null 2>&1 &
+# Update the live shell background immediately when it is running. The
+# background plugin also polls this symlink, but IPC avoids the visible delay.
+omarchy-shell -q background set "$BACKGROUND"

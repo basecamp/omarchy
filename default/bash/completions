@@ -40,14 +40,79 @@ _omarchy_complete() {
     candidates+=("--all" "--json" "--markdown" "--check")
   fi
 
-  if (( ${#candidates[@]} == 0 )) && [[ -x $bin_dir/$prefix ]]; then
-    local args enum
-    args=$(grep -m 1 '^# omarchy:args=<' "$bin_dir/$prefix" 2>/dev/null)
-    enum="${args#*<}"
-    enum="${enum%%>*}"
+  if (( ${#candidates[@]} == 0 )); then
+    local command_prefix command_path first_arg_index n j
+    for ((n = COMP_CWORD - 1; n >= 0; n--)); do
+      command_prefix="omarchy"
+      for ((j = 1; j <= n; j++)); do
+        part="${COMP_WORDS[j]}"
+        [[ -z $part || $part == -* ]] && continue
+        command_prefix+="-$part"
+      done
 
-    if [[ $enum == *"|"* && $enum != *" "* ]]; then
-      read -r -a candidates <<<"${enum//|/ }"
+      command_path="$bin_dir/$command_prefix"
+      if [[ -x $command_path ]]; then
+        first_arg_index=$((n + 1))
+        break
+      fi
+    done
+
+    if [[ -n ${command_path:-} && -x $command_path ]]; then
+      local args spec alt token actual alts value match current_arg_index
+      args=$(grep -m 1 '^# omarchy:args=' "$command_path" 2>/dev/null)
+      args="${args#*omarchy:args=}"
+      current_arg_index=$((COMP_CWORD - first_arg_index))
+
+      alts="${args// | /$'\n'}"
+      while IFS= read -r alt; do
+        read -r -a spec <<<"$alt"
+        match=true
+
+        for ((j = 0; j < current_arg_index; j++)); do
+          token="${spec[j]:-}"
+          actual="${COMP_WORDS[first_arg_index + j]:-}"
+          if [[ -z $token ]]; then
+            match=false
+            break
+          fi
+
+          if [[ $token == \<*\> || $token == \[*\] ]]; then
+            value="${token#<}"
+            value="${value#\[}"
+            value="${value%>}"
+            value="${value%\]}"
+            if [[ $value == *"|"* ]]; then
+              [[ " ${value//|/ } " == *" $actual "* ]] || match=false
+            fi
+          elif [[ $token != "$actual" ]]; then
+            match=false
+          fi
+        done
+
+        [[ $match == true ]] || continue
+
+        token="${spec[current_arg_index]:-}"
+        [[ -n $token ]] || continue
+
+        if [[ $token == \<*\> || $token == \[*\] ]]; then
+          value="${token#<}"
+          value="${value#\[}"
+          value="${value%>}"
+          value="${value%\]}"
+          if [[ $value == *"|"* ]]; then
+            read -r -a spec <<<"${value//|/ }"
+            for actual in "${spec[@]}"; do
+              [[ -n ${seen[$actual]:-} ]] && continue
+              seen[$actual]=1
+              candidates+=("$actual")
+            done
+          fi
+        else
+          [[ -n ${seen[$token]:-} ]] && continue
+          seen[$token]=1
+          candidates+=("$token")
+        fi
+      done <<<"$alts"
     fi
   fi
 

@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# omarchy:summary=Clean up the voxtype --follow child when Waybar reloads
+# omarchy:summary=Stream voxtype --follow status as bar-friendly JSON
 
-trap 'kill 0' EXIT
-
-if omarchy-cmd-present voxtype; then
-  voxtype status --follow --extended --format json | while read -r line; do
-    echo "$line" | jq -c '. + {alt: .class}'
-  done
-else
-  echo '{"alt": "", "tooltip": ""}'
+if omarchy-cmd-missing voxtype; then
+  echo '{"alt": "", "class": "idle", "tooltip": ""}'
+  exit 0
 fi
+
+# Keep the status follower as the direct child of the bar. Quickshell
+# clean up their direct child when they restart; a shell pipeline/coproc would
+# leave `voxtype status --follow` orphaned under the user systemd instance.
+exec setpriv --pdeathsig TERM voxtype status --follow --extended --format json

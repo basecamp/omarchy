@@ -7,7 +7,7 @@
 # Render a Plymouth login-screen preview PNG by compositing the staged omarchy
 # theme assets (recolored with the given text color) onto the background.
 
-if [[ $# -ne 4 ]]; then
+if (( $# != 4 )); then
   echo "Usage: omarchy-plymouth-preview <background-hex> <text-hex> <path-to-logo.png> <output-path>" >&2
   exit 1
 fi
@@ -35,7 +35,7 @@ fi
 staging_dir=$(mktemp -d)
 trap 'rm -rf "$staging_dir"' EXIT
 
-find ~/.local/share/omarchy/default/plymouth -maxdepth 1 -type f -exec cp -t "$staging_dir/" {} +
+find $OMARCHY_PATH/default/plymouth -maxdepth 1 -type f -exec cp -t "$staging_dir/" {} +
 cp "$logo_path" "$staging_dir/logo.png"
 
 for asset in bullet.png entry.png lock.png; do

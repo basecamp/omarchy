@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:summary=Install a packaged app and gtk-launch it once it finishes
+# omarchy:args=<display-name> <packages> <desktop-id>
+# omarchy:examples=omarchy install and launch Cursor cursor-bin cursor
+
+name="${1-}"
+packages="${2-}"
+desktop_id="${3-}"
+
+if [[ -z $name || -z $packages || -z $desktop_id ]]; then
+  echo "Usage: omarchy-install-and-launch <display-name> <packages> <desktop-id>" >&2
+  exit 1
+fi
+
+exec omarchy-launch-floating-terminal-with-presentation \
+  "echo 'Installing ${name}...'; omarchy-pkg-add ${packages} && setsid gtk-launch ${desktop_id}"

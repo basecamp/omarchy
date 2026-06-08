@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Name=ChatGPT
+Exec=omarchy-launch-webapp https://chatgpt.com/
+Terminal=false
+Type=Application
+Icon=chatgpt
+StartupNotify=true

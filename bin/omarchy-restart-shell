@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# omarchy:summary=Restart the Omarchy shell
+# omarchy:examples=omarchy restart shell
+
+omarchy_root="${OMARCHY_PATH:-/usr/share/omarchy}"
+if [[ ! -f $omarchy_root/shell/shell.qml && -f /usr/share/omarchy/shell/shell.qml ]]; then
+  omarchy_root=/usr/share/omarchy
+fi
+
+CONFIG_DIR="$omarchy_root/shell"
+[[ -f $CONFIG_DIR/shell.qml ]] || { echo "Omarchy shell config not found: $CONFIG_DIR" >&2; exit 1; }
+
+export OMARCHY_PATH="$omarchy_root"
+export PATH="$omarchy_root/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+omarchy_shell_bin=/usr/bin/omarchy-shell
+[[ -x $omarchy_shell_bin ]] || omarchy_shell_bin=omarchy-shell
+
+if [[ $("$omarchy_shell_bin" lock isLocked 2>/dev/null || true) == "true" ]]; then
+  echo "Refusing to restart Omarchy shell while the session is locked." >&2
+  exit 1
+fi
+
+pkill -x quickshell 2>/dev/null || true
+sleep 0.2
+setsid quickshell -n -p "$CONFIG_DIR" >/dev/null 2>&1 &

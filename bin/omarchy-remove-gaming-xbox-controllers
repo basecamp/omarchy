@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Remove the xpadneo Xbox controller driver and undo its module/blacklist config.
+# omarchy:group=remove
+# omarchy:name=gaming xbox-controllers
 # omarchy:requires-sudo=true
 
 set -e

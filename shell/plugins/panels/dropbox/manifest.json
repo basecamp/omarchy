@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.dropbox",
+  "name": "Dropbox",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "license": "MIT",
+  "description": "Dropbox status, storage usage, login, and recent synced files in the Omarchy bar.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Dropbox",
+    "description": "Log in to Dropbox, view storage usage, and open recent synced files.",
+    "category": "Files",
+    "allowMultiple": false,
+    "defaults": {
+      "refreshIntervalSec": 60
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 10,
+        "max": 3600,
+        "step": 5,
+        "defaultValue": 60
+      }
+    ]
+  }
+}

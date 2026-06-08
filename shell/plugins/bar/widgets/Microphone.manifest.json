@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.microphone",
+  "name": "Microphone",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Mic input state and mute toggle",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Microphone.qml"
+  },
+  "barWidget": {
+    "displayName": "Microphone",
+    "description": "Mic input state and mute toggle",
+    "category": "Audio",
+    "allowMultiple": false
+  }
+}
