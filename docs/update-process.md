@@ -151,6 +151,14 @@ sudo env OMARCHY_ALLOW_DIRECT_PACMAN=1 pacman -Syu
 The guard does not start `omarchy update` itself because pacman is already in a
 transaction setup path; it only aborts with instructions.
 
+The `omarchy` package also installs ALPM hooks for `omarchy-settings` /
+`omarchy-settings-dev` installs and upgrades. The pre-transaction hook runs
+`omarchy-hyprland-reload-guard pause` to disable live Hyprland config reloads
+while `/usr/share/omarchy/default/hypr/**` is replaced. The post-transaction
+hook runs `omarchy-hyprland-reload-guard resume`, forces one `hyprctl reload`,
+and restores the session's previous `misc.disable_autoreload` and
+`debug.suppress_errors` values.
+
 ## Path 1: `omarchy update`
 
 High-level flow:
