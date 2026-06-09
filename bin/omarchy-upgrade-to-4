@@ -18,7 +18,7 @@ in Omarchy 3.8.x or run directly with curl | bash on older systems.
 Options:
   -y, --yes                 Do not prompt before upgrading
   --reboot                  Reboot automatically after a successful upgrade
-  --dev                     Use stop-gap packages from the [omarchy-dev] repo
+  --dev                     Use dev packages [omarchy-dev / omarchy-settings-dev] (uses edge channel)
   --channel stable|rc|edge  Override detected Omarchy package channel
   --user USER               User account to refresh after package install
   -h, --help                Show this help
@@ -52,6 +52,7 @@ valid_channel() {
 }
 
 channel_override="${OMARCHY_UPGRADE_CHANNEL:-${OMARCHY_CHANNEL:-${OMARCHY_MIRROR:-}}}"
+channel_override_cli=0
 target_user="${OMARCHY_INSTALL_USER:-}"
 yes=0
 auto_reboot=0
@@ -73,6 +74,7 @@ while (($#)); do
       ;;
     --channel)
       channel_override="${2:-}"
+      channel_override_cli=1
       shift 2
       ;;
     --user)
@@ -94,6 +96,18 @@ case "$use_dev_packages" in
   0|false|no|off|"") use_dev_packages=0 ;;
   *) fail "Invalid OMARCHY_UPGRADE_DEV value '$use_dev_packages'. Use 1/0, true/false, or pass --dev." ;;
 esac
+
+if (( use_dev_packages )); then
+  if (( channel_override_cli )); then
+    if ! valid_channel "$channel_override"; then
+      fail "Invalid channel '$channel_override'. Use stable, rc, or edge."
+    fi
+    if [[ $(normalize_channel "$channel_override") != edge ]]; then
+      fail "--dev uses the edge channel; remove --channel or pass --channel edge."
+    fi
+  fi
+  channel_override=edge
+fi
 
 if ! command -v pacman >/dev/null 2>&1; then
   fail "This upgrade is only supported on Arch/Omarchy systems with pacman."
@@ -326,7 +340,7 @@ esac
 
 if (( ! yes )); then
   package_mode="production Omarchy packages"
-  (( use_dev_packages )) && package_mode="stop-gap packages from [omarchy-dev]"
+  (( use_dev_packages )) && package_mode="dev packages [omarchy-dev / omarchy-settings-dev]"
 
   cat <<EOF
 
@@ -387,9 +401,8 @@ configure_pacman_channel() {
 
   as_root cp -f /etc/pacman.conf "/etc/pacman.conf.omarchy-upgrade-to-4.$backup_suffix.bak"
 
-  # Drop any stale [omarchy-dev] block every time. Re-add it only for the
-  # stop-gap dev package mode so normal upgrades resolve the real tagged
-  # packages from [omarchy] once they exist.
+  # Drop any stale [omarchy-dev] block every time. Re-add it only for dev
+  # package mode so normal upgrades resolve release packages from [omarchy].
   local dev_server='https://share.heyoodle.com/omarchy/dev/$arch'
   local tmp
 
@@ -553,9 +566,6 @@ migrate_1password_beta_package() {
 }
 
 install_omarchy_4_packages() {
-  # Until Omarchy 4 is tagged and published for real, --dev installs the
-  # stop-gap package names from [omarchy-dev]. They provide/conflict the real
-  # names so testers can later move to omarchy/omarchy-settings cleanly.
   local omarchy_package=omarchy
   local settings_package=omarchy-settings
   if (( use_dev_packages )); then
@@ -563,21 +573,18 @@ install_omarchy_4_packages() {
     settings_package=omarchy-settings-dev
   fi
 
-  # The bootloader stack (limine, snapper, etc.) is hard-depended by the
-  # Omarchy package, so it'll be pulled in automatically.
   local core_packages=(
     omarchy-keyring
     "$settings_package"
     omarchy-nvim
     "$omarchy_package"
-    # checkupdates support for update tooling
     fakeroot
     pacman-contrib
   )
   local base_packages=()
 
   log "Installing Omarchy 4 packages"
-  (( use_dev_packages )) && log "Using stop-gap packages from [omarchy-dev]"
+  (( use_dev_packages )) && log "Using dev packages [omarchy-dev / omarchy-settings-dev]"
   # --noconfirm answers "no" to conflict-removal prompts. --ask 4 preselects
   # removing the conflicting package, which is required for legacy packages like
   # ttf-jetbrains-mono-nerd -> ttf-jetbrains-mono-nerd-basic.
