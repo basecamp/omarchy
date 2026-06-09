@@ -10,7 +10,7 @@ if [[ -z ${DBUS_SESSION_BUS_ADDRESS:-} ]]; then
   exit 0
 fi
 
-THEME_DIR=~/.config/omarchy/current/theme
+THEME_DIR=$HOME/.local/state/omarchy/current/theme
 COLORS_FILE="$THEME_DIR/colors.toml"
 
 # In-tree light themes now declare `mode = "light"` in colors.toml instead of
@@ -50,7 +50,7 @@ else
 fi
 
 # Change gnome icon theme color
-GNOME_ICONS_THEME=~/.config/omarchy/current/theme/icons.theme
+GNOME_ICONS_THEME=$HOME/.local/state/omarchy/current/theme/icons.theme
 if [[ -f $GNOME_ICONS_THEME ]]; then
   gsettings set org.gnome.desktop.interface icon-theme "$(<$GNOME_ICONS_THEME)"
 else

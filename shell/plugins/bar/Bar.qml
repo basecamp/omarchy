@@ -30,6 +30,7 @@ Item {
   // FileView watcher further down.
   property bool barHidden: false
   property string home: Quickshell.env("HOME")
+  property string stateHome: home + "/.local/state"
   property string omarchyConfigDir: home + "/.config/omarchy"
   property var fallbackBarConfig: ({
     position: "top",
@@ -661,7 +662,7 @@ Item {
   }
 
   FileView {
-    path: root.home + "/.config/omarchy/current"
+    path: root.stateHome + "/omarchy/current"
     watchChanges: true
     printErrors: false
     onFileChanged: root.scheduleTransparentForegroundRefresh()

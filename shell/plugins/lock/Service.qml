@@ -12,8 +12,9 @@ Item {
   property string omarchyPath: ""
 
   readonly property string home: Quickshell.env("HOME")
+  readonly property string stateHome: home + "/.local/state"
   readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME")
-  readonly property string currentBackgroundLink: home + "/.config/omarchy/current/background"
+  readonly property string currentBackgroundLink: stateHome + "/omarchy/current/background"
 
   property bool lockRequested: false
   property bool authenticatingPassword: false

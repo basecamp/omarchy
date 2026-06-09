@@ -148,8 +148,9 @@ pass "package-owned defaults live outside config"
 
 grep -F 'dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/bootstrap.lua")' "$ROOT/config/hypr/hyprland.lua" >/dev/null
 grep -F 'require("default.hypr.omarchy")' "$ROOT/config/hypr/hyprland.lua" >/dev/null
-grep -F 'package.path = os.getenv("HOME")' "$ROOT/default/hypr/bootstrap.lua" >/dev/null
-pass "Hyprland user entrypoint keeps only package path bootstrap in defaults"
+grep -F 'package.path = home' "$ROOT/default/hypr/bootstrap.lua" >/dev/null
+grep -F '/.local/state/?.lua;' "$ROOT/default/hypr/bootstrap.lua" >/dev/null
+pass "Hyprland user entrypoint keeps package and state path bootstrap in defaults"
 
 TMPDIR=$(mktemp -d)
 mkdir -p "$TMPDIR/home/.config/omarchy"

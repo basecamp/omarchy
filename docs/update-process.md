@@ -25,6 +25,7 @@ The design goal is:
 | `${XDG_RUNTIME_DIR:-/tmp}/omarchy-update.lock` | user | Prevent overlapping update runs. Owned by `omarchy-update`; compatibility wrappers inherit/respect it. |
 | `/tmp/omarchy-update.log` | user | Transcript of `omarchy update`, used by `omarchy-update-analyze-logs`. |
 | `~/.local/state/omarchy/updates/` | user | Update-check state for the shell widget (`packages`, `aur`, `available`, `checked-at`, `error`). |
+| `~/.local/state/omarchy/current/` | user | Generated active theme, selected theme name, and current background symlink. |
 | `/var/lib/omarchy/migrations/system/` | root | System migration markers. |
 | `~/.local/state/omarchy/migrations/user/` | user | User migration markers. |
 | `~/.local/state/omarchy/reboot-required` | user | Optional reboot marker checked by `omarchy-update-restart`. |
