@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# omarchy:summary=Print the active Omarchy package channel
+
+set -euo pipefail
+
+conf=${OMARCHY_CONFIG_FILE:-/etc/omarchy.conf}
+omarchy_path=${OMARCHY_PATH:-/usr/share/omarchy}
+
+if [[ -r $conf ]]; then
+  configured_path=$(bash -c 'source "$1"; printf "%s\n" "${OMARCHY_PATH:-}"' bash "$conf" 2>/dev/null || true)
+  [[ -n $configured_path ]] && omarchy_path="$configured_path"
+fi
+
+channel=$(omarchy-version-channel 2>/dev/null | awk '{ print $1 }')
+
+if pacman -Q omarchy-dev omarchy-settings-dev >/dev/null 2>&1; then
+  case "$channel" in
+    rc) echo rc ;;
+    edge)
+      if [[ $omarchy_path == "/usr/share/omarchy" ]]; then
+        echo dev
+      else
+        echo live-dev
+      fi
+      ;;
+    *) echo unknown ;;
+  esac
+elif pacman -Q omarchy omarchy-settings >/dev/null 2>&1 && [[ $channel == "stable" ]]; then
+  echo stable
+else
+  echo unknown
+fi
