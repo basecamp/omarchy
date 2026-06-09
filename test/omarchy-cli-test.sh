@@ -166,6 +166,58 @@ assert_output_contains "root alias resolves to command help" "$output" "omarchy-
 "$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-capture-screenshot") | .aliases | index("omarchy screenshot")' >/dev/null
 pass "aliases are included in JSON metadata"
 
+TMPDIR=$(mktemp -d)
+
+fixture_home="$TMPDIR/issue-6053-parent-home"
+mkdir -p "$fixture_home/.config/omarchy/hooks/issue-6053-parent.d"
+parent_output="$TMPDIR/issue-6053-parent-output"
+parent_count="$TMPDIR/issue-6053-parent-count"
+
+{
+  printf '#!/bin/bash\n\n'
+  printf 'set -euo pipefail\n\n'
+  printf 'export ISSUE_6053_COLOR="11,22,33"\n'
+  printf 'bash "$HOME/.config/omarchy/hooks/issue-6053-parent.d/10-child" "$@"\n'
+} >"$fixture_home/.config/omarchy/hooks/issue-6053-parent"
+chmod +x "$fixture_home/.config/omarchy/hooks/issue-6053-parent"
+
+{
+  printf '#!/bin/bash\n\n'
+  printf 'set -euo pipefail\n\n'
+  printf 'output_file="$1"\n'
+  printf 'count_file="$2"\n'
+  printf 'count=0\n'
+  printf '[[ -f $count_file ]] && count=$(<"$count_file")\n'
+  printf '(( count += 1 ))\n'
+  printf 'printf "%%s\\n" "$count" >"$count_file"\n'
+  printf 'printf "%%s\\n" "${ISSUE_6053_COLOR:-missing}" >"$output_file"\n'
+} >"$fixture_home/.config/omarchy/hooks/issue-6053-parent.d/10-child"
+chmod +x "$fixture_home/.config/omarchy/hooks/issue-6053-parent.d/10-child"
+
+HOME="$fixture_home" omarchy-hook issue-6053-parent "$parent_output" "$parent_count"
+parent_value=$(<"$parent_output")
+parent_runs=$(<"$parent_count")
+[[ $parent_value == "11,22,33" ]] || fail "omarchy-hook parent hook owns .d child dispatch"
+(( parent_runs == 1 )) || fail "omarchy-hook parent hook owns .d child dispatch"
+pass "omarchy-hook parent hook owns .d child dispatch"
+
+fixture_home="$TMPDIR/issue-6053-child-only-home"
+mkdir -p "$fixture_home/.config/omarchy/hooks/issue-6053-child-only.d"
+child_only_output="$TMPDIR/issue-6053-child-only-output"
+
+{
+  printf '#!/bin/bash\n\n'
+  printf 'set -euo pipefail\n\n'
+  printf 'output_file="$1"\n'
+  printf 'printf "child-only-ok\\n" >"$output_file"\n'
+} >"$fixture_home/.config/omarchy/hooks/issue-6053-child-only.d/10-child"
+chmod +x "$fixture_home/.config/omarchy/hooks/issue-6053-child-only.d/10-child"
+
+HOME="$fixture_home" omarchy-hook issue-6053-child-only "$child_only_output"
+child_only_value=$(<"$child_only_output")
+[[ $child_only_value == "child-only-ok" ]] || fail "omarchy-hook child-only .d dispatch still runs"
+pass "omarchy-hook child-only .d dispatch still runs"
+
 output=$("$CLI" pkg add --help)
 assert_output_contains "pkg add help resolves" "$output" "omarchy-pkg-add"
 assert_output_contains "pkg add help shows direct route" "$output" "omarchy pkg add <packages...>"
@@ -214,7 +266,6 @@ while IFS= read -r binary_path; do
 done < <(find "$ROOT/bin" -maxdepth 1 -type f -executable -name 'omarchy-*' | sort)
 pass "all executable bins have slim self-documenting metadata"
 
-TMPDIR=$(mktemp -d)
 ln -s "$CLI" "$TMPDIR/omarchy"
 
 {
