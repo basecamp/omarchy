@@ -16,10 +16,10 @@ Item {
     property string usageStatusText: ""
 
     property real rateLimitPercent: -1
-    property string rateLimitLabel: "Weekly (7-day)"
+    property string rateLimitLabel: "Session (5-hour)"
     property string rateLimitResetAt: ""
     property real secondaryRateLimitPercent: -1
-    property string secondaryRateLimitLabel: "Session (5-hour)"
+    property string secondaryRateLimitLabel: "Weekly (7-day)"
     property string secondaryRateLimitResetAt: ""
 
     property int todayPrompts: 0
@@ -284,10 +284,10 @@ Item {
     function clearAuthoritativeRateLimits() {
         root.hasAuthoritativeRateLimit = false;
         root.rateLimitPercent = -1;
-        root.rateLimitLabel = "Weekly (7-day)";
+        root.rateLimitLabel = "Session (5-hour)";
         root.rateLimitResetAt = "";
         root.secondaryRateLimitPercent = -1;
-        root.secondaryRateLimitLabel = "Session (5-hour)";
+        root.secondaryRateLimitLabel = "Weekly (7-day)";
         root.secondaryRateLimitResetAt = "";
     }
 
@@ -360,29 +360,27 @@ Item {
 
         root.hasAuthoritativeRateLimit = true;
         root.rateLimitPercent = -1;
-        root.rateLimitLabel = "Weekly (7-day)";
+        root.rateLimitLabel = "Session (5-hour)";
         root.rateLimitResetAt = "";
         root.secondaryRateLimitPercent = -1;
-        root.secondaryRateLimitLabel = "Session (5-hour)";
+        root.secondaryRateLimitLabel = "Weekly (7-day)";
         root.secondaryRateLimitResetAt = "";
 
-        if (weeklyNorm >= 0)
-            root.rateLimitPercent = weeklyNorm;
         if (sessionNorm >= 0)
-            root.secondaryRateLimitPercent = sessionNorm;
-        if (weeklyReset !== null && weeklyReset !== undefined)
-            root.rateLimitResetAt = root.normalizeResetAt(weeklyReset);
-        if (sessionReset !== null && sessionReset !== undefined)
-            root.secondaryRateLimitResetAt = root.normalizeResetAt(sessionReset);
-
-        if (root.rateLimitPercent < 0 && sessionNorm >= 0) {
             root.rateLimitPercent = sessionNorm;
-            root.rateLimitLabel = root.secondaryRateLimitLabel;
-            root.rateLimitResetAt = root.secondaryRateLimitResetAt;
-        }
+        if (weeklyNorm >= 0)
+            root.secondaryRateLimitPercent = weeklyNorm;
+        if (sessionReset !== null && sessionReset !== undefined)
+            root.rateLimitResetAt = root.normalizeResetAt(sessionReset);
+        if (weeklyReset !== null && weeklyReset !== undefined)
+            root.secondaryRateLimitResetAt = root.normalizeResetAt(weeklyReset);
 
-        if (sourceLabel)
-            root.rateLimitLabel = root.rateLimitLabel + " (" + sourceLabel + ")";
+        if (sourceLabel) {
+            if (root.secondaryRateLimitPercent >= 0)
+                root.secondaryRateLimitLabel = root.secondaryRateLimitLabel + " (" + sourceLabel + ")";
+            else if (root.rateLimitPercent >= 0)
+                root.rateLimitLabel = root.rateLimitLabel + " (" + sourceLabel + ")";
+        }
         return true;
     }
 

@@ -170,8 +170,16 @@ BarWidget {
     return ""
   }
 
+  function rateLimitLabelIsWeekly(label) {
+    var text = String(label || "").toLowerCase()
+    return text.indexOf("week") >= 0 || text.indexOf("7-day") >= 0 || text.indexOf("seven_day") >= 0
+  }
+
   function usagePercent(provider) {
     if (!provider) return -1
+    var weekly = weeklyUsage(provider)
+    if (weekly.percent >= 0) return weekly.percent
+
     var values = []
     if (provider.rateLimitPercent >= 0) values.push(provider.rateLimitPercent)
     if (provider.secondaryRateLimitPercent >= 0) values.push(provider.secondaryRateLimitPercent)
@@ -186,9 +194,9 @@ BarWidget {
 
   function weeklyUsage(provider) {
     if (!provider) return ({ percent: -1, resetAt: "", label: "" })
-    if (String(provider.rateLimitLabel || "").toLowerCase().indexOf("week") >= 0)
+    if (root.rateLimitLabelIsWeekly(provider.rateLimitLabel))
       return { percent: provider.rateLimitPercent, resetAt: provider.rateLimitResetAt, label: provider.rateLimitLabel }
-    if (String(provider.secondaryRateLimitLabel || "").toLowerCase().indexOf("week") >= 0)
+    if (root.rateLimitLabelIsWeekly(provider.secondaryRateLimitLabel))
       return { percent: provider.secondaryRateLimitPercent, resetAt: provider.secondaryRateLimitResetAt, label: provider.secondaryRateLimitLabel }
     return ({ percent: -1, resetAt: "", label: "" })
   }
