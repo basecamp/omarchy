@@ -4,5 +4,5 @@ Name=Discord
 Exec=omarchy-launch-webapp https://discord.com/channels/@me
 Terminal=false
 Type=Application
-Icon=discord
+Icon=omarchy-discord
 StartupNotify=true
