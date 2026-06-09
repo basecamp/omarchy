@@ -19,7 +19,7 @@ mkdir -p "$runtime_dir/hypr/$signature"
 cat >"$fake_hyprctl" <<'BASH'
 #!/bin/bash
 
-printf '%s\t%s\t%s\n' "$XDG_RUNTIME_DIR" "$HYPRLAND_INSTANCE_SIGNATURE" "$*" >>"$FAKE_HYPRCTL_LOG"
+printf '%s\t%s\n' "$XDG_RUNTIME_DIR" "$*" >>"$FAKE_HYPRCTL_LOG"
 
 case "$*" in
   *'getoption misc.disable_autoreload'*)
@@ -43,7 +43,8 @@ FAKE_HYPRCTL_LOG="$hyprctl_log" \
 
 state_file="$state_dir/$signature"
 [[ -f $state_file ]] || fail "reload guard stores Hyprland state on pause"
-grep -Fx $'1000	false	false' "$state_file" >/dev/null || fail "reload guard records previous Hyprland reload settings"
+expected_state=$(printf '%s\tfalse\tfalse' "$runtime_dir")
+grep -Fx "$expected_state" "$state_file" >/dev/null || fail "reload guard records previous Hyprland reload settings"
 grep -F 'hl.config({ misc = { disable_autoreload = true }, debug = { suppress_errors = true } })' "$hyprctl_log" >/dev/null || fail "reload guard pauses autoreload with hyprctl eval"
 pass "reload guard pauses live Hyprland reloads"
 
@@ -55,6 +56,6 @@ FAKE_HYPRCTL_LOG="$hyprctl_log" \
   "$ROOT/bin/omarchy-hyprland-reload-guard" resume
 
 [[ ! -e $state_file ]] || fail "reload guard clears Hyprland state after resume"
-grep -F $'test-signature	--instance test-signature reload' "$hyprctl_log" >/dev/null || fail "reload guard forces one Hyprland reload after package transaction"
+grep -F -- '--instance test-signature reload' "$hyprctl_log" >/dev/null || fail "reload guard forces one Hyprland reload after package transaction"
 grep -F 'hl.config({ misc = { disable_autoreload = false }, debug = { suppress_errors = false } })' "$hyprctl_log" >/dev/null || fail "reload guard restores previous Hyprland reload settings"
 pass "reload guard resumes live Hyprland reloads"
