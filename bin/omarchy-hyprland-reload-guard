@@ -1,0 +1,138 @@
+#!/bin/bash
+
+# omarchy:summary=Pause or resume Hyprland config auto-reload around package transactions.
+# omarchy:hidden=true
+
+set -euo pipefail
+
+command="${1:-}"
+case "$command" in
+  pause | resume) ;;
+  *)
+    echo "Usage: omarchy-hyprland-reload-guard pause|resume" >&2
+    exit 1
+    ;;
+esac
+
+run_root="${OMARCHY_HYPRLAND_RELOAD_GUARD_RUN_ROOT:-/run/user}"
+state_dir="${OMARCHY_HYPRLAND_RELOAD_GUARD_STATE_DIR:-/run/omarchy/hyprland-reload-guard}"
+hyprctl_bin="${HYPRCTL:-}"
+
+if [[ -z $hyprctl_bin ]]; then
+  hyprctl_bin=/usr/bin/hyprctl
+  [[ -x $hyprctl_bin ]] || hyprctl_bin=$(command -v hyprctl || true)
+fi
+[[ -n $hyprctl_bin && -x $hyprctl_bin ]] || exit 0
+
+hyprctl_instance() {
+  local runtime_dir="$1"
+  local signature="$2"
+  shift 2
+
+  XDG_RUNTIME_DIR="$runtime_dir" \
+    HYPRLAND_INSTANCE_SIGNATURE="$signature" \
+    "$hyprctl_bin" --instance "$signature" "$@"
+}
+
+option_bool() {
+  local runtime_dir="$1"
+  local signature="$2"
+  local option="$3"
+  local output=""
+
+  output=$(hyprctl_instance "$runtime_dir" "$signature" -j getoption "$option" 2>/dev/null) || return 1
+
+  if command -v jq >/dev/null 2>&1; then
+    jq -r 'if .bool == true then "true" else "false" end' <<<"$output"
+  elif [[ $output == *'"bool": true'* ]]; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+instances() {
+  [[ -d $run_root ]] || return 0
+
+  find "$run_root" -mindepth 3 -maxdepth 3 -type d -path "$run_root/*/hypr/*" -print 2>/dev/null |
+    while IFS= read -r instance_dir; do
+      local signature hypr_dir runtime_dir uid
+
+      signature="${instance_dir##*/}"
+      hypr_dir="${instance_dir%/*}"
+      runtime_dir="${hypr_dir%/*}"
+      uid="${runtime_dir##*/}"
+
+      [[ $uid =~ ^[0-9]+$ ]] || continue
+      [[ -n $signature ]] || continue
+
+      printf '%s\t%s\t%s\n' "$runtime_dir" "$uid" "$signature"
+    done
+}
+
+state_file_for() {
+  local signature="$1"
+
+  printf '%s/%s\n' "$state_dir" "$signature"
+}
+
+pause_instance() {
+  local runtime_dir="$1"
+  local uid="$2"
+  local signature="$3"
+  local disable_autoreload suppress_errors state_file
+
+  mkdir -p "$state_dir"
+  state_file=$(state_file_for "$signature")
+
+  if [[ ! -f $state_file ]]; then
+    disable_autoreload=$(option_bool "$runtime_dir" "$signature" misc.disable_autoreload) || return 0
+    suppress_errors=$(option_bool "$runtime_dir" "$signature" debug.suppress_errors) || return 0
+
+    printf '%s\t%s\t%s\n' "$uid" "$disable_autoreload" "$suppress_errors" >"$state_file"
+    chmod 0600 "$state_file" 2>/dev/null || true
+  fi
+
+  hyprctl_instance "$runtime_dir" "$signature" eval \
+    'hl.config({ misc = { disable_autoreload = true }, debug = { suppress_errors = true } })' \
+    >/dev/null 2>&1 || true
+}
+
+resume_instance() {
+  local state_file="$1"
+  local signature uid disable_autoreload suppress_errors runtime_dir
+
+  signature="${state_file##*/}"
+  IFS=$'\t' read -r uid disable_autoreload suppress_errors <"$state_file" || return 0
+  runtime_dir="$run_root/$uid"
+
+  if [[ -d $runtime_dir ]]; then
+    hyprctl_instance "$runtime_dir" "$signature" eval \
+      "hl.config({ debug = { suppress_errors = $suppress_errors } })" \
+      >/dev/null 2>&1 || true
+
+    hyprctl_instance "$runtime_dir" "$signature" reload >/dev/null 2>&1 || true
+
+    hyprctl_instance "$runtime_dir" "$signature" eval \
+      "hl.config({ misc = { disable_autoreload = $disable_autoreload }, debug = { suppress_errors = $suppress_errors } })" \
+      >/dev/null 2>&1 || true
+  fi
+
+  rm -f "$state_file"
+}
+
+case "$command" in
+  pause)
+    while IFS=$'\t' read -r runtime_dir uid signature; do
+      pause_instance "$runtime_dir" "$uid" "$signature"
+    done < <(instances)
+    ;;
+  resume)
+    [[ -d $state_dir ]] || exit 0
+    find "$state_dir" -mindepth 1 -maxdepth 1 -type f -print 2>/dev/null |
+      while IFS= read -r state_file; do
+        resume_instance "$state_file"
+      done
+    rmdir "$state_dir" 2>/dev/null || true
+    ;;
+esac

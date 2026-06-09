@@ -127,12 +127,18 @@ for source, destination, legacy in package_defaults:
   if destination and (source not in pkgbuild or destination not in pkgbuild):
     errors.append(f"PKGBUILD does not explicitly install {source} -> {destination}")
 
-guard_hook = "default/libalpm/hooks/00-omarchy-update-guard.hook"
-guard_destination = "/usr/share/libalpm/hooks/00-omarchy-update-guard.hook"
-if not (root / guard_hook).exists():
-  errors.append(f"missing package default source: {guard_hook}")
-if guard_hook not in omarchy_pkgbuild or guard_destination not in omarchy_pkgbuild:
-  errors.append(f"omarchy PKGBUILD does not install {guard_hook} -> {guard_destination}")
+alpm_hooks = [
+  "00-omarchy-update-guard.hook",
+  "10-omarchy-hyprland-reload-pause.hook",
+  "90-omarchy-hyprland-reload-resume.hook",
+]
+for hook in alpm_hooks:
+  source = f"default/libalpm/hooks/{hook}"
+  destination = f"/usr/share/libalpm/hooks/{hook}"
+  if not (root / source).exists():
+    errors.append(f"missing package default source: {source}")
+  if source not in omarchy_pkgbuild or destination not in omarchy_pkgbuild:
+    errors.append(f"omarchy PKGBUILD does not install {source} -> {destination}")
 
 if errors:
   print("\n".join(errors), file=sys.stderr)

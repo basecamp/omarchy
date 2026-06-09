@@ -54,8 +54,8 @@ bin/omarchy-debug,
 bin/omarchy-debug-idle,
 bin/omarchy-upload-log         ──►  omarchy-settings    /usr/bin/  (needed before omarchy is installed)
 
-default/libalpm/hooks/00-omarchy-update-guard.hook
-                                ──►  omarchy             /usr/share/libalpm/hooks/00-omarchy-update-guard.hook
+default/libalpm/hooks/*.hook
+                                ──►  omarchy             /usr/share/libalpm/hooks/*.hook
 
 install/**                     ──►  omarchy             /usr/share/omarchy/install/
 migrations/system/**           ──►  omarchy             /usr/share/omarchy/migrations/system/
