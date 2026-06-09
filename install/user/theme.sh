@@ -11,4 +11,4 @@ rm -rf ~/.config/chromium/SingletonLock
 omarchy-theme-set-pi --activate
 
 mkdir -p ~/.config/btop/themes
-ln -snf ~/.config/omarchy/current/theme/btop.theme ~/.config/btop/themes/current.theme
+ln -snf "$HOME/.local/state/omarchy/current/theme/btop.theme" ~/.config/btop/themes/current.theme

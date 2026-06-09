@@ -5,10 +5,10 @@
 # omarchy:name=bg-switcher
 # omarchy:aliases=omarchy background
 
-theme_name=$(cat "$HOME/.config/omarchy/current/theme.name" 2>/dev/null)
-current_background=$(readlink -f "$HOME/.config/omarchy/current/background" 2>/dev/null)
+theme_name=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null)
+current_background=$(readlink -f "$HOME/.local/state/omarchy/current/background" 2>/dev/null)
 
 omarchy-menu-images \
   --selected "$current_background" \
-  "$HOME/.config/omarchy/current/theme/backgrounds" \
+  "$HOME/.local/state/omarchy/current/theme/backgrounds" \
   "$HOME/.config/omarchy/backgrounds/$theme_name"

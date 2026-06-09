@@ -3,7 +3,7 @@
 # omarchy:summary=Print OSC sequences for an Omarchy color theme
 # omarchy:hidden=true
 
-theme="${1:-$HOME/.config/omarchy/current/theme/colors.toml}"
+theme="${1:-$HOME/.local/state/omarchy/current/theme/colors.toml}"
 
 [[ -f $theme ]] || exit 0
 

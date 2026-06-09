@@ -2,9 +2,9 @@
 
 # omarchy:summary=Cache background switcher thumbnails for the current theme
 
-theme_name=$(cat "$HOME/.config/omarchy/current/theme.name" 2>/dev/null)
+theme_name=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null)
 
 omarchy-menu-images \
   --cache-only \
-  "$HOME/.config/omarchy/current/theme/backgrounds" \
+  "$HOME/.local/state/omarchy/current/theme/backgrounds" \
   "$HOME/.config/omarchy/backgrounds/$theme_name"

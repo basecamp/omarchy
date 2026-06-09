@@ -3,7 +3,7 @@
 # omarchy:summary=Sync current Omarchy theme environment into tmux
 # omarchy:hidden=true
 
-CURRENT_THEME_PATH="$HOME/.config/omarchy/current/theme"
+CURRENT_THEME_PATH="$HOME/.local/state/omarchy/current/theme"
 GUM_ENV="$CURRENT_THEME_PATH/gum_env.lua"
 COLORS_TOML="$CURRENT_THEME_PATH/colors.toml"
 

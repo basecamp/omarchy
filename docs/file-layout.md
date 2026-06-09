@@ -42,6 +42,11 @@ Three layers populate `$HOME`:
 `/etc/skel` only fires at user creation. Existing users picking up new
 defaults must use the resync command.
 
+Current generated theme state lives under
+`~/.local/state/omarchy/current/`. Keep `~/.config/omarchy/` for files a user
+may intentionally version in a dotfile manager, such as user themes, hooks,
+shell layout, plugin sources, and themed template overrides.
+
 ## Build-time map (repo → installed paths)
 
 ```
@@ -284,4 +289,6 @@ return to the packaged default.
 | Noninteractive root fix for existing installs | `migrations/system/<unix-timestamp>.sh` |
 | User/session fix for existing installs | `migrations/user/<unix-timestamp>.sh` |
 | User-facing `omarchy-*` command | `bin/omarchy-<group>-<verb>` — see `GROUP_DESCRIPTIONS` in `bin/omarchy` |
-| New theme | `themes/<name>/` (+ matching templates under `default/themed/` if they need theme colors) |
+| New stock theme | `themes/<name>/` (+ matching templates under `default/themed/` if they need theme colors) |
+| User-installed theme | `~/.config/omarchy/themes/<name>/` |
+| Generated current theme/background state | `~/.local/state/omarchy/current/` |

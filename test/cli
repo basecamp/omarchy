@@ -211,8 +211,8 @@ pass "safe dispatch works for font list"
 pass "safe dispatch works for font current"
 
 PI_TMPDIR=$(mktemp -d)
-NEXT_THEME="$PI_TMPDIR/.config/omarchy/current/next-theme"
-CURRENT_THEME="$PI_TMPDIR/.config/omarchy/current/theme"
+NEXT_THEME="$PI_TMPDIR/.local/state/omarchy/current/next-theme"
+CURRENT_THEME="$PI_TMPDIR/.local/state/omarchy/current/theme"
 USER_THEMED="$PI_TMPDIR/.config/omarchy/themed"
 mkdir -p "$NEXT_THEME" "$CURRENT_THEME" "$USER_THEMED"
 
@@ -340,11 +340,31 @@ pass "pi theme activation preserves existing settings"
 
 THEME_TMPDIR=$(mktemp -d)
 OMARCHY_PATH="$ROOT" HOME="$THEME_TMPDIR" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" "Tokyo Night"
-background_path=$(readlink -f "$THEME_TMPDIR/.config/omarchy/current/background" 2>/dev/null || true)
-expected_background="$THEME_TMPDIR/.config/omarchy/current/theme/backgrounds/0-swirl-buck.jpg"
+background_path=$(readlink -f "$THEME_TMPDIR/.local/state/omarchy/current/background" 2>/dev/null || true)
+expected_background="$THEME_TMPDIR/.local/state/omarchy/current/theme/backgrounds/0-swirl-buck.jpg"
 [[ $background_path == "$expected_background" ]] || fail "headless theme set creates current background symlink"
 [[ -f $background_path ]] || fail "headless theme background target exists"
+[[ ! -e $THEME_TMPDIR/.config/omarchy/current ]] || fail "headless theme set avoids config current state"
 pass "headless theme set creates current background symlink"
+
+MIGRATION_TMPDIR=$(mktemp -d)
+mkdir -p \
+  "$MIGRATION_TMPDIR/.config/omarchy/current/theme" \
+  "$MIGRATION_TMPDIR/.config/alacritty" \
+  "$MIGRATION_TMPDIR/.config/hyprland-preview-share-picker" \
+  "$MIGRATION_TMPDIR/.config/btop/themes"
+printf 'tokyo-night\n' >"$MIGRATION_TMPDIR/.config/omarchy/current/theme.name"
+printf 'x\n' >"$MIGRATION_TMPDIR/.config/omarchy/current/theme/colors.toml"
+printf 'general.import = [ "~/.config/omarchy/current/theme/alacritty.toml" ]\n' >"$MIGRATION_TMPDIR/.config/alacritty/alacritty.toml"
+printf 'stylesheets: ["../omarchy/current/theme/hyprland-preview-share-picker.css"]\n' >"$MIGRATION_TMPDIR/.config/hyprland-preview-share-picker/config.yaml"
+ln -s "$MIGRATION_TMPDIR/.config/omarchy/current/theme/btop.theme" "$MIGRATION_TMPDIR/.config/btop/themes/current.theme"
+HOME="$MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/user/1781043107.sh" >/dev/null
+[[ -f $MIGRATION_TMPDIR/.local/state/omarchy/current/theme.name ]] || fail "current theme migration moves theme name"
+[[ ! -e $MIGRATION_TMPDIR/.config/omarchy/current ]] || fail "current theme migration removes legacy config state"
+grep -Fq '~/.local/state/omarchy/current/theme/alacritty.toml' "$MIGRATION_TMPDIR/.config/alacritty/alacritty.toml" || fail "current theme migration updates alacritty import"
+grep -Fq '../../.local/state/omarchy/current/theme/hyprland-preview-share-picker.css' "$MIGRATION_TMPDIR/.config/hyprland-preview-share-picker/config.yaml" || fail "current theme migration updates relative stylesheet"
+[[ $(readlink "$MIGRATION_TMPDIR/.config/btop/themes/current.theme") == "$MIGRATION_TMPDIR/.local/state/omarchy/current/theme/btop.theme" ]] || fail "current theme migration updates btop symlink"
+pass "current theme migration moves state and rewrites shipped references"
 
 cp "$NEXT_THEME/colors.toml" "$CURRENT_THEME/colors.toml"
 cp "$NEXT_THEME/vscode-theme.json" "$CURRENT_THEME/vscode-theme.json"
@@ -405,7 +425,7 @@ PATH="$FAKE_BIN:$ROOT/bin:$PATH" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-
 jq -e '.contributes.themes[0].uiTheme == "vs"' "$PI_TMPDIR/.vscode/extensions/omarchy-theme/package.json" >/dev/null || fail "vscode generated light theme uses VS Code light uiTheme"
 pass "vscode generated light theme uses VS Code light uiTheme"
 [[ -L $PI_TMPDIR/.vscode/extensions/omarchy-theme/themes/omarchy-color-theme.json ]] || fail "vscode generated theme references current theme file"
-[[ $(readlink "$PI_TMPDIR/.vscode/extensions/omarchy-theme/themes/omarchy-color-theme.json") == "$PI_TMPDIR/.config/omarchy/current/theme/vscode-theme.json" ]] || fail "vscode generated theme references current theme file"
+[[ $(readlink "$PI_TMPDIR/.vscode/extensions/omarchy-theme/themes/omarchy-color-theme.json") == "$PI_TMPDIR/.local/state/omarchy/current/theme/vscode-theme.json" ]] || fail "vscode generated theme references current theme file"
 pass "vscode generated theme references current theme file"
 [[ ! -f $PI_TMPDIR/.vscode/extensions/.obsolete ]] || fail "vscode generated theme clears obsolete extension marker"
 pass "vscode generated theme clears obsolete extension marker"

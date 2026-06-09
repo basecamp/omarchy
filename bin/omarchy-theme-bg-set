@@ -10,7 +10,7 @@ if [[ -z $1 ]]; then
 fi
 
 BACKGROUND="$(realpath "$1")"
-CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
+CURRENT_BACKGROUND_LINK="$HOME/.local/state/omarchy/current/background"
 
 if [[ ! -f $BACKGROUND ]]; then
   echo "File does not exist: $BACKGROUND" >&2

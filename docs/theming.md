@@ -1,22 +1,23 @@
 # Omarchy theming
 
-Omarchy themes live under `themes/<name>/` in the source tree, with optional
-user themes under `~/.config/omarchy/themes/<name>/`. A theme normally starts
-with a `colors.toml`; Omarchy generates the rest of the theme files from
+Omarchy themes live under `themes/<name>/` in the source tree (installed at
+`/usr/share/omarchy/themes/<name>/`), with optional user themes under
+`~/.config/omarchy/themes/<name>/`. A theme normally starts with a
+`colors.toml`; Omarchy generates the active theme files from
 `default/themed/*.tpl` when `omarchy-theme-set <name>` runs.
 
 ## Theme activation flow
 
 `omarchy-theme-set <name>` builds a clean staging directory at
-`~/.config/omarchy/current/next-theme`:
+`~/.local/state/omarchy/current/next-theme`:
 
 1. Copy the first-party theme from `themes/<name>/`.
 2. Overlay any user theme files from `~/.config/omarchy/themes/<name>/`.
 3. If needed, generate `colors.toml` from `alacritty.toml`.
 4. Run `omarchy-theme-set-templates` to render templates into the staging
    theme.
-5. Move the staging theme into `~/.config/omarchy/current/theme` and notify the
-   running shell.
+5. Move the staging theme into `~/.local/state/omarchy/current/theme`, write
+   `~/.local/state/omarchy/current/theme.name`, and notify the running shell.
 
 Template rendering only happens when the staged theme has `colors.toml`.
 Existing files are never overwritten by a template, so a hand-written

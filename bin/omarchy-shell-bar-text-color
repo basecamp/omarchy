@@ -75,7 +75,7 @@ valid_hex "$background_color" || fallback
 omarchy-cmd-present magick || fallback
 
 if [[ -z $background_path ]]; then
-  background_path=$(readlink -f "$HOME/.config/omarchy/current/background" 2>/dev/null || true)
+  background_path=$(readlink -f "$HOME/.local/state/omarchy/current/background" 2>/dev/null || true)
 fi
 [[ -f $background_path ]] || fallback
 

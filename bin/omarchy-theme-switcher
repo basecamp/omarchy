@@ -102,7 +102,7 @@ if [[ ! -f $fast_signature_file ]] || ! cmp -s "$fast_signature_file" <(printf '
   printf '%s' "$fast_signature" >"$fast_signature_file"
 fi
 
-current_theme=$(cat "$HOME/.config/omarchy/current/theme.name" 2>/dev/null)
+current_theme=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null)
 selected_preview=""
 for extension in png jpg jpeg webp gif bmp; do
   if [[ -e $preview_dir/$current_theme.$extension ]]; then

@@ -3,7 +3,7 @@
 # omarchy:summary=Show current background
 # omarchy:examples=omarchy theme bg current
 
-BACKGROUND_PATH=$(readlink -f "$HOME/.config/omarchy/current/background" 2>/dev/null)
+BACKGROUND_PATH=$(readlink -f "$HOME/.local/state/omarchy/current/background" 2>/dev/null)
 
 if [[ -n $BACKGROUND_PATH ]]; then
   basename -- "$BACKGROUND_PATH" | perl -pe 's/\.[^.]+$//; s/^\d+-//; s/-/ /g; s/\b(\w)/\U$1/g'

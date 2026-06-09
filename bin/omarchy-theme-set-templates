@@ -5,7 +5,7 @@
 
 TEMPLATES_DIR="$OMARCHY_PATH/default/themed"
 USER_TEMPLATES_DIR="$HOME/.config/omarchy/themed"
-NEXT_THEME_DIR="$HOME/.config/omarchy/current/next-theme"
+NEXT_THEME_DIR="$HOME/.local/state/omarchy/current/next-theme"
 COLORS_FILE="$NEXT_THEME_DIR/colors.toml"
 
 declare -A THEME_COLORS

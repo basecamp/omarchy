@@ -3,7 +3,7 @@
 # omarchy:summary=Sync Omarchy theme to all Obsidian vaults
 # omarchy:hidden=true
 
-CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
+CURRENT_THEME_DIR="$HOME/.local/state/omarchy/current/theme"
 
 [[ -f $CURRENT_THEME_DIR/obsidian.css ]] || exit 0
 

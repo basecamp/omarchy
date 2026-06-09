@@ -3,8 +3,8 @@
 # omarchy:summary=Sync Omarchy theme to VS Code, VSCodium, and Cursor
 # omarchy:hidden=true
 
-VS_CODE_THEME_DESCRIPTOR="$HOME/.config/omarchy/current/theme/vscode.json"
-GENERATED_THEME="$HOME/.config/omarchy/current/theme/vscode-theme.json"
+VS_CODE_THEME_DESCRIPTOR="$HOME/.local/state/omarchy/current/theme/vscode.json"
+GENERATED_THEME="$HOME/.local/state/omarchy/current/theme/vscode-theme.json"
 GENERATED_EXTENSION_NAME="omarchy-theme"
 GENERATED_EXTENSION_ID="local.$GENERATED_EXTENSION_NAME"
 GENERATED_EXTENSION_VERSION="1.0.0"

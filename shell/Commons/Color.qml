@@ -12,6 +12,10 @@ import "BorderGeometry.js" as Geometry
 QtObject {
   id: root
 
+  readonly property string home: Quickshell.env("HOME")
+  readonly property string stateHome: home + "/.local/state"
+  readonly property string currentThemePath: stateHome + "/omarchy/current/theme"
+
   property color foreground: "#cacccc"
   property color background: "#101315"
   property color accent: "#cacccc"
@@ -194,14 +198,14 @@ QtObject {
   // through shell IPC.
   property FileView colorsFile: FileView {
     id: colorsFile
-    path: Quickshell.env("HOME") + "/.config/omarchy/current/theme/colors.toml"
+    path: root.currentThemePath + "/colors.toml"
     watchChanges: false
     printErrors: false
     onLoaded: root.loadColors(text())
   }
   property FileView shellFile: FileView {
     id: shellFile
-    path: Quickshell.env("HOME") + "/.config/omarchy/current/theme/shell.toml"
+    path: root.currentThemePath + "/shell.toml"
     watchChanges: false
     printErrors: false
     onLoaded: root.loadShell(text())

@@ -19,7 +19,6 @@ else
 fi
 
 THEMES_DIR="$HOME/.config/omarchy/themes"
-CURRENT_DIR="$HOME/.config/omarchy/current"
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
 # Ensure a theme was set

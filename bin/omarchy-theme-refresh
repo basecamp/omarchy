@@ -2,7 +2,7 @@
 
 # omarchy:summary=Refresh the current theme from its templates.
 
-THEME_NAME_PATH="$HOME/.config/omarchy/current/theme.name"
+THEME_NAME_PATH="$HOME/.local/state/omarchy/current/theme.name"
 
 if [[ -f $THEME_NAME_PATH ]]; then
   OMARCHY_THEME_SKIP_BACKGROUND=1 omarchy-theme-set "$(cat $THEME_NAME_PATH)"

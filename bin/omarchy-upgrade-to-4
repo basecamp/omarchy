@@ -1873,10 +1873,53 @@ EOF
 fi
 
 mkdir -p "$HOME/.config/omarchy/themes" "$HOME/.config/btop/themes"
-ln -snf "$HOME/.config/omarchy/current/theme/btop.theme" "$HOME/.config/btop/themes/current.theme"
-if [[ ! -e $HOME/.config/omarchy/current/background && -d $HOME/.config/omarchy/current/theme/backgrounds ]]; then
-  background=$(find "$HOME/.config/omarchy/current/theme/backgrounds" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) | sort | head -n1)
-  [[ -n ${background:-} ]] && ln -snf "$background" "$HOME/.config/omarchy/current/background"
+legacy_current_dir="$HOME/.config/omarchy/current"
+current_state_dir="$HOME/.local/state/omarchy/current"
+if [[ -e $legacy_current_dir || -L $legacy_current_dir ]]; then
+  mkdir -p "$HOME/.local/state/omarchy"
+  if [[ ! -e $current_state_dir && ! -L $current_state_dir ]]; then
+    mv "$legacy_current_dir" "$current_state_dir"
+  else
+    if [[ -d $legacy_current_dir && -d $current_state_dir ]]; then
+      cp -an "$legacy_current_dir/." "$current_state_dir/" 2>/dev/null || true
+    fi
+    rm -rf "$legacy_current_dir"
+  fi
+fi
+replace_legacy_current_path() {
+  local file="$1"
+
+  [[ -f $file ]] || return 0
+  python3 - "$file" "$HOME" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+home = sys.argv[2]
+text = path.read_text()
+replacements = {
+  f"{home}/.config/omarchy/current": f"{home}/.local/state/omarchy/current",
+  "~/.config/omarchy/current": "~/.local/state/omarchy/current",
+  "../omarchy/current": "../../.local/state/omarchy/current",
+}
+for old, new in replacements.items():
+  text = text.replace(old, new)
+path.write_text(text)
+PY
+}
+for file in \
+  "$HOME/.config/alacritty/alacritty.toml" \
+  "$HOME/.config/foot/foot.ini" \
+  "$HOME/.config/ghostty/config" \
+  "$HOME/.config/hypr/hyprland.conf" \
+  "$HOME/.config/hyprland-preview-share-picker/config.yaml" \
+  "$HOME/.config/kitty/kitty.conf"; do
+  replace_legacy_current_path "$file"
+done
+ln -snf "$HOME/.local/state/omarchy/current/theme/btop.theme" "$HOME/.config/btop/themes/current.theme"
+if [[ ! -e $HOME/.local/state/omarchy/current/background && -d $HOME/.local/state/omarchy/current/theme/backgrounds ]]; then
+  background=$(find "$HOME/.local/state/omarchy/current/theme/backgrounds" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) | sort | head -n1)
+  [[ -n ${background:-} ]] && ln -snf "$background" "$HOME/.local/state/omarchy/current/background"
 fi
 
 mkdir -p "$HOME/.config/wireplumber/wireplumber.conf.d"
@@ -2037,9 +2080,20 @@ write_legacy_theme_hyprland_conf() {
 set -euo pipefail
 hyprland_conf="$HOME/.config/hypr/hyprland.conf"
 [[ -f $hyprland_conf ]] || exit 0
+python3 - "$hyprland_conf" "$HOME" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+home = sys.argv[2]
+text = path.read_text()
+text = text.replace(f"{home}/.config/omarchy/current", f"{home}/.local/state/omarchy/current")
+text = text.replace("~/.config/omarchy/current", "~/.local/state/omarchy/current")
+path.write_text(text)
+PY
 grep -q 'current/theme/hyprland.conf' "$hyprland_conf" || exit 0
 
-theme_dir="$HOME/.config/omarchy/current/theme"
+theme_dir="$HOME/.local/state/omarchy/current/theme"
 colors="$theme_dir/colors.toml"
 target="$theme_dir/hyprland.conf"
 mkdir -p "$theme_dir"
@@ -2068,14 +2122,21 @@ refresh_current_theme_after_upgrade() {
 
   theme_name=$(run_as_user env HOME="$target_home" bash -c '
     set -euo pipefail
-    theme_name_path="$HOME/.config/omarchy/current/theme.name"
-    current_theme_path="$HOME/.config/omarchy/current/theme"
+    theme_name_path="$HOME/.local/state/omarchy/current/theme.name"
+    current_theme_path="$HOME/.local/state/omarchy/current/theme"
+    legacy_theme_name_path="$HOME/.config/omarchy/current/theme.name"
+    legacy_current_theme_path="$HOME/.config/omarchy/current/theme"
 
     if [[ -f $theme_name_path ]]; then
       read -r theme_name <"$theme_name_path" || true
       printf "%s" "${theme_name:-}"
+    elif [[ -f $legacy_theme_name_path ]]; then
+      read -r theme_name <"$legacy_theme_name_path" || true
+      printf "%s" "${theme_name:-}"
     elif [[ -L $current_theme_path ]]; then
       basename -- "$(readlink "$current_theme_path")"
+    elif [[ -L $legacy_current_theme_path ]]; then
+      basename -- "$(readlink "$legacy_current_theme_path")"
     else
       printf ""
     fi
