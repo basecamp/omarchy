@@ -1,4 +1,4 @@
-omarchy-men#!/bin/bash
+#!/bin/bash
 
 # omarchy:summary=Launch the Omarchy Menu or takes a parameter to jump straight to a submenu.
 
