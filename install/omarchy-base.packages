@@ -26,7 +26,7 @@ docker-buildx
 docker-compose
 dosfstools
 dotnet-runtime-9.0
-dust
+dua-cli
 evince
 exfatprogs
 expac
@@ -82,6 +82,7 @@ man-db
 mariadb-libs
 mise
 mpv
+mpv-mpris
 nautilus
 nautilus-python
 gnome-disk-utility
