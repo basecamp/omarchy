@@ -279,11 +279,41 @@ show_style_menu() {
   *Background*) show_background_menu ;;
   *Corners*) show_style_corners_menu ;;
   *Hyprland*) open_in_editor "$(hypr_config_file looknfeel)" ;;
-  *Waybar*) show_waybar_position_menu ;;
+  *Waybar*) show_waybar_menu ;;
   *Screensaver*) show_screensaver_menu ;;
-  *About*) show_about_menu ;;
   *) show_main_menu ;;
   esac
+}
+
+show_waybar_menu() {
+  case $(menu "Waybar" "󰍜  Layout\n󰘇  Position") in
+  *Layout*) show_waybar_layout_menu ;;
+  *Position*) show_waybar_position_menu ;;
+  *) show_style_menu ;;
+  esac
+}
+
+show_waybar_layout_menu() {
+  local presets=""
+  local preset
+
+  for d in "$OMARCHY_PATH/default/waybar/waybar-presets"/*/; do
+    preset=$(basename "$d")
+    presets="$presets$preset\n"
+  done
+  for d in "$HOME/.config/omarchy/waybar-presets"/*/; do
+    preset=$(basename "$d")
+    [[ $presets == *"$preset"* ]] && continue
+    presets="$presets$preset\n"
+  done
+  presets="${presets%%\\n}"
+
+  preset=$(menu "Waybar Layout" "$presets")
+  if [[ -n $preset && $preset != "CNCLD" ]]; then
+    omarchy-waybar-set "$preset"
+  else
+    show_waybar_menu
+  fi
 }
 
 show_style_corners_menu() {

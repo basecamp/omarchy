@@ -1,0 +1,56 @@
+#!/bin/bash
+# omarchy:summary=Switch Waybar layout preset
+# omarchy:group=waybar
+# omarchy:name=set
+# omarchy:args=<preset-name>
+# omarchy:examples=omarchy waybar set default | omarchy waybar set islands
+
+PRESETS_USER="$HOME/.config/omarchy/waybar-presets"
+PRESETS_SHIPPED="$OMARCHY_PATH/default/waybar/waybar-presets"
+PRESET_NAME="${1,,}"
+
+if [[ -z $PRESET_NAME ]]; then
+  echo "Usage: omarchy waybar set <preset-name>"
+  echo ""
+  echo "Available presets:"
+  for d in "$PRESETS_SHIPPED"/*/; do
+    basename "$d"
+  done
+  for d in "$PRESETS_USER"/*/; do
+    preset=$(basename "$d")
+    [[ -d $PRESETS_SHIPPED/$preset ]] && continue
+    basename "$d"
+  done
+  exit 1
+fi
+
+if [[ -d $PRESETS_USER/$PRESET_NAME ]]; then
+  PRESET_DIR="$PRESETS_USER/$PRESET_NAME"
+elif [[ -d $PRESETS_SHIPPED/$PRESET_NAME ]]; then
+  PRESET_DIR="$PRESETS_SHIPPED/$PRESET_NAME"
+else
+  echo "Waybar preset '$PRESET_NAME' not found"
+  echo ""
+  echo "Looked in:"
+  echo "  $PRESETS_USER/$PRESET_NAME"
+  echo "  $PRESETS_SHIPPED/$PRESET_NAME"
+  exit 1
+fi
+
+if [[ ! -f $PRESET_DIR/config.jsonc ]]; then
+  echo "Preset '$PRESET_NAME' is missing config.jsonc"
+  exit 1
+fi
+
+rm -f "$HOME/.config/waybar/config.jsonc" "$HOME/.config/waybar/style.css"
+cp "$PRESET_DIR/config.jsonc" "$HOME/.config/waybar/config.jsonc"
+cp "$PRESET_DIR/style.css"    "$HOME/.config/waybar/style.css"
+
+# notify-send "󰍜 Waybar preset" "Switched to: $PRESET_NAME"
+
+pkill -SIGUSR2 -x waybar 2>/dev/null
+sleep 0.5
+
+if ! pgrep -x waybar > /dev/null 2>&1; then
+  setsid waybar >/dev/null 2>&1 &
+fi
