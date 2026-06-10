@@ -423,6 +423,30 @@ for nvim_legacy_target in \
 done
 pass "nvim theme migration relinks current theme"
 
+HYPR_MIGRATION_TMPDIR=$(mktemp -d)
+mkdir -p "$HYPR_MIGRATION_TMPDIR/.config/hypr"
+cat >"$HYPR_MIGRATION_TMPDIR/.config/hypr/hyprland.lua" <<'LUA'
+-- Learn how to configure Hyprland: https://wiki.hypr.land/Configuring/Start/
+
+-- Load user modules from ~/.config and Omarchy defaults from $OMARCHY_PATH.
+package.path = os.getenv("HOME")
+  .. "/.config/?.lua;"
+  .. (os.getenv("OMARCHY_PATH") or (os.getenv("HOME") .. "/.local/share/omarchy"))
+  .. "/?.lua;"
+  .. package.path
+
+-- All Omarchy default setups
+require("default.hypr.omarchy")
+
+-- Add any other personal Hyprland configuration below.
+o.window("Example", { workspace = "1" })
+LUA
+HOME="$HYPR_MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/1781063758.sh" >/dev/null
+grep -Fq 'dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/bootstrap.lua")' "$HYPR_MIGRATION_TMPDIR/.config/hypr/hyprland.lua" || fail "hyprland bootstrap migration adds bootstrap"
+! grep -Fq 'package.path = os.getenv("HOME")' "$HYPR_MIGRATION_TMPDIR/.config/hypr/hyprland.lua" || fail "hyprland bootstrap migration removes legacy path block"
+grep -Fq 'o.window("Example", { workspace = "1" })' "$HYPR_MIGRATION_TMPDIR/.config/hypr/hyprland.lua" || fail "hyprland bootstrap migration preserves custom config"
+pass "hyprland bootstrap migration updates stale user entrypoint"
+
 cp "$NEXT_THEME/colors.toml" "$CURRENT_THEME/colors.toml"
 cp "$NEXT_THEME/vscode-theme.json" "$CURRENT_THEME/vscode-theme.json"
 

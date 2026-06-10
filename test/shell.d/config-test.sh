@@ -7,6 +7,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 export PATH="$ROOT/bin:$PATH"
 
 require_command jq
+require_command lua
 require_command python3
 
 jq empty "$ROOT/config/omarchy/shell.json"
@@ -151,6 +152,23 @@ grep -F 'require("default.hypr.omarchy")' "$ROOT/config/hypr/hyprland.lua" >/dev
 grep -F 'package.path = home' "$ROOT/default/hypr/bootstrap.lua" >/dev/null
 grep -F '/.local/state/?.lua;' "$ROOT/default/hypr/bootstrap.lua" >/dev/null
 pass "Hyprland user entrypoint keeps package and state path bootstrap in defaults"
+
+OMARCHY_PATH="$ROOT" lua <<'LUA'
+package.loaded["default.hypr.omarchy"] = true
+package.loaded["default.hypr.require_optional"] = true
+package.loaded["hypr.looknfeel"] = true
+package.loaded["omarchy.current.theme.hyprland"] = true
+package.loaded["unrelated.module"] = true
+
+dofile(os.getenv("OMARCHY_PATH") .. "/default/hypr/bootstrap.lua")
+
+assert(package.loaded["default.hypr.omarchy"] == nil)
+assert(package.loaded["default.hypr.require_optional"] == nil)
+assert(package.loaded["hypr.looknfeel"] == nil)
+assert(package.loaded["omarchy.current.theme.hyprland"] == nil)
+assert(package.loaded["unrelated.module"] == true)
+LUA
+pass "Hyprland bootstrap reloads cached Omarchy config modules"
 
 TMPDIR=$(mktemp -d)
 mkdir -p "$TMPDIR/home/.config/omarchy"
