@@ -21,7 +21,7 @@ if pacman -Q omarchy-dev omarchy-settings-dev >/dev/null 2>&1; then
       if [[ $omarchy_path == "/usr/share/omarchy" ]]; then
         echo dev
       else
-        echo live-dev
+        echo edge
       fi
       ;;
     *) echo unknown ;;

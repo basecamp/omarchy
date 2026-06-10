@@ -284,7 +284,7 @@
 
   // Update
   "update.omarchy": {"icon":"","label":"Omarchy","keywords":"system","action":"omarchy-launch-floating-terminal-with-presentation omarchy-update"},
-  "update.channel": {"icon":"󰔫","label":"Channel","keywords":"stable rc dev live source"},
+  "update.channel": {"icon":"󰔫","label":"Channel","keywords":"stable rc dev edge source"},
   "update.config": {"icon":"","label":"Config","keywords":"refresh default"},
   "update.themes": {"icon":"󰸌","label":"Extra Themes","action":"omarchy-launch-floating-terminal-with-presentation omarchy-theme-update"},
   "update.process": {"icon":"","label":"Process","keywords":"restart services"},
@@ -296,7 +296,7 @@
   "update.channel.stable": {"icon":"🟢","label":"Stable","checked":"[[ \"$(omarchy-channel-current)\" == \"stable\" ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-channel-set stable'"},
   "update.channel.rc": {"icon":"🟡","label":"RC","keywords":"release candidate","checked":"[[ \"$(omarchy-channel-current)\" == \"rc\" ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-channel-set rc'"},
   "update.channel.dev": {"icon":"🟠","label":"Dev","keywords":"development","checked":"[[ \"$(omarchy-channel-current)\" == \"dev\" ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-channel-set dev'"},
-  "update.channel.live-dev": {"icon":"🔴","label":"Live Dev","keywords":"source mode development quattro","checked":"[[ \"$(omarchy-channel-current)\" == \"live-dev\" ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-channel-set live-dev'"},
+  "update.channel.edge": {"icon":"🔴","label":"Edge","keywords":"source mode development quattro","checked":"[[ \"$(omarchy-channel-current)\" == \"edge\" ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-channel-set edge'"},
   "update.process.hyprsunset": {"icon":"","label":"Hyprsunset","keywords":"restart","action":"omarchy-restart-hyprsunset"},
   "update.process.osd": {"icon":"","label":"OSD","keywords":"restart","action":"omarchy-restart-shell"},
   "update.process.shell": {"icon":"󰍜","label":"Shell","keywords":"restart bar quickshell omarchy-shell","action":"omarchy-restart-shell"},
