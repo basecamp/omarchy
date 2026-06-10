@@ -96,7 +96,7 @@ esac
 run_channel() {
   : >"$log_file"
   OMARCHY_CHANNEL_TEST_LOG="$log_file" \
-    OMARCHY_LIVE_DEV_PATH="${OMARCHY_LIVE_DEV_PATH:-}" \
+    OMARCHY_EDGE_PATH="${OMARCHY_EDGE_PATH:-}" \
     OMARCHY_TEST_GUM_INPUT="${OMARCHY_TEST_GUM_INPUT:-}" \
     OMARCHY_PATH="$ROOT" \
     HOME="$test_tmp/home" \
@@ -134,35 +134,28 @@ assert_log_line $'refresh\tedge' "dev refreshes the edge pacman channel"
 assert_log_line $'sudo\tenv\tOMARCHY_UPDATE_PACMAN=1\tpacman\t-S\t--needed\t--noconfirm\t--ask\t4\tomarchy-dev\tomarchy-settings-dev' "dev installs development Omarchy packages"
 assert_log_line 'unlink' "dev remains package-backed"
 
-checkout="$test_tmp/live-checkout"
+checkout="$test_tmp/edge-checkout"
 default_checkout="$test_tmp/home/Work/omarchy"
-OMARCHY_TEST_GUM_INPUT="$checkout" run_channel live-dev
-assert_numbered_log_line 1 $'gum\tconfirm\t--default=false\tEnable Live Dev anyway?' "live dev warns before changing packages"
-assert_numbered_log_line 2 $'gum\tinput\t--value\t'"$default_checkout"$'\t--placeholder\t'"$default_checkout"$'\t--header\tWhere should Live Dev checkout live? Existing non-checkout paths will not be overwritten.' "live dev prompts for the checkout path before changing packages"
-assert_log_line $'gum\tconfirm\t--default=false\tEnable Live Dev anyway?' "live dev asks for confirmation"
-assert_log_line $'refresh\tedge' "live dev refreshes the edge pacman channel"
-assert_log_line $'sudo\tenv\tOMARCHY_UPDATE_PACMAN=1\tpacman\t-S\t--needed\t--noconfirm\t--ask\t4\tomarchy-dev\tomarchy-settings-dev' "live dev installs development Omarchy packages"
-assert_log_line $'git\tclone\t--branch\tquattro\t--single-branch\thttps://github.com/basecamp/omarchy.git\t'"$checkout" "live dev clones the quattro checkout"
-assert_log_line $'link\t'"$checkout" "live dev links the source checkout"
+OMARCHY_TEST_GUM_INPUT="$checkout" run_channel edge
+assert_numbered_log_line 1 $'gum\tconfirm\t--default=false\tEnable Edge anyway?' "edge warns before changing packages"
+assert_numbered_log_line 2 $'gum\tinput\t--value\t'"$default_checkout"$'\t--placeholder\t'"$default_checkout"$'\t--header\tWhere should Edge checkout live? Existing non-checkout paths will not be overwritten.' "edge prompts for the checkout path before changing packages"
+assert_log_line $'gum\tconfirm\t--default=false\tEnable Edge anyway?' "edge asks for confirmation"
+assert_log_line $'refresh\tedge' "edge refreshes the edge pacman channel"
+assert_log_line $'sudo\tenv\tOMARCHY_UPDATE_PACMAN=1\tpacman\t-S\t--needed\t--noconfirm\t--ask\t4\tomarchy-dev\tomarchy-settings-dev' "edge installs development Omarchy packages"
+assert_log_line $'git\tclone\t--branch\tquattro\t--single-branch\thttps://github.com/basecamp/omarchy.git\t'"$checkout" "edge clones the quattro checkout"
+assert_log_line $'link\t'"$checkout" "edge links the source checkout"
 
 occupied_checkout="$test_tmp/occupied"
 mkdir -p "$occupied_checkout"
-if OMARCHY_TEST_GUM_INPUT="$occupied_checkout" run_channel live-dev >"$test_tmp/occupied.out" 2>"$test_tmp/occupied.err"; then
-  fail "live dev refuses to use an occupied non-checkout path"
+if OMARCHY_TEST_GUM_INPUT="$occupied_checkout" run_channel edge >"$test_tmp/occupied.out" 2>"$test_tmp/occupied.err"; then
+  fail "edge refuses to use an occupied non-checkout path"
 fi
 
-grep -q "already exists and is not a git checkout" "$test_tmp/occupied.err" || fail "live dev explains occupied checkout paths" "$(cat "$test_tmp/occupied.err")"
+grep -q "already exists and is not a git checkout" "$test_tmp/occupied.err" || fail "edge explains occupied checkout paths" "$(cat "$test_tmp/occupied.err")"
 if grep -Fx $'refresh\tedge' "$log_file" >/dev/null; then
-  fail "live dev validates checkout path before changing packages" "$(cat "$log_file")"
+  fail "edge validates checkout path before changing packages" "$(cat "$log_file")"
 fi
-pass "live dev refuses occupied non-checkout paths before package changes"
-
-if run_channel edge >"$test_tmp/edge.out" 2>"$test_tmp/edge.err"; then
-  fail "edge is no longer accepted as a channel"
-fi
-
-grep -q "Unknown channel: edge" "$test_tmp/edge.err" || fail "edge rejection explains the invalid channel" "$(cat "$test_tmp/edge.err")"
-pass "edge is no longer accepted as a channel"
+pass "edge refuses occupied non-checkout paths before package changes"
 
 current_channel() {
   OMARCHY_TEST_VERSION_CHANNEL="$1" \
@@ -182,10 +175,10 @@ pass "current channel detects rc"
 [[ $(current_channel edge dev /dev/null /usr/share/omarchy) == "dev" ]] || fail "current channel detects package-backed dev"
 pass "current channel detects package-backed dev"
 
-[[ $(current_channel edge dev /dev/null "$test_tmp/live-checkout") == "live-dev" ]] || fail "current channel detects live dev from OMARCHY_PATH"
-pass "current channel detects live dev from OMARCHY_PATH"
+[[ $(current_channel edge dev /dev/null "$test_tmp/edge-checkout") == "edge" ]] || fail "current channel detects edge from OMARCHY_PATH"
+pass "current channel detects edge from OMARCHY_PATH"
 
 conf="$test_tmp/omarchy.conf"
-printf 'export OMARCHY_PATH="%s"\n' "$test_tmp/live-checkout" >"$conf"
-[[ $(current_channel edge dev "$conf" /usr/share/omarchy) == "live-dev" ]] || fail "current channel detects live dev from configured path"
-pass "current channel detects live dev from configured path"
+printf 'export OMARCHY_PATH="%s"\n' "$test_tmp/edge-checkout" >"$conf"
+[[ $(current_channel edge dev "$conf" /usr/share/omarchy) == "edge" ]] || fail "current channel detects edge from configured path"
+pass "current channel detects edge from configured path"
