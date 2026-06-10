@@ -19,7 +19,7 @@ Options:
   -y, --yes                 Do not prompt before upgrading
   --reboot                  Reboot automatically after a successful upgrade
   --dev                     Use dev packages [omarchy-dev / omarchy-settings-dev] (uses edge channel)
-  --channel stable|rc|edge  Override detected Omarchy package channel
+  --channel stable|rc|edge  Override the default stable Omarchy package channel
   --user USER               User account to refresh after package install
   -h, --help                Show this help
 USAGE
@@ -51,7 +51,7 @@ valid_channel() {
   normalize_channel "$1" >/dev/null 2>&1
 }
 
-channel_override="${OMARCHY_UPGRADE_CHANNEL:-${OMARCHY_CHANNEL:-${OMARCHY_MIRROR:-}}}"
+channel_override="${OMARCHY_UPGRADE_CHANNEL:-}"
 channel_override_cli=0
 target_user="${OMARCHY_INSTALL_USER:-}"
 yes=0
@@ -107,6 +107,10 @@ if (( use_dev_packages )); then
     fi
   fi
   channel_override=edge
+fi
+
+if { [[ -n $channel_override ]] || (( channel_override_cli )); } && ! valid_channel "$channel_override"; then
+  fail "Invalid channel '$channel_override'. Use stable, rc, or edge."
 fi
 
 if ! command -v pacman >/dev/null 2>&1; then
@@ -261,64 +265,11 @@ discover_hyprland_signature() {
   printf '%s\n' "${candidates[0]}"
 }
 
-detect_channel() {
-  local candidate="${channel_override:-}"
-
-  if [[ -n $candidate ]] && valid_channel "$candidate"; then
-    normalize_channel "$candidate"
-    return 0
-  fi
-
-  if command -v omarchy-version-channel >/dev/null 2>&1; then
-    candidate=$(omarchy-version-channel 2>/dev/null | awk '{ print $1 }' || true)
-    if [[ -n $candidate ]] && valid_channel "$candidate"; then
-      normalize_channel "$candidate"
-      return 0
-    fi
-  fi
-
-  if [[ -f /etc/pacman.conf ]]; then
-    if grep -q 'https://pkgs\.omarchy\.org/rc/' /etc/pacman.conf; then
-      echo rc
-      return 0
-    elif grep -q 'https://pkgs\.omarchy\.org/edge/' /etc/pacman.conf; then
-      echo edge
-      return 0
-    elif grep -q 'https://pkgs\.omarchy\.org/stable/' /etc/pacman.conf; then
-      echo stable
-      return 0
-    fi
-  fi
-
-  if [[ -f /etc/pacman.d/mirrorlist ]]; then
-    if grep -q 'https://rc-mirror\.omarchy\.org/' /etc/pacman.d/mirrorlist; then
-      echo rc
-      return 0
-    elif grep -q 'https://mirror\.omarchy\.org/' /etc/pacman.d/mirrorlist; then
-      echo edge
-      return 0
-    elif grep -q 'https://stable-mirror\.omarchy\.org/' /etc/pacman.d/mirrorlist; then
-      echo stable
-      return 0
-    fi
-  fi
-
-  if [[ -d $target_home/.local/share/omarchy/.git ]]; then
-    if (( EUID == 0 )); then
-      candidate=$(run_as_user git -C "$target_home/.local/share/omarchy" branch --show-current 2>/dev/null || true)
-    else
-      candidate=$(git -C "$target_home/.local/share/omarchy" branch --show-current 2>/dev/null || true)
-    fi
-    if [[ -n $candidate ]] && valid_channel "$candidate"; then
-      normalize_channel "$candidate"
-      return 0
-    fi
-  fi
-
-  echo stable
+resolve_channel() {
+  normalize_channel "${channel_override:-stable}"
 }
 
-channel=$(detect_channel)
+channel=$(resolve_channel)
 if ! valid_channel "$channel"; then
   fail "Invalid channel '$channel'. Use stable, rc, or edge."
 fi
