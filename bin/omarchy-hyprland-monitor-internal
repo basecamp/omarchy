@@ -15,6 +15,9 @@ on() {
     omarchy-hyprland-toggle $TOGGLE off
     omarchy-notification-send -g 󰍹 "Laptop display enabled"
   fi
+
+  # Always recover: Hyprland may disable the touchpad even when the display toggle did not change.
+  omarchy-hw-recover-touchpad
 }
 
 off() {

@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:summary=Recover touchpad when lid-close monitor toggling leaves it disabled
+
+TOUCHPAD_DISABLED="$HOME/.local/state/omarchy/toggles/hypr/touchpad-disabled.conf"
+
+# Some laptops leave the touchpad disabled after lid-close monitor toggling.
+# Restore it unless Omarchy explicitly disabled it.
+if [[ -f $TOUCHPAD_DISABLED ]]; then
+  exit 0
+fi
+
+device="$(omarchy-hw-touchpad)"
+
+if [[ -n $device ]]; then
+  hyprctl keyword "device[$device]:enabled" true >/dev/null
+fi
