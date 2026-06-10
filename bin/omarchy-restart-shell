@@ -114,6 +114,38 @@ hyprland_session_locked() {
   [[ $monitors == *"session lock"* ]]
 }
 
+shell_quote() {
+  printf "'"
+  printf "%s" "$1" | sed "s/'/'\\\\''/g"
+  printf "'"
+}
+
+lua_quote() {
+  local value=$1
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  printf '"%s"' "$value"
+}
+
+launch_shell() {
+  local launch_command
+
+  launch_command="env OMARCHY_PATH=$(shell_quote "$omarchy_root") PATH=$(shell_quote "$PATH") quickshell -n -p $(shell_quote "$CONFIG_DIR")"
+
+  if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && omarchy-cmd-present hyprctl; then
+    if hyprctl dispatch "hl.dsp.exec_cmd($(lua_quote "$launch_command"))" >/dev/null 2>&1; then
+      return 0
+    fi
+
+    if hyprctl dispatch exec "$launch_command" >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  setsid quickshell -n -p "$CONFIG_DIR" >/dev/null 2>&1 &
+}
+
 restore_hyprland_session_lock() {
   local attempt
 
@@ -141,7 +173,7 @@ fi
 
 pkill -x quickshell 2>/dev/null || true
 sleep 0.2
-setsid quickshell -n -p "$CONFIG_DIR" >/dev/null 2>&1 &
+launch_shell
 
 if (( hyprland_was_session_locked )); then
   restore_hyprland_session_lock

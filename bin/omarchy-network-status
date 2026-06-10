@@ -37,7 +37,7 @@ print_status() {
     nm=$(nmcli -t -f GENERAL.STATE,GENERAL.CONNECTION dev show "$device" 2>/dev/null)
     state=$(awk -F: '$1 == "GENERAL.STATE" { print $2; exit }' <<<"$nm")
     ssid=$(awk -F: '$1 == "GENERAL.CONNECTION" { print $2; exit }' <<<"$nm")
-    signal=$(nmcli -t -f IN-USE,SIGNAL dev wifi list ifname "$device" 2>/dev/null | awk -F: '$1 == "*" { print $2; exit }')
+    signal=$(nmcli -t -f IN-USE,SIGNAL dev wifi list ifname "$device" --rescan no 2>/dev/null | awk -F: '$1 == "*" { print $2; exit }')
     freq=$(iw dev "$device" link 2>/dev/null | awk '/freq:/ { print $2; exit }')
 
     if [[ $state != 100* ]]; then
