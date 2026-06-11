@@ -5,13 +5,9 @@ local config = wezterm.config_builder()
 local home_dir = wezterm.home_dir or os.getenv("HOME")
 if home_dir and home_dir ~= "" then
   local theme_path = home_dir .. "/.config/omarchy/current/theme/wezterm.lua"
-  local f = io.open(theme_path, "r")
-  if f then
-    f:close()
-    local ok, colors = pcall(dofile, theme_path)
-    if ok and type(colors) == "table" then
-      config.colors = colors
-    end
+  local ok, colors = pcall(dofile, theme_path)
+  if ok and type(colors) == "table" then
+    config.colors = colors
   end
 end
 

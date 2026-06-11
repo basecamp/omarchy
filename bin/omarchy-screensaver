@@ -2,6 +2,14 @@
 
 # omarchy:summary=Run the Omarchy screensaver using random effects from TTE.
 
+# Ignore focus loss for this many seconds after startup. The launcher spawns one
+# instance per monitor and shuffles focus between monitors while doing so; without
+# this grace window a not-yet-focused instance trips the focus check below and
+# exit_screensaver's global pkill tears down every instance on multi-monitor
+# setups. Once all instances are up, whichever screensaver is focused keeps
+# screensaver_in_focus true for them all, so they stay until real activity.
+GRACE_SECONDS=4
+
 screensaver_in_focus() {
   hyprctl activewindow -j | jq -e '.class == "org.omarchy.screensaver"' >/dev/null 2>&1
 }
@@ -21,6 +29,7 @@ printf '\033]11;rgb:00/00/00\007'  # Set background color to black
 hyprctl eval 'hl.config({ cursor = { invisible = true } })' &>/dev/null || hyprctl keyword cursor:invisible true &>/dev/null
 
 tty=$(tty 2>/dev/null)
+start_seconds=$SECONDS
 
 while true; do
   tte -i ~/.config/omarchy/branding/screensaver.txt \
@@ -28,7 +37,12 @@ while true; do
     --random-effect --no-eol --no-restore-cursor &
 
   while pgrep -t "${tty#/dev/}" -x tte >/dev/null; do
-    if read -n1 -t 1 || ! screensaver_in_focus; then
+    if read -n1 -t 1; then
+      # Real keyboard input -> dismiss immediately.
+      exit_screensaver
+    elif (( SECONDS - start_seconds >= GRACE_SECONDS )) && ! screensaver_in_focus; then
+      # Past the multi-monitor launch race: dismiss when focus leaves the
+      # screensaver (user activity, or hyprlock taking over at lock time).
       exit_screensaver
     fi
   done

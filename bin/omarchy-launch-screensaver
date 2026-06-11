@@ -47,7 +47,12 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
     hypr_exec "kitty --class=org.omarchy.screensaver --override font_size=18 --override window_padding_width=0 -e omarchy-screensaver"
     ;;
   *wezterm*)
-    hypr_exec "wezterm --config-file ~/.local/share/omarchy/default/wezterm/screensaver.lua start --class org.omarchy.screensaver -- omarchy-screensaver"
+    # Use wezterm-gui (spawns the GUI directly) rather than `wezterm start`.
+    # `wezterm start` is a mux client that asks the running wezterm-gui server to
+    # open a window; firing one per monitor in quick succession races inside that
+    # server and frequently spawns zero windows. wezterm-gui spawns independently
+    # and is reliable across multiple monitors.
+    hypr_exec "wezterm-gui --config-file ~/.local/share/omarchy/default/wezterm/screensaver.lua start --class org.omarchy.screensaver -- omarchy-screensaver"
     ;;
   *)
     notify-send -u low "✋  Screensaver only runs in Alacritty, Foot, Ghostty, Kitty, or WezTerm"
