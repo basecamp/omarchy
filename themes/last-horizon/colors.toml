@@ -1,26 +1,16 @@
 mode = "dark"
 
-# Accent and UI colors
 accent = "#b59790"
 hyprland_active_border = "rgba(8a8588ee) rgba(e2dddcee)"
 hyprland_inactive_border = "rgba(584e51aa)"
 active_border_color = "#d6d3de"
 active_tab_background = "#a5a0b6"
 
-# Cursor colors
-cursor = "#e2dddc"
-
-# Primary colors
-foreground = "#FAFCFB"
-background = "#0c0b0c"
-
-# Selection colors
-selection_foreground = "#0c0b0c"
-selection_background = "#FAFCFB"
-
 bg = "#0c0b0c"
+dark_bg = "#090809"
+darker_bg = "#060606"
 lighter_bg = "#0c0b0c"
-selection = "#FAFCFB"
+selection = "#584e51"
 muted = "#584e51"
 dark_fg = "#584e51"
 fg = "#FAFCFB"
@@ -33,6 +23,7 @@ green = "#87a9b0"
 cyan = "#a5a0b6"
 blue = "#b59790"
 magenta = "#c4d8e2"
+
 bright_red = "#c38b7b"
 bright_yellow = "#6B5E73"
 bright_green = "#87a9b0"

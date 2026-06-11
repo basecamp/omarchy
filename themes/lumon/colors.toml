@@ -1,23 +1,17 @@
 mode = "dark"
 
-# Accent and UI colors
 accent = "#8bc9eb"
 active_border_color = "#f2fcff"
 active_tab_background = "#6fb8e3"
 
-# Cursor colors
-cursor = "#f2fcff"
-foreground = "#d6e2ee"
-background = "#16242d"
-selection_foreground = "#1b2d40"
-selection_background = "#4d9ed3"
-
 bg = "#16242d"
+dark_bg = "#101b21"
+darker_bg = "#0b1216"
 lighter_bg = "#1b2d40"
 selection = "#243d56"
 muted = "#304860"
 dark_fg = "#4d86b0"
-fg = "#6fa4c9"
+fg = "#d6e2ee"
 light_fg = "#d6e2ee"
 bright_fg = "#f2fcff"
 
@@ -29,8 +23,7 @@ cyan = "#b4e4f6"
 blue = "#6fb8e3"
 magenta = "#8bc9eb"
 brown = "#456475"
-dark_bg = "#101b21"
-darker_bg = "#0b1216"
+
 bright_red = "#73a6cb"
 bright_yellow = "#9dcae5"
 bright_green = "#86b7d8"

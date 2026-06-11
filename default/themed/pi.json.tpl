@@ -2,20 +2,20 @@
   "$schema": "https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json",
   "name": "omarchy-system",
   "vars": {
-    "background": "{{ background }}",
-    "foreground": "{{ foreground }}",
+    "background": "{{ bg }}",
+    "foreground": "{{ fg }}",
     "accent": "{{ accent }}",
     "selectionBackground": "{{ selection_background }}",
     "selectionForeground": "{{ selection_foreground }}",
-    "selectedBackground": "{{ mix background accent 22% }}",
-    "color0": "{{ background }}",
+    "selectedBackground": "{{ mix bg accent 22% }}",
+    "color0": "{{ bg }}",
     "color1": "{{ red }}",
     "color2": "{{ green }}",
     "color3": "{{ yellow }}",
     "color4": "{{ blue }}",
     "color5": "{{ magenta }}",
     "color6": "{{ cyan }}",
-    "color7": "{{ foreground }}",
+    "color7": "{{ fg }}",
     "color8": "{{ muted }}",
     "color9": "{{ bright_red }}",
     "color10": "{{ bright_green }}",
@@ -24,15 +24,15 @@
     "color13": "{{ bright_magenta }}",
     "color14": "{{ bright_cyan }}",
     "color15": "{{ bright_fg }}",
-    "panel": "{{ mix background foreground 6% }}",
-    "panelAlt": "{{ mix background foreground 10% }}",
-    "panelPending": "{{ mix background accent 12% }}",
-    "panelSuccess": "{{ mix background green 12% }}",
-    "panelError": "{{ mix background red 12% }}",
-    "border": "{{ mix background foreground 30% }}",
-    "borderMuted": "{{ mix background foreground 20% }}",
-    "mutedText": "{{ mix foreground background 34% }}",
-    "dimText": "{{ mix foreground background 52% }}"
+    "panel": "{{ mix bg fg 6% }}",
+    "panelAlt": "{{ mix bg fg 10% }}",
+    "panelPending": "{{ mix bg accent 12% }}",
+    "panelSuccess": "{{ mix bg green 12% }}",
+    "panelError": "{{ mix bg red 12% }}",
+    "border": "{{ mix bg fg 30% }}",
+    "borderMuted": "{{ mix bg fg 20% }}",
+    "mutedText": "{{ mix fg bg 34% }}",
+    "dimText": "{{ mix fg bg 52% }}"
   },
   "colors": {
     "accent": "accent",
@@ -88,8 +88,8 @@
     "bashMode": "color3"
   },
   "export": {
-    "pageBg": "{{ background }}",
-    "cardBg": "{{ mix background foreground 6% }}",
-    "infoBg": "{{ mix background foreground 10% }}"
+    "pageBg": "{{ bg }}",
+    "cardBg": "{{ mix bg fg 6% }}",
+    "infoBg": "{{ mix bg fg 10% }}"
   }
 }

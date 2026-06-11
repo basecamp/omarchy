@@ -33,6 +33,13 @@ awk -F= '
   }
 
   END {
+    if (colors["background"] != "") colors["bg"] = colors["background"]
+    if (colors["foreground"] != "") colors["fg"] = colors["foreground"]
+    if (colors["bg"] != "") colors["background"] = colors["bg"]
+    if (colors["fg"] != "") colors["foreground"] = colors["fg"]
+    if (colors["bg"] != "") colors["color0"] = colors["bg"]
+    if (colors["fg"] != "") colors["color7"] = colors["fg"]
+
     alias_color("color0", "bg")
     alias_color("color0", "background")
     alias_color("color1", "red")
@@ -63,6 +70,14 @@ awk -F= '
     alias_color("color14", "cyan")
     alias_color("color15", "bright_fg")
     alias_color("color15", "foreground")
+    alias_color("light_fg", "color7")
+    alias_color("light_fg", "fg")
+    alias_color("bright_fg", "color15")
+    alias_color("bright_fg", "fg")
+    if (colors["bright_fg"] != "") colors["cursor"] = colors["bright_fg"]
+
+    if (colors["selection_background"] == "" && colors["selection"] != "") colors["selection_background"] = colors["selection"]
+    if (colors["selection_foreground"] == "") colors["selection_foreground"] = colors["bright_fg"]
 
     if (colors["foreground"] != "") printf "\033]10;%s\007", colors["foreground"]
     if (colors["background"] != "") printf "\033]11;%s\007", colors["background"]

@@ -1,10 +1,10 @@
-foreground {{ foreground }}
-background {{ background }}
+foreground {{ fg }}
+background {{ bg }}
 selection_foreground {{ selection_foreground }}
 selection_background {{ selection_background }}
 
-cursor {{ cursor }}
-cursor_text_color {{ background }}
+cursor {{ bright_fg }}
+cursor_text_color {{ bg }}
 
 active_border_color {{ accent }}
 active_tab_background {{ accent }}

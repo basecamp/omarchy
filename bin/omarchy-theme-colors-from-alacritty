@@ -154,13 +154,6 @@ if [[ -z $foreground ]]; then
   foreground=$(extract_color_in_section "colors" "primary.foreground")
 fi
 
-# Extract cursor color (from [colors.cursor] section)
-cursor=$(extract_color_in_section "colors.cursor" "cursor")
-
-if [[ -z $cursor ]]; then
-  cursor=$(extract_color_in_section "colors" "cursor.cursor")
-fi
-
 # Extract selection colors
 selection_background=$(extract_color_in_section "colors.selection" "background")
 
@@ -168,29 +161,22 @@ if [[ -z $selection_background ]]; then
   selection_background=$(extract_color_in_section "colors" "selection.background")
 fi
 
-selection_foreground=$(extract_color_in_section "colors.selection" "text")
-
-if [[ -z $selection_foreground ]]; then
-  selection_foreground=$(extract_color_in_section "colors" "selection.text")
-fi
-
 # Apply defaults
 background=${background:-$color0}
 foreground=${foreground:-$color7}
-cursor=${cursor:-$foreground}
+color0=$background
+color7=$foreground
 selection_background=${selection_background:-$foreground}
-selection_foreground=${selection_foreground:-$background}
 accent=$color4
 
 mkdir -p "$THEME_SOURCE"
 
 cat > "$COLORS_OUTPUT" <<EOF
 accent = "$accent"
-cursor = "$cursor"
-foreground = "$foreground"
-background = "$background"
-selection_foreground = "$selection_foreground"
-selection_background = "$selection_background"
+selection = "$selection_background"
+
+bg = "$background"
+fg = "$foreground"
 
 color0 = "$color0"
 color1 = "$color1"

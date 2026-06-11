@@ -15,12 +15,13 @@
 # by default.
 #
 # AVAILABLE VARIABLES:
-#   {{ background }}            - Main background color (e.g., "#1a1b26")
-#   {{ foreground }}            - Main foreground/text color
-#   {{ cursor }}                - Cursor color
+#   {{ bg }}                    - Main background color (e.g., "#1a1b26")
+#   {{ fg }}                    - Main foreground/text color
+#   {{ bright_fg }}             - Bright foreground / cursor color
 #   {{ accent }}                - Theme accent color
-#   {{ selection_background }}  - Selection highlight background
-#   {{ selection_foreground }}  - Selection highlight foreground
+#   {{ selection }}             - Selection highlight background
+#   {{ selection_background }}  - Selection highlight background alias
+#   {{ selection_foreground }}  - Selection highlight foreground (derived from bright_fg)
 #
 #   {{ color0 }} through {{ color15 }} - Standard 16-color terminal palette
 #     color0-7:  Normal colors (black, red, green, yellow, blue, magenta, cyan, white)
@@ -35,35 +36,35 @@
 #   {{ variable_rgb }}   - Decimal RGB values (e.g., "26,27,38")
 #
 # Example using modifiers:
-#   background = "{{ background }}"       -> background = "#1a1b26"
-#   background = "{{ background_strip }}" -> background = "1a1b26"
-#   background = "rgb({{ background_rgb }})" -> background = "rgb(26,27,38)"
+#   background = "{{ bg }}"       -> background = "#1a1b26"
+#   background = "{{ bg_strip }}" -> background = "1a1b26"
+#   background = "rgb({{ bg_rgb }})" -> background = "rgb(26,27,38)"
 #
 # ---------------------------------------------------------------------------
 
 [colors.primary]
-background = "{{ background }}"
-foreground = "{{ foreground }}"
+background = "{{ bg }}"
+foreground = "{{ fg }}"
 
 [colors.cursor]
-text = "{{ background }}"
-cursor = "{{ cursor }}"
+text = "{{ bg }}"
+cursor = "{{ bright_fg }}"
 
 [colors.vi_mode_cursor]
-text = "{{ background }}"
-cursor = "{{ cursor }}"
+text = "{{ bg }}"
+cursor = "{{ bright_fg }}"
 
 [colors.search.matches]
-foreground = "{{ background }}"
+foreground = "{{ bg }}"
 background = "{{ yellow }}"
 
 [colors.search.focused_match]
-foreground = "{{ background }}"
+foreground = "{{ bg }}"
 background = "{{ red }}"
 
 [colors.footer_bar]
-foreground = "{{ background }}"
-background = "{{ foreground }}"
+foreground = "{{ bg }}"
+background = "{{ fg }}"
 
 [colors.selection]
 text = "{{ selection_foreground }}"

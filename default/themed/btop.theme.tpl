@@ -1,11 +1,11 @@
 # Main background, empty for terminal default, need to be empty if you want transparent background
-theme[main_bg]="{{ background }}"
+theme[main_bg]="{{ bg }}"
 
 # Main text color
-theme[main_fg]="{{ foreground }}"
+theme[main_fg]="{{ fg }}"
 
 # Title color for boxes
-theme[title]="{{ foreground }}"
+theme[title]="{{ fg }}"
 
 # Highlight color for keyboard shortcuts
 theme[hi_fg]="{{ accent }}"

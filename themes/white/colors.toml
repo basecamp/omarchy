@@ -1,20 +1,12 @@
 mode = "light"
 
-# UI Colors (extended)
 accent = "#6e6e6e"
-cursor = "#000000"
-
-# Primary colors
-foreground = "#000000"
-background = "#ffffff"
-
-# Selection colors
-selection_foreground = "#ffffff"
-selection_background = "#1a1a1a"
 
 bg = "#ffffff"
+dark_bg = "#bfbfbf"
+darker_bg = "#808080"
 lighter_bg = "#c0c0c0"
-selection = "#1a1a1a"
+selection = "#c0c0c0"
 muted = "#c0c0c0"
 dark_fg = "#c0c0c0"
 fg = "#000000"
@@ -27,6 +19,7 @@ green = "#3a3a3a"
 cyan = "#3e3e3e"
 blue = "#1a1a1a"
 magenta = "#2e2e2e"
+
 bright_red = "#2a2a2a"
 bright_yellow = "#4a4a4a"
 bright_green = "#3a3a3a"
