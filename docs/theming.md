@@ -33,21 +33,33 @@ built-in template, the built-in output is skipped.
 `colors.toml` provides the palette keys used by templates. Common keys are:
 
 ```toml
-foreground = "#a9b1d6"
-background = "#1a1b26"
-accent     = "#7aa2f7"
-color1     = "#f7768e"
-color4     = "#7aa2f7"
+bg                   = "#1a1b26"
+fg                   = "#a9b1d6"
+accent               = "#7aa2f7"
+selection            = "#292e42"
+red                  = "#f7768e"
+blue                 = "#7aa2f7"
 ```
 
-Any key can be referenced from a template with `{{ key }}`. The shell also
-uses a few semantic palette keys directly:
+Any key can be referenced from a template with `{{ key }}`. The foundational
+shell palette is loaded from:
 
-- `foreground`
-- `background`
+- `fg` — primary readable text color
+- `bg` — primary background color
 - `accent` — preferred when present; otherwise some places fall back to
   `color4`
-- `urgent` / `color1`
+- `urgent` / `red` / `color1`
+
+For older user themes and templates, `foreground` aliases to `fg` and
+`background` aliases to `bg`.
+
+The neutral ramp is centered on `bg -> bright_fg`. Dark themes should read from
+darkest to lightest; light themes should read from lightest to darkest. Terminal
+and editor cursors use `bright_fg`; there is no separate cursor palette key.
+`selection` is the text-selection background stop in that ramp; Omarchy derives
+`selection_background = selection` and `selection_foreground = bright_fg`. Use
+`omarchy dev theme-preview [theme]` to inspect that ramp, including `dark_bg`,
+`darker_bg`, and a selected-text sample.
 
 ## Template placeholders
 
@@ -70,8 +82,8 @@ For a color key such as `accent = "#7aa2f7"`:
 percentage:
 
 ```text
-{{ mix background foreground 15% }}
-{{ mix_strip background accent 0.35 }}
+{{ mix bg fg 15% }}
+{{ mix_strip bg accent 0.35 }}
 {{ mix_rgb color0 color7 50 }}
 ```
 

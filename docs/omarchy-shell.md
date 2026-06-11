@@ -143,6 +143,10 @@ sizing in `themes/<name>/shell.toml`. Defaults are generated from
 `default/themed/shell.toml.tpl`; a theme may also drop a hand-written
 `shell.toml` next to its `colors.toml` to replace the generated file.
 
+`colors.toml` uses `fg` and `bg` for the foundational text/background
+palette. The shell exposes those to QML as `Color.foreground` and
+`Color.background`, so shell roles still use the readable role names.
+
 The shell exposes these tokens to QML via two singletons in
 `qs.Commons`:
 

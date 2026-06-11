@@ -1,17 +1,12 @@
 mode = "dark"
 
 accent = "#8d8d8d"
-cursor = "#ffffff"
-foreground = "#ffffff"
-background = "#000000"
-
-# Selection colors
-selection_foreground = "#000000"
-selection_background = "#ffffff"
 
 bg = "#000000"
+dark_bg = "#090909"
+darker_bg = "#070707"
 lighter_bg = "#000000"
-selection = "#ffffff"
+selection = "#1a1a1a"
 fg = "#ffffff"
 light_fg = "#ececec"
 bright_fg = "#ffffff"
@@ -24,8 +19,7 @@ cyan = "#b0b0b0"
 blue = "#8d8d8d"
 magenta = "#9b9b9b"
 brown = "#5c5c5c"
-dark_bg = "#090909"
-darker_bg = "#070707"
+
 bright_red = "#a4a4a4"
 bright_yellow = "#cecece"
 bright_green = "#b6b6b6"

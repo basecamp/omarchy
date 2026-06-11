@@ -220,11 +220,9 @@ cat >"$NEXT_THEME/colors.toml" <<'EOF'
 mode = "light"
 accent = "#336699"
 hyprland_active_border = "rgba(010203ee) rgba(040506ee) 45deg"
-cursor = "#ffffff"
-foreground = "#ffffff"
-background = "#000000"
-selection_foreground = "#000000"
-selection_background = "#808080"
+bg = "#000000"
+fg = "#ffffff"
+selection = "#808080"
 red = "#ff0000"
 green = "#00ff00"
 yellow = "#ffff00"
@@ -242,9 +240,9 @@ bright_fg = "#eeeeee"
 EOF
 
 cat >"$USER_THEMED/mix-test.txt.tpl" <<'EOF'
-mix={{ mix background foreground 50% }}
-strip={{ mix_strip background foreground 50% }}
-rgb={{ mix_rgb background foreground 50% }}
+mix={{ mix bg fg 50% }}
+strip={{ mix_strip bg fg 50% }}
+rgb={{ mix_rgb bg fg 50% }}
 EOF
 
 cat >"$USER_THEMED/gradient-test.txt.tpl" <<'EOF'
@@ -264,6 +262,11 @@ magenta={{ magenta }}
 legacy-purple={{ purple }}
 bright-magenta={{ bright_magenta }}
 legacy-bright-purple={{ bright_purple }}
+legacy-background={{ background }}
+legacy-foreground={{ foreground }}
+selection-background={{ selection_background }}
+selection-foreground={{ selection_foreground }}
+cursor-alias={{ cursor }}
 EOF
 
 cat >"$NEXT_THEME/shell.lock.toml" <<'EOF'
@@ -285,11 +288,35 @@ grep -qx 'magenta=#ff00ff' "$NEXT_THEME/alias-test.txt" || fail "theme template 
 grep -qx 'legacy-purple=#ff00ff' "$NEXT_THEME/alias-test.txt" || fail "theme template purple alias works"
 grep -qx 'bright-magenta=#ff11ff' "$NEXT_THEME/alias-test.txt" || fail "theme template bright magenta helper works"
 grep -qx 'legacy-bright-purple=#ff11ff' "$NEXT_THEME/alias-test.txt" || fail "theme template bright purple alias works"
+grep -qx 'legacy-background=#000000' "$NEXT_THEME/alias-test.txt" || fail "theme template legacy background alias works"
+grep -qx 'legacy-foreground=#ffffff' "$NEXT_THEME/alias-test.txt" || fail "theme template legacy foreground alias works"
+grep -qx 'selection-background=#808080' "$NEXT_THEME/alias-test.txt" || fail "theme template derives selection background from selection"
+grep -qx 'selection-foreground=#eeeeee' "$NEXT_THEME/alias-test.txt" || fail "theme template derives selection foreground from bright_fg"
+grep -qx 'cursor-alias=#eeeeee' "$NEXT_THEME/alias-test.txt" || fail "theme template derives cursor alias from bright_fg"
 pass "theme template semantic aliases expose legacy colorN helpers"
 
-osc_summary=$("$ROOT/bin/omarchy-theme-osc" "$NEXT_THEME/colors.toml" | python -c 'import sys; data = sys.stdin.buffer.read(); print(data.count(b"]4;"), b"]4;1;#ff0000" in data, b"]4;15;#eeeeee" in data)')
-[[ $osc_summary == "16 True True" ]] || fail "theme OSC aliases semantic colors to ANSI palette"
+osc_summary=$("$ROOT/bin/omarchy-theme-osc" "$NEXT_THEME/colors.toml" | python -c 'import sys; data = sys.stdin.buffer.read(); print(data.count(b"]4;"), b"]4;1;#ff0000" in data, b"]4;7;#ffffff" in data, b"]4;15;#eeeeee" in data, b"]12;#eeeeee" in data, b"]17;#808080" in data, b"]19;#eeeeee" in data)')
+[[ $osc_summary == "16 True True True True True True" ]] || fail "theme OSC aliases semantic colors to ANSI palette"
 pass "theme OSC aliases semantic colors to ANSI palette"
+
+preview_output=$(OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-dev-theme-preview" "$NEXT_THEME/colors.toml" --no-color)
+assert_output_contains "theme preview shows bg to bright_fg gradient" "$preview_output" "bg -> bright_fg gradient"
+assert_output_contains "theme preview orders light mode ramp light to dark" "$preview_output" "Neutral ramp (lightest -> darkest)"
+assert_output_contains "theme preview includes dark background slots" "$preview_output" "darker_bg"
+assert_output_contains "theme preview shows selected text sample" "$preview_output" "This is some [selected text] in a sentence"
+assert_output_contains "theme preview shows practical terminal samples" "$preview_output" "Terminal/UI samples"
+assert_output_contains "theme preview shows ANSI palette strips" "$preview_output" "ANSI palette strips"
+
+tokyo_fg=$(awk -F'"' '/^fg =/ { print $2; exit }' "$ROOT/themes/tokyo-night/colors.toml")
+tokyo_light_fg=$(awk -F'"' '/^light_fg =/ { print $2; exit }' "$ROOT/themes/tokyo-night/colors.toml")
+tokyo_bright_fg=$(awk -F'"' '/^bright_fg =/ { print $2; exit }' "$ROOT/themes/tokyo-night/colors.toml")
+[[ $tokyo_fg == "#a9b1d6" && $tokyo_light_fg == "#b4bee6" && $tokyo_bright_fg == "#c0caf5" ]] || fail "tokyo night fg ramp stays ordered"
+pass "tokyo night fg ramp stays ordered"
+
+if rg -q '^cursor\s*=' "$ROOT/themes" -g'colors.toml'; then
+  fail "built-in colors.toml files omit cursor token"
+fi
+pass "built-in colors.toml files omit cursor token"
 
 grep -qx 'hypr={ colors = { "rgba(010203ee)", "rgba(040506ee)" }, angle = 45 }' "$NEXT_THEME/gradient-test.txt" || fail "theme template hypr_gradient helper works"
 grep -qx 'shell=#010203' "$NEXT_THEME/gradient-test.txt" || fail "theme template gradient_start helper works"

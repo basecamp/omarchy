@@ -1,10 +1,10 @@
 [colors-dark]
-foreground={{ foreground_strip }}
-background={{ background_strip }}
+foreground={{ fg_strip }}
+background={{ bg_strip }}
 selection-foreground={{ selection_foreground_strip }}
 selection-background={{ selection_background_strip }}
 
-cursor={{ background_strip }} {{ cursor_strip }}
+cursor={{ bg_strip }} {{ bright_fg_strip }}
 
 regular0={{ bg_strip }}
 regular1={{ red_strip }}

@@ -1,26 +1,26 @@
 [colors.primary]
-background = "{{ background }}"
-foreground = "{{ foreground }}"
+background = "{{ bg }}"
+foreground = "{{ fg }}"
 
 [colors.cursor]
-text = "{{ background }}"
-cursor = "{{ cursor }}"
+text = "{{ bg }}"
+cursor = "{{ bright_fg }}"
 
 [colors.vi_mode_cursor]
-text = "{{ background }}"
-cursor = "{{ cursor }}"
+text = "{{ bg }}"
+cursor = "{{ bright_fg }}"
 
 [colors.search.matches]
-foreground = "{{ background }}"
+foreground = "{{ bg }}"
 background = "{{ yellow }}"
 
 [colors.search.focused_match]
-foreground = "{{ background }}"
+foreground = "{{ bg }}"
 background = "{{ red }}"
 
 [colors.footer_bar]
-foreground = "{{ background }}"
-background = "{{ foreground }}"
+foreground = "{{ bg }}"
+background = "{{ fg }}"
 
 [colors.selection]
 text = "{{ selection_foreground }}"

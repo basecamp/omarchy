@@ -34,9 +34,9 @@ return {
         bright_magenta = "{{ bright_magenta }}",
 
         accent = "{{ accent }}",
-        cursor = "{{ cursor }}",
-        foreground = "{{ foreground }}",
-        background = "{{ background }}",
+        cursor = "{{ bright_fg }}",
+        foreground = "{{ fg }}",
+        background = "{{ bg }}",
         selection = "{{ selection }}",
         selection_foreground = "{{ selection_foreground }}",
         selection_background = "{{ selection_background }}",

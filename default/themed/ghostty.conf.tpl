@@ -1,6 +1,6 @@
-background = {{ background }}
-foreground = {{ foreground }}
-cursor-color = {{ cursor }}
+background = {{ bg }}
+foreground = {{ fg }}
+cursor-color = {{ bright_fg }}
 selection-background = {{ selection_background }}
 selection-foreground = {{ selection_foreground }}
 

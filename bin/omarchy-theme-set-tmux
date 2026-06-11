@@ -54,21 +54,31 @@ theme_osc_sequences() {
 
 theme_color() {
   local key="$1"
+  local fallback="${2:-}"
 
-  awk -F= -v key="$key" '
+  awk -F= -v key="$key" -v fallback="$fallback" '
+    function clean(raw) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", raw)
+      if (raw ~ /^"/) {
+        sub(/^"/, "", raw)
+        sub(/".*$/, "", raw)
+      }
+      return raw
+    }
+
     {
       field = $1
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", field)
       if (field == key) {
-        value = $2
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-        if (value ~ /^"/) {
-          sub(/^"/, "", value)
-          sub(/".*$/, "", value)
-        }
-        print value
+        print clean($2)
+        found = 1
         exit
       }
+      if (fallback != "" && field == fallback) fallback_value = clean($2)
+    }
+
+    END {
+      if (!found && fallback_value != "") print fallback_value
     }
   ' "$COLORS_TOML"
 }
@@ -78,8 +88,8 @@ sync_tmux_window_style() {
 
   [[ -f $COLORS_TOML ]] || return
 
-  foreground=$(theme_color foreground)
-  background=$(theme_color background)
+  foreground=$(theme_color foreground fg)
+  background=$(theme_color background bg)
 
   [[ -n $foreground && -n $background ]] || return
 
