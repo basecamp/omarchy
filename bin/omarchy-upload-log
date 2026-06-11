@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# Upload logs to 0x0.st
+# omarchy:summary=Upload logs to 0x0.st
+# omarchy:args=<log-file>
+# omarchy:hidden=true
 
 LOG_TYPE="${1:-install}"
 TEMP_LOG="/tmp/upload-log.txt"

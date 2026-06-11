@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# omarchy:summary=List installed RetroArch core names
+
+set -e
+
+core_dir="/usr/lib/libretro"
+preferred_cores=(
+  "Amstrad CPC|cap32"
+  "Arcade FBNeo|fbneo"
+  "Arcade MAME|mame"
+  "Commodore Amiga|puae"
+  "Commodore C128|vice_x128"
+  "Commodore C64|vice_x64"
+  "Commodore VIC-20|vice_xvic"
+  "Nintendo DS|desmume"
+  "Nintendo Game Boy / Color|gambatte"
+  "Nintendo Game Boy Advance|mgba"
+  "Nintendo GameCube / Wii|dolphin"
+  "Nintendo NES / Famicom|mesen"
+  "Nintendo 64|parallel_n64"
+  "Nintendo SNES / SFC|snes9x"
+  "NEC PC Engine / TurboGrafx-16|mednafen_pce_fast"
+  "NEC PC Engine CD / TurboGrafx-CD|mednafen_pce"
+  "NEC PC Engine SuperGrafx|mednafen_supergrafx"
+  "Sega Dreamcast|flycast"
+  "Sega Mega Drive / Master System / Game Gear|genesis_plus_gx"
+  "Sega Saturn|kronos"
+  "Sony PlayStation|mednafen_psx_hw"
+  "Sony PlayStation Portable|ppsspp"
+)
+
+[[ -d $core_dir ]] || exit 0
+
+for preferred_core in "${preferred_cores[@]}"; do
+  label="${preferred_core%%|*}"
+  core="${preferred_core#*|}"
+  [[ -f $core_dir/${core}_libretro.so ]] && printf '%s (%s)\n' "$label" "$core"
+done

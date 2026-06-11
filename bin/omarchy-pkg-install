@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Show a fuzzy-finder TUI for picking new Arch and OPR packages to install.
+# omarchy:summary=Show a fuzzy-finder TUI for picking new Arch and OPR packages to install.
+# omarchy:requires-sudo=true
 
 fzf_args=(
   --multi
@@ -17,7 +18,9 @@ fzf_args=(
 pkg_names=$(pacman -Slq | fzf "${fzf_args[@]}")
 
 if [[ -n $pkg_names ]]; then
-  # Convert newline-separated selections to space-separated for yay
+  source omarchy-sudo-keepalive
+
+  # Convert newline-separated selections to space-separated for pacman
   echo "$pkg_names" | tr '\n' ' ' | xargs sudo pacman -S --noconfirm
   omarchy-show-done
 fi

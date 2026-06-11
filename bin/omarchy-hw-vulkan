@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether Vulkan is available.
+
+[[ -d /usr/share/vulkan/icd.d ]] &&
+  find /usr/share/vulkan/icd.d -maxdepth 1 -name "*.json" -print -quit | grep -q .
