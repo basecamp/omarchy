@@ -352,47 +352,28 @@ configure_pacman_channel() {
 
   as_root cp -f /etc/pacman.conf "/etc/pacman.conf.omarchy-upgrade-to-4.$backup_suffix.bak"
 
-  # Drop any stale [omarchy-dev] block every time. Re-add it only for dev
-  # package mode so normal upgrades resolve release packages from [omarchy].
-  local dev_server='https://share.heyoodle.com/omarchy/dev/$arch'
+  # Replace the normal Omarchy package repository. Dev package mode uses the
+  # edge channel and resolves omarchy-dev / omarchy-settings-dev from [omarchy].
   local tmp
 
   tmp=$(mktemp)
-  awk -v server="$package_server" -v dev_server="$dev_server" -v use_dev="$use_dev_packages" '
-    BEGIN { in_omarchy = 0; in_dev = 0; wrote = 0; use_dev += 0 }
-    /^\[omarchy-dev\]$/ {
-      in_dev = 1
-      in_omarchy = 0
-      next
-    }
-    /^\[omarchy\]$/ {
+  awk -v server="$package_server" '
+    BEGIN { in_omarchy = 0; wrote = 0 }
+    /^[[:space:]]*\[omarchy\][[:space:]]*$/ {
       if (!wrote) {
-        if (use_dev) {
-          print "[omarchy-dev]"
-          print "SigLevel = Never"
-          print "Server = " dev_server
-          print ""
-        }
         print "[omarchy]"
         print "SigLevel = Optional TrustAll"
         print "Server = " server
         wrote = 1
       }
       in_omarchy = 1
-      in_dev = 0
       next
     }
-    /^\[/ { in_omarchy = 0; in_dev = 0 }
-    !in_omarchy && !in_dev { print }
+    /^[[:space:]]*\[/ { in_omarchy = 0 }
+    !in_omarchy { print }
     END {
       if (!wrote) {
         print ""
-        if (use_dev) {
-          print "[omarchy-dev]"
-          print "SigLevel = Never"
-          print "Server = " dev_server
-          print ""
-        }
         print "[omarchy]"
         print "SigLevel = Optional TrustAll"
         print "Server = " server
