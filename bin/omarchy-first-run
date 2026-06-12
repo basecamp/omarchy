@@ -101,7 +101,7 @@ if [[ ! -f $MIGRATION_NOTIFY_WATCH_MARKER || $force -eq 1 ]]; then
   fi
 fi
 
-run_first_run_step "notify about pending user migrations" omarchy-migrate-notify
+run_first_run_step "notify about pending migrations" omarchy-migrate-notify
 
 USER_MARKER="$state_dir/first-run-user.done"
 if [[ ! -f $USER_MARKER || $force -eq 1 ]]; then

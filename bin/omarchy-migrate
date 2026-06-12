@@ -1,30 +1,20 @@
 #!/bin/bash
 
-# omarchy:summary=Run pending Omarchy system and user migrations.
-# omarchy:args=[--pending [all|system|user]]
+# omarchy:summary=Run pending Omarchy migrations.
+# omarchy:args=[--pending]
 
 set -euo pipefail
 
 mode="run"
-pending_scope="all"
 
 usage() {
-  echo "Usage: omarchy-migrate [--pending [all|system|user]]"
+  echo "Usage: omarchy-migrate [--pending]"
 }
 
 while (($#)); do
   case "$1" in
     --pending|--check)
       mode="pending"
-      shift
-      if [[ ${1:-} == "all" || ${1:-} == "system" || ${1:-} == "user" ]]; then
-        pending_scope="$1"
-        shift
-      fi
-      ;;
-    --pending=all|--pending=system|--pending=user)
-      mode="pending"
-      pending_scope="${1#--pending=}"
       shift
       ;;
     -h|--help)
@@ -38,38 +28,37 @@ while (($#)); do
   esac
 done
 
-pending_output=""
+OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+STATE_DIR="${OMARCHY_MIGRATION_STATE:-$HOME/.local/state/omarchy/migrations}"
+MIGRATIONS_DIR="$OMARCHY_PATH/migrations"
 
-append_pending() {
-  local scope="$1"
-  local command="$2"
-  local output=""
-  local migration=""
+migration_entries() {
+  [[ -d $MIGRATIONS_DIR ]] || return 0
 
-  if output=$("$command" --pending 2>/dev/null); then
-    while IFS= read -r migration; do
-      [[ -n $migration ]] || continue
-      pending_output+="$scope/$migration"$'\n'
-    done <<<"$output"
-  fi
+  local file filename
+
+  for file in "$MIGRATIONS_DIR"/*.sh; do
+    [[ -f $file ]] || continue
+    filename=$(basename "$file")
+    printf '%s\t%s\t%s\n' "$filename" "$file" "$STATE_DIR/$filename"
+  done
+}
+
+pending_migrations() {
+  local name file marker
+
+  while IFS=$'\t' read -r name file marker; do
+    [[ -n $name ]] || continue
+    if [[ ! -f $marker ]]; then
+      printf '%s\n' "$name"
+    fi
+  done < <(migration_entries)
 }
 
 if [[ $mode == "pending" ]]; then
-  case "$pending_scope" in
-    all)
-      append_pending system omarchy-migrate-system
-      append_pending user omarchy-migrate-user
-      ;;
-    system)
-      append_pending system omarchy-migrate-system
-      ;;
-    user)
-      append_pending user omarchy-migrate-user
-      ;;
-  esac
-
+  pending_output=$(pending_migrations)
   if [[ -n $pending_output ]]; then
-    printf '%s' "$pending_output"
+    printf '%s\n' "$pending_output"
     exit 0
   else
     exit 1
@@ -93,5 +82,16 @@ wait_for_pacman_transaction() {
 
 wait_for_pacman_transaction
 
-omarchy-migrate-system
-omarchy-migrate-user
+mkdir -p "$STATE_DIR"
+[[ -d $MIGRATIONS_DIR ]] || exit 0
+
+while IFS=$'\t' read -r name file marker; do
+  [[ -n $name ]] || continue
+
+  if [[ ! -f $marker ]]; then
+    echo -e "\e[32m\nRunning migration (${name%.sh})\e[0m"
+    OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$file"
+    mkdir -p "$(dirname "$marker")"
+    touch "$marker"
+  fi
+done < <(migration_entries)

@@ -393,7 +393,7 @@ package.path = os.getenv("HOME")
   .. package.path
 LUA
 ln -s "$MIGRATION_TMPDIR/.config/omarchy/current/theme/btop.theme" "$MIGRATION_TMPDIR/.config/btop/themes/current.theme"
-HOME="$MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/user/1781043107.sh" >/dev/null
+HOME="$MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/1781043107.sh" >/dev/null
 [[ -f $MIGRATION_TMPDIR/.local/state/omarchy/current/theme.name ]] || fail "current theme migration moves theme name"
 [[ ! -e $MIGRATION_TMPDIR/.config/omarchy/current ]] || fail "current theme migration removes legacy config state"
 grep -Fq '~/.local/state/omarchy/current/theme/alacritty.toml' "$MIGRATION_TMPDIR/.config/alacritty/alacritty.toml" || fail "current theme migration updates alacritty import"
@@ -415,7 +415,7 @@ for nvim_legacy_target in \
   "../../../omarchy/current/theme/neovim.lua" \
   "$NVIM_MIGRATION_TMPDIR/.config/omarchy/current/theme/neovim.lua"; do
   ln -sfn "$nvim_legacy_target" "$nvim_theme_link"
-  HOME="$NVIM_MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/user/1781158082.sh" >/dev/null
+  HOME="$NVIM_MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/1781158082.sh" >/dev/null
   nvim_actual_target=$(readlink "$nvim_theme_link")
   nvim_resolved_target=$(readlink -f "$nvim_theme_link")
   [[ $nvim_actual_target == $nvim_expected_target ]] || fail "nvim theme migration updates theme symlink"

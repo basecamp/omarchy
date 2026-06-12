@@ -1,32 +1,40 @@
 #!/bin/bash
 
 # omarchy:summary=Create a new Omarchy migration in the current source tree.
-# omarchy:args=<system|user> [--no-edit]
+# omarchy:args=[--no-edit]
 
 set -euo pipefail
 
-scope="${1:-}"
-case "$scope" in
-  system|user)
-    shift
-    ;;
-  -h|--help|"")
-    echo "Usage: omarchy-dev-add-migration <system|user> [--no-edit]"
-    exit 0
-    ;;
-  *)
-    echo "Unknown migration scope: $scope" >&2
-    echo "Usage: omarchy-dev-add-migration <system|user> [--no-edit]" >&2
-    exit 1
-    ;;
-esac
+no_edit=0
+
+while (($#)); do
+  case "$1" in
+    --no-edit)
+      no_edit=1
+      shift
+      ;;
+    system|user)
+      echo "omarchy-dev-add-migration: migration scopes are no longer used; creating a regular migration." >&2
+      shift
+      ;;
+    -h|--help)
+      echo "Usage: omarchy-dev-add-migration [--no-edit]"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      echo "Usage: omarchy-dev-add-migration [--no-edit]" >&2
+      exit 1
+      ;;
+  esac
+done
 
 cd "${OMARCHY_PATH:-$(pwd)}"
-mkdir -p "migrations/$scope"
-migration_file="migrations/$scope/$(git log -1 --format=%cd --date=unix).sh"
+mkdir -p migrations
+migration_file="migrations/$(git log -1 --format=%cd --date=unix).sh"
 touch "$migration_file"
 
-if [[ ${1:-} != "--no-edit" ]]; then
+if (( ! no_edit )); then
   nvim "$migration_file"
 fi
 

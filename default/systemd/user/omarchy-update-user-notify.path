@@ -1,9 +1,9 @@
 [Unit]
-Description=Watch for Omarchy user migrations
+Description=Watch for Omarchy migrations
 
 [Path]
-PathExistsGlob=/usr/share/omarchy/migrations/user/*.sh
-PathModified=/usr/share/omarchy/migrations/user
+PathExistsGlob=/usr/share/omarchy/migrations/*.sh
+PathModified=/usr/share/omarchy/migrations
 Unit=omarchy-update-user-notify.service
 
 [Install]

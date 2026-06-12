@@ -11,16 +11,16 @@ stub_bin="$test_tmp/bin"
 test_home="$test_tmp/home"
 mkdir -p "$stub_bin" "$test_home"
 
-cat >"$stub_bin/omarchy-migrate-user" <<'SH'
+cat >"$stub_bin/omarchy-migrate" <<'SH'
 #!/bin/bash
 if [[ ${1:-} == "--pending" && ${OMARCHY_TEST_PENDING_MIGRATIONS:-0} == 1 ]]; then
-  echo 200-user.sh
+  echo 200-migration.sh
   exit 0
 else
   exit 1
 fi
 SH
-chmod +x "$stub_bin/omarchy-migrate-user"
+chmod +x "$stub_bin/omarchy-migrate"
 
 cat >"$stub_bin/systemd-run" <<'SH'
 #!/bin/bash
@@ -41,6 +41,6 @@ run_notify 0 >"$test_tmp/not-pending.out" 2>"$test_tmp/not-pending.err"
 pass "migration notifier ignores users with no pending migrations"
 
 run_notify 1 >"$test_tmp/pending.out" 2>"$test_tmp/pending.err"
-grep -q 'Omarchy has pending user migrations' "$test_tmp/pending.err" || fail "migration notifier explains pending migrations without notification system"
-grep -q 'user/200-user.sh' "$test_tmp/pending.err" || fail "migration notifier lists pending migration names"
-pass "migration notifier reports pending user migrations"
+grep -q 'Omarchy has pending migrations' "$test_tmp/pending.err" || fail "migration notifier explains pending migrations without notification system"
+grep -q '200-migration.sh' "$test_tmp/pending.err" || fail "migration notifier lists pending migration names"
+pass "migration notifier reports pending migrations"

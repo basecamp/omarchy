@@ -276,11 +276,12 @@ jq -e '
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config removes widgets with remove alias"
 
-mapfile -t migrations < <(find "$ROOT/migrations" -maxdepth 1 -type f -name '*.sh' -printf '%f\n' | sort)
-[[ ${#migrations[@]} -eq 0 ]] || fail "4.0 upgrade is not modeled as a migration"
+if grep -RIl 'upgrade-to-4\|Omarchy 4\.0 is upgraded' "$ROOT/migrations" >/dev/null; then
+  fail "4.0 upgrade is not modeled as a migration"
+fi
 pass "4.0 upgrade is handled outside the migration runner"
 
-clock_migration=$(grep -rl 'Remove leading zero from bar clock date' "$ROOT/migrations/user" | head -n 1 || true)
+clock_migration=$(grep -rl 'Remove leading zero from bar clock date' "$ROOT/migrations" | head -n 1 || true)
 [[ -n $clock_migration ]] || fail "clock date format user migration exists"
 
 cat >"$TMPDIR/home/.config/omarchy/shell.json" <<'JSON'

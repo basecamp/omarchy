@@ -63,12 +63,11 @@ default/libalpm/hooks/*.hook
                                 ──►  omarchy             /usr/share/libalpm/hooks/*.hook
 
 install/**                     ──►  omarchy             /usr/share/omarchy/install/
-migrations/system/**           ──►  omarchy             /usr/share/omarchy/migrations/system/
-migrations/user/**             ──►  omarchy             /usr/share/omarchy/migrations/user/
+migrations/**                  ──►  omarchy             /usr/share/omarchy/migrations/
 themes/**                      ──►  omarchy             /usr/share/omarchy/themes/
 shell/**                       ──►  omarchy             /usr/share/omarchy/shell/
 version                        ──►  omarchy             /usr/share/omarchy/version
-                                                        + /etc/skel/.local/state/omarchy/migrations/user/*
+                                                        + /etc/skel/.local/state/omarchy/migrations/*
 
 config/**                      ──►  omarchy-settings    /etc/skel/.config/**         (seeds new users)
                                                         /usr/share/omarchy/config/** (resync source)
@@ -185,37 +184,26 @@ the root-side work.
 See [`migrations.md`](migrations.md) for the full migration model, authoring
 guidelines, and troubleshooting notes.
 
-Omarchy migrations are split by scope:
-
-- `migrations/system/*.sh` — root, noninteractive, safe to run from pacman.
-  The `omarchy` package `post_upgrade()` runs `omarchy-migrate-system` after an
-  `omarchy` package upgrade, so even explicit direct-pacman bypasses still get
-  system migrations applied. Completion state lives in
-  `/var/lib/omarchy/migrations/system/`.
-- `migrations/user/*.sh` — current user/session, may be interactive, and may
-  touch `~/.config`, `~/.local`, user systemd, DBus, browser prefs, etc.
-  Completion state lives in `~/.local/state/omarchy/migrations/user/`.
-
-Package upgrades happen as root, but user migrations must run as each user and
-may be interactive. There is no root-owned "user migration required" marker. A
-user migration is pending only when a script exists in `migrations/user/` and
-that user's matching state file is missing.
+Omarchy migrations live in `migrations/*.sh` and run per-user through
+`omarchy-migrate`. Completion state lives in
+`~/.local/state/omarchy/migrations/`, so every user gets a chance to run every
+migration. Migrations run as the user; privileged work should invoke the
+appropriate helper or privilege prompt. Migrations must be idempotent;
+machine-wide repairs should no-op when another user already applied them.
 
 Each graphical user has `omarchy-update-user-notify.path` watching the packaged
-user migration directory. When that directory changes, or when the path unit is
+migration directory. When that directory changes, or when the path unit is
 started on login, `omarchy-update-user-notify.service` runs
 `omarchy-migrate-notify` as that user. The notifier checks
-`omarchy-migrate --pending user`. If this user has missing migration state, it
-shows a notification that opens a terminal for `omarchy-migrate`. The notifier
-never runs user migrations in the background.
+`omarchy-migrate --pending`. If this user has missing migration state, it shows a
+notification that opens a terminal for `omarchy-migrate`. The notifier never runs
+migrations in the background.
 
-`omarchy-migrate` waits for any active pacman transaction to finish, runs
-pending system migrations, then runs pending user migrations. It does not need
-`--force`; migrations happen when state files are missing. For watchers and
-diagnostics, `omarchy-migrate --pending [all|system|user]` prints
-scope-prefixed pending migration filenames and exits `0` when any are pending.
-`omarchy update` runs `omarchy-migrate` after the package transaction in the
-already-visible update terminal, then runs `omarchy-hook post-update`.
+`omarchy-migrate` waits for any active pacman transaction to finish, then runs
+pending migrations. It does not need `--force`; migrations happen when state
+files are missing. `omarchy update` runs `omarchy-migrate` after the package
+transaction in the already-visible update terminal, then runs
+`omarchy-hook post-update`.
 
 ## First-run (`omarchy-first-run`)
 
@@ -286,8 +274,7 @@ return to the packaged default.
 | Per-user file that's static but lives outside `~/.config` | `default/`, then add `install -Dm644 ... $pkgdir/etc/skel/...` in `omarchy-settings` PKGBUILD |
 | Runtime tweak that needs `$HOME` or live system state | extend `omarchy-finalize-user`, or add a per-user leaf under `install/user/` and wire into `install/user/all.sh` |
 | One-time root-side setup step | `install/config/*.sh` or `install/hardware/*.sh`, wire into `omarchy-setup-system` or `install/hardware/all.sh` |
-| Noninteractive root fix for existing installs | `migrations/system/<unix-timestamp>.sh` |
-| User/session fix for existing installs | `migrations/user/<unix-timestamp>.sh` |
+| One-time fix for existing installs | `migrations/<unix-timestamp>.sh` |
 | User-facing `omarchy-*` command | `bin/omarchy-<group>-<verb>` — see `GROUP_DESCRIPTIONS` in `bin/omarchy` |
 | New stock theme | `themes/<name>/` (+ matching templates under `default/themed/` if they need theme colors) |
 | User-installed theme | `~/.config/omarchy/themes/<name>/` |
