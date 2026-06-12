@@ -1,6 +1,6 @@
 [Unit]
-Description=Notify about pending Omarchy user migrations
-ConditionPathExistsGlob=/usr/share/omarchy/migrations/user/*.sh
+Description=Notify about pending Omarchy migrations
+ConditionPathIsDirectory=/usr/share/omarchy/migrations
 
 [Service]
 Type=oneshot

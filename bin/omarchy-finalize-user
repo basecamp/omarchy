@@ -18,7 +18,7 @@ For shipped configs see /etc/skel (new users) and omarchy-reinstall-configs
 (existing users explicitly resyncing).
 
 --first-install is used by the ISO in the target chroot. It marks shipped
-user migrations complete for the freshly-created user.
+migrations complete for the freshly-created user.
 
 Idempotency marker: ~/.local/state/omarchy/finalize-user.done
 USAGE
@@ -123,9 +123,9 @@ xdg-settings set default-web-browser chromium.desktop
 xdg-mime default HEY.desktop x-scheme-handler/mailto
 
 if (( first_install )); then
-  mkdir -p "$state_dir/migrations/user"
-  for migration in "$OMARCHY_PATH"/migrations/user/*.sh; do
-    [[ -f $migration ]] && touch "$state_dir/migrations/user/$(basename "$migration")"
+  mkdir -p "$state_dir/migrations"
+  for migration in "$OMARCHY_PATH"/migrations/*.sh; do
+    [[ -f $migration ]] && touch "$state_dir/migrations/$(basename "$migration")"
   done
 fi
 

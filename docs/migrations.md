@@ -4,59 +4,30 @@ Omarchy migrations are one-time repair scripts for existing installs. They are
 used when a package update needs to change state that pacman cannot safely own by
 itself.
 
-## The two migration scopes
+## Migration model
 
-Omarchy migrations are split by execution context:
-
-```text
-migrations/system/*.sh
-migrations/user/*.sh
-```
-
-### System migrations
-
-System migrations run as root and must be noninteractive.
-
-Use system migrations for machine-wide state, for example:
-
-- `/etc` drop-ins or legacy config cleanup
-- `/boot` / bootloader cleanup
-- systemd system units or service state
-- hardware quirks
-- package-owned layout transitions
-
-Note that it's not necessary to write a migration for any file that will be package-owned.
-
-State lives in:
+Migrations live in:
 
 ```text
-/var/lib/omarchy/migrations/system/<migration filename>
+migrations/*.sh
 ```
 
-### User migrations
+They run as the current Omarchy user through `omarchy-migrate`, normally during
+`omarchy update`. A migration may touch user/session state (`~/.config`,
+`~/.local`, user systemd, browser/editor prefs, DBus/session state), and may also
+perform machine-wide repairs when needed.
 
-User migrations run as the current graphical/login user and may be interactive.
-
-Use user migrations for per-user or session-aware state, for example:
-
-- `~/.config` changes
-- `~/.local` state
-- user systemd units
-- browser/editor preferences
-- DBus/session-dependent updates
-- prompts that need to happen in a visible terminal
-
-State lives in:
+Completion state is per-user:
 
 ```text
-~/.local/state/omarchy/migrations/user/<migration filename>
+~/.local/state/omarchy/migrations/<migration filename>
 ```
 
-A user migration is pending for a given user only when the script exists under
-`/usr/share/omarchy/migrations/user/` and that user's matching state file is
-missing.
-
-There is no global root-owned “user migrations required” queue.
+That means every user gets a chance to run every migration. Migrations run as the
+user; privileged operations should invoke the appropriate helper or privilege
+prompt themselves. Migrations must be idempotent: if one user already applied a
+machine-wide repair, the same migration running for another user should detect
+that and no-op.
 
 ## When migrations run
 
@@ -69,15 +40,8 @@ omarchy-migrate
 omarchy-hook post-update
 ```
 
-`omarchy-migrate`:
-
-1. waits for any active pacman transaction to finish
-2. runs pending system migrations
-3. runs pending user migrations for the current user
-
-System migrations usually already ran during the pacman transaction via the
-`omarchy` package `post_upgrade()`, but the second check is intentional and
-idempotent.
+`omarchy-migrate` waits for any active pacman transaction to finish, then runs
+all pending migrations for the current user in the visible update terminal.
 
 ### During direct pacman updates
 
@@ -87,28 +51,21 @@ Raw `sudo pacman -Syu` is guarded. Users should normally run:
 omarchy update
 ```
 
-If a user explicitly bypasses the guard, the `omarchy` package still runs system
-migrations from `post_upgrade()`:
+If a user explicitly bypasses the guard, user sessions watch the packaged
+migration directory and run a notifier. The notifier checks:
 
 ```bash
-omarchy-migrate-system
+omarchy-migrate --pending
 ```
 
-User migrations are never run by pacman. Instead, the user session watches the
-packaged user migration directory and runs a notifier. The notifier checks:
-
-```bash
-omarchy-migrate --pending user
-```
-
-If that user has pending user migrations, it shows a notification that opens a
+If that user has pending migrations, it shows a notification that opens a
 terminal for:
 
 ```bash
 omarchy-migrate
 ```
 
-The notifier never runs user migrations silently in the background.
+The notifier never runs migrations silently in the background.
 
 ### Manually
 
@@ -126,179 +83,72 @@ Use:
 
 ```bash
 omarchy-migrate --pending
-omarchy-migrate --pending system
-omarchy-migrate --pending user
 ```
 
 Exit behavior:
 
-- `0` — one or more matching migrations are pending
-- non-zero — no matching migrations are pending
+- `0` — one or more migrations are pending
+- non-zero — no migrations are pending
 
-Output is scope-prefixed:
+Output is one pending migration per line:
 
 ```text
-system/100-system.sh
-user/200-user.sh
+1781158082.sh
 ```
 
-The lower-level runners also support `--pending` and print filenames without the
-scope prefix:
+## Creating a migration
+
+Use the helper:
 
 ```bash
-omarchy-migrate-system --pending
-omarchy-migrate-user --pending
+omarchy-dev-add-migration --no-edit
 ```
 
-Prefer `omarchy-migrate --pending ...` in user-facing tools and watchers.
+This creates:
 
-## Writing migrations
-
-Create a migration with:
-
-```bash
-omarchy-dev-add-migration system --no-edit
-omarchy-dev-add-migration user --no-edit
+```text
+migrations/<unix timestamp>.sh
 ```
 
-Choose the scope based on the state being changed, not on convenience.
+New migration format:
 
-### File format
+- File permissions must be `0644` (`-rw-r--r--`). Migration runners execute them
+  with `bash -euo pipefail`, not through executable bits.
+- No shebang line.
+- Start with an `echo` describing what the migration does.
+- Use `$OMARCHY_PATH` to reference the Omarchy directory.
+- Be idempotent. Check existing state before changing it.
+- Use helper commands such as `omarchy-cmd-present`, `omarchy-cmd-missing`,
+  `omarchy-pkg-add`, `omarchy-pkg-drop`, `omarchy-pkg-present`, and
+  `omarchy-pkg-missing` when appropriate.
 
-Migrations are plain shell files:
-
-- filename: unix timestamp, generated by `omarchy-dev-add-migration`
-- mode: `0644`
-- no shebang
-- start with an `echo` describing the migration
-- use `$OMARCHY_PATH` for Omarchy-owned files
-- should be idempotent
-- should be as simple as possible to accomplish the task
-
-Example system migration:
+Example:
 
 ```bash
-echo "Remove legacy Limine config"
+echo "Relink Neovim theme to Omarchy current state"
 
-rm -f /boot/EFI/limine/limine.conf
+theme_link="$HOME/.config/nvim/lua/plugins/theme.lua"
+current_relative_target="../../../../.local/state/omarchy/current/theme/neovim.lua"
+
+[[ -L $theme_link ]] || exit 0
+ln -sfn "$current_relative_target" "$theme_link"
 ```
 
-Example user migration:
+## Testing migrations
+
+Run a migration against a temporary home when possible:
 
 ```bash
-echo "Refresh user app launchers"
-
-omarchy-refresh-applications
+HOME=$(mktemp -d) bash -euo pipefail migrations/<timestamp>.sh
 ```
 
-### Execution model
-
-Migration runners execute scripts with strict shell settings:
+To rerun a migration locally, remove its marker and run the migrator:
 
 ```bash
-bash -euo pipefail <migration>
-```
-
-`$OMARCHY_PATH` is exported into the migration process.
-
-A migration is marked complete only after the script exits successfully. If it
-fails, the marker is not written and the migration will be retried later.
-
-Because failed migrations can be retried after doing partial work, migrations
-must be idempotent. Prefer operations that are safe to run more than once:
-
-```bash
-mkdir -p ~/.config/example
-rm -f ~/.config/example/legacy.conf
-install -Dm644 "$OMARCHY_PATH/default/example.conf" ~/.config/example/example.conf
-systemctl --user enable --now some-unit.service || true
-```
-
-Use `|| true` only when a failure is genuinely acceptable.
-
-## What belongs in a migration?
-
-Good migration uses:
-
-- deleting or moving legacy files that block the packaged layout
-- marking or enabling new service state
-- migrating old config paths to new config paths
-- repairing known bad state from an earlier Omarchy release
-- one-time compatibility for existing installs
-
-Bad migration uses:
-
-- fresh-install setup that belongs in `install/` or `/etc/skel`
-- package installation that belongs in package dependencies or package lists
-- recurring maintenance
-- arbitrary cleanup that should be a user command
-- pre-4 upgrade work that belongs in `omarchy-upgrade-to-4`
-- hidden user/session work from pacman
-
-## Fresh installs and new users
-
-Fresh users created from the packaged layout should not have to run historical
-user migrations. The package seeds user migration markers into `/etc/skel` so
-new users start with shipped user migrations marked complete.
-
-The ISO/finalization path also marks shipped user migrations complete for the
-freshly-created install user when running:
-
-```bash
-omarchy-finalize-user --first-install
-```
-
-Existing users keep their own migration state and run only migrations whose
-state files are missing.
-
-## Troubleshooting
-
-### See what is pending
-
-```bash
-omarchy-migrate --pending
-```
-
-### Retry failed migrations
-
-Fix the underlying problem, then run:
-
-```bash
+rm ~/.local/state/omarchy/migrations/<migration>.sh
 omarchy-migrate
 ```
 
-A failed migration is not marked complete, so it will retry.
-
-### Re-run a completed migration manually
-
-Remove its marker, then run the migration command again:
-
-```bash
-rm ~/.local/state/omarchy/migrations/user/<migration>.sh
-omarchy-migrate
-```
-
-For system migrations:
-
-```bash
-sudo rm /var/lib/omarchy/migrations/system/<migration>.sh
-omarchy-migrate
-```
-
-Be careful: migrations should be idempotent, but manually removing markers is an
-advanced troubleshooting step.
-
-## Agent checklist
-
-Before adding a migration:
-
-1. Is this a one-time repair for existing installs?
-2. Is it system state or user/session state?
-3. Can it run safely more than once?
-4. Will it fail loudly if the important work fails?
-5. Does it avoid hidden interactive work from pacman?
-6. Does it belong in `omarchy-upgrade-to-4` instead?
-7. Did you add or update tests if behavior changed?
-
-If the answer to any of these is unclear, stop and ask before adding the
-migration.
+Omarchy 4.0 is upgraded through `bin/omarchy-upgrade-to-4`, not through the
+normal migration runner. Do not add compatibility migrations for old installer
+layouts; put pre-4 package-layout transition work in the upgrade command instead.
