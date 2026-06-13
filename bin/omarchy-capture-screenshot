@@ -16,7 +16,7 @@ fi
 
 pkill slurp && exit 0
 
-SCREENSHOT_EDITOR="${OMARCHY_SCREENSHOT_EDITOR:-satty}"
+SCREENSHOT_EDITOR="${OMARCHY_SCREENSHOT_EDITOR:-tensaku-edit}"
 
 # Parse --editor flag from any position
 ARGS=()
@@ -31,15 +31,7 @@ set -- "${ARGS[@]}"
 
 open_editor() {
   local filepath="$1"
-  if [[ $SCREENSHOT_EDITOR == "satty" ]]; then
-    satty --filename "$filepath" \
-      --output-filename "$filepath" \
-      --actions-on-enter save-to-clipboard \
-      --save-after-copy \
-      --copy-command 'wl-copy --type image/png'
-  else
-    $SCREENSHOT_EDITOR "$filepath"
-  fi
+  "$SCREENSHOT_EDITOR" "$filepath"
 }
 
 MODE="${1:-smart}"

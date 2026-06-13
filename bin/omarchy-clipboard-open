@@ -29,7 +29,7 @@ open_image() {
   local path="$1"
 
   [[ -r $path ]] || exit 1
-  exec satty --filename "$path" --output-filename "$path"
+  exec tensaku-edit "$path"
 }
 
 open_text() {

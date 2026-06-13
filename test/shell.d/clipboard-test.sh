@@ -160,12 +160,12 @@ printf '%s\n' "$1" >"$EDITOR_PATH_OUT"
 cat "$1" >"$EDITOR_TEXT_OUT"
 SH
 
-cat >"$TMPDIR/bin/satty" <<'SH'
+cat >"$TMPDIR/bin/tensaku-edit" <<'SH'
 #!/bin/bash
-printf '%s\n' "$*" >"$SATTY_OUT"
+printf '%s\n' "$*" >"$TENSAKU_OUT"
 SH
 
-chmod +x "$TMPDIR/bin/wl-copy" "$TMPDIR/bin/wl-paste" "$TMPDIR/bin/wtype" "$TMPDIR/bin/omarchy-launch-browser" "$TMPDIR/bin/omarchy-launch-editor" "$TMPDIR/bin/satty"
+chmod +x "$TMPDIR/bin/wl-copy" "$TMPDIR/bin/wl-paste" "$TMPDIR/bin/wtype" "$TMPDIR/bin/omarchy-launch-browser" "$TMPDIR/bin/omarchy-launch-editor" "$TMPDIR/bin/tensaku-edit"
 
 capture_output=$(XDG_RUNTIME_DIR="$TMPDIR" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
 [[ $capture_output == '{"type":"text","text":"terminal copy"}' ]] || fail "clipboard capture records normal text events"
@@ -237,8 +237,8 @@ pass "clipboard open helper opens text entries in editor"
 [[ $(<"$TMPDIR/editor-path") == "$TMPDIR"/state/omarchy/clipboard-open/clipboard.*.txt ]] || fail "clipboard open helper writes text entries to a temporary file"
 pass "clipboard open helper writes text entries to a temporary file"
 
-SATTY_OUT="$TMPDIR/satty" HOME="$TMPDIR/home" PATH="$TMPDIR/bin:$PATH" \
+TENSAKU_OUT="$TMPDIR/tensaku" HOME="$TMPDIR/home" PATH="$TMPDIR/bin:$PATH" \
   "$ROOT/bin/omarchy-clipboard-open" --history-index 2
 
-[[ $(<"$TMPDIR/satty") == "--filename $TMPDIR/image.png --output-filename $TMPDIR/image.png" ]] || fail "clipboard open helper opens image entries in satty"
-pass "clipboard open helper opens image entries in satty"
+[[ $(<"$TMPDIR/tensaku") == "$TMPDIR/image.png" ]] || fail "clipboard open helper opens image entries in Tensaku"
+pass "clipboard open helper opens image entries in Tensaku"
