@@ -1,0 +1,195 @@
+#!/bin/bash
+
+# omarchy:summary=Configure idle behavior: screensaver, display blanking, and idle lock
+# omarchy:group=config
+# omarchy:name=screensaver
+
+# Interactive editor for ~/.config/hypr/hypridle.conf. Lets you choose what happens
+# when the session goes idle (animated screensaver, blank the displays, or nothing),
+# how long to wait, and whether the session locks. Changes are written to the user
+# config with a timestamped backup and applied by restarting hypridle. "Restore
+# Omarchy defaults" reverts to the shipped config via omarchy-refresh-config.
+
+HYPRIDLE_CONF="$HOME/.config/hypr/hypridle.conf"
+
+read_settings() {
+  action=screensaver
+  idle=150
+  lock=on
+  lockdelay=2
+
+  [[ -f $HYPRIDLE_CONF ]] || return
+
+  mapfile -t timeouts < <(grep -oP 'timeout\s*=\s*\K[0-9]+' "$HYPRIDLE_CONF")
+
+  if grep -q "omarchy-launch-screensaver" "$HYPRIDLE_CONF"; then
+    action=screensaver
+  elif grep -q "dpms off" "$HYPRIDLE_CONF"; then
+    action=dpms
+  else
+    action=none
+  fi
+
+  if grep -qE "on-timeout = omarchy-system-lock$" "$HYPRIDLE_CONF"; then
+    lock=on
+  else
+    lock=off
+  fi
+
+  if [[ $action != none ]]; then
+    [[ -n ${timeouts[0]:-} ]] && idle=${timeouts[0]}
+    if [[ $lock == on && -n ${timeouts[1]:-} ]]; then
+      ((lockdelay = timeouts[1] - idle))
+      ((lockdelay < 0)) && lockdelay=2
+    fi
+  elif [[ $lock == on && -n ${timeouts[0]:-} ]]; then
+    idle=${timeouts[0]}
+    lockdelay=0
+  fi
+}
+
+write_settings() {
+  mkdir -p "$(dirname "$HYPRIDLE_CONF")"
+  [[ -f $HYPRIDLE_CONF ]] && cp -f "$HYPRIDLE_CONF" "$HYPRIDLE_CONF.bak.$(date +%s)"
+
+  {
+    cat <<'GENERAL'
+general {
+    lock_cmd = omarchy-system-lock                         # lock screen and 1password
+    before_sleep_cmd = OMARCHY_LOCK_ONLY=true omarchy-system-lock    # lock before suspend without scheduling display off.
+    after_sleep_cmd = sleep 1 && omarchy-system-wake                 # delay for PAM readiness, then turn on display.
+    inhibit_sleep = 3                                      # wait until screen is locked
+}
+GENERAL
+
+    case $action in
+    screensaver)
+      printf '\n# Start screensaver after %s seconds of inactivity\nlistener {\n    timeout = %s\n    on-timeout = pidof hyprlock || omarchy-launch-screensaver\n}\n' "$idle" "$idle"
+      ;;
+    dpms)
+      printf '\n# Turn off displays after %s seconds of inactivity\nlistener {\n    timeout = %s\n    on-timeout = hyprctl dispatch dpms off\n    on-resume = hyprctl dispatch dpms on\n}\n' "$idle" "$idle"
+      ;;
+    esac
+
+    if [[ $lock == on ]]; then
+      printf '\n# Lock the session after inactivity\nlistener {\n    timeout = %s\n    on-timeout = omarchy-system-lock\n    on-resume = omarchy-system-wake\n}\n' "$((idle + lockdelay))"
+    fi
+  } >"$HYPRIDLE_CONF"
+
+  omarchy-restart-hypridle
+}
+
+fmt_action() {
+  case $1 in
+  screensaver) echo "Show screensaver" ;;
+  dpms) echo "Turn off displays" ;;
+  none) echo "Do nothing" ;;
+  esac
+}
+
+fmt_mins() { awk "BEGIN { printf \"%g\", $1 / 60 }"; }
+
+choose_action() {
+  local choice
+  choice=$(gum choose --header "When the session goes idle:" \
+    "Show screensaver" "Turn off displays" "Do nothing") || return
+  case $choice in
+  "Show screensaver") action=screensaver ;;
+  "Turn off displays") action=dpms ;;
+  "Do nothing") action=none ;;
+  esac
+  dirty=1
+}
+
+choose_timeout() {
+  if [[ $action == none ]]; then
+    echo "Pick a screen action first (screensaver or turn off displays)."
+    sleep 1.5
+    return
+  fi
+  local choice secs
+  choice=$(gum choose --header "Idle timeout:" \
+    "1 minute" "2.5 minutes" "5 minutes" "10 minutes" "30 minutes" "Custom…") || return
+  case $choice in
+  "1 minute") idle=60 ;;
+  "2.5 minutes") idle=150 ;;
+  "5 minutes") idle=300 ;;
+  "10 minutes") idle=600 ;;
+  "30 minutes") idle=1800 ;;
+  "Custom…")
+    secs=$(gum input --header "Idle timeout in seconds (min 5):" --value "$idle") || return
+    if [[ $secs =~ ^[0-9]+$ ]] && ((secs >= 5)); then
+      idle=$secs
+    else
+      echo "Invalid value."
+      sleep 1.5
+      return
+    fi
+    ;;
+  esac
+  dirty=1
+}
+
+choose_lock() {
+  local choice
+  choice=$(gum choose --header "Lock the session when idle?" "Yes" "No") || return
+  [[ $choice == "Yes" ]] && lock=on || lock=off
+  dirty=1
+}
+
+apply_settings() {
+  write_settings
+  dirty=0
+  notify-send -u low "Idle settings applied" \
+    "$(fmt_action "$action") • timeout ${idle}s • lock: $lock" 2>/dev/null
+  echo "Applied."
+  sleep 1
+}
+
+command -v gum &>/dev/null || {
+  echo "gum is required" >&2
+  exit 1
+}
+
+read_settings
+dirty=0
+
+while true; do
+  clear
+  echo "Screensaver & idle settings"
+  echo
+  echo "  When idle    : $(fmt_action "$action")"
+  [[ $action != none ]] && echo "  Idle timeout : ${idle}s ($(fmt_mins "$idle") min)"
+  if [[ $lock == on ]]; then
+    echo "  Idle lock    : on (locks after $((idle + lockdelay))s)"
+  else
+    echo "  Idle lock    : off"
+  fi
+  ((dirty)) && echo -e "\n  * unapplied changes"
+  echo
+
+  choice=$(gum choose --header "Edit:" \
+    "When idle" "Idle timeout" "Idle lock" "Apply" "Restore Omarchy defaults" "Quit") || exit 0
+
+  case $choice in
+  "When idle") choose_action ;;
+  "Idle timeout") choose_timeout ;;
+  "Idle lock") choose_lock ;;
+  "Apply") apply_settings ;;
+  "Restore Omarchy defaults")
+    if gum confirm "Restore the default Omarchy idle configuration?"; then
+      omarchy-refresh-config hypr/hypridle.conf >/dev/null
+      omarchy-restart-hypridle
+      read_settings
+      dirty=0
+      notify-send -u low "Restored default Omarchy idle settings" 2>/dev/null
+    fi
+    ;;
+  "Quit")
+    if ((dirty)) && gum confirm "Apply changes before quitting?"; then
+      apply_settings
+    fi
+    exit 0
+    ;;
+  esac
+done
