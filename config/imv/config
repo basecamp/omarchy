@@ -12,5 +12,5 @@
 # Rotate the currently open image by 90 degrees
 <Ctrl+r> = exec mogrify -rotate 90 "$imv_current_file"
 
-# Edit the current image in Satty and quit the viewer
-<Ctrl+e> = exec satty --filename "$imv_current_file" & ; quit
+# Edit the current image in Tensaku and quit the viewer
+<Ctrl+e> = exec tensaku-edit "$imv_current_file" & ; quit
