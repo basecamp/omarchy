@@ -48,6 +48,16 @@ read_settings() {
   fi
 }
 
+# Seconds after which the lock fires. With a screen action the lock trails it by
+# lockdelay; with no screen action the idle timeout itself drives the lock.
+lock_timeout() {
+  if [[ $action == none ]]; then
+    echo "$idle"
+  else
+    echo "$((idle + lockdelay))"
+  fi
+}
+
 write_settings() {
   mkdir -p "$(dirname "$HYPRIDLE_CONF")"
   [[ -f $HYPRIDLE_CONF ]] && cp -f "$HYPRIDLE_CONF" "$HYPRIDLE_CONF.bak.$(date +%s)"
@@ -72,7 +82,7 @@ GENERAL
     esac
 
     if [[ $lock == on ]]; then
-      printf '\n# Lock the session after inactivity\nlistener {\n    timeout = %s\n    on-timeout = omarchy-system-lock\n    on-resume = omarchy-system-wake\n}\n' "$((idle + lockdelay))"
+      printf '\n# Lock the session after inactivity\nlistener {\n    timeout = %s\n    on-timeout = omarchy-system-lock\n    on-resume = omarchy-system-wake\n}\n' "$(lock_timeout)"
     fi
   } >"$HYPRIDLE_CONF"
 
@@ -102,8 +112,8 @@ choose_action() {
 }
 
 choose_timeout() {
-  if [[ $action == none ]]; then
-    echo "Pick a screen action first (screensaver or turn off displays)."
+  if [[ $action == none && $lock == off ]]; then
+    echo "Enable a screen action or idle lock first."
     sleep 1.5
     return
   fi
@@ -159,9 +169,11 @@ while true; do
   echo "Screensaver & idle settings"
   echo
   echo "  When idle    : $(fmt_action "$action")"
-  [[ $action != none ]] && echo "  Idle timeout : ${idle}s ($(fmt_mins "$idle") min)"
+  if [[ $action != none || $lock == on ]]; then
+    echo "  Idle timeout : ${idle}s ($(fmt_mins "$idle") min)"
+  fi
   if [[ $lock == on ]]; then
-    echo "  Idle lock    : on (locks after $((idle + lockdelay))s)"
+    echo "  Idle lock    : on (locks after $(lock_timeout)s)"
   else
     echo "  Idle lock    : off"
   fi
