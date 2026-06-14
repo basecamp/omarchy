@@ -313,137 +313,188 @@ BarWidget {
     function openSettings(): string { root.openSettings(); return "ok" }
   }
 
+  component UsageChip: Item {
+    id: chip
+
+    required property var modelData
+    required property int index
+    readonly property real pct: root.usagePercent(modelData)
+    readonly property bool compact: root.vertical
+    readonly property bool tooltipHovered: mouseArea.containsMouse
+
+    width: compact ? root.barSize : chipRow.implicitWidth
+    height: compact ? Math.max(root.barSize, chipColumn.implicitHeight + Style.space(2)) : root.barSize
+
+    Row {
+      id: chipRow
+      visible: !chip.compact
+      anchors.centerIn: parent
+      spacing: 4
+
+      Image {
+        source: root.iconSourceForProvider(chip.modelData)
+        width: 13
+        height: 13
+        sourceSize.width: 13
+        sourceSize.height: 13
+        fillMode: Image.PreserveAspectFit
+        anchors.verticalCenter: parent.verticalCenter
+        opacity: chip.pct >= 0.9 ? 0.75 : 1
+      }
+
+      Text {
+        text: root.formatUsagePercent(chip.modelData)
+        color: chip.pct >= 0.9 ? urgent : foreground
+        font.family: fontFamily
+        font.pixelSize: 10
+        font.bold: chip.pct >= 0.9
+        anchors.verticalCenter: parent.verticalCenter
+      }
+    }
+
+    Column {
+      id: chipColumn
+      visible: chip.compact
+      anchors.centerIn: parent
+      spacing: 1
+
+      Image {
+        source: root.iconSourceForProvider(chip.modelData)
+        width: 13
+        height: 13
+        sourceSize.width: 13
+        sourceSize.height: 13
+        fillMode: Image.PreserveAspectFit
+        anchors.horizontalCenter: parent.horizontalCenter
+        opacity: chip.pct >= 0.9 ? 0.75 : 1
+      }
+
+      Text {
+        width: root.barSize
+        text: root.formatUsagePercent(chip.modelData)
+        color: chip.pct >= 0.9 ? urgent : foreground
+        font.family: fontFamily
+        font.pixelSize: 10
+        font.bold: chip.pct >= 0.9
+        horizontalAlignment: Text.AlignHCenter
+      }
+    }
+
+    property var registeredBar: null
+
+    function triggerPress(button) {
+      root.handleChipPress(chip.index, button, chip)
+    }
+
+    function syncClickRegistration() {
+      if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(chip)
+      registeredBar = root.bar
+      if (registeredBar && registeredBar.registerClickTarget) registeredBar.registerClickTarget(chip)
+    }
+
+    Component.onCompleted: syncClickRegistration()
+    Component.onDestruction: if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(chip)
+
+    Connections {
+      target: root
+      function onBarChanged() { chip.syncClickRegistration() }
+    }
+
+    MouseArea {
+      id: mouseArea
+      anchors.fill: parent
+      acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: if (root.bar) root.bar.showTooltip(chip, root.tooltipText())
+      onExited: if (root.bar) root.bar.hideTooltip(chip)
+      onClicked: function(mouse) { root.handleChipPress(chip.index, mouse.button, chip) }
+    }
+  }
+
+  component EmptyUsageChip: Item {
+    id: emptyChip
+
+    readonly property bool tooltipHovered: emptyMouse.containsMouse
+
+    visible: providers.length === 0
+    width: root.vertical ? root.barSize : emptyLabel.implicitWidth
+    height: root.barSize
+
+    property var registeredBar: null
+
+    function triggerPress(button) {
+      root.handleChipPress(0, button, emptyChip)
+    }
+
+    function syncClickRegistration() {
+      if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(emptyChip)
+      registeredBar = root.bar
+      if (registeredBar && registeredBar.registerClickTarget) registeredBar.registerClickTarget(emptyChip)
+    }
+
+    Component.onCompleted: syncClickRegistration()
+    Component.onDestruction: if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(emptyChip)
+
+    Connections {
+      target: root
+      function onBarChanged() { emptyChip.syncClickRegistration() }
+    }
+
+    Text {
+      id: emptyLabel
+      anchors.centerIn: parent
+      text: "AI"
+      color: dim
+      font.family: fontFamily
+      font.pixelSize: 10
+      font.bold: true
+    }
+
+    MouseArea {
+      id: emptyMouse
+      anchors.fill: parent
+      acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: if (root.bar) root.bar.showTooltip(emptyChip, "Model Usage")
+      onExited: if (root.bar) root.bar.hideTooltip(emptyChip)
+      onClicked: function(mouse) { root.handleChipPress(0, mouse.button, emptyChip) }
+    }
+  }
+
   Item {
     id: button
     anchors.fill: parent
-    implicitWidth: barRow.implicitWidth + 10
-    implicitHeight: root.bar ? root.bar.barSize : 26
+    implicitWidth: root.vertical ? root.barSize : barRow.implicitWidth + Style.space(10)
+    implicitHeight: root.vertical ? barColumn.implicitHeight : root.barSize
 
     Row {
       id: barRow
+      visible: !root.vertical
       anchors.centerIn: parent
-      spacing: 8
+      spacing: Style.space(8)
 
       Repeater {
         model: providers
-
-        Item {
-          id: chip
-          required property var modelData
-          required property int index
-          readonly property real pct: root.usagePercent(modelData)
-          readonly property bool tooltipHovered: mouseArea.containsMouse
-
-          width: chipRow.implicitWidth
-          height: root.bar ? root.bar.barSize : 26
-
-          Row {
-            id: chipRow
-            anchors.centerIn: parent
-            spacing: 4
-
-            Image {
-              id: chipIcon
-              source: root.iconSourceForProvider(chip.modelData)
-              width: 13
-              height: 13
-              sourceSize.width: 13
-              sourceSize.height: 13
-              fillMode: Image.PreserveAspectFit
-              anchors.verticalCenter: parent.verticalCenter
-              opacity: chip.pct >= 0.9 ? 0.75 : 1
-            }
-
-            Text {
-              text: root.formatUsagePercent(chip.modelData)
-              color: chip.pct >= 0.9 ? urgent : foreground
-              font.family: fontFamily
-              font.pixelSize: 10
-              font.bold: chip.pct >= 0.9
-              anchors.verticalCenter: parent.verticalCenter
-            }
-          }
-
-          property var registeredBar: null
-
-          function triggerPress(button) {
-            root.handleChipPress(chip.index, button, chip)
-          }
-
-          function syncClickRegistration() {
-            if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(chip)
-            registeredBar = root.bar
-            if (registeredBar && registeredBar.registerClickTarget) registeredBar.registerClickTarget(chip)
-          }
-
-          Component.onCompleted: syncClickRegistration()
-          Component.onDestruction: if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(chip)
-
-          Connections {
-            target: root
-            function onBarChanged() { chip.syncClickRegistration() }
-          }
-
-          MouseArea {
-            id: mouseArea
-            anchors.fill: parent
-            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onEntered: if (root.bar) root.bar.showTooltip(chip, root.tooltipText())
-            onExited: if (root.bar) root.bar.hideTooltip(chip)
-            onClicked: function(mouse) { root.handleChipPress(chip.index, mouse.button, chip) }
-          }
-        }
+        UsageChip { visible: !root.vertical }
       }
 
-      Item {
-        id: emptyChip
-        visible: providers.length === 0
-        width: emptyLabel.implicitWidth
-        height: root.bar ? root.bar.barSize : 26
-        readonly property bool tooltipHovered: emptyMouse.containsMouse
-        property var registeredBar: null
+      EmptyUsageChip { visible: !root.vertical && providers.length === 0 }
+    }
 
-        function triggerPress(button) {
-          root.handleChipPress(0, button, emptyChip)
-        }
+    Column {
+      id: barColumn
+      visible: root.vertical
+      anchors.centerIn: parent
+      spacing: Style.space(2)
 
-        function syncClickRegistration() {
-          if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(emptyChip)
-          registeredBar = root.bar
-          if (registeredBar && registeredBar.registerClickTarget) registeredBar.registerClickTarget(emptyChip)
-        }
-
-        Component.onCompleted: syncClickRegistration()
-        Component.onDestruction: if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(emptyChip)
-
-        Connections {
-          target: root
-          function onBarChanged() { emptyChip.syncClickRegistration() }
-        }
-
-        Text {
-          id: emptyLabel
-          anchors.centerIn: parent
-          text: "AI"
-          color: dim
-          font.family: fontFamily
-          font.pixelSize: 10
-          font.bold: true
-        }
-
-        MouseArea {
-          id: emptyMouse
-          anchors.fill: parent
-          acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onEntered: if (root.bar) root.bar.showTooltip(emptyChip, "Model Usage")
-          onExited: if (root.bar) root.bar.hideTooltip(emptyChip)
-          onClicked: function(mouse) { root.handleChipPress(0, mouse.button, emptyChip) }
-        }
+      Repeater {
+        model: providers
+        UsageChip { visible: root.vertical }
       }
+
+      EmptyUsageChip { visible: root.vertical && providers.length === 0 }
     }
   }
 
