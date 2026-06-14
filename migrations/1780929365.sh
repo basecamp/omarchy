@@ -1,4 +1,4 @@
-echo "Install missing Mesa Vulkan driver for Intel/AMD/Apple GPUs"
+echo "Install missing Mesa Vulkan driver for Intel/AMD GPUs"
 
 # Backfill for systems installed before install/config/hardware/vulkan.sh existed.
 # install/ scripts only run at initial setup, so machines set up earlier never
@@ -9,7 +9,6 @@ echo "Install missing Mesa Vulkan driver for Intel/AMD/Apple GPUs"
 declare -A VULKAN_DRIVERS=(
   [Intel]=vulkan-intel
   [AMD]=vulkan-radeon
-  [Apple]=vulkan-asahi
 )
 
 PACKAGES=()
