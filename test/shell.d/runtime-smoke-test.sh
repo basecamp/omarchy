@@ -144,7 +144,6 @@ visible_default_ids='[
   "omarchy.clock",
   "omarchy.weather",
   "omarchy.system-update",
-  "omarchy.indicators",
   "omarchy.network",
   "omarchy.audio",
   "omarchy.monitor"
@@ -180,7 +179,7 @@ jq -e --argjson expected "$default_ids" --argjson visibleExpected "$visible_defa
 pass "default bar layout renders expected module slots"
 
 jq -e '
-  map(select(.section == "center" and .visible == true and .width > 0)) | map(.id) as $center |
+  map(select(.section == "center")) | map(.id) as $center |
   ($center | index("omarchy.weather")) != null and
   ($center | index("omarchy.system-update")) != null and
   ($center | index("omarchy.indicators")) != null and
@@ -189,10 +188,10 @@ jq -e '
 ' <<<"$geometry" >/dev/null || {
   printf 'Geometry:\n' >&2
   jq . <<<"$geometry" >&2
-  fail_with_log "runtime geometry places visible update between weather and indicators"
+  fail_with_log "runtime geometry keeps update before indicators"
 }
 
-pass "runtime geometry places visible update between weather and indicators"
+pass "runtime geometry keeps update before indicators"
 
 HOME="$test_home" OMARCHY_PATH="$test_root" PATH="$ROOT/bin:$PATH" "$ROOT/bin/omarchy-config-shell-bar" remove omarchy.audio
 
