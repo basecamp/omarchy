@@ -163,10 +163,28 @@ BarWidget {
     usageMain.refreshAll(true)
   }
 
+  function colorChannelLuminance(value) {
+    var channel = Number(value)
+    if (!isFinite(channel)) return 0
+    return channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4)
+  }
+
+  function colorLuminance(color) {
+    return 0.2126 * colorChannelLuminance(color.r)
+      + 0.7152 * colorChannelLuminance(color.g)
+      + 0.0722 * colorChannelLuminance(color.b)
+  }
+
+  function codexIconSource() {
+    return colorLuminance(foreground) < 0.5
+      ? Qt.resolvedUrl("assets/codex-light.svg")
+      : Qt.resolvedUrl("assets/codex.svg")
+  }
+
   function iconSourceForProvider(provider) {
     if (!provider) return ""
     if (provider.providerId === "claude") return Qt.resolvedUrl("assets/claude.svg")
-    if (provider.providerId === "codex") return Qt.resolvedUrl("assets/codex.svg")
+    if (provider.providerId === "codex") return codexIconSource()
     return ""
   }
 
