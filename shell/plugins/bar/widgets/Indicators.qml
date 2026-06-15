@@ -8,9 +8,7 @@ BarWidget {
   id: root
   moduleName: "omarchy.indicators"
 
-  readonly property int indicatorSlotExtent: Style.space(22)
   readonly property var defaultIndicatorEntries: [ "Dnd", "Reminder", "NightLight", "StayAwake", "ScreenRecording", "Dictation" ]
-  readonly property int inactiveSlotExtent: indicatorEntries.length * indicatorSlotExtent
   readonly property var indicatorEntries: indicatorEntriesFromSettings(settings)
   property var activeIndicatorIds: []
   property var indicatorActiveStates: ({})
@@ -204,10 +202,11 @@ BarWidget {
     Item {
       id: inactiveHorizontalArea
 
-      implicitWidth: Math.max(inactiveHorizontalBlock.implicitWidth, root.inactiveSlotExtent)
+      implicitWidth: root.revealInactiveIndicators ? inactiveHorizontalBlock.implicitWidth : 0
       implicitHeight: Math.max(inactiveHorizontalBlock.implicitHeight, root.barSize)
       width: implicitWidth
       height: implicitHeight
+      clip: true
 
       IndicatorBlock {
         id: inactiveHorizontalBlock
@@ -246,9 +245,10 @@ BarWidget {
       id: inactiveVerticalArea
 
       implicitWidth: Math.max(inactiveVerticalBlock.implicitWidth, root.barSize)
-      implicitHeight: Math.max(inactiveVerticalBlock.implicitHeight, root.inactiveSlotExtent)
+      implicitHeight: root.revealInactiveIndicators ? inactiveVerticalBlock.implicitHeight : 0
       width: implicitWidth
       height: implicitHeight
+      clip: true
 
       IndicatorBlock {
         id: inactiveVerticalBlock
