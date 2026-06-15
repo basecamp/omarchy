@@ -26,6 +26,10 @@ declare -A FALLBACK_KEYCODE_SYM_MAP=(
 # source-derived key cache so the menu can still show those bindings.
 declare -A LUA_BIND_KEY_MAP
 
+# Allow user-defined keybinding extensions
+USER_EXTENSIONS="$HOME/.config/omarchy/extensions/keybindings.sh"
+[[ -f $USER_EXTENSIONS ]] && source "$USER_EXTENSIONS"
+
 build_keymap_cache() {
   local keymap
   keymap="$(xkbcli compile-keymap)" || {
@@ -382,6 +386,7 @@ output_binding_records() {
   {
     dynamic_bindings
     static_bindings
+    [[ $(type -t user_bindings) == "function" ]] && user_bindings
   } |
     sort -u |
     parse_keycodes |
