@@ -1,0 +1,26 @@
+#!/bin/bash
+
+set -euo pipefail
+
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
+
+upgrade_to_4="$ROOT/bin/omarchy-upgrade-to-4"
+first_run_wifi="$ROOT/install/user/first-run/wifi.sh"
+
+grep -F 'pacman -Syu --needed' "$upgrade_to_4" >/dev/null
+grep -F 'omarchy-update-aur-pkgs' "$upgrade_to_4" >/dev/null
+grep -F 'omarchy-update-available' "$upgrade_to_4" >/dev/null
+grep -F 'omarchy-update-mise' "$upgrade_to_4" >/dev/null
+grep -F 'run_final_system_package_upgrade' "$upgrade_to_4" >/dev/null
+pass "Omarchy 4 upgrade completes package update checks"
+
+grep -F 'run_post_upgrade_migrations' "$upgrade_to_4" >/dev/null
+grep -F 'omarchy-migrate' "$upgrade_to_4" >/dev/null
+grep -F 'dust' "$upgrade_to_4" >/dev/null
+grep -F 'satty' "$upgrade_to_4" >/dev/null
+pass "Omarchy 4 upgrade applies packaged migrations"
+
+grep -F 'skip-first-run-update-notification' "$upgrade_to_4" >/dev/null
+grep -F 'skip-first-run-update-notification' "$first_run_wifi" >/dev/null
+grep -F '(( skip_update_notification )) && return 0' "$first_run_wifi" >/dev/null
+pass "Omarchy 4 upgrade suppresses the fresh-install update toast"
