@@ -175,16 +175,16 @@ BarWidget {
       + 0.0722 * colorChannelLuminance(color.b)
   }
 
-  function codexIconSource() {
-    return colorLuminance(foreground) < 0.5
+  function codexIconSource(surfaceColor) {
+    return colorLuminance(surfaceColor || Color.background) >= 0.5
       ? Qt.resolvedUrl("assets/codex-light.svg")
       : Qt.resolvedUrl("assets/codex.svg")
   }
 
-  function iconSourceForProvider(provider) {
+  function iconSourceForProvider(provider, surfaceColor) {
     if (!provider) return ""
     if (provider.providerId === "claude") return Qt.resolvedUrl("assets/claude.svg")
-    if (provider.providerId === "codex") return codexIconSource()
+    if (provider.providerId === "codex") return codexIconSource(surfaceColor)
     return ""
   }
 
@@ -350,7 +350,7 @@ BarWidget {
       spacing: 4
 
       Image {
-        source: root.iconSourceForProvider(chip.modelData)
+        source: root.iconSourceForProvider(chip.modelData, root.bar ? root.bar.background : Color.bar.background)
         width: 13
         height: 13
         sourceSize.width: 13
@@ -377,7 +377,7 @@ BarWidget {
       spacing: 1
 
       Image {
-        source: root.iconSourceForProvider(chip.modelData)
+        source: root.iconSourceForProvider(chip.modelData, root.bar ? root.bar.background : Color.bar.background)
         width: 13
         height: 13
         sourceSize.width: 13
@@ -908,7 +908,7 @@ BarWidget {
     spacing: 8
 
     Image {
-      source: root.iconSourceForProvider(provider)
+      source: root.iconSourceForProvider(provider, root.background)
       Layout.preferredWidth: 16
       Layout.preferredHeight: 16
       sourceSize.width: 16
