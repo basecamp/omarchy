@@ -1,4 +1,14 @@
+state_dir="$HOME/.local/state/omarchy"
+skip_update_notification_file="$state_dir/skip-first-run-update-notification"
+skip_update_notification=0
+if [[ -f $skip_update_notification_file ]]; then
+  skip_update_notification=1
+  rm -f "$skip_update_notification_file"
+fi
+
 notify_update() {
+  (( skip_update_notification )) && return 0
+
   (
     if [[ -n $(omarchy-notification-send -u critical -g  "Update System" "$1" -a) ]]; then
       omarchy-launch-floating-terminal-with-presentation omarchy-update

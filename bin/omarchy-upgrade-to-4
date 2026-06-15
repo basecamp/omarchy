@@ -515,7 +515,7 @@ install_omarchy_4_packages() {
   )
   local base_packages=()
 
-  log "Installing Omarchy 4 packages"
+  log "Upgrading system packages and installing Omarchy 4 packages"
   (( use_dev_packages )) && log "Using dev packages [omarchy-dev / omarchy-settings-dev]"
   # --noconfirm answers "no" to conflict-removal prompts. --ask 4 preselects
   # removing the conflicting package, which is required for legacy packages like
@@ -558,6 +558,7 @@ remove_retired_default_packages() {
     chaotic-keyring
     chaotic-mirrorlist
     claude-code
+    dust
     elephant
     elephant-all
     elephant-bluetooth
@@ -594,6 +595,7 @@ remove_retired_default_packages() {
     playerctl
     polkit-gnome
     qt5-remoteobjects
+    satty
     swaybg
     swayosd
     walker-bin
@@ -1036,6 +1038,99 @@ ensure_sleep_lock_service() {
   run_as_user_session systemctl --user reset-failed omarchy-sleep-lock.service >/dev/null 2>&1 || true
   if ! run_as_user_session systemctl --user enable --now omarchy-sleep-lock.service >/dev/null 2>&1; then
     warn "Could not start omarchy-sleep-lock.service; it should start after reboot."
+  fi
+}
+
+run_post_upgrade_migrations() {
+  PATH="$package_path" command -v omarchy-migrate >/dev/null 2>&1 || return 0
+
+  log "Running Omarchy migrations"
+  if ! run_as_user env \
+    HOME="$target_home" \
+    USER="$target_user" \
+    LOGNAME="$target_user" \
+    OMARCHY_PATH=/usr/share/omarchy \
+    PATH="$package_path" \
+    omarchy-migrate; then
+    warn "Could not run Omarchy migrations; the user may be prompted to run them after login."
+  fi
+}
+
+run_final_system_package_upgrade() {
+  log "Checking for remaining system package updates"
+  as_root env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm --ask 4 \
+    --overwrite '/etc/docker/daemon.json' \
+    --overwrite '/etc/gnupg/dirmngr.conf' \
+    --overwrite '/etc/modprobe.d/omarchy-usb-autosuspend.conf' \
+    --overwrite '/etc/sudoers.d/omarchy-asdcontrol' \
+    --overwrite '/etc/sudoers.d/omarchy-passwd-tries' \
+    --overwrite '/etc/sudoers.d/omarchy-tzupdate' \
+    --overwrite '/etc/sysctl.d/90-omarchy-file-watchers.conf' \
+    --overwrite '/etc/sysctl.d/99-omarchy-sysctl.conf' \
+    --overwrite '/etc/systemd/logind.conf.d/10-ignore-power-button.conf' \
+    --overwrite '/etc/systemd/resolved.conf.d/10-disable-multicast.conf' \
+    --overwrite '/etc/systemd/resolved.conf.d/20-docker-dns.conf' \
+    --overwrite '/etc/systemd/system.conf.d/10-faster-shutdown.conf' \
+    --overwrite '/etc/systemd/system/user@.service.d/10-faster-shutdown.conf' \
+    --overwrite '/etc/systemd/system/docker.service.d/no-block-boot.conf' \
+    --overwrite '/etc/systemd/system/plocate-updatedb.service.d/ac-only.conf' \
+    --overwrite '/usr/lib/systemd/system-sleep/unmount-fuse' \
+    --overwrite '/usr/share/plymouth/themes/omarchy/*'
+}
+
+run_post_upgrade_update_steps() {
+  local update_error_file update_output update_status
+
+  update_error_file="$target_home/.local/state/omarchy/updates/error"
+
+  if PATH="$package_path" command -v omarchy-update-aur-pkgs >/dev/null 2>&1; then
+    if ! run_as_user env \
+      HOME="$target_home" \
+      USER="$target_user" \
+      LOGNAME="$target_user" \
+      OMARCHY_PATH=/usr/share/omarchy \
+      PATH="$package_path" \
+      omarchy-update-aur-pkgs; then
+      warn "Could not update AUR packages; the update indicator may still show AUR updates after reboot."
+    fi
+  fi
+
+  if PATH="$package_path" command -v omarchy-update-mise >/dev/null 2>&1; then
+    if ! run_as_user env \
+      HOME="$target_home" \
+      USER="$target_user" \
+      LOGNAME="$target_user" \
+      OMARCHY_PATH=/usr/share/omarchy \
+      PATH="$package_path" \
+      omarchy-update-mise; then
+      warn "Could not update mise tools; running omarchy-update after reboot may still update mise-managed tools."
+    fi
+  fi
+
+  if PATH="$package_path" command -v omarchy-update-available >/dev/null 2>&1; then
+    log "Refreshing update indicator state"
+    update_status=0
+    update_output=$(run_as_user env \
+      HOME="$target_home" \
+      USER="$target_user" \
+      LOGNAME="$target_user" \
+      OMARCHY_PATH=/usr/share/omarchy \
+      PATH="$package_path" \
+      omarchy-update-available 2>&1) || update_status=$?
+
+    if (( update_status == 0 )); then
+      warn "Updates are still available after the upgrade; first-run will still offer to run omarchy-update:"
+      printf '%s\n' "$update_output" >&2
+    elif [[ -s $update_error_file ]]; then
+      warn "Could not confirm update state after upgrade; first-run will still offer to run omarchy-update:"
+      printf '%s\n' "$update_output" >&2
+    else
+      # The live upgrade has already completed the package update. Let first-run
+      # finish session-only setup, but skip its generic fresh-install update
+      # toast when the update checker confirms nothing remains.
+      run_as_user mkdir -p "$target_home/.local/state/omarchy"
+      run_as_user touch "$target_home/.local/state/omarchy/skip-first-run-update-notification"
+    fi
   fi
 }
 
@@ -2128,6 +2223,9 @@ apply_user_transition
 cleanup_retired_services
 ensure_sleep_lock_service
 remove_retired_default_packages
+run_post_upgrade_migrations
+run_final_system_package_upgrade
+run_post_upgrade_update_steps
 refresh_current_theme_after_upgrade
 # Do not force-reload Hyprland in the live upgraded session. The legacy
 # default/hypr and theme hyprland.conf shims above exist specifically so the
