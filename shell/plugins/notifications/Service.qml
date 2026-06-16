@@ -32,8 +32,9 @@ Item {
   // Corner radius is shared with the menu and shell panels.
   // It mirrors Hyprland's current decoration:rounding value.
   readonly property int cornerRadius: Style.cornerRadius
-  // Surfaces anchor relative to the omarchy bar so popups and history land
-  // alongside the other shell panels rather than on top of the bar itself.
+  // Toasts are fixed to the top-right corner. They only clear the omarchy bar
+  // when the bar occupies the top or right edge, so left/bottom bars do not
+  // pull notification popups away from the expected top-right location.
   // Falls back to the bar's default size (26 horizontal / 28 vertical) when
   // shell.bar isn't reachable so the popup never lands on top of the bar.
   readonly property string barPosition: shell && shell.barConfig ? String(shell.barConfig.position || "top") : "top"
@@ -738,17 +739,20 @@ Item {
       exclusionMode: ExclusionMode.Ignore
       color: "transparent"
 
+      readonly property var popupPlacement: NotificationLogic.popupPlacement(
+        service.barPosition, service.barClearance, Style.gapsOut)
+
       anchors {
-        top: service.barPosition !== "bottom"
-        bottom: service.barPosition === "bottom"
-        left: service.barPosition === "left"
-        right: service.barPosition !== "left"
+        top: popupWindow.popupPlacement.anchors.top
+        bottom: popupWindow.popupPlacement.anchors.bottom
+        left: popupWindow.popupPlacement.anchors.left
+        right: popupWindow.popupPlacement.anchors.right
       }
       margins {
-        top:    service.barPosition === "top"    ? service.barClearance : Style.gapsOut
-        bottom: service.barPosition === "bottom" ? service.barClearance : Style.gapsOut
-        left:   service.barPosition === "left"   ? service.barClearance : Style.gapsOut
-        right:  service.barPosition === "right"  ? service.barClearance : Style.gapsOut
+        top: popupWindow.popupPlacement.margins.top
+        bottom: popupWindow.popupPlacement.margins.bottom
+        left: popupWindow.popupPlacement.margins.left
+        right: popupWindow.popupPlacement.margins.right
       }
 
       implicitWidth: popupColumn.implicitWidth

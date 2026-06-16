@@ -47,6 +47,39 @@ assert(!notifications.shouldBypassDnd({ appName: 'Slack', urgency: 2 }, 2), 'cri
 assert(!notifications.shouldBypassDnd({ appName: 'omarchy-menu-keybindings', urgency: 1 }, 2), 'omarchy command app names do not bypass DND')
 assert(!notifications.isEphemeralApp('omarchy-menu-keybindings'), 'notifications treat omarchy command app names as normal apps')
 
+assertDeepEqual(
+  notifications.popupPlacement('top', 32, 6),
+  {
+    anchors: { top: true, bottom: false, left: false, right: true },
+    margins: { top: 32, bottom: 6, left: 6, right: 6 }
+  },
+  'notifications clear a top bar while staying anchored top-right'
+)
+assertDeepEqual(
+  notifications.popupPlacement('right', 32, 6),
+  {
+    anchors: { top: true, bottom: false, left: false, right: true },
+    margins: { top: 6, bottom: 6, left: 6, right: 32 }
+  },
+  'notifications clear a right bar while staying anchored top-right'
+)
+assertDeepEqual(
+  notifications.popupPlacement('bottom', 32, 6),
+  {
+    anchors: { top: true, bottom: false, left: false, right: true },
+    margins: { top: 6, bottom: 6, left: 6, right: 6 }
+  },
+  'notifications ignore a bottom bar for popup placement'
+)
+assertDeepEqual(
+  notifications.popupPlacement('left', 32, 6),
+  {
+    anchors: { top: true, bottom: false, left: false, right: true },
+    margins: { top: 6, bottom: 6, left: 6, right: 6 }
+  },
+  'notifications ignore a left bar for popup placement'
+)
+
 const notification = {
   id: 12,
   appName: 'Mail',
