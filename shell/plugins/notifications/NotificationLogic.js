@@ -165,6 +165,24 @@ function dumpRows(rows) {
   return out
 }
 
+function popupPlacement(barPosition, barClearance, gapsOut) {
+  var position = String(barPosition || "top")
+  var clearance = Number(barClearance)
+  var gap = Number(gapsOut)
+  if (!isFinite(clearance)) clearance = 0
+  if (!isFinite(gap)) gap = 0
+
+  return {
+    anchors: { top: true, bottom: false, left: false, right: true },
+    margins: {
+      top: position === "top" ? clearance : gap,
+      bottom: gap,
+      left: gap,
+      right: position === "right" ? clearance : gap
+    }
+  }
+}
+
 function imageExtension(srcPath) {
   var lower = String(srcPath || "").toLowerCase()
   var dot = lower.lastIndexOf(".")
@@ -188,6 +206,7 @@ if (typeof module !== "undefined") {
     dedupeByOriginalId: dedupeByOriginalId,
     parseHistory: parseHistory,
     dumpRows: dumpRows,
+    popupPlacement: popupPlacement,
     imageExtension: imageExtension
   }
 }
