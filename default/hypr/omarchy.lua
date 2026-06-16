@@ -4,10 +4,13 @@ require("default.hypr.helpers")
 
 -- Use Omarchy defaults, but don't edit these directly.
 require("default.hypr.autostart")
-require("default.hypr.bindings.media")
-require("default.hypr.bindings.clipboard")
-require("default.hypr.bindings.tiling-v2")
-require("default.hypr.bindings.utilities")
+if _G.omarchy_default_bindings ~= false then
+  require("default.hypr.bindings.media")
+  require("default.hypr.bindings.clipboard")
+  require("default.hypr.bindings.tiling-v2")
+  require("default.hypr.bindings.utilities")
+  require("default.hypr.bindings.applications")
+end
 require("default.hypr.envs")
 require("default.hypr.looknfeel")
 require("default.hypr.input")
