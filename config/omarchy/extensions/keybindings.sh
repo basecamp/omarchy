@@ -14,3 +14,4 @@
 #   echo "ALT,1,Tmux: window 1"
 #   echo "CTRL ALT,Left,Tmux: navigate pane left"
 #   echo "ALT,1,Tmux: window 1"
+#   }
