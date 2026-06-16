@@ -163,8 +163,8 @@ It only does the things `/etc/skel` can't:
   `omarchy dev link` against a dev checkout repoints them correctly.
 - `xdg-user-dirs-update` (Templates/Public/Desktop folded back into `$HOME`)
   and `~/.config/gtk-3.0/bookmarks` (needs `$HOME` expansion).
-- Sync `XKBLAYOUT` / `XKBVARIANT` from `/etc/vconsole.conf` into
-  `~/.config/hypr/input.lua`.
+- Hyprland's package-owned default input reads `XKBLAYOUT` / `XKBVARIANT`
+  from `/etc/vconsole.conf`; no per-user Hyprland config rewrite is needed.
 - `xdg-settings set default-web-browser chromium.desktop` and
   `xdg-mime default HEY.desktop x-scheme-handler/mailto` (XDG-aware paths).
 - `omarchy-refresh-applications` (composes generated `.desktop` launchers).

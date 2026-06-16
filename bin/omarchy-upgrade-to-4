@@ -1613,6 +1613,17 @@ refresh_known_config_defaults() {
   done < <(default_hash_paths refresh)
 }
 
+mark_removed_preinstalls_from_legacy_bindings() {
+  local bindings_file="$HOME/.config/hypr/bindings.lua"
+  local plain_bindings_sha="5d92d4008b04848256445da3cf5c10422a8d537baad499a4e63f60daecaefc6f"
+
+  [[ -f $bindings_file ]] || return 0
+  [[ $(file_sha256 "$bindings_file") == "$plain_bindings_sha" ]] || return 0
+
+  mkdir -p "$state_dir"
+  touch "$state_dir/preinstalls-removed"
+}
+
 copy_always_config_defaults() {
   local rel
   for rel in "${always_copy_config_files[@]}"; do
@@ -1754,6 +1765,7 @@ done
 # and always write the v4-only entry points that older installs cannot have.
 refresh_known_config_defaults
 copy_missing_config_defaults "$root/config" "$HOME/.config"
+mark_removed_preinstalls_from_legacy_bindings
 copy_always_config_defaults
 repair_chromium_copy_url_extension_flags
 
@@ -1821,7 +1833,7 @@ repair_sleep_lock_unit_override
 install_bash_startup
 
 unset rel file backup retired_config_files always_copy_config_files uwsm_env known_config_default_hashes_by_key
-unset -f file_sha256 known_config_default_hashes default_hash_paths is_known_default_hash backup_config_file migrate_uwsm_env_customizations is_retired_config_file copy_config_default copy_missing_config_defaults refresh_known_config_defaults copy_always_config_defaults repair_chromium_copy_url_extension_flags repair_sleep_lock_unit_override is_known_bashrc_default install_bash_startup
+unset -f file_sha256 known_config_default_hashes default_hash_paths is_known_default_hash backup_config_file migrate_uwsm_env_customizations is_retired_config_file copy_config_default copy_missing_config_defaults refresh_known_config_defaults mark_removed_preinstalls_from_legacy_bindings copy_always_config_defaults repair_chromium_copy_url_extension_flags repair_sleep_lock_unit_override is_known_bashrc_default install_bash_startup
 
 mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills" "$HOME/.pi/agent/skills"
 if [[ -d $root/default/omarchy-skill ]]; then
@@ -1864,21 +1876,6 @@ for dir in Downloads Projects Pictures Videos; do
   bookmark="file://$HOME/$dir $dir"
   grep -qxF "$bookmark" "$HOME/.config/gtk-3.0/bookmarks" || echo "$bookmark" >>"$HOME/.config/gtk-3.0/bookmarks"
 done
-
-conf=/etc/vconsole.conf
-hyprlua="$HOME/.config/hypr/input.lua"
-if [[ -f $conf && -f $hyprlua ]]; then
-  sed -i '/^[[:space:]]*kb_layout[[:space:]]*=/d' "$hyprlua"
-  sed -i '/^[[:space:]]*kb_variant[[:space:]]*=/d' "$hyprlua"
-  if grep -q '^XKBLAYOUT=' "$conf"; then
-    layout=$(grep '^XKBLAYOUT=' "$conf" | cut -d= -f2 | tr -d '"')
-    sed -i "/^[[:space:]]*kb_options *=/i\    kb_layout = \"$layout\"," "$hyprlua"
-  fi
-  if grep -q '^XKBVARIANT=' "$conf"; then
-    variant=$(grep '^XKBVARIANT=' "$conf" | cut -d= -f2 | tr -d '"')
-    sed -i "/^[[:space:]]*kb_options *=/i\    kb_variant = \"$variant\"," "$hyprlua"
-  fi
-fi
 
 if [[ -n ${OMARCHY_USER_NAME//[[:space:]]/} ]]; then
   git config --global user.name "$OMARCHY_USER_NAME" || true

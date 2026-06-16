@@ -49,6 +49,24 @@ local function command_from(value, description)
   return value
 end
 
+local function file_exists(path)
+  local file = io.open(path, "r")
+  if file then
+    file:close()
+    return true
+  end
+
+  return false
+end
+
+function o.preinstalled_bindings_enabled()
+  if _G.omarchy_preinstalled_bindings ~= nil then
+    return _G.omarchy_preinstalled_bindings == true
+  end
+
+  return not file_exists((os.getenv("HOME") or "") .. "/.local/state/omarchy/preinstalls-removed")
+end
+
 function o.bind(keys, description, dispatcher, options)
   local opts = options or {}
 

@@ -12,7 +12,7 @@ Usage: omarchy finalize user [--force] [--first-install]
 
 Runs the per-user setup steps that /etc/skel can't seed:
 dev-aware skill symlinks, xdg-user-dirs + gtk bookmarks (need \$HOME),
-vconsole→hypr keyboard sync, default browser/mailto, and install/user/all.sh.
+default browser/mailto, and install/user/all.sh.
 
 For shipped configs see /etc/skel (new users) and omarchy-reinstall-configs
 (existing users explicitly resyncing).
@@ -99,22 +99,6 @@ for dir in Downloads Projects Pictures Videos; do
   bookmark="file://$HOME/$dir $dir"
   grep -qxF "$bookmark" ~/.config/gtk-3.0/bookmarks || echo "$bookmark" >>~/.config/gtk-3.0/bookmarks
 done
-
-conf=/etc/vconsole.conf
-hyprlua="$HOME/.config/hypr/input.lua"
-if [[ -f $conf && -f $hyprlua ]]; then
-  sed -i '/^[[:space:]]*kb_layout[[:space:]]*=/d' "$hyprlua"
-  sed -i '/^[[:space:]]*kb_variant[[:space:]]*=/d' "$hyprlua"
-
-  if grep -q '^XKBLAYOUT=' "$conf"; then
-    layout=$(grep '^XKBLAYOUT=' "$conf" | cut -d= -f2 | tr -d '"')
-    sed -i "/^[[:space:]]*kb_options *=/i\    kb_layout = \"$layout\"," "$hyprlua"
-  fi
-  if grep -q '^XKBVARIANT=' "$conf"; then
-    variant=$(grep '^XKBVARIANT=' "$conf" | cut -d= -f2 | tr -d '"')
-    sed -i "/^[[:space:]]*kb_options *=/i\    kb_variant = \"$variant\"," "$hyprlua"
-  fi
-fi
 
 source "$OMARCHY_INSTALL/user/all.sh"
 
