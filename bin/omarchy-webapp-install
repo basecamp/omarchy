@@ -24,6 +24,23 @@ if (( $# < 3 )); then
     ICON_REF=$(gum input --prompt "Icon URL> " --placeholder "Could not fetch favicon automatically. Enter PNG icon URL (see https://dashboardicons.com)")
   fi
 
+  # Offer a target browser profile when the effective browser has more than one.
+  PROFILE_DIRS=()
+  PROFILE_NAMES=()
+  while IFS=$'\t' read -r d n; do
+    [[ -n $d ]] && PROFILE_DIRS+=("$d") && PROFILE_NAMES+=("$n")
+  done < <(omarchy-webapp-profiles)
+
+  if ((${#PROFILE_DIRS[@]} > 1)); then
+    CHOICE=$(gum choose --header "Which browser profile?" "Ask me each time" "${PROFILE_NAMES[@]}")
+    if [[ -n $CHOICE && $CHOICE != "Ask me each time" ]]; then
+      for i in "${!PROFILE_NAMES[@]}"; do
+        [[ ${PROFILE_NAMES[$i]} == "$CHOICE" ]] &&
+          omarchy-webapp-profile-store set "$APP_URL" "${PROFILE_DIRS[$i]}" && break
+      done
+    fi
+  fi
+
   CUSTOM_EXEC=""
   MIME_TYPES=""
   INTERACTIVE_MODE=true

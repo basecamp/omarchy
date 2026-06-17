@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Launch a URL as a web app in the default supported browser
-# omarchy:args=<url>
+# omarchy:args=<url> [extra-flags...]
 
 browser=$(xdg-settings get default-web-browser)
 
@@ -10,4 +10,54 @@ google-chrome* | brave* | microsoft-edge* | opera* | vivaldi* | helium*) ;;
 *) browser="chromium.desktop" ;;
 esac
 
-exec setsid uwsm-app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1) --app="$1" "${@:2}"
+browser_exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1)
+
+url="$1"
+shift
+remember_key="${OMARCHY_WEBAPP_REMEMBER_KEY:-$url}"
+profile_arg=()
+
+# Build parallel arrays of profile dir + display name for the effective browser.
+dirs=()
+names=()
+while IFS=$'\t' read -r d n; do
+  [[ -n $d ]] && dirs+=("$d") && names+=("$n")
+done < <(omarchy-webapp-profiles)
+
+# Only offer a profile choice when there is more than one to choose from.
+if ((${#dirs[@]} > 1)); then
+  chosen_dir=""
+
+  # Use a remembered profile if it still exists.
+  remembered="$(omarchy-webapp-profile-store get "$remember_key")"
+  if [[ -n $remembered ]]; then
+    for d in "${dirs[@]}"; do [[ $d == "$remembered" ]] && chosen_dir="$d" && break; done
+  fi
+
+  # Otherwise ask, listing each profile (use once) plus an "Always use…" variant (remember).
+  if [[ -z $chosen_dir ]]; then
+    options=("${names[@]}" "──────────")
+    for n in "${names[@]}"; do options+=("Always use $n"); done
+
+    picked="$(omarchy-menu-select "Choose profile" "${options[@]}")"
+    [[ -z $picked || $picked == "──────────" ]] && exit 0
+
+    remember=false
+    sel="$picked"
+    if [[ $picked == "Always use "* ]]; then
+      remember=true
+      sel="${picked#Always use }"
+    fi
+
+    for i in "${!names[@]}"; do
+      [[ ${names[$i]} == "$sel" ]] && chosen_dir="${dirs[$i]}" && break
+    done
+    [[ -z $chosen_dir ]] && exit 0
+
+    $remember && omarchy-webapp-profile-store set "$remember_key" "$chosen_dir"
+  fi
+
+  profile_arg=(--profile-directory="$chosen_dir")
+fi
+
+exec setsid uwsm-app -- "$browser_exec" "${profile_arg[@]}" --app="$url" "$@"
