@@ -6,8 +6,14 @@
 
 omarchy-state clear re*-required
 
-# Schedule the reboot to happen after closing windows (detached from terminal)
-nohup bash -c "sleep 2 && systemctl reboot --no-wall" >/dev/null 2>&1 &
+# Schedule the reboot to happen after closing windows.
+# Run it as a transient user unit rather than a backgrounded child of this
+# script. A `nohup &` child stays inside the terminal's transient systemd scope
+# (app-*.scope, created with --collect); closing that terminal below tears the
+# scope down and SIGTERMs the still-sleeping child before it can issue the
+# reboot, so the reboot is silently lost. A systemd-run unit lives in its own
+# cgroup under the user manager and survives the scope teardown.
+systemd-run --user --collect --quiet bash -c "sleep 2 && systemctl reboot --no-wall"
 
 # Now close all windows
 omarchy-hyprland-window-close-all
