@@ -28,6 +28,7 @@
   // System
   "system.screensaver": {"icon":"󱄄","label":"Screensaver","action":"omarchy-launch-screensaver force"},
   "system.lock": {"icon":"","label":"Lock","keywords":"screen","action":"omarchy-system-lock"},
+  "system.sleep-displays": {"icon":"󰍹","label":"Sleep Displays","keywords":"monitor dpms screen off blank","action":"omarchy-cmd-sleep-displays"},
   "system.suspend": {"icon":"󰒲","label":"Suspend","keywords":"sleep","when":"! omarchy-toggle-enabled suspend-off","action":"systemctl suspend"},
   "system.hibernate": {"icon":"󰤁","label":"Hibernate","keywords":"sleep","when":"omarchy-hibernation-available","action":"systemctl hibernate"},
   "system.logout": {"icon":"󰍃","label":"Logout","keywords":"sign out","action":"omarchy-system-logout"},
