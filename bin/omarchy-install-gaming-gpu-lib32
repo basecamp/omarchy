@@ -10,8 +10,8 @@ echo "Installing lib32 graphics drivers..."
 PACKAGES=()
 
 declare -A VULKAN_DRIVERS=(
-  [Intel]=lib32-vulkan-intel
-  [AMD]=lib32-vulkan-radeon
+  [Intel]=vulkan-loader.i686
+  [AMD]=vulkan-loader.i686
 )
 for vendor in "${!VULKAN_DRIVERS[@]}"; do
   if lspci | grep -iE "(VGA|Display).*$vendor" >/dev/null; then
@@ -19,10 +19,8 @@ for vendor in "${!VULKAN_DRIVERS[@]}"; do
   fi
 done
 
-if omarchy-hw-nvidia-gsp; then
-  PACKAGES+=(lib32-nvidia-utils)
-elif omarchy-hw-nvidia-without-gsp; then
-  PACKAGES+=(lib32-nvidia-580xx-utils)
+if omarchy-hw-nvidia-gsp || omarchy-hw-nvidia-without-gsp; then
+  PACKAGES+=(xorg-x11-drv-nvidia-libs.i686)
 fi
 
 [[ ${#PACKAGES[@]} -gt 0 ]] && omarchy-pkg-add "${PACKAGES[@]}"

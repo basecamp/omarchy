@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# omarchy:summary=Overwrite the DNF repo configuration with the Omarchy default channel, then refresh.
+# omarchy:args=[stable|rc|edge]
+# omarchy:requires-sudo=true
+
+sudo cp -f /etc/dnf/dnf.conf /etc/dnf/dnf.conf.bak
+
+channel="${1:-stable}"
+
+if [[ $channel != "stable" && $channel != "rc" && $channel != "edge" ]]; then
+  echo "Error: Invalid channel '$channel'. Must be one of: stable, rc, edge"
+  exit 1
+fi
+
+echo "Setting channel to $channel"
+echo
+
+sudo cp -f "$OMARCHY_PATH/default/dnf/omarchy-$channel.repo" /etc/yum.repos.d/omarchy.repo
+
+# Allow user customization before the upgrade runs
+omarchy-hook pre-refresh-dnf
+
+# Reset all package DBs and then update
+sudo dnf upgrade -y --refresh

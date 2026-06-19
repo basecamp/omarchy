@@ -88,9 +88,9 @@ installed|system-info)
   {
     echo ""
     echo "========================================="
-    echo "INSTALLED PACKAGES (pacman -Q)"
+    echo "INSTALLED PACKAGES (rpm -qa)"
     echo "========================================="
-    pacman -Q 2>/dev/null || echo "Failed to get package list"
+    rpm -qa --queryformat '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n' 2>/dev/null | sort || echo "Failed to get package list"
   } >>"$TEMP_LOG"
 
   if [[ ! -s $TEMP_LOG ]]; then

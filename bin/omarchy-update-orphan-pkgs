@@ -3,11 +3,10 @@
 # omarchy:summary=Remove orphaned system packages after updates
 # omarchy:requires-sudo=true
 
-orphans=$(pacman -Qtdq || true)
+# Find packages that were installed as dependencies but are no longer needed
+orphans=$(dnf repoquery --unneeded --quiet 2>/dev/null | grep -v '^$' || true)
 if [[ -n $orphans ]]; then
   echo -e "\e[32m\nRemove orphan system packages\e[0m"
-  for pkg in $orphans; do
-    sudo pacman -Rs --noconfirm "$pkg" || true
-  done
+  echo "$orphans" | xargs sudo dnf remove -y || true
   echo
 fi

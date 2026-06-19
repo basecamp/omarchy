@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# omarchy:summary=Show a fuzzy-finder TUI for picking new Arch and OPR packages to install.
+# omarchy:summary=Show a fuzzy-finder TUI for picking new Fedora packages to install.
 # omarchy:requires-sudo=true
 
 fzf_args=(
   --multi
-  --preview 'pacman -Sii {1}'
+  --preview 'dnf info {1}'
   --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select'
   --preview-label-pos='bottom'
   --preview-window 'down:65%:wrap'
@@ -15,12 +15,12 @@ fzf_args=(
   --color 'pointer:green,marker:green'
 )
 
-pkg_names=$(pacman -Slq | fzf "${fzf_args[@]}")
+pkg_names=$(dnf -q list available | awk 'NR>1 {print $1}' | sed 's/\.[^.]*$//' | sort -u | fzf "${fzf_args[@]}")
 
 if [[ -n $pkg_names ]]; then
   source omarchy-sudo-keepalive
 
-  # Convert newline-separated selections to space-separated for pacman
-  echo "$pkg_names" | tr '\n' ' ' | xargs sudo pacman -S --noconfirm
+  # Convert newline-separated selections to space-separated for dnf
+  echo "$pkg_names" | tr '\n' ' ' | xargs sudo dnf install -y
   omarchy-show-done
 fi

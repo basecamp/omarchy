@@ -5,14 +5,9 @@
 
 set -e
 
-# Reinstall all default Omarchy packages from the stable channel and downgrade any packages that are too new.
+# Reset DNF repo configuration to the stable Omarchy channel
+omarchy-refresh-dnf
 
-# Set the package repository to the stable mirrors
-omarchy-refresh-pacman
-
-# Downgrade any packages to the stable setup
-sudo pacman -Suu --noconfirm
-
-# Ensure all packages are installed
+# Ensure all base packages are installed
 mapfile -t packages < <(grep -v '^#' "$OMARCHY_PATH/install/omarchy-base.packages" | grep -v '^$')
-sudo pacman -Syu --noconfirm --needed "${packages[@]}"
+sudo dnf install -y --allowerasing "${packages[@]}"

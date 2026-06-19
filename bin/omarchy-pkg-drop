@@ -6,11 +6,11 @@
 
 installed=()
 for pkg in "$@"; do
-  if pacman -Q "$pkg" &>/dev/null; then
+  if dnf list --installed "$pkg" &>/dev/null; then
     installed+=("$pkg")
   fi
 done
 
 if (( ${#installed[@]} > 0 )); then
-  sudo pacman -Rns --noconfirm "${installed[@]}"
+  sudo dnf remove -y "${installed[@]}"
 fi

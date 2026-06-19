@@ -5,7 +5,7 @@
 
 set -e
 
-omarchy-pkg-drop lutris wine-staging wine-mono wine-gecko winetricks python-protobuf umu-launcher
+omarchy-pkg-drop lutris wine winetricks python3-protobuf
 
 rm -rf \
   "$HOME/.config/lutris" \

@@ -11,7 +11,7 @@ if omarchy-cmd-missing fwupdmgr; then
 fi
 
 if [[ -d /sys/firmware/efi ]] && [[ -f /usr/lib/fwupd/efi/fwupdx64.efi ]]; then
-  sudo install -D /usr/lib/fwupd/efi/fwupdx64.efi /boot/EFI/arch/fwupdx64.efi
+  sudo install -D /usr/lib/fwupd/efi/fwupdx64.efi /boot/efi/EFI/fedora/fwupdx64.efi
 fi
 
 fwupdmgr refresh --force

@@ -34,7 +34,9 @@ setup_firefox_wayland() {
 case $1 in
 chrome)
   echo "Installing Chrome..."
-  omarchy-pkg-aur-add google-chrome || exit 1
+  sudo dnf install -y fedora-workstation-repositories || exit 1
+  sudo dnf config-manager setopt google-chrome.enabled=1 || exit 1
+  omarchy-pkg-add google-chrome-stable || exit 1
 
   setup_policy_directory /etc/opt/chrome/policies/managed
   copy_chromium_flags ~/.config/chrome-flags.conf
@@ -43,7 +45,9 @@ chrome)
   ;;
 edge)
   echo "Installing Edge..."
-  omarchy-pkg-aur-add microsoft-edge-stable-bin || exit 1
+  sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
+  sudo dnf config-manager addrepo --from-repofile=https://packages.microsoft.com/yumrepos/edge
+  omarchy-pkg-add microsoft-edge-stable || exit 1
 
   setup_policy_directory /etc/opt/edge/policies/managed
   copy_chromium_flags ~/.config/microsoft-edge-stable-flags.conf
@@ -52,7 +56,8 @@ edge)
   ;;
 brave)
   echo "Installing Brave..."
-  omarchy-pkg-aur-add brave-bin || exit 1
+  sudo dnf config-manager addrepo --from-repofile=https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
+  omarchy-pkg-add brave-browser || exit 1
 
   setup_policy_directory /etc/brave/policies/managed
   copy_chromium_flags ~/.config/brave-flags.conf
@@ -61,7 +66,7 @@ brave)
   ;;
 brave-origin)
   echo "Installing Brave Origin..."
-  omarchy-pkg-aur-add brave-origin-beta-bin || exit 1
+  flatpak install -y flathub com.brave.Browser.beta || exit 1
 
   setup_policy_directory /etc/brave/policies/managed
   mkdir -p ~/.config
@@ -80,7 +85,8 @@ firefox)
   ;;
 zen)
   echo "Installing Zen..."
-  omarchy-pkg-aur-add zen-browser-bin || exit 1
+  sudo dnf copr enable -y firminunderscore/zen-browser
+  omarchy-pkg-add zen-browser || exit 1
 
   setup_firefox_preferences /opt/zen-browser/distribution
   setup_firefox_wayland

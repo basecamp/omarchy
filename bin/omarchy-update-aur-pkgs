@@ -1,14 +1,15 @@
 #!/bin/bash
 
-# omarchy:summary=Update AUR packages if any are installed
+# omarchy:summary=Update packages from enabled Copr repos if any are enabled
+# NOTE: On Fedora, Copr is the equivalent of the Arch AUR.
 
-if pacman -Qem >/dev/null; then
+if dnf copr list --enabled 2>/dev/null | grep -q .; then
   if omarchy-pkg-aur-accessible; then
-    echo -e "\e[32m\nUpdate AUR packages\e[0m"
-    yay -Sua --noconfirm --cleanafter --ignore gcc14,gcc14-libs
+    echo -e "\e[32m\nUpdate Copr packages\e[0m"
+    sudo dnf upgrade -y $(dnf repoquery --queryformat '%{name}' --repo "copr:*" 2>/dev/null | sort -u | tr '\n' ' ')
     echo
   else
-    echo -e "\e[31m\nAUR is unavailable (so skipping updates)\e[0m"
+    echo -e "\e[31m\nCopr is unavailable (so skipping Copr updates)\e[0m"
     echo
   fi
 fi

@@ -1,17 +1,19 @@
 #!/bin/bash
 
-# omarchy:summary=Install Arch packages if they are missing
+# omarchy:summary=Install Fedora packages if they are missing
 # omarchy:args=<packages...>
 # omarchy:examples=omarchy pkg add jq ripgrep
 # omarchy:requires-sudo=true
 
 if omarchy-pkg-missing "$@"; then
-  sudo pacman -S --noconfirm --needed "$@" || exit 1
+  sudo dnf install -y "$@" || exit 1
 fi
 
 for pkg in "$@"; do
-  # Secondary check to handle states where pacman doesn't actually register an error
-  if ! pacman -Q "$pkg" &>/dev/null; then
+  # Secondary check: on Fedora, the installed package name may differ from
+  # the requested name (e.g. 'fd-find' installs as 'fd-find'). Use dnf to
+  # verify rather than rpm -q, which requires the exact RPM name.
+  if ! dnf list --installed "$pkg" &>/dev/null; then
     echo -e "\033[31mError: Package '$pkg' did not install\033[0m" >&2
     exit 1
   fi

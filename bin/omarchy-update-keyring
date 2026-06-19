@@ -1,22 +1,17 @@
 #!/bin/bash
 
-# omarchy:summary=Ensure the Omarchy and Arch keyring packages are installed and populated
+# omarchy:summary=Ensure the Omarchy GPG key is imported into rpm keyring
 # omarchy:requires-sudo=true
 
-if omarchy-pkg-missing omarchy-keyring || ! sudo pacman-key --list-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 &>/dev/null; then
-  sudo pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org
-  sudo pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571
+OMARCHY_KEY_ID="40DFB630FF42BCFFB047046CF0134EE680CAC571"
+OMARCHY_KEY_URL="https://keys.openpgp.org/vks/v1/by-fingerprint/$OMARCHY_KEY_ID"
 
-  # This is generally not a good idea, but this is a special case because we're going to be updating
-  # the full set of packages in omarchy-update-system-pkgs right after this (and it needs latest keyring)!
-  sudo pacman -Sy
-  omarchy-pkg-add omarchy-keyring
-
-  sudo pacman-key --list-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571
+if ! rpm -q gpg-pubkey --queryformat "%{SUMMARY}\n" 2>/dev/null | grep -q "${OMARCHY_KEY_ID: -8}"; then
+  echo -e "\e[32m\nImporting Omarchy GPG key\e[0m"
+  curl -sf "$OMARCHY_KEY_URL" | sudo rpm --import -
 fi
 
-# Ensure we have the latest archlinux-keyring, maintainer keys might have changed
-# Always reinstall, as the keyring can be updated without a package version bump.
-echo -e "\e[32m\nUpdate Arch signing keys\e[0m"
-sudo pacman -Sy --noconfirm archlinux-keyring >/dev/null 2> >(grep -vE '^warning: archlinux-keyring-[^ ]+ is up to date -- reinstalling$' >&2)
+# Ensure Fedora signing keys are up to date
+echo -e "\e[32m\nUpdate Fedora signing keys\e[0m"
+sudo dnf upgrade -y fedora-gpg-keys &>/dev/null || true
 echo "Keys are correct"

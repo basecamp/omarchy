@@ -12,10 +12,10 @@ else
 fi
 
 case "$channel" in
-"stable") omarchy-branch-set "master" && omarchy-refresh-pacman "stable" ;;
-"rc") omarchy-branch-set "rc" && omarchy-refresh-pacman "rc" ;;
-"edge") omarchy-branch-set "master" && omarchy-refresh-pacman "edge" ;;
-"dev") omarchy-branch-set "dev" && omarchy-refresh-pacman "edge" ;;
+"stable") omarchy-branch-set "master" && omarchy-refresh-dnf "stable" ;;
+"rc") omarchy-branch-set "rc" && omarchy-refresh-dnf "rc" ;;
+"edge") omarchy-branch-set "master" && omarchy-refresh-dnf "edge" ;;
+"dev") omarchy-branch-set "dev" && omarchy-refresh-dnf "edge" ;;
 *) echo "Unknown channel: $channel"; exit 1; ;;
 esac
 

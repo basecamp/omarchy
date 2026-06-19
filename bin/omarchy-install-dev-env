@@ -12,7 +12,7 @@ if [[ -z $1 ]]; then
 fi
 
 install_php() {
-  omarchy-pkg-add php composer php-sqlite xdebug
+  omarchy-pkg-add php composer php-pdo php-pecl-xdebug
 
   # Install Path for Composer
   if [[ :$PATH: != *:$HOME/.config/composer/vendor/bin:* ]]; then
@@ -24,7 +24,7 @@ install_php() {
   fi
 
   # Enable some extensions
-  local php_ini_path="/etc/php/php.ini"
+  local php_ini_path="/etc/php.ini"
   local extensions_to_enable=(
     "bcmath"
     "intl"
@@ -38,7 +38,7 @@ install_php() {
   sudo sed -i \
     -e 's/^;zend_extension=xdebug.so/zend_extension=xdebug.so/' \
     -e 's/^;xdebug.mode=debug/xdebug.mode=debug/' \
-    /etc/php/conf.d/xdebug.ini
+    /etc/php.d/xdebug.ini
 
   for ext in "${extensions_to_enable[@]}"; do
     sudo sed -i "s/^;extension=${ext}/extension=${ext}/" "$php_ini_path"

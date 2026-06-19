@@ -4,7 +4,8 @@
 # omarchy:requires-sudo=true
 
 echo "Installing NordVPN..."
-omarchy-pkg-aur-add nordvpn-bin
+sudo dnf install -y https://repo.nordvpn.com/yum/nordvpn/centos/noarch/Packages/n/nordvpn-release-1.0.0-1.noarch.rpm
+omarchy-pkg-add nordvpn
 
 echo "Enabling NordVPN daemon..."
 sudo systemctl enable --now nordvpnd
