@@ -245,6 +245,7 @@ Panel {
         contentHeight: weatherColumn.implicitHeight
         clip: true
         boundsBehavior: Flickable.StopAtBounds
+        interactive: contentHeight > height
 
         Column {
           id: weatherColumn

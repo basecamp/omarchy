@@ -66,7 +66,7 @@ Panel {
   readonly property bool rotatingPhrases: adapter && adapter.enabled
   readonly property string heroStatusText: {
     if (!adapter) return "No adapter"
-    if (!adapter.enabled) return "Bluetooth off"
+    if (!adapter.enabled) return "Turned Off"
     return activePhrases[phraseIndex % activePhrases.length]
   }
 
@@ -624,6 +624,7 @@ Panel {
           contentHeight: deviceList.implicitHeight
           clip: true
           boundsBehavior: Flickable.StopAtBounds
+          interactive: contentHeight > height
 
           ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
