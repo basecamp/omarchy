@@ -8,7 +8,7 @@ hl.on("hyprland.start", function()
   hl.exec_cmd("omarchy-first-run")
   hl.exec_cmd("omarchy-powerprofiles-init")
   hl.exec_cmd(o.launch("omarchy-hyprland-monitor-watch"))
-  hl.exec_cmd(o.launch("udiskie --automount --notify --no-tray"))
+  hl.exec_cmd(o.launch("udiskie --automount --no-notify --no-tray"))
 
   -- Run post-boot hooks after startup config has loaded.
   hl.exec_cmd("sleep 2 && omarchy-hook post-boot")
