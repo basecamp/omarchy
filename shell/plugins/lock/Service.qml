@@ -311,7 +311,7 @@ Item {
 
   Timer {
     id: idleBlankTimer
-    interval: 30000
+    interval: 3000
     repeat: false
     onTriggered: if (root.lockRequested && !root.authenticating) root.runBlank()
   }
