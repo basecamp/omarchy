@@ -31,6 +31,13 @@ Item {
   property bool deleteConfirmOpen: false
   property var deleteEntry: null
 
+  // Maps an icon name to a file on disk (e.g. "omacut" -> ".../apps/omacut.svg").
+  // Used as a fallback for icons that Qt's themed lookup misses because they were
+  // installed after this process started (its icon cache never re-scans). Refreshed
+  // whenever the app list changes, so newly installed apps get their icon live.
+  property var iconIndex: ({})
+  property var pendingIconIndex: ({})
+
   // Bound to the central [launcher] section in shell.toml via Color.qml.
   // Each color already includes its alpha companion (composed in the
   // singleton), so consumers can drop them straight into a Rectangle.
@@ -93,7 +100,13 @@ Item {
     if (value.length === 0) return Quickshell.iconPath("application-x-executable", true)
     if (value.indexOf("file://") === 0 || value.indexOf("image://") === 0) return value
     if (value.charAt(0) === "/") return Util.fileUrl(value)
-    return Quickshell.iconPath(value, true)
+    var themed = Quickshell.iconPath(value, true)
+    if (themed.length > 0) return themed
+    // Qt's themed lookup missed (commonly a just-installed app whose icon landed
+    // after our icon cache warmed). Fall back to the on-disk index we scanned.
+    var found = root.iconIndex[value]
+    if (found) return Util.fileUrl(found)
+    return Quickshell.iconPath("application-x-executable", true)
   }
 
   function entryName(entry) {
@@ -147,6 +160,33 @@ Item {
     }
     root.desktopHiddenEntryIds = next
     if (root.opened) root.rebuildDisplay()
+  }
+
+  function iconIndexScanCommand() {
+    // List app icons across the XDG icon dirs and /usr/share/pixmaps as
+    // "<path>" lines. SVGs are emitted before PNGs so the parser, which keeps
+    // the first hit per name, prefers a scalable icon over a fixed-size one.
+    return [
+      'dirs="$HOME/.icons $HOME/.local/share/icons";',
+      'IFS=":"; for d in ${XDG_DATA_DIRS:-/usr/local/share:/usr/share}; do dirs="$dirs $d/icons"; done; unset IFS;',
+      'for ext in svg png; do',
+      '  for base in $dirs; do',
+      '    [ -d "$base" ] && find "$base" -path "*/apps/*" -name "*.$ext" 2>/dev/null;',
+      '  done;',
+      '  find /usr/share/pixmaps -maxdepth 1 -name "*.$ext" 2>/dev/null;',
+      'done'
+    ].join(' ')
+  }
+
+  function indexIconLine(path) {
+    var value = String(path || "").trim()
+    if (value.length === 0) return
+    var slash = value.lastIndexOf("/")
+    var file = slash >= 0 ? value.slice(slash + 1) : value
+    var dot = file.lastIndexOf(".")
+    var name = dot > 0 ? file.slice(0, dot) : file
+    if (name.length > 0 && root.pendingIconIndex[name] === undefined)
+      root.pendingIconIndex[name] = value
   }
 
   function hiddenEntryScanCommand() {
@@ -276,6 +316,24 @@ Item {
     onExited: root.loadDesktopHiddenEntries(hiddenEntryOutput.text)
   }
 
+  Process {
+    id: iconIndexScan
+    command: ["bash", "-lc", root.iconIndexScanCommand()]
+    stdout: SplitParser { onRead: function(line) { root.indexIconLine(line) } }
+    onStarted: root.pendingIconIndex = ({})
+    // Swapping the property re-evaluates every iconSource() binding, so
+    // newly found icons appear without rebuilding the list.
+    onExited: root.iconIndex = root.pendingIconIndex
+  }
+
+  // Coalesces bursts of app-list changes (a package install touches many
+  // entries) into a single rescan.
+  Timer {
+    id: iconIndexDebounce
+    interval: 750
+    onTriggered: if (!iconIndexScan.running) iconIndexScan.running = true
+  }
+
   QtObject {
     id: hiddenEntryOutput
     property string text: ""
@@ -321,11 +379,15 @@ Item {
     target: DesktopEntries.applications
     function onValuesChanged() {
       hiddenEntryScan.running = true
+      iconIndexDebounce.restart()
       if (root.opened) root.rebuildDisplay()
     }
   }
 
-  Component.onCompleted: hiddenEntryScan.running = true
+  Component.onCompleted: {
+    hiddenEntryScan.running = true
+    iconIndexScan.running = true
+  }
 
   PanelWindow {
     id: panel
