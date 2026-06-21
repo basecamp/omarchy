@@ -4,10 +4,11 @@ HYPR_LUA=~/.config/hypr/hyprland.lua
 HYPR_CONF=~/.config/hypr/hyprland.conf
 
 if [[ -f $HYPR_LUA ]] && grep -q 'require("default.hypr.toggles")' "$HYPR_LUA"; then
-  toggle_line=$(grep -n 'require("default.hypr.toggles")' "$HYPR_LUA" | cut -d: -f1)
-  looknfeel_line=$(grep -n 'require("hypr.looknfeel")' "$HYPR_LUA" | cut -d: -f1)
+  toggle_line=$(grep -n 'require("default.hypr.toggles")' "$HYPR_LUA" | cut -d: -f1 | tail -n1)
+  looknfeel_line=$(grep -n 'require("hypr.looknfeel")' "$HYPR_LUA" | cut -d: -f1 | tail -n1)
+  looknfeel_line=${looknfeel_line:-0}
 
-  if [[ -n $toggle_line && -n $looknfeel_line ]] && (( toggle_line > looknfeel_line )); then
+  if [[ -n $toggle_line ]] && (( toggle_line > looknfeel_line )); then
     python3 - "$HYPR_LUA" <<'PYTHON'
 import sys
 path = sys.argv[1]
@@ -45,10 +46,11 @@ PYTHON
 fi
 
 if [[ -f $HYPR_CONF ]] && grep -q 'toggles/hypr/\*\.conf' "$HYPR_CONF"; then
-  toggle_line=$(grep -n 'toggles/hypr/\*\.conf' "$HYPR_CONF" | cut -d: -f1)
-  looknfeel_line=$(grep -n 'source.*config/hypr/looknfeel\.conf' "$HYPR_CONF" | cut -d: -f1)
+  toggle_line=$(grep -n 'toggles/hypr/\*\.conf' "$HYPR_CONF" | cut -d: -f1 | tail -n1)
+  looknfeel_line=$(grep -n 'source.*config/hypr/looknfeel\.conf' "$HYPR_CONF" | cut -d: -f1 | tail -n1)
+  looknfeel_line=${looknfeel_line:-0}
 
-  if [[ -n $toggle_line && -n $looknfeel_line ]] && (( toggle_line > looknfeel_line )); then
+  if [[ -n $toggle_line ]] && (( toggle_line > looknfeel_line )); then
     python3 - "$HYPR_CONF" <<'PYTHON'
 import sys
 path = sys.argv[1]
