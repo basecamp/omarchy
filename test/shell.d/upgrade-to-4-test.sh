@@ -24,3 +24,9 @@ grep -F 'skip-first-run-update-notification' "$upgrade_to_4" >/dev/null
 grep -F 'skip-first-run-update-notification' "$first_run_wifi" >/dev/null
 grep -F '(( skip_update_notification )) && return 0' "$first_run_wifi" >/dev/null
 pass "Omarchy 4 upgrade suppresses the fresh-install update toast"
+
+grep -F 'OMARCHY_UPGRADE_TO_4_LIVE=1' "$upgrade_to_4" >/dev/null
+grep -F 'systemd-networkd.service' "$upgrade_to_4" >/dev/null
+grep -F 'systemd-networkd.socket' "$upgrade_to_4" >/dev/null
+grep -F 'systemd-networkd-resolve-hook.socket' "$upgrade_to_4" >/dev/null
+pass "Omarchy 4 upgrade retires systemd-networkd for NetworkManager"
