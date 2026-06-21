@@ -10,6 +10,9 @@ if [[ ! $wait_attempts =~ ^[0-9]+$ ]] || (( wait_attempts < 1 )); then
   wait_attempts=100
 fi
 
+omarchy-hyprland-monitor-internal recover >/dev/null 2>&1 || true
+omarchy-hyprland-monitor-internal-mirror recover >/dev/null 2>&1 || true
+
 omarchy-shell lock lock >/dev/null 2>&1 || exit 1
 
 for (( attempt = 0; attempt < wait_attempts; attempt++ )); do
