@@ -1,9 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Copy URL",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Copy current URL to clipboard, this extension is installed by Omarchy",
-  "permissions": ["activeTab", "scripting", "notifications"],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "notifications"
+  ],
   "icons": {
     "16": "icon.png",
     "48": "icon.png",
@@ -11,9 +15,13 @@
   },
   "commands": {
     "copy-url": {
-      "suggested_key": {"default": "Alt+Shift+L"},
+      "suggested_key": {
+        "default": "Alt+Shift+L"
+      },
       "description": "Copy URL"
     }
   },
-  "background": {"service_worker": "background.js"}
+  "background": {
+    "service_worker": "background.js"
+  }
 }

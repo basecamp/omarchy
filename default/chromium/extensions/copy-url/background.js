@@ -6,7 +6,14 @@ chrome.commands.onCommand.addListener((command) => {
       chrome.scripting.executeScript({
         target: { tabId: currentTab.id },
         func: () => {
-          navigator.clipboard.writeText(window.location.href);
+          const url = new URL(window.location.href);
+          const outlookMailMatch = url.pathname.match(/^\/mail\/inbox\/id\/(.+)$/);
+
+          if (url.origin === 'https://outlook.office.com' && outlookMailMatch) {
+            navigator.clipboard.writeText(`https://outlook.office365.com/owa/?ItemID=${outlookMailMatch[1]}`);
+          } else {
+            navigator.clipboard.writeText(window.location.href);
+          }
         }
       }).then(() => {
         chrome.notifications.create({
