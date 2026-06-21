@@ -8,9 +8,7 @@ hl.config({
     col = {
       active_border = active_border_color,
       inactive_border = inactive_border_color,
-    },
-    gaps_in = 8,
-    gaps_out = 16,
+    }
   },
 
   group = {
@@ -23,7 +21,7 @@ hl.config({
   decoration = {
     shadow = {
       enabled = true,
-      range = 16,
+      range = 6,
       render_power = 4,
       color = active_shadow_color,
       color_inactive = inactive_shadow_color,
