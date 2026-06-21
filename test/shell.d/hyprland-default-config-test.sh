@@ -157,12 +157,12 @@ cmp -s "$ROOT/config/hypr/bindings.lua" "$migration_home/.config/hypr/bindings.l
   fail "plain legacy bindings preserve preinstall removal state"
 pass "migration converts plain legacy bindings to package-owned defaults"
 
-upgrade_script="$ROOT/bin/omarchy-upgrade-to-4"
+upgrade_script="$ROOT/bin/omarchy-upgrade-to-quattro"
 grep -Fq 'touch "$state_dir/preinstalls-removed"' "$upgrade_script" ||
-  fail "upgrade-to-4 preserves preinstall removal state"
+  fail "upgrade-to-quattro preserves preinstall removal state"
 
 mark_line=$(awk '/^mark_removed_preinstalls_from_legacy_bindings$/ { print NR; exit }' "$upgrade_script")
 copy_line=$(awk '/^copy_always_config_defaults$/ { print NR; exit }' "$upgrade_script")
-[[ -n $mark_line && -n $copy_line ]] || fail "upgrade-to-4 preinstall marker and config refresh calls exist"
-(( mark_line < copy_line )) || fail "upgrade-to-4 detects plain legacy bindings before overwriting Hyprland bindings"
-pass "upgrade-to-4 preserves preinstall removal before refreshing Hyprland bindings"
+[[ -n $mark_line && -n $copy_line ]] || fail "upgrade-to-quattro preinstall marker and config refresh calls exist"
+(( mark_line < copy_line )) || fail "upgrade-to-quattro detects plain legacy bindings before overwriting Hyprland bindings"
+pass "upgrade-to-quattro preserves preinstall removal before refreshing Hyprland bindings"
