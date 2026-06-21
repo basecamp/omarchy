@@ -1087,7 +1087,11 @@ run_final_system_package_upgrade() {
   as_root env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm --ask 4 \
     --overwrite '/etc/docker/daemon.json' \
     --overwrite '/etc/gnupg/dirmngr.conf' \
+    --overwrite '/etc/mkinitcpio.conf.d/omarchy_hooks.conf' \
+    --overwrite '/etc/mkinitcpio.conf.d/thunderbolt_module.conf' \
     --overwrite '/etc/modprobe.d/omarchy-usb-autosuspend.conf' \
+    --overwrite '/etc/sddm.conf.d/10-theme.conf' \
+    --overwrite '/etc/sddm.conf.d/10-wayland.conf' \
     --overwrite '/etc/sudoers.d/omarchy-asdcontrol' \
     --overwrite '/etc/sudoers.d/omarchy-passwd-tries' \
     --overwrite '/etc/sudoers.d/omarchy-tzupdate' \
@@ -1100,8 +1104,12 @@ run_final_system_package_upgrade() {
     --overwrite '/etc/systemd/system/user@.service.d/10-faster-shutdown.conf' \
     --overwrite '/etc/systemd/system/docker.service.d/no-block-boot.conf' \
     --overwrite '/etc/systemd/system/plocate-updatedb.service.d/ac-only.conf' \
+    --overwrite '/etc/systemd/system.conf.d/20-omarchy-nofile.conf' \
+    --overwrite '/etc/systemd/user.conf.d/20-omarchy-nofile.conf' \
     --overwrite '/usr/lib/systemd/system-sleep/unmount-fuse' \
-    --overwrite '/usr/share/plymouth/themes/omarchy/*'
+    --overwrite '/usr/share/plymouth/themes/omarchy/*' \
+    --overwrite '/usr/share/sddm/hyprland.lua' \
+    --overwrite '/usr/share/sddm/themes/omarchy/*'
 }
 
 run_post_upgrade_update_steps() {
