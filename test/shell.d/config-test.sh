@@ -94,7 +94,12 @@ import sys
 from pathlib import Path
 
 root = Path(os.environ["ROOT"])
-pkgs_root = root.parent / "omarchy-pkgs/pkgbuilds"
+pkgs_candidates = [
+  root.parent / "omarchy-pkgs/pkgbuilds",
+  root.parent / "omarchy/omarchy-pkgs/pkgbuilds",
+  root.parent.parent / "omarchy-pkgs/pkgbuilds",
+]
+pkgs_root = next((path for path in pkgs_candidates if path.exists()), pkgs_candidates[0])
 settings_pkgbuild_path = pkgs_root / "omarchy-settings/PKGBUILD"
 omarchy_pkgbuild_path = pkgs_root / "omarchy/PKGBUILD"
 if not settings_pkgbuild_path.exists():
@@ -118,6 +123,7 @@ package_defaults = [
   ("default/systemd/user/omarchy-update-user-notify.service", "/usr/lib/systemd/user/omarchy-update-user-notify.service", "systemd/user/omarchy-update-user-notify.service"),
   ("default/systemd/user/omarchy-update-user-notify.path", "/usr/lib/systemd/user/omarchy-update-user-notify.path", "systemd/user/omarchy-update-user-notify.path"),
   ("default/fonts/omarchy/omarchy.ttf", "/usr/share/fonts/omarchy/omarchy.ttf", "omarchy.ttf"),
+  ("default/snapper/root", "/etc/snapper/config-templates/omarchy", "snapper/root"),
 ]
 
 for source, destination, legacy in package_defaults:

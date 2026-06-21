@@ -25,6 +25,11 @@ grep -F 'skip-first-run-update-notification' "$first_run_wifi" >/dev/null
 grep -F '(( skip_update_notification )) && return 0' "$first_run_wifi" >/dev/null
 pass "Omarchy 4 upgrade suppresses the fresh-install update toast"
 
+grep -F 'configure_snapper_policy' "$upgrade_to_4" >/dev/null
+grep -F '/usr/share/omarchy/install/config/snapper.sh' "$upgrade_to_4" >/dev/null
+grep -F 'bash -euo pipefail "$snapper_config_script"' "$upgrade_to_4" >/dev/null
+pass "Omarchy 4 upgrade normalizes Snapper retention"
+
 grep -F 'OMARCHY_UPGRADE_TO_4_LIVE=1' "$upgrade_to_4" >/dev/null
 grep -F 'systemd-networkd.service' "$upgrade_to_4" >/dev/null
 grep -F 'systemd-networkd.socket' "$upgrade_to_4" >/dev/null

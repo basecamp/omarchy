@@ -456,6 +456,18 @@ normalize_limine_config() {
   fi
 }
 
+configure_snapper_policy() {
+  local snapper_config_script=/usr/share/omarchy/install/config/snapper.sh
+
+  if ! as_root test -f "$snapper_config_script"; then
+    warn "$snapper_config_script is unavailable; Snapper snapshot retention was not normalized."
+    return 0
+  fi
+
+  log "Configuring Omarchy snapshot retention"
+  as_root env OMARCHY_PATH=/usr/share/omarchy bash -euo pipefail "$snapper_config_script"
+}
+
 remove_conflicting_legacy_packages() {
   # Remove legacy packages that are known to conflict with Omarchy 4 defaults
   # before the main package transaction. Broader retired-package cleanup runs
@@ -2226,6 +2238,7 @@ remove_legacy_limine_configs
 remove_conflicting_legacy_packages
 install_omarchy_4_packages
 normalize_limine_config
+configure_snapper_policy
 migrate_1password_beta_package
 cleanup_legacy_user_paths
 apply_system_transition
