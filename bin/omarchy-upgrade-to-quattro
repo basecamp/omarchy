@@ -2,14 +2,14 @@
 
 # omarchy:summary=Upgrade a legacy Omarchy install to the package-backed Omarchy 4 layout.
 # omarchy:args=[--yes] [--reboot] [--dev] [--channel stable|rc|edge] [--user USER]
-# omarchy:examples=omarchy upgrade to 4 | omarchy upgrade to 4 --dev
+# omarchy:examples=omarchy upgrade to quattro | omarchy upgrade to quattro --dev
 # omarchy:requires-sudo=true
 
 set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: omarchy-upgrade-to-4 [--yes] [--reboot] [--dev] [--channel stable|rc|edge] [--user USER]
+Usage: omarchy-upgrade-to-quattro [--yes] [--reboot] [--dev] [--channel stable|rc|edge] [--user USER]
 
 Upgrade any pre-4 Omarchy install to the package-backed Omarchy 4 layout.
 This script is intentionally self-contained so it can be shipped as a command
@@ -342,7 +342,7 @@ configure_pacman_channel() {
 
   as_root install -d -m 0755 /etc/pacman.d
   if [[ -f /etc/pacman.d/mirrorlist ]]; then
-    as_root cp -f /etc/pacman.d/mirrorlist "/etc/pacman.d/mirrorlist.omarchy-upgrade-to-4.$backup_suffix.bak"
+    as_root cp -f /etc/pacman.d/mirrorlist "/etc/pacman.d/mirrorlist.omarchy-upgrade-to-quattro.$backup_suffix.bak"
   fi
   printf 'Server = %s\n' "$mirror_server" | as_root tee /etc/pacman.d/mirrorlist >/dev/null
 
@@ -350,7 +350,7 @@ configure_pacman_channel() {
     fail "/etc/pacman.conf does not exist."
   fi
 
-  as_root cp -f /etc/pacman.conf "/etc/pacman.conf.omarchy-upgrade-to-4.$backup_suffix.bak"
+  as_root cp -f /etc/pacman.conf "/etc/pacman.conf.omarchy-upgrade-to-quattro.$backup_suffix.bak"
 
   # Replace the normal Omarchy package repository. Dev package mode uses the
   # edge channel and resolves omarchy-dev / omarchy-settings-dev from [omarchy].
@@ -759,8 +759,8 @@ populate_legacy_hypr_defaults() {
 create_live_omarchy_overlay() {
   local backup="$1" compat_root shim_hypr_dir entry base cleanup_hook
 
-  compat_root="$TARGET_HOME/.local/state/omarchy/upgrade-to-4-live-omarchy"
-  shim_hypr_dir="$TARGET_HOME/.local/state/omarchy/upgrade-to-4-hypr-defaults"
+  compat_root="$TARGET_HOME/.local/state/omarchy/upgrade-to-quattro-live-omarchy"
+  shim_hypr_dir="$TARGET_HOME/.local/state/omarchy/upgrade-to-quattro-hypr-defaults"
 
   populate_legacy_hypr_defaults "$shim_hypr_dir" "$backup" || return 1
 
@@ -782,7 +782,7 @@ create_live_omarchy_overlay() {
   done
   ln -s "$shim_hypr_dir" "$compat_root/default/hypr"
 
-  cleanup_hook="$TARGET_HOME/.config/omarchy/hooks/post-boot.d/cleanup-upgrade-to-4-live-shim"
+  cleanup_hook="$TARGET_HOME/.config/omarchy/hooks/post-boot.d/cleanup-upgrade-to-quattro-live-shim"
   mkdir -p "$(dirname "$cleanup_hook")"
   cat >"$cleanup_hook" <<CLEANUP_HOOK
 #!/bin/bash
@@ -813,7 +813,7 @@ if [[ -e /usr/share/omarchy ]]; then
   if [[ -L $legacy_root ]]; then
     rm -f "$legacy_root"
   elif [[ -e $legacy_root ]]; then
-    backup="$legacy_root.omarchy-upgrade-to-4.$BACKUP_SUFFIX.bak"
+    backup="$legacy_root.omarchy-upgrade-to-quattro.$BACKUP_SUFFIX.bak"
     mv "$legacy_root" "$backup"
   fi
 
@@ -1075,7 +1075,7 @@ run_post_upgrade_migrations() {
     USER="$target_user" \
     LOGNAME="$target_user" \
     OMARCHY_PATH=/usr/share/omarchy \
-    OMARCHY_UPGRADE_TO_4_LIVE=1 \
+    OMARCHY_UPGRADE_TO_QUATTRO_LIVE=1 \
     PATH="$package_path" \
     omarchy-migrate; then
     warn "Could not run Omarchy migrations; the user may be prompted to run them after login."
@@ -1534,7 +1534,7 @@ is_known_default_hash() {
 backup_config_file() {
   local file="$1"
   [[ -e $file || -L $file ]] || return 0
-  cp -af "$file" "$file.omarchy-upgrade-to-4.$BACKUP_SUFFIX.bak"
+  cp -af "$file" "$file.omarchy-upgrade-to-quattro.$BACKUP_SUFFIX.bak"
 }
 
 mapfile -t retired_config_files < <(default_hash_paths retire)
@@ -1785,7 +1785,7 @@ BASHRC_PATCH_PY
 # cleanup, then keep only real user customizations active.
 uwsm_env="$HOME/.config/uwsm/env"
 if [[ -f $uwsm_env ]]; then
-  cp -f "$uwsm_env" "$uwsm_env.omarchy-upgrade-to-4.$BACKUP_SUFFIX.bak"
+  cp -f "$uwsm_env" "$uwsm_env.omarchy-upgrade-to-quattro.$BACKUP_SUFFIX.bak"
   migrate_uwsm_env_customizations "$uwsm_env"
 fi
 
@@ -1806,7 +1806,7 @@ repair_chromium_copy_url_extension_flags
 # Carry over user-added backgrounds from the legacy git checkout backup, then
 # remove old symlinks that pointed ~/.config/omarchy/themes/* back into the
 # pre-4 checkout. Omarchy 4 reads stock themes from /usr/share/omarchy/themes.
-legacy_omarchy_backup="$HOME/.local/share/omarchy.omarchy-upgrade-to-4.$BACKUP_SUFFIX.bak"
+legacy_omarchy_backup="$HOME/.local/share/omarchy.omarchy-upgrade-to-quattro.$BACKUP_SUFFIX.bak"
 if [[ -d $legacy_omarchy_backup/themes && -d $legacy_omarchy_backup/.git ]]; then
   (
     cd "$legacy_omarchy_backup"
@@ -1837,7 +1837,7 @@ fi
 for rel in waybar swayosd mako walker; do
   file="$HOME/.config/$rel"
   if [[ -e $file || -L $file ]]; then
-    backup="$file.omarchy-upgrade-to-4.$BACKUP_SUFFIX.bak"
+    backup="$file.omarchy-upgrade-to-quattro.$BACKUP_SUFFIX.bak"
     rm -rf "$backup"
     mv "$file" "$backup"
   fi
@@ -1845,7 +1845,7 @@ done
 
 for rel in "${retired_config_files[@]}"; do
   file="$HOME/.config/$rel"
-  backup="$file.omarchy-upgrade-to-4.$BACKUP_SUFFIX.bak"
+  backup="$file.omarchy-upgrade-to-quattro.$BACKUP_SUFFIX.bak"
 
   # UWSM env was hardcoded to the legacy checkout on older installs. Custom
   # non-Omarchy lines were migrated to env.d above; never keep the active file.
@@ -2079,7 +2079,7 @@ for desktop in \
 done
 
 legacy_icons_dir="$HOME/.local/share/applications/icons"
-legacy_icons_backup="$HOME/.local/share/applications/icons.omarchy-upgrade-to-4.$BACKUP_SUFFIX.bak"
+legacy_icons_backup="$HOME/.local/share/applications/icons.omarchy-upgrade-to-quattro.$BACKUP_SUFFIX.bak"
 if [[ -d $legacy_icons_dir ]]; then
   mkdir -p "$legacy_icons_backup"
   for icon in \

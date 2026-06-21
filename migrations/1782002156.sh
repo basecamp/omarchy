@@ -41,7 +41,7 @@ networkd_units=(
   systemd-networkd-resolve-hook.socket
 )
 
-if [[ ${OMARCHY_UPGRADE_TO_4_LIVE:-0} == "1" ]]; then
+if [[ ${OMARCHY_UPGRADE_TO_QUATTRO_LIVE:-0} == "1" ]]; then
   as_root systemctl enable NetworkManager.service >/dev/null 2>&1 || true
 
   if systemctl is-active --quiet NetworkManager.service 2>/dev/null; then

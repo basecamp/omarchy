@@ -300,7 +300,7 @@ jq -e '
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config removes widgets with remove alias"
 
-if grep -RIl 'upgrade-to-4\|Omarchy 4\.0 is upgraded' "$ROOT/migrations" >/dev/null; then
+if grep -RIl 'upgrade-to-quattro\|Omarchy 4\.0 is upgraded' "$ROOT/migrations" >/dev/null; then
   fail "4.0 upgrade is not modeled as a migration"
 fi
 pass "4.0 upgrade is handled outside the migration runner"
