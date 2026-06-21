@@ -6,11 +6,69 @@
 
 set -euo pipefail
 
-current_dns_provider() {
-  local dns=""
-  local compact=""
+NM_DNS_CONF=/etc/NetworkManager/conf.d/20-omarchy-dns.conf
 
-  dns=$(awk -F= '
+provider_from_arg() {
+  case "${1:-}" in
+  Cloudflare | cloudflare)
+    echo "Cloudflare"
+    ;;
+  Google | google)
+    echo "Google"
+    ;;
+  DHCP | dhcp)
+    echo "DHCP"
+    ;;
+  Custom | custom)
+    echo "Custom"
+    ;;
+  *)
+    return 1
+    ;;
+  esac
+}
+
+self_path() {
+  local self="${BASH_SOURCE[0]}"
+
+  if [[ $self != /* ]]; then
+    self=$(command -v -- "$self")
+  fi
+
+  readlink -f "$self"
+}
+
+require_root() {
+  if (( EUID == 0 )); then
+    return
+  fi
+
+  if ! command -v pkexec >/dev/null; then
+    echo "Error: pkexec is required to change DNS settings." >&2
+    exit 1
+  fi
+
+  exec pkexec "$(self_path)" "$@"
+}
+
+networkmanager_global_dns() {
+  [[ -f $NM_DNS_CONF ]] || return 0
+
+  awk -F= '
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*\[global-dns-domain-\*\][[:space:]]*$/ { in_default = 1; next }
+    /^[[:space:]]*\[/ { in_default = 0 }
+    in_default && /^[[:space:]]*servers[[:space:]]*=/ {
+      value = $0
+      sub(/^[^=]*=/, "", value)
+      print value
+      exit
+    }
+  ' "$NM_DNS_CONF"
+}
+
+resolved_dns() {
+  awk -F= '
     /^[[:space:]]*#/ { next }
     /^[[:space:]]*DNS[[:space:]]*=/ {
       value=$0
@@ -18,9 +76,19 @@ current_dns_provider() {
       print value
       exit
     }
-  ' /etc/systemd/resolved.conf 2>/dev/null || true)
+  ' /etc/systemd/resolved.conf 2>/dev/null || true
+}
 
-  compact=$(printf '%s' "$dns" | tr -d '[:space:]')
+current_dns_provider() {
+  local dns=""
+  local compact=""
+
+  dns=$(networkmanager_global_dns)
+  if [[ -z $(printf '%s' "$dns" | tr -d '[:space:],') ]]; then
+    dns=$(resolved_dns)
+  fi
+
+  compact=$(printf '%s' "$dns" | tr -d '[:space:],')
 
   if [[ -z $compact ]]; then
     echo "DHCP"
@@ -33,37 +101,129 @@ current_dns_provider() {
   fi
 }
 
-require_root() {
-  if (( EUID != 0 )); then
-    exec pkexec omarchy-dns "$@"
+normalize_servers() {
+  printf '%s\n' "$*" | tr ',\t\n' ' ' | xargs | tr ' ' ','
+}
+
+split_dns_servers() {
+  local servers="$1"
+  local server clean
+  ipv4_dns=""
+  ipv6_dns=""
+
+  for server in ${servers//,/ }; do
+    clean=${server#dns+tls://}
+    clean=${clean#dns+udp://}
+    clean=${clean%%#*}
+    clean=${clean#[}
+    clean=${clean%]}
+
+    [[ -n $clean ]] || continue
+    if [[ $clean == *:* ]]; then
+      ipv6_dns+="${ipv6_dns:+ }$clean"
+    else
+      ipv4_dns+="${ipv4_dns:+ }$clean"
+    fi
+  done
+}
+
+write_networkmanager_dns() {
+  local servers="$1"
+
+  install -d -m 0755 "$(dirname "$NM_DNS_CONF")"
+  cat >"$NM_DNS_CONF" <<EOF
+# Managed by omarchy-dns. Remove this file or run omarchy dns DHCP to use DHCP DNS again.
+[global-dns]
+
+[global-dns-domain-*]
+servers=$servers
+EOF
+}
+
+clear_networkmanager_dns() {
+  rm -f "$NM_DNS_CONF"
+}
+
+networkmanager_dns_connection() {
+  case "$1" in
+    802-11-wireless|802-3-ethernet) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+set_connection_dns() {
+  local uuid type
+  local ipv4_dns="${1:-}"
+  local ipv6_dns="${2:-}"
+
+  command -v nmcli >/dev/null 2>&1 || return 0
+
+  while IFS=: read -r uuid type; do
+    [[ -n $uuid ]] || continue
+    networkmanager_dns_connection "$type" || continue
+
+    nmcli connection modify "$uuid" \
+      ipv4.ignore-auto-dns yes \
+      ipv4.dns "$ipv4_dns" \
+      ipv6.ignore-auto-dns yes \
+      ipv6.dns "$ipv6_dns" \
+      >/dev/null
+  done < <(nmcli -t -f UUID,TYPE connection show)
+}
+
+clear_connection_dns() {
+  local uuid type
+
+  command -v nmcli >/dev/null 2>&1 || return 0
+
+  while IFS=: read -r uuid type; do
+    [[ -n $uuid ]] || continue
+    networkmanager_dns_connection "$type" || continue
+
+    nmcli connection modify "$uuid" \
+      ipv4.ignore-auto-dns no \
+      ipv4.dns "" \
+      ipv6.ignore-auto-dns no \
+      ipv6.dns "" \
+      >/dev/null
+  done < <(nmcli -t -f UUID,TYPE connection show)
+}
+
+reapply_active_dns_connections() {
+  local device type state
+
+  command -v nmcli >/dev/null 2>&1 || return 0
+
+  while IFS=: read -r device type state; do
+    [[ -n $device && $state == connected ]] || continue
+    case "$type" in
+      wifi|ethernet)
+        nmcli device reapply "$device" >/dev/null 2>&1 || true
+        ;;
+    esac
+  done < <(nmcli -t -f DEVICE,TYPE,STATE device status)
+}
+
+reload_dns_stack() {
+  if systemctl is-active --quiet NetworkManager.service 2>/dev/null; then
+    # Load the updated NetworkManager config first, then reapply the active
+    # profiles. A single conf,dns-full reload here pushes the old active DNS
+    # settings, making the shell toggle appear one selection behind.
+    nmcli general reload conf >/dev/null 2>&1 || systemctl reload NetworkManager.service 2>/dev/null || true
+    reapply_active_dns_connections
+  fi
+
+  systemctl reload systemd-resolved.service 2>/dev/null || systemctl restart systemd-resolved.service
+
+  if systemctl is-active --quiet NetworkManager.service 2>/dev/null; then
+    # A resolved reload/restart can leave per-link DNS stale or empty; ask
+    # NetworkManager to publish DNS after resolved has reread its config.
+    nmcli general reload dns-full >/dev/null 2>&1 || true
   fi
 }
 
-lock_dns_to_resolved() {
-  local file=""
-
-  for file in /etc/systemd/network/*.network; do
-    [[ -f $file ]] || continue
-    if ! grep -q "^\[DHCPv4\]" "$file"; then continue; fi
-
-    if ! sed -n '/^\[DHCPv4\]/,/^\[/p' "$file" | grep -q "^UseDNS="; then
-      sed -i '/^\[DHCPv4\]/a UseDNS=no' "$file"
-    fi
-
-    if grep -q "^\[IPv6AcceptRA\]" "$file" && ! sed -n '/^\[IPv6AcceptRA\]/,/^\[/p' "$file" | grep -q "^UseDNS="; then
-      sed -i '/^\[IPv6AcceptRA\]/a UseDNS=no' "$file"
-    fi
-  done
-}
-
-unlock_dns_to_dhcp() {
-  local file=""
-
-  for file in /etc/systemd/network/*.network; do
-    [[ -f $file ]] || continue
-    sed -i '/^\[DHCPv4\]/{n;/^UseDNS=no$/d}' "$file"
-    sed -i '/^\[IPv6AcceptRA\]/{n;/^UseDNS=no$/d}' "$file"
-  done
+usage() {
+  echo "Usage: omarchy-dns [Cloudflare|Google|DHCP|Custom]" >&2
 }
 
 if (( $# == 0 )); then
@@ -71,63 +231,71 @@ if (( $# == 0 )); then
   exit 0
 fi
 
-provider="$1"
+if (( $# > 1 )); then
+  usage
+  exit 1
+fi
+
+if ! provider=$(provider_from_arg "$1"); then
+  usage
+  exit 1
+fi
+
+require_root "$provider"
 
 case "$provider" in
 Cloudflare)
-  require_root "$provider"
+  write_networkmanager_dns "1.1.1.1,1.0.0.1,2606:4700:4700::1111,2606:4700:4700::1001"
+  set_connection_dns "1.1.1.1 1.0.0.1" "2606:4700:4700::1111 2606:4700:4700::1001"
   tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
 DNS=1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com 2606:4700:4700::1111#cloudflare-dns.com 2606:4700:4700::1001#cloudflare-dns.com
 FallbackDNS=9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net 2620:fe::fe#dns.quad9.net 2620:fe::9#dns.quad9.net
 DNSOverTLS=opportunistic
 EOF
-  lock_dns_to_resolved
   ;;
 
 Google)
-  require_root "$provider"
+  write_networkmanager_dns "8.8.8.8,8.8.4.4,2001:4860:4860::8888,2001:4860:4860::8844"
+  set_connection_dns "8.8.8.8 8.8.4.4" "2001:4860:4860::8888 2001:4860:4860::8844"
   tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
 DNS=8.8.8.8#dns.google 8.8.4.4#dns.google 2001:4860:4860::8888#dns.google 2001:4860:4860::8844#dns.google
 FallbackDNS=9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net 2620:fe::fe#dns.quad9.net 2620:fe::9#dns.quad9.net
 DNSOverTLS=opportunistic
 EOF
-  lock_dns_to_resolved
   ;;
 
 DHCP)
-  require_root "$provider"
+  clear_networkmanager_dns
+  clear_connection_dns
   tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
 DNSOverTLS=no
 EOF
-  unlock_dns_to_dhcp
   ;;
 
 Custom)
-  require_root "$provider"
   echo "Enter your DNS servers (space-separated, e.g. '192.168.1.1 1.1.1.1'):"
   if ! read -r dns_servers; then
     dns_servers=""
   fi
 
+  dns_servers=$(normalize_servers "$dns_servers")
   if [[ -z $dns_servers ]]; then
     echo "Error: No DNS servers provided." >&2
     exit 1
   fi
 
+  split_dns_servers "$dns_servers"
+  write_networkmanager_dns "$dns_servers"
+  set_connection_dns "$ipv4_dns" "$ipv6_dns"
   tee /etc/systemd/resolved.conf >/dev/null <<EOF
 [Resolve]
-DNS=$dns_servers
+DNS=${dns_servers//,/ }
 FallbackDNS=9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net 2620:fe::fe#dns.quad9.net 2620:fe::9#dns.quad9.net
 EOF
-  lock_dns_to_resolved
-  ;;
-*)
-  echo "Usage: omarchy-dns [Cloudflare|Google|DHCP|Custom]" >&2
-  exit 1
   ;;
 esac
 
-systemctl restart systemd-networkd systemd-resolved
+reload_dns_stack

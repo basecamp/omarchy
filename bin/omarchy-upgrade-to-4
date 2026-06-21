@@ -848,9 +848,22 @@ USER_UNITS
 cleanup_retired_services() {
   log "Disabling services retired by Omarchy 4"
 
-  # Do not stop iwd mid-upgrade; disabling is enough and avoids dropping a
-  # running Wi-Fi connection before the user can reboot into NetworkManager.
+  # Do not stop iwd or systemd-networkd mid-upgrade; disabling is enough and
+  # avoids dropping a running Wi-Fi connection before the user can reboot into
+  # NetworkManager.
   as_root systemctl disable iwd.service >/dev/null 2>&1 || true
+
+  local networkd_unit
+  for networkd_unit in \
+    systemd-networkd.service \
+    systemd-networkd.socket \
+    systemd-networkd-varlink.socket \
+    systemd-networkd-varlink-metrics.socket \
+    systemd-networkd-resolve-hook.socket; do
+    as_root systemctl disable "$networkd_unit" >/dev/null 2>&1 || true
+  done
+  as_root systemctl disable systemd-networkd-wait-online.service >/dev/null 2>&1 || true
+  as_root systemctl mask systemd-networkd-wait-online.service >/dev/null 2>&1 || true
 
   cleanup_retired_user_unit_files
   if [[ -S $target_runtime_dir/bus ]]; then
@@ -1050,6 +1063,7 @@ run_post_upgrade_migrations() {
     USER="$target_user" \
     LOGNAME="$target_user" \
     OMARCHY_PATH=/usr/share/omarchy \
+    OMARCHY_UPGRADE_TO_4_LIVE=1 \
     PATH="$package_path" \
     omarchy-migrate; then
     warn "Could not run Omarchy migrations; the user may be prompted to run them after login."
