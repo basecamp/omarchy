@@ -10,7 +10,7 @@ chrome.commands.onCommand.addListener((command) => {
           const outlookMailMatch = url.pathname.match(/^\/mail\/inbox\/id\/(.+)$/);
 
           if (url.origin === 'https://outlook.office.com' && outlookMailMatch) {
-            navigator.clipboard.writeText(`https://outlook.office365.com/owa/?ItemID=${outlookMailMatch[1]}`);
+            navigator.clipboard.writeText(`https://outlook.office365.com/owa/?exvsurl=1&viewmodel=ReadMessageItem&ItemID=${outlookMailMatch[1]}`);
           } else {
             navigator.clipboard.writeText(window.location.href);
           }
