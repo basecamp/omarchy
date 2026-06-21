@@ -67,7 +67,14 @@ function o.preinstalled_bindings_enabled()
   return not file_exists((os.getenv("HOME") or "") .. "/.local/state/omarchy/preinstalls-removed")
 end
 
+local bound_keys = {}
+
 function o.bind(keys, description, dispatcher, options)
+  if bound_keys[keys] then
+    hl.unbind(keys)
+  end
+  bound_keys[keys] = true
+
   local opts = options or {}
 
   if description then
