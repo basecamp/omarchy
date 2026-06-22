@@ -70,7 +70,9 @@ Item {
   }
 
   function applyPendingTheme() {
-    if (pendingThemeVersion !== backgroundVersion) return
+    // Background polling can advance backgroundVersion while a theme switch is
+    // pending; the latest theme payload should still apply.
+    if (pendingThemeVersion < 0) return
     pendingThemeFallbackTimer.stop()
     Color.loadColors(pendingColorsRaw)
     // Color.loadShell also refreshes Style so the type scale flips with the

@@ -14,7 +14,8 @@ assert(
 assert(
   backgroundQml.includes('pendingThemeFallbackTimer.restart()') &&
     backgroundQml.includes('pendingThemeFallbackTimer.stop()') &&
-    backgroundQml.includes('id: pendingThemeFallbackTimer'),
+    backgroundQml.includes('id: pendingThemeFallbackTimer') &&
+    !backgroundQml.includes('pendingThemeVersion !== backgroundVersion'),
   'background theme transition applies pending colors even if image reveal stalls'
 )
 JS
