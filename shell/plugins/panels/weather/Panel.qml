@@ -61,14 +61,9 @@ Panel {
   readonly property var current: report && report.current_condition && report.current_condition[0] ? report.current_condition[0] : null
   readonly property var areaInfo: report && report.nearest_area && report.nearest_area[0] ? report.nearest_area[0] : null
   readonly property var forecastDays: buildForecastDays()
+  readonly property string reportCountry: areaInfo && areaInfo.country && areaInfo.country[0] ? areaInfo.country[0].value : ""
 
-  readonly property bool useImperial: {
-    var override = setting("unit", "")
-    if (override === "imperial") return true
-    if (override === "metric") return false
-    var name = String(Qt.locale().name || "")
-    return /^en_US/.test(name) || /^en_LR/.test(name) || /^my/.test(name)
-  }
+  readonly property bool useImperial: Model.shouldUseImperial(setting("unit", ""), Qt.locale().name, reportCountry)
 
   // Auto-refresh interval in minutes; clamped to a sane minimum.
   readonly property int refreshMinutes: Math.max(1, parseInt(setting("refreshMinutes", 15), 10) || 15)

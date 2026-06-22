@@ -32,6 +32,37 @@ function formatTemp(value, useImperial) {
   return value + "°" + (useImperial ? "F" : "C")
 }
 
+function normalizedUnit(value) {
+  return String(value || "").replace(/^\s+|\s+$/g, "").toLowerCase()
+}
+
+function localeUsesImperial(localeName) {
+  var name = String(localeName || "").replace(".", "_")
+  return /^en[_-]US($|[_.-])/.test(name) || /^en[_-]LR($|[_.-])/.test(name) || /^my($|[_.-])/.test(name)
+}
+
+function countryUsesImperial(countryName) {
+  var country = String(countryName || "")
+    .replace(/^\s+|\s+$/g, "")
+    .replace(/[._-]+/g, " ")
+    .toLowerCase()
+  if (!country) return null
+  if (country === "us" || country === "usa" || country === "united states" || country === "united states of america") return true
+  if (country === "liberia" || country === "myanmar" || country === "burma") return true
+  return false
+}
+
+function shouldUseImperial(unitOverride, localeName, countryName) {
+  var unit = normalizedUnit(unitOverride)
+  if (unit === "imperial") return true
+  if (unit === "metric") return false
+
+  var countryPreference = countryUsesImperial(countryName)
+  if (countryPreference !== null) return countryPreference
+
+  return localeUsesImperial(localeName)
+}
+
 function dayName(dateString, formatter) {
   if (!dateString) return ""
   var d = new Date(dateString + "T12:00:00")
@@ -143,6 +174,10 @@ if (typeof module !== "undefined") {
     roundedTemp: roundedTemp,
     celsiusToFahrenheit: celsiusToFahrenheit,
     formatTemp: formatTemp,
+    normalizedUnit: normalizedUnit,
+    localeUsesImperial: localeUsesImperial,
+    countryUsesImperial: countryUsesImperial,
+    shouldUseImperial: shouldUseImperial,
     dayName: dayName,
     openMeteoForecastDays: openMeteoForecastDays,
     wttrNextForecastDays: wttrNextForecastDays,

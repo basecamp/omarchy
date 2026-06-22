@@ -18,6 +18,11 @@ assertEqual(weather.roundedTemp('21.6'), '22', 'weather rounds temperatures')
 assertEqual(weather.roundedTemp('nope'), '', 'weather ignores invalid temperatures')
 assertEqual(weather.formatTemp(72, true), '72°F', 'weather formats imperial temperatures')
 assertEqual(weather.formatTemp(22, false), '22°C', 'weather formats metric temperatures')
+assertEqual(weather.shouldUseImperial('', 'en_US', ''), true, 'weather falls back to US locale for imperial units')
+assertEqual(weather.shouldUseImperial('', 'en_US', 'Denmark'), false, 'weather prefers reported metric country over US locale')
+assertEqual(weather.shouldUseImperial('', 'da_DK', 'United States of America'), true, 'weather prefers reported imperial country over metric locale')
+assertEqual(weather.shouldUseImperial('metric', 'en_US', 'United States of America'), false, 'weather metric override wins')
+assertEqual(weather.shouldUseImperial('imperial', 'da_DK', 'Denmark'), true, 'weather imperial override wins')
 assertEqual(weather.dayName('2026-05-25'), 'Monday', 'weather derives day names')
 
 const openMeteo = {
