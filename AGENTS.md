@@ -171,7 +171,7 @@ To copy a default config to user config with automatic backup:
 omarchy-refresh-config hypr/hyprlock.conf
 ```
 
-This copies `/etc/skel/.config/hypr/hyprlock.conf` to `~/.config/hypr/hyprlock.conf`.
+This copies `$OMARCHY_PATH/config/hypr/hyprlock.conf` to `~/.config/hypr/hyprlock.conf`.
 
 # Migrations
 

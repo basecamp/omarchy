@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Copy a shipped user config from /etc/skel/.config into ~/.config (backs up your version).
+# omarchy:summary=Copy a shipped user config from $OMARCHY_PATH/config into ~/.config (backs up your version).
 # omarchy:args=<config-path>
 
 config_file=${1:-}
@@ -10,7 +10,7 @@ if [[ -z $config_file ]]; then
   Usage: $0 [config_file]
 
   Must provide a file path relative to .config to be refreshed.
-  To copy /etc/skel/.config/hypr/hyprland.lua to ~/.config/hypr/hyprland.lua:
+  To copy $OMARCHY_PATH/config/hypr/hyprland.lua to ~/.config/hypr/hyprland.lua:
 
     $0 hypr/hyprland.lua
 USAGE
@@ -18,7 +18,7 @@ USAGE
 fi
 
 user_config_file="${HOME}/.config/$config_file"
-default_config_file="/etc/skel/.config/$config_file"
+default_config_file="$OMARCHY_PATH/config/$config_file"
 backup_config_file="$user_config_file.bak.$(date +%s)"
 
 if [[ ! -e $default_config_file ]]; then
