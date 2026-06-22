@@ -10,4 +10,11 @@ assert(
   /theme=\$\(omarchy-theme-switcher\); \[\[ -n \$theme \]\] && omarchy-theme-set \\"\$theme\\" >\/dev\/null 2>&1 &/.test(backgroundQml),
   'background theme switcher starts theme application asynchronously after selection'
 )
+
+assert(
+  backgroundQml.includes('pendingThemeFallbackTimer.restart()') &&
+    backgroundQml.includes('pendingThemeFallbackTimer.stop()') &&
+    backgroundQml.includes('id: pendingThemeFallbackTimer'),
+  'background theme transition applies pending colors even if image reveal stalls'
+)
 JS
