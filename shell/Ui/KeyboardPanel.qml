@@ -40,6 +40,7 @@ PanelWindow {
   property int padding: Style.spacing.popupPadding
   property int contentWidth: Style.space(280)
   property int contentHeight: Style.space(200)
+  property var borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
   property bool centerOnBar: false
   property bool open: false
   property int gap: Style.gapsOut  // distance between bar edge and panel
@@ -135,6 +136,7 @@ PanelWindow {
   readonly property real availableCardHeight: screenH > 0
     ? Math.max(120, screenH - ((barPos === "top" || barPos === "bottom") ? barH + gap + margin : margin * 2))
     : 0
+  readonly property real verticalContentInset: padding * 2 + Border.top(borderSpec) + Border.bottom(borderSpec)
 
   function fittedContentWidth(width, cap) {
     var desired = Math.max(1, Number(width) || 1)
@@ -144,7 +146,7 @@ PanelWindow {
   }
 
   function fittedContentHeight(implicitHeight, cap) {
-    var desired = Math.max(root.padding * 2, (Number(implicitHeight) || 0) + root.padding * 2)
+    var desired = Math.max(root.verticalContentInset, (Number(implicitHeight) || 0) + root.verticalContentInset)
     var maxHeight = root.availableCardHeight > 0 ? root.availableCardHeight : desired
     if (cap !== undefined && Number(cap) > 0) maxHeight = Math.min(maxHeight, Number(cap))
     return Math.round(Math.min(desired, maxHeight))
@@ -297,7 +299,7 @@ PanelWindow {
     width: root.contentWidth
     height: root.contentHeight
     color: Color.popups.background
-    borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
+    borderSpec: root.borderSpec
     padding: root.padding
     radius: Style.cornerRadius
     opacity: root.open || root.popoutSwitching ? 1.0 : 0

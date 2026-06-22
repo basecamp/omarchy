@@ -35,6 +35,7 @@ PopupWindow {
   readonly property real availableCardHeight: screenH > 0
     ? Math.max(120, screenH - ((bar && (bar.position === "top" || bar.position === "bottom")) ? barH : 0) - root.margin * 2)
     : 0
+  readonly property real verticalContentInset: padding * 2 + Border.top(borderSpec) + Border.bottom(borderSpec)
 
   function fittedContentWidth(width, cap) {
     var desired = Math.max(1, Number(width) || 1)
@@ -44,7 +45,7 @@ PopupWindow {
   }
 
   function fittedContentHeight(implicitHeight, cap) {
-    var desired = Math.max(root.padding * 2, (Number(implicitHeight) || 0) + root.padding * 2)
+    var desired = Math.max(root.verticalContentInset, (Number(implicitHeight) || 0) + root.verticalContentInset)
     var maxHeight = root.availableCardHeight > 0 ? root.availableCardHeight : desired
     if (cap !== undefined && Number(cap) > 0) maxHeight = Math.min(maxHeight, Number(cap))
     return Math.round(Math.min(desired, maxHeight))
