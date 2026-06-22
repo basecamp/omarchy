@@ -20,6 +20,8 @@ grep -F '(( attempt % 5 == 0 )) && recover_internal_monitor_toggles' "$sleep_loc
 pass "sleep lock recovers internal monitor toggles while waiting for secure lock"
 
 grep -F 'lock-pending: no-real-screen' "$lock_service" >/dev/null
+grep -F 'lock-pending: screen-stabilizing' "$lock_service" >/dev/null
+grep -F 'id: sessionLockStabilizeTimer' "$lock_service" >/dev/null
 grep -F 'function onScreensChanged() { root.requestSessionLock() }' "$lock_service" >/dev/null
 grep -F 'realScreens: root.realScreenCount()' "$lock_service" >/dev/null
-pass "lock service defers session lock until a real screen exists"
+pass "lock service waits for stable real screens before session lock"
