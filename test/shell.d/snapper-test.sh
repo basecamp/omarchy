@@ -5,12 +5,17 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 template="$ROOT/default/snapper/root"
+limine_notify_autostart="$ROOT/config/autostart/limine-snapper-notify.desktop"
 
 grep -Fx 'NUMBER_CLEANUP="yes"' "$template" >/dev/null
 grep -Fx 'NUMBER_LIMIT="5"' "$template" >/dev/null
 grep -Fx 'TIMELINE_CREATE="no"' "$template" >/dev/null
 ! grep -Eq '^TIMELINE_(CLEANUP|LIMIT_)' "$template" || fail "Snapper template keeps timeline cleanup details out of the default config"
 pass "Snapper template keeps update snapshots and disables timeline snapshots"
+
+grep -Fx '[Desktop Entry]' "$limine_notify_autostart" >/dev/null
+grep -Fx 'Hidden=true' "$limine_notify_autostart" >/dev/null
+pass "Limine Snapper warning notifier is disabled by default"
 
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
@@ -29,6 +34,26 @@ cat >"$fake_bin/systemctl" <<'STUB'
 printf 'systemctl %s\n' "$*" >>"$TEST_LOG"
 STUB
 chmod +x "$fake_bin/systemctl"
+
+notification_migration=$(grep -rl 'Disable Limine Snapper warning notifier' "$ROOT/migrations" | head -n 1 || true)
+[[ -n $notification_migration ]] || fail "Limine Snapper warning notifier migration exists"
+grep -F 'limine-snapper-notify.desktop' "$notification_migration" >/dev/null
+grep -F 'systemctl --user daemon-reload' "$notification_migration" >/dev/null
+grep -F "app-limine\\x2dsnapper\\x2dnotify@autostart.service" "$notification_migration" >/dev/null
+
+migration_home="$test_tmp/migration-home"
+mkdir -p "$migration_home"
+TEST_LOG="$test_tmp/calls.log" \
+PATH="$fake_bin:$PATH" \
+HOME="$migration_home" \
+  bash -euo pipefail "$notification_migration" >/dev/null
+
+cmp -s "$limine_notify_autostart" "$migration_home/.config/autostart/limine-snapper-notify.desktop" || fail "Limine Snapper warning notifier migration writes autostart override"
+grep -Fx 'systemctl --user daemon-reload' "$test_tmp/calls.log" >/dev/null || fail "Limine Snapper warning notifier migration reloads user units"
+grep -Fx 'systemctl --user stop app-limine\x2dsnapper\x2dnotify@autostart.service' "$test_tmp/calls.log" >/dev/null || fail "Limine Snapper warning notifier migration stops active watcher"
+pass "Limine Snapper warning notifier migration disables existing user autostart"
+
+: >"$test_tmp/calls.log"
 
 TEST_LOG="$test_tmp/calls.log" \
 PATH="$fake_bin:$PATH" \
