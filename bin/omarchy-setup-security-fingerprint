@@ -5,7 +5,6 @@
 
 set -e
 
-
 check_fingerprint_hardware() {
   # Get fingerprint devices for the user
   devices=$(fprintd-list "$USER" 2>/dev/null)
@@ -58,7 +57,7 @@ echo "Installing required packages..."
 # with -Rdd so the install goes silent. -Rdd (not omarchy-pkg-drop's
 # -Rns) is required because fprintd requires libfprint; the dep is
 # re-satisfied immediately by libfprint-git's provides=libfprint.
-if omarchy-pkg-present libfprint; then
+if pacman -Qq | grep -Fxq "libfprint"; then
   sudo pacman -Rdd --noconfirm libfprint
 fi
 
