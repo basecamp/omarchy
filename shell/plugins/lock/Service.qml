@@ -51,11 +51,19 @@ Item {
     return realScreenCount() > 0
   }
 
+  function queueSessionLock() {
+    pendingSessionLock = true
+    if (!sessionLockStabilizeTimer.running) logEvent("lock-pending: screen-stabilizing")
+    sessionLockStabilizeTimer.restart()
+    if (!pendingSessionLockTimer.running) pendingSessionLockTimer.start()
+  }
+
   function requestSessionLock() {
     if (!lockRequested || sessionLock.locked || sessionLock.secure) return
+    if (sessionLockStabilizeTimer.running) return
 
     if (!hasRealScreen()) {
-      if (!pendingSessionLock) logEvent("lock-pending: no-real-screen")
+      if (!pendingSessionLock || lastEvent !== "lock-pending: no-real-screen") logEvent("lock-pending: no-real-screen")
       pendingSessionLock = true
       if (!pendingSessionLockTimer.running) pendingSessionLockTimer.start()
       return
@@ -102,7 +110,7 @@ Item {
     lockRequested = true
     idleBlankTimer.restart()
     logEvent("lock-requested")
-    requestSessionLock()
+    queueSessionLock()
 
     Qt.callLater(function() {
       root.refreshBackground()
@@ -117,6 +125,7 @@ Item {
 
     lockRequested = false
     pendingSessionLock = false
+    sessionLockStabilizeTimer.stop()
     pendingSessionLockTimer.stop()
     resetAuthenticationState()
     idleBlankTimer.stop()
@@ -197,6 +206,7 @@ Item {
       root.logEvent("secure=" + secure)
       if (secure) {
         root.pendingSessionLock = false
+        sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
         root.startFingerprint()
       }
@@ -207,12 +217,14 @@ Item {
 
       if (locked) {
         root.pendingSessionLock = false
+        sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
       }
 
       if (!locked && root.lockRequested) {
         root.lockRequested = false
         root.pendingSessionLock = false
+        sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
         root.resetAuthenticationState()
         root.runWake()
@@ -359,6 +371,13 @@ Item {
     interval: 3000
     repeat: false
     onTriggered: if (root.lockRequested && !root.authenticating) root.runBlank()
+  }
+
+  Timer {
+    id: sessionLockStabilizeTimer
+    interval: 500
+    repeat: false
+    onTriggered: root.requestSessionLock()
   }
 
   Timer {
