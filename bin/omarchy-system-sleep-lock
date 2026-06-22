@@ -10,16 +10,15 @@ if [[ ! $wait_attempts =~ ^[0-9]+$ ]] || (( wait_attempts < 1 )); then
   wait_attempts=100
 fi
 
-recover_internal_monitor_toggles() {
-  omarchy-hyprland-monitor-internal recover >/dev/null 2>&1 || true
-  omarchy-hyprland-monitor-internal-mirror recover >/dev/null 2>&1 || true
+sync_clamshell() {
+  omarchy-hyprland-monitor-clamshell >/dev/null 2>&1 || true
 }
 
-recover_internal_monitor_toggles
+sync_clamshell
 omarchy-shell lock lock >/dev/null 2>&1 || exit 1
 
 for (( attempt = 0; attempt < wait_attempts; attempt++ )); do
-  (( attempt % 5 == 0 )) && recover_internal_monitor_toggles
+  (( attempt % 5 == 0 )) && sync_clamshell
 
   status=$(omarchy-shell lock status 2>/dev/null || true)
 

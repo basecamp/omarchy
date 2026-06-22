@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Apply clamshell display state to Hyprland monitors
+# omarchy:hidden=true
+
+omarchy-hyprland-monitor-internal recover >/dev/null 2>&1 || true
+omarchy-hyprland-monitor-internal-mirror recover >/dev/null 2>&1 || true
+
+if omarchy-hw-clamshell; then
+  omarchy-hyprland-monitor-internal off >/dev/null 2>&1 || true
+fi

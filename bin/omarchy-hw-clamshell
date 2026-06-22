@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true when clamshell mode is active
+# omarchy:hidden=true
+
+lid_closed=false
+
+for state in /proc/acpi/button/lid/*/state; do
+  [[ -r $state ]] || continue
+  if [[ $(< "$state") == *"closed"* ]]; then
+    lid_closed=true
+    break
+  fi
+done
+
+[[ $lid_closed == "true" ]] && omarchy-hw-external-monitors
