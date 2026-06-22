@@ -547,7 +547,7 @@ Item {
                   // selection moves through the carousel.
                   source: item.sourceActivated && item.thumbnailPath ? Util.fileUrl(item.thumbnailPath) : ""
                   fillMode: Image.PreserveAspectCrop
-                  asynchronous: true
+                  asynchronous: false
                   cache: true
                   smooth: true
                 }
