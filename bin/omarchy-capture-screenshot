@@ -60,9 +60,15 @@ JQ_MONITOR_GEO='
 '
 
 get_rectangles() {
-  local active_workspace=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
-  hyprctl monitors -j | jq -r --arg ws "$active_workspace" "${JQ_MONITOR_GEO} .[] | select(.activeWorkspace.id == (\$ws | tonumber)) | format_geo"
-  hyprctl clients -j | jq -r --arg ws "$active_workspace" '.[] | select(.workspace.id == ($ws | tonumber)) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
+  local monitors_json=$(hyprctl monitors -j)
+  local clients_json=$(hyprctl clients -j)
+
+  echo "$monitors_json" | jq -r "${JQ_MONITOR_GEO} .[] | format_geo"
+
+  echo "$clients_json" | jq -r --argjson active \
+    "$(echo "$monitors_json" | jq -c 'map(.activeWorkspace.id)')" '
+    .[] | select(.workspace.id as $id | $active | index($id)) |
+    "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
 }
 
 # Keep hyprpicker alive until after grim captures so the screenshot sees the
