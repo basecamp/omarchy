@@ -4,22 +4,33 @@
 
 SOCKET="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
 
-recover_internal_monitor_toggles() {
-  omarchy-hyprland-monitor-internal recover
-  omarchy-hyprland-monitor-internal-mirror recover
+sync_clamshell() {
+  omarchy-hyprland-monitor-clamshell
 }
 
 recover_after_monitor_removal() {
-  recover_internal_monitor_toggles
+  sync_clamshell
 
   (
     sleep 1
-    recover_internal_monitor_toggles
+    sync_clamshell
+  ) &
+}
+
+sync_clamshell_after_monitor_change() {
+  sync_clamshell
+
+  (
+    sleep 1
+    sync_clamshell
   ) &
 }
 
 socat -U - "UNIX-CONNECT:$SOCKET" | while read -r event; do
   case "$event" in
+    monitoradded\>\>*|monitoraddedv2\>\>*)
+      sync_clamshell_after_monitor_change
+      ;;
     monitorremoved\>\>*|monitorremovedv2\>\>*)
       recover_after_monitor_removal
       ;;
