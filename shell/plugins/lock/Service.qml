@@ -17,6 +17,7 @@ Item {
   readonly property string currentBackgroundLink: stateHome + "/omarchy/current/background"
 
   property bool lockRequested: false
+  property bool pendingSessionLock: false
   property bool authenticatingPassword: false
   property bool fingerprintAuthenticating: false
   property bool passwordPamConfigured: false
@@ -33,6 +34,37 @@ Item {
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
+
+  function realScreenCount() {
+    var screens = Quickshell.screens || []
+    var count = 0
+
+    for (var i = 0; i < screens.length; i++) {
+      var screen = screens[i]
+      if (screen && screen.name && screen.width > 0 && screen.height > 0) count += 1
+    }
+
+    return count
+  }
+
+  function hasRealScreen() {
+    return realScreenCount() > 0
+  }
+
+  function requestSessionLock() {
+    if (!lockRequested || sessionLock.locked || sessionLock.secure) return
+
+    if (!hasRealScreen()) {
+      if (!pendingSessionLock) logEvent("lock-pending: no-real-screen")
+      pendingSessionLock = true
+      if (!pendingSessionLockTimer.running) pendingSessionLockTimer.start()
+      return
+    }
+
+    pendingSessionLock = false
+    pendingSessionLockTimer.stop()
+    sessionLock.locked = true
+  }
 
   function refreshBackground() {
     if (!readlinkProc.running) readlinkProc.running = true
@@ -68,9 +100,9 @@ Item {
 
     resetAuthenticationState()
     lockRequested = true
-    sessionLock.locked = true
     idleBlankTimer.restart()
     logEvent("lock-requested")
+    requestSessionLock()
 
     Qt.callLater(function() {
       root.refreshBackground()
@@ -84,6 +116,8 @@ Item {
     if (!root.locked && !lockRequested) return
 
     lockRequested = false
+    pendingSessionLock = false
+    pendingSessionLockTimer.stop()
     resetAuthenticationState()
     idleBlankTimer.stop()
     sessionLock.locked = false
@@ -161,14 +195,25 @@ Item {
 
     onSecureStateChanged: {
       root.logEvent("secure=" + secure)
-      if (secure) root.startFingerprint()
+      if (secure) {
+        root.pendingSessionLock = false
+        pendingSessionLockTimer.stop()
+        root.startFingerprint()
+      }
     }
 
     onLockStateChanged: {
       root.logEvent("session-locked=" + locked)
 
+      if (locked) {
+        root.pendingSessionLock = false
+        pendingSessionLockTimer.stop()
+      }
+
       if (!locked && root.lockRequested) {
         root.lockRequested = false
+        root.pendingSessionLock = false
+        pendingSessionLockTimer.stop()
         root.resetAuthenticationState()
         root.runWake()
       }
@@ -316,6 +361,18 @@ Item {
     onTriggered: if (root.lockRequested && !root.authenticating) root.runBlank()
   }
 
+  Timer {
+    id: pendingSessionLockTimer
+    interval: 100
+    repeat: true
+    onTriggered: root.requestSessionLock()
+  }
+
+  Connections {
+    target: Quickshell
+    function onScreensChanged() { root.requestSessionLock() }
+  }
+
   onAuthenticatingChanged: {
     if (!lockRequested) return
     if (authenticating) idleBlankTimer.stop()
@@ -353,8 +410,10 @@ Item {
       return JSON.stringify({
         locked: root.locked,
         requested: root.lockRequested,
+        pending: root.pendingSessionLock,
         sessionLocked: sessionLock.locked,
         secure: sessionLock.secure,
+        realScreens: root.realScreenCount(),
         passwordPam: root.passwordPamConfigured,
         fingerprint: root.fingerprintConfigured,
         authenticating: root.authenticating,
