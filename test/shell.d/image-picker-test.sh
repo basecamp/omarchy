@@ -47,4 +47,8 @@ assert(
   /function preloadRows[\s\S]*if \(opened \|\| requestActive\) return/.test(imagePickerQml),
   'image picker ignores cache preloads while a request is visible'
 )
+assert(
+  /source: item\.sourceActivated && item\.thumbnailPath \? Util\.fileUrl\(item\.thumbnailPath\) : ""[\s\S]*asynchronous: false/.test(imagePickerQml),
+  'image picker loads activated thumbnails synchronously to avoid carousel flicker'
+)
 JS
