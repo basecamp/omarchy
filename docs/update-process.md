@@ -23,7 +23,6 @@ The design goal is:
 | --- | --- | --- |
 | `${XDG_RUNTIME_DIR:-/tmp}/omarchy-update.lock` | user | Prevent overlapping update runs. Owned by `omarchy-update`; compatibility wrappers inherit/respect it. |
 | `/tmp/omarchy-update.log` | user | Transcript of `omarchy update`, used by `omarchy-update-analyze-logs`. |
-| `~/.local/state/omarchy/updates/` | user | Update-check state for the shell widget (`packages`, `aur`, `available`, `checked-at`, `error`). |
 | `~/.local/state/omarchy/current/` | user | Generated active theme, selected theme name, and current background symlink. |
 | `~/.local/state/omarchy/migrations/` | user | Per-user migration markers. |
 | `~/.local/state/omarchy/reboot-required` | user | Optional reboot marker checked by `omarchy-update-restart`. |
@@ -173,27 +172,18 @@ The bar widget `omarchy.system-update` runs:
 omarchy-update-available
 ```
 
-`omarchy-update-available` uses `checkupdates` with a temporary database when
-available, plus `yay -Qua` for AUR updates when foreign packages are installed.
-It stores the result in:
+`omarchy-update-available` checks the installed Omarchy package for updates:
 
-```text
-~/.local/state/omarchy/updates/packages
-~/.local/state/omarchy/updates/aur
-~/.local/state/omarchy/updates/available
-~/.local/state/omarchy/updates/checked-at
-~/.local/state/omarchy/updates/error
-```
+- `omarchy-dev`, when installed
+- otherwise `omarchy`, when installed
 
 Exit codes:
 
-- `0` — updates are available; stdout is the update list.
-- non-zero — no updates are available; stdout says the system is up to date.
+- `0` — Omarchy updates are available; stdout is the update list.
+- non-zero — no Omarchy updates are available; stdout says Omarchy is up to date.
 
-The widget uses the line count to show/hide itself. It also watches the
-`available` state file, so manually running `omarchy-update-available` updates
-the widget as soon as the file changes. Hovering the update icon opens a panel
-that lists Omarchy packages first, then all other package updates.
+The widget runs this check on shell startup and every six hours. Clicking the
+update icon launches `omarchy-update` in a floating terminal.
 
 ## Update-related binaries
 
@@ -212,7 +202,7 @@ scripts.
 | `omarchy-update-pacman-guard` | ALPM pre-transaction guard that aborts direct `pacman -Syu` style upgrades unless Omarchy set `OMARCHY_UPDATE_PACMAN=1` or the user explicitly set `OMARCHY_ALLOW_DIRECT_PACMAN=1`. | **Keep internal/hidden.** This is what nudges users back to `omarchy update`. |
 | `omarchy-migrate-notify` | Internal notification helper for direct pacman updates. Uses `omarchy-migrate --pending` and shows notification only when this user has pending migrations. | **Keep internal/hidden.** Clear name now that the public command is `omarchy-migrate`. |
 | `omarchy-update-user-notify` | Hidden compatibility wrapper for `omarchy-migrate-notify`. | **Temporary.** Keep only for old callers. |
-| `omarchy-update-available` | Update checker for shell widget and post-update refresh. Writes update state. | **Keep.** Could eventually be renamed `omarchy-update-check`, but current name matches widget semantics. |
+| `omarchy-update-available` | Update checker for shell widget and post-update refresh. | **Keep.** Could eventually be renamed `omarchy-update-check`, but current name matches widget semantics. |
 | `omarchy-update-aur-pkgs` | Updates AUR packages with `yay -Sua` if foreign packages exist and AUR is reachable. | **Question.** Omarchy is package-backed now, but users may still install AUR packages. Keep for now. |
 | `omarchy-update-mise` | Runs `mise up` for mise-managed tools. | **Keep.** Mise-managed tools are intentionally part of the blessed update path. |
 | `omarchy-update-orphan-pkgs` | Lists orphans and prompts before removal; noninteractive mode never removes. | **Keep for now.** Safe because it is prompt-only. |

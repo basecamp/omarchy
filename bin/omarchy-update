@@ -84,8 +84,6 @@ run_update_pipeline() {
   omarchy-update-analyze-logs
 
   # Re-check after updates so the status bar reflects any remaining updates.
-  # This clears the state when everything is current, so a separate reset command
-  # is not needed.
   if omarchy-update-available >/dev/null; then
     omarchy-shell -q omarchy.system-update refresh
   else

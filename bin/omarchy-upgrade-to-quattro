@@ -1113,9 +1113,7 @@ run_final_system_package_upgrade() {
 }
 
 run_post_upgrade_update_steps() {
-  local update_error_file update_output update_status
-
-  update_error_file="$target_home/.local/state/omarchy/updates/error"
+  local update_output update_status
 
   if PATH="$package_path" command -v omarchy-update-aur-pkgs >/dev/null 2>&1; then
     if ! run_as_user env \
@@ -1125,7 +1123,7 @@ run_post_upgrade_update_steps() {
       OMARCHY_PATH=/usr/share/omarchy \
       PATH="$package_path" \
       omarchy-update-aur-pkgs; then
-      warn "Could not update AUR packages; the update indicator may still show AUR updates after reboot."
+      warn "Could not update AUR packages; running omarchy-update after reboot may still update AUR packages."
     fi
   fi
 
@@ -1154,9 +1152,6 @@ run_post_upgrade_update_steps() {
 
     if (( update_status == 0 )); then
       warn "Updates are still available after the upgrade; first-run will still offer to run omarchy-update:"
-      printf '%s\n' "$update_output" >&2
-    elif [[ -s $update_error_file ]]; then
-      warn "Could not confirm update state after upgrade; first-run will still offer to run omarchy-update:"
       printf '%s\n' "$update_output" >&2
     else
       # The live upgrade has already completed the package update. Let first-run
