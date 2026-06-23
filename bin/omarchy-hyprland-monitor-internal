@@ -18,7 +18,7 @@ on() {
 }
 
 off() {
-  if ! omarchy-hw-external-monitors; then
+  if ! omarchy-hw-external-monitors && ! omarchy-hw-lid-closed; then
     omarchy-notification-send -g 󰍹 "Can't disable the only active display"
     exit 1
   fi
@@ -31,7 +31,7 @@ off() {
 }
 
 recover() {
-  if ! omarchy-hw-external-monitors && omarchy-hyprland-toggle-enabled $TOGGLE; then
+  if ! omarchy-hw-external-monitors && ! omarchy-hw-lid-closed && omarchy-hyprland-toggle-enabled $TOGGLE; then
     omarchy-hyprland-toggle $TOGGLE off
   fi
 }
