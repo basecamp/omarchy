@@ -300,6 +300,66 @@ jq -e '
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config removes widgets with remove alias"
 
+mock_bin="$TMPDIR/mock-bin"
+mkdir -p "$mock_bin"
+
+cat >"$mock_bin/omarchy-refresh-config" <<'SH'
+#!/bin/bash
+set -euo pipefail
+
+relative_path="${1:-}"
+[[ -n $relative_path ]] || exit 1
+mkdir -p "$HOME/.config/$(dirname "$relative_path")"
+cp "$OMARCHY_PATH/config/$relative_path" "$HOME/.config/$relative_path"
+SH
+
+cat >"$mock_bin/omarchy-restart-shell" <<'SH'
+#!/bin/bash
+set -euo pipefail
+
+mkdir -p "$HOME/.local/state/omarchy"
+touch "$HOME/.local/state/omarchy/restart-shell-called"
+SH
+
+cat >"$mock_bin/omarchy-shell" <<'SH'
+#!/bin/bash
+exit 0
+SH
+
+cat >"$mock_bin/omarchy-installed-service-dropbox" <<'SH'
+#!/bin/bash
+set -euo pipefail
+
+[[ ${OMARCHY_TEST_DROPBOX:-0} == "1" ]]
+SH
+
+cat >"$mock_bin/omarchy-installed-service-tailscale" <<'SH'
+#!/bin/bash
+set -euo pipefail
+
+[[ ${OMARCHY_TEST_TAILSCALE:-0} == "1" ]]
+SH
+
+chmod +x "$mock_bin"/*
+mock_path="$mock_bin:$ROOT/bin:$PATH"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=0 OMARCHY_TEST_TAILSCALE=0 omarchy-refresh-shell
+jq -e '
+  def ids: map(.id // .);
+  (.bar.layout.right | ids | index("omarchy.dropbox") == null) and
+  (.bar.layout.right | ids | index("omarchy.tailscale") == null)
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell refresh keeps optional service widgets absent when services are unavailable"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=1 OMARCHY_TEST_TAILSCALE=1 omarchy-refresh-shell
+jq -e '
+  def ids: map(.id // .);
+  (.bar.layout.right | ids | index("omarchy.dropbox") != null) and
+  (.bar.layout.right | ids | index("omarchy.tailscale") != null)
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+[[ -f $TMPDIR/home/.local/state/omarchy/restart-shell-called ]] || fail "shell refresh restarts shell"
+pass "shell refresh adds optional service widgets when services are available"
+
 if grep -RIl 'upgrade-to-quattro\|Omarchy 4\.0 is upgraded' "$ROOT/migrations" >/dev/null; then
   fail "4.0 upgrade is not modeled as a migration"
 fi

@@ -3,5 +3,16 @@
 # omarchy:summary=Reset shell.json to Omarchy defaults
 # omarchy:examples=omarchy refresh shell
 
+set -euo pipefail
+
 omarchy-refresh-config omarchy/shell.json
+
+if omarchy-installed-service-dropbox; then
+  omarchy-config-shell-bar add omarchy.dropbox
+fi
+
+if omarchy-installed-service-tailscale; then
+  omarchy-config-shell-bar add omarchy.tailscale
+fi
+
 omarchy-restart-shell
