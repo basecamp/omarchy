@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle dynamic background stop-on-fullscreen behavior
+# omarchy:group=theme
+# omarchy:name=dynamic-bg-toggle-fullscreen
+
+CONF="$HOME/.config/omarchy/dynamic-bg/dynamic-bg.conf"
+
+if [[ ! -f $CONF ]]; then
+  echo "Dynamic background config not found: $CONF" >&2
+  exit 1
+fi
+
+source "$CONF"
+
+if [[ $DYNAMIC_BG_STOP_ON_FULLSCREEN == "true" ]]; then
+  sed -i "s/^DYNAMIC_BG_STOP_ON_FULLSCREEN=.*/DYNAMIC_BG_STOP_ON_FULLSCREEN=false/" "$CONF"
+else
+  sed -i "s/^DYNAMIC_BG_STOP_ON_FULLSCREEN=.*/DYNAMIC_BG_STOP_ON_FULLSCREEN=true/" "$CONF"
+fi

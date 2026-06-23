@@ -1,0 +1,13 @@
+[Unit]
+Description=Pause dynamic background rotation and daemon during fullscreen
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sleep 5
+ExecStart=%h/.local/share/omarchy/bin/omarchy-dynamic-bg-fullscreen-watcher
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# omarchy:summary=Set dynamic background transition type and duration
+# omarchy:group=theme
+# omarchy:name=dynamic-bg-set-transition
+# omarchy:args=<type> <duration>
+
+CONF="$HOME/.config/omarchy/dynamic-bg/dynamic-bg.conf"
+TYPE=$1
+DURATION=$2
+
+if [[ -z $TYPE || -z $DURATION ]]; then
+  echo "Usage: omarchy-dynamic-bg-set-transition <type> <duration>" >&2
+  echo "Types: random, fade, wipe, grow, wave, outer" >&2
+  echo "Duration: 0.5, 1, 2, 3, 5 (seconds)" >&2
+  exit 1
+fi
+
+if [[ ! -f $CONF ]]; then
+  echo "Dynamic background config not found: $CONF" >&2
+  exit 1
+fi
+
+sed -i "s/^DYNAMIC_BG_TRANSITION_TYPE=.*/DYNAMIC_BG_TRANSITION_TYPE=$TYPE/" "$CONF"
+sed -i "s/^DYNAMIC_BG_TRANSITION_DURATION=.*/DYNAMIC_BG_TRANSITION_DURATION=$DURATION/" "$CONF"

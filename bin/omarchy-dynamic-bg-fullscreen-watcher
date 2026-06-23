@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# omarchy:summary=Watch fullscreen state to pause dynamic background rotation
+# omarchy:group=theme
+# omarchy:name=dynamic-bg-fullscreen-watcher
+
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+CONF="$HOME/.config/omarchy/dynamic-bg/dynamic-bg.conf"
+
+socat -u UNIX-CONNECT:"$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock" - | while read -r line; do
+  [[ -f $CONF ]] && source "$CONF"
+  [[ $DYNAMIC_BG_ENABLED == "true" && $DYNAMIC_BG_STOP_ON_FULLSCREEN == "true" ]] || continue
+
+  case "$line" in
+    fullscreen\>\>1*)
+      systemctl --user stop omarchy-dynamic-bg.timer
+      ;;
+    fullscreen\>\>0*)
+      systemctl --user start omarchy-dynamic-bg.timer
+      ;;
+  esac
+done

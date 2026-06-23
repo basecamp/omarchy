@@ -1,0 +1,7 @@
+[Unit]
+Description=Dynamic background rotation with awww
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/omarchy/bin/omarchy-dynamic-bg-rotate

@@ -1,0 +1,11 @@
+[Unit]
+Description=Timer for dynamic background rotation
+Requires=omarchy-dynamic-bg.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

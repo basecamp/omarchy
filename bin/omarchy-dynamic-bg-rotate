@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# omarchy:summary=Rotate backgrounds dynamically with awww transitions
+# omarchy:group=theme
+# omarchy:name=dynamic-bg-rotate
+
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+CONF="$HOME/.config/omarchy/dynamic-bg/dynamic-bg.conf"
+
+if [[ ! -f $CONF ]]; then
+  echo "Dynamic background config not found: $CONF" >&2
+  exit 1
+fi
+
+source "$CONF"
+
+if ! omarchy-cmd-present awww; then
+  echo "awww is not installed. Install it to use dynamic backgrounds." >&2
+  exit 1
+fi
+
+# Skip rotation if any window is fullscreen and the setting is enabled
+if [[ $DYNAMIC_BG_STOP_ON_FULLSCREEN == "true" ]]; then
+  fullscreen_count=$(hyprctl clients -j 2>/dev/null | jq -r '[.[] | select(.fullscreen != 0)] | length')
+  if [[ $fullscreen_count -gt 0 ]]; then
+    exit 0
+  fi
+fi
+
+# Collect backgrounds from theme and user directories
+theme_name=$(cat "$HOME/.config/omarchy/current/theme.name" 2>/dev/null)
+dirs=(
+  "$HOME/.config/omarchy/current/theme/backgrounds"
+)
+
+if [[ -n $theme_name ]]; then
+  dirs+=("$HOME/.config/omarchy/backgrounds/$theme_name")
+  dirs+=("$HOME/.local/share/omarchy/themes/$theme_name/backgrounds")
+fi
+
+images=()
+for dir in "${dirs[@]}"; do
+  if [[ -d $dir ]]; then
+    while IFS= read -r -d '' img; do
+      images+=("$img")
+    done < <(find -L "$dir" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print0 2>/dev/null)
+  fi
+done
+
+if (( ${#images[@]} == 0 )); then
+  echo "No background images found." >&2
+  exit 1
+fi
+
+# Kill static wallpaper engine
+pkill -x swaybg
+
+# Ensure awww daemon is running
+if ! pgrep -x awww-daemon &>/dev/null; then
+  setsid uwsm-app -- awww-daemon &>/dev/null &
+  sleep 0.5
+fi
+
+# Apply random background to each monitor
+while IFS= read -r monitor; do
+  img=${images[RANDOM % ${#images[@]}]}
+  awww img "$img" -o "$monitor" \
+    --transition-type "$DYNAMIC_BG_TRANSITION_TYPE" \
+    --transition-duration "$DYNAMIC_BG_TRANSITION_DURATION" \
+    --transition-fps "$DYNAMIC_BG_TRANSITION_FPS"
+done < <(hyprctl monitors -j | jq -r '.[] | .name')

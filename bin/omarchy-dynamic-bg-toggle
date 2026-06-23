@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle dynamic background rotation on/off
+# omarchy:group=theme
+# omarchy:name=dynamic-bg-toggle
+
+CONF="$HOME/.config/omarchy/dynamic-bg/dynamic-bg.conf"
+
+if [[ ! -f $CONF ]]; then
+  echo "Dynamic background config not found: $CONF" >&2
+  exit 1
+fi
+
+source "$CONF"
+
+if [[ $DYNAMIC_BG_ENABLED == "true" ]]; then
+  sed -i "s/^DYNAMIC_BG_ENABLED=.*/DYNAMIC_BG_ENABLED=false/" "$CONF"
+  systemctl --user disable --now omarchy-dynamic-bg.timer
+else
+  omarchy-cmd-present awww || {
+    echo "awww is required for dynamic backgrounds." >&2
+    exit 1
+  }
+
+  # Ensure systemd units exist for existing installs
+  OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+  for unit in omarchy-dynamic-bg.service omarchy-dynamic-bg.timer; do
+    if [[ ! -f $HOME/.config/systemd/user/$unit ]]; then
+      cp "$OMARCHY_PATH/config/systemd/user/$unit" "$HOME/.config/systemd/user/$unit"
+    fi
+  done
+
+  # Ensure config file exists for existing installs
+  if [[ ! -f $CONF ]]; then
+    mkdir -p "$(dirname "$CONF")"
+    cp "$OMARCHY_PATH/config/omarchy/dynamic-bg/dynamic-bg.conf" "$CONF"
+  fi
+
+  systemctl --user daemon-reload
+  sed -i "s/^DYNAMIC_BG_ENABLED=.*/DYNAMIC_BG_ENABLED=true/" "$CONF"
+  systemctl --user enable --now omarchy-dynamic-bg.timer
+fi

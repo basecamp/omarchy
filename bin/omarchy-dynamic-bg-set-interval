@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# omarchy:summary=Set dynamic background rotation interval
+# omarchy:group=theme
+# omarchy:name=dynamic-bg-set-interval
+# omarchy:args=<interval>
+
+CONF="$HOME/.config/omarchy/dynamic-bg/dynamic-bg.conf"
+TIMER="$HOME/.config/systemd/user/omarchy-dynamic-bg.timer"
+INTERVAL=$1
+
+if [[ -z $INTERVAL ]]; then
+  echo "Usage: omarchy-dynamic-bg-set-interval <interval>" >&2
+  echo "Examples: 15sec, 30sec, 1min, 5min, 10min, 30min, 1h" >&2
+  exit 1
+fi
+
+if [[ ! -f $CONF ]]; then
+  echo "Dynamic background config not found: $CONF" >&2
+  exit 1
+fi
+
+sed -i "s/^DYNAMIC_BG_INTERVAL=.*/DYNAMIC_BG_INTERVAL=$INTERVAL/" "$CONF"
+
+if [[ -f $TIMER ]]; then
+  sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=$INTERVAL/" "$TIMER"
+fi
+
+systemctl --user daemon-reload
+systemctl --user restart omarchy-dynamic-bg.timer 2>/dev/null || true

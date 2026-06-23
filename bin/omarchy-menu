@@ -328,8 +328,93 @@ show_theme_menu() {
 }
 
 show_background_menu() {
-  background=$(omarchy-theme-bg-switcher)
-  [[ -n $background ]] && omarchy-theme-bg-set "$background"
+  case $(menu "Background" "󰐃  Static\n󰑓  Dynamic") in
+  *Static*)
+    background=$(omarchy-theme-bg-switcher)
+    [[ -n $background ]] && omarchy-theme-bg-set "$background"
+    ;;
+  *Dynamic*) show_dynamic_bg_menu ;;
+  *) back_to show_style_menu ;;
+  esac
+}
+
+show_dynamic_bg_menu() {
+  if ! command -v awww &>/dev/null; then
+    omarchy-notification-send "awww is required for dynamic backgrounds" -u critical
+    back_to show_style_menu
+    return
+  fi
+
+  local conf="$HOME/.config/omarchy/dynamic-bg/dynamic-bg.conf"
+  [[ -f $conf ]] && source "$conf"
+
+  local status="Disabled"
+  [[ $DYNAMIC_BG_ENABLED == "true" ]] && status="Enabled"
+
+  local fullscreen="Off"
+  [[ $DYNAMIC_BG_STOP_ON_FULLSCREEN == "true" ]] && fullscreen="On"
+
+  case $(menu "Dynamic Background" "󰐾  Status: $status\n󱦟  Interval: $DYNAMIC_BG_INTERVAL\n󰸌  Transition Effect: ${DYNAMIC_BG_TRANSITION_TYPE^}\n󰓅  Transition Speed: ${DYNAMIC_BG_TRANSITION_DURATION}s\n󰍺  Stop on Fullscreen: $fullscreen") in
+  *Status*) omarchy-dynamic-bg-toggle ; show_dynamic_bg_menu ;;
+  *Interval*) show_dynamic_bg_interval_menu ;;
+  *Effect*) show_dynamic_bg_effect_menu ;;
+  *Speed*) show_dynamic_bg_speed_menu ;;
+  *Fullscreen*) omarchy-dynamic-bg-toggle-fullscreen ; show_dynamic_bg_menu ;;
+  *) back_to show_style_menu ;;
+  esac
+}
+
+show_dynamic_bg_interval_menu() {
+  case $(menu "Interval" "󱦟  15 seconds\n󱦟  30 seconds\n󱦟  1 minute\n󱦟  5 minutes\n󱦟  10 minutes\n󱦟  30 minutes\n󱦟  1 hour") in
+  *"15 seconds"*) omarchy-dynamic-bg-set-interval 15sec ;;
+  *"30 seconds"*) omarchy-dynamic-bg-set-interval 30sec ;;
+  *"1 minute"*) omarchy-dynamic-bg-set-interval 1min ;;
+  *"5 minutes"*) omarchy-dynamic-bg-set-interval 5min ;;
+  *"10 minutes"*) omarchy-dynamic-bg-set-interval 10min ;;
+  *"30 minutes"*) omarchy-dynamic-bg-set-interval 30min ;;
+  *"1 hour"*) omarchy-dynamic-bg-set-interval 1h ;;
+  *) show_dynamic_bg_menu ; return ;;
+  esac
+  show_dynamic_bg_menu
+}
+
+show_dynamic_bg_effect_menu() {
+  local conf="$HOME/.config/omarchy/dynamic-bg/dynamic-bg.conf"
+  [[ -f $conf ]] && source "$conf"
+
+  local choice
+  choice=$(menu "Transition Effect" "󰸌  Random\n󰸌  Fade\n󰸌  Wipe\n󰸌  Grow\n󰸌  Wave\n󰸌  Outer")
+  local text="${choice##* }"
+
+  case "$text" in
+  Random) omarchy-dynamic-bg-set-transition random "$DYNAMIC_BG_TRANSITION_DURATION" ;;
+  Fade)   omarchy-dynamic-bg-set-transition fade "$DYNAMIC_BG_TRANSITION_DURATION" ;;
+  Wipe)   omarchy-dynamic-bg-set-transition wipe "$DYNAMIC_BG_TRANSITION_DURATION" ;;
+  Grow)   omarchy-dynamic-bg-set-transition grow "$DYNAMIC_BG_TRANSITION_DURATION" ;;
+  Wave)   omarchy-dynamic-bg-set-transition wave "$DYNAMIC_BG_TRANSITION_DURATION" ;;
+  Outer)  omarchy-dynamic-bg-set-transition outer "$DYNAMIC_BG_TRANSITION_DURATION" ;;
+  *)      show_dynamic_bg_menu ; return ;;
+  esac
+  show_dynamic_bg_menu
+}
+
+show_dynamic_bg_speed_menu() {
+  local conf="$HOME/.config/omarchy/dynamic-bg/dynamic-bg.conf"
+  [[ -f $conf ]] && source "$conf"
+
+  local choice
+  choice=$(menu "Transition Speed" "󰓅  0.5s\n󰓅  1s\n󰓅  2s\n󰓅  3s\n󰓅  5s")
+  local text="${choice##* }"
+
+  case "$text" in
+  0.5s) omarchy-dynamic-bg-set-transition "$DYNAMIC_BG_TRANSITION_TYPE" 0.5 ;;
+  1s)   omarchy-dynamic-bg-set-transition "$DYNAMIC_BG_TRANSITION_TYPE" 1 ;;
+  2s)   omarchy-dynamic-bg-set-transition "$DYNAMIC_BG_TRANSITION_TYPE" 2 ;;
+  3s)   omarchy-dynamic-bg-set-transition "$DYNAMIC_BG_TRANSITION_TYPE" 3 ;;
+  5s)   omarchy-dynamic-bg-set-transition "$DYNAMIC_BG_TRANSITION_TYPE" 5 ;;
+  *)    show_dynamic_bg_menu ; return ;;
+  esac
+  show_dynamic_bg_menu
 }
 
 show_font_menu() {
