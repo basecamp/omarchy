@@ -258,7 +258,7 @@ HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar show | jq -e '
 pass "shell config shows only bar json"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar list --json | jq -e '
-  any(.[]; .id == "omarchy.system-stats" and .addable == true and .inBar == false) and
+  any(.[]; .id == "omarchy.keyboard-layout" and .addable == true and .inBar == false) and
   all(.[]; .id != "omarchy.tailscale")
 ' >/dev/null
 pass "shell config lists addable bar widgets"

@@ -16,7 +16,6 @@ import qs.Commons
 // API is a subset of Common.PopupCard: anchorItem, owner, bar, open,
 // padding, margin, contentWidth/Height, centerOnBar, default contentItem.
 // Missing on purpose (for now): triggerMode ("hover"), containsMouse.
-// Hover-mode popups (system-stats) need extra plumbing before migrating.
 //
 // Positioning: full-screen layer-shell with the card placed inside at
 // `cardOrigin`. We use the bar window's height/width for the perpendicular
