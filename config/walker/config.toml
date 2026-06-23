@@ -9,6 +9,8 @@ hide_action_hints = true                                                    # gl
 
 [keybinds]
 quick_activate = []
+next = ["Down", "ctrl n"]     # move selection down (ctrl n like Vim/readline)
+previous = ["Up", "ctrl p"]   # move selection up (ctrl p like Vim/readline)
 
 [columns]
 symbols = 1 # providers to be queried by default
