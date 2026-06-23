@@ -48,7 +48,7 @@ toggle() {
 }
 
 recover() {
-  if ! omarchy-hw-external-monitors && omarchy-hyprland-toggle-enabled $TOGGLE; then
+  if ! omarchy-hyprland-monitor-external-active && omarchy-hyprland-toggle-enabled $TOGGLE; then
     omarchy-hyprland-toggle $TOGGLE off
   fi
 }

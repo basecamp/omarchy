@@ -3,9 +3,61 @@
 # omarchy:summary=Apply clamshell display state to Hyprland monitors
 # omarchy:hidden=true
 
+TOGGLES_DIR="$HOME/.local/state/omarchy/toggles/hypr"
+CLAMSHELL_FLAG="$TOGGLES_DIR/internal-monitor-clamshell.lua"
+MANUAL_DISABLE_FLAG="$TOGGLES_DIR/internal-monitor-disable.lua"
+
+INTERNAL=$(hyprctl monitors all -j | jq -r '.[] | select(.name | contains("eDP")).name' | head -n 1)
+
+enable_internal_output() {
+  [[ -n $INTERNAL ]] || return 0
+  hyprctl eval "hl.monitor({ output = \"$INTERNAL\", mode = \"preferred\", position = \"auto\", scale = \"auto\" })" >/dev/null 2>&1 || true
+}
+
+dpms_internal() {
+  local action="$1"
+
+  [[ -n $INTERNAL ]] || return 0
+  hyprctl dispatch "hl.dsp.dpms({ action = \"$action\", monitor = \"$INTERNAL\" })" >/dev/null 2>&1 || true
+}
+
+enable_internal() {
+  local changed=0
+
+  if [[ -f $CLAMSHELL_FLAG ]]; then
+    rm -f "$CLAMSHELL_FLAG"
+    changed=1
+  fi
+
+  if (( changed )); then
+    hyprctl reload >/dev/null 2>&1 || true
+  fi
+
+  [[ -f $MANUAL_DISABLE_FLAG ]] && omarchy-hyprland-monitor-external-active && return 0
+  enable_internal_output
+  dpms_internal enable
+}
+
+disable_internal() {
+  [[ -n $INTERNAL ]] || exit 0
+  [[ -f $MANUAL_DISABLE_FLAG ]] && return 0
+
+  mkdir -p "$TOGGLES_DIR"
+
+  local config
+  config=$(printf 'hl.monitor({ output = "%s", disabled = true })' "$INTERNAL")
+
+  if [[ ! -f $CLAMSHELL_FLAG ]] || [[ $(< "$CLAMSHELL_FLAG") != $config ]]; then
+    printf '%s\n' "$config" >"$CLAMSHELL_FLAG"
+    hyprctl reload >/dev/null 2>&1 || true
+  fi
+}
+
 omarchy-hyprland-monitor-internal recover >/dev/null 2>&1 || true
 omarchy-hyprland-monitor-internal-mirror recover >/dev/null 2>&1 || true
 
-if omarchy-hw-clamshell; then
-  omarchy-hyprland-monitor-internal off >/dev/null 2>&1 || true
+if omarchy-hw-clamshell && omarchy-hyprland-monitor-external-active; then
+  disable_internal
+else
+  enable_internal
 fi
