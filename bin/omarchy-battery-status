@@ -23,6 +23,23 @@ battery=$(upower -e 2>/dev/null | grep BAT | head -n 1)
 battery_info=$(upower -i "$battery")
 
 percentage=$(awk '/percentage/ { print int($2); exit }' <<<"$battery_info")
+capacity=$(awk '/energy-full:/ { printf "%d", $2; exit }' <<<"$battery_info")
+time_remaining=$(awk '/time to (empty|full)/ {
+  value = $4
+  unit = $5
+  if (unit ~ /^minute/) {
+    printf "%dm", int(value)
+  } else {
+    hours = int(value)
+    minutes = int((value - hours) * 60)
+    if (minutes > 0) {
+      printf "%dh %dm", hours, minutes
+    } else {
+      printf "%dh", hours
+    }
+  }
+  exit
+}' <<<"$battery_info")
 power_rate_raw=$(awk '/energy-rate/ { print $2; exit }' <<<"$battery_info")
 power_rate=$(awk '/energy-rate/ {
   rounded = sprintf("%.1f", $2)
@@ -31,8 +48,6 @@ power_rate=$(awk '/energy-rate/ {
   exit
 }' <<<"$battery_info")
 state=$(awk '/state/ { print $2; exit }' <<<"$battery_info")
-time_remaining=$(omarchy-battery-remaining-time 2>/dev/null)
-capacity=$(omarchy-battery-capacity 2>/dev/null)
 threshold_start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
 threshold_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
 
