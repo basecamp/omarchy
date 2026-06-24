@@ -5,17 +5,10 @@
 # omarchy:examples=omarchy brightness display | omarchy brightness display +5% | omarchy brightness display --no-osd 50% | omarchy brightness display off | omarchy brightness display on
 
 no_osd=0
-args=()
-
-for arg in "$@"; do
-  if [[ $arg == "--no-osd" ]]; then
-    no_osd=1
-  else
-    args+=("$arg")
-  fi
-done
-
-set -- "${args[@]}"
+if [[ ${1:-} == "--no-osd" ]]; then
+  no_osd=1
+  shift
+fi
 
 # Get the brightness of the passed display
 display_brightness() {
