@@ -287,7 +287,7 @@ Panel {
 
   Process {
     id: stateProc
-    command: [root.bar ? root.bar.omarchyPath + "/bin/omarchy-monitor-state" : "omarchy-monitor-state"]
+    command: ["omarchy-monitor-state"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {

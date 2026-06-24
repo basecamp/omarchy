@@ -13,6 +13,7 @@ Panel {
   ipcTarget: "omarchy.dropbox"
   manageIpc: false
 
+  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   property string focusSection: "login"
   property int fileIndex: 0
   property bool cursorActive: false
@@ -117,7 +118,7 @@ Panel {
   Service {
     id: dropbox
     settings: root.settings
-    omarchyPath: root.bar ? root.bar.omarchyPath : Quickshell.env("OMARCHY_PATH")
+    omarchyPath: root.omarchyPath
   }
 
   Connections {

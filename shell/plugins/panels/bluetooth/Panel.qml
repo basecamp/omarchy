@@ -136,9 +136,9 @@ Panel {
   function setDefaultAudioSink(sink) {
     if (!sink) return
     Pipewire.preferredDefaultAudioSink = sink
-    if (root.bar && root.bar.omarchyPath && sink.id !== undefined && sink.name) {
+    if (sink.id !== undefined && sink.name) {
       Quickshell.execDetached([
-        root.bar.omarchyPath + "/bin/omarchy-audio-output-set-default",
+        "omarchy-audio-output-set-default",
         String(sink.id),
         String(sink.name)
       ])
@@ -194,10 +194,7 @@ Panel {
   }
 
   function deviceCommand(action, address) {
-    var command = root.bar && root.bar.omarchyPath
-      ? root.bar.omarchyPath + "/bin/omarchy-bluetooth-device"
-      : "omarchy-bluetooth-device"
-    return [command, action, address]
+    return ["omarchy-bluetooth-device", action, address]
   }
 
   function runDeviceAction(device, action, pending) {

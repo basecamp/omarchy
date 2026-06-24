@@ -11,6 +11,7 @@ Panel {
   ipcTarget: "omarchy.weather"
   manageIpc: false
 
+  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   property var anchorItem: null
   property bool openedFromHotkey: false
 
@@ -469,7 +470,7 @@ Panel {
   // Poll the weather pill text/class every minute. Local to this widget.
   Process {
     id: weatherProc
-    command: ["bash", "-lc", root.bar ? Util.shellQuote(root.bar.omarchyPath + "/shell/plugins/panels/weather/status.sh") : ""]
+    command: ["bash", "-lc", Util.shellQuote(root.omarchyPath + "/shell/plugins/panels/weather/status.sh")]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateWeather(text)

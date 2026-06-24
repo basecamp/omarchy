@@ -378,9 +378,9 @@ Panel {
   function setDefaultSink(node) {
     if (!node) return
     Pipewire.preferredDefaultAudioSink = node
-    if (root.bar && node.id !== undefined && node.name) {
+    if (node.id !== undefined && node.name) {
       Quickshell.execDetached([
-        root.bar.omarchyPath + "/bin/omarchy-audio-output-set-default",
+        "omarchy-audio-output-set-default",
         String(node.id),
         String(node.name)
       ])
@@ -390,9 +390,9 @@ Panel {
   function setDefaultSource(node) {
     if (!node) return
     Pipewire.preferredDefaultAudioSource = node
-    if (root.bar && node.id !== undefined && node.name) {
+    if (node.id !== undefined && node.name) {
       Quickshell.execDetached([
-        root.bar.omarchyPath + "/bin/omarchy-audio-input-set-default",
+        "omarchy-audio-input-set-default",
         String(node.id),
         String(node.name)
       ])
@@ -500,7 +500,7 @@ Panel {
 
   Process {
     id: sinkAvailabilityProc
-    command: [root.bar ? root.bar.omarchyPath + "/bin/omarchy-audio-sink-availability" : "omarchy-audio-sink-availability"]
+    command: ["omarchy-audio-sink-availability"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateSinkAvailability(text)
