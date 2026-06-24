@@ -64,7 +64,7 @@ EOF
 fi
 
 mkdir -p "$HOME/.local/share/applications"
-install -m 644 "$OMARCHY_PATH/applications/battlenet.desktop" \
+install -m 644 "$OMARCHY_PATH/default/applications/battlenet.desktop" \
   "$HOME/.local/share/applications/battlenet.desktop"
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 
