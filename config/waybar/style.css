@@ -9,6 +9,7 @@
   min-height: 0;
   font-family: 'JetBrainsMono Nerd Font';
   font-size: 12px;
+  /* omarchy:disable-text-shadow */
   text-shadow: none;
 }
 
