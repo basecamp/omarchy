@@ -26,7 +26,6 @@ declare -A ROUTE_IS_ALIAS
 declare -A BINARY_TO_KEY
 declare -A GROUP_DESCRIPTIONS
 
-GROUP_DESCRIPTIONS[ac]="AC power detection"
 GROUP_DESCRIPTIONS[audio]="Audio input and output controls"
 GROUP_DESCRIPTIONS[battery]="Battery status helpers"
 GROUP_DESCRIPTIONS[bluetooth]="Bluetooth device controls"
@@ -63,6 +62,7 @@ GROUP_DESCRIPTIONS[osd]="On-screen display status helpers"
 GROUP_DESCRIPTIONS[pkg]="Package management helpers"
 GROUP_DESCRIPTIONS[plugin]="Omarchy shell plugin and bar widget management"
 GROUP_DESCRIPTIONS[plymouth]="Plymouth boot theme management"
+GROUP_DESCRIPTIONS[power]="Power supply detection"
 GROUP_DESCRIPTIONS[powerprofiles]="Power profile management"
 GROUP_DESCRIPTIONS[refresh]="Reset config to defaults"
 GROUP_DESCRIPTIONS[reinstall]="Reinstall and reset workflows"
