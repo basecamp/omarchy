@@ -1,14 +1,17 @@
 echo "Disable inherited text shadows in Waybar"
 
 waybar_style="$HOME/.config/waybar/style.css"
+marker="omarchy:disable-text-shadow"
 
-if [[ -f $waybar_style ]] && ! grep -q "text-shadow: none" "$waybar_style"; then
-  sed -i '/font-size: 12px;/a\  text-shadow: none;' "$waybar_style"
-  sed -i '/tooltip {/,/^}/ s/padding: 2px;/padding: 2px;\n  text-shadow: none;/' "$waybar_style"
+if [[ -f $waybar_style ]] && ! grep -qF "$marker" "$waybar_style"; then
+  cat >>"$waybar_style" <<'EOF'
 
-  cat >> "$waybar_style" << 'EOF'
+/* omarchy:disable-text-shadow */
+* {
+  text-shadow: none;
+}
 
-tooltip * {
+tooltip, tooltip * {
   text-shadow: none;
 }
 EOF
