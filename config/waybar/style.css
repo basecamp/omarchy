@@ -9,6 +9,7 @@
   min-height: 0;
   font-family: 'JetBrainsMono Nerd Font';
   font-size: 12px;
+  text-shadow: none;
 }
 
 .modules-left {
@@ -57,6 +58,11 @@
 
 tooltip {
   padding: 2px;
+  text-shadow: none;
+}
+
+tooltip * {
+  text-shadow: none;
 }
 
 #custom-update {
