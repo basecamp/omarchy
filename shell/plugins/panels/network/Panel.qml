@@ -353,7 +353,7 @@ Panel {
   }
 
   function dnsCommand(provider) {
-    var command = root.bar ? Util.shellQuote(root.bar.omarchyPath + "/bin/omarchy-dns") : "omarchy-dns"
+    var command = "omarchy-dns"
     if (provider) command += " " + Util.shellQuote(provider)
     return command
   }
@@ -362,7 +362,7 @@ Panel {
     if (!root.bar || !provider || actionProc.running) return
 
     if (provider === "Custom") {
-      var launcher = Util.shellQuote(root.bar.omarchyPath + "/bin/omarchy-launch-floating-terminal-with-presentation")
+      var launcher = "omarchy-launch-floating-terminal-with-presentation"
       root.bar.run(launcher + " " + Util.shellQuote(root.dnsCommand(provider)))
       root.close()
       return
@@ -473,7 +473,7 @@ Panel {
   // Pulls everything we want about the active route's interface in one shot.
   Process {
     id: detailsProc
-    command: [root.bar ? root.bar.omarchyPath + "/bin/omarchy-network-status" : "omarchy-network-status", "--verbose"]
+    command: ["omarchy-network-status", "--verbose"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateDetails(text)
@@ -1293,7 +1293,7 @@ Panel {
   // Bar.qml does not need to mirror network state.
   Process {
     id: networkProc
-    command: [root.bar ? root.bar.omarchyPath + "/bin/omarchy-network-status" : "omarchy-network-status"]
+    command: ["omarchy-network-status"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateNetwork(text)
