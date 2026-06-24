@@ -214,6 +214,12 @@ jq -e '
 
 pass "runtime geometry keeps update before indicators"
 
+for panel_id in omarchy.audio omarchy.bluetooth omarchy.monitor omarchy.network omarchy.power; do
+  shell_ipc "$panel_id" open >/dev/null || fail_with_log "direct panel IPC opens $panel_id"
+  shell_ipc "$panel_id" close >/dev/null || fail_with_log "direct panel IPC closes $panel_id"
+done
+pass "direct panel IPC opens and closes default panels"
+
 HOME="$test_home" OMARCHY_PATH="$test_root" PATH="$ROOT/bin:$PATH" "$ROOT/bin/omarchy-config-shell-bar" remove omarchy.audio
 
 for _ in {1..80}; do
