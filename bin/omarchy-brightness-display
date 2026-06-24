@@ -47,39 +47,38 @@ if omarchy-hyprland-monitor-focused-apple; then
   else
     omarchy-brightness-display-apple "$step"
   fi
-  exit
-fi
+else
+  # Current device highlighted
+  device="$(omarchy-hw-display)" || exit 1
 
-# Current device highlighted
-device="$(omarchy-hw-display)" || exit 1
+  # Current brightness percentage
+  current=$(display_brightness "$device") || exit 1
 
-# Current brightness percentage
-current=$(display_brightness "$device") || exit 1
+  # Apply non-uniform step size: 1% steps if at or below 5%, otherwise set an
+  # absolute target percentage to avoid raw backlight rounding causing uneven OSD steps.
+  if [[ $step == "+5%" ]]; then
+    if (( current < 5 )); then
+      (( target = current + 1 ))
+    else
+      (( target = current + 5 ))
+    fi
 
-# Apply non-uniform step size: 1% steps if at or below 5%, otherwise set an
-# absolute target percentage to avoid raw backlight rounding causing uneven OSD steps.
-if [[ $step == "+5%" ]]; then
-  if (( current < 5 )); then
-    (( target = current + 1 ))
-  else
-    (( target = current + 5 ))
+    (( target > 100 )) && target=100
+    step="$target%"
+  elif [[ $step == "5%-" ]]; then
+    if (( current <= 5 )); then
+      (( target = current - 1 ))
+    else
+      (( target = current - 5 ))
+    fi
+
+    (( target < 1 )) && target=1
+    step="$target%"
   fi
 
-  (( target > 100 )) && target=100
-  step="$target%"
-elif [[ $step == "5%-" ]]; then
-  if (( current <= 5 )); then
-    (( target = current - 1 ))
-  else
-    (( target = current - 5 ))
-  fi
+  # Set brightness of the display device.
+  brightnessctl -d "$device" set "$step" >/dev/null
 
-  (( target < 1 )) && target=1
-  step="$target%"
+  # Show the new brightness in OSD
+  (( no_osd )) || omarchy-osd -i brightness -p "$(display_brightness "$device")"
 fi
-
-# Set brightness of the display device.
-brightnessctl -d "$device" set "$step" >/dev/null
-
-# Show the new brightness in OSD
-(( no_osd )) || omarchy-osd -i brightness -p "$(display_brightness "$device")"
