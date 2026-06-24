@@ -75,6 +75,9 @@ etc/fastfetch/config.jsonc     ──►  omarchy-settings    /etc/fastfetch/con
 
 applications/*.desktop         ──►  omarchy-settings    /etc/skel/.local/share/applications/
                                                         /usr/share/omarchy/applications/
+default/applications/battlenet.desktop
+                                ──►  omarchy-settings    /usr/share/omarchy/default/applications/
+                                                        (installer-only launcher template)
 applications/icons/*           ──►  omarchy-settings    /usr/share/icons/hicolor/{48,256,scalable}/apps/
 
 etc/**                         ──►  omarchy-settings    /etc/**           (drop-ins we own outright)
