@@ -134,6 +134,27 @@ jq -e '.locked | type == "boolean"' <<<"$(shell_ipc lock status)" >/dev/null || 
 [[ $(shell_ipc osd close) == "ok" ]] || fail_with_log "OSD IPC closes"
 pass "plugin IPC contracts respond"
 
+shell_ipc_quiet shell rescanPlugins >/dev/null
+selector_rows_b64=$(printf '%s\t%s' "$TMPDIR/selector.png" "$TMPDIR/selector.png" | base64 -w 0)
+selector_selection_file=$(mktemp "$TMPDIR/selector-selection.XXXXXX")
+selector_done_file=$(mktemp "$TMPDIR/selector-done.XXXXXX")
+rm -f "$selector_done_file"
+selector_open=""
+for _ in {1..80}; do
+  selector_open=$(shell_ipc image-selector open "" "$selector_rows_b64" "" "$selector_selection_file" "$selector_done_file" false false 2>/dev/null || true)
+  if [[ $selector_open == "ok" ]]; then
+    break
+  fi
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited during plugin rescan"
+  fi
+  sleep 0.1
+done
+[[ $selector_open == "ok" ]] || fail_with_log "image selector IPC survives plugin rescan"
+shell_ipc_quiet image-selector cancel "$selector_done_file" >/dev/null
+rm -f "$selector_selection_file" "$selector_done_file"
+pass "image selector IPC survives plugin rescan"
+
 shell_ipc_quiet omarchy.system-update refresh >/dev/null 2>&1 || true
 sleep 0.8
 

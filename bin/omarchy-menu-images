@@ -233,14 +233,19 @@ if [[ $preload == true ]]; then
   exit 0
 fi
 
-if ! omarchy-shell image-selector open \
+if ! open_result=$(omarchy-shell image-selector open \
      "" \
      "$rows_b64" \
      "$selected_list_image" \
      "$selection_file" \
      "$done_file" \
      "$show_labels" \
-     "$filterable" >/dev/null; then
+     "$filterable"); then
+  echo "Image selector failed to accept request" >&2
+  exit 1
+fi
+
+if [[ $open_result != "ok" ]]; then
   echo "Image selector failed to accept request" >&2
   exit 1
 fi
