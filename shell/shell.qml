@@ -752,6 +752,62 @@ ShellRoot {
     }
   }
 
+  // --------------------------------------------------- image selector IPC
+
+  function imagePickerItem() {
+    var loader = panelLoaders["omarchy.image-picker"]
+    return loader && loader.item ? loader.item : null
+  }
+
+  IpcHandler {
+    target: "image-selector"
+
+    function open(imageDirs: string,
+                  imageRowsB64: string,
+                  selectedImage: string,
+                  selectionFile: string,
+                  doneFile: string,
+                  showLabels: string,
+                  filterable: string): string {
+      var payload = JSON.stringify({
+        imageDirs: imageDirs,
+        imageRows: Util.decodeBase64(imageRowsB64),
+        selectedImage: selectedImage,
+        selectionFile: selectionFile,
+        doneFile: doneFile,
+        showLabels: showLabels,
+        filterable: filterable
+      })
+      return shell.summon("omarchy.image-picker", payload) ? "ok" : "unknown"
+    }
+
+    function preload(imageRowsB64: string,
+                     selectedImage: string,
+                     showLabels: string,
+                     filterable: string): string {
+      var picker = shell.imagePickerItem()
+      if (picker && typeof picker.preloadRows === "function") {
+        picker.preloadRows(Util.decodeBase64(imageRowsB64), selectedImage,
+                           showLabels, filterable)
+      }
+      return "ok"
+    }
+
+    function cancel(doneFile: string): string {
+      var picker = shell.imagePickerItem()
+      if (picker && typeof picker.closeSelector === "function") {
+        picker.closeSelector(doneFile || "")
+      } else {
+        shell.hide("omarchy.image-picker")
+      }
+      return "ok"
+    }
+
+    function ping(): string {
+      return "ok"
+    }
+  }
+
   // ---------------------------------------------------------- shell IPC
 
   IpcHandler {
