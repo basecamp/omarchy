@@ -20,13 +20,7 @@ responsible for pulling, fixing, and restoring that checkout yourself.
 
 WARNING
 
-  if omarchy-cmd-present gum; then
-    gum confirm --default=false "Enable Edge anyway?"
-  else
-    local answer=""
-    read -r -p "Enable Edge anyway? [y/N] " answer
-    [[ $answer == "y" || $answer == "Y" || $answer == "yes" || $answer == "YES" ]]
-  fi
+  gum confirm --default=false "Enable Edge anyway?"
 }
 
 choose_edge_checkout() {
@@ -34,11 +28,7 @@ choose_edge_checkout() {
   local path="${OMARCHY_EDGE_PATH:-}"
 
   if [[ -z $path ]]; then
-    if omarchy-cmd-present gum; then
-      path=$(gum input --value "$default_path" --placeholder "$default_path" --header "Where should Edge checkout live? Existing non-checkout paths will not be overwritten.") || exit 1
-    else
-      read -r -p "Edge checkout path [$default_path]: " path
-    fi
+    path=$(gum input --value "$default_path" --placeholder "$default_path" --header "Where should Edge checkout live? Existing non-checkout paths will not be overwritten.") || exit 1
   fi
 
   path="${path:-$default_path}"
