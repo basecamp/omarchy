@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Detect Intel GPUs using the Linux xe driver.
+
+for uevent in /sys/class/drm/card[0-9]*/device/uevent; do
+  [[ -r "$uevent" ]] || continue
+  grep -q '^DRIVER=xe$' "$uevent" || continue
+  grep -q '^PCI_ID=8086:' "$uevent" || continue
+  compgen -G '/sys/bus/event_source/devices/xe_*' >/dev/null && exit 0
+done
+
+exit 1

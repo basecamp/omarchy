@@ -43,6 +43,7 @@ run_logged $OMARCHY_INSTALL/config/hardware/nvidia.sh
 run_logged $OMARCHY_INSTALL/config/hardware/vulkan.sh
 
 run_logged $OMARCHY_INSTALL/config/hardware/intel/video-acceleration.sh
+run_logged $OMARCHY_INSTALL/config/hardware/intel/btop-xe.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/lpmd.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/thermald.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/ipu7-camera.sh

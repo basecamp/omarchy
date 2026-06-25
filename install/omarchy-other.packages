@@ -6,6 +6,7 @@ asusctl
 base
 base-devel
 broadcom-wl
+btop-xe
 btrfs-progs
 dkms
 egl-wayland
