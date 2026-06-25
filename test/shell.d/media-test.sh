@@ -33,6 +33,10 @@ assert(media.playerHasPlaybackStream(
 ), 'media matches players to playback streams')
 
 assertEqual(media.playerKey({ dbusName: 'org.mpris.MediaPlayer2.spotify' }), 'org.mpris.MediaPlayer2.spotify', 'media derives stable player keys')
+const track = { trackTitle: 'Song', trackArtist: 'Artist', trackAlbum: 'Album', trackArtUrl: 'file:///cover.jpg' }
+const trackSignature = media.trackSignature(track)
+assert(!media.trackChanged(trackSignature, { ...track }), 'media detects unchanged track metadata')
+assert(media.trackChanged(trackSignature, { ...track, trackTitle: 'Next song' }), 'media detects changed track metadata')
 assertEqual(media.labelFor({ trackTitle: 'Song', identity: 'Spotify' }), 'Song', 'media labels players by track first')
 assertEqual(media.osdMessage({ trackTitle: 'Song', trackArtist: 'Artist' }, 'Fallback'), 'Song - Artist', 'media builds OSD messages')
 assertEqual(media.osdMessage(null, 'Fallback'), 'Fallback', 'media falls back OSD messages')

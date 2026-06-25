@@ -11,6 +11,7 @@ Item {
   property var shell: null
   property string preferredPlayerKey: ""
   property var playerStartedAt: ({})
+  property var pendingTrackOsd: null
   property int playSerial: 0
 
   readonly property var players: Mpris.players ? Mpris.players.values : []
@@ -238,12 +239,49 @@ Item {
     return MediaModel.osdMessage(player, fallback)
   }
 
+  function trackSignature(player) {
+    return MediaModel.trackSignature(player)
+  }
+
   function showOsd(actionLabel, iconName, player) {
     if (!shell) return
     shell.summon("omarchy.osd", JSON.stringify({
       icon: iconName || "media",
       message: osdMessage(player || activePlayer, actionLabel)
     }))
+  }
+
+  function scheduleOsd(actionLabel, iconName, player, waitForTrackChange, beforeTrackSignature) {
+    if (waitForTrackChange) {
+      pendingTrackOsd = {
+        actionLabel: actionLabel,
+        iconName: iconName,
+        player: player,
+        playerKey: playerKey(player),
+        before: beforeTrackSignature,
+        attempts: 0
+      }
+      trackOsdTimer.restart()
+    } else {
+      Qt.callLater(function() { root.showOsd(actionLabel, iconName, player) })
+    }
+  }
+
+  function flushPendingTrackOsd(force) {
+    var pending = pendingTrackOsd
+    if (!pending) return
+
+    var player = playerForKey(pending.playerKey) || pending.player
+    if (force || MediaModel.trackChanged(pending.before, player) || pending.attempts >= 10) {
+      pendingTrackOsd = null
+      trackOsdTimer.stop()
+      root.showOsd(pending.actionLabel, pending.iconName, player)
+      return
+    }
+
+    pending.attempts = pending.attempts + 1
+    pendingTrackOsd = pending
+    trackOsdTimer.restart()
   }
 
   function selectPlayer(key) {
@@ -334,6 +372,7 @@ Item {
     var key = playerKey(player)
     var actionLabel = "Play/pause"
     var iconName = "media"
+    var beforeTrackSignature = trackSignature(player)
     var handled = false
 
     if (action === "next") {
@@ -386,7 +425,8 @@ Item {
     }
 
     if (handled && key) preferredPlayerKey = key
-    if (showFeedback !== false) Qt.callLater(function() { root.showOsd(actionLabel, iconName, player) })
+    if (showFeedback !== false)
+      scheduleOsd(actionLabel, iconName, player, handled && (action === "next" || action === "previous"), beforeTrackSignature)
     return handled
   }
 
@@ -396,6 +436,13 @@ Item {
     repeat: true
     triggeredOnStart: true
     onTriggered: root.syncPlayingOrder()
+  }
+
+  Timer {
+    id: trackOsdTimer
+    interval: 120
+    repeat: false
+    onTriggered: root.flushPendingTrackOsd(false)
   }
 
   PwObjectTracker { objects: root.playbackStreams }

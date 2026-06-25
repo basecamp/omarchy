@@ -93,6 +93,20 @@ function playerKey(player) {
   return String(player.dbusName || player.desktopEntry || player.identity || "")
 }
 
+function trackSignature(player) {
+  if (!player) return ""
+  return [
+    player.trackTitle || "",
+    player.trackArtist || "",
+    player.trackAlbum || "",
+    player.trackArtUrl || ""
+  ].join("\u001f")
+}
+
+function trackChanged(previousSignature, player) {
+  return trackSignature(player) !== String(previousSignature || "")
+}
+
 function labelFor(player) {
   if (!player) return ""
   return player.trackTitle || player.identity || player.desktopEntry || ""
@@ -120,6 +134,8 @@ if (typeof module !== "undefined") {
     playerAppLabel: playerAppLabel,
     playerHasPlaybackStream: playerHasPlaybackStream,
     playerKey: playerKey,
+    trackSignature: trackSignature,
+    trackChanged: trackChanged,
     labelFor: labelFor,
     osdMessage: osdMessage
   }
