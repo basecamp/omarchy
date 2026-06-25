@@ -14,15 +14,17 @@ else
 	echo "hints not found in PATH; skipping setup" >&2
 fi
 
-# ensure hypr config dir and append bindings if missing
-hypr_dir="$HOME/.config/hypr"
-bindings_file="$hypr_dir/bindings.conf"
-mkdir -p "$hypr_dir"
-if [[ -f "$bindings_file" && ! -f "${bindings_file}.bak" ]]; then
-	cp -a "$bindings_file" "${bindings_file}.bak"
-fi
-grep -qxF 'bind = SUPER, I, exec, hints' "$bindings_file" 2>/dev/null || cat >>"$bindings_file" <<'EOF'
-bind = SUPER, I, exec, hints
-bind = SUPER, Y, exec, hints --mode scroll
+# Add Hyprland bindings (Omarchy uses Lua config modules under ~/.config/hypr/*.lua)
+for bindings_file in "$HOME/.local/share/omarchy/config/hypr/bindings.lua" "$HOME/.config/hypr/bindings.lua"; do
+  [[ -f $bindings_file ]] || continue
+
+  if ! grep -qxF 'o.bind("SUPER + I", "Hints", { launch = "hints" })' "$bindings_file"; then
+    cat >>"$bindings_file" <<'EOF'
+
+-- Hints (vimium-style window navigation)
+o.bind("SUPER + I", "Hints", { launch = "hints" })
+o.bind("SUPER + Y", "Hints scroll", { launch = "hints --mode scroll" })
 EOF
+  fi
+done
 
