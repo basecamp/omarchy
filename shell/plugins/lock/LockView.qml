@@ -16,6 +16,7 @@ Item {
   property bool loadBackground: true
   property string passwordText: ""
   property bool syncingPasswordText: false
+  property real inputBorderPulseWidth: 0
 
   readonly property string placeholderText: "Enter Password"
   readonly property int fieldWidth: 381
@@ -59,7 +60,14 @@ Item {
     syncingPasswordText = false
   }
 
-  onPasswordTextChanged: syncPasswordText()
+  function pulseInputField() {
+    inputBorderPulse.restart()
+  }
+
+  onPasswordTextChanged: {
+    syncPasswordText()
+    if (passwordText.length > 0) pulseInputField()
+  }
   onInputEnabledChanged: {
     if (inputEnabled) Qt.callLater(forcePasswordFocus)
   }
@@ -107,9 +115,19 @@ Item {
       height: root.fieldHeight
       anchors.centerIn: parent
       color: Color.lock.background
-      borderSpec: root.inputBorderSpec
+      borderSpec: root.inputBorderPulseWidth > 0 && !root.errorState
+        ? Border.surfaceSpec("lock", "border-active", Color.lock.borderActive, root.outlineThickness + root.inputBorderPulseWidth, "border-alpha")
+        : root.inputBorderSpec
       radius: Style.cornerRadius
       clip: true
+
+      SequentialAnimation {
+        id: inputBorderPulse
+        running: false
+
+        PropertyAnimation { target: root; property: "inputBorderPulseWidth"; to: 1.1; duration: 40; easing.type: Easing.OutCubic }
+        PropertyAnimation { target: root; property: "inputBorderPulseWidth"; to: 0; duration: 240; easing.type: Easing.OutCubic }
+      }
 
       TextInput {
         id: passwordInput
