@@ -3,6 +3,7 @@
   "name": "Copy URL",
   "version": "1.0",
   "description": "Copy current URL to clipboard, this extension is installed by Omarchy",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxbOMKgGcG20uelP6lx5OnuafGP9gNR1ajzURuQ45tv/Is5sc1tn9ii9PsKxpzDzPL9Z5lAqrTFgEcKHyTJnZXAGOMIruB0odJ0BW6eoQ3rxaQ/fBK2yGN7FZAfygPOWHj+Fdrh2eYQ7Ap92Dmlz8x0ceGyais415KmeevVcPwS7jjHFd1bGBp17cEMOBQcOx/3zCnko1hGtCzSdyZQl3cNMebW/FGvmxlPUMLVfWhysfFUuzxMRRf58+/j0mo/9iKQ0uTuxbQ8+W64OmYOVR87IXYNgbo+hEtORjiQhVg1KzaBx1bZ6clQMv96W/xYy1cIzUA5yI9y7lNr7n9zKijwIDAQAB",
   "permissions": ["activeTab", "scripting", "notifications"],
   "icons": {
     "16": "icon.png",
