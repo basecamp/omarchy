@@ -16,6 +16,7 @@ run_logged $OMARCHY_INSTALL/config/fix-powerprofilesctl-shebang.sh
 run_logged $OMARCHY_INSTALL/config/docker.sh
 run_logged $OMARCHY_INSTALL/config/mimetypes.sh
 run_logged $OMARCHY_INSTALL/config/user-dirs.sh
+run_logged $OMARCHY_INSTALL/config/toggles.sh
 run_logged $OMARCHY_INSTALL/config/nautilus-python.sh
 run_logged $OMARCHY_INSTALL/config/localdb.sh
 run_logged $OMARCHY_INSTALL/config/walker-elephant.sh
@@ -49,8 +50,6 @@ run_logged $OMARCHY_INSTALL/config/hardware/intel/ptl-kernel.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/fred.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/fix-wifi7-eht.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/sof-firmware.sh
-
-run_logged $OMARCHY_INSTALL/config/hardware/dell/fix-xps-haptic-touchpad.sh
 
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-asus-ptl-display-backlight.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-asus-ptl-b9406-display.sh

@@ -4,7 +4,6 @@
 1password-beta
 1password-cli
 aether
-alacritty
 alsa-utils
 asdcontrol
 avahi
@@ -27,7 +26,7 @@ docker-buildx
 docker-compose
 dosfstools
 dotnet-runtime-9.0
-dust
+dua-cli
 evince
 exfatprogs
 expac
@@ -39,6 +38,7 @@ fcitx5-qt
 fd
 ffmpegthumbnailer
 fontconfig
+foot
 fzf
 gazelle-tui
 github-cli
@@ -82,6 +82,7 @@ man-db
 mariadb-libs
 mise
 mpv
+mpv-mpris
 nautilus
 networkmanager
 nautilus-python
@@ -106,7 +107,9 @@ power-profiles-daemon
 python-gobject
 python-poetry-core
 python-terminaltexteffects
+qemu-user-static-binfmt
 qt5-wayland
+quickshell
 ripgrep
 ruby
 rust

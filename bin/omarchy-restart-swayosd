@@ -2,8 +2,8 @@
 
 # omarchy:summary=Restart the SwayOSD server
 
-if systemctl --user is-enabled --quiet swayosd-server.service; then
-  systemctl --user restart swayosd-server.service
-else
-  omarchy-restart-app swayosd-server
-fi
+systemctl --user daemon-reload
+systemctl --user stop swayosd-server.service || true
+pkill -x swayosd-server || true
+systemctl --user reset-failed swayosd-server.service || true
+systemctl --user enable --now swayosd-server.service
