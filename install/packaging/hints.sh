@@ -18,13 +18,17 @@ fi
 for bindings_file in "$HOME/.local/share/omarchy/config/hypr/bindings.lua" "$HOME/.config/hypr/bindings.lua"; do
   [[ -f $bindings_file ]] || continue
 
-  if ! grep -qxF 'o.bind("SUPER + I", "Hints", { launch = "hints" })' "$bindings_file"; then
-    cat >>"$bindings_file" <<'EOF'
+  if ! grep -qxF '-- Hints (vimium-style window navigation)' "$bindings_file"; then
+    echo "" >>"$bindings_file"
+    echo "-- Hints (vimium-style window navigation)" >>"$bindings_file"
+  fi
 
--- Hints (vimium-style window navigation)
-o.bind("SUPER + I", "Hints", { launch = "hints" })
-o.bind("SUPER + Y", "Hints scroll", { launch = "hints --mode scroll" })
-EOF
+  if ! grep -qxF 'o.bind("SUPER + I", "Hints", { launch = "hints" })' "$bindings_file"; then
+    echo 'o.bind("SUPER + I", "Hints", { launch = "hints" })' >>"$bindings_file"
+  fi
+
+  if ! grep -qxF 'o.bind("SUPER + Y", "Hints scroll", { launch = "hints --mode scroll" })' "$bindings_file"; then
+    echo 'o.bind("SUPER + Y", "Hints scroll", { launch = "hints --mode scroll" })' >>"$bindings_file"
   fi
 done
 
