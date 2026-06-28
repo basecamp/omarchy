@@ -55,7 +55,7 @@ def scan(db_path: Path) -> dict[str, Any]:
         return empty_result()
 
     try:
-        conn = sqlite3.connect(str(db_path))
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro&immutable=1", uri=True, timeout=5)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -76,7 +76,7 @@ def scan(db_path: Path) -> dict[str, Any]:
             ORDER BY time_created DESC
         """)
 
-        for row in cursor.fetchall():
+        for row in cursor:
             raw_model = row["model"]
             if raw_model and isinstance(raw_model, str) and raw_model.strip().startswith("{"):
                 try:

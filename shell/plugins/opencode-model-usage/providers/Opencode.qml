@@ -53,6 +53,10 @@ Item {
         watchChanges: true
         onFileChanged: reload()
         onLoaded: root.refresh(false)
+        onLoadFailed: function(error) {
+            root.usageStatusText = "OpenCode DB not found"
+            root.authHelpText = "Start an opencode session to create " + root.dbPath
+        }
     }
 
     Process {
@@ -97,6 +101,8 @@ Item {
             root.totalSessions = Math.max(0, Number(data.totalSessions || 0))
             root.dailyActivity = data.recentDays || []
         } catch (e) {
+            root.usageStatusText = "Scanner error"
+            root.authHelpText = String(e)
             console.error("model-usage/opencode", "Failed to parse scanner output:", e)
         }
     }
