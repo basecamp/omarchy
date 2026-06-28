@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.opencode-model-usage",
+  "name": "OpenCode Usage",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "license": "MIT",
+  "description": "OpenCode usage stats in the Omarchy bar.",
+  "kinds": ["bar-widget"],
+  "activation": "on-demand",
+  "entryPoints": {
+    "barWidget": "Widget.qml"
+  },
+  "barWidget": {
+    "displayName": "OpenCode Usage",
+    "description": "Shows OpenCode session and token usage.",
+    "category": "AI",
+    "allowMultiple": false,
+    "defaults": {
+      "refreshIntervalSec": 300
+    },
+    "schema": [
+      { "key": "refreshIntervalSec", "type": "integer", "label": "Refresh interval (seconds)", "min": 30, "max": 3600, "step": 30, "defaultValue": 300 }
+    ]
+  }
+}
