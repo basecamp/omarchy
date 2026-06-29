@@ -78,12 +78,17 @@ run_clamshell() {
 
 write_auto_monitor_config
 : >"$eval_log"
-OMARCHY_TEST_INTERNAL_SCALE=2 run_clamshell
-grep -F 'scale = 2' "$eval_log" >/dev/null || fail "clamshell recovery uses current internal scale instead of auto"
+OMARCHY_TEST_INTERNAL_SCALE=3 run_clamshell
+grep -F 'scale = 2' "$eval_log" >/dev/null || fail "clamshell recovery ignores transient auto scale"
 ! grep -F 'scale = "auto"' "$eval_log" >/dev/null || fail "clamshell recovery does not apply auto scale"
-[[ -f $scale_state ]] || fail "clamshell recovery remembers current internal scale"
-[[ $(<"$scale_state") == "2" ]] || fail "clamshell recovery remembers current internal scale value"
-pass "clamshell recovery uses current internal scale instead of auto"
+[[ ! -f $scale_state ]] || fail "clamshell recovery does not remember transient scale"
+pass "clamshell recovery ignores transient auto scale"
+
+write_auto_monitor_config
+: >"$eval_log"
+OMARCHY_TEST_INTERNAL_SCALE=2 run_clamshell
+! grep -F 'scale = ' "$eval_log" >/dev/null || fail "clamshell recovery does not reapply matching scale"
+pass "clamshell recovery avoids redundant scale apply"
 
 write_auto_monitor_config
 : >"$eval_log"

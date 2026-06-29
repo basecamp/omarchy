@@ -14,6 +14,18 @@ valid_scale() {
   [[ $1 =~ ^[0-9]+([.][0-9]+)?$ ]]
 }
 
+scales_match() {
+  local left="$1"
+  local right="$2"
+
+  valid_scale "$left" && valid_scale "$right" || return 1
+  awk -v left="$left" -v right="$right" 'BEGIN {
+    diff = left - right
+    if (diff < 0) diff = -diff
+    exit(diff < 0.001 ? 0 : 1)
+  }'
+}
+
 configured_monitor_scale() {
   local monitor_lua="$HOME/.config/hypr/monitors.lua"
   [[ -f $monitor_lua ]] || return 0
@@ -52,13 +64,6 @@ read_monitor_scale() {
     return
   fi
 
-  scale=$(current_internal_scale)
-  if valid_scale "$scale"; then
-    store_internal_scale "$scale"
-    echo "$scale"
-    return
-  fi
-
   if [[ -f $SCALE_STATE ]]; then
     scale=$(<"$SCALE_STATE")
     if valid_scale "$scale"; then
@@ -72,9 +77,21 @@ read_monitor_scale() {
 
 enable_internal_output() {
   [[ -n $INTERNAL ]] || return 0
-  local scale
-  scale=$(read_monitor_scale)
+  local scale="${1:-}"
+  [[ -n $scale ]] || scale=$(read_monitor_scale)
   hyprctl eval "hl.monitor({ output = \"$INTERNAL\", mode = \"preferred\", position = \"auto\", scale = $scale })" >/dev/null 2>&1 || true
+}
+
+sync_internal_scale() {
+  [[ -n $INTERNAL ]] || return 0
+  local desired_scale
+  local active_scale
+
+  desired_scale=$(read_monitor_scale)
+  active_scale=$(current_internal_scale)
+  scales_match "$active_scale" "$desired_scale" && return 0
+
+  enable_internal_output "$desired_scale"
 }
 
 dpms_internal() {
@@ -97,8 +114,7 @@ enable_internal() {
   fi
 
   [[ -f $MANUAL_DISABLE_FLAG ]] && omarchy-hyprland-monitor-external-active && return 0
-  remember_internal_scale
-  enable_internal_output
+  sync_internal_scale
   dpms_internal enable
 }
 
