@@ -167,25 +167,19 @@ pass "dev refuses occupied non-checkout paths before package changes"
 current_channel() {
   OMARCHY_TEST_VERSION_CHANNEL="$1" \
     OMARCHY_TEST_PACKAGES="$2" \
-    OMARCHY_CONFIG_FILE="${3:-/dev/null}" \
-    OMARCHY_PATH="${4:-/usr/share/omarchy}" \
+    OMARCHY_PATH="$3" \
     PATH="$stub_bin:$ROOT/bin:$PATH" \
     "$ROOT/bin/omarchy-channel-current"
 }
 
-[[ $(current_channel stable stable) == "stable" ]] || fail "current channel detects stable"
+[[ $(current_channel stable stable /usr/share/omarchy) == "stable" ]] || fail "current channel detects stable"
 pass "current channel detects stable"
 
-[[ $(current_channel rc stable) == "rc" ]] || fail "current channel detects rc"
+[[ $(current_channel rc stable /usr/share/omarchy) == "rc" ]] || fail "current channel detects rc"
 pass "current channel detects rc"
 
-[[ $(current_channel edge dev /dev/null /usr/share/omarchy) == "edge" ]] || fail "current channel detects package-backed edge"
+[[ $(current_channel edge dev /usr/share/omarchy) == "edge" ]] || fail "current channel detects package-backed edge"
 pass "current channel detects package-backed edge"
 
-[[ $(current_channel edge dev /dev/null "$test_tmp/dev-checkout") == "dev" ]] || fail "current channel detects dev from OMARCHY_PATH"
+[[ $(current_channel edge dev "$test_tmp/dev-checkout") == "dev" ]] || fail "current channel detects dev from OMARCHY_PATH"
 pass "current channel detects dev from OMARCHY_PATH"
-
-conf="$test_tmp/omarchy.conf"
-printf 'export OMARCHY_PATH="%s"\n' "$test_tmp/dev-checkout" >"$conf"
-[[ $(current_channel edge dev "$conf" /usr/share/omarchy) == "dev" ]] || fail "current channel detects dev from configured path"
-pass "current channel detects dev from configured path"
