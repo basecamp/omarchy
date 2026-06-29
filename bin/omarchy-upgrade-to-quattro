@@ -2082,7 +2082,6 @@ if [[ -d $legacy_icons_dir ]]; then
     Discord.png \
     "Disk Usage.png" \
     Docker.png \
-    Figma.png \
     GitHub.png \
     "Google Contacts.png" \
     "Google Maps.png" \
