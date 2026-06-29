@@ -37,5 +37,7 @@ icon_name=$(printf '%s\n' "$APP_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:
 rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
 rm -f "$ICON_DIR/$icon_name.png" "$ICON_DIR/$APP_NAME.png" "$OLD_ICON_DIR/$APP_NAME.png"
 
-omarchy-notification-send -g  "Web app removed" "$APP_NAME"
+if [[ ${OMARCHY_REMOVE_NOTIFY:-true} != "false" ]]; then
+  omarchy-notification-send -g  "Web app removed" "$APP_NAME"
+fi
 update-desktop-database "$DESKTOP_DIR" &>/dev/null
