@@ -5,6 +5,7 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 run_node_test <<'JS'
+const fs = require('fs')
 const notifications = requireFromRoot('shell/plugins/notifications/NotificationLogic.js')
 
 assert(notifications.isChromiumDerived('Brave Browser', ''), 'notifications detect chromium-derived apps by name')
@@ -159,7 +160,44 @@ assertDeepEqual(
 )
 assert(notifications.parseHistory('{', 1, 100).error, 'notifications flag invalid history JSON')
 
+const recentRows = notifications.recentHistoryRows(
+  [
+    { id: 1, originalId: 10, summary: 'pending-old', timestamp: 100 },
+    { id: 2, originalId: 11, summary: 'pending-new', timestamp: 700 },
+    { id: 3, originalId: 12, summary: 'pending-mid', timestamp: 300 }
+  ],
+  [
+    { id: 4, originalId: 13, summary: 'past-newest', timestamp: 900 },
+    { id: 5, originalId: 14, summary: 'past-second', timestamp: 800 },
+    { id: 6, originalId: 10, summary: 'past-replaced', timestamp: 200 },
+    { id: 7, originalId: 15, summary: 'past-extra', timestamp: 50 }
+  ],
+  5,
+  1
+)
+assertDeepEqual(
+  recentRows.map(row => row.summary),
+  ['past-newest', 'past-second', 'pending-new', 'pending-mid', 'past-replaced'],
+  'notifications pick the last five history rows across pending and past'
+)
+assertEqual(recentRows.length, 5, 'notifications history replay is capped at five rows')
+
 assertEqual(notifications.imageExtension('/tmp/screenshot.PNG'), 'png', 'notifications normalize image extensions')
 assertEqual(notifications.imageExtension('/tmp/no-extension'), 'png', 'notifications default missing image extension')
 assertEqual(notifications.imageExtension('/tmp/archive.reallylong'), 'png', 'notifications reject suspicious image extensions')
+
+const serviceQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/Service.qml'), 'utf8')
+const barWidgetQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/BarWidget.qml'), 'utf8')
+assert(
+  /readonly property int historyReplayLimit: 5/.test(serviceQml),
+  'notifications service limits history replay to five rows'
+)
+assert(
+  /function showHistory\(\): string \{\s*return service\.showRecentHistory\(\)\s*\}/.test(serviceQml),
+  'notifications history IPC replays recent notifications'
+)
+assert(
+  !barWidgetQml.includes('historyOpenRequested'),
+  'notifications history IPC does not depend on the bar widget'
+)
 JS

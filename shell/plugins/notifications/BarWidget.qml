@@ -91,17 +91,6 @@ BarWidget {
     }
   }
 
-  // Service-side IPC (omarchy-shell notifications showHistory) flips
-  // historyOpenRequested; we toggle our local popup state from here so the
-  // keybind path lands in the same PopupCard the click path uses.
-  Connections {
-    target: root.notificationService
-    ignoreUnknownSignals: true
-    function onHistoryOpenRequested() {
-      root.popupOpen = true
-    }
-  }
-
   PopupCard {
     id: popup
     anchorItem: button
