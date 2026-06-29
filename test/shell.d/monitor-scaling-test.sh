@@ -11,6 +11,7 @@ stub_bin="$test_tmp/bin"
 eval_out="$test_tmp/hyprctl-eval"
 home_dir="$test_tmp/home"
 monitor_lua="$home_dir/.config/hypr/monitors.lua"
+scale_log="$home_dir/.local/state/omarchy/monitor-scaling.log"
 
 mkdir -p "$stub_bin" "$home_dir/.config/hypr"
 
@@ -36,6 +37,7 @@ LUA
 
 run_scaling() {
   HOME="$home_dir" \
+    XDG_STATE_HOME="$home_dir/.local/state" \
     PATH="$stub_bin:$PATH" \
     OMARCHY_TEST_HYPRCTL_EVAL_OUT="$eval_out" \
     OMARCHY_TEST_MONITOR_SCALE="${OMARCHY_TEST_MONITOR_SCALE:-2}" \
@@ -46,6 +48,7 @@ write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 run_scaling up
 grep -F 'scale = 3' "$eval_out" >/dev/null || fail "monitor scaling up reaches 3x"
 grep -Fx 'local omarchy_monitor_scale = 3' "$monitor_lua" >/dev/null || fail "monitor scaling up persists 3x"
+grep -F $'requested=up\tcurrent=2\tnew=3\tmonitor=eDP-1' "$scale_log" >/dev/null || fail "monitor scaling up writes audit log"
 pass "monitor scaling up reaches 3x"
 
 write_monitor_config
