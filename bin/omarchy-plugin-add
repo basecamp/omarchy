@@ -86,11 +86,8 @@ require_command jq
 confirm() {
   local prompt="$1"
   ((ASSUME_YES)) && return 0
-  if command -v gum >/dev/null 2>&1 && interactive; then
-    gum confirm "$prompt"; return
-  fi
   if interactive; then
-    local reply; read -r -p "$prompt [y/N] " reply; [[ $reply == [yY]* ]]; return
+    gum confirm "$prompt"; return
   fi
   fail "refusing to add without confirmation; pass --yes"
 }
@@ -110,13 +107,7 @@ if [[ -z $PLUGIN_ID ]]; then
   interactive || fail "a plugin-id is required (try: omarchy plugin available)"
   choices=$(jq -r '.[] | "\(.manifest.id)\t\(.manifest.name // .manifest.id)\t\(.manifest.version // "?")\t\(.sourceId)"' <<<"$CATALOG")
   rows=$(awk -F '\t' '{ printf "%-26s  %-26s  v%-8s  [%s]\n", $1, $2, $3, $4 }' <<<"$choices")
-  if command -v gum >/dev/null 2>&1; then
-    pick=$(gum choose --header="Add which plugin?" <<<"$rows") || fail "cancelled"
-  elif command -v fzf >/dev/null 2>&1; then
-    pick=$(fzf --prompt "Add which plugin > " <<<"$rows") || fail "cancelled"
-  else
-    fail "a plugin-id is required (gum or fzf needed for an interactive picker)"
-  fi
+  pick=$(gum choose --header="Add which plugin?" <<<"$rows") || fail "cancelled"
   [[ -n $pick ]] || fail "nothing selected"
   PLUGIN_ID=$(awk '{print $1}' <<<"$pick")
 fi
@@ -227,7 +218,7 @@ if ((!ASSUME_YES)); then
   if ((DO_REVIEW)); then
     review_files
     confirm "Add $m_id $m_version now?" || fail "aborted"
-  elif interactive && command -v gum >/dev/null 2>&1; then
+  elif interactive; then
     action=$(gum choose --header="Add $m_id $m_version?" "Add" "Review files first" "Cancel") || fail "aborted"
     case "$action" in
     "Review files first")

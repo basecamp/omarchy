@@ -263,14 +263,7 @@ choose_widget() {
   ' <<<"$widgets" | awk -F '\t' '{ printf "%-28s  %-22s  [%s] %s\n", $1, $2, $3, $4 }')
 
   if [[ -t 0 || -t 2 ]]; then
-    if omarchy-cmd-present gum; then
-      selected=$(printf '%s\n' "${options[@]}" | gum filter --header "Add bar widget" --placeholder "Search addable widgets..." --limit 1 --height 14) || return 1
-    elif omarchy-cmd-present fzf; then
-      selected=$(printf '%s\n' "${options[@]}" | fzf --prompt "Add bar widget > " --height 40% --layout reverse --border) || return 1
-    else
-      print_available_widgets >&2
-      fail "gum or fzf is required for interactive widget selection"
-    fi
+    selected=$(printf '%s\n' "${options[@]}" | gum filter --header "Add bar widget" --placeholder "Search addable widgets..." --limit 1 --height 14) || return 1
   else
     print_available_widgets >&2
     fail "widget id is required; use list to see addable widgets"
@@ -311,14 +304,7 @@ choose_removal() {
   ' <<<"$entries" | awk -F '\t' '{ printf "%-10s  %-28s  %-22s  %s\n", $1, $2, $3, $4 }')
 
   if [[ -t 0 || -t 2 ]]; then
-    if omarchy-cmd-present gum; then
-      selected=$(printf '%s\n' "${options[@]}" | gum filter --header "Remove bar widget" --placeholder "Search current widgets..." --limit 1 --height 14) || return 1
-    elif omarchy-cmd-present fzf; then
-      selected=$(printf '%s\n' "${options[@]}" | fzf --prompt "Remove bar widget > " --height 40% --layout reverse --border) || return 1
-    else
-      jq -r '.[] | "\(.section)[\(.index)]\t\(.id)"' <<<"$entries" >&2
-      fail "gum or fzf is required for interactive widget selection"
-    fi
+    selected=$(printf '%s\n' "${options[@]}" | gum filter --header "Remove bar widget" --placeholder "Search current widgets..." --limit 1 --height 14) || return 1
   else
     jq -r '.[] | "\(.section)[\(.index)]\t\(.id)"' <<<"$entries" >&2
     fail "widget id is required; use show to see current widgets"

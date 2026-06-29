@@ -35,20 +35,14 @@ interactive() {
   [[ -t 0 && -t 1 ]]
 }
 
-# Yes/no prompt. Honours a caller-set ASSUME_YES, falls back to a plain read
-# when gum is missing, and refuses in a non-interactive context so an agent
-# must pass --yes deliberately rather than hang on a prompt.
+# Yes/no prompt. Honours a caller-set ASSUME_YES, and refuses in a
+# non-interactive context so an agent must pass --yes deliberately rather than
+# hang on a prompt.
 confirm() {
   local prompt="$1"
   [[ ${ASSUME_YES:-0} == 1 ]] && return 0
-  if command -v gum >/dev/null 2>&1 && interactive; then
-    gum confirm "$prompt"
-    return
-  fi
   if interactive; then
-    local reply
-    read -r -p "$prompt [y/N] " reply
-    [[ $reply == [yY]* ]]
+    gum confirm "$prompt"
     return
   fi
   fail "refusing to continue without confirmation; pass --yes"
@@ -56,13 +50,7 @@ confirm() {
 
 ask_input() {
   local prompt="$1"
-  local value=""
-  if command -v gum >/dev/null 2>&1; then
-    gum input --prompt "$prompt " || return 1
-  else
-    read -r -p "$prompt " value || return 1
-    printf '%s' "$value"
-  fi
+  gum input --prompt "$prompt " || return 1
 }
 
 ensure_sources_file() {
@@ -257,13 +245,7 @@ source_remove() {
 
   if [[ -z $id ]]; then
     interactive || fail "a source id is required"
-    if command -v gum >/dev/null 2>&1; then
-      id=$(jq -r '.sources[].id' "$SOURCES_FILE" | gum choose --header="Remove which plugin source?") || fail "cancelled"
-    elif command -v fzf >/dev/null 2>&1; then
-      id=$(jq -r '.sources[].id' "$SOURCES_FILE" | fzf --prompt "Remove which plugin source > ") || fail "cancelled"
-    else
-      fail "a source id is required (install gum or fzf for an interactive picker)"
-    fi
+    id=$(jq -r '.sources[].id' "$SOURCES_FILE" | gum choose --header="Remove which plugin source?") || fail "cancelled"
     [[ -n $id ]] || fail "nothing selected"
   fi
 

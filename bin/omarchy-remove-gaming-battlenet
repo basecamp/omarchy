@@ -20,8 +20,7 @@ echo "Battle.net and its Proton prefix at $PREFIX have been removed."
 
 if omarchy-pkg-present umu-launcher; then
   echo
-  read -rp "Also remove umu-launcher? It's only used by this command. [y/N] " reply
-  if [[ $reply =~ ^[Yy]$ ]]; then
+  if gum confirm "Also remove umu-launcher? It's only used by this command."; then
     omarchy-pkg-drop umu-launcher
   fi
 fi
@@ -29,8 +28,7 @@ fi
 PROTON_DIR="$HOME/.local/share/Steam/compatibilitytools.d"
 if compgen -G "$PROTON_DIR/GE-Proton*" >/dev/null; then
   echo
-  read -rp "Also remove GE-Proton runtimes downloaded by umu? [y/N] " reply
-  if [[ $reply =~ ^[Yy]$ ]]; then
+  if gum confirm "Also remove GE-Proton runtimes downloaded by umu?"; then
     rm -rf "$PROTON_DIR"/GE-Proton*
     rm -rf "$HOME/.local/share/umu"
   fi
