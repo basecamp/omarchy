@@ -59,7 +59,7 @@ Panel {
   }
   readonly property bool discharging: {
     var device = UPower.displayDevice
-    return !!(device && device.isPresent && (UPower.onBattery || device.state === UPowerDeviceState.Discharging))
+    return !!(device && device.isPresent && UPower.onBattery)
   }
   readonly property bool chargeThresholdActive: {
     var device = UPower.displayDevice
@@ -76,7 +76,7 @@ Panel {
 
   readonly property bool charging: {
     var d = UPower.displayDevice
-    return d && d.isPresent && d.state === UPowerDeviceState.Charging && !root.chargeThresholdActive
+    return d && d.isPresent && !UPower.onBattery && !root.batteryFlowIdle
   }
 
   readonly property color batteryFillColor: {

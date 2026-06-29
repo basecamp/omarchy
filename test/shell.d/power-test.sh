@@ -27,6 +27,16 @@ assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: s
 assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states), 'power does not flag discharging as threshold')
 assertEqual(power.modeLabel({ isPresent: true, percentage: 1, state: states.FullyCharged }, false, states), 'Fully charged', 'power labels full battery')
 assertEqual(power.modeLabel({ isPresent: true, percentage: 0.5, state: states.Discharging }, true, states), 'On battery', 'power labels battery mode')
-assertEqual(power.modeLabel({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states), 'On battery', 'power labels discharging battery mode')
+assertEqual(power.modeLabel({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states), 'Charging', 'power treats external power as newer than stale discharging state')
 assert(power.batteryIcon({ isPresent: true, percentage: 0.4, state: states.Charging }, false, states).length > 0, 'power maps battery icons')
+assertEqual(
+  power.batteryIcon({ isPresent: true, percentage: 0.4, state: states.Discharging }, false, states),
+  power.batteryIcon({ isPresent: true, percentage: 0.4, state: states.Charging, changeRate: 1.0, timeToFull: 120 }, false, states),
+  'power shows charging icon when external power is present before battery state refreshes'
+)
+assertEqual(
+  power.batteryIcon({ isPresent: true, percentage: 0.4, state: states.Charging }, true, states),
+  power.batteryIcon({ isPresent: true, percentage: 0.4, state: states.Discharging }, true, states),
+  'power shows battery icon when unplugged before battery state refreshes'
+)
 JS
