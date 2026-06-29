@@ -81,30 +81,50 @@ lookup_keycode_cached() {
 parse_keycodes() {
   local start end elapsed
   [[ ${DEBUG:-0} == "1" ]] && start=$(date +%s.%N)
-  while IFS= read -r line; do
-    if [[ $line =~ code:([0-9]+) ]]; then
-      code="${BASH_REMATCH[1]}"
-      if [[ $code == "201" ]]; then
-        echo "${line/SUPER SHIFT,code:201/,COPILOT KEY}"
-      else
-        symbol=$(lookup_keycode_cached "$code" "$XKB_KEYMAP_CACHE")
-        echo "${line/code:${code}/$symbol}"
-      fi
-    elif [[ $line =~ mouse:([0-9]+) ]]; then
-      code="${BASH_REMATCH[1]}"
 
-      case "$code" in
-        272) symbol="LEFT MOUSE BUTTON" ;;
-        273) symbol="RIGHT MOUSE BUTTON" ;;
-        274) symbol="MIDDLE MOUSE BUTTON" ;;
-        *)   symbol="mouse:${code}" ;;
-      esac
+  awk -v keymap="$(
+    for code in "${!KEYCODE_SYM_MAP[@]}"; do
+      printf '%s=%s\n' "$code" "${KEYCODE_SYM_MAP[$code]}"
+    done
+    for code in "${!FALLBACK_KEYCODE_SYM_MAP[@]}"; do
+      printf '%s=%s\n' "$code" "${FALLBACK_KEYCODE_SYM_MAP[$code]}"
+    done
+  )" '
+    BEGIN {
+      split(keymap, entries, "\n")
+      for (entry_index in entries) {
+        if (entries[entry_index] == "") continue
+        separator = index(entries[entry_index], "=")
+        if (separator == 0) continue
+        code = substr(entries[entry_index], 1, separator - 1)
+        symbol = substr(entries[entry_index], separator + 1)
+        if (!(code in keycode_symbol)) keycode_symbol[code] = toupper(symbol)
+      }
 
-      echo "${line/mouse:${code}/$symbol}"
-    else
-      echo "$line"
-    fi
-  done
+      mouse_symbol["272"] = "LEFT MOUSE BUTTON"
+      mouse_symbol["273"] = "RIGHT MOUSE BUTTON"
+      mouse_symbol["274"] = "MIDDLE MOUSE BUTTON"
+    }
+    {
+      if (match($0, /code:([0-9]+)/, match_parts)) {
+        code = match_parts[1]
+        if (code == "201") {
+          sub(/SUPER SHIFT,code:201/, ",COPILOT KEY")
+        } else {
+          symbol = keycode_symbol[code]
+          if (symbol == "") symbol = "code:" code
+          sub("code:" code, symbol)
+        }
+      } else if (match($0, /mouse:([0-9]+)/, match_parts)) {
+        code = match_parts[1]
+        symbol = mouse_symbol[code]
+        if (symbol == "") symbol = "mouse:" code
+        sub("mouse:" code, symbol)
+      }
+
+      print
+    }
+  '
 
   if [[ $DEBUG == "1" ]]; then
     end=$(date +%s.%N)
@@ -497,7 +517,7 @@ prioritize_entries() {
   cut -f2-
 }
 
-output_binding_records() {
+output_binding_records_uncached() {
   build_keymap_cache
   build_lua_bind_cache
 
@@ -509,6 +529,59 @@ output_binding_records() {
     parse_keycodes |
     parse_binding_records |
     prioritize_entries
+}
+
+keybindings_cache_key() {
+  {
+    printf 'v3\n'
+    hyprctl -j binds 2>/dev/null | sha256sum | awk '{ print $1 }'
+  } | sha256sum | awk '{ print $1 }'
+}
+
+refresh_keybindings_cache() {
+  local cache_dir="$1"
+  local cache_file="$2"
+  local cache_name="$3"
+  local tmp_file
+
+  tmp_file=$(mktemp "$cache_dir/keybindings.XXXXXX") || return 1
+
+  if output_binding_records_uncached >"$tmp_file"; then
+    mv "$tmp_file" "$cache_file"
+    find "$cache_dir" -maxdepth 1 -type f -name 'keybindings-*.records' ! -name "$cache_name" -delete 2>/dev/null || true
+  else
+    rm -f "$tmp_file"
+    return 1
+  fi
+}
+
+output_binding_records() {
+  local cache_dir cache_file cache_key cache_name
+
+  cache_key=$(keybindings_cache_key) || {
+    output_binding_records_uncached
+    return
+  }
+
+  cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy"
+  cache_name="keybindings-${cache_key}.records"
+  cache_file="$cache_dir/$cache_name"
+
+  if [[ -s $cache_file ]]; then
+    cat "$cache_file"
+    return
+  fi
+
+  mkdir -p "$cache_dir" || {
+    output_binding_records_uncached
+    return
+  }
+
+  if refresh_keybindings_cache "$cache_dir" "$cache_file" "$cache_name"; then
+    cat "$cache_file"
+  else
+    output_binding_records_uncached
+  fi
 }
 
 output_keybindings() {
