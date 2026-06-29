@@ -131,6 +131,18 @@ assert(
   'clipboard keyboard navigation disarms pointer selection'
 )
 assert(
+  /function selectAbsolute\(index\)[\s\S]*root\.disarmPointer\(\)[\s\S]*root\.selectedIndex = Math\.max\(0, Math\.min\(index, displayModel\.count - 1\)\)/.test(clipboardQml),
+  'clipboard absolute navigation disarms pointer selection'
+)
+assert(
+  /event\.key === Qt\.Key_Home[\s\S]*root\.selectAbsolute\(0\)[\s\S]*event\.accepted = true/.test(clipboardQml),
+  'clipboard Home selects the first entry'
+)
+assert(
+  /event\.key === Qt\.Key_End[\s\S]*root\.selectAbsolute\(displayModel\.count - 1\)[\s\S]*event\.accepted = true/.test(clipboardQml),
+  'clipboard End selects the last entry'
+)
+assert(
   /PointerMoveGate\s*\{[\s\S]*id: pointerGate[\s\S]*referenceItem: card[\s\S]*\}/.test(clipboardQml),
   'clipboard uses shared pointer movement gate in card coordinates'
 )

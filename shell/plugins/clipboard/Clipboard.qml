@@ -169,6 +169,14 @@ Item {
     resultList.positionViewAtIndex(selectedIndex, ListView.Contain)
   }
 
+  function selectAbsolute(index) {
+    if (displayModel.count === 0) return
+    root.disarmPointer()
+    root.cursorActive = true
+    root.selectedIndex = Math.max(0, Math.min(index, displayModel.count - 1))
+    resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+  }
+
   function setFilter(nextFilter) {
     root.filterText = nextFilter
     root.selectedIndex = 0
@@ -344,6 +352,12 @@ Item {
             event.accepted = true
           } else if (event.key === Qt.Key_PageDown) {
             root.select(6)
+            event.accepted = true
+          } else if (event.key === Qt.Key_Home) {
+            root.selectAbsolute(0)
+            event.accepted = true
+          } else if (event.key === Qt.Key_End) {
+            root.selectAbsolute(displayModel.count - 1)
             event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             if (root.cursorActive && (event.modifiers & Qt.AltModifier)) root.openIndex(root.selectedIndex)
