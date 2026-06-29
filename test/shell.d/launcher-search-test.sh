@@ -76,8 +76,8 @@ assert(
 const confirmDeleteMatch = launcherQml.match(/function confirmDelete\(\) \{([\s\S]*?)\n  \}/)
 assert(confirmDeleteMatch, 'launcher confirmDelete function exists')
 assert(
-  !confirmDeleteMatch[1].includes('root.dismiss()'),
-  'launcher delete keeps launcher open after confirmation'
+  confirmDeleteMatch[1].includes('root.dismiss()'),
+  'launcher delete closes launcher after confirmation'
 )
 assert(
   confirmDeleteMatch[1].includes('Util.hyprExecCommand(command)'),

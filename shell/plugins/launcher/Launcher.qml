@@ -90,6 +90,7 @@ Item {
 
   function dismiss() {
     root.deleteConfirmOpen = false
+    root.deleteEntry = null
     root.opened = false
     if (root.shell && typeof root.shell.hide === "function")
       root.shell.hide((root.manifest && root.manifest.id) || "omarchy.launcher")
@@ -281,7 +282,7 @@ Item {
     var desktopId = String(entry.id || "")
     var name = root.entryName(entry)
     var command = Util.shellQuote(root.omarchyPath + "/bin/omarchy-remove-launcher-entry") + " " + Util.shellQuote(desktopId) + " " + Util.shellQuote(name)
-    root.cancelDelete()
+    root.dismiss()
     Quickshell.execDetached(Util.hyprExecCommand(command))
   }
 
