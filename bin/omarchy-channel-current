@@ -12,22 +12,26 @@ if [[ -r $conf ]]; then
   [[ -n $configured_path ]] && omarchy_path="$configured_path"
 fi
 
-channel=$(omarchy-version-channel 2>/dev/null | awk '{ print $1 }')
+# Dev is a linked source checkout: OMARCHY_PATH points somewhere other than
+# the package-backed install at /usr/share/omarchy. This takes precedence over
+# the package channels, since the checkout overrides whatever is installed.
+if [[ $omarchy_path != "/usr/share/omarchy" ]]; then
+  echo dev
+  exit 0
+fi
 
+# omarchy-dev / omarchy-settings-dev are only shipped from the edge mirror, so
+# their presence alone means edge. omarchy / omarchy-settings come from either
+# the stable or rc mirror, distinguished by omarchy-version-channel.
 if pacman -Q omarchy-dev omarchy-settings-dev >/dev/null 2>&1; then
+  echo edge
+elif pacman -Q omarchy omarchy-settings >/dev/null 2>&1; then
+  channel=$(omarchy-version-channel 2>/dev/null | awk '{ print $1 }')
   case "$channel" in
+    stable) echo stable ;;
     rc) echo rc ;;
-    edge)
-      if [[ $omarchy_path == "/usr/share/omarchy" ]]; then
-        echo dev
-      else
-        echo edge
-      fi
-      ;;
     *) echo unknown ;;
   esac
-elif pacman -Q omarchy omarchy-settings >/dev/null 2>&1 && [[ $channel == "stable" ]]; then
-  echo stable
 else
   echo unknown
 fi

@@ -1,18 +1,18 @@
 #!/bin/bash
 
 # omarchy:summary=Set the Omarchy package channel.
-# omarchy:args=<stable|rc|dev|edge>
+# omarchy:args=<stable|rc|edge|dev>
 # omarchy:requires-sudo=true
 
 set -euo pipefail
 
-usage() { echo "Usage: omarchy-channel-set [stable|rc|dev|edge]"; }
+usage() { echo "Usage: omarchy-channel-set [stable|rc|edge|dev]"; }
 fail() { echo "Error: $*" >&2; exit 1; }
 
-confirm_edge() {
+confirm_dev() {
   cat <<'WARNING'
 
-Edge links Omarchy directly to a mutable source checkout.
+Dev links Omarchy directly to a mutable source checkout.
 
 This disables package-based protections for the Omarchy code path, including
 normal package updates and package-backed snapshot restores. You'll be
@@ -20,15 +20,15 @@ responsible for pulling, fixing, and restoring that checkout yourself.
 
 WARNING
 
-  gum confirm --default=false "Enable Edge anyway?"
+  gum confirm --default=false "Enable Dev anyway?"
 }
 
-choose_edge_checkout() {
+choose_dev_checkout() {
   local default_path="$HOME/Work/omarchy"
-  local path="${OMARCHY_EDGE_PATH:-}"
+  local path="${OMARCHY_DEV_PATH:-}"
 
   if [[ -z $path ]]; then
-    path=$(gum input --value "$default_path" --placeholder "$default_path" --header "Where should Edge checkout live? Existing non-checkout paths will not be overwritten.") || exit 1
+    path=$(gum input --value "$default_path" --placeholder "$default_path" --header "Where should Dev checkout live? Existing non-checkout paths will not be overwritten.") || exit 1
   fi
 
   path="${path:-$default_path}"
@@ -50,11 +50,11 @@ choose_edge_checkout() {
   printf '%s\n' "$path"
 }
 
-sync_edge_checkout() {
+sync_dev_checkout() {
   local checkout="$1"
 
   if [[ -d $checkout/.git ]]; then
-    echo "Updating Edge checkout at $checkout"
+    echo "Updating Dev checkout at $checkout"
     git -C "$checkout" fetch origin quattro
     git -C "$checkout" checkout quattro 2>/dev/null || git -C "$checkout" checkout --track origin/quattro
     git -C "$checkout" pull --ff-only origin quattro
@@ -68,7 +68,7 @@ sync_edge_checkout() {
 
 (( $# > 0 )) || { usage; exit 1; }
 
-edge_checkout=""
+dev_checkout=""
 channel="$1"
 
 case "$channel" in
@@ -78,15 +78,15 @@ case "$channel" in
     ;;
   rc)
     pacman_channel=rc
-    packages=(omarchy-dev omarchy-settings-dev)
+    packages=(omarchy omarchy-settings)
     ;;
-  dev)
+  edge)
     pacman_channel=edge
     packages=(omarchy-dev omarchy-settings-dev)
     ;;
-  edge|source)
-    confirm_edge || { echo "Cancelled."; exit 0; }
-    edge_checkout=$(choose_edge_checkout)
+  dev)
+    confirm_dev || { echo "Cancelled."; exit 0; }
+    dev_checkout=$(choose_dev_checkout)
     pacman_channel=edge
     packages=(omarchy-dev omarchy-settings-dev)
     ;;
@@ -101,13 +101,13 @@ omarchy-refresh-pacman "$pacman_channel"
 # --ask 4 accepts omarchy <-> omarchy-dev replacement prompts without file overwrites.
 sudo env OMARCHY_UPDATE_PACMAN=1 pacman -S --needed --noconfirm --ask 4 "${packages[@]}"
 
-if [[ -z $edge_checkout ]] && omarchy-cmd-present omarchy-dev-unlink; then
+if [[ -z $dev_checkout ]] && omarchy-cmd-present omarchy-dev-unlink; then
   omarchy-dev-unlink
   export OMARCHY_PATH=/usr/share/omarchy
 fi
 
 omarchy-update -y
 
-if [[ -n $edge_checkout ]]; then
-  sync_edge_checkout "$edge_checkout"
+if [[ -n $dev_checkout ]]; then
+  sync_dev_checkout "$dev_checkout"
 fi
