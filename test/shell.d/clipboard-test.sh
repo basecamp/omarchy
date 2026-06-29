@@ -131,11 +131,15 @@ assert(
   'clipboard keyboard navigation disarms pointer selection'
 )
 assert(
-  /function pointerMovedInCard\(item, mouse\)[\s\S]*item\.mapToItem\(card, mouse\.x, mouse\.y\)/.test(clipboardQml),
-  'clipboard compares pointer movement in card coordinates'
+  /PointerMoveGate\s*\{[\s\S]*id: pointerGate[\s\S]*referenceItem: card[\s\S]*\}/.test(clipboardQml),
+  'clipboard uses shared pointer movement gate in card coordinates'
 )
 assert(
-  /function selectFromPointer\(index, item, mouse\)[\s\S]*pointerMovedInCard\(item, mouse\)[\s\S]*root\.selectedIndex = index/.test(clipboardQml),
+  /function disarmPointer\(\)[\s\S]*pointerGate\.reset\(\)/.test(clipboardQml),
+  'clipboard resets pointer movement gate when pointer selection is disarmed'
+)
+assert(
+  /function selectFromPointer\(index, item, mouse\)[\s\S]*pointerGate\.moved\(item, mouse\)[\s\S]*root\.selectedIndex = index/.test(clipboardQml),
   'clipboard only selects from pointer after real movement'
 )
 assert(

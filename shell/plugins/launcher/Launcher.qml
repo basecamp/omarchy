@@ -19,9 +19,6 @@ Item {
   property string filterText: ""
   property int selectedIndex: 0
   property bool cursorActive: true
-  property bool hoverArmed: false
-  property real lastPointerX: -1
-  property real lastPointerY: -1
   property var filteredEntries: []
   property int launchSerial: 0
   property int launchToplevelCount: 0
@@ -133,23 +130,11 @@ Item {
   }
 
   function disarmHover() {
-    root.hoverArmed = false
-    root.lastPointerX = -1
-    root.lastPointerY = -1
-  }
-
-  function pointerMovedInCard(item, mouse) {
-    var point = item.mapToItem(card, mouse.x, mouse.y)
-    var moved = root.lastPointerX >= 0
-      && (Math.abs(point.x - root.lastPointerX) > 1 || Math.abs(point.y - root.lastPointerY) > 1)
-    root.lastPointerX = point.x
-    root.lastPointerY = point.y
-    return moved
+    pointerGate.reset()
   }
 
   function selectFromPointer(index, item, mouse) {
-    if (!root.pointerMovedInCard(item, mouse)) return
-    root.hoverArmed = true
+    if (!pointerGate.moved(item, mouse)) return
     root.cursorActive = true
     root.selectedIndex = index
   }
@@ -378,6 +363,11 @@ Item {
     onLoaded: root.loadConfiguredHides(text())
     onFileChanged: root.loadConfiguredHides(text())
     onLoadFailed: root.loadConfiguredHides("")
+  }
+
+  PointerMoveGate {
+    id: pointerGate
+    referenceItem: card
   }
 
   Connections {
@@ -637,10 +627,6 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onPositionChanged: function(mouse) {
                   root.selectFromPointer(row.index, row, mouse)
-                }
-                onContainsMouseChanged: if (containsMouse && root.hoverArmed) {
-                  root.cursorActive = true
-                  root.selectedIndex = row.index
                 }
                 onClicked: {
                   root.cursorActive = true
