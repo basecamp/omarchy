@@ -146,10 +146,9 @@ editing the built-in source. Third-party ids must be namespaced and may not use
 the reserved `omarchy.*` prefix.
 
 ```bash
-omarchy plugin clone omarchy.clock local.clock --replace --with ai --prompt "Customize this clock widget"
-omarchy plugin clone                 # interactive source/name/tool picker
-omarchy plugin edit local.clock --with editor  # edit with `omarchy launch editor`
-omarchy plugin edit local.clock --with ai      # edit with `omarchy launch ai`
+omarchy plugin clone omarchy.clock local.clock --replace
+omarchy plugin clone                 # interactive source/name picker
+omarchy plugin edit local.clock      # cd into the plugin directory
 ```
 
 First-party plugins under `shell/plugins/`
