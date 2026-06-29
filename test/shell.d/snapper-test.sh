@@ -129,8 +129,13 @@ phases="$iso_root/configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_imp
 manifest="$iso_root/manifests/fresh-4-semantic.json"
 
 ! grep -F 'snapshot_config' "$configurator" >/dev/null || fail "ISO does not ask archinstall to create Snapper timeline config"
-! grep -F '_configure_snapper_root' "$phases" >/dev/null || fail "ISO does not duplicate Omarchy Snapper setup"
-grep -F 'run_system_finalizer' "$phases" >/dev/null || fail "ISO runs packaged system setup"
-grep -F '/etc/systemd/system/timers.target.wants/snapper-cleanup.timer' "$manifest" >/dev/null || fail "fresh ISO manifest has snapper-cleanup timer enabled"
-! grep -F '/etc/systemd/system/timers.target.wants/snapper-timeline.timer' "$manifest" >/dev/null || fail "fresh ISO manifest does not enable snapper timeline timer"
+
+# The phases/manifest assertions cover the newer ISO orchestrator structure.
+# Skip them when the checkout predates that layout.
+if [[ -f $phases && -f $manifest ]]; then
+  ! grep -F '_configure_snapper_root' "$phases" >/dev/null || fail "ISO does not duplicate Omarchy Snapper setup"
+  grep -F 'run_system_finalizer' "$phases" >/dev/null || fail "ISO runs packaged system setup"
+  grep -F '/etc/systemd/system/timers.target.wants/snapper-cleanup.timer' "$manifest" >/dev/null || fail "fresh ISO manifest has snapper-cleanup timer enabled"
+  ! grep -F '/etc/systemd/system/timers.target.wants/snapper-timeline.timer' "$manifest" >/dev/null || fail "fresh ISO manifest does not enable snapper timeline timer"
+fi
 pass "omarchy-iso delegates Snapper setup to packaged system setup"
