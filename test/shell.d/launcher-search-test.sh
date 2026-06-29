@@ -73,16 +73,24 @@ assert(
   'launcher keyboard navigation disarms stale hover before moving selection'
 )
 assert(
-  /function pointerMovedInCard\(item, mouse\)[\s\S]*item\.mapToItem\(card, mouse\.x, mouse\.y\)/.test(launcherQml),
-  'launcher compares pointer movement in card coordinates'
+  /PointerMoveGate\s*\{[\s\S]*id: pointerGate[\s\S]*referenceItem: card[\s\S]*\}/.test(launcherQml),
+  'launcher uses shared pointer movement gate in card coordinates'
 )
 assert(
-  /function selectFromPointer\(index, item, mouse\)[\s\S]*pointerMovedInCard\(item, mouse\)[\s\S]*root\.selectedIndex = index/.test(launcherQml),
+  /function disarmHover\(\)[\s\S]*pointerGate\.reset\(\)/.test(launcherQml),
+  'launcher resets pointer movement gate when hover is disarmed'
+)
+assert(
+  /function selectFromPointer\(index, item, mouse\)[\s\S]*pointerGate\.moved\(item, mouse\)[\s\S]*root\.selectedIndex = index/.test(launcherQml),
   'launcher only selects from pointer after real movement'
 )
 assert(
   /onPositionChanged: function\(mouse\) \{\s*root\.selectFromPointer\(row\.index, row, mouse\)\s*\}/.test(launcherQml),
   'launcher row hover routes through pointer movement gate'
+)
+assert(
+  !/onContainsMouseChanged:[\s\S]*root\.selectedIndex/.test(launcherQml),
+  'launcher does not select rows from containsMouse'
 )
 
 const confirmDeleteMatch = launcherQml.match(/function confirmDelete\(\) \{([\s\S]*?)\n  \}/)

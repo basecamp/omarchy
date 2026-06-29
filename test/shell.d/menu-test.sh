@@ -5,7 +5,9 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 run_node_test <<'JS'
+const fs = require('fs')
 const menu = requireFromRoot('shell/plugins/menu/MenuModel.js')
+const menuQml = fs.readFileSync(path.join(root, 'shell/plugins/menu/Menu.qml'), 'utf8')
 
 const parsed = menu.parseMenuJsonc(`
 {
@@ -84,5 +86,34 @@ assertDeepEqual(
     section: 'search'
   },
   'menu builds display rows'
+)
+
+assert(
+  /function select\(delta\)[\s\S]*root\.disarmPointer\(\)[\s\S]*selectedIndex =/.test(menuQml),
+  'menu keyboard navigation disarms pointer selection'
+)
+assert(
+  /function setFilter\(nextFilter\)[\s\S]*root\.disarmPointer\(\)/.test(menuQml),
+  'menu filter changes disarm pointer selection'
+)
+assert(
+  /function setActiveMenu\(id, pushHistory\)[\s\S]*root\.disarmPointer\(\)/.test(menuQml),
+  'menu route changes disarm pointer selection'
+)
+assert(
+  /PointerMoveGate\s*\{[\s\S]*id: pointerGate[\s\S]*referenceItem: card[\s\S]*\}/.test(menuQml),
+  'menu uses shared pointer movement gate in card coordinates'
+)
+assert(
+  /function disarmPointer\(\)[\s\S]*pointerGate\.reset\(\)/.test(menuQml),
+  'menu resets pointer movement gate when pointer selection is disarmed'
+)
+assert(
+  /function selectFromPointer\(index, item, mouse\)[\s\S]*pointerGate\.moved\(item, mouse\)[\s\S]*root\.selectedIndex = index/.test(menuQml),
+  'menu only selects from pointer after real movement'
+)
+assert(
+  /onPositionChanged: function\(mouse\) \{\s*root\.selectFromPointer\(row\.index, row, mouse\)\s*\}/.test(menuQml),
+  'menu row hover routes through pointer movement gate'
 )
 JS
