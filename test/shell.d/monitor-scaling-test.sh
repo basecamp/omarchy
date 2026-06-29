@@ -11,6 +11,7 @@ stub_bin="$test_tmp/bin"
 eval_out="$test_tmp/hyprctl-eval"
 home_dir="$test_tmp/home"
 monitor_lua="$home_dir/.config/hypr/monitors.lua"
+tiling_lua="$ROOT/default/hypr/bindings/tiling.lua"
 
 mkdir -p "$stub_bin" "$home_dir/.config/hypr"
 
@@ -44,9 +45,9 @@ run_scaling() {
 
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 run_scaling up
-grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling up stops at 2x"
-grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null || fail "monitor scaling up does not persist 3x from 2x"
-pass "monitor scaling up stops at 2x"
+grep -F 'scale = 3' "$eval_out" >/dev/null || fail "monitor scaling up reaches 3x"
+grep -Fx 'local omarchy_monitor_scale = 3' "$monitor_lua" >/dev/null || fail "monitor scaling up persists 3x"
+pass "monitor scaling up reaches 3x"
 
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=3 run_scaling down
@@ -63,3 +64,8 @@ pass "monitor scaling explicit 3x remains available"
 scale=$(OMARCHY_TEST_MONITOR_SCALE=3 run_scaling)
 [[ $scale == "3" ]] || fail "monitor scaling reports explicit 3x scale" "actual: $scale"
 pass "monitor scaling reports explicit 3x scale"
+
+! grep -F 'SUPER + code:61' "$tiling_lua" >/dev/null || fail "monitor scaling is not bound to Super+Slash"
+grep -F 'SUPER + CTRL + ALT + code:21", "Monitor scaling up"' "$tiling_lua" >/dev/null || fail "monitor scaling up uses deliberate Equal chord"
+grep -F 'SUPER + CTRL + ALT + code:20", "Monitor scaling down"' "$tiling_lua" >/dev/null || fail "monitor scaling down uses deliberate Minus chord"
+pass "monitor scaling uses deliberate global shortcuts"
