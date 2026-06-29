@@ -410,6 +410,7 @@ Item {
         itemId: "dmenu." + i,
         kind: "dmenu",
         icon: "",
+        iconFont: "",
         label: label,
         target: "",
         detail: "",
@@ -932,6 +933,7 @@ Item {
               required property string itemId
               required property string kind
               required property string icon
+              required property string iconFont
               required property string label
               required property string target
               required property string detail
@@ -964,7 +966,7 @@ Item {
                 visible: row.hasIcon
                 text: row.icon
                 color: row.hasCursor ? root.selectedText : root.foreground
-                font.family: root.fontFamily
+                font.family: row.iconFont.length > 0 ? row.iconFont : root.fontFamily
                 font.pixelSize: Style.font.iconLarge
                 width: Style.space(36)
                 horizontalAlignment: Text.AlignHCenter

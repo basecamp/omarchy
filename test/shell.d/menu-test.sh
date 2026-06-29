@@ -34,6 +34,7 @@ assertDeepEqual(
     parent: 'style',
     kind: 'action',
     icon: '',
+    iconFont: '',
     label: 'Themes',
     target: '',
     keywords: 'appearance colors',
@@ -76,6 +77,7 @@ assertDeepEqual(
     itemId: 'style.theme',
     kind: 'action',
     icon: '',
+    iconFont: '',
     label: 'Theme picker',
     target: 'style.theme',
     detail: 'Style',
@@ -92,12 +94,16 @@ assertDeepEqual(
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
 assert(
-  defaultById['update.omarchy'].icon === defaultById['learn.omarchy'].icon,
-  'menu update Omarchy entry uses the menu-font Omarchy icon'
+  defaultById['update.omarchy'].icon === '\ue900',
+  'menu update Omarchy entry uses the Omarchy glyph'
 )
 assert(
-  !defaultMenuJsonc.includes('\ue900'),
-  'menu entries do not use the private Omarchy bar-font glyph'
+  defaultById['update.omarchy'].iconFont === 'omarchy',
+  'menu update Omarchy entry renders the private glyph with the Omarchy font'
+)
+assert(
+  /font\.family: row\.iconFont\.length > 0 \? row\.iconFont : root\.fontFamily/.test(menuQml),
+  'menu rows support per-icon font families'
 )
 
 assert(
