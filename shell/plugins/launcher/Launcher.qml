@@ -1,4 +1,5 @@
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Widgets
@@ -24,6 +25,7 @@ Item {
   property int launchSerial: 0
   property int launchToplevelCount: 0
   property var launchActiveToplevel: null
+  property string launchWorkspace: ""
   property bool launchOsdOpen: false
   property string launchOsdMessage: ""
   property var configuredHiddenEntryIds: ({})
@@ -75,6 +77,7 @@ Item {
       ? root.contentMargin * 2 + root.searchHeight + root.contentSpacing + requestedListHeight
       : 400
 
+    root.launchWorkspace = String(payload.workspace || "") || root.focusedWorkspaceName()
     root.opened = true
     root.filterText = payload.query || ""
     root.selectedIndex = 0
@@ -127,6 +130,12 @@ Item {
 
   function entrySearchText(entry) {
     return LauncherSearch.entrySearchText(entry)
+  }
+
+  function focusedWorkspaceName() {
+    var workspace = Hyprland.focusedWorkspace
+    if (!workspace) return ""
+    return String(workspace.name || workspace.id || "")
   }
 
   function isHiddenEntry(entry) {
@@ -277,8 +286,10 @@ Item {
 
     var desktopId = String(entry.id || "")
     var name = root.entryName(entry)
+    var command = [root.omarchyPath + "/bin/omarchy-remove-launcher-entry", desktopId, name]
+    if (root.launchWorkspace !== "") command = ["env", "OMARCHY_LAUNCH_WORKSPACE=" + root.launchWorkspace].concat(command)
     root.cancelDelete()
-    Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-remove-launcher-entry", desktopId, name])
+    Quickshell.execDetached(command)
   }
 
   function beginLaunchFeedback(entry) {
