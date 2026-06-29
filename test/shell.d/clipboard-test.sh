@@ -5,7 +5,9 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 run_node_test <<'JS'
+const fs = require('fs')
 const clipboard = requireFromRoot('shell/plugins/clipboard/ClipboardHistory.js')
+const clipboardQml = fs.readFileSync(path.join(root, 'shell/plugins/clipboard/Clipboard.qml'), 'utf8')
 
 assertDeepEqual(
   clipboard.normalizeEntry('hello'),
@@ -123,6 +125,27 @@ assertDeepEqual(
 
 assertDeepEqual(clipboard.displayRows(history, '', 0), [], 'clipboard display rows supports zero result limit')
 assertDeepEqual(clipboard.addEntry(history, 'next', 0), [], 'clipboard addEntry supports zero history limit')
+
+assert(
+  /function select\(delta\)[\s\S]*root\.disarmPointer\(\)[\s\S]*selectedIndex =/.test(clipboardQml),
+  'clipboard keyboard navigation disarms pointer selection'
+)
+assert(
+  /function pointerMovedInCard\(item, mouse\)[\s\S]*item\.mapToItem\(card, mouse\.x, mouse\.y\)/.test(clipboardQml),
+  'clipboard compares pointer movement in card coordinates'
+)
+assert(
+  /function selectFromPointer\(index, item, mouse\)[\s\S]*pointerMovedInCard\(item, mouse\)[\s\S]*root\.selectedIndex = index/.test(clipboardQml),
+  'clipboard only selects from pointer after real movement'
+)
+assert(
+  /onPositionChanged: function\(mouse\) \{\s*root\.selectFromPointer\(row\.index, row, mouse\)\s*\}/.test(clipboardQml),
+  'clipboard row hover routes through pointer movement gate'
+)
+assert(
+  !/onContainsMouseChanged:[\s\S]*root\.selectedIndex/.test(clipboardQml),
+  'clipboard does not select rows from containsMouse'
+)
 JS
 
 TMPDIR=$(mktemp -d)
