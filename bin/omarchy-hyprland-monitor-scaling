@@ -5,6 +5,7 @@
 # omarchy:examples=omarchy hyprland monitor scaling | omarchy hyprland monitor scaling 1.6 | omarchy hyprland monitor scaling up | omarchy hyprland monitor scaling down
 
 SCALES=(1 1.25 1.6 2 3 4)
+STEP_SCALES=(1 1.25 1.6 2)
 
 usage() {
   echo "Usage: omarchy-hyprland-monitor-scaling [up|down|1|1.25|1.6|2|3|4]"
@@ -42,23 +43,36 @@ set_scale() {
 
 scale_from_current() {
   local direction="${1:-}"
+  local scale_list="${2:-${SCALES[*]}}"
 
-  # Find the preset closest to the current scale (Hyprland may snap fractional
-  # scales to nearby values, so we can't match exactly).
-  awk -v direction="$direction" -v list="${SCALES[*]}" '
+  awk -v direction="$direction" -v list="$scale_list" '
     NR == 1 { scale = $0; found = 1 }
     END {
       if (!found) exit 1
 
       n = split(list, scales, " ")
+      if (direction == "next") {
+        for (i = 1; i <= n; i++) {
+          if (scale < scales[i]) { print scales[i]; exit }
+        }
+        print scales[n]
+        exit
+      }
+
+      if (direction == "previous") {
+        for (i = n; i >= 1; i--) {
+          if (scale > scales[i]) { print scales[i]; exit }
+        }
+        print scales[1]
+        exit
+      }
+
+      # Find the preset closest to the current scale.
       best = 1; best_diff = 1e9
       for (i = 1; i <= n; i++) {
         diff = scale - scales[i]; if (diff < 0) diff = -diff
         if (diff < best_diff) { best_diff = diff; best = i }
       }
-
-      if (direction == "next" && best < n) best++
-      else if (direction == "previous" && best > 1) best--
 
       print scales[best]
     }'
@@ -72,10 +86,10 @@ case "${1:-}" in
   usage
   ;;
 up)
-  set_scale "$(focused_monitor_scale | scale_from_current next)"
+  set_scale "$(focused_monitor_scale | scale_from_current next "${STEP_SCALES[*]}")"
   ;;
 down)
-  set_scale "$(focused_monitor_scale | scale_from_current previous)"
+  set_scale "$(focused_monitor_scale | scale_from_current previous "${STEP_SCALES[*]}")"
   ;;
 1 | 1.25 | 1.6 | 2 | 3 | 4)
   set_scale "$1"
