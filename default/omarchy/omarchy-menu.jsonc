@@ -283,7 +283,7 @@
   "remove.development.elixir.phoenix": {"icon":"","label":"Phoenix","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-remove-dev-env phoenix'"},
 
   // Update
-  "update.omarchy": {"icon":"","label":"Omarchy","keywords":"system","action":"omarchy-launch-floating-terminal-with-presentation omarchy-update"},
+  "update.omarchy": {"icon":"","label":"Omarchy","keywords":"system","action":"omarchy-launch-floating-terminal-with-presentation omarchy-update"},
   "update.channel": {"icon":"󰔫","label":"Channel","keywords":"stable rc dev edge source"},
   "update.config": {"icon":"","label":"Config","keywords":"refresh default"},
   "update.themes": {"icon":"󰸌","label":"Extra Themes","action":"omarchy-launch-floating-terminal-with-presentation omarchy-theme-update"},
