@@ -114,4 +114,9 @@ assert(
   activateMatch[1].includes('gtk-launch') && activateMatch[1].includes('Util.hyprExecCommand'),
   'launcher routes desktop entry launch through Hyprland'
 )
+
+assert(
+  /function iconIndexScanCommand\(\)[\s\S]*-path "\*\/apps\/\*" -o -path "\*\/devices\/\*"/.test(launcherQml),
+  'launcher fallback icon index includes device icons'
+)
 JS
