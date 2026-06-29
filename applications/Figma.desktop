@@ -1,8 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Name=Figma
-Exec=omarchy-launch-webapp https://figma.com/
-Terminal=false
-Type=Application
-Icon=figma
-StartupNotify=true
