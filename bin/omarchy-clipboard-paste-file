@@ -4,6 +4,7 @@
 # omarchy:group=clipboard
 # omarchy:args=[--copy-only] <mime-type> <path>
 # omarchy:examples=omarchy clipboard paste file image/png /tmp/screenshot.png
+# omarchy:hidden=true
 
 copy_only=false
 
