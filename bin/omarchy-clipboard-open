@@ -3,6 +3,7 @@
 # omarchy:summary=Open a clipboard history entry
 # omarchy:group=clipboard
 # omarchy:args=--history-index <index>
+# omarchy:hidden=true
 
 history_index=""
 history_path="$HOME/.local/state/omarchy/clipboard-history.json"

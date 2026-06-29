@@ -4,6 +4,7 @@
 # omarchy:group=clipboard
 # omarchy:args=[--shift-insert] [--copy-only] [--history-index <index>|<text>]
 # omarchy:examples=omarchy clipboard paste text "hello" | omarchy clipboard paste text --shift-insert "hello"
+# omarchy:hidden=true
 
 use_shift_insert=false
 copy_only=false
