@@ -38,6 +38,7 @@ function normalizeItem(id, raw) {
     parent: parent,
     kind: kind,
     icon: value.icon || "",
+    iconFont: value.iconFont || "",
     label: value.label || id,
     target: value.target || "",
     keywords: normalizeKeywords(id, aliases, value.keywords),
@@ -95,7 +96,7 @@ function mergeMenuSources(defaultItems, userItems) {
   }
 
   if (!nextItems.root) {
-    nextItems.root = { id: "root", parent: "", kind: "menu", icon: "", label: "Go", target: "", keywords: "", description: "", aliases: [], when: "", checked: "", action: "", provider: "" }
+    nextItems.root = { id: "root", parent: "", kind: "menu", icon: "", iconFont: "", label: "Go", target: "", keywords: "", description: "", aliases: [], when: "", checked: "", action: "", provider: "" }
     nextOrder.unshift("root")
   }
   for (var k3 = 0; k3 < nextOrder.length; k3++) nextItems[nextOrder[k3]].order = k3
@@ -253,6 +254,7 @@ function displayRow(items, itemOrder, checkedResults, entry, detail, score, sect
     itemId: entry.id,
     kind: entry.kind,
     icon: entry.icon,
+    iconFont: entry.iconFont || "",
     label: labelFor(entry, checkedResults),
     target: target,
     detail: detail || "",

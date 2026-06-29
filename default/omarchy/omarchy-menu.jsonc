@@ -8,6 +8,7 @@
   // calls provider_name() or a command named "name" to return JSON rows.
   // Optional fields:
   //   aliases        alternate `omarchy menu summon <name>` routes; also searchable
+  //   iconFont       font family used for the icon glyph, when it differs from the menu font
   //   keywords       extra search terms beyond id/label/aliases
   //   when           shell condition; hide row when it fails
   //   checked        shell condition; append ✓ when it succeeds
@@ -283,7 +284,7 @@
   "remove.development.elixir.phoenix": {"icon":"","label":"Phoenix","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-remove-dev-env phoenix'"},
 
   // Update
-  "update.omarchy": {"icon":"","label":"Omarchy","keywords":"system","action":"omarchy-launch-floating-terminal-with-presentation omarchy-update"},
+  "update.omarchy": {"icon":"","iconFont":"omarchy","label":"Omarchy","keywords":"system","action":"omarchy-launch-floating-terminal-with-presentation omarchy-update"},
   "update.channel": {"icon":"󰔫","label":"Channel","keywords":"stable rc dev edge source"},
   "update.config": {"icon":"","label":"Config","keywords":"refresh default"},
   "update.themes": {"icon":"󰸌","label":"Extra Themes","action":"omarchy-launch-floating-terminal-with-presentation omarchy-theme-update"},
