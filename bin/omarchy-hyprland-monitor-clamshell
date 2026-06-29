@@ -9,9 +9,23 @@ MANUAL_DISABLE_FLAG="$TOGGLES_DIR/internal-monitor-disable.lua"
 
 INTERNAL=$(hyprctl monitors all -j | jq -r '.[] | select(.name | contains("eDP")).name' | head -n 1)
 
+read_monitor_scale() {
+  local monitor_lua="$HOME/.config/hypr/monitors.lua"
+  [[ -f $monitor_lua ]] || { echo '"auto"'; return; }
+  local scale
+  scale=$(sed -n 's/^local omarchy_monitor_scale = //p' "$monitor_lua" | head -1)
+  if [[ -z $scale ]]; then
+    scale=$(sed -nE 's/^hl\.monitor\(\{ output = "", mode = "preferred", position = "auto", scale = ([^ ]+) \}\)/\1/p' "$monitor_lua" | head -1)
+  fi
+  [[ -z $scale ]] && scale='"auto"'
+  echo "$scale"
+}
+
 enable_internal_output() {
   [[ -n $INTERNAL ]] || return 0
-  hyprctl eval "hl.monitor({ output = \"$INTERNAL\", mode = \"preferred\", position = \"auto\", scale = \"auto\" })" >/dev/null 2>&1 || true
+  local scale
+  scale=$(read_monitor_scale)
+  hyprctl eval "hl.monitor({ output = \"$INTERNAL\", mode = \"preferred\", position = \"auto\", scale = $scale })" >/dev/null 2>&1 || true
 }
 
 dpms_internal() {
