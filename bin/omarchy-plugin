@@ -3,7 +3,7 @@
 # omarchy:summary=Manage Omarchy shell plugins and bar widgets
 # omarchy:group=plugin
 # omarchy:args=<list|rescan|enable|disable|clone|edit|bar> [...]
-# omarchy:examples=omarchy plugin list | omarchy plugin clone omarchy.clock local.clock --with ai | omarchy plugin edit local.clock --with editor | omarchy plugin enable acme.weather --section right | omarchy plugin bar settings
+# omarchy:examples=omarchy plugin list | omarchy plugin clone omarchy.clock local.clock | omarchy plugin edit local.clock | omarchy plugin enable acme.weather --section right | omarchy plugin bar settings
 
 set -euo pipefail
 
@@ -19,8 +19,7 @@ Plugin commands:
   enable <id> [placement]               Enable a plugin
   disable <id>                          Disable a plugin
   clone [source] [new-id] [options]      Clone a built-in or user plugin
-  edit [id] [--with <ai|editor>] [--prompt <prompt>]
-                                        Open a user plugin for editing
+  edit [id]                             Open a user plugin directory in a shell
 
 Add from sources (see 'omarchy plugin <command> --help'):
   source <add|list|remove|refresh>      Manage trusted plugin source repos
@@ -37,8 +36,6 @@ Add from sources (see 'omarchy plugin <command> --help'):
 
 Clone options:
   --name <name>                         Display name for the clone
-  --with <ai|editor>                    Open the clone with AI or editor
-  --prompt <prompt>                     Initial prompt when opening with AI
   --replace                             Replace the first source bar instance
   --add [placement]                     Add cloned bar widget to the bar
   --use                                 Use cloned bar options as the active bar
@@ -65,9 +62,8 @@ Examples:
   omarchy plugin list
   omarchy plugin rescan
   omarchy plugin clone
-  omarchy plugin clone omarchy.clock local.clock --name "My Clock" --replace --with ai --prompt "Customize this clock"
-  omarchy plugin edit local.clock --with editor
-  omarchy plugin edit local.clock --with ai --prompt "Customize this clock"
+  omarchy plugin clone omarchy.clock local.clock --name "My Clock" --replace
+  omarchy plugin edit local.clock
   omarchy plugin enable acme.weather --section right
   omarchy plugin bar options
   omarchy plugin bar use local.neon-bar
@@ -851,28 +847,6 @@ plugin_dir_for_id() {
   validate_user_plugin_dir "$HOME/.config/omarchy/plugins/$id" "$id"
 }
 
-open_plugin_dir() {
-  local tool="$1"
-  local dir="$2"
-  local prompt="${3:-}"
-
-  case "$tool" in
-  "" | none)
-    printf 'Plugin directory: %s\n' "$dir"
-    return
-    ;;
-  ai)
-    omarchy-launch-ai --path "$dir" --prompt "$prompt"
-    ;;
-  editor)
-    omarchy-launch-editor "$dir"
-    ;;
-  *)
-    fail "unknown edit target: $tool (use ai, editor, or none)"
-    ;;
-  esac
-}
-
 edit_command() {
   local id=""
   if (( $# > 0 )) && [[ $1 != --* ]]; then
@@ -880,24 +854,8 @@ edit_command() {
     shift
   fi
 
-  local open_tool=""
-  local prompt=""
   while (( $# > 0 )); do
     case "$1" in
-    --with)
-      open_tool="${2:-}"
-      [[ -n $open_tool ]] || fail "--with requires a value"
-      shift 2
-      ;;
-    --open)
-      open_tool="${2:-}"
-      [[ -n $open_tool ]] || fail "--open requires a value"
-      shift 2
-      ;;
-    --prompt)
-      prompt="${2:-}"
-      shift 2
-      ;;
     -h | --help)
       usage
       return
@@ -919,15 +877,11 @@ edit_command() {
   local dir
   dir=$(plugin_dir_for_id "$id")
 
-  if [[ -z $open_tool ]]; then
-    if [[ -t 0 && -t 1 ]]; then
-      open_tool=$(choose_value "Edit with" ai editor)
-    else
-      open_tool="editor"
-    fi
+  if [[ -t 0 && -t 1 ]]; then
+    cd "$dir"
+    exec "${SHELL:-bash}"
   fi
-
-  open_plugin_dir "$open_tool" "$dir" "$prompt"
+  printf '%s\n' "$dir"
 }
 
 rewrite_cloned_qml() {
@@ -1055,8 +1009,6 @@ clone_command() {
   fi
 
   local display_name=""
-  local open_tool=""
-  local prompt=""
   local replace="false"
   local add="false"
   local use_bar="false"
@@ -1067,20 +1019,6 @@ clone_command() {
     --name)
       display_name="${2:-}"
       [[ -n $display_name ]] || fail "--name requires a value"
-      shift 2
-      ;;
-    --with)
-      open_tool="${2:-}"
-      [[ -n $open_tool ]] || fail "--with requires a value"
-      shift 2
-      ;;
-    --open)
-      open_tool="${2:-}"
-      [[ -n $open_tool ]] || fail "--open requires a value"
-      shift 2
-      ;;
-    --prompt)
-      prompt="${2:-}"
       shift 2
       ;;
     --replace)
@@ -1196,11 +1134,9 @@ clone_command() {
     echo "Cloned $source_id to $new_id"
   fi
 
-  if [[ -z $open_tool && -t 0 && -t 1 ]]; then
-    open_tool=$(choose_value "Edit with" ai editor)
-  fi
-  if [[ -n $open_tool ]]; then
-    edit_command "$new_id" --with "$open_tool" --prompt "$prompt"
+  if [[ -t 0 && -t 1 ]]; then
+    cd "$target_dir"
+    exec "${SHELL:-bash}"
   fi
 }
 
