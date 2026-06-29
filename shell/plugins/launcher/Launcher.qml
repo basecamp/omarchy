@@ -276,7 +276,6 @@ Item {
     var desktopId = String(entry.id || "")
     var name = root.entryName(entry)
     root.cancelDelete()
-    root.dismiss()
     Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-remove-launcher-entry", desktopId, name])
   }
 
