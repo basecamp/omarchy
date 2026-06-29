@@ -44,34 +44,37 @@ let ping = network.pingLatencyState(
 )
 assertDeepEqual(
   ping,
-  { pingIface: 'wlan0', routerPingSamples: [2], internetPingSamples: [20], routerPingLatency: 2, internetPingLatency: 20 },
+  { pingIface: 'wlan0', routerPingSamples: [2], internetPingSamples: [20], routerPingLatency: 2, internetPingLatency: 20, internetPingPacketLoss: 0 },
   'network seeds ping latency samples'
 )
 
 ping = network.pingLatencyState(ping, { iface: 'wlan0', router_ping_ms: '4.0', internet_ping_ms: '' }, 4)
 assertDeepEqual(
   ping,
-  { pingIface: 'wlan0', routerPingSamples: [2, 4], internetPingSamples: [20, null], routerPingLatency: 3, internetPingLatency: 20 },
+  { pingIface: 'wlan0', routerPingSamples: [2, 4], internetPingSamples: [20, null], routerPingLatency: 3, internetPingLatency: 20, internetPingPacketLoss: 50 },
   'network averages recent successful ping samples'
 )
 
 assertDeepEqual(
   network.pingLatencyState(ping, { iface: 'eth0', router_ping_ms: '1.5', internet_ping_ms: '10.0' }, 4),
-  { pingIface: 'eth0', routerPingSamples: [1.5], internetPingSamples: [10], routerPingLatency: 1.5, internetPingLatency: 10 },
+  { pingIface: 'eth0', routerPingSamples: [1.5], internetPingSamples: [10], routerPingLatency: 1.5, internetPingLatency: 10, internetPingPacketLoss: 0 },
   'network resets ping samples when interface changes'
 )
 
 assertDeepEqual(
   network.pingLatencyState(ping, { iface: 'wlan0', internet_ping_ms: '22.0' }, 4),
-  { pingIface: 'wlan0', routerPingSamples: [], internetPingSamples: [20, null, 22], routerPingLatency: -1, internetPingLatency: 21 },
+  { pingIface: 'wlan0', routerPingSamples: [], internetPingSamples: [20, null, 22], routerPingLatency: -1, internetPingLatency: 21, internetPingPacketLoss: 33 },
   'network clears ping samples when a target is unavailable'
 )
 
 assertEqual(network.formatBytes(1536), '1.5 KB', 'network formats bytes')
 assertEqual(network.formatRate(1536), '1.5 KB/s', 'network formats rates')
+assertEqual(network.formatSpeedMbps('250.4'), '250 Mbps', 'network formats speed test results')
 assertEqual(network.formatPingLatency('2.54'), '2.5 ms', 'network formats low ping with precision')
 assertEqual(network.formatPingLatency('25.4'), '25 ms', 'network formats ping')
 assertEqual(network.formatPingLatency(''), 'Timeout', 'network formats missing ping as timeout')
+assertEqual(network.formatPacketLoss(2), '2%', 'network formats packet loss')
+assertEqual(network.formatPacketLoss(0), '0%', 'network formats zero packet loss')
 
 const rows = network.sortWifiRows([
   { ssid: 'Open', connected: false, known: false, signal: 95 },
