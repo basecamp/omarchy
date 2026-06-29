@@ -112,12 +112,13 @@ function appendPingSample(samples, raw, limit) {
   return values
 }
 
-function averagePingLatency(samples) {
+function averagePingLatency(samples, limit) {
   var values = Array.isArray(samples) ? samples : []
+  var sampleLimit = Math.max(1, parseInt(limit, 10) || values.length || 1)
   var total = 0
   var count = 0
 
-  for (var i = 0; i < values.length; i++) {
+  for (var i = Math.max(0, values.length - sampleLimit); i < values.length; i++) {
     var value = values[i]
     if (typeof value !== "number" || !isFinite(value) || value < 0) continue
     total += value
@@ -127,11 +128,30 @@ function averagePingLatency(samples) {
   return count > 0 ? total / count : -1
 }
 
-function pingLatencyState(previous, next, limit) {
+function pingPacketLossPercent(samples) {
+  var values = Array.isArray(samples) ? samples : []
+  if (values.length === 0) return 0
+
+  var lost = 0
+  for (var i = 0; i < values.length; i++) {
+    if (values[i] === null) lost++
+  }
+
+  return Math.round((lost / values.length) * 100)
+}
+
+function formatPacketLoss(percent) {
+  var value = parseInt(percent, 10)
+  if (!value || value < 0) return "0%"
+  return value + "%"
+}
+
+function pingLatencyState(previous, next, limit, averageLimit) {
   var prev = previous || {}
   var sample = next || {}
   var iface = sample.iface || ""
   var window = Math.max(1, parseInt(limit, 10) || 5)
+  var averageWindow = Math.max(1, parseInt(averageLimit, 10) || window)
   var reset = iface === "" || iface !== (prev.pingIface || "")
   var routerSamples = reset ? [] : prev.routerPingSamples
   var internetSamples = reset ? [] : prev.internetPingSamples
@@ -143,8 +163,9 @@ function pingLatencyState(previous, next, limit) {
     pingIface: iface,
     routerPingSamples: routerSamples,
     internetPingSamples: internetSamples,
-    routerPingLatency: averagePingLatency(routerSamples),
-    internetPingLatency: averagePingLatency(internetSamples)
+    routerPingLatency: averagePingLatency(routerSamples, averageWindow),
+    internetPingLatency: averagePingLatency(internetSamples, averageWindow),
+    internetPingPacketLoss: pingPacketLossPercent(internetSamples)
   }
 }
 
@@ -159,6 +180,12 @@ function formatBytes(bytes) {
 
 function formatRate(bytesPerSec) {
   return formatBytes(bytesPerSec) + "/s"
+}
+
+function formatSpeedMbps(mbps) {
+  var value = parseFloat(mbps)
+  if (!isFinite(value) || value <= 0) return "--"
+  return value.toFixed(value > 0 && value < 10 ? 1 : 0) + " Mbps"
 }
 
 function formatPingLatency(ms) {
@@ -226,8 +253,11 @@ if (typeof module !== "undefined") {
     parseKeyValue: parseKeyValue,
     throughputState: throughputState,
     pingLatencyState: pingLatencyState,
+    pingPacketLossPercent: pingPacketLossPercent,
+    formatPacketLoss: formatPacketLoss,
     formatBytes: formatBytes,
     formatRate: formatRate,
+    formatSpeedMbps: formatSpeedMbps,
     formatPingLatency: formatPingLatency,
     wifiRow: wifiRow,
     sortWifiRows: sortWifiRows,

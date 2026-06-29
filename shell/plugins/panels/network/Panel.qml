@@ -37,13 +37,10 @@ Panel {
   property var internetPingSamples: []
   property real routerPingLatency: -1
   property real internetPingLatency: -1
-  readonly property int pingWindow: 5
-  readonly property bool hasRouterPing: routerPingSamples.length > 0
+  property int internetPingPacketLoss: 0
+  readonly property int pingHistoryWindow: 24
+  readonly property int pingAverageWindow: 5
   readonly property bool hasInternetPing: internetPingSamples.length > 0
-  readonly property bool hasPing: hasRouterPing || hasInternetPing
-  readonly property bool hasSecondPing: hasRouterPing && hasInternetPing
-  readonly property string primaryPingLabel: hasRouterPing ? "Router Ping" : (hasInternetPing ? "Internet Ping" : "")
-  readonly property real primaryPingLatency: hasRouterPing ? routerPingLatency : internetPingLatency
   property int connectionPhraseIndex: 0
   readonly property var connectionPhrases: [
     "Wiring bits",
@@ -65,6 +62,14 @@ Panel {
   property bool wifiStationAvailable: false
   property string dnsProvider: ""
   property string pendingDnsProvider: ""
+  property bool speedTestRunning: false
+  property bool speedTestHasRun: false
+  property bool speedTestExpectedStop: false
+  property string speedTestPhase: ""
+  property string speedTestStderr: ""
+  property string speedTestDownloadMbps: ""
+  property string speedTestUploadMbps: ""
+  property string speedTestError: ""
 
   // Per-row in-flight state. `actionSsid` flips on for the row whose action
   // is currently running so it can render "Connecting…" / "Disconnecting…" /
@@ -158,6 +163,7 @@ Panel {
       internetPingSamples = []
       routerPingLatency = -1
       internetPingLatency = -1
+      internetPingPacketLoss = 0
       if (wifiDevice) wifiDevice.scannerEnabled = false
     }
   }
@@ -322,13 +328,14 @@ Panel {
       pingIface: pingIface,
       routerPingSamples: routerPingSamples,
       internetPingSamples: internetPingSamples
-    }, next, pingWindow)
+    }, next, pingHistoryWindow, pingAverageWindow)
 
     pingIface = state.pingIface
     routerPingSamples = state.routerPingSamples
     internetPingSamples = state.internetPingSamples
     routerPingLatency = state.routerPingLatency
     internetPingLatency = state.internetPingLatency
+    internetPingPacketLoss = state.internetPingPacketLoss
   }
 
   function formatBytes(bytes) {
@@ -339,8 +346,16 @@ Panel {
     return Model.formatRate(bytesPerSec)
   }
 
+  function formatSpeedMbps(mbps) {
+    return Model.formatSpeedMbps(mbps)
+  }
+
   function formatPingLatency(ms) {
     return Model.formatPingLatency(ms)
+  }
+
+  function formatPacketLoss(percent) {
+    return Model.formatPacketLoss(percent)
   }
 
   function findDevice(type) {
@@ -386,6 +401,53 @@ Panel {
   function updateDns(raw) {
     var value = String(raw || "").trim()
     dnsProvider = value || "DHCP"
+  }
+
+  function updateSpeedTestLine(line) {
+    var value = parseFloat(line)
+    if (!isFinite(value) || value < 0) return
+
+    if (speedTestPhase === "down") speedTestDownloadMbps = String(value)
+    else if (speedTestPhase === "up") speedTestUploadMbps = String(value)
+    speedTestError = ""
+  }
+
+  function runSpeedTest() {
+    if (speedTestProc.running) return
+    speedTestError = ""
+    speedTestHasRun = true
+    speedTestRunning = true
+    startSpeedTestPhase("down")
+  }
+
+  function startSpeedTestPhase(phase) {
+    speedTestExpectedStop = false
+    speedTestPhase = phase
+    speedTestStderr = ""
+    speedTestProc.command = ["omarchy-network-speedtest", phase]
+    speedTestProc.running = true
+    speedTestPhaseTimer.restart()
+  }
+
+  function stopSpeedTestPhase() {
+    speedTestPhaseTimer.stop()
+    if (speedTestProc.running) {
+      speedTestExpectedStop = true
+      speedTestProc.running = false
+      return
+    }
+    finishSpeedTestPhase()
+  }
+
+  function finishSpeedTestPhase() {
+    if (speedTestPhase === "down") {
+      startSpeedTestPhase("up")
+      return
+    }
+
+    speedTestPhase = ""
+    speedTestRunning = false
+    speedTestExpectedStop = false
   }
 
   function dnsCommand(provider) {
@@ -539,6 +601,35 @@ Panel {
       waitForEnd: true
       onStreamFinished: root.updateDns(text)
     }
+  }
+
+  Process {
+    id: speedTestProc
+    stdout: SplitParser { onRead: function(line) { root.updateSpeedTestLine(line) } }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.speedTestStderr = String(text || "").trim()
+    }
+    onExited: function(exitCode) {
+      speedTestPhaseTimer.stop()
+
+      if (!root.speedTestExpectedStop && exitCode !== 0) {
+        root.speedTestError = root.speedTestStderr || "Speed test failed"
+        root.speedTestPhase = ""
+        root.speedTestRunning = false
+        return
+      }
+
+      root.speedTestExpectedStop = false
+      root.finishSpeedTestPhase()
+    }
+  }
+
+  Timer {
+    id: speedTestPhaseTimer
+    interval: 5000
+    repeat: false
+    onTriggered: root.stopSpeedTestPhase()
   }
 
   // Action runner for DNS provider changes. Wi-Fi actions use the
@@ -838,21 +929,17 @@ Panel {
           columnSpacing: Style.space(20)
           rowSpacing: Style.spacing.labelGap
 
-          InfoLabel {
-            visible: root.hasPing
-            text: root.primaryPingLabel
-          }
+          InfoLabel { visible: root.hasInternetPing; text: "Ping" }
           DetailValue {
-            visible: root.hasPing
-            text: root.formatPingLatency(root.primaryPingLatency)
+            visible: root.hasInternetPing
+            text: root.formatPingLatency(root.internetPingLatency)
+            color: root.internetPingPacketLoss > 0 ? root.bar.urgent : root.bar.foreground
           }
-          InfoLabel {
-            visible: root.hasPing
-            text: root.hasSecondPing ? "Internet Ping" : ""
-          }
+          InfoLabel { visible: root.hasInternetPing; text: "Packet Loss" }
           DetailValue {
-            visible: root.hasPing
-            text: root.hasSecondPing ? root.formatPingLatency(root.internetPingLatency) : ""
+            visible: root.hasInternetPing
+            text: root.formatPacketLoss(root.internetPingPacketLoss)
+            color: root.internetPingPacketLoss > 0 ? root.bar.urgent : root.bar.foreground
           }
 
           InfoLabel { visible: root.info.rx_bytes !== undefined; text: "Receiving" }
@@ -884,6 +971,73 @@ Panel {
             text: root.info.gateway || ""
             copyable: !!root.info.gateway
             tooltipText: "Copy gateway"
+          }
+        }
+      }
+
+      PanelSeparator {
+        visible: !!root.info.iface
+        foreground: root.bar.foreground
+      }
+
+      Column {
+        visible: !!root.info.iface
+        width: parent.width
+        spacing: Style.space(12)
+
+        Column {
+          width: parent.width
+          spacing: Style.space(8)
+
+          Item {
+            width: parent.width
+            implicitHeight: Math.max(speedTestHeader.implicitHeight, speedRunButton.implicitHeight)
+
+            PanelSectionHeader {
+              id: speedTestHeader
+              text: "SPEED TEST"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Button {
+              id: speedRunButton
+              text: root.speedTestRunning ? "Running..." : "Run"
+              enabled: !root.speedTestRunning
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              fontSize: Style.font.bodySmall
+              horizontalPadding: Style.spacing.controlPaddingX
+              verticalPadding: Style.spacing.controlPaddingY
+              bordered: true
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              onClicked: root.runSpeedTest()
+            }
+          }
+
+          Row {
+            id: speedTestValues
+            visible: root.speedTestHasRun
+            width: parent.width
+            spacing: Style.space(20)
+
+            readonly property real cellWidth: Math.max(0, (width - spacing * 3) / 4)
+
+            InfoLabel { width: speedTestValues.cellWidth; text: "Download" }
+            DetailValue { width: speedTestValues.cellWidth; text: root.formatSpeedMbps(root.speedTestDownloadMbps) }
+            InfoLabel { width: speedTestValues.cellWidth; text: "Upload" }
+            DetailValue { width: speedTestValues.cellWidth; text: root.formatSpeedMbps(root.speedTestUploadMbps) }
+          }
+
+          InfoValue {
+            visible: root.speedTestError !== ""
+            text: root.speedTestError
+            color: root.bar.urgent
+            width: parent.width
+            elide: Text.ElideRight
           }
         }
       }

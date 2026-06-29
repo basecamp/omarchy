@@ -1,0 +1,90 @@
+#!/bin/bash
+
+# omarchy:summary=Measure live internet speed for one direction
+# omarchy:group=network
+# omarchy:args=[down|up]
+
+set -e
+
+direction="${1:-}"
+probe=1.1.1.1
+download_bytes=25000000
+upload_blocks=64
+
+case "$direction" in
+  down | up)
+    ;;
+  *)
+    echo "Usage: omarchy-network-speedtest [down|up]" >&2
+    exit 2
+    ;;
+esac
+
+format_mbps() {
+  awk -v value="$1" 'BEGIN {
+    if (value <= 0) print "0.0"
+    else if (value < 10) printf "%.1f\n", value
+    else printf "%.0f\n", value
+  }'
+}
+
+iface=$(ip route get "$probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
+
+if [[ -z $iface || ! -r /sys/class/net/$iface/statistics/rx_bytes || ! -r /sys/class/net/$iface/statistics/tx_bytes ]]; then
+  echo "No active network interface" >&2
+  exit 1
+fi
+
+if ! omarchy-cmd-present curl; then
+  echo "curl is required" >&2
+  exit 1
+fi
+
+traffic_pid=""
+
+cleanup() {
+  if [[ -n $traffic_pid ]]; then
+    pkill -TERM -P "$traffic_pid" 2>/dev/null || true
+    kill "$traffic_pid" 2>/dev/null || true
+    wait "$traffic_pid" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
+if [[ $direction == "down" ]]; then
+  while true; do
+    curl -fsS -o /dev/null "https://speed.cloudflare.com/__down?bytes=$download_bytes" 2>/dev/null || exit
+  done &
+else
+  while true; do
+    dd if=/dev/zero bs=1M count="$upload_blocks" 2>/dev/null | curl -fsS -o /dev/null -X POST --data-binary @- "https://speed.cloudflare.com/__up" 2>/dev/null || exit
+  done &
+fi
+traffic_pid=$!
+
+rx_before=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
+tx_before=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
+
+while kill -0 "$traffic_pid" 2>/dev/null; do
+  sleep 1
+  rx_after=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
+  tx_after=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
+
+  if [[ $direction == "down" ]]; then
+    rate=$(awk -v before="$rx_before" -v after="$rx_after" 'BEGIN {
+      if (after < before) print 0
+      else print (after - before) * 8 / 1000000
+    }')
+  else
+    rate=$(awk -v before="$tx_before" -v after="$tx_after" 'BEGIN {
+      if (after < before) print 0
+      else print (after - before) * 8 / 1000000
+    }')
+  fi
+
+  format_mbps "$rate"
+  rx_before=$rx_after
+  tx_before=$tx_after
+done
+
+wait "$traffic_pid" 2>/dev/null || true
