@@ -302,9 +302,8 @@ Item {
 
   // Lifecycle hooks invoked by omarchy-shell summon/hide. shell.summon(id,
   // payloadJson) hands the JSON to open() here; shell.hide(id) calls close().
-  // External CLI callers can either go through `shell summon omarchy.image-
-  // picker` (JSON payload), or hit the dedicated `image-selector` IpcHandler
-  // below for the lower-level positional call that omarchy-menu-images uses.
+  // The shell host owns the stable `image-selector` IPC target and forwards
+  // those lower-level positional calls here.
   function open(payload) {
     var args = {}
     if (payload) {
@@ -344,44 +343,6 @@ Item {
       imagesLoaded = true
     } else if (imageRows) {
       loadRows(imageRows, false)
-    }
-  }
-
-  // IPC surface. All arguments are strings (Quickshell IPC marshalling).
-  // imageRows can contain newlines/tabs, so the CLI caller base64-encodes
-  // it; everything else passes through verbatim. The two boolean-like
-  // fields use the literal strings "true" or "false".
-  IpcHandler {
-    target: "image-selector"
-
-    function open(imageDirs: string,
-                  imageRowsB64: string,
-                  selectedImage: string,
-                  selectionFile: string,
-                  doneFile: string,
-                  showLabels: string,
-                  filterable: string): string {
-      var rows = Util.decodeBase64(imageRowsB64)
-      root.openSelector(imageDirs, rows, selectedImage, selectionFile, doneFile,
-                        showLabels, filterable)
-      return "ok"
-    }
-
-    function preload(imageRowsB64: string,
-                     selectedImage: string,
-                     showLabels: string,
-                     filterable: string): string {
-      var rows = Util.decodeBase64(imageRowsB64)
-      root.preloadRows(rows, selectedImage, showLabels, filterable)
-      return "ok"
-    }
-
-    function cancel(doneFile: string): void {
-      root.closeSelector(doneFile || "")
-    }
-
-    function ping(): string {
-      return "ok"
     }
   }
 

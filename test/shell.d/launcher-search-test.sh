@@ -5,7 +5,9 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 run_node_test <<'JS'
+const fs = require('fs')
 const search = requireFromRoot('shell/plugins/launcher/LauncherSearch.js')
+const launcherQml = fs.readFileSync(path.join(root, 'shell/plugins/launcher/Launcher.qml'), 'utf8')
 
 const entries = [
   {
@@ -65,4 +67,16 @@ assertEqual(acronymMatches[0], 'Google Contacts', 'short acronym matching still 
 
 const directMatches = search.sortedEntries(entries, 'obs').map(row => search.entryName(row.entry))
 assertEqual(directMatches[0], 'OBS Studio', 'direct app-name matching still works')
+
+assert(
+  /function select\(delta\)[\s\S]*root\.hoverArmed = false[\s\S]*root\.selectedIndex =/.test(launcherQml),
+  'launcher keyboard navigation disarms stale hover before moving selection'
+)
+
+const confirmDeleteMatch = launcherQml.match(/function confirmDelete\(\) \{([\s\S]*?)\n  \}/)
+assert(confirmDeleteMatch, 'launcher confirmDelete function exists')
+assert(
+  !confirmDeleteMatch[1].includes('root.dismiss()'),
+  'launcher delete keeps launcher open after confirmation'
+)
 JS

@@ -233,12 +233,14 @@ Item {
     root.filterText = nextFilter
     root.selectedIndex = 0
     root.cursorActive = true
+    root.hoverArmed = false
     root.rebuildDisplay()
   }
 
   function select(delta) {
     if (displayModel.count === 0) return
     root.cursorActive = true
+    root.hoverArmed = false
     root.selectedIndex = (root.selectedIndex + delta + displayModel.count) % displayModel.count
     resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
   }
@@ -276,7 +278,6 @@ Item {
     var desktopId = String(entry.id || "")
     var name = root.entryName(entry)
     root.cancelDelete()
-    root.dismiss()
     Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-remove-launcher-entry", desktopId, name])
   }
 
@@ -457,6 +458,7 @@ Item {
           } else if (event.key === Qt.Key_Home) {
             if (displayModel.count > 0) {
               root.cursorActive = true
+              root.hoverArmed = false
               root.selectedIndex = 0
               resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
             }
@@ -464,6 +466,7 @@ Item {
           } else if (event.key === Qt.Key_End) {
             if (displayModel.count > 0) {
               root.cursorActive = true
+              root.hoverArmed = false
               root.selectedIndex = displayModel.count - 1
               resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
             }

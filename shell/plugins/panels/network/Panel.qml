@@ -20,7 +20,7 @@ Panel {
   }
 
   // Live connection details from `ip` / /sys / iw.
-  property var info: ({})  // { iface, type, ip, prefix, gateway, speed, duplex, ssid, signal, freq, bitrate, rx_bytes, tx_bytes }
+  property var info: ({})  // { iface, type, ip, prefix, gateway, speed, duplex, ssid, signal, freq, bitrate, rx_bytes, tx_bytes, router_ping_ms, internet_ping_ms }
 
   // Throughput tracking. Rates are computed as deltas between successive
   // `omarchy-network-status --verbose` samples (~1.5s apart via detailsPoll).
@@ -32,6 +32,18 @@ Panel {
   property string prevIface: ""
   property real downloadRate: 0  // bytes/sec
   property real uploadRate: 0    // bytes/sec
+  property string pingIface: ""
+  property var routerPingSamples: []
+  property var internetPingSamples: []
+  property real routerPingLatency: -1
+  property real internetPingLatency: -1
+  readonly property int pingWindow: 5
+  readonly property bool hasRouterPing: routerPingSamples.length > 0
+  readonly property bool hasInternetPing: internetPingSamples.length > 0
+  readonly property bool hasPing: hasRouterPing || hasInternetPing
+  readonly property bool hasSecondPing: hasRouterPing && hasInternetPing
+  readonly property string primaryPingLabel: hasRouterPing ? "Router Ping" : (hasInternetPing ? "Internet Ping" : "")
+  readonly property real primaryPingLatency: hasRouterPing ? routerPingLatency : internetPingLatency
   property int connectionPhraseIndex: 0
   readonly property var connectionPhrases: [
     "Wiring bits",
@@ -141,6 +153,11 @@ Panel {
       prevSampleTime = 0
       downloadRate = 0
       uploadRate = 0
+      pingIface = ""
+      routerPingSamples = []
+      internetPingSamples = []
+      routerPingLatency = -1
+      internetPingLatency = -1
       if (wifiDevice) wifiDevice.scannerEnabled = false
     }
   }
@@ -279,6 +296,7 @@ Panel {
     var next = Model.parseKeyValue(raw)
     info = next
     updateThroughput(next)
+    updatePingLatency(next)
   }
 
   function updateThroughput(next) {
@@ -299,12 +317,30 @@ Panel {
     uploadRate = state.uploadRate
   }
 
+  function updatePingLatency(next) {
+    var state = Model.pingLatencyState({
+      pingIface: pingIface,
+      routerPingSamples: routerPingSamples,
+      internetPingSamples: internetPingSamples
+    }, next, pingWindow)
+
+    pingIface = state.pingIface
+    routerPingSamples = state.routerPingSamples
+    internetPingSamples = state.internetPingSamples
+    routerPingLatency = state.routerPingLatency
+    internetPingLatency = state.internetPingLatency
+  }
+
   function formatBytes(bytes) {
     return Model.formatBytes(bytes)
   }
 
   function formatRate(bytesPerSec) {
     return Model.formatRate(bytesPerSec)
+  }
+
+  function formatPingLatency(ms) {
+    return Model.formatPingLatency(ms)
   }
 
   function findDevice(type) {
@@ -353,7 +389,7 @@ Panel {
   }
 
   function dnsCommand(provider) {
-    var command = root.bar ? Util.shellQuote(root.bar.omarchyPath + "/bin/omarchy-dns") : "omarchy-dns"
+    var command = "omarchy-dns"
     if (provider) command += " " + Util.shellQuote(provider)
     return command
   }
@@ -362,7 +398,7 @@ Panel {
     if (!root.bar || !provider || actionProc.running) return
 
     if (provider === "Custom") {
-      var launcher = Util.shellQuote(root.bar.omarchyPath + "/bin/omarchy-launch-floating-terminal-with-presentation")
+      var launcher = "omarchy-launch-floating-terminal-with-presentation"
       root.bar.run(launcher + " " + Util.shellQuote(root.dnsCommand(provider)))
       root.close()
       return
@@ -473,7 +509,7 @@ Panel {
   // Pulls everything we want about the active route's interface in one shot.
   Process {
     id: detailsProc
-    command: [root.bar ? root.bar.omarchyPath + "/bin/omarchy-network-status" : "omarchy-network-status", "--verbose"]
+    command: ["omarchy-network-status", "--verbose"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateDetails(text)
@@ -801,6 +837,23 @@ Panel {
           columns: 4
           columnSpacing: Style.space(20)
           rowSpacing: Style.spacing.labelGap
+
+          InfoLabel {
+            visible: root.hasPing
+            text: root.primaryPingLabel
+          }
+          DetailValue {
+            visible: root.hasPing
+            text: root.formatPingLatency(root.primaryPingLatency)
+          }
+          InfoLabel {
+            visible: root.hasPing
+            text: root.hasSecondPing ? "Internet Ping" : ""
+          }
+          DetailValue {
+            visible: root.hasPing
+            text: root.hasSecondPing ? root.formatPingLatency(root.internetPingLatency) : ""
+          }
 
           InfoLabel { visible: root.info.rx_bytes !== undefined; text: "Receiving" }
           DetailValue { visible: root.info.rx_bytes !== undefined; text: root.formatRate(root.downloadRate) }
@@ -1293,7 +1346,7 @@ Panel {
   // Bar.qml does not need to mirror network state.
   Process {
     id: networkProc
-    command: [root.bar ? root.bar.omarchyPath + "/bin/omarchy-network-status" : "omarchy-network-status"]
+    command: ["omarchy-network-status"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateNetwork(text)

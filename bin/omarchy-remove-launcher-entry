@@ -20,12 +20,14 @@ if [[ $desktop_file_name != *.desktop ]]; then
   desktop_file_name="$desktop_file_name.desktop"
 fi
 
+user_desktop_dirs=()
 desktop_dirs=()
 if [[ -n ${XDG_DATA_HOME-} ]]; then
-  desktop_dirs+=("$XDG_DATA_HOME/applications")
+  user_desktop_dirs+=("$XDG_DATA_HOME/applications")
 else
-  desktop_dirs+=("$HOME/.local/share/applications")
+  user_desktop_dirs+=("$HOME/.local/share/applications")
 fi
+desktop_dirs+=("${user_desktop_dirs[@]}")
 
 if [[ -n ${XDG_DATA_DIRS-} ]]; then
   IFS=: read -ra data_dirs <<<"$XDG_DATA_DIRS"
@@ -50,17 +52,35 @@ if [[ -z $desktop_file ]]; then
   exit 1
 fi
 
+is_user_desktop_file() {
+  local dir desktop_dir
+
+  desktop_dir="${desktop_file%/*}"
+  for dir in "${user_desktop_dirs[@]}"; do
+    [[ $desktop_dir == $dir ]] && return 0
+  done
+
+  return 1
+}
+
 desktop_name="${desktop_file##*/}"
 desktop_name="${desktop_name%.desktop}"
 exec_line="$(sed -n 's/^Exec=//p' "$desktop_file" | head -1)"
 
 if [[ $exec_line =~ omarchy-launch-webapp|omarchy-webapp-handler ]]; then
-  omarchy-webapp-remove "$desktop_name"
+  OMARCHY_REMOVE_NOTIFY=false omarchy-webapp-remove "$desktop_name"
   exit 0
 fi
 
 if [[ $exec_line =~ (^|[[:space:]])(\$TERMINAL|xdg-terminal-exec)[[:space:]].*-e([[:space:]]|$) ]]; then
-  omarchy-tui-remove "$desktop_name"
+  OMARCHY_REMOVE_NOTIFY=false omarchy-tui-remove "$desktop_name"
+  exit 0
+fi
+
+if is_user_desktop_file; then
+  display_name="${entry_name:-$desktop_name}"
+  rm -f "$desktop_file"
+  update-desktop-database "${desktop_file%/*}" &>/dev/null || true
   exit 0
 fi
 
