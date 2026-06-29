@@ -8,6 +8,7 @@ run_node_test <<'JS'
 const fs = require('fs')
 const menu = requireFromRoot('shell/plugins/menu/MenuModel.js')
 const menuQml = fs.readFileSync(path.join(root, 'shell/plugins/menu/Menu.qml'), 'utf8')
+const defaultMenuJsonc = fs.readFileSync(path.join(root, 'default/omarchy/omarchy-menu.jsonc'), 'utf8')
 
 const parsed = menu.parseMenuJsonc(`
 {
@@ -86,6 +87,17 @@ assertDeepEqual(
     section: 'search'
   },
   'menu builds display rows'
+)
+
+const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
+const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
+assert(
+  defaultById['update.omarchy'].icon === defaultById['learn.omarchy'].icon,
+  'menu update Omarchy entry uses the menu-font Omarchy icon'
+)
+assert(
+  !defaultMenuJsonc.includes('\ue900'),
+  'menu entries do not use the private Omarchy bar-font glyph'
 )
 
 assert(
