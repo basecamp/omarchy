@@ -6,19 +6,68 @@
 TOGGLES_DIR="$HOME/.local/state/omarchy/toggles/hypr"
 CLAMSHELL_FLAG="$TOGGLES_DIR/internal-monitor-clamshell.lua"
 MANUAL_DISABLE_FLAG="$TOGGLES_DIR/internal-monitor-disable.lua"
+SCALE_STATE="$TOGGLES_DIR/internal-monitor-scale"
 
 INTERNAL=$(hyprctl monitors all -j | jq -r '.[] | select(.name | contains("eDP")).name' | head -n 1)
 
-read_monitor_scale() {
+valid_scale() {
+  [[ $1 =~ ^[0-9]+([.][0-9]+)?$ ]]
+}
+
+configured_monitor_scale() {
   local monitor_lua="$HOME/.config/hypr/monitors.lua"
-  [[ -f $monitor_lua ]] || { echo '"auto"'; return; }
+  [[ -f $monitor_lua ]] || return 0
   local scale
   scale=$(sed -n 's/^local omarchy_monitor_scale = //p' "$monitor_lua" | head -1)
   if [[ -z $scale ]]; then
     scale=$(sed -nE 's/^hl\.monitor\(\{ output = "", mode = "preferred", position = "auto", scale = ([^ ]+) \}\)/\1/p' "$monitor_lua" | head -1)
   fi
-  [[ -z $scale ]] && scale='"auto"'
   echo "$scale"
+}
+
+current_internal_scale() {
+  [[ -n $INTERNAL ]] || return 0
+  hyprctl monitors all -j | jq -r --arg internal "$INTERNAL" '.[] | select(.name == $internal and .disabled != true) | .scale' | head -1
+}
+
+store_internal_scale() {
+  local scale="$1"
+  valid_scale "$scale" || return 0
+
+  mkdir -p "$TOGGLES_DIR"
+  printf '%s\n' "$scale" >"$SCALE_STATE"
+}
+
+remember_internal_scale() {
+  local scale
+  scale=$(current_internal_scale)
+  store_internal_scale "$scale"
+}
+
+read_monitor_scale() {
+  local scale
+  scale=$(configured_monitor_scale)
+  if valid_scale "$scale"; then
+    echo "$scale"
+    return
+  fi
+
+  scale=$(current_internal_scale)
+  if valid_scale "$scale"; then
+    store_internal_scale "$scale"
+    echo "$scale"
+    return
+  fi
+
+  if [[ -f $SCALE_STATE ]]; then
+    scale=$(<"$SCALE_STATE")
+    if valid_scale "$scale"; then
+      echo "$scale"
+      return
+    fi
+  fi
+
+  echo 2
 }
 
 enable_internal_output() {
@@ -48,6 +97,7 @@ enable_internal() {
   fi
 
   [[ -f $MANUAL_DISABLE_FLAG ]] && omarchy-hyprland-monitor-external-active && return 0
+  remember_internal_scale
   enable_internal_output
   dpms_internal enable
 }
@@ -57,6 +107,7 @@ disable_internal() {
   [[ -f $MANUAL_DISABLE_FLAG ]] && return 0
 
   mkdir -p "$TOGGLES_DIR"
+  remember_internal_scale
 
   local config
   config=$(printf 'hl.monitor({ output = "%s", disabled = true })' "$INTERNAL")
