@@ -5,6 +5,7 @@
 # omarchy:args=[--verbose]
 
 verbose=false
+internet_probe=1.1.1.1
 
 case "${1:-}" in
   "")
@@ -21,7 +22,7 @@ esac
 print_status() {
   local device nm state ssid signal freq
 
-  device=$(ip route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
+  device=$(ip route get "$internet_probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
 
   if [[ -z $device ]]; then
     printf 'disconnected\t\t\t\n'
@@ -52,10 +53,44 @@ print_status() {
   printf 'wifi\t%s\t\t\n' "$device"
 }
 
+ping_latency_ms() {
+  local host=$1
+
+  LC_ALL=C ping -n -c 1 -W 1 "$host" 2>/dev/null | awk -F'time[=<]' '/time[=<]/ { split($2, parts, " "); print parts[1]; exit }'
+}
+
+print_ping_samples() {
+  local gateway=$1
+  local tmpdir router_file internet_file
+  local router_pid="" internet_pid=""
+
+  omarchy-cmd-present ping || return
+  tmpdir=$(mktemp -d) || return
+  router_file="$tmpdir/router"
+  internet_file="$tmpdir/internet"
+
+  if [[ -n $gateway ]]; then
+    ping_latency_ms "$gateway" >"$router_file" &
+    router_pid=$!
+  fi
+
+  ping_latency_ms "$internet_probe" >"$internet_file" &
+  internet_pid=$!
+
+  if [[ -n $router_pid ]]; then
+    wait "$router_pid"
+    printf 'router_ping_ms\t%s\n' "$(cat "$router_file")"
+  fi
+
+  wait "$internet_pid"
+  printf 'internet_ping_ms\t%s\n' "$(cat "$internet_file")"
+  rm -rf "$tmpdir"
+}
+
 print_verbose() {
   local route_json iface gw src prefix link
 
-  route_json=$(ip -j route get 1.1.1.1 2>/dev/null)
+  route_json=$(ip -j route get "$internet_probe" 2>/dev/null)
   [[ -z $route_json ]] && return
 
   iface=$(jq -r '.[0].dev // ""' <<<"$route_json" 2>/dev/null)
@@ -96,6 +131,8 @@ print_verbose() {
     [[ -r /sys/class/net/$iface/speed ]] && printf 'speed\t%s\n' "$(cat /sys/class/net/$iface/speed)"
     [[ -r /sys/class/net/$iface/duplex ]] && printf 'duplex\t%s\n' "$(cat /sys/class/net/$iface/duplex)"
   fi
+
+  print_ping_samples "$gw"
 }
 
 if [[ $verbose == "true" ]]; then
