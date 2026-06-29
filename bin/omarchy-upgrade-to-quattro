@@ -281,7 +281,7 @@ case "$channel" in
     ;;
   rc)
     mirror_server='https://rc-mirror.omarchy.org/$repo/os/$arch'
-    package_server='https://pkgs.omarchy.org/rc/$arch'
+    package_server='https://pkgs.omarchy.org/edge/$arch'
     ;;
   edge)
     mirror_server='https://mirror.omarchy.org/$repo/os/$arch'

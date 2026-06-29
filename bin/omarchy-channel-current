@@ -12,9 +12,10 @@ if [[ $OMARCHY_PATH != "/usr/share/omarchy" ]]; then
   exit 0
 fi
 
-# omarchy-dev / omarchy-settings-dev are only shipped from the edge mirror, so
-# their presence alone means edge. omarchy / omarchy-settings come from either
-# the stable or rc mirror, distinguished by omarchy-version-channel.
+# omarchy-dev / omarchy-settings-dev are only shipped from the edge package
+# repo, so their presence alone means edge. omarchy / omarchy-settings come
+# from either the stable or rc mirror, distinguished by omarchy-version-channel
+# (which reports the mirror as its first token).
 if pacman -Q omarchy-dev omarchy-settings-dev >/dev/null 2>&1; then
   echo edge
 elif pacman -Q omarchy omarchy-settings >/dev/null 2>&1; then
