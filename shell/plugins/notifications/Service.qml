@@ -109,9 +109,11 @@ Item {
   }
 
   function requestedDuration(expireTimeout) {
-    var seconds = Number(expireTimeout || 0)
-    if (!isFinite(seconds) || seconds <= 0) return 0
-    return Math.round(seconds * 1000)
+    // FreeDesktop notification spec (and Quickshell) report expireTimeout in
+    // milliseconds, so pass it through directly.
+    var ms = Number(expireTimeout || 0)
+    if (!isFinite(ms) || ms <= 0) return 0
+    return Math.round(ms)
   }
 
   // DND bypass: only let through notifications we trust to be intentional
