@@ -16,6 +16,7 @@ if lspci -nn | grep -q "106b:180[12]"; then
   cat <<EOF | sudo tee /etc/systemd/system/omarchy-pm-async-suspend-fix.service >/dev/null
 [Unit]
 Description=Omarchy synchronous device-suspend fix for T2 MacBook
+ConditionPathExists=/sys/power/pm_async
 
 [Service]
 Type=oneshot
