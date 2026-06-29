@@ -14,30 +14,5 @@ shell_quote() {
   printf "'"
 }
 
-lua_quote() {
-  local value=$1
-
-  value=${value//\\/\\\\}
-  value=${value//\"/\\\"}
-  value=${value//$'\n'/\\n}
-  printf '"%s"' "$value"
-}
-
-active_workspace() {
-  hyprctl activeworkspace -j 2>/dev/null | jq -r '.name // .id // empty' 2>/dev/null
-}
-
 terminal_command="setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.terminal --title=Omarchy -e bash -c $(shell_quote "$presentation_script")"
-workspace="${OMARCHY_LAUNCH_WORKSPACE:-}"
-
-if [[ -z $workspace ]] && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && omarchy-cmd-present hyprctl && omarchy-cmd-present jq; then
-  workspace="$(active_workspace)"
-fi
-
-if [[ -n $workspace ]] && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && omarchy-cmd-present hyprctl; then
-  if hyprctl dispatch "function() hl.exec_cmd($(lua_quote "$terminal_command"), { workspace = $(lua_quote "$workspace") }) end" >/dev/null 2>&1; then
-    exit 0
-  fi
-fi
-
-exec setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.terminal --title=Omarchy -e bash -c "$presentation_script"
+exec omarchy-hyprland-launch "$terminal_command"

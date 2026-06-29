@@ -80,11 +80,18 @@ assert(
   'launcher delete keeps launcher open after confirmation'
 )
 assert(
-  confirmDeleteMatch[1].includes('OMARCHY_LAUNCH_WORKSPACE='),
-  'launcher delete passes launch workspace to remover'
+  confirmDeleteMatch[1].includes('Util.hyprExecCommand(command)'),
+  'launcher delete routes remover through Hyprland'
+)
+
+const activateMatch = launcherQml.match(/function activateIndex\(index\) \{([\s\S]*?)\n  \}/)
+assert(activateMatch, 'launcher activateIndex function exists')
+assert(
+  !activateMatch[1].includes('entry.execute()'),
+  'launcher does not execute desktop entries directly'
 )
 assert(
-  launcherQml.includes('function focusedWorkspaceName()'),
-  'launcher captures focused workspace'
+  activateMatch[1].includes('gtk-launch') && activateMatch[1].includes('Util.hyprExecCommand'),
+  'launcher routes desktop entry launch through Hyprland'
 )
 JS

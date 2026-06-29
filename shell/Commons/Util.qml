@@ -1,10 +1,13 @@
 pragma Singleton
+import Quickshell
 import QtQuick
 
 // Shared utility helpers used across plugins. Pure functions only — no
 // state. Anything stateful belongs on Color, Style, or a service.
 QtObject {
   id: root
+
+  readonly property string omarchyPath: Quickshell.env("OMARCHY_PATH")
 
   function clamp(value, min, max) {
     var n = Number(value)
@@ -38,15 +41,8 @@ QtObject {
     return "'" + String(value || "").replace(/'/g, "'\\''") + "'"
   }
 
-  function luaQuote(value) {
-    return "\"" + String(value || "")
-      .replace(/\\/g, "\\\\")
-      .replace(/"/g, "\\\"")
-      .replace(/\n/g, "\\n") + "\""
-  }
-
   function hyprExecCommand(command) {
-    return ["hyprctl", "dispatch", "hl.dsp.exec_cmd(" + luaQuote(command) + ")"]
+    return [omarchyPath + "/bin/omarchy-hyprland-launch", command]
   }
 
   function isPlainObject(value) {

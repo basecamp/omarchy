@@ -1,5 +1,4 @@
 import Quickshell
-import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Widgets
@@ -25,7 +24,6 @@ Item {
   property int launchSerial: 0
   property int launchToplevelCount: 0
   property var launchActiveToplevel: null
-  property string launchWorkspace: ""
   property bool launchOsdOpen: false
   property string launchOsdMessage: ""
   property var configuredHiddenEntryIds: ({})
@@ -77,7 +75,6 @@ Item {
       ? root.contentMargin * 2 + root.searchHeight + root.contentSpacing + requestedListHeight
       : 400
 
-    root.launchWorkspace = String(payload.workspace || "") || root.focusedWorkspaceName()
     root.opened = true
     root.filterText = payload.query || ""
     root.selectedIndex = 0
@@ -130,12 +127,6 @@ Item {
 
   function entrySearchText(entry) {
     return LauncherSearch.entrySearchText(entry)
-  }
-
-  function focusedWorkspaceName() {
-    var workspace = Hyprland.focusedWorkspace
-    if (!workspace) return ""
-    return String(workspace.name || workspace.id || "")
   }
 
   function isHiddenEntry(entry) {
@@ -259,9 +250,12 @@ Item {
     if (index < 0 || index >= root.filteredEntries.length) return
     var entry = root.filteredEntries[index]
     if (!entry) return
+    var desktopId = String(entry.id || "")
+    if (!desktopId) return
+
     root.beginLaunchFeedback(entry)
     root.dismiss()
-    entry.execute()
+    Quickshell.execDetached(Util.hyprExecCommand("gtk-launch " + Util.shellQuote(desktopId)))
   }
 
   function requestDeleteIndex(index) {
@@ -286,10 +280,9 @@ Item {
 
     var desktopId = String(entry.id || "")
     var name = root.entryName(entry)
-    var command = [root.omarchyPath + "/bin/omarchy-remove-launcher-entry", desktopId, name]
-    if (root.launchWorkspace !== "") command = ["env", "OMARCHY_LAUNCH_WORKSPACE=" + root.launchWorkspace].concat(command)
+    var command = Util.shellQuote(root.omarchyPath + "/bin/omarchy-remove-launcher-entry") + " " + Util.shellQuote(desktopId) + " " + Util.shellQuote(name)
     root.cancelDelete()
-    Quickshell.execDetached(command)
+    Quickshell.execDetached(Util.hyprExecCommand(command))
   }
 
   function beginLaunchFeedback(entry) {
