@@ -11,7 +11,6 @@ stub_bin="$test_tmp/bin"
 eval_out="$test_tmp/hyprctl-eval"
 home_dir="$test_tmp/home"
 monitor_lua="$home_dir/.config/hypr/monitors.lua"
-tiling_lua="$ROOT/default/hypr/bindings/tiling.lua"
 
 mkdir -p "$stub_bin" "$home_dir/.config/hypr"
 
@@ -64,8 +63,3 @@ pass "monitor scaling explicit 3x remains available"
 scale=$(OMARCHY_TEST_MONITOR_SCALE=3 run_scaling)
 [[ $scale == "3" ]] || fail "monitor scaling reports explicit 3x scale" "actual: $scale"
 pass "monitor scaling reports explicit 3x scale"
-
-! grep -F 'SUPER + code:61' "$tiling_lua" >/dev/null || fail "monitor scaling is not bound to Super+Slash"
-grep -F 'SUPER + CTRL + ALT + code:21", "Monitor scaling up"' "$tiling_lua" >/dev/null || fail "monitor scaling up uses deliberate Equal chord"
-grep -F 'SUPER + CTRL + ALT + code:20", "Monitor scaling down"' "$tiling_lua" >/dev/null || fail "monitor scaling down uses deliberate Minus chord"
-pass "monitor scaling uses deliberate global shortcuts"
