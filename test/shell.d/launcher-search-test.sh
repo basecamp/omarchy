@@ -69,8 +69,20 @@ const directMatches = search.sortedEntries(entries, 'obs').map(row => search.ent
 assertEqual(directMatches[0], 'OBS Studio', 'direct app-name matching still works')
 
 assert(
-  /function select\(delta\)[\s\S]*root\.hoverArmed = false[\s\S]*root\.selectedIndex =/.test(launcherQml),
+  /function select\(delta\)[\s\S]*root\.disarmHover\(\)[\s\S]*root\.selectedIndex =/.test(launcherQml),
   'launcher keyboard navigation disarms stale hover before moving selection'
+)
+assert(
+  /function pointerMovedInCard\(item, mouse\)[\s\S]*item\.mapToItem\(card, mouse\.x, mouse\.y\)/.test(launcherQml),
+  'launcher compares pointer movement in card coordinates'
+)
+assert(
+  /function selectFromPointer\(index, item, mouse\)[\s\S]*pointerMovedInCard\(item, mouse\)[\s\S]*root\.selectedIndex = index/.test(launcherQml),
+  'launcher only selects from pointer after real movement'
+)
+assert(
+  /onPositionChanged: function\(mouse\) \{\s*root\.selectFromPointer\(row\.index, row, mouse\)\s*\}/.test(launcherQml),
+  'launcher row hover routes through pointer movement gate'
 )
 
 const confirmDeleteMatch = launcherQml.match(/function confirmDelete\(\) \{([\s\S]*?)\n  \}/)
