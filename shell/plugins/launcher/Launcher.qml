@@ -173,15 +173,16 @@ Item {
   }
 
   function iconIndexScanCommand() {
-    // List app icons across the XDG icon dirs and /usr/share/pixmaps as
-    // "<path>" lines. SVGs are emitted before PNGs so the parser, which keeps
-    // the first hit per name, prefers a scalable icon over a fixed-size one.
+    // List app/device icons across the XDG icon dirs and /usr/share/pixmaps as
+    // "<path>" lines. Some desktop entries, such as Print Settings, use device
+    // icons like "printer" instead of app icons. SVGs are emitted before PNGs
+    // so the parser, which keeps the first hit per name, prefers scalable icons.
     return [
       'dirs="$HOME/.icons $HOME/.local/share/icons";',
       'IFS=":"; for d in ${XDG_DATA_DIRS:-/usr/local/share:/usr/share}; do dirs="$dirs $d/icons"; done; unset IFS;',
       'for ext in svg png; do',
       '  for base in $dirs; do',
-      '    [ -d "$base" ] && find "$base" -path "*/apps/*" -name "*.$ext" 2>/dev/null;',
+      '    [[ -d $base ]] && find "$base" \\( -path "*/apps/*" -o -path "*/devices/*" \\) -name "*.$ext" 2>/dev/null;',
       '  done;',
       '  find /usr/share/pixmaps -maxdepth 1 -name "*.$ext" 2>/dev/null;',
       'done'
