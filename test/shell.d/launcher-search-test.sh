@@ -79,4 +79,12 @@ assert(
   !confirmDeleteMatch[1].includes('root.dismiss()'),
   'launcher delete keeps launcher open after confirmation'
 )
+assert(
+  confirmDeleteMatch[1].includes('OMARCHY_LAUNCH_WORKSPACE='),
+  'launcher delete passes launch workspace to remover'
+)
+assert(
+  launcherQml.includes('function focusedWorkspaceName()'),
+  'launcher captures focused workspace'
+)
 JS
