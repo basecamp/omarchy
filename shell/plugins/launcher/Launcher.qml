@@ -20,6 +20,8 @@ Item {
   property int selectedIndex: 0
   property bool cursorActive: true
   property bool hoverArmed: false
+  property real lastPointerX: -1
+  property real lastPointerY: -1
   property var filteredEntries: []
   property int launchSerial: 0
   property int launchToplevelCount: 0
@@ -79,7 +81,7 @@ Item {
     root.filterText = payload.query || ""
     root.selectedIndex = 0
     root.cursorActive = true
-    root.hoverArmed = false
+    root.disarmHover()
     root.rebuildDisplay()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -128,6 +130,28 @@ Item {
 
   function entrySearchText(entry) {
     return LauncherSearch.entrySearchText(entry)
+  }
+
+  function disarmHover() {
+    root.hoverArmed = false
+    root.lastPointerX = -1
+    root.lastPointerY = -1
+  }
+
+  function pointerMovedInCard(item, mouse) {
+    var point = item.mapToItem(card, mouse.x, mouse.y)
+    var moved = root.lastPointerX >= 0
+      && (Math.abs(point.x - root.lastPointerX) > 1 || Math.abs(point.y - root.lastPointerY) > 1)
+    root.lastPointerX = point.x
+    root.lastPointerY = point.y
+    return moved
+  }
+
+  function selectFromPointer(index, item, mouse) {
+    if (!root.pointerMovedInCard(item, mouse)) return
+    root.hoverArmed = true
+    root.cursorActive = true
+    root.selectedIndex = index
   }
 
   function isHiddenEntry(entry) {
@@ -234,14 +258,14 @@ Item {
     root.filterText = nextFilter
     root.selectedIndex = 0
     root.cursorActive = true
-    root.hoverArmed = false
+    root.disarmHover()
     root.rebuildDisplay()
   }
 
   function select(delta) {
     if (displayModel.count === 0) return
     root.cursorActive = true
-    root.hoverArmed = false
+    root.disarmHover()
     root.selectedIndex = (root.selectedIndex + delta + displayModel.count) % displayModel.count
     resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
   }
@@ -272,6 +296,7 @@ Item {
     root.deleteConfirmOpen = false
     root.deleteEntry = null
     deleteConfirm.selectedIndex = 1
+    root.disarmHover()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
@@ -463,7 +488,7 @@ Item {
           } else if (event.key === Qt.Key_Home) {
             if (displayModel.count > 0) {
               root.cursorActive = true
-              root.hoverArmed = false
+              root.disarmHover()
               root.selectedIndex = 0
               resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
             }
@@ -471,7 +496,7 @@ Item {
           } else if (event.key === Qt.Key_End) {
             if (displayModel.count > 0) {
               root.cursorActive = true
-              root.hoverArmed = false
+              root.disarmHover()
               root.selectedIndex = displayModel.count - 1
               resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
             }
@@ -611,9 +636,7 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onPositionChanged: function(mouse) {
-                  root.hoverArmed = true
-                  root.cursorActive = true
-                  root.selectedIndex = row.index
+                  root.selectFromPointer(row.index, row, mouse)
                 }
                 onContainsMouseChanged: if (containsMouse && root.hoverArmed) {
                   root.cursorActive = true
