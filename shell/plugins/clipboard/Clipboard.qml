@@ -14,6 +14,8 @@ Item {
   property string filterText: ""
   property int selectedIndex: 0
   property bool cursorActive: false
+  property real lastPointerX: -1
+  property real lastPointerY: -1
   property bool clearConfirmOpen: false
   property var history: []
 
@@ -45,6 +47,7 @@ Item {
     root.filterText = ""
     root.selectedIndex = 0
     root.cursorActive = true
+    root.disarmPointer()
     root.rebuildDisplay()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -97,6 +100,7 @@ Item {
 
   function cancelClearHistory() {
     root.clearConfirmOpen = false
+    root.disarmPointer()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
@@ -105,6 +109,7 @@ Item {
     root.saveHistory()
     root.selectedIndex = 0
     root.cursorActive = false
+    root.disarmPointer()
     root.clearConfirmOpen = false
     root.rebuildDisplay()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
@@ -124,6 +129,7 @@ Item {
       root.selectedIndex = displayModel.count - 2
     }
 
+    root.disarmPointer()
     root.rebuildDisplay()
   }
 
@@ -155,6 +161,7 @@ Item {
 
   function select(delta) {
     if (displayModel.count === 0) return
+    root.disarmPointer()
     if (!cursorActive) {
       cursorActive = true
       selectedIndex = delta < 0 ? displayModel.count - 1 : 0
@@ -168,7 +175,28 @@ Item {
     root.filterText = nextFilter
     root.selectedIndex = 0
     root.cursorActive = true
+    root.disarmPointer()
     root.rebuildDisplay()
+  }
+
+  function disarmPointer() {
+    root.lastPointerX = -1
+    root.lastPointerY = -1
+  }
+
+  function pointerMovedInCard(item, mouse) {
+    var point = item.mapToItem(card, mouse.x, mouse.y)
+    var moved = root.lastPointerX >= 0
+      && (Math.abs(point.x - root.lastPointerX) > 1 || Math.abs(point.y - root.lastPointerY) > 1)
+    root.lastPointerX = point.x
+    root.lastPointerY = point.y
+    return moved
+  }
+
+  function selectFromPointer(index, item, mouse) {
+    if (!root.pointerMovedInCard(item, mouse)) return
+    root.cursorActive = true
+    root.selectedIndex = index
   }
 
   function activateIndex(index) {
@@ -406,6 +434,7 @@ Item {
                 boundsBehavior: Flickable.StopAtBounds
 
                 delegate: Rectangle {
+                  id: row
                   required property int index
                   required property string entryType
                   required property string previewText
@@ -455,14 +484,13 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onContainsMouseChanged: if (containsMouse) {
-                      root.cursorActive = true
-                      root.selectedIndex = index
+                    onPositionChanged: function(mouse) {
+                      root.selectFromPointer(row.index, row, mouse)
                     }
                     onClicked: {
                       root.cursorActive = true
-                      root.selectedIndex = index
-                      root.activateIndex(index)
+                      root.selectedIndex = row.index
+                      root.activateIndex(row.index)
                     }
                   }
                 }
