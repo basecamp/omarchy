@@ -46,8 +46,7 @@ done
 confirm() {
   local prompt="$1"
   ((ASSUME_YES)) && return 0
-  if command -v gum >/dev/null 2>&1 && interactive; then gum confirm "$prompt"; return; fi
-  if interactive; then local reply; read -r -p "$prompt [y/N] " reply; [[ $reply == [yY]* ]]; return; fi
+  if interactive; then gum confirm "$prompt"; return; fi
   fail "refusing to remove without confirmation; pass --yes"
 }
 
@@ -57,13 +56,7 @@ if [[ -z $PLUGIN_ID ]]; then
   mapfile -t ids < <(find "$PLUGINS_DIR" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) ! -name '.*' -printf '%f\n' 2>/dev/null | sort)
   ((${#ids[@]})) || fail "no plugins installed"
   interactive || fail "a plugin-id is required"
-  if command -v gum >/dev/null 2>&1; then
-    PLUGIN_ID=$(printf '%s\n' "${ids[@]}" | gum choose --header="Remove which plugin?") || fail "cancelled"
-  elif command -v fzf >/dev/null 2>&1; then
-    PLUGIN_ID=$(printf '%s\n' "${ids[@]}" | fzf --prompt "Remove which plugin > ") || fail "cancelled"
-  else
-    fail "a plugin-id is required (gum or fzf needed for an interactive picker)"
-  fi
+  PLUGIN_ID=$(printf '%s\n' "${ids[@]}" | gum choose --header="Remove which plugin?") || fail "cancelled"
   [[ -n $PLUGIN_ID ]] || fail "nothing selected"
 fi
 

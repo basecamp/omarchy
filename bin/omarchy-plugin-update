@@ -69,8 +69,7 @@ require_command jq
 confirm() {
   local prompt="$1"
   ((ASSUME_YES)) && return 0
-  if command -v gum >/dev/null 2>&1 && interactive; then gum confirm "$prompt"; return; fi
-  if interactive; then local reply; read -r -p "$prompt [y/N] " reply; [[ $reply == [yY]* ]]; return; fi
+  if interactive; then gum confirm "$prompt"; return; fi
   fail "refusing to update without confirmation; pass --yes"
 }
 
@@ -148,13 +147,7 @@ else
   done
   [[ -n $outdated ]] || { echo "No updates available."; exit 0; }
   rows=$(awk -F '\t' 'NF{printf "%-28s  %s\n", $1, $2}' <<<"$outdated")
-  if command -v gum >/dev/null 2>&1; then
-    pick=$(gum choose --no-limit --header="Update which plugins? (space toggles, enter confirms)" <<<"$rows") || fail "cancelled"
-  elif command -v fzf >/dev/null 2>&1; then
-    pick=$(fzf --multi --prompt "Update which plugins (tab to mark) > " <<<"$rows") || fail "cancelled"
-  else
-    fail "a plugin-id is required (install gum or fzf for an interactive picker, or pass --all)"
-  fi
+  pick=$(gum choose --no-limit --header="Update which plugins? (space toggles, enter confirms)" <<<"$rows") || fail "cancelled"
   [[ -n $pick ]] || { echo "Nothing selected."; exit 0; }
   mapfile -t targets < <(awk '{print $1}' <<<"$pick")
 fi

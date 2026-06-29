@@ -751,35 +751,19 @@ clone_source_options() {
 choose_value() {
   local prompt="$1"
   shift
-  if command -v gum >/dev/null 2>&1; then
-    gum choose --header "$prompt" "$@"
-  else
-    printf '%s\n' "$@" | fzf --prompt "$prompt > "
-  fi
+  gum choose --header "$prompt" "$@"
 }
 
 input_value() {
   local prompt="$1"
   local value="${2:-}"
-  if command -v gum >/dev/null 2>&1; then
-    gum input --prompt "$prompt " --value "$value"
-  else
-    read -r -p "$prompt " value
-    printf '%s' "$value"
-  fi
+  gum input --prompt "$prompt " --value "$value"
 }
 
 choose_clone_source() {
   local selected
-  if command -v gum >/dev/null 2>&1; then
-    selected=$(clone_source_options | awk -F '\t' '{ printf "%-32s  %-15s  %s\n", $3, $2, $1 }' | gum filter --header "Clone plugin" --placeholder "Search built-in and user plugins..." --limit 1) || return 1
-    awk '{ print $NF }' <<<"$selected"
-  elif command -v fzf >/dev/null 2>&1; then
-    selected=$(clone_source_options | fzf --delimiter=$'\t' --with-nth=1,2,3 --prompt "Clone plugin > ") || return 1
-    cut -f1 <<<"$selected"
-  else
-    fail "gum or fzf is required for interactive clone selection"
-  fi
+  selected=$(clone_source_options | awk -F '\t' '{ printf "%-32s  %-15s  %s\n", $3, $2, $1 }' | gum filter --header "Clone plugin" --placeholder "Search built-in and user plugins..." --limit 1) || return 1
+  awk '{ print $NF }' <<<"$selected"
 }
 
 edit_source_options() {
@@ -795,15 +779,8 @@ edit_source_options() {
 
 choose_edit_source() {
   local selected
-  if command -v gum >/dev/null 2>&1; then
-    selected=$(edit_source_options | awk -F '\t' '{ printf "%-32s  %s\n", $2, $1 }' | gum filter --header "Edit plugin" --placeholder "Search user plugins..." --limit 1) || return 1
-    awk '{ print $NF }' <<<"$selected"
-  elif command -v fzf >/dev/null 2>&1; then
-    selected=$(edit_source_options | fzf --delimiter=$'\t' --with-nth=2,1 --prompt "Edit plugin > ") || return 1
-    cut -f1 <<<"$selected"
-  else
-    fail "gum or fzf is required for interactive plugin selection"
-  fi
+  selected=$(edit_source_options | awk -F '\t' '{ printf "%-32s  %s\n", $2, $1 }' | gum filter --header "Edit plugin" --placeholder "Search user plugins..." --limit 1) || return 1
+  awk '{ print $NF }' <<<"$selected"
 }
 
 validate_user_plugin_dir() {
