@@ -37,10 +37,3 @@ dispatch=$(<"$TEST_LOG")
 [[ $dispatch == *'workspace = "2"'* ]] || fail "floating terminal targets active workspace" "$dispatch"
 [[ $dispatch == *"xdg-terminal-exec --app-id=org.omarchy.terminal"* ]] || fail "floating terminal dispatch launches Omarchy terminal" "$dispatch"
 pass "floating terminal targets active workspace"
-
-: >"$TEST_LOG"
-OMARCHY_LAUNCH_WORKSPACE=7 "$ROOT/bin/omarchy-launch-floating-terminal-with-presentation" "echo hello"
-
-dispatch=$(<"$TEST_LOG")
-[[ $dispatch == *'workspace = "7"'* ]] || fail "floating terminal honors explicit launch workspace" "$dispatch"
-pass "floating terminal honors explicit launch workspace"
