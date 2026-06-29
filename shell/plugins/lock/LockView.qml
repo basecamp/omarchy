@@ -30,6 +30,16 @@ Item {
   readonly property var inputBorderSpec: errorState
     ? Border.surfaceSpec("lock", "border-error", Color.lock.borderError, root.outlineThickness, "border-alpha")
     : Border.surfaceSpec("lock", "border-active", Color.lock.borderActive, root.outlineThickness, "border-alpha")
+  readonly property var pulsedInputBorderSpec: ({
+    color: root.inputBorderSpec.color,
+    gradient: root.inputBorderSpec.gradient,
+    widths: {
+      top: root.inputBorderSpec.widths.top + root.inputBorderPulseWidth,
+      right: root.inputBorderSpec.widths.right + root.inputBorderPulseWidth,
+      bottom: root.inputBorderSpec.widths.bottom + root.inputBorderPulseWidth,
+      left: root.inputBorderSpec.widths.left + root.inputBorderPulseWidth,
+    },
+  })
 
   signal submitPassword(string password)
   signal passwordTextEdited(string password)
@@ -116,7 +126,7 @@ Item {
       anchors.centerIn: parent
       color: Color.lock.background
       borderSpec: root.inputBorderPulseWidth > 0 && !root.errorState
-        ? Border.surfaceSpec("lock", "border-active", Color.lock.borderActive, root.outlineThickness + root.inputBorderPulseWidth, "border-alpha")
+        ? root.pulsedInputBorderSpec
         : root.inputBorderSpec
       radius: Style.cornerRadius
       clip: true
