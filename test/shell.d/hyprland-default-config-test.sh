@@ -138,7 +138,7 @@ mkdir -p "$migration_home/.config/hypr"
 cat >"$migration_home/.config/hypr/bindings.lua" <<'LUA'
 require("default.hypr.bindings.media")
 require("default.hypr.bindings.clipboard")
-require("default.hypr.bindings.tiling-v2")
+require("default.hypr.bindings.tiling")
 require("default.hypr.bindings.utilities")
 
 -- Application bindings without Omarchy's preinstalled web apps, TUIs, or desktop apps.
