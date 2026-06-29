@@ -43,10 +43,6 @@ Item {
   readonly property int liveBarSize: shell && shell.bar && !shell.bar.barHidden ? Math.max(0, shell.bar.barSize) : defaultBarSize
   readonly property int barClearance: liveBarSize + Style.gapsOut
 
-  // Fired by IPC (`omarchy-shell notifications showHistory`) so the
-  // bar widget can drop its PopupCard from the same anchor a click would.
-  signal historyOpenRequested()
-
   // PersistentProperties handles in-process QML reloads. The on-disk
   // notifications.json file is the cross-restart backstop — its `dnd` key
   // is hydrated into persisted.doNotDisturb on startup and written back via
@@ -91,6 +87,7 @@ Item {
   ListModel { id: pastModel }
 
   readonly property int historyCap: 100
+  readonly property int historyReplayLimit: 5
   property var imageCacheQueue: []
 
   readonly property int lowPopupDuration: 5000
@@ -300,6 +297,31 @@ Item {
 
   function clearPopups() {
     while (popupModel.count > 0) dismissPopup(0)
+  }
+
+  function rowsFromModel(model) {
+    var rows = []
+    for (var i = 0; i < model.count; i++) {
+      var entry = model.get(i)
+      if (entry) rows.push(snapshotFromRow(entry))
+    }
+    return rows
+  }
+
+  function showRecentHistory() {
+    var rows = NotificationLogic.recentHistoryRows(
+      rowsFromModel(pendingModel),
+      rowsFromModel(pastModel),
+      service.historyReplayLimit,
+      NotificationUrgency.Normal)
+
+    if (rows.length === 0) return "none"
+
+    clearPopups()
+    for (var i = 0; i < rows.length; i++) {
+      popupModel.append(rows[i])
+    }
+    return "ok"
   }
 
   function dismissPending(index) {
@@ -629,8 +651,7 @@ Item {
     }
 
     function showHistory(): string {
-      service.historyOpenRequested()
-      return "ok"
+      return service.showRecentHistory()
     }
 
     // `clear` empties the past tab (the "I already saw these" bucket).

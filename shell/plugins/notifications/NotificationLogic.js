@@ -143,6 +143,37 @@ function parseHistory(raw, normalUrgency, historyCap) {
   }
 }
 
+function recentHistoryRows(pending, past, limit, normalUrgency) {
+  var max = limit === undefined || limit === null ? 5 : Number(limit)
+  if (isNaN(max)) max = 5
+  max = Math.max(0, max)
+
+  var values = []
+  function collect(rows) {
+    var source = Array.isArray(rows) ? rows : []
+    for (var i = 0; i < source.length; i++) {
+      if (source[i]) values.push(source[i])
+    }
+  }
+  collect(pending)
+  collect(past)
+
+  var keep = {}
+  for (var j = 0; j < values.length; j++) {
+    var row = values[j]
+    var key = row.originalId
+    if (key === undefined || key === null) key = row.id
+    if (key === undefined || key === null) key = "_" + j
+    var prior = keep[key]
+    if (!prior || (row.timestamp || 0) >= (prior.timestamp || 0)) keep[key] = row
+  }
+
+  var out = []
+  for (var id in keep) out.push(historyEntry(keep[id], normalUrgency))
+  out.sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0) })
+  return out.slice(0, max)
+}
+
 function dumpRows(rows) {
   var values = Array.isArray(rows) ? rows : []
   var out = []
@@ -205,6 +236,7 @@ if (typeof module !== "undefined") {
     historyEntry: historyEntry,
     dedupeByOriginalId: dedupeByOriginalId,
     parseHistory: parseHistory,
+    recentHistoryRows: recentHistoryRows,
     dumpRows: dumpRows,
     popupPlacement: popupPlacement,
     imageExtension: imageExtension
