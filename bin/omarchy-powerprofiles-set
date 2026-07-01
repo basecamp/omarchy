@@ -25,16 +25,41 @@ fi
 
 mapfile -t profiles < <(powerprofilesctl list | awk '/^\s*[* ]\s*[a-zA-Z0-9\-]+:$/ { gsub(/^[*[:space:]]+|:$/,""); print }')
 
-case "$action" in
-  ac)
-    # Prefer performance, fall back to balanced
-    if [[ " ${profiles[*]} " == *" performance "* ]]; then
-      powerprofilesctl set performance
-    else
+profile_available() { [[ " ${profiles[*]} " == *" $1 "* ]]; }
+
+# Optional user overrides in ~/.config/omarchy/power-profile, e.g.:
+#   battery=power-saver
+#   ac=performance
+# The user's home is derived from the script path because udev invokes us as
+# root via systemd-run, so $HOME is not the desktop user's home.
+script_path="$(readlink -f "$0")"
+user_home="${script_path%/.local/share/omarchy/bin/omarchy-powerprofiles-set}"
+config_file="${user_home}/.config/omarchy/power-profile"
+
+configured_profile=""
+if [[ -r $config_file ]]; then
+  while IFS='=' read -r key value; do
+    key="${key//[[:space:]]/}"
+    value="${value//[[:space:]]/}"
+    [[ $key == "$action" ]] && configured_profile="$value"
+  done <"$config_file"
+fi
+
+# Honor a valid user override; otherwise use the built-in defaults.
+if [[ -n $configured_profile ]] && profile_available "$configured_profile"; then
+  powerprofilesctl set "$configured_profile"
+else
+  case "$action" in
+    ac)
+      # Prefer performance, fall back to balanced
+      if profile_available performance; then
+        powerprofilesctl set performance
+      else
+        powerprofilesctl set balanced
+      fi
+      ;;
+    battery)
       powerprofilesctl set balanced
-    fi
-    ;;
-  battery)
-    powerprofilesctl set balanced
-    ;;
-esac
+      ;;
+  esac
+fi
