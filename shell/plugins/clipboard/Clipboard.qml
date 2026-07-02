@@ -19,7 +19,8 @@ Item {
 
   property string historyPath: Quickshell.env("HOME") + "/.local/state/omarchy/clipboard-history.json"
   property string captureScript: root.omarchyPath + "/shell/plugins/clipboard/capture.sh"
-  property string watchCommand: "script=$1\ntrap 'kill $(jobs -p) 2>/dev/null' EXIT\nOMARCHY_CLIPBOARD_WATCH_MIME=text wl-paste --type text --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/png wl-paste --type image/png --watch \"$script\" 2>/dev/null &\nwait"
+  property string initScript: root.omarchyPath + "/shell/plugins/clipboard/init.sh"
+  property string watchScript: root.omarchyPath + "/shell/plugins/clipboard/watch.sh"
   // Shares the [menu] surface tokens — themes that style the menu also
   // style the clipboard. Selected-row colors composed in the
   // singleton so consumers drop them straight into Rectangle bindings.
@@ -261,11 +262,11 @@ Item {
 
   Process {
     id: initProc
-    command: ["bash", "-c", "mkdir -p ~/.local/state/omarchy\nscript=$1\nfor pid in $(pgrep -x wl-paste || true); do\n  cmdline=$(tr '\\0' ' ' <\"/proc/$pid/cmdline\" 2>/dev/null || true)\n  if [[ $cmdline == *\"wl-paste --type text --watch $script \"* || $cmdline == *\"wl-paste --type \"*\" --watch $script \"* || $cmdline == *\"/shell/plugins/clipboard/capture.sh\"* ]]; then\n    kill \"$pid\" 2>/dev/null || true\n  fi\ndone", "clipboard-init", root.captureScript]
+    command: [root.initScript, root.captureScript]
     onExited: {
       currentProc.command = [root.captureScript]
       currentProc.running = true
-      watchProc.command = ["bash", "-c", root.watchCommand, "clipboard-watch", root.captureScript]
+      watchProc.command = [root.watchScript, root.captureScript]
       watchProc.running = true
     }
   }
