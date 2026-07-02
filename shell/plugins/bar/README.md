@@ -14,9 +14,9 @@ the shell for its whole session.
 
 ## Customizing
 
-The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](../../README.md#shelljson-shape). Out of the box the shell uses [`config/omarchy/shell.json`](../../../config/omarchy/shell.json). Once you customize anything via the inline bar config panel, `omarchy plugin bar ...`, or by editing shell.json directly, your file is canonical — there is no deep-merge.
+The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](../../README.md#shelljson-shape). Out of the box the shell uses [`config/omarchy/shell.json`](../../../config/omarchy/shell.json). Once you customize anything via the inline bar config panel, `omarchy bar ...`, or by editing shell.json directly, your file is canonical — there is no deep-merge.
 
-Open quick position and transparency controls with `omarchy launch bar settings` / `omarchy plugin bar settings` (or run `omarchy-launch-bar-settings`). You can also hover the centered clock module to reveal the inline bar config button. For scriptable widget changes, use `omarchy plugin bar list`, `omarchy plugin bar add`, `omarchy plugin bar move`, `omarchy plugin bar remove`, and `omarchy plugin bar set`. Double-left-click empty center-bar space to toggle bar transparency.
+Open quick position and transparency controls with `omarchy bar settings` (or run `omarchy-launch-bar-settings`). You can also hover the centered clock module to reveal the inline bar config button. For scriptable widget changes, use `omarchy bar list`, `omarchy bar add`, `omarchy bar move`, `omarchy bar remove`, and `omarchy bar set`. Double-left-click empty center-bar space to toggle bar transparency.
 
 Example `shell.json` (bar subtree only shown):
 
@@ -181,4 +181,4 @@ Third-party widgets ship as separate plugins under
 declaring `kinds: ["bar-widget"]` and a `barWidget` entry point. See
 [../../README.md](../../README.md) for the manifest schema. Enable,
 rescan, and place third-party plugins with `omarchy plugin enable`,
-`omarchy plugin rescan`, and `omarchy plugin bar add`.
+`omarchy plugin rescan`, and `omarchy bar add`.

@@ -220,7 +220,7 @@ for panel_id in omarchy.audio omarchy.bluetooth omarchy.monitor omarchy.network 
 done
 pass "direct panel IPC opens and closes default panels"
 
-HOME="$test_home" OMARCHY_PATH="$test_root" PATH="$ROOT/bin:$PATH" "$ROOT/bin/omarchy-config-shell-bar" remove omarchy.audio
+HOME="$test_home" OMARCHY_PATH="$test_root" PATH="$ROOT/bin:$PATH" "$ROOT/bin/omarchy-bar" remove omarchy.audio
 
 for _ in {1..80}; do
   shell_config=$(shell_ipc shell listShellConfig 2>/dev/null || true)
@@ -237,7 +237,7 @@ done
 
 jq -e 'all(.bar.layout.right[]; (.id // .) != "omarchy.audio")' <<<"$shell_config" >/dev/null || {
   printf 'Shell config after reload:\n%s\n' "$shell_config" | jq . >&2
-  fail_with_log "config shell bar remove reloads shell config"
+  fail_with_log "bar remove reloads shell config"
 }
 
 jq -e 'all(.[]; .id != "omarchy.audio")' <<<"$geometry" >/dev/null || {
@@ -246,4 +246,4 @@ jq -e 'all(.[]; .id != "omarchy.audio")' <<<"$geometry" >/dev/null || {
   fail_with_log "runtime bar layout updates after shell config reload"
 }
 
-pass "config shell bar remove reloads shell config and updates bar layout"
+pass "bar remove reloads shell config and updates bar layout"

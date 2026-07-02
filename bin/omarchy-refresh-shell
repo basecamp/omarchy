@@ -8,11 +8,11 @@ set -euo pipefail
 omarchy-refresh-config omarchy/shell.json
 
 if omarchy-installed-service-dropbox; then
-  omarchy-config-shell-bar add omarchy.dropbox
+  omarchy-bar add omarchy.dropbox
 fi
 
 if omarchy-installed-service-tailscale; then
-  omarchy-config-shell-bar add omarchy.tailscale
+  omarchy-bar add omarchy.tailscale
 fi
 
 omarchy-restart-shell

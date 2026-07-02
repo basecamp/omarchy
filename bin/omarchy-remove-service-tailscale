@@ -5,7 +5,7 @@
 
 tailscale down 2>/dev/null || true
 sudo systemctl disable --now tailscaled.service 2>/dev/null || true
-omarchy-config-shell-bar drop omarchy.tailscale
+omarchy-bar drop omarchy.tailscale
 omarchy-webapp-remove "Tailscale" 2>/dev/null || true
 omarchy-pkg-drop tailscale
 

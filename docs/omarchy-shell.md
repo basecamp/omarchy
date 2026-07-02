@@ -62,8 +62,8 @@ every prompt (the path for scripts and agents).
 Sources are recorded in `~/.config/omarchy/plugins/sources.json` and cloned into
 `~/.cache/omarchy/plugin-sources/`. You can still install by hand: drop a plugin
 into `~/.config/omarchy/plugins/<id>/`, run `omarchy plugin rescan`, then
-`omarchy plugin enable <id>` (bar widgets also need `omarchy plugin bar add <id>`;
-full bar replacements are selected with `omarchy plugin bar use <id>`).
+`omarchy plugin enable <id>` (bar widgets also need `omarchy bar add <id>`;
+full bar replacements are selected with `omarchy bar use <id>`).
 The lower-level IPC methods remain available through `omarchy-shell shell ...`.
 
 ## IPC

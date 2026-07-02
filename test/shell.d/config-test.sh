@@ -208,75 +208,75 @@ cat >"$TMPDIR/home/.config/omarchy/plugins/local.demo-bar/manifest.json" <<'JSON
 JSON
 touch "$TMPDIR/home/.config/omarchy/plugins/local.demo-bar/Bar.qml"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar options --json | jq -e '
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar options --json | jq -e '
   any(.[]; .id == "omarchy.bar" and .active == true) and
   any(.[]; .id == "local.demo-bar" and .active == false)
 ' >/dev/null
 pass "shell config lists bar options"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar use local.demo-bar
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar use local.demo-bar
 jq -e '.bar.id == "local.demo-bar"' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config selects a bar option"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar reset
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar reset
 jq -e '.bar.id == null' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config resets to built-in bar option"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar add omarchy.tailscale
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar add omarchy.tailscale
 jq -e '
   def ids: map(.id // .);
   .bar.layout.right | ids == ["omarchy.tray", "omarchy.tailscale", "omarchy.bluetooth"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config appends widgets to right by default"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar add local.left left
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar add omarchy.active-window left
 jq -e '
   def ids: map(.id // .);
-  .bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces", "local.left"]
+  .bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces", "omarchy.active-window"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config appends left widgets after workspaces"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar add local.center center
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar add omarchy.system-update center
 jq -e '
   def ids: map(.id // .);
-  .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "local.center"]
+  .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "omarchy.system-update"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config appends center widgets after weather"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar add local.first right
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar add omarchy.microphone right
 jq -e '
   def ids: map(.id // .);
-  .bar.layout.right | ids == ["omarchy.tray", "local.first", "omarchy.tailscale", "omarchy.bluetooth"]
+  .bar.layout.right | ids == ["omarchy.tray", "omarchy.microphone", "omarchy.tailscale", "omarchy.bluetooth"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config moves existing widgets without duplicates"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar show | jq -e '
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar show | jq -e '
   def ids: map(.id // .);
-  (.layout.right | ids == ["omarchy.tray", "local.first", "omarchy.tailscale", "omarchy.bluetooth"]) and
+  (.layout.right | ids == ["omarchy.tray", "omarchy.microphone", "omarchy.tailscale", "omarchy.bluetooth"]) and
   has("version") | not
 ' >/dev/null
 pass "shell config shows only bar json"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar list --json | jq -e '
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar list --json | jq -e '
   any(.[]; .id == "omarchy.keyboard-layout" and .addable == true and .inBar == false) and
   all(.[]; .id != "omarchy.tailscale")
 ' >/dev/null
 pass "shell config lists addable bar widgets"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar list --json --all | jq -e '
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar list --json --all | jq -e '
   any(.[]; .id == "omarchy.tailscale" and .inBar == true and .addable == false) and
   any(.[]; .id == "omarchy.indicators" and .addable == true)
 ' >/dev/null
 pass "shell config list --all includes current widget status"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar position bottom
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar position bottom
 jq -e '
   .bar.position == "bottom" and
   .plugins == []
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config sets bar position"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar transparent true
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar transparent true
 jq -e '
   .bar.transparent == true and
   .bar.position == "bottom" and
@@ -284,16 +284,16 @@ jq -e '
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config sets bar transparency"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar drop local.left
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar drop omarchy.active-window
 jq -e '
   def ids: map(.id // .);
   (.bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces"]) and
-  (.bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "local.center"]) and
-  (.bar.layout.right | ids == ["omarchy.tray", "local.first", "omarchy.tailscale", "omarchy.bluetooth"])
+  (.bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "omarchy.system-update"]) and
+  (.bar.layout.right | ids == ["omarchy.tray", "omarchy.microphone", "omarchy.tailscale", "omarchy.bluetooth"])
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config drops widgets from any section"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-config-shell-bar remove local.center
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar remove omarchy.system-update
 jq -e '
   def ids: map(.id // .);
   .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather"]
