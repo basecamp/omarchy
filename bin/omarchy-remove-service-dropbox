@@ -4,7 +4,7 @@
 # omarchy:requires-sudo=true
 
 dropbox-cli stop 2>/dev/null || true
-omarchy-config-shell-bar drop omarchy.dropbox
+omarchy-bar drop omarchy.dropbox
 omarchy-pkg-drop dropbox dropbox-cli libappindicator-gtk3 python-gpgme nautilus-dropbox
 
 echo ""

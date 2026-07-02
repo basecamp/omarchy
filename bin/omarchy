@@ -27,6 +27,7 @@ declare -A BINARY_TO_KEY
 declare -A GROUP_DESCRIPTIONS
 
 GROUP_DESCRIPTIONS[audio]="Audio input and output controls"
+GROUP_DESCRIPTIONS[bar]="Omarchy shell bar layout and settings"
 GROUP_DESCRIPTIONS[battery]="Battery status helpers"
 GROUP_DESCRIPTIONS[bluetooth]="Bluetooth device controls"
 GROUP_DESCRIPTIONS[branch]="Omarchy git branch management"

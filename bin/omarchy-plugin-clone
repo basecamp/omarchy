@@ -1,0 +1,377 @@
+#!/bin/bash
+
+# omarchy:summary=Clone a built-in or user Omarchy shell plugin into your own config
+# omarchy:group=plugin
+# omarchy:args=[source-id] [new-id] [--name <name>] [--replace] [--add [placement]] [--use]
+# omarchy:examples=omarchy plugin clone | omarchy plugin clone omarchy.clock local.clock | omarchy plugin clone omarchy.clock local.clock --name "My Clock" --replace
+
+set -euo pipefail
+
+PLUGINS_DIR="$HOME/.config/omarchy/plugins"
+
+fail() {
+  echo "omarchy-plugin-clone: $*" >&2
+  exit 1
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
+}
+
+require_omarchy_path() {
+  [[ -n ${OMARCHY_PATH:-} ]] || fail "OMARCHY_PATH is not set"
+}
+
+interactive() {
+  [[ -t 0 && -t 1 ]]
+}
+
+canonical_widget_id() {
+  printf '%s' "$1"
+}
+
+slug_id() {
+  tr '[:upper:]' '[:lower:]' <<<"$1" | sed -E 's/^omarchy\.//; s/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
+}
+
+validate_plugin_id() {
+  local id="$1"
+  [[ $id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "plugin id must contain only letters, numbers, dots, underscores, and dashes"
+  [[ $id == *.* ]] || fail "plugin id must be namespaced, e.g. local.clock"
+  [[ $id != omarchy.* ]] || fail "plugin ids beginning with omarchy. are reserved for built-ins"
+  [[ $(canonical_widget_id "$id") == "$id" ]] || fail "$id is a reserved built-in widget id"
+}
+
+catalog_json() {
+  require_omarchy_path
+  require_command jq
+  omarchy-plugin-catalog
+}
+
+# Emit: id<TAB>barWidgetPath<TAB>name<TAB>category<TAB>allowMultiple for a
+# built-in bar widget matching $1 (by id or alias). Used to find the source QML
+# file and metadata to copy when cloning a widget.
+builtin_widget_info() {
+  local wanted
+  wanted=$(canonical_widget_id "$1")
+
+  catalog_json | jq -r --arg id "$wanted" '
+    .[] | select((.kinds | index("bar-widget")) and .barWidgetPath != null)
+    | select(.id == $id or (((.barWidget.aliases // [])) | index($id)))
+    | [.id, .barWidgetPath, (.barWidget.displayName // .name // .id), (.barWidget.category // "Plugin"), (if .barWidget.allowMultiple == true then "true" else "false" end)]
+    | @tsv
+  ' | head -1
+}
+
+clone_source_options() {
+  catalog_json | jq -r '
+    .[] | "\(.id)\t" +
+    (if .firstParty then (if (.kinds | index("bar-widget")) then "Built-in widget" else "Built-in plugin" end) else "User plugin" end) +
+    "\t" + ((.barWidget.displayName // .name // .id) // .id)
+  '
+}
+
+choose_clone_source() {
+  local selected
+  selected=$(clone_source_options | awk -F '\t' '{ printf "%-32s  %-15s  %s\n", $3, $2, $1 }' \
+    | gum filter --header "Clone plugin" --placeholder "Search built-in and user plugins..." --limit 1) || return 1
+  awk '{ print $NF }' <<<"$selected"
+}
+
+choose_value() {
+  local prompt="$1"
+  shift
+  gum choose --header "$prompt" "$@"
+}
+
+input_value() {
+  local prompt="$1"
+  local value="${2:-}"
+  gum input --prompt "$prompt " --value "$value"
+}
+
+rewrite_cloned_qml() {
+  local file="$1"
+  local id="$2"
+  local source_path="$3"
+  python3 - "$file" "$id" "$source_path" <<'PY'
+import pathlib
+import re
+import sys
+path, plugin_id, source_path = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])
+text = open(path, encoding="utf-8").read()
+text = re.sub(r'moduleName:\s*"[^"]+"', f'moduleName: "{plugin_id}"', text, count=1)
+
+
+def resolve_relative(match):
+    rel = match.group(1)
+    if rel.startswith(("../", "./")) or (not rel.startswith("/") and "://" not in rel):
+        resolved = (source_path.parent / rel).resolve()
+        return '"' + resolved.as_uri() + '"'
+    return match.group(0)
+
+text = re.sub(r'Qt\.resolvedUrl\("([^"]+)"\)', resolve_relative, text)
+
+# Indicators dynamically loads sibling indicator components via string
+# concatenation, so the simple Qt.resolvedUrl("literal") rewrite above cannot
+# see it. Point the clone back at Omarchy's bundled indicator directory.
+if source_path.name == "Indicators.qml":
+    indicators_url = (source_path.parent.parent / "indicators").resolve().as_uri() + "/"
+    text = text.replace(
+        'Qt.resolvedUrl("../indicators/" + indicatorSlot.indicatorId + ".qml")',
+        f'"{indicators_url}" + indicatorSlot.indicatorId + ".qml"',
+    )
+
+# Panel-backed clones should not register the same global IPC target as the
+# built-in widget. Direct panel clones can disable Panel.manageIpc themselves;
+# wrapper widgets such as Weather disable it on the loaded panel instance.
+if "ipcTarget:" in text and "manageIpc:" not in text:
+    text = text.replace("  id: root\n", "  id: root\n  manageIpc: false\n", 1)
+if "function injectPanel()" in text and '"manageIpc" in target' not in text:
+    text = text.replace(
+        "    if (!target) return\n",
+        "    if (!target) return\n    if (\"manageIpc\" in target) target.manageIpc = false\n",
+        1,
+    )
+
+open(path, "w", encoding="utf-8").write(text)
+PY
+}
+
+write_clone_manifest() {
+  local file="$1"
+  local id="$2"
+  local name="$3"
+  local description="$4"
+  local category="$5"
+  local multiple="$6"
+  local source_id="$7"
+  local source_path="$8"
+  python3 - "$file" "$id" "$name" "$description" "$category" "$multiple" "$source_id" "$source_path" <<'PY'
+import json
+import sys
+file, plugin_id, name, description, category, multiple, source_id, source_path = sys.argv[1:]
+data = {
+  "schemaVersion": 1,
+  "id": plugin_id,
+  "name": name,
+  "version": "1.0.0",
+  "author": "Local",
+  "description": description,
+  "kinds": ["bar-widget"],
+  "entryPoints": {"barWidget": "Widget.qml"},
+  "barWidget": {
+    "displayName": name,
+    "description": description,
+    "category": category,
+    "allowMultiple": multiple == "true"
+  },
+  "omarchy": {
+    "clonedFrom": source_id,
+    "clonedFromPath": source_path
+  }
+}
+open(file, "w", encoding="utf-8").write(json.dumps(data, indent=2) + "\n")
+PY
+}
+
+update_cloned_manifest() {
+  local file="$1"
+  local id="$2"
+  local name="$3"
+  local source_id="$4"
+  local source_path="$5"
+  python3 - "$file" "$id" "$name" "$source_id" "$source_path" <<'PY'
+import json
+import sys
+file, plugin_id, name, source_id, source_path = sys.argv[1:]
+with open(file, encoding="utf-8") as handle:
+    data = json.load(handle)
+data["id"] = plugin_id
+data["name"] = name
+if "barWidget" in data and isinstance(data["barWidget"], dict):
+    data["barWidget"]["displayName"] = name
+meta = data.get("omarchy") if isinstance(data.get("omarchy"), dict) else {}
+meta.update({"clonedFrom": source_id, "clonedFromPath": source_path})
+data["omarchy"] = meta
+open(file, "w", encoding="utf-8").write(json.dumps(data, indent=2) + "\n")
+PY
+}
+
+usage() {
+  cat <<USAGE
+Usage: omarchy plugin clone [source-id] [new-id] [options]
+
+Clones a built-in or user plugin into ~/.config/omarchy/plugins/<new-id>/ so you
+can edit it freely. The original stays built into Omarchy.
+
+Options:
+  --name <name>           Display name for the clone
+  --replace               Replace the first bar instance of the source with the clone
+  --add [placement]       Add the cloned bar widget to the bar
+  --use                   Use the clone as the active bar option (bar plugins)
+
+Placement (with --add):
+  --section <left|center|right>
+  --index <n>
+  --before <id>
+  --after <id>
+
+Examples:
+  omarchy plugin clone
+  omarchy plugin clone omarchy.clock local.clock
+  omarchy plugin clone omarchy.clock local.clock --name "My Clock" --replace
+USAGE
+}
+
+clone_command() {
+  require_command jq
+  require_command python3
+  require_omarchy_path
+
+  local source_id=""
+  local new_id=""
+  if (( $# > 0 )) && [[ $1 != --* ]]; then
+    source_id="$1"
+    shift
+  fi
+  if (( $# > 0 )) && [[ $1 != --* ]]; then
+    new_id="$1"
+    shift
+  fi
+
+  local display_name=""
+  local replace="false"
+  local add="false"
+  local use_bar="false"
+  local placement=()
+
+  while (( $# > 0 )); do
+    case "$1" in
+    --name)
+      display_name="${2:-}"
+      [[ -n $display_name ]] || fail "--name requires a value"
+      shift 2
+      ;;
+    --replace)
+      replace="true"
+      shift
+      ;;
+    --add)
+      add="true"
+      shift
+      ;;
+    --use)
+      use_bar="true"
+      shift
+      ;;
+    --section | --index | --before | --after)
+      placement+=("$1" "${2:-}")
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      return
+      ;;
+    *)
+      fail "unknown clone option: $1"
+      ;;
+    esac
+  done
+
+  if [[ -z $source_id ]]; then
+    if interactive; then
+      source_id=$(choose_clone_source) || fail "clone cancelled"
+    else
+      fail "clone source is required"
+    fi
+  fi
+  source_id=$(canonical_widget_id "$source_id")
+
+  local default_slug
+  default_slug=$(slug_id "$source_id")
+  if [[ -z $new_id ]]; then
+    if interactive; then
+      new_id=$(input_value "New plugin id:" "local.$default_slug")
+    else
+      fail "new plugin id is required"
+    fi
+  fi
+  validate_plugin_id "$new_id"
+
+  local target_dir="$PLUGINS_DIR/$new_id"
+  [[ ! -e $target_dir && ! -L $target_dir ]] || fail "$target_dir already exists"
+
+  local source_path=""
+  local source_name=""
+  local source_category="Plugin"
+  local source_multiple="false"
+  local source_type=""
+
+  if IFS=$'\t' read -r _ source_path source_name source_category source_multiple < <(builtin_widget_info "$source_id"); then
+    source_type="builtin-widget"
+  elif [[ -f $PLUGINS_DIR/$source_id/manifest.json ]]; then
+    source_type="user-plugin"
+    source_path="$PLUGINS_DIR/$source_id"
+    source_name=$(jq -r '.name // .id' "$source_path/manifest.json")
+  else
+    # Non-widget built-in plugin (e.g. a panel or bar): find it in the catalog.
+    local hit
+    hit=$(catalog_json | jq -r --arg id "$source_id" '.[] | select(.id == $id) | .sourceDir' | head -1)
+    if [[ -n $hit ]]; then
+      source_type="builtin-plugin"
+      source_path="$hit"
+      source_name=$(jq -r '.name // .id' "$source_path/manifest.json")
+    fi
+  fi
+
+  [[ -n $source_type ]] || fail "unknown clone source: $source_id"
+  if [[ -z $display_name ]]; then
+    if interactive; then
+      display_name=$(input_value "Display name:" "${source_name:-$new_id}")
+    else
+      display_name="${source_name:-$new_id}"
+    fi
+  fi
+  [[ -n $display_name ]] || fail "display name is required"
+
+  mkdir -p "$target_dir"
+  if [[ $source_type == "builtin-widget" ]]; then
+    cp "$source_path" "$target_dir/Widget.qml"
+    rewrite_cloned_qml "$target_dir/Widget.qml" "$new_id" "$source_path"
+    write_clone_manifest "$target_dir/manifest.json" "$new_id" "$display_name" "Cloned from $source_id" "$source_category" "$source_multiple" "$source_id" "$source_path"
+  else
+    cp -aL "$source_path/." "$target_dir/"
+    update_cloned_manifest "$target_dir/manifest.json" "$new_id" "$display_name" "$source_id" "$source_path"
+  fi
+
+  {
+    printf '# %s\n\n' "$display_name"
+    printf 'Cloned from `%s`.\n\n' "$source_id"
+    printf 'Source: `%s`\n\n' "$source_path"
+    printf 'The original remains built into Omarchy. Remove this plugin directory or swap\n'
+    printf 'your bar entry back to `%s` whenever you want to return to the built-in.\n' "$source_id"
+  } >"$target_dir/UPSTREAM.md"
+
+  omarchy-shell -q shell rescanPlugins >/dev/null 2>&1 || true
+
+  if [[ $replace == "true" ]]; then
+    omarchy-bar replace "$source_id" "$new_id"
+    echo "Cloned $source_id to $new_id and replaced the first bar instance"
+  elif [[ $add == "true" ]]; then
+    omarchy-bar add "$new_id" "${placement[@]}"
+    echo "Cloned $source_id to $new_id"
+  elif [[ $use_bar == "true" ]]; then
+    omarchy-bar use "$new_id"
+    echo "Cloned $source_id to $new_id and selected it as the active bar option"
+  else
+    echo "Cloned $source_id to $new_id"
+  fi
+
+  if interactive; then
+    cd "$target_dir"
+    exec "${SHELL:-bash}"
+  fi
+}
+
+clone_command "$@"
