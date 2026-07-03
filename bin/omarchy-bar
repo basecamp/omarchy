@@ -756,11 +756,13 @@ cmd_replace() {
     | .bar.layout[\$source.section][\$source.index].id = \$new
 JQ
 )
+  # resolve_source finds by widget id when no placement is given; replace
+  # takes no placement flags, so pass empty placement explicitly.
   commit "$prog" \
     --arg widgetId "$old" \
     --arg new "$new" \
-    --arg fromSection "$PLACEMENT_FROM_SECTION" \
-    --arg fromIndex "$PLACEMENT_FROM_INDEX"
+    --arg fromSection "" \
+    --arg fromIndex ""
   echo "Replaced $old with $new"
 }
 
