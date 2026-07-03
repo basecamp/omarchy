@@ -103,12 +103,24 @@ default_resolution() {
 }
 
 # Monitor + window rectangles on the focused workspace, in slurp's "X,Y WxH" format.
-# Mirrors omarchy-capture-screenshot so the picker UX is identical.
+# Mirrors omarchy-capture-screenshot so the picker UX is identical, including
+# swapping monitor dimensions on rotated displays (transform 1/3).
+JQ_MONITOR_GEO='
+  def format_geo:
+    .x as $x | .y as $y |
+    (.width / .scale | floor) as $w |
+    (.height / .scale | floor) as $h |
+    .transform as $t |
+    if $t == 1 or $t == 3 then
+      "\($x),\($y) \($h)x\($w)"
+    else
+      "\($x),\($y) \($w)x\($h)"
+    end;
+'
+
 get_rectangles() {
   local active_workspace=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
-  hyprctl monitors -j | jq -r --arg ws "$active_workspace" '
-    .[] | select(.activeWorkspace.id == ($ws | tonumber)) |
-    "\(.x),\(.y) \(.width / .scale | floor)x\(.height / .scale | floor)"'
+  hyprctl monitors -j | jq -r --arg ws "$active_workspace" "${JQ_MONITOR_GEO} .[] | select(.activeWorkspace.id == (\$ws | tonumber)) | format_geo"
   hyprctl clients -j | jq -r --arg ws "$active_workspace" '
     .[] | select(.workspace.id == ($ws | tonumber)) |
     "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
@@ -147,8 +159,8 @@ select_capture_target() {
 
   # When the selection exactly matches a monitor, prefer -w <monitor> over a
   # region capture — same kms backend, but no scaling math and full native res.
-  local monitor=$(hyprctl monitors -j | jq -r --argjson x "$sx" --argjson y "$sy" --argjson w "$sw" --argjson h "$sh" '
-    .[] | select(.x == $x and .y == $y and (.width / .scale | floor) == $w and (.height / .scale | floor) == $h) | .name' | head -1)
+  local monitor=$(hyprctl monitors -j | jq -r --arg geo "${sx},${sy} ${sw}x${sh}" \
+    "${JQ_MONITOR_GEO} .[] | select(format_geo == \$geo) | .name" | head -1)
 
   if [[ -n $monitor ]]; then
     echo "monitor:$monitor"
