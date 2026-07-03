@@ -102,75 +102,25 @@ default_resolution() {
   fi
 }
 
-# Monitor + window rectangles on the focused workspace, in slurp's "X,Y WxH" format.
-# Mirrors omarchy-capture-screenshot so the picker UX is identical, including
-# swapping monitor dimensions on rotated displays (transform 1/3).
-JQ_MONITOR_GEO='
-  def format_geo:
-    .x as $x | .y as $y |
-    (.width / .scale | floor) as $w |
-    (.height / .scale | floor) as $h |
-    .transform as $t |
-    if $t == 1 or $t == 3 then
-      "\($x),\($y) \($h)x\($w)"
-    else
-      "\($x),\($y) \($w)x\($h)"
-    end;
-'
-
-get_rectangles() {
-  local active_workspace=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
-  hyprctl monitors -j | jq -r --arg ws "$active_workspace" "${JQ_MONITOR_GEO} .[] | select(.activeWorkspace.id == (\$ws | tonumber)) | format_geo"
-  hyprctl clients -j | jq -r --arg ws "$active_workspace" '
-    .[] | select(.workspace.id == ($ws | tonumber)) |
-    "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
-}
-
-# Echoes "monitor:NAME" when the selection matches an entire monitor, otherwise
-# "region:WxH+X+Y" with physical-pixel coordinates ready for gpu-screen-recorder.
-# Returns non-zero if the user cancelled the picker.
+# Echoes "monitor:NAME" when the selection matches an entire monitor (prefer
+# -w <monitor> over a region capture — same kms backend, but no scaling math
+# and full native res), otherwise "region:WxH+X+Y". Returns non-zero if the
+# user cancelled the picker.
 select_capture_target() {
-  local rects=$(get_rectangles)
-  hyprpicker -r -z >/dev/null 2>&1 &
-  local picker_pid=$!
-  sleep .1
-  local selection=$(echo "$rects" | slurp 2>/dev/null)
-  kill $picker_pid 2>/dev/null
+  local target
+  target=$(omarchy-capture-region-pick smart --match-monitor) || return 1
 
-  # X and Y can be negative (Hyprland monitor positions in multi-display layouts);
-  # widths and heights are always positive.
-  [[ $selection =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || return 1
-  local sx=${BASH_REMATCH[1]} sy=${BASH_REMATCH[2]}
-  local sw=${BASH_REMATCH[3]} sh=${BASH_REMATCH[4]}
-
-  # A bare click (area < 20px²) snaps to whichever rectangle the click landed
-  # inside, so users don't end up with accidental 2px recordings.
-  if ((sw * sh < 20)); then
-    while IFS= read -r rect; do
-      [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || continue
-      local rx=${BASH_REMATCH[1]} ry=${BASH_REMATCH[2]}
-      local rw=${BASH_REMATCH[3]} rh=${BASH_REMATCH[4]}
-      if ((sx >= rx && sx < rx + rw && sy >= ry && sy < ry + rh)); then
-        sx=$rx sy=$ry sw=$rw sh=$rh
-        break
-      fi
-    done <<<"$rects"
-  fi
-
-  # When the selection exactly matches a monitor, prefer -w <monitor> over a
-  # region capture — same kms backend, but no scaling math and full native res.
-  local monitor=$(hyprctl monitors -j | jq -r --arg geo "${sx},${sy} ${sw}x${sh}" \
-    "${JQ_MONITOR_GEO} .[] | select(format_geo == \$geo) | .name" | head -1)
-
-  if [[ -n $monitor ]]; then
-    echo "monitor:$monitor"
+  if [[ $target == monitor:* ]]; then
+    echo "$target"
     return
   fi
+
+  [[ $target =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || return 1
 
   # gpu-screen-recorder wants region geometry in the compositor's logical
   # coordinate space — same space slurp returns — so pass the values through
   # untouched. (gsr scales to physical pixels itself based on the monitor.)
-  echo "region:${sw}x${sh}+${sx}+${sy}"
+  echo "region:${BASH_REMATCH[3]}x${BASH_REMATCH[4]}+${BASH_REMATCH[1]}+${BASH_REMATCH[2]}"
 }
 
 start_screenrecording() {
