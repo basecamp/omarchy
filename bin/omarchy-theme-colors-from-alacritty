@@ -25,99 +25,73 @@ if [[ ! -f $ALACRITTY_FILE ]]; then
   exit 0
 fi
 
-normalize_hex() {
-  local color="$1"
-  [[ -z $color ]] && return
-  color="${color#0x}"
-  color="${color#\#}"
-  if [[ $color =~ ^[0-9a-fA-F]{6}$ ]]; then
-    printf "#%s\n" "${color,,}"
-  fi
-}
+# Parse the alacritty TOML in a single awk pass, emitting one
+# "<dotted-path>\t#<hex>" pair per color-valued key. Dotted keys are
+# normalized (`normal.black = ...` under [colors] becomes
+# colors.normal.black, same as `black = ...` under [colors.normal]),
+# with the section form taking precedence and the first valid
+# occurrence of a key winning.
+declare -A COLORS
 
-extract_color_in_section() {
-  local section="$1"
-  local key="$2"
-  local color_hex=""
-  color_hex=$(awk -v section="$section" -v key="$key" '
-    function trim(value) {
-      gsub(/^[ \t]+|[ \t]+$/, "", value)
-      return value
+while IFS=$'\t' read -r key value; do
+  COLORS[$key]=$value
+done < <(awk '
+  /^[ \t]*\[/ {
+    line = $0
+    sub(/^[ \t]+/, "", line)
+    if (line ~ /^\[[^]]*\][ \t]*$/) {
+      section = substr(line, 2, index(line, "]") - 2)
+    } else {
+      section = ""
     }
+    next
+  }
 
-    function strip_comment(value,    i, ch, out, in_single, in_double, prev) {
-      out = ""
-      in_single = 0
-      in_double = 0
-      prev = ""
-
-      for (i = 1; i <= length(value); i++) {
-        ch = substr(value, i, 1)
-
-        if (ch == "\"" && !in_single && prev != "\\") {
-          in_double = !in_double
-        } else if (ch == "'\''" && !in_double) {
-          in_single = !in_single
-        }
-
-        if (ch == "#" && !in_single && !in_double) {
-          break
-        }
-
-        out = out ch
-        prev = ch
-      }
-
-      gsub(/[ \t]+$/, "", out)
-      return out
-    }
-
-    /^[ \t]*\[/ {
-      in_section = ($0 ~ "^[ \\t]*\\[" section "\\][ \\t]*$")
+  section != "" {
+    split_pos = index($0, "=")
+    if (split_pos == 0) {
       next
     }
 
-    in_section {
-      line = $0
-      line = strip_comment(line)
-
-      split_pos = index(line, "=")
-      if (split_pos == 0) {
-        next
-      }
-
-      current_key = trim(substr(line, 1, split_pos - 1))
-      current_value = trim(substr(line, split_pos + 1))
-
-      if (current_key == key) {
-        gsub(/["'\''#]/, "", current_value)
-        sub(/^0[xX]/, "", current_value)
-        if (current_value ~ /^[0-9A-Fa-f]{6}$/) {
-          print current_value
-          exit
-        }
-      }
+    key = substr($0, 1, split_pos - 1)
+    gsub(/^[ \t]+|[ \t]+$/, "", key)
+    if (key == "" || key ~ /^#/) {
+      next
     }
-  ' "$ALACRITTY_FILE")
 
-  if [[ -n $color_hex && $color_hex =~ ^[0-9a-fA-F]{6}$ ]]; then
-    normalize_hex "$color_hex"
-  fi
+    value = substr($0, split_pos + 1)
+    gsub(/^[ \t]+|[ \t]+$/, "", value)
 
-  return 0
-}
+    # Accept a lone hex color, optionally 0x- or #-prefixed and quoted,
+    # ignoring any trailing comment. The color always yields the first
+    # run of six hex digits.
+    if (value !~ /^["'\''](0[xX]|#)?[0-9a-fA-F]{6}(["'\'']([ \t]*#.*)?)?$/ &&
+        value !~ /^(0[xX])?[0-9a-fA-F]{6}([ \t]*#.*)?$/) {
+      next
+    }
+    match(value, /[0-9a-fA-F]{6}/)
+    hex = tolower(substr(value, RSTART, RLENGTH))
+
+    path = section "." key
+    if (section == "colors" && index(key, ".") > 0) {
+      if (!(path in dotted)) dotted[path] = hex
+    } else {
+      if (!(path in direct)) direct[path] = hex
+    }
+  }
+
+  END {
+    for (path in direct) print path "\t#" direct[path]
+    for (path in dotted) if (!(path in direct)) print path "\t#" dotted[path]
+  }
+' "$ALACRITTY_FILE")
 
 names=(black red green yellow blue magenta cyan white)
 
 # Extract normal colors (color0-7)
 for i in {0..7}; do
   name="${names[$i]}"
-  val=$(extract_color_in_section "colors.normal" "$name")
-  if [[ -z $val ]]; then
-    val=$(extract_color_in_section "colors" "normal.$name")
-  fi
-
-  printf -v "color$i" "%s" "$val"
+  printf -v "color$i" "%s" "${COLORS[colors.normal.$name]}"
 done
 
 # Validate we have all normal colors (required)
@@ -128,38 +102,18 @@ for c in color0 color1 color2 color3 color4 color5 color6 color7; do
   fi
 done
 
-# Extract bright colors (color8-15)
+# Extract bright colors (color8-15), falling back to normal
 for i in {0..7}; do
   normal="color$i"
-  bright="color$((i + 8))"
   name="${names[$i]}"
-
-  val=$(extract_color_in_section "colors.bright" "$name")
-  if [[ -z $val ]]; then
-    val=$(extract_color_in_section "colors" "bright.$name")
-  fi
-
-  printf -v "$bright" "%s" "${val:-${!normal}}"
+  val="${COLORS[colors.bright.$name]}"
+  printf -v "color$((i + 8))" "%s" "${val:-${!normal}}"
 done
 
-# Extract primary colors
-background=$(extract_color_in_section "colors.primary" "background")
-foreground=$(extract_color_in_section "colors.primary" "foreground")
-
-if [[ -z $background ]]; then
-  background=$(extract_color_in_section "colors" "primary.background")
-fi
-
-if [[ -z $foreground ]]; then
-  foreground=$(extract_color_in_section "colors" "primary.foreground")
-fi
-
-# Extract selection colors
-selection_background=$(extract_color_in_section "colors.selection" "background")
-
-if [[ -z $selection_background ]]; then
-  selection_background=$(extract_color_in_section "colors" "selection.background")
-fi
+# Extract primary and selection colors
+background="${COLORS[colors.primary.background]}"
+foreground="${COLORS[colors.primary.foreground]}"
+selection_background="${COLORS[colors.selection.background]}"
 
 # Apply defaults
 background=${background:-$color0}
