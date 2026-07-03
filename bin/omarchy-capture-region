@@ -20,6 +20,18 @@
 #   --match-monitor print "monitor:NAME" instead when the picked geometry
 #                   exactly matches a monitor
 
+FULLSCREEN_MARKER="${XDG_RUNTIME_DIR:-/tmp}/omarchy-capture-region-fullscreen"
+
+# Pressing Return while slurp is open captures the entire focused monitor:
+# a bind scoped to slurp's layer surface (default/hypr/bindings/utilities.lua)
+# invokes this mode, which flags the intent and dismisses slurp.
+if [[ ${1:-} == "--take-fullscreen" ]]; then
+  pgrep -x slurp >/dev/null || exit 0
+  touch "$FULLSCREEN_MARKER"
+  pkill -x slurp
+  exit 0
+fi
+
 MODE=smart
 KEEP_FREEZE=false
 MATCH_MONITOR=false
@@ -52,6 +64,25 @@ get_rectangles() {
   hyprctl clients -j | jq -r --arg ws "$active_workspace" '.[] | select(.workspace.id == ($ws | tonumber)) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
 }
 
+focused_monitor_geo() {
+  hyprctl monitors -j | jq -r "${JQ_MONITOR_GEO} .[] | select(.focused == true) | format_geo"
+}
+
+# Runs slurp; an empty result with the fullscreen marker present means Return
+# was pressed, so the focused monitor is the selection.
+pick() {
+  local selection
+  rm -f "$FULLSCREEN_MARKER"
+  selection=$(slurp "$@" 2>/dev/null)
+
+  if [[ -z $selection && -e $FULLSCREEN_MARKER ]]; then
+    rm -f "$FULLSCREEN_MARKER"
+    selection=$(focused_monitor_geo)
+  fi
+
+  printf '%s' "$selection"
+}
+
 FREEZE_PID=""
 freeze_screen() {
   hyprpicker -r -z >/dev/null 2>&1 &
@@ -68,19 +99,19 @@ trap cleanup_freeze EXIT
 case "$MODE" in
 region)
   freeze_screen
-  SELECTION=$(slurp 2>/dev/null)
+  SELECTION=$(pick)
   ;;
 windows)
   freeze_screen
-  SELECTION=$(get_rectangles | slurp -r 2>/dev/null)
+  SELECTION=$(get_rectangles | pick -r)
   ;;
 fullscreen)
-  SELECTION=$(hyprctl monitors -j | jq -r "${JQ_MONITOR_GEO} .[] | select(.focused == true) | format_geo")
+  SELECTION=$(focused_monitor_geo)
   ;;
 smart | *)
   RECTS=$(get_rectangles)
   freeze_screen
-  SELECTION=$(echo "$RECTS" | slurp 2>/dev/null)
+  SELECTION=$(echo "$RECTS" | pick)
 
   # A bare click (area < 20px^2) snaps to whichever rectangle it landed in,
   # so users don't end up with accidental 2px captures. X and Y can be
