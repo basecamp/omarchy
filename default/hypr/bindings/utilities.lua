@@ -41,6 +41,29 @@ o.bind("ALT + PRINT", "Screenrecording", "omarchy-capture-screenrecording --stop
 o.bind("SUPER + PRINT", "Color picker", "pkill hyprpicker || hyprpicker -a")
 o.bind("SUPER + CTRL + PRINT", "Extract text (OCR) from screenshot", "omarchy-capture-text-extraction")
 
+-- While the slurp region picker is open, Return captures the entire focused
+-- monitor. The bind lives exactly as long as a selection layer is on screen
+-- (slurp opens one per monitor), so it cannot leak or get stuck.
+local selection_layers = 0
+
+hl.on("layer.opened", function(layer)
+  if layer.namespace == "selection" then
+    selection_layers = selection_layers + 1
+    if selection_layers == 1 then
+      hl.bind("RETURN", hl.dsp.exec_cmd("omarchy-capture-region --take-fullscreen"), { description = "Capture entire screen" })
+    end
+  end
+end)
+
+hl.on("layer.closed", function(layer)
+  if layer.namespace == "selection" and selection_layers > 0 then
+    selection_layers = selection_layers - 1
+    if selection_layers == 0 then
+      hl.unbind("RETURN")
+    end
+  end
+end)
+
 o.bind("SUPER + CTRL + S", "Share", "omarchy-menu toggle share")
 
 o.bind("SUPER + CTRL + PERIOD", "Transcode", "omarchy-transcode")
