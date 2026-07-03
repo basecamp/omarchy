@@ -7,84 +7,27 @@ theme="${1:-$HOME/.local/state/omarchy/current/theme/colors.toml}"
 
 [[ -f $theme ]] || exit 0
 
-awk -F= '
-  function clean(value) {
-    gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-    if (value ~ /^"/) {
-      sub(/^"/, "", value)
-      sub(/".*$/, "", value)
-    }
-    return value
-  }
+declare -A COLORS
 
-  function alias_color(target, source) {
-    if (colors[target] == "" && colors[source] != "") colors[target] = colors[source]
-  }
+while IFS=$'\t' read -r key value; do
+  COLORS[$key]="$value"
+done < <(omarchy-theme-color --file "$theme" --all)
 
-  function emit_color(color_index, key) {
-    if (colors[key] != "") printf "\033]4;%d;%s\007", color_index, colors[key]
-  }
+emit_osc() {
+  local code="$1"
+  local key="$2"
 
-  {
-    key = $1
-    gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
-    value = clean($2)
-    colors[key] = value
-  }
+  [[ -n ${COLORS[$key]:-} ]] || return 0
+  printf '\033]%s;%s\007' "$code" "${COLORS[$key]}"
+}
 
-  END {
-    if (colors["background"] != "") colors["bg"] = colors["background"]
-    if (colors["foreground"] != "") colors["fg"] = colors["foreground"]
-    if (colors["bg"] != "") colors["background"] = colors["bg"]
-    if (colors["fg"] != "") colors["foreground"] = colors["fg"]
-    if (colors["bg"] != "") colors["color0"] = colors["bg"]
-    if (colors["fg"] != "") colors["color7"] = colors["fg"]
+emit_osc 10 foreground
+emit_osc 11 background
+emit_osc 12 cursor
+emit_osc 17 selection_background
+emit_osc 19 selection_foreground
 
-    alias_color("color0", "bg")
-    alias_color("color0", "background")
-    alias_color("color1", "red")
-    alias_color("color2", "green")
-    alias_color("color3", "yellow")
-    alias_color("color4", "blue")
-    alias_color("color5", "magenta")
-    alias_color("color5", "purple")
-    alias_color("color6", "cyan")
-    alias_color("color7", "fg")
-    alias_color("color7", "foreground")
-    alias_color("color8", "muted")
-    alias_color("color8", "dark_fg")
-    alias_color("color8", "foreground")
-    alias_color("color9", "bright_red")
-    alias_color("color9", "red")
-    alias_color("color10", "bright_green")
-    alias_color("color10", "green")
-    alias_color("color11", "bright_yellow")
-    alias_color("color11", "yellow")
-    alias_color("color12", "bright_blue")
-    alias_color("color12", "blue")
-    alias_color("color13", "bright_magenta")
-    alias_color("color13", "bright_purple")
-    alias_color("color13", "magenta")
-    alias_color("color13", "purple")
-    alias_color("color14", "bright_cyan")
-    alias_color("color14", "cyan")
-    alias_color("color15", "bright_fg")
-    alias_color("color15", "foreground")
-    alias_color("light_fg", "color7")
-    alias_color("light_fg", "fg")
-    alias_color("bright_fg", "color15")
-    alias_color("bright_fg", "fg")
-    if (colors["bright_fg"] != "") colors["cursor"] = colors["bright_fg"]
-
-    if (colors["selection_background"] == "" && colors["selection"] != "") colors["selection_background"] = colors["selection"]
-    if (colors["selection_foreground"] == "") colors["selection_foreground"] = colors["bright_fg"]
-
-    if (colors["foreground"] != "") printf "\033]10;%s\007", colors["foreground"]
-    if (colors["background"] != "") printf "\033]11;%s\007", colors["background"]
-    if (colors["cursor"] != "") printf "\033]12;%s\007", colors["cursor"]
-    if (colors["selection_background"] != "") printf "\033]17;%s\007", colors["selection_background"]
-    if (colors["selection_foreground"] != "") printf "\033]19;%s\007", colors["selection_foreground"]
-
-    for (i = 0; i <= 15; i++) emit_color(i, "color" i)
-  }
-' "$theme"
+for i in {0..15}; do
+  [[ -n ${COLORS[color$i]:-} ]] || continue
+  printf '\033]4;%d;%s\007' "$i" "${COLORS[color$i]}"
+done

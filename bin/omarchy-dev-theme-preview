@@ -84,40 +84,38 @@ resolve_colors_file() {
   fi
 }
 
-clean_toml_value() {
-  local value="$1"
+omarchy_tool() {
+  local tool="$1"
+  shift
 
-  value="${value#*[\"\']}"
-  value="${value%%[\"\']*}"
-  printf '%s' "$value"
+  if [[ -x $OMARCHY_PATH/bin/$tool ]]; then
+    "$OMARCHY_PATH/bin/$tool" "$@"
+  else
+    "$tool" "$@"
+  fi
 }
 
 load_colors() {
   local colors_file="$1"
   local key value
+  local -A resolved=()
 
-  while IFS='=' read -r key value; do
-    key="${key//[\"\' ]/}"
-    [[ $key && $key != \#* ]] || continue
-    value=$(clean_toml_value "$value")
-    COLORS[$key]="$value"
-  done <"$colors_file"
+  while IFS=$'\t' read -r key value; do
+    resolved[$key]="$value"
+  done < <(omarchy_tool omarchy-theme-color --file "$colors_file" --all)
 
-  # Legacy semantic names win when present so older themes keep their intended
-  # primary text/background colors even if they also had dimmer fg/bg slots.
-  [[ ${COLORS[background]} ]] && COLORS[bg]="${COLORS[background]}"
-  [[ ${COLORS[foreground]} ]] && COLORS[fg]="${COLORS[foreground]}"
-  [[ ${COLORS[bg]} ]] || COLORS[bg]="${COLORS[color0]}"
-  [[ ${COLORS[fg]} ]] || COLORS[fg]="${COLORS[color7]}"
-  [[ ${COLORS[light_fg]} ]] || COLORS[light_fg]="${COLORS[color7]:-${COLORS[fg]}}"
-  [[ ${COLORS[bright_fg]} ]] || COLORS[bright_fg]="${COLORS[color15]:-${COLORS[fg]}}"
-  [[ ${COLORS[selection_background]} ]] || COLORS[selection_background]="${COLORS[selection]}"
-  [[ ${COLORS[selection_foreground]} ]] || COLORS[selection_foreground]="${COLORS[bright_fg]}"
+  # Preview the palette the theme itself defines, at canonically resolved values.
+  while IFS=$'\t' read -r key value; do
+    COLORS[$key]="${resolved[$key]:-}"
+  done < <(omarchy_tool omarchy-theme-color --file "$colors_file" --raw)
 
-  if hex_valid "${COLORS[bg]}"; then
-    [[ ${COLORS[dark_bg]} ]] || COLORS[dark_bg]=$(mix_hex "${COLORS[bg]}" "#000000" 1 4)
-    [[ ${COLORS[darker_bg]} ]] || COLORS[darker_bg]=$(mix_hex "${COLORS[bg]}" "#000000" 1 2)
-  fi
+  # Plus the core slots every theme resolves, so sparse and legacy themes
+  # still render a complete preview.
+  for key in mode bg fg light_fg bright_fg selection_background selection_foreground dark_bg darker_bg; do
+    [[ -n ${resolved[$key]:-} ]] && COLORS[$key]="${resolved[$key]}"
+  done
+
+  return 0
 }
 
 hex_parts() {
@@ -188,11 +186,7 @@ apply_terminal_osc() {
       ;;
   esac
 
-  if [[ -x $OMARCHY_PATH/bin/omarchy-theme-osc ]]; then
-    "$OMARCHY_PATH/bin/omarchy-theme-osc" "$colors_file" || true
-  else
-    omarchy-theme-osc "$colors_file" || true
-  fi
+  omarchy_tool omarchy-theme-osc "$colors_file" || true
 }
 
 swatch() {
@@ -415,15 +409,7 @@ fi
 
 load_colors "$colors_file"
 
-mode="${COLORS[mode]}"
-if [[ -z $mode && ${COLORS[bg]} =~ ^#[0-9A-Fa-f]{6}$ ]]; then
-  if (( $(luma_sum "${COLORS[bg]}") > 1275000 )); then
-    mode="light"
-  else
-    mode="dark"
-  fi
-fi
-[[ -n $mode ]] || mode="dark"
+mode="${COLORS[mode]:-dark}"
 
 theme_label="$THEME_REF"
 if [[ -z $theme_label ]]; then

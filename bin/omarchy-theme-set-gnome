@@ -13,33 +13,9 @@ fi
 THEME_DIR=$HOME/.local/state/omarchy/current/theme
 COLORS_FILE="$THEME_DIR/colors.toml"
 
-# In-tree light themes now declare `mode = "light"` in colors.toml instead of
-# shipping a separate light.mode marker. Keep light.mode as a user-theme fallback.
-theme_mode() {
-  [[ -f $COLORS_FILE ]] || return
-
-  awk -F= '
-    {
-      field = $1
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", field)
-      if (field == "mode") {
-        value = $2
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-        if (value ~ /^"/) {
-          sub(/^"/, "", value)
-          sub(/".*$/, "", value)
-        }
-        print value
-        exit
-      }
-    }
-  ' "$COLORS_FILE"
-}
-
-mode=$(theme_mode)
-if [[ -z $mode && -f $THEME_DIR/light.mode ]]; then
-  mode="light"
-fi
+# omarchy-theme-color resolves mode from colors.toml (`mode = "light"`), a
+# legacy light.mode marker beside it, or background luminance for user themes.
+mode=$(omarchy-theme-color --file "$COLORS_FILE" mode)
 
 if [[ $mode == "light" ]]; then
   gsettings set org.gnome.desktop.interface color-scheme "prefer-light"

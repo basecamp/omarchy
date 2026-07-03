@@ -37,11 +37,10 @@ sync_theme_environment() {
 
 sync_colorfgbg() {
   local colorfgbg="15;0"
-  local mode
 
-  mode=$(theme_color mode)
-
-  if [[ $mode == "light" ]] || [[ -z $mode && -f $CURRENT_THEME_PATH/light.mode ]]; then
+  # theme_color resolves mode from colors.toml, a legacy light.mode file, or
+  # background luminance, so a bare light check covers all theme styles.
+  if [[ $(theme_color mode) == "light" ]]; then
     colorfgbg="0;15"
   fi
 
@@ -53,34 +52,7 @@ theme_osc_sequences() {
 }
 
 theme_color() {
-  local key="$1"
-  local fallback="${2:-}"
-
-  awk -F= -v key="$key" -v fallback="$fallback" '
-    function clean(raw) {
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", raw)
-      if (raw ~ /^"/) {
-        sub(/^"/, "", raw)
-        sub(/".*$/, "", raw)
-      }
-      return raw
-    }
-
-    {
-      field = $1
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", field)
-      if (field == key) {
-        print clean($2)
-        found = 1
-        exit
-      }
-      if (fallback != "" && field == fallback) fallback_value = clean($2)
-    }
-
-    END {
-      if (!found && fallback_value != "") print fallback_value
-    }
-  ' "$COLORS_TOML"
+  omarchy-theme-color --file "$COLORS_TOML" "$@"
 }
 
 sync_tmux_window_style() {
@@ -88,8 +60,8 @@ sync_tmux_window_style() {
 
   [[ -f $COLORS_TOML ]] || return
 
-  foreground=$(theme_color foreground fg)
-  background=$(theme_color background bg)
+  foreground=$(theme_color foreground)
+  background=$(theme_color background)
 
   [[ -n $foreground && -n $background ]] || return
 
