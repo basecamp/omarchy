@@ -17,91 +17,12 @@ export PATH="$omarchy_root/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 omarchy_shell_bin=/usr/bin/omarchy-shell
 [[ -x $omarchy_shell_bin ]] || omarchy_shell_bin=omarchy-shell
 
-import_env_from_pid() {
-  local pid=$1 entry key
-
-  [[ -r /proc/$pid/environ ]] || return 1
-
-  while IFS= read -r -d '' entry; do
-    key=${entry%%=*}
-    case $key in
-      DBUS_SESSION_BUS_ADDRESS | DISPLAY | HYPRLAND_INSTANCE_SIGNATURE | LANG | LC_ALL | LC_CTYPE | QT_QPA_PLATFORM | WAYLAND_DISPLAY | XDG_CURRENT_DESKTOP | XDG_RUNTIME_DIR | XDG_SESSION_TYPE)
-        [[ -n ${!key:-} ]] || export "$entry"
-        ;;
-    esac
-  done <"/proc/$pid/environ"
-}
-
-import_graphical_session_env() {
-  local current_user hypr_dir pid wayland_socket x11_socket
-
-  current_user=${USER:-$(id -un)}
-
-  for pid in $(pgrep -xu "$current_user" quickshell 2>/dev/null || true); do
-    import_env_from_pid "$pid" || true
-  done
-
-  for pid in $(pgrep -u "$UID" -f '/omarchy-hyprland-monitor-watch($| )' 2>/dev/null || true); do
-    import_env_from_pid "$pid" || true
-  done
-
-  if [[ -z ${XDG_RUNTIME_DIR:-} && -d /run/user/$UID ]]; then
-    export XDG_RUNTIME_DIR="/run/user/$UID"
-  fi
-
-  if [[ -z ${WAYLAND_DISPLAY:-} && -n ${XDG_RUNTIME_DIR:-} ]]; then
-    for wayland_socket in "$XDG_RUNTIME_DIR"/wayland-*; do
-      [[ -S $wayland_socket ]] || continue
-      export WAYLAND_DISPLAY=${wayland_socket##*/}
-      break
-    done
-  fi
-
-  if [[ -z ${DISPLAY:-} ]]; then
-    for x11_socket in /tmp/.X11-unix/X*; do
-      [[ -S $x11_socket ]] || continue
-      export DISPLAY=:${x11_socket##*X}
-      break
-    done
-  fi
-
-  if [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} && -n ${XDG_RUNTIME_DIR:-} && -d $XDG_RUNTIME_DIR/hypr ]]; then
-    hypr_dir=$(find "$XDG_RUNTIME_DIR/hypr" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -n 1 | cut -d' ' -f2-)
-    [[ -n $hypr_dir ]] && export HYPRLAND_INSTANCE_SIGNATURE=${hypr_dir##*/}
-  fi
-
-  if [[ -z ${LANG:-} || $LANG == "C" || $LANG == "POSIX" ]]; then
-    if locale -a 2>/dev/null | grep -qxF "C.utf8"; then
-      export LANG="C.utf8"
-    else
-      export LANG="C.UTF-8"
-    fi
-  fi
-
-  if [[ -z ${QT_QPA_PLATFORM:-} ]]; then
-    export QT_QPA_PLATFORM="wayland;xcb"
-  fi
-
-  if [[ -z ${DBUS_SESSION_BUS_ADDRESS:-} && -n ${XDG_RUNTIME_DIR:-} && -S $XDG_RUNTIME_DIR/bus ]]; then
-    export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
-  fi
-}
-
-require_graphical_session_env() {
-  local missing=()
-
-  [[ -n ${XDG_RUNTIME_DIR:-} ]] || missing+=(XDG_RUNTIME_DIR)
-  [[ -n ${WAYLAND_DISPLAY:-} || -n ${DISPLAY:-} ]] || missing+=(WAYLAND_DISPLAY)
-
-  if [[ -n ${XDG_RUNTIME_DIR:-} && -d $XDG_RUNTIME_DIR/hypr && -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
-    missing+=(HYPRLAND_INSTANCE_SIGNATURE)
-  fi
-
-  if (( ${#missing[@]} > 0 )); then
-    printf 'Refusing to restart Omarchy shell; missing graphical session environment: %s\n' "${missing[*]}" >&2
-    exit 1
-  fi
-}
+# Allow running from outside the session (e.g. over ssh) by deriving the
+# Hyprland instance signature from the newest instance runtime dir.
+if [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+  hypr_dir=$(find "${XDG_RUNTIME_DIR:-/run/user/$UID}/hypr" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -n 1 | cut -d' ' -f2-)
+  [[ -n $hypr_dir ]] && export HYPRLAND_INSTANCE_SIGNATURE=${hypr_dir##*/}
+fi
 
 hyprland_session_locked() {
   local monitors
@@ -133,14 +54,10 @@ launch_shell() {
 
   launch_command="env OMARCHY_PATH=$(shell_quote "$omarchy_root") PATH=$(shell_quote "$PATH") quickshell -n -p $(shell_quote "$CONFIG_DIR")"
 
-  if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && omarchy-cmd-present hyprctl; then
-    if hyprctl dispatch "hl.dsp.exec_cmd($(lua_quote "$launch_command"))" >/dev/null 2>&1; then
-      return 0
-    fi
-
-    if hyprctl dispatch exec "$launch_command" >/dev/null 2>&1; then
-      return 0
-    fi
+  # hyprctl dispatch exits 0 even on Lua errors, so check for "ok" output.
+  if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && omarchy-cmd-present hyprctl &&
+    [[ $(hyprctl dispatch "hl.dsp.exec_cmd($(lua_quote "$launch_command"))" 2>/dev/null) == ok ]]; then
+    return 0
   fi
 
   setsid quickshell -n -p "$CONFIG_DIR" >/dev/null 2>&1 &
@@ -159,9 +76,6 @@ restore_hyprland_session_lock() {
 
   echo "Omarchy shell restarted while Hyprland was session-locked, but lock IPC did not become ready." >&2
 }
-
-import_graphical_session_env
-require_graphical_session_env
 
 hyprland_was_session_locked=0
 hyprland_session_locked && hyprland_was_session_locked=1
