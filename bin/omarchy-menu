@@ -354,7 +354,11 @@ show_dynamic_bg_menu() {
   local fullscreen="Off"
   [[ $DYNAMIC_BG_STOP_ON_FULLSCREEN == "true" ]] && fullscreen="On"
 
-  case $(menu "Dynamic Background" "󰐾  Status: $status\n󱦟  Interval: $DYNAMIC_BG_INTERVAL\n󰸌  Transition Effect: ${DYNAMIC_BG_TRANSITION_TYPE^}\n󰓅  Transition Speed: ${DYNAMIC_BG_TRANSITION_DURATION}s\n󰍺  Stop on Fullscreen: $fullscreen") in
+  local display_interval="$DYNAMIC_BG_INTERVAL"
+  display_interval="${display_interval/sec/s}"
+  display_interval="${display_interval/min/m}"
+
+  case $(menu "Dynamic Background" "󰐾  Status: $status\n󱦟  Interval: $display_interval\n󰸌  Transition Effect: ${DYNAMIC_BG_TRANSITION_TYPE^}\n󰓅  Transition Speed: ${DYNAMIC_BG_TRANSITION_DURATION}s\n󰍺  Stop on Fullscreen: $fullscreen") in
   *Status*) omarchy-dynamic-bg-toggle ; show_dynamic_bg_menu ;;
   *Interval*) show_dynamic_bg_interval_menu ;;
   *Effect*) show_dynamic_bg_effect_menu ;;
