@@ -367,30 +367,6 @@ apply_shell_section_overrides() {
   done
 }
 
-alias_theme_color() {
-  local key="$1"
-  local fallback="$2"
-
-  [[ ${THEME_COLORS[$key]} ]] || THEME_COLORS[$key]="${THEME_COLORS[$fallback]}"
-}
-
-resolve_theme_mode() {
-  local bg_hex lum
-
-  [[ ${THEME_COLORS[mode]} ]] || THEME_COLORS[mode]="${THEME_COLORS[theme_type]}"
-  [[ ${THEME_COLORS[mode]} ]] && return
-
-  if [[ -f $NEXT_THEME_DIR/light.mode ]]; then
-    THEME_COLORS[mode]="light"
-  elif [[ ${THEME_COLORS[bg]} =~ ^#[0-9A-Fa-f]{6}$ ]]; then
-    bg_hex="${THEME_COLORS[bg]#\#}"
-    lum=$(( $(printf "%d" "0x${bg_hex:0:2}") + $(printf "%d" "0x${bg_hex:2:2}") + $(printf "%d" "0x${bg_hex:4:2}") ))
-    (( lum > 382 )) && THEME_COLORS[mode]="light" || THEME_COLORS[mode]="dark"
-  else
-    THEME_COLORS[mode]="dark"
-  fi
-}
-
 # Only generate dynamic templates for themes with a colors.toml definition
 if [[ -f $COLORS_FILE ]]; then
   sed_script=$(mktemp)
@@ -398,103 +374,11 @@ if [[ -f $COLORS_FILE ]]; then
   shopt -s nullglob
   template_files=("$USER_TEMPLATES_DIR"/*.tpl "$TEMPLATES_DIR"/*.tpl)
 
-  while IFS='=' read -r key value; do
-    key="${key//[\"\' ]/}"                # strip quotes and spaces from key
-    [[ $key && $key != \#* ]] || continue # skip empty lines and comments
-    value="${value#*[\"\']}"
-    value="${value%%[\"\']*}" # extract value between quotes (ignores inline comments)
-
+  # Parsing and alias/fallback resolution (legacy colorN names, derived
+  # shades, mode/theme_type) is shared with every other colors.toml consumer.
+  while IFS=$'\t' read -r key value; do
     THEME_COLORS[$key]="$value"
-  done <"$COLORS_FILE"
-
-  # Canonical palette keys are bg/fg. Preserve older themes that still define
-  # background/foreground by treating those semantic values as the source of
-  # truth, then expose the old names as template aliases for user templates.
-  [[ ${THEME_COLORS[background]} ]] && THEME_COLORS[bg]="${THEME_COLORS[background]}"
-  [[ ${THEME_COLORS[foreground]} ]] && THEME_COLORS[fg]="${THEME_COLORS[foreground]}"
-  [[ ${THEME_COLORS[bg]} ]] || THEME_COLORS[bg]="${THEME_COLORS[color0]}"
-  [[ ${THEME_COLORS[fg]} ]] || THEME_COLORS[fg]="${THEME_COLORS[color7]}"
-  [[ ${THEME_COLORS[bg]} ]] && THEME_COLORS[background]="${THEME_COLORS[bg]}"
-  [[ ${THEME_COLORS[fg]} ]] && THEME_COLORS[foreground]="${THEME_COLORS[fg]}"
-  [[ ${THEME_COLORS[bg]} ]] && THEME_COLORS[color0]="${THEME_COLORS[bg]}"
-  [[ ${THEME_COLORS[fg]} ]] && THEME_COLORS[color7]="${THEME_COLORS[fg]}"
-
-  # Legacy compatibility: map ANSI color0..color15 to semantic names.
-  declare -A legacy_alias=(
-    [red]=color1
-    [green]=color2
-    [yellow]=color3
-    [blue]=color4
-    [magenta]=color5
-    [cyan]=color6
-    [bright_red]=color9
-    [bright_green]=color10
-    [bright_yellow]=color11
-    [bright_blue]=color12
-    [bright_magenta]=color13
-    [bright_cyan]=color14
-  )
-  for key in "${!legacy_alias[@]}"; do
-    alias_theme_color "$key" "${legacy_alias[$key]}"
-  done
-  alias_theme_color magenta purple
-  alias_theme_color bright_magenta bright_purple
-
-  [[ ${THEME_COLORS[light_fg]} ]]   || THEME_COLORS[light_fg]="${THEME_COLORS[color7]:-${THEME_COLORS[fg]}}"
-  [[ ${THEME_COLORS[bright_fg]} ]]  || THEME_COLORS[bright_fg]="${THEME_COLORS[color15]:-${THEME_COLORS[fg]}}"
-  THEME_COLORS[cursor]="${THEME_COLORS[bright_fg]}"
-  [[ ${THEME_COLORS[lighter_bg]} ]] || THEME_COLORS[lighter_bg]="${THEME_COLORS[color0]:-${THEME_COLORS[bg]}}"
-  [[ ${THEME_COLORS[dark_fg]} ]]    || THEME_COLORS[dark_fg]="${THEME_COLORS[color8]:-${THEME_COLORS[fg]}}"
-  [[ ${THEME_COLORS[muted]} ]]      || THEME_COLORS[muted]="${THEME_COLORS[color8]:-${THEME_COLORS[dark_fg]}}"
-  [[ ${THEME_COLORS[selection]} ]]            || THEME_COLORS[selection]="${THEME_COLORS[selection_background]:-${THEME_COLORS[color8]:-${THEME_COLORS[color0]:-${THEME_COLORS[bg]}}}}"
-  [[ ${THEME_COLORS[selection_background]} ]] || THEME_COLORS[selection_background]="${THEME_COLORS[selection]}"
-  [[ ${THEME_COLORS[selection_foreground]} ]] || THEME_COLORS[selection_foreground]="${THEME_COLORS[bright_fg]}"
-  [[ ${THEME_COLORS[orange]} ]]               || THEME_COLORS[orange]="${THEME_COLORS[yellow]}"
-  [[ ${THEME_COLORS[brown]} ]]      || THEME_COLORS[brown]=$(mix_color "${THEME_COLORS[orange]}" "#000000" 50%)
-
-  # Auto-derive shades from base accents when not defined and not aliased from colorN
-  [[ ${THEME_COLORS[dark_bg]} ]]       || THEME_COLORS[dark_bg]=$(mix_color "${THEME_COLORS[bg]}" "#000000" 25%)
-  [[ ${THEME_COLORS[darker_bg]} ]]     || THEME_COLORS[darker_bg]=$(mix_color "${THEME_COLORS[bg]}" "#000000" 50%)
-  [[ ${THEME_COLORS[bright_red]} ]]    || THEME_COLORS[bright_red]=$(mix_color "${THEME_COLORS[red]}" "#ffffff" 20%)
-  [[ ${THEME_COLORS[bright_yellow]} ]] || THEME_COLORS[bright_yellow]=$(mix_color "${THEME_COLORS[yellow]}" "#ffffff" 20%)
-  [[ ${THEME_COLORS[bright_green]} ]]  || THEME_COLORS[bright_green]=$(mix_color "${THEME_COLORS[green]}" "#ffffff" 20%)
-  [[ ${THEME_COLORS[bright_cyan]} ]]   || THEME_COLORS[bright_cyan]=$(mix_color "${THEME_COLORS[cyan]}" "#ffffff" 20%)
-  [[ ${THEME_COLORS[bright_blue]} ]]   || THEME_COLORS[bright_blue]=$(mix_color "${THEME_COLORS[blue]}" "#ffffff" 20%)
-  [[ ${THEME_COLORS[bright_magenta]} ]] || THEME_COLORS[bright_magenta]=$(mix_color "${THEME_COLORS[magenta]}" "#ffffff" 20%)
-  alias_theme_color purple magenta
-  alias_theme_color bright_purple bright_magenta
-
-  # Keep semantic themes compatible with user templates that still reference
-  # the legacy ANSI placeholders directly.
-  declare -A ansi_alias=(
-    [color0]=bg
-    [color1]=red
-    [color2]=green
-    [color3]=yellow
-    [color4]=blue
-    [color5]=magenta
-    [color6]=cyan
-    [color7]=fg
-    [color8]=muted
-    [color9]=bright_red
-    [color10]=bright_green
-    [color11]=bright_yellow
-    [color12]=bright_blue
-    [color13]=bright_magenta
-    [color14]=bright_cyan
-    [color15]=bright_fg
-  )
-  for key in "${!ansi_alias[@]}"; do
-    alias_theme_color "$key" "${ansi_alias[$key]}"
-  done
-
-  # Resolve theme mode (dark|light) with this precedence:
-  #   1. `mode` key in colors.toml
-  #   2. legacy `light.mode` file shipped beside the theme
-  #   3. background luminance auto-detect
-  # `theme_type` is kept as an alias so existing templates ({{ theme_type }}) keep working.
-  resolve_theme_mode
-  THEME_COLORS[theme_type]="${THEME_COLORS[mode]}"
+  done < <(omarchy-theme-color --file "$COLORS_FILE" --all)
 
   for key in "${!THEME_COLORS[@]}"; do
     add_template_value "$key" "${THEME_COLORS[$key]}"
