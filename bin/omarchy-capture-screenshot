@@ -45,7 +45,7 @@ cleanup_freeze() {
 }
 trap cleanup_freeze EXIT
 
-{ read -r FREEZE_PID; read -r SELECTION; } < <(omarchy-capture-region-pick "$MODE" --keep-freeze)
+{ read -r FREEZE_PID; read -r SELECTION; } < <(omarchy-capture-region "$MODE" --keep-freeze)
 
 [[ -z $SELECTION ]] && exit 0
 

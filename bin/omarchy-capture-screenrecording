@@ -108,7 +108,7 @@ default_resolution() {
 # user cancelled the picker.
 select_capture_target() {
   local target
-  target=$(omarchy-capture-region-pick smart --match-monitor) || return 1
+  target=$(omarchy-capture-region smart --match-monitor) || return 1
 
   if [[ $target == monitor:* ]]; then
     echo "$target"
