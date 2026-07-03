@@ -2,27 +2,6 @@
 
 # omarchy:summary=Display Hyprland keybindings defined in your configuration using an interactive search menu.
 
-declare -A KEYCODE_SYM_MAP
-# Hyprland reports XKB keycodes for code: bindings. Keep a small fallback for
-# common keys so the menu remains readable if xkbcli cannot resolve a symbol.
-declare -A FALLBACK_KEYCODE_SYM_MAP=(
-  [10]="1"
-  [11]="2"
-  [12]="3"
-  [13]="4"
-  [14]="5"
-  [15]="6"
-  [16]="7"
-  [17]="8"
-  [18]="9"
-  [19]="0"
-  [20]="MINUS"
-  [21]="EQUAL"
-  [59]="COMMA"
-  [60]="PERIOD"
-  [61]="SLASH"
-)
-
 # Hyprland's Lua config provider currently reports Lua binds as dispatcher
 # __lua and code:... binds from hl.bind() as key="" and keycode=0 in
 # `hyprctl -j binds`. Keep a lightweight source-derived cache so the menu can
@@ -31,74 +10,33 @@ declare -A LUA_BIND_KEY_MAP
 declare -A LUA_BIND_DISPATCHER_MAP
 declare -A LUA_BIND_ARG_MAP
 
-build_keymap_cache() {
-  local keymap
-  keymap="$(xkbcli compile-keymap)" || {
-    echo "Failed to compile keymap" >&2
-    return 1
-  }
-
-  while IFS=, read -r code sym; do
-    [[ -z $code || -z $sym ]] && continue
-    KEYCODE_SYM_MAP["$code"]="$sym"
-  done < <(
-    awk '
-      BEGIN { sec = "" }
-      /xkb_keycodes/ { sec = "codes"; next }
-      /xkb_symbols/  { sec = "syms";  next }
-      sec == "codes" {
-        if (match($0, /<([A-Za-z0-9_]+)>\s*=\s*([0-9]+)\s*;/, m)) code_by_name[m[1]] = m[2]
-      }
-      sec == "syms" {
-        if (match($0, /key\s*<([A-Za-z0-9_]+)>\s*\{\s*\[\s*([^, \]]+)/, m)) sym_by_name[m[1]] = m[2]
-      }
-      END {
-        for (k in code_by_name) {
-          c = code_by_name[k]
-          s = sym_by_name[k]
-          if (c != "" && s != "" && s != "NoSymbol") print c "," s
-        }
-      }
-    ' <<<"$keymap"
-  )
-}
-
-lookup_keycode_cached() {
-  local symbol
-  symbol="${KEYCODE_SYM_MAP[$1]}"
-
-  if [[ -z $symbol ]]; then
-    symbol="${FALLBACK_KEYCODE_SYM_MAP[$1]}"
-  fi
-
-  if [[ -z $symbol ]]; then
-    symbol="code:$1"
-  fi
-
-  printf '%s\n' "${symbol^^}"
-}
-
+# Hyprland reports XKB keycodes for code: bindings. Resolve them to symbols
+# via the compiled keymap, with a small fallback for common keys so the menu
+# remains readable if xkbcli cannot resolve a symbol.
 parse_keycodes() {
-  local start end elapsed
-  [[ ${DEBUG:-0} == "1" ]] && start=$(date +%s.%N)
-
-  awk -v keymap="$(
-    for code in "${!KEYCODE_SYM_MAP[@]}"; do
-      printf '%s=%s\n' "$code" "${KEYCODE_SYM_MAP[$code]}"
-    done
-    for code in "${!FALLBACK_KEYCODE_SYM_MAP[@]}"; do
-      printf '%s=%s\n' "$code" "${FALLBACK_KEYCODE_SYM_MAP[$code]}"
-    done
-  )" '
+  awk '
     BEGIN {
-      split(keymap, entries, "\n")
-      for (entry_index in entries) {
-        if (entries[entry_index] == "") continue
-        separator = index(entries[entry_index], "=")
-        if (separator == 0) continue
-        code = substr(entries[entry_index], 1, separator - 1)
-        symbol = substr(entries[entry_index], separator + 1)
-        if (!(code in keycode_symbol)) keycode_symbol[code] = toupper(symbol)
+      split("10=1 11=2 12=3 13=4 14=5 15=6 16=7 17=8 18=9 19=0 20=MINUS 21=EQUAL 59=COMMA 60=PERIOD 61=SLASH", fallbacks, " ")
+      for (i in fallbacks) {
+        separator = index(fallbacks[i], "=")
+        keycode_symbol[substr(fallbacks[i], 1, separator - 1)] = substr(fallbacks[i], separator + 1)
+      }
+
+      # </dev/null keeps xkbcli from consuming the binding records on stdin
+      keymap_cmd = "xkbcli compile-keymap </dev/null"
+      section = ""
+      while ((keymap_cmd | getline line) > 0) {
+        if (line ~ /xkb_keycodes/) { section = "codes"; continue }
+        if (line ~ /xkb_symbols/)  { section = "syms";  continue }
+        if (section == "codes" && match(line, /<([A-Za-z0-9_]+)>\s*=\s*([0-9]+)\s*;/, m)) code_by_name[m[1]] = m[2]
+        if (section == "syms" && match(line, /key\s*<([A-Za-z0-9_]+)>\s*\{\s*\[\s*([^, \]]+)/, m)) sym_by_name[m[1]] = m[2]
+      }
+      close(keymap_cmd)
+
+      for (name in code_by_name) {
+        code = code_by_name[name]
+        symbol = sym_by_name[name]
+        if (code != "" && symbol != "" && symbol != "NoSymbol") keycode_symbol[code] = toupper(symbol)
       }
 
       mouse_symbol["272"] = "LEFT MOUSE BUTTON"
@@ -125,17 +63,6 @@ parse_keycodes() {
       print
     }
   '
-
-  if [[ $DEBUG == "1" ]]; then
-    end=$(date +%s.%N)
-    # fall back to awk if bc is missing
-    if command -v bc >/dev/null 2>&1; then
-      elapsed=$(echo "$end - $start" | bc)
-    else
-      elapsed=$(awk -v s="$start" -v e="$end" 'BEGIN{printf "%.6f", (e - s)}')
-    fi
-    echo "[DEBUG] parse_keycodes elapsed: ${elapsed}s" >&2
-  fi
 }
 
 # Supplement `hyprctl -j binds` for Lua-only binds that Hyprland currently
@@ -266,10 +193,6 @@ noop = setmetatable({}, {
   end,
 })
 
-local function noop_fn()
-  return noop
-end
-
 hl = setmetatable({
   dsp = dsp_proxy("hl.dsp"),
   bind = function(keys, bind_dispatcher, opts)
@@ -293,20 +216,6 @@ hl = setmetatable({
 
     return noop
   end,
-  unbind = noop_fn,
-  config = noop_fn,
-  env = noop_fn,
-  monitor = noop_fn,
-  window_rule = noop_fn,
-  workspace_rule = noop_fn,
-  layer_rule = noop_fn,
-  gesture = noop_fn,
-  animation = noop_fn,
-  curve = noop_fn,
-  exec_cmd = noop_fn,
-  dispatch = noop_fn,
-  on = noop_fn,
-  timer = noop_fn,
   get_config = function()
     return nil
   end,
@@ -441,13 +350,6 @@ parse_binding_records() {
         gsub(/(^|[[:space:]])uwsm(-app| app)[[:space:]]+--[[:space:]]+/, "", action);
         gsub(/^[ \t]+|[ \t]+$/, "", action);
         gsub(/[ \t]+/, " ", key_combo);  # Collapse multiple spaces to one
-
-        # Escape XML entities
-        gsub(/&/, "\\&amp;", action);
-        gsub(/</, "\\&lt;", action);
-        gsub(/>/, "\\&gt;", action);
-        gsub(/"/, "\\&quot;", action);
-        gsub(/'"'"'/, "\\&apos;", action);
     }
 
     if (action != "") {
@@ -518,7 +420,6 @@ prioritize_entries() {
 }
 
 output_binding_records_uncached() {
-  build_keymap_cache
   build_lua_bind_cache
 
   {
@@ -533,8 +434,9 @@ output_binding_records_uncached() {
 
 keybindings_cache_key() {
   {
-    printf 'v3\n'
-    hyprctl -j binds 2>/dev/null | sha256sum | awk '{ print $1 }'
+    printf 'v4\n'
+    hyprctl -j devices 2>/dev/null | jq -r '.keyboards[].active_keymap' 2>/dev/null
+    hyprctl -j binds 2>/dev/null
   } | sha256sum | awk '{ print $1 }'
 }
 
@@ -556,28 +458,15 @@ refresh_keybindings_cache() {
 }
 
 output_binding_records() {
-  local cache_dir cache_file cache_key cache_name
-
-  cache_key=$(keybindings_cache_key) || {
-    output_binding_records_uncached
-    return
-  }
+  local cache_dir cache_file cache_name
 
   cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy"
-  cache_name="keybindings-${cache_key}.records"
+  cache_name="keybindings-$(keybindings_cache_key).records"
   cache_file="$cache_dir/$cache_name"
 
   if [[ -s $cache_file ]]; then
     cat "$cache_file"
-    return
-  fi
-
-  mkdir -p "$cache_dir" || {
-    output_binding_records_uncached
-    return
-  }
-
-  if refresh_keybindings_cache "$cache_dir" "$cache_file" "$cache_name"; then
+  elif mkdir -p "$cache_dir" 2>/dev/null && refresh_keybindings_cache "$cache_dir" "$cache_file" "$cache_name"; then
     cat "$cache_file"
   else
     output_binding_records_uncached
@@ -671,10 +560,8 @@ if [[ $1 == "--print" || $1 == "-p" ]]; then
   output_keybindings
 else
   records=$(output_binding_records)
-  monitor_height=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .height')
-  menu_height=$((monitor_height * 40 / 100))
   selection=$(cut -f1 <<<"$records" |
-    omarchy-menu-select 'Keybindings' -- --width 800 --height "$menu_height")
+    omarchy-menu-select 'Keybindings' -- --width 800 --height 500)
 
   if [[ -n $selection ]]; then
     record=$(awk -F '\t' -v selection="$selection" '$1 == selection { print; exit }' <<<"$records")
