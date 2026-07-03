@@ -162,6 +162,18 @@ assert(
   !/onContainsMouseChanged:[\s\S]*root\.selectedIndex/.test(clipboardQml),
   'clipboard does not select rows from containsMouse'
 )
+assert(
+  clipboardQml.includes('command: ["setpriv", "--pdeathsig", "TERM", "wl-paste", "--type", "text", "--watch", root.captureScript, "text"]'),
+  'clipboard text watcher dies with the shell via pdeathsig'
+)
+assert(
+  clipboardQml.includes('command: ["setpriv", "--pdeathsig", "TERM", "wl-paste", "--type", "image/png", "--watch", root.captureScript, "image/png"]'),
+  'clipboard image watcher dies with the shell via pdeathsig'
+)
+assert(
+  clipboardQml.includes('command: ["pkill", "-f", "wl-paste .*--watch .*/shell/plugins/clipboard/capture\\\\.sh"]'),
+  'clipboard init reaps stale watchers before starting new ones'
+)
 JS
 
 TMPDIR=$(mktemp -d)
@@ -245,17 +257,22 @@ capture_output=$(XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="
 [[ $capture_output == '{"type":"text","text":"terminal copy"}' ]] || fail "clipboard capture records normal text events"
 pass "clipboard capture records normal text events"
 
-capture_output=$(printf 'closing app copy' | OMARCHY_CLIPBOARD_WATCH_MIME=text WL_PASTE_TEXT="stale read" XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
+capture_output=$(printf 'closing app copy' | WL_PASTE_TEXT="stale read" XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text)
 [[ $capture_output == '{"type":"text","text":"closing app copy"}' ]] || fail "clipboard capture records watched text from stdin"
 pass "clipboard capture records watched text from stdin"
 
-capture_output=$(printf 'png-data' | OMARCHY_CLIPBOARD_WATCH_MIME=image/png XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
+capture_output=$(printf 'png-data' | XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" image/png)
 image_path=$(jq -r '.path' <<<"$capture_output")
 jq -e '.type == "image" and .mime == "image/png" and (.capturedAt | type == "string")' <<<"$capture_output" >/dev/null || fail "clipboard capture records watched png images"
 [[ -s $image_path && $(<"$image_path") == "png-data" ]] || fail "clipboard capture stores watched png image data"
 pass "clipboard capture records watched png images"
 
-capture_output=$(printf 'secret' | CLIPBOARD_STATE=sensitive OMARCHY_CLIPBOARD_WATCH_MIME=text XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
+capture_output=$(printf 'jpg-data' | XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" image/jpeg)
+image_path=$(jq -r '.path' <<<"$capture_output")
+jq -e '.mime == "image/jpeg"' <<<"$capture_output" >/dev/null && [[ $image_path == *.jpg ]] || fail "clipboard capture stores watched jpeg images with jpg extension"
+pass "clipboard capture stores watched jpeg images with jpg extension"
+
+capture_output=$(printf 'secret' | CLIPBOARD_STATE=sensitive XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text)
 [[ -z $capture_output ]] || fail "clipboard capture ignores sensitive watched text"
 pass "clipboard capture ignores sensitive watched text"
 
@@ -288,39 +305,24 @@ chmod +x "$TMPDIR/bin/wl-paste"
 
 clipboard_lifecycle_dir="$TMPDIR/clipboard-lifecycle"
 current_script="$clipboard_lifecycle_dir/current/shell/plugins/clipboard/capture.sh"
-other_script="$clipboard_lifecycle_dir/other/shell/plugins/clipboard/capture.sh"
-missing_script="$clipboard_lifecycle_dir/missing/shell/plugins/clipboard/capture.sh"
-watch_log="$clipboard_lifecycle_dir/wl-paste.log"
-mkdir -p "$(dirname "$current_script")" "$(dirname "$other_script")"
+mkdir -p "$(dirname "$current_script")"
 cp "$ROOT/shell/plugins/clipboard/capture.sh" "$current_script"
-cp "$ROOT/shell/plugins/clipboard/capture.sh" "$other_script"
-chmod +x "$current_script" "$other_script"
+chmod +x "$current_script"
 
-WL_PASTE_LOG="$watch_log" PATH="$TMPDIR/bin:$PATH" wl-paste --type text --watch "$current_script" &
-current_pid=$!
-PIDS_TO_KILL+=("$current_pid")
-WL_PASTE_LOG="$watch_log" PATH="$TMPDIR/bin:$PATH" wl-paste --type text --watch "$other_script" &
-other_pid=$!
-PIDS_TO_KILL+=("$other_pid")
-WL_PASTE_LOG="$watch_log" PATH="$TMPDIR/bin:$PATH" wl-paste --type text --watch "$missing_script" &
-missing_pid=$!
-PIDS_TO_KILL+=("$missing_pid")
-
+PATH="$TMPDIR/bin:$PATH" wl-paste --type text --watch "$current_script" text &
+stale_pid=$!
+PIDS_TO_KILL+=("$stale_pid")
 sleep 0.2
-PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/init.sh" "$current_script"
-process_gone "$current_pid" || fail "clipboard init kills watchers for the current capture script"
-process_gone "$missing_pid" || fail "clipboard init kills stale temp-root watchers"
-process_alive "$other_pid" || fail "clipboard init preserves watchers for another existing capture script"
-kill "$other_pid" 2>/dev/null || true
-wait "$other_pid" 2>/dev/null || true
-pass "clipboard init cleans current and stale watchers without killing other live roots"
+pgrep -f 'wl-paste .*--watch .*/shell/plugins/clipboard/capture\.sh' | grep -qx "$stale_pid" || fail "clipboard reaper pattern matches running watchers"
+kill "$stale_pid" 2>/dev/null || true
+wait "$stale_pid" 2>/dev/null || true
+pass "clipboard reaper pattern matches running watchers"
 
 watch_owner="$clipboard_lifecycle_dir/watch-owner.sh"
 watch_pid_file="$clipboard_lifecycle_dir/watch.pid"
-: >"$watch_log"
 cat >"$watch_owner" <<SH
 #!/bin/bash
-WL_PASTE_LOG="$watch_log" PATH="$TMPDIR/bin:\$PATH" "$ROOT/shell/plugins/clipboard/watch.sh" "$current_script" &
+PATH="$TMPDIR/bin:\$PATH" setpriv --pdeathsig TERM wl-paste --type text --watch "$current_script" text &
 printf '%s\n' "\$!" >"$watch_pid_file"
 wait
 SH
@@ -331,21 +333,17 @@ owner_pid=$!
 PIDS_TO_KILL+=("$owner_pid")
 
 for _ in {1..40}; do
-  [[ -s $watch_pid_file && $(wc -l <"$watch_log") -ge 2 ]] && break
+  [[ -s $watch_pid_file ]] && break
   sleep 0.1
 done
 
 watch_pid=$(<"$watch_pid_file")
-mapfile -t watch_child_pids < <(awk '{print $1}' "$watch_log")
-[[ -n $watch_pid && ${#watch_child_pids[@]} -ge 2 ]] || fail "clipboard watch helper starts text and image watchers"
-PIDS_TO_KILL+=("$watch_pid" "${watch_child_pids[@]}")
+[[ -n $watch_pid ]] && process_alive "$watch_pid" || fail "clipboard watcher starts under setpriv"
+PIDS_TO_KILL+=("$watch_pid")
 
 kill "$owner_pid" 2>/dev/null || true
-process_gone "$watch_pid" || fail "clipboard watch helper exits when its owner exits"
-for child_pid in "${watch_child_pids[@]}"; do
-  process_gone "$child_pid" || fail "clipboard watch helper stops child wl-paste watchers"
-done
-pass "clipboard watch helper cleans up when its owner exits"
+process_gone "$watch_pid" || fail "clipboard watcher dies with its owner via pdeathsig"
+pass "clipboard watcher dies with its owner via pdeathsig"
 
 jq -n --arg text "$(printf 'large block line 1\nlarge block line 2\n')" '[{type:"text", text:"ignored"}, {type:"text", text:$text}]' >"$TMPDIR/home/.local/state/omarchy/clipboard-history.json"
 

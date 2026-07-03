@@ -19,8 +19,6 @@ Item {
 
   property string historyPath: Quickshell.env("HOME") + "/.local/state/omarchy/clipboard-history.json"
   property string captureScript: root.omarchyPath + "/shell/plugins/clipboard/capture.sh"
-  property string initScript: root.omarchyPath + "/shell/plugins/clipboard/init.sh"
-  property string watchScript: root.omarchyPath + "/shell/plugins/clipboard/watch.sh"
   // Shares the [menu] surface tokens — themes that style the menu also
   // style the clipboard. Selected-row colors composed in the
   // singleton so consumers drop them straight into Rectangle bindings.
@@ -260,19 +258,22 @@ Item {
     onFileChanged: reload()
   }
 
+  // Reap watchers left behind by a previous shell instance, then start our
+  // own. The pdeathsig on the watchers makes the kernel kill them whenever
+  // the shell exits, however it exits, so no further lifecycle management.
   Process {
     id: initProc
-    command: [root.initScript, root.captureScript]
+    command: ["pkill", "-f", "wl-paste .*--watch .*/shell/plugins/clipboard/capture\\.sh"]
     onExited: {
-      currentProc.command = [root.captureScript]
       currentProc.running = true
-      watchProc.command = [root.watchScript, root.captureScript]
-      watchProc.running = true
+      textWatchProc.running = true
+      imageWatchProc.running = true
     }
   }
 
   Process {
     id: currentProc
+    command: [root.captureScript]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.addClipboardJson(text)
@@ -280,7 +281,16 @@ Item {
   }
 
   Process {
-    id: watchProc
+    id: textWatchProc
+    command: ["setpriv", "--pdeathsig", "TERM", "wl-paste", "--type", "text", "--watch", root.captureScript, "text"]
+    stdout: SplitParser {
+      onRead: function(data) { root.addClipboardJson(data) }
+    }
+  }
+
+  Process {
+    id: imageWatchProc
+    command: ["setpriv", "--pdeathsig", "TERM", "wl-paste", "--type", "image/png", "--watch", root.captureScript, "image/png"]
     stdout: SplitParser {
       onRead: function(data) { root.addClipboardJson(data) }
     }
