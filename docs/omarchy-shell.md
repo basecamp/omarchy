@@ -42,26 +42,24 @@ Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegis
 
 ## Installing a third-party plugin
 
-Plugins come from **source repos** — a git repo where every top-level folder is
-a plugin with its own `manifest.json`. Trust a repo, then install from it:
+A plugin is a **git repo** with a `manifest.json` at its root. Adding one
+clones it straight into `~/.config/omarchy/plugins/<id>/`; updating is a
+fast-forward pull:
 
 ```bash
-omarchy plugin source add https://github.com/owner/omarchy-plugins.git
-omarchy plugin available             # what your sources offer
-omarchy plugin add some-widget       # validate, copy, offer to enable
-omarchy plugin update --all          # shows a diff before applying
-omarchy plugin remove some-widget
+omarchy plugin add https://github.com/acme/omarchy-weather.git
+omarchy plugin update --all          # fetches, shows a diff, fast-forwards
+omarchy plugin remove acme.weather
 ```
 
-Plugins run as **unsandboxed code** inside `omarchy-shell`. Adding a source and
-installing both warn you and let you review the manifest, the files, and (on
-update) a diff before anything is copied or enabled. Commands prompt when run
-bare in a terminal and run unattended when given arguments — add `--yes` to skip
-every prompt (the path for scripts and agents).
+Plugins run as **unsandboxed code** inside `omarchy-shell`. Adding warns you
+before cloning, plugins land disabled so you can review the code before
+`omarchy plugin enable`, and updates show a diff before touching anything.
+Commands prompt when run bare in a terminal and run unattended when given
+arguments — add `--yes` to skip every prompt (the path for scripts and agents).
 
-Sources are recorded in `~/.config/omarchy/plugins/sources.json` and cloned into
-`~/.cache/omarchy/plugin-sources/`. You can still install by hand: drop a plugin
-into `~/.config/omarchy/plugins/<id>/`, run `omarchy plugin rescan`, then
+You can still install by hand: drop a plugin into
+`~/.config/omarchy/plugins/<id>/`, run `omarchy plugin rescan`, then
 `omarchy plugin enable <id>` (bar widgets also need `omarchy bar add <id>`;
 full bar replacements are selected with `omarchy bar use <id>`).
 The lower-level IPC methods remain available through `omarchy-shell shell ...`.

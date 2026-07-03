@@ -77,8 +77,9 @@ done < <(jq -c '.entryPoints | to_entries[] | .value' "$MANIFEST")
 
 # Refuse any symlink anywhere inside the plugin folder. Symlinks could point a
 # copied plugin back at arbitrary files on disk after it lands in the trusted
-# plugins directory.
-link=$(find "$PLUGIN_DIR" -type l -print -quit 2>/dev/null)
+# plugins directory. The .git dir is skipped: installed plugins are git
+# checkouts, and git's internals are never loaded by the shell.
+link=$(find "$PLUGIN_DIR" -name .git -prune -o -type l -print -quit 2>/dev/null)
 [[ -z $link ]] || fail "symlinks are not allowed inside a plugin folder: $link"
 
 # The whole omarchy.* namespace plus every shipped first-party id is reserved.

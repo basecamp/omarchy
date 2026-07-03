@@ -93,43 +93,40 @@ The full schema lives in `services/PluginRegistry.qml`.
 
 ## Installing a third-party plugin
 
-Plugins are distributed as **source repos**: a git repo where every top-level
-folder is one plugin with its own `manifest.json`. Trust a repo, then install
-individual plugins from it. Everything lands in `~/.config/omarchy/plugins/<id>/`.
+A plugin is a **git repo** with a `manifest.json` at its root. Adding one
+clones it straight into `~/.config/omarchy/plugins/<id>/` (named by the
+manifest id); updating is a fast-forward pull of that checkout.
 
 ```bash
-omarchy plugin source add https://github.com/owner/omarchy-plugins.git
-omarchy plugin available                 # list what your sources offer
-omarchy plugin add some-widget           # validate, copy, offer to enable
-omarchy plugin update some-widget        # shows a diff of changes first
+omarchy plugin add https://github.com/acme/omarchy-weather.git
+omarchy plugin update acme.weather       # fetches, shows a diff, fast-forwards
 omarchy plugin update --all
-omarchy plugin remove some-widget
+omarchy plugin remove acme.weather
 ```
 
-> ⚠️ **Plugins run as unsandboxed code inside `omarchy-shell`.** Adding a source
-> and installing both warn you and let you review the manifest, the files, and
-> (on update) a diff of the changes before anything is copied or enabled. Only
-> trust sources and plugins whose code you are willing to run.
+> ⚠️ **Plugins run as unsandboxed code inside `omarchy-shell`.** Adding warns
+> you before cloning, plugins land disabled so you can review the code before
+> enabling, and updates show a diff of the changes before touching anything.
+> Only add repos whose code you are willing to run.
 
-Each command is **interactive** when run bare in a terminal (gum/fzf pickers,
+Each command is **interactive** when run bare in a terminal (gum pickers,
 confirmation, a diff to review) and fully **non-interactive** when given
 arguments. Pass `--yes` to skip every prompt — this is the path for scripts and
 AI agents:
 
 ```bash
-omarchy plugin source add <url> --as acme --yes
-omarchy plugin add acme-weather --from acme --enable --yes
+omarchy plugin add https://github.com/acme/omarchy-weather.git --enable --yes
 omarchy plugin update --all --yes
 ```
 
-Sources live in `~/.config/omarchy/plugins/sources.json`; their clones are
-cached under `~/.cache/omarchy/plugin-sources/`. The installer never runs
-plugin code, install hooks, or sudo — it only copies files and toggles enabled
-state over shell IPC.
+The installer never runs plugin code, install hooks, or sudo — it only clones
+files, validates the manifest, and toggles enabled state over shell IPC. Since
+an installed plugin is a plain git checkout, anything beyond add/update
+(pinning a ref, switching branches) is ordinary git in the plugin directory.
 
 ### Installing by hand
 
-You can still drop a plugin in without a source:
+You can still drop a plugin in without git:
 
 1. Put it in `~/.config/omarchy/plugins/<plugin-id>/` with a `manifest.json`
    plus the QML referenced from its `entryPoints`.
