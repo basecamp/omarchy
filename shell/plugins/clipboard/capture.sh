@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Captures the current clipboard as a JSON entry on stdout. In watch mode,
+# wl-paste invokes this with the payload on stdin and the mime as $1. Without
+# arguments, it snapshots the current selection itself.
+
 set -o pipefail
 
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
@@ -14,35 +18,10 @@ fi
 
 emit_image() {
   local mime="$1"
-  local ext="$2"
-  local tmp=""
-  local hash=""
-  local file=""
+  local ext tmp hash file
 
-  tmp=$(mktemp --tmpdir="$IMAGE_DIR" clipboard.XXXXXX) || return 0
-  if ! timeout 2s wl-paste --type "$mime" > "$tmp" 2>/dev/null || [[ ! -s $tmp ]]; then
-    rm -f "$tmp"
-    return 0
-  fi
-
-  hash=$(sha256sum "$tmp" | awk '{print $1}')
-  file="$IMAGE_DIR/$hash.$ext"
-  if [[ -e $file ]]; then
-    rm -f "$tmp"
-  else
-    mv "$tmp" "$file"
-  fi
-
-  jq -cn --arg mime "$mime" --arg path "$file" --arg captured_at "$(date +'%A %H:%M')" \
-    '{type:"image", mime:$mime, path:$path, capturedAt:$captured_at}'
-}
-
-emit_image_stream() {
-  local mime="$1"
-  local ext="$2"
-  local tmp=""
-  local hash=""
-  local file=""
+  ext=${mime#image/}
+  [[ $ext == jpeg ]] && ext=jpg
 
   tmp=$(mktemp --tmpdir="$IMAGE_DIR" clipboard.XXXXXX) || return 0
   cat >"$tmp"
@@ -63,32 +42,22 @@ emit_image_stream() {
     '{type:"image", mime:$mime, path:$path, capturedAt:$captured_at}'
 }
 
-emit_text_stream() {
+emit_text() {
   jq -cRs 'select(length > 0) | {type:"text", text:.}'
 }
 
-case "${OMARCHY_CLIPBOARD_WATCH_MIME:-}" in
-text) emit_text_stream; exit 0 ;;
-image/png) emit_image_stream 'image/png' 'png'; exit 0 ;;
-image/jpeg) emit_image_stream 'image/jpeg' 'jpg'; exit 0 ;;
-image/webp) emit_image_stream 'image/webp' 'webp'; exit 0 ;;
-image/gif) emit_image_stream 'image/gif' 'gif'; exit 0 ;;
-image/bmp) emit_image_stream 'image/bmp' 'bmp'; exit 0 ;;
-image/tiff) emit_image_stream 'image/tiff' 'tiff'; exit 0 ;;
+case "${1:-}" in
+text) emit_text; exit 0 ;;
+image/*) emit_image "$1"; exit 0 ;;
 esac
 
-if grep -qx 'image/png' <<<"$types"; then
-  emit_image 'image/png' 'png'
-elif grep -qx 'image/jpeg' <<<"$types"; then
-  emit_image 'image/jpeg' 'jpg'
-elif grep -qx 'image/webp' <<<"$types"; then
-  emit_image 'image/webp' 'webp'
-elif grep -qx 'image/gif' <<<"$types"; then
-  emit_image 'image/gif' 'gif'
-elif grep -qx 'image/bmp' <<<"$types"; then
-  emit_image 'image/bmp' 'bmp'
-elif grep -qx 'image/tiff' <<<"$types"; then
-  emit_image 'image/tiff' 'tiff'
-elif grep -q '^text/' <<<"$types" || grep -qx 'UTF8_STRING' <<<"$types" || grep -qx 'STRING' <<<"$types"; then
-  wl-paste --type text --no-newline 2>/dev/null | jq -cRs 'select(length > 0) | {type:"text", text:.}'
+for mime in image/png image/jpeg image/webp image/gif image/bmp image/tiff; do
+  if grep -qx "$mime" <<<"$types"; then
+    timeout 2s wl-paste --type "$mime" 2>/dev/null | emit_image "$mime"
+    exit 0
+  fi
+done
+
+if grep -q '^text/' <<<"$types" || grep -qx 'UTF8_STRING' <<<"$types" || grep -qx 'STRING' <<<"$types"; then
+  wl-paste --type text --no-newline 2>/dev/null | emit_text
 fi
