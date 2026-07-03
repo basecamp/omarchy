@@ -45,7 +45,7 @@ defaults must use the resync command.
 Current generated theme state lives under
 `~/.local/state/omarchy/current/`. Keep `~/.config/omarchy/` for files a user
 may intentionally version in a dotfile manager, such as user themes, hooks,
-shell layout, plugin sources, and themed template overrides.
+shell layout, plugins, and themed template overrides.
 
 ## Build-time map (repo → installed paths)
 
