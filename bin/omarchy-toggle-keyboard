@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=Enable, disable, or toggle keyboard input (keyboard cleaner)
+# omarchy:args=[on|off|toggle]
+
+enable() {
+  hyprctl dispatch submap reset >/dev/null
+  omarchy-swayosd-client --custom-icon input-keyboard-symbolic --custom-message "Keyboard enabled"
+}
+
+disable() {
+  hyprctl dispatch submap cleaner >/dev/null
+  omarchy-swayosd-client --custom-icon input-keyboard-symbolic --custom-message "Keyboard cleaner on (Super+Ctrl+K to exit)"
+}
+
+case "${1:-toggle}" in
+on) enable ;;
+off) disable ;;
+toggle) if [[ $(hyprctl submap) == cleaner ]]; then enable; else disable; fi ;;
+esac
