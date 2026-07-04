@@ -64,6 +64,8 @@ o.bind("SUPER + CTRL + SHIFT + code:21", "Expand window down a lot", hl.dsp.wind
 
 o.bind("SUPER + mouse_down", "Scroll active workspace forward", hl.dsp.focus({ workspace = "e+1" }))
 o.bind("SUPER + mouse_up", "Scroll active workspace backward", hl.dsp.focus({ workspace = "e-1" }))
+o.bind("SUPER + mouse_right", "Scroll active workspace forward", hl.dsp.focus({ workspace = "e+1" }))
+o.bind("SUPER + mouse_left", "Scroll active workspace backward", hl.dsp.focus({ workspace = "e-1" }))
 
 o.bind("SUPER + mouse:272", "Move window", hl.dsp.window.drag(), { mouse = true })
 o.bind("SUPER + mouse:273", "Resize window", hl.dsp.window.resize(), { mouse = true })
