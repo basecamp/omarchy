@@ -87,6 +87,7 @@ windows)
   SELECTION=$(get_rectangles | slurp -r 2>/dev/null)
   ;;
 fullscreen)
+  FULLSCREEN_OUTPUT=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .name')
   SELECTION=$(hyprctl monitors -j | jq -r "${JQ_MONITOR_GEO} .[] | select(.focused == true) | format_geo")
   ;;
 smart | *)
@@ -128,7 +129,11 @@ FILEPATH="$OUTPUT_DIR/$FILENAME"
 
 case "$PROCESSING" in
   slurp)
-    grim -g "$SELECTION" "$FILEPATH" || exit 1
+    if [[ $MODE == "fullscreen" ]]; then
+      grim -o "$FULLSCREEN_OUTPUT" "$FILEPATH" || exit 1
+    else
+      grim -g "$SELECTION" "$FILEPATH" || exit 1
+    fi
     echo "$FILEPATH"
     wl-copy <"$FILEPATH"
 
@@ -138,10 +143,18 @@ case "$PROCESSING" in
     ) >/dev/null 2>&1 &
     ;;
   copy)
-    grim -g "$SELECTION" - | wl-copy
+    if [[ $MODE == "fullscreen" ]]; then
+      grim -o "$FULLSCREEN_OUTPUT" - | wl-copy
+    else
+      grim -g "$SELECTION" - | wl-copy
+    fi
     ;;
   save)
-    grim -g "$SELECTION" "$FILEPATH" || exit 1
+    if [[ $MODE == "fullscreen" ]]; then
+      grim -o "$FULLSCREEN_OUTPUT" "$FILEPATH" || exit 1
+    else
+      grim -g "$SELECTION" "$FILEPATH" || exit 1
+    fi
     echo "$FILEPATH"
     ;;
 esac
