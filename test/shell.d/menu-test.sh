@@ -93,10 +93,28 @@ assertDeepEqual(
 
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
+const duplicateAliases = []
+const seenAliases = new Map()
+for (const item of defaultItems) {
+  for (const alias of item.aliases) {
+    const normalizedAlias = String(alias).toLowerCase().replace(/_/g, '-')
+    if (seenAliases.has(normalizedAlias)) duplicateAliases.push([normalizedAlias, seenAliases.get(normalizedAlias), item.id])
+    else seenAliases.set(normalizedAlias, item.id)
+  }
+}
+
+assertDeepEqual(duplicateAliases, [], 'menu route aliases are unique')
 assert(
   defaultById['update.omarchy'].icon === '\ue900',
   'menu update Omarchy entry uses the Omarchy glyph'
 )
+assert(defaultById['system.lock'].aliases.includes('lock-screen'), 'menu routes lock-screen directly')
+assert(defaultById['trigger.share.file'].aliases.includes('share-file'), 'menu routes share-file directly')
+assert(defaultById['style.font'].aliases.includes('fonts'), 'menu routes fonts directly')
+assert(defaultById['setup.monitors'].aliases.includes('displays'), 'menu routes displays directly')
+assert(defaultById['setup.default.browser'].aliases.includes('default-browser'), 'menu routes default-browser directly')
+assert(defaultById['update.timezone'].aliases.includes('timezone'), 'menu routes timezone directly')
+assert(defaultById['update.process.shell'].aliases.includes('restart-shell'), 'menu routes restart-shell directly')
 assert(
   defaultById['update.omarchy'].iconFont === 'omarchy',
   'menu update Omarchy entry renders the private glyph with the Omarchy font'
