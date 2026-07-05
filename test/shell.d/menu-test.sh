@@ -90,6 +90,11 @@ assertDeepEqual(
   },
   'menu builds display rows'
 )
+assertEqual(
+  menu.displayRow(merged.items, merged.itemOrder, {}, merged.items.style, '', 0, '').childCount,
+  1,
+  'menu display rows expose submenu child counts'
+)
 
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
@@ -104,6 +109,10 @@ assert(
 assert(
   /font\.family: row\.iconFont\.length > 0 \? row\.iconFont : root\.fontFamily/.test(menuQml),
   'menu rows support per-icon font families'
+)
+assert(
+  /visible: row\.childCount > 0 && \(row\.kind === "menu" \|\| row\.kind === "link"\)/.test(menuQml),
+  'menu rows show submenu child counts'
 )
 
 assert(

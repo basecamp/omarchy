@@ -1010,14 +1010,14 @@ Item {
 
               Row {
                 id: trail
-                width: Style.space(14)
+                width: row.childCount > 0 ? Style.space(44) : Style.space(14)
                 anchors.right: parent.right
                 anchors.rightMargin: root.rowReservedBorderRight + Style.space(8)
                 y: contentColumn.y + labelText.y + (labelText.height - height) / 2
-                spacing: 0
+                spacing: Style.space(4)
 
                 Text {
-                  visible: false
+                  visible: row.childCount > 0 && (row.kind === "menu" || row.kind === "link")
                   text: row.childCount
                   color: root.foreground
                   opacity: 0.45
