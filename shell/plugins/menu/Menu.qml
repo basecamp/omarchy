@@ -841,6 +841,9 @@ Item {
             if (root.filterText.length > 0) root.setFilter(root.filterText.slice(0, -1))
             else root.goBack()
             event.accepted = true
+          } else if (!root.dmenuActive && event.key === Qt.Key_Left) {
+            root.goBack()
+            event.accepted = true
           } else if (event.key === Qt.Key_Up) {
             root.select(-1)
             event.accepted = true
