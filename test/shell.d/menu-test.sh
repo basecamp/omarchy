@@ -97,6 +97,12 @@ assert(
   defaultById['update.omarchy'].icon === '\ue900',
   'menu update Omarchy entry uses the Omarchy glyph'
 )
+assertEqual(defaultById['trigger'].label, 'Actions', 'menu uses a clearer root label for actions')
+assert(defaultById['trigger'].aliases.includes('actions'), 'menu can route directly to actions')
+assertEqual(defaultById['setup'].label, 'Settings', 'menu uses a clearer root label for settings')
+assert(defaultById['setup'].aliases.includes('settings'), 'menu preserves the settings route alias')
+assertEqual(defaultById['update'].label, 'Maintenance', 'menu uses a clearer root label for maintenance')
+assert(defaultById['update'].aliases.includes('update'), 'menu preserves the update route alias')
 assert(
   defaultById['update.omarchy'].iconFont === 'omarchy',
   'menu update Omarchy entry renders the private glyph with the Omarchy font'

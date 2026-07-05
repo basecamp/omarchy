@@ -16,12 +16,12 @@
   // Root Menu
   "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"keywords":"","action":"omarchy-shell shell summon omarchy.launcher"},
   "learn": {"icon":"󰧑","label":"Learn","keywords":"manual docs help"},
-  "trigger": {"icon":"󱓞","label":"Trigger","keywords":""},
+  "trigger": {"icon":"󱓞","label":"Actions","aliases":["actions","tools"],"keywords":"trigger command run"},
   "style": {"icon":"","label":"Style","keywords":""},
-  "setup": {"icon":"","label":"Setup","aliases":["settings"],"keywords":""},
+  "setup": {"icon":"","label":"Settings","aliases":["settings","preferences"],"keywords":"setup config"},
   "install": {"icon":"󰉉","label":"Install","keywords":""},
   "remove": {"icon":"󰭌","label":"Remove","aliases":["uninstall"],"keywords":""},
-  "update": {"icon":"","label":"Update","aliases":["restart","refresh"],"keywords":"upgrade channel firmware timezone"},
+  "update": {"icon":"","label":"Maintenance","aliases":["update","restart","refresh"],"keywords":"upgrade channel firmware timezone"},
   "about": {"icon":"","label":"About","keywords":"omarchy system information","action":"omarchy-launch-about"},
   "system": {"icon":"","label":"System","aliases":["power-menu"],"keywords":"lock logout restart shutdown suspend hibernate"},
 
