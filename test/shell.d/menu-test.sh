@@ -119,6 +119,10 @@ assert(
   'menu route changes disarm pointer selection'
 )
 assert(
+  /function headerText\(\)[\s\S]*var path = root\.pathFor\(root\.activeMenu\)[\s\S]*return \(path \|\| entry\.label\) \+ "…"/.test(menuQml),
+  'menu header shows the active breadcrumb path'
+)
+assert(
   /PointerMoveGate\s*\{[\s\S]*id: pointerGate[\s\S]*referenceItem: card[\s\S]*\}/.test(menuQml),
   'menu uses shared pointer movement gate in card coordinates'
 )

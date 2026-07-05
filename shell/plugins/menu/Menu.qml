@@ -335,6 +335,17 @@ Item {
     return MenuModel.pathFor(root.items, id)
   }
 
+  function headerText() {
+    if (root.filterText) return root.filterText
+    if (root.dmenuActive) return root.dmenuPrompt + "…"
+
+    var entry = root.item(root.activeMenu)
+    if (!entry) return "Go…"
+
+    var path = root.pathFor(root.activeMenu)
+    return (path || entry.label) + "…"
+  }
+
   function parentPathFor(id) {
     return MenuModel.parentPathFor(root.items, id)
   }
@@ -885,7 +896,7 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: root.filterText || (root.dmenuActive ? (root.dmenuPrompt + "…") : ((root.item(root.activeMenu) ? root.item(root.activeMenu).label : "Go") + "…"))
+            text: root.headerText()
             color: root.foreground
             opacity: root.filterText ? 1 : 0.58
             font.family: root.fontFamily
