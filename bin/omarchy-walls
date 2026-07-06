@@ -1,0 +1,584 @@
+#!/bin/bash
+
+# omarchy:summary=Browse and install wallpapers from the dharmx/walls collection
+# omarchy:examples=omarchy-walls list, omarchy-walls install nord/forest.png --set
+
+set -uo pipefail
+
+SCRIPT_PATH=$(realpath "${BASH_SOURCE[0]}")
+
+REPO="dharmx/walls"
+BRANCH="main"
+API_URL="https://api.github.com/repos/$REPO/git/trees/$BRANCH?recursive=1"
+RAW_BASE="https://raw.githubusercontent.com/$REPO/$BRANCH"
+
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-walls"
+INDEX_FILE="$CACHE_DIR/index.json"
+FULL_DIR="$CACHE_DIR/full"
+THUMBS_DIR="$CACHE_DIR/thumbs"
+INDEX_MAX_AGE_DAYS=7
+THUMB_WIDTH=800
+RESIZE_PROXY="https://images.weserv.nl/"
+
+BACKGROUNDS_ROOT="$HOME/.config/omarchy/backgrounds"
+THEME_NAME_FILE="$HOME/.config/omarchy/current/theme.name"
+
+COVER_FILE="$CACHE_DIR/cover.png"
+
+IMAGE_EXT_REGEX='\.(png|jpe?g|webp)$'
+EXCLUDED_CATEGORIES='^(\.github|animated)$'
+
+die() {
+  echo "omarchy-walls: $*" >&2
+  exit 1
+}
+
+notify() {
+  command -v notify-send >/dev/null || return 0
+  notify-send "$1" "$2" -a omarchy-walls -t 3000 2>/dev/null || true
+}
+
+usage() {
+  cat <<'EOF'
+Usage: omarchy-walls <command> [args]
+
+Commands:
+  menu                                  Open the wallpaper browser in a floating window
+  browse [category]                     Interactive browser (fzf) in the current terminal
+  index [--force]                       Download or refresh the wallpaper index
+  list                                  List categories with wallpaper counts
+  list <category>                       List wallpapers in a category
+  get <category>/<file>                 Download a wallpaper to the local cache
+  thumb <category>/<file>               Download a small thumbnail, print its path
+  preview <category>/<file>             Show the wallpaper in a floating imv window
+  install <category>/<file> [options]   Add a wallpaper to a theme's backgrounds
+  clean                                 Remove all cached data
+  help                                  Show this help
+
+Install options:
+  --set             Also set it as the current background right away
+  --theme <name>    Target theme (default: current theme)
+
+Examples:
+  omarchy-walls list nord
+  omarchy-walls install nord/forest.png --set
+  omarchy-walls install minimal/dots.jpg --theme catppuccin
+EOF
+}
+
+curl_gh() {
+  local args=(-fsSL --retry 2 --connect-timeout 10)
+  [[ -n ${GITHUB_TOKEN:-} ]] && args+=(-H "Authorization: Bearer $GITHUB_TOKEN")
+  curl "${args[@]}" "$@"
+}
+
+index_is_fresh() {
+  [[ -s $INDEX_FILE ]] || return 1
+  local age_limit
+  age_limit=$(find "$INDEX_FILE" -mtime -"$INDEX_MAX_AGE_DAYS" 2>/dev/null)
+  [[ -n $age_limit ]]
+}
+
+fetch_index() {
+  mkdir -p "$CACHE_DIR"
+  echo "Fetching wallpaper index from $REPO..." >&2
+
+  local tmp="$INDEX_FILE.tmp"
+  if ! curl_gh "$API_URL" -o "$tmp"; then
+    rm -f "$tmp"
+    if [[ -s $INDEX_FILE ]]; then
+      echo "Warning: could not refresh index, using stale cache" >&2
+      return 0
+    fi
+    die "could not download index (no network, or GitHub rate limit — try setting GITHUB_TOKEN)"
+  fi
+
+  if ! jq -e '.tree | length > 0' "$tmp" >/dev/null 2>&1; then
+    rm -f "$tmp"
+    die "unexpected response from GitHub API (rate limited? try setting GITHUB_TOKEN)"
+  fi
+
+  if [[ $(jq -r '.truncated' "$tmp") == "true" ]]; then
+    echo "Warning: GitHub truncated the file listing; some wallpapers may be missing" >&2
+  fi
+
+  # Keep only image blobs inside category folders, as "category/file" paths
+  jq --arg ext "$IMAGE_EXT_REGEX" --arg excl "$EXCLUDED_CATEGORIES" '
+    [.tree[]
+     | select(.type == "blob")
+     | .path
+     | select(test($ext; "i"))
+     | select(contains("/"))
+     | select((split("/")[0]) | test($excl) | not)
+    ] | sort' "$tmp" >"$INDEX_FILE"
+  rm -f "$tmp"
+
+  echo "Indexed $(jq 'length' "$INDEX_FILE") wallpapers in $(jq -r '[.[] | split("/")[0]] | unique | length' "$INDEX_FILE") categories" >&2
+}
+
+ensure_index() {
+  index_is_fresh || fetch_index
+}
+
+cmd_index() {
+  if [[ ${1:-} == "--force" ]] || ! index_is_fresh; then
+    fetch_index
+  else
+    echo "Index is fresh ($(jq 'length' "$INDEX_FILE") wallpapers). Use --force to refresh." >&2
+  fi
+}
+
+cmd_list() {
+  ensure_index
+  local category="${1:-}"
+  if [[ -z $category ]]; then
+    jq -r '[.[] | split("/")[0]] | group_by(.) | map("\(.[0])\t\(length)") | .[]' "$INDEX_FILE" |
+      column -t -s $'\t'
+  else
+    local files
+    files=$(jq -r --arg cat "$category" '.[] | select(startswith($cat + "/")) | sub($cat + "/"; "")' "$INDEX_FILE")
+    [[ -n $files ]] || die "unknown category '$category' (run 'omarchy-walls list' to see categories)"
+    echo "$files"
+  fi
+}
+
+validate_path() {
+  local path="${1:-}"
+  [[ -n $path ]] || die "missing <category>/<file> argument"
+  ensure_index
+  jq -e --arg p "$path" 'index($p) != null' "$INDEX_FILE" >/dev/null ||
+    die "'$path' not found in index (run 'omarchy-walls list ${path%%/*}')"
+}
+
+url_encode_path() {
+  jq -rn --arg p "$1" '$p | @uri | gsub("%2F"; "/")'
+}
+
+# Validates a category/file path against the index and downloads it to the cache.
+# Prints the local path on stdout.
+cmd_get() {
+  local path="${1:-}"
+  validate_path "$path"
+
+  local dest="$FULL_DIR/$path"
+  if [[ ! -s $dest ]]; then
+    mkdir -p "$(dirname "$dest")"
+    echo "Downloading $path..." >&2
+    if ! curl -fsSL --retry 2 --connect-timeout 10 "$RAW_BASE/$(url_encode_path "$path")" -o "$dest.tmp"; then
+      rm -f "$dest.tmp"
+      die "download failed for $path"
+    fi
+    mv "$dest.tmp" "$dest"
+  fi
+  echo "$dest"
+}
+
+# Downloads a small thumbnail (resize proxy, magick fallback) and prints its path.
+cmd_thumb() {
+  local path="${1:-}"
+  validate_path "$path"
+
+  local dest="$THUMBS_DIR/${path%.*}.jpg"
+  if [[ -s $dest ]]; then
+    echo "$dest"
+    return 0
+  fi
+  mkdir -p "$(dirname "$dest")"
+
+  local proxy_url="$RESIZE_PROXY?url=$(jq -rn --arg u "raw.githubusercontent.com/$REPO/$BRANCH/$path" '$u | @uri')&w=$THUMB_WIDTH&output=jpg&q=75"
+  if curl -fsSL --retry 1 --connect-timeout 5 "$proxy_url" -o "$dest.tmp" 2>/dev/null; then
+    mv "$dest.tmp" "$dest"
+    echo "$dest"
+    return 0
+  fi
+  rm -f "$dest.tmp"
+
+  if command -v magick >/dev/null; then
+    local full
+    full=$(cmd_get "$path") || exit 1
+    if magick "$full" -resize "${THUMB_WIDTH}x" "$dest" 2>/dev/null; then
+      echo "$dest"
+      return 0
+    fi
+    rm -f "$dest"
+  fi
+
+  # Last resort: the full image works as an (oversized) thumbnail
+  echo "Warning: could not create thumbnail for $path, using full image" >&2
+  cmd_get "$path"
+}
+
+cmd_preview() {
+  local path="${1:-}"
+  local file
+  file=$(cmd_get "$path") || exit 1
+
+  if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && command -v hyprctl >/dev/null; then
+    hyprctl dispatch exec "[float; center; size 60% 60%] imv '$file'" >/dev/null
+    echo "Preview opened in floating window (press q to close it)"
+  else
+    imv "$file"
+  fi
+}
+
+cmd_install() {
+  local path="" set_now=false theme=""
+  while (($#)); do
+    case "$1" in
+      --set) set_now=true ;;
+      --theme)
+        shift
+        theme="${1:-}"
+        [[ -n $theme ]] || die "--theme requires a value"
+        ;;
+      -*) die "unknown option '$1'" ;;
+      *) path="$1" ;;
+    esac
+    shift
+  done
+  [[ -n $path ]] || die "usage: omarchy-walls install <category>/<file> [--set] [--theme <name>]"
+
+  if [[ -z $theme ]]; then
+    theme=$(cat "$THEME_NAME_FILE" 2>/dev/null) ||
+      die "could not detect current theme (is Omarchy installed?)"
+  fi
+  # Same normalization omarchy-theme-set applies ("Carbon Vandal" -> carbon-vandal)
+  theme=$(echo "$theme" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+
+  local cached
+  cached=$(cmd_get "$path") || exit 1
+
+  local category="${path%%/*}" file="${path##*/}"
+  local target_dir="$BACKGROUNDS_ROOT/$theme"
+  local target="$target_dir/$category-$file"
+  mkdir -p "$target_dir"
+  cp "$cached" "$target"
+  echo "Added to theme '$theme': $target"
+
+  if $set_now; then
+    omarchy-theme-bg-set "$target"
+    echo "Set as current background"
+    notify "Background set" "$path"
+  else
+    notify "Added to theme '$theme'" "$path"
+  fi
+}
+
+cmd_clean() {
+  rm -rf "$CACHE_DIR"
+  echo "Cache cleared ($CACHE_DIR)"
+}
+
+is_kitty_graphics() {
+  [[ -n ${KITTY_WINDOW_ID:-} || $TERM == *kitty* || $TERM == *ghostty* ]]
+}
+
+# Colors come from the active theme's canonical palette. gum needs no setup:
+# Hyprland already exports the theme's GUM_* vars session-wide.
+COLORS_TOML="$HOME/.config/omarchy/current/theme/colors.toml"
+
+theme_color() {
+  local val
+  val=$(grep -m1 -E "^$1 *= *\"" "$COLORS_TOML" 2>/dev/null | cut -d'"' -f2)
+  echo "${val:-$2}"
+}
+
+FZF_STYLE=(
+  --layout=reverse
+  --border=rounded
+  --info=inline-right
+  --pointer='▌'
+  --highlight-line
+  --no-multi
+)
+
+if [[ -f $COLORS_TOML ]]; then
+  ACCENT=$(theme_color accent "#FFCA40")
+  SURFACE=$(theme_color color0 "#1E1025")
+  MUTED=$(theme_color color8 "#737373")
+  FG=$(theme_color foreground "#FAF3F0")
+  FZF_STYLE+=(
+    --color "border:$MUTED,prompt:$ACCENT,pointer:$ACCENT,header:$MUTED"
+    --color "hl:$ACCENT,hl+:$ACCENT,bg+:$SURFACE,fg+:$FG,info:$MUTED,spinner:$ACCENT"
+  )
+fi
+
+# Exact pixel size of a cols x rows cell rectangle, measured from the
+# terminal's real geometry.
+pane_px() {
+  local px rc
+  px=$(kitten icat --print-window-size 2>/dev/null </dev/tty) || return 1
+  rc=$(stty size </dev/tty 2>/dev/null) || return 1
+  local pw=${px%x*} ph=${px#*x} rows_t=${rc%% *} cols_t=${rc##* }
+  [[ $pw =~ ^[0-9]+$ && $ph =~ ^[0-9]+$ && $rows_t =~ ^[0-9]+$ && $cols_t =~ ^[0-9]+$ ]] || return 1
+  ((pw > 0 && ph > 0 && rows_t > 0 && cols_t > 0)) || return 1
+  echo "$(($1 * pw / cols_t))x$(($2 * ph / rows_t))"
+}
+
+# Draws an image centered in a cols x rows cell rectangle. icat anchors
+# top-left inside --place (ignoring --align with unicode placeholders) and
+# never upscales, so the image is composited onto a transparent canvas of
+# the pane's exact pixel size — the padding is what centers it.
+# Mode: "placeholder" (default) survives fzf's text redraws; "direct" is a
+# pixel overlay for screens we fully control (text redraws can shift
+# placeholder rows and shred the image into stripes).
+icat_centered() {
+  local img="$1" cols="$2" rows="$3" mode="${4:-placeholder}"
+  local icat_args=(--clear --transfer-mode=memory --stdin=no)
+  [[ $mode == placeholder ]] && icat_args+=(--unicode-placeholder)
+
+  if command -v magick >/dev/null; then
+    local size
+    size=$(pane_px "$cols" "$rows") || size="$((cols * 10))x$((rows * 21))"
+    local canvas="$CACHE_DIR/pane-$$.png"
+    if magick "$img[0]" -resize "$size" -background none -gravity center \
+      -extent "$size" "$canvas" 2>/dev/null; then
+      kitten icat "${icat_args[@]}" --scale-up --place "${cols}x${rows}@0x0" "$canvas" 2>/dev/null
+      rm -f "$canvas"
+      return 0
+    fi
+    rm -f "$canvas"
+  fi
+
+  kitten icat "${icat_args[@]}" --place "${cols}x${rows}@0x0" "$img" 2>/dev/null
+}
+
+render_in_pane() {
+  if is_kitty_graphics; then
+    icat_centered "$1" "${FZF_PREVIEW_COLUMNS:-80}" "${FZF_PREVIEW_LINES:-24}"
+  else
+    echo "(image preview needs a kitty-graphics terminal — use 'omarchy-walls menu')"
+  fi
+}
+
+# Internal: renders the image preview inside fzf's preview pane.
+cmd_fzf_preview() {
+  local path="${1:-}"
+  local thumb
+  thumb=$("$SCRIPT_PATH" thumb "$path" 2>/dev/null) || {
+    echo "(no preview available)"
+    echo "$path"
+    return 0
+  }
+  render_in_pane "$thumb"
+}
+
+# Internal: previews a category (or "all") as a 2x2 mosaic of random
+# wallpapers; falls back to a single image when magick or entries are short.
+cmd_fzf_preview_category() {
+  local category="${1:-}"
+  local picks
+  if [[ $category == all ]]; then
+    picks=$(jq -r '.[]' "$INDEX_FILE" | shuf -n4)
+  else
+    picks=$(jq -r --arg c "$category" '.[] | select(startswith($c + "/"))' "$INDEX_FILE" | shuf -n4)
+  fi
+  [[ -n $picks ]] || return 0
+
+  if (($(wc -l <<<"$picks") < 4)) || ! command -v magick >/dev/null; then
+    cmd_fzf_preview "$(head -1 <<<"$picks")"
+    return 0
+  fi
+
+  local thumbs
+  mapfile -t thumbs < <(xargs -d '\n' -P4 -I{} "$SCRIPT_PATH" thumb {} <<<"$picks" 2>/dev/null)
+  if ((${#thumbs[@]} < 4)); then
+    cmd_fzf_preview "$(head -1 <<<"$picks")"
+    return 0
+  fi
+
+  # $$ -> fzf spawns overlapping previews while scrolling; keep them apart
+  local mosaic="$CACHE_DIR/mosaic-$$.png"
+  if magick montage "${thumbs[@]}" -tile 2x2 -geometry 400x225+1+1 -background none "$mosaic" 2>/dev/null; then
+    render_in_pane "$mosaic"
+    rm -f "$mosaic"
+  else
+    cmd_fzf_preview "$(head -1 <<<"$picks")"
+  fi
+}
+
+# Draws the selected wallpaper large at the top of the screen, leaving the
+# cursor below it for the action menu.
+render_selected_image() {
+  local path="$1"
+  is_kitty_graphics || return 0
+  local thumb
+  thumb=$("$SCRIPT_PATH" thumb "$path" 2>/dev/null) || return 0
+
+  clear
+  local lines cols img_lines
+  lines=$(tput lines) cols=$(tput cols)
+  img_lines=$((lines - 11))
+  ((img_lines < 5)) && return 0
+  icat_centered "$thumb" "$cols" "$img_lines" direct
+  tput cup $((img_lines + 1)) 0
+}
+
+# Shows the action menu for a selected wallpaper.
+# Returns 0 to go back to the list, 1 to quit the browser.
+wall_action_menu() {
+  local path="$1" current_theme
+  current_theme=$(cat "$THEME_NAME_FILE" 2>/dev/null || echo "unknown")
+
+  while true; do
+    render_selected_image "$path"
+    local choice
+    choice=$(gum choose --header "$path" \
+      "Set as background now" \
+      "Add to current theme ($current_theme)" \
+      "Add to another theme..." \
+      "Fullscreen preview" \
+      "Back to list" \
+      "Quit") || return 0
+
+    case "$choice" in
+      "Set as background now")
+        cmd_install "$path" --set && sleep 1
+        return 0
+        ;;
+      "Add to current theme"*)
+        cmd_install "$path" && sleep 1
+        return 0
+        ;;
+      "Add to another theme...")
+        local theme
+        render_selected_image "$path"
+        # --height -> 23+ themes would scroll the screen and shear the image
+        theme=$(omarchy-theme-list 2>/dev/null | gum choose --height 8 --header "Target theme") || continue
+        cmd_install "$path" --theme "$theme" && sleep 1
+        return 0
+        ;;
+      "Fullscreen preview")
+        cmd_preview "$path" >/dev/null
+        ;;
+      "Back to list")
+        return 0
+        ;;
+      "Quit")
+        return 1
+        ;;
+    esac
+  done
+}
+
+# Category picker. Prints the chosen category name ("all" included),
+# nothing when the user cancels.
+pick_category() {
+  local total
+  total=$(jq 'length' "$INDEX_FILE")
+  {
+    printf '%-16s %5s\n' "all" "$total"
+    jq -r '[.[] | split("/")[0]] | group_by(.) | map("\(.[0])\t\(length)") | .[]' "$INDEX_FILE" |
+      while IFS=$'\t' read -r name count; do
+        printf '%-16s %5s\n' "$name" "$count"
+      done
+  } | fzf "${FZF_STYLE[@]}" \
+    --prompt 'category ❯ ' \
+    --header 'enter: open · esc: quit' \
+    --preview "'$SCRIPT_PATH' __fzf-preview-category {1}" \
+    --preview-window 'up,55%,border-bottom' |
+    awk '{print $1}'
+}
+
+# Wallpaper list for one category ("all" shows everything).
+# Returns 0 to go back to the category picker, 1 to quit entirely.
+browse_category() {
+  local category="$1"
+  while true; do
+    local selection
+    if [[ $category == all ]]; then
+      selection=$(jq -r '.[]' "$INDEX_FILE" | fzf "${FZF_STYLE[@]}" \
+        --prompt 'all ❯ ' \
+        --header 'enter: actions · esc: categories' \
+        --preview "'$SCRIPT_PATH' __fzf-preview {}" \
+        --preview-window 'up,55%,border-bottom')
+    else
+      selection=$(jq -r --arg c "$category" '.[] | select(startswith($c + "/"))' "$INDEX_FILE" |
+        fzf "${FZF_STYLE[@]}" \
+          --delimiter '/' --with-nth '2..' \
+          --prompt "$category ❯ " \
+          --header 'enter: actions · esc: categories' \
+          --preview "'$SCRIPT_PATH' __fzf-preview {}" \
+          --preview-window 'up,55%,border-bottom')
+    fi
+    [[ -n $selection ]] || return 0
+    wall_action_menu "$selection" || return 1
+  done
+}
+
+cmd_browse() {
+  command -v fzf >/dev/null || die "fzf is required for browse"
+  command -v gum >/dev/null || die "gum is required for browse"
+  [[ -t 0 && -t 1 ]] || die "browse needs an interactive terminal (try 'omarchy-walls menu')"
+  ensure_index
+
+  local category="${1:-}"
+  if [[ -n $category && $category != all ]]; then
+    jq -e --arg c "$category" 'any(.[]; startswith($c + "/"))' "$INDEX_FILE" >/dev/null ||
+      die "unknown category '$category' (run 'omarchy-walls list')"
+  fi
+
+  while true; do
+    if [[ -z $category ]]; then
+      category=$(pick_category)
+      [[ -n $category ]] || return 0
+    fi
+    browse_category "$category" || return 0
+    category=""
+  done
+}
+
+# Internal: regenerates the menu cover (magnifier in the theme's accent tone)
+# when the theme changed since the last run. Cheap no-op otherwise.
+cmd_ensure_cover() {
+  command -v magick >/dev/null || return 0
+  local theme accent bg meta meta_file="$CACHE_DIR/cover.meta"
+  theme=$(cat "$THEME_NAME_FILE" 2>/dev/null || echo default)
+  accent=$(theme_color accent "#FFCA40")
+  bg=$(theme_color background "#0C0011")
+  meta="$theme:$accent:$bg"
+  [[ -s $COVER_FILE && -f $meta_file && $(cat "$meta_file") == "$meta" ]] && return 0
+
+  mkdir -p "$CACHE_DIR"
+  magick -size 800x450 "xc:$bg" \
+    -stroke "$accent" -strokewidth 26 -fill none \
+    -draw "circle 355,185 355,290" \
+    -draw "line 430,260 555,385" \
+    "$COVER_FILE" 2>/dev/null && echo "$meta" >"$meta_file"
+}
+
+cmd_menu() {
+  if ! command -v kitty >/dev/null; then
+    # Launched from Walker -> no terminal to print to
+    notify "omarchy-walls" "Image previews need kitty: omarchy pkg add kitty"
+    die "kitty is required for the menu window (omarchy pkg add kitty)"
+  fi
+
+  if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && command -v hyprctl >/dev/null; then
+    hyprctl dispatch exec \
+      "[float; center; size 75% 75%] kitty --class=omarchy-walls --title=omarchy-walls '$SCRIPT_PATH' browse" >/dev/null
+  else
+    kitty --class=omarchy-walls --title=omarchy-walls "$SCRIPT_PATH" browse &
+    disown
+  fi
+}
+
+case "${1:-help}" in
+  menu) shift; cmd_menu ;;
+  browse) shift; cmd_browse "$@" ;;
+  __fzf-preview) shift; cmd_fzf_preview "$@" ;;
+  __fzf-preview-category) shift; cmd_fzf_preview_category "$@" ;;
+  index) shift; cmd_index "$@" ;;
+  list) shift; cmd_list "$@" ;;
+  get) shift; cmd_get "$@" ;;
+  thumb) shift; cmd_thumb "$@" ;;
+  preview) shift; cmd_preview "$@" ;;
+  install) shift; cmd_install "$@" ;;
+  __ensure-cover) shift; cmd_ensure_cover ;;
+  clean) shift; cmd_clean ;;
+  help | --help | -h) usage ;;
+  *)
+    usage >&2
+    die "unknown command '${1}'"
+    ;;
+esac

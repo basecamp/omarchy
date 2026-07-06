@@ -69,5 +69,22 @@ function GetEntries()
     end
   end
 
+  -- Wallpaper browser launcher; the script regenerates the cover whenever
+  -- the theme changes so its tone always matches
+  local cover_gen = io.popen("omarchy-walls __ensure-cover 2>/dev/null")
+  if cover_gen then
+    cover_gen:read("*a")
+    cover_gen:close()
+  end
+  table.insert(entries, {
+    Text = "󰍉  Browse walls collection",
+    Value = "omarchy-walls-browser",
+    Actions = {
+      activate = "omarchy-walls menu",
+    },
+    Preview = home .. "/.cache/omarchy-walls/cover.png",
+    PreviewType = "file",
+  })
+
   return entries
 end
