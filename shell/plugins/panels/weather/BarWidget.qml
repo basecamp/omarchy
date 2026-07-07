@@ -22,6 +22,20 @@ BarWidget {
     if (panelLoader.item && panelLoader.item.toggle) panelLoader.item.toggle()
   }
 
+  // Shape contract for shell.summon/hide/toggle routing (Bar.findPanelWidget
+  // requires open/close/opened on the bar-widget root). Open maps to the
+  // panel's hotkey path so summoning suppresses the center hover reveal,
+  // matching what the old per-plugin IpcHandler did.
+  readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
+
+  function open() {
+    if (panelLoader.item && panelLoader.item.openFromHotkey) panelLoader.item.openFromHotkey()
+  }
+
+  function close() {
+    if (panelLoader.item && panelLoader.item.close) panelLoader.item.close()
+  }
+
   visible: panelLoader.item && panelLoader.item.label !== ""
   implicitWidth: bar && bar.vertical ? button.implicitWidth : button.implicitWidth + Style.spacing.labelGap
   implicitHeight: button.implicitHeight
