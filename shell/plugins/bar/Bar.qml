@@ -333,6 +333,44 @@ Item {
     return true
   }
 
+  // Resolve the live bar-widget instance for a plugin id (e.g. "omarchy.bluetooth").
+  // Only widgets that expose popup open/close methods count; plain indicators
+  // (clock, workspaces, tray) return null. Used by shell.summon/toggle so
+  // panel hotkeys route through the bar instead of a per-target IpcHandler
+  // that goes stale when the bar reloads its widget instances.
+  function findPanelWidget(pluginId) {
+    var id = String(pluginId || "")
+    if (!id) return null
+    for (var i = 0; i < moduleSlots.length; i++) {
+      var slot = moduleSlots[i]
+      if (!slot || !slot.activeItem) continue
+      if (slot.moduleName !== id) continue
+      var item = slot.activeItem
+      if (typeof item.open !== "function" || typeof item.close !== "function" || item.opened === undefined) continue
+      return item
+    }
+    return null
+  }
+
+  function summonBarWidget(pluginId) {
+    var item = findPanelWidget(pluginId)
+    if (!item || typeof item.open !== "function") return false
+    item.open()
+    return true
+  }
+
+  function hideBarWidget(pluginId) {
+    var item = findPanelWidget(pluginId)
+    if (!item || typeof item.close !== "function") return false
+    item.close()
+    return true
+  }
+
+  function isBarWidgetOpen(pluginId) {
+    var item = findPanelWidget(pluginId)
+    return !!item && item.opened === true
+  }
+
   function entrySettings(entry) {
     return BarModel.entrySettings(entry)
   }
