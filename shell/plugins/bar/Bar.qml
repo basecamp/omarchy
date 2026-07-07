@@ -87,7 +87,7 @@ Item {
   property real barDragOffsetY: 0
   property var configControls: []
   property var clickTargets: []
-  property var debugModuleSlots: []
+  property var moduleSlots: []
 
   function registerClickTarget(target) {
     if (!target || clickTargets.indexOf(target) !== -1) return
@@ -101,16 +101,16 @@ Item {
     clickTargets = next
   }
 
-  function registerDebugModuleSlot(slot) {
-    if (!slot || debugModuleSlots.indexOf(slot) !== -1) return
-    var next = debugModuleSlots.slice()
+  function registerModuleSlot(slot) {
+    if (!slot || moduleSlots.indexOf(slot) !== -1) return
+    var next = moduleSlots.slice()
     next.push(slot)
-    debugModuleSlots = next
+    moduleSlots = next
   }
 
-  function unregisterDebugModuleSlot(slot) {
-    var next = debugModuleSlots.filter(function(item) { return item !== slot })
-    debugModuleSlots = next
+  function unregisterModuleSlot(slot) {
+    var next = moduleSlots.filter(function(item) { return item !== slot })
+    moduleSlots = next
   }
 
   function registerConfigControl(control) {
@@ -127,8 +127,8 @@ Item {
 
   function debugBarGeometry() {
     var out = []
-    for (var i = 0; i < debugModuleSlots.length; i++) {
-      var slot = debugModuleSlots[i]
+    for (var i = 0; i < moduleSlots.length; i++) {
+      var slot = moduleSlots[i]
       if (!slot || !slot.activeItem) continue
       var point = { x: slot.x, y: slot.y }
       try {
@@ -287,8 +287,8 @@ Item {
     var slots = []
     for (var i = 0; i < entries.length; i++) {
       var id = entryId(entries[i])
-      for (var j = 0; j < debugModuleSlots.length; j++) {
-        var slot = debugModuleSlots[j]
+      for (var j = 0; j < moduleSlots.length; j++) {
+        var slot = moduleSlots[j]
         if (!slot || slot.region !== region || slot.moduleName !== id) continue
         var item = slot.activeItem
         if (!item || item.visible !== true || slot.visible !== true || slot.width <= 0 || slot.height <= 0) continue
@@ -304,8 +304,8 @@ Item {
     if (!owner) return false
 
     var currentSlot = null
-    for (var i = 0; i < debugModuleSlots.length; i++) {
-      var slot = debugModuleSlots[i]
+    for (var i = 0; i < moduleSlots.length; i++) {
+      var slot = moduleSlots[i]
       if (slot && slot.activeItem === owner) {
         currentSlot = slot
         break
@@ -481,8 +481,8 @@ Item {
 
   function moduleDropAtScene(scenePoint, sourceSlot) {
     var sourceWindow = root.slotWindow(sourceSlot) || root.barDragWindow
-    for (var i = 0; i < debugModuleSlots.length; i++) {
-      var slot = debugModuleSlots[i]
+    for (var i = 0; i < moduleSlots.length; i++) {
+      var slot = moduleSlots[i]
       if (!slot || slot === sourceSlot || !slot.visible || slot.width <= 0 || slot.height <= 0) continue
       if (sourceWindow && !root.sameWindow(root.slotWindow(slot), sourceWindow)) continue
 
@@ -506,8 +506,8 @@ Item {
 
   function visibleModuleSlot(region, name, sourceSlot) {
     var sourceWindow = root.slotWindow(sourceSlot) || root.barDragWindow
-    for (var i = 0; i < debugModuleSlots.length; i++) {
-      var slot = debugModuleSlots[i]
+    for (var i = 0; i < moduleSlots.length; i++) {
+      var slot = moduleSlots[i]
       if (!slot || slot === sourceSlot || slot.region !== region || slot.moduleName !== name ||
           !slot.visible || slot.width <= 0 || slot.height <= 0) continue
       if (sourceWindow && !root.sameWindow(root.slotWindow(slot), sourceWindow)) continue
@@ -1271,10 +1271,10 @@ Item {
     height: implicitHeight
     z: modulePointer.dragging ? 100 : 0
 
-    Component.onCompleted: root.registerDebugModuleSlot(slot)
+    Component.onCompleted: root.registerModuleSlot(slot)
     Component.onDestruction: {
       if (root.barDragSource === slot) root.clearBarDrag()
-      root.unregisterDebugModuleSlot(slot)
+      root.unregisterModuleSlot(slot)
     }
 
     HoverHandler { id: moduleHover }
