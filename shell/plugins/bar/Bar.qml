@@ -660,7 +660,7 @@ Item {
     if (!requestedTransparent || transparentForegroundProc.running) return
 
     transparentForegroundProc.command = [
-      "omarchy-shell-bar-text-color",
+      "omarchy-bar-text-color",
       root.position,
       String(root.barSize),
       colorHex(root.themeForeground),

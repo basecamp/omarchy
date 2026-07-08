@@ -10,7 +10,7 @@ the shell for its whole session.
 - `widgets/` holds simple first-party bar widgets with sibling manifests.
 - Feature plugins such as `../panels/audio/`, `../panels/network/`, `../panels/power/`, and `../model-usage/` provide richer popup bar plugins.
 - The bar receives its config from the host shell as a `barConfig` property; the host loads it from `~/.config/omarchy/shell.json` (or `config/omarchy/shell.json` when the user has no file).
-- `omarchy-style-bar-position` updates only the user shell.json file.
+- `omarchy-bar-position` updates only the user shell.json file.
 
 ## Customizing
 

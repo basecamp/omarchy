@@ -2,7 +2,7 @@
 
 # omarchy:summary=Set bar position
 # omarchy:args=<top|bottom|left|right>
-# omarchy:examples=omarchy-style-bar-position top | omarchy style bar position bottom
+# omarchy:examples=omarchy-bar-position top | omarchy bar position bottom
 
 set -e
 
@@ -11,7 +11,7 @@ DEFAULTS_FILE="$OMARCHY_PATH/config/omarchy/shell.json"
 position=$1
 
 if [[ ! $position =~ ^(top|bottom|left|right)$ ]]; then
-  echo "Usage: omarchy-style-bar-position top|bottom|left|right" >&2
+  echo "Usage: omarchy-bar-position top|bottom|left|right" >&2
   exit 1
 fi
 
