@@ -35,7 +35,7 @@ install_mac() {
 
   check_prerequisites
 
-  omarchy-pkg-add freerdp openbsd-netcat gum
+  omarchy-pkg-add tigervnc openbsd-netcat gum
 
   mkdir -p "$HOME/.mac/"
   mkdir -p "$HOME/.config/mac"
@@ -49,7 +49,7 @@ install_mac() {
   cat << EOF | tee "$HOME/.local/share/applications/mac-vm.desktop" > /dev/null
 [Desktop Entry]
 Name=MacOS
-Comment=Start MacOS VM via Docker and connect with RDP
+Comment=Start MacOS VM via Docker and connect with VNC
 Exec=uwsm app -- omarchy-mac-vm launch
 Icon=$HOME/.local/share/applications/icons/apple.png
 Terminal=false
@@ -254,18 +254,18 @@ remove_mac() {
   echo "MacOS VM removal completed!"
 }
 
-wait_for_rdp_ready() {
-  local MAC_USER="$1"
-  local MAC_PASS="$2"
+wait_for_vnc_ready() {
+  local VNC_PORT="$1"
   local TIMEOUT=240
-  local SECONDS=0
+  local ELAPSED=0
 
   echo "Waiting for MacOS VM to be ready..."
 
-  while ! timeout 5s xfreerdp3 /auth-only /cert:ignore /u:"$MAC_USER" /p:"$MAC_PASS" /v:127.0.0.1:5900 &>/dev/null; do
+  while ! nc -z 127.0.0.1 "$VNC_PORT" &>/dev/null; do
     sleep 2
-    if [ $SECONDS -gt $TIMEOUT ]; then
-      echo "❌ Timeout waiting for RDP!"
+    ELAPSED=$((ELAPSED + 2))
+    if [ $ELAPSED -gt $TIMEOUT ]; then
+      echo "❌ Timeout waiting for VNC!"
       echo "   The VM might still be installing MacOS."
       echo "   Check progress at: http://127.0.0.1:8007"
       return 1
@@ -285,13 +285,15 @@ launch_mac() {
     exit 1
   fi
 
-  # Extract credentials from compose file
+  # Extract credentials and VNC port from compose file
   MAC_USER=$(grep "USERNAME:" "$COMPOSE_FILE" | sed 's/.*USERNAME: "\(.*\)"/\1/')
   MAC_PASS=$(grep "PASSWORD:" "$COMPOSE_FILE" | sed 's/.*PASSWORD: "\(.*\)"/\1/')
+  VNC_PORT=$(grep -oP '\d+(?=:5900)' "$COMPOSE_FILE" | head -1)
 
   # Use defaults if not found
   [ -z "$MAC_USER" ] && MAC_USER="docker"
   [ -z "$MAC_PASS" ] && MAC_PASS="admin"
+  [ -z "$VNC_PORT" ] && VNC_PORT="5900"
 
   # Check if container is already running
   CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' omarchy-macos 2>/dev/null)
@@ -311,17 +313,17 @@ launch_mac() {
     fi
   fi
 
-  if ! wait_for_rdp_ready "$MAC_USER" "$MAC_PASS"; then
+  if ! wait_for_vnc_ready "$VNC_PORT"; then
     notify-send -u critical "MacOS VM" "Did not come alive in time."
     exit 1
   fi
 
   # Build the connection info
   if [ "$KEEP_ALIVE" = true ]; then
-    LIFECYCLE="VM will keep running after RDP closes
+    LIFECYCLE="VM will keep running after VNC closes
 To stop: omarchy-mac-vm stop"
   else
-    LIFECYCLE="VM will auto-stop when RDP closes"
+    LIFECYCLE="VM will auto-stop when VNC closes"
   fi
 
   gum style \
@@ -333,30 +335,18 @@ To stop: omarchy-mac-vm stop"
     "" \
     "$LIFECYCLE"
 
-  # Detect display scale from Hyprland
-  HYPR_SCALE=$(hyprctl monitors -j | jq -r '.[] | select (.focused == true) | .scale')
-  SCALE_PERCENT=$(echo "$HYPR_SCALE" | awk '{print int($1 * 100)}')
+  # Connect via VNC (QEMU VNC has no separate password — auth is the macOS login)
+  vncviewer 127.0.0.1::"$VNC_PORT" -FullScreen -Shared
 
-  RDP_SCALE=""
-  if [ "$SCALE_PERCENT" -ge 170 ]; then
-    RDP_SCALE="/scale:180"
-  elif [ "$SCALE_PERCENT" -ge 130 ]; then
-    RDP_SCALE="/scale:140"
-  fi
-  # If scale is less than 130%, don't set any scale (use default 100)
-
-  # Connect with RDP in fullscreen (auto-detects resolution)
-  xfreerdp3 /u:"$MAC_USER" /p:"$MAC_PASS" /v:127.0.0.1:5900 -grab-keyboard /sound /microphone /cert:ignore /title:"MacOS VM - Omarchy" /dynamic-resolution /gfx:AVC444 /floatbar:sticky:off,default:visible,show:fullscreen $RDP_SCALE
-
-  # After RDP closes, stop the container unless --keep-alive was specified
+  # After VNC closes, stop the container unless --keep-alive was specified
   if [ "$KEEP_ALIVE" = false ]; then
     echo ""
-    echo "RDP session closed. Stopping MacOS VM..."
+    echo "VNC session closed. Stopping MacOS VM..."
     docker-compose -f "$COMPOSE_FILE" down
     echo "MacOS VM stopped."
   else
     echo ""
-    echo "RDP session closed. MacOS VM is still running."
+    echo "VNC session closed. MacOS VM is still running."
     echo "To stop it: omarchy-mac-vm stop"
   fi
 }
@@ -393,7 +383,7 @@ status_mac() {
       "MacOS VM Status: RUNNING" \
       "" \
       "Web interface: http://127.0.0.1:8007" \
-      "RDP available: port 5900" \
+      "VNC available: port 5900" \
       "" \
       "To connect: omarchy-mac-vm launch" \
       "To stop:    omarchy-mac-vm stop"
@@ -409,9 +399,9 @@ show_usage() {
   echo "Commands:"
   echo "  install              Install and configure MacOS VM"
   echo "  remove               Remove MacOS VM and optionally its data"
-  echo "  launch [options]     Start MacOS VM (if needed) and connect via RDP"
+  echo "  launch [options]     Start MacOS VM (if needed) and connect via VNC"
   echo "                       Options:"
-  echo "                         --keep-alive, -k   Keep VM running after RDP closes"
+  echo "                         --keep-alive, -k   Keep VM running after VNC closes"
   echo "  stop                 Stop the running MacOS VM"
   echo "  status               Show current VM status"
   echo "  help                 Show this help message"
