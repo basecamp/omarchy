@@ -1,6 +1,6 @@
 # Packages installed outside of install/packages.sh or optional packages
 # Utilized by ISO builder to ensure package availability in the ISO
-
+yazi
 autoconf-archive
 asusctl
 base
