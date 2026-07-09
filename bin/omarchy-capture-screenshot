@@ -123,6 +123,9 @@ esac
 
 [[ -z $SELECTION ]] && exit 0
 
+# Give the selection overlay time to disappear before capturing.
+sleep 0.1
+
 FILENAME="screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png"
 FILEPATH="$OUTPUT_DIR/$FILENAME"
 
