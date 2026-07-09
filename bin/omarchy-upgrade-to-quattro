@@ -386,6 +386,13 @@ configure_pacman_channel() {
 
 install_keyrings() {
   log "Refreshing package databases and keyrings"
+
+  # Pre-quattro installs cached omarchy packages downloaded from the legacy
+  # repo. The quattro package server rebuilds some of them under the same
+  # name and version with different bytes, so the cached copies fail the new
+  # database's checksum and abort --noconfirm transactions as "corrupted".
+  as_root find /var/cache/pacman/pkg -maxdepth 1 -name 'omarchy-*' -delete 2>/dev/null || true
+
   as_root pacman -Sy --noconfirm archlinux-keyring omarchy-keyring || {
     warn "Keyring package install failed; attempting to trust the Omarchy packaging key directly."
     as_root pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org || true
