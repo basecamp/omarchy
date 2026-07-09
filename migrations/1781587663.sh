@@ -12,12 +12,16 @@ if [[ -d $nvim_config_dir ]]; then
     install -m 0644 "$provider_source" "$nvim_provider"
 
     if [[ -f $nvim_options ]] && ! grep -qF 'config.remote_clipboard' "$nvim_options"; then
-      tmp=$(mktemp)
-      {
-        printf '%s\n' 'require("config.remote_clipboard").setup()'
-        cat "$nvim_options"
-      } >"$tmp"
-      mv "$tmp" "$nvim_options"
+      if tmp=$(mktemp); then
+        if ! {
+          printf '%s\n' 'require("config.remote_clipboard").setup()'
+          cat "$nvim_options"
+        } >"$tmp"; then
+          rm -f "$tmp"
+        elif ! mv "$tmp" "$nvim_options"; then
+          rm -f "$tmp"
+        fi
+      fi
     fi
   else
     echo "Skipping Neovim clipboard provider: $provider_source not found (omarchy-nvim package may need updating)"
