@@ -52,6 +52,7 @@ alias t='tmux attach || tmux new -s Work'
 alias ic='tdl c'
 alias ix='tdl cx'
 alias icx='tdl c cx'
+alias mup='MISE_MINIMUM_RELEASE_AGE=0 mise up'
 n() { if [ "$#" -eq 0 ]; then command nvim . ; else command nvim "$@"; fi; }
 
 # Git
