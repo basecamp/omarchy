@@ -1811,9 +1811,10 @@ if [[ -d $legacy_omarchy_backup/themes && -d $legacy_omarchy_backup/.git ]]; the
     cd "$legacy_omarchy_backup"
     mapfile -t tracked_backgrounds < <(git ls-files --cached 'themes/*/backgrounds/*' 2>/dev/null)
     for theme_dir in themes/*/; do
+      theme_dir=${theme_dir%/}
       [[ -d $theme_dir/backgrounds ]] || continue
       theme_name=$(basename "$theme_dir")
-      for bg_file in "$theme_dir"/backgrounds/*; do
+      for bg_file in "$theme_dir/backgrounds"/*; do
         [[ -f $bg_file ]] || continue
         is_tracked=0
         for tracked in "${tracked_backgrounds[@]}"; do
