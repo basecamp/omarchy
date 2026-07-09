@@ -775,13 +775,13 @@ create_live_omarchy_overlay() {
   mkdir -p "$compat_root/default"
 
   shopt -s dotglob nullglob
-  for entry in /usr/share/omarchy/* /usr/share/omarchy/.[!.]* /usr/share/omarchy/..?*; do
+  for entry in /usr/share/omarchy/*; do
     [[ -e $entry ]] || continue
     base=$(basename "$entry")
     [[ $base == default ]] && continue
     ln -s "$entry" "$compat_root/$base"
   done
-  for entry in /usr/share/omarchy/default/* /usr/share/omarchy/default/.[!.]* /usr/share/omarchy/default/..?*; do
+  for entry in /usr/share/omarchy/default/*; do
     [[ -e $entry ]] || continue
     base=$(basename "$entry")
     [[ $base == hypr ]] && continue
