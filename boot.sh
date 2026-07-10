@@ -25,13 +25,25 @@ OMARCHY_REF="${OMARCHY_REF:-master}"
 # Set mirror based on branch
 if [[ $OMARCHY_REF == "dev" ]]; then
   export OMARCHY_MIRROR=edge
-  echo 'Server = https://mirror.omarchy.org/$repo/os/$arch' | sudo tee /etc/pacman.d/mirrorlist >/dev/null
+  {
+    echo 'Server = https://mirror.omarchy.org/$repo/os/$arch'
+    echo 'Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch'
+    echo 'Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch'
+  } | sudo tee /etc/pacman.d/mirrorlist >/dev/null
 elif [[ $OMARCHY_REF == "rc" ]]; then
   export OMARCHY_MIRROR=rc
-  echo 'Server = https://rc-mirror.omarchy.org/$repo/os/$arch' | sudo tee /etc/pacman.d/mirrorlist >/dev/null
+  {
+    echo 'Server = https://rc-mirror.omarchy.org/$repo/os/$arch'
+    echo 'Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch'
+    echo 'Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch'
+  } | sudo tee /etc/pacman.d/mirrorlist >/dev/null
 else
   export OMARCHY_MIRROR=stable
-  echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch' | sudo tee /etc/pacman.d/mirrorlist >/dev/null
+  {
+    echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch'
+    echo 'Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch'
+    echo 'Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch'
+  } | sudo tee /etc/pacman.d/mirrorlist >/dev/null
 fi
 
 sudo pacman -Syu --noconfirm --needed git
