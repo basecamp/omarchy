@@ -27,6 +27,21 @@ assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: s
 assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states), 'power does not flag discharging as threshold')
 assertEqual(power.modeLabel({ isPresent: true, percentage: 1, state: states.FullyCharged }, false, states), 'Fully charged', 'power labels full battery')
 assertEqual(power.modeLabel({ isPresent: true, percentage: 0.5, state: states.Discharging }, true, states), 'On battery', 'power labels battery mode')
-assertEqual(power.modeLabel({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states), 'On battery', 'power labels discharging battery mode')
+assertEqual(power.modeLabel({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states), 'Draining on AC', 'power labels plugged-but-draining distinctly from on-battery')
 assert(power.batteryIcon({ isPresent: true, percentage: 0.4, state: states.Charging }, false, states).length > 0, 'power maps battery icons')
+
+// Plugged in but still draining (load exceeds charger) is distinct from being
+// on battery: the charger IS attached, so it must not read like on-battery.
+assert(power.pluggedButDraining({ isPresent: true, state: states.Discharging }, false, states), 'power detects plugged-but-draining (AC present, still discharging)')
+assert(!power.pluggedButDraining({ isPresent: true, state: states.Discharging }, true, states), 'power does not flag on-battery discharge as plugged-but-draining')
+assert(!power.pluggedButDraining({ isPresent: true, state: states.Charging }, false, states), 'power does not flag charging as plugged-but-draining')
+
+// The icon must differ from the on-battery glyph (keeps its bolt) and match the
+// charging-family glyph at the same level. Compared relationally to avoid
+// hard-coding the nerd-font glyphs.
+const drainingIcon = power.batteryIcon({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states)
+const onBatteryIcon = power.batteryIcon({ isPresent: true, percentage: 0.5, state: states.Discharging }, true, states)
+const chargingIcon = power.batteryIcon({ isPresent: true, percentage: 0.5, state: states.Charging, changeRate: 1.0, timeToFull: 120 }, false, states)
+assert(drainingIcon !== onBatteryIcon, 'power distinguishes plugged-but-draining from on-battery discharge')
+assertEqual(drainingIcon, chargingIcon, 'power keeps the charging/bolt glyph when plugged but draining')
 JS

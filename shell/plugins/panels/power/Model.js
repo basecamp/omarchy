@@ -63,6 +63,20 @@ function chargeThresholdActive(device, onBattery, states) {
   return Number(d.changeRate || 0) <= 0.2 || Number(d.timeToFull || 0) >= 8 * 60 * 60
 }
 
+// True when the charger is physically connected (line power present) yet the
+// battery is still net-draining -- i.e. the load exceeds what the charger can
+// supply (common on the performance profile or with an under-spec USB-C PD
+// charger). This is distinct from running on battery: the charger IS attached,
+// so the indicator should still read "plugged". UPower.onBattery gives us the
+// line-power state independently of the device's charge/discharge state, which
+// is exactly what makes this distinction possible (Waybar's battery module
+// could not express it -- see Alexays/Waybar#253, #3202).
+function pluggedButDraining(device, onBattery, states) {
+  var d = device || {}
+  var s = states || {}
+  return !!(d.isPresent && !onBattery && d.state === s.Discharging)
+}
+
 function batteryIcon(device, onBattery, states) {
   var d = device || {}
   if (!d.isPresent) return ""
@@ -75,7 +89,12 @@ function batteryIcon(device, onBattery, states) {
   if (threshold) return defaultIcons[index]
   if (d.state === states.FullyCharged) return "󰂅"
   if (d.state === states.Charging) return chargingIcons[index]
-  if (d.state === states.Discharging) return defaultIcons[index]
+  if (d.state === states.Discharging) {
+    // Plugged in but draining (load > charger): keep a charging/bolt glyph so
+    // "is a charger connected?" still reads true. Only a real on-battery
+    // discharge gets the plain, boltless icon.
+    return onBattery ? defaultIcons[index] : chargingIcons[index]
+  }
   if (!onBattery) return ""
   return defaultIcons[index]
 }
@@ -87,6 +106,7 @@ function modeLabel(device, onBattery, states) {
   var percentage = d.isPresent ? d.percentage : 0
   if (chargeThresholdActive(d, onBattery, states)) return "Threshold"
   if (!onBattery && percentage >= 1) return "Fully charged"
+  if (pluggedButDraining(d, onBattery, states)) return "Draining on AC"
   if (onBattery || d.state === states.Discharging) return "On battery"
   return "Charging"
 }
@@ -101,6 +121,7 @@ if (typeof module !== "undefined") {
     batteryFraction: batteryFraction,
     chargeThresholdActive: chargeThresholdActive,
     batteryIcon: batteryIcon,
-    modeLabel: modeLabel
+    modeLabel: modeLabel,
+    pluggedButDraining: pluggedButDraining
   }
 }

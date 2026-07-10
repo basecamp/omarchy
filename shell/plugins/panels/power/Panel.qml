@@ -41,12 +41,15 @@ Panel {
 
   function batteryIcon() {
     var device = UPower.displayDevice
-    return Model.batteryIcon(device, root.discharging, upowerStates())
+    // Pass real line-power state (UPower.onBattery), NOT root.discharging: the
+    // latter is true whenever the device is discharging even while plugged in,
+    // which collapsed "plugged but draining" into the boltless on-battery icon.
+    return Model.batteryIcon(device, UPower.onBattery, upowerStates())
   }
 
   function modeLabel() {
     var device = UPower.displayDevice
-    return Model.modeLabel(device, root.discharging, upowerStates())
+    return Model.modeLabel(device, UPower.onBattery, upowerStates())
   }
 
   function profileIcon(name) {
@@ -63,7 +66,13 @@ Panel {
   }
   readonly property bool chargeThresholdActive: {
     var device = UPower.displayDevice
-    return Model.chargeThresholdActive(device, root.discharging, upowerStates())
+    return Model.chargeThresholdActive(device, UPower.onBattery, upowerStates())
+  }
+  // Charger connected but the battery is still net-draining (load exceeds the
+  // charger's output). Drives the alert tint on the bar icon.
+  readonly property bool pluggedButDraining: {
+    var device = UPower.displayDevice
+    return Model.pluggedButDraining(device, UPower.onBattery, upowerStates())
   }
   readonly property bool batteryFull: fullyCharged || (!root.discharging && batteryFraction >= 1)
   readonly property bool batteryFlowIdle: batteryFull || chargeThresholdActive
@@ -254,6 +263,10 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: root.batteryIcon()
+    // Tint the bolt in the theme's urgent colour when plugged but draining, so
+    // "charger connected but losing charge" reads at a glance (→ bigger adapter).
+    foreground: root.pluggedButDraining ? (root.bar ? root.bar.urgent : Color.urgent)
+                                        : (root.bar ? root.bar.barForeground : Color.foreground)
     fixedWidth: root.bar && root.bar.vertical ? -1 : Style.space(27)
     fixedHeight: root.bar && root.bar.vertical ? Style.space(26) : -1
     tooltipText: ""
