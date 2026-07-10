@@ -28,6 +28,7 @@ assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.5, state: s
 assertEqual(power.modeLabel({ isPresent: true, percentage: 1, state: states.FullyCharged }, false, states), 'Fully charged', 'power labels full battery')
 assertEqual(power.modeLabel({ isPresent: true, percentage: 0.5, state: states.Discharging }, true, states), 'On battery', 'power labels battery mode')
 assertEqual(power.modeLabel({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states), 'Draining on AC', 'power labels plugged-but-draining distinctly from on-battery')
+assertEqual(power.modeLabel({ isPresent: true, percentage: 1, state: states.Discharging }, false, states), 'Draining on AC', 'power prefers draining over "Fully charged" when a full battery drains on AC')
 assert(power.batteryIcon({ isPresent: true, percentage: 0.4, state: states.Charging }, false, states).length > 0, 'power maps battery icons')
 
 // Plugged in but still draining (load exceeds charger) is distinct from being

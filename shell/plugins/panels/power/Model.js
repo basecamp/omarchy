@@ -105,8 +105,11 @@ function modeLabel(device, onBattery, states) {
 
   var percentage = d.isPresent ? d.percentage : 0
   if (chargeThresholdActive(d, onBattery, states)) return "Threshold"
-  if (!onBattery && percentage >= 1) return "Fully charged"
+  // Check plugged-but-draining before the full-battery heuristic: a battery at
+  // 100% can still net-drain on AC (a load spike while full), and that should
+  // read as draining, not "Fully charged".
   if (pluggedButDraining(d, onBattery, states)) return "Draining on AC"
+  if (!onBattery && percentage >= 1) return "Fully charged"
   if (onBattery || d.state === states.Discharging) return "On battery"
   return "Charging"
 }
