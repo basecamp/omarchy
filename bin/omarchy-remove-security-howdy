@@ -39,6 +39,11 @@ remove_pam_config
 remove_hyprlock_face_icon
 disable_hyprlock_face_unlock
 
+if [[ -f /etc/pacman.d/hooks/howdy-dlib-check.hook ]]; then
+  echo "Removing face unlock pacman hook..."
+  sudo rm /etc/pacman.d/hooks/howdy-dlib-check.hook
+fi
+
 if systemctl is-enabled linux-enable-ir-emitter.service &>/dev/null; then
   echo "Disabling IR emitter service..."
   sudo systemctl disable --now linux-enable-ir-emitter.service
