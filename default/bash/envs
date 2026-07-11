@@ -1,4 +1,5 @@
 # Editor used by CLI
+export EDITOR="${EDITOR:-omarchy-launch-editor --inline}"
 export SUDO_EDITOR="$EDITOR"
 export BAT_THEME=ansi
 
