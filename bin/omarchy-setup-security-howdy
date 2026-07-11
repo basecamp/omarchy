@@ -62,6 +62,38 @@ EOF
   fi
 }
 
+install_dlib_rebuild_check() {
+  # python-dlib comes from the AUR, so a soname bump in one of its link
+  # dependencies (e.g. libjxl 0.11 -> 0.12) breaks pam_howdy without any
+  # visible error: PAM quietly falls through to password auth. This hook
+  # surfaces the breakage in the pacman output the moment an update causes it.
+  # Targets are python-dlib's linked libraries plus the python stack howdy
+  # imports at runtime.
+  echo "Installing pacman hook to detect broken face unlock after updates..."
+  sudo mkdir -p /etc/pacman.d/hooks
+  sudo tee /etc/pacman.d/hooks/howdy-dlib-check.hook >/dev/null <<'EOF'
+[Trigger]
+Type = Package
+Operation = Upgrade
+Target = python
+Target = python-numpy
+Target = python-opencv
+Target = opencv
+Target = cblas
+Target = giflib
+Target = lapack
+Target = libjpeg-turbo
+Target = libjxl
+Target = libpng
+Target = libx11
+
+[Action]
+Description = Checking that howdy face unlock still works
+When = PostTransaction
+Exec = /usr/bin/bash -c 'if ! /usr/bin/python -c "import dlib, cv2" &>/dev/null; then printf "\033[1;33mWARNING: face unlock (howdy) is broken: python-dlib no longer imports.\nA library update likely changed a soname it links against.\nRebuild it with: yay -S --rebuild python-dlib\nUntil then, authentication silently falls back to password.\033[0m\n"; fi'
+EOF
+}
+
 add_hyprlock_face_icon() {
   echo "Adding face icon to hyprlock placeholder text..."
   if grep -q '󰱻' ~/.config/hypr/hyprlock.conf; then
@@ -115,6 +147,7 @@ if systemctl list-unit-files linux-enable-ir-emitter.service &>/dev/null; then
 fi
 
 setup_pam_config
+install_dlib_rebuild_check
 add_hyprlock_face_icon
 enable_hyprlock_face_unlock
 
