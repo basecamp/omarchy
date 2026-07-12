@@ -7,8 +7,8 @@ if [[ -f $tmux_config ]]; then
     sed -i '/^# Pane Controls$/a\bind -n M-Enter split-window -v -c "#{pane_current_path}"\nbind -n M-S-Enter split-window -h -c "#{pane_current_path}"\nbind -n M-Escape kill-pane\n' "$tmux_config"
   fi
 
-  if ! grep -q "terminal-features" "$tmux_config"; then
-    sed -i '/^set -g extended-keys-format csi-u$/a\set -g terminal-features[3] "xterm-kitty:extkeys"' "$tmux_config"
+  if ! grep -q "xterm-kitty:extkeys" "$tmux_config"; then
+    sed -i '/^set -g extended-keys-format csi-u$/a\set -ag terminal-features "xterm-kitty:extkeys"' "$tmux_config"
   fi
 
   omarchy-restart-tmux
