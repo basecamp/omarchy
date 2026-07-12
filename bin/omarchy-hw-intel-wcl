@@ -1,5 +1,0 @@
-#!/bin/bash
-
-# omarchy:summary=Detect whether the computer has an Intel Wildcat Lake GPU.
-
-lspci | grep -iE 'vga|3d|display' | grep -qi 'wildcat lake'
