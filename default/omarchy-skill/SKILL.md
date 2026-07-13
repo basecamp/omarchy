@@ -7,7 +7,7 @@ description: >
   or ~/.config/omarchy/. Triggers: Hyprland, window rules, animations, keybindings,
   monitors, gaps, borders, blur, opacity, waybar, walker, terminal config, themes,
   background, night light, idle, lock screen, screenshots, reminders, layer rules,
-  workspace settings, display config, and user-facing omarchy commands. Excludes Omarchy
+  workspace settings, display config, installing CLI tools, package management, omarchy pkg add, omarchy npm install, and user-facing omarchy commands. Excludes Omarchy
   source development in ~/.local/share/omarchy/ and `omarchy dev` workflows.
 ---
 
@@ -181,6 +181,105 @@ Run `omarchy --help` for the full list. The most common groups:
 | starship | `~/.config/starship.toml` |
 | git | `~/.config/git/config` |
 | walker | `~/.config/walker/config.toml` |
+
+## Installing CLI Tools
+
+When the user asks to install a new command-line tool, choose the install
+method that matches the tool type. Omarchy appends `~/.local/bin` to
+`PATH` from two Omarchy-managed files:
+
+- `~/.local/share/omarchy/default/bash/envs` -- read-only template
+  under `~/.local/share/omarchy/`. Sourced via Omarchy's `~/.bashrc`
+  for interactive bash shells. Do not edit it directly; changes ship
+  through `omarchy update`.
+- `~/.config/uwsm/env` -- active user config. Refreshed from the
+  template at `~/.local/share/omarchy/config/uwsm/env` by migrations.
+  Re-apply template changes with
+  `omarchy refresh config uwsm/env` (path is relative to `~/.config/`;
+  underlying binary `omarchy-refresh-config`). Applies to graphical
+  Hyprland/UWSM sessions.
+
+Manual edits to either file may be overwritten by `omarchy update`;
+prefer `omarchy refresh config <config-file>` to reapply template
+changes.
+
+Binaries dropped into `~/.local/bin` are available in interactive bash
+shells and graphical Hyprland/UWSM sessions without editing rc files.
+Other contexts (systemd user services, non-bash shells that don't
+source the Omarchy envs, one-off scripts invoked without a login) may
+need to add `~/.local/bin` to their own `PATH`.
+
+### npm-based AI / dev CLIs
+
+Use `omarchy npm install` (the grouped route; underlying binary
+`omarchy-npm-install`). It writes a small `pnpm dlx`-based launcher into
+`~/.local/bin`, mirroring the pattern Omarchy uses for the built-in AI tools
+(`codex`, `gemini`, `copilot`, `pi`).
+
+```bash
+omarchy npm install <package> [command-name]
+```
+
+Examples:
+
+```bash
+omarchy npm install cowsay                                # launcher at ~/.local/bin/cowsay
+omarchy npm install @myorg/my-agent myagent              # scoped pkg: supply command name explicitly
+```
+
+Always pass an explicit `command-name` when the package name can't
+be used as the launcher name. This happens in two common cases: scoped
+packages (`@org/pkg` -- the `/` would create a path with a non-existent
+`@org/` directory), and packages whose published `bin` name differs from
+the package name (e.g. the `typescript` package exposes a `tsc` bin,
+`@openai/codex` exposes `codex`). Without an explicit `command-name`,
+`omarchy npm install` falls back to the package name and either fails
+(scoped) or installs under the wrong name (bin mismatch).
+
+The launcher already lives in `~/.local/bin`, which is on `PATH` by
+default. Do NOT add a `PATH` export for it to `~/.bashrc` (or any
+other shell rc) -- the directory is already covered by the envs
+files above.
+
+### Downloaded binaries (tarballs, GitHub releases, .deb, etc.)
+
+Drop the binary into `~/.local/bin` and make it executable. Create the
+directory first if it does not exist. No shell config edits required.
+
+```bash
+mkdir -p ~/.local/bin
+curl -L -o ~/.local/bin/mytool "https://example.com/mytool-linux-amd64"
+chmod +x ~/.local/bin/mytool
+```
+
+Do NOT invent a custom directory like `~/.bin` or `~/tools` and add a PATH
+export to `~/.bashrc` -- use `~/.local/bin`. For system-wide installs use
+`/usr/local/bin`, which Arch places on `PATH` by default; no Omarchy
+configuration is involved.
+
+### Pacman / AUR packages
+
+Use `omarchy pkg add` (or `omarchy pkg aur add` for AUR-only packages):
+
+```bash
+omarchy pkg add ripgrep fd
+omarchy pkg aur add <aur-package>
+```
+
+### Decision rules
+
+- npm CLI or wrapper around one -> `omarchy npm install`
+- Single-binary release (Go/Rust/static binary, tarball, .deb-extracted
+  binary) -> drop into `~/.local/bin`
+- Available in pacman -> `omarchy pkg add`
+- AUR-only -> `omarchy pkg aur add`
+
+Omarchy's default `~/.bashrc` invites user customization after the
+Omarchy-sourced block, so editing it is fine for personal aliases,
+functions, and exports. What this section discourages specifically is
+adding a `PATH` export to make a non-standard install directory
+(like `~/.bin/`) work -- `~/.local/bin` is already on `PATH` and no
+export is needed.
 
 ## Safe Customization Patterns
 
