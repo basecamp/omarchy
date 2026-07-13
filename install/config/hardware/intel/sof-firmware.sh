@@ -4,9 +4,10 @@
 # Output sink. This affects Arrow Lake, Meteor Lake, Tiger Lake, Alder Lake,
 # Wildcat Lake, Panther Lake, and similar platforms.
 #
-# omarchy-pkg-add is idempotent, so systems that already pull sof-firmware in
-# via linux-ptl (Panther Lake XPS) are unaffected.
+# Mark the package explicit so the orphan sweep cannot remove firmware that was
+# originally installed as a linux-ptl dependency.
 
 if omarchy-hw-intel-sof; then
   omarchy-pkg-add sof-firmware
+  sudo pacman -D --asexplicit sof-firmware >/dev/null
 fi

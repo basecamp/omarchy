@@ -1,14 +1,30 @@
 echo "Add easier tmux pane controls with Alt+Enter splits and CSI-u Shift+Enter across terminals"
 
-# tmux: add M-Enter/M-S-Enter/M-Escape pane bindings and enable extkeys for kitty terminal
+# tmux: add pane bindings, enable kitty extkeys, and set informative terminal titles
 tmux_config="$HOME/.config/tmux/tmux.conf"
 if [[ -f $tmux_config ]]; then
-  if ! grep -q "M-S-Enter" "$tmux_config"; then
-    sed -i '/^# Pane Controls$/a\bind -n M-Enter split-window -v -c "#{pane_current_path}"\nbind -n M-S-Enter split-window -h -c "#{pane_current_path}"\nbind -n M-Escape kill-pane\n' "$tmux_config"
+  if ! grep -Fq 'bind -n M-Escape kill-pane' "$tmux_config"; then
+    sed -i '/^# Pane Controls$/a\bind -n M-Escape kill-pane' "$tmux_config"
+  fi
+
+  if ! grep -Fq 'bind -n M-S-Enter split-window' "$tmux_config"; then
+    sed -i '/^# Pane Controls$/a\bind -n M-S-Enter split-window -h -c "#{pane_current_path}"' "$tmux_config"
+  fi
+
+  if ! grep -Fq 'bind -n M-Enter split-window' "$tmux_config"; then
+    sed -i '/^# Pane Controls$/a\bind -n M-Enter split-window -v -c "#{pane_current_path}"' "$tmux_config"
   fi
 
   if ! grep -q "xterm-kitty:extkeys" "$tmux_config"; then
     sed -i '/^set -g extended-keys-format csi-u$/a\set -ag terminal-features "xterm-kitty:extkeys"' "$tmux_config"
+  fi
+
+  if ! grep -Fq 'set -g set-titles on' "$tmux_config"; then
+    sed -i "/^set -gw automatic-rename-format/a\\set -g set-titles on" "$tmux_config"
+  fi
+
+  if ! grep -Fq 'set -g set-titles-string' "$tmux_config"; then
+    sed -i "/^set -g set-titles on$/a\\set -g set-titles-string '#h:#W'" "$tmux_config"
   fi
 
   omarchy-restart-tmux
@@ -20,17 +36,20 @@ if [[ -f $alacritty_config ]] && ! grep -q '13;2u' "$alacritty_config"; then
   sed -i -E 's|^([[:space:]]*).*chars = "\\u001B\\r".*|\1# Send Shift+Return as CSI-u so TUIs can distinguish it from Return without treating it as Alt+Return.\n\1{ key = "Return", mods = "Shift", chars = "\\u001B[13;2u" },\n\1# Legacy encoding sends Alt+Shift+Return the same as Alt+Return; send CSI-u so tmux can match M-S-Enter.\n\1{ key = "Return", mods = "Alt\|Shift", chars = "\\u001B[13;4u" }|' "$alacritty_config"
 fi
 
-# foot: append CSI-u text bindings for Shift+Return and Alt+Shift+Return
+# foot: add CSI-u text bindings for Shift+Return and Alt+Shift+Return
 foot_config="$HOME/.config/foot/foot.ini"
-if [[ -f $foot_config ]] && ! grep -q '13;2u' "$foot_config"; then
-  cat >>"$foot_config" <<'EOF'
+if [[ -f $foot_config ]]; then
+  if ! grep -q '^\[text-bindings\]$' "$foot_config"; then
+    sed -i '$a\\\n[text-bindings]' "$foot_config"
+  fi
 
-[text-bindings]
-# Send Shift+Return as CSI-u so TUIs can distinguish it from Return.
-\x1b[13;2u=Shift+Return
-# Send Alt+Shift+Return as CSI-u so tmux can match M-S-Enter.
-\x1b[13;4u=Mod1+Shift+Return
-EOF
+  if ! grep -Fq '\x1b[13;4u=Mod1+Shift+Return' "$foot_config"; then
+    sed -i '/^\[text-bindings\]$/a\# Send Alt+Shift+Return as CSI-u so tmux can match M-S-Enter.\n\\x1b[13;4u=Mod1+Shift+Return' "$foot_config"
+  fi
+
+  if ! grep -Fq '\x1b[13;2u=Shift+Return' "$foot_config"; then
+    sed -i '/^\[text-bindings\]$/a\# Send Shift+Return as CSI-u so TUIs can distinguish it from Return.\n\\x1b[13;2u=Shift+Return' "$foot_config"
+  fi
 fi
 
 # ghostty: add CSI-u keybinds for Shift+Enter and Alt+Shift+Enter
