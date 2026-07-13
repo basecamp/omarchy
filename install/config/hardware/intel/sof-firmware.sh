@@ -1,8 +1,9 @@
-# Install Sound Open Firmware for the audio DSP on non-XPS Intel Panther
-# Lake systems. XPS PTL stays on linux-ptl, which hard-deps sof-firmware.
-# Mainline `linux` only optdeps it, so without this the DSP fails to boot
-# and only auto_null shows up in PipeWire.
+# Install Sound Open Firmware for the audio DSP on Intel systems that need it.
+# The sof-audio-pci-intel-* driver family requires sof-firmware to initialise
+# the DSP; without it the DSP fails to boot and PipeWire exposes only a Dummy
+# Output sink. This affects Arrow Lake, Meteor Lake, Tiger Lake, Alder Lake,
+# Wildcat Lake, Panther Lake, and similar platforms.
 
-if omarchy-hw-intel-ptl && ! omarchy-hw-match "XPS"; then
+if omarchy-hw-intel-sof; then
   omarchy-pkg-add sof-firmware
 fi
