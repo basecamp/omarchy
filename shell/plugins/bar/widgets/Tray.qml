@@ -1,5 +1,6 @@
 import Quickshell
 import QtQuick
+import QtQuick.Effects
 import Quickshell.Services.SystemTray
 import Quickshell.Widgets
 import qs.Commons
@@ -50,14 +51,20 @@ BarWidget {
   }
 
   function trayIconSource(icon) {
-    var value = String(icon || "")
-    var marker = "?path="
-    var markerIndex = value.indexOf(marker)
-    if (markerIndex === -1) return value
+    // Quickshell already resolves the tray icon into a ready-to-use image://
+    // URL, including a "?path=" fallback search dir for apps that ship their
+    // tray icon outside a standard theme (e.g. Steam's flat public/ dir). Hand
+    // it straight to IconImage; guessing a theme sub-directory here only broke
+    // apps whose layout didn't match the guess.
+    return String(icon || "")
+  }
 
-    var name = value.substring(0, markerIndex).split("/").pop()
-    var iconPath = value.substring(markerIndex + marker.length).split("&")[0]
-    return Util.fileUrl(iconPath + "/hicolor/16x16/status/" + name + ".png")
+  // Symbolic icons ship a fixed fill (often near-white) that the host is meant
+  // to recolor to its foreground; detect them by the freedesktop "-symbolic"
+  // name suffix so they can be tinted instead of rendered as-is.
+  function iconIsSymbolic(icon) {
+    var name = String(icon || "").split("?")[0]
+    return name.slice(-9) === "-symbolic"
   }
 
   function trayTooltip(item) {
@@ -373,14 +380,13 @@ BarWidget {
           readonly property bool isPinned: root.pinnedIds.indexOf(itemId) !== -1
           readonly property bool isHidden: root.hiddenIds.indexOf(itemId) !== -1
 
-          IconImage {
+          TrayIcon {
             id: rowIcon
             anchors.verticalCenter: parent.verticalCenter
             anchors.left: parent.left
-            implicitSize: 16
             width: 16
             height: 16
-            source: root.trayIconSource(rowRoot.modelData.icon)
+            icon: rowRoot.modelData.icon
           }
 
           Text {
@@ -559,6 +565,33 @@ BarWidget {
     }
   }
 
+  // Renders a tray icon, recoloring symbolic icons to the bar foreground so
+  // they stay visible on any theme (a raw symbolic icon keeps its baked-in
+  // fill and disappears against a matching background).
+  component TrayIcon: Item {
+    id: trayIconRoot
+    required property var icon
+    readonly property bool symbolic: root.iconIsSymbolic(icon)
+
+    IconImage {
+      id: trayIconImage
+      anchors.fill: parent
+      implicitSize: Math.round(Math.min(parent.width, parent.height))
+      source: root.trayIconSource(trayIconRoot.icon)
+      // Kept as a hidden layer so the effect can sample it as a texture.
+      visible: !trayIconRoot.symbolic
+      layer.enabled: trayIconRoot.symbolic
+    }
+
+    MultiEffect {
+      anchors.fill: trayIconImage
+      source: trayIconImage
+      visible: trayIconRoot.symbolic
+      colorization: 1.0
+      colorizationColor: root.foreground
+    }
+  }
+
   component TrayItem: Item {
     id: trayItemRoot
 
@@ -572,12 +605,11 @@ BarWidget {
       root.openTrayMenu(trayItemRoot.modelData, trayItemRoot, mouse)
     }
 
-    IconImage {
+    TrayIcon {
       anchors.centerIn: parent
-      implicitSize: Style.space(12)
       width: Style.space(12)
       height: Style.space(12)
-      source: root.trayIconSource(trayItemRoot.modelData.icon)
+      icon: trayItemRoot.modelData.icon
     }
 
     MouseArea {
