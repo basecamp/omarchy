@@ -327,6 +327,120 @@ omarchy system reboot           # Reboot
 
 **IMPORTANT:** Always run `omarchy debug` with `--no-sudo --print` flags to avoid interactive sudo prompts that will hang the terminal.
 
+### Elevation in agent / non-interactive sessions
+
+When running from an agent, IDE, or any non-TTY context, plain `sudo`
+cannot prompt for a password (there is no controlling TTY) and will fail
+with "a terminal is required" or hang waiting on one. Prefer one of the
+following instead:
+
+1. **`pkexec <command>`** for arbitrary one-off commands. `pkexec` is the
+   polkit equivalent of `sudo` -- it is provided by the `polkit`
+   package, which Omarchy pulls in transitively via `polkit-gnome` (see
+   `install/omarchy-base.packages`; `polkit-gnome` is the graphical
+   authentication agent that makes the dialog appear). It pops a
+   graphical authentication dialog on the user's desktop session, so it
+   works from agents and SSH-from-LAN-with-display sessions without TTY
+   input. It only works in a logged-in graphical session; over a
+   non-graphical SSH login it will fail (e.g. "Cannot open display")
+   rather than blocking.
+
+   ```bash
+   pkexec pacman -Syu --noconfirm
+   pkexec systemctl restart NetworkManager
+   ```
+
+2. **`omarchy sudo passwordless [MINUTES]`** for sessions that need to run
+   many `sudo` commands (AI agents, batch installers). This drops a
+   time-limited passwordless sudoers rule for the current user; the rule
+   normally auto-expires after `MINUTES` via a transient `systemd-run`
+   timer. **Note the security warning it prints: any process running
+   as your user can execute any command as root during the window.**
+
+   Reboot caveat: the timer is transient (it dies at reboot), but the
+   sudoers drop-in (`/etc/sudoers.d/99-omarchy-nopasswd-$USER`) can
+   persist past the original window. Re-running `omarchy sudo
+   passwordless` (with or without an argument) detects a missing timer
+   and removes the leftover drop-in as a safety step (look for the
+   "Safety:" comment in `bin/omarchy-sudo-passwordless`); running it
+   with a new `MINUTES` value then arms a fresh window. Treat the
+   drop-in as the source of truth and the timer as a best-effort
+   cleanup.
+
+   Important caveat: the command itself uses `gum confirm` for an
+   interactive confirmation prompt and calls raw `sudo` internally to
+   install the sudoers drop-in. So `omarchy sudo passwordless` must be
+   run from an interactive shell (TTY or graphical session with the
+   desktop available), **not** from the non-TTY agent session that
+   needs it. The typical flow is:
+
+   ```bash
+   # 1. User runs this ONCE in an interactive shell (Hyprland terminal,
+   #    SSH session, etc.) to arm a 60-minute window:
+   omarchy sudo passwordless 60
+
+   # 2. From then on, the agent session can run sudo / omarchy-pkg-add
+   #    etc. without any prompt until the timer expires:
+   sudo pacman -Syu --noconfirm
+   omarchy pkg add ripgrep
+   ```
+
+3. **`sudo -n <command>`** to fail fast if no password is cached, instead
+   of hanging waiting for input.
+
+   ```bash
+   sudo -n pacman -Syu --noconfirm
+   ```
+
+Note: the `# omarchy:requires-sudo=true` metadata on Omarchy commands
+(see `bin/omarchy-pkg-add`) is **for listing/metadata only** -- it does
+not change the elevation mechanism. The real question is what each
+command actually does when run: many still invoke raw `sudo` and will
+hang from a non-TTY agent session unless option 2 is already armed
+(see the two-step flow above); some offer a no-sudo flag (e.g.
+`omarchy debug --no-sudo --print`; the flag is parsed by
+`bin/omarchy-debug` rather than the dispatcher) that lets them
+run without any elevation at all. Always check the command before
+invoking it from a non-TTY agent session.
+
+Caveats on option 1 (`pkexec`):
+
+- `pkexec` runs with a sanitized environment: `PATH` is reset to
+  `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
+  `HOME` is set to `/root` inside the elevated process, and arbitrary
+  variables like `OMARCHY_PATH` are stripped. The main failure mode is
+  **PATH**: `omarchy-pkg-add` and its helpers (e.g. `omarchy-pkg-missing`)
+  live in `~/.local/share/omarchy/bin/`, which is not on the sanitized
+  PATH, so `pkexec omarchy-pkg-add ...` will fail with "command not
+  found". Build an explicit, minimal environment and invoke by absolute
+  path; don't blindly inherit the caller's `PATH` (it may include
+  unrelated user-writable directories):
+
+  ```bash
+  # Note: $HOME in the example below is expanded by the caller's shell
+  # before pkexec runs -- it is the invoking user's home, NOT /root.
+  pkexec env \
+    OMARCHY_PATH="$HOME/.local/share/omarchy" \
+    PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$HOME/.local/share/omarchy/bin" \
+    "$HOME/.local/share/omarchy/bin/omarchy" pkg add ripgrep
+  ```
+
+  Only `~/.local/share/omarchy/bin/` is needed here (for `omarchy` and
+  its helpers like `omarchy-pkg-missing`). `$HOME/.local/bin` is omitted
+  on purpose to keep the elevated PATH minimal and avoid resolving an
+  unrelated user-installed binary by the same name. Set
+  `OMARCHY_PATH` because some Omarchy commands source envs that read it.
+  Add `$HOME/.local/bin` to the PATH only if you specifically need a
+  binary installed there.
+
+- Over a non-graphical SSH login, `pkexec` will fail (e.g. "Cannot open
+  display") rather than blocking -- it does not have a TTY prompt to
+  fall back to.
+
+Do NOT use plain `sudo <command>` from an agent session unless option 2
+is already armed -- it will fail or hang until the user types a password
+into a TTY the agent is not connected to.
+
 ## Troubleshooting
 
 ```bash
