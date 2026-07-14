@@ -40,7 +40,7 @@ fi
 foot_config="$HOME/.config/foot/foot.ini"
 if [[ -f $foot_config ]]; then
   if ! grep -q '^\[text-bindings\]$' "$foot_config"; then
-    sed -i '$a\\\n[text-bindings]' "$foot_config"
+    sed -i '$a\\n[text-bindings]' "$foot_config"
   fi
 
   if ! grep -Fq '\x1b[13;4u=Mod1+Shift+Return' "$foot_config"; then
