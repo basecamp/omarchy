@@ -18,8 +18,8 @@ BarWidget {
   property var activeTrayAnchor: null
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  readonly property var pinnedIds: Array.isArray(settings.pinned) ? settings.pinned : []
-  readonly property var hiddenIds: Array.isArray(settings.hidden) ? settings.hidden : []
+  readonly property var pinnedIds: settings.pinned instanceof Array ? settings.pinned : []
+  readonly property var hiddenIds: settings.hidden instanceof Array ? settings.hidden : []
   readonly property var pinnedItems: bucket("pinned")
   readonly property var drawerItems: bucket("drawer")
   readonly property var allItems: bucket("all")
