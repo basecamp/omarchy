@@ -44,7 +44,7 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property bool showConnections: tailscale.accounts.length > 1 || tailscale.accountsAccessDenied
   readonly property bool showPeers: tailscale.running && tailscale.peers.length > 0
-  readonly property var recentMullvadRegions: Array.isArray(settings.recentMullvadRegions) ? settings.recentMullvadRegions : (Array.isArray(settings.recentMullvadCountries) ? settings.recentMullvadCountries : [])
+  readonly property var recentMullvadRegions: settings.recentMullvadRegions instanceof Array ? settings.recentMullvadRegions : (settings.recentMullvadCountries instanceof Array ? settings.recentMullvadCountries : [])
   readonly property var recentMullvadExitNodes: recentMullvadNodes()
   readonly property var exitNodes: displayExitNodes()
   readonly property bool showExitNodes: tailscale.running && (exitNodes.length > 0 || tailscale.mullvadRegions.length > 0)
