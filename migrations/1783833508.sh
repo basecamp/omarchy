@@ -20,17 +20,20 @@ if [[ -f $alacritty_config ]] && ! grep -q '13;2u' "$alacritty_config"; then
   sed -i -E 's|^([[:space:]]*).*chars = "\\u001B\\r".*|\1# Send Shift+Return as CSI-u so TUIs can distinguish it from Return without treating it as Alt+Return.\n\1{ key = "Return", mods = "Shift", chars = "\\u001B[13;2u" },\n\1# Legacy encoding sends Alt+Shift+Return the same as Alt+Return; send CSI-u so tmux can match M-S-Enter.\n\1{ key = "Return", mods = "Alt\|Shift", chars = "\\u001B[13;4u" }|' "$alacritty_config"
 fi
 
-# foot: append CSI-u text bindings for Shift+Return and Alt+Shift+Return
+# foot: add CSI-u text bindings for Shift+Return and Alt+Shift+Return
 foot_config="$HOME/.config/foot/foot.ini"
-if [[ -f $foot_config ]] && ! grep -q '13;2u' "$foot_config"; then
-  cat >>"$foot_config" <<'EOF'
+if [[ -f $foot_config ]]; then
+  if ! grep -q '^\[text-bindings\]$' "$foot_config"; then
+    printf '\n[text-bindings]\n' >> "$foot_config"
+  fi
 
-[text-bindings]
-# Send Shift+Return as CSI-u so TUIs can distinguish it from Return.
-\x1b[13;2u=Shift+Return
-# Send Alt+Shift+Return as CSI-u so tmux can match M-S-Enter.
-\x1b[13;4u=Mod1+Shift+Return
-EOF
+  if ! grep -Fq '\x1b[13;4u=Mod1+Shift+Return' "$foot_config"; then
+    sed -i '/^\[text-bindings\]$/a\# Send Alt+Shift+Return as CSI-u so tmux can match M-S-Enter.\n\\x1b[13;4u=Mod1+Shift+Return' "$foot_config"
+  fi
+
+  if ! grep -Fq '\x1b[13;2u=Shift+Return' "$foot_config"; then
+    sed -i '/^\[text-bindings\]$/a\# Send Shift+Return as CSI-u so TUIs can distinguish it from Return.\n\\x1b[13;2u=Shift+Return' "$foot_config"
+  fi
 fi
 
 # ghostty: add CSI-u keybinds for Shift+Enter and Alt+Shift+Enter
