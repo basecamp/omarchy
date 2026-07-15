@@ -43,7 +43,7 @@ alias ...='cd ../..'
 alias ....='cd ../../..'
 
 # Tools
-alias c='opencode'
+alias c='opencode --auto'
 alias cx='printf "\033[2J\033[3J\033[H" && claude --permission-mode bypassPermissions'
 alias cy='codex -s danger-full-access -a never'
 alias d='docker'
