@@ -47,3 +47,6 @@ grep -F 'systemd-networkd.service' "$upgrade_to_quattro" >/dev/null
 grep -F 'systemd-networkd.socket' "$upgrade_to_quattro" >/dev/null
 grep -F 'systemd-networkd-resolve-hook.socket' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade retires systemd-networkd for NetworkManager"
+
+grep -F 'omarchy-bar defaults' "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade restores service-aware bar defaults"

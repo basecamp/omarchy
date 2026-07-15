@@ -2326,6 +2326,13 @@ cleanup_legacy_user_paths
 apply_system_transition
 suppress_hyprland_config_reload
 apply_user_transition
+run_as_user env \
+  HOME="$target_home" \
+  USER="$target_user" \
+  LOGNAME="$target_user" \
+  OMARCHY_PATH=/usr/share/omarchy \
+  PATH="$package_path" \
+  omarchy-bar defaults
 cleanup_retired_services
 ensure_sleep_lock_service
 remove_retired_default_packages
