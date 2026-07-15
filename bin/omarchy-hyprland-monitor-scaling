@@ -90,30 +90,24 @@ scale_from_current() {
       if (!found) exit 1
 
       n = split(list, scales, " ")
-      if (direction == "next") {
-        for (i = 1; i <= n; i++) {
-          if (scale < scales[i]) { print scales[i]; exit }
-        }
-        print scales[n]
-        exit
-      }
 
-      if (direction == "previous") {
-        for (i = n; i >= 1; i--) {
-          if (scale > scales[i]) { print scales[i]; exit }
-        }
-        print scales[1]
-        exit
-      }
-
-      # Find the preset closest to the current scale.
+      # Snap to the nearest preset first. Hyprland reports scales as floating
+      # point values, so a scale set to 3 can come back as 3.0000000000000004.
+      # Without snapping, the directional comparisons below can misidentify
+      # the current preset and refuse to step down (or up) any further.
       best = 1; best_diff = 1e9
       for (i = 1; i <= n; i++) {
         diff = scale - scales[i]; if (diff < 0) diff = -diff
         if (diff < best_diff) { best_diff = diff; best = i }
       }
 
-      print scales[best]
+      if (direction == "next") {
+        print scales[(best < n ? best + 1 : n)]
+      } else if (direction == "previous") {
+        print scales[(best > 1 ? best - 1 : 1)]
+      } else {
+        print scales[best]
+      }
     }'
 }
 
