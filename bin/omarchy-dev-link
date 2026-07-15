@@ -57,5 +57,7 @@ done
 
 echo "Pointed Omarchy at $target"
 echo
-echo "Reboot to activate the linked checkout in Hyprland, app launchers, and new shells."
-echo "Run 'omarchy dev unlink' and reboot to restore the package install."
+
+if gum confirm "Reboot now to activate?"; then
+  omarchy-system-reboot
+fi
