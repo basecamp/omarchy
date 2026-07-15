@@ -25,6 +25,9 @@ default_target="/usr/share/omarchy"
 
 printf 'export OMARCHY_PATH="%s"\n' "$default_target" | sudo tee /etc/omarchy.conf >/dev/null
 
-echo "Set /etc/omarchy.conf -> OMARCHY_PATH=$default_target"
+echo "Pointed Omarchy at $default_target"
 echo
-echo "Reboot to restore the package install in Hyprland, app launchers, and new shells."
+
+if gum confirm "Reboot now to activate?"; then
+  omarchy-system-reboot
+fi
