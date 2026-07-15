@@ -6,13 +6,6 @@
 set -euo pipefail
 
 omarchy-refresh-config omarchy/shell.json
-
-if omarchy-installed-service-dropbox; then
-  omarchy-bar add omarchy.dropbox
-fi
-
-if omarchy-installed-service-tailscale; then
-  omarchy-bar add omarchy.tailscale
-fi
+omarchy-bar defaults
 
 omarchy-restart-shell

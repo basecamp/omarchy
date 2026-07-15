@@ -2,7 +2,7 @@
 
 # omarchy:summary=Mutate the user shell.json bar layout, active bar option, and bar settings
 # omarchy:group=bar
-# omarchy:args=show | layout [--json] | list [--json] [--all] | options [--json] | use <plugin> | reset | add [plugin] [placement] | move <plugin> [placement] | remove [plugin] [placement] | set <plugin> <key> <value> [--json] [placement] | replace <old> <new> | position <top|bottom|left|right> | transparent <true|false> | settings
+# omarchy:args=show | layout [--json] | list [--json] [--all] | options [--json] | use <plugin> | reset | defaults | add [plugin] [placement] | move <plugin> [placement] | remove [plugin] [placement] | set <plugin> <key> <value> [--json] [placement] | replace <old> <new> | position <top|bottom|left|right> | transparent <true|false> | settings
 # omarchy:examples=omarchy bar show | omarchy bar list | omarchy bar add omarchy.tailscale | omarchy bar add omarchy.clock --section center --before omarchy.weather | omarchy bar move omarchy.clock --section center --index 0 | omarchy bar remove omarchy.tailscale | omarchy bar set omarchy.clock format HH:mm | omarchy bar use local.neon-bar | omarchy bar position top | omarchy bar transparent true
 
 set -euo pipefail
@@ -24,6 +24,7 @@ Inspect:
 Select:
   use <id>                             Use a bar option as the active bar
   reset                                Return to the built-in Omarchy bar
+  defaults                             Restore the default bar and service widgets
 
 Edit layout:
   add <id> [placement]                 Add a bar widget
@@ -68,6 +69,7 @@ Examples:
   omarchy bar set omarchy.indicators items '["Dnd","NightLight"]' --json
   omarchy bar use local.neon-bar
   omarchy bar reset
+  omarchy bar defaults
   omarchy bar position top
   omarchy bar transparent true
 USAGE
@@ -504,6 +506,25 @@ cmd_reset() {
   echo "Reset to the built-in Omarchy bar"
 }
 
+cmd_defaults() {
+  local service
+  local services=(dropbox tailscale)
+
+  (( $# == 0 )) || fail "defaults does not take arguments"
+  require_omarchy_path
+  [[ -s $DEFAULTS_FILE ]] || fail "could not find bar defaults"
+
+  commit "$JQ_DEFS $NORMALIZE | .bar = \$defaults[0].bar" --slurpfile defaults "$DEFAULTS_FILE"
+
+  for service in "${services[@]}"; do
+    if "omarchy-installed-service-$service"; then
+      cmd_add "omarchy.$service"
+    fi
+  done
+
+  echo "Restored the default Omarchy bar"
+}
+
 # --------------------------------------------------------------- commands: edit
 
 cmd_add() {
@@ -811,6 +832,9 @@ case "$command" in
     ;;
   reset)
     cmd_reset "$@"
+    ;;
+  defaults)
+    cmd_defaults "$@"
     ;;
   add)
     cmd_add "$@"

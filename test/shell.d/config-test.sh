@@ -343,6 +343,21 @@ SH
 chmod +x "$mock_bin"/*
 mock_path="$mock_bin:$ROOT/bin:$PATH"
 
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=0 OMARCHY_TEST_TAILSCALE=0 omarchy-bar defaults
+jq -e --slurpfile defaults "$ROOT/config/omarchy/shell.json" '
+  .bar == $defaults[0].bar and
+  .plugins == []
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "bar defaults restores the stock bar"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=1 OMARCHY_TEST_TAILSCALE=1 omarchy-bar defaults
+jq -e '
+  def ids: map(.id // .);
+  (.bar.layout.right | ids | index("omarchy.dropbox") != null) and
+  (.bar.layout.right | ids | index("omarchy.tailscale") != null)
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "bar defaults adds widgets for running optional services"
+
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=0 OMARCHY_TEST_TAILSCALE=0 omarchy-refresh-shell
 jq -e '
   def ids: map(.id // .);
