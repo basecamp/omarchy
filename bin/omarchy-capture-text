@@ -2,7 +2,7 @@
 
 # omarchy:summary=Extract text from a screenshot region with OCR
 # omarchy:group=capture
-# omarchy:examples=omarchy capture ocr
+# omarchy:examples=omarchy capture text
 
 # Keep hyprpicker alive until after grim captures so the screenshot sees the
 # frozen overlay rather than live content shifting during teardown.

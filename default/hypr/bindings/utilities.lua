@@ -39,7 +39,7 @@ o.bind("switch:off:Lid Switch", nil, "omarchy-hyprland-monitor-clamshell", { loc
 o.bind("PRINT", "Screenshot", "omarchy-capture-screenshot")
 o.bind("ALT + PRINT", "Screenrecording", "omarchy-capture-screenrecording --stop-recording || omarchy-menu toggle trigger.capture.screenrecord")
 o.bind("SUPER + PRINT", "Color picker", "pkill hyprpicker || hyprpicker -a")
-o.bind("SUPER + CTRL + PRINT", "Extract text (OCR) from screenshot", "omarchy-capture-text-extraction")
+o.bind("SUPER + CTRL + PRINT", "Extract text (OCR) from screenshot", "omarchy-capture-text")
 
 -- While the slurp region picker is open, Return captures the entire focused
 -- monitor. The bind lives exactly as long as a selection layer is on screen
