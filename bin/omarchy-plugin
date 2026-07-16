@@ -54,10 +54,6 @@ fail() {
   exit 1
 }
 
-require_omarchy_path() {
-  [[ -n ${OMARCHY_PATH:-} ]] || fail "OMARCHY_PATH is not set"
-}
-
 require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
 }
