@@ -7,6 +7,13 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 upgrade_to_quattro="$ROOT/bin/omarchy-upgrade-to-quattro"
 first_run_wifi="$ROOT/install/user/first-run/wifi.sh"
 
+snapshot_line=$(grep -n '^create_pre_upgrade_snapshot$' "$upgrade_to_quattro" | cut -d: -f1)
+pacman_line=$(grep -n '^configure_pacman_channel$' "$upgrade_to_quattro" | cut -d: -f1)
+[[ -n $snapshot_line && -n $pacman_line ]] || fail "upgrade snapshot and first mutation calls exist"
+(( snapshot_line < pacman_line )) || fail "upgrade snapshot runs before pacman configuration"
+grep -F 'omarchy-snapshot create || (($? == 127))' "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade snapshots the system before mutation"
+
 grep -F 'pacman -Syu --needed' "$upgrade_to_quattro" >/dev/null
 grep -F 'omarchy-update-aur-pkgs' "$upgrade_to_quattro" >/dev/null
 grep -F 'omarchy-update-available' "$upgrade_to_quattro" >/dev/null

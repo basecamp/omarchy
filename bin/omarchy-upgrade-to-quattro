@@ -475,6 +475,10 @@ configure_snapper_policy() {
   as_root env OMARCHY_PATH=/usr/share/omarchy bash -euo pipefail "$snapper_config_script"
 }
 
+create_pre_upgrade_snapshot() {
+  omarchy-snapshot create || (($? == 127))
+}
+
 remove_conflicting_legacy_packages() {
   # Remove legacy packages that are known to conflict with Omarchy quattro defaults
   # before the main package transaction. Broader retired-package cleanup runs
@@ -2237,6 +2241,7 @@ refresh_current_theme_after_upgrade() {
     omarchy-restart-terminal >/dev/null 2>&1 || true
 }
 
+create_pre_upgrade_snapshot
 configure_pacman_channel
 install_keyrings
 remove_legacy_installer_package
