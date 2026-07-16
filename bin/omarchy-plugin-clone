@@ -26,10 +26,6 @@ interactive() {
   [[ -t 0 && -t 1 ]]
 }
 
-canonical_widget_id() {
-  printf '%s' "$1"
-}
-
 slug_id() {
   tr '[:upper:]' '[:lower:]' <<<"$1" | sed -E 's/^omarchy\.//; s/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
 }
@@ -39,7 +35,6 @@ validate_plugin_id() {
   [[ $id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "plugin id must contain only letters, numbers, dots, underscores, and dashes"
   [[ $id == *.* ]] || fail "plugin id must be namespaced, e.g. local.clock"
   [[ $id != omarchy.* ]] || fail "plugin ids beginning with omarchy. are reserved for built-ins"
-  [[ $(canonical_widget_id "$id") == "$id" ]] || fail "$id is a reserved built-in widget id"
 }
 
 catalog_json() {
@@ -52,10 +47,7 @@ catalog_json() {
 # built-in bar widget matching $1 (by id or alias). Used to find the source QML
 # file and metadata to copy when cloning a widget.
 builtin_widget_info() {
-  local wanted
-  wanted=$(canonical_widget_id "$1")
-
-  catalog_json | jq -r --arg id "$wanted" '
+  catalog_json | jq -r --arg id "$1" '
     .[] | select((.kinds | index("bar-widget")) and .barWidgetPath != null)
     | select(.id == $id or (((.barWidget.aliases // [])) | index($id)))
     | [.id, .barWidgetPath, (.barWidget.displayName // .name // .id), (.barWidget.category // "Plugin"), (if .barWidget.allowMultiple == true then "true" else "false" end)]
@@ -76,12 +68,6 @@ choose_clone_source() {
   selected=$(clone_source_options | awk -F '\t' '{ printf "%-32s  %-15s  %s\n", $3, $2, $1 }' \
     | gum filter --header "Clone plugin" --placeholder "Search built-in and user plugins..." --limit 1) || return 1
   awk '{ print $NF }' <<<"$selected"
-}
-
-choose_value() {
-  local prompt="$1"
-  shift
-  gum choose --header "$prompt" "$@"
 }
 
 input_value() {
@@ -286,7 +272,6 @@ clone_command() {
       fail "clone source is required"
     fi
   fi
-  source_id=$(canonical_widget_id "$source_id")
 
   local default_slug
   default_slug=$(slug_id "$source_id")
