@@ -119,4 +119,18 @@ assert(
   /function iconIndexScanCommand\(\)[\s\S]*-path "\*\/apps\/\*" -o -path "\*\/devices\/\*"/.test(launcherQml),
   'launcher fallback icon index includes device icons'
 )
+
+const iconSourceMatch = launcherQml.match(/function iconSource\(icon\) \{([\s\S]*?)\n  \}/)
+assert(iconSourceMatch, 'launcher iconSource function exists')
+assert(
+  iconSourceMatch[1].indexOf('root.iconIndex[value]') < iconSourceMatch[1].indexOf('Quickshell.iconPath(value, true)'),
+  'launcher prefers indexed app icons over ambiguous themed icons'
+)
+
+const openMatch = launcherQml.match(/function open\(payloadJson\) \{([\s\S]*?)\n  \}/)
+assert(openMatch, 'launcher open function exists')
+assert(
+  openMatch[1].includes('if (!iconIndexScan.running) iconIndexScan.running = true'),
+  'launcher refreshes its icon index when opened'
+)
 JS
