@@ -10,6 +10,65 @@ function parseWeatherStatus(raw) {
   }
 }
 
+// weather.json holds {"name": ..., "latitude": ..., "longitude": ...} (see
+// omarchy-weather-location, which owns the format). Missing, blank, or
+// unparseable means the location is auto-detected from the IP address.
+function parseLocationFile(raw) {
+  var unset = { name: "", latitude: null, longitude: null }
+  try {
+    var data = JSON.parse(String(raw || ""))
+    if (!data || typeof data !== "object") return unset
+
+    var latitude = parseFloat(data.latitude)
+    var longitude = parseFloat(data.longitude)
+    var hasCoordinates = !isNaN(latitude) && !isNaN(longitude)
+    return {
+      name: typeof data.name === "string" ? data.name.replace(/^\s+|\s+$/g, "") : "",
+      latitude: hasCoordinates ? latitude : null,
+      longitude: hasCoordinates ? longitude : null
+    }
+  } catch (e) {
+    return unset
+  }
+}
+
+// wttr.in path segment for a configured location: exact coordinates when
+// both are present, the URL-encoded name as a fallback (hand-edited
+// weather.loc files may only carry a name), empty for IP auto-detect.
+function wttrLocationQuery(location, latitude, longitude) {
+  var lat = parseFloat(String(latitude))
+  var lon = parseFloat(String(longitude))
+  if (!isNaN(lat) && !isNaN(lon)) return lat + "," + lon
+
+  var name = String(location || "").replace(/^\s+|\s+$/g, "")
+  return name === "" ? "" : encodeURIComponent(name)
+}
+
+// Open-Meteo geocoding response → suggestion rows for the location picker.
+function parseGeocodingResults(raw) {
+  try {
+    var data = JSON.parse(String(raw || "{}"))
+    var results = data.results
+    if (!results || !results.length) return []
+
+    var out = []
+    for (var i = 0; i < results.length; i++) {
+      var r = results[i]
+      if (!r || !r.name || r.latitude === undefined || r.longitude === undefined) continue
+      var region = [r.admin1, r.country].filter(function(part) { return !!part }).join(", ")
+      out.push({
+        name: String(r.name),
+        description: region,
+        latitude: r.latitude,
+        longitude: r.longitude
+      })
+    }
+    return out
+  } catch (e) {
+    return []
+  }
+}
+
 function isFutureForecastDate(dateString, todayString) {
   if (!dateString) return false
   return String(dateString).slice(0, 10) > String(todayString || "")
@@ -94,6 +153,24 @@ function openMeteoForecastDays(dailyForecastReport, todayString) {
   return result
 }
 
+// Open-Meteo bundles current conditions with the daily forecast request and
+// answers far faster than wttr.in. Normalize them to wttr's
+// current_condition shape so the panel can use either source
+// interchangeably. Open-Meteo reports metric (°C, km/h).
+function openMeteoCurrentCondition(dailyForecastReport) {
+  var current = dailyForecastReport && dailyForecastReport.current ? dailyForecastReport.current : null
+  if (!current || current.temperature_2m === undefined || current.temperature_2m === null) return null
+  return {
+    temp_C: roundedTemp(current.temperature_2m),
+    temp_F: roundedTemp(celsiusToFahrenheit(current.temperature_2m)),
+    FeelsLikeC: roundedTemp(current.apparent_temperature),
+    FeelsLikeF: roundedTemp(celsiusToFahrenheit(current.apparent_temperature)),
+    windspeedKmph: roundedTemp(current.wind_speed_10m),
+    windspeedMiles: roundedTemp(current.wind_speed_10m * 0.621371),
+    humidity: roundedTemp(current.relative_humidity_2m)
+  }
+}
+
 function wttrNextForecastDays(report, todayString) {
   var days = report && report.weather ? report.weather : []
   var result = []
@@ -170,6 +247,9 @@ function iconForCode(code, night) {
 if (typeof module !== "undefined") {
   module.exports = {
     parseWeatherStatus: parseWeatherStatus,
+    parseLocationFile: parseLocationFile,
+    wttrLocationQuery: wttrLocationQuery,
+    parseGeocodingResults: parseGeocodingResults,
     isFutureForecastDate: isFutureForecastDate,
     roundedTemp: roundedTemp,
     celsiusToFahrenheit: celsiusToFahrenheit,
@@ -180,6 +260,7 @@ if (typeof module !== "undefined") {
     shouldUseImperial: shouldUseImperial,
     dayName: dayName,
     openMeteoForecastDays: openMeteoForecastDays,
+    openMeteoCurrentCondition: openMeteoCurrentCondition,
     wttrNextForecastDays: wttrNextForecastDays,
     buildForecastDays: buildForecastDays,
     bareTempForDay: bareTempForDay,
