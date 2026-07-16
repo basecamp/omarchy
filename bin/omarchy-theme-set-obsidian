@@ -7,6 +7,12 @@ CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
 
 [[ -f $CURRENT_THEME_DIR/obsidian.css ]] || exit 0
 
+if [[ -f $CURRENT_THEME_DIR/light.mode ]]; then
+  obsidian_base_theme="moonstone"
+else
+  obsidian_base_theme="obsidian"
+fi
+
 jq -r '.vaults | values[].path' ~/.config/obsidian/obsidian.json 2>/dev/null | while read -r vault_path; do
   [[ -d $vault_path/.obsidian ]] || continue
 
@@ -25,4 +31,10 @@ jq -r '.vaults | values[].path' ~/.config/obsidian/obsidian.json 2>/dev/null | w
 EOF
 
   cp "$CURRENT_THEME_DIR/obsidian.css" "$theme_dir/theme.css"
+
+  appearance_file="$vault_path/.obsidian/appearance.json"
+  [[ -f $appearance_file ]] || echo '{}' >"$appearance_file"
+
+  tmp=$(mktemp)
+  jq --arg theme "$obsidian_base_theme" '.theme = $theme' "$appearance_file" >"$tmp" && mv "$tmp" "$appearance_file"
 done
