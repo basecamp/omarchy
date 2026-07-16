@@ -1,8 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Name=GitHub
-Exec=omarchy-launch-webapp https://github.com/
-Terminal=false
-Type=Application
-Icon=github
-StartupNotify=true
