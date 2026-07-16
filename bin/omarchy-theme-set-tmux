@@ -56,17 +56,26 @@ theme_color() {
 }
 
 sync_tmux_window_style() {
-  local background foreground
+  local background foreground cursor
 
   [[ -f $COLORS_TOML ]] || return
 
   foreground=$(theme_color foreground)
   background=$(theme_color background)
+  cursor=$(theme_color cursor)
 
   [[ -n $foreground && -n $background ]] || return
 
   tmux set-option -g window-style "fg=$foreground,bg=$background" 2>/dev/null || true
   tmux set-option -g window-active-style "fg=$foreground,bg=$background" 2>/dev/null || true
+
+  # Apps like nvim clear the per-pane cursor colour with OSC 112. Without a
+  # global fallback, tmux then resets the outer terminal's cursor, which in
+  # terminals that can't reload their config (foot) restores the colour from
+  # whatever theme was active when the terminal launched.
+  if [[ -n $cursor ]]; then
+    tmux set-option -g cursor-colour "$cursor" 2>/dev/null || true
+  fi
 }
 
 sync_tmux_pane_colors() {
