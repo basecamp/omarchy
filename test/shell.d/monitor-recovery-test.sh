@@ -35,7 +35,7 @@ grep -F 'omarchy-hw-external-monitors' "$hw_clamshell" >/dev/null
 pass "clamshell helper detects closed-lid external monitor state"
 
 grep -F 'hyprctl monitors -j' "$monitor_external_active" >/dev/null
-grep -F 'select(.name | contains("eDP") | not)' "$monitor_external_active" >/dev/null
+grep -F 'select(.name | test("^(eDP|LVDS|DSI)-") | not)' "$monitor_external_active" >/dev/null
 grep -F 'select(.disabled == false)' "$monitor_external_active" >/dev/null
 pass "active external monitor helper checks Hyprland outputs"
 
