@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import qs.Commons
 
 ShellRoot {
   id: root
@@ -167,10 +168,24 @@ ShellRoot {
           var id = root.createdIds[j]
           root.assertTrue(root.finiteDimension(item.implicitWidth), id + " has a finite implicitWidth")
           root.assertTrue(root.finiteDimension(item.implicitHeight), id + " has a finite implicitHeight")
-          if (item && typeof item.destroy === "function") item.destroy()
         }
-        root.assertTrue(root.createdIds.length === entries.length, "all bar widgets instantiate")
-        root.writeResult()
+
+        fakeBar.vertical = true
+        fakeBar.barSize = Style.bar.sizeVertical
+
+        Qt.callLater(function() {
+          for (var k = 0; k < root.createdObjects.length; k++) {
+            var verticalItem = root.createdObjects[k]
+            var verticalId = root.createdIds[k]
+            if (verticalId === "omarchy.clock")
+              root.assertEqual(verticalItem.implicitHeight, Style.bar.iconSlot * 3, verticalId + " uses one slot per line")
+            else if (verticalId === "omarchy.weather" || verticalId === "omarchy.system-update")
+              root.assertEqual(verticalItem.implicitHeight, Style.bar.iconSlot, verticalId + " uses one vertical slot")
+            if (verticalItem && typeof verticalItem.destroy === "function") verticalItem.destroy()
+          }
+          root.assertTrue(root.createdIds.length === entries.length, "all bar widgets instantiate")
+          root.writeResult()
+        })
       })
     }
   }

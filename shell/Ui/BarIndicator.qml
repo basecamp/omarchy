@@ -1,7 +1,7 @@
 import QtQuick
 import qs.Commons
 
-WidgetButton {
+BarIconButton {
   id: root
 
   property string moduleName: ""
@@ -43,7 +43,4 @@ WidgetButton {
   useActiveColor: false
   maintainIndicatorReveal: indicatorBlock === "inactive"
   revealHost: indicatorHost
-  fontSize: Style.font.caption
-  horizontalMargin: 5
-  verticalPadding: 5
 }

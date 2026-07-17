@@ -14,6 +14,8 @@ BarWidget {
   readonly property string activeFormat: alt
     ? setting("formatAlt", "d MMMM 'W'ww yyyy")
     : (bar && bar.vertical ? setting("verticalFormat", "HH\n—\nmm") : setting("format", "dddd HH:mm"))
+  readonly property string displayText: formatted(displayDate)
+  readonly property var verticalLines: displayText.split("\n")
 
   function refresh() {
     displayDate = new Date()
@@ -54,13 +56,35 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.formatted(root.displayDate)
+    text: root.vertical ? "" : root.displayText
+    labelVisible: !root.vertical
+    hasVisualContent: root.vertical ? root.verticalLines.length > 0 : text !== ""
+    fixedHeight: root.vertical ? root.verticalLines.length * Style.bar.iconSlot : -1
     horizontalMargin: 8.75
     verticalPadding: 8.75
     onPressed: function(button) {
       if (!root.bar) return
       if (button === Qt.RightButton) root.bar.run("omarchy-menu-timezone")
       else root.alt = !root.alt
+    }
+
+    Column {
+      visible: root.vertical
+      anchors.fill: parent
+
+      Repeater {
+        model: root.verticalLines
+
+        OpticalGlyph {
+          required property string modelData
+          width: button.width
+          height: Style.bar.iconSlot
+          text: modelData
+          fontFamily: button.fontFamily
+          fontSize: button.fontSize
+          color: button.foreground
+        }
+      }
     }
   }
 }
