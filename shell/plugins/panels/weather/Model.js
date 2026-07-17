@@ -69,6 +69,18 @@ function parseGeocodingResults(raw) {
   }
 }
 
+function locationCommit(text, suggestions, selectedIndex) {
+  var name = String(text || "").replace(/^\s+|\s+$/g, "")
+  if (name === "") return { name: "", latitude: null, longitude: null }
+
+  var choices = suggestions || []
+  var index = Math.max(0, Math.min(parseInt(selectedIndex, 10) || 0, choices.length - 1))
+  var suggestion = choices[index]
+  if (suggestion) return suggestion
+
+  return { name: name, latitude: null, longitude: null }
+}
+
 function isFutureForecastDate(dateString, todayString) {
   if (!dateString) return false
   return String(dateString).slice(0, 10) > String(todayString || "")
@@ -250,6 +262,7 @@ if (typeof module !== "undefined") {
     parseLocationFile: parseLocationFile,
     wttrLocationQuery: wttrLocationQuery,
     parseGeocodingResults: parseGeocodingResults,
+    locationCommit: locationCommit,
     isFutureForecastDate: isFutureForecastDate,
     roundedTemp: roundedTemp,
     celsiusToFahrenheit: celsiusToFahrenheit,

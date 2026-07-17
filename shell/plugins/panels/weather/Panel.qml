@@ -183,11 +183,13 @@ Panel {
   }
 
   function commitLocation() {
-    if (locationField.text.trim() === "") {
+    var location = Model.locationCommit(locationField.text, locationSuggestions, suggestionIndex)
+    if (location.name === "") {
       clearLocation()
       return
     }
-    pickSuggestion(locationSuggestions[Math.min(suggestionIndex, locationSuggestions.length - 1)])
+    persistLocation(location.name, location.latitude, location.longitude)
+    cancelEditingLocation()
   }
 
   function clearLocation() {
@@ -203,8 +205,10 @@ Panel {
   }
 
   function persistLocation(name, latitude, longitude) {
-    if (name)
+    if (name && latitude !== null && longitude !== null)
       Quickshell.execDetached(["omarchy-weather-location", "--set", name, latitude + "," + longitude])
+    else if (name)
+      Quickshell.execDetached(["omarchy-weather-location", "--set", name])
     else
       Quickshell.execDetached(["omarchy-weather-location", "--clear"])
   }
