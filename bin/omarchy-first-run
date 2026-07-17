@@ -103,8 +103,8 @@ fi
 
 run_first_run_step "notify about pending migrations" omarchy-migrate-notify
 
-USER_MARKER="$state_dir/first-run-user.done"
-if [[ ! -f $USER_MARKER || $force -eq 1 ]]; then
+FIRST_RUN_DONE="first-run-user"
+if ! omarchy-done check "$FIRST_RUN_DONE" || (( force )); then
   run_first_run_step "install Voxtype post-update hook" \
     omarchy-hook-install post-update "$OMARCHY_PATH/install/user/first-run/install-voxtype.hook"
 
@@ -126,7 +126,7 @@ if [[ ! -f $USER_MARKER || $force -eq 1 ]]; then
     bash "$OMARCHY_PATH/install/user/first-run/wifi.sh"
 
   if (( first_run_failed == 0 )); then
-    touch "$USER_MARKER"
+    omarchy-done mark "$FIRST_RUN_DONE"
   else
     log_first_run "One or more first-run steps failed; first-run will retry next login"
   fi

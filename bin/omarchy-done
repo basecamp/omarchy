@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# omarchy:summary=Check or mark completed Omarchy setup tasks
+# omarchy:args=<check|mark|ensure> <name>
+# omarchy:hidden=true
+
+set -e
+
+if (( $# != 2 )); then
+  echo "Usage: omarchy-done <check|mark|ensure> <name>" >&2
+  exit 1
+fi
+
+action=$1
+name=$2
+done_dir="$HOME/.local/state/omarchy/done"
+marker="$done_dir/$name"
+
+if [[ $name == */* || $name == "." || $name == ".." ]]; then
+  echo "Invalid done marker name: $name" >&2
+  exit 1
+fi
+
+case "$action" in
+  check)
+    [[ -f $marker ]]
+    ;;
+  mark)
+    mkdir -p "$done_dir"
+    touch "$marker"
+    ;;
+  ensure)
+    mkdir -p "$done_dir"
+    (set -o noclobber; : >"$marker") 2>/dev/null
+    ;;
+  *)
+    echo "Usage: omarchy-done <check|mark|ensure> <name>" >&2
+    exit 1
+    ;;
+esac

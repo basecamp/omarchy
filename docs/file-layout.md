@@ -176,7 +176,8 @@ It only does the things `/etc/skel` can't:
 - On `--first-install`, marks every shipped user migration as already applied
   for the freshly-created user.
 
-Idempotency marker: `~/.local/state/omarchy/finalize-user.done`.
+Idempotency marker: `~/.local/state/omarchy/done/finalize-user`, managed
+by `omarchy-done`.
 
 The ISO calls it as `omarchy-finalize-user --force --first-install` in the
 target chroot as the install user, after `omarchy-setup-system` has finished
@@ -228,8 +229,16 @@ systemd instance:
   `install/user/first-run/wifi.sh` — welcome and Wi-Fi/update toasts
   (waits for a live notification server before firing).
 
-Idempotency marker: `~/.local/state/omarchy/first-run-user.done`. On
+Idempotency marker: `~/.local/state/omarchy/done/first-run-user`, managed
+by `omarchy-done`. On
 failure the marker is not written and the failed step retries next login.
+
+Completion markers live under `~/.local/state/omarchy/done/`. Use
+`omarchy-done check <name>` to check one and `omarchy-done mark <name>` to record it.
+Use `omarchy-done ensure <name>` as a conditional when the guarded work should
+run only once; it records completion before returning success.
+The Quattro upgrade moves legacy completion markers from
+`~/.local/state/omarchy/` into `done/`.
 
 ## Root-side install orchestration
 
