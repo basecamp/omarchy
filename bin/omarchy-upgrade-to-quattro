@@ -1175,14 +1175,8 @@ run_post_upgrade_update_steps() {
       omarchy-update-available 2>&1) || update_status=$?
 
     if (( update_status == 0 )); then
-      warn "Updates are still available after the upgrade; first-run will still offer to run omarchy-update:"
+      warn "Updates are still available after the upgrade; run omarchy-update after reboot:"
       printf '%s\n' "$update_output" >&2
-    else
-      # The live upgrade has already completed the package update. Let first-run
-      # finish session-only setup, but skip its generic fresh-install update
-      # toast when the update checker confirms nothing remains.
-      run_as_user mkdir -p "$target_home/.local/state/omarchy"
-      run_as_user touch "$target_home/.local/state/omarchy/skip-first-run-update-notification"
     fi
   fi
 }
@@ -2201,10 +2195,8 @@ if command -v xdg-mime >/dev/null 2>&1; then
   xdg-mime default HEY.desktop x-scheme-handler/mailto || true
 fi
 
-if [[ -f $state_dir/first-run-user.done ]]; then
-  "$root/bin/omarchy-done" mark first-run-user
-  rm -f "$state_dir/first-run-user.done"
-fi
+"$root/bin/omarchy-done" mark first-run-user
+rm -f "$state_dir/first-run-user.done"
 
 "$root/bin/omarchy-done" mark finalize-user
 rm -f "$state_dir/finalize-user.done"

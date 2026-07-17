@@ -229,16 +229,17 @@ systemd instance:
   `install/user/first-run/wifi.sh` — welcome and Wi-Fi/update toasts
   (waits for a live notification server before firing).
 
-Idempotency marker: `~/.local/state/omarchy/done/first-run-user`, managed
-by `omarchy-done`. On
-failure the marker is not written and the failed step retries next login.
+The entire sequence has one idempotency marker:
+`~/.local/state/omarchy/done/first-run-user`, managed by `omarchy-done`.
+Completed users exit before any first-run step. On failure the marker is not
+written and the sequence retries next login.
 
 Completion markers live under `~/.local/state/omarchy/done/`. Use
 `omarchy-done check <name>` to check one and `omarchy-done mark <name>` to record it.
 Use `omarchy-done ensure <name>` as a conditional when the guarded work should
 run only once; it records completion before returning success.
-The Quattro upgrade moves legacy completion markers from
-`~/.local/state/omarchy/` into `done/`.
+The Quattro upgrade completes graphical first-run for upgraded users and moves
+the legacy finalization marker from `~/.local/state/omarchy/` into `done/`.
 
 ## Root-side install orchestration
 

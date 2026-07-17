@@ -5,7 +5,6 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 upgrade_to_quattro="$ROOT/bin/omarchy-upgrade-to-quattro"
-first_run_wifi="$ROOT/install/user/first-run/wifi.sh"
 
 snapshot_line=$(grep -n '^create_pre_upgrade_snapshot$' "$upgrade_to_quattro" | cut -d: -f1)
 pacman_line=$(grep -n '^configure_pacman_channel$' "$upgrade_to_quattro" | cut -d: -f1)
@@ -27,16 +26,16 @@ grep -F 'dust' "$upgrade_to_quattro" >/dev/null
 grep -F 'satty' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade applies packaged migrations"
 
-grep -F 'skip-first-run-update-notification' "$upgrade_to_quattro" >/dev/null
-grep -F 'skip-first-run-update-notification' "$first_run_wifi" >/dev/null
-grep -F '(( skip_update_notification )) && return 0' "$first_run_wifi" >/dev/null
-pass "Omarchy 4 upgrade suppresses the fresh-install update toast"
+if grep -F 'skip-first-run-update-notification' "$upgrade_to_quattro" >/dev/null; then
+  fail "Omarchy 4 upgrade does not use notification-specific first-run state"
+fi
+pass "Omarchy 4 upgrade completes first-run as one lifecycle"
 
 grep -F '"$root/bin/omarchy-done" mark first-run-user' "$upgrade_to_quattro" >/dev/null
 grep -F 'rm -f "$state_dir/first-run-user.done"' "$upgrade_to_quattro" >/dev/null
 grep -F '"$root/bin/omarchy-done" mark finalize-user' "$upgrade_to_quattro" >/dev/null
 grep -F 'rm -f "$state_dir/finalize-user.done"' "$upgrade_to_quattro" >/dev/null
-pass "Omarchy 4 upgrade migrates legacy completion markers"
+pass "Omarchy 4 upgrade completes first-run and migrates legacy completion markers"
 
 grep -F 'configure_snapper_policy' "$upgrade_to_quattro" >/dev/null
 grep -F '/usr/share/omarchy/install/config/snapper.sh' "$upgrade_to_quattro" >/dev/null
