@@ -73,6 +73,10 @@ ShellRoot {
       fail("vertical indicator does not use the shared slot")
       return
     }
+    if (verticalIndicator.glyphFontSize !== Style.font.caption) {
+      fail("indicator does not use the secondary icon scale")
+      return
+    }
     if (Math.abs(verticalIndicator.opticalCenterErrorX) > 0.5) {
       fail("vertical indicator is not optically centered")
       return

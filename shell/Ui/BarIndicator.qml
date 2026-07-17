@@ -43,4 +43,5 @@ BarIconButton {
   useActiveColor: false
   maintainIndicatorReveal: indicatorBlock === "inactive"
   revealHost: indicatorHost
+  fontSize: Style.font.caption
 }
