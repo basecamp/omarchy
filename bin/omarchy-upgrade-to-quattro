@@ -475,6 +475,19 @@ configure_snapper_policy() {
   as_root env OMARCHY_PATH=/usr/share/omarchy bash -euo pipefail "$snapper_config_script"
 }
 
+configure_lock_authentication() {
+  local setup_lock=/usr/share/omarchy/bin/omarchy-setup-lock
+
+  [[ -x $setup_lock ]] || fail "$setup_lock is unavailable; lock screen authentication could not be configured."
+
+  log "Configuring lock screen authentication"
+  as_root env \
+    OMARCHY_INSTALL_USER="$target_user" \
+    OMARCHY_PATH=/usr/share/omarchy \
+    PATH="$package_path" \
+    "$setup_lock"
+}
+
 create_pre_upgrade_snapshot() {
   omarchy-snapshot create || (($? == 127))
 }
@@ -2307,6 +2320,7 @@ remove_conflicting_legacy_packages
 install_omarchy_quattro_packages
 normalize_limine_config
 configure_snapper_policy
+configure_lock_authentication
 migrate_1password_beta_package
 cleanup_legacy_user_paths
 apply_system_transition
