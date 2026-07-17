@@ -2201,7 +2201,13 @@ if command -v xdg-mime >/dev/null 2>&1; then
   xdg-mime default HEY.desktop x-scheme-handler/mailto || true
 fi
 
-touch "$state_dir/finalize-user.done"
+if [[ -f $state_dir/first-run-user.done ]]; then
+  "$root/bin/omarchy-done" mark first-run-user
+  rm -f "$state_dir/first-run-user.done"
+fi
+
+"$root/bin/omarchy-done" mark finalize-user
+rm -f "$state_dir/finalize-user.done"
 USER_SETUP
 }
 

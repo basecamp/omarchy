@@ -32,6 +32,12 @@ grep -F 'skip-first-run-update-notification' "$first_run_wifi" >/dev/null
 grep -F '(( skip_update_notification )) && return 0' "$first_run_wifi" >/dev/null
 pass "Omarchy 4 upgrade suppresses the fresh-install update toast"
 
+grep -F '"$root/bin/omarchy-done" mark first-run-user' "$upgrade_to_quattro" >/dev/null
+grep -F 'rm -f "$state_dir/first-run-user.done"' "$upgrade_to_quattro" >/dev/null
+grep -F '"$root/bin/omarchy-done" mark finalize-user' "$upgrade_to_quattro" >/dev/null
+grep -F 'rm -f "$state_dir/finalize-user.done"' "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade migrates legacy completion markers"
+
 grep -F 'configure_snapper_policy' "$upgrade_to_quattro" >/dev/null
 grep -F '/usr/share/omarchy/install/config/snapper.sh' "$upgrade_to_quattro" >/dev/null
 grep -F 'bash -euo pipefail "$snapper_config_script"' "$upgrade_to_quattro" >/dev/null
