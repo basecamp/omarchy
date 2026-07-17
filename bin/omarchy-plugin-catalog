@@ -7,9 +7,10 @@
 # Walks $OMARCHY_PATH/shell/plugins and ~/.config/omarchy/plugins, reads every
 # manifest.json / *.manifest.json, and emits one JSON object per plugin with
 # computed fields (sourceDir, barWidgetPath, barPath, firstParty). This is the
-# single source of truth that omarchy-bar (widget/option enumeration and add
-# validation) and omarchy-plugin-clone (source enumeration) read, so the bar
-# and plugin commands never re-implement manifest walking.
+# single source of truth that omarchy-bar (widget/option enumeration),
+# omarchy-bar-plugin (add validation), and omarchy-plugin-clone (source
+# enumeration) read, so the bar and plugin commands never re-implement
+# manifest walking.
 
 set -o pipefail
 

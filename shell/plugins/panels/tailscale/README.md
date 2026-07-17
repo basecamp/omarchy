@@ -35,4 +35,4 @@ Renders the Tailscale mark natively as a theme-colored 3×3 dot grid, matching t
 
 ## Add to the bar
 
-This widget ships as first-party plugin `omarchy.tailscale`. Add it with `omarchy bar add omarchy.tailscale`, or add an entry such as `{ "id": "omarchy.tailscale" }` to one of the `bar.layout` sections in `~/.config/omarchy/shell.json`; the shell reloads `shell.json` automatically.
+This widget ships as first-party plugin `omarchy.tailscale`. Add it with `omarchy bar plugin add omarchy.tailscale`, or add an entry such as `{ "id": "omarchy.tailscale" }` to one of the `bar.layout` sections in `~/.config/omarchy/shell.json`; the shell reloads `shell.json` automatically.

@@ -6,7 +6,7 @@ echo "Installing all dependencies..."
 omarchy-pkg-add dropbox dropbox-cli libappindicator-gtk3 python-gpgme nautilus-dropbox
 
 echo "Adding Dropbox to the bar..."
-omarchy-bar add omarchy.dropbox
+omarchy-bar-plugin add omarchy.dropbox
 
 echo "Starting Dropbox..."
 uwsm-app -- dropbox-cli start &>/dev/null &
