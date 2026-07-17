@@ -16,6 +16,7 @@ BarWidget {
   property bool indicatorItemHovered: false
   readonly property bool alwaysShowIndicators: setting("alwaysShow", false) === true
   readonly property bool revealInactiveIndicators: alwaysShowIndicators || indicatorAreaHovered || indicatorItemHovered || (bar && bar.centerSectionRevealHeld === true && bar.centerHoverRevealSuppressed !== true)
+  readonly property bool hasVisibleIndicators: activeIndicatorIds.length > 0 || revealInactiveIndicators
 
   signal refreshRequested()
 
@@ -187,6 +188,8 @@ BarWidget {
 
     visible: !root.vertical
     spacing: 0
+    leftPadding: root.hasVisibleIndicators ? Style.spacing.sm : 0
+    rightPadding: leftPadding
 
     HoverHandler {
       onHoveredChanged: root.setIndicatorAreaHovered(hovered)
@@ -229,6 +232,8 @@ BarWidget {
 
     visible: root.vertical
     spacing: 0
+    topPadding: root.hasVisibleIndicators ? Style.spaceReal(1.5) : 0
+    bottomPadding: topPadding
 
     HoverHandler {
       onHoveredChanged: root.setIndicatorAreaHovered(hovered)

@@ -69,8 +69,8 @@ ShellRoot {
       fail("vertical icon does not use the shared slot")
       return
     }
-    if (verticalIndicator.implicitWidth !== Style.bar.sizeVertical || verticalIndicator.implicitHeight !== Style.bar.iconSlot) {
-      fail("vertical indicator does not use the shared slot")
+    if (verticalIndicator.implicitWidth !== Style.bar.sizeVertical || verticalIndicator.implicitHeight >= Style.bar.iconSlot) {
+      fail("vertical indicator does not retain compact spacing")
       return
     }
     if (verticalIndicator.glyphFontSize !== Style.font.caption) {
@@ -79,6 +79,15 @@ ShellRoot {
     }
     if (Math.abs(verticalIndicator.opticalCenterErrorX) > 0.5) {
       fail("vertical indicator is not optically centered")
+      return
+    }
+    if (horizontalIndicator.implicitWidth >= Style.bar.iconSlot) {
+      fail("horizontal indicator does not retain compact spacing")
+      return
+    }
+    if (horizontalIndicatorPair.implicitWidth >= Style.bar.iconSlot * 2
+        || verticalIndicatorPair.implicitHeight >= Style.bar.iconSlot * 2) {
+      fail("indicator groups do not retain compact internal spacing")
       return
     }
     console.log("RESULT pass")
@@ -124,7 +133,16 @@ ShellRoot {
     iconComponent: Component { Rectangle { width: 12; height: 12 } }
   }
   BarIconButton { id: verticalIcon; bar: verticalBar; text: "\uf021" }
-  BarIndicator { id: verticalIndicator; bar: verticalBar; active: true; activeText: "󰅶" }
+  Row {
+    id: horizontalIndicatorPair
+    BarIndicator { id: horizontalIndicator; bar: testBar; active: true; activeText: "󰅶" }
+    BarIndicator { bar: testBar; active: true; activeText: "󰔎" }
+  }
+  Column {
+    id: verticalIndicatorPair
+    BarIndicator { id: verticalIndicator; bar: verticalBar; active: true; activeText: "󰅶" }
+    BarIndicator { bar: verticalBar; active: true; activeText: "󰔎" }
+  }
 }
 QML
 

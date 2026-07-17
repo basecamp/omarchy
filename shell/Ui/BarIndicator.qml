@@ -44,4 +44,8 @@ BarIconButton {
   maintainIndicatorReveal: indicatorBlock === "inactive"
   revealHost: indicatorHost
   fontSize: Style.font.caption
+  horizontalMargin: 5
+  verticalPadding: 5
+  fixedWidth: -1
+  fixedHeight: -1
 }
