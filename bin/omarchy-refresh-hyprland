@@ -9,5 +9,6 @@ omarchy-refresh-config hypr/input.lua
 omarchy-refresh-config hypr/looknfeel.lua
 omarchy-refresh-config hypr/hyprland.lua
 omarchy-refresh-config hypr/monitors.lua
-bash "$OMARCHY_PATH/install/config/omarchy-toggles.sh"
-bash "$OMARCHY_PATH/install/config/detect-keyboard-layout.sh"
+
+mkdir -p ~/.local/state/omarchy/toggles/hypr
+cp "$OMARCHY_PATH/default/hypr/toggles/flags.lua" ~/.local/state/omarchy/toggles/hypr/

@@ -1,0 +1,14 @@
+#!/bin/bash
+
+set -euo pipefail
+
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+tests=(
+  "$ROOT/test/cli"
+  "$ROOT/test/shell"
+)
+
+for test in "${tests[@]}"; do
+  printf '==> %s\n' "${test#$ROOT/}"
+  "$test"
+done

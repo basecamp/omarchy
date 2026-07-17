@@ -1,0 +1,125 @@
+#!/bin/bash
+
+# omarchy:summary=Choose a legible transparent bar text color
+# omarchy:hidden=true
+
+set -e
+
+position=${1:-top}
+bar_size=${2:-}
+text_color=${3:-}
+background_color=${4:-}
+background_path=""
+screen_size=""
+
+shift 4 2>/dev/null || true
+while (($# > 0)); do
+  case "$1" in
+  --background)
+    background_path=${2:-}
+    shift 2
+    ;;
+  --screen)
+    screen_size=${2:-}
+    shift 2
+    ;;
+  *)
+    shift
+    ;;
+  esac
+done
+
+valid_hex() {
+  [[ $1 =~ ^#[0-9A-Fa-f]{6}$ ]]
+}
+
+fallback() {
+  printf '%s\n' "$text_color"
+  exit 0
+}
+
+contrast() {
+  local color="$1"
+  local sample="$2"
+
+  awk -v fg="$color" -v bg="$sample" '
+    function channel(hex, start) {
+      return strtonum("0x" substr(hex, start, 2)) / 255
+    }
+    function linear(c) {
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ^ 2.4
+    }
+    function luminance(hex, r, g, b) {
+      r = linear(channel(hex, 2))
+      g = linear(channel(hex, 4))
+      b = linear(channel(hex, 6))
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+    BEGIN {
+      l1 = luminance(fg)
+      l2 = luminance(bg)
+      if (l1 < l2) {
+        t = l1
+        l1 = l2
+        l2 = t
+      }
+      printf "%.6f\n", (l1 + 0.05) / (l2 + 0.05)
+    }
+  '
+}
+
+valid_hex "$text_color" || fallback
+valid_hex "$background_color" || fallback
+[[ $position =~ ^(top|bottom|left|right)$ ]] || fallback
+[[ $bar_size =~ ^[0-9]+$ ]] || fallback
+omarchy-cmd-present magick || fallback
+
+if [[ -z $background_path ]]; then
+  background_path=$(readlink -f "$HOME/.local/state/omarchy/current/background" 2>/dev/null || true)
+fi
+[[ -f $background_path ]] || fallback
+
+if [[ -z $screen_size ]]; then
+  if omarchy-cmd-present hyprctl && omarchy-cmd-present jq; then
+    screen_size=$(hyprctl monitors -j 2>/dev/null | jq -r '.[0] | "\(.width)x\(.height)"' 2>/dev/null || true)
+  fi
+fi
+[[ $screen_size =~ ^([0-9]+)x([0-9]+)$ ]] || fallback
+
+screen_width=${BASH_REMATCH[1]}
+screen_height=${BASH_REMATCH[2]}
+((screen_width > 0 && screen_height > 0 && bar_size > 0)) || fallback
+
+case "$position" in
+top)
+  crop="${screen_width}x${bar_size}+0+0"
+  ;;
+bottom)
+  crop_y=$((screen_height - bar_size))
+  ((crop_y >= 0)) || fallback
+  crop="${screen_width}x${bar_size}+0+${crop_y}"
+  ;;
+left)
+  crop="${bar_size}x${screen_height}+0+0"
+  ;;
+right)
+  crop_x=$((screen_width - bar_size))
+  ((crop_x >= 0)) || fallback
+  crop="${bar_size}x${screen_height}+${crop_x}+0"
+  ;;
+esac
+
+pixel=$(magick "$background_path" -auto-orient \
+  -resize "${screen_width}x${screen_height}^" \
+  -gravity center -extent "${screen_width}x${screen_height}" \
+  -gravity NorthWest -crop "$crop" +repage \
+  -resize '1x1!' -format '%[fx:int(255*r)],%[fx:int(255*g)],%[fx:int(255*b)]' info:- 2>/dev/null || true)
+[[ $pixel =~ ^([0-9]+),([0-9]+),([0-9]+)$ ]] || fallback
+
+sample=$(printf '#%02x%02x%02x' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")
+text_contrast=$(contrast "$text_color" "$sample")
+background_contrast=$(contrast "$background_color" "$sample")
+
+awk -v text="$text_contrast" -v background="$background_contrast" 'BEGIN { exit !(background > text) }' \
+  && printf '%s\n' "$background_color" \
+  || printf '%s\n' "$text_color"

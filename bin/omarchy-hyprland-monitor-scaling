@@ -1,0 +1,140 @@
+#!/bin/bash
+
+# omarchy:summary=Show, set, or adjust focused Hyprland monitor scaling
+# omarchy:args=[up|down|1|1.25|1.6|2|3|4]
+# omarchy:examples=omarchy hyprland monitor scaling | omarchy hyprland monitor scaling 1.6 | omarchy hyprland monitor scaling up | omarchy hyprland monitor scaling down
+
+SCALES=(1 1.25 1.6 2 3 4)
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
+SCALE_LOG="$STATE_DIR/monitor-scaling.log"
+
+usage() {
+  echo "Usage: omarchy-hyprland-monitor-scaling [up|down|1|1.25|1.6|2|3|4]"
+}
+
+focused_monitor_scale() {
+  hyprctl monitors -j | jq -er '.[] | select(.focused == true) | .scale'
+}
+
+cmdline_for_pid() {
+  local pid="$1"
+
+  [[ -r /proc/$pid/cmdline ]] || return 0
+  tr '\0\t\n' '   ' <"/proc/$pid/cmdline" | sed -E 's/[[:space:]]+/ /g; s/[[:space:]]+$//'
+}
+
+audit_scale_change() {
+  local requested="$1"
+  local active_monitor="$2"
+  local current_scale="$3"
+  local new_scale="$4"
+  local parent_pid="$PPID"
+  local grandparent_pid
+  local parent_cmd
+  local grandparent_cmd
+
+  mkdir -p "$STATE_DIR" || return 0
+
+  grandparent_pid=$(ps -o ppid= -p "$parent_pid" 2>/dev/null | tr -d ' ')
+  parent_cmd=$(cmdline_for_pid "$parent_pid")
+  grandparent_cmd=$(cmdline_for_pid "$grandparent_pid")
+
+  printf 'at=%s\trequested=%s\tcurrent=%s\tnew=%s\tmonitor=%s\tpid=%s\tppid=%s\tparent=%s\tgppid=%s\tgrandparent=%s\n' \
+    "$(date --iso-8601=seconds)" \
+    "$requested" \
+    "$current_scale" \
+    "$new_scale" \
+    "$active_monitor" \
+    "$$" \
+    "$parent_pid" \
+    "$parent_cmd" \
+    "$grandparent_pid" \
+    "$grandparent_cmd" >>"$SCALE_LOG"
+}
+
+set_scale() {
+  local new_scale="$1"
+  local requested="${2:-$new_scale}"
+  local monitor_info="$(hyprctl monitors -j | jq -e -c '.[] | select(.focused == true)')"
+  local active_monitor="$(echo "$monitor_info" | jq -r '.name')"
+  local current_scale="$(echo "$monitor_info" | jq -r '.scale')"
+  local width="$(echo "$monitor_info" | jq -r '.width')"
+  local height="$(echo "$monitor_info" | jq -r '.height')"
+  local refresh_rate="$(echo "$monitor_info" | jq -r '.refreshRate')"
+  local monitor_lua="$HOME/.config/hypr/monitors.lua"
+
+  hyprctl eval "hl.monitor({ output = \"$active_monitor\", mode = \"${width}x${height}@${refresh_rate}\", position = \"auto\", scale = $new_scale })" >/dev/null
+  audit_scale_change "$requested" "$active_monitor" "$current_scale" "$new_scale"
+
+  # Persist to monitors.lua if the user still has Omarchy's generic catch-all
+  # defaults, so the scale survives reboots.
+  if [[ -f $monitor_lua ]] && grep -q '^local omarchy_monitor_scale = ' "$monitor_lua"; then
+    sed -i -E \
+      -e "s|^local omarchy_monitor_scale = .*|local omarchy_monitor_scale = ${new_scale}|" \
+      -e "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${new_scale}|" \
+      "$monitor_lua"
+  elif [[ -f $monitor_lua ]] && grep -Eq '^hl\.monitor\(\{ output = "", mode = "preferred", position = "auto", scale = ("auto"|[0-9.]+) \}\)' "$monitor_lua"; then
+    sed -i -E \
+      -e "s|^(hl\.monitor\(\{ output = \"\", mode = \"preferred\", position = \"auto\", scale = )([^ ]+)( \}\))|\\1${new_scale}\\3|" \
+      -e 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$new_scale"'")|' \
+      "$monitor_lua"
+  fi
+}
+
+scale_from_current() {
+  local direction="${1:-}"
+
+  awk -v direction="$direction" -v list="${SCALES[*]}" '
+    NR == 1 { scale = $0; found = 1 }
+    END {
+      if (!found) exit 1
+
+      n = split(list, scales, " ")
+      if (direction == "next") {
+        for (i = 1; i <= n; i++) {
+          if (scale < scales[i]) { print scales[i]; exit }
+        }
+        print scales[n]
+        exit
+      }
+
+      if (direction == "previous") {
+        for (i = n; i >= 1; i--) {
+          if (scale > scales[i]) { print scales[i]; exit }
+        }
+        print scales[1]
+        exit
+      }
+
+      # Find the preset closest to the current scale.
+      best = 1; best_diff = 1e9
+      for (i = 1; i <= n; i++) {
+        diff = scale - scales[i]; if (diff < 0) diff = -diff
+        if (diff < best_diff) { best_diff = diff; best = i }
+      }
+
+      print scales[best]
+    }'
+}
+
+case "${1:-}" in
+"")
+  focused_monitor_scale | scale_from_current
+  ;;
+-h | --help)
+  usage
+  ;;
+up)
+  set_scale "$(focused_monitor_scale | scale_from_current next)" "up"
+  ;;
+down)
+  set_scale "$(focused_monitor_scale | scale_from_current previous)" "down"
+  ;;
+1 | 1.25 | 1.6 | 2 | 3 | 4)
+  set_scale "$1" "$1"
+  ;;
+*)
+  usage >&2
+  exit 1
+  ;;
+esac

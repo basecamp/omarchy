@@ -1,4 +1,0 @@
-#!/bin/bash
-
-# omarchy:summary=No-op now that omarchy-update-perform is responsible for idle management.
-# omarchy:hidden=true

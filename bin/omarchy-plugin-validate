@@ -1,0 +1,97 @@
+#!/bin/bash
+
+# omarchy:summary=Validate a plugin folder against the Omarchy plugin manifest schema
+# omarchy:group=plugin
+# omarchy:args=<plugin-folder>
+# omarchy:examples=omarchy plugin validate ./my-plugin
+
+# Mirrors the checks in shell/services/PluginRegistry.qml so the CLI refuses to
+# install anything the running shell would silently reject (or worse, load
+# unsafely). The shell never trusts manifests blindly; neither do we.
+
+set -o pipefail
+
+fail() {
+  echo "omarchy-plugin-validate: $*" >&2
+  exit 1
+}
+
+if [[ ${1:-} == -h || ${1:-} == --help ]]; then
+  cat <<USAGE
+Usage: omarchy plugin validate <plugin-folder>
+
+Checks a plugin folder's manifest.json against the schema the shell enforces:
+schemaVersion, required fields, safe relative entry points that exist, no
+symlinks, and an id that is not reserved. Exits 0 if valid — handy for plugin
+authors before publishing.
+USAGE
+  exit 0
+fi
+
+command -v jq >/dev/null 2>&1 || fail "jq is required"
+
+PLUGIN_DIR="${1:-}"
+[[ -n $PLUGIN_DIR && -d $PLUGIN_DIR ]] || fail "plugin folder not found: ${PLUGIN_DIR:-<none>}"
+
+MANIFEST="$PLUGIN_DIR/manifest.json"
+[[ -f $MANIFEST ]] || fail "missing manifest.json in $PLUGIN_DIR"
+jq -e . "$MANIFEST" >/dev/null 2>&1 || fail "manifest.json is not valid JSON: $MANIFEST"
+
+# schemaVersion must be exactly the JSON number 1 (the only version the registry
+# understands). jq's == is type-aware, so the string "1" is correctly rejected
+# just as the QML `schemaVersion !== 1` check rejects it.
+jq -e '.schemaVersion == 1' "$MANIFEST" >/dev/null 2>&1 \
+  || fail "unsupported or missing schemaVersion (expected 1) in $MANIFEST"
+
+for field in id name version kinds entryPoints; do
+  jq -e --arg f "$field" 'has($f)' "$MANIFEST" >/dev/null 2>&1 \
+    || fail "manifest missing required field '$field'"
+done
+
+ID=$(jq -r '.id // ""' "$MANIFEST")
+[[ -n $ID ]] || fail "manifest 'id' is empty"
+[[ $ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "invalid plugin id '$ID'"
+[[ $ID != *"/"* && $ID != *".."* ]] || fail "invalid plugin id '$ID'"
+[[ $ID != omarchy.* ]] || fail "plugin id '$ID' uses the reserved omarchy.* namespace"
+
+# kinds must be a non-empty array.
+jq -e '(.kinds | type) == "array" and (.kinds | length) > 0' "$MANIFEST" >/dev/null 2>&1 \
+  || fail "'kinds' must be a non-empty array"
+
+# entryPoints must be an object and every value a safe relative path that exists.
+jq -e '(.entryPoints | type) == "object"' "$MANIFEST" >/dev/null 2>&1 \
+  || fail "'entryPoints' must be an object"
+
+# Read each entry point as a JSON-encoded string (one per line), then decode it,
+# so a value that itself contains a newline stays one literal path instead of
+# being split into fragments that each pass the checks.
+while IFS= read -r ep_json; do
+  [[ -n $ep_json ]] || continue
+  ep=$(jq -r '.' <<<"$ep_json")
+  [[ -n $ep ]] || fail "entry point path is empty"
+  [[ $ep != *$'\n'* ]] || fail "entry point may not contain a newline"
+  [[ $ep != /* ]] || fail "entry point must be a relative path: '$ep'"
+  [[ $ep != *".."* ]] || fail "entry point may not contain '..': '$ep'"
+  [[ -f "$PLUGIN_DIR/$ep" ]] || fail "entry point file not found: '$ep'"
+done < <(jq -c '.entryPoints | to_entries[] | .value' "$MANIFEST")
+
+# Refuse any symlink anywhere inside the plugin folder. Symlinks could point a
+# copied plugin back at arbitrary files on disk after it lands in the trusted
+# plugins directory. The .git dir is skipped: installed plugins are git
+# checkouts, and git's internals are never loaded by the shell.
+link=$(find "$PLUGIN_DIR" -name .git -prune -o -type l -print -quit 2>/dev/null)
+[[ -z $link ]] || fail "symlinks are not allowed inside a plugin folder: $link"
+
+# The whole omarchy.* namespace plus every shipped first-party id is reserved.
+# A third-party plugin claiming one of those ids would be rejected by the shell
+# and could shadow built-in behaviour, so refuse it here too.
+FIRST_PARTY_DIR="${OMARCHY_PATH:-$HOME/.local/share/omarchy}/shell/plugins"
+if [[ -d $FIRST_PARTY_DIR ]]; then
+  while IFS= read -r fp_manifest; do
+    [[ -f $fp_manifest ]] || continue
+    fp_id=$(jq -r '.id // empty' "$fp_manifest" 2>/dev/null || true)
+    [[ $fp_id == "$ID" ]] && fail "plugin id '$ID' collides with a first-party Omarchy plugin"
+  done < <(find "$FIRST_PARTY_DIR" -type f \( -name manifest.json -o -name '*.manifest.json' \) 2>/dev/null)
+fi
+
+exit 0

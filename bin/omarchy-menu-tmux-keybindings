@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Display Tmux keybindings defined in your configuration using walker for an interactive search menu.
+# omarchy:summary=Display Tmux keybindings defined in your configuration using an interactive search menu.
 # omarchy:args=[--print|-p] [--config <path>]
 
 print_only=false
@@ -24,7 +24,7 @@ while (($#)); do
 done
 
 if [[ ! -f $config_file ]]; then
-  default_config="${OMARCHY_PATH:-$HOME/.local/share/omarchy}/config/tmux/tmux.conf"
+  default_config="$OMARCHY_PATH/config/tmux/tmux.conf"
 
   if [[ -f $default_config ]]; then
     config_file="$default_config"
@@ -233,11 +233,6 @@ fi
 
 records=$(output_keybindings)
 
-if [[ -z $WAYLAND_DISPLAY ]] || omarchy-cmd-missing walker; then
-  printf '%s\n' "$records"
-  exit 0
-fi
-
 monitor_height=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true) | .height' 2>/dev/null)
 
 if [[ ! $monitor_height =~ ^[0-9]+$ ]] || ((monitor_height <= 0)); then
@@ -245,4 +240,4 @@ if [[ ! $monitor_height =~ ^[0-9]+$ ]] || ((monitor_height <= 0)); then
 fi
 
 menu_height=$((monitor_height * 40 / 100))
-printf '%s\n' "$records" | walker --dmenu -p 'Tmux keybindings' --width 800 --height "$menu_height" >/dev/null
+printf '%s\n' "$records" | omarchy-menu-select 'Tmux keybindings' -- --width 800 --height "$menu_height" >/dev/null || true

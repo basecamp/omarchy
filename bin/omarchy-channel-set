@@ -1,22 +1,113 @@
 #!/bin/bash
 
-# omarchy:summary=Set the Omarchy channel, which dictates what git branch and package repository is used.
+# omarchy:summary=Set the Omarchy package channel.
 # omarchy:args=<stable|rc|edge|dev>
 # omarchy:requires-sudo=true
 
-if (($# == 0)); then
-  echo "Usage: omarchy-channel-set [stable|rc|edge|dev]"
-  exit 1
-else
-  channel="$1"
-fi
+set -euo pipefail
+
+usage() { echo "Usage: omarchy-channel-set [stable|rc|edge|dev]"; }
+fail() { echo "Error: $*" >&2; exit 1; }
+
+confirm_dev() {
+  cat <<'WARNING'
+
+Dev links Omarchy directly to a mutable source checkout.
+
+This disables package-based protections for the Omarchy code path, including
+normal package updates and package-backed snapshot restores. You'll be
+responsible for pulling, fixing, and restoring that checkout yourself.
+
+WARNING
+
+  gum confirm --default=false "Enable Dev anyway?"
+}
+
+choose_dev_checkout() {
+  local default_path="$HOME/Work/omarchy"
+  local path="${OMARCHY_DEV_PATH:-}"
+
+  if [[ -z $path ]]; then
+    path=$(gum input --value "$default_path" --placeholder "$default_path" --header "Where should Dev checkout live? Existing non-checkout paths will not be overwritten.") || exit 1
+  fi
+
+  path="${path:-$default_path}"
+  case "$path" in
+    "~") path="$HOME" ;;
+    "~/"*) path="$HOME/${path#~/}" ;;
+    /*) ;;
+    *) path="$PWD/$path" ;;
+  esac
+
+  if [[ -e $path && ! -d $path/.git ]]; then
+    fail "$path already exists and is not a git checkout. Choose an empty path or an existing Omarchy checkout."
+  fi
+
+  if [[ -d $path/.git && ( ! -d $path/bin || ! -d $path/default || ! -d $path/shell ) ]]; then
+    fail "$path is a git checkout, but it does not look like Omarchy."
+  fi
+
+  printf '%s\n' "$path"
+}
+
+sync_dev_checkout() {
+  local checkout="$1"
+
+  if [[ -d $checkout/.git ]]; then
+    echo "Updating Dev checkout at $checkout"
+    git -C "$checkout" fetch origin quattro
+    git -C "$checkout" checkout quattro 2>/dev/null || git -C "$checkout" checkout --track origin/quattro
+    git -C "$checkout" pull --ff-only origin quattro
+  else
+    mkdir -p "$(dirname -- "$checkout")"
+    git clone --branch quattro --single-branch https://github.com/basecamp/omarchy.git "$checkout"
+  fi
+
+  omarchy-dev-link "$checkout"
+}
+
+(( $# > 0 )) || { usage; exit 1; }
+
+dev_checkout=""
+channel="$1"
 
 case "$channel" in
-"stable") omarchy-branch-set "master" && omarchy-refresh-pacman "stable" ;;
-"rc") omarchy-branch-set "rc" && omarchy-refresh-pacman "rc" ;;
-"edge") omarchy-branch-set "master" && omarchy-refresh-pacman "edge" ;;
-"dev") omarchy-branch-set "dev" && omarchy-refresh-pacman "edge" ;;
-*) echo "Unknown channel: $channel"; exit 1; ;;
+  stable)
+    pacman_channel=stable
+    packages=(omarchy omarchy-settings)
+    ;;
+  rc)
+    pacman_channel=rc
+    packages=(omarchy omarchy-settings)
+    ;;
+  edge)
+    pacman_channel=edge
+    packages=(omarchy-dev omarchy-settings-dev)
+    ;;
+  dev)
+    confirm_dev || { echo "Cancelled."; exit 0; }
+    dev_checkout=$(choose_dev_checkout)
+    pacman_channel=edge
+    packages=(omarchy-dev omarchy-settings-dev)
+    ;;
+  *)
+    echo "Unknown channel: $channel" >&2
+    usage >&2
+    exit 1
+    ;;
 esac
 
+omarchy-refresh-pacman "$pacman_channel"
+# --ask 4 accepts omarchy <-> omarchy-dev replacement prompts without file overwrites.
+sudo env OMARCHY_UPDATE_PACMAN=1 pacman -S --needed --noconfirm --ask 4 "${packages[@]}"
+
+if [[ -z $dev_checkout ]] && omarchy-cmd-present omarchy-dev-unlink; then
+  omarchy-dev-unlink
+  export OMARCHY_PATH=/usr/share/omarchy
+fi
+
 omarchy-update -y
+
+if [[ -n $dev_checkout ]]; then
+  sync_dev_checkout "$dev_checkout"
+fi

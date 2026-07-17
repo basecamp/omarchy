@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# omarchy:summary=Show or set the location used for weather reports
+#
+# State lives in ~/.local/state/omarchy/settings/weather.json as
+# {"name": ..., "latitude": ..., "longitude": ...}. A missing file means the
+# location is auto-detected from the IP address. Coordinates make the weather
+# panel exact; a hand-written {"name": "Malibu"} alone works too.
+#
+#   (no args)           the current location: the stored name, or the
+#                       IP-detected city when nothing is set
+#   --set <name> [lat,lon]  store a location
+#   --clear             return to IP auto-detect
+
+LOC_FILE="$HOME/.local/state/omarchy/settings/weather.json"
+COORDS_PATTERN='^(-?[0-9]+(\.[0-9]+)?),(-?[0-9]+(\.[0-9]+)?)$'
+
+case "${1:-}" in
+"")
+  name=""
+  [[ -f $LOC_FILE ]] && name=$(jq -r '.name // "" | if type == "string" then . else "" end' "$LOC_FILE" 2>/dev/null)
+  if [[ -z $name ]]; then
+    name=$(curl -fsS --max-time 4 "https://wttr.in/?format=%l" 2>/dev/null)
+    name=${name%%,*}
+  fi
+  [[ -n $name ]] && echo "$name"
+  ;;
+--set)
+  [[ -n ${2:-} ]] || { echo "Usage: omarchy-weather-location --set <name> [lat,lon]" >&2; exit 1; }
+  if [[ -n ${3:-} ]]; then
+    [[ ${3} =~ $COORDS_PATTERN ]] || { echo "Invalid coordinates: $3 (expected lat,lon)" >&2; exit 1; }
+    location=$(jq -n --arg name "$2" --argjson latitude "${3%,*}" --argjson longitude "${3#*,}" '{$name, $latitude, $longitude}')
+  else
+    location=$(jq -n --arg name "$2" '{$name}')
+  fi
+  mkdir -p "$(dirname "$LOC_FILE")"
+  echo "$location" >"$LOC_FILE"
+  ;;
+--clear)
+  rm -f "$LOC_FILE"
+  ;;
+*)
+  echo "Usage: omarchy-weather-location [--set <name> [lat,lon]|--clear]" >&2
+  exit 1
+  ;;
+esac

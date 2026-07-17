@@ -61,7 +61,7 @@ Do not define:
   false flags or empty args
 
 Examples:
-  # omarchy:summary=Restart Walker and related user services
+  # omarchy:summary=Restart the shell
 
   # omarchy:summary=Take a screenshot
   # omarchy:group=capture

@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# omarchy:summary=Restore Omarchy to the package install after reboot
+# omarchy:group=dev
+
+set -euo pipefail
+
+if (( EUID == 0 )); then
+  echo "Error: run omarchy-dev-unlink as your user, not under sudo." >&2
+  exit 1
+fi
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  cat <<USAGE
+Usage: omarchy dev unlink
+
+Writes /etc/omarchy.conf so OMARCHY_PATH resolves to /usr/share/omarchy
+after reboot. This intentionally does not rewrite the running Hyprland,
+systemd, shell, or app-launcher environment; reboot to make every layer agree.
+USAGE
+  exit 0
+fi
+
+default_target="/usr/share/omarchy"
+
+printf 'export OMARCHY_PATH="%s"\n' "$default_target" | sudo tee /etc/omarchy.conf >/dev/null
+
+echo "Pointed Omarchy at $default_target"
+echo
+
+if gum confirm "Reboot now to activate?"; then
+  omarchy-system-reboot
+fi

@@ -1,60 +1,86 @@
-o.bind("SUPER + SPACE", "Launch apps", { omarchy = "walker" })
-o.bind("SUPER + CTRL + E", "Emoji picker", { omarchy = "walker -m symbols" })
-o.bind_menu("SUPER + CTRL + C", "Capture menu", "capture")
-o.bind_menu("SUPER + CTRL + O", "Toggle menu", "toggle")
-o.bind_menu("SUPER + CTRL + H", "Hardware menu", "hardware")
-o.bind_menu("SUPER + ALT + SPACE", "Omarchy menu", nil)
-o.bind_menu("SUPER + SHIFT + code:201", "Omarchy menu", nil)
-o.bind_menu("SUPER + ESCAPE", "System menu", "system")
-o.bind_menu("XF86PowerOff", "Power menu", "system", { locked = true })
+o.bind("SUPER + SPACE", "Launch apps", "omarchy-shell shell toggle omarchy.launcher \"{}\"")
+o.bind("SUPER + CTRL + E", "Emojis", "omarchy-shell shell toggle omarchy.emojis")
+o.bind("SUPER + CTRL + C", "Capture menu", "omarchy-menu toggle capture")
+o.bind("SUPER + CTRL + O", "Toggle menu", "omarchy-menu toggle toggle")
+o.bind("SUPER + CTRL + H", "Hardware menu", "omarchy-menu toggle hardware")
+o.bind("SUPER + ALT + SPACE", "Omarchy menu", "omarchy-menu toggle root")
+o.bind("SUPER + SHIFT + code:201", "Omarchy menu", "omarchy-menu toggle root")
+o.bind("SUPER + ESCAPE", "System menu", "omarchy-menu toggle system")
+o.bind("XF86PowerOff", "Power menu", "omarchy-menu toggle system", { locked = true })
 o.bind("SUPER + K", "Show key bindings", "omarchy-menu-keybindings")
 o.bind("SUPER + ALT + K", "Show Tmux key bindings", "omarchy-menu-tmux-keybindings")
 o.bind("XF86Calculator", "Calculator", "gnome-calculator")
 
-o.bind("SUPER + SHIFT + SPACE", "Toggle top bar", "omarchy-toggle-waybar")
-o.bind("SUPER + SHIFT + CTRL + UP", "Move Waybar to top", "omarchy-style-waybar-position top")
-o.bind("SUPER + SHIFT + CTRL + DOWN", "Move Waybar to bottom", "omarchy-style-waybar-position bottom")
-o.bind("SUPER + SHIFT + CTRL + LEFT", "Move Waybar to left", "omarchy-style-waybar-position left")
-o.bind("SUPER + SHIFT + CTRL + RIGHT", "Move Waybar to right", "omarchy-style-waybar-position right")
-o.bind_menu("SUPER + CTRL + SPACE", "Background switcher", "background")
-o.bind_menu("SUPER + SHIFT + CTRL + SPACE", "Theme menu", "theme")
+o.bind_toggle("SUPER + SHIFT + SPACE", "Toggle top bar", "bar")
+o.bind("SUPER + SHIFT + CTRL + UP", "Move bar to top", "omarchy-bar-position top")
+o.bind("SUPER + SHIFT + CTRL + DOWN", "Move bar to bottom", "omarchy-bar-position bottom")
+o.bind("SUPER + SHIFT + CTRL + LEFT", "Move bar to left", "omarchy-bar-position left")
+o.bind("SUPER + SHIFT + CTRL + RIGHT", "Move bar to right", "omarchy-bar-position right")
+o.bind("SUPER + CTRL + SPACE", "Background switcher", "omarchy-menu toggle background")
+o.bind("SUPER + SHIFT + CTRL + SPACE", "Theme menu", "omarchy-menu toggle theme")
 o.bind("SUPER + BACKSPACE", "Toggle window transparency", "omarchy-hyprland-window-transparency-toggle")
 o.bind("SUPER + SHIFT + BACKSPACE", "Toggle window gaps", "omarchy-hyprland-window-gaps-toggle")
 o.bind("SUPER + CTRL + BACKSPACE", "Toggle single-window square aspect", "omarchy-hyprland-window-single-square-aspect-toggle")
 
-o.bind("SUPER + COMMA", "Dismiss last notification", "makoctl dismiss")
-o.bind("SUPER + SHIFT + COMMA", "Dismiss all notifications", "makoctl dismiss --all")
-o.bind("SUPER + CTRL + COMMA", "Toggle silencing notifications", "omarchy-toggle-notification-silencing")
-o.bind("SUPER + ALT + COMMA", "Invoke last notification", "makoctl invoke")
-o.bind("SUPER + SHIFT + ALT + COMMA", "Restore last notification", "makoctl restore")
+-- xkbcommon names the comma keysym "comma"; the upper-case "COMMA" does not match.
+o.bind("SUPER + comma", "Dismiss last notification", "omarchy-shell notifications dismissOne")
+o.bind("SUPER + SHIFT + comma", "Dismiss all notifications", "omarchy-shell notifications dismissAll")
+o.bind_toggle("SUPER + CTRL + comma", "Toggle silencing notifications", "notification-silencing")
+o.bind("SUPER + ALT + comma", "Invoke last notification", "omarchy-shell notifications invokeLast")
+o.bind("SUPER + SHIFT + ALT + comma", "Open notification history", "omarchy-shell notifications showHistory")
 
 o.bind_toggle("SUPER + CTRL + I", "Toggle locking on idle", "idle")
 o.bind_toggle("SUPER + CTRL + N", "Toggle nightlight", "nightlight")
 o.bind("SUPER + CTRL + Delete", "Toggle laptop display", "omarchy-hyprland-monitor-internal toggle")
 o.bind("SUPER + CTRL + ALT + Delete", "Toggle laptop display mirroring", "omarchy-hyprland-monitor-internal-mirror toggle")
-o.bind("switch:on:Lid Switch", nil, "omarchy-hw-external-monitors && omarchy-hyprland-monitor-internal off", { locked = true })
-o.bind("switch:off:Lid Switch", nil, "omarchy-hyprland-monitor-internal on", { locked = true })
+o.bind("switch:on:Lid Switch", nil, "omarchy-hyprland-monitor-clamshell", { locked = true })
+o.bind("switch:off:Lid Switch", nil, "omarchy-hyprland-monitor-clamshell", { locked = true })
 
 o.bind("PRINT", "Screenshot", "omarchy-capture-screenshot")
-o.bind_menu("ALT + PRINT", "Screenrecording", "screenrecord")
+o.bind("ALT + PRINT", "Screenrecording", "omarchy-capture-screenrecording --stop-recording || omarchy-menu toggle trigger.capture.screenrecord")
 o.bind("SUPER + PRINT", "Color picker", "pkill hyprpicker || hyprpicker -a")
-o.bind("SUPER + CTRL + PRINT", "Extract text (OCR) from screenshot", "omarchy-capture-text-extraction")
+o.bind("SUPER + CTRL + PRINT", "Extract text (OCR) from screenshot", "omarchy-capture-text")
 
-o.bind_menu("SUPER + CTRL + S", "Share", "share")
+-- While the slurp region picker is open, Return captures the entire focused
+-- monitor. The bind lives exactly as long as a selection layer is on screen
+-- (slurp opens one per monitor), so it cannot leak or get stuck.
+local selection_layers = 0
+
+hl.on("layer.opened", function(layer)
+  if layer.namespace == "selection" then
+    selection_layers = selection_layers + 1
+    if selection_layers == 1 then
+      hl.bind("RETURN", hl.dsp.exec_cmd("omarchy-capture-region --take-fullscreen"), { description = "Capture entire screen" })
+    end
+  end
+end)
+
+hl.on("layer.closed", function(layer)
+  if layer.namespace == "selection" and selection_layers > 0 then
+    selection_layers = selection_layers - 1
+    if selection_layers == 0 then
+      hl.unbind("RETURN")
+    end
+  end
+end)
+
+o.bind("SUPER + CTRL + S", "Share", "omarchy-menu toggle share")
 
 o.bind("SUPER + CTRL + PERIOD", "Transcode", "omarchy-transcode")
 
-o.bind_menu("SUPER + CTRL + R", "Set reminder", "reminder-set")
+o.bind("SUPER + CTRL + R", "Set reminder", "omarchy-menu toggle reminder-set")
 o.bind("SUPER + CTRL + ALT + R", "Show reminders", "omarchy-reminder show")
 o.bind("SUPER + SHIFT + CTRL + R", "Clear reminders", "omarchy-reminder clear")
 
 o.bind("SUPER + CTRL + ALT + T", "Show time", "omarchy-notification-time")
 o.bind("SUPER + CTRL + ALT + B", "Show battery remaining", "omarchy-notification-battery")
-o.bind("SUPER + CTRL + ALT + W", "Show weather", "omarchy-notification-weather")
+o.bind("SUPER + CTRL + ALT + W", "Toggle weather", "omarchy-notification-weather")
 
-o.bind("SUPER + CTRL + A", "Audio controls", { omarchy = "audio" })
-o.bind("SUPER + CTRL + B", "Bluetooth controls", { omarchy = "bluetooth" })
-o.bind("SUPER + CTRL + W", "Wifi controls", { omarchy = "wifi" })
+o.bind("SUPER + CTRL + A", "Audio", "omarchy-shell shell toggle omarchy.audio")
+o.bind("SUPER + CTRL + B", "Bluetooth", "omarchy-shell shell toggle omarchy.bluetooth")
+o.bind("SUPER + CTRL + D", "Display", "omarchy-shell shell toggle omarchy.monitor")
+o.bind("SUPER + CTRL + W", "Network", "omarchy-shell shell toggle omarchy.network")
+o.bind("SUPER + CTRL + P", "Power", "omarchy-shell shell toggle omarchy.power")
 o.bind("SUPER + CTRL + T", "Activity", { tui = "btop" })
 
 o.bind("SUPER + CTRL + Z", "Zoom in", function()

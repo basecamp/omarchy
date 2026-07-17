@@ -1,68 +1,84 @@
 #!/bin/bash
 
-# omarchy:summary=Adjust brightness on the most likely display device.
-# omarchy:args=<+N%|N%-|N%|off|on>
-# omarchy:examples=omarchy brightness display +5% | omarchy brightness display 5%- | omarchy brightness display 50% | omarchy brightness display off | omarchy brightness display on
+# omarchy:summary=Show or adjust brightness on the most likely display device.
+# omarchy:args=[--no-osd] [+N%|N%-|N%|off|on]
+# omarchy:examples=omarchy brightness display | omarchy brightness display +5% | omarchy brightness display --no-osd 50% | omarchy brightness display off | omarchy brightness display on
 
-step="${1:-+5%}"
-
-if [[ $step == "off" ]]; then
-  hyprctl dispatch 'hl.dsp.dpms({ action = "disable" })' >/dev/null 2>&1 || hyprctl dispatch dpms off >/dev/null 2>&1
-  exit 0
-elif [[ $step == "on" ]]; then
-  hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })' >/dev/null 2>&1 || hyprctl dispatch dpms on >/dev/null 2>&1
-  exit 0
+no_osd=0
+if [[ ${1:-} == "--no-osd" ]]; then
+  no_osd=1
+  shift
 fi
 
-runtime_dir="${XDG_RUNTIME_DIR:-/tmp}"
+# Get the brightness of the passed display
+display_brightness() {
+  brightnessctl -d "$1" -m 2>/dev/null | awk -F, '{ gsub("%", "", $4); print $4; found=1 } END{ exit !found }'
+}
 
-# Drop overlapping brightness key events so concurrent invocations do not race.
-# Hardware key repeat present on some devices can otherwise glitch SwayOSD rendering.
-exec 9>"$runtime_dir/omarchy-brightness-display.lock"
-flock -n 9 || exit 0
-
-# Start with the first possible output, then refine to the most likely given an order heuristic.
-device="$(ls -1 /sys/class/backlight 2>/dev/null | head -n1)"
-for candidate in amdgpu_bl* intel_backlight acpi_video*; do
-  if [[ -e /sys/class/backlight/$candidate ]]; then
-    device="$candidate"
-    break
+if (( $# == 0 )); then
+  if omarchy-hyprland-monitor-focused-apple; then
+    omarchy-brightness-display-apple
+    exit
   fi
-done
 
-
-if omarchy-hyprland-monitor-focused-apple; then
-  omarchy-brightness-display-apple "$step"
+  device="$(omarchy-hw-display)" || exit 1
+  display_brightness "$device"
   exit
 fi
 
-# Current brightness percentage
-current=$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')
+step="$1"
 
-# Apply non-uniform step size: 1% steps if at or below 5%, otherwise set an
-# absolute target percentage to avoid raw backlight rounding causing uneven OSD steps.
-if [[ $step == "+5%" ]]; then
-  if (( current < 5 )); then
-    (( target = current + 1 ))
-  else
-    (( target = current + 5 ))
-  fi
-
-  (( target > 100 )) && target=100
-  step="$target%"
-elif [[ $step == "5%-" ]]; then
-  if (( current <= 5 )); then
-    (( target = current - 1 ))
-  else
-    (( target = current - 5 ))
-  fi
-
-  (( target < 1 )) && target=1
-  step="$target%"
+if [[ $step == "off" ]]; then
+  hyprctl dispatch 'hl.dsp.dpms({ action = "disable" })' >/dev/null 2>&1
+  exit 0
+elif [[ $step == "on" ]]; then
+  hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })' >/dev/null 2>&1
+  exit 0
 fi
 
-# Set the actual brightness of the display device.
-brightnessctl -d "$device" set "$step" >/dev/null
+# Drop overlapping brightness key events so concurrent invocations do not race.
+# Hardware key repeat present on some devices can otherwise glitch OSD rendering.
+exec {lock_fd}>"${XDG_RUNTIME_DIR:-/tmp}/omarchy-brightness-display.lock"
+flock -n "$lock_fd" || exit 0
 
-# Use SwayOSD to display the new brightness setting.
-omarchy-swayosd-brightness "$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')"
+if omarchy-hyprland-monitor-focused-apple; then
+  if (( no_osd )); then
+    omarchy-brightness-display-apple --no-osd "$step"
+  else
+    omarchy-brightness-display-apple "$step"
+  fi
+else
+  # Current device highlighted
+  device="$(omarchy-hw-display)" || exit 1
+
+  # Current brightness percentage
+  current=$(display_brightness "$device") || exit 1
+
+  # Apply non-uniform step size: 1% steps if at or below 5%, otherwise set an
+  # absolute target percentage to avoid raw backlight rounding causing uneven OSD steps.
+  if [[ $step == "+5%" ]]; then
+    if (( current < 5 )); then
+      (( target = current + 1 ))
+    else
+      (( target = current + 5 ))
+    fi
+
+    (( target > 100 )) && target=100
+    step="$target%"
+  elif [[ $step == "5%-" ]]; then
+    if (( current <= 5 )); then
+      (( target = current - 1 ))
+    else
+      (( target = current - 5 ))
+    fi
+
+    (( target < 1 )) && target=1
+    step="$target%"
+  fi
+
+  # Set brightness of the display device.
+  brightnessctl -d "$device" set "$step" >/dev/null
+
+  # Show the new brightness in OSD
+  (( no_osd )) || omarchy-osd -i brightness -p "$(display_brightness "$device")"
+fi

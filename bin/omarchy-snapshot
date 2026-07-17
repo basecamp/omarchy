@@ -7,7 +7,6 @@
 set -e
 
 COMMAND="$1"
-OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 
 if [[ -z $COMMAND ]]; then
   echo "Usage: omarchy-snapshot <create|restore>" >&2

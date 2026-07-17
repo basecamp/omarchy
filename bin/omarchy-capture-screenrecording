@@ -2,7 +2,7 @@
 
 # omarchy:summary=Start or stop screen recording
 # omarchy:group=capture
-# omarchy:args=[--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--resolution=<size>] [--stop-recording]
+# omarchy:args=[--fullscreen] [--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--resolution=<size>] [--stop-recording]
 # omarchy:examples=omarchy screenrecord | omarchy capture screenrecord --with-desktop-audio
 # omarchy:aliases=omarchy screenrecord
 #
@@ -31,6 +31,7 @@ MICROPHONE_AUDIO="false"
 WEBCAM="false"
 WEBCAM_DEVICE=""
 RESOLUTION=""
+FULLSCREEN="false"
 STOP_RECORDING="false"
 RECORDING_FILE="/tmp/omarchy-screenrecord-filename"
 LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "/tmp/omarchy-screenrecord.log" || echo "/dev/null")
@@ -42,6 +43,7 @@ for arg in "$@"; do
   --with-webcam) WEBCAM="true" ;;
   --webcam-device=*) WEBCAM_DEVICE="${arg#*=}" ;;
   --resolution=*) RESOLUTION="${arg#*=}" ;;
+  --fullscreen) FULLSCREEN="true" ;;
   --stop-recording) STOP_RECORDING="true" ;;
   esac
 done
@@ -100,63 +102,25 @@ default_resolution() {
   fi
 }
 
-# Monitor + window rectangles on the focused workspace, in slurp's "X,Y WxH" format.
-# Mirrors omarchy-capture-screenshot so the picker UX is identical.
-get_rectangles() {
-  local active_workspace=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
-  hyprctl monitors -j | jq -r --arg ws "$active_workspace" '
-    .[] | select(.activeWorkspace.id == ($ws | tonumber)) |
-    "\(.x),\(.y) \(.width / .scale | floor)x\(.height / .scale | floor)"'
-  hyprctl clients -j | jq -r --arg ws "$active_workspace" '
-    .[] | select(.workspace.id == ($ws | tonumber)) |
-    "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
-}
-
-# Echoes "monitor:NAME" when the selection matches an entire monitor, otherwise
-# "region:WxH+X+Y" with physical-pixel coordinates ready for gpu-screen-recorder.
-# Returns non-zero if the user cancelled the picker.
+# Echoes "monitor:NAME" when the selection matches an entire monitor (prefer
+# -w <monitor> over a region capture — same kms backend, but no scaling math
+# and full native res), otherwise "region:WxH+X+Y". Returns non-zero if the
+# user cancelled the picker.
 select_capture_target() {
-  local rects=$(get_rectangles)
-  hyprpicker -r -z >/dev/null 2>&1 &
-  local picker_pid=$!
-  sleep .1
-  local selection=$(echo "$rects" | slurp 2>/dev/null)
-  kill $picker_pid 2>/dev/null
+  local target
+  target=$(omarchy-capture-region smart --match-monitor) || return 1
 
-  # X and Y can be negative (Hyprland monitor positions in multi-display layouts);
-  # widths and heights are always positive.
-  [[ $selection =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || return 1
-  local sx=${BASH_REMATCH[1]} sy=${BASH_REMATCH[2]}
-  local sw=${BASH_REMATCH[3]} sh=${BASH_REMATCH[4]}
-
-  # A bare click (area < 20px²) snaps to whichever rectangle the click landed
-  # inside, so users don't end up with accidental 2px recordings.
-  if ((sw * sh < 20)); then
-    while IFS= read -r rect; do
-      [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || continue
-      local rx=${BASH_REMATCH[1]} ry=${BASH_REMATCH[2]}
-      local rw=${BASH_REMATCH[3]} rh=${BASH_REMATCH[4]}
-      if ((sx >= rx && sx < rx + rw && sy >= ry && sy < ry + rh)); then
-        sx=$rx sy=$ry sw=$rw sh=$rh
-        break
-      fi
-    done <<<"$rects"
-  fi
-
-  # When the selection exactly matches a monitor, prefer -w <monitor> over a
-  # region capture — same kms backend, but no scaling math and full native res.
-  local monitor=$(hyprctl monitors -j | jq -r --argjson x "$sx" --argjson y "$sy" --argjson w "$sw" --argjson h "$sh" '
-    .[] | select(.x == $x and .y == $y and (.width / .scale | floor) == $w and (.height / .scale | floor) == $h) | .name' | head -1)
-
-  if [[ -n $monitor ]]; then
-    echo "monitor:$monitor"
+  if [[ $target == monitor:* ]]; then
+    echo "$target"
     return
   fi
+
+  [[ $target =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || return 1
 
   # gpu-screen-recorder wants region geometry in the compositor's logical
   # coordinate space — same space slurp returns — so pass the values through
   # untouched. (gsr scales to physical pixels itself based on the monitor.)
-  echo "region:${sw}x${sh}+${sx}+${sy}"
+  echo "region:${BASH_REMATCH[3]}x${BASH_REMATCH[4]}+${BASH_REMATCH[1]}+${BASH_REMATCH[2]}"
 }
 
 start_screenrecording() {
@@ -167,7 +131,10 @@ start_screenrecording() {
   # the portal backend supports and the kms backend doesn't). Default flow uses
   # slurp + the kms backend, which avoids the EGL DMA-BUF modifier import
   # failures the portal path can hit on some configurations.
-  if [[ ${OMARCHY_SCREENRECORD_USE_PORTAL:-false} == "true" ]]; then
+  if [[ $FULLSCREEN == "true" ]]; then
+    target="monitor:$(omarchy-hyprland-monitor-focused)"
+    capture_args=(-w "${target#monitor:}" -s "${RESOLUTION:-$(default_resolution)}")
+  elif [[ ${OMARCHY_SCREENRECORD_USE_PORTAL:-false} == "true" ]]; then
     target="portal"
     capture_args=(-w portal -s "${RESOLUTION:-$(default_resolution)}")
   else
@@ -240,8 +207,9 @@ stop_screenrecording() {
     ffmpeg -y -i "$filename" -ss 00:00:00.1 -vframes 1 -q:v 2 "$preview" -loglevel quiet 2>/dev/null
 
     (
-      ACTION=$(notify-send "Screen recording saved" "Open with Super + Alt + , (or click this)" -t 10000 -i "${preview:-$filename}" -A "default=open")
-      [[ $ACTION == "default" ]] && mpv "$filename"
+      if [[ -n $(omarchy-notification-send "Screen recording saved" "Open with Super + Alt + , (or click this)" -t 10000 --image "${preview:-$filename}" -a) ]]; then
+        mpv "$filename"
+      fi
       rm -f "$preview"
     ) &
   fi
@@ -250,7 +218,7 @@ stop_screenrecording() {
 }
 
 toggle_screenrecording_indicator() {
-  pkill -RTMIN+8 waybar
+  omarchy-shell -q Indicators refresh
 }
 
 screenrecording_active() {

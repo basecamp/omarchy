@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Name=Google Messages
+Exec=omarchy-launch-webapp https://messages.google.com/web/conversations
+Terminal=false
+Type=Application
+Icon=google-messages
+StartupNotify=true

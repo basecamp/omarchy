@@ -5,7 +5,8 @@
 set -e
 
 APP_DIR="${1:-$HOME/.local/share/applications}"
-ICON_DIR="$HOME/.local/share/applications/icons"
+ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
+OLD_ICON_DIR="$HOME/.local/share/applications/icons"
 
 echo "Scanning for web apps in $APP_DIR..."
 
@@ -23,15 +24,14 @@ fi
 
 for file in "${webapp_desktop_files[@]}"; do
   app_name=$(basename "$file" .desktop)
+  icon_name=$(printf '%s\n' "$app_name" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')
   echo "Removing web app: $app_name"
   rm -f "$file"
-  rm -f "$ICON_DIR/$app_name.png"
+  rm -f "$ICON_DIR/$icon_name.png" "$ICON_DIR/$app_name.png" "$OLD_ICON_DIR/$app_name.png"
 done
 
 if command -v update-desktop-database &>/dev/null; then
   update-desktop-database "$APP_DIR" &>/dev/null || true
 fi
-
-omarchy-restart-walker
 
 echo "Web apps removed successfully."

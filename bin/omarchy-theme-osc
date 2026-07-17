@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# omarchy:summary=Print OSC sequences for an Omarchy color theme
+# omarchy:hidden=true
+
+theme="${1:-$HOME/.local/state/omarchy/current/theme/colors.toml}"
+
+[[ -f $theme ]] || exit 0
+
+declare -A COLORS
+
+while IFS=$'\t' read -r key value; do
+  COLORS[$key]="$value"
+done < <(omarchy-theme-color --file "$theme" --all)
+
+emit_osc() {
+  local code="$1"
+  local key="$2"
+
+  [[ -n ${COLORS[$key]:-} ]] || return 0
+  printf '\033]%s;%s\007' "$code" "${COLORS[$key]}"
+}
+
+emit_osc 10 foreground
+emit_osc 11 background
+emit_osc 12 cursor
+emit_osc 17 selection_background
+emit_osc 19 selection_foreground
+
+for i in {0..15}; do
+  [[ -n ${COLORS[color$i]:-} ]] || continue
+  printf '\033]4;%d;%s\007' "$i" "${COLORS[color$i]}"
+done

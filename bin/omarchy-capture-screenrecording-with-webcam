@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# omarchy:summary=Pick a webcam and start a screen recording with it
+# omarchy:examples=omarchy capture screenrecording-with-webcam
+
+set -o pipefail
+
+webcam_list() {
+  v4l2-ctl --list-devices 2>/dev/null | while IFS= read -r line; do
+    if [[ $line != $'\t'* && -n $line ]]; then
+      local name="$line"
+      local device
+      IFS= read -r device || break
+      device=$(tr -d '\t' <<<"$device" | head -1)
+      [[ -n $device ]] && echo "$device  $name"
+    fi
+  done
+}
+
+mapfile -t devices < <(webcam_list)
+if (( ${#devices[@]} == 0 )); then
+  omarchy-notification-send "No webcam devices found" -u critical -t 3000
+  exit 1
+fi
+
+if (( ${#devices[@]} == 1 )); then
+  device="${devices[0]%%[[:space:]]*}"
+else
+  selection=$(omarchy-menu-select "Select Webcam" "${devices[@]}" -- --width 520 --maxheight 520) || exit 1
+  device="${selection%%[[:space:]]*}"
+fi
+
+exec omarchy-capture-screenrecording \
+  --with-desktop-audio --with-microphone-audio \
+  --with-webcam --webcam-device="$device"

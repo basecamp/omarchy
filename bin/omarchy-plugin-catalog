@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# omarchy:summary=Emit every first-party and user plugin manifest as JSON
+# omarchy:group=plugin
+# omarchy:hidden=true
+
+# Walks $OMARCHY_PATH/shell/plugins and ~/.config/omarchy/plugins, reads every
+# manifest.json / *.manifest.json, and emits one JSON object per plugin with
+# computed fields (sourceDir, barWidgetPath, barPath, firstParty). This is the
+# single source of truth that omarchy-bar (widget/option enumeration and add
+# validation) and omarchy-plugin-clone (source enumeration) read, so the bar
+# and plugin commands never re-implement manifest walking.
+
+set -o pipefail
+
+OMARCHY_PATH="${OMARCHY_PATH:-}"
+command -v jq >/dev/null 2>&1 || { echo "omarchy-plugin-catalog: jq is required" >&2; exit 1; }
+
+paths=()
+
+if [[ -n $OMARCHY_PATH && -d $OMARCHY_PATH/shell/plugins ]]; then
+  while IFS= read -r manifest; do
+    paths+=("$manifest")
+  done < <(find "$OMARCHY_PATH/shell/plugins" -mindepth 2 -maxdepth 4 -type f \( -name manifest.json -o -name '*.manifest.json' \) 2>/dev/null | sort)
+fi
+
+user_dir="$HOME/.config/omarchy/plugins"
+if [[ -d $user_dir ]]; then
+  while IFS= read -r manifest; do
+    paths+=("$manifest")
+  done < <(find -L "$user_dir" -mindepth 2 -maxdepth 2 -type f -name manifest.json 2>/dev/null | sort)
+fi
+
+if (( ${#paths[@]} == 0 )); then
+  echo "[]"
+  exit 0
+fi
+
+jq -n '
+  [ inputs
+    | . as $manifest
+    | input_filename as $manifestPath
+    | ($manifestPath | sub("/manifest.json$"; "") | sub("/[^/]+\\.manifest\\.json$"; "")) as $sourceDir
+    | {
+        id: ($manifest.id // ""),
+        name: ($manifest.name // $manifest.id // ""),
+        description: ($manifest.description // ""),
+        kinds: ($manifest.kinds // []),
+        firstParty: (($manifest.id // "") | startswith("omarchy.")),
+        manifestPath: $manifestPath,
+        sourceDir: $sourceDir,
+        entryPoints: ($manifest.entryPoints // {}),
+        barWidget: ($manifest.barWidget // null),
+        bar: ($manifest.bar // null)
+      }
+    | .barWidgetPath = (
+        if (.entryPoints.barWidget // null) != null
+        then (.sourceDir + "/" + .entryPoints.barWidget)
+        else null end)
+    | .barPath = (
+        if (.entryPoints.bar // null) != null
+        then (.sourceDir + "/" + .entryPoints.bar)
+        else null end)
+    | select(.id != "")
+  ]
+  | unique_by(.id)
+' "${paths[@]}"

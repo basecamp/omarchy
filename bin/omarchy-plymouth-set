@@ -2,7 +2,7 @@
 
 # omarchy:summary=Set the Plymouth boot theme colors and logo
 # omarchy:args=<background-hex> <text-hex> <path-to-logo.png>
-# omarchy:examples=omarchy plymouth set '#1d2021' '#ebdbb2' ~/.config/omarchy/current/theme/plymouth/logo.png
+# omarchy:examples=omarchy plymouth set '#1d2021' '#ebdbb2' ~/.local/state/omarchy/current/theme/plymouth/logo.png
 # omarchy:requires-sudo=true
 
 # Configure the Plymouth boot theme with a custom background color, text color, and logo.
@@ -10,7 +10,7 @@
 # rebuilds the initramfs. Also syncs the SDDM login screen (the post-logout
 # screen) with the same colors and logo so boot/login stay visually unified.
 
-if [[ $# -ne 3 ]]; then
+if (( $# != 3 )); then
   echo "Usage: omarchy-plymouth-set <background-hex> <text-hex> <path-to-logo.png>" >&2
   exit 1
 fi
@@ -42,7 +42,7 @@ theme_dir="/usr/share/plymouth/themes/omarchy"
 staging_dir=$(mktemp -d)
 trap 'rm -rf "$staging_dir"' EXIT
 
-find ~/.local/share/omarchy/default/plymouth -maxdepth 1 -type f -exec cp -t "$staging_dir/" {} +
+find $OMARCHY_PATH/default/plymouth -maxdepth 1 -type f -exec cp -t "$staging_dir/" {} +
 cp "$logo_path" "$staging_dir/logo.png"
 
 sed -i \
@@ -65,7 +65,7 @@ fi
 
 # Sync the SDDM login screen with the same colors and logo.
 sddm_dir="/usr/share/sddm/themes/omarchy"
-sddm_template="$HOME/.local/share/omarchy/default/sddm/omarchy/Main.qml"
+sddm_template="$OMARCHY_PATH/default/sddm/omarchy/Main.qml"
 
 sed \
   -e "s/#1a1b26/#$bg_hex/g" \

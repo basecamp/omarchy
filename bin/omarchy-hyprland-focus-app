@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# omarchy:summary=Focus a Hyprland window by application class
+# omarchy:args=<app-name>
+# omarchy:examples=omarchy hyprland focus app Slack
+
+usage() {
+  echo "Usage: omarchy-hyprland-focus-app <app-name>" >&2
+  exit 1
+}
+
+app=${1:-}
+[[ -n $app ]] || usage
+
+address=$(
+  hyprctl clients -j 2>/dev/null |
+    jq -r --arg pattern "$app" \
+      '[.[] | select((.class // "") | test($pattern; "i"))] | first.address // empty'
+)
+
+[[ -n $address ]] || exit 1
+
+hyprctl dispatch "hl.dsp.focus({ window = \"address:$address\" })" >/dev/null 2>&1 || \
+  hyprctl dispatch focuswindow "address:$address" >/dev/null

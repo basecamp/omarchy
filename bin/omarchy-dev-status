@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# omarchy:summary=Show the current Omarchy dev-link state
+# omarchy:group=dev
+
+set -euo pipefail
+
+default_target="/usr/share/omarchy"
+configured="$default_target"
+conf_present=0
+linked=0
+
+if [[ -f /etc/omarchy.conf ]]; then
+  conf_present=1
+  configured=$(
+    OMARCHY_PATH=
+    # shellcheck disable=SC1091
+    . /etc/omarchy.conf
+    printf '%s' "${OMARCHY_PATH:-<empty>}"
+  )
+  if [[ $configured != "$default_target" ]]; then
+    linked=1
+  fi
+fi
+
+if (( linked )); then
+  echo "dev-link: configured"
+  echo "  /etc/omarchy.conf -> OMARCHY_PATH=$configured"
+  echo "  status: reboot required before all session layers use this checkout"
+else
+  echo "dev-link: inactive"
+  if (( conf_present )); then
+    echo "  /etc/omarchy.conf -> OMARCHY_PATH=$configured (default guard)"
+  fi
+fi
+
+echo "  current shell:       OMARCHY_PATH=${OMARCHY_PATH:-<unset>}"
+
+if [[ ${OMARCHY_PATH:-$default_target} != "$configured" ]]; then
+  echo
+  echo "Note: the running session does not match /etc/omarchy.conf. Reboot to settle it."
+fi

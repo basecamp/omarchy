@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Name=X
+Exec=omarchy-launch-webapp https://x.com/
+Terminal=false
+Type=Application
+Icon=x
+StartupNotify=true

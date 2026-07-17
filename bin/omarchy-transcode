@@ -13,7 +13,7 @@ usage() {
 Usage:
   omarchy transcode [--path path] [input] [format] [resolution]
 
-With no input, pick a picture or video with Walker from ~/Pictures and ~/Videos,
+With no input, pick a picture or video from ~/Pictures and ~/Videos,
 or only from --path when provided. Then pick the output format and resolution.
 
 Options:
@@ -136,7 +136,7 @@ main() {
     case "$1" in
     --path)
       shift
-      [[ $# -gt 0 ]] || { echo "Missing value for --path" >&2; return 2; }
+      (( $# > 0 )) || { echo "Missing value for --path" >&2; return 2; }
       search_path="$1"
       ;;
     --help | -h)

@@ -7,7 +7,7 @@
 # Resolve a theme by name and apply its unlock.png + colors.toml as the
 # Plymouth boot screen via omarchy-plymouth-set.
 
-if [[ $# -ne 1 ]]; then
+if (( $# != 1 )); then
   echo "Usage: omarchy-plymouth-set-by-theme <theme-name>" >&2
   exit 1
 fi
@@ -20,7 +20,38 @@ else
   theme_dir="$OMARCHY_PATH/themes/$theme"
 fi
 
-bg=$(awk -F'"' '/^background/{print $2}' "$theme_dir/colors.toml")
-text=$(awk -F'"' '/^foreground/{print $2}' "$theme_dir/colors.toml")
+theme_color() {
+  local key="$1"
+  local fallback="$2"
+
+  awk -F= -v key="$key" -v fallback="$fallback" '
+    function clean(raw) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", raw)
+      if (raw ~ /^"/) {
+        sub(/^"/, "", raw)
+        sub(/".*$/, "", raw)
+      }
+      return raw
+    }
+
+    {
+      field = $1
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", field)
+      if (field == key) {
+        print clean($2)
+        found = 1
+        exit
+      }
+      if (field == fallback) fallback_value = clean($2)
+    }
+
+    END {
+      if (!found && fallback_value != "") print fallback_value
+    }
+  ' "$theme_dir/colors.toml"
+}
+
+bg=$(theme_color background bg)
+text=$(theme_color foreground fg)
 
 exec omarchy-plymouth-set "$bg" "$text" "$theme_dir/unlock.png"

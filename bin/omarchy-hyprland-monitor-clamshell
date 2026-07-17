@@ -1,0 +1,144 @@
+#!/bin/bash
+
+# omarchy:summary=Apply clamshell display state to Hyprland monitors
+# omarchy:hidden=true
+
+TOGGLES_DIR="$HOME/.local/state/omarchy/toggles/hypr"
+CLAMSHELL_FLAG="$TOGGLES_DIR/internal-monitor-clamshell.lua"
+MANUAL_DISABLE_FLAG="$TOGGLES_DIR/internal-monitor-disable.lua"
+SCALE_STATE="$TOGGLES_DIR/internal-monitor-scale"
+
+INTERNAL=$(hyprctl monitors all -j | jq -r '.[] | select(.name | test("^(eDP|LVDS|DSI)-")).name' | head -n 1)
+
+valid_scale() {
+  [[ $1 =~ ^[0-9]+([.][0-9]+)?$ ]]
+}
+
+scales_match() {
+  local left="$1"
+  local right="$2"
+
+  valid_scale "$left" && valid_scale "$right" || return 1
+  awk -v left="$left" -v right="$right" 'BEGIN {
+    diff = left - right
+    if (diff < 0) diff = -diff
+    exit(diff < 0.001 ? 0 : 1)
+  }'
+}
+
+configured_monitor_scale() {
+  local monitor_lua="$HOME/.config/hypr/monitors.lua"
+  [[ -f $monitor_lua ]] || return 0
+  local scale
+  scale=$(sed -n 's/^local omarchy_monitor_scale = //p' "$monitor_lua" | head -1)
+  if [[ -z $scale ]]; then
+    scale=$(sed -nE 's/^hl\.monitor\(\{ output = "", mode = "preferred", position = "auto", scale = ([^ ]+) \}\)/\1/p' "$monitor_lua" | head -1)
+  fi
+  echo "$scale"
+}
+
+current_internal_scale() {
+  [[ -n $INTERNAL ]] || return 0
+  hyprctl monitors all -j | jq -r --arg internal "$INTERNAL" '.[] | select(.name == $internal and .disabled != true) | .scale' | head -1
+}
+
+store_internal_scale() {
+  local scale="$1"
+  valid_scale "$scale" || return 0
+
+  mkdir -p "$TOGGLES_DIR"
+  printf '%s\n' "$scale" >"$SCALE_STATE"
+}
+
+remember_internal_scale() {
+  local scale
+  scale=$(current_internal_scale)
+  store_internal_scale "$scale"
+}
+
+read_monitor_scale() {
+  local scale
+  scale=$(configured_monitor_scale)
+  if valid_scale "$scale"; then
+    echo "$scale"
+    return
+  fi
+
+  if [[ -f $SCALE_STATE ]]; then
+    scale=$(<"$SCALE_STATE")
+    if valid_scale "$scale"; then
+      echo "$scale"
+      return
+    fi
+  fi
+
+  echo 2
+}
+
+enable_internal_output() {
+  [[ -n $INTERNAL ]] || return 0
+  local scale="${1:-}"
+  [[ -n $scale ]] || scale=$(read_monitor_scale)
+  hyprctl eval "hl.monitor({ output = \"$INTERNAL\", mode = \"preferred\", position = \"auto\", scale = $scale })" >/dev/null 2>&1 || true
+}
+
+sync_internal_scale() {
+  [[ -n $INTERNAL ]] || return 0
+  local desired_scale
+  local active_scale
+
+  desired_scale=$(read_monitor_scale)
+  active_scale=$(current_internal_scale)
+  scales_match "$active_scale" "$desired_scale" && return 0
+
+  enable_internal_output "$desired_scale"
+}
+
+dpms_internal() {
+  local action="$1"
+
+  [[ -n $INTERNAL ]] || return 0
+  hyprctl dispatch "hl.dsp.dpms({ action = \"$action\", monitor = \"$INTERNAL\" })" >/dev/null 2>&1 || true
+}
+
+enable_internal() {
+  local changed=0
+
+  if [[ -f $CLAMSHELL_FLAG ]]; then
+    rm -f "$CLAMSHELL_FLAG"
+    changed=1
+  fi
+
+  if (( changed )); then
+    hyprctl reload >/dev/null 2>&1 || true
+  fi
+
+  [[ -f $MANUAL_DISABLE_FLAG ]] && omarchy-hyprland-monitor-external-active && return 0
+  sync_internal_scale
+  dpms_internal enable
+}
+
+disable_internal() {
+  [[ -n $INTERNAL ]] || exit 0
+  [[ -f $MANUAL_DISABLE_FLAG ]] && return 0
+
+  mkdir -p "$TOGGLES_DIR"
+  remember_internal_scale
+
+  local config
+  config=$(printf 'hl.monitor({ output = "%s", disabled = true })' "$INTERNAL")
+
+  if [[ ! -f $CLAMSHELL_FLAG ]] || [[ $(< "$CLAMSHELL_FLAG") != $config ]]; then
+    printf '%s\n' "$config" >"$CLAMSHELL_FLAG"
+    hyprctl reload >/dev/null 2>&1 || true
+  fi
+}
+
+omarchy-hyprland-monitor-internal recover >/dev/null 2>&1 || true
+omarchy-hyprland-monitor-internal-mirror recover >/dev/null 2>&1 || true
+
+if omarchy-hw-clamshell && omarchy-hyprland-monitor-external-active; then
+  disable_internal
+else
+  enable_internal
+fi

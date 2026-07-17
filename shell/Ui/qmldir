@@ -1,0 +1,29 @@
+module qs.Ui
+
+BarIndicator 1.0 BarIndicator.qml
+BarWidget 1.0 BarWidget.qml
+BorderOverlay 1.0 BorderOverlay.qml
+BorderSurface 1.0 BorderSurface.qml
+Button 1.0 Button.qml
+ButtonGroup 1.0 ButtonGroup.qml
+ConfirmDialog 1.0 ConfirmDialog.qml
+CursorSurface 1.0 CursorSurface.qml
+Dropdown 1.0 Dropdown.qml
+KeyboardPanel 1.0 KeyboardPanel.qml
+MultiSelect 1.0 MultiSelect.qml
+NumberField 1.0 NumberField.qml
+Panel 1.0 Panel.qml
+PanelActionButton 1.0 PanelActionButton.qml
+PanelController 1.0 PanelController.qml
+PanelKeyCatcher 1.0 PanelKeyCatcher.qml
+PanelHero 1.0 PanelHero.qml
+PanelSectionHeader 1.0 PanelSectionHeader.qml
+PanelSeparator 1.0 PanelSeparator.qml
+PanelSlider 1.0 PanelSlider.qml
+PanelToolTip 1.0 PanelToolTip.qml
+PointerMoveGate 1.0 PointerMoveGate.qml
+PopupCard 1.0 PopupCard.qml
+SearchableDropdown 1.0 SearchableDropdown.qml
+TextField 1.0 TextField.qml
+Toggle 1.0 Toggle.qml
+WidgetButton 1.0 WidgetButton.qml

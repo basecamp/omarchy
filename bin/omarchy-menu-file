@@ -1,15 +1,15 @@
 #!/bin/bash
 
-# omarchy:summary=Pick a file with Walker
+# omarchy:summary=Pick a file from a menu
 # omarchy:group=menu
 # omarchy:name=file
-# omarchy:args=label paths formats [walker args...]
+# omarchy:args=label paths formats [menu args...]
 # omarchy:examples=omarchy menu file "Select image" "$HOME/Pictures" "jpg png webp"|omarchy-menu-file "Select media" "$HOME/Pictures:$HOME/Videos" "jpg png mp4 mov" --width 800
 
 set -euo pipefail
 
 if (( $# < 3 )); then
-  echo "Usage: omarchy-menu-file <label> <paths> <formats> [walker args...]" >&2
+  echo "Usage: omarchy-menu-file <label> <paths> <formats> [menu args...]" >&2
   exit 1
 fi
 
@@ -22,7 +22,7 @@ IFS=: read -r -a paths <<<"$paths_arg"
 read -r -a formats <<<"$formats_arg"
 
 if (( ${#paths[@]} == 0 || ${#formats[@]} == 0 )); then
-  echo "Usage: omarchy-menu-file <label> <paths> <formats> [walker args...]" >&2
+  echo "Usage: omarchy-menu-file <label> <paths> <formats> [menu args...]" >&2
   exit 1
 fi
 
@@ -45,4 +45,4 @@ done
 find_args+=(")" -printf '%T@\t%p\n')
 
 find "${find_args[@]}" 2>/dev/null | sort -rn | cut -f2- |
-  omarchy-launch-walker --dmenu --width 800 --minheight 1 --maxheight 500 -p "$label…" "$@" 2>/dev/null
+  omarchy-menu-select "$label" -- --width 800 --maxheight 500 "$@"

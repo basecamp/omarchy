@@ -1,0 +1,11 @@
+#!/bin/bash
+
+set -e
+
+if omarchy-done ensure voxtype-install-invitation; then
+  (
+    if [[ -n $(omarchy-notification-send -u critical -g  "Install Dictation with Voxtype" "Click to install voice dictation for Omarchy." -a) ]]; then
+      omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install
+    fi
+  ) >/dev/null 2>&1 &
+fi

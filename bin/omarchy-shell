@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# omarchy:summary=Send an IPC call to the running Omarchy shell
+# omarchy:args=[-q] <target> <method> [args...]
+# omarchy:examples=omarchy shell shell ping | omarchy-shell shell toggle omarchy.menu '{"menu":"root"}'
+
+QUIET=0
+if [[ ${1:-} == "-q" ]]; then
+  QUIET=1
+  shift
+fi
+
+fail() {
+  (( QUIET )) && exit 0
+  echo "$1" >&2
+  exit 1
+}
+
+if (( $# == 0 )) || [[ $1 == "-h" || $1 == "--help" ]]; then
+  cat <<USAGE
+Usage: omarchy-shell [-q] <target> <method> [args...]
+
+Forwards an IPC call to the running Omarchy shell. The shell is expected
+to already be running; this command does not start it.
+
+Options:
+  -q  Quiet best-effort mode. Suppress output and return success even when
+      the shell, target, method, or arguments are unavailable.
+
+Examples:
+  omarchy-shell shell ping
+  omarchy-shell shell openBarConfig
+  omarchy-shell -q Indicators refresh
+  omarchy-shell shell listPlugins
+  omarchy-shell shell toggle omarchy.menu '{"menu":"root"}'
+USAGE
+  exit 0
+fi
+
+(( $# >= 2 )) || fail "Usage: omarchy-shell <target> <method> [args...]"
+[[ -n ${OMARCHY_PATH:-} ]] || fail "OMARCHY_PATH is not set"
+[[ -f $OMARCHY_PATH/shell/shell.qml ]] || fail "omarchy-shell config not found: $OMARCHY_PATH/shell/shell.qml"
+
+if [[ $1 == "shell" && ( $2 == "summon" || $2 == "toggle" ) ]] && (( $# == 3 )); then
+  set -- "$1" "$2" "$3" "{}"
+fi
+
+# The -- keeps function names that shadow qs subcommands (e.g. show) as
+# positionals. qs reports connection failures with a nonzero exit, but IPC-level
+# failures (unknown target/function, bad arguments) go to stdout with exit 0.
+output=$(qs -p "$OMARCHY_PATH/shell" ipc call -- "$@" 2>/dev/null) || fail "omarchy-shell is not running"
+
+case $output in
+  "Target not found." | "Function not found." | "Too few arguments provided"* | "Too many arguments provided"*)
+    fail "$output"
+    ;;
+esac
+
+if (( !QUIET )) && [[ -n $output ]]; then
+  echo "$output"
+fi
+exit 0

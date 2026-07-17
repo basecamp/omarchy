@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# omarchy:summary=Launch a command on the active Hyprland workspace
+# omarchy:args=<command>
+
+cmd="$*"
+[[ -n $cmd ]] || exit 0
+
+lua_quote() {
+  local value=$1
+
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  printf '"%s"' "$value"
+}
+
+active_workspace() {
+  hyprctl activeworkspace -j 2>/dev/null | jq -r '.name // .id // empty' 2>/dev/null
+}
+
+if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && omarchy-cmd-present hyprctl && omarchy-cmd-present jq; then
+  workspace="$(active_workspace)"
+  if [[ -n $workspace ]] && hyprctl dispatch "function() hl.exec_cmd($(lua_quote "$cmd"), { workspace = $(lua_quote "$workspace") }) end" >/dev/null 2>&1; then
+    exit 0
+  fi
+fi
+
+exec bash -lc "$cmd"

@@ -7,17 +7,98 @@
 
 set -e
 
-# Run the update inside a PTY so pacman/yay keep showing download progress
-# while still logging the full session for later analysis.
-if [[ -z $OMARCHY_UPDATE_LOGGED ]]; then
+if [[ -z ${OMARCHY_UPDATE_LOGGED:-} ]]; then
   script_command=$(printf '%q ' "$0" "$@")
   exec env OMARCHY_UPDATE_LOGGED=1 script -qefc "$script_command" "/tmp/omarchy-update.log"
 fi
 
+acquire_update_lock() {
+  local lock_dir="${XDG_RUNTIME_DIR:-/tmp}"
+  local lock_path="$lock_dir/omarchy-update.lock"
+  local lock_fd_path=""
+
+  mkdir -p "$lock_dir" 2>/dev/null || true
+
+  if [[ -n ${OMARCHY_UPDATE_LOCK_FD:-} && -e /proc/$$/fd/$OMARCHY_UPDATE_LOCK_FD ]]; then
+    lock_fd_path=$(readlink -f "/proc/$$/fd/$OMARCHY_UPDATE_LOCK_FD" 2>/dev/null || true)
+    if [[ $lock_fd_path == "$(readlink -m "$lock_path")" ]] && flock -n "$OMARCHY_UPDATE_LOCK_FD"; then
+      return 0
+    fi
+  fi
+
+  exec {OMARCHY_UPDATE_LOCK_FD}>"$lock_path"
+  if ! flock -n "$OMARCHY_UPDATE_LOCK_FD"; then
+    echo "An Omarchy update is already running."
+    exit 1
+  fi
+  export OMARCHY_UPDATE_LOCK_FD
+}
+
+update_disabled_idle=0
+sleep_inhibit_pid=""
+
+disable_sleep_for_update() {
+  command -v systemd-inhibit >/dev/null 2>&1 || return 0
+
+  systemd-inhibit \
+    --what=sleep:idle \
+    --who=omarchy-update \
+    --why="Omarchy update in progress" \
+    --mode=block \
+    sleep infinity >/dev/null 2>&1 &
+  sleep_inhibit_pid=$!
+}
+
+disable_idle_for_update() {
+  local stay_awake_state="$HOME/.local/state/omarchy/indicators/stay-awake"
+
+  if [[ ! -f $stay_awake_state ]]; then
+    omarchy-toggle-idle stay-awake >/dev/null 2>&1 || true
+    update_disabled_idle=1
+  fi
+}
+
+restore_update_inhibitors() {
+  if (( update_disabled_idle )); then
+    omarchy-toggle-idle allow-idle >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n $sleep_inhibit_pid ]]; then
+    kill "$sleep_inhibit_pid" >/dev/null 2>&1 || true
+    wait "$sleep_inhibit_pid" >/dev/null 2>&1 || true
+  fi
+}
+
+run_update_pipeline() {
+  disable_sleep_for_update
+  disable_idle_for_update
+
+  omarchy-update-keyring
+  omarchy-update-system-pkgs
+  omarchy-migrate
+  omarchy-hook post-update
+  omarchy-update-aur-pkgs
+  omarchy-update-mise
+  omarchy-update-orphan-pkgs
+
+  omarchy-update-analyze-logs
+
+  # Re-check after updates so the status bar reflects any remaining updates.
+  if omarchy-update-available >/dev/null; then
+    omarchy-shell -q omarchy.system-update refresh
+  else
+    omarchy-shell -q omarchy.system-update clear
+  fi
+
+  omarchy-update-restart
+}
+
+acquire_update_lock
+
+trap restore_update_inhibitors EXIT
 trap 'echo ""; echo -e "\033[0;31mSomething went wrong during the update!\n\nPlease review the output above carefully, correct the error, and retry the update.\n\nIf you need assistance, get help from the community at https://omarchy.org/discord\033[0m"' ERR
 
-if [[ $1 == "-y" ]] || omarchy-update-confirm; then
+if [[ ${1:-} == "-y" ]] || omarchy-update-confirm; then
   omarchy-snapshot create || (($? == 127))
-  omarchy-update-git
-  omarchy-update-perform
+  run_update_pipeline
 fi

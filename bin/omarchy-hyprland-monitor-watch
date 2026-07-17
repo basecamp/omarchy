@@ -3,12 +3,43 @@
 # omarchy:summary=Watch Hyprland monitor events and recover monitor toggles when a monitor is removed
 
 SOCKET="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+LOCK="${XDG_RUNTIME_DIR:-/tmp}/omarchy-monitor-clamshell.lock"
+
+sync_clamshell() {
+  (
+    flock -n 9 || exit 0
+    omarchy-hyprland-monitor-clamshell
+  ) 9>"$LOCK"
+}
+
+sync_clamshell_after_monitor_change() {
+  sync_clamshell
+
+  (
+    for delay in 1 3 7; do
+      sleep "$delay"
+      sync_clamshell
+    done
+  ) &
+}
+
+poll_clamshell_state() {
+  while true; do
+    sleep 2
+    sync_clamshell
+  done
+}
+
+sync_clamshell_after_monitor_change
+poll_clamshell_state &
 
 socat -U - "UNIX-CONNECT:$SOCKET" | while read -r event; do
   case "$event" in
+    monitoradded\>\>*|monitoraddedv2\>\>*)
+      sync_clamshell_after_monitor_change
+      ;;
     monitorremoved\>\>*|monitorremovedv2\>\>*)
-      omarchy-hyprland-monitor-internal recover
-      omarchy-hyprland-monitor-internal-mirror recover
+      sync_clamshell_after_monitor_change
       ;;
   esac
 done

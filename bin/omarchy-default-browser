@@ -19,13 +19,13 @@ if (($# == 0)); then
 fi
 
 case "$1" in
-chromium) desktop_id="chromium.desktop"; name="Chromium"; glyph="" ;;
-chrome) desktop_id="google-chrome.desktop"; name="Chrome"; glyph="󰊯" ;;
-brave) desktop_id="brave-browser.desktop"; name="Brave"; glyph="󰖟" ;;
-brave-origin) desktop_id="brave-origin-beta.desktop"; name="Brave Origin"; glyph="󰖟" ;;
-edge) desktop_id="microsoft-edge.desktop"; name="Edge"; glyph="󰇩" ;;
-firefox) desktop_id="firefox.desktop"; name="Firefox"; glyph="󰈹" ;;
-zen) desktop_id="zen.desktop"; name="Zen"; glyph="󰖟" ;;
+chromium) desktop_id="chromium.desktop"; name="Chromium"; glyph= ;;
+chrome) desktop_id="google-chrome.desktop"; name="Chrome"; glyph=󰊯 ;;
+brave) desktop_id="brave-browser.desktop"; name="Brave"; glyph=󰖟 ;;
+brave-origin) desktop_id="brave-origin-beta.desktop"; name="Brave Origin"; glyph=󰖟 ;;
+edge) desktop_id="microsoft-edge.desktop"; name="Edge"; glyph=󰇩 ;;
+firefox) desktop_id="firefox.desktop"; name="Firefox"; glyph=󰈹 ;;
+zen) desktop_id="zen.desktop"; name="Zen"; glyph=󰖟 ;;
 *)
   echo "Usage: omarchy-default-browser <chromium|chrome|brave|brave-origin|edge|firefox|zen>"
   exit 1
@@ -37,4 +37,4 @@ xdg-mime default "$desktop_id" x-scheme-handler/http
 xdg-mime default "$desktop_id" x-scheme-handler/https
 xdg-mime default "$desktop_id" text/html
 
-notify-send -u low "$glyph    $name is now the default browser"
+omarchy-notification-send -g $glyph "$name is now the default browser"

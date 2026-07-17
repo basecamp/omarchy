@@ -1,4 +1,5 @@
 # Editor used by CLI
+export EDITOR="${EDITOR:-omarchy-launch-editor --inline}"
 export SUDO_EDITOR="$EDITOR"
 export BAT_THEME=ansi
 
@@ -6,6 +7,11 @@ export BAT_THEME=ansi
 export MANROFFOPT="-c"
 export MANPAGER="sh -c 'col -bx | bat -l man -p'"
 
-# Duplicated from .config/uwsm/env so SSH works too
-export OMARCHY_PATH=$HOME/.local/share/omarchy
-export PATH=$OMARCHY_PATH/bin:$PATH:$HOME/.local/bin
+# Idempotent — already sourced by /etc/skel/.bashrc; re-source here so SSH and
+# other non-interactive non-login bash sessions still get OMARCHY_PATH.
+[ -r /usr/share/omarchy/default/bash/env-bootstrap ] && . /usr/share/omarchy/default/bash/env-bootstrap
+
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) export PATH="$PATH:$HOME/.local/bin" ;;
+esac

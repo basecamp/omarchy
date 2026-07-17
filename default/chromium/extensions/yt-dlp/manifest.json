@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Download Video",
+  "version": "1.0",
+  "description": "Download the current page's video, this extension is installed by Omarchy",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4fww2jejSazrS0dpOBYyx8IfWRkRmek213PnIOaqzAuLK1jE1T+rR+SqBaKnC9j311O6sGrQ+MZJHotJfZyXoKBvSlfiay2z3NU0+Qv1Xa2VaRDuFoHzpfc4OcPvN1B/dGutLCxcLjvSBWEomGVSV1RpK+fgcOeJPFOjKLVrajedv9RnV3JE/Mz3VqBIpkzCUBtsM2eEpZZYWOWuyyk+h6RlbGkHXwudzizf7uJ7bA6RzZKF92wqnbgKDvGji0TwolzAJKALFTul44JzYNiU3Cy7FJXv/aXAKXwAf1VOXXMKie6udXv/M0E1vZAIWHv1sGhkxZZFxZ3C33svlXfg7wIDAQAB",
+  "permissions": ["activeTab", "scripting", "nativeMessaging"],
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "action": {
+    "default_title": "Download Video"
+  },
+  "commands": {
+    "download-video": {
+      "suggested_key": {"default": "Alt+Shift+D"},
+      "description": "Download Video"
+    }
+  },
+  "background": {"service_worker": "background.js"}
+}

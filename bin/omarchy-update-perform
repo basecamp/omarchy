@@ -1,25 +1,7 @@
 #!/bin/bash
 
-# omarchy:summary=Run the full Omarchy update pipeline
+# omarchy:summary=Compatibility wrapper for omarchy-update -y.
+# omarchy:hidden=true
 # omarchy:requires-sudo=true
 
-set -e
-
-# Ensure screensaver/sleep doesn't set in during updates
-hyprctl dispatch 'hl.dsp.window.tag({ tag = "+noidle" })' &>/dev/null || hyprctl dispatch tagwindow +noidle &>/dev/null || true
-
-# Perform all update steps
-omarchy-update-keyring
-omarchy-update-available-reset
-omarchy-update-system-pkgs
-omarchy-migrate
-omarchy-update-aur-pkgs
-omarchy-update-orphan-pkgs
-omarchy-hook post-update
-
-omarchy-update-analyze-logs
-
-omarchy-update-restart
-
-# Re-enable screensaver/sleep after updates
-hyprctl dispatch 'hl.dsp.window.tag({ tag = "-noidle" })' &>/dev/null || hyprctl dispatch tagwindow -- -noidle &>/dev/null || true
+exec omarchy-update -y

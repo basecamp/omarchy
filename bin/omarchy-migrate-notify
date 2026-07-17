@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# omarchy:summary=Notify the user when Omarchy has pending migrations
+
+set -euo pipefail
+
+pending_migrations=$(omarchy-migrate --pending 2>/dev/null) || exit 0
+pending_count=$(printf '%s\n' "$pending_migrations" | sed '/^[[:space:]]*$/d' | wc -l)
+
+if (( pending_count == 1 )); then
+  message="1 new Omarchy migration is available. Click to run it in a terminal."
+else
+  message="$pending_count new Omarchy migrations are available. Click to run them in a terminal."
+fi
+
+notify_command=$(printf 'if [[ -n $(omarchy-notification-send -u critical -g  "Run Omarchy Migrations" %q -a) ]]; then omarchy-launch-floating-terminal-with-presentation omarchy-migrate; fi' "$message")
+
+if command -v systemd-run >/dev/null 2>&1; then
+  unit="omarchy-migrations-notification-$(date +%Y%m%d%H%M%S)"
+  systemd-run --user --scope --unit="$unit" bash -lc "$notify_command" >/dev/null 2>&1 && exit 0
+fi
+
+print_pending_migrations() {
+  echo "Omarchy has pending migrations. Run omarchy-migrate in a terminal to apply them:"
+  while IFS= read -r migration; do
+    [[ -n $migration ]] || continue
+    printf '  %s\n' "$migration"
+  done <<<"$pending_migrations"
+}
+
+if [[ -t 1 ]]; then
+  print_pending_migrations
+else
+  print_pending_migrations >&2
+fi

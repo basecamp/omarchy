@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# omarchy:summary=Set bar position
+# omarchy:args=<top|bottom|left|right>
+# omarchy:examples=omarchy-bar-position top | omarchy bar position bottom
+
+set -e
+
+CONFIG_FILE="$HOME/.config/omarchy/shell.json"
+DEFAULTS_FILE="$OMARCHY_PATH/config/omarchy/shell.json"
+position=$1
+
+if [[ ! $position =~ ^(top|bottom|left|right)$ ]]; then
+  echo "Usage: omarchy-bar-position top|bottom|left|right" >&2
+  exit 1
+fi
+
+mkdir -p "$(dirname "$CONFIG_FILE")"
+tmp=$(mktemp)
+
+# Seed from the default shell.json when the user has no shell.json yet (or it's
+# malformed). Writing just `{ bar: { position } }` would leave the bar with
+# no layout, since the shell treats any valid user config as authoritative
+# and does not deep-merge defaults.
+if [[ -s $CONFIG_FILE ]] && jq -e 'type == "object"' "$CONFIG_FILE" >/dev/null 2>&1; then
+  source="$CONFIG_FILE"
+else
+  source="$DEFAULTS_FILE"
+fi
+
+jq --arg position "$position" '
+  .version = 1 |
+  .bar = ((.bar // {}) | if type == "object" then . else {} end) |
+  .bar.position = $position
+' "$source" >"$tmp"
+
+mv "$tmp" "$CONFIG_FILE"

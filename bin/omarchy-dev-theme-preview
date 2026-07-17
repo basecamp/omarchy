@@ -1,0 +1,439 @@
+#!/bin/bash
+
+# omarchy:summary=Preview an Omarchy theme palette in the terminal
+# omarchy:args=[theme-name|theme-dir|colors.toml] [--no-color] [--no-osc|--osc]
+# omarchy:examples=omarchy dev theme-preview | omarchy dev theme-preview tokyo-night | omarchy dev theme-preview themes/gruvbox/colors.toml --no-color --no-osc
+
+set -o pipefail
+
+CURRENT_THEME_PATH="$HOME/.local/state/omarchy/current/theme"
+USER_THEMES_PATH="$HOME/.config/omarchy/themes"
+OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
+
+COLOR_OUTPUT=1
+APPLY_OSC="auto"
+THEME_REF=""
+declare -A COLORS
+
+usage() {
+  cat <<'USAGE'
+Usage: omarchy-dev-theme-preview [theme-name|theme-dir|colors.toml] [--no-color] [--no-osc]
+
+Preview a theme palette in the terminal. Without an argument, previews the
+current theme from ~/.local/state/omarchy/current/theme/colors.toml.
+
+When stdout is a terminal and color output is enabled, the preview also applies
+that theme's OSC palette to the current terminal only. Use --no-osc to suppress
+that, or --osc to force it even when stdout is not detected as a terminal.
+USAGE
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --no-color | --plain)
+      COLOR_OUTPUT=0
+      APPLY_OSC="never"
+      ;;
+    --no-osc)
+      APPLY_OSC="never"
+      ;;
+    --osc | --apply-osc | --terminal)
+      APPLY_OSC="always"
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      if [[ -n $THEME_REF ]]; then
+        usage >&2
+        exit 1
+      fi
+      THEME_REF="$arg"
+      ;;
+  esac
+done
+
+if [[ -n ${NO_COLOR:-} ]]; then
+  COLOR_OUTPUT=0
+fi
+
+normalize_theme_name() {
+  printf '%s' "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-'
+}
+
+resolve_colors_file() {
+  local ref="$1"
+  local theme_name
+
+  if [[ -z $ref ]]; then
+    printf '%s/colors.toml' "$CURRENT_THEME_PATH"
+  elif [[ -f $ref ]]; then
+    printf '%s' "$ref"
+  elif [[ -d $ref && -f $ref/colors.toml ]]; then
+    printf '%s/colors.toml' "$ref"
+  else
+    theme_name=$(normalize_theme_name "$ref")
+    if [[ -f $USER_THEMES_PATH/$theme_name/colors.toml ]]; then
+      printf '%s/colors.toml' "$USER_THEMES_PATH/$theme_name"
+    elif [[ -f $OMARCHY_THEMES_PATH/$theme_name/colors.toml ]]; then
+      printf '%s/colors.toml' "$OMARCHY_THEMES_PATH/$theme_name"
+    else
+      return 1
+    fi
+  fi
+}
+
+omarchy_tool() {
+  local tool="$1"
+  shift
+
+  if [[ -x $OMARCHY_PATH/bin/$tool ]]; then
+    "$OMARCHY_PATH/bin/$tool" "$@"
+  else
+    "$tool" "$@"
+  fi
+}
+
+load_colors() {
+  local colors_file="$1"
+  local key value
+  local -A resolved=()
+
+  while IFS=$'\t' read -r key value; do
+    resolved[$key]="$value"
+  done < <(omarchy_tool omarchy-theme-color --file "$colors_file" --all)
+
+  # Preview the palette the theme itself defines, at canonically resolved values.
+  while IFS=$'\t' read -r key value; do
+    COLORS[$key]="${resolved[$key]:-}"
+  done < <(omarchy_tool omarchy-theme-color --file "$colors_file" --raw)
+
+  # Plus the core slots every theme resolves, so sparse and legacy themes
+  # still render a complete preview.
+  for key in mode bg fg light_fg bright_fg selection_background selection_foreground dark_bg darker_bg; do
+    [[ -n ${resolved[$key]:-} ]] && COLORS[$key]="${resolved[$key]}"
+  done
+
+  return 0
+}
+
+hex_parts() {
+  local hex="${1#\#}"
+
+  printf '%d %d %d' "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
+}
+
+hex_valid() {
+  [[ $1 =~ ^#[0-9A-Fa-f]{6}$ ]]
+}
+
+luma_sum() {
+  local r g b
+
+  read -r r g b < <(hex_parts "$1")
+  printf '%d' $((r * 2126 + g * 7152 + b * 722))
+}
+
+contrast_ratio() {
+  local fg="$1"
+  local bg="$2"
+
+  awk -v fg="${fg#\#}" -v bg="${bg#\#}" '
+    function hex_value(char) { return index("0123456789abcdef", tolower(char)) - 1 }
+    function hex_pair(hex, idx) { return hex_value(substr(hex, idx, 1)) * 16 + hex_value(substr(hex, idx + 1, 1)) }
+    function channel(hex, idx) { return hex_pair(hex, idx) / 255 }
+    function linear(c) { return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ^ 2.4 }
+    function lum(hex) {
+      return 0.2126 * linear(channel(hex, 1)) + 0.7152 * linear(channel(hex, 3)) + 0.0722 * linear(channel(hex, 5))
+    }
+    BEGIN {
+      a = lum(fg)
+      b = lum(bg)
+      if (a < b) { tmp = a; a = b; b = tmp }
+      printf "%.2f", (a + 0.05) / (b + 0.05)
+    }
+  '
+}
+
+ansi_bg() {
+  local r g b
+
+  read -r r g b < <(hex_parts "$1")
+  printf '\033[48;2;%d;%d;%dm' "$r" "$g" "$b"
+}
+
+ansi_fg() {
+  local r g b
+
+  read -r r g b < <(hex_parts "$1")
+  printf '\033[38;2;%d;%d;%dm' "$r" "$g" "$b"
+}
+
+reset_ansi() {
+  printf '\033[0m'
+}
+
+apply_terminal_osc() {
+  case "$APPLY_OSC" in
+    never)
+      return
+      ;;
+    auto)
+      [[ -t 1 ]] && (( COLOR_OUTPUT )) || return
+      ;;
+    always)
+      ;;
+  esac
+
+  omarchy_tool omarchy-theme-osc "$colors_file" || true
+}
+
+swatch() {
+  local hex="$1"
+  local width="${2:-18}"
+  local i
+
+  if (( COLOR_OUTPUT )) && hex_valid "$hex"; then
+    ansi_bg "$hex"
+    for (( i = 0; i < width; i++ )); do
+      printf ' '
+    done
+    reset_ansi
+  else
+    for (( i = 0; i < width; i++ )); do
+      printf '#'
+    done
+  fi
+}
+
+print_color_row() {
+  local key="$1"
+  local hex="${COLORS[$key]}"
+
+  [[ -n $hex ]] || return
+  printf '  %-22s %-9s ' "$key" "$hex"
+  swatch "$hex" 20
+  printf '\n'
+}
+
+paint_segment() {
+  local text="$1"
+  local fg="$2"
+  local bg="${3:-${COLORS[bg]}}"
+
+  if (( COLOR_OUTPUT )) && hex_valid "$fg" && hex_valid "$bg"; then
+    ansi_bg "$bg"
+    ansi_fg "$fg"
+    printf '%s' "$text"
+    reset_ansi
+  else
+    printf '%s' "$text"
+  fi
+}
+
+print_group() {
+  local title="$1"
+  shift
+  local key
+
+  printf '\n%s\n' "$title"
+  for key in "$@"; do
+    print_color_row "$key"
+  done
+}
+
+print_selection_sample() {
+  local bg="${COLORS[bg]}"
+  local fg="${COLORS[fg]}"
+  local selection_bg="${COLORS[selection_background]}"
+  local selection_fg="${COLORS[selection_foreground]}"
+
+  [[ -n $bg && -n $fg && -n $selection_bg && -n $selection_fg ]] || return
+
+  printf '\nSelection sample\n  '
+  if (( COLOR_OUTPUT )) && hex_valid "$bg" && hex_valid "$fg" && hex_valid "$selection_bg" && hex_valid "$selection_fg"; then
+    ansi_bg "$bg"
+    ansi_fg "$fg"
+    printf ' This is some '
+    ansi_bg "$selection_bg"
+    ansi_fg "$selection_fg"
+    printf 'selected text'
+    ansi_bg "$bg"
+    ansi_fg "$fg"
+    printf ' in a sentence '
+    reset_ansi
+    printf '\n'
+  else
+    printf 'This is some [selected text] in a sentence\n'
+  fi
+}
+
+print_practical_samples() {
+  printf '\nTerminal/UI samples\n'
+  printf '  '
+  paint_segment ' normal text ' "${COLORS[fg]}"
+  paint_segment ' muted/comment ' "${COLORS[muted]}"
+  paint_segment ' accent/link ' "${COLORS[accent]}"
+  paint_segment ' error ' "${COLORS[red]}"
+  paint_segment ' warning ' "${COLORS[yellow]}"
+  paint_segment ' success ' "${COLORS[green]}"
+  printf '\n  '
+  paint_segment ' $ omarchy theme-preview ' "${COLORS[green]}"
+  paint_segment ' # comment ' "${COLORS[muted]}"
+  paint_segment ' "string" ' "${COLORS[green]}"
+  paint_segment ' function() ' "${COLORS[blue]}"
+  paint_segment ' --flag ' "${COLORS[magenta]}"
+  printf '\n  '
+  paint_segment ' unselected menu row ' "${COLORS[fg]}"
+  printf '\n  '
+  paint_segment ' selected menu row ' "${COLORS[selection_foreground]}" "${COLORS[selection_background]}"
+  printf '\n  '
+  paint_segment ' status/inverse ' "${COLORS[bg]}" "${COLORS[fg]}"
+  paint_segment ' inactive surface ' "${COLORS[fg]}" "${COLORS[lighter_bg]}"
+  paint_segment ' urgent ' "${COLORS[bg]}" "${COLORS[red]}"
+  printf '\n'
+}
+
+print_palette_strip() {
+  local title="$1"
+  shift
+  local key hex
+
+  printf '  %-12s ' "$title"
+  for key in "$@"; do
+    hex="${COLORS[$key]}"
+    if [[ -n $hex ]]; then
+      swatch "$hex" 4
+      printf ' '
+    fi
+  done
+  printf '\n'
+}
+
+print_ansi_palette() {
+  printf '\nANSI palette strips\n'
+  print_palette_strip normal bg red green yellow blue magenta cyan fg
+  print_palette_strip bright muted bright_red bright_green bright_yellow bright_blue bright_magenta bright_cyan bright_fg
+}
+
+mix_hex() {
+  local start="$1"
+  local end="$2"
+  local index="$3"
+  local max_index="$4"
+  local sr sg sb er eg eb r g b
+
+  read -r sr sg sb < <(hex_parts "$start")
+  read -r er eg eb < <(hex_parts "$end")
+
+  if (( max_index == 0 )); then
+    printf '%s' "$start"
+    return
+  fi
+
+  r=$(((sr * (max_index - index) + er * index + max_index / 2) / max_index))
+  g=$(((sg * (max_index - index) + eg * index + max_index / 2) / max_index))
+  b=$(((sb * (max_index - index) + eb * index + max_index / 2) / max_index))
+  printf '#%02x%02x%02x' "$r" "$g" "$b"
+}
+
+print_gradient() {
+  local start_key="$1"
+  local end_key="$2"
+  local start="${COLORS[$start_key]}"
+  local end="${COLORS[$end_key]}"
+  local steps=24
+  local i hex
+
+  [[ -n $start && -n $end ]] || return
+  hex_valid "$start" && hex_valid "$end" || return
+
+  printf '\n%s -> %s gradient\n' "$start_key" "$end_key"
+  printf '  %s ' "$start"
+  for (( i = 0; i < steps; i++ )); do
+    hex=$(mix_hex "$start" "$end" "$i" "$((steps - 1))")
+    if (( COLOR_OUTPUT )); then
+      ansi_bg "$hex"
+      printf '  '
+      reset_ansi
+    else
+      printf '%s ' "$hex"
+    fi
+  done
+  printf ' %s\n' "$end"
+}
+
+print_neutral_ramp() {
+  local mode="$1"
+  local direction sort_flag key hex score entry
+  local -a keys entries sorted
+
+  keys=(darker_bg dark_bg bg lighter_bg selection muted dark_fg fg light_fg bright_fg)
+  if [[ $mode == "light" ]]; then
+    direction="lightest -> darkest"
+    sort_flag="-rn"
+  else
+    direction="darkest -> lightest"
+    sort_flag="-n"
+  fi
+
+  for key in "${keys[@]}"; do
+    hex="${COLORS[$key]}"
+    [[ -n $hex ]] || continue
+    hex_valid "$hex" || continue
+    score=$(luma_sum "$hex")
+    entries+=("$score $key")
+  done
+
+  (( ${#entries[@]} > 0 )) || return
+
+  mapfile -t sorted < <(printf '%s\n' "${entries[@]}" | sort "$sort_flag")
+
+  printf '\nNeutral ramp (%s)\n' "$direction"
+  for entry in "${sorted[@]}"; do
+    key="${entry#* }"
+    print_color_row "$key"
+  done
+}
+
+colors_file=$(resolve_colors_file "$THEME_REF") || {
+  echo "Theme not found: $THEME_REF" >&2
+  exit 1
+}
+
+if [[ ! -f $colors_file ]]; then
+  echo "Missing colors.toml: $colors_file" >&2
+  exit 1
+fi
+
+load_colors "$colors_file"
+
+mode="${COLORS[mode]:-dark}"
+
+theme_label="$THEME_REF"
+if [[ -z $theme_label ]]; then
+  if [[ -f $HOME/.local/state/omarchy/current/theme.name ]]; then
+    theme_label=$(<"$HOME/.local/state/omarchy/current/theme.name")
+  else
+    theme_label="current"
+  fi
+fi
+
+apply_terminal_osc
+
+printf 'Theme: %s\n' "$theme_label"
+printf 'File:  %s\n' "$colors_file"
+printf 'Mode:  %s\n' "$mode"
+if [[ ${COLORS[fg]} =~ ^#[0-9A-Fa-f]{6}$ && ${COLORS[bg]} =~ ^#[0-9A-Fa-f]{6}$ ]]; then
+  printf 'fg/bg contrast: %s:1\n' "$(contrast_ratio "${COLORS[fg]}" "${COLORS[bg]}")"
+fi
+
+print_gradient bg bright_fg
+print_neutral_ramp "$mode"
+print_group "Foundation" bg fg accent selection
+print_selection_sample
+print_practical_samples
+print_ansi_palette
+print_group "Normal colors" red yellow orange green cyan blue magenta brown
+print_group "Bright colors" bright_red bright_yellow bright_green bright_cyan bright_blue bright_magenta bright_fg

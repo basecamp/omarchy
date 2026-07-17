@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# omarchy:summary=Copy a file to the clipboard and paste it
+# omarchy:group=clipboard
+# omarchy:args=[--copy-only] <mime-type> <path>
+# omarchy:examples=omarchy clipboard paste file image/png /tmp/screenshot.png
+# omarchy:hidden=true
+
+copy_only=false
+
+if [[ ${1:-} == "--copy-only" ]]; then
+  copy_only=true
+  shift
+fi
+
+mime=${1:-}
+path=${2:-}
+
+if [[ -z $mime || -z $path ]]; then
+  echo "Usage: omarchy-clipboard-paste-file [--copy-only] <mime-type> <path>" >&2
+  exit 1
+fi
+
+[[ -r $path ]] || exit 1
+
+wl-copy --type "$mime" < "$path"
+
+if [[ $copy_only == "true" ]]; then
+  exit
+fi
+
+sleep 0.15
+wtype -M shift -k Insert -m shift 2>/dev/null || true

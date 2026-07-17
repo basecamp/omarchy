@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:summary=Install a Nerd Font package and switch the system to it
+# omarchy:args=<display-name> <package> <family>
+# omarchy:examples=omarchy install font 'Cascadia Mono' ttf-cascadia-mono-nerd 'CaskaydiaMono Nerd Font'
+
+name="${1-}"
+package="${2-}"
+family="${3-}"
+
+if [[ -z $name || -z $package || -z $family ]]; then
+  echo "Usage: omarchy-install-font <display-name> <package> <family>" >&2
+  exit 1
+fi
+
+exec omarchy-launch-floating-terminal-with-presentation \
+  "echo 'Installing ${name}...'; omarchy-pkg-add ${package} && sleep 2 && omarchy-font-set '${family}'"

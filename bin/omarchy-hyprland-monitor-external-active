@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true when Hyprland has an active external monitor
+# omarchy:hidden=true
+
+hyprctl monitors -j | jq -e '.[] | select(.name | test("^(eDP|LVDS|DSI)-") | not) | select(.disabled == false)' >/dev/null 2>&1

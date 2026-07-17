@@ -1,0 +1,93 @@
+#!/bin/bash
+
+# omarchy:summary=Apply Omarchy system setup in the installed target
+# omarchy:group=setup
+# omarchy:requires-sudo=true
+# omarchy:examples=omarchy setup system --install-user dhh --first-install
+
+set -euo pipefail
+
+usage() {
+  cat <<USAGE
+Usage: omarchy setup system --install-user USER [--first-install|--upgrade]
+
+Runs root-owned Omarchy system setup. The ISO calls this in the target chroot
+after packages are installed and the target user exists. It also calls
+omarchy-setup-hardware, so hardware setup cannot be accidentally skipped.
+USAGE
+}
+
+install_user="${OMARCHY_INSTALL_USER:-}"
+first_install=0
+upgrade=0
+
+while (($#)); do
+  case "$1" in
+    --install-user)
+      install_user="${2:-}"
+      shift 2
+      ;;
+    --first-install)
+      first_install=1
+      shift
+      ;;
+    --upgrade)
+      upgrade=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if (( EUID != 0 )); then
+  echo "Error: omarchy-setup-system must run as root" >&2
+  exit 1
+fi
+
+if [[ -z $install_user || $install_user == "root" ]]; then
+  echo "Error: --install-user must name the target non-root user" >&2
+  exit 1
+fi
+
+if ! getent passwd "$install_user" >/dev/null; then
+  echo "Error: user '$install_user' does not exist" >&2
+  exit 1
+fi
+
+export OMARCHY_INSTALL_USER="$install_user"
+export OMARCHY_FIRST_INSTALL="$first_install"
+export OMARCHY_UPGRADE="$upgrade"
+export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+export OMARCHY_INSTALL="${OMARCHY_INSTALL:-$OMARCHY_PATH/install}"
+export OMARCHY_INSTALL_LOG_FILE="${OMARCHY_INSTALL_LOG_FILE:-/var/log/omarchy-install.log}"
+export PATH="$OMARCHY_PATH/bin:$PATH"
+
+source "$OMARCHY_INSTALL/helpers/logging.sh"
+start_install_log
+
+run_logged "$OMARCHY_INSTALL/config/theme-system.sh"
+run_logged "$OMARCHY_INSTALL/config/increase-lockout-limit.sh"
+run_logged "$OMARCHY_INSTALL/config/lockscreen-pam.sh"
+run_logged "$OMARCHY_INSTALL/config/fix-powerprofilesctl-shebang.sh"
+run_logged "$OMARCHY_INSTALL/config/docker.sh"
+run_logged "$OMARCHY_INSTALL/config/snapper.sh"
+run_logged "$OMARCHY_INSTALL/config/enable-services.sh"
+run_logged "$OMARCHY_INSTALL/config/firewall.sh"
+
+omarchy-setup-hardware --install-user "$install_user"
+
+run_logged "$OMARCHY_INSTALL/login/sddm.sh"
+
+run_logged "$OMARCHY_INSTALL/post-install/pacman.sh"
+run_logged "$OMARCHY_INSTALL/post-install/udev.sh"
+run_logged "$OMARCHY_INSTALL/post-install/localdb.sh"
+
+stop_install_log

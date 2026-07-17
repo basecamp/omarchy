@@ -44,19 +44,14 @@ install_windows() {
 
   mkdir -p "$HOME/.windows"
   mkdir -p "$HOME/.config/windows"
-  mkdir -p "$HOME/.local/share/applications/icons"
-
-  # Install Windows VM icon and desktop file
-  if [[ -f $OMARCHY_PATH/applications/icons/windows.png ]]; then
-    cp "$OMARCHY_PATH/applications/icons/windows.png" "$HOME/.local/share/applications/icons/windows.png"
-  fi
+  mkdir -p "$HOME/.local/share/applications"
 
   cat << EOF | tee "$HOME/.local/share/applications/windows-vm.desktop" > /dev/null
 [Desktop Entry]
 Name=Windows
 Comment=Start Windows VM via Docker and connect with RDP
 Exec=uwsm app -- omarchy-windows-vm launch
-Icon=$HOME/.local/share/applications/icons/windows.png
+Icon=windows
 Terminal=false
 Type=Application
 Categories=System;Virtualization;
@@ -293,7 +288,7 @@ launch_windows() {
     echo "Starting Windows VM..."
 
     # Send desktop notification
-    notify-send "    Starting Windows VM" "      This can take 15-30 seconds" -t 15000
+    omarchy-notification-send -g  "Starting Windows VM" "This can take 15-30 seconds" -t 15000
 
     if ! docker-compose -f "$COMPOSE_FILE" up -d 2>&1; then
       echo "❌ Failed to start Windows VM!"

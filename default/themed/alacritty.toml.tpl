@@ -1,47 +1,47 @@
 [colors.primary]
-background = "{{ background }}"
-foreground = "{{ foreground }}"
+background = "{{ bg }}"
+foreground = "{{ fg }}"
 
 [colors.cursor]
-text = "{{ background }}"
-cursor = "{{ cursor }}"
+text = "{{ bg }}"
+cursor = "{{ bright_fg }}"
 
 [colors.vi_mode_cursor]
-text = "{{ background }}"
-cursor = "{{ cursor }}"
+text = "{{ bg }}"
+cursor = "{{ bright_fg }}"
 
 [colors.search.matches]
-foreground = "{{ background }}"
-background = "{{ color3 }}"
+foreground = "{{ bg }}"
+background = "{{ yellow }}"
 
 [colors.search.focused_match]
-foreground = "{{ background }}"
-background = "{{ color1 }}"
+foreground = "{{ bg }}"
+background = "{{ red }}"
 
 [colors.footer_bar]
-foreground = "{{ background }}"
-background = "{{ foreground }}"
+foreground = "{{ bg }}"
+background = "{{ fg }}"
 
 [colors.selection]
 text = "{{ selection_foreground }}"
 background = "{{ selection_background }}"
 
 [colors.normal]
-black = "{{ color0 }}"
-red = "{{ color1 }}"
-green = "{{ color2 }}"
-yellow = "{{ color3 }}"
-blue = "{{ color4 }}"
-magenta = "{{ color5 }}"
-cyan = "{{ color6 }}"
-white = "{{ color7 }}"
+black = "{{ bg }}"
+red = "{{ red }}"
+green = "{{ green }}"
+yellow = "{{ yellow }}"
+blue = "{{ blue }}"
+magenta = "{{ magenta }}"
+cyan = "{{ cyan }}"
+white = "{{ fg }}"
 
 [colors.bright]
-black = "{{ color8 }}"
-red = "{{ color9 }}"
-green = "{{ color10 }}"
-yellow = "{{ color11 }}"
-blue = "{{ color12 }}"
-magenta = "{{ color13 }}"
-cyan = "{{ color14 }}"
-white = "{{ color15 }}"
+black = "{{ muted }}"
+red = "{{ bright_red }}"
+green = "{{ bright_green }}"
+yellow = "{{ bright_yellow }}"
+blue = "{{ bright_blue }}"
+magenta = "{{ bright_magenta }}"
+cyan = "{{ bright_cyan }}"
+white = "{{ bright_fg }}"

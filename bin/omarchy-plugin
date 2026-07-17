@@ -1,0 +1,535 @@
+#!/bin/bash
+
+# omarchy:summary=Manage Omarchy shell plugins and bar widgets
+# omarchy:group=plugin
+# omarchy:args=<list|rescan|enable|disable|add|update|remove|clone|edit|validate|bar> [...]
+# omarchy:examples=omarchy plugin list | omarchy plugin add https://github.com/acme/omarchy-weather.git | omarchy plugin update --all | omarchy plugin clone omarchy.clock local.clock | omarchy plugin bar settings
+
+set -euo pipefail
+
+PLUGINS_DIR="$HOME/.config/omarchy/plugins"
+
+# Never let git block an unattended run on a credential or host-key prompt; fail
+# fast instead so error paths can handle it.
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -oBatchMode=yes}"
+
+usage() {
+  cat <<USAGE
+Usage: omarchy-plugin <command> [args...]
+
+Manage plugins:
+  list [--json]                       List discovered shell plugins
+  rescan                              Rescan ~/.config/omarchy/plugins
+  enable <id> [placement]             Enable a plugin
+  disable <id>                        Disable a plugin
+
+Install from git (a plugin is a git repo):
+  add [git-url] [--enable] [--yes]    Clone a plugin repo into your plugins
+  update [id | --all] [--yes]         Fetch, review the diff, fast-forward
+  remove [id] [--yes]                 Disable and delete an installed plugin
+
+  Plugins are unsandboxed code — review what you add and enable.
+
+Make your own:
+  clone [source] [new-id] [options]   Clone a built-in or user plugin
+  edit [id]                           Open a user plugin directory in a shell
+  validate <plugin-folder>            Check a plugin's manifest (for authors)
+
+Bar commands (delegate to 'omarchy bar'; run 'omarchy bar --help' for details):
+  bar settings                        Open the inline bar config panel
+  bar list|layout|options|use|reset|add|move|remove|set|position|transparent
+  widget|widgets                      Alias of 'bar list'
+
+Examples:
+  omarchy plugin add https://github.com/acme/omarchy-weather.git --enable
+  omarchy plugin update --all
+  omarchy plugin clone omarchy.clock local.clock --name "My Clock" --replace
+  omarchy plugin enable acme.weather --section right
+USAGE
+}
+
+fail() {
+  echo "omarchy-plugin: $*" >&2
+  exit 1
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
+}
+
+interactive() {
+  [[ -t 0 && -t 1 ]]
+}
+
+# Yes/no prompt. Honours ASSUME_YES, and refuses in a non-interactive context so
+# an agent must pass --yes deliberately rather than hang on a prompt.
+ASSUME_YES=0
+confirm() {
+  local prompt="$1"
+  (( ASSUME_YES )) && return 0
+  if interactive; then
+    gum confirm "$prompt"
+    return
+  fi
+  fail "refusing to continue without confirmation; pass --yes"
+}
+
+# Plugin ids become paths under PLUGINS_DIR that we mv/rm, so reject anything
+# that could escape it (matches the id rules in omarchy-plugin-validate).
+valid_plugin_id() {
+  [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $1 != *..* ]]
+}
+
+installed_plugin_ids() {
+  find "$PLUGINS_DIR" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) ! -name '.*' -printf '%f\n' 2>/dev/null | sort
+}
+
+plugin_discovered() {
+  local id="$1" plugins
+  plugins=$(omarchy-shell shell listPlugins 2>/dev/null) || return 1
+  jq -e --arg id "$id" 'any(.[]; .id == $id)' <<<"$plugins" >/dev/null 2>&1
+}
+
+wait_for_plugin_discovery() {
+  local id="$1" attempt
+  for (( attempt = 0; attempt < 40; attempt++ )); do
+    plugin_discovered "$id" && return 0
+    sleep 0.05
+  done
+  return 1
+}
+
+print_plugins() {
+  local json="false"
+
+  while (( $# > 0 )); do
+    case "$1" in
+    --json)
+      json="true"
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      fail "unknown list option: $1"
+      ;;
+    esac
+    shift
+  done
+
+  local plugins
+  plugins=$(omarchy-shell shell listPlugins) || fail "could not list plugins; is omarchy-shell running?"
+
+  if [[ $json == "true" ]]; then
+    printf '%s\n' "$plugins"
+    return
+  fi
+
+  require_command jq
+  jq -r '
+    sort_by(.id)[] |
+    [ .id,
+      (if .enabled then "enabled" else "disabled" end),
+      (if .firstParty then "first-party" else "third-party" end),
+      ((.kinds // []) | join(",")),
+      (.name // "")
+    ] | @tsv
+  ' <<<"$plugins" | awk -F '\t' '
+    BEGIN { printf "%-32s %-9s %-11s %-18s %s\n", "ID", "STATE", "SOURCE", "KINDS", "NAME" }
+    { printf "%-32s %-9s %-11s %-18s %s\n", $1, $2, $3, $4, $5 }
+  '
+}
+
+rescan_plugins() {
+  (( $# == 0 )) || fail "rescan does not take arguments"
+  omarchy-shell shell rescanPlugins || fail "could not rescan plugins; is omarchy-shell running?"
+  echo "Plugins rescanned"
+}
+
+plugin_enabled() {
+  local enabled="$1"
+  local id="${2:-}"
+  [[ -n $id ]] || fail "plugin id is required"
+  shift 2
+
+  if [[ $enabled != "true" && $# -gt 0 ]]; then
+    fail "disable does not take placement options"
+  fi
+
+  omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+  if [[ $enabled == "true" ]]; then
+    require_command jq
+    wait_for_plugin_discovery "$id" || fail "plugin '$id' was not discovered; is omarchy-shell running?"
+  fi
+
+  local result
+  result=$(omarchy-shell shell setPluginEnabled "$id" "$enabled") || fail "could not update plugin; is omarchy-shell running?"
+  [[ $result == "ok" ]] || fail "plugin '$id' is not known; run: omarchy plugin rescan"
+
+  if [[ $enabled == "true" && $# -gt 0 ]]; then
+    omarchy-bar move "$id" "$@"
+    echo "Enabled and moved $id"
+  elif [[ $enabled == "true" ]]; then
+    echo "Enabled $id"
+  else
+    echo "Disabled $id"
+  fi
+}
+
+# ---------------------------------------------------------------- add
+
+plugin_add() {
+  require_command git
+  require_command jq
+
+  local url="" enable_after=""
+  while (( $# > 0 )); do
+    case "$1" in
+    --enable) enable_after=true; shift ;;
+    --no-enable) enable_after=false; shift ;;
+    --yes | -y) ASSUME_YES=1; shift ;;
+    -h | --help) usage; return 0 ;;
+    -*) fail "unknown add option: $1" ;;
+    *)
+      [[ -z $url ]] || fail "unexpected argument: $1"
+      url="$1"; shift ;;
+    esac
+  done
+
+  if [[ -z $url ]]; then
+    interactive || fail "a git URL is required (e.g. omarchy plugin add https://github.com/acme/omarchy-weather.git)"
+    url=$(gum input --prompt "Git URL of the plugin repo: ") || fail "cancelled"
+    [[ -n $url ]] || fail "a git URL is required"
+  fi
+
+  if (( ! ASSUME_YES )); then
+    cat >&2 <<WARN
+
+⚠️  Plugins run as arbitrary, unsandboxed code inside your long-lived
+  omarchy-shell process. Only add repos you trust, and review the code
+  before you enable it.
+
+      URL: $url
+
+WARN
+    confirm "Clone and add this plugin?" || fail "aborted"
+  fi
+
+  mkdir -p "$PLUGINS_DIR"
+
+  # Clone into a dot-prefixed staging dir (invisible to the plugin scanner) so
+  # a plugin only ever appears under its manifest id, fully validated.
+  local stage="$PLUGINS_DIR/.add.tmp.$$"
+  rm -rf "$stage"
+  if ! git clone -- "$url" "$stage"; then
+    rm -rf "$stage"
+    fail "failed to clone $url"
+  fi
+
+  if ! omarchy-plugin-validate "$stage"; then
+    rm -rf "$stage"
+    fail "refusing to add: validation failed"
+  fi
+
+  local id
+  id=$(jq -r '.id' "$stage/manifest.json")
+  local target="$PLUGINS_DIR/$id"
+  if [[ -e $target || -L $target ]]; then
+    rm -rf "$stage"
+    fail "plugin '$id' is already installed; update it with: omarchy plugin update $id"
+  fi
+  mv "$stage" "$target"
+  echo "Added $id into $target"
+
+  omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+
+  if [[ -z $enable_after ]]; then
+    if (( ASSUME_YES )) || ! interactive; then
+      enable_after=false
+    elif confirm "Enable '$id' now?"; then
+      enable_after=true
+    else
+      enable_after=false
+    fi
+  fi
+
+  if [[ $enable_after == true ]]; then
+    if wait_for_plugin_discovery "$id" && [[ $(omarchy-shell shell setPluginEnabled "$id" true) == "ok" ]]; then
+      echo "Enabled $id"
+    else
+      echo "Could not enable $id (is omarchy-shell running?). Enable later with: omarchy plugin enable $id" >&2
+    fi
+  else
+    echo "Enable it later with: omarchy plugin enable $id"
+  fi
+}
+
+# ---------------------------------------------------------------- update
+
+UPDATED_ANY=0
+
+update_one() {
+  local id="$1"
+  local dir="$PLUGINS_DIR/$id"
+
+  if ! git -C "$dir" fetch --quiet origin HEAD; then
+    echo "omarchy-plugin: fetch failed for '$id'" >&2
+    return 1
+  fi
+
+  if [[ $(git -C "$dir" rev-parse HEAD) == $(git -C "$dir" rev-parse FETCH_HEAD) ]]; then
+    echo "$id is up to date."
+    return 0
+  fi
+
+  if (( ! ASSUME_YES )); then
+    echo "Changes for $id:"
+    if command -v delta >/dev/null 2>&1; then
+      git -C "$dir" diff HEAD FETCH_HEAD | delta --paging=never
+    else
+      git -C "$dir" diff HEAD FETCH_HEAD
+    fi
+    echo
+    confirm "Update $id?" || { echo "Skipped $id."; return 0; }
+  fi
+
+  if ! git -C "$dir" merge --ff-only FETCH_HEAD >/dev/null 2>&1; then
+    echo "omarchy-plugin: cannot fast-forward '$id'; you have local changes in $dir" >&2
+    return 1
+  fi
+
+  # An update is code the shell will run, same as an add: re-validate, and roll
+  # back to the pre-merge commit if upstream turned invalid.
+  if ! omarchy-plugin-validate "$dir"; then
+    git -C "$dir" reset --hard ORIG_HEAD >/dev/null
+    echo "omarchy-plugin: update of '$id' failed validation; rolled back" >&2
+    return 1
+  fi
+
+  echo "Updated $id."
+  UPDATED_ANY=1
+}
+
+plugin_update() {
+  require_command git
+
+  local id="" all=0
+  while (( $# > 0 )); do
+    case "$1" in
+    --all | -a) all=1; shift ;;
+    --yes | -y) ASSUME_YES=1; shift ;;
+    -h | --help) usage; return 0 ;;
+    -*) fail "unknown update option: $1" ;;
+    *)
+      [[ -z $id ]] || fail "unexpected argument: $1"
+      id="$1"; shift ;;
+    esac
+  done
+  if (( all )) && [[ -n $id ]]; then
+    fail "pass either a plugin-id or --all, not both"
+  fi
+
+  [[ -d $PLUGINS_DIR ]] || fail "no plugins installed"
+
+  local -a targets=()
+  if [[ -n $id ]]; then
+    valid_plugin_id "$id" || fail "invalid plugin id '$id'"
+    [[ -d "$PLUGINS_DIR/$id" ]] || fail "plugin '$id' is not installed"
+    [[ -d "$PLUGINS_DIR/$id/.git" ]] || fail "plugin '$id' is not a git checkout, so there is nothing to pull from"
+    targets=("$id")
+  else
+    local dir
+    for dir in "$PLUGINS_DIR"/*/; do
+      [[ -d $dir/.git ]] || continue
+      targets+=("$(basename "$dir")")
+    done
+    if (( ${#targets[@]} == 0 )); then
+      echo "No git-managed plugins installed."
+      return 0
+    fi
+  fi
+
+  local rc=0
+  for id in "${targets[@]}"; do
+    update_one "$id" || rc=1
+  done
+
+  if (( UPDATED_ANY )); then
+    omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+  fi
+  return $rc
+}
+
+# ---------------------------------------------------------------- remove
+
+plugin_remove() {
+  local id=""
+  while (( $# > 0 )); do
+    case "$1" in
+    --yes | -y) ASSUME_YES=1; shift ;;
+    -h | --help) usage; return 0 ;;
+    -*) fail "unknown remove option: $1" ;;
+    *)
+      [[ -z $id ]] || fail "unexpected argument: $1"
+      id="$1"; shift ;;
+    esac
+  done
+
+  [[ -d $PLUGINS_DIR ]] || fail "no plugins installed"
+
+  if [[ -z $id ]]; then
+    interactive || fail "a plugin-id is required"
+    id=$(installed_plugin_ids | gum choose --header="Remove which plugin?") || fail "cancelled"
+    [[ -n $id ]] || fail "nothing selected"
+  fi
+  valid_plugin_id "$id" || fail "invalid plugin id '$id'"
+
+  local target="$PLUGINS_DIR/$id"
+  [[ -e $target || -L $target ]] || fail "plugin '$id' is not installed"
+
+  local was_enabled=""
+  local shell_plugins
+  if shell_plugins=$(omarchy-shell shell listPlugins 2>/dev/null) && [[ -n $shell_plugins ]]; then
+    was_enabled=$(jq -r --arg id "$id" '.[] | select(.id == $id) | .enabled' <<<"$shell_plugins" 2>/dev/null) || true
+  fi
+
+  if [[ -L $target ]]; then
+    confirm "Unlink '$id' (symlink -> $(readlink "$target"))?" || fail "aborted"
+  elif [[ -d $target/.git ]]; then
+    confirm "Delete '$id'? Its git repo remains upstream." || fail "aborted"
+  else
+    confirm "Remove '$id'? The folder will be backed up." || fail "aborted"
+  fi
+
+  [[ $was_enabled == "true" ]] && omarchy-shell shell setPluginEnabled "$id" false >/dev/null 2>&1 || true
+
+  if [[ -L $target ]]; then
+    # A dev symlink is just unlinked; the files it points at are left alone.
+    rm -f "$target"
+    echo "Unlinked $id."
+  elif [[ -d $target/.git ]]; then
+    rm -rf "$target"
+    echo "Removed $id."
+  else
+    # A hand-made plugin may be the user's only copy, so keep a backup.
+    local base="$PLUGINS_DIR/.${id}.bak.$(date -u +%Y%m%d%H%M%S)"
+    local backup="$base" n=1
+    while [[ -e $backup ]]; do backup="${base}-${n}"; n=$((n + 1)); done
+    mv "$target" "$backup" || fail "failed to move $target to backup"
+    echo "Removed $id. Backup at: $backup"
+  fi
+
+  omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+
+  if [[ $was_enabled == "true" ]]; then
+    echo "Plugin was enabled and was unloaded from omarchy-shell."
+  fi
+}
+
+# ---------------------------------------------------------------- edit
+
+plugin_edit() {
+  local id=""
+  while (( $# > 0 )); do
+    case "$1" in
+    -h | --help) usage; return 0 ;;
+    -*) fail "unknown edit option: $1" ;;
+    *)
+      [[ -z $id ]] || fail "unexpected argument: $1"
+      id="$1"; shift ;;
+    esac
+  done
+
+  if [[ -z $id ]]; then
+    interactive || fail "a plugin id is required"
+    id=$(installed_plugin_ids | gum choose --header="Edit which plugin?") || fail "cancelled"
+    [[ -n $id ]] || fail "nothing selected"
+  fi
+  valid_plugin_id "$id" || fail "invalid plugin id '$id'"
+  [[ $id != omarchy.* ]] || fail "$id is built in; clone it first with: omarchy plugin clone $id"
+
+  local dir="$PLUGINS_DIR/$id"
+  [[ -f $dir/manifest.json ]] || fail "no user plugin at $dir"
+
+  if interactive; then
+    cd "$dir"
+    exec "${SHELL:-bash}"
+  fi
+  printf '%s\n' "$dir"
+}
+
+# ---------------------------------------------------------------- bar
+
+bar_command() {
+  local command="${1:-list}"
+  [[ $# -gt 0 ]] && shift || true
+
+  case "$command" in
+  edit | settings)
+    (( $# == 0 )) || fail "bar settings does not take arguments"
+    exec omarchy-launch-bar-settings
+    ;;
+  -h | --help | help)
+    usage
+    ;;
+  *)
+    exec omarchy-bar "$command" "$@"
+    ;;
+  esac
+}
+
+command="${1:-}"
+case "$command" in
+list | ls)
+  shift
+  print_plugins "$@"
+  ;;
+rescan)
+  shift
+  rescan_plugins "$@"
+  ;;
+enable)
+  shift
+  plugin_enabled true "$@"
+  ;;
+disable)
+  shift
+  plugin_enabled false "$@"
+  ;;
+add | install)
+  shift
+  plugin_add "$@"
+  ;;
+update)
+  shift
+  plugin_update "$@"
+  ;;
+remove | rm)
+  shift
+  plugin_remove "$@"
+  ;;
+edit)
+  shift
+  plugin_edit "$@"
+  ;;
+clone)
+  shift
+  exec omarchy-plugin-clone "$@"
+  ;;
+validate)
+  shift
+  exec omarchy-plugin-validate "$@"
+  ;;
+bar | widget | widgets)
+  shift
+  bar_command "$@"
+  ;;
+-h | --help | help | "")
+  usage
+  ;;
+*)
+  fail "unknown command: $command"
+  ;;
+esac

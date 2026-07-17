@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# omarchy:summary=Point Omarchy at a local checkout after reboot
+# omarchy:group=dev
+# omarchy:args=<path-to-checkout>
+# omarchy:examples=omarchy dev link ~/Work/omarchy/omarchy-installer
+
+set -euo pipefail
+
+if (( EUID == 0 )); then
+  echo "Error: run omarchy-dev-link as your user, not under sudo." >&2
+  exit 1
+fi
+
+if (( $# != 1 )) || [[ $1 == "-h" || $1 == "--help" ]]; then
+  cat <<USAGE
+Usage: omarchy dev link <path-to-checkout>
+
+Writes /etc/omarchy.conf so OMARCHY_PATH resolves to <path-to-checkout>
+after reboot. This intentionally does not rewrite the running Hyprland,
+systemd, shell, or app-launcher environment; reboot to make every layer agree.
+
+Affects only \$OMARCHY_PATH-resolved trees: bin/, default/, shell/,
+themes/, applications/, config/. Files installed at fixed system paths
+(/etc/, /usr/lib/systemd/, udev rule bodies, /etc/skel after user
+creation, /usr/share/plymouth) are NOT covered — for those, use
+omarchy-dev-pkg-test to build and install the package from the checkout.
+USAGE
+  exit 0
+fi
+
+omarchy_conf_quote() {
+  local value="$1"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//\$/\\\$}
+  value=${value//\`/\\\`}
+  printf '"%s"' "$value"
+}
+
+target=$(realpath -e "$1" 2>/dev/null) || {
+  echo "Error: path does not exist: $1" >&2
+  exit 1
+}
+
+for required in bin default shell; do
+  if [[ ! -d $target/$required ]]; then
+    echo "Warning: $target/$required not found — does this look like an Omarchy source checkout?" >&2
+  fi
+done
+
+{
+  printf 'export OMARCHY_PATH='
+  omarchy_conf_quote "$target"
+  printf '\n'
+} | sudo tee /etc/omarchy.conf >/dev/null
+
+echo "Pointed Omarchy at $target"
+echo
+
+if gum confirm "Reboot now to activate?"; then
+  omarchy-system-reboot
+fi

@@ -1,11 +1,12 @@
 #!/bin/bash
 
-# omarchy:summary=Remove terminal UI desktop launchers
-# omarchy:args=[name...]
+# omarchy:summary=Remove a terminal UI desktop launcher
+# omarchy:args=[name]
 
 set -e
 
-ICON_DIR="$HOME/.local/share/applications/icons"
+ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
+OLD_ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_DIR="$HOME/.local/share/applications/"
 
 if (( $# == 0 )); then
@@ -17,30 +18,24 @@ if (( $# == 0 )); then
   done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0)
 
   if ((${#TUIS[@]})); then
-    IFS=$'\n' SORTED_TUIS=($(sort <<<"${TUIS[*]}"))
-    unset IFS
-    APP_NAMES_STRING=$(gum choose --no-limit --header "Select TUI to remove..." --selected-prefix="✗ " "${SORTED_TUIS[@]}")
-    # Convert newline-separated string to array
-    APP_NAMES=()
-    while IFS= read -r line; do
-      [[ -n $line ]] && APP_NAMES+=("$line")
-    done <<< "$APP_NAMES_STRING"
+    mapfile -t SORTED_TUIS < <(printf '%s\n' "${TUIS[@]}" | sort)
+    APP_NAME=$(omarchy-menu-select "Select TUI to remove" "${SORTED_TUIS[@]}" -- --width 520 --maxheight 520)
   else
     echo "No TUIs to remove."
     exit 1
   fi
 else
-  # Use array to preserve spaces in app names
-  APP_NAMES=("$@")
+  APP_NAME="$*"
 fi
 
-if (( ${#APP_NAMES[@]} == 0 )); then
-  echo "You must provide TUI names."
+if [[ -z $APP_NAME ]]; then
+  echo "You must select a TUI to remove."
   exit 1
 fi
 
-for APP_NAME in "${APP_NAMES[@]}"; do
-  rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
-  rm -f "$ICON_DIR/$APP_NAME.png"
-  echo "Removed $APP_NAME"
-done
+icon_name=$(printf '%s\n' "$APP_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')
+rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
+rm -f "$ICON_DIR/$icon_name.png" "$ICON_DIR/$APP_NAME.png" "$OLD_ICON_DIR/$APP_NAME.png"
+if [[ ${OMARCHY_REMOVE_NOTIFY:-true} != "false" ]]; then
+  omarchy-notification-send -g  "TUI removed" "$APP_NAME"
+fi

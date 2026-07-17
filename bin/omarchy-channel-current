@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# omarchy:summary=Print the active Omarchy package channel
+
+set -euo pipefail
+
+# Dev is a linked source checkout: OMARCHY_PATH points somewhere other than
+# the package-backed install at /usr/share/omarchy. This takes precedence over
+# the package channels, since the checkout overrides whatever is installed.
+if [[ $OMARCHY_PATH != "/usr/share/omarchy" ]]; then
+  echo dev
+  exit 0
+fi
+
+# omarchy-dev / omarchy-settings-dev are only shipped from the edge package
+# repo, so their presence alone means edge. omarchy / omarchy-settings come
+# from either the stable or rc mirror, distinguished by omarchy-version-channel
+# (which reports the mirror as its first token).
+if pacman -Q omarchy-dev omarchy-settings-dev >/dev/null 2>&1; then
+  echo edge
+elif pacman -Q omarchy omarchy-settings >/dev/null 2>&1; then
+  channel=$(omarchy-version-channel 2>/dev/null | awk '{ print $1 }')
+  case "$channel" in
+    stable) echo stable ;;
+    rc) echo rc ;;
+    *) echo unknown ;;
+  esac
+else
+  echo unknown
+fi
