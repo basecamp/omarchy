@@ -10,13 +10,13 @@ the shell for its whole session.
 - `widgets/` holds simple first-party bar widgets with sibling manifests.
 - Feature plugins such as `../panels/audio/`, `../panels/network/`, `../panels/power/`, and `../model-usage/` provide richer popup bar plugins.
 - The bar receives its config from the host shell as a `barConfig` property; the host loads it from `~/.config/omarchy/shell.json` (or `config/omarchy/shell.json` when the user has no file).
-- `omarchy-bar-position` updates only the user shell.json file.
+- `omarchy bar position` updates only the user shell.json file.
 
 ## Customizing
 
 The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](../../README.md#shelljson-shape). Out of the box the shell uses [`config/omarchy/shell.json`](../../../config/omarchy/shell.json). Once you customize anything via the inline bar config panel, `omarchy bar ...`, or by editing shell.json directly, your file is canonical — there is no deep-merge.
 
-Open quick position and transparency controls with `omarchy bar settings` (or run `omarchy-launch-bar-settings`). You can also hover the centered clock module to reveal the inline bar config button. For scriptable widget changes, use `omarchy bar list`, `omarchy bar add`, `omarchy bar move`, `omarchy bar remove`, and `omarchy bar set`. Double-left-click empty center-bar space to toggle bar transparency.
+Open quick position and transparency controls with `omarchy bar settings` (or run `omarchy-launch-bar-settings`). You can also hover the centered clock module to reveal the inline bar config button. For scriptable widget changes, use `omarchy bar plugin add`, `omarchy bar plugin move`, `omarchy bar plugin remove`, and `omarchy bar plugin set` (widget ids come from `omarchy plugin list`). Double-left-click empty center-bar space to toggle bar transparency.
 
 Example `shell.json` (bar subtree only shown):
 
@@ -181,4 +181,4 @@ Third-party widgets ship as separate plugins under
 declaring `kinds: ["bar-widget"]` and a `barWidget` entry point. See
 [../../README.md](../../README.md) for the manifest schema. Enable,
 rescan, and place third-party plugins with `omarchy plugin enable`,
-`omarchy plugin rescan`, and `omarchy bar add`.
+`omarchy plugin rescan`, and `omarchy bar plugin add`.

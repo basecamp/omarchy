@@ -131,7 +131,7 @@ You can still drop a plugin in without git:
 1. Put it in `~/.config/omarchy/plugins/<plugin-id>/` with a `manifest.json`
    plus the QML referenced from its `entryPoints`.
 2. `omarchy plugin rescan`.
-3. `omarchy plugin enable <id>` (bar widgets also need `omarchy bar add <id>`; full bar replacements are selected with `omarchy bar use <id>`).
+3. `omarchy plugin enable <id>` (bar widgets also need `omarchy bar plugin add <id>`; full bar replacements are selected with `omarchy bar use <id>`).
 
 The lower-level IPC equivalents remain available via `omarchy-shell shell rescanPlugins`,
 `omarchy-shell shell setPluginEnabled <id> true`, and `omarchy-shell shell listPlugins`.

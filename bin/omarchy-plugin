@@ -2,8 +2,8 @@
 
 # omarchy:summary=Manage Omarchy shell plugins and bar widgets
 # omarchy:group=plugin
-# omarchy:args=<list|rescan|enable|disable|add|update|remove|clone|edit|validate|bar> [...]
-# omarchy:examples=omarchy plugin list | omarchy plugin add https://github.com/acme/omarchy-weather.git | omarchy plugin update --all | omarchy plugin clone omarchy.clock local.clock | omarchy plugin bar settings
+# omarchy:args=<list|rescan|enable|disable|add|update|remove|clone|edit|validate> [...]
+# omarchy:examples=omarchy plugin list | omarchy plugin add https://github.com/acme/omarchy-weather.git | omarchy plugin update --all | omarchy plugin clone omarchy.clock local.clock
 
 set -euo pipefail
 
@@ -36,10 +36,7 @@ Make your own:
   edit [id]                           Open a user plugin directory in a shell
   validate <plugin-folder>            Check a plugin's manifest (for authors)
 
-Bar commands (delegate to 'omarchy bar'; run 'omarchy bar --help' for details):
-  bar settings                        Open the inline bar config panel
-  bar list|layout|options|use|reset|add|move|remove|set|position|transparent
-  widget|widgets                      Alias of 'bar list'
+Bar widgets are placed in the layout with 'omarchy bar plugin'.
 
 Examples:
   omarchy plugin add https://github.com/acme/omarchy-weather.git --enable
@@ -169,7 +166,7 @@ plugin_enabled() {
   [[ $result == "ok" ]] || fail "plugin '$id' is not known; run: omarchy plugin rescan"
 
   if [[ $enabled == "true" && $# -gt 0 ]]; then
-    omarchy-bar move "$id" "$@"
+    omarchy-bar-plugin move "$id" "$@"
     echo "Enabled and moved $id"
   elif [[ $enabled == "true" ]]; then
     echo "Enabled $id"
@@ -460,26 +457,6 @@ plugin_edit() {
   printf '%s\n' "$dir"
 }
 
-# ---------------------------------------------------------------- bar
-
-bar_command() {
-  local command="${1:-list}"
-  [[ $# -gt 0 ]] && shift || true
-
-  case "$command" in
-  edit | settings)
-    (( $# == 0 )) || fail "bar settings does not take arguments"
-    exec omarchy-launch-bar-settings
-    ;;
-  -h | --help | help)
-    usage
-    ;;
-  *)
-    exec omarchy-bar "$command" "$@"
-    ;;
-  esac
-}
-
 command="${1:-}"
 case "$command" in
 list | ls)
@@ -521,10 +498,6 @@ clone)
 validate)
   shift
   exec omarchy-plugin-validate "$@"
-  ;;
-bar | widget | widgets)
-  shift
-  bar_command "$@"
   ;;
 -h | --help | help | "")
   usage

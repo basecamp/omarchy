@@ -60,7 +60,7 @@ arguments — add `--yes` to skip every prompt (the path for scripts and agents)
 
 You can still install by hand: drop a plugin into
 `~/.config/omarchy/plugins/<id>/`, run `omarchy plugin rescan`, then
-`omarchy plugin enable <id>` (bar widgets also need `omarchy bar add <id>`;
+`omarchy plugin enable <id>` (bar widgets also need `omarchy bar plugin add <id>`;
 full bar replacements are selected with `omarchy bar use <id>`).
 The lower-level IPC methods remain available through `omarchy-shell shell ...`.
 

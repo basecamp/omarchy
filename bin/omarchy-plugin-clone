@@ -341,10 +341,10 @@ clone_command() {
   omarchy-shell -q shell rescanPlugins >/dev/null 2>&1 || true
 
   if [[ $replace == "true" ]]; then
-    omarchy-bar replace "$source_id" "$new_id"
+    omarchy-bar-plugin replace "$source_id" "$new_id"
     echo "Cloned $source_id to $new_id and replaced the first bar instance"
   elif [[ $add == "true" ]]; then
-    omarchy-bar add "$new_id" "${placement[@]}"
+    omarchy-bar-plugin add "$new_id" "${placement[@]}"
     echo "Cloned $source_id to $new_id"
   elif [[ $use_bar == "true" ]]; then
     omarchy-bar use "$new_id"

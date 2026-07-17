@@ -1,0 +1,524 @@
+#!/bin/bash
+
+# omarchy:summary=Add, move, remove, and configure bar plugin widgets in the layout
+# omarchy:group=bar
+# omarchy:args=add <id> [placement] | move <id> [placement] | remove <id> [placement] | set <id> <key> <value> [--json] [placement] | replace <old-id> <new-id>
+# omarchy:examples=omarchy bar plugin add omarchy.tailscale | omarchy bar plugin add omarchy.clock --section center --before omarchy.weather | omarchy bar plugin move omarchy.clock --section center --index 0 | omarchy bar plugin remove omarchy.tailscale | omarchy bar plugin set omarchy.clock format HH:mm
+
+set -euo pipefail
+
+CONFIG_FILE="$HOME/.config/omarchy/shell.json"
+OMARCHY_ROOT="${OMARCHY_PATH:-}"
+DEFAULTS_FILE="$OMARCHY_ROOT/config/omarchy/shell.json"
+
+usage() {
+  cat <<USAGE
+Usage: omarchy bar plugin <command> [args...]
+
+  add <id> [placement]                 Add a bar widget
+  move <id> [placement] [--from-section S --from-index N]
+                                       Move a widget within/between sections
+  remove <id> [placement] (alias: rm, drop)
+                                       Remove a widget
+  set <id> <key> <value> [--json] [placement]
+                                       Set a per-widget option
+  replace <old-id> <new-id>            Replace the first instance of a widget id
+
+Placement (for add/move/remove/set):
+  --section <left|center|right>        Target section
+  --index <n>                          Insert/remove at index in the target section
+  --before <id>                        Insert before the first matching widget
+  --after <id>                         Insert after the first matching widget
+  --from-section <section>             Source section (move/remove/set)
+  --from-index <n>                     Source index (move/remove/set)
+  --duplicate                          add: allow a second instance of the widget
+  --all                                remove: remove every matching instance
+
+Without placement flags, 'add' inserts after the section anchor (workspaces on
+left, weather on center, tray on right) and dedupes across sections; 'move'
+preserves the source section; 'remove' drops the first match (or every match
+with --all).
+
+Widget ids are listed by 'omarchy plugin list'.
+
+Examples:
+  omarchy bar plugin add omarchy.tailscale
+  omarchy bar plugin add omarchy.clock --section center --before omarchy.weather
+  omarchy bar plugin move omarchy.clock --section center --index 0
+  omarchy bar plugin remove omarchy.tailscale
+  omarchy bar plugin remove omarchy.tailscale --all
+  omarchy bar plugin set omarchy.clock format HH:mm
+  omarchy bar plugin set omarchy.indicators items '["Dnd","NightLight"]' --json
+USAGE
+}
+
+fail() {
+  echo "omarchy-bar-plugin: $*" >&2
+  exit 1
+}
+
+refresh_shell_config() {
+  if ! omarchy-shell shell reloadConfig >/dev/null 2>&1; then
+    omarchy-shell -q shell rescanPlugins >/dev/null 2>&1 || true
+  fi
+}
+
+source_file() {
+  if [[ -s $CONFIG_FILE ]]; then
+    printf '%s\n' "$CONFIG_FILE"
+  else
+    printf '%s\n' "$DEFAULTS_FILE"
+  fi
+}
+
+# jq defs shared across mutations. All `def`s come first so the pipeline that
+# follows them stays valid jq. `entry_id` and the shape helpers are used by both
+# the normalize pipeline and the resolve_target/resolve_source helpers.
+JQ_DEFS='
+  def object_or_empty: if type == "object" then . else {} end;
+  def array_or_empty: if type == "array" then . else [] end;
+  def entry_id: if type == "object" then (.id // "" | tostring) else tostring end;
+  def anchor_for($section): { left: "omarchy.workspaces", center: "omarchy.weather", right: "omarchy.tray" }[$section];
+  def find_all($id; $only):
+    [ ["left","center","right"][] as $section
+      | ((.bar.layout[$section] // []) | to_entries[])
+      | select((($only == "" or $section == $only)) and ((.value | entry_id) == $id))
+      | {section: $section, index: .key, entry: .value} ];
+  def entry_at($section; $index):
+    if $index < 0 or $index >= (.bar.layout[$section] | length) then
+      error("no widget at " + $section + "[" + ($index | tostring) + "]")
+    else .bar.layout[$section][$index] end;
+  def resolve_target($defaultSection):
+    . as $root
+    | (if $before != "" or $after != "" then
+         ($root | find_all($before + $after; $targetSection) | .[0]
+           // error("could not find target widget " + ($before + $after) + ($targetSection | if . == "" then "" else " in " + . end)))
+         | .section as $section | (.index + (if $after == "" then 0 else 1 end)) as $index
+         | {section: $section, index: $index, anchor: false}
+       elif $targetSection != "" or $targetIndex != "" then
+         { section: ($targetSection | if . == "" then $defaultSection else . end),
+           index: (if $targetIndex == "" then null else ($targetIndex | tonumber) end),
+           anchor: false }
+       else
+         { section: $defaultSection, index: null, anchor: true }
+       end)
+    | .section as $section
+    | .index as $rawIndex
+    | (if $rawIndex == null then
+         if .anchor then
+           ($root.bar.layout[$section] | map(entry_id) | index(anchor_for($section))) as $anchorIndex
+           | if $anchorIndex == null then ($root.bar.layout[$section] | length) else ($anchorIndex + 1) end
+         else ($root.bar.layout[$section] | length) end
+       elif $rawIndex > ($root.bar.layout[$section] | length) then ($root.bar.layout[$section] | length)
+       else $rawIndex end) as $index
+    | {section: $section, index: $index};
+  def resolve_source:
+    if $fromIndex != "" then
+      if $fromSection == "" then error("--from-index requires --from-section")
+      else
+        ($fromIndex | tonumber) as $index
+        | entry_at($fromSection; $index) as $entry
+        | if $widgetId != "" and ($entry | entry_id) != $widgetId then
+            error("widget at " + $fromSection + "[" + ($index | tostring) + "] is not " + $widgetId)
+          else {section: $fromSection, index: $index, entry: $entry} end
+      end
+    else
+      (find_all($widgetId; $fromSection)
+        | if length == 0 then
+            error("could not find widget " + $widgetId + ($fromSection | if . == "" then "" else " in " + . end))
+          else .[0] end)
+    end;
+'
+
+# jq pipeline that normalizes shell.json into a well-shaped object with
+# version=1, bar.layout.{left,center,right} arrays, and plugins array. Every
+# mutation pipes through this so downstream jq can assume structure.
+NORMALIZE='
+  object_or_empty
+  | .version = 1
+  | .bar = (.bar | object_or_empty)
+  | .bar.layout = (.bar.layout | object_or_empty)
+  | .bar.layout.left = (.bar.layout.left | array_or_empty)
+  | .bar.layout.center = (.bar.layout.center | array_or_empty)
+  | .bar.layout.right = (.bar.layout.right | array_or_empty)
+  | .plugins = (.plugins | array_or_empty)
+'
+
+# Apply a jq program to the source file and atomically write the result to the
+# user config, then refresh the running shell. Extra args after the program are
+# forwarded to jq (e.g. --arg/--argjson).
+_BAR_TMP=""
+cleanup_bar_tmp() {
+  if [[ -n ${_BAR_TMP:-} ]]; then rm -f "$_BAR_TMP"; fi
+}
+trap cleanup_bar_tmp EXIT
+
+commit() {
+  local program="$1"
+  shift
+  mkdir -p "$(dirname "$CONFIG_FILE")"
+  _BAR_TMP=$(mktemp)
+  jq -S -e "$@" "$program" "$(source_file)" >"$_BAR_TMP" || fail "could not update shell config"
+  mv "$_BAR_TMP" "$CONFIG_FILE"
+  _BAR_TMP=""
+  refresh_shell_config
+}
+
+validate_section() {
+  [[ $1 =~ ^(left|center|right)$ ]] || fail "section must be left, center, or right"
+}
+
+validate_index() {
+  [[ $1 =~ ^[0-9]+$ ]] || fail "index must be a non-negative integer"
+}
+
+widget_is_known() {
+  omarchy-plugin-catalog | jq -e --arg id "$1" '
+    any(.[]; (.kinds | index("bar-widget")) and .id == $id)
+  ' >/dev/null
+}
+
+# --------------------------------------------------------------------- placement
+
+# Parse placement flags shared by add/move/remove/set. Sets the globals below.
+PLACEMENT_SECTION=""
+PLACEMENT_INDEX=""
+PLACEMENT_BEFORE=""
+PLACEMENT_AFTER=""
+PLACEMENT_FROM_SECTION=""
+PLACEMENT_FROM_INDEX=""
+PLACEMENT_DUPLICATE="false"
+PLACEMENT_ALL="false"
+
+parse_placement() {
+  while (( $# > 0 )); do
+    case "$1" in
+      --section)
+        PLACEMENT_SECTION="${2:-}"
+        validate_section "$PLACEMENT_SECTION"
+        shift 2
+        ;;
+      --index)
+        PLACEMENT_INDEX="${2:-}"
+        validate_index "$PLACEMENT_INDEX"
+        shift 2
+        ;;
+      --before)
+        PLACEMENT_BEFORE="${2:-}"
+        [[ -n $PLACEMENT_BEFORE ]] || fail "--before requires a widget id"
+        shift 2
+        ;;
+      --after)
+        PLACEMENT_AFTER="${2:-}"
+        [[ -n $PLACEMENT_AFTER ]] || fail "--after requires a widget id"
+        shift 2
+        ;;
+      --from-section)
+        PLACEMENT_FROM_SECTION="${2:-}"
+        validate_section "$PLACEMENT_FROM_SECTION"
+        shift 2
+        ;;
+      --from-index)
+        PLACEMENT_FROM_INDEX="${2:-}"
+        validate_index "$PLACEMENT_FROM_INDEX"
+        shift 2
+        ;;
+      --duplicate)
+        PLACEMENT_DUPLICATE="true"
+        shift
+        ;;
+      --all)
+        PLACEMENT_ALL="true"
+        shift
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *)
+        fail "unknown option: $1"
+        ;;
+    esac
+  done
+
+  [[ -z $PLACEMENT_BEFORE || -z $PLACEMENT_AFTER ]] || fail "use only one of --before or --after"
+}
+
+# --------------------------------------------------------------------- commands
+
+cmd_add() {
+  local id="${1:-}"
+  [[ -n $id ]] || fail "add requires a widget id"
+  shift
+
+  local positional_section=""
+  while (( $# > 0 )); do
+    if [[ $1 == --* ]]; then
+      break
+    fi
+    [[ -z $positional_section ]] || fail "unexpected argument: $1"
+    positional_section="$1"
+    shift
+  done
+
+  parse_placement "$@"
+  [[ -z $positional_section || -z $PLACEMENT_SECTION ]] || fail "specify a section positionally or with --section, not both"
+  [[ -z $positional_section || -z $PLACEMENT_INDEX ]] || fail "specify a section positionally or use --index, not both"
+  [[ -z $positional_section || -z $PLACEMENT_BEFORE ]] || fail "specify a section positionally or use --before, not both"
+  [[ -z $positional_section || -z $PLACEMENT_AFTER ]] || fail "specify a section positionally or use --after, not both"
+  [[ -z $positional_section || ( $PLACEMENT_DUPLICATE == false ) ]] || fail "--duplicate needs explicit placement flags"
+  if [[ -n $positional_section ]]; then
+    validate_section "$positional_section"
+    PLACEMENT_SECTION="$positional_section"
+  fi
+
+  widget_is_known "$id" || fail "$id is not a known bar widget; run 'omarchy plugin list' to see valid ids"
+
+  local default_section="${PLACEMENT_SECTION:-right}"
+  local explicit="false"
+  if [[ -n $PLACEMENT_INDEX || -n $PLACEMENT_BEFORE || -n $PLACEMENT_AFTER || $PLACEMENT_DUPLICATE == true ]]; then
+    explicit="true"
+  fi
+
+  if [[ $explicit == "false" ]]; then
+    # Anchor-based dedupe insert: remove any existing instance across sections,
+    # then insert after the section anchor (workspaces/weather/tray) — or append
+    # when the anchor is absent.
+    commit "$JQ_DEFS $NORMALIZE
+      | .bar.layout.left = (.bar.layout.left | map(select(entry_id != \$id)))
+      | .bar.layout.center = (.bar.layout.center | map(select(entry_id != \$id)))
+      | .bar.layout.right = (.bar.layout.right | map(select(entry_id != \$id)))
+      | (.bar.layout[\$section] | map(entry_id) | index(anchor_for(\$section))) as \$anchorIndex
+      | .bar.layout[\$section] = (
+          if \$anchorIndex == null then .bar.layout[\$section] + [{id: \$id}]
+          else .bar.layout[\$section][0:\$anchorIndex+1] + [{id: \$id}] + .bar.layout[\$section][\$anchorIndex+1:] end)
+      " \
+      --arg id "$id" \
+      --arg section "$default_section"
+  else
+    local prog
+    prog=$(cat <<JQ
+      $JQ_DEFS $NORMALIZE
+      | (.bar.layout.left + .bar.layout.center + .bar.layout.right | map(entry_id) | index(\$id)) as \$existing
+      | if \$existing != null and \$allowDuplicate != "true" then
+          error(\$id + " is already in the bar; use 'omarchy bar plugin move' or pass --duplicate")
+        else . end
+      | resolve_target(\$defaultSection) as \$target
+      | .bar.layout[\$target.section] = (.bar.layout[\$target.section][0:\$target.index] + [{id: \$id}] + .bar.layout[\$target.section][\$target.index:])
+JQ
+)
+    commit "$prog" \
+      --arg id "$id" \
+      --arg defaultSection "$default_section" \
+      --arg targetSection "$PLACEMENT_SECTION" \
+      --arg targetIndex "$PLACEMENT_INDEX" \
+      --arg before "$PLACEMENT_BEFORE" \
+      --arg after "$PLACEMENT_AFTER" \
+      --arg allowDuplicate "$PLACEMENT_DUPLICATE"
+  fi
+  echo "Added $id to the bar"
+}
+
+cmd_move() {
+  local id="${1:-}"
+  [[ -n $id ]] || fail "move requires a widget id"
+  shift
+  parse_placement "$@"
+
+  local default_section="${PLACEMENT_SECTION:-}"
+  local prog
+  prog=$(cat <<JQ
+    $JQ_DEFS $NORMALIZE
+    | resolve_source as \$source
+    | .bar.layout[\$source.section] = (.bar.layout[\$source.section][0:\$source.index] + .bar.layout[\$source.section][\$source.index+1:])
+    | (\$defaultSection | if . == "" then \$source.section else . end) as \$fallback
+    | resolve_target(\$fallback) as \$target
+    | (\$source.entry | if type == "object" then .id = \$id else . end) as \$entry
+    | .bar.layout[\$target.section] = (.bar.layout[\$target.section][0:\$target.index] + [\$entry] + .bar.layout[\$target.section][\$target.index:])
+JQ
+)
+  commit "$prog" \
+    --arg id "$id" \
+    --arg defaultSection "$default_section" \
+    --arg targetSection "$PLACEMENT_SECTION" \
+    --arg targetIndex "$PLACEMENT_INDEX" \
+    --arg before "$PLACEMENT_BEFORE" \
+    --arg after "$PLACEMENT_AFTER" \
+    --arg fromSection "$PLACEMENT_FROM_SECTION" \
+    --arg fromIndex "$PLACEMENT_FROM_INDEX" \
+    --arg widgetId "$id"
+  echo "Moved $id"
+}
+
+cmd_remove() {
+  local id=""
+  if (( $# > 0 )) && [[ $1 != --* ]]; then
+    id="$1"
+    shift
+  fi
+  parse_placement "$@"
+
+  local prog
+  prog=$(cat <<JQ
+    $JQ_DEFS $NORMALIZE
+    | if \$fromIndex != "" then
+        resolve_source as \$source
+        | .bar.layout[\$source.section] = (.bar.layout[\$source.section][0:\$source.index] + .bar.layout[\$source.section][\$source.index+1:])
+      elif \$targetIndex != "" then
+        if \$targetSection == "" then error("--index requires --section for remove") else . end
+        | (\$targetIndex | tonumber) as \$index
+        | .bar.layout[\$targetSection][\$index] as \$entry
+        | if \$widgetId != "" and (\$entry | entry_id) != \$widgetId then
+            error("widget at " + \$targetSection + "[" + (\$index | tostring) + "] is not " + \$widgetId)
+          else . end
+        | .bar.layout[\$targetSection] = (.bar.layout[\$targetSection][0:\$index] + .bar.layout[\$targetSection][\$index+1:])
+      else
+        find_all(\$widgetId; \$targetSection) as \$matches
+        | if (\$matches | length) == 0 then
+            error("could not find widget " + \$widgetId + (\$targetSection | if . == "" then "" else " in " + . end))
+          elif \$removeAll != "true" then
+            (\$matches | sort_by(.section) | reverse | .[0]) as \$first
+            | .bar.layout[\$first.section] = (.bar.layout[\$first.section][0:\$first.index] + .bar.layout[\$first.section][\$first.index+1:])
+          else
+            reduce (\$matches | sort_by(.section) | reverse | .[]) as \$m (.;
+              .bar.layout[\$m.section] = (.bar.layout[\$m.section][0:\$m.index] + .bar.layout[\$m.section][\$m.index+1:]))
+          end
+      end
+JQ
+)
+  commit "$prog" \
+    --arg widgetId "$id" \
+    --arg targetSection "$PLACEMENT_SECTION" \
+    --arg targetIndex "$PLACEMENT_INDEX" \
+    --arg fromSection "$PLACEMENT_FROM_SECTION" \
+    --arg fromIndex "$PLACEMENT_FROM_INDEX" \
+    --arg removeAll "$PLACEMENT_ALL"
+  if [[ -n $id ]]; then
+    echo "Removed $id from the bar"
+  else
+    echo "Removed bar widget"
+  fi
+}
+
+cmd_set() {
+  local id="${1:-}"
+  local key="${2:-}"
+  local value="${3:-}"
+  [[ -n $id ]] || fail "set requires a widget id"
+  [[ -n $key ]] || fail "set requires a setting key"
+  (( $# >= 3 )) || fail "set requires a value"
+  shift 3
+  local value_is_json="false"
+  while (( $# > 0 )); do
+    case "$1" in
+      --json) value_is_json="true" ;;
+      -h | --help) usage; exit 0 ;;
+      *) break ;;
+    esac
+    shift
+  done
+  parse_placement "$@"
+
+  if [[ $value_is_json == "true" ]]; then
+    jq -e . <<<"$value" >/dev/null 2>&1 || fail "invalid JSON value: $value"
+  fi
+
+  local value_arg
+  if [[ $value_is_json == "true" ]]; then
+    value_arg=(--argjson value "$value")
+  else
+    value_arg=(--arg value "$value")
+  fi
+
+  local prog
+  prog=$(cat <<JQ
+    $JQ_DEFS $NORMALIZE
+    | if \$fromIndex != "" then
+        resolve_source as \$source
+        | .bar.layout[\$source.section][\$source.index] = (.bar.layout[\$source.section][\$source.index] | if type == "object" then .[\$key] = \$value else error("widget entry must be an object") end)
+      elif \$targetIndex != "" then
+        if \$targetSection == "" then error("--index requires --section for set") else . end
+        | (\$targetIndex | tonumber) as \$index
+        | .bar.layout[\$targetSection][\$index] as \$entry
+        | if (\$entry | entry_id) != \$widgetId then
+            error("widget at " + \$targetSection + "[" + (\$index | tostring) + "] is not " + \$widgetId)
+          elif \$entry | type != "object" then
+            error("widget entry must be an object")
+          else . end
+        | .bar.layout[\$targetSection][\$index][\$key] = \$value
+      else
+        find_all(\$widgetId; \$targetSection) as \$matches
+        | if (\$matches | length) == 0 then
+            error("could not find widget " + \$widgetId + (\$targetSection | if . == "" then "" else " in " + . end))
+          else
+            (\$matches | sort_by(.section) | .[0]) as \$first
+            | if \$first.entry | type != "object" then error("widget entry must be an object") else . end
+            | .bar.layout[\$first.section][\$first.index][\$key] = \$value
+          end
+      end
+JQ
+)
+  commit "$prog" \
+    --arg widgetId "$id" \
+    --arg key "$key" \
+    "${value_arg[@]}" \
+    --arg targetSection "$PLACEMENT_SECTION" \
+    --arg targetIndex "$PLACEMENT_INDEX" \
+    --arg fromSection "$PLACEMENT_FROM_SECTION" \
+    --arg fromIndex "$PLACEMENT_FROM_INDEX"
+  echo "Set $key on $id"
+}
+
+cmd_replace() {
+  local old="${1:-}"
+  local new="${2:-}"
+  [[ -n $old ]] || fail "replace requires the source widget id"
+  [[ -n $new ]] || fail "replace requires the replacement widget id"
+  [[ $# -eq 2 ]] || fail "replace takes two widget ids"
+
+  local prog
+  prog=$(cat <<JQ
+    $JQ_DEFS $NORMALIZE
+    | resolve_source as \$source
+    | if \$source.entry | type != "object" then error("widget entry must be an object") else . end
+    | .bar.layout[\$source.section][\$source.index].id = \$new
+JQ
+)
+  # resolve_source finds by widget id when no placement is given; replace
+  # takes no placement flags, so pass empty placement explicitly.
+  commit "$prog" \
+    --arg widgetId "$old" \
+    --arg new "$new" \
+    --arg fromSection "" \
+    --arg fromIndex ""
+  echo "Replaced $old with $new"
+}
+
+# --------------------------------------------------------------------- dispatch
+
+command="${1:-}"
+[[ $# -gt 0 ]] && shift || true
+
+case "$command" in
+  add)
+    cmd_add "$@"
+    ;;
+  move)
+    cmd_move "$@"
+    ;;
+  remove | rm | drop)
+    cmd_remove "$@"
+    ;;
+  set)
+    cmd_set "$@"
+    ;;
+  replace)
+    cmd_replace "$@"
+    ;;
+  -h | --help | help | "")
+    usage
+    ;;
+  *)
+    fail "unknown command: $command"
+    ;;
+esac
