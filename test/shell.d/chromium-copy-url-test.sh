@@ -36,6 +36,23 @@ JS
   fail "copy-url extension manifest has the stable id" "$copy_url_id"
 pass "copy-url extension manifest has the stable id"
 
+jq -e '
+  .manifest_version == 3 and
+  (.permissions | index("clipboardWrite")) and
+  (.permissions | index("offscreen")) and
+  (.background.service_worker | startswith("background-"))
+' "$ROOT/default/chromium/extensions/copy-url/manifest.json" >/dev/null ||
+  fail "copy-url extension uses an offscreen clipboard document"
+[[ -f $ROOT/default/chromium/extensions/copy-url/offscreen.html &&
+  -f $ROOT/default/chromium/extensions/copy-url/offscreen.js ]] ||
+  fail "copy-url extension ships its offscreen clipboard document"
+pass "copy-url extension uses an offscreen clipboard document"
+
+jq -e '.action != null' "$ROOT/default/chromium/extensions/copy-url/manifest.json" >/dev/null &&
+  grep -q 'action.onClicked' "$ROOT/default/chromium/extensions/copy-url/"background-*.js ||
+  fail "copy-url extension is clickable from the toolbar"
+pass "copy-url extension is clickable from the toolbar"
+
 TMPDIR=$(mktemp -d)
 preferences="$TMPDIR/Preferences"
 backup="$TMPDIR/Preferences.bak"

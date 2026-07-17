@@ -1716,6 +1716,11 @@ CHROMIUM_FLAGS_PATCH_PY
   done
 }
 
+# True if any Chromium-family browser that stores the Copy URL shortcut is running.
+browser_is_running() {
+  pgrep -x 'chromium|chrome|brave|msedge|vivaldi-bin|vivaldi|opera|helium' >/dev/null 2>&1
+}
+
 repair_chromium_copy_url_shortcuts() {
   local profile_root preferences
   local -a profile_roots=(
@@ -1730,6 +1735,7 @@ repair_chromium_copy_url_shortcuts() {
     "$HOME/.config/opera"
     "$HOME/.config/helium"
   )
+  local -a pending=()
 
   for profile_root in "${profile_roots[@]}"; do
     [[ -d $profile_root ]] || continue
@@ -1737,8 +1743,23 @@ repair_chromium_copy_url_shortcuts() {
     for preferences in "$profile_root"/*/Preferences; do
       [[ -f $preferences ]] || continue
       grep -qF 'bocglpkldciamkbmlphanhkfnhpmnbma' "$preferences" || continue
+      pending+=("$preferences")
+    done
+  done
 
-      python3 - "$preferences" "$preferences.omarchy-upgrade-to-quattro.$BACKUP_SUFFIX.bak" <<'CHROMIUM_SHORTCUTS_PATCH_PY'
+  (( ${#pending[@]} )) || return 0
+
+  # A running browser holds Preferences in memory and rewrites it on exit,
+  # which would revert this repair. Ask the user to close it first.
+  if browser_is_running && (( ! yes )) && [[ -r /dev/tty ]]; then
+    if ! gum confirm "Close all browser windows before the Copy URL shortcut is repaired, then continue"; then
+      echo "Skipped Copy URL shortcut repair; re-run after closing your browser." >&2
+      return 0
+    fi
+  fi
+
+  for preferences in "${pending[@]}"; do
+    python3 - "$preferences" "$preferences.omarchy-upgrade-to-quattro.$BACKUP_SUFFIX.bak" <<'CHROMIUM_SHORTCUTS_PATCH_PY'
 import json
 import shutil
 import sys
@@ -1768,7 +1789,6 @@ if changed:
     shutil.copy2(path, backup_path)
     path.write_text(json.dumps(preferences, separators=(",", ":")))
 CHROMIUM_SHORTCUTS_PATCH_PY
-    done
   done
 }
 
@@ -1935,7 +1955,7 @@ repair_sleep_lock_unit_override
 install_bash_startup
 
 unset rel file backup retired_config_files always_copy_config_files uwsm_env known_config_default_hashes_by_key
-unset -f file_sha256 known_config_default_hashes default_hash_paths is_known_default_hash backup_config_file migrate_uwsm_env_customizations is_retired_config_file copy_config_default copy_missing_config_defaults refresh_known_config_defaults mark_removed_preinstalls_from_legacy_bindings copy_always_config_defaults repair_chromium_copy_url_extension_flags repair_chromium_copy_url_shortcuts repair_sleep_lock_unit_override is_known_bashrc_default install_bash_startup
+unset -f file_sha256 known_config_default_hashes default_hash_paths is_known_default_hash backup_config_file migrate_uwsm_env_customizations is_retired_config_file copy_config_default copy_missing_config_defaults refresh_known_config_defaults mark_removed_preinstalls_from_legacy_bindings copy_always_config_defaults repair_chromium_copy_url_extension_flags browser_is_running repair_chromium_copy_url_shortcuts repair_sleep_lock_unit_override is_known_bashrc_default install_bash_startup
 
 mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills" "$HOME/.pi/agent/skills"
 if [[ -d $root/default/omarchy-skill ]]; then
