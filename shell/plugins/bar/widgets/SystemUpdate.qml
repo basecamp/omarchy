@@ -57,6 +57,7 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: "\uf021"
+    fontSize: Style.font.caption
     tooltipText: ""
     onPressed: root.runUpdate()
   }
