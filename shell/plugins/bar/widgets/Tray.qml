@@ -24,9 +24,9 @@ BarWidget {
   readonly property var drawerItems: bucket("drawer")
   readonly property var allItems: bucket("all")
   readonly property int drawerCount: drawerItems.length
-  readonly property int trayItemExtent: Style.space(16)
-  readonly property int trayItemGap: Style.space(9)
-  readonly property int trayJoinGap: Style.space(4)
+  readonly property int trayItemExtent: Style.bar.iconSlot
+  readonly property int trayItemGap: 0
+  readonly property int trayJoinGap: 0
   readonly property int drawerExtent: drawerCount > 0 ? drawerCount * trayItemExtent + (drawerCount - 1) * trayItemGap : 0
   // Match Waybar's group/tray-expander drawer transition-duration.
   readonly property int animationDuration: 600
@@ -182,15 +182,13 @@ BarWidget {
           onHoveredChanged: root.expanded = hovered
         }
 
-        WidgetButton {
+        BarIconButton {
           id: expandIcon
           bar: root.bar
           width: implicitWidth
           height: implicitHeight
           x: root.drawerExtent - root.revealExtent
           text: "\uf053"
-          horizontalMargin: 9
-          verticalPadding: 6
           onPressed: function(button) {
             if (button === Qt.RightButton) root.managePopupOpen = !root.managePopupOpen
           }
@@ -266,7 +264,7 @@ BarWidget {
           onHoveredChanged: root.expanded = hovered
         }
 
-        WidgetButton {
+        BarIconButton {
           id: expandIcon
           bar: root.bar
           width: implicitWidth
@@ -274,8 +272,6 @@ BarWidget {
           y: root.drawerExtent - root.revealExtent
           text: "\uf053"
           textRotation: 90
-          horizontalMargin: 9
-          verticalPadding: 6
           onPressed: function(button) {
             if (button === Qt.RightButton) root.managePopupOpen = !root.managePopupOpen
           }

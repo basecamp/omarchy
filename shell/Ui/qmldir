@@ -1,6 +1,7 @@
 module qs.Ui
 
 BarIndicator 1.0 BarIndicator.qml
+BarIconButton 1.0 BarIconButton.qml
 BarWidget 1.0 BarWidget.qml
 BorderOverlay 1.0 BorderOverlay.qml
 BorderSurface 1.0 BorderSurface.qml
@@ -12,6 +13,7 @@ Dropdown 1.0 Dropdown.qml
 KeyboardPanel 1.0 KeyboardPanel.qml
 MultiSelect 1.0 MultiSelect.qml
 NumberField 1.0 NumberField.qml
+OpticalGlyph 1.0 OpticalGlyph.qml
 Panel 1.0 Panel.qml
 PanelActionButton 1.0 PanelActionButton.qml
 PanelController 1.0 PanelController.qml

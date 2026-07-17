@@ -337,15 +337,11 @@ Panel {
     onRunningChanged: if (!running) root.refresh()
   }
 
-  WidgetButton {
+  BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
     text: root.displays.length > 1 ? "󰍺" : "󰍹"
-    fontSize: Style.font.subtitle
-    fixedWidth: root.bar && root.bar.vertical ? -1 : Style.space(27)
-    fixedHeight: root.bar && root.bar.vertical ? Style.space(26) : -1
-    rightExtraMargin: 4
     onPressed: function(b) { root.toggle() }
     onWheelMoved: function(delta) {
       if (root.brightnessAvailable) root.setBrightness(root.brightnessPercent + (delta > 0 ? 5 : -5))

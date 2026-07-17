@@ -249,13 +249,11 @@ Panel {
     }
   }
 
-  WidgetButton {
+  BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
     text: root.batteryIcon()
-    fixedWidth: root.bar && root.bar.vertical ? -1 : Style.space(27)
-    fixedHeight: root.bar && root.bar.vertical ? Style.space(26) : -1
     tooltipText: ""
     onPressed: function(b) { if (root.batteryPresent) root.toggle() }
   }
