@@ -65,6 +65,18 @@ ShellRoot {
       fail("vector icon does not share glyph geometry")
       return
     }
+    if (verticalIcon.implicitWidth !== Style.bar.sizeVertical || verticalIcon.implicitHeight !== Style.bar.iconSlot) {
+      fail("vertical icon does not use the shared slot")
+      return
+    }
+    if (verticalIndicator.implicitWidth !== Style.bar.sizeVertical || verticalIndicator.implicitHeight !== Style.bar.iconSlot) {
+      fail("vertical indicator does not use the shared slot")
+      return
+    }
+    if (Math.abs(verticalIndicator.opticalCenterErrorX) > 0.5) {
+      fail("vertical indicator is not optically centered")
+      return
+    }
     console.log("RESULT pass")
     Qt.quit()
   })
@@ -73,6 +85,20 @@ ShellRoot {
     id: testBar
     property bool vertical: false
     property int barSize: Style.bar.sizeHorizontal
+    property string fontFamily: Style.font.family
+    property color barForeground: "white"
+    property color urgent: "red"
+    property bool foregroundAnimationEnabled: false
+    function registerClickTarget(target) {}
+    function unregisterClickTarget(target) {}
+    function hideTooltip(target) {}
+    function showTooltip(target, text) {}
+  }
+
+  QtObject {
+    id: verticalBar
+    property bool vertical: true
+    property int barSize: Style.bar.sizeVertical
     property string fontFamily: Style.font.family
     property color barForeground: "white"
     property color urgent: "red"
@@ -93,6 +119,8 @@ ShellRoot {
     bar: testBar
     iconComponent: Component { Rectangle { width: 12; height: 12 } }
   }
+  BarIconButton { id: verticalIcon; bar: verticalBar; text: "\uf021" }
+  BarIndicator { id: verticalIndicator; bar: verticalBar; active: true; activeText: "󰅶" }
 }
 QML
 
