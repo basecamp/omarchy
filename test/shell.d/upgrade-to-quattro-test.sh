@@ -37,6 +37,11 @@ grep -F '/usr/share/omarchy/install/config/snapper.sh' "$upgrade_to_quattro" >/d
 grep -F 'bash -euo pipefail "$snapper_config_script"' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade normalizes Snapper retention"
 
+grep -F 'configure_lock_authentication' "$upgrade_to_quattro" >/dev/null
+grep -F 'OMARCHY_INSTALL_USER="$target_user"' "$upgrade_to_quattro" >/dev/null
+grep -F '"$setup_lock"' "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade configures lock screen authentication for the target user"
+
 grep -F 'OMARCHY_UPGRADE_TO_QUATTRO_LIVE=1' "$upgrade_to_quattro" >/dev/null
 grep -F 'systemd-networkd.service' "$upgrade_to_quattro" >/dev/null
 grep -F 'systemd-networkd.socket' "$upgrade_to_quattro" >/dev/null
