@@ -9,11 +9,12 @@ WidgetButton {
   property real opticalSize: Style.bar.iconCanvas
   property bool debugOpticalBounds: Quickshell.env("OMARCHY_DEBUG_BAR_ICONS") === "1"
   readonly property real opticalCenterErrorX: glyph.visible ? glyph.paintedCenterX - opticalCanvas.width / 2 : 0
-  readonly property real opticalCenterErrorY: glyph.visible ? glyph.paintedCenterY - opticalCanvas.height / 2 : 0
+  readonly property real glyphBaselineY: glyph.visible ? glyph.baselineY : 0
+  readonly property int glyphFontSize: glyph.visible ? glyph.renderedFontSize : 0
 
   labelVisible: false
   hasVisualContent: text !== "" || iconComponent !== null
-  fontSize: Style.font.body
+  fontSize: Style.bar.iconFont
   fixedWidth: vertical ? -1 : Style.bar.iconSlot
   fixedHeight: vertical ? Style.bar.iconSlot : -1
 

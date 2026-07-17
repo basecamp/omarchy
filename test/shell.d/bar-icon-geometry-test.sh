@@ -38,8 +38,12 @@ ShellRoot {
       fail(name + " optical canvas is " + icon.opticalSize)
       return false
     }
-    if (Math.abs(icon.opticalCenterErrorX) > 0.5 || Math.abs(icon.opticalCenterErrorY) > 0.5) {
-      fail(name + " painted bounds are over half a pixel off center by " + icon.opticalCenterErrorX + "," + icon.opticalCenterErrorY)
+    if (Math.abs(icon.opticalCenterErrorX) > 0.5) {
+      fail(name + " painted bounds are over half a pixel off center by " + icon.opticalCenterErrorX)
+      return false
+    }
+    if (icon.glyphFontSize !== Style.bar.iconFont) {
+      fail(name + " font size is " + icon.glyphFontSize)
       return false
     }
     return true
@@ -51,6 +55,12 @@ ShellRoot {
     if (!checkIcon(audio, "audio")) return
     if (!checkIcon(monitor, "monitor")) return
     if (!checkIcon(power, "power")) return
+    var baseline = bluetooth.glyphBaselineY
+    if (network.glyphBaselineY !== baseline || audio.glyphBaselineY !== baseline
+        || monitor.glyphBaselineY !== baseline || power.glyphBaselineY !== baseline) {
+      fail("glyph baselines do not match")
+      return
+    }
     if (vector.implicitWidth !== Style.bar.iconSlot || vector.opticalSize !== Style.bar.iconCanvas) {
       fail("vector icon does not share glyph geometry")
       return
@@ -96,7 +106,7 @@ output=$(timeout 15 env \
 
 if ! grep -q 'RESULT pass' <<<"$output"; then
   printf '%s\n' "$output" >&2
-  fail "bar icons share centered optical geometry"
+  fail "bar icons share slot and baseline geometry"
 fi
 
-pass "bar icons share centered optical geometry"
+pass "bar icons share slot and baseline geometry"
