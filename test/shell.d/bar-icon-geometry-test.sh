@@ -90,6 +90,11 @@ ShellRoot {
       fail("indicator groups do not retain compact internal spacing")
       return
     }
+    if (compactStatusIcon.implicitWidth !== Style.bar.statusSlot
+        || compactVerticalStatusIcon.implicitHeight !== Style.bar.statusSlot) {
+      fail("compact status icons do not use the shared status slot")
+      return
+    }
     console.log("RESULT pass")
     Qt.quit()
   })
@@ -133,6 +138,8 @@ ShellRoot {
     iconComponent: Component { Rectangle { width: 12; height: 12 } }
   }
   BarIconButton { id: verticalIcon; bar: verticalBar; text: "\uf021" }
+  BarIconButton { id: compactStatusIcon; bar: testBar; text: "\uf021"; slotSize: Style.bar.statusSlot }
+  BarIconButton { id: compactVerticalStatusIcon; bar: verticalBar; text: "\uf021"; slotSize: Style.bar.statusSlot }
   Row {
     id: horizontalIndicatorPair
     BarIndicator { id: horizontalIndicator; bar: testBar; active: true; activeText: "󰅶" }

@@ -180,7 +180,7 @@ ShellRoot {
             if (verticalId === "omarchy.clock")
               root.assertEqual(verticalItem.implicitHeight, Style.bar.iconSlot * 3, verticalId + " uses one slot per line")
             else if (verticalId === "omarchy.weather" || verticalId === "omarchy.system-update")
-              root.assertEqual(verticalItem.implicitHeight, Style.bar.iconSlot, verticalId + " uses one vertical slot")
+              root.assertEqual(verticalItem.implicitHeight, Style.bar.statusSlot, verticalId + " uses one compact status slot")
             if (verticalItem && typeof verticalItem.destroy === "function") verticalItem.destroy()
           }
           root.assertTrue(root.createdIds.length === entries.length, "all bar widgets instantiate")

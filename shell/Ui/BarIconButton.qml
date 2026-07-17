@@ -6,6 +6,7 @@ WidgetButton {
   id: root
 
   property Component iconComponent: null
+  property real slotSize: Style.bar.iconSlot
   property real opticalSize: Style.bar.iconCanvas
   property bool debugOpticalBounds: Quickshell.env("OMARCHY_DEBUG_BAR_ICONS") === "1"
   readonly property real opticalCenterErrorX: glyph.visible ? glyph.paintedCenterX - opticalCanvas.width / 2 : 0
@@ -15,8 +16,8 @@ WidgetButton {
   labelVisible: false
   hasVisualContent: text !== "" || iconComponent !== null
   fontSize: Style.bar.iconFont
-  fixedWidth: vertical ? -1 : Style.bar.iconSlot
-  fixedHeight: vertical ? Style.bar.iconSlot : -1
+  fixedWidth: vertical ? -1 : slotSize
+  fixedHeight: vertical ? slotSize : -1
 
   Item {
     id: opticalCanvas
