@@ -179,8 +179,23 @@ function openMeteoCurrentCondition(dailyForecastReport) {
     FeelsLikeF: roundedTemp(celsiusToFahrenheit(current.apparent_temperature)),
     windspeedKmph: roundedTemp(current.wind_speed_10m),
     windspeedMiles: roundedTemp(current.wind_speed_10m * 0.621371),
-    humidity: roundedTemp(current.relative_humidity_2m)
+    humidity: roundedTemp(current.relative_humidity_2m),
+    openMeteoWeatherCode: current.weather_code,
+    isDay: current.is_day
   }
+}
+
+function currentIcon(current, fallback) {
+  if (!current) return fallback || ""
+  if (current.openMeteoWeatherCode !== undefined && current.openMeteoWeatherCode !== null)
+    return iconForOpenMeteoCode(current.openMeteoWeatherCode, Number(current.isDay) === 0)
+  if (current.weatherCode !== undefined && current.weatherCode !== null)
+    return iconForCode(current.weatherCode, false)
+  return fallback || ""
+}
+
+function weatherResponseCompletesSave(hasConfiguredCoordinates, source) {
+  return hasConfiguredCoordinates ? source === "open-meteo" : source === "wttr"
 }
 
 function wttrNextForecastDays(report, todayString) {
@@ -225,17 +240,17 @@ function dayIcon(day) {
   return iconForCode(best.weatherCode, false)
 }
 
-function iconForOpenMeteoCode(code) {
+function iconForOpenMeteoCode(code, night) {
   var c = parseInt(String(code || "0"), 10)
-  if (c === 0) return iconForCode(113, false)
-  if (c === 1 || c === 2) return iconForCode(116, false)
-  if (c === 3) return iconForCode(119, false)
-  if (c === 45 || c === 48) return iconForCode(143, false)
-  if (c === 51 || c === 53 || c === 55 || c === 56 || c === 57 || c === 61) return iconForCode(266, false)
-  if (c === 63 || c === 65 || c === 66 || c === 67 || c === 80 || c === 81 || c === 82) return iconForCode(308, false)
-  if (c === 71 || c === 73 || c === 75 || c === 77 || c === 85 || c === 86) return iconForCode(338, false)
-  if (c === 95 || c === 96 || c === 99) return iconForCode(389, false)
-  return iconForCode(119, false)
+  if (c === 0) return iconForCode(113, night)
+  if (c === 1 || c === 2) return iconForCode(116, night)
+  if (c === 3) return iconForCode(119, night)
+  if (c === 45 || c === 48) return iconForCode(143, night)
+  if (c === 51 || c === 53 || c === 55 || c === 56 || c === 57 || c === 61) return iconForCode(266, night)
+  if (c === 63 || c === 65 || c === 66 || c === 67 || c === 80 || c === 81 || c === 82) return iconForCode(308, night)
+  if (c === 71 || c === 73 || c === 75 || c === 77 || c === 85 || c === 86) return iconForCode(338, night)
+  if (c === 95 || c === 96 || c === 99) return iconForCode(389, night)
+  return iconForCode(119, night)
 }
 
 function iconForCode(code, night) {
@@ -244,7 +259,7 @@ function iconForCode(code, night) {
     case 113: return night ? "" : ""
     case 116: return night ? "" : ""
     case 119: case 122: return ""
-    case 143: case 248: case 260: return ""
+    case 143: case 248: case 260: return night ? "\ue346" : "\ue313"
     case 176: case 263: case 353: return night ? "" : ""
     case 179: case 227: case 230: case 323: case 326: case 368: return night ? "" : ""
     case 182: case 185: case 281: case 284: case 311: case 314:
@@ -274,6 +289,8 @@ if (typeof module !== "undefined") {
     dayName: dayName,
     openMeteoForecastDays: openMeteoForecastDays,
     openMeteoCurrentCondition: openMeteoCurrentCondition,
+    currentIcon: currentIcon,
+    weatherResponseCompletesSave: weatherResponseCompletesSave,
     wttrNextForecastDays: wttrNextForecastDays,
     buildForecastDays: buildForecastDays,
     bareTempForDay: bareTempForDay,
