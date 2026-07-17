@@ -35,9 +35,15 @@ while (($#)); do
   esac
 done
 
+state_dir=~/.local/state/omarchy
+FIRST_RUN_DONE="first-run-user"
+if omarchy-done check "$FIRST_RUN_DONE" && (( force == 0 )); then
+  echo "First-run already complete (rerun with --force to refresh)."
+  exit 0
+fi
+
 omarchy-finalize-user "${finalize_user_args[@]}" || true
 
-state_dir=~/.local/state/omarchy
 mkdir -p "$state_dir"
 
 FIRST_RUN_LOG="$state_dir/first-run.log"
@@ -94,42 +100,32 @@ run_first_run_step() {
 
 wait_for_notifications
 
-MIGRATION_NOTIFY_WATCH_MARKER="$state_dir/user-migration-notify-watch-enabled"
-if [[ ! -f $MIGRATION_NOTIFY_WATCH_MARKER || $force -eq 1 ]]; then
-  if systemctl --user enable --now omarchy-update-user-notify.path >/dev/null 2>&1; then
-    touch "$MIGRATION_NOTIFY_WATCH_MARKER"
-  fi
-fi
-
+run_first_run_step "enable migration notification watcher" \
+  systemctl --user enable --now omarchy-update-user-notify.path
 run_first_run_step "notify about pending migrations" omarchy-migrate-notify
 
-FIRST_RUN_DONE="first-run-user"
-if ! omarchy-done check "$FIRST_RUN_DONE" || (( force )); then
-  run_first_run_step "install Voxtype post-update hook" \
-    omarchy-hook-install post-update "$OMARCHY_PATH/install/user/first-run/install-voxtype.hook"
+run_first_run_step "install Voxtype post-update hook" \
+  omarchy-hook-install post-update "$OMARCHY_PATH/install/user/first-run/install-voxtype.hook"
 
-  run_first_run_step "enable user systemd units" \
-    bash "$OMARCHY_PATH/install/user/first-run/enable-user-units.sh"
-  run_first_run_step "set GNOME theme" \
-    bash "$OMARCHY_PATH/install/user/first-run/gnome-theme.sh"
-  run_first_run_step "set GTK primary paste" \
-    bash "$OMARCHY_PATH/install/user/first-run/gtk-primary-paste.sh"
+run_first_run_step "enable user systemd units" \
+  bash "$OMARCHY_PATH/install/user/first-run/enable-user-units.sh"
+run_first_run_step "set GNOME theme" \
+  bash "$OMARCHY_PATH/install/user/first-run/gnome-theme.sh"
+run_first_run_step "set GTK primary paste" \
+  bash "$OMARCHY_PATH/install/user/first-run/gtk-primary-paste.sh"
 
-  wait_for_notifications
-  run_first_run_step "show welcome notification" \
-    bash "$OMARCHY_PATH/install/user/first-run/welcome.sh"
-  # The first-run notification scripts register action callbacks in background
-  # notify-send processes. Give the notification server a tick to ingest the
-  # welcome toast before queueing the Wi-Fi/update toasts.
-  sleep 0.3
-  run_first_run_step "show Wi-Fi/update notifications" \
-    bash "$OMARCHY_PATH/install/user/first-run/wifi.sh"
+wait_for_notifications
+run_first_run_step "show welcome notification" \
+  bash "$OMARCHY_PATH/install/user/first-run/welcome.sh"
+# The first-run notification scripts register action callbacks in background
+# notify-send processes. Give the notification server a tick to ingest the
+# welcome toast before queueing the Wi-Fi/update toasts.
+sleep 0.3
+run_first_run_step "show Wi-Fi/update notifications" \
+  bash "$OMARCHY_PATH/install/user/first-run/wifi.sh"
 
-  if (( first_run_failed == 0 )); then
-    omarchy-done mark "$FIRST_RUN_DONE"
-  else
-    log_first_run "One or more first-run steps failed; first-run will retry next login"
-  fi
+if (( first_run_failed == 0 )); then
+  omarchy-done mark "$FIRST_RUN_DONE"
 else
-  echo "First-run already complete (rerun with --force to refresh)."
+  log_first_run "One or more first-run steps failed; first-run will retry next login"
 fi
