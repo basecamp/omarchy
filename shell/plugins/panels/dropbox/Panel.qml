@@ -139,47 +139,24 @@ Panel {
     function status(): string { return dropbox.statusText }
   }
 
-  Item {
+  BarIconButton {
     id: button
     anchors.fill: parent
-    implicitWidth: root.bar && root.bar.vertical ? root.bar.barSize : Style.space(27)
-    implicitHeight: root.bar && root.bar.vertical ? Style.space(26) : (root.bar ? root.bar.barSize : Style.space(26))
-
-    property var registeredBar: null
-
-    function triggerPress(buttonCode) {
+    bar: root.bar
+    iconComponent: Component {
+      Item {
+        DropboxIcon {
+          anchors.centerIn: parent
+          iconSize: Style.space(12)
+          color: root.barIconColor
+          opacity: dropbox.authenticated ? 1.0 : 0.6
+        }
+      }
+    }
+    onPressed: function(buttonCode) {
       if (buttonCode === Qt.RightButton) dropbox.refresh()
       else if (buttonCode === Qt.MiddleButton) dropbox.login()
       else root.toggle()
-    }
-
-    function syncClickRegistration() {
-      if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(button)
-      registeredBar = root.bar
-      if (registeredBar && registeredBar.registerClickTarget) registeredBar.registerClickTarget(button)
-    }
-
-    Component.onCompleted: syncClickRegistration()
-    Component.onDestruction: if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(button)
-
-    Connections {
-      target: root
-      function onBarChanged() { button.syncClickRegistration() }
-    }
-
-    DropboxIcon {
-      anchors.centerIn: parent
-      iconSize: Style.space(12)
-      color: root.barIconColor
-      opacity: dropbox.authenticated ? 1.0 : 0.6
-    }
-
-    MouseArea {
-      anchors.fill: parent
-      acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: function(mouse) { button.triggerPress(mouse.button) }
     }
   }
 

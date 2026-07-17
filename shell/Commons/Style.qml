@@ -341,6 +341,8 @@ QtObject {
   readonly property QtObject bar: QtObject {
     readonly property int sizeHorizontal: root.barToken("size-horizontal", 26)
     readonly property int sizeVertical:   root.barToken("size-vertical",   28)
+    readonly property int iconSlot:       root.barToken("icon-slot",       27)
+    readonly property int iconCanvas:     root.barToken("icon-canvas",     16)
   }
 
   function refresh() {

@@ -1297,13 +1297,6 @@ Item {
     readonly property bool hovered: moduleHover.hovered
     readonly property bool dragSource: root.barDragSource === slot
     readonly property bool panelOpen: root.activePopout === slot.activeItem
-    readonly property real openIndicatorInlineOffset: {
-      var item = slot.activeItem
-      if (!item || !("openIndicatorInlineOffset" in item)) return 0
-      var offset = Number(item.openIndicatorInlineOffset)
-      return isFinite(offset) ? offset : 0
-    }
-
     implicitWidth: activeItem && activeItem.visible ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
     implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
     width: implicitWidth
@@ -1377,9 +1370,9 @@ Item {
       height: root.vertical ? Math.max(Style.space(10), Math.round(parent.height * 0.55)) : Style.space(2)
       x: root.vertical
         ? (root.position === "left" ? parent.width - width - inset : inset)
-        : (slot.openIndicatorInlineOffset === 0 ? Math.round((parent.width - width) / 2) : (parent.width - width) / 2 + slot.openIndicatorInlineOffset)
+        : Math.round((parent.width - width) / 2)
       y: root.vertical
-        ? (slot.openIndicatorInlineOffset === 0 ? Math.round((parent.height - height) / 2) : (parent.height - height) / 2 + slot.openIndicatorInlineOffset)
+        ? Math.round((parent.height - height) / 2)
         : (root.position === "top" ? parent.height - height - inset : inset)
       z: 50
 

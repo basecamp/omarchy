@@ -12,7 +12,6 @@ Item {
   property color activeColor: bar ? bar.urgent : Color.urgent
   property bool active: false
   property real horizontalMargin: 8.5
-  property real rightExtraMargin: 0
   property real verticalPadding: 6
   property real fixedWidth: -1
   property real fixedHeight: -1
@@ -24,6 +23,8 @@ Item {
   property bool pressable: true
   property bool useActiveColor: true
   property bool maintainIndicatorReveal: false
+  property bool labelVisible: true
+  property bool hasVisualContent: text !== ""
   property var revealHost: bar
   property string tooltipText: ""
   property var registeredBar: null
@@ -56,13 +57,12 @@ Item {
   readonly property bool vertical: bar ? bar.vertical : false
   readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
   readonly property real scaledHorizontalMargin: Style.spaceReal(horizontalMargin)
-  readonly property real scaledRightExtraMargin: Style.spaceReal(rightExtraMargin)
   readonly property real scaledVerticalPadding: Style.spaceReal(verticalPadding)
   readonly property bool tooltipHovered: visible && interactive && !concealed && mouseArea.containsMouse
 
-  visible: text !== "" || keepSpace
-  opacity: text === "" || concealed ? 0 : (dimmed ? 0.45 : 1)
-  implicitWidth: fixedWidth > 0 ? fixedWidth : (vertical ? barSize : Math.max(12, label.implicitWidth + scaledHorizontalMargin * 2 + scaledRightExtraMargin))
+  visible: hasVisualContent || keepSpace
+  opacity: !hasVisualContent || concealed ? 0 : (dimmed ? 0.45 : 1)
+  implicitWidth: fixedWidth > 0 ? fixedWidth : (vertical ? barSize : Math.max(12, label.implicitWidth + scaledHorizontalMargin * 2))
   implicitHeight: fixedHeight > 0 ? fixedHeight : (vertical ? Math.max(12, label.implicitHeight + scaledVerticalPadding * 2) : barSize)
 
   Behavior on opacity {
@@ -71,8 +71,8 @@ Item {
 
   Text {
     id: label
+    visible: root.labelVisible
     anchors.centerIn: parent
-    anchors.horizontalCenterOffset: root.vertical ? 0 : -root.scaledRightExtraMargin / 2
     text: root.text
     color: root.active && root.useActiveColor ? root.activeColor : root.foreground
     font.family: root.fontFamily

@@ -34,7 +34,7 @@ BarWidget {
 
   PwObjectTracker { objects: root.source ? [root.source] : [] }
 
-  WidgetButton {
+  BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar

@@ -12,7 +12,6 @@ Panel {
   ipcTarget: "omarchy.tailscale"
   manageIpc: false
 
-  readonly property real openIndicatorInlineOffset: bar && bar.vertical ? 0 : Style.spaceReal(1.5)
   property string focusSection: "header"
   property int headerIndex: 0
   property int accountIndex: 0
@@ -360,52 +359,26 @@ Panel {
     function status(): string { return tailscale.statusText }
   }
 
-  Item {
+  BarIconButton {
     id: button
     anchors.fill: parent
-    implicitWidth: root.bar && root.bar.vertical ? root.bar.barSize : Style.space(27)
-    implicitHeight: root.bar && root.bar.vertical ? Style.space(26) : (root.bar ? root.bar.barSize : Style.space(26))
-
-    property var registeredBar: null
-
-    function triggerPress(buttonCode) {
+    bar: root.bar
+    iconComponent: Component {
+      Item {
+        TailscaleIcon {
+          anchors.centerIn: parent
+          iconSize: Style.space(11)
+          color: root.barIconColor
+          badgeColor: root.urgent
+          crossed: !tailscale.running && !tailscale.needsLogin
+          warning: tailscale.needsLogin
+        }
+      }
+    }
+    onPressed: function(buttonCode) {
       if (buttonCode === Qt.RightButton) tailscale.toggleTailscale()
       else if (buttonCode === Qt.MiddleButton) tailscale.refresh()
       else root.toggle()
-    }
-
-    function syncClickRegistration() {
-      if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(button)
-      registeredBar = root.bar
-      if (registeredBar && registeredBar.registerClickTarget) registeredBar.registerClickTarget(button)
-    }
-
-    Component.onCompleted: syncClickRegistration()
-    Component.onDestruction: if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(button)
-
-    Connections {
-      target: root
-      function onBarChanged() { button.syncClickRegistration() }
-    }
-
-    TailscaleIcon {
-      anchors.centerIn: parent
-      anchors.horizontalCenterOffset: root.openIndicatorInlineOffset
-      anchors.verticalCenterOffset: -Style.space(1)
-      iconSize: Style.space(12) * 0.85
-      color: root.barIconColor
-      badgeColor: root.urgent
-      crossed: !tailscale.running && !tailscale.needsLogin
-      warning: tailscale.needsLogin
-    }
-
-    MouseArea {
-      id: mouseArea
-      anchors.fill: parent
-      acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: function(mouse) { button.triggerPress(mouse.button) }
     }
   }
 
