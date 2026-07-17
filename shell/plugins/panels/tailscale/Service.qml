@@ -244,15 +244,19 @@ Item {
 
   function loginOrUp() {
     if (!installed || loginProcess.running) return
+    var plan = Model.loginPlan(needsLogin, authUrl)
+    if (plan.authUrl !== "") {
+      _loginUrlOpened = false
+      openAuthUrlFrom(plan.authUrl, true)
+      return
+    }
     _loginOutput = ""
     _loginError = ""
     actionStatus = needsLogin ? "Starting Tailscale login…" : "Turning Tailscale on…"
     _loginInProgress = needsLogin
     _loginUrlOpened = false
     _preLoginAuthUrl = authUrl
-    var command = ["tailscale", "up"]
-    if (needsLogin) command.push("--force-reauth")
-    loginProcess.command = command
+    loginProcess.command = plan.command
     loginProcess.running = true
     if (needsLogin) loginTimeoutTimer.restart()
   }
@@ -317,9 +321,7 @@ Item {
       _loginUrlOpened = true
       _loginInProgress = false
       loginTimeoutTimer.stop()
-      Qt.openUrlExternally(url)
-      actionStatus = "Opened login link"
-      actionStatusTimer.restart()
+      Quickshell.execDetached(["omarchy-launch-browser", url])
       return true
     }
     return false

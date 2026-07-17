@@ -498,6 +498,56 @@ Panel {
             }
           }
 
+          CursorSurface {
+            id: connectionRow
+            visible: tailscale.installed && !tailscale.running
+            width: parent.width
+            implicitHeight: connectionText.implicitHeight + Style.spacing.rowPaddingX
+            hasCursor: root.cursorActive && root.focusSection === "header"
+            foreground: root.foreground
+            fill: root.hoverFill
+
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              enabled: !tailscale.busy
+              cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+              onEntered: {
+                root.cursorActive = true
+                root.focusSection = "header"
+              }
+              onClicked: tailscale.loginOrUp()
+            }
+
+            Column {
+              id: connectionText
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.leftMargin: Style.space(12)
+              anchors.rightMargin: Style.space(12)
+              spacing: Style.space(2)
+
+              Text {
+                width: parent.width
+                text: tailscale.needsLogin ? "Authorize this device" : "Connect Tailscale"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                font.weight: Font.Medium
+              }
+
+              Text {
+                width: parent.width
+                text: tailscale.needsLogin ? "Open Tailscale to restore this device's access" : "Reconnect with the current Tailscale settings"
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.WordWrap
+              }
+            }
+          }
+
           Text {
             visible: tailscale.actionStatus !== "" || tailscale.lastError !== ""
             width: parent.width

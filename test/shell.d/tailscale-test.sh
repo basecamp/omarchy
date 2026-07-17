@@ -165,6 +165,22 @@ assertEqual(
   'tailscale labels connections by tailnet when nickname is missing'
 )
 
+assertDeepEqual(
+  tailscale.loginPlan(true, 'https://login.tailscale.com/a/existing'),
+  { authUrl: 'https://login.tailscale.com/a/existing', command: [] },
+  'tailscale reuses the daemon authorization URL without replacing node identity'
+)
+assertDeepEqual(
+  tailscale.loginPlan(true, ''),
+  { authUrl: '', command: ['tailscale', 'up'] },
+  'tailscale requests a login URL when the daemon has not supplied one'
+)
+assertDeepEqual(
+  tailscale.loginPlan(false, 'https://login.tailscale.com/a/stale'),
+  { authUrl: '', command: ['tailscale', 'up'] },
+  'tailscale ignores stale authorization URLs outside the login state'
+)
+
 assertDeepEqual(tailscale.parseStatus('{'), { ok: false, unavailable: true, message: 'Status error', error: 'Failed to parse tailscale status' }, 'tailscale reports invalid status JSON')
 assertDeepEqual(tailscale.parseAccounts('{'), { accounts: [], selectedAccountId: '', selectedAccountLabel: '' }, 'tailscale handles invalid account JSON')
 JS

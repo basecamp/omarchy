@@ -59,6 +59,14 @@ function accountLabel(account) {
   return String(account.id || "Unknown account")
 }
 
+function loginPlan(needsLogin, authUrl) {
+  var url = String(authUrl || "").trim()
+  if (needsLogin === true && /^https?:\/\//.test(url)) {
+    return { authUrl: url, command: [] }
+  }
+  return { authUrl: "", command: ["tailscale", "up"] }
+}
+
 function peerFromStatus(id, peer) {
   return {
     id: id,
@@ -270,6 +278,7 @@ if (typeof module !== "undefined") {
     displayHostName: displayHostName,
     osIcon: osIcon,
     accountLabel: accountLabel,
+    loginPlan: loginPlan,
     isMullvadPeer: isMullvadPeer,
     peerFromStatus: peerFromStatus,
     parseExitNodeList: parseExitNodeList,

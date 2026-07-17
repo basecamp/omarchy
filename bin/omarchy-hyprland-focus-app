@@ -14,10 +14,11 @@ app=${1:-}
 
 address=$(
   hyprctl clients -j 2>/dev/null |
-    jq -r --arg name "${app,,}" \
-      '[.[] | select((.class // "") | ascii_downcase | startswith($name))] | first.address // empty'
+    jq -r --arg pattern "$app" \
+      '[.[] | select((.class // "") | test($pattern; "i"))] | first.address // empty'
 )
 
 [[ -n $address ]] || exit 1
 
-hyprctl dispatch focuswindow "address:$address" >/dev/null
+hyprctl dispatch "hl.dsp.focus({ window = \"address:$address\" })" >/dev/null 2>&1 || \
+  hyprctl dispatch focuswindow "address:$address" >/dev/null

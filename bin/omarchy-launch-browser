@@ -17,3 +17,7 @@ fi
 systemd-run --user --quiet --collect --unit="omarchy-browser-$(date +%s%N)" \
   --property=StandardOutput=null --property=StandardError=null \
   uwsm-app -- "$browser_exec" "${@/--private/$private_flag}"
+
+if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+  omarchy-hyprland-focus-app "^$(basename "$browser_exec" -stable).*$" || true
+fi
