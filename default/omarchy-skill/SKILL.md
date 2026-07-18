@@ -71,6 +71,18 @@ This directory contains Omarchy's source files managed by git. Any changes will 
 
 If the request is to develop Omarchy itself, this skill is out of scope. Follow repository development instructions instead of this skill.
 
+## Privilege Escalation
+
+For an interactive script or command run in a visible terminal, use `sudo` for
+privileged work. Omarchy may grant passwordless `sudo` access to particular
+commands, and the terminal is the appropriate place to request a password
+when one is needed.
+
+Use `pkexec` only when the caller cannot interact with a terminal or cannot
+enter a password there, such as a command launched by an agent or a graphical
+background process. Do not replace `sudo` with `pkexec` merely because a
+command changes system state.
+
 ## System Architecture
 
 Omarchy is built on:
