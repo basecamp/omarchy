@@ -1200,6 +1200,8 @@ Item {
       interactive: configControl.revealed
       horizontalMargin: 6.5
       verticalPadding: 6
+      fixedWidth: vertical ? -1 : Style.bar.statusSlot
+      fixedHeight: vertical ? Style.bar.statusSlot : -1
       tooltipText: "Bar config"
       onPressed: function(b) {
         if (b === Qt.LeftButton) configControl.togglePanel()
