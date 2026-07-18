@@ -115,7 +115,13 @@ enable_internal() {
 
   [[ -f $MANUAL_DISABLE_FLAG ]] && omarchy-hyprland-monitor-external-active && return 0
   sync_internal_scale
-  dpms_internal enable
+
+  # Only wake the panel when actually leaving clamshell. This also runs from
+  # the periodic clamshell poll, where an unconditional wake re-lights the
+  # internal display seconds after the lock screen blanks it.
+  if (( changed )); then
+    dpms_internal enable
+  fi
 }
 
 disable_internal() {
