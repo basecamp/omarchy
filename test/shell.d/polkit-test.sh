@@ -11,6 +11,17 @@ assert(polkit.promptLooksFingerprint('Swipe your finger'), 'polkit detects finge
 assert(polkit.promptLooksFingerprint('fprintd verification'), 'polkit detects fprint prompts')
 assert(!polkit.promptLooksFingerprint('Password:'), 'polkit ignores password prompts')
 
+assertEqual(
+  polkit.authorizationLabel("Authentication is needed to run `/usr/bin/true' as the super user"),
+  "Authorize running '/usr/bin/true'",
+  'polkit shortens the standard pkexec message'
+)
+assertEqual(
+  polkit.authorizationLabel('Authentication is required to change system settings'),
+  'Authentication is required to change system settings',
+  'polkit preserves custom authorization messages'
+)
+
 assert(
   polkit.fingerprintFirstFromPamConfig(`
 # comment
