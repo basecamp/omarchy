@@ -86,11 +86,10 @@ start_webcam_overlay() {
     --profile=low-latency --untimed --no-cache \
     --demuxer-lavf-o="$capture_options" \
     '--vf=lavfi=[crop=ih*8/9:ih]' \
-    --title="WebcamOverlay" \
+    --title="WebcamOverlay" --wayland-app-id="WebcamOverlay-$WEBCAM_SIZE" \
     --no-border --no-audio --no-osc --osd-level=0 \
     --really-quiet &>/dev/null &
   sleep 1
-  omarchy-capture-webcam-resize "$WEBCAM_SIZE"
 }
 
 cleanup_webcam() {

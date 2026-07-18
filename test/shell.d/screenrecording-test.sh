@@ -119,8 +119,20 @@ if [[ -s $OMARCHY_TEST_HYPRCTL_ARGS ]]; then
 fi
 pass "webcam resize ignores other windows"
 
-grep -F 'o.bind("SUPER + ALT + code:26", "Make webcam overlay smaller", "omarchy-capture-webcam-resize smaller")' \
+grep -F 'o.bind("SUPER + ALT + code:34", "Make webcam overlay smaller", "omarchy-capture-webcam-resize smaller")' \
   "$ROOT/default/hypr/bindings/utilities.lua" >/dev/null || fail "webcam smaller hotkey is configured"
-grep -F 'o.bind("SUPER + ALT + code:27", "Make webcam overlay larger", "omarchy-capture-webcam-resize larger")' \
+grep -F 'o.bind("SUPER + ALT + code:35", "Make webcam overlay larger", "omarchy-capture-webcam-resize larger")' \
   "$ROOT/default/hypr/bindings/utilities.lua" >/dev/null || fail "webcam larger hotkey is configured"
 pass "webcam resize hotkeys are configured"
+
+grep -F -- '--wayland-app-id="WebcamOverlay-$WEBCAM_SIZE"' \
+  "$ROOT/bin/omarchy-capture-screenrecording" >/dev/null || fail "webcam uses a dedicated size-specific app id"
+
+webcam_rules="$ROOT/default/hypr/apps/webcam-overlay.lua"
+grep -F 'move = { "(monitor_w-240-40)", "(monitor_h-270-40)" }' "$webcam_rules" >/dev/null || \
+  fail "small webcam starts at its final corner position"
+grep -F 'move = { "(monitor_w-360-40)", "(monitor_h-405-40)" }' "$webcam_rules" >/dev/null || \
+  fail "medium webcam starts at its final corner position"
+grep -F 'move = { "(monitor_w-480-40)", "(monitor_h-540-40)" }' "$webcam_rules" >/dev/null || \
+  fail "large webcam starts at its final corner position"
+pass "webcam size rules place the initial window in its final corner"
