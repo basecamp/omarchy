@@ -5,14 +5,17 @@
 # omarchy:requires-sudo=true
 
 installed=()
-declare -A seen=()
+declare -A installed_exact=()
+declare -A selected=()
+
+while IFS= read -r package_name; do
+  installed_exact[$package_name]=1
+done < <(pacman -Qq)
+
 for pkg in "$@"; do
-  if package_info=$(pacman -Q "$pkg" 2>/dev/null); then
-    package_name=${package_info%% *}
-    if [[ -z ${seen[$package_name]} ]]; then
-      installed+=("$package_name")
-      seen[$package_name]=1
-    fi
+  if [[ -n ${installed_exact[$pkg]} && -z ${selected[$pkg]} ]]; then
+    installed+=("$pkg")
+    selected[$pkg]=1
   fi
 done
 
