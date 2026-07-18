@@ -85,7 +85,11 @@ Item {
   property real barDragScreenY: 0
   property real barDragOffsetX: 0
   property real barDragOffsetY: 0
-  property var configControls: []
+  property bool barMoveActive: false
+  property bool barMoveSettling: false
+  property string barMoveCandidate: ""
+  property var barMoveWindow: null
+  property var barMoveScreen: null
   property var clickTargets: []
   property var moduleSlots: []
 
@@ -111,18 +115,6 @@ Item {
   function unregisterModuleSlot(slot) {
     var next = moduleSlots.filter(function(item) { return item !== slot })
     moduleSlots = next
-  }
-
-  function registerConfigControl(control) {
-    if (!control || configControls.indexOf(control) !== -1) return
-    var next = configControls.slice()
-    next.push(control)
-    configControls = next
-  }
-
-  function unregisterConfigControl(control) {
-    var next = configControls.filter(function(item) { return item !== control })
-    configControls = next
   }
 
   function debugBarGeometry() {
@@ -198,10 +190,9 @@ Item {
     barDragOffsetY = 0
   }
 
-  function barDragScreenPoint(scenePoint) {
+  function windowScreenPoint(scenePoint, window) {
     var x = scenePoint ? scenePoint.x : 0
     var y = scenePoint ? scenePoint.y : 0
-    var window = barDragWindow
     if (!window || !window.screen) return { x: x, y: y }
 
     if (root.position === "bottom")
@@ -210,6 +201,81 @@ Item {
       x += Math.max(0, window.screen.width - window.width)
 
     return { x: x, y: y }
+  }
+
+  function barDragScreenPoint(scenePoint) {
+    return windowScreenPoint(scenePoint, barDragWindow)
+  }
+
+  // Split the screen along its diagonals (in normalized space, so widescreens
+  // don't bias toward left/right): whichever triangle holds the cursor names
+  // the candidate edge.
+  function nearestScreenEdge(point, screen) {
+    var nx = screen.width > 0 ? Util.clamp(point.x / screen.width, 0, 1) : 0.5
+    var ny = screen.height > 0 ? Util.clamp(point.y / screen.height, 0, 1) : 0.5
+
+    var edge = "top"
+    var best = ny
+    if (1 - ny < best) { edge = "bottom"; best = 1 - ny }
+    if (nx < best) { edge = "left"; best = nx }
+    if (1 - nx < best) { edge = "right"; best = 1 - nx }
+    return edge
+  }
+
+  function beginBarMove(window) {
+    barMoveSettleTimer.stop()
+    barMoveSettling = false
+    barMoveWindow = window
+    barMoveScreen = window ? window.screen : null
+    barMoveCandidate = position
+    barMoveActive = true
+  }
+
+  function updateBarMove(screenPoint) {
+    if (!barMoveActive || !barMoveScreen) return
+    barMoveCandidate = nearestScreenEdge(screenPoint, barMoveScreen)
+  }
+
+  function clearBarMove() {
+    barMoveSettleTimer.stop()
+    barMoveActive = false
+    barMoveSettling = false
+    barMoveCandidate = ""
+    barMoveWindow = null
+    barMoveScreen = null
+  }
+
+  function finishBarMove() {
+    var edge = barMoveCandidate
+    if (!barMoveActive || !edge || edge === position) {
+      clearBarMove()
+      return
+    }
+
+    // Hold the ghost on the target edge while the config round-trips and the
+    // bar re-anchors, so the handoff doesn't flash an empty edge.
+    barMoveActive = false
+    barMoveSettling = true
+    barMoveSettleTimer.restart()
+    setBarPosition(edge)
+  }
+
+  Timer {
+    id: barMoveSettleTimer
+    interval: 450
+    onTriggered: root.clearBarMove()
+  }
+
+  function setBarPosition(value) {
+    var next = normalizePosition(value)
+    if (root.shell && typeof root.shell.mutateShellConfig === "function") {
+      root.shell.mutateShellConfig(function(config) {
+        if (!Util.isPlainObject(config.bar)) config.bar = {}
+        config.bar.position = next
+      })
+    } else {
+      root.position = next
+    }
   }
 
   function captureBarDragGhost(slot) {
@@ -439,16 +505,6 @@ Item {
 
     launcher.command = Util.hyprExecCommand(command)
     launcher.startDetached()
-  }
-
-  function openConfigPanel() {
-    for (var i = 0; i < configControls.length; i++) {
-      var control = configControls[i]
-      if (!control || control.visible !== true || typeof control.openPanel !== "function") continue
-      control.openPanel()
-      return true
-    }
-    return false
   }
 
   function toggleTransparency() {
@@ -804,6 +860,19 @@ Item {
     }
   }
 
+  Variants {
+    model: Quickshell.screens
+
+    delegate: Component {
+      BarMoveGhostPanel {
+        required property var modelData
+
+        screen: modelData
+        ghostScreen: modelData
+      }
+    }
+  }
+
   component BarPanel: PanelWindow {
     id: barWindow
 
@@ -994,6 +1063,59 @@ Item {
     }
   }
 
+  component BarMoveGhostPanel: PanelWindow {
+    id: moveGhostWindow
+
+    required property var ghostScreen
+    readonly property bool screenMatches: root.barMoveScreen === ghostScreen ||
+      (root.barMoveScreen && ghostScreen && root.barMoveScreen.name && ghostScreen.name && root.barMoveScreen.name === ghostScreen.name)
+    visible: (root.barMoveActive || root.barMoveSettling) && screenMatches
+    color: "transparent"
+    exclusionMode: ExclusionMode.Ignore
+    WlrLayershell.namespace: "omarchy-bar-move-ghost"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+    anchors {
+      top: true
+      bottom: true
+      left: true
+      right: true
+    }
+
+    // Visual-only preview of the candidate edge. Keep the input region empty
+    // so the overlay never steals the gesture area's active pointer grab.
+    mask: Region {}
+
+    // One fixed-geometry slab per edge, crossfaded on candidate changes.
+    // Resizing a single slab between edges repaints mid-transition and
+    // flickers; fading between static ones does not.
+    Repeater {
+      model: ["top", "bottom", "left", "right"]
+
+      BorderSurface {
+        id: edgeSlab
+
+        required property string modelData
+        readonly property bool edgeVertical: modelData === "left" || modelData === "right"
+        readonly property int edgeSize: edgeVertical ? Style.bar.sizeVertical : Style.bar.sizeHorizontal
+
+        x: modelData === "right" ? parent.width - edgeSize : 0
+        y: modelData === "bottom" ? parent.height - edgeSize : 0
+        width: edgeVertical ? edgeSize : parent.width
+        height: edgeVertical ? parent.height : edgeSize
+        color: root.transparent ? "transparent" : root.background
+        borderSpec: Border.flat(root.barForeground, 1)
+        visible: opacity > 0
+        opacity: root.barMoveCandidate === modelData ? (root.transparent ? 0.45 : 0.7) : 0
+
+        Behavior on opacity {
+          NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+        }
+      }
+    }
+  }
+
   function findCenterAnchorEntry() {
     var entries = root.layoutEntries("center")
     var idx = root.entryIndex(entries, root.centerAnchor)
@@ -1045,7 +1167,7 @@ Item {
           visible: centerRoot.hasAnchor
           entries: root.entriesBefore(centerRoot.entries, root.centerAnchor)
           region: "center"
-          anchors.right: centerConfigControl.visible ? centerConfigControl.left : centerAnchorModule.left
+          anchors.right: centerAnchorModule.left
           anchors.verticalCenter: centerAnchorModule.verticalCenter
         }
 
@@ -1055,16 +1177,6 @@ Item {
           entry: centerRoot.anchorEntry
           region: "center"
           anchors.centerIn: parent
-        }
-
-        BarConfigControl {
-          id: centerConfigControl
-
-          visible: centerRoot.hasAnchor && centerAnchorModule.moduleName === "omarchy.clock"
-          clockHovered: centerAnchorModule.hovered
-          centerHovered: root.centerSectionRevealHeld && !root.centerHoverRevealSuppressed
-          anchors.right: centerAnchorModule.left
-          anchors.verticalCenter: centerAnchorModule.verticalCenter
         }
 
         ModuleList {
@@ -1100,7 +1212,7 @@ Item {
           visible: centerRoot.hasAnchor
           entries: root.entriesBefore(centerRoot.entries, root.centerAnchor)
           region: "center"
-          anchors.bottom: centerConfigControl.visible ? centerConfigControl.top : centerAnchorModule.top
+          anchors.bottom: centerAnchorModule.top
           anchors.horizontalCenter: centerAnchorModule.horizontalCenter
         }
 
@@ -1110,16 +1222,6 @@ Item {
           entry: centerRoot.anchorEntry
           region: "center"
           anchors.centerIn: parent
-        }
-
-        BarConfigControl {
-          id: centerConfigControl
-
-          visible: centerRoot.hasAnchor && centerAnchorModule.moduleName === "omarchy.clock"
-          clockHovered: centerAnchorModule.hovered
-          centerHovered: root.centerSectionRevealHeld && !root.centerHoverRevealSuppressed
-          anchors.bottom: centerAnchorModule.top
-          anchors.horizontalCenter: centerAnchorModule.horizontalCenter
         }
 
         ModuleList {
@@ -1134,91 +1236,80 @@ Item {
   }
 
   component CenterGestureArea: MouseArea {
-    acceptedButtons: Qt.LeftButton
+    id: gestureArea
 
-    onDoubleClicked: function(mouse) {
-      if (mouse.button === Qt.LeftButton) {
-        root.toggleTransparency()
+    property bool dragging: false
+    property bool suppressClick: false
+    property real pressedX: 0
+    property real pressedY: 0
+    readonly property real dragThreshold: Style.space(4)
+
+    acceptedButtons: Qt.LeftButton
+    cursorShape: dragging ? Qt.ClosedHandCursor : Qt.ArrowCursor
+    pressAndHoldInterval: 200
+
+    function startDrag(x, y) {
+      if (dragging) return
+      dragging = true
+      root.beginBarMove(root.targetWindow(gestureArea))
+      var scenePoint = gestureArea.mapToItem(null, x, y)
+      root.updateBarMove(root.windowScreenPoint(scenePoint, root.barMoveWindow))
+    }
+
+    onPressed: function(mouse) {
+      dragging = false
+      suppressClick = false
+      pressedX = mouse.x
+      pressedY = mouse.y
+    }
+
+    onPressAndHold: function(mouse) {
+      startDrag(mouse.x, mouse.y)
+    }
+
+    onPositionChanged: function(mouse) {
+      if (!(mouse.buttons & Qt.LeftButton)) return
+
+      if (!dragging) {
+        var distance = Math.abs(mouse.x - pressedX) + Math.abs(mouse.y - pressedY)
+        if (distance < dragThreshold) return
+        startDrag(mouse.x, mouse.y)
+        return
+      }
+
+      var scenePoint = gestureArea.mapToItem(null, mouse.x, mouse.y)
+      root.updateBarMove(root.windowScreenPoint(scenePoint, root.barMoveWindow))
+    }
+
+    onReleased: function(mouse) {
+      if (!dragging) return
+      dragging = false
+      suppressClick = true
+      root.finishBarMove()
+      mouse.accepted = true
+    }
+
+    onCanceled: {
+      dragging = false
+      suppressClick = false
+      root.clearBarMove()
+    }
+
+    onClicked: function(mouse) {
+      if (suppressClick) {
+        suppressClick = false
         mouse.accepted = true
       }
     }
-  }
 
-  component BarConfigControl: Item {
-    id: configControl
-
-    property bool clockHovered: false
-    property bool centerHovered: false
-    property bool openWhenReady: false
-
-    readonly property var panelItem: configPanelLoader.item
-    readonly property bool panelOpen: panelItem ? panelItem.opened === true : false
-    readonly property bool revealed: visible && (clockHovered || centerHovered || controlHover.hovered || panelOpen)
-
-    implicitWidth: button.implicitWidth
-    implicitHeight: button.implicitHeight
-    width: implicitWidth
-    height: implicitHeight
-    z: 500
-
-    HoverHandler { id: controlHover }
-
-    Component.onCompleted: root.registerConfigControl(configControl)
-    Component.onDestruction: root.unregisterConfigControl(configControl)
-
-    function configurePanel(panel) {
-      if (!panel) return
-      panel.bar = root
-      panel.anchorItem = button
-    }
-
-    function openPanel() {
-      if (!panelItem) {
-        openWhenReady = true
+    onDoubleClicked: function(mouse) {
+      if (suppressClick) {
+        suppressClick = false
         return
       }
-      panelItem.open()
-    }
-
-    function togglePanel() {
-      if (!panelItem) {
-        openPanel()
-        return
-      }
-      panelItem.toggle()
-    }
-
-    WidgetButton {
-      id: button
-
-      anchors.fill: parent
-      bar: root
-      text: ""
-      keepSpace: true
-      concealed: !configControl.revealed
-      dimmed: configControl.revealed && !controlHover.hovered && !configControl.panelOpen
-      interactive: configControl.revealed
-      horizontalMargin: 6.5
-      verticalPadding: 6
-      fixedWidth: vertical ? -1 : Style.bar.statusSlot
-      fixedHeight: vertical ? Style.bar.statusSlot : -1
-      tooltipText: "Bar config"
-      onPressed: function(b) {
-        if (b === Qt.LeftButton) configControl.togglePanel()
-      }
-    }
-
-    Loader {
-      id: configPanelLoader
-
-      active: true
-      source: Qt.resolvedUrl("BarConfigPanel.qml")
-      onLoaded: {
-        configControl.configurePanel(item)
-        if (configControl.openWhenReady) {
-          configControl.openWhenReady = false
-          item.open()
-        }
+      if (mouse.button === Qt.LeftButton) {
+        root.toggleTransparency()
+        mouse.accepted = true
       }
     }
   }

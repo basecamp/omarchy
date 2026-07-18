@@ -148,7 +148,6 @@
   "setup.security.fido2": {"icon":"","label":"Fido2","keywords":"key","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-security-fido2"},
   "setup.config.hyprland": {"icon":"","label":"Hyprland","action":"omarchy-launch-config-editor \"$HOME/.config/hypr/hyprland.lua\""},
   "setup.config.hyprsunset": {"icon":"","label":"Hyprsunset","keywords":"night light","action":"omarchy-launch-config-editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset"},
-  "setup.config.bar": {"icon":"󰍜","label":"Bar","keywords":"quickshell shell config settings widgets position","action":"omarchy-launch-bar-settings"},
   "setup.config.xcompose": {"icon":"󰞅","label":"XCompose","keywords":"compose key","action":"omarchy-launch-config-editor ~/.XCompose && omarchy-restart-xcompose"},
 
   // Install

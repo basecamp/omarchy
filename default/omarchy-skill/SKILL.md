@@ -174,7 +174,7 @@ $OMARCHY_PATH/config/omarchy/shell.json        # Canonical defaults
 The shell hot-reloads `shell.json` on save — no restart needed for layout
 changes. For more invasive changes (new plugin, packaged update):
 
-**Commands:** `omarchy-restart-shell`, `omarchy refresh shell`, `omarchy launch bar settings`
+**Commands:** `omarchy-restart-shell`, `omarchy refresh shell`
 
 ### Terminals
 
