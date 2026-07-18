@@ -55,3 +55,10 @@ pass "Omarchy 4 upgrade retires systemd-networkd for NetworkManager"
 
 grep -F 'omarchy-bar defaults' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade restores service-aware bar defaults"
+
+grep -F 'install_hardware_transition_packages' "$upgrade_to_quattro" >/dev/null
+grep -F 'sof-firmware' "$upgrade_to_quattro" >/dev/null
+grep -F 'vulkan-intel' "$upgrade_to_quattro" >/dev/null
+grep -F 'apply_user_hardware_transition' "$upgrade_to_quattro" >/dev/null
+grep -F 'DX13260' "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade backfills hardware support from the legacy release"
