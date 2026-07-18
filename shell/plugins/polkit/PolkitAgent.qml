@@ -44,6 +44,10 @@ Item {
     return PolkitModel.promptLooksFingerprint(text)
   }
 
+  function authorizationLabel(message) {
+    return PolkitModel.authorizationLabel(message)
+  }
+
   function loadPamConfig(raw) {
     fingerprintFirst = PolkitModel.fingerprintFirstFromPamConfig(raw)
   }
@@ -323,6 +327,30 @@ Item {
             onClicked: passwordInput.forceActiveFocus()
           }
         }
+      }
+    }
+
+    Rectangle {
+      width: Math.min(justificationText.implicitWidth + Style.space(24), panel.width - Style.gapsOut * 2)
+      height: Style.space(28)
+      anchors.horizontalCenter: card.horizontalCenter
+      anchors.bottom: card.top
+      anchors.bottomMargin: Style.space(10)
+      radius: root.cornerRadius
+      color: root.background
+
+      Text {
+        id: justificationText
+        anchors.fill: parent
+        anchors.leftMargin: Style.space(12)
+        anchors.rightMargin: Style.space(12)
+        text: root.authorizationLabel(root.currentMessage)
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.bodySmall
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+        elide: Text.ElideMiddle
       }
     }
   }
