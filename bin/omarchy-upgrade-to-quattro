@@ -2364,12 +2364,10 @@ fi
 
 cat <<EOF
 
-Omarchy quattro upgrade complete.
+Omarchy quattro upgrade complete!
 
-IMPORTANT: Review the output above before rebooting.
-DO NOT REBOOT IF THERE ARE ERRORS above; fix the errors or ask for help first.
+WARNING: You must address any errors in the above before rebooting.
 
-A reboot is required to finish switching to the package-backed Omarchy quattro session.
 EOF
 
 if (( auto_reboot )); then
