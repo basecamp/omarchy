@@ -35,10 +35,16 @@ function displayHostName(hostName, dnsName) {
   return shortDnsName(dnsName) || host || "Unknown"
 }
 
+function isMullvadHost(name) {
+  var value = String(name || "").toLowerCase()
+  var suffix = ".mullvad.ts.net"
+  return value.length > suffix.length && value.indexOf(suffix) === value.length - suffix.length
+}
+
 function isMullvadPeer(peer) {
-  var hostName = String((peer && peer.HostName) || "").toLowerCase()
-  var dnsName = cleanDnsName((peer && peer.DNSName) || "").toLowerCase()
-  return dnsName.indexOf(".mullvad.ts.net") !== -1 || hostName.indexOf(".mullvad.ts.net") !== -1
+  var hostName = String((peer && peer.HostName) || "")
+  var dnsName = cleanDnsName((peer && peer.DNSName) || "")
+  return isMullvadHost(dnsName) || isMullvadHost(hostName)
 }
 
 function osIcon(os) {
@@ -120,7 +126,7 @@ function parseExitNodeList(raw) {
     var country = sliceTableColumn(line, countryStart, cityStart)
     var city = sliceTableColumn(line, cityStart, statusStart)
     var status = sliceTableColumn(line, statusStart, -1)
-    if (host.indexOf(".mullvad.ts.net") === -1) continue
+    if (!isMullvadHost(host)) continue
 
     byHost[host] = {
       id: "mullvad:" + host,
