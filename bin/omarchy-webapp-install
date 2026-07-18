@@ -7,7 +7,7 @@ set -e
 
 ICON_DIR="$HOME/.local/share/applications/icons"
 
-if (( $# < 3 )); then
+if (( $# < 2 )); then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
