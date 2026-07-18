@@ -8,9 +8,6 @@
 set -euo pipefail
 
 readonly MARGIN=40
-readonly SMALL_WIDTH=240
-readonly MEDIUM_WIDTH=360
-readonly LARGE_WIDTH=480
 
 usage() {
   echo "Usage: omarchy-capture-webcam-resize <smaller|larger|reset|small|medium|large>" >&2
@@ -41,32 +38,6 @@ read -r address current_width current_height monitor_id < <(
 [[ -n $address && $current_width =~ ^[0-9]+$ && $current_height =~ ^[0-9]+$ && $monitor_id =~ ^[0-9]+$ ]] || exit 0
 ((current_width > 0 && current_height > 0)) || exit 0
 
-target_width=$current_width
-case $action in
-small) target_width=$SMALL_WIDTH ;;
-medium | reset) target_width=$MEDIUM_WIDTH ;;
-large) target_width=$LARGE_WIDTH ;;
-smaller)
-  for width in $LARGE_WIDTH $MEDIUM_WIDTH $SMALL_WIDTH; do
-    if ((width < current_width)); then
-      target_width=$width
-      break
-    fi
-  done
-  ;;
-larger)
-  for width in $SMALL_WIDTH $MEDIUM_WIDTH $LARGE_WIDTH; do
-    if ((width > current_width)); then
-      target_width=$width
-      break
-    fi
-  done
-  ;;
-esac
-
-# The camera is center-cropped to a consistent 8:9 portrait frame.
-target_height=$(((target_width * 9 + 4) / 8))
-
 if ! monitor=$(hyprctl monitors -j 2>/dev/null | jq -cer --argjson id "$monitor_id" 'first(.[] | select(.id == $id)) // empty' 2>/dev/null); then
   exit 0
 fi
@@ -85,6 +56,56 @@ read -r monitor_x monitor_y monitor_width monitor_height < <(
 )
 
 [[ $monitor_x =~ ^-?[0-9]+$ && $monitor_y =~ ^-?[0-9]+$ && $monitor_width =~ ^[0-9]+$ && $monitor_height =~ ^[0-9]+$ ]] || exit 0
+
+# Scale the 8:9 portrait presets from monitor height so they occupy the same
+# proportion of a 1080p, HiDPI, ultrawide, or 6K recording.
+small_height=$(((monitor_height * 9 + 25) / 50))
+small_width=$(((small_height * 8 + 4) / 9))
+medium_height=$(((monitor_height + 2) / 4))
+medium_width=$(((medium_height * 8 + 4) / 9))
+large_height=$(((monitor_height * 27 + 40) / 80))
+large_width=$(((large_height * 8 + 4) / 9))
+
+target_width=$current_width
+target_height=$current_height
+case $action in
+small)
+  target_width=$small_width
+  target_height=$small_height
+  ;;
+medium | reset)
+  target_width=$medium_width
+  target_height=$medium_height
+  ;;
+large)
+  target_width=$large_width
+  target_height=$large_height
+  ;;
+smaller)
+  if ((large_width < current_width)); then
+    target_width=$large_width
+    target_height=$large_height
+  elif ((medium_width < current_width)); then
+    target_width=$medium_width
+    target_height=$medium_height
+  elif ((small_width < current_width)); then
+    target_width=$small_width
+    target_height=$small_height
+  fi
+  ;;
+larger)
+  if ((small_width > current_width)); then
+    target_width=$small_width
+    target_height=$small_height
+  elif ((medium_width > current_width)); then
+    target_width=$medium_width
+    target_height=$medium_height
+  elif ((large_width > current_width)); then
+    target_width=$large_width
+    target_height=$large_height
+  fi
+  ;;
+esac
 
 target_x=$((monitor_x + monitor_width - target_width - MARGIN))
 target_y=$((monitor_y + monitor_height - target_height - MARGIN))

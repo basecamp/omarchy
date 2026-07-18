@@ -1,15 +1,16 @@
--- Initial sizes mirror the live presets in omarchy-capture-webcam-resize.
+-- The 8:9 portrait presets scale from monitor height so they occupy the same
+-- share of anything from a 1080p monitor to a scaled 6K display.
 o.window("^WebcamOverlay-small$", {
-  size = { 240, 270 },
-  move = { "(monitor_w-240-40)", "(monitor_h-270-40)" },
+  size = { "(monitor_h*4/25)", "(monitor_h*9/50)" },
+  move = { "(monitor_w-monitor_h*4/25-40)", "(monitor_h-monitor_h*9/50-40)" },
 })
 o.window("^WebcamOverlay-medium$", {
-  size = { 360, 405 },
-  move = { "(monitor_w-360-40)", "(monitor_h-405-40)" },
+  size = { "(monitor_h*2/9)", "(monitor_h/4)" },
+  move = { "(monitor_w-monitor_h*2/9-40)", "(monitor_h-monitor_h/4-40)" },
 })
 o.window("^WebcamOverlay-large$", {
-  size = { 480, 540 },
-  move = { "(monitor_w-480-40)", "(monitor_h-540-40)" },
+  size = { "(monitor_h*3/10)", "(monitor_h*27/80)" },
+  move = { "(monitor_w-monitor_h*3/10-40)", "(monitor_h-monitor_h*27/80-40)" },
 })
 
 -- The dedicated app id keeps this out of mpv's generic centered floating rules,

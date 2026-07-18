@@ -84,11 +84,14 @@ case $1 in
 clients)
   printf '[{"address":"0xabc","title":"%s","size":[%s,%s],"monitor":2}]\n' \
     "${OMARCHY_TEST_CLIENT_TITLE:-WebcamOverlay}" \
-    "${OMARCHY_TEST_CLIENT_WIDTH:-360}" \
-    "${OMARCHY_TEST_CLIENT_HEIGHT:-405}"
+    "${OMARCHY_TEST_CLIENT_WIDTH:-178}" \
+    "${OMARCHY_TEST_CLIENT_HEIGHT:-200}"
   ;;
 monitors)
-  printf '[{"id":2,"x":1280,"y":-100,"width":2560,"height":1600,"scale":2}]\n'
+  printf '[{"id":2,"x":1280,"y":-100,"width":%s,"height":%s,"scale":%s}]\n' \
+    "${OMARCHY_TEST_MONITOR_WIDTH:-2560}" \
+    "${OMARCHY_TEST_MONITOR_HEIGHT:-1600}" \
+    "${OMARCHY_TEST_MONITOR_SCALE:-2}"
   ;;
 dispatch)
   printf '%s\n' "$*" >>"$OMARCHY_TEST_HYPRCTL_ARGS"
@@ -103,13 +106,30 @@ export OMARCHY_TEST_HYPRCTL_ARGS="$tmp_dir/hyprctl-args"
 
 expected_hyprctl_args="$tmp_dir/expected-hyprctl-args"
 printf '%s\n' \
-  'dispatch hl.dsp.window.resize({ window = "address:0xabc", x = 240, y = 270 })' \
-  'dispatch hl.dsp.window.move({ window = "address:0xabc", x = 2280, y = 390 })' >"$expected_hyprctl_args"
+  'dispatch hl.dsp.window.resize({ window = "address:0xabc", x = 128, y = 144 })' \
+  'dispatch hl.dsp.window.move({ window = "address:0xabc", x = 2392, y = 516 })' >"$expected_hyprctl_args"
 
 if ! cmp -s "$OMARCHY_TEST_HYPRCTL_ARGS" "$expected_hyprctl_args"; then
   fail "webcam resize preserves its aspect ratio and corner anchor" "$(diff -u "$expected_hyprctl_args" "$OMARCHY_TEST_HYPRCTL_ARGS")"
 fi
 pass "webcam resize preserves its aspect ratio and corner anchor"
+
+: >"$OMARCHY_TEST_HYPRCTL_ARGS"
+OMARCHY_TEST_MONITOR_WIDTH=1920 \
+  OMARCHY_TEST_MONITOR_HEIGHT=1080 \
+  OMARCHY_TEST_MONITOR_SCALE=1 \
+  OMARCHY_TEST_CLIENT_WIDTH=128 \
+  OMARCHY_TEST_CLIENT_HEIGHT=144 \
+  "$ROOT/bin/omarchy-capture-webcam-resize" reset
+
+printf '%s\n' \
+  'dispatch hl.dsp.window.resize({ window = "address:0xabc", x = 240, y = 270 })' \
+  'dispatch hl.dsp.window.move({ window = "address:0xabc", x = 2920, y = 670 })' >"$expected_hyprctl_args"
+
+if ! cmp -s "$OMARCHY_TEST_HYPRCTL_ARGS" "$expected_hyprctl_args"; then
+  fail "webcam default size adapts to monitor resolution" "$(diff -u "$expected_hyprctl_args" "$OMARCHY_TEST_HYPRCTL_ARGS")"
+fi
+pass "webcam default size adapts to monitor resolution"
 
 : >"$OMARCHY_TEST_HYPRCTL_ARGS"
 OMARCHY_TEST_CLIENT_TITLE="Other Window" "$ROOT/bin/omarchy-capture-webcam-resize" larger
@@ -129,10 +149,10 @@ grep -F -- '--wayland-app-id="WebcamOverlay-$WEBCAM_SIZE"' \
   "$ROOT/bin/omarchy-capture-screenrecording" >/dev/null || fail "webcam uses a dedicated size-specific app id"
 
 webcam_rules="$ROOT/default/hypr/apps/webcam-overlay.lua"
-grep -F 'move = { "(monitor_w-240-40)", "(monitor_h-270-40)" }' "$webcam_rules" >/dev/null || \
+grep -F 'move = { "(monitor_w-monitor_h*4/25-40)", "(monitor_h-monitor_h*9/50-40)" }' "$webcam_rules" >/dev/null || \
   fail "small webcam starts at its final corner position"
-grep -F 'move = { "(monitor_w-360-40)", "(monitor_h-405-40)" }' "$webcam_rules" >/dev/null || \
+grep -F 'move = { "(monitor_w-monitor_h*2/9-40)", "(monitor_h-monitor_h/4-40)" }' "$webcam_rules" >/dev/null || \
   fail "medium webcam starts at its final corner position"
-grep -F 'move = { "(monitor_w-480-40)", "(monitor_h-540-40)" }' "$webcam_rules" >/dev/null || \
+grep -F 'move = { "(monitor_w-monitor_h*3/10-40)", "(monitor_h-monitor_h*27/80-40)" }' "$webcam_rules" >/dev/null || \
   fail "large webcam starts at its final corner position"
 pass "webcam size rules place the initial window in its final corner"
