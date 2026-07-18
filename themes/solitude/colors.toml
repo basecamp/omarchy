@@ -1,21 +1,23 @@
 mode = "dark"
 
 accent = "#798186"
+selection = "#343d41"
+muted = "#4b4e55"
+
+background = "#101315"
+dark_background = "#0c0e10"
+darker_background = "#080a0b"
+lighter_background = "#101315"
+
+foreground = "#cacccc"
+dark_foreground = "#4b4e55"
+light_foreground = "#cbc2be"
+bright_foreground = "#a5aeb4"
+
 hyprland_active_border = "rgba(798186ee) rgba(caccccee)"
 hyprland_inactive_border = "rgb(1e1e1e)"
 active_border_color = "#a8adb0"
 active_tab_background = "#798186"
-
-bg = "#101315"
-dark_bg = "#0c0e10"
-darker_bg = "#080a0b"
-lighter_bg = "#101315"
-selection = "#343d41"
-muted = "#4b4e55"
-dark_fg = "#4b4e55"
-fg = "#cacccc"
-light_fg = "#cbc2be"
-bright_fg = "#a5aeb4"
 
 red = "#565d60"
 yellow = "#d9dbdc"

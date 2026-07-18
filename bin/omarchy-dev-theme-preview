@@ -111,7 +111,7 @@ load_colors() {
 
   # Plus the core slots every theme resolves, so sparse and legacy themes
   # still render a complete preview.
-  for key in mode bg fg light_fg bright_fg selection_background selection_foreground dark_bg darker_bg; do
+  for key in mode background foreground light_foreground bright_foreground selection_background selection_foreground dark_background darker_background; do
     [[ -n ${resolved[$key]:-} ]] && COLORS[$key]="${resolved[$key]}"
   done
 
@@ -220,7 +220,7 @@ print_color_row() {
 paint_segment() {
   local text="$1"
   local fg="$2"
-  local bg="${3:-${COLORS[bg]}}"
+  local bg="${3:-${COLORS[background]}}"
 
   if (( COLOR_OUTPUT )) && hex_valid "$fg" && hex_valid "$bg"; then
     ansi_bg "$bg"
@@ -244,8 +244,8 @@ print_group() {
 }
 
 print_selection_sample() {
-  local bg="${COLORS[bg]}"
-  local fg="${COLORS[fg]}"
+  local bg="${COLORS[background]}"
+  local fg="${COLORS[foreground]}"
   local selection_bg="${COLORS[selection_background]}"
   local selection_fg="${COLORS[selection_foreground]}"
 
@@ -272,7 +272,7 @@ print_selection_sample() {
 print_practical_samples() {
   printf '\nTerminal/UI samples\n'
   printf '  '
-  paint_segment ' normal text ' "${COLORS[fg]}"
+  paint_segment ' normal text ' "${COLORS[foreground]}"
   paint_segment ' muted/comment ' "${COLORS[muted]}"
   paint_segment ' accent/link ' "${COLORS[accent]}"
   paint_segment ' error ' "${COLORS[red]}"
@@ -285,13 +285,13 @@ print_practical_samples() {
   paint_segment ' function() ' "${COLORS[blue]}"
   paint_segment ' --flag ' "${COLORS[magenta]}"
   printf '\n  '
-  paint_segment ' unselected menu row ' "${COLORS[fg]}"
+  paint_segment ' unselected menu row ' "${COLORS[foreground]}"
   printf '\n  '
   paint_segment ' selected menu row ' "${COLORS[selection_foreground]}" "${COLORS[selection_background]}"
   printf '\n  '
-  paint_segment ' status/inverse ' "${COLORS[bg]}" "${COLORS[fg]}"
-  paint_segment ' inactive surface ' "${COLORS[fg]}" "${COLORS[lighter_bg]}"
-  paint_segment ' urgent ' "${COLORS[bg]}" "${COLORS[red]}"
+  paint_segment ' status/inverse ' "${COLORS[background]}" "${COLORS[foreground]}"
+  paint_segment ' inactive surface ' "${COLORS[foreground]}" "${COLORS[lighter_background]}"
+  paint_segment ' urgent ' "${COLORS[background]}" "${COLORS[red]}"
   printf '\n'
 }
 
@@ -313,8 +313,8 @@ print_palette_strip() {
 
 print_ansi_palette() {
   printf '\nANSI palette strips\n'
-  print_palette_strip normal bg red green yellow blue magenta cyan fg
-  print_palette_strip bright muted bright_red bright_green bright_yellow bright_blue bright_magenta bright_cyan bright_fg
+  print_palette_strip normal background red green yellow blue magenta cyan foreground
+  print_palette_strip bright muted bright_red bright_green bright_yellow bright_blue bright_magenta bright_cyan bright_foreground
 }
 
 mix_hex() {
@@ -369,7 +369,7 @@ print_neutral_ramp() {
   local direction sort_flag key hex score entry
   local -a keys entries sorted
 
-  keys=(darker_bg dark_bg bg lighter_bg selection muted dark_fg fg light_fg bright_fg)
+  keys=(darker_background dark_background background lighter_background selection muted dark_foreground foreground light_foreground bright_foreground)
   if [[ $mode == "light" ]]; then
     direction="lightest -> darkest"
     sort_flag="-rn"
@@ -425,15 +425,15 @@ apply_terminal_osc
 printf 'Theme: %s\n' "$theme_label"
 printf 'File:  %s\n' "$colors_file"
 printf 'Mode:  %s\n' "$mode"
-if [[ ${COLORS[fg]} =~ ^#[0-9A-Fa-f]{6}$ && ${COLORS[bg]} =~ ^#[0-9A-Fa-f]{6}$ ]]; then
-  printf 'fg/bg contrast: %s:1\n' "$(contrast_ratio "${COLORS[fg]}" "${COLORS[bg]}")"
+if [[ ${COLORS[foreground]} =~ ^#[0-9A-Fa-f]{6}$ && ${COLORS[background]} =~ ^#[0-9A-Fa-f]{6}$ ]]; then
+  printf 'foreground/background contrast: %s:1\n' "$(contrast_ratio "${COLORS[foreground]}" "${COLORS[background]}")"
 fi
 
-print_gradient bg bright_fg
+print_gradient background bright_foreground
 print_neutral_ramp "$mode"
-print_group "Foundation" bg fg accent selection
+print_group "Foundation" background foreground accent selection
 print_selection_sample
 print_practical_samples
 print_ansi_palette
 print_group "Normal colors" red yellow orange green cyan blue magenta brown
-print_group "Bright colors" bright_red bright_yellow bright_green bright_cyan bright_blue bright_magenta bright_fg
+print_group "Bright colors" bright_red bright_yellow bright_green bright_cyan bright_blue bright_magenta bright_foreground

@@ -125,8 +125,8 @@ resolve_theme_mode() {
 
   if [[ -f $COLORS_DIR/light.mode ]]; then
     THEME_COLORS[mode]="light"
-  elif [[ ${THEME_COLORS[bg]} =~ ^#[0-9A-Fa-f]{6}$ ]]; then
-    bg_hex="${THEME_COLORS[bg]#\#}"
+  elif [[ ${THEME_COLORS[background]} =~ ^#[0-9A-Fa-f]{6}$ ]]; then
+    bg_hex="${THEME_COLORS[background]#\#}"
     lum=$(( $(printf "%d" "0x${bg_hex:0:2}") + $(printf "%d" "0x${bg_hex:2:2}") + $(printf "%d" "0x${bg_hex:4:2}") ))
     (( lum > 382 )) && THEME_COLORS[mode]="light" || THEME_COLORS[mode]="dark"
   else
@@ -161,17 +161,12 @@ parse_colors_file() {
 resolve_theme_colors() {
   local key
 
-  # Canonical palette keys are bg/fg. Preserve older themes that still define
-  # background/foreground by treating those semantic values as the source of
-  # truth, then expose the old names as aliases for legacy consumers.
-  [[ ${THEME_COLORS[background]} ]] && THEME_COLORS[bg]="${THEME_COLORS[background]}"
-  [[ ${THEME_COLORS[foreground]} ]] && THEME_COLORS[fg]="${THEME_COLORS[foreground]}"
-  [[ ${THEME_COLORS[bg]} ]] || THEME_COLORS[bg]="${THEME_COLORS[color0]}"
-  [[ ${THEME_COLORS[fg]} ]] || THEME_COLORS[fg]="${THEME_COLORS[color7]}"
-  [[ ${THEME_COLORS[bg]} ]] && THEME_COLORS[background]="${THEME_COLORS[bg]}"
-  [[ ${THEME_COLORS[fg]} ]] && THEME_COLORS[foreground]="${THEME_COLORS[fg]}"
-  [[ ${THEME_COLORS[bg]} ]] && THEME_COLORS[color0]="${THEME_COLORS[bg]}"
-  [[ ${THEME_COLORS[fg]} ]] && THEME_COLORS[color7]="${THEME_COLORS[fg]}"
+  # Canonical palette keys are background/foreground. Themes generated before
+  # the semantic palette existed may only define the ANSI names.
+  [[ ${THEME_COLORS[background]} ]] || THEME_COLORS[background]="${THEME_COLORS[color0]}"
+  [[ ${THEME_COLORS[foreground]} ]] || THEME_COLORS[foreground]="${THEME_COLORS[color7]}"
+  [[ ${THEME_COLORS[background]} ]] && THEME_COLORS[color0]="${THEME_COLORS[background]}"
+  [[ ${THEME_COLORS[foreground]} ]] && THEME_COLORS[color7]="${THEME_COLORS[foreground]}"
 
   # Legacy compatibility: map ANSI color0..color15 to semantic names.
   declare -A legacy_alias=(
@@ -194,21 +189,21 @@ resolve_theme_colors() {
   alias_theme_color magenta purple
   alias_theme_color bright_magenta bright_purple
 
-  [[ ${THEME_COLORS[light_fg]} ]]   || THEME_COLORS[light_fg]="${THEME_COLORS[color7]:-${THEME_COLORS[fg]}}"
-  [[ ${THEME_COLORS[bright_fg]} ]]  || THEME_COLORS[bright_fg]="${THEME_COLORS[color15]:-${THEME_COLORS[fg]}}"
-  THEME_COLORS[cursor]="${THEME_COLORS[bright_fg]}"
-  [[ ${THEME_COLORS[lighter_bg]} ]] || THEME_COLORS[lighter_bg]="${THEME_COLORS[color0]:-${THEME_COLORS[bg]}}"
-  [[ ${THEME_COLORS[dark_fg]} ]]    || THEME_COLORS[dark_fg]="${THEME_COLORS[color8]:-${THEME_COLORS[fg]}}"
-  [[ ${THEME_COLORS[muted]} ]]      || THEME_COLORS[muted]="${THEME_COLORS[color8]:-${THEME_COLORS[dark_fg]}}"
-  [[ ${THEME_COLORS[selection]} ]]            || THEME_COLORS[selection]="${THEME_COLORS[selection_background]:-${THEME_COLORS[color8]:-${THEME_COLORS[color0]:-${THEME_COLORS[bg]}}}}"
+  [[ ${THEME_COLORS[light_foreground]} ]]  || THEME_COLORS[light_foreground]="${THEME_COLORS[color7]:-${THEME_COLORS[foreground]}}"
+  [[ ${THEME_COLORS[bright_foreground]} ]] || THEME_COLORS[bright_foreground]="${THEME_COLORS[color15]:-${THEME_COLORS[foreground]}}"
+  THEME_COLORS[cursor]="${THEME_COLORS[bright_foreground]}"
+  [[ ${THEME_COLORS[lighter_background]} ]] || THEME_COLORS[lighter_background]="${THEME_COLORS[color0]:-${THEME_COLORS[background]}}"
+  [[ ${THEME_COLORS[dark_foreground]} ]]    || THEME_COLORS[dark_foreground]="${THEME_COLORS[color8]:-${THEME_COLORS[foreground]}}"
+  [[ ${THEME_COLORS[muted]} ]]      || THEME_COLORS[muted]="${THEME_COLORS[color8]:-${THEME_COLORS[dark_foreground]}}"
+  [[ ${THEME_COLORS[selection]} ]]            || THEME_COLORS[selection]="${THEME_COLORS[selection_background]:-${THEME_COLORS[color8]:-${THEME_COLORS[color0]:-${THEME_COLORS[background]}}}}"
   [[ ${THEME_COLORS[selection_background]} ]] || THEME_COLORS[selection_background]="${THEME_COLORS[selection]}"
-  [[ ${THEME_COLORS[selection_foreground]} ]] || THEME_COLORS[selection_foreground]="${THEME_COLORS[bright_fg]}"
+  [[ ${THEME_COLORS[selection_foreground]} ]] || THEME_COLORS[selection_foreground]="${THEME_COLORS[bright_foreground]}"
   [[ ${THEME_COLORS[orange]} ]]               || THEME_COLORS[orange]="${THEME_COLORS[yellow]}"
   [[ ${THEME_COLORS[brown]} ]]      || THEME_COLORS[brown]=$(mix_color "${THEME_COLORS[orange]}" "#000000" 50%)
 
   # Auto-derive shades from base accents when not defined and not aliased from colorN
-  [[ ${THEME_COLORS[dark_bg]} ]]       || THEME_COLORS[dark_bg]=$(mix_color "${THEME_COLORS[bg]}" "#000000" 25%)
-  [[ ${THEME_COLORS[darker_bg]} ]]     || THEME_COLORS[darker_bg]=$(mix_color "${THEME_COLORS[bg]}" "#000000" 50%)
+  [[ ${THEME_COLORS[dark_background]} ]]   || THEME_COLORS[dark_background]=$(mix_color "${THEME_COLORS[background]}" "#000000" 25%)
+  [[ ${THEME_COLORS[darker_background]} ]] || THEME_COLORS[darker_background]=$(mix_color "${THEME_COLORS[background]}" "#000000" 50%)
   [[ ${THEME_COLORS[bright_red]} ]]    || THEME_COLORS[bright_red]=$(mix_color "${THEME_COLORS[red]}" "#ffffff" 20%)
   [[ ${THEME_COLORS[bright_yellow]} ]] || THEME_COLORS[bright_yellow]=$(mix_color "${THEME_COLORS[yellow]}" "#ffffff" 20%)
   [[ ${THEME_COLORS[bright_green]} ]]  || THEME_COLORS[bright_green]=$(mix_color "${THEME_COLORS[green]}" "#ffffff" 20%)
@@ -221,14 +216,14 @@ resolve_theme_colors() {
   # Keep semantic themes compatible with consumers that still reference the
   # legacy ANSI names directly.
   declare -A ansi_alias=(
-    [color0]=bg
+    [color0]=background
     [color1]=red
     [color2]=green
     [color3]=yellow
     [color4]=blue
     [color5]=magenta
     [color6]=cyan
-    [color7]=fg
+    [color7]=foreground
     [color8]=muted
     [color9]=bright_red
     [color10]=bright_green
@@ -236,7 +231,7 @@ resolve_theme_colors() {
     [color12]=bright_blue
     [color13]=bright_magenta
     [color14]=bright_cyan
-    [color15]=bright_fg
+    [color15]=bright_foreground
   )
   for key in "${!ansi_alias[@]}"; do
     alias_theme_color "$key" "${ansi_alias[$key]}"

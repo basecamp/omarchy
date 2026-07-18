@@ -15,18 +15,18 @@
 # by default.
 #
 # AVAILABLE VARIABLES:
-#   {{ bg }}                    - Main background color (e.g., "#1a1b26")
-#   {{ fg }}                    - Main foreground/text color
-#   {{ bright_fg }}             - Bright foreground / cursor color
+#   {{ background }}            - Main background color (e.g., "#1a1b26")
+#   {{ foreground }}            - Main foreground/text color
+#   {{ bright_foreground }}     - Bright foreground / cursor color
 #   {{ accent }}                - Theme accent color
 #   {{ selection }}             - Selection highlight background
 #   {{ selection_background }}  - Selection highlight background alias
-#   {{ selection_foreground }}  - Selection highlight foreground (derived from bright_fg)
+#   {{ selection_foreground }}  - Selection highlight foreground (derived from bright_foreground)
 #
 #   {{ color0 }} through {{ color15 }} - Standard 16-color terminal palette
 #     color0-7:  Normal colors (black, red, green, yellow, blue, magenta, cyan, white)
 #     color8-15: Bright variants
-#   Semantic aliases are also available: {{ bg }}, {{ fg }}, {{ red }}, {{ green }},
+#   Semantic aliases are also available: {{ background }}, {{ foreground }}, {{ red }}, {{ green }},
 #   {{ yellow }}, {{ blue }}, {{ magenta }}, {{ cyan }}, {{ muted }} and the
 #   {{ bright_* }} variants. The two forms are kept in sync by
 #   bin/omarchy-theme-set-templates.
@@ -36,49 +36,49 @@
 #   {{ variable_rgb }}   - Decimal RGB values (e.g., "26,27,38")
 #
 # Example using modifiers:
-#   background = "{{ bg }}"       -> background = "#1a1b26"
-#   background = "{{ bg_strip }}" -> background = "1a1b26"
-#   background = "rgb({{ bg_rgb }})" -> background = "rgb(26,27,38)"
+#   background = "{{ background }}"       -> background = "#1a1b26"
+#   background = "{{ background_strip }}" -> background = "1a1b26"
+#   background = "rgb({{ background_rgb }})" -> background = "rgb(26,27,38)"
 #
 # ---------------------------------------------------------------------------
 
 [colors.primary]
-background = "{{ bg }}"
-foreground = "{{ fg }}"
+background = "{{ background }}"
+foreground = "{{ foreground }}"
 
 [colors.cursor]
-text = "{{ bg }}"
-cursor = "{{ bright_fg }}"
+text = "{{ background }}"
+cursor = "{{ bright_foreground }}"
 
 [colors.vi_mode_cursor]
-text = "{{ bg }}"
-cursor = "{{ bright_fg }}"
+text = "{{ background }}"
+cursor = "{{ bright_foreground }}"
 
 [colors.search.matches]
-foreground = "{{ bg }}"
+foreground = "{{ background }}"
 background = "{{ yellow }}"
 
 [colors.search.focused_match]
-foreground = "{{ bg }}"
+foreground = "{{ background }}"
 background = "{{ red }}"
 
 [colors.footer_bar]
-foreground = "{{ bg }}"
-background = "{{ fg }}"
+foreground = "{{ background }}"
+background = "{{ foreground }}"
 
 [colors.selection]
 text = "{{ selection_foreground }}"
 background = "{{ selection_background }}"
 
 [colors.normal]
-black = "{{ bg }}"
+black = "{{ background }}"
 red = "{{ red }}"
 green = "{{ green }}"
 yellow = "{{ yellow }}"
 blue = "{{ blue }}"
 magenta = "{{ magenta }}"
 cyan = "{{ cyan }}"
-white = "{{ fg }}"
+white = "{{ foreground }}"
 
 [colors.bright]
 black = "{{ muted }}"
@@ -88,4 +88,4 @@ yellow = "{{ bright_yellow }}"
 blue = "{{ bright_blue }}"
 magenta = "{{ bright_magenta }}"
 cyan = "{{ bright_cyan }}"
-white = "{{ bright_fg }}"
+white = "{{ bright_foreground }}"

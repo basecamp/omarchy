@@ -1,40 +1,40 @@
 [colors.primary]
-background = "{{ bg }}"
-foreground = "{{ fg }}"
+background = "{{ background }}"
+foreground = "{{ foreground }}"
 
 [colors.cursor]
-text = "{{ bg }}"
-cursor = "{{ bright_fg }}"
+text = "{{ background }}"
+cursor = "{{ bright_foreground }}"
 
 [colors.vi_mode_cursor]
-text = "{{ bg }}"
-cursor = "{{ bright_fg }}"
+text = "{{ background }}"
+cursor = "{{ bright_foreground }}"
 
 [colors.search.matches]
-foreground = "{{ bg }}"
+foreground = "{{ background }}"
 background = "{{ yellow }}"
 
 [colors.search.focused_match]
-foreground = "{{ bg }}"
+foreground = "{{ background }}"
 background = "{{ red }}"
 
 [colors.footer_bar]
-foreground = "{{ bg }}"
-background = "{{ fg }}"
+foreground = "{{ background }}"
+background = "{{ foreground }}"
 
 [colors.selection]
 text = "{{ selection_foreground }}"
 background = "{{ selection_background }}"
 
 [colors.normal]
-black = "{{ bg }}"
+black = "{{ background }}"
 red = "{{ red }}"
 green = "{{ green }}"
 yellow = "{{ yellow }}"
 blue = "{{ blue }}"
 magenta = "{{ magenta }}"
 cyan = "{{ cyan }}"
-white = "{{ fg }}"
+white = "{{ foreground }}"
 
 [colors.bright]
 black = "{{ muted }}"
@@ -44,4 +44,4 @@ yellow = "{{ bright_yellow }}"
 blue = "{{ bright_blue }}"
 magenta = "{{ bright_magenta }}"
 cyan = "{{ bright_cyan }}"
-white = "{{ bright_fg }}"
+white = "{{ bright_foreground }}"

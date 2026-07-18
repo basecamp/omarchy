@@ -1,19 +1,21 @@
 mode = "dark"
 
 accent = "#8bc9eb"
-active_border_color = "#f2fcff"
-active_tab_background = "#6fb8e3"
-
-bg = "#16242d"
-dark_bg = "#101b21"
-darker_bg = "#0b1216"
-lighter_bg = "#1b2d40"
 selection = "#243d56"
 muted = "#304860"
-dark_fg = "#4d86b0"
-fg = "#d6e2ee"
-light_fg = "#d6e2ee"
-bright_fg = "#f2fcff"
+
+background = "#16242d"
+dark_background = "#101b21"
+darker_background = "#0b1216"
+lighter_background = "#1b2d40"
+
+foreground = "#d6e2ee"
+dark_foreground = "#4d86b0"
+light_foreground = "#d6e2ee"
+bright_foreground = "#f2fcff"
+
+active_border_color = "#f2fcff"
+active_tab_background = "#6fb8e3"
 
 red = "#4d86b0"
 yellow = "#6fa4c9"
