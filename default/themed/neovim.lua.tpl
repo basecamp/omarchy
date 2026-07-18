@@ -6,15 +6,15 @@ return {
     priority = 1000,
     opts = {
       colors = {
-        bg = "{{ bg }}",
-        dark_bg = "{{ dark_bg }}",
-        darker_bg = "{{ darker_bg }}",
-        lighter_bg = "{{ lighter_bg }}",
+        bg = "{{ background }}",
+        dark_bg = "{{ dark_background }}",
+        darker_bg = "{{ darker_background }}",
+        lighter_bg = "{{ lighter_background }}",
 
-        fg = "{{ fg }}",
-        dark_fg = "{{ dark_fg }}",
-        light_fg = "{{ light_fg }}",
-        bright_fg = "{{ bright_fg }}",
+        fg = "{{ foreground }}",
+        dark_fg = "{{ dark_foreground }}",
+        light_fg = "{{ light_foreground }}",
+        bright_fg = "{{ bright_foreground }}",
         muted = "{{ muted }}",
 
         red = "{{ red }}",
@@ -34,9 +34,9 @@ return {
         bright_magenta = "{{ bright_magenta }}",
 
         accent = "{{ accent }}",
-        cursor = "{{ bright_fg }}",
-        foreground = "{{ fg }}",
-        background = "{{ bg }}",
+        cursor = "{{ bright_foreground }}",
+        foreground = "{{ foreground }}",
+        background = "{{ background }}",
         selection = "{{ selection }}",
         selection_foreground = "{{ selection_foreground }}",
         selection_background = "{{ selection_background }}",

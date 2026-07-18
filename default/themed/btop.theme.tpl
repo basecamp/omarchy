@@ -1,11 +1,11 @@
 # Main background, empty for terminal default, need to be empty if you want transparent background
-theme[main_bg]="{{ bg }}"
+theme[main_bg]="{{ background }}"
 
 # Main text color
-theme[main_fg]="{{ fg }}"
+theme[main_fg]="{{ foreground }}"
 
 # Title color for boxes
-theme[title]="{{ fg }}"
+theme[title]="{{ foreground }}"
 
 # Highlight color for keyboard shortcuts
 theme[hi_fg]="{{ accent }}"
@@ -20,13 +20,13 @@ theme[selected_fg]="{{ accent }}"
 theme[inactive_fg]="{{ muted }}"
 
 # Color of text appearing on top of graphs, i.e uptime and current network graph scaling
-theme[graph_text]="{{ light_fg }}"
+theme[graph_text]="{{ light_foreground }}"
 
 # Background color of the percentage meters
 theme[meter_bg]="{{ selection }}"
 
 # Misc colors for processes box including mini cpu graphs, details memory graph and details status text
-theme[proc_misc]="{{ light_fg }}"
+theme[proc_misc]="{{ light_foreground }}"
 
 # CPU, Memory, Network, Proc box outline colors
 theme[cpu_box]="{{ magenta }}"
@@ -83,11 +83,11 @@ theme[process_mid]="{{ blue }}"
 theme[process_end]="{{ magenta }}"
 
 # Graph gradient colors (spectrum shades from background to foreground)
-theme[gradient_color_0]="{{ bg }}"
-theme[gradient_color_1]="{{ lighter_bg }}"
+theme[gradient_color_0]="{{ background }}"
+theme[gradient_color_1]="{{ lighter_background }}"
 theme[gradient_color_2]="{{ selection }}"
 theme[gradient_color_3]="{{ muted }}"
-theme[gradient_color_4]="{{ dark_fg }}"
-theme[gradient_color_5]="{{ fg }}"
-theme[gradient_color_6]="{{ light_fg }}"
-theme[gradient_color_7]="{{ bright_fg }}"
+theme[gradient_color_4]="{{ dark_foreground }}"
+theme[gradient_color_5]="{{ foreground }}"
+theme[gradient_color_6]="{{ light_foreground }}"
+theme[gradient_color_7]="{{ bright_foreground }}"

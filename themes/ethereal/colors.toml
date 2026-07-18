@@ -1,17 +1,18 @@
 mode = "dark"
 
 accent = "#7d82d9"
-
-bg = "#060B1E"
-dark_bg = "#040816"
-darker_bg = "#030610"
-lighter_bg = "#131a3a"
 selection = "#252e56"
 muted = "#3d4573"
-dark_fg = "#6d7db6"
-fg = "#ffcead"
-light_fg = "#c9b8a6"
-bright_fg = "#ffcead"
+
+background = "#060B1E"
+dark_background = "#040816"
+darker_background = "#030610"
+lighter_background = "#131a3a"
+
+foreground = "#ffcead"
+dark_foreground = "#6d7db6"
+light_foreground = "#c9b8a6"
+bright_foreground = "#ffcead"
 
 red = "#ED5B5A"
 yellow = "#E9BB4F"

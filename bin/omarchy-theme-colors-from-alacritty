@@ -129,8 +129,8 @@ cat > "$COLORS_OUTPUT" <<EOF
 accent = "$accent"
 selection = "$selection_background"
 
-bg = "$background"
-fg = "$foreground"
+background = "$background"
+foreground = "$foreground"
 
 color0 = "$color0"
 color1 = "$color1"

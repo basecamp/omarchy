@@ -51,7 +51,7 @@ theme_color() {
   ' "$theme_dir/colors.toml"
 }
 
-bg=$(theme_color background bg)
-text=$(theme_color foreground fg)
+bg=$(theme_color background)
+text=$(theme_color foreground)
 
 exec omarchy-plymouth-set "$bg" "$text" "$theme_dir/unlock.png"

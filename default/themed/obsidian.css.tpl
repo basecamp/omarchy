@@ -2,11 +2,11 @@
 
 .theme-dark, .theme-light {
   /* Core colors */
-  --background-primary: {{ bg }};
-  --background-primary-alt: {{ bg }};
-  --background-secondary: {{ bg }};
-  --background-secondary-alt: {{ bg }};
-  --text-normal: {{ fg }};
+  --background-primary: {{ background }};
+  --background-primary-alt: {{ background }};
+  --background-secondary: {{ background }};
+  --background-secondary-alt: {{ background }};
+  --text-normal: {{ foreground }};
 
   /* Selection colors */
   --text-selection: {{ selection_background }};
@@ -30,8 +30,8 @@
   --interactive-accent-hover: {{ accent }};
 
   /* Muted text */
-  --text-muted: color-mix(in srgb, {{ fg }} 70%, transparent);
-  --text-faint: color-mix(in srgb, {{ fg }} 55%, transparent);
+  --text-muted: color-mix(in srgb, {{ foreground }} 70%, transparent);
+  --text-faint: color-mix(in srgb, {{ foreground }} 55%, transparent);
 
   /* Code */
   --code-normal: {{ cyan }};
