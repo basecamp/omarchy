@@ -2,7 +2,7 @@
 
 # omarchy:summary=Set the active bar option, position, and transparency
 # omarchy:group=bar
-# omarchy:args=use <id> | reset | defaults | position <top|bottom|left|right> | transparent <true|false> | settings
+# omarchy:args=use <id> | reset | defaults | position <top|bottom|left|right> | transparent <true|false>
 # omarchy:examples=omarchy bar use local.neon-bar | omarchy bar reset | omarchy bar defaults | omarchy bar position top | omarchy bar transparent true
 
 set -euo pipefail
@@ -20,7 +20,6 @@ Usage: omarchy bar <command> [args...]
   defaults                             Restore the default bar and service widgets
   position <top|bottom|left|right>     Bar position
   transparent <true|false>             Bar transparency
-  settings                             Open the inline bar config panel
 
 Bar widgets are added, moved, removed, and configured with 'omarchy bar plugin'.
 
@@ -167,10 +166,6 @@ case "$command" in
     ;;
   transparent)
     cmd_transparent "$@"
-    ;;
-  settings)
-    (( $# == 0 )) || fail "settings does not take arguments"
-    exec omarchy-launch-bar-settings
     ;;
   plugin)
     exec omarchy-bar-plugin "$@"

@@ -188,7 +188,6 @@ calls to the running shell. It does not start the shell.
 
 ```
 omarchy-shell shell ping
-omarchy-shell shell openBarConfig
 omarchy-shell shell toggle omarchy.menu '{"menu":"root"}'
 omarchy-shell shell listPlugins
 omarchy-shell shell rescanPlugins
@@ -256,7 +255,7 @@ becomes the authoritative file — we do **not** deep-merge defaults back in.
    like `Clock` and `AudioPanel` forward.
 5. **Third-party enabled ⇔ present.** A third-party plugin is enabled iff
    its id appears somewhere in shell.json. For full bar options, that means
-   `bar.id`; for bar widgets, the bar settings UI adds/removes layout entries;
+   `bar.id`; for bar widgets, `omarchy bar plugin` adds/removes layout entries;
    other plugin kinds are enabled with the shell IPC. First-party non-bar
    plugins are always enabled.
 6. **Multiple instances** are allowed when a manifest sets
