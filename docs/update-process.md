@@ -164,26 +164,28 @@ Fallbacks:
   explicitly runs that hook; without a package-update marker, the only pending
   state we can derive is missing per-user migration markers.
 
-## Shell update indicator
+## Shell update center
 
-The bar widget `omarchy.system-update` runs:
+The `omarchy.system-update` plugin keeps one service instance for the shell and
+exposes package and user-theme status through one bar popup. It checks on shell
+startup, every six hours, on manual refresh, and through the existing
+`omarchy.system-update refresh` IPC call.
 
-```bash
-omarchy-update-available
-```
+`omarchy-update-status` lists all official repository package updates using
+`checkupdates`. The popup is review-only: applying packages always launches the
+full `omarchy-update` transaction in a visible terminal. QML never invokes
+`pacman` or constructs a partial package transaction.
 
-`omarchy-update-available` checks the installed Omarchy package for updates:
+`omarchy-theme-update-status` checks Git themes below
+`~/.config/omarchy/themes` and records the reviewed base and target commits,
+branch, upstream, remote URL, and collision state. `omarchy-theme-update`
+revalidates that provenance and fast-forwards only to the reviewed target.
+Themes with local edits, local commits, diverged history, or conflicting
+untracked/ignored paths remain visible but are blocked from automatic update.
 
-- `omarchy-dev`, when installed
-- otherwise `omarchy`, when installed
-
-Exit codes:
-
-- `0` — Omarchy updates are available; stdout is the update list.
-- non-zero — no Omarchy updates are available; stdout says Omarchy is up to date.
-
-The widget runs this check on shell startup and every six hours. Clicking the
-update icon launches `omarchy-update` in a floating terminal.
+The legacy `omarchy-update-available` command remains part of the update
+pipeline for compatibility and post-update state refresh; the shell popup no
+longer uses it as its only source.
 
 ## Update-related binaries
 
@@ -202,7 +204,9 @@ scripts.
 | `omarchy-update-pacman-guard` | ALPM pre-transaction guard that aborts direct `pacman -Syu` style upgrades unless Omarchy set `OMARCHY_UPDATE_PACMAN=1` or the user explicitly set `OMARCHY_ALLOW_DIRECT_PACMAN=1`. | **Keep internal/hidden.** This is what nudges users back to `omarchy update`. |
 | `omarchy-migrate-notify` | Internal notification helper for direct pacman updates. Uses `omarchy-migrate --pending` and shows notification only when this user has pending migrations. | **Keep internal/hidden.** Clear name now that the public command is `omarchy-migrate`. |
 | `omarchy-update-user-notify` | Hidden compatibility wrapper for `omarchy-migrate-notify`. | **Temporary.** Keep only for old callers. |
-| `omarchy-update-available` | Update checker for shell widget and post-update refresh. | **Keep.** Could eventually be renamed `omarchy-update-check`, but current name matches widget semantics. |
+| `omarchy-update-available` | Legacy Omarchy-package availability checker used by post-update refresh and compatibility callers. | **Keep for compatibility.** The shell update center now consumes `omarchy-update-status`. |
+| `omarchy-update-status` | Structured read-only status for all official repository package updates in the shell update center. | **Keep internal/hidden.** Applying remains owned by `omarchy-update`. |
+| `omarchy-theme-update-status` | Checks user Git themes and pins reviewed update provenance in a private state file. | **Keep internal/hidden.** Paired with `omarchy-theme-update`. |
 | `omarchy-update-aur-pkgs` | Updates AUR packages with `yay -Sua` if foreign packages exist and AUR is reachable. | **Question.** Omarchy is package-backed now, but users may still install AUR packages. Keep for now. |
 | `omarchy-update-mise` | Runs `mise up` for mise-managed tools. | **Keep.** Mise-managed tools are intentionally part of the blessed update path. |
 | `omarchy-update-orphan-pkgs` | Lists orphans and prompts before removal; noninteractive mode never removes. | **Keep for now.** Safe because it is prompt-only. |

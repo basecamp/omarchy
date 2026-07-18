@@ -1,0 +1,5 @@
+#!/bin/bash
+
+cat <<'JSON'
+{"schemaVersion":1,"scanId":"fixture","checked":"2026-07-18T20:00:00+02:00","checkedEpoch":1784400000,"total":0,"reachable":0,"outdated":0,"actionable":0,"blocked":0,"review":0,"degraded":false,"themes":[]}
+JSON

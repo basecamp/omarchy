@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.system-update",
+  "name": "Omarchy update center",
+  "version": "1.1.0",
+  "author": "Omarchy",
+  "description": "Repository package and user theme update status",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Omarchy update center",
+    "description": "Review repository package and user theme updates",
+    "category": "System",
+    "allowMultiple": false
+  }
+}

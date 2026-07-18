@@ -71,10 +71,14 @@ TMPDIR=$(mktemp -d)
 result="$TMPDIR/result.json"
 log="$TMPDIR/quickshell.log"
 config_dir="$TMPDIR/manifest-entrypoints"
-mkdir -p "$config_dir" "$TMPDIR/home"
+stub_bin="$TMPDIR/bin"
+mkdir -p "$config_dir" "$TMPDIR/home" "$stub_bin"
 cp "$SHELL_TEST_DIR/fixtures/manifest-entrypoints/shell.qml" "$config_dir/shell.qml"
 ln -s "$ROOT/shell/Ui" "$config_dir/Ui"
 ln -s "$ROOT/shell/Commons" "$config_dir/Commons"
+for helper in omarchy-update-status omarchy-theme-update-status; do
+  ln -s "$SHELL_TEST_DIR/fixtures/system-update/bin/$helper" "$stub_bin/$helper"
+done
 
 OMARCHY_PATH="$ROOT" \
 OMARCHY_QML_TEST_RESULT="$result" \
@@ -82,7 +86,7 @@ OMARCHY_QML_MANIFESTS="$manifest_entries" \
 HOME="$TMPDIR/home" \
 QML2_IMPORT_PATH="$ROOT/shell${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}" \
 QML_IMPORT_PATH="$ROOT/shell${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}" \
-PATH="$ROOT/bin:$PATH" \
+PATH="$stub_bin:$ROOT/bin:$PATH" \
   quickshell -p "$config_dir" --no-color >"$log" 2>&1 &
 QS_PID=$!
 

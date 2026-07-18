@@ -63,12 +63,9 @@ cp -a "$ROOT/shell" "$test_root/shell"
 ln -s "$ROOT/config" "$test_root/config"
 ln -s "$ROOT/bin" "$test_root/bin"
 
-cat >"$stub_bin/omarchy-update-available" <<'SH'
-#!/bin/bash
-echo "Omarchy update available (test)"
-exit 0
-SH
-chmod +x "$stub_bin/omarchy-update-available"
+for helper in omarchy-update-status omarchy-theme-update-status; do
+  ln -s "$SHELL_TEST_DIR/fixtures/system-update/bin/$helper" "$stub_bin/$helper"
+done
 
 cat >"$test_root/shell/plugins/panels/weather/status.sh" <<'SH'
 #!/bin/bash

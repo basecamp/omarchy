@@ -53,12 +53,9 @@ cp -a "$ROOT/shell" "$test_root/shell"
 ln -s "$ROOT/config" "$test_root/config"
 ln -s "$ROOT/bin" "$test_root/bin"
 
-cat >"$stub_bin/omarchy-update-available" <<'SH'
-#!/bin/bash
-echo "Omarchy update available (test)"
-exit 0
-SH
-chmod +x "$stub_bin/omarchy-update-available"
+for helper in omarchy-update-status omarchy-theme-update-status; do
+  ln -s "$SHELL_TEST_DIR/fixtures/system-update/bin/$helper" "$stub_bin/$helper"
+done
 
 cat >"$test_root/shell/plugins/panels/weather/status.sh" <<'SH'
 #!/bin/bash
@@ -156,6 +153,9 @@ pass "image selector IPC survives plugin rescan"
 
 shell_ipc_quiet omarchy.system-update refresh >/dev/null 2>&1 || true
 sleep 0.8
+[[ $(shell_ipc shell summon omarchy.system-update '{}') == "ok" ]] || fail_with_log "shell IPC opens the update center"
+shell_ipc shell hide omarchy.system-update >/dev/null || fail_with_log "shell IPC closes the update center"
+pass "shell IPC opens and closes the update center"
 
 default_ids=$(jq -c '(.bar.layout.left + .bar.layout.center + .bar.layout.right) | map(.id // .)' "$ROOT/config/omarchy/shell.json")
 visible_default_ids='[

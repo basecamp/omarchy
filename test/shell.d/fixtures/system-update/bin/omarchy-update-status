@@ -1,0 +1,5 @@
+#!/bin/bash
+
+cat <<'JSON'
+{"schemaVersion":1,"checked":"2026-07-18T20:00:00+02:00","checkedEpoch":1784400000,"available":true,"state":"current","reason":"","count":0,"packages":[]}
+JSON

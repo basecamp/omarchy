@@ -60,7 +60,7 @@ Example `shell.json` (bar subtree only shown):
 | `omarchy.media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
 | `omarchy.indicators` | Manual state indicators | left = indicator action |
 | `omarchy.notifications` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
-| `omarchy.system-update` | Available update indicator | left = update |
+| `omarchy.system-update` | Repository package and user-theme update center | left = popup · right = refresh |
 | `omarchy.tray` | System tray | hover = reveal drawer · right on chevron = manage |
 | `omarchy.weather` | Weather icon + popup with forecast | left = popup · right = full notification |
 | `omarchy.microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio panel · scroll = source volume |
