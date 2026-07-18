@@ -12,7 +12,7 @@ if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
 
   # Setup voxtype
   mkdir -p ~/.config/voxtype
-  cp $OMARCHY_PATH/default/voxtype/config.toml ~/.config/voxtype/
+  cp "$OMARCHY_PATH/default/voxtype/config.toml" ~/.config/voxtype/
 
   voxtype setup --download --no-post-install
   if omarchy-hw-vulkan; then

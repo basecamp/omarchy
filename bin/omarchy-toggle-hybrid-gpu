@@ -47,12 +47,12 @@ case "$gpu_mode" in
 
     # Force igpu mode after system sleep (or dgpu could get activated)
     sudo mkdir -p /usr/lib/systemd/system-sleep
-    sudo cp -p $OMARCHY_PATH/default/systemd/system-sleep/force-igpu /usr/lib/systemd/system-sleep/
+    sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/force-igpu" /usr/lib/systemd/system-sleep/
 
     # Delay supergfxd startup to avoid race condition with display manager
     # that can cause system freeze when booting in Integrated mode
     sudo mkdir -p /etc/systemd/system/supergfxd.service.d
-    sudo cp -p $OMARCHY_PATH/default/systemd/system/supergfxd.service.d/delay-start.conf /etc/systemd/system/supergfxd.service.d/
+    sudo cp -p "$OMARCHY_PATH/default/systemd/system/supergfxd.service.d/delay-start.conf" /etc/systemd/system/supergfxd.service.d/
 
     omarchy-system-reboot
   fi

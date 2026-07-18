@@ -11,7 +11,7 @@ echo "Resetting limine config"
 
 sudo mv /boot/limine.conf /boot/limine.conf.bak
 
-sudo cp $OMARCHY_PATH/default/limine/limine.conf /boot/limine.conf
+sudo cp "$OMARCHY_PATH/default/limine/limine.conf" /boot/limine.conf
 
 sudo limine-update
 sudo limine-snapper-sync
