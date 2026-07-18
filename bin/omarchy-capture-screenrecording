@@ -2,7 +2,7 @@
 
 # omarchy:summary=Start or stop screen recording
 # omarchy:group=capture
-# omarchy:args=[--fullscreen] [--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--resolution=<size>] [--stop-recording]
+# omarchy:args=[--fullscreen] [--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--webcam-size=<small|medium|large>] [--resolution=<size>] [--stop-recording]
 # omarchy:examples=omarchy screenrecord | omarchy capture screenrecord --with-desktop-audio
 # omarchy:aliases=omarchy screenrecord
 #
@@ -30,6 +30,7 @@ DESKTOP_AUDIO="false"
 MICROPHONE_AUDIO="false"
 WEBCAM="false"
 WEBCAM_DEVICE=""
+WEBCAM_SIZE="medium"
 RESOLUTION=""
 FULLSCREEN="false"
 STOP_RECORDING="false"
@@ -42,11 +43,20 @@ for arg in "$@"; do
   --with-microphone-audio) MICROPHONE_AUDIO="true" ;;
   --with-webcam) WEBCAM="true" ;;
   --webcam-device=*) WEBCAM_DEVICE="${arg#*=}" ;;
+  --webcam-size=*) WEBCAM_SIZE="${arg#*=}" ;;
   --resolution=*) RESOLUTION="${arg#*=}" ;;
   --fullscreen) FULLSCREEN="true" ;;
   --stop-recording) STOP_RECORDING="true" ;;
   esac
 done
+
+case $WEBCAM_SIZE in
+small | medium | large) ;;
+*)
+  echo "Invalid webcam size: $WEBCAM_SIZE (expected small, medium, or large)" >&2
+  exit 1
+  ;;
+esac
 
 start_webcam_overlay() {
   cleanup_webcam
@@ -60,32 +70,27 @@ start_webcam_overlay() {
     fi
   fi
 
-  # Get monitor scale
-  local scale=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .scale')
-
-  # Target width (base 360px, scaled to monitor)
-  local target_width=$(awk "BEGIN {printf \"%.0f\", 360 * $scale}")
-
   # Try preferred 16:9 resolutions in order, use first available
   local preferred_resolutions=("640x360" "1280x720" "1920x1080")
-  local video_size_arg=""
+  local capture_options="framerate=30"
   local available_formats=$(v4l2-ctl --list-formats-ext -d "$WEBCAM_DEVICE" 2>/dev/null)
 
   for resolution in "${preferred_resolutions[@]}"; do
     if echo "$available_formats" | grep -q "$resolution"; then
-      video_size_arg="-video_size $resolution"
+      capture_options="video_size=$resolution,$capture_options"
       break
     fi
   done
 
-  ffplay -f v4l2 $video_size_arg -framerate 30 "$WEBCAM_DEVICE" \
-    -vf "crop=iw/2:ih,scale=${target_width}:-1" \
-    -window_title "WebcamOverlay" \
-    -noborder \
-    -fflags nobuffer -flags low_delay \
-    -probesize 32 -analyzeduration 0 \
-    -loglevel quiet &
+  mpv "av://v4l2:$WEBCAM_DEVICE" \
+    --profile=low-latency --untimed --no-cache \
+    --demuxer-lavf-o="$capture_options" \
+    '--vf=lavfi=[crop=ih*8/9:ih]' \
+    --title="WebcamOverlay" \
+    --no-border --no-audio --no-osc --osd-level=0 \
+    --really-quiet &>/dev/null &
   sleep 1
+  omarchy-capture-webcam-resize "$WEBCAM_SIZE"
 }
 
 cleanup_webcam() {

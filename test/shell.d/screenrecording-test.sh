@@ -76,3 +76,51 @@ if ! cmp -s "$OMARCHY_TEST_RECORDER_ARGS" "$expected_recorder_args"; then
   fail "screenrecording webcam picker starts recording with selected device" "$(diff -u "$expected_recorder_args" "$OMARCHY_TEST_RECORDER_ARGS")"
 fi
 pass "screenrecording webcam picker starts recording with selected device"
+
+cat >"$stub_bin/hyprctl" <<'SH'
+#!/bin/bash
+
+case $1 in
+clients)
+  printf '[{"address":"0xabc","title":"%s","size":[%s,%s],"monitor":2}]\n' \
+    "${OMARCHY_TEST_CLIENT_TITLE:-WebcamOverlay}" \
+    "${OMARCHY_TEST_CLIENT_WIDTH:-360}" \
+    "${OMARCHY_TEST_CLIENT_HEIGHT:-405}"
+  ;;
+monitors)
+  printf '[{"id":2,"x":1280,"y":-100,"width":2560,"height":1600,"scale":2}]\n'
+  ;;
+dispatch)
+  printf '%s\n' "$*" >>"$OMARCHY_TEST_HYPRCTL_ARGS"
+  ;;
+esac
+SH
+chmod +x "$stub_bin/hyprctl"
+
+export OMARCHY_TEST_HYPRCTL_ARGS="$tmp_dir/hyprctl-args"
+
+"$ROOT/bin/omarchy-capture-webcam-resize" smaller
+
+expected_hyprctl_args="$tmp_dir/expected-hyprctl-args"
+printf '%s\n' \
+  'dispatch hl.dsp.window.resize({ window = "address:0xabc", x = 240, y = 270 })' \
+  'dispatch hl.dsp.window.move({ window = "address:0xabc", x = 2280, y = 390 })' >"$expected_hyprctl_args"
+
+if ! cmp -s "$OMARCHY_TEST_HYPRCTL_ARGS" "$expected_hyprctl_args"; then
+  fail "webcam resize preserves its aspect ratio and corner anchor" "$(diff -u "$expected_hyprctl_args" "$OMARCHY_TEST_HYPRCTL_ARGS")"
+fi
+pass "webcam resize preserves its aspect ratio and corner anchor"
+
+: >"$OMARCHY_TEST_HYPRCTL_ARGS"
+OMARCHY_TEST_CLIENT_TITLE="Other Window" "$ROOT/bin/omarchy-capture-webcam-resize" larger
+
+if [[ -s $OMARCHY_TEST_HYPRCTL_ARGS ]]; then
+  fail "webcam resize ignores other windows" "$(cat "$OMARCHY_TEST_HYPRCTL_ARGS")"
+fi
+pass "webcam resize ignores other windows"
+
+grep -F 'o.bind("SUPER + ALT + code:26", "Make webcam overlay smaller", "omarchy-capture-webcam-resize smaller")' \
+  "$ROOT/default/hypr/bindings/utilities.lua" >/dev/null || fail "webcam smaller hotkey is configured"
+grep -F 'o.bind("SUPER + ALT + code:27", "Make webcam overlay larger", "omarchy-capture-webcam-resize larger")' \
+  "$ROOT/default/hypr/bindings/utilities.lua" >/dev/null || fail "webcam larger hotkey is configured"
+pass "webcam resize hotkeys are configured"
