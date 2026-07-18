@@ -297,18 +297,11 @@ if (( ! yes )); then
 
 This will upgrade Omarchy for user '$target_user' to Omarchy quattro using the '$channel' channel and $package_mode.
 
-It will install the package-backed Omarchy quattro stack, overwrite files previously
-written by the legacy installer, remove retired default packages, and apply the
-Omarchy quattro system/user transition inline. A reboot is strongly recommended afterward.
+WARNING: This is a one-way street! You cannot downgrade from Quattro. Make sure you have a backup.
+
 EOF
 
-  if [[ -r /dev/tty ]]; then
-    printf '\nContinue? [y/N] ' >/dev/tty
-    read -r answer </dev/tty
-    [[ $answer =~ ^[Yy]$ ]] || exit 0
-  else
-    fail "No TTY available for confirmation. Re-run with --yes to proceed non-interactively."
-  fi
+  gum confirm "Continue with upgrade?" || exit 0
 fi
 
 sudo_keepalive_pid=""
@@ -2382,15 +2375,8 @@ EOF
 if (( auto_reboot )); then
   log "Rebooting because --reboot was passed"
   as_root systemctl reboot
-elif { exec {tty_fd}<>/dev/tty; } 2>/dev/null; then
-  printf '\nReboot now? [y/N] ' >&$tty_fd
-  read -r reboot_answer <&$tty_fd || reboot_answer=""
-  exec {tty_fd}>&-
-  if [[ $reboot_answer =~ ^[Yy]([Ee][Ss])?$ ]]; then
-    as_root systemctl reboot
-  else
-    echo "Not rebooting. Please reboot manually after confirming there were no errors."
-  fi
+elif gum confirm "Reboot now?"; then
+  as_root systemctl reboot
 else
-  echo "No TTY available for reboot prompt. Please reboot manually after confirming there were no errors."
+  echo "Not rebooting. Please reboot manually after confirming there were no errors."
 fi
