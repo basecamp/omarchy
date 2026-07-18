@@ -38,6 +38,8 @@ It is not for contributing to Omarchy source code.
 
 ## Critical Safety Rules
 
+When invoking a privileged command directly, use `pkexec` instead of `sudo` so Omarchy can show a graphical authorization prompt with command context. Do not wrap commands that already manage privilege elevation themselves.
+
 **For end-user customization tasks, NEVER modify anything in `/usr/share/omarchy/`** - but READING is safe and encouraged.
 
 This directory contains Omarchy's source files managed by git. Any changes will be:
