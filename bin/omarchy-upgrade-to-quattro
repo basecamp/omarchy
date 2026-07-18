@@ -2374,8 +2374,6 @@ fi
 
 cat <<EOF
 
-Omarchy quattro upgrade complete!
-
 WARNING: You must address any errors in the above before rebooting.
 
 EOF
@@ -2383,7 +2381,7 @@ EOF
 if (( auto_reboot )); then
   log "Rebooting because --reboot was passed"
   as_root systemctl reboot
-elif gum confirm "Reboot now?"; then
+elif gum confirm "Reboot to complete Quattro upgrade now?"; then
   as_root systemctl reboot
 else
   echo "Not rebooting. Please reboot manually after confirming there were no errors."
