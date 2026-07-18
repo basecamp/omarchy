@@ -589,6 +589,30 @@ install_omarchy_quattro_packages() {
   mark_packages_explicit "${audio_packages[@]}"
 }
 
+install_hardware_transition_packages() {
+  local hardware_packages=()
+
+  if lspci | grep -qiE '(Multimedia audio controller|Audio device).*Intel'; then
+    hardware_packages+=(sof-firmware)
+  fi
+
+  if lspci | grep -iE '(VGA|Display).*Intel' >/dev/null; then
+    hardware_packages+=(vulkan-intel)
+  fi
+  if lspci | grep -iE '(VGA|Display).*AMD' >/dev/null; then
+    hardware_packages+=(vulkan-radeon)
+  fi
+  if lspci | grep -iE '(VGA|Display).*Apple' >/dev/null; then
+    hardware_packages+=(vulkan-asahi)
+  fi
+
+  if (( ${#hardware_packages[@]} > 0 )); then
+    log "Installing hardware support needed by the Omarchy quattro layout"
+    as_root pacman -S --needed --noconfirm "${hardware_packages[@]}"
+    mark_packages_explicit "${hardware_packages[@]}"
+  fi
+}
+
 remove_retired_default_packages() {
   local retired_packages=(
     asdcontrol-git
@@ -2226,6 +2250,16 @@ rm -f "$state_dir/finalize-user.done"
 USER_SETUP
 }
 
+apply_user_hardware_transition() {
+  if grep -qi "DX13260" /sys/class/dmi/id/product_name 2>/dev/null ||
+    grep -qi "DX13260" /sys/class/dmi/id/product_family 2>/dev/null; then
+    log "Adjusting text scaling for Dell XPS 13 DX13260"
+    if ! run_as_user_session gsettings set org.gnome.desktop.interface text-scaling-factor 0.95; then
+      warn "Could not adjust text scaling for Dell XPS 13 DX13260; continuing."
+    fi
+  fi
+}
+
 write_legacy_theme_hyprland_conf() {
   run_as_user env HOME="$target_home" bash <<'THEME_COMPAT'
 set -euo pipefail
@@ -2339,6 +2373,7 @@ remove_legacy_installer_package
 remove_legacy_limine_configs
 remove_conflicting_legacy_packages
 install_omarchy_quattro_packages
+install_hardware_transition_packages
 normalize_limine_config
 configure_snapper_policy
 configure_lock_authentication
@@ -2347,6 +2382,7 @@ cleanup_legacy_user_paths
 apply_system_transition
 suppress_hyprland_config_reload
 apply_user_transition
+apply_user_hardware_transition
 run_as_user env \
   HOME="$target_home" \
   USER="$target_user" \
