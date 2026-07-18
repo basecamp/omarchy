@@ -40,11 +40,24 @@ PROCESSING="${2:-slurp}"
 # The picker leaves the screen freeze running (PID on its first output line)
 # so grim captures the frozen overlay rather than live content shifting
 # during teardown.
-cleanup_freeze() {
-  [[ -n $FREEZE_PID ]] && kill $FREEZE_PID 2>/dev/null
-}
-trap cleanup_freeze EXIT
+#
+# Software-composited cursors (Hyprland's fallback on GPUs without working
+# hardware cursors) are baked into the frames grim captures, so force
+# hardware cursors until after grim runs and restore the setting on exit.
+NO_HW_CURSORS=$(hyprctl getoption cursor:no_hardware_cursors -j | jq '.int')
 
+set_no_hw_cursors() {
+  hyprctl eval "hl.config({ cursor = { no_hardware_cursors = $1 } })" &>/dev/null ||
+    hyprctl keyword cursor:no_hardware_cursors "$1" &>/dev/null
+}
+
+cleanup() {
+  [[ -n $FREEZE_PID ]] && kill $FREEZE_PID 2>/dev/null
+  set_no_hw_cursors "$NO_HW_CURSORS"
+}
+trap cleanup EXIT
+
+set_no_hw_cursors 0
 { read -r FREEZE_PID; read -r SELECTION; } < <(omarchy-capture-region "$MODE" --keep-freeze)
 
 [[ -z $SELECTION ]] && exit 0
