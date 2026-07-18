@@ -62,3 +62,6 @@ grep -F 'vulkan-intel' "$upgrade_to_quattro" >/dev/null
 grep -F 'apply_user_hardware_transition' "$upgrade_to_quattro" >/dev/null
 grep -F 'DX13260' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade backfills hardware support from the legacy release"
+
+grep -F 'omarchy-refresh-applications' "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade refreshes application launchers"
