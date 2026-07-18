@@ -1,0 +1,392 @@
+#!/bin/bash
+
+# omarchy:summary=Check user Git themes for pinned updates
+# omarchy:hidden=true
+
+set -euo pipefail
+
+THEMES_DIR="${OMARCHY_THEME_UPDATE_DIR:-$HOME/.config/omarchy/themes}"
+STATE="${OMARCHY_THEME_UPDATE_STATE:-$HOME/.cache/omarchy/theme-updates.json}"
+LOCK="${OMARCHY_THEME_UPDATE_LOCK:-$HOME/.cache/omarchy/theme-update.lock}"
+CURRENT_FILE="${OMARCHY_THEME_CURRENT_FILE:-$HOME/.local/state/omarchy/current/theme.name}"
+NETWORK_TIMEOUT="${OMARCHY_THEME_NETWORK_TIMEOUT:-10}"
+FETCH_TIMEOUT="${OMARCHY_THEME_FETCH_TIMEOUT:-45}"
+BUDGET="${OMARCHY_THEME_CHECK_BUDGET:-180}"
+JOBS="${OMARCHY_THEME_CHECK_JOBS:-4}"
+
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=/bin/true
+export SSH_ASKPASS=/bin/true
+export GIT_SSH_COMMAND="ssh -oBatchMode=yes -oConnectTimeout=8"
+export GIT_CONFIG_NOSYSTEM=1
+export GIT_PAGER=cat
+export LC_ALL=C
+
+umask 077
+
+omarchy-cmd-present git || {
+  printf 'git is required for theme update checks.\n' >&2
+  exit 127
+}
+omarchy-cmd-present jq || {
+  printf 'jq is required for theme update checks.\n' >&2
+  exit 127
+}
+
+[[ $NETWORK_TIMEOUT =~ ^[1-9][0-9]*$ ]] || NETWORK_TIMEOUT=10
+[[ $FETCH_TIMEOUT =~ ^[1-9][0-9]*$ ]] || FETCH_TIMEOUT=45
+[[ $BUDGET =~ ^[1-9][0-9]*$ ]] || BUDGET=180
+[[ $JOBS =~ ^[1-9][0-9]*$ ]] || JOBS=4
+
+mkdir -p "$(dirname "$STATE")" "$(dirname "$LOCK")"
+exec 9>"$LOCK"
+if ! flock -n 9; then
+  printf 'Theme update state is busy; retry after the current check or update finishes.\n' >&2
+  exit 75
+fi
+
+CURRENT_THEME=""
+if [[ -r $CURRENT_FILE ]]; then
+  CURRENT_THEME=$(tr -d '[:space:]' <"$CURRENT_FILE" 2>/dev/null || true)
+fi
+
+path_is_or_under() {
+  local path=$1
+  local prefix=$2
+
+  [[ $path == "$prefix" ]] && return 0
+  [[ -n $prefix ]] || return 1
+  [[ ${path:0:${#prefix}} == "$prefix" && ${path:${#prefix}:1} == "/" ]]
+}
+
+path_collision_sample() {
+  local incoming_file=$1
+  local local_file=$2
+  local -a incoming_paths=()
+  local -a local_paths=()
+  local incoming local_path
+  local count=0
+  local -A seen=()
+
+  mapfile -d '' -t incoming_paths <"$incoming_file" || true
+  mapfile -d '' -t local_paths <"$local_file" || true
+
+  for incoming in "${incoming_paths[@]}"; do
+    [[ -n $incoming ]] || continue
+    for local_path in "${local_paths[@]}"; do
+      [[ -n $local_path ]] || continue
+      if path_is_or_under "$incoming" "$local_path" || path_is_or_under "$local_path" "$incoming"; then
+        if [[ -z ${seen[$local_path]+x} ]]; then
+          printf '%q\n' "$local_path"
+          seen[$local_path]=1
+          (( count += 1 ))
+          (( count >= 5 )) && return 0
+        fi
+      fi
+    done
+  done
+}
+
+check_one() {
+  local dir=$1
+  local out=$2
+  local name
+  local head=""
+  local remote=""
+  local remote_url=""
+  local upstream_ref=""
+  local tracking_ref=""
+  local base_commit=""
+  local target_commit=""
+  local behind=0
+  local ahead=0
+  local reason=""
+  local files_json='[]'
+
+  name=$(basename "$dir")
+
+  emit() {
+    local state=$1
+
+    jq -n \
+      --arg name "$name" \
+      --arg state "$state" \
+      --arg reason "$reason" \
+      --argjson files "$files_json" \
+      --arg head "$head" \
+      --arg remote "$remote" \
+      --arg remoteUrl "$remote_url" \
+      --arg upstreamRef "$upstream_ref" \
+      --arg trackingRef "$tracking_ref" \
+      --arg baseCommit "$base_commit" \
+      --arg targetCommit "$target_commit" \
+      --argjson behind "$behind" \
+      --argjson ahead "$ahead" \
+      --argjson current "$([[ $name == "${CURRENT_THEME:-}" ]] && printf true || printf false)" \
+      '{
+        name: $name,
+        state: $state,
+        current: $current,
+        behind: $behind,
+        ahead: $ahead,
+        reason: $reason,
+        files: $files,
+        head: $head,
+        remote: $remote,
+        remoteUrl: $remoteUrl,
+        upstreamRef: $upstreamRef,
+        trackingRef: $trackingRef,
+        baseCommit: $baseCommit,
+        targetCommit: $targetCommit
+      }' >"$out"
+  }
+
+  if [[ ! $name =~ ^[A-Za-z0-9._-]+$ || $name == "." || $name == ".." ]]; then
+    reason="invalid-theme-name"
+    emit invalid
+    return 0
+  fi
+
+  local -a git_theme=(git -C "$dir"
+    -c core.fsmonitor=
+    -c core.hooksPath=/dev/null
+    -c credential.helper=
+    -c protocol.allow=never
+    -c protocol.ext.allow=never
+    -c protocol.file.allow=always
+    -c protocol.git.allow=always
+    -c protocol.http.allow=always
+    -c protocol.https.allow=always
+    -c protocol.ssh.allow=always)
+
+  if "${git_theme[@]}" config --local --get-regexp '^filter\..*\.(clean|smudge|process)$' >/dev/null 2>&1; then
+    reason="executable-git-filter"
+    emit invalid
+    return 0
+  fi
+
+  head=$("${git_theme[@]}" symbolic-ref --quiet --short HEAD 2>/dev/null) || {
+    reason="detached-head"
+    emit no-upstream
+    return 0
+  }
+  remote=$("${git_theme[@]}" config "branch.$head.remote" 2>/dev/null) || {
+    reason="missing-remote"
+    emit no-upstream
+    return 0
+  }
+  upstream_ref=$("${git_theme[@]}" config "branch.$head.merge" 2>/dev/null) || {
+    reason="missing-upstream"
+    emit no-upstream
+    return 0
+  }
+  remote_url=$("${git_theme[@]}" remote get-url "$remote" 2>/dev/null) || {
+    reason="missing-remote-url"
+    emit no-upstream
+    return 0
+  }
+  base_commit=$("${git_theme[@]}" rev-parse HEAD 2>/dev/null) || {
+    reason="invalid-head"
+    emit invalid
+    return 0
+  }
+
+  local branch=${upstream_ref#refs/heads/}
+  if [[ $branch == "$upstream_ref" ]]; then
+    reason="upstream-not-branch"
+    emit no-upstream
+    return 0
+  fi
+  tracking_ref="refs/remotes/$remote/$branch"
+  if ! "${git_theme[@]}" check-ref-format "$upstream_ref" >/dev/null 2>&1 ||
+    ! "${git_theme[@]}" check-ref-format "$tracking_ref" >/dev/null 2>&1; then
+    reason="invalid-upstream"
+    emit no-upstream
+    return 0
+  fi
+
+  target_commit=$(timeout "$NETWORK_TIMEOUT" "${git_theme[@]}" ls-remote --quiet -- "$remote" "$upstream_ref" 2>/dev/null | awk 'NR == 1 { print $1 }') || target_commit=""
+  if [[ ! $target_commit =~ ^[0-9A-Fa-f]{40}$ && ! $target_commit =~ ^[0-9A-Fa-f]{64}$ ]]; then
+    target_commit=""
+    reason="remote-unreachable"
+    emit unreachable
+    return 0
+  fi
+
+  local local_target
+  local_target=$("${git_theme[@]}" rev-parse --verify "$tracking_ref" 2>/dev/null || true)
+  if [[ $local_target != "$target_commit" ]]; then
+    if ! timeout "$FETCH_TIMEOUT" "${git_theme[@]}" fetch --quiet -- "$remote" "$upstream_ref:$tracking_ref"; then
+      reason="fetch-failed"
+      emit unreachable
+      return 0
+    fi
+  fi
+
+  local_target=$("${git_theme[@]}" rev-parse --verify "$tracking_ref" 2>/dev/null || true)
+  if [[ $local_target != "$target_commit" ]] ||
+    ! "${git_theme[@]}" cat-file -e "$target_commit^{commit}" 2>/dev/null; then
+    reason="target-unavailable"
+    emit unreachable
+    return 0
+  fi
+
+  behind=$("${git_theme[@]}" rev-list --count "HEAD..$target_commit" 2>/dev/null || printf 0)
+  ahead=$("${git_theme[@]}" rev-list --count "$target_commit..HEAD" 2>/dev/null || printf 0)
+
+  local tracked_dirty=false
+  if [[ -n $("${git_theme[@]}" status --porcelain=v1 --untracked-files=no 2>/dev/null) ]]; then
+    tracked_dirty=true
+  fi
+
+  local tmpdir collisions="" tracked_files=""
+  tmpdir=$(mktemp -d)
+  if (( behind > 0 )); then
+    "${git_theme[@]}" diff --no-ext-diff --no-textconv -z --name-only --diff-filter=ACMRT "HEAD..$target_commit" >"$tmpdir/incoming.z" 2>/dev/null || : >"$tmpdir/incoming.z"
+    "${git_theme[@]}" ls-files -z --others >"$tmpdir/untracked.z" 2>/dev/null || : >"$tmpdir/untracked.z"
+    collisions=$(path_collision_sample "$tmpdir/incoming.z" "$tmpdir/untracked.z")
+  fi
+
+  if [[ $tracked_dirty == true ]]; then
+    tracked_files=$(
+      {
+        "${git_theme[@]}" diff --no-ext-diff --no-textconv --name-only 2>/dev/null
+        "${git_theme[@]}" diff --no-ext-diff --no-textconv --cached --name-only 2>/dev/null
+      } | sort -u | head -n 5
+    )
+    reason="tracked-edits"
+    files_json=$(printf '%s\n' "$tracked_files" | sed '/^$/d' | jq -R . | jq -s '.[0:5]')
+    emit local-edits
+  elif [[ -n $collisions ]]; then
+    reason="untracked-conflict"
+    files_json=$(printf '%s\n' "$collisions" | sed '/^$/d' | jq -R . | jq -s '.[0:5]')
+    emit local-edits
+  elif (( behind > 0 && ahead > 0 )); then
+    reason="diverged-history"
+    emit diverged
+  elif (( ahead > 0 )); then
+    reason="local-commits"
+    emit local-commits
+  elif (( behind > 0 )); then
+    emit update
+  else
+    emit clean
+  fi
+
+  rm -rf "$tmpdir"
+}
+export -f path_is_or_under path_collision_sample check_one
+export CURRENT_THEME NETWORK_TIMEOUT FETCH_TIMEOUT
+
+write_state() {
+  local json=$1
+  local temporary
+
+  temporary=$(mktemp -p "$(dirname "$STATE")" .theme-updates.XXXXXX)
+  if printf '%s\n' "$json" >"$temporary" && mv "$temporary" "$STATE"; then
+    printf '%s\n' "$json"
+    return 0
+  fi
+
+  rm -f "$temporary"
+  return 1
+}
+
+directories=()
+if [[ -d $THEMES_DIR ]]; then
+  while IFS= read -r -d '' directory; do
+    [[ -L $directory || ! -d $directory/.git ]] && continue
+    directories+=("$directory")
+  done < <(find "$THEMES_DIR" -mindepth 1 -maxdepth 1 -type d -print0 | sort -z)
+fi
+
+total=${#directories[@]}
+checked=$(date -Is)
+checked_epoch=$(date +%s)
+scan_id="$checked_epoch-$$-$RANDOM"
+
+if (( total == 0 )); then
+  state=$(jq -n \
+    --arg checked "$checked" \
+    --arg scanId "$scan_id" \
+    --argjson checkedEpoch "$checked_epoch" \
+    '{
+      schemaVersion: 1,
+      scanId: $scanId,
+      checked: $checked,
+      checkedEpoch: $checkedEpoch,
+      total: 0,
+      reachable: 0,
+      outdated: 0,
+      actionable: 0,
+      blocked: 0,
+      review: 0,
+      degraded: false,
+      themes: []
+    }')
+  write_state "$state"
+  exit 0
+fi
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
+for index in "${!directories[@]}"; do
+  printf '%s\0%s\0' "${directories[$index]}" "$tmpdir/$index.json"
+done >"$tmpdir/jobs.z"
+
+worker_status=0
+# shellcheck disable=SC2016
+timeout "$BUDGET" xargs -0 -n 2 -P "$JOBS" bash -c 'check_one "$1" "$2"' _ <"$tmpdir/jobs.z" || worker_status=$?
+
+emitted=$(find "$tmpdir" -maxdepth 1 -name '*.json' -size +0c | wc -l)
+degraded=false
+if (( worker_status != 0 || emitted != total )); then
+  degraded=true
+fi
+
+if (( emitted == 0 )); then
+  state=$(jq -n \
+    --arg checked "$checked" \
+    --arg scanId "$scan_id" \
+    --argjson checkedEpoch "$checked_epoch" \
+    --argjson total "$total" \
+    '{
+      schemaVersion: 1,
+      scanId: $scanId,
+      checked: $checked,
+      checkedEpoch: $checkedEpoch,
+      total: $total,
+      reachable: 0,
+      outdated: 0,
+      actionable: 0,
+      blocked: 0,
+      review: 0,
+      degraded: true,
+      themes: []
+    }')
+else
+  state=$(jq -s \
+    --arg checked "$checked" \
+    --arg scanId "$scan_id" \
+    --argjson checkedEpoch "$checked_epoch" \
+    --argjson total "$total" \
+    --argjson degraded "$degraded" '
+      {
+        schemaVersion: 1,
+        scanId: $scanId,
+        checked: $checked,
+        checkedEpoch: $checkedEpoch,
+        total: $total,
+        reachable: ([.[] | select(.state != "unreachable" and .state != "no-upstream" and .state != "invalid")] | length),
+        outdated: ([.[] | select(.behind > 0)] | length),
+        actionable: ([.[] | select(.state == "update")] | length),
+        blocked: ([.[] | select(.behind > 0 and .state != "update")] | length),
+        review: ([.[] | select(.state != "clean" and .state != "update")] | length),
+        degraded: $degraded,
+        themes: (sort_by([(.current | not), (.state != "update"), .name]))
+      }
+    ' "$tmpdir"/*.json)
+fi
+
+write_state "$state"

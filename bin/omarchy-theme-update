@@ -1,10 +1,353 @@
 #!/bin/bash
 
-# omarchy:summary=Update user-installed git themes
+# omarchy:summary=Safely update user-installed Git themes
+# omarchy:args=[--all | <theme-name> <target-commit>]
+# omarchy:examples=omarchy theme update | omarchy theme update tokyo-night <commit>
 
-for dir in ~/.config/omarchy/themes/*/; do
-  if [[ -d $dir ]] && [[ ! -L ${dir%/} ]] && [[ -d $dir/.git ]]; then
-    echo "Updating: $(basename "$dir")"
-    git -C "$dir" pull
+set -euo pipefail
+
+THEMES_DIR="${OMARCHY_THEME_UPDATE_DIR:-$HOME/.config/omarchy/themes}"
+STATE="${OMARCHY_THEME_UPDATE_STATE:-$HOME/.cache/omarchy/theme-updates.json}"
+LOCK="${OMARCHY_THEME_UPDATE_LOCK:-$HOME/.cache/omarchy/theme-update.lock}"
+FETCH_TIMEOUT="${OMARCHY_THEME_FETCH_TIMEOUT:-45}"
+
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=/bin/true
+export SSH_ASKPASS=/bin/true
+export GIT_SSH_COMMAND="ssh -oBatchMode=yes -oConnectTimeout=8"
+export GIT_CONFIG_NOSYSTEM=1
+export GIT_PAGER=cat
+export LC_ALL=C
+
+umask 077
+
+valid_name() {
+  [[ $1 =~ ^[A-Za-z0-9._-]+$ && $1 != "." && $1 != ".." ]]
+}
+
+valid_commit() {
+  [[ $1 =~ ^[0-9A-Fa-f]{40}$ || $1 =~ ^[0-9A-Fa-f]{64}$ ]]
+}
+
+valid_ref() {
+  git check-ref-format "$1" >/dev/null 2>&1
+}
+
+entry_field() {
+  local entry=$1
+  local field=$2
+
+  jq -er --arg field "$field" '.[$field] // empty' "$entry"
+}
+
+fail_theme() {
+  local name=$1
+  local message=$2
+
+  printf 'Theme %s: %s\n' "$name" "$message" >&2
+  return 1
+}
+
+path_is_or_under() {
+  local path=$1
+  local prefix=$2
+
+  [[ $path == "$prefix" ]] && return 0
+  [[ -n $prefix ]] || return 1
+  [[ ${path:0:${#prefix}} == "$prefix" && ${path:${#prefix}:1} == "/" ]]
+}
+
+path_collision_sample() {
+  local incoming_file=$1
+  local local_file=$2
+  local -a incoming_paths=()
+  local -a local_paths=()
+  local incoming local_path
+  local count=0
+  local -A seen=()
+
+  mapfile -d '' -t incoming_paths <"$incoming_file" || true
+  mapfile -d '' -t local_paths <"$local_file" || true
+
+  for incoming in "${incoming_paths[@]}"; do
+    [[ -n $incoming ]] || continue
+    for local_path in "${local_paths[@]}"; do
+      [[ -n $local_path ]] || continue
+      if path_is_or_under "$incoming" "$local_path" || path_is_or_under "$local_path" "$incoming"; then
+        if [[ -z ${seen[$local_path]+x} ]]; then
+          printf '%q\n' "$local_path"
+          seen[$local_path]=1
+          (( count += 1 ))
+          (( count >= 5 )) && return 0
+        fi
+      fi
+    done
+  done
+}
+
+apply_theme() {
+  local name=$1
+  local expected_target=${2:-}
+  local entry
+
+  valid_name "$name" || {
+    fail_theme "$name" "invalid theme name"
+    return 1
+  }
+
+  entry=$(mktemp)
+  if ! jq -cer --arg name "$name" '.themes[] | select(.name == $name)' "$STATE_SNAPSHOT" >"$entry"; then
+    rm -f "$entry"
+    fail_theme "$name" "not present in the checked update state"
+    return 1
+  fi
+
+  local state behind head remote remote_url upstream_ref tracking_ref base_commit target_commit
+  state=$(entry_field "$entry" state)
+  behind=$(entry_field "$entry" behind)
+  head=$(entry_field "$entry" head)
+  remote=$(entry_field "$entry" remote)
+  remote_url=$(entry_field "$entry" remoteUrl)
+  upstream_ref=$(entry_field "$entry" upstreamRef)
+  tracking_ref=$(entry_field "$entry" trackingRef)
+  base_commit=$(entry_field "$entry" baseCommit)
+  target_commit=$(entry_field "$entry" targetCommit)
+  rm -f "$entry"
+
+  [[ $state == "update" ]] || {
+    fail_theme "$name" "checked state is '$state', not updateable"
+    return 1
+  }
+  (( behind > 0 )) || {
+    fail_theme "$name" "checked state has no pending commits"
+    return 1
+  }
+  valid_ref "refs/heads/$head" || {
+    fail_theme "$name" "invalid checked branch"
+    return 1
+  }
+  [[ -n $remote && -n $remote_url ]] || {
+    fail_theme "$name" "checked remote provenance is incomplete"
+    return 1
+  }
+  if ! valid_ref "$upstream_ref" || ! valid_ref "$tracking_ref"; then
+    fail_theme "$name" "invalid checked upstream"
+    return 1
+  fi
+  if ! valid_commit "$base_commit" || ! valid_commit "$target_commit"; then
+    fail_theme "$name" "invalid checked commit"
+    return 1
+  fi
+  if [[ -n $expected_target && $expected_target != "$target_commit" ]]; then
+    fail_theme "$name" "requested target differs from the reviewed target"
+    return 1
+  fi
+
+  local dir="$THEMES_DIR/$name"
+  [[ -d $dir/.git && ! -L $dir ]] || {
+    fail_theme "$name" "theme Git repository not found"
+    return 1
+  }
+
+  local -a git_theme=(git -C "$dir"
+    -c core.fsmonitor=
+    -c core.hooksPath=/dev/null
+    -c credential.helper=
+    -c protocol.allow=never
+    -c protocol.ext.allow=never
+    -c protocol.file.allow=always
+    -c protocol.git.allow=always
+    -c protocol.http.allow=always
+    -c protocol.https.allow=always
+    -c protocol.ssh.allow=always)
+
+  if "${git_theme[@]}" config --local --get-regexp '^filter\..*\.(clean|smudge|process)$' >/dev/null 2>&1; then
+    fail_theme "$name" "repository defines executable Git filters"
+    return 1
+  fi
+
+  local current_head current_remote current_upstream current_url current_commit
+  current_head=$("${git_theme[@]}" symbolic-ref --quiet --short HEAD 2>/dev/null) || {
+    fail_theme "$name" "theme is not on a branch"
+    return 1
+  }
+  current_remote=$("${git_theme[@]}" config "branch.$current_head.remote" 2>/dev/null) || {
+    fail_theme "$name" "theme branch has no remote"
+    return 1
+  }
+  current_upstream=$("${git_theme[@]}" config "branch.$current_head.merge" 2>/dev/null) || {
+    fail_theme "$name" "theme branch has no upstream"
+    return 1
+  }
+  current_url=$("${git_theme[@]}" remote get-url "$current_remote" 2>/dev/null) || {
+    fail_theme "$name" "theme remote URL is unavailable"
+    return 1
+  }
+  current_commit=$("${git_theme[@]}" rev-parse HEAD 2>/dev/null) || {
+    fail_theme "$name" "theme HEAD is unavailable"
+    return 1
+  }
+
+  [[ $current_head == "$head" ]] || {
+    fail_theme "$name" "branch changed after the check"
+    return 1
+  }
+  [[ $current_remote == "$remote" ]] || {
+    fail_theme "$name" "remote changed after the check"
+    return 1
+  }
+  [[ $current_upstream == "$upstream_ref" ]] || {
+    fail_theme "$name" "upstream changed after the check"
+    return 1
+  }
+  [[ $current_url == "$remote_url" ]] || {
+    fail_theme "$name" "remote URL changed after the check"
+    return 1
+  }
+  [[ $current_commit == "$base_commit" ]] || {
+    fail_theme "$name" "HEAD changed after the check"
+    return 1
+  }
+
+  local branch=${upstream_ref#refs/heads/}
+  [[ $branch != "$upstream_ref" && $tracking_ref == "refs/remotes/$remote/$branch" ]] || {
+    fail_theme "$name" "tracking ref does not match the checked upstream"
+    return 1
+  }
+
+  printf 'Updating theme %s to reviewed commit %s\n' "$name" "$target_commit"
+  if ! timeout "$FETCH_TIMEOUT" "${git_theme[@]}" fetch --quiet -- "$remote" "$upstream_ref:$tracking_ref"; then
+    fail_theme "$name" "fetch failed"
+    return 1
+  fi
+
+  "${git_theme[@]}" cat-file -e "$target_commit^{commit}" 2>/dev/null || {
+    fail_theme "$name" "reviewed target is unavailable after fetch"
+    return 1
+  }
+  "${git_theme[@]}" merge-base --is-ancestor "$target_commit" "$tracking_ref" || {
+    fail_theme "$name" "reviewed target is no longer reachable from upstream"
+    return 1
+  }
+  "${git_theme[@]}" merge-base --is-ancestor HEAD "$target_commit" || {
+    fail_theme "$name" "reviewed target is no longer a fast-forward"
+    return 1
+  }
+
+  local tmpdir collisions tracked_dirty
+  tmpdir=$(mktemp -d)
+  "${git_theme[@]}" diff --no-ext-diff --no-textconv -z --name-only --diff-filter=ACMRT "HEAD..$target_commit" >"$tmpdir/incoming.z" 2>/dev/null || : >"$tmpdir/incoming.z"
+  "${git_theme[@]}" ls-files -z --others >"$tmpdir/untracked.z" 2>/dev/null || : >"$tmpdir/untracked.z"
+  collisions=$(path_collision_sample "$tmpdir/incoming.z" "$tmpdir/untracked.z")
+  if [[ -n $collisions ]]; then
+    rm -rf "$tmpdir"
+    fail_theme "$name" "untracked path would be overwritten: $(printf '%s' "$collisions" | tr '\n' ' ')"
+    return 1
+  fi
+
+  tracked_dirty=$("${git_theme[@]}" status --porcelain=v1 --untracked-files=no 2>/dev/null)
+  if [[ -n $tracked_dirty ]]; then
+    rm -rf "$tmpdir"
+    fail_theme "$name" "working tree has tracked edits"
+    return 1
+  fi
+
+  if ! "${git_theme[@]}" merge --ff-only "$target_commit"; then
+    rm -rf "$tmpdir"
+    fail_theme "$name" "fast-forward failed"
+    return 1
+  fi
+  rm -rf "$tmpdir"
+
+  printf 'Updated %s to %s\n' "$name" "$target_commit"
+}
+
+omarchy-cmd-present git || {
+  printf 'git is required for theme updates.\n' >&2
+  exit 127
+}
+omarchy-cmd-present jq || {
+  printf 'jq is required for theme updates.\n' >&2
+  exit 127
+}
+[[ $FETCH_TIMEOUT =~ ^[1-9][0-9]*$ ]] || FETCH_TIMEOUT=45
+
+mode=selected
+expected_name=""
+expected_target=""
+
+if (( $# == 0 )); then
+  omarchy-theme-update-status >/dev/null
+  mode=all
+elif [[ $1 == "--all" && $# == 1 ]]; then
+  mode=all
+elif (( $# == 2 )); then
+  expected_name=$1
+  expected_target=$2
+  valid_name "$expected_name" || {
+    printf 'Invalid theme name: %s\n' "$expected_name" >&2
+    exit 64
+  }
+  valid_commit "$expected_target" || {
+    printf 'Invalid target commit: %s\n' "$expected_target" >&2
+    exit 64
+  }
+else
+  printf 'Usage: %s [--all | <theme-name> <target-commit>]\n' "${0##*/}" >&2
+  exit 64
+fi
+
+[[ -r $STATE ]] || {
+  printf 'Theme update state not found. Run omarchy-theme-update-status first.\n' >&2
+  exit 1
+}
+
+mkdir -p "$(dirname "$LOCK")"
+exec 9>"$LOCK"
+if ! flock -n 9; then
+  printf 'Theme update state is busy; retry after the current check or update finishes.\n' >&2
+  exit 75
+fi
+
+STATE_SNAPSHOT=$(mktemp)
+trap 'rm -f "$STATE_SNAPSHOT"' EXIT
+if ! jq -e '.schemaVersion == 1 and (.themes | type == "array")' "$STATE" >/dev/null; then
+  printf 'Theme update state is invalid. Run a new check.\n' >&2
+  exit 1
+fi
+if ! jq -c . "$STATE" >"$STATE_SNAPSHOT"; then
+  printf 'Theme update state could not be snapshotted. Run a new check.\n' >&2
+  exit 1
+fi
+
+declare -a names=()
+declare -a targets=()
+
+if [[ $mode == "all" ]]; then
+  while IFS=$'\t' read -r name target; do
+    [[ -n $name && -n $target ]] || continue
+    names+=("$name")
+    targets+=("$target")
+  done < <(jq -r '.themes[] | select(.state == "update" and .behind > 0) | [.name, .targetCommit] | @tsv' "$STATE_SNAPSHOT")
+else
+  names+=("$expected_name")
+  targets+=("$expected_target")
+fi
+
+if (( ${#names[@]} == 0 )); then
+  printf 'No reviewed theme updates are ready to apply.\n'
+  exit 0
+fi
+
+successes=0
+failures=0
+for index in "${!names[@]}"; do
+  if apply_theme "${names[$index]}" "${targets[$index]}"; then
+    (( successes += 1 ))
+  else
+    (( failures += 1 ))
   fi
 done
+
+printf 'Theme updates finished: %d updated, %d failed\n' "$successes" "$failures"
+(( failures == 0 ))

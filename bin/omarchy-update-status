@@ -1,0 +1,115 @@
+#!/bin/bash
+
+# omarchy:summary=Show structured repository package update status
+# omarchy:hidden=true
+
+set -euo pipefail
+
+export LC_ALL=C
+
+CHECK_TIMEOUT="${OMARCHY_UPDATE_STATUS_TIMEOUT:-90}"
+[[ $CHECK_TIMEOUT =~ ^[1-9][0-9]*$ ]] || CHECK_TIMEOUT=90
+
+checked=$(date -Is)
+checked_epoch=$(date +%s)
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
+emit() {
+  local state=$1
+  local reason=$2
+  local packages_file=$3
+  local available=true
+
+  [[ $state == "unavailable" ]] && available=false
+
+  jq -n \
+    --arg checked "$checked" \
+    --argjson checkedEpoch "$checked_epoch" \
+    --arg state "$state" \
+    --arg reason "$reason" \
+    --argjson available "$available" \
+    --slurpfile packages "$packages_file" \
+    '{
+      schemaVersion: 1,
+      checked: $checked,
+      checkedEpoch: $checkedEpoch,
+      available: $available,
+      state: $state,
+      reason: $reason,
+      count: ($packages[0] | length),
+      packages: $packages[0]
+    }'
+}
+
+printf '[]\n' >"$tmpdir/packages.json"
+
+if omarchy-cmd-missing checkupdates; then
+  emit unavailable missing-checkupdates "$tmpdir/packages.json"
+  exit 0
+fi
+
+set +e
+timeout "$CHECK_TIMEOUT" checkupdates --nocolor >"$tmpdir/checkupdates.out" 2>"$tmpdir/checkupdates.err"
+status=$?
+set -e
+
+if (( status == 2 )); then
+  if [[ -s $tmpdir/checkupdates.out ]]; then
+    emit invalid inconsistent-checkupdates-output "$tmpdir/packages.json"
+  else
+    emit current "" "$tmpdir/packages.json"
+  fi
+  exit 0
+fi
+
+if (( status != 0 )); then
+  if (( status == 124 || status == 137 )); then
+    emit unavailable checkupdates-timeout "$tmpdir/packages.json"
+  else
+    emit unavailable checkupdates-failed "$tmpdir/packages.json"
+  fi
+  exit 0
+fi
+
+declare -A seen=()
+: >"$tmpdir/packages.tsv"
+invalid=false
+
+while IFS= read -r line || [[ -n $line ]]; do
+  [[ -n $line ]] || continue
+
+  if [[ $line =~ ^([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+-\>[[:space:]]+([^[:space:]]+)$ ]]; then
+    name=${BASH_REMATCH[1]}
+    installed=${BASH_REMATCH[2]}
+    target=${BASH_REMATCH[3]}
+
+    if [[ -n ${seen[$name]+x} ]]; then
+      invalid=true
+      break
+    fi
+
+    seen[$name]=1
+    printf '%s\t%s\t%s\n' "$name" "$installed" "$target" >>"$tmpdir/packages.tsv"
+  else
+    invalid=true
+    break
+  fi
+done <"$tmpdir/checkupdates.out"
+
+if [[ $invalid == true ]]; then
+  emit invalid malformed-checkupdates-output "$tmpdir/packages.json"
+  exit 0
+fi
+
+jq -Rn '
+  [inputs
+    | split("\t")
+    | {name: .[0], installed: .[1], target: .[2]}]
+' <"$tmpdir/packages.tsv" >"$tmpdir/packages.json"
+
+if jq -e 'length > 0' "$tmpdir/packages.json" >/dev/null; then
+  emit updates "" "$tmpdir/packages.json"
+else
+  emit invalid inconsistent-checkupdates-output "$tmpdir/packages.json"
+fi

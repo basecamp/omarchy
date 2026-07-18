@@ -4,35 +4,51 @@
 # omarchy:args=[theme-name]
 # omarchy:examples=omarchy theme remove "Tokyo Night"
 
-if [[ -z $1 ]]; then
-  mapfile -t extra_themes < <(find ~/.config/omarchy/themes -mindepth 1 -maxdepth 1 -type d ! -xtype l -printf '%f\n')
-
-  if (( ${#extra_themes[@]} > 0 )); then
-    mapfile -t extra_themes < <(printf '%s\n' "${extra_themes[@]}" | sort)
-    THEME_NAME=$(omarchy-menu-select "Remove extra theme" "${extra_themes[@]}" -- --width 520 --maxheight 520)
-  else
-    echo "No extra themes installed."
-    exit 1
-  fi
-else
-  THEME_NAME="$1"
-fi
+set -euo pipefail
 
 THEMES_DIR="$HOME/.config/omarchy/themes"
-THEME_PATH="$THEMES_DIR/$THEME_NAME"
+CURRENT_FILE="$HOME/.local/state/omarchy/current/theme.name"
 
-# Ensure a theme was set
-if [[ -z $THEME_NAME ]]; then
+valid_name() {
+  [[ $1 =~ ^[A-Za-z0-9._-]+$ && $1 != "." && $1 != ".." ]]
+}
+
+theme_name=${1:-}
+if [[ -z $theme_name ]]; then
+  extra_themes=()
+  if [[ -d $THEMES_DIR ]]; then
+    mapfile -t extra_themes < <(find "$THEMES_DIR" -mindepth 1 -maxdepth 1 -type d ! -xtype l -printf '%f\n' | sort)
+  fi
+
+  if (( ${#extra_themes[@]} == 0 )); then
+    printf 'No extra themes installed.\n'
+    exit 1
+  fi
+
+  theme_name=$(omarchy-menu-select "Remove extra theme" "${extra_themes[@]}" -- --width 520 --maxheight 520)
+fi
+
+[[ -n $theme_name ]] || exit 1
+if ! valid_name "$theme_name"; then
+  printf 'Invalid theme name: %s\n' "$theme_name" >&2
+  exit 64
+fi
+
+current_theme=""
+if [[ -r $CURRENT_FILE ]]; then
+  current_theme=$(tr -d '[:space:]' <"$CURRENT_FILE" 2>/dev/null || true)
+fi
+if [[ $theme_name == "$current_theme" ]]; then
+  printf 'Cannot remove the active theme. Select another theme first.\n' >&2
   exit 1
 fi
 
-# Check if theme exists before attempting removal
-if [[ ! -d $THEME_PATH ]]; then
-  echo "Error: Theme '$THEME_NAME' not found."
+theme_path="$THEMES_DIR/$theme_name"
+if [[ ! -d $theme_path || -L $theme_path ]]; then
+  printf "Theme '%s' is not an installed user theme.\n" "$theme_name" >&2
   exit 1
 fi
 
-# Now remove the theme directory for THEME_NAME
-rm -rf "$THEME_PATH"
-omarchy-notification-send "Theme removed" "$THEME_NAME" || true
-echo "Removed $THEME_NAME"
+rm -rf -- "$theme_path"
+omarchy-notification-send "Theme removed" "$theme_name" || true
+printf 'Removed %s\n' "$theme_name"
