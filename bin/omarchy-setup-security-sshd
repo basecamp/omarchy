@@ -1,0 +1,127 @@
+#!/bin/bash
+
+# omarchy:summary=Set up the OpenSSH server, open the firewall, and authorize an SSH key
+# omarchy:args=[--key=<public-key>]
+# omarchy:examples=omarchy-setup-security-sshd | omarchy-setup-security-sshd --key="ssh-ed25519 AAAA... user@host"
+# omarchy:requires-sudo=true
+
+set -e
+
+AUTHORIZED_KEYS="$HOME/.ssh/authorized_keys"
+KEY=""
+
+for arg in "$@"; do
+  case "$arg" in
+  --key=*) KEY="${arg#--key=}" ;;
+  -h | --help)
+    echo "Usage: omarchy-setup-security-sshd [--key=<public-key>]"
+    echo
+    echo "Sets up the OpenSSH server, opens the SSH port in the UFW firewall,"
+    echo "and authorizes an SSH key (from GitHub, pasted, or passed via --key)."
+    exit 0
+    ;;
+  *)
+    echo "omarchy-setup-security-sshd: unknown option '$arg'. Try --help." >&2
+    exit 2
+    ;;
+  esac
+done
+
+setup_sshd() {
+  echo "Installing and starting the OpenSSH server..."
+  omarchy-pkg-add openssh
+  sudo systemctl enable --now sshd.service
+}
+
+open_firewall() {
+  if omarchy-cmd-missing ufw; then
+    echo "UFW is not installed; skipping firewall rule."
+    return
+  fi
+
+  echo "Opening the SSH port in the firewall (rate limited against brute force)..."
+  sudo ufw limit 22/tcp comment "omarchy-sshd" >/dev/null
+  sudo ufw reload >/dev/null
+}
+
+valid_key() {
+  ssh-keygen -lf /dev/stdin <<<"$1" >/dev/null 2>&1
+}
+
+authorize_key() {
+  local key="$1"
+
+  if ! valid_key "$key"; then
+    echo -e "\e[31mNot a valid SSH public key: $key\e[0m" >&2
+    return 1
+  fi
+
+  mkdir -p "$HOME/.ssh"
+  chmod 700 "$HOME/.ssh"
+  touch "$AUTHORIZED_KEYS"
+  chmod 600 "$AUTHORIZED_KEYS"
+
+  if grep -qxF "$key" "$AUTHORIZED_KEYS"; then
+    echo "Key already authorized: $(ssh-keygen -lf /dev/stdin <<<"$key")"
+  else
+    echo "$key" >>"$AUTHORIZED_KEYS"
+    echo "Authorized key: $(ssh-keygen -lf /dev/stdin <<<"$key")"
+  fi
+}
+
+authorize_keys_from_github() {
+  local username keys added=0
+
+  username=$(gum input --prompt "GitHub username> " --placeholder "dhh") || exit 1
+  if [[ -z $username ]]; then
+    echo -e "\e[31mNo GitHub username given.\e[0m" >&2
+    exit 1
+  fi
+
+  echo "Fetching keys from https://github.com/$username.keys..."
+  if ! keys=$(curl -fsSL "https://github.com/$username.keys") || [[ -z $keys ]]; then
+    echo -e "\e[31mCould not fetch any SSH keys for GitHub user '$username'.\e[0m" >&2
+    exit 1
+  fi
+
+  while IFS= read -r key; do
+    [[ -z $key ]] && continue
+    authorize_key "$key" && added=$((added + 1))
+  done <<<"$keys"
+
+  if [[ $added -eq 0 ]]; then
+    echo -e "\e[31mNo valid SSH keys found for GitHub user '$username'.\e[0m" >&2
+    exit 1
+  fi
+}
+
+authorize_pasted_key() {
+  local key
+
+  key=$(gum input --prompt "Public key> " --placeholder "ssh-ed25519 AAAA... user@host") || exit 1
+  if [[ -z $key ]]; then
+    echo -e "\e[31mNo SSH key given.\e[0m" >&2
+    exit 1
+  fi
+
+  authorize_key "$key" || exit 1
+}
+
+echo -e "\e[32mSetting up SSH server access with key-based authentication.\n\e[0m"
+
+setup_sshd
+open_firewall
+
+echo
+if [[ -n $KEY ]]; then
+  authorize_key "$KEY" || exit 1
+else
+  case $(gum choose "Grab key from GitHub" "Paste key manually" --header "How would you like to add your SSH key?") in
+  "Grab key from GitHub") authorize_keys_from_github ;;
+  "Paste key manually") authorize_pasted_key ;;
+  *) exit 1 ;;
+  esac
+fi
+
+echo -e "\e[32m\nPerfect! The SSH server is running and your key is authorized.\e[0m"
+echo "You can now connect with: ssh $USER@$(hostname)"

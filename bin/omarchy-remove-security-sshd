@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# omarchy:summary=Disable the OpenSSH server, close the firewall port, and optionally remove authorized keys
+# omarchy:requires-sudo=true
+
+set -e
+
+AUTHORIZED_KEYS="$HOME/.ssh/authorized_keys"
+
+echo -e "\e[32mRemoving SSH server access.\n\e[0m"
+
+echo "Stopping and disabling the OpenSSH server..."
+sudo systemctl disable --now sshd.service 2>/dev/null || true
+
+if omarchy-cmd-present ufw; then
+  echo "Closing the SSH port in the firewall..."
+  sudo ufw --force delete limit 22/tcp >/dev/null 2>&1 || true
+  sudo ufw reload >/dev/null
+fi
+
+if [[ -s $AUTHORIZED_KEYS ]]; then
+  echo
+  if gum confirm "Also remove all authorized SSH keys ($AUTHORIZED_KEYS)?"; then
+    rm -f "$AUTHORIZED_KEYS"
+    echo "Authorized keys removed."
+  else
+    echo "Keeping authorized keys."
+  fi
+fi
+
+echo -e "\e[32m\nThe SSH server has been disabled and its firewall port closed.\e[0m"
+echo "The openssh package remains installed since it also provides the ssh client."
