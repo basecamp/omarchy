@@ -30,7 +30,7 @@ for file in "${tui_desktop_files[@]}"; do
   rm -f "$ICON_DIR/$icon_name.png" "$ICON_DIR/$app_name.png" "$OLD_ICON_DIR/$app_name.png"
 done
 
-if command -v update-desktop-database &>/dev/null; then
+if omarchy-cmd-present update-desktop-database; then
   update-desktop-database "$APP_DIR" &>/dev/null || true
 fi
 

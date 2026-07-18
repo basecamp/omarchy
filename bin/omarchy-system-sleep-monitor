@@ -8,8 +8,7 @@ monitor_command='exec dbus-monitor --system "type='\''signal'\'',sender='\''org.
 
 consume_sleep_events() {
   local line sleep_lock
-  sleep_lock=$(command -v omarchy-system-sleep-lock || true)
-  sleep_lock=${sleep_lock:-/usr/bin/omarchy-system-sleep-lock}
+  sleep_lock="$OMARCHY_PATH/bin/omarchy-system-sleep-lock"
 
   while IFS= read -r line; do
     if [[ $line == *"boolean true"* ]]; then
@@ -24,8 +23,7 @@ if [[ ${1:-} == "--consume" ]]; then
   exit 0
 fi
 
-sleep_monitor=$(command -v omarchy-system-sleep-monitor || true)
-sleep_monitor=${sleep_monitor:-/usr/bin/omarchy-system-sleep-monitor}
+sleep_monitor="$OMARCHY_PATH/bin/omarchy-system-sleep-monitor"
 
 exec systemd-inhibit \
   --what=sleep \

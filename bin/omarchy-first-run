@@ -54,12 +54,12 @@ log_first_run() {
 }
 
 notification_server_ready() {
-  if command -v gdbus >/dev/null 2>&1; then
+  if omarchy-cmd-present gdbus; then
     gdbus call --session \
       --dest org.freedesktop.Notifications \
       --object-path /org/freedesktop/Notifications \
       --method org.freedesktop.Notifications.GetServerInformation >/dev/null 2>&1
-  elif command -v busctl >/dev/null 2>&1; then
+  elif omarchy-cmd-present busctl; then
     busctl --user call \
       org.freedesktop.Notifications \
       /org/freedesktop/Notifications \
@@ -71,7 +71,7 @@ notification_server_ready() {
 }
 
 wait_for_notifications() {
-  command -v omarchy-shell >/dev/null || return 0
+  omarchy-cmd-present omarchy-shell || return 0
 
   for _ in {1..100}; do
     if omarchy-shell notifications ping >/dev/null 2>&1 && notification_server_ready; then

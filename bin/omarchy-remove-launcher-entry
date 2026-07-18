@@ -91,7 +91,7 @@ if package_name="$(pacman -Qqo "$desktop_file" 2>/dev/null | head -1)" && [[ -n 
   exec omarchy-launch-floating-terminal-with-presentation "echo Uninstalling $quoted_display...; sudo pacman -Rns $quoted_package"
 fi
 
-if command -v flatpak >/dev/null 2>&1 && flatpak info "${desktop_file_name%.desktop}" >/dev/null 2>&1; then
+if omarchy-cmd-present flatpak && flatpak info "${desktop_file_name%.desktop}" >/dev/null 2>&1; then
   flatpak_id="${desktop_file_name%.desktop}"
   quoted_flatpak="$(printf '%q' "$flatpak_id")"
   exec omarchy-launch-floating-terminal-with-presentation "flatpak uninstall $quoted_flatpak"
