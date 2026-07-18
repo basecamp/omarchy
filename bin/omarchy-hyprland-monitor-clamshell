@@ -115,7 +115,10 @@ enable_internal() {
 
   [[ -f $MANUAL_DISABLE_FLAG ]] && omarchy-hyprland-monitor-external-active && return 0
   sync_internal_scale
-  dpms_internal enable
+
+  if (( changed )); then
+    dpms_internal enable
+  fi
 }
 
 disable_internal() {
