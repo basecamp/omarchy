@@ -46,6 +46,6 @@ BarIconButton {
   fontSize: Style.font.caption
   horizontalMargin: 5
   verticalPadding: 5
-  fixedWidth: -1
-  fixedHeight: -1
+  fixedWidth: vertical ? -1 : Style.bar.statusSlot
+  fixedHeight: vertical ? Style.bar.statusSlot : -1
 }
