@@ -851,7 +851,8 @@ show_update_hardware_menu() {
 }
 
 show_update_password_menu() {
-  case $(menu "Update Password" "  Drive Encryption\n  User") in
+  case $(menu "Update Password" "  All\n  Drive Encryption\n  User") in
+  *All*) present_terminal omarchy-update-password ;;
   *Drive*) present_terminal omarchy-drive-password ;;
   *User*) present_terminal passwd ;;
   *) show_update_menu ;;
