@@ -9,7 +9,7 @@ TEMP_LOG="/tmp/upload-log.txt"
 SYSTEM_INFO="/tmp/system-info.txt"
 
 # Get system information if fastfetch is available
-if command -v fastfetch >/dev/null 2>&1; then
+if omarchy-cmd-present fastfetch; then
   {
     echo "========================================="
     echo "SYSTEM INFORMATION"

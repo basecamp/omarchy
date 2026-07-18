@@ -15,7 +15,7 @@ fail() {
 }
 
 require_command() {
-  command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
+  omarchy-cmd-present "$1" || fail "$1 is required"
 }
 
 require_omarchy_path() {

@@ -294,7 +294,7 @@ launch_windows() {
       echo "❌ Failed to start Windows VM!"
       echo "   Try checking: omarchy-windows-vm status"
       echo "   View logs: docker logs omarchy-windows"
-      notify-send -u critical "Windows VM" "Failed to start Windows VM"
+      omarchy-notification-send -u critical "Windows VM" "Failed to start Windows VM"
       exit 1
     fi
 

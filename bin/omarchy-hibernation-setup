@@ -21,7 +21,7 @@ fi
 # When --no-rebuild is set, the caller is responsible for the UKI rebuild
 # (e.g. running before limine-mkinitcpio-hook is installed during initial
 # install), so we only require limine-mkinitcpio when we'd invoke it ourselves.
-if ! $NO_REBUILD && ! command -v limine-mkinitcpio &>/dev/null; then
+if ! $NO_REBUILD && omarchy-cmd-missing limine-mkinitcpio; then
   echo "Skipping hibernation setup (requires Limine bootloader)"
   exit 0
 fi

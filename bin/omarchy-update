@@ -38,7 +38,7 @@ update_disabled_idle=0
 sleep_inhibit_pid=""
 
 disable_sleep_for_update() {
-  command -v systemd-inhibit >/dev/null 2>&1 || return 0
+  omarchy-cmd-present systemd-inhibit || return 0
 
   systemd-inhibit \
     --what=sleep:idle \

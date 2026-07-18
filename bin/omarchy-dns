@@ -29,13 +29,7 @@ provider_from_arg() {
 }
 
 self_path() {
-  local self="${BASH_SOURCE[0]}"
-
-  if [[ $self != /* ]]; then
-    self=$(command -v -- "$self")
-  fi
-
-  readlink -f "$self"
+  readlink -f "$OMARCHY_PATH/bin/${BASH_SOURCE[0]##*/}"
 }
 
 require_root() {
@@ -43,7 +37,7 @@ require_root() {
     return
   fi
 
-  if ! command -v pkexec >/dev/null; then
+  if omarchy-cmd-missing pkexec; then
     echo "Error: pkexec is required to change DNS settings." >&2
     exit 1
   fi
@@ -156,7 +150,7 @@ set_connection_dns() {
   local ipv4_dns="${1:-}"
   local ipv6_dns="${2:-}"
 
-  command -v nmcli >/dev/null 2>&1 || return 0
+  omarchy-cmd-present nmcli || return 0
 
   while IFS=: read -r uuid type; do
     [[ -n $uuid ]] || continue
@@ -174,7 +168,7 @@ set_connection_dns() {
 clear_connection_dns() {
   local uuid type
 
-  command -v nmcli >/dev/null 2>&1 || return 0
+  omarchy-cmd-present nmcli || return 0
 
   while IFS=: read -r uuid type; do
     [[ -n $uuid ]] || continue
@@ -192,7 +186,7 @@ clear_connection_dns() {
 reapply_active_dns_connections() {
   local device type state
 
-  command -v nmcli >/dev/null 2>&1 || return 0
+  omarchy-cmd-present nmcli || return 0
 
   while IFS=: read -r device type state; do
     [[ -n $device && $state == connected ]] || continue

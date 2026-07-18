@@ -52,7 +52,7 @@ fail() {
 }
 
 require_command() {
-  command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
+  omarchy-cmd-present "$1" || fail "$1 is required"
 }
 
 interactive() {
@@ -283,7 +283,7 @@ update_one() {
 
   if (( ! ASSUME_YES )); then
     echo "Changes for $id:"
-    if command -v delta >/dev/null 2>&1; then
+    if omarchy-cmd-present delta; then
       git -C "$dir" diff HEAD FETCH_HEAD | delta --paging=never
     else
       git -C "$dir" diff HEAD FETCH_HEAD
