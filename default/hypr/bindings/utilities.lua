@@ -29,7 +29,7 @@ o.bind("SUPER + ALT + COMMA", "Invoke last notification", "makoctl invoke")
 o.bind("SUPER + SHIFT + ALT + COMMA", "Restore last notification", "makoctl restore")
 
 o.bind_toggle("SUPER + CTRL + I", "Toggle locking on idle", "idle")
-o.bind_toggle("SUPER + CTRL + N", "Toggle nightlight", "nightlight")
+o.bind("SUPER + CTRL + N", "Nightlight controls", { tui = "hyprsunset-tui", focus = true })
 o.bind("SUPER + CTRL + Delete", "Toggle laptop display", "omarchy-hyprland-monitor-internal toggle")
 o.bind("SUPER + CTRL + ALT + Delete", "Toggle laptop display mirroring", "omarchy-hyprland-monitor-internal-mirror toggle")
 o.bind("switch:on:Lid Switch", nil, "omarchy-hw-external-monitors && omarchy-hyprland-monitor-internal off", { locked = true })
