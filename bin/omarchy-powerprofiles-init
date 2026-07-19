@@ -2,8 +2,4 @@
 
 # omarchy:summary=Set the correct power profile on boot based on current AC/battery state.
 
-if omarchy-battery-present && ! omarchy-power-present; then
-  omarchy-powerprofiles-set battery
-else
-  omarchy-powerprofiles-set ac
-fi
+exec omarchy-powerprofiles-set autodetect
