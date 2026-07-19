@@ -118,6 +118,10 @@ assert(
   fs.readFileSync(root + '/shell/plugins/panels/weather/Panel.qml', 'utf8').includes('text: root.label || "—"'),
   'weather hero and bar use the same resolved icon'
 )
+assert(
+  fs.readFileSync(root + '/shell/plugins/panels/weather/Panel.qml', 'utf8').includes('onReturnRequested: root.startEditingLocation()'),
+  'weather focuses city input when Return is pressed'
+)
 assert(!weather.weatherResponseCompletesSave(true, 'wttr'), 'weather keeps the spinner through a non-authoritative pinned-location response')
 assert(weather.weatherResponseCompletesSave(true, 'open-meteo'), 'weather completes a pinned-location save with Open-Meteo data')
 assert(weather.weatherResponseCompletesSave(false, 'wttr'), 'weather completes a name-only location save with wttr data')

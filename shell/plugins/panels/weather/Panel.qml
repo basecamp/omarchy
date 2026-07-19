@@ -450,6 +450,7 @@ Panel {
       id: keyCatcher
       anchors.fill: parent
       blocked: root.editingLocation
+      onReturnRequested: root.startEditingLocation()
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
