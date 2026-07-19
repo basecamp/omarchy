@@ -108,7 +108,6 @@ Panel {
   readonly property bool hasConfiguredCoordinates: !isNaN(parseFloat(String(configuredLocationState.latitude))) && !isNaN(parseFloat(String(configuredLocationState.longitude)))
   readonly property var openMeteoCurrent: Model.openMeteoCurrentCondition(dailyForecastReport)
   readonly property var current: (hasConfiguredCoordinates && openMeteoCurrent) ? openMeteoCurrent : ((report && report.current_condition && report.current_condition[0]) ? report.current_condition[0] : openMeteoCurrent)
-  readonly property string currentIcon: Model.currentIcon(current, label)
   readonly property var areaInfo: report && report.nearest_area && report.nearest_area[0] ? report.nearest_area[0] : null
   readonly property var forecastDays: buildForecastDays()
   readonly property string reportCountry: areaInfo && areaInfo.country && areaInfo.country[0] ? areaInfo.country[0].value : ""
@@ -484,7 +483,7 @@ Panel {
             id: heroIcon
             anchors.verticalCenter: parent.verticalCenter
             anchors.verticalCenterOffset: 5
-            text: root.currentIcon || "—"
+            text: root.label || "—"
             color: root.bar.foreground
             font.family: root.bar.fontFamily
             // Decorative condition emoji; intentionally larger than the
