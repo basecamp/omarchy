@@ -837,7 +837,7 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.cancel()
             event.accepted = true
-          } else if (event.key === Qt.Key_Backspace && !(event.modifiers & Qt.ControlModifier) && root.filterText.length === 0) {
+          } else if (event.key === Qt.Key_Backspace && event.modifiers === Qt.NoModifier && root.filterText.length === 0) {
             // BACKSPACE on an empty filter steps back a menu level
             root.goBack()
             event.accepted = true
