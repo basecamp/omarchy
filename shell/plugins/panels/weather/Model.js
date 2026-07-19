@@ -194,6 +194,12 @@ function currentIcon(current, fallback) {
   return fallback || ""
 }
 
+// wttr.in has no day/night flag. Use its icon only to fill an empty initial
+// state, never to replace a day/night-aware icon resolved by Open-Meteo.
+function provisionalCurrentIcon(current, resolvedIcon) {
+  return resolvedIcon || currentIcon(current, "")
+}
+
 function weatherResponseCompletesSave(hasConfiguredCoordinates, source) {
   return hasConfiguredCoordinates ? source === "open-meteo" : source === "wttr"
 }
@@ -290,6 +296,7 @@ if (typeof module !== "undefined") {
     openMeteoForecastDays: openMeteoForecastDays,
     openMeteoCurrentCondition: openMeteoCurrentCondition,
     currentIcon: currentIcon,
+    provisionalCurrentIcon: provisionalCurrentIcon,
     weatherResponseCompletesSave: weatherResponseCompletesSave,
     wttrNextForecastDays: wttrNextForecastDays,
     buildForecastDays: buildForecastDays,
