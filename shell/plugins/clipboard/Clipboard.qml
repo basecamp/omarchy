@@ -345,12 +345,16 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.close()
             event.accepted = true
+          } else if (event.key === Qt.Key_U && (event.modifiers & Qt.ControlModifier)) {
+            // CTRL+U: clear the entire filter
+            root.setFilter("")
+            event.accepted = true
           } else if (event.key === Qt.Key_Backspace) {
-            if ((event.modifiers & Qt.ControlModifier) === Qt.ControlModifier) {
-              // CTRL+BACKSPACE: clear entire filter
-              root.setFilter("")
+            if (event.modifiers & Qt.ControlModifier) {
+              // CTRL+BACKSPACE: remove the previous word
+              root.setFilter(root.filterText.replace(/\s+$/, "").replace(/\S+$/, ""))
             } else if (root.filterText.length > 0) {
-              // BACKSPACE: remove one character
+              // BACKSPACE: remove the previous character
               root.setFilter(root.filterText.slice(0, -1))
             }
             event.accepted = true
