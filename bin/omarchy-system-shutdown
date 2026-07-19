@@ -4,10 +4,11 @@
 # omarchy:examples=omarchy shutdown | omarchy system shutdown
 # omarchy:aliases=omarchy shutdown
 
-omarchy-state clear re*-required
+# Schedule the shutdown in the user manager so closing the terminal's systemd
+# scope cannot terminate it before it runs.
+systemd-run --user --collect --quiet --on-active="2s" systemctl poweroff --no-wall || exit 1
 
-# Schedule the shutdown to happen after closing windows (detached from terminal)
-nohup bash -c "sleep 2 && systemctl poweroff --no-wall" >/dev/null 2>&1 &
+omarchy-state clear re*-required
 
 # Now close all windows
 omarchy-hyprland-window-close-all
