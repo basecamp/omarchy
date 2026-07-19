@@ -65,3 +65,7 @@ pass "Omarchy 4 upgrade backfills hardware support from the legacy release"
 
 grep -F 'omarchy-refresh-applications' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade refreshes application launchers"
+
+grep -F '/etc/systemd/system.conf.d/99-omarchy-nofile.conf' "$upgrade_to_quattro" >/dev/null
+grep -F '/etc/systemd/user.conf.d/99-omarchy-nofile.conf' "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade removes stale nofile drop-ins"

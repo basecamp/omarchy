@@ -1370,6 +1370,9 @@ EOF
   as_root rm -f /etc/udev/rules.d/99-dell-xps-haptic-touchpad.rules
   as_root rm -f /etc/omarchy-dell-haptic-touchpad.env
   as_root rm -f /etc/pacman.d/hooks/walker-restart.hook
+  as_root rm -f \
+    /etc/systemd/system.conf.d/99-omarchy-nofile.conf \
+    /etc/systemd/user.conf.d/99-omarchy-nofile.conf
   as_root systemctl daemon-reload >/dev/null 2>&1 || true
 
   if [[ -f /etc/pam.d/sddm ]]; then
