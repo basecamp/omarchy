@@ -11,6 +11,7 @@ Item {
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
 
   readonly property int batteryThreshold: 10
+  property string pendingPowerSource: ""
 
   PersistentProperties {
     id: persisted
@@ -41,7 +42,23 @@ Item {
     warningProcess.running = true
   }
 
+  function applyPowerProfile() {
+    pendingPowerSource = UPower.onBattery ? "battery" : "ac"
+    if (!powerProfileProcess.running) runPendingPowerProfile()
+  }
+
+  function runPendingPowerProfile() {
+    powerProfileProcess.command = ["omarchy-powerprofiles-set", pendingPowerSource]
+    pendingPowerSource = ""
+    powerProfileProcess.running = true
+  }
+
   Process { id: warningProcess }
+
+  Process {
+    id: powerProfileProcess
+    onExited: if (root.pendingPowerSource !== "") root.runPendingPowerProfile()
+  }
 
   Timer {
     interval: 30000
@@ -53,6 +70,9 @@ Item {
 
   Connections {
     target: UPower
-    function onOnBatteryChanged() { root.checkBattery() }
+    function onOnBatteryChanged() {
+      root.checkBattery()
+      root.applyPowerProfile()
+    }
   }
 }
