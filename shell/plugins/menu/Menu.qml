@@ -837,14 +837,16 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.cancel()
             event.accepted = true
-          }else if (event.key === Qt.Key_Backspace) {
-           if ((event.modifiers & Qt.ControlModifier) === Qt.ControlModifier) {
-            // CTRL+BACKSPACE: clear entire filter
-            root.setFilter("")
-          } else if (root.filterText.length > 0) {
-            // BACKSPACE: remove one character
-            root.setFilter(root.filterText.slice(0, -1))
-          }
+          } else if (event.key === Qt.Key_Backspace) {
+            if ((event.modifiers & Qt.ControlModifier) === Qt.ControlModifier) {
+              // CTRL+BACKSPACE: clear entire filter
+              root.setFilter("")
+            } else if (root.filterText.length > 0) {
+              // BACKSPACE: remove one character
+              root.setFilter(root.filterText.slice(0, -1))
+            } else {
+              root.goBack()
+            }
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
             root.select(-1)
