@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Display Tmux keybindings defined in your configuration using an interactive search menu.
+# omarchy:summary=Display annotated Tmux keybindings using an interactive search menu.
 # omarchy:args=[--print|-p] [--config <path>]
 
 print_only=false
@@ -34,9 +34,22 @@ if [[ ! -f $config_file ]]; then
   fi
 fi
 
-output_keybindings() {
-  tmux -f "$config_file" start-server \; show-options -gv prefix \; list-keys | sed '1s/^/prefix: /'
-}
+output_keybindings() (
+  set -o pipefail
+  socket_dir=$(mktemp -d)
+  socket="$socket_dir/tmux"
+  trap 'tmux -S "$socket" kill-server >/dev/null 2>&1 || true; rm -f "$socket"; rmdir "$socket_dir" 2>/dev/null || true' EXIT
+  tmux -S "$socket" -f /dev/null start-server \; \
+    unbind-key -a -T prefix \; \
+    unbind-key -a -T root \; \
+    unbind-key -a -T copy-mode \; \
+    unbind-key -a -T copy-mode-vi \; \
+    source-file "$config_file" \; \
+    set-option -g exit-empty off \; \
+    list-keys -N -T prefix \; \
+    list-keys -N -T root -P "" \; \
+    list-keys -N -T copy-mode-vi -P "copy-mode-vi" | sed 's/^ //'
+)
 
 if [[ $print_only == "true" ]]; then
   output_keybindings
