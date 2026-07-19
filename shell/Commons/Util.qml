@@ -79,6 +79,25 @@ QtObject {
     }
   }
 
+  // Standard Qt text-editing keys shared by every searchable panel's filter:
+  //   Backspace       delete previous character
+  //   Ctrl+Backspace  delete previous word (Qt DeleteStartOfWord)
+  //   Ctrl+U          clear the whole field
+  // Panels decide how to apply the result (setFilter/updateFilter) and keep
+  // their own empty-field fallbacks (e.g. menu back-navigation).
+  function isFilterEditKey(event) {
+    return event.key === Qt.Key_Backspace
+        || (event.key === Qt.Key_U && (event.modifiers & Qt.ControlModifier))
+  }
+
+  // New filter text after applying an edit key. Assumes isFilterEditKey(event).
+  function editedFilter(event, text) {
+    if (event.key === Qt.Key_U) return ""                        // Ctrl+U: clear
+    if (event.modifiers & Qt.ControlModifier)                    // Ctrl+Backspace: word
+      return text.replace(/\s+$/, "").replace(/\S+$/, "")
+    return text.slice(0, -1)                                     // Backspace: char
+  }
+
   // Layout normalization shared by bar config consumers
   // so the two never drift. Entries are deep-cloned to decouple from the
   // input config; consumers can mutate without leaking back to shell.json.

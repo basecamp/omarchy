@@ -837,20 +837,12 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.cancel()
             event.accepted = true
-          } else if (event.key === Qt.Key_U && (event.modifiers & Qt.ControlModifier)) {
-            // CTRL+U: clear the entire filter
-            root.setFilter("")
+          } else if (event.key === Qt.Key_Backspace && !(event.modifiers & Qt.ControlModifier) && root.filterText.length === 0) {
+            // BACKSPACE on an empty filter steps back a menu level
+            root.goBack()
             event.accepted = true
-          } else if (event.key === Qt.Key_Backspace) {
-            if (event.modifiers & Qt.ControlModifier) {
-              // CTRL+BACKSPACE: remove the previous word
-              root.setFilter(root.filterText.replace(/\s+$/, "").replace(/\S+$/, ""))
-            } else if (root.filterText.length > 0) {
-              // BACKSPACE: remove the previous character
-              root.setFilter(root.filterText.slice(0, -1))
-            } else {
-              root.goBack()
-            }
+          } else if (Util.isFilterEditKey(event)) {
+            root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
             root.select(-1)

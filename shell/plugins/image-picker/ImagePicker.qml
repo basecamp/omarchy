@@ -417,18 +417,8 @@ Item {
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
               root.applySelected()
               event.accepted = true
-            } else if (event.key === Qt.Key_U && root.filterable && (event.modifiers & Qt.ControlModifier)) {
-              // CTRL+U: clear the entire filter
-              root.updateFilter("")
-              event.accepted = true
-            } else if (event.key === Qt.Key_Backspace && root.filterable) {
-              if (event.modifiers & Qt.ControlModifier) {
-                // CTRL+BACKSPACE: remove the previous word
-                root.updateFilter(root.filterText.replace(/\s+$/, "").replace(/\S+$/, ""))
-              } else if (root.filterText.length > 0) {
-                // BACKSPACE: remove the previous character
-                root.updateFilter(root.filterText.slice(0, -1))
-              }
+            } else if (root.filterable && Util.isFilterEditKey(event)) {
+              root.updateFilter(Util.editedFilter(event, root.filterText))
               event.accepted = true
             } else if (event.key === Qt.Key_Left || (event.key === Qt.Key_Tab && event.modifiers & Qt.ShiftModifier) || event.key === Qt.Key_Backtab) {
               root.selectAdjacent(-1)
