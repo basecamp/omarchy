@@ -4,10 +4,11 @@
 # omarchy:examples=omarchy reboot | omarchy system reboot
 # omarchy:aliases=omarchy reboot
 
-omarchy-state clear re*-required
+# Schedule the reboot in the user manager so closing the terminal's systemd
+# scope cannot terminate it before it runs.
+systemd-run --user --collect --quiet --on-active="2s" systemctl reboot --no-wall || exit 1
 
-# Schedule the reboot to happen after closing windows (detached from terminal)
-nohup bash -c "sleep 2 && systemctl reboot --no-wall" >/dev/null 2>&1 &
+omarchy-state clear re*-required
 
 # Now close all windows
 omarchy-hyprland-window-close-all
