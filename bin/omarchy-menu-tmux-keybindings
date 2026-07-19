@@ -45,10 +45,9 @@ output_keybindings() (
     unbind-key -a -T copy-mode \; \
     unbind-key -a -T copy-mode-vi \; \
     source-file "$config_file" \; \
-    set-option -g exit-empty off \; \
-    list-keys -N -T prefix \; \
-    list-keys -N -T root -P "" \; \
-    list-keys -N -T copy-mode-vi -P "copy-mode-vi" | sed 's/^ //'
+    list-keys -aN -T prefix \; \
+    list-keys -aN -T root -P "" \; \
+    list-keys -aN -T copy-mode-vi -P "copy-mode-vi" | sed 's/^ //'
 )
 
 if [[ $print_only == "true" ]]; then
