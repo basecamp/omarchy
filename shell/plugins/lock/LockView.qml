@@ -24,6 +24,11 @@ Item {
   readonly property int fieldFontSize: Math.round(Style.font.heading * 1.125)
   readonly property int passwordDotFontSize: Math.round(Style.font.heading * 1.33)
   readonly property int passwordDotLetterSpacing: Math.round(Style.font.heading * 0.19)
+  // Shrink the dots to fit once the password outgrows the field, so every
+  // keystroke stays visible — otherwise long passwords clip with no feedback.
+  readonly property real passwordDotScale: dotMetrics.advanceWidth > 0
+    ? Math.min(1, (passwordInput.width - 4) / dotMetrics.advanceWidth)
+    : 1
   readonly property bool showPasswordCursor: inputEnabled && !authenticatingPassword && failureMessage.length === 0
   readonly property bool errorState: failureMessage.length > 0
   readonly property var inputBorderSpec: errorState
@@ -66,6 +71,16 @@ Item {
   Component.onCompleted: {
     syncPasswordText()
     if (inputEnabled) Qt.callLater(forcePasswordFocus)
+  }
+
+  // Measures the masked password at full size; passwordDotScale compares this
+  // against the field width to decide how far the dots must shrink to fit.
+  TextMetrics {
+    id: dotMetrics
+    font.family: Style.font.family
+    font.pixelSize: root.passwordDotFontSize
+    font.letterSpacing: root.passwordDotLetterSpacing
+    text: "●".repeat(passwordInput.text.length)
   }
 
   Rectangle {
@@ -131,8 +146,8 @@ Item {
         selectionColor: Color.lock.selection
         selectedTextColor: Color.lock.text
         font.family: Style.font.family
-        font.pixelSize: text.length > 0 ? root.passwordDotFontSize : root.fieldFontSize
-        font.letterSpacing: text.length > 0 ? root.passwordDotLetterSpacing : 0
+        font.pixelSize: text.length > 0 ? Math.max(1, Math.floor(root.passwordDotFontSize * root.passwordDotScale)) : root.fieldFontSize
+        font.letterSpacing: text.length > 0 ? root.passwordDotLetterSpacing * root.passwordDotScale : 0
         cursorVisible: activeFocus && root.showPasswordCursor && text.length > 0
         cursorDelegate: Rectangle {
           width: 2
