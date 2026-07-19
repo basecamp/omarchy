@@ -86,8 +86,11 @@ QtObject {
   // Panels decide how to apply the result (setFilter/updateFilter) and keep
   // their own empty-field fallbacks (e.g. menu back-navigation).
   function isFilterEditKey(event) {
-    return event.key === Qt.Key_Backspace
-        || (event.key === Qt.Key_U && (event.modifiers & Qt.ControlModifier))
+    // Alt/Meta-modified sequences belong to other shortcuts — never edit here.
+    if (event.modifiers & (Qt.AltModifier | Qt.MetaModifier)) return false
+    if (event.key === Qt.Key_U)                     // Ctrl+U only (not Ctrl+Shift+U → Unicode input)
+      return event.modifiers === Qt.ControlModifier
+    return event.key === Qt.Key_Backspace           // plain, Shift, or Ctrl Backspace
   }
 
   // New filter text after applying an edit key. Assumes isFilterEditKey(event).
