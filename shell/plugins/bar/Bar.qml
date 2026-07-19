@@ -86,7 +86,6 @@ Item {
   property real barDragOffsetX: 0
   property real barDragOffsetY: 0
   property bool barMoveActive: false
-  property bool barMoveSettling: false
   property string barMoveCandidate: ""
   property var barMoveWindow: null
   property var barMoveScreen: null
@@ -223,8 +222,6 @@ Item {
   }
 
   function beginBarMove(window) {
-    barMoveSettleTimer.stop()
-    barMoveSettling = false
     barMoveWindow = window
     barMoveScreen = window ? window.screen : null
     barMoveCandidate = position
@@ -237,9 +234,7 @@ Item {
   }
 
   function clearBarMove() {
-    barMoveSettleTimer.stop()
     barMoveActive = false
-    barMoveSettling = false
     barMoveCandidate = ""
     barMoveWindow = null
     barMoveScreen = null
@@ -252,18 +247,8 @@ Item {
       return
     }
 
-    // Hold the ghost on the target edge while the config round-trips and the
-    // bar re-anchors, so the handoff doesn't flash an empty edge.
-    barMoveActive = false
-    barMoveSettling = true
-    barMoveSettleTimer.restart()
+    clearBarMove()
     setBarPosition(edge)
-  }
-
-  Timer {
-    id: barMoveSettleTimer
-    interval: 450
-    onTriggered: root.clearBarMove()
   }
 
   function setBarPosition(value) {
@@ -1069,7 +1054,7 @@ Item {
     required property var ghostScreen
     readonly property bool screenMatches: root.barMoveScreen === ghostScreen ||
       (root.barMoveScreen && ghostScreen && root.barMoveScreen.name && ghostScreen.name && root.barMoveScreen.name === ghostScreen.name)
-    visible: (root.barMoveActive || root.barMoveSettling) && screenMatches
+    visible: root.barMoveActive && screenMatches
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: "omarchy-bar-move-ghost"

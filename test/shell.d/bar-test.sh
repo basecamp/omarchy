@@ -9,6 +9,11 @@ if perl -0ne 'exit(/drag\s*\.\s*target\s*:\s*[^;]*\bslot\b/s ? 0 : 1)' "$ROOT/sh
 fi
 pass "bar module dragging leaves layout-managed slots in place"
 
+if rg -q 'barMoveSettling|barMoveSettleTimer' "$ROOT/shell/plugins/bar/Bar.qml"; then
+  fail "bar move outline must clear when the pointer is released"
+fi
+pass "bar move outline has no post-release settling state"
+
 run_node_test <<'JS'
 const bar = requireFromRoot('shell/plugins/bar/BarModel.js')
 
