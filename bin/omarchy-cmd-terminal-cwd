@@ -4,18 +4,24 @@
 # omarchy:hidden=true
 
 terminal_pid=$(hyprctl activewindow | awk '/pid:/ {print $2}')
-shell_pid=$(pgrep -P "$terminal_pid" | tail -n1)
+kitty_socket="$XDG_RUNTIME_DIR/omarchy-kitty-$terminal_pid"
+cwd=""
 
-if [[ -n $shell_pid ]]; then
-  cwd=$(readlink -f "/proc/$shell_pid/cwd" 2>/dev/null)
-  shell=$(readlink -f "/proc/$shell_pid/exe" 2>/dev/null)
+if [[ -S $kitty_socket ]]; then
+  cwd=$(kitten @ --to "unix:$kitty_socket" ls --match "state:focused" 2>/dev/null |
+    jq -r '.[].tabs[].windows[].cwd // empty')
+else
+  shell_pid=$(pgrep -P "$terminal_pid" | tail -n1)
 
-  # Check if $shell is a valid shell and $cwd is a directory.
-  if grep -qs "$shell" /etc/shells && [[ -d $cwd ]]; then
-    echo "$cwd"
-  else
-    echo "$HOME"
+  if [[ -n $shell_pid ]]; then
+    cwd=$(readlink -f "/proc/$shell_pid/cwd" 2>/dev/null)
+    shell=$(readlink -f "/proc/$shell_pid/exe" 2>/dev/null)
+    grep -Fqsx "$shell" /etc/shells || cwd=""
   fi
+fi
+
+if [[ -d $cwd ]]; then
+  echo "$cwd"
 else
   echo "$HOME"
 fi
