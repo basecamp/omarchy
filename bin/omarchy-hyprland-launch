@@ -21,7 +21,8 @@ active_workspace() {
 
 if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && omarchy-cmd-present hyprctl && omarchy-cmd-present jq; then
   workspace="$(active_workspace)"
-  if [[ -n $workspace ]] && hyprctl dispatch "function() hl.exec_cmd($(lua_quote "$cmd"), { workspace = $(lua_quote "$workspace") }) end" >/dev/null 2>&1; then
+  # hyprctl dispatch exits 0 even on Lua errors, so check for "ok" output.
+  if [[ -n $workspace && $(hyprctl dispatch "function() hl.exec_cmd($(lua_quote "$cmd"), { workspace = $(lua_quote "$workspace") }) end" 2>/dev/null) == ok ]]; then
     exit 0
   fi
 fi

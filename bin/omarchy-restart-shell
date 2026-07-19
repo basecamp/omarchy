@@ -3,19 +3,8 @@
 # omarchy:summary=Restart the Omarchy shell
 # omarchy:examples=omarchy restart shell
 
-omarchy_root="${OMARCHY_PATH:-/usr/share/omarchy}"
-if [[ ! -f $omarchy_root/shell/shell.qml && -f /usr/share/omarchy/shell/shell.qml ]]; then
-  omarchy_root=/usr/share/omarchy
-fi
-
-CONFIG_DIR="$omarchy_root/shell"
+CONFIG_DIR="$OMARCHY_PATH/shell"
 [[ -f $CONFIG_DIR/shell.qml ]] || { echo "Omarchy shell config not found: $CONFIG_DIR" >&2; exit 1; }
-
-export OMARCHY_PATH="$omarchy_root"
-export PATH="$omarchy_root/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-
-omarchy_shell_bin=/usr/bin/omarchy-shell
-[[ -x $omarchy_shell_bin ]] || omarchy_shell_bin=omarchy-shell
 
 # Allow running from outside the session (e.g. over ssh) by deriving the
 # Hyprland instance signature from the newest instance runtime dir.
@@ -24,71 +13,28 @@ if [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
   [[ -n $hypr_dir ]] && export HYPRLAND_INSTANCE_SIGNATURE=${hypr_dir##*/}
 fi
 
-hyprland_session_locked() {
-  local monitors
-
-  if monitors=$(hyprctl -j monitors 2>/dev/null); then
-    [[ $monitors == *'"LOCK"'* ]] && return 0
-  fi
-
-  monitors=$(hyprctl monitors 2>/dev/null) || return 1
-  [[ $monitors == *"session lock"* ]]
-}
-
-shell_quote() {
-  printf "'"
-  printf "%s" "$1" | sed "s/'/'\\\\''/g"
-  printf "'"
-}
-
-lua_quote() {
-  local value=$1
-  value=${value//\\/\\\\}
-  value=${value//\"/\\\"}
-  value=${value//$'\n'/\\n}
-  printf '"%s"' "$value"
-}
-
-launch_shell() {
-  local launch_command
-
-  launch_command="env OMARCHY_PATH=$(shell_quote "$omarchy_root") PATH=$(shell_quote "$PATH") quickshell -n -p $(shell_quote "$CONFIG_DIR")"
-
-  # hyprctl dispatch exits 0 even on Lua errors, so check for "ok" output.
-  if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && omarchy-cmd-present hyprctl &&
-    [[ $(hyprctl dispatch "hl.dsp.exec_cmd($(lua_quote "$launch_command"))" 2>/dev/null) == ok ]]; then
-    return 0
-  fi
-
-  setsid quickshell -n -p "$CONFIG_DIR" >/dev/null 2>&1 &
-}
-
-restore_hyprland_session_lock() {
-  local attempt
-
-  for (( attempt = 0; attempt < 50; attempt++ )); do
-    if "$omarchy_shell_bin" shell ping >/dev/null 2>&1; then
-      "$omarchy_shell_bin" lock lock >/dev/null 2>&1 || true
-      return 0
-    fi
-    sleep 0.1
-  done
-
-  echo "Omarchy shell restarted while Hyprland was session-locked, but lock IPC did not become ready." >&2
-}
-
-hyprland_was_session_locked=0
-hyprland_session_locked && hyprland_was_session_locked=1
-
-if [[ $("$omarchy_shell_bin" lock isLocked 2>/dev/null || true) == "true" ]]; then
+if [[ $(hyprctl -j monitors 2>/dev/null) == *'"LOCK"'* ]]; then
   echo "Refusing to restart Omarchy shell while the session is locked." >&2
   exit 1
 fi
 
-pkill -x quickshell 2>/dev/null || true
-sleep 0.2
-launch_shell
+for (( attempt = 0; attempt < 50; attempt++ )); do
+  quickshell kill -p "$CONFIG_DIR" --any-display >/dev/null 2>&1 || break
+  sleep 0.1
+done
 
-if (( hyprland_was_session_locked )); then
-  restore_hyprland_session_lock
+if (( attempt == 50 )); then
+  echo "Could not stop all Omarchy shell instances." >&2
+  exit 1
 fi
+
+printf -v launch_command 'setsid quickshell -n -p %q >/dev/null 2>&1 &' "$CONFIG_DIR"
+omarchy-hyprland-launch "$launch_command"
+
+for (( attempt = 0; attempt < 20; attempt++ )); do
+  OMARCHY_SHELL_IPC_TIMEOUT=0.5s omarchy-shell shell ping >/dev/null 2>&1 && exit 0
+  sleep 0.1
+done
+
+echo "Omarchy shell did not become ready after restart." >&2
+exit 1
