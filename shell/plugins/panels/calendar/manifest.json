@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.calendar",
+  "name": "Calendar",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Month calendar with a day-notes popup",
+  "kinds": [
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Calendar",
+    "description": "Month calendar with a day-notes popup",
+    "category": "Info",
+    "allowMultiple": false
+  }
+}

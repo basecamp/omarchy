@@ -13,7 +13,7 @@ BarWidget {
 
   readonly property string activeFormat: alt
     ? setting("formatAlt", "d MMMM 'W'ww yyyy")
-    : (bar && bar.vertical ? setting("verticalFormat", "HH\n—\nmm") : setting("format", "dddd HH:mm"))
+    : (root.vertical ? setting("verticalFormat", "HH\n—\nmm") : setting("format", "dddd HH:mm"))
   readonly property string displayText: formatted(displayDate)
   readonly property var verticalLines: displayText.split("\n")
 
@@ -65,7 +65,8 @@ BarWidget {
     onPressed: function(button) {
       if (!root.bar) return
       if (button === Qt.RightButton) root.bar.run("omarchy-menu-timezone")
-      else root.alt = !root.alt
+      else if (button === Qt.MiddleButton) root.alt = !root.alt
+      else root.bar.run("omarchy-shell omarchy.calendar toggle")
     }
 
     Column {
