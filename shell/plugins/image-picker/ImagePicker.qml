@@ -417,9 +417,14 @@ Item {
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
               root.applySelected()
               event.accepted = true
-            } else if (event.key === Qt.Key_Backspace && root.filterable) {
-              if (root.filterText.length > 0)
+           } else if (event.key === Qt.Key_Backspace && root.filterable) {
+              if ((event.modifiers & Qt.ControlModifier) === Qt.ControlModifier) {
+                // CTRL+BACKSPACE: clear entire filter
+                root.updateFilter("")
+              } else if (root.filterText.length > 0) {
+                // BACKSPACE: remove one character
                 root.updateFilter(root.filterText.slice(0, -1))
+              }
               event.accepted = true
             } else if (event.key === Qt.Key_Left || (event.key === Qt.Key_Tab && event.modifiers & Qt.ShiftModifier) || event.key === Qt.Key_Backtab) {
               root.selectAdjacent(-1)

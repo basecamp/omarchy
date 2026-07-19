@@ -465,7 +465,13 @@ Item {
             else root.dismiss()
             event.accepted = true
           } else if (event.key === Qt.Key_Backspace) {
-            if (root.filterText.length > 0) root.setFilter(root.filterText.slice(0, -1))
+            if ((event.modifiers & Qt.ControlModifier) === Qt.ControlModifier) {
+              // CTRL+BACKSPACE: clear entire filter
+              root.setFilter("")
+            } else if (root.filterText.length > 0) {
+              // BACKSPACE: remove one character
+              root.setFilter(root.filterText.slice(0, -1))
+            }
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
             root.select(-1)
