@@ -45,9 +45,79 @@ output_keybindings() (
     unbind-key -a -T copy-mode \; \
     unbind-key -a -T copy-mode-vi \; \
     source-file "$config_file" \; \
-    list-keys -aN -T prefix \; \
-    list-keys -aN -T root -P "" \; \
-    list-keys -aN -T copy-mode-vi -P "copy-mode-vi" | sed 's/^ //'
+    show-options -g prefix \; \
+    show-options -g prefix2 \; \
+    list-keys -aN -T prefix -P "prefix" \; \
+    list-keys -aN -T root -P "root" \; \
+    list-keys -aN -T copy-mode-vi -P "copy-mode-vi" | awk '
+function key_part_text(part, is_modifier, part_count) {
+  gsub(/^\\/, "", part)
+
+  if (is_modifier && part == "C") return "CTRL"
+  if (is_modifier && part == "M") return "ALT"
+  if (is_modifier && part == "S") return "SHIFT"
+  if (part == "Space") return "SPACE"
+  if (part == "BSpace") return "BACKSPACE"
+  if (part == "BTab") return "SHIFT + TAB"
+  if (part == "PPage") return "PAGE UP"
+  if (part == "NPage") return "PAGE DOWN"
+  if (part == "DC") return "DELETE"
+  if (part == "IC") return "INSERT"
+  if (part_count == 1 && part ~ /^[a-z]$/) return part
+
+  return toupper(part)
+}
+
+function key_text(key, parts, count, i, part, text) {
+  gsub(/\\/, "", key)
+  count = split(key, parts, "-")
+  text = ""
+
+  for (i = 1; i <= count; i++) {
+    part = key_part_text(parts[i], i < count, count)
+    text = text (text == "" ? "" : " + ") part
+  }
+
+  return text
+}
+
+function table_text(table) {
+  if (table == "copy-mode-vi") return "COPY MODE"
+  if (table == "copy-mode") return "COPY MODE"
+  if (table == "prefix") return "PREFIX"
+
+  gsub(/-/, " ", table)
+  return toupper(table)
+}
+
+$1 == "prefix" && NF == 2 { prefix = $2; next }
+$1 == "prefix2" && NF == 2 { prefix2 = $2; next }
+
+{
+  if (!header_printed) {
+    prefix_description = key_text(prefix)
+
+    if (prefix2 != "" && prefix2 != "None") {
+      prefix_description = prefix_description " / " key_text(prefix2)
+    }
+
+    printf "%-32s → %s\n", "PREFIX", prefix_description
+    header_printed = 1
+  }
+
+  table = $1
+  key = $2
+  note = $0
+  sub(/^[^ ]+ +[^ ]+ +/, "", note)
+
+  if (table == "root") {
+    combo = key_text(key)
+  } else {
+    combo = table_text(table) " + " key_text(key)
+  }
+
+  printf "%-32s → %s\n", combo, note
+}'
 )
 
 if [[ $print_only == "true" ]]; then
