@@ -411,6 +411,7 @@ prioritize_entries() {
     if (match(line, /Reveal active/))  prio = 97
     if (match(line, /Apple Display/))  prio = 98
     if (match(line, /XF86/))  prio = 99
+    if (match(line, /Show Tmux key ?bindings/)) prio = 100
 
     # print "priority<TAB>record"
     printf "%d\t%s\n", prio, $0
@@ -434,7 +435,7 @@ output_binding_records_uncached() {
 
 keybindings_cache_key() {
   {
-    printf 'v4\n'
+    printf 'v5\n'
     hyprctl -j devices 2>/dev/null | jq -r '.keyboards[].active_keymap' 2>/dev/null
     hyprctl -j binds 2>/dev/null
   } | sha256sum | awk '{ print $1 }'
