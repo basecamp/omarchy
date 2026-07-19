@@ -976,12 +976,10 @@ start_omarchy_shell_session() {
   # Reboot is still the real cutover, but start the new shell in the current
   # Wayland session when possible so users do not sit without a bar after the
   # retired waybar/walker/elephant processes are stopped.
-  local quickshell_bin omarchy_shell_bin shell_log
-  quickshell_bin=$(command -v quickshell || true)
-  [[ -n $quickshell_bin ]] || { warn "quickshell is not available; Omarchy shell will start after reboot."; return 1; }
-  omarchy_shell_bin=/usr/bin/omarchy-shell
-  [[ -x $omarchy_shell_bin ]] || omarchy_shell_bin=$(command -v omarchy-shell || true)
-  [[ -n $omarchy_shell_bin ]] || { warn "omarchy-shell is not available; Omarchy shell will start after reboot."; return 1; }
+  local restart_shell_bin shell_log
+  command -v quickshell >/dev/null || { warn "quickshell is not available; Omarchy shell will start after reboot."; return 1; }
+  restart_shell_bin=/usr/share/omarchy/bin/omarchy-restart-shell
+  [[ -x $restart_shell_bin ]] || { warn "omarchy-restart-shell is not available; Omarchy shell will start after reboot."; return 1; }
   [[ -f /usr/share/omarchy/shell/shell.qml ]] || { warn "/usr/share/omarchy/shell is missing; Omarchy shell will start after reboot."; return 1; }
   [[ -d $target_runtime_dir ]] || { warn "No running user session found; Omarchy shell will start after reboot."; return 1; }
 
@@ -1013,37 +1011,12 @@ start_omarchy_shell_session() {
     OMARCHY_PATH=/usr/share/omarchy \
     PATH="$package_path" \
     bash -c '
-      omarchy_shell_bin=$1
-      quickshell_bin=$2
-      shell_log=$3
-      if [[ $("$omarchy_shell_bin" lock isLocked 2>/dev/null || true) == "true" ]]; then
-        exit 2
-      fi
-      pkill -x quickshell 2>/dev/null || true
-      sleep 0.2
+      restart_shell_bin=$1
+      shell_log=$2
       : >"$shell_log"
-      setsid "$quickshell_bin" -n -p /usr/share/omarchy/shell >>"$shell_log" 2>&1 &
-    ' bash "$omarchy_shell_bin" "$quickshell_bin" "$shell_log" \
+      "$restart_shell_bin" >>"$shell_log" 2>&1
+    ' bash "$restart_shell_bin" "$shell_log" \
     || { warn "Could not start Omarchy shell in the current session; it will start after reboot. See $shell_log"; return 1; }
-
-  local attempt
-  for attempt in {1..60}; do
-    if run_as_user env \
-      HOME="$target_home" \
-      USER="$target_user" \
-      LOGNAME="$target_user" \
-      XDG_RUNTIME_DIR="$target_runtime_dir" \
-      DBUS_SESSION_BUS_ADDRESS="unix:path=$target_runtime_dir/bus" \
-      OMARCHY_PATH=/usr/share/omarchy \
-      PATH="$package_path" \
-      "$omarchy_shell_bin" shell ping >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 0.25
-  done
-
-  warn "Omarchy shell did not respond in the current session; it will start after reboot. See $shell_log"
-  return 1
 }
 
 run_hyprctl_session() {

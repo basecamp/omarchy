@@ -47,7 +47,15 @@ fi
 # The -- keeps function names that shadow qs subcommands (e.g. show) as
 # positionals. qs reports connection failures with a nonzero exit, but IPC-level
 # failures (unknown target/function, bad arguments) go to stdout with exit 0.
-output=$(qs -p "$OMARCHY_PATH/shell" ipc call -- "$@" 2>/dev/null) || fail "omarchy-shell is not running"
+ipc_timeout=${OMARCHY_SHELL_IPC_TIMEOUT:-2s}
+output=$(timeout --kill-after=1s "$ipc_timeout" qs -p "$OMARCHY_PATH/shell" ipc call -- "$@" 2>/dev/null)
+ipc_status=$?
+
+if (( ipc_status == 124 || ipc_status == 137 )); then
+  fail "omarchy-shell is not responding"
+elif (( ipc_status != 0 )); then
+  fail "omarchy-shell is not running"
+fi
 
 case $output in
   "Target not found." | "Function not found." | "Too few arguments provided"* | "Too many arguments provided"*)

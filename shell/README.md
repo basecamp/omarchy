@@ -180,8 +180,8 @@ quickshell ipc -p $OMARCHY_PATH/shell call shell ping
 ```
 
 Hyprland autostart launches the shell directly with `quickshell -p
-$OMARCHY_PATH/shell`. Use `omarchy-restart-shell` (`quickshell reload`) to
-reload the long-running shell process.
+$OMARCHY_PATH/shell`. Use `omarchy-restart-shell` to stop every running
+instance of that config and launch one fresh shell process.
 
 A convenience wrapper, [`omarchy-shell`](../bin/omarchy-shell), forwards IPC
 calls to the running shell. It does not start the shell.
