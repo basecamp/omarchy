@@ -1,6 +1,13 @@
 [Unit]
 Description=Notify about pending Omarchy migrations
 ConditionPathIsDirectory=/usr/share/omarchy/migrations
+# A single update can drop several migration files at once, so the .path
+# unit re-triggers this oneshot in a burst. Without this, the default
+# start-rate limit (5 starts / 10s) trips and the watching .path unit
+# itself dies with 'unit-start-limit-hit', silently stopping migration
+# notifications for the rest of the session. The notifier is idempotent,
+# so disable the start-rate limit.
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
