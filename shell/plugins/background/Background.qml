@@ -152,13 +152,6 @@ Item {
   }
 
   Timer {
-    interval: 100
-    running: true
-    repeat: true
-    onTriggered: root.refreshBackground()
-  }
-
-  Timer {
     id: pendingThemeFallbackTimer
     interval: 300
     repeat: false
