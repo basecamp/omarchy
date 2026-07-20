@@ -9,7 +9,7 @@ if (($# == 0)); then
   chromium.desktop) echo "chromium" ;;
   google-chrome.desktop) echo "chrome" ;;
   brave-browser.desktop) echo "brave" ;;
-  brave-origin-beta.desktop) echo "brave-origin" ;;
+  brave-origin.desktop) echo "brave-origin" ;;
   microsoft-edge.desktop) echo "edge" ;;
   firefox.desktop) echo "firefox" ;;
   zen.desktop) echo "zen" ;;
@@ -22,7 +22,7 @@ case "$1" in
 chromium) desktop_id="chromium.desktop"; name="Chromium"; glyph= ;;
 chrome) desktop_id="google-chrome.desktop"; name="Chrome"; glyph=󰊯 ;;
 brave) desktop_id="brave-browser.desktop"; name="Brave"; glyph=󰖟 ;;
-brave-origin) desktop_id="brave-origin-beta.desktop"; name="Brave Origin"; glyph=󰖟 ;;
+brave-origin) desktop_id="brave-origin.desktop"; name="Brave Origin"; glyph=󰖟 ;;
 edge) desktop_id="microsoft-edge.desktop"; name="Edge"; glyph=󰇩 ;;
 firefox) desktop_id="firefox.desktop"; name="Firefox"; glyph=󰈹 ;;
 zen) desktop_id="zen.desktop"; name="Zen"; glyph=󰖟 ;;
