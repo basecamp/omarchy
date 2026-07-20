@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# Fallback fix for Goodix fingerprint reader (27c6:609c) failing to resume after suspend.
+#
+# The RESET_RESUME USB quirk handles most cases, but on some resume cycles the device
+# fails with -EINVAL during async PM resume, causing a full USB disconnect:
+#   usb 1-1: PM: dpm_run_callback(): usb_dev_resume returns -22
+#   usb 1-1: PM: failed to resume async: error -22
+#   usb 1-1: USB disconnect, device number 2
+#
+# When that happens, the device is gone from the USB bus entirely and cannot recover
+# on its own. This hook detects the absence of the device after resume and rebinds
+# the xhci PCI controller that hosts it, forcing USB re-enumeration.
+
+if [[ $1 != "post" ]]; then
+  exit 0
+fi
+
+GOODIX_VENDOR="27c6"
+GOODIX_PRODUCT="609c"
+
+find_device() {
+  for dev in /sys/bus/usb/devices/*/; do
+    local v p
+    v=$(cat "${dev}idVendor" 2>/dev/null)
+    p=$(cat "${dev}idProduct" 2>/dev/null)
+    [[ "$v" == "$GOODIX_VENDOR" && "$p" == "$GOODIX_PRODUCT" ]] && return 0
+  done
+  return 1
+}
+
+sleep 3
+
+if find_device; then
+  exit 0
+fi
+
+logger "fix-goodix-fingerprint-resume: device not found after resume, rebinding xhci controller"
+
+XHCI_ID=$(readlink -f /sys/bus/usb/devices/usb1 2>/dev/null | sed 's|/usb1$||; s|.*/||')
+if [[ -z "$XHCI_ID" || "$XHCI_ID" == "usb1" ]]; then
+  # Scan all xhci controllers to find the one that hosts bus 1
+  for ctrl in /sys/bus/pci/drivers/xhci_hcd/*/; do
+    if [[ -d "${ctrl}usb1" ]]; then
+      XHCI_ID="${ctrl%/}"
+      XHCI_ID="${XHCI_ID##*/}"
+      break
+    fi
+  done
+fi
+
+if [[ -z "$XHCI_ID" ]]; then
+  logger "fix-goodix-fingerprint-resume: could not find xhci controller for bus 1"
+  exit 1
+fi
+
+echo "$XHCI_ID" > /sys/bus/pci/drivers/xhci_hcd/unbind
+sleep 1
+echo "$XHCI_ID" > /sys/bus/pci/drivers/xhci_hcd/bind
+sleep 3
+
+if find_device; then
+  logger "fix-goodix-fingerprint-resume: device restored successfully"
+else
+  logger "fix-goodix-fingerprint-resume: device still not found after rebind"
+fi
