@@ -124,7 +124,7 @@
   "setup.default.browser.chromium": {"icon":"","label":"Chromium","when":"omarchy-cmd-present chromium","checked":"[[ \"$(omarchy-default-browser)\" == \"chromium\" ]]","action":"omarchy-default-browser chromium"},
   "setup.default.browser.chrome": {"icon":"󰊯","label":"Chrome","keywords":"google","when":"omarchy-cmd-present google-chrome-stable","checked":"[[ \"$(omarchy-default-browser)\" == \"chrome\" ]]","action":"omarchy-default-browser chrome"},
   "setup.default.browser.brave": {"icon":"󰖟","label":"Brave","when":"omarchy-cmd-present brave","checked":"[[ \"$(omarchy-default-browser)\" == \"brave\" ]]","action":"omarchy-default-browser brave"},
-  "setup.default.browser.brave-origin": {"icon":"󰖟","label":"Brave Origin","when":"omarchy-cmd-present brave-origin-beta","checked":"[[ \"$(omarchy-default-browser)\" == \"brave-origin\" ]]","action":"omarchy-default-browser brave-origin"},
+  "setup.default.browser.brave-origin": {"icon":"󰖟","label":"Brave Origin","when":"omarchy-cmd-present brave-origin","checked":"[[ \"$(omarchy-default-browser)\" == \"brave-origin\" ]]","action":"omarchy-default-browser brave-origin"},
   "setup.default.browser.edge": {"icon":"󰇩","label":"Edge","when":"omarchy-cmd-present microsoft-edge-stable","checked":"[[ \"$(omarchy-default-browser)\" == \"edge\" ]]","action":"omarchy-default-browser edge"},
   "setup.default.browser.firefox": {"icon":"󰈹","label":"Firefox","when":"omarchy-cmd-present firefox","checked":"[[ \"$(omarchy-default-browser)\" == \"firefox\" ]]","action":"omarchy-default-browser firefox"},
   "setup.default.browser.zen": {"icon":"󰖟","label":"Zen","when":"omarchy-cmd-present zen-browser","checked":"[[ \"$(omarchy-default-browser)\" == \"zen\" ]]","action":"omarchy-default-browser zen"},

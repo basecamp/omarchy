@@ -41,4 +41,4 @@ refresh_running_browser msedge microsoft-edge-stable
 
 set_browser_policy /etc/brave/policies/managed
 refresh_running_browser brave brave
-refresh_running_browser brave-origin-beta brave-origin-beta -f
+refresh_running_browser brave-origin brave-origin -f
