@@ -6,13 +6,27 @@ mkdir -p ~/.local/share/icons/hicolor/48x48/apps/
 cp ~/.local/share/omarchy/applications/icons/*.png ~/.local/share/icons/hicolor/48x48/apps/
 gtk-update-icon-cache ~/.local/share/icons/hicolor &>/dev/null
 
-# Copy .desktop declarations
+# Copy .desktop declarations. For top-level entries (i.e. visible launchers),
+# also clean up the destination when the referenced Exec command is missing —
+# otherwise removing a preinstalled package via `omarchy-pkg-remove` leaves an
+# orphan .desktop that still shows up in the launcher and "App failure"s on
+# click (see #5933).
 mkdir -p ~/.local/share/applications
-cp ~/.local/share/omarchy/applications/*.desktop ~/.local/share/applications/
+for src in ~/.local/share/omarchy/applications/*.desktop; do
+  dest=~/.local/share/applications/$(basename "$src")
+  cmd=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' "$src" | head -1)
+  if [[ -n $cmd ]] && command -v "$cmd" &>/dev/null; then
+    cp "$src" "$dest"
+  else
+    rm -f "$dest"
+  fi
+done
 cp ~/.local/share/omarchy/applications/hidden/*.desktop ~/.local/share/applications/
 
 if omarchy-cmd-present alacritty; then
   cp ~/.local/share/omarchy/default/alacritty/alacritty.desktop ~/.local/share/applications/
+else
+  rm -f ~/.local/share/applications/alacritty.desktop
 fi
 
 # Refresh the webapps, TUIs, and npm wrappers
