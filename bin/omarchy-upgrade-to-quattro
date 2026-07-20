@@ -311,7 +311,7 @@ Make sure you have a backup.
 
 EOF
 
-  gum confirm "Continue with upgrade?" || exit 0
+  gum confirm "Continue with upgrade?" </dev/tty || exit 0
 fi
 
 sudo_keepalive_pid=""
@@ -1756,7 +1756,7 @@ repair_chromium_copy_url_shortcuts() {
   # A running browser holds Preferences in memory and rewrites it on exit,
   # which would revert this repair. Ask the user to close it first.
   if browser_is_running && (( ! OMARCHY_UPGRADE_YES )) && [[ -r /dev/tty ]]; then
-    if ! gum confirm "Close all browser windows before the Copy URL shortcut is repaired, then continue"; then
+    if ! gum confirm "Close all browser windows before the Copy URL shortcut is repaired, then continue" </dev/tty; then
       echo "Skipped Copy URL shortcut repair; re-run after closing your browser." >&2
       return 0
     fi
@@ -2401,7 +2401,7 @@ EOF
 if (( auto_reboot )); then
   log "Rebooting because --reboot was passed"
   as_root systemctl reboot
-elif gum confirm "Reboot to complete Quattro upgrade now?"; then
+elif gum confirm "Reboot to complete Quattro upgrade now?" </dev/tty; then
   as_root systemctl reboot
 else
   echo "Not rebooting. Please reboot manually after confirming there were no errors."
