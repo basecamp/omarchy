@@ -18,6 +18,13 @@ remove_pam_config() {
     echo "Removing fingerprint authentication from polkit..."
     sudo sed -i '/pam_fprintd\.so/d' /etc/pam.d/polkit-1
   fi
+
+  # Remove the sudo lid guard + helper (added when fingerprint was set up on a laptop)
+  if grep -q omarchy-lid-open /etc/pam.d/sudo 2>/dev/null; then
+    echo "Removing lid guard from sudo..."
+    sudo sed -i '/omarchy-lid-open/d' /etc/pam.d/sudo
+  fi
+  sudo rm -f /usr/local/bin/omarchy-lid-open
 }
 
 remove_hyprlock_fingerprint_icon() {
