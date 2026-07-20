@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Returns a appropriate power daemon command
+
+ if command -v powerprofilesctl &>/dev/null; then
+    echo "powerprofilesctl"
+  elif command -v tlpctl &>/dev/null; then
+    echo "tlpctl"
+  else
+    return
+  fi
