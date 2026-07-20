@@ -95,3 +95,7 @@ while IFS=$'\t' read -r name file marker; do
     touch "$marker"
   fi
 done < <(migration_entries)
+
+# Clear notifications queued while an update was installing migrations. The
+# substring matches both the current and legacy notification titles.
+omarchy-notification-dismiss "Omarchy Migrations" >/dev/null 2>&1 || true

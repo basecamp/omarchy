@@ -8,12 +8,12 @@ pending_migrations=$(omarchy-migrate --pending 2>/dev/null) || exit 0
 pending_count=$(printf '%s\n' "$pending_migrations" | sed '/^[[:space:]]*$/d' | wc -l)
 
 if (( pending_count == 1 )); then
-  message="1 new Omarchy migration is available. Click to run it in a terminal."
+  message="Click to run 1 pending migration."
 else
-  message="$pending_count new Omarchy migrations are available. Click to run them in a terminal."
+  message="Click to run $pending_count pending migrations."
 fi
 
-notify_command=$(printf 'if [[ -n $(omarchy-notification-send -u critical -g  "Run Omarchy Migrations" %q -a) ]]; then omarchy-launch-floating-terminal-with-presentation omarchy-migrate; fi' "$message")
+notify_command=$(printf 'if [[ -n $(omarchy-notification-send -u critical -g  "Pending Omarchy Migrations" %q -a) ]]; then omarchy-launch-floating-terminal-with-presentation omarchy-migrate; fi' "$message")
 
 if omarchy-cmd-present systemd-run; then
   unit="omarchy-migrations-notification-$(date +%Y%m%d%H%M%S)"
