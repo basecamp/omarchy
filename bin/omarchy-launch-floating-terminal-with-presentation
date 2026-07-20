@@ -3,6 +3,10 @@
 # omarchy:summary=Launch a floating terminal with the Omarchy presentation wrapper
 # omarchy:args=<command>
 
+# Export the current theme's gum styling so gum widgets match the active theme
+# even after a theme switch (the inherited environment is captured at login).
+source omarchy-restart-gum
+
 cmd="$*"
 presentation_script="omarchy-show-logo; $cmd; if (( \$? != 130 )); then omarchy-show-done; fi"
 
