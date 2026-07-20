@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -eu
+cd /opt/vivaldi/resources/vivaldi
+
+JS="style/omarchy.js"
+
+sudo cp "${OMARCHY_PATH:-$HOME/.local/share/omarchy}/default/vivaldi/omarchy-theme-loader.js" "$JS"
+sudo sed -i \
+  -e "/script.*omarchy/d" -e "s|</body>|  <script src=\"$JS\"></script>\n&|" \
+  -e "/omarchy-theme/d"   -e "s|</head>|  <style id=\"omarchy-theme\"></style>\n&|" window.html
+
+sudo touch style/omarchy.csv
+sudo chown "$USER" style/omarchy.csv
+
+omarchy-theme-set-browser
