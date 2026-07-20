@@ -245,20 +245,18 @@ Panel {
     connectKnown(net.ssid)
   }
 
-  // Bar pill state. Polled locally so this panel is self-contained;
-  // populated by networkProc + networkTimer below.
-  property string kind: "disconnected"
-  property string label: ""
-  property int signalStrength: -1
-  property string frequency: ""
-
-  function updateNetwork(raw) {
-    var parsed = Model.parseNetworkStatus(raw)
-    kind = parsed.kind
-    label = parsed.label
-    signalStrength = parsed.signalStrength
-    frequency = parsed.frequency
+  // Bar pill state, derived from the native NetworkManager service so the
+  // icon reflects connection changes without polling. Wired is preferred
+  // when both are up, matching the default-route device.
+  readonly property var wiredDevice: findDevice(DeviceType.Wired)
+  readonly property string kind: {
+    if (wiredDevice && wiredDevice.connected) return "ethernet"
+    if (connectedWifiNetwork) return "wifi"
+    return "disconnected"
   }
+  readonly property int signalStrength: connectedWifiNetwork
+    ? Math.round((connectedWifiNetwork.signalStrength || 0) * 100)
+    : -1
 
   function copyToClipboard(value) {
     if (!value || !root.bar) return
@@ -1493,24 +1491,6 @@ Panel {
     }
   }
 
-  // Poll the wifi/ethernet pill state every 3s. Local to this panel so
-  // Bar.qml does not need to mirror network state.
-  Process {
-    id: networkProc
-    command: ["omarchy-network-status"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.updateNetwork(text)
-    }
-  }
-
-  Timer {
-    interval: 10000
-    running: true
-    repeat: true
-    triggeredOnStart: true
-    onTriggered: if (!networkProc.running) networkProc.running = true
-  }
 
   component DetailValue: InfoValue {
     property bool copyable: false
