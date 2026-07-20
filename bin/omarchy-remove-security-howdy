@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# omarchy:summary=Remove face unlock (howdy) from sudo, polkit, and lock screen
+# omarchy:requires-sudo=true
+
+set -e
+
+
+remove_pam_config() {
+  # /etc/pam.d/sddm is included for users upgrading from the original howdy script,
+  # which configured SDDM as well; the new setup script no longer touches sddm.
+  for file in /etc/pam.d/sudo /etc/pam.d/hyprlock /etc/pam.d/polkit-1 /etc/pam.d/sddm; do
+    [[ -f $file ]] || continue
+    if grep -q 'pam_howdy.so' "$file"; then
+      echo "Removing face authentication from $(basename "$file")..."
+      sudo sed -i '/pam_howdy\.so/d' "$file"
+      sudo sed -i '/pam_unix\.so.*try_first_pass.*likeauth.*nullok/d' "$file"
+    fi
+  done
+}
+
+remove_hyprlock_face_icon() {
+  echo "Removing face icon from hyprlock placeholder text..."
+  if grep -q '󰈷 󰱻' ~/.config/hypr/hyprlock.conf; then
+    # Fingerprint icon coexists, strip only the face glyph
+    sed -i 's| 󰱻||' ~/.config/hypr/hyprlock.conf
+  elif grep -q '󰱻' ~/.config/hypr/hyprlock.conf; then
+    sed -i 's|placeholder_text = .*|placeholder_text = Enter Password|' ~/.config/hypr/hyprlock.conf
+  fi
+}
+
+disable_hyprlock_face_unlock() {
+  sed -i 's/ignore_empty_input = false/ignore_empty_input = true/' ~/.config/hypr/hyprlock.conf
+}
+
+echo -e "\e[32mRemoving face unlock from authentication.\n\e[0m"
+
+remove_pam_config
+remove_hyprlock_face_icon
+disable_hyprlock_face_unlock
+
+if [[ -f /etc/pacman.d/hooks/howdy-dlib-check.hook ]]; then
+  echo "Removing face unlock pacman hook..."
+  sudo rm /etc/pacman.d/hooks/howdy-dlib-check.hook
+fi
+
+if systemctl is-enabled linux-enable-ir-emitter.service &>/dev/null; then
+  echo "Disabling IR emitter service..."
+  sudo systemctl disable --now linux-enable-ir-emitter.service
+fi
+
+echo "Removing face unlock packages..."
+omarchy-pkg-drop howdy-git linux-enable-ir-emitter
+
+echo -e "\e[32mFace unlock has been completely removed.\e[0m"
