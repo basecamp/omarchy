@@ -32,6 +32,10 @@ if [[ $step == "off" ]]; then
   hyprctl dispatch 'hl.dsp.dpms({ action = "disable" })' >/dev/null 2>&1
   exit 0
 elif [[ $step == "on" ]]; then
+  # Skip the dispatch when every active display is already lit: a redundant
+  # DPMS enable right after system resume forces another modeset, which blanks
+  # the panel for a beat (visible flash at the unlock screen).
+  hyprctl monitors -j 2>/dev/null | jq -e '[.[] | select(.disabled == false)] | length > 0 and all(.dpmsStatus)' >/dev/null 2>&1 && exit 0
   hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })' >/dev/null 2>&1
   exit 0
 fi

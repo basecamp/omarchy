@@ -42,13 +42,14 @@ off() {
 }
 
 recover() {
-  if ! omarchy-hyprland-monitor-external-active; then
-    if omarchy-hyprland-toggle-enabled $TOGGLE; then
-      omarchy-hyprland-toggle $TOGGLE off
-    fi
+  # Runs from the clamshell watcher every few seconds, so it must be a no-op
+  # unless it actually re-enables a display: an unconditional wake here undoes
+  # lock-screen blanking and races the resume modeset into a visible flash.
+  omarchy-hyprland-monitor-external-active && return 0
+  omarchy-hyprland-toggle-enabled $TOGGLE || return 0
 
-    wake
-  fi
+  omarchy-hyprland-toggle $TOGGLE off
+  wake
 }
 
 toggle() {
