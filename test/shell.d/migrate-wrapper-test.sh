@@ -9,7 +9,14 @@ trap 'rm -rf "$test_tmp"' EXIT
 
 test_root="$test_tmp/omarchy"
 test_home="$test_tmp/home"
-mkdir -p "$test_root/migrations" "$test_home"
+stub_bin="$test_tmp/bin"
+mkdir -p "$test_root/migrations" "$test_home" "$stub_bin"
+
+cat >"$stub_bin/omarchy-notification-dismiss" <<'SH'
+#!/bin/bash
+printf '%s\n' "$1" >>"$TEST_DISMISSALS"
+SH
+chmod +x "$stub_bin/omarchy-notification-dismiss"
 
 cat >"$test_root/migrations/100-migration.sh" <<'SH'
 echo migration >>"$TEST_CALLS"
@@ -18,7 +25,9 @@ SH
 run_migrate() {
   HOME="$test_home" \
   OMARCHY_PATH="$test_root" \
+  PATH="$stub_bin:$ROOT/bin:$PATH" \
   TEST_CALLS="$test_tmp/calls" \
+  TEST_DISMISSALS="$test_tmp/dismissals" \
     "$ROOT/bin/omarchy-migrate" "$@"
 }
 
@@ -26,6 +35,9 @@ run_migrate() {
 run_migrate >"$test_tmp/migrate.out"
 [[ $(sed -n '1p' "$test_tmp/calls") == "migration" ]] || fail "omarchy-migrate runs pending migrations"
 pass "omarchy-migrate runs migrations without force"
+
+grep -Fx 'Omarchy Migrations' "$test_tmp/dismissals" >/dev/null || fail "omarchy-migrate dismisses migration notifications"
+pass "omarchy-migrate clears completed migration notifications"
 
 rm -rf "$test_home/.local/state/omarchy/migrations"
 run_migrate --pending >"$test_tmp/pending.out"
