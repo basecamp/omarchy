@@ -27,7 +27,7 @@ case "$action" in
   *) usage ;;
 esac
 
-mapfile -t profiles < <(powerprofilesctl list | awk '/^\s*[* ]\s*[a-zA-Z0-9\-]+:$/ { gsub(/^[*[:space:]]+|:$/,""); print }')
+mapfile -t profiles < <(omarchy-powerprofiles-list)
 
 profile_available() {
   [[ " ${profiles[*]} " == *" $1 "* ]]
