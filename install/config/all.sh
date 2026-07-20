@@ -36,6 +36,7 @@ run_logged $OMARCHY_INSTALL/config/hardware/network.sh
 run_logged $OMARCHY_INSTALL/config/hardware/set-wireless-regdom.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-fkeys.sh
 run_logged $OMARCHY_INSTALL/config/hardware/bluetooth.sh
+run_logged $OMARCHY_INSTALL/config/hardware/hdmi-audio.sh
 run_logged $OMARCHY_INSTALL/config/hardware/printer.sh
 run_logged $OMARCHY_INSTALL/config/hardware/usb-autosuspend.sh
 run_logged $OMARCHY_INSTALL/config/hardware/ignore-power-button.sh
