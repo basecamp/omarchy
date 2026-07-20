@@ -153,6 +153,10 @@ EOF
     PASSWORD_DISPLAY="(user-defined)"
   fi
 
+  # Escape dollar signs for docker-compose interpolation.
+  COMPOSE_USERNAME=${USERNAME//$/\$\$}
+  COMPOSE_PASSWORD=${PASSWORD//$/\$\$}
+
   # Display configuration summary
   gum style \
     --border normal \
@@ -188,8 +192,8 @@ services:
       RAM_SIZE: "$SELECTED_RAM"
       CPU_CORES: "$SELECTED_CORES"
       DISK_SIZE: "$SELECTED_DISK"
-      USERNAME: "$USERNAME"
-      PASSWORD: "$PASSWORD"
+      USERNAME: "$COMPOSE_USERNAME"
+      PASSWORD: "$COMPOSE_PASSWORD"
       TZ: "$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)"
       ARGUMENTS: "-rtc base=localtime,clock=host,driftfix=slew"
     devices:
@@ -281,6 +285,10 @@ launch_windows() {
   # Extract credentials from compose file
   WIN_USER=$(grep "USERNAME:" "$COMPOSE_FILE" | sed 's/.*USERNAME: "\(.*\)"/\1/')
   WIN_PASS=$(grep "PASSWORD:" "$COMPOSE_FILE" | sed 's/.*PASSWORD: "\(.*\)"/\1/')
+
+  # Unescape docker-compose dollar-sign escaping.
+  WIN_USER=${WIN_USER//\$\$/\$}
+  WIN_PASS=${WIN_PASS//\$\$/\$}
 
   # Use defaults if not found
   [[ -z $WIN_USER ]] && WIN_USER="docker"
