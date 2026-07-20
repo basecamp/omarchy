@@ -7,8 +7,6 @@ import QtQuick
 QtObject {
   id: root
 
-  readonly property string omarchyPath: Quickshell.env("OMARCHY_PATH")
-
   function clamp(value, min, max) {
     var n = Number(value)
     if (!isFinite(n)) return min
@@ -41,8 +39,8 @@ QtObject {
     return "'" + String(value || "").replace(/'/g, "'\\''") + "'"
   }
 
-  function hyprExecCommand(command) {
-    return [omarchyPath + "/bin/omarchy-hyprland-launch", command]
+  function execDetached(command) {
+    Quickshell.execDetached(["bash", "-lc", command])
   }
 
   function isPlainObject(value) {

@@ -100,8 +100,8 @@ assert(
   'launcher delete closes launcher after confirmation'
 )
 assert(
-  confirmDeleteMatch[1].includes('Util.hyprExecCommand(command)'),
-  'launcher delete routes remover through Hyprland'
+  confirmDeleteMatch[1].includes('Util.execDetached(command)'),
+  'launcher delete runs remover through the shell'
 )
 
 const activateMatch = launcherQml.match(/function activateIndex\(index\) \{([\s\S]*?)\n  \}/)
@@ -111,8 +111,8 @@ assert(
   'launcher does not execute desktop entries directly'
 )
 assert(
-  activateMatch[1].includes('gtk-launch') && activateMatch[1].includes('Util.hyprExecCommand'),
-  'launcher routes desktop entry launch through Hyprland'
+  activateMatch[1].includes('gtk-launch') && activateMatch[1].includes('Util.execDetached'),
+  'launcher runs desktop entry launch through the shell'
 )
 
 assert(

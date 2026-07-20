@@ -42,12 +42,6 @@ touch "$restart_root/shell/shell.qml"
 ln -s "$ROOT/bin/omarchy-shell" "$restart_bin/omarchy-shell"
 ln -s "$ROOT/bin/omarchy-cmd-missing" "$restart_bin/omarchy-cmd-missing"
 
-cat >"$restart_bin/omarchy-hyprland-launch" <<'SH'
-#!/bin/bash
-
-bash -c "$1"
-SH
-
 cat >"$restart_bin/qs" <<'SH'
 #!/bin/bash
 
@@ -91,7 +85,7 @@ if [[ ${1:-} == "-j" && ${2:-} == "monitors" ]]; then
 fi
 SH
 
-chmod +x "$restart_bin/qs" "$restart_bin/quickshell" "$restart_bin/hyprctl" "$restart_bin/omarchy-hyprland-launch"
+chmod +x "$restart_bin/qs" "$restart_bin/quickshell" "$restart_bin/hyprctl"
 
 printf '101\n202\n' >"$restart_state"
 

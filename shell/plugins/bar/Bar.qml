@@ -488,8 +488,7 @@ Item {
   function run(command) {
     if (!command) return
 
-    launcher.command = Util.hyprExecCommand(command)
-    launcher.startDetached()
+    Util.execDetached(command)
   }
 
   function toggleTransparency() {
@@ -785,8 +784,6 @@ Item {
     tooltipRequest += 1
     clearTooltip()
   }
-
-  Process { id: launcher }
 
   Timer {
     id: tooltipTimer
