@@ -176,6 +176,18 @@ run_as_user_session() {
     "$@"
 }
 
+# Run an Omarchy command as the user with the package-backed paths, without
+# assuming a live session. Extra NAME=VALUE args extend the environment.
+run_as_user_omarchy() {
+  run_as_user env \
+    HOME="$target_home" \
+    USER="$target_user" \
+    LOGNAME="$target_user" \
+    OMARCHY_PATH=/usr/share/omarchy \
+    PATH="$package_path" \
+    "$@"
+}
+
 package_installed_exact() {
   local pkg="$1"
   pacman -Qq "$pkg" 2>/dev/null | grep -Fxq "$pkg"
@@ -265,14 +277,7 @@ discover_hyprland_signature() {
   printf '%s\n' "${candidates[0]}"
 }
 
-resolve_channel() {
-  normalize_channel "${channel_override:-stable}"
-}
-
-channel=$(resolve_channel)
-if ! valid_channel "$channel"; then
-  fail "Invalid channel '$channel'. Use stable, rc, or edge."
-fi
+channel=$(normalize_channel "${channel_override:-stable}")
 
 case "$channel" in
   stable)
@@ -320,7 +325,7 @@ hyprland_config_reload_suppressed=0
 cleanup_on_exit() {
   local exit_status=$?
 
-  if (( hyprland_config_reload_suppressed )) && declare -F restore_hyprland_config_reload >/dev/null; then
+  if (( hyprland_config_reload_suppressed )); then
     restore_hyprland_config_reload >/dev/null 2>&1 || true
   fi
 
@@ -882,10 +887,7 @@ fi
 USER_CLEANUP
 }
 
-cleanup_retired_user_unit_files() {
-  run_as_user bash <<'USER_UNITS'
-set -euo pipefail
-units=(
+retired_user_units=(
   hyprpolkitagent.service
   mako.service
   omarchy-battery-monitor.service
@@ -895,6 +897,11 @@ units=(
   elephant.service
   app-walker@autostart.service
 )
+
+cleanup_retired_user_unit_files() {
+  run_as_user env RETIRED_UNITS="${retired_user_units[*]}" bash <<'USER_UNITS'
+set -euo pipefail
+read -r -a units <<<"$RETIRED_UNITS"
 shopt -s nullglob
 for base in "$HOME/.config/systemd/user" "$HOME/.local/share/systemd/user"; do
   [[ -d $base ]] || continue
@@ -930,16 +937,7 @@ cleanup_retired_services() {
 
   cleanup_retired_user_unit_files
   if [[ -S $target_runtime_dir/bus ]]; then
-    run_as_user_session systemctl --user disable \
-      hyprpolkitagent.service \
-      mako.service \
-      omarchy-battery-monitor.service \
-      omarchy-battery-monitor.timer \
-      omarchy-shell.service \
-      swayosd-server.service \
-      elephant.service \
-      app-walker@autostart.service \
-      >/dev/null 2>&1 || true
+    run_as_user_session systemctl --user disable "${retired_user_units[@]}" >/dev/null 2>&1 || true
     run_as_user_session systemctl --user daemon-reload >/dev/null 2>&1 || true
   fi
 }
@@ -948,16 +946,7 @@ stop_retired_session_processes() {
   log "Stopping retired Omarchy 3 session processes"
 
   if [[ -S $target_runtime_dir/bus ]]; then
-    run_as_user_session systemctl --user stop \
-      hyprpolkitagent.service \
-      mako.service \
-      omarchy-battery-monitor.service \
-      omarchy-battery-monitor.timer \
-      omarchy-shell.service \
-      swayosd-server.service \
-      elephant.service \
-      app-walker@autostart.service \
-      >/dev/null 2>&1 || true
+    run_as_user_session systemctl --user stop "${retired_user_units[@]}" >/dev/null 2>&1 || true
   fi
 
   # Removed packages do not stop already-running processes. Stop the old UI
@@ -981,73 +970,48 @@ start_omarchy_shell_session() {
   restart_shell_bin=/usr/share/omarchy/bin/omarchy-restart-shell
   [[ -x $restart_shell_bin ]] || { warn "omarchy-restart-shell is not available; Omarchy shell will start after reboot."; return 1; }
   [[ -f /usr/share/omarchy/shell/shell.qml ]] || { warn "/usr/share/omarchy/shell is missing; Omarchy shell will start after reboot."; return 1; }
-  [[ -d $target_runtime_dir ]] || { warn "No running user session found; Omarchy shell will start after reboot."; return 1; }
 
   shell_log="$target_home/.local/state/omarchy/omarchy-shell-upgrade.log"
   run_as_user mkdir -p "$target_home/.local/state/omarchy" >/dev/null 2>&1 || true
 
-  local wayland_display hyprland_signature
-  wayland_display=$(discover_wayland_display || true)
-  [[ -n $wayland_display ]] || { warn "No Wayland display found; Omarchy shell will start after reboot."; return 1; }
-
-  hyprland_signature=$(discover_hyprland_signature || true)
-  [[ -n $hyprland_signature ]] || { warn "No Hyprland session found; Omarchy shell will start after reboot."; return 1; }
-
   log "Starting Omarchy shell in the current session"
-  run_as_user env \
-    HOME="$target_home" \
-    USER="$target_user" \
-    LOGNAME="$target_user" \
-    XDG_RUNTIME_DIR="$target_runtime_dir" \
-    WAYLAND_DISPLAY="$wayland_display" \
-    HYPRLAND_INSTANCE_SIGNATURE="$hyprland_signature" \
-    DBUS_SESSION_BUS_ADDRESS="unix:path=$target_runtime_dir/bus" \
-    XDG_CURRENT_DESKTOP=Hyprland \
-    XDG_SESSION_DESKTOP=Hyprland \
-    XDG_SESSION_TYPE=wayland \
+  run_as_user_wayland_session \
     QT_QPA_PLATFORM=wayland \
-    GDK_BACKEND=wayland,x11,* \
-    DESKTOP_SESSION=hyprland \
-    OMARCHY_PATH=/usr/share/omarchy \
-    PATH="$package_path" \
+    'GDK_BACKEND=wayland,x11,*' \
     bash -c '
       restart_shell_bin=$1
       shell_log=$2
       : >"$shell_log"
       "$restart_shell_bin" >>"$shell_log" 2>&1
     ' bash "$restart_shell_bin" "$shell_log" \
-    || { warn "Could not start Omarchy shell in the current session; it will start after reboot. See $shell_log"; return 1; }
+    || { warn "Could not start Omarchy shell in the current session (no live Hyprland session, or shell startup failed); it will start after reboot. See $shell_log"; return 1; }
+}
+
+# Run a command inside the user's live Wayland session. Fails if no session
+# can be discovered. Extra NAME=VALUE args extend the environment.
+run_as_user_wayland_session() {
+  local wayland_display hyprland_signature
+  [[ -d $target_runtime_dir ]] || return 1
+
+  wayland_display=$(discover_wayland_display) || return 1
+  hyprland_signature=$(discover_hyprland_signature) || return 1
+
+  run_as_user_session \
+    WAYLAND_DISPLAY="$wayland_display" \
+    HYPRLAND_INSTANCE_SIGNATURE="$hyprland_signature" \
+    XDG_SESSION_TYPE=wayland \
+    OMARCHY_PATH=/usr/share/omarchy \
+    PATH="$package_path" \
+    "$@"
 }
 
 run_hyprctl_session() {
-  local wayland_display hyprland_signature hyprctl_bin
-  [[ -d $target_runtime_dir ]] || return 1
-
+  local hyprctl_bin
   hyprctl_bin=/usr/bin/hyprctl
   [[ -x $hyprctl_bin ]] || hyprctl_bin=$(command -v hyprctl || true)
   [[ -n $hyprctl_bin ]] || return 1
 
-  wayland_display=$(discover_wayland_display || true)
-  [[ -n $wayland_display ]] || return 1
-
-  hyprland_signature=$(discover_hyprland_signature || true)
-  [[ -n $hyprland_signature ]] || return 1
-
-  run_as_user env \
-    HOME="$target_home" \
-    USER="$target_user" \
-    LOGNAME="$target_user" \
-    XDG_RUNTIME_DIR="$target_runtime_dir" \
-    WAYLAND_DISPLAY="$wayland_display" \
-    HYPRLAND_INSTANCE_SIGNATURE="$hyprland_signature" \
-    DBUS_SESSION_BUS_ADDRESS="unix:path=$target_runtime_dir/bus" \
-    XDG_CURRENT_DESKTOP=Hyprland \
-    XDG_SESSION_DESKTOP=Hyprland \
-    XDG_SESSION_TYPE=wayland \
-    DESKTOP_SESSION=hyprland \
-    OMARCHY_PATH=/usr/share/omarchy \
-    PATH="$package_path" \
-    "$hyprctl_bin" "$@"
+  run_as_user_wayland_session "$hyprctl_bin" "$@"
 }
 
 suppress_hyprland_config_reload() {
@@ -1094,14 +1058,7 @@ run_post_upgrade_migrations() {
   PATH="$package_path" command -v omarchy-migrate >/dev/null 2>&1 || return 0
 
   log "Running Omarchy migrations"
-  if ! run_as_user env \
-    HOME="$target_home" \
-    USER="$target_user" \
-    LOGNAME="$target_user" \
-    OMARCHY_PATH=/usr/share/omarchy \
-    OMARCHY_UPGRADE_TO_QUATTRO_LIVE=1 \
-    PATH="$package_path" \
-    omarchy-migrate; then
+  if ! run_as_user_omarchy OMARCHY_UPGRADE_TO_QUATTRO_LIVE=1 omarchy-migrate; then
     warn "Could not run Omarchy migrations; the user may be prompted to run them after login."
   fi
 }
@@ -1140,25 +1097,13 @@ run_post_upgrade_update_steps() {
   local update_output update_status
 
   if PATH="$package_path" command -v omarchy-update-aur-pkgs >/dev/null 2>&1; then
-    if ! run_as_user env \
-      HOME="$target_home" \
-      USER="$target_user" \
-      LOGNAME="$target_user" \
-      OMARCHY_PATH=/usr/share/omarchy \
-      PATH="$package_path" \
-      omarchy-update-aur-pkgs; then
+    if ! run_as_user_omarchy omarchy-update-aur-pkgs; then
       warn "Could not update AUR packages; running omarchy-update after reboot may still update AUR packages."
     fi
   fi
 
   if PATH="$package_path" command -v omarchy-update-mise >/dev/null 2>&1; then
-    if ! run_as_user env \
-      HOME="$target_home" \
-      USER="$target_user" \
-      LOGNAME="$target_user" \
-      OMARCHY_PATH=/usr/share/omarchy \
-      PATH="$package_path" \
-      omarchy-update-mise; then
+    if ! run_as_user_omarchy omarchy-update-mise; then
       warn "Could not update mise tools; running omarchy-update after reboot may still update mise-managed tools."
     fi
   fi
@@ -1166,13 +1111,7 @@ run_post_upgrade_update_steps() {
   if PATH="$package_path" command -v omarchy-update-available >/dev/null 2>&1; then
     log "Refreshing update indicator state"
     update_status=0
-    update_output=$(run_as_user env \
-      HOME="$target_home" \
-      USER="$target_user" \
-      LOGNAME="$target_user" \
-      OMARCHY_PATH=/usr/share/omarchy \
-      PATH="$package_path" \
-      omarchy-update-available 2>&1) || update_status=$?
+    update_output=$(run_as_user_omarchy omarchy-update-available 2>&1) || update_status=$?
 
     if (( update_status == 0 )); then
       warn "Updates are still available after the upgrade; run omarchy-update after reboot:"
@@ -1286,19 +1225,9 @@ EOF
   apply_firewall_defaults
 
   log "Normalizing SDDM login configuration"
+  # The omarchy package already installed 10-theme.conf and 10-wayland.conf.
   as_root install -d -m 0755 /etc/sddm.conf.d
-  printf '[Theme]\nCurrent=omarchy\n' | as_root tee /etc/sddm.conf.d/10-theme.conf >/dev/null
-  cat <<'EOF' | as_root tee /etc/sddm.conf.d/10-wayland.conf >/dev/null
-[General]
-DisplayServer=wayland
-
-[Wayland]
-CompositorCommand=start-hyprland -- --config /usr/share/sddm/hyprland.lua
-EOF
   cat <<'EOF' | as_root tee /etc/sddm.conf.d/99-omarchy-login.conf >/dev/null
-[Theme]
-Current=omarchy
-
 [Users]
 RememberLastUser=true
 RememberLastSession=true
@@ -1901,22 +1830,11 @@ legacy_omarchy_backup="$HOME/.local/share/omarchy.omarchy-upgrade-to-quattro.$BA
 if [[ -d $legacy_omarchy_backup/themes && -d $legacy_omarchy_backup/.git ]]; then
   (
     cd "$legacy_omarchy_backup"
-    mapfile -t tracked_backgrounds < <(git ls-files --cached 'themes/*/backgrounds/*' 2>/dev/null)
-    for theme_dir in themes/*/; do
-      theme_dir=${theme_dir%/}
-      [[ -d $theme_dir/backgrounds ]] || continue
-      theme_name=$(basename "$theme_dir")
-      for bg_file in "$theme_dir/backgrounds"/*; do
-        [[ -f $bg_file ]] || continue
-        is_tracked=0
-        for tracked in "${tracked_backgrounds[@]}"; do
-          [[ $tracked == "$bg_file" ]] && { is_tracked=1; break; }
-        done
-        if (( ! is_tracked )); then
-          mkdir -p "$HOME/.config/omarchy/backgrounds/$theme_name"
-          mv "$bg_file" "$HOME/.config/omarchy/backgrounds/$theme_name/"
-        fi
-      done
+    git ls-files --others -- 'themes/*/backgrounds/*' 2>/dev/null | while IFS= read -r bg_file; do
+      theme_name=${bg_file#themes/}
+      theme_name=${theme_name%%/*}
+      mkdir -p "$HOME/.config/omarchy/backgrounds/$theme_name"
+      mv "$bg_file" "$HOME/.config/omarchy/backgrounds/$theme_name/"
     done
   )
 fi
@@ -1957,9 +1875,6 @@ for rel in "${retired_config_files[@]}"; do
 done
 repair_sleep_lock_unit_override
 install_bash_startup
-
-unset rel file backup retired_config_files always_copy_config_files uwsm_env known_config_default_hashes_by_key
-unset -f file_sha256 known_config_default_hashes default_hash_paths is_known_default_hash backup_config_file migrate_uwsm_env_customizations is_retired_config_file copy_config_default copy_missing_config_defaults refresh_known_config_defaults mark_removed_preinstalls_from_legacy_bindings copy_always_config_defaults repair_chromium_copy_url_extension_flags browser_is_running repair_chromium_copy_url_shortcuts repair_sleep_lock_unit_override is_known_bashrc_default install_bash_startup
 
 mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills" "$HOME/.pi/agent/skills"
 if [[ -d $root/default/omarchy-skill ]]; then
@@ -2242,17 +2157,8 @@ write_legacy_theme_hyprland_conf() {
 set -euo pipefail
 hyprland_conf="$HOME/.config/hypr/hyprland.conf"
 [[ -f $hyprland_conf ]] || exit 0
-python3 - "$hyprland_conf" "$HOME" <<'PY'
-from pathlib import Path
-import sys
-
-path = Path(sys.argv[1])
-home = sys.argv[2]
-text = path.read_text()
-text = text.replace(f"{home}/.config/omarchy/current", f"{home}/.local/state/omarchy/current")
-text = text.replace("~/.config/omarchy/current", "~/.local/state/omarchy/current")
-path.write_text(text)
-PY
+# Legacy current-path references were already rewritten during the user
+# transition; only the theme hyprland.conf shim is needed here.
 grep -q 'current/theme/hyprland.conf' "$hyprland_conf" || exit 0
 
 theme_dir="$HOME/.local/state/omarchy/current/theme"
@@ -2312,19 +2218,14 @@ refresh_current_theme_after_upgrade() {
   runtime_dir="$target_runtime_dir"
   [[ -d $runtime_dir ]] || runtime_dir=/tmp
 
-  if ! run_as_user env \
-    HOME="$target_home" \
-    USER="$target_user" \
-    LOGNAME="$target_user" \
+  if ! run_as_user_omarchy \
     XDG_RUNTIME_DIR="$runtime_dir" \
     DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
     XDG_CURRENT_DESKTOP=Hyprland \
     XDG_SESSION_DESKTOP=Hyprland \
     XDG_SESSION_TYPE=wayland \
     DESKTOP_SESSION=hyprland \
-    OMARCHY_PATH=/usr/share/omarchy \
     OMARCHY_THEME_HEADLESS=1 \
-    PATH="$package_path" \
     omarchy-theme-set "$theme_name"; then
     warn "Could not refresh current theme '$theme_name'. Run 'omarchy theme set \"$theme_name\"' after reboot if theme-dependent app config looks stale."
   fi
@@ -2334,13 +2235,7 @@ refresh_current_theme_after_upgrade() {
   # Headless theme refresh intentionally skips omarchy-theme-set's live post
   # hooks because one of them runs `hyprctl reload`. Still poke terminal
   # emulators so the active upgrade terminal picks up generated theme files.
-  run_as_user env \
-    HOME="$target_home" \
-    USER="$target_user" \
-    LOGNAME="$target_user" \
-    OMARCHY_PATH=/usr/share/omarchy \
-    PATH="$package_path" \
-    omarchy-restart-terminal >/dev/null 2>&1 || true
+  run_as_user_omarchy omarchy-restart-terminal >/dev/null 2>&1 || true
 }
 
 create_pre_upgrade_snapshot
@@ -2360,20 +2255,8 @@ apply_system_transition
 suppress_hyprland_config_reload
 apply_user_transition
 apply_user_hardware_transition
-run_as_user env \
-  HOME="$target_home" \
-  USER="$target_user" \
-  LOGNAME="$target_user" \
-  OMARCHY_PATH=/usr/share/omarchy \
-  PATH="$package_path" \
-  omarchy-refresh-applications
-run_as_user env \
-  HOME="$target_home" \
-  USER="$target_user" \
-  LOGNAME="$target_user" \
-  OMARCHY_PATH=/usr/share/omarchy \
-  PATH="$package_path" \
-  omarchy-bar defaults
+run_as_user_omarchy omarchy-refresh-applications
+run_as_user_omarchy omarchy-bar defaults
 cleanup_retired_services
 ensure_sleep_lock_service
 remove_retired_default_packages
