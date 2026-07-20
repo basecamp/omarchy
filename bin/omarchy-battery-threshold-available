@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Check if at least one battery with an adjustable charge threshold exists
+files=(/sys/class/power_supply/BAT*/charge_control_end_threshold)
+[[ -e ${files[0]} ]]
