@@ -41,4 +41,14 @@ high_temp=75
 speed_curve=linear
 always_full_speed=false
 EOF
+
+  cat <<'HOOK' | sudo tee /usr/lib/systemd/system-sleep/wifi-resume >/dev/null
+#!/bin/bash
+if [[ $1 == "post" ]]; then
+  logger -t wifi-resume "Reloading brcmfmac after resume"
+  modprobe -r brcmfmac 2>/dev/null
+  modprobe brcmfmac || logger -t wifi-resume "Failed to reload brcmfmac"
+fi
+HOOK
+  sudo chmod +x /usr/lib/systemd/system-sleep/wifi-resume
 fi
