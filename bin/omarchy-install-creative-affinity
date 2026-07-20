@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# omarchy:summary=Install Affinity creative suite (Designer, Photo, Publisher) via Wine AppImage
+
+omarchy-pkg-aur-add affinity-appimage-bin
+
+mkdir -p ~/.local/share/applications/icons
+cp "$OMARCHY_PATH/applications/icons/affinity.png" ~/.local/share/applications/icons/
+
+mkdir -p ~/.local/share/applications
+cat > ~/.local/share/applications/affinity.desktop << EOF
+[Desktop Entry]
+Name=Affinity Studio
+Exec=omarchy-launch-affinity
+Icon=$HOME/.local/share/applications/icons/affinity.png
+Type=Application
+Categories=Graphics;
+EOF
