@@ -38,7 +38,7 @@ BorderSurface {
   // The `check` flag avoids Qt's missing-texture placeholder for unknown names.
   readonly property string smallIconSource: image.length > 0 ? image : iconSource(appIcon)
   readonly property bool hasGlyph: glyph.length > 0
-  readonly property bool compactGlyph: NotificationLogic.shouldRenderCompactGlyph(glyph, smallIconSource)
+  readonly property bool compactGlyph: NotificationLogic.shouldRenderCompactGlyph(glyph, smallIconSource, singleLineToast)
   readonly property bool hasSmallIcon: smallIconSource.length > 0
   readonly property bool summaryStartsWithGlyph: NotificationLogic.summaryStartsWithGlyph(summary)
   readonly property bool singleLineToast: sanitizedBody.length === 0
@@ -109,7 +109,7 @@ BorderSurface {
         // Hide the slot when the icon failed to resolve (themed-icon name
         // not in the user's icon theme) AND we don't have a glyph fallback
         // — prevents rendering Qt's pink broken-image placeholder.
-        visible: !root.collapseRedundantIcon && !root.compactGlyph && root.hasSmallIcon && (root.hasGlyph || smallIconImage.status !== Image.Error)
+        visible: !root.collapseRedundantIcon && !root.compactGlyph && (root.hasSmallIcon || root.hasGlyph) && (root.hasGlyph || smallIconImage.status !== Image.Error)
 
         Image {
           id: smallIconImage
@@ -131,7 +131,7 @@ BorderSurface {
           text: root.glyph
           color: Color.notifications.text
           font.family: root.fontFamily
-          font.pixelSize: Style.font.iconLarge
+          font.pixelSize: Style.font.displayLarge
         }
       }
 

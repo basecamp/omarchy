@@ -53,8 +53,8 @@ function glyphFromHints(hints) {
   return ""
 }
 
-function shouldRenderCompactGlyph(glyph, iconSource) {
-  return String(glyph || "").length > 0 && String(iconSource || "").length === 0
+function shouldRenderCompactGlyph(glyph, iconSource, singleLineToast) {
+  return String(glyph || "").length > 0 && String(iconSource || "").length === 0 && !!singleLineToast
 }
 
 function snapshotOf(notification, timestamp) {
