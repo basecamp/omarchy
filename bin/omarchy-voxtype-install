@@ -21,6 +21,10 @@ if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
   voxtype setup systemd
 
   omarchy-hyprland-toggle voxtype on
+  # Reload Hyprland so the dictation binds (F9 / Super+Ctrl+X) added by the
+  # toggle take effect immediately; otherwise they stay inactive until the next
+  # login. Tolerate running outside a live Hyprland session.
+  hyprctl reload >/dev/null 2>&1 || true
   omarchy-restart-shell
   omarchy-notification-send -g  "Voxtype Dictation Ready" "Hold F9 to dictate (or toggle with Super + Ctrl + X)." -t 10000
 fi
