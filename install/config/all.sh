@@ -15,6 +15,7 @@ run_logged $OMARCHY_INSTALL/config/mise-work.sh
 run_logged $OMARCHY_INSTALL/config/fix-powerprofilesctl-shebang.sh
 run_logged $OMARCHY_INSTALL/config/docker.sh
 run_logged $OMARCHY_INSTALL/config/mimetypes.sh
+run_logged $OMARCHY_INSTALL/config/nautilus-open-any-terminal.sh
 run_logged $OMARCHY_INSTALL/config/user-dirs.sh
 run_logged $OMARCHY_INSTALL/config/toggles.sh
 run_logged $OMARCHY_INSTALL/config/nautilus-python.sh

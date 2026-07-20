@@ -84,6 +84,7 @@ mise
 mpv
 mpv-mpris
 nautilus
+nautilus-open-any-terminal
 nautilus-python
 gnome-disk-utility
 noto-fonts
