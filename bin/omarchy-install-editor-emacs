@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# omarchy:summary=Install Emacs with Omarchy theme and font integration via the omarchy-emacs AUR package
+
+echo "Installing Emacs..."
+omarchy-pkg-aur-add omarchy-emacs && omarchy-install-emacs

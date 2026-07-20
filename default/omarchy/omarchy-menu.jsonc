@@ -186,7 +186,7 @@
   "install.editor.sublime": {"icon":"","label":"Sublime Text","action":"omarchy-install-and-launch 'Sublime Text' sublime-text-4 sublime_text"},
   "install.editor.helix": {"icon":"","label":"Helix","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-editor-helix"},
   "install.editor.vim": {"icon":"","label":"Vim","action":"omarchy-install-app Vim vim"},
-  "install.editor.emacs": {"icon":"","label":"Emacs","action":"omarchy-install-app Emacs emacs-wayland && systemctl --user enable --now emacs.service"},
+  "install.editor.emacs": {"icon":"","label":"Emacs","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-editor-emacs"},
   "install.terminal.alacritty": {"icon":"","label":"Alacritty","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-terminal alacritty'"},
   "install.terminal.foot": {"icon":"","label":"Foot","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-terminal foot'"},
   "install.terminal.ghostty": {"icon":"","label":"Ghostty","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-terminal ghostty'"},
