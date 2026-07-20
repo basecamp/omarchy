@@ -1,0 +1,9 @@
+[Unit]
+Description=Omarchy Theme Scheduler Timer
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+
+[Install]
+WantedBy=timers.target
