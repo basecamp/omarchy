@@ -108,7 +108,7 @@ Item {
 
     resetAuthenticationState()
     lockRequested = true
-    idleBlankTimer.restart()
+    armBlankTimer()
     logEvent("lock-requested")
     queueSessionLock()
 
@@ -134,9 +134,14 @@ Item {
     runWake()
   }
 
+  function armBlankTimer() {
+    idleBlankTimer.armedAt = Date.now()
+    idleBlankTimer.restart()
+  }
+
   function runWake() {
     if (!wakeProcess.running) wakeProcess.running = true
-    if (lockRequested) idleBlankTimer.restart()
+    if (lockRequested) armBlankTimer()
   }
 
   function runBlank() {
@@ -370,7 +375,17 @@ Item {
     id: idleBlankTimer
     interval: 5000
     repeat: false
-    onTriggered: if (root.lockRequested && !root.authenticating) root.runBlank()
+    property double armedAt: 0
+    onTriggered: {
+      // A countdown frozen by suspend fires right after resume, which would
+      // blank the freshly woken unlock screen under the user. Wall-clock time
+      // exposes the gap: take a fresh run-up instead of blanking.
+      if (Date.now() - armedAt > interval + 2000) {
+        root.armBlankTimer()
+        return
+      }
+      if (root.lockRequested && !root.authenticating) root.runBlank()
+    }
   }
 
   Timer {
@@ -395,7 +410,7 @@ Item {
   onAuthenticatingChanged: {
     if (!lockRequested) return
     if (authenticating) idleBlankTimer.stop()
-    else idleBlankTimer.restart()
+    else armBlankTimer()
   }
 
   FileView {

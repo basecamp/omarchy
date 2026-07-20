@@ -58,7 +58,9 @@ grep -F "hyprctl dispatch 'hl.dsp.dpms({ action = \"enable\" })' >/dev/null 2>&1
 grep -F 'hyprctl monitors all -j' "$monitor_internal" >/dev/null
 grep -F 'omarchy-hyprland-monitor-external-active' "$monitor_internal" >/dev/null
 grep -F 'wake' "$monitor_internal" >/dev/null
+grep -F 'omarchy-hyprland-toggle-enabled $TOGGLE || return 0' "$monitor_internal" >/dev/null
 pass "internal monitor helper can re-enable disabled laptop displays"
+pass "internal monitor recovery only wakes displays when it re-enables one"
 
 grep -F 'omarchy-hyprland-monitor-external-active' "$monitor_mirror" >/dev/null
 pass "internal mirror helper recovers when no active external display remains"
