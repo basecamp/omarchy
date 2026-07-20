@@ -17,6 +17,11 @@ cp -R ~/.local/share/omarchy/config/* ~/.config/
 cp ~/.local/share/omarchy/default/bashrc ~/.bashrc
 echo '[[ -f ~/.bashrc ]] && . ~/.bashrc' | tee ~/.bash_profile >/dev/null
 
+if grep -q zsh "$SHELL" 2>/dev/null; then
+  cp ~/.local/share/omarchy/default/zsh/rc ~/.zshrc
+  echo '[[ -f ~/.zshrc ]] && . ~/.zshrc' | tee ~/.zprofile >/dev/null
+fi
+
 $(bash $OMARCHY_PATH/install/config/theme.sh)
 
 omarchy-refresh-limine
