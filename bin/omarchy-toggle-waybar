@@ -3,10 +3,10 @@
 # omarchy:summary=Toggle Waybar visibility
 # omarchy:examples=omarchy toggle waybar
 
-omarchy-toggle waybar-off
-
 if pgrep -x waybar >/dev/null; then
+  omarchy-toggle waybar-off
   pkill -x waybar
 else
+  omarchy-toggle waybar-off
   uwsm-app -- waybar >/dev/null 2>&1 &
 fi
