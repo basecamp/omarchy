@@ -3,9 +3,6 @@
 # the DSP; without it the DSP fails to boot and PipeWire exposes only a Dummy
 # Output sink. This affects Arrow Lake, Meteor Lake, Tiger Lake, Alder Lake,
 # Wildcat Lake, Panther Lake, and similar platforms.
-#
-# omarchy-pkg-add is idempotent, so systems that already pull sof-firmware in
-# via linux-ptl (Panther Lake XPS) are unaffected.
 
 if omarchy-hw-intel-sof; then
   omarchy-pkg-add sof-firmware

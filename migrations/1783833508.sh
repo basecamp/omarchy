@@ -1,14 +1,30 @@
 echo "Add easier tmux pane controls with Alt+Enter splits and CSI-u Shift+Enter across terminals"
 
-# tmux: add M-Enter/M-S-Enter/M-Escape pane bindings and enable extkeys for kitty terminal
+# tmux: add pane bindings, enable kitty extkeys, and set informative terminal titles
 tmux_config="$HOME/.config/tmux/tmux.conf"
 if [[ -f $tmux_config ]]; then
-  if ! grep -q "M-S-Enter" "$tmux_config"; then
-    sed -i '/^# Pane Controls$/a\bind -n M-Enter split-window -v -c "#{pane_current_path}"\nbind -n M-S-Enter split-window -h -c "#{pane_current_path}"\nbind -n M-Escape kill-pane\n' "$tmux_config"
+  if ! grep -Fq 'bind -n M-Escape kill-pane' "$tmux_config"; then
+    sed -i '/^# Pane Controls$/a\bind -n M-Escape kill-pane' "$tmux_config"
+  fi
+
+  if ! grep -Fq 'bind -n M-S-Enter split-window' "$tmux_config"; then
+    sed -i '/^# Pane Controls$/a\bind -n M-S-Enter split-window -h -c "#{pane_current_path}"' "$tmux_config"
+  fi
+
+  if ! grep -Fq 'bind -n M-Enter split-window' "$tmux_config"; then
+    sed -i '/^# Pane Controls$/a\bind -n M-Enter split-window -v -c "#{pane_current_path}"' "$tmux_config"
   fi
 
   if ! grep -q "xterm-kitty:extkeys" "$tmux_config"; then
     sed -i '/^set -g extended-keys-format csi-u$/a\set -ag terminal-features "xterm-kitty:extkeys"' "$tmux_config"
+  fi
+
+  if ! grep -Fq 'set -g set-titles on' "$tmux_config"; then
+    sed -i "/^set -gw automatic-rename-format/a\\set -g set-titles on" "$tmux_config"
+  fi
+
+  if ! grep -Fq 'set -g set-titles-string' "$tmux_config"; then
+    sed -i "/^set -g set-titles on$/a\\set -g set-titles-string '#h:#W'" "$tmux_config"
   fi
 
   omarchy-restart-tmux
