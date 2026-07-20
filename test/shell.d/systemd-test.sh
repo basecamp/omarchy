@@ -27,3 +27,13 @@ grep -F 'ExecStart=%h/.local/share/omarchy/bin/omarchy-system-sleep-monitor' "$u
 grep -F 'ExecStart=/usr/bin/omarchy-system-sleep-monitor' "$upgrade_to_quattro" >/dev/null
 grep -F 'reset-failed omarchy-sleep-lock.service' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade repairs the legacy sleep lock unit path"
+
+notify_path="$ROOT/default/systemd/user/omarchy-update-user-notify.path"
+! grep -q 'PathExistsGlob' "$notify_path"
+grep -Fx 'PathModified=/usr/share/omarchy/migrations' "$notify_path" >/dev/null
+pass "migration watcher is edge-triggered so applied migrations on disk cannot re-trigger it"
+
+notify_service="$ROOT/default/systemd/user/omarchy-update-user-notify.service"
+! grep -q 'StartLimit' "$notify_service"
+grep -Fx 'WantedBy=graphical-session.target' "$notify_service" >/dev/null
+pass "migration notifier keeps its start-rate limit and still runs once per login"

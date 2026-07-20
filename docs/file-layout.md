@@ -196,9 +196,9 @@ appropriate helper or privilege prompt. Migrations must be idempotent;
 machine-wide repairs should no-op when another user already applied them.
 
 Each graphical user has `omarchy-update-user-notify.path` watching the packaged
-migration directory. When that directory changes, or when the path unit is
-started on login, `omarchy-update-user-notify.service` runs
-`omarchy-migrate-notify` as that user. The notifier checks
+migration directory for changes, and `omarchy-update-user-notify.service` is
+also started once per login via its own `WantedBy=graphical-session.target`.
+Either way the service runs `omarchy-migrate-notify` as that user. The notifier checks
 `omarchy-migrate --pending`. If this user has missing migration state, it shows a
 notification that opens a terminal for `omarchy-migrate`. The notifier never runs
 migrations in the background.
@@ -219,7 +219,8 @@ systemd instance:
   Voxtype post-update hook.
 - `install/user/first-run/enable-user-units.sh` — `systemctl --user enable`
   the shipped user units (`bt-agent`, `omarchy-sleep-lock`,
-  `omarchy-recover-internal-monitor`, `omarchy-update-user-notify.path`). Done here, not at finalize, because
+  `omarchy-recover-internal-monitor`, `omarchy-update-user-notify.path`,
+  `omarchy-update-user-notify.service`). Done here, not at finalize, because
   the user manager isn't reachable from the ISO chroot; `ConditionPath*`
   in the unit files keeps services inert when they don't apply.
 - `install/user/first-run/gnome-theme.sh`,

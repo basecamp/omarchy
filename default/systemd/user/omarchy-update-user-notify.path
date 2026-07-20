@@ -2,7 +2,11 @@
 Description=Watch for Omarchy migrations
 
 [Path]
-PathExistsGlob=/usr/share/omarchy/migrations/*.sh
+# Edge-triggered watch only. PathExistsGlob= is level-triggered: it re-fires
+# every time the triggered unit deactivates for as long as the glob matches,
+# and applied migrations stay on disk forever, so a glob here busy-loops the
+# oneshot service. The once-per-login check lives in the service's own
+# WantedBy=graphical-session.target instead.
 PathModified=/usr/share/omarchy/migrations
 Unit=omarchy-update-user-notify.service
 
