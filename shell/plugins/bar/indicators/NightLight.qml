@@ -54,12 +54,5 @@ BarIndicator {
     onTriggered: root.refresh()
   }
 
-  Timer {
-    interval: 5000
-    running: true
-    repeat: true
-    onTriggered: root.refresh()
-  }
-
   onPressed: function() { root.toggle() }
 }

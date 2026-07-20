@@ -29,7 +29,7 @@ Options:
 
 Examples:
   omarchy-shell shell ping
-  omarchy-shell -q Indicators refresh
+  omarchy-shell -q omarchy.indicators refresh
   omarchy-shell shell listPlugins
   omarchy-shell shell toggle omarchy.menu '{"menu":"root"}'
 USAGE
