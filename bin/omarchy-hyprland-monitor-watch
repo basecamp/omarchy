@@ -31,7 +31,13 @@ poll_clamshell_state() {
 }
 
 sync_clamshell_after_monitor_change
-poll_clamshell_state &
+
+# The socat watch below already reconciles clamshell state on monitor
+# hotplug. The periodic poll only exists to catch laptop-lid transitions,
+# so there is nothing for it to do on a machine that isn't a laptop.
+if omarchy-hw-laptop; then
+  poll_clamshell_state &
+fi
 
 socat -U - "UNIX-CONNECT:$SOCKET" | while read -r event; do
   case "$event" in
