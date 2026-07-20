@@ -149,7 +149,7 @@ Panel {
     profiles = parsed.profiles
     activeProfile = parsed.activeProfile
     profileIndex = parsed.profileIndex
-    if (opened && activeProfile !== "") {
+    if (opened && !cursorActive) {
       var idx = profiles.indexOf(activeProfile)
       if (idx >= 0) profileIndex = idx
     }
