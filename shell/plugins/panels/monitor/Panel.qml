@@ -213,7 +213,7 @@ Panel {
     }
 
     root.brightnessSetQueued = false
-    setBrightnessProc.command = ["bash", "-lc", "omarchy-brightness-display --no-osd " + percent + "%"]
+    setBrightnessProc.command = ["bash", "-c", "omarchy-brightness-display --no-osd " + percent + "%"]
     setBrightnessProc.running = true
   }
 
@@ -248,7 +248,7 @@ Panel {
   }
 
   function setScale(scale) {
-    actionProc.command = ["bash", "-lc", "omarchy-hyprland-monitor-scaling " + scale]
+    actionProc.command = ["bash", "-c", "omarchy-hyprland-monitor-scaling " + scale]
     if (!actionProc.running) actionProc.running = true
   }
 

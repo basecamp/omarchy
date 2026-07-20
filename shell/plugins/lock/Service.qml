@@ -352,7 +352,7 @@ Item {
 
   Process {
     id: fingerprintCheckProc
-    command: ["bash", "-lc", "if [[ -f /etc/pam.d/omarchy-lock-fingerprint ]] && command -v fprintd-list >/dev/null 2>&1 && fprintd-list \"$USER\" 2>/dev/null | grep -qi finger; then echo yes; else echo no; fi"]
+    command: ["bash", "-c", "if [[ -f /etc/pam.d/omarchy-lock-fingerprint ]] && command -v fprintd-list >/dev/null 2>&1 && fprintd-list \"$USER\" 2>/dev/null | grep -qi finger; then echo yes; else echo no; fi"]
     stdout: StdioCollector { id: fingerprintCheckStdout; waitForEnd: true }
     onExited: {
       root.fingerprintConfigured = String(fingerprintCheckStdout.text || "").trim() === "yes"
@@ -363,12 +363,12 @@ Item {
 
   Process {
     id: wakeProcess
-    command: ["bash", "-lc", "omarchy-system-wake"]
+    command: ["bash", "-c", "omarchy-system-wake"]
   }
 
   Process {
     id: blankProcess
-    command: ["bash", "-lc", "omarchy-brightness-keyboard off; omarchy-brightness-display off"]
+    command: ["bash", "-c", "omarchy-brightness-keyboard off; omarchy-brightness-display off"]
   }
 
   Timer {

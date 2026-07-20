@@ -300,7 +300,7 @@ Item {
 
   Process {
     id: stayAwakeStateProbe
-    command: ["bash", "-lc", "mkdir -p \"$HOME/.local/state/omarchy/indicators\"; if [[ -f $HOME/.local/state/omarchy/indicators/stay-awake ]]; then echo yes; else echo no; fi"]
+    command: ["bash", "-c", "mkdir -p \"$HOME/.local/state/omarchy/indicators\"; if [[ -f $HOME/.local/state/omarchy/indicators/stay-awake ]]; then echo yes; else echo no; fi"]
     stdout: SplitParser {
       onRead: function(line) { root.applyStayAwake(String(line).trim() === "yes", false, "state-file") }
     }

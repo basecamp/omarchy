@@ -262,7 +262,7 @@ Panel {
 
   function copyToClipboard(value) {
     if (!value || !root.bar) return
-    Quickshell.execDetached(["bash", "-lc", "printf %s " + Util.shellQuote(value) + " | wl-copy"])
+    Quickshell.execDetached(["bash", "-c", "printf %s " + Util.shellQuote(value) + " | wl-copy"])
   }
 
   readonly property string icon: Model.connectionIcon(kind, signalStrength)
@@ -271,7 +271,7 @@ Panel {
     if (scanWifi === undefined) scanWifi = false
     if (!detailsProc.running) detailsProc.running = true
     if (!dnsProc.running) {
-      dnsProc.command = ["bash", "-lc", root.dnsCommand("")]
+      dnsProc.command = ["bash", "-c", root.dnsCommand("")]
       dnsProc.running = true
     }
     if (wifiDevice) {
@@ -467,7 +467,7 @@ Panel {
     }
 
     root.pendingDnsProvider = provider
-    actionProc.command = ["bash", "-lc", root.dnsCommand(provider)]
+    actionProc.command = ["bash", "-c", root.dnsCommand(provider)]
     actionProc.running = true
     root.close()
   }
