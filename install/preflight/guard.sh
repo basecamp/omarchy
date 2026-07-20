@@ -39,8 +39,10 @@ fi
 # Must have limine installed
 command -v limine &>/dev/null || abort "Limine bootloader"
 
-# Must have btrfs root filesystem
-[[ $(findmnt -n -o FSTYPE /) = "btrfs" ]] || abort "Btrfs root filesystem" 
+root_fstype=$(findmnt -n -o FSTYPE /)
+
+# Must have a supported snapshot-capable root filesystem
+[[ $root_fstype == "btrfs" || $root_fstype == "zfs" ]] || abort "Btrfs or ZFS root filesystem"
 
 # Cleared all guards
 echo "Guards: OK"

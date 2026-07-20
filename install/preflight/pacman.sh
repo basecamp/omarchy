@@ -2,9 +2,12 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
   # Install build tools
   omarchy-pkg-add base-devel
 
+  if ! declare -F use_omarchy_pacman_config >/dev/null; then
+    source "${OMARCHY_INSTALL:-${BASH_SOURCE[0]%/*}/..}/helpers/pacman.sh"
+  fi
+
   # Configure pacman
-  sudo cp -f ~/.local/share/omarchy/default/pacman/pacman-${OMARCHY_MIRROR:-stable}.conf /etc/pacman.conf
-  sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist-${OMARCHY_MIRROR:-stable} /etc/pacman.d/mirrorlist
+  use_omarchy_pacman_config
 
   sudo pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org
   sudo pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571

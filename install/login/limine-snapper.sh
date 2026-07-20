@@ -1,7 +1,18 @@
+root_fstype=$(findmnt -n -o FSTYPE /)
+
 if command -v limine &>/dev/null; then
-  sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
+  if [[ $root_fstype == "zfs" ]]; then
+    sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
+HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt zfs filesystems)
+EOF
+    sudo tee /etc/mkinitcpio.conf.d/zfs_hostid.conf <<EOF >/dev/null
+FILES+=(/etc/hostid)
+EOF
+  else
+    sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
 EOF
+  fi
   sudo tee /etc/mkinitcpio.conf.d/thunderbolt_module.conf <<EOF >/dev/null
 MODULES+=(thunderbolt)
 EOF
@@ -10,28 +21,28 @@ EOF
   [[ -d /sys/firmware/efi ]] && EFI=true
 
   # Find config location
-  if [[ -f /boot/EFI/arch-limine/limine.conf ]]; then
+  if sudo test -f /boot/EFI/arch-limine/limine.conf; then
     limine_config="/boot/EFI/arch-limine/limine.conf"
-  elif [[ -f /boot/EFI/BOOT/limine.conf ]]; then
+  elif sudo test -f /boot/EFI/BOOT/limine.conf; then
     limine_config="/boot/EFI/BOOT/limine.conf"
-  elif [[ -f /boot/EFI/limine/limine.conf ]]; then
+  elif sudo test -f /boot/EFI/limine/limine.conf; then
     limine_config="/boot/EFI/limine/limine.conf"
-  elif [[ -f /boot/limine/limine.conf ]]; then
+  elif sudo test -f /boot/limine/limine.conf; then
     limine_config="/boot/limine/limine.conf"
-  elif [[ -f /boot/limine.conf ]]; then
+  elif sudo test -f /boot/limine.conf; then
     limine_config="/boot/limine.conf"
   else
     echo "Error: Limine config not found" >&2
     exit 1
   fi
 
-  CMDLINE=$(grep "^[[:space:]]*cmdline:" "$limine_config" | head -1 | sed 's/^[[:space:]]*cmdline:[[:space:]]*//')
+  CMDLINE=$(sudo grep "^[[:space:]]*cmdline:" "$limine_config" | head -1 | sed 's/^[[:space:]]*cmdline:[[:space:]]*//')
 
   # Write /etc/default/limine *before* installing limine-mkinitcpio-hook, whose
   # post-transaction deploy hook runs limine-install and reads this file. Without
   # it, ESP_PATH falls back to bootctl, which in a chroot prints a warning that
   # gets captured as the path and trips a spurious "invalid ESP" error.
-  sudo cp $OMARCHY_PATH/default/limine/default.conf /etc/default/limine
+  sudo cp "$OMARCHY_PATH/default/limine/default.conf" /etc/default/limine
   sudo sed -i "s|@@CMDLINE@@|$CMDLINE|g" /etc/default/limine
 
   # Append any drop-in kernel cmdline configs (from hardware fix scripts, etc.)
@@ -46,25 +57,31 @@ EOF
 
   # Remove the original config file if it's not /boot/limine.conf, so the deploy
   # hook doesn't see conflicting configs on the same ESP.
-  if [[ $limine_config != "/boot/limine.conf" ]] && [[ -f $limine_config ]]; then
+  if [[ $limine_config != "/boot/limine.conf" ]] && sudo test -f "$limine_config"; then
     sudo rm "$limine_config"
   fi
 
   # We overwrite the whole thing knowing the limine-update will add the entries for us
-  sudo cp $OMARCHY_PATH/default/limine/limine.conf /boot/limine.conf
+  sudo cp "$OMARCHY_PATH/default/limine/limine.conf" /boot/limine.conf
 
-  sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook
-
-  # Only snapshot root — /home is user data; rolling it back loses user work
-  if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
-    sudo snapper -c root create-config /
+  if [[ $root_fstype == "btrfs" ]]; then
+    sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook
+  else
+    sudo pacman -S --noconfirm --needed limine-mkinitcpio-hook
   fi
-  sudo cp $OMARCHY_PATH/default/snapper/root /etc/snapper/configs/root
 
-  # Disable btrfs quotas — full qgroup accounting is a major performance drag
-  sudo btrfs quota disable / 2>/dev/null || true
+  if [[ $root_fstype == "btrfs" ]]; then
+    # Only snapshot root — /home is user data; rolling it back loses user work
+    if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
+      sudo snapper -c root create-config /
+    fi
+    sudo cp "$OMARCHY_PATH/default/snapper/root" /etc/snapper/configs/root
 
-  chrootable_systemctl_enable limine-snapper-sync.service
+    # Disable btrfs quotas — full qgroup accounting is a major performance drag
+    sudo btrfs quota disable / 2>/dev/null || true
+
+    chrootable_systemctl_enable limine-snapper-sync.service
+  fi
 fi
 
 echo "Re-enabling mkinitcpio hooks..."
@@ -85,11 +102,11 @@ echo "mkinitcpio hooks re-enabled"
 # boot entries into /boot/limine.conf. Only fall back to limine-update if those
 # hooks didn't run for some reason — running it unconditionally rebuilds every
 # UKI a second time.
-if ! grep -q "^/+" /boot/limine.conf; then
+if ! sudo grep -q "^/+" /boot/limine.conf; then
   sudo limine-update
 fi
 
-if ! grep -q "^/+" /boot/limine.conf; then
+if ! sudo grep -q "^/+" /boot/limine.conf; then
   echo "Error: failed to add boot entries to /boot/limine.conf" >&2
   exit 1
 fi
