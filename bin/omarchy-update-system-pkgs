@@ -10,6 +10,11 @@ echo -e "\e[32m\nUpdate system packages\e[0m"
 # Transition --overwrite: previous script-installed Omarchy wrote these paths
 # as unowned files; pacman would refuse the omarchy-settings upgrade on first
 # encounter. Drop each entry once the transition release is the baseline.
+#
+# The /usr/share/omarchy/* entry is permanent: that tree is wholly owned by
+# the omarchy packages, but files can land there unowned (in-place extension
+# work, script-written files), which would abort the whole upgrade. Packaged
+# content always wins there.
 sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm \
   --overwrite '/etc/docker/daemon.json' \
   --overwrite '/etc/gnupg/dirmngr.conf' \
@@ -35,4 +40,5 @@ sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm \
   --overwrite '/usr/lib/systemd/system-sleep/unmount-fuse' \
   --overwrite '/usr/share/plymouth/themes/omarchy/*' \
   --overwrite '/usr/share/sddm/hyprland.lua' \
-  --overwrite '/usr/share/sddm/themes/omarchy/*'
+  --overwrite '/usr/share/sddm/themes/omarchy/*' \
+  --overwrite '/usr/share/omarchy/*'
