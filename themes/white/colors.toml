@@ -2,11 +2,11 @@ mode = "light"
 
 accent = "#6e6e6e"
 selection = "#c0c0c0"
-muted = "#c0c0c0"
+muted = "#808080"
 
 background = "#ffffff"
-dark_background = "#bfbfbf"
-darker_background = "#808080"
+dark_background = "#f5f5f5"
+darker_background = "#e8e8e8"
 lighter_background = "#c0c0c0"
 
 foreground = "#000000"
