@@ -41,4 +41,6 @@ refresh_running_browser msedge microsoft-edge-stable
 
 set_browser_policy /etc/brave/policies/managed
 refresh_running_browser brave brave
-refresh_running_browser brave-origin brave-origin -f
+# Match on the binary path: the running process is named plain "brave", and a
+# bare -f brave-origin pattern would also match the installer's own terminal.
+refresh_running_browser /opt/brave-origin-bin/ brave-origin -f
