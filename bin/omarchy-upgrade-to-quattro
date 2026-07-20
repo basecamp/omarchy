@@ -1371,6 +1371,7 @@ apply_user_transition() {
   run_as_user env \
     TARGET_HOME="$target_home" \
     BACKUP_SUFFIX="$backup_suffix" \
+    OMARCHY_UPGRADE_YES="$yes" \
     OMARCHY_USER_NAME="${OMARCHY_USER_NAME:-}" \
     OMARCHY_USER_EMAIL="${OMARCHY_USER_EMAIL:-}" \
     bash <<'USER_SETUP'
@@ -1754,7 +1755,7 @@ repair_chromium_copy_url_shortcuts() {
 
   # A running browser holds Preferences in memory and rewrites it on exit,
   # which would revert this repair. Ask the user to close it first.
-  if browser_is_running && (( ! yes )) && [[ -r /dev/tty ]]; then
+  if browser_is_running && (( ! OMARCHY_UPGRADE_YES )) && [[ -r /dev/tty ]]; then
     if ! gum confirm "Close all browser windows before the Copy URL shortcut is repaired, then continue"; then
       echo "Skipped Copy URL shortcut repair; re-run after closing your browser." >&2
       return 0
