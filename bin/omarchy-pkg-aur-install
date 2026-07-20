@@ -21,9 +21,9 @@ pkg_names=$(yay -Slqa | fzf "${fzf_args[@]}")
 
 if [[ -n $pkg_names ]]; then
   # Add aur/ prefix to each package name and convert to space-separated for yay
-  source omarchy-sudo-keepalive
+  source omarchy-sudo-keepalive || exit 1
 
-  echo "$pkg_names" | sed 's/^/aur\//' | tr '\n' ' ' | xargs yay -S --noconfirm
-  sudo updatedb
+  echo "$pkg_names" | sed 's/^/aur\//' | tr '\n' ' ' | xargs yay -S --noconfirm || exit 1
+  sudo updatedb || exit 1
   omarchy-show-done
 fi
