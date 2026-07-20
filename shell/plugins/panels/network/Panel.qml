@@ -1505,7 +1505,7 @@ Panel {
   }
 
   Timer {
-    interval: 3000
+    interval: 10000
     running: true
     repeat: true
     triggeredOnStart: true
