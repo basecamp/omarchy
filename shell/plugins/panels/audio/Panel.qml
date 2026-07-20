@@ -127,6 +127,11 @@ Panel {
   property int selectedIndex: -1
   property bool cursorActive: false
 
+  // "header" is a virtual section for the hero output mute toggle; it sits
+  // above the output section so the speaker can be muted from the keyboard.
+  readonly property bool headerHasCursor: cursorActive && focusSection === "header"
+  readonly property int heroRingPad: Style.space(6)
+
   readonly property color hoverFill: bar
     ? Style.hoverFillFor(bar.foreground, Color.accent)
     : "transparent"
@@ -167,6 +172,10 @@ Panel {
   function moveCursor(delta) {
     var sections = visibleSections
     if (sections.length === 0) return
+    if (focusSection === "header") {
+      if (delta > 0) { focusSection = sections[0]; selectedIndex = sectionHasSlider(sections[0]) ? -1 : 0 }
+      return
+    }
     var sIdx = sections.indexOf(focusSection)
     if (sIdx < 0) { focusSection = sections[0]; selectedIndex = sectionHasSlider(focusSection) ? -1 : 0; return }
 
@@ -189,8 +198,16 @@ Panel {
         focusSection = sections[sIdx - 1]
         var prevMax = sectionCount(focusSection) - 1
         selectedIndex = prevMax >= 0 ? prevMax : (sectionHasSlider(focusSection) ? -1 : 0)
+      } else {
+        focusSection = "header"
       }
     }
+  }
+
+  function setHeaderCursor() {
+    cursorActive = true
+    focusSection = "header"
+    selectedIndex = -1
   }
 
   function moveSection(delta) {
@@ -227,6 +244,7 @@ Panel {
 
   // Enter/Space: activate whatever the cursor is on.
   function activateCursor() {
+    if (focusSection === "header") { toggleOutputMute(); return }
     if (focusSection === "output") {
       if (selectedIndex === -1) { toggleOutputMute(); return }
       var sink = displayAudioSinks[selectedIndex]
@@ -597,7 +615,18 @@ Panel {
           Item {
             id: heroItem
             width: parent.width
-            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight)
+            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight) + root.heroRingPad * 2
+
+            // Keyboard focus ring around the hero output-mute toggle. heroIcon
+            // is inset by heroRingPad so this ring stays inside the clip box.
+            BorderSurface {
+              anchors.fill: heroIcon
+              anchors.margins: -root.heroRingPad
+              color: "transparent"
+              radius: Style.cornerRadius
+              visible: root.headerHasCursor
+              borderSpec: Border.controlSpec("hover-cursor", root.bar.foreground, Color.accent)
+            }
 
             Text {
               id: heroIcon
@@ -607,11 +636,14 @@ Panel {
               font.pixelSize: Style.font.display
               opacity: root.outputMuted ? 0.5 : 1.0
               anchors.left: parent.left
+              anchors.leftMargin: root.heroRingPad
               anchors.verticalCenter: parent.verticalCenter
 
               MouseArea {
                 anchors.fill: parent
+                hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                onContainsMouseChanged: if (containsMouse) root.setHeaderCursor()
                 onClicked: root.toggleOutputMute()
               }
             }

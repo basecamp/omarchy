@@ -48,6 +48,8 @@ Panel {
   readonly property var exitNodes: displayExitNodes()
   readonly property bool showExitNodes: tailscale.active && (exitNodes.length > 0 || tailscale.mullvadRegions.length > 0)
   readonly property var filteredMullvadRegions: filteredMullvadRegionNodes()
+  readonly property bool headerHasCursor: cursorActive && focusSection === "header"
+  readonly property int heroRingPad: Style.space(6)
   readonly property color iconColor: tailscale.active ? foreground : dim
   readonly property color barIconColor: tailscale.active ? barForeground : Qt.darker(barForeground, 1.55)
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
@@ -317,6 +319,12 @@ Panel {
     focusSection = "auth"
   }
 
+  function setHeaderCursor() {
+    cursorActive = true
+    focusSection = "header"
+    headerIndex = 0
+  }
+
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -429,11 +437,18 @@ Panel {
           Item {
             id: header
             width: parent.width
-            implicitHeight: hero.implicitHeight
+            implicitHeight: hero.implicitHeight + root.heroRingPad
+            // Exposed for the hero's iconComponent, whose `root` resolves to
+            // PanelHero (not this Panel) — reach panel state via `header`.
+            readonly property bool ringVisible: root.headerHasCursor
+            readonly property int ringPad: root.heroRingPad
+            function focusHero() { root.setHeaderCursor() }
 
             PanelHero {
               id: hero
-              width: parent.width
+              x: root.heroRingPad
+              y: root.heroRingPad
+              width: parent.width - root.heroRingPad
               title: tailscale.installed ? (tailscale.selfName || "Tailscale") : "Tailscale"
               meta: tailscale.active ? root.heroPhraseText : "Tailscale is disconnected"
               foreground: root.foreground
@@ -443,6 +458,18 @@ Panel {
                 Item {
                   implicitWidth: icon.implicitWidth
                   implicitHeight: icon.implicitHeight
+
+                  // Keyboard focus ring around the hero toggle. The hero is
+                  // inset by heroRingPad so this ring stays inside the
+                  // Flickable's clip box instead of being cut off.
+                  BorderSurface {
+                    anchors.fill: icon
+                    anchors.margins: -header.ringPad
+                    color: "transparent"
+                    radius: Style.cornerRadius
+                    visible: header.ringVisible
+                    borderSpec: Border.controlSpec("hover-cursor", hero.foreground, Color.accent)
+                  }
 
                   TailscaleIcon {
                     id: icon
@@ -460,10 +487,7 @@ Panel {
                     hoverEnabled: true
                     enabled: tailscale.installed && !tailscale.busy
                     cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onContainsMouseChanged: if (containsMouse) {
-                      root.focusSection = "header"
-                      root.headerIndex = 0
-                    }
+                    onContainsMouseChanged: if (containsMouse) header.focusHero()
                     onClicked: tailscale.toggleTailscale()
                   }
 

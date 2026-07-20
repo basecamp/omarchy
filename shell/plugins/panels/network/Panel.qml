@@ -102,7 +102,9 @@ Panel {
   property int headerIndex: 0
   readonly property bool canDisconnect: !!connectedWifiNetwork
   readonly property bool headerHasDisconnect: false
-  readonly property int headerActionCount: 0
+  readonly property int headerActionCount: networkManagerAvailable ? 1 : 0
+  readonly property bool headerHasCursor: cursorActive && focusSection === "header"
+  readonly property int heroRingPad: Style.space(6)
   readonly property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
   property int dnsIndex: 0
 
@@ -118,8 +120,20 @@ Panel {
     headerIndex = Math.max(0, Math.min(headerActionCount - 1, headerIndex + delta))
   }
 
+  function toggleNetwork() {
+    if (!networkManagerAvailable) return
+    Networking.wifiEnabled = !Networking.wifiEnabled
+    Qt.callLater(function() { root.refresh(true) })
+  }
+
   function activateHeader() {
-    if (headerHasDisconnect && headerIndex === 0 && !busy) disconnect(connectedWifiNetwork)
+    toggleNetwork()
+  }
+
+  function setHeaderCursor() {
+    cursorActive = true
+    focusSection = "header"
+    headerIndex = 0
   }
 
   function selectDnsByDelta(delta) {
@@ -756,7 +770,7 @@ Panel {
             // one; otherwise stays put. j drops into the wifi list if there's
             // anywhere to land.
             if (dy < 0) {
-              if (root.headerHasDisconnect) {
+              if (root.headerActionCount > 0) {
                 root.focusSection = "header"
                 root.headerIndex = 0
               }
@@ -791,6 +805,7 @@ Panel {
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
         if (t === "r" || t === "R") root.refresh()
+        else if (t === "w" || t === "W") root.toggleNetwork()
       }
 
     Column {
@@ -803,7 +818,18 @@ Panel {
       // ---------- Hero: network icon · SSID + state · actions ----------
       Item {
         width: parent.width
-        implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight)
+        implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight) + root.heroRingPad * 2
+
+        // Keyboard focus ring around the hero Wi-Fi toggle. heroIcon is inset
+        // by heroRingPad so this ring stays inside the panel's clip box.
+        BorderSurface {
+          anchors.fill: heroIcon
+          anchors.margins: -root.heroRingPad
+          color: "transparent"
+          radius: Style.cornerRadius
+          visible: root.headerHasCursor
+          borderSpec: Border.controlSpec("hover-cursor", root.bar.foreground, Color.accent)
+        }
 
         Text {
           id: heroIcon
@@ -813,6 +839,7 @@ Panel {
           font.pixelSize: Style.font.display
           opacity: root.networkManagerAvailable ? 1.0 : 0.5
           anchors.left: parent.left
+          anchors.leftMargin: root.heroRingPad
           anchors.verticalCenter: parent.verticalCenter
 
           MouseArea {
@@ -821,6 +848,7 @@ Panel {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             enabled: root.networkManagerAvailable
+            onContainsMouseChanged: if (containsMouse) root.setHeaderCursor()
             onClicked: {
               Networking.wifiEnabled = !Networking.wifiEnabled
               Qt.callLater(function() { root.refresh(true) })
