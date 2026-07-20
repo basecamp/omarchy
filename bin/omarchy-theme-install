@@ -12,6 +12,8 @@ else
   REPO_URL="$1"
 fi
 
+REPO_URL=$(printf '%s' "$REPO_URL" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+
 if [[ -z $REPO_URL ]]; then
   exit 1
 fi
