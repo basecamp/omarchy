@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true when running on a laptop (has a lid or laptop chassis).
+
+# A lid switch is the definitive signal for clamshell-capable hardware.
+for state in /proc/acpi/button/lid/*/state; do
+  [[ -e $state ]] && exit 0
+done
+
+# Fall back to the DMI chassis type for laptops that don't expose an ACPI lid
+# button. 8=Portable 9=Laptop 10=Notebook 14=Sub Notebook 30=Tablet
+# 31=Convertible 32=Detachable.
+case $(< /sys/class/dmi/id/chassis_type 2>/dev/null) in
+8 | 9 | 10 | 14 | 30 | 31 | 32) exit 0 ;;
+esac
+
+exit 1
