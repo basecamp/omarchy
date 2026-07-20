@@ -9,6 +9,7 @@ o.bind("SUPER + SHIFT + ALT + B", "Browser (private)", { omarchy = "browser --pr
 o.bind("SUPER + SHIFT + M", "Music", { omarchy = "or-focus spotify" })
 o.bind("SUPER + SHIFT + ALT + M", "Music TUI", { tui = "cliamp", focus = true })
 o.bind("SUPER + SHIFT + N", "Editor", { omarchy = "editor" })
+o.bind("SUPER + N", "Neovim cheat sheet", { omarchy = "neovim-cheatsheet" })
 o.bind("SUPER + SHIFT + D", "Docker", { tui = "lazydocker" })
 o.bind("SUPER + SHIFT + G", "Signal", { launch = "signal-desktop", focus = "^signal$" })
 o.bind("SUPER + SHIFT + O", "Obsidian", { launch = "obsidian", focus = "^obsidian$" })
