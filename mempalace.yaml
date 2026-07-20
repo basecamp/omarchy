@@ -1,0 +1,18 @@
+wing: omadev
+rooms:
+- name: applications
+  description: Files from applications/
+- name: bin
+  description: Files from bin/
+- name: configuration
+  description: Files from config/
+- name: default
+  description: Files from default/
+- name: install
+  description: Files from install/
+- name: migrations
+  description: Files from migrations/
+- name: themes
+  description: Files from themes/
+- name: general
+  description: Files that don't fit other rooms
