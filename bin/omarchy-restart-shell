@@ -28,8 +28,7 @@ if (( attempt == 50 )); then
   exit 1
 fi
 
-printf -v launch_command 'setsid quickshell -n -p %q >/dev/null 2>&1 &' "$CONFIG_DIR"
-omarchy-hyprland-launch "$launch_command"
+setsid quickshell -n -p "$CONFIG_DIR" >/dev/null 2>&1 &
 
 for (( attempt = 0; attempt < 20; attempt++ )); do
   OMARCHY_SHELL_IPC_TIMEOUT=0.5s omarchy-shell shell ping >/dev/null 2>&1 && exit 0

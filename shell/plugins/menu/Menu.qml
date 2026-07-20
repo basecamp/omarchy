@@ -126,7 +126,7 @@ Item {
     var command = String(action || "")
     if (!command) return
 
-    Quickshell.execDetached(Util.hyprExecCommand(command))
+    Util.execDetached(command)
   }
 
   function rowHeightForDetail(detail) {
