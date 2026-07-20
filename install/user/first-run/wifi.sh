@@ -8,7 +8,7 @@ notify_update() {
 
 notify_wifi() {
   (
-    if [[ -n $(omarchy-notification-send -u critical -g 󰖩 "Click to Setup Wi-Fi" -a) ]]; then
+    if [[ -n $(omarchy-notification-send -u critical -g 󰖩 "Setup Wi-Fi" "Click to configure the wireless network." -a) ]]; then
       omarchy-shell shell toggle omarchy.network
     fi
   ) >/dev/null 2>&1 &
