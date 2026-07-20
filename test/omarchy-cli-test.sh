@@ -263,3 +263,141 @@ assert_output_contains "partial metadata command dispatches" "$output" "partial-
 
 output=$("$TMPDIR/omarchy" body metadata test)
 assert_output_contains "body metadata command dispatches by filename" "$output" "body-metadata-ok"
+
+# --- chrome-beta opt-in browser wiring -------------------------------------
+# Covers the opt-in Google Chrome Beta channel added alongside chrome/brave/
+# edge/firefox/zen. Help + metadata are assertion-only; default-browser is
+# exercised with real execution against PATH stubs (no package installs, no
+# sudo, no real xdg changes); menu/theme wiring is checked at the source level.
+
+# 1. Install route: help text and JSON metadata expose chrome-beta.
+output=$("$CLI" install browser --help)
+assert_output_contains "install browser help lists chrome-beta arg" "$output" "chrome-beta"
+assert_output_contains "install browser help shows chrome-beta example" "$output" "omarchy install browser chrome-beta"
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-install-browser") | (.args | contains("chrome-beta")) and (.examples | index("omarchy install browser chrome-beta"))' >/dev/null
+pass "install-browser JSON args + examples include chrome-beta"
+
+# 2. Remove route: help args and JSON metadata expose chrome-beta + sudo.
+output=$("$CLI" remove browser --help)
+assert_output_contains "remove browser help lists chrome-beta arg" "$output" "chrome-beta"
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-remove-browser") | (.args | contains("chrome-beta")) and .requires_sudo == true' >/dev/null
+pass "remove-browser JSON args include chrome-beta and requires_sudo"
+
+# 3. Default-browser bidirectional mapping (real execution, stubbed PATH).
+BROWSER_STUBDIR=$(mktemp -d)
+STUB_LOG="$BROWSER_STUBDIR/calls.log"
+
+make_default_browser_stubs() {
+  # $1 is the desktop id that `xdg-settings get` should report.
+  : >"$STUB_LOG"
+  cat >"$BROWSER_STUBDIR/xdg-settings" <<EOF
+#!/bin/bash
+if [[ "\$1" == "get" ]]; then echo "$1"; exit 0; fi
+echo "xdg-settings \$*" >>"$STUB_LOG"
+exit 0
+EOF
+  cat >"$BROWSER_STUBDIR/xdg-mime" <<EOF
+#!/bin/bash
+echo "xdg-mime \$*" >>"$STUB_LOG"
+exit 0
+EOF
+  cat >"$BROWSER_STUBDIR/notify-send" <<EOF
+#!/bin/bash
+echo "notify-send \$*" >>"$STUB_LOG"
+exit 0
+EOF
+  chmod +x "$BROWSER_STUBDIR/xdg-settings" "$BROWSER_STUBDIR/xdg-mime" "$BROWSER_STUBDIR/notify-send"
+}
+
+# Reverse: a chrome-beta desktop id reports back as chrome-beta.
+make_default_browser_stubs "google-chrome-beta.desktop"
+output=$(PATH="$BROWSER_STUBDIR:$PATH" "$ROOT/bin/omarchy-default-browser")
+assert_output_contains "default-browser reports chrome-beta from google-chrome-beta.desktop" "$output" "chrome-beta"
+
+# Negative guard: a plain chrome desktop id still reports chrome, not chrome-beta.
+make_default_browser_stubs "google-chrome.desktop"
+output=$(PATH="$BROWSER_STUBDIR:$PATH" "$ROOT/bin/omarchy-default-browser")
+if [[ $output != "chrome" ]]; then
+  printf 'Expected exactly "chrome", got: %s\n' "$output" >&2
+  fail "default-browser maps google-chrome.desktop to chrome (not chrome-beta)"
+fi
+pass "default-browser maps google-chrome.desktop to chrome (not chrome-beta)"
+
+# Forward: selecting chrome-beta sets the chrome-beta desktop id and names it.
+make_default_browser_stubs "google-chrome.desktop"
+PATH="$BROWSER_STUBDIR:$PATH" "$ROOT/bin/omarchy-default-browser" chrome-beta
+log=$(cat "$STUB_LOG")
+assert_output_contains "default-browser chrome-beta sets google-chrome-beta.desktop" "$log" "xdg-settings set default-web-browser google-chrome-beta.desktop"
+assert_output_contains "default-browser chrome-beta notifies as Chrome Beta" "$log" "Chrome Beta is now the default browser"
+
+rm -rf "$BROWSER_STUBDIR"
+
+# 4. Invalid-arg usage strings list chrome-beta (no side effects on this path).
+output=$("$ROOT/bin/omarchy-install-browser" bogus 2>&1 || true)
+assert_output_contains "install-browser usage lists chrome-beta" "$output" "Usage:"
+assert_output_contains "install-browser usage includes chrome-beta" "$output" "chrome-beta"
+output=$("$ROOT/bin/omarchy-remove-browser" bogus 2>&1 || true)
+assert_output_contains "remove-browser usage lists chrome-beta" "$output" "Usage:"
+assert_output_contains "remove-browser usage includes chrome-beta" "$output" "chrome-beta"
+output=$("$ROOT/bin/omarchy-default-browser" bogus 2>&1 || true)
+assert_output_contains "default-browser usage lists chrome-beta" "$output" "Usage:"
+assert_output_contains "default-browser usage includes chrome-beta" "$output" "chrome-beta"
+
+# 5. Menu submenu wiring + arm ordering (source-level, glob-shadowing guard).
+# Each browser submenu must carry a "Chrome Beta" label and a chrome-beta
+# dispatch arm, and the specific *"Chrome Beta"* arm must precede the broader
+# *Chrome* arm so the latter does not shadow the former.
+assert_menu_arm_ordering() {
+  local description="$1" func="$2" beta_arm="$3" chrome_arm="$4"
+  local block beta_line chrome_line
+  block=$(awk -v fn="$func" '
+    $0 ~ "^" fn "\\(\\) \\{" { inblock=1 }
+    inblock { print }
+    inblock && /^\}/ { exit }
+  ' "$ROOT/bin/omarchy-menu")
+
+  if [[ $block != *"Chrome Beta"* ]]; then
+    printf 'Function %s has no "Chrome Beta" label\n' "$func" >&2
+    fail "$description"
+  fi
+  if [[ $block != *"$beta_arm"* ]]; then
+    printf 'Function %s missing dispatch arm: %s\n' "$func" "$beta_arm" >&2
+    fail "$description"
+  fi
+  beta_line=$(grep -nF -- "$beta_arm" <<<"$block" | head -n1 | cut -d: -f1)
+  chrome_line=$(grep -nF -- "$chrome_arm" <<<"$block" | head -n1 | cut -d: -f1)
+  if [[ -z $beta_line || -z $chrome_line ]]; then
+    printf 'Function %s missing one of the arms (beta=%s chrome=%s)\n' "$func" "$beta_line" "$chrome_line" >&2
+    fail "$description"
+  fi
+  if ((beta_line >= chrome_line)); then
+    printf 'In %s the Chrome Beta arm (line %s) must precede the Chrome arm (line %s)\n' "$func" "$beta_line" "$chrome_line" >&2
+    fail "$description"
+  fi
+  pass "$description"
+}
+
+assert_menu_arm_ordering \
+  "install submenu wires Chrome Beta before Chrome" \
+  "show_install_browser_menu" \
+  'present_terminal "omarchy-install-browser chrome-beta"' \
+  'present_terminal "omarchy-install-browser chrome"'
+
+assert_menu_arm_ordering \
+  "remove submenu wires Chrome Beta before Chrome" \
+  "show_remove_browser_menu" \
+  'present_terminal "omarchy-remove-browser chrome-beta"' \
+  'present_terminal "omarchy-remove-browser chrome"'
+
+assert_menu_arm_ordering \
+  "default submenu wires Chrome Beta before Chrome" \
+  "show_setup_default_browser_menu" \
+  'omarchy-default-browser chrome-beta' \
+  'omarchy-default-browser chrome '
+
+# 6. theme-set-browser refreshes a running Chrome Beta (source-level).
+if ! grep -qF 'refresh_running_browser chrome-beta google-chrome-beta' "$ROOT/bin/omarchy-theme-set-browser"; then
+  printf 'Expected omarchy-theme-set-browser to refresh chrome-beta\n' >&2
+  fail "theme-set-browser refreshes chrome-beta google-chrome-beta"
+fi
+pass "theme-set-browser refreshes chrome-beta google-chrome-beta"

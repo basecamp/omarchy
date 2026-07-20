@@ -399,6 +399,7 @@ show_setup_default_browser_menu() {
   local options=""
   browser_desktop_exists chromium.desktop && options="$options  Chromium"
   browser_desktop_exists google-chrome.desktop && options="${options:+$options\n}󰊯  Chrome"
+  browser_desktop_exists google-chrome-beta.desktop && options="${options:+$options\n}󰊯  Chrome Beta"
   browser_desktop_exists brave-browser.desktop && options="${options:+$options\n}󰖟  Brave"
   browser_desktop_exists brave-origin-beta.desktop && options="${options:+$options\n}󰖟  Brave Origin"
   browser_desktop_exists microsoft-edge.desktop && options="${options:+$options\n}󰇩  Edge"
@@ -409,6 +410,7 @@ show_setup_default_browser_menu() {
   case "$(omarchy-default-browser)" in
   chromium) current="  Chromium" ;;
   chrome) current="󰊯  Chrome" ;;
+  chrome-beta) current="󰊯  Chrome Beta" ;;
   brave) current="󰖟  Brave" ;;
   brave-origin) current="󰖟  Brave Origin" ;;
   edge) current="󰇩  Edge" ;;
@@ -418,6 +420,7 @@ show_setup_default_browser_menu() {
 
   case $(menu "Default Browser" "$options" "" "$current") in
   *Chromium*) omarchy-default-browser chromium ;;
+  *"Chrome Beta"*) omarchy-default-browser chrome-beta ;;
   *Chrome*) omarchy-default-browser chrome ;;
   *"Brave Origin"*) omarchy-default-browser brave-origin ;;
   *Brave*) omarchy-default-browser brave ;;
@@ -545,7 +548,8 @@ show_install_menu() {
 }
 
 show_install_browser_menu() {
-  case $(menu "Install" "  Chrome\n  Edge\n  Brave\n  Brave Origin\n  Firefox\n󰖟  Zen") in
+  case $(menu "Install" "  Chrome\n  Chrome Beta\n  Edge\n  Brave\n  Brave Origin\n  Firefox\n󰖟  Zen") in
+  *"Chrome Beta"*) present_terminal "omarchy-install-browser chrome-beta" ;;
   *Chrome*) present_terminal "omarchy-install-browser chrome" ;;
   *Edge*) present_terminal "omarchy-install-browser edge" ;;
   *"Brave Origin"*) present_terminal "omarchy-install-browser brave-origin" ;;
@@ -717,7 +721,8 @@ show_remove_security_menu() {
 }
 
 show_remove_browser_menu() {
-  case $(menu "Remove" "  Chrome\n  Edge\n  Brave\n  Brave Origin\n  Firefox\n  Zen") in
+  case $(menu "Remove" "  Chrome\n  Chrome Beta\n  Edge\n  Brave\n  Brave Origin\n  Firefox\n  Zen") in
+  *"Chrome Beta"*) present_terminal "omarchy-remove-browser chrome-beta" ;;
   *Chrome*) present_terminal "omarchy-remove-browser chrome" ;;
   *Edge*) present_terminal "omarchy-remove-browser edge" ;;
   *"Brave Origin"*) present_terminal "omarchy-remove-browser brave-origin" ;;
