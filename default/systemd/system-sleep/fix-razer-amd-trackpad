@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Fix Razer Blade trackpad click after resume on AMD systems.
+#
+# The Cypress 06CB:CDA3 I2C HID touchpad on AMD's AMDI0010 controller
+# returns from S3/S4 with stale firmware state — motion still works but
+# click button events stop arriving. The kernel logs nothing because
+# nothing fails from its perspective. Unbinding and re-binding the
+# specific HID device under hid-multitouch forces the driver to re-run
+# the I2C HID protocol negotiation and recovers the click.
+#
+# Targeting the device (not the module) avoids disturbing any other
+# multitouch device on the system and works regardless of module
+# refcount.
+
+if [[ $1 != "post" ]]; then
+  exit 0
+fi
+
+driver=/sys/bus/hid/drivers/hid-multitouch
+[[ -d "$driver" ]] || exit 0
+
+for dev in "$driver"/*06CB:CDA3*; do
+  [[ -e "$dev" ]] || continue
+  name="$(basename "$dev")"
+  echo "$name" > "$driver/unbind" 2>/dev/null
+  echo "$name" > "$driver/bind"   2>/dev/null
+done
