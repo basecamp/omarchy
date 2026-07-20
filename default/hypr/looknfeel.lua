@@ -109,10 +109,6 @@ hl.config({
     focus_on_activate = true,
     anr_missed_pings = 3,
     on_focus_under_fullscreen = 1,
-    -- Open new windows on the active workspace, not the one their process was
-    -- launched on. Otherwise xdg-desktop-portal-gtk file dialogs (browser
-    -- Open/Save, etc.) always appear on the workspace where the portal first
-    -- started at login, instead of following the app that requested them.
     initial_workspace_tracking = 0,
   },
 
