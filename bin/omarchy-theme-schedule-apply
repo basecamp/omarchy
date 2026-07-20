@@ -1,0 +1,108 @@
+#!/bin/bash
+
+# omarchy:summary=Apply scheduled theme for current time of day
+# omarchy:hidden=true
+
+set -euo pipefail
+
+OMARCHY_CURRENT="$HOME/.config/omarchy/current"
+DAY_FILE="$OMARCHY_CURRENT/theme.day"
+NIGHT_FILE="$OMARCHY_CURRENT/theme.night"
+
+if [[ ! -f "$DAY_FILE" || ! -f "$NIGHT_FILE" ]]; then
+  echo "Day/night themes not configured. Run 'omarchy-theme-schedule-enable' first." >&2
+  exit 1
+fi
+
+if [[ -n "${OMARCHY_THEME_SCHEDULE_NOW:-}" ]]; then
+  now_epoch=$(date -d "$OMARCHY_THEME_SCHEDULE_NOW" +%s)
+else
+  now_epoch=$(date +%s)
+fi
+
+loc=$(omarchy-theme-schedule-location)
+lat="${loc%,*}"
+lon="${loc#*,}"
+
+today=$(date -d "@$now_epoch" +%Y-%m-%d)
+mapfile -t suntimes < <(omarchy-theme-schedule-suncalc "$lat" "$lon" "$today")
+if (( ${#suntimes[@]} < 2 )); then
+  echo "omarchy-theme-schedule-apply: suncalc returned no output for $today at $lat,$lon" >&2
+  exit 1
+fi
+sunrise="${suntimes[0]}"
+sunset="${suntimes[1]}"
+
+if [[ "$sunrise" == "PERPETUAL_DAY" ]]; then
+  phase="day"
+elif [[ "$sunrise" == "PERPETUAL_NIGHT" ]]; then
+  phase="night"
+else
+  sr_epoch=$(date -d "$sunrise" +%s)
+  ss_epoch=$(date -d "$sunset" +%s)
+  if (( now_epoch >= sr_epoch && now_epoch < ss_epoch )); then
+    phase="day"
+  else
+    phase="night"
+  fi
+fi
+
+target_theme=$(<"$OMARCHY_CURRENT/theme.$phase")
+current_theme=""
+[[ -s "$OMARCHY_CURRENT/theme.name" ]] && current_theme=$(<"$OMARCHY_CURRENT/theme.name")
+
+notif_flag="${XDG_RUNTIME_DIR:-/run/user/$UID}/omarchy-theme-schedule-missing-notified"
+
+if [[ -n "$target_theme" && "$target_theme" != "$current_theme" ]]; then
+  # If the configured theme has been uninstalled (or renamed), don't let
+  # the failure stop us from regenerating the drop-in below — otherwise
+  # the schedule silently dies. Notify at most once per broken state.
+  if ! OMARCHY_THEME_SCHEDULE_TICK=1 omarchy-theme-set "$target_theme"; then
+    echo "omarchy-theme-schedule: $phase theme '$target_theme' could not be applied" >&2
+    if [[ ! -f "$notif_flag" ]] && command -v notify-send >/dev/null 2>&1; then
+      notify-send -u critical "Theme schedule" \
+        "$phase theme '$target_theme' is missing — fix with 'omarchy theme schedule enable'" 2>/dev/null || true
+      touch "$notif_flag"
+    fi
+  else
+    rm -f "$notif_flag"
+  fi
+else
+  rm -f "$notif_flag"
+fi
+
+# Refresh timer drop-in for next 48h sun events
+dropin_dir="$HOME/.config/systemd/user/omarchy-theme-schedule.timer.d"
+mkdir -p "$dropin_dir"
+dropin="$dropin_dir/calendar.conf"
+tmp=$(mktemp)
+
+{
+  echo "[Timer]"
+  echo "OnCalendar="
+  # Use calendar-day arithmetic, not epoch+86400 — adding 24 h of seconds
+  # skips a calendar day across a spring-forward DST boundary.
+  for offset in 0 1; do
+    d=$(date -d "$today +$offset days" +%Y-%m-%d)
+    mapfile -t st < <(omarchy-theme-schedule-suncalc "$lat" "$lon" "$d")
+    (( ${#st[@]} >= 2 )) || continue
+    [[ "${st[0]}" == "PERPETUAL_"* ]] && continue
+    sr_fmt=$(date -d "${st[0]}" "+%Y-%m-%d %H:%M:%S")
+    ss_fmt=$(date -d "${st[1]}" "+%Y-%m-%d %H:%M:%S")
+    echo "OnCalendar=$sr_fmt"
+    echo "OnCalendar=$ss_fmt"
+  done
+} >"$tmp"
+
+if ! cmp -s "$tmp" "$dropin" 2>/dev/null; then
+  mv "$tmp" "$dropin"
+  systemctl --user daemon-reload 2>/dev/null || true
+  # Re-arm the timer: if all previous OnCalendar entries were in the
+  # past (e.g. session started after a multi-day shutdown), systemd
+  # parks the timer in 'elapsed' state and daemon-reload alone won't
+  # recompute next-fire. try-restart is a no-op when the timer isn't
+  # running (e.g. schedule disabled).
+  systemctl --user try-restart omarchy-theme-schedule.timer 2>/dev/null || true
+else
+  rm -f "$tmp"
+fi

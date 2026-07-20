@@ -1,0 +1,10 @@
+[Unit]
+Description=Omarchy Theme Schedule Apply
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/omarchy/bin/omarchy-theme-schedule-apply
+Environment=DISPLAY=:0
+Environment=PATH=%h/.local/share/omarchy/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+LogLevelMax=warning

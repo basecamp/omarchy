@@ -1,0 +1,14 @@
+[Unit]
+Description=Omarchy Theme Schedule Resume Watcher
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/omarchy/bin/omarchy-theme-schedule-sleepwatch
+Restart=on-failure
+RestartSec=5
+Environment=DISPLAY=:0
+Environment=PATH=%h/.local/share/omarchy/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

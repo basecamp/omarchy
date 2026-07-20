@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+
+# omarchy:summary=Compute sunrise and sunset for a coordinate and date
+# omarchy:args=<lat> <long> [YYYY-MM-DD]
+# omarchy:hidden=true
+
+"""Sunrise/sunset calculator using NOAA's algorithm.
+
+Prints two lines:
+  <sunrise local ISO 8601 timestamp>
+  <sunset  local ISO 8601 timestamp>
+
+In polar regions where the sun does not rise or set on the given date,
+prints PERPETUAL_DAY or PERPETUAL_NIGHT on both lines instead.
+
+Stdlib only (math, datetime).
+"""
+
+import math
+import sys
+from datetime import date, datetime, timedelta, timezone
+
+
+ZENITH_DEG = 90.833  # official sunrise/sunset zenith with refraction
+
+
+def sun_events(lat_deg: float, lon_deg: float, d: date):
+    """Return (sunrise_utc, sunset_utc) datetimes, or a sentinel string."""
+    lat = math.radians(lat_deg)
+    n = d.toordinal() - date(d.year - 1, 12, 31).toordinal()
+    gamma = 2 * math.pi / 365.0 * (n - 1)
+
+    decl = (
+        0.006918
+        - 0.399912 * math.cos(gamma)
+        + 0.070257 * math.sin(gamma)
+        - 0.006758 * math.cos(2 * gamma)
+        + 0.000907 * math.sin(2 * gamma)
+        - 0.002697 * math.cos(3 * gamma)
+        + 0.001480 * math.sin(3 * gamma)
+    )
+
+    eqtime = 229.18 * (
+        0.000075
+        + 0.001868 * math.cos(gamma)
+        - 0.032077 * math.sin(gamma)
+        - 0.014615 * math.cos(2 * gamma)
+        - 0.040849 * math.sin(2 * gamma)
+    )
+
+    cos_ha = (
+        math.cos(math.radians(ZENITH_DEG)) / (math.cos(lat) * math.cos(decl))
+        - math.tan(lat) * math.tan(decl)
+    )
+    if cos_ha > 1:
+        return "PERPETUAL_NIGHT"
+    if cos_ha < -1:
+        return "PERPETUAL_DAY"
+
+    ha_deg = math.degrees(math.acos(cos_ha))
+    solar_noon = 720.0 - 4.0 * lon_deg - eqtime
+    sunrise_min = solar_noon - 4.0 * ha_deg
+    sunset_min = solar_noon + 4.0 * ha_deg
+
+    base = datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
+    return (base + timedelta(minutes=sunrise_min), base + timedelta(minutes=sunset_min))
+
+
+def main() -> int:
+    if len(sys.argv) < 3:
+        print("Usage: omarchy-theme-schedule-suncalc <lat> <long> [YYYY-MM-DD]", file=sys.stderr)
+        return 1
+    lat = float(sys.argv[1])
+    lon = float(sys.argv[2])
+    d = date.fromisoformat(sys.argv[3]) if len(sys.argv) >= 4 else date.today()
+
+    result = sun_events(lat, lon, d)
+    if isinstance(result, str):
+        print(result)
+        print(result)
+        return 0
+
+    sr, ss = result
+    print(sr.astimezone().isoformat(timespec="seconds"))
+    print(ss.astimezone().isoformat(timespec="seconds"))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

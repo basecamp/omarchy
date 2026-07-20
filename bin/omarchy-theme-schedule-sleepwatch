@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# omarchy:summary=Watch systemd-logind for resume and reapply theme schedule
+# omarchy:hidden=true
+
+# Runs apply at two moments, both with a Hyprland-readiness wait so
+# the omarchy-theme-set component restarts don't race with session
+# recovery:
+#
+#   1. Once at service startup. Covers session start after boot or
+#      after a multi-day shutdown, when the timer drop-in's OnCalendar
+#      entries are all in the past and the timer has nothing to fire.
+#
+#   2. On every system resume from suspend, via logind's PrepareForSleep
+#      D-Bus signal (value 'false' = resume).
+
+set -u
+
+apply_when_ready() {
+  # Wait up to 10 s for Hyprland to answer, polling every 0.5 s.
+  local i
+  for i in $(seq 1 20); do
+    hyprctl version >/dev/null 2>&1 && break
+    sleep 0.5
+  done
+  # Small buffer for waybar/swaybg/etc. to re-subscribe to the compositor.
+  sleep 1
+  omarchy-theme-schedule-apply || true
+}
+
+# Initial apply for the boot / session-start case.
+apply_when_ready
+
+# Use gdbus rather than busctl monitor: gdbus subscribes via the normal
+# AddMatch path (allowed for unprivileged users), busctl uses BecomeMonitor
+# which requires root.
+gdbus monitor --system --dest org.freedesktop.login1 --object-path /org/freedesktop/login1 |
+  while IFS= read -r line; do
+    if [[ "$line" == *PrepareForSleep*'(false,)'* ]]; then
+      apply_when_ready
+    fi
+  done
