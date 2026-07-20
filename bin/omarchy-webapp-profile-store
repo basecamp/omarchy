@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# omarchy:summary=Read/write the remembered Chromium profile for a webapp
+# omarchy:args=<get|set|clear-all> [key] [dirname]
+
+DIR="$HOME/.config/omarchy/webapps/profiles"
+STAMP="$HOME/.config/omarchy/webapps/profiles-browser"
+
+key_for() { printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
+
+cmd="$1"
+shift
+
+case "$cmd" in
+get) # get <key> -> dirname or nothing
+  [[ -f $STAMP && "$(cat "$STAMP")" == "$(omarchy-webapp-profiles --browser)" ]] || exit 0
+  f="$DIR/$(key_for "$1")"
+  [[ -f $f ]] && cat "$f"
+  ;;
+set) # set <key> <dirname>
+  mkdir -p "$DIR"
+  printf '%s' "$2" >"$DIR/$(key_for "$1")"
+  omarchy-webapp-profiles --browser >"$STAMP"
+  ;;
+clear-all)
+  rm -rf "$DIR" "$STAMP"
+  ;;
+esac

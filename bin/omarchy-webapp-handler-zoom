@@ -20,4 +20,7 @@ if [[ $url =~ ^zoom(mtg|us):// ]]; then
   fi
 fi
 
+# Keep the remembered profile stable across the dynamic meeting URLs.
+export OMARCHY_WEBAPP_REMEMBER_KEY="https://app.zoom.us/wc/home"
+
 exec omarchy-launch-webapp "$web_url"
