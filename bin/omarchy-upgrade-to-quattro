@@ -2238,6 +2238,10 @@ refresh_current_theme_after_upgrade() {
   run_as_user_omarchy omarchy-restart-terminal >/dev/null 2>&1 || true
 }
 
+# Suppress live Hyprland reloads before anything touches the legacy config
+# trees; the swap windows otherwise surface transient "source= globbing error"
+# popups in the running session.
+suppress_hyprland_config_reload
 create_pre_upgrade_snapshot
 configure_pacman_channel
 install_keyrings
@@ -2252,7 +2256,6 @@ configure_lock_authentication
 migrate_1password_beta_package
 cleanup_legacy_user_paths
 apply_system_transition
-suppress_hyprland_config_reload
 apply_user_transition
 apply_user_hardware_transition
 run_as_user_omarchy omarchy-refresh-applications
