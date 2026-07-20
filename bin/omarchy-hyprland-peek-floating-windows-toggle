@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Toggles the peeking behavior for floating windows.
+
+omarchy-hyprland-toggle peek-floating-windows
