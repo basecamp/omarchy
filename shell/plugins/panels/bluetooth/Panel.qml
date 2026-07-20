@@ -87,6 +87,12 @@ Panel {
   // address across section changes instead of preserving a stale row index.
   property string focusedDeviceAddress: ""
 
+  // "header" is a virtual section for the hero Bluetooth on/off toggle; it
+  // sits above the device sections so the adapter can be toggled by keyboard
+  // even when it is off and no device rows exist.
+  readonly property bool headerHasCursor: cursorActive && focusSection === "header"
+  readonly property int heroRingPad: Style.space(6)
+
   readonly property color hoverFill: bar
     ? Style.hoverFillFor(bar.foreground, Color.accent)
     : "transparent"
@@ -251,10 +257,17 @@ Panel {
     if (changed) pendingActions = next
   }
 
-  // j/k navigates between device sections row-by-row.
+  // j/k navigates the hero toggle ("header") and the device sections
+  // row-by-row.
   function moveCursor(delta) {
     var sections = visibleSections
-    if (!sections || sections.length === 0) return
+    if (focusSection === "header") {
+      if (delta > 0 && sections && sections.length > 0) {
+        focusSection = sections[0]; selectedIndex = 0; actionFocused = false
+      }
+      return
+    }
+    if (!sections || sections.length === 0) { focusSection = "header"; actionFocused = false; return }
     var sIdx = sections.indexOf(focusSection)
     if (sIdx < 0) { focusSection = sections[0]; selectedIndex = 0; actionFocused = false; return }
 
@@ -274,8 +287,16 @@ Panel {
         focusSection = sections[sIdx - 1]
         selectedIndex = sectionCount(focusSection) - 1
         actionFocused = false
+      } else {
+        focusSection = "header"; actionFocused = false
       }
     }
+  }
+
+  function setHeaderCursor() {
+    cursorActive = true
+    focusSection = "header"
+    actionFocused = false
   }
 
   function moveCursorH(delta) {
@@ -288,6 +309,10 @@ Panel {
   }
 
   function activateCursor() {
+    if (focusSection === "header") {
+      toggleBluetooth()
+      return
+    }
     if (actionFocused) {
       deleteSelected()
       return
@@ -321,6 +346,7 @@ Panel {
       if (connectedDevices.length > 0) { focusSection = "connected"; selectedIndex = 0 }
       else if (knownDevices.length > 0) { focusSection = "known"; selectedIndex = 0 }
       else if (discoveredDevices.length > 0) { focusSection = "discovered"; selectedIndex = 0 }
+      else { focusSection = "header" }
       actionFocused = false
       cursorActive = false
     }
@@ -503,6 +529,9 @@ Panel {
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onDeleteRequested: if (root.cursorActive) root.deleteSelected()
+      onTextKey: function(t) {
+        if (t === "b" || t === "B") root.toggleBluetooth()
+      }
 
       Column {
         id: column
@@ -512,11 +541,23 @@ Panel {
         // ---------- Hero: Bluetooth icon · status ----------
         Item {
           width: parent.width
-          implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight)
+          implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight) + root.heroRingPad * 2
+
+          // Keyboard focus ring around the hero Bluetooth toggle. heroIcon is
+          // inset by heroRingPad so this ring stays inside the panel's clip box.
+          BorderSurface {
+            anchors.fill: heroIcon
+            anchors.margins: -root.heroRingPad
+            color: "transparent"
+            radius: Style.cornerRadius
+            visible: root.headerHasCursor
+            borderSpec: Border.controlSpec("hover-cursor", root.bar.foreground, Color.accent)
+          }
 
           Text {
             id: heroIcon
             anchors.left: parent.left
+            anchors.leftMargin: root.heroRingPad
             anchors.verticalCenter: parent.verticalCenter
             text: root.icon
             color: root.bar.foreground
@@ -530,6 +571,7 @@ Panel {
               hoverEnabled: true
               cursorShape: root.adapter ? Qt.PointingHandCursor : Qt.ArrowCursor
               enabled: !!root.adapter
+              onContainsMouseChanged: if (containsMouse) root.setHeaderCursor()
               onClicked: root.toggleBluetooth()
             }
 
