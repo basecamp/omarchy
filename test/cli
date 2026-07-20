@@ -70,7 +70,7 @@ pass "commands --all does not crash"
 "$CLI" commands --all --json | jq -e '.commands[] | select(.route == "omarchy hyprland window gaps toggle" and .summary != "undocumented")' >/dev/null
 pass "fallback commands are inferred and documented"
 
-"$CLI" commands --all --json | jq -e '.commands[] | select(.route == "omarchy dev benchmark")' >/dev/null
+"$CLI" commands --all --json | jq -e '.commands[] | select(.route == "omarchy dev benchmark cli")' >/dev/null
 pass "benchmark command is discoverable in all commands"
 
 "$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-pkg-add" and .route == "omarchy pkg add" and .filename_route == "omarchy pkg add" and (.routes | index("omarchy pkg add")))' >/dev/null
@@ -195,7 +195,7 @@ assert_output_contains "pkg add help shows direct route" "$output" "omarchy pkg 
 output=$("$CLI" system reboot --help)
 assert_output_contains "system command help is safe" "$output" "omarchy-system-reboot"
 
-output=$("$CLI" dev benchmark --repeat=1)
+output=$("$CLI" dev benchmark cli --repeat=1)
 assert_output_contains "benchmark command runs" "$output" "Omarchy CLI benchmark"
 
 "$CLI" theme list >/dev/null

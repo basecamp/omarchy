@@ -2,7 +2,7 @@
 
 # omarchy:summary=Measure Omarchy CLI response times
 # omarchy:args=[--repeat=<count>]
-# omarchy:examples=omarchy dev benchmark | omarchy dev benchmark --repeat=10
+# omarchy:examples=omarchy dev benchmark cli | omarchy dev benchmark cli --repeat=10
 
 set -euo pipefail
 
@@ -13,7 +13,7 @@ REPEAT=5
 show_help() {
   cat <<'EOF'
 Usage:
-  omarchy dev benchmark [--repeat=<count>]
+  omarchy dev benchmark cli [--repeat=<count>]
 
 Measure response times for common Omarchy CLI surfaces.
 
