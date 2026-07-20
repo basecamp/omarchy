@@ -545,13 +545,14 @@ show_install_menu() {
 }
 
 show_install_browser_menu() {
-  case $(menu "Install" "  Chrome\n  Edge\n  Brave\n  Brave Origin\n  Firefox\n󰖟  Zen") in
+  case $(menu "Install" "  Chrome\n  Edge\n  Brave\n  Brave Origin\n  Firefox\n󰖟  Zen\n  Helium") in
   *Chrome*) present_terminal "omarchy-install-browser chrome" ;;
   *Edge*) present_terminal "omarchy-install-browser edge" ;;
   *"Brave Origin"*) present_terminal "omarchy-install-browser brave-origin" ;;
   *Brave*) present_terminal "omarchy-install-browser brave" ;;
   *Firefox*) present_terminal "omarchy-install-browser firefox" ;;
   *Zen*) present_terminal "omarchy-install-browser zen" ;;
+  *Helium*) present_terminal "omarchy-install-browser helium" ;;
   *) show_install_menu ;;
   esac
 }
