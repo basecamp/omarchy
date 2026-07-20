@@ -13,6 +13,12 @@ Item {
   property bool installed: false
   property bool running: false
   property bool authenticated: false
+
+  // Optimistic sync state so the UI reacts the instant you click, rather than
+  // waiting for dropboxd to actually settle. _desired is -1 while we just
+  // follow the real state, or 0/1 while a pause/resume is still catching up.
+  property int _desired: -1
+  readonly property bool active: _desired === -1 ? running : (_desired === 1)
   property bool refreshing: false
   property string statusText: "Checking…"
   property string accountPath: ""
@@ -26,7 +32,7 @@ Item {
   property string lastError: ""
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 60, 10, 3600)
-  readonly property bool busy: statusProcess.running || loginProcess.running
+  readonly property bool busy: statusProcess.running || loginProcess.running || controlProcess.running
   readonly property string helperPath: (omarchyPath || "") + "/shell/plugins/panels/dropbox/status.py"
 
   property string _statusOutput: ""
@@ -34,6 +40,8 @@ Item {
   property string _loginOutput: ""
   property string _loginError: ""
   property bool _loginUrlOpened: false
+  property string _controlOutput: ""
+  property string _controlError: ""
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
@@ -66,6 +74,8 @@ Item {
     installed = parsed.installed === true
     running = parsed.running === true
     authenticated = parsed.authenticated === true
+    // Reality caught up to the pending pause/resume — stop overriding.
+    if (_desired !== -1 && running === (_desired === 1)) _desired = -1
     statusText = String(parsed.statusText || (installed ? "Stopped" : "Not installed"))
     accountPath = String(parsed.accountPath || "")
     plan = String(parsed.plan || "")
@@ -90,6 +100,30 @@ Item {
     actionStatus = "Starting Dropbox login…"
     loginProcess.command = ["dropbox-cli", "start"]
     loginProcess.running = true
+  }
+
+  function pause() {
+    runControl(["dropbox-cli", "stop"], 0)
+  }
+
+  function resume() {
+    runControl(["dropbox-cli", "start"], 1)
+  }
+
+  function toggleRunning() {
+    if (active) pause()
+    else resume()
+  }
+
+  function runControl(command, desired) {
+    // No progress status here — the greyed icon and hero phrase already convey
+    // the pause/resume; only surface a message if the command fails.
+    if (!installed || controlProcess.running) return
+    _desired = desired
+    _controlOutput = ""
+    _controlError = ""
+    controlProcess.command = command
+    controlProcess.running = true
   }
 
   function openFile(file) {
@@ -146,6 +180,26 @@ Item {
     onTriggered: root.actionStatus = ""
   }
 
+  Timer {
+    // dropboxd takes a few (variable) seconds to settle after stop/start, so
+    // re-poll a handful of times to reflect the new state without waiting for
+    // the next periodic refresh.
+    id: settleTimer
+    property int ticks: 0
+    interval: 1500
+    repeat: true
+    running: false
+    onTriggered: {
+      settleTimer.ticks += 1
+      root.refresh()
+      if (settleTimer.ticks >= 4) {
+        settleTimer.ticks = 0
+        settleTimer.running = false
+        root._desired = -1
+      }
+    }
+  }
+
   Process {
     id: statusProcess
     running: false
@@ -177,6 +231,29 @@ Item {
         root.actionStatus = ""
         root.lastError = ""
       }
+      delayedRefresh.restart()
+    }
+  }
+
+  Process {
+    id: controlProcess
+    running: false
+    command: []
+    stdout: StdioCollector { id: controlStdout; waitForEnd: true; onStreamFinished: root._controlOutput = text }
+    stderr: StdioCollector { id: controlStderr; waitForEnd: true; onStreamFinished: root._controlError = text }
+    onExited: function(exitCode) {
+      var stdout = String(controlStdout.text || root._controlOutput || "")
+      var stderr = String(controlStderr.text || root._controlError || "")
+      if (exitCode !== 0) {
+        root._desired = -1
+        root.lastError = root.elideStatus(stderr || stdout || "Dropbox command failed")
+        root.actionStatus = root.lastError
+      } else {
+        root.lastError = ""
+        root.actionStatus = ""
+      }
+      settleTimer.ticks = 0
+      settleTimer.restart()
       delayedRefresh.restart()
     }
   }

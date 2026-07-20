@@ -99,11 +99,11 @@ def main():
   running = False
   status_text = "Not installed"
   if dropbox_cli:
-    running_exit, _ = command_output([dropbox_cli, "running"])
     status_exit, status_output = command_output([dropbox_cli, "status"])
-    status_text = status_output if status_exit == 0 and status_output else ("Running" if running else "Stopped")
-    stopped = "not running" in status_text.lower() or status_text.lower() == "stopped"
-    running = running_exit == 0 or (status_exit == 0 and status_text != "" and not stopped)
+    status_text = status_output if status_exit == 0 and status_output else "Stopped"
+    lowered = status_text.lower()
+    stopped = "not running" in lowered or "isn't running" in lowered or lowered == "stopped"
+    running = status_exit == 0 and status_output != "" and not stopped
 
   used, files = scan_dropbox(account_path, limit) if authenticated else (0, [])
   usage_percent = (used / quota * 100) if quota > 0 else 0

@@ -36,8 +36,8 @@ Panel {
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  readonly property color iconColor: dropbox.authenticated ? foreground : dim
-  readonly property color barIconColor: dropbox.authenticated ? barForeground : Qt.darker(barForeground, 1.55)
+  readonly property color iconColor: dropbox.authenticated && dropbox.active ? foreground : dim
+  readonly property color barIconColor: dropbox.authenticated && dropbox.active ? barForeground : Qt.darker(barForeground, 1.55)
 
   function ensureCursor() {
     if (!dropbox.authenticated) {
@@ -149,7 +149,7 @@ Panel {
           anchors.centerIn: parent
           iconSize: Style.space(12)
           color: root.barIconColor
-          opacity: dropbox.authenticated ? 1.0 : 0.6
+          opacity: dropbox.active ? 1.0 : 0.6
         }
       }
     }
@@ -206,14 +206,36 @@ Panel {
             visible: dropbox.authenticated
             width: parent.width
             title: "Dropbox"
-            meta: root.heroPhraseText
+            meta: dropbox.active ? root.heroPhraseText : "Syncing paused"
             foreground: root.foreground
             fontFamily: root.fontFamily
-            iconOpacity: 1.0
+            iconOpacity: dropbox.active ? 1.0 : 0.5
             iconComponent: Component {
-              DropboxIcon {
-                iconSize: Style.font.display
-                color: root.iconColor
+              Item {
+                implicitWidth: heroIcon.implicitWidth
+                implicitHeight: heroIcon.implicitHeight
+
+                DropboxIcon {
+                  id: heroIcon
+                  iconSize: Style.font.display
+                  color: root.iconColor
+                  anchors.centerIn: parent
+                }
+
+                MouseArea {
+                  id: heroMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  enabled: dropbox.installed && !dropbox.busy
+                  cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                  onClicked: dropbox.toggleRunning()
+                }
+
+                PanelToolTip {
+                  visible: heroMouse.containsMouse
+                  text: dropbox.active ? "Pause syncing" : "Resume syncing"
+                  fontFamily: root.fontFamily
+                }
               }
             }
           }
@@ -297,7 +319,7 @@ Panel {
   Timer {
     id: phraseTimer
     interval: 2800
-    running: root.opened && dropbox.authenticated
+    running: root.opened && dropbox.authenticated && dropbox.active
     repeat: true
     onTriggered: phraseSwap.restart()
   }
