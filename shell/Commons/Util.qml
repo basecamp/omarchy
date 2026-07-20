@@ -83,9 +83,11 @@ QtObject {
   //   Backspace       delete previous character
   //   Ctrl+Backspace  delete previous word (Qt DeleteStartOfWord)
   //   Ctrl+U          clear the whole field
-  // Panels decide how to apply the result (setFilter/updateFilter) and keep
-  // their own empty-field fallbacks (e.g. menu back-navigation).
-  function isFilterEditKey(event) {
+  // True only when the event would actually change the text, so an empty
+  // filter never swallows the key — panels keep their own empty-filter
+  // fallbacks (e.g. menu back-navigation) in later branches.
+  function editsFilter(event, text) {
+    if (!text) return false
     // Alt/Meta-modified sequences belong to other shortcuts — never edit here.
     if (event.modifiers & (Qt.AltModifier | Qt.MetaModifier)) return false
     if (event.key === Qt.Key_U)                     // Ctrl+U only (not Ctrl+Shift+U → Unicode input)
@@ -93,7 +95,7 @@ QtObject {
     return event.key === Qt.Key_Backspace           // plain, Shift, or Ctrl Backspace
   }
 
-  // New filter text after applying an edit key. Assumes isFilterEditKey(event).
+  // New filter text after applying an edit key. Assumes editsFilter(event, text).
   function editedFilter(event, text) {
     if (event.key === Qt.Key_U) return ""                        // Ctrl+U: clear
     if (event.modifiers & Qt.ControlModifier)                    // Ctrl+Backspace: word

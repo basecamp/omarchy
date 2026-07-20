@@ -837,12 +837,11 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.cancel()
             event.accepted = true
-          } else if (event.key === Qt.Key_Backspace && event.modifiers === Qt.NoModifier && root.filterText.length === 0) {
-            // BACKSPACE on an empty filter steps back a menu level
-            root.goBack()
-            event.accepted = true
-          } else if (Util.isFilterEditKey(event)) {
+          } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
+            event.accepted = true
+          } else if (event.key === Qt.Key_Backspace && !root.filterText) {
+            root.goBack()
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
             root.select(-1)

@@ -345,7 +345,7 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.close()
             event.accepted = true
-          } else if (Util.isFilterEditKey(event)) {
+          } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
           } else if (event.key === Qt.Key_Delete) {

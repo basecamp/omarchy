@@ -417,7 +417,7 @@ Item {
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
               root.applySelected()
               event.accepted = true
-            } else if (root.filterable && Util.isFilterEditKey(event)) {
+            } else if (root.filterable && Util.editsFilter(event, root.filterText)) {
               root.updateFilter(Util.editedFilter(event, root.filterText))
               event.accepted = true
             } else if (event.key === Qt.Key_Left || (event.key === Qt.Key_Tab && event.modifiers & Qt.ShiftModifier) || event.key === Qt.Key_Backtab) {
