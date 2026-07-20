@@ -4,6 +4,7 @@
 # omarchy:args=[--shell]
 
 shell_output=false
+power_supply_path="${OMARCHY_POWER_SUPPLY_PATH:-/sys/class/power_supply}"
 
 case "${1:-}" in
   "")
@@ -41,21 +42,34 @@ time_remaining=$(awk '/time to (empty|full)/ {
   exit
 }' <<<"$battery_info")
 power_rate_raw=$(awk '/energy-rate/ { print $2; exit }' <<<"$battery_info")
-power_rate=$(awk '/energy-rate/ {
-  rounded = sprintf("%.1f", $2)
+native_path=$(awk '/native-path/ { print $2; exit }' <<<"$battery_info")
+battery_path="$power_supply_path/$native_path"
+
+# UPower's energy-rate can lag the kernel telemetry by tens of seconds. Use
+# the instantaneous sysfs reading when available so the open panel stays live.
+if [[ -r $battery_path/power_now ]]; then
+  power_rate_raw=$(awk -v microwatts="$(<"$battery_path/power_now")" 'BEGIN { print microwatts / 1000000 }')
+elif [[ -r $battery_path/current_now && -r $battery_path/voltage_now ]]; then
+  power_rate_raw=$(awk \
+    -v microamps="$(<"$battery_path/current_now")" \
+    -v microvolts="$(<"$battery_path/voltage_now")" \
+    'BEGIN { print microamps * microvolts / 1000000000000 }')
+fi
+
+power_rate=$(awk -v rate="${power_rate_raw:-0}" 'BEGIN {
+  rounded = sprintf("%.1f", rate)
   sub(/\.0$/, "", rounded)
   print rounded
-  exit
-}' <<<"$battery_info")
+}')
 state=$(awk '/state/ { print $2; exit }' <<<"$battery_info")
 threshold_start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
 threshold_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
 
-[[ -z $threshold_end ]] && threshold_end=$(cat /sys/class/power_supply/BAT*/charge_control_end_threshold 2>/dev/null | head -1)
-[[ -z $threshold_start ]] && threshold_start=$(cat /sys/class/power_supply/BAT*/charge_control_start_threshold 2>/dev/null | head -1)
+[[ -z $threshold_end ]] && threshold_end=$(cat "$power_supply_path"/BAT*/charge_control_end_threshold 2>/dev/null | head -1)
+[[ -z $threshold_start ]] && threshold_start=$(cat "$power_supply_path"/BAT*/charge_control_start_threshold 2>/dev/null | head -1)
 
 ac_online=false
-for supply in /sys/class/power_supply/*; do
+for supply in "$power_supply_path"/*; do
   [[ -r $supply/type ]] || continue
   [[ $(<"$supply/type") == "Mains" ]] || continue
   [[ -r $supply/online ]] || continue
@@ -93,7 +107,7 @@ if [[ $shell_output == "true" ]]; then
   printf 'size\t%s\n' "${capacity}Wh"
   printf 'time\t%s\n' "$time_remaining"
 
-  cycles=$(cat /sys/class/power_supply/BAT*/cycle_count 2>/dev/null | head -1)
+  cycles=$(cat "$power_supply_path"/BAT*/cycle_count 2>/dev/null | head -1)
 
   [[ -n $cycles ]] && printf 'cycles\t%s\n' "$cycles"
 
