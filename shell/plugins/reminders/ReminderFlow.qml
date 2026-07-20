@@ -135,8 +135,8 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.dismiss()
             event.accepted = true
-          } else if (event.key === Qt.Key_Backspace) {
-            if (root.filterText.length > 0) root.setFilter(root.filterText.slice(0, -1))
+          } else if (Util.editsFilter(event, root.filterText)) {
+            root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             root.submit()

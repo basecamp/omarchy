@@ -837,9 +837,11 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.cancel()
             event.accepted = true
-          } else if (event.key === Qt.Key_Backspace) {
-            if (root.filterText.length > 0) root.setFilter(root.filterText.slice(0, -1))
-            else root.goBack()
+          } else if (Util.editsFilter(event, root.filterText)) {
+            root.setFilter(Util.editedFilter(event, root.filterText))
+            event.accepted = true
+          } else if (event.key === Qt.Key_Backspace && !root.filterText) {
+            root.goBack()
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
             root.select(-1)
