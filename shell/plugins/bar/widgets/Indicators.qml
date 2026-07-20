@@ -174,13 +174,7 @@ BarWidget {
     }
   }
 
-  Timer {
-    interval: 2000
-    running: true
-    repeat: true
-    triggeredOnStart: true
-    onTriggered: root.refreshRequested()
-  }
+  Component.onCompleted: root.refreshRequested()
 
   Row {
     id: horizontalIndicators
