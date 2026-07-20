@@ -12,6 +12,12 @@ Item {
   property bool installed: false
   property bool running: false
   property bool needsLogin: false
+
+  // Optimistic off state so the UI reacts the instant you click, rather than
+  // waiting for the next status refresh. _desired is -1 while we just follow
+  // the real state, or 0/1 while a toggle is still catching up.
+  property int _desired: -1
+  readonly property bool active: _desired === -1 ? running : (_desired === 1)
   property bool refreshing: false
   property string backendState: "Unknown"
   property string statusText: "Checking…"
@@ -163,6 +169,7 @@ Item {
   function resetUnavailable(message) {
     running = false
     needsLogin = false
+    _desired = -1
     backendState = "Unavailable"
     statusText = message
     selfName = ""
@@ -197,6 +204,8 @@ Item {
 
     backendState = parsed.backendState
     running = parsed.running
+    // Reality caught up to the pending toggle — stop overriding.
+    if (_desired !== -1 && running === (_desired === 1)) _desired = -1
     needsLogin = parsed.needsLogin
     authUrl = parsed.authUrl
     if (needsLogin && _loginInProgress && !_loginUrlOpened && authUrl !== "" && authUrl !== _preLoginAuthUrl) openAuthUrlFrom(authUrl, false)
@@ -238,12 +247,20 @@ Item {
 
   function toggleTailscale() {
     if (!installed) return
-    if (running) runAction(["tailscale", "down"], "Turning Tailscale off…")
+    if (active) down()
     else loginOrUp()
+  }
+
+  function down() {
+    // No progress status here — the greyed icon and hero line already convey
+    // the optimistic off; only surface a message if the command fails.
+    _desired = 0
+    runAction(["tailscale", "down"])
   }
 
   function loginOrUp() {
     if (!installed || loginProcess.running) return
+    _desired = -1
     var plan = Model.loginPlan(needsLogin, authUrl)
     if (plan.authUrl !== "") {
       _loginUrlOpened = false
@@ -252,7 +269,8 @@ Item {
     }
     _loginOutput = ""
     _loginError = ""
-    actionStatus = needsLogin ? "Starting Tailscale login…" : "Turning Tailscale on…"
+    if (needsLogin) actionStatus = "Starting Tailscale login…"
+    else _desired = 1
     _loginInProgress = needsLogin
     _loginUrlOpened = false
     _preLoginAuthUrl = authUrl
@@ -308,7 +326,7 @@ Item {
     if (actionProcess.running) return
     _actionOutput = ""
     _actionError = ""
-    actionStatus = label || "Working…"
+    actionStatus = label || ""
     actionProcess.command = command
     actionProcess.running = true
   }
@@ -318,6 +336,8 @@ Item {
     var match = String(text || "").match(/https?:\/\/\S+/)
     var url = match && match[0] ? match[0] : (allowFallback === true ? authUrl : "")
     if (url !== "") {
+      // Turning on ended up needing browser auth — stop pretending we're up.
+      _desired = -1
       _loginUrlOpened = true
       _loginInProgress = false
       loginTimeoutTimer.stop()
@@ -447,8 +467,10 @@ Item {
       var stdout = String(actionStdout.text || root._actionOutput || "")
       var stderr = String(actionStderr.text || root._actionError || "")
       if (exitCode !== 0) {
+        root._desired = -1
         root.lastError = elideStatus(stderr || stdout || "Tailscale command failed")
         root.actionStatus = root.lastError
+        actionStatusTimer.restart()
       } else {
         root.lastError = ""
         root.actionStatus = ""
@@ -467,9 +489,11 @@ Item {
       var combined = String(root._loginOutput || "") + "\n" + String(root._loginError || "")
       var opened = root.openAuthUrlFrom(combined, true)
       if (exitCode !== 0 && !opened) {
+        root._desired = -1
         root._loginInProgress = false
         root.lastError = elideStatus(combined || "tailscale up failed")
         root.actionStatus = root.lastError
+        actionStatusTimer.restart()
       } else if (!opened) {
         root.lastError = ""
         root.actionStatus = ""
@@ -490,6 +514,7 @@ Item {
       if (exitCode !== 0) {
         root.lastError = elideStatus(stderr || stdout || "Account switch failed")
         root.actionStatus = root.lastError
+        actionStatusTimer.restart()
       } else {
         root.lastError = ""
         root.actionStatus = ""
@@ -512,6 +537,7 @@ Item {
       if (exitCode !== 0) {
         root.lastError = elideStatus(stderr || stdout || "Exit node selection failed")
         root.actionStatus = root.lastError
+        actionStatusTimer.restart()
       } else {
         root.lastError = ""
         root.actionStatus = ""
@@ -533,6 +559,7 @@ Item {
       if (exitCode !== 0) {
         root.lastError = elideStatus(stderr || stdout || "Tailscale authorization failed")
         root.actionStatus = root.lastError
+        actionStatusTimer.restart()
       } else {
         root.accountsAccessDenied = false
         root.lastError = ""
