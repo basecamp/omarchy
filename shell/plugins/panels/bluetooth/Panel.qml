@@ -318,7 +318,6 @@ Panel {
 
   onOpenedChanged: {
     if (opened) {
-      if (adapter && adapter.enabled && !adapter.discovering) adapter.discovering = true
       if (connectedDevices.length > 0) { focusSection = "connected"; selectedIndex = 0 }
       else if (knownDevices.length > 0) { focusSection = "known"; selectedIndex = 0 }
       else if (discoveredDevices.length > 0) { focusSection = "discovered"; selectedIndex = 0 }
@@ -406,12 +405,16 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  Connections {
-    target: root.adapter || null
-    function onEnabledChanged() {
-      if (root.opened && root.adapter && root.adapter.enabled && !root.adapter.discovering)
-        root.adapter.discovering = true
-    }
+  // BlueZ rejects StartDiscovery while the adapter is still powering up, and
+  // discovery can also time out on its own. While the panel is open, keep
+  // nudging it back on so an enabled adapter is always scanning.
+  Timer {
+    id: discoveryRetry
+    interval: 1000
+    repeat: true
+    triggeredOnStart: true
+    running: root.opened && root.adapter !== null && root.adapter.enabled && !root.adapter.discovering
+    onTriggered: root.adapter.discovering = true
   }
 
   Timer {
@@ -464,9 +467,6 @@ Panel {
   function toggleBluetooth() {
     if (!adapter) return
     adapter.enabled = !adapter.enabled
-    if (adapter.enabled) Qt.callLater(function() {
-      if (root.adapter) root.adapter.discovering = true
-    })
   }
 
   BarIconButton {
@@ -682,8 +682,7 @@ Panel {
                        && (!root.adapter || !root.adapter.discovering || root.discoveredDevices.length === 0)
               text: !root.adapter ? "No Bluetooth adapter"
                   : !root.adapter.enabled ? "Turn Bluetooth on to scan"
-                  : root.adapter.discovering ? "Scanning for devices…"
-                  : "No paired devices. Reopen this panel to scan again."
+                  : "Scanning for devices…"
               color: Qt.darker(root.bar.foreground, 1.5)
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.bodySmall
