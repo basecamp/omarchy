@@ -139,7 +139,7 @@ Item {
     if (releaseProc.running || doneFilesToRelease.length === 0) return
 
     var path = doneFilesToRelease.shift()
-    releaseProc.command = ["bash", "-lc", ": > " + Util.shellQuote(path)]
+    releaseProc.command = ["bash", "-c", ": > " + Util.shellQuote(path)]
     releaseProc.running = true
   }
 
@@ -163,7 +163,7 @@ Item {
     selectionFile = ""
     doneFile = ""
 
-    applyProc.command = ["bash", "-lc", "printf '%s\\n' " + Util.shellQuote(path) + " > " + Util.shellQuote(activeSelectionFile) + "; : > " + Util.shellQuote(activeDoneFile)]
+    applyProc.command = ["bash", "-c", "printf '%s\\n' " + Util.shellQuote(path) + " > " + Util.shellQuote(activeSelectionFile) + "; : > " + Util.shellQuote(activeDoneFile)]
     applyProc.running = true
   }
 

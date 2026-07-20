@@ -115,9 +115,9 @@ Item {
     root.doneFile = ""
 
     if (selection === null || selection === undefined) {
-      resultProc.command = ["bash", "-lc", ": > " + Util.shellQuote(activeDoneFile)]
+      resultProc.command = ["bash", "-c", ": > " + Util.shellQuote(activeDoneFile)]
     } else {
-      resultProc.command = ["bash", "-lc", "printf '%s\\n' " + Util.shellQuote(selection) + " > " + Util.shellQuote(activeSelectionFile) + "; : > " + Util.shellQuote(activeDoneFile)]
+      resultProc.command = ["bash", "-c", "printf '%s\\n' " + Util.shellQuote(selection) + " > " + Util.shellQuote(activeSelectionFile) + "; : > " + Util.shellQuote(activeDoneFile)]
     }
     resultProc.running = true
   }

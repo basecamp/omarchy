@@ -34,7 +34,7 @@ BarWidget {
 
   Process {
     id: queryProc
-    command: ["bash", "-lc", "hyprctl -j devices 2>/dev/null | sed -n '/keyboards/,$p' | head -200"]
+    command: ["bash", "-c", "hyprctl -j devices 2>/dev/null | sed -n '/keyboards/,$p' | head -200"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
