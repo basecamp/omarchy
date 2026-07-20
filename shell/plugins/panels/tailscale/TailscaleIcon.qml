@@ -39,7 +39,7 @@ Item {
     width: parent.width * 1.22
     height: Math.max(2, parent.height * 0.14)
     radius: height / 2
-    color: root.badgeColor
+    color: root.color
     rotation: -45
   }
 
