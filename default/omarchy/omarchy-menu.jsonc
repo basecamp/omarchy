@@ -77,7 +77,7 @@
   "trigger.share.receive": {"icon":"󰥦","label":"Receive","keywords":"localsend","action":"uwsm-app -- localsend"},
   "trigger.toggle.screensaver": {"icon":"󱄄","label":"Screensaver","action":"omarchy-toggle-screensaver"},
   "trigger.toggle.nightlight": {"icon":"󰔎","label":"Nightlight","keywords":"night light hyprsunset","action":"omarchy-toggle-nightlight"},
-  "trigger.toggle.idle-lock": {"icon":"󱫖","label":"Idle Lock","keywords":"idle quickshell","action":"omarchy-toggle-idle"},
+  "trigger.toggle.idle-lock": {"icon":"󰅶","label":"Stay Awake","keywords":"idle quickshell","action":"omarchy-toggle-idle"},
   "trigger.toggle.notifications": {"icon":"󰂛","label":"Notifications","keywords":"silence dnd","action":"omarchy-toggle-notification-silencing"},
   "trigger.toggle.top-bar": {"icon":"󰍜","label":"Bar","keywords":"top bar quickshell","action":"omarchy-toggle-bar"},
   "trigger.toggle.workspace-layout": {"icon":"󱂬","label":"Workspace Layout","action":"omarchy-hyprland-workspace-layout-toggle"},
