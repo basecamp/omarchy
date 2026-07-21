@@ -52,15 +52,32 @@ audit_scale_change() {
     "$grandparent_cmd" >>"$SCALE_LOG"
 }
 
+# Hyprland only accepts scales where the mode divides into whole logical
+# pixels (in 1/120 steps), so clean scales are divisors of gcd(w*120, h*120).
+# Round the requested scale up to the nearest one, so 3x on a 1280x800 QEMU
+# display becomes 3.2x instead of a red error overlay.
+clean_scale() {
+  awk -v scale="$1" -v width="$2" -v height="$3" '
+    function gcd(a, b, t) { while (b) { t = a % b; a = b; b = t } return a }
+    BEGIN {
+      g = gcd(width * 120, height * 120)
+      k = int(scale * 120 + 0.5)
+      if (k > g) k = g
+      while (g % k != 0) k++
+      printf "%g\n", k / 120
+    }'
+}
+
 set_scale() {
-  local new_scale="$1"
-  local requested="${2:-$new_scale}"
+  local requested_scale="$1"
+  local requested="${2:-$requested_scale}"
   local monitor_info="$(hyprctl monitors -j | jq -e -c '.[] | select(.focused == true)')"
   local active_monitor="$(echo "$monitor_info" | jq -r '.name')"
   local current_scale="$(echo "$monitor_info" | jq -r '.scale')"
   local width="$(echo "$monitor_info" | jq -r '.width')"
   local height="$(echo "$monitor_info" | jq -r '.height')"
   local refresh_rate="$(echo "$monitor_info" | jq -r '.refreshRate')"
+  local new_scale="$(clean_scale "$requested_scale" "$width" "$height")"
   local monitor_lua="$HOME/.config/hypr/monitors.lua"
 
   hyprctl eval "hl.monitor({ output = \"$active_monitor\", mode = \"${width}x${height}@${refresh_rate}\", position = \"auto\", scale = $new_scale })" >/dev/null
