@@ -347,13 +347,11 @@ Item {
     return MenuModel.childCount(root.items, root.itemOrder, id)
   }
 
-  // Items whose `when:` evaluated to false are hidden everywhere — nav,
-  // drilldown, and search. Items with no `when:` are always visible.
+  // Guarded items are hidden when their `when:` evaluates false. Static
+  // submenus are also hidden when none of their descendants are visible;
+  // provider-backed menus stay visible because their rows load on demand.
   function isVisible(entry) {
-    if (!entry) return false
-    if (!entry.when) return true
-    var result = root.whenResults[entry.id]
-    return result === undefined ? true : result
+    return MenuModel.isVisible(root.items, root.itemOrder, root.whenResults, entry)
   }
 
   // Label with the ✓ marker baked in when `checked:` evaluated truthy.
@@ -752,8 +750,8 @@ Item {
     for (var i = 0; i < ids.length; i++) {
       var entry = root.items[ids[i]]
       if (!entry) continue
-      if (entry.when) script += "if " + entry.when + " >/dev/null 2>&1; then echo " + ids[i] + ":w:1; else echo " + ids[i] + ":w:0; fi\n"
-      if (entry.checked) script += "if " + entry.checked + " >/dev/null 2>&1; then echo " + ids[i] + ":c:1; else echo " + ids[i] + ":c:0; fi\n"
+      if (entry.when) script += "if { " + entry.when + "; } >/dev/null 2>&1; then echo " + ids[i] + ":w:1; else echo " + ids[i] + ":w:0; fi\n"
+      if (entry.checked) script += "if { " + entry.checked + "; } >/dev/null 2>&1; then echo " + ids[i] + ":c:1; else echo " + ids[i] + ":c:0; fi\n"
     }
     if (!script) {
       root.whenResults = ({})
