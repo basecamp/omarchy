@@ -154,8 +154,12 @@ BarWidget {
 
   onIndicatorEntriesChanged: syncActiveIndicatorOrder()
 
-  implicitWidth: root.vertical ? verticalIndicators.implicitWidth : horizontalIndicators.implicitWidth
-  implicitHeight: root.vertical ? verticalIndicators.implicitHeight : horizontalIndicators.implicitHeight
+  implicitWidth: root.vertical
+    ? Math.max(activeVerticalBlock.implicitWidth, inactiveVerticalArea.implicitWidth)
+    : activeHorizontalBlock.implicitWidth + inactiveHorizontalArea.implicitWidth
+  implicitHeight: root.vertical
+    ? activeVerticalBlock.implicitHeight + inactiveVerticalArea.implicitHeight
+    : Math.max(activeHorizontalBlock.implicitHeight, inactiveHorizontalArea.implicitHeight)
 
   IpcHandler {
     target: "omarchy.indicators"
@@ -187,6 +191,7 @@ BarWidget {
     }
 
     ActiveIndicatorBlock {
+      id: activeHorizontalBlock
       indicatorsModule: root
       indicatorModel: activeIndicatorModel
       horizontal: true
@@ -204,7 +209,7 @@ BarWidget {
 
       IndicatorBlock {
         id: inactiveHorizontalBlock
-        anchors.fill: parent
+        anchors.verticalCenter: parent.verticalCenter
         indicatorsModule: root
         indicatorEntries: root.indicatorEntries
         indicatorBlock: "inactive"
@@ -229,6 +234,7 @@ BarWidget {
     }
 
     ActiveIndicatorBlock {
+      id: activeVerticalBlock
       indicatorsModule: root
       indicatorModel: activeIndicatorModel
       horizontal: false
@@ -246,7 +252,7 @@ BarWidget {
 
       IndicatorBlock {
         id: inactiveVerticalBlock
-        anchors.fill: parent
+        anchors.horizontalCenter: parent.horizontalCenter
         indicatorsModule: root
         indicatorEntries: root.indicatorEntries
         indicatorBlock: "inactive"
@@ -272,15 +278,15 @@ BarWidget {
     property bool horizontal: true
     property bool reportActiveState: false
 
-    implicitWidth: blockLoader.item ? blockLoader.item.childrenRect.width : 0
-    implicitHeight: blockLoader.item ? blockLoader.item.childrenRect.height : 0
+    implicitWidth: blockLoader.item ? blockLoader.item.implicitWidth : 0
+    implicitHeight: blockLoader.item ? blockLoader.item.implicitHeight : 0
     width: implicitWidth
     height: implicitHeight
 
     Loader {
       id: blockLoader
 
-      anchors.fill: parent
+      anchors.centerIn: parent
       sourceComponent: activeIndicatorBlockRoot.horizontal ? horizontalActiveIndicatorBlock : verticalActiveIndicatorBlock
     }
 
@@ -334,15 +340,15 @@ BarWidget {
     property bool horizontal: true
     property bool reportActiveState: false
 
-    implicitWidth: blockLoader.item ? blockLoader.item.childrenRect.width : 0
-    implicitHeight: blockLoader.item ? blockLoader.item.childrenRect.height : 0
+    implicitWidth: blockLoader.item ? blockLoader.item.implicitWidth : 0
+    implicitHeight: blockLoader.item ? blockLoader.item.implicitHeight : 0
     width: implicitWidth
     height: implicitHeight
 
     Loader {
       id: blockLoader
 
-      anchors.fill: parent
+      anchors.centerIn: parent
       sourceComponent: indicatorBlockRoot.horizontal ? horizontalIndicatorBlock : verticalIndicatorBlock
     }
 

@@ -63,4 +63,9 @@ if ! jq -e '.ok == true' "$result" >/dev/null; then
   fail "QML indicator contract checks pass"
 fi
 
+if rg -q 'Indicators.qml.*Binding loop detected for property "implicitWidth"' "$log"; then
+  sed -n '1,200p' "$log" >&2
+  fail "indicator tray avoids implicit-width binding loops"
+fi
+
 pass "QML indicator contract checks pass"
