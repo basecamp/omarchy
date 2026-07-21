@@ -3,9 +3,8 @@
 # omarchy:summary=Display Hyprland keybindings defined in your configuration using an interactive search menu.
 
 # Hyprland's Lua config provider currently reports Lua binds as dispatcher
-# __lua and code:... binds from hl.bind() as key="" and keycode=0 in
-# `hyprctl -j binds`. Keep a lightweight source-derived cache so the menu can
-# still show and dispatch those bindings.
+# __lua in `hyprctl binds`. Keep a lightweight source-derived cache so the
+# menu can still show and dispatch those bindings.
 declare -A LUA_BIND_KEY_MAP
 declare -A LUA_BIND_DISPATCHER_MAP
 declare -A LUA_BIND_ARG_MAP
@@ -65,7 +64,7 @@ parse_keycodes() {
   '
 }
 
-# Supplement `hyprctl -j binds` for Lua-only binds that Hyprland currently
+# Supplement `hyprctl binds` for Lua-only binds that Hyprland currently
 # reports as dispatcher __lua and without their original key for code: binds.
 build_lua_bind_cache() {
   local modmask description key dispatcher arg cache_key
@@ -271,9 +270,24 @@ modmask_to_text() {
 dynamic_bindings() {
   local modmask key keycode description dispatcher arg modifiers cache_key
 
-  hyprctl -j binds |
-    jq -r '.[] | [.modmask, (.key // ""), (.keycode // 0), (.description // ""), (.dispatcher // ""), (.arg // "") | tostring] | join("\u001f")' |
+  # Parse the plain `hyprctl binds` output rather than `hyprctl -j binds`:
+  # Hyprland 0.56.0 emits invalid JSON for binds (misaligned fields in
+  # bindsRequest), and older versions broke on quotes in bind args.
+  hyprctl binds | awk '
+    function emit() {
+      if (!seen) return
+      seen = 0
+      printf "%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\n", f["modmask"], f["key"], f["keycode"], f["description"], f["dispatcher"], f["arg"]
+    }
+    /^bind/ { emit(); seen = 1; delete f; next }
+    seen && match($0, /^\t[a-z]+: /) { f[substr($0, 2, RLENGTH - 3)] = substr($0, RLENGTH + 1) }
+    END { emit() }
+  ' |
     while IFS=$'\x1f' read -r modmask key keycode description dispatcher arg; do
+      # Lua binds report their full display key ("SUPER + code:20"); the
+      # modifiers are already carried separately in modmask.
+      key="${key##* + }"
+
       if [[ -z $key && $keycode != "0" ]]; then
         key="code:$keycode"
       fi
@@ -421,23 +435,30 @@ prioritize_entries() {
 }
 
 output_binding_records_uncached() {
+  local dynamic
+
   build_lua_bind_cache
+  dynamic=$(dynamic_bindings)
 
   {
-    dynamic_bindings
+    [[ -n $dynamic ]] && printf '%s\n' "$dynamic"
     static_bindings
   } |
     sort -u |
     parse_keycodes |
     parse_binding_records |
     prioritize_entries
+
+  # Fail when Hyprland reported no binds so the fallout of a broken hyprctl
+  # is never cached.
+  [[ -n $dynamic ]]
 }
 
 keybindings_cache_key() {
   {
-    printf 'v5\n'
-    hyprctl -j devices 2>/dev/null | jq -r '.keyboards[].active_keymap' 2>/dev/null
-    hyprctl -j binds 2>/dev/null
+    printf 'v6\n'
+    hyprctl devices 2>/dev/null | grep -F 'active keymap:'
+    hyprctl binds 2>/dev/null
   } | sha256sum | awk '{ print $1 }'
 }
 
