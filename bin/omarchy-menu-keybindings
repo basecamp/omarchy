@@ -82,37 +82,42 @@ parse_keycodes() {
 
 # Fetch dynamic keybindings from Hyprland
 #
+# Parses the plain `hyprctl binds` output rather than `hyprctl -j binds`:
+# Hyprland 0.56.0 emits invalid JSON for binds (misaligned fields in
+# bindsRequest), and older versions broke on quotes in bind args.
+#
 # Also do some pre-processing:
 # - Remove standard Omarchy bin path prefix
 # - Remove uwsm prefix
 # - Map numeric modifier key mask to a textual rendition
 # - Output comma-separated values that the parser can understand
 dynamic_bindings() {
-  hyprctl -j binds |
-    jq -r '.[] | {modmask, key, keycode, description, dispatcher, arg} | "\(.modmask),\(.key)@\(.keycode),\(.description),\(.dispatcher),\(.arg)"' |
-    sed -r \
-      -e 's/null//' \
-      -e 's,~/.local/share/omarchy/bin/,,' \
-      -e 's,uwsm app -- ,,' \
-      -e 's,uwsm-app -- ,,' \
-      -e 's/@0//' \
-      -e 's/,@/,code:/' \
-      -e 's/^0,/,/' \
-      -e 's/^1,/SHIFT,/' \
-      -e 's/^4,/CTRL,/' \
-      -e 's/^5,/SHIFT CTRL,/' \
-      -e 's/^8,/ALT,/' \
-      -e 's/^9,/SHIFT ALT,/' \
-      -e 's/^12,/CTRL ALT,/' \
-      -e 's/^13,/SHIFT CTRL ALT,/' \
-      -e 's/^64,/SUPER,/' \
-      -e 's/^65,/SUPER SHIFT,/' \
-      -e 's/^68,/SUPER CTRL,/' \
-      -e 's/^69,/SUPER SHIFT CTRL,/' \
-      -e 's/^72,/SUPER ALT,/' \
-      -e 's/^73,/SUPER SHIFT ALT,/' \
-      -e 's/^76,/SUPER CTRL ALT,/' \
-      -e 's/^77,/SUPER SHIFT CTRL ALT,/'
+  hyprctl binds | awk '
+    function emit() {
+      if (!seen) return
+      seen = 0
+
+      key = f["key"]
+      if (key == "" && f["keycode"] != "0") key = "code:" f["keycode"]
+
+      arg = f["arg"]
+      sub(/~\/.local\/share\/omarchy\/bin\//, "", arg)
+      sub(/uwsm(-app| app) -- /, "", arg)
+
+      modifiers = (f["modmask"] in mod_text) ? mod_text[f["modmask"]] : f["modmask"]
+      print modifiers "," key "," f["description"] "," f["dispatcher"] "," arg
+    }
+    BEGIN {
+      split("0=|1=SHIFT|4=CTRL|5=SHIFT CTRL|8=ALT|9=SHIFT ALT|12=CTRL ALT|13=SHIFT CTRL ALT|64=SUPER|65=SUPER SHIFT|68=SUPER CTRL|69=SUPER SHIFT CTRL|72=SUPER ALT|73=SUPER SHIFT ALT|76=SUPER CTRL ALT|77=SUPER SHIFT CTRL ALT", pairs, "|")
+      for (i in pairs) {
+        separator = index(pairs[i], "=")
+        mod_text[substr(pairs[i], 1, separator - 1)] = substr(pairs[i], separator + 1)
+      }
+    }
+    /^bind/ { emit(); seen = 1; delete f; next }
+    seen && match($0, /^\t[a-z]+: /) { f[substr($0, 2, RLENGTH - 3)] = substr($0, RLENGTH + 1) }
+    END { emit() }
+  '
 }
 
 # Hardcoded bindings, like the copy-url extension and such
