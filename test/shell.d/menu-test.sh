@@ -102,6 +102,27 @@ assert(
   'menu update Omarchy entry renders the private glyph with the Omarchy font'
 )
 assert(
+  defaultById['setup.input'].action.includes('input.lua'),
+  'menu keeps Input as a direct config action'
+)
+assert(
+  defaultById['setup.direct-boot'].action.includes('omarchy-config-direct-boot'),
+  'menu places Direct Boot directly under Setup'
+)
+assertEqual(
+  defaultItems.findIndex(item => item.id === 'setup.direct-boot'),
+  defaultItems.findIndex(item => item.id === 'setup.input') + 1,
+  'menu lists Direct Boot immediately below Input'
+)
+assert(
+  defaultById['setup.security.passwordless-sudo'].action.includes('omarchy-sudo-passwordless'),
+  'menu places Passwordless Sudo under Setup > Security'
+)
+assert(
+  !defaultById['trigger.toggle.direct-boot'] && !defaultById['trigger.toggle.passwordless-sudo'],
+  'menu removes the relocated toggles from Trigger > Toggle'
+)
+assert(
   /font\.family: row\.iconFont\.length > 0 \? row\.iconFont : root\.fontFamily/.test(menuQml),
   'menu rows support per-icon font families'
 )
