@@ -1,5 +1,6 @@
 #!/bin/bash
 
-# Ensure Waybar icon offering the available update is removed
+# omarchy:summary=Ensure Waybar icon offering the available update is removed
+
 pkill -RTMIN+7 waybar
 exit 0

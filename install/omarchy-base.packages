@@ -4,7 +4,6 @@
 1password-beta
 1password-cli
 aether
-alacritty
 alsa-utils
 asdcontrol
 avahi
@@ -17,6 +16,7 @@ btop
 chromium
 clang
 claude-code
+cliamp
 cups
 cups-browsed
 cups-filters
@@ -24,6 +24,7 @@ cups-pdf
 docker
 docker-buildx
 docker-compose
+dosfstools
 dotnet-runtime-9.0
 dust
 evince
@@ -37,6 +38,7 @@ fcitx5-qt
 fd
 ffmpegthumbnailer
 fontconfig
+foot
 fzf
 github-cli
 gnome-calculator
@@ -104,6 +106,7 @@ python-gobject
 python-poetry-core
 python-terminaltexteffects
 qt5-wayland
+quickshell
 ripgrep
 ruby
 rust
@@ -112,11 +115,14 @@ sddm
 signal-desktop
 slurp
 spotify
+socat
 starship
 sushi
 swaybg
 swayosd
 system-config-printer
+tesseract
+tesseract-data-eng
 tldr
 tree-sitter-cli
 tmux

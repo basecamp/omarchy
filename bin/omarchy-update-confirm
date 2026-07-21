@@ -1,6 +1,8 @@
 #!/bin/bash
 
-gum style --border normal --border-foreground 6 --padding "1 2" \
+# omarchy:summary=Prompt for confirmation before starting an update
+
+gum style --border normal --padding "1 2" \
   "Ready to update?" \
   "" \
   "• You cannot stop the update once you start!" \

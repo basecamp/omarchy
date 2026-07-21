@@ -1,4 +1,5 @@
 @import "../../../../../../../.config/omarchy/current/theme/walker.css";
+@import "../../../../../../../.local/state/omarchy/toggles/walker.css";
 
 * {
   all: unset;
@@ -78,6 +79,10 @@ child:selected .item-box * {
   color: @selected-text;
 }
 
+child:selected {
+  background: alpha(@text, 0.07);
+}
+
 .item-box {
   padding-left: 14px;
 }
@@ -114,3 +119,4 @@ child:selected .item-box * {
 
 .preview {
 }
+

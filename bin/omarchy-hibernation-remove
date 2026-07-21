@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Removes hibernation setup: disables swap, removes swapfile, removes fstab entry,
-# removes resume hook, and removes suspend-then-hibernate configuration.
+# omarchy:summary=Remove hibernation setup including swap and boot resume settings
+# omarchy:requires-sudo=true
 
 MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
 
@@ -43,11 +43,6 @@ if grep -Fq "$SWAP_FILE" /etc/fstab; then
   sudo sed -i "\|$SWAP_FILE|d" /etc/fstab
   sudo sed -i '/^# Btrfs swapfile for system hibernation$/d' /etc/fstab
 fi
-
-# Remove suspend-then-hibernate configuration
-echo "Removing suspend-then-hibernate configuration"
-sudo rm -f /etc/systemd/logind.conf.d/lid.conf
-sudo rm -f /etc/systemd/sleep.conf.d/hibernate.conf
 
 # Remove mkinitcpio resume hook
 echo "Removing resume hook"

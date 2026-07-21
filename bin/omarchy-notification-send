@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# omarchy:summary=Send a desktop notification with Omarchy glyph and body spacing
+# omarchy:args=<headline> [description] [-g <glyph>] [-u <low|normal|critical>] [notify-send options]
+# omarchy:examples=omarchy notification send "Reminder" "5 minutes are up" -g 󰔛 -u critical
+
+set -euo pipefail
+
+headline=""
+description=""
+glyph=""
+urgency="low"
+args=()
+
+parse_omarchy_option() {
+  case $1 in
+  -g | --glyph)
+    if (($# < 2)); then
+      echo "Missing value for $1" >&2
+      exit 1
+    fi
+    glyph="$2"
+    return 0
+    ;;
+  -u | --urgency)
+    if (($# < 2)); then
+      echo "Missing value for $1" >&2
+      exit 1
+    fi
+    urgency="$2"
+    return 0
+    ;;
+  esac
+
+  return 1
+}
+
+while (($# > 0)); do
+  if parse_omarchy_option "$@"; then
+    shift 2
+  else
+    break
+  fi
+done
+
+if (($# < 1)); then
+  echo "Usage: omarchy-notification-send [-g <glyph>] [-u <low|normal|critical>] <headline> [description] [notify-send options]"
+  exit 1
+fi
+
+headline=$1
+shift
+
+if (($# > 0)) && [[ $1 != -* ]]; then
+  description=$1
+  shift
+fi
+
+while (($# > 0)); do
+  if parse_omarchy_option "$@"; then
+    shift 2
+  else
+    args+=("$1")
+    shift
+  fi
+done
+
+summary="$glyph    $headline"
+args+=("-u" "$urgency")
+
+if [[ -n $description ]]; then
+  description=$(printf '%b' "$description" | sed 's/^/      /')
+  notify-send "${args[@]}" "$summary" "$description"
+else
+  notify-send "${args[@]}" "$summary"
+fi

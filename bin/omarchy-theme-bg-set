@@ -1,14 +1,21 @@
 #!/bin/bash
 
-# Sets the specified image as the current background
+# omarchy:summary=Set the current background image
+# omarchy:args=<path-to-image>
+# omarchy:examples=omarchy theme bg set ~/Pictures/background.png
 
 if [[ -z $1 ]]; then
   echo "Usage: omarchy-theme-bg-set <path-to-image>" >&2
   exit 1
 fi
 
-BACKGROUND="$1"
+BACKGROUND="$(realpath "$1")"
 CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
+
+if [[ ! -f "$BACKGROUND" ]]; then
+  echo "File does not exist: $BACKGROUND" >&2
+  exit 1
+fi
 
 # Create symlink to the new background
 ln -nsf "$BACKGROUND" "$CURRENT_BACKGROUND_LINK"
