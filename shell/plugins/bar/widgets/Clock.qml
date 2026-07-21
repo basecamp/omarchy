@@ -71,8 +71,7 @@ BarWidget {
     Column {
       visible: root.vertical
       anchors.fill: parent
-      spacing: 1
-
+ 
       Repeater {
         model: root.verticalLines
 
@@ -83,9 +82,9 @@ BarWidget {
           height: Style.bar.iconSlot
           text: modelData
           fontFamily: button.fontFamily
-          fontSize: root.alt && index === root.verticalLines.length - 1
-                ? button.fontSize * 0.8
-                : button.fontSize
+          fontSize: modelData.length > 3
+      	      ? button.fontSize * 0.9
+            : button.fontSize
           color: button.foreground
         }
       }
