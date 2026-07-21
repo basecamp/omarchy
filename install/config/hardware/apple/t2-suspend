@@ -6,17 +6,19 @@
 # Pre:
 #   - unbinds aaudio (releases ALSA FDs held by userspace)
 #   - stops tiny-dfr (prevents spurious wake-ups)
-#   - unloads T2 modules (reverse dep order; brcmfmac for D3)
+#   - unloads T2 modules (reverse dep order)
+#     * on BCM4377b brcmfmac removed before sleep to avoid D3 timeout
+#     * on BCM4364  brcmfmac stays bound; kernel PCI PM handles D3cold
 # Post:
 #   - reloads apple_bce, then sleeps to let T2 firmware init
 #   - reloads T2 modules (forward dep order), restarts tiny-dfr
 
-PRE_MODS=(appletbdrm hid_appletb_kbd hid_appletb_bl brcmfmac_wcc brcmfmac)
-POST_MODS=(brcmfmac brcmfmac_wcc hid_appletb_bl hid_appletb_kbd appletbdrm)
-
 set -euo pipefail
 
 LOG_TAG="t2-suspend"
+BRCMF_D3COLD_PCI_ID=14e4:4464
+PRE_MODS=(appletbdrm hid_appletb_kbd hid_appletb_bl brcmfmac_wcc brcmfmac hci_bcm4377)
+POST_MODS=(hci_bcm4377 brcmfmac brcmfmac_wcc hid_appletb_bl hid_appletb_kbd appletbdrm)
 
 log()     { logger -t "$LOG_TAG" "$1"; }
 
@@ -33,6 +35,10 @@ load()    {
   }
 }
 
+is_bcm4364() { lspci -nn | grep -q "$BRCMF_D3COLD_PCI_ID"; }
+
+skip() { is_bcm4364 && [[ $1 == "brcmfmac" || $1 == "brcmfmac_wcc" ]]; }
+
 case "${1:-}" in
   pre)
     for d in /sys/bus/pci/drivers/aaudio/0000:*; do
@@ -43,7 +49,7 @@ case "${1:-}" in
 
     systemctl stop tiny-dfr 2>/dev/null || true
 
-    for m in "${PRE_MODS[@]}"; do unload "$m"; done
+    for m in "${PRE_MODS[@]}"; do skip "$m" || unload "$m"; done
     unload apple_bce
 
     if ! udevadm settle --timeout=5; then
@@ -55,9 +61,10 @@ case "${1:-}" in
   post)
     load apple_bce; sleep 2
 
-    for m in "${POST_MODS[@]}"; do load "$m"; done
+    for m in "${POST_MODS[@]}"; do skip "$m" || load "$m"; done
 
-    systemctl start tiny-dfr 2>/dev/null || true
+    systemctl reset-failed tiny-dfr 2>/dev/null &&
+      systemctl restart tiny-dfr 2>/dev/null || true
 
     log "Resume complete"
     ;;
