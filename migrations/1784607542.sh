@@ -2,7 +2,7 @@ echo "Disable Chromium's Wayland Vulkan WebGPU interop to prevent browser crashe
 
 add_webgpu_adapter_flag() {
   local file=$1
-  [[ -f $file ]] || return 0
+  [[ -f $file && -r $file && -w $file ]] || return 0
   grep -Fxq -- "--use-webgpu-adapter=opengles" "$file" && return 0
   [[ -n $(tail -c1 "$file") ]] && echo >>"$file"
   echo "--use-webgpu-adapter=opengles" >>"$file"
