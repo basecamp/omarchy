@@ -37,16 +37,23 @@ fi
 # Ensure hyprsunset is running
 if ! pgrep -x hyprsunset >/dev/null; then
   setsid uwsm-app -- hyprsunset &
-  sleep 1 # Give it time to register
 fi
 
 # Query the current temperature
 CURRENT_TEMP=$(current_temp)
 
 if [[ -z $CURRENT_TEMP || $CURRENT_TEMP == $OFF_TEMP ]]; then
-  hyprctl hyprsunset temperature $ON_TEMP
+  TARGET_TEMP=$ON_TEMP
 else
-  hyprctl hyprsunset temperature $OFF_TEMP
+  TARGET_TEMP=$OFF_TEMP
 fi
+
+# A freshly-started hyprsunset applies its default temperature at the end of
+# its boot, overriding anything set before then — so resend until it sticks
+for _ in {1..10}; do
+  hyprctl hyprsunset temperature $TARGET_TEMP >/dev/null 2>&1
+  sleep 0.2
+  [[ $(current_temp) == "$TARGET_TEMP" ]] && break
+done
 
 omarchy-shell -q nightlight refresh
