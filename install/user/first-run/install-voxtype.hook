@@ -2,10 +2,17 @@
 
 set -e
 
-if omarchy-done ensure voxtype-install-invitation; then
-  (
-    if [[ -n $(omarchy-notification-send -u critical -g  "Install Dictation with Voxtype" "Click to install voice dictation for Omarchy." -a) ]]; then
-      omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install
-    fi
-  ) >/dev/null 2>&1 &
+show_invitation() {
+  if [[ -n $(omarchy-notification-send -u critical -g  "Install Dictation with Voxtype" "Click to install voice dictation for Omarchy." -a) ]]; then
+    omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install
+  fi
+}
+
+if [[ ${1:-} == "--show" ]]; then
+  show_invitation
+elif omarchy-done ensure voxtype-install-invitation; then
+  # Keep the notification action alive after the update terminal closes.
+  systemd-run --user --collect --quiet --service-type=exec \
+    --unit=omarchy-voxtype-install-invitation \
+    bash "$0" --show
 fi
