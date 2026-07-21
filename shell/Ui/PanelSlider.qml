@@ -18,6 +18,13 @@ Item {
   property real knobSize: Math.max(14, Math.round(Style.spacing.controlHeight * 0.38))
   property real liveValue: value
 
+  // macOS-style notches. When > 1, that many evenly-spaced tick marks are cut
+  // into the track (drawn in the panel background color, so only the part
+  // crossing the track shows). Purely visual — snapping is the caller's job via
+  // `integer`/`step` or an index-based value. Default 0 leaves the track plain.
+  property int tickCount: 0
+  property color tickColor: bar ? bar.background : Color.background
+
   onValueChanged: if (!dragging) liveValue = value
 
   signal moved(real value)
@@ -52,6 +59,20 @@ Item {
     Behavior on width {
       enabled: !root.dragging
       NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+    }
+  }
+
+  Repeater {
+    model: root.tickCount > 1 ? root.tickCount : 0
+    Rectangle {
+      required property int index
+      width: Math.max(1, Style.space(2))
+      height: root.trackHeight + Style.space(4)
+      radius: 1
+      color: root.tickColor
+      anchors.verticalCenter: track.verticalCenter
+      x: Math.max(0, Math.min(track.width - width,
+                              track.width * (index / (root.tickCount - 1)) - width / 2))
     }
   }
 
