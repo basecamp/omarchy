@@ -19,7 +19,8 @@ cat >"$stub_bin/hyprctl" <<'SH'
 #!/bin/bash
 
 if [[ $1 == "monitors" && $2 == "-j" ]]; then
-  printf '[{"name":"eDP-1","focused":true,"scale":%s,"width":2880,"height":1800,"refreshRate":120.0}]' "${OMARCHY_TEST_MONITOR_SCALE:-2}"
+  printf '[{"name":"eDP-1","focused":true,"scale":%s,"width":%s,"height":%s,"refreshRate":120.0}]' \
+    "${OMARCHY_TEST_MONITOR_SCALE:-2}" "${OMARCHY_TEST_MONITOR_WIDTH:-2880}" "${OMARCHY_TEST_MONITOR_HEIGHT:-1800}"
 elif [[ $1 == "eval" ]]; then
   printf '%s\n' "$2" >"$OMARCHY_TEST_HYPRCTL_EVAL_OUT"
 else
@@ -72,3 +73,15 @@ pass "monitor scaling explicit 3x remains available"
 scale=$(OMARCHY_TEST_MONITOR_SCALE=3 run_scaling)
 [[ $scale == "3" ]] || fail "monitor scaling reports explicit 3x scale" "actual: $scale"
 pass "monitor scaling reports explicit 3x scale"
+
+# 1280x800 (QEMU virtio-gpu) can't divide cleanly by 3; expect a snap up to 3.2.
+write_monitor_config
+OMARCHY_TEST_MONITOR_SCALE=2 OMARCHY_TEST_MONITOR_WIDTH=1280 OMARCHY_TEST_MONITOR_HEIGHT=800 run_scaling 3
+grep -F 'scale = 3.2' "$eval_out" >/dev/null || fail "monitor scaling snaps unclean 3x up to 3.2x"
+grep -Fx 'local omarchy_monitor_scale = 3.2' "$monitor_lua" >/dev/null || fail "monitor scaling persists snapped 3.2x"
+pass "monitor scaling snaps unclean 3x up to 3.2x"
+
+write_monitor_config
+OMARCHY_TEST_MONITOR_SCALE=2 OMARCHY_TEST_MONITOR_WIDTH=1280 OMARCHY_TEST_MONITOR_HEIGHT=800 run_scaling up
+grep -F 'scale = 3.2' "$eval_out" >/dev/null || fail "monitor scaling up snaps unclean preset to 3.2x"
+pass "monitor scaling up snaps unclean preset to 3.2x"
