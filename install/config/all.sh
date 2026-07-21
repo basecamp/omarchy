@@ -29,6 +29,7 @@ run_logged $OMARCHY_INSTALL/config/pi.sh
 run_logged $OMARCHY_INSTALL/config/omarchy-toggles.sh
 run_logged $OMARCHY_INSTALL/config/kernel-modules-hook.sh
 run_logged $OMARCHY_INSTALL/config/powerprofilesctl-rules.sh
+run_logged $OMARCHY_INSTALL/config/platform-profile-rules.sh
 run_logged $OMARCHY_INSTALL/config/wifi-powersave-rules.sh
 run_logged $OMARCHY_INSTALL/config/plocate-ac-only.sh
 

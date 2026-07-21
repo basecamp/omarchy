@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# omarchy:summary=Inspect or set firmware platform profiles exposed by the kernel
+# omarchy:args=<list|choices|get|set> [device] [profile]
+# omarchy:examples=omarchy powerprofiles platform list | omarchy powerprofiles platform choices platform-profile-0
+
+set -euo pipefail
+
+profile_root="${OMARCHY_PLATFORM_PROFILE_ROOT:-/sys/class/platform-profile}"
+
+usage() {
+  echo "Usage: omarchy-powerprofiles-platform <list|choices|get|set> [device] [profile]" >&2
+  exit 1
+}
+
+find_profile_dir() {
+  local requested_device="$1"
+  local candidate
+
+  [[ -d $profile_root ]] || return 1
+
+  for candidate in "$profile_root"/*; do
+    [[ -e $candidate ]] || continue
+    if [[ ${candidate##*/} == $requested_device && -r $candidate/name && -r $candidate/choices && -r $candidate/profile ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+list_profiles() {
+  local candidate device name profile
+
+  [[ -d $profile_root ]] || return 0
+
+  for candidate in "$profile_root"/*; do
+    [[ -r $candidate/name && -r $candidate/choices && -r $candidate/profile ]] || continue
+    device="${candidate##*/}"
+    name=$(<"$candidate/name")
+    profile=$(<"$candidate/profile")
+    name="${name//$'\t'/ }"
+    name="${name//$'\n'/ }"
+    printf '%s\t%s\t%s\n' "$device" "$name" "$profile"
+  done
+}
+
+action="${1:-}"
+
+case "$action" in
+  list)
+    (( $# == 1 )) || usage
+    list_profiles
+    ;;
+  choices | get)
+    (( $# == 2 )) || usage
+    profile_dir=$(find_profile_dir "$2") || {
+      echo "Platform profile device not found: $2" >&2
+      exit 1
+    }
+
+    if [[ $action == "choices" ]]; then
+      tr -s '[:space:]' '\n' <"$profile_dir/choices"
+    else
+      cat "$profile_dir/profile"
+    fi
+    ;;
+  set)
+    (( $# == 3 )) || usage
+    profile_dir=$(find_profile_dir "$2") || {
+      echo "Platform profile device not found: $2" >&2
+      exit 1
+    }
+
+    requested_profile="$3"
+    read -r -a available_profiles <"$profile_dir/choices"
+    profile_available=false
+    for profile in "${available_profiles[@]}"; do
+      if [[ $profile == $requested_profile ]]; then
+        profile_available=true
+        break
+      fi
+    done
+
+    if [[ $profile_available != "true" ]]; then
+      echo "Platform profile is not available on $2: $requested_profile" >&2
+      exit 1
+    fi
+
+    if [[ -w $profile_dir/profile ]]; then
+      printf '%s\n' "$requested_profile" >"$profile_dir/profile"
+    else
+      echo "Platform profile is not writable: $profile_dir/profile" >&2
+      exit 1
+    fi
+    ;;
+  *) usage ;;
+esac

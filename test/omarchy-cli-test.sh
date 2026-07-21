@@ -217,6 +217,37 @@ pass "all executable bins have slim self-documenting metadata"
 TMPDIR=$(mktemp -d)
 ln -s "$CLI" "$TMPDIR/omarchy"
 
+platform_profile_root="$TMPDIR/platform-profile"
+mkdir -p "$platform_profile_root/platform-profile-0" "$platform_profile_root/platform-profile-1"
+printf '%s\n' "SoC Power Slider" >"$platform_profile_root/platform-profile-0/name"
+printf '%s\n' "low-power balanced performance" >"$platform_profile_root/platform-profile-0/choices"
+printf '%s\n' "balanced" >"$platform_profile_root/platform-profile-0/profile"
+printf '%s\n' "dell-pc" >"$platform_profile_root/platform-profile-1/name"
+printf '%s\n' "cool quiet balanced performance" >"$platform_profile_root/platform-profile-1/choices"
+printf '%s\n' "quiet" >"$platform_profile_root/platform-profile-1/profile"
+
+output=$(OMARCHY_PLATFORM_PROFILE_ROOT="$TMPDIR/no-platform-profile" "$CLI" powerprofiles platform list)
+[[ -z $output ]] || fail "systems without platform profile devices return an empty list"
+pass "systems without platform profile devices return an empty list"
+
+output=$(OMARCHY_PLATFORM_PROFILE_ROOT="$platform_profile_root" "$CLI" powerprofiles platform list)
+assert_output_contains "platform profile devices are listed" "$output" $'platform-profile-1\tdell-pc\tquiet'
+
+output=$(OMARCHY_PLATFORM_PROFILE_ROOT="$platform_profile_root" "$CLI" powerprofiles platform choices platform-profile-1)
+assert_output_contains "platform profile choices are listed" "$output" "performance"
+
+output=$(OMARCHY_PLATFORM_PROFILE_ROOT="$platform_profile_root" "$CLI" powerprofiles platform get platform-profile-1)
+assert_output_contains "current platform profile is returned" "$output" "quiet"
+
+OMARCHY_PLATFORM_PROFILE_ROOT="$platform_profile_root" "$CLI" powerprofiles platform set platform-profile-1 cool
+[[ $(<"$platform_profile_root/platform-profile-1/profile") == "cool" ]] || fail "platform profile can be set"
+pass "platform profile can be set"
+
+if OMARCHY_PLATFORM_PROFILE_ROOT="$platform_profile_root" "$CLI" powerprofiles platform set platform-profile-1 low-power 2>/dev/null; then
+  fail "unavailable platform profile is rejected"
+fi
+pass "unavailable platform profile is rejected"
+
 {
   printf '#!/bin/bash\n\n'
   printf '# ordinary comments are fine\n'

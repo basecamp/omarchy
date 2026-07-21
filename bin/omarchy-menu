@@ -365,12 +365,41 @@ show_setup_menu() {
 }
 
 show_setup_power_menu() {
-  profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
+  local dell_device=""
+  local dell_current=""
+  local device name current
+  while IFS=$'\t' read -r device name current; do
+    if [[ $name == "dell-pc" ]]; then
+      dell_device="$device"
+      dell_current="$current"
+      break
+    fi
+  done < <(omarchy-powerprofiles-platform list)
+
+  local profile
+  if [[ -n $dell_device ]]; then
+    local dell_profiles
+    dell_profiles=$(omarchy-powerprofiles-platform choices "$dell_device")
+    dell_profiles=$(printf '%s\n' quiet cool balanced performance | grep -Fx -f <(printf '%s\n' "$dell_profiles"))
+    profile=$(menu "Dell Power Profile" "$dell_profiles" "" "$dell_current")
+  else
+    profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
+  fi
 
   if [[ $profile == "CNCLD" || -z $profile ]]; then
     back_to show_setup_menu
-  else
+    return
+  fi
+
+  if [[ -z $dell_device ]]; then
     powerprofilesctl set "$profile"
+  elif omarchy-powerprofiles-list | grep -Fxq "$profile"; then
+    powerprofilesctl set "$profile"
+    [[ $(omarchy-powerprofiles-platform get "$dell_device") == $profile ]] ||
+      omarchy-powerprofiles-platform set "$dell_device" "$profile"
+  else
+    powerprofilesctl set power-saver
+    omarchy-powerprofiles-platform set "$dell_device" "$profile"
   fi
 }
 
