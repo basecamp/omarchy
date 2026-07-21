@@ -47,6 +47,11 @@ ShellRoot {
     property bool vertical: false
     property int barSize: 26
     property string fontFamily: "monospace"
+    property color barForeground: "white"
+    property color urgent: "red"
+    property bool foregroundAnimationEnabled: false
+    property bool centerSectionRevealHeld: false
+    property bool centerHoverRevealSuppressed: false
     property var shell: mockShell
     function run(command) {
       root.commands.push(String(command))
@@ -108,6 +113,43 @@ ShellRoot {
     }
   }
 
+  function checkIndicatorTray() {
+    idleService.setIdleEnabled(true)
+
+    var component = Qt.createComponent("file://" + rootPath + "/shell/plugins/bar/widgets/Indicators.qml")
+    if (component.status !== Component.Ready) {
+      fail("Indicators failed to load: " + component.errorString())
+      writeResult()
+      return
+    }
+
+    var tray = component.createObject(root, {
+      bar: mockBar,
+      settings: { items: ["StayAwake"] }
+    })
+    if (!tray) {
+      fail("Indicators failed to instantiate: " + component.errorString())
+      writeResult()
+      return
+    }
+
+    Qt.callLater(function() {
+      root.assertTrue(tray.implicitWidth === 0, "inactive indicator tray starts collapsed")
+      mockBar.centerSectionRevealHeld = true
+
+      Qt.callLater(function() {
+        root.assertTrue(tray.implicitWidth > 0, "inactive indicator tray expands on center hover")
+        mockBar.centerSectionRevealHeld = false
+
+        Qt.callLater(function() {
+          root.assertTrue(tray.implicitWidth === 0, "inactive indicator tray collapses after hover")
+          tray.destroy()
+          root.writeResult()
+        })
+      })
+    })
+  }
+
   function shellQuote(value) {
     return "'" + String(value).replace(/'/g, "'\\''") + "'"
   }
@@ -165,7 +207,7 @@ ShellRoot {
         root.assertTrue(idleService.stayAwake === true, "Stay Awake left click toggles the idle service")
       }
 
-      root.writeResult()
+      root.checkIndicatorTray()
     }
   }
 }
