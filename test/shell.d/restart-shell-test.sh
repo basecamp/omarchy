@@ -15,6 +15,8 @@ touch "$wrapper_root/shell/shell.qml"
 cat >"$wrapper_bin/qs" <<'SH'
 #!/bin/bash
 
+[[ -n ${OMARCHY_TEST_QS_ARGS:-} ]] && printf '%s\n' "$*" >"$OMARCHY_TEST_QS_ARGS"
+
 if [[ ${OMARCHY_TEST_QS_HANG:-0} == 1 ]]; then
   sleep 5
 else
@@ -30,6 +32,15 @@ wrapper_error=$(PATH="$wrapper_bin:$PATH" \
   "$ROOT/bin/omarchy-shell" shell ping 2>&1) && fail "hung shell IPC returns a failure"
 [[ $wrapper_error == "omarchy-shell is not responding" ]] || fail "hung shell IPC reports that the shell is unresponsive" "$wrapper_error"
 pass "shell IPC calls time out when Quickshell is unresponsive"
+
+wrapper_args="$test_tmp/wrapper-args"
+PATH="$wrapper_bin:$PATH" \
+OMARCHY_PATH="$wrapper_root" \
+OMARCHY_TEST_QS_ARGS="$wrapper_args" \
+  "$ROOT/bin/omarchy-shell" shell ping >/dev/null
+
+grep -F -- 'ipc -n -p' "$wrapper_args" >/dev/null || fail "shell IPC targets the newest live Quickshell instance"
+pass "shell IPC targets the newest live Quickshell instance"
 
 restart_root="$test_tmp/restart-root"
 restart_bin="$restart_root/bin"
