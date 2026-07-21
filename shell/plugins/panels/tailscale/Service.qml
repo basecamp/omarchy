@@ -364,6 +364,22 @@ Item {
   }
 
   Timer {
+    // After a fresh boot the startup poll usually lands before tailscaled has
+    // connected, which left the icon stale until the next periodic refresh.
+    // Poll quickly until the service shows up, or give up after ~30 seconds.
+    id: startupRamp
+    property int ticks: 0
+    interval: 2000
+    repeat: true
+    running: true
+    onTriggered: {
+      ticks += 1
+      if (root.running || ticks >= 15) startupRamp.running = false
+      else root.refresh()
+    }
+  }
+
+  Timer {
     id: delayedRefresh
     interval: 600
     repeat: false
