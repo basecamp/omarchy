@@ -33,15 +33,11 @@ apply_state() {
     stay-awake)
       mkdir -p "$STATE_DIR"
       touch "$STATE_FILE"
-      omarchy-shell -q idle disable
       ;;
     allow-idle)
       rm -f "$STATE_FILE"
-      omarchy-shell -q idle enable
       ;;
   esac
-
-  omarchy-shell -q omarchy.indicators refresh
 }
 
 case "${1:-toggle}" in
