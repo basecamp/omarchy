@@ -77,7 +77,6 @@ BarWidget {
 
         OpticalGlyph {
           required property string modelData
-          required property int index
           width: button.width
           height: Style.bar.iconSlot
           text: modelData
