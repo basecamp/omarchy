@@ -49,4 +49,4 @@ else
   hyprctl hyprsunset temperature $OFF_TEMP
 fi
 
-omarchy-shell -q omarchy.indicators refresh
+omarchy-shell -q nightlight refresh

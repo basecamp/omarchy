@@ -32,6 +32,7 @@ User-installed plugins live alongside these conceptually but on disk under
 | Media         | `omarchy.media`           | `service`, `bar-widget` | `services/media/Service.qml`, `services/media/BarWidget.qml` |
 | Battery       | `omarchy.battery`         | `service`               | `services/battery/Service.qml`        |
 | Idle          | `omarchy.idle`            | `service`               | `services/idle/Service.qml`           |
+| Night light   | `omarchy.nightlight`      | `service`               | `services/nightlight/Service.qml`     |
 | Lock screen   | `omarchy.lock`            | `service`               | `lock/Service.qml`                    |
 | OSD           | `omarchy.osd`             | `panel`                 | `osd/Osd.qml`                         |
 | Polkit agent  | `omarchy.polkit`          | `service`               | `polkit/PolkitAgent.qml`              |
