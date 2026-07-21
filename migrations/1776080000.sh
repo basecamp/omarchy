@@ -1,6 +1,6 @@
-set -e
-
 echo "Install nuphyctl-bin and udev rule on systems with a NuPhy keyboard"
+
+set -e
 
 if omarchy-hw-nuphyio-keyboard; then
   if omarchy-pkg-missing nuphyctl-bin; then
