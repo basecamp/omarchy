@@ -36,12 +36,12 @@
 
   // Learn
   "learn.keybindings": {"icon":"","label":"Keybindings","keywords":"keyboard shortcuts bindings","action":"omarchy-menu-keybindings"},
-  "learn.tmux-keybindings": {"icon":"","label":"Tmux keybindings","keywords":"keyboard shortcuts bindings terminal","action":"omarchy-menu-tmux-keybindings"},
   "learn.omarchy": {"icon":"","label":"Omarchy","keywords":"manual documentation","action":"omarchy-launch-webapp 'https://learn.omacom.io/2/the-omarchy-manual'"},
   "learn.hyprland": {"icon":"","label":"Hyprland","keywords":"wiki docs","action":"omarchy-launch-webapp 'https://wiki.hypr.land/'"},
   "learn.arch": {"icon":"󰣇","label":"Arch","keywords":"linux wiki docs","action":"omarchy-launch-webapp 'https://wiki.archlinux.org/title/Main_page'"},
   "learn.neovim": {"icon":"","label":"Neovim","keywords":"lazyvim keymaps docs","action":"omarchy-launch-webapp 'https://www.lazyvim.org/keymaps'"},
   "learn.bash": {"icon":"󱆃","label":"Bash","keywords":"shell cheatsheet","action":"omarchy-launch-webapp 'https://devhints.io/bash'"},
+  "learn.tmux-keybindings": {"icon":"","label":"Tmux","keywords":"keyboard shortcuts bindings terminal","action":"omarchy-menu-tmux-keybindings"},
 
   // Trigger
   "trigger.reminder": {"icon":"󰢌","label":"Reminder","aliases":["reminder"],"keywords":"timer notification remind"},
