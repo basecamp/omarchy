@@ -269,6 +269,10 @@ jq -e '
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config sets bar transparency"
 
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar transparent toggle
+jq -e '.bar.transparent == false' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config toggles bar transparency"
+
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin drop omarchy.active-window
 jq -e '
   def ids: map(.id // .);
