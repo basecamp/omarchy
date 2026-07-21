@@ -2,7 +2,7 @@
 
 # omarchy:summary=Set the active bar option, position, and transparency
 # omarchy:group=bar
-# omarchy:args=use <id> | reset | defaults | position <top|bottom|left|right> | transparent <true|false>
+# omarchy:args=use <id> | reset | defaults | position <top|bottom|left|right> | transparent <true|false|toggle>
 # omarchy:examples=omarchy bar use local.neon-bar | omarchy bar reset | omarchy bar defaults | omarchy bar position top | omarchy bar transparent true
 
 set -euo pipefail
@@ -19,7 +19,7 @@ Usage: omarchy bar <command> [args...]
   reset                                Return to the built-in Omarchy bar
   defaults                             Restore the default bar and service widgets
   position <top|bottom|left|right>     Bar position
-  transparent <true|false>             Bar transparency
+  transparent <true|false|toggle>      Bar transparency
 
 Bar widgets are added, moved, removed, and configured with 'omarchy bar plugin'.
 
@@ -140,9 +140,14 @@ cmd_transparent() {
   local transparent="${1:-}"
   [[ -n $transparent ]] || fail "transparent is required"
   [[ $# -eq 1 ]] || fail "transparent takes a single value"
-  [[ $transparent =~ ^(true|false)$ ]] || fail "transparent must be true or false"
-  commit "$NORMALIZE | .bar.transparent = \$transparent" --argjson transparent "$transparent"
-  echo "Bar transparency set to $transparent"
+  [[ $transparent =~ ^(true|false|toggle)$ ]] || fail "transparent must be true, false, or toggle"
+  if [[ $transparent == "toggle" ]]; then
+    commit "$NORMALIZE | .bar.transparent = (.bar.transparent != true)"
+    echo "Bar transparency toggled"
+  else
+    commit "$NORMALIZE | .bar.transparent = \$transparent" --argjson transparent "$transparent"
+    echo "Bar transparency set to $transparent"
+  fi
 }
 
 # --------------------------------------------------------------------- dispatch

@@ -136,6 +136,19 @@ assert(
   !defaultById['trigger.toggle.direct-boot'] && !defaultById['trigger.toggle.passwordless-sudo'],
   'menu removes the relocated toggles from Trigger > Toggle'
 )
+assert(
+  defaultById['style.bar.position'].kind === 'menu',
+  'menu groups Menu Bar positions in a submenu'
+)
+assert(
+  ['top', 'bottom', 'left', 'right'].every(position => defaultById[`style.bar.position.${position}`].action === `omarchy-bar position ${position}`),
+  'menu lists all Menu Bar positions under Position'
+)
+assertEqual(
+  defaultById['style.bar.transparency'].action,
+  'omarchy-bar transparent toggle',
+  'menu exposes Menu Bar transparency as a toggle'
+)
 assertEqual(
   defaultById['trigger.hardware.laptop-display'].when,
   'omarchy-hw-laptop',
