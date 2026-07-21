@@ -106,7 +106,7 @@ python-poetry-core
 python-terminaltexteffects
 qemu-user-static-binfmt
 qt5-wayland
-quickshell
+quickshell-git
 ripgrep
 ruby
 rust
