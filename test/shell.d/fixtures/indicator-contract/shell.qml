@@ -25,9 +25,20 @@ ShellRoot {
   }
 
   QtObject {
+    id: idleService
+    property bool stayAwake: false
+    readonly property bool idleEnabled: !stayAwake
+    function setIdleEnabled(value) {
+      stayAwake = !value
+    }
+  }
+
+  QtObject {
     id: mockShell
     function firstPartyServiceFor(id) {
-      return id === "omarchy.notifications" ? notificationService : null
+      if (id === "omarchy.notifications") return notificationService
+      if (id === "omarchy.idle") return idleService
+      return null
     }
   }
 
@@ -151,7 +162,7 @@ ShellRoot {
         stayAwake.moduleName = "StayAwake"
         root.injectBar(stayAwake)
         stayAwake.triggerPress(Qt.LeftButton)
-        root.assertTrue(root.commandCount("omarchy-toggle-idle") === 1, "Stay Awake left click runs idle toggle command")
+        root.assertTrue(idleService.stayAwake === true, "Stay Awake left click toggles the idle service")
       }
 
       root.writeResult()
