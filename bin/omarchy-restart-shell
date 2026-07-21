@@ -18,15 +18,10 @@ if [[ $(hyprctl -j monitors 2>/dev/null) == *'"LOCK"'* ]]; then
   exit 1
 fi
 
-for (( attempt = 0; attempt < 50; attempt++ )); do
-  quickshell kill -p "$CONFIG_DIR" --any-display >/dev/null 2>&1 || break
-  sleep 0.1
-done
-
-if (( attempt == 50 )); then
-  echo "Could not stop all Omarchy shell instances." >&2
-  exit 1
-fi
+# Each kill stops the oldest matching instance and only returns once it has
+# fully exited, so the no-duplicate launch below can't race a dying shell.
+# Requires our quickshell-git build; 0.3.0's kill returns immediately.
+while timeout 5 quickshell kill -p "$CONFIG_DIR" --any-display >/dev/null 2>&1; do :; done
 
 setsid quickshell -n -p "$CONFIG_DIR" >/dev/null 2>&1 &
 

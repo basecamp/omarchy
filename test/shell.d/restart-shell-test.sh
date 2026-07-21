@@ -5,7 +5,15 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 test_tmp=$(mktemp -d)
-trap 'rm -rf "$test_tmp"' EXIT
+restart_pid_one=""
+restart_pid_two=""
+
+cleanup() {
+  [[ -n $restart_pid_one ]] && kill "$restart_pid_one" 2>/dev/null || true
+  [[ -n $restart_pid_two ]] && kill "$restart_pid_two" 2>/dev/null || true
+  rm -rf "$test_tmp"
+}
+trap cleanup EXIT
 
 wrapper_root="$test_tmp/wrapper-root"
 wrapper_bin="$test_tmp/wrapper-bin"
@@ -74,7 +82,8 @@ case " $* " in
   *' kill -p '*)
     pid=$(head -n 1 "$OMARCHY_TEST_QS_STATE")
     [[ $pid =~ ^[0-9]+$ ]] || exit 1
-    printf 'stopped:%s\n' "$pid" >>"$OMARCHY_TEST_QS_LOG"
+    kill "$pid" 2>/dev/null
+    while kill -0 "$pid" 2>/dev/null; do sleep 0.01; done
     awk 'NR > 1' "$OMARCHY_TEST_QS_STATE" >"$OMARCHY_TEST_QS_STATE.next"
     mv "$OMARCHY_TEST_QS_STATE.next" "$OMARCHY_TEST_QS_STATE"
     ;;
@@ -98,7 +107,11 @@ SH
 
 chmod +x "$restart_bin/qs" "$restart_bin/quickshell" "$restart_bin/hyprctl"
 
-printf '101\n202\n' >"$restart_state"
+sleep 30 &
+restart_pid_one=$!
+sleep 30 &
+restart_pid_two=$!
+printf '%s\n%s\n' "$restart_pid_one" "$restart_pid_two" >"$restart_state"
 
 PATH="$restart_bin:$PATH" \
 OMARCHY_PATH="$restart_root" \
@@ -108,8 +121,16 @@ OMARCHY_TEST_QS_LOG="$restart_log" \
 OMARCHY_TEST_IPC_LOG="$ipc_log" \
   timeout 5 "$ROOT/bin/omarchy-restart-shell"
 
-grep -F 'stopped:101' "$restart_log" >/dev/null || fail "restart stops the first matching shell instance"
-grep -F 'stopped:202' "$restart_log" >/dev/null || fail "restart stops duplicate matching shell instances"
+if kill -0 "$restart_pid_one" 2>/dev/null; then
+  fail "restart stops the first matching shell instance"
+fi
+if kill -0 "$restart_pid_two" 2>/dev/null; then
+  fail "restart stops duplicate matching shell instances"
+fi
+wait "$restart_pid_one" 2>/dev/null || true
+wait "$restart_pid_two" 2>/dev/null || true
+restart_pid_one=""
+restart_pid_two=""
 [[ $(<"$restart_state") == 303 ]] || fail "restart leaves exactly one fresh shell instance"
 [[ $(grep -c '^-n -p ' "$restart_log") == 1 ]] || fail "restart launches one fresh shell process"
 grep -F 'shell ping' "$ipc_log" >/dev/null || fail "restart waits for fresh shell IPC readiness"
