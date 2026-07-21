@@ -12,9 +12,16 @@ for flags_file in "$HOME"/.config/{chromium,chrome,google-chrome,google-chrome-b
 done
 
 brave_flags="$HOME/.config/brave-flags.conf"
-brave_origin_flags="$HOME/.config/brave-origin-beta-flags.conf"
-if [[ -f $brave_flags && -L $brave_origin_flags ]] && [[ $(readlink -f "$brave_flags") == $(readlink -f "$brave_origin_flags") ]]; then
+brave_origin_flags="$HOME/.config/brave-origin-flags.conf"
+brave_origin_beta_flags="$HOME/.config/brave-origin-beta-flags.conf"
+
+if [[ -f $brave_flags ]] && {
+  [[ -L $brave_origin_flags && $(readlink -f "$brave_flags") == $(readlink -f "$brave_origin_flags") ]] ||
+  [[ -L $brave_origin_beta_flags && $(readlink -f "$brave_flags") == $(readlink -f "$brave_origin_beta_flags") ]]
+}; then
   echo "Skip Brave flags shared with Brave Origin until its wrapper supports multiple flags"
 else
   add_webgpu_adapter_flag "$brave_flags"
+  add_webgpu_adapter_flag "$brave_origin_flags"
+  add_webgpu_adapter_flag "$brave_origin_beta_flags"
 fi
