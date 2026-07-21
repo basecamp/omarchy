@@ -1,0 +1,215 @@
+#!/bin/bash
+
+# omarchy:summary=Scale text everywhere — omarchy shell, GTK apps, and terminals
+# omarchy:args=[size|reset]
+# omarchy:examples=omarchy display text size | omarchy display text size 16 | omarchy display text size reset
+
+# One knob for apparent text size across the desktop. It drives three settings
+# in lockstep, all anchored to the shell default of 12px:
+#   • the omarchy shell's font base-size (~/.config/omarchy/shell.toml [font])
+#   • GNOME/GTK's text-scaling-factor    (12px -> 1.0, so 16 -> 1.333)
+#   • the terminal font point size       (12px -> 9pt, so terminal_pt = px * 9/12)
+# The shell override layers on top of the active theme (so the size survives
+# theme switches) and the shell watches the file, so shell text re-flows live.
+# Accepts an integer from 9 to 20 (px).
+
+MIN=9
+MAX=20
+GKEY_SCHEMA="org.gnome.desktop.interface"
+GKEY_NAME="text-scaling-factor"
+
+# Anchors: 12px shell base == factor 1.0 == 9pt terminal font.
+TERM_DEFAULT_PT=9
+SHELL_DEFAULT_PX=12
+
+shell_config="$HOME/.config/omarchy/shell.toml"
+
+usage() {
+  echo "Usage: omarchy-display-text-size [size|reset]"
+  echo "  (no args)   print the current text size, GTK factor, and terminal size"
+  echo "  <size>      set text size in px ($MIN–$MAX); shell + GTK + terminals together"
+  echo "  reset       return all three to their defaults (12px / 1.0 / 9pt)"
+}
+
+# ---- shell base-size: the rem root every shell type size derives from ----
+
+# Print the base-size currently set under [font], or nothing if unset.
+current_base_size() {
+  [[ -f $shell_config ]] || return 0
+  awk '
+    /^[[:space:]]*\[/ { in_font = ($0 ~ /^[[:space:]]*\[font\]([[:space:]]|$)/); next }
+    in_font && /^[[:space:]]*base-size[[:space:]]*=/ {
+      v = $0
+      sub(/^[^=]*=[[:space:]]*/, "", v)
+      sub(/[[:space:]]*(#.*)?$/, "", v)
+      print v
+      exit
+    }
+  ' "$shell_config"
+}
+
+# Upsert base-size under [font]: replace it in place if present, insert it into
+# an existing [font] section, or append a fresh [font] section otherwise. Other
+# sections and keys in the user override are left untouched.
+set_base_size() {
+  local size="$1"
+  mkdir -p "$(dirname "$shell_config")"
+
+  if [[ ! -f $shell_config ]]; then
+    printf '[font]\nbase-size = %s\n' "$size" >"$shell_config"
+    return
+  fi
+
+  local tmp
+  tmp="$(mktemp)"
+  awk -v val="$size" '
+    function emit_base() { print "base-size = " val; done = 1 }
+    /^[[:space:]]*\[/ {
+      if (in_font && !done) emit_base()
+      in_font = ($0 ~ /^[[:space:]]*\[font\]([[:space:]]|$)/)
+      print
+      next
+    }
+    in_font && /^[[:space:]]*base-size[[:space:]]*=/ {
+      if (!done) emit_base()
+      next
+    }
+    { print }
+    END {
+      if (in_font && !done) emit_base()
+      if (!done) {
+        if (NR > 0) print ""
+        print "[font]"
+        emit_base()
+      }
+    }
+  ' "$shell_config" >"$tmp"
+  mv "$tmp" "$shell_config"
+}
+
+# Drop the base-size line, returning the shell to the theme/default size.
+reset_base_size() {
+  [[ -f $shell_config ]] || return 0
+  local tmp
+  tmp="$(mktemp)"
+  awk '
+    /^[[:space:]]*\[/ { in_font = ($0 ~ /^[[:space:]]*\[font\]([[:space:]]|$)/) }
+    in_font && /^[[:space:]]*base-size[[:space:]]*=/ { next }
+    { print }
+  ' "$shell_config" >"$tmp"
+  mv "$tmp" "$shell_config"
+}
+
+# ---- GTK text-scaling-factor ----
+
+set_factor() {
+  command -v gsettings >/dev/null 2>&1 || return 0
+  gsettings set "$GKEY_SCHEMA" "$GKEY_NAME" "$1" 2>/dev/null || true
+}
+
+# ---- terminal font point size ----
+
+# px base-size -> terminal point size, rounded to the nearest integer.
+term_pt_for() {
+  awk -v s="$1" -v p="$TERM_DEFAULT_PT" -v b="$SHELL_DEFAULT_PX" \
+    'BEGIN { printf "%d", int(s * p / b + 0.5) }'
+}
+
+# Set the font point size in every terminal config that exists. Family is left
+# untouched — that is omarchy-font-set's job. Live-reload signals mirror
+# omarchy-font-set; foot has no reload signal, so running instances are nudged.
+set_terminal_size() {
+  local pt="$1"
+
+  if [[ -f ~/.config/alacritty/alacritty.toml ]]; then
+    sed -i -E "s/^size[[:space:]]*=.*/size = $pt/" ~/.config/alacritty/alacritty.toml
+  fi
+
+  if [[ -f ~/.config/kitty/kitty.conf ]]; then
+    sed -i -E "s/^font_size[[:space:]]+.*/font_size $pt.0/" ~/.config/kitty/kitty.conf
+    pkill -USR1 kitty 2>/dev/null || true
+  fi
+
+  if [[ -f ~/.config/ghostty/config ]]; then
+    sed -i -E "s/^font-size = .*/font-size = $pt/" ~/.config/ghostty/config
+    pkill -SIGUSR2 ghostty 2>/dev/null || true
+  fi
+
+  if [[ -f ~/.config/foot/foot.ini ]]; then
+    sed -i -E "s/(:size=)[0-9.]+/\1$pt/" ~/.config/foot/foot.ini
+    # Foot has no config-reload signal, so a running instance keeps its startup
+    # size until relaunched (new windows pick up the change). Nudge the user —
+    # but reuse the same notification id (freedesktop replaces_id) so dragging
+    # through several sizes refreshes one toast instead of stacking a pile.
+    if command -v omarchy-notification-send >/dev/null 2>&1 && pgrep -x foot >/dev/null 2>&1; then
+      local id_file="${XDG_RUNTIME_DIR:-/tmp}/omarchy-display-text-size.foot-notif-id"
+      local prev_id=""
+      [[ -f $id_file ]] && read -r prev_id <"$id_file" 2>/dev/null
+      local replace=()
+      [[ $prev_id =~ ^[0-9]+$ ]] && replace=(-r "$prev_id")
+      local new_id
+      new_id="$(omarchy-notification-send \
+        "Restart Foot to apply the new terminal font size" \
+        "${replace[@]}" -p 2>/dev/null)" || true
+      [[ $new_id =~ ^[0-9]+$ ]] && printf '%s\n' "$new_id" >"$id_file"
+    fi
+  fi
+}
+
+# Report the current terminal point size from whichever config we find first.
+term_current_pt() {
+  if [[ -f ~/.config/ghostty/config ]]; then
+    grep -oP '^font-size = \K[0-9.]+' ~/.config/ghostty/config | head -1
+  elif [[ -f ~/.config/alacritty/alacritty.toml ]]; then
+    grep -oP '^size[[:space:]]*=[[:space:]]*\K[0-9.]+' ~/.config/alacritty/alacritty.toml | head -1
+  elif [[ -f ~/.config/kitty/kitty.conf ]]; then
+    grep -oP '^font_size[[:space:]]+\K[0-9.]+' ~/.config/kitty/kitty.conf | head -1
+  elif [[ -f ~/.config/foot/foot.ini ]]; then
+    grep -oP ':size=\K[0-9.]+' ~/.config/foot/foot.ini | head -1
+  fi
+}
+
+case "${1:-}" in
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  "")
+    cur="$(current_base_size)"
+    size="${cur:-12 (default)}"
+    if command -v gsettings >/dev/null 2>&1; then
+      factor="$(gsettings get "$GKEY_SCHEMA" "$GKEY_NAME" 2>/dev/null)"
+    else
+      factor="n/a (gsettings not installed)"
+    fi
+    term="$(term_current_pt)"
+    printf 'text size: %s px\ngtk text-scaling-factor: %s\nterminal font: %s pt\n' \
+      "$size" "$factor" "${term:-n/a}"
+    exit 0
+    ;;
+  reset | default)
+    reset_base_size
+    if command -v gsettings >/dev/null 2>&1; then
+      gsettings reset "$GKEY_SCHEMA" "$GKEY_NAME" 2>/dev/null || true
+    fi
+    set_terminal_size "$TERM_DEFAULT_PT"
+    exit 0
+    ;;
+esac
+
+size="$1"
+if [[ ! $size =~ ^[0-9]+$ ]] || ((size < MIN || size > MAX)); then
+  echo "Size must be an integer between $MIN and $MAX (px)." >&2
+  usage >&2
+  exit 1
+fi
+
+# Shell side: base-size in px (the omarchy shell's rem root).
+set_base_size "$size"
+
+# GTK side: multiplier anchored so 12px == 1.0.
+factor="$(awk -v s="$size" -v b="$SHELL_DEFAULT_PX" 'BEGIN { printf "%.4f", s / b }')"
+set_factor "$factor"
+
+# Terminal side: point size anchored so 12px == 9pt.
+set_terminal_size "$(term_pt_for "$size")"
