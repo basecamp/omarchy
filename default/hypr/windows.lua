@@ -22,4 +22,4 @@ o.window(
 require("default.hypr.apps")
 
 -- Apply default opacity after apps have had a chance to opt out.
-o.window({ tag = "default-opacity" }, { opacity = "0.97 0.9" })
+o.window({ tag = "default-opacity" }, { opacity = "0.985 0.95" })
