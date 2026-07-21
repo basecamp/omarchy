@@ -6,7 +6,7 @@
 
 # Schedule the shutdown in the user manager so closing the terminal's systemd
 # scope cannot terminate it before it runs.
-systemd-run --user --collect --quiet --on-active="2s" systemctl poweroff --no-wall || exit 1
+systemd-run --user --collect --quiet --on-active="2s" --timer-property=AccuracySec=100ms systemctl poweroff --no-wall || exit 1
 
 omarchy-state clear re*-required
 
