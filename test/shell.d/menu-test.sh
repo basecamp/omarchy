@@ -64,6 +64,20 @@ assert(menu.isDescendantOf(merged.items, 'style.theme', 'style'), 'menu detects 
 assertEqual(menu.childCount(merged.items, merged.itemOrder, 'style'), 1, 'menu counts children')
 assertEqual(menu.labelFor({ id: 'style.theme', label: 'Theme', checked: 'cmd' }, { 'style.theme': true }), 'Theme ✓', 'menu appends checked marker')
 
+const visibilityItems = {
+  hardware: menu.normalizeItem('hardware', { label: 'Hardware' }),
+  laptop: menu.normalizeItem('hardware.laptop', { label: 'Laptop', when: 'is-laptop', action: 'toggle-laptop' }),
+  nested: menu.normalizeItem('nested', { label: 'Nested' }),
+  branch: menu.normalizeItem('nested.branch', { label: 'Branch' }),
+  leaf: menu.normalizeItem('nested.branch.leaf', { label: 'Leaf', when: 'has-leaf', action: 'run-leaf' }),
+  dynamic: menu.normalizeItem('dynamic', { label: 'Dynamic', provider: 'items' })
+}
+const visibilityOrder = Object.keys(visibilityItems)
+assert(!menu.isVisible(visibilityItems, visibilityOrder, { 'hardware.laptop': false }, visibilityItems.hardware), 'menu hides a submenu with no visible children')
+assert(menu.isVisible(visibilityItems, visibilityOrder, { 'hardware.laptop': true }, visibilityItems.hardware), 'menu shows a submenu with a visible child')
+assert(!menu.isVisible(visibilityItems, visibilityOrder, { 'nested.branch.leaf': false }, visibilityItems.nested), 'menu hides recursively empty submenus')
+assert(menu.isVisible(visibilityItems, visibilityOrder, {}, visibilityItems.dynamic), 'menu keeps provider-backed submenus visible')
+
 const entry = merged.items['style.theme']
 assert(menu.matchesQuery(entry, 'theme', true), 'menu matches labels and aliases')
 assert(menu.matchesQuery(entry, 'colors', true), 'menu matches aliases')
@@ -121,6 +135,16 @@ assert(
 assert(
   !defaultById['trigger.toggle.direct-boot'] && !defaultById['trigger.toggle.passwordless-sudo'],
   'menu removes the relocated toggles from Trigger > Toggle'
+)
+assertEqual(
+  defaultById['trigger.hardware.laptop-display'].when,
+  'omarchy-hw-laptop',
+  'menu only shows Laptop Display on laptops'
+)
+assertEqual(
+  defaultById['trigger.hardware.mirror-display'].when,
+  'omarchy-hw-laptop',
+  'menu only shows Mirror Display on laptops'
 )
 assert(
   /font\.family: row\.iconFont\.length > 0 \? row\.iconFont : root\.fontFamily/.test(menuQml),

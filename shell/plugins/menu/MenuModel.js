@@ -173,6 +173,25 @@ function childCount(items, itemOrder, id) {
   return count
 }
 
+function isVisible(items, itemOrder, whenResults, entry, depth) {
+  if (!entry) return false
+  if (entry.when && whenResults && whenResults[entry.id] === false) return false
+  if (entry.kind !== "menu" && entry.kind !== "link") return true
+  if (entry.provider) return true
+
+  var guard = depth || 0
+  if (guard >= 32) return false
+
+  var target = entry.kind === "link" ? entry.target : entry.id
+  var order = Array.isArray(itemOrder) ? itemOrder : []
+  for (var i = 0; i < order.length; i++) {
+    var child = item(items, order[i])
+    if (child && child.parent === target && isVisible(items, itemOrder, whenResults, child, guard + 1)) return true
+  }
+
+  return false
+}
+
 function labelFor(entry, checkedResults) {
   if (!entry) return ""
   if (entry.checked && checkedResults && checkedResults[entry.id]) return entry.label + " ✓"
@@ -282,6 +301,7 @@ if (typeof module !== "undefined") {
     parentPathFor: parentPathFor,
     isDescendantOf: isDescendantOf,
     childCount: childCount,
+    isVisible: isVisible,
     labelFor: labelFor,
     searchableToken: searchableToken,
     leafIdFor: leafIdFor,
