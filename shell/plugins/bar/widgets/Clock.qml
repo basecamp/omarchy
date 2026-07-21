@@ -12,7 +12,7 @@ BarWidget {
   property date displayDate: clock.date
 
   readonly property string activeFormat: alt
-    ? setting("formatAlt", "d MMMM 'W'ww yyyy")
+    ? (bar && bar.vertical ? setting("verticalFormatAlt", "dd\nMMM\n'W'ww\nyyyy") : setting("formatAlt", "d MMMM 'W'ww yyyy"))
     : (bar && bar.vertical ? setting("verticalFormat", "HH\n—\nmm") : setting("format", "dddd HH:mm"))
   readonly property string displayText: formatted(displayDate)
   readonly property var verticalLines: displayText.split("\n")
@@ -71,17 +71,21 @@ BarWidget {
     Column {
       visible: root.vertical
       anchors.fill: parent
+      spacing: 1
 
       Repeater {
         model: root.verticalLines
 
         OpticalGlyph {
           required property string modelData
+          required property int index
           width: button.width
           height: Style.bar.iconSlot
           text: modelData
           fontFamily: button.fontFamily
-          fontSize: button.fontSize
+          fontSize: root.alt && index === root.verticalLines.length - 1
+                ? button.fontSize * 0.8
+                : button.fontSize
           color: button.foreground
         }
       }
