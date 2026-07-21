@@ -23,7 +23,7 @@
   "remove": {"icon":"󰭌","label":"Remove","aliases":["uninstall"],"keywords":""},
   "update": {"icon":"","label":"Update","aliases":["restart","refresh"],"keywords":"upgrade channel firmware timezone"},
   "about": {"icon":"","label":"About","keywords":"omarchy system information","action":"omarchy-launch-about"},
-  "system": {"icon":"","label":"System","aliases":["power-menu"],"keywords":"lock logout restart shutdown suspend hibernate"},
+  "system": {"icon":"","label":"System","aliases":["power-menu"],"keywords":"lock logout reboot shutdown suspend hibernate"},
 
   // System
   "system.screensaver": {"icon":"󱄄","label":"Screensaver","action":"omarchy-launch-screensaver force"},
@@ -31,7 +31,7 @@
   "system.suspend": {"icon":"󰒲","label":"Suspend","keywords":"sleep","when":"! omarchy-toggle-enabled suspend-off","action":"systemctl suspend"},
   "system.hibernate": {"icon":"󰤁","label":"Hibernate","keywords":"sleep","when":"omarchy-hibernation-available","action":"systemctl hibernate"},
   "system.logout": {"icon":"󰍃","label":"Logout","keywords":"sign out","action":"omarchy-system-logout"},
-  "system.restart": {"icon":"󰜉","label":"Restart","keywords":"reboot","action":"omarchy-system-reboot"},
+  "system.reboot": {"icon":"󰜉","label":"Reboot","keywords":"restart","action":"omarchy-system-reboot"},
   "system.shutdown": {"icon":"󰐥","label":"Shutdown","keywords":"power off","action":"omarchy-system-shutdown"},
 
   // Learn
