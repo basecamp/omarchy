@@ -16,7 +16,13 @@ Panel {
   // Centralized close so callers can't forget to drop the passphrase prompt.
   function close() {
     root.controller.hide()
+    cancelPasswordPrompt()
+  }
+
+  function cancelPasswordPrompt() {
     passwordSsid = ""
+    passwordText = ""
+    identityText = ""
   }
 
   // Live connection details from `ip` / /sys / iw.
@@ -84,6 +90,7 @@ Panel {
   property string failureReason: ""
   property string passwordSsid: ""
   property string passwordText: ""
+  property string identityText: ""
 
   // True while any wifi action is mid-flight. Rows
   // disable themselves on this so clicks on the other rows don't silently
@@ -489,7 +496,10 @@ Panel {
   }
 
   function openPasswordPrompt(ssid) {
-    if (passwordSsid !== ssid) passwordText = ""
+    if (passwordSsid !== ssid) {
+      passwordText = ""
+      identityText = ""
+    }
     passwordSsid = ssid
   }
 
@@ -565,6 +575,12 @@ Panel {
 
   function connectWithPassphrase(ssid, passphrase) {
     runNetworkAction("connect", networkForSsid(ssid), function(network) { network.connectWithPsk(passphrase) })
+  }
+
+  function connectEnterprise(ssid, identity, passphrase) {
+    runNetworkAction("connect", networkForSsid(ssid), function(network) {
+      Quickshell.execDetached(["bash", "-c", Model.enterpriseConnectScript, "nmcli-eap", ssid, identity, passphrase])
+    })
   }
 
   function disconnect(network) {
@@ -1234,6 +1250,9 @@ Panel {
     readonly property bool isConnected: net && net.connected
     readonly property bool isKnown: !!(net && net.known)
     readonly property bool isProtected: net ? root.isProtected(net.security) : false
+    readonly property bool isEnterprise: net
+      ? (net.security === WifiSecurityType.Wpa2Eap || net.security === WifiSecurityType.WpaEap)
+      : false
     readonly property bool canForgetFromLock: isKnown && isProtected && !isConnected
     readonly property bool isSelected: root.focusSection === "wifi" && root.selectedIndex === index
     readonly property bool forgetFocused: isSelected && root.wifiActionFocused && canForgetFromLock
@@ -1249,6 +1268,12 @@ Panel {
     readonly property bool isBusy: root.actionKind !== "" && root.actionSsid === (net ? net.ssid : "")
     readonly property bool isFailed: root.failureReason !== "" && root.failureSsid === (net ? net.ssid : "")
     readonly property bool isPasswordOpen: root.passwordSsid !== "" && root.passwordSsid === (net ? net.ssid : "")
+
+    function submitCredentials() {
+      if (!net || root.busy || root.passwordText.length === 0) return
+      if (!isEnterprise) return root.connectWithPassphrase(net.ssid, root.passwordText)
+      if (root.identityText.length > 0) root.connectEnterprise(net.ssid, root.identityText, root.passwordText)
+    }
 
     Connections {
       target: row.net ? row.net.network : null
@@ -1449,15 +1474,40 @@ Panel {
       anchors.leftMargin: Style.space(10)
       anchors.rightMargin: Style.space(10)
       anchors.topMargin: Style.space(4)
-      implicitHeight: pwField.implicitHeight + Style.spacing.rowGap
+      implicitHeight: (idField.visible ? idField.implicitHeight + Style.space(4) : 0) + pwField.implicitHeight + Style.spacing.rowGap
       height: implicitHeight
+
+      TextField {
+        id: idField
+        visible: row.isEnterprise && !row.isBusy && !row.isFailed
+        anchors.left: parent.left
+        anchors.right: connectPwBtn.left
+        anchors.top: parent.top
+        anchors.rightMargin: Style.space(6)
+        placeholderText: "Identity (user@domain)"
+        font.family: Style.font.family
+        font.pixelSize: Style.font.body
+        foreground: root.bar.foreground
+        horizontalPadding: Style.spacing.controlGap
+        verticalPadding: Style.spacing.controlPaddingY
+        enabled: !row.isBusy
+        text: row.isPasswordOpen ? root.identityText : ""
+
+        onAccepted: pwField.forceActiveFocus()
+        onTextChanged: if (row.isPasswordOpen && text !== root.identityText) root.identityText = text
+        Keys.onEscapePressed: root.cancelPasswordPrompt()
+
+        onVisibleChanged: if (visible) Qt.callLater(forceActiveFocus)
+        Component.onCompleted: if (visible) Qt.callLater(forceActiveFocus)
+      }
 
       TextField {
         id: pwField
         visible: !row.isBusy && !row.isFailed
         anchors.left: parent.left
         anchors.right: connectPwBtn.left
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: Style.spacing.rowGap / 2
         anchors.rightMargin: Style.space(6)
         password: true
         placeholderText: "Passphrase"
@@ -1469,14 +1519,12 @@ Panel {
         enabled: !row.isBusy
         text: row.isPasswordOpen ? root.passwordText : ""
 
-        onAccepted: {
-          if (!root.busy && row.net && text.length > 0) root.connectWithPassphrase(row.net.ssid, text)
-        }
+        onAccepted: row.submitCredentials()
         onTextChanged: if (row.isPasswordOpen && text !== root.passwordText) root.passwordText = text
-        Keys.onEscapePressed: { root.passwordSsid = ""; root.passwordText = "" }
+        Keys.onEscapePressed: root.cancelPasswordPrompt()
 
-        onVisibleChanged: if (visible) Qt.callLater(forceActiveFocus)
-        Component.onCompleted: if (visible) Qt.callLater(forceActiveFocus)
+        onVisibleChanged: if (visible && !row.isEnterprise) Qt.callLater(forceActiveFocus)
+        Component.onCompleted: if (visible && !row.isEnterprise) Qt.callLater(forceActiveFocus)
       }
 
       BorderSurface {
@@ -1509,12 +1557,12 @@ Panel {
         visible: !row.isBusy && !row.isFailed
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        enabled: row.net && pwField.text.length > 0
+        enabled: row.net && pwField.text.length > 0 && (!row.isEnterprise || idField.text.length > 0)
         iconText: "󰄬"
         tooltipText: "Connect"
         foreground: root.bar.foreground
         fontFamily: root.bar.fontFamily
-        onClicked: if (row.net) root.connectWithPassphrase(row.net.ssid, root.passwordText)
+        onClicked: row.submitCredentials()
       }
     }
   }
