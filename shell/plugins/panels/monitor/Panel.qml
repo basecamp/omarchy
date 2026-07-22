@@ -484,7 +484,6 @@ Panel {
           // ---------- Hero: display icon · title/status ----------
           Item {
             width: parent.width
-            visible: root.brightnessAvailable
             implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight)
 
             Text {
@@ -517,7 +516,13 @@ Panel {
 
               Text {
                 id: heroLabel
-                text: root.brightnessName(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent).toUpperCase()
+                text: {
+                  if (root.brightnessAvailable) {
+                    return root.brightnessName(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent).toUpperCase()
+                  }
+                  var count = root.enabledDisplayCount
+                  return (count === 1 ? "1 display" : count + " displays").toUpperCase()
+                }
                 color: Qt.darker(root.bar.foreground, 1.4)
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.caption
@@ -601,14 +606,6 @@ Panel {
                 }
               }
             }
-          }
-
-          Text {
-            visible: !root.brightnessAvailable
-            text: "No controllable backlight found"
-            color: Qt.darker(root.bar.foreground, 1.5)
-            font.family: root.bar.fontFamily
-            font.pixelSize: Style.font.bodySmall
           }
 
           // ---------- Text size ----------
