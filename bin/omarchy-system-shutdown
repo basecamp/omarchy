@@ -8,7 +8,7 @@
 # scope cannot terminate it before it runs.
 systemd-run --user --collect --quiet --on-active="2s" --timer-property=AccuracySec=100ms systemctl poweroff --no-wall || exit 1
 
-omarchy-osd -i shutdown -m "Shutting down…" -d 5000
+omarchy-osd -i shutdown -m "Shutting down…" -d 5000 --fit
 
 omarchy-state clear re*-required
 

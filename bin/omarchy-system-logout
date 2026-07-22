@@ -6,6 +6,8 @@
 
 nohup bash -c "sleep 2 && uwsm stop" >/dev/null 2>&1 &
 
+omarchy-osd -i logout -m "Logging out…" -d 5000 --fit
+
 # Now close all windows
 omarchy-hyprland-window-close-all
 sleep 1 # Allow apps like Chrome to shutdown correctly
