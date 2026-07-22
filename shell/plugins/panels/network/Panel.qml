@@ -1028,6 +1028,7 @@ Panel {
             Button {
               id: speedRunButton
               text: root.speedTestRunning ? "Running..." : "Run"
+              tooltipText: "Run using fast.com"
               enabled: !root.speedTestRunning
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily

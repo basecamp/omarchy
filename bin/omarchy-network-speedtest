@@ -8,8 +8,8 @@ set -e
 
 direction="${1:-}"
 probe=1.1.1.1
-download_bytes=25000000
-upload_blocks=64
+parallel=8
+url_count=3
 
 case "$direction" in
   down | up)
@@ -40,32 +40,72 @@ if ! omarchy-cmd-present curl; then
   exit 1
 fi
 
-traffic_pid=""
+fast_token="YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm"
+fast_api_url="https://api.fast.com/netflix/speedtest/v2?https=true&token=$fast_token&urlCount=$url_count"
+
+fast_urls=$(curl -fsS "$fast_api_url" 2>/dev/null | jq -r '.targets[]?.url // empty')
+
+if [[ -z $fast_urls ]]; then
+  echo "Failed to fetch speed test endpoints" >&2
+  exit 1
+fi
+
+traffic_pids=()
 
 cleanup() {
-  if [[ -n $traffic_pid ]]; then
-    pkill -TERM -P "$traffic_pid" 2>/dev/null || true
-    kill "$traffic_pid" 2>/dev/null || true
-    wait "$traffic_pid" 2>/dev/null || true
-  fi
+  local pid
+  for pid in "${traffic_pids[@]}"; do
+    [[ -n $pid ]] || continue
+    pkill -TERM -P "$pid" 2>/dev/null || true
+    kill "$pid" 2>/dev/null || true
+  done
+  for pid in "${traffic_pids[@]}"; do
+    [[ -n $pid ]] || continue
+    wait "$pid" 2>/dev/null || true
+  done
 }
 trap cleanup EXIT
 
-if [[ $direction == "down" ]]; then
-  while true; do
-    curl -fsS -o /dev/null "https://speed.cloudflare.com/__down?bytes=$download_bytes" 2>/dev/null || exit
-  done &
-else
-  while true; do
-    dd if=/dev/zero bs=1M count="$upload_blocks" 2>/dev/null | curl -fsS -o /dev/null -X POST --data-binary @- "https://speed.cloudflare.com/__up" 2>/dev/null || exit
-  done &
-fi
-traffic_pid=$!
+# Round-robin across the returned URLs so we spread load across Netflix OCA nodes.
+traffic_worker() {
+  local urls=("$@")
+  local url_count=${#urls[@]}
+  local idx=$RANDOM
+  if [[ $direction == "down" ]]; then
+    while true; do
+      url=${urls[$((idx % url_count))]}
+      curl -fsS -o /dev/null "$url" 2>/dev/null || return
+      idx=$((idx + 1))
+    done
+  else
+    while true; do
+      url=${urls[$((idx % url_count))]}
+      dd if=/dev/zero bs=1M count=64 2>/dev/null | curl -fsS -o /dev/null -X POST --data-binary @- "$url" 2>/dev/null || return
+      idx=$((idx + 1))
+    done
+  fi
+}
+
+for (( i = 0; i < parallel; i++ )); do
+  traffic_worker $fast_urls &
+  traffic_pids+=("$!")
+done
 
 rx_before=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
 tx_before=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
 
-while kill -0 "$traffic_pid" 2>/dev/null; do
+any_alive() {
+  local pid
+  for pid in "${traffic_pids[@]}"; do
+    [[ -n $pid ]] || continue
+    if kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+while any_alive; do
   sleep 1
   rx_after=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
   tx_after=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
@@ -87,4 +127,4 @@ while kill -0 "$traffic_pid" 2>/dev/null; do
   tx_before=$tx_after
 done
 
-wait "$traffic_pid" 2>/dev/null || true
+wait 2>/dev/null || true
