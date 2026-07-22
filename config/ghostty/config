@@ -4,7 +4,7 @@ config-file = ?"~/.config/omarchy/current/theme/ghostty.conf"
 # Font
 font-family = "JetBrainsMono Nerd Font"
 font-style = Regular
-font-size = 9
+font-size = 10.5
 
 # Window
 window-theme = ghostty
@@ -15,12 +15,15 @@ resize-overlay = never
 gtk-toolbar-style = flat
 
 # Cursor styling
-cursor-style = "block"
-cursor-style-blink = false
+cursor-style = block
+cursor-style-blink = true
+cursor-color = #7aa2f7
+cursor-text = #1a1b26
 
 # Cursor styling + SSH session terminfo
 # (all shell integration options must be passed together)
-shell-integration-features = no-cursor,ssh-env
+shell-integration = detect
+shell-integration-features = cursor,sudo,title,ssh-env
 
 # Keyboard bindings
 keybind = shift+insert=paste_from_clipboard
@@ -31,7 +34,56 @@ keybind = super+control+shift+alt+arrow_left=resize_split:left,100
 keybind = super+control+shift+alt+arrow_right=resize_split:right,100
 
 # Slowdown mouse scrolling
-mouse-scroll-multiplier = 0.95
+mouse-scroll-multiplier = 1.15
 
 # Fix general slowness on hyprland (https://github.com/ghostty-org/ghostty/discussions/3224)
 async-backend = epoll
+# ==========================================================
+# Premium Ghostty Settings
+# ==========================================================
+
+
+# Copy selected text automatically
+copy-on-select = clipboard
+
+# Allow selecting URLs easily
+click-repeat-interval = 300
+
+# Window Decorations
+window-save-state = always
+
+# Clipboard
+clipboard-read = allow
+clipboard-write = allow
+
+# Selection
+selection-invert-fg-bg = false
+
+# Links
+link-url = true
+
+# Working directory inheritance
+window-inherit-working-directory = true
+# New Tab
+keybind = ctrl+shift+t=new_tab
+
+# Close Tab
+keybind = ctrl+shift+w=close_surface
+
+# Next Tab
+keybind = ctrl+tab=next_tab
+
+# Previous Tab
+keybind = ctrl+shift+tab=previous_tab
+
+# Split Right
+keybind = ctrl+shift+d=new_split:right
+
+# Split Down
+keybind = ctrl+shift+e=new_split:down
+
+auto-update = off
+
+quit-after-last-window-closed = true
+
+window-step-resize = true
