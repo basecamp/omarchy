@@ -29,9 +29,9 @@ Common prefixes include:
 - `theme-` - theme management
 - `update-` - update components
 
-Other current prefixes include:
-
-- `ac-`, `audio-`, `battery-`, `branch-`, `brightness-`, `channel-`, `config-`, `debug-`, `dev-`, `drive-`, `first-`, `font-`, `haptic-`, `hibernation-`, `hook-`, `hyprland-`, `menu-`, `migrate-`, `notification-`, `npm-`, `plymouth-`, `powerprofiles-`, `reinstall-`, `remove-`, `screensaver-`, `show-`, `snapshot-`, `state-`, `sudo-`, `system-`, `transcode-`, `tui-`, `tz-`, `upload-`, `version-`, `voxtype-`, `webapp-`, `wifi-`, `windows-`
+Do not maintain a second exhaustive prefix list here. Consult
+`GROUP_DESCRIPTIONS` when selecting or checking a command group so this
+guidance does not drift from the router.
 
 # Command Metadata
 
@@ -39,6 +39,8 @@ Commands in `bin/` can declare CLI metadata in comments near the top of the file
 
 Supported metadata keys:
 
+- `# omarchy:group=...` - override the command group inferred from the filename
+- `# omarchy:name=...` - override the command name inferred from the filename
 - `# omarchy:summary=...` - short help text
 - `# omarchy:args=...` - usage arguments
 - `# omarchy:examples=...` - examples separated with ` | `
@@ -99,6 +101,8 @@ Use these instead of raw shell commands:
 - `omarchy-notification-send` - send desktop notifications; do not call `notify-send` directly
 - `omarchy-hw-asus-rog` - detect ASUS ROG hardware (and similar `hw-*` commands)
 
+Commands installed by Omarchy's default package set are runtime invariants. Invoke them directly; do not add defensive `omarchy-cmd-present` / `omarchy-cmd-missing` checks around them. Use command-presence helpers only for genuinely optional dependencies or code that can run before the default package set is installed.
+
 Exceptions are allowed for migration and package-helper scripts where the helper may not be available yet, where the helper itself is being implemented, or where direct package-manager behavior is required.
 
 # Config Structure
@@ -111,35 +115,115 @@ Exceptions are allowed for migration and package-helper scripts where the helper
 
 Run focused automated tests for the area you changed. Current test entry points:
 
-- `./test/all` - aggregate runner for CLI and shell tests
+- `./test/all` - aggregate runner for CLI and shell tests; it intentionally does not run graphical acceptance tests
 - `./test/cli` - CLI routing, command metadata, theme helpers, and safe dispatch coverage
 - `./test/shell` - all Omarchy shell tests under `test/shell.d/`
 
 New Omarchy shell tests should live in `test/shell.d/*-test.sh` so `./test/shell` picks them up automatically. Source `test/shell.d/base-test.sh` for shared root-path discovery, assertions, and Node test helpers.
 
-For visual changes, such as omarchy-shell styling, desktop appearance, screenshots, or screen recording flows, verify with the running UI in addition to automated tests. Take and analyze screenshots with `omarchy capture screenshot fullscreen save`. For animation, transitions, capture, or screen recording behavior, make a short recording with `omarchy screenrecord --fullscreen`, stop it with `omarchy screenrecord --stop-recording`, and review the output before finishing.
+# Acceptance Tests
+
+The graphical acceptance suite lives in `test/acceptance` with test files under
+`test/acceptance.d/*-test.sh`. It exercises a real installed Omarchy desktop,
+including session health, shell surfaces, panels, keyboard navigation,
+representative applications, and system setup. Source
+`test/acceptance.d/base-test.sh` for the shared helpers.
+
+Run acceptance tests in a disposable VM through the sibling `omarchy-iso`
+repository, not in the active development session. The suite opens and closes
+applications and temporarily changes desktop configuration.
+
+For acceptance-test-only changes, reuse an installed base and sync the suite:
+
+```bash
+cd ../omarchy-iso
+./bin/omarchy-iso-test release/<iso>.iso --reuse-base --sync-omarchy ../omarchy --no-preview
+```
+
+Use `--sync-all ../omarchy` instead of `--sync-omarchy ../omarchy` when the
+acceptance run must exercise local `bin/`, `config/`, or `shell/` source too.
+Changes to package manifests, installation, finalization, or shipped defaults
+require a fresh ISO built from the local checkouts and a run without
+`--reuse-base`:
+
+```bash
+cd ../omarchy-iso
+./bin/omarchy-iso-make --no-boot-offer --local-source ../omarchy ../omarchy-pkgs
+./bin/omarchy-iso-test release/<generated-iso>.iso --no-preview
+```
+
+Keep unrelated acceptance workflows in separate test files. The runner records
+a failed file and continues with the remaining files, which preserves as much
+diagnostic coverage as possible. Restore modified user state with traps, close
+anything the test opens, and capture every visually distinct state (including
+entered input where relevant) as `success-<step>.png`; failure helpers capture
+`failure-<step>.png`. The ISO harness collects the screenshots and logs under
+its timestamped `test-runs/` directory and opens the screenshots after the run
+unless `--no-preview` is passed.
+
+The ISO harness exercises compositor-level shortcuts with QMP virtual keyboard
+input. In-guest `wtype` is suitable for typing into focused controls, but it
+does not reliably prove that a global Hyprland keybinding works.
+
+# Visual Verification
+
+Visual changes must be verified in the running UI in addition to automated
+tests. This includes Omarchy shell styling and layout, panels, menus,
+notifications, desktop appearance, animations, transitions, screenshots, and
+screen recording flows. Creating an artifact is not sufficient: inspect it for
+clipping, overlap, incorrect spacing, stale state, focus problems, and visual
+regressions before finishing.
+
+Take a full-screen screenshot without opening the editor:
+
+```bash
+omarchy capture screenshot fullscreen save
+```
+
+The command prints the saved path and writes to the configured Pictures
+directory. Use `omarchy screenshot` for the interactive smart-region flow.
+Capture reference and candidate states as separate images when changing a
+layer-shell surface or layout, then compare both.
+
+Record a short full-screen video for animation, transition, timing, capture, or
+screen-recording changes:
+
+```bash
+omarchy screenrecord --fullscreen
+# Exercise the changed behavior.
+omarchy screenrecord --stop-recording
+```
+
+The stop command prints the saved video path in the configured Videos
+directory. Review the recording before finishing, and keep it short and focused
+on the changed behavior.
 
 For interactive UI work, use `wtype` to simulate keyboard input when available. Example: start the UI in the background, wait briefly for focus, then run `wtype -k Right -k Return` to exercise keyboard selection and confirm the resulting command output or state change. Prefer this over manual-only verification when a UI returns a selected value or changes a symlink/config.
 
-When testing layer-shell UI, capture the reference and candidate states as separate screenshots, then compare them visually before further edits. If a launched UI would otherwise remain open, keep track of its PID and stop it after the screenshot; avoid broad process kills unless checking with `ps` first.
+If a launched UI would otherwise remain open, keep track of its PID and stop it
+after the screenshot or recording; avoid broad process kills unless checking
+with `ps` first.
 
 # Omarchy shell
 
 The Quickshell desktop runs as a single long-running process out of
-`shell/`. Hyprland autostart launches it directly with `quickshell -p`; do
-not start additional standalone `quickshell -p` instances for individual
+`shell/`. Hyprland autostart launches it directly with `quickshell -n -p`;
+do not start additional standalone Quickshell instances for individual
 components.
 
 Run `omarchy-restart-shell` after making changes to QML files.
 
 Plugin contract:
 
-- Each plugin lives in its own directory under
-  `shell/plugins/<id>/` (first-party) or
-  `~/.config/omarchy/plugins/<id>/` (third-party).
-- Every plugin ships a `manifest.json` declaring `id`, `kinds`,
-  `activation`, and `entryPoints`. The full schema is in
-  [`docs/omarchy-shell.md`](docs/omarchy-shell.md).
+- First-party plugins live directly under `shell/plugins/` or one category
+  level deeper, such as `shell/plugins/panels/weather/`. First-party bar-only
+  widgets may use adjacent `*.manifest.json` files. Third-party plugins live
+  at `~/.config/omarchy/plugins/<id>/` with a `manifest.json` at the root.
+- Every plugin manifest declares `schemaVersion`, `id`, `name`, `version`,
+  `kinds`, and `entryPoints`. See
+  [`docs/omarchy-shell.md`](docs/omarchy-shell.md) and
+  `shell/services/PluginRegistry.qml` for the current contract; fields such as
+  `activation` are optional.
 - Entry-point QML files are `Item`s (not `ShellRoot`), and accept the
   shell-injected properties `omarchyPath`, `shell`, `manifest`, and
   `pluginRegistry` / `barWidgetRegistry` as appropriate.
@@ -151,10 +235,11 @@ IPC:
 - `bin/omarchy-shell` is the canonical IPC entry point. It forwards to
   the running shell and does not start it. Prefer it over re-implementing
   direct Quickshell socket calls in every CLI.
-- The `shell` IPC target exposes `ping`, `summon`, `hide`, `toggle`,
-  `rescanPlugins`, `setPluginEnabled`, and `listPlugins`. Individual
-  plugins can register additional IPC targets (the bar registers `bar`,
-  the background switcher registers `image-selector`).
+- The `shell` IPC target exposes lifecycle and configuration methods including
+  `ping`, `summon`, `hide`, `toggle`, `call`, `rescanPlugins`, `reloadConfig`,
+  `setPluginEnabled`, and `listPlugins`. Individual plugins can register
+  additional IPC targets (the bar registers `bar`, the background switcher
+  registers `image-selector`).
 
 Widget files in `shell/plugins/bar/widgets/` contain Nerd Font glyphs as raw
 unicode characters. The `Write` and `Edit` tools strip multi-byte
