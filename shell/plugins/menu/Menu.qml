@@ -182,10 +182,6 @@ Item {
     return MenuModel.normalizeAliases(value)
   }
 
-  function normalizeKeywords(id, aliases, raw) {
-    return MenuModel.normalizeKeywords(id, aliases, raw)
-  }
-
   function normalizeItem(id, raw) {
     return MenuModel.normalizeItem(id, raw)
   }
@@ -222,14 +218,12 @@ Item {
     "fonts": {
       script: "current=$(omarchy-font-current 2>/dev/null); omarchy-font-list 2>/dev/null | while read -r f; do [[ -z $f ]] && continue; printf '%s\\t%s\\t%s\\n' \"$f\" \"$f\" \"$current\"; done",
       icon: "",
-      actionFor: function(value) { return "omarchy-font-set '" + value.replace(/'/g, "'\\''") + "'" },
-      keywordsFor: function(value) { return value + " typeface" }
+      actionFor: function(value) { return "omarchy-font-set '" + value.replace(/'/g, "'\\''") + "'" }
     },
     "power-profiles": {
       script: "current=$(powerprofilesctl get 2>/dev/null); omarchy-powerprofiles-list 2>/dev/null | while read -r p; do [[ -z $p ]] && continue; printf '%s\\t%s\\t%s\\n' \"$p\" \"$p\" \"$current\"; done",
       icon: "\udb81\udc0b",
-      actionFor: function(value) { return "omarchy-powerprofiles-set autodetect '" + value.replace(/'/g, "'\\''") + "'" },
-      keywordsFor: function(value) { return value + " power profile" }
+      actionFor: function(value) { return "omarchy-powerprofiles-set autodetect '" + value.replace(/'/g, "'\\''") + "'" }
     }
   })
 
@@ -276,7 +270,6 @@ Item {
         label: label,
         title: "",
         target: "",
-        keywords: spec.keywordsFor(value),
         description: "",
         action: spec.actionFor(value),
         provider: "",
@@ -376,8 +369,8 @@ Item {
     return MenuModel.termInSearchWords(term, text)
   }
 
-  function keywordTextMatches(query, text) {
-    return MenuModel.keywordTextMatches(query, text)
+  function descriptionTextMatches(query, text) {
+    return MenuModel.descriptionTextMatches(query, text)
   }
 
   function matchesQuery(entry, query) {

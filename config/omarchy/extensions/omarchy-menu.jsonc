@@ -12,15 +12,14 @@
   //   target      Existing submenu id to open. Use for links/aliases.
   //   provider    Runtime provider function/command returning JSON rows.
   //   aliases     alternate `omarchy menu summon <name>` routes; also searchable.
-  //   keywords    Extra search terms beyond id/label/aliases.
   //   description Optional subtitle and extra search text.
   //   when        Shell condition; hide row when it fails.
   //   checked     Shell condition; append ✓ when it succeeds.
   //
   // Examples:
-  // "personal": {"icon":"","label":"Personal","keywords":"notes projects"},
-  // "personal.notes": {"icon":"󰎞","label":"Notes","action":"omarchy-launch-editor ~/notes","keywords":"notes"},
-  // "personal.files": {"icon":"","label":"Files","action":"uwsm-app -- nautilus ~/Documents","keywords":"files documents"},
+  // "personal": {"icon":"","label":"Personal"},
+  // "personal.notes": {"icon":"󰎞","label":"Notes","action":"omarchy-launch-editor ~/notes"},
+  // "personal.files": {"icon":"","label":"Files","action":"uwsm-app -- nautilus ~/Documents"},
   //
   // Only use provider when a provider_name function or command named "name"
   // returns JSON rows. Static submenus only need dotted ids.
