@@ -54,6 +54,8 @@ restart_root="$test_tmp/restart-root"
 restart_bin="$restart_root/bin"
 restart_state="$test_tmp/restart-pids"
 restart_log="$test_tmp/restart.log"
+restart_env_log="$test_tmp/restart-env.log"
+dispatch_log="$test_tmp/dispatch.log"
 ipc_log="$test_tmp/ipc.log"
 runtime_dir="$test_tmp/runtime"
 mkdir -p "$restart_root/shell" "$restart_bin" "$runtime_dir"
@@ -88,6 +90,7 @@ case " $* " in
     mv "$OMARCHY_TEST_QS_STATE.next" "$OMARCHY_TEST_QS_STATE"
     ;;
   *' -n -p '*)
+    printf '%s\n' "${OMARCHY_TEST_TRANSIENT_ENV-unset}" >"$OMARCHY_TEST_QS_ENV_LOG"
     printf '303\n' >"$OMARCHY_TEST_QS_STATE"
     ;;
 esac
@@ -102,6 +105,12 @@ if [[ ${1:-} == "-j" && ${2:-} == "monitors" ]]; then
   else
     printf '[]\n'
   fi
+elif [[ ${1:-} == "dispatch" && ${2:-} == hl.dsp.exec_cmd* ]]; then
+  printf '%s\n' "${2:-}" >>"$OMARCHY_TEST_DISPATCH_LOG"
+  env -u OMARCHY_TEST_TRANSIENT_ENV quickshell -n -p "$OMARCHY_PATH/shell"
+  printf 'ok\n'
+elif [[ ${1:-} == "dispatch" ]]; then
+  exit 1
 fi
 SH
 
@@ -118,7 +127,10 @@ OMARCHY_PATH="$restart_root" \
 XDG_RUNTIME_DIR="$runtime_dir" \
 OMARCHY_TEST_QS_STATE="$restart_state" \
 OMARCHY_TEST_QS_LOG="$restart_log" \
+OMARCHY_TEST_QS_ENV_LOG="$restart_env_log" \
+OMARCHY_TEST_DISPATCH_LOG="$dispatch_log" \
 OMARCHY_TEST_IPC_LOG="$ipc_log" \
+OMARCHY_TEST_TRANSIENT_ENV=leaked \
   timeout 5 "$ROOT/bin/omarchy-restart-shell"
 
 if kill -0 "$restart_pid_one" 2>/dev/null; then
@@ -133,6 +145,8 @@ restart_pid_one=""
 restart_pid_two=""
 [[ $(<"$restart_state") == 303 ]] || fail "restart leaves exactly one fresh shell instance"
 [[ $(grep -c '^-n -p ' "$restart_log") == 1 ]] || fail "restart launches one fresh shell process"
+[[ $(<"$restart_env_log") == "unset" ]] || fail "restart uses the Hyprland session environment for the fresh shell"
+grep -F 'hl.dsp.exec_cmd("quickshell -n -p $OMARCHY_PATH/shell")' "$dispatch_log" >/dev/null || fail "restart launches the fresh shell through Hyprland"
 grep -F 'shell ping' "$ipc_log" >/dev/null || fail "restart waits for fresh shell IPC readiness"
 pass "restart replaces duplicate shell instances"
 
@@ -145,6 +159,7 @@ locked_error=$(PATH="$restart_bin:$PATH" \
   OMARCHY_TEST_SESSION_LOCKED=1 \
   OMARCHY_TEST_QS_STATE="$restart_state" \
   OMARCHY_TEST_QS_LOG="$restart_log" \
+  OMARCHY_TEST_DISPATCH_LOG="$dispatch_log" \
   OMARCHY_TEST_IPC_LOG="$ipc_log" \
   "$ROOT/bin/omarchy-restart-shell" 2>&1) && fail "restart refuses while the shell lock is active"
 
