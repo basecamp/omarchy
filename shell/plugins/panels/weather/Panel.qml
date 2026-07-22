@@ -19,6 +19,7 @@ Panel {
     openedFromHotkey = false
     setCenterHoverRevealSuppressed(false)
     root.controller.show()
+    locationFile.reload()
     root.refresh()
   }
 
@@ -26,6 +27,7 @@ Panel {
     openedFromHotkey = true
     setCenterHoverRevealSuppressed(true)
     root.controller.show()
+    locationFile.reload()
     root.refresh()
   }
 

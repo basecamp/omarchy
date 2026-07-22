@@ -7,6 +7,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 run_node_test <<'JS'
 const fs = require('fs')
 const weather = requireFromRoot('shell/plugins/panels/weather/Model.js')
+const panelSource = fs.readFileSync(root + '/shell/plugins/panels/weather/Panel.qml', 'utf8')
 
 assertDeepEqual(
   weather.parseWeatherStatus('{"text":"☀","class":"sunny"}'),
@@ -115,12 +116,16 @@ assert(weather.iconForOpenMeteoCode(45, true) !== weather.iconForOpenMeteoCode(4
 assertEqual(weather.provisionalCurrentIcon({ weatherCode: 113 }, ''), weather.iconForCode(113, false), 'weather uses wttr to fill an empty initial icon')
 assertEqual(weather.provisionalCurrentIcon({ weatherCode: 113 }, 'night'), 'night', 'weather refresh preserves a resolved day-night icon')
 assert(
-  fs.readFileSync(root + '/shell/plugins/panels/weather/Panel.qml', 'utf8').includes('text: root.label || "—"'),
+  panelSource.includes('text: root.label || "—"'),
   'weather hero and bar use the same resolved icon'
 )
 assert(
-  fs.readFileSync(root + '/shell/plugins/panels/weather/Panel.qml', 'utf8').includes('onReturnRequested: root.startEditingLocation()'),
+  panelSource.includes('onReturnRequested: root.startEditingLocation()'),
   'weather focuses city input when Return is pressed'
+)
+assert(
+  panelSource.split('root.controller.show()\n    locationFile.reload()\n    root.refresh()').length === 3,
+  'weather reloads external location changes whenever either open path runs'
 )
 assert(!weather.weatherResponseCompletesSave(true, 'wttr'), 'weather keeps the spinner through a non-authoritative pinned-location response')
 assert(weather.weatherResponseCompletesSave(true, 'open-meteo'), 'weather completes a pinned-location save with Open-Meteo data')
