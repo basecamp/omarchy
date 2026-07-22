@@ -101,6 +101,7 @@ plocate
 plymouth
 postgresql-libs
 power-profiles-daemon
+python-evdev
 python-gobject
 python-poetry-core
 python-terminaltexteffects

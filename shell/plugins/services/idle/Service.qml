@@ -12,6 +12,7 @@ Item {
   property var shell: null
 
   readonly property string home: Quickshell.env("HOME")
+  readonly property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   readonly property string stayAwakeStateDir: home + "/.local/state/omarchy/indicators"
   readonly property string stayAwakeStatePath: stayAwakeStateDir + "/stay-awake"
   readonly property int defaultScreensaverSeconds: 150
@@ -31,6 +32,7 @@ Item {
   property bool pendingStayAwakePersist: false
   property bool idledThisCycle: false
   property bool screensaverStartedThisCycle: false
+  property bool idleResetPending: false
   property string lastEvent: "starting"
   property string lastEventAt: ""
   property var screensaverWindows: ({})
@@ -177,6 +179,17 @@ Item {
     else handleActiveSignal()
   }
 
+  function registerActivity(source) {
+    if (!root.idleEnabled) return false
+
+    if (root.idledThisCycle) root.cancelIdleCycle((source || "external") + "-activity")
+
+    // Recreating the ext-idle-notify subscription starts a fresh countdown.
+    root.idleResetPending = true
+    idleResetTimer.restart()
+    return true
+  }
+
   function statusJson() {
     return JSON.stringify({
       enabled: root.idleEnabled,
@@ -192,11 +205,14 @@ Item {
       lockDelay: root.lockDelaySeconds,
       screensaverWindows: root.screensaverWindowCount,
       timers: {
+        idleReset: idleResetTimer.running,
         screensaver: screensaverTimer.running,
         lock: lockTimer.running,
-        screensaverLaunchGrace: screensaverLaunchGraceTimer.running
+        screensaverLaunchGrace: screensaverLaunchGraceTimer.running,
+        gamepadActivityRestart: gamepadActivityRestartTimer.running
       },
       processes: {
+        gamepadActivity: gamepadActivityProcess.running,
         screensaver: screensaverProcess.running,
         lock: lockProcess.running,
         wake: wakeProcess.running
@@ -249,10 +265,17 @@ Item {
 
   IdleMonitor {
     id: idleMonitor
-    enabled: root.idleEnabled
+    enabled: root.idleEnabled && !root.idleResetPending
     timeout: root.firstIdleTimeoutSeconds
     respectInhibitors: true
     onIsIdleChanged: root.handleIdleChanged()
+  }
+
+  Timer {
+    id: idleResetTimer
+    interval: 50
+    repeat: false
+    onTriggered: root.idleResetPending = false
   }
 
   Timer {
@@ -280,6 +303,13 @@ Item {
     }
   }
 
+  Timer {
+    id: gamepadActivityRestartTimer
+    interval: 30000
+    repeat: false
+    onTriggered: if (!gamepadActivityProcess.running) gamepadActivityProcess.running = true
+  }
+
   Connections {
     target: Hyprland
     function onRawEvent(event) { root.handleHyprlandEvent(event) }
@@ -296,6 +326,19 @@ Item {
   Process {
     id: wakeProcess
     onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "wake exitCode=" + exitCode + " status=" + exitStatus) }
+  }
+  Process {
+    id: gamepadActivityProcess
+    command: ["python3", root.omarchyPath + "/shell/plugins/services/idle/scripts/gamepad_activity.py"]
+    stdout: SplitParser {
+      onRead: function(line) {
+        if (String(line).trim() === "activity") root.registerActivity("gamepad")
+      }
+    }
+    onExited: function(exitCode, exitStatus) {
+      root.logEvent("process-exit", "gamepad-activity exitCode=" + exitCode + " status=" + exitStatus)
+      gamepadActivityRestartTimer.restart()
+    }
   }
 
   Process {
@@ -332,6 +375,7 @@ Item {
   Component.onCompleted: {
     logEvent("service-ready")
     refreshStayAwakeState()
+    gamepadActivityProcess.running = true
   }
 
   IpcHandler {
@@ -355,6 +399,10 @@ Item {
 
     function toggle(): string {
       return root.setIdleEnabled(!root.idleEnabled)
+    }
+
+    function activity(): string {
+      return root.registerActivity("ipc") ? "reset" : "disabled"
     }
   }
 }
