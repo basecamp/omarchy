@@ -16,6 +16,7 @@ function iconFor(name, percent) {
   if (n === "touch" || n === "touchscreen") return "󰝁"
   if (n === "reboot" || n === "restart") return "󰜉"
   if (n === "shutdown" || n === "power" || n === "poweroff") return "󰐥"
+  if (n === "logout" || n === "sign-out" || n === "leave") return "󰍃"
   if (n === "media" || n === "player") return "󰝚"
   if (n === "media-source" || n === "player-source") return "󰝚"
   if (n === "media-play" || n === "player-play") return "󰐊"
@@ -29,13 +30,14 @@ function iconFor(name, percent) {
   return ""
 }
 
-function stateForShow(iconName, rawMessage, rawValue, rawMax, rawProgressText, rawDuration) {
+function stateForShow(iconName, rawMessage, rawValue, rawMax, rawProgressText, rawDuration, rawFit) {
   var maxValue = Math.max(1, parseInt(rawMax || "100", 10))
   var parsedValue = parseInt(rawValue || "0", 10)
   var hasProgress = rawValue !== "" && !isNaN(parsedValue) && rawMessage === ""
   var value = hasProgress ? clamp(parsedValue, 0, maxValue) : 0
   var percent = hasProgress ? Math.round(value * 100 / maxValue) : -1
   var parsedDuration = parseInt(rawDuration || "1200", 10)
+  var fit = rawFit === true || rawFit === 1 || rawFit === "1" || rawFit === "true"
 
   return {
     iconKey: String(iconName || "").toLowerCase(),
@@ -44,7 +46,8 @@ function stateForShow(iconName, rawMessage, rawValue, rawMax, rawProgressText, r
     value: value,
     message: String(rawMessage || (hasProgress ? (rawProgressText || percent + "%") : "")),
     icon: iconFor(iconName, percent),
-    duration: isNaN(parsedDuration) ? 1200 : Math.max(0, parsedDuration)
+    duration: isNaN(parsedDuration) ? 1200 : Math.max(0, parsedDuration),
+    fit: fit
   }
 }
 
