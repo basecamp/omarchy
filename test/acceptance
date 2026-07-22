@@ -22,6 +22,16 @@ export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNT
 export OMARCHY_PATH="${OMARCHY_PATH:-$ROOT}"
 export PATH="$OMARCHY_PATH/bin:$PATH"
 
+if [[ -z ${DISPLAY:-} ]]; then
+  display=$(systemctl --user show-environment | sed -n 's/^DISPLAY=//p' | head -1)
+  export DISPLAY="${display:-:0}"
+fi
+
+if [[ -z ${LANG:-} ]]; then
+  locale_name=$(systemctl --user show-environment | sed -n 's/^LANG=//p' | head -1)
+  export LANG="${locale_name:-C.UTF-8}"
+fi
+
 # First boot may still be settling; wait for Hyprland to come up.
 boot_deadline=$((SECONDS + ${OMARCHY_ACCEPTANCE_BOOT_TIMEOUT:-300}))
 
@@ -66,9 +76,20 @@ if (( ${#tests[@]} == 0 )); then
   exit 1
 fi
 
+status=0
+suite_started=$SECONDS
 for test in "${tests[@]}"; do
+  test_started=$SECONDS
   printf '==> %s\n' "${test#$ROOT/}"
-  bash "$test"
+  if ! timeout "${OMARCHY_ACCEPTANCE_TEST_TIMEOUT:-420}" bash "$test"; then
+    status=1
+  fi
+  printf '    completed in %ss\n' "$((SECONDS - test_started))"
 done
 
-printf 'ok - acceptance suite passed (artifacts in %s)\n' "$OMARCHY_ACCEPTANCE_DIR"
+if ((status != 0)); then
+  printf 'not ok - acceptance suite failed in %ss (artifacts in %s)\n' "$((SECONDS - suite_started))" "$OMARCHY_ACCEPTANCE_DIR" >&2
+  exit $status
+fi
+
+printf 'ok - acceptance suite passed in %ss (artifacts in %s)\n' "$((SECONDS - suite_started))" "$OMARCHY_ACCEPTANCE_DIR"
