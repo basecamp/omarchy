@@ -260,7 +260,6 @@
   "remove.gaming.geforce-now": {"icon":"󰢹","label":"NVIDIA GeForce NOW","when":"flatpak info com.nvidia.geforcenow","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-geforce-now"},
   "remove.gaming.xbox-cloud": {"icon":"","label":"Xbox Cloud Gaming","when":"[[ -f \"$HOME/.local/share/applications/Xbox Cloud Gaming.desktop\" ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-xbox-cloud"},
   "remove.gaming.xbox-controllers": {"icon":"󰖺","label":"Xbox Controllers (󰂯)","when":"omarchy-pkg-present xpadneo-dkms","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-xbox-controllers"},
-  "remove.gaming.moonlight": {"icon":"󰍹","label":"Moonlight (GameStream)","when":"omarchy-pkg-present moonlight-qt","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-moonlight"},
   "remove.gaming.battlenet": {"icon":"","label":"Battle.net","when":"[[ -d $HOME/Games/battlenet ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-battlenet"},
   "remove.gaming.lutris": {"icon":"","label":"Lutris","when":"omarchy-pkg-present lutris","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-lutris"},
   "remove.gaming.heroic": {"icon":"󱓟","label":"Heroic (Epic Games)","when":"omarchy-pkg-present heroic-games-launcher-bin","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-heroic"},
