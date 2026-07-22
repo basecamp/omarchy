@@ -36,6 +36,7 @@ assertDeepEqual(
     icon: '',
     iconFont: '',
     label: 'Themes',
+    title: '',
     target: '',
     keywords: 'appearance colors',
     description: '',

@@ -40,6 +40,7 @@ function normalizeItem(id, raw) {
     icon: value.icon || "",
     iconFont: value.iconFont || "",
     label: value.label || id,
+    title: value.title || "",
     target: value.target || "",
     keywords: normalizeKeywords(id, aliases, value.keywords),
     description: value.description || "",
@@ -96,7 +97,7 @@ function mergeMenuSources(defaultItems, userItems) {
   }
 
   if (!nextItems.root) {
-    nextItems.root = { id: "root", parent: "", kind: "menu", icon: "", iconFont: "", label: "Go", target: "", keywords: "", description: "", aliases: [], when: "", checked: "", action: "", provider: "" }
+    nextItems.root = { id: "root", parent: "", kind: "menu", icon: "", iconFont: "", label: "Go", title: "", target: "", keywords: "", description: "", aliases: [], when: "", checked: "", action: "", provider: "" }
     nextOrder.unshift("root")
   }
   for (var k3 = 0; k3 < nextOrder.length; k3++) nextItems[nextOrder[k3]].order = k3
