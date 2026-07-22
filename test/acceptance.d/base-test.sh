@@ -17,15 +17,33 @@ pass() {
 fail() {
   local description="$1"
   local detail="${2:-}"
+  local step=${description,,}
+
+  step=${step// /-}
+  step=${step//[^a-z0-9-]/}
 
   [[ -n $detail ]] && printf '%s\n' "$detail" >&2
-  screenshot "failure-$(date +%s)"
+  screenshot "failure-$step"
   printf 'not ok - %s\n' "$description" >&2
   exit 1
 }
 
 screenshot() {
-  grim "$ARTIFACTS/$1.png" 2>/dev/null || true
+  timeout 10 grim "$ARTIFACTS/$1.png" 2>/dev/null || true
+}
+
+screen_contains() {
+  local text="$1"
+  local snapshot="/tmp/omarchy-acceptance-ocr-$$.png"
+
+  if ! timeout 10 grim "$snapshot" 2>/dev/null; then
+    rm -f "$snapshot"
+    return 1
+  fi
+  tesseract "$snapshot" stdout --psm 11 2>/dev/null | grep -Fqi -- "$text"
+  local status=$?
+  rm -f "$snapshot"
+  return $status
 }
 
 # Poll a command until it succeeds; screenshot and fail on timeout.

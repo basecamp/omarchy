@@ -14,7 +14,11 @@ wait_until "omarchy-shell responds to ping" 60 omarchy-shell shell ping
 
 # Core shell plugins are loaded
 plugins=$(omarchy-shell shell listPlugins)
-for plugin in omarchy.bar omarchy.launcher omarchy.emojis omarchy.menu omarchy.notifications; do
+for plugin in \
+  omarchy.audio omarchy.background omarchy.bar omarchy.bluetooth \
+  omarchy.clipboard omarchy.emojis omarchy.launcher omarchy.menu \
+  omarchy.monitor omarchy.network omarchy.notifications omarchy.power \
+  omarchy.reminders omarchy.weather; do
   [[ $plugins == *"$plugin"* ]] || fail "shell plugin is loaded: $plugin" "loaded plugins: $plugins"
   pass "shell plugin is loaded: $plugin"
 done
@@ -53,4 +57,4 @@ if [[ -n $failed_user ]]; then
 fi
 pass "no failed user units"
 
-screenshot "desktop"
+screenshot "success-desktop"
