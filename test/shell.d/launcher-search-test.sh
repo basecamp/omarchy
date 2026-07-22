@@ -80,6 +80,13 @@ assert(
   /function disarmHover\(\)[\s\S]*pointerGate\.reset\(\)/.test(launcherQml),
   'launcher resets pointer movement gate when hover is disarmed'
 )
+const openMatch = launcherQml.match(/function open\(payloadJson\) \{([\s\S]*?)\n  \}/)
+assert(openMatch, 'launcher open function exists')
+assert(
+  openMatch[1].indexOf('root.disarmHover()') < openMatch[1].indexOf('root.opened = true')
+    && !openMatch[1].includes('pointerGate.allowInitialSample()'),
+  'launcher ignores a stale hidden-pointer position when becoming visible'
+)
 assert(
   /function selectFromPointer\(index, item, mouse\)[\s\S]*pointerGate\.moved\(item, mouse\)[\s\S]*root\.selectedIndex = index/.test(launcherQml),
   'launcher only selects from pointer after real movement'
@@ -87,6 +94,10 @@ assert(
 assert(
   /onPositionChanged: function\(mouse\) \{\s*root\.selectFromPointer\(row\.index, row, mouse\)\s*\}/.test(launcherQml),
   'launcher row hover routes through pointer movement gate'
+)
+assert(
+  /onEntered: root\.selectFromPointer\(row\.index, row, \{\s*x: mouseArea\.mouseX,\s*y: mouseArea\.mouseY\s*\}\)/.test(launcherQml),
+  'launcher samples pointer movement immediately when entering a row'
 )
 assert(
   !/onContainsMouseChanged:[\s\S]*root\.selectedIndex/.test(launcherQml),
@@ -127,8 +138,6 @@ assert(
   'launcher prefers indexed app icons over ambiguous themed icons'
 )
 
-const openMatch = launcherQml.match(/function open\(payloadJson\) \{([\s\S]*?)\n  \}/)
-assert(openMatch, 'launcher open function exists')
 assert(
   openMatch[1].includes('if (!iconIndexScan.running) iconIndexScan.running = true'),
   'launcher refreshes its icon index when opened'
