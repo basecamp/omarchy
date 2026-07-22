@@ -19,7 +19,7 @@ o.bind("SUPER + SHIFT + D", "Docker", { tui = "lazydocker" })
 o.bind("SUPER + SHIFT + G", "Signal", { omarchy = "signal" })
 o.bind("SUPER + SHIFT + O", "Obsidian", { launch = "obsidian", focus = "^obsidian$" })
 o.bind("SUPER + SHIFT + W", "Omawrite", { launch = "omawrite" })
-o.bind("SUPER + SHIFT + SLASH", "Passwords", { launch = "1password" })
+o.bind("SUPER + SHIFT + SLASH", "Passwords", { omarchy = "1password" })
 
 o.bind("SUPER + SHIFT + A", "ChatGPT", { webapp = "https://chatgpt.com" })
 o.bind("SUPER + SHIFT + ALT + A", "Grok", { webapp = "https://grok.com" })
