@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# omarchy:summary=Open the Plymouth unlock screen switcher
+
+preview_dir="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/unlock-selector/previews"
+
+rm -rf "$preview_dir"
+mkdir -p "$preview_dir"
+
+ln -s "$OMARCHY_PATH/default/plymouth/preview-unlock.png" "$preview_dir/default.png"
+
+omarchy-plymouth-list | while read -r name; do
+  if [[ -d ~/.config/omarchy/themes/$name ]]; then
+    theme_dir=~/.config/omarchy/themes/$name
+  else
+    theme_dir="$OMARCHY_PATH/themes/$name"
+  fi
+
+  ln -s "$theme_dir/preview-unlock.png" "$preview_dir/$name.png" 2>/dev/null
+done
+
+current=$(omarchy-plymouth-current)
+selected=""
+[[ -n $current && -e $preview_dir/$current.png ]] && selected="$preview_dir/$current.png"
+
+exec omarchy-menu-images --print-name --show-labels --selected "$selected" "$preview_dir"

@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# omarchy:summary=Show which theme is styling the Plymouth boot screen
+# omarchy:examples=omarchy plymouth current
+
+# omarchy-plymouth-set installs the theme's unlock.png as a byte-for-byte
+# copy of logo.png, so matching it back identifies the current theme.
+installed_logo=/usr/share/plymouth/themes/omarchy/logo.png
+
+if cmp -s "$OMARCHY_PATH/default/plymouth/logo.png" "$installed_logo"; then
+  echo default
+  exit
+fi
+
+omarchy-plymouth-list | while read -r name; do
+  if [[ -d ~/.config/omarchy/themes/$name ]]; then
+    theme_dir=~/.config/omarchy/themes/$name
+  else
+    theme_dir="$OMARCHY_PATH/themes/$name"
+  fi
+
+  if cmp -s "$theme_dir/unlock.png" "$installed_logo"; then
+    echo "$name"
+    exit
+  fi
+done
