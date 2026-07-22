@@ -23,7 +23,9 @@ fi
 # Requires our quickshell-git build; 0.3.0's kill returns immediately.
 while timeout 5 quickshell kill -p "$CONFIG_DIR" --any-display >/dev/null 2>&1; do :; done
 
-setsid quickshell -n -p "$CONFIG_DIR" >/dev/null 2>&1 &
+# Spawn from Hyprland so the shell inherits the canonical session environment,
+# not transient variables from a terminal, SSH connection, or development tool.
+hyprctl dispatch 'hl.dsp.exec_cmd("quickshell -n -p $OMARCHY_PATH/shell")' >/dev/null
 
 for (( attempt = 0; attempt < 20; attempt++ )); do
   OMARCHY_SHELL_IPC_TIMEOUT=0.5s omarchy-shell shell ping >/dev/null 2>&1 && exit 0
