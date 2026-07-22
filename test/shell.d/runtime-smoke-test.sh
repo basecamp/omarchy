@@ -60,11 +60,22 @@ exit 0
 SH
 chmod +x "$stub_bin/omarchy-update-available"
 
-cat >"$test_root/shell/plugins/panels/weather/status.sh" <<'SH'
+cat >"$stub_bin/curl" <<'SH'
 #!/bin/bash
-printf '{"text":"72F","class":"sunny"}\n'
+
+case "${*: -1}" in
+  *'?format=j1')
+    printf '{"current_condition":[{"weatherCode":"113","temp_F":"72"}]}\n'
+    ;;
+  *'?format=%l')
+    printf 'Test City, Test Region\n'
+    ;;
+  *)
+    exit 1
+    ;;
+esac
 SH
-chmod +x "$test_root/shell/plugins/panels/weather/status.sh"
+chmod +x "$stub_bin/curl"
 
 OMARCHY_PATH="$test_root" \
 HOME="$test_home" \
