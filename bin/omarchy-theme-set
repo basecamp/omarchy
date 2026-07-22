@@ -9,10 +9,32 @@ if [[ -z $1 ]]; then
   exit 1
 fi
 
-CURRENT_THEME_PATH="$HOME/.config/omarchy/current/theme"
-NEXT_THEME_PATH="$HOME/.config/omarchy/current/next-theme"
+CURRENT_THEME_DIR="$HOME/.config/omarchy/current"
+CURRENT_THEME_PATH="$CURRENT_THEME_DIR/theme"
 USER_THEMES_PATH="$HOME/.config/omarchy/themes"
 OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
+
+if ! mkdir -p "$CURRENT_THEME_DIR"; then
+  echo "Failed to create theme state directory"
+  exit 1
+fi
+
+if ! NEXT_THEME_PATH=$(mktemp -d "$CURRENT_THEME_DIR/next-theme.XXXXXX"); then
+  echo "Failed to create theme staging directory"
+  exit 1
+fi
+
+if ! PREVIOUS_THEME_DIR=$(mktemp -d "$CURRENT_THEME_DIR/previous-theme.XXXXXX"); then
+  rm -rf "$NEXT_THEME_PATH"
+  echo "Failed to create theme backup directory"
+  exit 1
+fi
+PREVIOUS_THEME_PATH="$PREVIOUS_THEME_DIR/theme"
+
+cleanup() {
+  rm -rf "$NEXT_THEME_PATH" "$PREVIOUS_THEME_DIR"
+}
+trap cleanup EXIT
 
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
 
@@ -21,25 +43,52 @@ if [[ ! -d $OMARCHY_THEMES_PATH/$THEME_NAME ]] && [[ ! -d $USER_THEMES_PATH/$THE
   exit 1
 fi
 
-# Setup clean next theme directory (for atomic theme config swapping)
-rm -rf "$NEXT_THEME_PATH"
+# Setup a unique staging directory for atomic theme config swapping
 mkdir -p "$NEXT_THEME_PATH"
 
 # Copy official theme first, then overlay user customizations on top
-cp -r "$OMARCHY_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
-cp -r "$USER_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
+copy_theme_files() {
+  local source="$1"
+  [[ -d $source ]] || return 0
+  cp -a "$source"/. "$NEXT_THEME_PATH/"
+}
+
+if ! copy_theme_files "$OMARCHY_THEMES_PATH/$THEME_NAME" ||
+  ! copy_theme_files "$USER_THEMES_PATH/$THEME_NAME"; then
+  echo "Failed to copy theme '$THEME_NAME'"
+  exit 1
+fi
 
 # Generate colors.toml from alacritty.toml if theme is missing colors.toml
 if [[ ! -f $NEXT_THEME_PATH/colors.toml && -f $NEXT_THEME_PATH/alacritty.toml ]]; then
-  omarchy-theme-colors-from-alacritty "$NEXT_THEME_PATH"
+  if ! omarchy-theme-colors-from-alacritty "$NEXT_THEME_PATH"; then
+    echo "Failed to generate theme colors for '$THEME_NAME'"
+    exit 1
+  fi
 fi
 
 # Generate dynamic configs
-omarchy-theme-set-templates
+if ! OMARCHY_THEME_STAGE_DIR="$NEXT_THEME_PATH" omarchy-theme-set-templates; then
+  echo "Failed to generate themed configuration for '$THEME_NAME'"
+  exit 1
+fi
 
-# Swap next theme in as current
-rm -rf "$CURRENT_THEME_PATH"
-mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"
+# Swap the staged theme in as current, retaining the old theme until the move succeeds
+if [[ -e $CURRENT_THEME_PATH ]] && ! mv "$CURRENT_THEME_PATH" "$PREVIOUS_THEME_PATH"; then
+  echo "Failed to stage the current theme for replacement"
+  exit 1
+fi
+
+if ! mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"; then
+  if [[ -e $PREVIOUS_THEME_PATH ]]; then
+    if ! mv "$PREVIOUS_THEME_PATH" "$CURRENT_THEME_PATH"; then
+      echo "Failed to activate theme '$THEME_NAME' and restore the previous theme"
+      exit 1
+    fi
+  fi
+  echo "Failed to activate theme '$THEME_NAME'"
+  exit 1
+fi
 
 # Store theme name for reference
 echo "$THEME_NAME" >"$HOME/.config/omarchy/current/theme.name"

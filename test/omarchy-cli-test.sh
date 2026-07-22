@@ -263,3 +263,132 @@ assert_output_contains "partial metadata command dispatches" "$output" "partial-
 
 output=$("$TMPDIR/omarchy" body metadata test)
 assert_output_contains "body metadata command dispatches by filename" "$output" "body-metadata-ok"
+
+THEME_TEST_DIR="$TMPDIR/theme-failure"
+THEME_TEST_HOME="$THEME_TEST_DIR/home"
+THEME_TEST_BIN="$THEME_TEST_DIR/bin"
+mkdir -p "$THEME_TEST_HOME/.config/omarchy/current/theme" "$THEME_TEST_HOME/.config/omarchy/themes/tokyo-night" "$THEME_TEST_BIN"
+
+for command_name in \
+  omarchy-hook \
+  omarchy-restart-btop \
+  omarchy-restart-helix \
+  omarchy-restart-hyprctl \
+  omarchy-restart-mako \
+  omarchy-restart-opencode \
+  omarchy-restart-swayosd \
+  omarchy-restart-terminal \
+  omarchy-theme-bg-next \
+  omarchy-theme-set-browser \
+  omarchy-theme-set-foot \
+  omarchy-theme-set-gnome \
+  omarchy-theme-set-keyboard \
+  omarchy-theme-set-obsidian \
+  omarchy-theme-set-templates \
+  omarchy-theme-set-vscode \
+  pgrep; do
+  printf '#!/bin/bash\n%s\n' "[[ \$0 == *omarchy-theme-set-templates ]] && exit 42 || exit 0" >"$THEME_TEST_BIN/$command_name"
+  chmod +x "$THEME_TEST_BIN/$command_name"
+done
+
+printf 'active-theme-sentinel\n' >"$THEME_TEST_HOME/.config/omarchy/current/theme/KEEP-ME.txt"
+if HOME="$THEME_TEST_HOME" OMARCHY_PATH="$ROOT" OMARCHY_THEME_SKIP_BACKGROUND=1 PATH="$THEME_TEST_BIN:$ROOT/bin:$PATH" bash "$ROOT/bin/omarchy-theme-set" tokyo-night; then
+  fail "theme set returns non-zero when template generation fails"
+fi
+[[ -f $THEME_TEST_HOME/.config/omarchy/current/theme/KEEP-ME.txt ]] || fail "theme set preserves active theme when template generation fails"
+pass "theme set preserves active theme when template generation fails"
+
+THEME_COLOR_DIR="$TMPDIR/theme-color-failure"
+THEME_COLOR_HOME="$THEME_COLOR_DIR/home"
+THEME_COLOR_BIN="$THEME_COLOR_DIR/bin"
+mkdir -p "$THEME_COLOR_HOME/.config/omarchy/current/theme" "$THEME_COLOR_HOME/.config/omarchy/themes/broken-theme" "$THEME_COLOR_BIN"
+printf 'background = "bad"\n' >"$THEME_COLOR_HOME/.config/omarchy/themes/broken-theme/alacritty.toml"
+printf 'active-theme-sentinel\n' >"$THEME_COLOR_HOME/.config/omarchy/current/theme/KEEP-ME.txt"
+for command_name in \
+  omarchy-hook \
+  omarchy-restart-btop \
+  omarchy-restart-helix \
+  omarchy-restart-hyprctl \
+  omarchy-restart-mako \
+  omarchy-restart-opencode \
+  omarchy-restart-swayosd \
+  omarchy-restart-terminal \
+  omarchy-theme-bg-next \
+  omarchy-theme-set-browser \
+  omarchy-theme-set-foot \
+  omarchy-theme-set-gnome \
+  omarchy-theme-set-keyboard \
+  omarchy-theme-set-obsidian \
+  omarchy-theme-set-templates \
+  omarchy-theme-set-vscode \
+  pgrep; do
+  ln -s /usr/bin/true "$THEME_COLOR_BIN/$command_name"
+done
+printf '#!/bin/bash\nexit 42\n' >"$THEME_COLOR_BIN/omarchy-theme-colors-from-alacritty"
+chmod +x "$THEME_COLOR_BIN/omarchy-theme-colors-from-alacritty"
+if HOME="$THEME_COLOR_HOME" OMARCHY_PATH="$ROOT" OMARCHY_THEME_SKIP_BACKGROUND=1 PATH="$THEME_COLOR_BIN:$ROOT/bin:$PATH" bash "$ROOT/bin/omarchy-theme-set" broken-theme; then
+  fail "theme set returns non-zero when color generation fails"
+fi
+[[ -f $THEME_COLOR_HOME/.config/omarchy/current/theme/KEEP-ME.txt ]] || fail "theme set preserves active theme when color generation fails"
+pass "theme set preserves active theme when color generation fails"
+
+THEME_TEMPLATE_DIR="$TMPDIR/theme-template-failure"
+THEME_TEMPLATE_HOME="$THEME_TEMPLATE_DIR/home"
+THEME_TEMPLATE_BIN="$THEME_TEMPLATE_DIR/bin"
+mkdir -p "$THEME_TEMPLATE_HOME/.config/omarchy/current/next-theme" "$THEME_TEMPLATE_BIN"
+cp "$ROOT/themes/tokyo-night/colors.toml" "$THEME_TEMPLATE_HOME/.config/omarchy/current/next-theme/colors.toml"
+printf '#!/bin/bash\nexit 42\n' >"$THEME_TEMPLATE_BIN/sed"
+chmod +x "$THEME_TEMPLATE_BIN/sed"
+if HOME="$THEME_TEMPLATE_HOME" OMARCHY_PATH="$ROOT" PATH="$THEME_TEMPLATE_BIN:/usr/bin:/bin" bash "$ROOT/bin/omarchy-theme-set-templates"; then
+  fail "theme template generation returns non-zero when sed fails"
+fi
+pass "theme template generation reports rendering failures"
+
+printf 'installed-theme-sentinel\n' >"$THEME_TEST_HOME/.config/omarchy/themes/tokyo-night/KEEP-ME.txt"
+printf '#!/bin/bash\nexit 42\n' >"$THEME_TEST_BIN/git"
+chmod +x "$THEME_TEST_BIN/git"
+if HOME="$THEME_TEST_HOME" OMARCHY_PATH="$ROOT" PATH="$THEME_TEST_BIN:$ROOT/bin:$PATH" bash "$ROOT/bin/omarchy-theme-install" https://example.invalid/omarchy-tokyo-night.git; then
+  fail "theme install returns non-zero when git clone fails"
+fi
+[[ -f $THEME_TEST_HOME/.config/omarchy/themes/tokyo-night/KEEP-ME.txt ]] || fail "theme install preserves existing theme when git clone fails"
+pass "theme install preserves existing theme when git clone fails"
+
+printf '#!/bin/bash\nmkdir -p "$3"\nprintf "new-theme\\n" >"$3/new.txt"\n' >"$THEME_TEST_BIN/git"
+printf '#!/bin/bash\nexit 42\n' >"$THEME_TEST_BIN/omarchy-theme-set"
+chmod +x "$THEME_TEST_BIN/git" "$THEME_TEST_BIN/omarchy-theme-set"
+if HOME="$THEME_TEST_HOME" OMARCHY_PATH="$ROOT" PATH="$THEME_TEST_BIN:$ROOT/bin:$PATH" bash "$ROOT/bin/omarchy-theme-install" https://example.invalid/omarchy-tokyo-night.git; then
+  fail "theme install returns non-zero when applying the cloned theme fails"
+fi
+[[ -f $THEME_TEST_HOME/.config/omarchy/themes/tokyo-night/new.txt ]] || fail "theme install keeps the cloned theme when applying it fails"
+pass "theme install keeps the cloned theme when applying it fails"
+
+THEME_SUCCESS_DIR="$TMPDIR/theme-success"
+THEME_SUCCESS_HOME="$THEME_SUCCESS_DIR/home"
+THEME_SUCCESS_BIN="$THEME_SUCCESS_DIR/bin"
+mkdir -p "$THEME_SUCCESS_HOME/.config/omarchy/current/theme" "$THEME_SUCCESS_BIN"
+for command_name in \
+  omarchy-hook \
+  omarchy-restart-btop \
+  omarchy-restart-helix \
+  omarchy-restart-hyprctl \
+  omarchy-restart-mako \
+  omarchy-restart-opencode \
+  omarchy-restart-swayosd \
+  omarchy-restart-terminal \
+  omarchy-theme-bg-next \
+  omarchy-theme-set-browser \
+  omarchy-theme-set-foot \
+  omarchy-theme-set-gnome \
+  omarchy-theme-set-keyboard \
+  omarchy-theme-set-obsidian \
+  omarchy-theme-set-vscode \
+  pgrep; do
+  ln -s /usr/bin/true "$THEME_SUCCESS_BIN/$command_name"
+done
+
+printf 'old-theme-sentinel\n' >"$THEME_SUCCESS_HOME/.config/omarchy/current/theme/KEEP-ME.txt"
+HOME="$THEME_SUCCESS_HOME" OMARCHY_PATH="$ROOT" OMARCHY_THEME_SKIP_BACKGROUND=1 PATH="$THEME_SUCCESS_BIN:$ROOT/bin:$PATH" bash "$ROOT/bin/omarchy-theme-set" tokyo-night
+[[ -f $THEME_SUCCESS_HOME/.config/omarchy/current/theme/colors.toml ]] || fail "theme set generates the replacement theme"
+[[ -f $THEME_SUCCESS_HOME/.config/omarchy/current/theme/waybar.css ]] || fail "theme set generates themed templates in the staging directory"
+[[ ! -f $THEME_SUCCESS_HOME/.config/omarchy/current/theme/KEEP-ME.txt ]] || fail "theme set replaces the old theme after successful generation"
+pass "theme set activates successfully generated theme"
