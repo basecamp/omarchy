@@ -103,7 +103,6 @@ reset_base_size() {
 # ---- GTK text-scaling-factor ----
 
 set_factor() {
-  command -v gsettings >/dev/null 2>&1 || return 0
   gsettings set "$GKEY_SCHEMA" "$GKEY_NAME" "$1" 2>/dev/null || true
 }
 
@@ -141,7 +140,7 @@ set_terminal_size() {
     # size until relaunched (new windows pick up the change). Nudge the user —
     # but reuse the same notification id (freedesktop replaces_id) so dragging
     # through several sizes refreshes one toast instead of stacking a pile.
-    if command -v omarchy-notification-send >/dev/null 2>&1 && pgrep -x foot >/dev/null 2>&1; then
+    if pgrep -x foot >/dev/null 2>&1; then
       local id_file="${XDG_RUNTIME_DIR:-/tmp}/omarchy-display-text-size.foot-notif-id"
       local prev_id=""
       [[ -f $id_file ]] && read -r prev_id <"$id_file" 2>/dev/null
@@ -177,11 +176,7 @@ case "${1:-}" in
   "")
     cur="$(current_base_size)"
     size="${cur:-12 (default)}"
-    if command -v gsettings >/dev/null 2>&1; then
-      factor="$(gsettings get "$GKEY_SCHEMA" "$GKEY_NAME" 2>/dev/null)"
-    else
-      factor="n/a (gsettings not installed)"
-    fi
+    factor="$(gsettings get "$GKEY_SCHEMA" "$GKEY_NAME" 2>/dev/null)"
     term="$(term_current_pt)"
     printf 'text size: %s px\ngtk text-scaling-factor: %s\nterminal font: %s pt\n' \
       "$size" "$factor" "${term:-n/a}"
@@ -189,9 +184,7 @@ case "${1:-}" in
     ;;
   reset | default)
     reset_base_size
-    if command -v gsettings >/dev/null 2>&1; then
-      gsettings reset "$GKEY_SCHEMA" "$GKEY_NAME" 2>/dev/null || true
-    fi
+    gsettings reset "$GKEY_SCHEMA" "$GKEY_NAME" 2>/dev/null || true
     set_terminal_size "$TERM_DEFAULT_PT"
     exit 0
     ;;
