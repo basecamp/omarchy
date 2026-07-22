@@ -37,12 +37,11 @@ require_root() {
     return
   fi
 
-  if omarchy-cmd-missing pkexec; then
-    echo "Error: pkexec is required to change DNS settings." >&2
-    exit 1
+  if [[ -t 0 ]]; then
+    exec sudo "$(self_path)" "$@"
+  else
+    exec pkexec "$(self_path)" "$@"
   fi
-
-  exec pkexec "$(self_path)" "$@"
 }
 
 networkmanager_global_dns() {
@@ -150,8 +149,6 @@ set_connection_dns() {
   local ipv4_dns="${1:-}"
   local ipv6_dns="${2:-}"
 
-  omarchy-cmd-present nmcli || return 0
-
   while IFS=: read -r uuid type; do
     [[ -n $uuid ]] || continue
     networkmanager_dns_connection "$type" || continue
@@ -168,8 +165,6 @@ set_connection_dns() {
 clear_connection_dns() {
   local uuid type
 
-  omarchy-cmd-present nmcli || return 0
-
   while IFS=: read -r uuid type; do
     [[ -n $uuid ]] || continue
     networkmanager_dns_connection "$type" || continue
@@ -185,8 +180,6 @@ clear_connection_dns() {
 
 reapply_active_dns_connections() {
   local device type state
-
-  omarchy-cmd-present nmcli || return 0
 
   while IFS=: read -r device type state; do
     [[ -n $device && $state == connected ]] || continue
