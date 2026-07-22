@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Apple T2 suspend/resume helper. Runs as a Before=sleep.target
+# Legacy apple_bce suspend/resume helper. Runs as a Before=sleep.target
 # systemd service so the T2 coprocessor is fully active during pre.
 
 # Pre:
@@ -24,6 +24,15 @@ log()     { logger -t "$LOG_TAG" "$1"; }
 
 mod_ld()  { [[ -d /sys/module/$1 ]]; }
 
+require_legacy_driver() {
+  # apple_bce is intentionally unloaded during pre, so check the kernel's
+  # module metadata rather than /sys/module for both pre and post.
+  if ! modinfo apple_bce >/dev/null 2>&1; then
+    log "Skipping: legacy apple_bce driver is unavailable"
+    exit 0
+  fi
+}
+
 unload()  {
   mod_ld "$1" && modprobe -r "$1" 2>/dev/null &&
     log "Unloaded $1" || true
@@ -41,6 +50,8 @@ skip() { is_bcm4364 && [[ $1 == "brcmfmac" || $1 == "brcmfmac_wcc" ]]; }
 
 case "${1:-}" in
   pre)
+    require_legacy_driver
+
     for d in /sys/bus/pci/drivers/aaudio/0000:*; do
       [[ -e $d ]] || continue
       echo "${d##*/}" > /sys/bus/pci/drivers/aaudio/unbind 2>/dev/null &&
@@ -59,6 +70,8 @@ case "${1:-}" in
     log "Ready to suspend"
     ;;
   post)
+    require_legacy_driver
+
     load apple_bce; sleep 2
 
     for m in "${POST_MODS[@]}"; do skip "$m" || load "$m"; done
