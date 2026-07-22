@@ -519,14 +519,15 @@ Item {
     root.rebuildDisplay()
   }
 
-  function setActiveMenu(id, pushHistory) {
+  function setActiveMenu(id, pushHistory, fromPointer) {
     if (!root.item(id)) id = "root"
     if (pushHistory && id !== root.activeMenu) root.navStack = root.navStack.concat([root.activeMenu])
     root.activeMenu = id
     root.filterText = ""
     root.selectedIndex = 0
     root.cursorActive = true
-    root.disarmPointer()
+    if (fromPointer) pointerGate.allowInitialSample()
+    else root.disarmPointer()
     root.rebuildDisplay()
     root.loadProviderForMenu(id)
   }
@@ -546,7 +547,7 @@ Item {
     return true
   }
 
-  function activateIndex(index) {
+  function activateIndex(index, fromPointer) {
     if (root.dmenuActive) {
       if (root.mode === "input") {
         root.applyDmenuSelection(root.filterText)
@@ -561,7 +562,7 @@ Item {
 
     var row = displayModel.get(index)
     if (row.kind === "menu" || row.kind === "link") {
-      root.setActiveMenu(row.target || row.itemId, true)
+      root.setActiveMenu(row.target || row.itemId, true, fromPointer)
     } else {
       root.applySelected(row.itemId, row.action)
     }
@@ -1042,13 +1043,17 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                onEntered: root.selectFromPointer(row.index, row, {
+                  x: mouseArea.mouseX,
+                  y: mouseArea.mouseY
+                })
                 onPositionChanged: function(mouse) {
                   root.selectFromPointer(row.index, row, mouse)
                 }
                 onClicked: {
                   root.cursorActive = true
                   root.selectedIndex = row.index
-                  root.activateIndex(row.index)
+                  root.activateIndex(row.index, true)
                 }
               }
             }

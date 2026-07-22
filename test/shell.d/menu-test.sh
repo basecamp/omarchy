@@ -173,8 +173,8 @@ assert(
   'menu filter changes disarm pointer selection'
 )
 assert(
-  /function setActiveMenu\(id, pushHistory\)[\s\S]*root\.disarmPointer\(\)/.test(menuQml),
-  'menu route changes disarm pointer selection'
+  /function setActiveMenu\(id, pushHistory, fromPointer\)[\s\S]*if \(fromPointer\) pointerGate\.allowInitialSample\(\)\s*else root\.disarmPointer\(\)/.test(menuQml),
+  'menu route changes only accept an initial pointer sample for mouse activation'
 )
 assert(
   /\(event\.key === Qt\.Key_Backspace \|\| event\.key === Qt\.Key_Left\) && !root\.filterText[\s\S]*root\.goBack\(\)/.test(menuQml),
@@ -188,6 +188,15 @@ assert(
   /function disarmPointer\(\)[\s\S]*pointerGate\.reset\(\)/.test(menuQml),
   'menu resets pointer movement gate when pointer selection is disarmed'
 )
+for (const functionName of ['openExistingMenu', 'openDmenu']) {
+  const openMatch = menuQml.match(new RegExp(`function ${functionName}\\([^)]*\\) \\{([\\s\\S]*?)\\n  \\}`))
+  assert(openMatch, `menu ${functionName} function exists`)
+  assert(
+    openMatch[1].indexOf('root.disarmPointer()') < openMatch[1].indexOf('opened = true')
+      && !openMatch[1].includes('pointerGate.allowInitialSample()'),
+    `menu ${functionName} ignores a stale hidden-pointer position when becoming visible`
+  )
+}
 assert(
   /function selectFromPointer\(index, item, mouse\)[\s\S]*pointerGate\.moved\(item, mouse\)[\s\S]*root\.selectedIndex = index/.test(menuQml),
   'menu only selects from pointer after real movement'
@@ -195,5 +204,14 @@ assert(
 assert(
   /onPositionChanged: function\(mouse\) \{\s*root\.selectFromPointer\(row\.index, row, mouse\)\s*\}/.test(menuQml),
   'menu row hover routes through pointer movement gate'
+)
+assert(
+  /onEntered: root\.selectFromPointer\(row\.index, row, \{\s*x: mouseArea\.mouseX,\s*y: mouseArea\.mouseY\s*\}\)/.test(menuQml),
+  'menu samples pointer movement immediately when entering a row'
+)
+assert(
+  /function activateIndex\(index, fromPointer\)[\s\S]*root\.setActiveMenu\(row\.target \|\| row\.itemId, true, fromPointer\)/.test(menuQml)
+    && /onClicked:[\s\S]*root\.activateIndex\(row\.index, true\)/.test(menuQml),
+  'mouse activation carries pointer intent into subordinate menus'
 )
 JS

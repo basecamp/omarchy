@@ -74,11 +74,11 @@ Item {
       ? root.contentMargin * 2 + root.searchHeight + root.contentSpacing + requestedListHeight
       : 400
 
-    root.opened = true
     root.filterText = payload.query || ""
     root.selectedIndex = 0
     root.cursorActive = true
     root.disarmHover()
+    root.opened = true
     root.rebuildDisplay()
     // The shell may start before first-install packages have finished placing
     // their icons. Refresh here even when the desktop entry list did not change.
@@ -626,9 +626,14 @@ Item {
               }
 
               MouseArea {
+                id: mouseArea
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                onEntered: root.selectFromPointer(row.index, row, {
+                  x: mouseArea.mouseX,
+                  y: mouseArea.mouseY
+                })
                 onPositionChanged: function(mouse) {
                   root.selectFromPointer(row.index, row, mouse)
                 }
