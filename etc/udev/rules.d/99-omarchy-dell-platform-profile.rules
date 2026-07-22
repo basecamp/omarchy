@@ -1,0 +1,2 @@
+ACTION=="add", SUBSYSTEM=="platform-profile", ATTR{name}=="dell-pc", RUN+="/usr/bin/chgrp wheel /sys/class/platform-profile/%k/profile"
+ACTION=="add", SUBSYSTEM=="platform-profile", ATTR{name}=="dell-pc", RUN+="/usr/bin/chmod g+w /sys/class/platform-profile/%k/profile"

@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # omarchy:summary=Set and remember the power profile for AC or battery use
-# omarchy:args=[autodetect|ac|battery] [power-saver|balanced|performance]
+# omarchy:args=[autodetect|ac|battery] [quiet|cool|power-saver|balanced|performance]
 
 action="${1:-autodetect}"
 requested_profile="${2:-}"
 
 usage() {
-  echo "Usage: omarchy-powerprofiles-set [autodetect|ac|battery] [power-saver|balanced|performance]" >&2
+  echo "Usage: omarchy-powerprofiles-set [autodetect|ac|battery] [quiet|cool|power-saver|balanced|performance]" >&2
   exit 1
 }
 
@@ -45,6 +45,9 @@ if [[ -n $requested_profile ]]; then
   profile="$requested_profile"
 elif [[ -r $state_file ]]; then
   profile=$(<"$state_file")
+  if [[ $profile == "power-saver" ]] && profile_available quiet; then
+    profile=quiet
+  fi
 fi
 
 if [[ -z ${profile:-} ]] || ! profile_available "$profile"; then
@@ -55,7 +58,60 @@ if [[ -z ${profile:-} ]] || ! profile_available "$profile"; then
   fi
 fi
 
-powerprofilesctl set "$profile" || exit
+dell_profile_dir=""
+profile_root="${OMARCHY_PLATFORM_PROFILE_ROOT:-/sys/class/platform-profile}"
+for profile_dir in "$profile_root"/*; do
+  [[ -r $profile_dir/name && -r $profile_dir/choices && -r $profile_dir/profile && -w $profile_dir/profile ]] || continue
+  if [[ $(<"$profile_dir/name") == "dell-pc" ]]; then
+    dell_profile_dir="$profile_dir"
+    break
+  fi
+done
+
+os_profile="$profile"
+if [[ -n $dell_profile_dir ]]; then
+  case "$profile" in
+    quiet | cool) os_profile=power-saver ;;
+    balanced | performance) ;;
+    *) os_profile=balanced ;;
+  esac
+fi
+
+set_os_profile() {
+  local target="$1"
+  local attempt
+
+  # Multiple platform-profile controllers can make PPD settle one profile
+  # level per request, such as performance -> balanced -> power-saver.
+  for (( attempt = 0; attempt < 3; attempt++ )); do
+    powerprofilesctl set "$target" || return 1
+    [[ $(powerprofilesctl get 2>/dev/null) == "$target" ]] && return 0
+  done
+
+  echo "OS power profile did not settle: $target" >&2
+  return 1
+}
+
+previous_os_profile=""
+if [[ -n $dell_profile_dir ]]; then
+  previous_os_profile=$(powerprofilesctl get 2>/dev/null)
+  [[ -n $previous_os_profile ]] || { echo "Unable to read the current OS power profile" >&2; exit 1; }
+  if ! set_os_profile "$os_profile"; then
+    set_os_profile "$previous_os_profile" >/dev/null 2>&1 || true
+    exit 1
+  fi
+else
+  powerprofilesctl set "$os_profile" || exit
+fi
+
+if [[ -n $dell_profile_dir && $(<"$dell_profile_dir/profile") != $profile ]]; then
+  if ! printf '%s\n' "$profile" >"$dell_profile_dir/profile"; then
+    if [[ -n $previous_os_profile ]]; then
+      set_os_profile "$previous_os_profile" >/dev/null 2>&1 || true
+    fi
+    exit 1
+  fi
+fi
 
 if [[ -n $requested_profile ]]; then
   mkdir -p "$state_dir"

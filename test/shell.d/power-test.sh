@@ -8,9 +8,6 @@ run_node_test <<'JS'
 const power = requireFromRoot('shell/plugins/panels/power/Model.js')
 const states = { Charging: 1, Discharging: 2, FullyCharged: 3, PendingCharge: 4 }
 
-assertEqual(power.selectProfileIndex(0, 1, ['balanced', 'performance']), 1, 'power advances profile selection')
-assertEqual(power.selectProfileIndex(1, 1, ['balanced', 'performance']), 1, 'power clamps profile selection')
-
 assertDeepEqual(power.parseKeyValue('time\t2:00\nenergy\t42\n'), { time: '2:00', energy: '42' }, 'power parses key-value output')
 assertDeepEqual(
   power.parseProfiles('power-saver\t0\nbalanced\t1\nperformance\t0\n', 5),

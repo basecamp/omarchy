@@ -7,7 +7,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT
 
-mkdir -p "$tmp_dir/bin" "$tmp_dir/state"
+mkdir -p "$tmp_dir/bin" "$tmp_dir/state" "$tmp_dir/platform-profile"
 
 cat >"$tmp_dir/bin/powerprofilesctl" <<'EOF'
 #!/bin/bash
@@ -35,6 +35,7 @@ chmod +x "$tmp_dir/bin/busctl"
 export PATH="$tmp_dir/bin:$ROOT/bin:$PATH"
 export POWERPROFILES_LOG="$tmp_dir/calls"
 export OMARCHY_POWERPROFILES_STATE_DIR="$tmp_dir/state"
+export OMARCHY_PLATFORM_PROFILE_ROOT="$tmp_dir/platform-profile"
 
 "$ROOT/bin/omarchy-powerprofiles-set" ac balanced
 [[ $(<"$tmp_dir/state/ac") == "balanced" ]] || fail "power profile stores AC preference"
@@ -80,3 +81,7 @@ pass "battery service applies profiles through Omarchy command"
 rg -F 'omarchy-powerprofiles-set autodetect' "$ROOT/shell/plugins/menu/Menu.qml" >/dev/null ||
   fail "power profile menu persists selections through Omarchy command"
 pass "power profile menu persists selections through Omarchy command"
+
+rg -F 'omarchy-powerprofiles-list --active-state' "$ROOT/shell/plugins/menu/Menu.qml" >/dev/null ||
+  fail "power profile menu reads active state through Omarchy command"
+pass "power profile menu reads active state through Omarchy command"
