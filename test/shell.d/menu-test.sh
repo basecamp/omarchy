@@ -19,7 +19,7 @@ const parsed = menu.parseMenuJsonc(`
     "style.theme": {
       "label": "Themes",
       "aliases": "theme",
-      "keywords": "appearance appearance colors",
+      "description": "appearance colors",
       "action": "omarchy-theme-set"
     },
   },
@@ -38,8 +38,7 @@ assertDeepEqual(
     label: 'Themes',
     title: '',
     target: '',
-    keywords: 'appearance colors',
-    description: '',
+    description: 'appearance colors',
     action: 'omarchy-theme-set',
     provider: '',
     aliases: ['theme'],
@@ -84,7 +83,7 @@ assert(menu.matchesQuery(entry, 'theme', true), 'menu matches labels and aliases
 assert(menu.matchesQuery(entry, 'colors', true), 'menu matches aliases')
 assert(!menu.matchesQuery(entry, 'missing', true), 'menu rejects missing terms')
 assert(!menu.matchesQuery(entry, 'theme', false), 'menu hides invisible matches')
-assert(menu.searchScore(merged.items, entry, 'theme') < menu.searchScore(merged.items, entry, 'appearance'), 'menu scores name matches above keyword matches')
+assert(menu.searchScore(merged.items, entry, 'theme') < menu.searchScore(merged.items, entry, 'appearance'), 'menu scores name matches above description matches')
 
 assertDeepEqual(
   menu.displayRow(merged.items, merged.itemOrder, {}, entry, 'Style', 12, 'search'),

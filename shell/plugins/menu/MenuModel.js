@@ -10,19 +10,6 @@ function normalizeAliases(value) {
   return []
 }
 
-function normalizeKeywords(id, aliases, raw) {
-  var parts = String(raw || "").split(/\s+/)
-  var seen = {}
-  var out = []
-  for (var i = 0; i < parts.length; i++) {
-    var p = parts[i]
-    if (!p || seen[p]) continue
-    seen[p] = true
-    out.push(p)
-  }
-  return out.join(" ")
-}
-
 function normalizeItem(id, raw) {
   var value = raw || {}
   var aliases = normalizeAliases(value.aliases)
@@ -42,7 +29,6 @@ function normalizeItem(id, raw) {
     label: value.label || id,
     title: value.title || "",
     target: value.target || "",
-    keywords: normalizeKeywords(id, aliases, value.keywords),
     description: value.description || "",
     action: value.action || "",
     provider: value.provider || "",
@@ -97,7 +83,7 @@ function mergeMenuSources(defaultItems, userItems) {
   }
 
   if (!nextItems.root) {
-    nextItems.root = { id: "root", parent: "", kind: "menu", icon: "", iconFont: "", label: "Go", title: "", target: "", keywords: "", description: "", aliases: [], when: "", checked: "", action: "", provider: "" }
+    nextItems.root = { id: "root", parent: "", kind: "menu", icon: "", iconFont: "", label: "Go", title: "", target: "", description: "", aliases: [], when: "", checked: "", action: "", provider: "" }
     nextOrder.unshift("root")
   }
   for (var k3 = 0; k3 < nextOrder.length; k3++) nextItems[nextOrder[k3]].order = k3
@@ -224,7 +210,7 @@ function termInSearchWords(term, text) {
   return false
 }
 
-function keywordTextMatches(query, text) {
+function descriptionTextMatches(query, text) {
   var terms = String(query || "").toLowerCase().trim().split(/\s+/)
   for (var i = 0; i < terms.length; i++) {
     if (terms[i] && !termInSearchWords(terms[i], text)) return false
@@ -237,13 +223,13 @@ function matchesQuery(entry, query, visible) {
   if (!visible) return false
 
   var nameText = nameSearchText(entry)
-  var keywordText = (entry.keywords + " " + entry.description).toLowerCase()
+  var descriptionText = String(entry.description || "").toLowerCase()
   var terms = String(query || "").toLowerCase().trim().split(/\s+/)
 
   for (var i = 0; i < terms.length; i++) {
     if (!terms[i]) continue
     if (nameText.indexOf(terms[i]) >= 0) continue
-    if (termInSearchWords(terms[i], keywordText)) continue
+    if (termInSearchWords(terms[i], descriptionText)) continue
     return false
   }
 
@@ -254,14 +240,14 @@ function searchScore(items, entry, query) {
   var needle = String(query || "").toLowerCase().trim()
   var label = entry.label.toLowerCase()
   var nameText = nameSearchText(entry)
-  var keywordText = (entry.keywords + " " + entry.description).toLowerCase()
+  var descriptionText = String(entry.description || "").toLowerCase()
   var score = 80
 
   if (label === needle) score = entry.parent === "root" ? 2 : 0
   else if (label.indexOf(needle) === 0) score = 10
   else if (label.indexOf(needle) >= 0) score = 30
   else if (nameText.indexOf(needle) >= 0) score = 40
-  else if (keywordTextMatches(needle, keywordText)) score = 60
+  else if (descriptionTextMatches(needle, descriptionText)) score = 60
 
   if (entry.kind === "menu" || entry.kind === "link") score -= 2
 
@@ -291,7 +277,6 @@ if (typeof module !== "undefined") {
   module.exports = {
     stripJsonc: stripJsonc,
     normalizeAliases: normalizeAliases,
-    normalizeKeywords: normalizeKeywords,
     normalizeItem: normalizeItem,
     parseMenuJsonc: parseMenuJsonc,
     mergeMenuSources: mergeMenuSources,
@@ -308,7 +293,7 @@ if (typeof module !== "undefined") {
     leafIdFor: leafIdFor,
     nameSearchText: nameSearchText,
     termInSearchWords: termInSearchWords,
-    keywordTextMatches: keywordTextMatches,
+    descriptionTextMatches: descriptionTextMatches,
     matchesQuery: matchesQuery,
     searchScore: searchScore,
     displayRow: displayRow
