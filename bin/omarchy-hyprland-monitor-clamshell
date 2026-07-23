@@ -30,11 +30,22 @@ configured_monitor_scale() {
   local monitor_lua="$HOME/.config/hypr/monitors.lua"
   [[ -f $monitor_lua ]] || return 0
   local scale
-  scale=$(sed -n 's/^local omarchy_monitor_scale = //p' "$monitor_lua" | head -1)
+  scale=$(configured_internal_monitor_value scale)
+  if [[ -z $scale ]]; then
+    scale=$(sed -n 's/^local omarchy_monitor_scale = //p' "$monitor_lua" | head -1)
+  fi
   if [[ -z $scale ]]; then
     scale=$(sed -nE 's/^hl\.monitor\(\{ output = "", mode = "preferred", position = "auto", scale = ([^ ]+) \}\)/\1/p' "$monitor_lua" | head -1)
   fi
   echo "$scale"
+}
+
+configured_internal_monitor_value() {
+  local key="$1"
+  local monitor_lua="$HOME/.config/hypr/monitors.lua"
+  [[ -n $INTERNAL && -f $monitor_lua ]] || return 0
+
+  sed -nE '/^hl\.monitor\(\{.*output = "'"$INTERNAL"'".*\}\)/s/.*'"$key"' = "?([^", }]+)"?.*/\1/p' "$monitor_lua" | head -1
 }
 
 current_internal_scale() {
@@ -75,11 +86,24 @@ read_monitor_scale() {
   echo 2
 }
 
+read_monitor_position() {
+  local position
+  position=$(configured_internal_monitor_value position)
+  if [[ $position =~ ^[-[:alnum:]_.+]+$ ]]; then
+    echo "$position"
+    return
+  fi
+
+  echo auto
+}
+
 enable_internal_output() {
   [[ -n $INTERNAL ]] || return 0
   local scale="${1:-}"
+  local position
   [[ -n $scale ]] || scale=$(read_monitor_scale)
-  hyprctl eval "hl.monitor({ output = \"$INTERNAL\", mode = \"preferred\", position = \"auto\", scale = $scale })" >/dev/null 2>&1 || true
+  position=$(read_monitor_position)
+  hyprctl eval "hl.monitor({ output = \"$INTERNAL\", mode = \"preferred\", position = \"$position\", scale = $scale })" >/dev/null 2>&1 || true
 }
 
 sync_internal_scale() {
