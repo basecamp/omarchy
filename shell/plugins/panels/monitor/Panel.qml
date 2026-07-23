@@ -520,8 +520,7 @@ Panel {
                   if (root.brightnessAvailable) {
                     return root.brightnessName(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent).toUpperCase()
                   }
-                  var count = root.enabledDisplayCount
-                  return (count === 1 ? "1 display" : count + " displays").toUpperCase()
+                  return "FIXED BRIGHTNESS"
                 }
                 color: Qt.darker(root.bar.foreground, 1.4)
                 font.family: root.bar.fontFamily
