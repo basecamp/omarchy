@@ -15,7 +15,8 @@ fi
 # Refresh the Chromium configuration
 omarchy-refresh-config chromium-flags.conf
 
-# Install/refresh the native messaging host used by the yt-dlp extension
+# Install/refresh the native messaging hosts used by the bundled extensions
+omarchy-install-chromium-copy-url
 omarchy-install-chromium-ytdlp
 
 # Re-install Google accounts if previously configured

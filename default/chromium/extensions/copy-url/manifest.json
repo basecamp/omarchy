@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Copy URL",
-  "version": "1.3",
+  "version": "1.5",
   "description": "Copy current URL to clipboard, this extension is installed by Omarchy",
   "action": { "default_title": "Copy URL" },
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxbOMKgGcG20uelP6lx5OnuafGP9gNR1ajzURuQ45tv/Is5sc1tn9ii9PsKxpzDzPL9Z5lAqrTFgEcKHyTJnZXAGOMIruB0odJ0BW6eoQ3rxaQ/fBK2yGN7FZAfygPOWHj+Fdrh2eYQ7Ap92Dmlz8x0ceGyais415KmeevVcPwS7jjHFd1bGBp17cEMOBQcOx/3zCnko1hGtCzSdyZQl3cNMebW/FGvmxlPUMLVfWhysfFUuzxMRRf58+/j0mo/9iKQ0uTuxbQ8+W64OmYOVR87IXYNgbo+hEtORjiQhVg1KzaBx1bZ6clQMv96W/xYy1cIzUA5yI9y7lNr7n9zKijwIDAQAB",
-  "permissions": ["activeTab", "clipboardWrite", "notifications", "offscreen"],
+  "permissions": ["activeTab", "nativeMessaging"],
   "icons": {
     "16": "icon.png",
     "48": "icon.png",
@@ -17,5 +17,5 @@
       "description": "Copy URL"
     }
   },
-  "background": {"service_worker": "background-2.js"}
+  "background": {"service_worker": "background-4.js"}
 }

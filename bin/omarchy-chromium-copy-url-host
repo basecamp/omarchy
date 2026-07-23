@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# omarchy:summary=Native messaging host: copy a Chromium tab URL to the clipboard
+# omarchy:hidden=true
+
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+export OMARCHY_PATH="${OMARCHY_PATH:-$(cd -- "$(dirname -- "$SCRIPT_PATH")/.." && pwd)}"
+export PATH="$OMARCHY_PATH/bin:/usr/local/bin:/usr/bin:$PATH"
+
+parse_url() {
+  jq -r '.url // empty' 2>/dev/null <<<"$1" || true
+}
+
+copy_url() {
+  local url="$1"
+
+  [[ -n $url ]] || return 1
+  printf '%s' "$url" | wl-copy --type text/plain
+  omarchy-notification-send -g 󰅍 "URL copied to clipboard"
+}
+
+reply_copied() {
+  if [[ $1 == "true" ]]; then
+    printf '\x0f\x00\x00\x00{"copied":true}'
+  else
+    printf '\x10\x00\x00\x00{"copied":false}'
+  fi
+}
+
+main() {
+  local length payload url
+
+  length=$(head -c4 | od -An -v -tu4 --endian=little | tr -d ' ')
+  [[ -n ${length:-} ]] && (( length > 0 )) || exit 0
+
+  payload=$(head -c "$length")
+  url=$(parse_url "$payload")
+
+  if copy_url "$url"; then
+    reply_copied true
+  else
+    reply_copied false
+  fi
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi
