@@ -35,6 +35,77 @@ assertDeepEqual(
 )
 JS
 
+require_command python3
+
+ROOT="$ROOT" python3 <<'PY'
+import importlib.util
+import io
+import os
+from pathlib import Path
+from types import SimpleNamespace
+
+helper_path = Path(os.environ["ROOT"]) / "shell/plugins/services/idle/scripts/gamepad_activity.py"
+spec = importlib.util.spec_from_file_location("gamepad_activity", helper_path)
+gamepad = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(gamepad)
+
+
+def check(condition, description):
+  if not condition:
+    raise AssertionError(description)
+  print(f"ok - {description}")
+
+
+check(
+  gamepad.has_gamepad_buttons({gamepad.EV_KEY: [30, gamepad.BTN_JOYSTICK]}),
+  "idle recognizes gamepad button capabilities",
+)
+check(
+  not gamepad.has_gamepad_buttons({gamepad.EV_KEY: [1, 30, 57]}),
+  "idle does not classify a keyboard as a gamepad",
+)
+
+axis = SimpleNamespace(value=0, min=-32768, max=32767, flat=500)
+activity_filter = gamepad.ActivityFilter({0: axis})
+check(
+  not activity_filter.accepts(gamepad.EV_ABS, 0, 800),
+  "idle filters analog stick drift",
+)
+check(
+  activity_filter.accepts(gamepad.EV_ABS, 0, 1400),
+  "idle accepts cumulative intentional axis movement",
+)
+check(activity_filter.accepts(gamepad.EV_KEY, 304, 1), "idle accepts gamepad button presses")
+check(not activity_filter.accepts(gamepad.EV_KEY, 304, 0), "idle ignores gamepad button releases")
+check(activity_filter.accepts(gamepad.EV_REL, 0, 1), "idle accepts relative gamepad input")
+
+timestamps = iter([10.0, 10.5, 11.1])
+output = io.StringIO()
+reporter = gamepad.ActivityReporter(clock=lambda: next(timestamps), stream=output)
+check(reporter.report(), "idle reports initial gamepad activity")
+check(not reporter.report(), "idle throttles repeated gamepad activity")
+check(reporter.report(), "idle resumes gamepad activity reports after throttle")
+check(output.getvalue() == "activity\nactivity\n", "idle emits the shell activity protocol")
+PY
+
+if ! rg -qx 'python-evdev' "$ROOT/install/omarchy-base.packages"; then
+  fail "Gamepad activity dependency is in the base package list"
+fi
+
+if ! rg -q 'enabled: root.idleEnabled && !root.idleResetPending' "$ROOT/shell/plugins/services/idle/Service.qml"; then
+  fail "Gamepad activity resets the idle monitor"
+fi
+
+if ! rg -q 'idle/scripts/gamepad_activity.py' "$ROOT/shell/plugins/services/idle/Service.qml"; then
+  fail "Gamepad activity helper is started by the idle service"
+fi
+
+if ! rg -q 'function activity\(\): string' "$ROOT/shell/plugins/services/idle/Service.qml"; then
+  fail "Idle activity is available over shell IPC"
+fi
+
+pass "Gamepad activity is wired into the idle service"
+
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 
