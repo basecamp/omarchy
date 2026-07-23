@@ -196,7 +196,7 @@
   "install.terminal.kitty": {"icon":"","label":"Kitty","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-terminal kitty'"},
   "install.ai.dictation": {"icon":"","label":"Dictation","action":"omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install"},
   "install.ai.lm-studio": {"icon":"󱚤","label":"LM Studio","action":"omarchy-install-app 'LM Studio' lmstudio-bin"},
-  "install.ai.ollama": {"icon":"󱚤","label":"Ollama","action":"if omarchy-cmd-present nvidia-smi; then ollama_pkg=ollama-cuda; elif omarchy-cmd-present rocminfo; then ollama_pkg=ollama-rocm; else ollama_pkg=ollama; fi; install Ollama \"$ollama_pkg\""},
+  "install.ai.ollama": {"icon":"󱚤","label":"Ollama","action":"if omarchy-cmd-present nvidia-smi; then ollama_pkg=ollama-cuda; elif omarchy-cmd-present rocminfo; then ollama_pkg=ollama-rocm; else ollama_pkg=ollama; fi; omarchy-install-app Ollama \"$ollama_pkg\""},
   "install.ai.crush": {"icon":"󱚤","label":"Crush","action":"omarchy-install-app Crush crush-bin"},
   "install.gaming.steam": {"icon":"","label":"Steam","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-steam"},
   "install.gaming.retroarch": {"icon":"󰯉","label":"RetroArch","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-retroarch"},
