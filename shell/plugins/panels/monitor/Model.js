@@ -10,6 +10,29 @@ function normalizeScale(scale) {
   return String(Math.round(n * 100) / 100)
 }
 
+function gcd(a, b) {
+  while (b) {
+    var remainder = a % b
+    a = b
+    b = remainder
+  }
+  return a
+}
+
+function cleanScale(scale, width, height) {
+  var requested = Number(scale)
+  var modeWidth = Number(width)
+  var modeHeight = Number(height)
+  if (!isFinite(requested) || !isFinite(modeWidth) || !isFinite(modeHeight)
+      || requested <= 0 || modeWidth <= 0 || modeHeight <= 0) return ""
+
+  var divisor = gcd(Math.round(modeWidth * 120), Math.round(modeHeight * 120))
+  var scaleUnits = Math.round(requested * 120)
+  if (scaleUnits > divisor) scaleUnits = divisor
+  while (divisor % scaleUnits !== 0) scaleUnits++
+  return normalizeScale(scaleUnits / 120)
+}
+
 function brightnessName(percent) {
   var p = Math.round(percent)
   if (p >= 95) return "Sun blast"
@@ -46,6 +69,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     clampBrightness: clampBrightness,
     normalizeScale: normalizeScale,
+    cleanScale: cleanScale,
     brightnessName: brightnessName,
     parseDisplays: parseDisplays
   }

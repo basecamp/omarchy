@@ -246,6 +246,15 @@ Panel {
     return Model.normalizeScale(scale)
   }
 
+  function effectiveScale(scale) {
+    for (var i = 0; i < displays.length; i++) {
+      var display = displays[i]
+      if (display && display.focused)
+        return Model.cleanScale(scale, display.width, display.height)
+    }
+    return normalizeScale(scale)
+  }
+
   // Playful mood-name for a given brightness percent. Bands intentionally
   // span ~10–20 points so casual tweaks change the label, while small
   // nudges within one band don't.
@@ -771,7 +780,7 @@ Panel {
     verticalPadding: Style.spacing.controlPaddingY
     bordered: true
 
-    active: root.normalizeScale(root.monitorScale) === root.normalizeScale(scaleValue)
+    active: root.normalizeScale(root.monitorScale) === root.effectiveScale(scaleValue)
     hasCursor: root.cursorActive && root.focusSection === "scale" && root.selectedIndex === scaleIndex
 
     onClicked: root.setScale(scaleValue)
