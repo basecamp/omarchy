@@ -13,10 +13,10 @@ remove_pam_config() {
     sudo sed -i '/pam_fprintd\.so/d' /etc/pam.d/sudo
   fi
 
-  # Remove from polkit
-  if [[ -f /etc/pam.d/polkit-1 ]] && grep -Fq 'pam_fprintd.so' /etc/pam.d/polkit-1; then
+  # Remove from polkit (both the fingerprint module and its clamshell gate)
+  if [[ -f /etc/pam.d/polkit-1 ]] && grep -Eq 'pam_fprintd\.so|omarchy-hw-laptop-closed' /etc/pam.d/polkit-1; then
     echo "Removing fingerprint authentication from polkit..."
-    sudo sed -i '/pam_fprintd\.so/d' /etc/pam.d/polkit-1
+    sudo sed -i -e '/pam_fprintd\.so/d' -e '/omarchy-hw-laptop-closed/d' /etc/pam.d/polkit-1
   fi
 }
 
