@@ -1,7 +1,6 @@
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
-import Quickshell.Widgets
 import QtQuick
 import qs.Commons
 import qs.Ui
@@ -591,15 +590,18 @@ Item {
                 width: root.iconSlotWidth
                 height: parent.height
 
-                IconImage {
+                Image {
                   id: appIcon
                   anchors.centerIn: parent
-                  implicitSize: root.iconSize
                   width: root.iconSize
                   height: root.iconSize
+                  fillMode: Image.PreserveAspectFit
+                  // Decode at physical pixels: IconImage uses the logical size,
+                  // which leaves PNG icons upscaled and blurry on HiDPI displays.
+                  sourceSize.width: root.iconSize * Screen.devicePixelRatio
+                  sourceSize.height: root.iconSize * Screen.devicePixelRatio
                   source: root.iconSource(row.icon)
                   asynchronous: true
-                  mipmap: true
                 }
 
                 Text {

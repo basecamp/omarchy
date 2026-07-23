@@ -2,7 +2,6 @@ import Quickshell
 import QtQuick
 import QtQuick.Effects
 import Quickshell.Services.SystemTray
-import Quickshell.Widgets
 import qs.Commons
 import qs.Ui
 import "TrayModel.js" as TrayModel
@@ -502,15 +501,19 @@ BarWidget {
             font.pixelSize: Style.font.bodySmall
           }
 
-          IconImage {
+          Image {
             id: menuIcon
             visible: !menuRow.modelData.isSeparator && String(menuRow.modelData.icon || "") !== ""
             anchors.verticalCenter: parent.verticalCenter
             anchors.left: parent.left
             anchors.leftMargin: Style.space(24)
-            implicitSize: Style.space(16)
             width: Style.space(16)
             height: Style.space(16)
+            fillMode: Image.PreserveAspectFit
+            // Decode at physical pixels: IconImage uses the logical size,
+            // which leaves PNG icons upscaled and blurry on HiDPI displays.
+            sourceSize.width: width * Screen.devicePixelRatio
+            sourceSize.height: height * Screen.devicePixelRatio
             source: menuRow.modelData.icon
           }
 
@@ -569,10 +572,14 @@ BarWidget {
     required property var icon
     readonly property bool symbolic: root.iconIsSymbolic(icon)
 
-    IconImage {
+    Image {
       id: trayIconImage
       anchors.fill: parent
-      implicitSize: Math.round(Math.min(parent.width, parent.height))
+      fillMode: Image.PreserveAspectFit
+      // Decode at physical pixels: IconImage uses the logical size,
+      // which leaves PNG icons upscaled and blurry on HiDPI displays.
+      sourceSize.width: Math.round(Math.min(width, height) * Screen.devicePixelRatio)
+      sourceSize.height: Math.round(Math.min(width, height) * Screen.devicePixelRatio)
       source: root.trayIconSource(trayIconRoot.icon)
       // Kept as a hidden layer so the effect can sample it as a texture.
       visible: !trayIconRoot.symbolic
