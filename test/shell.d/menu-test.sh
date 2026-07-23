@@ -161,6 +161,11 @@ assertEqual(
   'omarchy-hw-laptop',
   'menu only shows Mirror Display on laptops'
 )
+assertEqual(
+  defaultById['trigger.capture.screenrecord.webcam'].when,
+  'omarchy-hw-webcam',
+  'menu only shows webcam screen recording when a webcam is available'
+)
 assert(
   /font\.family: row\.iconFont\.length > 0 \? row\.iconFont : root\.fontFamily/.test(menuQml),
   'menu rows support per-icon font families'

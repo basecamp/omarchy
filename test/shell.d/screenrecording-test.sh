@@ -13,6 +13,8 @@ mkdir -p "$stub_bin"
 cat >"$stub_bin/v4l2-ctl" <<'SH'
 #!/bin/bash
 
+[[ ${OMARCHY_TEST_NO_WEBCAM:-false} == "true" ]] && exit 0
+
 printf '%s\n' "Built-in Webcam: Integrated Camera"
 printf '\t%s\n' "/dev/video0"
 printf '\t%s\n' "/dev/video1"
@@ -46,6 +48,18 @@ export PATH="$stub_bin:$ROOT/bin:$PATH"
 export OMARCHY_TEST_MENU_ARGS="$tmp_dir/menu-args"
 export OMARCHY_TEST_RECORDER_ARGS="$tmp_dir/recorder-args"
 export OMARCHY_TEST_NOTIFICATION_ARGS="$tmp_dir/notification-args"
+
+if "$ROOT/bin/omarchy-hw-webcam"; then
+  pass "webcam hardware detection succeeds when a video device is available"
+else
+  fail "webcam hardware detection succeeds when a video device is available"
+fi
+
+if OMARCHY_TEST_NO_WEBCAM=true "$ROOT/bin/omarchy-hw-webcam"; then
+  fail "webcam hardware detection fails when no video device is available"
+else
+  pass "webcam hardware detection fails when no video device is available"
+fi
 
 "$ROOT/bin/omarchy-capture-screenrecording-with-webcam"
 
