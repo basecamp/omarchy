@@ -37,6 +37,34 @@ install_user_icon() {
   printf '%s\n' "$name"
 }
 
+download_icon() {
+  curl -fsSL --max-time 10 -o "$2" "$1" 2>/dev/null &&
+    [[ -s $2 && $(file -b --mime-type "$2") == image/* ]]
+}
+
+fetch_site_icon() {
+  local site_url="$1" dest="$2"
+  local origin page icon_url
+  origin=$(sed -E 's|^(https?://[^/]+).*|\1|' <<<"$site_url")
+
+  # Prefer the site's own high-res icon (apple-touch-icon is typically 180px+),
+  # then the well-known path, then Google's favicon service as a last resort.
+  page=$(curl -fsSL --max-time 5 "$site_url" 2>/dev/null | head -c 100000 | tr '\n' ' ')
+  icon_url=$(grep -oiE "<link[^>]*rel=[\"'][^\"']*apple-touch-icon[^\"']*[\"'][^>]*>" <<<"$page" |
+    grep -oiE "href=[\"'][^\"']+" | head -1 | sed -E "s/^href=[\"']//")
+
+  case $icon_url in
+  http://* | https://*) ;;
+  //*) icon_url="https:$icon_url" ;;
+  /*) icon_url="$origin$icon_url" ;;
+  ?*) icon_url="$origin/$icon_url" ;;
+  esac
+
+  { [[ -n $icon_url ]] && download_icon "$icon_url" "$dest"; } ||
+    download_icon "$origin/apple-touch-icon.png" "$dest" ||
+    download_icon "https://www.google.com/s2/favicons?domain=${site_url}&sz=256" "$dest"
+}
+
 if (( $# < 3 )); then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
@@ -45,11 +73,10 @@ if (( $# < 3 )); then
     APP_URL="https://$APP_URL"
   fi
 
-  # Try to fetch favicon automatically first.
-  FAVICON_URL="https://www.google.com/s2/favicons?domain=${APP_URL}&sz=128"
+  # Try to fetch the site's icon automatically first.
   mkdir -p "$ICON_DIR"
   ICON_VALUE=$(safe_icon_name "$APP_NAME")
-  if curl -fsSL -o "$ICON_DIR/$ICON_VALUE.png" "$FAVICON_URL" && [[ -s $ICON_DIR/$ICON_VALUE.png ]]; then
+  if fetch_site_icon "$APP_URL" "$ICON_DIR/$ICON_VALUE.png"; then
     gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" &>/dev/null || true
     ICON_REF="$ICON_VALUE"
   else
@@ -78,13 +105,17 @@ if [[ -z $APP_NAME || -z $APP_URL ]]; then
 fi
 
 if [[ -z $ICON_REF ]]; then
-  ICON_REF="https://www.google.com/s2/favicons?domain=${APP_URL}&sz=128"
-fi
-
-if [[ $ICON_REF =~ ^https?:// ]]; then
   ICON_VALUE=$(safe_icon_name "$APP_NAME")
   mkdir -p "$ICON_DIR"
-  if ! curl -fsSL -o "$ICON_DIR/$ICON_VALUE.png" "$ICON_REF" || [[ ! -s $ICON_DIR/$ICON_VALUE.png ]]; then
+  if ! fetch_site_icon "$APP_URL" "$ICON_DIR/$ICON_VALUE.png"; then
+    echo "Error: Failed to download icon."
+    exit 1
+  fi
+  gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" &>/dev/null || true
+elif [[ $ICON_REF =~ ^https?:// ]]; then
+  ICON_VALUE=$(safe_icon_name "$APP_NAME")
+  mkdir -p "$ICON_DIR"
+  if ! download_icon "$ICON_REF" "$ICON_DIR/$ICON_VALUE.png"; then
     echo "Error: Failed to download icon."
     exit 1
   fi
