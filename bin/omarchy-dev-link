@@ -3,7 +3,7 @@
 # omarchy:summary=Point Omarchy at a local checkout after reboot
 # omarchy:group=dev
 # omarchy:args=<path-to-checkout>
-# omarchy:examples=omarchy dev link ~/Work/omarchy/omarchy-installer
+# omarchy:examples=omarchy dev link ~/omarchy
 
 set -euo pipefail
 

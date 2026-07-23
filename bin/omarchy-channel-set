@@ -23,45 +23,21 @@ WARNING
   gum confirm --default=false "Enable Dev anyway?"
 }
 
-choose_dev_checkout() {
-  local default_path="$HOME/Work/omarchy"
-  local path="${OMARCHY_DEV_PATH:-}"
-
-  if [[ -z $path ]]; then
-    path=$(gum input --value "$default_path" --placeholder "$default_path" --header "Where should Dev checkout live? Existing non-checkout paths will not be overwritten.") || exit 1
-  fi
-
-  path="${path:-$default_path}"
-  case "$path" in
-    "~") path="$HOME" ;;
-    "~/"*) path="$HOME/${path#~/}" ;;
-    /*) ;;
-    *) path="$PWD/$path" ;;
-  esac
-
-  if [[ -e $path && ! -d $path/.git ]]; then
-    fail "$path already exists and is not a git checkout. Choose an empty path or an existing Omarchy checkout."
-  fi
-
-  if [[ -d $path/.git && ( ! -d $path/bin || ! -d $path/default || ! -d $path/shell ) ]]; then
-    fail "$path is a git checkout, but it does not look like Omarchy."
-  fi
-
-  printf '%s\n' "$path"
-}
-
-sync_dev_checkout() {
+validate_dev_checkout() {
   local checkout="$1"
 
-  if [[ -d $checkout/.git ]]; then
-    echo "Updating Dev checkout at $checkout"
-    git -C "$checkout" fetch origin quattro
-    git -C "$checkout" checkout quattro 2>/dev/null || git -C "$checkout" checkout --track origin/quattro
-    git -C "$checkout" pull --ff-only origin quattro
-  else
-    mkdir -p "$(dirname -- "$checkout")"
-    git clone --branch quattro --single-branch https://github.com/basecamp/omarchy.git "$checkout"
+  if [[ -e $checkout && ! -d $checkout/.git ]]; then
+    fail "$checkout already exists and is not a git checkout."
   fi
+
+  if [[ -d $checkout/.git && ( ! -d $checkout/bin || ! -d $checkout/default || ! -d $checkout/shell ) ]]; then
+    fail "$checkout is a git checkout, but it does not look like Omarchy."
+  fi
+}
+
+link_dev_checkout() {
+  local checkout="$1"
+  [[ -d $checkout/.git ]] || git clone https://github.com/basecamp/omarchy.git "$checkout"
 
   omarchy-dev-link "$checkout"
 }
@@ -86,7 +62,8 @@ case "$channel" in
     ;;
   dev)
     confirm_dev || { echo "Cancelled."; exit 0; }
-    dev_checkout=$(choose_dev_checkout)
+    dev_checkout="$HOME/omarchy"
+    validate_dev_checkout "$dev_checkout"
     pacman_channel=edge
     packages=(omarchy-dev omarchy-settings-dev)
     ;;
@@ -101,7 +78,7 @@ omarchy-refresh-pacman "$pacman_channel"
 # --ask 4 accepts omarchy <-> omarchy-dev replacement prompts without file overwrites.
 sudo env OMARCHY_UPDATE_PACMAN=1 pacman -S --needed --noconfirm --ask 4 "${packages[@]}"
 
-if [[ -z $dev_checkout ]] && omarchy-cmd-present omarchy-dev-unlink; then
+if [[ -z $dev_checkout ]]; then
   omarchy-dev-unlink
   export OMARCHY_PATH=/usr/share/omarchy
 fi
@@ -109,5 +86,5 @@ fi
 omarchy-update -y
 
 if [[ -n $dev_checkout ]]; then
-  sync_dev_checkout "$dev_checkout"
+  link_dev_checkout "$dev_checkout"
 fi
