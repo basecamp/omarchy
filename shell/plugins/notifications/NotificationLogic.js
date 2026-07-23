@@ -73,8 +73,7 @@ function snapshotOf(notification, timestamp) {
     glyph: glyphFromHints(n.hints),
     urgency: n.urgency,
     expireTimeout: expireTimeout,
-    timestamp: timestamp === undefined ? Date.now() : timestamp,
-    ref: notification
+    timestamp: timestamp === undefined ? Date.now() : timestamp
   }
 }
 
@@ -91,8 +90,7 @@ function historyEntry(value, normalUrgency) {
     glyph: e.glyph || "",
     urgency: typeof e.urgency === "number" ? e.urgency : normalUrgency,
     expireTimeout: 0,
-    timestamp: e.timestamp || 0,
-    ref: null
+    timestamp: e.timestamp || 0
   }
 }
 

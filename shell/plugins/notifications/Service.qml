@@ -43,6 +43,13 @@ Item {
   readonly property int liveBarSize: shell && shell.bar && !shell.bar.barHidden ? Math.max(0, shell.bar.barSize) : defaultBarSize
   readonly property int barClearance: liveBarSize + Style.gapsOut
 
+  // Live Notification objects by originalId, kept OUT of the ListModels: a
+  // QObject stored in a model role becomes a dangling C++ pointer when the
+  // server destroys the notification (sender close, DND untrack, dismiss),
+  // and the next read of that role segfaults in QQmlListModel::data. A JS
+  // map only holds a wrapper, which degrades to a catchable error instead.
+  property var liveRefs: ({})
+
   // PersistentProperties handles in-process QML reloads. The on-disk
   // notifications.json file is the cross-restart backstop — its `dnd` key
   // is hydrated into persisted.doNotDisturb on startup and written back via
@@ -136,6 +143,13 @@ Item {
     // captured for the popup card.
     notification.tracked = true
     var snapshot = snapshotOf(notification)
+    liveRefs[snapshot.originalId] = notification
+    // Guard the delete: a newer notification may have reused this originalId
+    // (freedesktop replaces_id) and taken over the map slot.
+    notification.closed.connect(function() {
+      if (service.liveRefs[snapshot.originalId] === notification)
+        delete service.liveRefs[snapshot.originalId]
+    })
     // History is for notifications from real apps (Slack, Discord, mailer,
     // etc.) — things the user might want to look back at. Skip the pending
     // / past bookkeeping when:
@@ -154,6 +168,7 @@ Item {
     var ephemeralApp = NotificationLogic.isEphemeralApp(appName)
     if (transient || ephemeralApp) {
       if (service.doNotDisturb && !shouldBypassDnd(notification)) {
+        delete liveRefs[snapshot.originalId]
         notification.tracked = false
         return
       }
@@ -180,6 +195,7 @@ Item {
     // force visibility, so critical alone isn't enough — we also require
     // the sender to be CLI-style. See shouldBypassDnd().
     if (service.doNotDisturb && !shouldBypassDnd(notification)) {
+      delete liveRefs[snapshot.originalId]
       notification.tracked = false
       return
     }
@@ -278,8 +294,8 @@ Item {
   function removePopup(index, reason) {
     if (index < 0 || index >= popupModel.count) return
     var entry = popupModel.get(index)
-    var ref = entry ? entry.ref : null
     var originalId = entry ? entry.originalId : -1
+    var ref = originalId >= 0 ? liveRefs[originalId] : null
     popupModel.remove(index)
     if (ref) {
       try {
@@ -365,16 +381,22 @@ Item {
   function invokePopupDefault(index) {
     if (index < 0 || index >= popupModel.count) return
     var entry = popupModel.get(index)
-    var ref = entry ? entry.ref : null
+    var ref = entry ? liveRefs[entry.originalId] : null
     var invoked = false
-    if (ref && ref.actions) {
-      for (var i = 0; i < ref.actions.length; i++) {
-        var action = ref.actions[i]
-        if (action && action.identifier === "default") {
-          try { action.invoke(); invoked = true } catch (e) { console.warn("invoke default failed:", e) }
-          break
+    try {
+      if (ref && ref.actions) {
+        for (var i = 0; i < ref.actions.length; i++) {
+          var action = ref.actions[i]
+          if (action && action.identifier === "default") {
+            action.invoke()
+            invoked = true
+            break
+          }
         }
       }
+    } catch (e) {
+      // Notification already torn down by the server — fall through to focus.
+      console.warn("invoke default failed:", e)
     }
     // Chat apps (Slack, Discord, Vesktop, etc.) rarely register a "default"
     // libnotify action — they just expect clicking the notification to
