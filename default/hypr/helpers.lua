@@ -8,13 +8,34 @@ end
 
 o.shell_quote = shell_quote
 
+local function file_exists(path)
+  local file = io.open(path, "r")
+  if file then
+    file:close()
+    return true
+  end
+
+  return false
+end
+
 function o.shell_succeeds(command)
   local ok, _, code = os.execute(command .. " >/dev/null 2>&1")
   return ok == true or ok == 0 or code == 0
 end
 
 function o.cmd_present(command)
-  return o.shell_succeeds("command -v " .. shell_quote(command))
+  if command:find("/", 1, true) then
+    return file_exists(command)
+  end
+
+  local path = os.getenv("PATH") or "/usr/local/bin:/usr/bin"
+  for directory in (path .. ":"):gmatch("([^:]*):") do
+    if file_exists((directory ~= "" and directory or ".") .. "/" .. command) then
+      return true
+    end
+  end
+
+  return false
 end
 
 function o.cmd_missing(command)
@@ -47,16 +68,6 @@ local function command_from(value, description)
   end
 
   return value
-end
-
-local function file_exists(path)
-  local file = io.open(path, "r")
-  if file then
-    file:close()
-    return true
-  end
-
-  return false
 end
 
 function o.preinstalled_bindings_enabled()
