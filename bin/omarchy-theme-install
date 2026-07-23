@@ -38,9 +38,11 @@ if ! BACKUP_THEME_DIR=$(mktemp -d "$THEMES_DIR/.theme-backup.XXXXXX"); then
   exit 1
 fi
 BACKUP_THEME_PATH="$BACKUP_THEME_DIR/$THEME_NAME"
+PRESERVE_BACKUP=0
 
 cleanup() {
-  rm -rf "$STAGING_DIR" "$BACKUP_THEME_DIR"
+  rm -rf "$STAGING_DIR"
+  (( PRESERVE_BACKUP )) || rm -rf "$BACKUP_THEME_DIR"
 }
 trap cleanup EXIT
 
@@ -66,7 +68,20 @@ fi
 
 # Apply the new theme with omarchy-theme-set
 if ! omarchy-theme-set "$THEME_NAME"; then
-  echo "Error: Failed to apply installed theme; the new theme remains installed for retry."
+  if [[ -e $BACKUP_THEME_PATH ]]; then
+    FAILED_THEME_PATH="$BACKUP_THEME_DIR/failed-$THEME_NAME"
+    if mv "$THEME_PATH" "$FAILED_THEME_PATH" && mv "$BACKUP_THEME_PATH" "$THEME_PATH"; then
+      PRESERVE_BACKUP=1
+      echo "Error: Failed to apply installed theme; the previous theme was restored." >&2
+      echo "The failed theme remains at $FAILED_THEME_PATH for inspection." >&2
+    else
+      PRESERVE_BACKUP=1
+      echo "Error: Failed to apply installed theme and restore the previous theme." >&2
+      echo "The backup remains at $BACKUP_THEME_PATH." >&2
+    fi
+  else
+    echo "Error: Failed to apply installed theme; the new theme remains installed for retry." >&2
+  fi
   exit 1
 fi
 

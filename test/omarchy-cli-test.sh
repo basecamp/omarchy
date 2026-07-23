@@ -359,13 +359,16 @@ chmod +x "$THEME_TEST_BIN/git" "$THEME_TEST_BIN/omarchy-theme-set"
 if HOME="$THEME_TEST_HOME" OMARCHY_PATH="$ROOT" PATH="$THEME_TEST_BIN:$ROOT/bin:$PATH" bash "$ROOT/bin/omarchy-theme-install" https://example.invalid/omarchy-tokyo-night.git; then
   fail "theme install returns non-zero when applying the cloned theme fails"
 fi
-[[ -f $THEME_TEST_HOME/.config/omarchy/themes/tokyo-night/new.txt ]] || fail "theme install keeps the cloned theme when applying it fails"
-pass "theme install keeps the cloned theme when applying it fails"
+[[ -f $THEME_TEST_HOME/.config/omarchy/themes/tokyo-night/KEEP-ME.txt ]] || fail "theme install restores the previous theme when applying the clone fails"
+failed_theme=$(find "$THEME_TEST_HOME/.config/omarchy/themes" -path '*/failed-tokyo-night/new.txt' -print -quit)
+[[ -n $failed_theme ]] || fail "theme install keeps the failed clone available for inspection"
+pass "theme install restores the previous theme when applying the clone fails"
 
-THEME_SUCCESS_DIR="$TMPDIR/theme-success"
-THEME_SUCCESS_HOME="$THEME_SUCCESS_DIR/home"
-THEME_SUCCESS_BIN="$THEME_SUCCESS_DIR/bin"
-mkdir -p "$THEME_SUCCESS_HOME/.config/omarchy/current/theme" "$THEME_SUCCESS_BIN"
+THEME_INTERRUPT_DIR="$TMPDIR/theme-interrupt"
+THEME_INTERRUPT_HOME="$THEME_INTERRUPT_DIR/home"
+THEME_INTERRUPT_BIN="$THEME_INTERRUPT_DIR/bin"
+mkdir -p "$THEME_INTERRUPT_HOME/.config/omarchy/current/theme" "$THEME_INTERRUPT_BIN"
+printf 'active-theme-sentinel\n' >"$THEME_INTERRUPT_HOME/.config/omarchy/current/theme/KEEP-ME.txt"
 for command_name in \
   omarchy-hook \
   omarchy-restart-btop \
@@ -383,11 +386,47 @@ for command_name in \
   omarchy-theme-set-obsidian \
   omarchy-theme-set-vscode \
   pgrep; do
+  ln -s /usr/bin/true "$THEME_INTERRUPT_BIN/$command_name"
+done
+printf '#!/bin/bash\n/usr/bin/mv "$@"\ncase "$2" in *previous-theme*) kill -TERM "$PPID" ;; esac\n' >"$THEME_INTERRUPT_BIN/mv"
+chmod +x "$THEME_INTERRUPT_BIN/mv"
+if HOME="$THEME_INTERRUPT_HOME" OMARCHY_PATH="$ROOT" OMARCHY_THEME_SKIP_BACKGROUND=1 PATH="$THEME_INTERRUPT_BIN:$ROOT/bin:$PATH" bash "$ROOT/bin/omarchy-theme-set" tokyo-night; then
+  fail "theme set returns non-zero when interrupted during activation"
+fi
+[[ -f $THEME_INTERRUPT_HOME/.config/omarchy/current/theme/KEEP-ME.txt ]] || fail "theme set restores the active theme after an interrupted activation"
+pass "theme set restores the active theme after an interrupted activation"
+
+THEME_SUCCESS_DIR="$TMPDIR/theme-success"
+THEME_SUCCESS_HOME="$THEME_SUCCESS_DIR/home"
+THEME_SUCCESS_BIN="$THEME_SUCCESS_DIR/bin"
+mkdir -p "$THEME_SUCCESS_HOME/.config/omarchy/current/theme" "$THEME_SUCCESS_BIN"
+for command_name in \
+  omarchy-hook \
+  omarchy-restart-btop \
+  omarchy-restart-helix \
+  omarchy-restart-hyprctl \
+  omarchy-restart-mako \
+  omarchy-restart-opencode \
+  omarchy-restart-swayosd \
+  omarchy-restart-terminal \
+  omarchy-restart-waybar \
+  omarchy-theme-bg-next \
+  omarchy-theme-set-browser \
+  omarchy-theme-set-foot \
+  omarchy-theme-set-gnome \
+  omarchy-theme-set-keyboard \
+  omarchy-theme-set-obsidian \
+  omarchy-theme-set-vscode \
+  pgrep; do
   ln -s /usr/bin/true "$THEME_SUCCESS_BIN/$command_name"
 done
+rm -f "$THEME_SUCCESS_BIN/omarchy-hook"
+printf '#!/bin/bash\nexit 42\n' >"$THEME_SUCCESS_BIN/omarchy-hook"
+chmod +x "$THEME_SUCCESS_BIN/omarchy-hook"
 
 printf 'old-theme-sentinel\n' >"$THEME_SUCCESS_HOME/.config/omarchy/current/theme/KEEP-ME.txt"
-HOME="$THEME_SUCCESS_HOME" OMARCHY_PATH="$ROOT" OMARCHY_THEME_SKIP_BACKGROUND=1 PATH="$THEME_SUCCESS_BIN:$ROOT/bin:$PATH" bash "$ROOT/bin/omarchy-theme-set" tokyo-night
+success_output=$(HOME="$THEME_SUCCESS_HOME" OMARCHY_PATH="$ROOT" OMARCHY_THEME_SKIP_BACKGROUND=1 PATH="$THEME_SUCCESS_BIN:$ROOT/bin:$PATH" bash "$ROOT/bin/omarchy-theme-set" tokyo-night 2>&1) || fail "theme set succeeds when an optional integration fails"
+[[ $success_output == *"integration warning"* ]] || fail "theme set reports optional integration failures"
 [[ -f $THEME_SUCCESS_HOME/.config/omarchy/current/theme/colors.toml ]] || fail "theme set generates the replacement theme"
 [[ -f $THEME_SUCCESS_HOME/.config/omarchy/current/theme/waybar.css ]] || fail "theme set generates themed templates in the staging directory"
 [[ ! -f $THEME_SUCCESS_HOME/.config/omarchy/current/theme/KEEP-ME.txt ]] || fail "theme set replaces the old theme after successful generation"
