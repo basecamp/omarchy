@@ -39,15 +39,8 @@ Panel {
     setProfile(profiles[profileIndex])
   }
 
-  function batteryIcon() {
-    var device = UPower.displayDevice
-    return Model.batteryIcon(device, root.discharging, upowerStates())
-  }
-
-  function modeLabel() {
-    var device = UPower.displayDevice
-    return Model.modeLabel(device, root.discharging, upowerStates())
-  }
+  readonly property string batteryIconText: Model.batteryIcon(UPower.displayDevice, root.discharging, upowerStates())
+  readonly property string modeLabelText: Model.modeLabel(UPower.displayDevice, root.discharging, upowerStates())
 
   function profileIcon(name) {
     return Model.profileIcon(name)
@@ -59,7 +52,7 @@ Panel {
   }
   readonly property bool discharging: {
     var device = UPower.displayDevice
-    return !!(device && device.isPresent && UPower.onBattery)
+    return !!(device && device.isPresent && device.state === UPowerDeviceState.Discharging)
   }
   readonly property bool chargeThresholdActive: {
     var device = UPower.displayDevice
@@ -76,7 +69,7 @@ Panel {
 
   readonly property bool charging: {
     var d = UPower.displayDevice
-    return d && d.isPresent && !UPower.onBattery && !root.batteryFlowIdle
+    return d && d.isPresent && !root.discharging && !root.batteryFlowIdle
   }
 
   readonly property color batteryFillColor: {
@@ -121,7 +114,7 @@ Panel {
   readonly property string heroStatusText: {
     if (fullyCharged) return "Fully charged"
     if (rotatingPhrases) return activePhrases[phraseIndex % activePhrases.length]
-    return modeLabel()
+    return modeLabelText
   }
 
   function refresh() {
@@ -253,7 +246,7 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.batteryIcon()
+    text: root.batteryIconText
     tooltipText: ""
     onPressed: function(b) { if (root.batteryPresent) root.toggle() }
   }
@@ -294,7 +287,7 @@ Panel {
 
           Text {
             id: heroIcon
-            text: root.batteryIcon()
+            text: root.batteryIconText
             color: root.bar.foreground
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.display
