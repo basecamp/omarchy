@@ -5,7 +5,7 @@
 
 TEMPLATES_DIR="$OMARCHY_PATH/default/themed"
 USER_TEMPLATES_DIR="$HOME/.config/omarchy/themed"
-NEXT_THEME_DIR="$HOME/.config/omarchy/current/next-theme"
+NEXT_THEME_DIR="${OMARCHY_THEME_STAGE_DIR:-$HOME/.config/omarchy/current/next-theme}"
 COLORS_FILE="$NEXT_THEME_DIR/colors.toml"
 
 # Convert hex color to decimal RGB (e.g., "#1e1e2e" -> "30,30,46")
@@ -16,7 +16,10 @@ hex_to_rgb() {
 
 # Only generate dynamic templates for themes with a colors.toml definition
 if [[ -f $COLORS_FILE ]]; then
-  sed_script=$(mktemp)
+  if ! sed_script=$(mktemp); then
+    echo "Failed to create theme template staging file"
+    exit 1
+  fi
 
   while IFS='=' read -r key value; do
     key="${key//[\"\' ]/}"                # strip quotes and spaces from key
@@ -41,7 +44,11 @@ if [[ -f $COLORS_FILE ]]; then
 
     # Don't overwrite configs already exists in the output directory (copied from theme specific folder)
     if [[ ! -f $output_path ]]; then
-      sed -f "$sed_script" "$tpl" >"$output_path"
+      if ! sed -f "$sed_script" "$tpl" >"$output_path"; then
+        rm -f "$sed_script"
+        echo "Failed to generate themed file '$output_path'"
+        exit 1
+      fi
     fi
   done
 
