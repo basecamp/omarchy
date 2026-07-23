@@ -1,0 +1,106 @@
+#!/bin/bash
+# Setup Samsung Galaxy Book audio fix
+# Installs systemd services and WirePlumber config for speaker amp initialization
+
+set -e
+
+echo "Setting up Samsung Galaxy Book audio fix..."
+
+# Check for Samsung Galaxy Book
+if ! grep -qi "samsung" /sys/class/dmi/id/sys_vendor 2>/dev/null; then
+    echo "Warning: This doesn't appear to be a Samsung device."
+    read -p "Continue anyway? [y/N] " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
+# Install alsa-tools if not present
+if ! command -v hda-verb &> /dev/null; then
+    echo "Installing alsa-tools..."
+    sudo pacman -S --noconfirm alsa-tools
+fi
+
+# Create systemd service for boot
+echo "Creating systemd service for boot..."
+sudo tee /etc/systemd/system/samsung-audio.service > /dev/null << 'EOF'
+[Unit]
+Description=Samsung Galaxy Book Audio Init
+After=sound.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/%u/.local/share/omarchy/bin/omarchy-samsung-audio-init
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Replace %u with actual username
+sudo sed -i "s/%u/$USER/g" /etc/systemd/system/samsung-audio.service
+
+# Create systemd service for resume from suspend
+echo "Creating systemd service for suspend resume..."
+sudo tee /etc/systemd/system/samsung-audio-resume.service > /dev/null << 'EOF'
+[Unit]
+Description=Samsung Galaxy Book Audio Resume Fix
+After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/%u/.local/share/omarchy/bin/omarchy-samsung-audio-init
+
+[Install]
+WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+EOF
+
+# Replace %u with actual username
+sudo sed -i "s/%u/$USER/g" /etc/systemd/system/samsung-audio-resume.service
+
+# Create WirePlumber config to disable suspend
+echo "Creating WirePlumber config..."
+mkdir -p ~/.config/wireplumber/wireplumber.conf.d
+cat > ~/.config/wireplumber/wireplumber.conf.d/disable-suspend.conf << 'EOF'
+# Disable suspend on audio devices to prevent Samsung speaker amp issues
+monitor.alsa.rules = [
+  {
+    matches = [
+      {
+        node.name = "~alsa_output.*"
+      }
+    ]
+    actions = {
+      update-props = {
+        session.suspend-timeout-seconds = 0
+      }
+    }
+  }
+]
+EOF
+
+# Create sudoers rule for passwordless audio init
+echo "Creating sudoers rule..."
+sudo tee /etc/sudoers.d/samsung-audio > /dev/null << EOF
+# Allow omarchy-samsung-audio-init to run without password
+$USER ALL=(ALL) NOPASSWD: $HOME/.local/share/omarchy/bin/omarchy-samsung-audio-init
+EOF
+sudo chmod 440 /etc/sudoers.d/samsung-audio
+
+# Enable services
+echo "Enabling services..."
+sudo systemctl daemon-reload
+sudo systemctl enable samsung-audio.service
+sudo systemctl enable samsung-audio-resume.service
+
+# Run the init script now
+echo "Initializing audio..."
+sudo "$HOME/.local/share/omarchy/bin/omarchy-samsung-audio-init" > /dev/null 2>&1
+
+# Restart WirePlumber
+echo "Restarting WirePlumber..."
+systemctl --user restart wireplumber
+
+echo ""
+echo "Samsung Galaxy Book audio fix installed successfully!"
+echo "Audio should work now. If not, try rebooting."
