@@ -4,6 +4,11 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+if ! perl -0ne 'exit(/id:\s*trayMenuPopup.*?Flickable\s*\{.*?contentHeight:\s*trayMenuColumn\.implicitHeight.*?ScrollBar\.vertical:\s*ScrollBar/s ? 0 : 1)' "$ROOT/shell/plugins/bar/widgets/Tray.qml"; then
+  fail "tray menu keeps capped content scrollable"
+fi
+pass "tray menu keeps capped content scrollable"
+
 run_node_test "tray model helpers" <<'JS'
 const tray = requireFromRoot('shell/plugins/bar/widgets/TrayModel.js')
 
