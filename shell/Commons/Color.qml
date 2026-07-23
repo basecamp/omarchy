@@ -91,15 +91,6 @@ QtObject {
     property color border: root.composed("notifications.border", "notifications.border-alpha", root.accent, 1.0)
     property color countdown: root.pick("notifications.countdown", root.accent)
   }
-  readonly property QtObject launcher: QtObject {
-    property color background: root.composed("launcher.background", "launcher.background-alpha", root.background, 1.0)
-    property color text: root.pick("launcher.text", root.foreground)
-    property color border: root.composed("launcher.border", "launcher.border-alpha", root.foreground, 1.0)
-    property color scrim: root.composed("launcher.scrim", "launcher.scrim-alpha", root.background, 0.5)
-    property color selectedBackground: root.composed("launcher.selected-background", "launcher.selected-background-alpha", root.foreground, 0.08)
-    property color selectedText: root.pick("launcher.selected-text", root.accent)
-    property color selectedBorder: root.composed("launcher.selected-border", "launcher.selected-border-alpha", root.foreground, 0.0)
-  }
   readonly property QtObject menu: QtObject {
     property color background: root.composed("menu.background", "menu.background-alpha", root.background, 1.0)
     property color text: root.pick("menu.text", root.foreground)

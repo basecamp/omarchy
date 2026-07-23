@@ -92,6 +92,8 @@ assertDeepEqual(
     kind: 'action',
     icon: '',
     iconFont: '',
+    appIcon: '',
+    appId: '',
     label: 'Theme picker',
     target: 'style.theme',
     detail: 'Style',
