@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Check whether a webcam is available
+
+v4l2-ctl --list-devices 2>/dev/null | grep -q '^[[:space:]]*/dev/video'
