@@ -28,11 +28,7 @@ o.bind("SUPER + SHIFT + E", "Email", { webapp = "https://app.hey.com" })
 o.bind("SUPER + SHIFT + ALT + E", "New email", { webapp = "https://app.hey.com/messages/new?display=standalone&new_window=true" })
 o.bind("SUPER + SHIFT + Y", "YouTube", { webapp = "https://youtube.com/" })
 o.bind("SUPER + SHIFT + ALT + G", "WhatsApp", { webapp = "https://web.whatsapp.com/", focus = true })
-o.bind(
-  "SUPER + SHIFT + CTRL + G",
-  "Google Messages",
-  { webapp = "https://messages.google.com/web/conversations", focus = true }
-)
+o.bind("SUPER + SHIFT + CTRL + G", "Google Messages", { webapp = "https://messages.google.com/web/conversations", focus = true })
 o.bind("SUPER + SHIFT + P", "Google Photos", { webapp = "https://photos.google.com/", focus = true })
 o.bind("SUPER + SHIFT + S", "Google Maps", { webapp = "https://maps.google.com/", focus = true })
 o.bind("SUPER + SHIFT + X", "X", { webapp = "https://x.com/" })
