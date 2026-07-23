@@ -46,6 +46,7 @@ link_dev_checkout() {
 
 dev_checkout=""
 channel="$1"
+leaving_dev=0
 
 case "$channel" in
   stable)
@@ -74,13 +75,21 @@ case "$channel" in
     ;;
 esac
 
+if [[ -z $dev_checkout && $OMARCHY_PATH != "/usr/share/omarchy" ]]; then
+  leaving_dev=1
+fi
+
 omarchy-refresh-pacman "$pacman_channel"
 # --ask 4 accepts omarchy <-> omarchy-dev replacement prompts without file overwrites.
 sudo env OMARCHY_UPDATE_PACMAN=1 pacman -S --needed --noconfirm --ask 4 "${packages[@]}"
 
 if [[ -z $dev_checkout ]]; then
-  omarchy-dev-unlink
+  omarchy-dev-unlink --no-reboot
   export OMARCHY_PATH=/usr/share/omarchy
+
+  if (( leaving_dev )); then
+    omarchy-state set reboot-required
+  fi
 fi
 
 omarchy-update -y

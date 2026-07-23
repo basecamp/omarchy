@@ -37,6 +37,12 @@ for arg in "$@"; do printf "\t%s" "$arg" >>"$OMARCHY_CHANNEL_TEST_LOG"; done
 printf "\n" >>"$OMARCHY_CHANNEL_TEST_LOG"
 '
 
+write_stub omarchy-state '#!/bin/bash
+printf "state" >>"$OMARCHY_CHANNEL_TEST_LOG"
+for arg in "$@"; do printf "\t%s" "$arg" >>"$OMARCHY_CHANNEL_TEST_LOG"; done
+printf "\n" >>"$OMARCHY_CHANNEL_TEST_LOG"
+'
+
 write_stub omarchy-update '#!/bin/bash
 printf "update" >>"$OMARCHY_CHANNEL_TEST_LOG"
 for arg in "$@"; do printf "\t%s" "$arg" >>"$OMARCHY_CHANNEL_TEST_LOG"; done
@@ -83,7 +89,7 @@ esac
 run_channel() {
   : >"$log_file"
   OMARCHY_CHANNEL_TEST_LOG="$log_file" \
-    OMARCHY_PATH="$ROOT" \
+    OMARCHY_PATH="${OMARCHY_TEST_PATH:-/usr/share/omarchy}" \
     HOME="$test_tmp/home" \
     PATH="$stub_bin:$ROOT/bin:$PATH" \
     "$ROOT/bin/omarchy-channel-set" "$@"
@@ -100,20 +106,28 @@ assert_log_line() {
 run_channel stable
 assert_log_line $'refresh\tstable' "stable refreshes the stable pacman channel"
 assert_log_line $'sudo\tenv\tOMARCHY_UPDATE_PACMAN=1\tpacman\t-S\t--needed\t--noconfirm\t--ask\t4\tomarchy\tomarchy-settings' "stable installs stable Omarchy packages"
-assert_log_line 'unlink' "stable restores the package-backed Omarchy path"
+assert_log_line $'unlink\t--no-reboot' "stable restores the package-backed Omarchy path without an early reboot prompt"
 assert_log_line $'update\t-y' "stable runs the normal update pipeline"
+if grep -q $'^state\tset\treboot-required$' "$log_file"; then
+  fail "stable does not require reboot when already package-backed" "$(cat "$log_file")"
+fi
+pass "stable does not require reboot when already package-backed"
 
 run_channel rc
 assert_log_line $'refresh\trc' "rc refreshes the rc pacman channel"
 assert_log_line $'sudo\tenv\tOMARCHY_UPDATE_PACMAN=1\tpacman\t-S\t--needed\t--noconfirm\t--ask\t4\tomarchy\tomarchy-settings' "rc installs rc Omarchy packages"
-assert_log_line 'unlink' "rc restores the package-backed Omarchy path"
+assert_log_line $'unlink\t--no-reboot' "rc restores the package-backed Omarchy path without an early reboot prompt"
 assert_log_line $'update\t-y' "rc runs the normal update pipeline"
 
-run_channel edge
+OMARCHY_TEST_PATH="$ROOT" run_channel edge
 assert_log_line $'refresh\tedge' "edge refreshes the edge pacman channel"
 assert_log_line $'sudo\tenv\tOMARCHY_UPDATE_PACMAN=1\tpacman\t-S\t--needed\t--noconfirm\t--ask\t4\tomarchy-dev\tomarchy-settings-dev' "edge installs development Omarchy packages"
-assert_log_line 'unlink' "edge remains package-backed"
+assert_log_line $'unlink\t--no-reboot' "edge unlinks dev without an early reboot prompt"
+assert_log_line $'state\tset\treboot-required' "edge marks reboot required when leaving dev"
 assert_log_line $'update\t-y' "edge runs the normal update pipeline"
+[[ $(grep -E '^(unlink|state|update)' "$log_file") == $'unlink\t--no-reboot\nstate\tset\treboot-required\nupdate\t-y' ]] ||
+  fail "edge defers the reboot prompt until the update restart stage" "$(cat "$log_file")"
+pass "edge defers the reboot prompt until the update restart stage"
 
 checkout="$test_tmp/home/omarchy"
 mkdir -p "$checkout"
@@ -135,8 +149,9 @@ assert_log_line $'sudo\tenv\tOMARCHY_UPDATE_PACMAN=1\tpacman\t-S\t--needed\t--no
 assert_log_line $'git\tclone\thttps://github.com/basecamp/omarchy.git\t'"$checkout" "dev clones the source checkout to ~/omarchy"
 assert_log_line $'link\t'"$checkout" "dev links ~/omarchy"
 
-run_channel stable
-assert_log_line 'unlink' "switching from dev to stable unlinks the source checkout"
+OMARCHY_TEST_PATH="$checkout" run_channel stable
+assert_log_line $'unlink\t--no-reboot' "switching from dev to stable unlinks without an early reboot prompt"
+assert_log_line $'state\tset\treboot-required' "switching from dev to stable marks reboot required"
 
 run_channel dev
 if grep -q $'^git\tclone\t' "$log_file"; then
