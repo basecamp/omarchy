@@ -17,6 +17,7 @@ announce_browser_installed() {
 copy_chromium_flags() {
   mkdir -p ~/.config
   cp -f "$OMARCHY_PATH/config/chromium-flags.conf" "$1"
+  omarchy-install-chromium-copy-url
   omarchy-install-chromium-ytdlp
 }
 

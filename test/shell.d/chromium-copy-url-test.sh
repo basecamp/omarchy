@@ -38,15 +38,17 @@ pass "copy-url extension manifest has the stable id"
 
 jq -e '
   .manifest_version == 3 and
-  (.permissions | index("clipboardWrite")) and
-  (.permissions | index("offscreen")) and
-  (.background.service_worker | startswith("background-"))
+  (.permissions | index("nativeMessaging")) and
+  (.permissions | index("notifications") | not) and
+  (.permissions | index("clipboardWrite") | not) and
+  (.permissions | index("offscreen") | not) and
+  .background.service_worker == "background-4.js"
 ' "$ROOT/default/chromium/extensions/copy-url/manifest.json" >/dev/null ||
-  fail "copy-url extension uses an offscreen clipboard document"
-[[ -f $ROOT/default/chromium/extensions/copy-url/offscreen.html &&
-  -f $ROOT/default/chromium/extensions/copy-url/offscreen.js ]] ||
-  fail "copy-url extension ships its offscreen clipboard document"
-pass "copy-url extension uses an offscreen clipboard document"
+  fail "copy-url extension uses its native messaging host"
+grep -q "sendNativeMessage('com.omarchy.copy_url'" \
+  "$ROOT/default/chromium/extensions/copy-url/background-4.js" ||
+  fail "copy-url extension sends URLs to its native messaging host"
+pass "copy-url extension uses its native messaging host"
 
 jq -e '.action != null' "$ROOT/default/chromium/extensions/copy-url/manifest.json" >/dev/null &&
   grep -q 'action.onClicked' "$ROOT/default/chromium/extensions/copy-url/"background-*.js ||
@@ -54,6 +56,39 @@ jq -e '.action != null' "$ROOT/default/chromium/extensions/copy-url/manifest.jso
 pass "copy-url extension is clickable from the toolbar"
 
 TMPDIR=$(mktemp -d)
+test_home="$TMPDIR/home"
+native_manifest="$test_home/.config/chromium/NativeMessagingHosts/com.omarchy.copy_url.json"
+
+HOME="$test_home" OMARCHY_PATH="$ROOT" omarchy-install-chromium-copy-url
+
+[[ -f $native_manifest ]] || fail "copy-url native host installer creates fresh Chromium profile root"
+jq -e --arg path "$ROOT/bin/omarchy-chromium-copy-url-host" '
+  .name == "com.omarchy.copy_url" and
+  .path == $path and
+  (.allowed_origins | index("chrome-extension://bgpiichlckmfanooecilcjemknkcpngb/"))
+' "$native_manifest" >/dev/null || fail "copy-url native host manifest uses Omarchy host path and extension id"
+pass "copy-url native host installer registers the stable extension id"
+
+copied_url=$(bash -c '
+  source "$1"
+  wl-copy() { cat; }
+  omarchy-notification-send() { :; }
+  copy_url "$2"
+' bash "$ROOT/bin/omarchy-chromium-copy-url-host" 'https://example.test/path?q=one&name=two')
+
+[[ $copied_url == "https://example.test/path?q=one&name=two" ]] ||
+  fail "copy-url native host writes the complete URL" "$copied_url"
+pass "copy-url native host writes the complete URL"
+
+native_reply=$(bash -c '
+  source "$1"
+  reply_copied true
+' bash "$ROOT/bin/omarchy-chromium-copy-url-host" | od -An -v -tx1 | tr -d ' \n')
+
+[[ $native_reply == "0f0000007b22636f70696564223a747275657d" ]] ||
+  fail "copy-url native host returns a framed success response" "$native_reply"
+pass "copy-url native host returns a framed success response"
+
 preferences="$TMPDIR/Preferences"
 backup="$TMPDIR/Preferences.bak"
 patch_script="$TMPDIR/repair-shortcuts.py"
