@@ -10,6 +10,7 @@ if _G.omarchy_default_bindings ~= false then
   require("default.hypr.bindings.clipboard")
   require("default.hypr.bindings.tiling")
   require("default.hypr.bindings.utilities")
+  require("default.hypr.bindings.voxtype")
   require_optional.module("default.hypr.bindings.applications")
 end
 require("default.hypr.envs")
