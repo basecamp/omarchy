@@ -6,18 +6,6 @@
 set -e
 
 
-check_fingerprint_hardware() {
-  # Get fingerprint devices for the user
-  devices=$(fprintd-list "$USER" 2>/dev/null)
-
-  # Exit if no devices found
-  if [[ -z $devices ]]; then
-    echo -e "\e[31m\nNo fingerprint sensor detected.\e[0m"
-    return 1
-  fi
-  return 0
-}
-
 setup_pam_config() {
   # Configure sudo
   if ! grep -q pam_fprintd.so /etc/pam.d/sudo; then
@@ -72,6 +60,12 @@ EOF
 
 echo -e "\e[32mSetting up fingerprint scanner for authentication.\n\e[0m"
 
+# Bail before installing anything if there's no reader to talk to.
+if ! omarchy-hw-fingerprint; then
+  echo -e "\e[31mNo fingerprint sensor detected.\e[0m"
+  exit 1
+fi
+
 # Install required packages
 echo "Installing required packages..."
 
@@ -85,10 +79,6 @@ if [[ $installed_libfprint == "libfprint" ]]; then
 fi
 
 omarchy-pkg-add libfprint-git fprintd usbutils
-
-if ! check_fingerprint_hardware; then
-  exit 1
-fi
 
 # Configure PAM
 setup_pam_config

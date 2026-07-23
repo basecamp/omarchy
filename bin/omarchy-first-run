@@ -123,6 +123,9 @@ run_first_run_step "show welcome notification" \
 sleep 0.3
 run_first_run_step "show Wi-Fi/update notifications" \
   bash "$OMARCHY_PATH/install/user/first-run/wifi.sh"
+sleep 0.3
+run_first_run_step "invite fingerprint setup" \
+  bash "$OMARCHY_PATH/install/user/first-run/fingerprint.sh"
 
 if (( first_run_failed == 0 )); then
   omarchy-done mark "$FIRST_RUN_DONE"

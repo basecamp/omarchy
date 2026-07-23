@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true when a fingerprint reader is present
+# omarchy:hidden=true
+
+# Detect straight from sysfs so this works before fprintd/usbutils are
+# installed (the fingerprint setup pulls those in). USB vendor IDs listed here
+# ship fingerprint readers; multi-purpose vendors (e.g. Elan/STMicro, which
+# also make USB touchscreens) are left out to avoid nagging laptops with no
+# reader — those still match on the product string below when present.
+fingerprint_vendors=" 27c6 138a 06cb 08ff 1c7a 147e "
+
+for dev in /sys/bus/usb/devices/*; do
+  # The device's own product descriptor usually names it, e.g. "Goodix
+  # Fingerprint USB Device" — driver-independent and vendor-agnostic.
+  if [[ -r $dev/product ]]; then
+    product=$(<"$dev/product")
+    product=${product,,}
+    [[ $product == *fingerprint* || $product == *biometric* ]] && exit 0
+  fi
+
+  if [[ -r $dev/idVendor ]]; then
+    vendor=$(<"$dev/idVendor")
+    [[ $fingerprint_vendors == *" $vendor "* ]] && exit 0
+  fi
+done
+
+exit 1
