@@ -109,6 +109,11 @@ assert(
   'app library fallback icon index includes device icons'
 )
 
+assert(
+  /if \(active === "apps"\) \{[\s\S]*?rows\.sort\(function\(a, b\)/.test(menuQml),
+  'apps menu enforces alphabetical display order after provider refreshes'
+)
+
 const iconSourceMatch = appLibraryQml.match(/function iconSource\(icon\) \{([\s\S]*?)\n  \}/)
 assert(iconSourceMatch, 'app library iconSource function exists')
 assert(

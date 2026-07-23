@@ -549,6 +549,22 @@ Item {
         if (!root.isVisible(child)) continue
         rows.push(root.displayRow(child, child.description, child.order))
       }
+
+      // DesktopEntries can reorder its values when an application starts.
+      // Keep the Apps menu alphabetical independently of provider refreshes.
+      if (active === "apps") {
+        rows.sort(function(a, b) {
+          var aLabel = String(a.label || "").toLowerCase()
+          var bLabel = String(b.label || "").toLowerCase()
+          if (aLabel < bLabel) return -1
+          if (aLabel > bLabel) return 1
+          var aId = String(a.itemId || "")
+          var bId = String(b.itemId || "")
+          if (aId < bId) return -1
+          if (aId > bId) return 1
+          return 0
+        })
+      }
     }
 
     for (var k = 0; k < rows.length; k++) displayModel.append(rows[k])
