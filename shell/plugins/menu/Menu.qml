@@ -100,7 +100,7 @@ Item {
   property int visibleRowsHeight: root.dmenuActive ? dmenuRowListHeight(layoutSerial, displayModel.count, filterText) : rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)
   property int cardHeight: root.dmenuActive
     ? Math.min(contentMargin * 2 + headerHeight + (mode === "input" ? 0 : contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
-    : Math.min(Math.max(Style.space(220), contentMargin * 2 + headerHeight + contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
+    : Math.min(contentMargin * 2 + headerHeight + contentSpacing + visibleRowsHeight, panel.height - Style.gapsOut * 2)
 
   function finishRequest(selection) {
     if (!root.requestActive || !root.doneFile) {
@@ -505,6 +505,7 @@ Item {
   }
 
   function setFilter(nextFilter) {
+    panel.freezeCardTop()
     root.filterText = nextFilter
     root.selectedIndex = 0
     root.cursorActive = root.mode !== "input"
@@ -514,6 +515,7 @@ Item {
   }
 
   function setActiveMenu(id, pushHistory, fromPointer) {
+    panel.freezeCardTop()
     if (!root.item(id)) id = "root"
     if (pushHistory && id !== root.activeMenu) root.navStack = root.navStack.concat([root.activeMenu])
     root.activeMenu = id
@@ -797,6 +799,18 @@ Item {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
 
+    // The card opens centered exactly as always. The first search keystroke
+    // or submenu move freezes the top line where it currently sits — from
+    // then on the card grows and shrinks downward instead of re-centering
+    // on every resize, which made the menu jump around. Closing unfreezes.
+    property int cardTop: -1
+    readonly property int centeredTop: Math.max(Style.gapsOut, Math.round((height - root.cardHeight) / 2))
+    readonly property int effectiveCardTop: cardTop >= 0 ? cardTop : centeredTop
+    function freezeCardTop() {
+      if (visible && cardTop < 0) cardTop = effectiveCardTop
+    }
+    onVisibleChanged: if (!visible) cardTop = -1
+
     Rectangle {
       anchors.fill: parent
       color: root.scrim
@@ -810,9 +824,10 @@ Item {
     BorderSurface {
       id: card
       width: root.cardWidth
-      height: root.cardHeight
+      height: Math.min(root.cardHeight, panel.height - Style.gapsOut - panel.effectiveCardTop)
       radius: root.cornerRadius
-      anchors.centerIn: parent
+      anchors.horizontalCenter: parent.horizontalCenter
+      y: panel.effectiveCardTop
       color: root.background
       borderSpec: root.borderSpec
       padding: root.contentMargin
