@@ -25,13 +25,31 @@ setup_pam_config() {
     sudo sed -i '1i auth    sufficient pam_fprintd.so' /etc/pam.d/sudo
   fi
 
-  # Configure polkit
-  if [[ -f /etc/pam.d/polkit-1 ]] && ! grep -q 'pam_fprintd.so' /etc/pam.d/polkit-1; then
-    echo "Configuring polkit for fingerprint authentication..."
-    sudo sed -i '1i auth      sufficient pam_fprintd.so' /etc/pam.d/polkit-1
-  elif [[ ! -f /etc/pam.d/polkit-1 ]]; then
+  # Configure polkit. A clamshell gate runs before pam_fprintd: when the lid
+  # is shut the reader is unreachable, so it skips fingerprint (success=1) and
+  # PAM drops straight to the password prompt. Lid open → fingerprint, then
+  # password as the fallback.
+  #
+  # pam_exec needs a literal absolute path (no env expansion). Point at the
+  # fixed /usr/bin path the omarchy package always provides, so the gate keeps
+  # working across package installs and dev-link — the latter overlays
+  # $OMARCHY_PATH trees but leaves /usr/bin untouched.
+  local polkit_gate="auth      [success=1 default=ignore] pam_exec.so quiet /usr/bin/omarchy-hw-laptop-closed"
+
+  if [[ -f /etc/pam.d/polkit-1 ]]; then
+    if ! grep -q 'pam_fprintd.so' /etc/pam.d/polkit-1; then
+      echo "Configuring polkit for fingerprint authentication..."
+      sudo sed -i '1i auth      sufficient pam_fprintd.so' /etc/pam.d/polkit-1
+    fi
+    if ! grep -q 'omarchy-hw-laptop-closed' /etc/pam.d/polkit-1; then
+      echo "Adding clamshell gate to polkit..."
+      # Insert immediately before pam_fprintd so success=1 skips exactly it.
+      sudo sed -i "/pam_fprintd\.so/i $polkit_gate" /etc/pam.d/polkit-1
+    fi
+  else
     echo "Creating polkit configuration with fingerprint authentication..."
-    sudo tee /etc/pam.d/polkit-1 >/dev/null <<'EOF'
+    sudo tee /etc/pam.d/polkit-1 >/dev/null <<EOF
+$polkit_gate
 auth      sufficient pam_fprintd.so
 auth      required pam_unix.so
 
