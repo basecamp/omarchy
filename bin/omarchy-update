@@ -73,6 +73,7 @@ run_update_pipeline() {
   disable_sleep_for_update
   disable_idle_for_update
 
+  omarchy-update-dev
   omarchy-update-keyring
   omarchy-update-system-pkgs
   omarchy-migrate
