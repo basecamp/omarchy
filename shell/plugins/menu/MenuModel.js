@@ -261,6 +261,8 @@ function displayRow(items, itemOrder, checkedResults, entry, detail, score, sect
     kind: entry.kind,
     icon: entry.icon,
     iconFont: entry.iconFont || "",
+    appIcon: entry.appIcon || "",
+    appId: entry.appId || "",
     label: labelFor(entry, checkedResults),
     target: target,
     detail: detail || "",

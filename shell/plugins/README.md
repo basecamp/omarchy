@@ -14,7 +14,6 @@ User-installed plugins live alongside these conceptually but on disk under
 | Plugin        | id                        | kinds                   | entry point                           |
 |---------------|---------------------------|-------------------------|---------------------------------------|
 | Bar           | `omarchy.bar`             | `bar`                   | `bar/Bar.qml`                         |
-| Launcher      | `omarchy.launcher`        | `overlay`               | `launcher/Launcher.qml`               |
 | Image picker  | `omarchy.image-picker`    | `overlay`               | `image-picker/ImagePicker.qml`        |
 | Emojis        | `omarchy.emojis`          | `overlay`               | `emojis/Emojis.qml`                   |
 | Clipboard mgr | `omarchy.clipboard`       | `overlay`               | `clipboard/Clipboard.qml`             |
@@ -48,14 +47,6 @@ top-level `bar:` subtree of `~/.config/omarchy/shell.json` (with the shell
 providing [`config/omarchy/shell.json`](../../config/omarchy/shell.json) when
 the user has no file). See [`bar/README.md`](bar/README.md) for the widget catalogue
 and customization schema.
-
-## Launcher
-
-Quickshell-powered launcher. It uses Quickshell's native
-`DesktopEntries` model for discovery/activation and renders inside the
-long-running shell with the legacy launcher card dimensions, colors, row
-spacing, icon sizing, and keyboard behavior. Summoned directly over shell IPC
-by the `SUPER + SPACE` binding and the Omarchy menu Apps row.
 
 ## Image picker
 

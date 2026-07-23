@@ -11,6 +11,8 @@ Item {
 
   // Injected by omarchy-shell when this plugin is summoned.
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
+  property var shell: null
+  property var manifest: null
 
   // Plugin lifecycle hooks. The host calls open(payloadJson) after
   // `omarchy-shell shell summon omarchy.menu ...` and close() when hidden.
@@ -72,6 +74,13 @@ Item {
   property var providersLoaded: ({})
   property var providerQueue: []
   property int providerRevision: 0
+
+  // Shared application engine (entries, hidden filters, icons, launch,
+  // removal), owned by the shell and also used by the standalone launcher.
+  readonly property var appLibrary: root.shell ? root.shell.appLibrary : null
+  property bool deleteConfirmOpen: false
+  property var deleteTarget: null
+  onOpenedChanged: if (!opened) { deleteConfirmOpen = false; deleteTarget = null }
   // Bound to the central [menu] section in shell.toml via Color.qml.
   // Each color already includes its alpha companion (composed in the
   // singleton), so consumers can drop them straight into a Rectangle.
@@ -231,9 +240,64 @@ Item {
     return MenuModel.slugify(value)
   }
 
+  // The apps provider is QML-native: rows come from the shared AppLibrary
+  // (DesktopEntries) instead of a bash enumeration, so they carry image
+  // icons, launch feedback, and uninstall support like the launcher.
+  function mergeAppRows() {
+    if (!root.appLibrary) return
+
+    var nextOrder = []
+    for (var i = 0; i < root.itemOrder.length; i++) {
+      var id = root.itemOrder[i]
+      var existing = root.items[id]
+      if (existing && existing.kind === "app") delete root.items[id]
+      else nextOrder.push(id)
+    }
+
+    var rows = root.appLibrary.sortedEntries("")
+    for (var j = 0; j < rows.length; j++) {
+      var entry = rows[j].entry
+      var appId = String(entry.id || "")
+      if (!appId) continue
+      var itemId = "apps." + appId
+      var subtext = root.appLibrary.entrySubtext(entry)
+      var aliases = subtext ? [subtext] : []
+      try {
+        if (entry.keywords && typeof entry.keywords.join === "function") aliases = aliases.concat(entry.keywords)
+      } catch (e) { }
+      root.items[itemId] = {
+        id: itemId,
+        parent: "apps",
+        kind: "app",
+        icon: "",
+        appIcon: String(entry.icon || ""),
+        appId: appId,
+        label: root.appLibrary.entryName(entry),
+        title: "",
+        target: "",
+        description: subtext,
+        action: "",
+        provider: "",
+        aliases: aliases,
+        when: "",
+        checked: "",
+        order: nextOrder.length
+      }
+      nextOrder.push(itemId)
+    }
+
+    root.itemOrder = nextOrder
+    if (root.opened) root.rebuildDisplay()
+  }
+
   function startProviderForMenu(id) {
     var entry = root.item(id)
     if (!entry || !entry.provider || root.providersLoaded[id]) return
+    if (entry.provider === "apps") {
+      root.providersLoaded[id] = true
+      root.mergeAppRows()
+      return
+    }
     var spec = root.providers[entry.provider]
     if (!spec) return
 
@@ -300,6 +364,12 @@ Item {
   function loadProviderForMenu(id) {
     var entry = root.item(id)
     if (!entry || !entry.provider || root.providersLoaded[id]) return
+
+    // Native providers don't touch providerProc, so they never need to queue.
+    if (entry.provider === "apps") {
+      root.startProviderForMenu(id)
+      return
+    }
 
     if (providerProc.running) {
       if (root.providerQueue.indexOf(id) < 0) root.providerQueue = root.providerQueue.concat([id])
@@ -403,6 +473,8 @@ Item {
         kind: "dmenu",
         icon: "",
         iconFont: "",
+        appIcon: "",
+        appId: "",
         label: label,
         target: "",
         detail: "",
@@ -544,6 +616,7 @@ Item {
   }
 
   function activateIndex(index, fromPointer) {
+    if (root.deleteConfirmOpen) return
     if (root.dmenuActive) {
       if (root.mode === "input") {
         root.applyDmenuSelection(root.filterText)
@@ -559,9 +632,42 @@ Item {
     var row = displayModel.get(index)
     if (row.kind === "menu" || row.kind === "link") {
       root.setActiveMenu(row.target || row.itemId, true, fromPointer)
+    } else if (row.kind === "app") {
+      var appId = row.appId
+      var label = row.label
+      applySerial = requestSerial
+      opened = false
+      filterText = ""
+      if (root.appLibrary) root.appLibrary.launch(appId, label)
     } else {
       root.applySelected(row.itemId, row.action)
     }
+  }
+
+  function requestDeleteSelected() {
+    if (!root.cursorActive || root.selectedIndex < 0 || root.selectedIndex >= displayModel.count) return
+    var row = displayModel.get(root.selectedIndex)
+    if (!row || row.kind !== "app") return
+    root.deleteTarget = { appId: row.appId, label: row.label }
+    deleteConfirm.selectedIndex = 1
+    root.deleteConfirmOpen = true
+  }
+
+  function cancelDelete() {
+    root.deleteConfirmOpen = false
+    root.deleteTarget = null
+    deleteConfirm.selectedIndex = 1
+    root.disarmPointer()
+    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  function confirmDelete() {
+    var target = root.deleteTarget
+    root.deleteConfirmOpen = false
+    root.deleteTarget = null
+    if (!target) return
+    root.cancel()
+    if (root.appLibrary) root.appLibrary.remove(target.appId, target.label)
   }
 
   function applyDmenuSelection(value) {
@@ -602,6 +708,9 @@ Item {
     opened = true
     rebuildDisplay()
     loadProviderForMenu(activeMenu)
+    // The shell may start before first-install packages have finished placing
+    // their icons. Refresh here even when the desktop entry list did not change.
+    if (root.appLibrary) root.appLibrary.refreshIcons()
 
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -707,6 +816,13 @@ Item {
   PointerMoveGate {
     id: pointerGate
     referenceItem: card
+  }
+
+  Connections {
+    target: root.appLibrary
+    function onAppsChanged() {
+      if (root.providersLoaded["apps"]) root.mergeAppRows()
+    }
   }
 
   // The JSONC sources are watched so live edits to the default file (or the
@@ -837,11 +953,20 @@ Item {
       Item {
         id: keyCatcher
         anchors.fill: parent
+        z: root.deleteConfirmOpen ? 20 : 0
         focus: true
 
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
-          if (event.key === Qt.Key_Escape) {
+          if (root.deleteConfirmOpen) {
+            if (deleteConfirm.handleKey(event)) event.accepted = true
+            return
+          }
+
+          if (event.key === Qt.Key_Delete) {
+            root.requestDeleteSelected()
+            event.accepted = true
+          } else if (event.key === Qt.Key_Escape) {
             if (root.filterText) root.setFilter("")
             else root.cancel()
             event.accepted = true
@@ -874,6 +999,25 @@ Item {
             root.setFilter(root.filterText + event.text)
             event.accepted = true
           }
+        }
+
+        ConfirmDialog {
+          id: deleteConfirm
+
+          anchors.fill: parent
+          opened: root.deleteConfirmOpen
+          z: 10
+          message: "Do you want to uninstall " + ((root.deleteTarget && root.deleteTarget.label) || "") + "?"
+          confirmText: "Uninstall"
+          background: root.background
+          foreground: root.foreground
+          scrim: root.scrim
+          selectedBackground: root.selectedBackground
+          selectedText: root.selectedText
+          fontFamily: root.fontFamily
+          cornerRadius: root.cornerRadius
+          onCanceled: root.cancelDelete()
+          onConfirmed: root.confirmDelete()
         }
       }
 
@@ -944,6 +1088,8 @@ Item {
               required property string kind
               required property string icon
               required property string iconFont
+              required property string appIcon
+              required property string appId
               required property string label
               required property string target
               required property string detail
@@ -952,7 +1098,8 @@ Item {
               required property int childCount
 
               readonly property bool hasCursor: root.cursorActive && row.index === root.selectedIndex
-              readonly property bool hasIcon: row.icon.length > 0
+              readonly property bool isApp: row.kind === "app"
+              readonly property bool hasIcon: row.icon.length > 0 || row.isApp
 
               width: ListView.view.width
               height: root.rowHeightForDetail(row.detail)
@@ -973,7 +1120,7 @@ Item {
 
               Text {
                 id: iconText
-                visible: row.hasIcon
+                visible: row.hasIcon && !row.isApp
                 text: row.icon
                 color: row.hasCursor ? root.selectedText : root.foreground
                 font.family: row.iconFont.length > 0 ? row.iconFont : root.fontFamily
@@ -983,6 +1130,23 @@ Item {
                 verticalAlignment: Text.AlignVCenter
                 anchors.left: parent.left
                 anchors.leftMargin: root.rowReservedBorderLeft + Style.space(8)
+                y: contentColumn.y + labelText.y + (labelText.height - height) / 2
+              }
+
+              Image {
+                id: appIconImage
+                visible: row.isApp
+                width: Style.font.iconLarge
+                height: Style.font.iconLarge
+                fillMode: Image.PreserveAspectFit
+                // Decode at physical pixels — a logical-size decode leaves
+                // PNG icons upscaled and blurry on HiDPI displays.
+                sourceSize.width: width * Screen.devicePixelRatio
+                sourceSize.height: height * Screen.devicePixelRatio
+                source: row.isApp && root.appLibrary ? root.appLibrary.iconSource(row.appIcon) : ""
+                asynchronous: true
+                anchors.left: parent.left
+                anchors.leftMargin: root.rowReservedBorderLeft + Style.space(8) + (Style.space(36) - width) / 2
                 y: contentColumn.y + labelText.y + (labelText.height - height) / 2
               }
 

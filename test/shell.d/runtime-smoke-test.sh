@@ -127,8 +127,8 @@ jq -e '
 }
 pass "shell IPC returns effective shell config"
 
-[[ $(shell_ipc shell summon omarchy.launcher '{"query":"term"}') == "ok" ]] || fail_with_log "shell IPC summons launcher overlay"
-shell_ipc_quiet shell hide omarchy.launcher >/dev/null
+[[ $(shell_ipc shell summon omarchy.menu '{"menu":"apps"}') == "ok" ]] || fail_with_log "shell IPC summons menu apps overlay"
+shell_ipc_quiet shell hide omarchy.menu >/dev/null
 [[ $(shell_ipc shell summon missing.plugin "{}") == "unknown" ]] || fail_with_log "shell IPC rejects unknown plugin"
 pass "shell IPC summon and hide contract works"
 

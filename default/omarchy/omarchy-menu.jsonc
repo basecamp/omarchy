@@ -14,7 +14,7 @@
   //   checked        shell condition; append ✓ when it succeeds
 
   // Root Menu
-  "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"action":"omarchy-shell shell summon omarchy.launcher"},
+  "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"provider":"apps"},
   "learn": {"icon":"󰧑","label":"Learn"},
   "trigger": {"icon":"󱓞","label":"Trigger"},
   "style": {"icon":"","label":"Style"},
