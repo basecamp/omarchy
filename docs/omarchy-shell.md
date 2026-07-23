@@ -127,6 +127,9 @@ Rules:
 7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
 8. `version: 1` is required.
 
+The built-in idle service treats gamepad button presses and meaningful axis
+movement as user activity. Small analog-axis drift is ignored.
+
 `config/omarchy/shell.json` describes the fresh-install state. When no
 user `shell.json` exists, defaults are used verbatim. Once the user
 customizes, `shell.json` is canonical — there is no deep-merge.
