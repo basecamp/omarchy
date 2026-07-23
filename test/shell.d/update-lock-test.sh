@@ -34,6 +34,7 @@ SH
 for command in \
   omarchy-toggle-idle \
   systemd-inhibit \
+  omarchy-update-dev \
   omarchy-update-keyring \
   omarchy-update-system-pkgs \
   omarchy-migrate \
