@@ -144,7 +144,18 @@ grep -Fq $'F9	Stop dictation (push-to-talk)' <<<"$voxtype_output" ||
   fail "installed Voxtype enables its release binding"
 pass "installed Voxtype conditionally enables dictation bindings"
 
-missing_voxtype_output=$(run_omarchy_bindings "$voxtype_home")
+voxtype_without_execute_output=$(PATH="$voxtype_bin:$PATH" run_omarchy_bindings \
+  "$voxtype_home" 'os.execute = function() return nil, "No child processes", 10 end')
+grep -Fq $'SUPER + CTRL + X	Toggle dictation' <<<"$voxtype_without_execute_output" ||
+  fail "Voxtype detection does not require spawning a subprocess"
+pass "installed Voxtype detection works without os.execute"
+
+missing_bin="$tmpdir/missing-bin"
+mkdir -p "$missing_bin"
+ln -s "$(command -v lua)" "$missing_bin/lua"
+ln -s "$(command -v lspci)" "$missing_bin/lspci"
+ln -s "$(command -v sort)" "$missing_bin/sort"
+missing_voxtype_output=$(PATH="$missing_bin" run_omarchy_bindings "$voxtype_home")
 if grep -Fq $'SUPER + CTRL + X	Toggle dictation' <<<"$missing_voxtype_output"; then
   fail "missing Voxtype skips its bindings"
 fi
