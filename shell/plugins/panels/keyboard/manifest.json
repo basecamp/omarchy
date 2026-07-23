@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.keyboard",
+  "name": "Keyboard Layout",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Active keyboard language with add/remove and switch-shortcut picker",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Keyboard Layout",
+    "description": "Active keyboard language with add/remove and switch-shortcut picker",
+    "category": "System",
+    "allowMultiple": false
+  }
+}

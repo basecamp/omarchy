@@ -1,0 +1,179 @@
+#!/bin/bash
+
+# omarchy:summary=Get, switch, or configure keyboard layouts
+# omarchy:group=keyboard
+# omarchy:args=[status|available|next|set|add|remove|switcher] [value]
+# omarchy:examples=omarchy keyboard layout add de
+
+set -e
+
+STATE_DIR="$HOME/.local/state/omarchy/settings"
+STATE_FILE="$STATE_DIR/keyboard.json"
+XKB_LIST="/usr/share/X11/xkb/rules/base.lst"
+
+usage() {
+  echo "Usage: omarchy-keyboard-layout [status|available|next|set <code>|add <code>|remove <code>|switcher <preset>]" >&2
+  exit 1
+}
+
+# Looks up the human label xkb ships for a layout code, e.g. "ir" -> "Persian".
+# This is the same file base.lst that `localectl list-x11-keymap-layouts` reads.
+layout_label() {
+  local code=$1
+  awk -v code="$code" '
+    /^! layout/ { insection=1; next }
+    /^!/ { insection=0 }
+    insection && $1 == code {
+      line = $0
+      sub(/^[ \t]+/, "", line)
+      sub(/^[^ \t]+[ \t]+/, "", line)
+      print line
+      exit
+    }
+  ' "$XKB_LIST"
+}
+
+# Every layout code + label xkb knows about, as a JSON array, sorted by label.
+# This feeds the panel's "Add language" search list.
+available_layouts_json() {
+  awk '
+    /^! layout/ { insection=1; next }
+    /^!/ { insection=0 }
+    insection && NF && $1 != "custom" {
+      rest = $0
+      sub(/^[ \t]+/, "", rest)
+      code = $1
+      sub(/^[^ \t]+[ \t]+/, "", rest)
+      printf "%s\t%s\n", code, rest
+    }
+  ' "$XKB_LIST" | sort -t $'\t' -k2 | jq -R -s '
+    split("\n") | map(select(length > 0) | split("\t") | {code: .[0], label: .[1]})
+  '
+}
+
+ensure_state() {
+  mkdir -p "$STATE_DIR"
+  [[ -f $STATE_FILE ]] && return
+
+  local primary label
+  primary=$(awk -F= '/^XKBLAYOUT/{gsub(/"/, "", $2); print $2}' /etc/vconsole.conf 2>/dev/null || true)
+  primary=${primary:-us}
+  label=$(layout_label "$primary")
+
+  jq -n --arg code "$primary" --arg label "${label:-$primary}" \
+    '{layouts: [{code: $code, label: $label}], switcher: "alt_shift"}' > "$STATE_FILE"
+}
+
+main_keyboard() {
+  hyprctl devices -j | jq -r '
+    [.keyboards[] | select(.name | test("virtual|fcitx|ibus|video-bus|buttons"; "i") | not)] as $real
+    | (($real[] | select(.main == true) | .name) // ($real[0].name // empty))
+  '
+}
+
+# hyprctl reports the active layout as a human description ("English (US)",
+# "Persian"), not the xkb code we store, so match it against the labels we
+# already saved for the configured layouts rather than re-deriving a code
+# from free text.
+active_index() {
+  local device keymap
+  device=$(main_keyboard)
+  [[ -n $device ]] || { echo 0; return; }
+
+  keymap=$(hyprctl devices -j | jq -r --arg dev "$device" \
+    '.keyboards[] | select(.name == $dev) | .active_keymap // ""')
+
+  jq -r --arg keymap "$keymap" '
+    ([.layouts[].label] | map(. as $l | (($keymap|ascii_downcase) | contains($l|ascii_downcase)))
+      | index(true)) // 0
+  ' "$STATE_FILE"
+}
+
+status_json() {
+  local idx
+  idx=$(active_index)
+  jq --argjson idx "$idx" '. + {active: (.layouts[$idx].code // .layouts[0].code)}' "$STATE_FILE"
+}
+
+reload_hyprland() {
+  hyprctl reload >/dev/null 2>&1 || true
+}
+
+write_state() {
+  local filter=$1; shift
+  local tmp
+  tmp=$(mktemp)
+  jq "$@" "$filter" "$STATE_FILE" > "$tmp"
+  mv "$tmp" "$STATE_FILE"
+}
+
+action=${1:-status}
+ensure_state
+
+case "$action" in
+  status)
+    status_json
+    ;;
+
+  available)
+    available_layouts_json
+    ;;
+
+  next)
+    device=$(main_keyboard)
+    [[ -n $device ]] || { echo "No keyboard device found" >&2; exit 1; }
+    hyprctl switchxkblayout "$device" next >/dev/null
+    status_json
+    ;;
+
+  set)
+    code=${2:-}
+    [[ -n $code ]] || usage
+    device=$(main_keyboard)
+    [[ -n $device ]] || { echo "No keyboard device found" >&2; exit 1; }
+    index=$(jq -r --arg code "$code" '[.layouts[].code] | index($code) // empty' "$STATE_FILE")
+    [[ -n $index ]] || { echo "Layout '$code' is not configured" >&2; exit 1; }
+    hyprctl switchxkblayout "$device" "$index" >/dev/null
+    status_json
+    ;;
+
+  add)
+    code=${2:-}
+    [[ -n $code ]] || usage
+    already=$(jq -r --arg code "$code" '[.layouts[].code] | index($code) // empty' "$STATE_FILE")
+    if [[ -z $already ]]; then
+      label=$(layout_label "$code")
+      [[ -n $label ]] || { echo "Unknown layout '$code'" >&2; exit 1; }
+      write_state '.layouts += [{code: $code, label: $label}]' --arg code "$code" --arg label "$label"
+      reload_hyprland
+    fi
+    status_json
+    ;;
+
+  remove)
+    code=${2:-}
+    [[ -n $code ]] || usage
+    count=$(jq '.layouts | length' "$STATE_FILE")
+    primary_code=$(jq -r '.layouts[0].code // empty' "$STATE_FILE")
+    if [[ $count -gt 1 && $code != "$primary_code" ]]; then
+      write_state '.layouts |= map(select(.code != $code))' --arg code "$code"
+      reload_hyprland
+    fi
+    status_json
+    ;;
+
+  switcher)
+    preset=${2:-}
+    case "$preset" in
+      alt_shift|ctrl_shift|right_alt|both_shift) ;;
+      *) usage ;;
+    esac
+    write_state '.switcher = $s' --arg s "$preset"
+    reload_hyprland
+    status_json
+    ;;
+
+  *)
+    usage
+    ;;
+esac
