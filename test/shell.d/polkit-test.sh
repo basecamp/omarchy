@@ -23,19 +23,27 @@ assertEqual(
 )
 
 assert(
-  polkit.fingerprintFirstFromPamConfig(`
+  polkit.fingerprintConfiguredFromPamConfig(`
 # comment
 auth sufficient pam_fprintd.so
 auth include system-auth
 `),
-  'polkit detects fingerprint-first PAM config'
+  'polkit detects fingerprint in a PAM config'
 )
 assert(
-  !polkit.fingerprintFirstFromPamConfig(`
+  polkit.fingerprintConfiguredFromPamConfig(`
+auth [success=1 default=ignore] pam_exec.so quiet /usr/bin/omarchy-hw-laptop-closed
+auth sufficient pam_fprintd.so
+auth required pam_unix.so
+`),
+  'polkit detects fingerprint even behind a clamshell gate'
+)
+assert(
+  !polkit.fingerprintConfiguredFromPamConfig(`
 account include system-auth
 auth include system-auth
-auth sufficient pam_fprintd.so
+auth required pam_unix.so
 `),
-  'polkit detects password-first PAM config'
+  'polkit reports no fingerprint when pam_fprintd is absent'
 )
 JS

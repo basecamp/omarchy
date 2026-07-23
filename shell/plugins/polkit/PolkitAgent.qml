@@ -32,24 +32,34 @@ Item {
   property bool responseVisible: false
   property bool failed: false
   property bool errorFlash: false
-  property bool fingerprintFirst: false
+  // pam_fprintd appears in the polkit PAM stack (a sensor is enrolled).
+  property bool fingerprintConfigured: false
+  // Lid shut right now — the reader is physically unreachable, so we fall back
+  // to the password even when a sensor is enrolled. Refreshed per request.
+  property bool laptopClosed: false
   property int shakeOffset: 0
 
   readonly property bool dialogVisible: polkitAgent.isActive || closing
-  readonly property bool fingerprintWaiting: dialogVisible && !responseRequired && !submitted && (fingerprintFirst || promptLooksFingerprint(currentPrompt + " " + currentSupplementary))
-  readonly property int cardWidth: Math.min(Style.space(312), Math.max(Style.space(260), panel.width - Style.gapsOut * 2))
+  // We show one method at a time. Fingerprint owns the dialog while PAM is
+  // waiting on the reader (lid open, sensor enrolled); the moment PAM asks for
+  // a password — including immediately when the lid is shut and the clamshell
+  // gate skips pam_fprintd — we switch to the password field instead.
+  readonly property bool fingerprintMode: fingerprintConfigured && !laptopClosed && dialogVisible && !responseRequired && !submitted && !errorFlash
   readonly property int cardHeight: panel.height > 0 ? Math.min(fieldHeight + contentMargin * 2, panel.height - Style.gapsOut * 2) : fieldHeight + contentMargin * 2
-
-  function promptLooksFingerprint(text) {
-    return PolkitModel.promptLooksFingerprint(text)
-  }
+  // Password mode is a wide field; fingerprint mode collapses to a square that
+  // just frames the centered sensor icon.
+  readonly property int cardWidth: fingerprintMode ? cardHeight : Math.min(Style.space(312), Math.max(Style.space(260), panel.width - Style.gapsOut * 2))
 
   function authorizationLabel(message) {
     return PolkitModel.authorizationLabel(message)
   }
 
   function loadPamConfig(raw) {
-    fingerprintFirst = PolkitModel.fingerprintFirstFromPamConfig(raw)
+    fingerprintConfigured = PolkitModel.fingerprintConfiguredFromPamConfig(raw)
+  }
+
+  function refreshLidState() {
+    if (!laptopClosedProc.running) laptopClosedProc.running = true
   }
 
   function resetSnapshot() {
@@ -83,13 +93,16 @@ Item {
     closing = false
     submitted = false
     passwordInput.text = ""
+    refreshLidState()
     syncFromFlow()
     Qt.callLater(refocus)
   }
 
   function refocus() {
     if (!dialogVisible) return
-    if (fingerprintWaiting) keyCatcher.forceActiveFocus()
+    // In fingerprint mode there is no field to type into — park focus on the
+    // key catcher so Escape still cancels; otherwise focus the password field.
+    if (fingerprintMode) keyCatcher.forceActiveFocus()
     else passwordInput.forceActiveFocus()
   }
 
@@ -149,8 +162,15 @@ Item {
     watchChanges: true
     printErrors: false
     onLoaded: root.loadPamConfig(text())
-    onLoadFailed: root.fingerprintFirst = false
+    onLoadFailed: root.fingerprintConfigured = false
     onFileChanged: reload()
+  }
+
+  Process {
+    id: laptopClosedProc
+    command: ["bash", "-c", "omarchy-hw-laptop-closed && echo closed || echo open"]
+    stdout: StdioCollector { id: laptopClosedOut; waitForEnd: true }
+    onExited: root.laptopClosed = String(laptopClosedOut.text || "").trim() === "closed"
   }
 
   PolkitAgent {
@@ -248,8 +268,22 @@ Item {
         }
       }
 
+      // Fingerprint mode shows just the sensor icon, centered and alone \u2014 no
+      // padlock, no field, no prompt text.
+      OpticalGlyph {
+        anchors.centerIn: parent
+        width: Math.round(root.fieldHeight * 0.7)
+        height: width
+        visible: root.fingerprintMode
+        text: "\udb80\ude37"
+        fontFamily: root.fontFamily
+        fontSize: Math.round(root.fieldHeight * 0.7)
+        color: root.errorFlash ? Color.polkit.textError : root.accent
+      }
+
       Row {
         id: cardRow
+        visible: !root.fingerprintMode
         anchors.fill: parent
         anchors.topMargin: card.contentTopInset
         anchors.rightMargin: card.contentRightInset
@@ -287,8 +321,7 @@ Item {
             color: root.errorFlash ? Color.polkit.textError : root.foreground
             cursorVisible: activeFocus && !root.submitted && !root.errorFlash
             readOnly: root.submitted || root.errorFlash
-            enabled: root.dialogVisible && !root.fingerprintWaiting
-            visible: !root.fingerprintWaiting
+            enabled: root.dialogVisible
             onAccepted: root.submitResponse()
             Keys.onPressed: function(event) {
               if (event.key === Qt.Key_Escape) {
@@ -308,7 +341,7 @@ Item {
             font.family: root.fontFamily
             font.pixelSize: Style.font.iconLarge
             elide: Text.ElideRight
-            visible: passwordInput.visible && passwordInput.text.length === 0
+            visible: passwordInput.text.length === 0
           }
 
           Rectangle {
