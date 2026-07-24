@@ -14,7 +14,7 @@ BarIndicator {
   activeText: "󰆍"
   inactiveText: "󰆍"
   activeTooltipText: tooltip
-  inactiveTooltipText: "No terminal is waiting"
+  inactiveTooltipText: "No Terminal Waiting"
 
   function refresh() {
     if (statusProc.running) refreshPending = true
