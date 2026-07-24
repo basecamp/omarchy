@@ -28,7 +28,16 @@ while timeout 5 quickshell kill -p "$CONFIG_DIR" --any-display >/dev/null 2>&1; 
 hyprctl dispatch 'hl.dsp.exec_cmd("quickshell -n -p $OMARCHY_PATH/shell")' >/dev/null
 
 for (( attempt = 0; attempt < 20; attempt++ )); do
-  OMARCHY_SHELL_IPC_TIMEOUT=0.5s omarchy-shell shell ping >/dev/null 2>&1 && exit 0
+  if OMARCHY_SHELL_IPC_TIMEOUT=0.5s omarchy-shell shell ping >/dev/null 2>&1; then
+    # Invitation toasts (like Voxtype/fingerprint setup) die with the old
+    # shell, and their notify-send waiters hang forever: the dying server
+    # never emits NotificationClosed. A still-running omarchy-*-invitation
+    # unit is therefore an unanswered invitation — re-run it so its toast
+    # reappears on the new shell. Answered invitations have already exited
+    # and been collected, so the glob no longer matches them.
+    systemctl --user try-restart 'omarchy-*-invitation.service' 2>/dev/null || true
+    exit 0
+  fi
   sleep 0.1
 done
 
