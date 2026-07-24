@@ -795,12 +795,7 @@ Item {
 
       // Keep the surface click-through except over the toast column, so the
       // rest of the (invisible) full-screen overlay never eats input.
-      mask: Region {
-        x: popupColumn.x
-        y: popupColumn.y
-        width: popupColumn.width
-        height: popupColumn.height
-      }
+      mask: Region { item: popupColumn }
 
       ColumnLayout {
         id: popupColumn
