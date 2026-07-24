@@ -420,7 +420,7 @@ cmd_set() {
   parse_placement "$@"
 
   if [[ $value_is_json == "true" ]]; then
-    jq -e . <<<"$value" >/dev/null 2>&1 || fail "invalid JSON value: $value"
+    jq -n --argjson value "$value" empty >/dev/null 2>&1 || fail "invalid JSON value: $value"
   fi
 
   local value_arg
