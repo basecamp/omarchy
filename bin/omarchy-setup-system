@@ -77,10 +77,7 @@ source "$OMARCHY_INSTALL/config/all.sh"
 
 omarchy-setup-hardware --install-user "$install_user"
 
-run_logged "$OMARCHY_INSTALL/login/sddm.sh"
-
-run_logged "$OMARCHY_INSTALL/post-install/pacman.sh"
-run_logged "$OMARCHY_INSTALL/post-install/udev.sh"
-run_logged "$OMARCHY_INSTALL/post-install/localdb.sh"
+source "$OMARCHY_INSTALL/login/all.sh"
+source "$OMARCHY_INSTALL/post-install/all.sh"
 
 stop_install_log

@@ -252,8 +252,8 @@ finalization. It sources:
 - `install/hardware/all.sh` via `omarchy-setup-hardware` — vendor- and
   device-specific kernel modules, udev rules, microcode, wireless regdom,
   ASUS / Framework / Intel / Apple / Lenovo quirks.
-- `install/login/*.sh` — SDDM theme/session config.
-- `install/post-install/*.sh` — final pacman/udev/localdb passes.
+- `install/login/all.sh` — SDDM theme/session config.
+- `install/post-install/all.sh` — final pacman/udev/localdb passes.
 
 Logging goes to `/var/log/omarchy-install.log` via
 `install/helpers/logging.sh`.
