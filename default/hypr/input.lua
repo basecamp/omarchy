@@ -23,12 +23,24 @@ end
 
 local vconsole = read_vconsole()
 
+local layout = vconsole.XKBLAYOUT or "us"
+local variant = vconsole.XKBVARIANT or ""
+local kb_options = "compose:caps,shift:both_capslock"
+
+-- Prepend 'us' so Omarchy's Latin-keysym bindings resolve — Hyprland matches
+-- bindings against the first layout in kb_layout, not the currently active one.
+if not (","..layout..","):find(",us,", 1, true) then
+  layout = "us," .. layout
+  variant = "," .. variant
+  kb_options = kb_options .. ",grp:alts_toggle"
+end
+
 hl.config({
   input = {
-    kb_layout = vconsole.XKBLAYOUT or "us",
-    kb_variant = vconsole.XKBVARIANT or "",
+    kb_layout = layout,
+    kb_variant = variant,
     kb_model = "",
-    kb_options = "compose:caps,shift:both_capslock",
+    kb_options = kb_options,
     kb_rules = "",
     follow_mouse = 1,
     sensitivity = 0,
