@@ -109,6 +109,17 @@ assertDeepEqual(
 
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
+const triggerItems = defaultItems.filter(item => item.parent === 'trigger')
+assertEqual(
+  triggerItems[0].id,
+  'trigger.emoji',
+  'menu lists Emoji first under Trigger'
+)
+assertEqual(
+  defaultById['trigger.emoji'].action,
+  'omarchy-menu-emoji',
+  'menu opens the emoji picker from Trigger'
+)
 assert(
   defaultById['update.omarchy'].icon === '\ue900',
   'menu update Omarchy entry uses the Omarchy glyph'
