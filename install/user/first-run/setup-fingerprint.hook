@@ -4,7 +4,13 @@ set -e
 
 show_invitation() {
   if [[ -n $(omarchy-notification-send -u critical -g 󰈷 "Setup Fingerprint Reader" "Enable sudo and unlocking with your fingerprint." -a) ]]; then
-    omarchy-launch-floating-terminal-with-presentation omarchy-setup-security-fingerprint
+    # Launch the setup in its own transient unit so this invitation service can
+    # exit right after the click. If it stayed alive for the life of the setup
+    # terminal, the setup's omarchy-restart-shell would re-trigger this
+    # still-running *-invitation unit and pop the toast a second time.
+    systemd-run --user --collect --quiet \
+      --unit=omarchy-setup-security-fingerprint \
+      omarchy-launch-floating-terminal-with-presentation omarchy-setup-security-fingerprint
   fi
 }
 
