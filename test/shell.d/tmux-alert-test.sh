@@ -22,22 +22,22 @@ export TMUX_STUB_WINDOWS="$test_dir/windows"
 export PATH="$test_dir:$PATH"
 
 cat >"$TMUX_STUB_WINDOWS" <<'WINDOWS'
-000|Work|1|editor
-100|Work|2|claude
-001|Side|1|server|with|pipes
+000:Work:1:editor
+100:Work:2:claude
+001:Side|Gig:1:server: still going
 WINDOWS
 
 output=$("$ROOT/bin/omarchy-tmux-alert" show --json)
-expected='{"count":2,"tooltip":"claude (Work:2), server|with|pipes (Side:1)"}'
+expected='{"count":2,"tooltip":"claude (Work:2), server: still going (Side|Gig:1)"}'
 [[ $output == "$expected" ]] || fail "tmux alert reports alerted windows" "expected: $expected"$'\n'"actual:   $output"
 pass "tmux alert reports alerted windows"
 
 output=$("$ROOT/bin/omarchy-tmux-alert" show)
-[[ $output == "claude (Work:2), server|with|pipes (Side:1)" ]] || fail "tmux alert describes alerted windows" "$output"
+[[ $output == "claude (Work:2), server: still going (Side|Gig:1)" ]] || fail "tmux alert describes alerted windows" "$output"
 pass "tmux alert describes alerted windows"
 
 cat >"$TMUX_STUB_WINDOWS" <<'WINDOWS'
-000|Work|1|editor
+000:Work:1:editor
 WINDOWS
 
 output=$("$ROOT/bin/omarchy-tmux-alert" show --json)

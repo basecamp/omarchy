@@ -8,6 +8,7 @@ BarIndicator {
 
   property int waitingCount: 0
   property string tooltip: ""
+  property bool refreshPending: false
 
   active: waitingCount > 0
   activeText: "󰆍"
@@ -16,7 +17,8 @@ BarIndicator {
   inactiveTooltipText: "No terminal is waiting"
 
   function refresh() {
-    if (!statusProc.running) statusProc.running = true
+    if (statusProc.running) refreshPending = true
+    else statusProc.running = true
   }
 
   function update(raw) {
@@ -53,6 +55,11 @@ BarIndicator {
       if (exitCode !== 0) {
         root.waitingCount = 0
         root.tooltip = ""
+      }
+
+      if (root.refreshPending) {
+        root.refreshPending = false
+        root.refresh()
       }
     }
   }
