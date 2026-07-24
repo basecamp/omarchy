@@ -8,6 +8,7 @@ o.bind("SUPER + ESCAPE", "System menu", "omarchy-menu toggle system")
 o.bind("XF86PowerOff", "Power menu", "omarchy-menu toggle system", { locked = true })
 o.bind("SUPER + K", "Show key bindings", "omarchy-menu-keybindings")
 o.bind("SUPER + ALT + K", "Show Tmux key bindings", "omarchy-menu-tmux-keybindings")
+o.bind("SUPER + CTRL + J", "Jump to waiting Tmux pane", "omarchy-tmux-alert focus")
 o.bind("XF86Calculator", "Calculator", "gnome-calculator")
 
 o.bind_toggle("SUPER + SHIFT + SPACE", "Toggle top bar", "bar")
