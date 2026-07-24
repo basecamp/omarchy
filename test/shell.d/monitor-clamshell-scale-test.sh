@@ -65,6 +65,13 @@ local omarchy_monitor_scale = "auto"
 LUA
 }
 
+write_internal_monitor_config() {
+  cat >"$monitor_lua" <<'LUA'
+hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = 1.25 })
+hl.monitor({ output = "", mode = "preferred", position = "auto-right", scale = 1 })
+LUA
+}
+
 run_clamshell() {
   HOME="$home_dir" \
     PATH="$stub_bin:$PATH" \
@@ -102,3 +109,10 @@ OMARCHY_TEST_INTERNAL_DISABLED=true run_clamshell
 grep -F 'scale = 1.6' "$eval_log" >/dev/null || fail "clamshell recovery uses remembered internal scale"
 ! grep -F 'scale = "auto"' "$eval_log" >/dev/null || fail "clamshell recovery avoids auto after disabled internal display"
 pass "clamshell recovery uses remembered internal scale"
+
+write_internal_monitor_config
+: >"$eval_log"
+OMARCHY_TEST_INTERNAL_DISABLED=true run_clamshell
+grep -F 'position = "0x0"' "$eval_log" >/dev/null || fail "clamshell recovery uses configured internal position"
+grep -F 'scale = 1.25' "$eval_log" >/dev/null || fail "clamshell recovery uses configured internal scale"
+pass "clamshell recovery uses configured internal monitor rule"
