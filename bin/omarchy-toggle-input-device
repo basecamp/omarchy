@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# omarchy:summary=Enable, disable, or toggle a Hyprland input device
+# omarchy:args=<touchpad|touchscreen> [on|off|toggle]
+# omarchy:hidden=true
+
+KIND="${1:-}"
+ACTION="${2:-toggle}"
+
+case "$KIND" in
+  touchpad) LABEL="Touchpad" ICON="touchpad" ;;
+  touchscreen) LABEL="Touchscreen" ICON="touch" ;;
+  *)
+    echo "Usage: omarchy-toggle-input-device <touchpad|touchscreen> [on|off|toggle]" >&2
+    exit 1
+    ;;
+esac
+
+# Hyprland sources this directory on reload, so the disabled state survives restarts
+STATE_FILE="$HOME/.local/state/omarchy/toggles/hypr/$KIND-disabled.lua"
+
+device="$("omarchy-hw-$KIND")"
+
+if [[ -z $device ]]; then
+  echo "No $KIND device found" >&2
+  exit 1
+fi
+
+enable() {
+  hyprctl eval "hl.device({ name = \"$device\", enabled = true })" >/dev/null
+  rm -f "$STATE_FILE"
+  omarchy-osd -i "$ICON" -m "$LABEL enabled"
+}
+
+disable() {
+  hyprctl eval "hl.device({ name = \"$device\", enabled = false })" >/dev/null
+  mkdir -p "$(dirname "$STATE_FILE")"
+  printf 'hl.device({ name = "%s", enabled = false })\n' "$device" >"$STATE_FILE"
+  omarchy-osd -i "$ICON" -m "$LABEL disabled"
+}
+
+case "$ACTION" in
+  on) enable ;;
+  off) disable ;;
+  toggle) if [[ -f $STATE_FILE ]]; then enable; else disable; fi ;;
+  *)
+    echo "Usage: omarchy-toggle-input-device <touchpad|touchscreen> [on|off|toggle]" >&2
+    exit 1
+    ;;
+esac
