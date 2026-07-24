@@ -1,0 +1,100 @@
+#!/bin/bash
+
+# Legacy apple_bce suspend/resume helper. Runs as a Before=sleep.target
+# systemd service so the T2 coprocessor is fully active during pre.
+
+# Pre:
+#   - with asynchronous device suspend, unbinds aaudio and cycles apple_bce
+#   - with synchronous device suspend, keeps aaudio and apple_bce bound
+#   - stops tiny-dfr (prevents spurious wake-ups)
+#   - unloads T2 modules (reverse dep order)
+#     * on BCM4377b brcmfmac removed before sleep to avoid D3 timeout
+#     * on BCM4364  brcmfmac stays bound; kernel PCI PM handles D3cold
+# Post:
+#   - reloads apple_bce when it was unloaded, then lets T2 firmware init
+#   - reloads T2 modules (forward dep order), restarts tiny-dfr
+
+set -euo pipefail
+
+LOG_TAG="t2-suspend"
+BRCMF_D3COLD_PCI_ID=14e4:4464
+PRE_MODS=(appletbdrm hid_appletb_kbd hid_appletb_bl brcmfmac_wcc brcmfmac hci_bcm4377)
+POST_MODS=(hci_bcm4377 brcmfmac brcmfmac_wcc hid_appletb_bl hid_appletb_kbd appletbdrm)
+
+log()     { logger -t "$LOG_TAG" "$1"; }
+
+mod_ld()  { [[ -d /sys/module/$1 ]]; }
+
+sync_suspend() {
+  [[ -r /sys/power/pm_async ]] && [[ $(</sys/power/pm_async) == "0" ]]
+}
+
+require_legacy_driver() {
+  # apple_bce may be unloaded during pre, so check the kernel's
+  # module metadata rather than /sys/module for both pre and post.
+  if ! modinfo apple_bce >/dev/null 2>&1; then
+    log "Skipping: legacy apple_bce driver is unavailable"
+    exit 0
+  fi
+}
+
+unload()  {
+  mod_ld "$1" && modprobe -r "$1" 2>/dev/null &&
+    log "Unloaded $1" || true
+}
+
+load()    {
+  mod_ld "$1" || {
+    modprobe "$1" 2>/dev/null && log "Loaded $1" || true
+  }
+}
+
+is_bcm4364() { lspci -nn | grep -q "$BRCMF_D3COLD_PCI_ID"; }
+
+skip() { is_bcm4364 && [[ $1 == "brcmfmac" || $1 == "brcmfmac_wcc" ]]; }
+
+case "${1:-}" in
+  pre)
+    require_legacy_driver
+
+    if sync_suspend; then
+      cycle_legacy_driver=0
+      log "Synchronous device suspend active; keeping aaudio and apple_bce bound"
+    else
+      cycle_legacy_driver=1
+      for d in /sys/bus/pci/drivers/aaudio/0000:*; do
+        [[ -e $d ]] || continue
+        echo "${d##*/}" > /sys/bus/pci/drivers/aaudio/unbind 2>/dev/null &&
+          log "${d##*/} Unbound" || true
+      done
+    fi
+
+    systemctl stop tiny-dfr 2>/dev/null || true
+
+    for m in "${PRE_MODS[@]}"; do skip "$m" || unload "$m"; done
+    (( cycle_legacy_driver )) && unload apple_bce
+
+    if ! udevadm settle --timeout=5; then
+      log "Timed out waiting for udev queue to settle"
+    fi
+
+    log "Ready to suspend"
+    ;;
+  post)
+    require_legacy_driver
+
+    if ! mod_ld apple_bce; then
+      load apple_bce
+      sleep 2
+    fi
+
+    for m in "${POST_MODS[@]}"; do skip "$m" || load "$m"; done
+
+    systemctl reset-failed tiny-dfr 2>/dev/null &&
+      systemctl restart tiny-dfr 2>/dev/null || true
+
+    log "Resume complete"
+    ;;
+  *)
+    echo "Usage: $0 {pre|post}"; exit 1 ;;
+esac
