@@ -17,6 +17,14 @@ fi
 focused=$(omarchy-hyprland-monitor-focused)
 terminal=$(xdg-terminal-exec --print-id)
 
+case $terminal in
+*Alacritty* | *ghostty* | *foot* | *kitty*) ;;
+*)
+  omarchy-notification-send -g ✋ "Screensaver only runs in Alacritty, Foot, Ghostty, or Kitty"
+  exit 1
+  ;;
+esac
+
 hypr_focus_monitor() {
   hyprctl dispatch "hl.dsp.focus({ monitor = \"$1\" })" >/dev/null 2>&1 || hyprctl dispatch focusmonitor "$1" >/dev/null
 }
@@ -26,6 +34,23 @@ hypr_exec() {
   printf -v command '%q ' "$@"
 
   hyprctl dispatch "hl.dsp.exec_cmd([[$command]])" >/dev/null 2>&1 || hyprctl dispatch exec -- bash -lc "$command" >/dev/null
+}
+
+SOCKET="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+
+# Open Hyprland's event stream before spawning anything, so a terminal that maps
+# quickly can't emit its openwindow event before we are listening for it.
+exec {events}< <(socat -U - "UNIX-CONNECT:$SOCKET")
+
+# hypr_exec is async and a new window maps on whatever monitor is focused at that
+# moment. Block until this monitor's screensaver actually opens before moving
+# focus on -- otherwise slow-starting terminals all pile onto the last monitor.
+# The deadline is a safety net in case the window never appears.
+wait_for_screensaver_window() {
+  local line deadline=$((SECONDS + 5))
+  while ((SECONDS < deadline)) && IFS= read -r -t $((deadline - SECONDS)) -u "$events" line; do
+    [[ $line == openwindow\>\>*,org.omarchy.screensaver,* ]] && return 0
+  done
 }
 
 for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
@@ -44,10 +69,9 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
   *kitty*)
     hypr_exec kitty --class=org.omarchy.screensaver --override font_size=18 --override window_padding_width=0 -e omarchy-screensaver
     ;;
-  *)
-    omarchy-notification-send -g ✋ "Screensaver only runs in Alacritty, Foot, Ghostty, or Kitty"
-    ;;
   esac
+
+  wait_for_screensaver_window
 done
 
 hypr_focus_monitor "$focused"
