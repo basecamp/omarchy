@@ -13,15 +13,18 @@ if ! efibootmgr &>/dev/null; then
   exit 1
 fi
 
-if cat /sys/class/dmi/id/bios_vendor 2>/dev/null | grep -qi "American Megatrends"; then
-  echo "Error: American Megatrends firmware may not safely support custom EFI entries" >&2
-  exit 1
-fi
+bios_vendor=$(cat /sys/class/dmi/id/bios_vendor 2>/dev/null)
 
-if cat /sys/class/dmi/id/bios_vendor 2>/dev/null | grep -qi "Apple"; then
-  echo "Error: Apple firmware uses its own boot manager" >&2
-  exit 1
-fi
+case "${bios_vendor,,}" in
+  *"american megatrends"*)
+    echo "Error: American Megatrends firmware may not safely support custom EFI entries" >&2
+    exit 1
+    ;;
+  *apple*)
+    echo "Error: Apple firmware uses its own boot manager" >&2
+    exit 1
+    ;;
+esac
 
 existing_entry=$(efibootmgr | grep -E "^Boot[0-9A-Fa-f]+\*? Omarchy([[:space:]]|$)" | head -1)
 
