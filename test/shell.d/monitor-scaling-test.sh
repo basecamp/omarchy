@@ -74,14 +74,42 @@ scale=$(OMARCHY_TEST_MONITOR_SCALE=3 run_scaling)
 [[ $scale == "3" ]] || fail "monitor scaling reports explicit 3x scale" "actual: $scale"
 pass "monitor scaling reports explicit 3x scale"
 
-# 1280x800 (QEMU virtio-gpu) can't divide cleanly by 3; expect a snap up to 3.2.
+scale=$(OMARCHY_TEST_MONITOR_SCALE=3.2 run_scaling)
+[[ $scale == "3.2" ]] || fail "monitor scaling reports the actual non-preset scale" "actual: $scale"
+pass "monitor scaling reports the actual non-preset scale"
+
+# 1280x800 approximates the 3x preset as 3.2x.
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 OMARCHY_TEST_MONITOR_WIDTH=1280 OMARCHY_TEST_MONITOR_HEIGHT=800 run_scaling 3
-grep -F 'scale = 3.2' "$eval_out" >/dev/null || fail "monitor scaling snaps unclean 3x up to 3.2x"
-grep -Fx 'local omarchy_monitor_scale = 3.2' "$monitor_lua" >/dev/null || fail "monitor scaling persists snapped 3.2x"
-pass "monitor scaling snaps unclean 3x up to 3.2x"
+grep -F 'scale = 3.2' "$eval_out" >/dev/null || fail "monitor scaling approximates explicit 3x as 3.2x"
+grep -Fx 'local omarchy_monitor_scale = 3.2' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling persists approximated 3.2x"
+pass "monitor scaling approximates explicit 3x as 3.2x"
 
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 OMARCHY_TEST_MONITOR_WIDTH=1280 OMARCHY_TEST_MONITOR_HEIGHT=800 run_scaling up
-grep -F 'scale = 3.2' "$eval_out" >/dev/null || fail "monitor scaling up snaps unclean preset to 3.2x"
-pass "monitor scaling up snaps unclean preset to 3.2x"
+grep -F 'scale = 3.2' "$eval_out" >/dev/null || fail "monitor scaling up reaches approximated 3.2x"
+pass "monitor scaling up reaches approximated 3.2x"
+
+write_monitor_config
+OMARCHY_TEST_MONITOR_SCALE=4 OMARCHY_TEST_MONITOR_WIDTH=1280 OMARCHY_TEST_MONITOR_HEIGHT=800 run_scaling down
+grep -F 'scale = 3.2' "$eval_out" >/dev/null || fail "monitor scaling down reaches approximated 3.2x"
+pass "monitor scaling down reaches approximated 3.2x"
+
+write_monitor_config
+OMARCHY_TEST_MONITOR_SCALE=2 OMARCHY_TEST_MONITOR_WIDTH=6016 OMARCHY_TEST_MONITOR_HEIGHT=3384 run_scaling 1.25
+grep -F 'scale = 1.33333' "$eval_out" >/dev/null || fail "monitor scaling approximates explicit 1.25x"
+pass "monitor scaling approximates explicit 1.25x"
+
+write_monitor_config
+OMARCHY_TEST_MONITOR_SCALE=2 OMARCHY_TEST_MONITOR_WIDTH=1280 OMARCHY_TEST_MONITOR_HEIGHT=800 run_scaling 3.2
+grep -F 'scale = 3.2' "$eval_out" >/dev/null || fail "monitor scaling accepts displayed approximate values"
+pass "monitor scaling accepts displayed approximate values"
+
+# On a mode where both 3x and 4x resolve to 4x, the duplicate is one step.
+write_monitor_config
+OMARCHY_TEST_MONITOR_SCALE=4 OMARCHY_TEST_MONITOR_WIDTH=1280 OMARCHY_TEST_MONITOR_HEIGHT=804 run_scaling down
+grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling down skips duplicate 4x approximation"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling down persists 2x after skipping duplicate approximation"
+pass "monitor scaling down skips duplicate approximation"
