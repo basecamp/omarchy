@@ -71,6 +71,44 @@ normalize_scale() {
   awk 'NR == 1 { printf "%g\n", $0 }'
 }
 
+# hl.monitor() statements (for `hyprctl eval`) that scale the focused monitor ($1)
+# to $2 and keep the rest flush: it stays put, right-neighbours shift by its
+# logical-width change, below-neighbours by its logical-height change. Logical
+# sizes use the 1/120 grid (px*120/round(scale*120)) to match Hyprland exactly.
+# If the layout would overlap (over-constrained 2D), emit nothing so set_scale
+# falls back to position="auto".
+build_layout_batch() {
+  local focus="$1" new_scale="$2"
+  hyprctl monitors -j | jq -r --arg focus "$focus" --arg ns "$new_scale" '
+    def logical($px; $s): ($px * 120 / (($s * 120) | round)) | round;
+    ([ .[] | select(.disabled != true) ]) as $ms
+    | ($ms[] | select(.name == $focus)) as $f
+    | ($ns | tonumber) as $s2
+    | logical($f.width;  $f.scale) as $ow
+    | logical($f.height; $f.scale) as $oh
+    | (logical($f.width;  $s2) - $ow) as $dx
+    | (logical($f.height; $s2) - $oh) as $dy
+    | ($f.x + $ow) as $fright
+    | ($f.y + $oh) as $fbottom
+    | [ $ms[]
+        | (if .name == $focus then $s2 else .scale end) as $s
+        | (if .name == $focus then .x elif (.x >= $fright) then (.x + $dx) else .x end) as $x
+        | (if .name == $focus then .y elif (.y >= $fbottom) then (.y + $dy) else .y end) as $y
+        | { name: .name, x: $x, y: $y, s: $s, w: .width, h: .height, rr: .refreshRate,
+            tf: (.transform // 0), lw: logical(.width; $s), lh: logical(.height; $s) }
+      ] as $r
+    | ( [ range(0; ($r | length)) as $i | range($i + 1; ($r | length)) as $j
+          | (([$r[$i].x + $r[$i].lw, $r[$j].x + $r[$j].lw] | min) - ([$r[$i].x, $r[$j].x] | max)) as $ox
+          | (([$r[$i].y + $r[$i].lh, $r[$j].y + $r[$j].lh] | min) - ([$r[$i].y, $r[$j].y] | max)) as $oy
+          | select($ox > 0 and $oy > 0) ] | length ) as $overlaps
+    | if $overlaps > 0 then ""
+      else [ $r[]
+             | "hl.monitor({ output = \"\(.name)\", mode = \"\(.w)x\(.h)@\(.rr)\", position = \"\(.x)x\(.y)\", scale = \(.s)\(if .tf != 0 then ", transform = \(.tf)" else "" end) })" ]
+           | join("\n")
+      end
+  '
+}
+
 set_scale() {
   local requested_scale="$1"
   local requested="${2:-$requested_scale}"
@@ -83,7 +121,17 @@ set_scale() {
   local new_scale="$(clean_scale "$requested_scale" "$width" "$height")"
   local monitor_lua="$HOME/.config/hypr/monitors.lua"
 
-  hyprctl eval "hl.monitor({ output = \"$active_monitor\", mode = \"${width}x${height}@${refresh_rate}\", position = \"auto\", scale = $new_scale })" >/dev/null
+  # Re-lay out all enabled monitors flush, focused one at the new scale (see
+  # build_layout_batch), so a scale change keeps displays in place instead of
+  # letting position="auto" reorder them. Fall back to auto if no flush layout
+  # exists (over-constrained 2D arrangement).
+  local batch
+  batch="$(build_layout_batch "$active_monitor" "$new_scale")"
+  if [[ -n $batch ]]; then
+    hyprctl eval "$batch" >/dev/null
+  else
+    hyprctl eval "hl.monitor({ output = \"$active_monitor\", mode = \"${width}x${height}@${refresh_rate}\", position = \"auto\", scale = $new_scale })" >/dev/null
+  fi
   audit_scale_change "$requested" "$active_monitor" "$current_scale" "$new_scale"
 
   # Persist to monitors.lua if the user still has Omarchy's generic catch-all
