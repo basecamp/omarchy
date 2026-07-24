@@ -6,8 +6,9 @@
 
 set -e
 
-# Window names can contain the separator, so they always come last when parsed.
-WINDOW_FORMAT='#{window_bell_flag}#{window_activity_flag}#{window_silence_flag}|#{session_name}|#{window_index}|#{window_name}'
+# Session names cannot contain colons, and window names can, so they always
+# come last when parsed.
+WINDOW_FORMAT='#{window_bell_flag}#{window_activity_flag}#{window_silence_flag}:#{session_name}:#{window_index}:#{window_name}'
 
 usage() {
   echo "Usage: omarchy-tmux-alert <show [--json]|focus>" >&2
@@ -20,9 +21,9 @@ alerted_windows() {
   local flags session index name
 
   tmux list-windows -a -F "$WINDOW_FORMAT" 2>/dev/null |
-    while IFS='|' read -r flags session index name; do
+    while IFS=':' read -r flags session index name; do
       if [[ $flags == *1* ]]; then
-        printf '%s|%s|%s\n' "$session" "$index" "$name"
+        printf '%s:%s:%s\n' "$session" "$index" "$name"
       fi
     done
 }
@@ -33,7 +34,7 @@ show() {
   readarray -t windows < <(alerted_windows)
 
   for window in "${windows[@]}"; do
-    IFS='|' read -r session index name <<<"$window"
+    IFS=':' read -r session index name <<<"$window"
     [[ -n $description ]] && description+=", "
     description+="$name ($session:$index)"
   done
@@ -68,23 +69,27 @@ focus_terminal_window() {
     hyprctl dispatch focuswindow "address:$address" >/dev/null
 }
 
+most_recent_client() {
+  tmux list-clients "$@" -F '#{client_activity}:#{client_tty}:#{client_pid}' 2>/dev/null | sort -rn | head -n1
+}
+
 focus() {
   local target session index client tty pid
 
   target=$(alerted_windows | head -n1)
   [[ -n $target ]] || return 0
 
-  IFS='|' read -r session index _ <<<"$target"
+  IFS=':' read -r session index _ <<<"$target"
 
-  client=$(tmux list-clients -t "$session" -F '#{client_tty}|#{client_pid}' 2>/dev/null | head -n1)
-  [[ -n $client ]] || client=$(tmux list-clients -F '#{client_tty}|#{client_pid}' 2>/dev/null | head -n1)
+  client=$(most_recent_client -t "$session")
+  [[ -n $client ]] || client=$(most_recent_client)
 
   if [[ -z $client ]]; then
     tmux select-window -t "$session:$index"
     exec omarchy-launch-terminal tmux attach -t "$session"
   fi
 
-  IFS='|' read -r tty pid <<<"$client"
+  IFS=':' read -r _ tty pid <<<"$client"
   tmux switch-client -c "$tty" -t "$session:$index"
   omarchy-shell -q omarchy.indicators refresh
   focus_terminal_window "$pid"
