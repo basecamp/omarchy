@@ -144,7 +144,6 @@ register_command() {
   local name=""
   local summary=""
   local usage=""
-  local binary=""
   local args=""
   local examples=""
   local aliases=""
@@ -234,7 +233,6 @@ register_command() {
     fallback_name="${fallback_name//-/ }"
   fi
 
-  [[ -z $binary ]] && binary="$file_binary"
   [[ -z $group ]] && group="$fallback_group"
   [[ $name_seen != "true" ]] && name="$fallback_name"
   [[ -z $summary && -n $fallback_summary ]] && summary="$fallback_summary"
@@ -244,11 +242,9 @@ register_command() {
     route+=" $name"
   fi
 
-  if [[ -z $usage ]]; then
-    usage="$route"
-    if [[ -n $args ]]; then
-      usage+=" $args"
-    fi
+  usage="$route"
+  if [[ -n $args ]]; then
+    usage+=" $args"
   fi
 
   [[ $requires_sudo == "true" ]] || requires_sudo="false"
@@ -258,7 +254,7 @@ register_command() {
   COMMAND_KEYS+=("$key")
   COMMAND_ROUTE["$key"]="$route"
   COMMAND_FALLBACK_ROUTE["$key"]="$fallback_route"
-  COMMAND_BINARY["$key"]="$binary"
+  COMMAND_BINARY["$key"]="$file_binary"
   COMMAND_GROUP["$key"]="$group"
   COMMAND_NAME["$key"]="$name"
   COMMAND_SUMMARY["$key"]="$summary"
@@ -270,7 +266,7 @@ register_command() {
   COMMAND_HAS_SUMMARY["$key"]="$has_summary"
   COMMAND_METADATA_ERRORS["$key"]="$metadata_errors"
 
-  BINARY_TO_KEY["$binary"]="$key"
+  BINARY_TO_KEY["$file_binary"]="$key"
   register_route "$route" "$key"
   register_route "$fallback_route" "$key"
 
