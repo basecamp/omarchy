@@ -5,7 +5,7 @@
 # omarchy:examples=omarchy default browser firefox | omarchy default browser brave
 
 if (($# == 0)); then
-  case "$(xdg-settings get default-web-browser)" in
+  case "$(env -u BROWSER xdg-settings get default-web-browser)" in
   chromium.desktop) echo "chromium" ;;
   google-chrome.desktop) echo "chrome" ;;
   brave-browser.desktop) echo "brave" ;;
@@ -13,7 +13,7 @@ if (($# == 0)); then
   microsoft-edge.desktop) echo "edge" ;;
   firefox.desktop) echo "firefox" ;;
   zen.desktop) echo "zen" ;;
-  *) xdg-settings get default-web-browser ;;
+  *) env -u BROWSER xdg-settings get default-web-browser ;;
   esac
   exit 0
 fi
@@ -32,9 +32,6 @@ zen) desktop_id="zen.desktop"; name="Zen"; glyph=󰖟 ;;
   ;;
 esac
 
-xdg-settings set default-web-browser "$desktop_id"
-xdg-mime default "$desktop_id" x-scheme-handler/http
-xdg-mime default "$desktop_id" x-scheme-handler/https
-xdg-mime default "$desktop_id" text/html
+env -u BROWSER xdg-settings set default-web-browser "$desktop_id" || exit 1
 
 omarchy-notification-send -g $glyph "$name is now the default browser"
