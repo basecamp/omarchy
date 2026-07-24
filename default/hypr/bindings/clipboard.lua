@@ -1,12 +1,10 @@
--- Work around Hyprland send_shortcut sometimes leaving synthetic key state stuck/repeating.
--- https://github.com/hyprwm/Hyprland/discussions/14099
+-- Send through the virtual keyboard so universal clipboard shortcuts reach
+-- both normal windows and focused layer-shell surfaces such as Omarchy panels.
+-- Hyprland's send_key_state with window = "activewindow" cannot target layers.
 local function send_shortcut_once(mods, key)
   return function()
-    hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "down", window = "activewindow" }))
-
-    hl.timer(function()
-      hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "up", window = "activewindow" }))
-    end, { timeout = 50, type = "oneshot" })
+    local modifier = mods:lower()
+    hl.dispatch(hl.dsp.exec_cmd("wtype -M " .. modifier .. " -k " .. key:lower() .. " -m " .. modifier))
   end
 end
 

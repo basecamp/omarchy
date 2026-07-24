@@ -105,6 +105,15 @@ grep -Fq $'SUPER + RETURN	Terminal' <<<"$fresh_output" || fail "default applicat
 grep -Fq $'SUPER + SHIFT + A	ChatGPT' <<<"$fresh_output" || fail "default application bindings include preinstalled web apps"
 pass "default application bindings load from package defaults"
 
+grep -F 'hl.dsp.exec_cmd("wtype -M " .. modifier .. " -k " .. key:lower() .. " -m " .. modifier)' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
+  fail "universal clipboard shortcuts use the virtual keyboard"
+pass "universal clipboard shortcuts reach focused layer-shell fields"
+
+if grep -F 'hl.dsp.send_key_state' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null; then
+  fail "universal clipboard shortcuts do not target only normal windows"
+fi
+pass "universal clipboard shortcuts do not exclude layer-shell fields"
+
 removed_home="$tmpdir/removed-home"
 mkdir -p "$removed_home/.local/state/omarchy"
 touch "$removed_home/.local/state/omarchy/preinstalls-removed"
