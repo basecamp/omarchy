@@ -14,11 +14,7 @@ fi
 
 theme=$1
 
-if [[ -d ~/.config/omarchy/themes/$theme ]]; then
-  theme_dir=~/.config/omarchy/themes/$theme
-else
-  theme_dir="$OMARCHY_PATH/themes/$theme"
-fi
+theme_dir=$(omarchy-theme-dir "$theme")
 
 theme_color() {
   local key="$1"

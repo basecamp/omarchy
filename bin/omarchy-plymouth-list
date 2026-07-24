@@ -7,13 +7,7 @@
   find ~/.config/omarchy/themes/ -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -printf '%f\n' 2>/dev/null
   find "$OMARCHY_PATH/themes/" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'
 } | sort -u | while read -r name; do
-  if [[ -d ~/.config/omarchy/themes/$name ]]; then
-    theme_dir=~/.config/omarchy/themes/$name
-  else
-    theme_dir="$OMARCHY_PATH/themes/$name"
-  fi
-
-  if [[ -f $theme_dir/preview-unlock.png ]]; then
+  if [[ -f $(omarchy-theme-dir "$name")/preview-unlock.png ]]; then
     echo "$name"
   fi
 done
