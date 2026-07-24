@@ -100,3 +100,36 @@ wait "$perform_pid"
 grep -q "already running" "$test_tmp/perform-second.out" || fail "second omarchy-update-perform reports held update lock"
 [[ ! -f $test_tmp/perform-second-started ]] || fail "second omarchy-update-perform did not snapshot while lock was held"
 pass "omarchy-update-perform compatibility wrapper respects update lock"
+
+# Update-owned Stay Awake state must be cleared before the restart helper can
+# reboot the machine, rather than relying on an EXIT trap during shutdown.
+write_stub omarchy-snapshot 'exit 0'
+write_stub omarchy-update-keyring 'exit 0'
+write_stub omarchy-toggle-idle '
+state_file="$HOME/.local/state/omarchy/indicators/stay-awake"
+case "$1" in
+  stay-awake)
+    mkdir -p "$(dirname "$state_file")"
+    touch "$state_file"
+    ;;
+  allow-idle)
+    rm -f "$state_file"
+    ;;
+esac'
+write_stub omarchy-update-restart '
+state_file="$HOME/.local/state/omarchy/indicators/stay-awake"
+if [[ ${EXPECT_STAY_AWAKE:-0} == "1" ]]; then
+  [[ -f $state_file ]]
+else
+  [[ ! -f $state_file ]]
+fi'
+
+rm -f "$test_home/.local/state/omarchy/indicators/stay-awake"
+OMARCHY_UPDATE_LOGGED=1 run_with_lock_env "$ROOT/bin/omarchy-update" -y
+[[ ! -f $test_home/.local/state/omarchy/indicators/stay-awake ]] || fail "update clears its Stay Awake state before restart handling"
+
+mkdir -p "$test_home/.local/state/omarchy/indicators"
+touch "$test_home/.local/state/omarchy/indicators/stay-awake"
+OMARCHY_UPDATE_LOGGED=1 EXPECT_STAY_AWAKE=1 run_with_lock_env "$ROOT/bin/omarchy-update" -y
+[[ -f $test_home/.local/state/omarchy/indicators/stay-awake ]] || fail "update preserves pre-existing Stay Awake state"
+pass "omarchy-update restores only its own Stay Awake state before restart handling"
