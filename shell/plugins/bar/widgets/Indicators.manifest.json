@@ -37,6 +37,11 @@
             "description": "Queued reminder status"
           },
           {
+            "value": "TmuxAlert",
+            "label": "Tmux alert",
+            "description": "Tmux windows waiting for attention"
+          },
+          {
             "value": "NightLight",
             "label": "Night light",
             "description": "Blue-light filter"
