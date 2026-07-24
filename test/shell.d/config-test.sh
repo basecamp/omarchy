@@ -289,6 +289,28 @@ jq -e '
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config removes widgets with remove alias"
 
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin set omarchy.bluetooth enabled false --json
+jq -e '
+  any(.bar.layout.right[]; .id == "omarchy.bluetooth" and .enabled == false)
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "bar plugin set accepts false JSON values"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin set omarchy.bluetooth optional null --json
+jq -e '
+  any(.bar.layout.right[]; .id == "omarchy.bluetooth" and has("optional") and .optional == null)
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "bar plugin set accepts null JSON values"
+
+if HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin set omarchy.bluetooth broken '{' --json 2>/dev/null; then
+  fail "bar plugin set accepted malformed JSON"
+fi
+pass "bar plugin set rejects malformed JSON"
+
+if HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin set omarchy.bluetooth broken 'false null' --json 2>/dev/null; then
+  fail "bar plugin set accepted multiple JSON values"
+fi
+pass "bar plugin set rejects multiple JSON values"
+
 mock_bin="$TMPDIR/mock-bin"
 mkdir -p "$mock_bin"
 
