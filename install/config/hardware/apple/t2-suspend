@@ -4,13 +4,14 @@
 # systemd service so the T2 coprocessor is fully active during pre.
 
 # Pre:
-#   - unbinds aaudio (releases ALSA FDs held by userspace)
+#   - with asynchronous device suspend, unbinds aaudio and cycles apple_bce
+#   - with synchronous device suspend, keeps aaudio and apple_bce bound
 #   - stops tiny-dfr (prevents spurious wake-ups)
 #   - unloads T2 modules (reverse dep order)
 #     * on BCM4377b brcmfmac removed before sleep to avoid D3 timeout
 #     * on BCM4364  brcmfmac stays bound; kernel PCI PM handles D3cold
 # Post:
-#   - reloads apple_bce, then sleeps to let T2 firmware init
+#   - reloads apple_bce when it was unloaded, then lets T2 firmware init
 #   - reloads T2 modules (forward dep order), restarts tiny-dfr
 
 set -euo pipefail
@@ -24,8 +25,12 @@ log()     { logger -t "$LOG_TAG" "$1"; }
 
 mod_ld()  { [[ -d /sys/module/$1 ]]; }
 
+sync_suspend() {
+  [[ -r /sys/power/pm_async ]] && [[ $(</sys/power/pm_async) == "0" ]]
+}
+
 require_legacy_driver() {
-  # apple_bce is intentionally unloaded during pre, so check the kernel's
+  # apple_bce may be unloaded during pre, so check the kernel's
   # module metadata rather than /sys/module for both pre and post.
   if ! modinfo apple_bce >/dev/null 2>&1; then
     log "Skipping: legacy apple_bce driver is unavailable"
@@ -52,16 +57,22 @@ case "${1:-}" in
   pre)
     require_legacy_driver
 
-    for d in /sys/bus/pci/drivers/aaudio/0000:*; do
-      [[ -e $d ]] || continue
-      echo "${d##*/}" > /sys/bus/pci/drivers/aaudio/unbind 2>/dev/null &&
-        log "${d##*/} Unbound" || true
-    done
+    if sync_suspend; then
+      cycle_legacy_driver=0
+      log "Synchronous device suspend active; keeping aaudio and apple_bce bound"
+    else
+      cycle_legacy_driver=1
+      for d in /sys/bus/pci/drivers/aaudio/0000:*; do
+        [[ -e $d ]] || continue
+        echo "${d##*/}" > /sys/bus/pci/drivers/aaudio/unbind 2>/dev/null &&
+          log "${d##*/} Unbound" || true
+      done
+    fi
 
     systemctl stop tiny-dfr 2>/dev/null || true
 
     for m in "${PRE_MODS[@]}"; do skip "$m" || unload "$m"; done
-    unload apple_bce
+    (( cycle_legacy_driver )) && unload apple_bce
 
     if ! udevadm settle --timeout=5; then
       log "Timed out waiting for udev queue to settle"
@@ -72,7 +83,10 @@ case "${1:-}" in
   post)
     require_legacy_driver
 
-    load apple_bce; sleep 2
+    if ! mod_ld apple_bce; then
+      load apple_bce
+      sleep 2
+    fi
 
     for m in "${POST_MODS[@]}"; do skip "$m" || load "$m"; done
 
