@@ -3,12 +3,6 @@ function clampIndex(index, length) {
   return Math.max(0, Math.min(length - 1, index))
 }
 
-function selectProfileIndex(index, delta, profiles) {
-  var values = Array.isArray(profiles) ? profiles : []
-  if (values.length === 0) return 0
-  return clampIndex(index + delta, values.length)
-}
-
 function parseKeyValue(raw) {
   var next = {}
   var lines = String(raw || "").split("\n")
@@ -92,7 +86,6 @@ function modeLabel(device, onBattery, states) {
 if (typeof module !== "undefined") {
   module.exports = {
     clampIndex: clampIndex,
-    selectProfileIndex: selectProfileIndex,
     parseKeyValue: parseKeyValue,
     parseProfiles: parseProfiles,
     profileIcon: profileIcon,

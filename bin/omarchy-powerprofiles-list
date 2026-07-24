@@ -3,13 +3,58 @@
 # omarchy:summary=Returns a list of all the available power profiles on the system.
 # omarchy:args=[--active-state]
 
-if [[ ${1:-} != "" && ${1:-} != "--active-state" ]]; then
+option="${1:-}"
+
+if [[ $option != "" && $option != "--active-state" ]]; then
   echo "Usage: omarchy-powerprofiles-list [--active-state]" >&2
   exit 1
 fi
 
-powerprofilesctl list 2>/dev/null |
-  awk -v with_state="${1:+1}" '/^\s*[* ]\s*[a-zA-Z0-9-]+:$/ {
+os_profile_output=$(powerprofilesctl list 2>/dev/null)
+
+os_profile_available() {
+  grep -Eq "^[*[:space:]]+$1:$" <<<"$os_profile_output"
+}
+
+dell_profile_dir=""
+profile_root="${OMARCHY_PLATFORM_PROFILE_ROOT:-/sys/class/platform-profile}"
+for profile_dir in "$profile_root"/*; do
+  [[ -r $profile_dir/name && -r $profile_dir/choices && -r $profile_dir/profile && -w $profile_dir/profile ]] || continue
+  if [[ $(<"$profile_dir/name") == "dell-pc" ]]; then
+    dell_profile_dir="$profile_dir"
+    break
+  fi
+done
+
+if [[ -n $dell_profile_dir ]]; then
+  current=$(<"$dell_profile_dir/profile")
+  current_os=""
+  if [[ $option == "--active-state" ]]; then
+    current_os=$(powerprofilesctl get 2>/dev/null)
+  fi
+  read -r -a available_profiles <"$dell_profile_dir/choices"
+
+  for profile in quiet cool balanced performance; do
+    [[ " ${available_profiles[*]} " == *" $profile "* ]] || continue
+    case "$profile" in
+      quiet | cool) os_profile=power-saver ;;
+      *) os_profile="$profile" ;;
+    esac
+    os_profile_available "$os_profile" || continue
+
+    if [[ $option == "--active-state" ]]; then
+      active=0
+      [[ $profile == $current && $os_profile == $current_os ]] && active=1
+      printf '%s\t%s\n' "$profile" "$active"
+    else
+      printf '%s\n' "$profile"
+    fi
+  done
+  exit 0
+fi
+
+printf '%s\n' "$os_profile_output" |
+  awk -v with_state="${option:+1}" '/^\s*[* ]\s*[a-zA-Z0-9-]+:$/ {
     active = ($1 == "*") ? 1 : 0
     gsub(/^[*[:space:]]+|:$/, "")
     print $0 (with_state ? "\t" active : "")

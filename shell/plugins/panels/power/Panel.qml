@@ -16,6 +16,7 @@ Panel {
   property string activeProfile: ""
   property int profileIndex: 0
   property bool cursorActive: false
+  readonly property int profileColumns: profiles.length > 3 ? 2 : Math.max(1, profiles.length)
   readonly property bool batteryPresent: {
     var device = UPower.displayDevice
     return !!(device && device.isPresent)
@@ -30,8 +31,11 @@ Panel {
     }
   }
 
-  function selectProfileByDelta(delta) {
-    profileIndex = Model.selectProfileIndex(profileIndex, delta, profiles)
+  function selectProfileByDirection(dx, dy) {
+    var next = profileIndex + (dx !== 0 ? dx : dy * profileColumns)
+    if (next < 0 || next >= profiles.length) return
+    if (dx !== 0 && Math.floor(next / profileColumns) !== Math.floor(profileIndex / profileColumns)) return
+    profileIndex = next
   }
 
   function activateSelectedProfile() {
@@ -273,8 +277,7 @@ Panel {
       anchors.fill: parent
       onMoveRequested: function(dx, dy) {
         if (!root.cursorActive) { root.cursorActive = true; return }
-        if (dx !== 0) root.selectProfileByDelta(dx)
-        else if (dy !== 0) root.selectProfileByDelta(dy)
+        root.selectProfileByDirection(dx, dy)
       }
       onActivateRequested: if (root.cursorActive) root.activateSelectedProfile()
       onCloseRequested: root.close()
@@ -432,13 +435,15 @@ Panel {
             fontFamily: root.bar.fontFamily
           }
 
-          Row {
-            id: profileRow
+          Grid {
+            id: profileGrid
             width: parent.width
-            spacing: Style.space(6)
+            columns: root.profileColumns
+            columnSpacing: Style.space(6)
+            rowSpacing: Style.space(6)
 
             readonly property real cellWidth: root.profiles.length > 0
-              ? (width - spacing * (root.profiles.length - 1)) / root.profiles.length
+              ? (width - columnSpacing * (columns - 1)) / columns
               : 0
 
             Repeater {
@@ -446,7 +451,7 @@ Panel {
               Button {
                 required property var modelData
                 required property int index
-                width: profileRow.cellWidth
+                width: profileGrid.cellWidth
                 iconText: root.profileIcon(String(modelData))
                 iconSize: Style.font.title
                 text: String(modelData).charAt(0).toUpperCase() + String(modelData).slice(1)
