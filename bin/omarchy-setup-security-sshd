@@ -89,7 +89,7 @@ authorize_keys_from_github() {
     authorize_key "$key" && added=$((added + 1))
   done <<<"$keys"
 
-  if [[ $added -eq 0 ]]; then
+  if (( added == 0 )); then
     echo -e "\e[31mNo valid SSH keys found for GitHub user '$username'.\e[0m" >&2
     exit 1
   fi

@@ -26,7 +26,7 @@ usage() {
   echo "Usage: omarchy-theme-color [--file <colors.toml>] (--all | --raw | <key> [fallback])"
 }
 
-while [[ $# -gt 0 ]]; do
+while (( $# > 0 )); do
   case "$1" in
     --file)
       COLORS_FILE="${2:-}"

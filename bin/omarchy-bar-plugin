@@ -416,7 +416,7 @@ cmd_replace() {
   local new="${2:-}"
   [[ -n $old ]] || fail "replace requires the source widget id"
   [[ -n $new ]] || fail "replace requires the replacement widget id"
-  [[ $# -eq 2 ]] || fail "replace takes two widget ids"
+  (( $# == 2 )) || fail "replace takes two widget ids"
 
   local prog
   prog=$(cat <<JQ
@@ -439,7 +439,7 @@ JQ
 # --------------------------------------------------------------------- dispatch
 
 command="${1:-}"
-[[ $# -gt 0 ]] && shift || true
+(( $# > 0 )) && shift || true
 
 case "$command" in
   add)

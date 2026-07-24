@@ -43,7 +43,7 @@ bar_option_exists() {
 cmd_use() {
   local plugin="${1:-}"
   [[ -n $plugin ]] || fail "bar option id is required"
-  [[ $# -eq 1 ]] || fail "use takes a single bar option id"
+  (( $# == 1 )) || fail "use takes a single bar option id"
   if [[ $plugin == "default" || $plugin == "built-in" ]]; then
     plugin="omarchy.bar"
   fi
@@ -74,7 +74,7 @@ cmd_defaults() {
 cmd_position() {
   local position="${1:-}"
   [[ -n $position ]] || fail "position is required"
-  [[ $# -eq 1 ]] || fail "position takes a single value"
+  (( $# == 1 )) || fail "position takes a single value"
   [[ $position =~ ^(top|bottom|left|right)$ ]] || fail "position must be top, bottom, left, or right"
   commit "$NORMALIZE | .bar.position = \$position" --arg position "$position"
   echo "Bar position set to $position"
@@ -83,7 +83,7 @@ cmd_position() {
 cmd_transparent() {
   local transparent="${1:-}"
   [[ -n $transparent ]] || fail "transparent is required"
-  [[ $# -eq 1 ]] || fail "transparent takes a single value"
+  (( $# == 1 )) || fail "transparent takes a single value"
   [[ $transparent =~ ^(true|false|toggle)$ ]] || fail "transparent must be true, false, or toggle"
   if [[ $transparent == "toggle" ]]; then
     commit "$NORMALIZE | .bar.transparent = (.bar.transparent != true)"
@@ -97,7 +97,7 @@ cmd_transparent() {
 # --------------------------------------------------------------------- dispatch
 
 command="${1:-}"
-[[ $# -gt 0 ]] && shift || true
+(( $# > 0 )) && shift || true
 
 case "$command" in
   use)
