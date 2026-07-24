@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Print the name of the built-in laptop display, including disabled outputs.
+
+hyprctl monitors all -j | jq -r '.[] | select(.name | test("^(eDP|LVDS|DSI)-")).name' | head -n 1
