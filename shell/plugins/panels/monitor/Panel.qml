@@ -714,10 +714,34 @@ Panel {
             width: parent.width
             spacing: Style.space(10)
 
-            PanelSectionHeader {
-              text: "SCALE"
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(scaleHeader.implicitHeight, scaleMonitor.implicitHeight)
+
+              PanelSectionHeader {
+                id: scaleHeader
+                text: "SCALE"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              // Name the monitor SCALE targets: it applies to the focused one,
+              // and a scale change now reflows its neighbours (see the CLI).
+              Text {
+                id: scaleMonitor
+                text: root.focusedMonitor
+                // Only worth naming when more than one display is in play.
+                visible: root.focusedMonitor !== "" && root.enabledDisplayCount > 1
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+              }
             }
 
             Grid {
