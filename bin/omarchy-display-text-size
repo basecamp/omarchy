@@ -1,14 +1,15 @@
 #!/bin/bash
 
 # omarchy:summary=Scale text everywhere — omarchy shell, GTK apps, and terminals
-# omarchy:args=[size|reset]
-# omarchy:examples=omarchy display text size | omarchy display text size 16 | omarchy display text size reset
+# omarchy:args=[--shell] [--gtk] [--terminals] [size|reset]
+# omarchy:examples=omarchy display text size | omarchy display text size 16 | omarchy display text size reset | omarchy display text size --shell 14
 
 # One knob for apparent text size across the desktop. It drives three settings
-# in lockstep, all anchored to the shell default of 12px:
+# in lockstep by default, all anchored to the shell default of 12px:
 #   • the omarchy shell's font base-size (~/.config/omarchy/shell.toml [font])
 #   • GNOME/GTK's text-scaling-factor    (12px -> 1.0, so 16 -> 1.333)
 #   • the terminal font point size       (12px -> 9pt, so terminal_pt = px * 9/12)
+# Scope flags address any subset without changing the unflagged behavior.
 # The shell override layers on top of the active theme (so the size survives
 # theme switches) and the shell watches the file, so shell text re-flows live.
 # Accepts an integer from 9 to 20 (px).
@@ -25,10 +26,14 @@ SHELL_DEFAULT_PX=12
 shell_config="$HOME/.config/omarchy/shell.toml"
 
 usage() {
-  echo "Usage: omarchy-display-text-size [size|reset]"
+  echo "Usage: omarchy-display-text-size [--shell] [--gtk] [--terminals] [size|reset]"
   echo "  (no args)   print the current text size, GTK factor, and terminal size"
   echo "  <size>      set text size in px ($MIN–$MAX); shell + GTK + terminals together"
   echo "  reset       return all three to their defaults (12px / 1.0 / 9pt)"
+  echo "  --shell     apply only to the omarchy shell font"
+  echo "  --gtk       apply only to GTK text scaling"
+  echo "  --terminals apply only to terminal font sizes"
+  echo "  Example: omarchy-display-text-size --shell 14"
 }
 
 # ---- shell base-size: the rem root every shell type size derives from ----
@@ -168,41 +173,112 @@ term_current_pt() {
   fi
 }
 
-case "${1:-}" in
-  -h | --help)
+for token in "$@"; do
+  if [[ $token == "-h" || $token == "--help" ]]; then
     usage
     exit 0
-    ;;
-  "")
-    cur="$(current_base_size)"
-    size="${cur:-12 (default)}"
-    factor="$(gsettings get "$GKEY_SCHEMA" "$GKEY_NAME" 2>/dev/null)"
-    term="$(term_current_pt)"
-    printf 'text size: %s px\ngtk text-scaling-factor: %s\nterminal font: %s pt\n' \
-      "$size" "$factor" "${term:-n/a}"
+  fi
+done
+
+# A valid size is 1-2 ASCII digits with no leading zero, in range. Pattern
+# ranges (not regex) because regex ranges follow locale collation and admit
+# fullwidth digits; the length cap keeps the arithmetic clear of 64-bit
+# wraparound. bash 5's globasciiranges keeps these pattern ranges ASCII-only.
+valid_size() {
+  [[ -n $1 && $1 != *[!0-9]* && $1 != 0* ]] && ((${#1} <= 2)) && (($1 >= MIN && $1 <= MAX))
+}
+
+do_shell=0
+do_gtk=0
+do_terminals=0
+action=""
+
+for token in "$@"; do
+  case "$token" in
+    --shell) do_shell=1 ;;
+    --gtk) do_gtk=1 ;;
+    --terminals) do_terminals=1 ;;
+    *)
+      # Dash-led ASCII numbers (-1) are size candidates, not flags, so they
+      # fall through to size validation.
+      if [[ $token == -* && -n ${token#-} && ${token#-} != *[!0-9]* ]] || [[ $token != -* ]]; then
+        if [[ -n $action ]]; then
+          usage >&2
+          exit 1
+        fi
+
+        action="$token"
+        if [[ $action != "reset" && $action != "default" ]] && ! valid_size "$action"; then
+          echo "Size must be an integer between $MIN and $MAX (px)." >&2
+          usage >&2
+          exit 1
+        fi
+      else
+        usage >&2
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+scoped=$((do_shell || do_gtk || do_terminals))
+
+if [[ -z $action ]]; then
+  if ((scoped)); then
+    usage >&2
+    exit 1
+  fi
+
+  cur="$(current_base_size)"
+  size="${cur:-12 (default)}"
+  factor="$(gsettings get "$GKEY_SCHEMA" "$GKEY_NAME" 2>/dev/null)"
+  term="$(term_current_pt)"
+  printf 'text size: %s px\ngtk text-scaling-factor: %s\nterminal font: %s pt\n' \
+    "$size" "$factor" "${term:-n/a}"
+  exit 0
+fi
+
+if ((!scoped)); then
+  do_shell=1
+  do_gtk=1
+  do_terminals=1
+fi
+
+case "$action" in
+  reset | default)
+    if ((do_shell)); then
+      reset_base_size
+    fi
+
+    if ((do_gtk)); then
+      gsettings reset "$GKEY_SCHEMA" "$GKEY_NAME" 2>/dev/null || true
+    fi
+
+    if ((do_terminals)); then
+      set_terminal_size "$TERM_DEFAULT_PT"
+    fi
+
     exit 0
     ;;
-  reset | default)
-    reset_base_size
-    gsettings reset "$GKEY_SCHEMA" "$GKEY_NAME" 2>/dev/null || true
-    set_terminal_size "$TERM_DEFAULT_PT"
+  *)
+    size="$action"
+
+    # Shell side: base-size in px (the omarchy shell's rem root).
+    if ((do_shell)); then
+      set_base_size "$size"
+    fi
+
+    # GTK side: multiplier anchored so 12px == 1.0.
+    if ((do_gtk)); then
+      factor="$(awk -v s="$size" -v b="$SHELL_DEFAULT_PX" 'BEGIN { printf "%.4f", s / b }')"
+      set_factor "$factor"
+    fi
+
+    # Terminal side: point size anchored so 12px == 9pt.
+    if ((do_terminals)); then
+      set_terminal_size "$(term_pt_for "$size")"
+    fi
+
     exit 0
     ;;
 esac
-
-size="$1"
-if [[ ! $size =~ ^[0-9]+$ ]] || ((size < MIN || size > MAX)); then
-  echo "Size must be an integer between $MIN and $MAX (px)." >&2
-  usage >&2
-  exit 1
-fi
-
-# Shell side: base-size in px (the omarchy shell's rem root).
-set_base_size "$size"
-
-# GTK side: multiplier anchored so 12px == 1.0.
-factor="$(awk -v s="$size" -v b="$SHELL_DEFAULT_PX" 'BEGIN { printf "%.4f", s / b }')"
-set_factor "$factor"
-
-# Terminal side: point size anchored so 12px == 9pt.
-set_terminal_size "$(term_pt_for "$size")"
