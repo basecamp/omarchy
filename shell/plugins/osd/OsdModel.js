@@ -2,6 +2,10 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value))
 }
 
+// The widest glyph `iconFor` can return. The progress OSD sizes its icon
+// column to it so the bar keeps its place as the icon changes.
+var widestIcon = ""
+
 function iconFor(name, percent) {
   var n = String(name || "").toLowerCase()
   if (n === "volume-muted" || n === "volume-mute" || n === "muted" || n === "mute") return ""
@@ -30,14 +34,13 @@ function iconFor(name, percent) {
   return ""
 }
 
-function stateForShow(iconName, rawMessage, rawValue, rawMax, rawProgressText, rawDuration, rawFit) {
+function stateForShow(iconName, rawMessage, rawValue, rawMax, rawProgressText, rawDuration) {
   var maxValue = Math.max(1, parseInt(rawMax || "100", 10))
   var parsedValue = parseInt(rawValue || "0", 10)
   var hasProgress = rawValue !== "" && !isNaN(parsedValue) && rawMessage === ""
   var value = hasProgress ? clamp(parsedValue, 0, maxValue) : 0
   var percent = hasProgress ? Math.round(value * 100 / maxValue) : -1
   var parsedDuration = parseInt(rawDuration || "1200", 10)
-  var fit = rawFit === true || rawFit === 1 || rawFit === "1" || rawFit === "true"
 
   return {
     iconKey: String(iconName || "").toLowerCase(),
@@ -46,13 +49,13 @@ function stateForShow(iconName, rawMessage, rawValue, rawMax, rawProgressText, r
     value: value,
     message: String(rawMessage || (hasProgress ? (rawProgressText || percent + "%") : "")),
     icon: iconFor(iconName, percent),
-    duration: isNaN(parsedDuration) ? 1200 : Math.max(0, parsedDuration),
-    fit: fit
+    duration: isNaN(parsedDuration) ? 1200 : Math.max(0, parsedDuration)
   }
 }
 
 if (typeof module !== "undefined") {
   module.exports = {
+    widestIcon: widestIcon,
     iconFor: iconFor,
     stateForShow: stateForShow
   }

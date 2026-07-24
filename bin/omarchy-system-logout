@@ -6,7 +6,7 @@
 
 nohup bash -c "sleep 2 && uwsm stop" >/dev/null 2>&1 &
 
-omarchy-osd -i logout -m "Logging out…" -d 5000 --fit
+omarchy-osd -i logout -m "Logging out" -d 5000
 
 # Now close all windows
 omarchy-hyprland-window-close-all
