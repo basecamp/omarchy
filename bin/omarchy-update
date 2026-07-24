@@ -91,6 +91,12 @@ run_update_pipeline() {
     omarchy-shell -q omarchy.system-update clear
   fi
 
+  # Release update-owned inhibitors before offering a reboot. A confirmed
+  # reboot can terminate this process before its EXIT trap gets a chance to
+  # remove the persistent Stay Awake marker.
+  restore_update_inhibitors
+  trap - EXIT
+
   omarchy-update-restart
 }
 
