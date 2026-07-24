@@ -12,15 +12,12 @@ fail() { echo "Error: $*" >&2; exit 1; }
 confirm_dev() {
   cat <<'WARNING'
 
-Dev links Omarchy directly to a mutable source checkout.
-
-This disables package-based protections for the Omarchy code path, including
-normal package updates and package-backed snapshot restores. You'll be
-responsible for pulling, fixing, and restoring that checkout yourself.
+The dev channel links Omarchy directly to a checkout of the source in ~/omarchy.
+It's exclusively intended for developers working on Omarchy itself.
 
 WARNING
 
-  gum confirm --default=false "Enable Dev anyway?"
+  gum confirm --default=false "Switch to dev channel?"
 }
 
 validate_dev_checkout() {
@@ -39,7 +36,7 @@ link_dev_checkout() {
   local checkout="$1"
   [[ -d $checkout/.git ]] || git clone https://github.com/basecamp/omarchy.git "$checkout"
 
-  omarchy-dev-link "$checkout"
+  omarchy-dev-link "$checkout" --no-reboot
 }
 
 (( $# > 0 )) || { usage; exit 1; }
@@ -79,6 +76,13 @@ if [[ -z $dev_checkout && $OMARCHY_PATH != "/usr/share/omarchy" ]]; then
   leaving_dev=1
 fi
 
+if [[ -n $dev_checkout ]]; then
+  link_dev_checkout "$dev_checkout"
+  export OMARCHY_PATH="$dev_checkout"
+  export PATH="$OMARCHY_PATH/bin:$PATH"
+  omarchy-state set reboot-required
+fi
+
 omarchy-refresh-pacman "$pacman_channel"
 # --ask 4 accepts omarchy <-> omarchy-dev replacement prompts without file overwrites.
 sudo env OMARCHY_UPDATE_PACMAN=1 pacman -S --needed --noconfirm --ask 4 "${packages[@]}"
@@ -93,7 +97,3 @@ if [[ -z $dev_checkout ]]; then
 fi
 
 omarchy-update -y
-
-if [[ -n $dev_checkout ]]; then
-  link_dev_checkout "$dev_checkout"
-fi
