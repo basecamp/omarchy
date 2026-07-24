@@ -21,17 +21,27 @@ assertEqual(monitor.cleanScale(1.6, 0, 800), '', 'monitor rejects a missing disp
 assertEqual(
   monitor.matchingScaleIndex(['1', '1.25', '1.6', '2', '3', '4'], 3.2, 1280, 800),
   4,
-  'monitor selects requested 3x for effective VM scale'
+  'monitor selects an approximated VM scale'
 )
 assertEqual(
   monitor.matchingScaleIndex(['1', '1.25', '1.6', '2', '3', '4'], 4, 4, 4),
   5,
-  'monitor selects only the closest preset when clean scales collide'
+  'monitor selects an exact preset'
 )
 assertDeepEqual(
   monitor.availableScales(['1', '1.25', '1.6', '2', '3', '4'], 1280, 800),
   ['1', '1.25', '1.6', '2', '3', '4'],
-  'monitor keeps presets that produce unique reachable VM scales'
+  'monitor keeps distinct approximated VM scales'
+)
+assertDeepEqual(
+  monitor.availableScales(['1', '1.25', '1.6', '2', '3', '4'], 6016, 3384),
+  ['1', '1.25', '1.6', '2', '3', '4'],
+  'monitor keeps distinct approximated physical display scales'
+)
+assertDeepEqual(
+  monitor.availableScales(['1', '1.25', '1.6', '2', '3', '4'], 1280, 804),
+  ['1', '1.25', '2', '4'],
+  'monitor collapses presets with duplicate effective scales'
 )
 assertDeepEqual(
   monitor.availableScales(['1', '1.25', '1.6', '2', '3', '4'], 5968, 3230),

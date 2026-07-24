@@ -60,10 +60,7 @@ function availableScales(scales, width, height) {
     var requested = Number(scales[i])
     var effective = Number(cleanScale(requested, width, height))
 
-    // Clean scales round upward. If the mode cannot reach the requested
-    // scale, cleanScale caps at its largest valid value and this preset is
-    // not actually available.
-    if (!isFinite(requested) || !isFinite(effective) || effective < requested) continue
+    if (!isFinite(requested) || !isFinite(effective)) continue
 
     var key = normalizeScale(effective)
     var existing = byEffectiveScale[key]

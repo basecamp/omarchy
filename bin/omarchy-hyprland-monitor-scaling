@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Show, set, or adjust focused Hyprland monitor scaling
-# omarchy:args=[up|down|1|1.25|1.6|2|3|4]
+# omarchy:args=[up|down|SCALE]
 # omarchy:examples=omarchy hyprland monitor scaling | omarchy hyprland monitor scaling 1.6 | omarchy hyprland monitor scaling up | omarchy hyprland monitor scaling down
 
 SCALES=(1 1.25 1.6 2 3 4)
@@ -9,7 +9,7 @@ STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
 SCALE_LOG="$STATE_DIR/monitor-scaling.log"
 
 usage() {
-  echo "Usage: omarchy-hyprland-monitor-scaling [up|down|1|1.25|1.6|2|3|4]"
+  echo "Usage: omarchy-hyprland-monitor-scaling [up|down|SCALE]"
 }
 
 focused_monitor_scale() {
@@ -54,8 +54,7 @@ audit_scale_change() {
 
 # Hyprland only accepts scales where the mode divides into whole logical
 # pixels (in 1/120 steps), so clean scales are divisors of gcd(w*120, h*120).
-# Round the requested scale up to the nearest one, so 3x on a 1280x800 QEMU
-# display becomes 3.2x instead of a red error overlay.
+# Round the requested scale up to the nearest clean value.
 clean_scale() {
   awk -v scale="$1" -v width="$2" -v height="$3" '
     function gcd(a, b, t) { while (b) { t = a % b; a = b; b = t } return a }
@@ -66,6 +65,10 @@ clean_scale() {
       while (g % k != 0) k++
       printf "%g\n", k / 120
     }'
+}
+
+normalize_scale() {
+  awk 'NR == 1 { printf "%g\n", $0 }'
 }
 
 set_scale() {
@@ -100,21 +103,50 @@ set_scale() {
 
 scale_from_current() {
   local direction="${1:-}"
+  local width="${2:-}"
+  local height="${3:-}"
 
-  awk -v direction="$direction" -v list="${SCALES[*]}" '
+  awk -v direction="$direction" -v list="${SCALES[*]}" -v width="$width" -v height="$height" '
+    function gcd(a, b, t) { while (b) { t = a % b; a = b; b = t } return a }
+    function clean(scale,    g, k) {
+      g = gcd(width * 120, height * 120)
+      k = int(scale * 120 + 0.5)
+      if (k > g) k = g
+      while (g % k != 0) k++
+      return k / 120
+    }
     NR == 1 { scale = $0; found = 1 }
     END {
       if (!found) exit 1
 
-      n = split(list, scales, " ")
+      preset_count = split(list, presets, " ")
+      for (i = 1; i <= preset_count; i++) {
+        effective = clean(presets[i])
+        key = sprintf("%.8f", effective)
+        distance = presets[i] - effective
+        if (distance < 0) distance = -distance
 
-      # Snap to the nearest preset first. Hyprland reports scales as floating
-      # point values, so a scale set to 3 can come back as 3.0000000000000004.
-      # Without snapping, the directional comparisons below can misidentify
-      # the current preset and refuse to step down (or up) any further.
+        # Multiple presets can collapse to the same clean scale. Keep only the
+        # closest label so stepping always moves to a distinct effective value.
+        if (!(key in effective_index)) {
+          effective_index[key] = ++n
+          effective_scales[n] = effective
+          scales[n] = presets[i]
+          distances[n] = distance
+        } else {
+          idx = effective_index[key]
+          if (distance < distances[idx]) {
+            scales[idx] = presets[i]
+            distances[idx] = distance
+          }
+        }
+      }
+
+      # Snap to the nearest effective scale first. Hyprland reports floating
+      # point values, so exact comparisons can otherwise get stuck.
       best = 1; best_diff = 1e9
       for (i = 1; i <= n; i++) {
-        diff = scale - scales[i]; if (diff < 0) diff = -diff
+        diff = scale - effective_scales[i]; if (diff < 0) diff = -diff
         if (diff < best_diff) { best_diff = diff; best = i }
       }
 
@@ -130,22 +162,31 @@ scale_from_current() {
 
 case "${1:-}" in
 "")
-  focused_monitor_scale | scale_from_current
+  focused_monitor_scale | normalize_scale
   ;;
 -h | --help)
   usage
   ;;
 up)
-  set_scale "$(focused_monitor_scale | scale_from_current next)" "up"
+  monitor_info=$(hyprctl monitors -j | jq -e -c '.[] | select(.focused == true)')
+  set_scale "$(echo "$monitor_info" | jq -r '.scale' | scale_from_current next \
+    "$(echo "$monitor_info" | jq -r '.width')" "$(echo "$monitor_info" | jq -r '.height')")" "up"
   ;;
 down)
-  set_scale "$(focused_monitor_scale | scale_from_current previous)" "down"
+  monitor_info=$(hyprctl monitors -j | jq -e -c '.[] | select(.focused == true)')
+  set_scale "$(echo "$monitor_info" | jq -r '.scale' | scale_from_current previous \
+    "$(echo "$monitor_info" | jq -r '.width')" "$(echo "$monitor_info" | jq -r '.height')")" "down"
   ;;
 1 | 1.25 | 1.6 | 2 | 3 | 4)
   set_scale "$1" "$1"
   ;;
 *)
-  usage >&2
-  exit 1
+  if [[ $1 =~ ^[0-9]+([.][0-9]+)?$ ]] &&
+    awk -v scale="$1" 'BEGIN { exit !(scale >= 1 && scale <= 4) }'; then
+    set_scale "$1" "$1"
+  else
+    usage >&2
+    exit 1
+  fi
   ;;
 esac
