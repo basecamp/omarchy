@@ -28,11 +28,11 @@ BarWidget {
     target: "omarchy.system-update"
 
     function refresh(): void {
-      root.refresh()
+      root.broadcast("refresh")
     }
 
     function clear(): void {
-      root.clear()
+      root.broadcast("clear")
     }
   }
 

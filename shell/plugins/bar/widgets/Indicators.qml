@@ -152,6 +152,8 @@ BarWidget {
     syncActiveIndicatorModel()
   }
 
+  function refresh() { root.refreshRequested() }
+
   onIndicatorEntriesChanged: syncActiveIndicatorOrder()
 
   implicitWidth: root.vertical
@@ -165,7 +167,7 @@ BarWidget {
     target: "omarchy.indicators"
 
     function refresh(): void {
-      root.refreshRequested()
+      root.broadcast("refresh")
     }
   }
 

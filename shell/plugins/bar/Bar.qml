@@ -384,11 +384,25 @@ Item {
     return true
   }
 
+  // Every live instance of a widget id. A bar surface is built per monitor, so
+  // a widget that appears once in the layout is still live once per screen.
+  function moduleWidgets(pluginId) {
+    var id = String(pluginId || "")
+    var items = []
+    if (!id) return items
+    for (var i = 0; i < moduleSlots.length; i++) {
+      var slot = moduleSlots[i]
+      if (!slot || !slot.activeItem || slot.moduleName !== id) continue
+      items.push(slot.activeItem)
+    }
+    return items
+  }
+
   // Resolve the live bar-widget instance for a plugin id (e.g. "omarchy.bluetooth").
   // Only widgets that expose popup open/close methods count; plain indicators
   // (clock, workspaces, tray) return null. Used by shell.summon/toggle so
-  // panel hotkeys route through the bar instead of a per-target IpcHandler
-  // that goes stale when the bar reloads its widget instances.
+  // panel hotkeys route through the bar instead of a per-target IPC handler
+  // that only reaches whichever per-monitor instance claimed the target.
   function findPanelWidget(pluginId) {
     var id = String(pluginId || "")
     if (!id) return null

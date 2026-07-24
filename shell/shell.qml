@@ -423,9 +423,8 @@ ShellRoot {
   // Bar-widget panels (audio, bluetooth, network, power, monitor, etc.)
   // are mounted inside the bar, not via the panel loader below. Route
   // summon/hide/toggle to the live bar instance so panel hotkeys survive
-  // plugin/bar reloads: the bar re-creates the widget, while a fixed
-  // IpcHandler target would go stale ("first handler wins" leaves a
-  // destroyed instance's handler active and the new one rejected).
+  // plugin/bar reloads: the bar re-creates the widget, while a fixed IPC
+  // target only ever routes to one of the per-monitor instances.
   function isBarWidgetPanelPlugin(pluginId) {
     var plugins = shell.pluginRegistry.installedPlugins
     var m = plugins[String(pluginId || "")]
