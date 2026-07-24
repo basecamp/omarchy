@@ -1,0 +1,21 @@
+#!/bin/bash
+
+set -e
+
+show_invitation() {
+  if [[ -n $(omarchy-notification-send -u critical -g 󰈷 "Setup Fingerprint Reader" "Enable sudo and unlocking with your fingerprint." -a) ]]; then
+    omarchy-launch-floating-terminal-with-presentation omarchy-setup-security-fingerprint
+  fi
+}
+
+if [[ ${1:-} == "--show" ]]; then
+  show_invitation
+# Only invite when there's a reader to use and it isn't set up yet (the lock
+# PAM file is the last thing the setup writes on success).
+elif omarchy-hw-fingerprint && [[ ! -f /etc/pam.d/omarchy-lock-fingerprint ]] &&
+  omarchy-done ensure fingerprint-setup-invitation; then
+  # Keep the notification action alive after the update terminal closes.
+  systemd-run --user --collect --quiet --service-type=exec \
+    --unit=omarchy-fingerprint-setup-invitation \
+    bash "$0" --show
+fi
