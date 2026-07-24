@@ -33,6 +33,55 @@ function cleanScale(scale, width, height) {
   return normalizeScale(scaleUnits / 120)
 }
 
+function matchingScaleIndex(scales, currentScale, width, height) {
+  var current = Number(currentScale)
+  if (!Array.isArray(scales) || !isFinite(current)) return -1
+
+  var bestIndex = -1
+  var bestDistance = Infinity
+  var normalizedCurrent = normalizeScale(current)
+  for (var i = 0; i < scales.length; i++) {
+    if (cleanScale(scales[i], width, height) !== normalizedCurrent) continue
+
+    var distance = Math.abs(Number(scales[i]) - current)
+    if (distance < bestDistance) {
+      bestIndex = i
+      bestDistance = distance
+    }
+  }
+  return bestIndex
+}
+
+function availableScales(scales, width, height) {
+  if (!Array.isArray(scales) || Number(width) <= 0 || Number(height) <= 0) return scales || []
+
+  var byEffectiveScale = {}
+  for (var i = 0; i < scales.length; i++) {
+    var requested = Number(scales[i])
+    var effective = Number(cleanScale(requested, width, height))
+
+    // Clean scales round upward. If the mode cannot reach the requested
+    // scale, cleanScale caps at its largest valid value and this preset is
+    // not actually available.
+    if (!isFinite(requested) || !isFinite(effective) || effective < requested) continue
+
+    var key = normalizeScale(effective)
+    var existing = byEffectiveScale[key]
+    if (!existing || Math.abs(requested - effective) < existing.distance) {
+      byEffectiveScale[key] = {
+        value: String(scales[i]),
+        index: i,
+        distance: Math.abs(requested - effective)
+      }
+    }
+  }
+
+  return Object.keys(byEffectiveScale)
+    .map(function(key) { return byEffectiveScale[key] })
+    .sort(function(a, b) { return a.index - b.index })
+    .map(function(candidate) { return candidate.value })
+}
+
 function brightnessName(percent) {
   var p = Math.round(percent)
   if (p >= 95) return "Sun blast"
@@ -70,6 +119,8 @@ if (typeof module !== "undefined") {
     clampBrightness: clampBrightness,
     normalizeScale: normalizeScale,
     cleanScale: cleanScale,
+    matchingScaleIndex: matchingScaleIndex,
+    availableScales: availableScales,
     brightnessName: brightnessName,
     parseDisplays: parseDisplays
   }
