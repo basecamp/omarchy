@@ -419,6 +419,7 @@ prioritize_entries() {
     if (match(line, /Toggle workspace gaps/))  prio = 39
     if (match(line, /Toggle nightlight/))  prio = 40
     if (match(line, /Toggle locking/))  prio = 41
+    if (match(line, /Jump to waiting Tmux pane/))  prio = 42
     if (match(line, /group/))  prio = 94
     if (match(line, /Scroll active workspace/))  prio = 95
     if (match(line, /Cycle to/))  prio = 96
@@ -456,7 +457,7 @@ output_binding_records_uncached() {
 
 keybindings_cache_key() {
   {
-    printf 'v6\n'
+    printf 'v7\n'
     hyprctl devices 2>/dev/null | grep -F 'active keymap:'
     hyprctl binds 2>/dev/null
   } | sha256sum | awk '{ print $1 }'
