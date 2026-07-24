@@ -3,7 +3,12 @@
 # omarchy:summary=Restart the Omarchy shell
 # omarchy:examples=omarchy restart shell
 
-CONFIG_DIR="$OMARCHY_PATH/shell"
+# A caller opened after dev link/unlink may disagree with the still-running
+# desktop. The user manager receives Hyprland's environment at session start.
+session_omarchy_path=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^OMARCHY_PATH=//p' | tail -n 1)
+: "${session_omarchy_path:=$OMARCHY_PATH}"
+
+CONFIG_DIR="$session_omarchy_path/shell"
 [[ -f $CONFIG_DIR/shell.qml ]] || { echo "Omarchy shell config not found: $CONFIG_DIR" >&2; exit 1; }
 
 # Allow running from outside the session (e.g. over ssh) by deriving the
@@ -28,7 +33,7 @@ while timeout 5 quickshell kill -p "$CONFIG_DIR" --any-display >/dev/null 2>&1; 
 hyprctl dispatch 'hl.dsp.exec_cmd("quickshell -n -p $OMARCHY_PATH/shell")' >/dev/null
 
 for (( attempt = 0; attempt < 20; attempt++ )); do
-  if OMARCHY_SHELL_IPC_TIMEOUT=0.5s omarchy-shell shell ping >/dev/null 2>&1; then
+  if OMARCHY_PATH="$session_omarchy_path" OMARCHY_SHELL_IPC_TIMEOUT=0.5s omarchy-shell shell ping >/dev/null 2>&1; then
     # Invitation toasts (like Voxtype/fingerprint setup) die with the old
     # shell, and their notify-send waiters hang forever: the dying server
     # never emits NotificationClosed. A still-running omarchy-*-invitation
