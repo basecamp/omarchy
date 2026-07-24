@@ -616,25 +616,31 @@ show_commands_markdown() {
   done < <(sorted_keys "$include_all")
 }
 
+emit_command_record() {
+  local key="$1"
+
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "${COMMAND_ROUTE[$key]}" \
+    "${COMMAND_BINARY[$key]}" \
+    "${COMMAND_GROUP[$key]}" \
+    "${COMMAND_NAME[$key]}" \
+    "${COMMAND_SUMMARY[$key]}" \
+    "${COMMAND_REQUIRES_SUDO[$key]}" \
+    "${COMMAND_HIDDEN[$key]}" \
+    "${COMMAND_ARGS[$key]}" \
+    "${COMMAND_EXAMPLES[$key]}" \
+    "${COMMAND_ALIASES[$key]}" \
+    "${COMMAND_FALLBACK_ROUTE[$key]}" \
+    "${COMMAND_USAGE[$key]}"
+}
+
 emit_command_records() {
   local include_all="$1"
   local key=""
 
   while IFS= read -r key; do
     [[ -n $key ]] || continue
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "${COMMAND_ROUTE[$key]}" \
-      "${COMMAND_BINARY[$key]}" \
-      "${COMMAND_GROUP[$key]}" \
-      "${COMMAND_NAME[$key]}" \
-      "${COMMAND_SUMMARY[$key]}" \
-      "${COMMAND_REQUIRES_SUDO[$key]}" \
-      "${COMMAND_HIDDEN[$key]}" \
-      "${COMMAND_ARGS[$key]}" \
-      "${COMMAND_EXAMPLES[$key]}" \
-      "${COMMAND_ALIASES[$key]}" \
-      "${COMMAND_FALLBACK_ROUTE[$key]}" \
-      "${COMMAND_USAGE[$key]}"
+    emit_command_record "$key"
   done < <(sorted_keys "$include_all")
 }
 
@@ -703,23 +709,7 @@ show_commands_check() {
 }
 
 show_command_json() {
-  local key="$1"
-
-  printf '%s\n' "$key" | while IFS= read -r key; do
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "${COMMAND_ROUTE[$key]}" \
-      "${COMMAND_BINARY[$key]}" \
-      "${COMMAND_GROUP[$key]}" \
-      "${COMMAND_NAME[$key]}" \
-      "${COMMAND_SUMMARY[$key]}" \
-      "${COMMAND_REQUIRES_SUDO[$key]}" \
-      "${COMMAND_HIDDEN[$key]}" \
-      "${COMMAND_ARGS[$key]}" \
-      "${COMMAND_EXAMPLES[$key]}" \
-      "${COMMAND_ALIASES[$key]}" \
-      "${COMMAND_FALLBACK_ROUTE[$key]}" \
-      "${COMMAND_USAGE[$key]}"
-  done | jq -Rn "$(commands_json_filter) | {ok: true, command: .commands[0]}"
+  emit_command_record "$1" | jq -Rn "$(commands_json_filter) | {ok: true, command: .commands[0]}"
 }
 
 parse_commands_args() {
