@@ -3,6 +3,14 @@
 # omarchy:summary=Set Wi-Fi power save mode on wireless interfaces
 # omarchy:args=<on|off>
 
+# Never enable power save on Intel BE200/BE211 (iwlmld): the firmware misses
+# beacons in power save and drops the link in constant reconnect loops.
+# Same detection as fix-wifi7-eht.sh.
+# Remove when the BE-series power-save path is fixed in linux-firmware.
+if [[ "$1" == "on" ]] && lspci -nn 2>/dev/null | grep -qE '\[8086:(e440|272b)\]'; then
+  exit 0
+fi
+
 shopt -s nullglob
 for iface in /sys/class/net/*/wireless; do
   iface="$(basename "$(dirname "$iface")")"
