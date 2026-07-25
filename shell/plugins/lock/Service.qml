@@ -22,9 +22,6 @@ Item {
   property bool fingerprintAuthenticating: false
   property bool passwordPamConfigured: false
   property bool fingerprintConfigured: false
-  // Lid shut → the reader is unreachable, so hide the affordance and don't
-  // bother scanning; fall back to the password like the polkit dialog does.
-  property bool laptopClosed: false
   property bool previewVisible: false
   property string enteredPassword: ""
   property string pendingPassword: ""
@@ -37,8 +34,6 @@ Item {
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
-  // Fingerprint is only offered when a sensor is enrolled and the lid is open.
-  readonly property bool fingerprintAvailable: fingerprintConfigured && !laptopClosed
 
   function realScreenCount() {
     var screens = Quickshell.screens || []
@@ -87,10 +82,6 @@ Item {
     if (!fingerprintCheckProc.running) fingerprintCheckProc.running = true
   }
 
-  function refreshLaptopClosed() {
-    if (!laptopClosedProc.running) laptopClosedProc.running = true
-  }
-
   function logEvent(event) {
     lastEvent = event
     lastEventAt = new Date().toISOString()
@@ -124,7 +115,6 @@ Item {
     Qt.callLater(function() {
       root.refreshBackground()
       root.refreshFingerprintStatus()
-      root.refreshLaptopClosed()
     })
 
     return true
@@ -192,7 +182,7 @@ Item {
   }
 
   function startFingerprint() {
-    if (!lockRequested || !sessionLock.secure || !fingerprintAvailable) return
+    if (!lockRequested || !sessionLock.secure || !fingerprintConfigured) return
     if (fingerprintPam.active || fingerprintAuthenticating) return
 
     fingerprintAuthenticating = true
@@ -207,7 +197,7 @@ Item {
     if (!lockRequested) return
     if (result === PamResult.Success) {
       finishUnlock()
-    } else if (fingerprintAvailable) {
+    } else if (fingerprintConfigured) {
       fingerprintRetryTimer.restart()
     }
   }
@@ -255,7 +245,7 @@ Item {
         anchors.fill: parent
         backgroundPath: root.backgroundPath
         backgroundVersion: root.backgroundVersion
-        fingerprintConfigured: root.fingerprintAvailable
+        fingerprintConfigured: root.fingerprintConfigured
         authenticatingPassword: root.authenticatingPassword
         failureMessage: root.failureMessage
         failedAttempts: root.failedAttempts
@@ -285,7 +275,7 @@ Item {
       anchors.fill: parent
       backgroundPath: root.backgroundPath
       backgroundVersion: root.backgroundVersion
-      fingerprintConfigured: root.fingerprintAvailable
+      fingerprintConfigured: root.fingerprintConfigured
       authenticatingPassword: false
       failureMessage: ""
       failedAttempts: 0
@@ -334,7 +324,7 @@ Item {
 
     onError: function(error) {
       root.fingerprintAuthenticating = false
-      if (root.lockRequested && root.fingerprintAvailable) fingerprintRetryTimer.restart()
+      if (root.lockRequested && root.fingerprintConfigured) fingerprintRetryTimer.restart()
     }
   }
 
@@ -366,19 +356,8 @@ Item {
     stdout: StdioCollector { id: fingerprintCheckStdout; waitForEnd: true }
     onExited: {
       root.fingerprintConfigured = String(fingerprintCheckStdout.text || "").trim() === "yes"
-      if (root.lockRequested && root.fingerprintAvailable) root.startFingerprint()
-      else if (!root.fingerprintAvailable && fingerprintPam.active) fingerprintPam.abort()
-    }
-  }
-
-  Process {
-    id: laptopClosedProc
-    command: ["bash", "-c", "omarchy-hw-laptop-closed && echo closed || echo open"]
-    stdout: StdioCollector { id: laptopClosedStdout; waitForEnd: true }
-    onExited: {
-      root.laptopClosed = String(laptopClosedStdout.text || "").trim() === "closed"
-      if (root.lockRequested && root.fingerprintAvailable) root.startFingerprint()
-      else if (!root.fingerprintAvailable && fingerprintPam.active) fingerprintPam.abort()
+      if (root.lockRequested && root.fingerprintConfigured) root.startFingerprint()
+      else if (!root.fingerprintConfigured && fingerprintPam.active) fingerprintPam.abort()
     }
   }
 
@@ -446,7 +425,6 @@ Item {
   Component.onCompleted: {
     refreshBackground()
     refreshFingerprintStatus()
-    refreshLaptopClosed()
   }
 
   IpcHandler {
@@ -472,7 +450,6 @@ Item {
         realScreens: root.realScreenCount(),
         passwordPam: root.passwordPamConfigured,
         fingerprint: root.fingerprintConfigured,
-        laptopClosed: root.laptopClosed,
         authenticating: root.authenticating,
         lastEvent: root.lastEvent,
         lastEventAt: root.lastEventAt
