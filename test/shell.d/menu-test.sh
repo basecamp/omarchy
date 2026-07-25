@@ -206,6 +206,88 @@ assert(
   /function disarmPointer\(\)[\s\S]*pointerGate\.reset\(\)/.test(menuQml),
   'menu resets pointer movement gate when pointer selection is disarmed'
 )
+// App rows are rebuilt from scratch on every desktop-entry rescan. The merge
+// must be idempotent and must never carry an orphan id forward, or a single
+// lost write turns into an app listed twice (and thrice, and so on).
+const nonAppItems = {
+  root: { id: 'root', kind: 'menu', label: 'Go' },
+  apps: { id: 'apps', kind: 'menu', label: 'Apps', provider: 'apps' }
+}
+const nonAppOrder = ['root', 'apps']
+const appRowsFor = ids => ids.map(id => ({ id: `apps.${id}`, kind: 'app', parent: 'apps', label: id, appId: id }))
+
+const firstMerge = menu.mergeAppRows(nonAppItems, nonAppOrder, appRowsFor(['alacritty', 'youtube']))
+assert(
+  firstMerge.itemOrder.join(',') === 'root,apps,apps.alacritty,apps.youtube',
+  'app merge appends app rows after the static menu items'
+)
+
+const secondMerge = menu.mergeAppRows(firstMerge.items, firstMerge.itemOrder, appRowsFor(['alacritty', 'youtube']))
+assert(
+  secondMerge.itemOrder.join(',') === 'root,apps,apps.alacritty,apps.youtube',
+  'repeating the app merge with the same entries does not duplicate rows'
+)
+
+assert(
+  menu.mergeAppRows(secondMerge.items, secondMerge.itemOrder, appRowsFor(['alacritty'])).itemOrder.join(',')
+    === 'root,apps,apps.alacritty',
+  'app merge drops rows for entries that went away'
+)
+
+assert(
+  menu.mergeAppRows(nonAppItems, nonAppOrder, appRowsFor(['youtube', 'youtube'])).itemOrder.join(',')
+    === 'root,apps,apps.youtube',
+  'app merge lists an app once even when two desktop entries share an id'
+)
+
+const orphanedItems = {}
+for (const key in firstMerge.items) orphanedItems[key] = firstMerge.items[key]
+delete orphanedItems['apps.youtube']
+const healed = menu.mergeAppRows(orphanedItems, firstMerge.itemOrder, appRowsFor(['alacritty', 'youtube']))
+assert(
+  healed.itemOrder.join(',') === 'root,apps,apps.alacritty,apps.youtube'
+    && !!healed.items['apps.youtube'],
+  'app merge heals an order entry whose item went missing instead of duplicating it'
+)
+
+assert(
+  !firstMerge.items['apps.youtube'].hasOwnProperty('__probe')
+    && (() => {
+      const before = Object.keys(nonAppItems).length
+      menu.mergeAppRows(nonAppItems, nonAppOrder, appRowsFor(['gimp']))
+      return Object.keys(nonAppItems).length === before
+    })(),
+  'app merge leaves the map it was handed untouched'
+)
+
+const providerRowsFor = values => values.map(value => ({ id: `style.font.${value}`, kind: 'action', parent: 'style.font', label: value }))
+const firstProviderMerge = menu.mergeRowsById(nonAppItems, nonAppOrder, providerRowsFor(['mono', 'serif']))
+assert(
+  firstProviderMerge.itemOrder.join(',') === 'root,apps,style.font.mono,style.font.serif',
+  'provider merge appends its rows'
+)
+assert(
+  menu.mergeRowsById(firstProviderMerge.items, firstProviderMerge.itemOrder, providerRowsFor(['mono', 'serif']))
+    .itemOrder.join(',') === 'root,apps,style.font.mono,style.font.serif',
+  'repeating a provider merge does not duplicate rows'
+)
+
+// The maps live in QML `var` properties, where an in-place write is
+// occasionally dropped by the engine, so both merges must hand back fresh
+// objects for the caller to assign in one shot.
+assert(
+  /var merged = MenuModel\.mergeAppRows\(root\.items, root\.itemOrder, appRows\)\s*\n\s*root\.items = merged\.items\s*\n\s*root\.itemOrder = merged\.itemOrder/.test(menuQml),
+  'menu assigns the rebuilt app item map instead of mutating it in place'
+)
+assert(
+  /var merged = MenuModel\.mergeRowsById\(root\.items, root\.itemOrder, providerRows\)\s*\n\s*root\.items = merged\.items\s*\n\s*root\.itemOrder = merged\.itemOrder/.test(menuQml),
+  'menu assigns the rebuilt provider item map instead of mutating it in place'
+)
+assert(
+  !/root\.items\[[^\]]+\] =/.test(menuQml) && !/delete root\.items\[/.test(menuQml),
+  'menu never writes into the item map held by the var property'
+)
+
 for (const functionName of ['openExistingMenu', 'openDmenu']) {
   const openMatch = menuQml.match(new RegExp(`function ${functionName}\\([^)]*\\) \\{([\\s\\S]*?)\\n  \\}`))
   assert(openMatch, `menu ${functionName} function exists`)

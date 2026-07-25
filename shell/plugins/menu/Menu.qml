@@ -246,27 +246,19 @@ Item {
   function mergeAppRows() {
     if (!root.appLibrary) return
 
-    var nextOrder = []
-    for (var i = 0; i < root.itemOrder.length; i++) {
-      var id = root.itemOrder[i]
-      var existing = root.items[id]
-      if (existing && existing.kind === "app") delete root.items[id]
-      else nextOrder.push(id)
-    }
-
     var rows = root.appLibrary.sortedEntries("")
+    var appRows = []
     for (var j = 0; j < rows.length; j++) {
       var entry = rows[j].entry
       var appId = String(entry.id || "")
       if (!appId) continue
-      var itemId = "apps." + appId
       var subtext = root.appLibrary.entrySubtext(entry)
       var aliases = subtext ? [subtext] : []
       try {
         if (entry.keywords && typeof entry.keywords.join === "function") aliases = aliases.concat(entry.keywords)
       } catch (e) { }
-      root.items[itemId] = {
-        id: itemId,
+      appRows.push({
+        id: "apps." + appId,
         parent: "apps",
         kind: "app",
         icon: "",
@@ -281,12 +273,13 @@ Item {
         aliases: aliases,
         when: "",
         checked: "",
-        order: nextOrder.length
-      }
-      nextOrder.push(itemId)
+        order: 0
+      })
     }
 
-    root.itemOrder = nextOrder
+    var merged = MenuModel.mergeAppRows(root.items, root.itemOrder, appRows)
+    root.items = merged.items
+    root.itemOrder = merged.itemOrder
     if (root.opened) root.rebuildDisplay()
   }
 
@@ -313,9 +306,8 @@ Item {
   function mergeProviderRows(rows, menuId, providerKey) {
     var spec = root.providers[providerKey]
     if (!spec) return
-    var changed = false
     var lines = String(rows || "").split("\n")
-    var nextOrder = root.itemOrder.slice()
+    var providerRows = []
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i].trim()
       if (!line) continue
@@ -324,10 +316,8 @@ Item {
       var value = parts[1] || parts[0] || ""
       var current = parts[2] || ""
       if (!label) continue
-      var id = menuId + "." + root.slugify(value)
-      if (!root.items[id]) nextOrder.push(id)
-      root.items[id] = {
-        id: id,
+      providerRows.push({
+        id: menuId + "." + root.slugify(value),
         parent: menuId,
         kind: "action",
         icon: (value === current) ? "✓" : (spec.icon || ""),
@@ -340,11 +330,13 @@ Item {
         aliases: [],
         when: "",
         checked: "",
-        order: nextOrder.indexOf(id)
-      }
-      changed = true
+        order: 0
+      })
     }
-    root.itemOrder = nextOrder
+    var changed = providerRows.length > 0
+    var merged = MenuModel.mergeRowsById(root.items, root.itemOrder, providerRows)
+    root.items = merged.items
+    root.itemOrder = merged.itemOrder
     if (changed && root.opened) root.rebuildDisplay()
   }
 
