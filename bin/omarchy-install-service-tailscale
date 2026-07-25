@@ -13,6 +13,9 @@ sudo tailscale up --accept-routes
 echo -e "\nAllowing $USER to manage Tailscale..."
 sudo tailscale set --operator="$USER"
 
+echo -e "\nReceiving Taildrop files in $HOME/Downloads..."
+systemctl --user enable --now omarchy-tailscale-receive.service
+
 echo -e "\nAdding Tailscale to the bar..."
 omarchy-bar-plugin add omarchy.tailscale
 
