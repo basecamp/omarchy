@@ -38,6 +38,20 @@ BarIndicator {
     onTriggered: root.refresh()
   }
 
+  SequentialAnimation {
+    running: root.active
+    loops: Animation.Infinite
+
+    PauseAnimation { duration: 2740 }
+    NumberAnimation { target: root; property: "textRotation"; to: -10; duration: 50; easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "textRotation"; to: 10; duration: 70; easing.type: Easing.InOutQuad }
+    NumberAnimation { target: root; property: "textRotation"; to: -7; duration: 55; easing.type: Easing.InOutQuad }
+    NumberAnimation { target: root; property: "textRotation"; to: 7; duration: 45; easing.type: Easing.InOutQuad }
+    NumberAnimation { target: root; property: "textRotation"; to: 0; duration: 40; easing.type: Easing.OutQuad }
+
+    onStopped: root.textRotation = 0
+  }
+
   Connections {
     target: root.indicatorHost
     ignoreUnknownSignals: true
