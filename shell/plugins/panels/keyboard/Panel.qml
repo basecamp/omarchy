@@ -14,7 +14,7 @@ Panel {
 
   // Raw status from `omarchy-keyboard-layout status`:
   // { layouts: [{code, label}], switcher, active, show_bar_icon }
-  property var status: ({ layouts: [], switcher: "alt_shift", active: "", show_bar_icon: true })
+  property var status: ({ layouts: [], switcher: "alt_shift", active: "", show_bar_icon: false })
   property var available: []
 
   readonly property var configuredLayouts: Model.toArray(status.layouts)
@@ -51,30 +51,38 @@ Panel {
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property real heroRingPad: Style.space(6)
 
+  // Re-reads status from the CLI. Skipped if a status request is already
+  // in flight, so a fast poll never piles up overlapping processes.
   function refresh() {
     if (statusProc.running) return
     statusProc.command = ["omarchy-keyboard-layout", "status"]
     statusProc.running = true
   }
 
+  // Loads the full list of installable xkb layouts for the "Add language"
+  // search view. Only called when that view opens, not on every refresh.
   function refreshAvailable() {
     if (availableProc.running) return
     availableProc.command = ["omarchy-keyboard-layout", "available"]
     availableProc.running = true
   }
 
+  // Switches the active layout to an already-configured one.
   function switchTo(code) {
     if (!code || actionProc.running) return
     actionProc.command = ["omarchy-keyboard-layout", "set", code]
     actionProc.running = true
   }
 
+  // Advances to the next configured layout, same action the right-click
+  // shortcut and the in-panel cycle button both trigger.
   function cycleNext() {
     if (actionProc.running) return
     actionProc.command = ["omarchy-keyboard-layout", "next"]
     actionProc.running = true
   }
 
+  // Adds a new layout and returns to the main list view, ready to show it.
   function addLanguage(code) {
     if (!code || actionProc.running) return
     actionProc.command = ["omarchy-keyboard-layout", "add", code]
@@ -85,6 +93,9 @@ Panel {
     selectedIndex = 0
   }
 
+  // Removes a configured layout. Guarded on both sides (here and in the
+  // CLI) so the last remaining layout, and the primary layout, can never
+  // be removed -- there must always be at least one layout to fall back to.
   function removeLanguage(code) {
     if (!code || configuredLayouts.length <= 1 || actionProc.running) return
     if (configuredLayouts[0] && configuredLayouts[0].code === code) return
@@ -92,12 +103,16 @@ Panel {
     actionProc.running = true
   }
 
+  // Changes which shortcut preset Hyprland uses to cycle layouts.
   function setSwitcher(id) {
     if (!id || actionProc.running) return
     actionProc.command = ["omarchy-keyboard-layout", "switcher", id]
     actionProc.running = true
   }
 
+  // Switches to the "Add language" view and loads the full available list
+  // fresh, so it always reflects the current set of already-configured
+  // layouts rather than a stale snapshot from last time it was open.
   function openAddView() {
     viewMode = "add"
     searchText = ""
@@ -106,6 +121,8 @@ Panel {
     refreshAvailable()
   }
 
+  // Returns to the main list view, resetting search state so it starts
+  // clean the next time "Add language" is opened.
   function closeAddView() {
     viewMode = "list"
     searchText = ""
@@ -116,8 +133,7 @@ Panel {
   // Manual on/off switch for the bar icon, controlled from omarchy-menu
   // (Trigger > Toggle > Show Keyboard Layout) via `omarchy-keyboard-layout
   // bar-icon toggle`. Independent of the language-code icon above -- this
-  // is a
-  // deliberate user choice, not an automatic language-count heuristic.
+  // is a deliberate user choice, not an automatic language-count heuristic.
   readonly property bool barIconVisible: status.show_bar_icon !== false
 
   visible: barIconVisible
@@ -130,7 +146,7 @@ Panel {
   Component.onCompleted: refresh()
 
   // Hyprland switches the layout itself for the native Alt+Shift/Ctrl+Shift/
-  // etc. shortcut (see default/input.lua's kb_options grp:*_toggle) -- that
+  // etc. shortcut (see config/hypr/input.lua's kb_options grp:*_toggle) -- that
   // path never goes through our `omarchy-keyboard-layout` CLI, so it doesn't
   // update `root.status` on its own. Listen for Hyprland's own layout-change
   // event and refresh from it so the bar icon stays in sync even when the
@@ -151,6 +167,7 @@ Panel {
     onTriggered: root.refresh()
   }
 
+  // Runs `status` and updates root.status once it finishes.
   Process {
     id: statusProc
     stdout: StdioCollector {
@@ -159,6 +176,7 @@ Panel {
     }
   }
 
+  // Runs `available` and updates root.available once it finishes.
   Process {
     id: availableProc
     stdout: StdioCollector {
@@ -167,6 +185,9 @@ Panel {
     }
   }
 
+  // Runs any state-changing action (set/add/remove/switcher/next). Every
+  // one of these commands prints a fresh status_json on completion, so
+  // root.status can be updated the same way regardless of which action ran.
   Process {
     id: actionProc
     stdout: StdioCollector {
@@ -175,6 +196,8 @@ Panel {
     }
   }
 
+  // The clickable bar icon itself: left-click opens/closes the panel,
+  // right-click cycles straight to the next layout without opening it.
   BarIconButton {
     id: button
     anchors.fill: parent
@@ -187,6 +210,8 @@ Panel {
     }
   }
 
+  // The popover itself: a hero row showing the active layout, then either
+  // the configured-languages list or the "add language" search view.
   KeyboardPanel {
     id: panel
     anchorItem: button
@@ -200,74 +225,168 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
+      blocked: root.viewMode === "add" && searchField.activeFocus
+
+      onMoveRequested: function(dx, dy) {
+        if (!root.cursorActive) { root.cursorActive = true; return }
+        if (root.viewMode === "list") {
+          if (root.focusSection === "languages") {
+            var maxLang = Math.max(0, root.configuredLayouts.length - 1)
+            if (dy > 0 && root.selectedIndex >= maxLang) { root.focusSection = "switcher"; root.selectedIndex = 0; return }
+            root.selectedIndex = Math.max(0, Math.min(maxLang, root.selectedIndex + dy))
+          } else if (root.focusSection === "switcher") {
+            var maxSw = Math.max(0, root.switcherPresets.length - 1)
+            if (dy < 0 && root.selectedIndex <= 0) { root.focusSection = "languages"; root.selectedIndex = Math.max(0, root.configuredLayouts.length - 1); return }
+            root.selectedIndex = Math.max(0, Math.min(maxSw, root.selectedIndex + dx))
+          }
+          return
+        }
+        var maxAvail = Math.max(0, root.filteredAvailable.length - 1)
+        root.selectedIndex = Math.max(0, Math.min(maxAvail, root.selectedIndex + dy))
+      }
+
+      onActivateRequested: function() {
+        if (!root.cursorActive) return
+        if (root.viewMode === "list" && root.focusSection === "languages") {
+          var l = root.configuredLayouts[root.selectedIndex]
+          if (l && l.code) root.switchTo(l.code)
+        } else if (root.viewMode === "list" && root.focusSection === "switcher") {
+          var p = root.switcherPresets[root.selectedIndex]
+          if (p && p.id) root.setSwitcher(p.id)
+        } else if (root.viewMode === "add") {
+          var a = root.filteredAvailable[root.selectedIndex]
+          if (a && a.code) root.addLanguage(a.code)
+        }
+      }
+
+      onDeleteRequested: if (root.viewMode === "list" && root.focusSection === "languages") {
+        var l = root.configuredLayouts[root.selectedIndex]
+        if (l && l.code) root.removeLanguage(l.code)
+      }
+
+      onTabRequested: function(direction) { root.switchPanel(direction) }
+
       onCloseRequested: {
         if (root.viewMode === "add") root.closeAddView()
         else root.close()
       }
+    }
 
-      Column {
-        id: column
-        anchors.fill: parent
-        spacing: Style.space(18)
+    Column {
+      id: column
+      anchors.fill: parent
+      spacing: Style.space(18)
 
-        // ---------- Hero: current language ----------
-        Item {
-          width: parent.width
-          implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight) + root.heroRingPad * 2
+      // ---------- Hero: current language ----------
+      Item {
+        width: parent.width
+        implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight) + root.heroRingPad * 2
+
+        Text {
+          id: heroIcon
+          anchors.left: parent.left
+          anchors.leftMargin: root.heroRingPad
+          anchors.verticalCenter: parent.verticalCenter
+          text: "󰌌"
+          color: root.bar.foreground
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.display
+        }
+
+        Column {
+          id: heroLabels
+          anchors.left: heroIcon.right
+          anchors.leftMargin: Style.space(14)
+          anchors.right: cycleBtn.left
+          anchors.rightMargin: Style.space(8)
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(2)
 
           Text {
-            id: heroIcon
-            anchors.left: parent.left
-            anchors.leftMargin: root.heroRingPad
-            anchors.verticalCenter: parent.verticalCenter
-            text: "󰌌"
+            text: "Keyboard"
             color: root.bar.foreground
             font.family: root.bar.fontFamily
-            font.pixelSize: Style.font.display
+            font.pixelSize: Style.font.title
+            font.bold: true
+            elide: Text.ElideRight
+            width: parent.width
           }
 
-          Column {
-            id: heroLabels
-            anchors.left: heroIcon.right
-            anchors.leftMargin: Style.space(14)
-            anchors.right: cycleBtn.left
-            anchors.rightMargin: Style.space(8)
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(2)
+          Text {
+            text: root.heroStatusText.toUpperCase()
+            color: Qt.darker(root.bar.foreground, 1.4)
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            font.letterSpacing: 1.2
+            elide: Text.ElideRight
+            width: parent.width
+          }
+        }
 
-            Text {
-              text: "Keyboard"
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.title
-              font.bold: true
-              elide: Text.ElideRight
-              width: parent.width
+        PanelActionButton {
+          id: cycleBtn
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          visible: root.configuredLayouts.length > 1
+          iconText: "󰑖"
+          tooltipText: "Switch to next language"
+          foreground: root.bar.foreground
+          hoverColor: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+          onClicked: root.cycleNext()
+        }
+      }
+
+      PanelSeparator {
+        foreground: root.bar.foreground
+      }
+
+      // ---------- "list" view: configured languages + switcher ----------
+      Column {
+        width: parent.width
+        spacing: Style.space(16)
+        visible: root.viewMode === "list"
+
+        Column {
+          width: parent.width
+          spacing: Style.space(8)
+
+          Item {
+            width: parent.width
+            implicitHeight: Math.max(languagesHeader.implicitHeight, addBtn.implicitHeight)
+
+            PanelSectionHeader {
+              id: languagesHeader
+              text: "LANGUAGES"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
             }
 
-            Text {
-              text: root.heroStatusText.toUpperCase()
-              color: Qt.darker(root.bar.foreground, 1.4)
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              font.letterSpacing: 1.2
-              elide: Text.ElideRight
-              width: parent.width
+            PanelActionButton {
+              id: addBtn
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              iconText: "󰐕"
+              tooltipText: "Add language"
+              foreground: root.bar.foreground
+              hoverColor: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              onClicked: root.openAddView()
             }
           }
 
-          PanelActionButton {
-            id: cycleBtn
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            visible: root.configuredLayouts.length > 1
-            iconText: "󰑖"
-            tooltipText: "Switch to next language"
-            foreground: root.bar.foreground
-            hoverColor: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            onClicked: root.cycleNext()
+          Repeater {
+            model: root.configuredLayouts
+            LanguageRow {
+              required property var modelData
+              required property int index
+              width: parent ? parent.width : 0
+              lang: modelData
+              rowIndex: index
+            }
           }
         }
 
@@ -275,45 +394,104 @@ Panel {
           foreground: root.bar.foreground
         }
 
-        // ---------- "list" view: configured languages + switcher ----------
         Column {
           width: parent.width
-          spacing: Style.space(16)
-          visible: root.viewMode === "list"
+          spacing: Style.space(12)
 
-          Column {
+          PanelSectionHeader {
+            text: "SWITCH SHORTCUT"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          Row {
+            id: switcherRow
             width: parent.width
-            spacing: Style.space(8)
+            spacing: Style.space(6)
 
-            Item {
-              width: parent.width
-              implicitHeight: Math.max(languagesHeader.implicitHeight, addBtn.implicitHeight)
-
-              PanelSectionHeader {
-                id: languagesHeader
-                text: "LANGUAGES"
-                foreground: root.bar.foreground
-                fontFamily: root.bar.fontFamily
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-              }
-
-              PanelActionButton {
-                id: addBtn
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                iconText: "󰐕"
-                tooltipText: "Add language"
-                foreground: root.bar.foreground
-                hoverColor: root.bar.foreground
-                fontFamily: root.bar.fontFamily
-                onClicked: root.openAddView()
-              }
-            }
+            readonly property int count: 4
+            readonly property real cellWidth: (width - spacing * (count - 1)) / count
 
             Repeater {
-              model: root.configuredLayouts
-              LanguageRow {
+              model: root.switcherPresets
+              SwitcherPill {
+                required property var modelData
+                required property int index
+                preset: modelData.id
+                presetLabel: modelData.label
+                pillIndex: index
+                width: switcherRow.cellWidth
+              }
+            }
+          }
+        }
+      }
+
+      // ---------- "add" view: search + all available layouts ----------
+      Column {
+        width: parent.width
+        spacing: Style.space(10)
+        visible: root.viewMode === "add"
+
+        Item {
+          width: parent.width
+          implicitHeight: Math.max(backBtn.implicitHeight, addHeader.implicitHeight)
+
+          PanelActionButton {
+            id: backBtn
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            iconText: "󰅁"
+            tooltipText: "Back"
+            foreground: root.bar.foreground
+            hoverColor: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            onClicked: root.closeAddView()
+          }
+
+          PanelSectionHeader {
+            id: addHeader
+            text: "ADD LANGUAGE"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            anchors.left: backBtn.right
+            anchors.leftMargin: Style.space(6)
+            anchors.verticalCenter: parent.verticalCenter
+          }
+        }
+
+        TextField {
+          id: searchField
+          width: parent.width
+          placeholderText: "Search languages"
+          font.family: Style.font.family
+          font.pixelSize: Style.font.body
+          foreground: root.bar.foreground
+          horizontalPadding: Style.spacing.controlGap
+          verticalPadding: Style.spacing.controlPaddingY
+          text: root.searchText
+          onTextChanged: root.searchText = text
+          onAccepted: if (root.filteredAvailable.length > 0) root.addLanguage(root.filteredAvailable[0].code)
+          onVisibleChanged: if (visible) Qt.callLater(forceActiveFocus)
+          Component.onCompleted: if (visible) Qt.callLater(forceActiveFocus)
+        }
+
+        Flickable {
+          id: availableFlick
+          width: parent.width
+          height: Math.min(contentHeight, Style.space(260))
+          contentWidth: width
+          contentHeight: availableList.implicitHeight
+          clip: true
+
+          Column {
+            id: availableList
+            width: availableFlick.width
+            spacing: Style.space(2)
+
+            Repeater {
+              model: root.filteredAvailable
+              AvailableRow {
                 required property var modelData
                 required property int index
                 width: parent ? parent.width : 0
@@ -321,127 +499,15 @@ Panel {
                 rowIndex: index
               }
             }
-          }
 
-          PanelSeparator {
-            foreground: root.bar.foreground
-          }
-
-          Column {
-            width: parent.width
-            spacing: Style.space(12)
-
-            PanelSectionHeader {
-              text: "SWITCH SHORTCUT"
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-            }
-
-            Row {
-              id: switcherRow
+            Text {
+              visible: root.filteredAvailable.length === 0
               width: parent.width
-              spacing: Style.space(6)
-
-              readonly property int count: 4
-              readonly property real cellWidth: (width - spacing * (count - 1)) / count
-
-              Repeater {
-                model: root.switcherPresets
-                SwitcherPill {
-                  required property var modelData
-                  required property int index
-                  preset: modelData.id
-                  presetLabel: modelData.label
-                  pillIndex: index
-                  width: switcherRow.cellWidth
-                }
-              }
-            }
-          }
-        }
-
-        // ---------- "add" view: search + all available layouts ----------
-        Column {
-          width: parent.width
-          spacing: Style.space(10)
-          visible: root.viewMode === "add"
-
-          Item {
-            width: parent.width
-            implicitHeight: Math.max(backBtn.implicitHeight, addHeader.implicitHeight)
-
-            PanelActionButton {
-              id: backBtn
-              anchors.left: parent.left
-              anchors.verticalCenter: parent.verticalCenter
-              iconText: "󰅁"
-              tooltipText: "Back"
-              foreground: root.bar.foreground
-              hoverColor: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-              onClicked: root.closeAddView()
-            }
-
-            PanelSectionHeader {
-              id: addHeader
-              text: "ADD LANGUAGE"
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-              anchors.left: backBtn.right
-              anchors.leftMargin: Style.space(6)
-              anchors.verticalCenter: parent.verticalCenter
-            }
-          }
-
-          TextField {
-            id: searchField
-            width: parent.width
-            placeholderText: "Search languages"
-            font.family: Style.font.family
-            font.pixelSize: Style.font.body
-            foreground: root.bar.foreground
-            horizontalPadding: Style.spacing.controlGap
-            verticalPadding: Style.spacing.controlPaddingY
-            text: root.searchText
-            onTextChanged: root.searchText = text
-            onAccepted: if (root.filteredAvailable.length > 0) root.addLanguage(root.filteredAvailable[0].code)
-            onVisibleChanged: if (visible) Qt.callLater(forceActiveFocus)
-            Component.onCompleted: if (visible) Qt.callLater(forceActiveFocus)
-          }
-
-          Flickable {
-            id: availableFlick
-            width: parent.width
-            height: Math.min(contentHeight, Style.space(260))
-            contentWidth: width
-            contentHeight: availableList.implicitHeight
-            clip: true
-
-            Column {
-              id: availableList
-              width: availableFlick.width
-              spacing: Style.space(2)
-
-              Repeater {
-                model: root.filteredAvailable
-                AvailableRow {
-                  required property var modelData
-                  required property int index
-                  width: parent ? parent.width : 0
-                  lang: modelData
-                  rowIndex: index
-                }
-              }
-
-              Text {
-                visible: root.filteredAvailable.length === 0
-                width: parent.width
-                horizontalAlignment: Text.AlignHCenter
-                text: "No matches"
-                color: Qt.darker(root.bar.foreground, 1.5)
-                font.family: root.bar.fontFamily
-                font.pixelSize: Style.font.bodySmall
-              }
+              horizontalAlignment: Text.AlignHCenter
+              text: "No matches"
+              color: Qt.darker(root.bar.foreground, 1.5)
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.bodySmall
             }
           }
         }
@@ -460,9 +526,9 @@ Panel {
 
     readonly property bool isActive: root.activeLayout && lang && root.activeLayout.code === lang.code
     // The primary layout is whichever one was configured first (typically
-    // the system's install-time keyboard layout, not necessarily English) --
-    // it's always layouts[0] since add() appends and remove() never touches
-    // ordering. It can never be removed, so never show the (x) for it.
+    // the system's install-time keyboard layout) -- it's always layouts[0]
+    // since add() appends and remove() never touches ordering. It can
+    // never be removed, so never show the (x) for it.
     readonly property bool isPrimary: lang && root.configuredLayouts.length > 0
       && root.configuredLayouts[0].code === lang.code
     readonly property bool removable: root.configuredLayouts.length > 1 && !row.isPrimary

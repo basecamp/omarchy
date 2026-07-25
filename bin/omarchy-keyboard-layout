@@ -16,7 +16,7 @@ usage() {
   exit 1
 }
 
-# Looks up the human label xkb ships for a layout code, e.g. "ir" -> "Persian".
+# Looks up the human-readable label xkb ships for a given layout code.
 # This is the same file base.lst that `localectl list-x11-keymap-layouts` reads.
 layout_label() {
   local code=$1
@@ -51,6 +51,9 @@ available_layouts_json() {
   '
 }
 
+# Creates the state file on first run, seeded from the system's boot-time
+# keyboard layout so a fresh install starts with something sensible instead
+# of an empty list. Runs once; leaves an existing state file untouched.
 ensure_state() {
   mkdir -p "$STATE_DIR"
   [[ -f $STATE_FILE ]] && return
@@ -64,6 +67,9 @@ ensure_state() {
     '{layouts: [{code: $code, label: $label}], switcher: "alt_shift"}' > "$STATE_FILE"
 }
 
+# Picks the physical keyboard device to act on, ignoring virtual/software
+# devices (input-method frameworks, on-screen keyboards, media buttons)
+# that would otherwise be mistaken for a real keyboard.
 main_keyboard() {
   hyprctl devices -j | jq -r '
     [.keyboards[] | select(.name | test("virtual|fcitx|ibus|video-bus|buttons"; "i") | not)] as $real
@@ -71,8 +77,8 @@ main_keyboard() {
   '
 }
 
-# hyprctl reports the active layout as a human description ("English (US)",
-# "Persian"), not the xkb code we store, so match it against the labels we
+# hyprctl reports the active layout as a human-readable description rather
+# than the xkb code we store internally, so match it against the labels we
 # already saved for the configured layouts rather than re-deriving a code
 # from free text.
 active_index() {
@@ -89,16 +95,26 @@ active_index() {
   ' "$STATE_FILE"
 }
 
+# The full state, plus which configured layout is currently active and
+# whether the bar icon is visible -- the single source of truth the panel
+# and CLI both read after every action.
 status_json() {
   local idx
   idx=$(active_index)
   jq --argjson idx "$idx" '. + {active: (.layouts[$idx].code // .layouts[0].code), show_bar_icon: (if .show_bar_icon == null then true else .show_bar_icon end)}' "$STATE_FILE"
 }
 
+# Applies config changes (new layout, new switcher preset) without a full
+# Hyprland restart. Failure is non-fatal -- the state file is already
+# correct, the running session just won't reflect it until the next
+# natural reload.
 reload_hyprland() {
   hyprctl reload >/dev/null 2>&1 || true
 }
 
+# Applies a jq filter to the state file and writes the result back
+# atomically (write to a temp file, then rename over the original) so a
+# crash or a concurrent read never sees a half-written file.
 write_state() {
   local filter=$1; shift
   local tmp
@@ -119,6 +135,9 @@ notify_bar_icon() {
   fi
 }
 
+# Entry point: dispatches to the requested action. Every branch ends by
+# printing the current status_json so callers (the panel, the CLI, or a
+# person in a terminal) always get a fresh, consistent snapshot back.
 action=${1:-status}
 ensure_state
 

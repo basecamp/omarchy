@@ -1,5 +1,8 @@
 -- https://wiki.hypr.land/Configuring/Basics/Variables/#input
 
+-- Reads the boot-time console/keyboard settings written by the installer,
+-- used only as a fallback for a system that hasn't configured a layout
+-- through the panel yet.
 local function read_vconsole()
   local values = {}
   local file = io.open("/etc/vconsole.conf", "r")
@@ -28,6 +31,8 @@ end
 -- hand-rolling JSON parsing in Lua.
 local STATE_FILE = os.getenv("HOME") .. "/.local/state/omarchy/settings/keyboard.json"
 
+-- Runs a shell command and returns its trimmed stdout, or an empty string
+-- if the command couldn't even be started.
 local function popen_trim(cmd)
   local handle = io.popen(cmd)
   if not handle then
@@ -38,6 +43,10 @@ local function popen_trim(cmd)
   return (result:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
+-- Reads one field out of the keyboard state file via jq. Falls back
+-- cleanly if the file is missing, unreadable, or the field isn't set --
+-- Hyprland should never fail to start just because this file is stale
+-- or hasn't been created yet.
 local function state_field(jq_filter, fallback)
   local cmd = string.format("jq -r %s %q 2>/dev/null", jq_filter, STATE_FILE)
   local value = popen_trim(cmd)
@@ -71,6 +80,21 @@ local grp_option = SWITCHER_OPTIONS[switcher] or SWITCHER_OPTIONS.alt_shift
 -- working normally and Compose sequences (e.g. Menu, ', e -> é) still work.
 local kb_options = "compose:menu," .. grp_option
 
+local touchpad_state = os.getenv("HOME") .. "/.local/state/omarchy/settings/touchpad.json"
+-- Same read pattern as state_field above, against the touchpad panel's own
+-- state file rather than the keyboard one.
+local function touchpad_field(jq_filter, fallback)
+  local cmd = string.format("jq -r %s %q 2>/dev/null", jq_filter, touchpad_state)
+  local value = popen_trim(cmd)
+  if value == "" or value == "null" then
+    return fallback
+  end
+  return value
+end
+
+local disable_while_typing = touchpad_field("'.disable_while_typing // true'", "true") == "true"
+
+-- Applies everything computed above as Hyprland's live input configuration.
 hl.config({
   input = {
     kb_layout = kb_layout,
@@ -89,6 +113,7 @@ hl.config({
       natural_scroll = false,
       clickfinger_behavior = true,
       scroll_factor = 0.4,
+      disable_while_typing = disable_while_typing,
     },
   },
 

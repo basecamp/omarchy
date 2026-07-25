@@ -8,10 +8,10 @@ var SWITCHERS = [
 ]
 
 // xkb layout code -> ISO 639-1 language code. GNOME's input-source indicator
-// shows the language, not the xkb country code (e.g. "en" for both the "us"
-// and "gb" layouts, "fa" for "ir"), so the bar matches that instead of just
-// upper-casing the xkb code. Codes not listed here fall back to the xkb code
-// itself (still upper-cased) so unusual/rare layouts don't break.
+// shows the language a layout belongs to, not the xkb country/variant code,
+// since several xkb codes can map to the same language and should read the
+// same way in the bar. Codes not listed here fall back to the xkb code
+// itself (still upper-cased) so unusual or rare layouts don't break.
 var LANGUAGE_CODES = {
   us: "en", gb: "en", au: "en", ca: "en", nz: "en", ie: "en", za: "en",
   ir: "fa", de: "de", at: "de", ch: "de",
@@ -25,11 +25,15 @@ var LANGUAGE_CODES = {
   cn: "zh", tw: "zh", hk: "zh", jp: "ja", kr: "ko"
 }
 
+// The code shown in the bar for a configured layout, e.g. "US" -> "EN".
 function languageCode(code) {
   var key = String(code || "").toLowerCase()
   return (LANGUAGE_CODES[key] || key).toUpperCase()
 }
 
+// Normalizes any array-like value (a real array, a QML JS list model, null,
+// or undefined) into a plain JS array, so the rest of this file never has
+// to special-case where the data came from.
 function toArray(values) {
   if (!values) return []
   if (Array.isArray(values)) return values.slice()
@@ -42,6 +46,8 @@ function toArray(values) {
   return list
 }
 
+// Safe JSON.parse: empty input or a parse error returns the given fallback
+// instead of throwing, so a CLI hiccup never crashes the panel.
 function parseJson(text, fallback) {
   var trimmed = String(text || "").trim()
   if (trimmed === "") return fallback
@@ -73,6 +79,8 @@ function parseAvailable(text) {
   return toArray(parsed)
 }
 
+// Plain list of xkb codes already configured, used to exclude them from
+// the "Add language" search results.
 function configuredCodes(status) {
   var codes = []
   var layouts = toArray(status && status.layouts)
@@ -112,13 +120,26 @@ function filterAvailable(available, status, query) {
 
   if (needle === "") return list
 
-  return list.sort(function(a, b) { return matchRank(a, needle) - matchRank(b, needle) })
+  return list.sort(function(a, b) {
+     var ra = matchRank(a, needle)
+     var rb = matchRank(b, needle)
+     if (ra !== rb) return ra - rb
+     var la = String(a && a.label || "")
+     var lb = String(b && b.label || "")
+     var cmp = la.localeCompare(lb)
+     if (cmp !== 0) return cmp
+     return String(a && a.code || "").localeCompare(String(b && b.code || ""))
+   })
 }
 
+// The four presets, for the pill row -- a fresh copy each time so callers
+// can't accidentally mutate the shared list.
 function switcherPresets() {
   return SWITCHERS.slice()
 }
 
+// Display label for a preset id (falls back to the raw id if it's ever
+// unrecognized, rather than showing nothing).
 function switcherLabel(id) {
   for (var i = 0; i < SWITCHERS.length; i++) {
     if (SWITCHERS[i].id === id) return SWITCHERS[i].label
@@ -126,11 +147,16 @@ function switcherLabel(id) {
   return id || ""
 }
 
+// The configured layout at a given position, or null if the index is out
+// of range (e.g. the list just got shorter after a remove).
 function layoutAt(status, index) {
   var layouts = toArray(status && status.layouts)
   return index >= 0 && index < layouts.length ? layouts[index] : null
 }
 
+// The layout currently in use. Falls back to the first configured layout
+// if the reported active code doesn't match any of them (e.g. right after
+// a fresh add, before the next status refresh confirms it).
 function activeLayout(status) {
   var layouts = toArray(status && status.layouts)
   for (var i = 0; i < layouts.length; i++) {
