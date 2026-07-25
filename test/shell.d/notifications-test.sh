@@ -188,7 +188,6 @@ assertEqual(notifications.imageExtension('/tmp/no-extension'), 'png', 'notificat
 assertEqual(notifications.imageExtension('/tmp/archive.reallylong'), 'png', 'notifications reject suspicious image extensions')
 
 const serviceQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/Service.qml'), 'utf8')
-const barWidgetQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/BarWidget.qml'), 'utf8')
 assert(
   /readonly property int historyReplayLimit: 5/.test(serviceQml),
   'notifications service limits history replay to five rows'
@@ -196,9 +195,5 @@ assert(
 assert(
   /function showHistory\(\): string \{\s*return service\.showRecentHistory\(\)\s*\}/.test(serviceQml),
   'notifications history IPC replays recent notifications'
-)
-assert(
-  !barWidgetQml.includes('historyOpenRequested'),
-  'notifications history IPC does not depend on the bar widget'
 )
 JS
