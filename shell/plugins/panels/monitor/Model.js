@@ -111,6 +111,23 @@ function parseDisplays(raw) {
   }
 }
 
+// omarchy-display-text-size reports GTK as a scale factor and terminals in
+// points, both against this reference. The panel shows every scope in px.
+var TEXT_REFERENCE_PX = 12
+var TERM_REFERENCE_PT = 9
+
+// 0 for a scope the status output doesn't describe (unset, "n/a", or garbage);
+// the row shows "—" rather than a made-up size.
+function parseTextSizeStatus(raw) {
+  var text = String(raw || "")
+  var gtk = text.match(/gtk text-scaling-factor:\s*([0-9.]+)/)
+  var term = text.match(/terminal font:\s*([0-9.]+)\s*pt/)
+  return {
+    gtkPx: gtk ? Number(gtk[1]) * TEXT_REFERENCE_PX : 0,
+    termPx: term ? Number(term[1]) * TEXT_REFERENCE_PX / TERM_REFERENCE_PT : 0
+  }
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     clampBrightness: clampBrightness,
@@ -119,6 +136,7 @@ if (typeof module !== "undefined") {
     matchingScaleIndex: matchingScaleIndex,
     availableScales: availableScales,
     brightnessName: brightnessName,
-    parseDisplays: parseDisplays
+    parseDisplays: parseDisplays,
+    parseTextSizeStatus: parseTextSizeStatus
   }
 }
