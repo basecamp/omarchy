@@ -35,7 +35,7 @@ BarWidget {
   }
 
   function formatted(date) {
-    return Qt.formatDateTime(date, activeFormat.replace(/ww/g, isoWeekLiteral(date)))
+    return Qt.locale().toString(date, activeFormat.replace(/ww/g, isoWeekLiteral(date)))
   }
 
   implicitWidth: button.implicitWidth
