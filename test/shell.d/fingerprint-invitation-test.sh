@@ -45,10 +45,13 @@ cat >"$test_bin/systemd-run" <<'EOF'
 #!/bin/bash
 echo "systemd-run:$*" >>"$TEST_LOG"
 while (($# > 0)); do
-  [[ $1 == "bash" ]] && exec "$@"
-  shift
+  case $1 in
+    -p) shift 2 ;;
+    -*) shift ;;
+    *) break ;;
+  esac
 done
-exit 1
+exec "$@"
 EOF
 chmod +x "$test_bin/systemd-run"
 
@@ -67,14 +70,17 @@ run_invitation_hook
 
 [[ -f $test_home/.local/state/omarchy/done/fingerprint-setup-invitation ]] || fail "fingerprint invitation records completion"
 [[ -f $hook_path ]] || fail "fingerprint invitation keeps its hook installed"
-[[ $(grep -c '^systemd-run:' "$log_file") -eq 1 ]] || fail "fingerprint invitation uses a durable user service"
+[[ $(grep -c '^systemd-run:' "$log_file") -eq 2 ]] || fail "fingerprint invitation uses durable user services"
 grep -q -- '--user --collect --quiet --service-type=exec --unit=omarchy-fingerprint-setup-invitation' "$log_file" || fail "fingerprint invitation configures its user service"
+# KillMode=process keeps the launcher's setsid child alive once the short-lived
+# main process exits, otherwise the setup terminal never appears.
+grep -q -- '--user --collect --quiet -p KillMode=process --unit=omarchy-setup-security-fingerprint ' "$log_file" || fail "fingerprint invitation outlives its launcher unit"
 [[ $(grep -c '^notification$' "$log_file") -eq 1 ]] || fail "fingerprint invitation sends one notification"
 [[ $(grep -c '^launch$' "$log_file") -eq 1 ]] || fail "fingerprint invitation handles the notification action"
 
 HOME="$test_home" PATH="$test_bin:$ROOT/bin:$PATH" TEST_LOG="$log_file" TEST_HW_MARKER="$hw_marker" bash "$hook_path"
 
-[[ $(grep -c '^systemd-run:' "$log_file") -eq 1 ]] || fail "completed fingerprint invitation does not schedule again"
+[[ $(grep -c '^systemd-run:' "$log_file") -eq 2 ]] || fail "completed fingerprint invitation does not schedule again"
 [[ $(grep -c '^notification$' "$log_file") -eq 1 ]] || fail "completed fingerprint invitation hook does not notify again"
 
 pass "fingerprint invitation waits for a reader and only runs once"
