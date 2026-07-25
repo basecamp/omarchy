@@ -13,9 +13,8 @@ bluez-utils
 bolt
 brightnessctl
 btop
-chromium
+brave-origin-bin
 clang
-cliamp
 cups
 cups-browsed
 cups-filters
@@ -38,7 +37,7 @@ fcitx5-qt
 fd
 ffmpegthumbnailer
 fontconfig
-foot
+kitty-git
 fzf
 git
 gnome-calculator
@@ -141,7 +140,6 @@ woff2-font-awesome
 xdg-desktop-portal-gtk
 xdg-desktop-portal-hyprland
 xdg-terminal-exec
-xournalpp
 yaru-icon-theme
 yay
 yt-dlp
