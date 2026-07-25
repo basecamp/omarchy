@@ -9,7 +9,6 @@ usage() {
 }
 
 font_name="${1:-}"
-omarchy_root="${OMARCHY_PATH:-/usr/share/omarchy}"
 
 case "$font_name" in
   -h|--help)
@@ -46,36 +45,25 @@ if [[ -f ~/.config/foot/foot.ini ]]; then
 fi
 
 # fontconfig is the canonical source of truth — the omarchy shell, Qt apps,
-# and anything resolving "monospace" all read from here. The shipped default
-# is package-owned; create a user override only when the user changes fonts.
+# and anything resolving "monospace" all read from here. This file is loaded
+# after the package-owned default, and prepend_first puts the chosen family at
+# the head of the list so it wins over the family that default prefers.
 fontconfig_file="$HOME/.config/fontconfig/fonts.conf"
-if [[ ! -f $fontconfig_file ]]; then
-  fontconfig_default="$omarchy_root/default/fontconfig/conf.avail/50-omarchy.conf"
-  if [[ ! -f $fontconfig_default ]]; then
-    echo "Default fontconfig file not found: $fontconfig_default" >&2
-    exit 1
-  fi
-  mkdir -p "$(dirname "$fontconfig_file")"
-  cp "$fontconfig_default" "$fontconfig_file"
-fi
-
-# We own the markup in 50-omarchy.conf, so the monospace block is predictable:
-# the <string>FAMILY</string> immediately after <string>monospace</string> is
-# the family we're replacing.
-tmp=$(mktemp)
-if ! awk -v new_font="$font_name" '
-  in_mono && /<string>[^<]*<\/string>/ {
-    sub(/<string>[^<]*<\/string>/, "<string>" new_font "</string>")
-    in_mono = 0
-  }
-  /<string>monospace<\/string>/ { in_mono = 1 }
-  { print }
-' "$fontconfig_file" >"$tmp"; then
-  rm -f "$tmp"
-  echo "Failed to update $fontconfig_file" >&2
-  exit 1
-fi
-mv "$tmp" "$fontconfig_file"
+mkdir -p "$(dirname "$fontconfig_file")"
+cat >"$fontconfig_file" <<XML
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <match target="pattern">
+    <test name="family" qual="any">
+      <string>monospace</string>
+    </test>
+    <edit name="family" mode="prepend_first" binding="strong">
+      <string>$font_name</string>
+    </edit>
+  </match>
+</fontconfig>
+XML
 
 omarchy-restart-shell
 
