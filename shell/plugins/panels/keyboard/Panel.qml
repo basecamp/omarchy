@@ -13,12 +13,17 @@ Panel {
   ipcTarget: "omarchy.keyboard"
 
   // Raw status from `omarchy-keyboard-layout status`:
-  // { layouts: [{code, label}], switcher, active }
-  property var status: ({ layouts: [], switcher: "alt_shift", active: "" })
+  // { layouts: [{code, label}], switcher, active, show_bar_icon }
+  property var status: ({ layouts: [], switcher: "alt_shift", active: "", show_bar_icon: true })
   property var available: []
 
   readonly property var configuredLayouts: Model.toArray(status.layouts)
   readonly property var activeLayout: Model.activeLayout(status)
+  // Always show the active layout's language code (e.g. "EN", "FA"), even
+  // with only one language configured -- lets someone glance at the bar and
+  // confirm which layout is active without opening the panel, and doubles
+  // as a reminder of what layout will apply system-wide (see ensure_state
+  // in the CLI: whatever was chosen at install time becomes this layout).
   readonly property string icon: activeLayout ? Model.languageCode(activeLayout.code) : "--"
   readonly property string heroStatusText: activeLayout ? activeLayout.label : "Unknown"
   readonly property var switcherPresets: Model.switcherPresets()
@@ -108,8 +113,18 @@ Panel {
     selectedIndex = 0
   }
 
-  implicitWidth: button.implicitWidth
-  implicitHeight: button.implicitHeight
+  // Manual on/off switch for the bar icon, controlled from omarchy-menu
+  // (Trigger > Toggle > Show Keyboard Layout) via `omarchy-keyboard-layout
+  // bar-icon toggle`. Independent of the language-code icon above -- this
+  // is a
+  // deliberate user choice, not an automatic language-count heuristic.
+  readonly property bool barIconVisible: status.show_bar_icon !== false
+
+  visible: barIconVisible
+  implicitWidth: barIconVisible ? button.implicitWidth : 0
+  implicitHeight: barIconVisible ? button.implicitHeight : 0
+
+  onBarIconVisibleChanged: if (!barIconVisible && opened) close()
 
   onOpenedChanged: if (opened) refresh()
   Component.onCompleted: refresh()
@@ -130,7 +145,7 @@ Panel {
   }
 
   Timer {
-    interval: 10000
+    interval: 3000
     running: true
     repeat: true
     onTriggered: root.refresh()

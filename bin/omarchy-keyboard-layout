@@ -12,7 +12,7 @@ STATE_FILE="$STATE_DIR/keyboard.json"
 XKB_LIST="/usr/share/X11/xkb/rules/base.lst"
 
 usage() {
-  echo "Usage: omarchy-keyboard-layout [status|available|next|set <code>|add <code>|remove <code>|switcher <preset>]" >&2
+  echo "Usage: omarchy-keyboard-layout [status|available|next|set <code>|add <code>|remove <code>|switcher <preset>|bar-icon <status|toggle|show|hide>]" >&2
   exit 1
 }
 
@@ -92,7 +92,7 @@ active_index() {
 status_json() {
   local idx
   idx=$(active_index)
-  jq --argjson idx "$idx" '. + {active: (.layouts[$idx].code // .layouts[0].code)}' "$STATE_FILE"
+  jq --argjson idx "$idx" '. + {active: (.layouts[$idx].code // .layouts[0].code), show_bar_icon: (if .show_bar_icon == null then true else .show_bar_icon end)}' "$STATE_FILE"
 }
 
 reload_hyprland() {
@@ -105,6 +105,18 @@ write_state() {
   tmp=$(mktemp)
   jq "$@" "$filter" "$STATE_FILE" > "$tmp"
   mv "$tmp" "$STATE_FILE"
+}
+
+# Feedback for bar-icon show/hide/toggle (not the plain `status` query),
+# since there's no checkmark in the menu to reflect state instead. Uses the
+# same on-screen-display helper as the other hardware toggles (touchpad,
+# etc.) instead of notify-send, for a consistent look/timing.
+notify_bar_icon() {
+  if [[ $1 == "true" ]]; then
+    omarchy-osd -i keyboard -m "Keyboard layout enabled" --fit
+  else
+    omarchy-osd -i keyboard -m "Keyboard layout disabled" --fit
+  fi
 }
 
 action=${1:-status}
@@ -171,6 +183,41 @@ case "$action" in
     write_state '.switcher = $s' --arg s "$preset"
     reload_hyprland
     status_json
+    ;;
+
+  # `status` is a plain exit-code query (0 = shown, 1 = hidden) meant for
+  # use as a `checked:` guard in omarchy-menu.jsonc (Trigger > Toggle >
+  # Show Keyboard Layout). toggle/show/hide are for the corresponding
+  # `action:`, or for manual use. The bar widget picks up the new value on
+  # its next `status` poll, so no Hyprland reload is needed here. A
+  # notification is fired on show/hide/toggle (not on the plain `status`
+  # query) since there's no longer a checkmark in the menu to reflect state.
+  bar-icon)
+    sub=${2:-status}
+    case "$sub" in
+      status)
+        visible=$(jq -r 'if .show_bar_icon == null then true else .show_bar_icon end' "$STATE_FILE")
+        [[ $visible == "true" ]]
+        ;;
+      toggle)
+        write_state '.show_bar_icon = ((if .show_bar_icon == null then true else .show_bar_icon end) | not)'
+        notify_bar_icon "$(jq -r '.show_bar_icon' "$STATE_FILE")"
+        status_json
+        ;;
+      show)
+        write_state '.show_bar_icon = true'
+        notify_bar_icon true
+        status_json
+        ;;
+      hide)
+        write_state '.show_bar_icon = false'
+        notify_bar_icon false
+        status_json
+        ;;
+      *)
+        usage
+        ;;
+    esac
     ;;
 
   *)

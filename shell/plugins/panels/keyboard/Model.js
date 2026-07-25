@@ -52,17 +52,18 @@ function parseJson(text, fallback) {
   }
 }
 
-// `omarchy-keyboard-layout status` output -> { layouts, switcher, active }
+// `omarchy-keyboard-layout status` output -> { layouts, switcher, active, show_bar_icon }
 function parseStatus(text) {
   var parsed = parseJson(text, null)
   if (!parsed || typeof parsed !== "object") {
-    return { layouts: [], switcher: "alt_shift", active: "" }
+    return { layouts: [], switcher: "alt_shift", active: "", show_bar_icon: true }
   }
 
   return {
     layouts: toArray(parsed.layouts),
     switcher: parsed.switcher || "alt_shift",
-    active: parsed.active || ""
+    active: parsed.active || "",
+    show_bar_icon: parsed.show_bar_icon !== false
   }
 }
 
