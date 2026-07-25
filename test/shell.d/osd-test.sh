@@ -11,6 +11,7 @@ assertEqual(osd.iconFor('', 0), osd.iconFor('muted', 50), 'osd falls back to mut
 assertEqual(osd.iconFor('volume-high', 1), osd.iconFor('', 100), 'osd maps high volume aliases')
 assertEqual(osd.iconFor('logout', 50), '󰍃', 'osd maps logout icon')
 assertEqual(osd.iconFor('custom-symbol', 50), 'custom-symbol', 'osd preserves unknown explicit icons')
+assertEqual(osd.widestIcon, osd.iconFor('volume-high', 100), 'osd sizes the icon column to a glyph it can show')
 
 assertDeepEqual(
   osd.stateForShow('volume', '', '75', '100', '', '800'),
@@ -21,8 +22,7 @@ assertDeepEqual(
     value: 75,
     message: '75%',
     icon: osd.iconFor('volume', 75),
-    duration: 800,
-    fit: false
+    duration: 800
   },
   'osd builds progress state'
 )
@@ -36,24 +36,8 @@ assertDeepEqual(
     value: 0,
     message: 'Paused',
     icon: osd.iconFor('media-pause', -1),
-    duration: 1200,
-    fit: false
+    duration: 1200
   },
   'osd builds message state'
-)
-
-assertDeepEqual(
-  osd.stateForShow('shutdown', 'Shutting down…', '', '100', '', '5000', '1'),
-  {
-    iconKey: 'shutdown',
-    maxValue: 100,
-    hasProgress: false,
-    value: 0,
-    message: 'Shutting down…',
-    icon: osd.iconFor('shutdown', -1),
-    duration: 5000,
-    fit: true
-  },
-  'osd parses fit flag'
 )
 JS

@@ -118,6 +118,7 @@ omarchy-update
   ├─ create snapper snapshot, if snapper is installed
   └─ run update pipeline
        ├─ block system sleep and temporarily enable shell stay-awake mode
+       ├─ omarchy-update-dev
        ├─ omarchy-update-keyring
        ├─ omarchy-update-system-pkgs
        ├─ omarchy-migrate
@@ -133,6 +134,8 @@ omarchy-update
 
 Important behavior:
 
+- In dev-link mode, `omarchy update` fast-forwards the active checkout from its
+  configured upstream before changing system packages or running migrations.
 - `omarchy update` checks/runs migrations in the same visible terminal via
   `omarchy-migrate` after pacman finishes.
 - A failure should leave enough output in `/tmp/omarchy-update.log` and the
@@ -172,10 +175,15 @@ The bar widget `omarchy.system-update` runs:
 omarchy-update-available
 ```
 
-`omarchy-update-available` checks the installed Omarchy package for updates:
+`omarchy-update-available` checks the active Omarchy sources for updates:
 
+- new upstream commits for the active dev-linked checkout
 - `omarchy-dev`, when installed
 - otherwise `omarchy`, when installed
+
+The dev check fetches the checkout's configured upstream before comparing it
+with `HEAD`. A failed fetch is quiet and falls back to the existing remote-
+tracking state.
 
 Exit codes:
 
@@ -196,6 +204,7 @@ scripts.
 | `omarchy-update` | Public user command. Adds transcript logging, lock, confirmation, snapshot, sleep/idle inhibitors, package updates, migrations, hooks, update-state refresh, and restart checks. | **Keep.** This is the blessed entry point and owns the update pipeline. |
 | `omarchy-update-perform` | Hidden compatibility wrapper for `omarchy-update -y`. | **Temporary.** Keep only for old callers; new code should call `omarchy-update` directly. |
 | `omarchy-update-confirm` | Gum confirmation copy for `omarchy update`. | **Question.** Could be inlined into `omarchy-update`; separate file only helps keep copy isolated. |
+| `omarchy-update-dev` | Fast-forwards the active dev-linked checkout from its configured upstream; no-ops for package-backed installs. | **Keep.** Runs before package updates so a checkout conflict stops the update before system mutation. |
 | `omarchy-update-keyring` | Ensures Omarchy keyring and Arch keyring are current before the main transaction. | **Keep, but review.** It uses targeted `pacman -Sy` for keyring bootstrapping; acceptable for this special case but should remain tightly scoped. |
 | `omarchy-update-system-pkgs` | Runs `sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm` with targeted transition `--overwrite` entries so the ALPM guard allows the transaction and early package-layout conflicts are handled. | **Keep for now.** Small leaf command, clear/testable. |
 | `omarchy-migrate` | Public migration command. Waits for pacman, then runs all pending migrations for the current user. Supports `--pending`. | **Keep.** This replaces the discarded `omarchy-update-user-finalize` name and no longer needs `--force`. |

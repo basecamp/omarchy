@@ -23,7 +23,6 @@ shell/
     BarWidgetRegistry.qml unified registry for bar widgets (1p + 3p)
   plugins/
     bar/                 first-party plugins (see plugins/README.md)
-    launcher/
     image-picker/
     menu/
     notifications/

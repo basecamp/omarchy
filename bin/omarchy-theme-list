@@ -6,6 +6,4 @@
 {
   find ~/.config/omarchy/themes/ -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -printf '%f\n'
   find "$OMARCHY_PATH/themes/" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'
-} | sort -u | while read -r name; do
-  echo "$name" | sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g'
-done
+} | sort -u | sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g'

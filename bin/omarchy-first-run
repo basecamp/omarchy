@@ -106,6 +106,8 @@ run_first_run_step "notify about pending migrations" omarchy-migrate-notify
 
 run_first_run_step "install Voxtype post-update hook" \
   omarchy-hook-install post-update "$OMARCHY_PATH/install/user/first-run/install-voxtype.hook"
+run_first_run_step "install fingerprint setup post-update hook" \
+  omarchy-hook-install post-update "$OMARCHY_PATH/install/user/first-run/setup-fingerprint.hook"
 
 run_first_run_step "enable user systemd units" \
   bash "$OMARCHY_PATH/install/user/first-run/enable-user-units.sh"
@@ -113,6 +115,8 @@ run_first_run_step "set GNOME theme" \
   bash "$OMARCHY_PATH/install/user/first-run/gnome-theme.sh"
 run_first_run_step "set GTK primary paste" \
   bash "$OMARCHY_PATH/install/user/first-run/gtk-primary-paste.sh"
+run_first_run_step "apply speaker tuning" \
+  bash "$OMARCHY_PATH/install/user/first-run/audio-tuning.sh"
 
 wait_for_notifications
 run_first_run_step "show welcome notification" \
@@ -123,9 +127,6 @@ run_first_run_step "show welcome notification" \
 sleep 0.3
 run_first_run_step "show Wi-Fi/update notifications" \
   bash "$OMARCHY_PATH/install/user/first-run/wifi.sh"
-sleep 0.3
-run_first_run_step "invite fingerprint setup" \
-  bash "$OMARCHY_PATH/install/user/first-run/fingerprint.sh"
 
 if (( first_run_failed == 0 )); then
   omarchy-done mark "$FIRST_RUN_DONE"

@@ -3,9 +3,18 @@
 # omarchy:summary=Print PulseAudio sink availability for the shell
 # omarchy:group=audio
 
-pactl list sinks 2>/dev/null | awk '
+# A speaker tuning is a virtual sink in front of the real speakers. Both exist
+# in the graph, but selecting the physical one would only bypass the tuning, so
+# report it unavailable and keep it out of the output list.
+fronted="$(omarchy-audio-tuning fronted-sink 2>/dev/null || true)"
+
+pactl list sinks 2>/dev/null | awk -v fronted="$fronted" '
   function emit_sink() {
     if (name == "") return
+    if (fronted != "" && name == fronted) {
+      print name "\t0"
+      return
+    }
     print name "\t" ((port_count == 0 || available) ? 1 : 0)
   }
 

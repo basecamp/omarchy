@@ -2,6 +2,6 @@
 
 # omarchy:summary=Restart tmux if running with the latest configuration
 
-if pgrep -x tmux; then
+if tmux has-session 2>/dev/null; then
   tmux source-file ~/.config/tmux/tmux.conf
 fi

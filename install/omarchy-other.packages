@@ -62,6 +62,9 @@ linux-firmware-marvell
 # Dell laptop support packages
 dell-xps-touchpad-haptics
 
+# Speaker tunings (LV2 limiter every tuning ends in)
+lsp-plugins-lv2
+
 # T2 MacBook support packages
 apple-bcm-firmware
 apple-t2-audio-config

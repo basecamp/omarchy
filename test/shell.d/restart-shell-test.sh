@@ -70,7 +70,9 @@ printf '%s\n' "$*" >>"$OMARCHY_TEST_IPC_LOG"
 
 case "$*" in
   *'shell ping')
-    grep -Fx '303' "$OMARCHY_TEST_QS_STATE" >/dev/null && printf 'ok\n'
+    [[ $* == *"-p $OMARCHY_TEST_SESSION_PATH/shell"* ]] &&
+      grep -Fx '303' "$OMARCHY_TEST_QS_STATE" >/dev/null &&
+      printf 'ok\n'
     ;;
 esac
 SH
@@ -107,14 +109,27 @@ if [[ ${1:-} == "-j" && ${2:-} == "monitors" ]]; then
   fi
 elif [[ ${1:-} == "dispatch" && ${2:-} == hl.dsp.exec_cmd* ]]; then
   printf '%s\n' "${2:-}" >>"$OMARCHY_TEST_DISPATCH_LOG"
-  env -u OMARCHY_TEST_TRANSIENT_ENV quickshell -n -p "$OMARCHY_PATH/shell"
+  OMARCHY_PATH="$OMARCHY_TEST_SESSION_PATH" \
+    env -u OMARCHY_TEST_TRANSIENT_ENV quickshell -n -p "$OMARCHY_TEST_SESSION_PATH/shell"
   printf 'ok\n'
 elif [[ ${1:-} == "dispatch" ]]; then
   exit 1
 fi
 SH
 
-chmod +x "$restart_bin/qs" "$restart_bin/quickshell" "$restart_bin/hyprctl"
+cat >"$restart_bin/systemctl" <<'SH'
+#!/bin/bash
+
+if [[ ${1:-} == "--user" && ${2:-} == "show-environment" ]]; then
+  printf 'OMARCHY_PATH=%s\n' "$OMARCHY_TEST_SESSION_PATH"
+elif [[ ${1:-} == "--user" && ${2:-} == "try-restart" ]]; then
+  exit 0
+else
+  exit 1
+fi
+SH
+
+chmod +x "$restart_bin/qs" "$restart_bin/quickshell" "$restart_bin/hyprctl" "$restart_bin/systemctl"
 
 sleep 30 &
 restart_pid_one=$!
@@ -122,14 +137,19 @@ sleep 30 &
 restart_pid_two=$!
 printf '%s\n%s\n' "$restart_pid_one" "$restart_pid_two" >"$restart_state"
 
+caller_root="$test_tmp/caller-root"
+mkdir -p "$caller_root/shell"
+touch "$caller_root/shell/shell.qml"
+
 PATH="$restart_bin:$PATH" \
-OMARCHY_PATH="$restart_root" \
+OMARCHY_PATH="$caller_root" \
 XDG_RUNTIME_DIR="$runtime_dir" \
 OMARCHY_TEST_QS_STATE="$restart_state" \
 OMARCHY_TEST_QS_LOG="$restart_log" \
 OMARCHY_TEST_QS_ENV_LOG="$restart_env_log" \
 OMARCHY_TEST_DISPATCH_LOG="$dispatch_log" \
 OMARCHY_TEST_IPC_LOG="$ipc_log" \
+OMARCHY_TEST_SESSION_PATH="$restart_root" \
 OMARCHY_TEST_TRANSIENT_ENV=leaked \
   timeout 5 "$ROOT/bin/omarchy-restart-shell"
 
@@ -145,10 +165,11 @@ restart_pid_one=""
 restart_pid_two=""
 [[ $(<"$restart_state") == 303 ]] || fail "restart leaves exactly one fresh shell instance"
 [[ $(grep -c '^-n -p ' "$restart_log") == 1 ]] || fail "restart launches one fresh shell process"
+grep -F "kill -p $restart_root/shell --any-display" "$restart_log" >/dev/null || fail "restart stops the shell from the session checkout"
 [[ $(<"$restart_env_log") == "unset" ]] || fail "restart uses the Hyprland session environment for the fresh shell"
 grep -F 'hl.dsp.exec_cmd("quickshell -n -p $OMARCHY_PATH/shell")' "$dispatch_log" >/dev/null || fail "restart launches the fresh shell through Hyprland"
-grep -F 'shell ping' "$ipc_log" >/dev/null || fail "restart waits for fresh shell IPC readiness"
-pass "restart replaces duplicate shell instances"
+grep -F "ipc -n -p $restart_root/shell call -- shell ping" "$ipc_log" >/dev/null || fail "restart checks readiness in the session checkout"
+pass "restart replaces duplicate shell instances from the session checkout"
 
 : >"$restart_log"
 printf '404\n' >"$restart_state"
@@ -161,6 +182,7 @@ locked_error=$(PATH="$restart_bin:$PATH" \
   OMARCHY_TEST_QS_LOG="$restart_log" \
   OMARCHY_TEST_DISPATCH_LOG="$dispatch_log" \
   OMARCHY_TEST_IPC_LOG="$ipc_log" \
+  OMARCHY_TEST_SESSION_PATH="$restart_root" \
   "$ROOT/bin/omarchy-restart-shell" 2>&1) && fail "restart refuses while the shell lock is active"
 
 [[ $locked_error == "Refusing to restart Omarchy shell while the session is locked." ]] || fail "locked restart explains why it was refused" "$locked_error"

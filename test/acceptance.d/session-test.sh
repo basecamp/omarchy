@@ -16,7 +16,7 @@ wait_until "omarchy-shell responds to ping" 60 omarchy-shell shell ping
 plugins=$(omarchy-shell shell listPlugins)
 for plugin in \
   omarchy.audio omarchy.background omarchy.bar omarchy.bluetooth \
-  omarchy.clipboard omarchy.emojis omarchy.launcher omarchy.menu \
+  omarchy.clipboard omarchy.emojis omarchy.menu \
   omarchy.monitor omarchy.network omarchy.notifications omarchy.power \
   omarchy.reminders omarchy.weather; do
   [[ $plugins == *"$plugin"* ]] || fail "shell plugin is loaded: $plugin" "loaded plugins: $plugins"

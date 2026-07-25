@@ -4,7 +4,16 @@ set -e
 
 show_invitation() {
   if [[ -n $(omarchy-notification-send -u critical -g  "Install Dictation with Voxtype" "Click to install voice dictation for Omarchy." -a) ]]; then
-    omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install
+    # Launch the installer in its own transient unit so this invitation service
+    # can exit right after the click. If it stayed alive for the life of the
+    # install terminal, the installer's omarchy-restart-shell would re-trigger
+    # this still-running *-invitation unit and pop the toast a second time.
+    # KillMode=process because the launcher's setsid forks and returns, so the
+    # unit's main process exits within milliseconds. The default control-group
+    # kill would take the terminal down with it before it ever appears.
+    systemd-run --user --collect --quiet -p KillMode=process \
+      --unit=omarchy-voxtype-install \
+      omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install
   fi
 }
 

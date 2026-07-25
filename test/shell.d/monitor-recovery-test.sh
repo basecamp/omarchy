@@ -7,6 +7,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 monitor_watch="$ROOT/bin/omarchy-hyprland-monitor-watch"
 monitor_internal="$ROOT/bin/omarchy-hyprland-monitor-internal"
 monitor_mirror="$ROOT/bin/omarchy-hyprland-monitor-internal-mirror"
+monitor_laptop="$ROOT/bin/omarchy-hyprland-monitor-laptop"
 monitor_external_active="$ROOT/bin/omarchy-hyprland-monitor-external-active"
 sleep_lock="$ROOT/bin/omarchy-system-sleep-lock"
 system_wake="$ROOT/bin/omarchy-system-wake"
@@ -60,7 +61,8 @@ grep -F 'omarchy-hw-clamshell' "$clamshell" >/dev/null
 pass "clamshell monitor sync disables laptop output and force-recovers it"
 
 grep -F "hyprctl dispatch 'hl.dsp.dpms({ action = \"enable\" })' >/dev/null 2>&1 || true" "$monitor_internal" >/dev/null
-grep -F 'hyprctl monitors all -j' "$monitor_internal" >/dev/null
+grep -F 'omarchy-hyprland-monitor-laptop' "$monitor_internal" >/dev/null
+grep -F 'hyprctl monitors all -j' "$monitor_laptop" >/dev/null
 grep -F 'omarchy-hyprland-monitor-external-active' "$monitor_internal" >/dev/null
 grep -F 'wake' "$monitor_internal" >/dev/null
 grep -F 'omarchy-hyprland-toggle-enabled $TOGGLE || return 0' "$monitor_internal" >/dev/null

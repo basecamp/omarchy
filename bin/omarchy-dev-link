@@ -2,7 +2,7 @@
 
 # omarchy:summary=Point Omarchy at a local checkout after reboot
 # omarchy:group=dev
-# omarchy:args=<path-to-checkout>
+# omarchy:args=<path-to-checkout> [--no-reboot]
 # omarchy:examples=omarchy dev link ~/omarchy
 
 set -euo pipefail
@@ -12,9 +12,11 @@ if (( EUID == 0 )); then
   exit 1
 fi
 
-if (( $# != 1 )) || [[ $1 == "-h" || $1 == "--help" ]]; then
+prompt_reboot=1
+
+if (( $# < 1 || $# > 2 )) || [[ $1 == "-h" || $1 == "--help" ]]; then
   cat <<USAGE
-Usage: omarchy dev link <path-to-checkout>
+Usage: omarchy dev link <path-to-checkout> [--no-reboot]
 
 Writes /etc/omarchy.conf so OMARCHY_PATH resolves to <path-to-checkout>
 after reboot. This intentionally does not rewrite the running Hyprland,
@@ -25,8 +27,19 @@ themes/, applications/, config/. Files installed at fixed system paths
 (/etc/, /usr/lib/systemd/, udev rule bodies, /etc/skel after user
 creation, /usr/share/plymouth) are NOT covered — for those, use
 omarchy-dev-pkg-test to build and install the package from the checkout.
+
+Use --no-reboot when another command will handle the reboot prompt.
 USAGE
   exit 0
+fi
+
+if (( $# == 2 )); then
+  if [[ $2 == "--no-reboot" ]]; then
+    prompt_reboot=0
+  else
+    echo "Usage: omarchy dev link <path-to-checkout> [--no-reboot]" >&2
+    exit 1
+  fi
 fi
 
 omarchy_conf_quote() {
@@ -58,6 +71,6 @@ done
 echo "Pointed Omarchy at $target"
 echo
 
-if gum confirm "Reboot now to activate?"; then
+if (( prompt_reboot )) && gum confirm "Reboot now to activate?"; then
   omarchy-system-reboot
 fi

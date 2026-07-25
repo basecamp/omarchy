@@ -94,23 +94,24 @@ screenshot "success-notification-popup"
 omarchy-shell notifications dismissAll >/dev/null
 wait_until "notification popup closes" 15 layer_absent "omarchy-notifications"
 
-# The launcher does the full loop: open, search by typing, launch the top hit.
+# The menu's Apps submenu does the full launcher loop: open, search by
+# typing, launch the top hit.
 if window_present "(?i)omawrite" >/dev/null 2>&1; then
-  fail "launcher test starts with no Omawrite window" "an Omawrite window is already open"
+  fail "app launch test starts with no Omawrite window" "an Omawrite window is already open"
 fi
 
-omarchy-shell shell summon omarchy.launcher >/dev/null
-wait_until "launcher opens" 15 layer_present "omarchy-launcher"
+omarchy-menu summon apps >/dev/null
+wait_until "apps menu opens" 15 layer_present "omarchy-menu"
 sleep 1
-screenshot "success-launcher-open"
+screenshot "success-apps-menu-open"
 
 wtype "omawrite"
 sleep 1
-screenshot "success-launcher-search"
+screenshot "success-apps-menu-search"
 wtype -k Return
 
-wait_until "launcher launches the top search hit" 60 window_present "(?i)omawrite"
-wait_until "launcher closes after launching" 15 layer_absent "omarchy-launcher"
+wait_until "apps menu launches the top search hit" 60 window_present "(?i)omawrite"
+wait_until "apps menu closes after launching" 15 layer_absent "omarchy-menu"
 
 close_windows "(?i)omawrite"
 wait_until "Omawrite window closes" 30 window_absent "(?i)omawrite"

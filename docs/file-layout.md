@@ -247,13 +247,13 @@ the legacy finalization marker from `~/.local/state/omarchy/` into `done/`.
 `omarchy-setup-system` (root, in chroot) runs target-side setup at ISO
 finalization. It sources:
 
-- `install/config/*.sh` — theme links, lockout limits, lockscreen PAM,
+- `install/config/all.sh` — theme links, lockout limits, lockscreen PAM,
   powerprofilesctl shebang fix, docker setup, service enablement, firewall.
 - `install/hardware/all.sh` via `omarchy-setup-hardware` — vendor- and
   device-specific kernel modules, udev rules, microcode, wireless regdom,
   ASUS / Framework / Intel / Apple / Lenovo quirks.
-- `install/login/*.sh` — SDDM theme/session config.
-- `install/post-install/*.sh` — final pacman/udev/localdb passes.
+- `install/login/all.sh` — SDDM theme/session config.
+- `install/post-install/all.sh` — final pacman/udev/localdb passes.
 
 Logging goes to `/var/log/omarchy-install.log` via
 `install/helpers/logging.sh`.
@@ -287,7 +287,7 @@ return to the packaged default.
 | Package-owned system file (e.g. systemd user service/path in `/usr/lib`) | `default/`, document the mapping in `default/package-defaults.tsv`, then add the `install -Dm644` line in `omarchy-settings` PKGBUILD |
 | Per-user file that's static but lives outside `~/.config` | `default/`, then add `install -Dm644 ... $pkgdir/etc/skel/...` in `omarchy-settings` PKGBUILD |
 | Runtime tweak that needs `$HOME` or live system state | extend `omarchy-finalize-user`, or add a per-user leaf under `install/user/` and wire into `install/user/all.sh` |
-| One-time root-side setup step | `install/config/*.sh` or `install/hardware/*.sh`, wire into `omarchy-setup-system` or `install/hardware/all.sh` |
+| One-time root-side setup step | `install/config/*.sh` or `install/hardware/*.sh`, wire into `install/config/all.sh` or `install/hardware/all.sh` |
 | One-time fix for existing installs | `migrations/<unix-timestamp>.sh` |
 | User-facing `omarchy-*` command | `bin/omarchy-<group>-<verb>` — see `GROUP_DESCRIPTIONS` in `bin/omarchy` |
 | New stock theme | `themes/<name>/` (+ matching templates under `default/themed/` if they need theme colors) |

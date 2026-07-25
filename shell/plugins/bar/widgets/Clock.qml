@@ -49,7 +49,7 @@ BarWidget {
 
   IpcHandler {
     target: "omarchy.clock"
-    function refresh(): void { root.refresh() }
+    function refresh(): void { root.broadcast("refresh") }
   }
 
   WidgetButton {

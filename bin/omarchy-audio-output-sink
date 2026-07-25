@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# omarchy:summary=Print the sink whose volume and mute a given output really uses
+# omarchy:args=[sink-name]
+# omarchy:group=audio
+# omarchy:examples=omarchy audio output sink | omarchy audio output sink omarchy_speaker_tuning
+
+set -uo pipefail
+
+# A DSP sink -- a speaker tuning filter-chain, or EasyEffects -- can be the
+# selected output without being where loudness lives. Changing its volume alters
+# the level going *into* the processing: the display moves while the speakers do
+# not, and on a chain with a compressor or limiter the tone changes too. Resolve
+# through it to the physical sink it feeds.
+#
+# With no argument this resolves the current default output, so when headphones or
+# HDMI are selected it returns those, not the speakers a tuning happens to front.
+# Callers that need to describe some *other* output -- an output switcher naming
+# the next one in the rotation -- pass that sink explicitly.
+
+sink="${1:-$(pactl get-default-sink 2>/dev/null)}"
+
+if [[ -z $sink || $sink == alsa_output.* ]]; then
+  printf '%s\n' "$sink"
+  exit 0
+fi
+
+# A DSP sink feeds its physical output through a stream of its own; follow that
+# stream down to the sink underneath.
+downstream="$(pactl list sink-inputs 2>/dev/null |
+  awk -v virt="$sink" '
+    /^Sink Input #/ {target = ""}
+    /^[[:space:]]*Sink:/ {target = $2}
+    /node\.name = / {
+      name = $0
+      sub(/.*node\.name = "/, "", name)
+      sub(/"$/, "", name)
+      if (index(name, virt) == 1 && target != "") {print target; exit}
+    }
+    /application\.name = "EasyEffects"/ {
+      if (virt == "easyeffects_sink" && target != "") {print target; exit}
+    }')"
+
+if [[ -n $downstream ]]; then
+  name="$(pactl list sinks short 2>/dev/null |
+    awk -v id="$downstream" '$1 == id {print $2; exit}')"
+  if [[ -n $name ]]; then
+    printf '%s\n' "$name"
+    exit 0
+  fi
+fi
+
+# Nothing resolvable downstream -- the DSP sink may simply be idle and unlinked.
+# Fall back to the sink itself so callers still have something to act on.
+printf '%s\n' "$sink"

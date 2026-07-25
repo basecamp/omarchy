@@ -7,17 +7,14 @@
 
 set_fallback_default_browser() {
   local current_browser
-  current_browser=$(xdg-settings get default-web-browser)
+  current_browser=$(env -u BROWSER xdg-settings get default-web-browser)
 
   if [[ $current_browser != $1 ]]; then
     return
   fi
 
   if omarchy-cmd-present chromium; then
-    xdg-settings set default-web-browser chromium.desktop
-    xdg-mime default chromium.desktop x-scheme-handler/http
-    xdg-mime default chromium.desktop x-scheme-handler/https
-    xdg-mime default chromium.desktop text/html
+    env -u BROWSER xdg-settings set default-web-browser chromium.desktop || true
   fi
 }
 

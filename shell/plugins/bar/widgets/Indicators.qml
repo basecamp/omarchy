@@ -8,7 +8,7 @@ BarWidget {
   id: root
   moduleName: "omarchy.indicators"
 
-  readonly property var defaultIndicatorEntries: [ "Dnd", "Reminder", "NightLight", "StayAwake", "ScreenRecording", "Dictation" ]
+  readonly property var defaultIndicatorEntries: [ "StayAwake", "Dnd", "Reminder", "TmuxAlert", "NightLight", "ScreenRecording", "Dictation" ]
   readonly property var indicatorEntries: indicatorEntriesFromSettings(settings)
   property var activeIndicatorIds: []
   property var indicatorActiveStates: ({})
@@ -152,6 +152,8 @@ BarWidget {
     syncActiveIndicatorModel()
   }
 
+  function refresh() { root.refreshRequested() }
+
   onIndicatorEntriesChanged: syncActiveIndicatorOrder()
 
   implicitWidth: root.vertical
@@ -165,7 +167,7 @@ BarWidget {
     target: "omarchy.indicators"
 
     function refresh(): void {
-      root.refreshRequested()
+      root.broadcast("refresh")
     }
   }
 

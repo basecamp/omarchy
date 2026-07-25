@@ -6,7 +6,7 @@
 THEME_NAME_PATH="$HOME/.local/state/omarchy/current/theme.name"
 
 if [[ -f $THEME_NAME_PATH ]]; then
-  cat $THEME_NAME_PATH | sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g'
+  sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g' "$THEME_NAME_PATH"
 else
   echo "Unknown"
 fi

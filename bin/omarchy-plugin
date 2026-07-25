@@ -151,7 +151,7 @@ plugin_enabled() {
   [[ -n $id ]] || fail "plugin id is required"
   shift 2
 
-  if [[ $enabled != "true" && $# -gt 0 ]]; then
+  if [[ $enabled != "true" ]] && (( $# > 0 )); then
     fail "disable does not take placement options"
   fi
 
@@ -165,7 +165,7 @@ plugin_enabled() {
   result=$(omarchy-shell shell setPluginEnabled "$id" "$enabled") || fail "could not update plugin; is omarchy-shell running?"
   [[ $result == "ok" ]] || fail "plugin '$id' is not known; run: omarchy plugin rescan"
 
-  if [[ $enabled == "true" && $# -gt 0 ]]; then
+  if [[ $enabled == "true" ]] && (( $# > 0 )); then
     omarchy-bar-plugin move "$id" "$@"
     echo "Enabled and moved $id"
   elif [[ $enabled == "true" ]]; then
