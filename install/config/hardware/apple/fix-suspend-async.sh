@@ -26,6 +26,16 @@ ExecStart=/bin/bash -c 'echo 0 > /sys/power/pm_async'
 WantedBy=multi-user.target
 EOF
 
-  chrootable_systemctl_enable omarchy-pm-async-suspend-fix.service
+  # The installer defines this helper via install/helpers/all.sh, but migrations
+  # run in a fresh shell, so pull it in directly when it isn't already defined.
+  # (OMARCHY_INSTALL is installer-only; OMARCHY_PATH is in the user environment.)
+  declare -F chrootable_systemctl_enable >/dev/null ||
+    source "$OMARCHY_PATH/install/helpers/chroot.sh"
+
+  if ! chrootable_systemctl_enable omarchy-pm-async-suspend-fix.service; then
+    echo "Failed to enable omarchy-pm-async-suspend-fix.service" >&2
+    exit 1
+  fi
+
   sudo systemctl daemon-reload
 fi
