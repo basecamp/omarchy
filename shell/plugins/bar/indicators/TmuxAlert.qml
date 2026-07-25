@@ -1,41 +1,23 @@
 import QtQuick
 import Quickshell
-import Quickshell.Io
 import qs.Ui
 
 BarIndicator {
   id: root
 
-  property int waitingCount: 0
-  property string tooltip: ""
-  property bool refreshPending: false
+  readonly property var tmuxService: bar?.shell?.firstPartyServiceFor("omarchy.tmux")
 
-  active: waitingCount > 0
+  active: tmuxService ? tmuxService.waiting : false
   activeText: "󰆍"
   inactiveText: "󰆍"
-  activeTooltipText: tooltip
+  activeTooltipText: tmuxService ? tmuxService.tooltip : ""
   inactiveTooltipText: "No Terminal Waiting"
 
+  // The service owns the probe and its polling; the tmux hooks still reach it
+  // through the indicator host's refresh broadcast, which coalesces into a
+  // single run no matter how many bars relay it.
   function refresh() {
-    if (statusProc.running) refreshPending = true
-    else statusProc.running = true
-  }
-
-  function update(raw) {
-    var data = extractData(raw)
-    waitingCount = Number(data.count || 0)
-    tooltip = String(data.tooltip || "")
-  }
-
-  Component.onCompleted: refresh()
-
-  // Alerts can also disappear without a hook, such as when the window or its
-  // session is killed while still flagged.
-  Timer {
-    interval: 5000
-    running: root.active
-    repeat: true
-    onTriggered: root.refresh()
+    if (root.tmuxService) root.tmuxService.refresh()
   }
 
   SequentialAnimation {
@@ -56,26 +38,6 @@ BarIndicator {
     target: root.indicatorHost
     ignoreUnknownSignals: true
     function onRefreshRequested() { root.refresh() }
-  }
-
-  Process {
-    id: statusProc
-    command: ["omarchy-tmux-alert", "show", "--json"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.update(text)
-    }
-    onExited: function(exitCode) {
-      if (exitCode !== 0) {
-        root.waitingCount = 0
-        root.tooltip = ""
-      }
-
-      if (root.refreshPending) {
-        root.refreshPending = false
-        root.refresh()
-      }
-    }
   }
 
   onPressed: function() {
