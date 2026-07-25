@@ -37,6 +37,7 @@ sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm \
   --overwrite '/etc/systemd/system/plocate-updatedb.service.d/ac-only.conf' \
   --overwrite '/etc/systemd/system.conf.d/20-omarchy-nofile.conf' \
   --overwrite '/etc/systemd/user.conf.d/20-omarchy-nofile.conf' \
+  --overwrite '/etc/systemd/zram-generator.conf' \
   --overwrite '/usr/lib/systemd/system-sleep/unmount-fuse' \
   --overwrite '/usr/share/plymouth/themes/omarchy/*' \
   --overwrite '/usr/share/sddm/hyprland.lua' \
