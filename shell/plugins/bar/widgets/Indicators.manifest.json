@@ -27,6 +27,11 @@
         "emptyText": "No indicators",
         "options": [
           {
+            "value": "StayAwake",
+            "label": "Stay awake",
+            "description": "Idle lock and screensaver override"
+          },
+          {
             "value": "Dnd",
             "label": "Do not disturb",
             "description": "Notification silencing"
@@ -45,11 +50,6 @@
             "value": "NightLight",
             "label": "Night light",
             "description": "Blue-light filter"
-          },
-          {
-            "value": "StayAwake",
-            "label": "Stay awake",
-            "description": "Idle lock and screensaver override"
           },
           {
             "value": "ScreenRecording",

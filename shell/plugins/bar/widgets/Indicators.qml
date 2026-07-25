@@ -8,7 +8,7 @@ BarWidget {
   id: root
   moduleName: "omarchy.indicators"
 
-  readonly property var defaultIndicatorEntries: [ "Dnd", "Reminder", "TmuxAlert", "NightLight", "StayAwake", "ScreenRecording", "Dictation" ]
+  readonly property var defaultIndicatorEntries: [ "StayAwake", "Dnd", "Reminder", "TmuxAlert", "NightLight", "ScreenRecording", "Dictation" ]
   readonly property var indicatorEntries: indicatorEntriesFromSettings(settings)
   property var activeIndicatorIds: []
   property var indicatorActiveStates: ({})
