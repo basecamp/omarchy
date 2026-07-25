@@ -1493,7 +1493,6 @@ always_copy_config_files=(
   hypr/input.lua
   hypr/looknfeel.lua
   hypr/monitors.lua
-  omarchy/bar.json
   omarchy/extensions/omarchy-menu.jsonc
   omarchy/hooks/pre-refresh-pacman.d/add-custom-repo.sample
   omarchy/shell.json
