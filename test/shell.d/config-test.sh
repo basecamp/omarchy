@@ -249,6 +249,27 @@ jq -e '
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config moves existing widgets without duplicates"
 
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin move omarchy.active-window right
+jq -e '
+  def ids: map(.id // .);
+  (.bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces"]) and
+  (.bar.layout.right | ids == ["omarchy.tray", "omarchy.active-window", "omarchy.microphone", "omarchy.tailscale", "omarchy.bluetooth"])
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "bar plugin move accepts a positional target section"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin move omarchy.active-window left
+jq -e '
+  def ids: map(.id // .);
+  (.bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces", "omarchy.active-window"]) and
+  (.bar.layout.right | ids == ["omarchy.tray", "omarchy.microphone", "omarchy.tailscale", "omarchy.bluetooth"])
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "bar plugin move can restore a widget with positional syntax"
+
+if HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin move omarchy.active-window left --section right 2>/dev/null; then
+  fail "bar plugin move accepted positional and flagged target sections"
+fi
+pass "bar plugin move rejects conflicting target section syntax"
+
 if HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin add local.nonexistent-widget 2>/dev/null; then
   fail "bar plugin add accepted an unknown widget"
 fi
