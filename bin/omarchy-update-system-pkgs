@@ -11,6 +11,10 @@ echo -e "\e[32m\nUpdate system packages\e[0m"
 # as unowned files; pacman would refuse the omarchy-settings upgrade on first
 # encounter. Drop each entry once the transition release is the baseline.
 #
+# An entry has to ship at least one release before the package starts owning the
+# path. pacman checks file conflicts during transaction prepare, so the copy of
+# this script running the upgrade is the one already on disk.
+#
 # The /usr/share/omarchy/* entry is permanent: that tree is wholly owned by
 # the omarchy packages, but files can land there unowned (in-place extension
 # work, script-written files), which would abort the whole upgrade. Packaged
@@ -37,7 +41,6 @@ sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm \
   --overwrite '/etc/systemd/system/plocate-updatedb.service.d/ac-only.conf' \
   --overwrite '/etc/systemd/system.conf.d/20-omarchy-nofile.conf' \
   --overwrite '/etc/systemd/user.conf.d/20-omarchy-nofile.conf' \
-  --overwrite '/etc/systemd/zram-generator.conf' \
   --overwrite '/usr/lib/systemd/system-sleep/unmount-fuse' \
   --overwrite '/usr/share/plymouth/themes/omarchy/*' \
   --overwrite '/usr/share/sddm/hyprland.lua' \
