@@ -24,6 +24,8 @@ Item {
   property string selfName: ""
   property string selfDnsName: ""
   property string selfIp: ""
+  property string selfUserId: ""
+  property bool fileSharing: false
   property string authUrl: ""
   property var peers: []
   property var exitNodes: []
@@ -123,6 +125,26 @@ Item {
     copyToClipboard(cleanDnsName(peer.DNSName), displayHostName(peer.HostName, peer.DNSName) + " DNS name")
   }
 
+  function peerAddress(peer) {
+    if (!peer) return ""
+    if (peer.DNSName) return cleanDnsName(peer.DNSName)
+    if (peer.HostName) return String(peer.HostName)
+    var ips = filterIPv4(peer.TailscaleIPs || [])
+    return ips.length > 0 ? ips[0] : ""
+  }
+
+  function canSendFiles(peer) {
+    if (!fileSharing || !running || !peer) return false
+    return Model.isTaildropTarget(peer, selfUserId)
+  }
+
+  function sendFile(peer) {
+    if (!canSendFiles(peer)) return
+    var target = peerAddress(peer)
+    if (target === "") return
+    Quickshell.execDetached(["omarchy-tailscale-send", target])
+  }
+
   function refresh(forceAccounts) {
     if (installed) {
       refreshStatusAndAccounts(forceAccounts === true)
@@ -175,6 +197,8 @@ Item {
     selfName = ""
     selfDnsName = ""
     selfIp = ""
+    selfUserId = ""
+    fileSharing = false
     authUrl = ""
     peers = []
     exitNodes = []
@@ -212,6 +236,8 @@ Item {
     selfName = parsed.selfName
     selfDnsName = parsed.selfDnsName
     selfIp = parsed.selfIp
+    selfUserId = parsed.selfUserId
+    fileSharing = parsed.fileSharing
     peers = parsed.running ? parsed.peers : []
     tailnetExitNodes = parsed.running ? parsed.exitNodes : []
     exitNodes = parsed.running ? tailnetExitNodes.concat(mullvadRegions) : []
@@ -295,10 +321,7 @@ Item {
       var mullvadIps = filterIPv4(peer.TailscaleIPs || [])
       if (mullvadIps.length > 0) return mullvadIps[0]
     }
-    if (peer.DNSName) return cleanDnsName(peer.DNSName)
-    if (peer.HostName) return String(peer.HostName)
-    var ips = filterIPv4(peer.TailscaleIPs || [])
-    return ips.length > 0 ? ips[0] : ""
+    return peerAddress(peer)
   }
 
   function setExitNode(peer) {

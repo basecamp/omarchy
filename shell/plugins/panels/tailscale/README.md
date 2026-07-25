@@ -10,6 +10,7 @@ Native Omarchy bar widget for Tailscale.
 - Switch between available Tailscale connections when multiple are available
 - Browse machines from `tailscale status --json`
 - Copy a machine's Tailscale IP, host name, or DNS name
+- Send files to a machine with Taildrop, when the tailnet allows file sharing
 
 ## Keyboard shortcuts
 
@@ -20,6 +21,7 @@ Inside the panel:
 - `c`: copy selected peer IP
 - `n`: copy selected peer name
 - `d`: copy selected peer DNS name
+- `s`: send files to selected peer
 - `t`: toggle Tailscale
 - `r`: refresh status
 - `esc`: close
@@ -28,6 +30,7 @@ Inside the panel:
 
 - `tailscale` CLI on `PATH`
 - `wl-copy` for clipboard copy actions
+- Taildrop enabled for the tailnet, to send files
 
 ## Icon
 

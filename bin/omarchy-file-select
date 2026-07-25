@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# omarchy:summary=Pick files with the desktop file chooser
+# omarchy:args=[--title <title>] [--multiple]
+# omarchy:examples=omarchy file select --title "Send with Tailscale" --multiple
+
+set -euo pipefail
+
+title="Select file"
+multiple=false
+
+while (($# > 0)); do
+  case "$1" in
+  --title)
+    shift
+    (($# > 0)) || { echo "omarchy-file-select: --title requires a value" >&2; exit 1; }
+    title="$1"
+    ;;
+  --multiple)
+    multiple=true
+    ;;
+  *)
+    echo "omarchy-file-select: unknown option $1" >&2
+    exit 1
+    ;;
+  esac
+  shift
+done
+
+# The chooser is the XDG portal one, so it looks and behaves like the file
+# dialog every other desktop app opens. The portal answers asynchronously on
+# the bus, under a request path ending in the token we hand it, so listen
+# before asking. Prints one path per line, and exits non-zero when nothing was
+# picked.
+token="omarchy$$"
+
+coproc PORTAL { gdbus monitor --session --dest org.freedesktop.portal.Desktop; }
+trap 'kill "$PORTAL_PID" 2>/dev/null' EXIT
+
+# The header line lands once the match rule is in place.
+read -r -u "${PORTAL[0]}" _
+
+gdbus call --session --dest org.freedesktop.portal.Desktop \
+  --object-path /org/freedesktop/portal/desktop \
+  --method org.freedesktop.portal.FileChooser.OpenFile \
+  "" "$title" "{'handle_token': <'$token'>, 'multiple': <$multiple>}" >/dev/null
+
+while read -r -u "${PORTAL[0]}" reply; do
+  [[ $reply == */"$token":*Response* ]] || continue
+
+  # A cancelled dialog answers with no URIs at all.
+  picked=false
+  while read -r uri; do
+    path="${uri#file://}"
+    # URIs arrive percent-encoded, and every %XX is already a printf escape.
+    printf '%b\n' "${path//%/\\x}"
+    picked=true
+  done < <(grep -o "file://[^']*" <<<"$reply")
+
+  $picked && exit 0
+  exit 1
+done

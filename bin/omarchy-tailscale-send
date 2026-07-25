@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# omarchy:summary=Send files to a machine on your tailnet with Taildrop
+# omarchy:args=<machine> [file...]
+# omarchy:examples=omarchy tailscale send dhh-fd | omarchy tailscale send dhh-fd ~/Downloads/notes.pdf
+
+set -euo pipefail
+
+if (($# < 1)); then
+  echo "Usage: omarchy-tailscale-send <machine> [file...]" >&2
+  exit 1
+fi
+
+machine="$1"
+shift
+
+# Address the machine by whatever name we were handed, but talk about it by
+# its short name, so a MagicDNS name does not spill into every message.
+name="${machine%%.*}"
+
+files=("$@")
+
+if ((${#files[@]} == 0)); then
+  readarray -t files < <(omarchy-file-select --title "Send to $name" --multiple)
+  ((${#files[@]} > 0)) || exit 0
+fi
+
+if ((${#files[@]} == 1)); then
+  what=$(basename "${files[0]}")
+else
+  what="${#files[@]} files"
+fi
+
+omarchy-notification-send "Sending to $name" "$what"
+
+if error=$(tailscale file cp --update-interval=0 -- "${files[@]}" "$machine:" 2>&1); then
+  omarchy-notification-send "Sent to $name" "$what"
+else
+  omarchy-notification-send -u critical "Could not send to $name" "${error:-Taildrop transfer failed}"
+  exit 1
+fi
