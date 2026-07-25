@@ -1,5 +1,5 @@
 // The four switch-shortcut presets shown as pills in the panel. Keep this in
-// sync with SWITCHER_OPTIONS in default/hypr/input.lua.
+// sync with SWITCHER_OPTIONS in config/hypr/input.lua.
 var SWITCHERS = [
   { id: "alt_shift", label: "Alt+Shift" },
   { id: "ctrl_shift", label: "Ctrl+Shift" },
