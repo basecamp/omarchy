@@ -1,0 +1,32 @@
+[Unit]
+Description=Omarchy speaker tuning filter-chain
+Documentation=https://github.com/basecamp/omarchy/blob/master/docs/AUDIO-TUNING.md
+# WirePlumber does the linking, so starting before it is up risks the output being
+# linked before the speaker device has been discovered.
+After=pipewire.service wireplumber.service
+Requires=pipewire.service
+Wants=wireplumber.service
+# Restart with the audio daemon, since the filter-chain loses its connection when
+# PipeWire goes away.
+PartOf=pipewire.service
+
+[Service]
+Type=simple
+# Hosts the tuning as a PipeWire *client* rather than loading it into the daemon
+# from pipewire.conf.d, which is only read at daemon startup. That is what lets
+# the tuning be switched on and off without restarting pipewire-pulse -- a
+# restart drops every PulseAudio client's connection, and applications that do
+# not reconnect (Spotify) have to be restarted by hand.
+#
+# It also contains failure: a malformed tuning breaks only this service, where a
+# bad drop-in in the daemon's own config stops PipeWire from starting at all.
+#
+# The config name is deliberately not PipeWire's stock filter-chain.conf, which
+# merges every fragment in ~/.config/pipewire/filter-chain.conf.d/ and would make
+# this service host unrelated user filters too.
+ExecStart=/usr/bin/pipewire -c omarchy-speaker-tuning.conf
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

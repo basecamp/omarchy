@@ -2,7 +2,14 @@
 
 # omarchy:summary=Switch between audio outputs while preserving the mute status
 
-sinks=$(timeout 2 pactl -f json list sinks | jq '[.[] | select((.ports | length == 0) or ([.ports[]? | .availability != "not available"] | any))]')
+# Skip the physical sink an active speaker tuning fronts: rotating onto it would
+# silently bypass the tuning rather than pick a different output.
+fronted=$(omarchy-audio-tuning fronted-sink 2>/dev/null || true)
+
+sinks=$(timeout 2 pactl -f json list sinks |
+  jq --arg fronted "$fronted" '[.[]
+    | select((.ports | length == 0) or ([.ports[]? | .availability != "not available"] | any))
+    | select($fronted == "" or .name != $fronted)]')
 sinks_count=$(jq 'length' <<<"$sinks")
 
 if (( sinks_count == 0 )); then
@@ -22,8 +29,18 @@ fi
 next_sink=$(jq -c ".[$next_sink_index]" <<<"$sinks")
 next_sink_name=$(jq -r '.name' <<<"$next_sink")
 next_sink_description=$(jq -r '.description // .properties."device.description" // .name' <<<"$next_sink")
-next_sink_volume=$(jq -r '.volume | to_entries[0].value.value_percent | sub("%"; "") | tonumber' <<<"$next_sink")
-next_sink_is_muted=$(jq -r '.mute' <<<"$next_sink")
+# A tuning sink sits at a fixed 100% and unmuted while real loudness lives on the
+# physical sink beneath it, so read the level from whichever sink actually carries
+# it or the OSD contradicts the volume keys.
+next_sink_effective=$(omarchy-audio-output-sink "$next_sink_name")
+next_sink_volume=$(timeout 2 pactl get-sink-volume "$next_sink_effective" 2>/dev/null |
+  awk 'NR == 1 {for (i = 1; i <= NF; i++) if ($i ~ /%$/) {sub("%", "", $i); print $i; exit}}')
+[[ -n $next_sink_volume ]] || next_sink_volume=$(jq -r '.volume | to_entries[0].value.value_percent | sub("%"; "") | tonumber' <<<"$next_sink")
+if [[ $(timeout 2 pactl get-sink-mute "$next_sink_effective" 2>/dev/null) == *yes ]]; then
+  next_sink_is_muted=true
+else
+  next_sink_is_muted=false
+fi
 
 if [[ $next_sink_is_muted == "true" ]] || (( next_sink_volume == 0 )); then
   icon_state="muted"

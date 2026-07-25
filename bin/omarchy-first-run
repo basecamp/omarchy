@@ -115,6 +115,8 @@ run_first_run_step "set GNOME theme" \
   bash "$OMARCHY_PATH/install/user/first-run/gnome-theme.sh"
 run_first_run_step "set GTK primary paste" \
   bash "$OMARCHY_PATH/install/user/first-run/gtk-primary-paste.sh"
+run_first_run_step "apply speaker tuning" \
+  bash "$OMARCHY_PATH/install/user/first-run/audio-tuning.sh"
 
 wait_for_notifications
 run_first_run_step "show welcome notification" \
