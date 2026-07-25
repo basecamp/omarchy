@@ -19,6 +19,9 @@
       ],
       "center": [
         {
+          "id": "omarchy.indicators"
+        },
+        {
           "id": "omarchy.clock",
           "format": "dddd HH:mm",
           "formatAlt": "d MMMM 'W'ww yyyy",

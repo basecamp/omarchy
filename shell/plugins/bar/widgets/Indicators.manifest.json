@@ -27,29 +27,14 @@
         "emptyText": "No indicators",
         "options": [
           {
-            "value": "StayAwake",
-            "label": "Stay awake",
-            "description": "Idle lock and screensaver override"
-          },
-          {
-            "value": "Dnd",
-            "label": "Do not disturb",
-            "description": "Notification silencing"
-          },
-          {
-            "value": "Reminder",
-            "label": "Reminder",
-            "description": "Queued reminder status"
-          },
-          {
             "value": "TmuxAlert",
             "label": "Tmux alert",
             "description": "Tmux windows waiting for attention"
           },
           {
-            "value": "NightLight",
-            "label": "Night light",
-            "description": "Blue-light filter"
+            "value": "Dictation",
+            "label": "Dictation",
+            "description": "Voice typing status"
           },
           {
             "value": "ScreenRecording",
@@ -57,9 +42,24 @@
             "description": "GPU screen recorder status"
           },
           {
-            "value": "Dictation",
-            "label": "Dictation",
-            "description": "Voice typing status"
+            "value": "Reminder",
+            "label": "Reminder",
+            "description": "Queued reminder status"
+          },
+          {
+            "value": "NightLight",
+            "label": "Night light",
+            "description": "Blue-light filter"
+          },
+          {
+            "value": "Dnd",
+            "label": "Do not disturb",
+            "description": "Notification silencing"
+          },
+          {
+            "value": "StayAwake",
+            "label": "Stay awake",
+            "description": "Idle lock and screensaver override"
           }
         ]
       },
