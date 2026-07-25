@@ -187,7 +187,7 @@ case "$action" in
 
   # `status` is a plain exit-code query (0 = shown, 1 = hidden) meant for
   # use as a `checked:` guard in omarchy-menu.jsonc (Trigger > Toggle >
-  # Show Keyboard Layout). toggle/show/hide are for the corresponding
+  # Keyboard Layout). toggle/show/hide are for the corresponding
   # `action:`, or for manual use. The bar widget picks up the new value on
   # its next `status` poll, so no Hyprland reload is needed here. A
   # notification is fired on show/hide/toggle (not on the plain `status`
