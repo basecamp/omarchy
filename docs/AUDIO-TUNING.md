@@ -43,14 +43,29 @@ and the sink-listing scripts rather than for daily use.
 ## Adding a tuning
 
 Add a directory with a `tuning.conf` and a `filter-chain.conf`. No new command is
-needed: matching is data. A tuning declares `match_dmi` (checked against the DMI
-product name and family) and `sink_pattern`, and needing both is specific enough
-for most hardware. If yours needs a sharper test, set `match_command` to any
-predicate instead — an `omarchy-hw-*` script, for example. `sink_pattern` is
-required either way, since the graph's target sink is substituted from it.
+needed: matching is data. A tuning declares how to recognise its hardware, plus the
+`sink_pattern` its graph targets:
+
+| Key | Matches on | Notes |
+|---|---|---|
+| `match_sku` | DMI product SKU, whole value | Most precise. Vendors key speaker firmware on it, so it identifies the hardware rather than a marketing name |
+| `match_dmi` | DMI product name or family, substring | Convenient, but a short string widens fast — `product_family` here is `Dell Laptops` |
+| `match_command` | Any predicate you name | For hardware needing a sharper test than either |
+
+`match_sku` and `match_dmi` are lists, so one tuning can cover several models it has
+been validated on:
+
+```bash
+match_sku=("0DB9" "0DBA")   # XPS 14 and XPS 16
+```
+
+`sink_pattern` is required whichever method you use, since the graph's target sink
+is substituted from it.
 
 Gate narrowly and widen as models are validated; a tuning aimed at the wrong
-drivers can sound worse than none and can stress them.
+drivers can sound worse than none and can stress them. When a tuning covers a model
+it was not measured on, say so in `tuning.conf` — the provenance fields are there to
+keep that distinction visible rather than implied.
 
 Two hard requirements:
 

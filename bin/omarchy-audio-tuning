@@ -41,6 +41,29 @@ sink_matching() {
   pactl list sinks short 2>/dev/null | awk -v p="$1" '$2 ~ p {print $2; exit}'
 }
 
+# Dell keys its Cirrus speaker firmware on the DMI product SKU, which makes it the
+# most precise identifier available for these machines -- narrower than a product
+# name, and it distinguishes models whose names differ only by marketing. Compared
+# case-insensitively against an exact SKU, never a substring, so a tuning cannot
+# accidentally widen to a whole product line.
+sku_matches() {
+  local sku want
+  sku="$(cat /sys/class/dmi/id/product_sku 2>/dev/null)"
+  [[ -n $sku ]] || return 1
+  for want in "$@"; do
+    [[ ${sku,,} == "${want,,}" ]] && return 0
+  done
+  return 1
+}
+
+dmi_matches() {
+  local want
+  for want in "$@"; do
+    omarchy-hw-match "$want" 2>/dev/null && return 0
+  done
+  return 1
+}
+
 # Print the tuning directory matching this laptop, if any. Matching is data, not
 # code: a tuning declares the DMI string it belongs to and the sink it expects, so
 # most tunings can be added as a directory with no new script. A tuning whose
@@ -50,7 +73,7 @@ tuning_match() {
   for dir in "$tunings_dir"/*/; do
     [[ -r $dir/tuning.conf ]] || continue
 
-    unset match_dmi match_command sink_pattern
+    unset match_dmi match_sku match_command sink_pattern
     # shellcheck disable=SC1090
     source "$dir/tuning.conf"
 
@@ -58,11 +81,16 @@ tuning_match() {
     # the ISO chroot with no audio server, and a match that depended on a present
     # sink would come back empty there -- so the machine would get neither the LV2
     # dependency nor the tuning, and nothing would retry.
+    # A tuning may list several models it has been validated on. match_dmi and
+    # match_sku are arrays, so a plain string still works as a single entry.
     if [[ -n ${match_command:-} ]]; then
       "$match_command" 2>/dev/null || continue
+    elif [[ -n ${match_sku:-} ]]; then
+      sku_matches "${match_sku[@]}" || continue
+    elif [[ -n ${match_dmi:-} ]]; then
+      dmi_matches "${match_dmi[@]}" || continue
     else
-      [[ -n ${match_dmi:-} ]] || continue
-      omarchy-hw-match "$match_dmi" 2>/dev/null || continue
+      continue
     fi
 
     # Required whichever way the tuning matched: the graph's target sink is
