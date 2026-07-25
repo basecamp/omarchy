@@ -69,7 +69,7 @@ lazygit
 less
 libsecret
 libyaml
-libreoffice-fresh
+onlyoffice-bin
 llvm
 localsend
 lua51
@@ -118,6 +118,7 @@ sushi
 system-config-printer
 tesseract
 tesseract-data-eng
+obfuscate
 tldr
 tree-sitter-cli
 tmux
@@ -142,5 +143,6 @@ xdg-desktop-portal-hyprland
 xdg-terminal-exec
 yaru-icon-theme
 yay
+yazi-git
 yt-dlp
 zoxide
