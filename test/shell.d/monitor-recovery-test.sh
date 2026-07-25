@@ -9,11 +9,11 @@ monitor_internal="$ROOT/bin/omarchy-hyprland-monitor-internal"
 monitor_mirror="$ROOT/bin/omarchy-hyprland-monitor-internal-mirror"
 monitor_laptop="$ROOT/bin/omarchy-hyprland-monitor-laptop"
 monitor_external_active="$ROOT/bin/omarchy-hyprland-monitor-external-active"
-sleep_lock="$ROOT/bin/omarchy-system-sleep-lock"
 system_wake="$ROOT/bin/omarchy-system-wake"
 clamshell="$ROOT/bin/omarchy-hyprland-monitor-clamshell"
 lock_service="$ROOT/shell/plugins/lock/Service.qml"
 hw_clamshell="$ROOT/bin/omarchy-hw-clamshell"
+hw_laptop_closed="$ROOT/bin/omarchy-hw-laptop-closed"
 utilities="$ROOT/default/hypr/bindings/utilities.lua"
 
 grep -F 'sleep "$delay"' "$monitor_watch" >/dev/null
@@ -36,8 +36,8 @@ grep -F 'sync_poll_state' "$monitor_watch" >/dev/null
 grep -F 'done < <(socat' "$monitor_watch" >/dev/null
 pass "clamshell poll only runs on a docked laptop, not desktops or undocked laptops"
 
-grep -F '/proc/acpi/button/lid/*/state' "$hw_clamshell" >/dev/null
-grep -F 'omarchy-hw-external-monitors' "$hw_clamshell" >/dev/null
+grep -F 'omarchy-hw-laptop-closed && omarchy-hw-external-monitors' "$hw_clamshell" >/dev/null
+grep -F '/proc/acpi/button/lid/*/state' "$hw_laptop_closed" >/dev/null
 pass "clamshell helper detects closed-lid external monitor state"
 
 grep -F 'hyprctl monitors -j' "$monitor_external_active" >/dev/null
@@ -72,13 +72,9 @@ pass "internal monitor recovery only wakes displays when it re-enables one"
 grep -F 'omarchy-hyprland-monitor-external-active' "$monitor_mirror" >/dev/null
 pass "internal mirror helper recovers when no active external display remains"
 
-grep -F 'switch:on:Lid Switch", nil, "omarchy-hyprland-monitor-clamshell"' "$utilities" >/dev/null
+grep -F 'switch:on:Lid Switch", nil, "omarchy-system-lid-close"' "$utilities" >/dev/null
 grep -F 'switch:off:Lid Switch", nil, "omarchy-hyprland-monitor-clamshell"' "$utilities" >/dev/null
-pass "lid switch bindings reconcile clamshell display state"
-
-grep -F 'omarchy-hyprland-monitor-clamshell >/dev/null 2>&1 || true' "$sleep_lock" >/dev/null
-grep -F '(( attempt % 5 == 0 )) && sync_clamshell' "$sleep_lock" >/dev/null
-pass "sleep lock syncs clamshell display state while waiting for secure lock"
+pass "lid switch bindings lock on close and reconcile clamshell display state"
 
 grep -F 'omarchy-hyprland-monitor-clamshell >/dev/null 2>&1 || true' "$system_wake" >/dev/null
 pass "system wake resyncs clamshell display state"
