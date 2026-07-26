@@ -45,6 +45,8 @@ SH
 chmod +x "$stub_bin"/*
 
 export PATH="$stub_bin:$ROOT/bin:$PATH"
+# The resize helper anchors to a region file here, so keep it out of the real one
+export XDG_RUNTIME_DIR="$tmp_dir"
 export OMARCHY_TEST_MENU_ARGS="$tmp_dir/menu-args"
 export OMARCHY_TEST_RECORDER_ARGS="$tmp_dir/recorder-args"
 export OMARCHY_TEST_NOTIFICATION_ARGS="$tmp_dir/notification-args"
@@ -152,6 +154,59 @@ if [[ -s $OMARCHY_TEST_HYPRCTL_ARGS ]]; then
   fail "webcam resize ignores other windows" "$(cat "$OMARCHY_TEST_HYPRCTL_ARGS")"
 fi
 pass "webcam resize ignores other windows"
+
+region_file="$XDG_RUNTIME_DIR/omarchy-screenrecord-region"
+
+: >"$OMARCHY_TEST_HYPRCTL_ARGS"
+echo "800x600+100+100" >"$region_file"
+"$ROOT/bin/omarchy-capture-webcam-resize" reset
+
+printf '%s\n' \
+  'dispatch hl.dsp.window.resize({ window = "address:0xabc", x = 133, y = 150 })' \
+  'dispatch hl.dsp.window.move({ window = "address:0xabc", x = 727, y = 510 })' >"$expected_hyprctl_args"
+
+if ! cmp -s "$OMARCHY_TEST_HYPRCTL_ARGS" "$expected_hyprctl_args"; then
+  fail "webcam anchors to the recorded region" "$(diff -u "$expected_hyprctl_args" "$OMARCHY_TEST_HYPRCTL_ARGS")"
+fi
+pass "webcam anchors to the recorded region"
+
+printf '%s\n' \
+  'dispatch hl.dsp.window.resize({ window = "address:0xabc", x = 178, y = 200 })' \
+  'dispatch hl.dsp.window.move({ window = "address:0xabc", x = 2342, y = 460 })' >"$expected_hyprctl_args"
+
+for region in "not-a-region" ""; do
+  : >"$OMARCHY_TEST_HYPRCTL_ARGS"
+  printf '%s' "$region" >"$region_file"
+  "$ROOT/bin/omarchy-capture-webcam-resize" reset
+
+  if ! cmp -s "$OMARCHY_TEST_HYPRCTL_ARGS" "$expected_hyprctl_args"; then
+    fail "webcam falls back to the monitor for an unusable region" "$(diff -u "$expected_hyprctl_args" "$OMARCHY_TEST_HYPRCTL_ARGS")"
+  fi
+done
+pass "webcam falls back to the monitor for an unusable region"
+
+# A region too narrow for presets scaled from its height shrinks the whole
+# ladder, so the three sizes stay distinct and each one fits inside the margins
+: >"$OMARCHY_TEST_HYPRCTL_ARGS"
+echo "200x1200+0+0" >"$region_file"
+for size in small medium large; do
+  "$ROOT/bin/omarchy-capture-webcam-resize" "$size"
+done
+
+printf '%s\n' \
+  'dispatch hl.dsp.window.resize({ window = "address:0xabc", x = 64, y = 72 })' \
+  'dispatch hl.dsp.window.move({ window = "address:0xabc", x = 96, y = 1088 })' \
+  'dispatch hl.dsp.window.resize({ window = "address:0xabc", x = 89, y = 100 })' \
+  'dispatch hl.dsp.window.move({ window = "address:0xabc", x = 71, y = 1060 })' \
+  'dispatch hl.dsp.window.resize({ window = "address:0xabc", x = 120, y = 135 })' \
+  'dispatch hl.dsp.window.move({ window = "address:0xabc", x = 40, y = 1025 })' >"$expected_hyprctl_args"
+
+if ! cmp -s "$OMARCHY_TEST_HYPRCTL_ARGS" "$expected_hyprctl_args"; then
+  fail "webcam sizes stay distinct and inside a narrow region" "$(diff -u "$expected_hyprctl_args" "$OMARCHY_TEST_HYPRCTL_ARGS")"
+fi
+pass "webcam sizes stay distinct and inside a narrow region"
+
+rm -f "$region_file"
 
 grep -F 'o.bind("SUPER + ALT + code:34", "Make webcam overlay smaller", "omarchy-capture-webcam-resize smaller")' \
   "$ROOT/default/hypr/bindings/utilities.lua" >/dev/null || fail "webcam smaller hotkey is configured"

@@ -75,32 +75,23 @@ if [[ -f $REGION_FILE ]] && region=$(<"$REGION_FILE"); then
   fi
 fi
 
-# Scale the 8:9 portrait presets from anchor height so they occupy the same
+# A tall, narrow region can't fit presets scaled from its own height, so cap the
+# height they scale from to what the width allows — the large preset is the
+# widest at 3/10 of it. Scaling the ladder as a whole leaves small, medium and
+# large distinct sizes for smaller and larger to step between.
+scale_height=$anchor_height
+available_width=$((anchor_width - 2 * MARGIN))
+((available_width > 0 && scale_height * 3 / 10 > available_width)) &&
+  scale_height=$((available_width * 10 / 3))
+
+# Scale the 8:9 portrait presets from that height so they occupy the same
 # proportion of a 1080p, HiDPI, ultrawide, or 6K recording.
-small_height=$(((anchor_height * 9 + 25) / 50))
+small_height=$(((scale_height * 9 + 25) / 50))
 small_width=$(((small_height * 8 + 4) / 9))
-medium_height=$(((anchor_height + 2) / 4))
+medium_height=$(((scale_height + 2) / 4))
 medium_width=$(((medium_height * 8 + 4) / 9))
-large_height=$(((anchor_height * 27 + 40) / 80))
+large_height=$(((scale_height * 27 + 40) / 80))
 large_width=$(((large_height * 8 + 4) / 9))
-
-# A tall, narrow region can't fit a preset scaled from its own height, so cap the
-# width to what the region has room for and let the height follow.
-fit_to_anchor() {
-  local width=$1 height=$2
-  local available=$((anchor_width - 2 * MARGIN))
-
-  if ((available > 0 && width > available)); then
-    height=$((height * available / width))
-    width=$available
-  fi
-
-  echo "$width $height"
-}
-
-read -r small_width small_height < <(fit_to_anchor "$small_width" "$small_height")
-read -r medium_width medium_height < <(fit_to_anchor "$medium_width" "$medium_height")
-read -r large_width large_height < <(fit_to_anchor "$large_width" "$large_height")
 
 target_width=$current_width
 target_height=$current_height
