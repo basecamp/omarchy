@@ -28,35 +28,77 @@ while (($# > 0)); do
 done
 
 # The chooser is the XDG portal one, so it looks and behaves like the file
-# dialog every other desktop app opens. The portal answers asynchronously on
-# the bus, under a request path ending in the token we hand it, so listen
-# before asking. Prints one path per line, and exits non-zero when nothing was
-# picked.
-token="omarchy$$"
+# dialog every other desktop app opens. The portal answers with a Response
+# signal aimed at the connection that asked, so the call and the wait have to
+# share one connection. Prints one path per line, and exits non-zero when
+# nothing was picked.
+OMARCHY_FILE_SELECT_TITLE="$title" OMARCHY_FILE_SELECT_MULTIPLE="$multiple" python3 -c '
+import os
+import sys
 
-coproc PORTAL { gdbus monitor --session --dest org.freedesktop.portal.Desktop; }
-trap 'kill "$PORTAL_PID" 2>/dev/null' EXIT
+import gi
 
-# The header line lands once the match rule is in place.
-read -r -u "${PORTAL[0]}" _
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
 
-gdbus call --session --dest org.freedesktop.portal.Desktop \
-  --object-path /org/freedesktop/portal/desktop \
-  --method org.freedesktop.portal.FileChooser.OpenFile \
-  "" "$title" "{'handle_token': <'$token'>, 'multiple': <$multiple>}" >/dev/null
+title = os.environ["OMARCHY_FILE_SELECT_TITLE"]
+multiple = os.environ["OMARCHY_FILE_SELECT_MULTIPLE"] == "true"
 
-while read -r -u "${PORTAL[0]}" reply; do
-  [[ $reply == */"$token":*Response* ]] || continue
+bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+loop = GLib.MainLoop()
+uris = []
 
-  # A cancelled dialog answers with no URIs at all.
-  picked=false
-  while read -r uri; do
-    path="${uri#file://}"
-    # URIs arrive percent-encoded, and every %XX is already a printf escape.
-    printf '%b\n' "${path//%/\\x}"
-    picked=true
-  done < <(grep -o "file://[^']*" <<<"$reply")
+def on_response(connection, sender, path, interface, signal, params):
+    code, results = params.unpack()
+    if code == 0:
+        uris.extend(results.get("uris", []))
+    loop.quit()
 
-  $picked && exit 0
-  exit 1
-done
+def subscribe(path):
+    bus.signal_subscribe(
+        "org.freedesktop.portal.Desktop",
+        "org.freedesktop.portal.Request",
+        "Response",
+        path,
+        None,
+        Gio.DBusSignalFlags.NONE,
+        on_response,
+    )
+
+# The request path is derived from our bus name and the token we pass, so it
+# can be subscribed to up front. Asking first would race a dialog that gets
+# answered immediately.
+token = "omarchy%d" % os.getpid()
+sender = bus.get_unique_name()[1:].replace(".", "_")
+predicted = "/org/freedesktop/portal/desktop/request/%s/%s" % (sender, token)
+subscribe(predicted)
+
+handle = bus.call_sync(
+    "org.freedesktop.portal.Desktop",
+    "/org/freedesktop/portal/desktop",
+    "org.freedesktop.portal.FileChooser",
+    "OpenFile",
+    GLib.Variant("(ssa{sv})", ("", title, {
+        "handle_token": GLib.Variant("s", token),
+        "multiple": GLib.Variant("b", multiple),
+    })),
+    None,
+    Gio.DBusCallFlags.NONE,
+    -1,
+    None,
+).unpack()[0]
+
+# Portals predating the token convention answer on a path of their choosing.
+if handle != predicted:
+    subscribe(handle)
+
+# A dialog nobody ever answers would otherwise keep this process, and whatever
+# waits on its output, alive forever.
+GLib.timeout_add_seconds(600, loop.quit)
+loop.run()
+
+for uri in uris:
+    print(GLib.filename_from_uri(uri)[0])
+
+sys.exit(0 if uris else 1)
+'

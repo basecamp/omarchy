@@ -31,8 +31,6 @@ else
   what="${#files[@]} files"
 fi
 
-omarchy-notification-send "Sending to $name" "$what"
-
 if error=$(tailscale file cp --update-interval=0 -- "${files[@]}" "$machine:" 2>&1); then
   omarchy-notification-send "Sent to $name" "$what"
 else
