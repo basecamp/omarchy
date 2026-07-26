@@ -83,7 +83,7 @@ o.bind("SUPER + CTRL + B", "Bluetooth", "omarchy-shell shell toggle omarchy.blue
 o.bind("SUPER + CTRL + D", "Display", "omarchy-shell shell toggle omarchy.monitor")
 o.bind("SUPER + CTRL + W", "Network", "omarchy-shell shell toggle omarchy.network")
 o.bind("SUPER + CTRL + P", "Power", "omarchy-shell shell toggle omarchy.power")
-o.bind("SUPER + CTRL + K", "Keyboard", "omarchy-shell shell toggle omarchy.keyboard")
+o.bind("SUPER + CTRL + K", "Keyboard layout", "omarchy-shell shell toggle omarchy.keyboard")
 o.bind("SUPER + CTRL + T", "Activity", { tui = "btop" })
 
 o.bind("SUPER + CTRL + Z", "Zoom in", function()
