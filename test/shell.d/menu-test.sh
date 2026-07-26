@@ -98,7 +98,7 @@ assert(!menu.queryWantsAppsOnly('1Password'), 'menu digit-leading queries stay a
 assert(!menu.queryWantsAppsOnly('@Steam'), 'menu symbol-leading queries stay a normal query')
 assert(menu.matchesQuery(entry, 'theme colors', true), 'menu lowercase multi-term queries match as before')
 assert(!menu.matchesQuery(entry, 'Theme colors', true), 'menu capitalized multi-term queries are apps-only too')
-assert(menu.matchesQuery(appEntry, 'Steam steam', true), 'menu apps-only multi-term queries still require every term')
+assert(!menu.matchesQuery(appEntry, 'Steam missing', true), 'menu apps-only multi-term queries still require every term')
 assert(menu.searchScore(merged.items, entry, 'theme') < menu.searchScore(merged.items, entry, 'appearance'), 'menu scores name matches above description matches')
 
 assertDeepEqual(
