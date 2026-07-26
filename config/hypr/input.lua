@@ -61,44 +61,31 @@ local vconsole = read_vconsole()
 local kb_layout = state_field("'[.layouts[].code] | join(\",\")'", vconsole.XKBLAYOUT or "us")
 local switcher = state_field("'.switcher // \"alt_shift\"'", "alt_shift")
 
--- The four switch-shortcut presets offered by the keyboard panel's pill
+-- The three switch-shortcut presets offered by the keyboard panel's pill
 -- row, mapped to the matching xkb grp option.
 local SWITCHER_OPTIONS = {
   alt_shift = "grp:alt_shift_toggle",
   ctrl_shift = "grp:ctrl_shift_toggle",
   right_alt = "grp:toggle",
-  both_shift = "grp:shifts_toggle",
 }
 
 local grp_option = SWITCHER_OPTIONS[switcher] or SWITCHER_OPTIONS.alt_shift
 
--- Compose used to be bound to "compose:caps", which hijacks Caps Lock
--- entirely and turns it into the Compose key -- Caps Lock then never
--- toggles capitalization again, it just shows the small compose-pending
--- dot while waiting for the next key. Bind Compose to the Menu key
--- instead: it's unused by every switcher preset above, so Caps Lock keeps
--- working normally and Compose sequences (e.g. Menu, ', e -> é) still work.
+-- Compose is bound to the Menu key, not Caps Lock. "compose:caps" plus
+-- "shift:both_capslock" was tried here -- on real hardware it broke every
+-- switcher preset outright (Alt+Shift, Ctrl+Shift, Right Alt, Right Shift
+-- all stopped switching), not just single-Shift capitalization as originally
+-- suspected. Whatever is going on, that combination isn't safe to ship
+-- alongside grp switching, so it's reverted to the working baseline.
 local kb_options = "compose:menu," .. grp_option
-
-local touchpad_state = os.getenv("HOME") .. "/.local/state/omarchy/settings/touchpad.json"
--- Same read pattern as state_field above, against the touchpad panel's own
--- state file rather than the keyboard one.
-local function touchpad_field(jq_filter, fallback)
-  local cmd = string.format("jq -r %s %q 2>/dev/null", jq_filter, touchpad_state)
-  local value = popen_trim(cmd)
-  if value == "" or value == "null" then
-    return fallback
-  end
-  return value
-end
-
-local disable_while_typing = touchpad_field("'.disable_while_typing // true'", "true") == "true"
 
 -- Applies everything computed above as Hyprland's live input configuration.
 hl.config({
   input = {
     kb_layout = kb_layout,
-    kb_variant = "",
+    -- Falls back to "" (xkb's default variant) if the system's vconsole.conf
+    -- never set one, or the user hasn't customized their keyboard variant.
+    kb_variant = vconsole.XKBVARIANT or "",
     kb_model = "",
     kb_options = kb_options,
     kb_rules = "",
@@ -113,7 +100,6 @@ hl.config({
       natural_scroll = false,
       clickfinger_behavior = true,
       scroll_factor = 0.4,
-      disable_while_typing = disable_while_typing,
     },
   },
 

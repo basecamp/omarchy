@@ -3,8 +3,7 @@
 var SWITCHERS = [
   { id: "alt_shift", label: "Alt+Shift" },
   { id: "ctrl_shift", label: "Ctrl+Shift" },
-  { id: "right_alt", label: "Right Alt" },
-  { id: "both_shift", label: "Both Shift" }
+  { id: "right_alt", label: "Right Alt" }
 ]
 
 // xkb layout code -> ISO 639-1 language code. GNOME's input-source indicator

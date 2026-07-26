@@ -113,6 +113,50 @@ Panel {
   // Switches to the "Add language" view and loads the full available list
   // fresh, so it always reflects the current set of already-configured
   // layouts rather than a stale snapshot from last time it was open.
+  // Moves the highlighted row in the "Add language" search results by dy
+  // (+1/-1), wrapping around at either end and scrolling it into view.
+  // Called both from keyCatcher (when the search field doesn't have focus)
+  // and directly from the search field's own Up/Down handlers below --
+  // PanelKeyCatcher is deliberately blocked while the search field has
+  // focus (so typing doesn't fight with panel navigation), which would
+  // otherwise leave Up/Down completely dead while actively searching.
+  // Moving the keyboard cursor changes a row's appearance (hover highlight,
+  // the remove button popping in), which shifts that row's layout under a
+  // mouse pointer that never actually moved. Qt Quick re-hit-tests on that
+  // shift and can fire onContainsMouseChanged for a row the mouse never
+  // touched, silently overwriting the keyboard selection right after it
+  // moved -- looks like the selection "jumping" or "getting lost" while
+  // navigating with arrow keys. Suppress hover-driven selection for a short
+  // window after every keyboard move so the layout has time to settle
+  // before hover is trusted again; a real mouse move afterwards still
+  // takes over normally once the window passes.
+  property real hoverSuppressedUntil: 0
+  function suppressHoverBriefly() { hoverSuppressedUntil = Date.now() + 200 }
+  function hoverAllowed() { return Date.now() >= hoverSuppressedUntil }
+
+  function moveAvailableSelection(dy) {
+    root.suppressHoverBriefly()
+    root.cursorActive = true
+    var maxAvail = Math.max(0, root.filteredAvailable.length - 1)
+    var next = root.selectedIndex + dy
+    if (next < 0) next = maxAvail
+    else if (next > maxAvail) next = 0
+    root.selectedIndex = next
+    root.ensureAvailableVisible(next)
+  }
+
+  function ensureAvailableVisible(index) {
+    var item = availableRepeater.itemAt(index)
+    if (!item || !availableFlick) return
+    var top = item.y
+    var bottom = item.y + item.height
+    if (top < availableFlick.contentY) {
+      availableFlick.contentY = top
+    } else if (bottom > availableFlick.contentY + availableFlick.height) {
+      availableFlick.contentY = bottom - availableFlick.height
+    }
+  }
+
   function openAddView() {
     viewMode = "add"
     searchText = ""
@@ -128,6 +172,10 @@ Panel {
     searchText = ""
     focusSection = "languages"
     selectedIndex = 0
+    // The search field held keyboard focus while typing; nothing moves it
+    // back automatically just because it's now hidden, so without this,
+    // keys like Esc silently go nowhere until something else grabs focus.
+    keyCatcher.forceActiveFocus()
   }
 
   // Manual on/off switch for the bar icon, controlled from omarchy-menu
@@ -228,6 +276,7 @@ Panel {
       blocked: root.viewMode === "add" && searchField.activeFocus
 
       onMoveRequested: function(dx, dy) {
+        root.suppressHoverBriefly()
         if (!root.cursorActive) { root.cursorActive = true; return }
         if (root.viewMode === "list") {
           if (root.focusSection === "languages") {
@@ -241,8 +290,7 @@ Panel {
           }
           return
         }
-        var maxAvail = Math.max(0, root.filteredAvailable.length - 1)
-        root.selectedIndex = Math.max(0, Math.min(maxAvail, root.selectedIndex + dy))
+        root.moveAvailableSelection(dy)
       }
 
       onActivateRequested: function() {
@@ -257,11 +305,6 @@ Panel {
           var a = root.filteredAvailable[root.selectedIndex]
           if (a && a.code) root.addLanguage(a.code)
         }
-      }
-
-      onDeleteRequested: if (root.viewMode === "list" && root.focusSection === "languages") {
-        var l = root.configuredLayouts[root.selectedIndex]
-        if (l && l.code) root.removeLanguage(l.code)
       }
 
       onTabRequested: function(direction) { root.switchPanel(direction) }
@@ -409,7 +452,7 @@ Panel {
             width: parent.width
             spacing: Style.space(6)
 
-            readonly property int count: 4
+            readonly property int count: 3
             readonly property real cellWidth: (width - spacing * (count - 1)) / count
 
             Repeater {
@@ -474,6 +517,9 @@ Panel {
           onAccepted: if (root.filteredAvailable.length > 0) root.addLanguage(root.filteredAvailable[0].code)
           onVisibleChanged: if (visible) Qt.callLater(forceActiveFocus)
           Component.onCompleted: if (visible) Qt.callLater(forceActiveFocus)
+          Keys.onUpPressed: function(event) { root.moveAvailableSelection(-1); event.accepted = true }
+          Keys.onDownPressed: function(event) { root.moveAvailableSelection(1); event.accepted = true }
+          Keys.onEscapePressed: function(event) { root.closeAddView(); event.accepted = true }
         }
 
         Flickable {
@@ -490,6 +536,7 @@ Panel {
             spacing: Style.space(2)
 
             Repeater {
+              id: availableRepeater
               model: root.filteredAvailable
               AvailableRow {
                 required property var modelData
@@ -546,7 +593,7 @@ Panel {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onContainsMouseChanged: if (containsMouse) {
+      onContainsMouseChanged: if (containsMouse && root.hoverAllowed()) {
         root.cursorActive = true
         root.focusSection = "languages"
         root.selectedIndex = row.rowIndex
@@ -609,7 +656,7 @@ Panel {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onContainsMouseChanged: if (containsMouse) {
+      onContainsMouseChanged: if (containsMouse && root.hoverAllowed()) {
         root.cursorActive = true
         root.focusSection = "available"
         root.selectedIndex = availRow.rowIndex
@@ -652,7 +699,7 @@ Panel {
     hasCursor: root.cursorActive && root.focusSection === "switcher" && root.selectedIndex === pillIndex
 
     onHovered: function(isHovered) {
-      if (!isHovered) return
+      if (!isHovered || !root.hoverAllowed()) return
       root.cursorActive = true
       root.focusSection = "switcher"
       root.selectedIndex = pill.pillIndex

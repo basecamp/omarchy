@@ -3,7 +3,7 @@
   "id": "omarchy.keyboard",
   "name": "Keyboard Layout",
   "version": "1.0.0",
-  "author": "Omarchy",
+  "author": "omarchy",
   "description": "Active keyboard language with add/remove and switch-shortcut picker",
   "kinds": [
     "bar-widget"

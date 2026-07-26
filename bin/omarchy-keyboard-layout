@@ -12,7 +12,7 @@ STATE_FILE="$STATE_DIR/keyboard.json"
 XKB_LIST="/usr/share/X11/xkb/rules/base.lst"
 
 usage() {
-  echo "Usage: omarchy-keyboard-layout [status|available|next|set <code>|add <code>|remove <code>|switcher <preset>|bar-icon <status|toggle|show|hide>]" >&2
+  echo "Usage: omarchy-keyboard-layout [status|available|next|set <code>|add <code>|remove <code>|switcher <preset>|open|bar-icon <status|toggle|show|hide>]" >&2
   exit 1
 }
 
@@ -196,12 +196,26 @@ case "$action" in
   switcher)
     preset=${2:-}
     case "$preset" in
-      alt_shift|ctrl_shift|right_alt|both_shift) ;;
+      alt_shift|ctrl_shift|right_alt) ;;
       *) usage ;;
     esac
     write_state '.switcher = $s' --arg s "$preset"
     reload_hyprland
     status_json
+    ;;
+
+  # Meant to be called directly by the keyboard-shortcut keybinding, e.g.:
+  #   o.bind("SUPER + CTRL + K", "Keyboard", "omarchy-keyboard-layout open")
+  # Deliberately a single plain subcommand with no shell operators (&&, ;)
+  # or quoting -- o.bind's dispatcher goes through hl.dsp.exec_cmd, which
+  # adds its own layer of escaping, and chained/quoted commands passed
+  # through that layer got mangled in practice. Checking show_bar_icon here
+  # keeps the visibility check entirely inside our own script instead.
+  open)
+    visible=$(jq -r 'if .show_bar_icon == null then true else .show_bar_icon end' "$STATE_FILE")
+    if [[ $visible == "true" ]]; then
+      omarchy-shell shell toggle omarchy.keyboard
+    fi
     ;;
 
   # `status` is a plain exit-code query (0 = shown, 1 = hidden) meant for
