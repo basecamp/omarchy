@@ -94,12 +94,29 @@ import sys
 from pathlib import Path
 
 root = Path(os.environ["ROOT"])
+home = Path.home()
 pkgs_candidates = [
   root.parent / "omarchy-pkgs/pkgbuilds",
   root.parent / "omarchy/omarchy-pkgs/pkgbuilds",
   root.parent.parent / "omarchy-pkgs/pkgbuilds",
+  root.parent / "omacom/omarchy-pkgs/pkgbuilds",
+  root.parent.parent / "omacom/omarchy-pkgs/pkgbuilds",
+  home / "Work/omacom/omarchy-pkgs/pkgbuilds",
 ]
-pkgs_root = next((path for path in pkgs_candidates if path.exists()), pkgs_candidates[0])
+# Checkouts differ per machine, so allow an explicit pointer at the sibling repo.
+# Accepts either the omarchy-pkgs checkout or its pkgbuilds/ directory.
+override = os.environ.get("OMARCHY_PKGS_PATH")
+if override:
+  pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)] + pkgs_candidates
+pkgs_root = next((path for path in pkgs_candidates if path.exists()), None)
+if pkgs_root is None:
+  print("not ok - omarchy-pkgs checkout found for PKGBUILD coverage", file=sys.stderr)
+  print(
+    "looked in:\n  " + "\n  ".join(str(path) for path in pkgs_candidates) +
+    "\nset OMARCHY_PKGS_PATH to the omarchy-pkgs checkout",
+    file=sys.stderr,
+  )
+  sys.exit(1)
 settings_pkgbuild_path = pkgs_root / "omarchy-settings/PKGBUILD"
 omarchy_pkgbuild_path = pkgs_root / "omarchy/PKGBUILD"
 if not settings_pkgbuild_path.exists():
