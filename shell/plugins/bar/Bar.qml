@@ -1,4 +1,5 @@
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
@@ -291,6 +292,8 @@ Item {
 
   readonly property bool vertical: position === "left" || position === "right"
   readonly property int barSize: vertical ? Style.bar.sizeVertical : Style.bar.sizeHorizontal
+  // Guards the one-time bar-changed emit on first applyBarConfig (startup).
+  property bool barChangeNotified: false
 
   function normalizePosition(value) {
     return BarModel.normalizePosition(value)
@@ -318,14 +321,44 @@ Item {
   function applyBarConfig() {
     var config = Util.isPlainObject(barConfig) ? barConfig : fallbackBarConfig
 
+    var previousPosition = position
+    var previousTransparent = requestedTransparent
     position = normalizePosition(config.position)
     setRequestedTransparency(config.transparent === true)
     centerAnchor = Util.canonicalWidgetId(config.centerAnchor || "")
     layoutConfig = normalizeLayout(config.layout)
     barConfigSerial++
+
+    // Keep the window gap under the bar in step with its edge and transparency;
+    // also fire once on first apply so gaps_out is corrected at startup.
+    if (!barChangeNotified || position !== previousPosition || requestedTransparent !== previousTransparent) {
+      barChangeNotified = true
+      notifyBarChanged(previousPosition)
+    }
+  }
+
+  // Hand the bar's edge and transparency to the bar-changed hook, which sets
+  // Hyprland's gaps_out: 0 under a transparent bar (windows flush) or the window
+  // gap when opaque. Passing the edge the bar just moved off of lets the hook
+  // restore exactly that edge (rather than guess which zero was a stale flush),
+  // so a hand-set zero elsewhere survives. Same hook contract theme changes use;
+  // fired on change, once at startup, and on a Hyprland config reload (see the
+  // Hyprland Connections below).
+  function notifyBarChanged(previousPosition) {
+    var movedFrom = previousPosition === undefined ? position : previousPosition
+    Quickshell.execDetached(["omarchy-hook", "bar-changed", position, requestedTransparent ? "true" : "false", movedFrom])
   }
 
   onBarConfigChanged: applyBarConfig()
+
+  // Hyprland resets gaps_out to its config default on reload, so re-assert the
+  // bar's gap whenever that happens.
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event && event.name === "configreloaded") root.notifyBarChanged()
+    }
+  }
 
   function layoutEntries(region) {
     var serial = barConfigSerial
@@ -514,6 +547,7 @@ Item {
       })
     } else {
       root.setRequestedTransparency(nextTransparent)
+      root.notifyBarChanged()
     }
   }
 
