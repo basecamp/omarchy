@@ -277,9 +277,20 @@ function descriptionTextMatches(query, text) {
   return true
 }
 
+// A query whose first character is uppercase ("Steam") searches apps only;
+// lowercase ("steam") searches everything. Non-letter leading characters
+// behave like lowercase.
+function queryWantsAppsOnly(query) {
+  var q = String(query || "").trim()
+  if (!q) return false
+  var first = q.charAt(0)
+  return first !== first.toLowerCase()
+}
+
 function matchesQuery(entry, query, visible) {
   if (!entry || entry.id === "root") return false
   if (!visible) return false
+  if (queryWantsAppsOnly(query) && entry.kind !== "app") return false
 
   var nameText = nameSearchText(entry)
   var descriptionText = String(entry.description || "").toLowerCase()
@@ -357,6 +368,7 @@ if (typeof module !== "undefined") {
     nameSearchText: nameSearchText,
     termInSearchWords: termInSearchWords,
     descriptionTextMatches: descriptionTextMatches,
+    queryWantsAppsOnly: queryWantsAppsOnly,
     matchesQuery: matchesQuery,
     searchScore: searchScore,
     displayRow: displayRow
