@@ -1,4 +1,4 @@
--- DaVinci Resolve dialog focus handling. Kept fully opaque: the default
+-- DaVinci Resolve window focus handling. Kept fully opaque: the default
 -- translucency distorts colour-critical grading work.
 o.window(".*[Rr]esolve.*", {
   float = true,
