@@ -262,7 +262,7 @@ This copies `$OMARCHY_PATH/config/hypr/hyprlock.conf` to `~/.config/hypr/hyprloc
 
 Read `docs/migrations.md` before creating or changing migrations.
 
-Migrations are per-user and run through `omarchy-migrate` during `omarchy update` or from the migration notification. Put migrations directly under `migrations/<timestamp>.sh`. Pending state is per-user under `~/.local/state/omarchy/migrations/`, so every user gets a chance to run every migration. Migrations run as the user; privileged work should invoke the appropriate helper or privilege prompt, and no-op when another user already applied it.
+Migrations are per-user and run through `omarchy-migrate` during `omarchy update` or from the login-time migration notification. Put migrations directly under `migrations/<timestamp>.sh`. Pending state is per-user under `~/.local/state/omarchy/migrations/`, so every user gets a chance to run every migration. Migrations run as the user; privileged work should invoke the appropriate helper or privilege prompt, and no-op when another user already applied it.
 
 To create a new migration, run `omarchy-dev-add-migration --no-edit`.
 

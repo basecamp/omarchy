@@ -16,5 +16,4 @@ systemctl --user enable --now \
   bt-agent.service \
   omarchy-recover-internal-monitor.service \
   omarchy-sleep-lock.service \
-  omarchy-update-user-notify.path \
-  omarchy-update-user-notify.service
+  omarchy-migrate-notify.service

@@ -88,27 +88,35 @@ if missing or bad:
 PY
 pass "default bar widget ids resolve to manifests and entry points"
 
-# This one checks the PKGBUILDs in the omarchy-pkgs repo, which is only around
-# when both are checked out together. Skip rather than fail where it is not, so
-# a missing sibling checkout cannot take the rest of the suite down with it.
-pkgs_root=""
-for candidate in "${OMARCHY_PKGS_ROOT:-}" "$(dirname "$ROOT")/omarchy-pkgs" "$(dirname "$(dirname "$ROOT")")/omarchy-pkgs"; do
-  if [[ -n $candidate && -d $candidate/pkgbuilds ]]; then
-    pkgs_root="$candidate/pkgbuilds"
-    break
-  fi
-done
-
-if [[ -z $pkgs_root ]]; then
-  echo "skip - package-owned defaults live outside config (no omarchy-pkgs checkout; set OMARCHY_PKGS_ROOT)"
-else
-ROOT="$ROOT" PKGS_ROOT="$pkgs_root" python3 <<'PY'
+ROOT="$ROOT" python3 <<'PY'
 import os
 import sys
 from pathlib import Path
 
 root = Path(os.environ["ROOT"])
-pkgs_root = Path(os.environ["PKGS_ROOT"])
+home = Path.home()
+pkgs_candidates = [
+  root.parent / "omarchy-pkgs/pkgbuilds",
+  root.parent / "omarchy/omarchy-pkgs/pkgbuilds",
+  root.parent.parent / "omarchy-pkgs/pkgbuilds",
+  root.parent / "omacom/omarchy-pkgs/pkgbuilds",
+  root.parent.parent / "omacom/omarchy-pkgs/pkgbuilds",
+  home / "Work/omacom/omarchy-pkgs/pkgbuilds",
+]
+# Checkouts differ per machine, so allow an explicit pointer at the sibling repo.
+# Accepts either the omarchy-pkgs checkout or its pkgbuilds/ directory.
+override = os.environ.get("OMARCHY_PKGS_PATH")
+if override:
+  pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)] + pkgs_candidates
+pkgs_root = next((path for path in pkgs_candidates if path.exists()), None)
+if pkgs_root is None:
+  print("not ok - omarchy-pkgs checkout found for PKGBUILD coverage", file=sys.stderr)
+  print(
+    "looked in:\n  " + "\n  ".join(str(path) for path in pkgs_candidates) +
+    "\nset OMARCHY_PKGS_PATH to the omarchy-pkgs checkout",
+    file=sys.stderr,
+  )
+  sys.exit(1)
 settings_pkgbuild_path = pkgs_root / "omarchy-settings/PKGBUILD"
 omarchy_pkgbuild_path = pkgs_root / "omarchy/PKGBUILD"
 if not settings_pkgbuild_path.exists():
@@ -129,8 +137,7 @@ package_defaults = [
   ("default/systemd/user/bt-agent.service", "/usr/lib/systemd/user/bt-agent.service", "systemd/user/bt-agent.service"),
   ("default/systemd/user/omarchy-sleep-lock.service", "/usr/lib/systemd/user/omarchy-sleep-lock.service", "systemd/user/omarchy-sleep-lock.service"),
   ("default/systemd/user/omarchy-recover-internal-monitor.service", "/usr/lib/systemd/user/omarchy-recover-internal-monitor.service", "systemd/user/omarchy-recover-internal-monitor.service"),
-  ("default/systemd/user/omarchy-update-user-notify.service", "/usr/lib/systemd/user/omarchy-update-user-notify.service", "systemd/user/omarchy-update-user-notify.service"),
-  ("default/systemd/user/omarchy-update-user-notify.path", "/usr/lib/systemd/user/omarchy-update-user-notify.path", "systemd/user/omarchy-update-user-notify.path"),
+  ("default/systemd/user/omarchy-migrate-notify.service", "/usr/lib/systemd/user/omarchy-migrate-notify.service", "systemd/user/omarchy-migrate-notify.service"),
   ("default/systemd/user/omarchy-tailscale-receive.service", "/usr/lib/systemd/user/omarchy-tailscale-receive.service", "systemd/user/omarchy-tailscale-receive.service"),
   ("default/systemd/zram-generator.conf.d/90-omarchy.conf", "/usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf", "systemd/zram-generator.conf.d/90-omarchy.conf"),
   ("default/fonts/omarchy/omarchy.ttf", "/usr/share/fonts/omarchy/omarchy.ttf", "omarchy.ttf"),
@@ -144,6 +151,16 @@ for source, destination, legacy in package_defaults:
     errors.append(f"legacy path still in config/: {legacy}")
   if destination and (source not in pkgbuild or destination not in pkgbuild):
     errors.append(f"PKGBUILD does not explicitly install {source} -> {destination}")
+
+# Existing users have an absolute wants symlink to the old unit path, and the
+# migration that repoints it only runs for users who run an update -- the
+# opposite of who the notifier is for. Dropping this alias strands them.
+notify_alias = 'ln -sfn omarchy-migrate-notify.service "$pkgdir/usr/lib/systemd/user/omarchy-update-user-notify.service"'
+if notify_alias not in pkgbuild:
+  errors.append(
+    "PKGBUILD does not ship the omarchy-update-user-notify.service compatibility "
+    "alias, so users who have not run migration 1785095882 lose the login notifier"
+  )
 
 alpm_hooks = [
   "00-omarchy-update-guard.hook",
@@ -162,8 +179,7 @@ if errors:
   print("\n".join(errors), file=sys.stderr)
   sys.exit(1)
 PY
-  pass "package-owned defaults live outside config"
-fi
+pass "package-owned defaults live outside config"
 
 grep -F 'dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/bootstrap.lua")' "$ROOT/config/hypr/hyprland.lua" >/dev/null
 grep -F 'require("default.hypr.omarchy")' "$ROOT/config/hypr/hyprland.lua" >/dev/null
