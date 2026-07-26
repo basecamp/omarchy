@@ -181,6 +181,7 @@ Item {
       accountsProcess.command = ["tailscale", "switch", "--list", "--json"]
       accountsProcess.running = true
     }
+    pollWatchdog.restart()
   }
 
   function elideStatus(text) {
@@ -407,6 +408,22 @@ Item {
     interval: 600
     repeat: false
     onTriggered: root.refresh()
+  }
+
+  Timer {
+    // Every poll is skipped while its own process is still running, so one that
+    // never exits — tailscale can hang on a network that is coming and going —
+    // silently stops the panel refreshing at all, and it stays stopped. Reap
+    // anything still running well inside the refresh interval so the next tick
+    // starts clean.
+    id: pollWatchdog
+    interval: 15000
+    repeat: false
+    onTriggered: {
+      if (statusProcess.running) statusProcess.running = false
+      if (mullvadExitNodesProcess.running) mullvadExitNodesProcess.running = false
+      if (accountsProcess.running) accountsProcess.running = false
+    }
   }
 
   Timer {
