@@ -690,7 +690,7 @@ Panel {
     }
   }
 
-  // One of the four switch-shortcut presets, same pill styling as the
+  // One of the three switch-shortcut presets, same pill styling as the
   // network panel's DNS provider picker.
   component SwitcherPill: Button {
     id: pill
