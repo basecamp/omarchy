@@ -47,7 +47,7 @@ announce() {
     args+=(--image "$path")
     ;;
   *)
-    args+=(-g 󰇚)
+    args+=(-g 󰒊)
     ;;
   esac
 

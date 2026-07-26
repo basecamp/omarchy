@@ -32,8 +32,8 @@ else
 fi
 
 if error=$(tailscale file cp --update-interval=0 -- "${files[@]}" "$machine:" 2>&1); then
-  omarchy-notification-send "Sent to $name" "$what"
+  omarchy-notification-send -g "󰒊" "Sent to $name" "$what"
 else
-  omarchy-notification-send -u critical "Could not send to $name" "${error:-Taildrop transfer failed}"
+  omarchy-notification-send -g "󰒊" -u critical "Could not send to $name" "${error:-Taildrop transfer failed}"
   exit 1
 fi
