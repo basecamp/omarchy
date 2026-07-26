@@ -278,8 +278,8 @@ function descriptionTextMatches(query, text) {
 }
 
 // A query whose first character is uppercase ("Steam") searches apps only;
-// lowercase ("steam") searches everything. Non-letter leading characters
-// behave like lowercase.
+// lowercase ("steam") searches everything. Leading characters with no
+// distinct uppercase form (digits, symbols) count as lowercase.
 function queryWantsAppsOnly(query) {
   var q = String(query || "").trim()
   if (!q) return false

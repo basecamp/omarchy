@@ -83,6 +83,18 @@ assert(menu.matchesQuery(entry, 'theme', true), 'menu matches labels and aliases
 assert(menu.matchesQuery(entry, 'colors', true), 'menu matches aliases')
 assert(!menu.matchesQuery(entry, 'missing', true), 'menu rejects missing terms')
 assert(!menu.matchesQuery(entry, 'theme', false), 'menu hides invisible matches')
+
+// App rows are built by Menu.qml's mergeAppRows, not normalizeItem.
+const appEntry = {
+  id: 'apps.steam', parent: 'apps', kind: 'app', icon: '', appIcon: '', appId: 'steam',
+  label: 'Steam', title: '', target: '', description: '', action: '', provider: '',
+  aliases: [], when: '', checked: '', order: 0
+}
+assert(menu.matchesQuery(appEntry, 'Steam', true), 'menu capitalized query matches app rows')
+assert(!menu.matchesQuery(entry, 'Theme', true), 'menu capitalized query excludes non-app rows')
+assert(menu.matchesQuery(entry, 'theme', true), 'menu lowercase query still matches everything')
+assert(menu.matchesQuery(entry, 'tHEME', true), 'menu mid-word capitals do not trigger apps-only')
+assert(!menu.queryWantsAppsOnly('1Password'), 'menu uncased leading characters stay a normal query')
 assert(menu.searchScore(merged.items, entry, 'theme') < menu.searchScore(merged.items, entry, 'appearance'), 'menu scores name matches above description matches')
 
 assertDeepEqual(
