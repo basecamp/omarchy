@@ -110,9 +110,8 @@ assertDeepEqual(
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
 
-// App rows land after every static item, so ranking has to survive the real
-// menu's item count: with hundreds of entries ahead of them, the order
-// tiebreak alone buries an installed app under Install and Remove.
+// Needs the real menu: app rows sort after all menu items, and only at that
+// item count does the order tiebreak alone bury an installed app.
 const rankBase = menu.mergeMenuSources(defaultItems, [])
 const ranked = menu.mergeAppRows(rankBase.items, rankBase.itemOrder, [
   { id: 'apps.brave', parent: 'apps', kind: 'app', label: 'Brave', description: '', aliases: [] },
