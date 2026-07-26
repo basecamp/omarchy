@@ -309,6 +309,12 @@ function searchScore(items, entry, query) {
   else if (descriptionTextMatches(needle, descriptionText)) score = 60
 
   if (entry.kind === "menu" || entry.kind === "link") score -= 2
+  // mergeAppRows appends app rows after every menu item, so an app always
+  // loses the order tiebreak below to a menu entry that matches just as well.
+  // Searching an installed app's name should launch it, not offer to install
+  // or remove it. The bias stays under the 10-point gap between match tiers,
+  // so a menu entry that matches better still sorts first.
+  if (entry.kind === "app") score -= 5
 
   return score * 1000 + depthFor(items, entry.id) * 25 + entry.order
 }
