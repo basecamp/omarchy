@@ -1,12 +1,20 @@
 echo "Move zram tuning to a vendor drop-in"
 
 zram_conf="${OMARCHY_ZRAM_CONF:-/etc/systemd/zram-generator.conf}"
+zram_dropin="${OMARCHY_ZRAM_DROPIN:-/usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf}"
 
 # The tuning ships as /usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf.
 # Drop-ins outrank the main config file, so a leftover /etc copy decides nothing
 # and only implies /etc is where zram gets configured.
 
 [[ -f $zram_conf ]] || exit 0
+
+# Only once the replacement is on disk. zram-generator makes no device at all
+# when nothing configures one, so until the drop-in lands the /etc copy is the
+# only thing standing between this machine and no zram swap. The update pipeline
+# installs packages before it runs migrations, but a dev checkout carries
+# migrations from a release the installed package does not have yet.
+[[ -f $zram_dropin ]] || exit 0
 
 # Package-owned copies go away with their package on upgrade.
 pacman -Qo "$zram_conf" &>/dev/null && exit 0
