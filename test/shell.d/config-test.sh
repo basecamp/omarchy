@@ -16,14 +16,14 @@ pass "default shell.json is valid JSON"
 jq -e '.version == 1 and (.bar.layout.left | type == "array") and (.bar.layout.center | type == "array") and (.bar.layout.right | type == "array")' "$ROOT/config/omarchy/shell.json" >/dev/null
 pass "default shell.json has versioned bar layout"
 
+# Pinning the whole row made this fail every time an unrelated widget moved,
+# so assert the adjacency the name is about and let the rest of the row change.
 jq -e '
   def ids: map(.id // .);
-  .bar.layout.center | ids == [
-    "omarchy.clock",
-    "omarchy.weather",
-    "omarchy.system-update",
-    "omarchy.indicators"
-  ]
+  (.bar.layout.center | ids) as $ids |
+  ($ids | index("omarchy.weather")) as $weather |
+  ($ids | index("omarchy.system-update")) as $update |
+  $weather != null and $update == $weather + 1
 ' "$ROOT/config/omarchy/shell.json" >/dev/null
 pass "default center layout keeps update next to weather"
 
@@ -88,18 +88,27 @@ if missing or bad:
 PY
 pass "default bar widget ids resolve to manifests and entry points"
 
-ROOT="$ROOT" python3 <<'PY'
+# This one checks the PKGBUILDs in the omarchy-pkgs repo, which is only around
+# when both are checked out together. Skip rather than fail where it is not, so
+# a missing sibling checkout cannot take the rest of the suite down with it.
+pkgs_root=""
+for candidate in "${OMARCHY_PKGS_ROOT:-}" "$(dirname "$ROOT")/omarchy-pkgs" "$(dirname "$(dirname "$ROOT")")/omarchy-pkgs"; do
+  if [[ -n $candidate && -d $candidate/pkgbuilds ]]; then
+    pkgs_root="$candidate/pkgbuilds"
+    break
+  fi
+done
+
+if [[ -z $pkgs_root ]]; then
+  echo "skip - package-owned defaults live outside config (no omarchy-pkgs checkout; set OMARCHY_PKGS_ROOT)"
+else
+ROOT="$ROOT" PKGS_ROOT="$pkgs_root" python3 <<'PY'
 import os
 import sys
 from pathlib import Path
 
 root = Path(os.environ["ROOT"])
-pkgs_candidates = [
-  root.parent / "omarchy-pkgs/pkgbuilds",
-  root.parent / "omarchy/omarchy-pkgs/pkgbuilds",
-  root.parent.parent / "omarchy-pkgs/pkgbuilds",
-]
-pkgs_root = next((path for path in pkgs_candidates if path.exists()), pkgs_candidates[0])
+pkgs_root = Path(os.environ["PKGS_ROOT"])
 settings_pkgbuild_path = pkgs_root / "omarchy-settings/PKGBUILD"
 omarchy_pkgbuild_path = pkgs_root / "omarchy/PKGBUILD"
 if not settings_pkgbuild_path.exists():
@@ -153,7 +162,8 @@ if errors:
   print("\n".join(errors), file=sys.stderr)
   sys.exit(1)
 PY
-pass "package-owned defaults live outside config"
+  pass "package-owned defaults live outside config"
+fi
 
 grep -F 'dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/bootstrap.lua")' "$ROOT/config/hypr/hyprland.lua" >/dev/null
 grep -F 'require("default.hypr.omarchy")' "$ROOT/config/hypr/hyprland.lua" >/dev/null
