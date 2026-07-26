@@ -3,7 +3,7 @@
 # omarchy:summary=Add, move, remove, and configure bar plugin widgets in the layout
 # omarchy:group=bar
 # omarchy:args=add <id> [placement] | move <id> [placement] | remove <id> [placement] | set <id> <key> <value> [--json] [placement] | replace <old-id> <new-id>
-# omarchy:examples=omarchy bar plugin add omarchy.tailscale | omarchy bar plugin add omarchy.clock --section center --before omarchy.weather | omarchy bar plugin move omarchy.clock --section center --index 0 | omarchy bar plugin remove omarchy.tailscale | omarchy bar plugin set omarchy.clock format HH:mm
+# omarchy:examples=omarchy bar plugin add omarchy.tailscale | omarchy bar plugin add omarchy.clock center | omarchy bar plugin move omarchy.media left | omarchy bar plugin move omarchy.clock --section center --index 0 | omarchy bar plugin remove omarchy.tailscale | omarchy bar plugin set omarchy.clock format HH:mm
 
 set -euo pipefail
 
@@ -41,7 +41,8 @@ Widget ids are listed by 'omarchy plugin list'.
 
 Examples:
   omarchy bar plugin add omarchy.tailscale
-  omarchy bar plugin add omarchy.clock --section center --before omarchy.weather
+  omarchy bar plugin add omarchy.clock center
+  omarchy bar plugin move omarchy.media left
   omarchy bar plugin move omarchy.clock --section center --index 0
   omarchy bar plugin remove omarchy.tailscale
   omarchy bar plugin remove omarchy.tailscale --all
@@ -265,7 +266,26 @@ cmd_move() {
   local id="${1:-}"
   [[ -n $id ]] || fail "move requires a widget id"
   shift
+
+  local positional_section=""
+  while (( $# > 0 )); do
+    if [[ $1 == --* ]]; then
+      break
+    fi
+    [[ -z $positional_section ]] || fail "unexpected argument: $1"
+    positional_section="$1"
+    shift
+  done
+
   parse_placement "$@"
+  [[ -z $positional_section || -z $PLACEMENT_SECTION ]] || fail "specify a section positionally or with --section, not both"
+  [[ -z $positional_section || -z $PLACEMENT_INDEX ]] || fail "specify a section positionally or use --index, not both"
+  [[ -z $positional_section || -z $PLACEMENT_BEFORE ]] || fail "specify a section positionally or use --before, not both"
+  [[ -z $positional_section || -z $PLACEMENT_AFTER ]] || fail "specify a section positionally or use --after, not both"
+  if [[ -n $positional_section ]]; then
+    validate_section "$positional_section"
+    PLACEMENT_SECTION="$positional_section"
+  fi
 
   local default_section="${PLACEMENT_SECTION:-}"
   local prog

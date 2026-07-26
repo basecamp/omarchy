@@ -423,6 +423,28 @@ for nvim_legacy_target in \
 done
 pass "nvim theme migration relinks current theme"
 
+for nvim_legacy_target in \
+  "../../../omarchy/current/theme/neovim.lua" \
+  "../../../../.config/omarchy/current/theme/neovim.lua" \
+  "~/.config/omarchy/current/theme/neovim.lua" \
+  "$NVIM_MIGRATION_TMPDIR/.config/omarchy/current/theme/neovim.lua"; do
+  ln -sfn "$nvim_legacy_target" "$nvim_theme_link"
+  HOME="$NVIM_MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/1785002349.sh" >/dev/null
+  nvim_actual_target=$(readlink "$nvim_theme_link")
+  nvim_resolved_target=$(readlink -f "$nvim_theme_link")
+  [[ $nvim_actual_target == $nvim_expected_target ]] || fail "nvim theme repair migration updates $nvim_legacy_target"
+  [[ $nvim_resolved_target == $nvim_expected_resolved_target ]] || fail "nvim theme repair migration points to current theme"
+done
+
+HOME="$NVIM_MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/1785002349.sh" >/dev/null
+[[ $(readlink "$nvim_theme_link") == $nvim_expected_target ]] || fail "nvim theme repair migration is idempotent"
+
+touch "$NVIM_MIGRATION_TMPDIR/custom-theme.lua"
+ln -sfn "../../../../custom-theme.lua" "$nvim_theme_link"
+HOME="$NVIM_MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/1785002349.sh" >/dev/null
+[[ $(readlink "$nvim_theme_link") == "../../../../custom-theme.lua" ]] || fail "nvim theme repair migration leaves custom symlinks alone"
+pass "nvim theme repair migration relinks every legacy spelling"
+
 HYPR_MIGRATION_TMPDIR=$(mktemp -d)
 mkdir -p "$HYPR_MIGRATION_TMPDIR/.config/hypr"
 cat >"$HYPR_MIGRATION_TMPDIR/.config/hypr/hyprland.lua" <<'LUA'

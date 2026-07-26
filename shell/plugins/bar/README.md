@@ -59,7 +59,6 @@ Example `shell.json` (bar subtree only shown):
 | `omarchy.clock` | Date/time label | left = alternate format · right = timezone selector |
 | `omarchy.media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
 | `omarchy.indicators` | Manual state indicators | left = indicator action |
-| `omarchy.notifications` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
 | `omarchy.system-update` | Available update indicator | left = update |
 | `omarchy.tray` | System tray | hover = reveal drawer · right on chevron = manage |
 | `omarchy.weather` | Weather icon + popup with forecast | left = popup · right = full notification |
@@ -169,8 +168,8 @@ Widgets receive `bar` (the shell root), `moduleName` (string), and `settings` (o
 First-party bar widgets are manifest-backed just like third-party widgets.
 Simple widgets carry sibling manifests such as `widgets/Clock.manifest.json`;
 richer popup plugins live in feature directories such as `../panels/audio/`,
-`../panels/network/`, and `../model-usage/`; and feature plugins such as `omarchy.menu`, `omarchy.media`, and
-`omarchy.notifications` declare their bar-widget entry points in their own
+`../panels/network/`, and `../model-usage/`; and feature plugins such as
+`omarchy.menu` and `omarchy.media` declare their bar-widget entry points in their own
 `manifest.json`. Bar layout ids are namespaced, e.g. `omarchy.audio`,
 `omarchy.network`, and `omarchy.clock`. Older UpperCamelCase ids such as
 `AudioPanel` and `Clock` are migrated forward; new configs should use the

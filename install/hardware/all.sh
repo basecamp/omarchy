@@ -15,8 +15,12 @@ run_logged "$OMARCHY_INSTALL/hardware/vulkan.sh"
 run_logged "$OMARCHY_INSTALL/hardware/intel/video-acceleration.sh"
 run_logged "$OMARCHY_INSTALL/hardware/intel/lpmd.sh"
 run_logged "$OMARCHY_INSTALL/hardware/intel/thermald.sh"
-run_logged "$OMARCHY_INSTALL/hardware/intel/ipu7-camera.sh"
+# Swap in the Panther Lake kernel before anything pulls DKMS modules in.
+# intel-ipu7-camera drags in ipu7-drivers, vision-drivers and v4l2loopback,
+# and building all three against the stock kernel only to rebuild them against
+# linux-ptl and tear the first set down again cost ~25s of the install.
 run_logged "$OMARCHY_INSTALL/hardware/intel/ptl-kernel.sh"
+run_logged "$OMARCHY_INSTALL/hardware/intel/ipu7-camera.sh"
 run_logged "$OMARCHY_INSTALL/hardware/intel/fred.sh"
 run_logged "$OMARCHY_INSTALL/hardware/intel/fix-wifi7-eht.sh"
 run_logged "$OMARCHY_INSTALL/hardware/intel/sof-firmware.sh"

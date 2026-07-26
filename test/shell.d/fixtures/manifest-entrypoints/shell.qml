@@ -138,23 +138,12 @@ ShellRoot {
   }
 
   QtObject {
-    id: mockNotificationService
-    property bool doNotDisturb: false
-    property ListModel pendingModel: ListModel {}
-    property ListModel pastModel: ListModel {}
-    function setDoNotDisturb(value) { doNotDisturb = !!value }
-  }
-
-  QtObject {
     id: mockShell
     property var bar: fakeBar
     property var barConfig: ({ position: "top" })
     property var shellConfig: ({ version: 1, idle: {}, plugins: [], bar: { layout: { left: [], center: [], right: [] } } })
-    function firstPartyServiceFor(id) {
-      if (id === "omarchy.notifications") return mockNotificationService
-      return null
-    }
-    function serviceFor(id) { return firstPartyServiceFor(id) }
+    function firstPartyServiceFor(id) { return null }
+    function serviceFor(id) { return null }
     function summon(id, payloadJson) { return true }
     function hide(id) { return true }
     function toggle(id, payloadJson) { return true }
