@@ -83,7 +83,7 @@ o.bind("SUPER + CTRL + B", "Bluetooth", "omarchy-shell shell toggle omarchy.blue
 o.bind("SUPER + CTRL + D", "Display", "omarchy-shell shell toggle omarchy.monitor")
 o.bind("SUPER + CTRL + W", "Network", "omarchy-shell shell toggle omarchy.network")
 o.bind("SUPER + CTRL + P", "Power", "omarchy-shell shell toggle omarchy.power")
-o.bind("SUPER + CTRL + K", "Keyboard layout", "omarchy-keyboard-layout open") -- When the keyboard layout indicator is enabled in the bar
+o.bind("SUPER + CTRL + K", "Keyboard layout while enabled", "omarchy-keyboard-layout open") -- When the keyboard layout indicator is enabled in the bar
 o.bind("SUPER + CTRL + T", "Activity", { tui = "btop" })
 
 o.bind("SUPER + CTRL + Z", "Zoom in", function()
