@@ -514,7 +514,18 @@ Panel {
           verticalPadding: Style.spacing.controlPaddingY
           text: root.searchText
           onTextChanged: root.searchText = text
-          onAccepted: if (root.filteredAvailable.length > 0) root.addLanguage(root.filteredAvailable[0].code)
+          onAccepted: {
+            if (root.filteredAvailable.length === 0) return
+            // Use whatever row is currently highlighted by the keyboard
+            // cursor (kept in sync by moveAvailableSelection as Up/Down are
+            // pressed), falling back to the first result only if no
+            // selection has been made yet (e.g. Enter pressed immediately
+            // after typing, before any arrow-key navigation).
+            var idx = root.cursorActive
+              ? Math.max(0, Math.min(root.selectedIndex, root.filteredAvailable.length - 1))
+              : 0
+            root.addLanguage(root.filteredAvailable[idx].code)
+          }
           onVisibleChanged: if (visible) Qt.callLater(forceActiveFocus)
           Component.onCompleted: if (visible) Qt.callLater(forceActiveFocus)
           Keys.onUpPressed: function(event) { root.moveAvailableSelection(-1); event.accepted = true }
