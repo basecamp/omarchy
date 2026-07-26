@@ -14,7 +14,7 @@ Panel {
 
   // Raw status from `omarchy-keyboard-layout status`:
   // { layouts: [{code, label}], switcher, active, show_bar_icon }
-  property var status: ({ layouts: [], switcher: "alt_shift", active: "", show_bar_icon: false })
+  property var status: ({ layouts: [], switcher: "alt_shift", active: "", show_bar_icon: true })
   property var available: []
 
   readonly property var configuredLayouts: Model.toArray(status.layouts)
