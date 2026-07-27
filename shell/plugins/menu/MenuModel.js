@@ -277,6 +277,14 @@ function descriptionTextMatches(query, text) {
   return true
 }
 
+var appTokenStopWords = ({ app: true, com: true, dev: true, io: true, net: true, org: true })
+
+function isMeaningfulAppToken(token) {
+  var value = String(token || "").toLowerCase()
+  if (value.length < 3) return false
+  return appTokenStopWords[value] !== true
+}
+
 function matchesQuery(entry, query, visible) {
   if (!entry || entry.id === "root") return false
   if (!visible) return false
@@ -303,6 +311,7 @@ function searchScore(items, entry, query) {
   var score = 80
 
   if (label === needle) score = entry.parent === "root" ? 2 : 0
+  else if (entry.kind === "app" && isMeaningfulAppToken(needle) && termInSearchWords(needle, nameText)) score = 0
   else if (label.indexOf(needle) === 0) score = 10
   else if (label.indexOf(needle) >= 0) score = 30
   else if (nameText.indexOf(needle) >= 0) score = 40
@@ -360,6 +369,7 @@ if (typeof module !== "undefined") {
     nameSearchText: nameSearchText,
     termInSearchWords: termInSearchWords,
     descriptionTextMatches: descriptionTextMatches,
+    isMeaningfulAppToken: isMeaningfulAppToken,
     matchesQuery: matchesQuery,
     searchScore: searchScore,
     displayRow: displayRow

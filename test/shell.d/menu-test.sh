@@ -115,9 +115,14 @@ const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item])
 const rankBase = menu.mergeMenuSources(defaultItems, [])
 const ranked = menu.mergeAppRows(rankBase.items, rankBase.itemOrder, [
   { id: 'apps.brave', parent: 'apps', kind: 'app', label: 'Brave', description: '', aliases: [] },
-  { id: 'apps.fontforge', parent: 'apps', kind: 'app', label: 'FontForge', description: '', aliases: [] }
+  { id: 'apps.fontforge', parent: 'apps', kind: 'app', label: 'FontForge', description: '', aliases: [] },
+  { id: 'apps.spotify', parent: 'apps', kind: 'app', label: 'Spotify', description: 'Music Player', aliases: ['Music Player', 'spotify'] },
+  { id: 'apps.com.libretro.RetroArch', parent: 'apps', kind: 'app', label: 'RetroArch', description: 'Game emulator frontend', aliases: ['Game emulator frontend', 'com.libretro.RetroArch'] },
+  { id: 'apps.example-control', parent: 'apps', kind: 'app', label: 'Example', description: '', aliases: [] },
+  { id: 'apps.com.example.Player', parent: 'apps', kind: 'app', label: 'Music Player', description: '', aliases: ['com.example.Player'] }
 ])
 const rankScore = (id, query) => menu.searchScore(ranked.items, ranked.items[id], query)
+const rankTier = (id, query) => Math.floor(rankScore(id, query) / 1000)
 assert(
   ['install.browser.brave', 'remove.browser.brave', 'setup.default.browser.brave'].every(
     id => rankScore('apps.brave', 'brave') < rankScore(id, 'brave')
@@ -127,6 +132,22 @@ assert(
 assert(
   rankScore('style.font', 'font') < rankScore('apps.fontforge', 'font'),
   'menu keeps a better-matching menu entry above a weaker app match'
+)
+assert(
+  rankScore('apps.spotify', 'spotify') < rankScore('install.service.spotify', 'spotify'),
+  'menu ranks installed Spotify above the install-service entry'
+)
+assert(
+  rankScore('apps.com.libretro.RetroArch', 'retroarch') < rankScore('install.gaming.retroarch', 'retroarch'),
+  'menu ranks installed RetroArch above the install-gaming entry'
+)
+assert(
+  rankTier('apps.com.example.Player', 'example') === rankTier('apps.example-control', 'example'),
+  'menu ranks meaningful app id token matches like exact app matches'
+)
+assert(
+  rankScore('apps.com.example.Player', 'com') > rankScore('apps.com.example.Player', 'example'),
+  'menu does not boost generic reverse-DNS namespace tokens'
 )
 const triggerItems = defaultItems.filter(item => item.parent === 'trigger')
 assertEqual(

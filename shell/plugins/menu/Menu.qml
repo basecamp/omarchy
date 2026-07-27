@@ -253,7 +253,7 @@ Item {
       var appId = String(entry.id || "")
       if (!appId) continue
       var subtext = root.appLibrary.entrySubtext(entry)
-      var aliases = subtext ? [subtext] : []
+      var aliases = subtext ? [subtext, appId] : [appId]
       try {
         if (entry.keywords && typeof entry.keywords.join === "function") aliases = aliases.concat(entry.keywords)
       } catch (e) { }
