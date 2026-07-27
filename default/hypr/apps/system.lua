@@ -9,8 +9,12 @@ o.window(
     tag = "+floating-window",
   }
 )
+-- The portal only ever shows dialogs — file pickers, screen shares, permission
+-- prompts — so every one of its windows belongs in the floating treatment,
+-- whatever the app that asked for it titled it.
+o.window("xdg-desktop-portal-gtk", { tag = "+floating-window" })
 o.window({
-  class = "(xdg-desktop-portal-gtk|sublime_text|DesktopEditors|org.gnome.Nautilus)",
+  class = "(sublime_text|DesktopEditors|org.gnome.Nautilus)",
   title = "^(Open.*Files?|Open [F|f]older.*|Save.*Files?|Save.*As|Save|All Files|.*wants to [open|save].*|[C|c]hoose.*)",
 }, { tag = "+floating-window" })
 o.window("dev.tensaku.Tensaku", { float = true })

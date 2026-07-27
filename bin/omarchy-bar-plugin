@@ -288,6 +288,15 @@ cmd_move() {
   fi
 
   local default_section="${PLACEMENT_SECTION:-}"
+
+  # A bare section names the section, not the slot, so let it fall through to
+  # the same anchor placement 'add' uses. Passing it as an explicit target
+  # instead drops the widget on the far end of the row.
+  local target_section="$PLACEMENT_SECTION"
+  if [[ -z $PLACEMENT_INDEX && -z $PLACEMENT_BEFORE && -z $PLACEMENT_AFTER ]]; then
+    target_section=""
+  fi
+
   local prog
   prog=$(cat <<JQ
     $JQ_DEFS $NORMALIZE
@@ -302,7 +311,7 @@ JQ
   commit "$prog" \
     --arg id "$id" \
     --arg defaultSection "$default_section" \
-    --arg targetSection "$PLACEMENT_SECTION" \
+    --arg targetSection "$target_section" \
     --arg targetIndex "$PLACEMENT_INDEX" \
     --arg before "$PLACEMENT_BEFORE" \
     --arg after "$PLACEMENT_AFTER" \

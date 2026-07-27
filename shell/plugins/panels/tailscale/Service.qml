@@ -24,6 +24,8 @@ Item {
   property string selfName: ""
   property string selfDnsName: ""
   property string selfIp: ""
+  property string selfUserId: ""
+  property bool fileSharing: false
   property string authUrl: ""
   property var peers: []
   property var exitNodes: []
@@ -123,6 +125,26 @@ Item {
     copyToClipboard(cleanDnsName(peer.DNSName), displayHostName(peer.HostName, peer.DNSName) + " DNS name")
   }
 
+  function peerAddress(peer) {
+    if (!peer) return ""
+    if (peer.DNSName) return cleanDnsName(peer.DNSName)
+    if (peer.HostName) return String(peer.HostName)
+    var ips = filterIPv4(peer.TailscaleIPs || [])
+    return ips.length > 0 ? ips[0] : ""
+  }
+
+  function canSendFiles(peer) {
+    if (!fileSharing || !running || !peer) return false
+    return Model.isTaildropTarget(peer, selfUserId)
+  }
+
+  function sendFile(peer) {
+    if (!canSendFiles(peer)) return
+    var target = peerAddress(peer)
+    if (target === "") return
+    Quickshell.execDetached(["omarchy-tailscale-send", target])
+  }
+
   function refresh(forceAccounts) {
     if (installed) {
       refreshStatusAndAccounts(forceAccounts === true)
@@ -137,18 +159,21 @@ Item {
 
   function refreshStatusAndAccounts(forceAccounts) {
     if (!installed) return
+    var launched = false
     if (!statusProcess.running) {
       _statusOutput = ""
       _statusError = ""
       refreshing = true
       statusProcess.command = ["tailscale", "status", "--json"]
       statusProcess.running = true
+      launched = true
     }
     if (!mullvadExitNodesProcess.running) {
       _mullvadExitNodesOutput = ""
       _mullvadExitNodesError = ""
       mullvadExitNodesProcess.command = ["tailscale", "exit-node", "list"]
       mullvadExitNodesProcess.running = true
+      launched = true
     }
     var now = Date.now()
     var shouldRefreshAccounts = forceAccounts === true || accounts.length === 0 || now - _lastAccountsRefreshMs > 60000
@@ -158,7 +183,13 @@ Item {
       _lastAccountsRefreshMs = now
       accountsProcess.command = ["tailscale", "switch", "--list", "--json"]
       accountsProcess.running = true
+      launched = true
     }
+    // Arm on the launch that needs watching and leave it alone after that.
+    // Restarting it every refresh pushes the deadline out ahead of a hung
+    // process forever once the refresh interval is shorter than the timeout,
+    // and refreshIntervalSec goes down to five seconds.
+    if (launched && !pollWatchdog.running) pollWatchdog.start()
   }
 
   function elideStatus(text) {
@@ -175,6 +206,8 @@ Item {
     selfName = ""
     selfDnsName = ""
     selfIp = ""
+    selfUserId = ""
+    fileSharing = false
     authUrl = ""
     peers = []
     exitNodes = []
@@ -212,6 +245,8 @@ Item {
     selfName = parsed.selfName
     selfDnsName = parsed.selfDnsName
     selfIp = parsed.selfIp
+    selfUserId = parsed.selfUserId
+    fileSharing = parsed.fileSharing
     peers = parsed.running ? parsed.peers : []
     tailnetExitNodes = parsed.running ? parsed.exitNodes : []
     exitNodes = parsed.running ? tailnetExitNodes.concat(mullvadRegions) : []
@@ -295,10 +330,7 @@ Item {
       var mullvadIps = filterIPv4(peer.TailscaleIPs || [])
       if (mullvadIps.length > 0) return mullvadIps[0]
     }
-    if (peer.DNSName) return cleanDnsName(peer.DNSName)
-    if (peer.HostName) return String(peer.HostName)
-    var ips = filterIPv4(peer.TailscaleIPs || [])
-    return ips.length > 0 ? ips[0] : ""
+    return peerAddress(peer)
   }
 
   function setExitNode(peer) {
@@ -384,6 +416,22 @@ Item {
     interval: 600
     repeat: false
     onTriggered: root.refresh()
+  }
+
+  Timer {
+    // Every poll is skipped while its own process is still running, so one that
+    // never exits — tailscale can hang on a network that is coming and going —
+    // silently stops the panel refreshing at all, and it stays stopped. Reap
+    // anything still running well inside the refresh interval so the next tick
+    // starts clean.
+    id: pollWatchdog
+    interval: 15000
+    repeat: false
+    onTriggered: {
+      if (statusProcess.running) statusProcess.running = false
+      if (mullvadExitNodesProcess.running) mullvadExitNodesProcess.running = false
+      if (accountsProcess.running) accountsProcess.running = false
+    }
   }
 
   Timer {
