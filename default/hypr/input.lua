@@ -21,14 +21,34 @@ local function read_vconsole()
   return values
 end
 
+-- Layouts that can't type Latin letters. Keep in sync with the list in
+-- etc/mkinitcpio.conf.d/omarchy_hooks.conf.
+local non_latin_layouts =
+  " af am ara bd bg by et ge gr il in iq ir kg kh kz la lk mk mm mn mv np rs ru sy th tj ua "
+
 local vconsole = read_vconsole()
+
+local kb_layout = vconsole.XKBLAYOUT or "us"
+local kb_variant = vconsole.XKBVARIANT or ""
+local kb_options = "compose:caps,shift:both_capslock"
+
+-- Hyprland resolves keybindings against the first entry in kb_layout, not the
+-- layout that's currently active, so Omarchy's Latin-keysym bindings (SUPER + W
+-- and friends) only fire when a Latin layout leads. Installing with a non-Latin
+-- one would otherwise leave the desktop unusable.
+if non_latin_layouts:find(" " .. kb_layout:match("^[^,]*") .. " ", 1, true) then
+  kb_layout = "us," .. kb_layout
+  kb_variant = "," .. kb_variant
+  -- Reach the original layout with Left Alt + Right Alt.
+  kb_options = kb_options .. ",grp:alts_toggle"
+end
 
 hl.config({
   input = {
-    kb_layout = vconsole.XKBLAYOUT or "us",
-    kb_variant = vconsole.XKBVARIANT or "",
+    kb_layout = kb_layout,
+    kb_variant = kb_variant,
     kb_model = "",
-    kb_options = "compose:caps,shift:both_capslock",
+    kb_options = kb_options,
     kb_rules = "",
     follow_mouse = 1,
     sensitivity = 0,
