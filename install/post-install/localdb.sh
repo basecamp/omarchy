@@ -3,6 +3,6 @@
 # sub-minute install — and locate is not needed before the first reboot.
 #
 # Enable an idle first-boot oneshot (via a short OnBootSec timer) instead so
-# the desktop is not blocked; daily plocate-updatedb.timer keeps the index
-# fresh afterwards.
+# the desktop is not blocked; plocate-updatedb.timer (when enabled) keeps the
+# index fresh afterwards.
 systemctl enable omarchy-updatedb-first-boot.timer
