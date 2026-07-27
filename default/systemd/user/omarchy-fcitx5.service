@@ -1,0 +1,31 @@
+[Unit]
+Description=Fcitx5 input method (XCompose sequences)
+# fcitx5 turns the CapsLock compose sequences in ~/.XCompose into text for
+# Wayland clients.
+#
+# Wait for the compositor: fcitx5 needs WAYLAND_DISPLAY and DISPLAY, which uwsm
+# imports into the user manager before it reaches graphical-session.target.
+After=graphical-session.target
+# The wayland connection dies with the compositor, so follow the session rather
+# than linger against a socket that is gone.
+PartOf=graphical-session.target
+# After= is ordering only -- it does not stop anything from starting this unit
+# while the target is inactive. An `omarchy update` over SSH has a live user
+# manager (pam_systemd) and no graphical session, and a fcitx5 started there
+# comes up with no WAYLAND_DISPLAY and no way to reach any client. Worse, it
+# stays active, so the later graphical-session.target activation won't pull in a
+# working one -- Wants= does not restart what is already running. Skip the start
+# instead; the unit stays enabled and starts for real at graphical login.
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=simple
+# notificationitem duplicates the tray entry omarchy already renders itself.
+ExecStart=/usr/bin/fcitx5 --disable notificationitem
+# always, not on-failure: fcitx5 exits 0 when it detects another instance owning
+# its bus name, and a clean exit still leaves the user with no input method.
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
