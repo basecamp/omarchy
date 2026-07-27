@@ -700,6 +700,12 @@ ShellRoot {
         source: "plugin"
       }
 
+      // A load already in flight for this URL registers itself when it
+      // finishes. Starting a second one produces a second Component for the
+      // same widget, and swapping a slot's component rebuilds its item —
+      // briefly running two of the widget, each registering its IPC handler.
+      if (existing && existing.url === url && !existing.component) continue
+
       // If the component URL is unchanged, just refresh the metadata in
       // place. We can't skip this even when the URL matches: manifests can
       // change schema, defaults, or sourceDir between rescans, and the
@@ -769,17 +775,29 @@ ShellRoot {
     }
   }
 
+  function setPluginWidgetComponent(registryKey, entry) {
+    var next = ({})
+    for (var k in pluginWidgetComponents) if (k !== registryKey) next[k] = pluginWidgetComponents[k]
+    if (entry) next[registryKey] = entry
+    pluginWidgetComponents = next
+  }
+
   function loadPluginWidget(registryKey, url, meta) {
+    // Claim the key before the component exists. Qt.createComponent is
+    // asynchronous and syncPluginWidgets runs several times while the shell
+    // starts, so without a marker the later passes cannot tell a load in
+    // flight from one that never happened.
+    setPluginWidgetComponent(registryKey, { url: url, component: null })
+
     var comp = Qt.createComponent(url, Component.Asynchronous)
     function finalize() {
       if (comp.status === Component.Ready) {
         shell.barWidgetRegistry.register(registryKey, comp, meta)
-        var next = ({})
-        for (var k in pluginWidgetComponents) next[k] = pluginWidgetComponents[k]
-        next[registryKey] = { url: url, component: comp }
-        pluginWidgetComponents = next
+        shell.setPluginWidgetComponent(registryKey, { url: url, component: comp })
       } else if (comp.status === Component.Error) {
         console.warn("Plugin widget " + registryKey + " failed: " + comp.errorString())
+        // Drop the claim so a later rescan can retry.
+        shell.setPluginWidgetComponent(registryKey, null)
         shell.pluginRegistry.pluginLoadFailed(registryKey, comp.errorString())
       }
     }

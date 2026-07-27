@@ -230,6 +230,19 @@ for panel_id in omarchy.audio omarchy.bluetooth omarchy.monitor omarchy.network 
 done
 pass "direct panel IPC opens and closes default panels"
 
+# Each widget registers its IPC handler once while the shell starts. A second
+# registration for the same target means two instances of that widget were
+# live at once, which is what duplicate component loads produced: every sync
+# pass that ran while a widget's asynchronous load was still in flight started
+# a second load, and swapping a slot's component builds the replacement before
+# dropping the original. Checked before the reload below, which rebuilds
+# widgets by design.
+if grep -q "another handler is registered for target" "$log"; then
+  grep "another handler is registered for target" "$log" | sed 's/^/  /' | head -20 >&2
+  fail_with_log "each widget registers its IPC handler once while starting"
+fi
+pass "each widget registers its IPC handler once while starting"
+
 HOME="$test_home" OMARCHY_PATH="$test_root" PATH="$ROOT/bin:$PATH" "$ROOT/bin/omarchy-bar-plugin" remove omarchy.audio
 
 for _ in {1..80}; do
@@ -257,3 +270,4 @@ jq -e 'all(.[]; .id != "omarchy.audio")' <<<"$geometry" >/dev/null || {
 }
 
 pass "bar remove reloads shell config and updates bar layout"
+
