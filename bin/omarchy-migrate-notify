@@ -40,11 +40,14 @@ if update_in_progress; then
   exit 0
 fi
 
+# A transient service rather than a scope, which would block here until the
+# toast was answered and keep this oneshot activating for that whole time. The
+# graphical slice ends an unanswered toast at logout.
 unit="omarchy-migrations-notification-$(date +%Y%m%d%H%M%S)"
-systemd-run --user --scope --unit="$unit" bash -lc "$notify_command" >/dev/null 2>&1 && exit 0
+systemd-run --user --collect --slice=background-graphical.slice --unit="$unit" bash -lc "$notify_command" >/dev/null 2>&1 && exit 0
 
-# Reached when there is no user manager to run the scope under, such as a
-# non-graphical shell, so fall back to telling the user in the terminal.
+# Reached when the notification could not be handed off, so fall back to telling
+# the user in the terminal.
 print_pending_migrations() {
   echo "Omarchy has pending migrations. Run omarchy-migrate in a terminal to apply them:"
   while IFS= read -r migration; do

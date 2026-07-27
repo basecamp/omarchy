@@ -29,7 +29,13 @@ if [[ ${OMARCHY_TEST_SYSTEMD_RUN:-run} == "fail" ]]; then
 fi
 
 command=${!#}
-bash -c "$command"
+
+# --scope blocks on the command, a transient service detaches it.
+if [[ " $* " == *" --scope "* ]]; then
+  bash -c "$command"
+else
+  setsid bash -c "$command" >/dev/null 2>&1 &
+fi
 SH
 chmod +x "$stub_bin/systemd-run"
 
@@ -61,7 +67,18 @@ chmod +x "$stub_bin/omarchy-notification-wait"
 
 cat >"$stub_bin/omarchy-notification-send" <<'SH'
 #!/bin/bash
-printf '%s\n' "$@" >"$OMARCHY_TEST_NOTIFY_ARGS"
+# Written whole so a reader polling for the file never sees half the arguments.
+printf '%s\n' "$@" >"$OMARCHY_TEST_NOTIFY_ARGS.partial"
+mv "$OMARCHY_TEST_NOTIFY_ARGS.partial" "$OMARCHY_TEST_NOTIFY_ARGS"
+
+# Stands in for a toast nobody has answered yet, until the test releases it.
+if [[ -n ${OMARCHY_TEST_NOTIFY_HOLD:-} ]]; then
+  for _ in {1..200}; do
+    [[ -e $OMARCHY_TEST_NOTIFY_HOLD ]] || break
+    sleep 0.05
+  done
+  : >"$OMARCHY_TEST_NOTIFY_ANSWERED"
+fi
 SH
 chmod +x "$stub_bin/omarchy-notification-send"
 
@@ -77,7 +94,18 @@ run_notify() {
   OMARCHY_TEST_SYSTEMD_RUN="${2:-run}" \
   OMARCHY_TEST_LOCK_DURING_WAIT="${OMARCHY_TEST_LOCK_DURING_WAIT:-0}" \
   OMARCHY_TEST_LOCK_HOLDER_PID="$test_tmp/lock-holder-pid" \
+  OMARCHY_TEST_NOTIFY_HOLD="${OMARCHY_TEST_NOTIFY_HOLD:-}" \
+  OMARCHY_TEST_NOTIFY_ANSWERED="$test_tmp/notify-answered" \
     "$ROOT/bin/omarchy-migrate-notify"
+}
+
+# The notification outlives the notifier, so its arguments land after it exits.
+wait_for_notify_args() {
+  for _ in {1..200}; do
+    [[ -s $test_tmp/notify-args ]] && return 0
+    sleep 0.05
+  done
+  return 1
 }
 
 run_notify 0 >"$test_tmp/not-pending.out" 2>"$test_tmp/not-pending.err"
@@ -91,6 +119,7 @@ grep -q '200-migration.sh' "$test_tmp/pending.err" || fail "migration notifier l
 pass "migration notifier reports pending migrations"
 
 run_notify 1 >"$test_tmp/notified.out" 2>"$test_tmp/notified.err"
+wait_for_notify_args || fail "migration notifier sends a notification for pending migrations"
 grep -Fx 'Pending Omarchy Migrations' "$test_tmp/notify-args" >/dev/null || fail "migration notifier uses pending migrations title"
 grep -Fx 'Click to run 1 pending migration.' "$test_tmp/notify-args" >/dev/null || fail "migration notifier describes the pending migration"
 grep -Fx '' "$test_tmp/notify-args" >/dev/null || fail "migration notifier includes the large-slot glyph"
@@ -114,7 +143,8 @@ pass "migration notifier stays quiet while omarchy update holds its lock"
 exec {update_lock_fd}>&-
 
 run_notify 1 >/dev/null 2>&1
-grep -Fx 'Pending Omarchy Migrations' "$test_tmp/notify-args" >/dev/null ||
+wait_for_notify_args &&
+  grep -Fx 'Pending Omarchy Migrations' "$test_tmp/notify-args" >/dev/null ||
   fail "migration notifier resumes notifying once the update lock is released"
 pass "migration notifier resumes notifying after the update releases its lock"
 
@@ -142,8 +172,20 @@ exec {foreign_lock_fd}>"$foreign_lock"
 flock -n "$foreign_lock_fd" || fail "test could not hold the foreign update lock"
 
 run_notify 1 >/dev/null 2>&1
-grep -Fx 'Pending Omarchy Migrations' "$test_tmp/notify-args" >/dev/null ||
+wait_for_notify_args &&
+  grep -Fx 'Pending Omarchy Migrations' "$test_tmp/notify-args" >/dev/null ||
   fail "migration notifier ignores update locks outside its own runtime directory"
 pass "migration notifier ignores update locks outside its own runtime directory"
 
 exec {foreign_lock_fd}>&-
+
+# The notifier is a Type=oneshot with no start timeout, so blocking on the toast
+# leaves it activating until the user answers.
+rm -f "$test_tmp/notify-args" "$test_tmp/notify-answered"
+: >"$test_tmp/notify-hold"
+OMARCHY_TEST_NOTIFY_HOLD="$test_tmp/notify-hold" run_notify 1 >/dev/null 2>&1
+wait_for_notify_args || fail "migration notifier sends the notification it detaches"
+[[ ! -e $test_tmp/notify-answered ]] ||
+  fail "migration notifier waited for the toast to be answered before exiting"
+rm -f "$test_tmp/notify-hold"
+pass "migration notifier exits while the toast is still unanswered"
