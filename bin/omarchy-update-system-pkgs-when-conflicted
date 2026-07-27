@@ -1,0 +1,88 @@
+#!/bin/bash
+
+# Internal to omarchy-update-system-pkgs. Not a command to run by hand: it acts
+# on a pacman error report, and an old or hand-written one would move live files
+# out of the way for an upgrade that is not happening.
+#
+# Paths written by a script rather than installed by a package -- an earlier
+# release's installer, an in-place edit -- belong to nobody, and pacman refuses
+# to install over a file it doesn't own. This clears them and runs the upgrade
+# again.
+
+set -e
+
+[[ ${OMARCHY_UPDATE_CONFLICT:-} == 1 ]] || {
+  echo "omarchy-update-system-pkgs-when-conflicted runs as part of omarchy update" >&2
+  exit 1
+}
+
+errors=${1:?usage: omarchy-update-system-pkgs-when-conflicted <pacman-error-report>}
+
+# Where a file pacman is taking over gets moved, mirroring its full path. Kept
+# out of the directory it came from: SDDM reads every file in sddm.conf.d
+# whatever its extension, and systemd-sleep runs every executable in
+# system-sleep, so a copy left beside the original would still be live.
+replaced=${OMARCHY_REPLACED_DIR:-/var/lib/omarchy/replaced}
+
+# Anything moved that the upgrade didn't end up installing goes back, whether
+# the retry failed or the move loop itself was interrupted partway. Nothing here
+# should leave configuration inactive that was live when it started.
+#
+# -e follows symlinks, so a dangling one reads as absent. -L catches those: a
+# link pacman installed, and a relative link that no longer resolves from inside
+# the quarantine.
+moved=()
+restore_moved() {
+  local path restorable=()
+
+  for path in "${moved[@]}"; do
+    if [[ ! -e $path && ! -L $path ]] && [[ -e $replaced$path || -L $replaced$path ]]; then
+      restorable+=("$path")
+    fi
+  done
+  ((${#restorable[@]})) || return 0
+
+  echo -e "\e[33m\nPutting back what the upgrade didn't take:\e[0m"
+  for path in "${restorable[@]}"; do
+    sudo mv -T "$replaced$path" "$path"
+    echo "  $path"
+  done
+}
+
+# exec'd into, so the caller's EXIT trap never ran and the report is still here.
+# Cleaning it up is this script's job from now on.
+trap 'restore_moved; rm -f "$errors"' EXIT
+trap 'exit 1' INT TERM
+
+# Paths one of these packages installs that pacman doesn't own. Moving them out
+# of the way is what lets the upgrade through, and works on a leftover directory
+# as well as a file.
+#
+# "pkg: /path exists in filesystem" is unowned; the same line plus "(owned by
+# x)" is not, so the end anchor takes only ours. -Qo re-checks the live database
+# before anything moves.
+mapfile -t leftovers < <(
+  grep -oP '^omarchy(-dev|-settings|-settings-dev)?: \K.+(?= exists in filesystem$)' "$errors" |
+    while IFS= read -r path; do pacman -Qo "$path" &>/dev/null || echo "$path"; done
+)
+((${#leftovers[@]})) || exit 1
+
+# All of them or none: moving a subset leaves the retry blocked by the rest, and
+# the moved files inactive for nothing.
+((${#leftovers[@]} == $(grep -c ' exists in filesystem' "$errors"))) || exit 1
+
+echo -e "\e[33m\nTaking over files pacman doesn't own yet:\e[0m"
+for path in "${leftovers[@]}"; do
+  sudo mkdir -p "$replaced${path%/*}"
+  # -T so an existing directory at the destination is replaced, not moved into.
+  sudo mv -T --backup=numbered "$path" "$replaced$path"
+  moved+=("$path")
+  echo "  $path -> $replaced$path"
+done
+echo
+
+if OMARCHY_UPDATE_RETRY=1 omarchy-update-system-pkgs; then
+  moved=()
+  exit 0
+fi
+exit 1
