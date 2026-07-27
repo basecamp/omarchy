@@ -1321,6 +1321,12 @@ Item {
     property string region: ""
 
     visible: entries.length > 0
+    // A hidden list must not build its modules. The center section declares
+    // both an anchored and an unanchored arrangement and shows whichever
+    // fits, so leaving the other one loaded mounts every center module
+    // twice — two IPC handlers registered for the same target, two clocks
+    // ticking, two of every timer and fetch behind them.
+    active: visible && entries.length > 0
     sourceComponent: root.vertical ? verticalModuleList : horizontalModuleList
     width: item ? item.implicitWidth : 0
     height: item ? item.implicitHeight : 0

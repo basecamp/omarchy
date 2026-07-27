@@ -19,6 +19,14 @@ const fs = require('fs')
 const bar = requireFromRoot('shell/plugins/bar/BarModel.js')
 const barSource = fs.readFileSync(root + '/shell/plugins/bar/Bar.qml', 'utf8')
 
+// The center section declares two arrangements and shows one; the hidden one
+// must not build its modules or every center widget exists twice.
+const moduleList = barSource.slice(barSource.indexOf('component ModuleList'), barSource.indexOf('component ModuleSlot'))
+assert(
+  /active: visible && entries\.length > 0/.test(moduleList),
+  'bar builds only the module list it is showing'
+)
+
 // A center module is mounted twice — drawn copy plus zero-size placeholder —
 // and the order they register in is not stable across a live reconfiguration,
 // so panel routing has to pick the one that is actually on screen.
