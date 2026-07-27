@@ -27,11 +27,6 @@
         "emptyText": "No indicators",
         "options": [
           {
-            "value": "TmuxAlert",
-            "label": "Tmux alert",
-            "description": "Tmux windows waiting for attention"
-          },
-          {
             "value": "Dictation",
             "label": "Dictation",
             "description": "Voice typing status"

@@ -20,7 +20,8 @@ export PATH="$test_dir/bin:$PATH"
 export OMARCHY_PATH="$ROOT"
 export XDG_RUNTIME_DIR="$test_dir/run"
 
-# tmux hooks run without WAYLAND_DISPLAY, and qs matches instances by display.
+# Callers from a stripped environment have no WAYLAND_DISPLAY, and qs matches
+# instances by display.
 output=$(env -u WAYLAND_DISPLAY "$ROOT/bin/omarchy-shell" omarchy.indicators refresh)
 [[ $output == "display=[wayland-1]" ]] || fail "shell ipc recovers a missing display" "$output"
 pass "shell ipc recovers a missing display"
