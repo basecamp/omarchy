@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# omarchy:summary=Pre-build the theme, background, and unlock menu thumbnail caches
+
+# The theme, background, and unlock selectors all render 1536x864 thumbnails on
+# first open, which is the one slow open on a fresh machine. Building them up
+# front makes every first open instant. Everything here is idempotent and skips
+# work that is already cached, so it is cheap to run again.
+#
+# Warming is best effort: it reports failures on stderr but always succeeds, so
+# a cache that can't be built never aborts user setup or a migration.
+
+warm() {
+  if ! nice -n 19 ionice -c 3 "$@" >/dev/null; then
+    echo "omarchy-cache-warm: $1 failed" >&2
+  fi
+}
+
+warm omarchy-theme-switcher --cache-only
+warm omarchy-theme-bg-cache
+warm omarchy-plymouth-switcher --cache-only
+
+exit 0
