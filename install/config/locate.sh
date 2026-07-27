@@ -14,9 +14,13 @@ fi
 
 # Snapper snapshots are nested subvolumes reached by plain directory
 # traversal, so without this updatedb indexes the system once per snapshot.
-if ! grep -E '^PRUNEPATHS[[:space:]]*=' "$UPDATEDB_CONF_PATH" | grep -qF '/.snapshots'; then
-  if grep -qE '^PRUNEPATHS[[:space:]]*=[[:space:]]*"' "$UPDATEDB_CONF_PATH"; then
-    sed -i -E 's|^(PRUNEPATHS[[:space:]]*=[[:space:]]*")|\1/.snapshots |' "$UPDATEDB_CONF_PATH"
+# The quotes are optional in updatedb.conf, so read the paths back out of
+# whatever quoting the file uses and write the setting in one canonical form.
+pruned=$(sed -nE 's|^PRUNEPATHS[[:space:]]*=[[:space:]]*"?([^"]*)"?[[:space:]]*$|\1|p' "$UPDATEDB_CONF_PATH" | tail -n 1)
+
+if [[ " $pruned " != *" /.snapshots "* ]]; then
+  if [[ -n $pruned ]]; then
+    sed -i -E "s|^PRUNEPATHS[[:space:]]*=.*|PRUNEPATHS = \"/.snapshots $pruned\"|" "$UPDATEDB_CONF_PATH"
   else
     printf '%s\n' 'PRUNEPATHS = "/.snapshots"' >>"$UPDATEDB_CONF_PATH"
   fi
