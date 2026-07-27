@@ -3,18 +3,43 @@
 # omarchy:summary=Show which theme is styling the Plymouth boot screen
 # omarchy:examples=omarchy plymouth current
 
-# omarchy-plymouth-set installs the theme's unlock.png as a byte-for-byte
-# copy of logo.png, so matching it back identifies the current theme.
+# omarchy-plymouth-set installs the theme's unlock logo as a byte-for-byte copy
+# of logo.png, so matching it back identifies the current theme. Generated logos
+# are deterministic, so they compare equal to what was installed from them.
 installed_logo=/usr/share/plymouth/themes/omarchy/logo.png
+
+[[ -f $installed_logo ]] || exit
 
 if cmp -s "$OMARCHY_PATH/default/plymouth/logo.png" "$installed_logo"; then
   echo default
   exit
 fi
 
-omarchy-plymouth-list | while read -r name; do
-  if cmp -s "$(omarchy-theme-dir "$name")/unlock.png" "$installed_logo"; then
+names=()
+logos=()
+
+while IFS= read -r name; do
+  logo=$(omarchy-plymouth-logo "$name") || continue
+
+  if cmp -s "$logo" "$installed_logo"; then
     echo "$name"
+    exit
+  fi
+
+  names+=("$name")
+  logos+=("$logo")
+done < <(omarchy-plymouth-list)
+
+# A logo installed before its theme's art was generated rather than committed
+# can carry different PNG metadata while drawing the same pixels, so fall back
+# to comparing pixel content.
+installed_signature=$(magick "$installed_logo" -quiet -format '%#' info: 2>/dev/null)
+
+[[ -n $installed_signature ]] || exit
+
+for index in "${!names[@]}"; do
+  if [[ $(magick "${logos[$index]}" -quiet -format '%#' info: 2>/dev/null) == "$installed_signature" ]]; then
+    echo "${names[$index]}"
     exit
   fi
 done

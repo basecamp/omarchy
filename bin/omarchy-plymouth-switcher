@@ -9,8 +9,9 @@ mkdir -p "$preview_dir"
 
 ln -s "$OMARCHY_PATH/default/plymouth/preview-unlock.png" "$preview_dir/default.png"
 
-omarchy-plymouth-list | while read -r name; do
-  ln -s "$(omarchy-theme-dir "$name")/preview-unlock.png" "$preview_dir/$name.png" 2>/dev/null
+omarchy-plymouth-list | while IFS= read -r name; do
+  preview=$(omarchy-plymouth-preview-by-theme "$name") || continue
+  ln -s "$preview" "$preview_dir/$name.png" 2>/dev/null
 done
 
 current=$(omarchy-plymouth-current)

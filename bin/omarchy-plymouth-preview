@@ -1,14 +1,23 @@
 #!/bin/bash
 
 # omarchy:summary=Preview a Plymouth boot screen with custom colors and logo
-# omarchy:args=<background-hex> <text-hex> <path-to-logo.png> <output-path>
+# omarchy:args=[--no-open] <background-hex> <text-hex> <path-to-logo.png> <output-path>
 # omarchy:examples=omarchy plymouth preview '#1d2021' '#ebdbb2' ~/.local/state/omarchy/current/theme/plymouth/logo.png /tmp/plymouth-preview.png
 
 # Render a Plymouth login-screen preview PNG by compositing the staged omarchy
 # theme assets (recolored with the given text color) onto the background.
+# Pass --no-open to only write the file, which is what the per-theme previews
+# in omarchy-plymouth-preview-by-theme need.
+
+open_preview=true
+
+if [[ $1 == "--no-open" ]]; then
+  open_preview=false
+  shift
+fi
 
 if (( $# != 4 )); then
-  echo "Usage: omarchy-plymouth-preview <background-hex> <text-hex> <path-to-logo.png> <output-path>" >&2
+  echo "Usage: omarchy-plymouth-preview [--no-open] <background-hex> <text-hex> <path-to-logo.png> <output-path>" >&2
   exit 1
 fi
 
@@ -66,11 +75,19 @@ for i in 0 1 2 3; do
   bullet_args+=( '(' "$staging_dir/bullet.png" -resize 7x7 ')' -geometry +${bx}+${bullet_y} -composite )
 done
 
-magick -size ${canvas_w}x${canvas_h} "xc:#$bg_hex" \
+# -strip and png:exclude-chunk=time keep repeated renders byte-identical so the
+# generated previews can be cached and compared without spurious churn.
+if ! magick -size ${canvas_w}x${canvas_h} "xc:#$bg_hex" \
   "$staging_dir/logo.png" -geometry +${logo_x}+${logo_y} -composite \
   "$staging_dir/entry.png" -geometry +${entry_x}+${entry_y} -composite \
   \( "$staging_dir/lock.png" -resize ${lock_w}x${lock_h} \) -geometry +${lock_x}+${lock_y} -composite \
   "${bullet_args[@]}" \
-  "$output_path"
+  -strip -define png:exclude-chunk=time \
+  "$output_path"; then
+  echo "Failed to render Plymouth preview: $output_path" >&2
+  exit 1
+fi
 
-imv -f "$output_path"
+if [[ $open_preview == true ]]; then
+  imv -f "$output_path"
+fi
