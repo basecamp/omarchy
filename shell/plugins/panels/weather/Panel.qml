@@ -15,6 +15,14 @@ Panel {
   property var anchorItem: null
   property bool openedFromHotkey: false
 
+  // The bar tracks the widget mounted in its slot — BarWidget.qml — not this
+  // nested panel. Everything the bar identifies a panel by has to be that
+  // widget: the popout coordinator (and with it the open-panel dot under the
+  // pill) compares against `slot.activeItem`, and switchPanelFrom looks the
+  // slot up the same way.
+  property var hostWidget: null
+  readonly property var barIdentity: hostWidget || root
+
   function open() {
     openedFromHotkey = false
     setCenterHoverRevealSuppressed(false)
@@ -25,10 +33,17 @@ Panel {
 
   function openFromHotkey() {
     openedFromHotkey = true
-    setCenterHoverRevealSuppressed(true)
     root.controller.show()
     locationFile.reload()
     root.refresh()
+    // Set after showing, not before: showing hands the popout coordinator
+    // over, which closes whichever panel was open, and that close clears the
+    // shared flag. Deferring means the panel taking over always wins, while
+    // a handoff to a panel that does not manage the flag still leaves it
+    // cleared rather than stuck on.
+    Qt.callLater(function() {
+      if (root.opened) setCenterHoverRevealSuppressed(true)
+    })
   }
 
   function close() {
@@ -40,6 +55,12 @@ Panel {
   function toggle() {
     if (root.opened) root.close()
     else root.openFromHotkey()
+  }
+
+  function switchPanel(direction) {
+    if (root.bar && typeof root.bar.switchPanelFrom === "function")
+      return root.bar.switchPanelFrom(root.barIdentity, direction)
+    return false
   }
 
   function setCenterHoverRevealSuppressed(value) {
@@ -440,7 +461,7 @@ Panel {
   KeyboardPanel {
     id: panel
     anchorItem: root.anchorItem
-    owner: root
+    owner: root.barIdentity
     bar: root.bar
     open: root.opened
     centerOnBar: true

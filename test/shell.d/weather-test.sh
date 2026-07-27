@@ -8,6 +8,7 @@ run_node_test <<'JS'
 const fs = require('fs')
 const weather = requireFromRoot('shell/plugins/panels/weather/Model.js')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/weather/Panel.qml', 'utf8')
+const widgetSource = fs.readFileSync(root + '/shell/plugins/panels/weather/BarWidget.qml', 'utf8')
 
 assertDeepEqual(
   weather.parseWeatherStatus('{"text":"☀","class":"sunny"}'),
@@ -115,6 +116,30 @@ assertEqual(weather.currentIcon({ openMeteoWeatherCode: 0, isDay: 0 }, ''), weat
 assert(weather.iconForOpenMeteoCode(45, true) !== weather.iconForOpenMeteoCode(45, false), 'weather distinguishes nighttime fog from daytime fog')
 assertEqual(weather.provisionalCurrentIcon({ weatherCode: 113 }, ''), weather.iconForCode(113, false), 'weather uses wttr to fill an empty initial icon')
 assertEqual(weather.provisionalCurrentIcon({ weatherCode: 113 }, 'night'), 'night', 'weather refresh preserves a resolved day-night icon')
+// The bar identifies a panel by the widget in its slot, so the nested panel
+// has to present the host widget rather than itself — otherwise the
+// open-panel dot never lights and Tab cannot leave the panel.
+assert(
+  panelSource.includes('owner: root.barIdentity'),
+  'weather panel gives the bar its host widget as popout identity'
+)
+assert(
+  panelSource.includes('switchPanelFrom(root.barIdentity, direction)'),
+  'weather panel switches panels as its host widget'
+)
+assert(
+  widgetSource.includes('target.hostWidget = root'),
+  'weather widget injects itself as the panel host'
+)
+assert(
+  widgetSource.includes('readonly property bool popoutSwitchClosing:') && widgetSource.includes('function closeForPopoutSwitch()'),
+  'weather widget forwards the popout-switch handshake'
+)
+assert(
+  /Qt\.callLater\(function\(\) \{\s*\n\s*if \(root\.opened\) setCenterHoverRevealSuppressed\(true\)/.test(panelSource),
+  'weather claims the shared hover-reveal flag after the popout handoff, so the panel taking over wins'
+)
+
 assert(
   panelSource.includes('text: root.label || "—"'),
   'weather hero and bar use the same resolved icon'

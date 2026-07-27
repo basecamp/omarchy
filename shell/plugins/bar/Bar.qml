@@ -406,15 +406,19 @@ Item {
   function findPanelWidget(pluginId) {
     var id = String(pluginId || "")
     if (!id) return null
+    var candidates = []
     for (var i = 0; i < moduleSlots.length; i++) {
       var slot = moduleSlots[i]
       if (!slot || !slot.activeItem) continue
       if (slot.moduleName !== id) continue
       var item = slot.activeItem
       if (typeof item.open !== "function" || typeof item.close !== "function" || item.opened === undefined) continue
-      return item
+      candidates.push(slot)
     }
-    return null
+    // Anchored center modules are mounted twice; only the drawn copy can
+    // anchor a popup or carry the open-panel mark. See BarModel.pickDrawnSlot.
+    var chosen = BarModel.pickDrawnSlot(candidates)
+    return chosen ? chosen.activeItem : null
   }
 
   function summonBarWidget(pluginId) {
@@ -1317,6 +1321,12 @@ Item {
     property string region: ""
 
     visible: entries.length > 0
+    // A hidden list must not build its modules. The center section declares
+    // both an anchored and an unanchored arrangement and shows whichever
+    // fits, so leaving the other one loaded mounts every center module
+    // twice — two IPC handlers registered for the same target, two clocks
+    // ticking, two of every timer and fetch behind them.
+    active: visible && entries.length > 0
     sourceComponent: root.vertical ? verticalModuleList : horizontalModuleList
     width: item ? item.implicitWidth : 0
     height: item ? item.implicitHeight : 0
@@ -1386,6 +1396,16 @@ Item {
     readonly property bool hovered: moduleHover.hovered
     readonly property bool dragSource: root.barDragSource === slot
     readonly property bool panelOpen: root.activePopout === slot.activeItem
+    // Modules bigger than the mark they want (a text label in a padded slot,
+    // a multi-line stack on a vertical bar) can say how long the open-panel
+    // dot should be along the bar, so it tracks what the module paints
+    // instead of a fraction of whatever slot it happens to fill.
+    readonly property real panelIndicatorExtent: {
+      var key = root.vertical ? "openPanelIndicatorHeight" : "openPanelIndicatorWidth"
+      var hint = activeItem && key in activeItem ? activeItem[key] : undefined
+      if (hint !== undefined && hint !== null && hint > 0) return Math.round(hint)
+      return Math.max(Style.space(10), Math.round((root.vertical ? slot.height : slot.width) * 0.55))
+    }
     implicitWidth: activeItem && activeItem.visible ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
     implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
     width: implicitWidth
@@ -1455,8 +1475,12 @@ Item {
       opacity: slot.panelOpen && !slot.dragSource ? 0.9 : 0
       color: Color.accent
       radius: Math.min(width, height) / 2
-      width: root.vertical ? Style.space(2) : Math.max(Style.space(10), Math.round(parent.width * 0.55))
-      height: root.vertical ? Math.max(Style.space(10), Math.round(parent.height * 0.55)) : Style.space(2)
+      width: root.vertical ? Style.space(2) : slot.panelIndicatorExtent
+      height: root.vertical ? slot.panelIndicatorExtent : Style.space(2)
+      // The mark sits on the module's inner edge — the one facing the
+      // desktop — so it underlines a top bar, overlines a bottom one, and
+      // points inward from a left or right one. It reads as pointing at the
+      // panel that opens on that side.
       x: root.vertical
         ? (root.position === "left" ? parent.width - width - inset : inset)
         : Math.round((parent.width - width) / 2)

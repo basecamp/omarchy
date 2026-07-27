@@ -4,16 +4,16 @@
   "name": "Clock",
   "version": "1.0.0",
   "author": "Omarchy",
-  "description": "Day/time label; click to toggle alternate format",
+  "description": "Date/time label with a calendar popup",
   "kinds": [
     "bar-widget"
   ],
   "entryPoints": {
-    "barWidget": "Clock.qml"
+    "barWidget": "BarWidget.qml"
   },
   "barWidget": {
     "displayName": "Clock",
-    "description": "Day/time label; click to toggle alternate format",
+    "description": "Date/time label with a calendar popup",
     "category": "Time",
     "allowMultiple": false
   }

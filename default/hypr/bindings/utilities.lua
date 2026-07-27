@@ -77,6 +77,7 @@ o.bind("SUPER + CTRL + ALT + W", "Toggle weather", "omarchy-notification-weather
 o.bind("SUPER + CTRL + A", "Audio", "omarchy-shell shell toggle omarchy.audio")
 o.bind("SUPER + CTRL + B", "Bluetooth", "omarchy-shell shell toggle omarchy.bluetooth")
 o.bind("SUPER + CTRL + D", "Display", "omarchy-shell shell toggle omarchy.monitor")
+o.bind("SUPER + CTRL + ALT + D", "Calendar", "omarchy-shell shell toggle omarchy.clock")
 o.bind("SUPER + CTRL + W", "Network", "omarchy-shell shell toggle omarchy.network")
 o.bind("SUPER + CTRL + P", "Power", "omarchy-shell shell toggle omarchy.power")
 o.bind("SUPER + CTRL + T", "Activity", { tui = "btop" })
