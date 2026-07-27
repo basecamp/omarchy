@@ -73,21 +73,11 @@ export PATH="$OMARCHY_PATH/bin:$PATH"
 source "$OMARCHY_INSTALL/helpers/logging.sh"
 start_install_log
 
-run_logged "$OMARCHY_INSTALL/config/theme-system.sh"
-run_logged "$OMARCHY_INSTALL/config/increase-lockout-limit.sh"
-run_logged "$OMARCHY_INSTALL/config/lockscreen-pam.sh"
-run_logged "$OMARCHY_INSTALL/config/fix-powerprofilesctl-shebang.sh"
-run_logged "$OMARCHY_INSTALL/config/docker.sh"
-run_logged "$OMARCHY_INSTALL/config/snapper.sh"
-run_logged "$OMARCHY_INSTALL/config/enable-services.sh"
-run_logged "$OMARCHY_INSTALL/config/firewall.sh"
+source "$OMARCHY_INSTALL/config/all.sh"
 
 omarchy-setup-hardware --install-user "$install_user"
 
-run_logged "$OMARCHY_INSTALL/login/sddm.sh"
-
-run_logged "$OMARCHY_INSTALL/post-install/pacman.sh"
-run_logged "$OMARCHY_INSTALL/post-install/udev.sh"
-run_logged "$OMARCHY_INSTALL/post-install/localdb.sh"
+source "$OMARCHY_INSTALL/login/all.sh"
+source "$OMARCHY_INSTALL/post-install/all.sh"
 
 stop_install_log

@@ -94,12 +94,29 @@ import sys
 from pathlib import Path
 
 root = Path(os.environ["ROOT"])
+home = Path.home()
 pkgs_candidates = [
   root.parent / "omarchy-pkgs/pkgbuilds",
   root.parent / "omarchy/omarchy-pkgs/pkgbuilds",
   root.parent.parent / "omarchy-pkgs/pkgbuilds",
+  root.parent / "omacom/omarchy-pkgs/pkgbuilds",
+  root.parent.parent / "omacom/omarchy-pkgs/pkgbuilds",
+  home / "Work/omacom/omarchy-pkgs/pkgbuilds",
 ]
-pkgs_root = next((path for path in pkgs_candidates if path.exists()), pkgs_candidates[0])
+# Checkouts differ per machine, so allow an explicit pointer at the sibling repo.
+# Accepts either the omarchy-pkgs checkout or its pkgbuilds/ directory.
+override = os.environ.get("OMARCHY_PKGS_PATH")
+if override:
+  pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)] + pkgs_candidates
+pkgs_root = next((path for path in pkgs_candidates if path.exists()), None)
+if pkgs_root is None:
+  print("not ok - omarchy-pkgs checkout found for PKGBUILD coverage", file=sys.stderr)
+  print(
+    "looked in:\n  " + "\n  ".join(str(path) for path in pkgs_candidates) +
+    "\nset OMARCHY_PKGS_PATH to the omarchy-pkgs checkout",
+    file=sys.stderr,
+  )
+  sys.exit(1)
 settings_pkgbuild_path = pkgs_root / "omarchy-settings/PKGBUILD"
 omarchy_pkgbuild_path = pkgs_root / "omarchy/PKGBUILD"
 if not settings_pkgbuild_path.exists():
@@ -120,8 +137,8 @@ package_defaults = [
   ("default/systemd/user/bt-agent.service", "/usr/lib/systemd/user/bt-agent.service", "systemd/user/bt-agent.service"),
   ("default/systemd/user/omarchy-sleep-lock.service", "/usr/lib/systemd/user/omarchy-sleep-lock.service", "systemd/user/omarchy-sleep-lock.service"),
   ("default/systemd/user/omarchy-recover-internal-monitor.service", "/usr/lib/systemd/user/omarchy-recover-internal-monitor.service", "systemd/user/omarchy-recover-internal-monitor.service"),
-  ("default/systemd/user/omarchy-update-user-notify.service", "/usr/lib/systemd/user/omarchy-update-user-notify.service", "systemd/user/omarchy-update-user-notify.service"),
-  ("default/systemd/user/omarchy-update-user-notify.path", "/usr/lib/systemd/user/omarchy-update-user-notify.path", "systemd/user/omarchy-update-user-notify.path"),
+  ("default/systemd/user/omarchy-migrate-notify.service", "/usr/lib/systemd/user/omarchy-migrate-notify.service", "systemd/user/omarchy-migrate-notify.service"),
+  ("default/systemd/zram-generator.conf.d/90-omarchy.conf", "/usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf", "systemd/zram-generator.conf.d/90-omarchy.conf"),
   ("default/fonts/omarchy/omarchy.ttf", "/usr/share/fonts/omarchy/omarchy.ttf", "omarchy.ttf"),
   ("default/snapper/root", "/etc/snapper/config-templates/omarchy", "snapper/root"),
 ]
@@ -133,6 +150,16 @@ for source, destination, legacy in package_defaults:
     errors.append(f"legacy path still in config/: {legacy}")
   if destination and (source not in pkgbuild or destination not in pkgbuild):
     errors.append(f"PKGBUILD does not explicitly install {source} -> {destination}")
+
+# Existing users have an absolute wants symlink to the old unit path, and the
+# migration that repoints it only runs for users who run an update -- the
+# opposite of who the notifier is for. Dropping this alias strands them.
+notify_alias = 'ln -sfn omarchy-migrate-notify.service "$pkgdir/usr/lib/systemd/user/omarchy-update-user-notify.service"'
+if notify_alias not in pkgbuild:
+  errors.append(
+    "PKGBUILD does not ship the omarchy-update-user-notify.service compatibility "
+    "alias, so users who have not run migration 1785095882 lose the login notifier"
+  )
 
 alpm_hooks = [
   "00-omarchy-update-guard.hook",
@@ -249,6 +276,27 @@ jq -e '
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config moves existing widgets without duplicates"
 
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin move omarchy.active-window right
+jq -e '
+  def ids: map(.id // .);
+  (.bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces"]) and
+  (.bar.layout.right | ids == ["omarchy.tray", "omarchy.active-window", "omarchy.microphone", "omarchy.tailscale", "omarchy.bluetooth"])
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "bar plugin move accepts a positional target section"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin move omarchy.active-window left
+jq -e '
+  def ids: map(.id // .);
+  (.bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces", "omarchy.active-window"]) and
+  (.bar.layout.right | ids == ["omarchy.tray", "omarchy.microphone", "omarchy.tailscale", "omarchy.bluetooth"])
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "bar plugin move can restore a widget with positional syntax"
+
+if HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin move omarchy.active-window left --section right 2>/dev/null; then
+  fail "bar plugin move accepted positional and flagged target sections"
+fi
+pass "bar plugin move rejects conflicting target section syntax"
+
 if HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin add local.nonexistent-widget 2>/dev/null; then
   fail "bar plugin add accepted an unknown widget"
 fi
@@ -288,6 +336,28 @@ jq -e '
   .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config removes widgets with remove alias"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin set omarchy.bluetooth enabled false --json
+jq -e '
+  any(.bar.layout.right[]; .id == "omarchy.bluetooth" and .enabled == false)
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "bar plugin set accepts false JSON values"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin set omarchy.bluetooth optional null --json
+jq -e '
+  any(.bar.layout.right[]; .id == "omarchy.bluetooth" and has("optional") and .optional == null)
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "bar plugin set accepts null JSON values"
+
+if HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin set omarchy.bluetooth broken '{' --json 2>/dev/null; then
+  fail "bar plugin set accepted malformed JSON"
+fi
+pass "bar plugin set rejects malformed JSON"
+
+if HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin set omarchy.bluetooth broken 'false null' --json 2>/dev/null; then
+  fail "bar plugin set accepted multiple JSON values"
+fi
+pass "bar plugin set rejects multiple JSON values"
 
 mock_bin="$TMPDIR/mock-bin"
 mkdir -p "$mock_bin"

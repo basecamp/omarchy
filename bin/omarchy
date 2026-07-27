@@ -79,6 +79,7 @@ GROUP_DESCRIPTIONS[style]="Global UI style controls"
 GROUP_DESCRIPTIONS[sudo]="Sudo configuration helpers"
 GROUP_DESCRIPTIONS[system]="System status, reboot, shutdown, logout, and lock"
 GROUP_DESCRIPTIONS[theme]="Theme management"
+GROUP_DESCRIPTIONS[tmux]="Tmux session helpers"
 GROUP_DESCRIPTIONS[toggle]="Toggle Omarchy features"
 GROUP_DESCRIPTIONS[transcode]="Image and video transcoding"
 GROUP_DESCRIPTIONS[tui]="Terminal UI launchers"
@@ -143,7 +144,6 @@ register_command() {
   local name=""
   local summary=""
   local usage=""
-  local binary=""
   local args=""
   local examples=""
   local aliases=""
@@ -233,7 +233,6 @@ register_command() {
     fallback_name="${fallback_name//-/ }"
   fi
 
-  [[ -z $binary ]] && binary="$file_binary"
   [[ -z $group ]] && group="$fallback_group"
   [[ $name_seen != "true" ]] && name="$fallback_name"
   [[ -z $summary && -n $fallback_summary ]] && summary="$fallback_summary"
@@ -243,11 +242,9 @@ register_command() {
     route+=" $name"
   fi
 
-  if [[ -z $usage ]]; then
-    usage="$route"
-    if [[ -n $args ]]; then
-      usage+=" $args"
-    fi
+  usage="$route"
+  if [[ -n $args ]]; then
+    usage+=" $args"
   fi
 
   [[ $requires_sudo == "true" ]] || requires_sudo="false"
@@ -257,7 +254,7 @@ register_command() {
   COMMAND_KEYS+=("$key")
   COMMAND_ROUTE["$key"]="$route"
   COMMAND_FALLBACK_ROUTE["$key"]="$fallback_route"
-  COMMAND_BINARY["$key"]="$binary"
+  COMMAND_BINARY["$key"]="$file_binary"
   COMMAND_GROUP["$key"]="$group"
   COMMAND_NAME["$key"]="$name"
   COMMAND_SUMMARY["$key"]="$summary"
@@ -269,7 +266,7 @@ register_command() {
   COMMAND_HAS_SUMMARY["$key"]="$has_summary"
   COMMAND_METADATA_ERRORS["$key"]="$metadata_errors"
 
-  BINARY_TO_KEY["$binary"]="$key"
+  BINARY_TO_KEY["$file_binary"]="$key"
   register_route "$route" "$key"
   register_route "$fallback_route" "$key"
 
@@ -615,25 +612,31 @@ show_commands_markdown() {
   done < <(sorted_keys "$include_all")
 }
 
+emit_command_record() {
+  local key="$1"
+
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "${COMMAND_ROUTE[$key]}" \
+    "${COMMAND_BINARY[$key]}" \
+    "${COMMAND_GROUP[$key]}" \
+    "${COMMAND_NAME[$key]}" \
+    "${COMMAND_SUMMARY[$key]}" \
+    "${COMMAND_REQUIRES_SUDO[$key]}" \
+    "${COMMAND_HIDDEN[$key]}" \
+    "${COMMAND_ARGS[$key]}" \
+    "${COMMAND_EXAMPLES[$key]}" \
+    "${COMMAND_ALIASES[$key]}" \
+    "${COMMAND_FALLBACK_ROUTE[$key]}" \
+    "${COMMAND_USAGE[$key]}"
+}
+
 emit_command_records() {
   local include_all="$1"
   local key=""
 
   while IFS= read -r key; do
     [[ -n $key ]] || continue
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "${COMMAND_ROUTE[$key]}" \
-      "${COMMAND_BINARY[$key]}" \
-      "${COMMAND_GROUP[$key]}" \
-      "${COMMAND_NAME[$key]}" \
-      "${COMMAND_SUMMARY[$key]}" \
-      "${COMMAND_REQUIRES_SUDO[$key]}" \
-      "${COMMAND_HIDDEN[$key]}" \
-      "${COMMAND_ARGS[$key]}" \
-      "${COMMAND_EXAMPLES[$key]}" \
-      "${COMMAND_ALIASES[$key]}" \
-      "${COMMAND_FALLBACK_ROUTE[$key]}" \
-      "${COMMAND_USAGE[$key]}"
+    emit_command_record "$key"
   done < <(sorted_keys "$include_all")
 }
 
@@ -702,23 +705,7 @@ show_commands_check() {
 }
 
 show_command_json() {
-  local key="$1"
-
-  printf '%s\n' "$key" | while IFS= read -r key; do
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "${COMMAND_ROUTE[$key]}" \
-      "${COMMAND_BINARY[$key]}" \
-      "${COMMAND_GROUP[$key]}" \
-      "${COMMAND_NAME[$key]}" \
-      "${COMMAND_SUMMARY[$key]}" \
-      "${COMMAND_REQUIRES_SUDO[$key]}" \
-      "${COMMAND_HIDDEN[$key]}" \
-      "${COMMAND_ARGS[$key]}" \
-      "${COMMAND_EXAMPLES[$key]}" \
-      "${COMMAND_ALIASES[$key]}" \
-      "${COMMAND_FALLBACK_ROUTE[$key]}" \
-      "${COMMAND_USAGE[$key]}"
-  done | jq -Rn "$(commands_json_filter) | {ok: true, command: .commands[0]}"
+  emit_command_record "$1" | jq -Rn "$(commands_json_filter) | {ok: true, command: .commands[0]}"
 }
 
 parse_commands_args() {

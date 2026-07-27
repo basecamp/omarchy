@@ -309,7 +309,7 @@ QtObject {
     return fallback
   }
 
-  // The launcher, menu, polkit, emojis, and clipboard surfaces honor an
+  // The menu, polkit, emojis, and clipboard surfaces honor an
   // OMARCHY_MENU_FONT override for users who want a different family on the
   // summoned popups than on the bar. Resolved once at startup; an empty env
   // value falls back to the shared fontconfig alias.

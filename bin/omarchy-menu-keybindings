@@ -45,13 +45,9 @@ parse_keycodes() {
     {
       if (match($0, /code:([0-9]+)/, match_parts)) {
         code = match_parts[1]
-        if (code == "201") {
-          sub(/SUPER SHIFT,code:201/, ",COPILOT KEY")
-        } else {
-          symbol = keycode_symbol[code]
-          if (symbol == "") symbol = "code:" code
-          sub("code:" code, symbol)
-        }
+        symbol = keycode_symbol[code]
+        if (symbol == "") symbol = "code:" code
+        sub("code:" code, symbol)
       } else if (match($0, /mouse:([0-9]+)/, match_parts)) {
         code = match_parts[1]
         symbol = mouse_symbol[code]
@@ -304,6 +300,9 @@ dynamic_bindings() {
 
       [[ -z $description && $dispatcher == "__lua" ]] && continue
 
+      # The Copilot key just duplicates an existing binding, so keep it hidden
+      [[ $key == "code:201" ]] && continue
+
       case "$key" in
         comma) key="COMMA" ;;
         period) key="PERIOD" ;;
@@ -419,6 +418,7 @@ prioritize_entries() {
     if (match(line, /Toggle workspace gaps/))  prio = 39
     if (match(line, /Toggle nightlight/))  prio = 40
     if (match(line, /Toggle locking/))  prio = 41
+    if (match(line, /Jump to waiting Tmux pane/))  prio = 42
     if (match(line, /group/))  prio = 94
     if (match(line, /Scroll active workspace/))  prio = 95
     if (match(line, /Cycle to/))  prio = 96
@@ -456,7 +456,7 @@ output_binding_records_uncached() {
 
 keybindings_cache_key() {
   {
-    printf 'v6\n'
+    printf 'v8\n'
     hyprctl devices 2>/dev/null | grep -F 'active keymap:'
     hyprctl binds 2>/dev/null
   } | sha256sum | awk '{ print $1 }'

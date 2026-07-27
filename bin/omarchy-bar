@@ -7,9 +7,7 @@
 
 set -euo pipefail
 
-CONFIG_FILE="$HOME/.config/omarchy/shell.json"
-OMARCHY_ROOT="${OMARCHY_PATH:-}"
-DEFAULTS_FILE="$OMARCHY_ROOT/config/omarchy/shell.json"
+source omarchy-shell-config
 
 usage() {
   cat <<USAGE
@@ -32,60 +30,6 @@ Examples:
 USAGE
 }
 
-fail() {
-  echo "omarchy-bar: $*" >&2
-  exit 1
-}
-
-refresh_shell_config() {
-  if ! omarchy-shell shell reloadConfig >/dev/null 2>&1; then
-    omarchy-shell -q shell rescanPlugins >/dev/null 2>&1 || true
-  fi
-}
-
-source_file() {
-  if [[ -s $CONFIG_FILE ]]; then
-    printf '%s\n' "$CONFIG_FILE"
-  else
-    printf '%s\n' "$DEFAULTS_FILE"
-  fi
-}
-
-# jq pipeline that normalizes shell.json into a well-shaped object with
-# version=1, bar.layout.{left,center,right} arrays, and plugins array.
-NORMALIZE='
-  def object_or_empty: if type == "object" then . else {} end;
-  def array_or_empty: if type == "array" then . else [] end;
-  object_or_empty
-  | .version = 1
-  | .bar = (.bar | object_or_empty)
-  | .bar.layout = (.bar.layout | object_or_empty)
-  | .bar.layout.left = (.bar.layout.left | array_or_empty)
-  | .bar.layout.center = (.bar.layout.center | array_or_empty)
-  | .bar.layout.right = (.bar.layout.right | array_or_empty)
-  | .plugins = (.plugins | array_or_empty)
-'
-
-# Apply a jq program to the source file and atomically write the result to the
-# user config, then refresh the running shell. Extra args after the program are
-# forwarded to jq (e.g. --arg/--argjson).
-_BAR_TMP=""
-cleanup_bar_tmp() {
-  if [[ -n ${_BAR_TMP:-} ]]; then rm -f "$_BAR_TMP"; fi
-}
-trap cleanup_bar_tmp EXIT
-
-commit() {
-  local program="$1"
-  shift
-  mkdir -p "$(dirname "$CONFIG_FILE")"
-  _BAR_TMP=$(mktemp)
-  jq -S -e "$@" "$program" "$(source_file)" >"$_BAR_TMP" || fail "could not update shell config"
-  mv "$_BAR_TMP" "$CONFIG_FILE"
-  _BAR_TMP=""
-  refresh_shell_config
-}
-
 # ------------------------------------------------------------------ validation
 
 bar_option_exists() {
@@ -99,7 +43,7 @@ bar_option_exists() {
 cmd_use() {
   local plugin="${1:-}"
   [[ -n $plugin ]] || fail "bar option id is required"
-  [[ $# -eq 1 ]] || fail "use takes a single bar option id"
+  (( $# == 1 )) || fail "use takes a single bar option id"
   if [[ $plugin == "default" || $plugin == "built-in" ]]; then
     plugin="omarchy.bar"
   fi
@@ -130,7 +74,7 @@ cmd_defaults() {
 cmd_position() {
   local position="${1:-}"
   [[ -n $position ]] || fail "position is required"
-  [[ $# -eq 1 ]] || fail "position takes a single value"
+  (( $# == 1 )) || fail "position takes a single value"
   [[ $position =~ ^(top|bottom|left|right)$ ]] || fail "position must be top, bottom, left, or right"
   commit "$NORMALIZE | .bar.position = \$position" --arg position "$position"
   echo "Bar position set to $position"
@@ -139,7 +83,7 @@ cmd_position() {
 cmd_transparent() {
   local transparent="${1:-}"
   [[ -n $transparent ]] || fail "transparent is required"
-  [[ $# -eq 1 ]] || fail "transparent takes a single value"
+  (( $# == 1 )) || fail "transparent takes a single value"
   [[ $transparent =~ ^(true|false|toggle)$ ]] || fail "transparent must be true, false, or toggle"
   if [[ $transparent == "toggle" ]]; then
     commit "$NORMALIZE | .bar.transparent = (.bar.transparent != true)"
@@ -153,7 +97,7 @@ cmd_transparent() {
 # --------------------------------------------------------------------- dispatch
 
 command="${1:-}"
-[[ $# -gt 0 ]] && shift || true
+(( $# > 0 )) && shift || true
 
 case "$command" in
   use)

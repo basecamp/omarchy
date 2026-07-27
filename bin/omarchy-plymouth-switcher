@@ -10,13 +10,7 @@ mkdir -p "$preview_dir"
 ln -s "$OMARCHY_PATH/default/plymouth/preview-unlock.png" "$preview_dir/default.png"
 
 omarchy-plymouth-list | while read -r name; do
-  if [[ -d ~/.config/omarchy/themes/$name ]]; then
-    theme_dir=~/.config/omarchy/themes/$name
-  else
-    theme_dir="$OMARCHY_PATH/themes/$name"
-  fi
-
-  ln -s "$theme_dir/preview-unlock.png" "$preview_dir/$name.png" 2>/dev/null
+  ln -s "$(omarchy-theme-dir "$name")/preview-unlock.png" "$preview_dir/$name.png" 2>/dev/null
 done
 
 current=$(omarchy-plymouth-current)

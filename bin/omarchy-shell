@@ -40,6 +40,13 @@ fi
 [[ -n ${OMARCHY_PATH:-} ]] || fail "OMARCHY_PATH is not set"
 [[ -f $OMARCHY_PATH/shell/shell.qml ]] || fail "omarchy-shell config not found: $OMARCHY_PATH/shell/shell.qml"
 
+# qs matches instances by display, and tmux run-shell strips WAYLAND_DISPLAY
+# from hooks, so recover it from the compositor socket when it is missing.
+if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
+  socket=$(ls -t "${XDG_RUNTIME_DIR:-/run/user/$UID}"/wayland-[0-9]* 2>/dev/null | grep -v '\.lock$' | head -n1)
+  [[ -n $socket ]] && export WAYLAND_DISPLAY=${socket##*/}
+fi
+
 if [[ $1 == "shell" && ( $2 == "summon" || $2 == "toggle" ) ]] && (( $# == 3 )); then
   set -- "$1" "$2" "$3" "{}"
 fi

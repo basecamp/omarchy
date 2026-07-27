@@ -8,7 +8,7 @@ BarWidget {
   id: root
   moduleName: "omarchy.indicators"
 
-  readonly property var defaultIndicatorEntries: [ "Dnd", "Reminder", "NightLight", "StayAwake", "ScreenRecording", "Dictation" ]
+  readonly property var defaultIndicatorEntries: [ "TmuxAlert", "Dictation", "ScreenRecording", "Reminder", "NightLight", "Dnd", "StayAwake" ]
   readonly property var indicatorEntries: indicatorEntriesFromSettings(settings)
   property var activeIndicatorIds: []
   property var indicatorActiveStates: ({})
@@ -142,7 +142,9 @@ BarWidget {
     indicatorActiveStates = states
 
     var ids = orderedActiveIds(states, activeIndicatorIds)
-    if (active && ids.indexOf(id) === -1 && hasIndicatorId(id)) ids.push(id)
+    // The active block sits closest to the clock, so newcomers go on the far
+    // side of it. Appending would shove everything already showing sideways.
+    if (active && ids.indexOf(id) === -1 && hasIndicatorId(id)) ids.unshift(id)
     activeIndicatorIds = ids
     syncActiveIndicatorModel()
   }
@@ -151,6 +153,8 @@ BarWidget {
     activeIndicatorIds = orderedActiveIds(indicatorActiveStates, activeIndicatorIds)
     syncActiveIndicatorModel()
   }
+
+  function refresh() { root.refreshRequested() }
 
   onIndicatorEntriesChanged: syncActiveIndicatorOrder()
 
@@ -165,7 +169,7 @@ BarWidget {
     target: "omarchy.indicators"
 
     function refresh(): void {
-      root.refreshRequested()
+      root.broadcast("refresh")
     }
   }
 
@@ -188,14 +192,6 @@ BarWidget {
 
     HoverHandler {
       onHoveredChanged: root.setIndicatorAreaHovered(hovered)
-    }
-
-    ActiveIndicatorBlock {
-      id: activeHorizontalBlock
-      indicatorsModule: root
-      indicatorModel: activeIndicatorModel
-      horizontal: true
-      reportActiveState: !root.vertical
     }
 
     Item {
@@ -221,6 +217,14 @@ BarWidget {
         onHoveredChanged: root.setIndicatorAreaHovered(hovered)
       }
     }
+
+    ActiveIndicatorBlock {
+      id: activeHorizontalBlock
+      indicatorsModule: root
+      indicatorModel: activeIndicatorModel
+      horizontal: true
+      reportActiveState: !root.vertical
+    }
   }
 
   Column {
@@ -231,14 +235,6 @@ BarWidget {
 
     HoverHandler {
       onHoveredChanged: root.setIndicatorAreaHovered(hovered)
-    }
-
-    ActiveIndicatorBlock {
-      id: activeVerticalBlock
-      indicatorsModule: root
-      indicatorModel: activeIndicatorModel
-      horizontal: false
-      reportActiveState: root.vertical
     }
 
     Item {
@@ -263,6 +259,14 @@ BarWidget {
       HoverHandler {
         onHoveredChanged: root.setIndicatorAreaHovered(hovered)
       }
+    }
+
+    ActiveIndicatorBlock {
+      id: activeVerticalBlock
+      indicatorsModule: root
+      indicatorModel: activeIndicatorModel
+      horizontal: false
+      reportActiveState: root.vertical
     }
   }
 

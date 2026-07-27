@@ -1,0 +1,140 @@
+#!/bin/bash
+
+# omarchy:summary=Show or jump to tmux windows waiting for attention
+# omarchy:args=<show [--json]|focus>
+# omarchy:examples=omarchy tmux alert show | omarchy tmux alert focus
+
+set -e
+
+# Session names cannot contain colons, and window names can, so they always
+# come last when parsed.
+WINDOW_FORMAT='#{window_id}:#{window_bell_flag}#{window_activity_flag}#{window_silence_flag}:#{window_activity}:#{@omarchy_unfocused_activity}:#{session_name}:#{window_index}:#{window_name}'
+CLIENT_FORMAT='#{client_flags}:#{window_id}'
+
+usage() {
+  echo "Usage: omarchy-tmux-alert <show [--json]|focus>" >&2
+  exit 1
+}
+
+# Include tmux alert flags plus output newer than the last focus transition for
+# selected windows whose attached terminals are all unfocused.
+alerted_windows() {
+  local client_flags window_id flags activity seen_activity session index name
+  local waiting
+  local -A attached_windows=()
+  local -A focused_windows=()
+
+  while IFS=':' read -r client_flags window_id; do
+    [[ -n $window_id ]] || continue
+    attached_windows[$window_id]=1
+    if [[ ,$client_flags, == *",focused,"* ]]; then
+      focused_windows[$window_id]=1
+    fi
+  done < <(tmux list-clients -F "$CLIENT_FORMAT" 2>/dev/null)
+
+  while IFS=':' read -r window_id flags activity seen_activity session index name; do
+    waiting=0
+    [[ $flags == *1* ]] && waiting=1
+
+    if [[ ${attached_windows[$window_id]:-} == "1" &&
+        ${focused_windows[$window_id]:-} != "1" &&
+        $activity =~ ^[0-9]+$ &&
+        $seen_activity =~ ^[0-9]+$ ]] && ((activity > seen_activity)); then
+      waiting=1
+    fi
+
+    ((waiting)) && printf '%s:%s:%s\n' "$session" "$index" "$name"
+  done < <(tmux list-windows -a -F "$WINDOW_FORMAT" 2>/dev/null)
+}
+
+show() {
+  local windows=() window session index name description=""
+
+  readarray -t windows < <(alerted_windows)
+
+  for window in "${windows[@]}"; do
+    IFS=':' read -r session index name <<<"$window"
+    [[ -n $description ]] && description+=", "
+    description+="$name ($session:$index)"
+  done
+
+  if [[ ${1:-} == "--json" ]]; then
+    jq -nc --argjson count "${#windows[@]}" --arg tooltip "$description" '{count: $count, tooltip: $tooltip}'
+  elif [[ -n $description ]]; then
+    echo "$description"
+  fi
+}
+
+focus_terminal_window() {
+  local pid=$1 address="" window_pid window_address
+  local -A windows=()
+
+  while read -r window_pid window_address; do
+    windows[$window_pid]=$window_address
+  done < <(hyprctl clients -j | jq -r '.[] | "\(.pid) \(.address)"')
+
+  # The tmux client runs somewhere below the terminal that owns the window.
+  while [[ -n $pid ]] && (( pid > 1 )); do
+    if [[ -n ${windows[$pid]:-} ]]; then
+      address=${windows[$pid]}
+      break
+    fi
+    pid=$(awk '/^PPid:/ { print $2 }' "/proc/$pid/status" 2>/dev/null)
+  done
+
+  [[ -n $address ]] || return 1
+
+  hyprctl dispatch "hl.dsp.focus({ window = \"address:$address\" })" >/dev/null 2>&1 ||
+    hyprctl dispatch focuswindow "address:$address" >/dev/null
+}
+
+most_recent_client() {
+  tmux list-clients "$@" -F '#{client_activity}:#{client_tty}:#{client_pid}' 2>/dev/null | sort -rn | head -n1
+}
+
+track() {
+  local window=${1:-} activity=${2:-}
+
+  [[ $window =~ ^@[0-9]+$ && $activity =~ ^[0-9]+$ ]] || return 0
+  tmux set-option -wq -t "$window" @omarchy_unfocused_activity "$activity" 2>/dev/null || return 0
+  omarchy-shell -q omarchy.indicators refresh
+}
+
+focus() {
+  local target session index client tty pid
+
+  target=$(alerted_windows | head -n1)
+  [[ -n $target ]] || return 0
+
+  IFS=':' read -r session index _ <<<"$target"
+
+  client=$(most_recent_client -t "$session")
+  [[ -n $client ]] || client=$(most_recent_client)
+
+  if [[ -z $client ]]; then
+    tmux select-window -t "$session:$index"
+    exec omarchy-launch-terminal tmux attach -t "$session"
+  fi
+
+  IFS=':' read -r _ tty pid <<<"$client"
+  tmux switch-client -c "$tty" -t "$session:$index"
+  omarchy-shell -q omarchy.indicators refresh
+  focus_terminal_window "$pid"
+}
+
+case "${1:-}" in
+  show)
+    shift
+    show "$@"
+    ;;
+  focus)
+    focus
+    ;;
+  track)
+    shift
+    track "$@"
+    ;;
+  *)
+    usage
+    ;;
+esac

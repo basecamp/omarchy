@@ -8,6 +8,7 @@
 set -euo pipefail
 
 readonly MARGIN=40
+readonly REGION_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-region"
 
 usage() {
   echo "Usage: omarchy-capture-webcam-resize <smaller|larger|reset|small|medium|large>" >&2
@@ -57,13 +58,39 @@ read -r monitor_x monitor_y monitor_width monitor_height < <(
 
 [[ $monitor_x =~ ^-?[0-9]+$ && $monitor_y =~ ^-?[0-9]+$ && $monitor_width =~ ^[0-9]+$ && $monitor_height =~ ^[0-9]+$ ]] || exit 0
 
-# Scale the 8:9 portrait presets from monitor height so they occupy the same
+# Anchor to the recorded region when there is one, so a window picked on a wide
+# display keeps the camera in its own corner. Full-monitor captures, the portal
+# backend, and resizes outside a recording publish none and fall back here.
+anchor_x=$monitor_x
+anchor_y=$monitor_y
+anchor_width=$monitor_width
+anchor_height=$monitor_height
+
+if [[ -f $REGION_FILE ]] && region=$(<"$REGION_FILE"); then
+  if [[ $region =~ ^([0-9]+)x([0-9]+)\+(-?[0-9]+)\+(-?[0-9]+)$ ]]; then
+    anchor_width=${BASH_REMATCH[1]}
+    anchor_height=${BASH_REMATCH[2]}
+    anchor_x=${BASH_REMATCH[3]}
+    anchor_y=${BASH_REMATCH[4]}
+  fi
+fi
+
+# A tall, narrow region can't fit presets scaled from its own height, so cap the
+# height they scale from to what the width allows — the large preset is the
+# widest at 3/10 of it. Scaling the ladder as a whole leaves small, medium and
+# large distinct sizes for smaller and larger to step between.
+scale_height=$anchor_height
+available_width=$((anchor_width - 2 * MARGIN))
+((available_width > 0 && scale_height * 3 / 10 > available_width)) &&
+  scale_height=$((available_width * 10 / 3))
+
+# Scale the 8:9 portrait presets from that height so they occupy the same
 # proportion of a 1080p, HiDPI, ultrawide, or 6K recording.
-small_height=$(((monitor_height * 9 + 25) / 50))
+small_height=$(((scale_height * 9 + 25) / 50))
 small_width=$(((small_height * 8 + 4) / 9))
-medium_height=$(((monitor_height + 2) / 4))
+medium_height=$(((scale_height + 2) / 4))
 medium_width=$(((medium_height * 8 + 4) / 9))
-large_height=$(((monitor_height * 27 + 40) / 80))
+large_height=$(((scale_height * 27 + 40) / 80))
 large_width=$(((large_height * 8 + 4) / 9))
 
 target_width=$current_width
@@ -107,11 +134,11 @@ larger)
   ;;
 esac
 
-target_x=$((monitor_x + monitor_width - target_width - MARGIN))
-target_y=$((monitor_y + monitor_height - target_height - MARGIN))
+target_x=$((anchor_x + anchor_width - target_width - MARGIN))
+target_y=$((anchor_y + anchor_height - target_height - MARGIN))
 
-((target_x < monitor_x + MARGIN)) && target_x=$((monitor_x + MARGIN))
-((target_y < monitor_y + MARGIN)) && target_y=$((monitor_y + MARGIN))
+((target_x < anchor_x + MARGIN)) && target_x=$((anchor_x + MARGIN))
+((target_y < anchor_y + MARGIN)) && target_y=$((anchor_y + MARGIN))
 
 window="address:$address"
 hypr_dispatch \

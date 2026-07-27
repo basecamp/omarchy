@@ -27,9 +27,19 @@
         "emptyText": "No indicators",
         "options": [
           {
-            "value": "Dnd",
-            "label": "Do not disturb",
-            "description": "Notification silencing"
+            "value": "TmuxAlert",
+            "label": "Tmux alert",
+            "description": "Tmux windows waiting for attention"
+          },
+          {
+            "value": "Dictation",
+            "label": "Dictation",
+            "description": "Voice typing status"
+          },
+          {
+            "value": "ScreenRecording",
+            "label": "Screen recording",
+            "description": "GPU screen recorder status"
           },
           {
             "value": "Reminder",
@@ -42,19 +52,14 @@
             "description": "Blue-light filter"
           },
           {
+            "value": "Dnd",
+            "label": "Do not disturb",
+            "description": "Notification silencing"
+          },
+          {
             "value": "StayAwake",
             "label": "Stay awake",
             "description": "Idle lock and screensaver override"
-          },
-          {
-            "value": "ScreenRecording",
-            "label": "Screen recording",
-            "description": "GPU screen recorder status"
-          },
-          {
-            "value": "Dictation",
-            "label": "Dictation",
-            "description": "Voice typing status"
           }
         ]
       },

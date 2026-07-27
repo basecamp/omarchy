@@ -97,6 +97,7 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   │                                                       → /etc/skel/.bashrc (post_install cp -f)
   ├─ hypr/toggles/flags.lua                             /etc/skel/.local/state/omarchy/toggles/hypr/
   ├─ nautilus-python/extensions/*.py                    /etc/skel/.local/share/nautilus-python/extensions/
+  ├─ tensaku/state.toml                                 /etc/skel/.local/state/tensaku/state.toml
   ├─ uwsm/env.d/10-omarchy                              /usr/share/uwsm/env.d/
   ├─ environment.d/*.conf                               /usr/lib/environment.d/
   ├─ fontconfig/conf.avail/50-omarchy.conf              /usr/share/fontconfig/conf.avail/
@@ -105,6 +106,7 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   ├─ applications/mimeapps.list                         /usr/share/applications/mimeapps.list
   ├─ systemd/user/*.{service,path}                      /usr/lib/systemd/user/
   ├─ systemd/system-sleep/unmount-fuse                  /usr/lib/systemd/system-sleep/
+  ├─ systemd/zram-generator.conf.d/90-omarchy.conf      /usr/lib/systemd/zram-generator.conf.d/
   ├─ fonts/omarchy/omarchy.ttf                          /usr/share/fonts/omarchy/
   ├─ sddm/omarchy/                                      /usr/share/sddm/themes/omarchy/
   ├─ sddm/hyprland.lua                                  /usr/share/sddm/hyprland.lua
@@ -195,13 +197,19 @@ migration. Migrations run as the user; privileged work should invoke the
 appropriate helper or privilege prompt. Migrations must be idempotent;
 machine-wide repairs should no-op when another user already applied them.
 
-Each graphical user has `omarchy-update-user-notify.path` watching the packaged
-migration directory for changes, and `omarchy-update-user-notify.service` is
-also started once per login via its own `WantedBy=graphical-session.target`.
-Either way the service runs `omarchy-migrate-notify` as that user. The notifier checks
-`omarchy-migrate --pending`. If this user has missing migration state, it shows a
-notification that opens a terminal for `omarchy-migrate`. The notifier never runs
-migrations in the background.
+Each graphical user has `omarchy-migrate-notify.service`, started once per login
+through `WantedBy=graphical-session.target`. The package also ships
+`omarchy-update-user-notify.service` as a symlink onto it, so users enabled
+under the old unit name keep working before they reach migration `1785095882`.
+It runs `omarchy-migrate-notify` as
+that user, which checks `omarchy-migrate --pending`. If this user has missing
+migration state, it shows a notification that opens a terminal for
+`omarchy-migrate`. The notifier never runs migrations in the background.
+
+Login is the only trigger. Nothing watches the packaged migration directory: a
+watcher cannot tell a bypassed `pacman -Syu` from the package transaction inside
+a normal `omarchy update`, so it notified about migrations that `omarchy-migrate`
+was already applying in the visible update terminal.
 
 `omarchy-migrate` waits for any active pacman transaction to finish, then runs
 pending migrations. It does not need `--force`; migrations happen when state
@@ -219,8 +227,8 @@ systemd instance:
   Voxtype post-update hook.
 - `install/user/first-run/enable-user-units.sh` — `systemctl --user enable`
   the shipped user units (`bt-agent`, `omarchy-sleep-lock`,
-  `omarchy-recover-internal-monitor`, `omarchy-update-user-notify.path`,
-  `omarchy-update-user-notify.service`). Done here, not at finalize, because
+  `omarchy-recover-internal-monitor`, `omarchy-migrate-notify.service`).
+  Done here, not at finalize, because
   the user manager isn't reachable from the ISO chroot; `ConditionPath*`
   in the unit files keeps services inert when they don't apply.
 - `install/user/first-run/gnome-theme.sh`,
@@ -247,14 +255,14 @@ the legacy finalization marker from `~/.local/state/omarchy/` into `done/`.
 `omarchy-setup-system` (root, in chroot) runs target-side setup at ISO
 finalization. It sources:
 
-- `install/config/*.sh` — theme links, lockout limits, lockscreen PAM,
+- `install/config/all.sh` — theme links, lockout limits, lockscreen PAM,
   powerprofilesctl shebang fix, docker setup, Snapper retention, locate
   index tuning, service enablement, firewall.
 - `install/hardware/all.sh` via `omarchy-setup-hardware` — vendor- and
   device-specific kernel modules, udev rules, microcode, wireless regdom,
   ASUS / Framework / Intel / Apple / Lenovo quirks.
-- `install/login/*.sh` — SDDM theme/session config.
-- `install/post-install/*.sh` — final pacman/udev/localdb passes.
+- `install/login/all.sh` — SDDM theme/session config.
+- `install/post-install/all.sh` — final pacman/udev/localdb passes.
 
 Logging goes to `/var/log/omarchy-install.log` via
 `install/helpers/logging.sh`.
@@ -288,8 +296,9 @@ return to the packaged default.
 | Package-owned system file (e.g. systemd user service/path in `/usr/lib`) | `default/`, document the mapping in `default/package-defaults.tsv`, then add the `install -Dm644` line in `omarchy-settings` PKGBUILD |
 | Per-user file that's static but lives outside `~/.config` | `default/`, then add `install -Dm644 ... $pkgdir/etc/skel/...` in `omarchy-settings` PKGBUILD |
 | Runtime tweak that needs `$HOME` or live system state | extend `omarchy-finalize-user`, or add a per-user leaf under `install/user/` and wire into `install/user/all.sh` |
-| One-time root-side setup step | `install/config/*.sh` or `install/hardware/*.sh`, wire into `omarchy-setup-system` or `install/hardware/all.sh` |
+| One-time root-side setup step | `install/config/*.sh` or `install/hardware/*.sh`, wire into `install/config/all.sh` or `install/hardware/all.sh` |
 | One-time fix for existing installs | `migrations/<unix-timestamp>.sh` |
+| Package-owned path something else may already write | Prefer a path nothing else writes, such as a vendor drop-in under `/usr/lib`. Otherwise the `--overwrite` entry in `bin/omarchy-update-system-pkgs` has to ship a release before the file |
 | User-facing `omarchy-*` command | `bin/omarchy-<group>-<verb>` — see `GROUP_DESCRIPTIONS` in `bin/omarchy` |
 | New stock theme | `themes/<name>/` (+ matching templates under `default/themed/` if they need theme colors) |
 | User-installed theme | `~/.config/omarchy/themes/<name>/` |

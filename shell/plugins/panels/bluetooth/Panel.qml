@@ -502,7 +502,6 @@ Panel {
     text: root.icon
     onPressed: function(b) {
       if (b === Qt.RightButton) root.toggleBluetooth()
-      else if (b === Qt.MiddleButton) root.bar.run("omarchy-launch-bluetooth")
       else root.toggle()
     }
   }

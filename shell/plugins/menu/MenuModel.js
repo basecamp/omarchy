@@ -94,6 +94,65 @@ function mergeMenuSources(defaultItems, userItems) {
   }
 }
 
+// Both merges below return fresh items/itemOrder objects for the caller to
+// assign in one go. They must never write into the maps they are handed: those
+// live in QML `var` properties, and an in-place write into such an object is
+// occasionally dropped by the engine — the key lands with an undefined value.
+// A lost write used to leave an id in itemOrder with no item behind it, and
+// the next merge then kept that orphan and appended a second row for the same
+// app, so the launcher listed it twice (and again on every later rescan).
+
+// Swaps every app row for the current set. Rows keep the order they arrive in;
+// ids already claimed (including duplicate desktop ids) are listed once.
+function mergeAppRows(items, itemOrder, appRows) {
+  var source = items || ({})
+  var order = Array.isArray(itemOrder) ? itemOrder : []
+  var rows = Array.isArray(appRows) ? appRows : []
+  var nextItems = ({})
+  var nextOrder = []
+
+  for (var i = 0; i < order.length; i++) {
+    var id = order[i]
+    var existing = source[id]
+    // Orphans (an id with no item) are dropped rather than carried forward,
+    // so a single lost write cannot compound into a duplicate row.
+    if (!existing || existing.kind === "app") continue
+    nextItems[id] = existing
+    nextOrder.push(id)
+  }
+
+  for (var j = 0; j < rows.length; j++) {
+    var row = rows[j]
+    if (!row || !row.id || nextItems[row.id]) continue
+    row.order = nextOrder.length
+    nextItems[row.id] = row
+    nextOrder.push(row.id)
+  }
+
+  return { items: nextItems, itemOrder: nextOrder }
+}
+
+// Adds or replaces rows by id, leaving every other item untouched. Used by the
+// bash-backed providers, which contribute rows to one submenu at a time.
+function mergeRowsById(items, itemOrder, rows) {
+  var source = items || ({})
+  var incoming = Array.isArray(rows) ? rows : []
+  var nextItems = ({})
+  var nextOrder = (Array.isArray(itemOrder) ? itemOrder : []).slice()
+
+  for (var k in source) nextItems[k] = source[k]
+
+  for (var i = 0; i < incoming.length; i++) {
+    var row = incoming[i]
+    if (!row || !row.id) continue
+    if (!nextItems[row.id]) nextOrder.push(row.id)
+    nextItems[row.id] = row
+    row.order = nextOrder.indexOf(row.id)
+  }
+
+  return { items: nextItems, itemOrder: nextOrder }
+}
+
 function item(items, id) {
   return items && items[id] ? items[id] : null
 }
@@ -250,6 +309,9 @@ function searchScore(items, entry, query) {
   else if (descriptionTextMatches(needle, descriptionText)) score = 60
 
   if (entry.kind === "menu" || entry.kind === "link") score -= 2
+  // App rows sort after all menu items, so they lose the tiebreak below to an
+  // equal match. Outrank those, but stay inside the tier so better ones win.
+  if (entry.kind === "app") score -= 5
 
   return score * 1000 + depthFor(items, entry.id) * 25 + entry.order
 }
@@ -261,6 +323,8 @@ function displayRow(items, itemOrder, checkedResults, entry, detail, score, sect
     kind: entry.kind,
     icon: entry.icon,
     iconFont: entry.iconFont || "",
+    appIcon: entry.appIcon || "",
+    appId: entry.appId || "",
     label: labelFor(entry, checkedResults),
     target: target,
     detail: detail || "",
@@ -280,6 +344,8 @@ if (typeof module !== "undefined") {
     normalizeItem: normalizeItem,
     parseMenuJsonc: parseMenuJsonc,
     mergeMenuSources: mergeMenuSources,
+    mergeAppRows: mergeAppRows,
+    mergeRowsById: mergeRowsById,
     item: item,
     slugify: slugify,
     depthFor: depthFor,

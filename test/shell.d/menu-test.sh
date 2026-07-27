@@ -92,6 +92,8 @@ assertDeepEqual(
     kind: 'action',
     icon: '',
     iconFont: '',
+    appIcon: '',
+    appId: '',
     label: 'Theme picker',
     target: 'style.theme',
     detail: 'Style',
@@ -107,6 +109,36 @@ assertDeepEqual(
 
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
+
+// Needs the real menu: app rows sort after all menu items, and only at that
+// item count does the order tiebreak alone bury an installed app.
+const rankBase = menu.mergeMenuSources(defaultItems, [])
+const ranked = menu.mergeAppRows(rankBase.items, rankBase.itemOrder, [
+  { id: 'apps.brave', parent: 'apps', kind: 'app', label: 'Brave', description: '', aliases: [] },
+  { id: 'apps.fontforge', parent: 'apps', kind: 'app', label: 'FontForge', description: '', aliases: [] }
+])
+const rankScore = (id, query) => menu.searchScore(ranked.items, ranked.items[id], query)
+assert(
+  ['install.browser.brave', 'remove.browser.brave', 'setup.default.browser.brave'].every(
+    id => rankScore('apps.brave', 'brave') < rankScore(id, 'brave')
+  ),
+  'menu ranks an installed app above menu entries matching the query equally well'
+)
+assert(
+  rankScore('style.font', 'font') < rankScore('apps.fontforge', 'font'),
+  'menu keeps a better-matching menu entry above a weaker app match'
+)
+const triggerItems = defaultItems.filter(item => item.parent === 'trigger')
+assertEqual(
+  triggerItems[0].id,
+  'trigger.emoji',
+  'menu lists Emoji first under Trigger'
+)
+assertEqual(
+  defaultById['trigger.emoji'].action,
+  'omarchy-menu-emoji',
+  'menu opens the emoji picker from Trigger'
+)
 assert(
   defaultById['update.omarchy'].icon === '\ue900',
   'menu update Omarchy entry uses the Omarchy glyph'
@@ -120,7 +152,7 @@ assert(
   'menu keeps Input as a direct config action'
 )
 assert(
-  defaultById['setup.direct-boot'].action.includes('omarchy-config-direct-boot'),
+  defaultById['setup.direct-boot'].action.includes('omarchy-setup-direct-boot'),
   'menu places Direct Boot directly under Setup'
 )
 assertEqual(
@@ -159,6 +191,11 @@ assertEqual(
   'omarchy-hw-laptop',
   'menu only shows Mirror Display on laptops'
 )
+assertEqual(
+  defaultById['trigger.capture.screenrecord.webcam'].when,
+  'omarchy-hw-webcam',
+  'menu only shows webcam screen recording when a webcam is available'
+)
 assert(
   /font\.family: row\.iconFont\.length > 0 \? row\.iconFont : root\.fontFamily/.test(menuQml),
   'menu rows support per-icon font families'
@@ -188,6 +225,88 @@ assert(
   /function disarmPointer\(\)[\s\S]*pointerGate\.reset\(\)/.test(menuQml),
   'menu resets pointer movement gate when pointer selection is disarmed'
 )
+// App rows are rebuilt from scratch on every desktop-entry rescan. The merge
+// must be idempotent and must never carry an orphan id forward, or a single
+// lost write turns into an app listed twice (and thrice, and so on).
+const nonAppItems = {
+  root: { id: 'root', kind: 'menu', label: 'Go' },
+  apps: { id: 'apps', kind: 'menu', label: 'Apps', provider: 'apps' }
+}
+const nonAppOrder = ['root', 'apps']
+const appRowsFor = ids => ids.map(id => ({ id: `apps.${id}`, kind: 'app', parent: 'apps', label: id, appId: id }))
+
+const firstMerge = menu.mergeAppRows(nonAppItems, nonAppOrder, appRowsFor(['alacritty', 'youtube']))
+assert(
+  firstMerge.itemOrder.join(',') === 'root,apps,apps.alacritty,apps.youtube',
+  'app merge appends app rows after the static menu items'
+)
+
+const secondMerge = menu.mergeAppRows(firstMerge.items, firstMerge.itemOrder, appRowsFor(['alacritty', 'youtube']))
+assert(
+  secondMerge.itemOrder.join(',') === 'root,apps,apps.alacritty,apps.youtube',
+  'repeating the app merge with the same entries does not duplicate rows'
+)
+
+assert(
+  menu.mergeAppRows(secondMerge.items, secondMerge.itemOrder, appRowsFor(['alacritty'])).itemOrder.join(',')
+    === 'root,apps,apps.alacritty',
+  'app merge drops rows for entries that went away'
+)
+
+assert(
+  menu.mergeAppRows(nonAppItems, nonAppOrder, appRowsFor(['youtube', 'youtube'])).itemOrder.join(',')
+    === 'root,apps,apps.youtube',
+  'app merge lists an app once even when two desktop entries share an id'
+)
+
+const orphanedItems = {}
+for (const key in firstMerge.items) orphanedItems[key] = firstMerge.items[key]
+delete orphanedItems['apps.youtube']
+const healed = menu.mergeAppRows(orphanedItems, firstMerge.itemOrder, appRowsFor(['alacritty', 'youtube']))
+assert(
+  healed.itemOrder.join(',') === 'root,apps,apps.alacritty,apps.youtube'
+    && !!healed.items['apps.youtube'],
+  'app merge heals an order entry whose item went missing instead of duplicating it'
+)
+
+assert(
+  !firstMerge.items['apps.youtube'].hasOwnProperty('__probe')
+    && (() => {
+      const before = Object.keys(nonAppItems).length
+      menu.mergeAppRows(nonAppItems, nonAppOrder, appRowsFor(['gimp']))
+      return Object.keys(nonAppItems).length === before
+    })(),
+  'app merge leaves the map it was handed untouched'
+)
+
+const providerRowsFor = values => values.map(value => ({ id: `style.font.${value}`, kind: 'action', parent: 'style.font', label: value }))
+const firstProviderMerge = menu.mergeRowsById(nonAppItems, nonAppOrder, providerRowsFor(['mono', 'serif']))
+assert(
+  firstProviderMerge.itemOrder.join(',') === 'root,apps,style.font.mono,style.font.serif',
+  'provider merge appends its rows'
+)
+assert(
+  menu.mergeRowsById(firstProviderMerge.items, firstProviderMerge.itemOrder, providerRowsFor(['mono', 'serif']))
+    .itemOrder.join(',') === 'root,apps,style.font.mono,style.font.serif',
+  'repeating a provider merge does not duplicate rows'
+)
+
+// The maps live in QML `var` properties, where an in-place write is
+// occasionally dropped by the engine, so both merges must hand back fresh
+// objects for the caller to assign in one shot.
+assert(
+  /var merged = MenuModel\.mergeAppRows\(root\.items, root\.itemOrder, appRows\)\s*\n\s*root\.items = merged\.items\s*\n\s*root\.itemOrder = merged\.itemOrder/.test(menuQml),
+  'menu assigns the rebuilt app item map instead of mutating it in place'
+)
+assert(
+  /var merged = MenuModel\.mergeRowsById\(root\.items, root\.itemOrder, providerRows\)\s*\n\s*root\.items = merged\.items\s*\n\s*root\.itemOrder = merged\.itemOrder/.test(menuQml),
+  'menu assigns the rebuilt provider item map instead of mutating it in place'
+)
+assert(
+  !/root\.items\[[^\]]+\] =/.test(menuQml) && !/delete root\.items\[/.test(menuQml),
+  'menu never writes into the item map held by the var property'
+)
+
 for (const functionName of ['openExistingMenu', 'openDmenu']) {
   const openMatch = menuQml.match(new RegExp(`function ${functionName}\\([^)]*\\) \\{([\\s\\S]*?)\\n  \\}`))
   assert(openMatch, `menu ${functionName} function exists`)

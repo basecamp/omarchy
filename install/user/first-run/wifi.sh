@@ -16,6 +16,10 @@ notify_wifi() {
 
 if ! ping -c3 -W1 1.1.1.1 >/dev/null 2>&1; then
   notify_update "When you have internet, click to update the system."
+  # Both toasts are sent from background subshells, so let the update one
+  # register before queueing Wi-Fi. Newest stacks on top, and Wi-Fi is what
+  # you need first.
+  sleep 0.3
   notify_wifi
 else
   notify_update "Click to update the system."

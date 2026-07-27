@@ -51,20 +51,17 @@ run_logged() {
       ;;
   esac
 
+  local runner=(bash -eE)
+  if [[ ${OMARCHY_INSTALL_DEBUG:-} == "1" ]]; then
+    runner=(bash -x -eE)
+  fi
+
   if omarchy_log_to_stdout; then
-    if [[ ${OMARCHY_INSTALL_DEBUG:-} == "1" ]]; then
-      PS4='+ ${BASH_SOURCE[0]##*/}:${LINENO}:${FUNCNAME[0]:-main}: ' \
-        bash -x -eE -c 'source "$1"' bash "$script" </dev/null 2>&1
-    else
-      bash -eE -c 'source "$1"' bash "$script" </dev/null 2>&1
-    fi
+    PS4='+ ${BASH_SOURCE[0]##*/}:${LINENO}:${FUNCNAME[0]:-main}: ' \
+      "${runner[@]}" -c 'source "$1"' bash "$script" </dev/null 2>&1
   else
-    if [[ ${OMARCHY_INSTALL_DEBUG:-} == "1" ]]; then
-      PS4='+ ${BASH_SOURCE[0]##*/}:${LINENO}:${FUNCNAME[0]:-main}: ' \
-        bash -x -eE -c 'source "$1"' bash "$script" </dev/null >>"$OMARCHY_INSTALL_LOG_FILE" 2>&1
-    else
-      bash -eE -c 'source "$1"' bash "$script" </dev/null >>"$OMARCHY_INSTALL_LOG_FILE" 2>&1
-    fi
+    PS4='+ ${BASH_SOURCE[0]##*/}:${LINENO}:${FUNCNAME[0]:-main}: ' \
+      "${runner[@]}" -c 'source "$1"' bash "$script" </dev/null >>"$OMARCHY_INSTALL_LOG_FILE" 2>&1
   fi
 
   exit_code=$?

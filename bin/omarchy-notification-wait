@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# omarchy:summary=Wait for the desktop notification server to accept notifications
+# omarchy:args=[timeout-seconds]
+# omarchy:hidden=true
+
+set -uo pipefail
+
+timeout=${1:-10}
+
+notification_server_ready() {
+  busctl --user call \
+    org.freedesktop.Notifications \
+    /org/freedesktop/Notifications \
+    org.freedesktop.Notifications \
+    GetServerInformation >/dev/null 2>&1
+}
+
+# The shell has to be up to serve the IPC, and it has to have claimed the
+# notification bus name before notify-send has anywhere to deliver.
+attempts=$((timeout * 10))
+while (( attempts > 0 )); do
+  if omarchy-shell notifications ping >/dev/null 2>&1 && notification_server_ready; then
+    exit 0
+  fi
+  attempts=$((attempts - 1))
+  sleep 0.1
+done
+
+exit 1

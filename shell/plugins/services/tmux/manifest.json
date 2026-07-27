@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.tmux",
+  "name": "Tmux",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Owns the set of tmux windows waiting for attention for the bar indicator.",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

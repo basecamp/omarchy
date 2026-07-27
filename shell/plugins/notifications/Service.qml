@@ -331,7 +331,23 @@ Item {
       service.historyReplayLimit,
       NotificationUrgency.Normal)
 
-    if (rows.length === 0) return "none"
+    // Replaying nothing at all looks like a dead keybinding, so say so.
+    if (rows.length === 0) {
+      popupModel.insert(0, {
+        id: -1,
+        originalId: -1,
+        app: "omarchy-action",
+        appIcon: "",
+        summary: "No recent notifications",
+        body: "",
+        image: "",
+        glyph: "󰂚",
+        urgency: NotificationUrgency.Low,
+        expireTimeout: 0,
+        timestamp: Date.now()
+      })
+      return "none"
+    }
 
     clearPopups()
     for (var i = 0; i < rows.length; i++) {
@@ -787,26 +803,22 @@ Item {
       readonly property var popupPlacement: NotificationLogic.popupPlacement(
         service.barPosition, service.barClearance, Style.gapsOut)
 
-      anchors {
-        top: popupWindow.popupPlacement.anchors.top
-        bottom: popupWindow.popupPlacement.anchors.bottom
-        left: popupWindow.popupPlacement.anchors.left
-        right: popupWindow.popupPlacement.anchors.right
-      }
-      margins {
-        top: popupWindow.popupPlacement.margins.top
-        bottom: popupWindow.popupPlacement.margins.bottom
-        left: popupWindow.popupPlacement.margins.left
-        right: popupWindow.popupPlacement.margins.right
-      }
+      // Full-screen, fixed-size surface (like the OSD overlay). Adding or
+      // removing a toast changes only the content inside; the Wayland surface
+      // never resizes, so the compositor can't briefly scale a stale buffer --
+      // which is what stretched/squished the cards during count changes.
+      anchors { top: true; bottom: true; left: true; right: true }
 
-      implicitWidth: popupColumn.implicitWidth
-      implicitHeight: popupColumn.implicitHeight
+      // Keep the surface click-through except over the toast column, so the
+      // rest of the (invisible) full-screen overlay never eats input.
+      mask: Region { item: popupColumn }
 
       ColumnLayout {
         id: popupColumn
         anchors.right: parent.right
         anchors.top: parent.top
+        anchors.topMargin: popupWindow.popupPlacement.margins.top
+        anchors.rightMargin: popupWindow.popupPlacement.margins.right
         spacing: Style.space(8)
 
         Repeater {

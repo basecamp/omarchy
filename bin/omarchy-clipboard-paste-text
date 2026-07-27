@@ -11,7 +11,7 @@ copy_only=false
 history_index=""
 text=""
 
-while [[ $# -gt 0 ]]; do
+while (( $# > 0 )); do
   case "$1" in
     --shift-insert)
       use_shift_insert=true

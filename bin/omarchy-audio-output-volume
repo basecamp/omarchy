@@ -11,20 +11,27 @@ if [[ -z $action ]]; then
   exit 1
 fi
 
-volume_state() {
-  wpctl get-volume @DEFAULT_AUDIO_SINK@
-}
+# Resolve through any DSP sink to the physical one, so the keys always move real
+# loudness and the processing always sees full-scale input. Shared with the audio
+# panel and the output switcher.
+sink="$(omarchy-audio-output-sink)"
+if [[ -z $sink ]]; then
+  echo "Could not resolve an audio sink to control." >&2
+  exit 1
+fi
 
+# pactl reports the same percentage scale wpctl does (both are the raw volume
+# over PA_VOLUME_NORM), so the OSD reads identically either way.
 volume_percent() {
-  volume_state | awk '{ for (i=1; i<=NF; i++) if ($i ~ /^[0-9.]+$/) print int($i * 100) }'
+  pactl get-sink-volume "$sink" 2>/dev/null |
+    awk 'NR == 1 {
+      for (i = 1; i <= NF; i++)
+        if ($i ~ /%$/) {sub("%", "", $i); print $i; exit}
+    }'
 }
 
 volume_muted() {
-  volume_state | grep -q MUTED
-}
-
-unmute_output() {
-  wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 >/dev/null
+  [[ $(pactl get-sink-mute "$sink" 2>/dev/null) == *yes ]]
 }
 
 case "$action" in
@@ -37,31 +44,43 @@ if [[ $action == "mute-toggle" ]]; then
   debounce_file="$runtime_dir/omarchy-audio-output-volume-mute-toggle.last"
   now=$(date +%s%3N)
   last=0
-  [[ -r $debounce_file ]] && read -r last < "$debounce_file" || true
-  if (( now - last < 250 )); then
+  [[ -r $debounce_file ]] && read -r last <"$debounce_file" || true
+  if ((now - last < 250)); then
     exit 0
   fi
-  printf '%s\n' "$now" > "$debounce_file"
+  printf '%s\n' "$now" >"$debounce_file"
 
-  wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle >/dev/null
-elif [[ $action == +* ]]; then
-  step="${action#+}"
-  unmute_output
-  wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ "${step}%+"
-elif [[ $action == -* ]]; then
-  step="${action#-}"
-  unmute_output
-  wpctl set-volume @DEFAULT_AUDIO_SINK@ "${step}%-"
+  pactl set-sink-mute "$sink" toggle
+elif [[ $action =~ ^([+-])([0-9]+)$ ]]; then
+  direction="${BASH_REMATCH[1]}"
+  step="${BASH_REMATCH[2]}"
+
+  current="$(volume_percent)"
+  if [[ -z $current ]]; then
+    echo "Could not read volume for $sink." >&2
+    exit 1
+  fi
+
+  if [[ $direction == "+" ]]; then
+    next=$((current + step))
+    ((next <= 100)) || next=100
+  else
+    next=$((current - step))
+    ((next >= 0)) || next=0
+  fi
+
+  pactl set-sink-mute "$sink" 0
+  pactl set-sink-volume "$sink" "${next}%"
 else
   echo "Unknown volume action: $action"
   exit 1
 fi
 
 percent=$(volume_percent)
-if volume_muted || (( percent == 0 )); then
+if volume_muted || ((${percent:-0} == 0)); then
   icon="volume-muted"
 else
   icon="volume-high"
 fi
 
-omarchy-osd -i "$icon" -p "$percent"
+omarchy-osd -i "$icon" -p "${percent:-0}"

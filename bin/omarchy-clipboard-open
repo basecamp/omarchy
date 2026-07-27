@@ -8,7 +8,7 @@
 history_index=""
 history_path="$HOME/.local/state/omarchy/clipboard-history.json"
 
-while [[ $# -gt 0 ]]; do
+while (( $# > 0 )); do
   case "$1" in
     --history-index)
       history_index="${2:-}"

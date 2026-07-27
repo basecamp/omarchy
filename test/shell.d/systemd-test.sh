@@ -28,12 +28,19 @@ grep -F 'ExecStart=/usr/bin/omarchy-system-sleep-monitor' "$upgrade_to_quattro" 
 grep -F 'reset-failed omarchy-sleep-lock.service' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade repairs the legacy sleep lock unit path"
 
-notify_path="$ROOT/default/systemd/user/omarchy-update-user-notify.path"
-! grep -q 'PathExistsGlob' "$notify_path"
-grep -Fx 'PathModified=/usr/share/omarchy/migrations' "$notify_path" >/dev/null
-pass "migration watcher is edge-triggered so applied migrations on disk cannot re-trigger it"
+[[ -e $ROOT/default/systemd/user/omarchy-update-user-notify.path ]] &&
+  fail "the retired migration watcher is back; pacman writing the migration directory during omarchy update would notify about migrations that update is already applying"
+grep -rlE '^(Path[A-Za-z]+|DirectoryNotEmpty)=.*/usr/share/omarchy/migrations' "$ROOT/default/systemd/user" >/dev/null 2>&1 &&
+  fail "a user unit watches the migration directory again; the notifier must stay login-only"
+pass "no unit watches the migration directory, so package updates cannot trigger the notifier"
 
-notify_service="$ROOT/default/systemd/user/omarchy-update-user-notify.service"
-! grep -q 'StartLimit' "$notify_service"
+notify_service="$ROOT/default/systemd/user/omarchy-migrate-notify.service"
+grep -Fx 'ExecStart=/usr/bin/omarchy-migrate-notify' "$notify_service" >/dev/null
 grep -Fx 'WantedBy=graphical-session.target' "$notify_service" >/dev/null
-pass "migration notifier keeps its start-rate limit and still runs once per login"
+pass "migration notifier only checks once per login"
+
+grep -F 'omarchy-migrate-notify.service' "$first_run_units" >/dev/null ||
+  fail "first-run does not enable the login migration notifier"
+grep -F 'omarchy-update-user-notify' "$first_run_units" >/dev/null &&
+  fail "first-run still enables the retired notifier units"
+pass "first-run enables the login-only migration notifier"

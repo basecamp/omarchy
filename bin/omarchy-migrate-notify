@@ -15,11 +15,17 @@ fi
 
 notify_command=$(printf 'if [[ -n $(omarchy-notification-send -u critical -g  "Pending Omarchy Migrations" %q -a) ]]; then omarchy-launch-floating-terminal-with-presentation omarchy-migrate; fi' "$message")
 
-if omarchy-cmd-present systemd-run; then
-  unit="omarchy-migrations-notification-$(date +%Y%m%d%H%M%S)"
-  systemd-run --user --scope --unit="$unit" bash -lc "$notify_command" >/dev/null 2>&1 && exit 0
-fi
+# This runs from omarchy-migrate-notify.service at graphical-session.target,
+# which the session can reach before the shell has claimed
+# org.freedesktop.Notifications. Without the wait the toast is sent into the
+# void and the user never learns about their pending migrations.
+omarchy-notification-wait || true
 
+unit="omarchy-migrations-notification-$(date +%Y%m%d%H%M%S)"
+systemd-run --user --scope --unit="$unit" bash -lc "$notify_command" >/dev/null 2>&1 && exit 0
+
+# Reached when there is no user manager to run the scope under, such as a
+# non-graphical shell, so fall back to telling the user in the terminal.
 print_pending_migrations() {
   echo "Omarchy has pending migrations. Run omarchy-migrate in a terminal to apply them:"
   while IFS= read -r migration; do

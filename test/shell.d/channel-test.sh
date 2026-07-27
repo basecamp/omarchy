@@ -37,9 +37,16 @@ for arg in "$@"; do printf "\t%s" "$arg" >>"$OMARCHY_CHANNEL_TEST_LOG"; done
 printf "\n" >>"$OMARCHY_CHANNEL_TEST_LOG"
 '
 
+write_stub omarchy-state '#!/bin/bash
+printf "state" >>"$OMARCHY_CHANNEL_TEST_LOG"
+for arg in "$@"; do printf "\t%s" "$arg" >>"$OMARCHY_CHANNEL_TEST_LOG"; done
+printf "\n" >>"$OMARCHY_CHANNEL_TEST_LOG"
+'
+
 write_stub omarchy-update '#!/bin/bash
 printf "update" >>"$OMARCHY_CHANNEL_TEST_LOG"
 for arg in "$@"; do printf "\t%s" "$arg" >>"$OMARCHY_CHANNEL_TEST_LOG"; done
+printf "\tOMARCHY_PATH=%s" "$OMARCHY_PATH" >>"$OMARCHY_CHANNEL_TEST_LOG"
 printf "\n" >>"$OMARCHY_CHANNEL_TEST_LOG"
 '
 
@@ -47,20 +54,7 @@ write_stub gum '#!/bin/bash
 printf "gum" >>"$OMARCHY_CHANNEL_TEST_LOG"
 for arg in "$@"; do printf "\t%s" "$arg" >>"$OMARCHY_CHANNEL_TEST_LOG"; done
 printf "\n" >>"$OMARCHY_CHANNEL_TEST_LOG"
-if [[ $1 == "input" ]]; then
-  printf "%s\n" "${OMARCHY_TEST_GUM_INPUT:-$HOME/Work/omarchy}"
-fi
 exit 0
-'
-
-write_stub omarchy-cmd-missing '#!/bin/bash
-[[ $1 == "git" ]] && exit 1
-exit 0
-'
-
-write_stub omarchy-cmd-present '#!/bin/bash
-[[ $1 == "omarchy-dev-unlink" || $1 == "gum" || $1 == "git" ]] && exit 0
-exit 1
 '
 
 write_stub git '#!/bin/bash
@@ -96,9 +90,7 @@ esac
 run_channel() {
   : >"$log_file"
   OMARCHY_CHANNEL_TEST_LOG="$log_file" \
-    OMARCHY_DEV_PATH="${OMARCHY_DEV_PATH:-}" \
-    OMARCHY_TEST_GUM_INPUT="${OMARCHY_TEST_GUM_INPUT:-}" \
-    OMARCHY_PATH="$ROOT" \
+    OMARCHY_PATH="${OMARCHY_TEST_PATH:-/usr/share/omarchy}" \
     HOME="$test_tmp/home" \
     PATH="$stub_bin:$ROOT/bin:$PATH" \
     "$ROOT/bin/omarchy-channel-set" "$@"
@@ -112,49 +104,35 @@ assert_log_line() {
   pass "$description"
 }
 
-assert_numbered_log_line() {
-  local number="$1"
-  local expected="$2"
-  local description="$3"
-  local actual=""
-
-  actual=$(sed -n "${number}p" "$log_file")
-  [[ $actual == $expected ]] || fail "$description" "$(cat "$log_file")"
-  pass "$description"
-}
-
 run_channel stable
 assert_log_line $'refresh\tstable' "stable refreshes the stable pacman channel"
 assert_log_line $'sudo\tenv\tOMARCHY_UPDATE_PACMAN=1\tpacman\t-S\t--needed\t--noconfirm\t--ask\t4\tomarchy\tomarchy-settings' "stable installs stable Omarchy packages"
-assert_log_line 'unlink' "stable restores the package-backed Omarchy path"
-assert_log_line $'update\t-y' "stable runs the normal update pipeline"
+assert_log_line $'unlink\t--no-reboot' "stable restores the package-backed Omarchy path without an early reboot prompt"
+assert_log_line $'update\t-y\tOMARCHY_PATH=/usr/share/omarchy' "stable runs the normal update pipeline from the package-backed path"
+if grep -q $'^state\tset\treboot-required$' "$log_file"; then
+  fail "stable does not require reboot when already package-backed" "$(cat "$log_file")"
+fi
+pass "stable does not require reboot when already package-backed"
 
 run_channel rc
 assert_log_line $'refresh\trc' "rc refreshes the rc pacman channel"
 assert_log_line $'sudo\tenv\tOMARCHY_UPDATE_PACMAN=1\tpacman\t-S\t--needed\t--noconfirm\t--ask\t4\tomarchy\tomarchy-settings' "rc installs rc Omarchy packages"
-assert_log_line 'unlink' "rc restores the package-backed Omarchy path"
-assert_log_line $'update\t-y' "rc runs the normal update pipeline"
+assert_log_line $'unlink\t--no-reboot' "rc restores the package-backed Omarchy path without an early reboot prompt"
+assert_log_line $'update\t-y\tOMARCHY_PATH=/usr/share/omarchy' "rc runs the normal update pipeline from the package-backed path"
 
-run_channel edge
+OMARCHY_TEST_PATH="$ROOT" run_channel edge
 assert_log_line $'refresh\tedge' "edge refreshes the edge pacman channel"
 assert_log_line $'sudo\tenv\tOMARCHY_UPDATE_PACMAN=1\tpacman\t-S\t--needed\t--noconfirm\t--ask\t4\tomarchy-dev\tomarchy-settings-dev' "edge installs development Omarchy packages"
-assert_log_line 'unlink' "edge remains package-backed"
-assert_log_line $'update\t-y' "edge runs the normal update pipeline"
+assert_log_line $'unlink\t--no-reboot' "edge unlinks dev without an early reboot prompt"
+assert_log_line $'state\tset\treboot-required' "edge marks reboot required when leaving dev"
+assert_log_line $'update\t-y\tOMARCHY_PATH=/usr/share/omarchy' "edge runs the normal update pipeline from the package-backed path"
+[[ $(grep -E '^(unlink|state|update)' "$log_file") == $'unlink\t--no-reboot\nstate\tset\treboot-required\nupdate\t-y\tOMARCHY_PATH=/usr/share/omarchy' ]] ||
+  fail "edge defers the reboot prompt until the update restart stage" "$(cat "$log_file")"
+pass "edge defers the reboot prompt until the update restart stage"
 
-checkout="$test_tmp/dev-checkout"
-default_checkout="$test_tmp/home/Work/omarchy"
-OMARCHY_TEST_GUM_INPUT="$checkout" run_channel dev
-assert_numbered_log_line 1 $'gum\tconfirm\t--default=false\tEnable Dev anyway?' "dev warns before changing packages"
-assert_numbered_log_line 2 $'gum\tinput\t--value\t'"$default_checkout"$'\t--placeholder\t'"$default_checkout"$'\t--header\tWhere should Dev checkout live? Existing non-checkout paths will not be overwritten.' "dev prompts for the checkout path before changing packages"
-assert_log_line $'gum\tconfirm\t--default=false\tEnable Dev anyway?' "dev asks for confirmation"
-assert_log_line $'refresh\tedge' "dev refreshes the edge pacman channel"
-assert_log_line $'sudo\tenv\tOMARCHY_UPDATE_PACMAN=1\tpacman\t-S\t--needed\t--noconfirm\t--ask\t4\tomarchy-dev\tomarchy-settings-dev' "dev installs development Omarchy packages"
-assert_log_line $'git\tclone\t--branch\tquattro\t--single-branch\thttps://github.com/basecamp/omarchy.git\t'"$checkout" "dev clones the quattro checkout"
-assert_log_line $'link\t'"$checkout" "dev links the source checkout"
-
-occupied_checkout="$test_tmp/occupied"
-mkdir -p "$occupied_checkout"
-if OMARCHY_TEST_GUM_INPUT="$occupied_checkout" run_channel dev >"$test_tmp/occupied.out" 2>"$test_tmp/occupied.err"; then
+checkout="$test_tmp/home/omarchy"
+mkdir -p "$checkout"
+if run_channel dev >"$test_tmp/occupied.out" 2>"$test_tmp/occupied.err"; then
   fail "dev refuses to use an occupied non-checkout path"
 fi
 
@@ -163,6 +141,30 @@ if grep -Fx $'refresh\tedge' "$log_file" >/dev/null; then
   fail "dev validates checkout path before changing packages" "$(cat "$log_file")"
 fi
 pass "dev refuses occupied non-checkout paths before package changes"
+
+rmdir "$checkout"
+run_channel dev
+assert_log_line $'gum\tconfirm\t--default=false\tSwitch to dev channel?' "dev asks for confirmation"
+assert_log_line $'refresh\tedge' "dev refreshes the edge pacman channel"
+assert_log_line $'sudo\tenv\tOMARCHY_UPDATE_PACMAN=1\tpacman\t-S\t--needed\t--noconfirm\t--ask\t4\tomarchy-dev\tomarchy-settings-dev' "dev installs development Omarchy packages"
+assert_log_line $'git\tclone\thttps://github.com/basecamp/omarchy.git\t'"$checkout" "dev clones the source checkout to ~/omarchy"
+assert_log_line $'link\t'"$checkout"$'\t--no-reboot' "dev links ~/omarchy without an early reboot prompt"
+assert_log_line $'state\tset\treboot-required' "dev defers the reboot prompt to the update pipeline"
+assert_log_line $'update\t-y\tOMARCHY_PATH='"$checkout" "dev runs the normal update pipeline from the source checkout"
+[[ $(grep -E '^(git|link|state|refresh|sudo|update)' "$log_file") == $'git\tclone\thttps://github.com/basecamp/omarchy.git\t'"$checkout"$'\nlink\t'"$checkout"$'\t--no-reboot\nstate\tset\treboot-required\nrefresh\tedge\nsudo\tenv\tOMARCHY_UPDATE_PACMAN=1\tpacman\t-S\t--needed\t--noconfirm\t--ask\t4\tomarchy-dev\tomarchy-settings-dev\nupdate\t-y\tOMARCHY_PATH='"$checkout" ]] ||
+  fail "dev activates the checkout before changing or updating packages" "$(cat "$log_file")"
+pass "dev activates the checkout before changing or updating packages"
+
+OMARCHY_TEST_PATH="$checkout" run_channel stable
+assert_log_line $'unlink\t--no-reboot' "switching from dev to stable unlinks without an early reboot prompt"
+assert_log_line $'state\tset\treboot-required' "switching from dev to stable marks reboot required"
+
+run_channel dev
+if grep -q $'^git\tclone\t' "$log_file"; then
+  fail "dev reuses an existing checkout" "$(cat "$log_file")"
+fi
+assert_log_line $'link\t'"$checkout"$'\t--no-reboot' "switching back to dev links ~/omarchy"
+pass "switching back to dev reuses the existing ~/omarchy checkout"
 
 current_channel() {
   OMARCHY_TEST_VERSION_CHANNEL="$1" \
@@ -182,4 +184,4 @@ pass "current channel detects rc"
 pass "current channel detects package-backed edge"
 
 [[ $(current_channel edge dev "$test_tmp/dev-checkout") == "dev" ]] || fail "current channel detects dev from OMARCHY_PATH"
-pass "current channel detects dev from OMARCHY_PATH"
+pass "current channel honors a dev link outside ~/omarchy"

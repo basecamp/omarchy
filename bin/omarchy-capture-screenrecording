@@ -35,6 +35,7 @@ RESOLUTION=""
 FULLSCREEN="false"
 STOP_RECORDING="false"
 RECORDING_FILE="/tmp/omarchy-screenrecord-filename"
+REGION_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-region"
 LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "/tmp/omarchy-screenrecord.log" || echo "/dev/null")
 
 for arg in "$@"; do
@@ -89,11 +90,26 @@ start_webcam_overlay() {
     --title="WebcamOverlay" --wayland-app-id="WebcamOverlay-$WEBCAM_SIZE" \
     --no-border --no-audio --no-osc --osd-level=0 \
     --really-quiet &>/dev/null &
-  sleep 1
+
+  # The move has to settle before gpu-screen-recorder starts, or the camera is
+  # recorded sliding into its corner. Waiting for the map is what the blind
+  # second was partly guessing at, so the remainder is trimmed to hold the
+  # pre-capture delay where it was: starting later costs the first words spoken.
+  local waited=0
+  while ((waited < 40)) && ! hyprctl clients -j | jq -e 'any(.[]; .title == "WebcamOverlay")' >/dev/null 2>&1; do
+    sleep 0.05
+    ((waited++))
+  done
+
+  [[ ${1:-} == region:* ]] && echo "${1#region:}" >"$REGION_FILE"
+  omarchy-capture-webcam-resize "$WEBCAM_SIZE"
+
+  sleep 0.6
 }
 
 cleanup_webcam() {
   pkill -f "WebcamOverlay" 2>/dev/null
+  rm -f "$REGION_FILE"
 }
 
 default_resolution() {
@@ -155,7 +171,7 @@ start_screenrecording() {
     esac
   fi
 
-  [[ $WEBCAM == "true" ]] && start_webcam_overlay
+  [[ $WEBCAM == "true" ]] && start_webcam_overlay "$target"
 
   local filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
   local audio_devices=""
