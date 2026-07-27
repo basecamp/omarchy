@@ -1,15 +1,16 @@
 [Unit]
 Description=Seed plocate database after Omarchy install
 Documentation=man:updatedb(8)
-ConditionPathExists=!/var/lib/plocate/plocate.db
+# plocate's package may leave a zero-byte placeholder DB; treat empty the same
+# as missing so the first-boot seed still runs.
+ConditionFileNotEmpty=!/var/lib/plocate/plocate.db
 After=local-fs.target
 
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/updatedb
-# Once plocate.db exists, ConditionPathExists skips this unit on later boots.
-# Leave the timer enabled; evaluating the condition is cheaper than unpacking
-# sandbox privileges enough to systemctl disable from ExecStartPost.
+# Once plocate.db is non-empty, ConditionFileNotEmpty skips later boots.
+# Leave the timer enabled; evaluating the condition is cheap.
 LimitNOFILE=131072
 IOSchedulingClass=idle
 Nice=19

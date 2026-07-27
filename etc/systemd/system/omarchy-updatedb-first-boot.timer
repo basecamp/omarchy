@@ -4,7 +4,9 @@ Documentation=man:updatedb(8)
 # Fresh ISO installs skip updatedb in the chroot so install stays under a
 # minute. Fire once the desktop is already coming up; do not pull this into
 # the multi-user/graphical startup transaction (a WantedBy oneshot would).
-ConditionPathExists=!/var/lib/plocate/plocate.db
+# plocate's package may leave a zero-byte placeholder DB; treat empty the same
+# as missing so the first-boot seed still runs.
+ConditionFileNotEmpty=!/var/lib/plocate/plocate.db
 
 [Timer]
 OnBootSec=15s
