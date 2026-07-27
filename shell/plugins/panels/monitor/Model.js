@@ -91,6 +91,58 @@ function brightnessName(percent) {
   return "Night owl"
 }
 
+// Trims the trailing zeros Hyprland reports (144.00) without rounding away a
+// rate that genuinely differs by a fraction (59.94 vs 59.95).
+function rateLabel(rate) {
+  var value = Number(rate)
+  if (!isFinite(value)) return ""
+  return String(Math.round(value * 100) / 100)
+}
+
+function parseRates(raw) {
+  var rates = []
+  try {
+    rates = raw ? JSON.parse(String(raw)) : []
+  } catch (e) {
+    rates = []
+  }
+  if (!Array.isArray(rates)) rates = []
+
+  return rates
+    .map(function(rate) { return rateLabel(rate) })
+    .filter(function(rate) { return rate !== "" })
+}
+
+function matchingRateIndex(rates, currentRate) {
+  if (!Array.isArray(rates)) return -1
+
+  var current = rateLabel(currentRate)
+  if (current === "") return -1
+
+  for (var i = 0; i < rates.length; i++) {
+    if (rateLabel(rates[i]) === current) return i
+  }
+  return -1
+}
+
+function parsePendingRate(raw) {
+  var pending = null
+  try {
+    pending = raw ? JSON.parse(String(raw)) : null
+  } catch (e) {
+    pending = null
+  }
+
+  if (!pending || pending.pending !== true) return { pending: false, secondsLeft: 0, rate: "" }
+
+  var secondsLeft = Number(pending.secondsLeft)
+  return {
+    pending: true,
+    secondsLeft: isFinite(secondsLeft) && secondsLeft > 0 ? Math.round(secondsLeft) : 0,
+    rate: rateLabel(pending.rate)
+  }
+}
+
 function parseDisplays(raw) {
   var displays = []
   try {
@@ -119,6 +171,10 @@ if (typeof module !== "undefined") {
     matchingScaleIndex: matchingScaleIndex,
     availableScales: availableScales,
     brightnessName: brightnessName,
-    parseDisplays: parseDisplays
+    parseDisplays: parseDisplays,
+    rateLabel: rateLabel,
+    parseRates: parseRates,
+    matchingRateIndex: matchingRateIndex,
+    parsePendingRate: parsePendingRate
   }
 }
