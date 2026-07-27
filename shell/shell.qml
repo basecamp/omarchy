@@ -35,6 +35,7 @@ ShellRoot {
   // closely enough to render a usable bar; not authoritative.
   readonly property var builtinShellConfig: ({
     version: 1,
+    menu: { inputPosition: "top" },
     idle: {
       screensaver: 150,
       lock: 300

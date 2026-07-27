@@ -78,6 +78,8 @@ Item {
   // Shared application engine (entries, hidden filters, icons, launch,
   // removal), owned by the shell and also used by the standalone launcher.
   readonly property var appLibrary: root.shell ? root.shell.appLibrary : null
+  readonly property string menuInputPosition: shell.shellConfig.menu?.inputPosition ?? "top"
+  readonly property bool inputAtTop: root.menuInputPosition !== "bottom"
   property bool deleteConfirmOpen: false
   property var deleteTarget: null
   onOpenedChanged: if (!opened) { deleteConfirmOpen = false; deleteTarget = null }
@@ -585,7 +587,7 @@ Item {
   }
 
   function setFilter(nextFilter) {
-    panel.freezeCardTop()
+    panel.freezeAnchor()
     root.filterText = nextFilter
     root.selectedIndex = 0
     root.cursorActive = root.mode !== "input"
@@ -595,7 +597,7 @@ Item {
   }
 
   function setActiveMenu(id, pushHistory, fromPointer) {
-    panel.freezeCardTop()
+    panel.freezeAnchor()
     if (!root.item(id)) id = "root"
     if (pushHistory && id !== root.activeMenu) root.navStack = root.navStack.concat([root.activeMenu])
     root.activeMenu = id
@@ -923,17 +925,20 @@ Item {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
 
-    // The card opens centered exactly as always. The first search keystroke
-    // or submenu move freezes the top line where it currently sits — from
-    // then on the card grows and shrinks downward instead of re-centering
-    // on every resize, which made the menu jump around. Closing unfreezes.
-    property int cardTop: -1
-    readonly property int centeredTop: Math.max(Style.gapsOut, Math.round((height - root.cardHeight) / 2))
-    readonly property int effectiveCardTop: cardTop >= 0 ? cardTop : centeredTop
-    function freezeCardTop() {
-      if (visible && cardTop < 0) cardTop = effectiveCardTop
+    // The card opens centered. The first search keystroke or submenu move
+    // freezes the anchored edge (top for input-at-top, bottom for
+    // input-at-bottom) so resizing only extends away from the frozen edge
+    // instead of re-centering — which made the menu jump around.
+    property int frozenAnchor: -1
+    readonly property int centeredAnchor: root.inputAtTop
+      ? Math.max(Style.gapsOut, Math.round((height - root.cardHeight) / 2))
+      : Math.max(Style.gapsOut + root.cardHeight, Math.round((height + root.cardHeight) / 2))
+    readonly property int effectiveAnchor: frozenAnchor >= 0 ? frozenAnchor : centeredAnchor
+    function freezeAnchor() {
+      if (visible && frozenAnchor < 0)
+        frozenAnchor = root.inputAtTop ? card.y : (card.y + card.height)
     }
-    onVisibleChanged: if (!visible) cardTop = -1
+    onVisibleChanged: if (!visible) frozenAnchor = -1
 
     Rectangle {
       anchors.fill: parent
@@ -948,10 +953,12 @@ Item {
     BorderSurface {
       id: card
       width: root.cardWidth
-      height: Math.min(root.cardHeight, panel.height - Style.gapsOut - panel.effectiveCardTop)
+      height: root.inputAtTop
+        ? Math.min(root.cardHeight, panel.height - Style.gapsOut - panel.effectiveAnchor)
+        : Math.min(root.cardHeight, panel.effectiveAnchor - Style.gapsOut)
       radius: root.cornerRadius
       anchors.horizontalCenter: parent.horizontalCenter
-      y: panel.effectiveCardTop
+      y: root.inputAtTop ? panel.effectiveAnchor : panel.effectiveAnchor - height
       color: root.background
       borderSpec: root.borderSpec
       padding: root.contentMargin
@@ -1029,19 +1036,20 @@ Item {
         }
       }
 
-      Column {
+      Item {
         anchors.fill: parent
         anchors.topMargin: card.contentTopInset
         anchors.rightMargin: card.contentRightInset
         anchors.bottomMargin: card.contentBottomInset
         anchors.leftMargin: card.contentLeftInset
-        spacing: root.contentSpacing
 
         Rectangle {
+          id: header
           width: parent.width
           height: root.headerHeight
           radius: root.cornerRadius
           color: "transparent"
+          y: root.inputAtTop ? 0 : parent.height - height
 
           Text {
             anchors.left: parent.left
@@ -1058,8 +1066,11 @@ Item {
         }
 
         Item {
-          width: parent.width
-          height: root.visibleRowsHeight
+          id: resultsWrapper
+          anchors.left: parent.left
+          anchors.right: parent.right
+          y: root.inputAtTop ? header.height + root.contentSpacing : 0
+          height: parent.height - header.height - root.contentSpacing
 
           ListView {
             id: resultList
@@ -1267,10 +1278,6 @@ Item {
           }
         }
 
-        Item {
-          width: parent.width
-          height: 0
-        }
       }
     }
   }

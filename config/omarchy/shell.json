@@ -1,5 +1,8 @@
 {
   "version": 1,
+  "menu": {
+    "inputPosition": "top"
+  },
   "idle": {
     "screensaver": 150,
     "lock": 300
