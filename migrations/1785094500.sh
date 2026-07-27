@@ -30,7 +30,16 @@ if sudo systemctl daemon-reload; then
   # pressure keeps its old size until the next boot.
   zram_used=$(awk '$1 == "/dev/zram0" {print $4}' "$swaps")
 
-  if [[ ${zram_used:-0} == 0 ]] && sudo systemctl restart dev-zram0.swap; then
+  # No row at all means the device is not swap right now, and that covers two
+  # unlike situations. A device that doesn't exist yet is the one worth acting
+  # on: the restart brings it up against the config daemon-reload just picked
+  # up. A device that exists but is swapped off is not, because the restart
+  # resets it first, and reset returns EBUSY for as long as anything still
+  # holds it open. That leaves a "Job failed" from systemd in the migration
+  # output and still ends up asking for the reboot, so go straight there.
+  if [[ -n $zram_used || ! -e $zram_disksize ]] &&
+    [[ ${zram_used:-0} == 0 ]] &&
+    sudo systemctl restart dev-zram0.swap; then
     exit 0
   fi
 fi
