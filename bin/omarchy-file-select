@@ -26,6 +26,11 @@ from gi.repository import Gio, GLib
 # waits on its output, alive forever.
 ANSWER_TIMEOUT_SEC = 600
 
+# Callers act on these: nothing picked is a decision, a chooser that never ran
+# is a fault, and the two want different handling.
+EXIT_NOTHING_PICKED = 1
+EXIT_CHOOSER_FAILED = 2
+
 
 def main():
     parser = argparse.ArgumentParser(add_help=False)
@@ -35,7 +40,7 @@ def main():
 
     if unknown:
         print("omarchy-file-select: unknown option %s" % unknown[0], file=sys.stderr)
-        return 1
+        return EXIT_CHOOSER_FAILED
 
     bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
     loop = GLib.MainLoop()
@@ -91,8 +96,12 @@ def main():
     for uri in uris:
         print(GLib.filename_from_uri(uri)[0])
 
-    return 0 if uris else 1
+    return 0 if uris else EXIT_NOTHING_PICKED
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except GLib.Error as error:
+        print("omarchy-file-select: %s" % error.message, file=sys.stderr)
+        sys.exit(EXIT_CHOOSER_FAILED)

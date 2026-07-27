@@ -159,18 +159,21 @@ Item {
 
   function refreshStatusAndAccounts(forceAccounts) {
     if (!installed) return
+    var launched = false
     if (!statusProcess.running) {
       _statusOutput = ""
       _statusError = ""
       refreshing = true
       statusProcess.command = ["tailscale", "status", "--json"]
       statusProcess.running = true
+      launched = true
     }
     if (!mullvadExitNodesProcess.running) {
       _mullvadExitNodesOutput = ""
       _mullvadExitNodesError = ""
       mullvadExitNodesProcess.command = ["tailscale", "exit-node", "list"]
       mullvadExitNodesProcess.running = true
+      launched = true
     }
     var now = Date.now()
     var shouldRefreshAccounts = forceAccounts === true || accounts.length === 0 || now - _lastAccountsRefreshMs > 60000
@@ -180,8 +183,13 @@ Item {
       _lastAccountsRefreshMs = now
       accountsProcess.command = ["tailscale", "switch", "--list", "--json"]
       accountsProcess.running = true
+      launched = true
     }
-    pollWatchdog.restart()
+    // Arm on the launch that needs watching and leave it alone after that.
+    // Restarting it every refresh pushes the deadline out ahead of a hung
+    // process forever once the refresh interval is shorter than the timeout,
+    // and refreshIntervalSec goes down to five seconds.
+    if (launched && !pollWatchdog.running) pollWatchdog.start()
   }
 
   function elideStatus(text) {

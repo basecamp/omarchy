@@ -21,20 +21,39 @@ dir="${1:-${XDG_DOWNLOAD_DIR:-$HOME/Downloads}}"
 staging="$dir/.omarchy-taildrop"
 mkdir -p "$staging"
 
-free_path() {
-  local name="$1" base ext candidate index=1
+# Take the name by linking to it rather than by looking and then renaming.
+# link(2) refuses an existing name, so nothing can land on the chosen one in
+# the gap between the two. Staging shares the filesystem with the downloads
+# directory, so the link always resolves and unlinking the staged name
+# finishes the move. Prints the name it took.
+claim_path() {
+  local staged="$1" name="${staged##*/}" base ext candidate index=0
 
   base="${name%.*}"
   ext="${name#"$base"}"
   [[ -z $base ]] && { base="$name"; ext=""; }
 
-  candidate="$dir/$name"
-  while [[ -e $candidate ]]; do
-    candidate="$dir/$base-$index$ext"
+  while (( index < 1000 )); do
+    if (( index == 0 )); then
+      candidate="$dir/$name"
+    else
+      candidate="$dir/$base-$index$ext"
+    fi
+
+    if ln -- "$staged" "$candidate" 2>/dev/null; then
+      rm -f -- "$staged"
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+
+    # Only a taken name is worth another spin. Anything else failed the link
+    # itself, and the file keeps its place in staging for the next run.
+    [[ -e $candidate ]] || return 1
+
     ((index++))
   done
 
-  printf '%s\n' "$candidate"
+  return 1
 }
 
 announce() {
@@ -62,8 +81,7 @@ deliver() {
   local staged target
 
   while IFS= read -r staged; do
-    target=$(free_path "${staged##*/}")
-    mv -- "$staged" "$target"
+    target=$(claim_path "$staged") || continue
     announce "$target" &
   done < <(find "$staging" -mindepth 1 -maxdepth 1)
 }
