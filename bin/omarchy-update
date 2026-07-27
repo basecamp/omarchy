@@ -45,7 +45,7 @@ disable_sleep_for_update() {
     --who=omarchy-update \
     --why="Omarchy update in progress" \
     --mode=block \
-    sleep infinity >/dev/null 2>&1 &
+    sleep infinity >/dev/null 2>&1 {OMARCHY_UPDATE_LOCK_FD}>&- &
   sleep_inhibit_pid=$!
 }
 

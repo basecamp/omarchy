@@ -52,6 +52,9 @@ Every graphical login starts `omarchy-migrate-notify.service` after
 omarchy-migrate --pending
 ```
 
+It stays silent while `omarchy update` holds its lock, since that update applies
+the pending migrations itself.
+
 If that user has pending migrations, it shows a notification that opens a
 terminal for:
 

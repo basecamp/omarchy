@@ -4,6 +4,19 @@
 
 set -euo pipefail
 
+update_in_progress() {
+  local lock="${XDG_RUNTIME_DIR:-}/omarchy-update.lock"
+
+  [[ -n ${XDG_RUNTIME_DIR:-} && -f $lock ]] || return 1
+
+  # flock -n only fails here when the lock is held, since the file is ours.
+  ! flock -n "$lock" true 2>/dev/null
+}
+
+if update_in_progress; then
+  exit 0
+fi
+
 pending_migrations=$(omarchy-migrate --pending 2>/dev/null) || exit 0
 pending_count=$(printf '%s\n' "$pending_migrations" | sed '/^[[:space:]]*$/d' | wc -l)
 
@@ -20,6 +33,12 @@ notify_command=$(printf 'if [[ -n $(omarchy-notification-send -u critical -g 
 # org.freedesktop.Notifications. Without the wait the toast is sent into the
 # void and the user never learns about their pending migrations.
 omarchy-notification-wait || true
+
+# That wait is long enough for an update to start underneath us, and the count
+# above is already stale by then, so re-check before spending the toast.
+if update_in_progress; then
+  exit 0
+fi
 
 unit="omarchy-migrations-notification-$(date +%Y%m%d%H%M%S)"
 systemd-run --user --scope --unit="$unit" bash -lc "$notify_command" >/dev/null 2>&1 && exit 0
