@@ -149,6 +149,63 @@ function yearProgressPercent(year, month, day) {
   return Math.round(yearProgress(year, month, day) * 100)
 }
 
+// Memento mori. The default span is a round number rather than anything from
+// an actuarial table: the point of the bar is the reminder, not the
+// arithmetic, and whoever wants a different number can say so.
+var DEFAULT_LIFE_EXPECTANCY = 90
+
+// A birth year rather than an age, so the bar keeps counting on its own
+// instead of going stale the moment it is entered. 0 means "not set", which
+// is also what a blank, malformed, future, or implausibly distant year means.
+function parseBirthYear(value, currentYear) {
+  var now = Math.round(Number(currentYear))
+  if (!isFinite(now)) return 0
+  var text = String(value === undefined || value === null ? "" : value).replace(/^\s+|\s+$/g, "")
+  if (!/^\d{4}$/.test(text)) return 0
+  var year = parseInt(text, 10)
+  if (!isFinite(year) || year > now || year < now - 120) return 0
+  return year
+}
+
+// Whole years, the way people say their age: born in 1979 makes you 47 for
+// all of 2026, whichever side of your birthday today falls.
+function ageFromBirthYear(birthYear, currentYear) {
+  var born = parseBirthYear(birthYear, currentYear)
+  if (born <= 0) return 0
+  return Math.round(Number(currentYear)) - born
+}
+
+// 0 means "not set", which is also what a blank, negative, fractional, or
+// absurd entry means — the life bar simply stays hidden.
+function parseAge(value) {
+  var text = String(value === undefined || value === null ? "" : value).replace(/^\s+|\s+$/g, "")
+  if (!/^\d+$/.test(text)) return 0
+  var years = parseInt(text, 10)
+  if (!isFinite(years) || years <= 0 || years > 120) return 0
+  return years
+}
+
+// Unset or nonsense falls back to the default rather than to zero, so the
+// bar always has something to measure against.
+function parseLifeExpectancy(value) {
+  var text = String(value === undefined || value === null ? "" : value).replace(/^\s+|\s+$/g, "")
+  if (!/^\d+$/.test(text)) return DEFAULT_LIFE_EXPECTANCY
+  var years = parseInt(text, 10)
+  if (!isFinite(years) || years <= 0 || years > 150) return DEFAULT_LIFE_EXPECTANCY
+  return years
+}
+
+function lifeProgress(age, expectancy) {
+  var years = parseAge(age)
+  var span = parseLifeExpectancy(expectancy)
+  if (years <= 0 || span <= 0) return 0
+  return Math.max(0, Math.min(1, years / span))
+}
+
+function lifeProgressPercent(age, expectancy) {
+  return Math.round(lifeProgress(age, expectancy) * 100)
+}
+
 // Always six rows of seven days. A fixed grid keeps the popup exactly the
 // same height in every month, so stepping through the year never makes the
 // panel jump under the pointer.
@@ -212,6 +269,12 @@ if (typeof module !== "undefined") {
     daysInYear: daysInYear,
     yearProgress: yearProgress,
     yearProgressPercent: yearProgressPercent,
+    parseAge: parseAge,
+    parseBirthYear: parseBirthYear,
+    ageFromBirthYear: ageFromBirthYear,
+    parseLifeExpectancy: parseLifeExpectancy,
+    lifeProgress: lifeProgress,
+    lifeProgressPercent: lifeProgressPercent,
     monthGrid: monthGrid,
     stepMonth: stepMonth,
     clockFormats: clockFormats,
