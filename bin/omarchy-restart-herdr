@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Reload herdr if running with the latest configuration
+
+herdr server reload-config >/dev/null 2>&1 || true
