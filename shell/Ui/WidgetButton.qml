@@ -59,6 +59,9 @@ Item {
   readonly property real scaledHorizontalMargin: Style.spaceReal(horizontalMargin)
   readonly property real scaledVerticalPadding: Style.spaceReal(verticalPadding)
   readonly property bool tooltipHovered: visible && interactive && !concealed && mouseArea.containsMouse
+  // Width of the painted label, for bar chrome that wants to line up with the
+  // text rather than with the slot it sits in. Zero on icon-only buttons.
+  readonly property real labelWidth: label.visible ? label.implicitWidth : 0
 
   visible: hasVisualContent || keepSpace
   opacity: !hasVisualContent || concealed ? 0 : (dimmed ? 0.45 : 1)
