@@ -256,7 +256,8 @@ the legacy finalization marker from `~/.local/state/omarchy/` into `done/`.
 finalization. It sources:
 
 - `install/config/all.sh` — theme links, lockout limits, lockscreen PAM,
-  powerprofilesctl shebang fix, docker setup, service enablement, firewall.
+  powerprofilesctl shebang fix, docker setup, Snapper retention, locate
+  index tuning, service enablement, firewall.
 - `install/hardware/all.sh` via `omarchy-setup-hardware` — vendor- and
   device-specific kernel modules, udev rules, microcode, wireless regdom,
   ASUS / Framework / Intel / Apple / Lenovo quirks.
