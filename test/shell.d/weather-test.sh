@@ -136,8 +136,8 @@ assert(
   'weather widget forwards the popout-switch handshake'
 )
 assert(
-  panelSource.includes('if (!root.popoutSwitchClosing) setCenterHoverRevealSuppressed(false)'),
-  'weather leaves the shared hover-reveal flag alone when another panel takes over'
+  /Qt\.callLater\(function\(\) \{\s*\n\s*if \(root\.opened\) setCenterHoverRevealSuppressed\(true\)/.test(panelSource),
+  'weather claims the shared hover-reveal flag after the popout handoff, so the panel taking over wins'
 )
 
 assert(

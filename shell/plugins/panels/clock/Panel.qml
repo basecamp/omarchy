@@ -70,16 +70,20 @@ Panel {
   readonly property int gutterWidth: Style.space(14)
 
   function open() {
-    setCenterHoverRevealSuppressed(true)
     refresh()
     root.controller.show()
+    // Set after showing, not before: showing hands the popout coordinator
+    // over, which closes whichever panel was open, and that close clears the
+    // shared flag. Deferring means the panel taking over always wins, while
+    // a handoff to a panel that does not manage the flag still leaves it
+    // cleared rather than stuck on.
+    Qt.callLater(function() {
+      if (root.opened) setCenterHoverRevealSuppressed(true)
+    })
   }
 
   function close() {
-    // Not when another panel is taking over: it has already set the shared
-    // flag for itself, and clearing it here would leave the incoming panel
-    // open with the center indicators revealed behind it.
-    if (!root.popoutSwitchClosing) setCenterHoverRevealSuppressed(false)
+    setCenterHoverRevealSuppressed(false)
     root.controller.hide()
   }
 
