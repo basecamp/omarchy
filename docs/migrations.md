@@ -45,7 +45,8 @@ all pending migrations for the current user in the visible update terminal.
 
 ### At login
 
-Every graphical login starts `omarchy-migrate-notify.service`, which checks:
+Every graphical login starts `omarchy-migrate-notify.service` after
+`graphical-session.target`. The notifier checks:
 
 ```bash
 omarchy-migrate --pending

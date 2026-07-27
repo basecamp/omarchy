@@ -37,7 +37,9 @@ pass "no unit watches the migration directory, so package updates cannot trigger
 notify_service="$ROOT/default/systemd/user/omarchy-migrate-notify.service"
 grep -Fx 'ExecStart=/usr/bin/omarchy-migrate-notify' "$notify_service" >/dev/null
 grep -Fx 'WantedBy=graphical-session.target' "$notify_service" >/dev/null
-pass "migration notifier only checks once per login"
+grep -Fx 'After=graphical-session.target' "$notify_service" >/dev/null ||
+  fail "migration notifier can deadlock UWSM by blocking graphical-session.target"
+pass "migration notifier checks once per login after the graphical session is ready"
 
 grep -F 'omarchy-migrate-notify.service' "$first_run_units" >/dev/null ||
   fail "first-run does not enable the login migration notifier"

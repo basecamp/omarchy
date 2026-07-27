@@ -150,7 +150,8 @@ sudo pacman -Syu
   ├─ pre-transaction guard aborts and tells the user to run omarchy update
   └─ if explicitly bypassed, upgrades omarchy and related packages
   └─ at that user's next login
-       ├─ omarchy-migrate-notify.service starts with graphical-session.target
+       ├─ graphical-session.target starts
+       ├─ omarchy-migrate-notify.service starts after it
        ├─ omarchy-migrate-notify checks omarchy-migrate --pending
        ├─ if this user has missing migration state, show notification
        └─ click opens terminal: omarchy-migrate
@@ -173,6 +174,9 @@ Fallbacks:
   migration that repoints it only runs for users who run an update — the
   opposite of who the notifier is for. The alias can be dropped once installs
   have run migration `1785095882`.
+- The notifier is ordered after `graphical-session.target`, so an action that
+  launches through `uwsm-app` cannot block the target that gates UWSM's app
+  daemon.
 - The notifier waits for a live notification server before sending, because
   `graphical-session.target` can be reached before the shell claims
   `org.freedesktop.Notifications`.

@@ -15,8 +15,8 @@ fi
 
 notify_command=$(printf 'if [[ -n $(omarchy-notification-send -u critical -g  "Pending Omarchy Migrations" %q -a) ]]; then omarchy-launch-floating-terminal-with-presentation omarchy-migrate; fi' "$message")
 
-# This runs from omarchy-migrate-notify.service at graphical-session.target,
-# which the session can reach before the shell has claimed
+# This runs from omarchy-migrate-notify.service after graphical-session.target,
+# but the target can be reached before the shell has claimed
 # org.freedesktop.Notifications. Without the wait the toast is sent into the
 # void and the user never learns about their pending migrations.
 omarchy-notification-wait || true
