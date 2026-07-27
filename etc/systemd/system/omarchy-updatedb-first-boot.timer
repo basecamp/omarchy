@@ -1,0 +1,16 @@
+[Unit]
+Description=Seed plocate database shortly after first boot
+Documentation=man:updatedb(8)
+# Fresh ISO installs skip updatedb in the chroot so install stays under a
+# minute. Fire once the desktop is already coming up; do not pull this into
+# the multi-user/graphical startup transaction (a WantedBy oneshot would).
+ConditionPathExists=!/var/lib/plocate/plocate.db
+
+[Timer]
+OnBootSec=15s
+AccuracySec=1s
+Persistent=false
+Unit=omarchy-updatedb-first-boot.service
+
+[Install]
+WantedBy=timers.target
