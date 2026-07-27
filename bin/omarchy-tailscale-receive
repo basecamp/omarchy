@@ -1,0 +1,101 @@
+#!/bin/bash
+
+# omarchy:summary=Save incoming Taildrop files and announce them
+# omarchy:args=[--once] [directory]
+# omarchy:examples=omarchy tailscale receive | omarchy tailscale receive --once ~/Desktop
+
+set -euo pipefail
+
+once=false
+if [[ ${1:-} == "--once" ]]; then
+  once=true
+  shift
+fi
+
+dir="${1:-${XDG_DOWNLOAD_DIR:-$HOME/Downloads}}"
+
+# Taildrop lands in a staging directory next door rather than straight in the
+# downloads directory: waiting for a delivery can take hours, and everything
+# else that shows up meanwhile is somebody else's file. Same filesystem, so
+# handing the finished file over is a rename.
+staging="$dir/.omarchy-taildrop"
+mkdir -p "$staging"
+
+# Take the name by linking to it rather than by looking and then renaming.
+# link(2) refuses an existing name, so nothing can land on the chosen one in
+# the gap between the two. Staging shares the filesystem with the downloads
+# directory, so the link always resolves and unlinking the staged name
+# finishes the move. Prints the name it took.
+claim_path() {
+  local staged="$1" name="${staged##*/}" base ext candidate index=0
+
+  base="${name%.*}"
+  ext="${name#"$base"}"
+  [[ -z $base ]] && { base="$name"; ext=""; }
+
+  while (( index < 1000 )); do
+    if (( index == 0 )); then
+      candidate="$dir/$name"
+    else
+      candidate="$dir/$base-$index$ext"
+    fi
+
+    if ln -- "$staged" "$candidate" 2>/dev/null; then
+      rm -f -- "$staged"
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+
+    # Only a taken name is worth another spin. Anything else failed the link
+    # itself, and the file keeps its place in staging for the next run.
+    [[ -e $candidate ]] || return 1
+
+    ((index++))
+  done
+
+  return 1
+}
+
+announce() {
+  local path="$1"
+  local name="${path##*/}"
+  local args=("Received $name" "Saved to ${dir/#$HOME/~}")
+
+  case "${name,,}" in
+  *.png | *.jpg | *.jpeg | *.gif | *.webp | *.avif | *.bmp | *.tif | *.tiff)
+    args+=(--image "$path")
+    ;;
+  *)
+    args+=(-g 󰒊)
+    ;;
+  esac
+
+  # Clicking the notification opens the file, so this waits for the toast to
+  # go away. Callers background it to keep receiving in the meantime.
+  if [[ -n $(omarchy-notification-send "${args[@]}" -a) ]]; then
+    xdg-open "$path"
+  fi
+}
+
+deliver() {
+  local staged target
+
+  while IFS= read -r staged; do
+    target=$(claim_path "$staged") || continue
+    announce "$target" &
+  done < <(find "$staging" -mindepth 1 -maxdepth 1)
+}
+
+# Anything left staged by an interrupted run still deserves delivering.
+deliver
+
+while true; do
+  if ! tailscale file get --wait --conflict=rename "$staging"; then
+    $once && exit 1
+    sleep 10
+    continue
+  fi
+
+  deliver
+  $once && exit 0
+done

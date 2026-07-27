@@ -28,7 +28,9 @@ const status = tailscale.parseStatus(JSON.stringify({
   Self: {
     HostName: 'dhh-fd',
     DNSName: 'dhh-fd.tail32f559.ts.net.',
-    TailscaleIPs: ['100.74.97.73']
+    TailscaleIPs: ['100.74.97.73'],
+    UserID: 1001,
+    CapMap: { 'https://tailscale.com/cap/file-sharing': null }
   },
   Peer: {
     onlineB: {
@@ -38,7 +40,9 @@ const status = tailscale.parseStatus(JSON.stringify({
       Online: true,
       OS: 'linux',
       ExitNodeOption: true,
-      ExitNode: true
+      ExitNode: true,
+      UserID: 1002,
+      TaildropTarget: 5
     },
     offline: {
       HostName: 'offline',
@@ -61,7 +65,9 @@ const status = tailscale.parseStatus(JSON.stringify({
       DNSName: 'alpha.tail32f559.ts.net.',
       TailscaleIPs: ['100.1.1.1', 'fd7a:115c:a1e0::1901:334b'],
       Online: true,
-      OS: 'macos'
+      OS: 'macos',
+      UserID: 1001,
+      TaildropTarget: 1
     },
     mullvadExit: {
       HostName: 'al-tia-wg-003',
@@ -82,6 +88,20 @@ assertDeepEqual(status.peers[0].TailscaleIPv6, ['fd7a:115c:a1e0::1901:334b'], 't
 assert(status.peers[1].ExitNodeOption && status.peers[1].ExitNode, 'tailscale preserves exit node flags')
 assertDeepEqual(status.exitNodes.map(peer => peer.HostName), ['zed'], 'tailscale lists only online tailnet exit nodes')
 assert(tailscale.isMullvadPeer({ HostName: 'al-tia-wg-003', DNSName: 'al-tia-wg-003.mullvad.ts.net.' }), 'tailscale detects Mullvad status peers')
+
+assert(status.fileSharing, 'tailscale reads Taildrop capability from the status capability map')
+assertEqual(status.selfUserId, '1001', 'tailscale records the owning user of this machine')
+assertDeepEqual(status.peers.map(peer => peer.UserID), ['1001', '1002'], 'tailscale records the owning user of each peer')
+assert(
+  tailscale.hasFileSharing({ Capabilities: ['https://tailscale.com/cap/file-sharing'] }),
+  'tailscale reads Taildrop capability from the legacy capability list'
+)
+assert(!tailscale.hasFileSharing({ CapMap: { funnel: null } }), 'tailscale reports no Taildrop without the capability')
+assertDeepEqual(status.peers.map(peer => peer.TaildropTarget), [1, 5], 'tailscale records how Tailscale grades each Taildrop target')
+assert(tailscale.isTaildropTarget({ TaildropTarget: 1, UserID: '1001' }, '2002'), 'tailscale trusts an available Taildrop target')
+assert(!tailscale.isTaildropTarget({ TaildropTarget: 7, UserID: '1001' }, '1001'), 'tailscale skips peers Tailscale rules out')
+assert(tailscale.isTaildropTarget({ UserID: '1001' }, '1001'), 'tailscale falls back to same-owner peers without a grade')
+assert(!tailscale.isTaildropTarget({ UserID: '1002' }, '1001'), 'tailscale skips other owners without a grade')
 
 const mullvadNodes = tailscale.parseExitNodeList(`
  IP                  HOSTNAME                         COUNTRY            CITY                   STATUS

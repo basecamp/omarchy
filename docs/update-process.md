@@ -149,20 +149,37 @@ High-level flow:
 sudo pacman -Syu
   ├─ pre-transaction guard aborts and tells the user to run omarchy update
   └─ if explicitly bypassed, upgrades omarchy and related packages
-  └─ user session notices migration directory changes
-       ├─ omarchy-update-user-notify.path triggers, if enabled
+  └─ at that user's next login
+       ├─ omarchy-migrate-notify.service starts with graphical-session.target
        ├─ omarchy-migrate-notify checks omarchy-migrate --pending
        ├─ if this user has missing migration state, show notification
        └─ click opens terminal: omarchy-migrate
 ```
 
+Login is deliberately the only trigger. A watcher on the packaged migration
+directory cannot distinguish a bypassed `pacman -Syu` from the package
+transaction inside a normal `omarchy update`, so it fired notifications for
+migrations that `omarchy-migrate` was about to apply in the visible update
+terminal. The retired unit was `omarchy-update-user-notify.path`.
+
 Fallbacks:
 
-- `omarchy-first-run` enables the user notification path unit.
-- `omarchy-first-run` also invokes `omarchy-migrate-notify` on graphical
-  startup, so users who updated before the path unit existed still get prompted
-  if they have missing migration state.
+- `omarchy-first-run` enables `omarchy-migrate-notify.service`, which also
+  covers users created after install: their per-user migration markers are
+  missing, so their first login prompts them to run every shipped migration.
+- The package ships `omarchy-update-user-notify.service` as a symlink onto
+  `omarchy-migrate-notify.service`. Users set up before the rename hold an
+  absolute `graphical-session.target.wants` symlink to the old path, and the
+  migration that repoints it only runs for users who run an update — the
+  opposite of who the notifier is for. The alias can be dropped once installs
+  have run migration `1785095882`.
+- The notifier waits for a live notification server before sending, because
+  `graphical-session.target` can be reached before the shell claims
+  `org.freedesktop.Notifications`.
 - The notifier is only a prompt. It does not run migrations in the background.
+- A session that is already open when another user updates is not re-checked;
+  it picks the migrations up at its next login, or whenever that user runs
+  `omarchy-migrate` or `omarchy update`.
 - Direct pacman updates do not run `omarchy-hook post-update` unless the user
   explicitly runs that hook; without a package-update marker, the only pending
   state we can derive is missing per-user migration markers.
@@ -209,7 +226,7 @@ scripts.
 | `omarchy-update-system-pkgs` | Runs `sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm` with targeted transition `--overwrite` entries so the ALPM guard allows the transaction and early package-layout conflicts are handled. | **Keep for now.** Small leaf command, clear/testable. |
 | `omarchy-migrate` | Public migration command. Waits for pacman, then runs all pending migrations for the current user. Supports `--pending`. | **Keep.** This replaces the discarded `omarchy-update-user-finalize` name and no longer needs `--force`. |
 | `omarchy-update-pacman-guard` | ALPM pre-transaction guard that aborts direct `pacman -Syu` style upgrades unless Omarchy set `OMARCHY_UPDATE_PACMAN=1` or the user explicitly set `OMARCHY_ALLOW_DIRECT_PACMAN=1`. | **Keep internal/hidden.** This is what nudges users back to `omarchy update`. |
-| `omarchy-migrate-notify` | Internal notification helper for direct pacman updates. Uses `omarchy-migrate --pending` and shows notification only when this user has pending migrations. | **Keep internal/hidden.** Clear name now that the public command is `omarchy-migrate`. |
+| `omarchy-migrate-notify` | Internal login-time notification helper. Uses `omarchy-migrate --pending` and shows a notification only when this user has pending migrations. | **Keep internal/hidden.** Clear name now that the public command is `omarchy-migrate`. |
 | `omarchy-update-user-notify` | Hidden compatibility wrapper for `omarchy-migrate-notify`. | **Temporary.** Keep only for old callers. |
 | `omarchy-update-available` | Update checker for shell widget and post-update refresh. | **Keep.** Could eventually be renamed `omarchy-update-check`, but current name matches widget semantics. |
 | `omarchy-update-aur-pkgs` | Updates AUR packages with `yay -Sua` if foreign packages exist and AUR is reachable. | **Question.** Omarchy is package-backed now, but users may still install AUR packages. Keep for now. |
@@ -229,7 +246,8 @@ scripts.
      idempotent when they repair machine-wide state.
 
 2. **Migration notification naming**
-   - The real helper is `omarchy-migrate-notify`.
+   - The real helper is `omarchy-migrate-notify`, started by
+     `omarchy-migrate-notify.service`.
    - `omarchy-update-user-notify` remains only as a hidden compatibility wrapper.
 
 3. **Update pipeline ownership**

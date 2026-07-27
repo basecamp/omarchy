@@ -50,7 +50,15 @@ desired_bytes=$((8192 * 1024 * 1024))
 run_migration() {
   local disksize="$1" used="$2" fail_reload="${3:-0}"
 
-  printf '%s' "$disksize" >"$TMPDIR/disksize"
+  # A machine with no zram device has no /sys/block/zram0 at all, so an empty
+  # size means the file is gone rather than blank; the migration tells those
+  # two apart now.
+  if [[ -n $disksize ]]; then
+    printf '%s' "$disksize" >"$TMPDIR/disksize"
+  else
+    rm -f "$TMPDIR/disksize"
+  fi
+
   printf 'Filename\tType\tSize\tUsed\tPriority\n' >"$TMPDIR/swaps"
   [[ -n $used ]] &&
     printf '/dev/zram0 partition 8388604 %s 100\n' "$used" >>"$TMPDIR/swaps"
@@ -100,6 +108,15 @@ pass "device in use asks for a reboot"
 run_migration "" ""
 did "systemctl restart dev-zram0.swap" || fail "absent device is created"
 pass "absent device is created"
+
+# A device that exists but is swapped off reads empty too, and there the
+# restart resets it, which fails against whatever still holds it open. Nothing
+# to gain over the reboot that would have resized it anyway.
+run_migration $((4096 * 1024 * 1024)) ""
+did "systemctl restart" && fail "swapped-off device is not restarted"
+did "omarchy-state set reboot-required" || fail "swapped-off device asks for a reboot"
+pass "swapped-off device is not restarted"
+pass "swapped-off device asks for a reboot"
 
 # A failed daemon-reload must fall back to asking for a reboot.
 run_migration $((4096 * 1024 * 1024)) 0 1

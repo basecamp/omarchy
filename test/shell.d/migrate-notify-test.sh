@@ -33,6 +33,12 @@ bash -c "$command"
 SH
 chmod +x "$stub_bin/systemd-run"
 
+cat >"$stub_bin/omarchy-notification-wait" <<'SH'
+#!/bin/bash
+exit 0
+SH
+chmod +x "$stub_bin/omarchy-notification-wait"
+
 cat >"$stub_bin/omarchy-notification-send" <<'SH'
 #!/bin/bash
 printf '%s\n' "$@" >"$OMARCHY_TEST_NOTIFY_ARGS"

@@ -53,37 +53,6 @@ log_first_run() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$FIRST_RUN_LOG"
 }
 
-notification_server_ready() {
-  if omarchy-cmd-present gdbus; then
-    gdbus call --session \
-      --dest org.freedesktop.Notifications \
-      --object-path /org/freedesktop/Notifications \
-      --method org.freedesktop.Notifications.GetServerInformation >/dev/null 2>&1
-  elif omarchy-cmd-present busctl; then
-    busctl --user call \
-      org.freedesktop.Notifications \
-      /org/freedesktop/Notifications \
-      org.freedesktop.Notifications \
-      GetServerInformation >/dev/null 2>&1
-  else
-    return 0
-  fi
-}
-
-wait_for_notifications() {
-  omarchy-cmd-present omarchy-shell || return 0
-
-  for _ in {1..100}; do
-    if omarchy-shell notifications ping >/dev/null 2>&1 && notification_server_ready; then
-      return 0
-    fi
-    sleep 0.1
-  done
-
-  log_first_run "Timed out waiting for notification service; continuing"
-  return 0
-}
-
 run_first_run_step() {
   local name="$1"
   shift
@@ -97,12 +66,6 @@ run_first_run_step() {
     log_first_run "Failed: $name (exit code: $status)"
   fi
 }
-
-wait_for_notifications
-
-run_first_run_step "enable migration notification watcher" \
-  systemctl --user enable --now omarchy-update-user-notify.path
-run_first_run_step "notify about pending migrations" omarchy-migrate-notify
 
 run_first_run_step "install Voxtype post-update hook" \
   omarchy-hook-install post-update "$OMARCHY_PATH/install/user/first-run/install-voxtype.hook"
@@ -118,7 +81,7 @@ run_first_run_step "set GTK primary paste" \
 run_first_run_step "apply speaker tuning" \
   bash "$OMARCHY_PATH/install/user/first-run/audio-tuning.sh"
 
-wait_for_notifications
+omarchy-notification-wait || log_first_run "Timed out waiting for notification service; continuing"
 run_first_run_step "show welcome notification" \
   bash "$OMARCHY_PATH/install/user/first-run/welcome.sh"
 # The first-run notification scripts register action callbacks in background
