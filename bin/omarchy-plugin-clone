@@ -98,6 +98,19 @@ def resolve_relative(match):
 
 text = re.sub(r'Qt\.resolvedUrl\("([^"]+)"\)', resolve_relative, text)
 
+
+# A widget that imports a sibling JS module (the clock's Model.js) clones into
+# a directory that does not have it. Point the import back at the bundled file,
+# the same way Qt.resolvedUrl() references above are rewritten.
+def resolve_js_import(match):
+    rel = match.group(1)
+    if rel.startswith("/") or "://" in rel:
+        return match.group(0)
+    resolved = (source_path.parent / rel).resolve()
+    return 'import "' + resolved.as_uri() + '"'
+
+text = re.sub(r'import\s+"([^"]+\.js)"', resolve_js_import, text)
+
 # Indicators dynamically loads sibling indicator components via string
 # concatenation, so the simple Qt.resolvedUrl("literal") rewrite above cannot
 # see it. Point the clone back at Omarchy's bundled indicator directory.
