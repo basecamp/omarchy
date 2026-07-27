@@ -32,7 +32,7 @@ Item {
   // it; the progress bar's hard edge keeps the full gap.
   readonly property int messageGap: Math.round(root.gap * 2 / 3)
   readonly property int barWidth: Style.space(142)
-  readonly property int maxMessageWidth: root.mediaOsd ? Style.space(325) : Style.space(190)
+  readonly property int maxMessageWidth: root.mediaOsd ? Style.space(325) : (root.hasProgress ? Style.space(190) : Style.space(320))
 
   // Nerd Font glyphs draw well outside their monospace cell, so the icon
   // column is measured by ink rather than by advance width. Progress OSDs pin

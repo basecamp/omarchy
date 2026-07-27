@@ -129,9 +129,9 @@ write_state() {
 # etc.) instead of notify-send, for a consistent look/timing.
 notify_bar_icon() {
   if [[ $1 == "true" ]]; then
-    omarchy-osd -i keyboard -m "Keyboard layout enabled" --fit
+    omarchy-osd -i keyboard -m "Keyboard layout enabled"
   else
-    omarchy-osd -i keyboard -m "Keyboard layout disabled" --fit
+    omarchy-osd -i keyboard -m "Keyboard layout disabled"
   fi
 }
 
@@ -257,3 +257,4 @@ case "$action" in
     usage
     ;;
 esac
+

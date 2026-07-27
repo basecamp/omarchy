@@ -14,7 +14,7 @@ Panel {
 
   // Raw status from `omarchy-keyboard-layout status`:
   // { layouts: [{code, label}], switcher, active, show_bar_icon }
-  property var status: ({ layouts: [], switcher: "alt_shift", active: "", show_bar_icon: true })
+  property var status: ({ layouts: [], switcher: "alt_shift", active: "", show_bar_icon: false })
   property var available: []
 
   readonly property var configuredLayouts: Model.toArray(status.layouts)
@@ -157,6 +157,42 @@ Panel {
     }
   }
 
+  // Keeps focusSection/selectedIndex pointing at a row that actually still
+  // exists. Without this, adding/removing a language, a background status
+  // refresh (poll timer, Hyprland event, or any action completing) can
+  // change the length of configuredLayouts/switcherPresets/filteredAvailable
+  // out from under an already-set selectedIndex -- leaving the keyboard
+  // cursor stuck on a row that no longer exists (or vanished entirely),
+  // which is what makes arrow-key navigation feel like it "loses" the
+  // selection. Mirrors MonitorPanel's clampCursor().
+  function clampCursor() {
+    if (root.viewMode === "list") {
+      if (root.focusSection === "switcher") {
+        var maxSw = Math.max(0, root.switcherPresets.length - 1)
+        if (root.selectedIndex < 0) root.selectedIndex = 0
+        else if (root.selectedIndex > maxSw) root.selectedIndex = maxSw
+        return
+      }
+      // "languages" (default) -- also the fallback for any unknown section.
+      if (root.configuredLayouts.length === 0) {
+        // Shouldn't normally happen (there's always at least one layout),
+        // but land somewhere sane rather than pointing at nothing.
+        root.focusSection = root.switcherPresets.length > 0 ? "switcher" : "languages"
+        root.selectedIndex = 0
+        return
+      }
+      if (root.focusSection !== "languages") root.focusSection = "languages"
+      var maxLang = root.configuredLayouts.length - 1
+      if (root.selectedIndex < 0) root.selectedIndex = 0
+      else if (root.selectedIndex > maxLang) root.selectedIndex = maxLang
+    } else if (root.viewMode === "add") {
+      if (root.focusSection !== "available") root.focusSection = "available"
+      var maxAvail = Math.max(0, root.filteredAvailable.length - 1)
+      if (root.selectedIndex < 0) root.selectedIndex = 0
+      else if (root.selectedIndex > maxAvail) root.selectedIndex = maxAvail
+    }
+  }
+
   function openAddView() {
     viewMode = "add"
     searchText = ""
@@ -190,8 +226,23 @@ Panel {
 
   onBarIconVisibleChanged: if (!barIconVisible && opened) close()
 
-  onOpenedChanged: if (opened) refresh()
+  // Mirrors MonitorPanel: always land on a known-good, top-of-list cursor
+  // position when the panel is (re)opened, rather than trusting whatever
+  // focusSection/selectedIndex was left over from before it was closed.
+  onOpenedChanged: {
+    if (opened) {
+      refresh()
+      viewMode = "list"
+      focusSection = "languages"
+      selectedIndex = 0
+      cursorActive = false
+    }
+  }
   Component.onCompleted: refresh()
+
+  onConfiguredLayoutsChanged: clampCursor()
+  onSwitcherPresetsChanged: clampCursor()
+  onFilteredAvailableChanged: clampCursor()
 
   // Hyprland switches the layout itself for the native Alt+Shift/Ctrl+Shift/
   // etc. shortcut (see config/hypr/input.lua's kb_options grp:*_toggle) -- that
@@ -246,7 +297,7 @@ Panel {
 
   // The clickable bar icon itself: left-click opens/closes the panel,
   // right-click cycles straight to the next layout without opening it.
-  BarIconButton {
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
@@ -690,7 +741,7 @@ Panel {
     }
   }
 
-  // One of the three switch-shortcut presets, same pill styling as the
+  // One of the four switch-shortcut presets, same pill styling as the
   // network panel's DNS provider picker.
   component SwitcherPill: Button {
     id: pill

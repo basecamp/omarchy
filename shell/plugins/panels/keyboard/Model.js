@@ -65,7 +65,7 @@ function parseStatus(text) {
   }
 
   return {
-    layouts: toArray(parsed.layouts),
+    layouts: Array.isArray(parsed.layouts) ? parsed.layouts : [],
     switcher: parsed.switcher || "alt_shift",
     active: parsed.active || "",
     show_bar_icon: parsed.show_bar_icon !== false
@@ -75,7 +75,7 @@ function parseStatus(text) {
 // `omarchy-keyboard-layout available` output -> array of {code, label}
 function parseAvailable(text) {
   var parsed = parseJson(text, [])
-  return toArray(parsed)
+  return Array.isArray(parsed) ? parsed : []
 }
 
 // Plain list of xkb codes already configured, used to exclude them from
