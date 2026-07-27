@@ -15,6 +15,7 @@ mkdir -p "$fake_bin"
 
 cat >"$fake_bin/sudo" <<'STUB'
 #!/bin/bash
+printf 'sudo %s\n' "$*" >>"$TEST_LOG"
 exec "$@"
 STUB
 chmod +x "$fake_bin/sudo"
@@ -72,14 +73,18 @@ echo "failure: dbus timeout" >&2
 exit 1
 STUB
 
-TEST_LOG="$test_tmp/calls.log" \
-PATH="$fake_bin:$PATH" \
-OMARCHY_SNAPPER_CONFIG_PATH="$snapper_config" \
-  bash -euo pipefail "$leak_migration" >/dev/null 2>&1 ||
+output=$(TEST_LOG="$test_tmp/calls.log" \
+  PATH="$fake_bin:$PATH" \
+  OMARCHY_SNAPPER_CONFIG_PATH="$snapper_config" \
+  bash -euo pipefail "$leak_migration" 2>/dev/null) ||
   fail "leak migration survives a failed delete batch"
 
 deletes=$(grep -c '^snapper -c root delete ' "$test_tmp/calls.log" || true)
 [[ $deletes -eq 3 ]] || fail "leak migration keeps draining after a failed batch" "expected 3 delete calls, got $deletes"
+
+# omarchy-migrate writes the completion marker even when the drain gave up, so
+# what is left has to be said out loud rather than left for a rerun.
+grep -qF '45 snapshots could not be deleted' <<<"$output" || fail "leak migration reports the snapshots it could not delete" "$output"
 pass "leak migration tolerates a batch that fails partway"
 
 : >"$test_tmp/calls.log"
@@ -102,3 +107,20 @@ OMARCHY_SNAPPER_CONFIG_PATH="$test_tmp/missing" \
 
 [[ ! -s $test_tmp/calls.log ]] || fail "leak migration skips systems without a Snapper root config"
 pass "leak migration is a no-op without Snapper configured"
+
+# Snapper's create-config writes a root-only config, and a config this user
+# cannot read says nothing about whether timeline snapshots are wanted.
+: >"$test_tmp/calls.log"
+printf '%s\n' 'TIMELINE_CREATE="no"' >"$snapper_config"
+chmod 000 "$snapper_config"
+
+TEST_LOG="$test_tmp/calls.log" \
+PATH="$fake_bin:$PATH" \
+OMARCHY_SNAPPER_CONFIG_PATH="$snapper_config" \
+  bash -euo pipefail "$leak_migration" >/dev/null 2>&1
+
+chmod 600 "$snapper_config"
+
+grep -qF "sudo grep -qFx TIMELINE_CREATE=\"no\" $snapper_config" "$test_tmp/calls.log" ||
+  fail "leak migration reads a root-only Snapper config as root" "$(cat "$test_tmp/calls.log")"
+pass "leak migration does not mistake an unreadable Snapper config for an intentional one"
