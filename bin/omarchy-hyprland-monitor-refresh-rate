@@ -1,0 +1,400 @@
+#!/bin/bash
+
+# omarchy:summary=Show, set, or adjust the focused Hyprland monitor refresh rate
+# omarchy:args=[up|down|list|pending|confirm|revert|RATE]
+# omarchy:examples=omarchy hyprland monitor refresh rate | omarchy hyprland monitor refresh rate 144 | omarchy hyprland monitor refresh rate up
+
+# A refresh rate the link cannot carry leaves a black screen, and unlike a bad
+# scale the compositor cannot tell: Hyprland reports the mode it asked for
+# whether or not the panel is showing it. So a rate is applied live and reverts
+# on its own unless it is confirmed, and nothing is written to disk until then.
+# That ordering is what makes revert reliable — the config on disk is still the
+# last known good state, so reverting is just a reload.
+
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
+RATE_LOG="$STATE_DIR/monitor-refresh-rate.log"
+PENDING_FILE="$STATE_DIR/monitor-refresh-rate-pending.json"
+MONITOR_LUA="$HOME/.config/hypr/monitors.lua"
+MANAGED_MARKER="-- Managed by omarchy hyprland monitor refresh rate."
+CONFIRM_TIMEOUT="${OMARCHY_MONITOR_REFRESH_TIMEOUT:-15}"
+
+usage() {
+  cat <<'USAGE'
+Usage: omarchy-hyprland-monitor-refresh-rate [up|down|list|pending|confirm|revert|RATE]
+
+  (no args)  Print the focused monitor's current refresh rate
+  list       Print every rate available at the current resolution, low to high
+  RATE       Apply a rate, reverting automatically unless confirmed
+  up|down    Step to the next or previous available rate
+  pending    Print JSON describing a change awaiting confirmation
+  confirm    Keep the pending rate and persist it when Omarchy owns the config
+  revert     Drop the pending rate immediately
+USAGE
+}
+
+focused_monitor() {
+  hyprctl monitors -j | jq -e -c '.[] | select(.focused == true)'
+}
+
+# Hyprland reports 143.99899 while availableModes advertises 144.00Hz. Rounding
+# to two decimals lets both sides compare as the same string.
+normalize_rate() {
+  awk 'NR == 1 { printf "%g\n", int($0 * 100 + 0.5) / 100 }'
+}
+
+# A rate only means anything alongside a resolution, so only offer the rates
+# the panel advertises for the mode already in use. Sorted low to high to match
+# the scale row in the shell panel, which runs 1x on the left to 4x on the right.
+available_rates() {
+  local width="$1" height="$2"
+
+  hyprctl monitors all -j |
+    jq -r --arg prefix "${width}x${height}@" \
+      '.[] | select(.focused == true) | .availableModes[] | select(startswith($prefix))' |
+    sed -E 's/^.*@//; s/Hz$//' |
+    while read -r rate; do printf '%s\n' "$rate" | normalize_rate; done |
+    sort -g | uniq
+}
+
+nearest_rate() {
+  local requested="$1" width="$2" height="$3"
+
+  available_rates "$width" "$height" |
+    awk -v want="$requested" '
+      {
+        distance = $1 - want
+        if (distance < 0) distance = -distance
+        if (NR == 1 || distance < best) { best = distance; nearest = $1 }
+      }
+      END { if (NR) print nearest }'
+}
+
+stepped_rate() {
+  local direction="$1" current="$2" width="$3" height="$4"
+
+  available_rates "$width" "$height" |
+    awk -v current="$current" -v direction="$direction" '
+      {
+        rates[NR] = $1
+        distance = $1 - current
+        if (distance < 0) distance = -distance
+        if (NR == 1 || distance < best) { best = distance; at = NR }
+      }
+      END {
+        if (!NR) exit 1
+        target = (direction == "up") ? at + 1 : at - 1
+        if (target < 1) target = 1
+        if (target > NR) target = NR
+        print rates[target]
+      }'
+}
+
+cmdline_for_pid() {
+  local pid="$1"
+
+  [[ -r /proc/$pid/cmdline ]] || return 0
+  tr '\0\t\n' '   ' <"/proc/$pid/cmdline" | sed -E 's/[[:space:]]+/ /g; s/[[:space:]]+$//'
+}
+
+audit_rate_event() {
+  local event="$1" monitor="$2" from="$3" to="$4" detail="$5"
+  local parent_pid="$PPID"
+  local grandparent_pid parent_cmd grandparent_cmd
+
+  mkdir -p "$STATE_DIR" || return 0
+
+  grandparent_pid=$(ps -o ppid= -p "$parent_pid" 2>/dev/null | tr -d ' ')
+  parent_cmd=$(cmdline_for_pid "$parent_pid")
+  grandparent_cmd=$(cmdline_for_pid "$grandparent_pid")
+
+  printf 'at=%s\tevent=%s\tmonitor=%s\tfrom=%s\tto=%s\tdetail=%s\tpid=%s\tppid=%s\tparent=%s\tgppid=%s\tgrandparent=%s\n' \
+    "$(date --iso-8601=seconds)" \
+    "$event" "$monitor" "$from" "$to" "$detail" \
+    "$$" "$parent_pid" "$parent_cmd" "$grandparent_pid" "$grandparent_cmd" >>"$RATE_LOG"
+}
+
+pending_deadline() {
+  [[ -f $PENDING_FILE ]] || return 1
+  jq -er '.deadline // empty' "$PENDING_FILE" 2>/dev/null
+}
+
+# A record whose deadline has passed (timer killed, machine suspended) counts as
+# absent, so a stale file can never block a later change.
+pending_is_live() {
+  local deadline
+
+  deadline=$(pending_deadline) || return 1
+  (($(date +%s) < deadline))
+}
+
+clear_pending() {
+  rm -f "$PENDING_FILE"
+}
+
+# monitors.lua is still the last known good state while a change is pending, so
+# a reload is a complete and reliable revert.
+reload_hyprland() {
+  hyprctl reload >/dev/null
+}
+
+# Which rule governs this monitor: one Omarchy wrote, one the user wrote, or
+# none at all. Comments are skipped so commented-out examples never count.
+rule_owner() {
+  local monitor="$1" description="$2"
+
+  [[ -f $MONITOR_LUA ]] || {
+    echo "none"
+    return 0
+  }
+
+  awk -v monitor="$monitor" -v description="$description" -v marker="$MANAGED_MARKER" '
+    $0 == marker { managed_next = 1; next }
+    /^[[:space:]]*--/ { next }
+    {
+      if (match($0, /output[[:space:]]*=[[:space:]]*"[^"]*"/)) {
+        target = substr($0, RSTART, RLENGTH)
+        sub(/^output[[:space:]]*=[[:space:]]*"/, "", target)
+        sub(/"$/, "", target)
+
+        matched = 0
+        if (target != "" && target == monitor) matched = 1
+        else if (index(target, "desc:") == 1 && index(description, substr(target, 6)) == 1) matched = 1
+
+        if (matched) {
+          # exit still runs END, so mark the answer as already printed.
+          print managed_next ? "managed" : "user"
+          answered = 1
+          exit
+        }
+      }
+      managed_next = 0
+    }
+    END { if (!answered) print "none" }
+  ' "$MONITOR_LUA"
+}
+
+# Only ever written as a single line so updating it later is a line replacement
+# rather than a Lua block parse. scale references omarchy_monitor_scale when the
+# config still declares it, so `omarchy hyprland monitor scaling` keeps composing
+# with this rule instead of being overridden by a stale literal.
+managed_rule_line() {
+  local description="$1" mode="$2" scale="$3"
+  local scale_expression
+
+  if grep -q '^local omarchy_monitor_scale = ' "$MONITOR_LUA"; then
+    scale_expression="omarchy_monitor_scale"
+  else
+    scale_expression=$(awk -v scale="$scale" 'BEGIN { printf "%g\n", scale }')
+  fi
+
+  printf 'hl.monitor({ output = "desc:%s", mode = "%s", position = "auto", scale = %s })\n' \
+    "$description" "$mode" "$scale_expression"
+}
+
+# Hyprland replaces a matching monitor rule wholesale rather than merging it, so
+# a rate cannot be layered on top as its own rule without dropping that monitor's
+# scale, bitdepth, and colour settings. Persisting therefore means owning the
+# rule outright, which is only safe when the user has not written one.
+persist_rate() {
+  local monitor="$1" description="$2" mode="$3" scale="$4"
+  local owner rule
+
+  [[ -f $MONITOR_LUA ]] || {
+    echo "no-config"
+    return 0
+  }
+
+  owner=$(rule_owner "$monitor" "$description")
+  rule=$(managed_rule_line "$description" "$mode" "$scale")
+
+  case $owner in
+    user)
+      echo "user-owned"
+      ;;
+    managed)
+      # Replace the line directly after our marker.
+      awk -v marker="$MANAGED_MARKER" -v rule="$rule" '
+        replace_next { print rule; replace_next = 0; next }
+        $0 == marker { print; replace_next = 1; next }
+        { print }
+      ' "$MONITOR_LUA" >"$MONITOR_LUA.omarchy-tmp" &&
+        mv "$MONITOR_LUA.omarchy-tmp" "$MONITOR_LUA" &&
+        echo "updated" || echo "failed"
+      ;;
+    *)
+      # Appended so it lands after the catch-all rule it needs to override.
+      printf '\n%s\n%s\n' "$MANAGED_MARKER" "$rule" >>"$MONITOR_LUA" && echo "added" || echo "failed"
+      ;;
+  esac
+}
+
+apply_rate() {
+  local requested="$1"
+  local monitor name description width height scale current target deadline
+
+  monitor=$(focused_monitor) || {
+    echo "No focused monitor" >&2
+    exit 1
+  }
+  name=$(jq -r '.name' <<<"$monitor")
+  description=$(jq -r '.description' <<<"$monitor")
+  width=$(jq -r '.width' <<<"$monitor")
+  height=$(jq -r '.height' <<<"$monitor")
+  scale=$(jq -r '.scale' <<<"$monitor")
+  current=$(jq -r '.refreshRate' <<<"$monitor" | normalize_rate)
+
+  # Snap onto a mode the panel advertises; Hyprland silently falls back to
+  # preferred when handed a rate the display does not support.
+  target=$(nearest_rate "$requested" "$width" "$height")
+  if [[ -z $target ]]; then
+    echo "No refresh rates available for ${width}x${height} on $name" >&2
+    exit 1
+  fi
+
+  # Collapsing an in-flight change keeps revert unambiguous: without this, a
+  # second change would make reverting undo both.
+  if pending_is_live; then
+    clear_pending
+    reload_hyprland
+  else
+    clear_pending
+  fi
+
+  mkdir -p "$STATE_DIR" || exit 1
+  deadline=$(($(date +%s) + CONFIRM_TIMEOUT))
+
+  hyprctl eval "hl.monitor({ output = \"$name\", mode = \"${width}x${height}@${target}\", position = \"auto\", scale = $scale })" >/dev/null
+
+  jq -n \
+    --arg monitor "$name" --arg description "$description" \
+    --arg mode "${width}x${height}@${target}" --arg rate "$target" \
+    --arg previous "$current" --argjson scale "$scale" \
+    --argjson deadline "$deadline" --argjson timeout "$CONFIRM_TIMEOUT" \
+    '{monitor: $monitor, description: $description, mode: $mode, rate: $rate,
+      previous: $previous, scale: $scale, deadline: $deadline, timeout: $timeout}' \
+    >"$PENDING_FILE"
+
+  # Detached so the countdown outlives this process; the shell panel's Process
+  # object exits as soon as this returns.
+  setsid "$0" await-revert "$deadline" >/dev/null 2>&1 </dev/null &
+
+  audit_rate_event applied "$name" "$current" "$target" "pending"
+  echo "$target"
+}
+
+await_revert() {
+  local deadline="$1" remaining
+
+  remaining=$((deadline - $(date +%s)))
+  ((remaining > 0)) && sleep "$remaining"
+
+  # Only revert the change this timer was armed for; a newer change owns the
+  # file by then and has its own timer.
+  [[ $(pending_deadline 2>/dev/null) == "$deadline" ]] || return 0
+
+  local monitor rate previous
+  monitor=$(jq -r '.monitor' "$PENDING_FILE" 2>/dev/null)
+  rate=$(jq -r '.rate' "$PENDING_FILE" 2>/dev/null)
+  previous=$(jq -r '.previous' "$PENDING_FILE" 2>/dev/null)
+
+  clear_pending
+  reload_hyprland
+  audit_rate_event auto-reverted "$monitor" "$rate" "$previous" "unconfirmed"
+  omarchy-notification-send -g 󰍹 "Reverted to ${previous}Hz"
+}
+
+confirm_rate() {
+  local monitor description mode rate scale previous persisted
+
+  if ! pending_is_live; then
+    echo "No refresh rate change is awaiting confirmation" >&2
+    exit 1
+  fi
+
+  monitor=$(jq -r '.monitor' "$PENDING_FILE")
+  description=$(jq -r '.description' "$PENDING_FILE")
+  mode=$(jq -r '.mode' "$PENDING_FILE")
+  rate=$(jq -r '.rate' "$PENDING_FILE")
+  scale=$(jq -r '.scale' "$PENDING_FILE")
+  previous=$(jq -r '.previous' "$PENDING_FILE")
+
+  clear_pending
+  persisted=$(persist_rate "$monitor" "$description" "$mode" "$scale")
+  audit_rate_event confirmed "$monitor" "$previous" "$rate" "$persisted"
+
+  case $persisted in
+    user-owned)
+      echo "Keeping ${rate}Hz for this session. ~/.config/hypr/monitors.lua already configures $monitor, so edit its mode there to make this permanent." >&2
+      ;;
+    no-config | failed)
+      echo "Keeping ${rate}Hz for this session; could not write ~/.config/hypr/monitors.lua." >&2
+      ;;
+  esac
+}
+
+revert_rate() {
+  local monitor rate previous
+
+  if ! pending_is_live; then
+    clear_pending
+    return 0
+  fi
+
+  monitor=$(jq -r '.monitor' "$PENDING_FILE")
+  rate=$(jq -r '.rate' "$PENDING_FILE")
+  previous=$(jq -r '.previous' "$PENDING_FILE")
+
+  clear_pending
+  reload_hyprland
+  audit_rate_event reverted "$monitor" "$rate" "$previous" "requested"
+}
+
+print_pending() {
+  if ! pending_is_live; then
+    echo '{"pending":false,"secondsLeft":0}'
+    return 0
+  fi
+
+  jq --argjson now "$(date +%s)" \
+    '{pending: true, secondsLeft: (.deadline - $now), monitor: .monitor, rate: .rate, previous: .previous}' \
+    "$PENDING_FILE"
+}
+
+case "${1:-}" in
+  "")
+    focused_monitor | jq -r '.refreshRate' | normalize_rate
+    ;;
+  -h | --help)
+    usage
+    ;;
+  list)
+    monitor=$(focused_monitor) || exit 1
+    available_rates "$(jq -r '.width' <<<"$monitor")" "$(jq -r '.height' <<<"$monitor")"
+    ;;
+  pending)
+    print_pending
+    ;;
+  confirm)
+    confirm_rate
+    ;;
+  revert)
+    revert_rate
+    ;;
+  await-revert)
+    await_revert "${2:-0}"
+    ;;
+  up | down)
+    monitor=$(focused_monitor) || exit 1
+    apply_rate "$(stepped_rate "$1" \
+      "$(jq -r '.refreshRate' <<<"$monitor" | normalize_rate)" \
+      "$(jq -r '.width' <<<"$monitor")" "$(jq -r '.height' <<<"$monitor")")"
+    ;;
+  *)
+    if [[ $1 =~ ^[0-9]+([.][0-9]+)?$ ]] && awk -v rate="$1" 'BEGIN { exit !(rate >= 20 && rate <= 1000) }'; then
+      apply_rate "$1"
+    else
+      usage >&2
+      exit 1
+    fi
+    ;;
+esac
