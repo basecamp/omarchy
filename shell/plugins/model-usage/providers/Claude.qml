@@ -38,9 +38,6 @@ Item {
     property string tierLabel: ""
     property string authHelpText: "Run `claude auth login` to restore authoritative usage."
     property bool hasLocalStats: true
-    // Optimistic until the probe answers, so a present provider never blinks
-    // out of the panel on startup.
-    property bool installed: true
     property bool hasProjectStats: false
 
     property string oauthAccessToken: ""
@@ -50,8 +47,14 @@ Item {
     property string rateLimitTier: ""
     property bool hasAuthoritativeRateLimit: false
 
+    property bool probeInFlight: false
     property double lastProbeAtMs: 0
     property int probeMinIntervalMs: 15 * 60 * 1000
+    // Opening the panel asks for fresh limits, so a forced probe skips the
+    // background interval — but not so freely that flicking the panel open and
+    // shut turns into a request per flick.
+    property int probeForcedMinIntervalMs: 15 * 1000
+    property int probeRetryMs: 30 * 1000
     property bool projectScanRerunForce: false
 
     property var providerSettings: ({})
@@ -104,17 +107,6 @@ Item {
         }
     }
 
-    // Claude Code is "here" if its state directory or CLI exists. Cheap enough
-    // to re-run on every refresh, so installing it mid-session shows up.
-    Process {
-        id: presenceProbe
-        running: true
-        command: ["bash", "-c", "[[ -d \"$HOME/.claude\" ]] || command -v claude >/dev/null"]
-        onExited: function (exitCode) {
-            root.installed = exitCode === 0;
-        }
-    }
-
     Process {
         id: projectScanner
         running: false
@@ -145,6 +137,23 @@ Item {
         repeat: true
         onTriggered: root.probeRateLimits(false)
     }
+
+    // The first probe fires seconds after login, often before DHCP has handed
+    // out a route, and comes back as a transport failure rather than an answer
+    // from Anthropic. Try again shortly instead of showing "limits unavailable"
+    // until the next background poll a quarter of an hour later.
+    Timer {
+        id: probeRetry
+        interval: root.probeRetryMs
+        repeat: false
+        // Straight to the probe: a retry that answered to the same throttle
+        // that spaces out ordinary polls would never get off the ground.
+        onTriggered: if (root.enabled && root.oauthAccessToken && !root.oauthTokenExpired()) root.probeOAuthUsage()
+    }
+
+    // Credentials load whether or not the panel wants this provider, so a
+    // switched-off Claude must not keep knocking on a downed network forever.
+    onEnabledChanged: if (!enabled) probeRetry.stop()
 
     function localDateString() {
         const now = new Date();
@@ -278,7 +287,10 @@ Item {
             if (root.oauthAccessToken && !root.oauthTokenExpired()) {
                 if (root.usageStatusText === "Waiting for auth")
                     root.clearUsageStatus();
-                root.probeRateLimits(false);
+                // A fresh token just wiped the limits it replaced, so don't let
+                // the old token's throttle keep them blank for the next quarter
+                // of an hour.
+                root.probeRateLimits(tokenChanged);
             } else if (!root.oauthAccessToken) {
                 root.usageStatusText = "Waiting for auth";
                 root.clearAuthoritativeRateLimits();
@@ -425,7 +437,13 @@ Item {
     }
 
     function probeOAuthUsage() {
+        // One probe at a time. The retry timer and a forced panel-open refresh
+        // can otherwise both be in flight, and the slower answer wins.
+        if (root.probeInFlight)
+            return;
+        root.probeInFlight = true;
         root.refreshing = true;
+        root.lastProbeAtMs = Date.now();
         const xhr = new XMLHttpRequest();
         xhr.open("GET", "https://api.anthropic.com/api/oauth/usage");
         xhr.setRequestHeader("Authorization", "Bearer " + root.oauthAccessToken);
@@ -434,6 +452,7 @@ Item {
         xhr.onreadystatechange = function () {
             if (xhr.readyState !== XMLHttpRequest.DONE)
                 return;
+            root.probeInFlight = false;
 
             if (xhr.status >= 200 && xhr.status < 300) {
                 try {
@@ -442,6 +461,7 @@ Item {
                     const sessionBucket = root.oauthUsageBucket(payload, "five_hour");
 
                     if (root.applyAuthoritativeRateLimits(weeklyBucket?.utilization, weeklyBucket?.resets_at, sessionBucket?.utilization, sessionBucket?.resets_at, "")) {
+                        probeRetry.stop();
                         root.clearUsageStatus();
                         root.finishRefresh();
                         return;
@@ -456,10 +476,20 @@ Item {
             console.warn("model-usage/claude", "OAuth usage probe unavailable (status " + xhr.status + ")" + (body ? " body=" + body : ""));
             if (!root.hasAuthoritativeRateLimit) {
                 root.usageStatusText = "Claude limits unavailable";
-                root.authHelpText = xhr.status === 429
+                root.authHelpText = xhr.status === 0
+                    ? "Couldn't reach Anthropic's usage endpoint. Retrying shortly. Local Claude Code stats are still shown."
+                    : xhr.status === 429
                     ? "Anthropic's usage endpoint is rate limiting checks right now" + (retryAfter ? " (retry after " + retryAfter + "s)" : "") + ". Local Claude Code stats are still shown."
                     : "Anthropic's usage endpoint returned status " + xhr.status + ". Local Claude Code stats are still shown.";
             }
+            // Status 0 is a transport failure — no route, no DNS, no server
+            // reached. Nothing to be a good citizen about, so keep knocking.
+            // Any real answer, including 429, disarms the retry: a server that
+            // replied is a server we should stop pestering.
+            if (xhr.status === 0)
+                probeRetry.restart();
+            else
+                probeRetry.stop();
             root.finishRefresh();
         };
         xhr.send();
@@ -482,8 +512,6 @@ Item {
 
     function refresh(force) {
         root.refreshing = true;
-        if (!presenceProbe.running)
-            presenceProbe.running = true;
         statsFile.reload();
         historyFile.reload();
         credentialsFile.reload();
@@ -491,6 +519,12 @@ Item {
 
         if (root.oauthAccessToken && root.authMode === "oauth" && !root.oauthTokenExpired())
             root.probeRateLimits(force === true);
+    }
+
+    // The cheap half of a refresh: Anthropic's numbers without the disk walk.
+    function refreshLimits() {
+        if (root.oauthAccessToken && root.authMode === "oauth" && !root.oauthTokenExpired())
+            root.probeRateLimits(true);
     }
 
     function formatResetTime(isoTimestamp) {
@@ -524,12 +558,11 @@ Item {
             return;
         }
 
-        const nowMs = Date.now();
-        if (force !== true && root.lastProbeAtMs > 0 && (nowMs - root.lastProbeAtMs) < root.probeMinIntervalMs) {
+        const minIntervalMs = force === true ? root.probeForcedMinIntervalMs : root.probeMinIntervalMs;
+        if (root.lastProbeAtMs > 0 && (Date.now() - root.lastProbeAtMs) < minIntervalMs) {
             root.finishRefresh();
             return;
         }
-        root.lastProbeAtMs = nowMs;
 
         root.probeOAuthUsage();
     }

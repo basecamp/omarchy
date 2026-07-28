@@ -19,10 +19,16 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   readonly property var providers: usage.enabledProviders
-  property int providerIndex: 0
-  readonly property var provider: providers.length > 0
-    ? providers[Math.max(0, Math.min(providerIndex, providers.length - 1))]
-    : null
+  // The selection follows the provider, not the slot it happens to sit in: a
+  // provider whose first scan lands while the panel is open would otherwise
+  // shift the list underneath you and swap out what you were reading.
+  property string selectedProviderId: ""
+  readonly property int providerIndex: {
+    for (var i = 0; i < providers.length; i++)
+      if (providers[i].providerId === selectedProviderId) return i
+    return 0
+  }
+  readonly property var provider: providers.length > 0 ? providers[providerIndex] : null
 
   property bool cursorActive: false
 
@@ -39,11 +45,9 @@ Panel {
   function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
   function selectProvider(index) {
-    if (providers.length === 0) {
-      providerIndex = 0
-      return
-    }
-    providerIndex = ((index % providers.length) + providers.length) % providers.length
+    if (providers.length === 0) return
+    var wrapped = ((index % providers.length) + providers.length) % providers.length
+    selectedProviderId = providers[wrapped].providerId
   }
 
   function refreshNow() {
@@ -317,16 +321,20 @@ Panel {
     return ""
   }
 
+  // Nothing to report, nothing in the bar: Bar.qml collapses a slot whose item
+  // is invisible, so the icon appears the moment the first scan finds usage and
+  // stays away entirely on a machine that has never run either CLI.
+  visible: providers.length > 0
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  onProvidersChanged: if (providerIndex >= providers.length) selectProvider(0)
   onProviderIndexChanged: if (panelFlick) panelFlick.contentY = 0
   onOpenedChanged: if (opened) {
     cursorActive = false
     nowMs = Date.now()
     if (panelFlick) panelFlick.contentY = 0
     usage.refreshAll()
+    usage.refreshLimits()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
@@ -361,7 +369,6 @@ Panel {
     bar: root.bar
     text: "󱚣"
     active: root.alarming
-    dimmed: root.providers.length === 0
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.RightButton) root.refreshNow()
       else if (buttonCode === Qt.MiddleButton) root.selectProvider(root.providerIndex + 1)
@@ -441,7 +448,7 @@ Panel {
             visible: root.providers.length === 0
             width: parent.width
             topPadding: Style.space(24)
-            text: "No AI coding subscriptions found.\nClaude Code and Codex show up here once installed."
+            text: "No AI coding subscriptions found.\nClaude Code and Codex show up here once you've used them."
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.body

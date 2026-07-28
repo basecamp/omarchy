@@ -22,9 +22,11 @@ adapter per subscription.
   tokens per model with the bar behind each row showing its share of the
   heaviest one. Hover for the input / output / cache split.
 
-A subscription appears only when it is both enabled in settings and actually
-present on this machine (state directory or CLI). With one installed there is
-no switch row at all; with none, the panel says so and the bar icon dims.
+A subscription appears only when it is enabled in settings and has actually
+recorded usage — on this machine or on a synced one. With one such provider
+there is no switch row at all; with none, the module leaves the bar entirely
+rather than sitting there with nothing to say. A CLI installed mid-session
+shows up at the next refresh, so nothing polls the disk waiting for it.
 
 ## Providers
 

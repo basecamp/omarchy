@@ -35,9 +35,6 @@ Item {
 
   property string tierLabel: ""
   property string usageStatusText: ""
-  // Optimistic until the probe answers, so a present provider never blinks
-  // out of the panel on startup.
-  property bool installed: true
   property string authHelpText: "Run `codex login` to authenticate."
   property bool hasLocalStats: true
 
@@ -45,17 +42,6 @@ Item {
   property var providerSettings: ({})
 
   readonly property string scannerPath: String(Qt.resolvedUrl("../scripts/codex_usage_scanner.py")).replace("file://", "")
-
-  // Codex is "here" if its state directory, its session store, or the CLI
-  // exists. Re-runs on refresh so installing it mid-session shows up.
-  Process {
-    id: presenceProbe
-    running: true
-    command: ["bash", "-c", "[[ -d \"$HOME/.codex\" ]] || [[ -d \"$HOME/.pi/agent/sessions\" ]] || command -v codex >/dev/null"]
-    onExited: function (exitCode) {
-      root.installed = exitCode === 0
-    }
-  }
 
   Process {
     id: usageScanner
@@ -89,13 +75,15 @@ Item {
   }
 
   function refresh(force) {
-    if (!presenceProbe.running)
-      presenceProbe.running = true
     if (usageScanner.running)
       return
     root.refreshing = true
     usageScanner.running = true
   }
+
+  // Codex reports limits and local stats from the same scanner run, and that
+  // run has no expensive mode to skip, so there is nothing cheaper to do.
+  function refreshLimits() { refresh() }
 
   function parseScannerOutput(output) {
     const raw = String(output || "").trim()

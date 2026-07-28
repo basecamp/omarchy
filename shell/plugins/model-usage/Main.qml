@@ -27,16 +27,31 @@ Item {
 
   property var providers: [claudeProvider, codexProvider]
 
-  // A subscription earns a place in the panel by being both switched on in
-  // settings and actually present on this machine — nobody wants a Codex tab
-  // full of zeroes on a box that has never run Codex.
+  // A subscription earns a place in the bar and the panel by being switched on
+  // in settings and having actually produced numbers — locally or on a synced
+  // device. Presence on disk is not enough: a box that installed Codex and
+  // never ran it would get a tab full of zeroes. With nothing to show, the
+  // whole module collapses out of the bar rather than sitting there dimmed.
   property var enabledProviders: {
     var rev = syncRevision
     var running = syncRunning
     var result = []
-    if (claudeProvider.enabled && claudeProvider.installed) result.push(displayProvider(claudeProvider))
-    if (codexProvider.enabled && codexProvider.installed) result.push(displayProvider(codexProvider))
+    if (claudeProvider.enabled) {
+      var claude = displayProvider(claudeProvider)
+      if (providerHasData(claude)) result.push(claude)
+    }
+    if (codexProvider.enabled) {
+      var codex = displayProvider(codexProvider)
+      if (providerHasData(codex)) result.push(codex)
+    }
     return result
+  }
+
+  // All-time, not today: a quiet day is not the same as an absent provider.
+  function providerHasData(p) {
+    return numberValue(p.totalPrompts) > 0 || numberValue(p.totalSessions) > 0
+      || numberValue(p.activeDays) > 0 || Number(p.rateLimitPercent) >= 0
+      || Number(p.secondaryRateLimitPercent) >= 0
   }
 
   property bool refreshing: claudeProvider.refreshing || codexProvider.refreshing || syncRunning
@@ -521,6 +536,16 @@ Item {
       if (p.enabled && typeof p.refresh === "function") p.refresh(force === true)
     }
     scheduleSync()
+  }
+
+  // Opening the panel wants the numbers that go stale on the wire, not another
+  // walk over every transcript on disk. Forcing a whole refresh would do both,
+  // and re-opening the panel would then rescan the lot each time.
+  function refreshLimits() {
+    for (var i = 0; i < providers.length; i++) {
+      var p = providers[i]
+      if (p.enabled && typeof p.refreshLimits === "function") p.refreshLimits()
+    }
   }
 
   function formatTokenCount(n) {
