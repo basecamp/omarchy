@@ -30,12 +30,17 @@ Item {
     property var recentDays: []
     property int totalPrompts: 0
     property int totalSessions: 0
+    property int activeDays: 0
+    property var activeDates: []
     property var modelUsage: ({})
     property var dailyActivity: []
 
     property string tierLabel: ""
     property string authHelpText: "Run `claude auth login` to restore authoritative usage."
     property bool hasLocalStats: true
+    // Optimistic until the probe answers, so a present provider never blinks
+    // out of the panel on startup.
+    property bool installed: true
     property bool hasProjectStats: false
 
     property string oauthAccessToken: ""
@@ -99,6 +104,17 @@ Item {
         }
     }
 
+    // Claude Code is "here" if its state directory or CLI exists. Cheap enough
+    // to re-run on every refresh, so installing it mid-session shows up.
+    Process {
+        id: presenceProbe
+        running: true
+        command: ["bash", "-c", "[[ -d \"$HOME/.claude\" ]] || command -v claude >/dev/null"]
+        onExited: function (exitCode) {
+            root.installed = exitCode === 0;
+        }
+    }
+
     Process {
         id: projectScanner
         running: false
@@ -155,6 +171,8 @@ Item {
 
             root.dailyActivity = data.dailyActivity ?? [];
             root.recentDays = root.dailyActivity.slice(-7);
+            if (!root.hasProjectStats)
+                root.applyFallbackActiveDays(root.dailyActivity);
             root.modelUsage = data.modelUsage ?? {};
             root.totalPrompts = data.totalMessages ?? 0;
             root.totalSessions = data.totalSessions ?? 0;
@@ -162,6 +180,21 @@ Item {
         } catch (e) {
             console.error("model-usage/claude", "Failed to parse stats-cache.json:", e);
         }
+    }
+
+    // stats-cache.json has no day count of its own, so recover one from the
+    // daily activity it does carry. The project scan overrides this when it
+    // finds transcripts.
+    function applyFallbackActiveDays(dailyActivity) {
+        const days = Array.isArray(dailyActivity) ? dailyActivity : [];
+        const dates = [];
+        for (var i = 0; i < days.length; i++) {
+            const day = days[i] || {};
+            if (Number(day.messageCount || 0) > 0 && day.date)
+                dates.push(String(day.date));
+        }
+        root.activeDates = dates;
+        root.activeDays = dates.length;
     }
 
     function applyProjectUsageSummary(content) {
@@ -180,6 +213,8 @@ Item {
             root.modelUsage = data.modelUsage || ({});
             root.totalPrompts = prompts;
             root.totalSessions = Math.max(0, Number(data.totalSessions || 0));
+            root.activeDays = Math.max(0, Number(data.activeDays || 0));
+            root.activeDates = data.activeDates || [];
             root.dailyActivity = data.dailyActivity || root.recentDays;
             root.ready = true;
         } catch (e) {
@@ -447,6 +482,8 @@ Item {
 
     function refresh(force) {
         root.refreshing = true;
+        if (!presenceProbe.running)
+            presenceProbe.running = true;
         statsFile.reload();
         historyFile.reload();
         credentialsFile.reload();

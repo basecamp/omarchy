@@ -29,10 +29,15 @@ Item {
   property var recentDays: []
   property int totalPrompts: 0
   property int totalSessions: 0
+  property int activeDays: 0
+  property var activeDates: []
   property var modelUsage: ({})
 
   property string tierLabel: ""
   property string usageStatusText: ""
+  // Optimistic until the probe answers, so a present provider never blinks
+  // out of the panel on startup.
+  property bool installed: true
   property string authHelpText: "Run `codex login` to authenticate."
   property bool hasLocalStats: true
 
@@ -40,6 +45,17 @@ Item {
   property var providerSettings: ({})
 
   readonly property string scannerPath: String(Qt.resolvedUrl("../scripts/codex_usage_scanner.py")).replace("file://", "")
+
+  // Codex is "here" if its state directory, its session store, or the CLI
+  // exists. Re-runs on refresh so installing it mid-session shows up.
+  Process {
+    id: presenceProbe
+    running: true
+    command: ["bash", "-c", "[[ -d \"$HOME/.codex\" ]] || [[ -d \"$HOME/.pi/agent/sessions\" ]] || command -v codex >/dev/null"]
+    onExited: function (exitCode) {
+      root.installed = exitCode === 0
+    }
+  }
 
   Process {
     id: usageScanner
@@ -73,6 +89,8 @@ Item {
   }
 
   function refresh(force) {
+    if (!presenceProbe.running)
+      presenceProbe.running = true
     if (usageScanner.running)
       return
     root.refreshing = true
@@ -96,6 +114,8 @@ Item {
       root.recentDays = data.recentDays || []
       root.totalPrompts = data.totalPrompts || 0
       root.totalSessions = data.totalSessions || 0
+      root.activeDays = data.activeDays || 0
+      root.activeDates = data.activeDates || []
       root.modelUsage = data.modelUsage || ({})
 
       root.rateLimitPercent = data.rateLimitPercent ?? -1

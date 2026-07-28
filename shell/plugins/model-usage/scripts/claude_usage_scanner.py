@@ -94,6 +94,7 @@ def scan(projects_path: Path) -> dict[str, Any]:
 
     seen: set[str] = set()
     sessions: set[str] = set()
+    active_days: set[str] = set()
     today_sessions: set[str] = set()
     today_tokens: dict[str, int] = {}
     usage_by_model: dict[str, dict[str, int]] = {}
@@ -145,6 +146,7 @@ def scan(projects_path: Path) -> dict[str, Any]:
                     day = local_date_from_timestamp(entry.get("timestamp") or message.get("timestamp"))
                     session_key = str(entry.get("sessionId") or path)
                     sessions.add(session_key)
+                    active_days.add(day)
                     prompts += 1
 
                     bucket = usage_by_model.setdefault(model, empty_bucket())
@@ -177,6 +179,11 @@ def scan(projects_path: Path) -> dict[str, Any]:
         "modelUsage": usage_by_model,
         "totalPrompts": prompts,
         "totalSessions": len(sessions),
+        # Days with any recorded usage, for the all-time "N days" summary.
+        # The dates travel too: merging snapshots from several machines needs
+        # their union, which a count alone cannot give.
+        "activeDays": len(active_days),
+        "activeDates": sorted(active_days),
         "dailyActivity": recent_days,
         "scannedFiles": scanned_files,
         "malformedLines": malformed_lines,
