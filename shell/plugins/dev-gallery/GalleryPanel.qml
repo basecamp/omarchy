@@ -1530,14 +1530,15 @@ Item {
                 onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
                 onToggled: root.switchBusyOn = !root.switchBusyOn
               }
+            }
 
-              Text {
-                text: "second switch is `busy: true` — hover still responds, clicks do not"
-                color: Qt.darker(root.foreground, 1.5)
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                anchors.verticalCenter: parent.verticalCenter
-              }
+            Text {
+              text: "The second switch is `busy: true` — hover still responds, clicks do not."
+              color: Qt.darker(root.foreground, 1.5)
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              width: parent.width
+              wrapMode: Text.WordWrap
             }
           }
 
