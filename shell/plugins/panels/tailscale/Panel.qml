@@ -48,7 +48,9 @@ Panel {
   readonly property var exitNodes: displayExitNodes()
   readonly property bool showExitNodes: tailscale.active && (exitNodes.length > 0 || tailscale.mullvadRegions.length > 0)
   readonly property var filteredMullvadRegions: filteredMullvadRegionNodes()
-  readonly property bool headerHasCursor: cursorActive && focusSection === "header"
+  // Only claim the header cursor when the switch is actually on screen —
+  // "header" stays navigable, but an absent CLI leaves nothing to highlight.
+  readonly property bool headerHasCursor: cursorActive && focusSection === "header" && tailscale.installed
   readonly property color iconColor: tailscale.active ? foreground : dim
   readonly property string toggleHint: tailscale.active ? "Turn Tailscale off" : (tailscale.needsLogin ? "Authorize this device" : "Turn Tailscale on")
   readonly property color barIconColor: tailscale.active ? barForeground : Qt.darker(barForeground, 1.55)

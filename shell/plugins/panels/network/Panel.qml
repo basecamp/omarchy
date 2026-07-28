@@ -115,7 +115,9 @@ Panel {
   // beside a perfectly live Ethernet connection.
   readonly property bool canToggleWifi: networkManagerAvailable && wifiStationAvailable
   readonly property int headerActionCount: canToggleWifi ? 1 : 0
-  readonly property bool headerHasCursor: cursorActive && focusSection === "header"
+  // Only claim the header cursor when the switch is actually on screen —
+  // "header" stays navigable, but a machine with no radio has nothing to highlight.
+  readonly property bool headerHasCursor: cursorActive && focusSection === "header" && canToggleWifi
   readonly property string toggleHint: Networking.wifiEnabled ? "Turn Wi-Fi off" : "Turn Wi-Fi on"
   readonly property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
   property int dnsIndex: 0
