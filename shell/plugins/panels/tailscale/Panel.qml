@@ -49,8 +49,8 @@ Panel {
   readonly property bool showExitNodes: tailscale.active && (exitNodes.length > 0 || tailscale.mullvadRegions.length > 0)
   readonly property var filteredMullvadRegions: filteredMullvadRegionNodes()
   readonly property bool headerHasCursor: cursorActive && focusSection === "header"
-  readonly property int heroRingPad: Style.space(6)
   readonly property color iconColor: tailscale.active ? foreground : dim
+  readonly property string toggleHint: tailscale.active ? "Turn Tailscale off" : (tailscale.needsLogin ? "Authorize this device" : "Turn Tailscale on")
   readonly property color barIconColor: tailscale.active ? barForeground : Qt.darker(barForeground, 1.55)
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
@@ -445,110 +445,51 @@ Panel {
           Item {
             id: header
             width: parent.width
-            implicitHeight: hero.implicitHeight + root.heroRingPad
-            // Exposed for the hero's iconComponent, whose `root` resolves to
+            implicitHeight: hero.implicitHeight
+            // Exposed for the hero's trailingControl, whose `root` resolves to
             // PanelHero (not this Panel) — reach panel state via `header`.
             readonly property bool ringVisible: root.headerHasCursor
-            readonly property int ringPad: root.heroRingPad
             function focusHero() { root.setHeaderCursor() }
 
             PanelHero {
               id: hero
-              x: root.heroRingPad
-              y: root.heroRingPad
-              width: parent.width - root.heroRingPad
-              rightInset: powerSwitch.visible ? powerSwitch.width + Style.space(20) : 0
+              width: parent.width
               title: tailscale.installed ? (tailscale.selfName || "Tailscale") : "Tailscale"
               meta: tailscale.active ? root.heroPhraseText : "Tailscale is disconnected"
               foreground: root.foreground
               fontFamily: root.fontFamily
               iconOpacity: tailscale.active ? 1.0 : 0.5
+              // Status only — the switch owns toggling, mouse and keyboard alike.
               iconComponent: Component {
-                Item {
-                  implicitWidth: icon.implicitWidth
-                  implicitHeight: icon.implicitHeight
-
-                  // Keyboard focus ring around the hero toggle. The hero is
-                  // inset by heroRingPad so this ring stays inside the
-                  // Flickable's clip box instead of being cut off.
-                  BorderSurface {
-                    anchors.fill: icon
-                    anchors.margins: -header.ringPad
-                    color: "transparent"
-                    radius: Style.cornerRadius
-                    visible: header.ringVisible
-                    borderSpec: Border.controlSpec("hover-cursor", hero.foreground, Color.accent)
-                  }
-
-                  TailscaleIcon {
-                    id: icon
-                    iconSize: Style.font.display
-                    color: root.iconColor
-                    badgeColor: root.urgent
-                    crossed: !tailscale.active && !tailscale.needsLogin
-                    warning: tailscale.needsLogin
-                    anchors.centerIn: parent
-                  }
-
-                  MouseArea {
-                    id: heroIconMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    enabled: tailscale.installed && !tailscale.busy
-                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onContainsMouseChanged: if (containsMouse) header.focusHero()
-                    onClicked: tailscale.toggleTailscale()
-                  }
-
-                  PanelToolTip {
-                    visible: heroIconMouse.containsMouse
-                    text: tailscale.active ? "Turn Tailscale off" : (tailscale.needsLogin ? "Authorize this device" : "Turn Tailscale on")
-                    fontFamily: root.fontFamily
-                  }
+                TailscaleIcon {
+                  iconSize: Style.font.display
+                  color: root.iconColor
+                  badgeColor: root.urgent
+                  crossed: !tailscale.active && !tailscale.needsLogin
+                  warning: tailscale.needsLogin
                 }
               }
-            }
 
-            // Compact on/off switch aligned with the title row.
-            BorderSurface {
-              id: powerSwitch
-              visible: tailscale.installed
-              z: 10
-              anchors.right: parent.right
-              anchors.rightMargin: Style.space(10)
-              y: hero.y + hero.titleCenterY - height / 2
-              width: Style.space(52)
-              height: Style.space(28)
-              radius: height / 2
-              color: tailscale.active
-                ? Style.selectedFillFor(root.foreground, Color.accent)
-                : Style.normalFillFor(root.foreground, Color.accent)
-              borderSpec: Border.controlSpec(tailscale.active ? "selected" : "normal", root.foreground, Color.accent)
+              // Compact on/off switch on the trailing edge of the hero, and the
+              // header's only cursor target. The service already flips `active`
+              // optimistically, so the knob throws the instant you click it.
+              trailingControl: Component {
+                ToggleSwitch {
+                  id: powerSwitch
+                  visible: tailscale.installed
+                  checked: tailscale.active
+                  busy: tailscale.busy
+                  hasCursor: header.ringVisible
+                  foreground: hero.foreground
+                  onHovered: function(on) { if (on) header.focusHero() }
+                  onToggled: tailscale.toggleTailscale()
 
-              Rectangle {
-                width: Style.space(20)
-                height: width
-                radius: height / 2
-                anchors.verticalCenter: parent.verticalCenter
-                x: tailscale.active ? parent.width - width - Style.space(4) : Style.space(4)
-                color: tailscale.active ? Style.selectedStateColor(root.foreground, Color.accent) : root.dim
-                Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-              }
-
-              MouseArea {
-                id: powerSwitchMouse
-                anchors.fill: parent
-                enabled: !tailscale.busy
-                hoverEnabled: true
-                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                onContainsMouseChanged: if (containsMouse) header.focusHero()
-                onClicked: tailscale.toggleTailscale()
-              }
-
-              PanelToolTip {
-                visible: powerSwitchMouse.containsMouse
-                text: tailscale.active ? "Turn Tailscale off" : (tailscale.needsLogin ? "Authorize this device" : "Turn Tailscale on")
-                fontFamily: root.fontFamily
+                  PanelToolTip {
+                    visible: powerSwitch.containsMouse
+                    text: root.toggleHint
+                    fontFamily: hero.fontFamily
+                  }
+                }
               }
             }
           }

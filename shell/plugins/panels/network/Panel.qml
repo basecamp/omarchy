@@ -111,7 +111,7 @@ Panel {
   readonly property bool headerHasDisconnect: false
   readonly property int headerActionCount: networkManagerAvailable ? 1 : 0
   readonly property bool headerHasCursor: cursorActive && focusSection === "header"
-  readonly property int heroRingPad: Style.space(6)
+  readonly property string toggleHint: (Networking.wifiEnabled ? "Turn off " : "Turn on ") + (root.info.type === "ethernet" ? "network" : "Wi-Fi")
   readonly property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
   property int dnsIndex: 0
 
@@ -855,19 +855,9 @@ Panel {
       // ---------- Hero: network icon · SSID + state · actions ----------
       Item {
         width: parent.width
-        implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight) + root.heroRingPad * 2
+        implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, powerSwitch.implicitHeight)
 
-        // Keyboard focus ring around the hero Wi-Fi toggle. heroIcon is inset
-        // by heroRingPad so this ring stays inside the panel's clip box.
-        BorderSurface {
-          anchors.fill: heroIcon
-          anchors.margins: -root.heroRingPad
-          color: "transparent"
-          radius: Style.cornerRadius
-          visible: root.headerHasCursor
-          borderSpec: Border.controlSpec("hover-cursor", root.bar.foreground, Color.accent)
-        }
-
+        // Status only — the switch owns toggling, mouse and keyboard alike.
         Text {
           id: heroIcon
           text: root.icon
@@ -876,25 +866,25 @@ Panel {
           font.pixelSize: Style.font.display
           opacity: root.networkManagerAvailable ? 1.0 : 0.5
           anchors.left: parent.left
-          anchors.leftMargin: root.heroRingPad
           anchors.verticalCenter: parent.verticalCenter
+        }
 
-          MouseArea {
-            id: heroIconMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            enabled: root.networkManagerAvailable
-            onContainsMouseChanged: if (containsMouse) root.setHeaderCursor()
-            onClicked: {
-              Networking.wifiEnabled = !Networking.wifiEnabled
-              Qt.callLater(function() { root.refresh(true) })
-            }
-          }
+        // Compact on/off switch on the trailing edge of the hero, and the
+        // header's only cursor target.
+        ToggleSwitch {
+          id: powerSwitch
+          visible: root.networkManagerAvailable
+          checked: Networking.wifiEnabled
+          hasCursor: root.headerHasCursor
+          foreground: root.bar.foreground
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          onHovered: function(on) { if (on) root.setHeaderCursor() }
+          onToggled: root.toggleNetwork()
 
           PanelToolTip {
-            visible: heroIconMouse.containsMouse
-            text: root.info.type === "ethernet" ? "Toggle network" : "Toggle Wi-Fi"
+            visible: powerSwitch.containsMouse
+            text: root.toggleHint
             fontFamily: root.bar.fontFamily
           }
         }
@@ -904,10 +894,13 @@ Panel {
           anchors.left: heroIcon.right
           anchors.leftMargin: Style.space(14)
           anchors.right: parent.right
+          anchors.rightMargin: powerSwitch.visible ? powerSwitch.width + Style.space(12) : 0
           anchors.verticalCenter: parent.verticalCenter
           spacing: Style.space(2)
 
-          Row {
+          // Link detail rides inline after the name — "Ethernet (2.5gbit)" —
+          // rather than in a pill, which crowded the on/off switch.
+          Text {
             id: heroSsid
             width: parent.width
 
@@ -918,38 +911,12 @@ Panel {
             }
             readonly property string detail: root.headerDetail()
 
-            Text {
-              text: heroSsid.title
-              width: Math.min(implicitWidth, Math.max(0, parent.width - (heroDetailPill.visible ? heroDetailPill.implicitWidth + Style.space(8) : 0)))
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.title
-              font.bold: true
-              elide: Text.ElideRight
-            }
-
-            Item { width: Math.max(0, parent.width - parent.children[0].width - heroDetailPill.implicitWidth); height: 1 }
-
-            BorderSurface {
-              id: heroDetailPill
-              visible: heroSsid.detail !== ""
-              implicitWidth: heroDetail.implicitWidth + Style.space(10)
-              implicitHeight: heroDetail.implicitHeight + Style.space(4)
-              anchors.verticalCenter: parent.verticalCenter
-              color: "transparent"
-              borderSpec: Border.controlSpec("normal", root.bar.foreground, Color.accent)
-              radius: Style.cornerRadius
-
-              Text {
-                id: heroDetail
-                anchors.centerIn: parent
-                text: heroSsid.detail
-                color: Qt.darker(root.bar.foreground, 1.4)
-                font.family: root.bar.fontFamily
-                font.pixelSize: Style.font.body
-                font.bold: true
-              }
-            }
+            text: heroSsid.detail !== "" ? heroSsid.title + " (" + heroSsid.detail + ")" : heroSsid.title
+            color: root.bar.foreground
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.title
+            font.bold: true
+            elide: Text.ElideRight
           }
 
           Text {
