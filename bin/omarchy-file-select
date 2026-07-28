@@ -1,0 +1,107 @@
+#!/usr/bin/python3
+
+# omarchy:summary=Pick files with the desktop file chooser
+# omarchy:args=[--title <title>] [--multiple]
+# omarchy:examples=omarchy file select --title "Send with Tailscale" --multiple
+
+# Python rather than bash, alone among the commands here, because the portal
+# answers a request with a Response signal addressed to the connection that
+# asked, and D-Bus delivers a directed signal only to that connection. Every
+# shell-callable client — gdbus call, busctl call, dbus-send — opens its own
+# connection and exits before the answer arrives, and gdbus monitor registers
+# with AddMatch rather than BecomeMonitor, so it never sees one either. Holding
+# a single connection across both the call and the wait is the whole job, and
+# bash has no way to hold one.
+
+import argparse
+import os
+import sys
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+
+# A dialog nobody ever answers would otherwise keep this process, and whatever
+# waits on its output, alive forever.
+ANSWER_TIMEOUT_SEC = 600
+
+# Callers act on these: nothing picked is a decision, a chooser that never ran
+# is a fault, and the two want different handling.
+EXIT_NOTHING_PICKED = 1
+EXIT_CHOOSER_FAILED = 2
+
+
+def main():
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--title", default="Select file")
+    parser.add_argument("--multiple", action="store_true")
+    args, unknown = parser.parse_known_args()
+
+    if unknown:
+        print("omarchy-file-select: unknown option %s" % unknown[0], file=sys.stderr)
+        return EXIT_CHOOSER_FAILED
+
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    loop = GLib.MainLoop()
+    uris = []
+
+    def on_response(connection, sender, path, interface, signal, params):
+        code, results = params.unpack()
+        if code == 0:
+            uris.extend(results.get("uris", []))
+        loop.quit()
+
+    def subscribe(path):
+        bus.signal_subscribe(
+            "org.freedesktop.portal.Desktop",
+            "org.freedesktop.portal.Request",
+            "Response",
+            path,
+            None,
+            Gio.DBusSignalFlags.NONE,
+            on_response,
+        )
+
+    # The request path is derived from our bus name and the token we pass, so it
+    # can be subscribed to up front. Asking first would race a dialog that gets
+    # answered immediately.
+    token = "omarchy%d" % os.getpid()
+    sender = bus.get_unique_name()[1:].replace(".", "_")
+    predicted = "/org/freedesktop/portal/desktop/request/%s/%s" % (sender, token)
+    subscribe(predicted)
+
+    handle = bus.call_sync(
+        "org.freedesktop.portal.Desktop",
+        "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.FileChooser",
+        "OpenFile",
+        GLib.Variant("(ssa{sv})", ("", args.title, {
+            "handle_token": GLib.Variant("s", token),
+            "multiple": GLib.Variant("b", args.multiple),
+        })),
+        None,
+        Gio.DBusCallFlags.NONE,
+        -1,
+        None,
+    ).unpack()[0]
+
+    # Portals predating the token convention answer on a path of their choosing.
+    if handle != predicted:
+        subscribe(handle)
+
+    GLib.timeout_add_seconds(ANSWER_TIMEOUT_SEC, loop.quit)
+    loop.run()
+
+    for uri in uris:
+        print(GLib.filename_from_uri(uri)[0])
+
+    return 0 if uris else EXIT_NOTHING_PICKED
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except GLib.Error as error:
+        print("omarchy-file-select: %s" % error.message, file=sys.stderr)
+        sys.exit(EXIT_CHOOSER_FAILED)

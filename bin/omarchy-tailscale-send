@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# omarchy:summary=Send files to a machine on your tailnet with Taildrop
+# omarchy:args=<machine> [file...]
+# omarchy:examples=omarchy tailscale send dhh-fd | omarchy tailscale send dhh-fd ~/Downloads/notes.pdf
+
+set -euo pipefail
+
+if (($# < 1)); then
+  echo "Usage: omarchy-tailscale-send <machine> [file...]" >&2
+  exit 1
+fi
+
+machine="$1"
+shift
+
+# Address the machine by whatever name we were handed, but talk about it by
+# its short name, so a MagicDNS name does not spill into every message.
+name="${machine%%.*}"
+
+files=("$@")
+
+if ((${#files[@]} == 0)); then
+  # Command substitution so the chooser's exit status survives: reading it
+  # through a process substitution reports success for a chooser that never
+  # opened, which is indistinguishable here from someone deciding not to send.
+  picked=$(omarchy-file-select --title "Send to $name" --multiple) || status=$?
+
+  if ((${status:-0} > 1)); then
+    omarchy-notification-send -g "󰒊" -u critical "Could not send to $name" \
+      "The file chooser did not open"
+    exit 1
+  fi
+
+  readarray -t files <<<"$picked"
+  [[ -n $picked ]] || exit 0
+fi
+
+if ((${#files[@]} == 1)); then
+  what=$(basename "${files[0]}")
+else
+  what="${#files[@]} files"
+fi
+
+if error=$(tailscale file cp --update-interval=0 -- "${files[@]}" "$machine:" 2>&1); then
+  omarchy-notification-send -g "󰒊" "Sent to $name" "$what"
+else
+  omarchy-notification-send -g "󰒊" -u critical "Could not send to $name" "${error:-Taildrop transfer failed}"
+  exit 1
+fi

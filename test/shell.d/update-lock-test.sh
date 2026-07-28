@@ -101,6 +101,41 @@ grep -q "already running" "$test_tmp/perform-second.out" || fail "second omarchy
 [[ ! -f $test_tmp/perform-second-started ]] || fail "second omarchy-update-perform did not snapshot while lock was held"
 pass "omarchy-update-perform compatibility wrapper respects update lock"
 
+# The sleep inhibitor deliberately outlives the step that starts it, so it must
+# not inherit the update lock. An update killed before restore_update_inhibitors
+# would otherwise leave the inhibitor holding the flock forever, blocking every
+# later update and silencing omarchy-migrate-notify, which reads the same lock.
+inhibit_pid_file="$test_tmp/inhibit-pid"
+keyring_marker="$test_tmp/keyring-started"
+write_stub omarchy-snapshot 'exit 0'
+write_stub systemd-inhibit 'echo "$$" >"$INHIBIT_PID_FILE"; exec sleep 30'
+write_stub omarchy-update-keyring 'echo started >"$TEST_MARKER"; sleep 3; exit 0'
+
+OMARCHY_UPDATE_LOGGED=1 TEST_MARKER="$keyring_marker" INHIBIT_PID_FILE="$inhibit_pid_file" \
+  run_with_lock_env "$ROOT/bin/omarchy-update" -y >"$test_tmp/update-inhibit.out" 2>&1 &
+inhibit_update_pid=$!
+
+for _ in {1..100}; do
+  [[ -s $inhibit_pid_file && -f $keyring_marker ]] && break
+  sleep 0.05
+done
+[[ -s $inhibit_pid_file ]] || fail "update starts its sleep inhibitor"
+
+inhibitor_pid=$(<"$inhibit_pid_file")
+kill -0 "$inhibitor_pid" 2>/dev/null || fail "sleep inhibitor is still running when its descriptors are inspected"
+
+lock_target=$(readlink -f "$runtime_dir/omarchy-update.lock")
+inhibitor_holds_lock=0
+for fd in /proc/"$inhibitor_pid"/fd/*; do
+  [[ -e $fd ]] || continue
+  [[ $(readlink -f "$fd" 2>/dev/null) == "$lock_target" ]] && inhibitor_holds_lock=1
+done
+
+wait "$inhibit_update_pid"
+
+(( inhibitor_holds_lock == 0 )) || fail "update keeps the update lock out of the sleep inhibitor it leaves running"
+pass "omarchy-update keeps the update lock out of its sleep inhibitor"
+
 # Update-owned Stay Awake state must be cleared before the restart helper can
 # reboot the machine, rather than relying on an EXIT trap during shutdown.
 write_stub omarchy-snapshot 'exit 0'

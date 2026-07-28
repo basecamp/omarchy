@@ -4,29 +4,121 @@
 # omarchy:group=system
 # omarchy:hidden=true
 
-wait_attempts=${1:-100}
+# Overrunning the budget is the failure this whole path exists to prevent:
+# logind stops honouring the inhibitor and suspends mid-lock. Every call below
+# is bounded by what is left of the budget, so the deadline enforces itself
+# rather than depending on an estimate of how long a step ought to take.
+budget_cap_ms=12000
+lock_timeout_ms=1000
+status_timeout_ms=500
+poll_interval=0.1
 
-if [[ ! $wait_attempts =~ ^[0-9]+$ ]] || (( wait_attempts < 1 )); then
-  wait_attempts=100
-fi
+# logind decides how long a delay inhibitor may hold the machine, and the
+# shipped drop-in only counts once logind has reloaded it, so ask rather than
+# assume. Leaving logind a fifth of its own window to deliver PrepareForSleep
+# and act on the release gives 4s at the 5s default and 12s at the shipped 15s.
+# The cap keeps a hand-raised window from stranding a closed laptop in a bag.
+derive_budget_ms() {
+  local window
+  window=$(timeout --kill-after=0.1s 1s busctl get-property \
+    org.freedesktop.login1 /org/freedesktop/login1 \
+    org.freedesktop.login1.Manager InhibitDelayMaxUSec 2>/dev/null)
+  window=${window##* }
 
-sync_clamshell() {
-  omarchy-hyprland-monitor-clamshell >/dev/null 2>&1 || true
+  # An unreadable window means we cannot know, so assume logind's own default.
+  [[ $window =~ ^[0-9]+$ ]] && (( window > 0 )) || window=5000000
+  window=$((window / 1000))
+
+  # Never leave logind less than a second, however small its window is.
+  window=$((window - (window / 5 > 1000 ? window / 5 : 1000)))
+
+  (( window < budget_cap_ms )) && echo "$window" || echo "$budget_cap_ms"
 }
 
+budget_ms=${1:-$(derive_budget_ms)}
+if [[ ! $budget_ms =~ ^[0-9]+$ ]] || (( budget_ms < 1 || budget_ms > budget_cap_ms )); then
+  budget_ms=$(derive_budget_ms)
+fi
+
+# EPOCHREALTIME renders with the locale's decimal separator, so drop every
+# non-digit rather than assuming a period. A comma would otherwise read as
+# bash's comma operator and silently void the deadline.
+deadline_ms=$((10#${EPOCHREALTIME//[!0-9]/} / 1000 + budget_ms))
+
+remaining_ms() {
+  echo $((deadline_ms - 10#${EPOCHREALTIME//[!0-9]/} / 1000))
+}
+
+# Clamping to what is left as well as to the call's own limit is what lets the
+# loop below stay a plain "while there is time" without predicting step costs.
+lock_ipc() {
+  local limit=$1 remaining seconds
+  shift
+
+  remaining=$(remaining_ms)
+  (( remaining > 0 )) || return 1
+  (( limit < remaining )) || limit=$remaining
+  printf -v seconds '%d.%03d' $((limit / 1000)) $((limit % 1000))
+
+  OMARCHY_SHELL_IPC_TIMEOUT="$seconds" \
+    timeout --kill-after=0.1s "$seconds" omarchy-shell "$@"
+}
+
+# The shell answers refusals on stdout with a zero exit, so the reply is the
+# only way to spot a lock it can never perform. Nothing else needs inspecting:
+# the status poll is what confirms success, and re-requesting is idempotent, so
+# a request that may not have landed costs nothing to repeat.
+request_lock() {
+  case $(lock_ipc "$lock_timeout_ms" lock lock 2>/dev/null) in
+    missing-pam) report_unsecured "no lock screen is configured" ;;
+  esac
+}
+
+# secure: done. locking: the shell has the request and is working on it, so
+# leave it alone. Anything else, unreadable replies included, means ask again.
+lock_state() {
+  jq -r 'if .secure == true then "secure"
+         elif .requested == true then "locking"
+         else "idle" end' \
+    <<<"$(lock_ipc "$status_timeout_ms" lock status 2>/dev/null)" 2>/dev/null
+}
+
+sync_clamshell() {
+  # Lid transitions can temporarily stall Hyprland IPC. This is best-effort:
+  # the lid binding and monitor watcher also reconcile clamshell state.
+  timeout --kill-after=0.1s 0.4s \
+    omarchy-hyprland-monitor-clamshell >/dev/null 2>&1 || true
+}
+
+# logind suspends whether or not this wait succeeded, so a failure here means
+# the machine slept with the session exposed. The notification is the only way
+# anyone finds out, and it lands on the screen they unlock into.
+report_unsecured() {
+  printf 'omarchy-system-sleep-lock: suspending without a secure lock (%s)\n' \
+    "$1" >&2
+
+  omarchy-notification-send -u critical -g 󰌾 \
+    "Screen did not lock before suspend" \
+    "The session was left unlocked ($1)." >/dev/null 2>&1 || true
+
+  exit 1
+}
+
+# Request the lock before touching monitor state, so a stuck Hyprland IPC call
+# cannot consume the window before Quickshell has begun securing the session.
+request_lock
 sync_clamshell
-omarchy-shell lock lock >/dev/null 2>&1 || exit 1
 
-for (( attempt = 0; attempt < wait_attempts; attempt++ )); do
-  (( attempt % 5 == 0 )) && sync_clamshell
+# The trailing sleep can overshoot the deadline by one interval, which is well
+# inside the reserve derive_budget_ms already held back for logind.
+while (( $(remaining_ms) > 0 )); do
+  case $(lock_state) in
+    secure) exit 0 ;;
+    locking) ;;
+    *) request_lock ;;
+  esac
 
-  status=$(omarchy-shell lock status 2>/dev/null || true)
-
-  if jq -e '.secure == true' <<<"$status" >/dev/null 2>&1; then
-    exit 0
-  fi
-
-  sleep 0.05
+  sleep "$poll_interval"
 done
 
-exit 1
+report_unsecured "the shell did not secure the session within ${budget_ms}ms"

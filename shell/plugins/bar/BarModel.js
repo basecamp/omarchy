@@ -96,8 +96,32 @@ function customModulePath(entry, home, configDir) {
   return source
 }
 
+// A center module is mounted twice once an anchor is set: the copy that is
+// actually drawn, and a zero-size placeholder holding its place in the flow
+// beside the anchor. Panel routing has to pick the drawn one — it is the only
+// one that can anchor a popup, carry the open-panel mark, or be found again
+// by switchPanelFrom — and fall back to the placeholder only when nothing is
+// on screen. The order the two are registered in is not stable across a live
+// bar reconfiguration, so picking the first match is not good enough.
+function isDrawnSlot(slot) {
+  return !!slot && slot.visible === true && slot.width > 0 && slot.height > 0
+}
+
+function pickDrawnSlot(slots) {
+  var placeholder = null
+  var list = slots || []
+  for (var i = 0; i < list.length; i++) {
+    if (!list[i]) continue
+    if (isDrawnSlot(list[i])) return list[i]
+    if (!placeholder) placeholder = list[i]
+  }
+  return placeholder
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
+    isDrawnSlot: isDrawnSlot,
+    pickDrawnSlot: pickDrawnSlot,
     normalizePosition: normalizePosition,
     entrySettings: entrySettings,
     entryId: entryId,

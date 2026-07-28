@@ -43,20 +43,17 @@ omarchy-hook post-update
 `omarchy-migrate` waits for any active pacman transaction to finish, then runs
 all pending migrations for the current user in the visible update terminal.
 
-### During direct pacman updates
+### At login
 
-Raw `sudo pacman -Syu` is guarded. Users should normally run:
-
-```bash
-omarchy update
-```
-
-If a user explicitly bypasses the guard, user sessions watch the packaged
-migration directory and run a notifier. The notifier checks:
+Every graphical login starts `omarchy-migrate-notify.service` after
+`graphical-session.target`. The notifier checks:
 
 ```bash
 omarchy-migrate --pending
 ```
+
+It stays silent while `omarchy update` holds its lock, since that update applies
+the pending migrations itself.
 
 If that user has pending migrations, it shows a notification that opens a
 terminal for:
@@ -66,6 +63,15 @@ omarchy-migrate
 ```
 
 The notifier never runs migrations silently in the background.
+
+This is what covers users who did not run the update themselves: someone who
+bypassed the pacman guard with `sudo env OMARCHY_ALLOW_DIRECT_PACMAN=1 pacman
+-Syu`, and any second user on the machine, whose migration markers are per-user
+and therefore still missing after another user updated.
+
+Login is the only trigger on purpose. Watching the packaged migration directory
+also fires during a normal `omarchy update`, which prompts for migrations that
+`omarchy-migrate` is about to run in the visible update terminal.
 
 ### Manually
 

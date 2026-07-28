@@ -109,6 +109,25 @@ assertDeepEqual(
 
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
+
+// Needs the real menu: app rows sort after all menu items, and only at that
+// item count does the order tiebreak alone bury an installed app.
+const rankBase = menu.mergeMenuSources(defaultItems, [])
+const ranked = menu.mergeAppRows(rankBase.items, rankBase.itemOrder, [
+  { id: 'apps.brave', parent: 'apps', kind: 'app', label: 'Brave', description: '', aliases: [] },
+  { id: 'apps.fontforge', parent: 'apps', kind: 'app', label: 'FontForge', description: '', aliases: [] }
+])
+const rankScore = (id, query) => menu.searchScore(ranked.items, ranked.items[id], query)
+assert(
+  ['install.browser.brave', 'remove.browser.brave', 'setup.default.browser.brave'].every(
+    id => rankScore('apps.brave', 'brave') < rankScore(id, 'brave')
+  ),
+  'menu ranks an installed app above menu entries matching the query equally well'
+)
+assert(
+  rankScore('style.font', 'font') < rankScore('apps.fontforge', 'font'),
+  'menu keeps a better-matching menu entry above a weaker app match'
+)
 const triggerItems = defaultItems.filter(item => item.parent === 'trigger')
 assertEqual(
   triggerItems[0].id,

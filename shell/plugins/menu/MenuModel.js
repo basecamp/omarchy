@@ -309,6 +309,9 @@ function searchScore(items, entry, query) {
   else if (descriptionTextMatches(needle, descriptionText)) score = 60
 
   if (entry.kind === "menu" || entry.kind === "link") score -= 2
+  // App rows sort after all menu items, so they lose the tiebreak below to an
+  // equal match. Outrank those, but stay inside the tier so better ones win.
+  if (entry.kind === "app") score -= 5
 
   return score * 1000 + depthFor(items, entry.id) * 25 + entry.order
 }

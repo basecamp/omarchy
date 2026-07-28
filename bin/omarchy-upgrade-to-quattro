@@ -1087,7 +1087,6 @@ run_final_system_package_upgrade() {
     --overwrite '/etc/systemd/system/plocate-updatedb.service.d/ac-only.conf' \
     --overwrite '/etc/systemd/system.conf.d/20-omarchy-nofile.conf' \
     --overwrite '/etc/systemd/user.conf.d/20-omarchy-nofile.conf' \
-    --overwrite '/etc/systemd/zram-generator.conf' \
     --overwrite '/usr/lib/systemd/system-sleep/unmount-fuse' \
     --overwrite '/usr/share/plymouth/themes/omarchy/*' \
     --overwrite '/usr/share/sddm/hyprland.lua' \
@@ -1493,7 +1492,6 @@ always_copy_config_files=(
   hypr/input.lua
   hypr/looknfeel.lua
   hypr/monitors.lua
-  omarchy/bar.json
   omarchy/extensions/omarchy-menu.jsonc
   omarchy/hooks/pre-refresh-pacman.d/add-custom-repo.sample
   omarchy/shell.json

@@ -74,16 +74,14 @@ fi
 # Install required packages
 echo "Installing required packages..."
 
-installed_libfprint=$(pacman -Qq libfprint 2>/dev/null || true)
-
 # libfprint-git provides+conflicts libfprint; pacman -S --noconfirm
-# defaults the conflict prompt to N and aborts. Pre-remove the exact
-# libfprint package, but not an installed provider like libfprint-git.
-if [[ $installed_libfprint == "libfprint" ]]; then
-  sudo pacman -Rdd --noconfirm libfprint
+# defaults the conflict prompt to N and aborts. Pre-remove it (deps-only,
+# so an installed fprintd stays put) so stock libfprint installs cleanly.
+if pacman -Q libfprint-git &>/dev/null; then
+  sudo pacman -Rdd --noconfirm libfprint-git
 fi
 
-omarchy-pkg-add libfprint-git fprintd usbutils
+omarchy-pkg-add libfprint fprintd usbutils
 
 # Configure PAM
 setup_pam_config

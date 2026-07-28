@@ -377,12 +377,19 @@ Panel {
     return Model.formatPacketLoss(percent)
   }
 
+  // Prefer a connected device: a machine can expose several NICs of the
+  // same type (e.g. an idle onboard port alongside the active adapter),
+  // and the first-enumerated one may be carrierless.
   function findDevice(type) {
     var devices = networkDevices || []
+    var fallback = null
     for (var i = 0; i < devices.length; i++) {
-      if (devices[i] && devices[i].type === type) return devices[i]
+      var device = devices[i]
+      if (!device || device.type !== type) continue
+      if (device.connected) return device
+      if (!fallback) fallback = device
     }
-    return null
+    return fallback
   }
 
   function findConnectedWifiNetwork() {

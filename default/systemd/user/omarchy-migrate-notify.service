@@ -1,0 +1,20 @@
+[Unit]
+Description=Notify about pending Omarchy migrations
+# Login-only. There used to be an omarchy-update-user-notify.path watching
+# /usr/share/omarchy/migrations, but pacman writes that directory during every
+# update -- including the blessed `omarchy update`, which runs omarchy-migrate
+# itself a step later -- so the watcher notified about migrations that were
+# already being applied in the visible update terminal. Checking once per login
+# is the only trigger that cannot collide with a running update.
+ConditionPathIsDirectory=/usr/share/omarchy/migrations
+# The actionable notification launches its terminal through uwsm-app, whose
+# daemon starts after graphical-session.target. Run after the target too so this
+# oneshot cannot hold the target open while waiting for that daemon.
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/omarchy-migrate-notify
+
+[Install]
+WantedBy=graphical-session.target

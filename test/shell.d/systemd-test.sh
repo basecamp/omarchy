@@ -28,12 +28,51 @@ grep -F 'ExecStart=/usr/bin/omarchy-system-sleep-monitor' "$upgrade_to_quattro" 
 grep -F 'reset-failed omarchy-sleep-lock.service' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade repairs the legacy sleep lock unit path"
 
-notify_path="$ROOT/default/systemd/user/omarchy-update-user-notify.path"
-! grep -q 'PathExistsGlob' "$notify_path"
-grep -Fx 'PathModified=/usr/share/omarchy/migrations' "$notify_path" >/dev/null
-pass "migration watcher is edge-triggered so applied migrations on disk cannot re-trigger it"
+[[ -e $ROOT/default/systemd/user/omarchy-update-user-notify.path ]] &&
+  fail "the retired migration watcher is back; pacman writing the migration directory during omarchy update would notify about migrations that update is already applying"
+grep -rlE '^(Path[A-Za-z]+|DirectoryNotEmpty)=.*/usr/share/omarchy/migrations' "$ROOT/default/systemd/user" >/dev/null 2>&1 &&
+  fail "a user unit watches the migration directory again; the notifier must stay login-only"
+pass "no unit watches the migration directory, so package updates cannot trigger the notifier"
 
-notify_service="$ROOT/default/systemd/user/omarchy-update-user-notify.service"
-! grep -q 'StartLimit' "$notify_service"
+notify_service="$ROOT/default/systemd/user/omarchy-migrate-notify.service"
+grep -Fx 'ExecStart=/usr/bin/omarchy-migrate-notify' "$notify_service" >/dev/null
 grep -Fx 'WantedBy=graphical-session.target' "$notify_service" >/dev/null
-pass "migration notifier keeps its start-rate limit and still runs once per login"
+grep -Fx 'After=graphical-session.target' "$notify_service" >/dev/null ||
+  fail "migration notifier can deadlock UWSM by blocking graphical-session.target"
+pass "migration notifier checks once per login after the graphical session is ready"
+
+grep -F 'omarchy-migrate-notify.service' "$first_run_units" >/dev/null ||
+  fail "first-run does not enable the login migration notifier"
+grep -F 'omarchy-update-user-notify' "$first_run_units" >/dev/null &&
+  fail "first-run still enables the retired notifier units"
+pass "first-run enables the login-only migration notifier"
+
+fcitx_service="$ROOT/default/systemd/user/omarchy-fcitx5.service"
+grep -Fx 'ExecStart=/usr/bin/fcitx5 --disable notificationitem' "$fcitx_service" >/dev/null
+grep -Fx 'Restart=always' "$fcitx_service" >/dev/null ||
+  fail "fcitx5 exits 0 on a duplicate bus name, so on-failure would leave the user with no input method"
+grep -Fx 'After=graphical-session.target' "$fcitx_service" >/dev/null ||
+  fail "fcitx5 needs WAYLAND_DISPLAY, which uwsm imports before it reaches graphical-session.target"
+grep -Fx 'PartOf=graphical-session.target' "$fcitx_service" >/dev/null ||
+  fail "fcitx5 must stop with the compositor instead of lingering against a dead wayland socket"
+grep -Fx 'WantedBy=graphical-session.target' "$fcitx_service" >/dev/null ||
+  fail "fcitx5 is never pulled in at login without a WantedBy"
+grep -Fx 'ConditionEnvironment=WAYLAND_DISPLAY' "$fcitx_service" >/dev/null ||
+  fail "an update over SSH has a live user manager and no display; starting fcitx5 there wedges the unit active-but-blind, and Wants= will not replace it at graphical login"
+
+fcitx_migration="$ROOT/migrations/1785167800.sh"
+grep -F 'is-active --quiet graphical-session.target' "$fcitx_migration" >/dev/null ||
+  fail "migration kills fcitx5 and starts the unit outside a graphical session"
+grep -F 'systemctl --user enable omarchy-fcitx5.service' "$fcitx_migration" >/dev/null ||
+  fail "migration must enable without --now; --now starts the unit before the session-gate check"
+grep -F 'Could not start omarchy-fcitx5.service' "$fcitx_migration" >/dev/null ||
+  fail "migration pkills a working fcitx5, so a failed handover must be reported instead of marked complete"
+
+grep -F 'pkill -x fcitx5' "$ROOT/bin/omarchy-restart-xcompose" >/dev/null ||
+  fail "restart-xcompose cannot reload a fcitx5 running outside the unit, so it silently keeps serving the old table"
+
+grep -F 'omarchy-fcitx5.service' "$first_run_units" >/dev/null ||
+  fail "first-run does not enable the input method, so ~/.XCompose sequences never resolve"
+grep -F 'fcitx5' "$ROOT/default/hypr/autostart.lua" >/dev/null &&
+  fail "fcitx5 is autostarted from Hyprland; an unsupervised launch dies silently and takes every compose sequence with it"
+pass "fcitx5 runs supervised, so a lost input method comes back instead of killing XCompose until logout"

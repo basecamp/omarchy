@@ -12,6 +12,7 @@ BarWidget {
     if ("bar" in target) target.bar = root.bar
     if ("settings" in target) target.settings = root.settings
     if ("anchorItem" in target) target.anchorItem = button
+    if ("hostWidget" in target) target.hostWidget = root
   }
 
   function refresh() {
@@ -34,6 +35,15 @@ BarWidget {
 
   function close() {
     if (panelLoader.item && panelLoader.item.close) panelLoader.item.close()
+  }
+
+  // Forwarded so this widget can stand in for the panel as the bar's popout
+  // identity: Bar.requestPopout prefers closeForPopoutSwitch over close, and
+  // KeyboardPanel reads popoutSwitchClosing back off its owner.
+  readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
+
+  function closeForPopoutSwitch() {
+    if (panelLoader.item) panelLoader.item.closeForPopoutSwitch()
   }
 
   visible: panelLoader.item && panelLoader.item.label !== ""

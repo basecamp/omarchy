@@ -69,6 +69,20 @@ jq -e --arg path "$ROOT/bin/omarchy-chromium-copy-url-host" '
 ' "$native_manifest" >/dev/null || fail "copy-url native host manifest uses Omarchy host path and extension id"
 pass "copy-url native host installer registers the stable extension id"
 
+# Chromium ships in the base packages, so it never goes through
+# omarchy-install-browser, and a first install marks every migration as already
+# applied. The user install has to register the host itself.
+grep -q 'user/chromium.sh' "$ROOT/install/user/all.sh" ||
+  fail "user install runs the Chromium native messaging host setup"
+
+fresh_home="$TMPDIR/fresh-install"
+HOME="$fresh_home" OMARCHY_PATH="$ROOT" PATH="$ROOT/bin:$PATH" \
+  bash -euo pipefail -c 'source "$ROOT/install/user/chromium.sh"'
+
+[[ -f $fresh_home/.config/chromium/NativeMessagingHosts/com.omarchy.copy_url.json ]] ||
+  fail "fresh install registers the copy-url native messaging host"
+pass "fresh install registers the copy-url native messaging host"
+
 copied_url=$(bash -c '
   source "$1"
   wl-copy() { cat; }
