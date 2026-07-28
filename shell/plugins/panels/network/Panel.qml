@@ -109,9 +109,14 @@ Panel {
   property int headerIndex: 0
   readonly property bool canDisconnect: !!connectedWifiNetwork
   readonly property bool headerHasDisconnect: false
-  readonly property int headerActionCount: networkManagerAvailable ? 1 : 0
+  // The hero switch is the Wi-Fi radio and nothing else, so it only exists
+  // when there is a radio to switch. A click carried no state, but a switch
+  // asserts one: on a wired box it would otherwise sit there reading "off"
+  // beside a perfectly live Ethernet connection.
+  readonly property bool canToggleWifi: networkManagerAvailable && wifiStationAvailable
+  readonly property int headerActionCount: canToggleWifi ? 1 : 0
   readonly property bool headerHasCursor: cursorActive && focusSection === "header"
-  readonly property string toggleHint: (Networking.wifiEnabled ? "Turn off " : "Turn on ") + (root.info.type === "ethernet" ? "network" : "Wi-Fi")
+  readonly property string toggleHint: Networking.wifiEnabled ? "Turn Wi-Fi off" : "Turn Wi-Fi on"
   readonly property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
   property int dnsIndex: 0
 
@@ -873,7 +878,7 @@ Panel {
         // header's only cursor target.
         ToggleSwitch {
           id: powerSwitch
-          visible: root.networkManagerAvailable
+          visible: root.canToggleWifi
           checked: Networking.wifiEnabled
           hasCursor: root.headerHasCursor
           foreground: root.bar.foreground
