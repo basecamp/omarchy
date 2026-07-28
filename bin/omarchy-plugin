@@ -78,6 +78,26 @@ valid_plugin_id() {
   [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $1 != *..* ]]
 }
 
+plugin_is_bar_widget() {
+  local manifest="$PLUGINS_DIR/$1/manifest.json"
+  [[ -f $manifest ]] || return 1
+  jq -e '(.kinds // []) | index("bar-widget")' "$manifest" >/dev/null 2>&1
+}
+
+# A bar widget lands on the right when it is enabled, which is rarely where it
+# belongs. Ask once, here, rather than leaving a follow-up 'omarchy bar plugin
+# move' as the only way to place it.
+place_bar_widget() {
+  local id="$1" section
+  interactive || return 0
+  (( ASSUME_YES )) && return 0
+  plugin_is_bar_widget "$id" || return 0
+
+  section=$(printf '%s\n' left center right | gum choose --header="Place $id in which bar section?") || return 0
+  [[ -n $section ]] || return 0
+  omarchy-bar-plugin move "$id" --section "$section" >/dev/null && echo "Placed $id in the $section section"
+}
+
 installed_plugin_ids() {
   find "$PLUGINS_DIR" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) ! -name '.*' -printf '%f\n' 2>/dev/null | sort
 }
@@ -255,6 +275,7 @@ WARN
   if [[ $enable_after == true ]]; then
     if wait_for_plugin_discovery "$id" && [[ $(omarchy-shell shell setPluginEnabled "$id" true) == "ok" ]]; then
       echo "Enabled $id"
+      place_bar_widget "$id"
     else
       echo "Could not enable $id (is omarchy-shell running?). Enable later with: omarchy plugin enable $id" >&2
     fi

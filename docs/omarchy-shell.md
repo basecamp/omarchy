@@ -52,6 +52,19 @@ omarchy plugin update --all          # fetches, shows a diff, fast-forwards
 omarchy plugin remove acme.weather
 ```
 
+The same four operations live in the menu under **Setup › Plugins**. Enable and
+Disable list every plugin, built-in ones included — the bar widgets you can put
+in the bar and the services and overlays you can switch off. Remove is limited
+to plugins you installed yourself, since a built-in has no checkout to delete.
+Enabling a bar widget asks which bar section it belongs in first, and Add opens
+a terminal so the trust warning and the clone are in plain sight.
+
+For a bar widget, on and off means its place in the bar. Everything else is
+loaded by default when it is built in, so `shell.json` records only the
+deviation: a third-party plugin you added under `plugins[]`, a built-in you
+switched off under `disabledPlugins[]`. Whole-bar replacements are excluded
+from these lists; pick those with `omarchy bar use <id>`.
+
 Plugins run as **unsandboxed code** inside `omarchy-shell`. Adding warns you
 before cloning, plugins land disabled so you can review the code before
 `omarchy plugin enable`, and updates show a diff before touching anything.

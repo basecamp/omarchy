@@ -181,6 +181,69 @@ assertEqual(
   'omarchy-bar transparent toggle',
   'menu exposes Menu Bar transparency as a toggle'
 )
+assertDeepEqual(
+  defaultItems.filter(item => item.parent === 'setup.plugin').map(item => item.label),
+  ['Enable Plugin', 'Disable Plugin', 'Add Plugin', 'Remove Plugin'],
+  'menu manages plugins from Setup > Plugins'
+)
+assert(
+  ['setup.plugin.enable', 'setup.plugin.disable', 'setup.plugin.remove'].every(id => defaultById[id].provider),
+  'menu fills the plugin lists from a provider'
+)
+assert(
+  !defaultById['setup.plugin.enable'].when && !defaultById['setup.plugin.disable'].when,
+  'menu always offers Enable and Disable, which cover the built-in plugins too'
+)
+assert(
+  defaultById['setup.plugin.remove'].when.includes('.config/omarchy/plugins'),
+  'menu hides Remove until a plugin the user installed exists to delete'
+)
+assert(
+  defaultById['setup.plugin.add'].action.includes('omarchy-plugin add'),
+  'menu adds a plugin through the CLI, where the trust warning and clone output are visible'
+)
+const providerBlock = menuQml.match(/readonly property var providers: \(\{[\s\S]*?\n  \}\)/)[0]
+assert(
+  /"plugins-enable": \{[\s\S]*?placementFor: function\(value, section\) \{ return "omarchy-plugin enable " \+ root\.shellQuote\(value\) \+ " --section " \+ section \}/.test(providerBlock),
+  'menu enables a bar widget into a chosen section'
+)
+assert(
+  !/"plugins-disable": \{[\s\S]*?placementFor/.test(providerBlock),
+  'menu does not ask for a section when disabling'
+)
+assert(
+  ['plugins-enable', 'plugins-disable', 'plugins-remove'].every(
+    key => new RegExp(`"${key}": \\{[\\s\\S]*?volatile: true`).test(providerBlock)
+  ),
+  'menu re-enumerates the plugin lists every time they are opened'
+)
+// Enable and Disable reach the built-ins; only Remove is limited to plugins
+// the user installed, because a built-in has no checkout to delete.
+const rowsScript = menuQml.match(/function pluginRowsScript\(filter\) \{([\s\S]*?)\n  \}/)[1]
+assert(
+  !rowsScript.includes('firstParty') && rowsScript.includes('index(\\"bar\\")'),
+  'menu lists built-in plugins too, minus whole-bar replacements'
+)
+assert(
+  /"plugins-remove": \{\s*\n\s*script: root\.pluginRowsScript\("\(\.firstParty \| not\)"\)/.test(providerBlock),
+  'menu offers to remove only the plugins the user installed'
+)
+assert(
+  /function setActiveMenu\([\s\S]*?root\.invalidateVolatileProvider\(id\)\s*\n\s*root\.loadProviderForMenu\(id\)/.test(menuQml)
+    && /function openExistingMenu\([\s\S]*?invalidateVolatileProvider\(activeMenu\)\s*\n\s*loadProviderForMenu\(activeMenu\)/.test(menuQml),
+  'menu invalidates volatile providers when entering a menu, not on every keystroke'
+)
+assert(
+  ['loadProviderForMenu', 'loadProvidersForSearch'].every(
+    name => !menuQml.match(new RegExp(`function ${name}\\([^)]*\\) \\{([\\s\\S]*?)\\n  \\}`))[1].includes('invalidateVolatileProvider')
+  ),
+  'menu search never restarts a volatile provider'
+)
+assertDeepEqual(
+  JSON.parse(menuQml.match(/readonly property var barSections: (\[[\s\S]*?\])/)[1].replace(/(\w+):/g, '"$1":')).map(entry => entry.section),
+  ['left', 'center', 'right'],
+  'menu offers every bar section as a placement'
+)
 assertEqual(
   defaultById['trigger.hardware.laptop-display'].when,
   'omarchy-hw-laptop',
@@ -280,15 +343,27 @@ assert(
 )
 
 const providerRowsFor = values => values.map(value => ({ id: `style.font.${value}`, kind: 'action', parent: 'style.font', label: value }))
-const firstProviderMerge = menu.mergeRowsById(nonAppItems, nonAppOrder, providerRowsFor(['mono', 'serif']))
+const firstProviderMerge = menu.swapProviderRows(nonAppItems, nonAppOrder, 'style.font', providerRowsFor(['mono', 'serif']))
 assert(
   firstProviderMerge.itemOrder.join(',') === 'root,apps,style.font.mono,style.font.serif',
   'provider merge appends its rows'
 )
 assert(
-  menu.mergeRowsById(firstProviderMerge.items, firstProviderMerge.itemOrder, providerRowsFor(['mono', 'serif']))
+  menu.swapProviderRows(firstProviderMerge.items, firstProviderMerge.itemOrder, 'style.font', providerRowsFor(['mono', 'serif']))
     .itemOrder.join(',') === 'root,apps,style.font.mono,style.font.serif',
   'repeating a provider merge does not duplicate rows'
+)
+// A plugin drops out of the Enable list the moment it is enabled, so a
+// provider that runs again has to lose the rows it contributed last time.
+const rerunProviderMerge = menu.swapProviderRows(firstProviderMerge.items, firstProviderMerge.itemOrder, 'style.font', providerRowsFor(['serif']))
+assert(
+  rerunProviderMerge.itemOrder.join(',') === 'root,apps,style.font.serif',
+  'provider merge drops rows the provider no longer lists'
+)
+assert(
+  menu.swapProviderRows(firstProviderMerge.items, firstProviderMerge.itemOrder, 'style.other', providerRowsFor([]))
+    .itemOrder.join(',') === 'root,apps,style.font.mono,style.font.serif',
+  'provider merge leaves rows belonging to another provider alone'
 )
 
 // The maps live in QML `var` properties, where an in-place write is
@@ -299,7 +374,7 @@ assert(
   'menu assigns the rebuilt app item map instead of mutating it in place'
 )
 assert(
-  /var merged = MenuModel\.mergeRowsById\(root\.items, root\.itemOrder, providerRows\)\s*\n\s*root\.items = merged\.items\s*\n\s*root\.itemOrder = merged\.itemOrder/.test(menuQml),
+  /var merged = MenuModel\.swapProviderRows\(root\.items, root\.itemOrder, menuId, providerRows\)\s*\n[\s\S]*?root\.items = merged\.items\s*\n\s*root\.itemOrder = merged\.itemOrder/.test(menuQml),
   'menu assigns the rebuilt provider item map instead of mutating it in place'
 )
 assert(

@@ -220,19 +220,70 @@ Item {
     }
   }
 
+  function shellQuote(value) {
+    return "'" + String(value).replace(/'/g, "'\\''") + "'"
+  }
+
+  // The bar lays its widgets out in three sections, so a bar widget can only
+  // be enabled once we know which one it belongs in.
+  readonly property var barSections: [
+    { section: "left", label: "Left", icon: "󰉢" },
+    { section: "center", label: "Center", icon: "󰉠" },
+    { section: "right", label: "Right", icon: "󰉣" }
+  ]
+
+  // Plugin rows cover built-in and user-installed plugins alike — the bar
+  // widgets you can put in the bar and the services and overlays you can turn
+  // off. Whole-bar replacements are excluded; those are picked under Style.
+  // `filter` is a jq condition narrowing that set further.
+  function pluginRowsScript(filter) {
+    return "omarchy-plugin list --json 2>/dev/null | jq -r '"
+      + "[.[] | select(((.kinds | index(\"bar\")) | not) and (" + filter + "))]"
+      + " | sort_by(.name)[]"
+      + " | [.name, .id, \"\", (if (.kinds | index(\"bar-widget\")) then \"bar-widget\" else \"\" end)]"
+      + " | @tsv'"
+  }
+
   // Each known provider is a tiny bash one-liner that enumerates a list and
-  // emits one tab-delimited row per item: `label\tvalue\tcurrent`. The shell
-  // turns those into menu items children of `menuId`.
+  // emits one tab-delimited row per item: `label\tvalue\tcurrent\tkind`. The
+  // shell turns those into menu items children of `menuId`.
+  //
+  // A provider with a `placementFor` turns rows tagged `bar-widget` into a
+  // submenu of the three bar sections, so a widget lands where the user wants
+  // it instead of wherever enabling happened to drop it. A `volatile` provider
+  // re-runs every time its submenu is entered, because picking from the list
+  // is what changes the list.
   readonly property var providers: ({
     "fonts": {
       script: "current=$(omarchy-font-current 2>/dev/null); omarchy-font-list 2>/dev/null | while read -r f; do [[ -z $f ]] && continue; printf '%s\\t%s\\t%s\\n' \"$f\" \"$f\" \"$current\"; done",
       icon: "",
-      actionFor: function(value) { return "omarchy-font-set '" + value.replace(/'/g, "'\\''") + "'" }
+      actionFor: function(value) { return "omarchy-font-set " + root.shellQuote(value) }
     },
     "power-profiles": {
       script: "current=$(powerprofilesctl get 2>/dev/null); omarchy-powerprofiles-list 2>/dev/null | while read -r p; do [[ -z $p ]] && continue; printf '%s\\t%s\\t%s\\n' \"$p\" \"$p\" \"$current\"; done",
       icon: "\udb81\udc0b",
-      actionFor: function(value) { return "omarchy-powerprofiles-set autodetect '" + value.replace(/'/g, "'\\''") + "'" }
+      actionFor: function(value) { return "omarchy-powerprofiles-set autodetect " + root.shellQuote(value) }
+    },
+    "plugins-enable": {
+      script: root.pluginRowsScript("(.enabled | not)"),
+      icon: "󰐱",
+      volatile: true,
+      actionFor: function(value) { return "omarchy-plugin enable " + root.shellQuote(value) },
+      placementFor: function(value, section) { return "omarchy-plugin enable " + root.shellQuote(value) + " --section " + section }
+    },
+    "plugins-disable": {
+      script: root.pluginRowsScript(".enabled"),
+      icon: "󰐱",
+      volatile: true,
+      actionFor: function(value) { return "omarchy-plugin disable " + root.shellQuote(value) }
+    },
+    "plugins-remove": {
+      script: root.pluginRowsScript("(.firstParty | not)"),
+      icon: "󰐱",
+      volatile: true,
+      // Removing deletes a checkout, so it runs where its confirmation and the
+      // backup path it prints are visible.
+      actionFor: function(value) { return "omarchy-launch-floating-terminal-with-presentation " + root.shellQuote("omarchy-plugin remove " + root.shellQuote(value)) }
     }
   })
 
@@ -303,6 +354,25 @@ Item {
     providerProc.running = true
   }
 
+  function providerRow(id, parent, label, icon, action) {
+    return {
+      id: id,
+      parent: parent,
+      kind: action ? "action" : "menu",
+      icon: icon,
+      label: label,
+      title: "",
+      target: "",
+      description: "",
+      action: action,
+      provider: "",
+      aliases: [],
+      when: "",
+      checked: "",
+      order: 0
+    }
+  }
+
   function mergeProviderRows(rows, menuId, providerKey) {
     var spec = root.providers[providerKey]
     if (!spec) return
@@ -315,26 +385,22 @@ Item {
       var label = parts[0] || ""
       var value = parts[1] || parts[0] || ""
       var current = parts[2] || ""
+      var kind = parts[3] || ""
       if (!label) continue
-      providerRows.push({
-        id: menuId + "." + root.slugify(value),
-        parent: menuId,
-        kind: "action",
-        icon: (value === current) ? "✓" : (spec.icon || ""),
-        label: label,
-        title: "",
-        target: "",
-        description: "",
-        action: spec.actionFor(value),
-        provider: "",
-        aliases: [],
-        when: "",
-        checked: "",
-        order: 0
-      })
+      var rowId = menuId + "." + root.slugify(value)
+      var placed = spec.placementFor && kind === "bar-widget"
+      providerRows.push(root.providerRow(rowId, menuId, label,
+        (value === current) ? "✓" : (spec.icon || ""),
+        placed ? "" : spec.actionFor(value)))
+      if (!placed) continue
+      for (var s = 0; s < root.barSections.length; s++) {
+        var placement = root.barSections[s]
+        providerRows.push(root.providerRow(rowId + "." + placement.section, rowId,
+          placement.label, placement.icon, spec.placementFor(value, placement.section)))
+      }
     }
-    var changed = providerRows.length > 0
-    var merged = MenuModel.mergeRowsById(root.items, root.itemOrder, providerRows)
+    var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, menuId, providerRows)
+    var changed = merged.itemOrder.length !== root.itemOrder.length || providerRows.length > 0
     root.items = merged.items
     root.itemOrder = merged.itemOrder
     if (changed && root.opened) root.rebuildDisplay()
@@ -351,6 +417,15 @@ Item {
       root.startProviderForMenu(id)
       return
     }
+  }
+
+  // Entering a submenu is the one moment a volatile list is worth paying for
+  // again: it may have been reshaped by the last pick from it. Search doesn't
+  // invalidate, or every keystroke would restart the same enumeration.
+  function invalidateVolatileProvider(id) {
+    var entry = root.item(id)
+    var spec = entry && entry.provider ? root.providers[entry.provider] : null
+    if (spec && spec.volatile) root.providersLoaded[id] = false
   }
 
   function loadProviderForMenu(id) {
@@ -605,6 +680,7 @@ Item {
     if (fromPointer) pointerGate.allowInitialSample()
     else root.disarmPointer()
     root.rebuildDisplay()
+    root.invalidateVolatileProvider(id)
     root.loadProviderForMenu(id)
   }
 
@@ -715,6 +791,7 @@ Item {
     root.evaluateGuards()
     opened = true
     rebuildDisplay()
+    invalidateVolatileProvider(activeMenu)
     loadProviderForMenu(activeMenu)
     // The shell may start before first-install packages have finished placing
     // their icons. Refresh here even when the desktop entry list did not change.
