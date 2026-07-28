@@ -586,6 +586,7 @@ Panel {
             anchors.left: heroIcon.right
             anchors.leftMargin: Style.space(14)
             anchors.right: parent.right
+            anchors.rightMargin: powerSwitch.visible ? powerSwitch.width + Style.space(20) : 0
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(2)
 
@@ -646,6 +647,7 @@ Panel {
               enabled: !!root.adapter
               hoverEnabled: true
               cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+              onContainsMouseChanged: if (containsMouse) root.setHeaderCursor()
               onClicked: root.toggleBluetooth()
             }
 
