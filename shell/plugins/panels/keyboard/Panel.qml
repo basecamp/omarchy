@@ -54,7 +54,11 @@ Panel {
   // Re-reads status from the CLI. Skipped if a status request is already
   // in flight, so a fast poll never piles up overlapping processes.
   function refresh() {
-    if (statusProc.running) return
+    // Skip if a status request is already in flight, or if an action
+    // (set/add/remove/switcher/next) is currently running -- every action
+    // prints its own fresh status_json on completion, so a poll that lands
+    // in between would just overwrite that fresher result with stale data.
+    if (statusProc.running || actionProc.running) return
     statusProc.command = ["omarchy-keyboard-layout", "status"]
     statusProc.running = true
   }
@@ -271,7 +275,27 @@ Panel {
     id: statusProc
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.status = Model.parseStatus(text)
+      onStreamFinished: {
+        // A crash, permissions error, or unexpected output from the CLI
+        // shouldn't throw an uncaught exception out of a binding handler --
+        // that can silently break other bindings downstream. Keep the last
+        // good status instead of replacing it with garbage.
+        try {
+          root.status = Model.parseStatus(text)
+        } catch (e) {
+          console.warn("omarchy.keyboard: failed to parse status output:", e)
+        }
+      }
+    }
+  }
+  Timer {
+    // Watchdog: if the CLI ever hangs, statusProc.running would otherwise
+    // stay true forever and permanently block every future refresh().
+    interval: 8000
+    running: statusProc.running
+    onTriggered: if (statusProc.running) {
+      console.warn("omarchy.keyboard: status query timed out, resetting")
+      statusProc.running = false
     }
   }
 
@@ -280,7 +304,21 @@ Panel {
     id: availableProc
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.available = Model.parseAvailable(text)
+      onStreamFinished: {
+        try {
+          root.available = Model.parseAvailable(text)
+        } catch (e) {
+          console.warn("omarchy.keyboard: failed to parse available output:", e)
+        }
+      }
+    }
+  }
+  Timer {
+    interval: 8000
+    running: availableProc.running
+    onTriggered: if (availableProc.running) {
+      console.warn("omarchy.keyboard: available query timed out, resetting")
+      availableProc.running = false
     }
   }
 
@@ -291,7 +329,25 @@ Panel {
     id: actionProc
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.status = Model.parseStatus(text)
+      onStreamFinished: {
+        try {
+          root.status = Model.parseStatus(text)
+        } catch (e) {
+          console.warn("omarchy.keyboard: failed to parse action output:", e)
+        }
+      }
+    }
+  }
+  Timer {
+    interval: 8000
+    running: actionProc.running
+    onTriggered: if (actionProc.running) {
+      console.warn("omarchy.keyboard: action timed out, resetting")
+      actionProc.running = false
+      // Fall back to a plain status query so the UI still ends up
+      // reflecting reality even though we don't know if the action itself
+      // actually took effect before it hung.
+      root.refresh()
     }
   }
 
@@ -336,7 +392,12 @@ Panel {
             root.selectedIndex = Math.max(0, Math.min(maxLang, root.selectedIndex + dy))
           } else if (root.focusSection === "switcher") {
             var maxSw = Math.max(0, root.switcherPresets.length - 1)
-            if (dy < 0 && root.selectedIndex <= 0) { root.focusSection = "languages"; root.selectedIndex = Math.max(0, root.configuredLayouts.length - 1); return }
+            // Up always leaves the switcher row for the languages list above,
+            // regardless of which pill (selectedIndex) is currently highlighted --
+            // vertical movement is orthogonal to the pills' horizontal layout, so
+            // it shouldn't require first navigating back to pillIndex 0 with
+            // Left/Right before Up does anything.
+            if (dy < 0) { root.focusSection = "languages"; root.selectedIndex = Math.max(0, root.configuredLayouts.length - 1); return }
             root.selectedIndex = Math.max(0, Math.min(maxSw, root.selectedIndex + dx))
           }
           return
@@ -557,6 +618,17 @@ Panel {
         TextField {
           id: searchField
           width: parent.width
+          // Explicit binding (rather than relying on the default of true)
+          // so this item's own `visible` actually flips with the view --
+          // onVisibleChanged/Component.onCompleted below key off of it to
+          // (re)grab keyboard focus, and an ancestor's visible=false does
+          // NOT change a child's own visible property value, only its
+          // effective on-screen rendering. Without this binding those
+          // handlers only ever saw `visible === true`, so they fired once
+          // on initial creation (while still in "list" view) and never
+          // again -- meaning the field could end up never receiving focus
+          // when "Add language" was actually opened.
+          visible: root.viewMode === "add"
           placeholderText: "Search languages"
           font.family: Style.font.family
           font.pixelSize: Style.font.body
@@ -741,7 +813,7 @@ Panel {
     }
   }
 
-  // One of the four switch-shortcut presets, same pill styling as the
+  // One of the three switch-shortcut presets, same pill styling as the
   // network panel's DNS provider picker.
   component SwitcherPill: Button {
     id: pill

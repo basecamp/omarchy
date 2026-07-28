@@ -30,7 +30,7 @@ layout_label() {
       print line
       exit
     }
-  ' "$XKB_LIST"
+  ' "$XKB_LIST" 2>/dev/null || true
 }
 
 # Every layout code + label xkb knows about, as a JSON array, sorted by label.
@@ -46,9 +46,9 @@ available_layouts_json() {
       sub(/^[^ \t]+[ \t]+/, "", rest)
       printf "%s\t%s\n", code, rest
     }
-  ' "$XKB_LIST" | sort -t $'\t' -k2 | jq -R -s '
+  ' "$XKB_LIST" 2>/dev/null | sort -t $'\t' -k2 | jq -R -s '
     split("\n") | map(select(length > 0) | split("\t") | {code: .[0], label: .[1]})
-  '
+  ' 2>/dev/null || echo "[]"
 }
 
 # Creates the state file on first run, seeded from the system's boot-time
@@ -71,10 +71,10 @@ ensure_state() {
 # devices (input-method frameworks, on-screen keyboards, media buttons)
 # that would otherwise be mistaken for a real keyboard.
 main_keyboard() {
-  hyprctl devices -j | jq -r '
+  hyprctl devices -j 2>/dev/null | jq -r '
     [.keyboards[] | select(.name | test("virtual|fcitx|ibus|video-bus|buttons"; "i") | not)] as $real
     | (($real[] | select(.main == true) | .name) // ($real[0].name // empty))
-  '
+  ' 2>/dev/null || true
 }
 
 # hyprctl reports the active layout as a human-readable description rather
@@ -86,8 +86,8 @@ active_index() {
   device=$(main_keyboard)
   [[ -n $device ]] || { echo 0; return; }
 
-  keymap=$(hyprctl devices -j | jq -r --arg dev "$device" \
-    '.keyboards[] | select(.name == $dev) | .active_keymap // ""')
+  keymap=$(hyprctl devices -j 2>/dev/null | jq -r --arg dev "$device" \
+    '.keyboards[] | select(.name == $dev) | .active_keymap // ""' 2>/dev/null || true)
 
   jq -r --arg keymap "$keymap" '
     ([.layouts[].label] | map(. as $l | (($keymap|ascii_downcase) | contains($l|ascii_downcase)))
@@ -118,9 +118,12 @@ reload_hyprland() {
 write_state() {
   local filter=$1; shift
   local tmp
-  tmp=$(mktemp)
-  jq "$@" "$filter" "$STATE_FILE" > "$tmp"
-  mv "$tmp" "$STATE_FILE"
+  (
+    flock -x 200
+    tmp=$(mktemp)
+    jq "$@" "$filter" "$STATE_FILE" > "$tmp"
+    mv "$tmp" "$STATE_FILE"
+  ) 200>"$STATE_FILE.lock"
 }
 
 # Feedback for bar-icon show/hide/toggle (not the plain `status` query),
@@ -184,6 +187,8 @@ case "$action" in
   remove)
     code=${2:-}
     [[ -n $code ]] || usage
+    exists=$(jq -r --arg code "$code" '[.layouts[].code] | index($code) // empty' "$STATE_FILE")
+    [[ -n $exists ]] || { echo "Layout '$code' is not configured" >&2; exit 1; }
     count=$(jq '.layouts | length' "$STATE_FILE")
     primary_code=$(jq -r '.layouts[0].code // empty' "$STATE_FILE")
     if [[ $count -gt 1 && $code != "$primary_code" ]]; then
