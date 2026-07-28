@@ -975,8 +975,12 @@ Item {
             root.requestDeleteSelected()
             event.accepted = true
           } else if (event.key === Qt.Key_Escape) {
+            // Clear an active search first, then step back one menu level
+            // (same as Backspace/Left) before falling back to a full close --
+            // otherwise Esc inside any submenu (e.g. style -> style.theme)
+            // skipped goBack() entirely and closed the whole menu in one press.
             if (root.filterText) root.setFilter("")
-            else root.cancel()
+            else if (!root.goBack()) root.cancel()
             event.accepted = true
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
