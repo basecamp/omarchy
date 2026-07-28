@@ -457,6 +457,7 @@ Panel {
               x: root.heroRingPad
               y: root.heroRingPad
               width: parent.width - root.heroRingPad
+              rightInset: powerSwitch.visible ? powerSwitch.width + Style.space(20) : 0
               title: tailscale.installed ? (tailscale.selfName || "Tailscale") : "Tailscale"
               meta: tailscale.active ? root.heroPhraseText : "Tailscale is disconnected"
               foreground: root.foreground
@@ -540,6 +541,7 @@ Panel {
                 enabled: !tailscale.busy
                 hoverEnabled: true
                 cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onContainsMouseChanged: if (containsMouse) header.focusHero()
                 onClicked: tailscale.toggleTailscale()
               }
 
