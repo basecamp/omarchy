@@ -507,6 +507,50 @@ Panel {
                 }
               }
             }
+
+            // Compact on/off switch aligned with the title row.
+            BorderSurface {
+              id: powerSwitch
+              visible: tailscale.installed
+              z: 10
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
+              width: Style.space(52)
+              height: Style.space(28)
+              radius: height / 2
+              color: tailscale.active
+                ? Style.selectedFillFor(root.foreground, Color.accent)
+                : Style.normalFillFor(root.foreground, Color.accent)
+              borderSpec: Border.controlSpec(tailscale.active ? "selected" : "normal", root.foreground, Color.accent)
+
+              Rectangle {
+                width: Style.space(20)
+                height: width
+                radius: height / 2
+                anchors.verticalCenter: parent.verticalCenter
+                x: tailscale.active ? parent.width - width - Style.space(4) : Style.space(4)
+                color: tailscale.active ? Style.selectedStateColor(root.foreground, Color.accent) : root.dim
+                Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                enabled: !tailscale.busy
+                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: tailscale.toggleTailscale()
+              }
+
+              PanelToolTip {
+                visible: powerSwitchMouse.hovered
+                text: tailscale.active ? "Turn Tailscale off" : "Turn Tailscale on"
+                fontFamily: root.fontFamily
+              }
+
+              HoverHandler {
+                id: powerSwitchMouse
+              }
+            }
           }
 
           Text {
