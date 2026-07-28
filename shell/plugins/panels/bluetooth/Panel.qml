@@ -590,6 +590,7 @@ Panel {
             spacing: Style.space(2)
 
             Text {
+              id: heroTitle
               text: "Bluetooth"
               color: root.bar.foreground
               font.family: root.bar.fontFamily
@@ -609,6 +610,49 @@ Panel {
               font.letterSpacing: 1.2
               elide: Text.ElideRight
               width: parent.width
+            }
+          }
+
+          BorderSurface {
+            id: powerSwitch
+            visible: !!root.adapter
+            z: 10
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(10)
+            y: heroLabels.y + heroTitle.y + heroTitle.height / 2 - height / 2
+            width: Style.space(52)
+            height: Style.space(28)
+            radius: height / 2
+            color: root.adapter && root.adapter.enabled
+              ? Style.selectedFillFor(root.bar.foreground, Color.accent)
+              : Style.normalFillFor(root.bar.foreground, Color.accent)
+            borderSpec: Border.controlSpec(root.adapter && root.adapter.enabled ? "selected" : "normal", root.bar.foreground, Color.accent)
+
+            Rectangle {
+              width: Style.space(20)
+              height: width
+              radius: height / 2
+              anchors.verticalCenter: parent.verticalCenter
+              x: root.adapter && root.adapter.enabled ? parent.width - width - Style.space(4) : Style.space(4)
+              color: root.adapter && root.adapter.enabled
+                ? Style.selectedStateColor(root.bar.foreground, Color.accent)
+                : Qt.darker(root.bar.foreground, 1.55)
+              Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+            }
+
+            MouseArea {
+              id: powerSwitchMouse
+              anchors.fill: parent
+              enabled: !!root.adapter
+              hoverEnabled: true
+              cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+              onClicked: root.toggleBluetooth()
+            }
+
+            PanelToolTip {
+              visible: powerSwitchMouse.containsMouse
+              text: root.adapter && root.adapter.enabled ? "Turn Bluetooth off" : "Turn Bluetooth on"
+              fontFamily: root.bar.fontFamily
             }
           }
         }
