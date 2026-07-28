@@ -121,6 +121,13 @@ assert(
   'app library prefers indexed app icons over ambiguous themed icons'
 )
 
+const beginLaunchMatch = appLibraryQml.match(/function beginLaunchFeedback\(name\) \{([\s\S]*?)\n  \}/)
+assert(beginLaunchMatch, 'app library beginLaunchFeedback function exists')
+assert(
+  !beginLaunchMatch[1].includes('root.launchOsdOpen = false'),
+  'app library keeps owning an OSD a previous launch left on screen'
+)
+
 const openMatch = menuQml.match(/function openExistingMenu\(initialMenu\) \{([\s\S]*?)\n  \}/)
 assert(openMatch, 'menu openExistingMenu function exists')
 assert(

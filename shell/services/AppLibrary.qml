@@ -150,11 +150,15 @@ Item {
     try { return ToplevelManager.toplevels.values.length } catch (e) { return 0 }
   }
 
+  // launchOsdOpen tracks whether the OSD is on screen, not which launch put it
+  // there, so a new launch must not clear it: the OSD is shown with duration 0,
+  // and only closeLaunchFeedback() takes it down. Dropping the flag here would
+  // orphan an OSD left over from the previous launch, and the timer restarts
+  // below discard the timeout that was its last chance to close.
   function beginLaunchFeedback(name) {
     root.launchSerial++
     root.launchToplevelCount = root.toplevelCount()
     root.launchActiveToplevel = ToplevelManager.activeToplevel
-    root.launchOsdOpen = false
     root.launchOsdMessage = "Launching " + String(name || "application") + "…"
     launchDelay.restart()
     launchTimeout.restart()
