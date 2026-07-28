@@ -78,9 +78,9 @@ Item {
     var id = String(desktopId || "")
     if (!id) return
     root.beginLaunchFeedback(name)
-    // Pass the full file name: gtk-launch only appends ".desktop" when the
-    // argument doesn't already end with it, so ids that themselves end in
-    // ".desktop" (e.g. org.telegram.desktop) would otherwise never resolve.
+    // Pass the file name with its extension: gtk-launch only appends ".desktop"
+    // when the argument doesn't already end with it, so ids that themselves end
+    // in ".desktop" (e.g. org.telegram.desktop) would otherwise never resolve.
     Util.execDetached("gtk-launch " + Util.shellQuote(id + ".desktop"))
   }
 
