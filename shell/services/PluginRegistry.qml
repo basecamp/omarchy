@@ -129,23 +129,8 @@ QtObject {
   }
 
   function isDisabled(config, id) {
-    if (!Util.isPlainObject(config) || !Array.isArray(config.disabledPlugins)) return false
-    var key = Util.canonicalWidgetId(String(id))
-    for (var i = 0; i < config.disabledPlugins.length; i++) {
-      if (Util.canonicalWidgetId(String(config.disabledPlugins[i])) === key) return true
-    }
-    return false
-  }
-
-  // Leaves shell.json without the key once nothing is switched off, so a
-  // config that never disabled anything reads exactly as it did before.
-  function dropDisabled(config, id) {
-    if (!Array.isArray(config.disabledPlugins)) return
-    var key = Util.canonicalWidgetId(String(id))
-    config.disabledPlugins = config.disabledPlugins.filter(function(entry) {
-      return Util.canonicalWidgetId(String(entry)) !== key
-    })
-    if (config.disabledPlugins.length === 0) delete config.disabledPlugins
+    return Util.isPlainObject(config) && Array.isArray(config.disabledPlugins)
+      && config.disabledPlugins.indexOf(Util.canonicalWidgetId(String(id))) !== -1
   }
 
   // A bar widget is on when it sits in the bar, whoever shipped it. That is a
@@ -220,7 +205,12 @@ QtObject {
       var location = findEntryLocation(config, key)
 
       if (value) {
-        dropDisabled(config, key)
+        // Leave shell.json without the key once nothing is switched off, so a
+        // config that never disabled anything reads as it always did.
+        if (Array.isArray(config.disabledPlugins)) {
+          config.disabledPlugins = config.disabledPlugins.filter(function(entry) { return entry !== key })
+          if (config.disabledPlugins.length === 0) delete config.disabledPlugins
+        }
         if (location.found) return
         var entry = { id: key }
         if (isBarWidget) {

@@ -78,12 +78,6 @@ valid_plugin_id() {
   [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $1 != *..* ]]
 }
 
-plugin_is_bar_widget() {
-  local manifest="$PLUGINS_DIR/$1/manifest.json"
-  [[ -f $manifest ]] || return 1
-  jq -e '(.kinds // []) | index("bar-widget")' "$manifest" >/dev/null 2>&1
-}
-
 # A bar widget lands on the right when it is enabled, which is rarely where it
 # belongs. Ask once, here, rather than leaving a follow-up 'omarchy bar plugin
 # move' as the only way to place it.
@@ -91,7 +85,7 @@ place_bar_widget() {
   local id="$1" section
   interactive || return 0
   (( ASSUME_YES )) && return 0
-  plugin_is_bar_widget "$id" || return 0
+  jq -e '(.kinds // []) | index("bar-widget")' "$PLUGINS_DIR/$id/manifest.json" >/dev/null 2>&1 || return 0
 
   section=$(printf '%s\n' left center right | gum choose --header="Place $id in which bar section?") || return 0
   [[ -n $section ]] || return 0

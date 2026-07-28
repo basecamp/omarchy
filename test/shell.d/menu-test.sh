@@ -204,7 +204,7 @@ assert(
 )
 const providerBlock = menuQml.match(/readonly property var providers: \(\{[\s\S]*?\n  \}\)/)[0]
 assert(
-  /"plugins-enable": \{[\s\S]*?placementFor: function\(value, section\) \{ return "omarchy-plugin enable " \+ root\.shellQuote\(value\) \+ " --section " \+ section \}/.test(providerBlock),
+  /"plugins-enable": \{[\s\S]*?placementFor: function\(value, section\)[^\n]*omarchy-plugin enable[^\n]*--section " \+ section/.test(providerBlock),
   'menu enables a bar widget into a chosen section'
 )
 assert(
@@ -217,16 +217,23 @@ assert(
   ),
   'menu re-enumerates the plugin lists every time they are opened'
 )
-// Enable and Disable reach the built-ins; only Remove is limited to plugins
-// the user installed, because a built-in has no checkout to delete.
-const rowsScript = menuQml.match(/function pluginRowsScript\(filter\) \{([\s\S]*?)\n  \}/)[1]
+// Enable and Disable reach the built-ins. Remove is limited to plugins the
+// user installed, because a built-in has no checkout to delete — but it must
+// still reach a whole-bar replacement, which is the one thing the other two
+// leave out.
 assert(
-  !rowsScript.includes('firstParty') && rowsScript.includes('index(\\"bar\\")'),
-  'menu lists built-in plugins too, minus whole-bar replacements'
+  !menuQml.match(/function pluginRowsScript\(filter\) \{([\s\S]*?)\n  \}/)[1].includes('firstParty'),
+  'menu lists built-in plugins too'
+)
+assert(
+  ['plugins-enable', 'plugins-disable'].every(
+    key => new RegExp(`"${key}": \\{\\s*\\n\\s*script: root\\.pluginRowsScript\\(root\\.notABarOption`).test(providerBlock)
+  ),
+  'menu leaves whole-bar replacements out of Enable and Disable'
 )
 assert(
   /"plugins-remove": \{\s*\n\s*script: root\.pluginRowsScript\("\(\.firstParty \| not\)"\)/.test(providerBlock),
-  'menu offers to remove only the plugins the user installed'
+  'menu offers to remove every plugin the user installed, whole-bar ones included'
 )
 assert(
   /function setActiveMenu\([\s\S]*?root\.invalidateVolatileProvider\(id\)\s*\n\s*root\.loadProviderForMenu\(id\)/.test(menuQml)
@@ -364,6 +371,18 @@ assert(
   menu.swapProviderRows(firstProviderMerge.items, firstProviderMerge.itemOrder, 'style.other', providerRowsFor([]))
     .itemOrder.join(',') === 'root,apps,style.font.mono,style.font.serif',
   'provider merge leaves rows belonging to another provider alone'
+)
+// Rows are keyed by id, so a provider handing over two rows with the same id
+// would lose one. Distinct plugin ids can slugify alike, which is why the
+// menu makes each row id its own before merging.
+assertEqual(
+  ['acme.foo', 'acme_foo', 'acme-foo'].map(menu.slugify).join(','),
+  'acme-foo,acme-foo,acme-foo',
+  'menu slugs collide across plugin ids that differ only in separator'
+)
+assert(
+  /var rowId = menuId \+ "\." \+ root\.slugify\(value\)\s*\n\s*while \(takenIds\[rowId\]\) rowId \+= "-"/.test(menuQml),
+  'menu keeps colliding provider rows apart so none is dropped'
 )
 
 // The maps live in QML `var` properties, where an in-place write is

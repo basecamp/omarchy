@@ -220,10 +220,6 @@ Item {
     }
   }
 
-  function shellQuote(value) {
-    return "'" + String(value).replace(/'/g, "'\\''") + "'"
-  }
-
   // The bar lays its widgets out in three sections, so a bar widget can only
   // be enabled once we know which one it belongs in.
   readonly property var barSections: [
@@ -234,15 +230,18 @@ Item {
 
   // Plugin rows cover built-in and user-installed plugins alike — the bar
   // widgets you can put in the bar and the services and overlays you can turn
-  // off. Whole-bar replacements are excluded; those are picked under Style.
-  // `filter` is a jq condition narrowing that set further.
+  // off. `filter` is the jq condition selecting which of them a list shows.
   function pluginRowsScript(filter) {
     return "omarchy-plugin list --json 2>/dev/null | jq -r '"
-      + "[.[] | select(((.kinds | index(\"bar\")) | not) and (" + filter + "))]"
+      + "[.[] | select(" + filter + ")]"
       + " | sort_by(.name)[]"
       + " | [.name, .id, \"\", (if (.kinds | index(\"bar-widget\")) then \"bar-widget\" else \"\" end)]"
       + " | @tsv'"
   }
+
+  // Switching a whole-bar replacement on and off is picking which bar to run,
+  // which belongs under Style — but one still has to be removable.
+  readonly property string notABarOption: "((.kinds | index(\"bar\")) | not)"
 
   // Each known provider is a tiny bash one-liner that enumerates a list and
   // emits one tab-delimited row per item: `label\tvalue\tcurrent\tkind`. The
@@ -257,25 +256,25 @@ Item {
     "fonts": {
       script: "current=$(omarchy-font-current 2>/dev/null); omarchy-font-list 2>/dev/null | while read -r f; do [[ -z $f ]] && continue; printf '%s\\t%s\\t%s\\n' \"$f\" \"$f\" \"$current\"; done",
       icon: "",
-      actionFor: function(value) { return "omarchy-font-set " + root.shellQuote(value) }
+      actionFor: function(value) { return "omarchy-font-set " + Util.shellQuote(value) }
     },
     "power-profiles": {
       script: "current=$(powerprofilesctl get 2>/dev/null); omarchy-powerprofiles-list 2>/dev/null | while read -r p; do [[ -z $p ]] && continue; printf '%s\\t%s\\t%s\\n' \"$p\" \"$p\" \"$current\"; done",
       icon: "\udb81\udc0b",
-      actionFor: function(value) { return "omarchy-powerprofiles-set autodetect " + root.shellQuote(value) }
+      actionFor: function(value) { return "omarchy-powerprofiles-set autodetect " + Util.shellQuote(value) }
     },
     "plugins-enable": {
-      script: root.pluginRowsScript("(.enabled | not)"),
+      script: root.pluginRowsScript(root.notABarOption + " and (.enabled | not)"),
       icon: "󰐱",
       volatile: true,
-      actionFor: function(value) { return "omarchy-plugin enable " + root.shellQuote(value) },
-      placementFor: function(value, section) { return "omarchy-plugin enable " + root.shellQuote(value) + " --section " + section }
+      actionFor: function(value) { return "omarchy-plugin enable " + Util.shellQuote(value) },
+      placementFor: function(value, section) { return "omarchy-plugin enable " + Util.shellQuote(value) + " --section " + section }
     },
     "plugins-disable": {
-      script: root.pluginRowsScript(".enabled"),
+      script: root.pluginRowsScript(root.notABarOption + " and .enabled"),
       icon: "󰐱",
       volatile: true,
-      actionFor: function(value) { return "omarchy-plugin disable " + root.shellQuote(value) }
+      actionFor: function(value) { return "omarchy-plugin disable " + Util.shellQuote(value) }
     },
     "plugins-remove": {
       script: root.pluginRowsScript("(.firstParty | not)"),
@@ -283,7 +282,7 @@ Item {
       volatile: true,
       // Removing deletes a checkout, so it runs where its confirmation and the
       // backup path it prints are visible.
-      actionFor: function(value) { return "omarchy-launch-floating-terminal-with-presentation " + root.shellQuote("omarchy-plugin remove " + root.shellQuote(value)) }
+      actionFor: function(value) { return "omarchy-launch-floating-terminal-with-presentation " + Util.shellQuote("omarchy-plugin remove " + Util.shellQuote(value)) }
     }
   })
 
@@ -378,6 +377,7 @@ Item {
     if (!spec) return
     var lines = String(rows || "").split("\n")
     var providerRows = []
+    var takenIds = ({})
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i].trim()
       if (!line) continue
@@ -385,10 +385,15 @@ Item {
       var label = parts[0] || ""
       var value = parts[1] || parts[0] || ""
       var current = parts[2] || ""
-      var kind = parts[3] || ""
       if (!label) continue
+      // Distinct values can slugify alike — acme.foo and acme_foo both give
+      // acme-foo — and a repeated id is dropped, which would silently lose a
+      // plugin from the list. Nudge it until it is the row's own.
       var rowId = menuId + "." + root.slugify(value)
-      var placed = spec.placementFor && kind === "bar-widget"
+      while (takenIds[rowId]) rowId += "-"
+      takenIds[rowId] = true
+
+      var placed = spec.placementFor && parts[3] === "bar-widget"
       providerRows.push(root.providerRow(rowId, menuId, label,
         (value === current) ? "✓" : (spec.icon || ""),
         placed ? "" : spec.actionFor(value)))
@@ -400,10 +405,9 @@ Item {
       }
     }
     var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, menuId, providerRows)
-    var changed = merged.itemOrder.length !== root.itemOrder.length || providerRows.length > 0
     root.items = merged.items
     root.itemOrder = merged.itemOrder
-    if (changed && root.opened) root.rebuildDisplay()
+    if (root.opened) root.rebuildDisplay()
   }
 
   function startNextProvider() {
