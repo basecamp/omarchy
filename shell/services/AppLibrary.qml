@@ -26,6 +26,9 @@ Item {
   property int launchSerial: 0
   property int launchToplevelCount: 0
   property var launchActiveToplevel: null
+  // True while the launch OSD is on screen. It outlives the launch that opened
+  // it: the OSD shows with duration 0, so only closeLaunchFeedback() takes it
+  // down.
   property bool launchOsdOpen: false
   property string launchOsdMessage: ""
 
@@ -154,7 +157,6 @@ Item {
     root.launchSerial++
     root.launchToplevelCount = root.toplevelCount()
     root.launchActiveToplevel = ToplevelManager.activeToplevel
-    root.launchOsdOpen = false
     root.launchOsdMessage = "Launching " + String(name || "application") + "…"
     launchDelay.restart()
     launchTimeout.restart()
