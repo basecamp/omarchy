@@ -176,6 +176,10 @@ Item {
             height: parent.height
             width: parent.width * (root.hasProgress ? root.value / root.maxValue : 0)
             color: Color.accent
+
+            Behavior on width {
+              NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
+            }
           }
         }
         Text {

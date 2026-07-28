@@ -121,6 +121,12 @@ Panel {
   // selected while a tuning still exists.
   property string volumeSinkName: ""
 
+  // Raw wheel delta accumulated between discrete volume steps. A mouse notch
+  // (delta = ±120) crosses the threshold and fires one step immediately; a
+  // touchpad's stream of small deltas piles up here until it crosses that
+  // same threshold, so both devices move the volume in identical 5% steps.
+  property real wheelAccumulator: 0
+
   readonly property var volumeSink: {
     if (volumeSinkName === "" || !sink) return sink
     if (volumeSinkName === String(sink.name)) return sink
@@ -165,13 +171,7 @@ Panel {
   // "header" is a virtual section for the hero output mute toggle; it sits
   // above the output section so the speaker can be muted from the keyboard.
   readonly property bool headerHasCursor: cursorActive && focusSection === "header"
-  // Only channels that actually exist get a vote. A box with no default source
-  // would otherwise report "input unmuted" forever, leaving the hero switch
-  // able to mute but never to unmute.
-  readonly property bool hasOutput: !!(volumeSink && volumeSink.audio)
-  readonly property bool hasInput: !!(source && source.audio)
-  readonly property bool anyAudible: (hasOutput && !outputMuted) || (hasInput && !inputMuted)
-  readonly property string toggleHint: anyAudible ? "Mute" : "Unmute"
+  readonly property int heroRingPad: Style.space(6)
 
   readonly property color hoverFill: bar
     ? Style.hoverFillFor(bar.foreground, Color.accent)
@@ -285,7 +285,7 @@ Panel {
 
   // Enter/Space: activate whatever the cursor is on.
   function activateCursor() {
-    if (focusSection === "header") { toggleAllMuted(); return }
+    if (focusSection === "header") { toggleOutputMute(); return }
     if (focusSection === "output") {
       if (selectedIndex === -1) { toggleOutputMute(); return }
       var sink = displayAudioSinks[selectedIndex]
@@ -379,10 +379,6 @@ Panel {
   function clampCursor() {
     var sections = visibleSections
     if (!sections || !sections.length) return
-    // "header" is virtual and never appears in visibleSections, so it has to
-    // be let through: muting republishes the PipeWire snapshot, and clamping
-    // would knock the cursor off the hero switch on every toggle.
-    if (focusSection === "header") return
     if (sections.indexOf(focusSection) < 0) {
       focusSection = visibleSections[0]
       selectedIndex = sectionHasSlider(focusSection) ? -1 : 0
@@ -425,6 +421,23 @@ Panel {
     volumeSink.audio.volume = Math.max(0, Math.min(1, v))
   }
 
+  // Mirrors what omarchy-audio-output-volume shows after a keyboard raise/
+  // lower, so scrolling the bar icon (and any other in-panel volume change)
+  // gets the same OSD feedback instead of only the keyboard media keys.
+  // Same 0.67/0.34 breakpoints as outputIcon(), so the OSD icon always
+  // matches the bar icon rather than only ever showing muted/high.
+  function showVolumeOsd() {
+    var icon = "volume-muted"
+    if (!outputMuted && outputVolume > 0) {
+      if (outputVolume >= 0.67) icon = "volume-high"
+      else if (outputVolume >= 0.34) icon = "volume-medium"
+      else icon = "volume-low"
+    }
+    var percent = Math.round(outputVolume * 100)
+    osdProc.command = ["omarchy-osd", "-i", icon, "-p", String(percent)]
+    osdProc.running = true
+  }
+
   function setInputVolume(v) {
     if (!source || !source.audio) return
     source.audio.volume = Math.max(0, Math.min(1, v))
@@ -436,15 +449,6 @@ Panel {
 
   function toggleInputMute() {
     if (source && source.audio) source.audio.muted = !source.audio.muted
-  }
-
-  // The hero switch is the whole panel's on/off, so it carries both channels
-  // at once. It reads as on while anything is still audible, which keeps
-  // muting a single channel from the row below flipping the master switch.
-  function toggleAllMuted() {
-    var mute = anyAudible
-    if (hasOutput) volumeSink.audio.muted = mute
-    if (hasInput) source.audio.muted = mute
   }
 
   function setDefaultSink(node) {
@@ -588,6 +592,10 @@ Panel {
     }
   }
 
+  Process {
+    id: osdProc
+  }
+
   Timer {
     interval: 5000
     running: root.opened
@@ -625,8 +633,29 @@ Panel {
     }
 
     onWheelMoved: function(delta) {
-      var step = 0.05
-      root.setOutputVolume(root.outputVolume + (delta > 0 ? step : -step))
+      // One step = 120 units, matching a single mouse notch, so a mouse
+      // click still moves exactly 5%. A touchpad's small deltas pile up in
+      // wheelAccumulator until they cross that same threshold, then fire
+      // the identical 5% step. The OSD is only pinged when a step actually
+      // lands (not on a fixed timer), so it stays open and updates exactly
+      // in step with the real scroll rhythm -- no tick separate from your
+      // finger's motion -- and only starts counting down to hide once you
+      // stop scrolling (each ping restarts its own hide timer).
+      var stepUnits = 120
+      var stepSize = 0.05
+      var stepped = false
+      root.wheelAccumulator += delta
+      while (root.wheelAccumulator >= stepUnits) {
+        root.setOutputVolume(root.outputVolume + stepSize)
+        root.wheelAccumulator -= stepUnits
+        stepped = true
+      }
+      while (root.wheelAccumulator <= -stepUnits) {
+        root.setOutputVolume(root.outputVolume - stepSize)
+        root.wheelAccumulator += stepUnits
+        stepped = true
+      }
+      if (stepped) root.showVolumeOsd()
     }
   }
 
@@ -689,9 +718,19 @@ Panel {
           Item {
             id: heroItem
             width: parent.width
-            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, powerSwitch.implicitHeight)
+            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight) + root.heroRingPad * 2
 
-            // Status only — the switch owns muting, mouse and keyboard alike.
+            // Keyboard focus ring around the hero output-mute toggle. heroIcon
+            // is inset by heroRingPad so this ring stays inside the clip box.
+            BorderSurface {
+              anchors.fill: heroIcon
+              anchors.margins: -root.heroRingPad
+              color: "transparent"
+              radius: Style.cornerRadius
+              visible: root.headerHasCursor
+              borderSpec: Border.controlSpec("hover-cursor", root.bar.foreground, Color.accent)
+            }
+
             Text {
               id: heroIcon
               text: root.outputIcon()
@@ -700,26 +739,15 @@ Panel {
               font.pixelSize: Style.font.display
               opacity: root.outputMuted ? 0.5 : 1.0
               anchors.left: parent.left
+              anchors.leftMargin: root.heroRingPad
               anchors.verticalCenter: parent.verticalCenter
-            }
 
-            // Compact on/off switch on the trailing edge of the hero, and the
-            // header's only cursor target. Checked means something is still
-            // audible, so muting everything reads as switching audio off.
-            ToggleSwitch {
-              id: powerSwitch
-              checked: root.anyAudible
-              hasCursor: root.headerHasCursor
-              foreground: root.bar.foreground
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-              onHovered: function(on) { if (on) root.setHeaderCursor() }
-              onToggled: root.toggleAllMuted()
-
-              PanelToolTip {
-                visible: powerSwitch.containsMouse
-                text: root.toggleHint
-                fontFamily: root.bar.fontFamily
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onContainsMouseChanged: if (containsMouse) root.setHeaderCursor()
+                onClicked: root.toggleOutputMute()
               }
             }
 
@@ -728,7 +756,6 @@ Panel {
               anchors.left: heroIcon.right
               anchors.leftMargin: Style.space(14)
               anchors.right: parent.right
-              anchors.rightMargin: powerSwitch.width + Style.space(12)
               anchors.verticalCenter: parent.verticalCenter
               spacing: Style.space(2)
 
@@ -818,7 +845,6 @@ Panel {
                 enabled: !!root.sink
 
                 onMoved: function(v) { root.setOutputVolume(v) }
-                onRightClicked: root.toggleOutputMute()
               }
 
               HoverHandler {
@@ -910,7 +936,6 @@ Panel {
                   enabled: !!root.source
 
                   onMoved: function(v) { root.setInputVolume(v) }
-                  onRightClicked: root.toggleInputMute()
                 }
 
                 Rectangle {
@@ -1197,10 +1222,6 @@ Panel {
 
         onMoved: function(v) {
           if (streamRow.node && streamRow.node.audio) streamRow.node.audio.volume = v
-        }
-        onRightClicked: {
-          if (streamRow.node && streamRow.node.audio)
-            streamRow.node.audio.muted = !streamRow.node.audio.muted
         }
       }
     }
