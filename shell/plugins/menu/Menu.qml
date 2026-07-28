@@ -477,12 +477,17 @@ Item {
 
     var query = root.filterText.trim().toLowerCase()
     for (var i = 0; i < root.dmenuOptions.length; i++) {
-      var label = String(root.dmenuOptions[i] || "")
+      // An option may lead with an icon, as "<glyph>\t<label>". Only the label
+      // is filtered against and handed back, so the caller never sees a glyph
+      // it has to strip off the selection.
+      var parts = String(root.dmenuOptions[i] || "").split("\t")
+      var icon = parts.length > 1 ? parts.shift() : ""
+      var label = parts.join("\t")
       if (query && label.toLowerCase().indexOf(query) < 0) continue
       displayModel.append({
         itemId: "dmenu." + i,
         kind: "dmenu",
-        icon: "",
+        icon: icon,
         iconFont: "",
         appIcon: "",
         appId: "",

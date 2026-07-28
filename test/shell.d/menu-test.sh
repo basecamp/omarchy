@@ -218,8 +218,18 @@ assert(
   'plugin picker keeps whole-bar replacements out of enable and disable, but still removable'
 )
 assert(
-  /index\("bar-widget"\)[\s\S]*?omarchy-menu-select "Place \$name" left center right[\s\S]*?omarchy-plugin enable "\$id" --section/.test(pluginPicker),
+  /index\("bar-widget"\)[\s\S]*?omarchy-menu-select "Place \$name"[\s\S]*?Left[\s\S]*?Center[\s\S]*?Right[\s\S]*?omarchy-plugin enable "\$id" --section "\$\{section,,\}"/.test(pluginPicker),
   'plugin picker places a bar widget in a chosen section'
+)
+// Icons ride along as "<glyph>\tlabel"; the menu shows the glyph and hands
+// back the label, so nothing downstream has to strip one off.
+assert(
+  /\$icon \+ \\"\\\\t\\" \+ \.name/.test(pluginPicker) && /\$'\\U000f0262'"\$\{TAB\}Left"/.test(pluginPicker),
+  'plugin picker labels its rows with glyphs'
+)
+assert(
+  /var icon = parts\.length > 1 \? parts\.shift\(\) : ""\s*\n\s*var label = parts\.join\("\\t"\)/.test(menuQml),
+  'menu select mode reads a leading icon off an option and filters on the label alone'
 )
 assert(
   /omarchy-launch-floating-terminal-with-presentation "omarchy-plugin remove/.test(pluginPicker),

@@ -8,6 +8,9 @@
 
 set -euo pipefail
 
+TAB=$'\t'
+PLUGIN_ICON=$'\U000f0431'
+
 # Switching a whole-bar replacement on and off is picking which bar to run,
 # which belongs under Style -- but one still has to be removable.
 NOT_A_BAR_OPTION='((.kinds | index("bar")) | not)'
@@ -26,7 +29,7 @@ esac
 
 plugins=$(omarchy-plugin list --json) || exit 1
 
-names=$(jq -r "[.[] | select($filter)] | sort_by(.name)[] | .name" <<<"$plugins")
+names=$(jq -r --arg icon "$PLUGIN_ICON" "[.[] | select($filter)] | sort_by(.name)[] | \$icon + \"\\t\" + .name" <<<"$plugins")
 [[ -n $names ]] || { omarchy-notification-send "No plugin to ${1}"; exit 0; }
 
 name=$(omarchy-menu-select "$prompt" <<<"$names") || exit 0
@@ -39,9 +42,10 @@ case "$1" in
   enable)
     # A bar widget lands on the right otherwise, which is rarely where it goes.
     if jq -e --arg id "$id" 'map(select(.id == $id))[0].kinds | index("bar-widget")' <<<"$plugins" >/dev/null; then
-      section=$(omarchy-menu-select "Place $name" left center right) || exit 0
+      section=$(omarchy-menu-select "Place $name" \
+        $'\U000f0262'"${TAB}Left" $'\U000f0260'"${TAB}Center" $'\U000f0263'"${TAB}Right") || exit 0
       [[ -n $section ]] || exit 0
-      omarchy-plugin enable "$id" --section "$section"
+      omarchy-plugin enable "$id" --section "${section,,}"
     else
       omarchy-plugin enable "$id"
     fi
