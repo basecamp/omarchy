@@ -1,17 +1,17 @@
 import QtQuick
 import qs.Commons
 
-// Labeled toggle row: title + optional description on the left, a switch
-// on the right. Clicking anywhere on the row emits `clicked()`; consumers
-// flip `checked` in response (the component is stateless about the actual
-// value so it composes cleanly with model-driven UI).
+// Labeled toggle row: title + optional description on the left, a
+// `ToggleSwitch` on the right. Clicking anywhere on the row emits `clicked()`;
+// consumers flip `checked` in response (the component is stateless about the
+// actual value so it composes cleanly with model-driven UI).
 //
 // Cursor and focus styling match the rest of the kit: hasCursor / mouse
 // hover and activeFocus share the hover-cursor defaults.
 //
-// `rounded` auto-detects from Style.cornerRadius so the switch follows
-// the theme: pill shape when Hyprland corners are rounded, square on sharp.
-// Callers can override per-instance.
+// `rounded` is forwarded to the switch, which auto-detects from
+// Style.cornerRadius: pill shape when Hyprland corners are rounded, square on
+// sharp. Callers can override per-instance.
 BorderSurface {
   id: root
 
@@ -41,11 +41,6 @@ BorderSurface {
   Keys.onReturnPressed: root.clicked()
   Keys.onEnterPressed: root.clicked()
   Keys.onSpacePressed: root.clicked()
-
-  readonly property int trackHeight: Math.max(22, Math.round(Style.spacing.controlHeight * 0.55))
-  readonly property int trackWidth: Math.max(42, Math.round(trackHeight * 1.9))
-  readonly property int knobSize: Math.max(16, Math.round(trackHeight * 0.72))
-  readonly property int knobInset: Math.max(2, Math.round((trackHeight - knobSize) / 2))
 
   implicitHeight: Math.max(54, content.implicitHeight + Style.spacing.huge)
   implicitWidth: Style.space(240)
@@ -94,32 +89,15 @@ BorderSurface {
       }
     }
 
-    BorderSurface {
+    // The row owns the click, so the switch is presentation only here.
+    ToggleSwitch {
       id: track
-      width: root.trackWidth
-      height: root.trackHeight
-      radius: root.rounded ? height / 2 : 0
-      color: root.checked
-        ? Style.selectedFillFor(root.foreground, root.accent)
-        : Style.normalFillFor(root.foreground, root.accent)
-      borderSpec: root.checked
-        ? Border.controlSpec("selected", root.foreground, root.accent)
-        : Border.controlSpec("normal", root.foreground, root.accent)
+      checked: root.checked
+      rounded: root.rounded
+      foreground: root.foreground
+      accent: root.accent
+      interactive: false
       anchors.verticalCenter: parent.verticalCenter
-
-      Behavior on color { ColorAnimation { duration: 120 } }
-
-      Rectangle {
-        width: root.knobSize
-        height: root.knobSize
-        radius: root.rounded ? height / 2 : 0
-        x: root.checked ? track.width - width - root.knobInset : root.knobInset
-        y: root.knobInset
-        color: root.checked ? Style.selectedStateColor(root.foreground, root.accent) : Qt.darker(root.foreground, 1.25)
-
-        Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-        Behavior on color { ColorAnimation { duration: 120 } }
-      }
     }
   }
 
