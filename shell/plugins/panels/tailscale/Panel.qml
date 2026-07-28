@@ -535,6 +535,7 @@ Panel {
               }
 
               MouseArea {
+                id: powerSwitchMouse
                 anchors.fill: parent
                 enabled: !tailscale.busy
                 hoverEnabled: true
@@ -543,13 +544,9 @@ Panel {
               }
 
               PanelToolTip {
-                visible: powerSwitchMouse.hovered
+                visible: powerSwitchMouse.containsMouse
                 text: tailscale.active ? "Turn Tailscale off" : (tailscale.needsLogin ? "Authorize this device" : "Turn Tailscale on")
                 fontFamily: root.fontFamily
-              }
-
-              HoverHandler {
-                id: powerSwitchMouse
               }
             }
           }
