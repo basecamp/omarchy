@@ -903,12 +903,16 @@ ShellRoot {
       for (var id in plugins) {
         var kinds = plugins[id].kinds || []
         var isBarOption = Array.isArray(kinds) && kinds.indexOf("bar") !== -1
+        var isBarWidget = Array.isArray(kinds) && kinds.indexOf("bar-widget") !== -1
         var active = isBarOption && shell.isActiveBarOption(id)
         out.push({
           id: id,
           name: plugins[id].name,
           kinds: kinds,
-          enabled: isBarOption ? active : shell.pluginRegistry.isEnabled(id),
+          // What `omarchy plugin enable/disable` toggles: for a widget that is
+          // its place in the bar, not whether its component is loadable.
+          enabled: isBarOption ? active
+            : (isBarWidget ? shell.pluginRegistry.inBar(id) : shell.pluginRegistry.isEnabled(id)),
           active: active,
           firstParty: !!plugins[id].__isFirstParty
         })

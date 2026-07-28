@@ -150,6 +150,35 @@ ShellRoot {
     registry.setEnabled("third.panel", true)
     root.assertDeepEqual(root.config.plugins, [{ id: "third.panel" }], "setEnabled repairs missing plugin config shape")
 
+    // A built-in loads by default, so switching one off is recorded the other
+    // way round and has to survive round-tripping back on.
+    root.config = { version: 1, bar: { layout: { left: [], center: [], right: [] } }, plugins: [] }
+    registry.setEnabled("omarchy.grouped-panel", false)
+    root.assertDeepEqual(root.config.disabledPlugins, ["omarchy.grouped-panel"], "disabling a first-party plugin records it")
+    root.assertTrue(!registry.isEnabled("omarchy.grouped-panel"), "a recorded first-party plugin is disabled")
+    root.assertDeepEqual(root.config.plugins, [], "disabling a first-party plugin leaves the plugins array alone")
+    registry.setEnabled("omarchy.grouped-panel", true)
+    root.assertTrue(root.config.disabledPlugins === undefined, "re-enabling drops the disabled record entirely")
+    root.assertTrue(registry.isEnabled("omarchy.grouped-panel"), "a first-party plugin returns to enabled")
+    root.assertDeepEqual(root.config.plugins, [], "re-enabling a first-party plugin adds no redundant entry")
+
+    // A widget's place in the bar is its on/off switch. Loadability must not
+    // follow it down, or a plugin that is both widget and menu (omarchy.menu)
+    // would be locked out of the shell by taking its button off the bar.
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: [], right: [{ id: "omarchy.first-widget" }] } },
+      plugins: []
+    }
+    root.assertTrue(registry.inBar("omarchy.first-widget"), "inBar sees a widget in the layout")
+    registry.setEnabled("omarchy.first-widget", false)
+    root.assertDeepEqual(root.config.bar.layout.right, [], "disabling a first-party widget removes its layout entry")
+    root.assertTrue(root.config.disabledPlugins === undefined, "disabling a first-party widget records nothing else")
+    root.assertTrue(!registry.inBar("omarchy.first-widget"), "inBar follows the widget out of the layout")
+    root.assertTrue(registry.isEnabled("omarchy.first-widget"), "a first-party widget stays loadable off the bar")
+    registry.setEnabled("omarchy.first-widget", true)
+    root.assertDeepEqual(root.config.bar.layout.right, [{ id: "omarchy.first-widget" }], "enabling a first-party widget puts it back in the bar")
+
     root.assertTrue(changeCount > 0, "registry emits change notifications")
     writeResult()
   }

@@ -108,7 +108,8 @@ QtObject {
   //   - first-party non-bar plugins are shell infrastructure (settings,
   //     image-picker, ...). Requiring users to add them to plugins[] just to
   //     summon them was a footgun: a stock shell.json with `plugins: []` would
-  //     silently make `omarchy launch bar-settings` a no-op.
+  //     silently make `omarchy launch bar-settings` a no-op. Turning one off
+  //     is therefore recorded the other way round, in `disabledPlugins[]`.
   function isEnabled(id) {
     var key = String(id)
     var manifest = installedPlugins[key]
@@ -121,9 +122,40 @@ QtObject {
         if (!selectedBar) selectedBar = "omarchy.bar"
         return selectedBar === key
       }
+      if (isDisabled(config, key)) return false
       if (manifest.__isFirstParty) return true
     }
     return findEntryLocation(config, key).found
+  }
+
+  function isDisabled(config, id) {
+    if (!Util.isPlainObject(config) || !Array.isArray(config.disabledPlugins)) return false
+    var key = Util.canonicalWidgetId(String(id))
+    for (var i = 0; i < config.disabledPlugins.length; i++) {
+      if (Util.canonicalWidgetId(String(config.disabledPlugins[i])) === key) return true
+    }
+    return false
+  }
+
+  // Leaves shell.json without the key once nothing is switched off, so a
+  // config that never disabled anything reads exactly as it did before.
+  function dropDisabled(config, id) {
+    if (!Array.isArray(config.disabledPlugins)) return
+    var key = Util.canonicalWidgetId(String(id))
+    config.disabledPlugins = config.disabledPlugins.filter(function(entry) {
+      return Util.canonicalWidgetId(String(entry)) !== key
+    })
+    if (config.disabledPlugins.length === 0) delete config.disabledPlugins
+  }
+
+  // A bar widget is on when it sits in the bar, whoever shipped it. That is a
+  // different question from isEnabled(), which decides whether the widget's
+  // component is loaded at all — a built-in stays loadable so it can be put
+  // back, and so a plugin that is both a widget and a menu (omarchy.menu)
+  // cannot be locked out of the shell by taking its button off the bar.
+  function inBar(id) {
+    var config = shellConfigProvider ? shellConfigProvider() : null
+    return findEntryLocation(config, id).kind === "bar"
   }
 
   function findEntryLocation(config, id) {
@@ -153,7 +185,9 @@ QtObject {
 
   // Adding a plugin places it in the right section based on its declared
   // kinds. Bar widgets default to the right section; panels/overlays/menus/
-  // services go into the plugins[] array.
+  // services go into the plugins[] array. Built-ins are already loaded, so
+  // shell.json only ever records the deviation: an added third-party plugin
+  // in plugins[], a switched-off built-in in disabledPlugins[].
   function setEnabled(id, value) {
     var key = Util.canonicalWidgetId(String(id))
     if (!shellConfigMutator) {
@@ -182,21 +216,29 @@ QtObject {
         return
       }
 
+      var isFirstParty = manifest && manifest.__isFirstParty
       var location = findEntryLocation(config, key)
-      if (value && !location.found) {
+
+      if (value) {
+        dropDisabled(config, key)
+        if (location.found) return
         var entry = { id: key }
         if (isBarWidget) {
           if (!Array.isArray(config.bar.layout.right)) config.bar.layout.right = []
           config.bar.layout.right.push(entry)
-        } else {
+        } else if (!isFirstParty) {
           config.plugins.push(entry)
         }
-      } else if (!value && location.found) {
-        if (location.kind === "bar") {
-          config.bar.layout[location.section].splice(location.index, 1)
-        } else if (location.kind === "plugin") {
-          config.plugins.splice(location.index, 1)
-        }
+        return
+      }
+
+      if (location.kind === "bar") config.bar.layout[location.section].splice(location.index, 1)
+      else if (location.kind === "plugin") config.plugins.splice(location.index, 1)
+      // Dropping the layout entry is the whole story for a widget. Anything
+      // else built-in loads by default, so switching it off has to be stated.
+      if (isFirstParty && !isBarWidget && !isDisabled(config, key)) {
+        if (!Array.isArray(config.disabledPlugins)) config.disabledPlugins = []
+        config.disabledPlugins.push(key)
       }
     })
     registryRevision++
