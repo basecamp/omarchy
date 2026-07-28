@@ -373,6 +373,10 @@ Panel {
   function clampCursor() {
     var sections = visibleSections
     if (!sections || !sections.length) return
+    // "header" is virtual and never appears in visibleSections, so it has to
+    // be let through: muting republishes the PipeWire snapshot, and clamping
+    // would knock the cursor off the hero toggle on every use.
+    if (focusSection === "header") return
     if (sections.indexOf(focusSection) < 0) {
       focusSection = visibleSections[0]
       selectedIndex = sectionHasSlider(focusSection) ? -1 : 0

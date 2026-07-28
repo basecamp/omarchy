@@ -406,6 +406,11 @@ Panel {
 
   function clampCursor() {
     var sections = visibleSections
+    // "header" is virtual and never appears in visibleSections, so it has to
+    // be let through: toggling the adapter empties and refills the device
+    // lists, and clamping would knock the cursor off the hero toggle every
+    // time it is used.
+    if (focusSection === "header") return
     if (!sections || !sections.length) {
       selectedIndex = 0
       return
