@@ -165,7 +165,7 @@ Panel {
   // "header" is a virtual section for the hero output mute toggle; it sits
   // above the output section so the speaker can be muted from the keyboard.
   readonly property bool headerHasCursor: cursorActive && focusSection === "header"
-  readonly property int heroRingPad: Style.space(6)
+  readonly property string toggleHint: root.outputMuted ? "Unmute output" : "Mute output"
 
   readonly property color hoverFill: bar
     ? Style.hoverFillFor(bar.foreground, Color.accent)
@@ -373,6 +373,10 @@ Panel {
   function clampCursor() {
     var sections = visibleSections
     if (!sections || !sections.length) return
+    // "header" is virtual and never appears in visibleSections, so it has to
+    // be let through: muting republishes the PipeWire snapshot, and clamping
+    // would knock the cursor off the hero switch on every toggle.
+    if (focusSection === "header") return
     if (sections.indexOf(focusSection) < 0) {
       focusSection = visibleSections[0]
       selectedIndex = sectionHasSlider(focusSection) ? -1 : 0
@@ -670,19 +674,9 @@ Panel {
           Item {
             id: heroItem
             width: parent.width
-            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight) + root.heroRingPad * 2
+            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, powerSwitch.implicitHeight)
 
-            // Keyboard focus ring around the hero output-mute toggle. heroIcon
-            // is inset by heroRingPad so this ring stays inside the clip box.
-            BorderSurface {
-              anchors.fill: heroIcon
-              anchors.margins: -root.heroRingPad
-              color: "transparent"
-              radius: Style.cornerRadius
-              visible: root.headerHasCursor
-              borderSpec: Border.controlSpec("hover-cursor", root.bar.foreground, Color.accent)
-            }
-
+            // Status only — the switch owns muting, mouse and keyboard alike.
             Text {
               id: heroIcon
               text: root.outputIcon()
@@ -691,15 +685,26 @@ Panel {
               font.pixelSize: Style.font.display
               opacity: root.outputMuted ? 0.5 : 1.0
               anchors.left: parent.left
-              anchors.leftMargin: root.heroRingPad
               anchors.verticalCenter: parent.verticalCenter
+            }
 
-              MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onContainsMouseChanged: if (containsMouse) root.setHeaderCursor()
-                onClicked: root.toggleOutputMute()
+            // Compact on/off switch on the trailing edge of the hero, and the
+            // header's only cursor target. Checked means audible, so muting
+            // reads as switching the output off.
+            ToggleSwitch {
+              id: powerSwitch
+              checked: !root.outputMuted
+              hasCursor: root.headerHasCursor
+              foreground: root.bar.foreground
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              onHovered: function(on) { if (on) root.setHeaderCursor() }
+              onToggled: root.toggleOutputMute()
+
+              PanelToolTip {
+                visible: powerSwitch.containsMouse
+                text: root.toggleHint
+                fontFamily: root.bar.fontFamily
               }
             }
 
@@ -708,6 +713,7 @@ Panel {
               anchors.left: heroIcon.right
               anchors.leftMargin: Style.space(14)
               anchors.right: parent.right
+              anchors.rightMargin: powerSwitch.width + Style.space(12)
               anchors.verticalCenter: parent.verticalCenter
               spacing: Style.space(2)
 

@@ -37,9 +37,11 @@ Panel {
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property color iconColor: dropbox.authenticated && dropbox.active ? foreground : dim
+  readonly property string toggleHint: dropbox.active ? "Pause syncing" : "Resume syncing"
   readonly property color barIconColor: dropbox.authenticated && dropbox.active ? barForeground : Qt.darker(barForeground, 1.55)
-  readonly property bool headerHasCursor: cursorActive && focusSection === "header"
-  readonly property int heroRingPad: Style.space(6)
+  // Only claim the header cursor when the switch is actually on screen —
+  // "header" stays navigable, but an absent CLI leaves nothing to highlight.
+  readonly property bool headerHasCursor: cursorActive && focusSection === "header" && dropbox.installed
 
   function ensureCursor() {
     if (!dropbox.authenticated) {
@@ -232,61 +234,46 @@ Panel {
             id: header
             visible: dropbox.authenticated
             width: parent.width
-            implicitHeight: hero.implicitHeight + root.heroRingPad
-            // Exposed for the hero's iconComponent, whose `root` resolves to
+            implicitHeight: hero.implicitHeight
+            // Exposed for the hero's trailingControl, whose `root` resolves to
             // PanelHero (not this Panel) — reach panel state via `header`.
             readonly property bool ringVisible: root.headerHasCursor
-            readonly property int ringPad: root.heroRingPad
             function focusHero() { root.setHeaderCursor() }
 
             PanelHero {
               id: hero
-              x: root.heroRingPad
-              y: root.heroRingPad
-              width: parent.width - root.heroRingPad
+              width: parent.width
               title: "Dropbox"
               meta: dropbox.active ? root.heroPhraseText : "Syncing paused"
               foreground: root.foreground
               fontFamily: root.fontFamily
               iconOpacity: dropbox.active ? 1.0 : 0.5
+              // Status only — the switch owns toggling, mouse and keyboard alike.
               iconComponent: Component {
-                Item {
-                  implicitWidth: heroIcon.implicitWidth
-                  implicitHeight: heroIcon.implicitHeight
+                DropboxIcon {
+                  iconSize: Style.font.display
+                  color: root.iconColor
+                }
+              }
 
-                  // Keyboard focus ring around the hero toggle. The hero is
-                  // inset by heroRingPad so this ring stays inside the
-                  // Flickable's clip box instead of being cut off.
-                  BorderSurface {
-                    anchors.fill: heroIcon
-                    anchors.margins: -header.ringPad
-                    color: "transparent"
-                    radius: Style.cornerRadius
-                    visible: header.ringVisible
-                    borderSpec: Border.controlSpec("hover-cursor", hero.foreground, Color.accent)
-                  }
-
-                  DropboxIcon {
-                    id: heroIcon
-                    iconSize: Style.font.display
-                    color: root.iconColor
-                    anchors.centerIn: parent
-                  }
-
-                  MouseArea {
-                    id: heroMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    enabled: dropbox.installed && !dropbox.busy
-                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onContainsMouseChanged: if (containsMouse) header.focusHero()
-                    onClicked: dropbox.toggleRunning()
-                  }
+              // Compact on/off switch on the trailing edge of the hero, and the
+              // header's only cursor target. The service already flips `active`
+              // optimistically, so the knob throws the instant you click it.
+              trailingControl: Component {
+                ToggleSwitch {
+                  id: powerSwitch
+                  visible: dropbox.installed
+                  checked: dropbox.active
+                  busy: dropbox.busy
+                  hasCursor: header.ringVisible
+                  foreground: hero.foreground
+                  onHovered: function(on) { if (on) header.focusHero() }
+                  onToggled: root.toggleRunning()
 
                   PanelToolTip {
-                    visible: heroMouse.containsMouse
-                    text: dropbox.active ? "Pause syncing" : "Resume syncing"
-                    fontFamily: root.fontFamily
+                    visible: powerSwitch.containsMouse
+                    text: root.toggleHint
+                    fontFamily: hero.fontFamily
                   }
                 }
               }

@@ -91,7 +91,7 @@ Panel {
   // sits above the device sections so the adapter can be toggled by keyboard
   // even when it is off and no device rows exist.
   readonly property bool headerHasCursor: cursorActive && focusSection === "header"
-  readonly property int heroRingPad: Style.space(6)
+  readonly property string toggleHint: root.adapter && root.adapter.enabled ? "Turn Bluetooth off" : "Turn Bluetooth on"
 
   readonly property color hoverFill: bar
     ? Style.hoverFillFor(bar.foreground, Color.accent)
@@ -406,6 +406,11 @@ Panel {
 
   function clampCursor() {
     var sections = visibleSections
+    // "header" is virtual and never appears in visibleSections, so it has to
+    // be let through: toggling the adapter empties and refills the device
+    // lists, and clamping would knock the cursor off the hero switch every
+    // time it is used.
+    if (focusSection === "header") return
     if (!sections || !sections.length) {
       selectedIndex = 0
       return
@@ -540,43 +545,36 @@ Panel {
         // ---------- Hero: Bluetooth icon · status ----------
         Item {
           width: parent.width
-          implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight) + root.heroRingPad * 2
+          implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, powerSwitch.implicitHeight)
 
-          // Keyboard focus ring around the hero Bluetooth toggle. heroIcon is
-          // inset by heroRingPad so this ring stays inside the panel's clip box.
-          BorderSurface {
-            anchors.fill: heroIcon
-            anchors.margins: -root.heroRingPad
-            color: "transparent"
-            radius: Style.cornerRadius
-            visible: root.headerHasCursor
-            borderSpec: Border.controlSpec("hover-cursor", root.bar.foreground, Color.accent)
-          }
-
+          // Status only — the switch owns toggling, mouse and keyboard alike.
           Text {
             id: heroIcon
             anchors.left: parent.left
-            anchors.leftMargin: root.heroRingPad
             anchors.verticalCenter: parent.verticalCenter
             text: root.icon
             color: root.bar.foreground
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.display
             opacity: root.adapter && root.adapter.enabled ? 1.0 : 0.5
+          }
 
-            MouseArea {
-              id: heroIconMouse
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: root.adapter ? Qt.PointingHandCursor : Qt.ArrowCursor
-              enabled: !!root.adapter
-              onContainsMouseChanged: if (containsMouse) root.setHeaderCursor()
-              onClicked: root.toggleBluetooth()
-            }
+          // Compact on/off switch on the trailing edge of the hero, and the
+          // header's only cursor target.
+          ToggleSwitch {
+            id: powerSwitch
+            visible: !!root.adapter
+            checked: !!root.adapter && root.adapter.enabled
+            hasCursor: root.headerHasCursor
+            foreground: root.bar.foreground
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            onHovered: function(on) { if (on) root.setHeaderCursor() }
+            onToggled: root.toggleBluetooth()
 
             PanelToolTip {
-              visible: heroIconMouse.containsMouse
-              text: root.adapter && root.adapter.enabled ? "Turn Bluetooth off" : "Turn Bluetooth on"
+              visible: powerSwitch.containsMouse
+              text: root.toggleHint
               fontFamily: root.bar.fontFamily
             }
           }
@@ -586,6 +584,7 @@ Panel {
             anchors.left: heroIcon.right
             anchors.leftMargin: Style.space(14)
             anchors.right: parent.right
+            anchors.rightMargin: powerSwitch.visible ? powerSwitch.width + Style.space(12) : 0
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(2)
 

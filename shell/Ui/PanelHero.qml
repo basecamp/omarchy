@@ -14,10 +14,16 @@ Item {
   property real iconOpacity: 1.0
   property alias metaOpacity: metaText.opacity
 
+  // Optional control pinned to the trailing edge of the hero — a ToggleSwitch,
+  // a small button. The hero centers it against the labels and reserves the
+  // space itself, so callers never do the geometry.
+  property Component trailingControl: null
+
   readonly property color dim: Qt.darker(foreground, 1.4)
+  readonly property real trailingInset: trailingLoader.item && trailingLoader.item.visible ? trailingLoader.width + Style.space(12) : 0
 
   width: parent ? parent.width : implicitWidth
-  implicitHeight: Math.max(iconLoader.implicitHeight, heroLabels.implicitHeight)
+  implicitHeight: Math.max(iconLoader.implicitHeight, heroLabels.implicitHeight, trailingLoader.implicitHeight)
 
   Loader {
     id: iconLoader
@@ -32,6 +38,7 @@ Item {
     anchors.left: iconLoader.right
     anchors.leftMargin: Style.space(14)
     anchors.right: parent.right
+    anchors.rightMargin: root.trailingInset
     anchors.verticalCenter: parent.verticalCenter
     spacing: Style.space(2)
 
@@ -90,5 +97,12 @@ Item {
       font.letterSpacing: 1.2
       elide: Text.ElideRight
     }
+  }
+
+  Loader {
+    id: trailingLoader
+    sourceComponent: root.trailingControl
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
   }
 }
