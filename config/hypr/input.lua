@@ -1,114 +1,57 @@
--- https://wiki.hypr.land/Configuring/Basics/Variables/#input
+-- Keep only your personal input overrides here. Uncommented settings below
+-- replace Omarchy's defaults.
 
--- Reads the boot-time console/keyboard settings written by the installer,
--- used only as a fallback for a system that hasn't configured a layout
--- through the panel yet.
-local function read_vconsole()
-  local values = {}
-  local file = io.open("/etc/vconsole.conf", "r")
-  if not file then
-    return values
-  end
+-- Keyboard layout and options.
+-- See https://wiki.hypr.land/Configuring/Basics/Variables/#input
+-- hl.config({
+--   input = {
+--     -- Use multiple keyboard layouts and switch between them with Left Alt + Right Alt.
+--     kb_layout = "us,dk,eu",
+--     kb_options = "compose:caps,shift:both_capslock,grp:alts_toggle",
+--
+--     -- Use a specific keyboard variant if needed (e.g. intl for international keyboards).
+--     kb_variant = "intl",
+--
+--     -- Change speed of keyboard repeat.
+--     repeat_rate = 40,
+--     repeat_delay = 250,
+--
+--     -- Start with numlock on by default.
+--     numlock_by_default = true,
+--
+--     -- Increase sensitivity for mouse/trackpad (default: 0).
+--     sensitivity = 0.35,
+--
+--     -- Turn off mouse acceleration (default: adaptive).
+--     accel_profile = "flat",
+--
+--     touchpad = {
+--       -- Use natural (inverse) scrolling.
+--       natural_scroll = true,
+--
+--       -- Use two-finger clicks for right-click instead of lower-right corner.
+--       clickfinger_behavior = true,
+--
+--       -- Control the speed of your scrolling.
+--       scroll_factor = 0.4,
+--
+--       -- Enable the touchpad while typing.
+--       disable_while_typing = false,
+--
+--       -- Left-click-and-drag with three fingers.
+--       drag_3fg = 1,
+--     },
+--   },
+-- })
 
-  for line in file:lines() do
-    local key, value = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
-    if key and value then
-      value = value:gsub("%s+#.*$", "")
-      value = value:gsub('^"(.*)"$', "%1")
-      value = value:gsub("^'(.*)'$", "%1")
-      values[key] = value
-    end
-  end
+-- App-specific touchpad scroll speeds.
+-- o.window("(Alacritty|kitty|foot)", { scroll_touchpad = 1.5 })
+-- o.window("com.mitchellh.ghostty", { scroll_touchpad = 0.2 })
 
-  file:close()
-  return values
-end
+-- Enable touchpad gestures for changing workspaces.
+-- See https://wiki.hypr.land/Configuring/Advanced-and-Cool/Gestures/
+-- hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
 
--- The keyboard panel (bin/omarchy-keyboard-layout) owns this file: it's the
--- list of layouts the user picked via "Add language" plus their chosen
--- switch shortcut. jq is already a hard dependency of the Omarchy CLI
--- scripts, so shelling out to it here is simpler and less error-prone than
--- hand-rolling JSON parsing in Lua.
-local STATE_FILE = os.getenv("HOME") .. "/.local/state/omarchy/settings/keyboard.json"
-
--- Runs a shell command and returns its trimmed stdout, or an empty string
--- if the command couldn't even be started.
-local function popen_trim(cmd)
-  local handle = io.popen(cmd)
-  if not handle then
-    return ""
-  end
-  local result = handle:read("*a") or ""
-  handle:close()
-  return (result:gsub("^%s+", ""):gsub("%s+$", ""))
-end
-
--- Reads one field out of the keyboard state file via jq. Falls back
--- cleanly if the file is missing, unreadable, or the field isn't set --
--- Hyprland should never fail to start just because this file is stale
--- or hasn't been created yet.
-local function state_field(jq_filter, fallback)
-  local cmd = string.format("jq -r %s %q 2>/dev/null", jq_filter, STATE_FILE)
-  local value = popen_trim(cmd)
-  if value == "" or value == "null" then
-    return fallback
-  end
-  return value
-end
-
-local vconsole = read_vconsole()
-
-local kb_layout = state_field("'[.layouts[].code] | join(\",\")'", vconsole.XKBLAYOUT or "us")
-local switcher = state_field("'.switcher // \"alt_shift\"'", "alt_shift")
-
--- The three switch-shortcut presets offered by the keyboard panel's pill
--- row, mapped to the matching xkb grp option.
-local SWITCHER_OPTIONS = {
-  alt_shift = "grp:alt_shift_toggle",
-  ctrl_shift = "grp:ctrl_shift_toggle",
-  right_alt = "grp:toggle",
-}
-
-local grp_option = SWITCHER_OPTIONS[switcher] or SWITCHER_OPTIONS.alt_shift
-
--- Compose is bound to the Menu key, not Caps Lock. "compose:caps" plus
--- "shift:both_capslock" was tried here -- on real hardware it broke every
--- switcher preset outright (Alt+Shift, Ctrl+Shift, Right Alt, Right Shift
--- all stopped switching), not just single-Shift capitalization as originally
--- suspected. Whatever is going on, that combination isn't safe to ship
--- alongside grp switching, so it's reverted to the working baseline.
-local kb_options = "compose:menu," .. grp_option
-
--- Applies everything computed above as Hyprland's live input configuration.
-hl.config({
-  input = {
-    kb_layout = kb_layout,
-    -- Falls back to "" (xkb's default variant) if the system's vconsole.conf
-    -- never set one, or the user hasn't customized their keyboard variant.
-    kb_variant = vconsole.XKBVARIANT or "",
-    kb_model = "",
-    kb_options = kb_options,
-    kb_rules = "",
-    follow_mouse = 1,
-    sensitivity = 0,
-
-    repeat_rate = 40,
-    repeat_delay = 250,
-    numlock_by_default = true,
-
-    touchpad = {
-      natural_scroll = false,
-      clickfinger_behavior = true,
-      scroll_factor = 0.4,
-    },
-  },
-
-  misc = {
-    key_press_enables_dpms = true,
-    mouse_move_enables_dpms = true,
-  },
-})
-
--- Scroll nicely in the terminal.
-o.window("(Alacritty|kitty|foot)", { scroll_touchpad = 1.5 })
-o.window("com.mitchellh.ghostty", { scroll_touchpad = 0.2 })
+-- Enable touchpad gestures for moving focus (helpful on scrolling layout).
+-- hl.gesture({ fingers = 3, direction = "left", action = function() hl.dispatch(hl.dsp.focus({ direction = "l" })) end })
+-- hl.gesture({ fingers = 3, direction = "right", action = function() hl.dispatch(hl.dsp.focus({ direction = "r" })) end })
