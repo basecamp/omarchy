@@ -187,8 +187,10 @@ assertDeepEqual(
   'menu manages plugins from Setup > Plugins'
 )
 assert(
-  ['setup.plugin.enable', 'setup.plugin.disable', 'setup.plugin.remove'].every(id => defaultById[id].provider),
-  'menu fills the plugin lists from a provider'
+  ['enable', 'disable', 'remove'].every(
+    verb => defaultById[`setup.plugin.${verb}`].action === `omarchy-menu-plugin ${verb}`
+  ),
+  'menu picks a plugin the way it already picks a theme or a timezone'
 )
 assert(
   !defaultById['setup.plugin.enable'].when && !defaultById['setup.plugin.disable'].when,
@@ -202,38 +204,33 @@ assert(
   defaultById['setup.plugin.add'].action.includes('omarchy-plugin add'),
   'menu adds a plugin through the CLI, where the trust warning and clone output are visible'
 )
+
+const pluginPicker = fs.readFileSync(path.join(root, 'bin/omarchy-menu-plugin'), 'utf8')
+assert(
+  /enable\).*\(\.enabled \| not\)/.test(pluginPicker) && /disable\).*and \.enabled/.test(pluginPicker),
+  'plugin picker offers what each verb can act on'
+)
+// A whole-bar replacement is chosen under Style rather than switched on here,
+// but it still has to be removable.
+assert(
+  /enable\).*NOT_A_BAR_OPTION/.test(pluginPicker) && /disable\).*NOT_A_BAR_OPTION/.test(pluginPicker)
+    && /remove\).*firstParty/.test(pluginPicker) && !/remove\).*NOT_A_BAR_OPTION/.test(pluginPicker),
+  'plugin picker keeps whole-bar replacements out of enable and disable, but still removable'
+)
+assert(
+  /index\("bar-widget"\)[\s\S]*?omarchy-menu-select "Place \$name" left center right[\s\S]*?omarchy-plugin enable "\$id" --section/.test(pluginPicker),
+  'plugin picker places a bar widget in a chosen section'
+)
+assert(
+  /omarchy-launch-floating-terminal-with-presentation "omarchy-plugin remove/.test(pluginPicker),
+  'plugin picker removes where the confirmation and backup path are visible'
+)
+
+// A font installed since the shell started should show up without a restart.
 const providerBlock = menuQml.match(/readonly property var providers: \(\{[\s\S]*?\n  \}\)/)[0]
 assert(
-  /"plugins-enable": \{[\s\S]*?placementFor: function\(value, section\)[^\n]*omarchy-plugin enable[^\n]*--section " \+ section/.test(providerBlock),
-  'menu enables a bar widget into a chosen section'
-)
-assert(
-  !/"plugins-disable": \{[\s\S]*?placementFor/.test(providerBlock),
-  'menu does not ask for a section when disabling'
-)
-assert(
-  ['plugins-enable', 'plugins-disable', 'plugins-remove'].every(
-    key => new RegExp(`"${key}": \\{[\\s\\S]*?volatile: true`).test(providerBlock)
-  ),
-  'menu re-enumerates the plugin lists every time they are opened'
-)
-// Enable and Disable reach the built-ins. Remove is limited to plugins the
-// user installed, because a built-in has no checkout to delete — but it must
-// still reach a whole-bar replacement, which is the one thing the other two
-// leave out.
-assert(
-  !menuQml.match(/function pluginRowsScript\(filter\) \{([\s\S]*?)\n  \}/)[1].includes('firstParty'),
-  'menu lists built-in plugins too'
-)
-assert(
-  ['plugins-enable', 'plugins-disable'].every(
-    key => new RegExp(`"${key}": \\{\\s*\\n\\s*script: root\\.pluginRowsScript\\(root\\.notABarOption`).test(providerBlock)
-  ),
-  'menu leaves whole-bar replacements out of Enable and Disable'
-)
-assert(
-  /"plugins-remove": \{\s*\n\s*script: root\.pluginRowsScript\("\(\.firstParty \| not\)"\)/.test(providerBlock),
-  'menu offers to remove every plugin the user installed, whole-bar ones included'
+  /"fonts": \{[\s\S]*?volatile: true/.test(providerBlock),
+  'menu re-enumerates the font list every time it is opened'
 )
 assert(
   /function setActiveMenu\([\s\S]*?root\.invalidateVolatileProvider\(id\)\s*\n\s*root\.loadProviderForMenu\(id\)/.test(menuQml)
@@ -245,11 +242,6 @@ assert(
     name => !menuQml.match(new RegExp(`function ${name}\\([^)]*\\) \\{([\\s\\S]*?)\\n  \\}`))[1].includes('invalidateVolatileProvider')
   ),
   'menu search never restarts a volatile provider'
-)
-assertDeepEqual(
-  JSON.parse(menuQml.match(/readonly property var barSections: (\[[\s\S]*?\])/)[1].replace(/(\w+):/g, '"$1":')).map(entry => entry.section),
-  ['left', 'center', 'right'],
-  'menu offers every bar section as a placement'
 )
 assertEqual(
   defaultById['trigger.hardware.laptop-display'].when,

@@ -52,8 +52,9 @@ omarchy plugin update --all          # fetches, shows a diff, fast-forwards
 omarchy plugin remove acme.weather
 ```
 
-The same four operations live in the menu under **Setup › Plugins**. Enable and
-Disable list every plugin, built-in ones included — the bar widgets you can put
+The same four operations live in the menu under **Setup › Plugins**, which
+picks a plugin the way Theme and Timezone pick theirs. Enable and Disable
+offer every plugin, built-in ones included — the bar widgets you can put
 in the bar and the services and overlays you can switch off. Remove is limited
 to plugins you installed yourself, since a built-in has no checkout to delete.
 Enabling a bar widget asks which bar section it belongs in first, and Add opens

@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# omarchy:summary=Pick a shell plugin to enable, disable, or remove
+# omarchy:group=menu
+# omarchy:name=plugin
+# omarchy:args=<enable|disable|remove>
+# omarchy:examples=omarchy menu plugin enable | omarchy menu plugin disable
+
+set -euo pipefail
+
+# Switching a whole-bar replacement on and off is picking which bar to run,
+# which belongs under Style -- but one still has to be removable.
+NOT_A_BAR_OPTION='((.kinds | index("bar")) | not)'
+
+case "${1:-}" in
+  enable) filter="$NOT_A_BAR_OPTION and (.enabled | not)"; prompt="Enable plugin" ;;
+  disable) filter="$NOT_A_BAR_OPTION and .enabled"; prompt="Disable plugin" ;;
+  # A built-in has no checkout to delete, so only what the user installed is
+  # offered -- including a whole-bar replacement, which the lists above skip.
+  remove) filter='(.firstParty | not)'; prompt="Remove plugin" ;;
+  *)
+    echo "Usage: omarchy-menu-plugin <enable|disable|remove>" >&2
+    exit 1
+    ;;
+esac
+
+plugins=$(omarchy-plugin list --json) || exit 1
+
+names=$(jq -r "[.[] | select($filter)] | sort_by(.name)[] | .name" <<<"$plugins")
+[[ -n $names ]] || { omarchy-notification-send "No plugin to ${1}"; exit 0; }
+
+name=$(omarchy-menu-select "$prompt" <<<"$names") || exit 0
+[[ -n $name ]] || exit 0
+
+id=$(jq -r --arg name "$name" 'map(select(.name == $name))[0].id' <<<"$plugins")
+[[ -n $id && $id != "null" ]] || exit 1
+
+case "$1" in
+  enable)
+    # A bar widget lands on the right otherwise, which is rarely where it goes.
+    if jq -e --arg id "$id" 'map(select(.id == $id))[0].kinds | index("bar-widget")' <<<"$plugins" >/dev/null; then
+      section=$(omarchy-menu-select "Place $name" left center right) || exit 0
+      [[ -n $section ]] || exit 0
+      omarchy-plugin enable "$id" --section "$section"
+    else
+      omarchy-plugin enable "$id"
+    fi
+    ;;
+  disable)
+    omarchy-plugin disable "$id"
+    ;;
+  remove)
+    # Removing deletes a checkout, so it runs where its confirmation and the
+    # backup path it prints are visible.
+    omarchy-launch-floating-terminal-with-presentation "omarchy-plugin remove $(printf '%q' "$id")"
+    ;;
+esac
