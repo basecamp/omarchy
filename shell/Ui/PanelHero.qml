@@ -15,6 +15,7 @@ Item {
   property alias metaOpacity: metaText.opacity
 
   readonly property color dim: Qt.darker(foreground, 1.4)
+  readonly property real titleCenterY: heroLabels.y + titleRow.y + titleRow.height / 2
 
   width: parent ? parent.width : implicitWidth
   implicitHeight: Math.max(iconLoader.implicitHeight, heroLabels.implicitHeight)

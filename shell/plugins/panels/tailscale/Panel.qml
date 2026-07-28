@@ -515,7 +515,7 @@ Panel {
               z: 10
               anchors.right: parent.right
               anchors.rightMargin: Style.space(10)
-              anchors.verticalCenter: parent.verticalCenter
+              y: hero.y + hero.titleCenterY - height / 2
               width: Style.space(52)
               height: Style.space(28)
               radius: height / 2
@@ -537,13 +537,14 @@ Panel {
               MouseArea {
                 anchors.fill: parent
                 enabled: !tailscale.busy
+                hoverEnabled: true
                 cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onClicked: tailscale.toggleTailscale()
               }
 
               PanelToolTip {
                 visible: powerSwitchMouse.hovered
-                text: tailscale.active ? "Turn Tailscale off" : "Turn Tailscale on"
+                text: tailscale.active ? "Turn Tailscale off" : (tailscale.needsLogin ? "Authorize this device" : "Turn Tailscale on")
                 fontFamily: root.fontFamily
               }
 
