@@ -244,6 +244,7 @@ Panel {
               x: root.heroRingPad
               y: root.heroRingPad
               width: parent.width - root.heroRingPad
+              rightInset: powerSwitch.visible ? powerSwitch.width + Style.space(20) : 0
               title: "Dropbox"
               meta: dropbox.active ? root.heroPhraseText : "Syncing paused"
               foreground: root.foreground
@@ -323,6 +324,7 @@ Panel {
                 enabled: !dropbox.busy
                 hoverEnabled: true
                 cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onContainsMouseChanged: if (containsMouse) header.focusHero()
                 onClicked: dropbox.toggleRunning()
               }
 

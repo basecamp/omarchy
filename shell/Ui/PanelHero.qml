@@ -12,6 +12,7 @@ Item {
   property string fontFamily: Style.font.family
   property real iconSize: Style.font.display
   property real iconOpacity: 1.0
+  property real rightInset: 0
   property alias metaOpacity: metaText.opacity
 
   readonly property color dim: Qt.darker(foreground, 1.4)
@@ -33,6 +34,7 @@ Item {
     anchors.left: iconLoader.right
     anchors.leftMargin: Style.space(14)
     anchors.right: parent.right
+    anchors.rightMargin: root.rightInset
     anchors.verticalCenter: parent.verticalCenter
     spacing: Style.space(2)
 
