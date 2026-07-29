@@ -52,6 +52,19 @@ omarchy plugin update --all          # fetches, shows a diff, fast-forwards
 omarchy plugin remove acme.weather
 ```
 
+**Setup › Plugins** offers Enable, Disable, Add, and Remove. Enable and Disable
+include built-ins as well as installed plugins. Remove is limited to installed
+plugins, since a built-in has no checkout to delete. Add and Remove open a
+terminal so their warning, confirmation, and output stay visible.
+
+For a bar widget, on and off means its place in the bar. Everything else is
+loaded by default when it is built in, so `shell.json` records only the
+deviation: a third-party plugin you added under `plugins[]`, a built-in you
+switched off under `disabledPlugins[]`. A full bar has no off state: enabling
+one replaces the active bar, and it is therefore never offered under Disable.
+Bar widgets may set `barWidget.defaultSection` to `left`, `center`, or `right`;
+widgets that omit it default to `center`.
+
 Plugins run as **unsandboxed code** inside `omarchy-shell`. Adding warns you
 before cloning, plugins land disabled so you can review the code before
 `omarchy plugin enable`, and updates show a diff before touching anything.
@@ -60,8 +73,9 @@ arguments — add `--yes` to skip every prompt (the path for scripts and agents)
 
 You can still install by hand: drop a plugin into
 `~/.config/omarchy/plugins/<id>/`, run `omarchy plugin rescan`, then
-`omarchy plugin enable <id>` (bar widgets also need `omarchy bar plugin add <id>`;
-full bar replacements are selected with `omarchy bar use <id>`).
+`omarchy plugin enable <id>`. A bar widget starts in its declared default
+section and can be moved with `omarchy bar plugin move`; enabling a full bar
+replaces the one in use.
 The lower-level IPC methods remain available through `omarchy-shell shell ...`.
 
 ## IPC

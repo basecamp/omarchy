@@ -15,7 +15,6 @@
 set -o pipefail
 
 OMARCHY_PATH="${OMARCHY_PATH:-}"
-omarchy-cmd-present jq || { echo "omarchy-plugin-catalog: jq is required" >&2; exit 1; }
 
 paths=()
 
@@ -29,7 +28,8 @@ user_dir="$HOME/.config/omarchy/plugins"
 if [[ -d $user_dir ]]; then
   while IFS= read -r manifest; do
     paths+=("$manifest")
-  done < <(find -L "$user_dir" -mindepth 2 -maxdepth 2 -type f -name manifest.json 2>/dev/null | sort)
+  done < <(find -L "$user_dir" -mindepth 2 -maxdepth 2 -type f -name manifest.json \
+    ! -path "$user_dir/.*/*" 2>/dev/null | sort)
 fi
 
 if (( ${#paths[@]} == 0 )); then

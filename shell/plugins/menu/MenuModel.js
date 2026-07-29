@@ -132,22 +132,32 @@ function mergeAppRows(items, itemOrder, appRows) {
   return { items: nextItems, itemOrder: nextOrder }
 }
 
-// Adds or replaces rows by id, leaving every other item untouched. Used by the
-// bash-backed providers, which contribute rows to one submenu at a time.
-function mergeRowsById(items, itemOrder, rows) {
+// Swaps the rows one provider contributed, leaving every other item untouched.
+// Rows carry the id of the submenu that produced them, so a provider that runs
+// again drops its previous batch — a plugin that was just enabled disappears
+// from the Enable list — without disturbing static children declared in JSONC.
+function swapProviderRows(items, itemOrder, menuId, rows) {
   var source = items || ({})
+  var order = Array.isArray(itemOrder) ? itemOrder : []
   var incoming = Array.isArray(rows) ? rows : []
   var nextItems = ({})
-  var nextOrder = (Array.isArray(itemOrder) ? itemOrder : []).slice()
+  var nextOrder = []
 
-  for (var k in source) nextItems[k] = source[k]
+  for (var i = 0; i < order.length; i++) {
+    var id = order[i]
+    var existing = source[id]
+    if (!existing || existing.providerMenu === menuId) continue
+    nextItems[id] = existing
+    nextOrder.push(id)
+  }
 
-  for (var i = 0; i < incoming.length; i++) {
-    var row = incoming[i]
-    if (!row || !row.id) continue
-    if (!nextItems[row.id]) nextOrder.push(row.id)
+  for (var j = 0; j < incoming.length; j++) {
+    var row = incoming[j]
+    if (!row || !row.id || nextItems[row.id]) continue
+    row.providerMenu = menuId
+    row.order = nextOrder.length
     nextItems[row.id] = row
-    row.order = nextOrder.indexOf(row.id)
+    nextOrder.push(row.id)
   }
 
   return { items: nextItems, itemOrder: nextOrder }
@@ -345,7 +355,7 @@ if (typeof module !== "undefined") {
     parseMenuJsonc: parseMenuJsonc,
     mergeMenuSources: mergeMenuSources,
     mergeAppRows: mergeAppRows,
-    mergeRowsById: mergeRowsById,
+    swapProviderRows: swapProviderRows,
     item: item,
     slugify: slugify,
     depthFor: depthFor,

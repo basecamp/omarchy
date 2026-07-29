@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# omarchy:summary=Pick a shell plugin to enable, disable, or remove
+# omarchy:group=menu
+# omarchy:name=plugin
+# omarchy:args=<enable|disable|remove>
+# omarchy:examples=omarchy menu plugin enable | omarchy menu plugin disable
+
+set -euo pipefail
+
+PLUGIN_ICON=$'\U000f0431'
+
+case "${1:-}" in
+  enable) filter='(.enabled | not)' ;;
+  disable) filter='.canDisable and .enabled' ;;
+  remove) filter='(.firstParty | not)' ;;
+  *)
+    echo "Usage: omarchy-menu-plugin <enable|disable|remove>" >&2
+    exit 1
+    ;;
+esac
+
+plugins=$(omarchy-plugin list --json) || exit 1
+
+# Two plugins may share a name, so keep the id with the row and show it when the
+# name alone cannot identify the pick.
+rows=$(jq -r --arg icon "$PLUGIN_ICON" \
+  "([.[] | select($filter)]) as \$rows
+   | \$rows[]
+   | .name as \$name
+   | (if ([\$rows[] | select(.name == \$name)] | length) > 1 then \$name + \" (\" + .id + \")\" else \$name end) as \$label
+   | \$icon + \"\\t\" + \$label + \"\\t\" + .id" <<<"$plugins")
+[[ -n $rows ]] || { omarchy-notification-send "No plugin to ${1}"; exit 0; }
+
+name=$(omarchy-menu-select "${1^} plugin" < <(cut -f1,2 <<<"$rows")) || exit 0
+[[ -n $name ]] || exit 0
+
+id=$(awk -F'\t' -v label="$name" '$2 == label { print $3; exit }' <<<"$rows")
+[[ -n $id ]] || exit 1
+
+if [[ $1 == "remove" ]]; then
+  omarchy-launch-floating-terminal-with-presentation "omarchy-plugin remove $(printf '%q' "$id")"
+else
+  omarchy-plugin "$1" "$id"
+fi

@@ -903,16 +903,33 @@ ShellRoot {
       for (var id in plugins) {
         var kinds = plugins[id].kinds || []
         var isBarOption = Array.isArray(kinds) && kinds.indexOf("bar") !== -1
+        var isBarWidget = Array.isArray(kinds) && kinds.indexOf("bar-widget") !== -1
         var active = isBarOption && shell.isActiveBarOption(id)
         out.push({
           id: id,
           name: plugins[id].name,
           kinds: kinds,
-          enabled: isBarOption ? active : shell.pluginRegistry.isEnabled(id),
+          // What `omarchy plugin enable/disable` toggles: for a widget that is
+          // its place in the bar, not whether its component is loadable.
+          enabled: isBarOption ? active
+            : (isBarWidget ? shell.pluginRegistry.inBar(id) : shell.pluginRegistry.isEnabled(id)),
           active: active,
+          // A bar has no off, only a successor: you leave one by enabling
+          // another, so there is nothing for disable to do to it. Said here so
+          // that a caller offering the verbs does not have to read kinds and
+          // work it out again.
+          canDisable: !isBarOption,
           firstParty: !!plugins[id].__isFirstParty
         })
       }
+      // Consumers should not each invent their own presentation order.
+      out.sort(function(left, right) {
+        var leftName = String(left.name || left.id)
+        var rightName = String(right.name || right.id)
+        if (leftName < rightName) return -1
+        if (leftName > rightName) return 1
+        return String(left.id).localeCompare(String(right.id))
+      })
       return JSON.stringify(out)
     }
 

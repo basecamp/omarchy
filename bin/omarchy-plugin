@@ -21,7 +21,7 @@ Usage: omarchy-plugin <command> [args...]
 Manage plugins:
   list [--json]                       List discovered shell plugins
   rescan                              Rescan ~/.config/omarchy/plugins
-  enable <id> [placement]             Enable a plugin
+  enable <id> [placement]             Enable a plugin (a bar replaces the one in use)
   disable <id>                        Disable a plugin
 
 Install from git (a plugin is a git repo):
@@ -51,10 +51,6 @@ fail() {
   exit 1
 }
 
-require_command() {
-  omarchy-cmd-present "$1" || fail "$1 is required"
-}
-
 interactive() {
   [[ -t 0 && -t 1 ]]
 }
@@ -78,8 +74,48 @@ valid_plugin_id() {
   [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $1 != *..* ]]
 }
 
+is_bar_option() {
+  omarchy-plugin-catalog | jq -e --arg id "$1" 'any(.[]; .id == $id and (.kinds | index("bar")))' >/dev/null
+}
+
+# Only one bar runs at a time, so enabling one replaces the one before it. Say
+# that rather than "Enabled", which reads like one more thing switched on next
+# to everything already there.
+enabled_message() {
+  local id="$1"
+  if is_bar_option "$id"; then
+    echo "Now using $id as the bar"
+  else
+    echo "Enabled $id"
+  fi
+}
+
+# A bar widget lands on the right when it is enabled, which is rarely where it
+# belongs. Ask once, here, rather than leaving a follow-up 'omarchy bar plugin
+# move' as the only way to place it.
+place_bar_widget() {
+  local id="$1" section default_section
+  interactive || return 0
+  (( ASSUME_YES )) && return 0
+  # A plugin that is also a bar has no place in the layout to ask about.
+  jq -e '(.kinds // []) | (index("bar") | not) and (index("bar-widget") != null)' \
+    "$PLUGINS_DIR/$id/manifest.json" >/dev/null 2>&1 || return 0
+
+  default_section=$(jq -r '.barWidget.defaultSection // "center"' "$PLUGINS_DIR/$id/manifest.json")
+  section=$(printf '%s\n' left center right |
+    gum choose --header="Place $id in which bar section?" --selected "$default_section") || return 0
+  [[ -n $section ]] || return 0
+  omarchy-bar-plugin move "$id" --section "$section" >/dev/null && echo "Placed $id in the $section section"
+}
+
 installed_plugin_ids() {
   find "$PLUGINS_DIR" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) ! -name '.*' -printf '%f\n' 2>/dev/null | sort
+}
+
+plugin_id_manifest() {
+  omarchy-plugin-catalog | jq -r --arg id "$1" '
+    map(select(.id == $id))[0].manifestPath // empty
+  '
 }
 
 plugin_discovered() {
@@ -124,7 +160,6 @@ print_plugins() {
     return
   fi
 
-  require_command jq
   jq -r '
     sort_by(.id)[] |
     [ .id,
@@ -155,9 +190,15 @@ plugin_enabled() {
     fail "disable does not take placement options"
   fi
 
+  # Enabling a bar writes bar.id and touches no layout, so a placement could
+  # only be applied to a widget that is not there. Refuse before the bar is
+  # switched, rather than switching it and failing on the move afterwards.
+  if [[ $enabled == "true" ]] && (( $# > 0 )) && is_bar_option "$id"; then
+    fail "'$id' is a bar; it replaces the bar in use rather than taking a place in one"
+  fi
+
   omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
   if [[ $enabled == "true" ]]; then
-    require_command jq
     wait_for_plugin_discovery "$id" || fail "plugin '$id' was not discovered; is omarchy-shell running?"
   fi
 
@@ -169,7 +210,7 @@ plugin_enabled() {
     omarchy-bar-plugin move "$id" "$@"
     echo "Enabled and moved $id"
   elif [[ $enabled == "true" ]]; then
-    echo "Enabled $id"
+    enabled_message "$id"
   else
     echo "Disabled $id"
   fi
@@ -178,9 +219,6 @@ plugin_enabled() {
 # ---------------------------------------------------------------- add
 
 plugin_add() {
-  require_command git
-  require_command jq
-
   local url="" enable_after=""
   while (( $# > 0 )); do
     case "$1" in
@@ -230,8 +268,17 @@ WARN
     fail "refusing to add: validation failed"
   fi
 
-  local id
+  local id existing_manifest
   id=$(jq -r '.id' "$stage/manifest.json")
+  existing_manifest=$(plugin_id_manifest "$id") || {
+    rm -rf "$stage"
+    fail "could not inspect installed plugin ids"
+  }
+  if [[ -n $existing_manifest ]]; then
+    rm -rf "$stage"
+    fail "plugin id '$id' is already used by $existing_manifest"
+  fi
+
   local target="$PLUGINS_DIR/$id"
   if [[ -e $target || -L $target ]]; then
     rm -rf "$stage"
@@ -254,7 +301,8 @@ WARN
 
   if [[ $enable_after == true ]]; then
     if wait_for_plugin_discovery "$id" && [[ $(omarchy-shell shell setPluginEnabled "$id" true) == "ok" ]]; then
-      echo "Enabled $id"
+      enabled_message "$id"
+      place_bar_widget "$id"
     else
       echo "Could not enable $id (is omarchy-shell running?). Enable later with: omarchy plugin enable $id" >&2
     fi
@@ -310,8 +358,6 @@ update_one() {
 }
 
 plugin_update() {
-  require_command git
-
   local id="" all=0
   while (( $# > 0 )); do
     case "$1" in

@@ -181,6 +181,91 @@ assertEqual(
   'omarchy-bar transparent toggle',
   'menu exposes Menu Bar transparency as a toggle'
 )
+assertDeepEqual(
+  defaultItems.filter(item => item.parent === 'setup.plugin').map(item => item.label),
+  ['Enable Plugin', 'Disable Plugin', 'Add Plugin', 'Remove Plugin'],
+  'menu manages plugins from Setup > Plugins'
+)
+assert(
+  ['enable', 'disable', 'remove'].every(
+    verb => defaultById[`setup.plugin.${verb}`].action === `omarchy-menu-plugin ${verb}`
+  ),
+  'menu picks a plugin the way it already picks a theme or a timezone'
+)
+assert(
+  !defaultById['setup.plugin.enable'].when && !defaultById['setup.plugin.disable'].when,
+  'menu always offers Enable and Disable, which cover the built-in plugins too'
+)
+assert(
+  defaultById['setup.plugin.remove'].when.includes('.config/omarchy/plugins'),
+  'menu hides Remove until a plugin the user installed exists to delete'
+)
+assert(
+  defaultById['setup.plugin.add'].action.includes('omarchy-plugin add'),
+  'menu adds a plugin through the CLI, where the trust warning and clone output are visible'
+)
+
+const pluginPicker = fs.readFileSync(path.join(root, 'bin/omarchy-menu-plugin'), 'utf8')
+assert(
+  /enable\).*\(\.enabled \| not\)/.test(pluginPicker) && /disable\).*\.canDisable and \.enabled/.test(pluginPicker),
+  'plugin picker offers what each verb can act on'
+)
+assert(
+  /remove\).*\(\.firstParty \| not\)/.test(pluginPicker)
+    && !/kinds|bar-widget|A_BAR_OPTION|NOT_A_BAR_OPTION|BAR_ICON/.test(pluginPicker),
+  'plugin picker leaves plugin-kind decisions to its data and the plugin command'
+)
+
+const pluginCli = fs.readFileSync(path.join(root, 'bin/omarchy-plugin'), 'utf8')
+assert(
+  /Now using \$id as the bar/.test(pluginCli)
+    && /enabled_message "\$id"[\s\S]*?place_bar_widget/.test(pluginCli),
+  'plugin enable reports a bar as replacing the one in use, whether enabled or freshly added'
+)
+assert(
+  /\.barWidget\.defaultSection \/\/ "center"/.test(pluginCli)
+    && /gum choose[\s\S]*?--selected "\$default_section"/.test(pluginCli),
+  'interactive plugin add selects the manifest placement or center fallback by default'
+)
+assert(
+  /omarchy-plugin "\$1" "\$id"/.test(pluginPicker),
+  'plugin picker delegates enable and disable without interpreting plugin kinds'
+)
+// Icons ride along as "<glyph>\tlabel"; the menu shows the glyph and hands
+// back the label, so nothing downstream has to strip one off. The id rides in
+// a third field, cut off before the menu is ever shown it. What the picker
+// then does with the row it gets back is checked in menu-plugin-test.sh.
+assert(
+  /\$label \+ \\"\\\\t\\" \+ \.id/.test(pluginPicker)
+    && /omarchy-menu-select "\$\{1\^\} plugin" < <\(cut -f1,2 <<<"\$rows"\)/.test(pluginPicker),
+  'plugin picker labels its rows with glyphs and keeps the id out of the label'
+)
+assert(
+  /var icon = parts\.length > 1 \? parts\.shift\(\) : ""\s*\n\s*var label = parts\.join\("\\t"\)/.test(menuQml),
+  'menu select mode reads a leading icon off an option and filters on the label alone'
+)
+assert(
+  /omarchy-launch-floating-terminal-with-presentation "omarchy-plugin remove/.test(pluginPicker),
+  'plugin picker removes where the confirmation and backup path are visible'
+)
+
+// A font installed since the shell started should show up without a restart.
+const providerBlock = menuQml.match(/readonly property var providers: \(\{[\s\S]*?\n  \}\)/)[0]
+assert(
+  /"fonts": \{[\s\S]*?volatile: true/.test(providerBlock),
+  'menu re-enumerates the font list every time it is opened'
+)
+assert(
+  /function setActiveMenu\([\s\S]*?root\.invalidateVolatileProvider\(id\)\s*\n\s*root\.loadProviderForMenu\(id\)/.test(menuQml)
+    && /function openExistingMenu\([\s\S]*?invalidateVolatileProvider\(activeMenu\)\s*\n\s*loadProviderForMenu\(activeMenu\)/.test(menuQml),
+  'menu invalidates volatile providers when entering a menu, not on every keystroke'
+)
+assert(
+  ['loadProviderForMenu', 'loadProvidersForSearch'].every(
+    name => !menuQml.match(new RegExp(`function ${name}\\([^)]*\\) \\{([\\s\\S]*?)\\n  \\}`))[1].includes('invalidateVolatileProvider')
+  ),
+  'menu search never restarts a volatile provider'
+)
 assertEqual(
   defaultById['trigger.hardware.laptop-display'].when,
   'omarchy-hw-laptop',
@@ -280,15 +365,39 @@ assert(
 )
 
 const providerRowsFor = values => values.map(value => ({ id: `style.font.${value}`, kind: 'action', parent: 'style.font', label: value }))
-const firstProviderMerge = menu.mergeRowsById(nonAppItems, nonAppOrder, providerRowsFor(['mono', 'serif']))
+const firstProviderMerge = menu.swapProviderRows(nonAppItems, nonAppOrder, 'style.font', providerRowsFor(['mono', 'serif']))
 assert(
   firstProviderMerge.itemOrder.join(',') === 'root,apps,style.font.mono,style.font.serif',
   'provider merge appends its rows'
 )
 assert(
-  menu.mergeRowsById(firstProviderMerge.items, firstProviderMerge.itemOrder, providerRowsFor(['mono', 'serif']))
+  menu.swapProviderRows(firstProviderMerge.items, firstProviderMerge.itemOrder, 'style.font', providerRowsFor(['mono', 'serif']))
     .itemOrder.join(',') === 'root,apps,style.font.mono,style.font.serif',
   'repeating a provider merge does not duplicate rows'
+)
+// A plugin drops out of the Enable list the moment it is enabled, so a
+// provider that runs again has to lose the rows it contributed last time.
+const rerunProviderMerge = menu.swapProviderRows(firstProviderMerge.items, firstProviderMerge.itemOrder, 'style.font', providerRowsFor(['serif']))
+assert(
+  rerunProviderMerge.itemOrder.join(',') === 'root,apps,style.font.serif',
+  'provider merge drops rows the provider no longer lists'
+)
+assert(
+  menu.swapProviderRows(firstProviderMerge.items, firstProviderMerge.itemOrder, 'style.other', providerRowsFor([]))
+    .itemOrder.join(',') === 'root,apps,style.font.mono,style.font.serif',
+  'provider merge leaves rows belonging to another provider alone'
+)
+// Rows are keyed by id, so a provider handing over two rows with the same id
+// would lose one. Distinct plugin ids can slugify alike, which is why the
+// menu makes each row id its own before merging.
+assertEqual(
+  ['acme.foo', 'acme_foo', 'acme-foo'].map(menu.slugify).join(','),
+  'acme-foo,acme-foo,acme-foo',
+  'menu slugs collide across plugin ids that differ only in separator'
+)
+assert(
+  /var rowId = menuId \+ "\." \+ root\.slugify\(value\)\s*\n\s*while \(takenIds\[rowId\]\) rowId \+= "-"/.test(menuQml),
+  'menu keeps colliding provider rows apart so none is dropped'
 )
 
 // The maps live in QML `var` properties, where an in-place write is
@@ -299,7 +408,7 @@ assert(
   'menu assigns the rebuilt app item map instead of mutating it in place'
 )
 assert(
-  /var merged = MenuModel\.mergeRowsById\(root\.items, root\.itemOrder, providerRows\)\s*\n\s*root\.items = merged\.items\s*\n\s*root\.itemOrder = merged\.itemOrder/.test(menuQml),
+  /var merged = MenuModel\.swapProviderRows\(root\.items, root\.itemOrder, menuId, providerRows\)\s*\n[\s\S]*?root\.items = merged\.items\s*\n\s*root\.itemOrder = merged\.itemOrder/.test(menuQml),
   'menu assigns the rebuilt provider item map instead of mutating it in place'
 )
 assert(

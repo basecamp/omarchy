@@ -6,6 +6,9 @@
 # omarchy:args=prompt [option...] [-- menu args...]
 # omarchy:examples=omarchy menu select Format jpg png|omarchy-menu-select Resolution 4k 1080p 720p -- --width 400
 
+# An option may lead with an icon, as "<glyph><TAB><label>". The menu shows the
+# glyph and returns the label alone, so callers never strip it back off.
+
 set -euo pipefail
 
 if (( $# < 1 )); then

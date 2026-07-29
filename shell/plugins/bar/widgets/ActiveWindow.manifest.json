@@ -15,6 +15,7 @@
     "displayName": "Active window",
     "description": "Title of the focused window",
     "category": "Compositor",
-    "allowMultiple": false
+    "allowMultiple": false,
+    "defaultSection": "left"
   }
 }
