@@ -914,6 +914,11 @@ ShellRoot {
           enabled: isBarOption ? active
             : (isBarWidget ? shell.pluginRegistry.inBar(id) : shell.pluginRegistry.isEnabled(id)),
           active: active,
+          // A bar has no off, only a successor: you leave one by enabling
+          // another, so there is nothing for disable to do to it. Said here so
+          // that a caller offering the verbs does not have to read kinds and
+          // work it out again.
+          canDisable: !isBarOption,
           firstParty: !!plugins[id].__isFirstParty
         })
       }
