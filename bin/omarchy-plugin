@@ -2,7 +2,7 @@
 
 # omarchy:summary=Manage Omarchy shell plugins and bar widgets
 # omarchy:group=plugin
-# omarchy:args=<list|rescan|enable|disable|add|update|remove|clone|edit|validate> [...]
+# omarchy:args=<list|rescan|enable|disable|add|update|remove|clone|validate> [...]
 # omarchy:examples=omarchy plugin list | omarchy plugin add https://github.com/acme/omarchy-weather.git | omarchy plugin update --all | omarchy plugin clone omarchy.clock
 
 set -euo pipefail
@@ -26,7 +26,6 @@ Install from git (a plugin is a git repo):
 
 Make your own:
   clone <source>                      Clone a built-in plugin
-  edit [id]                           Open a user plugin directory in a shell
   validate <plugin-folder>            Check a plugin's manifest (for authors)
 
 Bar widgets are placed in the layout with 'omarchy bar plugin'.
@@ -63,9 +62,6 @@ update)
   ;;
 remove | rm)
   exec omarchy-plugin-remove "$@"
-  ;;
-edit)
-  exec omarchy-plugin-edit "$@"
   ;;
 clone)
   exec omarchy-plugin-clone "$@"

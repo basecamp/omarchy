@@ -147,7 +147,6 @@ every declared kind and local dependency. A built-in id such as
 
 ```bash
 omarchy plugin clone omarchy.clock
-omarchy plugin edit local.clock      # cd into the plugin directory
 ```
 
 Cloning switches from the built-in to the new local plugin, preserving an
