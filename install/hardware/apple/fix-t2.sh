@@ -20,12 +20,15 @@ if lspci -nn | grep -q "106b:180[12]"; then
 
   mkdir -p /etc/modules-load.d
   {
-    echo "apple-bce"
+    echo "t2bce_vhci"
     echo "hci_bcm4377"
   } > /etc/modules-load.d/t2.conf
 
+  # linux-t2 7.1.4 replaced the apple-bce driver with t2bce; t2bce_vhci is the
+  # virtual USB host controller the internal keyboard hangs off, and mkinitcpio
+  # pulls t2bce_core/t2bce_dma in via module dependencies.
   mkdir -p /etc/mkinitcpio.conf.d
-  echo "MODULES+=(apple-bce usbhid hid_apple hid_generic xhci_pci xhci_hcd)" > \
+  echo "MODULES+=(t2bce_vhci usbhid hid_apple hid_generic xhci_pci xhci_hcd)" > \
     /etc/mkinitcpio.conf.d/apple-t2.conf
 
   mkdir -p /etc/modprobe.d

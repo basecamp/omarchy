@@ -174,6 +174,11 @@ assert(
   clipboardQml.includes('command: ["pkill", "-f", "wl-paste .*--watch .*/shell/plugins/clipboard/capture\\\\.sh"]'),
   'clipboard init reaps stale watchers before starting new ones'
 )
+assertEqual(
+  (clipboardQml.match(/onExited: watchRestartTimer\.restart\(\)/g) || []).length,
+  2,
+  'clipboard respawns both watchers when they die'
+)
 JS
 
 TMPDIR=$(mktemp -d)

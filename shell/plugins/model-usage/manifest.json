@@ -5,15 +5,15 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "license": "MIT",
-  "description": "Claude Code and Codex usage stats in a native Omarchy bar popup.",
+  "description": "Claude Code and Codex usage, limits, and pace in a native Omarchy bar panel.",
   "kinds": ["bar-widget"],
   "activation": "on-demand",
   "entryPoints": {
-    "barWidget": "Widget.qml"
+    "barWidget": "Panel.qml"
   },
   "barWidget": {
     "displayName": "Model Usage",
-    "description": "Shows AI coding assistant usage stats with a tabbed popup panel.",
+    "description": "One bar icon and one panel: rate-limit meters with pace, today, the last week, and the all-time model breakdown for every subscription.",
     "category": "AI",
     "aliases": ["model-usage"],
     "allowMultiple": false,

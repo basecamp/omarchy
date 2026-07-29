@@ -283,6 +283,7 @@ Item {
   Process {
     id: textWatchProc
     command: ["setpriv", "--pdeathsig", "TERM", "wl-paste", "--type", "text", "--watch", root.captureScript, "text"]
+    onExited: watchRestartTimer.restart()
     stdout: SplitParser {
       onRead: function(data) { root.addClipboardJson(data) }
     }
@@ -291,8 +292,22 @@ Item {
   Process {
     id: imageWatchProc
     command: ["setpriv", "--pdeathsig", "TERM", "wl-paste", "--type", "image/png", "--watch", root.captureScript, "image/png"]
+    onExited: watchRestartTimer.restart()
     stdout: SplitParser {
       onRead: function(data) { root.addClipboardJson(data) }
+    }
+  }
+
+  // A watcher that dies takes clipboard history with it, silently: copying still
+  // works, the picker still opens, and the old entries are all still there, so
+  // nothing recorded until the next shell reload. Bring it back instead.
+  Timer {
+    id: watchRestartTimer
+    interval: 1000
+    repeat: false
+    onTriggered: {
+      if (!textWatchProc.running) textWatchProc.running = true
+      if (!imageWatchProc.running) imageWatchProc.running = true
     }
   }
 

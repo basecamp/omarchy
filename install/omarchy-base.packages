@@ -64,7 +64,6 @@ networkmanager
 jq
 kdenlive
 kernel-modules-hook
-kvantum-qt5
 lazydocker
 lazygit
 less
@@ -105,7 +104,6 @@ python-gobject
 python-poetry-core
 python-terminaltexteffects
 qemu-user-static-binfmt
-qt5-wayland
 quickshell-git
 ripgrep
 ruby

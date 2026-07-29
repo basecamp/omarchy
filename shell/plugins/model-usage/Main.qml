@@ -26,23 +26,37 @@ Item {
   }
 
   property var providers: [claudeProvider, codexProvider]
+
+  // A subscription earns a place in the bar and the panel by being switched on
+  // in settings and having actually produced numbers — locally or on a synced
+  // device. Presence on disk is not enough: a box that installed Codex and
+  // never ran it would get a tab full of zeroes. With nothing to show, the
+  // whole module collapses out of the bar rather than sitting there dimmed.
   property var enabledProviders: {
     var rev = syncRevision
     var running = syncRunning
     var result = []
-    if (claudeProvider.enabled) result.push(displayProvider(claudeProvider))
-    if (codexProvider.enabled) result.push(displayProvider(codexProvider))
+    if (claudeProvider.enabled) {
+      var claude = displayProvider(claudeProvider)
+      if (providerHasData(claude)) result.push(claude)
+    }
+    if (codexProvider.enabled) {
+      var codex = displayProvider(codexProvider)
+      if (providerHasData(codex)) result.push(codex)
+    }
     return result
   }
 
-  property int activeIndex: 0
-  property var activeProvider: enabledProviders.length > 0 ? enabledProviders[Math.min(activeIndex, enabledProviders.length - 1)] : null
+  // All-time, not today: a quiet day is not the same as an absent provider.
+  function providerHasData(p) {
+    return numberValue(p.totalPrompts) > 0 || numberValue(p.totalSessions) > 0
+      || numberValue(p.activeDays) > 0 || Number(p.rateLimitPercent) >= 0
+      || Number(p.secondaryRateLimitPercent) >= 0
+  }
+
   property bool refreshing: claudeProvider.refreshing || codexProvider.refreshing || syncRunning
   property double aggregateUpdatedAtMs: aggregateData && aggregateData.updatedAtMs ? Number(aggregateData.updatedAtMs) : 0
   property double lastRefreshedAtMs: Math.max(aggregateUpdatedAtMs, claudeProvider.lastRefreshedAtMs || 0, codexProvider.lastRefreshedAtMs || 0)
-  property string barDisplayMode: setting("barDisplayMode", "active")
-  property int barCycleIntervalSec: Math.max(1, Number(setting("barCycleIntervalSec", 5)))
-  property string barMetric: setting("barMetric", "prompts")
   property int refreshIntervalSec: Math.max(30, Number(setting("refreshIntervalSec", 900)))
 
   property var syncModeSetting: setting("syncMode", setting("syncEnabled", false))
@@ -73,13 +87,6 @@ Item {
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
     return value === undefined || value === null ? fallback : value
-  }
-
-  Timer {
-    interval: root.barCycleIntervalSec * 1000
-    running: root.barDisplayMode === "cycle" && root.enabledProviders.length > 1
-    repeat: true
-    onTriggered: root.activeIndex = (root.activeIndex + 1) % root.enabledProviders.length
   }
 
   Timer {
@@ -145,10 +152,6 @@ Item {
     watchChanges: false
     printErrors: false
     onLoaded: root.detectedHostname = String(text() || "").trim()
-  }
-
-  onEnabledProvidersChanged: {
-    if (enabledProviders.length === 0 || activeIndex >= enabledProviders.length) activeIndex = 0
   }
 
   function providerEnabled(id) {
@@ -355,6 +358,8 @@ Item {
         recentByDay: recentByDay,
         totalPrompts: 0,
         totalSessions: 0,
+        activeDays: 0,
+        activeDates: ({}),
         modelUsage: ({}),
         devices: ({})
       }
@@ -378,6 +383,12 @@ Item {
         acc.todayTotalTokens += numberValue(stats.todayTotalTokens)
         acc.totalPrompts += numberValue(stats.totalPrompts)
         acc.totalSessions += numberValue(stats.totalSessions)
+        // Active days overlap between machines, so union the dates rather than
+        // summing counts. Snapshots written before activeDates existed only
+        // carry a count; the widest one stands in for them.
+        var activeDates = Array.isArray(stats.activeDates) ? stats.activeDates : []
+        for (var ad = 0; ad < activeDates.length; ad++) acc.activeDates[String(activeDates[ad])] = true
+        acc.activeDays = Math.max(acc.activeDays, numberValue(stats.activeDays))
         addObjectNumbers(acc.todayTokensByModel, stats.todayTokensByModel || {})
 
         var recent = Array.isArray(stats.recentDays) ? stats.recentDays : []
@@ -418,6 +429,7 @@ Item {
         recentDays: recentDays,
         totalPrompts: acc.totalPrompts,
         totalSessions: acc.totalSessions,
+        activeDays: Math.max(acc.activeDays, Object.keys(acc.activeDates).length),
         modelUsage: acc.modelUsage,
         deviceCount: providerDevices.length,
         devices: providerDevices
@@ -447,6 +459,8 @@ Item {
       recentDays: cloneValue(provider.recentDays, []),
       totalPrompts: numberValue(provider.totalPrompts),
       totalSessions: numberValue(provider.totalSessions),
+      activeDays: numberValue(provider.activeDays),
+      activeDates: cloneValue(provider.activeDates, []),
       modelUsage: cloneValue(provider.modelUsage, ({}))
     }
   }
@@ -502,6 +516,7 @@ Item {
       recentDays: synced ? (stats.recentDays || []) : provider.recentDays,
       totalPrompts: synced ? numberValue(stats.totalPrompts) : provider.totalPrompts,
       totalSessions: synced ? numberValue(stats.totalSessions) : provider.totalSessions,
+      activeDays: synced ? numberValue(stats.activeDays) : provider.activeDays,
       modelUsage: synced ? (stats.modelUsage || ({})) : provider.modelUsage,
       hasLocalStats: synced ? (stats.hasLocalStats !== false) : provider.hasLocalStats,
 
@@ -523,6 +538,16 @@ Item {
     scheduleSync()
   }
 
+  // Opening the panel wants the numbers that go stale on the wire, not another
+  // walk over every transcript on disk. Forcing a whole refresh would do both,
+  // and re-opening the panel would then rescan the lot each time.
+  function refreshLimits() {
+    for (var i = 0; i < providers.length; i++) {
+      var p = providers[i]
+      if (p.enabled && typeof p.refreshLimits === "function") p.refreshLimits()
+    }
+  }
+
   function formatTokenCount(n) {
     if (n === undefined || n === null) return "0"
     if (n >= 1e9) return (n / 1e9).toFixed(1) + "B"
@@ -531,12 +556,34 @@ Item {
     return String(n)
   }
 
+  function modelWordCase(word) {
+    if (word === "gpt") return "GPT"
+    return word.charAt(0).toUpperCase() + word.slice(1)
+  }
+
+  // Model ids arrive hyphenated with the version split across segments
+  // (`claude-opus-4-8`, `gpt-5.6-sol`). Rejoin the numeric run into one
+  // version and title-case the words around it.
   function friendlyModelName(id) {
     if (!id) return "Unknown"
     var name = String(id).replace(/^claude-/, "").replace(/-\d{8}$/, "")
     var parts = name.split("-")
-    if (parts.length >= 3) return parts[0].charAt(0).toUpperCase() + parts[0].slice(1) + " " + parts[1] + "." + parts[2]
-    if (parts.length === 2) return parts[0].charAt(0).toUpperCase() + parts[0].slice(1) + " " + parts[1]
-    return name.charAt(0).toUpperCase() + name.slice(1)
+    var words = []
+    var version = []
+    for (var i = 0; i < parts.length; i++) {
+      var part = parts[i]
+      if (part === "") continue
+      if (/^\d/.test(part)) {
+        version.push(part)
+        continue
+      }
+      if (version.length > 0) {
+        words.push(version.join("."))
+        version = []
+      }
+      words.push(modelWordCase(part))
+    }
+    if (version.length > 0) words.push(version.join("."))
+    return words.length > 0 ? words.join(" ") : "Unknown"
   }
 }

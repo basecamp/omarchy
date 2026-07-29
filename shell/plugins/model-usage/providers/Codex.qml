@@ -29,6 +29,8 @@ Item {
   property var recentDays: []
   property int totalPrompts: 0
   property int totalSessions: 0
+  property int activeDays: 0
+  property var activeDates: []
   property var modelUsage: ({})
 
   property string tierLabel: ""
@@ -79,6 +81,10 @@ Item {
     usageScanner.running = true
   }
 
+  // Codex reports limits and local stats from the same scanner run, and that
+  // run has no expensive mode to skip, so there is nothing cheaper to do.
+  function refreshLimits() { refresh() }
+
   function parseScannerOutput(output) {
     const raw = String(output || "").trim()
     if (raw === "")
@@ -96,6 +102,8 @@ Item {
       root.recentDays = data.recentDays || []
       root.totalPrompts = data.totalPrompts || 0
       root.totalSessions = data.totalSessions || 0
+      root.activeDays = data.activeDays || 0
+      root.activeDates = data.activeDates || []
       root.modelUsage = data.modelUsage || ({})
 
       root.rateLimitPercent = data.rateLimitPercent ?? -1

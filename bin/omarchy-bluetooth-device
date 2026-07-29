@@ -19,6 +19,7 @@ address=${2:-}
 [[ $address =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]] || usage
 
 power_on() {
+  [[ $(timeout 2s bluetoothctl show 2>/dev/null) == *"Powered: yes"* ]] && return
   bluetoothctl power on >/dev/null 2>&1 || true
   sleep 0.5
 }

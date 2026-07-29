@@ -91,3 +91,45 @@ assert(
   'bluetooth ignores non-sink nodes when matching audio outputs'
 )
 JS
+
+# The power-on shortcut is the whole point of skipping the stabilization sleep:
+# pair/connect from the panel run against an adapter that is already powered.
+device_tmp=$(mktemp -d)
+trap 'rm -rf "$device_tmp"' EXIT
+
+mock_bin="$device_tmp/bin"
+mkdir -p "$mock_bin"
+
+cat >"$mock_bin/bluetoothctl" <<'SH'
+#!/bin/bash
+
+printf '%s\n' "$*" >>"$BLUETOOTHCTL_LOG"
+[[ $1 == "show" ]] && printf '\tPowered: %s\n' "$BLUETOOTHCTL_POWERED"
+exit 0
+SH
+chmod +x "$mock_bin/bluetoothctl"
+
+bluetooth_device_log() {
+  local powered="$1"
+  local log="$device_tmp/$powered.log"
+
+  : >"$log"
+  PATH="$mock_bin:$PATH" BLUETOOTHCTL_LOG="$log" BLUETOOTHCTL_POWERED="$powered" \
+    "$ROOT/bin/omarchy-bluetooth-device" connect AA:BB:CC:DD:EE:FF ||
+    fail "omarchy-bluetooth-device exits cleanly with Powered: $powered"
+  printf '%s' "$log"
+}
+
+powered_log=$(bluetooth_device_log yes)
+grep -qx "power on" "$powered_log" &&
+  fail "bluetooth skips the power-on delay when the adapter is already powered"
+pass "bluetooth skips the power-on delay when the adapter is already powered"
+
+grep -qx "connect AA:BB:CC:DD:EE:FF" "$powered_log" ||
+  fail "bluetooth still connects when the adapter is already powered"
+pass "bluetooth still connects when the adapter is already powered"
+
+unpowered_log=$(bluetooth_device_log no)
+grep -qx "power on" "$unpowered_log" ||
+  fail "bluetooth powers the adapter on when it is off"
+pass "bluetooth powers the adapter on when it is off"

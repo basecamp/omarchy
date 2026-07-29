@@ -17,7 +17,12 @@ if [[ $omarchy_path != "/usr/share/omarchy" ]]; then
   exit 0
 fi
 
-version=$(pacman -Q omarchy 2>/dev/null | awk '{ print $2 }')
+# The edge channel installs omarchy-dev instead of omarchy, so check both.
+for package in omarchy-dev omarchy; do
+  version=$(pacman -Q "$package" 2>/dev/null | awk '{ print $2 }')
+  [[ -n $version ]] && break
+done
+
 [[ -n $version ]] || exit 1
 
 echo "$version"
