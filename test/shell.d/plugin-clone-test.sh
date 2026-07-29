@@ -29,7 +29,7 @@ exec "$OMARCHY_TEST_ROOT/bin/${0##*/}" "$@"
 SH
 done
 
-for command in omarchy-plugin omarchy-notification-send; do
+for command in omarchy-plugin-enable omarchy-plugin-disable omarchy-notification-send; do
   cat >"$TMPDIR/bin/$command" <<'SH'
 #!/bin/bash
 printf '%s %s\n' "${0##*/}" "$*" >>"$FAKE_CALLS"
@@ -141,9 +141,9 @@ jq -e '.bar.id == "local.bar"' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/n
 pass "clone switches full bars"
 
 clone_plugin omarchy.background >/dev/null
-grep -qx 'omarchy-plugin enable local.background' "$CALLS" ||
+grep -qx 'omarchy-plugin-enable local.background' "$CALLS" ||
   fail "clone does not enable an ordinary cloned plugin"
-grep -qx 'omarchy-plugin disable omarchy.background' "$CALLS" ||
+grep -qx 'omarchy-plugin-disable omarchy.background' "$CALLS" ||
   fail "clone does not disable the ordinary source plugin"
 pass "clone switches ordinary plugins"
 

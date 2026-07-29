@@ -1,0 +1,120 @@
+#!/bin/bash
+
+# omarchy:summary=Update installed git-managed plugins
+# omarchy:group=plugin
+# omarchy:args=[id | --all] [--yes]
+# omarchy:examples=omarchy plugin update --all
+
+set -euo pipefail
+
+source omarchy-plugin-common
+
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -oBatchMode=yes}"
+
+UPDATED_ANY=0
+
+update_one() {
+  local id="$1"
+  local dir="$PLUGINS_DIR/$id"
+
+  if ! git -C "$dir" fetch --quiet origin HEAD; then
+    echo "omarchy-plugin-update: fetch failed for '$id'" >&2
+    return 1
+  fi
+
+  if [[ $(git -C "$dir" rev-parse HEAD) == $(git -C "$dir" rev-parse FETCH_HEAD) ]]; then
+    echo "$id is up to date."
+    return 0
+  fi
+
+  if (( ! ASSUME_YES )); then
+    echo "Changes for $id:"
+    if omarchy-cmd-present delta; then
+      git -C "$dir" diff HEAD FETCH_HEAD | delta --paging=never
+    else
+      git -C "$dir" diff HEAD FETCH_HEAD
+    fi
+    echo
+    confirm "Update $id?" || {
+      echo "Skipped $id."
+      return 0
+    }
+  fi
+
+  if ! git -C "$dir" merge --ff-only FETCH_HEAD >/dev/null 2>&1; then
+    echo "omarchy-plugin-update: cannot fast-forward '$id'; you have local changes in $dir" >&2
+    return 1
+  fi
+
+  if ! omarchy-plugin-validate "$dir"; then
+    git -C "$dir" reset --hard ORIG_HEAD >/dev/null
+    echo "omarchy-plugin-update: update of '$id' failed validation; rolled back" >&2
+    return 1
+  fi
+
+  echo "Updated $id."
+  UPDATED_ANY=1
+}
+
+id=""
+all=0
+
+while (( $# > 0 )); do
+  case "$1" in
+  --all | -a)
+    all=1
+    shift
+    ;;
+  --yes | -y)
+    ASSUME_YES=1
+    shift
+    ;;
+  -h | --help)
+    echo "Usage: omarchy plugin update [id | --all] [--yes]"
+    exit 0
+    ;;
+  -*)
+    fail "unknown update option: $1"
+    ;;
+  *)
+    [[ -z $id ]] || fail "unexpected argument: $1"
+    id="$1"
+    shift
+    ;;
+  esac
+done
+
+if (( all )) && [[ -n $id ]]; then
+  fail "pass either a plugin-id or --all, not both"
+fi
+
+[[ -d $PLUGINS_DIR ]] || fail "no plugins installed"
+
+targets=()
+if [[ -n $id ]]; then
+  valid_plugin_id "$id" || fail "invalid plugin id '$id'"
+  [[ -d $PLUGINS_DIR/$id ]] || fail "plugin '$id' is not installed"
+  [[ -d $PLUGINS_DIR/$id/.git ]] ||
+    fail "plugin '$id' is not a git checkout, so there is nothing to pull from"
+  targets=("$id")
+else
+  for dir in "$PLUGINS_DIR"/*/; do
+    [[ -d $dir/.git ]] || continue
+    targets+=("$(basename "$dir")")
+  done
+  if (( ${#targets[@]} == 0 )); then
+    echo "No git-managed plugins installed."
+    exit 0
+  fi
+fi
+
+rc=0
+for id in "${targets[@]}"; do
+  update_one "$id" || rc=1
+done
+
+if (( UPDATED_ANY )); then
+  omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+fi
+exit $rc

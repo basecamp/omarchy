@@ -132,8 +132,8 @@ switch_to_clone() {
       omarchy-bar-plugin add "$new_id"
     fi
   else
-    omarchy-plugin enable "$new_id"
-    omarchy-plugin disable "$source_id"
+    omarchy-plugin-enable "$new_id"
+    omarchy-plugin-disable "$source_id"
   fi
 }
 

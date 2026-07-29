@@ -201,7 +201,7 @@ assert(
   'menu hides Remove until a plugin the user installed exists to delete'
 )
 assert(
-  defaultById['setup.plugin.add'].action.includes('omarchy-plugin add'),
+  defaultById['setup.plugin.add'].action.includes('omarchy-plugin-add'),
   'menu adds a plugin through the CLI, where the trust warning and clone output are visible'
 )
 
@@ -217,19 +217,20 @@ assert(
   'plugin picker leaves plugin-kind decisions to its data and the plugin command'
 )
 
-const pluginCli = fs.readFileSync(path.join(root, 'bin/omarchy-plugin'), 'utf8')
+const pluginCommon = fs.readFileSync(path.join(root, 'bin/omarchy-plugin-common'), 'utf8')
+const pluginAdd = fs.readFileSync(path.join(root, 'bin/omarchy-plugin-add'), 'utf8')
 assert(
-  /Now using \$id as the bar/.test(pluginCli)
-    && /enabled_message "\$id"[\s\S]*?place_bar_widget/.test(pluginCli),
+  /Now using \$id as the bar/.test(pluginCommon)
+    && /enabled_message "\$id"[\s\S]*?place_bar_widget/.test(pluginAdd),
   'plugin enable reports a bar as replacing the one in use, whether enabled or freshly added'
 )
 assert(
-  /\.barWidget\.defaultSection \/\/ "center"/.test(pluginCli)
-    && /gum choose[\s\S]*?--selected "\$default_section"/.test(pluginCli),
+  /\.barWidget\.defaultSection \/\/ "center"/.test(pluginAdd)
+    && /gum choose[\s\S]*?--selected "\$default_section"/.test(pluginAdd),
   'interactive plugin add selects the manifest placement or center fallback by default'
 )
 assert(
-  /omarchy-plugin "\$1" "\$id"/.test(pluginPicker),
+  /plugin_command="omarchy-plugin-\$1"[\s\S]*?"\$plugin_command" "\$id"/.test(pluginPicker),
   'plugin picker delegates enable and disable without interpreting plugin kinds'
 )
 // Icons ride along as "<glyph>\tlabel"; the menu shows the glyph and hands
@@ -246,7 +247,7 @@ assert(
   'menu select mode reads a leading icon off an option and filters on the label alone'
 )
 assert(
-  /omarchy-launch-floating-terminal-with-presentation "omarchy-plugin remove/.test(pluginPicker),
+  /omarchy-launch-floating-terminal-with-presentation "omarchy-plugin-remove/.test(pluginPicker),
   'plugin picker removes where the confirmation and backup path are visible'
 )
 

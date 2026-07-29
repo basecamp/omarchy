@@ -49,7 +49,7 @@ git -C "$incoming" add .
 git -C "$incoming" -c user.name=Test -c user.email=test@example.com commit -qm "Initial"
 
 output=$(HOME="$test_home" OMARCHY_PATH="$ROOT" PATH="$stub_dir:$ROOT/bin:$PATH" \
-  omarchy-plugin add "$incoming" --yes 2>&1) &&
+  omarchy-plugin-add "$incoming" --yes 2>&1) &&
   fail "plugin add accepts an id already installed under another directory" "$output"
 grep -qF "plugin id 'acme.same' is already used by" <<<"$output" ||
   fail "plugin add explains the installed id collision" "$output"

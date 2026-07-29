@@ -1,0 +1,101 @@
+#!/bin/bash
+
+# omarchy:summary=Shared helpers for plugin commands
+# omarchy:group=plugin
+# omarchy:hidden=true
+
+PLUGINS_DIR="$HOME/.config/omarchy/plugins"
+ASSUME_YES=0
+
+fail() {
+  echo "${0##*/}: $*" >&2
+  exit 1
+}
+
+interactive() {
+  [[ -t 0 && -t 1 ]]
+}
+
+confirm() {
+  local prompt="$1"
+  (( ASSUME_YES )) && return 0
+  if interactive; then
+    gum confirm "$prompt"
+    return
+  fi
+  fail "refusing to continue without confirmation; pass --yes"
+}
+
+valid_plugin_id() {
+  [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $1 != *..* ]]
+}
+
+installed_plugin_ids() {
+  find "$PLUGINS_DIR" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) ! -name '.*' -printf '%f\n' 2>/dev/null | sort
+}
+
+is_bar_option() {
+  omarchy-plugin-catalog | jq -e --arg id "$1" '
+    any(.[]; .id == $id and (.kinds | index("bar")))
+  ' >/dev/null
+}
+
+enabled_message() {
+  local id="$1"
+  if is_bar_option "$id"; then
+    echo "Now using $id as the bar"
+  else
+    echo "Enabled $id"
+  fi
+}
+
+plugin_discovered() {
+  local id="$1"
+  local plugins
+  plugins=$(omarchy-shell shell listPlugins 2>/dev/null) || return 1
+  jq -e --arg id "$id" 'any(.[]; .id == $id)' <<<"$plugins" >/dev/null 2>&1
+}
+
+wait_for_plugin_discovery() {
+  local id="$1"
+  local attempt
+  for (( attempt = 0; attempt < 40; attempt++ )); do
+    plugin_discovered "$id" && return 0
+    sleep 0.05
+  done
+  return 1
+}
+
+set_plugin_enabled() {
+  local enabled="$1"
+  local id="${2:-}"
+  [[ -n $id ]] || fail "plugin id is required"
+  shift 2
+
+  if [[ $enabled != "true" ]] && (( $# > 0 )); then
+    fail "disable does not take placement options"
+  fi
+
+  if [[ $enabled == "true" ]] && (( $# > 0 )) && is_bar_option "$id"; then
+    fail "'$id' is a bar; it replaces the bar in use rather than taking a place in one"
+  fi
+
+  omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+  if [[ $enabled == "true" ]]; then
+    wait_for_plugin_discovery "$id" || fail "plugin '$id' was not discovered; is omarchy-shell running?"
+  fi
+
+  local result
+  result=$(omarchy-shell shell setPluginEnabled "$id" "$enabled") ||
+    fail "could not update plugin; is omarchy-shell running?"
+  [[ $result == "ok" ]] || fail "plugin '$id' is not known; run: omarchy plugin rescan"
+
+  if [[ $enabled == "true" ]] && (( $# > 0 )); then
+    omarchy-bar-plugin move "$id" "$@"
+    echo "Enabled and moved $id"
+  elif [[ $enabled == "true" ]]; then
+    enabled_message "$id"
+  else
+    echo "Disabled $id"
+  fi
+}

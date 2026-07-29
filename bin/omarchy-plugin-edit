@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# omarchy:summary=Open a user plugin directory
+# omarchy:group=plugin
+# omarchy:args=[id]
+
+set -euo pipefail
+
+source omarchy-plugin-common
+
+id=""
+
+while (( $# > 0 )); do
+  case "$1" in
+  -h | --help)
+    echo "Usage: omarchy plugin edit [id]"
+    exit 0
+    ;;
+  -*)
+    fail "unknown edit option: $1"
+    ;;
+  *)
+    [[ -z $id ]] || fail "unexpected argument: $1"
+    id="$1"
+    shift
+    ;;
+  esac
+done
+
+if [[ -z $id ]]; then
+  interactive || fail "a plugin id is required"
+  id=$(installed_plugin_ids | gum choose --header="Edit which plugin?") || fail "cancelled"
+  [[ -n $id ]] || fail "nothing selected"
+fi
+valid_plugin_id "$id" || fail "invalid plugin id '$id'"
+[[ $id != omarchy.* ]] || fail "$id is built in; clone it first with: omarchy plugin clone $id"
+
+dir="$PLUGINS_DIR/$id"
+[[ -f $dir/manifest.json ]] || fail "no user plugin at $dir"
+
+if interactive; then
+  cd "$dir"
+  exec "${SHELL:-bash}"
+fi
+printf '%s\n' "$dir"

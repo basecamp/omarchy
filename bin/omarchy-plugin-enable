@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:summary=Enable a shell plugin
+# omarchy:group=plugin
+# omarchy:args=<id> [placement]
+# omarchy:examples=omarchy plugin enable acme.weather --section right
+
+set -euo pipefail
+
+source omarchy-plugin-common
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  echo "Usage: omarchy plugin enable <id> [placement]"
+  exit 0
+fi
+
+set_plugin_enabled true "$@"

@@ -20,7 +20,7 @@ case "${1:-}" in
     ;;
 esac
 
-plugins=$(omarchy-plugin list --json) || exit 1
+plugins=$(omarchy-plugin-list --json) || exit 1
 
 # Two plugins may share a name, so keep the id with the row and show it when the
 # name alone cannot identify the pick.
@@ -43,9 +43,10 @@ if [[ $1 == "clone" ]]; then
   new_id="local.${id#omarchy.}"
   target="$HOME/.config/omarchy/plugins/$new_id"
   omarchy-launch-floating-terminal-with-presentation \
-    "omarchy-plugin clone $(printf '%q' "$id") && exec \$EDITOR $(printf '%q' "$target")"
+    "omarchy-plugin-clone $(printf '%q' "$id") && exec \$EDITOR $(printf '%q' "$target")"
 elif [[ $1 == "remove" ]]; then
-  omarchy-launch-floating-terminal-with-presentation "omarchy-plugin remove $(printf '%q' "$id")"
+  omarchy-launch-floating-terminal-with-presentation "omarchy-plugin-remove $(printf '%q' "$id")"
 else
-  omarchy-plugin "$1" "$id"
+  plugin_command="omarchy-plugin-$1"
+  "$plugin_command" "$id"
 fi
