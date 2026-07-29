@@ -75,6 +75,7 @@ Item {
   property var activePopout: null
   property var barDragSource: null
   property var barDragTarget: null
+  property var barDragTargetGeometry: null
   property bool barDragAfter: false
   property var barDragWindow: null
   property var barDragScreen: null
@@ -180,6 +181,7 @@ Item {
     barDragScreen = null
     barDragImageUrl = ""
     barDragTarget = null
+    barDragTargetGeometry = null
     barDragAfter = false
     barDragSceneX = 0
     barDragSceneY = 0
@@ -204,6 +206,33 @@ Item {
 
   function barDragScreenPoint(scenePoint) {
     return windowScreenPoint(scenePoint, barDragWindow)
+  }
+
+  function dropMarkerRect(slot, after) {
+    if (!slot) return null
+
+    try {
+      var slotPoint = slot.mapToItem(null, 0, 0)
+      var screenPoint = barDragScreenPoint(slotPoint)
+      var thickness = Style.spacing.xs
+      if (vertical) {
+        return {
+          x: screenPoint.x,
+          y: screenPoint.y + (after ? slot.height : 0) - thickness / 2,
+          width: slot.width,
+          height: thickness
+        }
+      }
+
+      return {
+        x: screenPoint.x + (after ? slot.width : 0) - thickness / 2,
+        y: screenPoint.y,
+        width: thickness,
+        height: slot.height
+      }
+    } catch (e) {
+      return null
+    }
   }
 
   // Split the screen along its diagonals (in normalized space, so widescreens
@@ -577,6 +606,14 @@ Item {
 
   function moduleDropAtScene(scenePoint, sourceSlot) {
     var sourceWindow = root.slotWindow(sourceSlot) || root.barDragWindow
+    if (sourceWindow && sourceWindow.contentItem) {
+      var barPoint = sourceWindow.contentItem.mapFromItem(null, scenePoint.x, scenePoint.y)
+      if (barPoint.x < 0 || barPoint.x > sourceWindow.contentItem.width ||
+          barPoint.y < 0 || barPoint.y > sourceWindow.contentItem.height)
+        return null
+    }
+
+    var candidates = []
     for (var i = 0; i < moduleSlots.length; i++) {
       var slot = moduleSlots[i]
       if (!slot || slot === sourceSlot || !slot.visible || slot.width <= 0 || slot.height <= 0) continue
@@ -588,16 +625,16 @@ Item {
       } catch (e) {
       }
 
-      if (scenePoint.x >= slotPoint.x && scenePoint.x <= slotPoint.x + slot.width &&
-          scenePoint.y >= slotPoint.y && scenePoint.y <= slotPoint.y + slot.height) {
-        return {
-          slot: slot,
-          after: root.vertical ? scenePoint.y > slotPoint.y + slot.height / 2 : scenePoint.x > slotPoint.x + slot.width / 2
-        }
-      }
+      candidates.push({
+        slot: slot,
+        x: slotPoint.x,
+        y: slotPoint.y,
+        width: slot.width,
+        height: slot.height
+      })
     }
 
-    return null
+    return BarModel.nearestDropTarget(candidates, scenePoint, root.vertical)
   }
 
   function visibleModuleSlot(region, name, sourceSlot) {
@@ -1061,6 +1098,18 @@ Item {
         opacity: 0.84
       }
     }
+
+    Rectangle {
+      readonly property var targetRect: root.barDragTargetGeometry
+
+      visible: ghostWindow.active && targetRect !== null
+      x: targetRect ? Math.round(targetRect.x) : 0
+      y: targetRect ? Math.round(targetRect.y) : 0
+      width: targetRect ? targetRect.width : 0
+      height: targetRect ? targetRect.height : 0
+      color: Color.accent
+      radius: Math.min(width, height) / 2
+    }
   }
 
   component BarMoveGhostPanel: PanelWindow {
@@ -1494,54 +1543,6 @@ Item {
       }
     }
 
-    Rectangle {
-      visible: !root.vertical && root.barDragTarget === slot && !root.barDragAfter
-      anchors {
-        left: parent.left
-        top: parent.top
-        bottom: parent.bottom
-      }
-      width: 2
-      color: root.barForeground
-      opacity: 0.9
-    }
-
-    Rectangle {
-      visible: !root.vertical && root.barDragTarget === slot && root.barDragAfter
-      anchors {
-        right: parent.right
-        top: parent.top
-        bottom: parent.bottom
-      }
-      width: 2
-      color: root.barForeground
-      opacity: 0.9
-    }
-
-    Rectangle {
-      visible: root.vertical && root.barDragTarget === slot && !root.barDragAfter
-      anchors {
-        left: parent.left
-        right: parent.right
-        top: parent.top
-      }
-      height: 2
-      color: root.barForeground
-      opacity: 0.9
-    }
-
-    Rectangle {
-      visible: root.vertical && root.barDragTarget === slot && root.barDragAfter
-      anchors {
-        left: parent.left
-        right: parent.right
-        bottom: parent.bottom
-      }
-      height: 2
-      color: root.barForeground
-      opacity: 0.9
-    }
-
     MouseArea {
       id: modulePointer
 
@@ -1597,6 +1598,7 @@ Item {
           var drop = root.moduleDropAtScene(scenePoint, slot)
           root.barDragTarget = drop ? drop.slot : null
           root.barDragAfter = drop ? drop.after : false
+          root.barDragTargetGeometry = drop ? root.dropMarkerRect(drop.slot, drop.after) : null
         }
       }
 

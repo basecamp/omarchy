@@ -44,6 +44,53 @@ assert(
   'bar routes panels through the drawn-slot picker'
 )
 
+const clockSlot = { id: 'clock' }
+const traySlot = { id: 'tray' }
+const horizontalTargets = [
+  { slot: clockSlot, x: 100, y: 0, width: 100, height: 26 },
+  { slot: traySlot, x: 500, y: 0, width: 50, height: 26 }
+]
+assertDeepEqual(
+  bar.nearestDropTarget(horizontalTargets, { x: 240, y: 13 }, false),
+  { slot: clockSlot, after: true },
+  'bar resolves free space beside a widget to its nearest insertion edge'
+)
+assertDeepEqual(
+  bar.nearestDropTarget(horizontalTargets, { x: 460, y: 13 }, false),
+  { slot: traySlot, after: false },
+  'bar resolves free space before a widget to its nearest insertion edge'
+)
+assertDeepEqual(
+  bar.nearestDropTarget(horizontalTargets, { x: 125, y: 13 }, false),
+  { slot: clockSlot, after: false },
+  'bar resolves the first half of a widget before it'
+)
+assertDeepEqual(
+  bar.nearestDropTarget(horizontalTargets, { x: 175, y: 13 }, false),
+  { slot: clockSlot, after: true },
+  'bar resolves the second half of a widget after it'
+)
+assertDeepEqual(
+  bar.nearestDropTarget([
+    { slot: clockSlot, x: 0, y: 100, width: 26, height: 80 }
+  ], { x: 13, y: 220 }, true),
+  { slot: clockSlot, after: true },
+  'vertical bars resolve free space along their vertical axis'
+)
+assertEqual(bar.nearestDropTarget([], { x: 10, y: 10 }, false), null, 'bar reports no insertion edge without targets')
+assert(
+  /contentItem\.mapFromItem\(null, scenePoint\.x, scenePoint\.y\)[\s\S]*?return null/.test(barSource),
+  'bar rejects free-space drops after the pointer leaves the bar'
+)
+assert(
+  /BarModel\.nearestDropTarget\(candidates, scenePoint, root\.vertical\)/.test(barSource),
+  'bar uses nearest insertion targeting for widget and free-space drops'
+)
+assert(
+  /component DragGhostPanel:[\s\S]*?readonly property var targetRect: root\.barDragTargetGeometry[\s\S]*?color: Color\.accent/.test(barSource),
+  'bar draws the insertion marker above the bar in the drag overlay'
+)
+
 // The open-panel mark sits on the module's desktop-facing edge at every
 // position: under a top bar, over a bottom one, inward from left and right.
 const indicator = barSource.slice(barSource.indexOf('id: openPanelIndicator'), barSource.indexOf('id: openPanelIndicator') + 1600)
