@@ -5,6 +5,7 @@ set -euo pipefail
 source "$(dirname "$0")/base-test.sh"
 
 unset GUM_STATUS
+unset OMARCHY_UPDATE_FORCE
 unset TEST_AVAILABLE_BYTES
 unset TEST_DF_INVALID
 
@@ -109,6 +110,13 @@ set -e
 [[ ! -f $gum_marker ]] || fail "interactive update stops before confirmation with low disk space"
 [[ ! -f $snapshot_marker ]] || fail "interactive update stops before snapshotting with low disk space"
 pass "interactive update stops before confirmation with low disk space"
+
+rm -f "$snapshot_marker" "$gum_marker"
+output=$(OMARCHY_UPDATE_FORCE=1 run_update -y)
+[[ -z $output ]] || fail "forced update does not emit the free-space warning"
+[[ ! -f $gum_marker ]] || fail "forced non-interactive update does not prompt"
+[[ -f $snapshot_marker ]] || fail "forced update continues with low disk space"
+pass "forced update skips the free-space requirement"
 
 rm -f "$snapshot_marker" "$gum_marker"
 output=$(TEST_AVAILABLE_BYTES=$((10 * 1024 * 1024 * 1024)) run_update -y)

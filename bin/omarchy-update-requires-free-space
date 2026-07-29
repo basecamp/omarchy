@@ -5,10 +5,11 @@
 
 set -e
 
-available_bytes=$(df --output=avail --block-size=1 / 2>/dev/null | tail -n 1)
-available_bytes=${available_bytes//[[:space:]]/}
-
-if [[ $available_bytes =~ ^[0-9]+$ ]] && (( available_bytes < 10 * 1024 * 1024 * 1024 )); then
+if [[ ${OMARCHY_UPDATE_FORCE:-0} == "1" ]]; then
+  exit 0
+elif read -r available_bytes < <(df --output=avail --block-size=1 / 2>/dev/null | tail -n 1) &&
+  [[ $available_bytes =~ ^[0-9]+$ ]] &&
+  (( available_bytes < 10 * 1024 * 1024 * 1024 )); then
   echo "You need at least 10 GiB free to safely update Omarchy."
   exit 1
 else
