@@ -18,6 +18,10 @@ QtObject {
   }
 
   function wheelSteps(accumulator, delta) {
+    // Some mouse/compositor combinations scale a single notch well beyond
+    // Qt's conventional 120 units. Keep one event to one step while still
+    // accumulating the smaller deltas emitted by touchpads.
+    delta = Math.max(-120, Math.min(120, delta))
     if (accumulator * delta < 0) accumulator = 0
     var total = accumulator + delta
     var steps = total < 0 ? Math.ceil(total / 120) : Math.floor(total / 120)
