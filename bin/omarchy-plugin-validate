@@ -28,8 +28,6 @@ USAGE
   exit 0
 fi
 
-omarchy-cmd-present jq || fail "jq is required"
-
 PLUGIN_DIR="${1:-}"
 [[ -n $PLUGIN_DIR && -d $PLUGIN_DIR ]] || fail "plugin folder not found: ${PLUGIN_DIR:-<none>}"
 

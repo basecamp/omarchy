@@ -51,10 +51,6 @@ fail() {
   exit 1
 }
 
-require_command() {
-  omarchy-cmd-present "$1" || fail "$1 is required"
-}
-
 interactive() {
   [[ -t 0 && -t 1 ]]
 }
@@ -158,7 +154,6 @@ print_plugins() {
     return
   fi
 
-  require_command jq
   jq -r '
     sort_by(.id)[] |
     [ .id,
@@ -198,7 +193,6 @@ plugin_enabled() {
 
   omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
   if [[ $enabled == "true" ]]; then
-    require_command jq
     wait_for_plugin_discovery "$id" || fail "plugin '$id' was not discovered; is omarchy-shell running?"
   fi
 
@@ -219,9 +213,6 @@ plugin_enabled() {
 # ---------------------------------------------------------------- add
 
 plugin_add() {
-  require_command git
-  require_command jq
-
   local url="" enable_after=""
   while (( $# > 0 )); do
     case "$1" in
@@ -352,8 +343,6 @@ update_one() {
 }
 
 plugin_update() {
-  require_command git
-
   local id="" all=0
   while (( $# > 0 )); do
     case "$1" in

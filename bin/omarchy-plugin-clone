@@ -14,10 +14,6 @@ fail() {
   exit 1
 }
 
-require_command() {
-  omarchy-cmd-present "$1" || fail "$1 is required"
-}
-
 require_omarchy_path() {
   [[ -n ${OMARCHY_PATH:-} ]] || fail "OMARCHY_PATH is not set"
 }
@@ -39,7 +35,6 @@ validate_plugin_id() {
 
 catalog_json() {
   require_omarchy_path
-  require_command jq
   omarchy-plugin-catalog
 }
 
@@ -224,8 +219,6 @@ USAGE
 }
 
 clone_command() {
-  require_command jq
-  require_command python3
   require_omarchy_path
 
   local source_id=""

@@ -15,7 +15,6 @@
 set -o pipefail
 
 OMARCHY_PATH="${OMARCHY_PATH:-}"
-omarchy-cmd-present jq || { echo "omarchy-plugin-catalog: jq is required" >&2; exit 1; }
 
 paths=()
 
