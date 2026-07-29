@@ -662,9 +662,9 @@ Panel {
         Flickable {
           id: deviceFlick
           width: parent.width
-          height: Math.min(deviceList.implicitHeight + Style.space(6), Style.space(400))
+          height: Math.min(deviceList.implicitHeight, Style.space(400))
           contentWidth: width
-          contentHeight: deviceList.implicitHeight + Style.space(6)
+          contentHeight: deviceList.implicitHeight
           clip: true
           boundsBehavior: Flickable.StopAtBounds
           interactive: contentHeight > height
@@ -688,13 +688,6 @@ Panel {
 
           Column {
             id: deviceList
-            // A header's text can render a sliver above its own box (bold
-            // caps + letter-spacing at this size). The Flickable clips
-            // anything above its own y:0, so without this offset that
-            // sliver gets sliced off the first section header. Shifting the
-            // whole column down a few px inside the Flickable's content
-            // gives it room without affecting visible layout/spacing.
-            y: Style.space(6)
             width: parent.width
             spacing: Style.space(10)
 
