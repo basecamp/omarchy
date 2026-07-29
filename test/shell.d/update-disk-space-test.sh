@@ -89,26 +89,26 @@ set -e
 (( status == 1 )) || fail "free-space helper exits non-zero when disk space is low"
 pass "free-space helper reports low disk space through its exit status"
 
+set +e
 output=$(run_update -y)
+status=$?
+set -e
+(( status == 1 )) || fail "non-interactive update exits non-zero with low disk space"
 [[ $output == *"You need at least 10 GiB free to safely update Omarchy."* ]] || fail "low disk space emits a warning"
 [[ ! -f $gum_marker ]] || fail "non-interactive update does not prompt for low disk space"
-[[ -f $snapshot_marker ]] || fail "non-interactive update continues after warning about low disk space"
-pass "non-interactive update warns and continues with low disk space"
+[[ ! -f $snapshot_marker ]] || fail "non-interactive update stops before snapshotting with low disk space"
+pass "non-interactive update stops with low disk space"
 
 rm -f "$snapshot_marker" "$gum_marker"
-run_update >/dev/null
-grep -q "confirm Continue with update?" "$gum_marker" ||
-  fail "interactive update prompts before continuing with low disk space"
-[[ ! -f $snapshot_marker ]] || fail "declining the low-space prompt skips the update"
-pass "interactive update can be cancelled when disk space is low"
-
-rm -f "$snapshot_marker" "$gum_marker"
-GUM_STATUS=0 run_update >/dev/null
-grep -q "confirm Continue with update?" "$gum_marker" ||
-  fail "interactive update prompts before accepting low disk space"
-(( $(grep -c "^confirm " "$gum_marker") == 1 )) || fail "interactive low-space update only prompts once"
-[[ -f $snapshot_marker ]] || fail "accepting the low-space prompt starts the update"
-pass "interactive update can continue with low disk space"
+set +e
+output=$(run_update)
+status=$?
+set -e
+(( status == 1 )) || fail "interactive update exits non-zero with low disk space"
+[[ $output == *"You need at least 10 GiB free to safely update Omarchy."* ]] || fail "interactive low-space update explains the requirement"
+[[ ! -f $gum_marker ]] || fail "interactive update stops before confirmation with low disk space"
+[[ ! -f $snapshot_marker ]] || fail "interactive update stops before snapshotting with low disk space"
+pass "interactive update stops before confirmation with low disk space"
 
 rm -f "$snapshot_marker" "$gum_marker"
 output=$(TEST_AVAILABLE_BYTES=$((10 * 1024 * 1024 * 1024)) run_update -y)

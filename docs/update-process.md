@@ -138,9 +138,9 @@ Important behavior:
 
 - In dev-link mode, `omarchy update` fast-forwards the active checkout from its
   configured upstream before changing system packages or running migrations.
-- The free-space warning uses a 10 GiB threshold. Low space is called out before
-  the normal interactive confirmation; `-y` updates warn and continue. If free
-  space cannot be determined, the check is silently skipped.
+- The free-space requirement uses a 10 GiB threshold and stops the update before
+  confirmation when it is not met. If free space cannot be determined, the
+  check is silently skipped.
 - `omarchy update` checks/runs migrations in the same visible terminal via
   `omarchy-migrate` after pacman finishes.
 - A failure should leave enough output in `/tmp/omarchy-update.log` and the
