@@ -114,6 +114,8 @@ High-level flow:
 omarchy-update
   ├─ ensure transcript logging through script(1) → /tmp/omarchy-update.log
   ├─ acquire update lock
+  ├─ omarchy-update-requires-free-space
+  │    └─ check free space on / and warn below the configured threshold
   ├─ confirm unless -y
   ├─ create snapper snapshot, if snapper is installed
   └─ run update pipeline
@@ -136,6 +138,9 @@ Important behavior:
 
 - In dev-link mode, `omarchy update` fast-forwards the active checkout from its
   configured upstream before changing system packages or running migrations.
+- The free-space warning uses a 10 GiB threshold. Low space is called out before
+  the normal interactive confirmation; `-y` updates warn and continue. If free
+  space cannot be determined, the check is silently skipped.
 - `omarchy update` checks/runs migrations in the same visible terminal via
   `omarchy-migrate` after pacman finishes.
 - A failure should leave enough output in `/tmp/omarchy-update.log` and the
