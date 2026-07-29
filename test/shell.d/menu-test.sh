@@ -207,19 +207,13 @@ assert(
 
 const pluginPicker = fs.readFileSync(path.join(root, 'bin/omarchy-menu-plugin'), 'utf8')
 assert(
-  /enable\).*\(\.enabled \| not\)/.test(pluginPicker) && /disable\).*and \.enabled/.test(pluginPicker),
+  /enable\).*\(\.enabled \| not\)/.test(pluginPicker) && /disable\).*\.canDisable and \.enabled/.test(pluginPicker),
   'plugin picker offers what each verb can act on'
 )
-// Enabling a bar replaces the one running, so it belongs under enable. Disable
-// is the one verb it cannot answer: a bar has no off, only a successor.
 assert(
-  !/enable\).*NOT_A_BAR_OPTION/.test(pluginPicker) && /disable\).*NOT_A_BAR_OPTION/.test(pluginPicker)
-    && /remove\).*firstParty/.test(pluginPicker) && !/remove\).*NOT_A_BAR_OPTION/.test(pluginPicker),
-  'plugin picker enables and removes a whole-bar replacement, but never disables one'
-)
-assert(
-  /if \$A_BAR_OPTION then \\\$bar else \\\$icon end/.test(pluginPicker),
-  'plugin picker gives a bar its own glyph, so replacing the bar does not look like one more widget'
+  /remove\).*\(\.firstParty \| not\)/.test(pluginPicker)
+    && !/kinds|bar-widget|A_BAR_OPTION|NOT_A_BAR_OPTION|BAR_ICON/.test(pluginPicker),
+  'plugin picker leaves plugin-kind decisions to its data and the plugin command'
 )
 
 const pluginCli = fs.readFileSync(path.join(root, 'bin/omarchy-plugin'), 'utf8')
@@ -229,8 +223,13 @@ assert(
   'plugin enable reports a bar as replacing the one in use, whether enabled or freshly added'
 )
 assert(
-  /index\("bar-widget"\)[\s\S]*?omarchy-menu-select "Place \$name"[\s\S]*?Left[\s\S]*?Center[\s\S]*?Right[\s\S]*?omarchy-plugin enable "\$id" --section "\$\{section,,\}"/.test(pluginPicker),
-  'plugin picker places a bar widget in a chosen section'
+  /\.barWidget\.defaultSection \/\/ "center"/.test(pluginCli)
+    && /gum choose[\s\S]*?--selected "\$default_section"/.test(pluginCli),
+  'interactive plugin add selects the manifest placement or center fallback by default'
+)
+assert(
+  /omarchy-plugin "\$1" "\$id"/.test(pluginPicker),
+  'plugin picker delegates enable and disable without interpreting plugin kinds'
 )
 // Icons ride along as "<glyph>\tlabel"; the menu shows the glyph and hands
 // back the label, so nothing downstream has to strip one off. The id rides in
@@ -238,8 +237,7 @@ assert(
 // then does with the row it gets back is checked in menu-plugin-test.sh.
 assert(
   /\$label \+ \\"\\\\t\\" \+ \.id/.test(pluginPicker)
-    && /omarchy-menu-select "\$prompt" < <\(cut -f1,2 <<<"\$rows"\)/.test(pluginPicker)
-    && /\$'\\U000f0262'"\$\{TAB\}Left"/.test(pluginPicker),
+    && /omarchy-menu-select "\$\{1\^\} plugin" < <\(cut -f1,2 <<<"\$rows"\)/.test(pluginPicker),
   'plugin picker labels its rows with glyphs and keeps the id out of the label'
 )
 assert(

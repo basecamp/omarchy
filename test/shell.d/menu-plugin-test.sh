@@ -21,16 +21,9 @@ cat >"$STUB_DIR/omarchy-plugin" <<'STUB'
 printf 'omarchy-plugin %s\n' "$*" >>"$FAKE_CALLS"
 STUB
 
-# Records the rows it was offered, then answers with the pick under test. The
-# placement prompt passes its options as arguments, so it answers that one from
-# the first option rather than from stdin.
+# Records the rows it was offered, then answers with the pick under test.
 cat >"$STUB_DIR/omarchy-menu-select" <<'STUB'
 #!/bin/bash
-if (( $# > 1 )); then
-  printf 'placement prompt: %s\n' "$1" >>"$FAKE_CALLS"
-  printf '%s\n' "${2#*$'\t'}"
-  exit 0
-fi
 cat >"$FAKE_ROWS"
 printf '%s\n' "$FAKE_PICK"
 STUB
@@ -70,8 +63,8 @@ pick() {
 # verb: neither row can stand on the name alone.
 cat >"$TMPDIR/plugins.json" <<'JSON'
 [
-  {"id": "omarchy.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": false, "active": false, "firstParty": true},
-  {"id": "local.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": false, "active": false, "firstParty": false}
+  {"id": "omarchy.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": false, "active": false, "canDisable": true, "firstParty": true},
+  {"id": "local.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": false, "active": false, "canDisable": true, "firstParty": false}
 ]
 JSON
 
@@ -87,8 +80,8 @@ pass "picker acts on the row that was picked, not the one that shares its name"
 # name alone would still find the wrong plugin, since the other one exists.
 cat >"$TMPDIR/plugins.json" <<'JSON'
 [
-  {"id": "omarchy.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": true, "active": false, "firstParty": true},
-  {"id": "local.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": false, "active": false, "firstParty": false}
+  {"id": "omarchy.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": true, "active": false, "canDisable": true, "firstParty": true},
+  {"id": "local.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": false, "active": false, "canDisable": true, "firstParty": false}
 ]
 JSON
 
@@ -107,7 +100,7 @@ pass "picker removes the plugin whose row was picked"
 # A name that stands alone is left alone: no id trailing a row that needs none.
 cat >"$TMPDIR/plugins.json" <<'JSON'
 [
-  {"id": "acme.weather", "name": "Weather", "kinds": ["bar-widget"], "enabled": false, "active": false, "firstParty": false}
+  {"id": "acme.weather", "name": "Weather", "kinds": ["bar-widget"], "enabled": false, "active": false, "canDisable": true, "firstParty": false}
 ]
 JSON
 
@@ -115,31 +108,29 @@ pick enable "Weather"
 [[ $ROWS == *"Weather"* && $ROWS != *"acme.weather)"* ]] \
   || fail "picker leaves an unambiguous name unadorned" "$ROWS"
 pass "picker leaves an unambiguous name unadorned"
-[[ $CALLS == *"omarchy-plugin enable acme.weather --section left"* ]] \
-  || fail "picker places a bar widget in the section it was given" "$CALLS"
-pass "picker places a bar widget in the section it was given"
+[[ $CALLS == *"omarchy-plugin enable acme.weather"* ]] \
+  || fail "picker delegates plugin enablement to the plugin command" "$CALLS"
+pass "picker delegates plugin enablement to the plugin command"
 
-# A plugin that is both a bar and a widget: enabling it writes bar.id and adds
-# nothing to the layout, so a section would have nothing to apply to.
+# The picker treats every plugin alike and leaves kind-specific behavior to the
+# plugin command.
 cat >"$TMPDIR/plugins.json" <<'JSON'
 [
-  {"id": "acme.fancy", "name": "Fancy", "kinds": ["bar", "bar-widget"], "enabled": false, "active": false, "firstParty": false}
+  {"id": "acme.fancy", "name": "Fancy", "kinds": ["bar", "bar-widget"], "enabled": false, "active": false, "canDisable": false, "firstParty": false}
 ]
 JSON
 
 pick enable "Fancy"
-[[ $CALLS != *"placement prompt"* ]] \
-  || fail "picker does not ask where to put a plugin that replaces the whole bar" "$CALLS"
 [[ $CALLS == *"omarchy-plugin enable acme.fancy"* && $CALLS != *"--section"* ]] \
-  || fail "picker enables a bar without a placement" "$CALLS"
-pass "picker enables a bar without a placement"
+  || fail "picker delegates kind-specific enablement" "$CALLS"
+pass "picker delegates kind-specific enablement"
 
 # A bar has no off, so it is never offered under disable -- including this one,
 # which is a widget too.
 cat >"$TMPDIR/plugins.json" <<'JSON'
 [
-  {"id": "acme.fancy", "name": "Fancy", "kinds": ["bar", "bar-widget"], "enabled": true, "active": true, "firstParty": false},
-  {"id": "omarchy.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": true, "active": false, "firstParty": true}
+  {"id": "acme.fancy", "name": "Fancy", "kinds": ["bar", "bar-widget"], "enabled": true, "active": true, "canDisable": false, "firstParty": false},
+  {"id": "omarchy.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": true, "active": false, "canDisable": true, "firstParty": true}
 ]
 JSON
 
@@ -151,8 +142,8 @@ pass "picker keeps a bar out of disable"
 # The bar in use is the row absent from enable; every other bar is one pick away.
 cat >"$TMPDIR/plugins.json" <<'JSON'
 [
-  {"id": "omarchy.bar", "name": "Bar", "kinds": ["bar"], "enabled": false, "active": false, "firstParty": true},
-  {"id": "local.neon-bar", "name": "Neon Bar", "kinds": ["bar"], "enabled": true, "active": true, "firstParty": false}
+  {"id": "omarchy.bar", "name": "Bar", "kinds": ["bar"], "enabled": false, "active": false, "canDisable": false, "firstParty": true},
+  {"id": "local.neon-bar", "name": "Neon Bar", "kinds": ["bar"], "enabled": true, "active": true, "canDisable": false, "firstParty": false}
 ]
 JSON
 
@@ -167,7 +158,7 @@ pass "picker returns to the built-in bar by enabling it"
 # Nothing the verb can act on is said out loud, not opened as an empty list.
 cat >"$TMPDIR/plugins.json" <<'JSON'
 [
-  {"id": "omarchy.bar", "name": "Bar", "kinds": ["bar"], "enabled": true, "active": true, "firstParty": true}
+  {"id": "omarchy.bar", "name": "Bar", "kinds": ["bar"], "enabled": true, "active": true, "canDisable": false, "firstParty": true}
 ]
 JSON
 

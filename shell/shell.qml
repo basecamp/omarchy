@@ -922,6 +922,14 @@ ShellRoot {
           firstParty: !!plugins[id].__isFirstParty
         })
       }
+      // Consumers should not each invent their own presentation order.
+      out.sort(function(left, right) {
+        var leftName = String(left.name || left.id)
+        var rightName = String(right.name || right.id)
+        if (leftName < rightName) return -1
+        if (leftName > rightName) return 1
+        return String(left.id).localeCompare(String(right.id))
+      })
       return JSON.stringify(out)
     }
 

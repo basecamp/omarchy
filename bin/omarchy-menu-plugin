@@ -8,24 +8,12 @@
 
 set -euo pipefail
 
-TAB=$'\t'
 PLUGIN_ICON=$'\U000f0431'
-BAR_ICON=$'\U000f035c'
-
-A_BAR_OPTION='(.kinds | index("bar"))'
-
-# Exactly one bar runs, so enabling one replaces the one before it. That leaves
-# nothing for disable to mean -- a bar has no off, only a successor -- so bars
-# are offered under enable, where the bar in use is the one absent from the
-# list, and going back to the built-in is enabling it again.
-NOT_A_BAR_OPTION="($A_BAR_OPTION | not)"
 
 case "${1:-}" in
-  enable) filter='(.enabled | not)'; prompt="Enable plugin" ;;
-  disable) filter="$NOT_A_BAR_OPTION and .enabled"; prompt="Disable plugin" ;;
-  # A built-in has no checkout to delete, so only what the user installed is
-  # offered -- the bar in use included, which falls back to the built-in bar.
-  remove) filter='(.firstParty | not)'; prompt="Remove plugin" ;;
+  enable) filter='(.enabled | not)' ;;
+  disable) filter='.canDisable and .enabled' ;;
+  remove) filter='(.firstParty | not)' ;;
   *)
     echo "Usage: omarchy-menu-plugin <enable|disable|remove>" >&2
     exit 1
@@ -34,47 +22,24 @@ esac
 
 plugins=$(omarchy-plugin list --json) || exit 1
 
-# One row per plugin the verb can act on, as "<glyph><TAB><label><TAB><id>". A
-# bar carries its own glyph, so a row that replaces the whole bar does not read
-# like one more widget to switch on. Two plugins may share a name -- cloning one
-# keeps the name it was cloned from -- so a label that is not unique among these
-# rows carries its id, and the id travels with the row rather than being looked
-# up again from a name that could match either.
-rows=$(jq -r --arg icon "$PLUGIN_ICON" --arg bar "$BAR_ICON" \
-  "([.[] | select($filter)] | sort_by(.name)) as \$rows
-   | (\$rows | group_by(.name) | map(select(length > 1) | .[0].name)) as \$ambiguous
+# Two plugins may share a name, so keep the id with the row and show it when the
+# name alone cannot identify the pick.
+rows=$(jq -r --arg icon "$PLUGIN_ICON" \
+  "([.[] | select($filter)]) as \$rows
    | \$rows[]
    | .name as \$name
-   | (if (\$ambiguous | index(\$name)) then \$name + \" (\" + .id + \")\" else \$name end) as \$label
-   | (if $A_BAR_OPTION then \$bar else \$icon end) + \"\\t\" + \$label + \"\\t\" + .id" <<<"$plugins")
+   | (if ([\$rows[] | select(.name == \$name)] | length) > 1 then \$name + \" (\" + .id + \")\" else \$name end) as \$label
+   | \$icon + \"\\t\" + \$label + \"\\t\" + .id" <<<"$plugins")
 [[ -n $rows ]] || { omarchy-notification-send "No plugin to ${1}"; exit 0; }
 
-name=$(omarchy-menu-select "$prompt" < <(cut -f1,2 <<<"$rows")) || exit 0
+name=$(omarchy-menu-select "${1^} plugin" < <(cut -f1,2 <<<"$rows")) || exit 0
 [[ -n $name ]] || exit 0
 
 id=$(awk -F'\t' -v label="$name" '$2 == label { print $3; exit }' <<<"$rows")
 [[ -n $id ]] || exit 1
 
-case "$1" in
-  enable)
-    # A bar widget lands on the right otherwise, which is rarely where it goes.
-    # A plugin that is also a bar takes no section at all: enabling it writes
-    # bar.id and stops, so there would be nothing in the layout to place.
-    if jq -e --arg id "$id" 'map(select(.id == $id))[0].kinds | (index("bar") | not) and (index("bar-widget") != null)' <<<"$plugins" >/dev/null; then
-      section=$(omarchy-menu-select "Place $name" \
-        $'\U000f0262'"${TAB}Left" $'\U000f0260'"${TAB}Center" $'\U000f0263'"${TAB}Right") || exit 0
-      [[ -n $section ]] || exit 0
-      omarchy-plugin enable "$id" --section "${section,,}"
-    else
-      omarchy-plugin enable "$id"
-    fi
-    ;;
-  disable)
-    omarchy-plugin disable "$id"
-    ;;
-  remove)
-    # Removing deletes a checkout, so it runs where its confirmation and the
-    # backup path it prints are visible.
-    omarchy-launch-floating-terminal-with-presentation "omarchy-plugin remove $(printf '%q' "$id")"
-    ;;
-esac
+if [[ $1 == "remove" ]]; then
+  omarchy-launch-floating-terminal-with-presentation "omarchy-plugin remove $(printf '%q' "$id")"
+else
+  omarchy-plugin "$1" "$id"
+fi
