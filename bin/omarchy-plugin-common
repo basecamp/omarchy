@@ -30,37 +30,25 @@ valid_plugin_id() {
   [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $1 != *..* ]]
 }
 
-installed_plugin_ids() {
-  find "$PLUGINS_DIR" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) ! -name '.*' -printf '%f\n' 2>/dev/null | sort
-}
-
-is_bar_option() {
-  omarchy-plugin-catalog | jq -e --arg id "$1" '
-    any(.[]; .id == $id and (.kinds | index("bar")))
-  ' >/dev/null
-}
-
 enabled_message() {
   local id="$1"
-  if is_bar_option "$id"; then
+  if omarchy-plugin-catalog | jq -e --arg id "$id" '
+    any(.[]; .id == $id and (.kinds | index("bar")))
+  ' >/dev/null; then
     echo "Now using $id as the bar"
   else
     echo "Enabled $id"
   fi
 }
 
-plugin_discovered() {
-  local id="$1"
-  local plugins
-  plugins=$(omarchy-shell shell listPlugins)
-  jq -e --arg id "$id" 'any(.[]; .id == $id)' <<<"$plugins" >/dev/null 2>&1
-}
-
 wait_for_plugin_discovery() {
   local id="$1"
   local attempt
+  local plugins
   for (( attempt = 0; attempt < 40; attempt++ )); do
-    plugin_discovered "$id" && return 0
+    plugins=$(omarchy-shell shell listPlugins)
+    jq -e --arg id "$id" 'any(.[]; .id == $id)' <<<"$plugins" >/dev/null 2>&1 &&
+      return 0
     sleep 0.05
   done
   return 1

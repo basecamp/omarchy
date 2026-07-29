@@ -18,7 +18,9 @@ id="${1:-}"
 [[ -n $id ]] || fail "plugin id is required"
 shift
 
-if (( $# > 0 )) && is_bar_option "$id"; then
+if (( $# > 0 )) && omarchy-plugin-catalog | jq -e --arg id "$id" '
+  any(.[]; .id == $id and (.kinds | index("bar")))
+' >/dev/null; then
   fail "'$id' is a bar; it replaces the bar in use rather than taking a place in one"
 fi
 

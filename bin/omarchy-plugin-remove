@@ -36,7 +36,10 @@ done
 
 if [[ -z $id ]]; then
   interactive || fail "a plugin-id is required"
-  id=$(installed_plugin_ids | gum choose --header="Remove which plugin?") || fail "cancelled"
+  id=$(find "$PLUGINS_DIR" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) \
+    ! -name '.*' -printf '%f\n' 2>/dev/null |
+    sort |
+    gum choose --header="Remove which plugin?") || fail "cancelled"
   [[ -n $id ]] || fail "nothing selected"
 fi
 valid_plugin_id "$id" || fail "invalid plugin id '$id'"
