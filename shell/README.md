@@ -137,7 +137,7 @@ You can still drop a plugin in without git:
 
 The lower-level IPC equivalents remain available via `omarchy-shell shell rescanPlugins`,
 `omarchy-shell shell setPluginEnabled <id> true`, and `omarchy-shell shell listPlugins`.
-The `omarchy plugin` command wraps those calls and can also edit the persisted
+The `omarchy plugin` commands wrap those calls and can also edit the persisted
 bar layout in `shell.json`.
 
 To hack on a built-in plugin safely, clone it into user config instead of
