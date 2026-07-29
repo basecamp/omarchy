@@ -95,6 +95,13 @@ Panel {
     searchText = ""
     focusSection = "languages"
     selectedIndex = 0
+    // The search field held keyboard focus while typing/selecting; nothing
+    // moves it back automatically just because it's now hidden, so without
+    // this, the (invisible) field keeps active focus and every subsequent
+    // Enter press keeps firing its onAccepted handler -- silently adding
+    // whatever is now at the top of the remaining available list, over and
+    // over. Same fix as closeAddView() below.
+    keyCatcher.forceActiveFocus()
   }
 
   // Removes a configured layout. Guarded on both sides (here and in the
