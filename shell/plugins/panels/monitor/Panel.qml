@@ -27,11 +27,7 @@ Panel {
   property var displays: []
   property int enabledDisplayCount: 0
 
-  // Raw wheel delta accumulated between discrete brightness steps. A mouse
-  // notch (delta = ±120) crosses the threshold and fires one step
-  // immediately; a touchpad's stream of small deltas piles up here until it
-  // crosses that same threshold, so both devices move brightness in
-  // identical 5% steps. Mirrors the audio panel's wheelAccumulator.
+  // Carry sub-notch touchpad deltas between wheel events.
   property real wheelAccumulator: 0
 
   // Cursor model shared by keyboard and mouse. Sections:
@@ -238,7 +234,7 @@ Panel {
   }
 
   function setBrightness(value) {
-    var percent = Math.max(5, Model.clampBrightness(value))
+    var percent = Model.clampBrightness(value)
     root.brightnessPercent = percent
     root.pendingBrightnessPercent = percent
 
@@ -253,19 +249,16 @@ Panel {
   }
 
   function previewBrightness(value) {
-    // Floor at 5%: never let the live drag preview show (or briefly send)
-    // a lower value while the slider is being dragged.
-    root.brightnessPercent = Math.max(5, Model.clampBrightness(value))
+    root.brightnessPercent = Model.clampBrightness(value)
     brightnessDebounce.restart()
   }
 
-  // Mirrors what omarchy-brightness-display shows after a keyboard raise/
-  // lower, so scrolling the bar icon gets the same OSD feedback instead of
-  // only the hardware brightness keys. "brightness" is the exact icon name
-  // the CLI itself passes to omarchy-osd.
-  function showBrightnessOsd() {
-    osdProc.command = ["omarchy-osd", "-i", "brightness", "-p", String(root.brightnessPercent)]
-    osdProc.running = true
+  function showBrightnessOsd(percent) {
+    if (!bar || !bar.shell) return
+    bar.shell.summon("omarchy.osd", JSON.stringify({
+      icon: "brightness",
+      value: percent
+    }))
   }
 
   function normalizeScale(scale) {
@@ -442,10 +435,6 @@ Panel {
     onRunningChanged: if (!running) root.refresh()
   }
 
-  Process {
-    id: osdProc
-  }
-
   // Applies text size via the CLI, which rewrites the shell override file;
   // Style picks the new base-size up through its own file watch, so there's
   // nothing to refresh here.
@@ -484,29 +473,11 @@ Panel {
     onPressed: function(b) { root.toggle() }
     onWheelMoved: function(delta) {
       if (!root.brightnessAvailable) return
-      // One step = 120 units, matching a single mouse notch, so a mouse
-      // click still moves exactly 5%. A touchpad's small deltas pile up in
-      // wheelAccumulator until they cross that same threshold, then fire
-      // the identical 5% step. The OSD is only pinged when a step actually
-      // lands (not on a fixed timer), so it stays open and updates exactly
-      // in step with the real scroll rhythm -- no tick separate from your
-      // finger's motion -- and only starts counting down to hide once you
-      // stop scrolling (each ping restarts its own hide timer).
-      var stepUnits = 120
-      var stepSize = 5
-      var stepped = false
-      root.wheelAccumulator += delta
-      while (root.wheelAccumulator >= stepUnits) {
-        root.setBrightness(root.brightnessPercent + stepSize)
-        root.wheelAccumulator -= stepUnits
-        stepped = true
-      }
-      while (root.wheelAccumulator <= -stepUnits) {
-        root.setBrightness(root.brightnessPercent - stepSize)
-        root.wheelAccumulator += stepUnits
-        stepped = true
-      }
-      if (stepped) root.showBrightnessOsd()
+      var wheel = Util.wheelSteps(root.wheelAccumulator, delta)
+      root.wheelAccumulator = wheel.remainder
+      if (wheel.steps === 0) return
+      root.setBrightness(root.brightnessPercent + wheel.steps * 5)
+      root.showBrightnessOsd(root.brightnessPercent)
     }
   }
 
@@ -657,7 +628,7 @@ Panel {
                 anchors.fill: parent
                 anchors.leftMargin: Style.space(6)
                 anchors.rightMargin: Style.space(6)
-                minimum: 5
+                minimum: 1
                 maximum: 100
                 step: 1
                 value: root.brightnessPercent
