@@ -121,6 +121,13 @@ widget_is_known() {
   ' >/dev/null
 }
 
+widget_default_section() {
+  omarchy-plugin-catalog | jq -r --arg id "$1" '
+    (map(select(.id == $id))[0].barWidget.defaultSection // "center") as $section
+    | if ["left", "center", "right"] | index($section) then $section else "center" end
+  '
+}
+
 # --------------------------------------------------------------------- placement
 
 # Parse placement flags shared by add/move/remove/set. Sets the globals below.
@@ -217,7 +224,7 @@ cmd_add() {
 
   widget_is_known "$id" || fail "$id is not a known bar widget; run 'omarchy plugin list' to see valid ids"
 
-  local default_section="${PLACEMENT_SECTION:-right}"
+  local default_section="${PLACEMENT_SECTION:-$(widget_default_section "$id")}"
   local explicit="false"
   if [[ -n $PLACEMENT_INDEX || -n $PLACEMENT_BEFORE || -n $PLACEMENT_AFTER || $PLACEMENT_DUPLICATE == true ]]; then
     explicit="true"

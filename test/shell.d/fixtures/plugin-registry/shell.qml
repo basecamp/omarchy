@@ -50,8 +50,8 @@ ShellRoot {
     }
   }
 
-  function manifest(id, kinds, entryPoints) {
-    return {
+  function manifest(id, kinds, entryPoints, barWidget) {
+    var value = {
       schemaVersion: 1,
       id: id,
       name: id,
@@ -59,6 +59,8 @@ ShellRoot {
       kinds: kinds,
       entryPoints: entryPoints
     }
+    if (barWidget) value.barWidget = barWidget
+    return value
   }
 
   function block(kind, source, payload) {
@@ -81,12 +83,13 @@ ShellRoot {
     scan += block("firstparty", "/first/bar", manifest("omarchy.bar", ["bar"], { bar: "Bar.qml" }))
     scan += block("firstparty", "/first/panels/grouped", manifest("omarchy.grouped-panel", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/panel", manifest("third.panel", ["panel"], { panel: "Panel.qml" }))
-    scan += block("thirdparty", "/third/widget", manifest("third.widget", ["bar-widget"], { barWidget: "Widget.qml" }))
+    scan += block("thirdparty", "/third/widget", manifest("third.widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "left" }))
     scan += block("thirdparty", "/third/bar", manifest("third.bar", ["bar"], { bar: "Bar.qml" }))
     scan += block("thirdparty", "/third/shadow", manifest("omarchy.first-widget", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/reserved", manifest("omarchy.reserved", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/unsafe", manifest("third.unsafe", ["panel"], { panel: "../Panel.qml" }))
     scan += block("thirdparty", "/third/missing", { schemaVersion: 1, id: "third.missing", name: "missing", version: "1.0.0", kinds: ["panel"] })
+    scan += block("thirdparty", "/third/bad-section", manifest("third.bad-section", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "bottom" }))
     scan += block("thirdparty", "/third/schema", { schemaVersion: 2, id: "third.schema", name: "schema", version: "1.0.0", kinds: ["panel"], entryPoints: { panel: "Panel.qml" } })
     scan += block("thirdparty", "/third/bad-json", "{")
 
@@ -110,6 +113,7 @@ ShellRoot {
     root.assertTrue(!has("omarchy.reserved"), "third-party omarchy namespace ids are rejected")
     root.assertTrue(!has("third.unsafe"), "unsafe entry points are rejected")
     root.assertTrue(!has("third.missing"), "incomplete manifests are rejected")
+    root.assertTrue(!has("third.bad-section"), "invalid default bar widget sections are rejected")
     root.assertTrue(!has("third.schema"), "unsupported schema versions are rejected")
 
     root.assertTrue(registry.isEnabled("omarchy.first-widget"), "first-party plugins are implicitly enabled")
@@ -132,10 +136,10 @@ ShellRoot {
     root.assertDeepEqual(root.config.plugins, [], "disabling third-party panels removes plugins array entry")
 
     registry.setEnabled("third.widget", true)
-    root.assertDeepEqual(root.config.bar.layout.right, [{ id: "third.widget" }], "enabling bar widgets appends to right layout")
+    root.assertDeepEqual(root.config.bar.layout.left, [{ id: "third.widget" }], "enabling bar widgets uses their default section")
     root.assertTrue(registry.isEnabled("third.widget"), "enabled bar widgets are found")
     registry.setEnabled("third.widget", false)
-    root.assertDeepEqual(root.config.bar.layout.right, [], "disabling bar widgets removes layout entry")
+    root.assertDeepEqual(root.config.bar.layout.left, [], "disabling bar widgets removes layout entry")
 
     root.config = {
       version: 1,
@@ -177,7 +181,7 @@ ShellRoot {
     root.assertTrue(!registry.inBar("omarchy.first-widget"), "inBar follows the widget out of the layout")
     root.assertTrue(registry.isEnabled("omarchy.first-widget"), "a first-party widget stays loadable off the bar")
     registry.setEnabled("omarchy.first-widget", true)
-    root.assertDeepEqual(root.config.bar.layout.right, [{ id: "omarchy.first-widget" }], "enabling a first-party widget puts it back in the bar")
+    root.assertDeepEqual(root.config.bar.layout.center, [{ id: "omarchy.first-widget" }], "a widget without a default section falls back to center")
 
     root.assertTrue(changeCount > 0, "registry emits change notifications")
     writeResult()

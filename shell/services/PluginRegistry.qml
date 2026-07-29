@@ -67,6 +67,14 @@ QtObject {
       console.warn("PluginRegistry: entryPoints must be an object at " + sourcePath)
       return null
     }
+    if (manifest.barWidget !== undefined && Util.isPlainObject(manifest.barWidget)
+        && manifest.barWidget.defaultSection !== undefined) {
+      var defaultSection = String(manifest.barWidget.defaultSection)
+      if (["left", "center", "right"].indexOf(defaultSection) === -1) {
+        console.warn("PluginRegistry: invalid barWidget.defaultSection at " + sourcePath)
+        return null
+      }
+    }
     // Every entry point must be a relative path inside the plugin's source
     // directory. Reject the whole manifest if anything looks like an attempt
     // to escape the plugin's sandbox.
@@ -143,6 +151,12 @@ QtObject {
     return findEntryLocation(config, id).kind === "bar"
   }
 
+  function defaultBarWidgetSection(manifest) {
+    var metadata = manifest && Util.isPlainObject(manifest.barWidget) ? manifest.barWidget : null
+    var section = metadata ? String(metadata.defaultSection || "") : ""
+    return ["left", "center", "right"].indexOf(section) !== -1 ? section : "center"
+  }
+
   function findEntryLocation(config, id) {
     if (!Util.isPlainObject(config)) return { found: false }
     var key = Util.canonicalWidgetId(String(id))
@@ -168,11 +182,11 @@ QtObject {
     return { found: false }
   }
 
-  // Adding a plugin places it in the right section based on its declared
-  // kinds. Bar widgets default to the right section; panels/overlays/menus/
-  // services go into the plugins[] array. Built-ins are already loaded, so
-  // shell.json only ever records the deviation: an added third-party plugin
-  // in plugins[], a switched-off built-in in disabledPlugins[].
+  // Bar widgets use the default section declared in their manifest, falling
+  // back to center. Panels/overlays/menus/services go into the plugins[] array.
+  // Built-ins are already loaded, so shell.json only ever records the
+  // deviation: an added third-party plugin in plugins[], a switched-off
+  // built-in in disabledPlugins[].
   function setEnabled(id, value) {
     var key = Util.canonicalWidgetId(String(id))
     if (!shellConfigMutator) {
@@ -214,8 +228,9 @@ QtObject {
         if (location.found) return
         var entry = { id: key }
         if (isBarWidget) {
-          if (!Array.isArray(config.bar.layout.right)) config.bar.layout.right = []
-          config.bar.layout.right.push(entry)
+          var section = defaultBarWidgetSection(manifest)
+          if (!Array.isArray(config.bar.layout[section])) config.bar.layout[section] = []
+          config.bar.layout[section].push(entry)
         } else if (!isFirstParty) {
           config.plugins.push(entry)
         }

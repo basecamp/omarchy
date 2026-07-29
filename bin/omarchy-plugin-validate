@@ -62,6 +62,19 @@ jq -e '(.kinds | type) == "array" and (.kinds | length) > 0' "$MANIFEST" >/dev/n
 jq -e '(.entryPoints | type) == "object"' "$MANIFEST" >/dev/null 2>&1 \
   || fail "'entryPoints' must be an object"
 
+# A bar widget may declare where it should land when enabled without an
+# explicit placement.
+jq -e '
+  if ((.barWidget? | type) == "object" and (.barWidget | has("defaultSection"))) then
+    .barWidget.defaultSection as $section
+    | ($section | type) == "string"
+      and (["left", "center", "right"] | index($section)) != null
+  else
+    true
+  end
+' "$MANIFEST" >/dev/null 2>&1 \
+  || fail "'barWidget.defaultSection' must be left, center, or right"
+
 # Read each entry point as a JSON-encoded string (one per line), then decode it,
 # so a value that itself contains a newline stays one literal path instead of
 # being split into fragments that each pass the checks.

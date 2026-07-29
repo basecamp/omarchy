@@ -253,28 +253,44 @@ pass "shell config resets to built-in bar option"
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin add omarchy.tailscale
 jq -e '
   def ids: map(.id // .);
-  .bar.layout.right | ids == ["omarchy.tray", "omarchy.tailscale", "omarchy.bluetooth"]
+  .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "omarchy.tailscale"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
-pass "shell config appends widgets to right by default"
+pass "shell config defaults widgets without a section to center"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin add omarchy.active-window left
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin add omarchy.active-window
 jq -e '
   def ids: map(.id // .);
   .bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces", "omarchy.active-window"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
-pass "shell config appends left widgets after workspaces"
+pass "shell config uses a widget's default section"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin add omarchy.media
+jq -e '
+  def ids: map(.id // .);
+  .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "omarchy.media", "omarchy.tailscale"]
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin remove omarchy.media >/dev/null
+pass "shell config honors a center default section"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin add omarchy.dropbox
+jq -e '
+  def ids: map(.id // .);
+  .bar.layout.right | ids == ["omarchy.tray", "omarchy.dropbox", "omarchy.bluetooth"]
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin remove omarchy.dropbox >/dev/null
+pass "shell config honors a right default section"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin add omarchy.system-update center
 jq -e '
   def ids: map(.id // .);
-  .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "omarchy.system-update"]
+  .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "omarchy.system-update", "omarchy.tailscale"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config appends center widgets after weather"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin add omarchy.microphone right
 jq -e '
   def ids: map(.id // .);
-  .bar.layout.right | ids == ["omarchy.tray", "omarchy.microphone", "omarchy.tailscale", "omarchy.bluetooth"]
+  .bar.layout.right | ids == ["omarchy.tray", "omarchy.microphone", "omarchy.bluetooth"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config moves existing widgets without duplicates"
 
@@ -282,7 +298,7 @@ HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin move omarchy.active-
 jq -e '
   def ids: map(.id // .);
   (.bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces"]) and
-  (.bar.layout.right | ids == ["omarchy.tray", "omarchy.active-window", "omarchy.microphone", "omarchy.tailscale", "omarchy.bluetooth"])
+  (.bar.layout.right | ids == ["omarchy.tray", "omarchy.active-window", "omarchy.microphone", "omarchy.bluetooth"])
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "bar plugin move accepts a positional target section"
 
@@ -290,7 +306,7 @@ HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin move omarchy.active-
 jq -e '
   def ids: map(.id // .);
   (.bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces", "omarchy.active-window"]) and
-  (.bar.layout.right | ids == ["omarchy.tray", "omarchy.microphone", "omarchy.tailscale", "omarchy.bluetooth"])
+  (.bar.layout.right | ids == ["omarchy.tray", "omarchy.microphone", "omarchy.bluetooth"])
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "bar plugin move can restore a widget with positional syntax"
 
@@ -327,15 +343,15 @@ HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin drop omarchy.active-
 jq -e '
   def ids: map(.id // .);
   (.bar.layout.left | ids == ["omarchy.menu", "omarchy.workspaces"]) and
-  (.bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "omarchy.system-update"]) and
-  (.bar.layout.right | ids == ["omarchy.tray", "omarchy.microphone", "omarchy.tailscale", "omarchy.bluetooth"])
+  (.bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "omarchy.system-update", "omarchy.tailscale"]) and
+  (.bar.layout.right | ids == ["omarchy.tray", "omarchy.microphone", "omarchy.bluetooth"])
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config drops widgets from any section"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar-plugin remove omarchy.system-update
 jq -e '
   def ids: map(.id // .);
-  .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather"]
+  .bar.layout.center | ids == ["omarchy.clock", "omarchy.weather", "omarchy.tailscale"]
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config removes widgets with remove alias"
 
@@ -415,7 +431,7 @@ HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=
 jq -e '
   def ids: map(.id // .);
   (.bar.layout.right | ids | index("omarchy.dropbox") != null) and
-  (.bar.layout.right | ids | index("omarchy.tailscale") != null)
+  (.bar.layout.center | ids | index("omarchy.tailscale") != null)
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "bar defaults adds widgets for running optional services"
 
@@ -423,7 +439,7 @@ HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=
 jq -e '
   def ids: map(.id // .);
   (.bar.layout.right | ids | index("omarchy.dropbox") == null) and
-  (.bar.layout.right | ids | index("omarchy.tailscale") == null)
+  (.bar.layout.center | ids | index("omarchy.tailscale") == null)
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell refresh keeps optional service widgets absent when services are unavailable"
 
@@ -431,7 +447,7 @@ HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=
 jq -e '
   def ids: map(.id // .);
   (.bar.layout.right | ids | index("omarchy.dropbox") != null) and
-  (.bar.layout.right | ids | index("omarchy.tailscale") != null)
+  (.bar.layout.center | ids | index("omarchy.tailscale") != null)
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 [[ -f $TMPDIR/home/.local/state/omarchy/restart-shell-called ]] || fail "shell refresh restarts shell"
 pass "shell refresh adds optional service widgets when services are available"

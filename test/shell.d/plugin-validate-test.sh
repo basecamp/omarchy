@@ -13,7 +13,7 @@ trap 'rm -rf "$TMPDIR"' EXIT
 # entry point named gets a file, so a rejection is about the manifest and not a
 # missing QML file.
 write_plugin() {
-  local name="$1" kinds="$2" entry_points="$3"
+  local name="$1" kinds="$2" entry_points="$3" bar_widget="${4:-null}"
   local dir="$TMPDIR/$name"
   local entry
 
@@ -25,7 +25,8 @@ write_plugin() {
   "name": "Acme $name",
   "version": "1.0.0",
   "kinds": $kinds,
-  "entryPoints": $entry_points
+  "entryPoints": $entry_points,
+  "barWidget": $bar_widget
 }
 JSON
 
@@ -76,6 +77,19 @@ output=$(validate "$dir") && fail "validate refuses a plugin that satisfies only
 grep -qF "kind 'bar-widget' requires" <<<"$output" \
   || fail "validate names the unsatisfied kind" "$output"
 pass "validate refuses a plugin that satisfies only one of its kinds"
+
+# A widget can choose its default bar section, but no other section name.
+for section in left center right; do
+  dir=$(write_plugin "defaults-$section" '["bar-widget"]' '{"barWidget": "Widget.qml"}' "{\"defaultSection\": \"$section\"}")
+  validate "$dir" >/dev/null || fail "validate accepts $section as a default bar widget section"
+  pass "validate accepts $section as a default bar widget section"
+done
+
+dir=$(write_plugin "defaults-bottom" '["bar-widget"]' '{"barWidget": "Widget.qml"}' '{"defaultSection": "bottom"}')
+output=$(validate "$dir") && fail "validate refuses an invalid default bar widget section" "$output"
+grep -qF "'barWidget.defaultSection' must be left, center, or right" <<<"$output" \
+  || fail "validate explains the default bar widget section contract" "$output"
+pass "validate refuses an invalid default bar widget section"
 
 # A kind the table does not cover is left alone rather than guessed at, so an
 # unknown kind is not turned into a demand for an entry point nobody reads.

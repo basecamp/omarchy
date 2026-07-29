@@ -145,12 +145,30 @@ for (const manifestPath of manifests) {
       )
     }
     check(manifest.barWidget && typeof manifest.barWidget.allowMultiple === 'boolean', `${manifest.id} barWidget allowMultiple must be boolean`)
+    if (manifest.barWidget && manifest.barWidget.defaultSection !== undefined) {
+      check(
+        ['left', 'center', 'right'].includes(manifest.barWidget.defaultSection),
+        `${manifest.id} barWidget defaultSection must be left, center, or right`
+      )
+    }
   }
 
   if (relativePath.endsWith('.manifest.json')) {
     check(JSON.stringify(manifest.kinds) === JSON.stringify(['bar-widget']), `${manifest.id} sibling manifest must be a bar widget`)
   }
 }
+
+const byId = Object.fromEntries(manifests.map(manifestPath => {
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+  return [manifest.id, manifest]
+}))
+for (const [id, section] of Object.entries({
+  'omarchy.active-window': 'left',
+  'omarchy.dropbox': 'right'
+})) {
+  check(byId[id]?.barWidget?.defaultSection === section, `${id} must default to the ${section} bar section`)
+}
+check(byId['omarchy.media']?.barWidget?.defaultSection === undefined, 'omarchy.media must use the center fallback')
 
 assert(errors.length === 0, 'plugin manifests match shell registry contract', errors.join('\n'))
 JS
