@@ -62,6 +62,7 @@ shell should load it. Minimal example:
     "displayName": "Cool clock",
     "category": "Time",
     "allowMultiple": false,
+    "defaultSection": "left",
     "defaults": { "format": "HH:mm" },
     "schema": [
       { "key": "format", "type": "string", "label": "Format" }
@@ -130,7 +131,9 @@ You can still drop a plugin in without git:
 1. Put it in `~/.config/omarchy/plugins/<plugin-id>/` with a `manifest.json`
    plus the QML referenced from its `entryPoints`.
 2. `omarchy plugin rescan`.
-3. `omarchy plugin enable <id>` (bar widgets also need `omarchy bar plugin add <id>`; full bar replacements are selected with `omarchy bar use <id>`).
+3. `omarchy plugin enable <id>`. Bar widgets start in
+   `barWidget.defaultSection`, or in the center when it is omitted, and can be
+   moved with `omarchy bar plugin move`; a full bar replaces the one in use.
 
 The lower-level IPC equivalents remain available via `omarchy-shell shell rescanPlugins`,
 `omarchy-shell shell setPluginEnabled <id> true`, and `omarchy-shell shell listPlugins`.
@@ -147,10 +150,10 @@ omarchy plugin clone                 # interactive source/name picker
 omarchy plugin edit local.clock      # cd into the plugin directory
 ```
 
-First-party plugins under `shell/plugins/`
-are discovered the same way and cannot be disabled, except that the built-in
-bar option can become inactive while a third-party `kind: "bar"` plugin is the
-selected bar.
+First-party plugins under `shell/plugins/` are discovered the same way and load
+by default. Disabling a non-widget records it in `disabledPlugins[]`; disabling
+a widget removes it from the bar layout while leaving its component available
+to add again. A full bar has no off state and is replaced by enabling another.
 
 ## IPC contract
 
@@ -170,7 +173,7 @@ running a separate Quickshell instance.
 | `rescanPlugins`                          | —       | re-walk plugin dirs and hot-reload plugin code        |
 | `reloadConfig`                           | `ok`    | reload `~/.config/omarchy/shell.json`                 |
 | `setPluginEnabled <id> <enabled>`        | `ok` / `unknown` | flip the persisted enabled bit (see note)    |
-| `listPlugins`                            | JSON    | every discovered plugin (id, name, kinds, enabled)    |
+| `listPlugins`                            | JSON    | every discovered plugin, sorted by name               |
 
 Direct invocation:
 
