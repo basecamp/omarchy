@@ -75,4 +75,49 @@ assertDeepEqual(
 )
 
 assertDeepEqual(monitor.parseDisplays('{'), { displays: [], enabledDisplayCount: 0 }, 'monitor handles invalid display JSON')
+
+assertEqual(monitor.rateLabel('144.00'), '144', 'monitor trims a whole refresh rate')
+assertEqual(monitor.rateLabel(143.99899), '144', 'monitor rounds a reported refresh rate')
+assertEqual(monitor.rateLabel(59.946), '59.95', 'monitor keeps a fractional refresh rate distinct')
+assertEqual(monitor.rateLabel('nope'), '', 'monitor rejects an invalid refresh rate')
+
+assertDeepEqual(
+  monitor.parseRates('["59.95","99.95","120","144"]'),
+  ['59.95', '99.95', '120', '144'],
+  'monitor parses available refresh rates'
+)
+assertDeepEqual(monitor.parseRates('nope'), [], 'monitor handles invalid refresh rate JSON')
+assertDeepEqual(monitor.parseRates(''), [], 'monitor handles missing refresh rates')
+
+assertEqual(
+  monitor.matchingRateIndex(['59.95', '99.95', '120', '144'], 143.99899),
+  3,
+  'monitor selects the reported refresh rate'
+)
+assertEqual(
+  monitor.matchingRateIndex(['59.95', '99.95', '120', '144'], 165),
+  -1,
+  'monitor selects no rate when none match'
+)
+
+assertDeepEqual(
+  monitor.parsePendingRate('{"pending":true,"secondsLeft":12,"rate":"144.00"}'),
+  { pending: true, secondsLeft: 12, rate: '144' },
+  'monitor parses a pending refresh rate'
+)
+assertDeepEqual(
+  monitor.parsePendingRate('{"pending":false,"secondsLeft":0}'),
+  { pending: false, secondsLeft: 0, rate: '' },
+  'monitor parses an idle refresh rate state'
+)
+assertDeepEqual(
+  monitor.parsePendingRate('{"pending":true,"secondsLeft":-4,"rate":"120"}'),
+  { pending: true, secondsLeft: 0, rate: '120' },
+  'monitor clamps an expired countdown'
+)
+assertDeepEqual(
+  monitor.parsePendingRate('{'),
+  { pending: false, secondsLeft: 0, rate: '' },
+  'monitor handles invalid pending refresh rate JSON'
+)
 JS

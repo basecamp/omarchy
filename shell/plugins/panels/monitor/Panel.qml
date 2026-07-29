@@ -27,6 +27,17 @@ Panel {
   property var displays: []
   property int enabledDisplayCount: 0
 
+  // Rates the focused monitor advertises for the resolution it is already in,
+  // low to high so the fastest sits on the right like the scale row.
+  property var rateValues: []
+  property string currentRate: ""
+  // A rate the link cannot carry blanks the display, and Hyprland cannot tell:
+  // it reports the mode it asked for either way. So a rate is applied live and
+  // reverts on its own unless it is confirmed here.
+  property bool ratePending: false
+  property int rateSecondsLeft: 0
+  property string pendingRate: ""
+
   // Cursor model shared by keyboard and mouse. Sections:
   //   "brightness" - single slider row, selectedIndex = -1 sentinel
   //                  (mirrors Audio's slider rows). Only present if a
@@ -74,25 +85,44 @@ Panel {
     if (brightnessAvailable) list.push("brightness")
     list.push("textsize")
     list.push("scale")
+    // Hidden unless the display actually offers a choice of rate.
+    if (rateValues.length > 1) list.push("rate")
+    // Present only while a rate is waiting to be kept or reverted.
+    if (ratePending) list.push("confirm")
     if (displays.length > 1) list.push("monitors")
     return list
+  }
+
+  // Which confirm button keeps the change. Both the buttons and the keyboard
+  // handler read this, so the row cannot be reordered into disagreeing with
+  // what its buttons do.
+  readonly property int confirmKeepIndex: 1
+  function confirmIndexKeeps(index) {
+    return index === confirmKeepIndex
   }
 
   function sectionCount(section) {
     if (section === "brightness") return 0  // only the slider sentinel at -1
     if (section === "textsize") return 0    // slider sentinel at -1, like brightness
     if (section === "scale") return scaleValues.length
+    if (section === "rate") return rateValues.length
+    if (section === "confirm") return 2     // revert, keep
     if (section === "monitors") return displays.length
     return 0
   }
 
   function sectionIsSingleRow(section) {
-    // brightness and text size are lone sliders; scale presets sit horizontally.
-    return section === "brightness" || section === "textsize" || section === "scale"
+    // brightness and text size are lone sliders; scale presets, rate presets,
+    // and the confirm buttons each sit in a horizontal row.
+    return section === "brightness" || section === "textsize"
+      || section === "scale" || section === "rate" || section === "confirm"
   }
 
   function sectionFirstIndex(section) {
     if (section === "brightness" || section === "textsize") return -1
+    // Land on Keep: doing nothing already reverts, so the button worth
+    // reaching for is the affirmative one.
+    if (section === "confirm") return confirmKeepIndex
     return 0
   }
 
@@ -126,14 +156,17 @@ Panel {
     }
   }
 
-  // h/l: in scale section, walks the preset row; everywhere else, no-op
-  // because adjustBrightness handles horizontal motion on the brightness
-  // slider.
+  // h/l: walks whichever horizontal row has focus. The sliders are excluded by
+  // their callers, which route horizontal motion to adjustBrightness and
+  // adjustTextSize instead.
   function moveCursorH(delta) {
-    if (focusSection !== "scale") return
+    if (!sectionIsSingleRow(focusSection)) return
+    var max = sectionCount(focusSection) - 1
+    if (max < 0) return
+
     var next = selectedIndex + delta
     if (next < 0) next = 0
-    if (next > scaleValues.length - 1) next = scaleValues.length - 1
+    if (next > max) next = max
     selectedIndex = next
   }
 
@@ -146,6 +179,15 @@ Panel {
   function activateCursor() {
     if (focusSection === "scale" && selectedIndex >= 0 && selectedIndex < scaleValues.length) {
       setScale(scaleValues[selectedIndex])
+      return
+    }
+    if (focusSection === "rate" && selectedIndex >= 0 && selectedIndex < rateValues.length) {
+      setRate(rateValues[selectedIndex])
+      return
+    }
+    if (focusSection === "confirm") {
+      if (confirmIndexKeeps(selectedIndex)) confirmRate()
+      else revertRate()
       return
     }
     if (focusSection === "monitors" && selectedIndex >= 0 && selectedIndex < displays.length) {
@@ -298,6 +340,47 @@ Panel {
     if (!actionProc.running) actionProc.running = true
   }
 
+  // Rate changes go through the CLI rather than hyprctl so the panel and
+  // `omarchy hyprland monitor refresh rate` share one implementation of the
+  // auto-revert and persistence rules.
+  function setRate(rate) {
+    if (!rate || root.ratePending) return
+    runRateCommand(String(rate))
+  }
+
+  function confirmRate() {
+    runRateCommand("confirm")
+  }
+
+  function revertRate() {
+    runRateCommand("revert")
+  }
+
+  function runRateCommand(argument) {
+    actionProc.command = ["omarchy-hyprland-monitor-refresh-rate", argument]
+    if (!actionProc.running) actionProc.running = true
+  }
+
+  function updateRateState(currentRate, ratesJson, pendingJson) {
+    root.currentRate = Model.rateLabel(currentRate)
+    root.rateValues = Model.parseRates(ratesJson)
+
+    var pending = Model.parsePendingRate(pendingJson)
+    root.ratePending = pending.pending
+    root.rateSecondsLeft = pending.secondsLeft
+    root.pendingRate = pending.rate
+  }
+
+  function activeRateIndex() {
+    return Model.matchingRateIndex(rateValues, monitorRateOrPending())
+  }
+
+  // While a change is in flight the pill for the pending rate is the one worth
+  // showing as selected, even though the confirmed value has not moved yet.
+  function monitorRateOrPending() {
+    return root.ratePending && root.pendingRate !== "" ? root.pendingRate : root.currentRate
+  }
+
   // ---- Text size (shell base font + GTK text-scaling, via one CLI) ----
   function nearestTextStop(px) {
     var best = 0
@@ -360,7 +443,27 @@ Panel {
   onBrightnessAvailableChanged: clampCursor()
   onDisplaysChanged: clampCursor()
   onScaleValuesChanged: clampCursor()
+  onRateValuesChanged: clampCursor()
   onVisibleSectionsChanged: clampCursor()
+
+  // The confirm row appears and disappears under the cursor, so follow it in
+  // and step back onto the rate row when the change resolves.
+  onRatePendingChanged: {
+    if (ratePending) {
+      // visibleSections is a binding on ratePending and has not necessarily
+      // re-evaluated yet, so "confirm" may still be missing from it. Clamping
+      // here would read that stale list, fail to find the section, and bounce
+      // focus to the first one. onVisibleSectionsChanged clamps once it lands.
+      focusSection = "confirm"
+      selectedIndex = sectionFirstIndex("confirm")
+      return
+    }
+    if (focusSection === "confirm") {
+      focusSection = "rate"
+      selectedIndex = Math.max(0, activeRateIndex())
+    }
+    clampCursor()
+  }
 
   // Only poll while the panel is open; the bar glyph tracks monitor count via
   // Quickshell.screens, and open-time refresh + Component.onCompleted cover the
@@ -389,7 +492,24 @@ Panel {
         root.focusedMonitor = String(lines[5] || "").trim()
         root.monitorScale = root.normalizeScale(String(lines[6] || "").trim())
         root.updateDisplays(String(lines[7] || "[]").trim())
+        root.updateRateState(
+          String(lines[8] || "").trim(),
+          String(lines[9] || "[]").trim(),
+          String(lines[10] || "").trim()
+        )
       }
+    }
+  }
+
+  // Counts the pending change down locally rather than re-polling every second,
+  // then refreshes once at zero to pick up the state the auto-revert left behind.
+  Timer {
+    interval: 1000
+    running: root.ratePending
+    repeat: true
+    onTriggered: {
+      if (root.rateSecondsLeft > 0) root.rateSecondsLeft = root.rateSecondsLeft - 1
+      if (root.rateSecondsLeft <= 0) root.refresh()
     }
   }
 
@@ -484,7 +604,7 @@ Panel {
         else if (dx !== 0) {
           if (root.focusSection === "brightness") root.adjustBrightness(dx * 5)
           else if (root.focusSection === "textsize") root.adjustTextSize(dx)
-          else if (root.focusSection === "scale") root.moveCursorH(dx)
+          else root.moveCursorH(dx)
         }
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
@@ -769,6 +889,131 @@ Panel {
             }
           }
 
+          // ---------- Refresh rate ----------
+          PanelSeparator {
+            visible: root.rateValues.length > 1
+            foreground: root.bar.foreground
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.space(10)
+            visible: root.rateValues.length > 1
+
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(rateHeader.implicitHeight, rateMonitor.implicitHeight)
+
+              PanelSectionHeader {
+                id: rateHeader
+                text: "REFRESH RATE"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              // Like SCALE, this applies to the focused monitor only.
+              Text {
+                id: rateMonitor
+                text: root.focusedMonitor
+                visible: root.focusedMonitor !== "" && root.enabledDisplayCount > 1
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            Grid {
+              id: rateRow
+              width: parent.width
+              // Wrap rather than shrink: some displays advertise many rates.
+              columns: Math.min(root.rateValues.length, 4)
+              spacing: Style.spacing.xs
+
+              readonly property real cellWidth: columns > 0
+                ? (width - spacing * (columns - 1)) / columns
+                : 0
+
+              Repeater {
+                model: root.rateValues
+
+                RatePill {
+                  required property string modelData
+                  required property int index
+
+                  rateValue: modelData
+                  rateIndex: index
+                  width: rateRow.cellWidth
+                }
+              }
+            }
+          }
+
+          // ---------- Keep or revert ----------
+          PanelSeparator {
+            visible: root.ratePending
+            foreground: root.bar.foreground
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.space(6)
+            visible: root.ratePending
+
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(confirmHeader.implicitHeight, confirmCountdown.implicitHeight)
+
+              PanelSectionHeader {
+                id: confirmHeader
+                text: "KEEP THIS CHANGE?"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                id: confirmCountdown
+                text: "REVERTING IN " + root.rateSecondsLeft + "S"
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                font.letterSpacing: 1.2
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            Grid {
+              id: confirmRow
+              width: parent.width
+              columns: 2
+              spacing: Style.spacing.xs
+
+              readonly property real cellWidth: (width - spacing) / 2
+
+              ConfirmPill {
+                confirmLabel: "Revert now"
+                confirmIndex: 0
+                width: confirmRow.cellWidth
+              }
+
+              ConfirmPill {
+                confirmLabel: "Keep " + root.pendingRate + "Hz"
+                confirmIndex: root.confirmKeepIndex
+                width: confirmRow.cellWidth
+              }
+            }
+          }
+
           // ---------- Monitors ----------
           PanelSeparator {
             visible: root.displays.length > 1
@@ -831,6 +1076,59 @@ Panel {
       root.cursorActive = true
       root.focusSection = "scale"
       root.selectedIndex = pill.scaleIndex
+    }
+  }
+
+  component RatePill: Button {
+    id: ratePill
+    required property string rateValue
+    required property int rateIndex
+
+    text: Model.rateLabel(rateValue) + "Hz"
+    fontSize: Style.font.caption
+    foreground: root.bar.foreground
+    fontFamily: root.bar.fontFamily
+    horizontalPadding: Style.spacing.sm
+    verticalPadding: Style.spacing.controlPaddingY
+    bordered: true
+
+    active: root.activeRateIndex() === rateIndex
+    hasCursor: root.cursorActive && root.focusSection === "rate" && root.selectedIndex === rateIndex
+    // Settle the pending change first; a second change would make reverting
+    // ambiguous about which one it undoes.
+    opacity: root.ratePending ? 0.45 : 1.0
+
+    onClicked: root.setRate(rateValue)
+    onHovered: function(isHovered) {
+      if (!isHovered || root.reflowingText) return
+      root.cursorActive = true
+      root.focusSection = "rate"
+      root.selectedIndex = ratePill.rateIndex
+    }
+  }
+
+  component ConfirmPill: Button {
+    id: confirmPill
+    required property string confirmLabel
+    required property int confirmIndex
+
+    text: confirmLabel
+    fontSize: Style.font.caption
+    foreground: root.bar.foreground
+    fontFamily: root.bar.fontFamily
+    horizontalPadding: Style.spacing.sm
+    verticalPadding: Style.spacing.controlPaddingY
+    bordered: true
+
+    active: root.confirmIndexKeeps(confirmIndex)
+    hasCursor: root.cursorActive && root.focusSection === "confirm" && root.selectedIndex === confirmIndex
+
+    onClicked: if (root.confirmIndexKeeps(confirmPill.confirmIndex)) root.confirmRate(); else root.revertRate()
+    onHovered: function(isHovered) {
+      if (!isHovered || root.reflowingText) return
+      root.cursorActive = true
+      root.focusSection = "confirm"
+      root.selectedIndex = confirmPill.confirmIndex
     }
   }
 
