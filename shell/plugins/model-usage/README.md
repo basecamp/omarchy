@@ -29,6 +29,11 @@ there is no switch row at all; with none, the module leaves the bar entirely
 rather than sitting there with nothing to say. A CLI installed mid-session
 shows up at the next refresh, so nothing polls the disk waiting for it.
 
+That self-hiding is why the widget ships in the default bar layout: a machine
+that has never run Claude Code or Codex draws nothing, and the icon arrives on
+its own the first time a scan finds usage. Drop it with
+`omarchy bar plugin remove omarchy.model-usage`.
+
 ## Providers
 
 | Provider | Limits | Local stats |
