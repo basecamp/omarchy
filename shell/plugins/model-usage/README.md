@@ -19,8 +19,9 @@ adapter per subscription.
 - **Usage this week** — one row per day for the last week: day, bar, tokens, with today
   bolded at the bottom. Hover today for its prompt and session count.
 - **Usage by model** — total tokens and active days in the header, then
-  tokens per model with the bar behind each row showing its share of the
-  heaviest one. Hover for the input / output / cache split.
+  tokens per model with the bar behind each row scaled to the heaviest model,
+  the same way the weekly chart scales to its busiest day. Hover for the
+  input / output / cache split.
 
 A subscription appears only when it is enabled in settings and has actually
 recorded usage — on this machine or on a synced one. With one such provider

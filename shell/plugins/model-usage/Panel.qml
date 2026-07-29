@@ -651,6 +651,8 @@ Panel {
                 required property var modelData
                 width: modelSection.width
                 row: modelData
+                // Scaled to the heaviest model, so the top row is always full —
+                // the same scale-to-peak the weekly chart uses for its busiest day.
                 share: modelData.total / Math.max(1, root.models[0].total)
               }
             }
