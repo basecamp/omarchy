@@ -112,6 +112,12 @@ installed_plugin_ids() {
   find "$PLUGINS_DIR" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) ! -name '.*' -printf '%f\n' 2>/dev/null | sort
 }
 
+plugin_id_manifest() {
+  omarchy-plugin-catalog | jq -r --arg id "$1" '
+    map(select(.id == $id))[0].manifestPath // empty
+  '
+}
+
 plugin_discovered() {
   local id="$1" plugins
   plugins=$(omarchy-shell shell listPlugins 2>/dev/null) || return 1
@@ -262,8 +268,17 @@ WARN
     fail "refusing to add: validation failed"
   fi
 
-  local id
+  local id existing_manifest
   id=$(jq -r '.id' "$stage/manifest.json")
+  existing_manifest=$(plugin_id_manifest "$id") || {
+    rm -rf "$stage"
+    fail "could not inspect installed plugin ids"
+  }
+  if [[ -n $existing_manifest ]]; then
+    rm -rf "$stage"
+    fail "plugin id '$id' is already used by $existing_manifest"
+  fi
+
   local target="$PLUGINS_DIR/$id"
   if [[ -e $target || -L $target ]]; then
     rm -rf "$stage"
