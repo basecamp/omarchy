@@ -19,7 +19,8 @@ fi
 
 case "$COMMAND" in
 create)
-  DESC="$(omarchy-version)"
+  # The description is just a label, so never let it abort the snapshot.
+  DESC="$(omarchy-version 2>/dev/null || echo unknown)"
 
   echo -e "\e[32mCreate system snapshot\e[0m"
 
