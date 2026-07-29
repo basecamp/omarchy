@@ -233,10 +233,14 @@ assert(
   'plugin picker places a bar widget in a chosen section'
 )
 // Icons ride along as "<glyph>\tlabel"; the menu shows the glyph and hands
-// back the label, so nothing downstream has to strip one off.
+// back the label, so nothing downstream has to strip one off. The id rides in
+// a third field, cut off before the menu is ever shown it. What the picker
+// then does with the row it gets back is checked in menu-plugin-test.sh.
 assert(
-  /end\) \+ \\"\\\\t\\" \+ \.name/.test(pluginPicker) && /\$'\\U000f0262'"\$\{TAB\}Left"/.test(pluginPicker),
-  'plugin picker labels its rows with glyphs'
+  /\$label \+ \\"\\\\t\\" \+ \.id/.test(pluginPicker)
+    && /omarchy-menu-select "\$prompt" < <\(cut -f1,2 <<<"\$rows"\)/.test(pluginPicker)
+    && /\$'\\U000f0262'"\$\{TAB\}Left"/.test(pluginPicker),
+  'plugin picker labels its rows with glyphs and keeps the id out of the label'
 )
 assert(
   /var icon = parts\.length > 1 \? parts\.shift\(\) : ""\s*\n\s*var label = parts\.join\("\\t"\)/.test(menuQml),

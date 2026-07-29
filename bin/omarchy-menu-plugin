@@ -34,23 +34,33 @@ esac
 
 plugins=$(omarchy-plugin list --json) || exit 1
 
-# A bar carries its own glyph, so a row that replaces the whole bar does not
-# read like one more widget to switch on.
-names=$(jq -r --arg icon "$PLUGIN_ICON" --arg bar "$BAR_ICON" \
-  "[.[] | select($filter)] | sort_by(.name)[]
-   | (if $A_BAR_OPTION then \$bar else \$icon end) + \"\\t\" + .name" <<<"$plugins")
-[[ -n $names ]] || { omarchy-notification-send "No plugin to ${1}"; exit 0; }
+# One row per plugin the verb can act on, as "<glyph><TAB><label><TAB><id>". A
+# bar carries its own glyph, so a row that replaces the whole bar does not read
+# like one more widget to switch on. Two plugins may share a name -- cloning one
+# keeps the name it was cloned from -- so a label that is not unique among these
+# rows carries its id, and the id travels with the row rather than being looked
+# up again from a name that could match either.
+rows=$(jq -r --arg icon "$PLUGIN_ICON" --arg bar "$BAR_ICON" \
+  "([.[] | select($filter)] | sort_by(.name)) as \$rows
+   | (\$rows | group_by(.name) | map(select(length > 1) | .[0].name)) as \$ambiguous
+   | \$rows[]
+   | .name as \$name
+   | (if (\$ambiguous | index(\$name)) then \$name + \" (\" + .id + \")\" else \$name end) as \$label
+   | (if $A_BAR_OPTION then \$bar else \$icon end) + \"\\t\" + \$label + \"\\t\" + .id" <<<"$plugins")
+[[ -n $rows ]] || { omarchy-notification-send "No plugin to ${1}"; exit 0; }
 
-name=$(omarchy-menu-select "$prompt" <<<"$names") || exit 0
+name=$(omarchy-menu-select "$prompt" < <(cut -f1,2 <<<"$rows")) || exit 0
 [[ -n $name ]] || exit 0
 
-id=$(jq -r --arg name "$name" 'map(select(.name == $name))[0].id' <<<"$plugins")
-[[ -n $id && $id != "null" ]] || exit 1
+id=$(awk -F'\t' -v label="$name" '$2 == label { print $3; exit }' <<<"$rows")
+[[ -n $id ]] || exit 1
 
 case "$1" in
   enable)
     # A bar widget lands on the right otherwise, which is rarely where it goes.
-    if jq -e --arg id "$id" 'map(select(.id == $id))[0].kinds | index("bar-widget")' <<<"$plugins" >/dev/null; then
+    # A plugin that is also a bar takes no section at all: enabling it writes
+    # bar.id and stops, so there would be nothing in the layout to place.
+    if jq -e --arg id "$id" 'map(select(.id == $id))[0].kinds | (index("bar") | not) and (index("bar-widget") != null)' <<<"$plugins" >/dev/null; then
       section=$(omarchy-menu-select "Place $name" \
         $'\U000f0262'"${TAB}Left" $'\U000f0260'"${TAB}Center" $'\U000f0263'"${TAB}Right") || exit 0
       [[ -n $section ]] || exit 0
