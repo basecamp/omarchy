@@ -81,6 +81,10 @@ Panel {
   property int selectedIndex: 0
   property bool actionFocused: false
   property bool cursorActive: false
+  // True only while the cursor moved because of j/k/h/l, never because of
+  // mouse hover. ensureCursorVisible() checks this so hovering a row can't
+  // scroll the Flickable and shove the section headers around.
+  property bool keyboardNav: false
 
   // Stable identity for the focused device. Devices move between sections as
   // they connect, disconnect, pair, or get forgotten, so follow the BlueZ
@@ -260,6 +264,7 @@ Panel {
   // j/k navigates the hero toggle ("header") and the device sections
   // row-by-row.
   function moveCursor(delta) {
+    keyboardNav = true
     var sections = visibleSections
     if (focusSection === "header") {
       if (delta > 0 && sections && sections.length > 0) {
@@ -300,6 +305,7 @@ Panel {
   }
 
   function moveCursorH(delta) {
+    keyboardNav = true
     if (!cursorActive) { cursorActive = true; return }
     if (focusSection !== "known" && focusSection !== "connected") return
     var dev = deviceAt(focusSection, selectedIndex)
@@ -349,6 +355,8 @@ Panel {
       else { focusSection = "header" }
       actionFocused = false
       cursorActive = false
+      keyboardNav = false
+      if (deviceFlick) deviceFlick.contentY = 0
     }
   }
 
@@ -654,17 +662,39 @@ Panel {
         Flickable {
           id: deviceFlick
           width: parent.width
-          height: Math.min(deviceList.implicitHeight, Style.space(400))
+          height: Math.min(deviceList.implicitHeight + Style.space(6), Style.space(400))
           contentWidth: width
-          contentHeight: deviceList.implicitHeight
+          contentHeight: deviceList.implicitHeight + Style.space(6)
           clip: true
           boundsBehavior: Flickable.StopAtBounds
           interactive: contentHeight > height
+
+          // height and contentHeight both track the live device list, so
+          // they shrink whenever a discovered device drops out or the list
+          // re-sorts. contentY is never reset by that shrink on its own —
+          // Qt only clamps it in response to user dragging — so a scroll
+          // offset picked up earlier (from ensureCursorVisible, or from a
+          // taller list a moment ago) can persist past the new, shorter
+          // content and clip the top section header. Reclamp any time either
+          // dimension moves.
+          function clampContentY() {
+            var maxY = Math.max(0, contentHeight - height)
+            if (contentY > maxY) contentY = maxY
+          }
+          onContentHeightChanged: clampContentY()
+          onHeightChanged: clampContentY()
 
           ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
           Column {
             id: deviceList
+            // A header's text can render a sliver above its own box (bold
+            // caps + letter-spacing at this size). The Flickable clips
+            // anything above its own y:0, so without this offset that
+            // sliver gets sliced off the first section header. Shifting the
+            // whole column down a few px inside the Flickable's content
+            // gives it room without affecting visible layout/spacing.
+            y: Style.space(6)
             width: parent.width
             spacing: Style.space(10)
 
@@ -759,7 +789,7 @@ Panel {
     readonly property bool showForgetButton: forgetAvailable && (rowMouse.containsMouse || rowSelected)
 
     hasCursor: rowSelected && !root.actionFocused
-    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(row)
+    onHasCursorChanged: if (hasCursor && root.keyboardNav) root.ensureCursorVisible(row)
     current: isConnected
     foreground: root.bar.foreground
     fill: root.hoverFill
@@ -794,6 +824,7 @@ Panel {
       cursorShape: row.dev ? Qt.PointingHandCursor : Qt.ArrowCursor
 
       onContainsMouseChanged: if (containsMouse) {
+        root.keyboardNav = false
         root.cursorActive = true
         root.focusSection = row.sectionName
         root.selectedIndex = row.rowIndex
@@ -881,6 +912,7 @@ Panel {
             if (rowMouse.containsMouse) root.actionFocused = false
             return
           }
+          root.keyboardNav = false
           root.cursorActive = true
           root.focusSection = row.sectionName
           root.selectedIndex = row.rowIndex
