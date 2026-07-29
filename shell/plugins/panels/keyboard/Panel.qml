@@ -2,378 +2,514 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
-import Quickshell.Hyprland
 import qs.Ui
 import qs.Commons
 import "Model.js" as Model
 
 Panel {
   id: root
-  moduleName: "omarchy.keyboard"
-  ipcTarget: "omarchy.keyboard"
+  moduleName: "omarchy.monitor"
+  ipcTarget: "omarchy.monitor"
+  manageIpc: false
 
-  // Raw status from `omarchy-keyboard-layout status`:
-  // { layouts: [{code, label}], switcher, active, show_bar_icon }
-  property var status: ({ layouts: [], switcher: "alt_shift", active: "", show_bar_icon: false })
-  property var available: []
+  // manageIpc: false so this panel can own the single IpcHandler the target
+  // permits — needed for the brightness + state methods below.
+  property int brightnessPercent: 0
+  property int pendingBrightnessPercent: 0
+  property bool brightnessSetQueued: false
+  property bool brightnessAvailable: false
+  property string internalMonitor: ""
+  property string externalMonitor: ""
+  property string focusedMonitor: ""
+  property bool internalEnabled: false
+  property bool mirrorEnabled: false
+  property string monitorScale: ""
+  property var displays: []
+  property int enabledDisplayCount: 0
 
-  readonly property var configuredLayouts: Model.toArray(status.layouts)
-  readonly property var activeLayout: Model.activeLayout(status)
-  // Always show the active layout's language code (e.g. "EN", "FA"), even
-  // with only one language configured -- lets someone glance at the bar and
-  // confirm which layout is active without opening the panel, and doubles
-  // as a reminder of what layout will apply system-wide (see ensure_state
-  // in the CLI: whatever was chosen at install time becomes this layout).
-  readonly property string icon: activeLayout ? Model.languageCode(activeLayout.code) : "--"
-  readonly property string heroStatusText: activeLayout ? activeLayout.label : "Unknown"
-  readonly property var switcherPresets: Model.switcherPresets()
+  // Raw wheel delta accumulated between discrete brightness steps. A mouse
+  // notch (delta = ±120) crosses the threshold and fires one step
+  // immediately; a touchpad's stream of small deltas piles up here until it
+  // crosses that same threshold, so both devices move brightness in
+  // identical 5% steps. Mirrors the audio panel's wheelAccumulator.
+  property real wheelAccumulator: 0
 
-  // "list" = languages + switcher pills (default). "add" = search + all
-  // available xkb layouts not already configured.
-  property string viewMode: "list"
-  property string searchText: ""
-  readonly property var filteredAvailable: Model.filterAvailable(available, status, searchText)
-
-  property string focusSection: "languages"
+  // Cursor model shared by keyboard and mouse. Sections:
+  //   "brightness" - single slider row, selectedIndex = -1 sentinel
+  //                  (mirrors Audio's slider rows). Only present if a
+  //                  controllable backlight was detected.
+  //   "scale"      - 6 Button scale presets; treated as a single
+  //                  horizontal row from j/k's perspective. h/l moves
+  //                  between presets, identical to bluetooth's header.
+  //   "monitors"   - vertical display row list for enabling/disabling displays;
+  //                  j/k walks each row.
+  // Mouse hover on a target updates root state via the components' `hovered`
+  // signal so keyboard cursor and pointer share one highlight.
+  readonly property var scalePresets: ["1", "1.25", "1.6", "2", "3", "4"]
+  readonly property var scaleValues: {
+    for (var i = 0; i < displays.length; i++) {
+      var display = displays[i]
+      if (display && display.focused)
+        return Model.availableScales(scalePresets, display.width, display.height)
+    }
+    return scalePresets
+  }
+  property string focusSection: "scale"
   property int selectedIndex: 0
   property bool cursorActive: false
 
-  // Typing narrows filteredAvailable, which can leave selectedIndex pointing
-  // past the end of the new (shorter) list, or leave the scroll position
-  // stuck below the now-shorter list. Snap both back to the top on every
-  // keystroke so the highlighted/visible row always matches what's on screen.
-  onSearchTextChanged: {
-    selectedIndex = 0
-    if (availableFlick) availableFlick.contentY = 0
+  // Text size slider — curated macOS-style notches (px). The panel snaps to
+  // these stops; the CLI (omarchy-display-text-size) accepts any integer in range.
+  readonly property var textSizeStops: [9, 10, 11, 12, 14, 16, 20]
+  // While a change is in flight, the chosen stop index overrides the live
+  // base-size so the knob doesn't snap back during the file round-trip. -1 =
+  // no pending change; follow Style.font.baseSize.
+  property int textSizePreviewIndex: -1
+
+  // A text-size change reflows the whole panel (both font and spacing scale),
+  // which slides rows under a stationary pointer and fires synthetic hover.
+  // While true, hover is not allowed to hijack the keyboard focus section —
+  // otherwise h/l on the text-size slider can jump focus to another row.
+  property bool reflowingText: false
+  function markReflowing() {
+    root.reflowingText = true
+    reflowSettle.restart()
   }
 
-  readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
-  readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
-  readonly property real heroRingPad: Style.space(6)
-
-  // Re-reads status from the CLI. Skipped if a status request is already
-  // in flight, so a fast poll never piles up overlapping processes.
-  function refresh() {
-    // Skip if a status request is already in flight, or if an action
-    // (set/add/remove/switcher/next) is currently running -- every action
-    // prints its own fresh status_json on completion, so a poll that lands
-    // in between would just overwrite that fresher result with stale data.
-    if (statusProc.running || actionProc.running) return
-    statusProc.command = ["omarchy-keyboard-layout", "status"]
-    statusProc.running = true
+  readonly property var visibleSections: {
+    var list = []
+    if (brightnessAvailable) list.push("brightness")
+    list.push("textsize")
+    list.push("scale")
+    if (displays.length > 1) list.push("monitors")
+    return list
   }
 
-  // Loads the full list of installable xkb layouts for the "Add language"
-  // search view. Only called when that view opens, not on every refresh.
-  function refreshAvailable() {
-    if (availableProc.running) return
-    availableProc.command = ["omarchy-keyboard-layout", "available"]
-    availableProc.running = true
+  function sectionCount(section) {
+    if (section === "brightness") return 0  // only the slider sentinel at -1
+    if (section === "textsize") return 0    // slider sentinel at -1, like brightness
+    if (section === "scale") return scaleValues.length
+    if (section === "monitors") return displays.length
+    return 0
   }
 
-  // Switches the active layout to an already-configured one.
-  function switchTo(code) {
-    if (!code || actionProc.running) return
-    actionProc.command = ["omarchy-keyboard-layout", "set", code]
-    actionProc.running = true
+  function sectionIsSingleRow(section) {
+    // brightness and text size are lone sliders; scale presets sit horizontally.
+    return section === "brightness" || section === "textsize" || section === "scale"
   }
 
-  // Advances to the next configured layout, same action the right-click
-  // shortcut and the in-panel cycle button both trigger.
-  function cycleNext() {
-    if (actionProc.running) return
-    actionProc.command = ["omarchy-keyboard-layout", "next"]
-    actionProc.running = true
+  function sectionFirstIndex(section) {
+    if (section === "brightness" || section === "textsize") return -1
+    return 0
   }
 
-  // Adds a new layout and returns to the main list view, ready to show it.
-  function addLanguage(code) {
-    if (!code || actionProc.running) return
-    actionProc.command = ["omarchy-keyboard-layout", "add", code]
-    actionProc.running = true
-    viewMode = "list"
-    searchText = ""
-    focusSection = "languages"
-    selectedIndex = 0
-    // The search field held keyboard focus while typing/selecting; nothing
-    // moves it back automatically just because it's now hidden, so without
-    // this, the (invisible) field keeps active focus and every subsequent
-    // Enter press keeps firing its onAccepted handler -- silently adding
-    // whatever is now at the top of the remaining available list, over and
-    // over. Same fix as closeAddView() below.
-    keyCatcher.forceActiveFocus()
-  }
+  function moveCursor(delta) {
+    var sections = visibleSections
+    if (!sections || sections.length === 0) return
+    var sIdx = sections.indexOf(focusSection)
+    if (sIdx < 0) {
+      focusSection = sections[0]
+      selectedIndex = sectionFirstIndex(focusSection)
+      return
+    }
+    var inSingleRow = sectionIsSingleRow(focusSection)
+    var max = inSingleRow ? 0 : sectionCount(focusSection) - 1
 
-  // Removes a configured layout. Guarded on both sides (here and in the
-  // CLI) so the last remaining layout, and the primary layout, can never
-  // be removed -- there must always be at least one layout to fall back to.
-  function removeLanguage(code) {
-    if (!code || configuredLayouts.length <= 1 || actionProc.running) return
-    if (configuredLayouts[0] && configuredLayouts[0].code === code) return
-    actionProc.command = ["omarchy-keyboard-layout", "remove", code]
-    actionProc.running = true
-  }
-
-  // Changes which shortcut preset Hyprland uses to cycle layouts.
-  function setSwitcher(id) {
-    if (!id || actionProc.running) return
-    actionProc.command = ["omarchy-keyboard-layout", "switcher", id]
-    actionProc.running = true
-  }
-
-  // Switches to the "Add language" view and loads the full available list
-  // fresh, so it always reflects the current set of already-configured
-  // layouts rather than a stale snapshot from last time it was open.
-  // Moves the highlighted row in the "Add language" search results by dy
-  // (+1/-1), wrapping around at either end and scrolling it into view.
-  // Called both from keyCatcher (when the search field doesn't have focus)
-  // and directly from the search field's own Up/Down handlers below --
-  // PanelKeyCatcher is deliberately blocked while the search field has
-  // focus (so typing doesn't fight with panel navigation), which would
-  // otherwise leave Up/Down completely dead while actively searching.
-  // Moving the keyboard cursor changes a row's appearance (hover highlight,
-  // the remove button popping in), which shifts that row's layout under a
-  // mouse pointer that never actually moved. Qt Quick re-hit-tests on that
-  // shift and can fire onContainsMouseChanged for a row the mouse never
-  // touched, silently overwriting the keyboard selection right after it
-  // moved -- looks like the selection "jumping" or "getting lost" while
-  // navigating with arrow keys. Suppress hover-driven selection for a short
-  // window after every keyboard move so the layout has time to settle
-  // before hover is trusted again; a real mouse move afterwards still
-  // takes over normally once the window passes.
-  property real hoverSuppressedUntil: 0
-  function suppressHoverBriefly() { hoverSuppressedUntil = Date.now() + 200 }
-  function hoverAllowed() { return Date.now() >= hoverSuppressedUntil }
-
-  function moveAvailableSelection(dy) {
-    root.suppressHoverBriefly()
-    root.cursorActive = true
-    var maxAvail = Math.max(0, root.filteredAvailable.length - 1)
-    var next = root.selectedIndex + dy
-    if (next < 0) next = maxAvail
-    else if (next > maxAvail) next = 0
-    root.selectedIndex = next
-    root.ensureAvailableVisible(next)
-  }
-
-  function ensureAvailableVisible(index) {
-    var item = availableRepeater.itemAt(index)
-    if (!item || !availableFlick) return
-    var top = item.y
-    var bottom = item.y + item.height
-    if (top < availableFlick.contentY) {
-      availableFlick.contentY = top
-    } else if (bottom > availableFlick.contentY + availableFlick.height) {
-      availableFlick.contentY = bottom - availableFlick.height
+    if (delta > 0) {
+      if (!inSingleRow && selectedIndex < max) { selectedIndex = selectedIndex + 1; return }
+      if (sIdx < sections.length - 1) {
+        focusSection = sections[sIdx + 1]
+        selectedIndex = sectionFirstIndex(focusSection)
+      }
+    } else {
+      if (!inSingleRow && selectedIndex > 0) { selectedIndex = selectedIndex - 1; return }
+      if (sIdx > 0) {
+        var prev = sections[sIdx - 1]
+        focusSection = prev
+        // Coming up from below — land on the last navigable row of the prev
+        // section, or its sentinel for single-row sections.
+        selectedIndex = sectionIsSingleRow(prev) ? sectionFirstIndex(prev) : sectionCount(prev) - 1
+      }
     }
   }
 
-  // Keeps focusSection/selectedIndex pointing at a row that actually still
-  // exists. Without this, adding/removing a language, a background status
-  // refresh (poll timer, Hyprland event, or any action completing) can
-  // change the length of configuredLayouts/switcherPresets/filteredAvailable
-  // out from under an already-set selectedIndex -- leaving the keyboard
-  // cursor stuck on a row that no longer exists (or vanished entirely),
-  // which is what makes arrow-key navigation feel like it "loses" the
-  // selection. Mirrors MonitorPanel's clampCursor().
+  // h/l: in scale section, walks the preset row; everywhere else, no-op
+  // because adjustBrightness handles horizontal motion on the brightness
+  // slider.
+  function moveCursorH(delta) {
+    if (focusSection !== "scale") return
+    var next = selectedIndex + delta
+    if (next < 0) next = 0
+    if (next > scaleValues.length - 1) next = scaleValues.length - 1
+    selectedIndex = next
+  }
+
+  function adjustBrightness(delta) {
+    if (focusSection !== "brightness") return
+    if (!brightnessAvailable) return
+    setBrightness(root.brightnessPercent + delta)
+  }
+
+  function activateCursor() {
+    if (focusSection === "scale" && selectedIndex >= 0 && selectedIndex < scaleValues.length) {
+      setScale(scaleValues[selectedIndex])
+      return
+    }
+    if (focusSection === "monitors" && selectedIndex >= 0 && selectedIndex < displays.length) {
+      var d = displays[selectedIndex]
+      if (d) toggleDisplay(d.name, d.enabled)
+    }
+    // brightness: no separate action; the slider value is the action.
+  }
+
   function clampCursor() {
-    if (root.viewMode === "list") {
-      if (root.focusSection === "switcher") {
-        var maxSw = Math.max(0, root.switcherPresets.length - 1)
-        if (root.selectedIndex < 0) root.selectedIndex = 0
-        else if (root.selectedIndex > maxSw) root.selectedIndex = maxSw
-        return
-      }
-      // "languages" (default) -- also the fallback for any unknown section.
-      if (root.configuredLayouts.length === 0) {
-        // Shouldn't normally happen (there's always at least one layout),
-        // but land somewhere sane rather than pointing at nothing.
-        root.focusSection = root.switcherPresets.length > 0 ? "switcher" : "languages"
-        root.selectedIndex = 0
-        return
-      }
-      if (root.focusSection !== "languages") root.focusSection = "languages"
-      var maxLang = root.configuredLayouts.length - 1
-      if (root.selectedIndex < 0) root.selectedIndex = 0
-      else if (root.selectedIndex > maxLang) root.selectedIndex = maxLang
-    } else if (root.viewMode === "add") {
-      if (root.focusSection !== "available") root.focusSection = "available"
-      var maxAvail = Math.max(0, root.filteredAvailable.length - 1)
-      if (root.selectedIndex < 0) root.selectedIndex = 0
-      else if (root.selectedIndex > maxAvail) root.selectedIndex = maxAvail
+    var sections = visibleSections
+    if (!sections || !sections.length) return
+    if (sections.indexOf(focusSection) < 0) {
+      focusSection = sections[0]
+      selectedIndex = sectionFirstIndex(focusSection)
+      return
     }
+    var count = sectionCount(focusSection)
+    if (sectionIsSingleRow(focusSection)) {
+      // brightness/text size use the -1 sentinel; scale clamps into the presets.
+      if (focusSection === "brightness" || focusSection === "textsize") selectedIndex = -1
+      else if (selectedIndex < 0 || selectedIndex >= count) selectedIndex = 0
+      return
+    }
+    if (count === 0) {
+      var sIdx = sections.indexOf(focusSection)
+      focusSection = sIdx > 0 ? sections[sIdx - 1] : sections[0]
+      selectedIndex = sectionFirstIndex(focusSection)
+      return
+    }
+    if (selectedIndex > count - 1) selectedIndex = count - 1
+    if (selectedIndex < 0) selectedIndex = 0
   }
 
-  function openAddView() {
-    viewMode = "add"
-    searchText = ""
-    focusSection = "available"
-    selectedIndex = 0
-    refreshAvailable()
+  // Keep the keyboard-focused row inside the viewport when the panel grows
+  // taller than its allotted height (lots of displays). Mirrors audio's
+  // ensureCursorVisible helper.
+  function ensureCursorVisible(item) {
+    if (!item || !scrollArea) return
+    var flick = scrollArea.contentItem
+    if (!flick || flick.contentY === undefined) return
+    var pt = item.mapToItem(flick.contentItem || flick, 0, 0)
+    var top = pt.y
+    var bottom = top + (item.height || 0)
+    var viewTop = flick.contentY
+    var viewBottom = viewTop + flick.height
+    var margin = 6
+    if (top < viewTop + margin) flick.contentY = Math.max(0, top - margin)
+    else if (bottom > viewBottom - margin)
+      flick.contentY = bottom + margin - flick.height
   }
 
-  // Returns to the main list view, resetting search state so it starts
-  // clean the next time "Add language" is opened.
-  function closeAddView() {
-    viewMode = "list"
-    searchText = ""
-    focusSection = "languages"
-    selectedIndex = 0
-    // The search field held keyboard focus while typing; nothing moves it
-    // back automatically just because it's now hidden, so without this,
-    // keys like Esc silently go nowhere until something else grabs focus.
-    keyCatcher.forceActiveFocus()
+  function brightnessIpc(percent) {
+    var value = Number(percent)
+    root.setBrightness(value)
+    return "got " + root.pendingBrightnessPercent
   }
 
-  // Manual on/off switch for the bar icon, controlled from omarchy-menu
-  // (Trigger > Toggle > Show Keyboard Layout) via `omarchy-keyboard-layout
-  // bar-icon toggle`. Independent of the language-code icon above -- this
-  // is a deliberate user choice, not an automatic language-count heuristic.
-  readonly property bool barIconVisible: status.show_bar_icon !== false
+  function stateIpc() {
+    return JSON.stringify({
+      brightness: root.brightnessPercent,
+      brightnessAvailable: root.brightnessAvailable,
+      focusedMonitor: root.focusedMonitor,
+      scale: root.monitorScale,
+      displays: root.displays
+    })
+  }
 
-  visible: barIconVisible
-  implicitWidth: barIconVisible ? button.implicitWidth : 0
-  implicitHeight: barIconVisible ? button.implicitHeight : 0
+  IpcHandler {
+    target: "omarchy.monitor"
 
-  onBarIconVisibleChanged: if (!barIconVisible && opened) close()
+    function brightness(percent: string): string { return root.brightnessIpc(percent) }
+    function state(): string { return root.stateIpc() }
+    function open() { root.open() }
+    function close() { root.close() }
+    function toggle() { root.toggle() }
+    function show() { root.open() }
+    function hide() { root.close() }
+  }
 
-  // Mirrors MonitorPanel: always land on a known-good, top-of-list cursor
-  // position when the panel is (re)opened, rather than trusting whatever
-  // focusSection/selectedIndex was left over from before it was closed.
+  function refresh() {
+    if (!stateProc.running) stateProc.running = true
+  }
+
+  function setBrightness(value) {
+    var percent = Math.max(5, Model.clampBrightness(value))
+    root.brightnessPercent = percent
+    root.pendingBrightnessPercent = percent
+
+    if (setBrightnessProc.running) {
+      root.brightnessSetQueued = true
+      return
+    }
+
+    root.brightnessSetQueued = false
+    setBrightnessProc.command = ["bash", "-c", "omarchy-brightness-display --no-osd " + percent + "%"]
+    setBrightnessProc.running = true
+  }
+
+  function previewBrightness(value) {
+    // Floor at 5%: never let the live drag preview show (or briefly send)
+    // a lower value while the slider is being dragged.
+    root.brightnessPercent = Math.max(5, Model.clampBrightness(value))
+    brightnessDebounce.restart()
+  }
+
+  // Mirrors what omarchy-brightness-display shows after a keyboard raise/
+  // lower, so scrolling the bar icon gets the same OSD feedback instead of
+  // only the hardware brightness keys. "brightness" is the exact icon name
+  // the CLI itself passes to omarchy-osd.
+  function showBrightnessOsd() {
+    osdProc.command = ["omarchy-osd", "-i", "brightness", "-p", String(root.brightnessPercent)]
+    osdProc.running = true
+  }
+
+  function normalizeScale(scale) {
+    return Model.normalizeScale(scale)
+  }
+
+  function activeScaleIndex() {
+    for (var i = 0; i < displays.length; i++) {
+      var display = displays[i]
+      if (display && display.focused)
+        return Model.matchingScaleIndex(scaleValues, monitorScale, display.width, display.height)
+    }
+    return -1
+  }
+
+  function effectiveScale(scale) {
+    for (var i = 0; i < displays.length; i++) {
+      var display = displays[i]
+      if (display && display.focused)
+        return Model.cleanScale(scale, display.width, display.height)
+    }
+    return normalizeScale(scale)
+  }
+
+  // Playful mood-name for a given brightness percent. Bands intentionally
+  // span ~10–20 points so casual tweaks change the label, while small
+  // nudges within one band don't.
+  function brightnessName(percent) {
+    return Model.brightnessName(percent)
+  }
+
+  function updateDisplays(displaysJson) {
+    var parsed = Model.parseDisplays(displaysJson)
+    root.displays = parsed.displays
+    root.enabledDisplayCount = parsed.enabledDisplayCount
+  }
+
+  function toggleDisplay(name, enabled) {
+    if (!name) return
+    if (enabled && root.enabledDisplayCount <= 1) return
+
+    actionProc.command = ["hyprctl", "keyword", "monitor", name + (enabled ? ",disable" : ",preferred,auto,auto")]
+    if (!actionProc.running) actionProc.running = true
+  }
+
+  function setScale(scale) {
+    actionProc.command = ["bash", "-c", "omarchy-hyprland-monitor-scaling " + scale]
+    if (!actionProc.running) actionProc.running = true
+  }
+
+  // ---- Text size (shell base font + GTK text-scaling, via one CLI) ----
+  function nearestTextStop(px) {
+    var best = 0
+    var bestDist = 1e9
+    for (var i = 0; i < textSizeStops.length; i++) {
+      var d = Math.abs(textSizeStops[i] - px)
+      if (d < bestDist) { bestDist = d; best = i }
+    }
+    return best
+  }
+
+  // Effective stop index: the pending choice while a change is in flight,
+  // otherwise whatever Style's live base-size rounds to.
+  function currentTextIndex() {
+    return textSizePreviewIndex >= 0 ? textSizePreviewIndex : nearestTextStop(Style.font.baseSize)
+  }
+
+  // px shown in the header: the pending stop if any, else the true base-size
+  // (which may be an off-notch value set from the CLI).
+  function displayedTextPx() {
+    return textSizePreviewIndex >= 0 ? textSizeStops[textSizePreviewIndex] : Style.font.baseSize
+  }
+
+  function setTextSize(px) {
+    textScaleProc.command = ["omarchy-display-text-size", String(px)]
+    if (!textScaleProc.running) textScaleProc.running = true
+  }
+
+  function adjustTextSize(deltaSteps) {
+    var idx = currentTextIndex() + deltaSteps
+    if (idx < 0) idx = 0
+    if (idx > textSizeStops.length - 1) idx = textSizeStops.length - 1
+    markReflowing()
+    textSizePreviewIndex = idx
+    setTextSize(textSizeStops[idx])
+  }
+
+  implicitWidth: button.implicitWidth
+  implicitHeight: button.implicitHeight
+
+  Component.onCompleted: refresh()
+
+  // KeyboardPanel takes Exclusive focus at map-time, so SUPER-bound IPC
+  // summons land with j/k ready to navigate. Keep a default landing point,
+  // but don't paint the cursor until hover or the first navigation key.
   onOpenedChanged: {
     if (opened) {
       refresh()
-      viewMode = "list"
-      focusSection = "languages"
-      selectedIndex = 0
+      if (brightnessAvailable) {
+        focusSection = "brightness"
+        selectedIndex = -1
+      } else {
+        focusSection = "scale"
+        selectedIndex = 0
+      }
       cursorActive = false
     }
   }
-  Component.onCompleted: refresh()
 
-  onConfiguredLayoutsChanged: clampCursor()
-  onSwitcherPresetsChanged: clampCursor()
-  onFilteredAvailableChanged: clampCursor()
+  onBrightnessAvailableChanged: clampCursor()
+  onDisplaysChanged: clampCursor()
+  onScaleValuesChanged: clampCursor()
+  onVisibleSectionsChanged: clampCursor()
 
-  // Hyprland switches the layout itself for the native Alt+Shift/Ctrl+Shift/
-  // etc. shortcut (see config/hypr/input.lua's kb_options grp:*_toggle) -- that
-  // path never goes through our `omarchy-keyboard-layout` CLI, so it doesn't
-  // update `root.status` on its own. Listen for Hyprland's own layout-change
-  // event and refresh from it so the bar icon stays in sync even when the
-  // switch happened outside the panel. A slow poll is kept as a fallback in
-  // case an event is ever missed.
-  Connections {
-    target: Hyprland
-    function onRawEvent(event) {
-      if (!event || !event.name) return
-      if (String(event.name).indexOf("activelayout") !== -1) root.refresh()
-    }
-  }
-
+  // Only poll while the panel is open; the bar glyph tracks monitor count via
+  // Quickshell.screens, and open-time refresh + Component.onCompleted cover the
+  // rest. External brightness changes are reflected whenever the panel is open.
   Timer {
-    interval: 3000
-    running: true
+    interval: 5000
+    running: root.opened
     repeat: true
     onTriggered: root.refresh()
   }
 
-  // Runs `status` and updates root.status once it finishes.
   Process {
-    id: statusProc
+    id: stateProc
+    command: ["omarchy-monitor-state"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        // A crash, permissions error, or unexpected output from the CLI
-        // shouldn't throw an uncaught exception out of a binding handler --
-        // that can silently break other bindings downstream. Keep the last
-        // good status instead of replacing it with garbage.
-        try {
-          root.status = Model.parseStatus(text)
-        } catch (e) {
-          console.warn("omarchy.keyboard: failed to parse status output:", e)
-        }
+        var lines = String(text || "").split("\n")
+        var brightness = String(lines[0] || "").trim()
+        root.brightnessAvailable = brightness !== "unavailable" && brightness !== ""
+        root.brightnessPercent = root.brightnessAvailable ? Math.max(0, Math.min(100, parseInt(brightness, 10))) : 0
+        root.internalMonitor = String(lines[1] || "").trim()
+        root.externalMonitor = String(lines[2] || "").trim()
+        root.internalEnabled = String(lines[3] || "").trim() !== ""
+        root.mirrorEnabled = String(lines[4] || "").trim() === root.externalMonitor && root.externalMonitor !== ""
+        root.focusedMonitor = String(lines[5] || "").trim()
+        root.monitorScale = root.normalizeScale(String(lines[6] || "").trim())
+        root.updateDisplays(String(lines[7] || "[]").trim())
       }
     }
   }
+
   Timer {
-    // Watchdog: if the CLI ever hangs, statusProc.running would otherwise
-    // stay true forever and permanently block every future refresh().
-    interval: 8000
-    running: statusProc.running
-    onTriggered: if (statusProc.running) {
-      console.warn("omarchy.keyboard: status query timed out, resetting")
-      statusProc.running = false
-    }
+    id: brightnessDebounce
+    interval: 180
+    repeat: false
+    onTriggered: root.setBrightness(root.brightnessPercent)
   }
 
-  // Runs `available` and updates root.available once it finishes.
   Process {
-    id: availableProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        try {
-          root.available = Model.parseAvailable(text)
-        } catch (e) {
-          console.warn("omarchy.keyboard: failed to parse available output:", e)
-        }
+    id: setBrightnessProc
+    stdout: StdioCollector { waitForEnd: true }
+    // Do NOT call refresh() after a brightness set completes. The local
+    // brightnessPercent we just wrote is authoritative; re-reading via
+    // `omarchy-brightness-display` races the hardware/driver and can
+    // return an empty string, which the parser then coerces to 0 —
+    // visible as a "bounce to zero" after h/l keypresses. External
+    // brightness changes are still picked up by the 5s periodic refresh,
+    // the open-time refresh, and Component.onCompleted.
+    onRunningChanged: {
+      if (running) return
+      if (root.brightnessSetQueued) {
+        root.setBrightness(root.pendingBrightnessPercent)
       }
     }
   }
-  Timer {
-    interval: 8000
-    running: availableProc.running
-    onTriggered: if (availableProc.running) {
-      console.warn("omarchy.keyboard: available query timed out, resetting")
-      availableProc.running = false
-    }
-  }
 
-  // Runs any state-changing action (set/add/remove/switcher/next). Every
-  // one of these commands prints a fresh status_json on completion, so
-  // root.status can be updated the same way regardless of which action ran.
   Process {
     id: actionProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        try {
-          root.status = Model.parseStatus(text)
-        } catch (e) {
-          console.warn("omarchy.keyboard: failed to parse action output:", e)
-        }
-      }
-    }
+    stdout: StdioCollector { waitForEnd: true }
+    onRunningChanged: if (!running) root.refresh()
   }
+
+  Process {
+    id: osdProc
+  }
+
+  // Applies text size via the CLI, which rewrites the shell override file;
+  // Style picks the new base-size up through its own file watch, so there's
+  // nothing to refresh here.
+  Process {
+    id: textScaleProc
+    stdout: StdioCollector { waitForEnd: true }
+  }
+
+  // Clears the hover-suppression flag once the reflow triggered by a text-size
+  // change has settled.
   Timer {
-    interval: 8000
-    running: actionProc.running
-    onTriggered: if (actionProc.running) {
-      console.warn("omarchy.keyboard: action timed out, resetting")
-      actionProc.running = false
-      // Fall back to a plain status query so the UI still ends up
-      // reflecting reality even though we don't know if the action itself
-      // actually took effect before it hung.
-      root.refresh()
+    id: reflowSettle
+    interval: 300
+    repeat: false
+    onTriggered: root.reflowingText = false
+  }
+
+  // Once Style's base-size catches up to the pending choice, drop the preview
+  // so the slider tracks the live value again. The change itself reflows the
+  // panel, so suppress hover for a beat while it lands.
+  Connections {
+    target: Style
+    function onFontBaseSizeChanged() {
+      root.markReflowing()
+      if (root.textSizePreviewIndex >= 0
+          && root.nearestTextStop(Style.font.baseSize) === root.textSizePreviewIndex)
+        root.textSizePreviewIndex = -1
     }
   }
 
-  // The clickable bar icon itself: left-click opens/closes the panel,
-  // right-click cycles straight to the next layout without opening it.
-  WidgetButton {
+  BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.icon
-    onPressed: function(b) {
-      if (b === Qt.RightButton) { root.cycleNext(); return }
-      if (root.opened) root.close()
-      else { root.open(); root.refresh() }
+    text: Quickshell.screens.length > 1 ? "󰍺" : "󰍹"
+    onPressed: function(b) { root.toggle() }
+    onWheelMoved: function(delta) {
+      if (!root.brightnessAvailable) return
+      // One step = 120 units, matching a single mouse notch, so a mouse
+      // click still moves exactly 5%. A touchpad's small deltas pile up in
+      // wheelAccumulator until they cross that same threshold, then fire
+      // the identical 5% step. The OSD is only pinged when a step actually
+      // lands (not on a fixed timer), so it stays open and updates exactly
+      // in step with the real scroll rhythm -- no tick separate from your
+      // finger's motion -- and only starts counting down to hide once you
+      // stop scrolling (each ping restarts its own hide timer).
+      var stepUnits = 120
+      var stepSize = 5
+      var stepped = false
+      root.wheelAccumulator += delta
+      while (root.wheelAccumulator >= stepUnits) {
+        root.setBrightness(root.brightnessPercent + stepSize)
+        root.wheelAccumulator -= stepUnits
+        stepped = true
+      }
+      while (root.wheelAccumulator <= -stepUnits) {
+        root.setBrightness(root.brightnessPercent - stepSize)
+        root.wheelAccumulator += stepUnits
+        stepped = true
+      }
+      if (stepped) root.showBrightnessOsd()
     }
   }
 
-  // The popover itself: a hero row showing the active layout, then either
-  // the configured-languages list or the "add language" search view.
   KeyboardPanel {
     id: panel
     anchorItem: button
@@ -381,471 +517,435 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(390))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight)
+    contentWidth: panel.fittedContentWidth(Style.space(380))
+    contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(560))
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      blocked: root.viewMode === "add" && searchField.activeFocus
-
       onMoveRequested: function(dx, dy) {
-        root.suppressHoverBriefly()
         if (!root.cursorActive) { root.cursorActive = true; return }
-        if (root.viewMode === "list") {
-          if (root.focusSection === "languages") {
-            var maxLang = Math.max(0, root.configuredLayouts.length - 1)
-            if (dy > 0 && root.selectedIndex >= maxLang) { root.focusSection = "switcher"; root.selectedIndex = 0; return }
-            root.selectedIndex = Math.max(0, Math.min(maxLang, root.selectedIndex + dy))
-          } else if (root.focusSection === "switcher") {
-            var maxSw = Math.max(0, root.switcherPresets.length - 1)
-            // Up always leaves the switcher row for the languages list above,
-            // regardless of which pill (selectedIndex) is currently highlighted --
-            // vertical movement is orthogonal to the pills' horizontal layout, so
-            // it shouldn't require first navigating back to pillIndex 0 with
-            // Left/Right before Up does anything.
-            if (dy < 0) { root.focusSection = "languages"; root.selectedIndex = Math.max(0, root.configuredLayouts.length - 1); return }
-            root.selectedIndex = Math.max(0, Math.min(maxSw, root.selectedIndex + dx))
-          }
-          return
-        }
-        root.moveAvailableSelection(dy)
-      }
-
-      onActivateRequested: function() {
-        if (!root.cursorActive) return
-        if (root.viewMode === "list" && root.focusSection === "languages") {
-          var l = root.configuredLayouts[root.selectedIndex]
-          if (l && l.code) root.switchTo(l.code)
-        } else if (root.viewMode === "list" && root.focusSection === "switcher") {
-          var p = root.switcherPresets[root.selectedIndex]
-          if (p && p.id) root.setSwitcher(p.id)
-        } else if (root.viewMode === "add") {
-          var a = root.filteredAvailable[root.selectedIndex]
-          if (a && a.code) root.addLanguage(a.code)
+        if (dy !== 0) root.moveCursor(dy)
+        else if (dx !== 0) {
+          if (root.focusSection === "brightness") root.adjustBrightness(dx * 5)
+          else if (root.focusSection === "textsize") root.adjustTextSize(dx)
+          else if (root.focusSection === "scale") root.moveCursorH(dx)
         }
       }
-
+      onActivateRequested: if (root.cursorActive) root.activateCursor()
+      onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
-      onCloseRequested: {
-        if (root.viewMode === "add") root.closeAddView()
-        else root.close()
-      }
-    }
-
-    Column {
-      id: column
-      anchors.fill: parent
-      spacing: Style.space(18)
-
-      // ---------- Hero: current language ----------
-      Item {
-        width: parent.width
-        implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight) + root.heroRingPad * 2
-
-        Text {
-          id: heroIcon
-          anchors.left: parent.left
-          anchors.leftMargin: root.heroRingPad
-          anchors.verticalCenter: parent.verticalCenter
-          text: "󰌌"
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.display
+      ScrollView {
+        id: scrollArea
+        anchors.fill: parent
+        clip: true
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical.policy: panelColumn.implicitHeight > height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+        Binding {
+          target: scrollArea.contentItem
+          property: "interactive"
+          value: panelColumn.implicitHeight > scrollArea.height
         }
 
         Column {
-          id: heroLabels
-          anchors.left: heroIcon.right
-          anchors.leftMargin: Style.space(14)
-          anchors.right: cycleBtn.left
-          anchors.rightMargin: Style.space(8)
-          anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.space(2)
+          id: panelColumn
+          width: scrollArea.availableWidth
+          spacing: Style.space(14)
 
-          Text {
-            text: "Keyboard"
-            color: root.bar.foreground
-            font.family: root.bar.fontFamily
-            font.pixelSize: Style.font.title
-            font.bold: true
-            elide: Text.ElideRight
-            width: parent.width
-          }
-
-          Text {
-            text: root.heroStatusText.toUpperCase()
-            color: Qt.darker(root.bar.foreground, 1.4)
-            font.family: root.bar.fontFamily
-            font.pixelSize: Style.font.caption
-            font.bold: true
-            font.letterSpacing: 1.2
-            elide: Text.ElideRight
-            width: parent.width
-          }
-        }
-
-        PanelActionButton {
-          id: cycleBtn
-          anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          visible: root.configuredLayouts.length > 1
-          iconText: "󰑖"
-          tooltipText: "Switch to next language"
-          foreground: root.bar.foreground
-          hoverColor: root.bar.foreground
-          fontFamily: root.bar.fontFamily
-          onClicked: root.cycleNext()
-        }
-      }
-
-      PanelSeparator {
-        foreground: root.bar.foreground
-      }
-
-      // ---------- "list" view: configured languages + switcher ----------
-      Column {
-        width: parent.width
-        spacing: Style.space(16)
-        visible: root.viewMode === "list"
-
-        Column {
-          width: parent.width
-          spacing: Style.space(8)
-
+          // ---------- Hero: display icon · title/status ----------
           Item {
             width: parent.width
-            implicitHeight: Math.max(languagesHeader.implicitHeight, addBtn.implicitHeight)
+            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight)
 
-            PanelSectionHeader {
-              id: languagesHeader
-              text: "LANGUAGES"
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
+            Text {
+              id: heroIcon
+              text: root.displays.length > 1 ? "󰍺" : "󰍹"
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.display
               anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
             }
 
-            PanelActionButton {
-              id: addBtn
+            Column {
+              id: heroLabels
+              anchors.left: heroIcon.right
+              anchors.leftMargin: Style.space(14)
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
-              iconText: "󰐕"
-              tooltipText: "Add language"
-              foreground: root.bar.foreground
-              hoverColor: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-              onClicked: root.openAddView()
+              spacing: Style.space(2)
+
+              Text {
+                text: "Display"
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.title
+                font.bold: true
+                elide: Text.ElideRight
+                width: parent.width
+              }
+
+              Text {
+                id: heroLabel
+                text: {
+                  if (root.brightnessAvailable) {
+                    return root.brightnessName(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent).toUpperCase()
+                  }
+                  return "FIXED BRIGHTNESS"
+                }
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                font.letterSpacing: 1.2
+                elide: Text.ElideRight
+                width: parent.width
+              }
             }
           }
 
-          Repeater {
-            model: root.configuredLayouts
-            LanguageRow {
-              required property var modelData
-              required property int index
-              width: parent ? parent.width : 0
-              lang: modelData
-              rowIndex: index
-            }
-          }
-        }
-
-        PanelSeparator {
-          foreground: root.bar.foreground
-        }
-
-        Column {
-          width: parent.width
-          spacing: Style.space(12)
-
-          PanelSectionHeader {
-            text: "SWITCH SHORTCUT"
+          // ---------- Brightness ----------
+          PanelSeparator {
+            visible: root.brightnessAvailable
             foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
           }
 
-          Row {
-            id: switcherRow
+          Column {
+            visible: root.brightnessAvailable
             width: parent.width
             spacing: Style.space(6)
 
-            readonly property int count: 3
-            readonly property real cellWidth: (width - spacing * (count - 1)) / count
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(brightnessHeader.implicitHeight, brightnessPercent.implicitHeight)
 
-            Repeater {
-              model: root.switcherPresets
-              SwitcherPill {
-                required property var modelData
-                required property int index
-                preset: modelData.id
-                presetLabel: modelData.label
-                pillIndex: index
-                width: switcherRow.cellWidth
+              PanelSectionHeader {
+                id: brightnessHeader
+                text: "BRIGHTNESS"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                id: brightnessPercent
+                text: Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent) + "%"
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            CursorSurface {
+              id: brightnessRow
+              width: parent.width
+              height: brightnessSlider.implicitHeight + Style.spacing.controlGap
+              hasCursor: root.cursorActive && root.focusSection === "brightness" && root.selectedIndex === -1
+              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(brightnessRow)
+              foreground: root.bar.foreground
+              outline: true
+
+              PanelSlider {
+                id: brightnessSlider
+                bar: root.bar
+                anchors.fill: parent
+                anchors.leftMargin: Style.space(6)
+                anchors.rightMargin: Style.space(6)
+                minimum: 5
+                maximum: 100
+                step: 1
+                value: root.brightnessPercent
+                integer: true
+                onMoved: function(v) { root.previewBrightness(v) }
+                onReleased: function(v) {
+                  brightnessDebounce.stop()
+                  root.setBrightness(v)
+                }
+              }
+
+              HoverHandler {
+                onHoveredChanged: if (hovered && !root.reflowingText) {
+                  root.cursorActive = true
+                  root.focusSection = "brightness"
+                  root.selectedIndex = -1
+                }
               }
             }
           }
-        }
-      }
 
-      // ---------- "add" view: search + all available layouts ----------
-      Column {
-        width: parent.width
-        spacing: Style.space(10)
-        visible: root.viewMode === "add"
-
-        Item {
-          width: parent.width
-          implicitHeight: Math.max(backBtn.implicitHeight, addHeader.implicitHeight)
-
-          PanelActionButton {
-            id: backBtn
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            iconText: "󰅁"
-            tooltipText: "Back"
+          // ---------- Text size ----------
+          PanelSeparator {
             foreground: root.bar.foreground
-            hoverColor: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            onClicked: root.closeAddView()
           }
-
-          PanelSectionHeader {
-            id: addHeader
-            text: "ADD LANGUAGE"
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            anchors.left: backBtn.right
-            anchors.leftMargin: Style.space(6)
-            anchors.verticalCenter: parent.verticalCenter
-          }
-        }
-
-        TextField {
-          id: searchField
-          width: parent.width
-          // Explicit binding (rather than relying on the default of true)
-          // so this item's own `visible` actually flips with the view --
-          // onVisibleChanged/Component.onCompleted below key off of it to
-          // (re)grab keyboard focus, and an ancestor's visible=false does
-          // NOT change a child's own visible property value, only its
-          // effective on-screen rendering. Without this binding those
-          // handlers only ever saw `visible === true`, so they fired once
-          // on initial creation (while still in "list" view) and never
-          // again -- meaning the field could end up never receiving focus
-          // when "Add language" was actually opened.
-          visible: root.viewMode === "add"
-          placeholderText: "Search languages"
-          font.family: Style.font.family
-          font.pixelSize: Style.font.body
-          foreground: root.bar.foreground
-          horizontalPadding: Style.spacing.controlGap
-          verticalPadding: Style.spacing.controlPaddingY
-          text: root.searchText
-          onTextChanged: root.searchText = text
-          onAccepted: {
-            if (root.filteredAvailable.length === 0) return
-            // Use whatever row is currently highlighted by the keyboard
-            // cursor (kept in sync by moveAvailableSelection as Up/Down are
-            // pressed), falling back to the first result only if no
-            // selection has been made yet (e.g. Enter pressed immediately
-            // after typing, before any arrow-key navigation).
-            var idx = root.cursorActive
-              ? Math.max(0, Math.min(root.selectedIndex, root.filteredAvailable.length - 1))
-              : 0
-            root.addLanguage(root.filteredAvailable[idx].code)
-          }
-          onVisibleChanged: if (visible) Qt.callLater(forceActiveFocus)
-          Component.onCompleted: if (visible) Qt.callLater(forceActiveFocus)
-          Keys.onUpPressed: function(event) { root.moveAvailableSelection(-1); event.accepted = true }
-          Keys.onDownPressed: function(event) { root.moveAvailableSelection(1); event.accepted = true }
-          Keys.onEscapePressed: function(event) { root.closeAddView(); event.accepted = true }
-        }
-
-        Flickable {
-          id: availableFlick
-          width: parent.width
-          height: Math.min(contentHeight, Style.space(260))
-          contentWidth: width
-          contentHeight: availableList.implicitHeight
-          clip: true
 
           Column {
-            id: availableList
-            width: availableFlick.width
-            spacing: Style.space(2)
+            width: parent.width
+            spacing: Style.space(6)
+
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(textSizeHeader.implicitHeight, textSizePx.implicitHeight)
+
+              PanelSectionHeader {
+                id: textSizeHeader
+                text: "TEXT SIZE"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                id: textSizePx
+                text: (textSizeSlider.dragging
+                       ? root.textSizeStops[Math.round(textSizeSlider.liveValue)]
+                       : root.displayedTextPx()) + "px"
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            CursorSurface {
+              id: textSizeRow
+              width: parent.width
+              height: textSizeSlider.implicitHeight + Style.spacing.controlGap
+              hasCursor: root.cursorActive && root.focusSection === "textsize" && root.selectedIndex === -1
+              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(textSizeRow)
+              foreground: root.bar.foreground
+              outline: true
+
+              PanelSlider {
+                id: textSizeSlider
+                bar: root.bar
+                anchors.fill: parent
+                anchors.leftMargin: Style.space(6)
+                anchors.rightMargin: Style.space(6)
+                minimum: 0
+                maximum: root.textSizeStops.length - 1
+                step: 1
+                integer: true
+                tickCount: root.textSizeStops.length
+                value: root.currentTextIndex()
+                onReleased: function(v) { root.setTextSize(root.textSizeStops[Math.round(v)]) }
+              }
+
+              HoverHandler {
+                onHoveredChanged: if (hovered && !root.reflowingText) {
+                  root.cursorActive = true
+                  root.focusSection = "textsize"
+                  root.selectedIndex = -1
+                }
+              }
+            }
+          }
+
+          // ---------- Scale ----------
+          PanelSeparator {
+            foreground: root.bar.foreground
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.space(10)
+
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(scaleHeader.implicitHeight, scaleMonitor.implicitHeight)
+
+              PanelSectionHeader {
+                id: scaleHeader
+                text: "SCALE"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              // Name the monitor SCALE targets, since it only applies to the
+              // focused one.
+              Text {
+                id: scaleMonitor
+                text: root.focusedMonitor
+                // Only worth naming when more than one display is in play.
+                visible: root.focusedMonitor !== "" && root.enabledDisplayCount > 1
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            Grid {
+              id: scaleRow
+              width: parent.width
+              columns: root.scaleValues.length
+              spacing: Style.spacing.xs
+
+              readonly property real cellWidth: root.scaleValues.length > 0
+                ? (width - spacing * (columns - 1)) / columns
+                : 0
+
+              Repeater {
+                model: root.scaleValues
+
+                ScalePill {
+                  required property string modelData
+                  required property int index
+
+                  scaleValue: modelData
+                  scaleIndex: index
+                  width: scaleRow.cellWidth
+                }
+              }
+            }
+          }
+
+          // ---------- Monitors ----------
+          PanelSeparator {
+            visible: root.displays.length > 1
+            foreground: root.bar.foreground
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.space(10)
+            visible: root.displays.length > 1
+
+            PanelSectionHeader {
+              text: "DISPLAYS"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+            }
 
             Repeater {
-              id: availableRepeater
-              model: root.filteredAvailable
-              AvailableRow {
+              model: root.displays
+
+              MonitorRow {
                 required property var modelData
                 required property int index
-                width: parent ? parent.width : 0
-                lang: modelData
+
+                width: panelColumn.width
+                display: modelData
                 rowIndex: index
               }
             }
+          }
 
-            Text {
-              visible: root.filteredAvailable.length === 0
-              width: parent.width
-              horizontalAlignment: Text.AlignHCenter
-              text: "No matches"
-              color: Qt.darker(root.bar.foreground, 1.5)
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.bodySmall
-            }
+          Item {
+            width: parent.width
+            height: Style.space(4)
           }
         }
       }
     }
   }
 
-  // A configured language. Click switches to it; a remove (x) button
-  // appears on hover when more than one language is configured, but never
-  // on the primary layout (the one set up at install time) since it can't
-  // be removed.
-  component LanguageRow: CursorSurface {
-    id: row
-    required property var lang
+  component ScalePill: Button {
+    id: pill
+    required property string scaleValue
+    required property int scaleIndex
+
+    text: root.effectiveScale(scaleValue) + "x"
+    fontSize: Style.font.caption
+    foreground: root.bar.foreground
+    fontFamily: root.bar.fontFamily
+    horizontalPadding: Style.spacing.sm
+    verticalPadding: Style.spacing.controlPaddingY
+    bordered: true
+
+    active: root.activeScaleIndex() === scaleIndex
+    hasCursor: root.cursorActive && root.focusSection === "scale" && root.selectedIndex === scaleIndex
+
+    onClicked: root.setScale(scaleValue)
+    onHovered: function(isHovered) {
+      if (!isHovered || root.reflowingText) return
+      root.cursorActive = true
+      root.focusSection = "scale"
+      root.selectedIndex = pill.scaleIndex
+    }
+  }
+
+  component MonitorRow: CursorSurface {
+    id: monitorRow
+    required property var display
     required property int rowIndex
 
-    readonly property bool isActive: root.activeLayout && lang && root.activeLayout.code === lang.code
-    // The primary layout is whichever one was configured first (typically
-    // the system's install-time keyboard layout) -- it's always layouts[0]
-    // since add() appends and remove() never touches ordering. It can
-    // never be removed, so never show the (x) for it.
-    readonly property bool isPrimary: lang && root.configuredLayouts.length > 0
-      && root.configuredLayouts[0].code === lang.code
-    readonly property bool removable: root.configuredLayouts.length > 1 && !row.isPrimary
+    readonly property bool isFocused: display && display.focused
+    readonly property bool canToggle: display && (!display.enabled || root.enabledDisplayCount > 1)
 
-    current: isActive
+    hasCursor: root.cursorActive && root.focusSection === "monitors" && root.selectedIndex === rowIndex
+    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(monitorRow)
+    current: isFocused
     foreground: root.bar.foreground
-    fill: root.hoverFill
-    currentFill: root.selectedFill
-    hasCursor: root.cursorActive && root.focusSection === "languages" && root.selectedIndex === rowIndex
+    fill: Style.hoverFillFor(root.bar.foreground, Color.accent)
+    currentFill: Style.selectedFillFor(root.bar.foreground, Color.accent)
+    implicitHeight: monitorInner.implicitHeight + Style.spacing.xl
+    opacity: canToggle ? 1.0 : 0.45
 
-    implicitHeight: rowContent.implicitHeight + Style.spacing.rowPaddingX
-
-    MouseArea {
-      id: rowMouse
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onContainsMouseChanged: if (containsMouse && root.hoverAllowed()) {
-        root.cursorActive = true
-        root.focusSection = "languages"
-        root.selectedIndex = row.rowIndex
-      }
-      onClicked: if (!row.isActive) root.switchTo(row.lang.code)
-    }
-
-    Item {
-      id: rowContent
+    Row {
+      id: monitorInner
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: Style.space(10)
-      anchors.rightMargin: Style.space(10)
-      implicitHeight: Math.max(label.implicitHeight, removeBtn.implicitHeight)
+      anchors.leftMargin: Style.space(6)
+      anchors.rightMargin: Style.space(6)
+      spacing: Style.space(8)
 
       Text {
-        id: label
-        anchors.left: parent.left
+        text: "󰍹"
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.title
+        width: Style.space(22)
+        horizontalAlignment: Text.AlignHCenter
         anchors.verticalCenter: parent.verticalCenter
-        anchors.right: removeBtn.visible ? removeBtn.left : parent.right
-        anchors.rightMargin: removeBtn.visible ? Style.space(8) : 0
-        text: (row.lang ? row.lang.label : "") + (row.isActive ? "  ✓" : "")
+      }
+
+      Text {
+        text: monitorRow.display.name + (monitorRow.display.focused ? " · focused" : "")
         color: root.bar.foreground
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.body
         elide: Text.ElideRight
+        width: parent.width - Style.space(22) - Style.space(14) - Style.space(16)
+        anchors.verticalCenter: parent.verticalCenter
       }
 
-      PanelActionButton {
-        id: removeBtn
-        anchors.right: parent.right
+      Text {
+        text: monitorRow.display.enabled ? "󰄬" : ""
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.subtitle
+        width: Style.space(14)
+        horizontalAlignment: Text.AlignRight
         anchors.verticalCenter: parent.verticalCenter
-        visible: row.removable && (rowMouse.containsMouse || row.hasCursor)
-        iconText: "󰅙"
-        tooltipText: "Remove"
-        foreground: root.bar.foreground
-        hoverColor: root.bar.foreground
-        fontFamily: root.bar.fontFamily
-        onClicked: root.removeLanguage(row.lang.code)
       }
     }
-  }
-
-  // One row in the "Add language" search results.
-  component AvailableRow: CursorSurface {
-    id: availRow
-    required property var lang
-    required property int rowIndex
-
-    current: false
-    foreground: root.bar.foreground
-    fill: root.hoverFill
-    currentFill: root.selectedFill
-    hasCursor: root.cursorActive && root.focusSection === "available" && root.selectedIndex === rowIndex
-    implicitHeight: availLabel.implicitHeight + Style.spacing.rowPaddingX
 
     MouseArea {
-      id: availMouse
       anchors.fill: parent
       hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onContainsMouseChanged: if (containsMouse && root.hoverAllowed()) {
+      cursorShape: monitorRow.canToggle ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onContainsMouseChanged: if (containsMouse && !root.reflowingText) {
         root.cursorActive = true
-        root.focusSection = "available"
-        root.selectedIndex = availRow.rowIndex
+        root.focusSection = "monitors"
+        root.selectedIndex = monitorRow.rowIndex
       }
-      onClicked: root.addLanguage(availRow.lang.code)
+      onClicked: if (monitorRow.canToggle) root.toggleDisplay(monitorRow.display.name, monitorRow.display.enabled)
     }
-
-    Text {
-      id: availLabel
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: Style.space(10)
-      anchors.rightMargin: Style.space(10)
-      text: availRow.lang ? availRow.lang.label : ""
-      color: root.bar.foreground
-      font.family: root.bar.fontFamily
-      font.pixelSize: Style.font.body
-      elide: Text.ElideRight
-    }
-  }
-
-  // One of the three switch-shortcut presets, same pill styling as the
-  // network panel's DNS provider picker.
-  component SwitcherPill: Button {
-    id: pill
-    required property string preset
-    required property string presetLabel
-    required property int pillIndex
-
-    text: presetLabel
-    fontSize: Style.font.bodySmall
-    foreground: root.bar.foreground
-    fontFamily: root.bar.fontFamily
-    horizontalPadding: Style.spacing.controlPaddingX
-    verticalPadding: Style.spacing.controlPaddingY + Style.space(4)
-    bordered: true
-
-    active: root.status.switcher === preset
-    hasCursor: root.cursorActive && root.focusSection === "switcher" && root.selectedIndex === pillIndex
-
-    onHovered: function(isHovered) {
-      if (!isHovered || !root.hoverAllowed()) return
-      root.cursorActive = true
-      root.focusSection = "switcher"
-      root.selectedIndex = pill.pillIndex
-    }
-
-    onClicked: root.setSwitcher(preset)
   }
 }
