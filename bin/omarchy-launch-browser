@@ -4,6 +4,9 @@
 # omarchy:args=[url]
 
 default_browser=$(env -u BROWSER xdg-settings get default-web-browser)
+if [[ -z $default_browser ]]; then
+  default_browser=$(xdg-mime query default x-scheme-handler/https)
+fi
 browser_exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$default_browser 2>/dev/null | head -1)
 
 if $browser_exec --help 2>/dev/null | grep -q MOZ_LOG; then
