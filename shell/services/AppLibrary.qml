@@ -78,7 +78,10 @@ Item {
     var id = String(desktopId || "")
     if (!id) return
     root.beginLaunchFeedback(name)
-    Util.execDetached("gtk-launch " + Util.shellQuote(id))
+    // Pass the file name with its extension: gtk-launch only appends ".desktop"
+    // when the argument doesn't already end with it, so ids that themselves end
+    // in ".desktop" (e.g. org.telegram.desktop) would otherwise never resolve.
+    Util.execDetached("gtk-launch " + Util.shellQuote(id + ".desktop"))
   }
 
   function remove(desktopId, name) {

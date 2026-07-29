@@ -105,6 +105,11 @@ assert(
 )
 
 assert(
+  appLibraryQml.includes('Util.shellQuote(id + ".desktop")'),
+  'app library launches by full file name so ids ending in .desktop (org.telegram.desktop) resolve'
+)
+
+assert(
   /function iconIndexScanCommand\(\)[\s\S]*-path "\*\/apps\/\*" -o -path "\*\/devices\/\*"/.test(appLibraryQml),
   'app library fallback icon index includes device icons'
 )
