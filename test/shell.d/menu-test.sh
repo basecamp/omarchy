@@ -210,12 +210,23 @@ assert(
   /enable\).*\(\.enabled \| not\)/.test(pluginPicker) && /disable\).*and \.enabled/.test(pluginPicker),
   'plugin picker offers what each verb can act on'
 )
-// A whole-bar replacement is chosen under Style rather than switched on here,
-// but it still has to be removable.
+// Enabling a bar replaces the one running, so it belongs under enable. Disable
+// is the one verb it cannot answer: a bar has no off, only a successor.
 assert(
-  /enable\).*NOT_A_BAR_OPTION/.test(pluginPicker) && /disable\).*NOT_A_BAR_OPTION/.test(pluginPicker)
+  !/enable\).*NOT_A_BAR_OPTION/.test(pluginPicker) && /disable\).*NOT_A_BAR_OPTION/.test(pluginPicker)
     && /remove\).*firstParty/.test(pluginPicker) && !/remove\).*NOT_A_BAR_OPTION/.test(pluginPicker),
-  'plugin picker keeps whole-bar replacements out of enable and disable, but still removable'
+  'plugin picker enables and removes a whole-bar replacement, but never disables one'
+)
+assert(
+  /if \$A_BAR_OPTION then \\\$bar else \\\$icon end/.test(pluginPicker),
+  'plugin picker gives a bar its own glyph, so replacing the bar does not look like one more widget'
+)
+
+const pluginCli = fs.readFileSync(path.join(root, 'bin/omarchy-plugin'), 'utf8')
+assert(
+  /Now using \$id as the bar/.test(pluginCli)
+    && /enabled_message "\$id"[\s\S]*?place_bar_widget/.test(pluginCli),
+  'plugin enable reports a bar as replacing the one in use, whether enabled or freshly added'
 )
 assert(
   /index\("bar-widget"\)[\s\S]*?omarchy-menu-select "Place \$name"[\s\S]*?Left[\s\S]*?Center[\s\S]*?Right[\s\S]*?omarchy-plugin enable "\$id" --section "\$\{section,,\}"/.test(pluginPicker),
@@ -224,7 +235,7 @@ assert(
 // Icons ride along as "<glyph>\tlabel"; the menu shows the glyph and hands
 // back the label, so nothing downstream has to strip one off.
 assert(
-  /\$icon \+ \\"\\\\t\\" \+ \.name/.test(pluginPicker) && /\$'\\U000f0262'"\$\{TAB\}Left"/.test(pluginPicker),
+  /end\) \+ \\"\\\\t\\" \+ \.name/.test(pluginPicker) && /\$'\\U000f0262'"\$\{TAB\}Left"/.test(pluginPicker),
   'plugin picker labels its rows with glyphs'
 )
 assert(

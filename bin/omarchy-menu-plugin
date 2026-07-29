@@ -10,16 +10,21 @@ set -euo pipefail
 
 TAB=$'\t'
 PLUGIN_ICON=$'\U000f0431'
+BAR_ICON=$'\U000f035c'
 
-# Switching a whole-bar replacement on and off is picking which bar to run,
-# which belongs under Style -- but one still has to be removable.
-NOT_A_BAR_OPTION='((.kinds | index("bar")) | not)'
+A_BAR_OPTION='(.kinds | index("bar"))'
+
+# Exactly one bar runs, so enabling one replaces the one before it. That leaves
+# nothing for disable to mean -- a bar has no off, only a successor -- so bars
+# are offered under enable, where the bar in use is the one absent from the
+# list, and going back to the built-in is enabling it again.
+NOT_A_BAR_OPTION="($A_BAR_OPTION | not)"
 
 case "${1:-}" in
-  enable) filter="$NOT_A_BAR_OPTION and (.enabled | not)"; prompt="Enable plugin" ;;
+  enable) filter='(.enabled | not)'; prompt="Enable plugin" ;;
   disable) filter="$NOT_A_BAR_OPTION and .enabled"; prompt="Disable plugin" ;;
   # A built-in has no checkout to delete, so only what the user installed is
-  # offered -- including a whole-bar replacement, which the lists above skip.
+  # offered -- the bar in use included, which falls back to the built-in bar.
   remove) filter='(.firstParty | not)'; prompt="Remove plugin" ;;
   *)
     echo "Usage: omarchy-menu-plugin <enable|disable|remove>" >&2
@@ -29,7 +34,11 @@ esac
 
 plugins=$(omarchy-plugin list --json) || exit 1
 
-names=$(jq -r --arg icon "$PLUGIN_ICON" "[.[] | select($filter)] | sort_by(.name)[] | \$icon + \"\\t\" + .name" <<<"$plugins")
+# A bar carries its own glyph, so a row that replaces the whole bar does not
+# read like one more widget to switch on.
+names=$(jq -r --arg icon "$PLUGIN_ICON" --arg bar "$BAR_ICON" \
+  "[.[] | select($filter)] | sort_by(.name)[]
+   | (if $A_BAR_OPTION then \$bar else \$icon end) + \"\\t\" + .name" <<<"$plugins")
 [[ -n $names ]] || { omarchy-notification-send "No plugin to ${1}"; exit 0; }
 
 name=$(omarchy-menu-select "$prompt" <<<"$names") || exit 0

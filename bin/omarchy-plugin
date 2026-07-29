@@ -21,7 +21,7 @@ Usage: omarchy-plugin <command> [args...]
 Manage plugins:
   list [--json]                       List discovered shell plugins
   rescan                              Rescan ~/.config/omarchy/plugins
-  enable <id> [placement]             Enable a plugin
+  enable <id> [placement]             Enable a plugin (a bar replaces the one in use)
   disable <id>                        Disable a plugin
 
 Install from git (a plugin is a git repo):
@@ -76,6 +76,18 @@ confirm() {
 # that could escape it (matches the id rules in omarchy-plugin-validate).
 valid_plugin_id() {
   [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $1 != *..* ]]
+}
+
+# Only one bar runs at a time, so enabling one replaces the one before it. Say
+# that rather than "Enabled", which reads like one more thing switched on next
+# to everything already there.
+enabled_message() {
+  local id="$1"
+  if omarchy-plugin-catalog | jq -e --arg id "$id" 'any(.[]; .id == $id and (.kinds | index("bar")))' >/dev/null; then
+    echo "Now using $id as the bar"
+  else
+    echo "Enabled $id"
+  fi
 }
 
 # A bar widget lands on the right when it is enabled, which is rarely where it
@@ -183,7 +195,7 @@ plugin_enabled() {
     omarchy-bar-plugin move "$id" "$@"
     echo "Enabled and moved $id"
   elif [[ $enabled == "true" ]]; then
-    echo "Enabled $id"
+    enabled_message "$id"
   else
     echo "Disabled $id"
   fi
@@ -268,7 +280,7 @@ WARN
 
   if [[ $enable_after == true ]]; then
     if wait_for_plugin_discovery "$id" && [[ $(omarchy-shell shell setPluginEnabled "$id" true) == "ok" ]]; then
-      echo "Enabled $id"
+      enabled_message "$id"
       place_bar_widget "$id"
     else
       echo "Could not enable $id (is omarchy-shell running?). Enable later with: omarchy plugin enable $id" >&2
