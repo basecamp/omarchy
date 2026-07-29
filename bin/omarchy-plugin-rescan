@@ -7,7 +7,6 @@ set -euo pipefail
 
 source omarchy-plugin-common
 
-(( $# == 0 )) || fail "rescan does not take arguments"
 omarchy-shell shell rescanPlugins ||
   fail "could not rescan plugins; is omarchy-shell running?"
 echo "Plugins rescanned"
