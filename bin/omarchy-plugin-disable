@@ -13,4 +13,16 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   exit 0
 fi
 
-set_plugin_enabled false "$@"
+id="${1:-}"
+[[ -n $id ]] || fail "plugin id is required"
+shift
+(( $# == 0 )) || fail "disable does not take placement options"
+
+omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+
+result=$(omarchy-shell shell setPluginEnabled "$id" false) ||
+  fail "could not update plugin; is omarchy-shell running?"
+[[ $result == "ok" ]] ||
+  fail "plugin '$id' is not known; run: omarchy plugin rescan"
+
+echo "Disabled $id"
