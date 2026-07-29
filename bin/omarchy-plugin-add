@@ -122,7 +122,7 @@ fi
 mv "$stage" "$target"
 echo "Added $id into $target"
 
-omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+omarchy-shell shell rescanPlugins >/dev/null
 
 if [[ -z $enable_after ]]; then
   if (( ASSUME_YES )) || ! interactive; then
@@ -135,13 +135,11 @@ if [[ -z $enable_after ]]; then
 fi
 
 if [[ $enable_after == true ]]; then
-  if wait_for_plugin_discovery "$id" &&
-    [[ $(omarchy-shell shell setPluginEnabled "$id" true) == "ok" ]]; then
-    enabled_message "$id"
-    place_bar_widget "$id"
-  else
-    echo "Could not enable $id (is omarchy-shell running?). Enable later with: omarchy plugin enable $id" >&2
-  fi
+  wait_for_plugin_discovery "$id" || fail "plugin '$id' was not discovered"
+  result=$(omarchy-shell shell setPluginEnabled "$id" true)
+  [[ $result == "ok" ]] || fail "plugin '$id' is not known"
+  enabled_message "$id"
+  place_bar_widget "$id"
 else
   echo "Enable it later with: omarchy plugin enable $id"
 fi

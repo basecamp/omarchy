@@ -45,10 +45,11 @@ target="$PLUGINS_DIR/$id"
 [[ -e $target || -L $target ]] || fail "plugin '$id' is not installed"
 
 was_enabled=""
-if shell_plugins=$(omarchy-shell shell listPlugins 2>/dev/null) && [[ -n $shell_plugins ]]; then
+shell_plugins=$(omarchy-shell shell listPlugins)
+if [[ -n $shell_plugins ]]; then
   was_enabled=$(jq -r --arg id "$id" '
     .[] | select(.id == $id) | .enabled
-  ' <<<"$shell_plugins" 2>/dev/null) || true
+  ' <<<"$shell_plugins")
 fi
 
 if [[ -L $target ]]; then
@@ -59,8 +60,9 @@ else
   confirm "Remove '$id'? The folder will be backed up." || fail "aborted"
 fi
 
-[[ $was_enabled == "true" ]] &&
-  omarchy-shell shell setPluginEnabled "$id" false >/dev/null 2>&1 || true
+if [[ $was_enabled == "true" ]]; then
+  omarchy-shell shell setPluginEnabled "$id" false >/dev/null
+fi
 
 if [[ -L $target ]]; then
   rm -f "$target"
@@ -80,7 +82,7 @@ else
   echo "Removed $id. Backup at: $backup"
 fi
 
-omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+omarchy-shell shell rescanPlugins >/dev/null
 
 if [[ $was_enabled == "true" ]]; then
   echo "Plugin was enabled and was unloaded from omarchy-shell."

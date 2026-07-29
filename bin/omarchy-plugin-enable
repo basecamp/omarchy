@@ -22,12 +22,11 @@ if (( $# > 0 )) && is_bar_option "$id"; then
   fail "'$id' is a bar; it replaces the bar in use rather than taking a place in one"
 fi
 
-omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+omarchy-shell shell rescanPlugins >/dev/null
 wait_for_plugin_discovery "$id" ||
-  fail "plugin '$id' was not discovered; is omarchy-shell running?"
+  fail "plugin '$id' was not discovered"
 
-result=$(omarchy-shell shell setPluginEnabled "$id" true) ||
-  fail "could not update plugin; is omarchy-shell running?"
+result=$(omarchy-shell shell setPluginEnabled "$id" true)
 [[ $result == "ok" ]] ||
   fail "plugin '$id' is not known; run: omarchy plugin rescan"
 

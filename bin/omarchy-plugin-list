@@ -26,8 +26,7 @@ while (( $# > 0 )); do
   shift
 done
 
-plugins=$(omarchy-shell shell listPlugins) ||
-  fail "could not list plugins; is omarchy-shell running?"
+plugins=$(omarchy-shell shell listPlugins)
 
 if [[ $json == "true" ]]; then
   printf '%s\n' "$plugins"

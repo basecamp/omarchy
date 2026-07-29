@@ -52,7 +52,7 @@ enabled_message() {
 plugin_discovered() {
   local id="$1"
   local plugins
-  plugins=$(omarchy-shell shell listPlugins 2>/dev/null) || return 1
+  plugins=$(omarchy-shell shell listPlugins)
   jq -e --arg id "$id" 'any(.[]; .id == $id)' <<<"$plugins" >/dev/null 2>&1
 }
 

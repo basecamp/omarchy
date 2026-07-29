@@ -115,6 +115,6 @@ for id in "${targets[@]}"; do
 done
 
 if (( UPDATED_ANY )); then
-  omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+  omarchy-shell shell rescanPlugins >/dev/null
 fi
 exit $rc

@@ -18,10 +18,9 @@ id="${1:-}"
 shift
 (( $# == 0 )) || fail "disable does not take placement options"
 
-omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+omarchy-shell shell rescanPlugins >/dev/null
 
-result=$(omarchy-shell shell setPluginEnabled "$id" false) ||
-  fail "could not update plugin; is omarchy-shell running?"
+result=$(omarchy-shell shell setPluginEnabled "$id" false)
 [[ $result == "ok" ]] ||
   fail "plugin '$id' is not known; run: omarchy plugin rescan"
 
