@@ -56,6 +56,8 @@ Item {
 
   function show(iconName, rawMessage, rawValue, rawMax, rawProgressText, rawDuration) {
     var next = OsdModel.stateForShow(iconName, rawMessage, rawValue, rawMax, rawProgressText, rawDuration)
+    // Update before opening so a fresh OSD starts at its new value; only
+    // subsequent updates while it remains open animate the progress bar.
     iconKey = next.iconKey
     maxValue = next.maxValue
     hasProgress = next.hasProgress
@@ -176,6 +178,11 @@ Item {
             height: parent.height
             width: parent.width * (root.hasProgress ? root.value / root.maxValue : 0)
             color: Color.accent
+
+            Behavior on width {
+              enabled: root.opened
+              NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+            }
           }
         }
         Text {

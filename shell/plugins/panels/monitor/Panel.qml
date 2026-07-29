@@ -27,6 +27,9 @@ Panel {
   property var displays: []
   property int enabledDisplayCount: 0
 
+  // Carry sub-notch touchpad deltas between wheel events.
+  property real wheelAccumulator: 0
+
   // Cursor model shared by keyboard and mouse. Sections:
   //   "brightness" - single slider row, selectedIndex = -1 sentinel
   //                  (mirrors Audio's slider rows). Only present if a
@@ -250,6 +253,14 @@ Panel {
     brightnessDebounce.restart()
   }
 
+  function showBrightnessOsd(percent) {
+    if (!bar || !bar.shell) return
+    bar.shell.summon("omarchy.osd", JSON.stringify({
+      icon: "brightness",
+      value: percent
+    }))
+  }
+
   function normalizeScale(scale) {
     return Model.normalizeScale(scale)
   }
@@ -461,7 +472,12 @@ Panel {
     text: Quickshell.screens.length > 1 ? "󰍺" : "󰍹"
     onPressed: function(b) { root.toggle() }
     onWheelMoved: function(delta) {
-      if (root.brightnessAvailable) root.setBrightness(root.brightnessPercent + (delta > 0 ? 5 : -5))
+      if (!root.brightnessAvailable) return
+      var wheel = Util.wheelSteps(root.wheelAccumulator, delta)
+      root.wheelAccumulator = wheel.remainder
+      if (wheel.steps === 0) return
+      root.setBrightness(root.brightnessPercent + wheel.steps * 5)
+      root.showBrightnessOsd(root.brightnessPercent)
     }
   }
 
