@@ -148,56 +148,51 @@ uses "My <name>" as its display name, then replaces the built-in with the clone.
 USAGE
 }
 
-clone_command() {
-  local source_id=""
-  if (( $# > 0 )) && [[ $1 != --* ]]; then
-    source_id="$1"
-    shift
-  fi
+source_id=""
+if (( $# > 0 )) && [[ $1 != --* ]]; then
+  source_id="$1"
+  shift
+fi
 
-  while (( $# > 0 )); do
-    case "$1" in
-    -h | --help)
-      usage
-      return
-      ;;
-    *)
-      fail "unknown clone option: $1"
-      ;;
-    esac
-  done
+while (( $# > 0 )); do
+  case "$1" in
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  *)
+    fail "unknown clone option: $1"
+    ;;
+  esac
+done
 
-  [[ -n $source_id ]] || fail "clone source is required"
+[[ -n $source_id ]] || fail "clone source is required"
 
-  local source_info source_dir source_manifest source_name is_bar is_bar_widget
-  source_info=$(omarchy-plugin-catalog | jq -r --arg id "$source_id" '
-      .[] | select(.firstParty and .id == $id)
-      | [
-          .sourceDir,
-          .manifestPath,
-          (.name // .id),
-          ((.kinds | index("bar")) != null),
-          ((.kinds | index("bar-widget")) != null)
-        ] | @tsv
-    ' | head -1)
-  [[ -n $source_info ]] || fail "unknown built-in plugin: $source_id"
-  IFS=$'\t' read -r source_dir source_manifest source_name is_bar is_bar_widget <<<"$source_info"
+source_info=$(omarchy-plugin-catalog | jq -r --arg id "$source_id" '
+    .[] | select(.firstParty and .id == $id)
+    | [
+        .sourceDir,
+        .manifestPath,
+        (.name // .id),
+        ((.kinds | index("bar")) != null),
+        ((.kinds | index("bar-widget")) != null)
+      ] | @tsv
+  ' | head -1)
+[[ -n $source_info ]] || fail "unknown built-in plugin: $source_id"
+IFS=$'\t' read -r source_dir source_manifest source_name is_bar is_bar_widget <<<"$source_info"
 
-  local new_id="local.${source_id#omarchy.}"
-  local display_name="My $source_name"
-  local target_dir="$PLUGINS_DIR/$new_id"
-  [[ ! -e $target_dir && ! -L $target_dir ]] || fail "$target_dir already exists"
+new_id="local.${source_id#omarchy.}"
+display_name="My $source_name"
+target_dir="$PLUGINS_DIR/$new_id"
+[[ ! -e $target_dir && ! -L $target_dir ]] || fail "$target_dir already exists"
 
-  mkdir -p "$PLUGINS_DIR"
-  copy_plugin "$source_dir" "$source_manifest" "$target_dir"
-  clone_plugin "$target_dir" "$source_id" "$new_id" "$display_name"
+mkdir -p "$PLUGINS_DIR"
+copy_plugin "$source_dir" "$source_manifest" "$target_dir"
+clone_plugin "$target_dir" "$source_id" "$new_id" "$display_name"
 
-  omarchy-shell -q shell rescanPlugins >/dev/null
-  switch_to_clone "$source_id" "$new_id" "$is_bar" "$is_bar_widget"
-  omarchy-notification-send -g 󰐱 \
-    "Editing Cloned Plugin" \
-    "Original plugin has been replace by clone."
-  echo "Cloned $source_id to $target_dir and switched to $new_id"
-}
-
-clone_command "$@"
+omarchy-shell -q shell rescanPlugins >/dev/null
+switch_to_clone "$source_id" "$new_id" "$is_bar" "$is_bar_widget"
+omarchy-notification-send -g 󰐱 \
+  "Editing Cloned Plugin" \
+  "Original plugin has been replace by clone."
+echo "Cloned $source_id to $target_dir and switched to $new_id"
