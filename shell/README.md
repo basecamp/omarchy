@@ -140,15 +140,21 @@ The lower-level IPC equivalents remain available via `omarchy-shell shell rescan
 The `omarchy plugin` command wraps those calls and can also edit the persisted
 bar layout in `shell.json`.
 
-To hack on an existing widget safely, clone it into a user plugin instead of
-editing the built-in source. Third-party ids must be namespaced and may not use
-the reserved `omarchy.*` prefix.
+To hack on a built-in plugin safely, clone it into user config instead of
+editing the built-in source. The complete plugin directory is copied, including
+every declared kind and local dependency. A built-in id such as
+`omarchy.clock` becomes `local.clock`, with `My Clock` as its display name.
 
 ```bash
-omarchy plugin clone omarchy.clock local.clock --replace
-omarchy plugin clone                 # interactive source/name picker
+omarchy plugin clone omarchy.clock
 omarchy plugin edit local.clock      # cd into the plugin directory
 ```
+
+Cloning switches from the built-in to the new local plugin, preserving an
+existing bar widget's position and settings. Setup > Plugins > Clone provides
+the interactive picker, then opens the new `local.*` directory in `$EDITOR`.
+Saving a file anywhere inside a `local.*` plugin reloads plugin code
+automatically; `omarchy plugin rescan` remains available to force a reload.
 
 First-party plugins under `shell/plugins/` are discovered the same way and load
 by default. Disabling a non-widget records it in `disabledPlugins[]`; disabling

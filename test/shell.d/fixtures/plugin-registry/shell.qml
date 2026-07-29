@@ -183,6 +183,11 @@ ShellRoot {
     registry.setEnabled("omarchy.first-widget", true)
     root.assertDeepEqual(root.config.bar.layout.center, [{ id: "omarchy.first-widget" }], "a widget without a default section falls back to center")
 
+    var localBase = registry.pluginsDir + "/local.clock"
+    root.assertEqual(registry.localPluginIdForPath(localBase + "/BarWidget.qml"), "local.clock", "local clone changes are watched")
+    root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/acme.clock/BarWidget.qml"), "", "installed plugins are not treated as local clones")
+    root.assertEqual(registry.localPluginIdForPath(localBase + "/.git/index"), "", "clone git metadata is ignored")
+
     root.assertTrue(changeCount > 0, "registry emits change notifications")
     writeResult()
   }

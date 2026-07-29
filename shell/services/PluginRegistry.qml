@@ -28,6 +28,7 @@ QtObject {
   signal pluginsChanged()
   signal scanFinished()
   signal pluginLoadFailed(string id, string error)
+  signal localPluginChanged(string id)
 
   // ---------------------------------------------------------------- helpers
 
@@ -337,7 +338,36 @@ QtObject {
   }
 
   property Process initProcess: Process {
-    onExited: registry.rescan()
+    onExited: {
+      registry.startLocalPluginWatcher()
+      registry.rescan()
+    }
+  }
+
+  property Process localPluginWatcher: Process {
+    command: [
+      "inotifywait",
+      "-m",
+      "-r",
+      "-q",
+      "-e",
+      "close_write,create,delete,move",
+      "--format",
+      "%w%f",
+      registry.pluginsDir
+    ]
+    stdout: SplitParser {
+      onRead: function(path) {
+        var pluginId = registry.localPluginIdForPath(path)
+        if (pluginId) registry.localPluginChanged(pluginId)
+      }
+    }
+    onExited: localPluginWatcherRestart.restart()
+  }
+
+  property Timer localPluginWatcherRestart: Timer {
+    interval: 1000
+    onTriggered: registry.ensureUserDir()
   }
 
   function rescan() {
@@ -377,6 +407,22 @@ QtObject {
   function ensureUserDir() {
     initProcess.command = ["bash", "-c", "mkdir -p \"$0\"", registry.pluginsDir]
     initProcess.running = true
+  }
+
+  function localPluginIdForPath(filePath) {
+    var base = pluginsDir.replace(/\/$/, "") + "/"
+    var path = String(filePath || "").trim()
+    if (path.indexOf(base + "local.") !== 0) return ""
+
+    var relative = path.slice(base.length)
+    if (relative.indexOf("/.git/") !== -1 || relative.endsWith("/.git")) return ""
+
+    var slash = relative.indexOf("/")
+    return slash === -1 ? relative : relative.slice(0, slash)
+  }
+
+  function startLocalPluginWatcher() {
+    if (!localPluginWatcher.running) localPluginWatcher.running = true
   }
 
   Component.onCompleted: ensureUserDir()

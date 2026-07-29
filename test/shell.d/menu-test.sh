@@ -183,11 +183,11 @@ assertEqual(
 )
 assertDeepEqual(
   defaultItems.filter(item => item.parent === 'setup.plugin').map(item => item.label),
-  ['Enable Plugin', 'Disable Plugin', 'Add Plugin', 'Remove Plugin'],
+  ['Enable Plugin', 'Disable Plugin', 'Add Plugin', 'Clone Plugin', 'Remove Plugin'],
   'menu manages plugins from Setup > Plugins'
 )
 assert(
-  ['enable', 'disable', 'remove'].every(
+  ['enable', 'disable', 'clone', 'remove'].every(
     verb => defaultById[`setup.plugin.${verb}`].action === `omarchy-menu-plugin ${verb}`
   ),
   'menu picks a plugin the way it already picks a theme or a timezone'
@@ -212,6 +212,7 @@ assert(
 )
 assert(
   /remove\).*\(\.firstParty \| not\)/.test(pluginPicker)
+    && /clone\).*\.firstParty/.test(pluginPicker)
     && !/kinds|bar-widget|A_BAR_OPTION|NOT_A_BAR_OPTION|BAR_ICON/.test(pluginPicker),
   'plugin picker leaves plugin-kind decisions to its data and the plugin command'
 )

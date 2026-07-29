@@ -47,7 +47,8 @@ pick() {
 
   : >"$TMPDIR/calls"
   : >"$TMPDIR/rows"
-  PATH="$STUB_DIR:$PATH" \
+  HOME="$TMPDIR/home" \
+    PATH="$STUB_DIR:$PATH" \
     FAKE_PLUGINS="$TMPDIR/plugins.json" \
     FAKE_CALLS="$TMPDIR/calls" \
     FAKE_ROWS="$TMPDIR/rows" \
@@ -58,9 +59,8 @@ pick() {
   CALLS=$(cat "$TMPDIR/calls")
 }
 
-# Cloning a plugin keeps the name it was cloned from, so two plugins really can
-# arrive at the picker calling themselves Clock. Both eligible for the same
-# verb: neither row can stand on the name alone.
+# Two plugins can declare the same display name. When both are eligible for the
+# same verb, neither row can stand on the name alone.
 cat >"$TMPDIR/plugins.json" <<'JSON'
 [
   {"id": "omarchy.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": false, "active": false, "canDisable": true, "firstParty": true},
@@ -111,6 +111,36 @@ pass "picker leaves an unambiguous name unadorned"
 [[ $CALLS == *"omarchy-plugin enable acme.weather"* ]] \
   || fail "picker delegates plugin enablement to the plugin command" "$CALLS"
 pass "picker delegates plugin enablement to the plugin command"
+
+# Clone offers only first-party plugins without an existing local counterpart,
+# then performs the clone and opens its deterministic path in $EDITOR.
+cat >"$TMPDIR/plugins.json" <<'JSON'
+[
+  {"id": "omarchy.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": true, "active": false, "canDisable": true, "firstParty": true},
+  {"id": "acme.weather", "name": "Weather", "kinds": ["bar-widget"], "enabled": false, "active": false, "canDisable": true, "firstParty": false}
+]
+JSON
+
+pick clone "Clock"
+[[ $ROWS == *"Clock"* && $ROWS != *"Weather"* ]] ||
+  fail "clone picker offers only built-in plugins" "$ROWS"
+pass "clone picker offers built-in plugins"
+[[ $CALLS == *'terminal: omarchy-plugin clone omarchy.clock && exec $EDITOR '*"/.config/omarchy/plugins/local.clock" ]] ||
+  fail "clone picker opens the cloned path in EDITOR" "$CALLS"
+pass "clone picker clones and opens the local plugin"
+
+# Once local.<id> is discovered, the source no longer belongs in Clone.
+cat >"$TMPDIR/plugins.json" <<'JSON'
+[
+  {"id": "omarchy.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": true, "active": false, "canDisable": true, "firstParty": true},
+  {"id": "local.clock", "name": "My Clock", "kinds": ["bar-widget"], "enabled": false, "active": false, "canDisable": true, "firstParty": false}
+]
+JSON
+
+pick clone ""
+[[ $CALLS == *"notification: No plugin to clone"* ]] ||
+  fail "clone picker offers an already cloned plugin" "$CALLS"
+pass "clone picker omits plugins already cloned locally"
 
 # The picker treats every plugin alike and leaves kind-specific behavior to the
 # plugin command.

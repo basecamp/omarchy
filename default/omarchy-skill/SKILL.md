@@ -130,7 +130,7 @@ Run `omarchy --help` for the full list. The most common groups:
 | `omarchy toggle` | Toggle feature on/off | `omarchy toggle nightlight` |
 | `omarchy theme` | Theme management | `omarchy theme set <name>` |
 | `omarchy bar` | Bar layout and widgets | `omarchy bar plugin move omarchy.clock --section right` |
-| `omarchy plugin` | Manage/clone shell plugins | `omarchy plugin clone omarchy.clock local.clock --replace` |
+| `omarchy plugin` | Manage/clone shell plugins | `omarchy plugin clone omarchy.clock` |
 | `omarchy hook` | Install automation hooks | `omarchy hook install theme-set <script>` |
 | `omarchy install` | Install optional software / packages | `omarchy install docker dbs` |
 | `omarchy launch` | Launch apps | `omarchy launch browser` |
@@ -183,9 +183,8 @@ To customize a built-in bar widget, never edit `$OMARCHY_PATH/shell/plugins/`.
 Clone it into the user plugin directory instead:
 
 ```bash
-omarchy plugin clone omarchy.workspaces local.workspaces --replace
-# Edit ~/.config/omarchy/plugins/local.workspaces/, then:
-omarchy plugin rescan
+omarchy plugin clone omarchy.workspaces
+# Edit ~/.config/omarchy/plugins/local.workspaces/; saved changes reload automatically.
 ```
 
 **Commands:** `omarchy restart shell`, `omarchy refresh shell`
@@ -420,6 +419,6 @@ This skill intentionally does not cover Omarchy source development. Do not use t
 - "Clear all reminders" -> `omarchy reminder clear`
 - "Customize the catppuccin theme colors" -> Create `~/.config/omarchy/themes/catppuccin-custom/` by copying from stock, then edit
 - "Run a script every time I change themes" -> Install it with `omarchy hook install theme-set <script>`
-- "Change how workspace labels are rendered" -> Clone `omarchy.workspaces` to a user plugin with `--replace`, then edit the clone
+- "Change how workspace labels are rendered" -> Clone `omarchy.workspaces`, which switches the bar to `local.workspaces`, then edit the clone
 - "Lock after ten minutes" -> Set `idle.lock` to `600` in `~/.config/omarchy/shell.json`
 - "Reset shell/bar to defaults" -> `omarchy refresh shell`
