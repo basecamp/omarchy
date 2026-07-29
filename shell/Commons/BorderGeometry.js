@@ -172,6 +172,11 @@ function normalizeRadii(w, h, r) {
   return { tl: tl, tr: tr, br: br, bl: bl }
 }
 
+function appendArc(path, rx, ry, sweep, point) {
+  if (rx > 0 && ry > 0) path.push("A", rx, ry, 0, 0, sweep, point.x, point.y)
+  else path.push("L", point.x, point.y)
+}
+
 function roundedRectPath(x, y, w, h, radii) {
   if (w <= 0 || h <= 0) return ""
   var r = normalizeRadii(w, h, radii)
@@ -181,61 +186,160 @@ function roundedRectPath(x, y, w, h, radii) {
 
   p.push("M", x + r.tl.rx, y)
   p.push("H", right - r.tr.rx)
-  if (r.tr.rx > 0 || r.tr.ry > 0) p.push("A", r.tr.rx, r.tr.ry, 0, 0, 1, right, y + r.tr.ry)
+  appendArc(p, r.tr.rx, r.tr.ry, 1, { x: right, y: y + r.tr.ry })
   p.push("V", bottom - r.br.ry)
-  if (r.br.rx > 0 || r.br.ry > 0) p.push("A", r.br.rx, r.br.ry, 0, 0, 1, right - r.br.rx, bottom)
+  appendArc(p, r.br.rx, r.br.ry, 1, { x: right - r.br.rx, y: bottom })
   p.push("H", x + r.bl.rx)
-  if (r.bl.rx > 0 || r.bl.ry > 0) p.push("A", r.bl.rx, r.bl.ry, 0, 0, 1, x, bottom - r.bl.ry)
+  appendArc(p, r.bl.rx, r.bl.ry, 1, { x: x, y: bottom - r.bl.ry })
   p.push("V", y + r.tl.ry)
-  if (r.tl.rx > 0 || r.tl.ry > 0) p.push("A", r.tl.rx, r.tl.ry, 0, 0, 1, x + r.tl.rx, y)
+  appendArc(p, r.tl.rx, r.tl.ry, 1, { x: x + r.tl.rx, y: y })
   p.push("Z")
 
   return p.join(" ")
 }
 
-function ringPath(w, h, radius, widths) {
+function borderBoundary(x, y, w, h, radii) {
+  var r = radii && radii.tl ? radii : normalizeRadii(w, h, radii)
+  var right = x + w
+  var bottom = y + h
+  return {
+    start: [
+      { x: x + r.tl.rx, y: y },
+      { x: right, y: y + r.tr.ry },
+      { x: right - r.br.rx, y: bottom },
+      { x: x, y: bottom - r.bl.ry },
+    ],
+    end: [
+      { x: right - r.tr.rx, y: y },
+      { x: right, y: bottom - r.br.ry },
+      { x: x + r.bl.rx, y: bottom },
+      { x: x, y: y + r.tl.ry },
+    ],
+    corner: [r.tr, r.br, r.bl, r.tl],
+  }
+}
+
+function appendForwardCorner(path, boundary, side) {
+  var corner = boundary.corner[side]
+  appendArc(path, corner.rx, corner.ry, 1, boundary.start[(side + 1) % 4])
+}
+
+function appendReverseCorner(path, boundary, side) {
+  var corner = boundary.corner[side]
+  appendArc(path, corner.rx, corner.ry, 0, boundary.end[side])
+}
+
+function reverseBoundaryPath(boundary) {
+  var p = ["M", boundary.start[0].x, boundary.start[0].y]
+  for (var side = 3; side >= 0; side--) {
+    appendReverseCorner(p, boundary, side)
+    p.push("L", boundary.start[side].x, boundary.start[side].y)
+  }
+  p.push("Z")
+  return p.join(" ")
+}
+
+function runPath(outer, inner, start, length) {
+  var previous = (start + 3) % 4
+  var next = (start + length) % 4
+  var p = ["M", outer.end[previous].x, outer.end[previous].y]
+
+  appendForwardCorner(p, outer, previous)
+  for (var offset = 0; offset < length; offset++) {
+    var side = (start + offset) % 4
+    p.push("L", outer.end[side].x, outer.end[side].y)
+    appendForwardCorner(p, outer, side)
+  }
+
+  p.push("L", inner.start[next].x, inner.start[next].y)
+  for (var reverseOffset = length - 1; reverseOffset >= 0; reverseOffset--) {
+    var reverseSide = (start + reverseOffset) % 4
+    appendReverseCorner(p, inner, reverseSide)
+    p.push("L", inner.start[reverseSide].x, inner.start[reverseSide].y)
+  }
+  appendReverseCorner(p, inner, previous)
+  p.push("Z")
+  return p.join(" ")
+}
+
+function radiiFit(w, h, r) {
+  return r.tlrx + r.trrx <= w
+    && r.blrx + r.brrx <= w
+    && r.tlry + r.blry <= h
+    && r.trry + r.brry <= h
+}
+
+// Internal geometry output used by ringPath and focused topology tests.
+// Connected enabled-side runs share one closed contour; opposite-only sides
+// need two. The all-sides case is one compound winding path with a reversed
+// inner loop. Disabled sides never require touching or epsilon-offset inner
+// geometry, so a zero/zero rounded corner emits no border pixels.
+function borderPaths(w, h, radius, widths) {
   w = Math.max(0, Number(w) || 0)
   h = Math.max(0, Number(h) || 0)
   radius = Math.max(0, Number(radius) || 0)
   widths = widths || { top: 0, right: 0, bottom: 0, left: 0 }
+  if (w <= 0 || h <= 0) return []
 
-  var outer = roundedRectPath(0, 0, w, h, {
+  var top = Math.max(0, Number(widths.top) || 0)
+  var right = Math.max(0, Number(widths.right) || 0)
+  var bottom = Math.max(0, Number(widths.bottom) || 0)
+  var left = Math.max(0, Number(widths.left) || 0)
+  var enabled = [top > 0, right > 0, bottom > 0, left > 0]
+  if (!enabled[0] && !enabled[1] && !enabled[2] && !enabled[3]) return []
+
+  var outerRadii = normalizeRadii(w, h, {
     tlrx: radius, tlry: radius,
     trrx: radius, trry: radius,
     brrx: radius, brry: radius,
     blrx: radius, blry: radius,
   })
-
-  // Shape's OddEven fill can collapse to the outer fill when the inner
-  // cutout touches the outer path on one or more zero-width sides. Keep the
-  // cutout strictly inside the outer path with a subpixel inset so one-sided
-  // borders (for example selected-border-width = "0 0 0 4") render as a
-  // strip instead of painting the whole row.
-  var epsilon = 0.001
-  var left = Math.max(0, widths.left || 0)
-  var top = Math.max(0, widths.top || 0)
-  var right = Math.max(0, widths.right || 0)
-  var bottom = Math.max(0, widths.bottom || 0)
-  var ix = Math.max(left, epsilon)
-  var iy = Math.max(top, epsilon)
-  var ir = Math.max(right, epsilon)
-  var ib = Math.max(bottom, epsilon)
-  var iw = w - ix - ir
-  var ih = h - iy - ib
-  if (iw <= 0 || ih <= 0) return outer
-
-  var inner = roundedRectPath(ix, iy, iw, ih, {
-    tlrx: Math.max(0, radius - left),
-    tlry: Math.max(0, radius - top),
-    trrx: Math.max(0, radius - right),
-    trry: Math.max(0, radius - top),
-    brrx: Math.max(0, radius - right),
-    brry: Math.max(0, radius - bottom),
-    blrx: Math.max(0, radius - left),
-    blry: Math.max(0, radius - bottom),
+  var outerPath = roundedRectPath(0, 0, w, h, {
+    tlrx: outerRadii.tl.rx, tlry: outerRadii.tl.ry,
+    trrx: outerRadii.tr.rx, trry: outerRadii.tr.ry,
+    brrx: outerRadii.br.rx, brry: outerRadii.br.ry,
+    blrx: outerRadii.bl.rx, blry: outerRadii.bl.ry,
   })
 
-  return outer + " " + inner
+  var iw = w - left - right
+  var ih = h - top - bottom
+  if (iw <= 0 || ih <= 0) return [outerPath]
+
+  var desiredInnerRadii = {
+    tlrx: Math.max(0, outerRadii.tl.rx - left),
+    tlry: Math.max(0, outerRadii.tl.ry - top),
+    trrx: Math.max(0, outerRadii.tr.rx - right),
+    trry: Math.max(0, outerRadii.tr.ry - top),
+    brrx: Math.max(0, outerRadii.br.rx - right),
+    brry: Math.max(0, outerRadii.br.ry - bottom),
+    blrx: Math.max(0, outerRadii.bl.rx - left),
+    blry: Math.max(0, outerRadii.bl.ry - bottom),
+  }
+
+  // Normalizing an inner radius that cannot fit can move its tangent beyond
+  // the outer rounded boundary. Winding fill may then paint outside the outer
+  // contour. Conservatively treat that rounded interior as consumed instead.
+  if (!radiiFit(iw, ih, desiredInnerRadii)) return [outerPath]
+
+  var innerRadii = normalizeRadii(iw, ih, desiredInnerRadii)
+  var outer = borderBoundary(0, 0, w, h, outerRadii)
+  var inner = borderBoundary(left, top, iw, ih, innerRadii)
+
+  if (enabled[0] && enabled[1] && enabled[2] && enabled[3])
+    return [outerPath + " " + reverseBoundaryPath(inner)]
+
+  var paths = []
+  for (var start = 0; start < 4; start++) {
+    if (!enabled[start] || enabled[(start + 3) % 4]) continue
+    var length = 1
+    while (length < 4 && enabled[(start + length) % 4]) length++
+    paths.push(runPath(outer, inner, start, length))
+  }
+  return paths
+}
+
+function ringPath(w, h, radius, widths) {
+  return borderPaths(w, h, radius, widths).join(" ")
 }
 
 function gradientEndpoints(w, h, angle) {
