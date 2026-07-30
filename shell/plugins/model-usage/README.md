@@ -11,15 +11,12 @@ adapter per subscription.
   Auth and endpoint problems replace the plan line and repeat in a card.
 - **Subscription switch** — one chip per enabled provider (`h`/`l` or click).
   It appears only when more than one provider is enabled.
-- **Limits** — a meter per window (session, weekly). The notch on the meter
-  marks where an evenly paced window would have you right now, so the gap
-  between the fill and the notch is the whole story: fill behind the notch
-  means budget in reserve, fill past it means you are burning faster than
-  the clock and the row says when it runs out.
-- **Usage this week** — one row per day for the last week: day, bar, tokens, with today
+- **Limits** — the percentage of each allowance used, a matching meter, and
+  the time until the session or weekly window resets.
+- **Tokens by day** — one row per day for the last week: day, bar, tokens, with today
   bolded at the bottom. Hover today for its prompt and session count.
-- **Usage by model** — total tokens and active days in the header, then
-  tokens per model with the bar behind each row scaled to the heaviest model,
+- **Tokens by model** — tokens per model with the bar behind each row scaled
+  to the heaviest model,
   the same way the weekly chart scales to its busiest day. Hover for the
   input / output / cache split.
 

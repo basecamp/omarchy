@@ -32,7 +32,7 @@ Panel {
 
   property bool cursorActive: false
 
-  // Countdowns, pace, and "updated" all read this instead of Date.now() so the
+  // Countdowns and "updated" read this instead of Date.now() so the
   // panel keeps telling the truth while it sits open.
   property double nowMs: Date.now()
 
@@ -58,7 +58,7 @@ Panel {
   //
   // Both providers report the same two shapes: a short rolling session window
   // and a long weekly one. Everything below normalizes them into one record so
-  // the meters, the pace math, and the hero all speak a single language.
+  // the meters and the hero speak a single language.
 
   // Claude spells its windows out ("Session (5-hour)"), Codex abbreviates
   // them ("5h window", "30m window"). Both have to land on the same record.
@@ -87,19 +87,9 @@ Panel {
     return plain === "" ? "Limit" : plain
   }
 
-  function windowSpanLabel(spanMs) {
-    if (spanMs <= 0) return ""
-    if (spanMs >= 24 * 3600 * 1000) return Math.round(spanMs / (24 * 3600 * 1000)) + "d"
-    if (spanMs >= 3600 * 1000) return Math.round(spanMs / (3600 * 1000)) + "h"
-    return Math.round(spanMs / 60000) + "m"
-  }
-
   function limitWindow(label, percent, resetAt) {
-    var spanMs = windowSpanMs(label)
     return {
       title: windowTitle(label),
-      span: windowSpanLabel(spanMs),
-      spanMs: spanMs,
       percent: Number(percent),
       resetAt: String(resetAt || "")
     }
@@ -130,48 +120,6 @@ Panel {
     return isFinite(ms) ? ms - root.nowMs : -1
   }
 
-  // Where the clock says you should be, versus where you actually are.
-  function paceFor(w) {
-    if (!w || w.percent < 0 || w.spanMs <= 0) return null
-    var remaining = resetMsFor(w)
-    if (remaining <= 0 || remaining > w.spanMs) return null
-
-    var elapsed = w.spanMs - remaining
-    var expected = clamp(elapsed / w.spanMs, 0, 1)
-    var used = clamp(w.percent, 0, 1)
-    var projected = expected > 0 ? used / expected : -1
-    var runsOutMs = (used > 0 && projected > 1) ? (elapsed / used) * (1 - used) : -1
-    return {
-      expected: expected,
-      diff: used - expected,
-      projected: projected,
-      runsOutMs: runsOutMs < remaining ? runsOutMs : -1,
-      remaining: remaining
-    }
-  }
-
-  function paceText(w) {
-    var pace = paceFor(w)
-    if (!pace) return ""
-    if (pace.runsOutMs >= 0) return "Runs out in " + formatDuration(pace.runsOutMs)
-    if (Math.abs(pace.diff) <= 0.02) return "On pace"
-    if (pace.diff > 0) return Math.round(pace.diff * 100) + "% ahead of pace"
-    return Math.round(-pace.diff * 100) + "% in reserve"
-  }
-
-  function paceIsUrgent(w) {
-    var pace = paceFor(w)
-    return !!pace && pace.runsOutMs >= 0
-  }
-
-  function paceDetail(w) {
-    var pace = paceFor(w)
-    if (!pace) return ""
-    var lines = "Expected " + Math.round(pace.expected * 100) + "% used by now"
-    if (pace.projected >= 0) lines += " · tracking to " + Math.round(pace.projected * 100) + "% by reset"
-    return lines
-  }
-
   function formatDuration(ms) {
     if (!(ms > 0)) return "now"
     var minutes = Math.floor(ms / 60000)
@@ -182,14 +130,10 @@ Panel {
     return Math.max(1, minutes) + "m"
   }
 
-  function percentText(value) {
-    return value < 0 ? "—" : Math.round(value * 100) + "%"
-  }
-
   // ---------------------------------------------------------------- content
 
-  // The plan you pay for, under the name of the tool it pays for. Limits and
-  // pace live in their own section; the hero just says what this is.
+  // The plan you pay for, under the name of the tool it pays for. Limits live
+  // in their own section; the hero just says what this is.
   function heroMeta(p) {
     if (!p) return ""
     if (String(p.usageStatusText || "") !== "") return p.usageStatusText
@@ -233,13 +177,6 @@ Panel {
     return text
   }
 
-  function weekTotal(p) {
-    var days = p ? (p.recentDays || []) : []
-    var total = 0
-    for (var i = 0; i < days.length; i++) total += Number(days[i].messageCount || 0)
-    return total
-  }
-
   function weekPeak(p) {
     var days = p ? (p.recentDays || []) : []
     var peak = 0
@@ -267,18 +204,6 @@ Panel {
     }
     rows.sort(function(a, b) { return b.total - a.total })
     return rows.slice(0, 4)
-  }
-
-  // Every model, not just the rows that fit — the section header sums the lot.
-  function modelTotalTokens(p) {
-    var usageByModel = p ? (p.modelUsage || {}) : {}
-    var total = 0
-    for (var id in usageByModel) {
-      var bucket = usageByModel[id] || {}
-      total += Number(bucket.inputTokens || 0) + Number(bucket.outputTokens || 0)
-        + Number(bucket.cacheReadInputTokens || 0) + Number(bucket.cacheCreationInputTokens || 0)
-    }
-    return total
   }
 
   function modelTooltip(row) {
@@ -385,7 +310,7 @@ Panel {
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(380))
     // Taller than the control panels on purpose: this one is a dashboard, and
-    // the whole point is reading limits, pace, and history without scrolling.
+    // the whole point is reading limits and history without scrolling.
     contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(640))
 
     PanelKeyCatcher {
@@ -560,29 +485,11 @@ Panel {
             readonly property var days: root.provider ? (root.provider.recentDays || []) : []
             readonly property real peak: Math.max(1, root.weekPeak(root.provider))
 
-            Item {
+            PanelSectionHeader {
               width: parent.width
-              implicitHeight: Math.max(usageHeader.implicitHeight, usageTotalText.implicitHeight)
-
-              PanelSectionHeader {
-                id: usageHeader
-                text: "USAGE THIS WEEK"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-              }
-
-              Text {
-                id: usageTotalText
-                text: usage.formatTokenCount(root.weekTotal(root.provider)) + " tokens · 7 days"
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-              }
+              text: "TOKENS BY DAY"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
             }
 
             Repeater {
@@ -614,34 +521,11 @@ Panel {
             width: parent.width
             spacing: Style.spacing.md
 
-            Item {
+            PanelSectionHeader {
               width: parent.width
-              implicitHeight: Math.max(modelHeader.implicitHeight, modelTotals.implicitHeight)
-
-              PanelSectionHeader {
-                id: modelHeader
-                text: "USAGE BY MODEL"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-              }
-
-              Text {
-                id: modelTotals
-                text: {
-                  if (!root.provider) return ""
-                  var days = Number(root.provider.activeDays || 0)
-                  return usage.formatTokenCount(root.modelTotalTokens(root.provider)) + " tokens"
-                    + (days > 0 ? " · " + days + " day" + (days === 1 ? "" : "s") : "")
-                }
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-              }
+              text: "TOKENS BY MODEL"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
             }
 
             Repeater {
@@ -674,12 +558,11 @@ Panel {
     }
   }
 
-  // A limit window: label, percent, meter with the pace notch, reset and pace.
+  // A limit window: label and percentage, meter, and reset countdown.
   component LimitRow: Column {
     id: limitRow
     property var window: null
 
-    readonly property var pace: root.paceFor(window)
     readonly property bool alarming: window && window.percent >= 0.9
 
     spacing: Style.space(6)
@@ -690,9 +573,7 @@ Panel {
 
       Text {
         id: limitLabel
-        text: limitRow.window
-          ? limitRow.window.title + (limitRow.window.span !== "" ? " · " + limitRow.window.span : "")
-          : ""
+        text: limitRow.window ? limitRow.window.title : ""
         color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
@@ -702,11 +583,12 @@ Panel {
 
       Text {
         id: limitValue
-        text: root.percentText(limitRow.window ? limitRow.window.percent : -1)
+        text: limitRow.window && limitRow.window.percent >= 0
+          ? Math.round(limitRow.window.percent * 100) + "%"
+          : "—"
         color: limitRow.alarming ? root.urgent : root.foreground
         font.family: root.fontFamily
-        font.pixelSize: Style.font.subtitle
-        font.bold: true
+        font.pixelSize: Style.font.caption
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
       }
@@ -715,49 +597,27 @@ Panel {
     Meter {
       width: parent.width
       value: limitRow.window ? limitRow.window.percent : -1
-      marker: limitRow.pace ? limitRow.pace.expected : -1
       alarming: limitRow.alarming
-      tooltipText: root.paceDetail(limitRow.window)
     }
 
-    Item {
+    Text {
+      id: resetText
       width: parent.width
-      implicitHeight: Math.max(resetText.implicitHeight, paceText.implicitHeight)
-
-      Text {
-        id: resetText
-        text: {
-          var remaining = root.resetMsFor(limitRow.window)
-          return remaining > 0 ? "Resets in " + root.formatDuration(remaining) : ""
-        }
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        anchors.left: parent.left
-        anchors.verticalCenter: parent.verticalCenter
+      text: {
+        var remainingMs = root.resetMsFor(limitRow.window)
+        return remainingMs > 0 ? "Resets in " + root.formatDuration(remainingMs) : ""
       }
-
-      Text {
-        id: paceText
-        text: root.paceText(limitRow.window)
-        color: root.paceIsUrgent(limitRow.window) ? root.urgent : root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        font.bold: true
-        anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
-      }
+      color: root.dim
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
     }
   }
 
-  // Rounded track with a fill, plus an optional notch marking where an evenly
-  // paced week would have you right now.
+  // Rounded track showing the percentage of the allowance used.
   component Meter: Item {
     id: meter
     property real value: -1
-    property real marker: -1
     property bool alarming: false
-    property string tooltipText: ""
     property real thickness: Math.max(Style.space(4), Math.round(Style.spacing.controlHeight * 0.14))
 
     implicitHeight: thickness
@@ -782,28 +642,6 @@ Panel {
       }
     }
 
-    Rectangle {
-      visible: meter.marker >= 0 && meter.marker <= 1
-      width: Math.max(1, Style.space(2))
-      height: meterTrack.height + Style.space(4)
-      radius: width / 2
-      anchors.verticalCenter: meterTrack.verticalCenter
-      x: root.clamp(meterTrack.width * meter.marker - width / 2, 0, Math.max(0, meterTrack.width - width))
-      color: meter.marker <= meter.value ? root.surface : root.alpha(root.foreground, 0.5)
-    }
-
-    MouseArea {
-      id: meterHover
-      anchors.fill: parent
-      hoverEnabled: true
-      acceptedButtons: Qt.NoButton
-    }
-
-    PanelToolTip {
-      visible: meter.tooltipText !== "" && meterHover.containsMouse
-      text: meter.tooltipText
-      fontFamily: root.fontFamily
-    }
   }
 
   // One row per day: label, bar, tokens. Today is picked out in full
