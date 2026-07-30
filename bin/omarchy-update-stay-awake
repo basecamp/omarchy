@@ -1,0 +1,136 @@
+#!/bin/bash
+
+# omarchy:summary=Manage sleep and idle inhibition during an update
+# omarchy:args=<start|stop>
+# omarchy:hidden=true
+
+set -e
+
+state_dir="${XDG_RUNTIME_DIR:-/tmp/omarchy-$UID}/omarchy-update-stay-awake"
+idle_owner_file="$state_dir/idle-owner"
+inhibit_pid_file="$state_dir/inhibit-pid"
+stay_awake_state="$HOME/.local/state/omarchy/indicators/stay-awake"
+
+process_start_time() {
+  local process_pid="$1"
+  local process_stat=""
+  local stat_fields=()
+
+  [[ -r /proc/$process_pid/stat ]] || return 1
+  process_stat=$(</proc/"$process_pid"/stat)
+  process_stat="${process_stat##*) }"
+  read -r -a stat_fields <<<"$process_stat"
+  (( ${#stat_fields[@]} > 19 )) || return 1
+  printf '%s\n' "${stat_fields[19]}"
+}
+
+process_state() {
+  local process_pid="$1"
+  local process_stat=""
+
+  [[ -r /proc/$process_pid/stat ]] || return 1
+  process_stat=$(</proc/"$process_pid"/stat)
+  process_stat="${process_stat##*) }"
+  printf '%s\n' "${process_stat%% *}"
+}
+
+stop() {
+  local inhibit_pid=""
+  local recorded_start_time=""
+  local current_start_time=""
+  local idle_owner=""
+  local current_idle_owner=""
+
+  if [[ -s $idle_owner_file ]]; then
+    idle_owner=$(<"$idle_owner_file")
+    if [[ -f $stay_awake_state ]]; then
+      current_idle_owner=$(<"$stay_awake_state")
+    fi
+    if [[ -n $idle_owner && $current_idle_owner == "$idle_owner" ]]; then
+      omarchy-toggle-idle allow-idle >/dev/null 2>&1 || true
+    fi
+    rm -f "$idle_owner_file"
+  fi
+
+  if [[ -s $inhibit_pid_file ]]; then
+    read -r inhibit_pid recorded_start_time <"$inhibit_pid_file" || true
+    if [[ $inhibit_pid =~ ^[0-9]+$ ]]; then
+      current_start_time=$(process_start_time "$inhibit_pid" 2>/dev/null || true)
+    fi
+    if [[ -n $recorded_start_time && $current_start_time == "$recorded_start_time" ]]; then
+      kill "$inhibit_pid" >/dev/null 2>&1 || true
+
+      for (( attempt = 0; attempt < 50; attempt++ )); do
+        current_start_time=$(process_start_time "$inhibit_pid" 2>/dev/null || true)
+        [[ $current_start_time == "$recorded_start_time" ]] || break
+        [[ $(process_state "$inhibit_pid" 2>/dev/null || true) != "Z" ]] || break
+        sleep 0.02
+      done
+
+      current_start_time=$(process_start_time "$inhibit_pid" 2>/dev/null || true)
+      if [[ $current_start_time == "$recorded_start_time" ]] &&
+        [[ $(process_state "$inhibit_pid" 2>/dev/null || true) != "Z" ]]; then
+        echo "Failed to stop the Omarchy update sleep inhibitor." >&2
+        return 1
+      fi
+    fi
+    rm -f "$inhibit_pid_file"
+  fi
+
+  rmdir "$state_dir" 2>/dev/null || true
+}
+
+start() {
+  local inhibit_pid=""
+  local inhibit_start_time=""
+  local idle_owner="$$:$RANDOM:$RANDOM"
+
+  stop
+  mkdir -p "$state_dir"
+
+  if omarchy-cmd-present systemd-inhibit; then
+    if [[ -n ${OMARCHY_UPDATE_LOCK_FD:-} ]]; then
+      systemd-inhibit \
+        --what=sleep:idle \
+        --who=omarchy-update \
+        --why="Omarchy update in progress" \
+        --mode=block \
+        sleep infinity >/dev/null 2>&1 {OMARCHY_UPDATE_LOCK_FD}>&- &
+    else
+      systemd-inhibit \
+        --what=sleep:idle \
+        --who=omarchy-update \
+        --why="Omarchy update in progress" \
+        --mode=block \
+        sleep infinity >/dev/null 2>&1 &
+    fi
+    inhibit_pid=$!
+    inhibit_start_time=$(process_start_time "$inhibit_pid" 2>/dev/null || true)
+    if [[ -n $inhibit_start_time ]]; then
+      printf '%s %s\n' "$inhibit_pid" "$inhibit_start_time" >"$inhibit_pid_file"
+    fi
+  fi
+
+  if [[ ! -f $stay_awake_state ]]; then
+    printf '%s\n' "$idle_owner" >"$idle_owner_file"
+    mkdir -p "$(dirname "$stay_awake_state")"
+    if omarchy-toggle-idle stay-awake >/dev/null 2>&1; then
+      printf '%s\n' "$idle_owner" >"$stay_awake_state"
+    else
+      rm -f "$idle_owner_file"
+    fi
+  fi
+}
+
+case "${1:-}" in
+  start)
+    start
+    ;;
+  stop)
+    stop
+    ;;
+  *)
+    echo "Usage: omarchy-update-stay-awake <start|stop>" >&2
+    exit 2
+    ;;
+esac

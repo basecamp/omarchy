@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Refresh the shell update status
+# omarchy:hidden=true
+
+set -e
+
+if omarchy-update-available >/dev/null; then
+  omarchy-shell -q omarchy.system-update refresh
+else
+  omarchy-shell -q omarchy.system-update clear
+fi
