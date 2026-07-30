@@ -40,12 +40,57 @@ function formatHeaderFreq(mhz) {
   return ghz.toFixed(ghz % 1 === 0 ? 0 : 1) + "ghz"
 }
 
-function headerDetail(info) {
+// `hideWifiBand` is set when the band toggle is on screen: the band is already
+// spelled out there, so repeating it in "York (5ghz)" is noise. A single-band
+// network hides the toggle, and then the header stays the only place it shows.
+function headerDetail(info, hideWifiBand) {
   var value = info || {}
   if (value.type === "ethernet") return formatHeaderSpeed(value.speed || "")
-  if (value.type === "wifi") return formatHeaderFreq(value.freq || "")
+  if (value.type === "wifi") return hideWifiBand ? "" : formatHeaderFreq(value.freq || "")
   return ""
 }
+
+function bandLabel(band) {
+  if (band === "auto") return "Auto"
+  if (!band) return ""
+  return band + "ghz"
+}
+
+// Under Automatic the pills are hidden, so the header carries the live band
+// instead -- "WI-FI BAND: 2.4GHZ". Once a band is pinned the pills are on
+// screen and say it themselves, so the header drops back to a plain label.
+function bandSectionTitle(selected, current) {
+  if (selected !== "auto") return "WI-FI BAND"
+
+  var label = bandLabel(current)
+  if (label === "") return "WI-FI BAND"
+
+  return "WI-FI BAND: " + label.toUpperCase()
+}
+
+function bandTooltip(band) {
+  if (band === "auto") return "Let Wi-Fi pick the band"
+  if (!band) return ""
+  return "Stay on " + bandLabel(band)
+}
+
+function parseBandStatus(raw) {
+  var next = parseKeyValue(raw)
+  var tokens = String(next.available || "").split(" ")
+  var available = []
+
+  for (var i = 0; i < tokens.length; i++) {
+    if (tokens[i] !== "") available.push(tokens[i])
+  }
+
+  return {
+    band: next.band || "",
+    selected: next.selected || "auto",
+    available: available
+  }
+}
+
+
 
 function parseKeyValue(raw) {
   var next = {}
@@ -140,7 +185,9 @@ function pingPacketLossPercent(samples) {
   return Math.round((lost / values.length) * 100)
 }
 
-function formatPacketLoss(percent) {
+function formatPacketLoss(percent, hasSamples) {
+  if (hasSamples === false) return "--"
+
   var value = parseInt(percent, 10)
   if (!value || value < 0) return "0%"
   return value + "%"
@@ -188,7 +235,12 @@ function formatSpeedMbps(mbps) {
   return value.toFixed(value > 0 && value < 10 ? 1 : 0) + " Mbps"
 }
 
-function formatPingLatency(ms) {
+// `hasSamples` false means no probe has come back yet, which is different from
+// a probe that timed out. The rows stay mounted through that gap and read "--"
+// so the grid doesn't reflow a second after the panel opens.
+function formatPingLatency(ms, hasSamples) {
+  if (hasSamples === false) return "--"
+
   var value = parseFloat(ms)
   if (!isFinite(value) || value < 0) return "Timeout"
   return value.toFixed(value > 0 && value < 10 ? 1 : 0) + " ms"
@@ -263,6 +315,10 @@ if (typeof module !== "undefined") {
     formatHeaderSpeed: formatHeaderSpeed,
     formatHeaderFreq: formatHeaderFreq,
     headerDetail: headerDetail,
+    bandLabel: bandLabel,
+    bandSectionTitle: bandSectionTitle,
+    bandTooltip: bandTooltip,
+    parseBandStatus: parseBandStatus,
     parseKeyValue: parseKeyValue,
     throughputState: throughputState,
     pingLatencyState: pingLatencyState,

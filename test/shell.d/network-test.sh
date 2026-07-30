@@ -73,8 +73,13 @@ assertEqual(network.formatSpeedMbps('250.4'), '250 Mbps', 'network formats speed
 assertEqual(network.formatPingLatency('2.54'), '2.5 ms', 'network formats low ping with precision')
 assertEqual(network.formatPingLatency('25.4'), '25 ms', 'network formats ping')
 assertEqual(network.formatPingLatency(''), 'Timeout', 'network formats missing ping as timeout')
+assertEqual(network.formatPingLatency(-1, false), '--', 'network holds the ping row before the first sample')
+assertEqual(network.formatPingLatency('25.4', true), '25 ms', 'network formats ping once samples exist')
+assertEqual(network.formatPingLatency('', true), 'Timeout', 'network still reports a timeout among real samples')
 assertEqual(network.formatPacketLoss(2), '2%', 'network formats packet loss')
 assertEqual(network.formatPacketLoss(0), '0%', 'network formats zero packet loss')
+assertEqual(network.formatPacketLoss(0, false), '--', 'network holds the packet loss row before the first sample')
+assertEqual(network.formatPacketLoss(0, true), '0%', 'network reports zero loss once samples exist')
 
 const rows = network.sortWifiRows([
   { ssid: 'Open', connected: false, known: false, signal: 95 },
@@ -89,4 +94,31 @@ const reasons = { NoSecrets: 1, WifiAuthTimeout: 2, WifiNetworkLost: 3, WifiClie
 assertEqual(network.networkFailureReason(1, reasons), 'Passphrase required', 'network maps missing passphrase failures')
 assertEqual(network.networkFailureReason(2, reasons), 'Wrong password', 'network maps auth timeout failures')
 assertEqual(network.networkFailureReason(99, reasons), 'Failed to connect', 'network maps unknown failures')
+
+
+assertEqual(network.bandLabel('2.4'), '2.4ghz', 'network labels the 2.4GHz band')
+assertEqual(network.bandLabel('6'), '6ghz', 'network labels the 6GHz band')
+assertEqual(network.bandLabel('auto'), 'Auto', 'network labels the automatic band choice')
+
+assertEqual(network.bandSectionTitle('auto', '2.4'), 'WI-FI BAND: 2.4GHZ', 'network names the live band in the header under automatic')
+assertEqual(network.bandSectionTitle('auto', ''), 'WI-FI BAND', 'network omits an unknown band from the header')
+assertEqual(network.bandSectionTitle('5', '5'), 'WI-FI BAND', 'network drops the header band once the pills are showing')
+assertEqual(network.bandSectionTitle('5', '2.4'), 'WI-FI BAND', 'network keeps a plain header while a pin is settling')
+
+assertDeepEqual(
+  network.parseBandStatus('band\t5\navailable\t2.4 5 6\nselected\tauto\n'),
+  { band: '5', selected: 'auto', available: ['2.4', '5', '6'] },
+  'network parses band status'
+)
+assertDeepEqual(
+  network.parseBandStatus(''),
+  { band: '', selected: 'auto', available: [] },
+  'network parses empty band status without a wifi connection'
+)
+
+
+
+assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '5ghz', 'network header shows the wifi band when the toggle is hidden')
+assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }, true), '', 'network header drops the wifi band when the toggle shows it')
+assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }, true), '100mbit', 'network header keeps ethernet speed regardless of the band toggle')
 JS

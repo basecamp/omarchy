@@ -48,10 +48,17 @@ Item {
 
   readonly property alias containsMouse: mouse.containsMouse
   readonly property bool hot: hasCursor || mouse.containsMouse
-  readonly property int trackHeight: Math.max(22, Math.round(Style.spacing.controlHeight * 0.55))
-  readonly property int trackWidth: Math.max(42, Math.round(trackHeight * 1.9))
-  readonly property int knobSize: Math.max(16, Math.round(trackHeight * 0.72))
-  readonly property int knobInset: Math.max(2, Math.round((trackHeight - knobSize) / 2))
+
+  // `trackHeight` is settable so a compact placement — a switch riding a panel
+  // section header, say — can ask for a genuinely smaller control instead of
+  // scaling a big one down, which lands the track and knob on fractional pixels
+  // and blurs their edges. The derived sizes only carry floors low enough to
+  // stay out of an override's way; at the default track height each one is
+  // already above its floor, so nothing about the normal switch changes.
+  property int trackHeight: Math.max(22, Math.round(Style.spacing.controlHeight * 0.55))
+  property int trackWidth: Math.round(trackHeight * 1.9)
+  property int knobSize: Math.max(6, Math.round(trackHeight * 0.72))
+  property int knobInset: Math.max(1, Math.round((trackHeight - knobSize) / 2))
 
   readonly property int _pad: cursorRing ? cursorPad : 0
 

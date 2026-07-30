@@ -1,0 +1,192 @@
+#!/bin/bash
+
+# omarchy:summary=Show or pin the Wi-Fi band for the active connection
+# omarchy:group=network
+# omarchy:args=[auto|2.4|5|6]
+# omarchy:examples=omarchy network band | omarchy network band 5 | omarchy network band auto
+
+set -euo pipefail
+
+# NetworkManager 1.44+ accepts a third band value, so 5GHz and 6GHz can be
+# pinned apart. Pinning the band rather than a BSSID keeps working when the AP
+# rotates BSSIDs, and leaves roaming between APs intact.
+nm_band_for() {
+  case "$1" in
+    2.4) echo "bg" ;;
+    5) echo "a" ;;
+    6) echo "6GHz" ;;
+    *) return 1 ;;
+  esac
+}
+
+band_from_nm() {
+  case "$1" in
+    bg) echo "2.4" ;;
+    a) echo "5" ;;
+    6GHz) echo "6" ;;
+    *) echo "auto" ;;
+  esac
+}
+
+# Accepts either nmcli's "2412 MHz" or iw's "5745.0": keep the leading digits
+# and ignore whatever unit or fraction follows. The boundaries mirror Model.js
+# formatHeaderFreq so the panel's label and this command cannot disagree.
+band_for_freq() {
+  local mhz=${1%%[!0-9]*}
+  [[ -n $mhz ]] || return 1
+
+  if ((mhz >= 2400 && mhz < 2500)); then
+    echo "2.4"
+  elif ((mhz >= 4900 && mhz < 5925)); then
+    echo "5"
+  elif ((mhz >= 5925 && mhz < 7125)); then
+    echo "6"
+  else
+    return 1
+  fi
+}
+
+# Every value read back from nmcli goes through here. LC_ALL=C because nmcli
+# translates state words such as "connected", which would silently stop matching
+# under a non-English session; `-e no` because `-g` otherwise escapes ':' and
+# '\' in values, and an escaped SSID would never match iw's raw one.
+nm_get() {
+  LC_ALL=C nmcli -e no -g "$@" 2>/dev/null
+}
+
+wifi_device() {
+  nm_get DEVICE,TYPE,STATE device status |
+    awk -F: '$2 == "wifi" && $3 == "connected" { print $1; exit }'
+}
+
+wifi_profile() {
+  nm_get GENERAL.CONNECTION device show "$1"
+}
+
+selected_band() {
+  band_from_nm "$(nm_get 802-11-wireless.band connection show "$1")"
+}
+
+# Sets $ssid and $freq from one `iw dev <device> link`. iw prints the SSID as
+# the rest of its line, so an SSID containing ':' needs no special handling.
+read_link() {
+  local link
+  link=$(iw dev "$1" link 2>/dev/null)
+  ssid=$(awk '/SSID:/ { sub(/.*SSID: /, ""); print; exit }' <<<"$link")
+  freq=$(awk '/freq:/ { print $2; exit }' <<<"$link")
+}
+
+# Every band the SSID is reachable on, low to high, always including the one
+# already in use -- a weak radio gets missed by plenty of scans, and the band we
+# are sitting on must never be absent from its own list of options. A band the
+# AP does not answer on is never offered: pinning to it would drop the
+# connection with nothing to reassociate to.
+#
+# --rescan no reads NetworkManager's cache, which the panel's own scanner keeps
+# warm; forcing a scan here would stall every poll. The kernel's own cache (iw
+# scan dump) is pruned far harder and would make bands flicker.
+available_bands() {
+  local device=$1 ssid=$2 current=$3
+
+  {
+    if [[ -n $current ]]; then echo "$current"; fi
+
+    # SSID is queried last so one containing ':' can be reassembled verbatim.
+    # It reaches awk through the environment, not -v, which would expand
+    # backslash escapes in an SSID that contains one.
+    nm_get FREQ,SSID dev wifi list ifname "$device" --rescan no |
+      want="$ssid" awk -F: '
+        BEGIN { want = ENVIRON["want"] }
+        {
+          name = $2
+          for (i = 3; i <= NF; i++) name = name ":" $i
+          if (name == want) print $1
+        }' |
+      while read -r freq; do band_for_freq "$freq" || true; done
+  } | sort -u -g | tr '\n' ' ' | sed 's/ $//'
+}
+
+print_status() {
+  local device profile band available
+
+  device=$(wifi_device)
+  [[ -n $device ]] || return 0
+
+  read_link "$device"
+  [[ -n $ssid ]] || return 0
+
+  band=$(band_for_freq "$freq" || true)
+  available=$(available_bands "$device" "$ssid" "$band")
+  profile=$(wifi_profile "$device")
+
+  printf 'band\t%s\n' "$band"
+  printf 'available\t%s\n' "$available"
+  if [[ -n $profile ]]; then printf 'selected\t%s\n' "$(selected_band "$profile")"; fi
+}
+
+set_band() {
+  local target=$1
+  local device profile previous desired
+
+  device=$(wifi_device)
+  if [[ -z $device ]]; then
+    echo "Error: no connected Wi-Fi device." >&2
+    exit 1
+  fi
+
+  profile=$(wifi_profile "$device")
+  if [[ -z $profile ]]; then
+    echo "Error: no active Wi-Fi connection profile." >&2
+    exit 1
+  fi
+
+  if [[ $target == "auto" ]]; then
+    desired=""
+  else
+    read_link "$device"
+    if [[ " $(available_bands "$device" "$ssid" "$(band_for_freq "$freq" || true)") " != *" $target "* ]]; then
+      echo "Error: ${target}GHz is not available on this network." >&2
+      exit 1
+    fi
+    desired=$(nm_band_for "$target")
+  fi
+
+  previous=$(nm_get 802-11-wireless.band connection show "$profile")
+  [[ $previous == "$desired" ]] && exit 0
+
+  nmcli connection modify "$profile" 802-11-wireless.band "$desired" >/dev/null
+
+  # A band change only takes effect on reassociation. If the radio cannot come
+  # back up on the requested band, put the previous setting back and reconnect
+  # rather than leaving the machine stranded offline.
+  if ! nmcli connection up "$profile" >/dev/null 2>&1; then
+    nmcli connection modify "$profile" 802-11-wireless.band "$previous" >/dev/null
+    nmcli connection up "$profile" >/dev/null 2>&1 || true
+    echo "Error: could not connect on ${target}; reverted to previous band." >&2
+    exit 1
+  fi
+}
+
+usage() {
+  echo "Usage: omarchy-network-band [auto|2.4|5|6]" >&2
+}
+
+if (($# == 0)); then
+  print_status
+  exit 0
+fi
+
+if (($# > 1)); then
+  usage
+  exit 1
+fi
+
+case "$1" in
+  auto | 2.4 | 5 | 6)
+    set_band "$1"
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac

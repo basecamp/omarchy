@@ -47,6 +47,10 @@ Panel {
   readonly property int pingHistoryWindow: 24
   readonly property int pingAverageWindow: 5
   readonly property bool hasInternetPing: internetPingSamples.length > 0
+  // Every stat row stays mounted whether or not there is data behind it, so a
+  // sample arriving late never reflows the grid. This says whether the numbers
+  // are real yet or the row should read "--".
+  readonly property bool hasTransferStats: info.rx_bytes !== undefined
   property int connectionPhraseIndex: 0
   readonly property var connectionPhrases: [
     "Wiring bits",
@@ -68,6 +72,13 @@ Panel {
   property bool wifiStationAvailable: false
   property string dnsProvider: ""
   property string pendingDnsProvider: ""
+  // Wi-Fi band state from `omarchy-network-band`. `bandCurrent` is the band
+  // the radio is actually on; `bandSelected` is the pinned choice ("auto" when
+  // nothing is pinned), and the two differ whenever Auto is in effect.
+  property string bandCurrent: ""
+  property string bandSelected: "auto"
+  property var bandAvailable: []
+  property string pendingBand: ""
   property bool speedTestRunning: false
   property bool speedTestHasRun: false
   property bool speedTestExpectedStop: false
@@ -103,9 +114,9 @@ Panel {
   property bool cursorActive: false
 
   // Keyboard focus zone for the panel. j/k crosses row boundaries:
-  // header actions ⇄ DNS row ⇄ Wi-Fi networks. h/l move within header
-  // actions or DNS providers.
-  property string focusSection: "dns"  // "header" | "dns" | "wifi"
+  // header actions ⇄ band ⇄ DNS row ⇄ speed test ⇄ Wi-Fi networks. h/l move
+  // within header actions, band pills, or DNS providers.
+  property string focusSection: "dns"  // "header" | "band" | "dns" | "speed" | "wifi"
   property int headerIndex: 0
   readonly property bool canDisconnect: !!connectedWifiNetwork
   readonly property bool headerHasDisconnect: false
@@ -121,8 +132,60 @@ Panel {
   readonly property string toggleHint: Networking.wifiEnabled ? "Turn Wi-Fi off" : "Turn Wi-Fi on"
   readonly property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
   property int dnsIndex: 0
+  // ["2.4", "5", ...], or empty when there is nothing to choose between.
+  // Wi-Fi only: on Ethernet the band of a secondary radio is not what the
+  // panel is describing.
+  // `bandBusy` keeps the section mounted across the reconnect a band change
+  // causes: `kind` stops being "wifi" for a second or two in the middle of it,
+  // and without this the whole segment would vanish and rebuild itself.
+  // Worth showing when there is a real choice, or when a pin is in force even
+  // though only one band answers right now -- otherwise the Automatic switch
+  // vanishes and the pin becomes unclearable from the panel.
+  readonly property bool canSelectBand: (kind === "wifi" || bandBusy)
+    && (bandAvailable.length > 1 || bandPinned)
+  // While a change is in flight, show the state that was asked for rather than
+  // the one still in force, so the row answers the click immediately instead of
+  // after the reconnect. actionProc puts it back if the change failed.
+  readonly property string bandEffective: pendingBand !== "" ? pendingBand : bandSelected
+  readonly property bool bandPinned: bandEffective !== "auto"
+  // Under Automatic there is nothing to pick, so the pills collapse away and
+  // the header states the live band instead.
+  readonly property bool bandPillsVisible: canSelectBand && bandPinned
+  readonly property string bandSectionTitle: Model.bandSectionTitle(bandEffective, bandCurrent)
+  readonly property bool bandBusy: pendingBand !== ""
+  // The speed test section only exists once there's an interface to test, so
+  // the Run button only joins the cursor chain then.
+  readonly property bool canRunSpeedTest: !!info.iface
+  property int bandIndex: 0
+  // The band section has up to two cursor rows: the Automatic switch on the
+  // header line, then the pills. Same shape as wifiActionFocused.
+  property bool bandAutoFocused: true
 
   onHeaderActionCountChanged: clampHeaderIndex()
+
+  // Availability shifts as scans land, so the option list can shrink out from
+  // under the cursor. Clamp the index and evacuate the section before it
+  // disappears, or the panel is left highlighting nothing.
+  onBandAvailableChanged: {
+    if (bandIndex > bandAvailable.length - 1) bandIndex = Math.max(0, bandAvailable.length - 1)
+  }
+
+  onCanSelectBandChanged: {
+    if (!canSelectBand && focusSection === "band") {
+      focusSection = "dns"
+      bandAutoFocused = true
+    }
+  }
+
+  onCanRunSpeedTestChanged: {
+    if (!canRunSpeedTest && focusSection === "speed") focusSection = "dns"
+  }
+
+  // Collapsing the pills out from under the cursor would leave it pointing at
+  // nothing, so send it up to the switch that is still on screen.
+  onBandPillsVisibleChanged: {
+    if (!bandPillsVisible) bandAutoFocused = true
+  }
 
   function clampHeaderIndex() {
     var max = Math.max(0, headerActionCount - 1)
@@ -159,6 +222,47 @@ Panel {
     setDns(dnsProviders[dnsIndex])
   }
 
+  function selectBandByDelta(delta) {
+    bandIndex = Math.max(0, Math.min(bandAvailable.length - 1, bandIndex + delta))
+  }
+
+  function activateBand() {
+    if (bandAutoFocused) {
+      toggleBandAuto()
+      return
+    }
+    if (bandIndex < 0 || bandIndex >= bandAvailable.length) return
+    setBand(bandAvailable[bandIndex])
+  }
+
+  // Switching Automatic off has to commit to something, so it pins whatever
+  // band the radio already landed on -- the reading the pills are showing.
+  function toggleBandAuto() {
+    if (bandSelected !== "auto") {
+      setBand("auto")
+      return
+    }
+    if (bandCurrent === "") return
+    setBand(bandCurrent)
+  }
+
+  // Park the cursor on the pinned band, so opening the panel highlights the
+  // pill the user would expect. Under Automatic there are no pills, so the
+  // cursor belongs on the switch.
+  function syncBandIndex() {
+    var idx = bandAvailable.indexOf(bandSelected)
+    bandIndex = idx >= 0 ? idx : 0
+    bandAutoFocused = !bandPillsVisible
+  }
+
+  function bandLabel(band) {
+    return Model.bandLabel(band)
+  }
+
+  function bandTooltip(band) {
+    return Model.bandTooltip(band)
+  }
+
   // Single cursor model: exactly one highlighted spot across the whole
   // panel, located via `focusSection` + (`headerIndex` | `dnsIndex` |
   // `selectedIndex`). Mouse hover and keyboard nav both mutate this state
@@ -179,6 +283,7 @@ Panel {
       focusSection = wifiNetworks.length > 0 ? "wifi" : "dns"
       var idx = dnsProviders.indexOf(dnsProvider)
       dnsIndex = idx >= 0 ? idx : 0
+      syncBandIndex()
       cursorActive = false
     } else {
       // Reset throughput tracking so the next open doesn't compute a fake
@@ -300,6 +405,10 @@ Panel {
       dnsProc.command = ["bash", "-c", root.dnsCommand("")]
       dnsProc.running = true
     }
+    if (!bandProc.running) {
+      bandProc.command = ["omarchy-network-band"]
+      bandProc.running = true
+    }
     if (wifiDevice) {
       if (scanWifi) {
         scanning = true
@@ -321,11 +430,19 @@ Panel {
   }
 
   function headerDetail() {
-    return Model.headerDetail(info)
+    return Model.headerDetail(info, canSelectBand)
   }
 
   function updateDetails(raw) {
     var next = Model.parseKeyValue(raw)
+
+    // A band change tears the link down and brings it back, and the status
+    // command reports nothing at all while there is no route. Publishing that
+    // would blank every stat and unmount the whole section mid-toggle, so the
+    // last good sample stands until the reconnect settles. A real disconnect is
+    // still reported, because nothing is in flight then.
+    if (bandBusy && !next.iface) return
+
     info = next
     updateThroughput(next)
     updatePingLatency(next)
@@ -377,11 +494,11 @@ Panel {
   }
 
   function formatPingLatency(ms) {
-    return Model.formatPingLatency(ms)
+    return Model.formatPingLatency(ms, hasInternetPing)
   }
 
   function formatPacketLoss(percent) {
-    return Model.formatPacketLoss(percent)
+    return Model.formatPacketLoss(percent, hasInternetPing)
   }
 
   // Prefer a connected device: a machine can expose several NICs of the
@@ -434,6 +551,30 @@ Panel {
   function updateDns(raw) {
     var value = String(raw || "").trim()
     dnsProvider = value || "DHCP"
+  }
+
+  function updateBand(raw) {
+    var status = Model.parseBandStatus(raw)
+
+    // Mid-reconnect there is no connected station, so the command reports
+    // nothing. Publishing that would empty the option list and unmount the
+    // section on every toggle -- same guard as updateDetails.
+    if (bandBusy && status.available.length === 0) return
+
+    bandCurrent = status.band
+    bandSelected = status.selected
+    bandAvailable = status.available
+  }
+
+  // Pinning a band reassociates, but the panel deliberately stays open: the
+  // reconnect is the thing you want to watch, and the details rows above
+  // report it as it happens.
+  function setBand(band) {
+    if (!band || actionProc.running) return
+
+    root.pendingBand = band
+    actionProc.command = ["omarchy-network-band", band]
+    actionProc.running = true
   }
 
   function updateSpeedTestLine(line) {
@@ -660,6 +801,28 @@ Panel {
   }
 
   Process {
+    id: bandProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateBand(text)
+    }
+  }
+
+  // Slower than detailsPoll on purpose: this shells out to nmcli several times,
+  // and band availability only moves when a scan turns up a new BSSID.
+  Timer {
+    id: bandPoll
+    interval: 4000
+    repeat: true
+    running: root.opened
+    onTriggered: {
+      if (bandProc.running) return
+      bandProc.command = ["omarchy-network-band"]
+      bandProc.running = true
+    }
+  }
+
+  Process {
     id: speedTestProc
     stdout: SplitParser { onRead: function(line) { root.updateSpeedTestLine(line) } }
     stderr: StdioCollector {
@@ -698,6 +861,15 @@ Panel {
       if (root.pendingDnsProvider !== "") {
         if (exitCode === 0) root.dnsProvider = root.pendingDnsProvider
         root.pendingDnsProvider = ""
+      }
+      if (root.pendingBand !== "") {
+        // A refused or reverted pin leaves bandSelected alone, so the pills
+        // keep showing what is actually in force rather than what was asked.
+        if (exitCode === 0) root.bandSelected = root.pendingBand
+        root.pendingBand = ""
+        // The panel stayed open through the reconnect, so pull fresh state now
+        // instead of leaving stale readings until the next poll tick.
+        root.refresh()
       }
     }
   }
@@ -807,26 +979,63 @@ Panel {
           if (dy >= 0) return
         }
         if (dy !== 0) {
+          // Vertical order is header ⇄ band ⇄ DNS ⇄ wifi, with the band section
+          // dropping out of the chain entirely when it isn't on screen.
           if (root.focusSection === "header") {
-            if (dy > 0) root.focusSection = "dns"
-          } else if (root.focusSection === "dns") {
-            // k from DNS moves up into the disconnect button when there is
-            // one; otherwise stays put. j drops into the wifi list if there's
-            // anywhere to land.
+            if (dy > 0) {
+              if (root.canSelectBand) {
+                root.focusSection = "band"
+                root.bandAutoFocused = true
+              } else {
+                root.focusSection = "dns"
+              }
+            }
+          } else if (root.focusSection === "band") {
+            // Automatic on the header line, then the pills -- which collapse
+            // away under Automatic, leaving a single row to walk.
             if (dy < 0) {
-              if (root.headerActionCount > 0) {
+              if (!root.bandAutoFocused) {
+                root.bandAutoFocused = true
+              } else if (root.headerActionCount > 0) {
                 root.focusSection = "header"
                 root.headerIndex = 0
               }
+            } else if (root.bandAutoFocused && root.bandPillsVisible) {
+              root.bandAutoFocused = false
+            } else {
+              root.focusSection = "dns"
+            }
+          } else if (root.focusSection === "dns") {
+            // k from DNS moves up into the band section when it's on screen,
+            // then the disconnect button; otherwise stays put. j drops into the
+            // wifi list if there's anywhere to land.
+            if (dy < 0) {
+              if (root.canSelectBand) {
+                root.focusSection = "band"
+                root.bandAutoFocused = !root.bandPillsVisible
+              } else if (root.headerActionCount > 0) {
+                root.focusSection = "header"
+                root.headerIndex = 0
+              }
+            } else if (root.canRunSpeedTest) {
+              root.focusSection = "speed"
+            } else if (root.wifiNetworks.length > 0) {
+              root.focusSection = "wifi"
+              if (root.selectedIndex < 0) root.selectedIndex = 0
+            }
+          } else if (root.focusSection === "speed") {
+            if (dy < 0) {
+              root.focusSection = "dns"
             } else if (root.wifiNetworks.length > 0) {
               root.focusSection = "wifi"
               if (root.selectedIndex < 0) root.selectedIndex = 0
             }
           } else {  // wifi
-            // k from the top row escapes back up into the DNS row rather
-            // than wrapping around to the bottom of the list.
+            // k from the top row escapes back up into the speed test's Run
+            // button, or DNS when there is no speed test, rather than wrapping
+            // around to the bottom of the list.
             if (dy < 0 && root.selectedIndex <= 0) {
-              root.focusSection = "dns"
+              root.focusSection = root.canRunSpeedTest ? "speed" : "dns"
               root.wifiActionFocused = false
             }
             else root.selectByDelta(dy)
@@ -834,6 +1043,7 @@ Panel {
         }
         if (dx !== 0) {
           if (root.focusSection === "header") root.selectHeaderByDelta(dx)
+          else if (root.focusSection === "band") { if (!root.bandAutoFocused) root.selectBandByDelta(dx) }
           else if (root.focusSection === "dns") root.selectDnsByDelta(dx)
           else if (root.focusSection === "wifi") root.selectWifiActionByDelta(dx)
         }
@@ -841,7 +1051,9 @@ Panel {
       onActivateRequested: {
         if (root.cursorActive) {
           if (root.focusSection === "header") root.activateHeader()
+          else if (root.focusSection === "band") root.activateBand()
           else if (root.focusSection === "dns") root.activateDns()
+          else if (root.focusSection === "speed") root.runSpeedTest()
           else root.activateSelected()
         }
       }
@@ -963,118 +1175,175 @@ Panel {
           columnSpacing: Style.space(20)
           rowSpacing: Style.spacing.labelGap
 
-          InfoLabel { visible: root.hasInternetPing; text: "Ping" }
+          // Always mounted: these two used to appear a beat after the panel
+          // opened, once the first probe returned, shoving everything below
+          // them down. They now hold their place and read "--" until there is
+          // a sample.
+          InfoLabel { text: "Ping" }
           DetailValue {
-            visible: root.hasInternetPing
             text: root.formatPingLatency(root.internetPingLatency)
             color: root.internetPingPacketLoss > 0 ? root.bar.urgent : root.bar.foreground
           }
-          InfoLabel { visible: root.hasInternetPing; text: "Packet Loss" }
+          InfoLabel { text: "Packet Loss" }
           DetailValue {
-            visible: root.hasInternetPing
             text: root.formatPacketLoss(root.internetPingPacketLoss)
             color: root.internetPingPacketLoss > 0 ? root.bar.urgent : root.bar.foreground
           }
 
-          InfoLabel { visible: root.info.rx_bytes !== undefined; text: "Receiving" }
-          DetailValue { visible: root.info.rx_bytes !== undefined; text: root.formatRate(root.downloadRate) }
-          InfoLabel { visible: root.info.rx_bytes !== undefined; text: "Sending" }
-          DetailValue { visible: root.info.rx_bytes !== undefined; text: root.formatRate(root.uploadRate) }
+          InfoLabel { text: "Receiving" }
+          DetailValue { text: root.hasTransferStats ? root.formatRate(root.downloadRate) : "--" }
+          InfoLabel { text: "Sending" }
+          DetailValue { text: root.hasTransferStats ? root.formatRate(root.uploadRate) : "--" }
 
-          InfoLabel { visible: root.info.rx_bytes !== undefined; text: "Downloaded" }
-          DetailValue { visible: root.info.rx_bytes !== undefined; text: root.formatBytes(parseFloat(root.info.rx_bytes || "0")) }
-          InfoLabel { visible: root.info.rx_bytes !== undefined; text: "Uploaded" }
-          DetailValue { visible: root.info.rx_bytes !== undefined; text: root.formatBytes(parseFloat(root.info.tx_bytes || "0")) }
+          InfoLabel { text: "Downloaded" }
+          DetailValue { text: root.hasTransferStats ? root.formatBytes(parseFloat(root.info.rx_bytes || "0")) : "--" }
+          InfoLabel { text: "Uploaded" }
+          DetailValue { text: root.hasTransferStats ? root.formatBytes(parseFloat(root.info.tx_bytes || "0")) : "--" }
 
-          InfoLabel {
-            visible: !!root.info.ip || !!root.info.gateway
-            text: root.info.ip ? "IP Address" : ""
-          }
+          InfoLabel { text: "IP Address" }
           DetailValue {
-            visible: !!root.info.ip || !!root.info.gateway
-            text: root.info.ip || ""
+            text: root.info.ip || "--"
             copyable: !!root.info.ip
             tooltipText: "Copy IP"
           }
-          InfoLabel {
-            visible: !!root.info.ip || !!root.info.gateway
-            text: root.info.gateway ? "Gateway" : ""
-          }
+          InfoLabel { text: "Gateway" }
           DetailValue {
-            visible: !!root.info.ip || !!root.info.gateway
-            text: root.info.gateway || ""
+            text: root.info.gateway || "--"
             copyable: !!root.info.gateway
             tooltipText: "Copy gateway"
           }
         }
       }
 
+      // Wi-Fi band selection. Only on Wi-Fi, and only when the network answers
+      // on more than one band -- a single-band AP has nothing to toggle.
       PanelSeparator {
-        visible: !!root.info.iface
+        visible: root.canSelectBand
         foreground: root.bar.foreground
       }
 
       Column {
-        visible: !!root.info.iface
+        visible: root.canSelectBand
         width: parent.width
-        spacing: Style.space(12)
+        spacing: Style.space(10)
 
-        Column {
+        // "Automatic" rides on the header line rather than under the pills: it
+        // qualifies the whole row, and at header scale it reads as a modifier
+        // instead of competing with the band choices for attention.
+        Item {
           width: parent.width
-          spacing: Style.space(8)
+          implicitHeight: Math.max(bandHeader.implicitHeight, bandAutoRow.implicitHeight)
 
-          Item {
-            width: parent.width
-            implicitHeight: Math.max(speedTestHeader.implicitHeight, speedRunButton.implicitHeight)
-
-            PanelSectionHeader {
-              id: speedTestHeader
-              text: "SPEED TEST"
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-              anchors.left: parent.left
-              anchors.verticalCenter: parent.verticalCenter
-            }
-
-            Button {
-              id: speedRunButton
-              text: root.speedTestRunning ? "Running..." : "Run"
-              tooltipText: "Run using fast.com"
-              enabled: !root.speedTestRunning
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-              fontSize: Style.font.bodySmall
-              horizontalPadding: Style.spacing.controlPaddingX
-              verticalPadding: Style.spacing.controlPaddingY
-              bordered: true
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-              onClicked: root.runSpeedTest()
-            }
+          PanelSectionHeader {
+            id: bandHeader
+            text: root.bandSectionTitle
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
           }
 
           Row {
-            id: speedTestValues
-            visible: root.speedTestHasRun
-            width: parent.width
-            spacing: Style.space(20)
+            id: bandAutoRow
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(6)
 
-            readonly property real cellWidth: Math.max(0, (width - spacing * 3) / 4)
+            PanelSectionHeader {
+              id: bandAutoLabel
+              text: "AUTOMATIC"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              anchors.verticalCenter: parent.verticalCenter
+            }
 
-            InfoLabel { width: speedTestValues.cellWidth; text: "Download" }
-            DetailValue { width: speedTestValues.cellWidth; text: root.formatSpeedMbps(root.speedTestDownloadMbps) }
-            InfoLabel { width: speedTestValues.cellWidth; text: "Upload" }
-            DetailValue { width: speedTestValues.cellWidth; text: root.formatSpeedMbps(root.speedTestUploadMbps) }
-          }
+            // Sized off the label rather than the theme's control height so it
+            // reads as part of the header, and centred on the label's *glyphs*:
+            // PanelSectionHeader carries topPadding to protect Nerd Font
+            // overshoot, which pushes its text below its own box centre, so a
+            // plain verticalCenter would sit the switch visibly high.
+            ToggleSwitch {
+              id: bandAutoSwitch
+              trackHeight: Math.round(bandAutoLabel.font.pixelSize * 1.2)
+              cursorPad: Style.space(3)
+              anchors.verticalCenter: bandAutoLabel.verticalCenter
+              anchors.verticalCenterOffset: Math.round(bandAutoLabel.topPadding / 2)
+              checked: !root.bandPinned
+              busy: root.bandBusy
+              hasCursor: root.cursorActive && root.focusSection === "band" && root.bandAutoFocused
+              foreground: root.bar.foreground
+              onToggled: root.toggleBandAuto()
 
-          InfoValue {
-            visible: root.speedTestError !== ""
-            text: root.speedTestError
-            color: root.bar.urgent
-            width: parent.width
-            elide: Text.ElideRight
+              onHovered: function(isHovered) {
+                if (!isHovered) return
+                root.cursorActive = true
+                root.focusSection = "band"
+                root.bandAutoFocused = true
+              }
+
+              PanelToolTip {
+                visible: bandAutoSwitch.containsMouse
+                text: root.bandPinned
+                  ? "Let Wi-Fi pick the band"
+                  : "Stay on " + root.bandLabel(root.bandCurrent)
+                fontFamily: root.bar.fontFamily
+              }
+            }
           }
         }
+
+        // Collapsing container: the pills animate their height so toggling
+        // Automatic slides the sections below into place instead of snapping.
+        // `visible` only drops at a real zero, which keeps the row rendered for
+        // the whole animation and takes it out of the Column's spacing once
+        // it's actually gone.
+        Item {
+          id: bandPillsClip
+          width: parent.width
+          clip: true
+          visible: height > 0
+          height: root.bandPillsVisible ? bandRow.implicitHeight : 0
+          opacity: root.bandPillsVisible ? 1 : 0
+
+          Behavior on height {
+            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+          }
+          Behavior on opacity {
+            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+          }
+
+          Row {
+            id: bandRow
+            width: parent.width
+            spacing: Style.space(6)
+
+            readonly property int count: Math.max(1, root.bandAvailable.length)
+            readonly property real cellWidth: (width - spacing * (count - 1)) / count
+
+            // Wrapper takes modelData/index from the Repeater's delegate
+            // context, which doesn't bind into nested `component` declarations,
+            // and passes them down explicitly -- same shape as the network
+            // list delegate.
+            Repeater {
+              model: root.bandAvailable
+
+              delegate: Item {
+                required property var modelData
+                required property int index
+                width: bandRow.cellWidth
+                height: bandPill.implicitHeight
+
+                BandPill {
+                  id: bandPill
+                  band: modelData
+                  slot: index
+                  width: parent.width
+                }
+              }
+            }
+          }
+        }
+
       }
 
       // DNS provider selection.
@@ -1130,6 +1399,85 @@ Panel {
             tooltipText: "Set custom DNS servers"
             width: dnsRow.cellWidth
             onClicked: root.setDns(provider)
+          }
+        }
+      }
+
+
+      PanelSeparator {
+        visible: !!root.info.iface
+        foreground: root.bar.foreground
+      }
+
+      Column {
+        visible: !!root.info.iface
+        width: parent.width
+        spacing: Style.space(12)
+
+        Column {
+          width: parent.width
+          spacing: Style.space(8)
+
+          Item {
+            width: parent.width
+            implicitHeight: Math.max(speedTestHeader.implicitHeight, speedRunButton.implicitHeight)
+
+            PanelSectionHeader {
+              id: speedTestHeader
+              text: "SPEED TEST"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+            }
+
+            // Scaled to the band section's AUTOMATIC row -- caption type and
+            // trimmed padding -- so both header lines carry a control of the
+            // same visual weight instead of this one dominating.
+            Button {
+              id: speedRunButton
+              text: root.speedTestRunning ? "Running..." : "Run"
+              tooltipText: "Run using fast.com"
+              enabled: !root.speedTestRunning
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              fontSize: Style.font.caption
+              horizontalPadding: Style.space(8)
+              verticalPadding: Style.space(2)
+              bordered: true
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              hasCursor: root.cursorActive && root.focusSection === "speed"
+              onClicked: root.runSpeedTest()
+
+              onHovered: function(isHovered) {
+                if (!isHovered) return
+                root.cursorActive = true
+                root.focusSection = "speed"
+              }
+            }
+          }
+
+          Row {
+            id: speedTestValues
+            visible: root.speedTestHasRun
+            width: parent.width
+            spacing: Style.space(20)
+
+            readonly property real cellWidth: Math.max(0, (width - spacing * 3) / 4)
+
+            InfoLabel { width: speedTestValues.cellWidth; text: "Download" }
+            DetailValue { width: speedTestValues.cellWidth; text: root.formatSpeedMbps(root.speedTestDownloadMbps) }
+            InfoLabel { width: speedTestValues.cellWidth; text: "Upload" }
+            DetailValue { width: speedTestValues.cellWidth; text: root.formatSpeedMbps(root.speedTestUploadMbps) }
+          }
+
+          InfoValue {
+            visible: root.speedTestError !== ""
+            text: root.speedTestError
+            color: root.bar.urgent
+            width: parent.width
+            elide: Text.ElideRight
           }
         }
       }
@@ -1201,6 +1549,39 @@ Panel {
         }
       }
     }
+    }
+  }
+
+  // One Wi-Fi band pill. `active` (fill) is the band actually in use and
+  // `selected` (bold) is the pinned choice; with Automatic on nothing is
+  // pinned, so only the live band lights up and the two can no longer read as
+  // a contradiction. They land on the same pill once a band is pinned.
+  component BandPill: Button {
+    id: pill
+    required property string band
+    required property int slot
+
+    text: root.bandLabel(band)
+    tooltipText: root.bandTooltip(band)
+    fontSize: Style.font.bodySmall
+    foreground: root.bar.foreground
+    fontFamily: root.bar.fontFamily
+    horizontalPadding: Style.spacing.controlPaddingX
+    verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
+    bordered: true
+
+    active: root.bandCurrent === band
+    selected: root.bandEffective === band
+    hasCursor: root.cursorActive && root.focusSection === "band"
+      && !root.bandAutoFocused && root.bandIndex === slot
+
+    onClicked: root.setBand(band)
+
+    onHovered: function(isHovered) {
+      if (!isHovered) return
+      root.cursorActive = true
+      root.focusSection = "band"
+      root.bandIndex = pill.slot
     }
   }
 
