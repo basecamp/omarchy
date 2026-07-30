@@ -217,11 +217,11 @@ assert(
   'plugin picker leaves plugin-kind decisions to its data and the plugin command'
 )
 
-const pluginCommon = fs.readFileSync(path.join(root, 'bin/omarchy-plugin-common'), 'utf8')
 const pluginAdd = fs.readFileSync(path.join(root, 'bin/omarchy-plugin-add'), 'utf8')
+const pluginEnable = fs.readFileSync(path.join(root, 'bin/omarchy-plugin-enable'), 'utf8')
 assert(
-  /Now using \$id as the bar/.test(pluginCommon)
-    && /enabled_message "\$id"[\s\S]*?place_bar_widget/.test(pluginAdd),
+  /Now using \$id as the bar/.test(pluginEnable)
+    && /Now using \$id as the bar[\s\S]*?place_bar_widget/.test(pluginAdd),
   'plugin enable reports a bar as replacing the one in use, whether enabled or freshly added'
 )
 assert(

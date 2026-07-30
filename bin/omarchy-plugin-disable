@@ -6,7 +6,10 @@
 
 set -euo pipefail
 
-source omarchy-plugin-common
+fail() {
+  echo "omarchy-plugin-disable: $*" >&2
+  exit 1
+}
 
 if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   echo "Usage: omarchy plugin disable <id>"

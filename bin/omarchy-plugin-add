@@ -8,10 +8,30 @@
 
 set -euo pipefail
 
-source omarchy-plugin-common
-
 export GIT_TERMINAL_PROMPT=0
 export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -oBatchMode=yes}"
+
+PLUGINS_DIR="$HOME/.config/omarchy/plugins"
+ASSUME_YES=0
+
+fail() {
+  echo "omarchy-plugin-add: $*" >&2
+  exit 1
+}
+
+interactive() {
+  [[ -t 0 && -t 1 ]]
+}
+
+confirm() {
+  local prompt="$1"
+  (( ASSUME_YES )) && return 0
+  if interactive; then
+    gum confirm "$prompt"
+  else
+    fail "refusing to continue without confirmation; pass --yes"
+  fi
+}
 
 place_bar_widget() {
   local id="$1"
@@ -135,10 +155,19 @@ if [[ -z $enable_after ]]; then
 fi
 
 if [[ $enable_after == true ]]; then
-  wait_for_plugin_discovery "$id" || fail "plugin '$id' was not discovered"
-  result=$(omarchy-shell shell setPluginEnabled "$id" true)
+  for (( attempt = 0; attempt < 40; attempt++ )); do
+    result=$(omarchy-shell shell setPluginEnabled "$id" true)
+    [[ $result == "ok" ]] && break
+    sleep 0.05
+  done
   [[ $result == "ok" ]] || fail "plugin '$id' is not known"
-  enabled_message "$id"
+  if omarchy-plugin-catalog | jq -e --arg id "$id" '
+    any(.[]; .id == $id and (.kinds | index("bar")))
+  ' >/dev/null; then
+    echo "Now using $id as the bar"
+  else
+    echo "Enabled $id"
+  fi
   place_bar_widget "$id"
 else
   echo "Enable it later with: omarchy plugin enable $id"

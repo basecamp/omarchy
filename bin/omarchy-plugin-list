@@ -6,8 +6,6 @@
 
 set -euo pipefail
 
-source omarchy-plugin-common
-
 json="false"
 
 while (( $# > 0 )); do
@@ -20,7 +18,8 @@ while (( $# > 0 )); do
     exit 0
     ;;
   *)
-    fail "unknown list option: $1"
+    echo "omarchy-plugin-list: unknown option: $1" >&2
+    exit 1
     ;;
   esac
   shift
