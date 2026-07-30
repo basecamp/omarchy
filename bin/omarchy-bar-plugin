@@ -458,8 +458,9 @@ cmd_replace() {
   prog=$(cat <<JQ
     $JQ_DEFS $NORMALIZE
     | resolve_source as \$source
-    | if \$source.entry | type != "object" then error("widget entry must be an object") else . end
-    | .bar.layout[\$source.section][\$source.index].id = \$new
+    | .bar.layout[\$source.section][\$source.index] = (
+        \$source.entry | if type == "object" then .id = \$new else { id: \$new } end
+      )
 JQ
 )
   # resolve_source finds by widget id when no placement is given; replace

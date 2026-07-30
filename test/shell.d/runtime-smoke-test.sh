@@ -62,7 +62,8 @@ cat >"$hot_reload_dir/manifest.json" <<'JSON'
   "name": "Before Hot Reload",
   "version": "1.0.0",
   "kinds": ["overlay"],
-  "entryPoints": {"overlay": "Overlay.qml"}
+  "entryPoints": {"overlay": "Overlay.qml"},
+  "omarchy": {"clonedFrom": "omarchy.emojis"}
 }
 JSON
 cat >"$hot_reload_dir/Overlay.qml" <<'QML'
@@ -153,6 +154,14 @@ done
 [[ $hot_reload_name == "After Hot Reload" ]] ||
   fail_with_log "local clone changes reload without an explicit rescan"
 pass "local clone changes reload without an explicit rescan"
+
+[[ $(shell_ipc shell setPluginEnabled local.hot-reload true) == "ok" ]] ||
+  fail_with_log "local clone could not be enabled"
+[[ $(shell_ipc shell summon omarchy.emojis "{}") == "ok" ]] ||
+  fail_with_log "calls to a cloned source id do not reach its enabled clone"
+shell_ipc_quiet shell hide omarchy.emojis >/dev/null
+shell_ipc_quiet shell setPluginEnabled local.hot-reload false >/dev/null
+pass "shell IPC routes built-in ids to enabled clones"
 
 shell_config=$(shell_ipc shell listShellConfig)
 jq -e '

@@ -14,15 +14,11 @@
 
 set -o pipefail
 
-OMARCHY_PATH="${OMARCHY_PATH:-}"
-
 paths=()
 
-if [[ -n $OMARCHY_PATH && -d $OMARCHY_PATH/shell/plugins ]]; then
-  while IFS= read -r manifest; do
-    paths+=("$manifest")
-  done < <(find "$OMARCHY_PATH/shell/plugins" -mindepth 2 -maxdepth 4 -type f \( -name manifest.json -o -name '*.manifest.json' \) 2>/dev/null | sort)
-fi
+while IFS= read -r manifest; do
+  paths+=("$manifest")
+done < <(find "$OMARCHY_PATH/shell/plugins" -mindepth 2 -maxdepth 4 -type f \( -name manifest.json -o -name '*.manifest.json' \) | sort)
 
 user_dir="$HOME/.config/omarchy/plugins"
 if [[ -d $user_dir ]]; then

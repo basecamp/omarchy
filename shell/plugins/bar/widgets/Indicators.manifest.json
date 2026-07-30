@@ -73,12 +73,6 @@
         "source": "../indicators",
         "target": "indicators"
       }
-    ],
-    "cloneReplacements": [
-      {
-        "from": "../indicators/",
-        "to": "indicators/"
-      }
     ]
   }
 }

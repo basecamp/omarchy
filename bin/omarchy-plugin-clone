@@ -13,46 +13,20 @@ fail() {
   exit 1
 }
 
-replace_fixed_string() {
-  local from="$1"
-  local to="$2"
-  local target_dir="$3"
-  local pattern="$from"
-  local replacement="$to"
-  local file
-
-  pattern=${pattern//\\/\\\\}
-  pattern=${pattern//./\\.}
-  pattern=${pattern//\*/\\*}
-  pattern=${pattern//[/\\[}
-  pattern=${pattern//^/\\^}
-  pattern=${pattern//$/\\$}
-  pattern=${pattern//|/\\|}
-  replacement=${replacement//\\/\\\\}
-  replacement=${replacement//&/\\&}
-  replacement=${replacement//|/\\|}
-
-  while IFS= read -r -d '' file; do
-    sed -i "s|$pattern|$replacement|g" "$file"
-  done < <(rg --files-with-matches --null --fixed-strings "$from" "$target_dir")
-}
-
 copy_plugin() {
   local source_dir="$1"
   local manifest="$2"
   local target_dir="$3"
 
   if [[ ${manifest##*/} == "manifest.json" ]]; then
-    cp -aL "$source_dir" "$target_dir"
+    cp -aL "$source_dir/." "$target_dir/"
     return
   fi
 
-  mkdir -p "$target_dir"
   cp -aL "$manifest" "$target_dir/manifest.json"
 
-  local source target
+  local source target source_pattern file
   while IFS=$'\t' read -r source target; do
-    [[ -n $source && -n $target ]] || continue
     [[ $target != /* && $target != *".."* ]] || fail "invalid clone target path: $target"
     if [[ -d $source_dir/$source ]]; then
       mkdir -p "$target_dir/$target"
@@ -61,35 +35,31 @@ copy_plugin() {
       mkdir -p "$(dirname "$target_dir/$target")"
       cp -aL "$source_dir/$source" "$target_dir/$target"
     fi
+
+    if [[ $source != "$target" ]]; then
+      source_pattern=${source//./\\.}
+      while IFS= read -r -d '' file; do
+        sed -i "s|$source_pattern|$target|g" "$file"
+      done < <(rg --files-with-matches --null --fixed-strings "$source" "$target_dir")
+    fi
   done < <(jq -r '
     [
       (.entryPoints[] | {source: ., target: .}),
       (.omarchy.clonePaths[]? | {source: .source, target: .target})
     ] | unique_by(.target)[] | [.source, .target] | @tsv
   ' "$manifest")
-
-  local from to
-  while IFS=$'\t' read -r from to; do
-    [[ -n $from ]] || continue
-    replace_fixed_string "$from" "$to" "$target_dir"
-  done < <(jq -r '.omarchy.cloneReplacements[]? | [.from, .to] | @tsv' "$manifest")
 }
 
-clone_plugin() {
+update_manifest() {
   local target_dir="$1"
   local source_id="$2"
   local new_id="$3"
   local display_name="$4"
-  local source_pattern="${source_id//./\\.}"
-  local file
-
-  while IFS= read -r -d '' file; do
-    sed -i "s|$source_pattern|$new_id|g" "$file"
-  done < <(rg --files-with-matches --null --fixed-strings "$source_id" "$target_dir")
-
   local manifest="$target_dir/manifest.json"
-  local updated_manifest
-  updated_manifest=$(jq \
+
+  # Keep built-in ids inside the plugin code as stable IPC targets. The shell
+  # uses clonedFrom to route those calls to this local manifest id.
+  jq \
     --arg id "$new_id" \
     --arg name "$display_name" \
     --arg sourceId "$source_id" '
@@ -104,9 +74,9 @@ clone_plugin() {
         (if (.omarchy | type) == "object" then .omarchy else {} end) +
         { clonedFrom: $sourceId }
       ) |
-      del(.omarchy.clonePaths, .omarchy.cloneReplacements)
-    ' "$manifest")
-  printf '%s\n' "$updated_manifest" >"$manifest"
+      del(.omarchy.clonePaths)
+    ' "$manifest" >"$manifest.tmp"
+  mv "$manifest.tmp" "$manifest"
 }
 
 switch_to_clone() {
@@ -114,6 +84,7 @@ switch_to_clone() {
   local new_id="$2"
   local is_bar="$3"
   local is_bar_widget="$4"
+  local has_non_widget_kind="$5"
 
   if [[ $is_bar == "true" ]]; then
     omarchy-bar use "$new_id"
@@ -131,9 +102,10 @@ switch_to_clone() {
     else
       omarchy-bar-plugin add "$new_id"
     fi
+    [[ $has_non_widget_kind == "false" ]] || omarchy-plugin-disable "$source_id"
   else
-    omarchy-plugin-enable "$new_id"
     omarchy-plugin-disable "$source_id"
+    omarchy-plugin-enable "$new_id"
   fi
 }
 
@@ -175,11 +147,12 @@ source_info=$(omarchy-plugin-catalog | jq -r --arg id "$source_id" '
         .manifestPath,
         (.name // .id),
         ((.kinds | index("bar")) != null),
-        ((.kinds | index("bar-widget")) != null)
+        ((.kinds | index("bar-widget")) != null),
+        (any(.kinds[]; . != "bar-widget"))
       ] | @tsv
-  ' | head -1)
+  ')
 [[ -n $source_info ]] || fail "unknown built-in plugin: $source_id"
-IFS=$'\t' read -r source_dir source_manifest source_name is_bar is_bar_widget <<<"$source_info"
+IFS=$'\t' read -r source_dir source_manifest source_name is_bar is_bar_widget has_non_widget_kind <<<"$source_info"
 
 new_id="local.${source_id#omarchy.}"
 display_name="My $source_name"
@@ -187,11 +160,30 @@ target_dir="$PLUGINS_DIR/$new_id"
 [[ ! -e $target_dir && ! -L $target_dir ]] || fail "$target_dir already exists"
 
 mkdir -p "$PLUGINS_DIR"
-copy_plugin "$source_dir" "$source_manifest" "$target_dir"
-clone_plugin "$target_dir" "$source_id" "$new_id" "$display_name"
+stage=$(mktemp -d "$PLUGINS_DIR/.clone.XXXXXX")
+clone_complete=0
+cleanup() {
+  [[ -d ${stage:-} ]] && rm -rf "$stage"
+  (( clone_complete )) || rm -rf "$target_dir"
+}
+trap cleanup EXIT
+copy_plugin "$source_dir" "$source_manifest" "$stage"
+update_manifest "$stage" "$source_id" "$new_id" "$display_name"
+mv "$stage" "$target_dir"
+stage=""
 
-omarchy-shell -q shell rescanPlugins >/dev/null
-switch_to_clone "$source_id" "$new_id" "$is_bar" "$is_bar_widget"
+omarchy-shell shell rescanPlugins >/dev/null
+discovered=0
+for (( attempt = 0; attempt < 40; attempt++ )); do
+  if omarchy-plugin-list --json | jq -e --arg id "$new_id" 'any(.[]; .id == $id)' >/dev/null; then
+    discovered=1
+    break
+  fi
+  sleep 0.05
+done
+(( discovered )) || fail "cloned plugin '$new_id' was not discovered"
+switch_to_clone "$source_id" "$new_id" "$is_bar" "$is_bar_widget" "$has_non_widget_kind"
+clone_complete=1
 omarchy-notification-send -g 󰐱 \
   "Editing Cloned Plugin" \
   "Original plugin has been replace by clone."

@@ -17,6 +17,13 @@ if [[ $* == *"listShellConfig"* ]]; then
   else
     printf '{}\n'
   fi
+elif [[ $* == *"listPlugins"* ]]; then
+  if [[ ${FAKE_NO_DISCOVERY:-0} == 1 ]]; then
+    printf '[]\n'
+  else
+    find "$HOME/.config/omarchy/plugins" -mindepth 2 -maxdepth 2 -name manifest.json -print0 |
+      xargs -0 -r jq -s 'map({id: .id, enabled: true})'
+  fi
 fi
 exit 0
 SH
@@ -38,16 +45,18 @@ done
 chmod +x "$TMPDIR/bin/"*
 
 clone_plugin() {
-  HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$TMPDIR/bin:$ROOT/bin:$PATH" \
-    FAKE_CALLS="$CALLS" OMARCHY_TEST_ROOT="$ROOT" FAKE_SHELL_CONFIG='{
-      "bar": {
-        "layout": {
-          "left": [{"id": "omarchy.menu"}],
-          "center": [{"id": "omarchy.clock", "format": "HH:mm"}],
-          "right": []
-        }
+  local default_config='{
+    "bar": {
+      "layout": {
+        "left": [{"id": "omarchy.menu"}],
+        "center": [{"id": "omarchy.clock", "format": "HH:mm"}],
+        "right": []
       }
-    }' \
+    }
+  }'
+  HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$TMPDIR/bin:$ROOT/bin:$PATH" \
+    FAKE_CALLS="$CALLS" OMARCHY_TEST_ROOT="$ROOT" \
+    FAKE_SHELL_CONFIG="${FAKE_CLONE_CONFIG:-$default_config}" \
     omarchy-plugin-clone "$@"
 }
 
@@ -64,10 +73,9 @@ grep -q 'import "Model.js"' "$clock/BarWidget.qml" &&
   fail "clock clone does not preserve local dependencies"
 pass "clone keeps plugin dependencies local"
 
-if rg -qF "omarchy.clock" "$clock" -g '*.qml' -g '*.js'; then
-  fail "clock clone keeps the built-in runtime id"
-fi
-pass "clone rewrites the runtime plugin id"
+rg -qF "omarchy.clock" "$clock" -g '*.qml' -g '*.js' ||
+  fail "clock clone does not preserve the stable runtime id"
+pass "clone preserves the built-in runtime IPC id"
 
 jq -e '
   .id == "local.clock" and
@@ -92,6 +100,24 @@ jq -e '
   fail "clone does not preserve the active widget's placement and settings"
 pass "clone switches bar widgets in place and confirms the editable clone"
 
+jq '.bar.layout.center += ["omarchy.keyboard-layout"]' \
+  "$TMPDIR/home/.config/omarchy/shell.json" >"$TMPDIR/shell.json"
+mv "$TMPDIR/shell.json" "$TMPDIR/home/.config/omarchy/shell.json"
+FAKE_CLONE_CONFIG='{
+  "bar": {
+    "layout": {
+      "left": [],
+      "center": ["omarchy.keyboard-layout"],
+      "right": []
+    }
+  }
+}' clone_plugin omarchy.keyboard-layout >/dev/null
+jq -e '
+  any(.bar.layout.center[]; .id == "local.keyboard-layout")
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null ||
+  fail "clone does not replace a string-form bar entry"
+pass "clone replaces legacy string-form bar entries"
+
 clone_plugin omarchy.menu >/dev/null
 menu="$TMPDIR/home/.config/omarchy/plugins/local.menu"
 
@@ -104,7 +130,17 @@ jq -e '
   .entryPoints.menu == "Menu.qml" and
   .entryPoints.barWidget == "BarWidget.qml"
 ' "$menu/manifest.json" >/dev/null || fail "menu clone loses plugin kinds"
+grep -qx 'omarchy-plugin-disable omarchy.menu' "$CALLS" ||
+  fail "clone leaves the built-in half of a multi-kind plugin enabled"
 pass "clone preserves multi-kind plugins"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$TMPDIR/bin:$ROOT/bin:$PATH" \
+  FAKE_CALLS="$CALLS" OMARCHY_TEST_ROOT="$ROOT" \
+  omarchy-plugin-remove local.menu --yes >/dev/null
+grep -qx 'omarchy-bar-plugin replace local.menu omarchy.menu' "$CALLS" &&
+  grep -qx 'omarchy-plugin-enable omarchy.menu' "$CALLS" ||
+  fail "removing a clone does not restore its built-in source"
+pass "removing a clone restores its built-in source"
 
 clone_plugin omarchy.active-window >/dev/null
 [[ -f $TMPDIR/home/.config/omarchy/plugins/local.active-window/ActiveWindow.qml ]] ||
@@ -174,3 +210,10 @@ if clone_plugin >/dev/null 2>&1; then
   fail "clone opens an interactive picker without a source id"
 fi
 pass "clone requires an explicit source id"
+
+if FAKE_NO_DISCOVERY=1 clone_plugin omarchy.osd >/dev/null 2>&1; then
+  fail "clone succeeds before the shell discovers it"
+fi
+[[ ! -e $TMPDIR/home/.config/omarchy/plugins/local.osd ]] ||
+  fail "failed clone discovery leaves a partial clone behind"
+pass "clone removes a partial clone when switching fails"

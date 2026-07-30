@@ -66,10 +66,6 @@ while (( $# > 0 )); do
     enable_after=true
     shift
     ;;
-  --no-enable)
-    enable_after=false
-    shift
-    ;;
   --yes | -y)
     ASSUME_YES=1
     shift

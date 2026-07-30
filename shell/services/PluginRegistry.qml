@@ -142,6 +142,19 @@ QtObject {
       && config.disabledPlugins.indexOf(Util.canonicalWidgetId(String(id))) !== -1
   }
 
+  function resolveEnabledId(id) {
+    var key = Util.canonicalWidgetId(String(id || ""))
+    // Callers keep using the built-in id after cloning; the enabled local
+    // manifest is the implementation that should receive the call.
+    for (var candidate in installedPlugins) {
+      var manifest = installedPlugins[candidate]
+      var metadata = manifest && Util.isPlainObject(manifest.omarchy) ? manifest.omarchy : null
+      if (metadata && String(metadata.clonedFrom || "") === key && isEnabled(candidate))
+        return candidate
+    }
+    return key
+  }
+
   // A bar widget is on when it sits in the bar, whoever shipped it. That is a
   // different question from isEnabled(), which decides whether the widget's
   // component is loaded at all — a built-in stays loadable so it can be put
@@ -201,6 +214,8 @@ QtObject {
     }
     var isBarOption = manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar") !== -1
     var isBarWidget = manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar-widget") !== -1
+    var hasNonWidgetKind = manifest && Array.isArray(manifest.kinds)
+      && manifest.kinds.some(function(kind) { return kind !== "bar-widget" })
     shellConfigMutator(function(config) {
       // Ensure shape exists.
       if (!Util.isPlainObject(config.bar)) config.bar = { layout: { left: [], center: [], right: [] } }
@@ -242,7 +257,7 @@ QtObject {
       else if (location.kind === "plugin") config.plugins.splice(location.index, 1)
       // Dropping the layout entry is the whole story for a widget. Anything
       // else built-in loads by default, so switching it off has to be stated.
-      if (isFirstParty && !isBarWidget && !isDisabled(config, key)) {
+      if (isFirstParty && (!isBarWidget || hasNonWidgetKind) && !isDisabled(config, key)) {
         if (!Array.isArray(config.disabledPlugins)) config.disabledPlugins = []
         config.disabledPlugins.push(key)
       }
@@ -339,7 +354,7 @@ QtObject {
 
   property Process initProcess: Process {
     onExited: {
-      registry.startLocalPluginWatcher()
+      localPluginWatcher.running = true
       registry.rescan()
     }
   }
@@ -367,7 +382,7 @@ QtObject {
 
   property Timer localPluginWatcherRestart: Timer {
     interval: 1000
-    onTriggered: registry.ensureUserDir()
+    onTriggered: localPluginWatcher.running = true
   }
 
   function rescan() {
@@ -419,10 +434,6 @@ QtObject {
 
     var slash = relative.indexOf("/")
     return slash === -1 ? relative : relative.slice(0, slash)
-  }
-
-  function startLocalPluginWatcher() {
-    if (!localPluginWatcher.running) localPluginWatcher.running = true
   }
 
   Component.onCompleted: ensureUserDir()

@@ -33,7 +33,7 @@ if [[ $json == "true" ]]; then
 fi
 
 jq -r '
-  sort_by(.id)[] |
+  .[] |
   [ .id,
     (if .enabled then "enabled" else "disabled" end),
     (if .firstParty then "first-party" else "third-party" end),

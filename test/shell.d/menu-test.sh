@@ -230,7 +230,7 @@ assert(
   'interactive plugin add selects the manifest placement or center fallback by default'
 )
 assert(
-  /plugin_command="omarchy-plugin-\$1"[\s\S]*?"\$plugin_command" "\$id"/.test(pluginPicker),
+  /"omarchy-plugin-\$1" "\$id"/.test(pluginPicker),
   'plugin picker delegates enable and disable without interpreting plugin kinds'
 )
 // Icons ride along as "<glyph>\tlabel"; the menu shows the glyph and hands

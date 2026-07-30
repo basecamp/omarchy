@@ -20,7 +20,7 @@ case "${1:-}" in
     ;;
 esac
 
-plugins=$(omarchy-plugin-list --json) || exit 1
+plugins=$(omarchy-plugin-list --json)
 
 # Two plugins may share a name, so keep the id with the row and show it when the
 # name alone cannot identify the pick.
@@ -47,6 +47,5 @@ if [[ $1 == "clone" ]]; then
 elif [[ $1 == "remove" ]]; then
   omarchy-launch-floating-terminal-with-presentation "omarchy-plugin-remove $(printf '%q' "$id")"
 else
-  plugin_command="omarchy-plugin-$1"
-  "$plugin_command" "$id"
+  "omarchy-plugin-$1" "$id"
 fi

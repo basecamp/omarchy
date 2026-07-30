@@ -2,8 +2,7 @@
 
 # omarchy:summary=Update installed git-managed plugins
 # omarchy:group=plugin
-# omarchy:args=[id | --all] [--yes]
-# omarchy:examples=omarchy plugin update --all
+# omarchy:args=[id] [--yes]
 
 set -euo pipefail
 
@@ -81,20 +80,15 @@ update_one() {
 }
 
 id=""
-all=0
 
 while (( $# > 0 )); do
   case "$1" in
-  --all | -a)
-    all=1
-    shift
-    ;;
   --yes | -y)
     ASSUME_YES=1
     shift
     ;;
   -h | --help)
-    echo "Usage: omarchy plugin update [id | --all] [--yes]"
+    echo "Usage: omarchy plugin update [id] [--yes]"
     exit 0
     ;;
   -*)
@@ -107,10 +101,6 @@ while (( $# > 0 )); do
     ;;
   esac
 done
-
-if (( all )) && [[ -n $id ]]; then
-  fail "pass either a plugin-id or --all, not both"
-fi
 
 [[ -d $PLUGINS_DIR ]] || fail "no plugins installed"
 

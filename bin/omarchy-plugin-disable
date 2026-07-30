@@ -18,10 +18,6 @@ fi
 
 id="${1:-}"
 [[ -n $id ]] || fail "plugin id is required"
-shift
-(( $# == 0 )) || fail "disable does not take placement options"
-
-omarchy-shell shell rescanPlugins >/dev/null
 
 result=$(omarchy-shell shell setPluginEnabled "$id" false)
 [[ $result == "ok" ]] ||

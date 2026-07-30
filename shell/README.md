@@ -100,7 +100,7 @@ manifest id); updating is a fast-forward pull of that checkout.
 ```bash
 omarchy plugin add https://github.com/acme/omarchy-weather.git
 omarchy plugin update acme.weather       # fetches, shows a diff, fast-forwards
-omarchy plugin update --all
+omarchy plugin update                    # updates every git-managed plugin
 omarchy plugin remove acme.weather
 ```
 
@@ -116,7 +116,7 @@ AI agents:
 
 ```bash
 omarchy plugin add https://github.com/acme/omarchy-weather.git --enable --yes
-omarchy plugin update --all --yes
+omarchy plugin update --yes
 ```
 
 The installer never runs plugin code, install hooks, or sudo — it only clones
@@ -152,6 +152,9 @@ omarchy plugin clone omarchy.clock
 Cloning switches from the built-in to the new local plugin, preserving an
 existing bar widget's position and settings. Setup > Plugins > Clone provides
 the interactive picker, then opens the new `local.*` directory in `$EDITOR`.
+Existing shortcuts and shell IPC calls made to the built-in id are routed to
+the enabled clone, so cloning does not require changing its callers. Removing
+an active clone switches back to its built-in source.
 Saving a file anywhere inside a `local.*` plugin reloads plugin code
 automatically; `omarchy-shell shell rescanPlugins` remains available to force a reload.
 
