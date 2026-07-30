@@ -8,10 +8,13 @@ enable_be211_wifi7() {
   local actual_config
   local kernel_found=false
   local kernel_blocked=false
-  local migration_failed=false
   local -a rebuild_command
+  local comparison
+  local extra
+  local package_query
   local pkgbase_file
   local package
+  local queried_package
   local version
 
   expected_config=$(printf '%s\n' \
@@ -37,6 +40,8 @@ enable_be211_wifi7() {
         echo "ERROR: Failed to rebuild boot images after interrupted migration"
         return 1
       fi
+      omarchy-state set reboot-required ||
+        echo "WARNING: Failed to mark reboot-required after restoring $wifi7_config"
     else
       echo "Unable to restore unexpected backup $wifi7_backup"
       return 1
@@ -49,13 +54,24 @@ enable_be211_wifi7() {
     [[ -f $pkgbase_file ]] || continue
 
     package=$(<"$pkgbase_file")
-    if version=$(pacman -Q "$package" 2>/dev/null | awk '{ print $2 }'); then
-      kernel_found=true
-      if (( $(vercmp "$version" 7.1) < 0 )); then
-        kernel_blocked=true
-        break
-      fi
-    else
+    if ! package_query=$(pacman -Q "$package" 2>/dev/null); then
+      kernel_blocked=true
+      break
+    fi
+
+    read -r queried_package version extra <<<"$package_query"
+    if [[ $package_query == *$'\n'* || $queried_package != "$package" || -z $version || -n $extra ]]; then
+      kernel_blocked=true
+      break
+    fi
+
+    if ! comparison=$(vercmp "$version" 7.1 2>/dev/null) || [[ ! $comparison =~ ^-?[0-9]+$ ]]; then
+      kernel_blocked=true
+      break
+    fi
+
+    kernel_found=true
+    if (( comparison < 0 )); then
       kernel_blocked=true
       break
     fi
@@ -82,12 +98,6 @@ enable_be211_wifi7() {
   sudo mv "$wifi7_config" "$wifi7_backup" || return 1
 
   if ! "${rebuild_command[@]}"; then
-    migration_failed=true
-  elif ! omarchy-state set reboot-required; then
-    migration_failed=true
-  fi
-
-  if $migration_failed; then
     if ! sudo mv "$wifi7_backup" "$wifi7_config"; then
       echo "ERROR: Failed to restore $wifi7_config after migration failure"
       return 1
@@ -99,7 +109,13 @@ enable_be211_wifi7() {
     return 1
   fi
 
-  sudo rm -f "$wifi7_backup"
+  sudo rm -f "$wifi7_backup" ||
+    echo "WARNING: Failed to remove $wifi7_backup; delete it manually"
+
+  omarchy-state set reboot-required ||
+    echo "WARNING: Failed to mark reboot-required; reboot to apply the WiFi 7 change"
+
+  return 0
 }
 
 enable_be211_wifi7
