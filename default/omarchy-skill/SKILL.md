@@ -227,7 +227,7 @@ cp ~/.config/hypr/bindings.lua ~/.config/hypr/bindings.lua.bak.$(date +%s)
 
 # 4. Apply changes
 # - Hyprland: auto-reloads on save, but MUST validate with `hyprctl reload` and `hyprctl configerrors`
-# - Omarchy shell: shell.json hot-reloads; use `omarchy plugin rescan` for plugin/widget code changes
+# - Omarchy shell: shell.json hot-reloads; use `omarchy-shell shell rescanPlugins` for plugin/widget code changes
 # - Launcher: restart with `omarchy restart shell`
 # - Terminals: MUST restart with `omarchy restart terminal`
 ```

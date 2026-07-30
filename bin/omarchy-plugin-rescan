@@ -1,9 +1,0 @@
-#!/bin/bash
-
-# omarchy:summary=Rescan installed shell plugins
-# omarchy:group=plugin
-
-set -euo pipefail
-
-omarchy-shell shell rescanPlugins
-echo "Plugins rescanned"

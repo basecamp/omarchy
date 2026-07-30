@@ -72,7 +72,7 @@ Commands prompt when run bare in a terminal and run unattended when given
 arguments — add `--yes` to skip every prompt (the path for scripts and agents).
 
 You can still install by hand: drop a plugin into
-`~/.config/omarchy/plugins/<id>/`, run `omarchy plugin rescan`, then
+`~/.config/omarchy/plugins/<id>/`, run `omarchy-shell shell rescanPlugins`, then
 `omarchy plugin enable <id>`. A bar widget starts in its declared default
 section and can be moved with `omarchy bar plugin move`; enabling a full bar
 replaces the one in use.

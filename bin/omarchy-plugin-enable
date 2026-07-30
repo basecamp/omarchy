@@ -30,7 +30,7 @@ wait_for_plugin_discovery "$id" ||
 
 result=$(omarchy-shell shell setPluginEnabled "$id" true)
 [[ $result == "ok" ]] ||
-  fail "plugin '$id' is not known; run: omarchy plugin rescan"
+  fail "plugin '$id' is not known; run: omarchy-shell shell rescanPlugins"
 
 if (( $# > 0 )); then
   omarchy-bar-plugin move "$id" "$@"

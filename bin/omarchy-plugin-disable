@@ -22,6 +22,6 @@ omarchy-shell shell rescanPlugins >/dev/null
 
 result=$(omarchy-shell shell setPluginEnabled "$id" false)
 [[ $result == "ok" ]] ||
-  fail "plugin '$id' is not known; run: omarchy plugin rescan"
+  fail "plugin '$id' is not known; run: omarchy-shell shell rescanPlugins"
 
 echo "Disabled $id"

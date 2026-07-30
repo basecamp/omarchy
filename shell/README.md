@@ -130,7 +130,7 @@ You can still drop a plugin in without git:
 
 1. Put it in `~/.config/omarchy/plugins/<plugin-id>/` with a `manifest.json`
    plus the QML referenced from its `entryPoints`.
-2. `omarchy plugin rescan`.
+2. `omarchy-shell shell rescanPlugins`.
 3. `omarchy plugin enable <id>`. Bar widgets start in
    `barWidget.defaultSection`, or in the center when it is omitted, and can be
    moved with `omarchy bar plugin move`; a full bar replaces the one in use.
@@ -153,7 +153,7 @@ Cloning switches from the built-in to the new local plugin, preserving an
 existing bar widget's position and settings. Setup > Plugins > Clone provides
 the interactive picker, then opens the new `local.*` directory in `$EDITOR`.
 Saving a file anywhere inside a `local.*` plugin reloads plugin code
-automatically; `omarchy plugin rescan` remains available to force a reload.
+automatically; `omarchy-shell shell rescanPlugins` remains available to force a reload.
 
 First-party plugins under `shell/plugins/` are discovered the same way and load
 by default. Disabling a non-widget records it in `disabledPlugins[]`; disabling
