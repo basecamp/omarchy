@@ -54,7 +54,7 @@ for asset in bullet.png entry.png lock.png progress_bar.png; do
   magick "$staging_dir/$asset" -channel RGB +level-colors "#$text_hex","#$text_hex" "$staging_dir/$asset"
 done
 
-sudo cp -a "$staging_dir/." "$theme_dir/"
+sudo cp -a --no-preserve=mode,ownership "$staging_dir/." "$theme_dir/"
 sudo plymouth-set-default-theme omarchy
 
 if omarchy-cmd-present limine-mkinitcpio; then
