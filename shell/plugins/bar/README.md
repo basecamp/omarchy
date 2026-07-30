@@ -180,4 +180,4 @@ Third-party widgets ship as separate plugins under
 declaring `kinds: ["bar-widget"]` and a `barWidget` entry point. See
 [../../README.md](../../README.md) for the manifest schema. Enable,
 rescan, and place third-party plugins with `omarchy plugin enable`,
-`omarchy plugin rescan`, and `omarchy bar plugin add`.
+`omarchy-shell shell rescanPlugins`, and `omarchy bar plugin add`.

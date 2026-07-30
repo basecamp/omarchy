@@ -66,5 +66,13 @@
         "defaultValue": false
       }
     ]
+  },
+  "omarchy": {
+    "clonePaths": [
+      {
+        "source": "../indicators",
+        "target": "indicators"
+      }
+    ]
   }
 }

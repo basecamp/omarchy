@@ -12,14 +12,20 @@ trap 'rm -rf "$TMPDIR"' EXIT
 STUB_DIR="$TMPDIR/stub"
 mkdir -p "$STUB_DIR"
 
-# The picker reads the plugin list from omarchy-plugin and hands what it decided
-# back to it, so stubbing both ends shows which plugin a pick actually resolved
-# to -- the thing a source-level check cannot see.
-cat >"$STUB_DIR/omarchy-plugin" <<'STUB'
+# The picker reads the plugin list from omarchy-plugin-list and hands what it
+# decided to a verb-specific command, so stubbing both ends shows which plugin
+# a pick actually resolved to -- the thing a source-level check cannot see.
+cat >"$STUB_DIR/omarchy-plugin-list" <<'STUB'
 #!/bin/bash
-[[ $1 == list ]] && { cat "$FAKE_PLUGINS"; exit 0; }
-printf 'omarchy-plugin %s\n' "$*" >>"$FAKE_CALLS"
+cat "$FAKE_PLUGINS"
 STUB
+
+for command in omarchy-plugin-enable omarchy-plugin-disable; do
+  cat >"$STUB_DIR/$command" <<'STUB'
+#!/bin/bash
+printf '%s %s\n' "${0##*/}" "$*" >>"$FAKE_CALLS"
+STUB
+done
 
 # Records the rows it was offered, then answers with the pick under test.
 cat >"$STUB_DIR/omarchy-menu-select" <<'STUB'
@@ -47,7 +53,8 @@ pick() {
 
   : >"$TMPDIR/calls"
   : >"$TMPDIR/rows"
-  PATH="$STUB_DIR:$PATH" \
+  HOME="$TMPDIR/home" \
+    PATH="$STUB_DIR:$PATH" \
     FAKE_PLUGINS="$TMPDIR/plugins.json" \
     FAKE_CALLS="$TMPDIR/calls" \
     FAKE_ROWS="$TMPDIR/rows" \
@@ -58,9 +65,8 @@ pick() {
   CALLS=$(cat "$TMPDIR/calls")
 }
 
-# Cloning a plugin keeps the name it was cloned from, so two plugins really can
-# arrive at the picker calling themselves Clock. Both eligible for the same
-# verb: neither row can stand on the name alone.
+# Two plugins can declare the same display name. When both are eligible for the
+# same verb, neither row can stand on the name alone.
 cat >"$TMPDIR/plugins.json" <<'JSON'
 [
   {"id": "omarchy.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": false, "active": false, "canDisable": true, "firstParty": true},
@@ -72,7 +78,7 @@ pick enable "Clock (local.clock)"
 [[ $ROWS == *"Clock (omarchy.clock)"* && $ROWS == *"Clock (local.clock)"* ]] \
   || fail "picker tells two plugins of the same name apart" "$ROWS"
 pass "picker tells two plugins of the same name apart"
-[[ $CALLS == *"omarchy-plugin enable local.clock"* ]] \
+[[ $CALLS == *"omarchy-plugin-enable local.clock"* ]] \
   || fail "picker acts on the row that was picked, not the one that shares its name" "$CALLS"
 pass "picker acts on the row that was picked, not the one that shares its name"
 
@@ -88,12 +94,12 @@ JSON
 pick enable "Clock"
 [[ $ROWS != *"("* ]] || fail "picker adorns a row only when its name is taken twice over" "$ROWS"
 pass "picker adorns a row only when its name is taken twice over"
-[[ $CALLS == *"omarchy-plugin enable local.clock"* ]] \
+[[ $CALLS == *"omarchy-plugin-enable local.clock"* ]] \
   || fail "picker resolves a lone row to the plugin the verb offered, not a namesake it filtered out" "$CALLS"
 pass "picker resolves a lone row to the plugin the verb offered, not a namesake it filtered out"
 
 pick remove "Clock"
-[[ $CALLS == *"omarchy-plugin remove local.clock"* ]] \
+[[ $CALLS == *"omarchy-plugin-remove local.clock"* ]] \
   || fail "picker removes the plugin whose row was picked" "$CALLS"
 pass "picker removes the plugin whose row was picked"
 
@@ -108,9 +114,39 @@ pick enable "Weather"
 [[ $ROWS == *"Weather"* && $ROWS != *"acme.weather)"* ]] \
   || fail "picker leaves an unambiguous name unadorned" "$ROWS"
 pass "picker leaves an unambiguous name unadorned"
-[[ $CALLS == *"omarchy-plugin enable acme.weather"* ]] \
+[[ $CALLS == *"omarchy-plugin-enable acme.weather"* ]] \
   || fail "picker delegates plugin enablement to the plugin command" "$CALLS"
 pass "picker delegates plugin enablement to the plugin command"
+
+# Clone offers only first-party plugins without an existing local counterpart,
+# then performs the clone and opens its deterministic path in $EDITOR.
+cat >"$TMPDIR/plugins.json" <<'JSON'
+[
+  {"id": "omarchy.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": true, "active": false, "canDisable": true, "firstParty": true},
+  {"id": "acme.weather", "name": "Weather", "kinds": ["bar-widget"], "enabled": false, "active": false, "canDisable": true, "firstParty": false}
+]
+JSON
+
+pick clone "Clock"
+[[ $ROWS == *"Clock"* && $ROWS != *"Weather"* ]] ||
+  fail "clone picker offers only built-in plugins" "$ROWS"
+pass "clone picker offers built-in plugins"
+[[ $CALLS == *'terminal: omarchy-plugin-clone omarchy.clock && exec $EDITOR '*"/.config/omarchy/plugins/local.clock" ]] ||
+  fail "clone picker opens the cloned path in EDITOR" "$CALLS"
+pass "clone picker clones and opens the local plugin"
+
+# Once local.<id> is discovered, the source no longer belongs in Clone.
+cat >"$TMPDIR/plugins.json" <<'JSON'
+[
+  {"id": "omarchy.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": true, "active": false, "canDisable": true, "firstParty": true},
+  {"id": "local.clock", "name": "My Clock", "kinds": ["bar-widget"], "enabled": false, "active": false, "canDisable": true, "firstParty": false}
+]
+JSON
+
+pick clone ""
+[[ $CALLS == *"notification: No plugin to clone"* ]] ||
+  fail "clone picker offers an already cloned plugin" "$CALLS"
+pass "clone picker omits plugins already cloned locally"
 
 # The picker treats every plugin alike and leaves kind-specific behavior to the
 # plugin command.
@@ -121,7 +157,7 @@ cat >"$TMPDIR/plugins.json" <<'JSON'
 JSON
 
 pick enable "Fancy"
-[[ $CALLS == *"omarchy-plugin enable acme.fancy"* && $CALLS != *"--section"* ]] \
+[[ $CALLS == *"omarchy-plugin-enable acme.fancy"* && $CALLS != *"--section"* ]] \
   || fail "picker delegates kind-specific enablement" "$CALLS"
 pass "picker delegates kind-specific enablement"
 
@@ -151,7 +187,7 @@ pick enable "Bar"
 [[ $ROWS == *"Bar"* && $ROWS != *"Neon Bar"* ]] \
   || fail "picker offers every bar except the one already running" "$ROWS"
 pass "picker offers every bar except the one already running"
-[[ $CALLS == *"omarchy-plugin enable omarchy.bar"* ]] \
+[[ $CALLS == *"omarchy-plugin-enable omarchy.bar"* ]] \
   || fail "picker returns to the built-in bar by enabling it" "$CALLS"
 pass "picker returns to the built-in bar by enabling it"
 

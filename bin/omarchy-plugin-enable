@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# omarchy:summary=Enable a shell plugin
+# omarchy:group=plugin
+# omarchy:args=<id> [placement]
+# omarchy:examples=omarchy plugin enable acme.weather --section right
+
+set -euo pipefail
+
+fail() {
+  echo "omarchy-plugin-enable: $*" >&2
+  exit 1
+}
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  echo "Usage: omarchy plugin enable <id> [placement]"
+  exit 0
+fi
+
+id="${1:-}"
+[[ -n $id ]] || fail "plugin id is required"
+shift
+
+if (( $# > 0 )) && omarchy-plugin-catalog | jq -e --arg id "$id" '
+  any(.[]; .id == $id and (.kinds | index("bar")))
+' >/dev/null; then
+  fail "'$id' is a bar; it replaces the bar in use rather than taking a place in one"
+fi
+
+result=$(omarchy-shell shell setPluginEnabled "$id" true)
+[[ $result == "ok" ]] ||
+  fail "plugin '$id' is not known; run: omarchy-shell shell rescanPlugins"
+
+if (( $# > 0 )); then
+  omarchy-bar-plugin move "$id" "$@"
+  echo "Enabled and moved $id"
+elif omarchy-plugin-catalog | jq -e --arg id "$id" '
+  any(.[]; .id == $id and (.kinds | index("bar")))
+' >/dev/null; then
+  echo "Now using $id as the bar"
+else
+  echo "Enabled $id"
+fi

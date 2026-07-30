@@ -48,14 +48,21 @@ fast-forward pull:
 
 ```bash
 omarchy plugin add https://github.com/acme/omarchy-weather.git
-omarchy plugin update --all          # fetches, shows a diff, fast-forwards
+omarchy plugin update                # fetches, shows a diff, fast-forwards
 omarchy plugin remove acme.weather
 ```
 
-**Setup › Plugins** offers Enable, Disable, Add, and Remove. Enable and Disable
-include built-ins as well as installed plugins. Remove is limited to installed
-plugins, since a built-in has no checkout to delete. Add and Remove open a
-terminal so their warning, confirmation, and output stay visible.
+**Setup › Plugins** offers Enable, Disable, Add, Clone, and Remove. Enable and
+Disable include built-ins as well as installed plugins. Clone is limited to
+built-ins, while Remove is limited to installed plugins since a built-in has
+no checkout to delete. Add, Clone, and Remove open a terminal so their warning,
+editor, confirmation, and output stay visible.
+
+Cloning `omarchy.clock`, for example, creates and switches to
+`~/.config/omarchy/plugins/local.clock/`, names it `My Clock`, and preserves
+the built-in IPC identity so existing shortcuts keep working. Saving files in
+a `local.*` clone reloads its code automatically, and removing an active clone
+switches back to its built-in source.
 
 For a bar widget, on and off means its place in the bar. Everything else is
 loaded by default when it is built in, so `shell.json` records only the
@@ -72,7 +79,7 @@ Commands prompt when run bare in a terminal and run unattended when given
 arguments — add `--yes` to skip every prompt (the path for scripts and agents).
 
 You can still install by hand: drop a plugin into
-`~/.config/omarchy/plugins/<id>/`, run `omarchy plugin rescan`, then
+`~/.config/omarchy/plugins/<id>/`, run `omarchy-shell shell rescanPlugins`, then
 `omarchy plugin enable <id>`. A bar widget starts in its declared default
 section and can be moved with `omarchy bar plugin move`; enabling a full bar
 replaces the one in use.

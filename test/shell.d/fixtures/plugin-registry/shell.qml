@@ -82,8 +82,12 @@ ShellRoot {
     scan += block("firstparty", "/first/widgets/clock", manifest("omarchy.first-widget", ["bar-widget"], { barWidget: "Widget.qml" }))
     scan += block("firstparty", "/first/bar", manifest("omarchy.bar", ["bar"], { bar: "Bar.qml" }))
     scan += block("firstparty", "/first/panels/grouped", manifest("omarchy.grouped-panel", ["panel"], { panel: "Panel.qml" }))
+    scan += block("firstparty", "/first/hybrid", manifest("omarchy.hybrid", ["menu", "bar-widget"], { menu: "Menu.qml", barWidget: "Widget.qml" }))
     scan += block("thirdparty", "/third/panel", manifest("third.panel", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/widget", manifest("third.widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "left" }))
+    var localWidget = manifest("local.first-widget", ["bar-widget"], { barWidget: "Widget.qml" })
+    localWidget.omarchy = { clonedFrom: "omarchy.first-widget" }
+    scan += block("thirdparty", "/third/local-widget", localWidget)
     scan += block("thirdparty", "/third/bar", manifest("third.bar", ["bar"], { bar: "Bar.qml" }))
     scan += block("thirdparty", "/third/shadow", manifest("omarchy.first-widget", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/reserved", manifest("omarchy.reserved", ["panel"], { panel: "Panel.qml" }))
@@ -96,9 +100,11 @@ ShellRoot {
     registry.parseScanOutput(scan)
 
     root.assertDeepEqual(pluginIds(), [
+      "local.first-widget",
       "omarchy.bar",
       "omarchy.first-widget",
       "omarchy.grouped-panel",
+      "omarchy.hybrid",
       "third.bar",
       "third.panel",
       "third.widget"
@@ -120,6 +126,7 @@ ShellRoot {
     root.assertTrue(registry.isEnabled("omarchy.bar"), "built-in bar option is active by default")
     root.assertTrue(!registry.isEnabled("third.bar"), "third-party bar options start inactive")
     root.assertTrue(!registry.isEnabled("third.panel"), "third-party plugins start disabled")
+    root.assertEqual(registry.resolveEnabledId("omarchy.first-widget"), "omarchy.first-widget", "inactive clones do not replace their source id")
 
     registry.setEnabled("third.bar", true)
     root.assertEqual(root.config.bar.id, "third.bar", "enabling third-party bar options writes bar id")
@@ -140,6 +147,10 @@ ShellRoot {
     root.assertTrue(registry.isEnabled("third.widget"), "enabled bar widgets are found")
     registry.setEnabled("third.widget", false)
     root.assertDeepEqual(root.config.bar.layout.left, [], "disabling bar widgets removes layout entry")
+
+    registry.setEnabled("local.first-widget", true)
+    root.assertEqual(registry.resolveEnabledId("omarchy.first-widget"), "local.first-widget", "enabled clones receive calls made to their source id")
+    registry.setEnabled("local.first-widget", false)
 
     root.config = {
       version: 1,
@@ -182,6 +193,21 @@ ShellRoot {
     root.assertTrue(registry.isEnabled("omarchy.first-widget"), "a first-party widget stays loadable off the bar")
     registry.setEnabled("omarchy.first-widget", true)
     root.assertDeepEqual(root.config.bar.layout.center, [{ id: "omarchy.first-widget" }], "a widget without a default section falls back to center")
+
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [{ id: "omarchy.hybrid" }], center: [], right: [] } },
+      plugins: []
+    }
+    registry.setEnabled("omarchy.hybrid", false)
+    root.assertDeepEqual(root.config.bar.layout.left, [], "disabling a multi-kind built-in removes its widget")
+    root.assertDeepEqual(root.config.disabledPlugins, ["omarchy.hybrid"], "disabling a multi-kind built-in unloads its other kinds")
+    root.assertTrue(!registry.isEnabled("omarchy.hybrid"), "a disabled multi-kind built-in is not loadable")
+
+    var localBase = registry.pluginsDir + "/local.clock"
+    root.assertEqual(registry.localPluginIdForPath(localBase + "/BarWidget.qml"), "local.clock", "local clone changes are watched")
+    root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/acme.clock/BarWidget.qml"), "", "installed plugins are not treated as local clones")
+    root.assertEqual(registry.localPluginIdForPath(localBase + "/.git/index"), "", "clone git metadata is ignored")
 
     root.assertTrue(changeCount > 0, "registry emits change notifications")
     writeResult()

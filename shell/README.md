@@ -100,7 +100,7 @@ manifest id); updating is a fast-forward pull of that checkout.
 ```bash
 omarchy plugin add https://github.com/acme/omarchy-weather.git
 omarchy plugin update acme.weather       # fetches, shows a diff, fast-forwards
-omarchy plugin update --all
+omarchy plugin update                    # updates every git-managed plugin
 omarchy plugin remove acme.weather
 ```
 
@@ -116,7 +116,7 @@ AI agents:
 
 ```bash
 omarchy plugin add https://github.com/acme/omarchy-weather.git --enable --yes
-omarchy plugin update --all --yes
+omarchy plugin update --yes
 ```
 
 The installer never runs plugin code, install hooks, or sudo — it only clones
@@ -130,25 +130,33 @@ You can still drop a plugin in without git:
 
 1. Put it in `~/.config/omarchy/plugins/<plugin-id>/` with a `manifest.json`
    plus the QML referenced from its `entryPoints`.
-2. `omarchy plugin rescan`.
+2. `omarchy-shell shell rescanPlugins`.
 3. `omarchy plugin enable <id>`. Bar widgets start in
    `barWidget.defaultSection`, or in the center when it is omitted, and can be
    moved with `omarchy bar plugin move`; a full bar replaces the one in use.
 
 The lower-level IPC equivalents remain available via `omarchy-shell shell rescanPlugins`,
 `omarchy-shell shell setPluginEnabled <id> true`, and `omarchy-shell shell listPlugins`.
-The `omarchy plugin` command wraps those calls and can also edit the persisted
+The `omarchy plugin` commands wrap those calls and can also edit the persisted
 bar layout in `shell.json`.
 
-To hack on an existing widget safely, clone it into a user plugin instead of
-editing the built-in source. Third-party ids must be namespaced and may not use
-the reserved `omarchy.*` prefix.
+To hack on a built-in plugin safely, clone it into user config instead of
+editing the built-in source. The complete plugin directory is copied, including
+every declared kind and local dependency. A built-in id such as
+`omarchy.clock` becomes `local.clock`, with `My Clock` as its display name.
 
 ```bash
-omarchy plugin clone omarchy.clock local.clock --replace
-omarchy plugin clone                 # interactive source/name picker
-omarchy plugin edit local.clock      # cd into the plugin directory
+omarchy plugin clone omarchy.clock
 ```
+
+Cloning switches from the built-in to the new local plugin, preserving an
+existing bar widget's position and settings. Setup > Plugins > Clone provides
+the interactive picker, then opens the new `local.*` directory in `$EDITOR`.
+Existing shortcuts and shell IPC calls made to the built-in id are routed to
+the enabled clone, so cloning does not require changing its callers. Removing
+an active clone switches back to its built-in source.
+Saving a file anywhere inside a `local.*` plugin reloads plugin code
+automatically; `omarchy-shell shell rescanPlugins` remains available to force a reload.
 
 First-party plugins under `shell/plugins/` are discovered the same way and load
 by default. Disabling a non-widget records it in `disabledPlugins[]`; disabling

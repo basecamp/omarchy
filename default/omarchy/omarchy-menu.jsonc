@@ -157,7 +157,8 @@
   "setup.plugin": {"icon":"󰐱","label":"Plugins","aliases":["plugin","plugins"]},
   "setup.plugin.enable": {"icon":"󰄬","label":"Enable Plugin","action":"omarchy-menu-plugin enable"},
   "setup.plugin.disable": {"icon":"󰅖","label":"Disable Plugin","action":"omarchy-menu-plugin disable"},
-  "setup.plugin.add": {"icon":"󰖟","label":"Add Plugin","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-plugin add'"},
+  "setup.plugin.add": {"icon":"󰖟","label":"Add Plugin","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-plugin-add'"},
+  "setup.plugin.clone": {"icon":"󰆏","label":"Clone Plugin","action":"omarchy-menu-plugin clone"},
   // Only a plugin you installed yourself can be deleted, so Remove stays
   // hidden until there is one.
   "setup.plugin.remove": {"icon":"󰭌","label":"Remove Plugin","when":"compgen -G \"$HOME/.config/omarchy/plugins/*/manifest.json\"","action":"omarchy-menu-plugin remove"},

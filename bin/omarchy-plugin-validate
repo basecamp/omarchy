@@ -49,7 +49,7 @@ done
 ID=$(jq -r '.id // ""' "$MANIFEST")
 [[ -n $ID ]] || fail "manifest 'id' is empty"
 [[ $ID =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "invalid plugin id '$ID'"
-[[ $ID != *"/"* && $ID != *".."* ]] || fail "invalid plugin id '$ID'"
+[[ $ID != *".."* ]] || fail "invalid plugin id '$ID'"
 [[ $ID != omarchy.* ]] || fail "plugin id '$ID' uses the reserved omarchy.* namespace"
 
 # kinds must be a non-empty array.
@@ -114,17 +114,5 @@ done
 # checkouts, and git's internals are never loaded by the shell.
 link=$(find "$PLUGIN_DIR" -name .git -prune -o -type l -print -quit 2>/dev/null)
 [[ -z $link ]] || fail "symlinks are not allowed inside a plugin folder: $link"
-
-# The whole omarchy.* namespace plus every shipped first-party id is reserved.
-# A third-party plugin claiming one of those ids would be rejected by the shell
-# and could shadow built-in behaviour, so refuse it here too.
-FIRST_PARTY_DIR="${OMARCHY_PATH:-$HOME/.local/share/omarchy}/shell/plugins"
-if [[ -d $FIRST_PARTY_DIR ]]; then
-  while IFS= read -r fp_manifest; do
-    [[ -f $fp_manifest ]] || continue
-    fp_id=$(jq -r '.id // empty' "$fp_manifest" 2>/dev/null || true)
-    [[ $fp_id == "$ID" ]] && fail "plugin id '$ID' collides with a first-party Omarchy plugin"
-  done < <(find "$FIRST_PARTY_DIR" -type f \( -name manifest.json -o -name '*.manifest.json' \) 2>/dev/null)
-fi
 
 exit 0

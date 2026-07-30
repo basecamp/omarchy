@@ -156,6 +156,33 @@ for (const manifestPath of manifests) {
   if (relativePath.endsWith('.manifest.json')) {
     check(JSON.stringify(manifest.kinds) === JSON.stringify(['bar-widget']), `${manifest.id} sibling manifest must be a bar widget`)
   }
+
+  const clonePaths = manifest.omarchy?.clonePaths
+  if (clonePaths !== undefined) {
+    check(Array.isArray(clonePaths), `${manifest.id} omarchy.clonePaths must be an array`)
+    const cloneTargets = new Set()
+    for (const clonePath of Array.isArray(clonePaths) ? clonePaths : []) {
+      const valid = isPlainObject(clonePath)
+        && typeof clonePath.source === 'string'
+        && /^[A-Za-z0-9_./-]+$/.test(clonePath.source)
+        && typeof clonePath.target === 'string'
+        && /^[A-Za-z0-9_./-]+$/.test(clonePath.target)
+        && !clonePath.target.startsWith('/')
+        && !clonePath.target.includes('..')
+      check(
+        valid,
+        `${manifest.id} clone paths must have safe source and target paths`
+      )
+      if (valid) {
+        check(
+          fs.existsSync(path.resolve(path.dirname(manifestPath), clonePath.source)),
+          `${manifest.id} clone source ${clonePath.source} must exist`
+        )
+        check(!cloneTargets.has(clonePath.target), `${manifest.id} clone target ${clonePath.target} must be unique`)
+        cloneTargets.add(clonePath.target)
+      }
+    }
+  }
 }
 
 const byId = Object.fromEntries(manifests.map(manifestPath => {

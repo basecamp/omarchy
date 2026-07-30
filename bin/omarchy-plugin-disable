@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# omarchy:summary=Disable a shell plugin
+# omarchy:group=plugin
+# omarchy:args=<id>
+
+set -euo pipefail
+
+fail() {
+  echo "omarchy-plugin-disable: $*" >&2
+  exit 1
+}
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  echo "Usage: omarchy plugin disable <id>"
+  exit 0
+fi
+
+id="${1:-}"
+[[ -n $id ]] || fail "plugin id is required"
+
+result=$(omarchy-shell shell setPluginEnabled "$id" false)
+[[ $result == "ok" ]] ||
+  fail "plugin '$id' is not known; run: omarchy-shell shell rescanPlugins"
+
+echo "Disabled $id"

@@ -58,6 +58,12 @@ ShellRoot {
   property bool pluginReloading: false
   property bool pluginReloadPending: false
 
+  Timer {
+    id: localPluginReloadTimer
+    interval: 150
+    onTriggered: shell.reloadPlugins()
+  }
+
   onShellConfigChanged: {
     if (failedBarId !== "") failedBarId = ""
     pluginRegistry.registryRevision++
@@ -440,7 +446,7 @@ ShellRoot {
   }
 
   function summon(pluginId, payloadJson) {
-    var id = String(pluginId || "")
+    var id = shell.pluginRegistry.resolveEnabledId(pluginId)
     if (!id) return false
     var plugins = shell.pluginRegistry.installedPlugins
     if (!plugins[id]) {
@@ -480,7 +486,7 @@ ShellRoot {
   }
 
   function hide(pluginId) {
-    var id = String(pluginId || "")
+    var id = shell.pluginRegistry.resolveEnabledId(pluginId)
     if (!id) return false
     if (shell.isBarWidgetPanelPlugin(id)) {
       var hidden = shell.bar && typeof shell.bar.hideBarWidget === "function"
@@ -497,7 +503,7 @@ ShellRoot {
   }
 
   function isPluginOpen(pluginId) {
-    var id = String(pluginId || "")
+    var id = shell.pluginRegistry.resolveEnabledId(pluginId)
     if (shell.isBarWidgetPanelPlugin(id)) {
       return shell.bar && typeof shell.bar.isBarWidgetOpen === "function"
         ? shell.bar.isBarWidgetOpen(id)
@@ -510,7 +516,7 @@ ShellRoot {
   }
 
   function toggle(pluginId, payloadJson) {
-    var id = String(pluginId || "")
+    var id = shell.pluginRegistry.resolveEnabledId(pluginId)
     return isPluginOpen(id) ? hide(id) : summon(id, payloadJson)
   }
 
@@ -567,14 +573,15 @@ ShellRoot {
   }
 
   function callIfLoaded(pluginId, method, arg) {
-    var loader = panelLoaders[pluginId]
+    var id = shell.pluginRegistry.resolveEnabledId(pluginId)
+    var loader = panelLoaders[id]
     if (!loader || !loader.item) return "unknown"
     if (typeof loader.item[method] !== "function") return "unknown"
     try {
       var result = loader.item[method](arg)
       return result === undefined || result === null ? "ok" : String(result)
     } catch (e) {
-      console.warn("plugin " + pluginId + " " + method + "() threw:", e)
+      console.warn("plugin " + id + " " + method + "() threw:", e)
       return "error"
     }
   }
@@ -761,6 +768,10 @@ ShellRoot {
 
   Connections {
     target: shell.pluginRegistry
+    function onLocalPluginChanged(pluginId) {
+      console.log("Local plugin changed, reloading:", pluginId)
+      localPluginReloadTimer.restart()
+    }
     function onScanFinished() {
       if (shell.pluginReloadPending) {
         shell.pluginReloadPending = false
