@@ -199,7 +199,7 @@ services:
     volumes:
       - $HOME/.windows:/storage
       - $HOME/Windows:/shared
-    restart: unless-stopped
+    restart: "no"
     stop_grace_period: 2m
 EOF
 
