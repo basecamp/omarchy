@@ -133,12 +133,12 @@ You can still drop a plugin in without git:
 2. `omarchy-shell shell rescanPlugins`.
 3. `omarchy plugin enable <id>`. Bar widgets start in
    `barWidget.defaultSection`, or in the center when it is omitted, and can be
-   moved with `omarchy bar plugin move`; a full bar replaces the one in use.
+   moved with `omarchy bar move`; a full bar replaces the one in use.
 
 The lower-level IPC equivalents remain available via `omarchy-shell shell rescanPlugins`,
-`omarchy-shell shell setPluginEnabled <id> true`, and `omarchy-shell shell listPlugins`.
-The `omarchy plugin` commands wrap those calls and can also edit the persisted
-bar layout in `shell.json`.
+`omarchy-shell shell enablePlugin <id> '{}'`, and `omarchy-shell shell listPlugins`.
+The `omarchy plugin` commands wrap those calls. `omarchy bar move` and
+`omarchy bar set` edit the persisted widget layout in `shell.json`.
 
 To hack on a built-in plugin safely, clone it into user config instead of
 editing the built-in source. The complete plugin directory is copied, including
@@ -265,9 +265,9 @@ becomes the authoritative file — we do **not** deep-merge defaults back in.
    like `Clock` and `AudioPanel` forward.
 5. **Third-party enabled ⇔ present.** A third-party plugin is enabled iff
    its id appears somewhere in shell.json. For full bar options, that means
-   `bar.id`; for bar widgets, `omarchy bar plugin` adds/removes layout entries;
-   other plugin kinds are enabled with the shell IPC. First-party non-bar
-   plugins are always enabled.
+   `bar.id`; for bar widgets, plugin enable/disable adds/removes layout entries;
+   other plugin kinds are enabled the same way. First-party non-bar plugins
+   are enabled unless listed in `disabledPlugins[]`.
 6. **Multiple instances** are allowed when a manifest sets
    `allowMultiple: true`. Each instance is independent — e.g. two clock
    widgets in different timezones are just two `{"id":"omarchy.clock", "timezone": ...}`

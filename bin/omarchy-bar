@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# omarchy:summary=Set the active bar option, position, and transparency
+# omarchy:summary=Configure the bar and its widget layout
 # omarchy:group=bar
-# omarchy:args=use <id> | reset | defaults | position <top|bottom|left|right> | transparent <true|false|toggle>
-# omarchy:examples=omarchy bar use local.neon-bar | omarchy bar reset | omarchy bar defaults | omarchy bar position top | omarchy bar transparent true
+# omarchy:args=use <id> | reset | defaults | position <top|bottom|left|right> | transparent <true|false|toggle> | move <id> [placement] | set <id> <key> <value> [--json] [placement]
+# omarchy:examples=omarchy bar use local.neon-bar | omarchy bar move omarchy.clock --section center --index 0 | omarchy bar set omarchy.clock format HH:mm
 
 set -euo pipefail
 
@@ -18,15 +18,26 @@ Usage: omarchy bar <command> [args...]
   defaults                             Restore the default bar and service widgets
   position <top|bottom|left|right>     Bar position
   transparent <true|false|toggle>      Bar transparency
+  move <id> [placement]                Move a widget within or between sections
+  set <id> <key> <value> [--json] [placement]
+                                       Set a per-widget option
 
-Bar widgets are added, moved, removed, and configured with 'omarchy bar plugin'.
+Placement:
+  --section <left|center|right>        Target section
+  --index <n>                          Target index
+  --before <id>                        Insert before a widget
+  --after <id>                         Insert after a widget
+  --from-section <section>             Source section
+  --from-index <n>                     Source index
+
+Enable and disable widgets with 'omarchy plugin enable' and
+'omarchy plugin disable'.
 
 Examples:
   omarchy bar use local.neon-bar
-  omarchy bar reset
-  omarchy bar defaults
-  omarchy bar position top
-  omarchy bar transparent true
+  omarchy bar move omarchy.media left
+  omarchy bar move omarchy.clock --section center --index 0
+  omarchy bar set omarchy.clock format HH:mm
 USAGE
 }
 
@@ -36,6 +47,87 @@ bar_option_exists() {
   omarchy-plugin-catalog | jq -e --arg id "$1" '
     any(.[]; (.kinds | index("bar")) and .barPath != null and .id == $id)
   ' >/dev/null
+}
+
+validate_section() {
+  [[ $1 =~ ^(left|center|right)$ ]] || fail "section must be left, center, or right"
+}
+
+validate_index() {
+  [[ $1 =~ ^[0-9]+$ ]] || fail "index must be a non-negative integer"
+}
+
+# --------------------------------------------------------------------- placement
+
+PLACEMENT_SECTION=""
+PLACEMENT_INDEX=""
+PLACEMENT_BEFORE=""
+PLACEMENT_AFTER=""
+PLACEMENT_FROM_SECTION=""
+PLACEMENT_FROM_INDEX=""
+
+parse_placement() {
+  while (( $# > 0 )); do
+    case "$1" in
+      --section)
+        PLACEMENT_SECTION="${2:-}"
+        validate_section "$PLACEMENT_SECTION"
+        shift 2
+        ;;
+      --index)
+        PLACEMENT_INDEX="${2:-}"
+        validate_index "$PLACEMENT_INDEX"
+        shift 2
+        ;;
+      --before)
+        PLACEMENT_BEFORE="${2:-}"
+        [[ -n $PLACEMENT_BEFORE ]] || fail "--before requires a widget id"
+        shift 2
+        ;;
+      --after)
+        PLACEMENT_AFTER="${2:-}"
+        [[ -n $PLACEMENT_AFTER ]] || fail "--after requires a widget id"
+        shift 2
+        ;;
+      --from-section)
+        PLACEMENT_FROM_SECTION="${2:-}"
+        validate_section "$PLACEMENT_FROM_SECTION"
+        shift 2
+        ;;
+      --from-index)
+        PLACEMENT_FROM_INDEX="${2:-}"
+        validate_index "$PLACEMENT_FROM_INDEX"
+        shift 2
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *)
+        fail "unknown option: $1"
+        ;;
+    esac
+  done
+
+  [[ -z $PLACEMENT_BEFORE || -z $PLACEMENT_AFTER ]] || fail "use only one of --before or --after"
+}
+
+placement_json() {
+  jq -cn \
+    --arg section "$PLACEMENT_SECTION" \
+    --arg index "$PLACEMENT_INDEX" \
+    --arg before "$PLACEMENT_BEFORE" \
+    --arg after "$PLACEMENT_AFTER" \
+    --arg fromSection "$PLACEMENT_FROM_SECTION" \
+    --arg fromIndex "$PLACEMENT_FROM_INDEX" '
+      {}
+      + (if $section == "" then {} else {section: $section} end)
+      + (if $index == "" then {} else {index: ($index | tonumber)} end)
+      + (if $before == "" then {} else {before: $before} end)
+      + (if $after == "" then {} else {after: $after} end)
+      + (if $fromSection == "" then {} else {fromSection: $fromSection} end)
+      + (if $fromIndex == "" then {} else {fromIndex: ($fromIndex | tonumber)} end)
+    '
 }
 
 # -------------------------------------------------------------------- commands
@@ -59,15 +151,48 @@ cmd_use() {
 
 cmd_defaults() {
   (( $# == 0 )) || fail "defaults does not take arguments"
-  # Restore the whole default bar, then re-add widgets for services the user
-  # actually has installed (they aren't in the shipped default layout).
-  commit "$NORMALIZE | .bar = \$defaults[0].bar" --slurpfile defaults "$DEFAULTS_FILE"
-  local service
+
+  local catalog
+  local optional_widgets="[]"
+  local service widget
+  catalog=$(omarchy-plugin-catalog)
   for service in dropbox tailscale; do
     if "omarchy-installed-service-$service"; then
-      omarchy-bar-plugin add "omarchy.$service"
+      widget=$(jq -c --arg id "omarchy.$service" '
+        map(select(.id == $id))[0] as $plugin
+        | {
+            id: $id,
+            section: (
+              $plugin.barWidget.defaultSection // "center"
+              | if IN("left", "center", "right") then . else "center" end
+            )
+          }
+      ' <<<"$catalog")
+      optional_widgets=$(jq -c --argjson widget "$widget" '. + [$widget]' <<<"$optional_widgets")
     fi
   done
+
+  # This remains one file mutation so it also works during the headless
+  # Quattro upgrade and cannot race the shell's in-memory config.
+  commit "$NORMALIZE
+    | .bar = \$defaults[0].bar
+    | def entry_id: if type == \"object\" then (.id // \"\" | tostring) else tostring end;
+      def anchor_for(\$section): { left: \"omarchy.workspaces\", center: \"omarchy.weather\", right: \"omarchy.tray\" }[\$section];
+      reduce \$widgets[] as \$widget (.;
+        .bar.layout.left = (.bar.layout.left | map(select(entry_id != \$widget.id)))
+        | .bar.layout.center = (.bar.layout.center | map(select(entry_id != \$widget.id)))
+        | .bar.layout.right = (.bar.layout.right | map(select(entry_id != \$widget.id)))
+        | (.bar.layout[\$widget.section] | map(entry_id) | index(anchor_for(\$widget.section))) as \$anchor
+        | (\$anchor | if . == null then (.bar.layout[\$widget.section] | length) else . + 1 end) as \$index
+        | .bar.layout[\$widget.section] = (
+            .bar.layout[\$widget.section][0:\$index]
+            + [{id: \$widget.id}]
+            + .bar.layout[\$widget.section][\$index:]
+          )
+      )
+  " \
+    --slurpfile defaults "$DEFAULTS_FILE" \
+    --argjson widgets "$optional_widgets"
   echo "Restored the default Omarchy bar"
 }
 
@@ -94,6 +219,67 @@ cmd_transparent() {
   fi
 }
 
+cmd_move() {
+  local id="${1:-}"
+  [[ -n $id ]] || fail "move requires a widget id"
+  shift
+
+  local positional_section=""
+  if (( $# > 0 )) && [[ $1 != --* ]]; then
+    positional_section="$1"
+    validate_section "$positional_section"
+    shift
+  fi
+
+  parse_placement "$@"
+  [[ -z $positional_section || -z $PLACEMENT_SECTION ]] ||
+    fail "specify a section positionally or with --section, not both"
+  [[ -z $positional_section || -z $PLACEMENT_INDEX ]] ||
+    fail "specify a section positionally or use --index, not both"
+  [[ -z $positional_section || -z $PLACEMENT_BEFORE ]] ||
+    fail "specify a section positionally or use --before, not both"
+  [[ -z $positional_section || -z $PLACEMENT_AFTER ]] ||
+    fail "specify a section positionally or use --after, not both"
+  [[ -z $positional_section ]] || PLACEMENT_SECTION="$positional_section"
+
+  local result
+  result=$(omarchy-shell shell moveBarWidget "$id" "$(placement_json)")
+  [[ $result == "ok" ]] || fail "$result"
+  echo "Moved $id"
+}
+
+cmd_set() {
+  local id="${1:-}"
+  local key="${2:-}"
+  local value="${3:-}"
+  [[ -n $id ]] || fail "set requires a widget id"
+  [[ -n $key ]] || fail "set requires a setting key"
+  (( $# >= 3 )) || fail "set requires a value"
+  shift 3
+
+  local value_is_json="false"
+  if (( $# > 0 )) && [[ $1 == "--json" ]]; then
+    value_is_json="true"
+    shift
+  fi
+  parse_placement "$@"
+  [[ -z $PLACEMENT_BEFORE && -z $PLACEMENT_AFTER ]] ||
+    fail "set does not accept --before or --after"
+
+  local value_json
+  if [[ $value_is_json == "true" ]]; then
+    value_json=$(jq -cn --argjson value "$value" '$value') ||
+      fail "invalid JSON value: $value"
+  else
+    value_json=$(jq -cn --arg value "$value" '$value')
+  fi
+
+  local result
+  result=$(omarchy-shell shell setBarWidget "$id" "$key" "$value_json" "$(placement_json)")
+  [[ $result == "ok" ]] || fail "$result"
+  echo "Set $key on $id"
+}
+
 # --------------------------------------------------------------------- dispatch
 
 command="${1:-}"
@@ -116,11 +302,11 @@ case "$command" in
   transparent)
     cmd_transparent "$@"
     ;;
-  plugin)
-    exec omarchy-bar-plugin "$@"
+  move)
+    cmd_move "$@"
     ;;
-  add | move | remove | rm | drop | set | replace)
-    fail "bar widgets are managed with: omarchy bar plugin $command ..."
+  set)
+    cmd_set "$@"
     ;;
   -h | --help | help | "")
     usage

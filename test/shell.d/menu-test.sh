@@ -221,7 +221,7 @@ const pluginAdd = fs.readFileSync(path.join(root, 'bin/omarchy-plugin-add'), 'ut
 const pluginEnable = fs.readFileSync(path.join(root, 'bin/omarchy-plugin-enable'), 'utf8')
 assert(
   /Now using \$id as the bar/.test(pluginEnable)
-    && /Now using \$id as the bar[\s\S]*?place_bar_widget/.test(pluginAdd),
+    && /omarchy-plugin-enable "\$id" "\$\{ENABLE_PLACEMENT\[@\]\}"/.test(pluginAdd),
   'plugin enable reports a bar as replacing the one in use, whether enabled or freshly added'
 )
 assert(

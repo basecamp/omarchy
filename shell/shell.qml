@@ -54,7 +54,6 @@ ShellRoot {
 
   property var defaultsConfig: builtinShellConfig
   property var shellConfig: builtinShellConfig
-  property bool suppressUserReload: false
   property bool pluginReloading: false
   property bool pluginReloadPending: false
 
@@ -107,7 +106,6 @@ ShellRoot {
   }
 
   function persistShellConfig(nextConfig) {
-    suppressUserReload = true
     var payload = JSON.parse(JSON.stringify(nextConfig))
     payload.version = 1
     shellConfig = payload
@@ -135,13 +133,7 @@ ShellRoot {
     watchChanges: true
     atomicWrites: true
     printErrors: false
-    onLoaded: {
-      if (shell.suppressUserReload) {
-        shell.suppressUserReload = false
-        return
-      }
-      shell.applyShellConfig()
-    }
+    onLoaded: shell.applyShellConfig()
     onLoadFailed: function(error) { shell.applyShellConfig() }
     onFileChanged: reload()
   }
@@ -906,6 +898,36 @@ ShellRoot {
 
     function setPluginEnabled(id: string, enabled: string): string {
       return shell.pluginRegistry.setEnabled(id, enabled === "true") ? "ok" : "unknown"
+    }
+
+    function enablePlugin(id: string, placementJson: string): string {
+      try {
+        var placement = JSON.parse(placementJson || "{}")
+        if (shell.pluginRegistry.setEnabled(id, true, placement)) return "ok"
+        return shell.pluginRegistry.lastEnableError || "unknown"
+      } catch (e) {
+        return "invalid placement: " + e
+      }
+    }
+
+    function moveBarWidget(id: string, placementJson: string): string {
+      try {
+        var error = shell.pluginRegistry.moveBarWidget(id, JSON.parse(placementJson || "{}"))
+        return error ? error : "ok"
+      } catch (e) {
+        return "invalid placement: " + e
+      }
+    }
+
+    function setBarWidget(id: string, key: string, valueJson: string, selectorJson: string): string {
+      try {
+        var value = JSON.parse(valueJson)
+        var selector = JSON.parse(selectorJson || "{}")
+        var error = shell.pluginRegistry.setBarWidget(id, key, value, selector)
+        return error ? error : "ok"
+      } catch (e) {
+        return "invalid widget setting: " + e
+      }
     }
 
     function listPlugins(): string {

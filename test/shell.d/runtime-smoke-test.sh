@@ -296,7 +296,7 @@ if (( worst > screens - 1 )); then
 fi
 pass "each widget registers its IPC handler once per screen"
 
-HOME="$test_home" OMARCHY_PATH="$test_root" PATH="$ROOT/bin:$PATH" "$ROOT/bin/omarchy-bar-plugin" remove omarchy.audio
+HOME="$test_home" OMARCHY_PATH="$test_root" PATH="$ROOT/bin:$PATH" "$ROOT/bin/omarchy-plugin-disable" omarchy.audio
 
 for _ in {1..80}; do
   shell_config=$(shell_ipc shell listShellConfig 2>/dev/null || true)
@@ -313,7 +313,7 @@ done
 
 jq -e 'all(.bar.layout.right[]; (.id // .) != "omarchy.audio")' <<<"$shell_config" >/dev/null || {
   printf 'Shell config after reload:\n%s\n' "$shell_config" | jq . >&2
-  fail_with_log "bar remove reloads shell config"
+  fail_with_log "plugin disable reloads shell config"
 }
 
 jq -e 'all(.[]; .id != "omarchy.audio")' <<<"$geometry" >/dev/null || {

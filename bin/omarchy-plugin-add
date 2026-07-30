@@ -33,7 +33,9 @@ confirm() {
   fi
 }
 
-place_bar_widget() {
+ENABLE_PLACEMENT=()
+
+select_bar_widget_placement() {
   local id="$1"
   local section
   local default_section
@@ -47,8 +49,7 @@ place_bar_widget() {
   section=$(printf '%s\n' left center right |
     gum choose --header="Place $id in which bar section?" --selected "$default_section") || return 0
   [[ -n $section ]] || return 0
-  omarchy-bar-plugin move "$id" --section "$section" >/dev/null &&
-    echo "Placed $id in the $section section"
+  ENABLE_PLACEMENT=(--section "$section")
 }
 
 plugin_id_manifest() {
@@ -151,20 +152,17 @@ if [[ -z $enable_after ]]; then
 fi
 
 if [[ $enable_after == true ]]; then
+  select_bar_widget_placement "$id"
+  discovered=0
   for (( attempt = 0; attempt < 40; attempt++ )); do
-    result=$(omarchy-shell shell setPluginEnabled "$id" true)
-    [[ $result == "ok" ]] && break
+    if omarchy-plugin-list --json | jq -e --arg id "$id" 'any(.[]; .id == $id)' >/dev/null; then
+      discovered=1
+      break
+    fi
     sleep 0.05
   done
-  [[ $result == "ok" ]] || fail "plugin '$id' is not known"
-  if omarchy-plugin-catalog | jq -e --arg id "$id" '
-    any(.[]; .id == $id and (.kinds | index("bar")))
-  ' >/dev/null; then
-    echo "Now using $id as the bar"
-  else
-    echo "Enabled $id"
-  fi
-  place_bar_widget "$id"
+  (( discovered )) || fail "plugin '$id' is not known"
+  omarchy-plugin-enable "$id" "${ENABLE_PLACEMENT[@]}"
 else
   echo "Enable it later with: omarchy plugin enable $id"
 fi

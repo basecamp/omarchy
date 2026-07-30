@@ -129,7 +129,7 @@ Run `omarchy --help` for the full list. The most common groups:
 | `omarchy restart` | Restart a service/app | `omarchy restart shell` |
 | `omarchy toggle` | Toggle feature on/off | `omarchy toggle nightlight` |
 | `omarchy theme` | Theme management | `omarchy theme set <name>` |
-| `omarchy bar` | Bar layout and widgets | `omarchy bar plugin move omarchy.clock --section right` |
+| `omarchy bar` | Bar layout and widgets | `omarchy bar move omarchy.clock --section right` |
 | `omarchy plugin` | Manage/clone shell plugins | `omarchy plugin clone omarchy.clock` |
 | `omarchy hook` | Install automation hooks | `omarchy hook install theme-set <script>` |
 | `omarchy install` | Install optional software / packages | `omarchy install docker dbs` |
