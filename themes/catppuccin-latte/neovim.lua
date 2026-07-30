@@ -5,7 +5,7 @@ return {
     lazy = true,
     priority = 1000,
     opts = {
-      flavor = "latte",
+      flavour = "latte",
       transparent_background = true,
       float = {
         transparent = true,
