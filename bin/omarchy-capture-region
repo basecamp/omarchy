@@ -21,28 +21,7 @@
 #                   exactly matches a monitor
 
 FULLSCREEN_MARKER="${XDG_RUNTIME_DIR:-/tmp}/omarchy-capture-region-fullscreen"
-
-# Pressing Return while slurp is open captures the entire focused monitor:
-# a bind scoped to slurp's layer surface (default/hypr/bindings/utilities.lua)
-# invokes this mode, which flags the intent and dismisses slurp.
-if [[ ${1:-} == "--take-fullscreen" ]]; then
-  pgrep -x slurp >/dev/null || exit 0
-  touch "$FULLSCREEN_MARKER"
-  pkill -x slurp
-  exit 0
-fi
-
-MODE=smart
-KEEP_FREEZE=false
-MATCH_MONITOR=false
-
-for arg in "$@"; do
-  case $arg in
-  --keep-freeze) KEEP_FREEZE=true ;;
-  --match-monitor) MATCH_MONITOR=true ;;
-  *) MODE=$arg ;;
-  esac
-done
+WINDOW_MARKER="${XDG_RUNTIME_DIR:-/tmp}/omarchy-capture-region-window"
 
 # accounting for portrait/transformed displays
 JQ_MONITOR_GEO='
@@ -58,26 +37,185 @@ JQ_MONITOR_GEO='
     end;
 '
 
+window_rects() {
+  local active_workspace=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
+  hyprctl clients -j | jq -r --arg ws "$active_workspace" '.[] | select(.workspace.id == ($ws | tonumber)) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
+}
+
 get_rectangles() {
   local active_workspace=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
   hyprctl monitors -j | jq -r --arg ws "$active_workspace" "${JQ_MONITOR_GEO} .[] | select(.activeWorkspace.id == (\$ws | tonumber)) | format_geo"
-  hyprctl clients -j | jq -r --arg ws "$active_workspace" '.[] | select(.workspace.id == ($ws | tonumber)) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
+  window_rects
 }
 
 focused_monitor_geo() {
   hyprctl monitors -j | jq -r "${JQ_MONITOR_GEO} .[] | select(.focused == true) | format_geo"
 }
 
-# Runs slurp; an empty result with the fullscreen marker present means Return
-# was pressed, so the focused monitor is the selection.
+focused_window_geo() {
+  hyprctl activewindow -j | jq -r 'select(.at != null) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
+}
+
+window_geo_at_cursor() {
+  local pos=$(hyprctl cursorpos)
+  local x=${pos%,*}
+  local y=${pos#*, }
+
+  while IFS= read -r rect; do
+    [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || continue
+    if ((x >= BASH_REMATCH[1] && x < BASH_REMATCH[1] + BASH_REMATCH[3] && y >= BASH_REMATCH[2] && y < BASH_REMATCH[2] + BASH_REMATCH[4])); then
+      echo "$rect"
+      return
+    fi
+  done < <(window_rects)
+
+  focused_window_geo
+}
+
+# Keyboard control while slurp is open: binds scoped to slurp's layer
+# surface (default/hypr/bindings/utilities.lua) invoke these modes. The
+# --take-* modes flag the intent with a marker file and dismiss slurp.
+if [[ ${1:-} == "--take-fullscreen" ]]; then
+  pgrep -x slurp >/dev/null || exit 0
+  touch "$FULLSCREEN_MARKER"
+  pkill -x slurp
+  exit 0
+fi
+
+if [[ ${1:-} == "--take-window" ]]; then
+  pgrep -x slurp >/dev/null || exit 0
+  touch "$WINDOW_MARKER"
+  pkill -x slurp
+  exit 0
+fi
+
+# Warps the cursor to another window's center, so slurp's own hover
+# highlight tracks the selection.
+if [[ ${1:-} == "--select-window" ]]; then
+  pgrep -x slurp >/dev/null || exit 0
+
+  direction=${2:-}
+  pos=$(hyprctl cursorpos)
+  origin_x=${pos%,*}
+  origin_y=${pos#*, }
+
+  # Reading order: top-to-bottom, then left-to-right.
+  rects=$(while IFS= read -r rect; do
+    [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || continue
+    printf '%d\t%d\t%s\n' "${BASH_REMATCH[2]}" "${BASH_REMATCH[1]}" "$rect"
+  done < <(window_rects) | sort -n -k1,1 -k2,2 | cut -f3-)
+  [[ -n $rects ]] || exit 0
+
+  current=""
+  while IFS= read -r rect; do
+    [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || continue
+    if ((origin_x >= BASH_REMATCH[1] && origin_x < BASH_REMATCH[1] + BASH_REMATCH[3] && origin_y >= BASH_REMATCH[2] && origin_y < BASH_REMATCH[2] + BASH_REMATCH[4])); then
+      current=$rect
+      origin_x=$((BASH_REMATCH[1] + BASH_REMATCH[3] / 2))
+      origin_y=$((BASH_REMATCH[2] + BASH_REMATCH[4] / 2))
+      break
+    fi
+  done <<<"$rects"
+
+  target=""
+
+  case $direction in
+  next | prev)
+    mapfile -t ordered <<<"$rects"
+    count=${#ordered[@]}
+    current_index=-1
+
+    for i in "${!ordered[@]}"; do
+      if [[ -n $current && ${ordered[i]} == "$current" ]]; then
+        current_index=$i
+        break
+      fi
+    done
+
+    if [[ $direction == next ]]; then
+      target=${ordered[$(((current_index + 1) % count))]}
+    elif ((current_index == -1)); then
+      target=${ordered[count - 1]}
+    else
+      target=${ordered[$(((current_index - 1 + count) % count))]}
+    fi
+    ;;
+  left | right | up | down)
+    best_score=""
+
+    while IFS= read -r rect; do
+      [[ $rect == "$current" ]] && continue
+      [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || continue
+      center_x=$((BASH_REMATCH[1] + BASH_REMATCH[3] / 2))
+      center_y=$((BASH_REMATCH[2] + BASH_REMATCH[4] / 2))
+
+      case $direction in
+      left)
+        primary=$((origin_x - center_x))
+        perp=$((center_y - origin_y))
+        ;;
+      right)
+        primary=$((center_x - origin_x))
+        perp=$((center_y - origin_y))
+        ;;
+      up)
+        primary=$((origin_y - center_y))
+        perp=$((center_x - origin_x))
+        ;;
+      down)
+        primary=$((center_y - origin_y))
+        perp=$((center_x - origin_x))
+        ;;
+      esac
+
+      ((primary > 0)) || continue
+      ((perp < 0)) && perp=$((-perp))
+      score=$((primary + perp * 2))
+
+      if [[ -z $best_score ]] || ((score < best_score)); then
+        best_score=$score
+        target=$rect
+      fi
+    done <<<"$rects"
+    ;;
+  *)
+    exit 1
+    ;;
+  esac
+
+  if [[ $target =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]]; then
+    target_x=$((BASH_REMATCH[1] + BASH_REMATCH[3] / 2))
+    target_y=$((BASH_REMATCH[2] + BASH_REMATCH[4] / 2))
+    hyprctl eval "hl.dispatch(hl.dsp.cursor.move({ x = $target_x, y = $target_y }))" >/dev/null
+  fi
+  exit 0
+fi
+
+MODE=smart
+KEEP_FREEZE=false
+MATCH_MONITOR=false
+
+for arg in "$@"; do
+  case $arg in
+  --keep-freeze) KEEP_FREEZE=true ;;
+  --match-monitor) MATCH_MONITOR=true ;;
+  *) MODE=$arg ;;
+  esac
+done
+
+# Runs slurp; an empty result with a marker present means Return or
+# Ctrl+Return was pressed, so the monitor or window is the selection.
 pick() {
   local selection
-  rm -f "$FULLSCREEN_MARKER"
+  rm -f "$FULLSCREEN_MARKER" "$WINDOW_MARKER"
   selection=$(slurp "$@" 2>/dev/null)
 
   if [[ -z $selection && -e $FULLSCREEN_MARKER ]]; then
     rm -f "$FULLSCREEN_MARKER"
     selection=$(focused_monitor_geo)
+  elif [[ -z $selection && -e $WINDOW_MARKER ]]; then
+    rm -f "$WINDOW_MARKER"
+    selection=$(window_geo_at_cursor)
   fi
 
   printf '%s' "$selection"
