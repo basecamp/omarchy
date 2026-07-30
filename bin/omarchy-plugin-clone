@@ -79,36 +79,6 @@ update_manifest() {
   mv "$manifest.tmp" "$manifest"
 }
 
-switch_to_clone() {
-  local source_id="$1"
-  local new_id="$2"
-  local is_bar="$3"
-  local is_bar_widget="$4"
-  local has_non_widget_kind="$5"
-
-  if [[ $is_bar == "true" ]]; then
-    omarchy-bar use "$new_id"
-  elif [[ $is_bar_widget == "true" ]]; then
-    local shell_config
-    shell_config=$(omarchy-shell shell listShellConfig)
-    if jq -e --arg id "$source_id" '
-      [
-        .bar.layout.left[]?,
-        .bar.layout.center[]?,
-        .bar.layout.right[]?
-      ] | any(.[]; (if type == "object" then .id else . end) == $id)
-    ' <<<"$shell_config" >/dev/null; then
-      omarchy-bar-plugin replace "$source_id" "$new_id"
-    else
-      omarchy-bar-plugin add "$new_id"
-    fi
-    [[ $has_non_widget_kind == "false" ]] || omarchy-plugin-disable "$source_id"
-  else
-    omarchy-plugin-disable "$source_id"
-    omarchy-plugin-enable "$new_id"
-  fi
-}
-
 usage() {
   cat <<USAGE
 Usage: omarchy plugin clone <source-id>
@@ -145,14 +115,11 @@ source_info=$(omarchy-plugin-catalog | jq -r --arg id "$source_id" '
     | [
         .sourceDir,
         .manifestPath,
-        (.name // .id),
-        ((.kinds | index("bar")) != null),
-        ((.kinds | index("bar-widget")) != null),
-        (any(.kinds[]; . != "bar-widget"))
+        (.name // .id)
       ] | @tsv
   ')
 [[ -n $source_info ]] || fail "unknown built-in plugin: $source_id"
-IFS=$'\t' read -r source_dir source_manifest source_name is_bar is_bar_widget has_non_widget_kind <<<"$source_info"
+IFS=$'\t' read -r source_dir source_manifest source_name <<<"$source_info"
 
 new_id="local.${source_id#omarchy.}"
 display_name="My $source_name"
@@ -182,7 +149,7 @@ for (( attempt = 0; attempt < 40; attempt++ )); do
   sleep 0.05
 done
 (( discovered )) || fail "cloned plugin '$new_id' was not discovered"
-switch_to_clone "$source_id" "$new_id" "$is_bar" "$is_bar_widget" "$has_non_widget_kind"
+omarchy-plugin-enable "$new_id" >/dev/null
 clone_complete=1
 omarchy-notification-send -g 󰐱 \
   "Editing Cloned Plugin" \

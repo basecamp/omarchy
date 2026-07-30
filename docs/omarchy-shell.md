@@ -81,7 +81,7 @@ arguments — add `--yes` to skip every prompt (the path for scripts and agents)
 You can still install by hand: drop a plugin into
 `~/.config/omarchy/plugins/<id>/`, run `omarchy-shell shell rescanPlugins`, then
 `omarchy plugin enable <id>`. A bar widget starts in its declared default
-section and can be moved with `omarchy bar plugin move`; enabling a full bar
+section and can be moved with `omarchy bar move`; enabling a full bar
 replaces the one in use.
 The lower-level IPC methods remain available through `omarchy-shell shell ...`.
 
@@ -100,6 +100,9 @@ individual plugins (`bar`, `image-selector`, …).
 | `rescanPlugins`                       | re-walk plugin dirs and hot-reload plugin code |
 | `reloadConfig`                        | reload shell.json               |
 | `setPluginEnabled <id> <"true"\|…>`   | flip enabled bit (`ok` / `unknown`) |
+| `enablePlugin <id> <placementJson>`   | enable and place in one mutation |
+| `moveBarWidget <id> <placementJson>`  | move a configured widget        |
+| `setBarWidget <id> <key> <valueJson> <selectorJson>` | set an inline widget option |
 | `listPlugins`                         | JSON of every discovered plugin |
 
 `setPluginEnabled` takes a string; only literal `"true"` enables.
@@ -143,7 +146,7 @@ Rules:
 4. Built-in bar widget ids are namespaced (`omarchy.clock`, `omarchy.audio`, …).
    The migration rewrites older ids such as `Clock` and `AudioPanel` forward.
 5. Third-party enabled ⇔ present; for full bar options that means `bar.id`.
-   First-party non-bar plugins are always enabled.
+   First-party non-bar plugins are enabled unless listed in `disabledPlugins[]`.
 6. `allowMultiple: true` in the manifest permits multiple instances.
 7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
 8. `version: 1` is required.

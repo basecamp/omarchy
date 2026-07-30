@@ -29,7 +29,7 @@ shows up at the next refresh, so nothing polls the disk waiting for it.
 That self-hiding is why the widget ships in the default bar layout: a machine
 that has never run Claude Code or Codex draws nothing, and the icon arrives on
 its own the first time a scan finds usage. Drop it with
-`omarchy bar plugin remove omarchy.model-usage`.
+`omarchy plugin disable omarchy.model-usage`.
 
 ## Providers
 
@@ -52,7 +52,7 @@ falls back to local stats only.
 
 Settings live in the widget's entry in `~/.config/omarchy/shell.json`. The
 top-level keys can be set with
-`omarchy bar plugin set omarchy.model-usage <key> <value>`:
+`omarchy bar set omarchy.model-usage <key> <value>`:
 
 | Key | Default | What it does |
 |---|---|---|
@@ -65,8 +65,8 @@ top-level keys can be set with
 Numbers need `--json`, or they land in `shell.json` as strings:
 
 ```bash
-omarchy bar plugin set omarchy.model-usage refreshIntervalSec 300 --json
-omarchy bar plugin set omarchy.model-usage syncDir '~/Sync/model-usage'
+omarchy bar set omarchy.model-usage refreshIntervalSec 300 --json
+omarchy bar set omarchy.model-usage syncDir '~/Sync/model-usage'
 ```
 
 Per-provider settings are nested, and `set` writes its key literally rather
@@ -74,7 +74,7 @@ than walking a dotted path — so pass the whole `providers` object as JSON (or
 edit `shell.json` directly):
 
 ```bash
-omarchy bar plugin set omarchy.model-usage providers '{
+omarchy bar set omarchy.model-usage providers '{
   "claude": {
     "enabled": true,
     "statsPath": "~/.claude/stats-cache.json",

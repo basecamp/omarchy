@@ -16,7 +16,7 @@ the shell for its whole session.
 
 The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](../../README.md#shelljson-shape). Out of the box the shell uses [`config/omarchy/shell.json`](../../../config/omarchy/shell.json). Once you customize anything via the bar gestures, `omarchy bar ...`, or by editing shell.json directly, your file is canonical — there is no deep-merge.
 
-The bar is configured directly on the bar itself: drag empty bar space (or click-and-hold) to move the bar to another screen edge, double-left-click empty center-bar space to toggle transparency, and drag widgets to reorder them. The `omarchy bar position` and `omarchy bar transparent` commands do the same from scripts. For scriptable widget changes, use `omarchy bar plugin add`, `omarchy bar plugin move`, `omarchy bar plugin remove`, and `omarchy bar plugin set` (widget ids come from `omarchy plugin list`).
+The bar is configured directly on the bar itself: drag empty bar space (or click-and-hold) to move the bar to another screen edge, double-left-click empty center-bar space to toggle transparency, and drag widgets to reorder them. The `omarchy bar position`, `omarchy bar transparent`, `omarchy bar move`, and `omarchy bar set` commands do the same from scripts. Enable or disable widgets with `omarchy plugin enable` and `omarchy plugin disable` (widget ids come from `omarchy plugin list`).
 
 Example `shell.json` (bar subtree only shown):
 
@@ -178,6 +178,6 @@ namespaced ids.
 Third-party widgets ship as separate plugins under
 `~/.config/omarchy/plugins/<plugin-id>/` with their own `manifest.json`
 declaring `kinds: ["bar-widget"]` and a `barWidget` entry point. See
-[../../README.md](../../README.md) for the manifest schema. Enable,
-rescan, and place third-party plugins with `omarchy plugin enable`,
-`omarchy-shell shell rescanPlugins`, and `omarchy bar plugin add`.
+[../../README.md](../../README.md) for the manifest schema. Rescan, enable,
+and place third-party plugins with `omarchy-shell shell rescanPlugins`,
+`omarchy plugin enable`, and `omarchy bar move`.

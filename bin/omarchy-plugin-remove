@@ -80,7 +80,6 @@ if [[ -n $shell_plugins ]]; then
 fi
 
 cloned_from=""
-restored_source=0
 if [[ -f $target/manifest.json ]]; then
   cloned_from=$(jq -r '.omarchy.clonedFrom // empty' "$target/manifest.json")
 fi
@@ -93,24 +92,7 @@ else
   confirm "Remove '$id'? The folder will be backed up." || fail "aborted"
 fi
 
-if [[ -n $cloned_from ]]; then
-  is_bar=$(jq -r '(.kinds | index("bar")) != null' "$target/manifest.json")
-  is_bar_widget=$(jq -r '(.kinds | index("bar-widget")) != null' "$target/manifest.json")
-  has_non_widget_kind=$(jq -r 'any(.kinds[]; . != "bar-widget")' "$target/manifest.json")
-
-  if [[ $is_bar == "true" && $was_enabled == "true" ]]; then
-    omarchy-bar use "$cloned_from"
-    restored_source=1
-  elif [[ $is_bar_widget == "true" && $was_enabled == "true" ]]; then
-    omarchy-bar-plugin replace "$id" "$cloned_from"
-    [[ $has_non_widget_kind == "false" ]] || omarchy-plugin-enable "$cloned_from"
-    restored_source=1
-  elif [[ $has_non_widget_kind == "true" ]]; then
-    [[ $was_enabled != "true" ]] || omarchy-shell shell setPluginEnabled "$id" false >/dev/null
-    omarchy-plugin-enable "$cloned_from"
-    restored_source=1
-  fi
-elif [[ $was_enabled == "true" ]]; then
+if [[ $was_enabled == "true" ]]; then
   omarchy-shell shell setPluginEnabled "$id" false >/dev/null
 fi
 
@@ -134,7 +116,7 @@ fi
 
 omarchy-shell shell rescanPlugins >/dev/null
 
-if (( restored_source )); then
+if [[ -n $cloned_from && $was_enabled == "true" ]]; then
   echo "Restored $cloned_from."
 elif [[ $was_enabled == "true" ]]; then
   echo "Plugin was enabled and was unloaded from omarchy-shell."

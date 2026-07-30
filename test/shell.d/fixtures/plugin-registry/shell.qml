@@ -85,9 +85,20 @@ ShellRoot {
     scan += block("firstparty", "/first/hybrid", manifest("omarchy.hybrid", ["menu", "bar-widget"], { menu: "Menu.qml", barWidget: "Widget.qml" }))
     scan += block("thirdparty", "/third/panel", manifest("third.panel", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/widget", manifest("third.widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "left" }))
+    scan += block("thirdparty", "/third/center-widget", manifest("third.center-widget", ["bar-widget"], { barWidget: "Widget.qml" }))
+    scan += block("thirdparty", "/third/right-widget", manifest("third.right-widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "right" }))
     var localWidget = manifest("local.first-widget", ["bar-widget"], { barWidget: "Widget.qml" })
     localWidget.omarchy = { clonedFrom: "omarchy.first-widget" }
     scan += block("thirdparty", "/third/local-widget", localWidget)
+    var localHybrid = manifest("local.hybrid", ["menu", "bar-widget"], { menu: "Menu.qml", barWidget: "Widget.qml" })
+    localHybrid.omarchy = { clonedFrom: "omarchy.hybrid" }
+    scan += block("thirdparty", "/third/local-hybrid", localHybrid)
+    var localPanel = manifest("local.grouped-panel", ["panel"], { panel: "Panel.qml" })
+    localPanel.omarchy = { clonedFrom: "omarchy.grouped-panel" }
+    scan += block("thirdparty", "/third/local-panel", localPanel)
+    var localBar = manifest("local.bar", ["bar"], { bar: "Bar.qml" })
+    localBar.omarchy = { clonedFrom: "omarchy.bar" }
+    scan += block("thirdparty", "/third/local-bar", localBar)
     scan += block("thirdparty", "/third/bar", manifest("third.bar", ["bar"], { bar: "Bar.qml" }))
     scan += block("thirdparty", "/third/shadow", manifest("omarchy.first-widget", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/reserved", manifest("omarchy.reserved", ["panel"], { panel: "Panel.qml" }))
@@ -100,13 +111,18 @@ ShellRoot {
     registry.parseScanOutput(scan)
 
     root.assertDeepEqual(pluginIds(), [
+      "local.bar",
       "local.first-widget",
+      "local.grouped-panel",
+      "local.hybrid",
       "omarchy.bar",
       "omarchy.first-widget",
       "omarchy.grouped-panel",
       "omarchy.hybrid",
       "third.bar",
+      "third.center-widget",
       "third.panel",
+      "third.right-widget",
       "third.widget"
     ], "registry merges valid first-party and third-party manifests")
 
@@ -148,9 +164,126 @@ ShellRoot {
     registry.setEnabled("third.widget", false)
     root.assertDeepEqual(root.config.bar.layout.left, [], "disabling bar widgets removes layout entry")
 
+    root.config = {
+      version: 1,
+      bar: {
+        layout: {
+          left: [{ id: "omarchy.workspaces" }, { id: "omarchy.menu" }],
+          center: [{ id: "omarchy.weather" }, { id: "omarchy.clock" }],
+          right: [{ id: "omarchy.tray" }]
+        }
+      },
+      plugins: []
+    }
+    registry.setEnabled("third.widget", true)
+    root.assertDeepEqual(
+      root.config.bar.layout.left,
+      [{ id: "omarchy.workspaces" }, { id: "third.widget" }, { id: "omarchy.menu" }],
+      "enabling a widget inserts it after its section anchor"
+    )
+    registry.setEnabled("third.center-widget", true)
+    root.assertDeepEqual(
+      root.config.bar.layout.center,
+      [{ id: "omarchy.weather" }, { id: "third.center-widget" }, { id: "omarchy.clock" }],
+      "widgets without a default section use the center anchor"
+    )
+    registry.setEnabled("third.right-widget", true)
+    root.assertDeepEqual(
+      root.config.bar.layout.right,
+      [{ id: "omarchy.tray" }, { id: "third.right-widget" }],
+      "right widgets use the right anchor"
+    )
+
+    root.config = { version: 1, bar: { layout: { left: [], center: [], right: [] } }, plugins: [] }
+    registry.setEnabled("third.right-widget", true)
+    root.assertDeepEqual(root.config.bar.layout.right, [{ id: "third.right-widget" }], "widgets append when their section anchor is absent")
+
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [{ id: "third.widget", size: 3 }], center: [], right: [] } },
+      plugins: []
+    }
+    root.assertEqual(registry.moveBarWidget("third.widget", { section: "right" }), "", "registry moves widgets")
+    root.assertDeepEqual(root.config.bar.layout.right, [{ id: "third.widget", size: 3 }], "registry move preserves widget settings")
+    root.assertEqual(registry.setBarWidget("third.widget", "size", 7, {}), "", "registry sets widget options")
+    root.assertEqual(root.config.bar.layout.right[0].size, 7, "registry persists widget options")
+
+    root.config = { version: 1, bar: { layout: { left: [], center: [], right: [] } }, plugins: [] }
+    registry.setEnabled("third.widget", true, { section: "right", index: 0 })
+    root.assertDeepEqual(root.config.bar.layout.right, [{ id: "third.widget" }], "enabling with placement is one registry transition")
+
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: [{ id: "omarchy.first-widget", size: 4 }], right: [] } },
+      plugins: []
+    }
     registry.setEnabled("local.first-widget", true)
+    root.assertDeepEqual(
+      root.config.bar.layout.center,
+      [{ id: "local.first-widget", size: 4 }],
+      "enabling a widget clone replaces its source in place"
+    )
     root.assertEqual(registry.resolveEnabledId("omarchy.first-widget"), "local.first-widget", "enabled clones receive calls made to their source id")
+    registry.setEnabled("omarchy.first-widget", true)
+    root.assertDeepEqual(
+      root.config.bar.layout.center,
+      [{ id: "omarchy.first-widget", size: 4 }],
+      "enabling a clone source switches back without duplicates"
+    )
+    registry.setEnabled("local.first-widget", true)
     registry.setEnabled("local.first-widget", false)
+    root.assertDeepEqual(
+      root.config.bar.layout.center,
+      [{ id: "omarchy.first-widget", size: 4 }],
+      "disabling a widget clone restores its source in place"
+    )
+
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: ["omarchy.first-widget"], right: [] } },
+      plugins: []
+    }
+    registry.setEnabled("local.first-widget", true)
+    root.assertDeepEqual(root.config.bar.layout.center, [{ id: "local.first-widget" }], "clone replacement normalizes string entries")
+    registry.setEnabled("local.first-widget", false)
+    root.assertDeepEqual(root.config.bar.layout.center, [{ id: "omarchy.first-widget" }], "clone restoration normalizes string entries")
+
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [{ id: "omarchy.hybrid" }], center: [], right: [] } },
+      plugins: []
+    }
+    registry.setEnabled("local.hybrid", true)
+    root.assertDeepEqual(root.config.bar.layout.left, [{ id: "local.hybrid" }], "enabling a multi-kind clone replaces its widget")
+    root.assertDeepEqual(root.config.disabledPlugins, ["omarchy.hybrid"], "enabling a multi-kind clone disables the source")
+    registry.setEnabled("local.hybrid", false)
+    root.assertDeepEqual(root.config.bar.layout.left, [{ id: "omarchy.hybrid" }], "disabling a multi-kind clone restores its widget")
+    root.assertTrue(root.config.disabledPlugins === undefined, "disabling a multi-kind clone enables the source")
+
+    root.config = { version: 1, bar: { layout: { left: [], center: [], right: [] } }, plugins: [] }
+    registry.setEnabled("local.grouped-panel", true)
+    root.assertDeepEqual(root.config.plugins, [{ id: "local.grouped-panel" }], "enabling an ordinary clone adds it")
+    root.assertDeepEqual(root.config.disabledPlugins, ["omarchy.grouped-panel"], "enabling an ordinary clone disables the source")
+    registry.setEnabled("local.grouped-panel", false)
+    root.assertDeepEqual(root.config.plugins, [], "disabling an ordinary clone removes it")
+    root.assertTrue(root.config.disabledPlugins === undefined, "disabling an ordinary clone restores the source")
+
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: [], right: [] } },
+      plugins: [],
+      disabledPlugins: ["omarchy.grouped-panel"]
+    }
+    registry.setEnabled("local.grouped-panel", true)
+    root.assertDeepEqual(root.config.disabledPlugins, ["omarchy.grouped-panel"], "cloning an already-disabled source keeps it disabled")
+    root.assertTrue(root.config.cloneSourceRestores === undefined, "an already-disabled source is not marked for restoration")
+    registry.setEnabled("local.grouped-panel", false)
+    root.assertDeepEqual(root.config.disabledPlugins, ["omarchy.grouped-panel"], "disabling the clone preserves the source's prior disabled state")
+
+    registry.setEnabled("local.bar", true)
+    root.assertEqual(root.config.bar.id, "local.bar", "enabling a cloned bar selects it")
+    registry.setEnabled("local.bar", false)
+    root.assertTrue(root.config.bar.id === undefined, "disabling a cloned built-in bar restores it")
 
     root.config = {
       version: 1,
@@ -201,8 +334,8 @@ ShellRoot {
     }
     registry.setEnabled("omarchy.hybrid", false)
     root.assertDeepEqual(root.config.bar.layout.left, [], "disabling a multi-kind built-in removes its widget")
-    root.assertDeepEqual(root.config.disabledPlugins, ["omarchy.hybrid"], "disabling a multi-kind built-in unloads its other kinds")
-    root.assertTrue(!registry.isEnabled("omarchy.hybrid"), "a disabled multi-kind built-in is not loadable")
+    root.assertTrue(root.config.disabledPlugins === undefined, "disabling a multi-kind widget records nothing else")
+    root.assertTrue(registry.isEnabled("omarchy.hybrid"), "a multi-kind built-in remains loadable without its widget")
 
     var localBase = registry.pluginsDir + "/local.clock"
     root.assertEqual(registry.localPluginIdForPath(localBase + "/BarWidget.qml"), "local.clock", "local clone changes are watched")
