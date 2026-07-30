@@ -1,9 +1,18 @@
 return {
-	{ "rose-pine/neovim", name = "rose-pine" },
-	{
-		"LazyVim/LazyVim",
-		opts = {
-			colorscheme = "rose-pine-dawn",
-		},
-	},
+  {
+    "rose-pine/neovim",
+    lazy = true,
+    priority = 1000,
+    opts = {
+      styles = {
+        transparency = true,
+      },
+    },
+  },
+  {
+    "LazyVim/LazyVim",
+    opts = {
+      colorscheme = "rose-pine-dawn",
+    },
+  },
 }
