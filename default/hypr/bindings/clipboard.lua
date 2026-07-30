@@ -23,13 +23,49 @@ local terminal_classes = {
   wezterm = true,
 }
 
+-- Omarchy launches its own TUIs through xdg-terminal-exec with app-ids such as
+-- org.omarchy.btop, org.omarchy.terminal and TUI.float, so the window class
+-- never matches the list above even though the client is a terminal. Fall back
+-- to the client process, which names the terminal regardless of the app-id.
+local terminal_processes = {
+  alacritty = true,
+  foot = true,
+  footclient = true,
+  ghostty = true,
+  kitty = true,
+  wezterm = true,
+  ["wezterm-gui"] = true,
+}
+
+local function client_process_name(pid)
+  if not pid or pid <= 0 then
+    return nil
+  end
+
+  local file = io.open("/proc/" .. pid .. "/comm", "r")
+  if not file then
+    return nil
+  end
+
+  local name = file:read("*l")
+  file:close()
+
+  return name
+end
+
 local function active_window_is_terminal()
   local window = hl.get_active_window()
-  if not window or not window.class then
+  if not window then
     return false
   end
 
-  return terminal_classes[window.class:lower()] == true
+  if window.class and terminal_classes[window.class:lower()] == true then
+    return true
+  end
+
+  local process = client_process_name(window.pid)
+
+  return process ~= nil and terminal_processes[process:lower()] == true
 end
 
 local function universal_clipboard_shortcut(default_mods, default_key, terminal_mods, terminal_key)
