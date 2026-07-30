@@ -1,0 +1,19 @@
+.claude/CLAUDE.md
+  s_bbb7a13d90e0a0::t_90a3536e78e9fb 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "92882db32853404383e2626d7aa73a96a5d57a47",
+  "prompts": {},
+  "sessions": {
+    "s_bbb7a13d90e0a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e55d3e3b-8450-42f4-a23c-ba16d849757e",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Jeremy Daer <jeremydaer@gmail.com>"
+    }
+  }
+}
