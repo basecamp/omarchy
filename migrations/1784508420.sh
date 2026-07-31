@@ -135,11 +135,11 @@ enable_be211_wifi7() {
     return 1
   fi
 
-  sudo rm -f "$wifi7_backup" ||
-    echo "WARNING: Failed to remove $wifi7_backup; delete it manually"
-
   omarchy-state set reboot-required ||
     echo "WARNING: Failed to mark reboot-required; reboot to apply the WiFi 7 change"
+
+  sudo rm -f "$wifi7_backup" ||
+    echo "WARNING: Failed to remove $wifi7_backup; delete it manually"
 
   return 0
 }
