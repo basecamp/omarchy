@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "license": "MIT",
-  "description": "Dropbox status, storage usage, login, and recent synced files in the Omarchy bar.",
+  "description": "Dropbox status, storage usage, login, selective sync, and recent synced files in the Omarchy bar.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,12 +14,14 @@
   },
   "barWidget": {
     "displayName": "Dropbox",
-    "description": "Log in to Dropbox, view storage usage, and open recent synced files.",
+    "description": "Log in to Dropbox, view storage usage, choose which folders sync, and open recent synced files.",
     "category": "Files",
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "refreshIntervalSec": 60
+      "refreshIntervalSec": 60,
+      "showSyncedFolders": true,
+      "maxFolderRows": 50
     },
     "schema": [
       {
@@ -30,6 +32,22 @@
         "max": 3600,
         "step": 5,
         "defaultValue": 60
+      },
+      {
+        "key": "showSyncedFolders",
+        "type": "boolean",
+        "label": "Show synced folders",
+        "description": "Choose which Dropbox folders sync to this machine.",
+        "defaultValue": true
+      },
+      {
+        "key": "maxFolderRows",
+        "type": "integer",
+        "label": "Maximum folders listed",
+        "min": 10,
+        "max": 500,
+        "step": 10,
+        "defaultValue": 50
       }
     ]
   }

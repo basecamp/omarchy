@@ -47,6 +47,41 @@ function defaultStatus() {
   }
 }
 
+function parseFolders(raw) {
+  var text = String(raw || "").trim()
+  if (text === "") return defaultFolders()
+  try {
+    var parsed = JSON.parse(text)
+    if (!parsed || typeof parsed !== "object") return defaultFolders()
+    parsed.folders = Array.isArray(parsed.folders) ? parsed.folders : []
+    return parsed
+  } catch (e) {
+    var failed = defaultFolders()
+    failed.error = "Failed to parse Dropbox folders"
+    return failed
+  }
+}
+
+function defaultFolders() {
+  return {
+    ok: false,
+    error: "",
+    accountPath: "",
+    path: "",
+    parentPath: "",
+    atRoot: true,
+    folders: []
+  }
+}
+
+function folderMeta(folder) {
+  if (!folder) return ""
+  if (folder.excluded === true) return "Not synced"
+  var count = Number(folder.childCount || 0)
+  if (count <= 0) return "Synced"
+  return "Synced · " + count + (count === 1 ? " folder" : " folders")
+}
+
 function fileExtension(name) {
   var value = String(name || "").toLowerCase()
   var index = value.lastIndexOf(".")
@@ -125,6 +160,9 @@ if (typeof module !== "undefined") {
   module.exports = {
     parseStatus: parseStatus,
     defaultStatus: defaultStatus,
+    parseFolders: parseFolders,
+    defaultFolders: defaultFolders,
+    folderMeta: folderMeta,
     fileExtension: fileExtension,
     fileKind: fileKind,
     fileGlyph: fileGlyph,
