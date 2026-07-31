@@ -67,7 +67,9 @@ Example:
 
 # Privileged Commands
 
-- Whenever you need to trigger a sudo command, use `pkexec` so it results in a user prompt they can approve.
+- Follow the "Privilege Escalation" section of `default/omarchy-skill/SKILL.md`. It draws the
+  `sudo`/`pkexec` line by whether the caller has a terminal to enter a password in, and the repo's
+  own scripts follow it.
 
 # Git
 
@@ -237,9 +239,12 @@ IPC:
   direct Quickshell socket calls in every CLI.
 - The `shell` IPC target exposes lifecycle and configuration methods including
   `ping`, `summon`, `hide`, `toggle`, `call`, `rescanPlugins`, `reloadConfig`,
-  `setPluginEnabled`, and `listPlugins`. Individual plugins can register
-  additional IPC targets (the bar registers `bar`, the background switcher
-  registers `image-selector`).
+  `setPluginEnabled`, and `listPlugins`. `shell.qml` also registers
+  `image-selector`, which drives the `omarchy.image-picker` panel.
+- Individual plugins register their own IPC targets, named for the plugin rather
+  than for where they appear: the background switcher registers `background`, and
+  bar widgets register one target each — `omarchy.indicators`,
+  `omarchy.system-update`, `omarchy.clock`. There is no `bar` target.
 
 Widget files in `shell/plugins/bar/widgets/` contain Nerd Font glyphs as raw
 unicode characters. The `Write` and `Edit` tools strip multi-byte
@@ -253,10 +258,12 @@ the surrounding context, or a Python script that inserts codepoints via
 To copy a default config to user config with automatic backup:
 
 ```bash
-omarchy-refresh-config hypr/hyprlock.conf
+omarchy-refresh-config hypr/hyprland.lua
 ```
 
-This copies `$OMARCHY_PATH/config/hypr/hyprlock.conf` to `~/.config/hypr/hyprlock.conf`.
+This copies `$OMARCHY_PATH/config/hypr/hyprland.lua` to `~/.config/hypr/hyprland.lua`. The argument
+is interpolated into both paths and only checked with `[[ -e ]]`, so pass a plain relative path: a
+name containing `..` resolves and copies, landing outside `~/.config` rather than being rejected.
 
 # Migrations
 
