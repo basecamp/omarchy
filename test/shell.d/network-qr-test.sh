@@ -58,6 +58,13 @@ run_success_case \
   $'Hidden Network\nwpa-psk\nsecret\nyes\n' \
   'WIFI:T:WPA;S:Hidden Network;P:secret;H:true;;'
 
+# NetworkManager models WEP as key-mgmt "none" plus a wep-key, which must not
+# be mistaken for an open network.
+run_success_case \
+  "network QR helper encodes WEP networks" \
+  $'Old Router\nnone\n\nno\nwep-secret\n' \
+  'WIFI:T:WEP;S:Old Router;P:wep-secret;;'
+
 export QR_NMCLI_FIELDS=$'Enterprise\nwpa-eap\nsecret\nno\n'
 export QR_PAYLOAD_FILE="$tmp/enterprise-payload"
 if PATH="$tmp/bin:$PATH" "$ROOT/bin/omarchy-network-qr" wlan0 >"$tmp/enterprise-output" 2>"$tmp/enterprise-error"; then
