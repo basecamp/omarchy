@@ -103,6 +103,13 @@ Panel {
   property string passwordText: ""
   property string identityText: ""
 
+  property var qrRows: []
+  property int qrSize: 0
+  property string qrError: ""
+  property bool qrLoading: false
+  property bool qrExpectedStop: false
+  readonly property bool qrVisible: qrLoading || qrSize > 0 || qrError !== ""
+
   // True while any wifi action is mid-flight. Rows
   // disable themselves on this so clicks on the other rows don't silently
   // no-op against runNetworkAction's serialized guard.
@@ -332,7 +339,7 @@ Panel {
       selectedIndex = 0
     }
 
-    if (selectedIndex < 0 || selectedIndex >= wifiNetworks.length || !canForgetNetwork(wifiNetworks[selectedIndex])) {
+    if (selectedIndex < 0 || selectedIndex >= wifiNetworks.length || !canWifiActionNetwork(wifiNetworks[selectedIndex])) {
       wifiActionFocused = false
     }
   }
@@ -355,9 +362,18 @@ Panel {
     return !!(net && net.known && isProtected(net.security) && !net.connected)
   }
 
+  function canShareNetwork(net) {
+    if (!net || !net.connected) return false
+    return net.security !== WifiSecurityType.Wpa2Eap && net.security !== WifiSecurityType.WpaEap
+  }
+
+  function canWifiActionNetwork(net) {
+    return canForgetNetwork(net) || canShareNetwork(net)
+  }
+
   function selectWifiActionByDelta(delta) {
     if (selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
-    if (!canForgetNetwork(wifiNetworks[selectedIndex])) {
+    if (!canWifiActionNetwork(wifiNetworks[selectedIndex])) {
       wifiActionFocused = false
       return
     }
@@ -372,6 +388,7 @@ Panel {
     if (busy || selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
     var net = wifiNetworks[selectedIndex]
     if (!net) return
+    if (wifiActionFocused && canShareNetwork(net)) { showWifiQr(); return }
     if (wifiActionFocused && canForgetNetwork(net)) { forget(net); return }
     if (net.connected) { disconnect(net.network); return }
     if (isProtected(net.security) && !net.known) { openPasswordPrompt(net.ssid); return }
@@ -397,6 +414,38 @@ Panel {
   }
 
   readonly property string icon: Model.connectionIcon(kind, signalStrength)
+
+  function showWifiQr() {
+    if (qrProc.running || !info.iface || info.type !== "wifi") return
+    qrSize = 0
+    qrRows = []
+    qrError = ""
+    qrLoading = true
+    qrExpectedStop = false
+    qrProc.command = ["omarchy-network-qr", info.iface]
+    qrProc.running = true
+
+    // Leave the compact network panel behind while the centered share card is open.
+    controller.hide()
+    cancelPasswordPrompt()
+  }
+
+  function hideWifiQr() {
+    if (qrProc.running) {
+      qrExpectedStop = true
+      qrProc.running = false
+    }
+    qrSize = 0
+    qrRows = []
+    qrError = ""
+    qrLoading = false
+  }
+
+  function updateQr(raw) {
+    var matrix = Model.parseQrMatrix(raw)
+    qrRows = matrix.rows
+    qrSize = matrix.size
+  }
 
   function refresh(scanWifi) {
     if (scanWifi === undefined) scanWifi = false
@@ -790,6 +839,31 @@ Panel {
     interval: 1500
     repeat: false
     onTriggered: root.syncWifiNetworks()
+  }
+
+  Process {
+    id: qrProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateQr(text)
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: if (!root.qrExpectedStop) root.qrError = String(text || "").trim()
+    }
+    onExited: function(exitCode) {
+      root.qrLoading = false
+      if (root.qrExpectedStop) {
+        root.qrExpectedStop = false
+        root.qrError = ""
+        return
+      }
+      if (exitCode !== 0 || root.qrSize === 0) {
+        root.qrSize = 0
+        root.qrRows = []
+        if (root.qrError === "") root.qrError = "Could not generate the Wi-Fi QR code"
+      }
+    }
   }
 
   Process {
@@ -1552,6 +1626,18 @@ Panel {
     }
   }
 
+  WifiQrPanel {
+    anchorItem: button
+    bar: root.bar
+    qrRows: root.qrRows
+    qrSize: root.qrSize
+    loading: root.qrLoading
+    error: root.qrError
+    ssid: root.info.ssid || ""
+    open: root.qrVisible
+    onCloseRequested: root.hideWifiQr()
+  }
+
   // One Wi-Fi band pill. `active` (fill) is the band actually in use and
   // `selected` (bold) is the pinned choice; with Automatic on nothing is
   // pinned, so only the live band lights up and the two can no longer read as
@@ -1631,8 +1717,10 @@ Panel {
       ? (net.security === WifiSecurityType.Wpa2Eap || net.security === WifiSecurityType.WpaEap)
       : false
     readonly property bool canForgetFromLock: isKnown && isProtected && !isConnected
+    readonly property bool canShare: isConnected && !isEnterprise
     readonly property bool isSelected: root.focusSection === "wifi" && root.selectedIndex === index
-    readonly property bool forgetFocused: isSelected && root.wifiActionFocused && canForgetFromLock
+    readonly property bool actionFocused: isSelected && root.wifiActionFocused
+    readonly property bool forgetFocused: actionFocused && canForgetFromLock
     readonly property bool forgetVisible: canForgetFromLock && (forgetFocused || rightMouse.containsMouse)
 
     hasCursor: root.cursorActive && isSelected && !root.wifiActionFocused
@@ -1732,7 +1820,7 @@ Panel {
       anchors.top: parent.top
       anchors.leftMargin: Style.space(10)
       anchors.rightMargin: Style.space(10)
-      implicitHeight: Math.max(networkIcon.implicitHeight, networkInfo.implicitHeight, rightAction.implicitHeight) + Style.spacing.rowPaddingX
+      implicitHeight: Math.max(networkIcon.implicitHeight, networkInfo.implicitHeight, rightAction.implicitHeight, qrAction.implicitHeight) + Style.spacing.rowPaddingX
 
       Text {
         id: networkIcon
@@ -1742,6 +1830,32 @@ Panel {
         font.pixelSize: Style.font.title
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Button {
+        id: qrAction
+        visible: row.canShare
+        text: "QR"
+        tooltipText: "Show QR code"
+        foreground: root.bar.foreground
+        fontFamily: root.bar.fontFamily
+        fontSize: Style.font.caption
+        horizontalPadding: Style.space(5)
+        verticalPadding: Style.space(2)
+        bordered: true
+        hasCursor: row.actionFocused && row.canShare
+        anchors.right: rightAction.visible ? rightAction.left : parent.right
+        anchors.rightMargin: rightAction.visible ? Style.space(5) : 0
+        anchors.verticalCenter: parent.verticalCenter
+
+        onHovered: function(isHovered) {
+          if (!isHovered) return
+          root.cursorActive = true
+          root.focusSection = "wifi"
+          root.selectedIndex = row.index
+          root.wifiActionFocused = true
+        }
+        onClicked: root.showWifiQr()
       }
 
       // Shows a lock glyph for protected networks. Known disconnected
@@ -1797,9 +1911,9 @@ Panel {
         spacing: Style.space(1)
         anchors.left: networkIcon.right
         anchors.leftMargin: Style.space(10)
-        anchors.right: rightAction.visible ? rightAction.left
-                      : parent.right
-        anchors.rightMargin: rightAction.visible ? Style.space(8) : 0
+        anchors.right: qrAction.visible ? qrAction.left
+                      : (rightAction.visible ? rightAction.left : parent.right)
+        anchors.rightMargin: (qrAction.visible || rightAction.visible) ? Style.space(8) : 0
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
