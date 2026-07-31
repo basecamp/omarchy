@@ -12,7 +12,7 @@ printf '%s\n' "$monitors_json" | jq -r '
   ([.[] | select(.name | internal)][0].name // ""),
   ([.[] | select((.name | internal) | not)][0].name // ""),
   ([.[] | select((.name | internal) and .disabled != true)][0].name // ""),
-  ([.[] | select((.name | internal) and .mirrorOf != "none")][0].mirrorOf // "")
+  ([.[] | select(.mirrorOf != "none")][0] | if (.name | internal) then .mirrorOf else .name end // "")
 '
 
 omarchy-hyprland-monitor-focused 2>/dev/null || echo
