@@ -18,6 +18,30 @@ Item {
   property real knobSize: Math.max(14, Math.round(Style.spacing.controlHeight * 0.38))
   property real liveValue: value
 
+  // Used for a "muted"/disabled look. The knob's *color* is dimmed (blended
+  // toward the panel background) rather than its opacity, and stays fully
+  // opaque -- an opacity fade would make the knob semi-transparent and stop
+  // it from fully covering the fill/track boundary beneath it, letting that
+  // seam show through the middle of the knob. Blending the solid color
+  // instead keeps the knob 100% opaque (no seam).
+  //
+  // The dimmed fill line itself isn't a flat color -- it's the track (at 0.5
+  // opacity over the background) with the fill drawn on top of that (also at
+  // 0.5 opacity), which composites to fillColor*0.5 + trackColor*0.25 +
+  // background*0.25. Matching that exact formula here (rather than a plain
+  // blend of knobColor) is what makes the muted knob read as the same color
+  // as the muted line instead of a distinct shade.
+  property bool dimmed: false
+  readonly property color _dimBackdrop: bar ? bar.background : "#101315"
+
+  readonly property color _dimmedLineColor: Qt.rgba(
+    fillColor.r * 0.5 + trackColor.r * 0.25 + _dimBackdrop.r * 0.25,
+    fillColor.g * 0.5 + trackColor.g * 0.25 + _dimBackdrop.g * 0.25,
+    fillColor.b * 0.5 + trackColor.b * 0.25 + _dimBackdrop.b * 0.25,
+    1)
+
+  readonly property color effectiveKnobColor: dimmed ? _dimmedLineColor : knobColor
+
   // macOS-style notches. When > 1, that many evenly-spaced tick marks are cut
   // into the track (drawn in the panel background color, so only the part
   // crossing the track shows). Purely visual — snapping is the caller's job via
@@ -29,10 +53,6 @@ Item {
 
   signal moved(real value)
   signal released(real value)
-
-  // Right-click is a secondary action on the whole track — audio uses it to
-  // mute the channel the slider belongs to. Dragging stays left-button only.
-  signal rightClicked()
 
   implicitWidth: Style.space(200)
   implicitHeight: Math.max(Style.space(22), knobSize + Style.spacing.md)
@@ -49,6 +69,7 @@ Item {
     height: root.trackHeight
     radius: height / 2
     color: root.trackColor
+    opacity: root.dimmed ? 0.5 : 1.0
   }
 
   Rectangle {
@@ -59,6 +80,7 @@ Item {
     radius: track.radius
     color: root.fillColor
     width: track.width * root.progress
+    opacity: root.dimmed ? 0.5 : 1.0
 
     Behavior on width {
       enabled: !root.dragging
@@ -74,6 +96,7 @@ Item {
       height: root.trackHeight + Style.space(4)
       radius: 1
       color: root.tickColor
+      opacity: root.dimmed ? 0.5 : 1.0
       anchors.verticalCenter: track.verticalCenter
       x: Math.max(0, Math.min(track.width - width,
                               track.width * (index / (root.tickCount - 1)) - width / 2))
@@ -85,7 +108,7 @@ Item {
     width: root.knobSize
     height: root.knobSize
     radius: root.knobSize / 2
-    color: root.knobColor
+    color: root.effectiveKnobColor
     borderSpec: Border.flat(root.bar ? root.bar.background : "#101315", Math.max(1, Style.space(2)))
     anchors.verticalCenter: track.verticalCenter
     x: Math.max(0, Math.min(track.width - width, track.width * root.progress - width / 2))
@@ -106,7 +129,7 @@ Item {
     anchors.fill: parent
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
-    acceptedButtons: Qt.LeftButton | Qt.RightButton
+    acceptedButtons: Qt.LeftButton
 
     function valueFromX(x) {
       var clamped = Math.max(0, Math.min(track.width, x))
@@ -116,14 +139,10 @@ Item {
     }
 
     onPressed: function(mouse) {
-      if (mouse.button !== Qt.LeftButton) return
       root.dragging = true
       var next = valueFromX(mouse.x)
       root.liveValue = next
       root.moved(next)
-    }
-    onClicked: function(mouse) {
-      if (mouse.button === Qt.RightButton) root.rightClicked()
     }
     onPositionChanged: function(mouse) {
       if (!root.dragging) return
@@ -132,7 +151,6 @@ Item {
       root.moved(next)
     }
     onReleased: function(mouse) {
-      if (mouse.button !== Qt.LeftButton) return
       root.dragging = false
       root.released(root.liveValue)
       root.liveValue = root.value

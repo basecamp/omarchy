@@ -165,13 +165,7 @@ Panel {
   // "header" is a virtual section for the hero output mute toggle; it sits
   // above the output section so the speaker can be muted from the keyboard.
   readonly property bool headerHasCursor: cursorActive && focusSection === "header"
-  // Only channels that actually exist get a vote. A box with no default source
-  // would otherwise report "input unmuted" forever, leaving the hero switch
-  // able to mute but never to unmute.
-  readonly property bool hasOutput: !!(volumeSink && volumeSink.audio)
-  readonly property bool hasInput: !!(source && source.audio)
-  readonly property bool anyAudible: (hasOutput && !outputMuted) || (hasInput && !inputMuted)
-  readonly property string toggleHint: anyAudible ? "Mute" : "Unmute"
+  readonly property int heroRingPad: Style.space(6)
 
   readonly property color hoverFill: bar
     ? Style.hoverFillFor(bar.foreground, Color.accent)
@@ -285,7 +279,7 @@ Panel {
 
   // Enter/Space: activate whatever the cursor is on.
   function activateCursor() {
-    if (focusSection === "header") { toggleAllMuted(); return }
+    if (focusSection === "header") { toggleOutputMute(); return }
     if (focusSection === "output") {
       if (selectedIndex === -1) { toggleOutputMute(); return }
       var sink = displayAudioSinks[selectedIndex]
@@ -379,10 +373,6 @@ Panel {
   function clampCursor() {
     var sections = visibleSections
     if (!sections || !sections.length) return
-    // "header" is virtual and never appears in visibleSections, so it has to
-    // be let through: muting republishes the PipeWire snapshot, and clamping
-    // would knock the cursor off the hero switch on every toggle.
-    if (focusSection === "header") return
     if (sections.indexOf(focusSection) < 0) {
       focusSection = visibleSections[0]
       selectedIndex = sectionHasSlider(focusSection) ? -1 : 0
@@ -436,15 +426,6 @@ Panel {
 
   function toggleInputMute() {
     if (source && source.audio) source.audio.muted = !source.audio.muted
-  }
-
-  // The hero switch is the whole panel's on/off, so it carries both channels
-  // at once. It reads as on while anything is still audible, which keeps
-  // muting a single channel from the row below flipping the master switch.
-  function toggleAllMuted() {
-    var mute = anyAudible
-    if (hasOutput) volumeSink.audio.muted = mute
-    if (hasInput) source.audio.muted = mute
   }
 
   function setDefaultSink(node) {
@@ -689,9 +670,19 @@ Panel {
           Item {
             id: heroItem
             width: parent.width
-            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, powerSwitch.implicitHeight)
+            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight) + root.heroRingPad * 2
 
-            // Status only — the switch owns muting, mouse and keyboard alike.
+            // Keyboard focus ring around the hero output-mute toggle. heroIcon
+            // is inset by heroRingPad so this ring stays inside the clip box.
+            BorderSurface {
+              anchors.fill: heroIcon
+              anchors.margins: -root.heroRingPad
+              color: "transparent"
+              radius: Style.cornerRadius
+              visible: root.headerHasCursor
+              borderSpec: Border.controlSpec("hover-cursor", root.bar.foreground, Color.accent)
+            }
+
             Text {
               id: heroIcon
               text: root.outputIcon()
@@ -700,26 +691,15 @@ Panel {
               font.pixelSize: Style.font.display
               opacity: root.outputMuted ? 0.5 : 1.0
               anchors.left: parent.left
+              anchors.leftMargin: root.heroRingPad
               anchors.verticalCenter: parent.verticalCenter
-            }
 
-            // Compact on/off switch on the trailing edge of the hero, and the
-            // header's only cursor target. Checked means something is still
-            // audible, so muting everything reads as switching audio off.
-            ToggleSwitch {
-              id: powerSwitch
-              checked: root.anyAudible
-              hasCursor: root.headerHasCursor
-              foreground: root.bar.foreground
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-              onHovered: function(on) { if (on) root.setHeaderCursor() }
-              onToggled: root.toggleAllMuted()
-
-              PanelToolTip {
-                visible: powerSwitch.containsMouse
-                text: root.toggleHint
-                fontFamily: root.bar.fontFamily
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onContainsMouseChanged: if (containsMouse) root.setHeaderCursor()
+                onClicked: root.toggleOutputMute()
               }
             }
 
@@ -728,7 +708,6 @@ Panel {
               anchors.left: heroIcon.right
               anchors.leftMargin: Style.space(14)
               anchors.right: parent.right
-              anchors.rightMargin: powerSwitch.width + Style.space(12)
               anchors.verticalCenter: parent.verticalCenter
               spacing: Style.space(2)
 
@@ -814,11 +793,10 @@ Panel {
                 maximum: 1
                 step: 0.05
                 value: root.outputVolume
-                opacity: root.outputMuted ? 0.5 : 1.0
+                dimmed: root.outputMuted
                 enabled: !!root.sink
 
                 onMoved: function(v) { root.setOutputVolume(v) }
-                onRightClicked: root.toggleOutputMute()
               }
 
               HoverHandler {
@@ -906,11 +884,10 @@ Panel {
                   maximum: 1
                   step: 0.05
                   value: root.inputVolume
-                  opacity: root.inputMuted ? 0.5 : 1.0
+                  dimmed: root.inputMuted
                   enabled: !!root.source
 
                   onMoved: function(v) { root.setInputVolume(v) }
-                  onRightClicked: root.toggleInputMute()
                 }
 
                 Rectangle {
@@ -1193,14 +1170,10 @@ Panel {
         maximum: 1.5
         step: 0.05
         value: streamRow.streamVolume
-        opacity: streamRow.streamMuted ? 0.5 : 1.0
+        dimmed: streamRow.streamMuted
 
         onMoved: function(v) {
           if (streamRow.node && streamRow.node.audio) streamRow.node.audio.volume = v
-        }
-        onRightClicked: {
-          if (streamRow.node && streamRow.node.audio)
-            streamRow.node.audio.muted = !streamRow.node.audio.muted
         }
       }
     }
