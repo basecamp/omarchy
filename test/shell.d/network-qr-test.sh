@@ -13,24 +13,58 @@ cat >"$tmp/bin/nmcli" <<'EOF'
 if [[ $* == *GENERAL.CON-UUID* ]]; then
   echo test-uuid
 else
-  printf 'Cafe;Guest\\5G\nwpa-psk\np,a:ss;word\\42\nno\n'
+  printf '%s' "$QR_NMCLI_FIELDS"
 fi
 EOF
 
 cat >"$tmp/bin/qrencode" <<'EOF'
 #!/bin/bash
-printf '%s' "${@: -1}" >"$QR_PAYLOAD_FILE"
+for arg in "$@"; do
+  [[ $arg != WIFI:* ]] || exit 97
+done
+payload=$(</dev/stdin)
+printf '%s' "$payload" >"$QR_PAYLOAD_FILE"
 printf '##    \n  ##  \n    ##\n'
 EOF
 chmod +x "$tmp/bin/nmcli" "$tmp/bin/qrencode"
 
-export QR_PAYLOAD_FILE="$tmp/payload"
-output=$(PATH="$tmp/bin:$PATH" "$ROOT/bin/omarchy-network-qr" wlan0)
-expected=$'100\n010\n001'
-[[ $output == "$expected" ]] || fail "network QR helper emits a compact module matrix" "expected: $expected\nactual: $output"
-pass "network QR helper emits a compact module matrix"
+run_success_case() {
+  local description=$1 fields=$2 expected_payload=$3
+  local expected output payload
 
-payload=$(<"$QR_PAYLOAD_FILE")
-expected_payload='WIFI:T:WPA;S:Cafe\;Guest\\5G;P:p\,a\:ss\;word\\42;;'
-[[ $payload == "$expected_payload" ]] || fail "network QR helper escapes Wi-Fi credentials" "expected: $expected_payload\nactual: $payload"
-pass "network QR helper escapes Wi-Fi credentials"
+  export QR_NMCLI_FIELDS=$fields
+  export QR_PAYLOAD_FILE="$tmp/payload"
+  output=$(PATH="$tmp/bin:$PATH" "$ROOT/bin/omarchy-network-qr" wlan0)
+  expected=$'100\n010\n001'
+  [[ $output == "$expected" ]] || fail "$description emits a compact module matrix" "expected: $expected\nactual: $output"
+
+  payload=$(<"$QR_PAYLOAD_FILE")
+  [[ $payload == "$expected_payload" ]] || fail "$description generates the Wi-Fi payload" "expected: $expected_payload\nactual: $payload"
+  pass "$description"
+}
+
+run_success_case \
+  "network QR helper escapes WPA credentials through stdin" \
+  $'Cafe;Guest\\5G\nwpa-psk\np,a:ss;word\\42\nno\n' \
+  'WIFI:T:WPA;S:Cafe\;Guest\\5G;P:p\,a\:ss\;word\\42;;'
+
+run_success_case \
+  "network QR helper supports open networks" \
+  $'Cafe Open\nnone\n\nno\n' \
+  'WIFI:T:nopass;S:Cafe Open;P:;;'
+
+run_success_case \
+  "network QR helper marks hidden networks" \
+  $'Hidden Network\nwpa-psk\nsecret\nyes\n' \
+  'WIFI:T:WPA;S:Hidden Network;P:secret;H:true;;'
+
+export QR_NMCLI_FIELDS=$'Enterprise\nwpa-eap\nsecret\nno\n'
+export QR_PAYLOAD_FILE="$tmp/enterprise-payload"
+if PATH="$tmp/bin:$PATH" "$ROOT/bin/omarchy-network-qr" wlan0 >"$tmp/enterprise-output" 2>"$tmp/enterprise-error"; then
+  fail "network QR helper rejects enterprise networks" "helper unexpectedly succeeded"
+fi
+enterprise_error=$(<"$tmp/enterprise-error")
+expected_error="Enterprise Wi-Fi cannot be shared with a password QR code"
+[[ $enterprise_error == "$expected_error" ]] || fail "network QR helper rejects enterprise networks" "expected: $expected_error\nactual: $enterprise_error"
+[[ ! -e $QR_PAYLOAD_FILE ]] || fail "network QR helper rejects enterprise networks" "qrencode unexpectedly ran"
+pass "network QR helper rejects enterprise networks"

@@ -127,15 +127,16 @@ Panel {
   property int headerIndex: 0
   readonly property bool canDisconnect: !!connectedWifiNetwork
   readonly property bool headerHasDisconnect: false
-  // The hero switch is the Wi-Fi radio and nothing else, so it only exists
-  // when there is a radio to switch. A click carried no state, but a switch
-  // asserts one: on a wired box it would otherwise sit there reading "off"
-  // beside a perfectly live Ethernet connection.
+  readonly property bool canShareWifi: info.type === "wifi" && canShareNetwork(connectedWifiNetwork)
+  // The hero switch is the Wi-Fi radio, so it only exists when there is a
+  // radio to switch. On a wired box it would otherwise sit there reading
+  // "off" beside a perfectly live Ethernet connection.
   readonly property bool canToggleWifi: networkManagerAvailable && wifiStationAvailable
-  readonly property int headerActionCount: canToggleWifi ? 1 : 0
-  // Only claim the header cursor when the switch is actually on screen —
-  // "header" stays navigable, but a machine with no radio has nothing to highlight.
-  readonly property bool headerHasCursor: cursorActive && focusSection === "header" && canToggleWifi
+  readonly property int qrHeaderIndex: canShareWifi ? 0 : -1
+  readonly property int toggleHeaderIndex: canToggleWifi ? (canShareWifi ? 1 : 0) : -1
+  readonly property int headerActionCount: (canShareWifi ? 1 : 0) + (canToggleWifi ? 1 : 0)
+  readonly property bool qrHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === qrHeaderIndex
+  readonly property bool toggleHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === toggleHeaderIndex
   readonly property string toggleHint: Networking.wifiEnabled ? "Turn Wi-Fi off" : "Turn Wi-Fi on"
   readonly property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
   property int dnsIndex: 0
@@ -211,13 +212,14 @@ Panel {
   }
 
   function activateHeader() {
-    toggleNetwork()
+    if (headerIndex === qrHeaderIndex) showWifiQr()
+    else if (headerIndex === toggleHeaderIndex) toggleNetwork()
   }
 
-  function setHeaderCursor() {
+  function setHeaderCursor(index) {
     cursorActive = true
     focusSection = "header"
-    headerIndex = 0
+    headerIndex = index
   }
 
   function selectDnsByDelta(delta) {
@@ -339,7 +341,7 @@ Panel {
       selectedIndex = 0
     }
 
-    if (selectedIndex < 0 || selectedIndex >= wifiNetworks.length || !canWifiActionNetwork(wifiNetworks[selectedIndex])) {
+    if (selectedIndex < 0 || selectedIndex >= wifiNetworks.length || !canForgetNetwork(wifiNetworks[selectedIndex])) {
       wifiActionFocused = false
     }
   }
@@ -367,13 +369,9 @@ Panel {
     return net.security !== WifiSecurityType.Wpa2Eap && net.security !== WifiSecurityType.WpaEap
   }
 
-  function canWifiActionNetwork(net) {
-    return canForgetNetwork(net) || canShareNetwork(net)
-  }
-
   function selectWifiActionByDelta(delta) {
     if (selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
-    if (!canWifiActionNetwork(wifiNetworks[selectedIndex])) {
+    if (!canForgetNetwork(wifiNetworks[selectedIndex])) {
       wifiActionFocused = false
       return
     }
@@ -388,7 +386,6 @@ Panel {
     if (busy || selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
     var net = wifiNetworks[selectedIndex]
     if (!net) return
-    if (wifiActionFocused && canShareNetwork(net)) { showWifiQr(); return }
     if (wifiActionFocused && canForgetNetwork(net)) { forget(net); return }
     if (net.connected) { disconnect(net.network); return }
     if (isProtected(net.security) && !net.known) { openPasswordPrompt(net.ssid); return }
@@ -479,7 +476,7 @@ Panel {
   }
 
   function headerDetail() {
-    return Model.headerDetail(info, canSelectBand)
+    return Model.headerDetail(info)
   }
 
   function updateDetails(raw) {
@@ -1148,7 +1145,7 @@ Panel {
       // ---------- Hero: network icon · SSID + state · actions ----------
       Item {
         width: parent.width
-        implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, powerSwitch.implicitHeight)
+        implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, heroActions.implicitHeight)
 
         // Status only — the switch owns toggling, mouse and keyboard alike.
         Text {
@@ -1162,23 +1159,46 @@ Panel {
           anchors.verticalCenter: parent.verticalCenter
         }
 
-        // Compact on/off switch on the trailing edge of the hero, and the
-        // header's only cursor target.
-        ToggleSwitch {
-          id: powerSwitch
-          visible: root.canToggleWifi
-          checked: Networking.wifiEnabled
-          hasCursor: root.headerHasCursor
-          foreground: root.bar.foreground
+        // Sharing belongs to the connected-network hero rather than the scan
+        // result row. The radio switch remains beside it as the other hero action.
+        RowLayout {
+          id: heroActions
+          spacing: Style.space(8)
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          onHovered: function(on) { if (on) root.setHeaderCursor() }
-          onToggled: root.toggleNetwork()
 
-          PanelToolTip {
-            visible: powerSwitch.containsMouse
-            text: root.toggleHint
+          Button {
+            id: qrAction
+            visible: root.canShareWifi
+            text: "QR"
+            tooltipText: "Show QR code"
+            foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
+            fontSize: Style.font.caption
+            horizontalPadding: Style.space(5)
+            verticalPadding: Style.space(2)
+            bordered: true
+            hasCursor: root.qrHeaderHasCursor
+            Layout.alignment: Qt.AlignVCenter
+            onHovered: function(on) { if (on) root.setHeaderCursor(root.qrHeaderIndex) }
+            onClicked: root.showWifiQr()
+          }
+
+          ToggleSwitch {
+            id: powerSwitch
+            visible: root.canToggleWifi
+            checked: Networking.wifiEnabled
+            hasCursor: root.toggleHeaderHasCursor
+            foreground: root.bar.foreground
+            Layout.alignment: Qt.AlignVCenter
+            onHovered: function(on) { if (on) root.setHeaderCursor(root.toggleHeaderIndex) }
+            onToggled: root.toggleNetwork()
+
+            PanelToolTip {
+              visible: powerSwitch.containsMouse
+              text: root.toggleHint
+              fontFamily: root.bar.fontFamily
+            }
           }
         }
 
@@ -1187,7 +1207,7 @@ Panel {
           anchors.left: heroIcon.right
           anchors.leftMargin: Style.space(14)
           anchors.right: parent.right
-          anchors.rightMargin: powerSwitch.visible ? powerSwitch.width + Style.space(12) : 0
+          anchors.rightMargin: heroActions.width > 0 ? heroActions.width + Style.space(12) : 0
           anchors.verticalCenter: parent.verticalCenter
           spacing: Style.space(2)
 
@@ -1717,10 +1737,8 @@ Panel {
       ? (net.security === WifiSecurityType.Wpa2Eap || net.security === WifiSecurityType.WpaEap)
       : false
     readonly property bool canForgetFromLock: isKnown && isProtected && !isConnected
-    readonly property bool canShare: isConnected && !isEnterprise
     readonly property bool isSelected: root.focusSection === "wifi" && root.selectedIndex === index
-    readonly property bool actionFocused: isSelected && root.wifiActionFocused
-    readonly property bool forgetFocused: actionFocused && canForgetFromLock
+    readonly property bool forgetFocused: isSelected && root.wifiActionFocused && canForgetFromLock
     readonly property bool forgetVisible: canForgetFromLock && (forgetFocused || rightMouse.containsMouse)
 
     hasCursor: root.cursorActive && isSelected && !root.wifiActionFocused
@@ -1820,7 +1838,7 @@ Panel {
       anchors.top: parent.top
       anchors.leftMargin: Style.space(10)
       anchors.rightMargin: Style.space(10)
-      implicitHeight: Math.max(networkIcon.implicitHeight, networkInfo.implicitHeight, rightAction.implicitHeight, qrAction.implicitHeight) + Style.spacing.rowPaddingX
+      implicitHeight: Math.max(networkIcon.implicitHeight, networkInfo.implicitHeight, rightAction.implicitHeight) + Style.spacing.rowPaddingX
 
       Text {
         id: networkIcon
@@ -1830,32 +1848,6 @@ Panel {
         font.pixelSize: Style.font.title
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
-      }
-
-      Button {
-        id: qrAction
-        visible: row.canShare
-        text: "QR"
-        tooltipText: "Show QR code"
-        foreground: root.bar.foreground
-        fontFamily: root.bar.fontFamily
-        fontSize: Style.font.caption
-        horizontalPadding: Style.space(5)
-        verticalPadding: Style.space(2)
-        bordered: true
-        hasCursor: row.actionFocused && row.canShare
-        anchors.right: rightAction.visible ? rightAction.left : parent.right
-        anchors.rightMargin: rightAction.visible ? Style.space(5) : 0
-        anchors.verticalCenter: parent.verticalCenter
-
-        onHovered: function(isHovered) {
-          if (!isHovered) return
-          root.cursorActive = true
-          root.focusSection = "wifi"
-          root.selectedIndex = row.index
-          root.wifiActionFocused = true
-        }
-        onClicked: root.showWifiQr()
       }
 
       // Shows a lock glyph for protected networks. Known disconnected
@@ -1911,9 +1903,8 @@ Panel {
         spacing: Style.space(1)
         anchors.left: networkIcon.right
         anchors.leftMargin: Style.space(10)
-        anchors.right: qrAction.visible ? qrAction.left
-                      : (rightAction.visible ? rightAction.left : parent.right)
-        anchors.rightMargin: (qrAction.visible || rightAction.visible) ? Style.space(8) : 0
+        anchors.right: rightAction.visible ? rightAction.left : parent.right
+        anchors.rightMargin: rightAction.visible ? Style.space(8) : 0
         anchors.verticalCenter: parent.verticalCenter
 
         Text {

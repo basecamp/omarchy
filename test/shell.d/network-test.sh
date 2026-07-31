@@ -127,7 +127,6 @@ assertDeepEqual(
 
 
 
-assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '5ghz', 'network header shows the wifi band when the toggle is hidden')
-assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }, true), '', 'network header drops the wifi band when the toggle shows it')
-assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }, true), '100mbit', 'network header keeps ethernet speed regardless of the band toggle')
+assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '', 'network keeps wifi band state out of the hero')
+assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit', 'network keeps ethernet speed in the hero')
 JS

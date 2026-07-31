@@ -40,13 +40,11 @@ function formatHeaderFreq(mhz) {
   return ghz.toFixed(ghz % 1 === 0 ? 0 : 1) + "ghz"
 }
 
-// `hideWifiBand` is set when the band toggle is on screen: the band is already
-// spelled out there, so repeating it in "York (5ghz)" is noise. A single-band
-// network hides the toggle, and then the header stays the only place it shows.
-function headerDetail(info, hideWifiBand) {
+// Wi-Fi band state belongs in the selector section, not beside the hero name.
+// Ethernet has no equivalent selector, so keep its negotiated link speed here.
+function headerDetail(info) {
   var value = info || {}
   if (value.type === "ethernet") return formatHeaderSpeed(value.speed || "")
-  if (value.type === "wifi") return hideWifiBand ? "" : formatHeaderFreq(value.freq || "")
   return ""
 }
 

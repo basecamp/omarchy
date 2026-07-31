@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# omarchy:summary=Generate a Wi-Fi QR matrix for the shell
+# omarchy:group=network
+# omarchy:args=<interface>
+
 set -euo pipefail
 
 interface=${1:?Usage: omarchy-network-qr <interface>}
@@ -43,10 +47,11 @@ payload+=";"
 
 # ASCII uses two characters per module. Collapse each pair to one 0/1 value
 # so the shell can render a square matrix directly with native QML rectangles.
+ascii=$(printf '%s' "$payload" | qrencode --type ASCII --margin 2 --output -)
 while IFS= read -r line; do
   row=
   for ((column = 0; column < ${#line}; column += 2)); do
     [[ ${line:column:2} == *#* ]] && row+=1 || row+=0
   done
   printf '%s\n' "$row"
-done < <(qrencode --type ASCII --margin 2 --output - "$payload")
+done <<<"$ascii"
