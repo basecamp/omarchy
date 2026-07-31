@@ -262,8 +262,8 @@ omarchy-refresh-config hypr/hyprland.lua
 ```
 
 This copies `$OMARCHY_PATH/config/hypr/hyprland.lua` to `~/.config/hypr/hyprland.lua`. The argument
-must name a file that exists under `$OMARCHY_PATH/config/`; anything else exits with "Not a shipped
-user config".
+is interpolated into both paths and only checked with `[[ -e ]]`, so pass a plain relative path: a
+name containing `..` resolves and copies, landing outside `~/.config` rather than being rejected.
 
 # Migrations
 
