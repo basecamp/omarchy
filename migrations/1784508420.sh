@@ -88,7 +88,9 @@ enable_be211_wifi7() {
     fi
 
     read -r queried_package version extra <<<"$package_query"
-    if [[ $package_query == *$'\n'* || $queried_package != "$package" || -z $version || -n $extra ]]; then
+    # Arch package names cannot contain shell glob characters.
+    # shellcheck disable=SC2053
+    if [[ $package_query == *$'\n'* || $queried_package != $package || -z $version || -n $extra ]]; then
       kernel_blocked=true
       break
     fi
@@ -104,7 +106,7 @@ enable_be211_wifi7() {
     fi
   done
 
-  if ! $kernel_found || $kernel_blocked; then
+  if [[ $kernel_found == "false" || $kernel_blocked == "true" ]]; then
     echo "Skipped $wifi7_config because not all installed kernels are Linux 7.1 or newer"
     return 0
   fi
