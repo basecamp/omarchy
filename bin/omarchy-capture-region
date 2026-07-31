@@ -56,20 +56,31 @@ focused_window_geo() {
   hyprctl activewindow -j | jq -r 'select(.at != null) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
 }
 
+# slurp highlights the smallest box under the cursor, so overlapping
+# windows resolve the same way here (e.g. floating over tiled).
 window_geo_at_cursor() {
   local pos=$(hyprctl cursorpos)
   local x=${pos%,*}
   local y=${pos#*, }
+  local smallest=""
+  local smallest_area=0
 
   while IFS= read -r rect; do
     [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || continue
-    if ((x >= BASH_REMATCH[1] && x < BASH_REMATCH[1] + BASH_REMATCH[3] && y >= BASH_REMATCH[2] && y < BASH_REMATCH[2] + BASH_REMATCH[4])); then
-      echo "$rect"
-      return
+    ((x >= BASH_REMATCH[1] && x < BASH_REMATCH[1] + BASH_REMATCH[3] && y >= BASH_REMATCH[2] && y < BASH_REMATCH[2] + BASH_REMATCH[4])) || continue
+
+    area=$((BASH_REMATCH[3] * BASH_REMATCH[4]))
+    if [[ -z $smallest ]] || ((area <= smallest_area)); then
+      smallest=$rect
+      smallest_area=$area
     fi
   done < <(window_rects)
 
-  focused_window_geo
+  if [[ -n $smallest ]]; then
+    echo "$smallest"
+  else
+    focused_window_geo
+  fi
 }
 
 # Keyboard control while slurp is open: binds scoped to slurp's layer
@@ -106,16 +117,25 @@ if [[ ${1:-} == "--select-window" ]]; then
   done < <(window_rects) | sort -n -k1,1 -k2,2 | cut -f3-)
   [[ -n $rects ]] || exit 0
 
+  # The selection to move from is the one slurp highlights: the smallest
+  # window under the cursor. Measure from its center.
   current=""
+  current_area=0
   while IFS= read -r rect; do
     [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || continue
-    if ((origin_x >= BASH_REMATCH[1] && origin_x < BASH_REMATCH[1] + BASH_REMATCH[3] && origin_y >= BASH_REMATCH[2] && origin_y < BASH_REMATCH[2] + BASH_REMATCH[4])); then
+    ((origin_x >= BASH_REMATCH[1] && origin_x < BASH_REMATCH[1] + BASH_REMATCH[3] && origin_y >= BASH_REMATCH[2] && origin_y < BASH_REMATCH[2] + BASH_REMATCH[4])) || continue
+
+    area=$((BASH_REMATCH[3] * BASH_REMATCH[4]))
+    if [[ -z $current ]] || ((area <= current_area)); then
       current=$rect
-      origin_x=$((BASH_REMATCH[1] + BASH_REMATCH[3] / 2))
-      origin_y=$((BASH_REMATCH[2] + BASH_REMATCH[4] / 2))
-      break
+      current_area=$area
     fi
   done <<<"$rects"
+
+  if [[ $current =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]]; then
+    origin_x=$((BASH_REMATCH[1] + BASH_REMATCH[3] / 2))
+    origin_y=$((BASH_REMATCH[2] + BASH_REMATCH[4] / 2))
+  fi
 
   target=""
 
