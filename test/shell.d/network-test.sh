@@ -90,6 +90,15 @@ assertDeepEqual(rows.map(row => row.ssid), ['Connected', 'Known', 'Open'], 'netw
 assertEqual(network.wifiSectionTitle(rows, 0), 'KNOWN NETWORKS', 'network labels known wifi section')
 assertEqual(network.wifiSectionTitle(rows, 2), 'OTHER NETWORKS', 'network labels other wifi section')
 
+assertDeepEqual(
+  network.parseQrMatrix('010\n111\n010\n'),
+  { rows: ['010', '111', '010'], size: 3 },
+  'network parses a square QR matrix'
+)
+assertDeepEqual(network.parseQrMatrix('01\n111\n'), { rows: [], size: 0 }, 'network rejects ragged QR rows')
+assertDeepEqual(network.parseQrMatrix('010\n101\n'), { rows: [], size: 0 }, 'network rejects a non-square QR matrix')
+assertDeepEqual(network.parseQrMatrix('010\n1x1\n010\n'), { rows: [], size: 0 }, 'network rejects invalid QR modules')
+
 const reasons = { NoSecrets: 1, WifiAuthTimeout: 2, WifiNetworkLost: 3, WifiClientDisconnected: 4, WifiClientFailed: 5 }
 assertEqual(network.networkFailureReason(1, reasons), 'Passphrase required', 'network maps missing passphrase failures')
 assertEqual(network.networkFailureReason(2, reasons), 'Wrong password', 'network maps auth timeout failures')
@@ -118,7 +127,6 @@ assertDeepEqual(
 
 
 
-assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '5ghz', 'network header shows the wifi band when the toggle is hidden')
-assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }, true), '', 'network header drops the wifi band when the toggle shows it')
-assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }, true), '100mbit', 'network header keeps ethernet speed regardless of the band toggle')
+assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '', 'network keeps wifi band state out of the hero')
+assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit', 'network keeps ethernet speed in the hero')
 JS

@@ -40,13 +40,11 @@ function formatHeaderFreq(mhz) {
   return ghz.toFixed(ghz % 1 === 0 ? 0 : 1) + "ghz"
 }
 
-// `hideWifiBand` is set when the band toggle is on screen: the band is already
-// spelled out there, so repeating it in "York (5ghz)" is noise. A single-band
-// network hides the toggle, and then the header stays the only place it shows.
-function headerDetail(info, hideWifiBand) {
+// Wi-Fi band state belongs in the selector section, not beside the hero name.
+// Ethernet has no equivalent selector, so keep its negotiated link speed here.
+function headerDetail(info) {
   var value = info || {}
   if (value.type === "ethernet") return formatHeaderSpeed(value.speed || "")
-  if (value.type === "wifi") return hideWifiBand ? "" : formatHeaderFreq(value.freq || "")
   return ""
 }
 
@@ -284,6 +282,20 @@ function isProtected(security, openSecurity) {
   return security !== openSecurity
 }
 
+function parseQrMatrix(raw) {
+  var lines = String(raw || "").trim().split(/\r?\n/).filter(function(line) { return line !== "" })
+  if (lines.length === 0) return { rows: [], size: 0 }
+
+  var size = lines[0].length
+  if (size !== lines.length) return { rows: [], size: 0 }
+
+  for (var i = 0; i < lines.length; i++) {
+    if (lines[i].length !== size || !/^[01]+$/.test(lines[i])) return { rows: [], size: 0 }
+  }
+
+  return { rows: lines, size: size }
+}
+
 // The password arrives on stdin and reaches nmcli through the scriptable
 // `connection edit` editor -- argv is world-readable in /proc, so the secret
 // must never be an argument (printf is a bash builtin, so no process spawns
@@ -332,6 +344,7 @@ if (typeof module !== "undefined") {
     sortWifiRows: sortWifiRows,
     wifiSectionTitle: wifiSectionTitle,
     isProtected: isProtected,
+    parseQrMatrix: parseQrMatrix,
     enterpriseConnectScript: enterpriseConnectScript,
     networkFailureReason: networkFailureReason
   }
