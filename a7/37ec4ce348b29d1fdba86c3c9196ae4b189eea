@@ -1,0 +1,19 @@
+AGENTS.md
+  s_4fb78dc11c9347::t_a005fe705295d3 265-266
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "a737ec4ce348b29d1fdba86c3c9196ae4b189eea",
+  "prompts": {},
+  "sessions": {
+    "s_4fb78dc11c9347": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fe0076a7-137c-4a61-8ab6-3604b5124436",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Jeremy Daer <jeremy@37signals.com>"
+    }
+  }
+}
