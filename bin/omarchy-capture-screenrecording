@@ -2,7 +2,7 @@
 
 # omarchy:summary=Start or stop screen recording
 # omarchy:group=capture
-# omarchy:args=[--fullscreen] [--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--webcam-size=<small|medium|large>] [--resolution=<size>] [--stop-recording]
+# omarchy:args=[--fullscreen] [--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--webcam-size=<small|medium|large>] [--resolution=<size>] [--stop-recording] [--pause-recording] [--resume-recording]
 # omarchy:examples=omarchy screenrecord | omarchy capture screenrecording --with-desktop-audio
 # omarchy:aliases=omarchy screenrecord
 #
@@ -17,6 +17,11 @@
 # Env: OMARCHY_SCREENRECORD_DEBUG=true appends gpu-screen-recorder's stderr (and
 # the picker target it was launched with) to /tmp/omarchy-screenrecord.log so
 # users can attach a log when reporting capture failures.
+#
+# --pause-recording / --resume-recording pause and unpause the running
+# recording in place via gpu-screen-recorder's own SIGUSR2 handling: the
+# process keeps running and the output file is untouched, so resuming just
+# continues writing the same file instead of starting a new one.
 
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
@@ -34,8 +39,11 @@ WEBCAM_SIZE="medium"
 RESOLUTION=""
 FULLSCREEN="false"
 STOP_RECORDING="false"
+PAUSE_RECORDING="false"
+RESUME_RECORDING="false"
 RECORDING_FILE="/tmp/omarchy-screenrecord-filename"
 REGION_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-region"
+PAUSED_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-paused"
 LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "/tmp/omarchy-screenrecord.log" || echo "/dev/null")
 
 for arg in "$@"; do
@@ -48,6 +56,8 @@ for arg in "$@"; do
   --resolution=*) RESOLUTION="${arg#*=}" ;;
   --fullscreen) FULLSCREEN="true" ;;
   --stop-recording) STOP_RECORDING="true" ;;
+  --pause-recording) PAUSE_RECORDING="true" ;;
+  --resume-recording) RESUME_RECORDING="true" ;;
   esac
 done
 
@@ -234,7 +244,7 @@ stop_screenrecording() {
     ) &
   fi
 
-  rm -f "$RECORDING_FILE"
+  rm -f "$RECORDING_FILE" "$PAUSED_FILE"
 }
 
 toggle_screenrecording_indicator() {
@@ -243,6 +253,41 @@ toggle_screenrecording_indicator() {
 
 screenrecording_active() {
   pgrep -f "^gpu-screen-recorder" >/dev/null
+}
+
+recording_paused() {
+  [[ -f $PAUSED_FILE ]]
+}
+
+# gpu-screen-recorder has native pause/unpause support via SIGUSR2 (not
+# available in streaming/replay mode, but this script only ever runs it in
+# plain recording mode). The process keeps running while paused - nothing is
+# stopped or finalized - so resuming continues into the same output file.
+pause_screenrecording() {
+  if ! screenrecording_active; then
+    omarchy-notification-send -u critical -t 3000 "No active screen recording to pause"
+    return 1
+  fi
+
+  if recording_paused; then
+    return 0
+  fi
+
+  pkill -SIGUSR2 -f "^gpu-screen-recorder"
+  touch "$PAUSED_FILE"
+  toggle_screenrecording_indicator
+  omarchy-notification-send -t 2000 "Screen recording paused"
+}
+
+resume_screenrecording() {
+  if ! screenrecording_active || ! recording_paused; then
+    return 1
+  fi
+
+  pkill -SIGUSR2 -f "^gpu-screen-recorder"
+  rm -f "$PAUSED_FILE"
+  toggle_screenrecording_indicator
+  omarchy-notification-send -t 2000 "Screen recording resumed"
 }
 
 finalize_recording() {
@@ -274,7 +319,11 @@ finalize_recording() {
   fi
 }
 
-if screenrecording_active; then
+if [[ $PAUSE_RECORDING == "true" ]]; then
+  pause_screenrecording
+elif [[ $RESUME_RECORDING == "true" ]]; then
+  resume_screenrecording
+elif screenrecording_active; then
   stop_screenrecording
 elif [[ $STOP_RECORDING == "true" ]]; then
   exit 1
