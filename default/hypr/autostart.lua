@@ -9,6 +9,10 @@ hl.on("hyprland.start", function()
   hl.exec_cmd(o.launch("omarchy-hyprland-monitor-watch"))
   hl.exec_cmd(o.launch("udiskie --automount --no-notify --no-tray"))
 
+  -- Keep the clipboard alive after the app it was copied from closes,
+  -- without persisting password manager entries.
+  hl.exec_cmd(o.launch("wl-clip-persist --clipboard regular --all-mime-type-regex '^(?!x-kde-passwordManagerHint).+'"))
+
   -- Run post-boot hooks after startup config has loaded.
   hl.exec_cmd("sleep 2 && omarchy-hook post-boot")
 end)
