@@ -1170,14 +1170,13 @@ Panel {
           Button {
             id: qrAction
             visible: root.canShareWifi
-            text: "QR"
+            iconText: "󰐲"
             tooltipText: "Show QR code"
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
-            fontSize: Style.font.caption
+            iconSize: Style.font.subtitle * 1.5
             horizontalPadding: Style.space(5)
             verticalPadding: Style.space(2)
-            bordered: true
             hasCursor: root.qrHeaderHasCursor
             Layout.alignment: Qt.AlignVCenter
             onHovered: function(on) { if (on) root.setHeaderCursor(root.qrHeaderIndex) }
