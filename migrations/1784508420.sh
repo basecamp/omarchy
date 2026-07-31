@@ -14,6 +14,7 @@ enable_be211_wifi7() {
   local package_query
   local pkgbase_file
   local package
+  local pci_devices
   local queried_package
   local version
 
@@ -48,7 +49,17 @@ enable_be211_wifi7() {
     fi
   fi
 
-  lspci -nn | grep -q '\[8086:e440\]' || return 0
+  if ! pci_devices=$(lspci -nn); then
+    echo "Skipped $wifi7_config because PCI devices could not be inspected"
+    return 0
+  fi
+
+  [[ $pci_devices == *"[8086:e440]"* ]] || return 0
+
+  if [[ $pci_devices == *"[8086:272b]"* ]]; then
+    echo "Skipped $wifi7_config because Intel BE200 is also present"
+    return 0
+  fi
 
   for pkgbase_file in "$kernel_modules_dir"/*/pkgbase; do
     [[ -f $pkgbase_file ]] || continue
