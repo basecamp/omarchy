@@ -856,9 +856,14 @@ Panel {
 
   Process {
     id: qrProc
+    // Both collectors check qrExpectedStop: a dismissal mid-generation kills
+    // the process, but buffered output still arrives afterwards and would
+    // repopulate qrSize -- reopening the card the user just closed. The flag
+    // stays set through onExited (showWifiQr resets it) because the exit and
+    // stream-finished signals have no guaranteed order.
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.updateQr(text)
+      onStreamFinished: if (!root.qrExpectedStop) root.updateQr(text)
     }
     stderr: StdioCollector {
       waitForEnd: true
@@ -866,11 +871,7 @@ Panel {
     }
     onExited: function(exitCode) {
       root.qrLoading = false
-      if (root.qrExpectedStop) {
-        root.qrExpectedStop = false
-        root.qrError = ""
-        return
-      }
+      if (root.qrExpectedStop) return
       if (exitCode !== 0 || root.qrSize === 0) {
         root.qrSize = 0
         root.qrRows = []
@@ -881,13 +882,16 @@ Panel {
 
   // The Wi-Fi password only enters shell memory when the user clicks to
   // reveal it, and hideWifiQr drops it again when the share card closes.
+  // Both handlers bail when the card is gone so a fetch that was in flight
+  // during dismissal can't stash the secret into a closed panel's state.
   Process {
     id: pwProc
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.qrPassword = String(text || "").trim()
+      onStreamFinished: if (root.qrVisible) root.qrPassword = String(text || "").trim()
     }
     onExited: function(exitCode) {
+      if (!root.qrVisible) return
       if (exitCode === 0 && root.qrPassword !== "") root.qrPasswordVisible = true
       else root.qrPasswordError = "Could not read the Wi-Fi password"
     }

@@ -21,10 +21,20 @@ PanelWindow {
   required property string passwordError
   property bool open: false
 
+  readonly property bool showingQr: qrSize > 0 && !loading && error === ""
+
   signal closeRequested()
   signal passwordToggleRequested()
 
   visible: open
+  // The window is instantiated hidden, so the content's `focus: true` is
+  // evaluated before the surface is mapped and Escape would land nowhere.
+  // Re-acquire after mapping, as KeyboardPanel does.
+  onOpenChanged: {
+    if (open) Qt.callLater(function() {
+      if (root.open) keyCatcher.forceActiveFocus()
+    })
+  }
   screen: anchorItem.QsWindow.window ? anchorItem.QsWindow.window.screen : null
   anchors { top: true; bottom: true; left: true; right: true }
   color: "transparent"
@@ -54,6 +64,7 @@ PanelWindow {
     MouseArea { anchors.fill: parent; onClicked: {} }
 
     Item {
+      id: keyCatcher
       anchors.fill: parent
       anchors.margins: Style.space(24)
       focus: true
@@ -84,7 +95,7 @@ PanelWindow {
             ? Math.max(4, Math.floor(Style.space(240) / root.qrSize))
             : 0
 
-          visible: root.qrSize > 0 && !root.loading && root.error === ""
+          visible: root.showingQr
           width: root.qrSize * moduleSize
           height: width
           color: "white"
@@ -128,7 +139,7 @@ PanelWindow {
         }
 
         Text {
-          visible: root.qrSize > 0 && !root.loading && root.error === ""
+          visible: root.showingQr
           text: "Scan to join this network"
           color: root.bar.foreground
           Layout.fillWidth: true
@@ -136,7 +147,7 @@ PanelWindow {
         }
 
         Text {
-          visible: root.qrSize > 0 && !root.loading && root.error === "" && root.secured
+          visible: root.showingQr && root.secured
           text: root.passwordError !== "" ? root.passwordError
             : root.passwordVisible ? root.password
             : "Show password"
