@@ -71,9 +71,17 @@ Item {
   }
 
   function loadFolders(path) {
-    if (foldersProcess.running || omarchyPath === "" || !authenticated) return
+    if (omarchyPath === "" || !authenticated) return
     var target = String(path || effectiveBrowsePath || accountPath || "")
     if (target === "") return
+    // Only one listing runs at a time, but a request that arrives mid-flight
+    // must not be dropped: the in-flight result would then apply its own (now
+    // stale) path over the one just asked for. Remember it and run it on exit.
+    if (foldersProcess.running) {
+      _queuedFolderPath = target
+      return
+    }
+    _queuedFolderPath = ""
     _foldersOutput = ""
     _foldersError = ""
     foldersProcess.command = ["python3", foldersHelperPath, "list", target]
@@ -166,6 +174,7 @@ Item {
   property string _excludeOutput: ""
   property string _excludeError: ""
   property string _excludePath: ""
+  property string _queuedFolderPath: ""
 
   onAuthenticatedChanged: {
     if (authenticated) {
@@ -176,6 +185,7 @@ Item {
       foldersError = ""
       foldersLoaded = false
       pendingFolders = ({})
+      _queuedFolderPath = ""
     }
   }
 
@@ -209,11 +219,14 @@ Item {
     }
     installed = parsed.installed === true
     running = parsed.running === true
+    // Before `authenticated`, whose change handler loads the folder list and
+    // needs somewhere to load it from. Assigning it after left that first load
+    // with an empty account path, so it silently did nothing.
+    accountPath = String(parsed.accountPath || "")
     authenticated = parsed.authenticated === true
     // Reality caught up to the pending pause/resume — stop overriding.
     if (_desired !== -1 && running === (_desired === 1)) _desired = -1
     statusText = String(parsed.statusText || (installed ? "Stopped" : "Not installed"))
-    accountPath = String(parsed.accountPath || "")
     plan = String(parsed.plan || "")
     usedBytes = Number(parsed.usedBytes || 0)
     quotaBytes = Number(parsed.quotaBytes || 0)
@@ -418,6 +431,15 @@ Item {
     onExited: function(exitCode) {
       var stdout = String(foldersStdout.text || root._foldersOutput || "")
       var stderr = String(foldersStderr.text || root._foldersError || "")
+      // A newer request came in while this one was running, so this result is
+      // already stale — drop it rather than let it apply its path, and serve
+      // the request that superseded it.
+      if (root._queuedFolderPath !== "") {
+        var queued = root._queuedFolderPath
+        root._queuedFolderPath = ""
+        root.loadFolders(queued)
+        return
+      }
       if (exitCode === 0 && stdout !== "") root.applyFolders(stdout)
       else {
         root.foldersError = root.elideStatus(stderr || stdout || "Could not read Dropbox folders")
