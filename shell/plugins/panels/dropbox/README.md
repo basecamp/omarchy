@@ -41,8 +41,9 @@ taken the tray's place.
 | `p` | Pause or resume syncing |
 | `Esc` | Close |
 
-`Enter` on a folder with no subfolders toggles it instead of opening it, since
-there is nothing to open.
+`Enter` only ever navigates. A folder with no subfolders is not browsable and
+`Enter` does nothing on it, rather than falling back to a toggle that would
+unsync whatever the cursor happened to be on. `s` and the switch own toggling.
 
 ### Settings
 

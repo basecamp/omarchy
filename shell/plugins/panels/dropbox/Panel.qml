@@ -211,13 +211,14 @@ Panel {
       if (onUpRow()) goUpFolder()
       else {
         var folder = selectedFolder()
-        // Enter drills into a browsable folder; for a leaf there is nothing to
-        // open, so it flips syncing instead of doing nothing.
+        // Enter only ever navigates. A folder with no subfolders is not
+        // browsable, and rows give no hint of that, so falling back to a
+        // toggle here would silently unsync — and delete the local copy of —
+        // whatever the cursor happened to be on. `s` and the switch own
+        // toggling.
         if (folder && folder.browsable === true) {
           dropbox.enterFolder(folder)
           folderIndex = 0
-        } else {
-          toggleSelectedFolder()
         }
       }
     }

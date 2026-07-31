@@ -28,6 +28,10 @@ def read_info():
 
 
 def dropbox_account(info):
+  # info.json is whatever is on disk, so it can decode to a list or a string
+  # just as easily as an object. Check before treating it as a mapping.
+  if not isinstance(info, dict):
+    return {}
   for key in ("personal", "business"):
     account = info.get(key)
     if isinstance(account, dict):
@@ -103,9 +107,13 @@ def local_subdirectories(path):
 
 
 def within(root, path):
+  # Compare resolved paths: abspath alone is lexical, so a symlink parked
+  # inside Dropbox and pointing elsewhere would pass the check and then be
+  # walked. Listings never offer symlinks as children, but this is the stated
+  # boundary and it should hold for any argument.
   try:
-    return os.path.commonpath([root, path]) == root
-  except ValueError:
+    return os.path.commonpath([os.path.realpath(root), os.path.realpath(path)]) == os.path.realpath(root)
+  except (ValueError, OSError):
     return False
 
 

@@ -31,4 +31,25 @@ assertEqual(
   '1h ago · Docs',
   'dropbox file metadata includes relative time and folder'
 )
+
+const folders = dropbox.parseFolders(JSON.stringify({
+  ok: true,
+  accountPath: '/home/user/Dropbox',
+  path: '/home/user/Dropbox/Photos',
+  parentPath: '/home/user/Dropbox',
+  atRoot: false,
+  folders: [{ name: 'Trips', path: '/home/user/Dropbox/Photos/Trips', excluded: false, browsable: true, childCount: 2 }]
+}))
+assert(folders.ok === true && folders.atRoot === false, 'dropbox parses folder listing flags')
+assertEqual(folders.folders.length, 1, 'dropbox preserves folder rows')
+assertEqual(folders.parentPath, '/home/user/Dropbox', 'dropbox parses the parent path')
+
+assertEqual(dropbox.parseFolders('not json').ok, false, 'dropbox rejects malformed folder payloads')
+assertEqual(dropbox.parseFolders('').folders.length, 0, 'dropbox defaults an empty folder payload')
+assert(dropbox.parseFolders(JSON.stringify({ ok: true })).folders.length === 0, 'dropbox defaults a missing folder array')
+
+assertEqual(dropbox.folderMeta({ excluded: true }), 'Not synced', 'dropbox labels excluded folders')
+assertEqual(dropbox.folderMeta({ excluded: false, childCount: 0 }), 'Synced', 'dropbox labels a synced leaf folder')
+assertEqual(dropbox.folderMeta({ excluded: false, childCount: 1 }), 'Synced · 1 folder', 'dropbox labels a single child folder')
+assertEqual(dropbox.folderMeta({ excluded: false, childCount: 3 }), 'Synced · 3 folders', 'dropbox labels multiple child folders')
 JS
