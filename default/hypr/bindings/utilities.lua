@@ -9,6 +9,7 @@ o.bind_menu("SUPER + ESCAPE", "System menu", "system")
 o.bind_menu("XF86PowerOff", "Power menu", "system", { locked = true })
 o.bind("SUPER + K", "Show key bindings", "omarchy-menu-keybindings")
 o.bind("SUPER + ALT + K", "Show Tmux key bindings", "omarchy-menu-tmux-keybindings")
+o.bind("SUPER + ALT + T", "Show Ghostty key bindings", "omarchy-menu-ghostty-keybindings")
 o.bind("XF86Calculator", "Calculator", "gnome-calculator")
 
 o.bind("SUPER + SHIFT + SPACE", "Toggle top bar", "omarchy-toggle-waybar")

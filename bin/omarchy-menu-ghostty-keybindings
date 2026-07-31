@@ -1,0 +1,152 @@
+#!/bin/bash
+
+# omarchy:summary=Display Ghostty keybindings currently configured using walker for an interactive search menu.
+# omarchy:args=[--print|-p]
+
+print_only=false
+
+while (($#)); do
+  case "$1" in
+    --print|-p)
+      print_only=true
+      ;;
+  esac
+
+  shift
+done
+
+output_keybindings() {
+  local raw
+
+  if ! raw=$(ghostty +list-keybinds --plain 2>&1); then
+    echo "omarchy-menu-ghostty-keybindings: 'ghostty +list-keybinds' failed:" >&2
+    printf '%s\n' "$raw" >&2
+    return 1
+  fi
+
+  if [[ -z $raw ]]; then
+    echo "omarchy-menu-ghostty-keybindings: ghostty returned no keybindings" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$raw" | awk '
+function key_text(key) {
+  gsub(/_/, " ", key)
+  return toupper(key)
+}
+
+# Peels recognized modifier names off the front of a single trigger step
+# and formats the remaining key.
+function step_text(step,    has_super, has_shift, has_ctrl, has_alt, mods, more) {
+  has_super = has_shift = has_ctrl = has_alt = 0
+  more = 1
+  while (more) {
+    more = 0
+    if (step ~ /^super\+/)      { has_super = 1; sub(/^super\+/, "", step); more = 1 }
+    else if (step ~ /^shift\+/) { has_shift = 1; sub(/^shift\+/, "", step); more = 1 }
+    else if (step ~ /^ctrl\+/)  { has_ctrl = 1;  sub(/^ctrl\+/, "", step); more = 1 }
+    else if (step ~ /^alt\+/)   { has_alt = 1;   sub(/^alt\+/, "", step); more = 1 }
+  }
+
+  mods = ""
+  if (has_super) mods = mods "SUPER + "
+  if (has_shift) mods = mods "SHIFT + "
+  if (has_ctrl)  mods = mods "CTRL + "
+  if (has_alt)   mods = mods "ALT + "
+
+  return mods key_text(step)
+}
+
+function sequence_text(trigger,   n, steps, i, text) {
+  n = split(trigger, steps, ">")
+  text = step_text(steps[1])
+  for (i = 2; i <= n; i++) text = text " → " step_text(steps[i])
+  return text
+}
+
+function combo_text(trigger,    slash, table, text, has_global, has_all, has_unconsumed, has_performable, labels, more) {
+  text = ""
+
+  slash = index(trigger, "/")
+  if (slash > 0) {
+    table = substr(trigger, 1, slash - 1)
+    trigger = substr(trigger, slash + 1)
+    text = toupper(table) " / "
+  }
+
+  has_global = has_all = has_unconsumed = has_performable = 0
+  more = 1
+  while (more) {
+    more = 0
+    if (trigger ~ /^global:/)           { has_global = 1;      sub(/^global:/, "", trigger);      more = 1 }
+    else if (trigger ~ /^all:/)         { has_all = 1;         sub(/^all:/, "", trigger);         more = 1 }
+    else if (trigger ~ /^unconsumed:/)  { has_unconsumed = 1;  sub(/^unconsumed:/, "", trigger);  more = 1 }
+    else if (trigger ~ /^performable:/) { has_performable = 1; sub(/^performable:/, "", trigger); more = 1 }
+  }
+
+  labels = ""
+  if (has_global)      labels = labels "[GLOBAL] "
+  if (has_all)         labels = labels "[ALL] "
+  if (has_unconsumed)  labels = labels "[UNCONSUMED] "
+  if (has_performable) labels = labels "[PERFORMABLE] "
+
+  return text labels sequence_text(trigger)
+}
+
+function action_text(action,   idx, name, arg) {
+  idx = index(action, ":")
+  if (idx > 0) {
+    name = substr(action, 1, idx - 1)
+    arg = substr(action, idx + 1)
+  } else {
+    name = action
+    arg = ""
+  }
+
+  gsub(/_/, " ", name)
+  sub(/^goto /, "go to ", name)
+  name = toupper(substr(name, 1, 1)) substr(name, 2)
+
+  if (arg != "") return name " (" arg ")"
+  return name
+}
+
+/^keybind = / {
+  line = $0
+  sub(/^keybind = /, "", line)
+
+  if (!match(line, /=[a-z_][a-z0-9_]*(:|$)/)) next
+
+  trigger = substr(line, 1, RSTART - 1)
+  action = substr(line, RSTART + 1)
+
+  if (trigger == "copy" || trigger == "paste") next
+
+  printf "%-40s → %s\n", combo_text(trigger), action_text(action)
+}
+'
+}
+
+if [[ $print_only == "true" ]]; then
+  output_keybindings || exit 1
+  exit 0
+fi
+
+records=$(output_keybindings) || exit 1
+
+# No Wayland session or no Walker installed: fall back to plain stdout
+# instead of trying (and failing) to open the popup.
+if [[ -z $WAYLAND_DISPLAY ]] || omarchy-cmd-missing walker; then
+  printf '%s\n' "$records"
+  exit 0
+fi
+
+monitor_height=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true) | .height' 2>/dev/null)
+
+if [[ ! $monitor_height =~ ^[0-9]+$ ]] || ((monitor_height <= 0)); then
+  monitor_height=900
+fi
+
+menu_height=$((monitor_height * 40 / 100))
+
+printf '%s\n' "$records" | walker --dmenu -p 'Ghostty keybindings' --width 1000 --minwidth 950 --maxwidth 950 --height "$menu_height" >/dev/null
