@@ -108,6 +108,9 @@ Panel {
   property string qrError: ""
   property bool qrLoading: false
   property bool qrExpectedStop: false
+  property string qrPassword: ""
+  property bool qrPasswordVisible: false
+  property string qrPasswordError: ""
   readonly property bool qrVisible: qrLoading || qrSize > 0 || qrError !== ""
 
   // True while any wifi action is mid-flight. Rows
@@ -432,16 +435,29 @@ Panel {
       qrExpectedStop = true
       qrProc.running = false
     }
+    if (pwProc.running) pwProc.running = false
     qrSize = 0
     qrRows = []
     qrError = ""
     qrLoading = false
+    qrPassword = ""
+    qrPasswordVisible = false
+    qrPasswordError = ""
   }
 
   function updateQr(raw) {
     var matrix = Model.parseQrMatrix(raw)
     qrRows = matrix.rows
     qrSize = matrix.size
+  }
+
+  function toggleQrPassword() {
+    if (qrPasswordVisible) { qrPasswordVisible = false; return }
+    if (qrPassword !== "") { qrPasswordVisible = true; return }
+    if (pwProc.running || !info.iface) return
+    qrPasswordError = ""
+    pwProc.command = ["omarchy-network-password", info.iface]
+    pwProc.running = true
   }
 
   function refresh(scanWifi) {
@@ -860,6 +876,20 @@ Panel {
         root.qrRows = []
         if (root.qrError === "") root.qrError = "Could not generate the Wi-Fi QR code"
       }
+    }
+  }
+
+  // The Wi-Fi password only enters shell memory when the user clicks to
+  // reveal it, and hideWifiQr drops it again when the share card closes.
+  Process {
+    id: pwProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.qrPassword = String(text || "").trim()
+    }
+    onExited: function(exitCode) {
+      if (exitCode === 0 && root.qrPassword !== "") root.qrPasswordVisible = true
+      else root.qrPasswordError = "Could not read the Wi-Fi password"
     }
   }
 
@@ -1653,8 +1683,13 @@ Panel {
     loading: root.qrLoading
     error: root.qrError
     ssid: root.info.ssid || ""
+    secured: root.connectedWifiNetwork ? root.isProtected(root.connectedWifiNetwork.security) : false
+    password: root.qrPassword
+    passwordVisible: root.qrPasswordVisible
+    passwordError: root.qrPasswordError
     open: root.qrVisible
     onCloseRequested: root.hideWifiQr()
+    onPasswordToggleRequested: root.toggleQrPassword()
   }
 
   // One Wi-Fi band pill. `active` (fill) is the band actually in use and

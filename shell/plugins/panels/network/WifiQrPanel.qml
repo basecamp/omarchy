@@ -15,9 +15,14 @@ PanelWindow {
   required property bool loading
   required property string error
   required property string ssid
+  required property bool secured
+  required property string password
+  required property bool passwordVisible
+  required property string passwordError
   property bool open: false
 
   signal closeRequested()
+  signal passwordToggleRequested()
 
   visible: open
   screen: anchorItem.QsWindow.window ? anchorItem.QsWindow.window.screen : null
@@ -40,7 +45,7 @@ PanelWindow {
 
   BorderSurface {
     width: Style.space(320)
-    height: Style.space(390)
+    height: content.implicitHeight + Style.space(48)
     anchors.centerIn: parent
     radius: Style.cornerRadius
     color: Color.menu.background
@@ -56,6 +61,7 @@ PanelWindow {
       Keys.onEscapePressed: root.closeRequested()
 
       ColumnLayout {
+        id: content
         anchors.fill: parent
         spacing: Style.space(12)
 
@@ -129,18 +135,24 @@ PanelWindow {
           horizontalAlignment: Text.AlignHCenter
         }
 
-        Item { Layout.fillHeight: true }
+        Text {
+          visible: root.qrSize > 0 && !root.loading && root.error === "" && root.secured
+          text: root.passwordError !== "" ? root.passwordError
+            : root.passwordVisible ? root.password
+            : "Show password"
+          color: root.passwordError !== "" ? root.bar.urgent : root.bar.foreground
+          opacity: root.passwordVisible || root.passwordError !== "" ? 1 : 0.6
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.bodySmall
+          wrapMode: Text.WrapAnywhere
+          Layout.fillWidth: true
+          horizontalAlignment: Text.AlignHCenter
 
-        Button {
-          text: "Close"
-          foreground: root.bar.foreground
-          fontFamily: root.bar.fontFamily
-          fontSize: Style.font.bodySmall
-          horizontalPadding: Style.spacing.controlPaddingX
-          verticalPadding: Style.spacing.controlPaddingY
-          bordered: true
-          Layout.alignment: Qt.AlignHCenter
-          onClicked: root.closeRequested()
+          MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.passwordToggleRequested()
+          }
         }
       }
     }
