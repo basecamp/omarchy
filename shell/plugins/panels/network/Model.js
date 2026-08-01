@@ -88,7 +88,28 @@ function parseBandStatus(raw) {
   }
 }
 
+function decodeIwSsid(value) {
+  var raw = String(value || "")
 
+  try {
+    var encoded = ""
+
+    for (var i = 0; i < raw.length; i++) {
+      if (raw[i] === "\\" && raw[i + 1] === "x" && /^[0-9a-f]{2}$/i.test(raw.substring(i + 2, i + 4))) {
+        var hex = raw.substring(i + 2, i + 4)
+        var byte = parseInt(hex, 16)
+        encoded += byte < 32 || byte === 127 ? encodeURIComponent(raw.substring(i, i + 4)) : "%" + hex
+        i += 3
+      } else {
+        encoded += encodeURIComponent(raw[i])
+      }
+    }
+
+    return decodeURIComponent(encoded)
+  } catch (error) {
+    return raw
+  }
+}
 
 function parseKeyValue(raw) {
   var next = {}
@@ -98,7 +119,9 @@ function parseKeyValue(raw) {
     if (!line) continue
     var idx = line.indexOf("\t")
     if (idx === -1) continue
-    next[line.substring(0, idx)] = line.substring(idx + 1).trim()
+    var key = line.substring(0, idx)
+    var value = line.substring(idx + 1)
+    next[key] = key === "ssid" ? decodeIwSsid(value) : value.trim()
   }
   return next
 }
@@ -331,6 +354,7 @@ if (typeof module !== "undefined") {
     bandSectionTitle: bandSectionTitle,
     bandTooltip: bandTooltip,
     parseBandStatus: parseBandStatus,
+    decodeIwSsid: decodeIwSsid,
     parseKeyValue: parseKeyValue,
     throughputState: throughputState,
     pingLatencyState: pingLatencyState,
