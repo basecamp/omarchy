@@ -12,6 +12,9 @@ Panel {
   id: root
   moduleName: "omarchy.network"
   ipcTarget: "omarchy.network"
+  // manageIpc: false so this panel can own the single IpcHandler the target
+  // permits — needed for the toggleNetwork method below.
+  manageIpc: false
 
   // Centralized close so callers can't forget to drop the passphrase prompt.
   function close() {
@@ -212,6 +215,17 @@ Panel {
     if (!networkManagerAvailable) return
     Networking.wifiEnabled = !Networking.wifiEnabled
     Qt.callLater(function() { root.refresh(true) })
+  }
+
+  IpcHandler {
+    target: "omarchy.network"
+
+    function open() { root.open() }
+    function close() { root.close() }
+    function show() { root.open() }
+    function hide() { root.close() }
+    function toggle() { root.toggle() }
+    function toggleNetwork() { root.toggleNetwork() }
   }
 
   function activateHeader() {

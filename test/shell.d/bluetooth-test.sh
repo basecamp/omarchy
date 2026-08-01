@@ -9,7 +9,12 @@ grep -q '^ConditionPathIsDirectory=/sys/class/bluetooth$' "$ROOT/default/systemd
 pass "bt-agent is skipped on machines without Bluetooth hardware"
 
 run_node_test <<'JS'
+const fs = require('fs')
 const bluetooth = requireFromRoot('shell/plugins/panels/bluetooth/Model.js')
+const panelSource = fs.readFileSync(root + '/shell/plugins/panels/bluetooth/Panel.qml', 'utf8')
+
+assert(/IpcHandler[\s\S]*?function toggleBluetooth\(\) \{ root\.toggleBluetooth\(\) \}/.test(panelSource), 'bluetooth exposes the radio toggle over IPC')
+assert(/manageIpc: false/.test(panelSource), 'bluetooth owns its IPC handler so it can extend the target methods')
 
 assert(bluetooth.isUuidLike('0000110b-0000-1000-8000-00805f9b34fb'), 'bluetooth detects UUID-like names')
 assert(bluetooth.isAddressLike('AA:BB:CC:DD:EE:FF'), 'bluetooth detects address-like names')

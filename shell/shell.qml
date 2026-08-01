@@ -896,6 +896,14 @@ ShellRoot {
       return "ok"
     }
 
+    function toggleBarTransparency(): string {
+      if (shell.bar && typeof shell.bar.toggleTransparency === "function") {
+        shell.bar.toggleTransparency()
+        return "ok"
+      }
+      return "no-bar"
+    }
+
     function setPluginEnabled(id: string, enabled: string): string {
       return shell.pluginRegistry.setEnabled(id, enabled === "true") ? "ok" : "unknown"
     }

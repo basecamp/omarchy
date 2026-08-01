@@ -373,6 +373,7 @@ Panel {
     function refresh(): string { tailscale.refresh(); return "ok" }
     function up(): string { tailscale.loginOrUp(); return "ok" }
     function down(): string { tailscale.down(); return "ok" }
+    function toggleTailscale(): string { tailscale.toggleTailscale(); return "ok" }
     function status(): string { return tailscale.statusText }
   }
 

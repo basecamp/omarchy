@@ -100,6 +100,7 @@ individual plugins (`bar`, `image-selector`, …).
 | `call <id> <method> <arg>`            | call an already-loaded plugin   |
 | `rescanPlugins`                       | re-walk plugin dirs and hot-reload plugin code |
 | `reloadConfig`                        | reload shell.json               |
+| `toggleBarTransparency`               | flip the bar background between solid and transparent |
 | `setPluginEnabled <id> <"true"\|…>`   | flip enabled bit (`ok` / `unknown`) |
 | `enablePlugin <id> <placementJson>`   | enable and place in one mutation |
 | `moveBarWidget <id> <placementJson>`  | move a configured widget        |

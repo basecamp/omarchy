@@ -12,6 +12,9 @@ Panel {
   id: root
   moduleName: "omarchy.bluetooth"
   ipcTarget: "omarchy.bluetooth"
+  // manageIpc: false so this panel can own the single IpcHandler the target
+  // permits — needed for the toggleBluetooth method below.
+  manageIpc: false
 
   // Address -> "connecting" | "disconnecting" | "forgetting".
   // The actual Bluetooth sequencing lives in bin/omarchy-bluetooth-device;
@@ -513,6 +516,17 @@ Panel {
   function toggleBluetooth() {
     if (!adapter) return
     adapter.enabled = !adapter.enabled
+  }
+
+  IpcHandler {
+    target: "omarchy.bluetooth"
+
+    function open() { root.open() }
+    function close() { root.close() }
+    function show() { root.open() }
+    function hide() { root.close() }
+    function toggle() { root.toggle() }
+    function toggleBluetooth() { root.toggleBluetooth() }
   }
 
   BarIconButton {
