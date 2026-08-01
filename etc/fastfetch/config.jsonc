@@ -10,6 +10,9 @@
       "left": 2
     }
   },
+  "display": {
+    "disableLinewrap": true
+  },
   "modules": [
     "break",
     {
