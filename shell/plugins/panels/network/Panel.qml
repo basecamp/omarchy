@@ -283,10 +283,8 @@ Panel {
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
 
-  // The panel below is its own layer-shell with Exclusive keyboard focus,
-  // so Hyprland grants focus when the surface is mapped (opened flips
-  // to true). That's what makes the SUPER+CTRL+W keybind actually work
-  // — OnDemand only grants focus on click/hover.
+  // KeyboardPanel primes layer-shell focus whenever the panel opens. That's
+  // what makes the SUPER+CTRL+W keybind land here with navigation ready.
   onOpenedChanged: {
     if (opened) {
       refresh(true)

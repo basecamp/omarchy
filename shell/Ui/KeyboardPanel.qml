@@ -53,10 +53,10 @@ PanelWindow {
   property bool focusPrimed: false
 
   // Item that should take keyboard focus once the panel maps. Typically a
-  // PanelKeyCatcher inside the panel content. Layer-shell grants focus to
-  // the surface at map time, but Qt still needs an active-focus target
-  // inside the surface for Keys.onPressed handlers to fire. Schedule the
-  // focus through Qt.callLater so it runs after the surface is fully
+  // PanelKeyCatcher inside the panel content. Layer-shell grants focus to the
+  // surface during the Exclusive prime, but Qt still needs an active-focus
+  // target inside the surface for Keys.onPressed handlers to fire. Schedule
+  // the focus through Qt.callLater so it runs after the surface is fully
   // mapped and child items have completed layout.
   property Item focusTarget: null
 
@@ -69,6 +69,10 @@ PanelWindow {
   function close() {
     if (owner && "close" in owner) owner.close()
     else root.open = false
+  }
+
+  function beginFocusPrime() {
+    if (open && backingWindowVisible) focusPrimeTimer.restart()
   }
 
   // --- screen + lifetime ---------------------------------------------------
@@ -94,6 +98,8 @@ PanelWindow {
   WlrLayershell.keyboardFocus: open
     ? (focusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
     : WlrKeyboardFocus.None
+
+  onBackingWindowVisibleChanged: beginFocusPrime()
 
   // Full-screen layer-shell. The visible card is positioned inside via
   // `cardOrigin`. The `mask` below makes the bar area click-through (so
@@ -220,7 +226,7 @@ PanelWindow {
   onOpenChanged: {
     if (open) {
       focusPrimed = false
-      focusPrimeTimer.restart()
+      beginFocusPrime()
       if (focusTarget) Qt.callLater(function() {
         if (root.open && root.focusTarget) root.focusTarget.forceActiveFocus()
       })
@@ -244,9 +250,10 @@ PanelWindow {
 
   Timer {
     id: focusPrimeTimer
-    // Leave enough time for multiple Qt/Wayland commit cycles while keeping
-    // the compositor-wide Exclusive phase imperceptibly short. This interval
-    // is covered by the immediate hide/re-summon acceptance case.
+    // Leave enough time for multiple Qt/Wayland commit cycles after the
+    // backing window becomes visible while keeping the compositor-wide
+    // Exclusive phase imperceptibly short. This interval is covered by the
+    // immediate hide/re-summon acceptance case.
     interval: 75
     onTriggered: if (root.open) root.focusPrimed = true
   }
@@ -307,6 +314,7 @@ PanelWindow {
     }
 
     function forwardBarClick(px, py, button) {
+      if (button !== Qt.LeftButton && button !== Qt.RightButton && button !== Qt.MiddleButton) return false
       var target = pressTargetAt(px, py)
       if (!target) return false
       target.triggerPress(button)
@@ -387,7 +395,10 @@ PanelWindow {
 
     // Swallow clicks on the card so they don't bubble to the dismissal
     // MouseArea behind us.
-    MouseArea { anchors.fill: parent }
+    MouseArea {
+      anchors.fill: parent
+      acceptedButtons: Qt.AllButtons
+    }
 
     Item {
       id: contentHolder
