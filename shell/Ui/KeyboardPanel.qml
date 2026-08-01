@@ -6,12 +6,17 @@ import qs.Commons
 // Layer-shell popup attached to a bar widget icon, designed for
 // click-driven AND keyboard-driven panels (e.g. SUPER+CTRL+W summon).
 //
-// Built on PanelWindow with WlrKeyboardFocus.Exclusive rather than
-// PopupWindow (xdg-popup). Layer-shell surfaces declared Exclusive get
-// keyboard focus from Hyprland *at map time*, which is the protocol-level
-// equivalent of focus-on-launch for xdg-toplevels. xdg-popups don't get
-// that — they only receive keys after a click/hover routes focus through
-// their parent surface — so keyboard-summoned popups fell flat without it.
+// Built on PanelWindow with a brief WlrKeyboardFocus.Exclusive prime followed
+// by OnDemand rather than PopupWindow (xdg-popup). The prime acquires focus
+// both when the surface maps and when it reopens while still mapped for its
+// fade-out. xdg-popups don't get that — they only receive keys after a
+// click/hover routes focus through their parent surface — so keyboard-summoned
+// popups fell flat without it.
+//
+// Exclusive would also grant map-time focus, but it makes Hyprland route
+// *every* pointer event to the exclusive surface no matter which output
+// the cursor is over, which leaves clicks on any other monitor unable to
+// reach the dismissal surfaces below.
 //
 // API is a subset of Common.PopupCard: anchorItem, owner, bar, open,
 // padding, margin, contentWidth/Height, centerOnBar, default contentItem.
@@ -45,12 +50,13 @@ PanelWindow {
   property int gap: Style.gapsOut  // distance between bar edge and panel
   property bool popoutSwitching: false
   property bool popoutSwitchClosing: false
+  property bool focusPrimed: false
 
   // Item that should take keyboard focus once the panel maps. Typically a
-  // PanelKeyCatcher inside the panel content. Layer-shell grants focus to
-  // the surface at map time, but Qt still needs an active-focus target
-  // inside the surface for Keys.onPressed handlers to fire. Schedule the
-  // focus through Qt.callLater so it runs after the surface is fully
+  // PanelKeyCatcher inside the panel content. Layer-shell grants focus to the
+  // surface during the Exclusive prime, but Qt still needs an active-focus
+  // target inside the surface for Keys.onPressed handlers to fire. Schedule
+  // the focus through Qt.callLater so it runs after the surface is fully
   // mapped and child items have completed layout.
   property Item focusTarget: null
 
@@ -63,6 +69,10 @@ PanelWindow {
   function close() {
     if (owner && "close" in owner) owner.close()
     else root.open = false
+  }
+
+  function beginFocusPrime() {
+    if (open && backingWindowVisible) focusPrimeTimer.restart()
   }
 
   // --- screen + lifetime ---------------------------------------------------
@@ -78,7 +88,18 @@ PanelWindow {
   // mapped during the fade-out so the opacity animation has something to
   // animate, but keyboard/click ownership must release the moment the
   // logical close fires — otherwise the user is locked out for 140ms.
-  WlrLayershell.keyboardFocus: open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+  //
+  // Prime with Exclusive on every open, then settle on OnDemand. Hyprland
+  // focuses OnDemand when a surface first maps, but not when an already-mapped
+  // fade-out surface changes from None back to OnDemand. Exclusive also takes
+  // focus when the previously focused application has constrained the pointer.
+  // The brief prime covers both cases; OnDemand then releases compositor-wide
+  // pointer hit-testing so clicks can reach the dismissal windows below.
+  WlrLayershell.keyboardFocus: open
+    ? (focusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
+    : WlrKeyboardFocus.None
+
+  onBackingWindowVisibleChanged: beginFocusPrime()
 
   // Full-screen layer-shell. The visible card is positioned inside via
   // `cardOrigin`. The `mask` below makes the bar area click-through (so
@@ -203,9 +224,16 @@ PanelWindow {
   // Coordinate on `open`, not `visible`. `visible` lags into the fade-out
   // animation, which made ownership transfer to a sibling popup race.
   onOpenChanged: {
-    if (open && focusTarget) Qt.callLater(function() {
-      if (root.open && root.focusTarget) root.focusTarget.forceActiveFocus()
-    })
+    if (open) {
+      focusPrimed = false
+      beginFocusPrime()
+      if (focusTarget) Qt.callLater(function() {
+        if (root.open && root.focusTarget) root.focusTarget.forceActiveFocus()
+      })
+    } else {
+      focusPrimeTimer.stop()
+      focusPrimed = false
+    }
     if (!bar) return
     if (open) {
       popoutSwitchClosing = false
@@ -218,6 +246,16 @@ PanelWindow {
       if (bar.activePopout === coordinatorKey) bar.releasePopout(coordinatorKey)
       if (popoutSwitchClosing) closeSwitchTimer.restart()
     }
+  }
+
+  Timer {
+    id: focusPrimeTimer
+    // Leave enough time for multiple Qt/Wayland commit cycles after the
+    // backing window becomes visible while keeping the compositor-wide
+    // Exclusive phase imperceptibly short. This interval is covered by the
+    // immediate hide/re-summon acceptance case.
+    interval: 75
+    onTriggered: if (root.open) root.focusPrimed = true
   }
 
   Timer {
@@ -243,6 +281,7 @@ PanelWindow {
     id: dismissArea
     anchors.fill: parent
     enabled: root.open
+    acceptedButtons: Qt.AllButtons
     hoverEnabled: true
     property bool hoveringBar: false
     cursorShape: hoveringBar ? Qt.PointingHandCursor : Qt.ArrowCursor
@@ -275,6 +314,7 @@ PanelWindow {
     }
 
     function forwardBarClick(px, py, button) {
+      if (button !== Qt.LeftButton && button !== Qt.RightButton && button !== Qt.MiddleButton) return false
       var target = pressTargetAt(px, py)
       if (!target) return false
       target.triggerPress(button)
@@ -284,8 +324,53 @@ PanelWindow {
     onPositionChanged: function(mouse) { hoveringBar = inBarRegion(mouse.x, mouse.y) }
     onExited: hoveringBar = false
     onClicked: function(mouse) {
-      if (inBarRegion(mouse.x, mouse.y) && forwardBarClick(mouse.x, mouse.y, mouse.button)) return
+      // While Exclusive is priming, Hyprland may route a click from another
+      // output here with translated coordinates. Never interpret that as a
+      // click on this output's bar.
+      if (root.focusPrimed && inBarRegion(mouse.x, mouse.y) && forwardBarClick(mouse.x, mouse.y, mouse.button)) return
       root.close()
+    }
+  }
+
+  // The panel surface only spans the anchor's screen, and the compositor
+  // hit-tests pointer input per output, so `dismissArea` above can never see
+  // a click on another monitor. Give every other output a transparent twin
+  // whose only job is to catch that click. They exist only while the panel is
+  // logically open (not during the fade-out, matching `dismissArea.enabled`).
+  //
+  // Keyboard focus is None: these must catch the pointer without taking focus
+  // from the panel when the cursor merely crosses onto their output.
+  Variants {
+    model: root.open ? Quickshell.screens : []
+
+    delegate: Component {
+      PanelWindow {
+        required property var modelData
+
+        screen: modelData
+        // Compare by output name: the anchor screen must be known before any
+        // twin maps, or a twin would cover the panel's own output.
+        visible: root.open && !!root.screen && modelData.name !== root.screen.name
+        color: "transparent"
+        exclusionMode: ExclusionMode.Ignore
+
+        WlrLayershell.namespace: "omarchy-keyboard-panel-dismiss"
+        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+        anchors {
+          top: true
+          bottom: true
+          left: true
+          right: true
+        }
+
+        MouseArea {
+          anchors.fill: parent
+          acceptedButtons: Qt.AllButtons
+          onPressed: root.close()
+        }
+      }
     }
   }
 
@@ -310,7 +395,10 @@ PanelWindow {
 
     // Swallow clicks on the card so they don't bubble to the dismissal
     // MouseArea behind us.
-    MouseArea { anchors.fill: parent }
+    MouseArea {
+      anchors.fill: parent
+      acceptedButtons: Qt.AllButtons
+    }
 
     Item {
       id: contentHolder

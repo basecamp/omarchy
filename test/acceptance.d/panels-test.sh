@@ -98,6 +98,23 @@ screenshot "success-panel-navigation-02-next"
 hide_panels
 wait_until "keyboard-navigated panel closes" 15 layer_absent "omarchy-keyboard-panel"
 
+# Reopening during the fade keeps the layer surface mapped. Verify the focus
+# prime reacquires compositor keyboard focus instead of relying on map-time
+# OnDemand behavior, which would leave Escape in the previously focused app.
+omarchy-shell shell summon omarchy.bluetooth >/dev/null
+wait_until "focus-prime panel opens" 15 layer_present "omarchy-keyboard-panel"
+if (( $(hyprctl -j monitors | jq length) == 1 )); then
+  layer_absent "omarchy-keyboard-panel-dismiss" || fail "single-monitor panel has no dismissal twin"
+  pass "single-monitor panel has no dismissal twin"
+fi
+omarchy-shell shell hide omarchy.bluetooth >/dev/null
+omarchy-shell shell summon omarchy.bluetooth >/dev/null
+wait_until "focus-prime panel reopens" 15 layer_present "omarchy-keyboard-panel"
+sleep 1
+screenshot "success-panel-focus-prime-reopened"
+wtype -k Escape
+wait_until "Escape closes a panel reopened during fade" 15 layer_absent "omarchy-keyboard-panel"
+
 trap - EXIT
 restore_weather
 exit $status

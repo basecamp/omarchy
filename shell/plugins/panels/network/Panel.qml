@@ -283,10 +283,8 @@ Panel {
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
 
-  // The panel below is its own layer-shell with Exclusive keyboard focus,
-  // so Hyprland grants focus when the surface is mapped (opened flips
-  // to true). That's what makes the SUPER+CTRL+W keybind actually work
-  // — OnDemand only grants focus on click/hover.
+  // KeyboardPanel primes layer-shell focus whenever the panel opens. That's
+  // what makes the SUPER+CTRL+W keybind land here with navigation ready.
   onOpenedChanged: {
     if (opened) {
       refresh(true)
@@ -1054,7 +1052,7 @@ Panel {
 
   // Keyboard-driven popup anchored to the bar widget icon. The shared
   // KeyboardPanel handles the layer-shell PanelWindow scaffolding
-  // (Exclusive focus on map, screen binding, anchored-to-icon positioning,
+  // (focus priming on open, screen binding, anchored-to-icon positioning,
   // outside-click via an overlay MouseArea + Region mask that lets the bar
   // remain clickable, fade animation, popout coordination). What stays
   // here is the wifi-specific UI inside.
