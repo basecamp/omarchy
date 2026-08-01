@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# omarchy:summary=List installed cursor themes
+# omarchy:examples=omarchy cursor list | omarchy cursor set macOS-original
+
+# Hyprcursor themes carry a manifest.hl; legacy X11 cursor themes carry a
+# cursors/ directory. Scan both system-wide and per-user icon locations.
+find /usr/share/icons /usr/local/share/icons "$HOME/.local/share/icons" "$HOME/.icons" \
+  -maxdepth 1 -mindepth 1 -type d 2>/dev/null | while read -r dir; do
+    if [[ -f "$dir/manifest.hl" || -d "$dir/cursors" ]]; then
+      basename "$dir"
+    fi
+  done | sort -u

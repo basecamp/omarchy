@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# omarchy:summary=Set the cursor theme
+# omarchy:args=<theme-name>
+# omarchy:examples=omarchy cursor list | omarchy cursor set macOS-original
+
+usage() {
+  echo "Usage: omarchy-cursor-set <theme-name>"
+}
+
+theme="${1:-}"
+
+case "$theme" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  "")
+    usage >&2
+    exit 1
+    ;;
+esac
+
+if ! omarchy-cursor-list 2>/dev/null | grep -qx -- "$theme"; then
+  echo "Cursor theme '$theme' not found."
+  exit 1
+fi
+
+hypr_config="$HOME/.config/hypr/hyprland.lua"
+
+# Keep the configured cursor size; fall back to the Omarchy default of 24.
+cursor_size=$(sed -n 's/.*HYPRCURSOR_SIZE", *"\([0-9]*\)".*/\1/p' "$hypr_config" | head -n1)
+[[ -n $cursor_size ]] || cursor_size=24
+
+# Apply instantly across the running session (Hyprland + XWayland).
+hyprctl setcursor "$theme" "$cursor_size"
+
+# Persist for future logins. The user config may already carry hl.env lines
+# (or none at all), so replace in place and otherwise append a block.
+update_env() {
+  local var="$1"
+  if grep -q "hl.env(\"$var\"" "$hypr_config"; then
+    sed -i "s/hl.env(\"$var\", \"[^\"]*\")/hl.env(\"$var\", \"$theme\")/" "$hypr_config"
+  else
+    echo "hl.env(\"$var\", \"$theme\")" >>"$hypr_config"
+  fi
+}
+
+update_env XCURSOR_THEME
+update_env HYPRCURSOR_THEME
+
+# Keep GTK apps in sync. gsettings needs a user DBus session; settings.ini is
+# the fallback that applies to every GTK 3/4 app.
+if [[ -n ${DBUS_SESSION_BUS_ADDRESS:-} ]]; then
+  gsettings set org.gnome.desktop.interface cursor-theme "$theme" || true
+  gsettings set org.gnome.desktop.interface cursor-size "$cursor_size" || true
+fi
+
+update_gtk_settings() {
+  local ini="$1"
+  mkdir -p "$(dirname "$ini")"
+
+  if [[ ! -f $ini ]]; then
+    printf '[Settings]\ngtk-cursor-theme-name=%s\ngtk-cursor-theme-size=%s\n' "$theme" "$cursor_size" >"$ini"
+    return
+  fi
+
+  sed -i '/^gtk-cursor-theme-name=/d; /^gtk-cursor-theme-size=/d' "$ini"
+  if ! grep -q '^\[Settings\]' "$ini"; then
+    printf '\n[Settings]\n' >>"$ini"
+  fi
+  sed -i "/^\[Settings\]/a\\
+gtk-cursor-theme-name=$theme\\
+gtk-cursor-theme-size=$cursor_size" "$ini"
+}
+
+update_gtk_settings "$HOME/.config/gtk-3.0/settings.ini"
+update_gtk_settings "$HOME/.config/gtk-4.0/settings.ini"
+
+omarchy-notification-send -g 󰧨 "Cursor theme set" "$theme" -t 5000
+omarchy-hook cursor-set "$theme"

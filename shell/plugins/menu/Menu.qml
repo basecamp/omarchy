@@ -268,6 +268,12 @@ Item {
       volatile: true,
       actionFor: function(value) { return "omarchy-font-set " + Util.shellQuote(value) }
     },
+    "cursors": {
+      script: "current=$(omarchy-cursor-current 2>/dev/null); omarchy-cursor-list 2>/dev/null | while read -r c; do [[ -z $c ]] && continue; printf '%s\\t%s\\t%s\\n' \"$c\" \"$c\" \"$current\"; done",
+      icon: "󰧨",
+      volatile: true,
+      actionFor: function(value) { return "omarchy-cursor-set " + Util.shellQuote(value) }
+    },
     "power-profiles": {
       script: "current=$(powerprofilesctl get 2>/dev/null); omarchy-powerprofiles-list 2>/dev/null | while read -r p; do [[ -z $p ]] && continue; printf '%s\\t%s\\t%s\\n' \"$p\" \"$p\" \"$current\"; done",
       icon: "\udb81\udc0b",
