@@ -1,0 +1,21 @@
+[Unit]
+Description=Bridge D-Bus screensaver inhibit requests (org.freedesktop.ScreenSaver) to the Omarchy idle service
+Documentation=https://github.com/basecamp/omarchy/issues/6475
+# Needs a live session bus, and needs WAYLAND_DISPLAY (via uwsm) to reach
+# omarchy-shell, so follow the same gating as omarchy-fcitx5.service.
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omarchy-system-idle-inhibit-bridge
+# on-failure, not always: a clean exit means org.freedesktop.ScreenSaver is
+# already owned by something else (a user-installed tool, or the losing side
+# of a restart race), and that other owner is presumably working fine.
+# Restarting into the same losing race forever would just be noise.
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

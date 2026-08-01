@@ -22,10 +22,16 @@ Item {
   readonly property int firstIdleTimeoutSeconds: Math.min(screensaverTimeoutSeconds, lockTimeoutSeconds)
   readonly property int screensaverDelaySeconds: Math.max(0, screensaverTimeoutSeconds - firstIdleTimeoutSeconds)
   readonly property int lockDelaySeconds: Math.max(0, lockTimeoutSeconds - firstIdleTimeoutSeconds)
-  readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
+  // dbusInhibitors mirrors the count last reported by the D-Bus idle inhibit
+  // bridge (org.freedesktop.ScreenSaver). Quickshell's IdleMonitor only honors
+  // the Wayland idle-inhibit protocol, so without that bridge owning the bus
+  // name, Inhibit() calls from browsers and video players go nowhere and the
+  // screensaver/lock fire mid-playback (#6475).
+  readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake && root.dbusInhibitors === 0
   readonly property string screensaverClass: "org.omarchy.screensaver"
 
   property bool stayAwake: false
+  property int dbusInhibitors: 0
   property bool stayAwakeStateLoaded: false
   property bool hasPendingStayAwakePersist: false
   property bool pendingStayAwakePersist: false
@@ -183,6 +189,7 @@ Item {
       stayAwake: root.stayAwake,
       stayAwakeStateLoaded: root.stayAwakeStateLoaded,
       stayAwakeStatePath: root.stayAwakeStatePath,
+      dbusInhibitors: root.dbusInhibitors,
       idle: idleMonitor.isIdle,
       inIdleCycle: root.idledThisCycle,
       screensaverStarted: root.screensaverStartedThisCycle,
@@ -245,6 +252,24 @@ Item {
 
   function setIdleEnabled(value) {
     return applyStayAwake(!value, true, "ipc")
+  }
+
+  function applyDbusInhibitors(value) {
+    var next = IdleModel.inhibitorCountFromValue(value)
+    if (next === root.dbusInhibitors) return root.dbusInhibitors
+
+    var wasInhibited = root.dbusInhibitors > 0
+    root.dbusInhibitors = next
+    var isInhibited = next > 0
+
+    logEvent("dbus-inhibit", "count=" + next)
+
+    if (wasInhibited !== isInhibited) {
+      if (isInhibited) cancelIdleCycle("dbus-inhibit")
+      else Qt.callLater(root.handleIdleChanged)
+    }
+
+    return root.dbusInhibitors
   }
 
   IdleMonitor {
@@ -355,6 +380,16 @@ Item {
 
     function toggle(): string {
       return root.setIdleEnabled(!root.idleEnabled)
+    }
+
+    // Called by omarchy-system-idle-inhibit-bridge, which owns
+    // org.freedesktop.ScreenSaver on the session bus. count is always the
+    // absolute number of inhibits the bridge currently holds, not a delta, so
+    // a bridge restart (or a call missed while the shell was reloading)
+    // self-heals on the next Inhibit/UnInhibit instead of leaving idling
+    // stuck disabled or wrongly re-enabled.
+    function setDbusInhibitors(count: string): string {
+      return String(root.applyDbusInhibitors(count))
     }
   }
 }

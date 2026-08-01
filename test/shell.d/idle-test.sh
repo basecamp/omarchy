@@ -33,6 +33,12 @@ assertDeepEqual(
   { windows: { a: true }, count: 1 },
   'idle leaves screensaver windows unchanged without an address'
 )
+
+assertEqual(idle.inhibitorCountFromValue('2'), 2, 'idle parses the D-Bus inhibitor count')
+assertEqual(idle.inhibitorCountFromValue('1.9'), 1, 'idle floors a fractional inhibitor count')
+assertEqual(idle.inhibitorCountFromValue('-1'), 0, 'idle floors a negative inhibitor count to zero')
+assertEqual(idle.inhibitorCountFromValue('nope'), 0, 'idle floors an unparsable inhibitor count to zero')
+assertEqual(idle.inhibitorCountFromValue(undefined), 0, 'idle floors a missing inhibitor count to zero')
 JS
 
 test_tmp=$(mktemp -d)
@@ -52,3 +58,28 @@ if rg -q 'omarchy-shell' "$ROOT/bin/omarchy-toggle-idle"; then
 fi
 
 pass "Stay Awake toggle persists state without reentrant shell IPC"
+
+idle_service="$ROOT/shell/plugins/services/idle/Service.qml"
+
+grep -Fq 'root.dbusInhibitors === 0' "$idle_service" ||
+  fail "idleEnabled no longer requires D-Bus inhibitors to be clear (#6475 regression)"
+grep -Fq 'function setDbusInhibitors(count: string): string' "$idle_service" ||
+  fail "idle service dropped the setDbusInhibitors IPC method the bridge depends on"
+grep -Fq 'function applyDbusInhibitors(value)' "$idle_service" ||
+  fail "idle service dropped applyDbusInhibitors"
+pass "idle service tracks D-Bus inhibitors and exposes them over IPC"
+
+bridge_bin="$ROOT/bin/omarchy-system-idle-inhibit-bridge"
+[[ -x $bridge_bin ]] || fail "omarchy-system-idle-inhibit-bridge must be executable"
+
+require_command python3
+python3 -m py_compile "$bridge_bin" ||
+  fail "omarchy-system-idle-inhibit-bridge has a syntax error"
+
+grep -Fq 'BUS_NAME = "org.freedesktop.ScreenSaver"' "$bridge_bin" ||
+  fail "idle inhibit bridge must own org.freedesktop.ScreenSaver"
+grep -Fq 'setDbusInhibitors' "$bridge_bin" ||
+  fail "idle inhibit bridge no longer reports state to the idle service"
+grep -Fq 'sync_idle_service(0)' "$bridge_bin" ||
+  fail "idle inhibit bridge must reset the idle service to zero on (re)start, or a crash while inhibited leaves idling stuck disabled"
+pass "D-Bus idle inhibit bridge owns org.freedesktop.ScreenSaver and reports to the idle service"

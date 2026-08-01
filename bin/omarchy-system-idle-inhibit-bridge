@@ -1,0 +1,199 @@
+#!/usr/bin/python3
+
+# omarchy:summary=Bridge D-Bus screensaver inhibit requests to the idle service
+# omarchy:group=system
+# omarchy:hidden=true
+
+# Quickshell's IdleMonitor (respectInhibitors: true) only understands the
+# Wayland zwp_idle_inhibit_manager_v1 protocol. It replaced hypridle, which
+# also registered org.freedesktop.ScreenSaver on the session bus and honored
+# the older D-Bus Inhibit()/UnInhibit() API that browsers and video players
+# still call instead. With nothing owning that name in Quattro, those calls go
+# nowhere and the screensaver/lock fire mid-playback (#6475).
+#
+# This process owns org.freedesktop.ScreenSaver and forwards inhibit state to
+# the idle service's own IPC target rather than reimplementing idle handling
+# here. Every count sent to it is the *absolute* number of inhibits currently
+# held, never a delta, so a crash-and-restart of this bridge (or a call missed
+# while the shell was reloading) self-heals on the next Inhibit/UnInhibit
+# instead of leaving idling stuck disabled.
+#
+# Python rather than bash, alone among the commands here, for the same reason
+# as omarchy-file-select: serving method calls means holding a single live
+# D-Bus connection for the life of the process, and no shell-callable client
+# (busctl, gdbus, dbus-send) can do that.
+
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+
+BUS_NAME = "org.freedesktop.ScreenSaver"
+INTERFACE = "org.freedesktop.ScreenSaver"
+
+# Some clients (older KDE tooling in particular) still call the pre-object-path
+# convention object path. Registering both means neither is left unserved.
+OBJECT_PATHS = ("/org/freedesktop/ScreenSaver", "/ScreenSaver")
+
+INTROSPECTION_XML = """
+<node>
+  <interface name="org.freedesktop.ScreenSaver">
+    <method name="Inhibit">
+      <arg type="s" name="application_name" direction="in"/>
+      <arg type="s" name="reason_for_inhibit" direction="in"/>
+      <arg type="u" name="cookie" direction="out"/>
+    </method>
+    <method name="UnInhibit">
+      <arg type="u" name="cookie" direction="in"/>
+    </method>
+    <method name="GetActive">
+      <arg type="b" name="active" direction="out"/>
+    </method>
+  </interface>
+</node>
+"""
+
+# Exit 0 when another owner already holds the bus name (a user-installed tool,
+# or the losing side of a restart race): that owner is presumably working, and
+# Restart=on-failure should not turn this into a restart loop. Any other exit
+# reaching main() is a real fault and should restart.
+EXIT_NAME_TAKEN = 0
+EXIT_ERROR = 1
+
+
+def sync_idle_service(count):
+    # Best-effort. omarchy-shell already degrades to a no-op when the shell
+    # isn't running or reloading, which is exactly the behavior wanted here:
+    # a missed update self-heals on the next call since we always send the
+    # absolute count.
+    try:
+        subprocess.run(
+            ["omarchy-shell", "-q", "idle", "setDbusInhibitors", str(count)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+class Bridge:
+    def __init__(self):
+        self.next_cookie = 1
+        self.cookies = {}  # cookie (uint32) -> holder's unique bus name
+        self.watches = {}  # unique bus name -> NameOwnerChanged subscription id
+        self.connection = None
+
+    def handle_method_call(self, connection, sender, path, interface, method, params, invocation):
+        if method == "Inhibit":
+            self._inhibit(sender, invocation)
+        elif method == "UnInhibit":
+            (cookie,) = params.unpack()
+            self._uninhibit(cookie, invocation)
+        elif method == "GetActive":
+            # Nothing here tracks whether the screensaver is actually showing;
+            # only the inhibit half of this interface is in scope for #6475.
+            invocation.return_value(GLib.Variant("(b)", (False,)))
+        else:
+            invocation.return_dbus_error(
+                "org.freedesktop.DBus.Error.UnknownMethod", "No such method"
+            )
+
+    def _inhibit(self, sender, invocation):
+        cookie = self.next_cookie
+        self.next_cookie += 1
+        self.cookies[cookie] = sender
+        self._watch_sender(sender)
+        sync_idle_service(len(self.cookies))
+        invocation.return_value(GLib.Variant("(u)", (cookie,)))
+
+    def _uninhibit(self, cookie, invocation):
+        self.cookies.pop(cookie, None)
+        sync_idle_service(len(self.cookies))
+        invocation.return_value(None)
+
+    def _watch_sender(self, sender):
+        if sender in self.watches:
+            return
+        self.watches[sender] = self.connection.signal_subscribe(
+            "org.freedesktop.DBus",
+            "org.freedesktop.DBus",
+            "NameOwnerChanged",
+            "/org/freedesktop/DBus",
+            sender,
+            Gio.DBusSignalFlags.NONE,
+            self._on_name_owner_changed,
+        )
+
+    def _on_name_owner_changed(self, connection, sender, path, interface, signal, params):
+        name, old_owner, new_owner = params.unpack()
+        if new_owner:
+            return
+
+        # The connection holding one or more cookies dropped off the bus
+        # (crash, kill, normal exit) without calling UnInhibit. The spec's
+        # "until UnInhibit is called or the calling process exits" is what
+        # keeps a crashed video player from leaving idling suppressed for the
+        # rest of the session.
+        stale = [cookie for cookie, holder in self.cookies.items() if holder == name]
+        for cookie in stale:
+            self.cookies.pop(cookie, None)
+
+        subscription = self.watches.pop(name, None)
+        if subscription is not None:
+            connection.signal_unsubscribe(subscription)
+
+        if stale:
+            sync_idle_service(len(self.cookies))
+
+
+bridge = Bridge()
+
+
+def on_bus_acquired(connection, name):
+    bridge.connection = connection
+    node_info = Gio.DBusNodeInfo.new_for_xml(INTROSPECTION_XML)
+    interface_info = node_info.interfaces[0]
+
+    for object_path in OBJECT_PATHS:
+        connection.register_object(
+            object_path,
+            interface_info,
+            bridge.handle_method_call,
+            None,
+            None,
+        )
+
+    # Reset on every (re)start, including after a crash: a bridge that died
+    # while holding inhibits must not leave the idle service believing it
+    # still does, with no further Inhibit/UnInhibit call ever coming to
+    # correct it.
+    sync_idle_service(0)
+
+
+def on_name_lost(connection, name):
+    sys.exit(EXIT_NAME_TAKEN)
+
+
+def main():
+    loop = GLib.MainLoop()
+    Gio.bus_own_name(
+        Gio.BusType.SESSION,
+        BUS_NAME,
+        Gio.BusNameOwnerFlags.NONE,
+        None,
+        on_bus_acquired,
+        on_name_lost,
+    )
+    loop.run()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except GLib.Error as error:
+        print("omarchy-system-idle-inhibit-bridge: %s" % error.message, file=sys.stderr)
+        sys.exit(EXIT_ERROR)

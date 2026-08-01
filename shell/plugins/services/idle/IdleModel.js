@@ -4,6 +4,16 @@ function secondsFromConfig(value, fallback) {
   return Math.floor(n)
 }
 
+// The D-Bus inhibit bridge always reports the absolute number of inhibits it
+// currently holds rather than a delta (so a crash-and-restart of that process
+// self-heals instead of drifting). Anything unparsable or negative floors to
+// zero -- a bridge that fails to report is not grounds to block idling.
+function inhibitorCountFromValue(value) {
+  var n = Number(value)
+  if (!isFinite(n) || n < 0) return 0
+  return Math.floor(n)
+}
+
 function eventParts(event, count) {
   try {
     if (event && event.parse) return event.parse(count)
@@ -46,6 +56,7 @@ function screensaverWindowsAfter(windows, address, visible) {
 if (typeof module !== "undefined") {
   module.exports = {
     secondsFromConfig: secondsFromConfig,
+    inhibitorCountFromValue: inhibitorCountFromValue,
     eventParts: eventParts,
     screensaverWindowsAfter: screensaverWindowsAfter
   }

@@ -77,6 +77,34 @@ grep -F 'fcitx5' "$ROOT/default/hypr/autostart.lua" >/dev/null &&
   fail "fcitx5 is autostarted from Hyprland; an unsupervised launch dies silently and takes every compose sequence with it"
 pass "fcitx5 runs supervised, so a lost input method comes back instead of killing XCompose until logout"
 
+bridge_service="$ROOT/default/systemd/user/omarchy-idle-inhibit-bridge.service"
+grep -Fx 'ExecStart=/usr/bin/omarchy-system-idle-inhibit-bridge' "$bridge_service" >/dev/null ||
+  fail "idle inhibit bridge service uses the wrong ExecStart path"
+grep -Fx 'Restart=on-failure' "$bridge_service" >/dev/null ||
+  fail "idle inhibit bridge exits 0 when another owner already holds org.freedesktop.ScreenSaver; Restart=always would fight that owner forever"
+grep -Fx 'After=graphical-session.target' "$bridge_service" >/dev/null ||
+  fail "idle inhibit bridge needs WAYLAND_DISPLAY, which uwsm imports before it reaches graphical-session.target"
+grep -Fx 'PartOf=graphical-session.target' "$bridge_service" >/dev/null ||
+  fail "idle inhibit bridge must stop with the compositor instead of lingering against a dead session"
+grep -Fx 'WantedBy=graphical-session.target' "$bridge_service" >/dev/null ||
+  fail "idle inhibit bridge is never pulled in at login without a WantedBy"
+grep -Fx 'ConditionEnvironment=WAYLAND_DISPLAY' "$bridge_service" >/dev/null ||
+  fail "an update over SSH has a live user manager and no display; starting the bridge there wedges the unit active-but-blind"
+
+grep -F 'omarchy-idle-inhibit-bridge.service' "$first_run_units" >/dev/null ||
+  fail "first-run does not enable the D-Bus idle inhibit bridge"
+pass "D-Bus idle inhibit bridge runs supervised and is enabled at first run"
+
+bridge_migration="$ROOT/migrations/1785608166.sh"
+[[ -f $bridge_migration ]] || fail "missing migration enabling the idle inhibit bridge for existing installs"
+grep -F 'systemctl --user enable omarchy-idle-inhibit-bridge.service' "$bridge_migration" >/dev/null ||
+  fail "migration must enable without --now; --now starts the unit before the session-gate check"
+grep -F 'is-active --quiet graphical-session.target' "$bridge_migration" >/dev/null ||
+  fail "migration starts the bridge outside a graphical session"
+grep -F 'Could not start omarchy-idle-inhibit-bridge.service' "$bridge_migration" >/dev/null ||
+  fail "migration must report a failed start instead of marking itself complete silently"
+pass "existing installs get the idle inhibit bridge without a fresh install"
+
 oomd_slice="$ROOT/default/systemd/user/app.slice.d/10-oomd.conf"
 grep -Fx 'ManagedOOMMemoryPressure=kill' "$oomd_slice" >/dev/null ||
   fail "nothing is a kill candidate, so systemd-oomd watches the machine thrash and never acts"
