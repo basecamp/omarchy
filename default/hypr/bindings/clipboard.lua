@@ -19,6 +19,7 @@ local terminal_classes = {
   alacritty = true,
   ["com.mitchellh.ghostty"] = true,
   foot = true,
+  ["org.codeberg.dnkl.foot"] = true,
   kitty = true,
   wezterm = true,
 }
@@ -29,7 +30,13 @@ local function active_window_is_terminal()
     return false
   end
 
-  return terminal_classes[window.class:lower()] == true
+  local class = window.class:lower()
+
+  -- Omarchy's own TUIs are terminals wearing an "org.omarchy.<command>" app-id
+  -- (omarchy-launch-tui, omarchy-launch-floating-terminal-with-presentation).
+  -- Without this they take the GUI chord, and CTRL+C reads as SIGINT: the
+  -- window closes instead of copying.
+  return terminal_classes[class] == true or class:find("^org%.omarchy%.") ~= nil
 end
 
 local function universal_clipboard_shortcut(default_mods, default_key, terminal_mods, terminal_key)
