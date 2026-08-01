@@ -153,6 +153,7 @@ if [[ -n $MIME_TYPES ]]; then
 fi
 
 chmod +x "$DESKTOP_FILE"
+hyprctl reload >/dev/null
 
 if [[ $INTERACTIVE_MODE == "true" ]]; then
   echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"

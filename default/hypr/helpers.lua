@@ -70,6 +70,10 @@ local function command_from(value, description)
   return value
 end
 
+function o.launcher_entry_exists(name)
+  return file_exists((os.getenv("HOME") or "") .. "/.local/share/applications/" .. name .. ".desktop")
+end
+
 function o.preinstalled_bindings_enabled()
   if _G.omarchy_preinstalled_bindings ~= nil then
     return _G.omarchy_preinstalled_bindings == true
@@ -80,6 +84,12 @@ end
 
 function o.bind(keys, description, dispatcher, options)
   local opts = options or {}
+
+  -- Bindings tied to a launcher entry disappear with it, so removing the app
+  -- from the launcher also stops the keybinding from starting it again.
+  if type(dispatcher) == "table" and dispatcher.entry and not o.launcher_entry_exists(dispatcher.entry) then
+    return
+  end
 
   if description then
     opts.description = description
