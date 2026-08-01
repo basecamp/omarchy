@@ -14,7 +14,7 @@
 # Reading Chromium's length-prefixed framing in bash means blocking in
 # `head -c4`, which a trap cannot interrupt — so a signal-driven wakeup would
 # need a background reader plus a FIFO. Instead we let omarchy's theme-set hook
-# signal us with SIGUSR1 (see default/chromium/theme-set.d/) and drop inbound
+# signal us with SIGUSR1 (see bin/omarchy-theme-set) and drop inbound
 # stdio entirely. The extension gets a push on connect and a push on every
 # theme change, which is all it ever needs.
 #
@@ -23,9 +23,9 @@
 # the inverse direction (system -> extension), so we stay alive to push; only
 # their framing idioms carry over, not their structure.
 #
-# Because it ships in-tree, `omarchy-theme-set` firing `omarchy-hook theme-set`
-# is guaranteed, so a SIGUSR1 always arrives on a switch — no polling fallback is
-# needed (the standalone AUR build of this host carries one for old Omarchy).
+# Because it ships in-tree, `omarchy-theme-set` runs the refresh command on every
+# switch, so no polling fallback is needed (the standalone AUR build of this host
+# carries one for old Omarchy).
 
 set -uo pipefail
 
@@ -34,7 +34,7 @@ set -uo pipefail
 CURRENT="$HOME/.local/state/omarchy/current"
 
 # Pidfiles live here so the theme-set.d hook can SIGUSR1 every running host.
-RUNDIR="${XDG_RUNTIME_DIR:-/tmp}/omarchy-theme"
+RUNDIR="$XDG_RUNTIME_DIR/omarchy-theme"
 PIDFILE="$RUNDIR/$$.pid"
 
 WATCHDOG_PID=""
@@ -186,15 +186,16 @@ emit_theme() {
 main() {
   local starttime
 
+  trap cleanup EXIT
+  # Arm signal handlers before publishing the pidfile so refresh cannot signal
+  # the host during a window where USR1 still has its default fatal disposition.
+  trap 'exit 0' TERM INT
+  trap 'emit_theme' USR1
+
   mkdir -p "$RUNDIR"
   starttime=$(awk '{print $22}' "/proc/$$/stat")
+  [[ -n $starttime ]] || exit 1
   printf '%s %s\n' "$$" "$starttime" >"$PIDFILE"
-  trap cleanup EXIT
-  # Exit through the normal path on a signal so the EXIT trap still runs and the
-  # pidfile gets cleaned up; an untrapped SIGTERM would skip it.
-  trap 'exit 0' TERM INT
-  # omarchy's theme-set hook fires this on every switch → push the new theme.
-  trap 'emit_theme' USR1
 
   # Push the current theme immediately on connect, before arming the watchdog —
   # if stdin is already at EOF the watchdog fires at once, and we'd otherwise be
@@ -205,12 +206,11 @@ main() {
   # about. Drain stdin so its writes never block, and exit when it hangs up.
   #
   # The `<&3` is load-bearing. Bash gives every background job /dev/null as stdin
-  # unless it's redirected explicitly, so a bare `cat` here would read EOF
+  # unless it's redirected explicitly, so a bare read loop here would see EOF
   # instantly and kill us right after the first push — leaving the extension in a
-  # reconnect loop. Duplicating the real stdin onto fd 3 and reading that
-  # overrides the default.
+  # reconnect loop. Duplicating the real stdin onto fd 3 overrides the default.
   exec 3<&0
-  (cat <&3 >/dev/null 2>&1; kill -TERM "$$" 2>/dev/null) &
+  (while IFS= read -r; do :; done <&3; kill -TERM "$$" 2>/dev/null) &
   WATCHDOG_PID=$!
 
   # Stay alive until the browser closes the pipe. A SIGUSR1 interrupts `wait`,

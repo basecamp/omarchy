@@ -13,7 +13,7 @@
 
 set -uo pipefail
 
-RUNDIR="${XDG_RUNTIME_DIR:-/tmp}/omarchy-theme"
+RUNDIR="$XDG_RUNTIME_DIR/omarchy-theme"
 [[ -d $RUNDIR ]] || exit 0
 
 shopt -s nullglob
@@ -25,7 +25,8 @@ for pidfile in "$RUNDIR"/*.pid; do
   current_starttime=""
   [[ $pid =~ ^[0-9]+$ && $starttime =~ ^[0-9]+$ && -z ${extra:-} ]] &&
     current_starttime=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) || true
-  if [[ $current_starttime == "$starttime" ]] && kill -USR1 "$pid" 2>/dev/null; then
+  if [[ -n $current_starttime && $current_starttime == "$starttime" ]] &&
+    kill -USR1 "$pid" 2>/dev/null; then
     continue
   fi
   # Host is gone (or the pidfile is garbage) — prune it.

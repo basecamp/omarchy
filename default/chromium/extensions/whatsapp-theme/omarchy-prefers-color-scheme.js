@@ -32,23 +32,48 @@
     let onchange = null;
     let proxy = null;
 
-    function has(cb) {
-      for (const e of listeners) if (e.owner === owner && e.cb === cb) return true;
+    function captureFrom(options) {
+      return typeof options === "boolean" ? options : !!options?.capture;
+    }
+
+    function has(cb, capture) {
+      for (const e of listeners)
+        if (e.owner === owner && e.cb === cb && e.capture === capture) return true;
       return false;
     }
 
-    function add(cb) {
+    function add(cb, options = false) {
       // Native listeners dedupe on identity; adding twice must not fire twice.
+      const capture = captureFrom(options);
       if (
         (typeof cb !== "function" && typeof cb?.handleEvent !== "function") ||
-        has(cb)
+        options?.signal?.aborted ||
+        has(cb, capture)
       )
         return;
-      listeners.add({ owner, cb, wantsDark, wantsLight });
+      const entry = {
+        owner,
+        cb,
+        capture,
+        once: !!options?.once,
+        signal: options?.signal,
+        wantsDark,
+        wantsLight,
+      };
+      listeners.add(entry);
+      if (entry.signal) {
+        entry.abort = () => listeners.delete(entry);
+        entry.signal.addEventListener("abort", entry.abort, { once: true });
+      }
     }
 
-    function remove(cb) {
-      for (const e of listeners) if (e.owner === owner && e.cb === cb) listeners.delete(e);
+    function remove(cb, options = false) {
+      const capture = captureFrom(options);
+      for (const e of listeners) {
+        if (e.owner !== owner || e.cb !== cb || e.capture !== capture) continue;
+        listeners.delete(e);
+        if (e.signal) e.signal.removeEventListener("abort", e.abort);
+      }
     }
 
     proxy = new Proxy(target, {
@@ -61,13 +86,13 @@
         if (prop === "media") return query;
         if (prop === "onchange") return onchange;
         if (prop === "addEventListener") {
-          return (evt, cb) => {
-            if (evt === "change") add(cb);
+          return (evt, cb, options) => {
+            if (evt === "change") add(cb, options);
           };
         }
         if (prop === "removeEventListener") {
-          return (evt, cb) => {
-            if (evt === "change") remove(cb);
+          return (evt, cb, options) => {
+            if (evt === "change") remove(cb, options);
           };
         }
         if (prop === "addListener") {
@@ -108,7 +133,8 @@
     const next = !!(ev.detail && ev.detail.dark);
     if (next === isDark) return;
     isDark = next;
-    for (const { owner, cb, wantsDark, wantsLight } of listeners) {
+    for (const entry of listeners) {
+      const { owner, cb, wantsDark, wantsLight } = entry;
       const matches = wantsDark ? isDark : wantsLight ? !isDark : false;
       const media = wantsDark
         ? "(prefers-color-scheme: dark)"
@@ -116,6 +142,8 @@
         ? "(prefers-color-scheme: light)"
         : "";
       try {
+        if (entry.once) listeners.delete(entry);
+        if (entry.signal) entry.signal.removeEventListener("abort", entry.abort);
         // Shaped like a MediaQueryListEvent; apps read .matches. The legacy
         // addListener callback takes the same argument, so there is nothing to
         // branch on here.

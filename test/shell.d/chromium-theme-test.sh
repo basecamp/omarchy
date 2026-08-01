@@ -111,14 +111,19 @@ vm.runInNewContext(fs.readFileSync(process.argv[2], 'utf8'), context)
 const query = context.window.matchMedia('(prefers-color-scheme: dark)')
 const calls = []
 query.addEventListener('change', { handleEvent: (event) => calls.push(['object', event.matches]) })
+query.addEventListener('change', (event) => calls.push(['once', event.matches]), { once: true })
+const controller = new AbortController()
+query.addEventListener('change', () => calls.push(['aborted']), { signal: controller.signal })
+controller.abort()
 query.onchange = function (event) {
   calls.push(['onchange', event.matches, this === query])
 }
 themeChange({ detail: { dark: false } })
+themeChange({ detail: { dark: true } })
 process.stdout.write(JSON.stringify(calls))
 JS
 )
-[[ $listener_check == '[["object",false],["onchange",false,true]]' ]] ||
+[[ $listener_check == '[["object",false],["once",false],["onchange",false,true],["object",true],["onchange",true,true]]' ]] ||
   fail "prefers-color-scheme shim supports listener objects and onchange" "$listener_check"
 pass "prefers-color-scheme shim supports listener objects and onchange"
 
@@ -157,12 +162,15 @@ printf 'tokyo-night' >"$current/theme.name"
 printf '[colors.primary]\nbackground = "#1a1b26"\n' >"$current/theme/alacritty.toml"
 printf 'accent = "#7aa2f7"\n' >"$current/theme/colors.toml"
 
-theme_json=$(HOME="$theme_home" bash -c 'source "$1"; build_state' bash "$ROOT/bin/omarchy-chromium-theme-host")
+theme_json=$(HOME="$theme_home" XDG_RUNTIME_DIR="$TMPDIR/run" \
+  bash -c 'source "$1"; build_state' bash "$ROOT/bin/omarchy-chromium-theme-host")
 jq -e '.theme_name == "tokyo-night" and .bg == "#1a1b26" and .accent == "#7aa2f7"' <<<"$theme_json" >/dev/null ||
   fail "theme host reads the active Omarchy theme" "$theme_json"
 pass "theme host reads the active Omarchy theme"
 
-framed=$(bash -c 'source "$1"; emit "hi"' bash "$ROOT/bin/omarchy-chromium-theme-host" | od -An -v -tx1 | tr -d ' \n')
+framed=$(XDG_RUNTIME_DIR="$TMPDIR/run" \
+  bash -c 'source "$1"; emit "hi"' bash "$ROOT/bin/omarchy-chromium-theme-host" |
+  od -An -v -tx1 | tr -d ' \n')
 [[ $framed == "020000006869" ]] ||
   fail "theme host frames messages with a little-endian length prefix" "$framed"
 pass "theme host frames messages with a little-endian length prefix"
@@ -176,6 +184,11 @@ echo 999999 >"$run_dir/999999.pid"
 # A host can be killed before its EXIT trap removes the pidfile. If Linux later
 # reuses that PID, the refresh must not send SIGUSR1 to the unrelated process.
 echo "$$ 0" >"$run_dir/reused.pid"
+
+marker="$TMPDIR/partial-pid-signalled"
+MARKER="$marker" bash -c 'trap "touch \"$MARKER\"" USR1; while :; do sleep 1; done' &
+partial_pid=$!
+echo "$partial_pid" >"$run_dir/partial.pid"
 
 # Drive the real host rather than a stand-in sleeper: a synthetic process with
 # its own USR1 trap would keep this green even if the host's trap, its watchdog
@@ -215,6 +228,9 @@ for _ in $(seq 1 100); do [[ $(frame_count) -ge 1 ]] && break; sleep 0.05; done
   fail "theme host pushes the current theme on connect" "$(od -An -tx1 "$host_out" | head -2)"
 [[ -s $run_dir/$host_pid.pid ]] ||
   fail "theme host writes its pidfile where the refresh looks" "$(ls "$run_dir")"
+watchdog_pid=$(pgrep -P "$host_pid")
+[[ -n $watchdog_pid && -z $(pgrep -P "$watchdog_pid") ]] ||
+  fail "theme host watchdog does not spawn a child that can be orphaned"
 
 XDG_RUNTIME_DIR="$TMPDIR/run" omarchy-chromium-theme-refresh
 
@@ -224,6 +240,8 @@ frames=$(frame_count)
 kept_pidfile=$([[ -s $run_dir/$host_pid.pid ]] && echo yes || echo no)
 kill "$host_pid" "$host_writer" 2>/dev/null
 wait "$host_pid" 2>/dev/null
+kill "$partial_pid" 2>/dev/null
+wait "$partial_pid" 2>/dev/null
 
 (( frames >= 2 )) ||
   fail "theme-set refresh makes the running host push again" "frames=$frames"
@@ -247,6 +265,8 @@ jq -e '.theme_name == "tokyo-night" and .bg == "#1a1b26"' <<<"$second" >/dev/nul
   fail "theme host re-pushes a usable theme on refresh" "$second"
 [[ ! -f $run_dir/999999.pid ]] || fail "theme-set refresh prunes stale pidfiles"
 [[ ! -f $run_dir/reused.pid ]] || fail "theme-set refresh prunes reused pidfiles"
+[[ ! -f $run_dir/partial.pid && ! -f $marker ]] ||
+  fail "theme-set refresh rejects pidfiles without process start time"
 # The refresh ran while the host was alive, so its own pidfile had to survive;
 # the host removes it through its EXIT trap once we kill it above.
 [[ $kept_pidfile == "yes" ]] || fail "theme-set refresh keeps live pidfiles" "$(ls "$run_dir")"
