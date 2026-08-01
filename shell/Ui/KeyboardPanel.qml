@@ -6,13 +6,12 @@ import qs.Commons
 // Layer-shell popup attached to a bar widget icon, designed for
 // click-driven AND keyboard-driven panels (e.g. SUPER+CTRL+W summon).
 //
-// Built on PanelWindow with WlrKeyboardFocus.OnDemand rather than
-// PopupWindow (xdg-popup). Layer-shell surfaces that declare any keyboard
-// interactivity get keyboard focus from Hyprland *at map time*, which is
-// the protocol-level equivalent of focus-on-launch for xdg-toplevels.
-// xdg-popups don't get that — they only receive keys after a click/hover
-// routes focus through their parent surface — so keyboard-summoned popups
-// fell flat without it.
+// Built on PanelWindow with a brief WlrKeyboardFocus.Exclusive prime followed
+// by OnDemand rather than PopupWindow (xdg-popup). The prime acquires focus
+// both when the surface maps and when it reopens while still mapped for its
+// fade-out. xdg-popups don't get that — they only receive keys after a
+// click/hover routes focus through their parent surface — so keyboard-summoned
+// popups fell flat without it.
 //
 // Exclusive would also grant map-time focus, but it makes Hyprland route
 // *every* pointer event to the exclusive surface no matter which output
@@ -245,6 +244,9 @@ PanelWindow {
 
   Timer {
     id: focusPrimeTimer
+    // Leave enough time for multiple Qt/Wayland commit cycles while keeping
+    // the compositor-wide Exclusive phase imperceptibly short. This interval
+    // is covered by the immediate hide/re-summon acceptance case.
     interval: 75
     onTriggered: if (root.open) root.focusPrimed = true
   }
@@ -272,6 +274,7 @@ PanelWindow {
     id: dismissArea
     anchors.fill: parent
     enabled: root.open
+    acceptedButtons: Qt.AllButtons
     hoverEnabled: true
     property bool hoveringBar: false
     cursorShape: hoveringBar ? Qt.PointingHandCursor : Qt.ArrowCursor
@@ -313,7 +316,10 @@ PanelWindow {
     onPositionChanged: function(mouse) { hoveringBar = inBarRegion(mouse.x, mouse.y) }
     onExited: hoveringBar = false
     onClicked: function(mouse) {
-      if (inBarRegion(mouse.x, mouse.y) && forwardBarClick(mouse.x, mouse.y, mouse.button)) return
+      // While Exclusive is priming, Hyprland may route a click from another
+      // output here with translated coordinates. Never interpret that as a
+      // click on this output's bar.
+      if (root.focusPrimed && inBarRegion(mouse.x, mouse.y) && forwardBarClick(mouse.x, mouse.y, mouse.button)) return
       root.close()
     }
   }
@@ -353,7 +359,8 @@ PanelWindow {
 
         MouseArea {
           anchors.fill: parent
-          onClicked: root.close()
+          acceptedButtons: Qt.AllButtons
+          onPressed: root.close()
         }
       }
     }
