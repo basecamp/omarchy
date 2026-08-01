@@ -44,6 +44,7 @@ RESUME_RECORDING="false"
 RECORDING_FILE="/tmp/omarchy-screenrecord-filename"
 REGION_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-region"
 PAUSED_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-paused"
+PAUSE_LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-pause.lock"
 LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "/tmp/omarchy-screenrecord.log" || echo "/dev/null")
 
 for arg in "$@"; do
@@ -101,10 +102,9 @@ start_webcam_overlay() {
     --no-border --no-audio --no-osc --osd-level=0 \
     --really-quiet &>/dev/null &
 
-  # The move has to settle before gpu-screen-recorder starts, or the camera is
-  # recorded sliding into its corner. Waiting for the map is what the blind
-  # second was partly guessing at, so the remainder is trimmed to hold the
-  # pre-capture delay where it was: starting later costs the first words spoken.
+  # The overlay must have settled into its final position before
+  # gpu-screen-recorder starts, or the move itself gets captured in the
+  # recording. Poll for the window to appear instead of a fixed sleep.
   local waited=0
   while ((waited < 40)) && ! hyprctl clients -j | jq -e 'any(.[]; .title == "WebcamOverlay")' >/dev/null 2>&1; do
     sleep 0.05
@@ -263,7 +263,22 @@ recording_paused() {
 # available in streaming/replay mode, but this script only ever runs it in
 # plain recording mode). The process keeps running while paused - nothing is
 # stopped or finalized - so resuming continues into the same output file.
+#
+# SIGUSR2 is a toggle, not two separate pause/unpause signals - so
+# pause_screenrecording and resume_screenrecording both depend entirely on
+# $PAUSED_FILE to know which direction to go. If two invocations ever ran
+# at once (e.g. a hotkey firing twice in quick succession), both could read
+# the same "not paused yet" state, both send SIGUSR2, and the two toggles
+# would cancel out - leaving the recording actually unpaused while
+# $PAUSED_FILE still says it's paused. flock serializes them so the second
+# invocation always sees the first one's result before acting.
 pause_screenrecording() {
+  exec {lock_fd}>"$PAUSE_LOCK_FILE"
+  if ! flock -x -w 2 "$lock_fd"; then
+    omarchy-notification-send -u critical -t 3000 "Screen recording is busy, try again"
+    return 1
+  fi
+
   if ! screenrecording_active; then
     omarchy-notification-send -u critical -t 3000 "No active screen recording to pause"
     return 1
@@ -280,7 +295,14 @@ pause_screenrecording() {
 }
 
 resume_screenrecording() {
+  exec {lock_fd}>"$PAUSE_LOCK_FILE"
+  if ! flock -x -w 2 "$lock_fd"; then
+    omarchy-notification-send -u critical -t 3000 "Screen recording is busy, try again"
+    return 1
+  fi
+
   if ! screenrecording_active || ! recording_paused; then
+    omarchy-notification-send -u critical -t 3000 "No paused screen recording to resume"
     return 1
   fi
 
@@ -318,6 +340,17 @@ finalize_recording() {
     rm -f "$processed"
   fi
 }
+
+# A stale pause marker can be left behind if a previous recording process was
+# killed or crashed outside of this script (stop_screenrecording, the only
+# other place this file is removed, never got to run). With no active
+# recording, that marker can't describe a real state, so drop it before
+# deciding what to do next - otherwise a fresh recording could be born
+# "already paused", and a --resume-recording call against it would send
+# SIGUSR2 into a live, unpaused process and actually pause it.
+if ! screenrecording_active; then
+  rm -f "$PAUSED_FILE"
+fi
 
 if [[ $PAUSE_RECORDING == "true" ]]; then
   pause_screenrecording
