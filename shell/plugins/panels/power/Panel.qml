@@ -16,6 +16,7 @@ Panel {
   property string activeProfile: ""
   property int profileIndex: 0
   property bool cursorActive: false
+  readonly property bool showPercentage: setting("showPercentage", false) === true
   readonly property bool batteryPresent: {
     var device = UPower.displayDevice
     return !!(device && device.isPresent)
@@ -161,6 +162,11 @@ Panel {
     actionProc.running = true
   }
 
+  function togglePercentage() {
+    root.settings = Object.assign({}, root.settings, { showPercentage: !root.showPercentage })
+    if (root.bar && root.bar.shell) root.bar.shell.updateEntryInline(root.moduleName, root.settings)
+  }
+
   onOpenedChanged: {
     if (opened) {
       if (!batteryPresent) {
@@ -253,9 +259,16 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.batteryIcon()
+    text: root.showPercentage && !vertical
+      ? Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()
+      : root.batteryIcon()
+    slotSize: Style.bar.iconSlot * (root.showPercentage && !vertical ? 2 : 1)
     tooltipText: ""
-    onPressed: function(b) { if (root.batteryPresent) root.toggle() }
+    onPressed: function(b) {
+      if (!root.batteryPresent) return
+      if (b === Qt.RightButton) root.togglePercentage()
+      else root.toggle()
+    }
   }
 
   KeyboardPanel {

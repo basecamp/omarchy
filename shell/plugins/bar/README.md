@@ -68,7 +68,7 @@ Example `shell.json` (bar subtree only shown):
 | `omarchy.network` | Wi-Fi/Ethernet icon + popup with Wi-Fi scan, signal, connect, DNS provider selection | left = popup · right = nmtui |
 | `omarchy.tailscale` | Tailscale status, connection switcher, machine browser, and copy actions | left = popup · right = toggle · middle = refresh |
 | `omarchy.model-usage` | Claude Code and Codex limits with pace, today, last week, and all-time model breakdown | left = panel · right = refresh · middle = next subscription |
-| `omarchy.power` | Battery/AC icon + popup with battery stats, power profiles, and system info | left = popup |
+| `omarchy.power` | Battery/AC icon + popup with battery stats, power profiles, and system info | left = popup · right = toggle percentage |
 | `omarchy.bluetooth` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio · middle = bluetoothctl TUI |
 | `omarchy.monitor` | Brightness and laptop display controls | left = popup |
 
