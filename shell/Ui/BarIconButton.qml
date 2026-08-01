@@ -10,6 +10,7 @@ WidgetButton {
   property real opticalSize: Style.bar.iconCanvas
   property bool debugOpticalBounds: Quickshell.env("OMARCHY_DEBUG_BAR_ICONS") === "1"
   readonly property real opticalCenterErrorX: glyph.visible ? glyph.paintedCenterX - opticalCanvas.width / 2 : 0
+  readonly property real glyphPaintedWidth: glyph.visible ? glyph.tightWidth : 0
   readonly property real glyphBaselineY: glyph.visible ? glyph.baselineY : 0
   readonly property int glyphFontSize: glyph.visible ? glyph.renderedFontSize : 0
 

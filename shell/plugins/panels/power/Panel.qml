@@ -17,6 +17,10 @@ Panel {
   property int profileIndex: 0
   property bool cursorActive: false
   readonly property bool showPercentage: setting("showPercentage", false) === true
+  // With the percentage shown the button paints a text block wider than an
+  // icon, so the open-panel mark takes the painted width instead of the
+  // icon-sized fraction of the slot the fallback assumes.
+  readonly property real openPanelIndicatorWidth: showPercentage && !button.vertical ? button.glyphPaintedWidth : 0
   readonly property bool batteryPresent: {
     var device = UPower.displayDevice
     return !!(device && device.isPresent)
