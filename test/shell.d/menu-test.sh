@@ -115,7 +115,8 @@ const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item])
 const rankBase = menu.mergeMenuSources(defaultItems, [])
 const ranked = menu.mergeAppRows(rankBase.items, rankBase.itemOrder, [
   { id: 'apps.brave', parent: 'apps', kind: 'app', label: 'Brave', description: '', aliases: [] },
-  { id: 'apps.fontforge', parent: 'apps', kind: 'app', label: 'FontForge', description: '', aliases: [] }
+  { id: 'apps.fontforge', parent: 'apps', kind: 'app', label: 'FontForge', description: '', aliases: [] },
+  { id: 'apps.zen', parent: 'apps', kind: 'app', label: 'Zen Browser', description: '', aliases: [] }
 ])
 const rankScore = (id, query) => menu.searchScore(ranked.items, ranked.items[id], query)
 assert(
@@ -123,6 +124,12 @@ assert(
     id => rankScore('apps.brave', 'brave') < rankScore(id, 'brave')
   ),
   'menu ranks an installed app above menu entries matching the query equally well'
+)
+assert(
+  ['install.browser.zen', 'remove.browser.zen', 'setup.default.browser.zen'].every(
+    id => rankScore('apps.zen', 'zen') < rankScore(id, 'zen')
+  ),
+  'menu ranks an app matching the query as a whole word above exact-labeled menu entries'
 )
 assert(
   rankScore('style.font', 'font') < rankScore('apps.fontforge', 'font'),
