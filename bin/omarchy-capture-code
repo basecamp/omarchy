@@ -1,0 +1,342 @@
+#!/bin/bash
+
+# omarchy:summary=Turn code on the clipboard into a themed image
+# omarchy:group=capture
+# omarchy:args=[copy|save]
+# omarchy:examples=omarchy capture code | omarchy capture code copy
+
+[[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
+OUTPUT_DIR="${OMARCHY_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"
+
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy"
+CACHED_THEME="$CACHE_DIR/silicon.tmTheme"
+CURRENT_THEME_DIR="$HOME/.local/state/omarchy/current/theme"
+COLORS_FILE="$CURRENT_THEME_DIR/colors.toml"
+THEME_TEMPLATE="$OMARCHY_PATH/default/silicon/omarchy.tmTheme.tpl"
+
+MODE="${1:-both}"
+
+SCREENSHOT_EDITOR="${OMARCHY_SCREENSHOT_EDITOR:-tensaku-edit}"
+
+# silicon has its own config file, but the flags below are passed explicitly and
+# would override it, so the knobs worth changing are exposed here instead.
+#
+# The family follows the system monospace font, so `omarchy font set` changes
+# these screenshots the same way `omarchy theme set` does. Only the size is a
+# separate knob; CODE_FONT overrides the whole thing and takes silicon's
+# fallback-list syntax, e.g. "JetBrains Mono; Noto Sans CJK SC=32".
+CODE_FONT_SIZE="${OMARCHY_CODE_FONT_SIZE:-32}"
+code_font_family=$(omarchy-font-current 2>/dev/null)
+CODE_FONT="${OMARCHY_CODE_FONT:-${code_font_family:-monospace}=$CODE_FONT_SIZE}"
+CODE_PADDING="${OMARCHY_CODE_PADDING:-24}"
+CODE_CORNER_RADIUS="${OMARCHY_CODE_CORNER_RADIUS:-16}"
+
+open_editor() {
+  local filepath="$1"
+  "$SCREENSHOT_EDITOR" "$filepath"
+}
+
+# Extensions we accept from a window title, and the menu offered by the
+# interactive picker when neither the title nor the clipboard content decide.
+# Titles are full of dots that are not filenames — domains, version numbers,
+# sentence ends — so an allowlist beats a bare regex.
+KNOWN_EXTENSIONS="c cc cpp cs css dart ex exs fish go h hpp hs html java jl js json jsx kt lua md ml nim php pl proto py r rb rs rst scala scss sh sql svelte swift tf toml ts tsx vim vue xml yaml yml zig zsh"
+
+extension_is_known() {
+  local candidate="$1"
+  local known
+
+  for known in $KNOWN_EXTENSIONS; do
+    [[ $candidate == "$known" ]] && return 0
+  done
+
+  return 1
+}
+
+language_from_window_title() {
+  local title candidate
+
+  title=$(hyprctl activewindow -j 2>/dev/null | sed -n 's/.*"title": *"\([^"]*\)".*/\1/p')
+  [[ -z $title ]] && return 1
+
+  # Walk every dot-suffix in the title left to right; the first allowlisted
+  # one wins.
+  for candidate in $(grep -oE '\.[A-Za-z0-9]+' <<<"$title" | tr -d '.'); do
+    candidate=$(tr '[:upper:]' '[:lower:]' <<<"$candidate")
+    if extension_is_known "$candidate"; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+# Only markers that are proof, never inference. A miss costs one keypress in
+# the picker; a wrong guess silently renders the snippet highlighted as the
+# wrong language, which the user has no reason to question. Inferential rules
+# for TS/JS/JSON/YAML/SQL/CSS were tried and dropped: across 15 sample files
+# they mislabelled C++ as TypeScript (`std::string` matching a type-annotation
+# pattern) and Ruby as Python (both spell it `def`).
+language_from_content() {
+  local first_line
+  first_line=$(head -1 <<<"$CODE")
+
+  case "$first_line" in
+  '#!'*bash | '#!'*sh | '#!'*zsh) printf 'sh' && return 0 ;;
+  '#!'*python*) printf 'py' && return 0 ;;
+  '#!'*node*) printf 'js' && return 0 ;;
+  '#!'*ruby*) printf 'rb' && return 0 ;;
+  '<?php'*) printf 'php' && return 0 ;;
+  esac
+
+  if grep -qE '^\s*package\s+\w+' <<<"$CODE" && grep -qE '^\s*func\s' <<<"$CODE"; then
+    printf 'go'
+    return 0
+  fi
+
+  if grep -qE '^\s*(pub\s+)?fn\s+\w+' <<<"$CODE"; then
+    printf 'rs'
+    return 0
+  fi
+
+  if grep -qiE '^\s*(<!DOCTYPE\s+html|<html\b)' <<<"$CODE"; then
+    printf 'html'
+    return 0
+  fi
+
+  return 1
+}
+
+language_from_picker() {
+  local picked
+
+  picked=$(tr ' ' '\n' <<<"$KNOWN_EXTENSIONS" | gum filter --placeholder "Language") || return 1
+  [[ -z $picked ]] && return 1
+
+  printf '%s' "$picked"
+}
+
+# Render the active theme into a silicon theme, reusing the cache until
+# colors.toml changes. A theme may ship its own file to override the template.
+silicon_theme_file() {
+  local override="$CURRENT_THEME_DIR/silicon.tmTheme"
+  local sed_script tmp_theme
+
+  if [[ -f $override ]]; then
+    printf '%s' "$override"
+    return 0
+  fi
+
+  [[ -f $COLORS_FILE && -f $THEME_TEMPLATE ]] || return 1
+
+  if [[ ! -f $CACHED_THEME || $COLORS_FILE -nt $CACHED_THEME ]]; then
+    sed_script=$(mktemp)
+    while IFS=$'\t' read -r key value; do
+      printf 's|{{ %s }}|%s|g\n' "$key" "$value" >>"$sed_script"
+    done < <(omarchy-theme-color --file "$COLORS_FILE" --all)
+
+    mkdir -p "$CACHE_DIR"
+    # Render to a temp file in the same directory and rename it into place:
+    # a `mv` within one filesystem is atomic, so a render killed mid-write
+    # (SIGKILL, OOM, session teardown) never leaves a truncated file at
+    # $CACHED_THEME. Without this, a partial file picks up a fresh mtime and
+    # the -nt check below would treat it as valid forever.
+    tmp_theme=$(mktemp "$CACHE_DIR/silicon.tmTheme.XXXXXX")
+    if sed -f "$sed_script" "$THEME_TEMPLATE" >"$tmp_theme"; then
+      mv "$tmp_theme" "$CACHED_THEME"
+    else
+      rm -f "$tmp_theme"
+    fi
+    rm -f "$sed_script"
+  fi
+
+  [[ -f $CACHED_THEME ]] || return 1
+  printf '%s' "$CACHED_THEME"
+}
+
+# wl-paste hands back whatever type the clipboard currently prefers. After a
+# copy-mode run the clipboard holds image/png, so without --type text a
+# second run in a row would feed those PNG bytes back in as "code".
+CODE=$(wl-paste --type text 2>/dev/null)
+
+if [[ -z $CODE ]]; then
+  omarchy-notification-send "Nothing to capture" "Copy some code first"
+  exit 0
+fi
+
+if LANGUAGE=$(language_from_window_title); then
+  :
+elif LANGUAGE=$(language_from_content); then
+  :
+elif [[ -t 0 ]]; then
+  # A real controlling terminal: prompt right here. A cancelled prompt is a
+  # deliberate no-op, not an error, so exit silently.
+  LANGUAGE=$(language_from_picker) || exit 0
+else
+  # No controlling terminal (Hyprland keybinding, menu action): gum has
+  # nothing to prompt in. Hand off to a floating terminal that re-runs this
+  # same command, where a real tty lets the picker run; this invocation's job
+  # ends at a successful handoff. Not `exec`: a failed handoff (no terminal
+  # emulator, no compositor) must still fall through to notify below, and
+  # `exec` would abort the script on failure instead of returning to it.
+  # Relaunch by absolute path, not by name: the terminal gets a fresh PATH, and
+  # a bare name leaves the user staring at an empty terminal reporting that the
+  # executable was not found, with no notification and a zero exit here.
+  #
+  # Carry the resolved appearance settings across explicitly. uwsm-app writes
+  # only the argv to the app daemon's fifo, so the relaunched process starts
+  # from the systemd user manager's environment, not this one: without this,
+  # every OMARCHY_CODE_* the user set is silently dropped the moment the
+  # picker is needed, and the image comes back with default styling.
+  if setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.terminal -e \
+    /usr/bin/env \
+    "OMARCHY_CODE_FONT=$CODE_FONT" \
+    "OMARCHY_CODE_PADDING=$CODE_PADDING" \
+    "OMARCHY_CODE_CORNER_RADIUS=$CODE_CORNER_RADIUS" \
+    "OMARCHY_SCREENSHOT_DIR=$OUTPUT_DIR" \
+    "$(readlink -f "$0")" "$MODE"; then
+    exit 0
+  fi
+  omarchy-notification-send "Couldn't prompt for a language" "No terminal is available to pick one" -u critical
+  exit 1
+fi
+
+if [[ ! -d $OUTPUT_DIR ]]; then
+  mkdir -p "$OUTPUT_DIR"
+fi
+
+FILENAME="code-$(date +'%Y-%m-%d_%H-%M-%S').png"
+
+if [[ $MODE == "copy" ]]; then
+  # Left in /tmp on purpose rather than trapped away: the notification shows the
+  # image as a preview and needs the file to outlive this process. The system
+  # cleans /tmp, and omarchy-capture-screenshot's clipboard path is equally
+  # transient.
+  FILEPATH="$(mktemp -d)/$FILENAME"
+else
+  FILEPATH="$OUTPUT_DIR/$FILENAME"
+fi
+
+silicon_args=(-l "$LANGUAGE" -o "$FILEPATH" --no-window-controls
+  --pad-horiz "$CODE_PADDING" --pad-vert "$CODE_PADDING" -f "$CODE_FONT")
+if theme_file=$(silicon_theme_file); then
+  silicon_args+=(--theme "$theme_file")
+fi
+
+# Guarded the same way --theme is: fall back to silicon's own defaults when
+# no Omarchy theme is resolvable, rather than inventing a colour. Using the
+# plain `background` (not a darker shade) makes the padding blend into the
+# card instead of reading as a frame. The corner arcs below are the only
+# accent the image carries.
+ACCENT=""
+if omarchy-theme-color background >/dev/null 2>&1; then
+  silicon_args+=(--background "$(omarchy-theme-color background 2>/dev/null)")
+  ACCENT=$(omarchy-theme-color accent 2>/dev/null)
+  # silicon has no border flag, so round corners ourselves with ImageMagick
+  # below and ask silicon for a plain rectangle rather than double-rounding.
+  [[ -n $ACCENT ]] && silicon_args+=(--no-round-corner)
+fi
+
+# silicon exits 0 even when it fails (unsupported language, a broken theme
+# file, a permission error saving the image) and simply leaves no file
+# behind. Treat a missing/empty artifact as the real failure signal instead
+# of trusting the exit code.
+silicon_stderr=$(printf '%s' "$CODE" | silicon "${silicon_args[@]}" 2>&1 1>/dev/null)
+
+if [[ ! -s $FILEPATH ]]; then
+  omarchy-notification-send "Code screenshot failed" "${silicon_stderr:-silicon produced no image}" -u critical
+  exit 1
+fi
+
+# Round the corners and stroke only the four corner arcs in the theme's accent
+# colour, matching Hyprland's active window border. A full outline read as a
+# generic wrapped frame; the arcs carry the theme colour without boxing the
+# code in. silicon itself has no border flag. This is
+# purely cosmetic: if magick is missing, the image is malformed, or any step
+# fails, keep silicon's plain-rectangle image rather than losing the capture
+# over a post-processing failure. Rendered to a temp file and moved into
+# place only on success, mirroring the theme cache's atomic write, so a
+# failed post-process can never leave a truncated image at $FILEPATH.
+if [[ -n $ACCENT ]]; then
+  corner_radius=$CODE_CORNER_RADIUS
+  border_width=2
+  # Everything is drawn at this multiple and scaled back down. Drawing at final
+  # size leaves visibly stepped corners: ImageMagick antialiases a stroke, but
+  # the alpha edge of a shape drawn straight onto a transparent canvas is hard.
+  # 4 rather than 8: on a 1450x800 capture, 8 costs ~1.1s per draw against
+  # ~0.35s, for a difference invisible at 1:1 and at 9x magnification.
+  # The arcs are inset by a full stroke width rather than half, so their outer
+  # edge sits inside the mask instead of exactly on it -- on the boundary the
+  # mask clips the arc's own antialiasing and the curve reads as stepped.
+  supersample=4
+  img_width=$(identify -format '%w' "$FILEPATH" 2>/dev/null)
+  img_height=$(identify -format '%h' "$FILEPATH" 2>/dev/null)
+
+  if [[ -n $img_width && -n $img_height ]]; then
+    big_width=$((img_width * supersample))
+    big_height=$((img_height * supersample))
+    # The mask rounds at radius R centred on (R,R), so the arcs have to be
+    # concentric with it and inset by half the stroke, or the outer half of the
+    # stroke falls outside the mask and the arc ends up visibly clipped flat.
+    arc_near=$((border_width * supersample))
+    arc_far=$(((corner_radius * 2 - border_width) * supersample))
+    right_near=$((big_width - supersample - arc_far))
+    right_far=$((big_width - supersample - arc_near))
+    bottom_near=$((big_height - supersample - arc_far))
+    bottom_far=$((big_height - supersample - arc_near))
+
+    tmp_dir=$(mktemp -d "$(dirname "$FILEPATH")/.omarchy-capture-code.XXXXXX")
+    tmp_mask="$tmp_dir/mask.png"
+    tmp_arcs="$tmp_dir/arcs.png"
+    tmp_out="$tmp_dir/out.png"
+
+    # Drawn white-on-black and applied with CopyOpacity rather than drawn onto
+    # a transparent canvas: an opaque canvas gives the downscale clean values to
+    # average, which is what makes the rounded edge smooth.
+    if magick -size "${big_width}x${big_height}" xc:black -fill white -stroke none \
+      -draw "roundrectangle 0,0 $((big_width - 1)),$((big_height - 1)) $((corner_radius * supersample)),$((corner_radius * supersample))" \
+      -resize "${img_width}x${img_height}" -alpha off "png:$tmp_mask" 2>/dev/null &&
+      magick -size "${big_width}x${big_height}" xc:none \
+        -stroke "$ACCENT" -strokewidth "$((border_width * supersample))" -fill none \
+        -draw "arc $arc_near,$arc_near $arc_far,$arc_far 180,270" \
+        -draw "arc $right_near,$arc_near $right_far,$arc_far 270,360" \
+        -draw "arc $right_near,$bottom_near $right_far,$bottom_far 0,90" \
+        -draw "arc $arc_near,$bottom_near $arc_far,$bottom_far 90,180" \
+        -resize "${img_width}x${img_height}" "png:$tmp_arcs" 2>/dev/null &&
+      magick "$FILEPATH" "$tmp_arcs" -compose over -composite \
+        "$tmp_mask" -compose CopyOpacity -composite "png:$tmp_out" 2>/dev/null &&
+      [[ -s $tmp_out ]]; then
+      mv "$tmp_out" "$FILEPATH"
+    fi
+    rm -rf "$tmp_dir"
+  fi
+fi
+
+case "$MODE" in
+copy)
+  wl-copy --type image/png <"$FILEPATH"
+  (
+    if [[ -n $(omarchy-notification-send "Code image copied to clipboard" "Edit with Super + Alt + , (or click this)" --image "$FILEPATH" -a) ]]; then
+      open_editor "$FILEPATH"
+    fi
+  ) >/dev/null 2>&1 &
+  ;;
+save)
+  echo "$FILEPATH"
+  (
+    if [[ -n $(omarchy-notification-send "Code image saved" "Edit with Super + Alt + , (or click this)" --image "$FILEPATH" -a) ]]; then
+      open_editor "$FILEPATH"
+    fi
+  ) >/dev/null 2>&1 &
+  ;;
+*)
+  echo "$FILEPATH"
+  wl-copy --type image/png <"$FILEPATH"
+  (
+    if [[ -n $(omarchy-notification-send "Code image copied to clipboard and saved" "Edit with Super + Alt + , (or click this)" --image "$FILEPATH" -a) ]]; then
+      open_editor "$FILEPATH"
+    fi
+  ) >/dev/null 2>&1 &
+  ;;
+esac
