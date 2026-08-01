@@ -9,6 +9,14 @@ Item {
 
   property var settings: ({})
 
+  Antigravity {
+    id: antigravityProvider
+    enabled: root.providerEnabled("antigravity")
+    providerSettings: root.settings && root.settings.providers && root.settings.providers.antigravity ? root.settings.providers.antigravity : ({})
+    onLastRefreshedAtMsChanged: root.scheduleSync()
+    onReadyChanged: root.scheduleSync()
+  }
+
   Claude {
     id: claudeProvider
     enabled: root.providerEnabled("claude")
@@ -25,7 +33,7 @@ Item {
     onReadyChanged: root.scheduleSync()
   }
 
-  property var providers: [claudeProvider, codexProvider]
+  property var providers: [antigravityProvider, claudeProvider, codexProvider]
 
   // A subscription earns a place in the bar and the panel by being switched on
   // in settings and having actually produced numbers — locally or on a synced
@@ -36,6 +44,10 @@ Item {
     var rev = syncRevision
     var running = syncRunning
     var result = []
+    if (antigravityProvider.enabled) {
+      var antigravity = displayProvider(antigravityProvider)
+      if (providerHasData(antigravity)) result.push(antigravity)
+    }
     if (claudeProvider.enabled) {
       var claude = displayProvider(claudeProvider)
       if (providerHasData(claude)) result.push(claude)
@@ -54,7 +66,7 @@ Item {
       || Number(p.secondaryRateLimitPercent) >= 0
   }
 
-  property bool refreshing: claudeProvider.refreshing || codexProvider.refreshing || syncRunning
+  property bool refreshing: antigravityProvider.refreshing || claudeProvider.refreshing || codexProvider.refreshing || syncRunning
   property double aggregateUpdatedAtMs: aggregateData && aggregateData.updatedAtMs ? Number(aggregateData.updatedAtMs) : 0
   property double lastRefreshedAtMs: Math.max(aggregateUpdatedAtMs, claudeProvider.lastRefreshedAtMs || 0, codexProvider.lastRefreshedAtMs || 0)
   property int refreshIntervalSec: Math.max(30, Number(setting("refreshIntervalSec", 900)))
@@ -155,7 +167,7 @@ Item {
   }
 
   function providerEnabled(id) {
-    if (!settings || !settings.providers || !settings.providers[id]) return id === "claude" || id === "codex"
+    if (!settings || !settings.providers || !settings.providers[id]) return id == "antigravity" || id === "claude" || id === "codex"
     return settings.providers[id].enabled !== false
   }
 

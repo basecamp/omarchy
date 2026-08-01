@@ -238,6 +238,7 @@ Panel {
 
   function iconSourceForProvider(p, surfaceColor) {
     if (!p) return ""
+    if (p.providerId === "antigravity") return Qt.resolvedUrl("assets/antigravity.svg")
     if (p.providerId === "claude") return Qt.resolvedUrl("assets/claude.svg")
     if (p.providerId === "codex")
       return colorLuminance(surfaceColor || Color.background) >= 0.5
@@ -373,7 +374,7 @@ Panel {
             visible: root.providers.length === 0
             width: parent.width
             topPadding: Style.space(24)
-            text: "No AI coding subscriptions found.\nClaude Code and Codex show up here once you've used them."
+            text: "No AI coding subscriptions found.\nAntigravity, Claude Code and Codex show up here once you've used them."
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.body

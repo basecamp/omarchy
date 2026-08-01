@@ -1,3 +1,4 @@
+omarchy-mise-install agy
 omarchy-mise-install codex
 omarchy-mise-install claude
 omarchy-mise-install gemini

@@ -19,6 +19,9 @@
     "allowMultiple": false,
     "defaults": {
       "providers": {
+        "antigravity": {
+          "enabled": true
+        },
         "claude": {
           "enabled": true,
           "statsPath": "~/.claude/stats-cache.json",
