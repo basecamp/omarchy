@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# omarchy:summary=Generate a Wi-Fi QR matrix for the shell
+# omarchy:group=network
+# omarchy:args=<interface>
+
+set -euo pipefail
+
+interface=${1:?Usage: omarchy-network-qr <interface>}
+uuid=$(nmcli --get-values GENERAL.CON-UUID device show "$interface" | head -n 1)
+[[ -n $uuid && $uuid != "--" ]] || { echo "No active Wi-Fi connection" >&2; exit 1; }
+
+mapfile -t fields < <(nmcli --show-secrets --escape no --get-values \
+  802-11-wireless.ssid,802-11-wireless-security.key-mgmt,802-11-wireless-security.psk,802-11-wireless.hidden,802-11-wireless-security.wep-key0 \
+  connection show uuid "$uuid")
+
+ssid=${fields[0]:-}
+key_management=${fields[1]:-}
+password=${fields[2]:-}
+hidden=${fields[3]:-no}
+wep_key=${fields[4]:-}
+
+[[ -n $ssid ]] || { echo "Could not read the Wi-Fi name" >&2; exit 1; }
+[[ $key_management != *eap* && $key_management != *ieee8021x* ]] || {
+  echo "Enterprise Wi-Fi cannot be shared with a password QR code" >&2
+  exit 1
+}
+
+escape_wifi_qr() {
+  local value=$1
+  value=${value//\\/\\\\}
+  value=${value//;/\\;}
+  value=${value//,/\\,}
+  value=${value//:/\\:}
+  printf '%s' "$value"
+}
+
+if [[ -n $key_management && $key_management != "none" ]]; then
+  [[ -n $password ]] || { echo "Could not read the Wi-Fi password" >&2; exit 1; }
+  security=WPA
+elif [[ -n $wep_key ]]; then
+  # NetworkManager models WEP as key-mgmt "none" plus a wep-key; encoding it
+  # as an open network would produce a QR that silently fails to join.
+  password=$wep_key
+  security=WEP
+else
+  security=nopass
+fi
+
+payload="WIFI:T:$security;S:$(escape_wifi_qr "$ssid");P:$(escape_wifi_qr "$password");"
+[[ $hidden == "yes" ]] && payload+="H:true;"
+payload+=";"
+
+# ASCII uses two characters per module. Collapse each pair to one 0/1 value
+# so the shell can render a square matrix directly with native QML rectangles.
+# Margin 4 is the spec quiet zone; the card surround is dark, so this white
+# border is all the scanner gets.
+ascii=$(printf '%s' "$payload" | qrencode --type ASCII --margin 4 --output -)
+while IFS= read -r line; do
+  row=
+  for ((column = 0; column < ${#line}; column += 2)); do
+    [[ ${line:column:2} == *#* ]] && row+=1 || row+=0
+  done
+  printf '%s\n' "$row"
+done <<<"$ascii"

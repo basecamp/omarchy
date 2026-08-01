@@ -7,7 +7,8 @@
 # One knob for apparent text size across the desktop. It drives three settings
 # in lockstep, all anchored to the shell default of 12px:
 #   • the omarchy shell's font base-size (~/.config/omarchy/shell.toml [font])
-#   • GNOME/GTK's text-scaling-factor    (12px -> 1.0, so 16 -> 1.333)
+#   • GNOME/GTK's text-scaling-factor    (12px -> 1.0, quantized so the GTK
+#     interface font lands on a whole point size, so 16 -> 15pt/11pt = 1.3636)
 #   • the terminal font point size       (12px -> 9pt, so terminal_pt = px * 9/12)
 # The shell override layers on top of the active theme (so the size survives
 # theme switches) and the shell watches the file, so shell text re-flows live.
@@ -101,6 +102,20 @@ reset_base_size() {
 }
 
 # ---- GTK text-scaling-factor ----
+
+# Point size of the GTK interface font (font-name), used to quantize the
+# scaling factor. Falls back to the GNOME default when unreadable.
+gtk_font_pt() {
+  local name pt
+  name="$(gsettings get "$GKEY_SCHEMA" font-name 2>/dev/null)"
+  pt="${name%\'}"
+  pt="${pt##* }"
+  if [[ $pt =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+    echo "$pt"
+  else
+    echo 11
+  fi
+}
 
 set_factor() {
   gsettings set "$GKEY_SCHEMA" "$GKEY_NAME" "$1" 2>/dev/null || true
@@ -200,8 +215,11 @@ fi
 # Shell side: base-size in px (the omarchy shell's rem root).
 set_base_size "$size"
 
-# GTK side: multiplier anchored so 12px == 1.0.
-factor="$(awk -v s="$size" -v b="$SHELL_DEFAULT_PX" 'BEGIN { printf "%.4f", s / b }')"
+# GTK side: multiplier anchored so 12px == 1.0, quantized so the interface
+# font renders at a whole point size. Raw ratios yield fractional point sizes,
+# which GTK4 menus clip at the ascenders on scale-1 monitors.
+factor="$(awk -v s="$size" -v b="$SHELL_DEFAULT_PX" -v f="$(gtk_font_pt)" \
+  'BEGIN { printf "%.4f", int(f * s / b + 0.5) / f }')"
 set_factor "$factor"
 
 # Terminal side: point size anchored so 12px == 9pt.

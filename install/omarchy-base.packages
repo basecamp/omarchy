@@ -104,6 +104,7 @@ python-gobject
 python-poetry-core
 python-terminaltexteffects
 qemu-user-static-binfmt
+qrencode
 quickshell-git
 ripgrep
 ruby

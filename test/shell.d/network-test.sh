@@ -26,6 +26,17 @@ assertDeepEqual(
   { iface: 'wlan0', rx_bytes: '100', tx_bytes: '50' },
   'network parses detail key values'
 )
+assertEqual(network.decodeIwSsid('Cafe\\xe2\\x80\\x99'), 'Cafe’', 'network decodes UTF-8 SSID bytes')
+assertEqual(network.decodeIwSsid('Smile \\xf0\\x9f\\x98\\x80'), 'Smile 😀', 'network decodes emoji SSID bytes')
+assertEqual(network.decodeIwSsid('\\x20Cafe\\x20'), ' Cafe ', 'network preserves edge spaces in SSIDs')
+assertEqual(network.decodeIwSsid('slash\\x5cname'), 'slash\\name', 'network decodes SSID backslashes once')
+assertEqual(network.decodeIwSsid('invalid\\xff'), 'invalid\\xff', 'network preserves invalid UTF-8 escapes')
+assertEqual(network.decodeIwSsid('already 😀'), 'already 😀', 'network safely preserves unexpected non-BMP input')
+assertDeepEqual(
+  network.parseKeyValue('ssid\tline\\x0abreak\\x09tab\\x00nul\nsignal_dbm\t-40\n'),
+  { ssid: 'line\\x0abreak\\x09tab\\x00nul', signal_dbm: '-40' },
+  'network leaves control-byte escapes safe for single-line display'
+)
 assertDeepEqual(
   network.throughputState({ prevIface: '', prevSampleTime: 0 }, { iface: 'wlan0', rx_bytes: '100', tx_bytes: '50' }, 10),
   { prevIface: 'wlan0', prevRxBytes: 100, prevTxBytes: 50, prevSampleTime: 10, downloadRate: 0, uploadRate: 0 },
@@ -90,6 +101,15 @@ assertDeepEqual(rows.map(row => row.ssid), ['Connected', 'Known', 'Open'], 'netw
 assertEqual(network.wifiSectionTitle(rows, 0), 'KNOWN NETWORKS', 'network labels known wifi section')
 assertEqual(network.wifiSectionTitle(rows, 2), 'OTHER NETWORKS', 'network labels other wifi section')
 
+assertDeepEqual(
+  network.parseQrMatrix('010\n111\n010\n'),
+  { rows: ['010', '111', '010'], size: 3 },
+  'network parses a square QR matrix'
+)
+assertDeepEqual(network.parseQrMatrix('01\n111\n'), { rows: [], size: 0 }, 'network rejects ragged QR rows')
+assertDeepEqual(network.parseQrMatrix('010\n101\n'), { rows: [], size: 0 }, 'network rejects a non-square QR matrix')
+assertDeepEqual(network.parseQrMatrix('010\n1x1\n010\n'), { rows: [], size: 0 }, 'network rejects invalid QR modules')
+
 const reasons = { NoSecrets: 1, WifiAuthTimeout: 2, WifiNetworkLost: 3, WifiClientDisconnected: 4, WifiClientFailed: 5 }
 assertEqual(network.networkFailureReason(1, reasons), 'Passphrase required', 'network maps missing passphrase failures')
 assertEqual(network.networkFailureReason(2, reasons), 'Wrong password', 'network maps auth timeout failures')
@@ -118,7 +138,6 @@ assertDeepEqual(
 
 
 
-assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '5ghz', 'network header shows the wifi band when the toggle is hidden')
-assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }, true), '', 'network header drops the wifi band when the toggle shows it')
-assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }, true), '100mbit', 'network header keeps ethernet speed regardless of the band toggle')
+assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '', 'network keeps wifi band state out of the hero')
+assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit', 'network keeps ethernet speed in the hero')
 JS

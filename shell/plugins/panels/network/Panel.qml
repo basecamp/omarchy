@@ -103,6 +103,16 @@ Panel {
   property string passwordText: ""
   property string identityText: ""
 
+  property var qrRows: []
+  property int qrSize: 0
+  property string qrError: ""
+  property bool qrLoading: false
+  property bool qrExpectedStop: false
+  property string qrPassword: ""
+  property bool qrPasswordVisible: false
+  property string qrPasswordError: ""
+  readonly property bool qrVisible: qrLoading || qrSize > 0 || qrError !== ""
+
   // True while any wifi action is mid-flight. Rows
   // disable themselves on this so clicks on the other rows don't silently
   // no-op against runNetworkAction's serialized guard.
@@ -120,15 +130,16 @@ Panel {
   property int headerIndex: 0
   readonly property bool canDisconnect: !!connectedWifiNetwork
   readonly property bool headerHasDisconnect: false
-  // The hero switch is the Wi-Fi radio and nothing else, so it only exists
-  // when there is a radio to switch. A click carried no state, but a switch
-  // asserts one: on a wired box it would otherwise sit there reading "off"
-  // beside a perfectly live Ethernet connection.
+  readonly property bool canShareWifi: info.type === "wifi" && canShareNetwork(connectedWifiNetwork)
+  // The hero switch is the Wi-Fi radio, so it only exists when there is a
+  // radio to switch. On a wired box it would otherwise sit there reading
+  // "off" beside a perfectly live Ethernet connection.
   readonly property bool canToggleWifi: networkManagerAvailable && wifiStationAvailable
-  readonly property int headerActionCount: canToggleWifi ? 1 : 0
-  // Only claim the header cursor when the switch is actually on screen —
-  // "header" stays navigable, but a machine with no radio has nothing to highlight.
-  readonly property bool headerHasCursor: cursorActive && focusSection === "header" && canToggleWifi
+  readonly property int qrHeaderIndex: canShareWifi ? 0 : -1
+  readonly property int toggleHeaderIndex: canToggleWifi ? (canShareWifi ? 1 : 0) : -1
+  readonly property int headerActionCount: (canShareWifi ? 1 : 0) + (canToggleWifi ? 1 : 0)
+  readonly property bool qrHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === qrHeaderIndex
+  readonly property bool toggleHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === toggleHeaderIndex
   readonly property string toggleHint: Networking.wifiEnabled ? "Turn Wi-Fi off" : "Turn Wi-Fi on"
   readonly property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
   property int dnsIndex: 0
@@ -204,13 +215,14 @@ Panel {
   }
 
   function activateHeader() {
-    toggleNetwork()
+    if (headerIndex === qrHeaderIndex) showWifiQr()
+    else if (headerIndex === toggleHeaderIndex) toggleNetwork()
   }
 
-  function setHeaderCursor() {
+  function setHeaderCursor(index) {
     cursorActive = true
     focusSection = "header"
-    headerIndex = 0
+    headerIndex = index
   }
 
   function selectDnsByDelta(delta) {
@@ -355,6 +367,11 @@ Panel {
     return !!(net && net.known && isProtected(net.security) && !net.connected)
   }
 
+  function canShareNetwork(net) {
+    if (!net || !net.connected) return false
+    return net.security !== WifiSecurityType.Wpa2Eap && net.security !== WifiSecurityType.WpaEap
+  }
+
   function selectWifiActionByDelta(delta) {
     if (selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
     if (!canForgetNetwork(wifiNetworks[selectedIndex])) {
@@ -398,6 +415,51 @@ Panel {
 
   readonly property string icon: Model.connectionIcon(kind, signalStrength)
 
+  function showWifiQr() {
+    if (qrProc.running || !info.iface || info.type !== "wifi") return
+    qrSize = 0
+    qrRows = []
+    qrError = ""
+    qrLoading = true
+    qrExpectedStop = false
+    qrProc.command = ["omarchy-network-qr", info.iface]
+    qrProc.running = true
+
+    // Leave the compact network panel behind while the centered share card is open.
+    controller.hide()
+    cancelPasswordPrompt()
+  }
+
+  function hideWifiQr() {
+    if (qrProc.running) {
+      qrExpectedStop = true
+      qrProc.running = false
+    }
+    if (pwProc.running) pwProc.running = false
+    qrSize = 0
+    qrRows = []
+    qrError = ""
+    qrLoading = false
+    qrPassword = ""
+    qrPasswordVisible = false
+    qrPasswordError = ""
+  }
+
+  function updateQr(raw) {
+    var matrix = Model.parseQrMatrix(raw)
+    qrRows = matrix.rows
+    qrSize = matrix.size
+  }
+
+  function toggleQrPassword() {
+    if (qrPasswordVisible) { qrPasswordVisible = false; return }
+    if (qrPassword !== "") { qrPasswordVisible = true; return }
+    if (pwProc.running || !info.iface) return
+    qrPasswordError = ""
+    pwProc.command = ["omarchy-network-password", info.iface]
+    pwProc.running = true
+  }
+
   function refresh(scanWifi) {
     if (scanWifi === undefined) scanWifi = false
     if (!detailsProc.running) detailsProc.running = true
@@ -430,7 +492,7 @@ Panel {
   }
 
   function headerDetail() {
-    return Model.headerDetail(info, canSelectBand)
+    return Model.headerDetail(info)
   }
 
   function updateDetails(raw) {
@@ -793,6 +855,49 @@ Panel {
   }
 
   Process {
+    id: qrProc
+    // Both collectors check qrExpectedStop: a dismissal mid-generation kills
+    // the process, but buffered output still arrives afterwards and would
+    // repopulate qrSize -- reopening the card the user just closed. The flag
+    // stays set through onExited (showWifiQr resets it) because the exit and
+    // stream-finished signals have no guaranteed order.
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: if (!root.qrExpectedStop) root.updateQr(text)
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: if (!root.qrExpectedStop) root.qrError = String(text || "").trim()
+    }
+    onExited: function(exitCode) {
+      root.qrLoading = false
+      if (root.qrExpectedStop) return
+      if (exitCode !== 0 || root.qrSize === 0) {
+        root.qrSize = 0
+        root.qrRows = []
+        if (root.qrError === "") root.qrError = "Could not generate the Wi-Fi QR code"
+      }
+    }
+  }
+
+  // The Wi-Fi password only enters shell memory when the user clicks to
+  // reveal it, and hideWifiQr drops it again when the share card closes.
+  // Both handlers bail when the card is gone so a fetch that was in flight
+  // during dismissal can't stash the secret into a closed panel's state.
+  Process {
+    id: pwProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: if (root.qrVisible) root.qrPassword = String(text || "").trim()
+    }
+    onExited: function(exitCode) {
+      if (!root.qrVisible) return
+      if (exitCode === 0 && root.qrPassword !== "") root.qrPasswordVisible = true
+      else root.qrPasswordError = "Could not read the Wi-Fi password"
+    }
+  }
+
+  Process {
     id: dnsProc
     stdout: StdioCollector {
       waitForEnd: true
@@ -1074,7 +1179,7 @@ Panel {
       // ---------- Hero: network icon · SSID + state · actions ----------
       Item {
         width: parent.width
-        implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, powerSwitch.implicitHeight)
+        implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, heroActions.implicitHeight)
 
         // Status only — the switch owns toggling, mouse and keyboard alike.
         Text {
@@ -1088,23 +1193,45 @@ Panel {
           anchors.verticalCenter: parent.verticalCenter
         }
 
-        // Compact on/off switch on the trailing edge of the hero, and the
-        // header's only cursor target.
-        ToggleSwitch {
-          id: powerSwitch
-          visible: root.canToggleWifi
-          checked: Networking.wifiEnabled
-          hasCursor: root.headerHasCursor
-          foreground: root.bar.foreground
+        // Sharing belongs to the connected-network hero rather than the scan
+        // result row. The radio switch remains beside it as the other hero action.
+        RowLayout {
+          id: heroActions
+          spacing: Style.space(8)
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          onHovered: function(on) { if (on) root.setHeaderCursor() }
-          onToggled: root.toggleNetwork()
 
-          PanelToolTip {
-            visible: powerSwitch.containsMouse
-            text: root.toggleHint
+          Button {
+            id: qrAction
+            visible: root.canShareWifi
+            iconText: "󰐲"
+            tooltipText: "Show QR code"
+            foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
+            iconSize: Style.font.subtitle * 1.5
+            horizontalPadding: Style.space(5)
+            verticalPadding: Style.space(2)
+            hasCursor: root.qrHeaderHasCursor
+            Layout.alignment: Qt.AlignVCenter
+            onHovered: function(on) { if (on) root.setHeaderCursor(root.qrHeaderIndex) }
+            onClicked: root.showWifiQr()
+          }
+
+          ToggleSwitch {
+            id: powerSwitch
+            visible: root.canToggleWifi
+            checked: Networking.wifiEnabled
+            hasCursor: root.toggleHeaderHasCursor
+            foreground: root.bar.foreground
+            Layout.alignment: Qt.AlignVCenter
+            onHovered: function(on) { if (on) root.setHeaderCursor(root.toggleHeaderIndex) }
+            onToggled: root.toggleNetwork()
+
+            PanelToolTip {
+              visible: powerSwitch.containsMouse
+              text: root.toggleHint
+              fontFamily: root.bar.fontFamily
+            }
           }
         }
 
@@ -1113,7 +1240,7 @@ Panel {
           anchors.left: heroIcon.right
           anchors.leftMargin: Style.space(14)
           anchors.right: parent.right
-          anchors.rightMargin: powerSwitch.visible ? powerSwitch.width + Style.space(12) : 0
+          anchors.rightMargin: heroActions.width > 0 ? heroActions.width + Style.space(12) : 0
           anchors.verticalCenter: parent.verticalCenter
           spacing: Style.space(2)
 
@@ -1552,6 +1679,23 @@ Panel {
     }
   }
 
+  WifiQrPanel {
+    anchorItem: button
+    bar: root.bar
+    qrRows: root.qrRows
+    qrSize: root.qrSize
+    loading: root.qrLoading
+    error: root.qrError
+    ssid: root.info.ssid || ""
+    secured: root.connectedWifiNetwork ? root.isProtected(root.connectedWifiNetwork.security) : false
+    password: root.qrPassword
+    passwordVisible: root.qrPasswordVisible
+    passwordError: root.qrPasswordError
+    open: root.qrVisible
+    onCloseRequested: root.hideWifiQr()
+    onPasswordToggleRequested: root.toggleQrPassword()
+  }
+
   // One Wi-Fi band pill. `active` (fill) is the band actually in use and
   // `selected` (bold) is the pinned choice; with Automatic on nothing is
   // pinned, so only the live band lights up and the two can no longer read as
@@ -1797,8 +1941,7 @@ Panel {
         spacing: Style.space(1)
         anchors.left: networkIcon.right
         anchors.leftMargin: Style.space(10)
-        anchors.right: rightAction.visible ? rightAction.left
-                      : parent.right
+        anchors.right: rightAction.visible ? rightAction.left : parent.right
         anchors.rightMargin: rightAction.visible ? Style.space(8) : 0
         anchors.verticalCenter: parent.verticalCenter
 

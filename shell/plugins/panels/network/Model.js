@@ -40,13 +40,11 @@ function formatHeaderFreq(mhz) {
   return ghz.toFixed(ghz % 1 === 0 ? 0 : 1) + "ghz"
 }
 
-// `hideWifiBand` is set when the band toggle is on screen: the band is already
-// spelled out there, so repeating it in "York (5ghz)" is noise. A single-band
-// network hides the toggle, and then the header stays the only place it shows.
-function headerDetail(info, hideWifiBand) {
+// Wi-Fi band state belongs in the selector section, not beside the hero name.
+// Ethernet has no equivalent selector, so keep its negotiated link speed here.
+function headerDetail(info) {
   var value = info || {}
   if (value.type === "ethernet") return formatHeaderSpeed(value.speed || "")
-  if (value.type === "wifi") return hideWifiBand ? "" : formatHeaderFreq(value.freq || "")
   return ""
 }
 
@@ -90,7 +88,28 @@ function parseBandStatus(raw) {
   }
 }
 
+function decodeIwSsid(value) {
+  var raw = String(value || "")
 
+  try {
+    var encoded = ""
+
+    for (var i = 0; i < raw.length; i++) {
+      if (raw[i] === "\\" && raw[i + 1] === "x" && /^[0-9a-f]{2}$/i.test(raw.substring(i + 2, i + 4))) {
+        var hex = raw.substring(i + 2, i + 4)
+        var byte = parseInt(hex, 16)
+        encoded += byte < 32 || byte === 127 ? encodeURIComponent(raw.substring(i, i + 4)) : "%" + hex
+        i += 3
+      } else {
+        encoded += encodeURIComponent(raw[i])
+      }
+    }
+
+    return decodeURIComponent(encoded)
+  } catch (error) {
+    return raw
+  }
+}
 
 function parseKeyValue(raw) {
   var next = {}
@@ -100,7 +119,9 @@ function parseKeyValue(raw) {
     if (!line) continue
     var idx = line.indexOf("\t")
     if (idx === -1) continue
-    next[line.substring(0, idx)] = line.substring(idx + 1).trim()
+    var key = line.substring(0, idx)
+    var value = line.substring(idx + 1)
+    next[key] = key === "ssid" ? decodeIwSsid(value) : value.trim()
   }
   return next
 }
@@ -284,6 +305,20 @@ function isProtected(security, openSecurity) {
   return security !== openSecurity
 }
 
+function parseQrMatrix(raw) {
+  var lines = String(raw || "").trim().split(/\r?\n/).filter(function(line) { return line !== "" })
+  if (lines.length === 0) return { rows: [], size: 0 }
+
+  var size = lines[0].length
+  if (size !== lines.length) return { rows: [], size: 0 }
+
+  for (var i = 0; i < lines.length; i++) {
+    if (lines[i].length !== size || !/^[01]+$/.test(lines[i])) return { rows: [], size: 0 }
+  }
+
+  return { rows: lines, size: size }
+}
+
 // The password arrives on stdin and reaches nmcli through the scriptable
 // `connection edit` editor -- argv is world-readable in /proc, so the secret
 // must never be an argument (printf is a bash builtin, so no process spawns
@@ -319,6 +354,7 @@ if (typeof module !== "undefined") {
     bandSectionTitle: bandSectionTitle,
     bandTooltip: bandTooltip,
     parseBandStatus: parseBandStatus,
+    decodeIwSsid: decodeIwSsid,
     parseKeyValue: parseKeyValue,
     throughputState: throughputState,
     pingLatencyState: pingLatencyState,
@@ -332,6 +368,7 @@ if (typeof module !== "undefined") {
     sortWifiRows: sortWifiRows,
     wifiSectionTitle: wifiSectionTitle,
     isProtected: isProtected,
+    parseQrMatrix: parseQrMatrix,
     enterpriseConnectScript: enterpriseConnectScript,
     networkFailureReason: networkFailureReason
   }

@@ -313,6 +313,9 @@ function searchScore(items, entry, query) {
   var score = 80
 
   if (label === needle) score = entry.parent === "root" ? 2 : 0
+  // An installed app whose name contains the query as a whole word ("zen"
+  // for Zen Browser) beats exact-labeled menu entries like Install > Zen.
+  else if (entry.kind === "app" && label.split(/\s+/).indexOf(needle) >= 0) score = 0
   else if (label.indexOf(needle) === 0) score = 10
   else if (label.indexOf(needle) >= 0) score = 30
   else if (nameText.indexOf(needle) >= 0) score = 40
