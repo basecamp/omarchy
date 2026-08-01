@@ -103,6 +103,10 @@ rg -F '"style.cursor-size": {"icon":"󰹵","label":"Cursor Size","provider":"cur
   fail "menu defines the cursor size entry"
 pass "menu defines the cursor size entry"
 
+rg -F '"style.cursor": {"icon":"󰇀","label":"Cursor Picker","provider":"cursors"}' "$ROOT/default/omarchy/omarchy-menu.jsonc" >/dev/null ||
+  fail "menu defines the cursor picker entry"
+pass "menu defines the cursor picker entry"
+
 rg -F '"cursor-sizes": {' "$ROOT/shell/plugins/menu/Menu.qml" >/dev/null &&
   rg -F 'omarchy-cursor-size-set' "$ROOT/shell/plugins/menu/Menu.qml" >/dev/null ||
   fail "menu wires the cursor size provider"
