@@ -6,12 +6,18 @@ import qs.Commons
 // Layer-shell popup attached to a bar widget icon, designed for
 // click-driven AND keyboard-driven panels (e.g. SUPER+CTRL+W summon).
 //
-// Built on PanelWindow with WlrKeyboardFocus.Exclusive rather than
-// PopupWindow (xdg-popup). Layer-shell surfaces declared Exclusive get
-// keyboard focus from Hyprland *at map time*, which is the protocol-level
-// equivalent of focus-on-launch for xdg-toplevels. xdg-popups don't get
-// that — they only receive keys after a click/hover routes focus through
-// their parent surface — so keyboard-summoned popups fell flat without it.
+// Built on PanelWindow with WlrKeyboardFocus.OnDemand rather than
+// PopupWindow (xdg-popup). Layer-shell surfaces that declare any keyboard
+// interactivity get keyboard focus from Hyprland *at map time*, which is
+// the protocol-level equivalent of focus-on-launch for xdg-toplevels.
+// xdg-popups don't get that — they only receive keys after a click/hover
+// routes focus through their parent surface — so keyboard-summoned popups
+// fell flat without it.
+//
+// Exclusive would also grant map-time focus, but it makes Hyprland route
+// *every* pointer event to the exclusive surface no matter which output
+// the cursor is over, which leaves clicks on any other monitor unable to
+// reach the dismissal surfaces below.
 //
 // API is a subset of Common.PopupCard: anchorItem, owner, bar, open,
 // padding, margin, contentWidth/Height, centerOnBar, default contentItem.
@@ -78,7 +84,13 @@ PanelWindow {
   // mapped during the fade-out so the opacity animation has something to
   // animate, but keyboard/click ownership must release the moment the
   // logical close fires — otherwise the user is locked out for 140ms.
-  WlrLayershell.keyboardFocus: open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+  //
+  // OnDemand, not Exclusive: an exclusive layer surface takes over pointer
+  // hit-testing compositor-wide, so clicks on other outputs get forced onto
+  // this surface instead of reaching the dismissal windows below. OnDemand
+  // still grabs focus when the surface maps, and follow-mouse can't steal it
+  // back because this surface plus the dismissal windows cover every output.
+  WlrLayershell.keyboardFocus: open ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
   // Full-screen layer-shell. The visible card is positioned inside via
   // `cardOrigin`. The `mask` below makes the bar area click-through (so
@@ -286,6 +298,47 @@ PanelWindow {
     onClicked: function(mouse) {
       if (inBarRegion(mouse.x, mouse.y) && forwardBarClick(mouse.x, mouse.y, mouse.button)) return
       root.close()
+    }
+  }
+
+  // The panel surface only spans the anchor's screen, and the compositor
+  // hit-tests pointer input per output, so `dismissArea` above can never see
+  // a click on another monitor. Give every other output a transparent twin
+  // whose only job is to catch that click. They exist only while the panel is
+  // logically open (not during the fade-out, matching `dismissArea.enabled`).
+  //
+  // Keyboard focus is None: these must catch the pointer without taking focus
+  // from the panel when the cursor merely crosses onto their output.
+  Variants {
+    model: root.open ? Quickshell.screens : []
+
+    delegate: Component {
+      PanelWindow {
+        required property var modelData
+
+        screen: modelData
+        // Compare by output name: the anchor screen must be known before any
+        // twin maps, or a twin would cover the panel's own output.
+        visible: root.open && !!root.screen && modelData.name !== root.screen.name
+        color: "transparent"
+        exclusionMode: ExclusionMode.Ignore
+
+        WlrLayershell.namespace: "omarchy-keyboard-panel-dismiss"
+        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+        anchors {
+          top: true
+          bottom: true
+          left: true
+          right: true
+        }
+
+        MouseArea {
+          anchors.fill: parent
+          onClicked: root.close()
+        }
+      }
     }
   }
 
