@@ -244,7 +244,7 @@ Panel {
     }
 
     root.brightnessSetQueued = false
-    setBrightnessProc.command = ["bash", "-c", "omarchy-brightness-display --no-osd " + percent + "%"]
+    setBrightnessProc.command = ["omarchy-brightness-display", "--no-osd", "--monitor", root.focusedMonitor, percent + "%"]
     setBrightnessProc.running = true
   }
 
