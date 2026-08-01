@@ -15,6 +15,6 @@ add_whatsapp_slim_extension() {
   fi
 }
 
-for conf in chromium chrome google-chrome brave brave-beta brave-nightly brave-origin-beta microsoft-edge-stable; do
+for conf in chromium chrome google-chrome brave brave-beta brave-nightly brave-origin microsoft-edge-stable; do
   add_whatsapp_slim_extension "$HOME/.config/$conf-flags.conf"
 done
