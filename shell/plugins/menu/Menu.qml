@@ -101,6 +101,9 @@ Item {
   property int contentSpacing: Style.spacing.md
   property int baseRowHeight: Math.max(Style.space(50), Style.font.body + Style.spacing.rowPaddingX * 2)
   property int detailRowHeight: Math.max(Style.space(58), Style.font.body + Style.font.caption + Style.spacing.rowPaddingX * 2)
+  // How much of the first hidden row stays visible at the fold — enough to
+  // read as a cut-off row rather than a bottom border.
+  property int rowPeek: Math.round(baseRowHeight * 0.55)
   property int rowSpacing: Style.spacing.xs
   property int dividerHeight: Style.space(17)
   property bool searchDivider: false
@@ -142,36 +145,69 @@ Item {
     return root.filterText && detail ? root.detailRowHeight : root.baseRowHeight
   }
 
+  // Height the card can devote to rows before running off the screen — or
+  // past the frozen top edge once a search has pinned the card in place.
+  // Uses panel.cardTop rather than effectiveCardTop: the centered top is
+  // derived from the card height, which this value feeds.
+  function availableRowsHeight() {
+    var top = panel.cardTop >= 0 ? panel.cardTop : Style.gapsOut
+    var available = panel.height - top - Style.gapsOut - root.contentMargin * 2 - root.headerHeight - root.contentSpacing
+    // A card that swallows the whole screen reads as a page, not a menu.
+    return Math.min(available, Math.round(panel.height * 0.6))
+  }
+
+  // When every row fits, the list gets its full height. When they don't,
+  // the card must end mid-row: a clipped row is what tells the eye there is
+  // more below the fold, so never come out even on a row boundary.
+  function foldedListHeight(totals, available) {
+    var count = totals.length
+    if (count === 0) return root.baseRowHeight
+    if (totals[count - 1] <= available) return totals[count - 1]
+
+    var peek = root.rowPeek
+    var full = 0
+    while (full < count && totals[full] <= available) full++
+    while (full > 1 && totals[full - 1] + root.rowSpacing + peek > available) full--
+    if (full < 1) return Math.max(available, root.baseRowHeight)
+
+    return totals[full - 1] + root.rowSpacing + peek
+  }
+
   function rowListHeight(_serial, _count, _filter, _divider) {
     if (displayModel.count === 0) return root.baseRowHeight
 
-    var count = Math.min(displayModel.count, 10)
+    var totals = []
     var total = 0
     var previousSection = ""
 
-    for (var i = 0; i < count; i++) {
+    for (var i = 0; i < displayModel.count; i++) {
       var row = displayModel.get(i)
       if (i > 0) total += root.rowSpacing
       if (row.section === "drilldown" && previousSection !== "drilldown") total += root.dividerHeight
       total += root.rowHeightForDetail(row.detail)
       previousSection = row.section
+      totals.push(total)
     }
 
-    return total
+    return foldedListHeight(totals, availableRowsHeight())
   }
 
   function dmenuRowListHeight(_serial, _count, _filter) {
     if (root.mode === "input") return 0
     if (displayModel.count === 0) return root.baseRowHeight
 
-    var count = Math.min(displayModel.count, 10)
+    var available = availableRowsHeight()
+    if (root.dmenuMaxHeight > 0) available = Math.min(available, Style.space(root.dmenuMaxHeight))
+
+    var totals = []
     var total = 0
-    for (var i = 0; i < count; i++) {
+    for (var i = 0; i < displayModel.count; i++) {
       if (i > 0) total += root.rowSpacing
       total += root.baseRowHeight
+      totals.push(total)
     }
 
-    return root.dmenuMaxHeight > 0 ? Math.min(total, Style.space(root.dmenuMaxHeight)) : total
+    return foldedListHeight(totals, available)
   }
 
   function item(id) {
@@ -510,7 +546,7 @@ Item {
     else if (selectedIndex < 0) selectedIndex = 0
 
     Qt.callLater(function() {
-      if (displayModel.count > 0) resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+      if (displayModel.count > 0) root.revealCursor()
     })
   }
 
@@ -591,8 +627,30 @@ Item {
     else if (selectedIndex < 0) selectedIndex = 0
 
     Qt.callLater(function() {
-      if (displayModel.count > 0) resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+      if (displayModel.count > 0) root.revealCursor()
     })
+  }
+
+  // Contain alone parks the cursor row flush with the viewport edge, hiding
+  // the neighbor entirely and losing the fold affordance. Keep the next
+  // hidden row peeking past the cursor in the direction of travel.
+  function revealCursor() {
+    if (displayModel.count === 0) return
+    resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+
+    var item = resultList.itemAtIndex(root.selectedIndex)
+    if (!item) return
+
+    var reach = root.rowPeek + root.rowSpacing
+    if (root.selectedIndex < displayModel.count - 1) {
+      var maxY = Math.max(resultList.originY, resultList.originY + resultList.contentHeight - resultList.height)
+      var overhang = item.y + item.height + reach - (resultList.contentY + resultList.height)
+      if (overhang > 0) resultList.contentY = Math.min(resultList.contentY + overhang, maxY)
+    }
+    if (root.selectedIndex > 0) {
+      var underhang = resultList.contentY - (item.y - reach)
+      if (underhang > 0) resultList.contentY = Math.max(resultList.contentY - underhang, resultList.originY)
+    }
   }
 
   function select(delta) {
@@ -605,7 +663,7 @@ Item {
     } else {
       selectedIndex = (selectedIndex + delta + displayModel.count) % displayModel.count
     }
-    resultList.positionViewAtIndex(selectedIndex, ListView.Contain)
+    revealCursor()
   }
 
   function setFilter(nextFilter) {
@@ -1263,6 +1321,42 @@ Item {
                   root.activateIndex(row.index, true)
                 }
               }
+            }
+          }
+
+          // Scroll scrims. The clipped row already marks the fold at rest;
+          // these keep both edges honest once the list has been scrolled,
+          // when content hides above the card top as well as below. Strength
+          // tracks the distance still hidden past each edge rather than
+          // animating on a clock, so a programmatic jump — wrapping from the
+          // last row back to the first — lands with the fade already applied.
+          Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: Math.min(Style.space(28), parent.height / 2)
+            visible: opacity > 0
+            opacity: resultList.contentHeight > resultList.height
+              ? Math.max(0, Math.min(1, (resultList.contentY - resultList.originY) / height))
+              : 0
+            gradient: Gradient {
+              GradientStop { position: 0; color: root.background }
+              GradientStop { position: 1; color: Util.alpha(root.background, 0) }
+            }
+          }
+
+          Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: Math.min(Style.space(28), parent.height / 2)
+            visible: opacity > 0
+            opacity: resultList.contentHeight > resultList.height
+              ? Math.max(0, Math.min(1, (resultList.originY + resultList.contentHeight - resultList.height - resultList.contentY) / height))
+              : 0
+            gradient: Gradient {
+              GradientStop { position: 0; color: Util.alpha(root.background, 0) }
+              GradientStop { position: 1; color: root.background }
             }
           }
 
