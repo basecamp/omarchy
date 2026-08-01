@@ -274,6 +274,12 @@ Item {
       volatile: true,
       actionFor: function(value) { return "omarchy-cursor-set " + Util.shellQuote(value) }
     },
+    "cursor-sizes": {
+      script: "current=$(omarchy-cursor-size-current 2>/dev/null); omarchy-cursor-size-list 2>/dev/null | while read -r s; do [[ -z $s ]] && continue; printf '%s\\t%s\\t%s\\n' \"$s\" \"$s\" \"$current\"; done",
+      icon: "󰧨",
+      volatile: true,
+      actionFor: function(value) { return "omarchy-cursor-size-set " + Util.shellQuote(value) }
+    },
     "power-profiles": {
       script: "current=$(powerprofilesctl get 2>/dev/null); omarchy-powerprofiles-list 2>/dev/null | while read -r p; do [[ -z $p ]] && continue; printf '%s\\t%s\\t%s\\n' \"$p\" \"$p\" \"$current\"; done",
       icon: "\udb81\udc0b",

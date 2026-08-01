@@ -1,0 +1,79 @@
+#!/bin/bash
+
+# omarchy:summary=Set the cursor size
+# omarchy:args=<size>
+# omarchy:examples=omarchy cursor size list | omarchy cursor size set 32
+
+usage() {
+  echo "Usage: omarchy-cursor-size-set <size>"
+}
+
+size="${1:-}"
+
+case "$size" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  "")
+    usage >&2
+    exit 1
+    ;;
+esac
+
+if [[ ! $size =~ ^[0-9]+$ ]] || (( size < 1 )); then
+  echo "Invalid cursor size '$size'." >&2
+  exit 1
+fi
+
+hypr_config="$HOME/.config/hypr/hyprland.lua"
+
+# Apply instantly using the currently configured theme.
+theme=$(omarchy-cursor-current 2>/dev/null)
+if [[ -n $theme ]]; then
+  hyprctl setcursor "$theme" "$size"
+fi
+
+# Persist for future logins. The user config may already carry hl.env lines
+# (or none at all), so replace in place and otherwise append a block.
+update_env() {
+  local var="$1"
+  if grep -q "hl.env(\"$var\"" "$hypr_config"; then
+    sed -i "s/hl.env(\"$var\", \"[^\"]*\")/hl.env(\"$var\", \"$size\")/" "$hypr_config"
+  else
+    echo "hl.env(\"$var\", \"$size\")" >>"$hypr_config"
+  fi
+}
+
+update_env XCURSOR_SIZE
+update_env HYPRCURSOR_SIZE
+
+# Keep GTK apps in sync. gsettings needs a user DBus session; settings.ini is
+# the fallback that applies to every GTK 3/4 app.
+if [[ -n ${DBUS_SESSION_BUS_ADDRESS:-} ]]; then
+  gsettings set org.gnome.desktop.interface cursor-size "$size" || true
+fi
+
+update_gtk_settings() {
+  local ini="$1"
+  mkdir -p "$(dirname "$ini")"
+
+  if [[ ! -f $ini ]]; then
+    printf '[Settings]\ngtk-cursor-theme-name=%s\ngtk-cursor-theme-size=%s\n' "$theme" "$size" >"$ini"
+    return
+  fi
+
+  sed -i '/^gtk-cursor-theme-name=/d; /^gtk-cursor-theme-size=/d' "$ini"
+  if ! grep -q '^\[Settings\]' "$ini"; then
+    printf '\n[Settings]\n' >>"$ini"
+  fi
+  sed -i "/^\[Settings\]/a\\
+gtk-cursor-theme-name=$theme\\
+gtk-cursor-theme-size=$size" "$ini"
+}
+
+update_gtk_settings "$HOME/.config/gtk-3.0/settings.ini"
+update_gtk_settings "$HOME/.config/gtk-4.0/settings.ini"
+
+omarchy-notification-send -g 󰧨 "Cursor size set" "$size" -t 5000
+omarchy-hook cursor-size-set "$size"

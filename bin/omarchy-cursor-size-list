@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# omarchy:summary=List standard cursor sizes
+# omarchy:examples=omarchy cursor size list | omarchy cursor size set 32
+
+printf '%s\n' 16 20 24 28 32 36 40 44 48 56 64

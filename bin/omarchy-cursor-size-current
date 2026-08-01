@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# omarchy:summary=Show the current cursor size
+# omarchy:examples=omarchy cursor size current
+
+# The cursor size is persisted as HYPRCURSOR_SIZE in the Hyprland config.
+config_file="$HOME/.config/hypr/hyprland.lua"
+
+if [[ -f $config_file ]]; then
+  size=$(sed -n 's/.*HYPRCURSOR_SIZE", *"\([0-9]*\)".*/\1/p' "$config_file" | head -n1)
+  if [[ -n $size ]]; then
+    echo "$size"
+    exit 0
+  fi
+fi
+
+# Fall back to the running session value.
+if [[ -n ${HYPRCURSOR_SIZE:-} ]]; then
+  echo "$HYPRCURSOR_SIZE"
+  exit 0
+fi
+
+# Then the desktop setting.
+gsize=$(gsettings get org.gnome.desktop.interface cursor-size 2>/dev/null | tr -d "'")
+if [[ $gsize =~ ^[0-9]+$ ]]; then
+  echo "$gsize"
+  exit 0
+fi
+
+echo 24
