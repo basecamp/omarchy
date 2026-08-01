@@ -7,7 +7,7 @@
 set -euo pipefail
 
 CLAUDE_SOURCE_PATH="$HOME/.local/state/omarchy/current/theme/claude.json"
-CLAUDE_CONFIG_DIR="$HOME/.claude"
+CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 CLAUDE_THEME_PATH="$CLAUDE_CONFIG_DIR/themes/omarchy.json"
 CLAUDE_SETTINGS_PATH="$CLAUDE_CONFIG_DIR/settings.json"
 CLAUDE_ACTIVATE=0
