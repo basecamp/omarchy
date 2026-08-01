@@ -120,7 +120,7 @@ print_verbose() {
       link=$(iw dev "$iface" link 2>/dev/null)
 
       if [[ -n $link ]]; then
-        printf 'ssid\t%s\n' "$(printf '%b' "$(awk '/SSID:/ { sub(/.*SSID: /, ""); print; exit }' <<<"$link")")"
+        printf 'ssid\t%s\n' "$(awk '/SSID:/ { sub(/.*SSID: /, ""); print; exit }' <<<"$link")"
         printf 'signal_dbm\t%s\n' "$(awk '/signal:/ { print $2; exit }' <<<"$link")"
         printf 'freq\t%s\n' "$(awk '/freq:/ { print $2; exit }' <<<"$link")"
         printf 'bitrate\t%s %s\n' "$(awk '/tx bitrate:/ { print $3; exit }' <<<"$link")" "$(awk '/tx bitrate:/ { print $4; exit }' <<<"$link")"
