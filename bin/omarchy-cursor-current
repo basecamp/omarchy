@@ -15,4 +15,7 @@ if [[ -f $config_file ]]; then
 fi
 
 # Fall back to the running session value.
-hyprctl getoption cursor:theme -j 2>/dev/null | jq -r '.str // empty'
+if [[ -n ${HYPRCURSOR_THEME:-} ]]; then
+  echo "$HYPRCURSOR_THEME"
+  exit 0
+fi

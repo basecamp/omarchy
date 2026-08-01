@@ -99,7 +99,7 @@ if omarchy-cursor-size-set abc; then
 fi
 pass "cursor size rejects non-numeric sizes"
 
-rg -F '"style.cursor-size": {"icon":"󰧨","label":"Cursor Size","provider":"cursor-sizes"}' "$ROOT/default/omarchy/omarchy-menu.jsonc" >/dev/null ||
+rg -F '"style.cursor-size": {"icon":"󰹵","label":"Cursor Size","provider":"cursor-sizes"}' "$ROOT/default/omarchy/omarchy-menu.jsonc" >/dev/null ||
   fail "menu defines the cursor size entry"
 pass "menu defines the cursor size entry"
 
@@ -107,3 +107,11 @@ rg -F '"cursor-sizes": {' "$ROOT/shell/plugins/menu/Menu.qml" >/dev/null &&
   rg -F 'omarchy-cursor-size-set' "$ROOT/shell/plugins/menu/Menu.qml" >/dev/null ||
   fail "menu wires the cursor size provider"
 pass "menu wires the cursor size provider"
+
+mv "$HOME/.config/hypr/hyprland.lua" "$HOME/.config/hypr/hyprland.lua.bak"
+export HYPRCURSOR_THEME="macOS-original"
+[[ $(omarchy-cursor-current) == "macOS-original" ]] ||
+  fail "cursor theme current falls back to the session env"
+pass "cursor theme current falls back to the session env"
+unset HYPRCURSOR_THEME
+mv "$HOME/.config/hypr/hyprland.lua.bak" "$HOME/.config/hypr/hyprland.lua"
