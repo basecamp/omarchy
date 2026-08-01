@@ -1,0 +1,64 @@
+/* Collapse WhatsApp Web's chat list to a Signal-style avatar rail when the
+ * window is too narrow to show both the full list and the conversation.
+ * Leans on WhatsApp's stable structural ids (#side, #main, #pane-side) and
+ * data-testid hooks rather than its obfuscated, frequently-churning class
+ * names. */
+
+@media (max-width: 1100px) {
+  /* The chat-list column (title header + #side) becomes an avatar rail */
+  div:has(> div#side) {
+    flex: 0 0 90px !important;
+    min-width: 90px !important;
+    max-width: 90px !important;
+  }
+
+  /* Chat-list title bar, search, filter chips, and banner don't fit.
+   * Scoped to the column wrapper: the left icon nav rail confusingly
+   * shares the same chatlist-header testid and must survive. */
+  div:has(> div#side) > header,
+  #side > div:first-child,
+  #side [role="tablist"],
+  #side span[data-testid="chat-butterbar"] {
+    display: none !important;
+  }
+
+  /* The rail doesn't need a visible scrollbar, and horizontal overflow
+   * from the collapsed rows must not wiggle */
+  #pane-side {
+    overflow-x: hidden !important;
+    scrollbar-width: none !important;
+  }
+
+  /* Chat rows: keep the avatar column, collapse the text/preview columns
+   * without display:none so the unread badge can be resurrected */
+  [data-testid="cell-frame-container"] {
+    position: relative !important;
+  }
+
+  [data-testid="cell-frame-container"] > div:not(:first-child) {
+    visibility: hidden !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Float the unread badge over the avatar's top-right corner */
+  [data-testid="cell-frame-container"] span[aria-label*="unread"] {
+    visibility: visible !important;
+    position: absolute !important;
+    top: 2px !important;
+    left: 50px !important;
+  }
+
+  /* The empty drawer overlay keeps the stock chat-list width, which
+   * strands its divider border in the middle of the conversation */
+  [data-testid="drawer-middle"] {
+    border-left: none !important;
+  }
+
+  /* Let the app shrink below WhatsApp's default minimum width */
+  #app,
+  #app .two {
+    min-width: 0 !important;
+  }
+}
