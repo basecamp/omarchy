@@ -184,8 +184,11 @@ emit_theme() {
 # --------------------------------------------------------------------- main --
 
 main() {
+  local starttime
+
   mkdir -p "$RUNDIR"
-  printf '%s\n' "$$" >"$PIDFILE"
+  starttime=$(awk '{print $22}' "/proc/$$/stat")
+  printf '%s %s\n' "$$" "$starttime" >"$PIDFILE"
   trap cleanup EXIT
   # Exit through the normal path on a signal so the EXIT trap still runs and the
   # pidfile gets cleaned up; an untrapped SIGTERM would skip it.

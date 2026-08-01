@@ -15,6 +15,7 @@
   const orig = window.matchMedia.bind(window);
   let isDark = orig("(prefers-color-scheme: dark)").matches;
   const listeners = new Set();
+  const owners = new Set();
 
   function makeProxy(query) {
     const wantsDark = /dark/i.test(query);
@@ -28,6 +29,8 @@
     // `addEventListener("change")`, so the two share a registration space and
     // either remover cancels either add.
     const owner = {};
+    let onchange = null;
+    let proxy = null;
 
     function has(cb) {
       for (const e of listeners) if (e.owner === owner && e.cb === cb) return true;
@@ -36,7 +39,11 @@
 
     function add(cb) {
       // Native listeners dedupe on identity; adding twice must not fire twice.
-      if (typeof cb !== "function" || has(cb)) return;
+      if (
+        (typeof cb !== "function" && typeof cb?.handleEvent !== "function") ||
+        has(cb)
+      )
+        return;
       listeners.add({ owner, cb, wantsDark, wantsLight });
     }
 
@@ -44,7 +51,7 @@
       for (const e of listeners) if (e.owner === owner && e.cb === cb) listeners.delete(e);
     }
 
-    return new Proxy(target, {
+    proxy = new Proxy(target, {
       get(_t, prop) {
         if (prop === "matches") {
           if (wantsDark) return isDark;
@@ -52,6 +59,7 @@
           return target.matches;
         }
         if (prop === "media") return query;
+        if (prop === "onchange") return onchange;
         if (prop === "addEventListener") {
           return (evt, cb) => {
             if (evt === "change") add(cb);
@@ -72,7 +80,21 @@
         const v = target[prop];
         return typeof v === "function" ? v.bind(target) : v;
       },
+      set(_t, prop, value) {
+        if (prop === "onchange") {
+          onchange = typeof value === "function" ? value : null;
+          if (onchange) owners.add(owner);
+          else owners.delete(owner);
+          return true;
+        }
+        return Reflect.set(target, prop, value);
+      },
     });
+    owner.proxy = proxy;
+    owner.onchange = () => onchange;
+    owner.wantsDark = wantsDark;
+    owner.wantsLight = wantsLight;
+    return proxy;
   }
 
   window.matchMedia = function (query) {
@@ -86,7 +108,7 @@
     const next = !!(ev.detail && ev.detail.dark);
     if (next === isDark) return;
     isDark = next;
-    for (const { cb, wantsDark, wantsLight } of listeners) {
+    for (const { owner, cb, wantsDark, wantsLight } of listeners) {
       const matches = wantsDark ? isDark : wantsLight ? !isDark : false;
       const media = wantsDark
         ? "(prefers-color-scheme: dark)"
@@ -97,7 +119,27 @@
         // Shaped like a MediaQueryListEvent; apps read .matches. The legacy
         // addListener callback takes the same argument, so there is nothing to
         // branch on here.
-        cb({ matches, media });
+        const event = { matches, media, target: owner.proxy, currentTarget: owner.proxy };
+        if (typeof cb === "function") cb.call(owner.proxy, event);
+        else cb.handleEvent(event);
+      } catch (_) {}
+    }
+    for (const owner of owners) {
+      const cb = owner.onchange();
+      if (!cb) continue;
+      const matches = owner.wantsDark ? isDark : owner.wantsLight ? !isDark : false;
+      const media = owner.wantsDark
+        ? "(prefers-color-scheme: dark)"
+        : owner.wantsLight
+        ? "(prefers-color-scheme: light)"
+        : "";
+      try {
+        cb.call(owner.proxy, {
+          matches,
+          media,
+          target: owner.proxy,
+          currentTarget: owner.proxy,
+        });
       } catch (_) {}
     }
   });

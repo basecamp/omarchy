@@ -89,6 +89,39 @@ JS
   fail "whatsapp-theme classifies light and dark by linearized luminance" "$scheme_check"
 pass "whatsapp-theme classifies light and dark by linearized luminance"
 
+# The shim must preserve the MediaQueryList listener shapes web apps can use,
+# including EventListener objects and the onchange property.
+listener_check=$(node - "$EXT_DIR/omarchy-prefers-color-scheme.js" <<'JS'
+const fs = require('fs')
+const vm = require('vm')
+let themeChange
+const context = {
+  window: {
+    matchMedia(query) {
+      return { matches: query.includes('dark'), media: query }
+    },
+  },
+  document: {
+    addEventListener(type, cb) {
+      if (type === 'omarchy:set-color-scheme') themeChange = cb
+    },
+  },
+}
+vm.runInNewContext(fs.readFileSync(process.argv[2], 'utf8'), context)
+const query = context.window.matchMedia('(prefers-color-scheme: dark)')
+const calls = []
+query.addEventListener('change', { handleEvent: (event) => calls.push(['object', event.matches]) })
+query.onchange = function (event) {
+  calls.push(['onchange', event.matches, this === query])
+}
+themeChange({ detail: { dark: false } })
+process.stdout.write(JSON.stringify(calls))
+JS
+)
+[[ $listener_check == '[["object",false],["onchange",false,true]]' ]] ||
+  fail "prefers-color-scheme shim supports listener objects and onchange" "$listener_check"
+pass "prefers-color-scheme shim supports listener objects and onchange"
+
 TMPDIR=$(mktemp -d)
 test_home="$TMPDIR/home"
 native_manifest="$test_home/.config/chromium/NativeMessagingHosts/com.omarchy.theme.json"
@@ -139,6 +172,10 @@ pass "theme host frames messages with a little-endian length prefix"
 run_dir="$TMPDIR/run/omarchy-theme"
 mkdir -p "$run_dir"
 echo 999999 >"$run_dir/999999.pid"
+
+# A host can be killed before its EXIT trap removes the pidfile. If Linux later
+# reuses that PID, the refresh must not send SIGUSR1 to the unrelated process.
+echo "$$ 0" >"$run_dir/reused.pid"
 
 # Drive the real host rather than a stand-in sleeper: a synthetic process with
 # its own USR1 trap would keep this green even if the host's trap, its watchdog
@@ -209,6 +246,7 @@ JS
 jq -e '.theme_name == "tokyo-night" and .bg == "#1a1b26"' <<<"$second" >/dev/null ||
   fail "theme host re-pushes a usable theme on refresh" "$second"
 [[ ! -f $run_dir/999999.pid ]] || fail "theme-set refresh prunes stale pidfiles"
+[[ ! -f $run_dir/reused.pid ]] || fail "theme-set refresh prunes reused pidfiles"
 # The refresh ran while the host was alive, so its own pidfile had to survive;
 # the host removes it through its EXIT trap once we kill it above.
 [[ $kept_pidfile == "yes" ]] || fail "theme-set refresh keeps live pidfiles" "$(ls "$run_dir")"
