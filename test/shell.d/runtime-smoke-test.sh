@@ -53,12 +53,14 @@ cp -a "$ROOT/shell" "$test_root/shell"
 ln -s "$ROOT/config" "$test_root/config"
 ln -s "$ROOT/bin" "$test_root/bin"
 
-hot_reload_dir="$test_home/.config/omarchy/plugins/local.hot-reload"
+# Every plugin under ~/.config/omarchy/plugins hot-reloads, whoever wrote it.
+hot_reload_id="acme.hot-reload"
+hot_reload_dir="$test_home/.config/omarchy/plugins/$hot_reload_id"
 mkdir -p "$hot_reload_dir"
-cat >"$hot_reload_dir/manifest.json" <<'JSON'
+cat >"$hot_reload_dir/manifest.json" <<JSON
 {
   "schemaVersion": 1,
-  "id": "local.hot-reload",
+  "id": "$hot_reload_id",
   "name": "Before Hot Reload",
   "version": "1.0.0",
   "kinds": ["overlay"],
@@ -144,23 +146,23 @@ mv "$hot_reload_dir/manifest.json.tmp" "$hot_reload_dir/manifest.json"
 hot_reload_name=""
 for _ in {1..80}; do
   hot_reload_name=$(shell_ipc shell listPlugins 2>/dev/null |
-    jq -r '.[] | select(.id == "local.hot-reload") | .name' 2>/dev/null || true)
+    jq -r --arg id "$hot_reload_id" '.[] | select(.id == $id) | .name' 2>/dev/null || true)
   [[ $hot_reload_name == "After Hot Reload" ]] && break
   if ! kill -0 "$QS_PID" 2>/dev/null; then
-    fail_with_log "test shell exited while reloading a changed local clone"
+    fail_with_log "test shell exited while reloading a changed installed plugin"
   fi
   sleep 0.1
 done
 [[ $hot_reload_name == "After Hot Reload" ]] ||
-  fail_with_log "local clone changes reload without an explicit rescan"
-pass "local clone changes reload without an explicit rescan"
+  fail_with_log "installed plugin changes reload without an explicit rescan"
+pass "installed plugin changes reload without an explicit rescan"
 
-[[ $(shell_ipc shell setPluginEnabled local.hot-reload true) == "ok" ]] ||
-  fail_with_log "local clone could not be enabled"
+[[ $(shell_ipc shell setPluginEnabled "$hot_reload_id" true) == "ok" ]] ||
+  fail_with_log "installed plugin could not be enabled"
 [[ $(shell_ipc shell summon omarchy.emojis "{}") == "ok" ]] ||
   fail_with_log "calls to a cloned source id do not reach its enabled clone"
 shell_ipc_quiet shell hide omarchy.emojis >/dev/null
-shell_ipc_quiet shell setPluginEnabled local.hot-reload false >/dev/null
+shell_ipc_quiet shell setPluginEnabled "$hot_reload_id" false >/dev/null
 pass "shell IPC routes built-in ids to enabled clones"
 
 shell_config=$(shell_ipc shell listShellConfig)

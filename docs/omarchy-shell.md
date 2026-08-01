@@ -61,7 +61,7 @@ editor, confirmation, and output stay visible.
 Cloning `omarchy.clock`, for example, creates and switches to
 `~/.config/omarchy/plugins/local.clock/`, names it `My Clock`, and preserves
 the built-in IPC identity so existing shortcuts keep working. Saving files in
-a `local.*` clone reloads its code automatically, and removing an active clone
+any installed plugin reloads its code automatically, and removing an active clone
 switches back to its built-in source.
 
 For a bar widget, on and off means its place in the bar. Everything else is

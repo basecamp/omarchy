@@ -668,9 +668,11 @@ QtObject {
   function localPluginIdForPath(filePath) {
     var base = pluginsDir.replace(/\/$/, "") + "/"
     var path = String(filePath || "").trim()
-    if (path.indexOf(base + "local.") !== 0) return ""
+    if (path.indexOf(base) !== 0) return ""
 
     var relative = path.slice(base.length)
+    // Hidden entries are not plugins: clone staging dirs, remove backups.
+    if (relative.indexOf(".") === 0) return ""
     if (relative.indexOf("/.git/") !== -1 || relative.endsWith("/.git")) return ""
 
     var slash = relative.indexOf("/")

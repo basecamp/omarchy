@@ -155,7 +155,7 @@ the interactive picker, then opens the new `local.*` directory in `$EDITOR`.
 Existing shortcuts and shell IPC calls made to the built-in id are routed to
 the enabled clone, so cloning does not require changing its callers. Removing
 an active clone switches back to its built-in source.
-Saving a file anywhere inside a `local.*` plugin reloads plugin code
+Saving a file anywhere under `~/.config/omarchy/plugins/` reloads plugin code
 automatically; `omarchy-shell shell rescanPlugins` remains available to force a reload.
 
 First-party plugins under `shell/plugins/` are discovered the same way and load
