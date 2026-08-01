@@ -350,8 +350,33 @@ Item {
     position = normalizePosition(config.position)
     setRequestedTransparency(config.transparent === true)
     centerAnchor = Util.canonicalWidgetId(config.centerAnchor || "")
-    layoutConfig = normalizeLayout(config.layout)
+
+    // layoutEntries feeds plain JS arrays to the module Repeaters, and QML
+    // cannot diff those: reassigning layoutConfig rebuilds every widget on
+    // every monitor. When a shell.json write only changed inline widget
+    // settings, patch the live layout and running widgets in place instead.
+    var next = normalizeLayout(config.layout)
+    var delta = BarModel.inlineSettingsDelta(layoutConfig, next)
+    if (delta) {
+      applySettingsDelta(delta)
+      return
+    }
+    layoutConfig = next
     barConfigSerial++
+  }
+
+  function applySettingsDelta(delta) {
+    for (var i = 0; i < delta.length; i++) {
+      var change = delta[i]
+      layoutConfig[change.region][change.index] = change.entry
+      var settings = entrySettings(change.entry)
+      for (var s = 0; s < moduleSlots.length; s++) {
+        var slot = moduleSlots[s]
+        if (!slot || slot.region !== change.region || slot.moduleName !== entryId(change.entry)) continue
+        var item = slot.activeItem
+        if (item && "settings" in item) item.settings = settings
+      }
+    }
   }
 
   onBarConfigChanged: applyBarConfig()

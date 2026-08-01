@@ -122,6 +122,50 @@ const entries = [{ id: 'a' }, { id: 'omarchy.tray' }, { id: 'b' }]
 assertDeepEqual(bar.pinTrayToInner(entries, 'left').map(bar.entryId), ['a', 'b', 'omarchy.tray'], 'bar pins tray to left inner edge')
 assertDeepEqual(bar.pinTrayToInner(entries, 'right').map(bar.entryId), ['omarchy.tray', 'a', 'b'], 'bar pins tray to right inner edge')
 
+// A settings-only shell.json write must patch the live bar, not rebuild it:
+// the module Repeaters recreate every widget when their array model changes.
+const settingsLayout = { left: [{ id: 'omarchy.power' }], center: [{ id: 'omarchy.clock', format: 'HH:mm' }], right: [] }
+assertDeepEqual(
+  bar.inlineSettingsDelta(settingsLayout, { left: [{ id: 'omarchy.power', showPercentage: true }], center: [{ id: 'omarchy.clock', format: 'HH:mm' }], right: [] }),
+  [{ region: 'left', index: 0, entry: { id: 'omarchy.power', showPercentage: true } }],
+  'bar reports a settings-only change as an inline delta'
+)
+assertDeepEqual(
+  bar.inlineSettingsDelta(settingsLayout, JSON.parse(JSON.stringify(settingsLayout))),
+  [],
+  'bar reports an unchanged layout as an empty delta'
+)
+assertEqual(
+  bar.inlineSettingsDelta(settingsLayout, { left: [{ id: 'omarchy.clock', format: 'HH:mm' }], center: [{ id: 'omarchy.power' }], right: [] }),
+  null,
+  'bar treats reordered entries as structural'
+)
+assertEqual(
+  bar.inlineSettingsDelta(settingsLayout, { left: [{ id: 'omarchy.power' }, { id: 'omarchy.battery' }], center: settingsLayout.center, right: [] }),
+  null,
+  'bar treats added entries as structural'
+)
+assertEqual(
+  bar.inlineSettingsDelta(
+    { left: [{ id: 'local.status', exec: 'date' }], center: [], right: [] },
+    { left: [{ id: 'local.status', exec: 'uptime' }], center: [], right: [] }
+  ),
+  null,
+  'bar rebuilds for custom modules, which read their entry directly'
+)
+assertEqual(
+  bar.inlineSettingsDelta(
+    { left: [{ id: 'x' }], center: [], right: [{ id: 'x' }] },
+    { left: [{ id: 'x', a: 1 }], center: [], right: [{ id: 'x' }] }
+  ),
+  null,
+  'bar rebuilds when a changed id appears more than once in the layout'
+)
+assert(
+  /BarModel\.inlineSettingsDelta\(layoutConfig, next\)/.test(barSource),
+  'bar consults the inline settings delta before rebuilding the layout'
+)
+
 assertEqual(bar.moduleString({ id: 'custom', label: 42 }, 'label', 'fallback'), '42', 'bar stringifies module settings')
 assertEqual(bar.entryIndex(entries, 'b'), 2, 'bar finds entry indexes')
 assertDeepEqual(bar.entriesBefore(entries, 'b').map(bar.entryId), ['a', 'omarchy.tray'], 'bar returns entries before target')

@@ -65,6 +65,42 @@ function entriesAfter(entries, name) {
   return index === -1 ? [] : entries.slice(index + 1)
 }
 
+// A shell.json write that only changes inline widget settings (the battery
+// percentage toggle, a clock format change) must not rebuild the bar.
+// Compare two normalized layouts: when the structure is unchanged — same
+// entry ids in the same order per region — return the settings-only changes
+// as {region, index, entry}. Return null when the change is structural, or
+// touches an entry a live settings push cannot safely reach: custom modules
+// read their entry directly rather than an injected settings property, and
+// a duplicated id makes the push ambiguous.
+function inlineSettingsDelta(current, next) {
+  if (!isPlainObject(current) || !isPlainObject(next)) return null
+  var regions = ["left", "center", "right"]
+  var counts = {}
+  for (var r = 0; r < regions.length; r++) {
+    var entries = Array.isArray(next[regions[r]]) ? next[regions[r]] : []
+    for (var i = 0; i < entries.length; i++) {
+      var id = entryId(entries[i])
+      counts[id] = (counts[id] || 0) + 1
+    }
+  }
+  var changes = []
+  for (var s = 0; s < regions.length; s++) {
+    var region = regions[s]
+    var a = Array.isArray(current[region]) ? current[region] : []
+    var b = Array.isArray(next[region]) ? next[region] : []
+    if (a.length !== b.length) return null
+    for (var j = 0; j < a.length; j++) {
+      if (entryId(a[j]) !== entryId(b[j])) return null
+      if (JSON.stringify(a[j]) === JSON.stringify(b[j])) continue
+      if (customModuleType(a[j]) || customModuleType(b[j])) return null
+      if (counts[entryId(b[j])] > 1) return null
+      changes.push({ region: region, index: j, entry: b[j] })
+    }
+  }
+  return changes
+}
+
 function expandPath(value, home) {
   var path = String(value || "")
   if (path === "") return ""
@@ -162,6 +198,7 @@ if (typeof module !== "undefined") {
     entryIndex: entryIndex,
     entriesBefore: entriesBefore,
     entriesAfter: entriesAfter,
+    inlineSettingsDelta: inlineSettingsDelta,
     expandPath: expandPath,
     customModuleSafeName: customModuleSafeName,
     customModuleType: customModuleType,
