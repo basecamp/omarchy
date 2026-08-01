@@ -365,6 +365,22 @@ HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-pi" --activate
 jq -e '.theme == "omarchy-system" and .model == "keep-me"' "$PI_TMPDIR/.pi/agent/settings.json" >/dev/null
 pass "pi theme activation preserves existing settings"
 
+jq -e '.name == "Omarchy" and .base == "light" and .overrides.text == "#ffffff"' "$NEXT_THEME/claude.json" >/dev/null
+pass "claude theme template is generated from standard themed templates"
+cp "$NEXT_THEME/claude.json" "$CURRENT_THEME/claude.json"
+
+CLAUDE_TEST_CONFIG="$PI_TMPDIR/.claude-work"
+mkdir -p "$CLAUDE_TEST_CONFIG"
+HOME="$PI_TMPDIR" CLAUDE_CONFIG_DIR="$CLAUDE_TEST_CONFIG" "$ROOT/bin/omarchy-theme-set-claude"
+[[ -f $CLAUDE_TEST_CONFIG/themes/omarchy.json ]] || fail "claude theme is synced to the configured directory"
+[[ ! -d $PI_TMPDIR/.claude ]] || fail "claude theme sync avoids the default directory when configured"
+pass "claude theme sync respects CLAUDE_CONFIG_DIR"
+
+echo '{"model":"keep-me"}' >"$CLAUDE_TEST_CONFIG/settings.json"
+HOME="$PI_TMPDIR" CLAUDE_CONFIG_DIR="$CLAUDE_TEST_CONFIG" "$ROOT/bin/omarchy-theme-set-claude" --activate
+jq -e '.theme == "custom:omarchy" and .model == "keep-me"' "$CLAUDE_TEST_CONFIG/settings.json" >/dev/null
+pass "claude theme activation preserves configured settings"
+
 THEME_TMPDIR=$(mktemp -d)
 OMARCHY_PATH="$ROOT" HOME="$THEME_TMPDIR" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" "Tokyo Night"
 background_path=$(readlink -f "$THEME_TMPDIR/.local/state/omarchy/current/background" 2>/dev/null || true)
