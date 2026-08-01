@@ -140,19 +140,76 @@ run_dir="$TMPDIR/run/omarchy-theme"
 mkdir -p "$run_dir"
 echo 999999 >"$run_dir/999999.pid"
 
-marker="$TMPDIR/usr1-received"
-# `sleep & wait` (not a foreground sleep) so USR1 interrupts promptly — the same
-# interruptible-sleep reason the real host waits on its watchdog.
-MARKER="$marker" bash -c 'trap "touch \"$MARKER\"; exit 0" USR1; echo $$ >"$1"; sleep 30 & wait' \
-  bash "$run_dir/live.pid" &
-sleeper=$!
-for _ in $(seq 1 40); do [[ -s $run_dir/live.pid ]] && break; sleep 0.05; done
+# Drive the real host rather than a stand-in sleeper: a synthetic process with
+# its own USR1 trap would keep this green even if the host's trap, its watchdog
+# wait, or its second framed write regressed. Hold stdin open through a FIFO so
+# the watchdog does not see EOF and exit.
+host_out="$TMPDIR/host.out"
+host_in="$TMPDIR/host.in"
+mkfifo "$host_in"
+: >"$host_out"
+HOME="$theme_home" XDG_RUNTIME_DIR="$TMPDIR/run" \
+  omarchy-chromium-theme-host <"$host_in" >"$host_out" 2>/dev/null &
+host_pid=$!
+# Keeping a writer attached is what holds the FIFO open.
+sleep 300 >"$host_in" &
+host_writer=$!
+
+frame_count() {
+  node - "$host_out" <<'JS'
+const fs = require('fs')
+const buf = fs.readFileSync(process.argv[2])
+let at = 0
+let frames = 0
+while (at + 4 <= buf.length) {
+  const len = buf.readUInt32LE(at)
+  if (at + 4 + len > buf.length) break
+  JSON.parse(buf.subarray(at + 4, at + 4 + len).toString('utf8'))
+  frames++
+  at += 4 + len
+}
+process.stdout.write(String(frames))
+JS
+}
+
+# The host pushes once on connect, before it arms the watchdog.
+for _ in $(seq 1 100); do [[ $(frame_count) -ge 1 ]] && break; sleep 0.05; done
+[[ $(frame_count) -ge 1 ]] ||
+  fail "theme host pushes the current theme on connect" "$(od -An -tx1 "$host_out" | head -2)"
+[[ -s $run_dir/$host_pid.pid ]] ||
+  fail "theme host writes its pidfile where the refresh looks" "$(ls "$run_dir")"
 
 XDG_RUNTIME_DIR="$TMPDIR/run" omarchy-chromium-theme-refresh
 
-for _ in $(seq 1 40); do [[ -f $marker ]] && break; sleep 0.05; done
-kill "$sleeper" 2>/dev/null
-[[ -f $marker ]] || fail "theme-set refresh signals a running host"
+for _ in $(seq 1 100); do [[ $(frame_count) -ge 2 ]] && break; sleep 0.05; done
+frames=$(frame_count)
+# Read this before killing the host, which cleans its own pidfile up on exit.
+kept_pidfile=$([[ -s $run_dir/$host_pid.pid ]] && echo yes || echo no)
+kill "$host_pid" "$host_writer" 2>/dev/null
+wait "$host_pid" 2>/dev/null
+
+(( frames >= 2 )) ||
+  fail "theme-set refresh makes the running host push again" "frames=$frames"
+
+# The second frame has to be a usable theme, not just bytes on the pipe.
+second=$(node - "$host_out" <<'JS'
+const fs = require('fs')
+const buf = fs.readFileSync(process.argv[2])
+const out = []
+let at = 0
+while (at + 4 <= buf.length) {
+  const len = buf.readUInt32LE(at)
+  if (at + 4 + len > buf.length) break
+  out.push(JSON.parse(buf.subarray(at + 4, at + 4 + len).toString('utf8')))
+  at += 4 + len
+}
+process.stdout.write(JSON.stringify(out[1] || null))
+JS
+)
+jq -e '.theme_name == "tokyo-night" and .bg == "#1a1b26"' <<<"$second" >/dev/null ||
+  fail "theme host re-pushes a usable theme on refresh" "$second"
 [[ ! -f $run_dir/999999.pid ]] || fail "theme-set refresh prunes stale pidfiles"
-[[ -f $run_dir/live.pid ]] || fail "theme-set refresh keeps live pidfiles"
+# The refresh ran while the host was alive, so its own pidfile had to survive;
+# the host removes it through its EXIT trap once we kill it above.
+[[ $kept_pidfile == "yes" ]] || fail "theme-set refresh keeps live pidfiles" "$(ls "$run_dir")"
 pass "theme-set refresh signals running hosts and prunes stale pidfiles"
