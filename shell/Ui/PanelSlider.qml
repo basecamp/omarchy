@@ -25,19 +25,31 @@ Item {
   // seam show through the middle of the knob. Blending the solid color
   // instead keeps the knob 100% opaque (no seam).
   //
-  // The dimmed fill line itself isn't a flat color -- it's the track (at 0.5
-  // opacity over the background) with the fill drawn on top of that (also at
-  // 0.5 opacity), which composites to fillColor*0.5 + trackColor*0.25 +
-  // background*0.25. Matching that exact formula here (rather than a plain
-  // blend of knobColor) is what makes the muted knob read as the same color
-  // as the muted line instead of a distinct shade.
+  // The dimmed fill line itself isn't a flat color -- it's the track (drawn
+  // at 0.5 opacity over the background) with the fill drawn on top of that
+  // (also at 0.5 opacity). Both trackColor and fillColor can carry their own
+  // alpha (trackColor especially -- Style.selectedFillFor(...) is typically
+  // a translucent color), so the *effective* alpha at each step is the
+  // color's own alpha times the Rectangle's 0.5 opacity, not just 0.5. We
+  // replicate that two-step over-compositing here (background -> track ->
+  // fill) so the muted knob lands on exactly the same composited color as
+  // the muted line, instead of reading brighter than it.
   property bool dimmed: false
   readonly property color _dimBackdrop: bar ? bar.background : "#101315"
 
+  readonly property real _dimTrackAlpha: trackColor.a * 0.5
+  readonly property real _dimFillAlpha: fillColor.a * 0.5
+
+  readonly property color _dimTrackOverBackdrop: Qt.rgba(
+    _dimBackdrop.r * (1 - _dimTrackAlpha) + trackColor.r * _dimTrackAlpha,
+    _dimBackdrop.g * (1 - _dimTrackAlpha) + trackColor.g * _dimTrackAlpha,
+    _dimBackdrop.b * (1 - _dimTrackAlpha) + trackColor.b * _dimTrackAlpha,
+    1)
+
   readonly property color _dimmedLineColor: Qt.rgba(
-    fillColor.r * 0.5 + trackColor.r * 0.25 + _dimBackdrop.r * 0.25,
-    fillColor.g * 0.5 + trackColor.g * 0.25 + _dimBackdrop.g * 0.25,
-    fillColor.b * 0.5 + trackColor.b * 0.25 + _dimBackdrop.b * 0.25,
+    _dimTrackOverBackdrop.r * (1 - _dimFillAlpha) + fillColor.r * _dimFillAlpha,
+    _dimTrackOverBackdrop.g * (1 - _dimFillAlpha) + fillColor.g * _dimFillAlpha,
+    _dimTrackOverBackdrop.b * (1 - _dimFillAlpha) + fillColor.b * _dimFillAlpha,
     1)
 
   readonly property color effectiveKnobColor: dimmed ? _dimmedLineColor : knobColor
@@ -53,6 +65,10 @@ Item {
 
   signal moved(real value)
   signal released(real value)
+
+  // Right-click is a secondary action on the whole track — audio uses it to
+  // mute the channel the slider belongs to. Dragging stays left-button only.
+  signal rightClicked()
 
   implicitWidth: Style.space(200)
   implicitHeight: Math.max(Style.space(22), knobSize + Style.spacing.md)
@@ -129,7 +145,7 @@ Item {
     anchors.fill: parent
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
-    acceptedButtons: Qt.LeftButton
+    acceptedButtons: Qt.LeftButton | Qt.RightButton
 
     function valueFromX(x) {
       var clamped = Math.max(0, Math.min(track.width, x))
@@ -139,10 +155,14 @@ Item {
     }
 
     onPressed: function(mouse) {
+      if (mouse.button !== Qt.LeftButton) return
       root.dragging = true
       var next = valueFromX(mouse.x)
       root.liveValue = next
       root.moved(next)
+    }
+    onClicked: function(mouse) {
+      if (mouse.button === Qt.RightButton) root.rightClicked()
     }
     onPositionChanged: function(mouse) {
       if (!root.dragging) return
@@ -151,6 +171,7 @@ Item {
       root.moved(next)
     }
     onReleased: function(mouse) {
+      if (mouse.button !== Qt.LeftButton) return
       root.dragging = false
       root.released(root.liveValue)
       root.liveValue = root.value
