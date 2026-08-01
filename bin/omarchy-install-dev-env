@@ -2,12 +2,12 @@
 
 # omarchy:summary=Install a supported development environment
 # omarchy:name=dev-env
-# omarchy:args=<ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>
+# omarchy:args=<ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|android|zig|ocaml|dotnet|clojure|scala>
 # omarchy:examples=omarchy install dev-env ruby | omarchy install dev-env node
 # omarchy:requires-sudo=true
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|android|zig|ocaml|dotnet|clojure|scala>" >&2
   exit 1
 fi
 
@@ -124,6 +124,215 @@ rust)
 java)
   echo -e "Installing Java...\n"
   mise use --global java@latest
+  ;;
+android)
+  echo -e "Installing Android SDK...\n"
+
+  # Resolve the Android user home exactly the way sdkmanager/avdmanager/emulator
+  # do (ANDROID_USER_HOME, then XDG_CONFIG_HOME/.android, then HOME/.android) so
+  # this script's AVD guard agrees with what the real tools use. On any system
+  # with XDG_CONFIG_HOME set (the default here), that is NOT $HOME/.android.
+  android_user_home=${ANDROID_USER_HOME:-${XDG_CONFIG_HOME:+$XDG_CONFIG_HOME/.android}}
+  android_user_home=${android_user_home:-$HOME/.android}
+
+  # gum confirm exits 130 on Ctrl-C. A bare `&&` would treat that the same as a
+  # "no" answer and fall straight through into a multi-GB download. Anything
+  # other than 0 (yes) or 1 (no) aborts the whole install instead.
+  confirm_or_abort() {
+    gum confirm "$1"
+    local status=$?
+    if (( status != 0 && status != 1 )); then
+      echo "Aborted." >&2
+      exit 130
+    fi
+    return $status
+  }
+
+  # Ask the questions and take the password up front, so the multi-GB downloads
+  # below run unattended. Only the package install and the group changes need
+  # root; mise and sdkmanager deliberately run as the user.
+  want_emulator=false
+  want_eas=false
+  if [[ -t 0 ]]; then
+    confirm_or_abort "Also install the Android emulator and a system image (~2.5 GB)?" && want_emulator=true
+    confirm_or_abort "Add the eas command for Expo cloud builds?" && want_eas=true
+  fi
+
+  groups_to_join=adbusers
+  $want_emulator && groups_to_join=$groups_to_join,kvm
+
+  device_access_failed=false
+  if omarchy-pkg-add android-udev && sudo usermod -aG "$groups_to_join" "$USER"; then
+    echo "Device access configured; log out and back in to join: $groups_to_join"
+  else
+    echo "Could not configure device access. Re-run this from a terminal where sudo can prompt." >&2
+    device_access_failed=true
+  fi
+
+  if $want_emulator; then
+    echo -e "\nDownloading about 3 GB. Depending on your connection this can take a while.\n"
+  else
+    echo -e "\nDownloading about 600 MB. Depending on your connection this can take a while.\n"
+  fi
+
+  # The Android Gradle Plugin requires JDK 17; java@latest resolves well past that.
+  if ! mise install java@temurin-17; then
+    echo "Failed to install java@temurin-17. Aborting Android setup." >&2
+    exit 1
+  fi
+
+  # Compare the resolved pin, not just "is anything pinned": a previous run of
+  # this installer (or a project set up by hand) may already have pinned
+  # exactly temurin-17, in which case there is nothing to tell the user.
+  existing_java_pin=$(mise ls --global java 2>/dev/null | awk '{print $4}')
+  if [[ -z $existing_java_pin ]]; then
+    if ! mise use --global java@temurin-17; then
+      echo "Failed to pin global Java to temurin-17. Aborting Android setup." >&2
+      exit 1
+    fi
+  elif [[ $existing_java_pin != "temurin-17" ]]; then
+    echo "Keeping your existing global Java ($existing_java_pin). Run 'mise use java@temurin-17' inside an Android project."
+  fi
+
+  # Pin to the version current at install time instead of tracking `latest`.
+  # ALL SDK content -- build-tools, platforms, system-images, ndk, cmake, easily
+  # ~10 GB -- lives inside installs/android-sdk/<version>/, keyed by the
+  # cmdline-tools version. Tracking `latest` means a routine `omarchy update`
+  # (which runs `mise up`) silently repoints ANDROID_HOME at an empty directory
+  # the next time cmdline-tools cuts a release, orphaning everything installed,
+  # with no menu path back since the guard still matches the old directory.
+  android_sdk_version=$(mise latest android-sdk 2>/dev/null)
+  if [[ -z $android_sdk_version ]]; then
+    echo "Failed to resolve the current android-sdk version from mise." >&2
+    exit 1
+  fi
+
+  if ! mise use --global "android-sdk@$android_sdk_version"; then
+    echo "Failed to install the Android SDK command-line tools (android-sdk@$android_sdk_version)." >&2
+    exit 1
+  fi
+
+  # sdkmanager needs a JDK 17 on PATH and ANDROID_HOME set; mise x supplies both.
+  # Pin the same resolved version here rather than @latest: mise x would
+  # otherwise re-resolve "latest" on every call and quietly drift away from the
+  # version just pinned above.
+  # Its deprecation banner is dropped because the suggested replacement, the
+  # `android` CLI, downloads itself on first run and cannot even answer --help
+  # offline, so it is not usable for scripted setup yet. Only those three lines
+  # are filtered; real errors and the exit status still come through.
+  sdk() {
+    mise x java@temurin-17 "android-sdk@$android_sdk_version" -- "$@" 2> >(
+      grep -vF \
+        -e 'sdkmanager) is deprecated' \
+        -e "The 'android' binary can also be found" \
+        -e 'To learn more about the Android CLI' >&2
+    )
+  }
+
+  # Both of these fetch Google's whole package index and print nothing for
+  # 10-30 seconds, so say what is happening before the screen goes quiet.
+  echo "Fetching Google's package index..."
+  echo "Accepting Google's Android SDK license agreements (yes | sdkmanager --licenses)..."
+  if ! yes | sdk sdkmanager --licenses >/dev/null; then
+    echo "Failed to accept the Android SDK licenses." >&2
+    exit 1
+  fi
+
+  # sdkmanager prints a table; take only the first column so a partial match
+  # cannot invent a package (platforms;android-37 is a prefix of android-37.0).
+  # Anchoring both ends then drops previews and -rc/-ext variants.
+  #
+  # Capture stderr to a file rather than 2>/dev/null: the sdk() wrapper already
+  # filters only its three known banner lines, so anything left in stderr is a
+  # genuine error (network failure, unaccepted license) and must survive to be
+  # shown if package discovery comes back empty.
+  list_err_file=$(mktemp)
+  available=$(sdk sdkmanager --list 2>"$list_err_file" | sed -n 's/^ *\([a-z][a-zA-Z0-9;._-]*\) *|.*/\1/p')
+  list_err=$(<"$list_err_file")
+  rm -f "$list_err_file"
+  platform=$(grep -E '^platforms;android-[0-9]+(\.[0-9]+)?$' <<<"$available" | sort -V -u | tail -1)
+  build_tools=$(grep -E '^build-tools;[0-9]+(\.[0-9]+)*$' <<<"$available" | sort -V -u | tail -1)
+
+  if [[ -z $platform || -z $build_tools ]]; then
+    echo "Could not read the available Android packages from sdkmanager." >&2
+    [[ -n $list_err ]] && printf '%s\n' "$list_err" >&2
+    exit 1
+  fi
+
+  echo -e "\nInstalling $platform and $build_tools...\n"
+  if ! sdk sdkmanager --install platform-tools "$platform" "$build_tools"; then
+    echo "Failed to install $platform and $build_tools." >&2
+    exit 1
+  fi
+
+  if $want_emulator; then
+    case "$(uname -m)" in
+    x86_64) abi=x86_64 ;;
+    aarch64) abi=arm64-v8a ;;
+    *) abi="" ;;
+    esac
+
+    # System images trail the newest platform, so pick the latest image that
+    # actually exists rather than assuming one matching $platform is published.
+    if [[ -n $abi ]]; then
+      # sort -V on the whole path mis-orders these: the version is followed by
+      # ";google_apis;$abi" rather than ending the string, so e.g.
+      # "system-images;android-37;..." sorts above "...android-37.0;..." even
+      # though 37.0 is the newer/equal release. Extract just the numeric level
+      # as the sort key instead of sorting the full path.
+      sysimg=$(grep -E "^system-images;android-[0-9]+(\.[0-9]+)?;google_apis;$abi$" <<<"$available" |
+        sed -E 's/^system-images;android-([0-9]+(\.[0-9]+)?);.*/\1\t&/' |
+        sort -t $'\t' -k1,1V -u | tail -1 | cut -f2-)
+    else
+      sysimg=""
+    fi
+
+    if [[ -n $sysimg ]]; then
+      if sdk sdkmanager --install emulator "$sysimg"; then
+        # Never recreate an existing AVD. avdmanager's --force overwrites it, which
+        # would silently destroy whatever the user installed and configured inside
+        # the emulator. Re-running the installer must stay non-destructive.
+        if [[ -e $android_user_home/avd/omarchy.ini ]]; then
+          echo -e "\nAVD 'omarchy' already exists at $android_user_home/avd/omarchy.avd, keeping it."
+          echo "To rebuild it: avdmanager delete avd -n omarchy, then run this again."
+        else
+          # avdmanager probes each system image for an optional devices.xml and
+          # prints two "Error:" lines when one is absent, immediately before
+          # reporting success. It falls back to its built-in device catalogue, so
+          # the AVD is correct; only that one message and its bare-path echo are
+          # dropped. Any other error still reaches the user.
+          if echo no | sdk avdmanager create avd -n omarchy -k "$sysimg" -d pixel_7 2> >(
+            grep -vE "^Error: (Could not load devices from )?.*/system-images/.*/devices\.xml$" >&2
+          ); then
+            echo -e "\nAVD 'omarchy' created. Start it with: emulator -avd omarchy"
+          else
+            echo "Failed to create the 'omarchy' AVD. Retry with: avdmanager create avd -n omarchy -k $sysimg -d pixel_7" >&2
+          fi
+        fi
+      else
+        echo "Failed to install the emulator and system image ($sysimg); skipping AVD creation." >&2
+      fi
+    else
+      echo "No system image found for $platform on $(uname -m); skipping emulator."
+    fi
+  fi
+
+  # A lazy wrapper, not `npm install -g`: npm's global root lives inside the
+  # current mise Node version, so a global install vanishes on the next Node
+  # upgrade. This shim installs eas-cli on first use and survives upgrades.
+  $want_eas && omarchy-mise-install npm:eas-cli eas
+
+  echo -e "\nOpen a new terminal, then verify with: adb --version"
+  $want_eas && echo "Expo cloud builds: eas login, then eas build --platform android --profile development"
+  echo "You can now run: npx create-expo-app@latest MyApp && cd MyApp && npx expo run:android"
+
+  # That warning fired before the multi-GB download, so it is long off-screen
+  # by now. Re-state it here or the last thing the user sees is unqualified
+  # success, and they only discover they are not in adbusers/kvm when `adb
+  # devices` silently comes up empty.
+  if $device_access_failed; then
+    echo "Could not configure device access earlier. Re-run this from a terminal where sudo can prompt." >&2
+  fi
   ;;
 zig)
   echo -e "Installing Zig...\n"

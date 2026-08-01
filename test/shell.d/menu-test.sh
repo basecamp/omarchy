@@ -186,6 +186,18 @@ assertEqual(
   'setup.direct-boot',
   'menu lists Direct Boot last under Setup'
 )
+// A half-finished Android install leaves the mise directory behind without adb.
+// Gating Install on the directory would hide the only way to retry it, so the
+// row keys on adb itself while Remove still keys on the directory, letting a
+// broken install be either completed or cleaned up.
+assert(
+  defaultById['install.development.android'].when.includes('platform-tools/adb'),
+  'menu offers Android again when an install left no adb behind'
+)
+assert(
+  defaultById['remove.development.android'].when.includes('installs/android-sdk'),
+  'menu offers to remove Android whenever any of it is on disk'
+)
 const expectedAgents = {
   pi: { icon: '\ue901', iconFont: 'omarchy', label: 'Pi' },
   omp: { icon: '\ue903', iconFont: 'omarchy', label: 'omp' },
