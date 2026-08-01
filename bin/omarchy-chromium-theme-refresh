@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Nudge every running Omarchy theme-bridge host to re-read and push the current
+# theme, so web-app extensions repaint live on a theme switch instead of waiting
+# for the next reload. Called by omarchy-theme-set.
+#
+# The hosts (omarchy-chromium-theme-host, spoken to over com.omarchy.theme) are
+# push-only and can't watch the filesystem, so each drops a pidfile in RUNDIR on
+# connect and waits for SIGUSR1. We signal them here. Dead/garbage pidfiles are
+# pruned. A no-op when no browser is connected — nothing to signal.
+
+set -uo pipefail
+
+RUNDIR="${XDG_RUNTIME_DIR:-/tmp}/omarchy-theme"
+[[ -d $RUNDIR ]] || exit 0
+
+shopt -s nullglob
+for pidfile in "$RUNDIR"/*.pid; do
+  pid=$(<"$pidfile") || continue
+  if [[ $pid =~ ^[0-9]+$ ]] && kill -USR1 "$pid" 2>/dev/null; then
+    continue
+  fi
+  # Host is gone (or the pidfile is garbage) — prune it.
+  rm -f "$pidfile"
+done

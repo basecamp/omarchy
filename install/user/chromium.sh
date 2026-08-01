@@ -4,3 +4,4 @@
 # messaging host to talk to.
 omarchy-install-chromium-copy-url
 omarchy-install-chromium-ytdlp
+omarchy-install-chromium-theme
