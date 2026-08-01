@@ -351,9 +351,9 @@ Panel {
 
   Component.onCompleted: refresh()
 
-  // KeyboardPanel takes Exclusive focus at map-time, so SUPER-bound IPC
-  // summons land with j/k ready to navigate. Keep a default landing point,
-  // but don't paint the cursor until hover or the first navigation key.
+  // KeyboardPanel primes focus at open-time, so SUPER-bound IPC summons land
+  // with j/k ready to navigate. Keep a default landing point, but don't paint
+  // the cursor until hover or the first navigation key.
   onOpenedChanged: {
     if (opened) {
       refresh()

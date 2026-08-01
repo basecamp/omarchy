@@ -1054,7 +1054,7 @@ Panel {
 
   // Keyboard-driven popup anchored to the bar widget icon. The shared
   // KeyboardPanel handles the layer-shell PanelWindow scaffolding
-  // (Exclusive focus on map, screen binding, anchored-to-icon positioning,
+  // (focus priming on open, screen binding, anchored-to-icon positioning,
   // outside-click via an overlay MouseArea + Region mask that lets the bar
   // remain clickable, fade animation, popout coordination). What stays
   // here is the wifi-specific UI inside.

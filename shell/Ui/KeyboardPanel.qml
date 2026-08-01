@@ -51,6 +51,7 @@ PanelWindow {
   property int gap: Style.gapsOut  // distance between bar edge and panel
   property bool popoutSwitching: false
   property bool popoutSwitchClosing: false
+  property bool focusPrimed: false
 
   // Item that should take keyboard focus once the panel maps. Typically a
   // PanelKeyCatcher inside the panel content. Layer-shell grants focus to
@@ -85,12 +86,15 @@ PanelWindow {
   // animate, but keyboard/click ownership must release the moment the
   // logical close fires — otherwise the user is locked out for 140ms.
   //
-  // OnDemand, not Exclusive: an exclusive layer surface takes over pointer
-  // hit-testing compositor-wide, so clicks on other outputs get forced onto
-  // this surface instead of reaching the dismissal windows below. OnDemand
-  // still grabs focus when the surface maps, and follow-mouse can't steal it
-  // back because this surface plus the dismissal windows cover every output.
-  WlrLayershell.keyboardFocus: open ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+  // Prime with Exclusive on every open, then settle on OnDemand. Hyprland
+  // focuses OnDemand when a surface first maps, but not when an already-mapped
+  // fade-out surface changes from None back to OnDemand. Exclusive also takes
+  // focus when the previously focused application has constrained the pointer.
+  // The brief prime covers both cases; OnDemand then releases compositor-wide
+  // pointer hit-testing so clicks can reach the dismissal windows below.
+  WlrLayershell.keyboardFocus: open
+    ? (focusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
+    : WlrKeyboardFocus.None
 
   // Full-screen layer-shell. The visible card is positioned inside via
   // `cardOrigin`. The `mask` below makes the bar area click-through (so
@@ -215,9 +219,16 @@ PanelWindow {
   // Coordinate on `open`, not `visible`. `visible` lags into the fade-out
   // animation, which made ownership transfer to a sibling popup race.
   onOpenChanged: {
-    if (open && focusTarget) Qt.callLater(function() {
-      if (root.open && root.focusTarget) root.focusTarget.forceActiveFocus()
-    })
+    if (open) {
+      focusPrimed = false
+      focusPrimeTimer.restart()
+      if (focusTarget) Qt.callLater(function() {
+        if (root.open && root.focusTarget) root.focusTarget.forceActiveFocus()
+      })
+    } else {
+      focusPrimeTimer.stop()
+      focusPrimed = false
+    }
     if (!bar) return
     if (open) {
       popoutSwitchClosing = false
@@ -230,6 +241,12 @@ PanelWindow {
       if (bar.activePopout === coordinatorKey) bar.releasePopout(coordinatorKey)
       if (popoutSwitchClosing) closeSwitchTimer.restart()
     }
+  }
+
+  Timer {
+    id: focusPrimeTimer
+    interval: 75
+    onTriggered: if (root.open) root.focusPrimed = true
   }
 
   Timer {
