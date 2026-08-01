@@ -19,7 +19,6 @@ copy_chromium_flags() {
   cp -f "$OMARCHY_PATH/config/chromium-flags.conf" "$1"
   omarchy-install-chromium-copy-url
   omarchy-install-chromium-ytdlp
-  omarchy-install-chromium-theme
 }
 
 setup_firefox_preferences() {

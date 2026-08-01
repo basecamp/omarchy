@@ -1,9 +1,0 @@
-{
-  "name": "com.omarchy.theme",
-  "description": "Omarchy theme bridge host — pushes the active theme to web-app extensions",
-  "path": "__HOST_PATH__",
-  "type": "stdio",
-  "allowed_origins": [
-    "chrome-extension://ndpkabodcpddojgepdideonokpblpeln/"
-  ]
-}
