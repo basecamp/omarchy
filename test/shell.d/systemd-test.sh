@@ -16,6 +16,16 @@ sleep_service="$ROOT/default/systemd/user/omarchy-sleep-lock.service"
 grep -Fx 'ExecStart=/usr/bin/omarchy-system-sleep-monitor' "$sleep_service" >/dev/null
 pass "sleep lock service uses the package-backed monitor path"
 
+grep -Fx 'After=dbus.socket wayland-session-waitenv.service' "$sleep_service" >/dev/null ||
+  fail "sleep lock monitor starts before UWSM imports the graphical session environment"
+grep -Fx 'PartOf=graphical-session.target' "$sleep_service" >/dev/null ||
+  fail "sleep lock monitor survives logout with a stale Wayland environment"
+grep -Fx 'ConditionEnvironment=OMARCHY_PATH' "$sleep_service" >/dev/null ||
+  fail "sleep lock monitor can start without the Omarchy shell path"
+grep -Fx 'ConditionEnvironment=WAYLAND_DISPLAY' "$sleep_service" >/dev/null ||
+  fail "sleep lock monitor can start without a Wayland display"
+pass "sleep lock service follows the initialized graphical session"
+
 first_run_units="$ROOT/install/user/first-run/enable-user-units.sh"
 grep -Fx 'systemctl --user daemon-reload' "$first_run_units" >/dev/null
 grep -F 'omarchy-sleep-lock.service' "$first_run_units" >/dev/null
@@ -23,6 +33,7 @@ pass "first-run reloads and enables the sleep lock service"
 
 upgrade_to_quattro="$ROOT/bin/omarchy-upgrade-to-quattro"
 grep -F '6870b232a6c0474b59187882e6d25ae771bba735098bcbedef8a2b73b97e2b6a' "$upgrade_to_quattro" >/dev/null
+grep -F 'bcd1a76cb5c63514922bc5e11af22ae480fc6d06a99863364e02bdf3c7bdceaf' "$upgrade_to_quattro" >/dev/null
 grep -F 'ExecStart=%h/.local/share/omarchy/bin/omarchy-system-sleep-monitor' "$upgrade_to_quattro" >/dev/null
 grep -F 'ExecStart=/usr/bin/omarchy-system-sleep-monitor' "$upgrade_to_quattro" >/dev/null
 grep -F 'reset-failed omarchy-sleep-lock.service' "$upgrade_to_quattro" >/dev/null
