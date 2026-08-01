@@ -99,13 +99,17 @@ if omarchy-cursor-size-set abc; then
 fi
 pass "cursor size rejects non-numeric sizes"
 
-rg -F '"style.cursor-size": {"icon":"󰹵","label":"Cursor Size","provider":"cursor-sizes"}' "$ROOT/default/omarchy/omarchy-menu.jsonc" >/dev/null ||
+rg -F '"style.cursor-style": {"icon":"󰇀","label":"Cursor Style","aliases":["cursor","cursor-picker"]}' "$ROOT/default/omarchy/omarchy-menu.jsonc" >/dev/null ||
+  fail "menu defines the cursor style parent"
+pass "menu defines the cursor style parent"
+
+rg -F '"style.cursor-style.theme": {"icon":"󰇀","label":"Theme","aliases":["cursor-theme","mouse-cursor"],"provider":"cursors"}' "$ROOT/default/omarchy/omarchy-menu.jsonc" >/dev/null ||
+  fail "menu defines the cursor theme entry"
+pass "menu defines the cursor theme entry"
+
+rg -F '"style.cursor-style.size": {"icon":"󰹵","label":"Size","aliases":["cursor-size"],"provider":"cursor-sizes"}' "$ROOT/default/omarchy/omarchy-menu.jsonc" >/dev/null ||
   fail "menu defines the cursor size entry"
 pass "menu defines the cursor size entry"
-
-rg -F '"style.cursor": {"icon":"󰇀","label":"Cursor Picker","provider":"cursors"}' "$ROOT/default/omarchy/omarchy-menu.jsonc" >/dev/null ||
-  fail "menu defines the cursor picker entry"
-pass "menu defines the cursor picker entry"
 
 rg -F '"cursor-sizes": {' "$ROOT/shell/plugins/menu/Menu.qml" >/dev/null &&
   rg -F 'omarchy-cursor-size-set' "$ROOT/shell/plugins/menu/Menu.qml" >/dev/null ||
