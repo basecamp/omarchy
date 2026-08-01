@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "WhatsApp Omarchy Theme",
+  "version": "1.0",
+  "description": "Make WhatsApp Web follow your current Omarchy light/dark theme, this extension is installed by Omarchy",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApWxRYnzXjhKFK8oDs721taskS9MbEid55l4V5qVpDTdm4Idrmj6NTdvm1Z2SW/lbGOSk95kxhyEH35tVo6QW2GC9K+0V6lvAzZv9nqMcfeDowQsyPPBopoh5soGBANw2lyHduADPUmbVT9J0/C+erYWx4QM7v08R6aZIF6j2KgOLnCo7aWLpVA40fA2eDHj1CLtcnAnSefRYBB4b5ac8Ir3Mjh4ojEROYQ51kEgxAZJF9HhvFbMFuN9AqD/wV2HdHSflMhxpNocGkhkVNAkXNIlcjQKrVo2B0EBB16Q4/QbYol93vnJ+rojWnds0tGbnLgYsdK7uacYh8l+4dKu6OQIDAQAB",
+  "permissions": ["nativeMessaging", "storage"],
+  "host_permissions": ["*://web.whatsapp.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://web.whatsapp.com/*"],
+      "js": ["omarchy-prefers-color-scheme.js"],
+      "run_at": "document_start",
+      "all_frames": false,
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://web.whatsapp.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_title": "WhatsApp Omarchy Theme"
+  }
+}

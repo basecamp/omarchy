@@ -199,6 +199,7 @@ post_theme_commands=(
   omarchy-theme-set-pi
   omarchy-theme-set-claude
   omarchy-theme-set-browser
+  omarchy-chromium-theme-refresh
   omarchy-theme-set-vscode
   omarchy-theme-set-obsidian
   omarchy-theme-set-keyboard
