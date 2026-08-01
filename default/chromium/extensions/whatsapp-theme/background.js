@@ -83,6 +83,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
+// The WhatsApp host permission is what grants tab urls here and lets the query
+// above filter by url, so the `tabs` permission — which would hand over every
+// tab's url and title — is not needed. Tabs we have no permission for arrive
+// with url unset and fall out on the guard below. If a url ever went missing on
+// a tab we do own, content.js still asks for the theme itself at document_start,
+// so this listener is the redundant path rather than the only one.
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   if (info.status !== "complete") return;
   if (!tab.url || !tab.url.includes("web.whatsapp.com")) return;

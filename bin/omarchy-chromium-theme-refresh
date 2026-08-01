@@ -1,4 +1,6 @@
 #!/bin/bash
+# omarchy:summary=Signal running theme-bridge hosts to push the current theme
+# omarchy:hidden=true
 
 # Nudge every running Omarchy theme-bridge host to re-read and push the current
 # theme, so web-app extensions repaint live on a theme switch instead of waiting

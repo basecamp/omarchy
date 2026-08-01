@@ -11,6 +11,19 @@
 // inject. Matching WhatsApp's surfaces to the exact omarchy palette would be a
 // separate, heavier layer and is intentionally left out of this version.
 
+// sRGB is gamma-encoded, so the WCAG weights only mean anything once each
+// channel is linearized — the same two steps the shell uses in
+// Panel.qml's colorChannelLuminance. Weighting the raw bytes instead lands
+// mid-tone backgrounds on the wrong side: #808080 reads 0.502 that way and
+// 0.216 once linearized. Every shipped theme is far enough from the middle to
+// classify the same either way; a custom one need not be.
+function channelLuminance(byte) {
+  const channel = byte / 255;
+  return channel <= 0.03928
+    ? channel / 12.92
+    : Math.pow((channel + 0.055) / 1.055, 2.4);
+}
+
 function isDarkTheme(theme) {
   const hex = ((theme && theme.bg) || "").replace(/^#/, "");
   if (hex.length < 6) return null;
@@ -18,7 +31,11 @@ function isDarkTheme(theme) {
   const g = parseInt(hex.slice(2, 4), 16);
   const b = parseInt(hex.slice(4, 6), 16);
   if ([r, g, b].some(Number.isNaN)) return null;
-  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5;
+  const luminance =
+    0.2126 * channelLuminance(r) +
+    0.7152 * channelLuminance(g) +
+    0.0722 * channelLuminance(b);
+  return luminance < 0.5;
 }
 
 let lastDark = null;

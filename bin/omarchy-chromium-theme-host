@@ -1,4 +1,6 @@
 #!/bin/bash
+# omarchy:summary=Native messaging host: push the active Omarchy theme to Chromium web apps
+# omarchy:hidden=true
 
 # Native messaging host for the Omarchy theme bridge.
 #

@@ -55,6 +55,40 @@ grep -q 'connectNative(HOST)' "$EXT_DIR/background.js" &&
   fail "whatsapp-theme extension connects to the com.omarchy.theme bridge"
 pass "whatsapp-theme extension follows the theme over native messaging"
 
+# The WhatsApp host permission already grants tab urls and lets tabs.query filter
+# by url, so `tabs` would only add every other tab's url and title.
+jq -e '(.permissions | index("tabs")) | not' "$EXT_DIR/manifest.json" >/dev/null ||
+  fail "whatsapp-theme extension asks for no broader tab access than it needs"
+pass "whatsapp-theme extension asks for no broader tab access than it needs"
+
+# Light/dark comes from WCAG relative luminance, which needs each channel
+# linearized first. Mid-tones are where weighting the raw bytes diverges.
+scheme_check=$(node - "$EXT_DIR/content.js" <<'JS'
+const fs = require('fs')
+const source = fs.readFileSync(process.argv[2], 'utf8')
+const match = source.match(/function channelLuminance[\s\S]*?\n}\n[\s\S]*?function isDarkTheme[\s\S]*?\n}\n/)
+if (!match) {
+  process.stdout.write('no-classifier')
+  process.exit(0)
+}
+const isDarkTheme = new Function(match[0] + '; return isDarkTheme')()
+const cases = [
+  ['#1e1e2e', true],   // catppuccin, unambiguously dark
+  ['#eff1f5', false],  // catppuccin-latte, unambiguously light
+  ['#000000', true],
+  ['#ffffff', false],
+  ['#808080', true],   // gamma-encoded weighting calls this light
+]
+const bad = cases.filter(([bg, want]) => isDarkTheme({ bg }) !== want).map(([bg]) => bg)
+if (isDarkTheme({ bg: 'nope' }) !== null || isDarkTheme({}) !== null) bad.push('malformed')
+process.stdout.write(bad.length ? 'wrong:' + bad.join(',') : 'ok')
+JS
+)
+
+[[ $scheme_check == "ok" ]] ||
+  fail "whatsapp-theme classifies light and dark by linearized luminance" "$scheme_check"
+pass "whatsapp-theme classifies light and dark by linearized luminance"
+
 TMPDIR=$(mktemp -d)
 test_home="$TMPDIR/home"
 native_manifest="$test_home/.config/chromium/NativeMessagingHosts/com.omarchy.theme.json"
