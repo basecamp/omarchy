@@ -2,7 +2,7 @@
 
 # omarchy:summary=Clone a built-in Omarchy shell plugin into your own config
 # omarchy:group=plugin
-# omarchy:args=<source-id>
+# omarchy:args=<source-id> [--edit]
 
 set -euo pipefail
 
@@ -81,16 +81,19 @@ update_manifest() {
 
 usage() {
   cat <<USAGE
-Usage: omarchy plugin clone <source-id>
+Usage: omarchy plugin clone <source-id> [--edit]
 
-Copies a built-in plugin into ~/.config/omarchy/plugins/local.<id>/ so you can
-edit it freely. The clone keeps all of the source plugin's files and kinds and
-uses "My <name>" as its display name, then replaces the built-in with the clone.
+Copies a built-in plugin into ~/.config/omarchy/plugins/<username>.<id>/ so you
+can edit it freely. The clone keeps all of the source plugin's files and kinds
+and uses "My <name>" as its display name, then replaces the built-in with the
+clone. The username prefix keeps the id yours, so a shared clone does not
+collide with anyone else's. --edit opens the clone in \$EDITOR afterwards.
 
 USAGE
 }
 
 source_id=""
+edit_clone=0
 if (( $# > 0 )) && [[ $1 != --* ]]; then
   source_id="$1"
   shift
@@ -98,6 +101,10 @@ fi
 
 while (( $# > 0 )); do
   case "$1" in
+  --edit)
+    edit_clone=1
+    shift
+    ;;
   -h | --help)
     usage
     exit 0
@@ -121,7 +128,7 @@ source_info=$(omarchy-plugin-catalog | jq -r --arg id "$source_id" '
 [[ -n $source_info ]] || fail "unknown built-in plugin: $source_id"
 IFS=$'\t' read -r source_dir source_manifest source_name <<<"$source_info"
 
-new_id="local.${source_id#omarchy.}"
+new_id="${USER:-$(id -un)}.${source_id#omarchy.}"
 display_name="My $source_name"
 target_dir="$PLUGINS_DIR/$new_id"
 [[ ! -e $target_dir && ! -L $target_dir ]] || fail "$target_dir already exists"
@@ -155,3 +162,7 @@ omarchy-notification-send -g 󰐱 \
   "Editing Cloned Plugin" \
   "Original plugin has been replace by clone."
 echo "Cloned $source_id to $target_dir and switched to $new_id"
+if (( edit_clone )); then
+  # Word-splitting is deliberate: EDITOR may carry flags.
+  exec $EDITOR "$target_dir"
+fi

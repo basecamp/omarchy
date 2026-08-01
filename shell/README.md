@@ -143,15 +143,17 @@ The `omarchy plugin` commands wrap those calls. `omarchy bar move` and
 To hack on a built-in plugin safely, clone it into user config instead of
 editing the built-in source. The complete plugin directory is copied, including
 every declared kind and local dependency. A built-in id such as
-`omarchy.clock` becomes `local.clock`, with `My Clock` as its display name.
+`omarchy.clock` becomes `<username>.clock` (e.g. `dhh.clock`), with `My Clock`
+as its display name. The username prefix keeps shared clones from colliding
+with each other or with other plugin authors.
 
 ```bash
 omarchy plugin clone omarchy.clock
 ```
 
-Cloning switches from the built-in to the new local plugin, preserving an
+Cloning switches from the built-in to the new personal plugin, preserving an
 existing bar widget's position and settings. Setup > Plugins > Clone provides
-the interactive picker, then opens the new `local.*` directory in `$EDITOR`.
+the interactive picker, then opens the new `<username>.*` directory in `$EDITOR`.
 Existing shortcuts and shell IPC calls made to the built-in id are routed to
 the enabled clone, so cloning does not require changing its callers. Removing
 an active clone switches back to its built-in source.

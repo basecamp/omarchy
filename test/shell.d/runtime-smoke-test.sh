@@ -132,7 +132,7 @@ done
 jq -e '
   map(.id) as $ids |
   all(["omarchy.menu", "omarchy.notifications", "omarchy.clock", "omarchy.osd"][]; $ids | index(.)) and
-  all(.[]; (.kinds | type == "array") and (.enabled | type == "boolean") and (.canDisable | type == "boolean") and (.firstParty | type == "boolean")) and
+  all(.[]; (.kinds | type == "array") and (.enabled | type == "boolean") and (.canDisable | type == "boolean") and (.firstParty | type == "boolean") and (.clonedFrom | type == "string")) and
   ([.[].name] == ([.[].name] | sort))
 ' <<<"$plugins" >/dev/null || {
   printf 'Plugins:\n%s\n' "$plugins" | jq . >&2
