@@ -29,7 +29,9 @@ else
   # Find current background index
   INDEX=-1
   for i in "${!BACKGROUNDS[@]}"; do
-    if [[ ${BACKGROUNDS[$i]} == $CURRENT_BACKGROUND ]]; then
+    # Quoted so a filename holding glob characters compares literally rather
+    # than as a pattern, which never matches itself and restarts the cycle.
+    if [[ ${BACKGROUNDS[$i]} == "$CURRENT_BACKGROUND" ]]; then
       INDEX=$i
       break
     fi
