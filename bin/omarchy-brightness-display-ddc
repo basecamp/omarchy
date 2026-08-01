@@ -13,6 +13,7 @@ cache_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-brightness-display-ddc"
 cache_name="${monitor//[^[:alnum:]_.-]/_}"
 cache_file="$cache_dir/$cache_name.bus"
 unavailable_cache_seconds=60
+range_cache_seconds=10
 
 cache_unavailable() {
   mkdir -p "$cache_dir" 2>/dev/null || true
@@ -84,32 +85,27 @@ read_vcp() {
 }
 
 read_brightness() {
-  local attempt=0
   local bus=""
+  local now=0
   local values=""
 
-  while (( attempt < 2 )); do
-    bus="$(find_bus)" || return 1
-    values="$(read_vcp "$bus")" || true
-    if [[ -n $values ]]; then
-      mkdir -p "$cache_dir" 2>/dev/null || true
-      printf '%s %s\n' "$bus" "${values##* }" >"$cache_file" 2>/dev/null || true
-      printf '%s %s\n' "$bus" "$values"
-      return 0
-    fi
-
+  bus="$(find_bus)" || return 1
+  values="$(read_vcp "$bus")" || {
     rm -f "$cache_file"
-    (( attempt++ ))
-  done
+    return 1
+  }
 
-  cache_unavailable
-  return 1
+  now=$(date +%s)
+  mkdir -p "$cache_dir" 2>/dev/null || true
+  printf '%s %s %s\n' "$bus" "${values##* }" "$now" >"$cache_file" 2>/dev/null || true
+  printf '%s %s\n' "$bus" "$values"
 }
 
 bus=""
 current=""
 maximum=""
 percent=""
+range_cached_at=""
 
 if [[ -z $step ]]; then
   read -r bus current maximum < <(read_brightness) || exit 1
@@ -121,11 +117,19 @@ fi
 
 if [[ $step =~ ^([0-9]+)%$ ]]; then
   target="${BASH_REMATCH[1]}"
+  range_cache_fresh=0
   if [[ -r $cache_file ]]; then
-    read -r bus maximum <"$cache_file" || true
+    read -r bus maximum range_cached_at <"$cache_file" || true
   fi
 
-  if [[ ! $bus =~ ^[0-9]+$ || ! $maximum =~ ^[0-9]+$ || $maximum -le 0 ]]; then
+  if [[ $bus =~ ^[0-9]+$ && $maximum =~ ^[0-9]+$ && $range_cached_at =~ ^[0-9]+$ ]] && (( maximum > 0 )); then
+    now=$(date +%s)
+    if (( range_cached_at <= now && now - range_cached_at < range_cache_seconds )); then
+      range_cache_fresh=1
+    fi
+  fi
+
+  if (( ! range_cache_fresh )); then
     read -r bus current maximum < <(read_brightness) || exit 1
   fi
 elif [[ $step =~ ^\+([0-9]+)%$ ]]; then

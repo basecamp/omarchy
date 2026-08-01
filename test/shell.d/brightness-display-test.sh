@@ -46,6 +46,7 @@ Display 1
    DRM connector:       card1-${DDC_CONNECTOR:-DP-1}
 EOF
 elif [[ $* == *" getvcp 10 "* ]]; then
+  [[ ${DDC_READ_FAIL:-0} == "1" ]] && exit 1
   printf 'VCP 10 C %s %s\n' "${DDC_CURRENT:-40}" "${DDC_MAXIMUM:-80}"
 fi
 SH
@@ -61,9 +62,9 @@ brightness=$(run_brightness --monitor DP-1)
 [[ $brightness == "50" ]] || fail "external brightness is converted to a percentage" "actual: $brightness"
 pass "external brightness is converted to a percentage"
 
-[[ $(grep -c '^ddcutil --skip-ddc-checks detect --brief$' "$call_log") == 1 ]] || fail "DDC bus is detected once"
+(( $(grep -c '^ddcutil --skip-ddc-checks detect --brief$' "$call_log") == 1 )) || fail "DDC bus is detected once"
 run_brightness --monitor DP-1 >/dev/null
-[[ $(grep -c '^ddcutil --skip-ddc-checks detect --brief$' "$call_log") == 1 ]] || fail "DDC bus mapping is cached"
+(( $(grep -c '^ddcutil --skip-ddc-checks detect --brief$' "$call_log") == 1 )) || fail "DDC bus mapping is cached"
 pass "DDC bus mapping is cached"
 
 run_brightness --no-osd --monitor DP-1 25%
@@ -73,7 +74,7 @@ pass "external percentage is converted to the monitor VCP range"
 
 get_count=$(grep -c ' getvcp 10 ' "$call_log")
 run_brightness --no-osd --monitor DP-1 30%
-[[ $(grep -c ' getvcp 10 ' "$call_log") == "$get_count" ]] || \
+(( $(grep -c ' getvcp 10 ' "$call_log") == get_count )) || \
   fail "absolute external brightness reuses the cached VCP range"
 grep -F 'ddcutil --bus 7 --skip-ddc-checks --noverify setvcp 10 24' "$call_log" >/dev/null || \
   fail "absolute external brightness skips write verification"
@@ -96,9 +97,31 @@ fi
 if DDC_CONNECTOR=DP-1 run_brightness --monitor DP-2 >/dev/null 2>&1; then
   fail "cached unsupported external monitor has no brightness backend"
 fi
-[[ $(grep -c ' detect --brief' "$call_log") == $(( detect_count + 1 )) ]] || \
+(( $(grep -c ' detect --brief' "$call_log") == detect_count + 1 )) || \
   fail "unsupported external monitor detection is temporarily cached"
 pass "unsupported external monitor has no brightness backend"
+
+rm -f "$runtime_dir/omarchy-brightness-display-ddc/DP-1.bus"
+detect_count=$(grep -c ' detect --brief' "$call_log")
+if DDC_READ_FAIL=1 run_brightness --monitor DP-1 >/dev/null 2>&1; then
+  fail "transient DDC read failure is reported"
+fi
+(( $(grep -c ' detect --brief' "$call_log") == detect_count + 1 )) || \
+  fail "transient DDC read failure is not retried immediately"
+brightness=$(run_brightness --monitor DP-1)
+[[ $brightness == "50" ]] || fail "transient DDC read failure is retried on the next invocation" "actual: $brightness"
+(( $(grep -c ' detect --brief' "$call_log") == detect_count + 2 )) || \
+  fail "transient DDC read failure does not create a negative cache entry"
+pass "transient DDC read failure is retried on the next invocation"
+
+printf '7 80 0\n' >"$runtime_dir/omarchy-brightness-display-ddc/DP-1.bus"
+get_count=$(grep -c ' getvcp 10 ' "$call_log")
+DDC_MAXIMUM=100 run_brightness --no-osd --monitor DP-1 50%
+(( $(grep -c ' getvcp 10 ' "$call_log") == get_count + 1 )) || \
+  fail "expired external brightness range is refreshed"
+grep -F 'ddcutil --bus 7 --skip-ddc-checks --noverify setvcp 10 50' "$call_log" >/dev/null || \
+  fail "expired external brightness range uses the refreshed maximum"
+pass "expired external brightness range is refreshed"
 
 rm -f "$runtime_dir/omarchy-brightness-display-ddc/DP-1.bus"
 DDC_CURRENT=4 DDC_MAXIMUM=100 run_brightness --no-osd --monitor DP-1 +5%
