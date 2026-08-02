@@ -72,6 +72,7 @@ case "$PROCESSING" in
     wl-copy --type image/png <"$FILEPATH"
 
     (
+      [[ ${OMARCHY_SCREENSHOT_AUTO_EDIT:-false} == "true" ]] && open_editor "$FILEPATH" && exit 0
       if [[ -n $(omarchy-notification-send "Screenshot saved to clipboard and file" "Edit with Super + Alt + , (or click this)" --image "$FILEPATH" -a) ]]; then
         open_editor "$FILEPATH"
       fi
