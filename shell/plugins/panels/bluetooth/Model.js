@@ -67,6 +67,13 @@ function bluetoothSinkMatchesDevice(node, device) {
   if (!node || !node.isSink || node.isStream || !device) return false
 
   var address = normalizedAddress(device.address)
+  if (address !== "") {
+    if (normalizedAddress(node.name || "").indexOf(address) !== -1) return true
+    var props = nodeProps(node)
+    var bluezAddr = normalizedAddress(props["api.bluez5.address"] || props["bluez5.address"] || "")
+    if (bluezAddr === address) return true
+  }
+
   var text = nodeText(node)
   if (address !== "" && normalizedAddress(text).indexOf(address) !== -1) return true
 

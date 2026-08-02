@@ -43,7 +43,24 @@ Panel {
     return Model.hasHumanName(device)
   }
 
-  readonly property var deviceGroups: Model.deviceLists(devices)
+  readonly property var rawDeviceGroups: Model.deviceLists(devices)
+  property var deviceGroups: rawDeviceGroups
+
+  Timer {
+    id: deviceListDebounce
+    interval: 200
+    repeat: false
+    onTriggered: root.deviceGroups = root.rawDeviceGroups
+  }
+
+  onRawDeviceGroupsChanged: {
+    if (!root.opened || !root.adapter || !root.adapter.discovering) {
+      root.deviceGroups = rawDeviceGroups
+    } else {
+      if (!deviceListDebounce.running) deviceListDebounce.restart()
+    }
+  }
+
   readonly property var connectedDevices: deviceGroups.connected || []
   readonly property var knownDevices: deviceGroups.known || []
   readonly property var discoveredDevices: deviceGroups.discovered || []
@@ -383,6 +400,14 @@ Panel {
       else { focusSection = "header" }
       actionFocused = false
       cursorActive = false
+      initialDiscoveryDelay.restart()
+    } else {
+      initialDiscoveryDelay.stop()
+      // Stop discovery when panel closes to prevent continuous radio preemption
+      // of A2DP audio streaming on shared Broadcom Wi-Fi/BT chips.
+      if (adapter && adapter.discovering) {
+        adapter.discovering = false
+      }
     }
   }
 
@@ -461,9 +486,20 @@ Panel {
     id: discoveryRetry
     interval: 1000
     repeat: true
-    triggeredOnStart: true
+    triggeredOnStart: false
     running: root.opened && root.adapter !== null && root.adapter.enabled && !root.adapter.discovering
     onTriggered: root.adapter.discovering = true
+  }
+
+  Timer {
+    id: initialDiscoveryDelay
+    interval: 250
+    repeat: false
+    onTriggered: {
+      if (root.opened && root.adapter && root.adapter.enabled && !root.adapter.discovering) {
+        root.adapter.discovering = true
+      }
+    }
   }
 
   Timer {
