@@ -75,6 +75,31 @@ PanelWindow {
 
     MouseArea { anchors.fill: parent; onClicked: {} }
 
+    // Small dismiss affordance in the corner; Esc and the scrim do the same.
+    Text {
+      anchors.top: parent.top
+      anchors.right: parent.right
+      anchors.margins: Style.space(14)
+      text: "✕"
+      color: root.bar.foreground
+      opacity: closeMouse.containsMouse ? 0.9 : 0.4
+      font.family: root.bar.fontFamily
+      font.pixelSize: Style.font.bodySmall
+
+      Behavior on opacity {
+        NumberAnimation { duration: 120 }
+      }
+
+      MouseArea {
+        id: closeMouse
+        anchors.fill: parent
+        anchors.margins: -Style.space(6)
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: root.closeRequested()
+      }
+    }
+
     Item {
       id: keyCatcher
       anchors.fill: parent
@@ -150,10 +175,13 @@ PanelWindow {
           horizontalAlignment: Text.AlignHCenter
         }
 
+        // Fades rather than unmounts: the card must not change size when the
+        // button comes back after a run.
         Button {
-          visible: !root.running
           text: "Run Again"
           bordered: true
+          enabled: !root.running
+          opacity: root.running ? 0 : 1
           foreground: root.bar.foreground
           fontFamily: root.bar.fontFamily
           fontSize: Style.font.bodySmall
@@ -161,6 +189,10 @@ PanelWindow {
           verticalPadding: Style.space(4)
           Layout.alignment: Qt.AlignHCenter
           onClicked: root.runAgainRequested()
+
+          Behavior on opacity {
+            NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+          }
         }
       }
     }
