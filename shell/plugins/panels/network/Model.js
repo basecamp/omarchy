@@ -250,12 +250,6 @@ function formatRate(bytesPerSec) {
   return formatBytes(bytesPerSec) + "/s"
 }
 
-function formatSpeedMbps(mbps) {
-  var value = parseFloat(mbps)
-  if (!isFinite(value) || value <= 0) return "--"
-  return value.toFixed(value > 0 && value < 10 ? 1 : 0) + " Mbps"
-}
-
 // `hasSamples` false means no probe has come back yet, which is different from
 // a probe that timed out. The rows stay mounted through that gap and read "--"
 // so the grid doesn't reflow a second after the panel opens.
@@ -362,7 +356,6 @@ if (typeof module !== "undefined") {
     formatPacketLoss: formatPacketLoss,
     formatBytes: formatBytes,
     formatRate: formatRate,
-    formatSpeedMbps: formatSpeedMbps,
     formatPingLatency: formatPingLatency,
     wifiRow: wifiRow,
     sortWifiRows: sortWifiRows,

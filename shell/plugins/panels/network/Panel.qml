@@ -83,7 +83,7 @@ Panel {
   property var bandAvailable: []
   property string pendingBand: ""
   property bool speedTestRunning: false
-  property bool speedTestHasRun: false
+  property bool speedTestModalOpen: false
   property bool speedTestExpectedStop: false
   property string speedTestPhase: ""
   property string speedTestStderr: ""
@@ -226,6 +226,12 @@ Panel {
     function hide() { root.close() }
     function toggle() { root.toggle() }
     function toggleNetwork() { root.toggleNetwork() }
+    // Menu routes: summon the centered cards directly, panel open or not.
+    function showQr() {
+      root.refresh()
+      root.showWifiQr()
+    }
+    function speedTest() { root.showSpeedTest() }
   }
 
   function activateHeader() {
@@ -428,13 +434,17 @@ Panel {
   readonly property string icon: Model.connectionIcon(kind, signalStrength)
 
   function showWifiQr() {
-    if (qrProc.running || !info.iface || info.type !== "wifi") return
+    if (qrProc.running) return
     qrSize = 0
     qrRows = []
     qrError = ""
     qrLoading = true
     qrExpectedStop = false
-    qrProc.command = ["omarchy-network-qr", info.iface]
+    // Without a known Wi-Fi interface (an IPC summon can race the details
+    // probe) the command detects the connected Wi-Fi device itself.
+    qrProc.command = info.type === "wifi" && info.iface
+      ? ["omarchy-network-qr", info.iface]
+      : ["omarchy-network-qr"]
     qrProc.running = true
 
     // Leave the compact network panel behind while the centered share card is open.
@@ -563,10 +573,6 @@ Panel {
     return Model.formatRate(bytesPerSec)
   }
 
-  function formatSpeedMbps(mbps) {
-    return Model.formatSpeedMbps(mbps)
-  }
-
   function formatPingLatency(ms) {
     return Model.formatPingLatency(ms, hasInternetPing)
   }
@@ -660,10 +666,36 @@ Panel {
     speedTestError = ""
   }
 
+  // The speed test lives in a centered modal card like the QR share.
+  // Opening it starts a fresh run; dismissing it stops the traffic, so the
+  // download workers never keep saturating the link behind a closed card.
+  function showSpeedTest() {
+    if (!speedTestModalOpen) {
+      speedTestModalOpen = true
+      controller.hide()
+      cancelPasswordPrompt()
+    }
+    runSpeedTest()
+  }
+
+  function hideSpeedTest() {
+    speedTestModalOpen = false
+    speedTestPhaseTimer.stop()
+    // Clear the phase before killing the process: onExited advances to the
+    // upload phase when it still reads "down".
+    speedTestPhase = ""
+    speedTestRunning = false
+    if (speedTestProc.running) {
+      speedTestExpectedStop = true
+      speedTestProc.running = false
+    }
+  }
+
   function runSpeedTest() {
     if (speedTestProc.running) return
     speedTestError = ""
-    speedTestHasRun = true
+    speedTestDownloadMbps = ""
+    speedTestUploadMbps = ""
     speedTestRunning = true
     startSpeedTestPhase("down")
   }
@@ -1170,7 +1202,7 @@ Panel {
           if (root.focusSection === "header") root.activateHeader()
           else if (root.focusSection === "band") root.activateBand()
           else if (root.focusSection === "dns") root.activateDns()
-          else if (root.focusSection === "speed") root.runSpeedTest()
+          else if (root.focusSection === "speed") root.showSpeedTest()
           else root.activateSelected()
         }
       }
@@ -1587,7 +1619,7 @@ Panel {
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
               hasCursor: root.cursorActive && root.focusSection === "speed"
-              onClicked: root.runSpeedTest()
+              onClicked: root.showSpeedTest()
 
               onHovered: function(isHovered) {
                 if (!isHovered) return
@@ -1595,28 +1627,6 @@ Panel {
                 root.focusSection = "speed"
               }
             }
-          }
-
-          Row {
-            id: speedTestValues
-            visible: root.speedTestHasRun
-            width: parent.width
-            spacing: Style.space(20)
-
-            readonly property real cellWidth: Math.max(0, (width - spacing * 3) / 4)
-
-            InfoLabel { width: speedTestValues.cellWidth; text: "Download" }
-            DetailValue { width: speedTestValues.cellWidth; text: root.formatSpeedMbps(root.speedTestDownloadMbps) }
-            InfoLabel { width: speedTestValues.cellWidth; text: "Upload" }
-            DetailValue { width: speedTestValues.cellWidth; text: root.formatSpeedMbps(root.speedTestUploadMbps) }
-          }
-
-          InfoValue {
-            visible: root.speedTestError !== ""
-            text: root.speedTestError
-            color: root.bar.urgent
-            width: parent.width
-            elide: Text.ElideRight
           }
         }
       }
@@ -1706,6 +1716,24 @@ Panel {
     open: root.qrVisible
     onCloseRequested: root.hideWifiQr()
     onPasswordToggleRequested: root.toggleQrPassword()
+  }
+
+  SpeedTestPanel {
+    anchorItem: button
+    bar: root.bar
+    running: root.speedTestRunning
+    phase: root.speedTestPhase
+    downloadMbps: root.speedTestDownloadMbps
+    uploadMbps: root.speedTestUploadMbps
+    error: root.speedTestError
+    connectionName: {
+      if (root.info.type === "wifi") return root.info.ssid || "Wi-Fi"
+      if (root.info.type === "ethernet") return "Ethernet"
+      return ""
+    }
+    open: root.speedTestModalOpen
+    onCloseRequested: root.hideSpeedTest()
+    onRunAgainRequested: root.runSpeedTest()
   }
 
   // One Wi-Fi band pill. `active` (fill) is the band actually in use and
