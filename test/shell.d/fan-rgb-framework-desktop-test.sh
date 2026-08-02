@@ -29,6 +29,12 @@ grep -F 'omarchy-pkg-add framework-system' "$migration" >/dev/null ||
 grep -F '/etc/sudoers.d/omarchy-framework-tool' "$migration" >/dev/null ||
   fail "migration ensures the canonical sudoers rule"
 
+grep -F 'sudo rm /etc/sudoers.d/framework-tool' "$migration" >/dev/null ||
+  fail "migration removes the legacy raw-framework_tool rule so it cannot linger"
+
+! grep -F 'sudo mv /etc/sudoers.d/framework-tool' "$migration" >/dev/null ||
+  fail "migration does not rename the legacy rule (it would preserve stale raw content)"
+
 grep -E '^# omarchy:summary=' "$fan_setter" >/dev/null ||
   fail "fan setter has command metadata summary"
 
