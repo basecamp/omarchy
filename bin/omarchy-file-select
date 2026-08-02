@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 
 # omarchy:summary=Pick files with the desktop file chooser
-# omarchy:args=[--title <title>] [--multiple]
-# omarchy:examples=omarchy file select --title "Send with Tailscale" --multiple
+# omarchy:args=[--title <title>] [--multiple] [--extensions "<ext ext...>"]
+# omarchy:examples=omarchy file select --title "Send with Tailscale" --multiple | omarchy file select --title "Pick image" --extensions "png svg"
 
 # Python rather than bash, alone among the commands here, because the portal
 # answers a request with a Response signal addressed to the connection that
@@ -36,6 +36,7 @@ def main():
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--title", default="Select file")
     parser.add_argument("--multiple", action="store_true")
+    parser.add_argument("--extensions", default="")
     args, unknown = parser.parse_known_args()
 
     if unknown:
@@ -71,15 +72,26 @@ def main():
     predicted = "/org/freedesktop/portal/desktop/request/%s/%s" % (sender, token)
     subscribe(predicted)
 
+    options = {
+        "handle_token": GLib.Variant("s", token),
+        "multiple": GLib.Variant("b", args.multiple),
+    }
+
+    if args.extensions:
+        # Glob matching in the chooser is case-sensitive, so cover both cases.
+        exts = [ext.lstrip(".").lower() for ext in args.extensions.split()]
+        patterns = [(0, "*." + ext) for ext in exts] + [(0, "*." + ext.upper()) for ext in exts]
+        label = " ".join("*." + ext for ext in exts)
+        filters = GLib.Variant("a(sa(us))", [(label, patterns)])
+        options["filters"] = filters
+        options["current_filter"] = GLib.Variant("(sa(us))", (label, patterns))
+
     handle = bus.call_sync(
         "org.freedesktop.portal.Desktop",
         "/org/freedesktop/portal/desktop",
         "org.freedesktop.portal.FileChooser",
         "OpenFile",
-        GLib.Variant("(ssa{sv})", ("", args.title, {
-            "handle_token": GLib.Variant("s", token),
-            "multiple": GLib.Variant("b", args.multiple),
-        })),
+        GLib.Variant("(ssa{sv})", ("", args.title, options)),
         None,
         Gio.DBusCallFlags.NONE,
         -1,
