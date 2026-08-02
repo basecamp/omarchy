@@ -363,6 +363,9 @@ Panel {
       syncBandIndex()
       cursorActive = false
       Qt.callLater(function() {
+        // A close can beat this deferred start; the close branch already
+        // terminated any running probes, so don't start new ones behind it.
+        if (!root.opened) return
         if (!dnsProc.running) {
           dnsProc.command = ["bash", "-c", root.dnsCommand("")]
           dnsProc.running = true
@@ -391,6 +394,15 @@ Panel {
       // Don't let a deferred scan start after the panel is gone: it would
       // flood the model while closed and stall the next open.
       scanRestart.stop()
+      // Terminate in-flight status probes. A --ping child can outlive the
+      // dropdown by ~200ms and a DNS check by far more on a slow resolver;
+      // the stream handlers ignore whatever output arrives after the
+      // SIGTERM, and killing them now means a quick reopen starts fresh
+      // probes immediately instead of waiting out the old ones.
+      if (detailsProc.running) detailsProc.running = false
+      if (pingProc.running) pingProc.running = false
+      if (dnsProc.running) dnsProc.running = false
+      if (bandProc.running) bandProc.running = false
     }
   }
 
@@ -431,11 +443,35 @@ Panel {
   }
 
   onWifiDeviceChanged: {
-    if (wifiDevice) wifiDevice.scannerEnabled = opened
+    if (wifiDevice) {
+      wifiDevice.scannerEnabled = false
+      // A device appearing while the panel is open (adapter toggled on,
+      // dongle plugged in) gets one bounded scan, same as the open path.
+      if (opened) scanRestart.start()
+    }
     syncWifiNetworks()
   }
 
-  onWifiNetworkObjectsChanged: syncWifiNetworks()
+  Timer {
+    id: wifiListDebounce
+    // A scan's access-point flood re-emits the network list dozens of times
+    // within seconds; rebuilding the row model on every emission starves the
+    // event loop, which stalls the dropdown's close/fade behind it (and any
+    // other shell UI). Coalesce bursts: the first change lands immediately,
+    // stragglers within 200ms of the last one.
+    interval: 200
+    repeat: false
+    onTriggered: root.syncWifiNetworks()
+  }
+
+  onWifiNetworkObjectsChanged: {
+    // A scan that was in flight at close keeps streaming AP updates for a
+    // while; the closed panel has no use for them and the next open syncs
+    // from scratch anyway, so drop them outright.
+    if (!root.opened) return
+    if (wifiListDebounce.running) wifiListDebounce.restart()
+    else syncWifiNetworks()
+  }
 
   function selectByDelta(delta) {
     if (wifiNetworks.length === 0) { selectedIndex = -1; return }
@@ -574,9 +610,9 @@ Panel {
         scanning = true
         wifiDevice.scannerEnabled = false
         scanRestart.start()
-      } else {
-        wifiDevice.scannerEnabled = true
       }
+      // Non-scan refreshes must NOT re-enable the scanner: that would
+      // restart the 10s auto-rescan loop and its access-point floods.
     }
     syncWifiNetworks()
   }
@@ -914,7 +950,7 @@ Panel {
     failureReason = ""
     actionSsid = ""
     actionKind = ""
-    refresh()
+    if (opened) refresh()
   }
 
   function failNetworkAction(network, reason) {
@@ -924,7 +960,7 @@ Panel {
     failureReason = networkFailureReason(reason)
     actionSsid = ""
     actionKind = ""
-    refresh()
+    if (opened) refresh()
   }
 
   function networkFailureReason(reason) {
@@ -991,7 +1027,9 @@ Panel {
     command: ["omarchy-network-status", "--verbose"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.updateDetails(text)
+      // Buffered output can still arrive after the close-branch SIGTERM;
+      // never let a probe mutate state the close handler just reset.
+      onStreamFinished: if (root.opened) root.updateDetails(text)
     }
   }
 
@@ -1000,7 +1038,9 @@ Panel {
     command: ["omarchy-network-status", "--ping"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.updateDetails(text)
+      // Same dismissal guard as detailsProc: a killed probe may still flush
+      // its payload, which would re-populate the window after the reset.
+      onStreamFinished: if (root.opened) root.updateDetails(text)
     }
   }
 
@@ -1021,7 +1061,15 @@ Panel {
     id: scanDone
     interval: 1500
     repeat: false
-    onTriggered: root.syncWifiNetworks()
+    onTriggered: {
+      root.syncWifiNetworks()
+      // One scan per open (and per explicit rescan): leaving the scanner
+      // enabled makes quickshell request another scan every ~10s, and each
+      // scan's access-point flood saturates the shell's event loop for
+      // seconds — stalling the dropdown's close/fade and every other
+      // panel. The list is fresh for this open; 'r' or a reopen rescans.
+      if (root.wifiDevice) root.wifiDevice.scannerEnabled = false
+    }
   }
 
   Process {
@@ -1077,7 +1125,7 @@ Panel {
     id: dnsProc
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.updateDns(text)
+      onStreamFinished: if (root.opened) root.updateDns(text)
     }
   }
 
@@ -1085,7 +1133,7 @@ Panel {
     id: bandProc
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.updateBand(text)
+      onStreamFinished: if (root.opened) root.updateBand(text)
     }
   }
 
@@ -1156,8 +1204,10 @@ Panel {
         if (exitCode === 0) root.bandSelected = root.pendingBand
         root.pendingBand = ""
         // The panel stayed open through the reconnect, so pull fresh state now
-        // instead of leaving stale readings until the next poll tick.
-        root.refresh()
+        // instead of leaving stale readings until the next poll tick. A band
+        // toggle issued from the dropdown always completes with the panel
+        // open; a DNS change closes the panel, so skip the refresh there.
+        if (root.opened) root.refresh()
       }
     }
   }
@@ -1222,7 +1272,9 @@ Panel {
       root.failureReason = reason
       root.actionSsid = ""
       root.actionKind = ""
-      root.refresh()
+      // The action may have outlived the panel (dismissal mid-action): don't
+      // restart status probes behind a closed dropdown.
+      if (root.opened) root.refresh()
     }
   }
 
