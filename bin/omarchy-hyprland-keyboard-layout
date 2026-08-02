@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# omarchy:summary=Switch the keyboard layout and show it on the OSD
+# omarchy:args=[next|prev|status]
+# omarchy:examples=omarchy hyprland keyboard-layout | omarchy hyprland keyboard-layout prev | omarchy hyprland keyboard-layout status
+
+action="${1:-next}"
+
+case $action in
+  next | prev)
+    hyprctl switchxkblayout all "$action" >/dev/null
+    ;;
+  status) ;;
+  *)
+    echo "Usage: omarchy-hyprland-keyboard-layout [next|prev|status]" >&2
+    exit 1
+    ;;
+esac
+
+# hyprctl answers the dispatch only after the switch lands, so the read below
+# already sees the new keymap. The main keyboard speaks for the lot: `all`
+# switches every keyboard, and singling one out keeps power buttons and other
+# keymap-less "keyboards" from answering instead.
+layout=$(hyprctl -j devices | jq -r '.keyboards | (map(select(.main)) + .)[0].active_keymap // empty')
+[[ -n $layout ]] || exit 1
+
+if [[ $action == "status" ]]; then
+  echo "$layout"
+else
+  omarchy-osd -i keyboard -m "$layout"
+fi
