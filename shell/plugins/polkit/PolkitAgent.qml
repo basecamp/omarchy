@@ -38,17 +38,26 @@ Item {
   // to the password even when a sensor is enrolled. Refreshed per request.
   property bool laptopClosed: false
   property int shakeOffset: 0
+  property bool waitingDelayLatched: false
 
   readonly property bool dialogVisible: polkitAgent.isActive || closing
-  // We show one method at a time. Fingerprint owns the dialog while PAM is
-  // waiting on the reader (lid open, sensor enrolled); the moment PAM asks for
-  // a password — including immediately when the lid is shut and the clamshell
-  // gate skips pam_fprintd — we switch to the password field instead.
-  readonly property bool fingerprintMode: fingerprintConfigured && !laptopClosed && dialogVisible && !responseRequired && !submitted && !errorFlash
+  readonly property var authState: PolkitModel.authenticationState(currentPrompt, currentSupplementary, responseRequired)
+  readonly property var authPresentation: PolkitModel.authenticationPresentation(authState.method, fingerprintConfigured, laptopClosed)
+  readonly property bool fingerprintMode: dialogVisible && authState.method === "fingerprint" && !submitted && !errorFlash
+  readonly property bool fidoMode: dialogVisible && authState.method === "fido" && !submitted && !errorFlash
+  readonly property bool compactMode: fingerprintMode || fidoMode || (dialogVisible && authState.method === "waiting" && !submitted && !errorFlash)
+  readonly property bool waitingDelayActive: !waitingDelayLatched && !submitted && !errorFlash && authState.method === "waiting" && waitingDelayTimer.running
   readonly property int cardHeight: panel.height > 0 ? Math.min(fieldHeight + contentMargin * 2, panel.height - Style.gapsOut * 2) : fieldHeight + contentMargin * 2
-  // Password mode is a wide field; fingerprint mode collapses to a square that
+  // Password mode is a wide field; compact modes collapse to a square that
   // just frames the centered sensor icon.
-  readonly property int cardWidth: fingerprintMode ? cardHeight : Math.min(Style.space(312), Math.max(Style.space(260), panel.width - Style.gapsOut * 2))
+  readonly property int cardWidth: compactMode ? cardHeight : Math.min(Style.space(312), Math.max(Style.space(260), panel.width - Style.gapsOut * 2))
+
+  Timer {
+    id: waitingDelayTimer
+    interval: 1000
+    repeat: false
+    onTriggered: root.waitingDelayLatched = true
+  }
 
   function authorizationLabel(message) {
     return PolkitModel.authorizationLabel(message)
@@ -62,6 +71,11 @@ Item {
     if (!laptopClosedProc.running) laptopClosedProc.running = true
   }
 
+  function finishWaitingDelay() {
+    waitingDelayLatched = true
+    waitingDelayTimer.stop()
+  }
+
   function resetSnapshot() {
     currentMessage = ""
     currentPrompt = ""
@@ -72,6 +86,8 @@ Item {
     errorFlash = false
     submitted = false
     passwordInput.text = ""
+    waitingDelayTimer.stop()
+    waitingDelayLatched = false
   }
 
   function syncFromFlow() {
@@ -86,10 +102,13 @@ Item {
     failed = !!flow.failed
 
     if (responseRequired) submitted = false
+    if (authState.method !== "waiting") finishWaitingDelay()
   }
 
   function beginFlow() {
     closeTimer.stop()
+    waitingDelayLatched = false
+    waitingDelayTimer.restart()
     closing = false
     submitted = false
     passwordInput.text = ""
@@ -100,15 +119,16 @@ Item {
 
   function refocus() {
     if (!dialogVisible) return
-    // In fingerprint mode there is no field to type into — park focus on the
-    // key catcher so Escape still cancels; otherwise focus the password field.
-    if (fingerprintMode) keyCatcher.forceActiveFocus()
+    // While PAM is handling a non-interactive prompt, park focus on the key
+    // catcher so Escape still cancels without sending an empty response.
+    if (compactMode || !responseRequired) keyCatcher.forceActiveFocus()
     else passwordInput.forceActiveFocus()
   }
 
   function submitResponse() {
     var flow = polkitAgent.flow
     if (!flow || !flow.isResponseRequired) return
+    finishWaitingDelay()
     submitted = true
     errorFlash = false
     flow.submit(passwordInput.text)
@@ -126,6 +146,7 @@ Item {
   }
 
   function triggerFailureFeedback() {
+    finishWaitingDelay()
     submitted = false
     errorFlash = true
     passwordInput.text = ""
@@ -157,6 +178,7 @@ Item {
     NumberAnimation { target: root; property: "shakeOffset"; to: 8; duration: 50; easing.type: Easing.InOutQuad }
     NumberAnimation { target: root; property: "shakeOffset"; to: 0; duration: 55; easing.type: Easing.OutQuad }
   }
+
   FileView {
     path: "/etc/pam.d/polkit-1"
     watchChanges: true
@@ -248,6 +270,7 @@ Item {
       color: root.background
       borderSpec: root.borderSpec
       padding: root.contentMargin
+      opacity: root.waitingDelayActive ? 0.0 : 1.0
 
       MouseArea { anchors.fill: parent; onClicked: root.refocus() }
 
@@ -274,16 +297,16 @@ Item {
         anchors.centerIn: parent
         width: Math.round(root.fieldHeight * 0.7)
         height: width
-        visible: root.fingerprintMode
-        text: "\udb80\ude37"
+        visible: root.compactMode
+        text: root.authPresentation.glyph === "fido" ? "\udb80\udf06" : (root.authPresentation.glyph === "fingerprint" ? "\udb80\ude37" : "\uf023")
         fontFamily: root.fontFamily
-        fontSize: Math.round(root.fieldHeight * 0.7)
+        fontSize: root.authPresentation.glyph === "fido" || root.authPresentation.glyph === "fingerprint" ? Math.round(root.fieldHeight * 0.7) : Style.font.iconLarge
         color: root.errorFlash ? Color.polkit.textError : root.accent
       }
 
       Row {
         id: cardRow
-        visible: !root.fingerprintMode
+        visible: !root.compactMode
         anchors.fill: parent
         anchors.topMargin: card.contentTopInset
         anchors.rightMargin: card.contentRightInset
@@ -319,9 +342,9 @@ Item {
             echoMode: root.responseVisible ? TextInput.Normal : TextInput.Password
             passwordCharacter: "\u2022"
             color: root.errorFlash ? Color.polkit.textError : root.foreground
-            cursorVisible: activeFocus && !root.submitted && !root.errorFlash
-            readOnly: root.submitted || root.errorFlash
-            enabled: root.dialogVisible
+            cursorVisible: activeFocus && root.responseRequired && !root.submitted && !root.errorFlash
+            readOnly: !root.responseRequired || root.submitted || root.errorFlash
+            enabled: root.dialogVisible && root.responseRequired
             onAccepted: root.submitResponse()
             Keys.onPressed: function(event) {
               if (event.key === Qt.Key_Escape) {
@@ -335,7 +358,7 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: root.errorFlash ? "Wrong" : (root.submitted ? "Checking..." : "Enter password")
+            text: root.errorFlash ? "Wrong" : (root.submitted ? "Checking..." : root.authState.prompt)
             color: root.errorFlash ? Color.polkit.textError : root.foreground
             opacity: root.errorFlash ? 1 : 0.36
             font.family: root.fontFamily
@@ -350,13 +373,13 @@ Item {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             color: root.errorFlash ? Color.polkit.textError : root.foreground
-            visible: passwordInput.visible && passwordInput.activeFocus && passwordInput.text.length === 0 && !root.submitted && !root.errorFlash
+            visible: passwordInput.visible && passwordInput.activeFocus && root.responseRequired && passwordInput.text.length === 0 && !root.submitted && !root.errorFlash
           }
 
           MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.LeftButton
-            enabled: passwordInput.visible
+            enabled: passwordInput.enabled
             onClicked: passwordInput.forceActiveFocus()
           }
         }
@@ -364,13 +387,41 @@ Item {
     }
 
     Rectangle {
-      width: Math.min(justificationText.implicitWidth + Style.space(24), panel.width - Style.gapsOut * 2)
+      id: cuePill
+      visible: root.compactMode && (root.fidoMode || root.fingerprintMode)
+      width: Math.min(cueText.implicitWidth + Style.space(24), panel.width - Style.gapsOut * 2)
       height: Style.space(28)
       anchors.horizontalCenter: card.horizontalCenter
       anchors.bottom: card.top
       anchors.bottomMargin: Style.space(10)
       radius: root.cornerRadius
       color: root.background
+
+      Text {
+        id: cueText
+        anchors.fill: parent
+        anchors.leftMargin: Style.space(12)
+        anchors.rightMargin: Style.space(12)
+        text: root.authState.prompt
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.bodySmall
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+        elide: Text.ElideMiddle
+      }
+    }
+
+    Rectangle {
+      id: justificationPill
+      width: Math.min(justificationText.implicitWidth + Style.space(24), panel.width - Style.gapsOut * 2)
+      height: Style.space(28)
+      anchors.horizontalCenter: card.horizontalCenter
+      anchors.bottom: cuePill.visible ? cuePill.top : card.top
+      anchors.bottomMargin: Style.space(10)
+      radius: root.cornerRadius
+      color: root.background
+      opacity: root.waitingDelayActive ? 0.0 : 1.0
 
       Text {
         id: justificationText
