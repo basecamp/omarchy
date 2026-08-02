@@ -122,6 +122,7 @@ individual plugins (`bar`, `image-selector`, …).
     "id": "omarchy.bar",
     "position": "top",
     "transparent": false,
+    "screens": [],
     "centerAnchor": "calendar",
     "fontFamily": "JetBrainsMono Nerd Font",
     "layout": {
@@ -152,6 +153,9 @@ Rules:
 6. `allowMultiple: true` in the manifest permits multiple instances.
 7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
 8. `version: 1` is required.
+9. `bar.screens` is an optional list of Wayland output names that limits
+   which monitors get a bar (e.g. `["DP-1"]`). Empty or omitted means every
+   screen gets a bar.
 
 `config/omarchy/shell.json` describes the fresh-install state. When no
 user `shell.json` exists, defaults are used verbatim. Once the user

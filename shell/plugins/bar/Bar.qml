@@ -48,6 +48,19 @@ Item {
   property bool centerHoverRevealSuppressed: false
   property int barConfigSerial: 0
   property string position: "top"
+  // Optional list of output names (e.g. ["DP-1"]) to restrict the bar to.
+  // Empty or unset means every screen gets a bar, which is the default
+  // behavior. Values are Wayland output names as reported by Quickshell
+  // (ShellScreen.name), the same names `hyprctl monitors` prints.
+  readonly property var screenFilter: {
+    var cfg = barConfig && barConfig.screens
+    return Array.isArray(cfg) ? cfg : []
+  }
+  // The screens that actually get a bar, honoring barConfig.screens.
+  // Stays reactive: re-evaluates when screens hotplug or config reloads.
+  readonly property var barScreens: root.screenFilter.length > 0
+    ? Quickshell.screens.filter(s => root.screenFilter.indexOf(s.name) !== -1)
+    : Quickshell.screens
   // Resolves through fontconfig at paint time (Style.font.family defaults
   // to "monospace"), so changing the system font (via `omarchy-font-set`)
   // updates the bar without a reload.
@@ -898,7 +911,7 @@ Item {
   }
 
   Variants {
-    model: Quickshell.screens
+    model: root.barScreens
 
     delegate: Component {
       BarPanel {
@@ -910,7 +923,7 @@ Item {
   }
 
   Variants {
-    model: Quickshell.screens
+    model: root.barScreens
 
     delegate: Component {
       DragGhostPanel {
@@ -923,7 +936,7 @@ Item {
   }
 
   Variants {
-    model: Quickshell.screens
+    model: root.barScreens
 
     delegate: Component {
       BarMoveGhostPanel {
