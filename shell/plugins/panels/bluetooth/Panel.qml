@@ -171,7 +171,10 @@ Panel {
   function deviceFor(row) {
     if (!row || !row.dev) return null
     var addr = row.dev.address || ""
-    var devs = devices ? devices.values : []
+    // `devices` is already the raw device array (Bluetooth.devices.values,
+    // see the property declaration) — re-querying .values on it yields the
+    // Array.prototype iterator method, which silently matches nothing.
+    var devs = devices || []
     for (var i = 0; i < devs.length; i++) {
       if ((devs[i].address || "") === addr) return devs[i]
     }
