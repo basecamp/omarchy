@@ -14,25 +14,39 @@ printf '%s\n' "$*" >>"$OMARCHY_TEST_THEME_CALLS"
 SH
 chmod +x "$mock_bin/omarchy-theme-set"
 
+# Record name + args so we assert finalize always activates pi/grok follow mode.
 for command in omarchy-theme-set-pi omarchy-theme-set-grok; do
-  cat >"$mock_bin/$command" <<'SH'
+  cat >"$mock_bin/$command" <<SH
 #!/bin/bash
-exit 0
+printf '%s %s\n' "$command" "\$*" >>"\$OMARCHY_TEST_ACTIVATE_CALLS"
 SH
   chmod +x "$mock_bin/$command"
 done
 
 calls="$test_tmp/theme-calls"
+activate_calls="$test_tmp/activate-calls"
 touch "$test_tmp/home/.config/chromium/SingletonLock"
-HOME="$test_tmp/home" PATH="$mock_bin:$PATH" OMARCHY_TEST_THEME_CALLS="$calls" \
+: >"$activate_calls"
+HOME="$test_tmp/home" PATH="$mock_bin:$PATH" \
+  OMARCHY_TEST_THEME_CALLS="$calls" OMARCHY_TEST_ACTIVATE_CALLS="$activate_calls" \
   bash "$ROOT/install/user/theme.sh"
 grep -Fx 'Tokyo Night' "$calls" >/dev/null || fail "user theme setup seeds Tokyo Night when no theme exists"
 [[ -f $test_tmp/home/.config/chromium/SingletonLock ]] || fail "runtime user theme setup preserves Chromium's singleton lock"
+grep -Fx 'omarchy-theme-set-pi --activate' "$activate_calls" >/dev/null || \
+  fail "user theme setup activates pi theme follow"
+grep -Fx 'omarchy-theme-set-grok --activate' "$activate_calls" >/dev/null || \
+  fail "user theme setup activates grok theme follow"
 
 : >"$calls"
+: >"$activate_calls"
 printf 'Solitude\n' >"$test_tmp/home/.local/state/omarchy/current/theme.name"
-HOME="$test_tmp/home" PATH="$mock_bin:$PATH" OMARCHY_TEST_THEME_CALLS="$calls" \
+HOME="$test_tmp/home" PATH="$mock_bin:$PATH" \
+  OMARCHY_TEST_THEME_CALLS="$calls" OMARCHY_TEST_ACTIVATE_CALLS="$activate_calls" \
   bash "$ROOT/install/user/theme.sh"
 [[ ! -s $calls ]] || fail "user theme setup preserves an existing theme"
+grep -Fx 'omarchy-theme-set-pi --activate' "$activate_calls" >/dev/null || \
+  fail "user theme setup re-activates pi when a theme already exists"
+grep -Fx 'omarchy-theme-set-grok --activate' "$activate_calls" >/dev/null || \
+  fail "user theme setup re-activates grok when a theme already exists"
 
 pass "user theme setup only seeds the default theme once"
