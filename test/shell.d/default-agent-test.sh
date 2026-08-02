@@ -51,6 +51,15 @@ fi
 [[ ${OMARCHY_TEST_MISE_FAIL:-false} != "true" ]]
 SH
 
+cat >"$mock_bin/omarchy-test-noop" <<'SH'
+#!/bin/bash
+exit 0
+SH
+
+for command in gum hyprctl omarchy-webapp-remove-all omarchy-tui-remove-all omarchy-pkg-drop; do
+  ln -s omarchy-test-noop "$mock_bin/$command"
+done
+
 chmod +x "$mock_bin"/*
 
 export HOME="$test_home"
@@ -63,7 +72,7 @@ export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
 
 grok_package="npm:@xai-official/grok"
-omp_package="oh-my-pi"
+omp_package="github:can1357/oh-my-pi"
 crush_package="crush"
 
 assert_lazy_stub() {
@@ -89,6 +98,33 @@ grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
 pass "user setup creates the custom agent lazy stubs"
+
+: >"$stub_log"
+source "$ROOT/migrations/1785617047.sh" >/dev/null
+grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "Oh My Pi migration creates a working lazy stub"
+
+: >"$stub_log"
+source "$ROOT/migrations/1785633225.sh" >/dev/null
+grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "agent migration repairs the Oh My Pi lazy stub"
+grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "agent migration creates the Grok lazy stub"
+grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "agent migration creates the Crush lazy stub"
+
+mkdir -p "$test_home/.local/state/omarchy"
+touch "$test_home/.local/state/omarchy/preinstalls-removed"
+"$ROOT/bin/omarchy-mise-install" oh-my-pi omp
+: >"$stub_log"
+source "$ROOT/migrations/1785617047.sh" >/dev/null
+source "$ROOT/migrations/1785633225.sh" >/dev/null
+[[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
+[[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
+rm "$test_home/.local/state/omarchy/preinstalls-removed"
+pass "agent migrations install working wrappers without overriding the preinstall opt-out"
+
+omarchy-remove-preinstalls >/dev/null
+for command in omp grok crush; do
+  [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
+done
+pass "Remove Preinstalls deletes every optional agent lazy stub"
 
 [[ $(omarchy-default-agent) == "opencode" ]] || fail "default agent falls back to OpenCode"
 pass "default agent falls back to OpenCode"
@@ -169,6 +205,19 @@ mapfile -d '' -t notification_args <"$notification_log"
 [[ ${notification_args[2]} == "Could not install Codex with mise" ]] ||
   fail "default agent reports a failed mise installation"
 pass "default agent changes selection only after mise installs the provider"
+
+: >"$notification_history"
+if OMARCHY_TEST_AGENT_INSTALLED=true OMARCHY_TEST_MISE_FAIL=true omarchy-default-agent codex >"$test_tmp/setup-failure-output" 2>&1; then
+  fail "default agent rejects a failed mise activation"
+fi
+[[ $(omarchy-default-agent) == "copilot" ]] || fail "failed activation preserves the current default agent"
+mapfile -d '' -t notification_args <"$notification_log"
+[[ ${notification_args[2]} == "Could not set Codex as the default coding agent" ]] ||
+  fail "default agent reports a failed activation for an installed provider"
+mapfile -d '' -t notification_history_args <"$notification_history"
+[[ ${#notification_history_args[@]} == 3 ]] ||
+  fail "failed activation sends only the selection failure notification"
+pass "default agent reports mise failures for installed providers"
 
 assert_launch() {
   local agent=$1

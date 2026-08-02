@@ -17,7 +17,7 @@ fi
 
 case "$1" in
 pi) agent="pi"; name="Pi" ;;
-omp | oh-my-pi) agent="omp"; name="Oh My Pi"; agent_package="oh-my-pi" ;;
+omp | oh-my-pi) agent="omp"; name="Oh My Pi"; agent_package="github:can1357/oh-my-pi" ;;
 opencode | open-code) agent="opencode"; name="OpenCode" ;;
 claude | claude-code) agent="claude"; name="Claude Code" ;;
 codex) agent="codex"; name="Codex" ;;
@@ -40,7 +40,11 @@ if ! mise where "$agent_package" &>/dev/null; then
 fi
 
 if ! mise use -g "$agent_package"; then
-  [[ $installing == "true" ]] && omarchy-notification-send -g 󰚩 "Could not install $name with mise"
+  if [[ $installing == "true" ]]; then
+    omarchy-notification-send -g 󰚩 "Could not install $name with mise"
+  else
+    omarchy-notification-send -g 󰚩 "Could not set $name as the default coding agent"
+  fi
   exit 1
 fi
 
