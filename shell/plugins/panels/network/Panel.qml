@@ -443,12 +443,7 @@ Panel {
   }
 
   onWifiDeviceChanged: {
-    if (wifiDevice) {
-      wifiDevice.scannerEnabled = false
-      // A device appearing while the panel is open (adapter toggled on,
-      // dongle plugged in) gets one bounded scan, same as the open path.
-      if (opened) scanRestart.start()
-    }
+    if (wifiDevice) wifiDevice.scannerEnabled = opened
     syncWifiNetworks()
   }
 
@@ -610,9 +605,9 @@ Panel {
         scanning = true
         wifiDevice.scannerEnabled = false
         scanRestart.start()
+      } else {
+        wifiDevice.scannerEnabled = true
       }
-      // Non-scan refreshes must NOT re-enable the scanner: that would
-      // restart the 10s auto-rescan loop and its access-point floods.
     }
     syncWifiNetworks()
   }
@@ -1061,15 +1056,7 @@ Panel {
     id: scanDone
     interval: 1500
     repeat: false
-    onTriggered: {
-      root.syncWifiNetworks()
-      // One scan per open (and per explicit rescan): leaving the scanner
-      // enabled makes quickshell request another scan every ~10s, and each
-      // scan's access-point flood saturates the shell's event loop for
-      // seconds — stalling the dropdown's close/fade and every other
-      // panel. The list is fresh for this open; 'r' or a reopen rescans.
-      if (root.wifiDevice) root.wifiDevice.scannerEnabled = false
-    }
+    onTriggered: root.syncWifiNetworks()
   }
 
   Process {
