@@ -213,6 +213,13 @@ PanelWindow {
       NumberAnimation { duration: 400; easing.type: Easing.OutCubic }
     }
 
+    // A fresh measurement re-ranges from the base scale. Without this, one
+    // unusually fast run would compress every later one for the lifetime of
+    // the shell process.
+    onLiveChanged: {
+      if (live) fullScale = scaleStops[0]
+    }
+
     onValueChanged: {
       // Latch the scale upward to the next stop when a reading approaches the
       // rim. Never shrink mid-run; a fresh run just re-sweeps from zero.
