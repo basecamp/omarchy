@@ -1,29 +1,34 @@
 #!/bin/bash
 
-# Sync Omarchy theme to Calibre
+# omarchy:summary=Apply the current theme to Calibre
+# omarchy:hidden=true
+
+# Sync the active Omarchy theme to Calibre's custom palette system.
+#
+# colors.toml is resolved through omarchy-theme-color so every semantic key,
+# ANSI alias (color1..color15), and the light/dark mode resolve identically
+# to every other theme consumer. Calibre's Qt palette needs fifteen roles;
+# the roles with no direct colors.toml mapping are derived with blend().
 
 omarchy-cmd-present calibre || exit 0
 
-CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
-COLORS_FILE="$CURRENT_THEME_DIR/colors.toml"
+THEME_DIR="$HOME/.local/state/omarchy/current/theme"
+COLORS_FILE="$THEME_DIR/colors.toml"
 
 [[ -f $COLORS_FILE ]] || exit 0
 
-# Parse colors from TOML
-declare -A colors
-while IFS='=' read -r key value; do
-  key="${key//[\"\' ]/}"
-  [[ $key && $key != \#* ]] || continue
-  value="${value#*[\"\']}"
-  value="${value%%[\"\']*}"
-  colors[$key]="$value"
-done <"$COLORS_FILE"
+color() {
+  omarchy-theme-color --file "$COLORS_FILE" "$1" "${2:-}" 2>/dev/null
+}
 
-bg="${colors[background]}"
-fg="${colors[foreground]}"
-accent="${colors[accent]}"
-sel_bg="${colors[selection_background]}"
-sel_fg="${colors[selection_foreground]}"
+bg=$(color background)
+fg=$(color foreground)
+accent=$(color accent)
+sel_bg=$(color selection_background selection)
+sel_fg=$(color selection_foreground foreground)
+bright_text=$(color color1 red)
+link_visited=$(color color5 magenta)
+palette_type=$(color mode)
 
 # Blend a hex color toward black or white by a percentage (0-100)
 blend() {
@@ -48,12 +53,10 @@ blend() {
 }
 
 # Derive shades for palette roles with no direct colors.toml mapping
-if [[ -f $CURRENT_THEME_DIR/light.mode ]]; then
-  palette_type="light"
+if [[ $palette_type == "light" ]]; then
   alt_base=$(blend "$bg" 5 black)
   placeholder=$(blend "$fg" 40 white)
 else
-  palette_type="dark"
   alt_base=$(blend "$bg" 15 white)
   placeholder=$(blend "$fg" 40 black)
 fi
@@ -85,11 +88,11 @@ palette = {
     'Text': '$fg',
     'Button': '$bg',
     'ButtonText': '$fg',
-    'BrightText': '${colors[color1]}',
+    'BrightText': '$bright_text',
     'Highlight': '$sel_bg',
     'HighlightedText': '$sel_fg',
     'Link': '$accent',
-    'LinkVisited': '${colors[color5]}',
+    'LinkVisited': '$link_visited',
     'AlternateBase': '$alt_base',
     'ToolTipBase': '$alt_base',
     'ToolTipText': '$fg',
