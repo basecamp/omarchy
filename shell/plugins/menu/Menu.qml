@@ -851,6 +851,19 @@ Item {
     return raw
   }
 
+  // Route a toggle/open request down to the menu that will actually be
+  // displayed, mirroring openRoute(): follow link targets and fall back to
+  // "root" when the resolved id names no item. The shell's toggle compares
+  // these canonical ids so toggling an alias or a link to the already-active
+  // menu closes it instead of summoning it again.
+  function canonicalRoute(input) {
+    var id = root.resolveRoute(input)
+    var entry = root.items[id]
+    if (entry && entry.kind === "link" && entry.target) id = entry.target
+    if (!root.item(id)) id = "root"
+    return id
+  }
+
   function openRoute(initialMenu) {
     var id = root.resolveRoute(initialMenu)
     var entry = root.items[id]

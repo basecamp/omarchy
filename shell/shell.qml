@@ -522,15 +522,19 @@ ShellRoot {
         // requestActive/doneFile without completing the caller, so a toggle
         // must hide instead and let cancel() finish the request with null.
         var isMenuMode = item.mode === undefined || item.mode === "menu"
-        if (isMenuMode && targetRoute && typeof item.resolveRoute === "function" && typeof item.activeMenu === "string") {
-          // Resolve both sides to the effective route, following link items.
-          var resolveCanonical = function(r) {
-            var res = item.resolveRoute(r)
-            var ent = item.items ? item.items[res] : null
-            return (ent && ent.kind === "link" && ent.target) ? ent.target : res
-          }
-          var resolvedTarget = resolveCanonical(targetRoute)
-          var resolvedActive = resolveCanonical(item.activeMenu)
+        if (isMenuMode && targetRoute && typeof item.activeMenu === "string") {
+          // Compare canonical routes so toggling the already-active route
+          // closes the menu instead of re-summoning it. First-party menus
+          // expose canonicalRoute(); others get the same link-follow fallback.
+          var canon = typeof item.canonicalRoute === "function"
+            ? function(r) { return item.canonicalRoute(r) }
+            : function(r) {
+                var res = typeof item.resolveRoute === "function" ? item.resolveRoute(r) : r
+                var ent = item.items ? item.items[res] : null
+                return (ent && ent.kind === "link" && ent.target) ? ent.target : res
+              }
+          var resolvedTarget = canon(targetRoute)
+          var resolvedActive = canon(item.activeMenu)
           if (resolvedTarget && resolvedActive && resolvedTarget !== resolvedActive) {
             return summon(id, payloadJson)
           }
