@@ -127,9 +127,9 @@ Panel {
   property bool cursorActive: false
 
   // Keyboard focus zone for the panel. j/k crosses row boundaries:
-  // header actions ⇄ band ⇄ DNS row ⇄ speed test ⇄ Wi-Fi networks. h/l move
+  // header actions ⇄ band ⇄ DNS row ⇄ Wi-Fi networks. h/l move
   // within header actions, band pills, or DNS providers.
-  property string focusSection: "dns"  // "header" | "band" | "dns" | "speed" | "wifi"
+  property string focusSection: "dns"  // "header" | "band" | "dns" | "wifi"
   property int headerIndex: 0
   readonly property bool canDisconnect: !!connectedWifiNetwork
   readonly property bool headerHasDisconnect: false
@@ -139,9 +139,11 @@ Panel {
   // "off" beside a perfectly live Ethernet connection.
   readonly property bool canToggleWifi: networkManagerAvailable && wifiStationAvailable
   readonly property int qrHeaderIndex: canShareWifi ? 0 : -1
-  readonly property int toggleHeaderIndex: canToggleWifi ? (canShareWifi ? 1 : 0) : -1
-  readonly property int headerActionCount: (canShareWifi ? 1 : 0) + (canToggleWifi ? 1 : 0)
+  readonly property int speedHeaderIndex: canRunSpeedTest ? (canShareWifi ? 1 : 0) : -1
+  readonly property int toggleHeaderIndex: canToggleWifi ? (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) : -1
+  readonly property int headerActionCount: (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) + (canToggleWifi ? 1 : 0)
   readonly property bool qrHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === qrHeaderIndex
+  readonly property bool speedHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === speedHeaderIndex
   readonly property bool toggleHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === toggleHeaderIndex
   readonly property string toggleHint: Networking.wifiEnabled ? "Turn Wi-Fi off" : "Turn Wi-Fi on"
   readonly property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
@@ -167,8 +169,8 @@ Panel {
   readonly property bool bandPillsVisible: canSelectBand && bandPinned
   readonly property string bandSectionTitle: Model.bandSectionTitle(bandEffective, bandCurrent)
   readonly property bool bandBusy: pendingBand !== ""
-  // The speed test section only exists once there's an interface to test, so
-  // the Run button only joins the cursor chain then.
+  // The speed test needs an interface to test, so its hero action only
+  // appears once there is one.
   readonly property bool canRunSpeedTest: !!info.iface
   property int bandIndex: 0
   // The band section has up to two cursor rows: the Automatic switch on the
@@ -189,10 +191,6 @@ Panel {
       focusSection = "dns"
       bandAutoFocused = true
     }
-  }
-
-  onCanRunSpeedTestChanged: {
-    if (!canRunSpeedTest && focusSection === "speed") focusSection = "dns"
   }
 
   // Collapsing the pills out from under the cursor would leave it pointing at
@@ -236,6 +234,7 @@ Panel {
 
   function activateHeader() {
     if (headerIndex === qrHeaderIndex) showWifiQr()
+    else if (headerIndex === speedHeaderIndex) showSpeedTest()
     else if (headerIndex === toggleHeaderIndex) toggleNetwork()
   }
 
@@ -1166,25 +1165,15 @@ Panel {
                 root.focusSection = "header"
                 root.headerIndex = 0
               }
-            } else if (root.canRunSpeedTest) {
-              root.focusSection = "speed"
-            } else if (root.wifiNetworks.length > 0) {
-              root.focusSection = "wifi"
-              if (root.selectedIndex < 0) root.selectedIndex = 0
-            }
-          } else if (root.focusSection === "speed") {
-            if (dy < 0) {
-              root.focusSection = "dns"
             } else if (root.wifiNetworks.length > 0) {
               root.focusSection = "wifi"
               if (root.selectedIndex < 0) root.selectedIndex = 0
             }
           } else {  // wifi
-            // k from the top row escapes back up into the speed test's Run
-            // button, or DNS when there is no speed test, rather than wrapping
-            // around to the bottom of the list.
+            // k from the top row escapes back up to the DNS row rather than
+            // wrapping around to the bottom of the list.
             if (dy < 0 && root.selectedIndex <= 0) {
-              root.focusSection = root.canRunSpeedTest ? "speed" : "dns"
+              root.focusSection = "dns"
               root.wifiActionFocused = false
             }
             else root.selectByDelta(dy)
@@ -1202,7 +1191,6 @@ Panel {
           if (root.focusSection === "header") root.activateHeader()
           else if (root.focusSection === "band") root.activateBand()
           else if (root.focusSection === "dns") root.activateDns()
-          else if (root.focusSection === "speed") root.showSpeedTest()
           else root.activateSelected()
         }
       }
@@ -1259,6 +1247,22 @@ Panel {
             Layout.alignment: Qt.AlignVCenter
             onHovered: function(on) { if (on) root.setHeaderCursor(root.qrHeaderIndex) }
             onClicked: root.showWifiQr()
+          }
+
+          Button {
+            id: speedAction
+            visible: root.canRunSpeedTest
+            iconText: "󰓅"
+            tooltipText: "Run a speed test"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            iconSize: Style.font.subtitle * 1.5
+            horizontalPadding: Style.space(5)
+            verticalPadding: Style.space(2)
+            hasCursor: root.speedHeaderHasCursor
+            Layout.alignment: Qt.AlignVCenter
+            onHovered: function(on) { if (on) root.setHeaderCursor(root.speedHeaderIndex) }
+            onClicked: root.showSpeedTest()
           }
 
           ToggleSwitch {
@@ -1574,62 +1578,6 @@ Panel {
         }
       }
 
-
-      PanelSeparator {
-        visible: !!root.info.iface
-        foreground: root.bar.foreground
-      }
-
-      Column {
-        visible: !!root.info.iface
-        width: parent.width
-        spacing: Style.space(12)
-
-        Column {
-          width: parent.width
-          spacing: Style.space(8)
-
-          Item {
-            width: parent.width
-            implicitHeight: Math.max(speedTestHeader.implicitHeight, speedRunButton.implicitHeight)
-
-            PanelSectionHeader {
-              id: speedTestHeader
-              text: "SPEED TEST"
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-              anchors.left: parent.left
-              anchors.verticalCenter: parent.verticalCenter
-            }
-
-            // Scaled to the band section's AUTOMATIC row -- caption type and
-            // trimmed padding -- so both header lines carry a control of the
-            // same visual weight instead of this one dominating.
-            Button {
-              id: speedRunButton
-              text: root.speedTestRunning ? "Running..." : "Run"
-              tooltipText: "Run using fast.com"
-              enabled: !root.speedTestRunning
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-              fontSize: Style.font.caption
-              horizontalPadding: Style.space(8)
-              verticalPadding: Style.space(2)
-              bordered: true
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-              hasCursor: root.cursorActive && root.focusSection === "speed"
-              onClicked: root.showSpeedTest()
-
-              onHovered: function(isHovered) {
-                if (!isHovered) return
-                root.cursorActive = true
-                root.focusSection = "speed"
-              }
-            }
-          }
-        }
-      }
 
       // Wi-Fi networks (only if a Wi-Fi station is available).
       PanelSeparator {
