@@ -1,37 +1,24 @@
-function promptLooksFingerprint(text) {
-  var s = String(text || "").toLowerCase()
-  return s.indexOf("finger") !== -1 || s.indexOf("fprint") !== -1 || s.indexOf("swipe") !== -1
-}
-
-function promptLooksFido(text) {
-  var s = String(text || "").toLowerCase()
-  return s.indexOf("u2f") !== -1 || s.indexOf("fido") !== -1 ||
-    s.indexOf("security key") !== -1
-}
-
-function promptLooksTouch(text) {
-  return String(text || "").toLowerCase().indexOf("touch") !== -1
-}
-
-function fingerprintConfiguredFromPamConfig(raw) {
+function authCapabilitiesFromPamConfig(raw) {
   var lines = String(raw || "").split("\n")
+  var capabilities = { fingerprint: false, fido: false, methods: [] }
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i].replace(/^\s+|\s+$/g, "")
     if (!line || line.charAt(0) === "#") continue
     if (!line.match(/^auth\s+/)) continue
-    if (line.indexOf("pam_fprintd.so") !== -1) return true
+    if (line.indexOf("pam_fprintd.so") !== -1) {
+      capabilities.fingerprint = true
+      if (capabilities.methods.indexOf("fingerprint") === -1) capabilities.methods.push("fingerprint")
+    }
+    if (line.indexOf("pam_u2f.so") !== -1) {
+      capabilities.fido = true
+      if (capabilities.methods.indexOf("fido") === -1) capabilities.methods.push("fido")
+    }
   }
-  return false
+  return capabilities
 }
 
-function authenticationPresentation(method, fingerprintConfigured, laptopClosed) {
-  var liveMethod = String(method || "waiting")
-  var fingerprintLookahead = liveMethod === "waiting" && !!fingerprintConfigured && !laptopClosed
-  return {
-    method: liveMethod,
-    glyph: fingerprintLookahead ? "fingerprint" : liveMethod,
-    fingerprintLookahead: fingerprintLookahead
-  }
+function fingerprintConfiguredFromPamConfig(raw) {
+  return authCapabilitiesFromPamConfig(raw).fingerprint
 }
 
 function authenticationState(inputPrompt, supplementaryMessage, responseRequired) {
@@ -41,13 +28,11 @@ function authenticationState(inputPrompt, supplementaryMessage, responseRequired
     return { method: "password", prompt: input || "Enter password" }
   }
 
-  // PAM sends status cues in the supplementary message while it is waiting;
-  // fall back to inputPrompt for modules that use it for those cues.
+  // PAM sends noninteractive status cues in the supplementary message; fall
+  // back to inputPrompt for modules that use it instead.
   var cue = supplementary || input
-  if (promptLooksFido(cue)) return { method: "fido", prompt: cue || "Touch your security key" }
-  if (promptLooksFingerprint(cue)) return { method: "fingerprint", prompt: cue || "Scan your fingerprint" }
-  if (promptLooksTouch(cue)) return { method: "fido", prompt: cue || "Touch your security key" }
-  return { method: "waiting", prompt: cue || "Authentication in progress..." }
+  if (cue) return { method: "physical", prompt: cue }
+  return { method: "waiting", prompt: "Authentication in progress..." }
 }
 
 function authorizationLabel(message) {
@@ -58,10 +43,8 @@ function authorizationLabel(message) {
 
 if (typeof module !== "undefined") {
   module.exports = {
-    promptLooksFingerprint: promptLooksFingerprint,
-    promptLooksFido: promptLooksFido,
+    authCapabilitiesFromPamConfig: authCapabilitiesFromPamConfig,
     fingerprintConfiguredFromPamConfig: fingerprintConfiguredFromPamConfig,
-    authenticationPresentation: authenticationPresentation,
     authenticationState: authenticationState,
     authorizationLabel: authorizationLabel
   }
