@@ -71,7 +71,11 @@ Item {
   // The shell may start before first-install packages have finished placing
   // their icons; consumers call this when they open so icons appear live.
   function refreshIcons() {
-    if (!iconIndexScan.running) iconIndexScan.running = true
+    if (iconIndexScan.running) {
+      root.pendingIconIndexRescan = true
+      return
+    }
+    iconIndexScan.running = true
   }
 
   function launch(desktopId, name) {
@@ -125,7 +129,7 @@ Item {
     // so the parser, which keeps the first hit per name, prefers scalable icons.
     return [
       'dirs="$HOME/.icons $HOME/.local/share/icons";',
-      'IFS=":"; for d in ${XDG_DATA_DIRS:-/usr/local/share:/usr/share}; do dirs="$dirs $d/icons"; done; unset IFS;',
+      'IFS=":"; for d in ${XDG_DATA_DIRS:-/usr/local/share:/usr/share:/var/lib/flatpak/exports/share:$HOME/.local/share/flatpak/exports/share}; do dirs="$dirs $d/icons"; done; unset IFS;',
       'for ext in svg png; do',
       '  for base in $dirs; do',
       '    [[ -d $base ]] && find "$base" \\( -path "*/apps/*" -o -path "*/devices/*" \\) -name "*.$ext" 2>/dev/null;',
@@ -188,20 +192,28 @@ Item {
 
   Process {
     id: hiddenEntryScan
-    command: ["bash", "-lc", root.hiddenEntryScanCommand()]
+    command: ["bash", "-c", root.hiddenEntryScanCommand()]
     stdout: SplitParser { onRead: function(line) { hiddenEntryOutput.text += line + "\n" } }
     onStarted: hiddenEntryOutput.text = ""
     onExited: root.loadDesktopHiddenEntries(hiddenEntryOutput.text)
   }
 
+  property bool pendingIconIndexRescan: false
+
   Process {
     id: iconIndexScan
-    command: ["bash", "-lc", root.iconIndexScanCommand()]
+    command: ["bash", "-c", root.iconIndexScanCommand()]
     stdout: SplitParser { onRead: function(line) { root.indexIconLine(line) } }
     onStarted: root.pendingIconIndex = ({})
     // Swapping the property re-evaluates every iconSource() binding, so
     // newly found icons appear without rebuilding the list.
-    onExited: root.iconIndex = root.pendingIconIndex
+    onExited: {
+      root.iconIndex = root.pendingIconIndex
+      if (root.pendingIconIndexRescan) {
+        root.pendingIconIndexRescan = false
+        iconIndexDebounce.restart()
+      }
+    }
   }
 
   // Coalesces bursts of app-list changes (a package install touches many
@@ -209,7 +221,13 @@ Item {
   Timer {
     id: iconIndexDebounce
     interval: 750
-    onTriggered: if (!iconIndexScan.running) iconIndexScan.running = true
+    onTriggered: {
+      if (iconIndexScan.running) {
+        root.pendingIconIndexRescan = true
+      } else {
+        iconIndexScan.running = true
+      }
+    }
   }
 
   FileView {
