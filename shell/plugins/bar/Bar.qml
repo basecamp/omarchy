@@ -1668,9 +1668,9 @@ Item {
     function injectProps() {
       var target = activeItem
       if (!target) return
-      if ("bar" in target) target.bar = root
-      if ("moduleName" in target) target.moduleName = moduleName
-      if ("settings" in target) target.settings = moduleSettings
+      if ("bar" in target) try { target.bar = root } catch (e) {}
+      if ("moduleName" in target) try { target.moduleName = moduleName } catch (e) {}
+      if ("settings" in target) try { target.settings = moduleSettings } catch (e) {}
     }
 
     Component {
