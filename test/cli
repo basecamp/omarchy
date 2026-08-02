@@ -7,6 +7,7 @@ CLI="$ROOT/bin/omarchy"
 TMPDIR=""
 PI_TMPDIR=""
 THEME_TMPDIR=""
+GROK_TMPDIR=""
 
 export PATH="$ROOT/bin:$PATH"
 
@@ -37,6 +38,7 @@ cleanup() {
   [[ -n $TMPDIR && -d $TMPDIR ]] && rm -rf "$TMPDIR"
   [[ -n $PI_TMPDIR && -d $PI_TMPDIR ]] && rm -rf "$PI_TMPDIR"
   [[ -n $THEME_TMPDIR && -d $THEME_TMPDIR ]] && rm -rf "$THEME_TMPDIR"
+  [[ -n $GROK_TMPDIR && -d $GROK_TMPDIR ]] && rm -rf "$GROK_TMPDIR"
 }
 trap cleanup EXIT
 
@@ -380,6 +382,73 @@ echo '{"model":"keep-me"}' >"$CLAUDE_TEST_CONFIG/settings.json"
 HOME="$PI_TMPDIR" CLAUDE_CONFIG_DIR="$CLAUDE_TEST_CONFIG" "$ROOT/bin/omarchy-theme-set-claude" --activate
 jq -e '.theme == "custom:omarchy" and .model == "keep-me"' "$CLAUDE_TEST_CONFIG/settings.json" >/dev/null
 pass "claude theme activation preserves configured settings"
+
+GROK_TMPDIR=$(mktemp -d)
+GROK_HOME_DIR="$GROK_TMPDIR/grok"
+mkdir -p \
+  "$GROK_TMPDIR/.local/state/omarchy/current/theme" \
+  "$GROK_HOME_DIR"
+printf 'lumon\n' >"$GROK_TMPDIR/.local/state/omarchy/current/theme.name"
+printf 'mode = "dark"\n' >"$GROK_TMPDIR/.local/state/omarchy/current/theme/colors.toml"
+
+HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok"
+[[ ! -f $GROK_HOME_DIR/config.toml ]] || fail "grok theme sync is a no-op before activate"
+[[ ! -f $GROK_TMPDIR/.local/state/omarchy/grok-theme-follow ]] || fail "grok follow flag is not created before activate"
+pass "grok theme sync is a no-op before activate"
+
+HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok" --activate
+[[ -f $GROK_HOME_DIR/config.toml ]] || fail "grok activate writes config.toml"
+[[ -f $GROK_TMPDIR/.local/state/omarchy/grok-theme-follow ]] || fail "grok activate creates follow flag"
+awk '
+  /^\[ui\]$/ { in_ui = 1; next }
+  /^\[/ { in_ui = 0 }
+  in_ui && $0 == "theme = \"auto\"" { theme = 1 }
+  in_ui && $0 == "auto_dark_theme = \"groknight\"" { dark = 1 }
+  in_ui && $0 == "auto_light_theme = \"grokday\"" { light = 1 }
+  END { exit(theme && dark && light ? 0 : 1) }
+' "$GROK_HOME_DIR/config.toml" || fail "grok activate enables auto mode with mapped dark/light themes"
+pass "grok activate enables auto mode with mapped dark/light themes"
+
+cat >"$GROK_HOME_DIR/config.toml" <<'EOF'
+[cli]
+installer = "internal"
+
+[ui]
+max_thoughts_width = 120
+theme = "oscura-midnight"
+yolo = false
+EOF
+HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok"
+awk '
+  /^\[cli\]$/ { in_cli = 1; in_ui = 0; next }
+  /^\[ui\]$/ { in_ui = 1; in_cli = 0; next }
+  /^\[/ { in_ui = 0; in_cli = 0 }
+  in_cli && $0 == "installer = \"internal\"" { cli = 1 }
+  in_ui && $0 == "max_thoughts_width = 120" { width = 1 }
+  in_ui && $0 == "theme = \"auto\"" { theme = 1 }
+  in_ui && $0 == "auto_dark_theme = \"groknight\"" { dark = 1 }
+  in_ui && $0 == "yolo = false" { yolo = 1 }
+  END { exit(cli && width && theme && dark && yolo ? 0 : 1) }
+' "$GROK_HOME_DIR/config.toml" || fail "grok theme sync preserves unrelated config keys"
+pass "grok theme sync preserves unrelated config keys"
+
+printf 'tokyo-night\n' >"$GROK_TMPDIR/.local/state/omarchy/current/theme.name"
+HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok"
+awk '
+  /^\[ui\]$/ { in_ui = 1; next }
+  /^\[/ { in_ui = 0 }
+  in_ui && $0 == "auto_dark_theme = \"tokyonight\"" { dark = 1 }
+  in_ui && $0 == "theme = \"auto\"" { theme = 1 }
+  END { exit(dark && theme ? 0 : 1) }
+' "$GROK_HOME_DIR/config.toml" || fail "grok theme sync maps tokyo-night to tokyonight"
+pass "grok theme sync maps tokyo-night to tokyonight"
+
+printf 'flexoki-light\n' >"$GROK_TMPDIR/.local/state/omarchy/current/theme.name"
+printf 'mode = "light"\n' >"$GROK_TMPDIR/.local/state/omarchy/current/theme/colors.toml"
+HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok"
+[[ $(tr -d '[:space:]' <"$GROK_TMPDIR/.local/state/omarchy/grok-theme-follow") == "grokday" ]] || \
+  fail "grok follow flag records light theme as grokday"
+pass "grok follow flag records light theme as grokday"
 
 THEME_TMPDIR=$(mktemp -d)
 OMARCHY_PATH="$ROOT" HOME="$THEME_TMPDIR" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" "Tokyo Night"
