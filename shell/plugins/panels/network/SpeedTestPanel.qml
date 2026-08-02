@@ -105,52 +105,43 @@ PanelWindow {
           horizontalAlignment: Text.AlignHCenter
         }
 
-        Item {
+        Row {
+          spacing: Style.space(48)
           Layout.alignment: Qt.AlignHCenter
-          implicitWidth: dialsRow.implicitWidth
-          implicitHeight: dialsRow.implicitHeight
 
-          Row {
-            id: dialsRow
-            // Wide enough that the retry button sits clear of both arcs in
-            // the middle, like a cluster's center display.
-            spacing: Style.space(150)
-
-            SpeedDial {
-              id: downDial
-              label: "DOWNLOAD"
-              value: root.downloadValue
-              live: root.running && root.phase === "down"
-            }
-
-            SpeedDial {
-              id: upDial
-              label: "UPLOAD"
-              value: root.uploadValue
-              live: root.running && root.phase === "up"
-            }
+          SpeedDial {
+            id: downDial
+            label: "DOWNLOAD"
+            value: root.downloadValue
+            live: root.running && root.phase === "down"
           }
 
-          // Dead center between the two dials, anchored out of the column
-          // flow so it never shifts anything. Fades rather than unmounts
-          // while a run is in flight.
-          Button {
-            anchors.centerIn: dialsRow
-            text: "Run Again"
-            tooltipText: "Measure again via fast.com"
-            bordered: true
-            enabled: !root.running
-            opacity: root.running ? 0 : 1
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            fontSize: Style.font.bodySmall
-            horizontalPadding: Style.space(14)
-            verticalPadding: Style.space(4)
-            onClicked: root.runAgainRequested()
+          SpeedDial {
+            id: upDial
+            label: "UPLOAD"
+            value: root.uploadValue
+            live: root.running && root.phase === "up"
+          }
+        }
 
-            Behavior on opacity {
-              NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
-            }
+        // Centered on the dial pair. Fades rather than unmounts while a run
+        // is in flight, so the cluster never shifts.
+        Button {
+          text: "Run Again"
+          tooltipText: "Measure again via fast.com"
+          bordered: true
+          enabled: !root.running
+          opacity: root.running ? 0 : 1
+          foreground: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+          fontSize: Style.font.bodySmall
+          horizontalPadding: Style.space(14)
+          verticalPadding: Style.space(4)
+          Layout.alignment: Qt.AlignHCenter
+          onClicked: root.runAgainRequested()
+
+          Behavior on opacity {
+            NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
           }
         }
 
