@@ -84,6 +84,11 @@ PanelWindow {
       anchors.centerIn: parent
       width: content.implicitWidth
       height: content.implicitHeight
+      // Narrow or heavily scaled outputs: shrink the whole cluster rather
+      // than clipping it at the screen edge.
+      scale: Math.min(1,
+        (keyCatcher.width - Style.space(32)) / Math.max(1, width),
+        (keyCatcher.height - Style.space(32)) / Math.max(1, height))
 
       // Swallow clicks so only the scrim outside the cluster dismisses.
       MouseArea { anchors.fill: parent; onClicked: {} }
