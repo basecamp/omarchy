@@ -4,13 +4,11 @@
 # omarchy:args=[--activate]
 # omarchy:hidden=true
 
-# Stock Grok has no custom theme files — only five built-ins. This picks the
-# closest match and writes [ui] keys in $GROK_HOME/config.toml.
-#
-# Live light/dark: we set theme = "auto" so Grok's system-appearance watcher
-# retints when Omarchy flips the desktop color scheme (via theme-set-gnome).
-# Explicit theme= names are only read at Grok startup — external edits do NOT
-# retint a running session.
+# Grok's only live external retint path is theme=auto + OS light/dark (the
+# system-appearance watcher). Writing an explicit [ui].theme only applies on
+# the next Grok start. So we set theme=auto, pick the closest built-in for
+# auto_dark_theme / auto_light_theme, and rely on theme-set-gnome flipping the
+# desktop color-scheme for live light↔dark.
 #
 # Opt-in: without --activate (or a prior activate), this is a no-op.
 
@@ -20,6 +18,7 @@ GROK_HOME="${GROK_HOME:-$HOME/.grok}"
 GROK_CONFIG_PATH="$GROK_HOME/config.toml"
 GROK_FOLLOW_FLAG="$HOME/.local/state/omarchy/grok-theme-follow"
 CURRENT_THEME_PATH="$HOME/.local/state/omarchy/current/theme"
+COLORS_FILE="$CURRENT_THEME_PATH/colors.toml"
 GROK_ACTIVATE=0
 
 usage() {
@@ -65,20 +64,6 @@ omarchy_theme_slug() {
   fi
 
   printf '%s' ""
-}
-
-omarchy_theme_mode() {
-  local mode=""
-
-  if omarchy-cmd-present omarchy-theme-color; then
-    mode=$(omarchy-theme-color mode 2>/dev/null || true)
-  fi
-  if [[ -z $mode && -f $CURRENT_THEME_PATH/colors.toml ]]; then
-    mode=$(sed -nE 's/^[[:space:]]*mode[[:space:]]*=[[:space:]]*"?([^"]+)"?.*/\1/p' \
-      "$CURRENT_THEME_PATH/colors.toml" | head -1)
-  fi
-
-  printf '%s' "$mode"
 }
 
 # Closest dark built-in for the current Omarchy slug (never "auto" / "grokday").
@@ -183,7 +168,8 @@ PY
 
 dark_theme=$(map_grok_dark_theme)
 light_theme="grokday"
-mode=$(omarchy_theme_mode)
+# Same idiom as omarchy-theme-set-gnome: theme-color is a default Omarchy command.
+mode=$(omarchy-theme-color --file "$COLORS_FILE" mode)
 
 # theme=auto so running sessions follow OS light/dark (Omarchy sets that via GNOME).
 # auto_dark_theme carries the closest dark built-in for the current Omarchy slug.
