@@ -129,7 +129,7 @@ Item {
     // so the parser, which keeps the first hit per name, prefers scalable icons.
     return [
       'dirs="$HOME/.icons $HOME/.local/share/icons";',
-      'IFS=":"; for d in ${XDG_DATA_DIRS:-/usr/local/share:/usr/share:/var/lib/flatpak/exports/share:$HOME/.local/share/flatpak/exports/share}; do dirs="$dirs $d/icons"; done; unset IFS;',
+      'IFS=":"; for d in ${XDG_DATA_DIRS:-$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share}; do dirs="$dirs $d/icons"; done; unset IFS;',
       'for ext in svg png; do',
       '  for base in $dirs; do',
       '    [[ -d $base ]] && find "$base" \\( -path "*/apps/*" -o -path "*/devices/*" \\) -name "*.$ext" 2>/dev/null;',
