@@ -7,6 +7,17 @@ function normalizePosition(value) {
   return /^(top|bottom|left|right)$/.test(next) ? next : "top"
 }
 
+function screenNames(config) {
+  var cfg = config && config.screens
+  return Array.isArray(cfg) ? cfg : []
+}
+
+function screensFor(config, allScreens) {
+  var names = screenNames(config)
+  if (names.length === 0) return allScreens
+  return allScreens.filter(function(s) { return names.indexOf(s.name) !== -1 })
+}
+
 function entrySettings(entry) {
   if (!isPlainObject(entry)) return {}
   var copy = {}
@@ -202,6 +213,8 @@ if (typeof module !== "undefined") {
     expandPath: expandPath,
     customModuleSafeName: customModuleSafeName,
     customModuleType: customModuleType,
-    customModulePath: customModulePath
+    customModulePath: customModulePath,
+    screenNames: screenNames,
+    screensFor: screensFor
   }
 }

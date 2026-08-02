@@ -14,6 +14,14 @@ if rg -q 'barMoveSettling|barMoveSettleTimer' "$ROOT/shell/plugins/bar/Bar.qml";
 fi
 pass "bar move outline has no post-release settling state"
 
+# Screen filtering: every per-screen panel must bind the configured filter,
+# never a raw Quickshell.screens model, or bars silently return to every
+# monitor on the next rewrite.
+if ! perl -0ne 'exit((() = /Variants \{\s*\n\s*model: root\.barScreens/g) == 3 ? 0 : 1)' "$ROOT/shell/plugins/bar/Bar.qml"; then
+  fail "bar must bind exactly three per-screen panels to the configured screen filter"
+fi
+pass "bar binds every per-screen panel to the configured screen filter"
+
 run_node_test <<'JS'
 const fs = require('fs')
 const bar = requireFromRoot('shell/plugins/bar/BarModel.js')
@@ -124,6 +132,23 @@ assertEqual(bar.entryId('omarchy.clock'), 'omarchy.clock', 'bar extracts string 
 const entries = [{ id: 'a' }, { id: 'omarchy.tray' }, { id: 'b' }]
 assertDeepEqual(bar.pinTrayToInner(entries, 'left').map(bar.entryId), ['a', 'b', 'omarchy.tray'], 'bar pins tray to left inner edge')
 assertDeepEqual(bar.pinTrayToInner(entries, 'right').map(bar.entryId), ['omarchy.tray', 'a', 'b'], 'bar pins tray to right inner edge')
+
+// Screen filtering must default to every screen and only drop non-matching
+// outputs, so a regression cannot silently restore bars on every monitor.
+const screens = [{ name: 'DP-1' }, { name: 'HDMI-A-1' }, { name: 'eDP-1' }]
+assertDeepEqual(bar.screenNames(undefined), [], 'bar defaults the screen filter to empty')
+assertDeepEqual(bar.screenNames({}), [], 'bar tolerates a bar config without screens')
+assertDeepEqual(bar.screenNames({ screens: ['DP-1'] }), ['DP-1'], 'bar reads configured screen names')
+assertEqual(bar.screensFor(undefined, screens), screens, 'bar keeps every screen when the filter is unset')
+assertEqual(bar.screensFor({ screens: [] }, screens), screens, 'bar keeps every screen when the filter is empty')
+assertEqual(bar.screensFor({ screens: 'DP-1' }, screens), screens, 'bar ignores non-array screen filters')
+assertDeepEqual(bar.screensFor({ screens: ['DP-1'] }, screens).map(s => s.name), ['DP-1'], 'bar keeps only matching screens')
+assertDeepEqual(bar.screensFor({ screens: ['eDP-1', 'DP-1'] }, screens).map(s => s.name), ['DP-1', 'eDP-1'], 'bar keeps matching screens in screen order')
+assertDeepEqual(bar.screensFor({ screens: ['VGA-9'] }, screens), [], 'bar drops unmatched screen names')
+assert(
+  /BarModel\.screensFor\(barConfig, Quickshell\.screens\)/.test(barSource),
+  'bar derives filtered screens from the live config and screen list'
+)
 
 // A settings-only shell.json write must patch the live bar, not rebuild it:
 // the module Repeaters recreate every widget when their array model changes.

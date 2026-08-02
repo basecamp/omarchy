@@ -155,7 +155,9 @@ Rules:
 8. `version: 1` is required.
 9. `bar.screens` is an optional list of Wayland output names that limits
    which monitors get a bar (e.g. `["DP-1"]`). Empty or omitted means every
-   screen gets a bar.
+   screen gets a bar. It is implemented by the built-in bar (`omarchy.bar`);
+   replacement bar plugins receive `barConfig` but must implement the
+   filtering themselves.
 
 `config/omarchy/shell.json` describes the fresh-install state. When no
 user `shell.json` exists, defaults are used verbatim. Once the user
