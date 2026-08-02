@@ -63,32 +63,24 @@ current_ui_theme() {
 
   python3 - "$config" <<'PY'
 import pathlib
-import re
 import sys
+import tomllib
 
 path = pathlib.Path(sys.argv[1])
-text = path.read_text()
-section = None
-top_level = None
-ui_theme = None
+try:
+    data = tomllib.loads(path.read_text())
+except tomllib.TOMLDecodeError:
+    print("")
+    raise SystemExit(0)
 
-for line in text.splitlines():
-    stripped = line.strip()
-    if stripped.startswith("[") and stripped.endswith("]"):
-        section = stripped[1:-1].strip()
-        continue
-    m = re.match(r'^theme\s*=\s*"([^"]*)"\s*$', stripped)
-    if not m:
-        m = re.match(r"^theme\s*=\s*'([^']*)'\s*$", stripped)
-    if not m:
-        continue
-    value = m.group(1)
-    if section == "ui":
-        ui_theme = value
-    elif section is None:
-        top_level = value
-
-print(ui_theme if ui_theme is not None else (top_level or ""))
+ui = data.get("ui")
+if isinstance(ui, dict) and "theme" in ui:
+    print(ui["theme"] if ui["theme"] is not None else "")
+elif "theme" in data:
+    # Legacy top-level theme key
+    print(data["theme"] if data["theme"] is not None else "")
+else:
+    print("")
 PY
 }
 
@@ -138,13 +130,13 @@ map_grok_dark_theme() {
   slug=$(omarchy_theme_slug)
 
   case "$slug" in
-    tokyo-night | tokyonight | tokyo)
+    tokyo-night | tokyonight | tokyo | nord | catppuccin | kanagawa | everforest | ethereal)
       printf '%s' "tokyonight"
       ;;
     rose-pine | rosepine | rose-pine-moon | rosepine-moon)
       printf '%s' "rosepine-moon"
       ;;
-    matte-black | vantablack | hackerman)
+    matte-black | vantablack | hackerman | osaka-jade | ristretto | solitude)
       printf '%s' "oscura-midnight"
       ;;
     *)

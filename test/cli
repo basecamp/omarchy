@@ -418,26 +418,42 @@ awk '
 ' "$GROK_HOME_DIR/config.toml" || fail "grok activate enables auto mode with mapped dark/light themes"
 pass "grok activate enables auto mode with mapped dark/light themes"
 
+# Fixture mirrors a real Grok config: marketplace array-of-tables + [ui] siblings.
 cat >"$GROK_HOME_DIR/config.toml" <<'EOF'
 [cli]
 installer = "internal"
 
+[marketplace]
+default_skills_installs_purged = true
+official_marketplace_auto_installed = true
+
+[[marketplace.sources]]
+name = "xAI Official"
+git = "https://github.com/xai-org/plugin-marketplace.git"
+
 [ui]
 max_thoughts_width = 120
 theme = "auto"
+fork_secondary_model = "grok-4.5"
 yolo = false
 EOF
 HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok"
 awk '
-  /^\[cli\]$/ { in_cli = 1; in_ui = 0; next }
-  /^\[ui\]$/ { in_ui = 1; in_cli = 0; next }
-  /^\[/ { in_ui = 0; in_cli = 0 }
+  /^\[cli\]$/ { in_cli = 1; in_ui = 0; in_src = 0; next }
+  /^\[marketplace\]$/ { in_mkt = 1; in_cli = 0; in_ui = 0; in_src = 0; next }
+  /^\[\[marketplace\.sources\]\]$/ { in_src = 1; in_mkt = 0; in_cli = 0; in_ui = 0; next }
+  /^\[ui\]$/ { in_ui = 1; in_cli = 0; in_mkt = 0; in_src = 0; next }
+  /^\[/ { in_ui = 0; in_cli = 0; in_mkt = 0; in_src = 0 }
   in_cli && $0 == "installer = \"internal\"" { cli = 1 }
+  in_mkt && $0 == "official_marketplace_auto_installed = true" { mkt = 1 }
+  in_src && $0 == "name = \"xAI Official\"" { src_name = 1 }
+  in_src && index($0, "plugin-marketplace") { src_git = 1 }
   in_ui && $0 == "max_thoughts_width = 120" { width = 1 }
   in_ui && $0 == "theme = \"auto\"" { theme = 1 }
   in_ui && $0 == "auto_dark_theme = \"groknight\"" { dark = 1 }
+  in_ui && $0 == "fork_secondary_model = \"grok-4.5\"" { fork = 1 }
   in_ui && $0 == "yolo = false" { yolo = 1 }
-  END { exit(cli && width && theme && dark && yolo ? 0 : 1) }
+  END { exit(cli && mkt && src_name && src_git && width && theme && dark && fork && yolo ? 0 : 1) }
 ' "$GROK_HOME_DIR/config.toml" || fail "grok theme sync preserves unrelated config keys while following"
 pass "grok theme sync preserves unrelated config keys while following"
 
@@ -452,10 +468,17 @@ awk '
 ' "$GROK_HOME_DIR/config.toml" || fail "grok theme sync maps tokyo-night to tokyonight"
 pass "grok theme sync maps tokyo-night to tokyonight"
 
+printf 'nord\n' >"$GROK_TMPDIR/.local/state/omarchy/current/theme.name"
+HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok"
+grep -Fx 'auto_dark_theme = "tokyonight"' "$GROK_HOME_DIR/config.toml" >/dev/null || \
+  fail "grok theme sync maps nord to tokyonight"
+pass "grok theme sync maps nord to tokyonight"
+
 # User picks a fixed Grok theme — stop following and leave it alone.
+# Trailing comment exercises tomllib read (must not treat as unset/auto).
 cat >"$GROK_HOME_DIR/config.toml" <<'EOF'
 [ui]
-theme = "oscura-midnight"
+theme = "oscura-midnight"  # manual pick
 auto_dark_theme = "tokyonight"
 auto_light_theme = "grokday"
 EOF
@@ -464,7 +487,7 @@ HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok
 awk '
   /^\[ui\]$/ { in_ui = 1; next }
   /^\[/ { in_ui = 0 }
-  in_ui && $0 == "theme = \"oscura-midnight\"" { theme = 1 }
+  in_ui && $0 ~ /^theme = "oscura-midnight"/ { theme = 1 }
   in_ui && $0 == "auto_dark_theme = \"tokyonight\"" { dark = 1 }
   END { exit(theme && dark ? 0 : 1) }
 ' "$GROK_HOME_DIR/config.toml" || fail "grok theme sync leaves a manual theme untouched"
