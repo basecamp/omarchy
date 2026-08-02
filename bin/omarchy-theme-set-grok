@@ -6,17 +6,21 @@
 
 # Grok's only live external retint path is theme=auto + OS light/dark (the
 # system-appearance watcher). Writing an explicit [ui].theme only applies on
-# the next Grok start. So when ~/.grok exists we set theme=auto, pick the
-# closest built-in for auto_dark_theme / auto_light_theme, and rely on
-# theme-set-gnome flipping the desktop color-scheme for live light↔dark.
+# the next Grok start. So when following, we set theme=auto, pick the closest
+# built-in for auto_dark_theme / auto_light_theme, and rely on theme-set-gnome
+# flipping the desktop color-scheme for live light↔dark.
 #
-# No-op when Grok is not installed (no $GROK_HOME directory). --activate is
-# kept for install/user/theme.sh and prints a one-time restart note.
+# Follow mode is sticky until the user leaves auto:
+#   - omarchy-theme-set-grok --activate (or install/user/theme.sh) starts it
+#   - each Omarchy theme switch updates mappings while [ui].theme is "auto"
+#   - if they pick a fixed Grok theme, we stop and leave them alone
+#   - --activate again opts back in
 
 set -euo pipefail
 
 GROK_HOME="${GROK_HOME:-$HOME/.grok}"
 GROK_CONFIG_PATH="$GROK_HOME/config.toml"
+GROK_FOLLOW_FLAG="$HOME/.local/state/omarchy/grok-theme-follow"
 CURRENT_THEME_PATH="$HOME/.local/state/omarchy/current/theme"
 COLORS_FILE="$CURRENT_THEME_PATH/colors.toml"
 GROK_ACTIVATE=0
@@ -41,8 +45,6 @@ for arg in "$@"; do
   esac
 done
 
-# Match Pi: only touch Grok when it is already present (unless forcing activate
-# so first-run setup can create config under an existing install path).
 if [[ ! -d $GROK_HOME ]]; then
   if (( GROK_ACTIVATE == 1 )); then
     echo "Grok config directory missing: $GROK_HOME" >&2
@@ -50,6 +52,65 @@ if [[ ! -d $GROK_HOME ]]; then
     exit 1
   fi
   exit 0
+fi
+
+# Read [ui].theme (or legacy top-level theme) from config.toml.
+current_ui_theme() {
+  local config="$GROK_CONFIG_PATH"
+
+  [[ -f $config ]] || return 0
+
+  python3 - "$config" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+section = None
+top_level = None
+ui_theme = None
+
+for line in text.splitlines():
+    stripped = line.strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        section = stripped[1:-1].strip()
+        continue
+    m = re.match(r'^theme\s*=\s*"([^"]*)"\s*$', stripped)
+    if not m:
+        m = re.match(r"^theme\s*=\s*'([^']*)'\s*$", stripped)
+    if not m:
+        continue
+    value = m.group(1)
+    if section == "ui":
+        ui_theme = value
+    elif section is None:
+        top_level = value
+
+print(ui_theme if ui_theme is not None else (top_level or ""))
+PY
+}
+
+stop_following() {
+  rm -f "$GROK_FOLLOW_FLAG"
+}
+
+start_following() {
+  mkdir -p "$(dirname "$GROK_FOLLOW_FLAG")"
+  : >"$GROK_FOLLOW_FLAG"
+}
+
+if (( GROK_ACTIVATE == 1 )); then
+  start_following
+elif [[ ! -f $GROK_FOLLOW_FLAG ]]; then
+  exit 0
+else
+  # Still following only while Grok remains on auto (or theme unset).
+  theme_now=$(current_ui_theme)
+  if [[ -n $theme_now && $theme_now != "auto" && $theme_now != "system" ]]; then
+    stop_following
+    exit 0
+  fi
 fi
 
 omarchy_theme_slug() {
@@ -187,4 +248,7 @@ if (( GROK_ACTIVATE == 1 )); then
   echo "Restart Grok once so it enters theme=auto. After that, light↔dark"
   echo "desktop switches retint live. Same-polarity maps (e.g. tokyo-night"
   echo "vs groknight) still need a restart or /theme to apply."
+  echo
+  echo "If you pick a fixed Grok theme later, Omarchy stops updating Grok until"
+  echo "you run: omarchy-theme-set-grok --activate"
 fi

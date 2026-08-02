@@ -385,17 +385,20 @@ pass "claude theme activation preserves configured settings"
 
 GROK_TMPDIR=$(mktemp -d)
 GROK_HOME_DIR="$GROK_TMPDIR/grok"
-mkdir -p "$GROK_TMPDIR/.local/state/omarchy/current/theme"
+mkdir -p \
+  "$GROK_TMPDIR/.local/state/omarchy/current/theme" \
+  "$GROK_HOME_DIR"
 printf 'lumon\n' >"$GROK_TMPDIR/.local/state/omarchy/current/theme.name"
 printf 'mode = "dark"\n' >"$GROK_TMPDIR/.local/state/omarchy/current/theme/colors.toml"
 
 HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok"
-[[ ! -f $GROK_HOME_DIR/config.toml ]] || fail "grok theme sync is a no-op without Grok home"
-pass "grok theme sync is a no-op without Grok home"
+[[ ! -f $GROK_HOME_DIR/config.toml ]] || fail "grok theme sync is a no-op before activate"
+[[ ! -f $GROK_TMPDIR/.local/state/omarchy/grok-theme-follow ]] || fail "grok follow flag is not created before activate"
+pass "grok theme sync is a no-op before activate"
 
-mkdir -p "$GROK_HOME_DIR"
-HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok"
-[[ -f $GROK_HOME_DIR/config.toml ]] || fail "grok theme sync writes config when Grok home exists"
+HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok" --activate
+[[ -f $GROK_HOME_DIR/config.toml ]] || fail "grok activate writes config.toml"
+[[ -f $GROK_TMPDIR/.local/state/omarchy/grok-theme-follow ]] || fail "grok activate creates follow flag"
 awk '
   /^\[ui\]$/ { in_ui = 1; next }
   /^\[/ { in_ui = 0 }
@@ -403,8 +406,8 @@ awk '
   in_ui && $0 == "auto_dark_theme = \"groknight\"" { dark = 1 }
   in_ui && $0 == "auto_light_theme = \"grokday\"" { light = 1 }
   END { exit(theme && dark && light ? 0 : 1) }
-' "$GROK_HOME_DIR/config.toml" || fail "grok theme sync enables auto mode with mapped dark/light themes"
-pass "grok theme sync enables auto mode with mapped dark/light themes"
+' "$GROK_HOME_DIR/config.toml" || fail "grok activate enables auto mode with mapped dark/light themes"
+pass "grok activate enables auto mode with mapped dark/light themes"
 
 cat >"$GROK_HOME_DIR/config.toml" <<'EOF'
 [cli]
@@ -412,7 +415,7 @@ installer = "internal"
 
 [ui]
 max_thoughts_width = 120
-theme = "oscura-midnight"
+theme = "auto"
 yolo = false
 EOF
 HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok"
@@ -426,8 +429,8 @@ awk '
   in_ui && $0 == "auto_dark_theme = \"groknight\"" { dark = 1 }
   in_ui && $0 == "yolo = false" { yolo = 1 }
   END { exit(cli && width && theme && dark && yolo ? 0 : 1) }
-' "$GROK_HOME_DIR/config.toml" || fail "grok theme sync preserves unrelated config keys"
-pass "grok theme sync preserves unrelated config keys"
+' "$GROK_HOME_DIR/config.toml" || fail "grok theme sync preserves unrelated config keys while following"
+pass "grok theme sync preserves unrelated config keys while following"
 
 printf 'tokyo-night\n' >"$GROK_TMPDIR/.local/state/omarchy/current/theme.name"
 HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok"
@@ -440,17 +443,34 @@ awk '
 ' "$GROK_HOME_DIR/config.toml" || fail "grok theme sync maps tokyo-night to tokyonight"
 pass "grok theme sync maps tokyo-night to tokyonight"
 
-printf 'flexoki-light\n' >"$GROK_TMPDIR/.local/state/omarchy/current/theme.name"
-printf 'mode = "light"\n' >"$GROK_TMPDIR/.local/state/omarchy/current/theme/colors.toml"
+# User picks a fixed Grok theme — stop following and leave it alone.
+cat >"$GROK_HOME_DIR/config.toml" <<'EOF'
+[ui]
+theme = "oscura-midnight"
+auto_dark_theme = "tokyonight"
+auto_light_theme = "grokday"
+EOF
 HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok"
+[[ ! -f $GROK_TMPDIR/.local/state/omarchy/grok-theme-follow ]] || fail "grok follow stops when theme is not auto"
+awk '
+  /^\[ui\]$/ { in_ui = 1; next }
+  /^\[/ { in_ui = 0 }
+  in_ui && $0 == "theme = \"oscura-midnight\"" { theme = 1 }
+  in_ui && $0 == "auto_dark_theme = \"tokyonight\"" { dark = 1 }
+  END { exit(theme && dark ? 0 : 1) }
+' "$GROK_HOME_DIR/config.toml" || fail "grok theme sync leaves a manual theme untouched"
+pass "grok theme sync leaves a manual theme untouched"
+
+# Re-activate resumes following.
+HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok" --activate >/dev/null
+[[ -f $GROK_TMPDIR/.local/state/omarchy/grok-theme-follow ]] || fail "grok activate resumes follow"
 awk '
   /^\[ui\]$/ { in_ui = 1; next }
   /^\[/ { in_ui = 0 }
   in_ui && $0 == "theme = \"auto\"" { theme = 1 }
-  in_ui && $0 == "auto_light_theme = \"grokday\"" { light = 1 }
-  END { exit(theme && light ? 0 : 1) }
-' "$GROK_HOME_DIR/config.toml" || fail "grok theme sync keeps auto light theme as grokday"
-pass "grok theme sync keeps auto light theme as grokday"
+  END { exit(theme ? 0 : 1) }
+' "$GROK_HOME_DIR/config.toml" || fail "grok re-activate restores theme=auto"
+pass "grok re-activate restores theme=auto"
 
 THEME_TMPDIR=$(mktemp -d)
 OMARCHY_PATH="$ROOT" HOME="$THEME_TMPDIR" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" "Tokyo Night"
