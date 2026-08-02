@@ -331,7 +331,17 @@ Panel {
   // what makes the SUPER+CTRL+W keybind land here with navigation ready.
   onOpenedChanged: {
     if (opened) {
-      refresh(true)
+      syncWifiNetworks()
+      if (!detailsProc.running) detailsProc.running = true
+      if (wifiDevice) {
+        // Defer the PHY scan until after the first frame: requesting one
+        // synchronously stalls the open on NetworkManager's access-point
+        // flood. The cached list renders instantly; the spinner shows while
+        // the scan refreshes it.
+        scanning = true
+        wifiDevice.scannerEnabled = false
+        scanRestart.start()
+      }
       selectedIndex = wifiNetworks.length > 0 ? 0 : -1
       wifiActionFocused = false
       focusSection = wifiNetworks.length > 0 ? "wifi" : "dns"
@@ -339,6 +349,19 @@ Panel {
       dnsIndex = idx >= 0 ? idx : 0
       syncBandIndex()
       cursorActive = false
+      Qt.callLater(function() {
+        if (!dnsProc.running) {
+          dnsProc.command = ["bash", "-c", root.dnsCommand("")]
+          dnsProc.running = true
+        }
+        if (!bandProc.running) {
+          bandProc.command = ["omarchy-network-band"]
+          bandProc.running = true
+        }
+        if (!pingProc.running) {
+          pingProc.running = true
+        }
+      })
     } else {
       // Reset throughput tracking so the next open doesn't compute a fake
       // rate from a sample taken minutes ago.
@@ -527,6 +550,9 @@ Panel {
       bandProc.command = ["omarchy-network-band"]
       bandProc.running = true
     }
+    if (root.opened && !pingProc.running) {
+      pingProc.running = true
+    }
     if (wifiDevice) {
       if (scanWifi) {
         scanning = true
@@ -551,6 +577,12 @@ Panel {
     return Model.headerDetail(info)
   }
 
+  // Cache of the last full status payload. The decoupled --ping probe emits
+  // only the two latency keys; merging them onto this keeps the ping window's
+  // interface identity (and its averaging) without publishing a partial
+  // interface snapshot that would blank the header.
+  property string lastStatusRaw: ""
+
   function updateDetails(raw) {
     var next = Model.parseKeyValue(raw)
 
@@ -561,7 +593,20 @@ Panel {
     // still reported, because nothing is in flight then.
     if (bandBusy && !next.iface) return
 
+    if (next.router_ping_ms !== undefined || next.internet_ping_ms !== undefined) {
+      var full = Model.parseKeyValue(root.lastStatusRaw)
+      if (full.iface) {
+        full.router_ping_ms = next.router_ping_ms
+        full.internet_ping_ms = next.internet_ping_ms
+        updatePingLatency(full)
+      } else {
+        updatePingLatency(next)
+      }
+      return
+    }
+
     info = next
+    root.lastStatusRaw = raw
     updateThroughput(next)
     updatePingLatency(next)
   }
@@ -921,9 +966,21 @@ Panel {
     }
   }
 
+  Process {
+    id: pingProc
+    command: ["omarchy-network-status", "--ping"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateDetails(text)
+    }
+  }
+
   Timer {
     id: scanRestart
-    interval: 100
+    // Deferred so the scan starts after the panel's first frame: requesting
+    // one synchronously on open stalls the event loop on NetworkManager's
+    // access-point flood and delays the dropdown.
+    interval: 200
     repeat: false
     onTriggered: {
       if (root.wifiDevice) root.wifiDevice.scannerEnabled = true
@@ -1083,7 +1140,10 @@ Panel {
     interval: 1500
     repeat: true
     running: root.opened
-    onTriggered: if (!detailsProc.running) detailsProc.running = true
+    onTriggered: {
+      if (!detailsProc.running) detailsProc.running = true
+      if (!pingProc.running) pingProc.running = true
+    }
   }
 
   Timer {
@@ -1703,39 +1763,49 @@ Panel {
     }
   }
 
-  WifiQrPanel {
-    anchorItem: button
-    bar: root.bar
-    qrRows: root.qrRows
-    qrSize: root.qrSize
-    loading: root.qrLoading
-    error: root.qrError
-    ssid: root.info.ssid || ""
-    secured: root.connectedWifiNetwork ? root.isProtected(root.connectedWifiNetwork.security) : false
-    password: root.qrPassword
-    passwordVisible: root.qrPasswordVisible
-    passwordError: root.qrPasswordError
-    open: root.qrVisible
-    onCloseRequested: root.hideWifiQr()
-    onPasswordToggleRequested: root.toggleQrPassword()
+  Loader {
+    active: root.qrVisible
+    sourceComponent: Component {
+      WifiQrPanel {
+        anchorItem: button
+        bar: root.bar
+        qrRows: root.qrRows
+        qrSize: root.qrSize
+        loading: root.qrLoading
+        error: root.qrError
+        ssid: root.info.ssid || ""
+        secured: root.connectedWifiNetwork ? root.isProtected(root.connectedWifiNetwork.security) : false
+        password: root.qrPassword
+        passwordVisible: root.qrPasswordVisible
+        passwordError: root.qrPasswordError
+        open: root.qrVisible
+        onCloseRequested: root.hideWifiQr()
+        onPasswordToggleRequested: root.toggleQrPassword()
+      }
+    }
   }
 
-  SpeedTestPanel {
-    anchorItem: button
-    bar: root.bar
-    running: root.speedTestRunning
-    phase: root.speedTestPhase
-    downloadMbps: root.speedTestDownloadMbps
-    uploadMbps: root.speedTestUploadMbps
-    error: root.speedTestError
-    connectionName: {
-      if (root.info.type === "wifi") return root.info.ssid || "Wi-Fi"
-      if (root.info.type === "ethernet") return "Ethernet"
-      return ""
+  Loader {
+    active: root.speedTestModalOpen
+    sourceComponent: Component {
+      SpeedTestPanel {
+        anchorItem: button
+        bar: root.bar
+        running: root.speedTestRunning
+        phase: root.speedTestPhase
+        downloadMbps: root.speedTestDownloadMbps
+        uploadMbps: root.speedTestUploadMbps
+        error: root.speedTestError
+        connectionName: {
+          if (root.info.type === "wifi") return root.info.ssid || "Wi-Fi"
+          if (root.info.type === "ethernet") return "Ethernet"
+          return ""
+        }
+        open: root.speedTestModalOpen
+        onCloseRequested: root.hideSpeedTest()
+        onRunAgainRequested: root.runSpeedTest()
+      }
     }
-    open: root.speedTestModalOpen
-    onCloseRequested: root.hideSpeedTest()
-    onRunAgainRequested: root.runSpeedTest()
   }
 
   // One Wi-Fi band pill. `active` (fill) is the band actually in use and

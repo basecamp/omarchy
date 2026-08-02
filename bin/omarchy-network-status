@@ -2,22 +2,29 @@
 
 # omarchy:summary=Print active network status for the shell
 # omarchy:group=network
-# omarchy:args=[--verbose]
+# omarchy:args=[--verbose|--ping|--all]
 
-verbose=false
+mode="status"
 internet_probe=1.1.1.1
 
-case "${1:-}" in
-  "")
-    ;;
-  --verbose)
-    verbose=true
-    ;;
-  *)
-    echo "Usage: omarchy-network-status [--verbose]" >&2
-    exit 2
-    ;;
-esac
+while (( $# > 0 )); do
+  case "$1" in
+    --verbose)
+      [[ $mode == "ping" ]] && mode="all" || mode="verbose"
+      ;;
+    --ping)
+      [[ $mode == "verbose" ]] && mode="all" || mode="ping"
+      ;;
+    --all)
+      mode="all"
+      ;;
+    *)
+      echo "Usage: omarchy-network-status [--verbose|--ping|--all]" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
 
 print_status() {
   local device nm state ssid signal freq
@@ -132,11 +139,26 @@ print_verbose() {
     [[ -r /sys/class/net/$iface/duplex ]] && printf 'duplex\t%s\n' "$(cat /sys/class/net/$iface/duplex)"
   fi
 
+  if [[ $mode == "all" ]]; then
+    print_ping_samples "$gw"
+  fi
+}
+
+print_ping_only() {
+  local route_json gw
+  route_json=$(ip -j route get "$internet_probe" 2>/dev/null)
+  gw=$(jq -r '.[0].gateway // ""' <<<"$route_json" 2>/dev/null)
   print_ping_samples "$gw"
 }
 
-if [[ $verbose == "true" ]]; then
-  print_verbose
-else
-  print_status
-fi
+case "$mode" in
+  verbose|all)
+    print_verbose
+    ;;
+  ping)
+    print_ping_only
+    ;;
+  status)
+    print_status
+    ;;
+esac
