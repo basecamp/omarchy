@@ -10,7 +10,9 @@ mkdir -p "$tmp/bin"
 
 cat >"$tmp/bin/nmcli" <<'EOF'
 #!/bin/bash
-if [[ $* == *GENERAL.CON-UUID* ]]; then
+if [[ $* == *"DEVICE,TYPE,STATE"* ]]; then
+  printf 'eth0:ethernet:connected\nwlan0:wifi:connected\n'
+elif [[ $* == *GENERAL.CON-UUID* ]]; then
   echo test-uuid
 else
   printf '%s' "$QR_NMCLI_FIELDS"
@@ -30,11 +32,12 @@ chmod +x "$tmp/bin/nmcli" "$tmp/bin/qrencode"
 
 run_success_case() {
   local description=$1 fields=$2 expected_payload=$3
+  shift 3
   local expected output payload
 
   export QR_NMCLI_FIELDS=$fields
   export QR_PAYLOAD_FILE="$tmp/payload"
-  output=$(PATH="$tmp/bin:$PATH" "$ROOT/bin/omarchy-network-qr" wlan0)
+  output=$(PATH="$tmp/bin:$PATH" "$ROOT/bin/omarchy-network-qr" "$@")
   expected=$'100\n010\n001'
   [[ $output == "$expected" ]] || fail "$description emits a compact module matrix" "expected: $expected\nactual: $output"
 
@@ -46,24 +49,34 @@ run_success_case() {
 run_success_case \
   "network QR helper escapes WPA credentials through stdin" \
   $'Cafe;Guest\\5G\nwpa-psk\np,a:ss;word\\42\nno\n' \
-  'WIFI:T:WPA;S:Cafe\;Guest\\5G;P:p\,a\:ss\;word\\42;;'
+  'WIFI:T:WPA;S:Cafe\;Guest\\5G;P:p\,a\:ss\;word\\42;;' \
+  wlan0
+
+# With no interface argument the helper finds the connected Wi-Fi device.
+run_success_case \
+  "network QR helper detects the Wi-Fi interface" \
+  $'Cafe Detected\nwpa-psk\nsecret\nno\n' \
+  'WIFI:T:WPA;S:Cafe Detected;P:secret;;'
 
 run_success_case \
   "network QR helper supports open networks" \
   $'Cafe Open\nnone\n\nno\n' \
-  'WIFI:T:nopass;S:Cafe Open;P:;;'
+  'WIFI:T:nopass;S:Cafe Open;P:;;' \
+  wlan0
 
 run_success_case \
   "network QR helper marks hidden networks" \
   $'Hidden Network\nwpa-psk\nsecret\nyes\n' \
-  'WIFI:T:WPA;S:Hidden Network;P:secret;H:true;;'
+  'WIFI:T:WPA;S:Hidden Network;P:secret;H:true;;' \
+  wlan0
 
 # NetworkManager models WEP as key-mgmt "none" plus a wep-key, which must not
 # be mistaken for an open network.
 run_success_case \
   "network QR helper encodes WEP networks" \
   $'Old Router\nnone\n\nno\nwep-secret\n' \
-  'WIFI:T:WEP;S:Old Router;P:wep-secret;;'
+  'WIFI:T:WEP;S:Old Router;P:wep-secret;;' \
+  wlan0
 
 export QR_NMCLI_FIELDS=$'Enterprise\nwpa-eap\nsecret\nno\n'
 export QR_PAYLOAD_FILE="$tmp/enterprise-payload"

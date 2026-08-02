@@ -5,6 +5,8 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 
+// Centered Wi-Fi share overlay, presented like the speed test: no card,
+// just the QR code floating on a heavy scrim. Esc or the scrim dismiss it.
 PanelWindow {
   id: root
 
@@ -43,9 +45,11 @@ PanelWindow {
   WlrLayershell.layer: WlrLayer.Overlay
   WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
+  // Deep scrim: the floating code needs the backdrop to carry the contrast
+  // on any wallpaper.
   Rectangle {
     anchors.fill: parent
-    color: Qt.rgba(0, 0, 0, 0.45)
+    color: Qt.rgba(0, 0, 0, 0.78)
 
     MouseArea {
       anchors.fill: parent
@@ -53,42 +57,49 @@ PanelWindow {
     }
   }
 
-  BorderSurface {
-    width: Style.space(320)
-    height: content.implicitHeight + Style.space(48)
-    anchors.centerIn: parent
-    radius: Style.cornerRadius
-    color: Color.menu.background
-    borderSpec: Border.surfaceSpec("menu", "border", Color.popups.border, Math.max(1, Style.space(2)))
+  Item {
+    id: keyCatcher
+    anchors.fill: parent
+    focus: true
 
-    MouseArea { anchors.fill: parent; onClicked: {} }
+    Keys.onEscapePressed: root.closeRequested()
 
     Item {
-      id: keyCatcher
-      anchors.fill: parent
-      anchors.margins: Style.space(24)
-      focus: true
+      anchors.centerIn: parent
+      width: content.implicitWidth
+      height: content.implicitHeight
+      // Narrow or heavily scaled outputs: shrink the whole card rather than
+      // clipping it at the screen edge.
+      scale: Math.min(1,
+        (keyCatcher.width - Style.space(32)) / Math.max(1, width),
+        (keyCatcher.height - Style.space(32)) / Math.max(1, height))
 
-      Keys.onEscapePressed: root.closeRequested()
+      // Swallow clicks so only the scrim outside the content dismisses.
+      MouseArea { anchors.fill: parent; onClicked: {} }
 
       ColumnLayout {
         id: content
         anchors.fill: parent
-        spacing: Style.space(12)
+        spacing: Style.space(16)
 
         Text {
-          text: "Share " + (root.ssid || "Wi-Fi")
-          color: root.bar.foreground
+          text: (root.ssid || "Wi-Fi").toUpperCase()
+          color: Qt.darker(root.bar.foreground, 1.4)
           font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.title
+          font.pixelSize: Style.font.caption
           font.bold: true
+          font.letterSpacing: 2
           elide: Text.ElideRight
-          Layout.fillWidth: true
+          Layout.maximumWidth: Style.space(320)
+          Layout.alignment: Qt.AlignHCenter
           horizontalAlignment: Text.AlignHCenter
         }
 
         // Render every QR module as an integer-sized native rectangle. This
-        // stays crisp and avoids temporary images and file-cache races.
+        // stays crisp and avoids temporary images and file-cache races. Only
+        // the dark modules paint, so the white canvas can keep its rounded
+        // corners; the spec quiet zone baked into the matrix keeps the code
+        // itself clear of them.
         Rectangle {
           id: qrCanvas
           readonly property int moduleSize: root.qrSize > 0
@@ -99,6 +110,7 @@ PanelWindow {
           width: root.qrSize * moduleSize
           height: width
           color: "white"
+          radius: Style.cornerRadius
           Layout.alignment: Qt.AlignHCenter
 
           Grid {
@@ -115,7 +127,7 @@ PanelWindow {
 
                 width: qrCanvas.moduleSize
                 height: qrCanvas.moduleSize
-                color: root.qrRows[matrixRow].charAt(matrixColumn) === "1" ? "#111111" : "white"
+                color: root.qrRows[matrixRow].charAt(matrixColumn) === "1" ? "#111111" : "transparent"
               }
             }
           }
@@ -124,7 +136,9 @@ PanelWindow {
         Text {
           visible: root.loading
           text: "Generating QR code…"
-          color: root.bar.foreground
+          color: Qt.darker(root.bar.foreground, 1.3)
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.bodySmall
           Layout.fillWidth: true
           horizontalAlignment: Text.AlignHCenter
         }
@@ -133,15 +147,20 @@ PanelWindow {
           visible: root.error !== ""
           text: root.error
           color: root.bar.urgent
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.bodySmall
           wrapMode: Text.Wrap
           Layout.fillWidth: true
+          Layout.maximumWidth: Style.space(320)
           horizontalAlignment: Text.AlignHCenter
         }
 
         Text {
           visible: root.showingQr
           text: "Scan to join this network"
-          color: root.bar.foreground
+          color: Qt.darker(root.bar.foreground, 1.3)
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.bodySmall
           Layout.fillWidth: true
           horizontalAlignment: Text.AlignHCenter
         }
@@ -157,6 +176,7 @@ PanelWindow {
           font.pixelSize: Style.font.bodySmall
           wrapMode: Text.WrapAnywhere
           Layout.fillWidth: true
+          Layout.maximumWidth: Style.space(320)
           horizontalAlignment: Text.AlignHCenter
 
           MouseArea {

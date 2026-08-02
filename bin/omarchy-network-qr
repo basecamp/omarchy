@@ -2,11 +2,25 @@
 
 # omarchy:summary=Generate a Wi-Fi QR matrix for the shell
 # omarchy:group=network
-# omarchy:args=<interface>
+# omarchy:args=[interface]
 
 set -euo pipefail
 
-interface=${1:?Usage: omarchy-network-qr <interface>}
+interface=${1:-}
+if [[ -z $interface ]]; then
+  # Prefer the default-route device: it is the connection the panel and the
+  # menu's visibility gate describe. Fall back to the first connected Wi-Fi
+  # device. nmcli localizes state names, so pin the locale, and the prefix
+  # match accepts states like "connected (externally)".
+  route_device=$(ip route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
+  if [[ -n $route_device && -d /sys/class/net/$route_device/wireless ]]; then
+    interface=$route_device
+  else
+    interface=$(LC_ALL=C nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null |
+      awk -F: '$2 == "wifi" && $3 ~ /^connected/ { print $1; exit }')
+  fi
+fi
+[[ -n $interface ]] || { echo "No active Wi-Fi connection" >&2; exit 1; }
 uuid=$(nmcli --get-values GENERAL.CON-UUID device show "$interface" | head -n 1)
 [[ -n $uuid && $uuid != "--" ]] || { echo "No active Wi-Fi connection" >&2; exit 1; }
 
