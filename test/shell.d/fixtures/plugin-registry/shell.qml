@@ -84,6 +84,7 @@ ShellRoot {
     scan += block("firstparty", "/first/panels/grouped", manifest("omarchy.grouped-panel", ["panel"], { panel: "Panel.qml" }))
     scan += block("firstparty", "/first/hybrid", manifest("omarchy.hybrid", ["menu", "bar-widget"], { menu: "Menu.qml", barWidget: "Widget.qml" }))
     scan += block("thirdparty", "/third/panel", manifest("third.panel", ["panel"], { panel: "Panel.qml" }))
+    scan += block("thirdparty", "/third/hybrid", manifest("third.hybrid", ["panel", "bar-widget"], { panel: "Panel.qml", barWidget: "Widget.qml" }, { defaultSection: "right" }))
     scan += block("thirdparty", "/third/widget", manifest("third.widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "left" }))
     scan += block("thirdparty", "/third/center-widget", manifest("third.center-widget", ["bar-widget"], { barWidget: "Widget.qml" }))
     scan += block("thirdparty", "/third/right-widget", manifest("third.right-widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "right" }))
@@ -125,6 +126,7 @@ ShellRoot {
       "omarchy.hybrid",
       "third.bar",
       "third.center-widget",
+      "third.hybrid",
       "third.panel",
       "third.right-widget",
       "third.widget"
@@ -165,8 +167,35 @@ ShellRoot {
     registry.setEnabled("third.widget", true)
     root.assertDeepEqual(root.config.bar.layout.left, [{ id: "third.widget" }], "enabling bar widgets uses their default section")
     root.assertTrue(registry.isEnabled("third.widget"), "enabled bar widgets are found")
+    root.assertDeepEqual(root.config.plugins, [], "enabling a widget-only plugin adds no plugins entry")
     registry.setEnabled("third.widget", false)
     root.assertDeepEqual(root.config.bar.layout.left, [], "disabling bar widgets removes layout entry")
+
+    // A plugin that is both a panel and a widget is reachable two ways: its bar
+    // icon and `shell toggle`. Enabling it has to write both references, or
+    // taking the icon out of the bar would unload the panel behind it and the
+    // keybinding would silently do nothing.
+    root.config = { version: 1, bar: { layout: { left: [], center: [], right: [] } }, plugins: [] }
+    registry.setEnabled("third.hybrid", true)
+    root.assertDeepEqual(root.config.bar.layout.right, [{ id: "third.hybrid" }], "enabling a panel widget places its icon")
+    root.assertDeepEqual(root.config.plugins, [{ id: "third.hybrid" }], "enabling a panel widget also writes a plugins entry")
+    root.assertTrue(registry.isEnabled("third.hybrid"), "an enabled panel widget is enabled")
+
+    root.config.bar.layout.right = []
+    root.assertTrue(registry.isEnabled("third.hybrid"), "a panel widget survives losing its bar icon")
+
+    root.config = { version: 1, bar: { layout: { left: [], center: [], right: [] } }, plugins: [] }
+    registry.setEnabled("third.hybrid", true)
+    registry.setEnabled("third.hybrid", false)
+    root.assertDeepEqual(root.config.bar.layout.right, [], "disabling a panel widget removes its icon")
+    root.assertDeepEqual(root.config.plugins, [], "disabling a panel widget clears every reference in one call")
+    root.assertTrue(!registry.isEnabled("third.hybrid"), "a disabled panel widget is disabled")
+
+    registry.setEnabled("third.hybrid", true)
+    registry.setEnabled("third.hybrid", true)
+    root.assertDeepEqual(root.config.bar.layout.right, [{ id: "third.hybrid" }], "enabling a panel widget twice adds one icon")
+    root.assertDeepEqual(root.config.plugins, [{ id: "third.hybrid" }], "enabling a panel widget twice adds one plugins entry")
+    registry.setEnabled("third.hybrid", false)
 
     root.config = {
       version: 1,
@@ -358,6 +387,7 @@ ShellRoot {
     registry.setEnabled("local.hybrid", false)
     root.assertDeepEqual(root.config.bar.layout.left, [{ id: "omarchy.hybrid" }], "disabling a multi-kind clone restores its widget")
     root.assertTrue(root.config.disabledPlugins === undefined, "disabling a multi-kind clone enables the source")
+    root.assertDeepEqual(root.config.plugins, [], "restoring a clone's source leaves no orphan plugins entry")
 
     root.config = { version: 1, bar: { layout: { left: [], center: [], right: [] } }, plugins: [] }
     registry.setEnabled("local.grouped-panel", true)
