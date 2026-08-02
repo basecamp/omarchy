@@ -190,6 +190,13 @@ assert(
   }),
   'menu exposes every mise-installable coding agent with its own glyph under Defaults > Agent'
 )
+assertDeepEqual(
+  defaultItems
+    .filter(item => item.parent === 'setup.default.agent')
+    .map(item => item.label),
+  ['Claude', 'Codex', 'Copilot', 'Crush', 'Gemini', 'Grok', 'omp', 'OpenCode', 'Pi'],
+  'menu sorts coding agents alphabetically'
+)
 assert(!defaultById['install.ai.crush'], 'menu removes Crush from Install > AI')
 assert(
   defaultById['setup.security.passwordless-sudo'].action.includes('omarchy-sudo-passwordless'),
