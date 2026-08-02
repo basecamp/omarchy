@@ -20,6 +20,10 @@ Panel {
   function close() {
     root.controller.hide()
     cancelPasswordPrompt()
+    // The centered cards outlive the compact panel, but the widget's
+    // canonical close must not leave an overlay (or its traffic) behind.
+    hideWifiQr()
+    hideSpeedTest()
   }
 
   function cancelPasswordPrompt() {
@@ -227,7 +231,7 @@ Panel {
     // Menu routes: summon the centered cards directly, panel open or not.
     function showQr() {
       root.refresh()
-      root.showWifiQr()
+      root.showWifiQr(true)
     }
     function speedTest() { root.showSpeedTest() }
   }
@@ -432,16 +436,17 @@ Panel {
 
   readonly property string icon: Model.connectionIcon(kind, signalStrength)
 
-  function showWifiQr() {
+  function showWifiQr(forceDetect) {
     if (qrProc.running) return
     qrSize = 0
     qrRows = []
     qrError = ""
     qrLoading = true
     qrExpectedStop = false
-    // Without a known Wi-Fi interface (an IPC summon can race the details
-    // probe) the command detects the connected Wi-Fi device itself.
-    qrProc.command = info.type === "wifi" && info.iface
+    // The panel's own button shares the interface it is showing. The IPC
+    // route forces self-detection instead: details polling stops while the
+    // panel is closed, so its cached interface can be stale.
+    qrProc.command = !forceDetect && info.type === "wifi" && info.iface
       ? ["omarchy-network-qr", info.iface]
       : ["omarchy-network-qr"]
     qrProc.running = true
