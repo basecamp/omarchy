@@ -93,6 +93,7 @@
   "style.cursor-style": {"icon":"󰇀","label":"Cursor Style","aliases":["cursor","cursor-picker"]},
   "style.cursor-style.theme": {"icon":"󰇀","label":"Theme","aliases":["cursor-theme","mouse-cursor"],"provider":"cursors"},
   "style.cursor-style.size": {"icon":"󰹵","label":"Size","aliases":["cursor-size"],"provider":"cursor-sizes"},
+  "style.cursor-style.size.custom": {"icon":"󰹵","label":"Custom size","description":"Set any size","aliases":["custom-size"],"action":"omarchy-cursor-size-custom"},
   "style.bar": {"icon":"󰍜","label":"Menu Bar"},
   "style.bar.position": {"icon":"","label":"Position"},
   "style.bar.transparency": {"icon":"󰂵","label":"Transparency","action":"omarchy-bar transparent toggle"},

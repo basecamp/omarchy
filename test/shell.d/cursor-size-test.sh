@@ -37,6 +37,13 @@ printf '%s\n' "$*" >>"$HOOK_LOG"
 EOF
 chmod +x "$tmp_dir/bin/omarchy-hook"
 
+cat >"$tmp_dir/bin/omarchy-menu-input" <<'EOF'
+#!/bin/bash
+[[ -n ${MENU_INPUT_VALUE:-} ]] || exit 1
+printf '%s\n' "$MENU_INPUT_VALUE"
+EOF
+chmod +x "$tmp_dir/bin/omarchy-menu-input"
+
 export PATH="$tmp_dir/bin:$ROOT/bin:$PATH"
 export HOME="$tmp_dir/home"
 export DBUS_SESSION_BUS_ADDRESS="test"
@@ -99,6 +106,41 @@ if omarchy-cursor-size-set abc; then
 fi
 pass "cursor size rejects non-numeric sizes"
 
+MENU_INPUT_VALUE=40 omarchy-cursor-size-custom
+
+[[ $(tail -n 1 "$HYPRCTL_LOG") == "setcursor macOS-original 40" ]] ||
+  fail "custom cursor size applies the typed value" "$(tail -n 1 "$HYPRCTL_LOG")"
+pass "custom cursor size applies the typed value"
+
+rg -q 'XCURSOR_SIZE", "40"' "$HOME/.config/hypr/hyprland.lua" &&
+  rg -q 'HYPRCURSOR_SIZE", "40"' "$HOME/.config/hypr/hyprland.lua" ||
+  fail "custom cursor size persists both env variables"
+pass "custom cursor size persists both env variables"
+
+tail -n 1 "$NOTIFY_LOG" | rg -q '40' ||
+  fail "custom cursor size notifies"
+pass "custom cursor size notifies"
+
+hyprctl_before=$(wc -l <"$HYPRCTL_LOG")
+if MENU_INPUT_VALUE=abc omarchy-cursor-size-custom; then
+  fail "custom cursor size rejects non-numeric input"
+fi
+[[ $(wc -l <"$HYPRCTL_LOG") == "$hyprctl_before" ]] ||
+  fail "custom cursor size applies nothing on invalid input"
+pass "custom cursor size rejects non-numeric input"
+
+tail -n 1 "$NOTIFY_LOG" | rg -q 'critical' ||
+  fail "custom cursor size notifies on invalid input"
+pass "custom cursor size notifies on invalid input"
+
+hyprctl_before=$(wc -l <"$HYPRCTL_LOG")
+if omarchy-cursor-size-custom; then
+  fail "custom cursor size aborts when the input is cancelled"
+fi
+[[ $(wc -l <"$HYPRCTL_LOG") == "$hyprctl_before" ]] ||
+  fail "custom cursor size applies nothing when cancelled"
+pass "custom cursor size aborts when the input is cancelled"
+
 rg -F '"style.cursor-style": {"icon":"󰇀","label":"Cursor Style","aliases":["cursor","cursor-picker"]}' "$ROOT/default/omarchy/omarchy-menu.jsonc" >/dev/null ||
   fail "menu defines the cursor style parent"
 pass "menu defines the cursor style parent"
@@ -110,6 +152,10 @@ pass "menu defines the cursor theme entry"
 rg -F '"style.cursor-style.size": {"icon":"󰹵","label":"Size","aliases":["cursor-size"],"provider":"cursor-sizes"}' "$ROOT/default/omarchy/omarchy-menu.jsonc" >/dev/null ||
   fail "menu defines the cursor size entry"
 pass "menu defines the cursor size entry"
+
+rg -F '"style.cursor-style.size.custom": {"icon":"󰹵","label":"Custom size","description":"Set any size","aliases":["custom-size"],"action":"omarchy-cursor-size-custom"}' "$ROOT/default/omarchy/omarchy-menu.jsonc" >/dev/null ||
+  fail "menu defines the custom cursor size entry"
+pass "menu defines the custom cursor size entry"
 
 rg -F '"cursor-sizes": {' "$ROOT/shell/plugins/menu/Menu.qml" >/dev/null &&
   rg -F 'omarchy-cursor-size-set' "$ROOT/shell/plugins/menu/Menu.qml" >/dev/null ||
