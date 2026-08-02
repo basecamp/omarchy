@@ -87,11 +87,12 @@ Item {
         id: historyFile
         path: root.resolvePath("~/.claude/history.jsonl")
         watchChanges: true
+        printErrors: false
         onFileChanged: reload()
         onLoaded: root.parseHistory(text())
         onLoadFailed: error => {
-            if (error === FileViewError.FileNotFound)
-                console.error("model-usage/claude", "history.jsonl not found");
+            if (error !== FileViewError.FileNotFound)
+                console.error("model-usage/claude", "history.jsonl error:", error);
         }
     }
 
@@ -99,11 +100,12 @@ Item {
         id: credentialsFile
         path: root.resolvePath(root.providerSettings?.credentialsPath ?? "~/.claude/.credentials.json")
         watchChanges: true
+        printErrors: false
         onFileChanged: reload()
         onLoaded: root.parseCredentials(text())
         onLoadFailed: error => {
-            if (error === FileViewError.FileNotFound)
-                console.error("model-usage/claude", "credentials.json not found at", credentialsFile.path);
+            if (error !== FileViewError.FileNotFound)
+                console.error("model-usage/claude", "credentials.json error:", error);
         }
     }
 
