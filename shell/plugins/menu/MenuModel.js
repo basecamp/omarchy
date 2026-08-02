@@ -57,7 +57,10 @@ function parseMenuJsonc(raw) {
   for (var id in source) {
     var entry = source[id]
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue
-    out.push(normalizeItem(id, entry))
+    // Keep raw entries so omitted fields stay absent. The merged row is
+    // normalized once in mergeMenuSources, which lets a later source override
+    // only the keys it actually declares instead of clobbering the rest.
+    out.push(Object.assign({ id: id }, entry))
   }
   return out
 }
@@ -78,7 +81,9 @@ function mergeMenuSources(defaultItems, userItems) {
       for (var k in prior) merged[k] = prior[k]
       for (var k2 in entry) merged[k2] = entry[k2]
       merged.id = entry.id
-      nextItems[entry.id] = merged
+      // Normalize the merged row so omitted keys in the overriding source
+      // retain the earlier row's values (presence-based override).
+      nextItems[entry.id] = normalizeItem(entry.id, merged)
     }
   }
 

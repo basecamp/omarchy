@@ -31,21 +31,12 @@ assertDeepEqual(
   parsed.find(item => item.id === 'style.theme'),
   {
     id: 'style.theme',
-    parent: 'style',
-    kind: 'action',
-    icon: '',
-    iconFont: '',
     label: 'Themes',
-    title: '',
-    target: '',
+    aliases: 'theme',
     description: 'appearance colors',
-    action: 'omarchy-theme-set',
-    provider: '',
-    aliases: ['theme'],
-    when: '',
-    checked: ''
+    action: 'omarchy-theme-set'
   },
-  'menu normalizes parsed items'
+  'menu parses raw items without normalizing'
 )
 
 const user = [
@@ -56,6 +47,37 @@ const merged = menu.mergeMenuSources(parsed, user)
 assertEqual(merged.items['style.theme'].label, 'Theme picker', 'menu user entries override default entries')
 assertEqual(merged.items['style.theme'].order, 2, 'menu preserves original order on override')
 assert(merged.items.root, 'menu injects root when merging sources')
+
+const partialUser = menu.parseMenuJsonc(`{
+  "items": {
+    "style.theme": { "label": "Theme picker" }
+  }
+}`)
+const partialMerged = menu.mergeMenuSources(parsed, partialUser)
+assertEqual(partialMerged.items['style.theme'].label, 'Theme picker', 'menu partial override keeps its own label')
+assertEqual(partialMerged.items['style.theme'].action, 'omarchy-theme-set', 'menu partial override keeps the default action')
+assertEqual(partialMerged.items['style.theme'].kind, 'action', 'menu partial override keeps the default kind')
+assertEqual(partialMerged.items['style.theme'].parent, 'style', 'menu partial override derives the parent from the id')
+assertDeepEqual(partialMerged.items['style.theme'].aliases, ['theme'], 'menu partial override keeps the default aliases')
+assertEqual(partialMerged.items['style.theme'].description, 'appearance colors', 'menu partial override keeps the default description')
+
+const clearingUser = menu.parseMenuJsonc(`{
+  "items": {
+    "style.theme": { "label": "Theme picker", "description": "" }
+  }
+}`)
+const clearingMerged = menu.mergeMenuSources(parsed, clearingUser)
+assertEqual(clearingMerged.items['style.theme'].description, '', 'menu explicit empty clears just that field')
+assertEqual(clearingMerged.items['style.theme'].action, 'omarchy-theme-set', 'menu explicit empty keeps other fields')
+
+const kindFlipUser = menu.parseMenuJsonc(`{
+  "items": {
+    "style": { "action": "omarchy-theme-cycle" }
+  }
+}`)
+const kindFlipMerged = menu.mergeMenuSources(parsed, kindFlipUser)
+assertEqual(kindFlipMerged.items['style'].kind, 'action', 'menu adding an action flips a menu row to an action')
+assertEqual(kindFlipMerged.items['style'].label, 'Style', 'menu kind flip keeps the base label')
 
 assertEqual(menu.slugify('Power Saver!'), 'power-saver', 'menu slugifies provider rows')
 assertEqual(menu.pathFor(merged.items, 'style.theme'), 'Style › Theme picker', 'menu builds item paths')
@@ -107,8 +129,9 @@ assertDeepEqual(
   'menu builds display rows'
 )
 
-const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
-const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
+const defaultMerged = menu.mergeMenuSources(menu.parseMenuJsonc(defaultMenuJsonc), [])
+const defaultItems = defaultMerged.itemOrder.map(id => defaultMerged.items[id])
+const defaultById = defaultMerged.items
 
 // Needs the real menu: app rows sort after all menu items, and only at that
 // item count does the order tiebreak alone bury an installed app.
