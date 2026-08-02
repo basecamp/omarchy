@@ -509,7 +509,35 @@ ShellRoot {
 
   function toggle(pluginId, payloadJson) {
     var id = shell.pluginRegistry.resolveEnabledId(pluginId)
-    return isPluginOpen(id) ? hide(id) : summon(id, payloadJson)
+    if (!isPluginOpen(id)) return summon(id, payloadJson)
+
+    var loader = panelLoaders[id]
+    if (loader && loader.item && payloadJson) {
+      try {
+        var payload = JSON.parse(payloadJson)
+        var targetRoute = payload.initialMenu || payload.menu
+        var item = loader.item
+        // Route-switching only applies to the regular menu surface. While a
+        // dmenu request (select/input) is active, summoning would clobber
+        // requestActive/doneFile without completing the caller, so a toggle
+        // must hide instead and let cancel() finish the request with null.
+        var isMenuMode = item.mode === undefined || item.mode === "menu"
+        if (isMenuMode && targetRoute && typeof item.resolveRoute === "function" && typeof item.activeMenu === "string") {
+          // Resolve both sides to the effective route, following link items.
+          var resolveCanonical = function(r) {
+            var res = item.resolveRoute(r)
+            var ent = item.items ? item.items[res] : null
+            return (ent && ent.kind === "link" && ent.target) ? ent.target : res
+          }
+          var resolvedTarget = resolveCanonical(targetRoute)
+          var resolvedActive = resolveCanonical(item.activeMenu)
+          if (resolvedTarget && resolvedActive && resolvedTarget !== resolvedActive) {
+            return summon(id, payloadJson)
+          }
+        }
+      } catch (e) {}
+    }
+    return hide(id)
   }
 
   // Map of pluginId -> Loader, populated by the Instantiator delegate below.
