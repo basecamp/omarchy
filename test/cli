@@ -396,6 +396,15 @@ HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok
 [[ ! -f $GROK_TMPDIR/.local/state/omarchy/grok-theme-follow ]] || fail "grok follow flag is not created before activate"
 pass "grok theme sync is a no-op before activate"
 
+# Missing Grok home must not abort finalize (bash -e + theme.sh --activate).
+set +e
+HOME="$GROK_TMPDIR" GROK_HOME="$GROK_TMPDIR/no-such-grok" "$ROOT/bin/omarchy-theme-set-grok" --activate
+activate_missing_status=$?
+set -e
+(( activate_missing_status == 0 )) || fail "grok activate is a no-op when Grok home is missing"
+[[ ! -f $GROK_TMPDIR/.local/state/omarchy/grok-theme-follow ]] || fail "grok activate without home leaves no follow flag"
+pass "grok activate is a no-op when Grok home is missing"
+
 HOME="$GROK_TMPDIR" GROK_HOME="$GROK_HOME_DIR" "$ROOT/bin/omarchy-theme-set-grok" --activate
 [[ -f $GROK_HOME_DIR/config.toml ]] || fail "grok activate writes config.toml"
 [[ -f $GROK_TMPDIR/.local/state/omarchy/grok-theme-follow ]] || fail "grok activate creates follow flag"

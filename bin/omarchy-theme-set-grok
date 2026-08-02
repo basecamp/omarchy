@@ -22,7 +22,6 @@ GROK_HOME="${GROK_HOME:-$HOME/.grok}"
 GROK_CONFIG_PATH="$GROK_HOME/config.toml"
 GROK_FOLLOW_FLAG="$HOME/.local/state/omarchy/grok-theme-follow"
 CURRENT_THEME_PATH="$HOME/.local/state/omarchy/current/theme"
-COLORS_FILE="$CURRENT_THEME_PATH/colors.toml"
 GROK_ACTIVATE=0
 
 usage() {
@@ -45,11 +44,13 @@ for arg in "$@"; do
   esac
 done
 
+# No-op when Grok is not installed. Finalize runs --activate unconditionally
+# under set -e, so this must not exit 1 (otherwise btop theme linking is skipped).
+# Interactive hand-runs still get a stderr note when stdout is a TTY.
 if [[ ! -d $GROK_HOME ]]; then
-  if (( GROK_ACTIVATE == 1 )); then
+  if (( GROK_ACTIVATE == 1 )) && [[ -t 1 ]]; then
     echo "Grok config directory missing: $GROK_HOME" >&2
     echo "Install Grok first, then re-run omarchy-theme-set-grok --activate." >&2
-    exit 1
   fi
   exit 0
 fi
@@ -232,8 +233,6 @@ PY
 
 dark_theme=$(map_grok_dark_theme)
 light_theme="grokday"
-# Same idiom as omarchy-theme-set-gnome: theme-color is a default Omarchy command.
-mode=$(omarchy-theme-color --file "$COLORS_FILE" mode)
 
 # theme=auto so running sessions follow OS light/dark (Omarchy sets that via GNOME).
 # auto_dark_theme carries the closest dark built-in for the current Omarchy slug.
