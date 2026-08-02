@@ -1,5 +1,6 @@
 omarchy-mise-install codex
 omarchy-mise-install claude
+omarchy-mise-install crush
 omarchy-mise-install gemini
 omarchy-mise-install gh
 omarchy-mise-install copilot

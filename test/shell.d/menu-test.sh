@@ -167,16 +167,30 @@ assertEqual(
   defaultItems.findIndex(item => item.id === 'setup.input') + 1,
   'menu lists Direct Boot immediately below Input'
 )
+const expectedAgents = {
+  pi: { icon: '󰏿', label: 'Pi' },
+  omp: { icon: '󰣪', label: 'omp' },
+  opencode: { icon: '󰕪', label: 'OpenCode' },
+  claude: { icon: '󰛄', label: 'Claude' },
+  codex: { icon: '󰞵', label: 'Codex' },
+  grok: { icon: '󰰱', label: 'Grok' },
+  gemini: { icon: '󰫢', label: 'Gemini' },
+  copilot: { icon: '', label: 'Copilot' },
+  crush: { icon: '󰋑', label: 'Crush' },
+}
 assert(
-  ['pi', 'omp', 'opencode', 'claude', 'codex', 'grok', 'gemini', 'copilot'].every(agent => {
+  Object.entries(expectedAgents).every(([agent, expected]) => {
     const entry = defaultById[`setup.default.agent.${agent}`]
     return entry
+      && entry.icon === expected.icon
+      && entry.label === expected.label
       && entry.action === `omarchy-default-agent ${agent}`
       && !entry.when
       && entry.checked.includes(`== \"${agent}\"`)
   }),
-  'menu exposes every mise-installable coding agent under Defaults > Agent'
+  'menu exposes every mise-installable coding agent with its own glyph under Defaults > Agent'
 )
+assert(!defaultById['install.ai.crush'], 'menu removes Crush from Install > AI')
 assert(
   defaultById['setup.security.passwordless-sudo'].action.includes('omarchy-sudo-passwordless'),
   'menu places Passwordless Sudo under Setup > Security'

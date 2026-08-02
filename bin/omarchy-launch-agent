@@ -41,6 +41,13 @@ copilot)
     command=(copilot)
   fi
   ;;
+crush)
+  if [[ -n ${prompt:-} ]]; then
+    command=(crush run "$prompt")
+  else
+    command=(crush)
+  fi
+  ;;
 pi | omp | claude | codex | grok)
   command=("$agent")
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
