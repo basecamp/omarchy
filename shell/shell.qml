@@ -6,6 +6,7 @@ import Quickshell.Io
 import qs.Commons
 
 import "plugins/bar"
+import "plugins/menu/MenuModel.js" as MenuModel
 import "services"
 
 ShellRoot {
@@ -516,28 +517,15 @@ ShellRoot {
       try {
         var payload = JSON.parse(payloadJson)
         var targetRoute = payload.initialMenu || payload.menu
-        var item = loader.item
         // Route-switching only applies to the regular menu surface. While a
         // dmenu request (select/input) is active, summoning would clobber
         // requestActive/doneFile without completing the caller, so a toggle
         // must hide instead and let cancel() finish the request with null.
-        var isMenuMode = item.mode === undefined || item.mode === "menu"
-        if (isMenuMode && targetRoute && typeof item.activeMenu === "string") {
-          // Compare canonical routes so toggling the already-active route
-          // closes the menu instead of re-summoning it. First-party menus
-          // expose canonicalRoute(); others get the same link-follow fallback.
-          var canon = typeof item.canonicalRoute === "function"
-            ? function(r) { return item.canonicalRoute(r) }
-            : function(r) {
-                var res = typeof item.resolveRoute === "function" ? item.resolveRoute(r) : r
-                var ent = item.items ? item.items[res] : null
-                return (ent && ent.kind === "link" && ent.target) ? ent.target : res
-              }
-          var resolvedTarget = canon(targetRoute)
-          var resolvedActive = canon(item.activeMenu)
-          if (resolvedTarget && resolvedActive && resolvedTarget !== resolvedActive) {
-            return summon(id, payloadJson)
-          }
+        // The decision compares canonical routes (aliases resolved, link
+        // targets followed) so toggling the already-active route closes the
+        // menu instead of summoning it again.
+        if (MenuModel.shouldSummonForRoute(loader.item, targetRoute)) {
+          return summon(id, payloadJson)
         }
       } catch (e) {}
     }

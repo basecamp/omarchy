@@ -857,11 +857,7 @@ Item {
   // these canonical ids so toggling an alias or a link to the already-active
   // menu closes it instead of summoning it again.
   function canonicalRoute(input) {
-    var id = root.resolveRoute(input)
-    var entry = root.items[id]
-    if (entry && entry.kind === "link" && entry.target) id = entry.target
-    if (!root.item(id)) id = "root"
-    return id
+    return MenuModel.canonicalRoute(input, root.items, root.resolveRoute)
   }
 
   function openRoute(initialMenu) {

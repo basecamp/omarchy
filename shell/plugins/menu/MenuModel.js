@@ -167,6 +167,48 @@ function item(items, id) {
   return items && items[id] ? items[id] : null
 }
 
+// Canonical route comparison for the shell toggle: route a toggle/open request
+// down to the menu id that will really be displayed, mirroring Menu.qml's
+// openRoute(). Alias ids resolve to their item, link entries redirect to their
+// target, and any id that names no item falls back to "root". The shell
+// compares these so toggling the already-active route closes the menu instead
+// of summoning it again. The callback signature lets the QML side pass in its
+// runtime alias resolver; purecallers without aliases omit it.
+function canonicalRoute(route, items, rootResolver) {
+  var raw = String(route || "")
+  var resolver = typeof rootResolver === "function" ? rootResolver : null
+  var id = resolver ? resolver(raw) : raw
+  var entry = item(items, id)
+  if (entry && entry.kind === "link" && entry.target) id = entry.target
+  if (!item(items, id)) id = "root"
+  return id
+}
+
+// The shell toggle's route-switch decision: whether to summon the requested
+// route or hide the already-open menu. Route switching only applies to the
+// regular menu surface; while a dmenu request (select/input) is active,
+// summoning would clobber requestActive/doneFile without completing the
+// caller, so a toggle must hide instead. When both the requested and the
+// active route canonicalize to the same menu, the toggle closes it rather
+// than re-summoning it. Mirrors the fallback resolution shell.qml used to
+// inline for third-party menus without canonicalRoute().
+function shouldSummonForRoute(item, targetRoute) {
+  if (!item || !targetRoute) return false
+  var isMenuMode = item.mode === undefined || item.mode === "menu"
+  if (!isMenuMode || typeof item.activeMenu !== "string") return false
+
+  var canon = typeof item.canonicalRoute === "function"
+    ? function(r) { return item.canonicalRoute(r) }
+    : function(r) {
+        var res = typeof item.resolveRoute === "function" ? item.resolveRoute(r) : r
+        var ent = item.items ? item.items[res] : null
+        return (ent && ent.kind === "link" && ent.target) ? ent.target : res
+      }
+  var resolvedTarget = canon(targetRoute)
+  var resolvedActive = canon(item.activeMenu)
+  return !!(resolvedTarget && resolvedActive && resolvedTarget !== resolvedActive)
+}
+
 function slugify(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item"
 }
@@ -360,6 +402,8 @@ if (typeof module !== "undefined") {
     mergeAppRows: mergeAppRows,
     swapProviderRows: swapProviderRows,
     item: item,
+    canonicalRoute: canonicalRoute,
+    shouldSummonForRoute: shouldSummonForRoute,
     slugify: slugify,
     depthFor: depthFor,
     pathFor: pathFor,

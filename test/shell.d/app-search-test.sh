@@ -142,20 +142,16 @@ assert(
 
 const shellQml = fs.readFileSync(path.join(root, 'shell/shell.qml'), 'utf8')
 assert(
-  /function toggle\(pluginId, payloadJson\) \{[\s\S]*?canonicalRoute[\s\S]*?resolvedTarget[\s\S]*?resolvedActive[\s\S]*?resolvedTarget !== resolvedActive[\s\S]*?return summon\(id, payloadJson\)/.test(shellQml),
-  'shell toggle compares canonical routes so summoning the already-active route closes the menu instead'
-)
-assert(
-  /function toggle[\s\S]*?kind === "link"[\s\S]*?ent\.target[\s\S]*?\}[\s\S]*?return hide/.test(shellQml),
-  'shell toggle falls back to menu link resolution when a panel lacks canonicalRoute'
+  /function toggle\(pluginId, payloadJson\) \{[\s\S]*?MenuModel\.shouldSummonForRoute\(loader\.item, targetRoute\)[\s\S]*?return summon\(id, payloadJson\)/.test(shellQml),
+  'shell toggle delegates the route-switch decision to the shared model so summoning the already-active route closes the menu instead'
 )
 
 const canonicalMatch = menuQml.match(/function canonicalRoute\(input\) \{([\s\S]*?)\n  \}/)
 assert(canonicalMatch, 'menu exposes canonicalRoute for shell route comparison')
 assert(
-  canonicalMatch && canonicalMatch[1].includes('entry.kind === "link"')
-    && canonicalMatch[1].includes('entry.target')
-    && canonicalMatch[1].includes('id = "root"'),
-  'menu canonicalRoute follows link targets and falls back to root like an open will display'
+  canonicalMatch && canonicalMatch[1].includes('MenuModel.canonicalRoute')
+    && canonicalMatch[1].includes('root.items')
+    && canonicalMatch[1].includes('root.resolveRoute'),
+  'menu canonicalRoute delegates to the shared model so the shell toggle compares real open behavior'
 )
 JS
