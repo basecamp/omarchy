@@ -105,35 +105,59 @@ PanelWindow {
           horizontalAlignment: Text.AlignHCenter
         }
 
-        Row {
-          spacing: Style.space(48)
+        Item {
           Layout.alignment: Qt.AlignHCenter
+          implicitWidth: dialsRow.implicitWidth
+          implicitHeight: dialsRow.implicitHeight
 
-          SpeedDial {
-            id: downDial
-            label: "DOWNLOAD"
-            value: root.downloadValue
-            live: root.running && root.phase === "down"
+          Row {
+            id: dialsRow
+            // Wide enough that the retry button sits clear of both arcs in
+            // the middle, like a cluster's center display.
+            spacing: Style.space(150)
+
+            SpeedDial {
+              id: downDial
+              label: "DOWNLOAD"
+              value: root.downloadValue
+              live: root.running && root.phase === "down"
+            }
+
+            SpeedDial {
+              id: upDial
+              label: "UPLOAD"
+              value: root.uploadValue
+              live: root.running && root.phase === "up"
+            }
           }
 
-          SpeedDial {
-            id: upDial
-            label: "UPLOAD"
-            value: root.uploadValue
-            live: root.running && root.phase === "up"
+          // Dead center between the two dials, anchored out of the column
+          // flow so it never shifts anything. Fades rather than unmounts
+          // while a run is in flight.
+          Button {
+            anchors.centerIn: dialsRow
+            text: "Run Again"
+            tooltipText: "Measure again via fast.com"
+            bordered: true
+            enabled: !root.running
+            opacity: root.running ? 0 : 1
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            fontSize: Style.font.bodySmall
+            horizontalPadding: Style.space(14)
+            verticalPadding: Style.space(4)
+            onClicked: root.runAgainRequested()
+
+            Behavior on opacity {
+              NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+            }
           }
         }
 
         Text {
-          text: {
-            if (root.failed) return root.error
-            if (root.running && root.phase === "down") return "Measuring download…"
-            if (root.running && root.phase === "up") return "Measuring upload…"
-            if (root.finished) return "Measured via fast.com"
-            return ""
-          }
-          visible: text !== ""
-          color: root.failed ? root.bar.urgent : Qt.darker(root.bar.foreground, 1.3)
+          visible: root.failed
+          text: root.error
+          color: root.bar.urgent
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.bodySmall
           wrapMode: Text.Wrap
@@ -141,52 +165,6 @@ PanelWindow {
           Layout.maximumWidth: Style.space(440)
           horizontalAlignment: Text.AlignHCenter
         }
-
-        // Fades rather than unmounts: the cluster must not shift when the
-        // button comes back after a run.
-        Button {
-          text: "Run Again"
-          bordered: true
-          enabled: !root.running
-          opacity: root.running ? 0 : 1
-          foreground: root.bar.foreground
-          fontFamily: root.bar.fontFamily
-          fontSize: Style.font.bodySmall
-          horizontalPadding: Style.space(14)
-          verticalPadding: Style.space(4)
-          Layout.alignment: Qt.AlignHCenter
-          onClicked: root.runAgainRequested()
-
-          Behavior on opacity {
-            NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
-          }
-        }
-      }
-    }
-
-    // Small dismiss affordance riding the cluster's corner; Esc and the
-    // scrim do the same.
-    Text {
-      anchors.top: cluster.top
-      anchors.left: cluster.right
-      anchors.leftMargin: Style.space(20)
-      text: "✕"
-      color: root.bar.foreground
-      opacity: closeMouse.containsMouse ? 0.9 : 0.4
-      font.family: root.bar.fontFamily
-      font.pixelSize: Style.font.bodySmall
-
-      Behavior on opacity {
-        NumberAnimation { duration: 120 }
-      }
-
-      MouseArea {
-        id: closeMouse
-        anchors.fill: parent
-        anchors.margins: -Style.space(6)
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        onClicked: root.closeRequested()
       }
     }
   }
