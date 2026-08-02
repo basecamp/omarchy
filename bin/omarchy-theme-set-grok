@@ -239,7 +239,9 @@ mode=$(omarchy-theme-color --file "$COLORS_FILE" mode)
 # auto_dark_theme carries the closest dark built-in for the current Omarchy slug.
 write_grok_ui_keys "auto" "$dark_theme" "$light_theme"
 
-if (( GROK_ACTIVATE == 1 )); then
+# Interactive only — finalize/install redirect stdout and should stay quiet
+# (same as pi's silent activate). Config + follow flag are still written above.
+if (( GROK_ACTIVATE == 1 )) && [[ -t 1 ]]; then
   echo "Grok will follow Omarchy light/dark (auto mode)."
   echo "  auto_dark_theme  = $dark_theme"
   echo "  auto_light_theme = $light_theme"

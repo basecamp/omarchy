@@ -14,7 +14,7 @@ printf '%s\n' "$*" >>"$OMARCHY_TEST_THEME_CALLS"
 SH
 chmod +x "$mock_bin/omarchy-theme-set"
 
-for command in omarchy-theme-set-pi; do
+for command in omarchy-theme-set-pi omarchy-theme-set-grok; do
   cat >"$mock_bin/$command" <<'SH'
 #!/bin/bash
 exit 0
