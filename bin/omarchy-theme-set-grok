@@ -6,17 +6,17 @@
 
 # Grok's only live external retint path is theme=auto + OS light/dark (the
 # system-appearance watcher). Writing an explicit [ui].theme only applies on
-# the next Grok start. So we set theme=auto, pick the closest built-in for
-# auto_dark_theme / auto_light_theme, and rely on theme-set-gnome flipping the
-# desktop color-scheme for live light↔dark.
+# the next Grok start. So when ~/.grok exists we set theme=auto, pick the
+# closest built-in for auto_dark_theme / auto_light_theme, and rely on
+# theme-set-gnome flipping the desktop color-scheme for live light↔dark.
 #
-# Opt-in: without --activate (or a prior activate), this is a no-op.
+# No-op when Grok is not installed (no $GROK_HOME directory). --activate is
+# kept for install/user/theme.sh and prints a one-time restart note.
 
 set -euo pipefail
 
 GROK_HOME="${GROK_HOME:-$HOME/.grok}"
 GROK_CONFIG_PATH="$GROK_HOME/config.toml"
-GROK_FOLLOW_FLAG="$HOME/.local/state/omarchy/grok-theme-follow"
 CURRENT_THEME_PATH="$HOME/.local/state/omarchy/current/theme"
 COLORS_FILE="$CURRENT_THEME_PATH/colors.toml"
 GROK_ACTIVATE=0
@@ -41,11 +41,14 @@ for arg in "$@"; do
   esac
 done
 
-if (( GROK_ACTIVATE == 0 )) && [[ ! -d $GROK_HOME ]]; then
-  exit 0
-fi
-
-if (( GROK_ACTIVATE == 0 )) && [[ ! -f $GROK_FOLLOW_FLAG ]]; then
+# Match Pi: only touch Grok when it is already present (unless forcing activate
+# so first-run setup can create config under an existing install path).
+if [[ ! -d $GROK_HOME ]]; then
+  if (( GROK_ACTIVATE == 1 )); then
+    echo "Grok config directory missing: $GROK_HOME" >&2
+    echo "Install Grok first, then re-run omarchy-theme-set-grok --activate." >&2
+    exit 1
+  fi
   exit 0
 fi
 
@@ -174,14 +177,6 @@ mode=$(omarchy-theme-color --file "$COLORS_FILE" mode)
 # theme=auto so running sessions follow OS light/dark (Omarchy sets that via GNOME).
 # auto_dark_theme carries the closest dark built-in for the current Omarchy slug.
 write_grok_ui_keys "auto" "$dark_theme" "$light_theme"
-
-effective="$dark_theme"
-if [[ $mode == "light" ]]; then
-  effective="$light_theme"
-fi
-
-mkdir -p "$(dirname "$GROK_FOLLOW_FLAG")"
-printf '%s\n' "$effective" >"$GROK_FOLLOW_FLAG"
 
 if (( GROK_ACTIVATE == 1 )); then
   echo "Grok will follow Omarchy light/dark (auto mode)."
