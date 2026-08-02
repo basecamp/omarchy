@@ -263,8 +263,13 @@ function formatPingLatency(ms, hasSamples) {
 
 function wifiRow(network) {
   if (!network) return null
+  // Primitives only: rows become list-model data for delegates, and holding
+  // the WifiNetwork QObject here puts a live QObject wrapper into every
+  // delegate's var property. When the NetworkManager model churns (scans,
+  // AP removals) the object can be destroyed while a delegate is still
+  // incubating, which segfaults quickshell (wrap_slowPath on a dangling
+  // wrapper). Callers that need the object look it up via networkFor().
   return {
-    network: network,
     connected: !!network.connected,
     known: !!network.known,
     ssid: network.name || "",

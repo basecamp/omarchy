@@ -41,6 +41,19 @@ Panel {
     hideSpeedTest()
   }
 
+  // Live WifiNetwork object for a row. Rows carry primitives only (see
+  // Model.wifiRow); actions that need the backend object resolve it here so
+  // delegates never hold QObject wrappers that can dangle mid-incubation.
+  function networkFor(row) {
+    if (!row) return null
+    var ssid = row.ssid || ""
+    var nets = wifiNetworkObjects
+    for (var i = 0; i < nets.length; i++) {
+      if ((nets[i].name || "") === ssid) return nets[i]
+    }
+    return null
+  }
+
   function cancelPasswordPrompt() {
     passwordSsid = ""
     passwordText = ""
@@ -458,7 +471,7 @@ Panel {
     var net = wifiNetworks[selectedIndex]
     if (!net) return
     if (wifiActionFocused && canForgetNetwork(net)) { forget(net); return }
-    if (net.connected) { disconnect(net.network); return }
+    if (net.connected) { disconnect(networkFor(net)); return }
     if (isProtected(net.security) && !net.known) { openPasswordPrompt(net.ssid); return }
     connectKnown(net.ssid)
   }
@@ -951,7 +964,7 @@ Panel {
   }
 
   function forget(net) {
-    runNetworkAction("forget", net ? net.network : null, function(network) { network.forget() })
+    runNetworkAction("forget", networkFor(net), function(network) { network.forget() })
   }
 
   implicitWidth: button.implicitWidth
@@ -1918,19 +1931,22 @@ Panel {
     }
 
     Connections {
-      target: row.net ? row.net.network : null
+      target: root.networkFor(row.net)
       function onConnectionFailed(reason) {
-        root.failNetworkAction(row.net.network, reason)
+        root.failNetworkAction(root.networkFor(row.net), reason)
         if (reason === ConnectionFailReason.NoSecrets) root.openPasswordPrompt(row.net.ssid)
       }
       function onConnectedChanged() {
-        if (row.net) root.checkActionCompletion(row.net.network)
+        var n = root.networkFor(row.net)
+        if (n) root.checkActionCompletion(n)
       }
       function onKnownChanged() {
-        if (row.net) root.checkActionCompletion(row.net.network)
+        var n = root.networkFor(row.net)
+        if (n) root.checkActionCompletion(n)
       }
       function onStateChangingChanged() {
-        if (row.net) root.checkActionCompletion(row.net.network)
+        var n = root.networkFor(row.net)
+        if (n) root.checkActionCompletion(n)
       }
     }
 
@@ -1979,7 +1995,7 @@ Panel {
         root.selectedIndex = row.index
         root.wifiActionFocused = false
         if (row.isConnected) {
-          root.disconnect(row.net.network)
+          root.disconnect(root.networkFor(row.net))
           return
         }
         if (row.isProtected && !row.isKnown) {
