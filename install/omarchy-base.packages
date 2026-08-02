@@ -42,7 +42,6 @@ fontconfig
 foot
 fzf
 git
-gnome-calculator
 gnome-keyring
 gnome-themes-extra
 grim
@@ -91,6 +90,7 @@ nss-mdns
 nvim
 obs-studio
 obsidian
+omacalc
 omacut
 omawrite
 omarchy-nvim

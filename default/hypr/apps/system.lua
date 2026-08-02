@@ -19,7 +19,7 @@ o.window({
 }, { tag = "+floating-window" })
 o.window("dev.tensaku.Tensaku", { float = true })
 o.window("dev.tensaku.Tensaku", { center = true })
-o.window("org.gnome.Calculator", { float = true })
+o.window("omacalc", { float = true })
 
 -- Fullscreen screensaver.
 o.window("org.omarchy.screensaver", { fullscreen = true })
