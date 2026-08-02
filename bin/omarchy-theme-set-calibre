@@ -9,6 +9,13 @@
 # ANSI alias (color1..color15), and the light/dark mode resolve identically
 # to every other theme consumer. Calibre's Qt palette needs fifteen roles;
 # the roles with no direct colors.toml mapping are derived with blend().
+#
+# Calibre only reads its palette at startup, and its shutdown handler saves
+# gprefs from memory back to disk. So applying a theme requires killing a
+# running Calibre before writing, then relaunching it. To avoid bouncing
+# Calibre when nothing changed (e.g. re-selecting the current theme), the
+# resolved palette is compared against the stored one first; if identical
+# the script exits without touching Calibre.
 
 omarchy-cmd-present calibre || exit 0
 
@@ -61,6 +68,44 @@ else
   placeholder=$(blend "$fg" 40 black)
 fi
 
+# The palette dict, built once and reused by both the change check and the write.
+PALETTE_PY="
+palette = {
+    'Window': '$bg',
+    'WindowText': '$fg',
+    'Base': '$bg',
+    'Text': '$fg',
+    'Button': '$bg',
+    'ButtonText': '$fg',
+    'BrightText': '$bright_text',
+    'Highlight': '$sel_bg',
+    'HighlightedText': '$sel_fg',
+    'Link': '$accent',
+    'LinkVisited': '$link_visited',
+    'AlternateBase': '$alt_base',
+    'ToolTipBase': '$alt_base',
+    'ToolTipText': '$fg',
+    'PlaceholderText': '$placeholder',
+}
+"
+
+# Skip kill/write/restart entirely when the stored palette already matches.
+if [[ $(calibre-debug -c "
+from calibre.gui2 import gprefs
+
+$PALETTE_PY
+
+current = gprefs.get('${palette_type}_palettes', {}).get('Omarchy')
+if (current == palette
+        and gprefs.get('${palette_type}_palette_name') == 'Omarchy'
+        and gprefs.get('color_palette') == '${palette_type}'):
+    print('UNCHANGED')
+else:
+    print('CHANGED')
+" 2>/dev/null) == "UNCHANGED" ]]; then
+  exit 0
+fi
+
 # Kill Calibre BEFORE writing so its shutdown doesn't overwrite our changes
 calibre_was_running=false
 calibre_workspace=""
@@ -81,23 +126,7 @@ fi
 calibre-debug -c "
 from calibre.gui2 import gprefs
 
-palette = {
-    'Window': '$bg',
-    'WindowText': '$fg',
-    'Base': '$bg',
-    'Text': '$fg',
-    'Button': '$bg',
-    'ButtonText': '$fg',
-    'BrightText': '$bright_text',
-    'Highlight': '$sel_bg',
-    'HighlightedText': '$sel_fg',
-    'Link': '$accent',
-    'LinkVisited': '$link_visited',
-    'AlternateBase': '$alt_base',
-    'ToolTipBase': '$alt_base',
-    'ToolTipText': '$fg',
-    'PlaceholderText': '$placeholder',
-}
+$PALETTE_PY
 
 palettes = gprefs['${palette_type}_palettes']
 palettes['Omarchy'] = palette
