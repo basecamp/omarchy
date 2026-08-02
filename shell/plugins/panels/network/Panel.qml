@@ -375,6 +375,9 @@ Panel {
       internetPingLatency = -1
       internetPingPacketLoss = 0
       if (wifiDevice) wifiDevice.scannerEnabled = false
+      // Don't let a deferred scan start after the panel is gone: it would
+      // flood the model while closed and stall the next open.
+      scanRestart.stop()
     }
   }
 
@@ -1205,7 +1208,13 @@ Panel {
 
     onPressed: function(b) {
       if (root.opened) root.close()
-      else { root.open(); root.refresh() }
+      else {
+        // open() alone refreshes: onOpenedChanged starts the status probes
+        // and defers the PHY scan past the first frame. A refresh() here
+        // would re-enable the scanner synchronously, undoing that deferral
+        // and stalling the open on NetworkManager's access-point flood.
+        root.open()
+      }
     }
   }
 
