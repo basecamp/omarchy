@@ -87,6 +87,24 @@ function sortedByLabel(devices) {
   return list
 }
 
+// Primitives-only projection of a BlueZ device for list-model rows.
+// Holding the Device QObject in model data puts a live wrapper into every
+// delegate's var property, and BlueZ churn (discovery timeouts, unpair)
+// can destroy the object while a delegate is still incubating, which
+// segfaults quickshell. Actions resolve the object via Panel.deviceFor().
+function deviceRow(d) {
+  if (!d) return null
+  return {
+    address: d.address || "",
+    name: d.name || "",
+    connected: !!d.connected,
+    state: d.state !== undefined ? d.state : -1,
+    batteryAvailable: !!d.batteryAvailable,
+    battery: d.battery !== undefined ? d.battery : 0,
+    pairing: !!d.pairing
+  }
+}
+
 function deviceLists(devices) {
   var values = toArray(devices)
   var connected = []
