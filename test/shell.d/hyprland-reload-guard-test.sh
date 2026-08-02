@@ -14,7 +14,9 @@ fake_hyprctl="$test_tmp/hyprctl"
 signature="test-signature"
 runtime_dir="$run_root/1000"
 
-mkdir -p "$runtime_dir/hypr/$signature"
+dead_signature="dead-signature"
+
+mkdir -p "$runtime_dir/hypr/$signature" "$runtime_dir/hypr/$dead_signature"
 
 cat >"$fake_hyprctl" <<'BASH'
 #!/bin/bash
@@ -22,6 +24,10 @@ cat >"$fake_hyprctl" <<'BASH'
 printf '%s\t%s\n' "$XDG_RUNTIME_DIR" "$*" >>"$FAKE_HYPRCTL_LOG"
 
 case "$*" in
+  *'--instance dead-signature '*)
+    printf "Couldn't connect to %s/hypr/dead-signature/.socket.sock. (4)\n" "$XDG_RUNTIME_DIR"
+    exit 4
+    ;;
   *'getoption misc.disable_autoreload'*)
     printf '{"option":"misc.disable_autoreload","bool":%s,"set":true}\n' "${FAKE_DISABLE_AUTORELOAD:-false}"
     ;;
@@ -39,7 +45,7 @@ FAKE_HYPRCTL_LOG="$hyprctl_log" \
   HYPRCTL="$fake_hyprctl" \
   OMARCHY_HYPRLAND_RELOAD_GUARD_RUN_ROOT="$run_root" \
   OMARCHY_HYPRLAND_RELOAD_GUARD_STATE_DIR="$state_dir" \
-  "$ROOT/bin/omarchy-hyprland-reload-guard" pause
+  "$ROOT/bin/omarchy-hyprland-reload-guard" pause 2>"$test_tmp/pause-stderr"
 
 state_file="$state_dir/$signature"
 [[ -f $state_file ]] || fail "reload guard stores Hyprland state on pause"
@@ -47,6 +53,10 @@ expected_state=$(printf '%s\tfalse\tfalse' "$runtime_dir")
 grep -Fx "$expected_state" "$state_file" >/dev/null || fail "reload guard records previous Hyprland reload settings"
 grep -F 'hl.config({ misc = { disable_autoreload = true }, debug = { suppress_errors = true } })' "$hyprctl_log" >/dev/null || fail "reload guard pauses autoreload with hyprctl eval"
 pass "reload guard pauses live Hyprland reloads"
+
+[[ ! -e $state_dir/$dead_signature ]] || fail "reload guard skips instances hyprctl cannot reach"
+[[ ! -s $test_tmp/pause-stderr ]] || fail "reload guard pauses dead Hyprland instances quietly" "$(cat "$test_tmp/pause-stderr")"
+pass "reload guard skips dead Hyprland instances quietly"
 
 : >"$hyprctl_log"
 FAKE_HYPRCTL_LOG="$hyprctl_log" \
