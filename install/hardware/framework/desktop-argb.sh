@@ -1,12 +1,10 @@
-# Install framework-system and configure passwordless sudo for framework_tool
-# on Framework Desktop. Required because framework_tool reads SMBIOS data
-# which needs root even for simple RGB fan control operations.
+# Install framework-system for Framework Desktop ARGB fan RGB control.
+#
+# framework_tool needs root to read SMBIOS data even for simple RGB fan
+# operations. Passwordless sudo for /usr/bin/framework_tool is shipped by
+# the omarchy-settings package via etc/sudoers.d/omarchy-framework-tool,
+# so existing installs pick it up on the next omarchy update.
 
 if omarchy-hw-framework-desktop; then
   omarchy-pkg-add framework-system
-
-  if [[ ! -f /etc/sudoers.d/framework-tool ]]; then
-    echo "$USER ALL=(ALL) NOPASSWD: /usr/bin/framework_tool" | sudo tee /etc/sudoers.d/framework-tool > /dev/null
-    sudo chmod 440 /etc/sudoers.d/framework-tool
-  fi
 fi

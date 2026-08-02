@@ -1,10 +1,17 @@
-echo "Install framework-system and configure sudoers for Framework Desktop ARGB fan control"
+echo "Install framework-system for Framework Desktop ARGB fan control"
 
 if omarchy-hw-framework-desktop; then
   omarchy-pkg-add framework-system
 
-  if [[ ! -f /etc/sudoers.d/framework-tool ]]; then
-    echo "$USER ALL=(ALL) NOPASSWD: /usr/bin/framework_tool" | sudo tee /etc/sudoers.d/framework-tool > /dev/null
-    sudo chmod 440 /etc/sudoers.d/framework-tool
+  # The passwordless sudo rule is shipped by the omarchy-settings package
+  # (etc/sudoers.d/omarchy-framework-tool). Clean up the legacy filename
+  # used by the initial implementation if it exists, and make sure the
+  # canonical rule is present for installs that have not updated the
+  # omarchy-settings package yet.
+  if [[ -f /etc/sudoers.d/framework-tool && ! -f /etc/sudoers.d/omarchy-framework-tool ]]; then
+    sudo mv /etc/sudoers.d/framework-tool /etc/sudoers.d/omarchy-framework-tool
+  elif [[ ! -f /etc/sudoers.d/omarchy-framework-tool ]]; then
+    echo "%wheel ALL=(ALL) NOPASSWD: /usr/bin/framework_tool" | sudo tee /etc/sudoers.d/omarchy-framework-tool > /dev/null
+    sudo chmod 440 /etc/sudoers.d/omarchy-framework-tool
   fi
 fi

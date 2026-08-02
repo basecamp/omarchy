@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Apply the current theme color to Framework Desktop ARGB fans
+# omarchy:hidden=true
+
 # Apply theme accent color to Framework Desktop ARGB fan via framework_tool.
 #
 # Color selection priority:
