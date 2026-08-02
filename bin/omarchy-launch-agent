@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# omarchy:summary=Launch the default coding agent in a terminal
+# omarchy:args=[prompt...]
+# omarchy:examples=omarchy launch agent | omarchy launch agent "Review this project"
+
+agent=$(omarchy-default-agent)
+
+if omarchy-cmd-missing "$agent"; then
+  if [[ -x $HOME/.local/bin/$agent ]]; then
+    export PATH="$HOME/.local/bin:$PATH"
+  else
+    echo "$agent is not installed. Choose an installed agent with: omarchy default agent <name>" >&2
+    exit 1
+  fi
+fi
+
+if (($# > 0)); then
+  prompt="$*"
+fi
+
+case "$agent" in
+opencode)
+  if [[ -n ${prompt:-} ]]; then
+    command=(opencode --prompt "$prompt")
+  else
+    command=(opencode)
+  fi
+  ;;
+gemini)
+  if [[ -n ${prompt:-} ]]; then
+    command=(gemini --prompt-interactive "$prompt")
+  else
+    command=(gemini)
+  fi
+  ;;
+copilot)
+  if [[ -n ${prompt:-} ]]; then
+    command=(copilot --interactive "$prompt")
+  else
+    command=(copilot)
+  fi
+  ;;
+pi | omp | claude | codex | grok)
+  command=("$agent")
+  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
+*)
+  echo "Unsupported default agent: $agent" >&2
+  exit 1
+  ;;
+esac
+
+exec omarchy-launch-tui "${command[@]}"

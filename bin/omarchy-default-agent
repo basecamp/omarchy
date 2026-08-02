@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# omarchy:summary=Set the default coding agent used by omarchy-launch-agent
+# omarchy:args=[pi|omp|opencode|claude|codex|grok|gemini|copilot]
+# omarchy:examples=omarchy default agent | omarchy default agent codex | omarchy default agent claude
+
+agent_file="$HOME/.local/state/omarchy/defaults/agent"
+
+if (($# == 0)); then
+  if [[ -f $agent_file ]]; then
+    read -r agent <"$agent_file"
+  fi
+
+  [[ -n $agent ]] && echo "$agent" || echo "opencode"
+  exit 0
+fi
+
+case "$1" in
+pi) agent="pi"; name="Pi" ;;
+omp | oh-my-pi) agent="omp"; name="Oh My Pi"; agent_package="oh-my-pi" ;;
+opencode | open-code) agent="opencode"; name="OpenCode" ;;
+claude | claude-code) agent="claude"; name="Claude Code" ;;
+codex) agent="codex"; name="Codex" ;;
+grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
+gemini | gemini-cli) agent="gemini"; name="Gemini" ;;
+copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
+*)
+  echo "Usage: omarchy-default-agent <pi|omp|opencode|claude|codex|grok|gemini|copilot>"
+  exit 1
+  ;;
+esac
+
+agent_package=${agent_package:-$agent}
+installing=false
+
+if ! mise where "$agent_package" &>/dev/null; then
+  installing=true
+  omarchy-notification-send -g 󰚩 "Installing $name with mise" "This might take a few minutes..."
+fi
+
+if ! mise use -g "$agent_package"; then
+  [[ $installing == "true" ]] && omarchy-notification-send -g 󰚩 "Could not install $name with mise"
+  exit 1
+fi
+
+mkdir -p "$(dirname "$agent_file")"
+printf '%s\n' "$agent" >"$agent_file"
+
+omarchy-notification-send -g 󰚩 "$name is now the default coding agent"

@@ -1,0 +1,219 @@
+#!/bin/bash
+
+set -euo pipefail
+
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
+
+test_tmp=$(mktemp -d)
+trap 'rm -rf "$test_tmp"' EXIT
+
+mock_bin="$test_tmp/bin"
+test_home="$test_tmp/home"
+notification_log="$test_tmp/notifications"
+notification_history="$test_tmp/notification-history"
+launch_log="$test_tmp/launch"
+mise_log="$test_tmp/mise"
+mise_history="$test_tmp/mise-history"
+stub_log="$test_tmp/stubs"
+mkdir -p "$mock_bin" "$test_home"
+
+cat >"$mock_bin/omarchy-notification-send" <<'SH'
+#!/bin/bash
+printf '%s\0' "$@" >"$OMARCHY_TEST_NOTIFICATION_LOG"
+printf '%s\0' "$@" >>"$OMARCHY_TEST_NOTIFICATION_HISTORY"
+SH
+
+cat >"$mock_bin/omarchy-cmd-missing" <<'SH'
+#!/bin/bash
+[[ $1 == ${OMARCHY_TEST_MISSING_COMMAND:-} ]]
+SH
+
+cat >"$mock_bin/omarchy-launch-tui" <<'SH'
+#!/bin/bash
+printf '%s\0' "$@" >"$OMARCHY_TEST_AGENT_LAUNCH_LOG"
+SH
+
+cat >"$mock_bin/omarchy-mise-install" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >>"$OMARCHY_TEST_STUB_LOG"
+SH
+
+cat >"$mock_bin/mise" <<'SH'
+#!/bin/bash
+printf '%s\0' "$@" >"$OMARCHY_TEST_MISE_LOG"
+printf '%s\n' "$*" >>"$OMARCHY_TEST_MISE_HISTORY"
+
+if [[ $1 == "where" ]]; then
+  [[ ${OMARCHY_TEST_AGENT_INSTALLED:-false} == "true" ]]
+  exit
+fi
+
+[[ ${OMARCHY_TEST_MISE_FAIL:-false} != "true" ]]
+SH
+
+chmod +x "$mock_bin"/*
+
+export HOME="$test_home"
+export PATH="$mock_bin:$ROOT/bin:$PATH"
+export OMARCHY_TEST_NOTIFICATION_LOG="$notification_log"
+export OMARCHY_TEST_NOTIFICATION_HISTORY="$notification_history"
+export OMARCHY_TEST_AGENT_LAUNCH_LOG="$launch_log"
+export OMARCHY_TEST_MISE_LOG="$mise_log"
+export OMARCHY_TEST_MISE_HISTORY="$mise_history"
+export OMARCHY_TEST_STUB_LOG="$stub_log"
+
+grok_package="npm:@xai-official/grok"
+omp_package="oh-my-pi"
+
+assert_lazy_stub() {
+  local package=$1
+  local command=$2
+
+  : >"$mise_history"
+  "$ROOT/bin/omarchy-mise-install" "$package" "$command"
+  "$test_home/.local/bin/$command" --version
+  mapfile -t mise_calls <"$mise_history"
+
+  [[ ${mise_calls[0]} == "use -g $package" && ${mise_calls[1]} == "x $package -- $command --version" ]] ||
+    fail "$command lazy stub preserves its mise package"
+}
+
+assert_lazy_stub "$grok_package" grok
+assert_lazy_stub "$omp_package" omp
+pass "custom agent lazy stubs preserve their mise packages"
+
+source "$ROOT/install/user/mise.sh"
+grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates the Grok lazy stub"
+grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
+pass "user setup creates the custom agent lazy stubs"
+
+[[ $(omarchy-default-agent) == "opencode" ]] || fail "default agent falls back to OpenCode"
+pass "default agent falls back to OpenCode"
+
+declare -A expected_agents=(
+  [pi]="pi"
+  [omp]="omp"
+  [oh-my-pi]="omp"
+  [opencode]="opencode"
+  [open-code]="opencode"
+  [claude]="claude"
+  [claude-code]="claude"
+  [codex]="codex"
+  [grok]="grok"
+  [gemini]="gemini"
+  [gemini-cli]="gemini"
+  [copilot]="copilot"
+  [github-copilot]="copilot"
+)
+
+declare -A expected_packages=(
+  [pi]="pi"
+  [omp]="$omp_package"
+  [opencode]="opencode"
+  [claude]="claude"
+  [codex]="codex"
+  [grok]="$grok_package"
+  [gemini]="gemini"
+  [copilot]="copilot"
+)
+
+for selection in "${!expected_agents[@]}"; do
+  expected=${expected_agents[$selection]}
+  omarchy-default-agent "$selection"
+  [[ $(omarchy-default-agent) == $expected ]] || fail "default agent canonicalizes $selection"
+
+  mapfile -d '' -t mise_args <"$mise_log"
+  [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
+    fail "default agent installs $selection globally through mise"
+done
+pass "default agent installs and accepts every supported provider and alias"
+
+: >"$notification_history"
+omarchy-default-agent github-copilot
+mapfile -d '' -t notification_args <"$notification_log"
+[[ ${notification_args[0]} == "-g" && ${notification_args[2]} == "GitHub Copilot is now the default coding agent" ]] ||
+  fail "default agent sends a selection notification"
+mapfile -d '' -t notification_history_args <"$notification_history"
+[[ ${notification_history_args[2]} == "Installing GitHub Copilot with mise" && ${notification_history_args[3]} == "This might take a few minutes..." ]] ||
+  fail "default agent describes how long installation might take"
+pass "default agent sends installation and selection notifications"
+
+: >"$notification_history"
+OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent github-copilot
+mapfile -d '' -t notification_history_args <"$notification_history"
+[[ ${#notification_history_args[@]} == 3 && ${notification_history_args[2]} == "GitHub Copilot is now the default coding agent" ]] ||
+  fail "default agent skips installation notifications when the provider is already installed"
+mapfile -d '' -t mise_args <"$mise_log"
+[[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == "copilot" ]] ||
+  fail "default agent still activates an installed provider globally through mise"
+pass "default agent only sends installation notifications for missing providers"
+
+if omarchy-default-agent unsupported >"$test_tmp/invalid-output" 2>&1; then
+  fail "default agent rejects unsupported providers"
+fi
+grep -F "Usage: omarchy-default-agent" "$test_tmp/invalid-output" >/dev/null ||
+  fail "default agent explains supported providers"
+[[ $(omarchy-default-agent) == "copilot" ]] || fail "invalid selection preserves the current default agent"
+pass "default agent rejects unsupported providers without changing the selection"
+
+if OMARCHY_TEST_MISE_FAIL=true omarchy-default-agent codex >"$test_tmp/install-failure-output" 2>&1; then
+  fail "default agent rejects a failed mise installation"
+fi
+[[ $(omarchy-default-agent) == "copilot" ]] || fail "failed installation preserves the current default agent"
+mapfile -d '' -t notification_args <"$notification_log"
+[[ ${notification_args[2]} == "Could not install Codex with mise" ]] ||
+  fail "default agent reports a failed mise installation"
+pass "default agent changes selection only after mise installs the provider"
+
+assert_launch() {
+  local agent=$1
+  shift
+  local expected=("$@")
+
+  printf '%s\n' "$agent" >"$test_home/.local/state/omarchy/defaults/agent"
+  omarchy-launch-agent "Review this" project
+  mapfile -d '' -t actual <"$launch_log"
+
+  (( ${#actual[@]} == ${#expected[@]} )) ||
+    fail "$agent launch has the expected argument count" "expected: ${expected[*]}\nactual: ${actual[*]}"
+
+  for ((index = 0; index < ${#expected[@]}; index++)); do
+    [[ ${actual[$index]} == ${expected[$index]} ]] ||
+      fail "$agent launch forwards the interactive prompt" "expected: ${expected[*]}\nactual: ${actual[*]}"
+  done
+}
+
+assert_launch pi pi -- "Review this project"
+assert_launch omp omp -- "Review this project"
+assert_launch opencode opencode --prompt "Review this project"
+assert_launch claude claude -- "Review this project"
+assert_launch codex codex -- "Review this project"
+assert_launch grok grok -- "Review this project"
+assert_launch gemini gemini --prompt-interactive "Review this project"
+assert_launch copilot copilot --interactive "Review this project"
+pass "agent launcher adapts initial prompts for every supported agent"
+
+mkdir -p "$test_home/.local/bin"
+touch "$test_home/.local/bin/gemini"
+chmod +x "$test_home/.local/bin/gemini"
+printf '%s\n' "gemini" >"$test_home/.local/state/omarchy/defaults/agent"
+OMARCHY_TEST_MISSING_COMMAND=gemini omarchy-launch-agent "Review this project"
+mapfile -d '' -t launch_args <"$launch_log"
+[[ ${launch_args[0]} == "gemini" && ${launch_args[1]} == "--prompt-interactive" ]] ||
+  fail "agent launcher finds a lazy wrapper outside the session PATH"
+pass "agent launcher finds lazy wrappers outside the session PATH"
+
+printf '%s\n' "opencode" >"$test_home/.local/state/omarchy/defaults/agent"
+omarchy-launch-agent
+mapfile -d '' -t launch_args <"$launch_log"
+[[ ${#launch_args[@]} == 1 && ${launch_args[0]} == "opencode" ]] ||
+  fail "agent launcher starts the selected agent without an initial prompt"
+pass "agent launcher starts the selected agent without an initial prompt"
+
+printf '%s\n' "missing" >"$test_home/.local/state/omarchy/defaults/agent"
+if OMARCHY_TEST_MISSING_COMMAND=missing omarchy-launch-agent >"$test_tmp/missing-output" 2>&1; then
+  fail "agent launcher rejects a missing default command"
+fi
+grep -F "missing is not installed" "$test_tmp/missing-output" >/dev/null ||
+  fail "agent launcher explains when the default command is missing"
+pass "agent launcher reports a missing default command"

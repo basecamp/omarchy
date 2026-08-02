@@ -168,6 +168,16 @@ assertEqual(
   'menu lists Direct Boot immediately below Input'
 )
 assert(
+  ['pi', 'omp', 'opencode', 'claude', 'codex', 'grok', 'gemini', 'copilot'].every(agent => {
+    const entry = defaultById[`setup.default.agent.${agent}`]
+    return entry
+      && entry.action === `omarchy-default-agent ${agent}`
+      && !entry.when
+      && entry.checked.includes(`== \"${agent}\"`)
+  }),
+  'menu exposes every mise-installable coding agent under Defaults > Agent'
+)
+assert(
   defaultById['setup.security.passwordless-sudo'].action.includes('omarchy-sudo-passwordless'),
   'menu places Passwordless Sudo under Setup > Security'
 )
