@@ -6,6 +6,7 @@ hl.on("hyprland.start", function()
   hl.exec_cmd("quickshell -n -p $OMARCHY_PATH/shell")
   hl.exec_cmd("omarchy-first-run")
   hl.exec_cmd("omarchy-powerprofiles-init")
+  hl.exec_cmd("omarchy-theme-set-fan")
   hl.exec_cmd(o.launch("omarchy-hyprland-monitor-watch"))
   hl.exec_cmd(o.launch("udiskie --automount --no-notify --no-tray"))
 
