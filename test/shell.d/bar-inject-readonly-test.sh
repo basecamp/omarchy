@@ -13,6 +13,7 @@ test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 
 cp "$SHELL_TEST_DIR/fixtures/bar-inject-readonly/shell.qml" "$test_tmp/shell.qml"
+cp "$ROOT/shell/plugins/bar/BarModel.js" "$test_tmp/BarModel.js"
 
 output=$(timeout 15 quickshell -p "$test_tmp" --no-color 2>&1) || {
   printf '%s\n' "$output" >&2
