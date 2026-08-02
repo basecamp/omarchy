@@ -237,6 +237,31 @@ function pingLatencyState(previous, next, limit, averageLimit) {
   }
 }
 
+// Display-only refresh for a payload that carries no ping observations (a
+// verbose status). The decoupled ping probe already appended its sample; this
+// redisplays the existing window instead of re-appending (which would double
+// count the same probe and bias the average / loss histogram). The window is
+// still cleared when the interface changes, since the old samples no longer
+// describe the new link.
+function pingLatencyDisplay(previous, iface, limit, averageLimit) {
+  var prev = previous || {}
+  var window = Math.max(1, parseInt(limit, 10) || 5)
+  var averageWindow = Math.max(1, parseInt(averageLimit, 10) || window)
+  var normalizedIface = String(iface || "")
+  var reset = normalizedIface === "" || normalizedIface !== (prev.pingIface || "")
+  var routerSamples = reset ? [] : (Array.isArray(prev.routerPingSamples) ? prev.routerPingSamples.slice() : [])
+  var internetSamples = reset ? [] : (Array.isArray(prev.internetPingSamples) ? prev.internetPingSamples.slice() : [])
+
+  return {
+    pingIface: normalizedIface,
+    routerPingSamples: routerSamples,
+    internetPingSamples: internetSamples,
+    routerPingLatency: averagePingLatency(routerSamples, averageWindow),
+    internetPingLatency: averagePingLatency(internetSamples, averageWindow),
+    internetPingPacketLoss: pingPacketLossPercent(internetSamples)
+  }
+}
+
 function formatBytes(bytes) {
   var n = Number(bytes)
   if (!isFinite(n) || n < 0) n = 0
@@ -357,6 +382,7 @@ if (typeof module !== "undefined") {
     parseKeyValue: parseKeyValue,
     throughputState: throughputState,
     pingLatencyState: pingLatencyState,
+    pingLatencyDisplay: pingLatencyDisplay,
     pingPacketLossPercent: pingPacketLossPercent,
     formatPacketLoss: formatPacketLoss,
     formatBytes: formatBytes,

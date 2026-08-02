@@ -83,6 +83,24 @@ assertDeepEqual(
   'network clears ping samples when a target is unavailable'
 )
 
+// A verbose status refresh carries no new ping observation; it must redisplay
+// the existing window rather than re-append (which would double count a probe).
+const stablePing = network.pingLatencyState(
+  { pingIface: '', routerPingSamples: [], internetPingSamples: [] },
+  { iface: 'wlan0', router_ping_ms: '2.0', internet_ping_ms: '20.0' },
+  4
+)
+assertDeepEqual(
+  network.pingLatencyDisplay(stablePing, 'wlan0', 4),
+  { pingIface: 'wlan0', routerPingSamples: [2], internetPingSamples: [20], routerPingLatency: 2, internetPingLatency: 20, internetPingPacketLoss: 0 },
+  'network redisplays the ping window on a verbose refresh without adding a sample'
+)
+assertDeepEqual(
+  network.pingLatencyDisplay(stablePing, '', 4),
+  { pingIface: '', routerPingSamples: [], internetPingSamples: [], routerPingLatency: -1, internetPingLatency: -1, internetPingPacketLoss: 0 },
+  'network clears the ping display when the interface drops'
+)
+
 assertEqual(network.formatBytes(1536), '1.5 KB', 'network formats bytes')
 assertEqual(network.formatRate(1536), '1.5 KB/s', 'network formats rates')
 assertEqual(network.formatPingLatency('2.54'), '2.5 ms', 'network formats low ping with precision')
@@ -104,6 +122,16 @@ const rows = network.sortWifiRows([
 assertDeepEqual(rows.map(row => row.ssid), ['Connected', 'Known', 'Open'], 'network sorts wifi rows by connection and known state')
 assertEqual(network.wifiSectionTitle(rows, 0), 'KNOWN NETWORKS', 'network labels known wifi section')
 assertEqual(network.wifiSectionTitle(rows, 2), 'OTHER NETWORKS', 'network labels other wifi section')
+
+const netObj = { connected: true, known: true, name: 'Home', signalStrength: 0.8, security: 1 }
+const wifiRow = network.wifiRow(netObj)
+assertDeepEqual(
+  wifiRow,
+  { connected: true, known: true, ssid: 'Home', signal: 80, security: 1 },
+  'network projects wifi rows with primitives so delegates never hold the live WifiNetwork object'
+)
+assert(wifiRow.netObj === undefined && wifiRow.network === undefined, 'network wifi rows carry no reference to the source WifiNetwork object')
+assertDeepEqual(Object.keys(wifiRow).sort(), ['connected', 'known', 'security', 'signal', 'ssid'], 'network wifi rows project exactly the primitive fields, so each delegate stores no live QObject')
 
 assertDeepEqual(
   network.parseQrMatrix('010\n111\n010\n'),

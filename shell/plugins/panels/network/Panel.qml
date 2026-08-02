@@ -394,6 +394,10 @@ Panel {
       // Don't let a deferred scan start after the panel is gone: it would
       // flood the model while closed and stall the next open.
       scanRestart.stop()
+      // The scan may already have started (deferred start fired while open);
+      // cancel its completion timer too, or the stale deadline would rebuild
+      // the closed panel and disable the next scan on a quick reopen.
+      scanDone.stop()
       // Terminate in-flight status probes. A --ping child can outlive the
       // dropdown by ~200ms and a DNS check by far more on a slow resolver;
       // the stream handlers ignore whatever output arrives after the
@@ -465,7 +469,13 @@ Panel {
     // from scratch anyway, so drop them outright.
     if (!root.opened) return
     if (wifiListDebounce.running) wifiListDebounce.restart()
-    else syncWifiNetworks()
+    else {
+      syncWifiNetworks()
+      // Arm the debounce after the first (immediate) sync so the rest of a
+      // scan's access-point flood coalesces into a single trailing rebuild
+      // instead of each emission taking the else branch above.
+      wifiListDebounce.start()
+    }
   }
 
   function selectByDelta(delta) {
@@ -661,14 +671,20 @@ Panel {
     info = next
     root.lastStatusRaw = raw
     updateThroughput(next)
-    // Verbose payloads carry no ping keys; stitch the last probe back on so
-    // the sample window and the packet-loss histogram survive the refresh.
-    if (next.router_ping_ms === undefined && next.internet_ping_ms === undefined) {
-      var lastPing = Model.parseKeyValue(root.lastPingRaw)
-      if (lastPing.router_ping_ms !== undefined) next.router_ping_ms = lastPing.router_ping_ms
-      if (lastPing.internet_ping_ms !== undefined) next.internet_ping_ms = lastPing.internet_ping_ms
-    }
-    updatePingLatency(next)
+    // Verbose payloads carry no ping observations; the decoupled ping probe
+    // already appended its own sample, so re-publishing through
+    // updatePingLatency() would count the same probe twice (biasing both the
+    // average and the packet-loss histogram). Redisplays the existing window
+    // instead; only an interface change clears it.
+    updatePingLatency(displayPingLatency(next.iface))
+  }
+
+  function displayPingLatency(iface) {
+    return Model.pingLatencyDisplay({
+      pingIface: pingIface,
+      routerPingSamples: routerPingSamples,
+      internetPingSamples: internetPingSamples
+    }, iface, pingHistoryWindow, pingAverageWindow)
   }
 
   function updateThroughput(next) {

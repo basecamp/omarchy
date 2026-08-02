@@ -97,6 +97,7 @@ function deviceRow(d) {
   return {
     address: d.address || "",
     name: d.name || "",
+    deviceName: d.deviceName || "",
     connected: !!d.connected,
     state: d.state !== undefined ? d.state : -1,
     batteryAvailable: !!d.batteryAvailable,
@@ -172,6 +173,7 @@ if (typeof module !== "undefined") {
     nodeText: nodeText,
     bluetoothSinkMatchesDevice: bluetoothSinkMatchesDevice,
     sortedByLabel: sortedByLabel,
+    deviceRow: deviceRow,
     deviceLists: deviceLists,
     cloneMap: cloneMap,
     pendingAction: pendingAction,
