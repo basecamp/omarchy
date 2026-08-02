@@ -13,10 +13,7 @@
 # (~/.config/omarchy/fan-colors/calibration.conf). Override files are user-tuned
 # for the hardware and are applied directly without calibration.
 
-# Inline hardware detection (no external hw script dependency)
-vendor=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null)
-product=$(cat /sys/class/dmi/id/product_name 2>/dev/null)
-if [[ "$vendor" != "Framework" ]] || ! grep -q "Desktop" <<< "$product"; then
+if ! omarchy-hw-framework-desktop; then
   exit 0
 fi
 
@@ -61,11 +58,19 @@ THEME_FILE="$HOME/.local/state/omarchy/current/theme/framework-desktop-fan.rgb"
 if [[ -f "$OVERRIDE_FILE" ]]; then
   mapfile -t colors < "$OVERRIDE_FILE"
 
-  # Pad with first color if fewer than 8 provided
-  while [[ ${#colors[@]} -lt 8 ]]; do
-    colors+=("${colors[0]}")
-  done
+  # Empty override file: fall through to the theme color below
+  if (( ${#colors[@]} < 1 )); then
+    colors=()
+  else
+    # Pad with first color if fewer than 8 provided
+    while (( ${#colors[@]} < 8 )); do
+      colors+=("${colors[0]}")
+    done
+  fi
+fi
 
+# Apply the override if it produced any colors
+if (( ${#colors[@]} >= 1 )); then
   # Convert to 0x prefix (no calibration — override files are hardware-tuned)
   for i in {0..7}; do
     colors[$i]=${colors[$i]//#/0x}

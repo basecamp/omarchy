@@ -10,7 +10,7 @@ install_script="$ROOT/install/hardware/framework/desktop-argb.sh"
 migration="$ROOT/migrations/1785698076.sh"
 sudoers_file="$ROOT/etc/sudoers.d/omarchy-framework-tool"
 
-grep -F '%wheel ALL=(ALL) NOPASSWD: /usr/bin/framework_tool' "$sudoers_file" >/dev/null ||
+grep -F '%wheel ALL=(root) NOPASSWD: /usr/bin/framework_tool' "$sudoers_file" >/dev/null ||
   fail "sudoers rule allows passwordless framework_tool"
 
 grep -F 'omarchy-pkg-add framework-system' "$install_script" >/dev/null ||
