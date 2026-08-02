@@ -72,7 +72,13 @@ PanelWindow {
   }
 
   function beginFocusPrime() {
-    if (open && backingWindowVisible) focusPrimeTimer.restart()
+    if (!open || !backingWindowVisible || focusPrimed) return
+    // Keep the Exclusive phase short but spanning multiple Qt/Wayland
+    // commit cycles: Hyprland grants Exclusive focus to an already-mapped
+    // surface on commit, but OnDemand does not take focus without a new
+    // map, so flipping in the same batch would lose keyboard ownership on
+    // fade-out reopens. 40ms is imperceptible and costs nothing ongoing.
+    focusPrimeTimer.restart()
   }
 
   // --- screen + lifetime ---------------------------------------------------
@@ -250,11 +256,7 @@ PanelWindow {
 
   Timer {
     id: focusPrimeTimer
-    // Leave enough time for multiple Qt/Wayland commit cycles after the
-    // backing window becomes visible while keeping the compositor-wide
-    // Exclusive phase imperceptibly short. This interval is covered by the
-    // immediate hide/re-summon acceptance case.
-    interval: 75
+    interval: 40
     onTriggered: if (root.open) root.focusPrimed = true
   }
 
