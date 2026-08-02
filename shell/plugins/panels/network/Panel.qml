@@ -17,6 +17,21 @@ Panel {
   manageIpc: false
 
   // Centralized close so callers can't forget to drop the passphrase prompt.
+  readonly property bool overlayVisible: qrVisible || speedTestModalOpen
+
+  // Shadows the base open(): a summon or toggle while a centered card is up
+  // dismisses the card instead of opening the compact panel behind an
+  // exclusive overlay. The base toggle() dispatches here, so the keybind,
+  // the bar icon, and every IPC route all get this behavior.
+  function open() {
+    if (overlayVisible) {
+      hideWifiQr()
+      hideSpeedTest()
+      return
+    }
+    root.controller.show()
+  }
+
   function close() {
     root.controller.hide()
     cancelPasswordPrompt()
@@ -89,6 +104,7 @@ Panel {
   property bool speedTestRunning: false
   property bool speedTestModalOpen: false
   property bool speedTestExpectedStop: false
+  property bool pendingSpeedRun: false
   property string speedTestPhase: ""
   property string speedTestStderr: ""
   property string speedTestDownloadMbps: ""
@@ -115,6 +131,8 @@ Panel {
   property string qrError: ""
   property bool qrLoading: false
   property bool qrExpectedStop: false
+  property bool pendingQrShow: false
+  property bool pendingQrDetect: false
   property string qrPassword: ""
   property bool qrPasswordVisible: false
   property string qrPasswordError: ""
@@ -233,7 +251,10 @@ Panel {
       root.refresh()
       root.showWifiQr(true)
     }
-    function speedTest() { root.showSpeedTest() }
+    function speedTest() {
+      root.refresh()
+      root.showSpeedTest()
+    }
   }
 
   function activateHeader() {
@@ -437,7 +458,15 @@ Panel {
   readonly property string icon: Model.connectionIcon(kind, signalStrength)
 
   function showWifiQr(forceDetect) {
-    if (qrProc.running) return
+    if (qrProc.running) {
+      // A dismissal's SIGTERM is still in flight; Process.running stays true
+      // until the child exits, so queue the reopen for onExited.
+      if (qrExpectedStop) {
+        pendingQrShow = true
+        pendingQrDetect = !!forceDetect
+      }
+      return
+    }
     qrSize = 0
     qrRows = []
     qrError = ""
@@ -457,6 +486,7 @@ Panel {
   }
 
   function hideWifiQr() {
+    pendingQrShow = false
     if (qrProc.running) {
       qrExpectedStop = true
       qrProc.running = false
@@ -684,6 +714,7 @@ Panel {
 
   function hideSpeedTest() {
     speedTestModalOpen = false
+    pendingSpeedRun = false
     speedTestPhaseTimer.stop()
     // Clear the phase before killing the process: onExited advances to the
     // upload phase when it still reads "down".
@@ -696,7 +727,12 @@ Panel {
   }
 
   function runSpeedTest() {
-    if (speedTestProc.running) return
+    if (speedTestProc.running) {
+      // A dismissal's SIGTERM is still in flight; Process.running stays true
+      // until the child exits, so queue the fresh run for onExited.
+      if (speedTestExpectedStop) pendingSpeedRun = true
+      return
+    }
     speedTestError = ""
     speedTestDownloadMbps = ""
     speedTestUploadMbps = ""
@@ -919,6 +955,12 @@ Panel {
     }
     onExited: function(exitCode) {
       root.qrLoading = false
+      if (root.pendingQrShow) {
+        root.pendingQrShow = false
+        root.qrExpectedStop = false
+        Qt.callLater(function() { root.showWifiQr(root.pendingQrDetect) })
+        return
+      }
       if (root.qrExpectedStop) return
       if (exitCode !== 0 || root.qrSize === 0) {
         root.qrSize = 0
@@ -984,6 +1026,13 @@ Panel {
     }
     onExited: function(exitCode) {
       speedTestPhaseTimer.stop()
+
+      if (root.pendingSpeedRun) {
+        root.pendingSpeedRun = false
+        root.speedTestExpectedStop = false
+        if (root.speedTestModalOpen) Qt.callLater(root.runSpeedTest)
+        return
+      }
 
       if (!root.speedTestExpectedStop && exitCode !== 0) {
         root.speedTestError = root.speedTestStderr || "Speed test failed"
