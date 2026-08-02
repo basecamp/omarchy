@@ -11,7 +11,7 @@ if omarchy-hw-framework-desktop; then
   if [[ -f /etc/sudoers.d/framework-tool && ! -f /etc/sudoers.d/omarchy-framework-tool ]]; then
     sudo mv /etc/sudoers.d/framework-tool /etc/sudoers.d/omarchy-framework-tool
   elif [[ ! -f /etc/sudoers.d/omarchy-framework-tool ]]; then
-    echo "%wheel ALL=(root) NOPASSWD: /usr/bin/framework_tool" | sudo tee /etc/sudoers.d/omarchy-framework-tool > /dev/null
+    echo "%wheel ALL=(root) NOPASSWD: /usr/bin/omarchy-framework-tool-rgb" | sudo tee /etc/sudoers.d/omarchy-framework-tool > /dev/null
     sudo chmod 440 /etc/sudoers.d/omarchy-framework-tool
   fi
 fi

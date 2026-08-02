@@ -76,7 +76,7 @@ if (( ${#colors[@]} >= 1 )); then
     colors[$i]=${colors[$i]//#/0x}
   done
 
-  sudo framework_tool --rgbkbd 0 \
+  sudo omarchy-framework-tool-rgb --rgbkbd 0 \
     "${colors[0]}" "${colors[1]}" "${colors[2]}" "${colors[3]}" \
     "${colors[4]}" "${colors[5]}" "${colors[6]}" "${colors[7]}" \
     2>/dev/null || true
@@ -88,5 +88,5 @@ if [[ -f "$THEME_FILE" ]]; then
   color=$(cat "$THEME_FILE")
   color=$(calibrate_color "$color")
   color=${color//#/0x}
-  sudo framework_tool --rgbkbd 0 "$color" "$color" "$color" "$color" "$color" "$color" "$color" "$color" 2>/dev/null || true
+  sudo omarchy-framework-tool-rgb --rgbkbd 0 "$color" "$color" "$color" "$color" "$color" "$color" "$color" "$color" 2>/dev/null || true
 fi

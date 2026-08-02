@@ -1,1 +1,1 @@
-%wheel ALL=(root) NOPASSWD: /usr/bin/framework_tool
+%wheel ALL=(root) NOPASSWD: /usr/bin/omarchy-framework-tool-rgb
