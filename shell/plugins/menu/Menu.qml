@@ -948,8 +948,15 @@ Item {
 
   property var whenResults: ({})       // id → true|false (allow visibility)
   property var checkedResults: ({})    // id → true|false (show ✓)
+  property bool guardEvaluationPending: false
 
   function evaluateGuards() {
+    if (guardProc.running) {
+      root.guardEvaluationPending = true
+      return
+    }
+    root.guardEvaluationPending = false
+
     var script = ""
     var ids = Object.keys(root.items)
     for (var i = 0; i < ids.length; i++) {
@@ -964,7 +971,7 @@ Item {
       return
     }
     guardProc.collected = ""
-    guardProc.command = ["bash", "-lc", script]
+    guardProc.command = ["bash", "-c", script]
     guardProc.running = true
   }
 
@@ -977,6 +984,9 @@ Item {
     onExited: {
       var nextWhen = ({})
       var nextChecked = ({})
+      for (var k in root.whenResults) nextWhen[k] = root.whenResults[k]
+      for (var k2 in root.checkedResults) nextChecked[k2] = root.checkedResults[k2]
+
       var lines = guardProc.collected.split("\n")
       for (var i = 0; i < lines.length; i++) {
         var line = lines[i].trim()
@@ -995,6 +1005,10 @@ Item {
       root.whenResults = nextWhen
       root.checkedResults = nextChecked
       if (root.opened) root.rebuildDisplay()
+
+      if (root.guardEvaluationPending) {
+        Qt.callLater(root.evaluateGuards)
+      }
     }
   }
   PanelWindow {
