@@ -152,9 +152,14 @@ assert(
 const flatpakFallback = appLibraryQml.match(/XDG_DATA_DIRS:-([^};]+)/)
 assert(flatpakFallback, 'app library declares a flatpak-aware XDG_DATA_DIRS fallback')
 const fallbackDirs = (flatpakFallback && flatpakFallback[1]) ? flatpakFallback[1].split(':').filter(Boolean) : []
+const userFlatpakDirIndex = fallbackDirs.indexOf('$HOME/.local/share/flatpak/exports/share')
+const systemFlatpakDirIndex = fallbackDirs.indexOf('/var/lib/flatpak/exports/share')
+const standardDirOffset = fallbackDirs.findIndex(d => d.endsWith('/usr/local/share') || d.endsWith('/usr/share'))
 assert(
-  fallbackDirs.join('').indexOf('$HOME/.local/share/flatpak/exports/share') < fallbackDirs.join('').indexOf('/var/lib/flatpak/exports/share') &&
-    fallbackDirs.join('').indexOf('$HOME/.local/share/flatpak/exports/share') < fallbackDirs.join('').indexOf('local/share'),
+  userFlatpakDirIndex > -1 &&
+    systemFlatpakDirIndex > -1 &&
+    userFlatpakDirIndex < systemFlatpakDirIndex &&
+    userFlatpakDirIndex < standardDirOffset,
   'app library keeps user flatpak exports before system flatpak and standard dirs so a user install wins over a duplicate system id'
 )
 assert(
