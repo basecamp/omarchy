@@ -673,10 +673,22 @@ Panel {
     updateThroughput(next)
     // Verbose payloads carry no ping observations; the decoupled ping probe
     // already appended its own sample, so re-publishing through
-    // updatePingLatency() would count the same probe twice (biasing both the
-    // average and the packet-loss histogram). Redisplays the existing window
-    // instead; only an interface change clears it.
-    updatePingLatency(displayPingLatency(next.iface))
+    // updatePingLatency() would append the same probe twice (biasing both the
+    // average and the per-packet-loss histogram). Redisplays the existing window
+    // instead; only an interface change clears it. The display output is final
+    // state (samples + aggregates), so it is applied directly rather than fed
+    // back through pingLatencyState(), which would read its payload-style keys
+    // (iface/router_ping_ms) as absent and blank the window.
+    root.applyPingLatencyState(displayPingLatency(next.iface))
+  }
+
+  function applyPingLatencyState(state) {
+    pingIface = state.pingIface
+    routerPingSamples = state.routerPingSamples
+    internetPingSamples = state.internetPingSamples
+    routerPingLatency = state.routerPingLatency
+    internetPingLatency = state.internetPingLatency
+    internetPingPacketLoss = state.internetPingPacketLoss
   }
 
   function displayPingLatency(iface) {
@@ -712,12 +724,7 @@ Panel {
       internetPingSamples: internetPingSamples
     }, next, pingHistoryWindow, pingAverageWindow)
 
-    pingIface = state.pingIface
-    routerPingSamples = state.routerPingSamples
-    internetPingSamples = state.internetPingSamples
-    routerPingLatency = state.routerPingLatency
-    internetPingLatency = state.internetPingLatency
-    internetPingPacketLoss = state.internetPingPacketLoss
+    applyPingLatencyState(state)
   }
 
   function formatBytes(bytes) {

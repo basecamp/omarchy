@@ -101,6 +101,20 @@ assertDeepEqual(
   'network clears the ping display when the interface drops'
 )
 
+// The verbose status path must not feed the display state (which carries no
+// payload-style iface/router_ping_ms keys) back through pingLatencyState(): it
+// would read an empty interface, reset the window, and blank the latency rows
+// on every refresh. The display output is final state and must be applied
+// directly.
+assert(
+  /updateThroughput\(next\)[\s\S]*?applyPingLatencyState\(displayPingLatency\(next\.iface\)\)/.test(panelSource),
+  'network applies the ping display state directly on a verbose refresh instead of round-tripping it through pingLatencyState'
+)
+assert(
+  /function applyPingLatencyState\(state\) \{[\s\S]*?internetPingPacketLoss = state\.internetPingPacketLoss[\s\S]*?\}/.test(panelSource),
+  'network applies the completed ping state fields through a single helper'
+)
+
 assertEqual(network.formatBytes(1536), '1.5 KB', 'network formats bytes')
 assertEqual(network.formatRate(1536), '1.5 KB/s', 'network formats rates')
 assertEqual(network.formatPingLatency('2.54'), '2.5 ms', 'network formats low ping with precision')
