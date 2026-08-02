@@ -598,6 +598,11 @@ Panel {
   // interface identity (and its averaging) without publishing a partial
   // interface snapshot that would blank the header.
   property string lastStatusRaw: ""
+  // Last --ping payload. The ping probe is decoupled from the verbose status
+  // process, which therefore reports no latency keys; without carrying the
+  // freshest sample over, every verbose refresh would reset the ping window
+  // and blank the latency/packet-loss rows for a second or so each cycle.
+  property string lastPingRaw: ""
 
   function updateDetails(raw) {
     var next = Model.parseKeyValue(raw)
@@ -611,6 +616,7 @@ Panel {
 
     if (next.router_ping_ms !== undefined || next.internet_ping_ms !== undefined) {
       var full = Model.parseKeyValue(root.lastStatusRaw)
+      root.lastPingRaw = raw
       if (full.iface) {
         full.router_ping_ms = next.router_ping_ms
         full.internet_ping_ms = next.internet_ping_ms
@@ -624,6 +630,13 @@ Panel {
     info = next
     root.lastStatusRaw = raw
     updateThroughput(next)
+    // Verbose payloads carry no ping keys; stitch the last probe back on so
+    // the sample window and the packet-loss histogram survive the refresh.
+    if (next.router_ping_ms === undefined && next.internet_ping_ms === undefined) {
+      var lastPing = Model.parseKeyValue(root.lastPingRaw)
+      if (lastPing.router_ping_ms !== undefined) next.router_ping_ms = lastPing.router_ping_ms
+      if (lastPing.internet_ping_ms !== undefined) next.internet_ping_ms = lastPing.internet_ping_ms
+    }
     updatePingLatency(next)
   }
 
