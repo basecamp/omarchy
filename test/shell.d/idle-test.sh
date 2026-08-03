@@ -186,3 +186,26 @@ if rg -q 'hyprctl' "$service"; then
   fail "the idle service does not dispatch hyprctl directly"
 fi
 pass "the idle service blanks through omarchy-system-blank"
+
+# Blank and wake are separate async processes; firing wake while a blank is
+# still in flight races it and can leave the screens dark. wakeScreens() must
+# check screenOffProcess.running and defer to its onExited instead of every
+# caller firing the wake process directly. This is a source-level check for
+# that shape, not a runtime one -- there's no headless way to race two
+# Process launches from this suite.
+rg -q 'function wakeScreens\(\)' "$service" || fail "wakeScreens() must exist to serialize blank and wake"
+rg -A3 'function wakeScreens\(\)' "$service" | rg -q 'screenOffProcess\.running' ||
+  fail "wakeScreens() must check screenOffProcess.running before firing a wake"
+
+wake_call_sites=$(rg -c '\bwakeScreens\(\)' "$service")
+((wake_call_sites >= 3)) ||
+  fail "rearmScreenOff, cancelIdleCycle, and the screen-off switch handler must all wake through wakeScreens()"
+
+rg -A5 'id: screenOffProcess' "$service" | rg -q 'wakeAfterBlankPending' ||
+  fail "screenOffProcess.onExited must fire a wake deferred during blanking"
+
+direct_wake_calls=$(rg -c 'runProcess\(wakeProcess, "wake", "omarchy-system-wake"\)' "$service")
+((direct_wake_calls == 2)) ||
+  fail "omarchy-system-wake should only be launched from wakeScreens() and screenOffProcess.onExited"
+
+pass "a wake requested while blanking is in flight is deferred until the blank exits"

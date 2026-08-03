@@ -52,6 +52,7 @@ Item {
   property bool idledThisCycle: false
   property bool screensaverStartedThisCycle: false
   property bool screenOffThisCycle: false
+  property bool wakeAfterBlankPending: false
   property string lastEvent: "starting"
   property string lastEventAt: ""
   property var screensaverWindows: ({})
@@ -99,13 +100,26 @@ Item {
     runProcess(screenOffProcess, "screen-off", "omarchy-system-blank")
   }
 
+  // Blank and wake are separate async processes with no ordering between them.
+  // If activity lands while omarchy-system-blank is still running, firing wake
+  // right away races it -- whichever exits last wins, so the blank can finish
+  // after the wake and leave the screens dark despite the cycle being over.
+  // Queue the wake for screenOffProcess's own onExited instead.
+  function wakeScreens() {
+    if (screenOffProcess.running) {
+      root.wakeAfterBlankPending = true
+      return
+    }
+    runProcess(wakeProcess, "wake", "omarchy-system-wake")
+  }
+
   // Turning the screens back on after activity that did not end the cycle. The
   // clock starts over from the full timeout rather than resuming a spent offset:
   // a screen that goes dark the instant you touch the mouse reads as broken.
   function rearmScreenOff() {
     root.screenOffThisCycle = false
     screenOffTimer.stop()
-    runProcess(wakeProcess, "wake", "omarchy-system-wake")
+    wakeScreens()
     if (root.screenOffOnIdle) screenOffRearmTimer.restart()
     logEvent("screen-off-wake", root.screenOffTimeoutSeconds + "s")
   }
@@ -168,7 +182,7 @@ Item {
     screenOffRearmTimer.stop()
     screensaverLaunchGraceTimer.stop()
 
-    if (root.idledThisCycle) runProcess(wakeProcess, "wake", "omarchy-system-wake")
+    if (root.idledThisCycle) wakeScreens()
 
     root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
@@ -268,6 +282,7 @@ Item {
       lockDelay: root.lockDelaySeconds,
       screenOffDelay: root.screenOffDelaySeconds,
       screenOffActive: root.screenOffThisCycle,
+      wakeAfterBlankPending: root.wakeAfterBlankPending,
       screensaverWindows: root.screensaverWindowCount,
       timers: {
         screensaver: screensaverTimer.running,
@@ -393,7 +408,7 @@ Item {
     // the user in front of a dark screen.
     if (root.screenOffThisCycle) {
       root.screenOffThisCycle = false
-      runProcess(wakeProcess, "wake", "omarchy-system-wake")
+      wakeScreens()
     }
   }
 
@@ -423,7 +438,13 @@ Item {
   }
   Process {
     id: screenOffProcess
-    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "screen-off exitCode=" + exitCode + " status=" + exitStatus) }
+    onExited: function(exitCode, exitStatus) {
+      root.logEvent("process-exit", "screen-off exitCode=" + exitCode + " status=" + exitStatus)
+      if (root.wakeAfterBlankPending) {
+        root.wakeAfterBlankPending = false
+        root.runProcess(wakeProcess, "wake", "omarchy-system-wake")
+      }
+    }
   }
   Process {
     id: wakeProcess
