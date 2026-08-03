@@ -6,7 +6,17 @@
 
 setup_policy_directory() {
   sudo mkdir -p "$1"
-  sudo chmod a+rw "$1"
+}
+
+setup_chromium_policy_directory() {
+  setup_policy_directory "$1"
+  # Pre-create a user-owned color.json so omarchy-theme-set-browser can update
+  # the theme color without write access to the root-owned policy directory.
+  if [[ ! -f $1/color.json ]]; then
+    printf '%s\n' '{"BrowserThemeColor": "#1c2027", "BrowserColorScheme": "device"}' |
+      sudo tee "$1/color.json" >/dev/null
+    sudo chown "$USER:" "$1/color.json"
+  fi
 }
 
 announce_browser_installed() {
@@ -38,7 +48,7 @@ chrome)
   echo "Installing Chrome..."
   omarchy-pkg-aur-add google-chrome || exit 1
 
-  setup_policy_directory /etc/opt/chrome/policies/managed
+  setup_chromium_policy_directory /etc/opt/chrome/policies/managed
   copy_chromium_flags ~/.config/chrome-flags.conf
   omarchy-theme-set-browser
   announce_browser_installed "Chrome"
@@ -47,7 +57,7 @@ edge)
   echo "Installing Edge..."
   omarchy-pkg-aur-add microsoft-edge-stable-bin || exit 1
 
-  setup_policy_directory /etc/opt/edge/policies/managed
+  setup_chromium_policy_directory /etc/opt/edge/policies/managed
   copy_chromium_flags ~/.config/microsoft-edge-stable-flags.conf
   omarchy-theme-set-browser
   announce_browser_installed "Edge"
@@ -56,7 +66,7 @@ brave)
   echo "Installing Brave..."
   omarchy-pkg-aur-add brave-bin || exit 1
 
-  setup_policy_directory /etc/brave/policies/managed
+  setup_chromium_policy_directory /etc/brave/policies/managed
   copy_chromium_flags ~/.config/brave-flags.conf
   omarchy-theme-set-browser
   announce_browser_installed "Brave"
@@ -65,7 +75,7 @@ brave-origin)
   echo "Installing Brave Origin..."
   omarchy-pkg-aur-add brave-origin-bin || exit 1
 
-  setup_policy_directory /etc/brave/policies/managed
+  setup_chromium_policy_directory /etc/brave/policies/managed
   copy_chromium_flags ~/.config/brave-origin-flags.conf
   omarchy-theme-set-browser
   announce_browser_installed "Brave Origin"

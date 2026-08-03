@@ -1174,7 +1174,14 @@ apply_system_transition() {
     /usr/share/icons/Yaru/scalable/actions/go-next-symbolic.svg
   as_root gtk-update-icon-cache /usr/share/icons/Yaru >/dev/null 2>&1 || true
 
-  as_root install -d -m 0777 /etc/chromium/policies/managed
+  as_root install -d -m 0755 /etc/chromium/policies/managed
+  # Pre-create a user-owned color.json so omarchy-theme-set-browser can update
+  # the theme color without write access to the root-owned policy directory.
+  if [[ ! -f /etc/chromium/policies/managed/color.json ]]; then
+    printf '%s\n' '{"BrowserThemeColor": "#1c2027", "BrowserColorScheme": "device"}' | \
+      as_root tee /etc/chromium/policies/managed/color.json >/dev/null
+    as_root chown "$target_user:" /etc/chromium/policies/managed/color.json
+  fi
   as_root install -d -m 0755 /usr/lib/chromium
   printf '%s\n' '{"browser":{"theme":{"color_scheme":0,"color_scheme2":0}}}' | \
     as_root tee /usr/lib/chromium/initial_preferences >/dev/null
