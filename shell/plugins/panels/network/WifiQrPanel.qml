@@ -25,6 +25,13 @@ PanelWindow {
 
   readonly property bool showingQr: qrSize > 0 && !loading && error === ""
 
+  // Same fix as SpeedTestPanel: the scrim below is fixed near-black
+  // regardless of theme, so text on it needs a fixed light palette instead
+  // of `bar.foreground` (which flips dark/light with the bar's own theme
+  // and was going near-invisible on light-foreground themes).
+  readonly property color onScrim: "white"
+  readonly property color onScrimDim: Qt.rgba(1, 1, 1, 0.55)
+
   signal closeRequested()
   signal passwordToggleRequested()
 
@@ -84,7 +91,7 @@ PanelWindow {
 
         Text {
           text: (root.ssid || "Wi-Fi").toUpperCase()
-          color: Qt.darker(root.bar.foreground, 1.4)
+          color: root.onScrimDim
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.caption
           font.bold: true
@@ -136,7 +143,7 @@ PanelWindow {
         Text {
           visible: root.loading
           text: "Generating QR code…"
-          color: Qt.darker(root.bar.foreground, 1.3)
+          color: root.onScrimDim
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.bodySmall
           Layout.fillWidth: true
@@ -158,7 +165,7 @@ PanelWindow {
         Text {
           visible: root.showingQr
           text: "Scan to join this network"
-          color: Qt.darker(root.bar.foreground, 1.3)
+          color: root.onScrimDim
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.bodySmall
           Layout.fillWidth: true
@@ -170,7 +177,7 @@ PanelWindow {
           text: root.passwordError !== "" ? root.passwordError
             : root.passwordVisible ? root.password
             : "Show password"
-          color: root.passwordError !== "" ? root.bar.urgent : root.bar.foreground
+          color: root.passwordError !== "" ? root.bar.urgent : root.onScrim
           opacity: root.passwordVisible || root.passwordError !== "" ? 1 : 0.6
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.bodySmall
