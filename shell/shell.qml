@@ -38,7 +38,9 @@ ShellRoot {
     idle: {
       screensaver: 150,
       lock: 300,
-      lockOnIdle: true
+      lockOnIdle: true,
+      screenOff: 600,
+      screenOffOnIdle: false
     },
     bar: {
       position: "top",

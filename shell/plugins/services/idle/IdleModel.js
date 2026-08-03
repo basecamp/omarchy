@@ -19,11 +19,12 @@ function armedSeconds(seconds) {
   return Math.floor(seconds)
 }
 
-function idleSchedule(screensaverSeconds, lockSeconds) {
+function idleSchedule(screensaverSeconds, lockSeconds, screenOffSeconds) {
   var screensaver = armedSeconds(screensaverSeconds)
   var lock = armedSeconds(lockSeconds)
+  var screenOff = armedSeconds(screenOffSeconds)
 
-  var timeouts = [screensaver, lock]
+  var timeouts = [screensaver, lock, screenOff]
   var first = null
   for (var i = 0; i < timeouts.length; i++) {
     if (timeouts[i] === null) continue
@@ -43,8 +44,10 @@ function idleSchedule(screensaverSeconds, lockSeconds) {
     firstIdleTimeoutSeconds: first,
     screensaverArmed: screensaver !== null,
     lockArmed: lock !== null,
+    screenOffArmed: screenOff !== null,
     screensaverDelaySeconds: delay(screensaver),
-    lockDelaySeconds: delay(lock)
+    lockDelaySeconds: delay(lock),
+    screenOffDelaySeconds: delay(screenOff)
   }
 }
 

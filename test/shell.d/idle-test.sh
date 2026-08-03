@@ -37,29 +37,50 @@ assertDeepEqual(
 assertDeepEqual(
   idle.idleSchedule(150, 300),
   { armed: true, firstIdleTimeoutSeconds: 150,
-    screensaverArmed: true, lockArmed: true,
-    screensaverDelaySeconds: 0, lockDelaySeconds: 150 },
+    screensaverArmed: true, lockArmed: true, screenOffArmed: false,
+    screensaverDelaySeconds: 0, lockDelaySeconds: 150, screenOffDelaySeconds: 0 },
   'idleSchedule matches previous inline math for default timeouts'
 )
 assertDeepEqual(
   idle.idleSchedule(600, 60),
   { armed: true, firstIdleTimeoutSeconds: 60,
-    screensaverArmed: true, lockArmed: true,
-    screensaverDelaySeconds: 540, lockDelaySeconds: 0 },
+    screensaverArmed: true, lockArmed: true, screenOffArmed: false,
+    screensaverDelaySeconds: 540, lockDelaySeconds: 0, screenOffDelaySeconds: 0 },
   'idleSchedule handles lock shorter than screensaver'
 )
 assertDeepEqual(
-  idle.idleSchedule(150, null),
+  idle.idleSchedule(150, 300, 600),
   { armed: true, firstIdleTimeoutSeconds: 150,
-    screensaverArmed: true, lockArmed: false,
-    screensaverDelaySeconds: 0, lockDelaySeconds: 0 },
-  'idleSchedule keeps the screensaver on with locking disabled'
+    screensaverArmed: true, lockArmed: true, screenOffArmed: true,
+    screensaverDelaySeconds: 0, lockDelaySeconds: 150, screenOffDelaySeconds: 450 },
+  'idleSchedule schedules the screens off after the lock on the shipped ladder'
 )
 assertDeepEqual(
-  idle.idleSchedule(null, null),
+  idle.idleSchedule(150, null, 300),
+  { armed: true, firstIdleTimeoutSeconds: 150,
+    screensaverArmed: true, lockArmed: false, screenOffArmed: true,
+    screensaverDelaySeconds: 0, lockDelaySeconds: 0, screenOffDelaySeconds: 150 },
+  'idleSchedule turns the screens off on idle with locking disabled'
+)
+assertDeepEqual(
+  idle.idleSchedule(600, null, 300),
+  { armed: true, firstIdleTimeoutSeconds: 300,
+    screensaverArmed: true, lockArmed: false, screenOffArmed: true,
+    screensaverDelaySeconds: 300, lockDelaySeconds: 0, screenOffDelaySeconds: 0 },
+  'idleSchedule takes the first idle deadline from armed actions only'
+)
+assertDeepEqual(
+  idle.idleSchedule(150, 300, 60),
+  { armed: true, firstIdleTimeoutSeconds: 60,
+    screensaverArmed: true, lockArmed: true, screenOffArmed: true,
+    screensaverDelaySeconds: 90, lockDelaySeconds: 240, screenOffDelaySeconds: 0 },
+  'idleSchedule allows the screens off before the screensaver'
+)
+assertDeepEqual(
+  idle.idleSchedule(null, null, null),
   { armed: false, firstIdleTimeoutSeconds: idle.PARKED_IDLE_TIMEOUT_SECONDS,
-    screensaverArmed: false, lockArmed: false,
-    screensaverDelaySeconds: 0, lockDelaySeconds: 0 },
+    screensaverArmed: false, lockArmed: false, screenOffArmed: false,
+    screensaverDelaySeconds: 0, lockDelaySeconds: 0, screenOffDelaySeconds: 0 },
   'idleSchedule parks the monitor instead of asking for a zero idle timeout'
 )
 // A zero timeout means "report idle immediately" to ext-idle-notify, so the
@@ -68,17 +89,17 @@ assertDeepEqual(
 assertEqual(idle.PARKED_IDLE_TIMEOUT_SECONDS > 0, true,
   'idleSchedule parks at a positive idle timeout')
 assertDeepEqual(
-  idle.idleSchedule(150, -1),
+  idle.idleSchedule(150, -1, 300),
   { armed: true, firstIdleTimeoutSeconds: 150,
-    screensaverArmed: true, lockArmed: false,
-    screensaverDelaySeconds: 0, lockDelaySeconds: 0 },
+    screensaverArmed: true, lockArmed: false, screenOffArmed: true,
+    screensaverDelaySeconds: 0, lockDelaySeconds: 0, screenOffDelaySeconds: 150 },
   'idleSchedule drops a nonsense timeout instead of poisoning the schedule'
 )
 assertDeepEqual(
-  idle.idleSchedule(0, 300),
+  idle.idleSchedule(0, 300, 600),
   { armed: true, firstIdleTimeoutSeconds: 1,
-    screensaverArmed: true, lockArmed: true,
-    screensaverDelaySeconds: 0, lockDelaySeconds: 299 },
+    screensaverArmed: true, lockArmed: true, screenOffArmed: true,
+    screensaverDelaySeconds: 0, lockDelaySeconds: 299, screenOffDelaySeconds: 599 },
   'idleSchedule clamps a configured zero timeout instead of reporting idle immediately'
 )
 
@@ -86,11 +107,13 @@ assertDeepEqual(
 var values = [null, 0, 60, 300, 900]
 var sane = true
 for (var a = 0; a < values.length; a++)
-  for (var b = 0; b < values.length; b++) {
-    var s = idle.idleSchedule(values[a], values[b])
-    if (s.firstIdleTimeoutSeconds < 0 || s.screensaverDelaySeconds < 0 ||
-        s.lockDelaySeconds < 0 || (s.armed && s.firstIdleTimeoutSeconds <= 0)) sane = false
-  }
+  for (var b = 0; b < values.length; b++)
+    for (var c = 0; c < values.length; c++) {
+      var s = idle.idleSchedule(values[a], values[b], values[c])
+      if (s.firstIdleTimeoutSeconds < 0 || s.screensaverDelaySeconds < 0 ||
+          s.lockDelaySeconds < 0 || s.screenOffDelaySeconds < 0 ||
+          (s.armed && s.firstIdleTimeoutSeconds <= 0)) sane = false
+    }
 assertEqual(sane, true, 'idleSchedule never produces a negative or zero timer interval while armed')
 JS
 
@@ -120,3 +143,46 @@ if jq -e '.idle.lockOnIdle != false' "$lock_on_idle_config" >/dev/null; then
 fi
 
 pass "lockOnIdle=false reads as disabled (guards against the jq // false pitfall)"
+
+# Opt-in direction: the mirror of the lockOnIdle test above.
+screen_off_config="$test_tmp/screen-off-shell.json"
+printf '{"idle":{"screenOff":600}}' >"$screen_off_config"
+if jq -e '.idle.screenOffOnIdle == true' "$screen_off_config" >/dev/null; then
+  fail "screenOffOnIdle is disabled when the key is absent"
+fi
+printf '{"idle":{"screenOff":600,"screenOffOnIdle":true}}' >"$screen_off_config"
+jq -e '.idle.screenOffOnIdle == true' "$screen_off_config" >/dev/null ||
+  fail "screenOffOnIdle=true reads as enabled"
+pass "screenOffOnIdle is opt-in and read with == true (guards the jq // false pitfall)"
+
+# The TUI's seconds reader, against the real expression.
+so_read() { jq -r --argjson d 600 '(.idle.screenOff // $d) | if (type == "number" and . >= 0) then floor else $d end' "$1"; }
+printf '{"idle":{}}' >"$screen_off_config"
+[[ $(so_read "$screen_off_config") == 600 ]] || fail "absent screenOff falls back to the default"
+printf '{"idle":{"screenOff":"abc"}}' >"$screen_off_config"
+[[ $(so_read "$screen_off_config") == 600 ]] || fail "invalid screenOff falls back to the default"
+printf '{"idle":{"screenOff":42.9}}' >"$screen_off_config"
+[[ $(so_read "$screen_off_config") == 42 ]] || fail "screenOff is floored"
+pass "screens-off timeout reader floors and falls back like the other timeouts"
+
+# lockSystem() stops every idle timer, so anything armed after it would outlive
+# its own cycle. This is a source-order proxy for that guarantee, not a runtime
+# check -- there's no headless way to drive startIdleCycle() from this suite.
+service="$ROOT/shell/plugins/services/idle/Service.qml"
+screen_off_line=$(rg -n 'if \(root\.screenOffOnIdle\) \{' "$service" | head -1 | cut -d: -f1)
+lock_line=$(rg -n 'if \(root\.lockOnIdle\) \{' "$service" | head -1 | cut -d: -f1)
+((screen_off_line < lock_line)) || fail "screen-off is armed before the lock in startIdleCycle"
+pass "screen-off is armed before the lock in startIdleCycle"
+
+# The shipped defaults keep the new action opt-in, and out of the lock's way.
+jq -e '.idle.screenOffOnIdle == false and .idle.screenOff > .idle.lock' \
+  "$ROOT/config/omarchy/shell.json" >/dev/null ||
+  fail "shipped defaults keep screens-off opt-in and scheduled after the lock"
+pass "shipped defaults keep screens-off opt-in and scheduled after the lock"
+
+# One definition of blanking.
+rg -q 'omarchy-system-blank' "$service" || fail "the idle service blanks through omarchy-system-blank"
+if rg -q 'hyprctl' "$service"; then
+  fail "the idle service does not dispatch hyprctl directly"
+fi
+pass "the idle service blanks through omarchy-system-blank"

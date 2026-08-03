@@ -16,13 +16,17 @@ Item {
   readonly property string stayAwakeStatePath: stayAwakeStateDir + "/stay-awake"
   readonly property int defaultScreensaverSeconds: 150
   readonly property int defaultLockSeconds: 300
+  readonly property int defaultScreenOffSeconds: 600
   readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle : ({})
   readonly property int screensaverTimeoutSeconds: secondsFromConfig(idleConfig.screensaver, defaultScreensaverSeconds)
   readonly property int lockTimeoutSeconds: secondsFromConfig(idleConfig.lock, defaultLockSeconds)
+  readonly property int screenOffTimeoutSeconds: secondsFromConfig(idleConfig.screenOff, defaultScreenOffSeconds)
 
-  // Locking on idle predates its switch, so it stays on unless turned off. An
-  // absent key and an explicit false must not read alike.
+  // Locking on idle predates its switch, so it stays on unless turned off.
+  // Turning the screens off is new, so it stays off until asked for. Both are
+  // compared explicitly: an absent key and an explicit false must not read alike.
   readonly property bool lockOnIdle: idleConfig.lockOnIdle !== false
+  readonly property bool screenOffOnIdle: idleConfig.screenOffOnIdle === true
 
   // A disabled action is passed as null so it takes no part in the shared first
   // idle deadline. The screensaver is always passed: its on/off switch is a state
@@ -30,11 +34,13 @@ Item {
   // is armed here even when the launcher will decline.
   readonly property var idleSchedule: IdleModel.idleSchedule(
     screensaverTimeoutSeconds,
-    lockOnIdle ? lockTimeoutSeconds : null)
+    lockOnIdle ? lockTimeoutSeconds : null,
+    screenOffOnIdle ? screenOffTimeoutSeconds : null)
   readonly property bool idleArmed: idleSchedule.armed
   readonly property int firstIdleTimeoutSeconds: idleSchedule.firstIdleTimeoutSeconds
   readonly property int screensaverDelaySeconds: idleSchedule.screensaverDelaySeconds
   readonly property int lockDelaySeconds: idleSchedule.lockDelaySeconds
+  readonly property int screenOffDelaySeconds: idleSchedule.screenOffDelaySeconds
 
   readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
   readonly property string screensaverClass: "org.omarchy.screensaver"
@@ -45,6 +51,7 @@ Item {
   property bool pendingStayAwakePersist: false
   property bool idledThisCycle: false
   property bool screensaverStartedThisCycle: false
+  property bool screenOffThisCycle: false
   property string lastEvent: "starting"
   property string lastEventAt: ""
   property var screensaverWindows: ({})
@@ -82,13 +89,43 @@ Item {
     runProcess(screensaverProcess, "screensaver", "[[ $(omarchy-shell lock isLocked 2>/dev/null) == \"true\" ]] || omarchy-launch-screensaver")
   }
 
+  // Unlike lockSystem(), this leaves screensaverTimer running: screen-off only
+  // disables DPMS output, it doesn't claim the screensaver's window surface the
+  // way the lock screen does, so the screensaver stays free to fire on its own
+  // configured deadline regardless of what the display is doing.
+  function turnOffScreens(reason) {
+    logEvent("screen-off", reason || "requested")
+    root.screenOffThisCycle = true
+    runProcess(screenOffProcess, "screen-off", "omarchy-system-blank")
+  }
+
+  // Turning the screens back on after activity that did not end the cycle. The
+  // clock starts over from the full timeout rather than resuming a spent offset:
+  // a screen that goes dark the instant you touch the mouse reads as broken.
+  function rearmScreenOff() {
+    root.screenOffThisCycle = false
+    screenOffTimer.stop()
+    runProcess(wakeProcess, "wake", "omarchy-system-wake")
+    if (root.screenOffOnIdle) screenOffRearmTimer.restart()
+    logEvent("screen-off-wake", root.screenOffTimeoutSeconds + "s")
+  }
+
   function lockSystem(reason) {
     logEvent("lock-system", reason || "requested")
     screensaverTimer.stop()
     lockTimer.stop()
+    // Locking hands the display baton to the lock service, which owns it with a
+    // better policy. A surviving screen-off timer would otherwise fire while the
+    // user is typing their unlock password, uncancellably: lockSystem clears
+    // idledThisCycle and handleActiveSignal early-returns on it.
+    screenOffTimer.stop()
+    screenOffRearmTimer.stop()
     screensaverLaunchGraceTimer.stop()
     root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
+    // The lock service owns the displays from here, so this cycle's blank is no
+    // longer ours to report or re-arm.
+    root.screenOffThisCycle = false
     resetScreensaverWindows()
     runProcess(lockProcess, "lock", "omarchy-system-lock")
   }
@@ -100,13 +137,22 @@ Item {
     }
 
     logEvent("idle-cycle-start", "screensaver=" + root.screensaverTimeoutSeconds
-      + " lock=" + (root.lockOnIdle ? root.lockTimeoutSeconds : "off"))
+      + " lock=" + (root.lockOnIdle ? root.lockTimeoutSeconds : "off")
+      + " screenOff=" + (root.screenOffOnIdle ? root.screenOffTimeoutSeconds : "off"))
     root.idledThisCycle = true
     root.screensaverStartedThisCycle = false
+    root.screenOffThisCycle = false
     resetScreensaverWindows()
 
     if (root.screensaverDelaySeconds === 0) launchScreensaver()
     else screensaverTimer.restart()
+
+    // Armed before the lock: lockSystem() stops every idle timer and a zero delay
+    // runs it inline, so anything started after it would outlive its own cycle.
+    if (root.screenOffOnIdle) {
+      if (root.screenOffDelaySeconds === 0) turnOffScreens("screen-off-immediate")
+      else screenOffTimer.restart()
+    }
 
     if (root.lockOnIdle) {
       if (root.lockDelaySeconds === 0) lockSystem("lock-timeout-immediate")
@@ -118,12 +164,15 @@ Item {
     logEvent("idle-cycle-cancel", reason || "requested")
     screensaverTimer.stop()
     lockTimer.stop()
+    screenOffTimer.stop()
+    screenOffRearmTimer.stop()
     screensaverLaunchGraceTimer.stop()
 
     if (root.idledThisCycle) runProcess(wakeProcess, "wake", "omarchy-system-wake")
 
     root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
+    root.screenOffThisCycle = false
     resetScreensaverWindows()
   }
 
@@ -179,6 +228,12 @@ Item {
     // launch grace); Hyprland window events cancel the cycle if it exits before
     // the normal lock deadline.
     if (root.screensaverStartedThisCycle && (root.screensaverWindowCount > 0 || screensaverLaunchGraceTimer.running)) {
+      // The screensaver keeps the cycle armed through the activity it provokes
+      // when it maps, so this branch is also where a real bump lands while the
+      // panels are asleep. Restore them and take a fresh run-up: leaving the
+      // displays dark for the rest of the cycle -- or lit, once the timer is
+      // spent -- is the failure this feature exists to prevent.
+      if (root.screenOffThisCycle) rearmScreenOff()
       logEvent("idle-monitor-active", "screensaver cycle remains armed")
       return
     }
@@ -207,17 +262,24 @@ Item {
       screensaver: root.screensaverTimeoutSeconds,
       lock: root.lockTimeoutSeconds,
       lockOnIdle: root.lockOnIdle,
+      screenOff: root.screenOffTimeoutSeconds,
+      screenOffOnIdle: root.screenOffOnIdle,
       screensaverDelay: root.screensaverDelaySeconds,
       lockDelay: root.lockDelaySeconds,
+      screenOffDelay: root.screenOffDelaySeconds,
+      screenOffActive: root.screenOffThisCycle,
       screensaverWindows: root.screensaverWindowCount,
       timers: {
         screensaver: screensaverTimer.running,
         lock: lockTimer.running,
+        screenOff: screenOffTimer.running,
+        screenOffRearm: screenOffRearmTimer.running,
         screensaverLaunchGrace: screensaverLaunchGraceTimer.running
       },
       processes: {
         screensaver: screensaverProcess.running,
         lock: lockProcess.running,
+        screenOff: screenOffProcess.running,
         wake: wakeProcess.running
       },
       lastEvent: root.lastEvent,
@@ -284,6 +346,23 @@ Item {
   }
 
   Timer {
+    id: screenOffTimer
+    // The offset from the shared idle notification: the first blank of a cycle.
+    interval: root.screenOffDelaySeconds * 1000
+    repeat: false
+    onTriggered: if (root.screenOffOnIdle && root.idleEnabled && root.idledThisCycle) root.turnOffScreens("screen-off-timeout")
+  }
+
+  Timer {
+    id: screenOffRearmTimer
+    // The full timeout: after activity that did not end the cycle, the clock
+    // starts over rather than resuming a spent offset.
+    interval: root.screenOffTimeoutSeconds * 1000
+    repeat: false
+    onTriggered: if (root.screenOffOnIdle && root.idleEnabled && root.idledThisCycle) root.turnOffScreens("screen-off-rearmed")
+  }
+
+  Timer {
     id: lockTimer
     interval: root.lockDelaySeconds * 1000
     repeat: false
@@ -291,17 +370,31 @@ Item {
   }
 
   // A switch flipped mid-cycle applies to that cycle, not the next one. Turning
-  // lock-on-idle off disarms it; turning it back on arms it against the deadline
-  // the schedule already computed. A zero delay is deliberately not fired here: a
-  // config write means someone is at a keyboard, and locking under them would be
-  // rude.
-  onLockOnIdleChanged: {
-    if (!root.lockOnIdle) {
-      lockTimer.stop()
+  // an action off disarms it; turning it on arms it against the deadline the
+  // schedule already computed. A zero delay is deliberately not fired here: a
+  // config write means someone is at a keyboard, and locking or blanking under
+  // them would be rude.
+  function syncSwitchTimer(enabled, timer, delaySeconds) {
+    if (!enabled) {
+      timer.stop()
       return
     }
-    if (!root.idleEnabled || !root.idledThisCycle || lockTimer.running) return
-    if (root.lockDelaySeconds > 0) lockTimer.restart()
+    if (!root.idleEnabled || !root.idledThisCycle || timer.running) return
+    if (delaySeconds > 0) timer.restart()
+  }
+
+  onLockOnIdleChanged: syncSwitchTimer(root.lockOnIdle, lockTimer, root.lockDelaySeconds)
+
+  onScreenOffOnIdleChanged: {
+    syncSwitchTimer(root.screenOffOnIdle, screenOffTimer, root.screenOffDelaySeconds)
+    if (root.screenOffOnIdle) return
+    screenOffRearmTimer.stop()
+    // Turning the switch off while the panels are already asleep must not leave
+    // the user in front of a dark screen.
+    if (root.screenOffThisCycle) {
+      root.screenOffThisCycle = false
+      runProcess(wakeProcess, "wake", "omarchy-system-wake")
+    }
   }
 
   Timer {
@@ -327,6 +420,10 @@ Item {
   Process {
     id: lockProcess
     onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "lock exitCode=" + exitCode + " status=" + exitStatus) }
+  }
+  Process {
+    id: screenOffProcess
+    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "screen-off exitCode=" + exitCode + " status=" + exitStatus) }
   }
   Process {
     id: wakeProcess
