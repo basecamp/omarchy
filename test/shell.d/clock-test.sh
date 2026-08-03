@@ -138,7 +138,32 @@ assertDeepEqual(calendar.clockFormatRing('', '', []), ['HH:mm'], 'clock keeps a 
 assertEqual(calendar.nextClockFormat(ring, ring[0]), ring[1], 'clock steps to the next format')
 assertEqual(calendar.nextClockFormat(ring, ring[ring.length - 1]), ring[0], 'clock wraps the format ring')
 assertEqual(calendar.nextClockFormat(ring, 'HH:mm:ss'), ring[0], 'clock starts at the top from a format outside the ring')
-assertEqual(calendar.clockFormats(true)[0], 'HH\n\u2014\nmm', 'clock keeps stacked formats for vertical bars')
+// Both rings, contents and order: a right click walks this list and writes
+// the result back to shell.json, so an inserted preset should have to be
+// acknowledged here.
+assertDeepEqual(
+  calendar.clockFormats(false),
+  [
+    'dddd HH:mm', 'dddd h:mm AP',
+    'HH:mm', 'h:mm AP',
+    'ddd d MMM HH:mm', 'ddd d MMM h:mm AP',
+    "d MMMM 'W'ww yyyy",
+    // No twin: ISO 8601 writes time on a 24-hour clock, so an AM/PM variant
+    // would contradict the one thing that format is for.
+    'yyyy-MM-dd HH:mm'
+  ],
+  'clock offers the horizontal presets in this order'
+)
+assertDeepEqual(
+  calendar.clockFormats(true),
+  ['HH\n\u2014\nmm', 'h\n\u2014\nmm\nAP', "dd\nMMM\n'W'ww\n''yy", 'HH\nmm'],
+  'clock offers the stacked presets in this order'
+)
+assertEqual(
+  calendar.nextClockFormat(ring, 'dddd HH:mm'),
+  'dddd h:mm AP',
+  'clock reaches an AM/PM twin in one right click'
+)
 assertEqual(calendar.isoWeekLiteral(2026, 0, 5), '02', 'clock zero-pads the ISO week token')
 
 // ---- widget wiring
