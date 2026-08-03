@@ -11,13 +11,19 @@ TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
 stub_bin="$TMPDIR/bin"
+sudo_log="$TMPDIR/sudo.log"
 mkdir -p "$stub_bin"
 
-# The migration shells out to sudo for chmod/chown/tee. Execute the command
-# directly so the fixture tree shows what the real system would see.
-cat >"$stub_bin/sudo" <<'STUB'
+# chmod, tee, and rm act on the fixture tree so the results can be inspected.
+# chown is recorded but not executed: changing ownership depends on the
+# runner's user and privileges, which the test must not rely on.
+cat >"$stub_bin/sudo" <<STUB
 #!/bin/bash
-exec "$@"
+if [[ \$1 == chown ]]; then
+  echo "\$*" >>"$sudo_log"
+  exit 0
+fi
+exec "\$@"
 STUB
 chmod +x "$stub_bin/sudo"
 
@@ -37,27 +43,48 @@ policy_dirs="$world_writable"
 run_migration
 [[ $(stat -c %a "$world_writable") == "755" ]] || fail "migration restores 0755 on world-writable policy directory"
 pass "migration restores 0755 on world-writable policy directory"
-[[ -f $world_writable/color.json ]] || fail "migration creates missing color.json"
+[[ -f $world_writable/color.json && ! -L $world_writable/color.json ]] || fail "migration creates missing color.json"
 pass "migration creates missing color.json"
 grep -q 'BrowserThemeColor' "$world_writable/color.json" || fail "migration seeds color.json with theme policy"
 pass "migration seeds color.json with theme policy"
+[[ $(stat -c %a "$world_writable/color.json") == "644" ]] || fail "migration creates color.json with 0644"
+pass "migration creates color.json with 0644"
+grep -q "chown tester: $world_writable/color.json" "$sudo_log" || fail "migration hands the user ownership of color.json"
+pass "migration hands the user ownership of color.json"
 
 # A directory that is already 0755 with a user-owned color.json stays untouched.
 already_fixed="$TMPDIR/already-fixed"
 mkdir -p "$already_fixed"
 chmod 755 "$already_fixed"
 echo '{"BrowserThemeColor": "#ff0000", "BrowserColorScheme": "device"}' >"$already_fixed/color.json"
+: >"$sudo_log"
 policy_dirs="$already_fixed"
 run_migration
 [[ $(stat -c %a "$already_fixed") == "755" ]] || fail "migration keeps 0755 directory unchanged"
 pass "migration keeps 0755 directory unchanged"
 grep -q '#ff0000' "$already_fixed/color.json" || fail "migration keeps an existing user-owned color.json"
 pass "migration keeps an existing user-owned color.json"
+[[ ! -s $sudo_log ]] || fail "migration makes no privileged calls for an already-fixed directory"
+pass "migration makes no privileged calls for an already-fixed directory"
 
 # Missing directories (browser never installed) are skipped without error.
 policy_dirs="$TMPDIR/does-not-exist"
 run_migration
 pass "migration skips missing policy directories"
+
+# While the directory was world-writable an attacker could plant a symlink
+# named color.json; the migration must replace it instead of following it.
+symlinked="$TMPDIR/symlinked"
+mkdir -p "$symlinked"
+chmod 755 "$symlinked"
+ln -s /etc/passwd "$symlinked/color.json"
+: >"$sudo_log"
+policy_dirs="$symlinked"
+run_migration
+[[ -f $symlinked/color.json && ! -L $symlinked/color.json ]] || fail "migration replaces a symlinked color.json with a regular file"
+pass "migration replaces a symlinked color.json with a regular file"
+grep -q 'BrowserThemeColor' "$symlinked/color.json" || fail "migration reseeds a replaced color.json"
+pass "migration reseeds a replaced color.json"
 
 # The root-owned repair branch: report the fixture color.json as root-owned and
 # expect a chown to the current user.
@@ -74,14 +101,8 @@ fi
 exec /usr/bin/stat "$@"
 STUB
 chmod +x "$stub_bin/stat"
-chown_log="$TMPDIR/chown.log"
-cat >"$stub_bin/sudo" <<STUB
-#!/bin/bash
-if [[ \$1 == chown ]]; then echo "\$*" >>"$chown_log"; fi
-exec "\$@"
-STUB
-chmod +x "$stub_bin/sudo"
+: >"$sudo_log"
 policy_dirs="$root_owned"
 STAT_ROOT_OWNER_FOR="$root_owned/color.json" run_migration
-grep -q "chown tester:" "$chown_log" || fail "migration reclaims root-owned color.json for the user"
+grep -q "chown tester: $root_owned/color.json" "$sudo_log" || fail "migration reclaims root-owned color.json for the user"
 pass "migration reclaims root-owned color.json for the user"

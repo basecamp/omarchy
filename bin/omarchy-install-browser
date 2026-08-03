@@ -5,17 +5,23 @@
 # omarchy:examples=omarchy install browser firefox | omarchy install browser brave
 
 setup_policy_directory() {
-  sudo mkdir -p "$1"
+  # Explicit mode so a permissive umask cannot recreate a world-writable dir.
+  sudo install -d -m 0755 "$1"
 }
 
 setup_chromium_policy_directory() {
   setup_policy_directory "$1"
   # Pre-create a user-owned color.json so omarchy-theme-set-browser can update
   # the theme color without write access to the root-owned policy directory.
-  if [[ ! -f $1/color.json ]]; then
+  local color_json="$1/color.json"
+  if [[ -L $color_json || ! -f $color_json ]]; then
+    if [[ -e $color_json || -L $color_json ]]; then
+      sudo rm -rf -- "$color_json"
+    fi
     printf '%s\n' '{"BrowserThemeColor": "#1c2027", "BrowserColorScheme": "device"}' |
-      sudo tee "$1/color.json" >/dev/null
-    sudo chown "$USER:" "$1/color.json"
+      sudo tee "$color_json" >/dev/null
+    sudo chmod 0644 "$color_json"
+    sudo chown "$USER:" "$color_json"
   fi
 }
 
