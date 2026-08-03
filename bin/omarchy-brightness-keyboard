@@ -12,8 +12,9 @@ fi
 direction="${1:-up}"
 
 # Find keyboard backlight device (look for *kbd_backlight* pattern in leds class).
+leds_class="${OMARCHY_LEDS_CLASS:-/sys/class/leds}"
 device=""
-for candidate in /sys/class/leds/*kbd_backlight*; do
+for candidate in "$leds_class"/*kbd_backlight*; do
   if [[ -e $candidate ]]; then
     device="$(basename "$candidate")"
     break
@@ -37,22 +38,39 @@ fi
 max_brightness="$(brightnessctl -d "$device" max)"
 current_brightness="$(brightnessctl -d "$device" get)"
 
-# Calculate step as 10% of max brightness. Keyboards with many levels (e.g. 512)
-# need larger steps; keyboards with few levels (e.g. 3) fall back to step=1.
-step=$(( max_brightness / 10 ))
-(( step < 1 )) && step=1
-
-if [[ $direction == "cycle" ]]; then
-  new_brightness=$(( current_brightness + step ))
-  (( new_brightness > max_brightness )) && new_brightness=0
-elif [[ $direction == "up" ]]; then
-  new_brightness=$(( current_brightness + step ))
-  (( new_brightness > max_brightness )) && new_brightness=$max_brightness
-else
-  new_brightness=$(( current_brightness - step ))
-  (( new_brightness < 0 )) && new_brightness=0
+if (( max_brightness < 1 )); then
+  echo "Invalid keyboard backlight max brightness" >&2
+  exit 1
 fi
 
-# Set the new brightness.
+# Walk a fixed ladder of steps so the same levels are hit going up and down.
+# Keyboards with many levels (e.g. 512) use 10% steps; keyboards with few
+# levels (e.g. 3) fall back to one step per level.
+steps=10
+(( steps > max_brightness )) && steps=$max_brightness
+
+# Snap the current brightness to the nearest rung so an arbitrary starting
+# value still lands on the ladder.
+current_step=$(( (current_brightness * steps + max_brightness / 2) / max_brightness ))
+(( current_step > steps )) && current_step=$steps
+
+if [[ $direction == "cycle" ]]; then
+  current_step=$(( (current_step + 1) % (steps + 1) ))
+elif [[ $direction == "up" ]]; then
+  if (( current_step < steps )); then
+    (( ++current_step ))
+  fi
+else
+  if (( current_step > 0 )); then
+    (( --current_step ))
+  fi
+fi
+
+# Convert the rung back to a raw brightness value, rounding to the nearest
+# level so the bottom rung is off and the top rung reaches max.
+new_brightness=$(( (current_step * max_brightness + steps / 2) / steps ))
+
+# Set the new brightness. Report the rung's percentage, which is stable in
+# both directions, rather than deriving it from the raw value.
 brightnessctl -d "$device" set "$new_brightness" >/dev/null
-(( no_osd )) || omarchy-osd -i keyboard -p "$(( new_brightness * 100 / max_brightness ))"
+(( no_osd )) || omarchy-osd -i keyboard -p "$(( current_step * 100 / steps ))"
