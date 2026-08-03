@@ -37,5 +37,3 @@ if [[ -s $config_file ]]; then
     .bar.layout.center |= place_indicators_before_clock
   ' "$config_file" >"$tmp" && mv "$tmp" "$config_file" || rm -f "$tmp"
 fi
-
-omarchy-restart-shell
