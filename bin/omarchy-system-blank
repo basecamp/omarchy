@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Turn off the displays and the keyboard backlight
+# omarchy:group=system
+# omarchy:name=blank
+# omarchy:examples=omarchy system blank
+
+# The inverse of omarchy-system-wake. Machines without a keyboard backlight fail
+# the first step; the display is the part that has to happen either way.
+omarchy-brightness-keyboard off
+omarchy-brightness-display off
