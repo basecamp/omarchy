@@ -19,9 +19,23 @@ Item {
   readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle : ({})
   readonly property int screensaverTimeoutSeconds: secondsFromConfig(idleConfig.screensaver, defaultScreensaverSeconds)
   readonly property int lockTimeoutSeconds: secondsFromConfig(idleConfig.lock, defaultLockSeconds)
-  readonly property int firstIdleTimeoutSeconds: Math.min(screensaverTimeoutSeconds, lockTimeoutSeconds)
-  readonly property int screensaverDelaySeconds: Math.max(0, screensaverTimeoutSeconds - firstIdleTimeoutSeconds)
-  readonly property int lockDelaySeconds: Math.max(0, lockTimeoutSeconds - firstIdleTimeoutSeconds)
+
+  // Locking on idle predates its switch, so it stays on unless turned off. An
+  // absent key and an explicit false must not read alike.
+  readonly property bool lockOnIdle: idleConfig.lockOnIdle !== false
+
+  // A disabled action is passed as null so it takes no part in the shared first
+  // idle deadline. The screensaver is always passed: its on/off switch is a state
+  // flag the shell cannot see (see bin/omarchy-launch-screensaver), so this switch
+  // is armed here even when the launcher will decline.
+  readonly property var idleSchedule: IdleModel.idleSchedule(
+    screensaverTimeoutSeconds,
+    lockOnIdle ? lockTimeoutSeconds : null)
+  readonly property bool idleArmed: idleSchedule.armed
+  readonly property int firstIdleTimeoutSeconds: idleSchedule.firstIdleTimeoutSeconds
+  readonly property int screensaverDelaySeconds: idleSchedule.screensaverDelaySeconds
+  readonly property int lockDelaySeconds: idleSchedule.lockDelaySeconds
+
   readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
   readonly property string screensaverClass: "org.omarchy.screensaver"
 
@@ -85,7 +99,8 @@ Item {
       return
     }
 
-    logEvent("idle-cycle-start", "screensaver=" + root.screensaverTimeoutSeconds + " lock=" + root.lockTimeoutSeconds)
+    logEvent("idle-cycle-start", "screensaver=" + root.screensaverTimeoutSeconds
+      + " lock=" + (root.lockOnIdle ? root.lockTimeoutSeconds : "off"))
     root.idledThisCycle = true
     root.screensaverStartedThisCycle = false
     resetScreensaverWindows()
@@ -93,8 +108,10 @@ Item {
     if (root.screensaverDelaySeconds === 0) launchScreensaver()
     else screensaverTimer.restart()
 
-    if (root.lockDelaySeconds === 0) lockSystem("lock-timeout-immediate")
-    else lockTimer.restart()
+    if (root.lockOnIdle) {
+      if (root.lockDelaySeconds === 0) lockSystem("lock-timeout-immediate")
+      else lockTimer.restart()
+    }
   }
 
   function cancelIdleCycle(reason) {
@@ -186,8 +203,10 @@ Item {
       idle: idleMonitor.isIdle,
       inIdleCycle: root.idledThisCycle,
       screensaverStarted: root.screensaverStartedThisCycle,
+      armed: root.idleArmed,
       screensaver: root.screensaverTimeoutSeconds,
       lock: root.lockTimeoutSeconds,
+      lockOnIdle: root.lockOnIdle,
       screensaverDelay: root.screensaverDelaySeconds,
       lockDelay: root.lockDelaySeconds,
       screensaverWindows: root.screensaverWindowCount,
@@ -249,7 +268,9 @@ Item {
 
   IdleMonitor {
     id: idleMonitor
-    enabled: root.idleEnabled
+    // A zero timeout means "report idle immediately" to ext-idle-notify, so when
+    // nothing is armed the monitor is stopped rather than handed a deadline.
+    enabled: root.idleEnabled && root.idleArmed
     timeout: root.firstIdleTimeoutSeconds
     respectInhibitors: true
     onIsIdleChanged: root.handleIdleChanged()
@@ -266,7 +287,21 @@ Item {
     id: lockTimer
     interval: root.lockDelaySeconds * 1000
     repeat: false
-    onTriggered: if (root.idleEnabled && root.idledThisCycle) root.lockSystem("lock-timeout")
+    onTriggered: if (root.lockOnIdle && root.idleEnabled && root.idledThisCycle) root.lockSystem("lock-timeout")
+  }
+
+  // A switch flipped mid-cycle applies to that cycle, not the next one. Turning
+  // lock-on-idle off disarms it; turning it back on arms it against the deadline
+  // the schedule already computed. A zero delay is deliberately not fired here: a
+  // config write means someone is at a keyboard, and locking under them would be
+  // rude.
+  onLockOnIdleChanged: {
+    if (!root.lockOnIdle) {
+      lockTimer.stop()
+      return
+    }
+    if (!root.idleEnabled || !root.idledThisCycle || lockTimer.running) return
+    if (root.lockDelaySeconds > 0) lockTimer.restart()
   }
 
   Timer {
