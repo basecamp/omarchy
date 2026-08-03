@@ -14,15 +14,21 @@ stub_bin="$TMPDIR/bin"
 sudo_log="$TMPDIR/sudo.log"
 mkdir -p "$stub_bin"
 
-# chmod, tee, and rm act on the fixture tree so the results can be inspected.
-# chown is recorded but not executed: changing ownership depends on the
-# runner's user and privileges, which the test must not rely on.
+# chmod and tee act on the fixture tree so the results can be inspected, and rm
+# is recorded and executed so planted entries really disappear. chown is recorded
+# but not executed: changing ownership depends on the runner's user and
+# privileges, which the test must not rely on.
 cat >"$stub_bin/sudo" <<STUB
 #!/bin/bash
-if [[ \$1 == chown ]]; then
-  echo "\$*" >>"$sudo_log"
-  exit 0
-fi
+case \${1:-} in
+  chown)
+    echo "\$*" >>"$sudo_log"
+    exit 0
+    ;;
+  rm)
+    echo "\$*" >>"$sudo_log"
+    ;;
+esac
 exec "\$@"
 STUB
 chmod +x "$stub_bin/sudo"
@@ -106,3 +112,36 @@ policy_dirs="$root_owned"
 STAT_ROOT_OWNER_FOR="$root_owned/color.json" run_migration
 grep -q "chown tester: $root_owned/color.json" "$sudo_log" || fail "migration reclaims root-owned color.json for the user"
 pass "migration reclaims root-owned color.json for the user"
+
+# Fixing the directory mode only stops future additions; entries planted while
+# it was world-writable must be cleaned out. Root-owned administrator policies
+# are preserved, anything else that is not color.json is removed.
+compromised="$TMPDIR/compromised"
+mkdir -p "$compromised"
+chmod 755 "$compromised"
+echo '{"ExtensionInstallForcelist": ["malicious"]}' >"$compromised/forced-extension.json"
+echo '{"HomepageLocation": "https://example.com"}' >"$compromised/admin-policy.json"
+echo '{}' >"$compromised/color.json"
+cat >"$stub_bin/stat" <<'STUB'
+#!/bin/bash
+if [[ $1 == "-c" && $2 == "%U" ]]; then
+  case $3 in
+    */admin-policy.json) echo root ;;
+    *) echo attacker ;;
+  esac
+  exit 0
+fi
+exec /usr/bin/stat "$@"
+STUB
+chmod +x "$stub_bin/stat"
+: >"$sudo_log"
+policy_dirs="$compromised"
+run_migration
+[[ ! -e $compromised/forced-extension.json ]] || fail "migration removes attacker-planted policy files"
+pass "migration removes attacker-planted policy files"
+[[ -f $compromised/admin-policy.json ]] || fail "migration preserves root-owned administrator policies"
+pass "migration preserves root-owned administrator policies"
+[[ -f $compromised/color.json ]] || fail "migration keeps color.json while cleaning planted entries"
+pass "migration keeps color.json while cleaning planted entries"
+grep -q "rm -rf -- $compromised/forced-extension.json" "$sudo_log" || fail "migration removes planted entries with a privileged rm"
+pass "migration removes planted entries with a privileged rm"

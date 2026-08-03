@@ -19,6 +19,20 @@ while IFS= read -r policy_dir; do
     sudo chmod 755 "$policy_dir"
   fi
 
+  # While the directory was world-writable, arbitrary policy files could have
+  # been planted, and fixing the mode only stops future additions. Root-owned
+  # entries are trusted administrator or package policies and stay; any other
+  # entry that is not the theme's color.json is untrusted and is removed.
+  while IFS= read -r -d '' entry; do
+    if [[ ${entry##*/} == "color.json" ]]; then
+      continue
+    fi
+    if [[ -L $entry || ! -f $entry || $(stat -c %U "$entry") != "root" ]]; then
+      echo "Removing untrusted browser policy entry: $entry"
+      sudo rm -rf -- "$entry"
+    fi
+  done < <(find "$policy_dir" -mindepth 1 -maxdepth 1 -print0)
+
   color_json="$policy_dir/color.json"
 
   # While the directory was world-writable an attacker could have planted a
