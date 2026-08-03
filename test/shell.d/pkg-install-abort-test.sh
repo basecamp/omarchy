@@ -13,7 +13,8 @@ mkdir -p "$stub_bin"
 cat >"$stub_bin/sudo" <<'STUB'
 #!/bin/bash
 case ${1:-} in
-  -v|-n) exit 0 ;;
+  -v) exit "${SUDO_VALIDATE_RESULT:-0}" ;;
+  -n) exit 0 ;;
 esac
 exec "$@"
 STUB
@@ -25,12 +26,12 @@ STUB
 
 cat >"$stub_bin/omarchy-show-done" <<'STUB'
 #!/bin/bash
-echo done >>"${DONE_LOG:?}"
+echo done >>"${CALL_LOG:?}"
 STUB
 
 cat >"$stub_bin/updatedb" <<'STUB'
 #!/bin/bash
-echo updatedb >>"${DONE_LOG:?}"
+echo updatedb >>"${CALL_LOG:?}"
 STUB
 
 cat >"$stub_bin/pacman" <<'STUB'
@@ -39,6 +40,7 @@ if [[ $1 == "-Slq" ]]; then
   echo testpkg
   exit 0
 fi
+echo "pacman $*" >>"${CALL_LOG:?}"
 exit "${PACMAN_RESULT:-0}"
 STUB
 
@@ -48,50 +50,73 @@ if [[ $1 == "-Slqa" ]]; then
   echo testpkg
   exit 0
 fi
+echo "yay $*" >>"${CALL_LOG:?}"
 exit "${YAY_RESULT:-0}"
 STUB
 
 chmod +x "$stub_bin"/*
 
 run_pkg_install() {
-  DONE_LOG="$done_log" PATH="$stub_bin:$ROOT/bin:$PATH" HOME="$TMPDIR/home" \
+  : >"$call_log"
+  CALL_LOG="$call_log" PATH="$stub_bin:$ROOT/bin:$PATH" HOME="$TMPDIR/home" \
     bash "$ROOT/bin/omarchy-pkg-install" >/dev/null 2>&1
 }
 
 run_pkg_aur_install() {
-  DONE_LOG="$done_log" PATH="$stub_bin:$ROOT/bin:$PATH" HOME="$TMPDIR/home" \
+  : >"$call_log"
+  CALL_LOG="$call_log" PATH="$stub_bin:$ROOT/bin:$PATH" HOME="$TMPDIR/home" \
     bash "$ROOT/bin/omarchy-pkg-aur-install" >/dev/null 2>&1
 }
 
 mkdir -p "$TMPDIR/home"
 
 # A successful pacman run still reports done.
-done_log="$TMPDIR/done-success"
+call_log="$TMPDIR/calls-success"
 PACMAN_RESULT=0 run_pkg_install || fail "pkg-install exits clean on successful install"
-grep -q done "$done_log" || fail "pkg-install reports done on successful install"
+grep -q '^done$' "$call_log" || fail "pkg-install reports done on successful install"
 pass "pkg-install reports done on successful install"
 
 # An aborted or failed pacman run (Ctrl+C at the sudo prompt, declined auth,
 # package error) must not report done and must exit non-zero.
-done_log="$TMPDIR/done-abort"
+call_log="$TMPDIR/calls-abort"
 if PACMAN_RESULT=130 run_pkg_install; then
   fail "pkg-install exits non-zero on aborted install"
 fi
-[[ ! -e $done_log ]] || fail "pkg-install does not report done on aborted install"
+grep -q '^done$' "$call_log" && fail "pkg-install does not report done on aborted install"
 pass "pkg-install does not report done on aborted install"
 
+# An interrupt at the initial sudo validation (the first password prompt) must
+# stop before the package transaction starts.
+call_log="$TMPDIR/calls-sudo-abort"
+if SUDO_VALIDATE_RESULT=130 run_pkg_install; then
+  fail "pkg-install exits non-zero when sudo validation is interrupted"
+fi
+grep -q '^pacman ' "$call_log" && fail "pkg-install skips the pacman transaction when sudo validation is interrupted"
+grep -q '^done$' "$call_log" && fail "pkg-install does not report done when sudo validation is interrupted"
+pass "pkg-install aborts before the transaction when sudo validation is interrupted"
+
 # A successful yay run reports done and refreshes the file database.
-done_log="$TMPDIR/aur-done-success"
+call_log="$TMPDIR/aur-calls-success"
 YAY_RESULT=0 run_pkg_aur_install || fail "pkg-aur-install exits clean on successful install"
-grep -q done "$done_log" || fail "pkg-aur-install reports done on successful install"
+grep -q '^done$' "$call_log" || fail "pkg-aur-install reports done on successful install"
 pass "pkg-aur-install reports done on successful install"
-grep -q updatedb "$done_log" || fail "pkg-aur-install refreshes file database on success"
+grep -q '^updatedb$' "$call_log" || fail "pkg-aur-install refreshes file database on success"
 pass "pkg-aur-install refreshes file database on success"
 
 # An aborted yay run must skip both updatedb and the done notification.
-done_log="$TMPDIR/aur-done-abort"
+call_log="$TMPDIR/aur-calls-abort"
 if YAY_RESULT=130 run_pkg_aur_install; then
   fail "pkg-aur-install exits non-zero on aborted install"
 fi
-[[ ! -e $done_log ]] || fail "pkg-aur-install skips done and updatedb on aborted install"
+{ grep -q '^updatedb$' "$call_log" || grep -q '^done$' "$call_log"; } &&
+  fail "pkg-aur-install skips done and updatedb on aborted install"
 pass "pkg-aur-install skips done and updatedb on aborted install"
+
+# The same initial sudo validation interrupt must stop the AUR flow before yay.
+call_log="$TMPDIR/aur-calls-sudo-abort"
+if SUDO_VALIDATE_RESULT=130 run_pkg_aur_install; then
+  fail "pkg-aur-install exits non-zero when sudo validation is interrupted"
+fi
+grep -q '^yay ' "$call_log" && fail "pkg-aur-install skips the yay transaction when sudo validation is interrupted"
+grep -q '^done$' "$call_log" && fail "pkg-aur-install does not report done when sudo validation is interrupted"
+pass "pkg-aur-install aborts before the transaction when sudo validation is interrupted"
