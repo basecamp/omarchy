@@ -78,10 +78,11 @@ Item {
     var id = String(desktopId || "")
     if (!id) return
     root.beginLaunchFeedback(name)
-    // Pass the file name with its extension: gtk-launch only appends ".desktop"
-    // when the argument doesn't already end with it, so ids that themselves end
-    // in ".desktop" (e.g. org.telegram.desktop) would otherwise never resolve.
-    Util.execDetached("gtk-launch " + Util.shellQuote(id + ".desktop"))
+    // uwsm-app gives the app its own scope under app-graphical.slice.
+    // gtk-launch or a plain exec would inherit the shell's cgroup, which is
+    // wayland-wm@.service, where an OOM kill takes the session down too.
+    // Keep the .desktop suffix or ids like org.telegram.desktop won't resolve.
+    Util.execDetached("uwsm-app -- " + Util.shellQuote(id + ".desktop"))
   }
 
   function remove(desktopId, name) {
