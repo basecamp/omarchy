@@ -66,6 +66,21 @@ shell palette is loaded from:
   serves as ANSI `color8`
 - `urgent` / `red` / `color1`
 
+Themes and user templates using the legacy short names remain supported.
+Canonical names take precedence when both forms are defined, and resolved
+canonical values are also exposed through their legacy names:
+
+| Canonical | Legacy |
+|-----------|--------|
+| `background` | `bg` |
+| `dark_background` | `dark_bg` |
+| `darker_background` | `darker_bg` |
+| `lighter_background` | `lighter_bg` |
+| `foreground` | `fg` |
+| `dark_foreground` | `dark_fg` |
+| `light_foreground` | `light_fg` |
+| `bright_foreground` | `bright_fg` |
+
 The neutral ramp is centered on `background -> bright_foreground`. Dark themes
 should read from darkest to lightest; light themes should read from lightest to
 darkest. Terminal and editor cursors use `bright_foreground`; there is no
