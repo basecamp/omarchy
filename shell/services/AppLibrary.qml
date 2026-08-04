@@ -78,11 +78,11 @@ Item {
     var id = String(desktopId || "")
     if (!id) return
     root.beginLaunchFeedback(name)
-    // uwsm-app gives the app its own scope under app-graphical.slice.
-    // gtk-launch or a plain exec would inherit the shell's cgroup, which is
-    // wayland-wm@.service, where an OOM kill takes the session down too.
+    // Start gtk-launch inside a scope under app-graphical.slice so apps do not
+    // inherit wayland-wm@.service. Keeping gtk-launch as the desktop-entry
+    // resolver supports IDs with spaces and entries that UWSM rejects.
     // Keep the .desktop suffix or ids like org.telegram.desktop won't resolve.
-    Util.execDetached("uwsm-app -- " + Util.shellQuote(id + ".desktop"))
+    Util.execDetached("uwsm-app -- gtk-launch " + Util.shellQuote(id + ".desktop"))
   }
 
   function remove(desktopId, name) {
