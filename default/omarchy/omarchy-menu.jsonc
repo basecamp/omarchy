@@ -191,7 +191,7 @@
   "install.development": {"icon":"󰵮","label":"Development"},
   "install.editor": {"icon":"","label":"Editor"},
   "install.terminal": {"icon":"","label":"Terminal"},
-  "install.browser": {"icon":"","label":"Browser"},
+  "install.browser": {"icon":"","label":"Browser"},
   "install.ai": {"icon":"󱚤","label":"AI"},
   "install.gaming": {"icon":"","label":"Gaming"},
   "install.windows": {"icon":"󰍲","label":"Windows","when":"[[ ! -f $HOME/.local/share/applications/windows-vm.desktop ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-windows-vm install'"},
