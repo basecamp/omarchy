@@ -78,10 +78,11 @@ Item {
     var id = String(desktopId || "")
     if (!id) return
     root.beginLaunchFeedback(name)
-    // Pass the file name with its extension: gtk-launch only appends ".desktop"
-    // when the argument doesn't already end with it, so ids that themselves end
-    // in ".desktop" (e.g. org.telegram.desktop) would otherwise never resolve.
-    Util.execDetached("gtk-launch " + Util.shellQuote(id + ".desktop"))
+    // Start gtk-launch inside a scope under app-graphical.slice so apps do not
+    // inherit wayland-wm@.service. Keeping gtk-launch as the desktop-entry
+    // resolver supports IDs with spaces and entries that UWSM rejects.
+    // Keep the .desktop suffix or ids like org.telegram.desktop won't resolve.
+    Util.execDetached("uwsm-app -- gtk-launch " + Util.shellQuote(id + ".desktop"))
   }
 
   function remove(desktopId, name) {

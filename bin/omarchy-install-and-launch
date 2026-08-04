@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Install a packaged app and gtk-launch it once it finishes
+# omarchy:summary=Install a packaged app and launch it once it finishes
 # omarchy:args=<display-name> <packages> <desktop-id>
 # omarchy:examples=omarchy install and launch Cursor cursor-bin cursor
 
@@ -13,5 +13,9 @@ if [[ -z $name || -z $packages || -z $desktop_id ]]; then
   exit 1
 fi
 
+printf -v install_message '%q' "Installing ${name}..."
+printf -v desktop_id_arg '%q' "$desktop_id"
+
+# The subshell keeps & from backgrounding the package installation too.
 exec omarchy-launch-floating-terminal-with-presentation \
-  "echo 'Installing ${name}...'; omarchy-pkg-add ${packages} && setsid gtk-launch ${desktop_id}"
+  "echo ${install_message}; omarchy-pkg-add ${packages} && (setsid uwsm-app -- gtk-launch ${desktop_id_arg} >/dev/null 2>&1 &)"

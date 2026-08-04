@@ -99,9 +99,9 @@ assert(
 )
 
 assert(
-  /function launch\(desktopId, name\) \{[\s\S]*?gtk-launch[\s\S]*?\n  \}/.test(appLibraryQml) &&
-    appLibraryQml.includes('Util.execDetached("gtk-launch "'),
-  'app library runs desktop entry launch through the shell'
+  /function launch\(desktopId, name\) \{[\s\S]*?uwsm-app[\s\S]*?\n  \}/.test(appLibraryQml) &&
+    appLibraryQml.includes('Util.execDetached("uwsm-app -- gtk-launch "'),
+  'app library launches desktop entries through gtk-launch in their own scope'
 )
 
 assert(
