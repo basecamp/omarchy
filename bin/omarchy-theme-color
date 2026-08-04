@@ -161,8 +161,24 @@ parse_colors_file() {
 resolve_theme_colors() {
   local key
 
-  # Canonical palette keys are background/foreground. Themes generated before
-  # the semantic palette existed may only define the ANSI names.
+  # Accept the complete legacy short-name palette before applying ANSI
+  # fallbacks or deriving shades. Canonical names take precedence when a theme
+  # defines both forms.
+  declare -A legacy_palette_alias=(
+    [background]=bg
+    [dark_background]=dark_bg
+    [darker_background]=darker_bg
+    [lighter_background]=lighter_bg
+    [foreground]=fg
+    [dark_foreground]=dark_fg
+    [light_foreground]=light_fg
+    [bright_foreground]=bright_fg
+  )
+  for key in "${!legacy_palette_alias[@]}"; do
+    alias_theme_color "$key" "${legacy_palette_alias[$key]}"
+  done
+
+  # Themes generated before the semantic palette may only define ANSI names.
   [[ ${THEME_COLORS[background]} ]] || THEME_COLORS[background]="${THEME_COLORS[color0]}"
   [[ ${THEME_COLORS[foreground]} ]] || THEME_COLORS[foreground]="${THEME_COLORS[color7]}"
   [[ ${THEME_COLORS[background]} ]] && THEME_COLORS[color0]="${THEME_COLORS[background]}"
@@ -235,6 +251,14 @@ resolve_theme_colors() {
   )
   for key in "${!ansi_alias[@]}"; do
     alias_theme_color "$key" "${ansi_alias[$key]}"
+  done
+
+  # Keep canonical themes compatible with old user templates and consumers
+  # that still query the short palette names directly.
+  for key in "${!legacy_palette_alias[@]}"; do
+    if [[ ${THEME_COLORS[$key]} ]]; then
+      THEME_COLORS["${legacy_palette_alias[$key]}"]="${THEME_COLORS[$key]}"
+    fi
   done
 
   resolve_theme_mode
