@@ -1,3 +1,5 @@
 echo "Install oh-my-pi (omp) via mise wrapper"
 
-omarchy-mise-install oh-my-pi omp
+if [[ ! -f $HOME/.local/state/omarchy/preinstalls-removed ]]; then
+  omarchy-mise-install github:can1357/oh-my-pi omp
+fi

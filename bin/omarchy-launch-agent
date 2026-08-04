@@ -1,0 +1,68 @@
+#!/bin/bash
+
+# omarchy:summary=Launch the default coding agent in a terminal
+# omarchy:args=[--inline] [prompt...]
+# omarchy:examples=omarchy launch agent | omarchy launch agent "Review this project"
+
+if [[ ${1:-} == "--inline" ]]; then
+  inline=true
+  shift
+else
+  inline=false
+fi
+
+agent=$(omarchy-default-agent)
+
+if omarchy-cmd-missing "$agent"; then
+  echo "$agent is not installed. Choose an installed agent with: omarchy default agent <name>" >&2
+  exit 1
+fi
+
+if (($# > 0)); then
+  prompt="$*"
+fi
+
+case "$agent" in
+opencode)
+  if [[ -n ${prompt:-} ]]; then
+    command=(opencode --prompt "$prompt")
+  else
+    command=(opencode)
+  fi
+  ;;
+gemini)
+  if [[ -n ${prompt:-} ]]; then
+    command=(gemini --prompt-interactive "$prompt")
+  else
+    command=(gemini)
+  fi
+  ;;
+copilot)
+  if [[ -n ${prompt:-} ]]; then
+    command=(copilot --interactive "$prompt")
+  else
+    command=(copilot)
+  fi
+  ;;
+crush)
+  if [[ -n ${prompt:-} ]]; then
+    command=(crush run "$prompt")
+  else
+    command=(crush)
+  fi
+  ;;
+pi | omp | claude | codex | grok)
+  command=("$agent")
+  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
+*)
+  echo "Unsupported default agent: $agent" >&2
+  exit 1
+  ;;
+esac
+
+if [[ $inline == "true" ]]; then
+  exec "${command[@]}"
+else
+  exec omarchy-launch-tui "${command[@]}"
+fi

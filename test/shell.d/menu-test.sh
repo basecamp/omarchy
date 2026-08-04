@@ -167,6 +167,38 @@ assertEqual(
   defaultItems.findIndex(item => item.id === 'setup.input') + 1,
   'menu lists Direct Boot immediately below Input'
 )
+const expectedAgents = {
+  pi: { icon: '\ue901', iconFont: 'omarchy', label: 'Pi' },
+  omp: { icon: '\ue903', iconFont: 'omarchy', label: 'omp' },
+  opencode: { icon: '\ue902', iconFont: 'omarchy', label: 'OpenCode' },
+  claude: { icon: '󰛄', label: 'Claude' },
+  codex: { icon: '\ue905', iconFont: 'omarchy', label: 'Codex' },
+  grok: { icon: '\ue904', iconFont: 'omarchy', label: 'Grok' },
+  gemini: { icon: '󰫢', label: 'Gemini' },
+  copilot: { icon: '', label: 'Copilot' },
+  crush: { icon: '󰋑', label: 'Crush' },
+}
+assert(
+  Object.entries(expectedAgents).every(([agent, expected]) => {
+    const entry = defaultById[`setup.default.agent.${agent}`]
+    return entry
+      && entry.icon === expected.icon
+      && entry.iconFont === (expected.iconFont || '')
+      && entry.label === expected.label
+      && entry.action === `omarchy-default-agent ${agent}`
+      && !entry.when
+      && entry.checked.includes(`== \"${agent}\"`)
+  }),
+  'menu exposes every mise-installable coding agent with its own glyph under Defaults > Agent'
+)
+assertDeepEqual(
+  defaultItems
+    .filter(item => item.parent === 'setup.default.agent')
+    .map(item => item.label),
+  ['Claude', 'Codex', 'Copilot', 'Crush', 'Gemini', 'Grok', 'omp', 'OpenCode', 'Pi'],
+  'menu sorts coding agents alphabetically'
+)
+assert(!defaultById['install.ai.crush'], 'menu removes Crush from Install > AI')
 assert(
   defaultById['setup.security.passwordless-sudo'].action.includes('omarchy-sudo-passwordless'),
   'menu places Passwordless Sudo under Setup > Security'
@@ -452,3 +484,7 @@ assert(
   'mouse activation carries pointer intent into subordinate menus'
 )
 JS
+
+font_charset=$(fc-query --format='%{charset}' "$ROOT/default/fonts/omarchy/omarchy.ttf")
+[[ $font_charset == *"e900-e905"* ]] || fail "Omarchy icon font includes every custom menu glyph"
+pass "Omarchy icon font includes the official agent marks"
