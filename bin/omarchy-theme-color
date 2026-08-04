@@ -163,6 +163,8 @@ resolve_theme_colors() {
 
   # Canonical palette keys are background/foreground. Themes generated before
   # the semantic palette existed may only define the ANSI names.
+  [[ ${THEME_COLORS[background]} ]] || THEME_COLORS[background]="${THEME_COLORS[bg]}"
+  [[ ${THEME_COLORS[foreground]} ]] || THEME_COLORS[foreground]="${THEME_COLORS[fg]}"
   [[ ${THEME_COLORS[background]} ]] || THEME_COLORS[background]="${THEME_COLORS[color0]}"
   [[ ${THEME_COLORS[foreground]} ]] || THEME_COLORS[foreground]="${THEME_COLORS[color7]}"
   [[ ${THEME_COLORS[background]} ]] && THEME_COLORS[color0]="${THEME_COLORS[background]}"
