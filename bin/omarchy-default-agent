@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Set the default coding agent used by omarchy-launch-agent
+# omarchy:summary=Set and launch the default coding agent
 # omarchy:args=[pi|omp|opencode|claude|codex|grok|gemini|copilot|crush]
 # omarchy:examples=omarchy default agent | omarchy default agent codex | omarchy default agent claude
 
@@ -47,7 +47,7 @@ if ! mise use -g "$agent_package"; then
   if [[ $installing == "true" ]]; then
     echo "Could not install $name with mise" >&2
   else
-    omarchy-notification-send -g 󰚩 "Could not set $name as the default coding agent"
+    echo "Could not set $name as the default coding agent" >&2
   fi
   exit 1
 fi
@@ -55,6 +55,9 @@ fi
 mkdir -p "$(dirname "$agent_file")"
 printf '%s\n' "$agent" >"$agent_file"
 
-if [[ $installing == "false" ]]; then
-  omarchy-notification-send -g 󰚩 "$name is now the default coding agent"
+if [[ $installing == "true" ]]; then
+  printf '\033[2J\033[3J\033[H'
+  exec omarchy-launch-agent --inline
+else
+  exec omarchy-launch-agent
 fi
