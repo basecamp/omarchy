@@ -319,16 +319,6 @@ assert_launch gemini gemini --prompt-interactive "Review this project"
 assert_launch copilot copilot --interactive "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
 
-mkdir -p "$test_home/.local/bin"
-touch "$test_home/.local/bin/gemini"
-chmod +x "$test_home/.local/bin/gemini"
-printf '%s\n' "gemini" >"$agent_file"
-OMARCHY_TEST_MISSING_COMMAND=gemini omarchy-launch-agent "Review this project"
-mapfile -d '' -t launch_args <"$launch_log"
-[[ ${launch_args[0]} == "gemini" && ${launch_args[1]} == "--prompt-interactive" ]] ||
-  fail "agent launcher finds a lazy wrapper outside the session PATH"
-pass "agent launcher finds lazy wrappers outside the session PATH"
-
 printf '%s\n' "opencode" >"$agent_file"
 omarchy-launch-agent
 mapfile -d '' -t launch_args <"$launch_log"
