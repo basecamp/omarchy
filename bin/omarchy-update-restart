@@ -42,3 +42,9 @@ for file in "$HOME"/.local/state/omarchy/restart-*-required; do
     omarchy-restart-"$service"
   fi
 done
+
+# Updates routinely replace the shell's QML, and a stale process can lazy-load
+# new files into old code. A restart failure (locked session, ssh, TTY) only
+# prints its reason: the next update or login gets a fresh shell anyway.
+echo "Restarting shell"
+omarchy-restart-shell || true

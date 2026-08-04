@@ -17,9 +17,28 @@ Panel {
   manageIpc: false
 
   // Centralized close so callers can't forget to drop the passphrase prompt.
+  readonly property bool overlayVisible: qrVisible || speedTestModalOpen
+
+  // Shadows the base open(): a summon or toggle while a centered card is up
+  // dismisses the card instead of opening the compact panel behind an
+  // exclusive overlay. The base toggle() dispatches here, so the keybind,
+  // the bar icon, and every IPC route all get this behavior.
+  function open() {
+    if (overlayVisible) {
+      hideWifiQr()
+      hideSpeedTest()
+      return
+    }
+    root.controller.show()
+  }
+
   function close() {
     root.controller.hide()
     cancelPasswordPrompt()
+    // The centered cards outlive the compact panel, but the widget's
+    // canonical close must not leave an overlay (or its traffic) behind.
+    hideWifiQr()
+    hideSpeedTest()
   }
 
   function cancelPasswordPrompt() {
@@ -83,8 +102,9 @@ Panel {
   property var bandAvailable: []
   property string pendingBand: ""
   property bool speedTestRunning: false
-  property bool speedTestHasRun: false
+  property bool speedTestModalOpen: false
   property bool speedTestExpectedStop: false
+  property bool pendingSpeedRun: false
   property string speedTestPhase: ""
   property string speedTestStderr: ""
   property string speedTestDownloadMbps: ""
@@ -111,6 +131,8 @@ Panel {
   property string qrError: ""
   property bool qrLoading: false
   property bool qrExpectedStop: false
+  property bool pendingQrShow: false
+  property bool pendingQrDetect: false
   property string qrPassword: ""
   property bool qrPasswordVisible: false
   property string qrPasswordError: ""
@@ -127,9 +149,9 @@ Panel {
   property bool cursorActive: false
 
   // Keyboard focus zone for the panel. j/k crosses row boundaries:
-  // header actions ⇄ band ⇄ DNS row ⇄ speed test ⇄ Wi-Fi networks. h/l move
+  // header actions ⇄ band ⇄ DNS row ⇄ Wi-Fi networks. h/l move
   // within header actions, band pills, or DNS providers.
-  property string focusSection: "dns"  // "header" | "band" | "dns" | "speed" | "wifi"
+  property string focusSection: "dns"  // "header" | "band" | "dns" | "wifi"
   property int headerIndex: 0
   readonly property bool canDisconnect: !!connectedWifiNetwork
   readonly property bool headerHasDisconnect: false
@@ -139,9 +161,11 @@ Panel {
   // "off" beside a perfectly live Ethernet connection.
   readonly property bool canToggleWifi: networkManagerAvailable && wifiStationAvailable
   readonly property int qrHeaderIndex: canShareWifi ? 0 : -1
-  readonly property int toggleHeaderIndex: canToggleWifi ? (canShareWifi ? 1 : 0) : -1
-  readonly property int headerActionCount: (canShareWifi ? 1 : 0) + (canToggleWifi ? 1 : 0)
+  readonly property int speedHeaderIndex: canRunSpeedTest ? (canShareWifi ? 1 : 0) : -1
+  readonly property int toggleHeaderIndex: canToggleWifi ? (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) : -1
+  readonly property int headerActionCount: (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) + (canToggleWifi ? 1 : 0)
   readonly property bool qrHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === qrHeaderIndex
+  readonly property bool speedHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === speedHeaderIndex
   readonly property bool toggleHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === toggleHeaderIndex
   readonly property string toggleHint: Networking.wifiEnabled ? "Turn Wi-Fi off" : "Turn Wi-Fi on"
   readonly property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
@@ -167,8 +191,8 @@ Panel {
   readonly property bool bandPillsVisible: canSelectBand && bandPinned
   readonly property string bandSectionTitle: Model.bandSectionTitle(bandEffective, bandCurrent)
   readonly property bool bandBusy: pendingBand !== ""
-  // The speed test section only exists once there's an interface to test, so
-  // the Run button only joins the cursor chain then.
+  // The speed test needs an interface to test, so its hero action only
+  // appears once there is one.
   readonly property bool canRunSpeedTest: !!info.iface
   property int bandIndex: 0
   // The band section has up to two cursor rows: the Automatic switch on the
@@ -189,10 +213,6 @@ Panel {
       focusSection = "dns"
       bandAutoFocused = true
     }
-  }
-
-  onCanRunSpeedTestChanged: {
-    if (!canRunSpeedTest && focusSection === "speed") focusSection = "dns"
   }
 
   // Collapsing the pills out from under the cursor would leave it pointing at
@@ -226,10 +246,20 @@ Panel {
     function hide() { root.close() }
     function toggle() { root.toggle() }
     function toggleNetwork() { root.toggleNetwork() }
+    // Menu routes: summon the centered cards directly, panel open or not.
+    function showQr() {
+      root.refresh()
+      root.showWifiQr(true)
+    }
+    function speedTest() {
+      root.refresh()
+      root.showSpeedTest()
+    }
   }
 
   function activateHeader() {
     if (headerIndex === qrHeaderIndex) showWifiQr()
+    else if (headerIndex === speedHeaderIndex) showSpeedTest()
     else if (headerIndex === toggleHeaderIndex) toggleNetwork()
   }
 
@@ -427,14 +457,27 @@ Panel {
 
   readonly property string icon: Model.connectionIcon(kind, signalStrength)
 
-  function showWifiQr() {
-    if (qrProc.running || !info.iface || info.type !== "wifi") return
+  function showWifiQr(forceDetect) {
+    if (qrProc.running) {
+      // A dismissal's SIGTERM is still in flight; Process.running stays true
+      // until the child exits, so queue the reopen for onExited.
+      if (qrExpectedStop) {
+        pendingQrShow = true
+        pendingQrDetect = !!forceDetect
+      }
+      return
+    }
     qrSize = 0
     qrRows = []
     qrError = ""
     qrLoading = true
     qrExpectedStop = false
-    qrProc.command = ["omarchy-network-qr", info.iface]
+    // The panel's own button shares the interface it is showing. The IPC
+    // route forces self-detection instead: details polling stops while the
+    // panel is closed, so its cached interface can be stale.
+    qrProc.command = !forceDetect && info.type === "wifi" && info.iface
+      ? ["omarchy-network-qr", info.iface]
+      : ["omarchy-network-qr"]
     qrProc.running = true
 
     // Leave the compact network panel behind while the centered share card is open.
@@ -443,6 +486,7 @@ Panel {
   }
 
   function hideWifiQr() {
+    pendingQrShow = false
     if (qrProc.running) {
       qrExpectedStop = true
       qrProc.running = false
@@ -563,10 +607,6 @@ Panel {
     return Model.formatRate(bytesPerSec)
   }
 
-  function formatSpeedMbps(mbps) {
-    return Model.formatSpeedMbps(mbps)
-  }
-
   function formatPingLatency(ms) {
     return Model.formatPingLatency(ms, hasInternetPing)
   }
@@ -660,10 +700,42 @@ Panel {
     speedTestError = ""
   }
 
+  // The speed test lives in a centered modal card like the QR share.
+  // Opening it starts a fresh run; dismissing it stops the traffic, so the
+  // download workers never keep saturating the link behind a closed card.
+  function showSpeedTest() {
+    if (!speedTestModalOpen) {
+      speedTestModalOpen = true
+      controller.hide()
+      cancelPasswordPrompt()
+    }
+    runSpeedTest()
+  }
+
+  function hideSpeedTest() {
+    speedTestModalOpen = false
+    pendingSpeedRun = false
+    speedTestPhaseTimer.stop()
+    // Clear the phase before killing the process: onExited advances to the
+    // upload phase when it still reads "down".
+    speedTestPhase = ""
+    speedTestRunning = false
+    if (speedTestProc.running) {
+      speedTestExpectedStop = true
+      speedTestProc.running = false
+    }
+  }
+
   function runSpeedTest() {
-    if (speedTestProc.running) return
+    if (speedTestProc.running) {
+      // A dismissal's SIGTERM is still in flight; Process.running stays true
+      // until the child exits, so queue the fresh run for onExited.
+      if (speedTestExpectedStop) pendingSpeedRun = true
+      return
+    }
     speedTestError = ""
-    speedTestHasRun = true
+    speedTestDownloadMbps = ""
+    speedTestUploadMbps = ""
     speedTestRunning = true
     startSpeedTestPhase("down")
   }
@@ -883,6 +955,12 @@ Panel {
     }
     onExited: function(exitCode) {
       root.qrLoading = false
+      if (root.pendingQrShow) {
+        root.pendingQrShow = false
+        root.qrExpectedStop = false
+        Qt.callLater(function() { root.showWifiQr(root.pendingQrDetect) })
+        return
+      }
       if (root.qrExpectedStop) return
       if (exitCode !== 0 || root.qrSize === 0) {
         root.qrSize = 0
@@ -948,6 +1026,13 @@ Panel {
     }
     onExited: function(exitCode) {
       speedTestPhaseTimer.stop()
+
+      if (root.pendingSpeedRun) {
+        root.pendingSpeedRun = false
+        root.speedTestExpectedStop = false
+        if (root.speedTestModalOpen) Qt.callLater(root.runSpeedTest)
+        return
+      }
 
       if (!root.speedTestExpectedStop && exitCode !== 0) {
         root.speedTestError = root.speedTestStderr || "Speed test failed"
@@ -1134,25 +1219,15 @@ Panel {
                 root.focusSection = "header"
                 root.headerIndex = 0
               }
-            } else if (root.canRunSpeedTest) {
-              root.focusSection = "speed"
-            } else if (root.wifiNetworks.length > 0) {
-              root.focusSection = "wifi"
-              if (root.selectedIndex < 0) root.selectedIndex = 0
-            }
-          } else if (root.focusSection === "speed") {
-            if (dy < 0) {
-              root.focusSection = "dns"
             } else if (root.wifiNetworks.length > 0) {
               root.focusSection = "wifi"
               if (root.selectedIndex < 0) root.selectedIndex = 0
             }
           } else {  // wifi
-            // k from the top row escapes back up into the speed test's Run
-            // button, or DNS when there is no speed test, rather than wrapping
-            // around to the bottom of the list.
+            // k from the top row escapes back up to the DNS row rather than
+            // wrapping around to the bottom of the list.
             if (dy < 0 && root.selectedIndex <= 0) {
-              root.focusSection = root.canRunSpeedTest ? "speed" : "dns"
+              root.focusSection = "dns"
               root.wifiActionFocused = false
             }
             else root.selectByDelta(dy)
@@ -1170,7 +1245,6 @@ Panel {
           if (root.focusSection === "header") root.activateHeader()
           else if (root.focusSection === "band") root.activateBand()
           else if (root.focusSection === "dns") root.activateDns()
-          else if (root.focusSection === "speed") root.runSpeedTest()
           else root.activateSelected()
         }
       }
@@ -1227,6 +1301,22 @@ Panel {
             Layout.alignment: Qt.AlignVCenter
             onHovered: function(on) { if (on) root.setHeaderCursor(root.qrHeaderIndex) }
             onClicked: root.showWifiQr()
+          }
+
+          Button {
+            id: speedAction
+            visible: root.canRunSpeedTest
+            iconText: "󰓅"
+            tooltipText: "Run a speed test"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            iconSize: Style.font.subtitle * 1.5
+            horizontalPadding: Style.space(5)
+            verticalPadding: Style.space(2)
+            hasCursor: root.speedHeaderHasCursor
+            Layout.alignment: Qt.AlignVCenter
+            onHovered: function(on) { if (on) root.setHeaderCursor(root.speedHeaderIndex) }
+            onClicked: root.showSpeedTest()
           }
 
           ToggleSwitch {
@@ -1543,84 +1633,6 @@ Panel {
       }
 
 
-      PanelSeparator {
-        visible: !!root.info.iface
-        foreground: root.bar.foreground
-      }
-
-      Column {
-        visible: !!root.info.iface
-        width: parent.width
-        spacing: Style.space(12)
-
-        Column {
-          width: parent.width
-          spacing: Style.space(8)
-
-          Item {
-            width: parent.width
-            implicitHeight: Math.max(speedTestHeader.implicitHeight, speedRunButton.implicitHeight)
-
-            PanelSectionHeader {
-              id: speedTestHeader
-              text: "SPEED TEST"
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-              anchors.left: parent.left
-              anchors.verticalCenter: parent.verticalCenter
-            }
-
-            // Scaled to the band section's AUTOMATIC row -- caption type and
-            // trimmed padding -- so both header lines carry a control of the
-            // same visual weight instead of this one dominating.
-            Button {
-              id: speedRunButton
-              text: root.speedTestRunning ? "Running..." : "Run"
-              tooltipText: "Run using fast.com"
-              enabled: !root.speedTestRunning
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-              fontSize: Style.font.caption
-              horizontalPadding: Style.space(8)
-              verticalPadding: Style.space(2)
-              bordered: true
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-              hasCursor: root.cursorActive && root.focusSection === "speed"
-              onClicked: root.runSpeedTest()
-
-              onHovered: function(isHovered) {
-                if (!isHovered) return
-                root.cursorActive = true
-                root.focusSection = "speed"
-              }
-            }
-          }
-
-          Row {
-            id: speedTestValues
-            visible: root.speedTestHasRun
-            width: parent.width
-            spacing: Style.space(20)
-
-            readonly property real cellWidth: Math.max(0, (width - spacing * 3) / 4)
-
-            InfoLabel { width: speedTestValues.cellWidth; text: "Download" }
-            DetailValue { width: speedTestValues.cellWidth; text: root.formatSpeedMbps(root.speedTestDownloadMbps) }
-            InfoLabel { width: speedTestValues.cellWidth; text: "Upload" }
-            DetailValue { width: speedTestValues.cellWidth; text: root.formatSpeedMbps(root.speedTestUploadMbps) }
-          }
-
-          InfoValue {
-            visible: root.speedTestError !== ""
-            text: root.speedTestError
-            color: root.bar.urgent
-            width: parent.width
-            elide: Text.ElideRight
-          }
-        }
-      }
-
       // Wi-Fi networks (only if a Wi-Fi station is available).
       PanelSeparator {
         visible: root.wifiStationAvailable
@@ -1706,6 +1718,24 @@ Panel {
     open: root.qrVisible
     onCloseRequested: root.hideWifiQr()
     onPasswordToggleRequested: root.toggleQrPassword()
+  }
+
+  SpeedTestPanel {
+    anchorItem: button
+    bar: root.bar
+    running: root.speedTestRunning
+    phase: root.speedTestPhase
+    downloadMbps: root.speedTestDownloadMbps
+    uploadMbps: root.speedTestUploadMbps
+    error: root.speedTestError
+    connectionName: {
+      if (root.info.type === "wifi") return root.info.ssid || "Wi-Fi"
+      if (root.info.type === "ethernet") return "Ethernet"
+      return ""
+    }
+    open: root.speedTestModalOpen
+    onCloseRequested: root.hideSpeedTest()
+    onRunAgainRequested: root.runSpeedTest()
   }
 
   // One Wi-Fi band pill. `active` (fill) is the band actually in use and

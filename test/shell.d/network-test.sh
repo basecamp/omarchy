@@ -85,7 +85,6 @@ assertDeepEqual(
 
 assertEqual(network.formatBytes(1536), '1.5 KB', 'network formats bytes')
 assertEqual(network.formatRate(1536), '1.5 KB/s', 'network formats rates')
-assertEqual(network.formatSpeedMbps('250.4'), '250 Mbps', 'network formats speed test results')
 assertEqual(network.formatPingLatency('2.54'), '2.5 ms', 'network formats low ping with precision')
 assertEqual(network.formatPingLatency('25.4'), '25 ms', 'network formats ping')
 assertEqual(network.formatPingLatency(''), 'Timeout', 'network formats missing ping as timeout')

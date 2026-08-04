@@ -118,7 +118,3 @@ if [[ -s $config_file ]] && grep -q 'TmuxAlert' "$config_file"; then
 
   rm -f "$tmp"
 fi
-
-# Nothing to restart from a TTY or over ssh, and that is no reason to stop the
-# rest of the queue: hand it to the post-update restart instead.
-omarchy-restart-shell >/dev/null 2>&1 || omarchy-state set restart-shell-required
