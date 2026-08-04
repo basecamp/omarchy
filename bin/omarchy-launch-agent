@@ -1,8 +1,21 @@
 #!/bin/bash
 
 # omarchy:summary=Launch the default coding agent in a terminal
-# omarchy:args=[prompt...]
+# omarchy:args=[--inline] [prompt...]
 # omarchy:examples=omarchy launch agent | omarchy launch agent "Review this project"
+
+if [[ ${1:-} == "--inline" ]]; then
+  inline=true
+  shift
+else
+  inline=false
+fi
+
+agent_file="$HOME/.local/state/omarchy/defaults/agent"
+
+if [[ ! -s $agent_file ]]; then
+  exec omarchy-menu summon setup.default.agent
+fi
 
 agent=$(omarchy-default-agent)
 
@@ -58,4 +71,8 @@ pi | omp | claude | codex | grok)
   ;;
 esac
 
-exec omarchy-launch-tui "${command[@]}"
+if [[ $inline == "true" ]]; then
+  exec "${command[@]}"
+else
+  exec omarchy-launch-tui "${command[@]}"
+fi

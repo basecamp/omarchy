@@ -12,8 +12,10 @@ test_home="$test_tmp/home"
 notification_log="$test_tmp/notifications"
 notification_history="$test_tmp/notification-history"
 launch_log="$test_tmp/launch"
+inline_log="$test_tmp/inline"
 mise_log="$test_tmp/mise"
 mise_history="$test_tmp/mise-history"
+picker_log="$test_tmp/picker"
 stub_log="$test_tmp/stubs"
 mkdir -p "$mock_bin" "$test_home"
 
@@ -31,6 +33,16 @@ SH
 cat >"$mock_bin/omarchy-launch-tui" <<'SH'
 #!/bin/bash
 printf '%s\0' "$@" >"$OMARCHY_TEST_AGENT_LAUNCH_LOG"
+SH
+
+cat >"$mock_bin/omarchy-menu" <<'SH'
+#!/bin/bash
+printf '%s\0' "$@" >"$OMARCHY_TEST_AGENT_PICKER_LOG"
+SH
+
+cat >"$mock_bin/opencode" <<'SH'
+#!/bin/bash
+printf '%s\0' opencode "$@" >"$OMARCHY_TEST_AGENT_INLINE_LOG"
 SH
 
 cat >"$mock_bin/omarchy-mise-install" <<'SH'
@@ -67,6 +79,8 @@ export PATH="$mock_bin:$ROOT/bin:$PATH"
 export OMARCHY_TEST_NOTIFICATION_LOG="$notification_log"
 export OMARCHY_TEST_NOTIFICATION_HISTORY="$notification_history"
 export OMARCHY_TEST_AGENT_LAUNCH_LOG="$launch_log"
+export OMARCHY_TEST_AGENT_INLINE_LOG="$inline_log"
+export OMARCHY_TEST_AGENT_PICKER_LOG="$picker_log"
 export OMARCHY_TEST_MISE_LOG="$mise_log"
 export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
@@ -128,6 +142,22 @@ pass "Remove Preinstalls deletes every optional agent lazy stub"
 
 [[ $(omarchy-default-agent) == "opencode" ]] || fail "default agent falls back to OpenCode"
 pass "default agent falls back to OpenCode"
+
+omarchy-launch-agent
+mapfile -d '' -t picker_args <"$picker_log"
+[[ ${picker_args[0]} == "summon" && ${picker_args[1]} == "setup.default.agent" ]] ||
+  fail "agent launcher opens the picker before a default is selected"
+pass "agent launcher opens the picker before a default is selected"
+
+source "$ROOT/default/bash/aliases"
+[[ $(alias a) == "alias a='omarchy-launch-agent --inline'" ]] ||
+  fail "terminal alias launches the default agent inline"
+pass "terminal alias launches the default agent inline"
+
+grep -Fq 'o.bind("SUPER + SHIFT + CTRL + A", "Agent", "omarchy-launch-agent")' \
+  "$ROOT/default/hypr/bindings/utilities.lua" ||
+  fail "agent launcher has a keyboard shortcut"
+pass "agent launcher has a keyboard shortcut"
 
 declare -A expected_agents=(
   [pi]="pi"
@@ -264,6 +294,12 @@ mapfile -d '' -t launch_args <"$launch_log"
 [[ ${#launch_args[@]} == 1 && ${launch_args[0]} == "opencode" ]] ||
   fail "agent launcher starts the selected agent without an initial prompt"
 pass "agent launcher starts the selected agent without an initial prompt"
+
+omarchy-launch-agent --inline "Review this project"
+mapfile -d '' -t inline_args <"$inline_log"
+[[ ${inline_args[0]} == "opencode" && ${inline_args[1]} == "--prompt" && ${inline_args[2]} == "Review this project" ]] ||
+  fail "inline agent launcher runs in the current terminal"
+pass "inline agent launcher runs in the current terminal"
 
 printf '%s\n' "missing" >"$test_home/.local/state/omarchy/defaults/agent"
 if OMARCHY_TEST_MISSING_COMMAND=missing omarchy-launch-agent >"$test_tmp/missing-output" 2>&1; then
