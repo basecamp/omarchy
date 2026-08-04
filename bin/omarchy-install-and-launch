@@ -14,4 +14,4 @@ if [[ -z $name || -z $packages || -z $desktop_id ]]; then
 fi
 
 exec omarchy-launch-floating-terminal-with-presentation \
-  "echo 'Installing ${name}...'; omarchy-pkg-add ${packages} && setsid uwsm-app -- ${desktop_id}.desktop"
+  "echo 'Installing ${name}...'; omarchy-pkg-add ${packages} && (setsid uwsm-app -- ${desktop_id}.desktop >/dev/null 2>&1 &)"
