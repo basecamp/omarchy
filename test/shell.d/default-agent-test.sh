@@ -15,7 +15,6 @@ launch_log="$test_tmp/launch"
 inline_log="$test_tmp/inline"
 mise_log="$test_tmp/mise"
 mise_history="$test_tmp/mise-history"
-picker_log="$test_tmp/picker"
 stub_log="$test_tmp/stubs"
 mkdir -p "$mock_bin" "$test_home"
 
@@ -33,11 +32,6 @@ SH
 cat >"$mock_bin/omarchy-launch-tui" <<'SH'
 #!/bin/bash
 printf '%s\0' "$@" >"$OMARCHY_TEST_AGENT_LAUNCH_LOG"
-SH
-
-cat >"$mock_bin/omarchy-menu" <<'SH'
-#!/bin/bash
-printf '%s\0' "$@" >"$OMARCHY_TEST_AGENT_PICKER_LOG"
 SH
 
 cat >"$mock_bin/opencode" <<'SH'
@@ -80,7 +74,6 @@ export OMARCHY_TEST_NOTIFICATION_LOG="$notification_log"
 export OMARCHY_TEST_NOTIFICATION_HISTORY="$notification_history"
 export OMARCHY_TEST_AGENT_LAUNCH_LOG="$launch_log"
 export OMARCHY_TEST_AGENT_INLINE_LOG="$inline_log"
-export OMARCHY_TEST_AGENT_PICKER_LOG="$picker_log"
 export OMARCHY_TEST_MISE_LOG="$mise_log"
 export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
@@ -144,10 +137,10 @@ pass "Remove Preinstalls deletes every optional agent lazy stub"
 pass "default agent falls back to OpenCode"
 
 omarchy-launch-agent
-mapfile -d '' -t picker_args <"$picker_log"
-[[ ${picker_args[0]} == "summon" && ${picker_args[1]} == "setup.default.agent" ]] ||
-  fail "agent launcher opens the picker before a default is selected"
-pass "agent launcher opens the picker before a default is selected"
+mapfile -d '' -t launch_args <"$launch_log"
+[[ ${#launch_args[@]} == 1 && ${launch_args[0]} == "opencode" ]] ||
+  fail "agent launcher falls back to OpenCode before a default is selected"
+pass "agent launcher falls back to OpenCode before a default is selected"
 
 source "$ROOT/default/bash/aliases"
 [[ $(alias a) == "alias a='omarchy-launch-agent --inline'" ]] ||

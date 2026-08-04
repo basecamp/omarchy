@@ -11,12 +11,6 @@ else
   inline=false
 fi
 
-agent_file="$HOME/.local/state/omarchy/defaults/agent"
-
-if [[ ! -s $agent_file ]]; then
-  exec omarchy-menu summon setup.default.agent
-fi
-
 agent=$(omarchy-default-agent)
 
 if omarchy-cmd-missing "$agent"; then
