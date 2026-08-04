@@ -168,12 +168,12 @@ assertEqual(
   'menu lists Direct Boot immediately below Input'
 )
 const expectedAgents = {
-  pi: { icon: '󰏿', label: 'Pi' },
-  omp: { icon: '󰣪', label: 'omp' },
-  opencode: { icon: '󰕪', label: 'OpenCode' },
+  pi: { icon: '\ue901', iconFont: 'omarchy', label: 'Pi' },
+  omp: { icon: '\ue903', iconFont: 'omarchy', label: 'omp' },
+  opencode: { icon: '\ue902', iconFont: 'omarchy', label: 'OpenCode' },
   claude: { icon: '󰛄', label: 'Claude' },
-  codex: { icon: '󰞵', label: 'Codex' },
-  grok: { icon: '󰰱', label: 'Grok' },
+  codex: { icon: '\ue905', iconFont: 'omarchy', label: 'Codex' },
+  grok: { icon: '\ue904', iconFont: 'omarchy', label: 'Grok' },
   gemini: { icon: '󰫢', label: 'Gemini' },
   copilot: { icon: '', label: 'Copilot' },
   crush: { icon: '󰋑', label: 'Crush' },
@@ -183,6 +183,7 @@ assert(
     const entry = defaultById[`setup.default.agent.${agent}`]
     return entry
       && entry.icon === expected.icon
+      && entry.iconFont === (expected.iconFont || '')
       && entry.label === expected.label
       && entry.action === `omarchy-default-agent ${agent}`
       && !entry.when
@@ -483,3 +484,7 @@ assert(
   'mouse activation carries pointer intent into subordinate menus'
 )
 JS
+
+font_charset=$(fc-query --format='%{charset}' "$ROOT/default/fonts/omarchy/omarchy.ttf")
+[[ $font_charset == *"e900-e905"* ]] || fail "Omarchy icon font includes every custom menu glyph"
+pass "Omarchy icon font includes the official agent marks"
