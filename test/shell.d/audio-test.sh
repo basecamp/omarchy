@@ -49,6 +49,15 @@ assertEqual(
 assertEqual(
   audio.nodeLabel({
     ready: true,
+    description: 'SteelSeries Arctis 7',
+    properties: { 'device.profile.description': 'Game' }
+  }),
+  'SteelSeries Arctis 7 Game',
+  'audio adds a missing profile to a generic node description'
+)
+assertEqual(
+  audio.nodeLabel({
+    ready: true,
     properties: {
       'node.nick': 'USB Audio #1',
       'device.description': 'SteelSeries Arctis 7',

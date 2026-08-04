@@ -64,11 +64,13 @@ function nodeProps(node) {
 function nodeLabel(node) {
   if (!node) return "Unknown"
   var p = nodeProps(node)
+  var profile = friendlyDeviceLabel(p["device.profile.description"] || "")
   var description = friendlyDeviceLabel(node.description || p["node.description"] || "")
+  if (description && profile && description.toLowerCase().indexOf(profile.toLowerCase()) === -1)
+    return description + " " + profile
   if (description) return description
 
   var device = friendlyDeviceLabel(p["device.description"] || "")
-  var profile = friendlyDeviceLabel(p["device.profile.description"] || "")
   if (device && profile && device.toLowerCase().indexOf(profile.toLowerCase()) === -1)
     return device + " " + profile
   if (device || profile) return device || profile
