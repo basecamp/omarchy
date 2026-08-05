@@ -89,8 +89,15 @@ PACMAN_RESULT=0 run_pkg_install || fail "pkg-install exits clean on successful i
 grep -q '^done$' "$call_log" || fail "pkg-install reports done on successful install"
 pass "pkg-install reports done on successful install"
 
-# An aborted or failed pacman run (Ctrl+C at the sudo prompt, declined auth,
-# package error) must not report done and must exit non-zero.
+# A pacman run that exits non-zero (dependency conflict, download failure, a
+# declined sudo password) must not report done and must exit non-zero.
+#
+# Ctrl+C during the transaction is a different path and is deliberately not
+# covered here: the tty sends SIGINT to the whole foreground process group, so
+# bash takes it alongside pacman and dies before reaching either branch below.
+# That already rules out a false done, and closing the window immediately is
+# what a deliberate abort should do, so there is nothing for the script to
+# handle. Stubbing an exit status cannot model signal delivery either way.
 call_log="$TMPDIR/calls-abort"
 if PACMAN_RESULT=130 run_pkg_install; then
   fail "pkg-install exits non-zero on aborted install"
