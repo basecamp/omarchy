@@ -7,6 +7,7 @@ fi
 limine_conf="${OMARCHY_T2_LIMINE_CONF:-/etc/limine-entry-tool.d/t2-mac.conf}"
 fan_conf="${OMARCHY_T2_FAN_CONF:-/etc/t2fand.conf}"
 running_cmdline="${OMARCHY_T2_RUNNING_CMDLINE:-/proc/cmdline}"
+repair_marker="${OMARCHY_T2_REPAIR_MARKER:-/var/lib/omarchy/migrations/1785944594}"
 needs_limine_rebuild=0
 
 if [[ -f $limine_conf ]] && grep -q 'pcie_ports=compat' "$limine_conf"; then
@@ -37,9 +38,11 @@ if omarchy-pkg-present tiny-dfr; then
   omarchy-pkg-drop tiny-dfr
 fi
 
-# Retry the rebuild if a previous migration attempt changed the drop-in but
-# failed before the running kernel picked up the new suspend parameters.
+# The current kernel keeps its old command line until reboot. Record a
+# successful machine-wide rebuild so another user's migration does not repeat
+# it before then, while a missing marker still retries an interrupted rebuild.
 if [[ -f $limine_conf ]] &&
+  [[ ! -e $repair_marker ]] &&
   grep -q 'pm_async=off' "$limine_conf" &&
   grep -q 'mem_sleep_default=deep' "$limine_conf" &&
   { [[ ! -r $running_cmdline ]] ||
@@ -50,4 +53,5 @@ fi
 
 if (( needs_limine_rebuild )); then
   sudo limine-mkinitcpio
+  sudo install -Dm644 /dev/null "$repair_marker"
 fi
