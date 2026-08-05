@@ -155,7 +155,7 @@ PATH="$stub_bin:$PATH" \
 grep -Fxq 'limine-mkinitcpio' "$calls" ||
   fail "T2 migration retries an interrupted boot image rebuild"
 [[ -f $repair_marker ]] || fail "a retried T2 repair records completion"
-! grep -Eq 'sed|tee|systemctl|omarchy-pkg-drop' "$calls" ||
+! grep -Eq $'^(sudo\t)?(sed|tee|systemctl|omarchy-pkg-drop)(\t|$)' "$calls" ||
   fail "T2 rebuild retry leaves completed repair steps alone" "$(cat "$calls")"
 pass "T2 migration retries an interrupted boot image rebuild"
 
