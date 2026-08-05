@@ -29,6 +29,11 @@ cat >"$stub_bin/omarchy-show-done" <<'STUB'
 echo done >>"${CALL_LOG:?}"
 STUB
 
+cat >"$stub_bin/omarchy-show-error" <<'STUB'
+#!/bin/bash
+echo error >>"${CALL_LOG:?}"
+STUB
+
 cat >"$stub_bin/updatedb" <<'STUB'
 #!/bin/bash
 echo updatedb >>"${CALL_LOG:?}"
@@ -84,6 +89,10 @@ if PACMAN_RESULT=130 run_pkg_install; then
 fi
 grep -q '^done$' "$call_log" && fail "pkg-install does not report done on aborted install"
 pass "pkg-install does not report done on aborted install"
+# The menu launches these in a throwaway terminal, so a failing transaction has
+# to hold the window open or its output disappears before it can be read.
+grep -q '^error$' "$call_log" || fail "pkg-install holds the terminal open on a failed install"
+pass "pkg-install holds the terminal open on a failed install"
 
 # An interrupt at the initial sudo validation (the first password prompt) must
 # stop before the package transaction starts.
@@ -94,6 +103,10 @@ fi
 grep -q '^pacman ' "$call_log" && fail "pkg-install skips the pacman transaction when sudo validation is interrupted"
 grep -q '^done$' "$call_log" && fail "pkg-install does not report done when sudo validation is interrupted"
 pass "pkg-install aborts before the transaction when sudo validation is interrupted"
+# The user asked to bail at the password prompt and there is nothing to read,
+# so this path closes immediately instead of waiting for a keypress.
+grep -q '^error$' "$call_log" && fail "pkg-install closes without a keypress when sudo validation is interrupted"
+pass "pkg-install closes without a keypress when sudo validation is interrupted"
 
 # A successful yay run reports done and refreshes the file database.
 call_log="$TMPDIR/aur-calls-success"
@@ -111,6 +124,8 @@ fi
 { grep -q '^updatedb$' "$call_log" || grep -q '^done$' "$call_log"; } &&
   fail "pkg-aur-install skips done and updatedb on aborted install"
 pass "pkg-aur-install skips done and updatedb on aborted install"
+grep -q '^error$' "$call_log" || fail "pkg-aur-install holds the terminal open on a failed install"
+pass "pkg-aur-install holds the terminal open on a failed install"
 
 # The same initial sudo validation interrupt must stop the AUR flow before yay.
 call_log="$TMPDIR/aur-calls-sudo-abort"
@@ -120,3 +135,5 @@ fi
 grep -q '^yay ' "$call_log" && fail "pkg-aur-install skips the yay transaction when sudo validation is interrupted"
 grep -q '^done$' "$call_log" && fail "pkg-aur-install does not report done when sudo validation is interrupted"
 pass "pkg-aur-install aborts before the transaction when sudo validation is interrupted"
+grep -q '^error$' "$call_log" && fail "pkg-aur-install closes without a keypress when sudo validation is interrupted"
+pass "pkg-aur-install closes without a keypress when sudo validation is interrupted"

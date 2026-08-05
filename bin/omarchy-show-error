@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# omarchy:summary=Display an error message with a spinner and wait for user to press any key.
+# omarchy:args=<message>
+
+echo
+echo -e "\033[31mError: $*\033[0m" >&2
+gum spin --spinner "globe" --title "Press any key to close..." -- bash -c 'read -n 1 -s'

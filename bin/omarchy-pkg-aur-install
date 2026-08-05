@@ -24,7 +24,7 @@ if [[ -n $pkg_names ]]; then
   source omarchy-sudo-keepalive
 
   if ! echo "$pkg_names" | sed 's/^/aur\//' | tr '\n' ' ' | xargs yay -S --noconfirm; then
-    echo -e "\033[31mError: Package installation was aborted or failed\033[0m" >&2
+    omarchy-show-error "Package installation was aborted or failed"
     exit 1
   fi
   sudo updatedb
