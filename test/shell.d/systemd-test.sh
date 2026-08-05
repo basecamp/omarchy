@@ -140,8 +140,19 @@ grep -F 'omarchy-pkg-aur-add btrfsmaintenance' "$maintenance_migration" >/dev/nu
   fail "migration does not install btrfsmaintenance when missing"
 grep -F '/etc/systemd/journald.conf.d/10-journal-cap.conf' "$maintenance_migration" >/dev/null ||
   fail "migration does not write the journal cap drop-in"
+grep -F 'systemctl is-enabled --quiet paccache.timer' "$maintenance_migration" >/dev/null ||
+  fail "migration does not skip a machine that already capped the journal and enabled paccache"
+grep -F 'systemctl is-enabled --quiet btrfs-balance.timer' "$maintenance_migration" >/dev/null ||
+  fail "migration does not check the btrfs balance timer in the already-applied shortcut"
+grep -A1 'systemctl is-enabled --quiet btrfs-balance.timer 2>/dev/null ||' "$maintenance_migration" |
+  grep -F 'omarchy-pkg-missing btrfsmaintenance' >/dev/null ||
+  fail "migration does not treat a machine without btrfsmaintenance as already applied"
+grep -F 'exit 0' "$maintenance_migration" >/dev/null ||
+  fail "migration never exits early, so a second user on the box is prompted for sudo"
 grep -Fx 'as_root systemctl enable --now paccache.timer >/dev/null 2>&1' "$maintenance_migration" >/dev/null ||
   fail "migration does not enable paccache.timer with --now"
-grep -Fx 'as_root systemctl enable --now btrfs-balance.timer >/dev/null 2>&1' "$maintenance_migration" >/dev/null ||
+grep -F 'omarchy-pkg-present btrfsmaintenance' "$maintenance_migration" >/dev/null ||
+  fail "migration enables btrfs-balance.timer without guarding on btrfsmaintenance"
+grep -F 'as_root systemctl enable --now btrfs-balance.timer' "$maintenance_migration" >/dev/null ||
   fail "migration does not enable the btrfs balance timer with --now"
 pass "existing installs get the journal cap and maintenance timers"
