@@ -162,10 +162,11 @@ assert(
   defaultById['setup.direct-boot'].action.includes('omarchy-setup-direct-boot'),
   'menu places Direct Boot directly under Setup'
 )
+const setupEntries = defaultItems.filter(item => item.parent === 'setup')
 assertEqual(
-  defaultItems.findIndex(item => item.id === 'setup.direct-boot'),
-  defaultItems.findIndex(item => item.id === 'setup.input') + 1,
-  'menu lists Direct Boot immediately below Input'
+  setupEntries[setupEntries.length - 1].id,
+  'setup.direct-boot',
+  'menu lists Direct Boot last under Setup'
 )
 const expectedAgents = {
   pi: { icon: '\ue901', iconFont: 'omarchy', label: 'Pi' },
