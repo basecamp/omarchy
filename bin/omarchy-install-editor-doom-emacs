@@ -31,7 +31,7 @@ if ! grep -q 'emacs/bin' "$HOME/.bashrc" 2>/dev/null; then
   echo 'export PATH="$HOME/.config/emacs/bin:$PATH"' >> "$HOME/.bashrc"
 fi
 if ! grep -q 'alias ec=' "$HOME/.bashrc" 2>/dev/null; then
-  echo "alias ec=\"emacsclient -c -n -a ''\"" >> "$HOME/.bashrc"
+  echo "alias ec=\"emacsclient -c -a ''\"" >> "$HOME/.bashrc"
 fi
 
 echo "Step 5: Setting Doom Emacs as default editor (EDITOR & VISUAL)..."
