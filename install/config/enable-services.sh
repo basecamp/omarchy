@@ -18,3 +18,10 @@ systemctl enable sddm.service
 # whole session down. [Install] pulls in systemd-oomd.socket via Also=, which
 # is what the user manager reports app.slice candidacy over.
 systemctl enable systemd-oomd.service
+# Cap the journal at 1G so log growth can't eat the raw disk space btrfs needs
+# for new metadata chunks.
+sed -i 's/^#\?SystemMaxUse=.*/SystemMaxUse=1G/' /etc/systemd/journald.conf
+# Trim the pacman cache so it can't grow into that same space either.
+systemctl enable paccache.timer
+# Reclaim low-usage btrfs chunks weekly so unallocated space never hits zero.
+systemctl enable btrfs-balance.timer
