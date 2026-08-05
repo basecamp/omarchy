@@ -15,21 +15,21 @@ local function send_shortcut_once(mods, key)
   end
 end
 
-local terminal_classes = {
-  alacritty = true,
-  ["com.mitchellh.ghostty"] = true,
-  foot = true,
-  kitty = true,
-  wezterm = true,
-}
-
+-- Lean on the terminal tag from default/hypr/apps/terminals.lua so there's one
+-- definition of what counts as a terminal. Dynamic tags carry a trailing "*".
 local function active_window_is_terminal()
   local window = hl.get_active_window()
-  if not window or not window.class then
+  if not window then
     return false
   end
 
-  return terminal_classes[window.class:lower()] == true
+  for _, tag in ipairs(window.tags or {}) do
+    if tag:gsub("%*$", "") == "terminal" then
+      return true
+    end
+  end
+
+  return false
 end
 
 local function universal_clipboard_shortcut(default_mods, default_key, terminal_mods, terminal_key)
