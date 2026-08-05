@@ -11,7 +11,6 @@ Panel {
   ipcTarget: "omarchy.weather"
   manageIpc: false
 
-  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   property var anchorItem: null
   property bool openedFromHotkey: false
 
@@ -126,7 +125,6 @@ Panel {
 
   // Shared hero/bar icon state, updated with each successful weather response.
   property string label: ""
-  property string klass: ""
 
   // wttr's current conditions when available; open-meteo's (bundled with the
   // much faster daily forecast fetch) fill the hero while wttr is in flight.
