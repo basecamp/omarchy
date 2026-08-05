@@ -7,7 +7,6 @@ base
 base-devel
 broadcom-wl
 btrfs-progs
-btrfsmaintenance
 dkms
 egl-wayland
 gst-plugin-pipewire
