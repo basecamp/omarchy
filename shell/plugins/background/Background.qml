@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
 import qs.Commons
+import qs.Ui
 
 Item {
   id: root
@@ -185,8 +186,13 @@ Item {
       required property var modelData
 
       screen: modelData
-      visible: true
+      visible: !remapGuard.remapping
       anchors { top: true; bottom: true; left: true; right: true }
+
+      ScreenMoveRemap {
+        id: remapGuard
+        window: panel
+      }
       color: "transparent"
       // Keep render updates enabled. The background layer has been observed to
       // lose its committed buffer while parked with updatesEnabled=false,

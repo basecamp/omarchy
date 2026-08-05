@@ -938,7 +938,12 @@ Item {
   component BarPanel: PanelWindow {
     id: barWindow
 
-    visible: !root.barHidden
+    visible: !root.barHidden && !remapGuard.remapping
+
+    ScreenMoveRemap {
+      id: remapGuard
+      window: barWindow
+    }
 
     anchors {
       top: root.position === "top" || root.vertical
