@@ -33,6 +33,12 @@ PanelWindow {
   readonly property bool failed: error !== ""
   readonly property bool finished: !running && !failed && (downloadValue > 0 || uploadValue > 0)
 
+  // The scrim below is a fixed near-black regardless of theme, so text and
+  // ticks on it need a fixed light palette, not the themed bar.foreground.
+  readonly property color onScrim: "white"
+  readonly property color onScrimDim: Qt.rgba(1, 1, 1, 0.55)
+  readonly property color onScrimUrgent: "#ff6b6b"
+
   function toMbps(raw) {
     var value = parseFloat(raw)
     return isFinite(value) && value > 0 ? value : 0
@@ -101,7 +107,7 @@ PanelWindow {
         Text {
           visible: root.connectionName !== ""
           text: root.connectionName.toUpperCase()
-          color: Qt.darker(root.bar.foreground, 1.4)
+          color: root.onScrimDim
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.caption
           font.bold: true
@@ -137,7 +143,7 @@ PanelWindow {
           bordered: true
           enabled: !root.running
           opacity: root.running ? 0 : 1
-          foreground: root.bar.foreground
+          foreground: root.onScrim
           fontFamily: root.bar.fontFamily
           fontSize: Style.font.bodySmall
           horizontalPadding: Style.space(14)
@@ -153,7 +159,7 @@ PanelWindow {
         Text {
           visible: root.failed
           text: root.error
-          color: root.bar.urgent
+          color: root.onScrimUrgent
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.bodySmall
           wrapMode: Text.Wrap
@@ -184,9 +190,9 @@ PanelWindow {
     readonly property int tickCount: 46
     readonly property real arcWidth: Style.space(4)
     readonly property real arcRadius: diameter / 2 - arcWidth
-    readonly property color trackColor: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.14)
-    readonly property color minorTickColor: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
-    readonly property color majorTickColor: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.3)
+    readonly property color trackColor: Qt.rgba(1, 1, 1, 0.14)
+    readonly property color minorTickColor: Qt.rgba(1, 1, 1, 0.12)
+    readonly property color majorTickColor: Qt.rgba(1, 1, 1, 0.3)
     // The dial that isn't measuring yet sits dimmed until it gets a figure.
     readonly property bool engaged: live || value > 0
 
@@ -361,7 +367,7 @@ PanelWindow {
       Text {
         anchors.horizontalCenter: parent.horizontalCenter
         text: dial.reading < 10 ? dial.reading.toFixed(1) : Math.round(dial.reading).toString()
-        color: root.bar.foreground
+        color: root.onScrim
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.display
         font.bold: true
@@ -370,7 +376,7 @@ PanelWindow {
       Text {
         anchors.horizontalCenter: parent.horizontalCenter
         text: "Mbps"
-        color: Qt.darker(root.bar.foreground, 1.4)
+        color: root.onScrimDim
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.caption
       }
@@ -382,7 +388,7 @@ PanelWindow {
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
       text: dial.label
-      color: Qt.darker(root.bar.foreground, 1.3)
+      color: root.onScrimDim
       font.family: root.bar.fontFamily
       font.pixelSize: Style.font.caption
       font.bold: true
