@@ -33,13 +33,8 @@ PanelWindow {
   readonly property bool failed: error !== ""
   readonly property bool finished: !running && !failed && (downloadValue > 0 || uploadValue > 0)
 
-  // The scrim below is a fixed near-black regardless of wallpaper or theme,
-  // so everything drawn on it needs a fixed light-on-dark palette too.
-  // `bar.foreground` is themed to contrast against the *bar's* own
-  // background, which flips dark/light independently of this scrim -- on
-  // light-foreground themes that made every label, tick, and digit here
-  // disappear against the black backdrop, leaving only the accent arc
-  // and needle (which already use Color.accent, not bar.foreground) visible.
+  // The scrim below is a fixed near-black regardless of theme, so text and
+  // ticks on it need a fixed light palette, not the themed bar.foreground.
   readonly property color onScrim: "white"
   readonly property color onScrimDim: Qt.rgba(1, 1, 1, 0.55)
 
