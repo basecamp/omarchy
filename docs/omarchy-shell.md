@@ -122,6 +122,7 @@ individual plugins (`bar`, `image-selector`, …).
     "id": "omarchy.bar",
     "position": "top",
     "transparent": false,
+    "overlay": false,
     "centerAnchor": "calendar",
     "fontFamily": "JetBrainsMono Nerd Font",
     "layout": {

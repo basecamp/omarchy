@@ -42,6 +42,7 @@ ShellRoot {
     bar: {
       position: "top",
       transparent: false,
+      overlay: false,
       centerAnchor: "omarchy.clock",
       layout: {
         left: [{ id: "omarchy.menu" }, { id: "omarchy.workspaces" }],

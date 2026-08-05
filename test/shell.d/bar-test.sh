@@ -21,6 +21,11 @@ const barSource = fs.readFileSync(root + '/shell/plugins/bar/Bar.qml', 'utf8')
 const shellSource = fs.readFileSync(root + '/shell/shell.qml', 'utf8')
 
 assert(/function toggleBarTransparency\(\): string \{[\s\S]*?shell\.bar\.toggleTransparency\(\)/.test(shellSource), 'shell exposes the bar transparency toggle over IPC')
+assert(/overlayWindows = config\.overlay === true/.test(barSource), 'bar reads the window overlay setting from shell config')
+assert(
+  /exclusionMode: root\.overlayWindows \? ExclusionMode\.Ignore : ExclusionMode\.Auto/.test(barSource),
+  'bar ignores exclusion zones only while window overlay is enabled'
+)
 
 // The center section declares two arrangements and shows one; the hidden one
 // must not build its modules or every center widget exists twice.

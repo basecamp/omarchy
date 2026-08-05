@@ -13,7 +13,7 @@ require_command python3
 jq empty "$ROOT/config/omarchy/shell.json"
 pass "default shell.json is valid JSON"
 
-jq -e '.version == 1 and (.bar.layout.left | type == "array") and (.bar.layout.center | type == "array") and (.bar.layout.right | type == "array")' "$ROOT/config/omarchy/shell.json" >/dev/null
+jq -e '.version == 1 and .bar.overlay == false and (.bar.layout.left | type == "array") and (.bar.layout.center | type == "array") and (.bar.layout.right | type == "array")' "$ROOT/config/omarchy/shell.json" >/dev/null
 pass "default shell.json has versioned bar layout"
 
 # Pinning the whole row made this fail every time an unrelated widget moved,
@@ -296,6 +296,19 @@ pass "shell config sets bar transparency"
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar transparent toggle
 jq -e '.bar.transparent == false' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config toggles bar transparency"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar overlay true
+jq -e '
+  .bar.overlay == true and
+  .bar.transparent == false and
+  .bar.position == "bottom" and
+  .plugins == []
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config enables bar window overlay"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar overlay toggle
+jq -e '.bar.overlay == false' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config toggles bar window overlay"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar set omarchy.bluetooth enabled false --json
 grep -Fqx 'shell setBarWidget omarchy.bluetooth enabled false {}' \

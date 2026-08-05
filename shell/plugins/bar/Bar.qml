@@ -15,9 +15,10 @@ Item {
   // Injected by the host shell so bar slots can resolve enabled widgets.
   required property var barWidgetRegistry
   // Injected by the host shell every time shell.json is reloaded. Holds the
-  // `bar:` subtree: position, centerAnchor, layout. The host owns file IO;
-  // the bar just renders whatever it's handed. The bar font follows the
-  // OS-level fontconfig monospace binding — it is not stored in shell.json.
+  // `bar:` subtree: position, transparency, window overlay, centerAnchor,
+  // and layout. The host owns file IO; the bar just renders whatever it's
+  // handed. The bar font follows the OS-level fontconfig monospace binding —
+  // it is not stored in shell.json.
   required property var barConfig
   // Injected by the host shell. Used for shell-wide actions such as opening
   // settings and persisting inline widget state.
@@ -35,12 +36,14 @@ Item {
   property var fallbackBarConfig: ({
     position: "top",
     transparent: false,
+    overlay: false,
     centerAnchor: "omarchy.clock",
     layout: { left: [], center: [], right: [] }
   })
   property var layoutConfig: fallbackBarConfig.layout
   property string centerAnchor: ""
   property bool requestedTransparent: false
+  property bool overlayWindows: false
   property bool useTransparentForeground: false
   property bool transparent: false
   property bool centerSectionHovered: false
@@ -349,6 +352,7 @@ Item {
 
     position = normalizePosition(config.position)
     setRequestedTransparency(config.transparent === true)
+    overlayWindows = config.overlay === true
     centerAnchor = Util.canonicalWidgetId(config.centerAnchor || "")
 
     // layoutEntries feeds plain JS arrays to the module Repeaters, and QML
@@ -958,6 +962,7 @@ Item {
     surfaceFormat.opaque: false
     WlrLayershell.namespace: "omarchy-bar"
     WlrLayershell.layer: WlrLayer.Top
+    exclusionMode: root.overlayWindows ? ExclusionMode.Ignore : ExclusionMode.Auto
 
     Loader {
       anchors.fill: parent

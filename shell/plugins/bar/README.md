@@ -16,7 +16,7 @@ the shell for its whole session.
 
 The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](../../README.md#shelljson-shape). Out of the box the shell uses [`config/omarchy/shell.json`](../../../config/omarchy/shell.json). Once you customize anything via the bar gestures, `omarchy bar ...`, or by editing shell.json directly, your file is canonical — there is no deep-merge.
 
-The bar is configured directly on the bar itself: drag empty bar space (or click-and-hold) to move the bar to another screen edge, double-left-click empty center-bar space to toggle transparency, and drag widgets to reorder them. The `omarchy bar position`, `omarchy bar transparent`, `omarchy bar move`, and `omarchy bar set` commands do the same from scripts. Enable or disable widgets with `omarchy plugin enable` and `omarchy plugin disable` (widget ids come from `omarchy plugin list`).
+The bar is configured directly on the bar itself: drag empty bar space (or click-and-hold) to move the bar to another screen edge, double-left-click empty center-bar space to toggle transparency, and drag widgets to reorder them. The `omarchy bar position`, `omarchy bar transparent`, and `omarchy bar move` commands provide those controls from scripts; `omarchy bar overlay` controls whether the bar reserves screen space, and `omarchy bar set` changes widget settings. Enable or disable widgets with `omarchy plugin enable` and `omarchy plugin disable` (widget ids come from `omarchy plugin list`).
 
 Example `shell.json` (bar subtree only shown):
 
@@ -26,6 +26,7 @@ Example `shell.json` (bar subtree only shown):
   "bar": {
     "position": "top",
     "transparent": false,
+    "overlay": false,
     "centerAnchor": "omarchy.clock",
     "layout": {
       "left": [
@@ -47,6 +48,8 @@ Example `shell.json` (bar subtree only shown):
 ```
 
 `centerAnchor` pins one center module to the exact horizontal/vertical center and flanks others around it. Set to an empty string to disable anchoring (the center list is centered as a group).
+
+Set `overlay` to `true` to stop reserving screen space for the bar and render it over application windows. The default, `false`, keeps application windows outside the bar area.
 
 ## Module catalogue
 
@@ -158,6 +161,7 @@ Widgets receive `bar` (the shell root), `moduleName` (string), and `settings` (o
 - `bar.foreground`, `bar.background`, `bar.urgent` — theme colors (live-updated)
 - `bar.fontFamily` — current monospace family
 - `bar.position` — `"top" | "bottom" | "left" | "right"`
+- `bar.overlayWindows` — whether the bar renders over application windows
 - `bar.vertical` — boolean shortcut
 - `bar.barSize` — 26 horizontal / 28 vertical
 - `bar.run(command)` — fire-and-forget bash exec

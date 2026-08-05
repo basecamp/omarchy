@@ -220,6 +220,11 @@ assertEqual(
   'omarchy-bar transparent toggle',
   'menu exposes Menu Bar transparency as a toggle'
 )
+assertEqual(
+  defaultById['style.bar.overlay'].action,
+  'omarchy-bar overlay toggle',
+  'menu exposes Menu Bar window overlay as a toggle'
+)
 assertDeepEqual(
   defaultItems.filter(item => item.parent === 'setup.plugin').map(item => item.label),
   ['Enable Plugin', 'Disable Plugin', 'Add Plugin', 'Clone Plugin', 'Remove Plugin'],
