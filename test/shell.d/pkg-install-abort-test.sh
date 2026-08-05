@@ -19,6 +19,14 @@ esac
 exec "$@"
 STUB
 
+# The sudo keepalive loop sleeps between refreshes, and its trap kills the loop
+# without reaping an in-flight sleep. Keep the stub short so test runs do not
+# leave a minute of stray sleeps behind. command -p skips the stub PATH.
+cat >"$stub_bin/sleep" <<'STUB'
+#!/bin/bash
+command -p sleep 0.2
+STUB
+
 cat >"$stub_bin/fzf" <<'STUB'
 #!/bin/bash
 echo testpkg
