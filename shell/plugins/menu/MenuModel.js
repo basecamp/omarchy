@@ -167,6 +167,28 @@ function item(items, id) {
   return items && items[id] ? items[id] : null
 }
 
+// Routes may name a real id (`system`, `setup.power`) or an alias declared in
+// JSONC (`power-menu`, `settings`). An exact id beats any alias, and app rows
+// are never routable: their aliases carry .desktop Keywords and GenericName
+// for search, so an installed application could otherwise shadow a menu route
+// (htop ships `Keywords=system;...`). Unknown strings fall through as the
+// literal input so misspellings still attempt to open that id.
+function resolveRoute(items, itemOrder, input) {
+  var raw = String(input || "").toLowerCase().replace(/_/g, "-")
+  if (!raw || raw === "go" || raw === "menu") return "root"
+  if (item(items, raw)) return raw
+  var order = Array.isArray(itemOrder) ? itemOrder : []
+  for (var i = 0; i < order.length; i++) {
+    var entry = item(items, order[i])
+    if (!entry || entry.kind === "app" || !entry.aliases) continue
+    for (var j = 0; j < entry.aliases.length; j++) {
+      var alias = String(entry.aliases[j] || "").toLowerCase().replace(/_/g, "-")
+      if (alias === raw) return entry.id
+    }
+  }
+  return raw
+}
+
 function slugify(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item"
 }
@@ -360,6 +382,7 @@ if (typeof module !== "undefined") {
     mergeAppRows: mergeAppRows,
     swapProviderRows: swapProviderRows,
     item: item,
+    resolveRoute: resolveRoute,
     slugify: slugify,
     depthFor: depthFor,
     pathFor: pathFor,
