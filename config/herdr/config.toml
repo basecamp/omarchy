@@ -62,21 +62,25 @@ next_workspace = ["prefix+shift+n", "alt+down"]
 key = "ctrl+alt+shift+left"
 type = "shell"
 command = "herdr pane resize --current --direction left --amount 0.03"
+description = "resize left by ~5 columns/rows"
 
 [[keys.command]]
 key = "ctrl+alt+shift+down"
 type = "shell"
 command = "herdr pane resize --current --direction down --amount 0.03"
+description = "resize down by ~5 columns/rows"
 
 [[keys.command]]
 key = "ctrl+alt+shift+up"
 type = "shell"
 command = "herdr pane resize --current --direction up --amount 0.03"
+description = "resize up by ~5 columns/rows"
 
 [[keys.command]]
 key = "ctrl+alt+shift+right"
 type = "shell"
 command = "herdr pane resize --current --direction right --amount 0.03"
+description = "resize right by ~5 columns/rows"
 
 [ui]
 accent = "blue"
