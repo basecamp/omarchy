@@ -359,16 +359,23 @@ Panel {
     return textSizePreviewIndex >= 0 ? textSizeStops[textSizePreviewIndex] : Style.font.baseSize
   }
 
+  // Writes queued while the CLI is still applying an earlier one, keyed by
+  // scope so adjusting a second scope never drops the first. Latest value per
+  // scope wins; flushed in order from textScaleProc.onRunningChanged.
+  property var pendingTextWrites: ({})
+
   // scope "" writes every surface at once (the unified slider); otherwise it is
   // one of textScopeKeys and becomes the matching CLI flag. The row is updated
   // from what we asked for rather than read back — if the write fails, the next
   // status read corrects it.
   function writeTextSize(scope, px) {
-    var command = ["omarchy-display-text-size"]
-    if (scope !== "") command.push("--" + scope)
-    command.push(String(px))
-    textScaleProc.command = command
-    if (!textScaleProc.running) textScaleProc.running = true
+    if (textScaleProc.running) {
+      // A unified write supersedes any per-scope writes queued before it.
+      if (scope === "") root.pendingTextWrites = ({})
+      root.pendingTextWrites[scope] = px
+    } else {
+      startTextWrite(scope, px)
+    }
 
     if (scope === "" || scope === "gtk") root.gtkPx = px
     if (scope === "" || scope === "terminals") root.termPx = px
@@ -376,6 +383,14 @@ Panel {
       markReflowing()
       root.textSizePreviewIndex = nearestTextStop(px)
     }
+  }
+
+  function startTextWrite(scope, px) {
+    var command = ["omarchy-display-text-size"]
+    if (scope !== "") command.push("--" + scope)
+    command.push(String(px))
+    textScaleProc.command = command
+    textScaleProc.running = true
   }
 
   function setTextSize(px) {
@@ -527,6 +542,15 @@ Panel {
   Process {
     id: textScaleProc
     stdout: StdioCollector { waitForEnd: true }
+    onRunningChanged: {
+      if (running) return
+      var scopes = Object.keys(root.pendingTextWrites)
+      if (scopes.length === 0) return
+      var scope = scopes[0]
+      var px = root.pendingTextWrites[scope]
+      delete root.pendingTextWrites[scope]
+      root.startTextWrite(scope, px)
+    }
   }
 
   // Reads the GTK factor and terminal point size for the scope rows. Wrapped in
