@@ -75,4 +75,25 @@ assertDeepEqual(
 )
 
 assertDeepEqual(monitor.parseDisplays('{'), { displays: [], enabledDisplayCount: 0 }, 'monitor handles invalid display JSON')
+
+assertDeepEqual(
+  monitor.parseTextSizeStatus('text size: 12 px\ngtk text-scaling-factor: 1.25\nterminal font: 10.5 pt\n'),
+  { gtkPx: 15, termPx: 14 },
+  'monitor converts gtk factor and terminal points to px'
+)
+assertDeepEqual(
+  monitor.parseTextSizeStatus('text size: 12 px\ngtk text-scaling-factor: 1\nterminal font: n/a pt\n'),
+  { gtkPx: 12, termPx: 0 },
+  'monitor reports an undescribed terminal font as unavailable'
+)
+assertDeepEqual(
+  monitor.parseTextSizeStatus(''),
+  { gtkPx: 0, termPx: 0 },
+  'monitor reports empty text size status as unavailable'
+)
+assertDeepEqual(
+  monitor.parseTextSizeStatus('command not found'),
+  { gtkPx: 0, termPx: 0 },
+  'monitor reports malformed text size status as unavailable'
+)
 JS
