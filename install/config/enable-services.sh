@@ -25,5 +25,5 @@ mkdir -p /etc/systemd/journald.conf.d
 printf '%s\n' '[Journal]' 'SystemMaxUse=1G' > /etc/systemd/journald.conf.d/10-journal-cap.conf
 # Trim the pacman cache so it can't grow into that same space either.
 systemctl enable paccache.timer
-# Reclaim low-usage btrfs chunks weekly so unallocated space never hits zero.
+# Reclaim low-usage btrfs chunks weekly to reduce allocation pressure.
 systemctl enable btrfs-balance.timer
