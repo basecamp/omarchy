@@ -19,15 +19,14 @@ if omarchy-pkg-missing btrfsmaintenance; then
     echo "Could not install btrfsmaintenance; low-usage btrfs chunks will not be reclaimed."
 fi
 
-# journald only reads its config at startup; reapply idempotently and restart
-# so the cap applies without waiting for a reboot.
-as_root sed -i 's/^#\?SystemMaxUse=.*/SystemMaxUse=1G/' /etc/systemd/journald.conf ||
-  echo "Could not cap the journal size at 1G."
+# journald only reads its config at startup; write a drop-in and restart so the
+# cap applies without waiting for a reboot.
+as_root mkdir -p /etc/systemd/journald.conf.d
+printf '%s\n' '[Journal]' 'SystemMaxUse=1G' |
+  as_root tee /etc/systemd/journald.conf.d/10-journal-cap.conf >/dev/null
 as_root systemctl try-restart systemd-journald >/dev/null 2>&1 || true
 
 # Machine-wide, so a second user on the same box finds it already done.
 as_root systemctl daemon-reload >/dev/null 2>&1 || true
-as_root systemctl enable paccache.timer >/dev/null 2>&1 ||
-  echo "Could not enable paccache.timer; the pacman cache can grow without limit."
-as_root systemctl enable btrfs-balance.timer >/dev/null 2>&1 ||
-  echo "Could not enable btrfs-balance.timer."
+as_root systemctl enable --now paccache.timer >/dev/null 2>&1
+as_root systemctl enable --now btrfs-balance.timer >/dev/null 2>&1

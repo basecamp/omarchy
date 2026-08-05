@@ -119,8 +119,8 @@ grep -F 'systemctl --user daemon-reload' "$oomd_migration" >/dev/null ||
   fail "migration leaves the user manager unaware of app.slice candidacy until the next login"
 pass "existing installs enable systemd-oomd and report app.slice without a relogin"
 
-grep -F "sed -i 's/^#\\?SystemMaxUse=.*/SystemMaxUse=1G/' /etc/systemd/journald.conf" "$ROOT/install/config/enable-services.sh" >/dev/null ||
-  fail "new installs do not cap the journal at 1G"
+grep -F '/etc/systemd/journald.conf.d/10-journal-cap.conf' "$ROOT/install/config/enable-services.sh" >/dev/null ||
+  fail "new installs do not write the journal cap drop-in"
 grep -Fx 'systemctl enable paccache.timer' "$ROOT/install/config/enable-services.sh" >/dev/null ||
   fail "new installs do not enable paccache.timer"
 grep -Fx 'systemctl enable btrfs-balance.timer' "$ROOT/install/config/enable-services.sh" >/dev/null ||
@@ -138,10 +138,10 @@ maintenance_migration=$(grep -rl 'btrfs-balance.timer' "$ROOT/migrations" | head
   fail "existing installs never enable the maintenance timers; enable-services.sh only runs at install time"
 grep -F 'omarchy-pkg-aur-add btrfsmaintenance' "$maintenance_migration" >/dev/null ||
   fail "migration does not install btrfsmaintenance when missing"
-grep -F 'SystemMaxUse=1G' "$maintenance_migration" >/dev/null ||
-  fail "migration does not cap the journal at 1G"
-grep -F 'systemctl enable paccache.timer' "$maintenance_migration" >/dev/null ||
-  fail "migration does not enable paccache.timer"
-grep -F 'systemctl enable btrfs-balance.timer' "$maintenance_migration" >/dev/null ||
-  fail "migration does not enable the btrfs balance timer"
+grep -F '/etc/systemd/journald.conf.d/10-journal-cap.conf' "$maintenance_migration" >/dev/null ||
+  fail "migration does not write the journal cap drop-in"
+grep -Fx 'as_root systemctl enable --now paccache.timer >/dev/null 2>&1' "$maintenance_migration" >/dev/null ||
+  fail "migration does not enable paccache.timer with --now"
+grep -Fx 'as_root systemctl enable --now btrfs-balance.timer >/dev/null 2>&1' "$maintenance_migration" >/dev/null ||
+  fail "migration does not enable the btrfs balance timer with --now"
 pass "existing installs get the journal cap and maintenance timers"
