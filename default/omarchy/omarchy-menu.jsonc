@@ -203,7 +203,7 @@
   "install.service.spotify": {"icon":"󰓇","label":"Spotify","when":"! omarchy-pkg-present spotify","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-service-spotify"},
   "install.service.signal": {"icon":"󰭹","label":"Signal","when":"! omarchy-pkg-present signal-desktop","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-service-signal"},
   "install.service.tailscale": {"icon":"","label":"Tailscale","when":"! omarchy-pkg-present tailscale","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-service-tailscale"},
-  "install.service.nordvpn": {"icon":"󱇱","label":"NordVPN [AUR]","when":"! omarchy-pkg-present nordvpn-bin","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-service-nordvpn"},
+  "install.service.nordvpn": {"icon":"󱇱","label":"NordVPN","when":"! omarchy-pkg-present nordvpn-bin","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-service-nordvpn"},
   "install.service.once": {"icon":"󰏖","label":"ONCE","when":"! omarchy-pkg-present once-bin","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-service-once"},
   "install.service.bitwarden": {"icon":"󰟵","label":"Bitwarden","when":"! omarchy-pkg-present bitwarden","action":"omarchy-install-and-launch Bitwarden 'bitwarden bitwarden-cli' bitwarden"},
   "install.service.chromium-account": {"icon":"","label":"Chromium Account","when":"[[ -f ~/.config/chromium-flags.conf ]] && ! grep -q oauth2-client-id ~/.config/chromium-flags.conf","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-chromium-google-account"},
