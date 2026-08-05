@@ -201,6 +201,7 @@ post_theme_commands=(
   omarchy-theme-set-browser
   omarchy-theme-set-vscode
   omarchy-theme-set-obsidian
+  omarchy-theme-set-emacs
   omarchy-theme-set-doom-emacs
   omarchy-theme-set-keyboard
 )

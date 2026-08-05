@@ -228,6 +228,7 @@ resolve_theme_colors() {
   [[ ${THEME_COLORS[bright_magenta]} ]] || THEME_COLORS[bright_magenta]=$(mix_color "${THEME_COLORS[magenta]}" "#ffffff" 20%)
   alias_theme_color purple magenta
   alias_theme_color bright_purple bright_magenta
+  [[ ${THEME_COLORS[name]} ]] || THEME_COLORS[name]="omarchy"
 
   # Keep semantic themes compatible with consumers that still reference the
   # legacy ANSI names directly.
