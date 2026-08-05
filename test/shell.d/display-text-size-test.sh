@@ -26,7 +26,14 @@ setup_sandbox() {
 #!/bin/bash
 name="\${0##*/}"
 log_name="\$name"
-[[ \$name == "gsettings" && \$1 == "get" ]] && printf '1.0\n'
+if [[ \$name == "gsettings" && \$1 == "get" ]]; then
+  # font-name drives GTK factor quantization; scaling-factor is the knob we set.
+  if [[ \$3 == "font-name" ]]; then
+    printf "'Cantarell 11'\n"
+  else
+    printf '1.0\n'
+  fi
+fi
 [[ \$name == "omarchy-notification-send" ]] && log_name="notify"
 {
   printf '%s' "\$1"
@@ -174,7 +181,8 @@ run_cli 16
 [[ -z $ERR ]] || fail "case 2 unflagged set has empty stderr" "actual: $ERR"
 assert_file_line omarchy/shell.toml "[font]" "case 2 creates the shell font section"
 assert_file_line omarchy/shell.toml "base-size = 16" "case 2 sets the shell size"
-assert_log gsettings "set org.gnome.desktop.interface text-scaling-factor 1.3333" "case 2 sets the GTK factor"
+# 16px with an 11pt interface font quantizes to 15/11 ≈ 1.3636 (whole-point GTK).
+assert_log gsettings $'get org.gnome.desktop.interface font-name\nset org.gnome.desktop.interface text-scaling-factor 1.3636' "case 2 sets the GTK factor"
 assert_terminal_sizes 12 "case 2 sets terminal sizes"
 assert_file_line alacritty/alacritty.toml 'normal = { family = "Seed Alacritty" }' "case 2 preserves the Alacritty family"
 assert_file_line kitty/kitty.conf "font_family Seed Kitty" "case 2 preserves the Kitty family"
@@ -214,7 +222,7 @@ setup_sandbox
 snapshot_configs
 run_cli --gtk 16
 ((STATUS == 0)) || fail "case 5 GTK-only set exits successfully" "actual: $STATUS"
-assert_log gsettings "set org.gnome.desktop.interface text-scaling-factor 1.3333" "case 5 sets the GTK factor"
+assert_log gsettings $'get org.gnome.desktop.interface font-name\nset org.gnome.desktop.interface text-scaling-factor 1.3636' "case 5 sets the GTK factor"
 assert_configs_unchanged "case 5 leaves unscoped files byte-identical"
 assert_no_terminal_side_effects "case 5"
 pass "case 5: --gtk updates only GTK"
