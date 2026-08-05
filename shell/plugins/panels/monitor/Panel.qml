@@ -131,7 +131,9 @@ Panel {
         selectedIndex = sectionFirstIndex(focusSection)
       }
     } else {
-      if (!inSingleRow && selectedIndex > 0) { selectedIndex = selectedIndex - 1; return }
+      // Boundary is the section's first index, not 0 — expanded text size keeps
+      // its unified slider at the -1 sentinel above the scope rows.
+      if (!inSingleRow && selectedIndex > sectionFirstIndex(focusSection)) { selectedIndex = selectedIndex - 1; return }
       if (sIdx > 0) {
         var prev = sections[sIdx - 1]
         focusSection = prev
