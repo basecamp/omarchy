@@ -119,6 +119,12 @@ if grep -F 'wtype -M' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null; th
 fi
 pass "universal clipboard shortcuts avoid virtual keyboard modifier merging"
 
+if ! grep -E 'o\.bind\("XF86PowerOff", "Power menu", "omarchy-menu toggle system", \{[^}]*locked = true[^}]*repeating = false[^}]*\}\)' \
+  "$ROOT/default/hypr/bindings/utilities.lua" >/dev/null; then
+  fail "XF86PowerOff binding is locked and non-repeating"
+fi
+pass "XF86PowerOff binding suppresses auto-repeat"
+
 removed_home="$tmpdir/removed-home"
 mkdir -p "$removed_home/.local/state/omarchy"
 touch "$removed_home/.local/state/omarchy/preinstalls-removed"

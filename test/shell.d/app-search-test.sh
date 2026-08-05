@@ -139,4 +139,19 @@ assert(
   openMatch[1].includes('root.appLibrary.refreshIcons()'),
   'menu refreshes the shared icon index when opened'
 )
+
+const shellQml = fs.readFileSync(path.join(root, 'shell/shell.qml'), 'utf8')
+assert(
+  /function toggle\(pluginId, payloadJson\) \{[\s\S]*?MenuModel\.shouldSummonForRoute\(loader\.item, targetRoute\)[\s\S]*?return summon\(id, payloadJson\)/.test(shellQml),
+  'shell toggle delegates the route-switch decision to the shared model so summoning the already-active route closes the menu instead'
+)
+
+const canonicalMatch = menuQml.match(/function canonicalRoute\(input\) \{([\s\S]*?)\n  \}/)
+assert(canonicalMatch, 'menu exposes canonicalRoute for shell route comparison')
+assert(
+  canonicalMatch && canonicalMatch[1].includes('MenuModel.canonicalRoute')
+    && canonicalMatch[1].includes('root.items')
+    && canonicalMatch[1].includes('root.resolveRoute'),
+  'menu canonicalRoute delegates to the shared model so the shell toggle compares real open behavior'
+)
 JS

@@ -483,6 +483,79 @@ assert(
     && /onClicked:[\s\S]*root\.activateIndex\(row\.index, true\)/.test(menuQml),
   'mouse activation carries pointer intent into subordinate menus'
 )
+
+// The shell toggle compares the canonical menus: toggling the already-active
+// menu must hide it, never summon it again. Alias and link entries resolve to
+// the menu that would really be drawn, so a toggle on an alias for an open
+// submenu still closes it. The canonicalization lives in the model so it can
+// be exercised against a real heap rather than a source string.
+const toggleHeap = {
+  root: { label: 'Go' },
+  'style.theme': { label: 'Themes', aliases: ['theme'] },
+  'setup.power': { label: 'Power', kind: 'link', target: 'power' },
+  power: { label: 'Power' },
+}
+function aliasResolver(route) {
+  const raw = String(route || '').toLowerCase().replace(/_/g, '-')
+  for (const id of Object.keys(toggleHeap)) {
+    const entry = toggleHeap[id]
+    if (entry && Array.isArray(entry.aliases)) {
+      for (const alias of entry.aliases) {
+        if (String(alias || '').toLowerCase().replace(/_/g, '-') === raw) return id
+      }
+    }
+  }
+  return raw
+}
+assertEqual(
+  menu.canonicalRoute('theme', toggleHeap, aliasResolver),
+  'style.theme',
+  'menu canonicalizes an alias to its real item id'
+)
+assertEqual(
+  menu.canonicalRoute('setup.power', toggleHeap, aliasResolver),
+  'power',
+  'menu canonicalization follows link targets'
+)
+assertEqual(
+  menu.canonicalRoute('missing', toggleHeap, aliasResolver),
+  'root',
+  'menu canonicalization falls back to root for an unknown route'
+)
+assertEqual(
+  menu.canonicalRoute('power', toggleHeap, aliasResolver),
+  'power',
+  'menu canonicalization keeps an existing leaf route'
+)
+assert(
+  /function canonicalRoute\(input\) \{\s*return MenuModel\.canonicalRoute\(input, root\.items, root\.resolveRoute\)\s*\}/.test(menuQml),
+  'menu delegates canonical route resolution to the shared model'
+)
+
+// The toggle decision is exercised behaviorally against a fake panel: a real
+// first-party menu surface, a dmenu session that must never be clobbered, and
+// a third-party panel that resolves links only. The decision functions live in
+// the model so the shell toggle and these fixtures share one implementation.
+const firstPartyItem = {
+  mode: 'menu',
+  activeMenu: 'power',
+  canonicalRoute: (route) => menu.canonicalRoute(route, toggleHeap, aliasResolver),
+}
+assertEqual(menu.shouldSummonForRoute(firstPartyItem, 'power'), false, 'menu toggle hides when the requested route is already active')
+assertEqual(menu.shouldSummonForRoute(firstPartyItem, 'theme'), true, 'menu toggle summons when the requested route differs from the active menu')
+assertEqual(menu.shouldSummonForRoute(firstPartyItem, 'setup.power'), false, 'menu toggle hides when an alias resolves to the active menu')
+const dmenuItem = { mode: 'select', activeMenu: 'power', canonicalRoute: (route) => menu.canonicalRoute(route, toggleHeap, aliasResolver) }
+assertEqual(menu.shouldSummonForRoute(dmenuItem, 'theme'), false, 'menu toggle never summons over an active dmenu request')
+assertEqual(menu.shouldSummonForRoute({ mode: 'menu' }, 'theme'), false, 'menu toggle hides when a panel does not report an active route')
+const thirdPartyItem = {
+  mode: 'menu',
+  activeMenu: 'power',
+  items: { 'setup.power': { kind: 'link', target: 'power' }, power: {} },
+  resolveRoute: (route) => String(route || '').toLowerCase().replace(/_/g, '-'),
+}
+assertEqual(menu.shouldSummonForRoute(thirdPartyItem, 'setup.power'), false, 'menu toggle hides when a third-party link resolves to the active menu')
+assertEqual(menu.shouldSummonForRoute(thirdPartyItem, 'theme'), true, 'menu toggle summons a third-party panel when routes differ')
+assertEqual(menu.shouldSummonForRoute(null, 'theme'), false, 'menu toggle hides when there is no panel to compare')
 JS
 
 font_charset=$(fc-query --format='%{charset}' "$ROOT/default/fonts/omarchy/omarchy.ttf")

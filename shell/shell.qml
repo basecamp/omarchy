@@ -6,6 +6,7 @@ import Quickshell.Io
 import qs.Commons
 
 import "plugins/bar"
+import "plugins/menu/MenuModel.js" as MenuModel
 import "services"
 
 ShellRoot {
@@ -509,7 +510,26 @@ ShellRoot {
 
   function toggle(pluginId, payloadJson) {
     var id = shell.pluginRegistry.resolveEnabledId(pluginId)
-    return isPluginOpen(id) ? hide(id) : summon(id, payloadJson)
+    if (!isPluginOpen(id)) return summon(id, payloadJson)
+
+    var loader = panelLoaders[id]
+    if (loader && loader.item && payloadJson) {
+      try {
+        var payload = JSON.parse(payloadJson)
+        var targetRoute = payload.initialMenu || payload.menu
+        // Route-switching only applies to the regular menu surface. While a
+        // dmenu request (select/input) is active, summoning would clobber
+        // requestActive/doneFile without completing the caller, so a toggle
+        // must hide instead and let cancel() finish the request with null.
+        // The decision compares canonical routes (aliases resolved, link
+        // targets followed) so toggling the already-active route closes the
+        // menu instead of summoning it again.
+        if (MenuModel.shouldSummonForRoute(loader.item, targetRoute)) {
+          return summon(id, payloadJson)
+        }
+      } catch (e) {}
+    }
+    return hide(id)
   }
 
   // Map of pluginId -> Loader, populated by the Instantiator delegate below.
