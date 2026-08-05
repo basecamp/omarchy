@@ -841,17 +841,7 @@ Item {
   // in JSONC (`power`, `reminder-set`). Unknown strings fall through to the
   // id-as-route behavior so misspellings still attempt to open the literal id.
   function resolveRoute(input) {
-    var raw = String(input || "").toLowerCase().replace(/_/g, "-")
-    if (!raw || raw === "go" || raw === "menu") return "root"
-    for (var i = 0; i < root.itemOrder.length; i++) {
-      var entry = root.items[root.itemOrder[i]]
-      if (!entry || !entry.aliases) continue
-      for (var j = 0; j < entry.aliases.length; j++) {
-        var alias = String(entry.aliases[j] || "").toLowerCase().replace(/_/g, "-")
-        if (alias === raw) return entry.id
-      }
-    }
-    return raw
+    return MenuModel.resolveRoute(root.items, root.itemOrder, input)
   }
 
   function openRoute(initialMenu) {
