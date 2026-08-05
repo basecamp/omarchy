@@ -29,6 +29,7 @@ PanelWindow {
   // it needs a fixed light palette, not the themed bar.foreground.
   readonly property color onScrim: "white"
   readonly property color onScrimDim: Qt.rgba(1, 1, 1, 0.55)
+  readonly property color onScrimUrgent: "#ff6b6b"
 
   signal closeRequested()
   signal passwordToggleRequested()
@@ -151,7 +152,7 @@ PanelWindow {
         Text {
           visible: root.error !== ""
           text: root.error
-          color: root.bar.urgent
+          color: root.onScrimUrgent
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.bodySmall
           wrapMode: Text.Wrap
@@ -175,7 +176,7 @@ PanelWindow {
           text: root.passwordError !== "" ? root.passwordError
             : root.passwordVisible ? root.password
             : "Show password"
-          color: root.passwordError !== "" ? root.bar.urgent : root.onScrim
+          color: root.passwordError !== "" ? root.onScrimUrgent : root.onScrim
           opacity: root.passwordVisible || root.passwordError !== "" ? 1 : 0.6
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.bodySmall

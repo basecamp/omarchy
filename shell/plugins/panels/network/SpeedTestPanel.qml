@@ -37,6 +37,7 @@ PanelWindow {
   // ticks on it need a fixed light palette, not the themed bar.foreground.
   readonly property color onScrim: "white"
   readonly property color onScrimDim: Qt.rgba(1, 1, 1, 0.55)
+  readonly property color onScrimUrgent: "#ff6b6b"
 
   function toMbps(raw) {
     var value = parseFloat(raw)
@@ -158,7 +159,7 @@ PanelWindow {
         Text {
           visible: root.failed
           text: root.error
-          color: root.bar.urgent
+          color: root.onScrimUrgent
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.bodySmall
           wrapMode: Text.Wrap
