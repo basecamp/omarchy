@@ -66,6 +66,10 @@ Item {
   }
 
   function launchScreensaver() {
+    // An inhibitor may have arrived while the screensaver timer was running; never
+    // blank the screen while a D-Bus inhibitor is active.
+    if (!root.idleEnabled) return
+
     root.screensaverStartedThisCycle = true
     screensaverLaunchGraceTimer.restart()
     runProcess(screensaverProcess, "screensaver", "[[ $(omarchy-shell lock isLocked 2>/dev/null) == \"true\" ]] || omarchy-launch-screensaver")
@@ -184,9 +188,7 @@ Item {
   // VLC, …) ask us not to blank the screen. The idle-inhibit daemon tracks those
   // calls and writes the active count to a state file; we fold that count into
   // idleEnabled so any active D-Bus inhibitor suppresses the screensaver and lock.
-  function handleInhibitorStateChanged() {
-    var previous = root.dbusInhibitorCount
-
+  function handleInhibitorStateChanged(previous) {
     if (previous === 0 && root.dbusInhibitorCount > 0) {
       // An app started inhibiting mid-cycle: pull back the screensaver/lock.
       if (root.idledThisCycle) root.cancelIdleCycle("dbus-inhibit")
@@ -205,9 +207,12 @@ Item {
     if (parsed && typeof parsed.count === "number") {
       var count = parsed.count
       if (count !== root.dbusInhibitorCount) {
-        logEvent("dbus-inhibit", "count=" + count)
+        // Capture the old count before overwriting it so the handler can tell
+        // whether inhibitors were added or removed.
+        var previous = root.dbusInhibitorCount
         root.dbusInhibitorCount = count
-        root.handleInhibitorStateChanged()
+        logEvent("dbus-inhibit", "count=" + count)
+        root.handleInhibitorStateChanged(previous)
       }
     }
   }
@@ -381,7 +386,18 @@ Item {
     path: root.inhibitorStateDir
     watchChanges: true
     printErrors: false
-    onFileChanged: inhibitorStateProbe.running = true
+    onFileChanged: inhibitorProbeDebounce.restart()
+  }
+
+  // The daemon's atomic write creates a temp file and then renames it over the
+  // state file, so a single update emits two directory events. Debounce them:
+  // a process already running when the second event arrives would not be
+  // restarted by setting `running = true` again, leaving the stale count.
+  Timer {
+    id: inhibitorProbeDebounce
+    interval: 50
+    repeat: false
+    onTriggered: inhibitorStateProbe.running = true
   }
 
   Component.onCompleted: {
