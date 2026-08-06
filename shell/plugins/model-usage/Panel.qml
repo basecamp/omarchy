@@ -130,6 +130,36 @@ Panel {
     return Math.max(1, minutes) + "m"
   }
 
+  // Cursor's two pools share one billing-cycle end; Claude's session vs weekly
+  // windows usually do not. Only hoist the countdown when every meter agrees
+  // (or there is only one), otherwise leave resets on each row.
+  function limitsShareReset(windows) {
+    if (!windows || windows.length === 0) return false
+    if (windows.length === 1) return String(windows[0].resetAt || "") !== ""
+    var shared = String(windows[0].resetAt || "")
+    if (shared === "") return false
+    for (var i = 1; i < windows.length; i++) {
+      if (String(windows[i].resetAt || "") !== shared) return false
+    }
+    return true
+  }
+
+  function sharedLimitsResetText(windows) {
+    if (!limitsShareReset(windows)) return ""
+    var remainingMs = resetMsFor(windows[0])
+    return remainingMs > 0 ? "Resets in " + formatDuration(remainingMs) : ""
+  }
+
+  readonly property bool limitsResetInHeader: limitsShareReset(limits)
+  readonly property string limitsHeaderReset: sharedLimitsResetText(limits)
+
+  // Charts only when a provider actually has day/model history (Claude/Codex).
+  // Cursor stays on period meters and leaves these empty.
+  readonly property bool hasDayChart: !!provider
+    && Array.isArray(provider.recentDays)
+    && provider.recentDays.length > 0
+  readonly property bool hasModelChart: models.length > 0
+
   // ---------------------------------------------------------------- content
 
   // The plan you pay for, under the name of the tool it pays for. Limits live
@@ -243,6 +273,10 @@ Panel {
       return colorLuminance(surfaceColor || Color.background) >= 0.5
         ? Qt.resolvedUrl("assets/codex-light.svg")
         : Qt.resolvedUrl("assets/codex.svg")
+    if (p.providerId === "cursor")
+      return colorLuminance(surfaceColor || Color.background) >= 0.5
+        ? Qt.resolvedUrl("assets/cursor-light.svg")
+        : Qt.resolvedUrl("assets/cursor.svg")
     return ""
   }
 
@@ -453,10 +487,31 @@ Panel {
             width: parent.width
             spacing: Style.space(10)
 
-            PanelSectionHeader {
-              text: "LIMITS"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(limitsHeaderLabel.implicitHeight, limitsHeaderReset.implicitHeight)
+
+              PanelSectionHeader {
+                id: limitsHeaderLabel
+                text: "LIMITS"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                id: limitsHeaderReset
+                visible: text !== ""
+                text: root.limitsHeaderReset
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                anchors.right: parent.right
+                // Match the header glyphs, not the padded box centre.
+                anchors.verticalCenter: limitsHeaderLabel.verticalCenter
+                anchors.verticalCenterOffset: Math.round(limitsHeaderLabel.topPadding / 2)
+              }
             }
 
             Repeater {
@@ -466,6 +521,7 @@ Panel {
                 required property var modelData
                 width: limitsSection.width
                 window: modelData
+                showReset: !root.limitsResetInHeader
               }
             }
           }
@@ -478,7 +534,7 @@ Panel {
 
           Column {
             id: usageSection
-            visible: !!root.provider && root.provider.recentDays && root.provider.recentDays.length > 0
+            visible: root.hasDayChart
             width: parent.width
             spacing: Style.spacing.md
 
@@ -517,7 +573,7 @@ Panel {
 
           Column {
             id: modelSection
-            visible: root.models.length > 0
+            visible: root.hasModelChart
             width: parent.width
             spacing: Style.spacing.md
 
@@ -558,10 +614,12 @@ Panel {
     }
   }
 
-  // A limit window: label and percentage, meter, and reset countdown.
+  // A limit window: label and percentage, meter, and optional per-row reset
+  // when windows do not share one countdown (Claude session vs weekly).
   component LimitRow: Column {
     id: limitRow
     property var window: null
+    property bool showReset: true
 
     readonly property bool alarming: window && window.percent >= 0.9
 
@@ -602,8 +660,10 @@ Panel {
 
     Text {
       id: resetText
+      visible: limitRow.showReset && text !== ""
       width: parent.width
       text: {
+        if (!limitRow.showReset) return ""
         var remainingMs = root.resetMsFor(limitRow.window)
         return remainingMs > 0 ? "Resets in " + root.formatDuration(remainingMs) : ""
       }

@@ -15,10 +15,11 @@ adapter per subscription.
   the time until the session or weekly window resets.
 - **Tokens by day** — one row per day for the last week: day, bar, tokens, with today
   bolded at the bottom. Hover today for its prompt and session count.
+  Shown only when the provider has local day history (Claude/Codex).
 - **Tokens by model** — tokens per model with the bar behind each row scaled
   to the heaviest model,
   the same way the weekly chart scales to its busiest day. Hover for the
-  input / output / cache split.
+  input / output / cache split. Shown only when the provider has model totals.
 
 A subscription appears only when it is enabled in settings and has actually
 recorded usage — on this machine or on a synced one. With one such provider
@@ -37,6 +38,7 @@ its own the first time a scan finds usage. Drop it with
 |---|---|---|
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` scanned by `scripts/claude_usage_scanner.py`, plus `stats-cache.json` and `history.jsonl` |
 | `codex` | `scripts/codex_usage_scanner.py` reading the Codex CLI state | the same scanner |
+| `cursor` | `scripts/cursor_usage_scanner.py` reading Cursor `state.vscdb` + `GetCurrentPeriodUsage` (plan pools only) | none — period meters + tier only |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only.
@@ -81,11 +83,12 @@ omarchy bar set omarchy.model-usage providers '{
     "credentialsPath": "~/.claude/.credentials.json",
     "projectsPath": "~/.claude/projects"
   },
-  "codex": { "enabled": false }
+  "codex": { "enabled": false },
+  "cursor": { "enabled": true }
 }' --json
 ```
 
-`enabled` defaults to `true` for both; set it to `false` to hide a
+`enabled` defaults to `true` for claude, codex, and cursor; set it to `false` to hide a
 subscription that is installed. The paths above are the defaults.
 
 With `syncMode` on, every `*.json` snapshot in `syncDir` is merged, so today,

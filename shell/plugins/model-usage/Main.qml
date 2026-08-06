@@ -25,7 +25,15 @@ Item {
     onReadyChanged: root.scheduleSync()
   }
 
-  property var providers: [claudeProvider, codexProvider]
+  Cursor {
+    id: cursorProvider
+    enabled: root.providerEnabled("cursor")
+    providerSettings: root.settings && root.settings.providers && root.settings.providers.cursor ? root.settings.providers.cursor : ({})
+    onLastRefreshedAtMsChanged: root.scheduleSync()
+    onReadyChanged: root.scheduleSync()
+  }
+
+  property var providers: [claudeProvider, codexProvider, cursorProvider]
 
   // A subscription earns a place in the bar and the panel by being switched on
   // in settings and having actually produced numbers — locally or on a synced
@@ -44,6 +52,10 @@ Item {
       var codex = displayProvider(codexProvider)
       if (providerHasData(codex)) result.push(codex)
     }
+    if (cursorProvider.enabled) {
+      var cursor = displayProvider(cursorProvider)
+      if (providerHasData(cursor)) result.push(cursor)
+    }
     return result
   }
 
@@ -54,9 +66,9 @@ Item {
       || Number(p.secondaryRateLimitPercent) >= 0
   }
 
-  property bool refreshing: claudeProvider.refreshing || codexProvider.refreshing || syncRunning
+  property bool refreshing: claudeProvider.refreshing || codexProvider.refreshing || cursorProvider.refreshing || syncRunning
   property double aggregateUpdatedAtMs: aggregateData && aggregateData.updatedAtMs ? Number(aggregateData.updatedAtMs) : 0
-  property double lastRefreshedAtMs: Math.max(aggregateUpdatedAtMs, claudeProvider.lastRefreshedAtMs || 0, codexProvider.lastRefreshedAtMs || 0)
+  property double lastRefreshedAtMs: Math.max(aggregateUpdatedAtMs, claudeProvider.lastRefreshedAtMs || 0, codexProvider.lastRefreshedAtMs || 0, cursorProvider.lastRefreshedAtMs || 0)
   property int refreshIntervalSec: Math.max(30, Number(setting("refreshIntervalSec", 900)))
 
   property var syncModeSetting: setting("syncMode", setting("syncEnabled", false))
@@ -155,7 +167,7 @@ Item {
   }
 
   function providerEnabled(id) {
-    if (!settings || !settings.providers || !settings.providers[id]) return id === "claude" || id === "codex"
+    if (!settings || !settings.providers || !settings.providers[id]) return id === "claude" || id === "codex" || id === "cursor"
     return settings.providers[id].enabled !== false
   }
 
