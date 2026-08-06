@@ -474,7 +474,7 @@ normalize_limine_config() {
 preserve_kernel_cmdline_root() {
   local default_conf=/etc/default/limine
   local cmdline param key path root_source root_uuid root_fstype subvol uki
-  local root_type=""
+  local root_stacks_crypt=0
   local config_paths=()
   local boot_params=()
   local missing=()
@@ -553,14 +553,18 @@ preserve_kernel_cmdline_root() {
   # root= left to copy, so derive it from the mounted root instead.
   if ((!have_root)); then
     # --nofsroot matters: without it findmnt appends the subvolume for a btrfs
-    # mount, so the source reads /dev/mapper/cryptroot[/@], lsblk cannot resolve
-    # that path, and the type below comes back empty. That is the layout Omarchy
-    # installs when encryption is picked, so the crypt gate would miss exactly the
-    # roots it exists for. root_type stays empty when findmnt cannot answer, which
-    # the root_uuid check below then catches.
+    # mount, so the source reads /dev/mapper/cryptroot[/@], which lsblk cannot
+    # resolve. That is the layout Omarchy installs when encryption is picked.
     root_source=$(findmnt -no SOURCE --nofsroot / 2>/dev/null || true)
-    if [[ -n $root_source ]]; then
-      root_type=$(lsblk -no TYPE "$root_source" 2>/dev/null | head -n1 || true)
+
+    # -s walks the parents, so a LUKS layer counts wherever it sits in the stack
+    # and not only when the root device is itself the dm-crypt target. On the
+    # standard full-disk-encryption layout, container -> LVM PV -> root LV, the
+    # root device's own type is lvm and a plain lsblk -no TYPE misses the crypt
+    # layer completely. root_stacks_crypt stays 0 when findmnt cannot answer,
+    # which the root_uuid check below then catches.
+    if [[ -n $root_source ]] && lsblk -nso TYPE "$root_source" 2>/dev/null | grep -qx crypt; then
+      root_stacks_crypt=1
     fi
 
     # An unlocked dm-crypt root reports its mapper device, whose UUID says
@@ -568,13 +572,12 @@ preserve_kernel_cmdline_root() {
     # produce a cmdline that still cannot boot, and the check at the end of this
     # function would then find root= and stay quiet about it.
     #
-    # This gates on the device mapper target type rather than reusing
-    # root_filesystem_encrypted(), which treats every /dev/mapper/* path and any
-    # non-empty /etc/crypttab as an encrypted root. That is the right side to err
-    # on where it is used, but here it would deny the repair to plain LVM, dm-raid
-    # and multipath roots, which need no unlock parameters: root=UUID= is enough
-    # once mkinitcpio's own hook assembles the device.
-    if [[ $root_type == "crypt" ]] && ((!have_unlock)); then
+    # Looking for a crypt layer rather than reusing root_filesystem_encrypted(),
+    # which treats every /dev/mapper/* path and any non-empty /etc/crypttab as an
+    # encrypted root. That is the right side to err on where it is used, but here
+    # it would deny the repair to LVM, dm-raid and multipath roots that carry no
+    # crypt layer: root=UUID= is enough once mkinitcpio's own hook assembles them.
+    if ((root_stacks_crypt)) && ((!have_unlock)); then
       warn "The root filesystem is on dm-crypt and the booted kernel cmdline carries no unlock parameters, so they cannot be recovered automatically. Add root= and the matching cryptdevice or rd.luks.* parameters to $default_conf by hand, run limine-mkinitcpio, and confirm root= reaches /boot/limine.conf before rebooting."
       return 0
     fi

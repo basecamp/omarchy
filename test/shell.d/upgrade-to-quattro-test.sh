@@ -119,21 +119,21 @@ grep -F '((have_mount_mode)) || boot_params+=(rw)' "$upgrade_to_quattro" >/dev/n
 grep -F 'have_unlock' "$upgrade_to_quattro" >/dev/null
 # Gated on the mapper target type, not on the /dev/mapper/* prefix, so plain LVM,
 # dm-raid and multipath roots keep the repair path.
-grep -F 'lsblk -no TYPE "$root_source"' "$upgrade_to_quattro" >/dev/null
-grep -F '[[ $root_type == "crypt" ]]' "$upgrade_to_quattro" >/dev/null
 if grep -F '[[ $root_source == /dev/mapper/* ]] && ((!have_unlock))' "$upgrade_to_quattro" >/dev/null; then
   fail "kernel cmdline repair path does not treat every /dev/mapper root as encrypted"
 fi
+# lsblk reports only the target's own type, which is lvm on the standard
+# container -> LVM PV -> root LV layout, so the crypt layer has to be looked for
+# across the parents with -s or full-disk encryption slips through.
+grep -F 'lsblk -nso TYPE "$root_source"' "$upgrade_to_quattro" >/dev/null
+grep -F 'grep -qx crypt' "$upgrade_to_quattro" >/dev/null
+grep -F '((root_stacks_crypt)) && ((!have_unlock))' "$upgrade_to_quattro" >/dev/null
 # Without --nofsroot findmnt appends the subvolume, so an encrypted btrfs root
-# reads /dev/mapper/cryptroot[/@], lsblk cannot resolve it, and the crypt gate
-# misses the one layout Omarchy installs when encryption is picked.
+# reads /dev/mapper/cryptroot[/@] and lsblk cannot resolve it at all.
 grep -F 'findmnt -no SOURCE --nofsroot /' "$upgrade_to_quattro" >/dev/null
-if printf '%s\n' '/dev/mapper/cryptroot[/@]' | grep -qvE '\[' ; then
-  fail "the bracketed btrfs source form is what --nofsroot exists to strip"
-fi
-# root_type is read outside the branch that assigns it, and set -u treats a
-# declared-but-unassigned local as unbound.
-grep -F 'local root_type=""' "$upgrade_to_quattro" >/dev/null
+# Read outside the branch that assigns it, and set -u treats a declared-but-
+# unassigned local as unbound.
+grep -F 'local root_stacks_crypt=0' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade repair path keeps captured parameters and refuses a partial dm-crypt cmdline"
 
 grep -F -- '--only-section=.cmdline' "$upgrade_to_quattro" >/dev/null
