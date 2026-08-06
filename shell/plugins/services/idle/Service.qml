@@ -423,7 +423,13 @@ Item {
     }
 
     function toggle(): string {
-      return root.setIdleEnabled(!root.idleEnabled)
+      // Toggle the user's stay-awake preference, not the effective idle state.
+      // idleEnabled is false while a D-Bus inhibitor is active, so deriving from
+      // it would silently drop a toggle issued during playback: flipping to
+      // "enable idle" would succeed at nothing, and flipping to "stay awake"
+      // would clear the flag to enable idle unexpectedly once the inhibitor was
+      // released.
+      return root.setIdleEnabled(root.stayAwake)
     }
   }
 }
