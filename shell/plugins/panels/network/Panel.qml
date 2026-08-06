@@ -1568,7 +1568,8 @@ Panel {
       target: row.net ? row.net.network : null
       function onConnectionFailed(reason) {
         root.failNetworkAction(row.net.network, reason)
-        if (reason === ConnectionFailReason.NoSecrets) root.openPasswordPrompt(row.net.ssid)
+        var reasons = { NoSecrets: ConnectionFailReason.NoSecrets, WifiAuthTimeout: ConnectionFailReason.WifiAuthTimeout }
+        if (Model.shouldRepromptPassphrase(reason, row.isProtected, reasons)) root.openPasswordPrompt(row.net.ssid)
       }
       function onConnectedChanged() {
         if (row.net) root.checkActionCompletion(row.net.network)
@@ -1750,9 +1751,10 @@ Panel {
       }
     }
 
-    // Inline passphrase prompt — only shown when we hit a protected network
-    // we don't have saved credentials for. Submitting (Enter or the check
-    // button) fires connect; Esc cancels back to the row.
+    // Inline passphrase prompt — shown when we hit a protected network we
+    // don't have saved credentials for, or when a connect fails because the
+    // saved passphrase is wrong. Submitting (Enter or the check button) fires
+    // connect; Esc cancels back to the row.
     Item {
       id: passwordPanel
       visible: row.isPasswordOpen

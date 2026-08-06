@@ -110,6 +110,11 @@ assertEqual(network.networkFailureReason(1, reasons), 'Passphrase required', 'ne
 assertEqual(network.networkFailureReason(2, reasons), 'Wrong password', 'network maps auth timeout failures')
 assertEqual(network.networkFailureReason(99, reasons), 'Failed to connect', 'network maps unknown failures')
 
+assertEqual(network.shouldRepromptPassphrase(reasons.NoSecrets, false, reasons), true, 'network reprompts when secrets are missing')
+assertEqual(network.shouldRepromptPassphrase(reasons.WifiAuthTimeout, true, reasons), true, 'network reprompts a protected network after a wrong password')
+assertEqual(network.shouldRepromptPassphrase(reasons.WifiAuthTimeout, false, reasons), false, 'network does not reprompt an open network on auth timeout')
+assertEqual(network.shouldRepromptPassphrase(reasons.WifiClientFailed, true, reasons), false, 'network does not reprompt on generic connection failures')
+
 
 assertEqual(network.bandLabel('2.4'), '2.4ghz', 'network labels the 2.4GHz band')
 assertEqual(network.bandLabel('6'), '6ghz', 'network labels the 6GHz band')
