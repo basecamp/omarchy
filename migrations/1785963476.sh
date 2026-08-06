@@ -13,8 +13,8 @@ fi
 
 # The unit is normally installed by the omarchy-settings package to
 # /usr/lib/systemd/user. When the package update and this migration do not land
-# together (e.g. a local checkout update), link a user copy so `systemctl
-# enable` below can find the unit. Symlink, not copy: a copied unit at
+# together (e.g. a local checkout update), link a user copy so systemctl and the
+# wants symlink below can find the unit. Symlink, not copy: a copied unit at
 # ~/.config/systemd/user would permanently shadow the packaged unit and never
 # receive later fixes, while the link tracks the checkout it came from.
 user_config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -26,5 +26,20 @@ if [[ -f $unit_source && ! -f /usr/lib/systemd/user/omarchy-idle-inhibit.service
   ln -sfn "$unit_source" "$unit_dest"
 fi
 
-systemctl --user daemon-reload
-systemctl --user enable --now omarchy-idle-inhibit.service >/dev/null 2>&1 || true
+systemctl --user daemon-reload >/dev/null 2>&1 || true
+
+# `systemctl enable` needs a live user manager, which an update from a TTY/SSH
+# does not have. Fall back to writing exactly the symlink it would have written,
+# rather than silently leaving the daemon unenabled and the migration marked
+# complete (which would strand the unit at the next graphical login).
+if ! systemctl --user enable omarchy-idle-inhibit.service >/dev/null 2>&1; then
+  wants_dir="$user_config_home/systemd/user/graphical-session.target.wants"
+  mkdir -p "$wants_dir"
+  ln -sfn "$unit_dest" "$wants_dir/omarchy-idle-inhibit.service"
+fi
+
+# Outside a graphical session there is no shell to feed idle inhibitors to; the
+# enablement above is the whole job, and the next graphical login starts it.
+if systemctl --user is-active --quiet graphical-session.target; then
+  systemctl --user start omarchy-idle-inhibit.service >/dev/null 2>&1 || true
+fi

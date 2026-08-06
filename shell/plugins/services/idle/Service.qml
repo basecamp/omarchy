@@ -189,30 +189,21 @@ Item {
   // calls and writes the active count to a state file; we fold that count into
   // idleEnabled so any active D-Bus inhibitor suppresses the screensaver and lock.
   function handleInhibitorStateChanged(previous) {
-    if (previous === 0 && root.dbusInhibitorCount > 0) {
-      // An app started inhibiting mid-cycle: pull back the screensaver/lock.
-      if (root.idledThisCycle) root.cancelIdleCycle("dbus-inhibit")
-    } else if (previous > 0 && root.dbusInhibitorCount === 0) {
-      // All inhibitors released: re-arm idle from the current monitor state.
-      logEvent("dbus-inhibit", "cleared")
-      Qt.callLater(root.handleIdleChanged)
+    switch (IdleModel.inhibitorTransition(previous, root.dbusInhibitorCount)) {
+      case "cancel":
+        // An app started inhibiting mid-cycle: pull back the screensaver/lock.
+        if (root.idledThisCycle) root.cancelIdleCycle("dbus-inhibit")
+        break
+      case "rearm":
+        // All inhibitors released: re-arm idle from the current monitor state.
+        logEvent("dbus-inhibit", "cleared")
+        Qt.callLater(root.handleIdleChanged)
+        break
     }
   }
 
   function parseInhibitorState(text) {
-    var raw = text !== undefined ? text : ""
-    if (!raw || !raw.length) return
-
-    // The probe emits {} when the state file is missing or unreadable. Treat any
-    // object without a count as zero so a daemon failure or deleted file clears a
-    // stale nonzero count instead of disabling the lock indefinitely.
-    var count = 0
-    try {
-      var parsed = JSON.parse(raw)
-      if (parsed && typeof parsed.count === "number") count = parsed.count
-    } catch (e) {
-      count = 0
-    }
+    var count = IdleModel.inhibitorCountFromText(text)
 
     if (count !== root.dbusInhibitorCount) {
       // Capture the old count before overwriting it so the handler can tell
