@@ -71,9 +71,9 @@ fallback_to_clipboard = true
 type_delay_ms = 1
 
 # Temporarily stop focus-follows-mouse while Voxtype emits synthetic keystrokes.
-# The post hook restores the current normal setting after output completes.
-pre_output_command = "hyprctl keyword input:follow_mouse 0"
-post_output_command = "hyprctl keyword input:follow_mouse 1"
+# The post hook restores the user's current setting after output completes.
+pre_output_command = "omarchy-voxtype-pre-output"
+post_output_command = "omarchy-voxtype-post-output"
 
 # Post-processing command (optional)
 # Pipe transcribed text through an external command for cleanup before output.

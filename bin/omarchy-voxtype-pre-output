@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Disable follow_mouse during voxtype output
+# omarchy:hidden=true
+
+set -euo pipefail
+
+STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy/voxtype-follow-mouse"
+
+mkdir -p "$(dirname "$STATE_FILE")"
+hyprctl -j getoption input:follow_mouse | jq -r '.int' >"$STATE_FILE"
+hyprctl keyword input:follow_mouse 0
