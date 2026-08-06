@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# omarchy:summary=Snapshot and restore follow_mouse around voxtype output
+# omarchy:args=pause|resume
+# omarchy:hidden=true
+
+set -euo pipefail
+
+STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy/voxtype-follow-mouse"
+
+case "${1:-}" in
+pause)
+  mkdir -p "$(dirname "$STATE_FILE")"
+  hyprctl -j getoption input:follow_mouse | jq -r '.int' >"$STATE_FILE"
+  hyprctl keyword input:follow_mouse 0
+  ;;
+resume)
+  if [[ -f $STATE_FILE ]]; then
+    hyprctl keyword input:follow_mouse "$(cat "$STATE_FILE")"
+    rm -f "$STATE_FILE"
+  fi
+  ;;
+*)
+  echo "Usage: omarchy-hyprland-follow-mouse-guard pause|resume" >&2
+  exit 1
+  ;;
+esac

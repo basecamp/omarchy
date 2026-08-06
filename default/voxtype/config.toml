@@ -70,6 +70,11 @@ fallback_to_clipboard = true
 # 0 = fastest possible, increase if characters are dropped
 type_delay_ms = 1
 
+# Temporarily stop focus-follows-mouse while Voxtype emits synthetic keystrokes.
+# The post hook restores the user's current setting after output completes.
+pre_output_command = "omarchy-hyprland-follow-mouse-guard pause"
+post_output_command = "omarchy-hyprland-follow-mouse-guard resume"
+
 # Post-processing command (optional)
 # Pipe transcribed text through an external command for cleanup before output.
 # The command receives text on stdin and outputs processed text on stdout.
