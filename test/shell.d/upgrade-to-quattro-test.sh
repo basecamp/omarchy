@@ -124,6 +124,16 @@ grep -F '[[ $root_type == "crypt" ]]' "$upgrade_to_quattro" >/dev/null
 if grep -F '[[ $root_source == /dev/mapper/* ]] && ((!have_unlock))' "$upgrade_to_quattro" >/dev/null; then
   fail "kernel cmdline repair path does not treat every /dev/mapper root as encrypted"
 fi
+# Without --nofsroot findmnt appends the subvolume, so an encrypted btrfs root
+# reads /dev/mapper/cryptroot[/@], lsblk cannot resolve it, and the crypt gate
+# misses the one layout Omarchy installs when encryption is picked.
+grep -F 'findmnt -no SOURCE --nofsroot /' "$upgrade_to_quattro" >/dev/null
+if printf '%s\n' '/dev/mapper/cryptroot[/@]' | grep -qvE '\[' ; then
+  fail "the bracketed btrfs source form is what --nofsroot exists to strip"
+fi
+# root_type is read outside the branch that assigns it, and set -u treats a
+# declared-but-unassigned local as unbound.
+grep -F 'local root_type=""' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade repair path keeps captured parameters and refuses a partial dm-crypt cmdline"
 
 grep -F -- '--only-section=.cmdline' "$upgrade_to_quattro" >/dev/null

@@ -473,7 +473,8 @@ normalize_limine_config() {
 
 preserve_kernel_cmdline_root() {
   local default_conf=/etc/default/limine
-  local cmdline param key path root_source root_type root_uuid root_fstype subvol uki
+  local cmdline param key path root_source root_uuid root_fstype subvol uki
+  local root_type=""
   local config_paths=()
   local boot_params=()
   local missing=()
@@ -551,7 +552,13 @@ preserve_kernel_cmdline_root() {
   # Re-running the upgrade on an already-broken system: the booted cmdline has no
   # root= left to copy, so derive it from the mounted root instead.
   if ((!have_root)); then
-    root_source=$(findmnt -no SOURCE / 2>/dev/null || true)
+    # --nofsroot matters: without it findmnt appends the subvolume for a btrfs
+    # mount, so the source reads /dev/mapper/cryptroot[/@], lsblk cannot resolve
+    # that path, and the type below comes back empty. That is the layout Omarchy
+    # installs when encryption is picked, so the crypt gate would miss exactly the
+    # roots it exists for. root_type stays empty when findmnt cannot answer, which
+    # the root_uuid check below then catches.
+    root_source=$(findmnt -no SOURCE --nofsroot / 2>/dev/null || true)
     if [[ -n $root_source ]]; then
       root_type=$(lsblk -no TYPE "$root_source" 2>/dev/null | head -n1 || true)
     fi
