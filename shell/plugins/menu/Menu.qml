@@ -941,8 +941,18 @@ Item {
 
   property var whenResults: ({})       // id → true|false (allow visibility)
   property var checkedResults: ({})    // id → true|false (show ✓)
+  property bool guardRunning: false
+  property bool guardPending: false
 
   function evaluateGuards() {
+    // Guard runs are async and slow (every `checked:` shells out to xdg-settings).
+    // Serialize them: a second call while one is in flight must not reset the
+    // shared `collected` buffer, or the older run's onExited would clobber the
+    // results with a partial/empty map and every guarded row becomes visible.
+    if (root.guardRunning) {
+      root.guardPending = true
+      return
+    }
     var script = ""
     var ids = Object.keys(root.items)
     for (var i = 0; i < ids.length; i++) {
@@ -956,6 +966,7 @@ Item {
       root.checkedResults = ({})
       return
     }
+    root.guardRunning = true
     guardProc.collected = ""
     guardProc.command = ["bash", "-lc", script]
     guardProc.running = true
@@ -968,6 +979,7 @@ Item {
       onRead: function(data) { guardProc.collected += data + "\n" }
     }
     onExited: {
+      root.guardRunning = false
       var nextWhen = ({})
       var nextChecked = ({})
       var lines = guardProc.collected.split("\n")
@@ -987,6 +999,10 @@ Item {
       }
       root.whenResults = nextWhen
       root.checkedResults = nextChecked
+      if (root.guardPending) {
+        root.guardPending = false
+        root.evaluateGuards()
+      }
       if (root.opened) root.rebuildDisplay()
     }
   }
