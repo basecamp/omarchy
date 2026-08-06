@@ -1,0 +1,70 @@
+#!/bin/bash
+set -eu
+
+omarchy-cmd-present vivaldi-stable || exit 0
+
+CSV=/opt/vivaldi/resources/vivaldi/style/omarchy.csv
+[[ -w $CSV ]] || exit 0
+
+bg=$(omarchy-theme-color background)
+fg=$(omarchy-theme-color foreground)
+accent=$(omarchy-theme-color accent)
+[[ -n $bg && -n $fg && -n $accent ]] || exit 0
+
+printf '%s' "$bg,$fg,$accent" > "$CSV"
+
+set_vivaldi_native_theme() {
+  local prefs
+  for prefs in "$HOME"/.config/vivaldi/*/Preferences; do
+    [[ -f $prefs ]] || continue
+    jq --arg bg "$bg" --arg fg "$fg" --arg accent "$accent" '
+      .vivaldi |= ((. // {}) + {
+        themes: ((.themes // {}) + {
+          current: "Omarchy",
+          user: (((.themes.user // []) | map(select(.id != "Omarchy"))) + [{
+            engineVersion: 1,
+            version: 1,
+            id: "Omarchy",
+            url: "",
+            name: "Omarchy",
+            accentFromPage: false,
+            accentOnWindow: true,
+            accentSaturationLimit: 1,
+            alpha: 1,
+            backgroundImage: "",
+            backgroundPosition: "stretch",
+            backgroundSource: "",
+            blur: 0,
+            colorAccentBg: $accent,
+            colorBg: $bg,
+            colorFg: $fg,
+            colorHighlightBg: $accent,
+            colorPosition: "unified",
+            colorWindowBg: $bg,
+            contrast: 0,
+            dimBlurred: false,
+            preferSystemAccent: false,
+            radius: 4,
+            simpleScrollbar: true,
+            transparencyTabBar: false,
+            transparencyTabs: false
+          }])
+        }),
+        theme: ((.theme // {}) + {
+          schedule: ((.schedule // {}) + {
+            o_s: ((.o_s // {}) + {
+              dark: "Omarchy",
+              light: "Omarchy"
+            })
+          })
+        })
+      })
+    ' "$prefs" > "$prefs.omarchy-tmp" && mv "$prefs.omarchy-tmp" "$prefs"
+  done
+}
+
+# A running Vivaldi overwrites Preferences on exit, so only persist the native
+# theme while it is closed. The live loader covers the running session.
+if ! pgrep -x 'vivaldi|vivaldi-bin' >/dev/null 2>&1; then
+  set_vivaldi_native_theme
+fi

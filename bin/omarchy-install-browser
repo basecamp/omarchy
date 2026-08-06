@@ -96,7 +96,8 @@ vivaldi)
   omarchy-pkg-add vivaldi || exit 1
 
   copy_chromium_flags ~/.config/vivaldi-stable.conf
-  omarchy-theme-set-browser
+  omarchy-hook-install post-update "$OMARCHY_PATH/default/vivaldi/vivaldi-post-update" &&
+    "$OMARCHY_PATH/default/vivaldi/vivaldi-post-update"
   announce_browser_installed "Vivaldi"
   ;;
 *)

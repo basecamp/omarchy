@@ -68,6 +68,7 @@ vivaldi)
   set_fallback_default_browser vivaldi-stable.desktop
   omarchy-pkg-drop vivaldi
   rm -f ~/.config/vivaldi-stable.conf
+  rm -f ~/.config/omarchy/hooks/post-update.d/vivaldi-post-update
   ;;
 *)
   echo "Usage: omarchy-remove-browser <chrome|brave|brave-origin|edge|firefox|zen|vivaldi>"
