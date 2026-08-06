@@ -60,6 +60,7 @@ pass "Limine Snapper warning notifier migration disables existing user autostart
 TEST_LOG="$test_tmp/calls.log" \
 PATH="$fake_bin:$PATH" \
 OMARCHY_SNAPPER_CONFIGURE_TEST=1 \
+OMARCHY_SNAPPER_ROOT_FSTYPE=btrfs \
 OMARCHY_PATH="$ROOT" \
 OMARCHY_SNAPPER_CONFIG_PATH="$test_tmp/etc/snapper/configs/root" \
 OMARCHY_SNAPPER_CONF_PATH="$test_tmp/etc/conf.d/snapper" \
@@ -86,6 +87,24 @@ grep -F 'sudo "$@"' "$migration" >/dev/null
 grep -F 'as_root env OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$snapper_config_script"' "$migration" >/dev/null
 ! grep -F 'NUMBER_LIMIT="5"' "$migration" >/dev/null || fail "Snapper service migration does not overwrite working custom retention"
 pass "Snapper service migration only repairs broken services idempotently"
+# snapper create-config cannot work off btrfs, and every caller runs this script
+# under bash -euo pipefail, so failing there aborts the Quattro upgrade and the
+# migration queued behind it. Skip cleanly instead of writing a config that the
+# filesystem cannot back.
+non_btrfs_tmp="$test_tmp/non-btrfs"
+mkdir -p "$non_btrfs_tmp"
+OMARCHY_SNAPPER_ROOT_FSTYPE=ext4 \
+OMARCHY_PATH="$ROOT" \
+OMARCHY_SNAPPER_CONFIG_PATH="$non_btrfs_tmp/etc/snapper/configs/root" \
+OMARCHY_SNAPPER_CONF_PATH="$non_btrfs_tmp/etc/conf.d/snapper" \
+  bash -euo pipefail "$ROOT/install/config/snapper.sh" >/dev/null ||
+  fail "snapshot configure exits cleanly on a root Snapper cannot support"
+[[ ! -e $non_btrfs_tmp/etc/snapper/configs/root ]] ||
+  fail "snapshot configure writes no Snapper config off btrfs"
+[[ ! -e $non_btrfs_tmp/etc/conf.d/snapper ]] ||
+  fail "snapshot configure enables no Snapper services off btrfs"
+pass "snapshot configure skips a root filesystem Snapper cannot support"
+
 
 # Checkouts differ per machine, so allow an explicit pointer at the sibling repo.
 # Accepts either the omarchy-pkgs checkout or its pkgbuilds/ directory.
@@ -155,3 +174,4 @@ if [[ -f $phases && -f $manifest ]]; then
   ! grep -F '/etc/systemd/system/timers.target.wants/snapper-timeline.timer' "$manifest" >/dev/null || fail "fresh ISO manifest does not enable snapper timeline timer"
 fi
 pass "omarchy-iso delegates Snapper setup to packaged system setup"
+
