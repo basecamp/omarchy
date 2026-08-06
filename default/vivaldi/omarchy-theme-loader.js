@@ -4,7 +4,7 @@
   const nudgeCurrentTheme = (prefs, done) => {
     const setCurrent = function(value, next) {
       const set = prefs.set({ path: 'vivaldi.themes.current', value: value });
-      if (set && typeof set.then === 'function') set.then(next, next);
+      if (set && typeof set.then === 'function') set.then(next, function () {});
       else next();
     };
     prefs.get('vivaldi.themes.current').then(function (result) {
@@ -15,7 +15,7 @@
       } else {
         setCurrent('Omarchy', done);
       }
-    }).catch(function () { setCurrent('Omarchy', done); });
+    }).catch(function () {});
   };
 
   const syncNativeTheme = (bg, fg, accent, onDone) => {
@@ -72,11 +72,16 @@
           return t;
         });
         if (!found) themes.push(theme);
-        prefs.set({ path: 'vivaldi.themes.user', value: themes });
-        nudgeCurrentTheme(prefs, done);
-      }).catch(done);
+        // Wait for the write before switching the active theme, or the handler
+        // would re-derive from stale (or missing) Omarchy colors.
+        return Promise.resolve(prefs.set({ path: 'vivaldi.themes.user', value: themes })).then(function () {
+          nudgeCurrentTheme(prefs, done);
+        });
+      }).catch(function () {
+        // Leave synced unset so the next poll retries.
+      });
     } catch (e) {
-      if (onDone) onDone();
+      // Leave synced unset so the next poll retries.
     }
   };
 
