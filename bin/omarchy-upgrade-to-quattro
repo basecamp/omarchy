@@ -473,7 +473,7 @@ normalize_limine_config() {
 
 preserve_kernel_cmdline_root() {
   local default_conf=/etc/default/limine
-  local cmdline param key path root_source root_uuid root_fstype subvol uki
+  local cmdline param key path root_source root_stack root_uuid root_fstype subvol uki
   local root_stacks_crypt=0
   local config_paths=()
   local boot_params=()
@@ -563,8 +563,17 @@ preserve_kernel_cmdline_root() {
     # root device's own type is lvm and a plain lsblk -no TYPE misses the crypt
     # layer completely. root_stacks_crypt stays 0 when findmnt cannot answer,
     # which the root_uuid check below then catches.
-    if [[ -n $root_source ]] && lsblk -nso TYPE "$root_source" 2>/dev/null | grep -qx crypt; then
-      root_stacks_crypt=1
+    if [[ -n $root_source ]]; then
+      # Captured rather than piped straight into grep -q: under pipefail a
+      # short-circuiting grep can leave the producer with SIGPIPE and turn the
+      # pipeline into 141, which would read as "no crypt layer" and disarm the
+      # gate silently. lsblk writes its whole table in one go, so this is out of
+      # reach in practice, but the gate should not be the thing that depends on
+      # how much output a helper happens to buffer.
+      root_stack=$(lsblk -nso TYPE "$root_source" 2>/dev/null || true)
+      if grep -qx crypt <<<"$root_stack"; then
+        root_stacks_crypt=1
+      fi
     fi
 
     # An unlocked dm-crypt root reports its mapper device, whose UUID says

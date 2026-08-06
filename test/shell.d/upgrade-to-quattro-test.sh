@@ -117,8 +117,8 @@ pass "Omarchy 4 upgrade cmdline guard survives a missing config path"
 grep -F 'boot_params=("root=UUID=$root_uuid" "${boot_params[@]}")' "$upgrade_to_quattro" >/dev/null
 grep -F '((have_mount_mode)) || boot_params+=(rw)' "$upgrade_to_quattro" >/dev/null
 grep -F 'have_unlock' "$upgrade_to_quattro" >/dev/null
-# Gated on the mapper target type, not on the /dev/mapper/* prefix, so plain LVM,
-# dm-raid and multipath roots keep the repair path.
+# Gated on a crypt layer in the stack, not on the /dev/mapper/* prefix, so plain
+# LVM, dm-raid and multipath roots keep the repair path.
 if grep -F '[[ $root_source == /dev/mapper/* ]] && ((!have_unlock))' "$upgrade_to_quattro" >/dev/null; then
   fail "kernel cmdline repair path does not treat every /dev/mapper root as encrypted"
 fi
