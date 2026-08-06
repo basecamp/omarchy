@@ -13,15 +13,18 @@ fi
 
 # The unit is normally installed by the omarchy-settings package to
 # /usr/lib/systemd/user. When the package update and this migration do not land
-# together (e.g. a local checkout update), install a user copy so `systemctl
-# enable` below can find the unit.
+# together (e.g. a local checkout update), link a user copy so `systemctl
+# enable` below can find the unit. Symlink, not copy: a copied unit at
+# ~/.config/systemd/user would permanently shadow the packaged unit and never
+# receive later fixes, while the link tracks the checkout it came from.
 user_config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 unit_source="$OMARCHY_PATH/default/systemd/user/omarchy-idle-inhibit.service"
 unit_dest="$user_config_home/systemd/user/omarchy-idle-inhibit.service"
 
 if [[ -f $unit_source && ! -f /usr/lib/systemd/user/omarchy-idle-inhibit.service ]]; then
   mkdir -p "$(dirname "$unit_dest")"
-  cp "$unit_source" "$unit_dest"
+  ln -sfn "$unit_source" "$unit_dest"
 fi
 
+systemctl --user daemon-reload
 systemctl --user enable --now omarchy-idle-inhibit.service >/dev/null 2>&1 || true
