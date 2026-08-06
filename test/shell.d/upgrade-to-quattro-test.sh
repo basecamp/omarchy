@@ -86,8 +86,6 @@ pass "Omarchy 4 upgrade preserves the kernel cmdline root parameters"
 # commented example, so the guard has to look for assignments and not for the
 # bare string, or it returns early on every stock machine.
 cmdline_guard='^[[:space:]]*KERNEL_CMDLINE\[[^]]*\][+]?=.*root='
-grep -qF "grep -rhsE '$cmdline_guard'" "$upgrade_to_quattro" ||
-  fail "kernel cmdline guard is anchored on an assignment"
 if printf '%s\n' '#KERNEL_CMDLINE[default]+=rw root=UUID=...' | grep -qE "$cmdline_guard"; then
   fail "kernel cmdline guard ignores the commented example in limine-entry-tool.conf"
 fi
@@ -96,12 +94,44 @@ if ! printf '%s\n' 'KERNEL_CMDLINE[default]+=" root=UUID=x rw"' | grep -qE "$cmd
 fi
 pass "Omarchy 4 upgrade only treats real root= assignments as authoritative"
 
+# /etc/default/limine is absent on exactly the machines this targets, and a
+# missing operand makes grep exit 2, which the caller cannot tell apart from "no
+# match". The guard filters the paths first so the exit status stays meaningful.
+grep -F 'config_paths+=("$path")' "$upgrade_to_quattro" >/dev/null
+grep -F '((${#config_paths[@]})) &&' "$upgrade_to_quattro" >/dev/null
+guard_fixtures=$(mktemp -d)
+trap 'rm -rf "$guard_fixtures"' EXIT
+mkdir -p "$guard_fixtures/dropins"
+printf '%s\n' 'KERNEL_CMDLINE[default]+=" root=UUID=real rw"' >"$guard_fixtures/dropins/99-pins.conf"
+guard_paths=()
+for guard_path in "$guard_fixtures/absent" "$guard_fixtures/dropins"; do
+  if [[ -e $guard_path ]]; then
+    guard_paths+=("$guard_path")
+  fi
+done
+if ! ((${#guard_paths[@]})) || ! grep -rqE "$cmdline_guard" "${guard_paths[@]}"; then
+  fail "kernel cmdline guard still detects a drop-in pinning root= when another path is absent"
+fi
+pass "Omarchy 4 upgrade cmdline guard survives a missing config path"
+
 grep -F 'boot_params=("root=UUID=$root_uuid" "${boot_params[@]}")' "$upgrade_to_quattro" >/dev/null
 grep -F '((have_mount_mode)) || boot_params+=(rw)' "$upgrade_to_quattro" >/dev/null
-grep -F '/dev/mapper/*' "$upgrade_to_quattro" >/dev/null
 grep -F 'have_unlock' "$upgrade_to_quattro" >/dev/null
+# Gated on the mapper target type, not on the /dev/mapper/* prefix, so plain LVM,
+# dm-raid and multipath roots keep the repair path.
+grep -F 'lsblk -no TYPE "$root_source"' "$upgrade_to_quattro" >/dev/null
+grep -F '[[ $root_type == "crypt" ]]' "$upgrade_to_quattro" >/dev/null
+if grep -F '[[ $root_source == /dev/mapper/* ]] && ((!have_unlock))' "$upgrade_to_quattro" >/dev/null; then
+  fail "kernel cmdline repair path does not treat every /dev/mapper root as encrypted"
+fi
 pass "Omarchy 4 upgrade repair path keeps captured parameters and refuses a partial dm-crypt cmdline"
 
 grep -F -- '--only-section=.cmdline' "$upgrade_to_quattro" >/dev/null
-grep -F '/boot/EFI/Linux' "$upgrade_to_quattro" >/dev/null
+grep -F 'as_root objcopy' "$upgrade_to_quattro" >/dev/null
+# Read as root like every other /boot access, and scoped to the images
+# limine-entry-tool generates, so a shared ESP cannot trigger a false warning.
+grep -F "as_root find /boot/EFI/Linux -maxdepth 1 -name 'omarchy_linux*.efi'" "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade verifies the cmdline embedded in the UKIs"
+
+grep -F 'rd.lvm.lv | rd.lvm.vg' "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade carries the device assembly parameters over"
