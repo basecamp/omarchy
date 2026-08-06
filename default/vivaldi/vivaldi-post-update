@@ -18,6 +18,9 @@ sudo sed -i \
   -e "/omarchy-theme/d"   -e "s|</head>|  <style id=\"omarchy-theme\"></style>\n&|" window.html
 
 sudo touch style/omarchy.csv
-sudo chown "$USER" style/omarchy.csv
+# Shared system-wide for now; world-writable so any user's refresh can update
+# it. A true per-user channel is out of scope while Omarchy targets a single
+# user.
+sudo chmod 666 style/omarchy.csv
 
 omarchy-theme-set-browser
