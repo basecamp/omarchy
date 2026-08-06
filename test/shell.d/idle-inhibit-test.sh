@@ -85,9 +85,9 @@ scenario() {
   local script="$1"
   dbus-run-session -- bash -c "
     # dbus-run-session tears the bus down when the foreground bash exits, but
-    # background children are not reaped with it. Kill them so a scenario cannot
-    # leak a daemon or holding client into the rest of the test suite.
-    trap 'kill \$(jobs -p) 2>/dev/null || true' EXIT
+    # background children are not reaped with it. Kill and wait for them so a
+    # scenario cannot leak a daemon or holding client into the test suite.
+    trap 'kill \$(jobs -p) 2>/dev/null || true; wait 2>/dev/null || true' EXIT
     python3 '$ROOT/bin/omarchy-idle-inhibit' --state-file '$daemon_state' >>'$daemon_log' 2>&1 &
     echo \$! >'$test_tmp/daemon.pid'
     sleep 1
