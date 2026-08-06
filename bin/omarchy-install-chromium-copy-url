@@ -18,6 +18,7 @@ browser_dirs=(
   "$HOME/.config/BraveSoftware/Brave-Browser-Nightly"
   "$HOME/.config/microsoft-edge"
   "$HOME/.config/microsoft-edge-dev"
+  "$HOME/.config/vivaldi"
 )
 
 manifest=$(sed "s|__HOST_PATH__|$HOST_PATH|g" "$TEMPLATE")
