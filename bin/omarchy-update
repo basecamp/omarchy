@@ -22,7 +22,11 @@ trap 'omarchy-update-stay-awake stop' EXIT
 omarchy-update-requires-free-space
 
 if [[ ${1:-} == "-y" ]] || omarchy-update-confirm; then
-  omarchy-snapshot create || (($? == 127))
+  # 127 means Snapper is deliberately absent. Any other failure already said
+  # what went wrong, and a missing snapshot is not worth blocking an update
+  # over, but it must not pass for one either.
+  omarchy-snapshot create || (($? == 127)) ||
+    echo -e "\e[33mContinuing the update without a snapshot.\e[0m" >&2
 
   omarchy-update-stay-awake start
 
