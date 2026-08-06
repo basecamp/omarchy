@@ -119,6 +119,14 @@ pass "Cursor scanner shares one billing-cycle reset across pools"
   fail "Cursor scanner keeps day/model charts empty" "$mapped"
 pass "Cursor scanner keeps day/model charts empty"
 
+[[ $(jq -r '.hasLocalStats' <<<"$mapped") == "false" ]] ||
+  fail "Cursor scanner reports hasLocalStats false for meters-only" "$mapped"
+pass "Cursor scanner reports hasLocalStats false for meters-only"
+
+[[ $(jq -r '.hasLocalStats' <<<"$missing") == "false" && $(jq -r '.hasLocalStats' <<<"$no_token") == "false" ]] ||
+  fail "Cursor scanner keeps hasLocalStats false without credentials" "$missing $no_token"
+pass "Cursor scanner keeps hasLocalStats false without credentials"
+
 # Full scanner path with a fake successful GetCurrentPeriodUsage response.
 http_ok=$(python3 - "$ROOT/shell/plugins/model-usage/scripts/cursor_usage_scanner.py" "$state_db" <<'PY'
 import importlib.util
@@ -195,6 +203,10 @@ pass "Cursor scanner maps mocked period usage tier"
 [[ $(jq -r '.rateLimitResetAt' <<<"$http_ok") == "2030-01-01T00:00:00+00:00" ]] ||
   fail "Cursor scanner maps mocked billing cycle end" "$http_ok"
 pass "Cursor scanner maps mocked billing cycle end"
+
+[[ $(jq -r '.hasLocalStats' <<<"$http_ok") == "false" ]] ||
+  fail "Cursor scanner keeps hasLocalStats false on successful period usage" "$http_ok"
+pass "Cursor scanner keeps hasLocalStats false on successful period usage"
 
 # Auth failure from GetCurrentPeriodUsage (HTTP 401).
 auth_fail=$(python3 - "$ROOT/shell/plugins/model-usage/scripts/cursor_usage_scanner.py" "$state_db" <<'PY'

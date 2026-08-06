@@ -36,7 +36,8 @@ Item {
   property string tierLabel: ""
   property string usageStatusText: ""
   property string authHelpText: "Open Cursor and sign in."
-  property bool hasLocalStats: true
+  // Meters-only — keep false so sync aggregation does not surface charts.
+  property bool hasLocalStats: false
 
   property string configModel: ""
   property var providerSettings: ({})
@@ -111,7 +112,8 @@ Item {
     try {
       const data = JSON.parse(raw.split("\n").pop())
       root.ready = !!data.ready
-      root.hasLocalStats = data.hasLocalStats !== false
+      // Cursor never has day/model history; require an explicit true.
+      root.hasLocalStats = data.hasLocalStats === true
 
       root.rateLimitPercent = data.rateLimitPercent ?? -1
       root.rateLimitLabel = data.rateLimitLabel || ""

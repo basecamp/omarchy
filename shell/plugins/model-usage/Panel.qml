@@ -154,11 +154,15 @@ Panel {
   readonly property string limitsHeaderReset: sharedLimitsResetText(limits)
 
   // Charts only when a provider actually has day/model history (Claude/Codex).
-  // Cursor stays on period meters and leaves these empty.
+  // Cursor stays on period meters. syncMode synthesizes seven recentDays rows
+  // for every provider, so also require hasLocalStats (Cursor reports false).
   readonly property bool hasDayChart: !!provider
+    && provider.hasLocalStats !== false
     && Array.isArray(provider.recentDays)
     && provider.recentDays.length > 0
-  readonly property bool hasModelChart: models.length > 0
+  readonly property bool hasModelChart: !!provider
+    && provider.hasLocalStats !== false
+    && models.length > 0
 
   // ---------------------------------------------------------------- content
 

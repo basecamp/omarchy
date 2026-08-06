@@ -18,7 +18,8 @@ DEFAULT_STATE_DB = Path.home() / ".config" / "Cursor" / "User" / "globalStorage"
 def empty_result(**overrides):
   out = {
     "ready": True,
-    "hasLocalStats": True,
+    # Meters-only: no local day/model history for chart sections.
+    "hasLocalStats": False,
     "todayPrompts": 0,
     "todaySessions": 0,
     "todayTotalTokens": 0,
