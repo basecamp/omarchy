@@ -45,3 +45,87 @@ grep -q "omarchy:summary=" "$ROOT/bin/omarchy-idle-inhibit" \
 grep -q "omarchy:hidden=true" "$ROOT/bin/omarchy-idle-inhibit" \
   || fail "idle-inhibit daemon is hidden from listings"
 pass "idle-inhibit daemon is valid and declares its metadata"
+
+# The daemon's primary contract is a D-Bus service: it must own
+# org.freedesktop.ScreenSaver, answer Inhibit/UnInhibit, persist the state file,
+# and release inhibitors when their caller disconnects. Exercise that over a
+# private bus so we don't touch the real session bus.
+require_command dbus-run-session
+require_command gdbus
+
+daemon_state="$test_tmp/daemon/idle-inhibitors"
+daemon_log="$test_tmp/daemon.log"
+mkdir -p "$(dirname "$daemon_state")"
+
+# A client that Inhibits and holds the connection open until killed.
+cat >"$test_tmp/inhibit-hold.py" <<PY
+import dbus, dbus.service, dbus.mainloop.glib, time
+dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+bus = dbus.SessionBus()
+proxy = bus.get_object("org.freedesktop.ScreenSaver", "/ScreenSaver")
+iface = dbus.Interface(proxy, "org.freedesktop.ScreenSaver")
+print(iface.Inhibit("Zen Browser", "Playing video"), flush=True)
+time.sleep(30)
+PY
+
+# A client that Inhibits then exits without UnInhibit (simulates a crash).
+cat >"$test_tmp/inhibit-crash.py" <<PY
+import dbus, dbus.service, dbus.mainloop.glib
+dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+bus = dbus.SessionBus()
+proxy = bus.get_object("org.freedesktop.ScreenSaver", "/ScreenSaver")
+iface = dbus.Interface(proxy, "org.freedesktop.ScreenSaver")
+print(iface.Inhibit("brief-app", "momentary"), flush=True)
+PY
+
+# Run a scenario on a private bus and report the daemon's final state count.
+# The count is echoed while the daemon is still alive, before the bus tears down
+# (which kills the daemon and triggers its shutdown clear-to-zero).
+scenario() {
+  local script="$1"
+  dbus-run-session -- bash -c "
+    python3 '$ROOT/bin/omarchy-idle-inhibit' --state-file '$daemon_state' >>'$daemon_log' 2>&1 &
+    echo \$! >'$test_tmp/daemon.pid'
+    sleep 1
+    $script
+    sleep 1
+    cat '$daemon_state'
+  " 2>/dev/null | jq -r '.count // 0'
+}
+
+# The daemon starts with zero inhibitors.
+[[ $(scenario "true") == "0" ]] || fail "daemon starts with zero inhibitors"
+pass "daemon starts with zero inhibitors"
+
+# A holding client Inhibits; the count is 1 while the connection lives.
+hold=$(scenario "
+  python3 '$test_tmp/inhibit-hold.py' >'$test_tmp/cookie.txt' 2>&1 &
+  echo \$! >'$test_tmp/hold.pid'
+  sleep 1
+")
+[[ $(cat "$test_tmp/cookie.txt") == "1" ]] || fail "Inhibit returns a cookie" "cookie=$(cat "$test_tmp/cookie.txt")"
+[[ $hold == "1" ]] || fail "daemon persists an active inhibitor" "count=$hold"
+pass "daemon persists an active inhibitor"
+
+# UnInhibit clears the inhibitor.
+clear=$(scenario "
+  python3 '$test_tmp/inhibit-hold.py' >'$test_tmp/cookie.txt' 2>&1 &
+  echo \$! >'$test_tmp/hold.pid'
+  sleep 1
+  gdbus call --session --dest org.freedesktop.ScreenSaver --object-path /ScreenSaver \\
+    --method org.freedesktop.ScreenSaver.UnInhibit \$(cat '$test_tmp/cookie.txt') >/dev/null
+  sleep 1
+")
+[[ $clear == "0" ]] || fail "UnInhibit clears the inhibitor" "count=$clear"
+pass "UnInhibit clears the inhibitor"
+
+# A caller that Inhibits then crashes leaves no stale inhibitor behind.
+crashed=$(scenario "
+  python3 '$test_tmp/inhibit-crash.py' >'$test_tmp/cookie.txt' 2>&1 &
+  echo \$! >'$test_tmp/crash.pid'
+  sleep 1
+  kill -9 \$(cat '$test_tmp/crash.pid') 2>/dev/null
+  sleep 1
+")
+[[ $crashed == "0" ]] || fail "disconnecting caller releases its inhibitor" "count=$crashed"
+pass "disconnecting caller releases its inhibitor"

@@ -69,14 +69,16 @@ class ScreenSaver(dbus.service.Object):
     def _emit_state(self):
         self._emit(len(self._cookies), list(self._cookies.values()))
 
-    @dbus.service.method(SERVICE_NAME, in_signature="ss", out_signature="u")
-    def Inhibit(self, app_name, reason):
+    @dbus.service.method(SERVICE_NAME, in_signature="ss", out_signature="u",
+                         sender_keyword="sender")
+    def Inhibit(self, app_name, reason, sender=None):
         cookie = self._next_cookie
         self._next_cookie += 1
         self._cookies[cookie] = {
             "app": app_name,
             "reason": reason,
             "cookie": cookie,
+            "owner": sender,
         }
         self._emit_state()
         return cookie
@@ -85,6 +87,20 @@ class ScreenSaver(dbus.service.Object):
     def UnInhibit(self, cookie):
         self._cookies.pop(int(cookie), None)
         self._emit_state()
+
+    def release_owner(self, owner):
+        """Drop every inhibitor registered by a now-disconnected caller.
+
+        Apps can die without calling UnInhibit (a crash, a killed tab, an OOM
+        kill). If we kept their inhibitors, the screen would stay awake forever,
+        so we release them as soon as the owning connection leaves the bus.
+        """
+        dead = [cookie for cookie, info in self._cookies.items()
+                if info.get("owner") == owner]
+        for cookie in dead:
+            del self._cookies[cookie]
+        if dead:
+            self._emit_state()
 
 
 def parse_args():
@@ -107,7 +123,21 @@ def run(state_file):
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     bus = dbus.SessionBus()
     bus_name = dbus.service.BusName(SERVICE_NAME, bus)
-    ScreenSaver(bus_name, emit)
+    saver = ScreenSaver(bus_name, emit)
+
+    # Apps can die without UnInhibit; release their inhibitors when their
+    # connection leaves the bus so a crashed browser can't keep the screen
+    # awake forever.
+    def on_name_owner_changed(name, _old_owner, new_owner):
+        if name.startswith(":") and new_owner == "":
+            saver.release_owner(name)
+
+    bus.add_signal_receiver(
+        on_name_owner_changed,
+        dbus_interface="org.freedesktop.DBus",
+        signal_name="NameOwnerChanged",
+        path="/org/freedesktop/DBus",
+    )
 
     loop = GLib.MainLoop()
 
