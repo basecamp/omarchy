@@ -69,3 +69,15 @@ pass "Omarchy 4 upgrade refreshes application launchers"
 grep -F '/etc/systemd/system.conf.d/99-omarchy-nofile.conf' "$upgrade_to_quattro" >/dev/null
 grep -F '/etc/systemd/user.conf.d/99-omarchy-nofile.conf' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade removes stale nofile drop-ins"
+
+cmdline_line=$(grep -n '^preserve_kernel_cmdline_root$' "$upgrade_to_quattro" | cut -d: -f1)
+packages_line=$(grep -n '^install_omarchy_quattro_packages$' "$upgrade_to_quattro" | cut -d: -f1)
+[[ -n $cmdline_line && -n $packages_line ]] || fail "kernel cmdline preservation and package install calls exist"
+(( packages_line < cmdline_line )) || fail "kernel cmdline preservation runs once limine-mkinitcpio is installed"
+grep -F '/etc/default/limine' "$upgrade_to_quattro" >/dev/null
+grep -F 'KERNEL_CMDLINE[default]+=" ${boot_params[*]}"' "$upgrade_to_quattro" >/dev/null
+grep -F 'cat /proc/cmdline' "$upgrade_to_quattro" >/dev/null
+grep -F 'findmnt -no UUID /' "$upgrade_to_quattro" >/dev/null
+grep -F 'rootflags=subvol=' "$upgrade_to_quattro" >/dev/null
+grep -F 'cryptdevice' "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade preserves the kernel cmdline root parameters"

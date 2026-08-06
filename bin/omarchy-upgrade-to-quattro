@@ -471,6 +471,89 @@ normalize_limine_config() {
   fi
 }
 
+preserve_kernel_cmdline_root() {
+  local default_conf=/etc/default/limine
+  local cmdline param key root_uuid root_fstype
+  local boot_params=()
+  local have_root=0
+
+  command -v limine-mkinitcpio >/dev/null 2>&1 || return 0
+  as_root test -f /boot/limine.conf || return 0
+
+  # Any config layer that already pins root= is authoritative; leave it alone.
+  if as_root grep -rqs 'root=' \
+    "$default_conf" /etc/limine-entry-tool.conf /etc/limine-entry-tool.d/ /etc/kernel/cmdline; then
+    return 0
+  fi
+
+  # /etc/limine-entry-tool.d/omarchy-defaults.conf sets KERNEL_CMDLINE[default]
+  # with the += operator, and limine-entry-tool.conf documents what that costs:
+  # "+= appends parameters to an existing cmdline ... Ignores /etc/kernel/cmdline
+  # and /proc/cmdline". So the moment that drop-in lands, the tool stops
+  # auto-detecting the cmdline.
+  #
+  # Fresh installs are unaffected: the ISO writes /etc/default/limine from
+  # default/limine/default.conf with @@CMDLINE@@ substituted. Upgrades never
+  # created that file, so a pre-quattro install that relied on the auto-detected
+  # root= ends up with a cmdline that cannot mount the real root, and the next
+  # boot drops to an emergency shell with "Failed to mount '' on real root".
+  #
+  # This runs before the reboot, while the still-correct cmdline of the running
+  # kernel is readable from /proc/cmdline, and carries the boot-critical
+  # parameters over verbatim rather than reconstructing them.
+  cmdline=$(cat /proc/cmdline 2>/dev/null || true)
+  for param in $cmdline; do
+    key=${param%%=*}
+    case $key in
+      root)
+        have_root=1
+        boot_params+=("$param")
+        ;;
+      rootflags | rootfstype | resume | resume_offset | cryptdevice | cryptkey | rd.luks.name | rd.luks.uuid | rd.luks.options | rw | ro)
+        boot_params+=("$param")
+        ;;
+    esac
+  done
+
+  # Re-running the upgrade on an already-broken system: the booted cmdline has no
+  # root= left to copy, so derive it from the mounted root instead. Btrfs needs
+  # its subvolume as well, or the initramfs mounts the wrong tree.
+  if ((!have_root)); then
+    root_uuid=$(findmnt -no UUID / 2>/dev/null || true)
+    if [[ -z $root_uuid ]]; then
+      warn "Could not determine the root filesystem UUID; the kernel cmdline was left untouched. Confirm root= is present in /boot/limine.conf before rebooting."
+      return 0
+    fi
+
+    boot_params=("root=UUID=$root_uuid" rw)
+    root_fstype=$(findmnt -no FSTYPE / 2>/dev/null || true)
+    if [[ $root_fstype == btrfs ]]; then
+      local subvol
+      subvol=$(findmnt -no FSROOT / 2>/dev/null || true)
+      if [[ -n $subvol && $subvol != / ]]; then
+        boot_params+=("rootflags=subvol=${subvol#/}")
+      fi
+    fi
+  fi
+
+  log "Preserving the kernel cmdline root parameters in $default_conf"
+  as_root tee -a "$default_conf" >/dev/null <<EOF
+# Written by omarchy-upgrade-to-quattro. The drop-ins in
+# /etc/limine-entry-tool.d/ append to KERNEL_CMDLINE[default] with +=, which
+# stops limine-entry-tool from reading /etc/kernel/cmdline and /proc/cmdline, so
+# the parameters identifying the root filesystem have to be stated explicitly.
+# This file is loaded last, and += keeps the drop-in parameters rather than
+# replacing them.
+KERNEL_CMDLINE[default]+=" ${boot_params[*]}"
+EOF
+
+  as_root limine-mkinitcpio
+
+  if ! as_root grep -q 'root=' /boot/limine.conf; then
+    warn "root= is still missing from /boot/limine.conf. Do not reboot until the kernel cmdline is repaired, or the system will drop to an emergency shell."
+  fi
+}
+
 configure_snapper_policy() {
   local snapper_config_script=/usr/share/omarchy/install/config/snapper.sh
 
@@ -2251,6 +2334,7 @@ remove_conflicting_legacy_packages
 install_omarchy_quattro_packages
 install_hardware_transition_packages
 normalize_limine_config
+preserve_kernel_cmdline_root
 configure_snapper_policy
 configure_lock_authentication
 migrate_1password_beta_package
