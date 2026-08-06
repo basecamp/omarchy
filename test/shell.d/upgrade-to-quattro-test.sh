@@ -81,3 +81,27 @@ grep -F 'findmnt -no UUID /' "$upgrade_to_quattro" >/dev/null
 grep -F 'rootflags=subvol=' "$upgrade_to_quattro" >/dev/null
 grep -F 'cryptdevice' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade preserves the kernel cmdline root parameters"
+
+# limine-entry-tool.conf ships "#KERNEL_CMDLINE[default]+=rw root=UUID=..." as a
+# commented example, so the guard has to look for assignments and not for the
+# bare string, or it returns early on every stock machine.
+cmdline_guard='^[[:space:]]*KERNEL_CMDLINE\[[^]]*\][+]?=.*root='
+grep -qF "grep -rhsE '$cmdline_guard'" "$upgrade_to_quattro" ||
+  fail "kernel cmdline guard is anchored on an assignment"
+if printf '%s\n' '#KERNEL_CMDLINE[default]+=rw root=UUID=...' | grep -qE "$cmdline_guard"; then
+  fail "kernel cmdline guard ignores the commented example in limine-entry-tool.conf"
+fi
+if ! printf '%s\n' 'KERNEL_CMDLINE[default]+=" root=UUID=x rw"' | grep -qE "$cmdline_guard"; then
+  fail "kernel cmdline guard still matches a real assignment"
+fi
+pass "Omarchy 4 upgrade only treats real root= assignments as authoritative"
+
+grep -F 'boot_params=("root=UUID=$root_uuid" "${boot_params[@]}")' "$upgrade_to_quattro" >/dev/null
+grep -F '((have_mount_mode)) || boot_params+=(rw)' "$upgrade_to_quattro" >/dev/null
+grep -F '/dev/mapper/*' "$upgrade_to_quattro" >/dev/null
+grep -F 'have_unlock' "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade repair path keeps captured parameters and refuses a partial dm-crypt cmdline"
+
+grep -F -- '--only-section=.cmdline' "$upgrade_to_quattro" >/dev/null
+grep -F '/boot/EFI/Linux' "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade verifies the cmdline embedded in the UKIs"
