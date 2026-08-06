@@ -69,6 +69,14 @@ vivaldi)
   omarchy-pkg-drop vivaldi
   rm -f ~/.config/vivaldi-stable.conf
   rm -f ~/.config/omarchy/hooks/post-update.d/vivaldi-post-update
+
+  if [[ -f /etc/1password/custom_allowed_browsers ]]; then
+    sudo sed -i '/^vivaldi-bin$/d' /etc/1password/custom_allowed_browsers || true
+    if [[ ! -s /etc/1password/custom_allowed_browsers ]]; then
+      sudo rm -f /etc/1password/custom_allowed_browsers
+      sudo rmdir /etc/1password || true
+    fi
+  fi
   ;;
 *)
   echo "Usage: omarchy-remove-browser <chrome|brave|brave-origin|edge|firefox|zen|vivaldi>"
