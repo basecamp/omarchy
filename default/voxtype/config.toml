@@ -72,8 +72,8 @@ type_delay_ms = 1
 
 # Temporarily stop focus-follows-mouse while Voxtype emits synthetic keystrokes.
 # The post hook restores the user's current setting after output completes.
-pre_output_command = "omarchy-voxtype-pre-output"
-post_output_command = "omarchy-voxtype-post-output"
+pre_output_command = "omarchy-voxtype-output-hooks pre"
+post_output_command = "omarchy-voxtype-output-hooks post"
 
 # Post-processing command (optional)
 # Pipe transcribed text through an external command for cleanup before output.
