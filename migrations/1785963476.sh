@@ -20,10 +20,17 @@ fi
 user_config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 unit_source="$OMARCHY_PATH/default/systemd/user/omarchy-idle-inhibit.service"
 unit_dest="$user_config_home/systemd/user/omarchy-idle-inhibit.service"
+unit_target="/usr/lib/systemd/user/omarchy-idle-inhibit.service"
 
-if [[ -f $unit_source && ! -f /usr/lib/systemd/user/omarchy-idle-inhibit.service ]]; then
-  mkdir -p "$(dirname "$unit_dest")"
-  ln -sfn "$unit_source" "$unit_dest"
+# Resolve which file systemctl should load: the packaged unit when it exists,
+# otherwise the checkout link. Prefer the packaged path so the wants symlink
+# keeps tracking package fixes rather than a user-dir copy.
+if [[ ! -f $unit_target ]]; then
+  unit_target="$unit_dest"
+  if [[ -f $unit_source ]]; then
+    mkdir -p "$(dirname "$unit_dest")"
+    ln -sfn "$unit_source" "$unit_dest"
+  fi
 fi
 
 systemctl --user daemon-reload >/dev/null 2>&1 || true
@@ -35,7 +42,7 @@ systemctl --user daemon-reload >/dev/null 2>&1 || true
 if ! systemctl --user enable omarchy-idle-inhibit.service >/dev/null 2>&1; then
   wants_dir="$user_config_home/systemd/user/graphical-session.target.wants"
   mkdir -p "$wants_dir"
-  ln -sfn "$unit_dest" "$wants_dir/omarchy-idle-inhibit.service"
+  ln -sfn "$unit_target" "$wants_dir/omarchy-idle-inhibit.service"
 fi
 
 # Outside a graphical session there is no shell to feed idle inhibitors to; the
