@@ -14,6 +14,8 @@ Item {
   readonly property string home: Quickshell.env("HOME")
   readonly property string stayAwakeStateDir: home + "/.local/state/omarchy/indicators"
   readonly property string stayAwakeStatePath: stayAwakeStateDir + "/stay-awake"
+  readonly property string inhibitorStateDir: home + "/.local/state/omarchy"
+  readonly property string inhibitorStatePath: inhibitorStateDir + "/idle-inhibitors"
   readonly property int defaultScreensaverSeconds: 150
   readonly property int defaultLockSeconds: 300
   readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle : ({})
@@ -22,7 +24,7 @@ Item {
   readonly property int firstIdleTimeoutSeconds: Math.min(screensaverTimeoutSeconds, lockTimeoutSeconds)
   readonly property int screensaverDelaySeconds: Math.max(0, screensaverTimeoutSeconds - firstIdleTimeoutSeconds)
   readonly property int lockDelaySeconds: Math.max(0, lockTimeoutSeconds - firstIdleTimeoutSeconds)
-  readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
+  readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake && dbusInhibitorCount === 0
   readonly property string screensaverClass: "org.omarchy.screensaver"
 
   property bool stayAwake: false
@@ -35,6 +37,7 @@ Item {
   property string lastEventAt: ""
   property var screensaverWindows: ({})
   property int screensaverWindowCount: 0
+  property int dbusInhibitorCount: 0
 
   function secondsFromConfig(value, fallback) {
     return IdleModel.secondsFromConfig(value, fallback)
@@ -177,6 +180,38 @@ Item {
     else handleActiveSignal()
   }
 
+  // Apps that call org.freedesktop.ScreenSaver.Inhibit() (browsers playing video,
+  // VLC, …) ask us not to blank the screen. The idle-inhibit daemon tracks those
+  // calls and writes the active count to a state file; we fold that count into
+  // idleEnabled so any active D-Bus inhibitor suppresses the screensaver and lock.
+  function handleInhibitorStateChanged() {
+    var previous = root.dbusInhibitorCount
+
+    if (previous === 0 && root.dbusInhibitorCount > 0) {
+      // An app started inhibiting mid-cycle: pull back the screensaver/lock.
+      if (root.idledThisCycle) root.cancelIdleCycle("dbus-inhibit")
+    } else if (previous > 0 && root.dbusInhibitorCount === 0) {
+      // All inhibitors released: re-arm idle from the current monitor state.
+      logEvent("dbus-inhibit", "cleared")
+      Qt.callLater(root.handleIdleChanged)
+    }
+  }
+
+  function parseInhibitorState(text) {
+    var raw = text !== undefined ? text : ""
+    if (!raw || !raw.length) return
+
+    var parsed = JSON.parse(raw)
+    if (parsed && typeof parsed.count === "number") {
+      var count = parsed.count
+      if (count !== root.dbusInhibitorCount) {
+        logEvent("dbus-inhibit", "count=" + count)
+        root.dbusInhibitorCount = count
+        root.handleInhibitorStateChanged()
+      }
+    }
+  }
+
   function statusJson() {
     return JSON.stringify({
       enabled: root.idleEnabled,
@@ -191,6 +226,7 @@ Item {
       screensaverDelay: root.screensaverDelaySeconds,
       lockDelay: root.lockDelaySeconds,
       screensaverWindows: root.screensaverWindowCount,
+      dbusInhibitors: root.dbusInhibitorCount,
       timers: {
         screensaver: screensaverTimer.running,
         lock: lockTimer.running,
@@ -327,6 +363,25 @@ Item {
     watchChanges: true
     printErrors: false
     onFileChanged: root.refreshStayAwakeState()
+  }
+
+  // Watch the parent directory, not the file: FileView can't observe a file
+  // that doesn't exist yet, and the idle-inhibit daemon may create idle-inhibitors
+  // after the shell has started. When the directory changes, re-probe the file.
+  Process {
+    id: inhibitorStateProbe
+    running: true
+    // Compact to a single line with jq so the SplitParser sees exactly one JSON
+    // object regardless of how the daemon formats the file.
+    command: ["bash", "-c", "jq -c . \"$HOME/.local/state/omarchy/idle-inhibitors\" 2>/dev/null || echo '{}'"]
+    stdout: SplitParser { onRead: function(line) { root.parseInhibitorState(line) } }
+  }
+
+  FileView {
+    path: root.inhibitorStateDir
+    watchChanges: true
+    printErrors: false
+    onFileChanged: inhibitorStateProbe.running = true
   }
 
   Component.onCompleted: {

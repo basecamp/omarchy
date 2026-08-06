@@ -1,0 +1,20 @@
+[Unit]
+Description=Own the D-Bus idle-inhibit name for Omarchy
+# The daemon owns org.freedesktop.ScreenSaver on the session bus. Wait until
+# UWSM has imported OMARCHY_PATH and WAYLAND_DISPLAY, but keep the default
+# target ordering so the daemon starts before graphical-session.target is
+# reached.
+After=dbus.socket wayland-session-waitenv.service
+Requires=dbus.socket
+PartOf=graphical-session.target
+ConditionEnvironment=OMARCHY_PATH
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omarchy-idle-inhibit
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
