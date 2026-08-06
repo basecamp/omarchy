@@ -3,7 +3,14 @@ echo "Enable the D-Bus idle-inhibit daemon so apps can suppress the screensaver"
 # Enable + start the idle-inhibit daemon for existing Quattro users. It owns
 # org.freedesktop.ScreenSaver on the session bus so apps playing video can keep
 # the screensaver from firing (issue #6475).
-#
+
+# The daemon imports python-dbus. `omarchy update` runs `pacman -Syu`, which does
+# not reconcile install/omarchy-base.packages, so existing users may not have the
+# dependency yet; install it before starting the service.
+if omarchy-pkg-missing python-dbus; then
+  omarchy-pkg-add python-dbus
+fi
+
 # The unit is normally installed by the omarchy-settings package to
 # /usr/lib/systemd/user. When the package update and this migration do not land
 # together (e.g. a local checkout update), install a user copy so `systemctl

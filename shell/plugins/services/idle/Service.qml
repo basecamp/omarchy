@@ -203,17 +203,24 @@ Item {
     var raw = text !== undefined ? text : ""
     if (!raw || !raw.length) return
 
-    var parsed = JSON.parse(raw)
-    if (parsed && typeof parsed.count === "number") {
-      var count = parsed.count
-      if (count !== root.dbusInhibitorCount) {
-        // Capture the old count before overwriting it so the handler can tell
-        // whether inhibitors were added or removed.
-        var previous = root.dbusInhibitorCount
-        root.dbusInhibitorCount = count
-        logEvent("dbus-inhibit", "count=" + count)
-        root.handleInhibitorStateChanged(previous)
-      }
+    // The probe emits {} when the state file is missing or unreadable. Treat any
+    // object without a count as zero so a daemon failure or deleted file clears a
+    // stale nonzero count instead of disabling the lock indefinitely.
+    var count = 0
+    try {
+      var parsed = JSON.parse(raw)
+      if (parsed && typeof parsed.count === "number") count = parsed.count
+    } catch (e) {
+      count = 0
+    }
+
+    if (count !== root.dbusInhibitorCount) {
+      // Capture the old count before overwriting it so the handler can tell
+      // whether inhibitors were added or removed.
+      var previous = root.dbusInhibitorCount
+      root.dbusInhibitorCount = count
+      logEvent("dbus-inhibit", "count=" + count)
+      root.handleInhibitorStateChanged(previous)
     }
   }
 
