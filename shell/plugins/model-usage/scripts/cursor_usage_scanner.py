@@ -211,6 +211,12 @@ def fetch_period_usage(access_token):
 
 
 def build_rate_limits(credentials, payload):
+  if not isinstance(payload, dict):
+    return empty_result(
+      usageStatusText="Cursor limits unavailable",
+      authHelpText="Usage response was not a JSON object.",
+    )
+
   plan = payload.get("planUsage")
   if not isinstance(plan, dict):
     return empty_result(

@@ -42,7 +42,8 @@ Item {
   property string configModel: ""
   property var providerSettings: ({})
 
-  readonly property string scannerPath: String(Qt.resolvedUrl("../scripts/cursor_usage_scanner.py")).replace("file://", "")
+  readonly property string omarchyPath: Quickshell.env("OMARCHY_PATH") || ""
+  readonly property string scannerPath: omarchyPath + "/shell/plugins/model-usage/scripts/cursor_usage_scanner.py"
 
   function resolvePath(value) {
     const text = String(value || "").trim()

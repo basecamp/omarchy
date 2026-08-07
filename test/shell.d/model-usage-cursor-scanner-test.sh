@@ -164,6 +164,33 @@ pass "Cursor scanner formats parseable billing cycle ends as ISO"
   fail "Cursor scanner clears unparseable billing cycle ends" "$helpers"
 pass "Cursor scanner clears unparseable billing cycle ends"
 
+bad_payload=$(python3 - "$ROOT/shell/plugins/model-usage/scripts/cursor_usage_scanner.py" <<'PY'
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+scanner_path = Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location("cursor_usage_scanner", scanner_path)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+print(json.dumps(mod.build_rate_limits({"accessToken": "x", "membershipType": "pro"}, None)))
+PY
+)
+
+[[ $(jq -r '.usageStatusText' <<<"$bad_payload") == "Cursor limits unavailable" ]] ||
+  fail "Cursor scanner rejects a null usage payload" "$bad_payload"
+pass "Cursor scanner rejects a null usage payload"
+
+[[ $(jq -r '.authHelpText' <<<"$bad_payload") == *"JSON object"* ]] ||
+  fail "Cursor scanner explains a non-object usage payload" "$bad_payload"
+pass "Cursor scanner explains a non-object usage payload"
+
+[[ $(jq -r '.rateLimitPercent' <<<"$bad_payload") == "-1" ]] ||
+  fail "Cursor scanner keeps meters unset for a non-object usage payload" "$bad_payload"
+pass "Cursor scanner keeps meters unset for a non-object usage payload"
+
 # Full scanner path with a fake successful GetCurrentPeriodUsage response.
 http_ok=$(python3 - "$ROOT/shell/plugins/model-usage/scripts/cursor_usage_scanner.py" "$state_db" <<'PY'
 import importlib.util

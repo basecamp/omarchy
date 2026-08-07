@@ -64,6 +64,12 @@ assert(
   !/Timer\s*\{\s*interval:\s*5\s*\*\s*60\s*\*\s*1000/.test(cursorSource),
   'Cursor provider does not keep a fixed five-minute refresh timer'
 )
+assert(
+  /Quickshell\.env\("OMARCHY_PATH"\)/.test(cursorSource) &&
+    /shell\/plugins\/model-usage\/scripts\/cursor_usage_scanner\.py/.test(cursorSource) &&
+    !/Qt\.resolvedUrl\("\.\.\/scripts\/cursor_usage_scanner\.py"\)/.test(cursorSource),
+  'Cursor provider resolves the scanner through OMARCHY_PATH'
+)
 
 const nowMs = Date.parse('2030-01-01T00:00:00.000Z') - (2 * 60 * 60 * 1000)
 const panel = loadHelpers(panelSource, [
