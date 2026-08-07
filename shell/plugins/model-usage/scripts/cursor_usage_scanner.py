@@ -160,9 +160,13 @@ def percent_to_fraction(value):
   if value is None:
     return -1
   try:
-    return float(value) / 100.0
+    number = float(value)
   except (TypeError, ValueError):
     return -1
+  # Non-finite values would serialize as NaN/Infinity and break QML JSON.parse.
+  if not math.isfinite(number):
+    return -1
+  return number / 100.0
 
 
 def api_post(access_token, path, body, timeout=30):

@@ -147,6 +147,10 @@ print(json.dumps({
   "oor": mod.parse_billing_cycle_end(10 ** 20),
   "inf": mod.parse_billing_cycle_end(float("inf")),
   "nan": mod.parse_billing_cycle_end(float("nan")),
+  "pct": mod.percent_to_fraction(12.5),
+  "pct_inf": mod.percent_to_fraction(float("inf")),
+  "pct_nan": mod.percent_to_fraction(float("nan")),
+  "pct_bad": mod.percent_to_fraction("nope"),
 }))
 PY
 )
@@ -174,6 +178,14 @@ pass "Cursor scanner clears out-of-range billing cycle ends"
 [[ $(jq -r '.inf' <<<"$helpers") == "" && $(jq -r '.nan' <<<"$helpers") == "" ]] ||
   fail "Cursor scanner clears non-finite billing cycle ends" "$helpers"
 pass "Cursor scanner clears non-finite billing cycle ends"
+
+[[ $(jq -r '.pct' <<<"$helpers") == "0.125" ]] ||
+  fail "Cursor scanner converts finite percents to fractions" "$helpers"
+pass "Cursor scanner converts finite percents to fractions"
+
+[[ $(jq -r '.pct_inf' <<<"$helpers") == "-1" && $(jq -r '.pct_nan' <<<"$helpers") == "-1" && $(jq -r '.pct_bad' <<<"$helpers") == "-1" ]] ||
+  fail "Cursor scanner rejects non-finite and invalid percents" "$helpers"
+pass "Cursor scanner rejects non-finite and invalid percents"
 
 bad_payload=$(python3 - "$ROOT/shell/plugins/model-usage/scripts/cursor_usage_scanner.py" <<'PY'
 import importlib.util
