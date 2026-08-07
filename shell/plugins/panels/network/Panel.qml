@@ -17,26 +17,9 @@ Panel {
   manageIpc: false
 
   // Centralized close so callers can't forget to drop the passphrase prompt.
-  readonly property bool overlayVisible: qrVisible
-
-  // Shadows the base open(): a summon or toggle while a centered card is up
-  // dismisses the card instead of opening the compact panel behind an
-  // exclusive overlay. The base toggle() dispatches here, so the keybind,
-  // the bar icon, and every IPC route all get this behavior.
-  function open() {
-    if (overlayVisible) {
-      hideWifiQr()
-      return
-    }
-    root.controller.show()
-  }
-
   function close() {
     root.controller.hide()
     cancelPasswordPrompt()
-    // The centered card outlives the compact panel, but the widget's
-    // canonical close must not leave an overlay behind.
-    hideWifiQr()
   }
 
   function cancelPasswordPrompt() {
@@ -114,18 +97,6 @@ Panel {
   property string passwordSsid: ""
   property string passwordText: ""
   property string identityText: ""
-
-  property var qrRows: []
-  property int qrSize: 0
-  property string qrError: ""
-  property bool qrLoading: false
-  property bool qrExpectedStop: false
-  property bool pendingQrShow: false
-  property bool pendingQrDetect: false
-  property string qrPassword: ""
-  property bool qrPasswordVisible: false
-  property string qrPasswordError: ""
-  readonly property bool qrVisible: qrLoading || qrSize > 0 || qrError !== ""
 
   // True while any wifi action is mid-flight. Rows
   // disable themselves on this so clicks on the other rows don't silently
@@ -235,16 +206,14 @@ Panel {
     function hide() { root.close() }
     function toggle() { root.toggle() }
     function toggleNetwork() { root.toggleNetwork() }
-    // Menu routes: summon the centered cards directly, panel open or not.
-    function showQr() {
-      root.refresh()
-      root.showWifiQr(true)
-    }
+    // Compat routes for configs that summon the centered cards through the
+    // network target; both cards are their own plugins now.
+    function showQr() { root.summonWifiQr(true) }
     function speedTest() { root.summonSpeedTest() }
   }
 
   function activateHeader() {
-    if (headerIndex === qrHeaderIndex) showWifiQr()
+    if (headerIndex === qrHeaderIndex) summonWifiQr()
     else if (headerIndex === speedHeaderIndex) summonSpeedTest()
     else if (headerIndex === toggleHeaderIndex) toggleNetwork()
   }
@@ -443,63 +412,20 @@ Panel {
 
   readonly property string icon: Model.connectionIcon(kind, signalStrength)
 
-  function showWifiQr(forceDetect) {
-    if (qrProc.running) {
-      // A dismissal's SIGTERM is still in flight; Process.running stays true
-      // until the child exits, so queue the reopen for onExited.
-      if (qrExpectedStop) {
-        pendingQrShow = true
-        pendingQrDetect = !!forceDetect
-      }
-      return
-    }
-    qrSize = 0
-    qrRows = []
-    qrError = ""
-    qrLoading = true
-    qrExpectedStop = false
-    // The panel's own button shares the interface it is showing. The IPC
-    // route forces self-detection instead: details polling stops while the
-    // panel is closed, so its cached interface can be stale.
-    qrProc.command = !forceDetect && info.type === "wifi" && info.iface
-      ? ["omarchy-network-qr", info.iface]
-      : ["omarchy-network-qr"]
-    qrProc.running = true
-
-    // Leave the compact network panel behind while the centered share card is open.
+  // The share card is its own panel plugin (omarchy.wifiqr) so a replacement
+  // design can take it over; summon() routes to whichever implementation is
+  // enabled. The panel's own button pins the interface it is showing. The
+  // IPC route forces self-detection instead: details polling stops while the
+  // panel is closed, so its cached interface can be stale.
+  function summonWifiQr(forceDetect) {
     controller.hide()
     cancelPasswordPrompt()
-  }
-
-  function hideWifiQr() {
-    pendingQrShow = false
-    if (qrProc.running) {
-      qrExpectedStop = true
-      qrProc.running = false
+    var payload = {}
+    if (!forceDetect && info.type === "wifi" && info.iface) {
+      payload.iface = info.iface
+      if (info.ssid) payload.ssid = info.ssid
     }
-    if (pwProc.running) pwProc.running = false
-    qrSize = 0
-    qrRows = []
-    qrError = ""
-    qrLoading = false
-    qrPassword = ""
-    qrPasswordVisible = false
-    qrPasswordError = ""
-  }
-
-  function updateQr(raw) {
-    var matrix = Model.parseQrMatrix(raw)
-    qrRows = matrix.rows
-    qrSize = matrix.size
-  }
-
-  function toggleQrPassword() {
-    if (qrPasswordVisible) { qrPasswordVisible = false; return }
-    if (qrPassword !== "") { qrPasswordVisible = true; return }
-    if (pwProc.running || !info.iface) return
-    qrPasswordError = ""
-    pwProc.command = ["omarchy-network-password", info.iface]
-    pwProc.running = true
+    bar.shell.summon("omarchy.wifiqr", JSON.stringify(payload))
   }
 
   function refresh(scanWifi) {
@@ -859,55 +785,6 @@ Panel {
   }
 
   Process {
-    id: qrProc
-    // Both collectors check qrExpectedStop: a dismissal mid-generation kills
-    // the process, but buffered output still arrives afterwards and would
-    // repopulate qrSize -- reopening the card the user just closed. The flag
-    // stays set through onExited (showWifiQr resets it) because the exit and
-    // stream-finished signals have no guaranteed order.
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: if (!root.qrExpectedStop) root.updateQr(text)
-    }
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: if (!root.qrExpectedStop) root.qrError = String(text || "").trim()
-    }
-    onExited: function(exitCode) {
-      root.qrLoading = false
-      if (root.pendingQrShow) {
-        root.pendingQrShow = false
-        root.qrExpectedStop = false
-        Qt.callLater(function() { root.showWifiQr(root.pendingQrDetect) })
-        return
-      }
-      if (root.qrExpectedStop) return
-      if (exitCode !== 0 || root.qrSize === 0) {
-        root.qrSize = 0
-        root.qrRows = []
-        if (root.qrError === "") root.qrError = "Could not generate the Wi-Fi QR code"
-      }
-    }
-  }
-
-  // The Wi-Fi password only enters shell memory when the user clicks to
-  // reveal it, and hideWifiQr drops it again when the share card closes.
-  // Both handlers bail when the card is gone so a fetch that was in flight
-  // during dismissal can't stash the secret into a closed panel's state.
-  Process {
-    id: pwProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: if (root.qrVisible) root.qrPassword = String(text || "").trim()
-    }
-    onExited: function(exitCode) {
-      if (!root.qrVisible) return
-      if (exitCode === 0 && root.qrPassword !== "") root.qrPasswordVisible = true
-      else root.qrPasswordError = "Could not read the Wi-Fi password"
-    }
-  }
-
-  Process {
     id: dnsProc
     stdout: StdioCollector {
       waitForEnd: true
@@ -1184,7 +1061,7 @@ Panel {
             hasCursor: root.qrHeaderHasCursor
             Layout.alignment: Qt.AlignVCenter
             onHovered: function(on) { if (on) root.setHeaderCursor(root.qrHeaderIndex) }
-            onClicked: root.showWifiQr()
+            onClicked: root.summonWifiQr()
           }
 
           Button {
@@ -1585,23 +1462,6 @@ Panel {
       }
     }
     }
-  }
-
-  WifiQrPanel {
-    anchorItem: button
-    bar: root.bar
-    qrRows: root.qrRows
-    qrSize: root.qrSize
-    loading: root.qrLoading
-    error: root.qrError
-    ssid: root.info.ssid || ""
-    secured: root.connectedWifiNetwork ? root.isProtected(root.connectedWifiNetwork.security) : false
-    password: root.qrPassword
-    passwordVisible: root.qrPasswordVisible
-    passwordError: root.qrPasswordError
-    open: root.qrVisible
-    onCloseRequested: root.hideWifiQr()
-    onPasswordToggleRequested: root.toggleQrPassword()
   }
 
   // One Wi-Fi band pill. `active` (fill) is the band actually in use and
