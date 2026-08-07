@@ -12,12 +12,6 @@ trap 'rm -rf "$test_dir"' EXIT
 
 mkdir -p "$test_dir/bin"
 
-cat >"$test_dir/bin/omarchy-cmd-present" <<'STUB'
-#!/bin/bash
-
-command -v "$1" >/dev/null
-STUB
-
 cat >"$test_dir/bin/omarchy-agent-usage-update" <<'STUB'
 #!/bin/bash
 

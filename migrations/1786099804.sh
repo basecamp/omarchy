@@ -11,7 +11,7 @@ echo "Rename the model usage widget to agents and prime its data files"
 
 config_file="$HOME/.config/omarchy/shell.json"
 
-if [[ -s $config_file ]] && omarchy-cmd-present jq; then
+if [[ -s $config_file ]]; then
   tmp=$(mktemp)
   jq '
     def rename:
