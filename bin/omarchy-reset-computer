@@ -63,11 +63,22 @@ encrypted_install() {
   grep -q "cryptdevice=" /proc/cmdline
 }
 
+# Resolve the LUKS device from the encrypt hook's cryptdevice=<spec>:<name>.
+# The spec varies by installer path: archinstall writes PARTUUID=, the
+# pre-mounted path writes UUID=, and a plain /dev path is also legal.
 luks_device() {
-  local uuid
-  uuid=$(grep -o 'cryptdevice=UUID=[^:]*' /proc/cmdline | cut -d= -f3)
-  [[ -n $uuid ]] || return 1
-  echo "/dev/disk/by-uuid/$uuid"
+  local spec
+  spec=$(grep -o 'cryptdevice=[^ :]*' /proc/cmdline | head -1 | cut -d= -f2-)
+  [[ -n $spec ]] || return 1
+
+  case $spec in
+    UUID=*) echo "/dev/disk/by-uuid/${spec#UUID=}" ;;
+    PARTUUID=*) echo "/dev/disk/by-partuuid/${spec#PARTUUID=}" ;;
+    LABEL=*) echo "/dev/disk/by-label/${spec#LABEL=}" ;;
+    PARTLABEL=*) echo "/dev/disk/by-partlabel/${spec#PARTLABEL=}" ;;
+    /dev/*) echo "$spec" ;;
+    *) return 1 ;;
+  esac
 }
 
 generate_passphrase() {
@@ -119,7 +130,7 @@ confirm_reset() {
 stage_luks_rekey() {
   local next="$1" device passphrase
 
-  device=$(luks_device) || fail "encrypted install, but no cryptdevice=UUID= in /proc/cmdline"
+  device=$(luks_device) || fail "encrypted install, but no usable cryptdevice= in /proc/cmdline"
   [[ -e $device ]] || fail "LUKS device $device not found"
 
   echo
@@ -136,7 +147,7 @@ stage_luks_rekey() {
   passphrase=$(generate_passphrase)
   cryptsetup luksAddKey --key-file <(printf '%s' "$current") "$device" <(printf '%s' "$passphrase")
 
-  install -d -m 700 "$next$OEM_DIR"
+  install -d -m 755 "$next$OEM_DIR"
   printf '%s' "$passphrase" >"$next$OEM_DIR/luks-key"
   chmod 600 "$next$OEM_DIR/luks-key"
 
@@ -234,12 +245,12 @@ stage_full_reset() {
   # Keep the Node tarball reachable for offline first-boot finalization.
   if ! compgen -G "$next$OEM_DIR/packages/node-v*.tar.gz" >/dev/null; then
     if compgen -G "$OEM_DIR/packages/node-v*.tar.gz" >/dev/null; then
-      install -d -m 700 "$next$OEM_DIR/packages"
+      install -d -m 755 "$next$OEM_DIR/packages"
       cp "$OEM_DIR"/packages/node-v*.tar.gz "$next$OEM_DIR/packages/"
     fi
   fi
 
-  install -d -m 700 "$next$OEM_DIR"
+  install -d -m 755 "$next$OEM_DIR"
   touch "$next$OEM_DIR/pending" "$next$OEM_DIR/wipe-pending"
 
   install_oem_units "$next" "$unit_src"
@@ -263,7 +274,7 @@ stage_degraded_reset() {
   [[ -f $unit_src/omarchy-oem-setup.service && -x /usr/bin/omarchy-oem-setup ]] ||
     fail "this Omarchy version does not ship OEM setup; update first"
 
-  install -d -m 700 "$OEM_DIR"
+  install -d -m 755 "$OEM_DIR"
   touch "$OEM_DIR/pending" "$OEM_DIR/wipe-pending" "$OEM_DIR/wipe-degraded"
 
   install_oem_units "" "$unit_src"
