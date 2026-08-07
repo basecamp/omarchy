@@ -103,6 +103,9 @@ chmod +x "$stub_bin/curl"
 
 OMARCHY_PATH="$test_root" \
 HOME="$test_home" \
+XDG_CONFIG_HOME="$test_home/.config" \
+XDG_CACHE_HOME="$test_home/.cache" \
+XDG_STATE_HOME="$test_home/.local/state" \
 PATH="$stub_bin:$ROOT/bin:$PATH" \
   quickshell -p "$test_root/shell" --no-color >"$log" 2>&1 &
 QS_PID=$!

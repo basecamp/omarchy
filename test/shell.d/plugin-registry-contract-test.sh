@@ -35,6 +35,9 @@ ln -s "$ROOT/shell/Commons" "$config_dir/Commons"
 OMARCHY_PATH="$ROOT" \
 OMARCHY_QML_TEST_RESULT="$result" \
 HOME="$TMPDIR/home" \
+XDG_CONFIG_HOME="$TMPDIR/home/.config" \
+XDG_CACHE_HOME="$TMPDIR/home/.cache" \
+XDG_STATE_HOME="$TMPDIR/home/.local/state" \
 QML2_IMPORT_PATH="$ROOT/shell${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}" \
 QML_IMPORT_PATH="$ROOT/shell${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}" \
 PATH="$ROOT/bin:$PATH" \

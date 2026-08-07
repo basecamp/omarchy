@@ -51,6 +51,9 @@ cp "$SHELL_TEST_DIR/fixtures/tray-menu-activation/shell.qml" "$config_dir/shell.
 OMARCHY_PATH="$ROOT" \
 OMARCHY_QML_TEST_RESULT="$result" \
 HOME="$TMPDIR/home" \
+XDG_CONFIG_HOME="$TMPDIR/home/.config" \
+XDG_CACHE_HOME="$TMPDIR/home/.cache" \
+XDG_STATE_HOME="$TMPDIR/home/.local/state" \
   quickshell -p "$config_dir" --no-color >"$qs_log" 2>&1 &
 QS_PID=$!
 
