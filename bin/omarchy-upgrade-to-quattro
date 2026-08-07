@@ -402,11 +402,16 @@ install_keyrings() {
   # database's checksum and abort --noconfirm transactions as "corrupted".
   as_root find /var/cache/pacman/pkg -maxdepth 1 -name 'omarchy-*' -delete 2>/dev/null || true
 
-  as_root pacman -Sy --noconfirm archlinux-keyring omarchy-keyring || {
+  # -Syy forces the database download. configure_pacman_channel just repointed
+  # the mirrors, and a plain -Sy keeps the legacy database whenever the new
+  # server's copy isn't newer, leaving stale checksums that no amount of
+  # re-downloading can satisfy.
+
+  as_root pacman -Syy --noconfirm archlinux-keyring omarchy-keyring || {
     warn "Keyring package install failed; attempting to trust the Omarchy packaging key directly."
     as_root pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org || true
     as_root pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571 || true
-    as_root pacman -Sy --noconfirm archlinux-keyring omarchy-keyring
+    as_root pacman -Syy --noconfirm archlinux-keyring omarchy-keyring
   }
 }
 
