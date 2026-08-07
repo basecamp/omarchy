@@ -41,6 +41,22 @@ device=$(hw_display)
 [[ $device == "nvidia_wmi_ec_backlight" ]] || fail "an unknown backlight falls back to the first device" "actual: $device"
 pass "an unknown backlight falls back to the first device"
 
+write_backlights appletb_backlight gmux_backlight
+device=$(hw_display)
+[[ $device == "gmux_backlight" ]] || fail "a T2 Mac uses gmux instead of the Touch Bar" "actual: $device"
+pass "a T2 Mac uses gmux instead of the Touch Bar"
+
+write_backlights appletb_backlight
+if hw_display >/dev/null 2>&1; then
+  fail "the Touch Bar is never used as the display backlight"
+fi
+pass "the Touch Bar is never used as the display backlight"
+
+write_backlights acpi_video0 amdgpu_bl0 appletb_backlight gmux_backlight intel_backlight
+device=$(hw_display)
+[[ $device == "gmux_backlight" ]] || fail "gmux outranks the GPU backlights on dual-GPU Macs" "actual: $device"
+pass "gmux outranks the GPU backlights on dual-GPU Macs"
+
 write_backlights
 if hw_display >/dev/null 2>&1; then
   fail "no backlight device reports failure"
