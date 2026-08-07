@@ -979,7 +979,16 @@ Item {
     stdout: SplitParser {
       onRead: function(data) { guardProc.collected += data + "\n" }
     }
-    onExited: {
+    onExited: function(exitCode, exitStatus) {
+      // A batch that was killed rather than finished has only told us about
+      // the rows it reached, and a row whose `when:` went unanswered shows.
+      // Keep the last complete set rather than let a half-read one through.
+      // A signal leaves the exit code at 0, so the status is what tells us.
+      if (exitCode !== 0 || exitStatus !== 0) {
+        if (root.guardsPending) Qt.callLater(function() { root.evaluateGuards() })
+        return
+      }
+
       var nextWhen = ({})
       var nextChecked = ({})
       var lines = guardProc.collected.split("\n")

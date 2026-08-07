@@ -13,6 +13,7 @@ const items = {
   'plain': { id: 'plain', label: 'No guards' }
 }
 const script = menu.guardScript(items)
+const browserSlot = `\${__omarchy_read_${menu.guardReaders.indexOf('omarchy-default-browser')}}`
 
 assert(
   script.includes('if { omarchy-pkg-present brave-bin; } >/dev/null 2>&1; then echo setup.default.browser.brave:w:1; else echo setup.default.browser.brave:w:0; fi'),
@@ -33,12 +34,30 @@ assertEqual(
   'guard script reads a value command once for the whole batch'
 )
 assert(
+  script.includes(`[[ "${browserSlot}" == "brave" ]]`) && !script.includes('"$(omarchy-default-browser)"'),
+  'guard script substitutes the captured answer into the expression'
+)
+assert(
   script.indexOf('__omarchy_read_') < script.indexOf('if { omarchy-pkg-present'),
   'guard script captures readers before any guard runs, since $() would trap a lazy memo in its subshell'
 )
+
+// Substitution is confined to the plain `$(reader)` form on purpose. A
+// function shadowing the name would also catch these, and answer them wrong.
+const untouched = menu.guardScript({
+  a: { id: 'a', when: 'command -v omarchy-dns' },
+  b: { id: 'b', when: '[[ "$(OMARCHY_PATH=/usr/share/omarchy omarchy-channel-current)" == "stable" ]]' },
+  c: { id: 'c', when: '(( $(omarchy-default-browser | wc -l) == 1 ))' }
+})
 assert(
-  menu.guardReaders.every(reader => !script.includes(`$(${reader} `) || reader === 'omarchy-default-browser'),
-  'guard script only captures the readers its guards actually ask for'
+  untouched.includes('command -v omarchy-dns')
+    && untouched.includes('$(OMARCHY_PATH=/usr/share/omarchy omarchy-channel-current)')
+    && untouched.includes('$(omarchy-default-browser | wc -l)'),
+  'guard script leaves every form but the plain substitution to run the real command'
+)
+assert(
+  !/^__omarchy_read_/m.test(untouched),
+  'guard script captures nothing when no guard uses the plain substitution'
 )
 
 // Every reader named in the shipped menu has to be listed, or it silently
@@ -56,67 +75,104 @@ assertDeepEqual(
 )
 JS
 
+prelude() {
+  node -e '
+    const path = require("path")
+    const menu = require(path.join(process.env.ROOT, "shell/plugins/menu/MenuModel.js"))
+    process.stdout.write(menu.guardScript({ probe: { id: "probe", when: "true" } }))
+  ' | command grep -v '^if {'
+}
+
 # The prelude shadows the real commands for the length of the batch, so it has
 # to answer exactly as they do -- including for arguments no shipped guard
 # passes today, which an extension is free to write tomorrow.
 stub_dir=$(mktemp -d)
 trap 'rm -rf "$stub_dir"' EXIT
 
+# `pacman -Q` resolves a name through what installed packages provide, so gvim
+# answers for vim and bash answers for sh. A set built from `pacman -Qq` alone
+# would miss both and offer to install what is already there.
 cat >"$stub_dir/pacman" <<'STUB'
 #!/bin/bash
-[[ $1 == "-Qq" ]] && { printf '%s\n' brave-bin zen-browser-bin vim; exit 0; }
-for pkg in "${@:2}"; do
-  case "$pkg" in brave-bin | zen-browser-bin | vim) ;; *) exit 1 ;; esac
-done
+case "$1" in
+-Qq)
+  printf '%s\n' bash gvim
+  ;;
+-Qi)
+  cat <<'INFO'
+Name            : bash
+Provides        : sh
+Name            : gvim
+Provides        : vim=9.2.0849-1  xxd
+INFO
+  ;;
+-Q)
+  shift
+  for want in "$@"; do
+    case "${want%%[<>=]*}" in bash | gvim | sh | vim | xxd) ;; *) exit 1 ;; esac
+  done
+  ;;
+esac
 exit 0
 STUB
 chmod +x "$stub_dir/pacman"
-printf '#!/bin/bash\nexit 0\n' >"$stub_dir/brave"
-chmod +x "$stub_dir/brave"
+printf '#!/bin/bash\nexit 0\n' >"$stub_dir/gvim"
+chmod +x "$stub_dir/gvim"
 
-prelude=$(node -e '
-const path = require("path")
-const menu = require(path.join(process.env.ROOT, "shell/plugins/menu/MenuModel.js"))
-process.stdout.write(menu.guardScript({ probe: { id: "probe", when: "true" } }))
-' | command grep -v '^if {')
+guard_prelude=$(prelude)
 
-for args in "brave-bin" "vim" "absent" "brave-bin vim" "brave-bin absent" ""; do
+# vim and sh are provided rather than installed; bash>=1 is a version
+# constraint no set can answer; cd is a shell builtin `command -v` finds and a
+# PATH search does not.
+for args in "bash" "vim" "sh" "xxd" "absent" "bash vim" "bash absent" "bash>=1" ""; do
   for helper in omarchy-pkg-present omarchy-pkg-missing; do
     real=0
     PATH="$stub_dir:$PATH" "$ROOT/bin/$helper" $args >/dev/null 2>&1 || real=$?
     shadowed=0
-    PATH="$stub_dir:$PATH" bash -c "$prelude
+    PATH="$stub_dir:$PATH" bash -c "$guard_prelude
 $helper $args" >/dev/null 2>&1 || shadowed=$?
     ((real == shadowed)) || fail "$helper '$args' answers as the real command" "real: $real, shadowed: $shadowed"
   done
 done
-pass "guard prelude answers package presence as omarchy-pkg-present and omarchy-pkg-missing do"
+pass "guard prelude resolves packages through provides and constraints as pacman does"
 
-for args in "brave" "absent" "brave absent" ""; do
+for args in "gvim" "cd" "absent" "gvim absent" "gvim cd" ""; do
   for helper in omarchy-cmd-present omarchy-cmd-missing; do
     real=0
     PATH="$stub_dir:$PATH" "$ROOT/bin/$helper" $args >/dev/null 2>&1 || real=$?
     shadowed=0
-    PATH="$stub_dir:$PATH" bash -c "$prelude
+    PATH="$stub_dir:$PATH" bash -c "$guard_prelude
 $helper $args" >/dev/null 2>&1 || shadowed=$?
     ((real == shadowed)) || fail "$helper '$args' answers as the real command" "real: $real, shadowed: $shadowed"
   done
 done
-pass "guard prelude answers command presence as omarchy-cmd-present and omarchy-cmd-missing do"
+pass "guard prelude resolves commands as omarchy-cmd-present and omarchy-cmd-missing do"
 
-# A reader is replaced by its captured answer, which has to read back the same
-# way -- the value, its exit status, and the trailing newline $() would strip.
-reader_check=$(PATH="$stub_dir:$PATH" bash -c '
+# A reader is replaced by what it printed, which has to compare identically to
+# the substitution it stood in for -- including the trailing newline $() drops.
+reader_script=$(node -e '
+  const path = require("path")
+  const menu = require(path.join(process.env.ROOT, "shell/plugins/menu/MenuModel.js"))
+  process.stdout.write(menu.guardScript({
+    hit: { id: "hit", checked: "[[ \"$(omarchy-dns)\" == \"Cloudflare\" ]]" },
+    miss: { id: "miss", checked: "[[ \"$(omarchy-dns)\" == \"Google\" ]]" }
+  }))
+')
+reader_result=$(bash -c '
+omarchy-dns() { printf "Cloudflare\n"; }
+export -f omarchy-dns
+'"$reader_script")
+[[ $reader_result == $'hit:c:1\nmiss:c:0' ]] ||
+  fail "guard prelude compares a captured reader as the substitution did" "got: $reader_result"
+pass "guard prelude compares a captured reader exactly as the substitution it replaced"
+
+# The batch inherits whatever a login shell left set. A reader that exits
+# nonzero must not take the rest of the menu's rows down with it.
+errexit_result=$(bash -e -c '
 omarchy-dns() { printf "Cloudflare\n"; return 3; }
 export -f omarchy-dns
-'"$(node -e '
-const path = require("path")
-const menu = require(path.join(process.env.ROOT, "shell/plugins/menu/MenuModel.js"))
-process.stdout.write(menu.guardScript({ probe: { id: "probe", checked: "[[ \"$(omarchy-dns)\" == \"Cloudflare\" ]]" } }))
-' | command grep -v '^if {')"'
-value=$(omarchy-dns) || status=$?
-printf "%s|%s|%s" "$value" "${status:-0}" "$(omarchy-dns | wc -l)"
-')
-[[ $reader_check == "Cloudflare|3|1" ]] ||
-  fail "guard prelude replays a captured reader verbatim" "got: $reader_check"
-pass "guard prelude replays a captured reader with its value, exit status, and line"
+'"$reader_script"'
+printf "survived\n"' 2>/dev/null)
+[[ $errexit_result == $'hit:c:1\nmiss:c:0\nsurvived' ]] ||
+  fail "guard batch survives a failing reader under errexit" "got: $errexit_result"
+pass "guard batch survives a reader that exits nonzero under errexit"

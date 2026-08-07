@@ -372,12 +372,12 @@ function displayRow(items, itemOrder, checkedResults, entry, detail, score, sect
   }
 }
 
-// Commands a `checked:` expression reads a value out of. Each one is asked
-// the same question by every sibling row -- Defaults > Browser has seven rows
-// all comparing against `omarchy-default-browser` -- so the batch captures it
-// once and replays the answer for the rest of the run.
+// Commands a `checked:` expression reads a value out of. Every sibling row
+// asks the same one -- Defaults > Browser has seven rows all comparing
+// against `omarchy-default-browser` -- so the batch runs it once and the rows
+// read the captured answer.
 //
-// The captures have to be eager. These are read inside `$(...)`, and a value
+// The capture has to be eager. These are read inside `$(...)`, and a value
 // cached while one expression runs lives in that subshell only, so a lazy
 // memo never survives to the expression after it.
 var GUARD_READERS = [
@@ -391,41 +391,66 @@ var GUARD_READERS = [
 
 // Package and command presence account for most of what the guards ask, and
 // asked one at a time they are almost all fork: the shipped menu spends over
-// a second on them. Answer them inside the guard process instead, off one
-// package listing and bash's own PATH lookup. These shadow the real commands
-// for the batch only, and match them exit code for exit code, including no
-// arguments at all (present is true of nothing, missing is not).
+// a second on them. Answer them inside the guard process instead. These
+// shadow the real commands for the batch only, so they have to agree with
+// them everywhere, including for no arguments at all (present is true of
+// nothing, missing is not).
+//
+// `pacman -Q` resolves a name through what installed packages provide, not
+// just what they are called -- with gvim installed it reports `vim` as
+// present -- so the set has to carry provides too, or `install.editor.vim`
+// comes back and offers to install what is already there. A version
+// constraint (`bash>=1`) is not a name any set can answer, so it goes to
+// pacman itself; no shipped guard writes one.
 function guardHelpers() {
   return 'declare -A __omarchy_pkgs=()\n'
-    + 'while read -r __omarchy_pkg; do __omarchy_pkgs[$__omarchy_pkg]=1; done < <(pacman -Qq 2>/dev/null)\n'
-    + 'omarchy-pkg-present() { local p; for p in "$@"; do [[ -n ${__omarchy_pkgs[$p]-} ]] || return 1; done; return 0; }\n'
-    + 'omarchy-pkg-missing() { local p; for p in "$@"; do [[ -n ${__omarchy_pkgs[$p]-} ]] || return 0; done; return 1; }\n'
-    + 'omarchy-cmd-present() { local c; for c in "$@"; do type -P "$c" >/dev/null 2>&1 || return 1; done; return 0; }\n'
-    + 'omarchy-cmd-missing() { local c; for c in "$@"; do type -P "$c" >/dev/null 2>&1 || return 0; done; return 1; }\n'
+    + 'mapfile -t __omarchy_pkg_names < <({ pacman -Qq; LC_ALL=C pacman -Qi'
+    + " | awk -F': ' '/^Provides/ && $2 != \"None\" { n = split($2, p, \" \");"
+    + ' for (i = 1; i <= n; i++) { sub(/[<>=].*/, "", p[i]); print p[i] } }\'; } 2>/dev/null)\n'
+    + 'for __omarchy_pkg in "${__omarchy_pkg_names[@]}"; do __omarchy_pkgs[$__omarchy_pkg]=1; done\n'
+    + '__omarchy_pkg_has() { [[ -n ${__omarchy_pkgs[$1]-} ]] && return 0; '
+    + '[[ $1 == *[\\<\\>=]* ]] && { pacman -Q "$1" &>/dev/null; return; }; return 1; }\n'
+    + 'omarchy-pkg-present() { local p; for p in "$@"; do __omarchy_pkg_has "$p" || return 1; done; return 0; }\n'
+    + 'omarchy-pkg-missing() { local p; for p in "$@"; do __omarchy_pkg_has "$p" || return 0; done; return 1; }\n'
+    + 'omarchy-cmd-present() { local c; for c in "$@"; do command -v "$c" &>/dev/null || return 1; done; return 0; }\n'
+    + 'omarchy-cmd-missing() { local c; for c in "$@"; do command -v "$c" &>/dev/null || return 0; done; return 1; }\n'
 }
 
-// Only capture a reader the guards actually ask for, so an extension that
-// carries none of them pays for none of them.
+// Substitute the captured answer into the expression rather than shadowing
+// the reader with a function. `$(reader)` and the variable holding what it
+// printed are interchangeable -- both strip trailing newlines, both split the
+// same way unquoted -- while a function would also catch `command -v reader`,
+// `VAR=x reader`, and every other form, and answer those wrong. Anything but
+// the plain substitution is left alone to run the real command.
 function guardPrelude(guards) {
   var prelude = guardHelpers()
 
   for (var i = 0; i < GUARD_READERS.length; i++) {
-    var reader = GUARD_READERS[i]
-    if (guards.indexOf(reader) < 0) continue
-
-    var out = "__omarchy_read_" + i
-    var status = "__omarchy_status_" + i
-    prelude += out + "=$(" + reader + " 2>/dev/null); " + status + "=$?\n"
-      + reader + '() { (($#)) && { command ' + reader + ' "$@"; return; }; '
-      + "printf '%s\\n' \"$" + out + '"; return $' + status + "; }\n"
+    // The guards arrive already substituted, so what marks a reader as wanted
+    // is the slot standing in for it, not the call it replaced.
+    if (guards.indexOf(guardReaderSlot(i)) < 0) continue
+    // `|| :` so a reader that exits nonzero cannot take the batch down with
+    // it under a login shell that turned on errexit.
+    prelude += "__omarchy_read_" + i + "=$(" + GUARD_READERS[i] + " 2>/dev/null) || :\n"
   }
 
   return prelude
 }
 
+function guardReaderSlot(index) {
+  return "${__omarchy_read_" + index + "}"
+}
+
+function substituteGuardReaders(expression) {
+  for (var i = 0; i < GUARD_READERS.length; i++)
+    expression = expression.split("$(" + GUARD_READERS[i] + ")").join(guardReaderSlot(i))
+
+  return expression
+}
+
 function guardLine(id, tag, expression) {
-  return "if { " + expression + "; } >/dev/null 2>&1; then echo " + id + ":" + tag + ":1"
-    + "; else echo " + id + ":" + tag + ":0; fi\n"
+  return "if { " + substituteGuardReaders(expression) + "; } >/dev/null 2>&1; then echo "
+    + id + ":" + tag + ":1; else echo " + id + ":" + tag + ":0; fi\n"
 }
 
 // One bash script for every `when:` and `checked:` in the menu, reporting
