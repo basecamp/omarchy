@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "id": "omarchy.model-usage",
-  "name": "Model Usage",
+  "id": "omarchy.agents",
+  "name": "Agents",
   "version": "1.0.0",
   "author": "Omarchy",
   "license": "MIT",
@@ -12,22 +12,15 @@
     "barWidget": "Panel.qml"
   },
   "barWidget": {
-    "displayName": "Model Usage",
+    "displayName": "Agents",
     "description": "One bar icon and one panel: rate-limit meters with pace, today, the last week, and the all-time model breakdown for every subscription.",
     "category": "AI",
-    "aliases": ["model-usage"],
+    "aliases": ["agents", "model-usage"],
     "allowMultiple": false,
     "defaults": {
       "providers": {
-        "claude": {
-          "enabled": true,
-          "statsPath": "~/.claude/stats-cache.json",
-          "credentialsPath": "~/.claude/.credentials.json",
-          "projectsPath": "~/.claude/projects"
-        },
-        "codex": {
-          "enabled": true
-        }
+        "claude": { "enabled": true },
+        "codex": { "enabled": true }
       },
       "refreshIntervalSec": 900,
       "syncMode": "Off",

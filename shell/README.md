@@ -33,7 +33,7 @@ shell/
       network/
       power/
       weather/
-    model-usage/
+    agents/
     services/
       battery/
       idle/

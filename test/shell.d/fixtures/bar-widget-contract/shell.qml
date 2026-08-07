@@ -94,11 +94,12 @@ ShellRoot {
     if (typeof item.setting === "function") {
       root.assertEqual(item.setting("missing", "fallback"), "fallback", entry.id + " exposes setting fallback")
     }
-    if (entry.id === "omarchy.model-usage" && typeof item.iconSourceForProvider === "function") {
-      var darkIcon = String(item.iconSourceForProvider({ providerId: "codex" }, Qt.color("#1a1b26")))
-      var lightIcon = String(item.iconSourceForProvider({ providerId: "codex" }, Qt.color("#ffffff")))
-      root.assertTrue(darkIcon.indexOf("codex.svg") >= 0 && darkIcon.indexOf("codex-light.svg") < 0, entry.id + " uses the dark-theme Codex icon on dark surfaces")
-      root.assertTrue(lightIcon.indexOf("codex-light.svg") >= 0, entry.id + " uses the light-theme Codex icon on light surfaces")
+    if (entry.id === "omarchy.agents") {
+      root.assertTrue(typeof item.iconCandidatesForProvider === "function", entry.id + " resolves provider marks by convention")
+      var darkIcons = item.iconCandidatesForProvider({ providerId: "codex" }, Qt.color("#1a1b26")).join(" ")
+      var lightIcons = item.iconCandidatesForProvider({ providerId: "codex" }, Qt.color("#ffffff")).join(" ")
+      root.assertTrue(darkIcons.indexOf("codex.svg") >= 0 && darkIcons.indexOf("codex-light.svg") < 0, entry.id + " uses the dark-theme Codex icon on dark surfaces")
+      root.assertTrue(lightIcons.indexOf("codex-light.svg") >= 0, entry.id + " prefers the light-theme Codex icon on light surfaces")
     }
 
     safeCall(item, "refresh", entry)
