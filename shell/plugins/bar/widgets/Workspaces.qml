@@ -65,7 +65,12 @@ BarWidget {
         verticalPadding: 6
         fixedWidth: root.vertical ? root.barSize : Style.space(20)
         fixedHeight: root.barSize
-        onPressed: function() { root.focusWorkspace(modelData) }
+        onPressed: function(button) {
+          if (button === Qt.RightButton && root.bar && root.bar.shell)
+            root.bar.shell.toggle("omarchy.workspace-overview", "{}")
+          else if (button === Qt.LeftButton)
+            root.focusWorkspace(modelData)
+        }
       }
     }
   }

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.workspace-overview",
+  "name": "Workspace Overview",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Visual overview of workspaces and their windows",
+  "kinds": [
+    "overlay"
+  ],
+  "entryPoints": {
+    "overlay": "WorkspaceOverview.qml"
+  }
+}
