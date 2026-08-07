@@ -9,7 +9,6 @@ if [ -f "${OMARCHY_PATH%/}/default/uwsm/default" ]; then
   . "${OMARCHY_PATH%/}/default/uwsm/default"
 else
   export TERMINAL=xdg-terminal-exec
-  export BROWSER=omarchy-launch-browser
   export EDITOR="omarchy-launch-editor --inline"
 fi
 
