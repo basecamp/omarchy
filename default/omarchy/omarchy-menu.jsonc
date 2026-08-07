@@ -7,7 +7,9 @@
   // Dotted IDs define the tree. Use provider:"name" only when the submenu
   // calls provider_name() or a command named "name" to return JSON rows.
   // Optional fields:
-  //   aliases        alternate `omarchy menu summon <name>` routes; also searchable
+  //   aliases        alternate `omarchy menu summon <name>` routes; also searchable.
+  //                  Reserved for established names users already type; new entries
+  //                  should not normally add any.
   //   iconFont       font family used for the icon glyph, when it differs from the menu font
   //   title          header text shown when the submenu is open; defaults to label
   //   when           shell condition; hide row when it fails
@@ -59,6 +61,7 @@
   "trigger.transcode": {"icon":"󰧸","label":"Transcode","action":"omarchy-transcode"},
   "trigger.share": {"icon":"","label":"Share","aliases":["share"]},
   "trigger.toggle": {"icon":"󰔎","label":"Toggle","aliases":["toggle","toggles"]},
+  "trigger.tests": {"icon":"󰙨","label":"Tests"},
   "trigger.hardware": {"icon":"","label":"Hardware","aliases":["hardware","hw"]},
   "trigger.hardware.laptop-display": {"icon":"󰛧","label":"Laptop Display","when":"omarchy-hw-laptop","action":"omarchy-hyprland-monitor-internal toggle"},
   "trigger.hardware.mirror-display": {"icon":"󰍹","label":"Mirror Display","when":"omarchy-hw-laptop","action":"omarchy-hyprland-monitor-internal-mirror toggle"},
@@ -84,6 +87,8 @@
   "trigger.toggle.workspace-layout": {"icon":"󱂬","label":"Workspace Layout","action":"omarchy-hyprland-workspace-layout-toggle"},
   "trigger.toggle.window-gaps": {"icon":"","label":"Window Gaps","action":"omarchy-hyprland-window-gaps-toggle"},
   "trigger.toggle.one-window-ratio": {"icon":"","label":"1-Window Ratio","action":"omarchy-hyprland-window-single-square-aspect-toggle"},
+  "trigger.tests.network-speedtest": {"icon":"󰓅","label":"Network Speed Test","action":"omarchy-shell shell summon omarchy.speedtest"},
+  "trigger.tests.disk-speedtest": {"icon":"󰋊","label":"Disk Speed Test","action":"omarchy-shell shell summon omarchy.disk-speedtest"},
 
   // Style
   "style.theme": {"icon":"󰸌","label":"Theme","aliases":["theme","themes"],"action":"theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\""},
@@ -118,7 +123,6 @@
   "setup.network.dns.google": {"icon":"󰊭","label":"Google","checked":"[[ \"$(omarchy-dns)\" == \"Google\" ]]","action":"omarchy-dns Google"},
   "setup.network.dns.custom": {"icon":"","label":"Custom","checked":"[[ \"$(omarchy-dns)\" == \"Custom\" ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-dns Custom'"},
   "setup.network.qr": {"icon":"󰐲","label":"QR Code","aliases":["wifi-qr"],"when":"[[ $(omarchy-network-status) == wifi* ]]","action":"omarchy-shell shell summon omarchy.wifiqr"},
-  "setup.network.speedtest": {"icon":"󰓅","label":"Speed Test","aliases":["speedtest","speed-test"],"action":"omarchy-shell shell summon omarchy.speedtest"},
   "setup.default": {"icon":"","label":"Defaults","aliases":["default","defaults"]},
   "setup.default.agent": {"icon":"󰚩","label":"Agent"},
   "setup.default.agent.claude": {"icon":"󰛄","label":"Claude","checked":"[[ \"$(omarchy-default-agent)\" == \"claude\" ]]","action":"omarchy-default-agent claude"},
