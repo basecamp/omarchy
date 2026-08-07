@@ -6,8 +6,9 @@
 
 Everything the agents panel shows for Claude comes from this one
 command: local transcript stats from ~/.claude/projects, the stats-cache and
-history fallbacks for machines without transcripts, and the authoritative
-rate limits from Anthropic's OAuth usage endpoint. The panel itself only ever
+history fallbacks for machines without transcripts, pi/omp and opencode
+sessions that ran on an Anthropic provider, and the authoritative rate
+limits from Anthropic's OAuth usage endpoint. The panel itself only ever
 reads the JSON this prints; it never talks to disk formats or endpoints.
 """
 
@@ -20,6 +21,7 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import sys
 import time
 import urllib.error
@@ -315,6 +317,251 @@ def today_prompts_from_history(claude_dir: Path) -> tuple[int, int]:
   return prompts, len(sessions)
 
 
+# --------------------------------------------------------------- pi and omp
+#
+# These agents can consume a Claude subscription without writing native
+# Claude Code transcripts. Their compatible JSONL session formats carry the
+# provider, model, and token usage on every assistant message.
+
+
+def scan_pi_usage(max_age_seconds: float) -> dict[str, Any] | None:
+  roots = [
+    Path.home() / ".pi" / "agent" / "sessions",
+    Path.home() / ".omp" / "agent" / "sessions",
+  ]
+  cache_file = cache_root() / "claude-pi-sessions.json"
+  cached = read_fresh_json(cache_file, max_age_seconds)
+  if cached is not None:
+    return cached.get("stats")
+
+  today = local_date_string()
+  recent_dates = recent_date_strings()
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+  sessions: set[str] = set()
+  active_days: set[str] = set()
+  today_sessions: set[str] = set()
+  today_tokens: dict[str, int] = {}
+  usage_by_model: dict[str, dict[str, int]] = {}
+  seen: set[str] = set()
+  prompts = 0
+  today_prompt_count = 0
+  today_token_total = 0
+
+  for root in roots:
+    files = root.rglob("*.jsonl") if root.is_dir() else []
+    for path in files:
+      try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+          for line_number, line in enumerate(handle, 1):
+            if '"usage"' not in line or '"assistant"' not in line:
+              continue
+            try:
+              entry = json.loads(line)
+              message = entry.get("message") if isinstance(entry.get("message"), dict) else {}
+              if entry.get("type") != "message" or message.get("role") != "assistant":
+                continue
+              provider = str(message.get("provider") or "")
+              api = str(message.get("api") or "")
+              if provider != "anthropic" and not api.startswith("anthropic"):
+                continue
+              unique_key = f"{path}:{entry.get('id') or line_number}"
+              if unique_key in seen:
+                continue
+              seen.add(unique_key)
+              usage = message.get("usage") or {}
+              input_tokens = usage_token(usage, "input", "inputTokens")
+              output_tokens = usage_token(usage, "output", "outputTokens")
+              cache_read = usage_token(usage, "cacheRead", "cache_read_input_tokens")
+              cache_write = usage_token(usage, "cacheWrite", "cache_creation_input_tokens")
+              total = input_tokens + output_tokens + cache_read + cache_write
+              if total <= 0:
+                total = number(usage.get("totalTokens"))
+                input_tokens = total
+              if total <= 0:
+                continue
+              model = str(message.get("model") or "claude")
+              day = local_date_from_timestamp(entry.get("timestamp") or message.get("timestamp"))
+            except Exception:
+              continue
+
+            session_key = str(path)
+            sessions.add(session_key)
+            active_days.add(day)
+            prompts += 1
+            bucket = usage_by_model.setdefault(model, empty_bucket())
+            bucket["inputTokens"] += input_tokens
+            bucket["outputTokens"] += output_tokens
+            bucket["cacheReadInputTokens"] += cache_read
+            bucket["cacheCreationInputTokens"] += cache_write
+            if day in recent:
+              recent[day]["messageCount"] += total
+            if day == today:
+              today_prompt_count += 1
+              today_sessions.add(session_key)
+              today_token_total += total
+              today_tokens[model] = today_tokens.get(model, 0) + total
+      except OSError:
+        continue
+
+  stats = None
+  if prompts > 0:
+    stats = {
+      "todayPrompts": today_prompt_count,
+      "todaySessions": len(today_sessions),
+      "todayTotalTokens": today_token_total,
+      "todayTokensByModel": today_tokens,
+      "recentDays": [recent[day] for day in recent_dates],
+      "modelUsage": usage_by_model,
+      "totalPrompts": prompts,
+      "totalSessions": len(sessions),
+      "activeDays": len(active_days),
+      "activeDates": sorted(active_days),
+    }
+  write_json(cache_file, {"stats": stats})
+  return stats
+
+
+# ---------------------------------------------------------------- opencode
+#
+# A Claude subscription burned entirely through opencode never writes a
+# transcript under ~/.claude, but opencode records per-message provider,
+# model, and token usage in its own database. Scan it for Anthropic-provider
+# messages and merge the result into whatever the transcript scan found.
+
+
+def scan_opencode_usage(max_age_seconds: float) -> dict[str, Any] | None:
+  db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
+  if not db.is_file():
+    return None
+
+  # Same freshness contract as the transcript scan: --limits-only promises to
+  # reuse recent local stats, and a big opencode history walked on every panel
+  # open would break that promise.
+  cache_file = cache_root() / f"claude-opencode-{hashlib.sha1(str(db).encode('utf-8')).hexdigest()[:16]}.json"
+  cached = read_fresh_json(cache_file, max_age_seconds)
+  if cached is not None:
+    return cached.get("stats")
+
+  today = local_date_string()
+  recent_dates = recent_date_strings()
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+  sessions: set[str] = set()
+  active_days: set[str] = set()
+  today_sessions: set[str] = set()
+  today_tokens: dict[str, int] = {}
+  usage_by_model: dict[str, dict[str, int]] = {}
+  prompts = 0
+  today_prompt_count = 0
+  today_token_total = 0
+
+  try:
+    # Read-only: opencode may be writing right now.
+    conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+  except sqlite3.Error:
+    return None
+  try:
+    conn.execute("PRAGMA query_only = ON")
+    for session_id, raw in conn.execute("SELECT session_id, data FROM message"):
+      # One malformed row must not abort the scan, so every shape assumption
+      # lives inside the try.
+      try:
+        entry = json.loads(raw)
+        # Exact match: opencode provider ids are free-form, and a custom
+        # "anthropic-proxy" gateway is not this subscription.
+        if not isinstance(entry, dict) or entry.get("role") != "assistant":
+          continue
+        if str(entry.get("providerID") or "") != "anthropic":
+          continue
+        tokens = entry.get("tokens") or {}
+        cache = tokens.get("cache") or {}
+        input_tokens = number(tokens.get("input"))
+        # opencode keeps thinking tokens out of output; both are generated.
+        output_tokens = number(tokens.get("output")) + number(tokens.get("reasoning"))
+        cache_read = number(cache.get("read"))
+        cache_write = number(cache.get("write"))
+        total = input_tokens + output_tokens + cache_read + cache_write
+        if total <= 0:
+          continue
+
+        created = number((entry.get("time") or {}).get("created"))
+        day = dt.datetime.fromtimestamp(created / 1000).strftime("%Y-%m-%d") if created > 0 else today
+        model = str(entry.get("modelID") or "claude").rstrip("/").split("/")[-1]
+      except Exception:
+        continue
+      session_key = "opencode:" + str(session_id)
+      sessions.add(session_key)
+      active_days.add(day)
+      prompts += 1
+
+      bucket = usage_by_model.setdefault(model, empty_bucket())
+      bucket["inputTokens"] += input_tokens
+      bucket["outputTokens"] += output_tokens
+      bucket["cacheReadInputTokens"] += cache_read
+      bucket["cacheCreationInputTokens"] += cache_write
+
+      if day in recent:
+        recent[day]["messageCount"] += total
+      if day == today:
+        today_prompt_count += 1
+        today_sessions.add(session_key)
+        today_token_total += total
+        today_tokens[model] = today_tokens.get(model, 0) + total
+  except sqlite3.Error:
+    return None
+  finally:
+    conn.close()
+
+  stats = None
+  if prompts > 0:
+    stats = {
+      "todayPrompts": today_prompt_count,
+      "todaySessions": len(today_sessions),
+      "todayTotalTokens": today_token_total,
+      "todayTokensByModel": today_tokens,
+      "recentDays": [recent[day] for day in recent_dates],
+      "modelUsage": usage_by_model,
+      "totalPrompts": prompts,
+      "totalSessions": len(sessions),
+      "activeDays": len(active_days),
+      "activeDates": sorted(active_days),
+    }
+  write_json(cache_file, {"stats": stats})
+  return stats
+
+
+def merge_stats(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+  merged = dict(base)
+  for key in ("todayPrompts", "todaySessions", "todayTotalTokens", "totalPrompts", "totalSessions"):
+    merged[key] = number(base.get(key)) + number(extra.get(key))
+
+  combined = dict(base.get("todayTokensByModel") or {})
+  for model, count in (extra.get("todayTokensByModel") or {}).items():
+    combined[model] = number(combined.get(model)) + number(count)
+  merged["todayTokensByModel"] = combined
+
+  usage = {model: dict(bucket) for model, bucket in (base.get("modelUsage") or {}).items()}
+  for model, bucket in (extra.get("modelUsage") or {}).items():
+    target = usage.setdefault(model, empty_bucket())
+    for field, count in (bucket or {}).items():
+      target[field] = number(target.get(field)) + number(count)
+  merged["modelUsage"] = usage
+
+  by_date: dict[str, int] = {}
+  for source in (base.get("recentDays") or [], extra.get("recentDays") or []):
+    for day in source:
+      date = str((day or {}).get("date") or "")
+      if date:
+        by_date[date] = by_date.get(date, 0) + number((day or {}).get("messageCount"))
+  merged["recentDays"] = [{"date": date, "messageCount": by_date[date]} for date in sorted(by_date)]
+
+  # Sources overlap in time, so union dates rather than summing counts. A
+  # fallback that only knows a count still bounds the answer from below.
+  dates = set(base.get("activeDates") or []) | set(extra.get("activeDates") or [])
+  merged["activeDates"] = sorted(dates)
+  merged["activeDays"] = max(len(dates), number(base.get("activeDays")), number(extra.get("activeDays")))
+  return merged
+
+
 # ------------------------------------------------------------------- limits
 
 
@@ -503,6 +750,14 @@ def main() -> int:
       today_prompts, today_sessions = today_prompts_from_history(claude_dir)
       if today_prompts or today_sessions:
         stats = dict(stats, todayPrompts=today_prompts, todaySessions=today_sessions)
+
+  pi_usage = scan_pi_usage(scan_age)
+  if pi_usage is not None:
+    stats = merge_stats(stats, pi_usage)
+
+  opencode = scan_opencode_usage(scan_age)
+  if opencode is not None:
+    stats = merge_stats(stats, opencode)
 
   access_token, expires_at_ms, plan = oauth_login(claude_dir)
   limits = collect_limits(access_token, expires_at_ms, args.force)
