@@ -574,7 +574,7 @@ EOF
     while read -r uki; do
       [[ -n $uki ]] || continue
       as_root objcopy -O binary --only-section=.cmdline "$uki" /dev/stdout 2>/dev/null |
-        tr -d '\0' | grep -qE '(^|[[:space:]])root=' || missing+=("$uki")
+        tr -d '\0' | grep -E '(^|[[:space:]])root=' >/dev/null || missing+=("$uki")
     done < <(as_root find /boot/EFI/Linux -maxdepth 1 -name 'omarchy_linux*.efi' 2>/dev/null)
   fi
 
@@ -714,7 +714,7 @@ install_omarchy_quattro_packages() {
 install_hardware_transition_packages() {
   local hardware_packages=()
 
-  if lspci | grep -qiE '(Multimedia audio controller|Audio device).*Intel'; then
+  if lspci | grep -iE '(Multimedia audio controller|Audio device).*Intel' >/dev/null; then
     hardware_packages+=(sof-firmware)
   fi
 

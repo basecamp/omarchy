@@ -318,7 +318,7 @@ PATH="$TMPDIR/bin:$PATH" wl-paste --type text --watch "$current_script" text &
 stale_pid=$!
 PIDS_TO_KILL+=("$stale_pid")
 sleep 0.2
-pgrep -f 'wl-paste .*--watch .*/shell/plugins/clipboard/capture\.sh' | grep -qx "$stale_pid" || fail "clipboard reaper pattern matches running watchers"
+pgrep -f 'wl-paste .*--watch .*/shell/plugins/clipboard/capture\.sh' | grep -x "$stale_pid" >/dev/null || fail "clipboard reaper pattern matches running watchers"
 kill "$stale_pid" 2>/dev/null || true
 wait "$stale_pid" 2>/dev/null || true
 pass "clipboard reaper pattern matches running watchers"

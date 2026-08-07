@@ -76,7 +76,7 @@ done <<<"$panels"
 # The power widget intentionally disappears on desktops and VMs without a
 # battery. Exercise it on laptops, and verify that hardware-less sessions take
 # the supported no-panel path instead of treating that as a shell failure.
-if upower -e | grep -q '/battery_'; then
+if upower -e | grep '/battery_' >/dev/null; then
   if ! (trap - EXIT; open_and_capture_panel "power" "omarchy.power"); then
     status=1
     hide_panels
