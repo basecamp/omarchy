@@ -22,34 +22,43 @@ set_vivaldi_native_theme() {
         appearance: ((.appearance // {}) + { force_dark_mode_theme: false }),
         themes: ((.themes // {}) + {
           current: "Omarchy",
-          user: (((.themes.user // []) | map(select(.id != "Omarchy"))) + [{
-            engineVersion: 1,
-            version: 1,
-            id: "Omarchy",
-            url: "",
-            name: "Omarchy",
-            accentFromPage: false,
-            accentOnWindow: true,
-            accentSaturationLimit: 1,
-            alpha: 1,
-            backgroundImage: "",
-            backgroundPosition: "stretch",
-            backgroundSource: "",
-            blur: 0,
-            colorAccentBg: $accent,
-            colorBg: $bg,
-            colorFg: $fg,
-            colorHighlightBg: $accent,
-            colorPosition: "unified",
-            colorWindowBg: $bg,
-            contrast: 0,
-            dimBlurred: false,
-            preferSystemAccent: false,
-            radius: 4,
-            simpleScrollbar: true,
-            transparencyTabBar: false,
-            transparencyTabs: false
-          }])
+          user: (
+            ((.themes.user // []) | map(if .id == "Omarchy" then (. + {
+              colorAccentBg: $accent,
+              colorBg: $bg,
+              colorFg: $fg,
+              colorHighlightBg: $accent,
+              colorWindowBg: $bg
+            }) else . end))
+            + (if ((.themes.user // []) | any(.id == "Omarchy")) then [] else [{
+              engineVersion: 1,
+              version: 1,
+              id: "Omarchy",
+              url: "",
+              name: "Omarchy",
+              accentFromPage: false,
+              accentOnWindow: true,
+              accentSaturationLimit: 1,
+              alpha: 1,
+              backgroundImage: "",
+              backgroundPosition: "stretch",
+              backgroundSource: "",
+              blur: 0,
+              colorAccentBg: $accent,
+              colorBg: $bg,
+              colorFg: $fg,
+              colorHighlightBg: $accent,
+              colorPosition: "unified",
+              colorWindowBg: $bg,
+              contrast: 0,
+              dimBlurred: false,
+              preferSystemAccent: false,
+              radius: 4,
+              simpleScrollbar: true,
+              transparencyTabBar: false,
+              transparencyTabs: false
+            }] end)
+          )
         }),
         theme: ((.theme // {}) + {
           schedule: ((.schedule // {}) + {
