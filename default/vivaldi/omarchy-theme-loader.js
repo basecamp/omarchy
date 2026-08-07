@@ -87,6 +87,25 @@
     }
   };
 
+  const applyThemeCss = (bg, fg, accent, lighterBg) => {
+    const style = document.getElementById('omarchy-theme');
+    if (!style) return;
+    const mix = (a, b, p) => `color-mix(in srgb, ${a}, ${b} ${p})`;
+    style.textContent = `
+      #browser {
+        --colorBg: ${bg} !important;
+        --colorBgLight: ${bg} !important;
+        --colorBgIntense: ${mix(bg, 'white', '7%')} !important;
+        --colorFg: ${fg} !important;
+        --colorAccentBg: ${lighterBg} !important;
+        --colorAccentFg: ${fg} !important;
+        --colorHighlightBg: ${accent} !important;
+        --colorHighlightFg: ${fg} !important;
+        --colorWindowBg: ${bg} !important;
+        --colorTabBar: ${lighterBg} !important;
+      }`;
+  };
+
   const refresh = async () => {
     try {
       const raw = await (await fetch('style/omarchy.csv', { cache: 'no-store' })).text();
@@ -94,6 +113,7 @@
       loggedError = false;
       const [bg, fg, accent, lighterBg] = raw.split(',');
       if (raw !== synced) {
+        applyThemeCss(bg, fg, accent, lighterBg);
         syncNativeTheme(bg, fg, accent, lighterBg, function () { synced = raw });
       }
     } catch (e) {
