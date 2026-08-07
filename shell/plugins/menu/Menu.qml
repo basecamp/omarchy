@@ -947,8 +947,21 @@ Item {
 
   property var whenResults: ({})       // id → true|false (allow visibility)
   property var checkedResults: ({})    // id → true|false (show ✓)
+  property bool guardsPending: false
 
   function evaluateGuards() {
+    // Process ignores a command change while it is running, and `collected`
+    // belongs to the run in flight, so a second evaluation cannot overwrite
+    // the first: it would throw away the lines already read and never start.
+    // The surviving tail then lands as the whole answer, and every id lost
+    // with it goes back to showing, since a `when:` only hides on an explicit
+    // false. Wait for the run in flight and evaluate once it lands instead.
+    if (guardProc.running) {
+      root.guardsPending = true
+      return
+    }
+    root.guardsPending = false
+
     var script = ""
     var ids = Object.keys(root.items)
     for (var i = 0; i < ids.length; i++) {
@@ -994,6 +1007,9 @@ Item {
       root.whenResults = nextWhen
       root.checkedResults = nextChecked
       if (root.opened) root.rebuildDisplay()
+      // Run the evaluation that had to stand aside. Deferred by a turn so the
+      // process is settled before its command is set again.
+      if (root.guardsPending) Qt.callLater(function() { root.evaluateGuards() })
     }
   }
   PanelWindow {
