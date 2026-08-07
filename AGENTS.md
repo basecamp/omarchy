@@ -1,3 +1,15 @@
+# Task Guides
+
+Deeper instructions for specific kinds of work live in `agents/`. Read the
+matching guide before starting:
+
+- [`agents/command-metadata.md`](agents/command-metadata.md) - adding or changing commands in `bin/`
+- [`agents/install-scripts.md`](agents/install-scripts.md) - working under `install/` or on system/user setup commands
+- [`agents/shell-dev.md`](agents/shell-dev.md) - editing the Quickshell desktop under `shell/`
+- [`agents/acceptance-tests.md`](agents/acceptance-tests.md) - writing or running graphical acceptance tests under `test/acceptance.d/`
+- [`agents/visual-verification.md`](agents/visual-verification.md) - verifying any change with a visual effect in the running UI
+- [`docs/migrations.md`](docs/migrations.md) - creating or changing migrations under `migrations/`
+
 # Style
 
 - Two spaces for indentation, no tabs
@@ -33,33 +45,6 @@ Do not maintain a second exhaustive prefix list here. Consult
 `GROUP_DESCRIPTIONS` when selecting or checking a command group so this
 guidance does not drift from the router.
 
-# Command Metadata
-
-Commands in `bin/` can declare CLI metadata in comments near the top of the file. `bin/omarchy` scans the first 80 lines, and tests expect command metadata to remain valid.
-
-Supported metadata keys:
-
-- `# omarchy:group=...` - override the command group inferred from the filename
-- `# omarchy:name=...` - override the command name inferred from the filename
-- `# omarchy:summary=...` - short help text
-- `# omarchy:args=...` - usage arguments
-- `# omarchy:examples=...` - examples separated with ` | `
-- `# omarchy:alias=...` / `# omarchy:aliases=...` - alternate routes
-- `# omarchy:hidden=true` - hide from default command listings
-- `# omarchy:requires-sudo=true` - mark commands that require sudo
-
-Only use `omarchy:examples` where there are args that need explaining.
-
-Prefer explicit metadata for user-facing commands. Keep routes consistent with the filename unless there is a deliberate alias or compatibility route.
-
-Example:
-
-```bash
-# omarchy:summary=Take a screenshot
-# omarchy:args=[smart|region|windows|fullscreen] [slurp|copy]
-# omarchy:examples=omarchy screenshot | omarchy capture screenshot region
-```
-
 # Runtime Environment
 
 - `$OMARCHY_PATH` is set at the top level by the uwsm session environment and is always available to Omarchy runtime code.
@@ -75,22 +60,6 @@ Example:
 
 - Commits should be atomic: include only one coherent change or fix, and do not mix unrelated work.
 - Commit messages should be succinct and describe the change being made.
-
-# Install Scripts
-
-The ISO owns installation orchestration. This repo ships target-side setup commands and reusable setup leaves:
-
-- `bin/omarchy-setup-system` runs root-owned system setup during ISO finalization.
-- `bin/omarchy-setup-hardware` runs idempotent hardware-specific setup and is called by `omarchy-setup-system`.
-- `bin/omarchy-finalize-user` runs the per-user runtime finalization (skill symlinks, xdg-user-dirs, mime defaults, `install/user/all.sh`). Shipped user defaults are seeded by `/etc/skel` from `omarchy-settings`, not by this command. `bin/omarchy-reinstall-configs` is the explicit destructive resync of those defaults into an existing user's `$HOME`.
-- leaf scripts under `install/` are sourced by `run_logged $OMARCHY_INSTALL/path/to/script.sh` and intentionally do not have shebangs.
-- avoid `exit` in sourced setup scripts unless intentionally aborting setup.
-- use `$OMARCHY_INSTALL` and `$OMARCHY_PATH` instead of hard-coded Omarchy paths.
-- keep root-scoped hardware setup under `install/hardware/` and orchestrate it through `install/hardware/all.sh`.
-- keep every per-user setup leaf under `install/user/` (including `install/user/hardware/` and `install/user/first-run/`) so it is clear what must run for each user.
-- prefer helper commands for package and command checks where available.
-
-Raw `command -v`, `pacman`, and `pacman-key` are acceptable in package-helper contexts where direct package-manager behavior is the point of the script.
 
 # Helper Commands
 
@@ -123,135 +92,11 @@ Run focused automated tests for the area you changed. Current test entry points:
 
 New Omarchy shell tests should live in `test/shell.d/*-test.sh` so `./test/shell` picks them up automatically. Source `test/shell.d/base-test.sh` for shared root-path discovery, assertions, and Node test helpers.
 
-# Acceptance Tests
-
-The graphical acceptance suite lives in `test/acceptance` with test files under
-`test/acceptance.d/*-test.sh`. It exercises a real installed Omarchy desktop,
-including session health, shell surfaces, panels, keyboard navigation,
-representative applications, and system setup. Source
-`test/acceptance.d/base-test.sh` for the shared helpers.
-
-Run acceptance tests in a disposable VM through the sibling `omarchy-iso`
-repository, not in the active development session. The suite opens and closes
-applications and temporarily changes desktop configuration.
-
-For acceptance-test-only changes, reuse an installed base and sync the suite:
-
-```bash
-cd ../omarchy-iso
-./bin/omarchy-iso-test release/<iso>.iso --reuse-base --sync-omarchy ../omarchy --no-preview
-```
-
-Use `--sync-all ../omarchy` instead of `--sync-omarchy ../omarchy` when the
-acceptance run must exercise local `bin/`, `config/`, or `shell/` source too.
-Changes to package manifests, installation, finalization, or shipped defaults
-require a fresh ISO built from the local checkouts and a run without
-`--reuse-base`:
-
-```bash
-cd ../omarchy-iso
-./bin/omarchy-iso-make --no-boot-offer --local-source ../omarchy ../omarchy-pkgs
-./bin/omarchy-iso-test release/<generated-iso>.iso --no-preview
-```
-
-Keep unrelated acceptance workflows in separate test files. The runner records
-a failed file and continues with the remaining files, which preserves as much
-diagnostic coverage as possible. Restore modified user state with traps, close
-anything the test opens, and capture every visually distinct state (including
-entered input where relevant) as `success-<step>.png`; failure helpers capture
-`failure-<step>.png`. The ISO harness collects the screenshots and logs under
-its timestamped `test-runs/` directory and opens the screenshots after the run
-unless `--no-preview` is passed.
-
-The ISO harness exercises compositor-level shortcuts with QMP virtual keyboard
-input. In-guest `wtype` is suitable for typing into focused controls, but it
-does not reliably prove that a global Hyprland keybinding works.
-
-# Visual Verification
+The graphical acceptance suite runs in a disposable VM, not in the active
+development session; see [`agents/acceptance-tests.md`](agents/acceptance-tests.md).
 
 Visual changes must be verified in the running UI in addition to automated
-tests. This includes Omarchy shell styling and layout, panels, menus,
-notifications, desktop appearance, animations, transitions, screenshots, and
-screen recording flows. Creating an artifact is not sufficient: inspect it for
-clipping, overlap, incorrect spacing, stale state, focus problems, and visual
-regressions before finishing.
-
-Take a full-screen screenshot without opening the editor:
-
-```bash
-omarchy capture screenshot fullscreen save
-```
-
-The command prints the saved path and writes to the configured Pictures
-directory. Use `omarchy screenshot` for the interactive smart-region flow.
-Capture reference and candidate states as separate images when changing a
-layer-shell surface or layout, then compare both.
-
-Record a short full-screen video for animation, transition, timing, capture, or
-screen-recording changes:
-
-```bash
-omarchy screenrecord --fullscreen
-# Exercise the changed behavior.
-omarchy screenrecord --stop-recording
-```
-
-The stop command prints the saved video path in the configured Videos
-directory. Review the recording before finishing, and keep it short and focused
-on the changed behavior.
-
-For interactive UI work, use `wtype` to simulate keyboard input when available. Example: start the UI in the background, wait briefly for focus, then run `wtype -k Right -k Return` to exercise keyboard selection and confirm the resulting command output or state change. Prefer this over manual-only verification when a UI returns a selected value or changes a symlink/config.
-
-If a launched UI would otherwise remain open, keep track of its PID and stop it
-after the screenshot or recording; avoid broad process kills unless checking
-with `ps` first.
-
-# Omarchy shell
-
-The Quickshell desktop runs as a single long-running process out of
-`shell/`. Hyprland autostart launches it directly with `quickshell -n -p`;
-do not start additional standalone Quickshell instances for individual
-components.
-
-Run `omarchy-restart-shell` after making changes to QML files.
-
-Plugin contract:
-
-- First-party plugins live directly under `shell/plugins/` or one category
-  level deeper, such as `shell/plugins/panels/weather/`. First-party bar-only
-  widgets may use adjacent `*.manifest.json` files. Third-party plugins live
-  at `~/.config/omarchy/plugins/<id>/` with a `manifest.json` at the root.
-- Every plugin manifest declares `schemaVersion`, `id`, `name`, `version`,
-  `kinds`, and `entryPoints`. See
-  [`docs/omarchy-shell.md`](docs/omarchy-shell.md) and
-  `shell/services/PluginRegistry.qml` for the current contract; fields such as
-  `activation` are optional.
-- Entry-point QML files are `Item`s (not `ShellRoot`), and accept the
-  shell-injected properties `omarchyPath`, `shell`, `manifest`, and
-  `pluginRegistry` / `barWidgetRegistry` as appropriate.
-- Panel / overlay / menu plugins must expose `open(payloadJson)` and
-  `close()` lifecycle methods for `shell summon` and `shell hide`.
-
-IPC:
-
-- `bin/omarchy-shell` is the canonical IPC entry point. It forwards to
-  the running shell and does not start it. Prefer it over re-implementing
-  direct Quickshell socket calls in every CLI.
-- The `shell` IPC target exposes lifecycle and configuration methods including
-  `ping`, `summon`, `hide`, `toggle`, `call`, `rescanPlugins`, `reloadConfig`,
-  `setPluginEnabled`, and `listPlugins`. `shell.qml` also registers
-  `image-selector`, which drives the `omarchy.image-picker` panel.
-- Individual plugins register their own IPC targets, named for the plugin rather
-  than for where they appear: the background switcher registers `background`, and
-  bar widgets register one target each — `omarchy.indicators`,
-  `omarchy.system-update`, `omarchy.clock`. There is no `bar` target.
-
-Widget files in `shell/plugins/bar/widgets/` contain Nerd Font glyphs as raw
-unicode characters. The `Write` and `Edit` tools strip multi-byte
-codepoints in some positions — do **not** rewrite widget files wholesale
-through those tools. For glyph fixes, use the targeted `Edit` tool with
-the surrounding context, or a Python script that inserts codepoints via
-`chr(0xXXXXX)`.
+tests; follow [`agents/visual-verification.md`](agents/visual-verification.md).
 
 # Refresh Pattern
 
@@ -264,22 +109,3 @@ omarchy-refresh-config hypr/hyprland.lua
 This copies `$OMARCHY_PATH/config/hypr/hyprland.lua` to `~/.config/hypr/hyprland.lua`. The argument
 is interpolated into both paths and only checked with `[[ -e ]]`, so pass a plain relative path: a
 name containing `..` resolves and copies, landing outside `~/.config` rather than being rejected.
-
-# Migrations
-
-Read `docs/migrations.md` before creating or changing migrations.
-
-Migrations are per-user and run through `omarchy-migrate` during `omarchy update` or from the login-time migration notification. Put migrations directly under `migrations/<timestamp>.sh`. Pending state is per-user under `~/.local/state/omarchy/migrations/`, so every user gets a chance to run every migration. Migrations run as the user; privileged work should invoke the appropriate helper or privilege prompt, and no-op when another user already applied it.
-
-To create a new migration, run `omarchy-dev-add-migration --no-edit`.
-
-New migration format:
-- File permissions must be `0644` (`-rw-r--r--`); migration runners execute them with `bash -euo pipefail`, not through executable bits
-- No shebang line
-- Start with an `echo` describing what the migration does
-- Use `$OMARCHY_PATH` to reference the omarchy directory
-- Prefer helper commands such as `omarchy-cmd-present`, `omarchy-cmd-missing`, `omarchy-pkg-present`, and `omarchy-pkg-missing`
-
-Omarchy 4.0 is upgraded through `bin/omarchy-upgrade-to-quattro`, not through the normal migration runner. Do not add compatibility migrations for old installer layouts; put pre-4 package-layout transition work in the upgrade command instead.
-
-Migrations may use raw `pacman`, `command -v`, or direct config edits when needed for one-off repair work.
