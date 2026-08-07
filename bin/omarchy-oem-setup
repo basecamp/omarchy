@@ -176,11 +176,11 @@ create_user() {
   printf '%s:%s\n' root "$password" | chpasswd
 
   # OEM installs skip archinstall's create_users, which is what normally
-  # uncomments %wheel in /etc/sudoers. A drop-in covers both paths.
-  if ! grep -Erqs '^\s*%wheel\s+ALL' /etc/sudoers /etc/sudoers.d/; then
-    echo "%wheel ALL=(ALL:ALL) ALL" >/etc/sudoers.d/00-omarchy-wheel
-    chmod 440 /etc/sudoers.d/00-omarchy-wheel
-  fi
+  # uncomments %wheel in /etc/sudoers. Always write the drop-in: detecting an
+  # existing grant is error-prone (omarchy ships narrow %wheel NOPASSWD rules
+  # for specific commands), and a duplicate grant is harmless.
+  echo "%wheel ALL=(ALL:ALL) ALL" >/etc/sudoers.d/00-omarchy-wheel
+  chmod 440 /etc/sudoers.d/00-omarchy-wheel
 }
 
 install_authorized_keys() {
