@@ -947,16 +947,22 @@ Item {
 
   property var whenResults: ({})       // id → true|false (allow visibility)
   property var checkedResults: ({})    // id → true|false (show ✓)
+  property bool guardsPending: false
 
   function evaluateGuards() {
-    var script = ""
-    var ids = Object.keys(root.items)
-    for (var i = 0; i < ids.length; i++) {
-      var entry = root.items[ids[i]]
-      if (!entry) continue
-      if (entry.when) script += "if { " + entry.when + "; } >/dev/null 2>&1; then echo " + ids[i] + ":w:1; else echo " + ids[i] + ":w:0; fi\n"
-      if (entry.checked) script += "if { " + entry.checked + "; } >/dev/null 2>&1; then echo " + ids[i] + ":c:1; else echo " + ids[i] + ":c:0; fi\n"
+    // Process ignores a command change while it is running, and `collected`
+    // belongs to the run in flight, so a second evaluation cannot overwrite
+    // the first: it would throw away the lines already read and never start.
+    // The surviving tail then lands as the whole answer, and every id lost
+    // with it goes back to showing, since a `when:` only hides on an explicit
+    // false. Wait for the run in flight and evaluate once it lands instead.
+    if (guardProc.running) {
+      root.guardsPending = true
+      return
     }
+    root.guardsPending = false
+
+    var script = MenuModel.guardScript(root.items)
     if (!script) {
       root.whenResults = ({})
       root.checkedResults = ({})
@@ -973,7 +979,16 @@ Item {
     stdout: SplitParser {
       onRead: function(data) { guardProc.collected += data + "\n" }
     }
-    onExited: {
+    onExited: function(exitCode, exitStatus) {
+      // A batch that was killed rather than finished has only told us about
+      // the rows it reached, and a row whose `when:` went unanswered shows.
+      // Keep the last complete set rather than let a half-read one through.
+      // A signal leaves the exit code at 0, so the status is what tells us.
+      if (exitCode !== 0 || exitStatus !== 0) {
+        if (root.guardsPending) Qt.callLater(function() { root.evaluateGuards() })
+        return
+      }
+
       var nextWhen = ({})
       var nextChecked = ({})
       var lines = guardProc.collected.split("\n")
@@ -994,6 +1009,9 @@ Item {
       root.whenResults = nextWhen
       root.checkedResults = nextChecked
       if (root.opened) root.rebuildDisplay()
+      // Run the evaluation that had to stand aside. Deferred by a turn so the
+      // process is settled before its command is set again.
+      if (root.guardsPending) Qt.callLater(function() { root.evaluateGuards() })
     }
   }
   PanelWindow {
