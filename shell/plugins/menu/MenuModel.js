@@ -372,8 +372,84 @@ function displayRow(items, itemOrder, checkedResults, entry, detail, score, sect
   }
 }
 
+// Commands a `checked:` expression reads a value out of. Each one is asked
+// the same question by every sibling row -- Defaults > Browser has seven rows
+// all comparing against `omarchy-default-browser` -- so the batch captures it
+// once and replays the answer for the rest of the run.
+//
+// The captures have to be eager. These are read inside `$(...)`, and a value
+// cached while one expression runs lives in that subshell only, so a lazy
+// memo never survives to the expression after it.
+var GUARD_READERS = [
+  "omarchy-channel-current",
+  "omarchy-default-agent",
+  "omarchy-default-browser",
+  "omarchy-default-editor",
+  "omarchy-default-terminal",
+  "omarchy-dns"
+]
+
+// Package and command presence account for most of what the guards ask, and
+// asked one at a time they are almost all fork: the shipped menu spends over
+// a second on them. Answer them inside the guard process instead, off one
+// package listing and bash's own PATH lookup. These shadow the real commands
+// for the batch only, and match them exit code for exit code, including no
+// arguments at all (present is true of nothing, missing is not).
+function guardHelpers() {
+  return 'declare -A __omarchy_pkgs=()\n'
+    + 'while read -r __omarchy_pkg; do __omarchy_pkgs[$__omarchy_pkg]=1; done < <(pacman -Qq 2>/dev/null)\n'
+    + 'omarchy-pkg-present() { local p; for p in "$@"; do [[ -n ${__omarchy_pkgs[$p]-} ]] || return 1; done; return 0; }\n'
+    + 'omarchy-pkg-missing() { local p; for p in "$@"; do [[ -n ${__omarchy_pkgs[$p]-} ]] || return 0; done; return 1; }\n'
+    + 'omarchy-cmd-present() { local c; for c in "$@"; do type -P "$c" >/dev/null 2>&1 || return 1; done; return 0; }\n'
+    + 'omarchy-cmd-missing() { local c; for c in "$@"; do type -P "$c" >/dev/null 2>&1 || return 0; done; return 1; }\n'
+}
+
+// Only capture a reader the guards actually ask for, so an extension that
+// carries none of them pays for none of them.
+function guardPrelude(guards) {
+  var prelude = guardHelpers()
+
+  for (var i = 0; i < GUARD_READERS.length; i++) {
+    var reader = GUARD_READERS[i]
+    if (guards.indexOf(reader) < 0) continue
+
+    var out = "__omarchy_read_" + i
+    var status = "__omarchy_status_" + i
+    prelude += out + "=$(" + reader + " 2>/dev/null); " + status + "=$?\n"
+      + reader + '() { (($#)) && { command ' + reader + ' "$@"; return; }; '
+      + "printf '%s\\n' \"$" + out + '"; return $' + status + "; }\n"
+  }
+
+  return prelude
+}
+
+function guardLine(id, tag, expression) {
+  return "if { " + expression + "; } >/dev/null 2>&1; then echo " + id + ":" + tag + ":1"
+    + "; else echo " + id + ":" + tag + ":0; fi\n"
+}
+
+// One bash script for every `when:` and `checked:` in the menu, reporting
+// `<id>:<w|c>:<0|1>` per line. Speed is the whole point: the menu opens on
+// the last evaluation's answers, so however long this takes is how long a row
+// can contradict the state it describes.
+function guardScript(items) {
+  var guards = ""
+  var ids = Object.keys(items || {})
+
+  for (var i = 0; i < ids.length; i++) {
+    var entry = items[ids[i]]
+    if (!entry) continue
+    if (entry.when) guards += guardLine(ids[i], "w", entry.when)
+    if (entry.checked) guards += guardLine(ids[i], "c", entry.checked)
+  }
+
+  return guards ? guardPrelude(guards) + guards : ""
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
+    guardReaders: GUARD_READERS,
+    guardScript: guardScript,
     stripJsonc: stripJsonc,
     normalizeAliases: normalizeAliases,
     normalizeItem: normalizeItem,

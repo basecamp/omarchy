@@ -962,14 +962,7 @@ Item {
     }
     root.guardsPending = false
 
-    var script = ""
-    var ids = Object.keys(root.items)
-    for (var i = 0; i < ids.length; i++) {
-      var entry = root.items[ids[i]]
-      if (!entry) continue
-      if (entry.when) script += "if { " + entry.when + "; } >/dev/null 2>&1; then echo " + ids[i] + ":w:1; else echo " + ids[i] + ":w:0; fi\n"
-      if (entry.checked) script += "if { " + entry.checked + "; } >/dev/null 2>&1; then echo " + ids[i] + ":c:1; else echo " + ids[i] + ":c:0; fi\n"
-    }
+    var script = MenuModel.guardScript(root.items)
     if (!script) {
       root.whenResults = ({})
       root.checkedResults = ({})
