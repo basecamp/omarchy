@@ -397,7 +397,10 @@ Panel {
     var net = wifiNetworks[selectedIndex]
     if (!net) return
     if (wifiActionFocused && canForgetNetwork(net)) { forget(net); return }
-    if (net.connected) { disconnect(net.network); return }
+    // Only act on a row that still resolves. disconnect() falls back to
+    // connectedWifiNetwork when handed null, so a row left stale by scan churn
+    // would otherwise tear down whatever is connected now instead.
+    if (net.connected) { disconnectRow(net.ssid); return }
     if (isProtected(net.security) && !net.known) { openPasswordPrompt(net.ssid); return }
     connectKnown(net.ssid)
   }
@@ -756,8 +759,17 @@ Panel {
     runNetworkAction("disconnect", network || connectedWifiNetwork, function(net) { net.disconnect() })
   }
 
+  // Disconnect from a row's SSID. Rows are primitive snapshots that can outlive
+  // their WifiNetwork, and disconnect()'s null fallback targets whatever is
+  // connected now, so a stale row must do nothing rather than hit an unrelated
+  // network. Callers that mean "drop the current connection" call disconnect().
+  function disconnectRow(ssid) {
+    var network = networkForSsid(ssid)
+    if (network) disconnect(network)
+  }
+
   function forget(net) {
-    runNetworkAction("forget", net ? net.network : null, function(network) { network.forget() })
+    runNetworkAction("forget", net ? networkForSsid(net.ssid) : null, function(network) { network.forget() })
   }
 
   implicitWidth: button.implicitWidth
@@ -918,7 +930,11 @@ Panel {
 
     onPressed: function(b) {
       if (root.opened) root.close()
-      else { root.open(); root.refresh() }
+      // open() is enough: onOpenedChanged runs refresh(true), which defers the
+      // PHY scan past the first frame. The bare refresh() that used to follow
+      // took the no-scan branch and set scannerEnabled synchronously, undoing
+      // that deferral and stalling the open on NetworkManager's AP flood.
+      else root.open()
     }
   }
 
@@ -1577,23 +1593,23 @@ Panel {
     }
 
     Connections {
-      target: row.net ? row.net.network : null
+      target: row.net ? root.networkForSsid(row.net.ssid) : null
       function onConnectionFailed(reason) {
         // Background auto-connect retries fire this too; only reprompt for
         // the connect started from this panel. Checked before
         // failNetworkAction, which clears the action state.
         var ours = root.actionKind === "connect" && root.actionSsid === (row.net.ssid || "")
-        root.failNetworkAction(row.net.network, reason)
+        root.failNetworkAction(root.networkForSsid(row.net.ssid), reason)
         if (ours && root.shouldRepromptPassphrase(reason, row.isProtected)) root.openPasswordPrompt(row.net.ssid)
       }
       function onConnectedChanged() {
-        if (row.net) root.checkActionCompletion(row.net.network)
+        if (row.net) root.checkActionCompletion(root.networkForSsid(row.net.ssid))
       }
       function onKnownChanged() {
-        if (row.net) root.checkActionCompletion(row.net.network)
+        if (row.net) root.checkActionCompletion(root.networkForSsid(row.net.ssid))
       }
       function onStateChangingChanged() {
-        if (row.net) root.checkActionCompletion(row.net.network)
+        if (row.net) root.checkActionCompletion(root.networkForSsid(row.net.ssid))
       }
     }
 
@@ -1642,7 +1658,7 @@ Panel {
         root.selectedIndex = row.index
         root.wifiActionFocused = false
         if (row.isConnected) {
-          root.disconnect(row.net.network)
+          root.disconnectRow(row.net.ssid)
           return
         }
         if (row.isProtected && !row.isKnown) {

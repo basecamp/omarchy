@@ -59,6 +59,17 @@ assertDeepEqual(arrayLikeLists.known.map(bluetooth.deviceLabel), ['Trackpad'], '
 assertDeepEqual(arrayLikeLists.discovered.map(bluetooth.deviceLabel), ['Gamepad'], 'bluetooth groups discovered devices from array-like values')
 
 assertDeepEqual(
+  bluetooth.deviceRow({ name: 'Deadbeef', address: '1', connected: false }),
+  { address: '1', name: 'Deadbeef', deviceName: '', connected: false, state: -1, batteryAvailable: false, battery: 0, pairing: false },
+  'bluetooth projects device rows with primitives only'
+)
+assertEqual(
+  bluetooth.deviceLabel(bluetooth.deviceRow({ name: 'Generic', deviceName: 'MX Master 3S', address: '2', connected: true })),
+  'MX Master 3S',
+  'bluetooth keeps deviceName in row projections so labels survive QObject-free rows'
+)
+
+assertDeepEqual(
   bluetooth.withPendingAction({ a: 'connecting' }, 'b', 'forgetting'),
   { a: 'connecting', b: 'forgetting' },
   'bluetooth adds pending actions immutably'
