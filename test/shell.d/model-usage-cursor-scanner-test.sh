@@ -127,6 +127,43 @@ pass "Cursor scanner reports hasLocalStats false for meters-only"
   fail "Cursor scanner keeps hasLocalStats false without credentials" "$missing $no_token"
 pass "Cursor scanner keeps hasLocalStats false without credentials"
 
+helpers=$(python3 - "$ROOT/shell/plugins/model-usage/scripts/cursor_usage_scanner.py" <<'PY'
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+scanner_path = Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location("cursor_usage_scanner", scanner_path)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+print(json.dumps({
+  "ms": mod.to_epoch_ms(1893456000000),
+  "seconds": mod.to_epoch_ms(1893456000),
+  "reset": mod.parse_billing_cycle_end(1893456000000),
+  "bad": mod.parse_billing_cycle_end("not-a-date"),
+  "empty": mod.parse_billing_cycle_end(None),
+}))
+PY
+)
+
+[[ $(jq -r '.ms' <<<"$helpers") == "1893456000000" ]] ||
+  fail "Cursor scanner keeps millisecond timestamps as milliseconds" "$helpers"
+pass "Cursor scanner keeps millisecond timestamps as milliseconds"
+
+[[ $(jq -r '.seconds' <<<"$helpers") == "1893456000000" ]] ||
+  fail "Cursor scanner converts second timestamps to milliseconds" "$helpers"
+pass "Cursor scanner converts second timestamps to milliseconds"
+
+[[ $(jq -r '.reset' <<<"$helpers") == "2030-01-01T00:00:00+00:00" ]] ||
+  fail "Cursor scanner formats parseable billing cycle ends as ISO" "$helpers"
+pass "Cursor scanner formats parseable billing cycle ends as ISO"
+
+[[ $(jq -r '.bad' <<<"$helpers") == "" && $(jq -r '.empty' <<<"$helpers") == "" ]] ||
+  fail "Cursor scanner clears unparseable billing cycle ends" "$helpers"
+pass "Cursor scanner clears unparseable billing cycle ends"
+
 # Full scanner path with a fake successful GetCurrentPeriodUsage response.
 http_ok=$(python3 - "$ROOT/shell/plugins/model-usage/scripts/cursor_usage_scanner.py" "$state_db" <<'PY'
 import importlib.util
