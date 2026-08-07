@@ -318,18 +318,23 @@ def today_prompts_from_history(claude_dir: Path) -> tuple[int, int]:
 # ------------------------------------------------------------------- limits
 
 
-def read_credentials(claude_dir: Path) -> dict[str, Any]:
+# The access token, its expiry, and the display-safe plan label from the
+# CLI's login. Nothing else leaves the credential store: the token goes
+# nowhere but the Authorization header of the limits probe, and only the
+# plan label may travel into the printed record.
+def oauth_login(claude_dir: Path) -> tuple[str, int, str]:
   try:
     data = json.loads((claude_dir / ".credentials.json").read_text(encoding="utf-8"))
   except Exception:
-    return {}
-  oauth = data.get("claudeAiOauth")
-  return oauth if isinstance(oauth, dict) else {}
+    return "", 0, ""
+  login = data.get("claudeAiOauth")
+  if not isinstance(login, dict):
+    return "", 0, ""
+  plan = plan_label(str(login.get("rateLimitTier") or ""), str(login.get("subscriptionType") or ""))
+  return str(login.get("accessToken") or ""), number(login.get("expiresAt")), plan
 
 
-def tier_label(oauth: dict[str, Any]) -> str:
-  tier = str(oauth.get("rateLimitTier") or "")
-  subscription = str(oauth.get("subscriptionType") or "")
+def plan_label(tier: str, subscription: str) -> str:
   if tier:
     match = re.search(r"max_(\d+x)", tier, re.IGNORECASE)
     if match:
@@ -337,11 +342,6 @@ def tier_label(oauth: dict[str, Any]) -> str:
   if subscription:
     return subscription[0].upper() + subscription[1:]
   return ""
-
-
-def token_expired(oauth: dict[str, Any]) -> bool:
-  expires_at = number(oauth.get("expiresAt"))
-  return expires_at > 0 and expires_at <= time.time() * 1000
 
 
 def parse_utilization(value: Any) -> float:
@@ -441,14 +441,13 @@ def probe_limits(access_token: str) -> dict[str, Any]:
   return {"ok": True, "limits": limits}
 
 
-def collect_limits(oauth: dict[str, Any], force: bool) -> dict[str, Any]:
+def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[str, Any]:
   result = {"limits": [], "usageStatusText": "", "authHelpText": AUTH_HELP}
-  access_token = str(oauth.get("accessToken") or "")
 
   if access_token == "":
     result["usageStatusText"] = "Waiting for auth"
     return result
-  if token_expired(oauth):
+  if expires_at_ms > 0 and expires_at_ms <= time.time() * 1000:
     return result
 
   # A panel that is opened and shut repeatedly must not turn into a request
@@ -505,8 +504,8 @@ def main() -> int:
       if today_prompts or today_sessions:
         stats = dict(stats, todayPrompts=today_prompts, todaySessions=today_sessions)
 
-  oauth = read_credentials(claude_dir)
-  limits = collect_limits(oauth, args.force)
+  access_token, expires_at_ms, plan = oauth_login(claude_dir)
+  limits = collect_limits(access_token, expires_at_ms, args.force)
 
   record = {
     "schemaVersion": 1,
@@ -515,7 +514,7 @@ def main() -> int:
     "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
     "ready": number(stats.get("totalPrompts")) > 0 or len(limits["limits"]) > 0,
     "hasLocalStats": True,
-    "tierLabel": tier_label(oauth),
+    "tierLabel": plan,
     "usageStatusText": limits["usageStatusText"],
     "authHelpText": limits["authHelpText"],
     "limits": limits["limits"],
