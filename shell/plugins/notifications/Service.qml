@@ -24,6 +24,10 @@ Item {
   // regeneratable cache that a `rm -rf ~/.cache` should wipe.
   readonly property string stateDir: home + "/.local/state/omarchy/"
   readonly property string historyPath: stateDir + "notifications.json"
+  // One file per on-screen popup, so live toasts survive shell restarts.
+  // A file exists exactly as long as its popup is showing: written when the
+  // toast appears, deleted when it expires, is dismissed, or is acted upon.
+  readonly property string popupStateDir: stateDir + "notifications/"
   // Thumbnails copied from /tmp screenshots are genuinely disposable — if
   // they vanish the row just renders without an image — so they stay in
   // ~/.cache where regeneratable artifacts belong.
@@ -172,8 +176,9 @@ Item {
         notification.tracked = false
         return
       }
+      persistPopupFile(snapshot)
       Qt.callLater(function() {
-        removeByOriginalId(popupModel, snapshot.originalId)
+        removePopupsByOriginalId(snapshot.originalId)
         popupModel.insert(0, snapshot)
       })
       return
@@ -200,12 +205,31 @@ Item {
       return
     }
 
+    persistPopupFile(snapshot)
     // Qt.callLater avoids "QV4::Object::insertMember" crashes when a
     // Repeater is mid-incubation while we mutate its model.
     Qt.callLater(function() {
-      removeByOriginalId(popupModel, snapshot.originalId)
+      removePopupsByOriginalId(snapshot.originalId)
       popupModel.insert(0, snapshot)
     })
+  }
+
+  // Popup-specific variant of removeByOriginalId: a replaced popup
+  // (freedesktop replaces_id) leaves the screen, so its persisted file has
+  // to go too — otherwise it resurrects on the next shell restart.
+  function removePopupsByOriginalId(originalId) {
+    for (var i = popupModel.count - 1; i >= 0; i--) {
+      var row = popupModel.get(i)
+      if (!row || row.originalId !== originalId) continue
+      // A restored row carries an id from the previous server generation,
+      // and the new server hands out ids from 1 again — a fresh
+      // notification with the same id is a coincidence, not a replaces_id
+      // update. Removing it here would silently kill a restored critical
+      // alert on an unrelated ping.
+      if (restoredPopups[row.originalId] === row.timestamp) continue
+      deletePopupFileFor(row)
+      popupModel.remove(i)
+    }
   }
 
   // Remove every row in `model` whose originalId matches. Chat apps reuse
@@ -296,6 +320,13 @@ Item {
     var entry = popupModel.get(index)
     var originalId = entry ? entry.originalId : -1
     var ref = originalId >= 0 ? liveRefs[originalId] : null
+    // The popup is leaving the screen — for any reason — so its persisted
+    // file must not survive to the next shell restart.
+    if (entry) {
+      deletePopupFileFor(entry)
+      if (restoredPopups[entry.originalId] === entry.timestamp)
+        delete restoredPopups[entry.originalId]
+    }
     popupModel.remove(index)
     if (ref) {
       try {
@@ -511,7 +542,7 @@ Item {
 
   Process {
     id: ensureDirsProc
-    command: ["mkdir", "-p", service.stateDir, service.imageCacheDir]
+    command: ["mkdir", "-p", service.stateDir, service.popupStateDir, service.imageCacheDir]
     running: false
   }
 
@@ -531,6 +562,115 @@ Item {
   }
 
   Process { id: deleteImageProc; running: false }
+
+  // ---------------------------------------------------- popup persistence
+  //
+  // Mirror every on-screen popup to its own file under popupStateDir so
+  // toasts survive shell restarts (notably the restart `omarchy-update`
+  // performs). Writes and deletes go through one serialized queue: a burst
+  // of replaces_id updates must not race a single reused Process, and
+  // ordering guarantees a delete issued after a write wins.
+
+  // Popups restored from a previous shell process, keyed originalId ->
+  // timestamp. Their ids predate the current server generation, so the
+  // replaces_id handling must not match them against fresh notifications.
+  property var restoredPopups: ({})
+
+  property var popupFileQueue: []
+
+  function enqueuePopupFileJob(command) {
+    popupFileQueue = popupFileQueue.concat([command])
+    runNextPopupFileJob()
+  }
+
+  function runNextPopupFileJob() {
+    if (popupFileProc.running || popupFileQueue.length === 0) return
+    popupFileProc.command = popupFileQueue[0]
+    popupFileQueue = popupFileQueue.slice(1)
+    popupFileProc.running = true
+  }
+
+  Process {
+    id: popupFileProc
+    running: false
+    onExited: service.runNextPopupFileJob()
+  }
+
+  function persistPopupFile(snapshot) {
+    // The JSON travels as an argument, not through shell interpolation, so
+    // summaries/bodies with quotes or backticks can't break the command. The
+    // mkdir guards notifications that arrive before ensureDirsProc has run.
+    enqueuePopupFileJob(["bash", "-c",
+      "mkdir -p \"$1\" && printf '%s\\n' \"$2\" > \"$1/$3\"", "--",
+      popupStateDir,
+      NotificationLogic.serializePopup(snapshot, NotificationUrgency.Normal),
+      NotificationLogic.popupFileName(snapshot)])
+  }
+
+  function deletePopupFileFor(row) {
+    if (!row) return
+    // History replays and the "no recent notifications" placeholder never
+    // had a file — rm -f on the computed path is a harmless no-op there.
+    enqueuePopupFileJob(["rm", "-f", popupStateDir + NotificationLogic.popupFileName(row)])
+  }
+
+  Process {
+    id: restorePopupsProc
+    running: false
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: service.restorePopups(text)
+    }
+  }
+
+  function restorePopups(raw) {
+    var parsed = NotificationLogic.parsePopupFiles(raw, NotificationUrgency.Normal)
+    // Duplicate originalIds (a delete that never ran): only the newest per
+    // id is restorable, the rest are dead files.
+    for (var s = 0; s < parsed.stale.length; s++) deletePopupFileFor(parsed.stale[s])
+
+    var now = Date.now()
+    var live = []
+    for (var i = 0; i < parsed.entries.length; i++) {
+      var entry = parsed.entries[i]
+      var duration = durationFor(entry.urgency, entry.expireTimeout)
+      if (NotificationLogic.popupExpired(entry, duration, now)) {
+        deletePopupFileFor(entry)
+        continue
+      }
+      // Survivors restart with a full lifetime on purpose: shell restarts
+      // are rare, and a full look after the restart flicker beats resuming
+      // a toast with a second left on its clock.
+      live.push(entry)
+    }
+    if (live.length === 0) return
+
+    Qt.callLater(function() {
+      for (var j = 0; j < live.length; j++) {
+        var restored = live[j]
+        // A notification received while the restore was reading the dir can
+        // already occupy this originalId. Same timestamp: it IS this entry —
+        // the file was written by the fresh popup still on screen, so it
+        // must stay. Different timestamp: a previous-generation popup the
+        // fresh one superseded, and its file is dead weight.
+        var claimedRow = null
+        for (var k = 0; k < popupModel.count; k++) {
+          var row = popupModel.get(k)
+          if (row && row.originalId === restored.originalId) { claimedRow = row; break }
+        }
+        if (claimedRow) {
+          if (claimedRow.timestamp !== restored.timestamp) service.deletePopupFileFor(restored)
+          continue
+        }
+        // Append (entries are newest-first) so restored toasts stack in
+        // their original order below anything that just arrived. Restored
+        // popups have no liveRefs entry — the server object died with the
+        // old shell — so dismissal and action fallbacks degrade gracefully.
+        service.restoredPopups[restored.originalId] = restored.timestamp
+        popupModel.append(restored)
+      }
+    })
+  }
 
   // ---------------------------------------------------- history persistence
 
@@ -660,7 +800,16 @@ Item {
     // Once mkdir has had a tick, load the existing history file. FileView
     // surfaces an empty string when the file doesn't exist; loadHistory
     // handles that path.
-    Qt.callLater(function() { historyFile.reload() })
+    Qt.callLater(function() {
+      historyFile.reload()
+      // Re-show popups that were on screen when the previous shell died.
+      // The glob-through-bash tolerates a missing/empty dir (first run).
+      // awk 1 (not cat) so a torn file missing its trailing newline can't
+      // glue itself onto the next file and take a valid popup down with it.
+      restorePopupsProc.command = ["bash", "-c",
+        "awk 1 \"$1\"/*.json 2>/dev/null || true", "--", service.popupStateDir]
+      restorePopupsProc.running = true
+    })
   }
 
   // ---------------------------------------------------- IPC

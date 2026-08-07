@@ -194,6 +194,78 @@ function dumpRows(rows) {
   return out
 }
 
+// ---------------------------------------------------- popup persistence
+//
+// Each on-screen popup is mirrored to its own file under
+// ~/.local/state/omarchy/notifications/ so toasts survive shell restarts
+// (e.g. the restart `omarchy-update` performs). The file exists exactly as
+// long as the popup is on screen: it is written when the toast appears and
+// deleted when the toast expires, is dismissed, or its action is invoked.
+
+function popupEntry(value, normalUrgency) {
+  var entry = historyEntry(value, normalUrgency)
+  var expire = Number((value || {}).expireTimeout || 0)
+  if (!isFinite(expire) || expire < 0) expire = 0
+  entry.expireTimeout = expire
+  return entry
+}
+
+function popupFileName(entry) {
+  var e = entry || {}
+  return String(e.timestamp || 0) + "-" + String(e.originalId || 0) + ".json"
+}
+
+function serializePopup(entry, normalUrgency) {
+  // Compact (single-line) on purpose: restore cats every file together and
+  // parses line by line, which only works when each file is one line.
+  return JSON.stringify(popupEntry(entry, normalUrgency))
+}
+
+// Parse the concatenation of every persisted popup file. Returns the
+// restorable entries newest-first plus the entries whose files should be
+// deleted (duplicate originalIds from a failed delete — only the newest
+// per originalId is restorable).
+function parsePopupFiles(raw, normalUrgency) {
+  var lines = String(raw || "").split("\n")
+  var parsed = []
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim()
+    if (!line) continue
+    try {
+      var value = JSON.parse(line)
+      if (value && typeof value === "object") parsed.push(popupEntry(value, normalUrgency))
+    } catch (e) {
+      // A torn write from a crash mid-save — skip the line, keep the rest.
+    }
+  }
+
+  var keep = {}
+  for (var j = 0; j < parsed.length; j++) {
+    var entry = parsed[j]
+    var key = entry.originalId
+    var prior = keep[key]
+    if (!prior || (entry.timestamp || 0) >= (prior.timestamp || 0)) keep[key] = entry
+  }
+
+  var entries = []
+  var stale = []
+  for (var k = 0; k < parsed.length; k++) {
+    if (keep[parsed[k].originalId] === parsed[k]) entries.push(parsed[k])
+    else stale.push(parsed[k])
+  }
+  entries.sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0) })
+  return { entries: entries, stale: stale }
+}
+
+// A persisted popup whose lifetime already ran out would have expired on
+// screen had the shell kept running, so it is not restored. duration 0 means
+// the popup never expires (critical urgency) and always survives restarts.
+function popupExpired(entry, duration, now) {
+  var lifetime = Number(duration || 0)
+  if (!isFinite(lifetime) || lifetime <= 0) return false
+  return (Number(now) - Number((entry || {}).timestamp || 0)) >= lifetime
+}
+
 function popupPlacement(barPosition, barClearance, gapsOut) {
   var position = String(barPosition || "top")
   var clearance = Number(barClearance)
@@ -236,6 +308,11 @@ if (typeof module !== "undefined") {
     parseHistory: parseHistory,
     recentHistoryRows: recentHistoryRows,
     dumpRows: dumpRows,
+    popupEntry: popupEntry,
+    popupFileName: popupFileName,
+    serializePopup: serializePopup,
+    parsePopupFiles: parsePopupFiles,
+    popupExpired: popupExpired,
     popupPlacement: popupPlacement,
     imageExtension: imageExtension
   }
