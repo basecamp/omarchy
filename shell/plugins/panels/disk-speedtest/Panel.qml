@@ -4,8 +4,8 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-// The shared gauge-cluster overlay dressed for the disk speed test: write and
-// read dials in MB/s, titled with the model of the disk under test. One
+// The shared gauge-cluster overlay dressed for the disk speed test: read and
+// write dials in MB/s, titled with the model of the disk under test. One
 // omarchy-disk-speedtest run streams both phases and cleans up after itself,
 // so dismissal only has to stop the process.
 Item {
@@ -18,7 +18,7 @@ Item {
   property bool running: false
   property bool expectedStop: false
   property bool pendingRun: false
-  property string phase: ""             // "write" | "read" | ""
+  property string phase: ""             // "read" | "write" | ""
   property string diskName: ""
   property string writeMBps: ""
   property string readMBps: ""
@@ -64,7 +64,7 @@ Item {
     writeMBps = ""
     readMBps = ""
     stderrText = ""
-    phase = "write"
+    phase = "read"
     running = true
     proc.running = true
   }
@@ -74,8 +74,9 @@ Item {
     return isFinite(value) && value > 0 ? value : 0
   }
 
-  // Lines are "disk <model>", then "write <MB/s>" once a second, then
-  // "read <MB/s>". The phase follows whichever figure is streaming.
+  // Lines are "disk <model>", then "read <MB/s>" once a second, then
+  // "write <MB/s>". The phase follows whichever figure is streaming, and each
+  // phase's final line is its steady-state average, which the dial settles on.
   function updateLine(line) {
     var parts = String(line).trim().split(/\s+/)
     if (parts.length < 2) return
@@ -130,15 +131,15 @@ Item {
     fontFamily: Style.font.family
     layerNamespace: "omarchy-disk-speedtest"
     title: root.diskName
-    leftLabel: "WRITE"
-    rightLabel: "READ"
+    leftLabel: "READ"
+    rightLabel: "WRITE"
     unit: "MB/s"
     runAgainTooltip: "Measure again"
     running: root.running
-    leftValue: root.toRate(root.writeMBps)
-    rightValue: root.toRate(root.readMBps)
-    leftLive: root.running && root.phase === "write"
-    rightLive: root.running && root.phase === "read"
+    leftValue: root.toRate(root.readMBps)
+    rightValue: root.toRate(root.writeMBps)
+    leftLive: root.running && root.phase === "read"
+    rightLive: root.running && root.phase === "write"
     error: root.error
     open: root.opened
     scaleStops: [500, 1000, 2500, 5000, 10000, 15000]
