@@ -7,8 +7,8 @@ import qs.Ui
 
 Panel {
   id: root
-  moduleName: "omarchy.model-usage"
-  ipcTarget: "omarchy.model-usage"
+  moduleName: "omarchy.agents"
+  ipcTarget: "omarchy.agents"
   manageIpc: false
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -98,8 +98,12 @@ Panel {
   function limitWindows(p) {
     if (!p) return []
     var out = []
-    if (p.rateLimitPercent >= 0) out.push(limitWindow(p.rateLimitLabel, p.rateLimitPercent, p.rateLimitResetAt))
-    if (p.secondaryRateLimitPercent >= 0) out.push(limitWindow(p.secondaryRateLimitLabel, p.secondaryRateLimitPercent, p.secondaryRateLimitResetAt))
+    var list = p.limits || []
+    for (var i = 0; i < list.length; i++) {
+      var entry = list[i] || {}
+      var percent = Number(entry.percent)
+      if (percent >= 0) out.push(limitWindow(entry.label, percent, entry.resetsAt))
+    }
     return out
   }
 
@@ -222,8 +226,9 @@ Panel {
     return ""
   }
 
-  // Codex ships as a white mark; swap to the dark one when the surface behind
-  // it is light. The Claude mark is brand-orange and works on both.
+  // Agents that ship a white mark carry an `assets/<id>-light.svg` twin for
+  // light surfaces; marks that work on both (Claude's brand-orange) ship one
+  // file. The luminance check decides which candidate to try first.
   function colorChannelLuminance(value) {
     var channel = Number(value)
     if (!isFinite(channel)) return 0
@@ -236,14 +241,16 @@ Panel {
       + 0.0722 * colorChannelLuminance(color.b)
   }
 
-  function iconSourceForProvider(p, surfaceColor) {
-    if (!p) return ""
-    if (p.providerId === "claude") return Qt.resolvedUrl("assets/claude.svg")
-    if (p.providerId === "codex")
-      return colorLuminance(surfaceColor || Color.background) >= 0.5
-        ? Qt.resolvedUrl("assets/codex-light.svg")
-        : Qt.resolvedUrl("assets/codex.svg")
-    return ""
+  // Marks resolve by convention, so a new agent's data file needs nothing
+  // from this panel: assets/<id>.svg if it ships one, the module's bar glyph
+  // if it doesn't.
+  function iconCandidatesForProvider(p, surfaceColor) {
+    if (!p) return []
+    var candidates = []
+    if (colorLuminance(surfaceColor || Color.background) >= 0.5)
+      candidates.push(Qt.resolvedUrl("assets/" + p.providerId + "-light.svg"))
+    candidates.push(Qt.resolvedUrl("assets/" + p.providerId + ".svg"))
+    return candidates
   }
 
   // Nothing to report, nothing in the bar: Bar.qml collapses a slot whose item
@@ -258,7 +265,6 @@ Panel {
     cursorActive = false
     nowMs = Date.now()
     if (panelFlick) panelFlick.contentY = 0
-    usage.refreshAll()
     usage.refreshLimits()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -358,13 +364,33 @@ Panel {
             fontFamily: root.fontFamily
 
             iconComponent: Component {
-              Image {
-                source: root.iconSourceForProvider(root.provider, root.surface)
+              Item {
+                id: heroMark
+                property var candidates: root.iconCandidatesForProvider(root.provider, root.surface)
+                property int candidateIndex: 0
+                onCandidatesChanged: candidateIndex = 0
+
                 width: Style.font.display
                 height: Style.font.display
-                sourceSize.width: Style.font.display * 2
-                sourceSize.height: Style.font.display * 2
-                fillMode: Image.PreserveAspectFit
+
+                Image {
+                  id: heroMarkImage
+                  anchors.fill: parent
+                  source: heroMark.candidateIndex < heroMark.candidates.length ? heroMark.candidates[heroMark.candidateIndex] : ""
+                  sourceSize.width: Style.font.display * 2
+                  sourceSize.height: Style.font.display * 2
+                  fillMode: Image.PreserveAspectFit
+                  onStatusChanged: if (status === Image.Error && heroMark.candidateIndex < heroMark.candidates.length) heroMark.candidateIndex++
+                }
+
+                Text {
+                  anchors.centerIn: parent
+                  visible: heroMarkImage.status !== Image.Ready
+                  text: button.text
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.display
+                }
               }
             }
           }
@@ -373,7 +399,7 @@ Panel {
             visible: root.providers.length === 0
             width: parent.width
             topPadding: Style.space(24)
-            text: "No AI coding subscriptions found.\nClaude Code and Codex show up here once you've used them."
+            text: "No AI coding subscriptions found.\nAgents show up here once you've used them."
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.body

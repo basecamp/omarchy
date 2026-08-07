@@ -1,12 +1,27 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Codex usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Codex usage into one display-ready JSON record.
+
+Local stats come from native Codex CLI session files (and pi sessions that
+ran through openai-codex); rate limits and the plan come from the Codex
+app-server RPC. The agents panel only ever reads the JSON this prints.
+"""
+
+import argparse
 import json
 import os
 import select
 import shutil
 import subprocess
-import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+AGENT_ID = "codex"
+AGENT_NAME = "Codex"
+AUTH_HELP = "Run `codex login` to authenticate."
 
 
 def local_day(value):
@@ -65,11 +80,9 @@ def find_command(name):
 now = datetime.now()
 today = now.strftime("%Y-%m-%d")
 recent_dates = [(now - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
-recent_set = set(recent_dates)
 recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
 today_tokens_by_model = {}
 model_usage = {}
-sessions_by_day = {day: set() for day in recent_dates}
 today_sessions = set()
 active_days = set()
 
@@ -78,8 +91,6 @@ today_total_tokens = 0
 total_prompts = 0
 total_sessions = set()
 seen_pi_messages = set()
-usage_status = ""
-usage_help = ""
 
 
 def add_usage(day, session_key, model, input_tokens, output_tokens, cache_read, cache_write):
@@ -102,7 +113,6 @@ def add_usage(day, session_key, model, input_tokens, output_tokens, cache_read, 
 
   if day in recent:
     recent[day]["messageCount"] += total
-    sessions_by_day[day].add(session_key)
 
   if day == today:
     today_prompts += 1
@@ -252,16 +262,31 @@ def rpc_request(proc, request_id, method, params=None, timeout=8):
   raise TimeoutError(method)
 
 
-def fetch_codex_rpc():
-  result = {
-    "rateLimitPercent": -1,
-    "rateLimitLabel": "",
-    "rateLimitResetAt": "",
-    "secondaryRateLimitPercent": -1,
-    "secondaryRateLimitLabel": "",
-    "secondaryRateLimitResetAt": "",
-    "tierLabel": "",
+def limit_window(window):
+  if not isinstance(window, dict):
+    return None
+  used = window.get("usedPercent")
+  if used is None:
+    return None
+  mins = number(window.get("windowDurationMins"))
+  if mins == 10080:
+    label = "Weekly (7-day)"
+  elif mins and mins % 60 == 0:
+    label = f"{mins // 60}h window"
+  elif mins:
+    label = f"{mins}m window"
+  else:
+    label = "Limit"
+  reset = window.get("resetsAt")
+  return {
+    "label": label,
+    "percent": float(used) / 100.0,
+    "resetsAt": datetime.fromtimestamp(number(reset), timezone.utc).isoformat() if reset else "",
   }
+
+
+def fetch_codex_rpc():
+  result = {"limits": [], "tierLabel": "", "usageStatusText": "", "authHelpText": AUTH_HELP}
   codex = find_command("codex")
   if not codex:
     result["usageStatusText"] = "Codex unavailable"
@@ -283,7 +308,7 @@ def fetch_codex_rpc():
     return result
 
   try:
-    rpc_request(proc, 1, "initialize", {"clientInfo": {"name": "omarchy-model-usage", "version": "1"}}, timeout=8)
+    rpc_request(proc, 1, "initialize", {"clientInfo": {"name": "omarchy-agent-usage", "version": "1"}}, timeout=8)
     proc.stdin.write(json.dumps({"method": "initialized", "params": {}}) + "\n")
     proc.stdin.flush()
     account_msg = rpc_request(proc, 2, "account/read", timeout=4)
@@ -294,26 +319,10 @@ def fetch_codex_rpc():
     plan = limits.get("planType") or account.get("planType") or account.get("type") or ""
     result["tierLabel"] = str(plan) if plan else ""
 
-    def fill(prefix, window):
-      if not isinstance(window, dict):
-        return
-      used = window.get("usedPercent")
-      if used is not None:
-        result[prefix + "Percent"] = float(used) / 100.0
-      mins = number(window.get("windowDurationMins"))
-      if mins:
-        if mins == 10080:
-          result[prefix + "Label"] = "Weekly (7-day)"
-        elif mins % 60 == 0:
-          result[prefix + "Label"] = f"{mins // 60}h window"
-        else:
-          result[prefix + "Label"] = f"{mins}m window"
-      reset = window.get("resetsAt")
-      if reset:
-        result[prefix + "ResetAt"] = datetime.fromtimestamp(number(reset), timezone.utc).isoformat()
-
-    fill("rateLimit", limits.get("primary"))
-    fill("secondaryRateLimit", limits.get("secondary"))
+    for window in (limits.get("primary"), limits.get("secondary")):
+      entry = limit_window(window)
+      if entry:
+        result["limits"].append(entry)
   except Exception as exc:
     result["usageStatusText"] = "Codex limits unavailable"
     result["authHelpText"] = str(exc)
@@ -329,28 +338,43 @@ def fetch_codex_rpc():
   return result
 
 
-scan_pi_sessions()
-scan_native_codex_sessions()
-rpc = fetch_codex_rpc()
+def main():
+  parser = argparse.ArgumentParser()
+  # Local stats and limits come from the same cheap scan, so there is no
+  # cache to force past and no faster limits-only path. The flags exist so
+  # every collector accepts the same invocation.
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  parser.parse_args()
 
-out = {
-  "ready": True,
-  "hasLocalStats": True,
-  "todayPrompts": today_prompts,
-  "todaySessions": len(today_sessions),
-  "todayTotalTokens": today_total_tokens,
-  "todayTokensByModel": today_tokens_by_model,
-  "recentDays": [recent[day] for day in recent_dates],
-  "totalPrompts": total_prompts,
-  "totalSessions": len(total_sessions),
-  # Days with any recorded usage, for the all-time "N days" summary.
-  # The dates travel too: merging snapshots from several machines needs
-  # their union, which a count alone cannot give.
-  "activeDays": len(active_days),
-  "activeDates": sorted(active_days),
-  "modelUsage": model_usage,
-  "usageStatusText": usage_status,
-  "authHelpText": usage_help,
-}
-out.update(rpc)
-print(json.dumps(out, separators=(",", ":")))
+  scan_pi_sessions()
+  scan_native_codex_sessions()
+  rpc = fetch_codex_rpc()
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": True,
+    "hasLocalStats": True,
+    "todayPrompts": today_prompts,
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": today_total_tokens,
+    "todayTokensByModel": today_tokens_by_model,
+    "recentDays": [recent[day] for day in recent_dates],
+    "totalPrompts": total_prompts,
+    "totalSessions": len(total_sessions),
+    # Days with any recorded usage, for the all-time "N days" summary. The
+    # dates travel too: merging snapshots from several machines needs their
+    # union, which a count alone cannot give.
+    "activeDays": len(active_days),
+    "activeDates": sorted(active_days),
+    "modelUsage": model_usage,
+  }
+  record.update(rpc)
+  print(json.dumps(record, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+  main()

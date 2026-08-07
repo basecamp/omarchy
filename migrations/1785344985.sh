@@ -1,4 +1,4 @@
-echo "Add the model usage widget to the bar"
+echo "Add the agents widget to the bar"
 
 # The widget is now in the default layout. It draws nothing until a provider
 # reports usage — Panel.qml is `visible: providers.length > 0`, and Main.qml
@@ -8,7 +8,7 @@ echo "Add the model usage widget to the bar"
 
 config_file="$HOME/.config/omarchy/shell.json"
 
-if [[ -s $config_file ]] && omarchy-cmd-present jq; then
+if [[ -s $config_file ]]; then
   tmp=$(mktemp)
   jq '
     def entry_id:
@@ -38,10 +38,10 @@ if [[ -s $config_file ]] && omarchy-cmd-present jq; then
 
     # Respect a bar the user already curated: only place the widget when it is
     # absent from every section, never a second copy.
-    if has_widget("omarchy.model-usage") then
+    if has_widget("omarchy.agents") then
       .
     else
-      .bar.layout.right |= insert_after("omarchy.tray"; { id: "omarchy.model-usage" })
+      .bar.layout.right |= insert_after("omarchy.tray"; { id: "omarchy.agents" })
     end
   ' "$config_file" >"$tmp" && mv "$tmp" "$config_file" || rm -f "$tmp"
 fi

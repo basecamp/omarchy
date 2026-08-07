@@ -41,12 +41,16 @@ cat >"$session" <<EOF
 EOF
 
 result=$(HOME="$TEST_HOME" CODEX_HOME="$TEST_HOME/.codex" PATH="$TEST_HOME/bin:$PATH" \
-  python3 "$ROOT/shell/plugins/model-usage/scripts/codex_usage_scanner.py")
+  "$ROOT/bin/omarchy-agent-usage-codex")
 
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "210" ]] ||
-  fail "Codex scanner counts each turn once" "$result"
-pass "Codex scanner counts each turn once"
+  fail "Codex collector counts each turn once" "$result"
+pass "Codex collector counts each turn once"
 
 [[ $(jq -c '.modelUsage["gpt-test"]' <<<"$result") == '{"inputTokens":70,"outputTokens":30,"cacheReadInputTokens":110,"cacheCreationInputTokens":0}' ]] ||
-  fail "Codex scanner does not double-count cache or reasoning tokens" "$result"
-pass "Codex scanner does not double-count cache or reasoning tokens"
+  fail "Codex collector does not double-count cache or reasoning tokens" "$result"
+pass "Codex collector does not double-count cache or reasoning tokens"
+
+[[ $(jq -c '.id + "/" + (.limits|tostring)' <<<"$result") == '"codex/[]"' ]] ||
+  fail "Codex collector identifies itself with an empty limits list" "$result"
+pass "Codex collector identifies itself with an empty limits list"

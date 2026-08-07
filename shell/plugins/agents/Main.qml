@@ -1,101 +1,288 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import "providers"
 
+// The display side of agent usage. All extraction lives behind
+// omarchy-agent-usage-update, which writes one JSON record per agent into
+// the usage directory; this file only discovers those records, watches them
+// for changes, and optionally merges snapshots synced from other machines.
 Item {
   id: root
   visible: false
 
   property var settings: ({})
 
-  Claude {
-    id: claudeProvider
-    enabled: root.providerEnabled("claude")
-    providerSettings: root.settings && root.settings.providers && root.settings.providers.claude ? root.settings.providers.claude : ({})
-    onLastRefreshedAtMsChanged: root.scheduleSync()
-    onReadyChanged: root.scheduleSync()
-  }
-
-  Codex {
-    id: codexProvider
-    enabled: root.providerEnabled("codex")
-    providerSettings: root.settings && root.settings.providers && root.settings.providers.codex ? root.settings.providers.codex : ({})
-    onLastRefreshedAtMsChanged: root.scheduleSync()
-    onReadyChanged: root.scheduleSync()
-  }
-
-  property var providers: [claudeProvider, codexProvider]
-
-  // A subscription earns a place in the bar and the panel by being switched on
-  // in settings and having actually produced numbers — locally or on a synced
-  // device. Presence on disk is not enough: a box that installed Codex and
-  // never ran it would get a tab full of zeroes. With nothing to show, the
-  // whole module collapses out of the bar rather than sitting there dimmed.
-  property var enabledProviders: {
-    var rev = syncRevision
-    var running = syncRunning
-    var result = []
-    if (claudeProvider.enabled) {
-      var claude = displayProvider(claudeProvider)
-      if (providerHasData(claude)) result.push(claude)
-    }
-    if (codexProvider.enabled) {
-      var codex = displayProvider(codexProvider)
-      if (providerHasData(codex)) result.push(codex)
-    }
-    return result
-  }
-
-  // All-time, not today: a quiet day is not the same as an absent provider.
-  function providerHasData(p) {
-    return numberValue(p.totalPrompts) > 0 || numberValue(p.totalSessions) > 0
-      || numberValue(p.activeDays) > 0 || Number(p.rateLimitPercent) >= 0
-      || Number(p.secondaryRateLimitPercent) >= 0
-  }
-
-  property bool refreshing: claudeProvider.refreshing || codexProvider.refreshing || syncRunning
-  property double aggregateUpdatedAtMs: aggregateData && aggregateData.updatedAtMs ? Number(aggregateData.updatedAtMs) : 0
-  property double lastRefreshedAtMs: Math.max(aggregateUpdatedAtMs, claudeProvider.lastRefreshedAtMs || 0, codexProvider.lastRefreshedAtMs || 0)
-  property int refreshIntervalSec: Math.max(30, Number(setting("refreshIntervalSec", 900)))
-
-  property var syncModeSetting: setting("syncMode", setting("syncEnabled", false))
-  property bool syncEnabled: parseSyncEnabled(syncModeSetting)
-  property string syncDir: String(setting("syncDir", ""))
-  property string syncFileName: String(setting("syncFileName", ""))
-  property string syncDeviceId: String(setting("syncDeviceId", ""))
   readonly property string home: Quickshell.env("HOME") || ""
-  property string detectedHostname: ""
-  readonly property string syncEffectiveDir: expandPath(syncDir)
-  readonly property string syncEffectiveFileName: safeSnapshotFileName(syncFileName, syncDeviceId)
-  readonly property string syncEffectiveDeviceId: safeDeviceId(syncDeviceId || syncEffectiveFileName.replace(/\.json$/i, ""))
-  readonly property string syncSnapshotPath: syncConfigured() ? syncEffectiveDir + "/" + syncEffectiveFileName : home + "/.cache/omarchy/model-usage-disabled.json"
-  property var aggregateData: ({})
-  property int syncRevision: 0
-  property bool syncRunning: false
-  property bool syncRequestedWhileRunning: false
-  property string syncStatusText: ""
-  property int syncDeviceCount: syncConfigured() && aggregateData && aggregateData.deviceCount ? Number(aggregateData.deviceCount) : 0
+  readonly property string usageDir: (Quickshell.env("XDG_STATE_HOME") || home + "/.local/state") + "/omarchy/agents/usage"
 
-  onSyncEnabledChanged: syncSettingsChanged()
-  onSyncDirChanged: syncSettingsChanged()
-  onSyncFileNameChanged: if (syncConfigured()) scheduleSync()
-  onSyncDeviceIdChanged: if (syncConfigured()) scheduleSync()
+  // ------------------------------------------------------------- discovery
 
-  Component.onCompleted: if (syncConfigured()) scheduleSync()
+  property var agentIds: []
+  property var agents: []
+  property int dataRevision: 0
 
-  function setting(name, fallback) {
-    var value = settings ? settings[name] : undefined
-    return value === undefined || value === null ? fallback : value
+  Process {
+    id: listProcess
+    running: false
+    command: ["find", root.usageDir, "-maxdepth", "1", "-name", "*.json", "-printf", "%f\n"]
+
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.applyAgentListing(text)
+    }
   }
+
+  function rescanAgents() {
+    if (!listProcess.running) listProcess.running = true
+  }
+
+  function applyAgentListing(output) {
+    var ids = []
+    var lines = String(output || "").split("\n")
+    for (var i = 0; i < lines.length; i++) {
+      var name = lines[i].trim()
+      if (name.slice(-5) === ".json") ids.push(name.slice(0, -5))
+    }
+    ids.sort()
+    // Same list, same objects: reassigning the model would tear down every
+    // FileView just to build identical ones.
+    if (JSON.stringify(ids) !== JSON.stringify(agentIds)) agentIds = ids
+  }
+
+  Instantiator {
+    id: agentInstantiator
+    model: root.agentIds
+
+    delegate: Agent {
+      required property var modelData
+      agentId: modelData
+      path: root.usageDir + "/" + modelData + ".json"
+      onRecordChanged: root.recordsChanged()
+    }
+
+    onObjectAdded: (index, object) => root.rebuildAgents()
+    onObjectRemoved: (index, object) => root.rebuildAgents()
+  }
+
+  function rebuildAgents() {
+    var result = []
+    for (var i = 0; i < agentInstantiator.count; i++) {
+      var agent = agentInstantiator.objectAt(i)
+      if (agent) result.push(agent)
+    }
+    agents = result
+    recordsChanged()
+  }
+
+  function recordsChanged() {
+    dataRevision++
+    scheduleLimitsRetry()
+    scheduleSync()
+  }
+
+  // A collector that could not reach its limits endpoint at all — typically
+  // the seconds after login before the network is up — writes retryAdvised
+  // into its record. Honor it with one sooner try instead of waiting out the
+  // full refresh interval; a run that reaches the endpoint clears the flag.
+  // Only the advising agents rerun, so an outage at one provider does not
+  // put every other collector on a 30-second treadmill.
+  property var retryAgentIds: []
+
+  Timer {
+    id: limitsRetry
+    interval: 30000
+    repeat: false
+    onTriggered: root.runUpdate("limits", root.retryAgentIds)
+  }
+
+  function scheduleLimitsRetry() {
+    var advising = []
+    for (var i = 0; i < agents.length; i++) {
+      var record = agents[i] ? agents[i].record : null
+      if (record && record.retryAdvised === true && providerEnabled(String(record.id || "")))
+        advising.push(String(record.id))
+    }
+    retryAgentIds = advising
+    if (advising.length > 0) limitsRetry.restart()
+    else limitsRetry.stop()
+  }
+
+  Component.onCompleted: {
+    rescanAgents()
+    if (syncConfigured()) scheduleSync()
+  }
+
+  // -------------------------------------------------------------- refresh
+
+  property int refreshIntervalSec: Math.max(30, Number(setting("refreshIntervalSec", 900)))
+  property string pendingUpdateKind: ""
 
   Timer {
     interval: root.refreshIntervalSec * 1000
     running: true
     repeat: true
     triggeredOnStart: true
-    onTriggered: root.refreshAll()
+    onTriggered: root.runUpdate("normal")
   }
+
+  Process {
+    id: updateProcess
+    running: false
+    onExited: {
+      root.rescanAgents()
+      if (root.pendingUpdateKind !== "") {
+        var kind = root.pendingUpdateKind
+        root.pendingUpdateKind = ""
+        root.runUpdate(kind)
+      }
+    }
+
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: if (text.trim() !== "") console.warn("agents", text.trim())
+    }
+  }
+
+  function updateCommand(kind, agentIds) {
+    var command = ["omarchy-agent-usage-update"]
+    if (kind === "force") command.push("--force")
+    if (kind === "limits") command.push("--limits-only")
+    var providers = settings && settings.providers ? settings.providers : {}
+    for (var id in providers) {
+      if (providers[id] && providers[id].enabled === false) command.push("--except", id)
+    }
+    if (agentIds) {
+      for (var i = 0; i < agentIds.length; i++) command.push(agentIds[i])
+    }
+    return command
+  }
+
+  function runUpdate(kind, agentIds) {
+    if (updateProcess.running) {
+      // Collapse queued requests to one full rerun; a forced refresh outranks
+      // the cheaper kinds it might have been queued behind.
+      if (kind === "force" || root.pendingUpdateKind === "") root.pendingUpdateKind = kind
+      return
+    }
+    updateProcess.command = updateCommand(kind, agentIds)
+    updateProcess.running = true
+  }
+
+  function refresh() { refreshAll(true) }
+  function refreshAll(force) { runUpdate(force === true ? "force" : "normal") }
+
+  // Opening the panel wants the numbers that go stale on the wire, not
+  // another walk over every transcript on disk — the collectors reuse their
+  // recent scans in this mode.
+  function refreshLimits() { runUpdate("limits") }
+
+  // ------------------------------------------------------------- providers
+
+  // An agent earns a place in the bar and the panel by being switched on in
+  // settings and having actually produced numbers — locally or on a synced
+  // device. With nothing to show, the whole module collapses out of the bar
+  // rather than sitting there dimmed.
+  property var enabledProviders: {
+    var rev = dataRevision
+    var syncRev = syncRevision
+    var result = []
+    var localIds = {}
+    for (var i = 0; i < agents.length; i++) {
+      var record = agents[i] ? agents[i].record : null
+      if (!record || !record.id) continue
+      var id = String(record.id)
+      localIds[id] = true
+      if (!providerEnabled(id)) continue
+      var display = displayProvider(record)
+      if (providerHasData(display)) result.push(display)
+    }
+    // An agent that only ever ran on another machine has no local record, but
+    // its synced numbers still deserve a tab. Rate limits stay blank — they
+    // are per-account and never travel.
+    var syncedProviders = syncConfigured() && aggregateData && aggregateData.providers ? aggregateData.providers : {}
+    for (var syncedId in syncedProviders) {
+      if (localIds[syncedId] || !providerEnabled(syncedId)) continue
+      var stats = syncedProviders[syncedId] || {}
+      var syncedDisplay = displayProvider({ id: syncedId, name: stats.providerName || syncedId })
+      if (providerHasData(syncedDisplay)) result.push(syncedDisplay)
+    }
+    return result
+  }
+
+  function providerEnabled(id) {
+    if (!settings || !settings.providers || !settings.providers[id]) return true
+    return settings.providers[id].enabled !== false
+  }
+
+  // All-time keeps a quiet day from hiding an agent; today's counts admit a
+  // machine whose only source is history.jsonl, which knows nothing older.
+  function providerHasData(p) {
+    return numberValue(p.totalPrompts) > 0 || numberValue(p.totalSessions) > 0
+      || numberValue(p.activeDays) > 0 || numberValue(p.todayPrompts) > 0
+      || numberValue(p.todaySessions) > 0 || (p.limits && p.limits.length > 0)
+  }
+
+  function displayProvider(record) {
+    var stats = syncedStatsFor(String(record.id))
+    var synced = !!stats
+    var deviceCount = synced ? Number(stats.deviceCount || aggregateData.deviceCount || 0) : 0
+
+    return {
+      providerId: String(record.id),
+      providerName: String(record.name || record.id),
+      ready: record.ready === true || synced,
+      usageStatusText: String(record.usageStatusText || ""),
+      authHelpText: String(record.authHelpText || ""),
+
+      // Rate limits stay per-account and are never merged across devices.
+      limits: Array.isArray(record.limits) ? record.limits : [],
+      tierLabel: String(record.tierLabel || ""),
+
+      todayPrompts: synced ? numberValue(stats.todayPrompts) : numberValue(record.todayPrompts),
+      todaySessions: synced ? numberValue(stats.todaySessions) : numberValue(record.todaySessions),
+      todayTotalTokens: synced ? numberValue(stats.todayTotalTokens) : numberValue(record.todayTotalTokens),
+      todayTokensByModel: synced ? (stats.todayTokensByModel || ({})) : (record.todayTokensByModel || ({})),
+      recentDays: synced ? (stats.recentDays || []) : (record.recentDays || []),
+      totalPrompts: synced ? numberValue(stats.totalPrompts) : numberValue(record.totalPrompts),
+      totalSessions: synced ? numberValue(stats.totalSessions) : numberValue(record.totalSessions),
+      activeDays: synced ? numberValue(stats.activeDays) : numberValue(record.activeDays),
+      modelUsage: synced ? (stats.modelUsage || ({})) : (record.modelUsage || ({})),
+      hasLocalStats: synced ? (stats.hasLocalStats !== false) : (record.hasLocalStats !== false),
+
+      syncEnabled: synced,
+      syncDeviceCount: deviceCount,
+      syncUpdatedAt: aggregateData && aggregateData.updatedAt ? aggregateData.updatedAt : ""
+    }
+  }
+
+  function setting(name, fallback) {
+    var value = settings ? settings[name] : undefined
+    return value === undefined || value === null ? fallback : value
+  }
+
+  // ------------------------------------------------------------------ sync
+
+  property var syncModeSetting: setting("syncMode", setting("syncEnabled", false))
+  property bool syncEnabled: parseSyncEnabled(syncModeSetting)
+  property string syncDir: String(setting("syncDir", ""))
+  property string syncFileName: String(setting("syncFileName", ""))
+  property string syncDeviceId: String(setting("syncDeviceId", ""))
+  property string detectedHostname: ""
+  readonly property string syncEffectiveDir: expandPath(syncDir)
+  readonly property string syncEffectiveFileName: safeSnapshotFileName(syncFileName, syncDeviceId)
+  readonly property string syncEffectiveDeviceId: safeDeviceId(syncDeviceId || syncEffectiveFileName.replace(/\.json$/i, ""))
+  readonly property string syncSnapshotPath: syncConfigured() ? syncEffectiveDir + "/" + syncEffectiveFileName : home + "/.cache/omarchy/agents-disabled.json"
+  property var aggregateData: ({})
+  property int syncRevision: 0
+  property bool syncRunning: false
+  property bool syncRequestedWhileRunning: false
+  property string syncStatusText: ""
+  property double aggregateUpdatedAtMs: aggregateData && aggregateData.updatedAtMs ? Number(aggregateData.updatedAtMs) : 0
+
+  onSyncEnabledChanged: syncSettingsChanged()
+  onSyncDirChanged: syncSettingsChanged()
+  onSyncFileNameChanged: if (syncConfigured()) scheduleSync()
+  onSyncDeviceIdChanged: if (syncConfigured()) scheduleSync()
 
   Timer {
     id: syncDebounce
@@ -134,7 +321,7 @@ Item {
 
     stderr: StdioCollector {
       waitForEnd: true
-      onStreamFinished: if (text.trim() !== "") console.warn("model-usage/sync", text.trim())
+      onStreamFinished: if (text.trim() !== "") console.warn("agents/sync", text.trim())
     }
   }
 
@@ -152,11 +339,6 @@ Item {
     watchChanges: false
     printErrors: false
     onLoaded: root.detectedHostname = String(text() || "").trim()
-  }
-
-  function providerEnabled(id) {
-    if (!settings || !settings.providers || !settings.providers[id]) return id === "claude" || id === "codex"
-    return settings.providers[id].enabled !== false
   }
 
   function parseSyncEnabled(value) {
@@ -269,7 +451,7 @@ Item {
         var parsed = JSON.parse(raw)
         if (parsed && parsed.providers) snapshots.push(parsed)
       } catch (e) {
-        console.warn("model-usage/sync", "Ignoring bad snapshot", currentPath, e)
+        console.warn("agents/sync", "Ignoring bad snapshot", currentPath, e)
       }
       currentPath = ""
       currentJson = []
@@ -446,30 +628,34 @@ Item {
     }
   }
 
-  function providerSnapshot(provider) {
+  // Snapshots keep the field names older Omarchy versions wrote, so a fleet
+  // of machines on mixed versions still merges cleanly in both directions.
+  function providerSnapshot(record) {
     return {
-      providerId: provider.providerId,
-      providerName: provider.providerName,
-      ready: provider.ready === true,
-      hasLocalStats: provider.hasLocalStats !== false,
-      todayPrompts: numberValue(provider.todayPrompts),
-      todaySessions: numberValue(provider.todaySessions),
-      todayTotalTokens: numberValue(provider.todayTotalTokens),
-      todayTokensByModel: cloneValue(provider.todayTokensByModel, ({})),
-      recentDays: cloneValue(provider.recentDays, []),
-      totalPrompts: numberValue(provider.totalPrompts),
-      totalSessions: numberValue(provider.totalSessions),
-      activeDays: numberValue(provider.activeDays),
-      activeDates: cloneValue(provider.activeDates, []),
-      modelUsage: cloneValue(provider.modelUsage, ({}))
+      providerId: String(record.id),
+      providerName: String(record.name || record.id),
+      ready: record.ready === true,
+      hasLocalStats: record.hasLocalStats !== false,
+      todayPrompts: numberValue(record.todayPrompts),
+      todaySessions: numberValue(record.todaySessions),
+      todayTotalTokens: numberValue(record.todayTotalTokens),
+      todayTokensByModel: cloneValue(record.todayTokensByModel, ({})),
+      recentDays: cloneValue(record.recentDays, []),
+      totalPrompts: numberValue(record.totalPrompts),
+      totalSessions: numberValue(record.totalSessions),
+      activeDays: numberValue(record.activeDays),
+      activeDates: cloneValue(record.activeDates, []),
+      modelUsage: cloneValue(record.modelUsage, ({}))
     }
   }
 
   function localSnapshot() {
     var providerMap = {}
-    for (var i = 0; i < providers.length; i++) {
-      var provider = providers[i]
-      if (provider.enabled) providerMap[provider.providerId] = providerSnapshot(provider)
+    for (var i = 0; i < agents.length; i++) {
+      var record = agents[i] ? agents[i].record : null
+      if (!record || !record.id) continue
+      if (!providerEnabled(String(record.id))) continue
+      providerMap[String(record.id)] = providerSnapshot(record)
     }
     return {
       schemaVersion: 1,
@@ -485,68 +671,7 @@ Item {
     return aggregateData.providers[providerId] || null
   }
 
-  function displayProvider(provider) {
-    var stats = syncedStatsFor(provider.providerId)
-    var synced = !!stats
-    var deviceCount = synced ? Number(stats.deviceCount || aggregateData.deviceCount || 0) : 0
-
-    return {
-      providerId: provider.providerId,
-      providerName: provider.providerName,
-      providerIcon: provider.providerIcon,
-      enabled: provider.enabled,
-      ready: provider.ready || synced,
-      refreshing: provider.refreshing || root.syncRunning,
-      lastRefreshedAtMs: Math.max(provider.lastRefreshedAtMs || 0, root.aggregateUpdatedAtMs || 0),
-      usageStatusText: provider.usageStatusText,
-      authHelpText: provider.authHelpText,
-
-      rateLimitPercent: provider.rateLimitPercent,
-      rateLimitLabel: provider.rateLimitLabel,
-      rateLimitResetAt: provider.rateLimitResetAt,
-      secondaryRateLimitPercent: provider.secondaryRateLimitPercent,
-      secondaryRateLimitLabel: provider.secondaryRateLimitLabel,
-      secondaryRateLimitResetAt: provider.secondaryRateLimitResetAt,
-      tierLabel: provider.tierLabel,
-
-      todayPrompts: synced ? numberValue(stats.todayPrompts) : provider.todayPrompts,
-      todaySessions: synced ? numberValue(stats.todaySessions) : provider.todaySessions,
-      todayTotalTokens: synced ? numberValue(stats.todayTotalTokens) : provider.todayTotalTokens,
-      todayTokensByModel: synced ? (stats.todayTokensByModel || ({})) : provider.todayTokensByModel,
-      recentDays: synced ? (stats.recentDays || []) : provider.recentDays,
-      totalPrompts: synced ? numberValue(stats.totalPrompts) : provider.totalPrompts,
-      totalSessions: synced ? numberValue(stats.totalSessions) : provider.totalSessions,
-      activeDays: synced ? numberValue(stats.activeDays) : provider.activeDays,
-      modelUsage: synced ? (stats.modelUsage || ({})) : provider.modelUsage,
-      hasLocalStats: synced ? (stats.hasLocalStats !== false) : provider.hasLocalStats,
-
-      syncEnabled: synced,
-      syncDeviceCount: deviceCount,
-      syncUpdatedAt: aggregateData && aggregateData.updatedAt ? aggregateData.updatedAt : "",
-
-      formatResetTime: function(isoTimestamp) { return provider.formatResetTime(isoTimestamp) }
-    }
-  }
-
-  function refresh() { refreshAll(true) }
-
-  function refreshAll(force) {
-    for (var i = 0; i < providers.length; i++) {
-      var p = providers[i]
-      if (p.enabled && typeof p.refresh === "function") p.refresh(force === true)
-    }
-    scheduleSync()
-  }
-
-  // Opening the panel wants the numbers that go stale on the wire, not another
-  // walk over every transcript on disk. Forcing a whole refresh would do both,
-  // and re-opening the panel would then rescan the lot each time.
-  function refreshLimits() {
-    for (var i = 0; i < providers.length; i++) {
-      var p = providers[i]
-      if (p.enabled && typeof p.refreshLimits === "function") p.refreshLimits()
-    }
-  }
+  // ---------------------------------------------------------------- format
 
   function formatTokenCount(n) {
     if (n === undefined || n === null) return "0"
