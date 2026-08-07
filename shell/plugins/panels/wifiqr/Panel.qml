@@ -52,8 +52,10 @@ Item {
     var payload = {}
     try { payload = JSON.parse(payloadJson || "{}") || {} } catch (e) {}
     // The payload SSID titles the card during generation; the meta line the
-    // generator emits is authoritative and overwrites it.
-    if (payload.ssid !== undefined) root.ssid = String(payload.ssid)
+    // generator emits is authoritative and overwrites it. A payload without
+    // one clears the title: a re-summon may be sharing a different
+    // connection, so the previous card's name must not label this one.
+    root.ssid = payload.ssid !== undefined ? String(payload.ssid) : ""
     generate(String(payload.iface || ""))
     root.opened = true
     // The window is instantiated hidden, so the content's `focus: true` is
@@ -135,6 +137,9 @@ Item {
     if (parsed.meta.ssid !== "") ssid = parsed.meta.ssid
     if (parsed.meta.iface !== "") iface = parsed.meta.iface
     secured = parsed.meta.security !== "" && parsed.meta.security !== "nopass"
+    // Good output settles the run: a canceled predecessor's stderr may have
+    // landed after this generation started, and must not shadow its result.
+    if (qrSize > 0) error = ""
   }
 
   function togglePassword() {
@@ -142,6 +147,9 @@ Item {
     if (password !== "") { passwordVisible = true; return }
     if (pwProc.running || !iface) return
     passwordError = ""
+    // Only a deliberate new lookup lowers the canceled-fetch guard, right as
+    // it launches -- see the pwProc comment.
+    pwExpectedStop = false
     pwProc.command = ["omarchy-network-password", iface]
     pwProc.running = true
   }
@@ -165,7 +173,9 @@ Item {
       root.loading = false
       if (root.pendingShow) {
         root.pendingShow = false
-        root.expectedStop = false
+        // expectedStop stays set until generate() launches the replacement:
+        // the canceled run's collectors may fire between here and then, and
+        // must keep being dropped.
         Qt.callLater(function() { root.generate(root.pendingIface) })
         return
       }
@@ -183,8 +193,9 @@ Item {
   // is gone so a fetch that was in flight during dismissal can't stash the
   // secret into a closed panel's state, and check pwExpectedStop so a fetch
   // that a regeneration killed can't reveal the previous network's password
-  // under the new card. The flag stays set through onExited because the
-  // exit and stream-finished signals have no guaranteed order.
+  // under the new card. The exit and stream-finished signals have no
+  // guaranteed order, so the flag survives onExited; only togglePassword
+  // lowers it, as it launches the next deliberate lookup.
   Process {
     id: pwProc
     stdout: StdioCollector {
@@ -192,10 +203,7 @@ Item {
       onStreamFinished: if (root.opened && !root.pwExpectedStop) root.password = String(text || "").trim()
     }
     onExited: function(exitCode) {
-      if (root.pwExpectedStop) {
-        root.pwExpectedStop = false
-        return
-      }
+      if (root.pwExpectedStop) return
       if (!root.opened) return
       if (exitCode === 0 && root.password !== "") root.passwordVisible = true
       else root.passwordError = "Could not read the Wi-Fi password"
