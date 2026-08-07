@@ -37,7 +37,7 @@ its own the first time a scan finds usage. Drop it with
 
 Each agent is one JSON record in `~/.local/state/omarchy/agents/usage/`,
 written by `omarchy-agent-usage-update`. That command runs one
-`omarchy-agent-usage-scan-<agent>` collector per agent; the widget invokes it
+`omarchy-agent-usage-<agent>` collector per agent; the widget invokes it
 on its refresh timer and whenever you ask for a refresh, and picks up any
 record that lands in the directory regardless of who wrote it.
 

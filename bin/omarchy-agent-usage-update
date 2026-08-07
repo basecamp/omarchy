@@ -4,10 +4,10 @@
 # omarchy:args=[--force] [--limits-only] [--except <agent>] [agent...]
 # omarchy:examples=omarchy agent usage-update | omarchy agent usage-update claude | omarchy agent usage-update --except codex
 
-# Each omarchy-agent-usage-scan-<agent> collector prints one display-ready
-# JSON record; this writes them to ~/.local/state/omarchy/agents/usage/ where
-# the agents panel watches them. Adding an agent is adding a collector —
-# the panel picks up any record that appears here.
+# Each omarchy-agent-usage-<agent> collector prints one display-ready JSON
+# record; this writes them to ~/.local/state/omarchy/agents/usage/ where the
+# agents panel watches them. Adding an agent is adding a collector — the
+# panel picks up any record that appears here.
 
 USAGE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/agents/usage"
 mkdir -p "$USAGE_DIR"
@@ -52,9 +52,10 @@ collect() {
 }
 
 pids=()
-for collector in "$OMARCHY_PATH"/bin/omarchy-agent-usage-scan-*; do
+for collector in "$OMARCHY_PATH"/bin/omarchy-agent-usage-*; do
   [[ -x $collector ]] || continue
-  agent="${collector##*/omarchy-agent-usage-scan-}"
+  agent="${collector##*/omarchy-agent-usage-}"
+  [[ $agent == "update" ]] && continue
   wanted "$agent" || continue
   collect "$collector" "$agent" &
   pids+=($!)

@@ -10,22 +10,28 @@ trap 'rm -rf "$TEST_HOME" "$FAKE_OMARCHY"' EXIT
 
 mkdir -p "$FAKE_OMARCHY/bin"
 
-cat >"$FAKE_OMARCHY/bin/omarchy-agent-usage-scan-good" <<'EOF'
+cat >"$FAKE_OMARCHY/bin/omarchy-agent-usage-good" <<'EOF'
 #!/bin/bash
 echo '{"schemaVersion":1,"id":"good","name":"Good Agent","totalPrompts":3}'
 EOF
 
-cat >"$FAKE_OMARCHY/bin/omarchy-agent-usage-scan-noisy" <<'EOF'
+cat >"$FAKE_OMARCHY/bin/omarchy-agent-usage-noisy" <<'EOF'
 #!/bin/bash
 echo "this is not json"
 EOF
 
-cat >"$FAKE_OMARCHY/bin/omarchy-agent-usage-scan-skipped" <<'EOF'
+cat >"$FAKE_OMARCHY/bin/omarchy-agent-usage-skipped" <<'EOF'
 #!/bin/bash
 echo '{"id":"skipped"}'
 EOF
 
-chmod +x "$FAKE_OMARCHY/bin/"omarchy-agent-usage-scan-*
+# The updater itself lives in the same namespace as the collectors it globs.
+cat >"$FAKE_OMARCHY/bin/omarchy-agent-usage-update" <<'EOF'
+#!/bin/bash
+echo '{"id":"update"}'
+EOF
+
+chmod +x "$FAKE_OMARCHY/bin/"omarchy-agent-usage-*
 
 usage_dir="$TEST_HOME/.local/state/omarchy/agents/usage"
 
@@ -44,6 +50,10 @@ pass "update refuses records that are not valid JSON"
 [[ ! -e $usage_dir/skipped.json ]] ||
   fail "update skips agents excluded with --except"
 pass "update skips agents excluded with --except"
+
+[[ ! -e $usage_dir/update.json ]] ||
+  fail "update does not treat itself as a collector"
+pass "update does not treat itself as a collector"
 
 HOME="$TEST_HOME" OMARCHY_PATH="$FAKE_OMARCHY" XDG_STATE_HOME="" \
   "$ROOT/bin/omarchy-agent-usage-update" skipped 2>/dev/null ||

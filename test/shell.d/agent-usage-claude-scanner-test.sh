@@ -19,7 +19,7 @@ cat >"$projects/session.jsonl" <<EOF
 EOF
 
 result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" \
-  "$ROOT/bin/omarchy-agent-usage-scan-claude" --force)
+  "$ROOT/bin/omarchy-agent-usage-claude" --force)
 
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "58793" ]] ||
   fail "Claude collector counts each API message once" "$result"
@@ -47,7 +47,7 @@ cat >"$HISTORY_HOME/.claude/history.jsonl" <<EOF
 EOF
 
 result=$(HOME="$HISTORY_HOME" XDG_CACHE_HOME="$HISTORY_HOME/.cache" \
-  "$ROOT/bin/omarchy-agent-usage-scan-claude" --force)
+  "$ROOT/bin/omarchy-agent-usage-claude" --force)
 
 [[ $(jq -r '(.todayPrompts|tostring) + "/" + (.todaySessions|tostring)' <<<"$result") == "2/2" ]] ||
   fail "Claude collector falls back to history.jsonl without a stats-cache" "$result"

@@ -41,7 +41,7 @@ cat >"$session" <<EOF
 EOF
 
 result=$(HOME="$TEST_HOME" CODEX_HOME="$TEST_HOME/.codex" PATH="$TEST_HOME/bin:$PATH" \
-  "$ROOT/bin/omarchy-agent-usage-scan-codex")
+  "$ROOT/bin/omarchy-agent-usage-codex")
 
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "210" ]] ||
   fail "Codex collector counts each turn once" "$result"
