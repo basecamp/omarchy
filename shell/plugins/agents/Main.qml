@@ -84,22 +84,27 @@ Item {
   // the seconds after login before the network is up — writes retryAdvised
   // into its record. Honor it with one sooner try instead of waiting out the
   // full refresh interval; a run that reaches the endpoint clears the flag.
+  // Only the advising agents rerun, so an outage at one provider does not
+  // put every other collector on a 30-second treadmill.
+  property var retryAgentIds: []
+
   Timer {
     id: limitsRetry
     interval: 30000
     repeat: false
-    onTriggered: root.runUpdate("limits")
+    onTriggered: root.runUpdate("limits", root.retryAgentIds)
   }
 
   function scheduleLimitsRetry() {
+    var advising = []
     for (var i = 0; i < agents.length; i++) {
       var record = agents[i] ? agents[i].record : null
-      if (record && record.retryAdvised === true && providerEnabled(String(record.id || ""))) {
-        limitsRetry.restart()
-        return
-      }
+      if (record && record.retryAdvised === true && providerEnabled(String(record.id || "")))
+        advising.push(String(record.id))
     }
-    limitsRetry.stop()
+    retryAgentIds = advising
+    if (advising.length > 0) limitsRetry.restart()
+    else limitsRetry.stop()
   }
 
   Component.onCompleted: {
@@ -138,7 +143,7 @@ Item {
     }
   }
 
-  function updateCommand(kind) {
+  function updateCommand(kind, agentIds) {
     var command = ["omarchy-agent-usage-update"]
     if (kind === "force") command.push("--force")
     if (kind === "limits") command.push("--limits-only")
@@ -146,17 +151,20 @@ Item {
     for (var id in providers) {
       if (providers[id] && providers[id].enabled === false) command.push("--except", id)
     }
+    if (agentIds) {
+      for (var i = 0; i < agentIds.length; i++) command.push(agentIds[i])
+    }
     return command
   }
 
-  function runUpdate(kind) {
+  function runUpdate(kind, agentIds) {
     if (updateProcess.running) {
-      // Collapse queued requests to one rerun; a forced refresh outranks the
-      // cheaper kinds it might have been queued behind.
+      // Collapse queued requests to one full rerun; a forced refresh outranks
+      // the cheaper kinds it might have been queued behind.
       if (kind === "force" || root.pendingUpdateKind === "") root.pendingUpdateKind = kind
       return
     }
-    updateProcess.command = updateCommand(kind)
+    updateProcess.command = updateCommand(kind, agentIds)
     updateProcess.running = true
   }
 
@@ -206,10 +214,12 @@ Item {
     return settings.providers[id].enabled !== false
   }
 
-  // All-time, not today: a quiet day is not the same as an absent agent.
+  // All-time keeps a quiet day from hiding an agent; today's counts admit a
+  // machine whose only source is history.jsonl, which knows nothing older.
   function providerHasData(p) {
     return numberValue(p.totalPrompts) > 0 || numberValue(p.totalSessions) > 0
-      || numberValue(p.activeDays) > 0 || (p.limits && p.limits.length > 0)
+      || numberValue(p.activeDays) > 0 || numberValue(p.todayPrompts) > 0
+      || numberValue(p.todaySessions) > 0 || (p.limits && p.limits.length > 0)
   }
 
   function displayProvider(record) {
