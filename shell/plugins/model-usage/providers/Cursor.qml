@@ -79,14 +79,8 @@ Item {
     }
   }
 
-  Timer {
-    interval: 5 * 60 * 1000
-    running: root.enabled
-    repeat: true
-    triggeredOnStart: true
-    onTriggered: root.refresh()
-  }
-
+  // Refresh cadence comes from Main.qml's refreshIntervalSec timer.
+  // A local five-minute timer would double-hit the usage API.
   onEnabledChanged: if (enabled) refresh()
 
   function finishRefresh() {
