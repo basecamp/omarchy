@@ -105,6 +105,18 @@ assertDeepEqual(rows.map(row => row.ssid), ['Connected', 'Known', 'Open'], 'netw
 assertEqual(network.wifiSectionTitle(rows, 0), 'KNOWN NETWORKS', 'network labels known wifi section')
 assertEqual(network.wifiSectionTitle(rows, 2), 'OTHER NETWORKS', 'network labels other wifi section')
 
+const wifiRow = network.wifiRow({ connected: true, known: true, name: 'Home', signalStrength: 0.8, security: 1 })
+assertDeepEqual(
+  wifiRow,
+  { connected: true, known: true, ssid: 'Home', signal: 80, security: 1 },
+  'network projects wifi rows with primitives so delegates never hold the live WifiNetwork object'
+)
+assertDeepEqual(
+  Object.keys(wifiRow).sort(),
+  ['connected', 'known', 'security', 'signal', 'ssid'],
+  'network wifi rows project exactly the primitive fields, so each delegate stores no live QObject'
+)
+
 const reasons = { NoSecrets: 1, WifiAuthTimeout: 2, WifiNetworkLost: 3, WifiClientDisconnected: 4, WifiClientFailed: 5 }
 assertEqual(network.networkFailureReason(1, reasons), 'Passphrase required', 'network maps missing passphrase failures')
 assertEqual(network.networkFailureReason(2, reasons), 'Wrong password', 'network maps auth timeout failures')

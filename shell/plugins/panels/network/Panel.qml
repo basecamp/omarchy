@@ -397,7 +397,7 @@ Panel {
     var net = wifiNetworks[selectedIndex]
     if (!net) return
     if (wifiActionFocused && canForgetNetwork(net)) { forget(net); return }
-    if (net.connected) { disconnect(net.network); return }
+    if (net.connected) { disconnect(networkForSsid(net.ssid)); return }
     if (isProtected(net.security) && !net.known) { openPasswordPrompt(net.ssid); return }
     connectKnown(net.ssid)
   }
@@ -757,7 +757,7 @@ Panel {
   }
 
   function forget(net) {
-    runNetworkAction("forget", net ? net.network : null, function(network) { network.forget() })
+    runNetworkAction("forget", net ? networkForSsid(net.ssid) : null, function(network) { network.forget() })
   }
 
   implicitWidth: button.implicitWidth
@@ -1581,23 +1581,23 @@ Panel {
     }
 
     Connections {
-      target: row.net ? row.net.network : null
+      target: row.net ? root.networkForSsid(row.net.ssid) : null
       function onConnectionFailed(reason) {
         // Background auto-connect retries fire this too; only reprompt for
         // the connect started from this panel. Checked before
         // failNetworkAction, which clears the action state.
         var ours = root.actionKind === "connect" && root.actionSsid === (row.net.ssid || "")
-        root.failNetworkAction(row.net.network, reason)
+        root.failNetworkAction(root.networkForSsid(row.net.ssid), reason)
         if (ours && root.shouldRepromptPassphrase(reason, row.isProtected)) root.openPasswordPrompt(row.net.ssid)
       }
       function onConnectedChanged() {
-        if (row.net) root.checkActionCompletion(row.net.network)
+        if (row.net) root.checkActionCompletion(root.networkForSsid(row.net.ssid))
       }
       function onKnownChanged() {
-        if (row.net) root.checkActionCompletion(row.net.network)
+        if (row.net) root.checkActionCompletion(root.networkForSsid(row.net.ssid))
       }
       function onStateChangingChanged() {
-        if (row.net) root.checkActionCompletion(row.net.network)
+        if (row.net) root.checkActionCompletion(root.networkForSsid(row.net.ssid))
       }
     }
 
@@ -1646,7 +1646,7 @@ Panel {
         root.selectedIndex = row.index
         root.wifiActionFocused = false
         if (row.isConnected) {
-          root.disconnect(row.net.network)
+          root.disconnect(root.networkForSsid(row.net.ssid))
           return
         }
         if (row.isProtected && !row.isKnown) {
