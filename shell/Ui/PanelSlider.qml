@@ -81,7 +81,7 @@ Item {
     x: track.x + track.width * root.thresholdProgress
     width: track.width * (1 - root.thresholdProgress)
     radius: track.radius
-    color: Util.alpha(root.thresholdColor, Style.selectedFillAlpha)
+    color: Util.alpha(root.thresholdColor, Style.selectionFillAlpha)
   }
 
   Rectangle {

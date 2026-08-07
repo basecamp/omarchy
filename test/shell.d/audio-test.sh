@@ -34,8 +34,8 @@ assert(audio.isAudioSource({ type: 'Audio/Source' }), 'audio detects typed sourc
 assertEqual(audio.outputVolumeName(0, false), 'Silenced', 'audio labels silent output')
 assertEqual(audio.outputVolumeName(0.9, false), 'Party mode', 'audio labels loud output')
 assertEqual(audio.outputVolumeName(1.14, false), 'Concert hall', 'audio keeps the standard boosted label below 115 percent')
-assertEqual(audio.outputVolumeName(1.15, false), 'With great power comes great responsability', 'audio labels volume at 115 percent')
-assertEqual(audio.outputVolumeName(1.5, false), 'With great power comes great responsability', 'audio keeps the 115 percent label at higher volumes')
+assertEqual(audio.outputVolumeName(1.15, false), 'Blowout alert!', 'audio labels volume at 115 percent')
+assertEqual(audio.outputVolumeName(1.5, false), 'Blowout alert!', 'audio keeps the 115 percent label at higher volumes')
 assertEqual(audio.outputVolumeName(0.5, true), 'Muted', 'audio labels muted output')
 
 assertDeepEqual(audio.parseSinkAvailability('alsa_output\t1\nhdmi_output\t0\n'), { alsa_output: true, hdmi_output: false }, 'audio parses sink availability')

@@ -196,7 +196,7 @@ Item {
             x: parent.width * root.normalBoundary
             width: parent.width * (1 - root.normalBoundary)
             radius: parent.radius
-            color: Util.alpha(Color.accent, Style.selectedFillAlpha)
+            color: Util.alpha(Color.accent, Style.selectionFillAlpha)
           }
           Rectangle {
             visible: root.amplificationEnabled
@@ -225,9 +225,8 @@ Item {
           }
           Rectangle {
             visible: root.amplificationEnabled
-            width: Math.max(1, Style.spacing.hairline)
+            width: Math.max(2, Style.spacing.hairline)
             height: parent.height + Style.spacing.xs
-            radius: width / 2
             color: Color.background
             anchors.verticalCenter: parent.verticalCenter
             x: Math.max(0, Math.min(parent.width - width,
