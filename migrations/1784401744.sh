@@ -12,7 +12,7 @@ if [[ -f $tmux_config ]]; then
 fi
 
 hardware_packages=()
-if lspci | grep -qiE '(Multimedia audio controller|Audio device).*Intel' && omarchy-pkg-missing sof-firmware; then
+if lspci | grep -iE '(Multimedia audio controller|Audio device).*Intel' >/dev/null && omarchy-pkg-missing sof-firmware; then
   hardware_packages+=(sof-firmware)
 fi
 if lspci | grep -iE '(VGA|Display).*Intel' >/dev/null && omarchy-pkg-missing vulkan-intel; then
