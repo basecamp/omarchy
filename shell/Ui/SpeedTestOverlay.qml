@@ -364,7 +364,7 @@ PanelWindow {
 
       Text {
         anchors.horizontalCenter: parent.horizontalCenter
-        text: dial.reading < 10 ? dial.reading.toFixed(1) : Math.round(dial.reading).toString()
+        text: dial.reading < 10 ? dial.reading.toFixed(1) : Math.round(dial.reading).toLocaleString(Qt.locale(), 'f', 0)
         color: root.onScrim
         font.family: root.fontFamily
         font.pixelSize: Style.font.display
