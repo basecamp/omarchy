@@ -299,20 +299,6 @@ function isProtected(security, openSecurity) {
   return security !== openSecurity
 }
 
-function parseQrMatrix(raw) {
-  var lines = String(raw || "").trim().split(/\r?\n/).filter(function(line) { return line !== "" })
-  if (lines.length === 0) return { rows: [], size: 0 }
-
-  var size = lines[0].length
-  if (size !== lines.length) return { rows: [], size: 0 }
-
-  for (var i = 0; i < lines.length; i++) {
-    if (lines[i].length !== size || !/^[01]+$/.test(lines[i])) return { rows: [], size: 0 }
-  }
-
-  return { rows: lines, size: size }
-}
-
 // The password arrives on stdin and reaches nmcli through the scriptable
 // `connection edit` editor -- argv is world-readable in /proc, so the secret
 // must never be an argument (printf is a bash builtin, so no process spawns
@@ -361,7 +347,6 @@ if (typeof module !== "undefined") {
     sortWifiRows: sortWifiRows,
     wifiSectionTitle: wifiSectionTitle,
     isProtected: isProtected,
-    parseQrMatrix: parseQrMatrix,
     enterpriseConnectScript: enterpriseConnectScript,
     networkFailureReason: networkFailureReason
   }

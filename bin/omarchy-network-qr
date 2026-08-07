@@ -2,11 +2,21 @@
 
 # omarchy:summary=Generate a Wi-Fi QR matrix for the shell
 # omarchy:group=network
-# omarchy:args=[interface]
+# omarchy:args=[--meta] [interface]
 
 set -euo pipefail
 
-interface=${1:-}
+# --meta is opt-in so pre-existing consumers of the bare matrix (cloned
+# network widgets from before the share card became its own plugin) keep
+# parsing this output.
+interface=""
+emit_meta=false
+for arg in "$@"; do
+  case "$arg" in
+    --meta) emit_meta=true ;;
+    *) interface=$arg ;;
+  esac
+done
 if [[ -z $interface ]]; then
   # Prefer the default-route device: it is the connection the panel and the
   # menu's visibility gate describe. Fall back to the first connected Wi-Fi
@@ -64,6 +74,12 @@ fi
 payload="WIFI:T:$security;S:$(escape_wifi_qr "$ssid");P:$(escape_wifi_qr "$password");"
 [[ $hidden == "yes" ]] && payload+="H:true;"
 payload+=";"
+
+# Metadata header ahead of the matrix: the interface that was shared, the
+# security type, and the SSID last so it may contain tabs. The share card
+# renders its title and password row from this line, and a self-detected
+# summon learns which interface to fetch the password for.
+[[ $emit_meta == "true" ]] && printf 'meta\t%s\t%s\t%s\n' "$interface" "$security" "$ssid"
 
 # ASCII uses two characters per module. Collapse each pair to one 0/1 value
 # so the shell can render a square matrix directly with native QML rectangles.

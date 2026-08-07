@@ -4,7 +4,7 @@
   "name": "Network",
   "version": "1.0.0",
   "author": "Omarchy",
-  "description": "Wi-Fi list, connection state, and QR sharing",
+  "description": "Wi-Fi list and connection state",
   "kinds": [
     "bar-widget"
   ],
@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "Network",
-    "description": "Wi-Fi list, connection state, and QR sharing",
+    "description": "Wi-Fi list and connection state",
     "category": "Network",
     "allowMultiple": false
   }

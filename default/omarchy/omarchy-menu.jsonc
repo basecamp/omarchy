@@ -117,7 +117,7 @@
   "setup.network.dns.cloudflare": {"icon":"󰅟","label":"Cloudflare","checked":"[[ \"$(omarchy-dns)\" == \"Cloudflare\" ]]","action":"omarchy-dns Cloudflare"},
   "setup.network.dns.google": {"icon":"󰊭","label":"Google","checked":"[[ \"$(omarchy-dns)\" == \"Google\" ]]","action":"omarchy-dns Google"},
   "setup.network.dns.custom": {"icon":"","label":"Custom","checked":"[[ \"$(omarchy-dns)\" == \"Custom\" ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-dns Custom'"},
-  "setup.network.qr": {"icon":"󰐲","label":"QR Code","aliases":["wifi-qr"],"when":"[[ $(omarchy-network-status) == wifi* ]]","action":"omarchy-shell omarchy.network showQr"},
+  "setup.network.qr": {"icon":"󰐲","label":"QR Code","aliases":["wifi-qr"],"when":"[[ $(omarchy-network-status) == wifi* ]]","action":"omarchy-shell shell summon omarchy.wifiqr"},
   "setup.network.speedtest": {"icon":"󰓅","label":"Speed Test","aliases":["speedtest","speed-test"],"action":"omarchy-shell shell summon omarchy.speedtest"},
   "setup.default": {"icon":"","label":"Defaults","aliases":["default","defaults"]},
   "setup.default.agent": {"icon":"󰚩","label":"Agent"},
