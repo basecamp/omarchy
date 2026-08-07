@@ -1,0 +1,165 @@
+#!/bin/bash
+
+# omarchy:summary=Measure live disk write and read speed
+# omarchy:args=[target-dir]
+
+set -e
+
+if [[ -n ${1:-} && ! -d $1 ]]; then
+  echo "Usage: omarchy-disk-speedtest [target-dir]" >&2
+  exit 2
+fi
+
+target_dir="${1:-${XDG_CACHE_HOME:-$HOME/.cache}/omarchy}"
+phase_seconds=5
+chunk_mb=4
+file_mb=512
+
+mkdir -p "$target_dir"
+
+# Exclusive per-invocation scratch files: predictable names could clobber a
+# user's file, follow a planted symlink, or let overlapping runs delete each
+# other's active files out from under the measurement.
+test_file=$(mktemp "$target_dir/disk-speedtest-XXXXXX.dat")
+chunk_file=$(mktemp /dev/shm/omarchy-disk-speedtest-XXXXXX.src)
+
+format_rate() {
+  awk -v value="$1" 'BEGIN {
+    if (value <= 0) print "0.0"
+    else if (value < 10) printf "%.1f\n", value
+    else printf "%.0f\n", value
+  }'
+}
+
+# Resolve the block device backing the target directory, so throughput can be
+# sampled from its kernel I/O counters the same way the network speed test
+# samples the interface counters.
+source_dev=$(findmnt -no SOURCE --target "$target_dir" 2>/dev/null)
+source_dev=${source_dev%%\[*} # Strip btrfs subvolume suffix: /dev/sda2[/@home]
+
+if [[ $source_dev != /dev/* ]]; then
+  echo "Cannot find a disk behind $target_dir" >&2
+  exit 1
+fi
+
+dev=$(readlink -f "$source_dev")
+dev=${dev##*/}
+
+if [[ ! -r /sys/class/block/$dev/stat ]]; then
+  echo "No I/O statistics for $dev" >&2
+  exit 1
+fi
+
+available_mb=$(df --output=avail -m "$target_dir" | tail -1 | tr -d ' ')
+if (( available_mb < file_mb * 2 )); then
+  echo "Need at least $((file_mb * 2))MB free on $target_dir" >&2
+  exit 1
+fi
+
+worker_pid=""
+
+stop_worker() {
+  [[ -n $worker_pid ]] || return 0
+  pkill -TERM -P "$worker_pid" 2>/dev/null || true
+  kill "$worker_pid" 2>/dev/null || true
+  wait "$worker_pid" 2>/dev/null || true
+  worker_pid=""
+}
+
+cleanup() {
+  stop_worker
+  rm -f "$test_file" "$chunk_file"
+}
+trap cleanup EXIT
+trap 'exit 143' TERM INT
+
+# Name the physical disk under test, walking dm-crypt/LVM layers and the
+# partition table up to the whole device that carries the hardware model.
+disk=$dev
+while slave=$(ls "/sys/class/block/$disk/slaves" 2>/dev/null | head -1); [[ -n $slave ]]; do
+  disk=$slave
+done
+if [[ -f /sys/class/block/$disk/partition ]]; then
+  parent=$(readlink -f "/sys/class/block/$disk")
+  parent=${parent%/*}
+  disk=${parent##*/}
+fi
+model=$(lsblk -dno MODEL "/dev/$disk" 2>/dev/null | sed 's/^ *//; s/ *$//')
+echo "disk ${model:-$disk}"
+
+# The stress data must be incompressible: on btrfs with compression enabled,
+# zeros never reach the disk. Staging a urandom chunk in RAM also keeps the
+# source out of the measurement -- reading tmpfs is a memcpy.
+dd if=/dev/urandom of="$chunk_file" bs=${chunk_mb}M count=$((file_mb / chunk_mb)) status=none
+
+# Buffered I/O with fdatasync per pass and fadvise drop-behind (nocache):
+# O_DIRECT silently falls back to the page cache on btrfs, so instead every
+# pass forces its writes to the device and evicts its pages, keeping the read
+# phase and later passes from being served out of RAM.
+write_worker() {
+  while true; do
+    dd if="$chunk_file" of="$test_file" bs=${chunk_mb}M conv=notrunc,fdatasync oflag=nocache status=none 2>/dev/null || return
+  done
+}
+
+read_worker() {
+  while true; do
+    dd if="$test_file" of=/dev/null bs=${chunk_mb}M iflag=nocache status=none 2>/dev/null || return
+  done
+}
+
+device_sectors() {
+  local -a stats
+  read -r -a stats < "/sys/class/block/$dev/stat"
+  if [[ $1 == "read" ]]; then
+    echo "${stats[2]}"
+  else
+    echo "${stats[6]}"
+  fi
+}
+
+run_phase() {
+  local phase=$1
+  local before after deadline rate
+
+  "${phase}_worker" &
+  worker_pid=$!
+
+  before=$(device_sectors "$phase")
+  deadline=$((SECONDS + phase_seconds))
+
+  while (( SECONDS < deadline )) && kill -0 "$worker_pid" 2>/dev/null; do
+    sleep 1
+    after=$(device_sectors "$phase")
+    rate=$(awk -v before="$before" -v after="$after" 'BEGIN {
+      if (after < before) print 0
+      else print (after - before) * 512 / 1000000
+    }')
+    echo "$phase $(format_rate "$rate")"
+    before=$after
+  done
+
+  # The workers only stop on their own when dd fails (quota, I/O error, full
+  # disk), so a worker gone before the deadline is a failed measurement, not a
+  # finished one.
+  if (( SECONDS < deadline )) && ! kill -0 "$worker_pid" 2>/dev/null; then
+    stop_worker
+    echo "Disk $phase test failed before finishing" >&2
+    exit 1
+  fi
+
+  stop_worker
+}
+
+run_phase write
+
+if [[ ! -s $test_file ]]; then
+  echo "Disk test failed to write any data" >&2
+  exit 1
+fi
+
+# Evict whatever the interrupted final write pass left in the page cache, so
+# the read phase starts against the device rather than RAM.
+dd if="$test_file" of=/dev/null iflag=nocache count=0 status=none 2>/dev/null || true
+
+run_phase read
