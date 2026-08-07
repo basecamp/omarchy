@@ -18,6 +18,46 @@ file_mb=256
 
 mkdir -p "$target_dir"
 
+worker_pids=()
+chunk_file=""
+test_files=()
+
+stop_workers() {
+  local pid
+  for pid in "${worker_pids[@]}"; do
+    [[ -n $pid ]] || continue
+    pkill -TERM -P "$pid" 2>/dev/null || true
+    kill "$pid" 2>/dev/null || true
+  done
+  for pid in "${worker_pids[@]}"; do
+    [[ -n $pid ]] || continue
+    wait "$pid" 2>/dev/null || true
+  done
+  worker_pids=()
+}
+
+alive_workers() {
+  local pid count=0
+  for pid in "${worker_pids[@]}"; do
+    kill -0 "$pid" 2>/dev/null && count=$((count + 1))
+  done
+  echo "$count"
+}
+
+cleanup() {
+  # Unlink before stopping the workers, so even a cleanup cut short by an
+  # impatient SIGKILL has already taken the names off the filesystem. A live
+  # write worker's next dd pass recreates its file by name, so sweep again
+  # once they are gone.
+  rm -f ${chunk_file:+"$chunk_file"} "${test_files[@]}"
+  stop_workers
+  rm -f ${chunk_file:+"$chunk_file"} "${test_files[@]}"
+}
+# Armed before any scratch file exists, so a failed preflight check below
+# cannot leak them.
+trap cleanup EXIT
+trap 'exit 143' TERM INT
+
 # Exclusive per-invocation scratch files: predictable names could clobber a
 # user's file, follow a planted symlink, or let overlapping runs delete each
 # other's active files out from under the measurement. Each worker gets its
@@ -31,7 +71,6 @@ mkdir -p "$target_dir"
 # of churning the extent allocator, which run-to-run reproducibility depends
 # on.
 chunk_file=$(mktemp /dev/shm/omarchy-disk-speedtest-XXXXXX.src)
-test_files=()
 for (( i = 0; i < parallel; i++ )); do
   file=$(mktemp "$target_dir/disk-speedtest-XXXXXX.dat")
   chattr +C "$file" 2>/dev/null || true
@@ -70,37 +109,6 @@ if (( available_mb < parallel * file_mb * 2 )); then
   echo "Need at least $((parallel * file_mb * 2))MB free on $target_dir" >&2
   exit 1
 fi
-
-worker_pids=()
-
-stop_workers() {
-  local pid
-  for pid in "${worker_pids[@]}"; do
-    [[ -n $pid ]] || continue
-    pkill -TERM -P "$pid" 2>/dev/null || true
-    kill "$pid" 2>/dev/null || true
-  done
-  for pid in "${worker_pids[@]}"; do
-    [[ -n $pid ]] || continue
-    wait "$pid" 2>/dev/null || true
-  done
-  worker_pids=()
-}
-
-alive_workers() {
-  local pid count=0
-  for pid in "${worker_pids[@]}"; do
-    kill -0 "$pid" 2>/dev/null && count=$((count + 1))
-  done
-  echo "$count"
-}
-
-cleanup() {
-  stop_workers
-  rm -f "$chunk_file" "${test_files[@]}"
-}
-trap cleanup EXIT
-trap 'exit 143' TERM INT
 
 # Name the physical disk under test, walking dm-crypt/LVM layers and the
 # partition table up to the whole device that carries the hardware model.
