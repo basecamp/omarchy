@@ -52,7 +52,7 @@ guidance does not drift from the router.
 
 # Privileged Commands
 
-- Follow the "Privilege Escalation" section of `default/omarchy-skill/SKILL.md`. It draws the
+- Follow the "Privilege Escalation" section of `default/agents/skills/omarchy/SKILL.md`. It draws the
   `sudo`/`pkexec` line by whether the caller has a terminal to enter a password in, and the repo's
   own scripts follow it.
 

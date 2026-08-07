@@ -36,20 +36,30 @@ It is not for contributing to Omarchy source code.
 
 **Do NOT use this skill for Omarchy development tasks** (editing the Omarchy source tree, creating migrations, or running `omarchy dev ...` workflows).
 
+## Topic Guides
+
+Deeper instructions for common areas live next to this file. Read the
+matching guide before starting:
+
+- [`hyprland.md`](hyprland.md) - keybindings, monitors, window rules, and other Hyprland config
+- [`plugins.md`](plugins.md) - the Omarchy shell: bar layout, widgets, plugins, idle behavior
+- [`theming.md`](theming.md) - themes, backgrounds, and fonts
+- [`hooks.md`](hooks.md) - automation hooks that run on system events
+- [`capture.md`](capture.md) - screenshots, screen recordings, OCR text capture, and file sharing
+- [`contributing.md`](contributing.md) - reporting Omarchy bugs and submitting fixes upstream
+
 ## Critical Safety Rules
 
-When invoking a privileged command directly, use `pkexec` instead of `sudo` so Omarchy can show a graphical authorization prompt with command context. Do not wrap commands that already manage privilege elevation themselves.
+For privileged commands, follow the Privilege Escalation rules below: `sudo` when a terminal is available for the password prompt, `pkexec` when it is not. Do not wrap commands that already manage privilege elevation themselves.
 
 **For end-user customization tasks, NEVER modify anything in `/usr/share/omarchy/`** - but READING is safe and encouraged.
 
-This directory contains Omarchy's source files managed by git. Any changes will be:
-- Lost on next `omarchy update`
-- Cause conflicts with upstream
-- Break the system's update mechanism
+This directory is owned by the omarchy package. Any local changes will be
+overwritten on the next `omarchy update`.
 
 ```
 /usr/share/omarchy/     # READ-ONLY - NEVER EDIT (reading is OK)
-├── bin/                    # Source scripts (symlinked to PATH)
+├── bin/                    # Command source (packaged binaries are on PATH)
 ├── config/                 # Default config templates
 ├── themes/                 # Stock themes
 ├── default/                # System defaults
@@ -66,7 +76,7 @@ This directory contains Omarchy's source files managed by git. Any changes will 
 
 **Always use these safe locations instead:**
 - `~/.config/` - User configuration (safe to edit)
-- `~/.config/omarchy/themes/<custom-name>/` - Custom themes (must be real directories)
+- `~/.config/omarchy/themes/<custom-name>/` - Custom themes
 - `~/.config/omarchy/hooks/` - Custom automation hooks
 
 If the request is to develop Omarchy itself, this skill is out of scope. Follow repository development instructions instead of this skill.
@@ -92,7 +102,7 @@ Omarchy is built on:
 | **Arch Linux** | Base OS | `/etc/`, `~/.config/` |
 | **Hyprland** | Wayland compositor/WM | `~/.config/hypr/` |
 | **Omarchy shell** | Status bar + notifications (Quickshell) | `~/.config/omarchy/shell.json` |
-| **Launcher** | Quickshell launcher | `~/.config/omarchy/shell.json` |
+| **Launcher/menus** | Quickshell menu | `~/.config/omarchy/extensions/omarchy-menu.jsonc` |
 | **Alacritty/Foot/Kitty/Ghostty** | Terminals | `~/.config/<terminal>/` |
 | **Omarchy OSD** | On-screen display | Quickshell plugin |
 
@@ -101,7 +111,7 @@ Omarchy is built on:
 Omarchy ships a single `omarchy` CLI that dispatches to all `omarchy-*` binaries via `omarchy <group> <action>`. Always prefer this form — it is self-documenting and stable. The underlying `omarchy-*` binaries still exist on `PATH` and remain safe to read for source.
 
 ```bash
-# List every documented command and its summary
+# List every documented command and its summary (--all includes hidden commands)
 omarchy commands
 
 # Show the commands inside a group
@@ -142,52 +152,9 @@ Run `omarchy --help` for the full list. The most common groups:
 
 ## Configuration Locations
 
-### Hyprland (Window Manager)
-
-Omarchy configures Hyprland in Lua. User files are loaded after Omarchy's
-defaults, so overrides go here:
-
-```
-~/.config/hypr/
-├── hyprland.lua       # Main config (loads Omarchy defaults, then user files)
-├── bindings.lua       # Keybindings
-├── monitors.lua       # Display configuration
-├── input.lua          # Keyboard/mouse settings
-├── looknfeel.lua      # Appearance (gaps, borders, animations)
-├── autostart.lua      # Startup applications
-└── hyprsunset.conf    # Night light / blue light filter
-```
-
-**Key behaviors:**
-- Hyprland auto-reloads on config save (no restart needed for most changes)
-- Use `hyprctl reload` to force reload
-- After ANY Hyprland config change, validate with `hyprctl reload` followed by `hyprctl configerrors`
-- If `hyprctl configerrors` reports errors, address them and rerun validation until clean or until a real blocker is identified
-- Use `omarchy refresh hyprland` to reset to defaults
-
-### Omarchy shell (Status Bar + Notifications)
-
-The bar, notification daemon, settings panel, and assorted overlays all run
-inside a single long-running Quickshell process (`omarchy-shell`).
-
-```
-~/.config/omarchy/shell.json             # User overrides: bar, plugins, idle
-~/.config/omarchy/plugins/<plugin-id>/   # User-owned shell plugins
-$OMARCHY_PATH/config/omarchy/shell.json  # Canonical defaults
-```
-
-The shell hot-reloads `shell.json` on save — no restart needed for layout
-changes. `idle.screensaver` and `idle.lock` are seconds since user idle began.
-
-To customize a built-in bar widget, never edit `$OMARCHY_PATH/shell/plugins/`.
-Clone it into the user plugin directory instead:
-
-```bash
-omarchy plugin clone omarchy.workspaces
-# Edit ~/.config/omarchy/plugins/<username>.workspaces/; saved changes reload automatically.
-```
-
-**Commands:** `omarchy restart shell`, `omarchy refresh shell`
+Hyprland config lives in `~/.config/hypr/` — see [`hyprland.md`](hyprland.md).
+The Omarchy shell (bar, notifications, plugins, idle) is configured in
+`~/.config/omarchy/shell.json` — see [`plugins.md`](plugins.md).
 
 ### Terminals
 
@@ -212,7 +179,7 @@ omarchy plugin clone omarchy.workspaces
 
 ## Safe Customization Patterns
 
-### Pattern 1: Edit User Config Directly
+### Edit User Config Directly
 
 For simple changes, edit files in `~/.config/`:
 
@@ -227,44 +194,12 @@ cp ~/.config/hypr/bindings.lua ~/.config/hypr/bindings.lua.bak.$(date +%s)
 
 # 4. Apply changes
 # - Hyprland: auto-reloads on save, but MUST validate with `hyprctl reload` and `hyprctl configerrors`
-# - Omarchy shell: shell.json hot-reloads; use `omarchy-shell shell rescanPlugins` for plugin/widget code changes
-# - Launcher: restart with `omarchy restart shell`
-# - Terminals: MUST restart with `omarchy restart terminal`
+# - Omarchy shell: shell.json and user plugin code under ~/.config/omarchy/plugins/ hot-reload on save
+# - Menus/launcher: ~/.config/omarchy/extensions/omarchy-menu.jsonc hot-reloads on save
+# - Terminals: apply with `omarchy restart terminal` (reloads running terminals; foot picks changes up in new windows)
 ```
 
-### Pattern 2: Make a new theme
-
-1. Create a directory under ~/.config/omarchy/themes.
-2. See how an existing theme is done via /usr/share/omarchy/themes/catppuccin.
-3. Download a matching background (or several) from the internet and put them in ~/.config/omarchy/themes/[name-of-new-theme]
-4. When done with the theme, run `omarchy theme set "Name of new theme"`
-
-### Pattern 3: Use Hooks for Automation
-
-Hooks live in `~/.config/omarchy/hooks/<name>.d/` — one directory per event,
-holding any number of independent scripts. Install with
-`omarchy hook install <name> <script>` (copies the script in and makes it
-executable):
-
-```
-~/.config/omarchy/hooks/
-├── battery-low.d/          # Low battery (percentage in $1)
-├── font-set.d/             # After font change (font name in $1)
-├── post-boot.d/            # After the desktop starts
-├── post-update.d/          # After `omarchy update`
-├── pre-refresh-pacman.d/   # Before package sync during update
-└── theme-set.d/            # After theme change (theme slug in $1)
-```
-
-Example hook script:
-```bash
-#!/bin/bash
-THEME_NAME=$1
-echo "Theme changed to: $THEME_NAME"
-# Add custom actions here
-```
-
-### Pattern 4: Reset to Defaults -- ALWAYS SEEK USER CONFIRMATION BEFORE RUNNING
+### Reset to Defaults -- ALWAYS SEEK USER CONFIRMATION BEFORE RUNNING
 
 When customizations go wrong:
 
@@ -276,77 +211,10 @@ omarchy refresh hyprland
 # The refresh command:
 # 1. Backs up current config with timestamp
 # 2. Copies default from $OMARCHY_PATH/config/
-# 3. Restarts the component
+# 3. Restarts the component where the refresh needs it (e.g. `refresh shell`)
 ```
 
-## Common Tasks
-
-### Themes
-
-```bash
-omarchy theme list              # Show available themes
-omarchy theme current           # Show current theme
-omarchy theme set <name>        # Apply theme ("Tokyo Night" and "tokyo-night" both work)
-omarchy theme bg next           # Cycle background
-omarchy theme install <url>     # Install from git repo
-```
-
-### Keybindings
-
-Edit `~/.config/hypr/bindings.lua`. Format:
-```lua
-o.bind("SUPER + SHIFT + R", "SSH", "alacritty -e ssh your-server")
-o.bind("SUPER + B", "Browser", { launch = "chromium" })  -- launch wraps with uwsm-app
-```
-
-View current bindings: `omarchy menu keybindings --print`
-
-**IMPORTANT: When re-binding an existing key:**
-
-1. First check existing bindings: `omarchy menu keybindings --print`
-2. If the key is already bound, you MUST call `hl.unbind(...)` BEFORE the new `o.bind(...)`
-3. Inform the user what the key was previously bound to
-
-Example - rebinding SUPER+F (which is bound to fullscreen by default):
-```lua
--- Unbind existing SUPER+F (was: fullscreen)
-hl.unbind("SUPER + F")
--- New binding for file manager
-o.bind("SUPER + F", "File manager", { launch = "nautilus" })
-```
-
-Always tell the user: "Note: SUPER+F was previously bound to fullscreen. I've added an unbind to override it."
-
-### Display/Monitors
-
-Edit `~/.config/hypr/monitors.lua`. Format:
-```lua
-hl.monitor({ output = "eDP-1", mode = "1920x1080@60", position = "0x0", scale = 1 })
-hl.monitor({ output = "HDMI-A-1", mode = "2560x1440@144", position = "1920x0", scale = 1 })
-```
-
-List monitors and supported modes: `hyprctl monitors all`
-
-### Window Rules
-
-**CRITICAL: Hyprland window rules syntax changes frequently between versions.**
-
-Before writing ANY window rules, you MUST fetch the current documentation from the official Hyprland wiki:
-- https://wiki.hypr.land/Configuring/Window-Rules/
-
-DO NOT rely on cached or memorized window rule syntax. The format has changed multiple times and using outdated syntax will cause errors or unexpected behavior.
-
-Window rules go in `~/.config/hypr/hyprland.lua` or a required Lua module. Prefer Omarchy's `o.window(match, rules)` helper — see examples in `$OMARCHY_PATH/default/hypr/windows.lua`.
-
-### Fonts
-
-```bash
-omarchy font list               # Available fonts
-omarchy font current            # Current font
-omarchy font set <name>         # Change font
-```
-
-### System
+## System Commands
 
 ```bash
 omarchy update                  # Full system update
@@ -383,10 +251,10 @@ When user requests system changes:
 
 1. **Is it a stock omarchy command?** Use it directly
 2. **Is it a config edit?** Edit in `~/.config/`, never `/usr/share/omarchy/`
-3. **Is it a theme customization?** Create a NEW custom theme directory
-4. **Is it automation?** Use `omarchy hook install` and the hook `.d` directories
+3. **Is it a theme customization?** Follow [`theming.md`](theming.md); create a NEW custom theme directory
+4. **Is it automation?** Follow [`hooks.md`](hooks.md); use `omarchy hook install` and the hook `.d` directories
 5. **Is it a package install?** Use `omarchy pkg add <pkgs...>` (or `omarchy pkg aur add <pkgs...>` for AUR-only packages)
-6. **Is it built-in shell/plugin code?** Clone it with `omarchy plugin clone`; never edit the packaged copy
+6. **Is it built-in shell/plugin code?** Follow [`plugins.md`](plugins.md); clone it with `omarchy plugin clone`, never edit the packaged copy
 7. **Unsure if command exists?** Run `omarchy commands` (or `omarchy <group> --help` for one group)
 
 ### Reminder Requests
@@ -413,12 +281,14 @@ This skill intentionally does not cover Omarchy source development. Do not use t
 - "Add a keybinding for Super+E to open file manager" -> Check existing bindings first, call `hl.unbind` if needed, then `o.bind` in `~/.config/hypr/bindings.lua`
 - "Configure my external monitor" -> Edit `~/.config/hypr/monitors.lua`
 - "Make the window gaps smaller" -> Edit `~/.config/hypr/looknfeel.lua`
-- "Set up night light to turn on at sunset" -> `omarchy toggle nightlight` or edit `~/.config/hypr/hyprsunset.conf`
+- "Turn on night light" -> `omarchy toggle nightlight` (for time-based schedules, edit `~/.config/hypr/hyprsunset.conf` profiles, then `omarchy restart hyprsunset`)
 - "Set a reminder to pickup jack in 15 minutes" -> `omarchy reminder 15 "Pickup Jack"`
 - "Show my reminders" -> `omarchy reminder show`
 - "Clear all reminders" -> `omarchy reminder clear`
-- "Customize the catppuccin theme colors" -> Create `~/.config/omarchy/themes/catppuccin-custom/` by copying from stock, then edit
+- "Customize the catppuccin theme colors" -> Overlay: put an edited `colors.toml` in `~/.config/omarchy/themes/catppuccin/`, then re-apply the theme (see `theming.md`)
 - "Run a script every time I change themes" -> Install it with `omarchy hook install theme-set <script>`
 - "Change how workspace labels are rendered" -> Clone `omarchy.workspaces`, which switches the bar to `<username>.workspaces`, then edit the clone
 - "Lock after ten minutes" -> Set `idle.lock` to `600` in `~/.config/omarchy/shell.json`
 - "Reset shell/bar to defaults" -> `omarchy refresh shell`
+- "Record my screen" -> `omarchy screenrecord --fullscreen`, then `omarchy screenrecord --stop-recording` (see `capture.md`)
+- "Report this bug to Omarchy" -> Gather diagnostics and a capture of the problem, then file it (see `contributing.md`)

@@ -83,10 +83,10 @@ fi
 # Dev-aware skill symlinks. Cannot live in /etc/skel because OMARCHY_PATH may
 # point at a dev checkout (omarchy dev link) where the target differs.
 mkdir -p ~/.agents/skills ~/.claude/skills ~/.codex/skills ~/.pi/agent/skills
-ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.agents/skills/omarchy
-ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.claude/skills/omarchy
-ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.codex/skills/omarchy
-ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.pi/agent/skills/omarchy
+ln -sfn "$OMARCHY_PATH/default/agents/skills/omarchy" ~/.agents/skills/omarchy
+ln -sfn "$OMARCHY_PATH/default/agents/skills/omarchy" ~/.claude/skills/omarchy
+ln -sfn "$OMARCHY_PATH/default/agents/skills/omarchy" ~/.codex/skills/omarchy
+ln -sfn "$OMARCHY_PATH/default/agents/skills/omarchy" ~/.pi/agent/skills/omarchy
 
 mkdir -p ~/Downloads ~/Pictures ~/Videos ~/.config/gtk-3.0
 xdg-user-dirs-update --set TEMPLATES "$HOME"
