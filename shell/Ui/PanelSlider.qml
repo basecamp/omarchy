@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "RangeModel.js" as RangeModel
 
 Item {
   id: root
@@ -13,6 +14,10 @@ Item {
   property color trackColor: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "#333"
   property color fillColor: bar ? bar.foreground : Color.foreground
   property color knobColor: bar ? bar.foreground : Color.foreground
+  // Optional secondary range. Keeping threshold at maximum disables it, so
+  // existing sliders retain their original track, fill, and knob treatment.
+  property real threshold: maximum
+  property color thresholdColor: Color.accent
   property bool dragging: false
   property real trackHeight: Math.max(4, Math.round(Style.spacing.controlHeight * 0.11))
   property real knobSize: Math.max(14, Math.round(Style.spacing.controlHeight * 0.38))
@@ -39,6 +44,9 @@ Item {
 
   readonly property real range: Math.max(0.0001, maximum - minimum)
   readonly property real progress: Math.max(0, Math.min(1, (liveValue - minimum) / range))
+  readonly property bool thresholdEnabled: RangeModel.thresholdEnabled(minimum, maximum, threshold)
+  readonly property real thresholdProgress: RangeModel.fraction(threshold, minimum, maximum)
+  readonly property bool aboveThreshold: RangeModel.amplified(liveValue, minimum, maximum, threshold)
   readonly property bool _hot: mouseArea.containsMouse || root.dragging
 
   Rectangle {
@@ -66,6 +74,41 @@ Item {
     }
   }
 
+  Rectangle {
+    visible: root.thresholdEnabled
+    anchors.top: track.top
+    anchors.bottom: track.bottom
+    x: track.x + track.width * root.thresholdProgress
+    width: track.width * (1 - root.thresholdProgress)
+    radius: track.radius
+    color: Util.alpha(root.thresholdColor, Style.selectedFillAlpha)
+  }
+
+  Rectangle {
+    visible: root.thresholdEnabled && root.progress > root.thresholdProgress
+    anchors.top: track.top
+    anchors.bottom: track.bottom
+    x: track.x + track.width * root.thresholdProgress
+    width: track.width * (root.progress - root.thresholdProgress)
+    color: root.thresholdColor
+
+    Behavior on width {
+      enabled: !root.dragging
+      NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+    }
+  }
+
+  Rectangle {
+    visible: root.thresholdEnabled
+    width: Math.max(1, Style.spacing.hairline)
+    height: root.trackHeight + Style.spacing.xs
+    radius: width / 2
+    color: root.tickColor
+    anchors.verticalCenter: track.verticalCenter
+    x: Math.max(0, Math.min(track.width - width,
+                            track.width * root.thresholdProgress - width / 2))
+  }
+
   Repeater {
     model: root.tickCount > 1 ? root.tickCount : 0
     Rectangle {
@@ -85,7 +128,7 @@ Item {
     width: root.knobSize
     height: root.knobSize
     radius: root.knobSize / 2
-    color: root.knobColor
+    color: root.aboveThreshold ? root.thresholdColor : root.knobColor
     borderSpec: Border.flat(root.bar ? root.bar.background : "#101315", Math.max(1, Style.space(2)))
     anchors.verticalCenter: track.verticalCenter
     x: Math.max(0, Math.min(track.width - width, track.width * root.progress - width / 2))

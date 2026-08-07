@@ -847,6 +847,7 @@ Panel {
                 anchors.rightMargin: Style.space(6)
                 minimum: 0
                 maximum: root.maxVolume
+                threshold: root.maxVolumePercent > 100 ? 1 : maximum
                 step: 0.05
                 value: root.outputVolume
                 opacity: root.outputMuted ? 0.5 : 1.0

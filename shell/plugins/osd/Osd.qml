@@ -5,6 +5,7 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 import "OsdModel.js" as OsdModel
+import "../../Ui/RangeModel.js" as RangeModel
 
 Item {
   id: root
@@ -19,6 +20,9 @@ Item {
   property int duration: 1200
 
   readonly property bool mediaOsd: iconKey.indexOf("media") === 0 || iconKey.indexOf("player") === 0
+  readonly property bool amplificationEnabled: RangeModel.thresholdEnabled(0, maxValue, 100)
+  readonly property bool amplified: RangeModel.amplified(value, 0, maxValue, 100)
+  readonly property real normalBoundary: RangeModel.fraction(100, 0, maxValue)
 
   // The card is built out of measured columns instead of fixed widths, so it
   // keeps exactly `pad` between border and content on every side whatever
@@ -165,7 +169,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: root.icon
             font: iconMetrics.font
-            color: Color.popups.text
+            color: root.amplified ? Color.accent : Color.popups.text
           }
         }
         Rectangle {
@@ -175,6 +179,7 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
           color: Util.alpha(Color.popups.text, 0.45)
           Rectangle {
+            visible: !root.amplificationEnabled
             height: parent.height
             width: parent.width * (root.hasProgress ? root.value / root.maxValue : 0)
             color: Color.accent
@@ -183,6 +188,50 @@ Item {
               enabled: root.opened
               NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
             }
+          }
+          Rectangle {
+            visible: root.amplificationEnabled
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            x: parent.width * root.normalBoundary
+            width: parent.width * (1 - root.normalBoundary)
+            radius: parent.radius
+            color: Util.alpha(Color.accent, Style.selectedFillAlpha)
+          }
+          Rectangle {
+            visible: root.amplificationEnabled
+            height: parent.height
+            width: parent.width * Math.min(root.value / root.maxValue, root.normalBoundary)
+            radius: parent.radius
+            color: Color.popups.text
+
+            Behavior on width {
+              enabled: root.opened
+              NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+            }
+          }
+          Rectangle {
+            visible: root.amplificationEnabled && root.value > 100
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            x: parent.width * root.normalBoundary
+            width: parent.width * (root.value / root.maxValue - root.normalBoundary)
+            color: Color.accent
+
+            Behavior on width {
+              enabled: root.opened
+              NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+            }
+          }
+          Rectangle {
+            visible: root.amplificationEnabled
+            width: Math.max(1, Style.spacing.hairline)
+            height: parent.height + Style.spacing.xs
+            radius: width / 2
+            color: Color.background
+            anchors.verticalCenter: parent.verticalCenter
+            x: Math.max(0, Math.min(parent.width - width,
+                                    parent.width * root.normalBoundary - width / 2))
           }
         }
         Text {
@@ -194,7 +243,7 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
           text: root.message
           font: messageMetrics.font
-          color: Color.popups.text
+          color: root.amplified ? Color.accent : Color.popups.text
           elide: Text.ElideRight
           maximumLineCount: 1
         }
