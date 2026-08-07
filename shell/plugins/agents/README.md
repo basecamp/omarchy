@@ -10,9 +10,9 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
 ## Panel
 
 - **Hero** — the mark, the tool, and the plan it runs on ("Max 20x", "Pro").
-  Auth and endpoint problems replace the plan line and repeat in a card.
-- **Subscription switch** — one chip per enabled agent (`h`/`l` or click).
-  It appears only when more than one agent is enabled.
+  Auth and endpoint problems replace the plan line and repeat in a card. A
+  provider dropdown on its trailing edge switches subscriptions and appears
+  only when more than one agent is enabled.
 - **Limits** — the percentage of each allowance used, a matching meter, and
   the time until the session or weekly window resets.
 - **Balance** — prepaid agents report a credit ledger instead of limits:
@@ -27,7 +27,7 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
 
 A subscription appears only when it is enabled in settings and has actually
 recorded usage — on this machine or on a synced one. With one such agent
-there is no switch row at all; with none, the module leaves the bar entirely
+there is no dropdown at all; with none, the module leaves the bar entirely
 rather than sitting there with nothing to say. A CLI installed mid-session
 shows up at the next refresh, so nothing polls the disk waiting for it.
 
@@ -46,7 +46,8 @@ record that lands in the directory regardless of who wrote it.
 
 Adding an agent therefore never touches this plugin: ship a collector that
 prints the record contract (see the `claude` and `codex` collectors in
-`bin/`), and the panel gains a tab. An `assets/<id>.svg` mark is optional —
+`bin/`), and the new subscription shows up in the provider dropdown. An
+`assets/<id>.svg` mark is optional —
 with an `assets/<id>-light.svg` twin if the mark needs a dark variant for
 light surfaces — and the bar glyph stands in when there is none.
 
@@ -88,14 +89,16 @@ subtracts rated account costs and the panel labels the result as estimated.
 For a later top-up, increase `fundedAmount` by the new credit while keeping
 the original `fundedAt`, so both the funding and spend still cover the same
 period. `accountId` only matters when one API key can access several
-accounts. Without a configured `fundedAmount` the tab still shows token
+accounts. Without a configured `fundedAmount` the panel still shows token
 usage, just no balance. With a live ledger, `fundedAmount` is optional and
 only adds the meter and the spent-of-funded line under the real figure.
 
 ## Interactions
 
 - Bar icon: left = panel, right = launch agent, middle = next subscription.
-- Panel: `h`/`l` switch subscription, `j`/`k` scroll, `r` or Enter refresh,
+- Panel: `h`/`l` switch subscription and activate the hero cursor, `j`/`k`
+  scroll, `r` refresh, Enter opens the provider dropdown while the hero cursor
+  is active (hovering the dropdown activates it too) and refreshes otherwise.
   Tab moves to the neighboring bar panel, Esc closes.
 - IPC: `omarchy-shell omarchy.agents <open|close|toggle|refresh|next>`.
 
