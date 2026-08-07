@@ -18,12 +18,17 @@ defaults, so overrides go here:
 └── xdph.conf          # Screen sharing / desktop portal
 ```
 
-**Key behaviors:**
+**Key behaviors (the `.lua` files):**
 - Hyprland auto-reloads on config save (no restart needed for most changes)
 - Use `hyprctl reload` to force reload
-- After ANY Hyprland config change, validate with `hyprctl reload` followed by `hyprctl configerrors`
+- After ANY Hyprland Lua config change, validate with `hyprctl reload` followed by `hyprctl configerrors`
 - If `hyprctl configerrors` reports errors, address them and rerun validation until clean or until a real blocker is identified
-- Use `omarchy refresh hyprland` to reset the Lua config files to defaults (`hyprsunset.conf` has its own `omarchy refresh hyprsunset`)
+- Use `omarchy refresh hyprland` to reset the Lua config files to defaults
+
+The two `.conf` files are read by separate processes, so `hyprctl` neither
+applies nor validates them:
+- `hyprsunset.conf` (night light): apply changes with `omarchy restart hyprsunset`; reset with `omarchy refresh hyprsunset`
+- `xdph.conf` (screen-sharing portal): applies when the portal restarts, e.g. on next login
 
 ## Keybindings
 
