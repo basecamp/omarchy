@@ -92,6 +92,9 @@ trap 'rm -rf "$stub_dir"' EXIT
 # `pacman -Q` resolves a name through what installed packages provide, so gvim
 # answers for vim and bash answers for sh. A set built from `pacman -Qq` alone
 # would miss both and offer to install what is already there.
+#
+# `-Qi` wraps a long list onto indented continuation lines whenever COLUMNS is
+# set, so gvim's provides arrive the way a wrapped terminal would emit them.
 cat >"$stub_dir/pacman" <<'STUB'
 #!/bin/bash
 case "$1" in
@@ -102,8 +105,11 @@ case "$1" in
   cat <<'INFO'
 Name            : bash
 Provides        : sh
+Version         : 5.3.0-1
 Name            : gvim
-Provides        : vim=9.2.0849-1  xxd
+Provides        : vim=9.2.0849-1
+                  xxd
+Version         : 9.2-1
 INFO
   ;;
 -Q)
@@ -121,29 +127,36 @@ chmod +x "$stub_dir/gvim"
 
 guard_prelude=$(prelude)
 
-# vim and sh are provided rather than installed; bash>=1 is a version
-# constraint no set can answer; cd is a shell builtin `command -v` finds and a
-# PATH search does not.
-for args in "bash" "vim" "sh" "xxd" "absent" "bash vim" "bash absent" "bash>=1" ""; do
-  for helper in omarchy-pkg-present omarchy-pkg-missing; do
-    real=0
-    PATH="$stub_dir:$PATH" "$ROOT/bin/$helper" $args >/dev/null 2>&1 || real=$?
-    shadowed=0
-    PATH="$stub_dir:$PATH" bash -c "$guard_prelude
-$helper $args" >/dev/null 2>&1 || shadowed=$?
-    ((real == shadowed)) || fail "$helper '$args' answers as the real command" "real: $real, shadowed: $shadowed"
+# Arguments reach both sides as argv. Interpolating them into the shadow's
+# script text would let `bash>=1` parse as a redirection, so the case that
+# exists to prove constraints work would quietly test `bash` instead.
+assert_helper_agrees() {
+  local description="$1" helper="$2"
+  shift 2
+
+  local real=0 shadowed=0
+  PATH="$stub_dir:$PATH" "$ROOT/bin/$helper" "$@" >/dev/null 2>&1 || real=$?
+  PATH="$stub_dir:$PATH" bash -c "$guard_prelude"$'\n'"$helper \"\$@\"" "$helper" "$@" >/dev/null 2>&1 || shadowed=$?
+  ((real == shadowed)) || fail "$description" "$helper $*: real=$real shadowed=$shadowed"
+}
+
+# vim, sh and xxd are provided rather than installed, and xxd only appears on a
+# wrapped continuation line; bash>=1 is a version constraint no set can answer.
+pkg_cases=("bash" "vim" "sh" "xxd" "absent" "bash vim" "bash absent" "bash>=1" "vim>=1" "")
+for helper in omarchy-pkg-present omarchy-pkg-missing; do
+  for case in "${pkg_cases[@]}"; do
+    read -r -a argv <<<"$case"
+    assert_helper_agrees "guard prelude resolves packages as pacman does" "$helper" "${argv[@]}"
   done
 done
-pass "guard prelude resolves packages through provides and constraints as pacman does"
+pass "guard prelude resolves packages through provides, wrapping, and constraints as pacman does"
 
-for args in "gvim" "cd" "absent" "gvim absent" "gvim cd" ""; do
-  for helper in omarchy-cmd-present omarchy-cmd-missing; do
-    real=0
-    PATH="$stub_dir:$PATH" "$ROOT/bin/$helper" $args >/dev/null 2>&1 || real=$?
-    shadowed=0
-    PATH="$stub_dir:$PATH" bash -c "$guard_prelude
-$helper $args" >/dev/null 2>&1 || shadowed=$?
-    ((real == shadowed)) || fail "$helper '$args' answers as the real command" "real: $real, shadowed: $shadowed"
+# cd is a shell builtin `command -v` finds and a PATH search does not.
+cmd_cases=("gvim" "cd" "absent" "gvim absent" "gvim cd" "")
+for helper in omarchy-cmd-present omarchy-cmd-missing; do
+  for case in "${cmd_cases[@]}"; do
+    read -r -a argv <<<"$case"
+    assert_helper_agrees "guard prelude resolves commands as the real helper does" "$helper" "${argv[@]}"
   done
 done
 pass "guard prelude resolves commands as omarchy-cmd-present and omarchy-cmd-missing do"

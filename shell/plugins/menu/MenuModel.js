@@ -402,10 +402,16 @@ var GUARD_READERS = [
 // comes back and offers to install what is already there. A version
 // constraint (`bash>=1`) is not a name any set can answer, so it goes to
 // pacman itself; no shipped guard writes one.
+//
+// `pacman -Qi` wraps a long list across continuation lines whenever COLUMNS
+// is set in the environment, which a login shell may well have done, so the
+// parser follows the indented lines rather than reading the first one and
+// dropping half of what is installed.
 function guardHelpers() {
   return 'declare -A __omarchy_pkgs=()\n'
     + 'mapfile -t __omarchy_pkg_names < <({ pacman -Qq; LC_ALL=C pacman -Qi'
-    + " | awk -F': ' '/^Provides/ && $2 != \"None\" { n = split($2, p, \" \");"
+    + " | awk '/^[A-Za-z]/ { provides = ($0 ~ /^Provides/); sub(/^[^:]*: /, \"\") }"
+    + ' provides && $0 != "None" { n = split($0, p, " ");'
     + ' for (i = 1; i <= n; i++) { sub(/[<>=].*/, "", p[i]); print p[i] } }\'; } 2>/dev/null)\n'
     + 'for __omarchy_pkg in "${__omarchy_pkg_names[@]}"; do __omarchy_pkgs[$__omarchy_pkg]=1; done\n'
     + '__omarchy_pkg_has() { [[ -n ${__omarchy_pkgs[$1]-} ]] && return 0; '
