@@ -8,6 +8,10 @@ migration=$(grep -rl 'Keep non-Latin keyboard layouts out of the initramfs' "$RO
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
+# The layout has to come from the file under test, not from whatever the shell
+# running the suite happens to export.
+unset XKBLAYOUT
+
 # The migration shells out to sudo (to edit the hooks conf) and rebuilds the UKI
 # through limine-mkinitcpio. Stub both so the test never touches the real system
 # or the real initramfs, and record the rebuild so cases can assert on it.
@@ -71,14 +75,33 @@ bundling_dropped "$hooks" || fail "migration drops bundling for a non-Latin layo
 [[ -f $marker ]] || fail "migration rebuilds the UKI for a non-Latin layout"
 pass "migration drops bundling and rebuilds for a non-Latin layout"
 
-# The first entry decides it: us,ru types Latin, so the bundling stays.
+# Any of the listed layouts, not just the Cyrillic one, has to be caught.
+vconsole="$TMPDIR/greek.conf"
+hooks="$TMPDIR/greek-hooks.conf"
+printf 'KEYMAP=gr\nXKBLAYOUT=gr\n' >"$vconsole"
+hooks_with_bundling "$hooks"
+run_migration "Greek layout" "$vconsole" "$hooks"
+bundling_dropped "$hooks" || fail "migration drops bundling for a Greek layout"
+pass "migration drops bundling for a non-Cyrillic entry in the list"
+
+# The first entry decides it, so both directions have to be checked: us,ru types
+# Latin and keeps the bundling, ru,us does not and loses it. Only the second one
+# fails if the comma never gets stripped.
 vconsole="$TMPDIR/variant.conf"
 hooks="$TMPDIR/variant-hooks.conf"
 printf 'KEYMAP=us\nXKBLAYOUT="us,ru"\n' >"$vconsole"
 hooks_with_bundling "$hooks"
-run_migration "keymap variant" "$vconsole" "$hooks"
+run_migration "Latin primary in a list" "$vconsole" "$hooks"
 bundling_dropped "$hooks" && fail "migration keeps bundling when the primary layout is Latin"
-pass "migration reads only the primary layout of a comma-separated list"
+pass "migration keeps bundling when the primary layout of a list is Latin"
+
+vconsole="$TMPDIR/variant-nonlatin.conf"
+hooks="$TMPDIR/variant-nonlatin-hooks.conf"
+printf 'KEYMAP=ru\nXKBLAYOUT="ru,us"\n' >"$vconsole"
+hooks_with_bundling "$hooks"
+run_migration "non-Latin primary in a list" "$vconsole" "$hooks"
+bundling_dropped "$hooks" || fail "migration drops bundling when the primary layout is non-Latin"
+pass "migration strips the keymap variant before matching"
 
 vconsole="$TMPDIR/latin.conf"
 hooks="$TMPDIR/latin-hooks.conf"
@@ -105,6 +128,26 @@ hooks_with_bundling "$hooks"
 run_migration "missing vconsole.conf" "$TMPDIR/absent-vconsole.conf" "$hooks"
 bundling_dropped "$hooks" && fail "migration keeps bundling when vconsole.conf is missing"
 pass "migration survives a missing vconsole.conf"
+
+# Sourcing leaves an exported XKBLAYOUT standing when the file sets none, which
+# would let the caller's environment decide what the initramfs bundles.
+vconsole="$TMPDIR/no-layout.conf"
+hooks="$TMPDIR/exported-hooks.conf"
+hooks_with_bundling "$hooks"
+XKBLAYOUT=ru run_migration "exported XKBLAYOUT" "$vconsole" "$hooks"
+bundling_dropped "$hooks" && fail "migration ignores an exported XKBLAYOUT"
+pass "migration reads the layout from the file, not the environment"
+
+# Reading the layout must not depend on command substitution discarding errexit,
+# which is what keeps the `-f` guard in front of the source. inherit_errexit
+# takes that back, and a bare source would abort the chain again under it.
+hooks="$TMPDIR/inherit-hooks.conf"
+hooks_with_bundling "$hooks"
+PATH="$stub_bin:$PATH" REBUILT_MARKER="$marker" \
+  OMARCHY_VCONSOLE_CONF="$TMPDIR/absent-vconsole.conf" OMARCHY_MKINITCPIO_HOOKS_CONF="$hooks" \
+  bash -O inherit_errexit -euo pipefail "$migration" >/dev/null ||
+  fail "migration exits clean under inherit_errexit"
+pass "migration reads the layout without relying on errexit being discarded"
 
 # Nothing to edit, and running twice must stay clean.
 vconsole="$TMPDIR/cyrillic.conf"

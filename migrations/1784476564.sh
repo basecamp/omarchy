@@ -9,11 +9,13 @@ echo "Keep non-Latin keyboard layouts out of the initramfs so the LUKS passphras
 hooks_conf="${OMARCHY_MKINITCPIO_HOOKS_CONF:-/etc/mkinitcpio.conf.d/omarchy_hooks.conf}"
 vconsole_conf="${OMARCHY_VCONSOLE_CONF:-/etc/vconsole.conf}"
 
-# vconsole.conf only guarantees KEYMAP, and it need not exist at all. Under
-# omarchy-migrate's `bash -euo pipefail` an unset XKBLAYOUT or a failed source
-# would abort every migration behind this one, so keep the echo off the `&&`
-# chain and default the expansion. Strip the keymap variant separately.
-layout=$(. "$vconsole_conf" 2>/dev/null; echo "${XKBLAYOUT:-}")
+# vconsole.conf only guarantees KEYMAP, and it need not exist at all. Sourcing
+# one that isn't there fails, and under omarchy-migrate's `bash -euo pipefail`
+# that aborts every migration behind this one. Check the file instead of leaning
+# on command substitution clearing errexit, which inherit_errexit takes back.
+# Unset first so an exported XKBLAYOUT can't answer for a file that sets none.
+layout=""
+[[ -f $vconsole_conf ]] && layout=$(unset XKBLAYOUT; . "$vconsole_conf"; echo "${XKBLAYOUT:-}")
 layout="${layout%%,*}"
 
 if [[ $layout =~ ^(af|am|ara|bd|bg|by|et|ge|gr|il|in|iq|ir|kg|kh|kz|la|lk|mk|mm|mn|mv|np|rs|ru|sy|th|tj|ua)$ ]] &&
