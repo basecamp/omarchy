@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "license": "MIT",
-  "description": "Claude Code, Codex, and Fireworks usage, limits, and pace in a native Omarchy bar panel.",
+  "description": "Claude Code, Codex, Cursor, and Fireworks usage, limits, and pace in a native Omarchy bar panel.",
   "kinds": ["bar-widget"],
   "activation": "on-demand",
   "entryPoints": {
@@ -21,6 +21,7 @@
       "providers": {
         "claude": { "enabled": true },
         "codex": { "enabled": true },
+        "cursor": { "enabled": true },
         "fireworks": { "enabled": true }
       },
       "refreshIntervalSec": 900,
