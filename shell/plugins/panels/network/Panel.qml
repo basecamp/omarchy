@@ -918,7 +918,11 @@ Panel {
 
     onPressed: function(b) {
       if (root.opened) root.close()
-      else { root.open(); root.refresh() }
+      // open() is enough: onOpenedChanged runs refresh(true), which defers the
+      // PHY scan past the first frame. The bare refresh() that used to follow
+      // took the no-scan branch and set scannerEnabled synchronously, undoing
+      // that deferral and stalling the open on NetworkManager's AP flood.
+      else root.open()
     }
   }
 
