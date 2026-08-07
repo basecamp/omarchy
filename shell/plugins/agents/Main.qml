@@ -220,6 +220,23 @@ Item {
     return numberValue(p.totalPrompts) > 0 || numberValue(p.totalSessions) > 0
       || numberValue(p.activeDays) > 0 || numberValue(p.todayPrompts) > 0
       || numberValue(p.todaySessions) > 0 || (p.limits && p.limits.length > 0)
+      || !!p.balance
+  }
+
+  // A prepaid agent's credit ledger. Like rate limits, the balance is
+  // per-account and never merged across devices.
+  function balanceValue(raw) {
+    if (!raw || typeof raw !== "object") return null
+    var remaining = Number(raw.remaining)
+    var funded = Number(raw.funded)
+    if (!isFinite(remaining) || remaining < 0) return null
+    return {
+      remaining: remaining,
+      funded: isFinite(funded) && funded > 0 ? funded : 0,
+      spent: Math.max(0, Number(raw.spent) || 0),
+      currency: String(raw.currency || "USD"),
+      estimated: raw.estimated === true
+    }
   }
 
   function displayProvider(record) {
@@ -234,9 +251,11 @@ Item {
       usageStatusText: String(record.usageStatusText || ""),
       authHelpText: String(record.authHelpText || ""),
 
-      // Rate limits stay per-account and are never merged across devices.
+      // Rate limits and balances stay per-account and are never merged
+      // across devices.
       limits: Array.isArray(record.limits) ? record.limits : [],
       tierLabel: String(record.tierLabel || ""),
+      balance: balanceValue(record.balance),
 
       todayPrompts: synced ? numberValue(stats.todayPrompts) : numberValue(record.todayPrompts),
       todaySessions: synced ? numberValue(stats.todaySessions) : numberValue(record.todaySessions),
@@ -248,6 +267,7 @@ Item {
       activeDays: synced ? numberValue(stats.activeDays) : numberValue(record.activeDays),
       modelUsage: synced ? (stats.modelUsage || ({})) : (record.modelUsage || ({})),
       hasLocalStats: synced ? (stats.hasLocalStats !== false) : (record.hasLocalStats !== false),
+      hasPromptStats: synced ? (stats.hasPromptStats !== false) : (record.hasPromptStats !== false),
 
       syncEnabled: synced,
       syncDeviceCount: deviceCount,
@@ -514,9 +534,17 @@ Item {
     return { inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 }
   }
 
-  function addObjectNumbers(target, source) {
+  // Device-scoped stats add up across machines; account-scoped stats
+  // (Fireworks' billing API) are replicas of the same upstream truth on
+  // every synced device, so the widest value wins — summing them would
+  // double every token per machine.
+  function combineNumber(additive, current, value) {
+    return additive ? numberValue(current) + numberValue(value) : Math.max(numberValue(current), numberValue(value))
+  }
+
+  function combineObjectNumbers(additive, target, source) {
     if (!source) return
-    for (var key in source) target[key] = numberValue(target[key]) + numberValue(source[key])
+    for (var key in source) target[key] = combineNumber(additive, target[key], source[key])
   }
 
   function aggregateSnapshots(snapshots) {
@@ -533,6 +561,7 @@ Item {
         providerName: "",
         ready: false,
         hasLocalStats: false,
+        hasPromptStats: false,
         todayPrompts: 0,
         todaySessions: 0,
         todayTotalTokens: 0,
@@ -560,35 +589,36 @@ Item {
         if (stats.providerName && acc.providerName === "") acc.providerName = String(stats.providerName)
         acc.ready = acc.ready || stats.ready === true
         acc.hasLocalStats = acc.hasLocalStats || stats.hasLocalStats !== false
-        acc.todayPrompts += numberValue(stats.todayPrompts)
-        acc.todaySessions += numberValue(stats.todaySessions)
-        acc.todayTotalTokens += numberValue(stats.todayTotalTokens)
-        acc.totalPrompts += numberValue(stats.totalPrompts)
-        acc.totalSessions += numberValue(stats.totalSessions)
+        // Snapshots from before the field existed only came from agents that
+        // count prompts, so a missing value reads as true.
+        acc.hasPromptStats = acc.hasPromptStats || stats.hasPromptStats !== false
+        var additive = String(stats.scope || "device") !== "account"
+        acc.todayPrompts = combineNumber(additive, acc.todayPrompts, stats.todayPrompts)
+        acc.todaySessions = combineNumber(additive, acc.todaySessions, stats.todaySessions)
+        acc.todayTotalTokens = combineNumber(additive, acc.todayTotalTokens, stats.todayTotalTokens)
+        acc.totalPrompts = combineNumber(additive, acc.totalPrompts, stats.totalPrompts)
+        acc.totalSessions = combineNumber(additive, acc.totalSessions, stats.totalSessions)
         // Active days overlap between machines, so union the dates rather than
         // summing counts. Snapshots written before activeDates existed only
         // carry a count; the widest one stands in for them.
         var activeDates = Array.isArray(stats.activeDates) ? stats.activeDates : []
         for (var ad = 0; ad < activeDates.length; ad++) acc.activeDates[String(activeDates[ad])] = true
         acc.activeDays = Math.max(acc.activeDays, numberValue(stats.activeDays))
-        addObjectNumbers(acc.todayTokensByModel, stats.todayTokensByModel || {})
+        combineObjectNumbers(additive, acc.todayTokensByModel, stats.todayTokensByModel || {})
 
         var recent = Array.isArray(stats.recentDays) ? stats.recentDays : []
         for (var r = 0; r < recent.length; r++) {
           var day = recent[r] || {}
           var date = String(day.date || "")
-          if (acc.recentByDay[date] !== undefined) acc.recentByDay[date] += numberValue(day.messageCount)
+          if (acc.recentByDay[date] !== undefined)
+            acc.recentByDay[date] = combineNumber(additive, acc.recentByDay[date], day.messageCount)
         }
 
         var usage = stats.modelUsage || {}
         for (var modelId in usage) {
           var bucket = acc.modelUsage[modelId]
           if (!bucket) bucket = acc.modelUsage[modelId] = emptyTokenBucket()
-          var source = usage[modelId] || {}
-          bucket.inputTokens += numberValue(source.inputTokens)
-          bucket.outputTokens += numberValue(source.outputTokens)
-          bucket.cacheReadInputTokens += numberValue(source.cacheReadInputTokens)
-          bucket.cacheCreationInputTokens += numberValue(source.cacheCreationInputTokens)
+          combineObjectNumbers(additive, bucket, usage[modelId] || {})
         }
       }
     }
@@ -604,6 +634,7 @@ Item {
         providerName: acc.providerName,
         ready: acc.ready || providerDevices.length > 0,
         hasLocalStats: acc.hasLocalStats,
+        hasPromptStats: acc.hasPromptStats,
         todayPrompts: acc.todayPrompts,
         todaySessions: acc.todaySessions,
         todayTotalTokens: acc.todayTotalTokens,
@@ -636,6 +667,8 @@ Item {
       providerName: String(record.name || record.id),
       ready: record.ready === true,
       hasLocalStats: record.hasLocalStats !== false,
+      hasPromptStats: record.hasPromptStats !== false,
+      scope: String(record.scope || "device"),
       todayPrompts: numberValue(record.todayPrompts),
       todaySessions: numberValue(record.todaySessions),
       todayTotalTokens: numberValue(record.todayTotalTokens),
@@ -683,6 +716,7 @@ Item {
 
   function modelWordCase(word) {
     if (word === "gpt") return "GPT"
+    if (word === "deepseek") return "DeepSeek"
     return word.charAt(0).toUpperCase() + word.slice(1)
   }
 

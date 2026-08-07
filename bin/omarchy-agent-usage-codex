@@ -4,9 +4,10 @@
 # omarchy:hidden=true
 """Collect Codex usage into one display-ready JSON record.
 
-Local stats come from native Codex CLI session files (and pi sessions that
-ran through openai-codex); rate limits and the plan come from the Codex
-app-server RPC. The agents panel only ever reads the JSON this prints.
+Local stats come from native Codex CLI session files, pi/omp sessions that
+ran through openai-codex, and opencode sessions that ran on an OpenAI
+provider; rate limits and the plan come from the Codex app-server RPC. The agents
+panel only ever reads the JSON this prints.
 """
 
 import argparse
@@ -14,6 +15,7 @@ import json
 import os
 import select
 import shutil
+import sqlite3
 import subprocess
 import time
 from datetime import datetime, timedelta, timezone
@@ -122,69 +124,117 @@ def add_usage(day, session_key, model, input_tokens, output_tokens, cache_read, 
 
 
 def scan_pi_sessions():
-  root = Path.home() / ".pi" / "agent" / "sessions"
-  if not root.exists():
-    return
-  try:
-    rg = find_command("rg") or "rg"
-    proc = subprocess.Popen(
-      [rg, "--json", "-e", '"provider":"openai-codex"', "-e", '"api":"openai-codex"', str(root)],
-      stdout=subprocess.PIPE,
-      stderr=subprocess.DEVNULL,
-      text=True,
-      errors="replace",
-      env=ENV,
-    )
-  except FileNotFoundError:
-    return
-
-  assert proc.stdout is not None
-  for raw in proc.stdout:
+  roots = [
+    Path.home() / ".pi" / "agent" / "sessions",
+    Path.home() / ".omp" / "agent" / "sessions",
+  ]
+  rg = find_command("rg") or "rg"
+  for root in roots:
+    if not root.exists():
+      continue
     try:
-      event = json.loads(raw)
-      if event.get("type") != "match":
+      proc = subprocess.Popen(
+        [rg, "--json", "-e", r'"provider"\s*:\s*"openai-codex"', "-e", r'"api"\s*:\s*"openai-codex', str(root)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        errors="replace",
+        env=ENV,
+      )
+    except FileNotFoundError:
+      return
+
+    assert proc.stdout is not None
+    for raw in proc.stdout:
+      try:
+        event = json.loads(raw)
+        if event.get("type") != "match":
+          continue
+        line = event.get("data", {}).get("lines", {}).get("text", "")
+        path = event.get("data", {}).get("path", {}).get("text", "pi-session")
+        entry = json.loads(line)
+      except Exception:
         continue
-      line = event.get("data", {}).get("lines", {}).get("text", "")
-      path = event.get("data", {}).get("path", {}).get("text", "pi-session")
-      entry = json.loads(line)
+
+      if entry.get("type") != "message":
+        continue
+      message_key = path + ":" + str(entry.get("id") or "")
+      if message_key in seen_pi_messages:
+        continue
+      seen_pi_messages.add(message_key)
+      message = entry.get("message") or {}
+      if message.get("role") != "assistant":
+        continue
+      provider = str(message.get("provider") or "")
+      api = str(message.get("api") or "")
+      if provider != "openai-codex" and not api.startswith("openai-codex"):
+        continue
+
+      usage = message.get("usage") or {}
+      if not usage:
+        continue
+      total = number(usage.get("totalTokens"))
+      input_tokens = number(usage.get("input"))
+      output_tokens = number(usage.get("output"))
+      cache_read = number(usage.get("cacheRead"))
+      cache_write = number(usage.get("cacheWrite"))
+      if total and not (input_tokens or output_tokens or cache_read or cache_write):
+        input_tokens = total
+      if not (input_tokens or output_tokens or cache_read or cache_write):
+        continue
+
+      day = local_day(entry.get("timestamp") or message.get("timestamp"))
+      session_key = path
+      add_usage(day, session_key, model_name(message.get("model")), input_tokens, output_tokens, cache_read, cache_write)
+
+    try:
+      proc.wait(timeout=1)
     except Exception:
-      continue
+      proc.kill()
 
-    if entry.get("type") != "message":
-      continue
-    message_key = path + ":" + str(entry.get("id") or "")
-    if message_key in seen_pi_messages:
-      continue
-    seen_pi_messages.add(message_key)
-    message = entry.get("message") or {}
-    if message.get("role") != "assistant":
-      continue
-    provider = str(message.get("provider") or "")
-    api = str(message.get("api") or "")
-    if provider != "openai-codex" and not api.startswith("openai-codex"):
-      continue
 
-    usage = message.get("usage") or {}
-    if not usage:
-      continue
-    total = number(usage.get("totalTokens"))
-    input_tokens = number(usage.get("input"))
-    output_tokens = number(usage.get("output"))
-    cache_read = number(usage.get("cacheRead"))
-    cache_write = number(usage.get("cacheWrite"))
-    if total and not (input_tokens or output_tokens or cache_read or cache_write):
-      input_tokens = total
-    if not (input_tokens or output_tokens or cache_read or cache_write):
-      continue
-
-    day = local_day(entry.get("timestamp") or message.get("timestamp"))
-    session_key = path
-    add_usage(day, session_key, model_name(message.get("model")), input_tokens, output_tokens, cache_read, cache_write)
-
+def scan_opencode_sessions():
+  # A subscription burned entirely through opencode leaves no native session
+  # files, but opencode records per-message provider, model, and token usage
+  # in its own database. Read-only: opencode may be writing right now.
+  db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
+  if not db.is_file():
+    return
   try:
-    proc.wait(timeout=1)
-  except Exception:
-    proc.kill()
+    conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+  except sqlite3.Error:
+    return
+  try:
+    conn.execute("PRAGMA query_only = ON")
+    for session_id, raw in conn.execute("SELECT session_id, data FROM message"):
+      # One malformed row must not abort the scan, so every shape assumption
+      # lives inside the try.
+      try:
+        entry = json.loads(raw)
+        # Exact match: opencode provider ids are free-form, and a custom
+        # "openai-local" gateway is not this subscription.
+        if not isinstance(entry, dict) or entry.get("role") != "assistant":
+          continue
+        if str(entry.get("providerID") or "") != "openai":
+          continue
+        tokens = entry.get("tokens") or {}
+        cache = tokens.get("cache") or {}
+        input_tokens = number(tokens.get("input"))
+        # opencode keeps thinking tokens out of output; both are generated.
+        output_tokens = number(tokens.get("output")) + number(tokens.get("reasoning"))
+        cache_read = number(cache.get("read"))
+        cache_write = number(cache.get("write"))
+        if not (input_tokens or output_tokens or cache_read or cache_write):
+          continue
+        day = local_day((entry.get("time") or {}).get("created"))
+        model = model_name(str(entry.get("modelID") or "").rstrip("/").split("/")[-1])
+      except Exception:
+        continue
+      add_usage(day, "opencode:" + str(session_id), model, input_tokens, output_tokens, cache_read, cache_write)
+  except sqlite3.Error:
+    pass
+  finally:
+    conn.close()
 
 
 def scan_native_codex_sessions():
@@ -349,6 +399,7 @@ def main():
 
   scan_pi_sessions()
   scan_native_codex_sessions()
+  scan_opencode_sessions()
   rpc = fetch_codex_rpc()
 
   record = {
