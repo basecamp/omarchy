@@ -42,9 +42,59 @@ assertEqual(bar.pickDrawnSlot([drawn, placeholder]), drawn, 'bar picks the drawn
 assertEqual(bar.pickDrawnSlot([placeholder]), placeholder, 'bar falls back to the placeholder when nothing is drawn')
 assertEqual(bar.pickDrawnSlot([]), null, 'bar reports no slot when there are none')
 assertEqual(bar.pickDrawnSlot(null), null, 'bar tolerates a missing slot list')
+
+// A bar surface is built per monitor, so a panel hotkey has one live copy of
+// the widget per screen to choose between.
+const internal = { moduleName: 'omarchy.audio', visible: true, width: 28, height: 81 }
+const external = { moduleName: 'omarchy.audio', visible: true, width: 28, height: 81 }
+const row = (slot, screenName, opened) => ({ slot, screenName, opened: opened === true })
+const copies = [row(internal, 'eDP-1'), row(external, 'DP-1')]
+assertEqual(
+  bar.pickPanelSlot(copies, 'DP-1'),
+  external,
+  'bar summons a panel on the focused monitor'
+)
+assertEqual(
+  bar.pickPanelSlot(copies, 'eDP-1'),
+  internal,
+  'bar summons a panel on the focused monitor whichever one it is'
+)
+assertEqual(
+  bar.pickPanelSlot(copies, 'HDMI-A-1'),
+  internal,
+  'bar falls back to any live copy when the focused monitor has no bar'
+)
+assertEqual(
+  bar.pickPanelSlot(copies, ''),
+  internal,
+  'bar falls back to any live copy before Hyprland reports a focused monitor'
+)
+assertEqual(
+  bar.pickPanelSlot([row(internal, 'eDP-1', true), row(external, 'DP-1')], 'DP-1'),
+  internal,
+  'bar hides the panel that is open rather than the focused monitor copy'
+)
+assertEqual(
+  bar.pickPanelSlot(
+    [row(placeholder, 'DP-1'), row(drawn, 'DP-1'), row(internal, 'eDP-1')],
+    'DP-1'
+  ),
+  drawn,
+  'bar still picks the drawn slot among the focused monitor copies'
+)
+assertEqual(bar.pickPanelSlot([], 'DP-1'), null, 'bar reports no panel slot when there are none')
+assertEqual(bar.pickPanelSlot(null, 'DP-1'), null, 'bar tolerates a missing panel slot list')
 assert(
-  /BarModel\.pickDrawnSlot\(candidates\)/.test(barSource),
-  'bar routes panels through the drawn-slot picker'
+  /BarModel\.pickPanelSlot\(candidates, focusedScreenName\(\)\)/.test(barSource),
+  'bar routes panel hotkeys through the focused-monitor picker'
+)
+assert(
+  /function focusedScreenName\(\) \{[\s\S]*?Hyprland\.focusedMonitor/.test(barSource),
+  'bar reads the focused monitor from Hyprland'
+)
+assert(
+  /var slots = panelNavigationSlots\(currentSlot\.region, slotWindow\(currentSlot\)\)/.test(barSource),
+  'bar tabs between panels within one bar surface'
 )
 
 const clockSlot = { id: 'clock' }
