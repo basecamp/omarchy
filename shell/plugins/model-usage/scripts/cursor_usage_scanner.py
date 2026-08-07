@@ -139,7 +139,11 @@ def parse_billing_cycle_end(value):
   if ms is None:
     # Keep resetAt empty on unparseable input so QML date parsing stays valid.
     return ""
-  return datetime.fromtimestamp(ms / 1000.0, timezone.utc).isoformat()
+  try:
+    return datetime.fromtimestamp(ms / 1000.0, timezone.utc).isoformat()
+  except (OverflowError, OSError, ValueError):
+    # Out-of-range numerics (e.g. unexpected microseconds) still clear resetAt.
+    return ""
 
 
 def format_tier(value):

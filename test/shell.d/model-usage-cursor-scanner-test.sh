@@ -144,6 +144,7 @@ print(json.dumps({
   "reset": mod.parse_billing_cycle_end(1893456000000),
   "bad": mod.parse_billing_cycle_end("not-a-date"),
   "empty": mod.parse_billing_cycle_end(None),
+  "oor": mod.parse_billing_cycle_end(10 ** 20),
 }))
 PY
 )
@@ -163,6 +164,10 @@ pass "Cursor scanner formats parseable billing cycle ends as ISO"
 [[ $(jq -r '.bad' <<<"$helpers") == "" && $(jq -r '.empty' <<<"$helpers") == "" ]] ||
   fail "Cursor scanner clears unparseable billing cycle ends" "$helpers"
 pass "Cursor scanner clears unparseable billing cycle ends"
+
+[[ $(jq -r '.oor' <<<"$helpers") == "" ]] ||
+  fail "Cursor scanner clears out-of-range billing cycle ends" "$helpers"
+pass "Cursor scanner clears out-of-range billing cycle ends"
 
 bad_payload=$(python3 - "$ROOT/shell/plugins/model-usage/scripts/cursor_usage_scanner.py" <<'PY'
 import importlib.util
