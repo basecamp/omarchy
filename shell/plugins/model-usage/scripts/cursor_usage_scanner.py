@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import math
 import os
 import sqlite3
 import sys
@@ -110,6 +111,8 @@ def to_epoch_ms(value):
     return None
   if isinstance(value, (int, float)):
     number = float(value)
+    if not math.isfinite(number):
+      return None
     # Values at/above ~1e11 are already milliseconds (ms since ~1973).
     # Smaller magnitudes are treated as seconds.
     if abs(number) >= 1e11:
@@ -135,14 +138,14 @@ def to_epoch_ms(value):
 
 
 def parse_billing_cycle_end(value):
-  ms = to_epoch_ms(value)
-  if ms is None:
-    # Keep resetAt empty on unparseable input so QML date parsing stays valid.
-    return ""
+  # Keep resetAt empty on unparseable/non-finite/out-of-range input so QML
+  # date parsing stays valid and the scanner still emits JSON.
   try:
+    ms = to_epoch_ms(value)
+    if ms is None:
+      return ""
     return datetime.fromtimestamp(ms / 1000.0, timezone.utc).isoformat()
-  except (OverflowError, OSError, ValueError):
-    # Out-of-range numerics (e.g. unexpected microseconds) still clear resetAt.
+  except (OverflowError, OSError, ValueError, TypeError):
     return ""
 
 
