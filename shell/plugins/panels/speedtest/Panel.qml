@@ -79,7 +79,6 @@ Item {
 
     if (phase === "down") downloadMbps = String(value)
     else if (phase === "up") uploadMbps = String(value)
-    error = ""
   }
 
   function runSpeedTest() {
@@ -129,9 +128,15 @@ Item {
   Process {
     id: speedTestProc
     stdout: SplitParser { onRead: function(line) { root.updateSpeedTestLine(line) } }
+    // Exit and stream-finished have no guaranteed order: when a failed exit
+    // beat the collector and published the generic message, replace it with
+    // the specific one once it lands.
     stderr: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.stderrText = String(text || "").trim()
+      onStreamFinished: {
+        root.stderrText = String(text || "").trim()
+        if (root.error !== "" && root.stderrText !== "") root.error = root.stderrText
+      }
     }
     onExited: function(exitCode) {
       phaseTimer.stop()

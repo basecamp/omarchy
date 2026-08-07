@@ -91,19 +91,22 @@ Item {
     } else if (parts[0] === "read") {
       phase = "read"
       readMBps = String(value)
-    } else {
-      return
     }
-    error = ""
   }
 
   Process {
     id: proc
     command: ["omarchy-disk-speedtest"]
     stdout: SplitParser { onRead: function(line) { root.updateLine(line) } }
+    // Exit and stream-finished have no guaranteed order: when a failed exit
+    // beat the collector and published the generic message, replace it with
+    // the specific one once it lands.
     stderr: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.stderrText = String(text || "").trim()
+      onStreamFinished: {
+        root.stderrText = String(text || "").trim()
+        if (root.error !== "" && root.stderrText !== "") root.error = root.stderrText
+      }
     }
     onExited: function(exitCode) {
       if (root.pendingRun) {
