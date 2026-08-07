@@ -56,6 +56,7 @@ channel_override_cli=0
 target_user="${OMARCHY_INSTALL_USER:-}"
 yes=0
 auto_reboot=0
+boot_cmdline_unsafe=0
 use_dev_packages=${OMARCHY_UPGRADE_DEV:-0}
 
 while (($#)); do
@@ -473,62 +474,64 @@ normalize_limine_config() {
 
 preserve_kernel_cmdline_root() {
   local default_conf=/etc/default/limine
-  local cmdline param key path root_source root_stack root_uuid root_fstype subvol uki
+  local cmdline param key path value root_source root_stack root_uuid root_fstype subvol uki
   local root_stacks_crypt=0
   local config_paths=()
   local boot_params=()
   local missing=()
   local have_root=0 have_mount_mode=0 have_unlock=0
+  # Only the default key feeds the entries this repairs; the value is walked
+  # with param_re below rather than pattern-matched, so parameters that merely
+  # end in root= (systemd.volatile-root=) or carry it inside a quoted value
+  # (systemd.setenv="root=decoy") cannot count as a pin.
+  local pin_line='^[[:space:]]*KERNEL_CMDLINE\[default\][+]?='
+  # Kernel parameters can quote spaces (dm-mod.create="0 972 linear ...");
+  # word splitting would truncate them and glob-expand the rest.
+  local param_re='^[[:space:]]*(([^[:space:]"]|"[^"]*")+)'
 
   command -v limine-mkinitcpio >/dev/null 2>&1 || return 0
   as_root test -f /boot/limine.conf || return 0
 
-  # Any config layer that already pins root= is authoritative; leave it alone.
-  #
-  # Two traps here. The pattern matches assignments rather than the bare string,
-  # because limine-entry-tool.conf ships "#KERNEL_CMDLINE[default]+=rw
-  # root=UUID=..." as a commented example that is present on every stock machine.
-  # And only existing paths are handed to grep: $default_conf is absent on
-  # exactly the upgraded machines this targets, and a missing operand makes grep
-  # exit 2, which is indistinguishable from "no match" for the caller. Filtering
-  # first keeps the exit status meaningful on any grep implementation.
-  for path in "$default_conf" /etc/limine-entry-tool.conf /etc/limine-entry-tool.d/; do
+  # A config layer that already pins root= on the default key is authoritative.
+  # Match assignment lines, not the bare string: limine-entry-tool.conf ships a
+  # commented "#KERNEL_CMDLINE[default]+=rw root=UUID=..." example on every
+  # machine. Only existing paths reach grep, since a missing operand makes it
+  # exit 2, which is indistinguishable from "no match". Only *.conf drop-ins
+  # count: the tool loads nothing else, so a .pacnew or .pacsave pinning root=
+  # must not disarm the fix.
+  for path in "$default_conf" /etc/limine-entry-tool.conf /etc/limine-entry-tool.d/*.conf; do
     if as_root test -e "$path"; then
       config_paths+=("$path")
     fi
   done
 
-  if ((${#config_paths[@]})) &&
-    as_root grep -rqE '^[[:space:]]*KERNEL_CMDLINE\[[^]]*\][+]?=.*root=' "${config_paths[@]}"; then
-    return 0
+  if ((${#config_paths[@]})); then
+    while IFS= read -r value; do
+      # Trim around the value before stripping one quote pair: the tool accepts
+      # whitespace between the operator and an opening quote.
+      value=${value#*=}
+      value=${value#"${value%%[![:space:]]*}"}
+      value=${value%"${value##*[![:space:]]}"}
+      value=${value#[\"\']}
+      value=${value%[\"\']}
+      while [[ $value =~ $param_re ]]; do
+        [[ ${BASH_REMATCH[1]} == root=* ]] && return 0
+        value=${value:${#BASH_REMATCH[0]}}
+      done
+    done < <(as_root grep -hE "$pin_line" "${config_paths[@]}")
   fi
 
-  # /etc/kernel/cmdline holds bare parameters rather than shell assignments.
-  if as_root test -e /etc/kernel/cmdline &&
-    as_root grep -qE '(^|[[:space:]])root=' /etc/kernel/cmdline; then
-    return 0
-  fi
-
-  # /etc/limine-entry-tool.d/omarchy-defaults.conf sets KERNEL_CMDLINE[default]
-  # with the += operator, and limine-entry-tool.conf documents what that costs:
-  # "+= appends parameters to an existing cmdline ... Ignores /etc/kernel/cmdline
-  # and /proc/cmdline". So the moment that drop-in lands, the tool stops
-  # auto-detecting the cmdline.
-  #
-  # Fresh installs are unaffected: the ISO writes /etc/default/limine from
-  # default/limine/default.conf with @@CMDLINE@@ substituted. Upgrades never
-  # created that file, so a pre-quattro install that relied on the auto-detected
-  # root= ends up with a cmdline that cannot mount the real root, and the next
-  # boot drops to an emergency shell with "Failed to mount '' on real root".
-  #
-  # This runs before the reboot, while the still-correct cmdline of the running
-  # kernel is readable from /proc/cmdline. Copying verbatim keeps whatever form
-  # the install already used, so a PARTUUID, a LABEL or a bare device node all
-  # survive. The allowlist covers the parameters that decide whether the
-  # initramfs can find and unlock the root; everything else is either supplied by
-  # the drop-ins or irrelevant to reaching the real root.
+  # The omarchy-defaults.conf drop-in appends to KERNEL_CMDLINE[default] with
+  # +=, which makes limine-entry-tool ignore /etc/kernel/cmdline and
+  # /proc/cmdline entirely — root= in /etc/kernel/cmdline never reaches the boot
+  # entries, so its presence there cannot count as a pin. Fresh installs pin
+  # root= in /etc/default/limine via the ISO; upgrades never created that file.
+  # Copy the boot-critical parameters of the running kernel verbatim, so a
+  # PARTUUID, a LABEL or a bare device node all survive.
   cmdline=$(cat /proc/cmdline 2>/dev/null || true)
-  for param in $cmdline; do
+  while [[ $cmdline =~ $param_re ]]; do
+    param=${BASH_REMATCH[1]}
+    cmdline=${cmdline:${#BASH_REMATCH[0]}}
     key=${param%%=*}
     case $key in
       root)
@@ -552,24 +555,15 @@ preserve_kernel_cmdline_root() {
   # Re-running the upgrade on an already-broken system: the booted cmdline has no
   # root= left to copy, so derive it from the mounted root instead.
   if ((!have_root)); then
-    # --nofsroot matters: without it findmnt appends the subvolume for a btrfs
-    # mount, so the source reads /dev/mapper/cryptroot[/@], which lsblk cannot
-    # resolve. That is the layout Omarchy installs when encryption is picked.
+    # --nofsroot: without it an encrypted btrfs root reads
+    # /dev/mapper/cryptroot[/@], which lsblk cannot resolve.
     root_source=$(findmnt -no SOURCE --nofsroot / 2>/dev/null || true)
 
-    # -s walks the parents, so a LUKS layer counts wherever it sits in the stack
-    # and not only when the root device is itself the dm-crypt target. On the
-    # standard full-disk-encryption layout, container -> LVM PV -> root LV, the
-    # root device's own type is lvm and a plain lsblk -no TYPE misses the crypt
-    # layer completely. root_stacks_crypt stays 0 when findmnt cannot answer,
-    # which the root_uuid check below then catches.
+    # -s walks the parents: on the container -> LVM PV -> root LV layout the
+    # root device's own type is lvm, so only the stack reveals the crypt layer.
+    # Captured rather than piped into grep -q so a SIGPIPE under pipefail cannot
+    # read as "no crypt layer".
     if [[ -n $root_source ]]; then
-      # Captured rather than piped straight into grep -q: under pipefail a
-      # short-circuiting grep can leave the producer with SIGPIPE and turn the
-      # pipeline into 141, which would read as "no crypt layer" and disarm the
-      # gate silently. lsblk writes its whole table in one go, so this is out of
-      # reach in practice, but the gate should not be the thing that depends on
-      # how much output a helper happens to buffer.
       root_stack=$(lsblk -nso TYPE "$root_source" 2>/dev/null || true)
       if grep -qx crypt <<<"$root_stack"; then
         root_stacks_crypt=1
@@ -577,28 +571,25 @@ preserve_kernel_cmdline_root() {
     fi
 
     # An unlocked dm-crypt root reports its mapper device, whose UUID says
-    # nothing about which container to unlock or how. Writing root= for it would
-    # produce a cmdline that still cannot boot, and the check at the end of this
-    # function would then find root= and stay quiet about it.
-    #
-    # Looking for a crypt layer rather than reusing root_filesystem_encrypted(),
-    # which treats every /dev/mapper/* path and any non-empty /etc/crypttab as an
-    # encrypted root. That is the right side to err on where it is used, but here
-    # it would deny the repair to LVM, dm-raid and multipath roots that carry no
-    # crypt layer: root=UUID= is enough once mkinitcpio's own hook assembles them.
+    # nothing about which container to unlock or how; root= alone would still
+    # not boot. Not root_filesystem_encrypted(): its /dev/mapper/* and crypttab
+    # branches would deny the repair to LVM, dm-raid and multipath roots, where
+    # root=UUID= is enough.
     if ((root_stacks_crypt)) && ((!have_unlock)); then
       warn "The root filesystem is on dm-crypt and the booted kernel cmdline carries no unlock parameters, so they cannot be recovered automatically. Add root= and the matching cryptdevice or rd.luks.* parameters to $default_conf by hand, run limine-mkinitcpio, and confirm root= reaches /boot/limine.conf before rebooting."
+      boot_cmdline_unsafe=1
       return 0
     fi
 
     root_uuid=$(findmnt -no UUID / 2>/dev/null || true)
     if [[ -z $root_uuid ]]; then
       warn "Could not determine the root filesystem UUID; the kernel cmdline was left untouched. Confirm root= is present in /boot/limine.conf before rebooting."
+      boot_cmdline_unsafe=1
       return 0
     fi
 
-    # Prepend, so anything the loop did capture survives, and only assume a mount
-    # mode when the booted cmdline stated none.
+    # Prepend, so captured parameters survive; only assume a mount mode when
+    # the booted cmdline stated none.
     boot_params=("root=UUID=$root_uuid" "${boot_params[@]}")
     ((have_mount_mode)) || boot_params+=(rw)
 
@@ -618,33 +609,37 @@ preserve_kernel_cmdline_root() {
 # /etc/limine-entry-tool.d/ append to KERNEL_CMDLINE[default] with +=, which
 # stops limine-entry-tool from reading /etc/kernel/cmdline and /proc/cmdline, so
 # the parameters identifying the root filesystem have to be stated explicitly.
-# This file is loaded last, and += keeps the drop-in parameters rather than
-# replacing them.
+# This file takes priority over the drop-ins, and += keeps their parameters
+# rather than replacing them.
 KERNEL_CMDLINE[default]+=" ${boot_params[*]}"
 EOF
 
-  as_root limine-mkinitcpio
+  # Keep going on failure so the root= verification below still runs; the
+  # unsafe flag blocks the reboot at the end of the upgrade.
+  if ! as_root limine-mkinitcpio; then
+    warn "limine-mkinitcpio failed; the boot entries were not regenerated."
+    boot_cmdline_unsafe=1
+  fi
 
-  as_root grep -q 'root=' /boot/limine.conf || missing+=(/boot/limine.conf)
+  # Token-anchored, so netroot= or systemd.volatile-root= cannot stand in for
+  # root=.
+  as_root grep -qE '(^|[[:space:]])root=' /boot/limine.conf || missing+=(/boot/limine.conf)
 
-  # With omarchy-uki.conf among the drop-ins, the cmdline that actually boots is
-  # the one embedded in the UKI rather than the copy limine.conf carries, so a
-  # green limine.conf is not on its own proof that the machine will boot.
-  # Scoped to the CUSTOM_UKI_NAME=omarchy images limine-entry-tool generates, so a
-  # shared ESP carrying another distribution's UKIs, or a stub with no .cmdline
-  # section at all, cannot produce a false "do not reboot" warning. Read as root
-  # like every other /boot access here: an ESP mounted with a restrictive fmask
-  # would otherwise make find return nothing and the check pass in silence.
+  # With omarchy-uki.conf among the drop-ins, the cmdline that boots is the one
+  # embedded in the UKI, not the copy limine.conf carries. Scoped to the
+  # omarchy_linux*.efi images so a shared ESP cannot raise a false warning, and
+  # read as root so a restrictive ESP fmask cannot make the check pass silently.
   if command -v objcopy >/dev/null 2>&1; then
     while read -r uki; do
       [[ -n $uki ]] || continue
       as_root objcopy -O binary --only-section=.cmdline "$uki" /dev/stdout 2>/dev/null |
-        tr -d '\0' | grep -q 'root=' || missing+=("$uki")
+        tr -d '\0' | grep -qE '(^|[[:space:]])root=' || missing+=("$uki")
     done < <(as_root find /boot/EFI/Linux -maxdepth 1 -name 'omarchy_linux*.efi' 2>/dev/null)
   fi
 
   if ((${#missing[@]})); then
     warn "root= is still missing from ${missing[*]}. Do not reboot until the kernel cmdline is repaired, or the system will drop to an emergency shell."
+    boot_cmdline_unsafe=1
   fi
 }
 
@@ -2462,7 +2457,9 @@ WARNING: You must address any errors in the above before rebooting.
 
 EOF
 
-if (( auto_reboot )); then
+if (( boot_cmdline_unsafe )); then
+  warn "Skipping reboot: root= could not be confirmed in the boot entries. Repair the kernel cmdline (see the warnings above) before rebooting, or the system will drop to an emergency shell."
+elif (( auto_reboot )); then
   log "Rebooting because --reboot was passed"
   as_root systemctl reboot
 elif gum confirm "Reboot to complete Quattro upgrade now?" </dev/tty; then
