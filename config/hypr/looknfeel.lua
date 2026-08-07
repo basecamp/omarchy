@@ -1,5 +1,8 @@
 -- Change the default Omarchy look'n'feel.
 
+-- Allow output volume above 100%.
+-- o.audio({ max_volume = 150 })
+
 -- https://wiki.hypr.land/Configuring/Basics/Variables/#general
 -- hl.config({
 --   general = {

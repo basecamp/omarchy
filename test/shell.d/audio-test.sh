@@ -4,6 +4,24 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+audio_config_tmp=$(mktemp -d)
+trap 'rm -rf "$audio_config_tmp"' EXIT
+
+HOME="$audio_config_tmp/home" XDG_STATE_HOME="$audio_config_tmp/state" OMARCHY_PATH="$ROOT" lua <<'LUA'
+require("default.hypr.helpers")
+
+o.audio({ max_volume = 150 })
+
+local file = assert(io.open(os.getenv("XDG_STATE_HOME") .. "/omarchy/audio-max-volume", "r"))
+assert(file:read("*l") == "150")
+file:close()
+
+assert(not pcall(o.audio, { max_volume = 0 }))
+assert(not pcall(o.audio, { max_volume = "150" }))
+assert(not pcall(o.audio, { max_volume = 150.5 }))
+LUA
+pass "audio config validates and publishes max volume"
+
 run_node_test <<'JS'
 const audio = requireFromRoot('shell/plugins/panels/audio/Model.js')
 

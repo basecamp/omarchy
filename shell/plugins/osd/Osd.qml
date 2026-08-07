@@ -43,7 +43,7 @@ Item {
     ? Math.max(root.iconInkWidth, Math.ceil(widestIconMetrics.tightBoundingRect.width))
     : root.iconInkWidth
   // Same idea for the readout: it is as wide as the longest percentage so the
-  // digits don't jitter between 9% and 100%.
+  // digits don't jitter as the displayed value changes.
   readonly property int valueWidth: Math.ceil(Math.max(valueMetrics.advanceWidth, messageMetrics.advanceWidth))
   readonly property int messageWidth: Math.min(Math.ceil(messageMetrics.advanceWidth), root.maxMessageWidth)
   readonly property int contentWidth: root.hasProgress
@@ -96,7 +96,7 @@ Item {
   TextMetrics {
     id: valueMetrics
     font: messageMetrics.font
-    text: "100%"
+    text: Math.max(root.value, root.maxValue) + "%"
   }
 
   TextMetrics {

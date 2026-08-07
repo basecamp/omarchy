@@ -5,6 +5,12 @@
 # omarchy:examples=omarchy audio output volume raise | omarchy audio output volume lower | omarchy audio output volume mute-toggle | omarchy audio output volume +1
 
 action="${1:-}"
+max_volume_file="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/audio-max-volume"
+max_volume=100
+if [[ -r $max_volume_file ]]; then
+  read -r configured_max_volume <"$max_volume_file" || true
+  [[ $configured_max_volume =~ ^[1-9][0-9]*$ ]] && max_volume="$configured_max_volume"
+fi
 
 if [[ -z $action ]]; then
   echo "Usage: omarchy-audio-output-volume <raise|lower|mute-toggle|+N|-N>"
@@ -63,7 +69,7 @@ elif [[ $action =~ ^([+-])([0-9]+)$ ]]; then
 
   if [[ $direction == "+" ]]; then
     next=$((current + step))
-    ((next <= 100)) || next=100
+    ((next <= max_volume)) || next=$max_volume
   else
     next=$((current - step))
     ((next >= 0)) || next=0
@@ -83,4 +89,4 @@ else
   icon="volume-high"
 fi
 
-omarchy-osd -i "$icon" -p "${percent:-0}"
+omarchy-osd -i "$icon" -p "${percent:-0}" --max "$max_volume"
