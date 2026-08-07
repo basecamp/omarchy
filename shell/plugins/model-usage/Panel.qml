@@ -153,13 +153,14 @@ Panel {
   readonly property bool limitsResetInHeader: limitsShareReset(limits)
   readonly property string limitsHeaderReset: sharedLimitsResetText(limits)
 
-  // Charts only when a provider actually has day/model history (Claude/Codex).
-  // Cursor stays on period meters (hasLocalStats false). Length alone is not
-  // enough: syncMode and the Codex scanner synthesize seven zero-value
-  // recentDays rows, so require a positive week peak too.
+  // Claude/Codex keep their existing day/model sections whenever the scanner
+  // supplies rows (including an all-zero week of synthesized days). Cursor is
+  // meters-only (hasLocalStats false), so it stays out even under syncMode's
+  // seven-row recentDays padding.
   readonly property bool hasDayChart: !!provider
     && provider.hasLocalStats !== false
-    && weekPeak(provider) > 0
+    && Array.isArray(provider.recentDays)
+    && provider.recentDays.length > 0
   readonly property bool hasModelChart: !!provider
     && provider.hasLocalStats !== false
     && models.length > 0

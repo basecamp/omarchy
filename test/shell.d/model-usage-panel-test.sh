@@ -49,8 +49,8 @@ function loadHelpers(source, names, extras = {}) {
 }
 
 assert(
-  /hasDayChart:[\s\S]*?provider\.hasLocalStats !== false[\s\S]*?weekPeak\(provider\) > 0/.test(panelSource),
-  'panel day chart requires hasLocalStats and a positive week peak'
+  /hasDayChart:[\s\S]*?provider\.hasLocalStats !== false[\s\S]*?provider\.recentDays\.length > 0/.test(panelSource),
+  'panel day chart requires hasLocalStats and recentDays rows'
 )
 assert(
   /hasModelChart:[\s\S]*?provider\.hasLocalStats !== false/.test(panelSource),
@@ -82,14 +82,14 @@ const panel = loadHelpers(panelSource, [
   'resetMsFor',
   'formatDuration',
   'limitsShareReset',
-  'sharedLimitsResetText',
-  'weekPeak'
+  'sharedLimitsResetText'
 ], { root: { nowMs } })
 
-function hasDayChart(provider, peakFn) {
+function hasDayChart(provider) {
   return !!provider
     && provider.hasLocalStats !== false
-    && peakFn(provider) > 0
+    && Array.isArray(provider.recentDays)
+    && provider.recentDays.length > 0
 }
 
 function hasModelChart(provider, models) {
@@ -188,26 +188,16 @@ const aggregated = main.aggregateSnapshots([{
 const syncedCursor = aggregated.providers.cursor
 assertEqual(syncedCursor.hasLocalStats, false, 'sync aggregation preserves Cursor hasLocalStats false')
 assertEqual(syncedCursor.recentDays.length, 7, 'sync aggregation still synthesizes seven recentDays rows')
-assertEqual(hasDayChart(syncedCursor, panel.weekPeak), false, 'Cursor hides TOKENS BY DAY under syncMode')
+assertEqual(hasDayChart(syncedCursor), false, 'Cursor hides TOKENS BY DAY under syncMode')
 assertEqual(
   hasModelChart(syncedCursor, Object.keys(syncedCursor.modelUsage || {})),
   false,
   'Cursor hides TOKENS BY MODEL under syncMode'
 )
 
-const zeroWeek = {
+const claudeWithHistory = {
   hasLocalStats: true,
   recentDays: syncedCursor.recentDays
 }
-assertEqual(hasDayChart(zeroWeek, panel.weekPeak), false, 'all-zero recentDays does not count as day history')
-
-const withHistory = {
-  hasLocalStats: true,
-  recentDays: syncedCursor.recentDays.map((day, index) => (
-    index === syncedCursor.recentDays.length - 1
-      ? { ...day, messageCount: 1200 }
-      : day
-  ))
-}
-assertEqual(hasDayChart(withHistory, panel.weekPeak), true, 'positive day totals still show the day chart')
+assertEqual(hasDayChart(claudeWithHistory), true, 'providers with local stats still show day charts')
 JS
