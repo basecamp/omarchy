@@ -67,7 +67,9 @@ export OMARCHY_INSTALL="${OMARCHY_INSTALL:-$OMARCHY_PATH/install}"
 export OMARCHY_SETUP_CONTEXT="${OMARCHY_SETUP_CONTEXT:-runtime}"
 export PATH="$OMARCHY_PATH/bin:$PATH"
 
-if (( first_install )); then
+if (( first_install )) && [[ $OMARCHY_SETUP_CONTEXT == "runtime" ]]; then
+  # The ISO chroot doesn't set a context; omarchy-oem-setup runs first-install
+  # finalization too but with OMARCHY_SETUP_CONTEXT=oem-firstboot already set.
   export OMARCHY_SETUP_CONTEXT=iso-chroot
 fi
 

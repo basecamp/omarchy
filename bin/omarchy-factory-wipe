@@ -1,0 +1,159 @@
+#!/bin/bash
+
+# omarchy:summary=First-boot worker that finishes an omarchy-reset-computer reset
+# omarchy:group=setup
+# omarchy:requires-sudo=true
+# omarchy:examples=omarchy-factory-wipe
+
+# Runs once, early on the first boot after omarchy-reset-computer, via
+# omarchy-factory-wipe.service (armed by /var/lib/omarchy/oem/wipe-pending).
+# Ordered before home.mount/var-log.mount so @home and @log can be dropped and
+# recreated as empty subvolumes instead of rm -rf'd file by file.
+#
+# Two modes:
+#  - full reset: the root is already a fresh clone of @factory (staged by
+#    omarchy-reset-computer); this deletes the previous root (@omarchy-old-*),
+#    recreates @home/@log, and repairs /.snapshots.
+#  - degraded (wipe-degraded marker): machines installed before @factory
+#    existed keep their current root; user accounts and identity state are
+#    scrubbed here instead.
+
+set -uo pipefail
+
+OEM_DIR=/var/lib/omarchy/oem
+TOP_MNT=/run/omarchy-factory-wipe-top
+
+[[ -f $OEM_DIR/wipe-pending ]] || exit 0
+
+if (( EUID != 0 )); then
+  echo "Error: omarchy-factory-wipe must run as root" >&2
+  exit 1
+fi
+
+# This runs before var-log.mount, so a log file under /var/log would be
+# shadowed (and @log is recreated below anyway). stdout goes to the journal,
+# which is volatile in /run this early and flushed into the fresh @log later.
+echo "=== Omarchy factory wipe started: $(date '+%Y-%m-%d %H:%M:%S') ==="
+
+log() {
+  echo "factory-wipe: $1"
+}
+
+root_device() {
+  findmnt -no SOURCE / | sed 's/\[.*\]//'
+}
+
+delete_subvolume() {
+  local path="$1"
+  [[ -d $path ]] || return 0
+
+  if ! btrfs subvolume delete --recursive "$path" 2>/dev/null; then
+    # Older btrfs-progs without --recursive: delete nested subvolumes deepest
+    # first, then the subvolume itself.
+    local nested
+    nested=$(btrfs subvolume list -o "$path" 2>/dev/null | awk '{print $NF}')
+    if [[ -n $nested ]]; then
+      local sub
+      while IFS= read -r sub; do
+        delete_subvolume "$TOP_MNT/${sub#<FS_TREE>/}"
+      done <<<"$nested"
+    fi
+    btrfs subvolume delete "$path"
+  fi
+}
+
+recreate_subvolume() {
+  local name="$1"
+  delete_subvolume "$TOP_MNT/$name"
+  btrfs subvolume create "$TOP_MNT/$name"
+}
+
+scrub_degraded_state() {
+  log "degraded reset: scrubbing user accounts and machine identity in place"
+
+  local user
+  for user in $(awk -F: '$3 >= 1000 && $3 < 60000 { print $1 }' /etc/passwd); do
+    log "removing user $user"
+    userdel "$user" 2>/dev/null || log "userdel $user failed (continuing)"
+  done
+
+  rm -f /etc/ssh/ssh_host_*
+  rm -f /etc/NetworkManager/system-connections/*
+  rm -rf /var/lib/NetworkManager/* /var/lib/tailscale /var/lib/iwd
+  rm -f /var/lib/sddm/state.conf /etc/sddm.conf.d/autologin.conf
+
+  # Fresh machine identity from the next boot on.
+  systemd-id128 new >/etc/machine-id 2>/dev/null || :>/etc/machine-id
+}
+
+repair_snapshots_dir() {
+  # A snapshot of @ carries /.snapshots only as a plain empty directory
+  # (nested subvolumes are not part of snapshots). Snapper needs it to be a
+  # subvolume again.
+  if [[ -d /.snapshots ]] && ! btrfs subvolume show /.snapshots >/dev/null 2>&1; then
+    rm -rf /.snapshots
+  fi
+  if [[ ! -d /.snapshots ]]; then
+    btrfs subvolume create /.snapshots
+    chmod 750 /.snapshots
+  fi
+}
+
+wipe_snapper_snapshots() {
+  # Degraded resets keep the current root, so its accumulated snapper
+  # snapshots (nested under /.snapshots) still exist. Full resets already lost
+  # them with the old root.
+  local snapshot
+  for snapshot in /.snapshots/*/snapshot; do
+    [[ -d $snapshot ]] || continue
+    delete_subvolume "$snapshot"
+    rm -rf "$(dirname "$snapshot")"
+  done
+}
+
+main() {
+  local device
+  device=$(root_device)
+  if [[ -z $device ]]; then
+    log "could not determine the btrfs root device; aborting"
+    exit 1
+  fi
+
+  mkdir -p "$TOP_MNT"
+  if ! mount -o subvolid=5 "$device" "$TOP_MNT"; then
+    log "could not mount the btrfs top level from $device; aborting"
+    exit 1
+  fi
+
+  if [[ -f $OEM_DIR/wipe-degraded ]]; then
+    scrub_degraded_state
+    wipe_snapper_snapshots
+  fi
+
+  local old
+  for old in "$TOP_MNT"/@omarchy-old-*; do
+    [[ -d $old ]] || continue
+    log "deleting previous system root $(basename "$old")"
+    delete_subvolume "$old"
+  done
+
+  log "recreating @home and @log"
+  recreate_subvolume @home
+  recreate_subvolume @log
+
+  repair_snapshots_dir
+
+  umount "$TOP_MNT"
+  rmdir "$TOP_MNT" 2>/dev/null || true
+
+  log "trimming free space"
+  fstrim -a 2>/dev/null || true
+
+  rm -f "$OEM_DIR/wipe-pending" "$OEM_DIR/wipe-degraded"
+  rm -f /etc/systemd/system/sysinit.target.wants/omarchy-factory-wipe.service
+  rm -f /etc/systemd/system/omarchy-factory-wipe.service
+
+  log "factory wipe complete"
+}
+
+main
