@@ -367,8 +367,14 @@ Panel {
               Item {
                 id: heroMark
                 property var candidates: root.iconCandidatesForProvider(root.provider, root.surface)
+                // Provider objects are rebuilt on every refresh, which churns the
+                // array's identity without changing its content. Restart the fallback
+                // walk only when the URLs change: re-pointing source at a URL whose
+                // load already failed emits no statusChanged, so an identity-only
+                // reset would strand the walker on a missing -light twin.
+                property string candidatesKey: candidates.join("\n")
                 property int candidateIndex: 0
-                onCandidatesChanged: candidateIndex = 0
+                onCandidatesKeyChanged: candidateIndex = 0
 
                 width: Style.font.display
                 height: Style.font.display
@@ -380,7 +386,10 @@ Panel {
                   sourceSize.width: Style.font.display * 2
                   sourceSize.height: Style.font.display * 2
                   fillMode: Image.PreserveAspectFit
-                  onStatusChanged: if (status === Image.Error && heroMark.candidateIndex < heroMark.candidates.length) heroMark.candidateIndex++
+                  // Advancing source from inside its own status change trips the
+                  // binding-loop detector; defer the step one tick.
+                  onStatusChanged: if (status === Image.Error && heroMark.candidateIndex < heroMark.candidates.length)
+                    Qt.callLater(function() { heroMark.candidateIndex++ })
                 }
 
                 Text {
