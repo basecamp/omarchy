@@ -56,6 +56,7 @@ channel_override_cli=0
 target_user="${OMARCHY_INSTALL_USER:-}"
 yes=0
 auto_reboot=0
+boot_cmdline_unsafe=0
 use_dev_packages=${OMARCHY_UPGRADE_DEV:-0}
 
 while (($#)); do
@@ -468,6 +469,118 @@ normalize_limine_config() {
   legacy_uki="/boot/EFI/Linux/${machine_id}_linux.efi"
   if [[ -n $machine_id ]] && as_root test -f /boot/EFI/Linux/omarchy_linux.efi && as_root test -f "$legacy_uki"; then
     as_root rm -f "$legacy_uki"
+  fi
+}
+
+preserve_kernel_cmdline_root() {
+  local default_conf=/etc/default/limine
+  local cmdline param key root_source root_stack root_uuid subvol uki
+  local boot_params=()
+  local missing=()
+  local have_root=0 have_mount_mode=0 have_unlock=0
+
+  command -v limine-mkinitcpio >/dev/null 2>&1 || return 0
+  as_root test -f /boot/limine.conf || return 0
+
+  # The omarchy-defaults.conf drop-in appends to KERNEL_CMDLINE[default] with
+  # +=, which makes limine-entry-tool ignore /etc/kernel/cmdline and
+  # /proc/cmdline. Fresh installs pin root= in /etc/default/limine via the ISO;
+  # upgrades never created that file, so root= silently drops out and the next
+  # boot lands in an emergency shell. Ask the tool for its effective default
+  # cmdline — the key this function appends to — rather than parsing the config
+  # layers ourselves.
+  if as_root limine-entry-tool --get-cmdline default 2>/dev/null |
+    grep -qE '(^|[[:space:]])root='; then
+    return 0
+  fi
+
+  # Copy the boot-critical parameters of the running kernel verbatim, so a
+  # PARTUUID, a LABEL or a bare device node all survive.
+  cmdline=$(cat /proc/cmdline 2>/dev/null || true)
+  for param in $cmdline; do
+    key=${param%%=*}
+    case $key in
+      root)
+        have_root=1
+        boot_params+=("$param")
+        ;;
+      rw | ro)
+        have_mount_mode=1
+        boot_params+=("$param")
+        ;;
+      cryptdevice | cryptkey | rd.luks.name | rd.luks.uuid | rd.luks.options | rd.luks.key | rd.luks.crypttab | dm-mod.create)
+        have_unlock=1
+        boot_params+=("$param")
+        ;;
+      rootflags | rootfstype | rootwait | rootdelay | resume | resume_offset | rd.lvm.lv | rd.lvm.vg | rd.md.uuid | rd.dm.uuid)
+        boot_params+=("$param")
+        ;;
+    esac
+  done
+
+  # Already-broken system (booted through the emergency shell): derive root=
+  # from the mounted root instead. Refuse when the root sits on dm-crypt and
+  # the cmdline carries no unlock parameters, since root= alone would still not
+  # boot. lsblk -s walks the parents, where the crypt layer hides on
+  # LVM-on-LUKS; --nofsroot keeps findmnt from appending a btrfs subvolume
+  # lsblk cannot resolve; the capture keeps a SIGPIPE under pipefail from
+  # reading as "no crypt layer".
+  if ((!have_root)); then
+    root_source=$(findmnt -no SOURCE --nofsroot / 2>/dev/null || true)
+    root_stack=$(lsblk -nso TYPE "$root_source" 2>/dev/null || true)
+    if grep -qx crypt <<<"$root_stack" && ((!have_unlock)); then
+      warn "The root filesystem is on dm-crypt and the booted kernel cmdline carries no unlock parameters, so they cannot be recovered automatically. Add root= and the matching cryptdevice or rd.luks.* parameters to $default_conf by hand, then run limine-mkinitcpio."
+      boot_cmdline_unsafe=1
+      return 0
+    fi
+
+    root_uuid=$(findmnt -no UUID / 2>/dev/null || true)
+    if [[ -z $root_uuid ]]; then
+      warn "Could not determine the root filesystem UUID; the kernel cmdline was left untouched."
+      boot_cmdline_unsafe=1
+      return 0
+    fi
+
+    boot_params=("root=UUID=$root_uuid" "${boot_params[@]}")
+    ((have_mount_mode)) || boot_params+=(rw)
+
+    # Btrfs needs its subvolume too, or the initramfs mounts the wrong tree.
+    subvol=$(findmnt -no FSROOT / 2>/dev/null || true)
+    if [[ $(findmnt -no FSTYPE / 2>/dev/null) == "btrfs" && -n $subvol && $subvol != "/" ]]; then
+      boot_params+=("rootflags=subvol=${subvol#/}")
+    fi
+  fi
+
+  log "Preserving the kernel cmdline root parameters in $default_conf"
+  as_root tee -a "$default_conf" >/dev/null <<EOF
+# Written by omarchy-upgrade-to-quattro. The += drop-ins in
+# /etc/limine-entry-tool.d/ stop limine-entry-tool from reading
+# /etc/kernel/cmdline and /proc/cmdline, so the parameters identifying the
+# root filesystem have to be stated explicitly.
+KERNEL_CMDLINE[default]+=" ${boot_params[*]}"
+EOF
+
+  # Keep going on failure so the verification below still runs; the unsafe
+  # flag blocks the reboot at the end of the upgrade.
+  if ! as_root limine-mkinitcpio; then
+    warn "limine-mkinitcpio failed; the boot entries were not regenerated."
+    boot_cmdline_unsafe=1
+  fi
+
+  as_root grep -qE '(^|[[:space:]])root=' /boot/limine.conf || missing+=(/boot/limine.conf)
+
+  # The cmdline that boots is the one embedded in the UKIs, so check those too.
+  if command -v objcopy >/dev/null 2>&1; then
+    while read -r uki; do
+      [[ -n $uki ]] || continue
+      as_root objcopy -O binary --only-section=.cmdline "$uki" /dev/stdout 2>/dev/null |
+        tr -d '\0' | grep -qE '(^|[[:space:]])root=' || missing+=("$uki")
+    done < <(as_root find /boot/EFI/Linux -maxdepth 1 -name 'omarchy_linux*.efi' 2>/dev/null)
+  fi
+
+  if ((${#missing[@]})); then
+    warn "root= is still missing from ${missing[*]}. Do not reboot until the kernel cmdline is repaired, or the system will drop to an emergency shell."
+    boot_cmdline_unsafe=1
   fi
 }
 
@@ -2251,6 +2364,7 @@ remove_conflicting_legacy_packages
 install_omarchy_quattro_packages
 install_hardware_transition_packages
 normalize_limine_config
+preserve_kernel_cmdline_root
 configure_snapper_policy
 configure_lock_authentication
 migrate_1password_beta_package
@@ -2284,7 +2398,9 @@ WARNING: You must address any errors in the above before rebooting.
 
 EOF
 
-if (( auto_reboot )); then
+if (( boot_cmdline_unsafe )); then
+  warn "Skipping reboot: root= could not be confirmed in the boot entries. Repair the kernel cmdline (see the warnings above) before rebooting, or the system will drop to an emergency shell."
+elif (( auto_reboot )); then
   log "Rebooting because --reboot was passed"
   as_root systemctl reboot
 elif gum confirm "Reboot to complete Quattro upgrade now?" </dev/tty; then

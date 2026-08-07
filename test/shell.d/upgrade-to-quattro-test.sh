@@ -69,3 +69,42 @@ pass "Omarchy 4 upgrade refreshes application launchers"
 grep -F '/etc/systemd/system.conf.d/99-omarchy-nofile.conf' "$upgrade_to_quattro" >/dev/null
 grep -F '/etc/systemd/user.conf.d/99-omarchy-nofile.conf' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade removes stale nofile drop-ins"
+
+cmdline_line=$(grep -n '^preserve_kernel_cmdline_root$' "$upgrade_to_quattro" | cut -d: -f1)
+packages_line=$(grep -n '^install_omarchy_quattro_packages$' "$upgrade_to_quattro" | cut -d: -f1)
+[[ -n $cmdline_line && -n $packages_line ]] || fail "kernel cmdline preservation and package install calls exist"
+(( packages_line < cmdline_line )) || fail "kernel cmdline preservation runs once limine-mkinitcpio is installed"
+grep -F '/etc/default/limine' "$upgrade_to_quattro" >/dev/null
+grep -F 'KERNEL_CMDLINE[default]+=" ${boot_params[*]}"' "$upgrade_to_quattro" >/dev/null
+grep -F 'cat /proc/cmdline' "$upgrade_to_quattro" >/dev/null
+grep -F 'findmnt -no UUID /' "$upgrade_to_quattro" >/dev/null
+grep -F 'rootflags=subvol=' "$upgrade_to_quattro" >/dev/null
+grep -F 'cryptdevice' "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade preserves the kernel cmdline root parameters"
+
+# The += drop-ins make limine-entry-tool ignore /etc/kernel/cmdline and
+# /proc/cmdline, so only the tool's own merge can say whether root= survives.
+# Queried for the default key, so a kernel-specific pin cannot cover for the
+# entries this repairs.
+grep -F 'limine-entry-tool --get-cmdline default' "$upgrade_to_quattro" >/dev/null
+grep -F "grep -qE '(^|[[:space:]])root='" "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade asks limine-entry-tool whether root= survives"
+
+# The crypt layer hides in the parents on LVM-on-LUKS, and a partial cmdline
+# for an encrypted root must not be written at all.
+grep -F 'findmnt -no SOURCE --nofsroot /' "$upgrade_to_quattro" >/dev/null
+grep -F 'lsblk -nso TYPE "$root_source"' "$upgrade_to_quattro" >/dev/null
+grep -F 'grep -qx crypt' "$upgrade_to_quattro" >/dev/null
+grep -F '((have_mount_mode)) || boot_params+=(rw)' "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade repair path refuses a partial dm-crypt cmdline"
+
+# The cmdline that boots is the one embedded in the UKIs, and an unverified
+# root= must block the reboot rather than just warn.
+grep -F -- '--only-section=.cmdline' "$upgrade_to_quattro" >/dev/null
+grep -F "as_root find /boot/EFI/Linux -maxdepth 1 -name 'omarchy_linux*.efi'" "$upgrade_to_quattro" >/dev/null
+grep -F 'boot_cmdline_unsafe=1' "$upgrade_to_quattro" >/dev/null
+unsafe_line=$(grep -n 'if (( boot_cmdline_unsafe )); then' "$upgrade_to_quattro" | cut -d: -f1)
+reboot_line=$(grep -n 'Rebooting because --reboot was passed' "$upgrade_to_quattro" | cut -d: -f1)
+[[ -n $unsafe_line && -n $reboot_line ]] || fail "reboot gate and reboot branch exist"
+(( unsafe_line < reboot_line )) || fail "an unverified kernel cmdline blocks the reboot"
+pass "Omarchy 4 upgrade verifies the UKIs and refuses to reboot unverified"
