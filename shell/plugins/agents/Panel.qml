@@ -39,7 +39,12 @@ Panel {
   readonly property var limits: limitWindows(provider)
   readonly property var models: modelRows(provider)
   readonly property var headline: bindingWindow(provider)
-  readonly property bool alarming: !!headline && headline.percent >= 0.9
+  readonly property var balance: provider ? (provider.balance || null) : null
+  // A prepaid account runs low the way a subscription window fills up: the
+  // last 10% of the funded credits lights the same alarm.
+  readonly property bool balanceAlarming: !!balance && balance.funded > 0
+    && balance.remaining / balance.funded <= 0.1
+  readonly property bool alarming: (!!headline && headline.percent >= 0.9) || balanceAlarming
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
   function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
@@ -134,6 +139,32 @@ Panel {
     return Math.max(1, minutes) + "m"
   }
 
+  // ---------------------------------------------------------------- balance
+  //
+  // Prepaid agents report a credit ledger instead of rate-limit windows: the
+  // record's balance object carries remaining, funded, and spent amounts.
+
+  function currencyPrefix(currency) {
+    var code = String(currency || "USD").toUpperCase()
+    if (code === "USD") return "$"
+    if (code === "EUR") return "€"
+    if (code === "GBP") return "£"
+    return code + " "
+  }
+
+  function formatMoney(value, currency) {
+    var amount = Number(value)
+    if (!isFinite(amount)) amount = 0
+    return currencyPrefix(currency) + amount.toFixed(2)
+  }
+
+  function balanceDetailText(b) {
+    if (!b || !(b.funded > 0)) return ""
+    var text = formatMoney(b.spent, b.currency) + " spent of " + formatMoney(b.funded, b.currency) + " funded"
+    if (b.estimated) text += " · estimated"
+    return text
+  }
+
   // ---------------------------------------------------------------- content
 
   // The plan you pay for, under the name of the tool it pays for. Limits live
@@ -174,8 +205,9 @@ Panel {
       : dayName(day.date) + " " + (parsed.getMonth() + 1) + "/" + parsed.getDate()
     var text = label + " · " + usage.formatTokenCount(Number(day.messageCount || 0)) + " tokens"
     // Prompt and session counts only exist for today, so they ride along here
-    // instead of taking a section of their own.
-    if (today && provider)
+    // instead of taking a section of their own. Billing-API agents never
+    // count prompts, and "0 prompts" would read as a quiet day, not a gap.
+    if (today && provider && provider.hasPromptStats !== false)
       text += " · " + Number(provider.todayPrompts || 0) + " prompts · "
         + Number(provider.todaySessions || 0) + " sessions"
     return text
@@ -476,10 +508,71 @@ Panel {
             }
           }
 
-          // ---------- Limits ----------
+          // ---------- Balance / limits ----------
           PanelSeparator {
-            visible: limitsSection.visible
+            visible: balanceSection.visible || limitsSection.visible
             foreground: root.foreground
+          }
+
+          Column {
+            id: balanceSection
+            visible: !!root.balance
+            width: parent.width
+            spacing: Style.space(10)
+
+            // The meter shows what is left, not what is used: a prepaid
+            // account drains toward empty rather than filling toward a cap.
+            readonly property real ratio: root.balance && root.balance.funded > 0
+              ? root.clamp(root.balance.remaining / root.balance.funded, 0, 1)
+              : -1
+
+            PanelSectionHeader {
+              width: parent.width
+              text: "BALANCE"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(balanceLabel.implicitHeight, balanceValue.implicitHeight)
+
+              Text {
+                id: balanceLabel
+                text: "Prepaid credits"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                id: balanceValue
+                text: root.balance ? root.formatMoney(root.balance.remaining, root.balance.currency) : ""
+                color: root.balanceAlarming ? root.urgent : root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            Meter {
+              visible: balanceSection.ratio >= 0
+              width: parent.width
+              value: balanceSection.ratio
+              alarming: root.balanceAlarming
+            }
+
+            Text {
+              visible: text !== ""
+              width: parent.width
+              text: root.balanceDetailText(root.balance)
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
           }
 
           Column {
