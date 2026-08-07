@@ -322,6 +322,17 @@ function networkFailureReason(reason, reasons) {
   return "Failed to connect"
 }
 
+// Whether a failed connect should reopen the passphrase prompt. NoSecrets
+// always means credentials are missing. An auth timeout on a protected
+// network means the saved passphrase is wrong (the same profile a first
+// failed attempt leaves behind as "known"), so the user needs a chance to
+// re-enter it -- connectWithPsk overwrites the stored PSK on submit.
+function shouldRepromptPassphrase(reason, isProtected, reasons) {
+  var r = reasons || {}
+  if (reason === r.NoSecrets) return true
+  return !!isProtected && reason === r.WifiAuthTimeout
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     parseNetworkStatus: parseNetworkStatus,
@@ -348,6 +359,7 @@ if (typeof module !== "undefined") {
     wifiSectionTitle: wifiSectionTitle,
     isProtected: isProtected,
     enterpriseConnectScript: enterpriseConnectScript,
-    networkFailureReason: networkFailureReason
+    networkFailureReason: networkFailureReason,
+    shouldRepromptPassphrase: shouldRepromptPassphrase
   }
 }

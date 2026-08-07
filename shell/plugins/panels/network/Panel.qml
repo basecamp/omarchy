@@ -98,6 +98,16 @@ Panel {
   property string passwordText: ""
   property string identityText: ""
 
+  // ConnectionFailReason values as a plain object, so Model.js helpers stay
+  // pure JS and Node-testable.
+  readonly property var connectionFailReasons: ({
+    NoSecrets: ConnectionFailReason.NoSecrets,
+    WifiAuthTimeout: ConnectionFailReason.WifiAuthTimeout,
+    WifiNetworkLost: ConnectionFailReason.WifiNetworkLost,
+    WifiClientDisconnected: ConnectionFailReason.WifiClientDisconnected,
+    WifiClientFailed: ConnectionFailReason.WifiClientFailed
+  })
+
   // True while any wifi action is mid-flight. Rows
   // disable themselves on this so clicks on the other rows don't silently
   // no-op against runNetworkAction's serialized guard.
@@ -700,13 +710,11 @@ Panel {
   }
 
   function networkFailureReason(reason) {
-    return Model.networkFailureReason(reason, {
-      NoSecrets: ConnectionFailReason.NoSecrets,
-      WifiAuthTimeout: ConnectionFailReason.WifiAuthTimeout,
-      WifiNetworkLost: ConnectionFailReason.WifiNetworkLost,
-      WifiClientDisconnected: ConnectionFailReason.WifiClientDisconnected,
-      WifiClientFailed: ConnectionFailReason.WifiClientFailed
-    })
+    return Model.networkFailureReason(reason, connectionFailReasons)
+  }
+
+  function shouldRepromptPassphrase(reason, isProtected) {
+    return Model.shouldRepromptPassphrase(reason, isProtected, connectionFailReasons)
   }
 
   function checkActionCompletion(network) {
@@ -882,7 +890,11 @@ Panel {
 
   Timer {
     id: actionTimeout
-    interval: 15000
+    // Must outlast NetworkManager's 25s supplicant timeout: a wrong saved
+    // PSK fails with WifiAuthTimeout at ~25s, and that failure has to land
+    // while the action is still tracked to show "Wrong password" and reopen
+    // the passphrase prompt.
+    interval: 30000
     repeat: false
     onTriggered: {
       if (!root.actionKind) return
@@ -1567,8 +1579,12 @@ Panel {
     Connections {
       target: row.net ? row.net.network : null
       function onConnectionFailed(reason) {
+        // Background auto-connect retries fire this too; only reprompt for
+        // the connect started from this panel. Checked before
+        // failNetworkAction, which clears the action state.
+        var ours = root.actionKind === "connect" && root.actionSsid === (row.net.ssid || "")
         root.failNetworkAction(row.net.network, reason)
-        if (reason === ConnectionFailReason.NoSecrets) root.openPasswordPrompt(row.net.ssid)
+        if (ours && root.shouldRepromptPassphrase(reason, row.isProtected)) root.openPasswordPrompt(row.net.ssid)
       }
       function onConnectedChanged() {
         if (row.net) root.checkActionCompletion(row.net.network)
@@ -1750,9 +1766,10 @@ Panel {
       }
     }
 
-    // Inline passphrase prompt — only shown when we hit a protected network
-    // we don't have saved credentials for. Submitting (Enter or the check
-    // button) fires connect; Esc cancels back to the row.
+    // Inline passphrase prompt — shown when we hit a protected network we
+    // don't have saved credentials for, or when a connect fails because the
+    // saved passphrase is wrong. Submitting (Enter or the check button) fires
+    // connect; Esc cancels back to the row.
     Item {
       id: passwordPanel
       visible: row.isPasswordOpen
