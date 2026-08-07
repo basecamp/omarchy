@@ -3,11 +3,14 @@
 # omarchy:summary=Print the most likely display backlight device.
 # omarchy:examples=omarchy-hw-display
 
+backlight_path="${OMARCHY_BACKLIGHT_PATH:-/sys/class/backlight}"
+
 # Start with the first possible output, then refine to the most likely given an order heuristic.
-device="$(ls -1 /sys/class/backlight 2>/dev/null | head -n1)"
-for candidate in amdgpu_bl* intel_backlight acpi_video*; do
-  if [[ -e /sys/class/backlight/$candidate ]]; then
-    device="$candidate"
+# Glob the candidates in the loop list: [[ ]] does not do pathname expansion.
+device="$(ls -1 "$backlight_path" 2>/dev/null | head -n1)"
+for candidate in "$backlight_path"/amdgpu_bl* "$backlight_path"/intel_backlight "$backlight_path"/acpi_video*; do
+  if [[ -e $candidate ]]; then
+    device="${candidate##*/}"
     break
   fi
 done
