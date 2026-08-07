@@ -3,10 +3,13 @@
 # omarchy-reset-computer); installed to /etc/systemd/system by whichever of
 # those staged it. Not shipped enabled — a normal install never runs it.
 
+# plymouth is dismissed via ExecStartPre rather than ordered against
+# (plymouth-quit-wait), keeping this unit free of ordering-cycle risk with
+# display-manager.service.
 [Unit]
 Description=Omarchy OEM first-boot user setup
 ConditionPathExists=/var/lib/omarchy/oem/pending
-After=systemd-user-sessions.service plymouth-quit-wait.service omarchy-factory-wipe.service
+After=systemd-user-sessions.service omarchy-factory-wipe.service
 Before=display-manager.service getty@tty1.service
 Conflicts=getty@tty1.service
 

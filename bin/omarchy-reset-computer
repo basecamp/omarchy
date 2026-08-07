@@ -127,14 +127,14 @@ stage_luks_rekey() {
   local current
   while true; do
     current=$(gum input --password --placeholder "Current disk encryption passphrase" --prompt "Passphrase> ") || exit 1
-    if cryptsetup open --test-passphrase "$device" <(printf '%s' "$current") 2>/dev/null; then
+    if cryptsetup open --test-passphrase --key-file <(printf '%s' "$current") "$device" 2>/dev/null; then
       break
     fi
     gum style --foreground 1 "That passphrase does not unlock $device. Try again."
   done
 
   passphrase=$(generate_passphrase)
-  cryptsetup luksAddKey "$device" <(printf '%s' "$passphrase") <<<"$current"
+  cryptsetup luksAddKey --key-file <(printf '%s' "$current") "$device" <(printf '%s' "$passphrase")
 
   install -d -m 700 "$next$OEM_DIR"
   printf '%s' "$passphrase" >"$next$OEM_DIR/luks-key"

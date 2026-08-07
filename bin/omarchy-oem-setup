@@ -246,7 +246,7 @@ rekey_luks() {
   cryptsetup luksAddKey --key-file "$OEM_DIR/luks-key" "$device" <(printf '%s' "$password")
 
   local new_slot
-  new_slot=$(cryptsetup open --test-passphrase --verbose "$device" <(printf '%s' "$password") 2>&1 |
+  new_slot=$(cryptsetup open --test-passphrase --verbose --key-file <(printf '%s' "$password") "$device" 2>&1 |
     grep -o 'Key slot [0-9]* unlocked' | grep -o '[0-9]*' | head -1)
 
   if [[ -n $new_slot ]]; then
@@ -275,9 +275,7 @@ cleanup_oem_state() {
   systemctl daemon-reload 2>/dev/null || true
 }
 
-main() {
-  set_tokyo_night_colors
-
+run_setup() {
   while true; do
     user_form
     confirm_form && break
@@ -312,6 +310,30 @@ main() {
   clear_logo
   echo
   gum spin --spinner "pulse" --title "All set. Starting Omarchy..." -- sleep 2
+}
+
+# A failed first-boot setup must not strand the machine at a user-less login
+# screen. Each attempt runs as its own process — bash ignores errexit inside
+# `while !` conditions, but a child process keeps its own set -e — and failure
+# offers a retry; create_user and friends are idempotent, so retrying is safe.
+if [[ ${1:-} == "--attempt" ]]; then
+  run_setup
+  exit 0
+fi
+
+main() {
+  set_tokyo_night_colors
+
+  while ! "$0" --attempt; do
+    clear_logo
+    echo
+    say --foreground 1 "Setup hit an error (details in $LOG_FILE)."
+    echo
+    if ! gum confirm --affirmative "Try again" --negative "Drop to console" "Retry first-boot setup?"; then
+      say "Run 'omarchy-oem-setup' as root to retry later."
+      exit 1
+    fi
+  done
 }
 
 main
