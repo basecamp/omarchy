@@ -45,6 +45,8 @@ matching guide before starting:
 - [`plugins.md`](plugins.md) - the Omarchy shell: bar layout, widgets, plugins, idle behavior
 - [`theming.md`](theming.md) - themes, backgrounds, and fonts
 - [`hooks.md`](hooks.md) - automation hooks that run on system events
+- [`capture.md`](capture.md) - screenshots, screen recordings, OCR text capture, and file sharing
+- [`contributing.md`](contributing.md) - reporting Omarchy bugs and submitting fixes upstream
 
 ## Critical Safety Rules
 
@@ -288,3 +290,5 @@ This skill intentionally does not cover Omarchy source development. Do not use t
 - "Change how workspace labels are rendered" -> Clone `omarchy.workspaces`, which switches the bar to `<username>.workspaces`, then edit the clone
 - "Lock after ten minutes" -> Set `idle.lock` to `600` in `~/.config/omarchy/shell.json`
 - "Reset shell/bar to defaults" -> `omarchy refresh shell`
+- "Record my screen" -> `omarchy screenrecord --fullscreen`, then `omarchy screenrecord --stop-recording` (see `capture.md`)
+- "Report this bug to Omarchy" -> Gather diagnostics and a capture of the problem, then file it (see `contributing.md`)
