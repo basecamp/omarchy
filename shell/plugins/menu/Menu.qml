@@ -141,8 +141,10 @@ Item {
     Util.execDetached(command)
   }
 
+  // Menu rows only surface their detail while a search is narrowing them;
+  // dmenu rows carry caller-supplied subtext that must always be visible.
   function rowHeightForDetail(detail) {
-    return root.filterText && detail ? root.detailRowHeight : root.baseRowHeight
+    return (root.filterText || root.dmenuActive) && detail ? root.detailRowHeight : root.baseRowHeight
   }
 
   // Height the card can devote to rows before running off the screen — or
@@ -206,7 +208,7 @@ Item {
     var total = 0
     for (var i = 0; i < displayModel.count; i++) {
       if (i > 0) total += root.rowSpacing
-      total += root.baseRowHeight
+      total += root.rowHeightForDetail(displayModel.get(i).detail)
       totals.push(total)
     }
 
@@ -516,13 +518,16 @@ Item {
 
     var query = root.filterText.trim().toLowerCase()
     for (var i = 0; i < root.dmenuOptions.length; i++) {
-      // An option may lead with an icon, as "<glyph>\t<label>". Only the label
-      // is filtered against and handed back, so the caller never sees a glyph
-      // it has to strip off the selection.
+      // An option is "<label>", "<glyph>\t<label>", or
+      // "<glyph>\t<label>\t<subtext>". The glyph never comes back with the
+      // selection; the subtext renders under the label, filters alongside it,
+      // and returns with the selection as a stable key for same-named rows.
       var parts = String(root.dmenuOptions[i] || "").split("\t")
       var icon = parts.length > 1 ? parts.shift() : ""
-      var label = parts.join("\t")
-      if (query && label.toLowerCase().indexOf(query) < 0) continue
+      var label = parts.shift() || ""
+      var detail = parts.join("\t")
+      if (query && label.toLowerCase().indexOf(query) < 0
+          && detail.toLowerCase().indexOf(query) < 0) continue
       displayModel.append({
         itemId: "dmenu." + i,
         kind: "dmenu",
@@ -532,7 +537,7 @@ Item {
         appId: "",
         label: label,
         target: "",
-        detail: "",
+        detail: detail,
         path: "",
         childCount: 0,
         action: "",
@@ -717,7 +722,8 @@ Item {
         return
       }
       if (index < 0 || index >= displayModel.count) return
-      root.applyDmenuSelection(displayModel.get(index).label)
+      var picked = displayModel.get(index)
+      root.applyDmenuSelection(picked.detail ? picked.label + "\t" + picked.detail : picked.label)
       return
     }
 
@@ -1264,7 +1270,7 @@ Item {
                 Text {
                   width: parent.width
                   text: row.detail
-                  visible: root.filterText && row.detail.length > 0
+                  visible: (root.filterText || row.kind === "dmenu") && row.detail.length > 0
                   color: root.foreground
                   opacity: 0.52
                   font.family: root.fontFamily

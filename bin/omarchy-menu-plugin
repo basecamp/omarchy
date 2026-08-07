@@ -22,21 +22,18 @@ esac
 
 plugins=$(omarchy-plugin-list --json)
 
-# Two plugins may share a name, so keep the id with the row and show it when the
-# name alone cannot identify the pick.
+# The id rides along as row subtext: it tells same-named plugins apart on
+# screen and comes back with the selection as the key to act on.
 rows=$(jq -r --arg icon "$PLUGIN_ICON" \
   ". as \$plugins
-   | ([.[] | select($filter)]) as \$rows
-   | \$rows[]
-   | .name as \$name
-   | (if ([\$rows[] | select(.name == \$name)] | length) > 1 then \$name + \" (\" + .id + \")\" else \$name end) as \$label
-   | \$icon + \"\\t\" + \$label + \"\\t\" + .id" <<<"$plugins")
+   | .[] | select($filter)
+   | \$icon + \"\\t\" + .name + \"\\t\" + .id" <<<"$plugins")
 [[ -n $rows ]] || { omarchy-notification-send "No plugin to ${1}"; exit 0; }
 
-name=$(omarchy-menu-select "${1^} plugin" < <(cut -f1,2 <<<"$rows")) || exit 0
-[[ -n $name ]] || exit 0
+selection=$(omarchy-menu-select "${1^} plugin" <<<"$rows") || exit 0
+[[ -n $selection ]] || exit 0
 
-id=$(awk -F'\t' -v label="$name" '$2 == label { print $3; exit }' <<<"$rows")
+id=$(cut -f2 <<<"$selection")
 [[ -n $id ]] || exit 1
 
 if [[ $1 == "clone" ]]; then
