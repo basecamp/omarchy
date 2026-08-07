@@ -17,7 +17,7 @@ Run `omarchy-restart-shell` after making changes to QML files.
   at `~/.config/omarchy/plugins/<id>/` with a `manifest.json` at the root.
 - Every plugin manifest declares `schemaVersion`, `id`, `name`, `version`,
   `kinds`, and `entryPoints`. See
-  [`docs/omarchy-shell.md`](../docs/omarchy-shell.md) and
+  [`docs/omarchy-shell.md`](../../docs/omarchy-shell.md) and
   `shell/services/PluginRegistry.qml` for the current contract; fields such as
   `activation` are optional.
 - Entry-point QML files are `Item`s (not `ShellRoot`), and accept the

@@ -1,13 +1,13 @@
 # Task Guides
 
-Deeper instructions for specific kinds of work live in `agents/`. Read the
+Deeper instructions for specific kinds of work live in `agents/skills/`. Read the
 matching guide before starting:
 
-- [`agents/command-metadata.md`](agents/command-metadata.md) - adding or changing commands in `bin/`
-- [`agents/install-scripts.md`](agents/install-scripts.md) - working under `install/` or on system/user setup commands
-- [`agents/shell-dev.md`](agents/shell-dev.md) - editing the Quickshell desktop under `shell/`
-- [`agents/acceptance-tests.md`](agents/acceptance-tests.md) - writing or running graphical acceptance tests under `test/acceptance.d/`
-- [`agents/visual-verification.md`](agents/visual-verification.md) - verifying any change with a visual effect in the running UI
+- [`agents/skills/command-metadata.md`](agents/skills/command-metadata.md) - adding or changing commands in `bin/`
+- [`agents/skills/install-scripts.md`](agents/skills/install-scripts.md) - working under `install/` or on system/user setup commands
+- [`agents/skills/shell-dev.md`](agents/skills/shell-dev.md) - editing the Quickshell desktop under `shell/`
+- [`agents/skills/acceptance-tests.md`](agents/skills/acceptance-tests.md) - writing or running graphical acceptance tests under `test/acceptance.d/`
+- [`agents/skills/visual-verification.md`](agents/skills/visual-verification.md) - verifying any change with a visual effect in the running UI
 - [`docs/migrations.md`](docs/migrations.md) - creating or changing migrations under `migrations/`
 
 # Style
@@ -93,10 +93,10 @@ Run focused automated tests for the area you changed. Current test entry points:
 New Omarchy shell tests should live in `test/shell.d/*-test.sh` so `./test/shell` picks them up automatically. Source `test/shell.d/base-test.sh` for shared root-path discovery, assertions, and Node test helpers.
 
 The graphical acceptance suite runs in a disposable VM, not in the active
-development session; see [`agents/acceptance-tests.md`](agents/acceptance-tests.md).
+development session; see [`agents/skills/acceptance-tests.md`](agents/skills/acceptance-tests.md).
 
 Visual changes must be verified in the running UI in addition to automated
-tests; follow [`agents/visual-verification.md`](agents/visual-verification.md).
+tests; follow [`agents/skills/visual-verification.md`](agents/skills/visual-verification.md).
 
 # Refresh Pattern
 
