@@ -73,7 +73,9 @@ def load_credentials(state_db):
     )
 
   try:
-    # Read-only URI so we never write, including WAL sidecars.
+    # Open read-only. mode=ro blocks writes through this connection; WAL/shm
+    # sidecars may still exist from Cursor's writer. Avoid immutable=1 so a
+    # live DB with an active WAL remains readable.
     uri = state_db.resolve().as_uri() + "?mode=ro"
     conn = sqlite3.connect(uri, uri=True, timeout=2)
   except sqlite3.Error as exc:
@@ -107,12 +109,12 @@ def to_epoch_ms(value):
   if value is None or value == "":
     return None
   if isinstance(value, (int, float)):
-    ms = float(value)
-    if ms > 1e12:
-      return int(ms)
-    if ms > 1e10:
-      return int(ms)
-    return int(ms * 1000.0)
+    number = float(value)
+    # Values at/above ~1e11 are already milliseconds (ms since ~1973).
+    # Smaller magnitudes are treated as seconds.
+    if abs(number) >= 1e11:
+      return int(number)
+    return int(number * 1000.0)
 
   text = str(value).strip()
   if not text:
@@ -135,8 +137,8 @@ def to_epoch_ms(value):
 def parse_billing_cycle_end(value):
   ms = to_epoch_ms(value)
   if ms is None:
-    text = str(value or "").strip()
-    return text
+    # Keep resetAt empty on unparseable input so QML date parsing stays valid.
+    return ""
   return datetime.fromtimestamp(ms / 1000.0, timezone.utc).isoformat()
 
 

@@ -493,7 +493,7 @@ Panel {
 
             Item {
               width: parent.width
-              implicitHeight: Math.max(limitsHeaderLabel.implicitHeight, limitsHeaderReset.implicitHeight)
+              implicitHeight: Math.max(limitsHeaderLabel.implicitHeight, limitsHeaderResetText.implicitHeight)
 
               PanelSectionHeader {
                 id: limitsHeaderLabel
@@ -505,7 +505,7 @@ Panel {
               }
 
               Text {
-                id: limitsHeaderReset
+                id: limitsHeaderResetText
                 visible: text !== ""
                 text: root.limitsHeaderReset
                 color: root.dim
