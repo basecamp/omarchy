@@ -178,7 +178,7 @@ Item {
       }
       persistPopupFile(snapshot)
       Qt.callLater(function() {
-        removePopupsByOriginalId(snapshot.originalId)
+        removePopupsByOriginalId(snapshot.originalId, NotificationLogic.popupFileName(snapshot))
         popupModel.insert(0, snapshot)
       })
       return
@@ -209,25 +209,35 @@ Item {
     // Qt.callLater avoids "QV4::Object::insertMember" crashes when a
     // Repeater is mid-incubation while we mutate its model.
     Qt.callLater(function() {
-      removePopupsByOriginalId(snapshot.originalId)
+      removePopupsByOriginalId(snapshot.originalId, NotificationLogic.popupFileName(snapshot))
       popupModel.insert(0, snapshot)
     })
+  }
+
+  // A restored row carries an id from the previous server generation, and
+  // the new server hands out ids from 1 again — so a fresh notification
+  // with the same originalId is a coincidence, not the same notification.
+  // The timestamp (via the file name) disambiguates: it travels with the
+  // row through every model and file round-trip.
+  function isRestoredRow(row) {
+    return !!row && !!restoredPopups[NotificationLogic.popupFileName(row)]
   }
 
   // Popup-specific variant of removeByOriginalId: a replaced popup
   // (freedesktop replaces_id) leaves the screen, so its persisted file has
   // to go too — otherwise it resurrects on the next shell restart.
-  function removePopupsByOriginalId(originalId) {
+  // keepFileName is the replacement's own file: a same-millisecond
+  // replacement shares the replaced row's filename, and the new write is
+  // already queued — deleting that path here would erase the replacement's
+  // only file.
+  function removePopupsByOriginalId(originalId, keepFileName) {
     for (var i = popupModel.count - 1; i >= 0; i--) {
       var row = popupModel.get(i)
       if (!row || row.originalId !== originalId) continue
-      // A restored row carries an id from the previous server generation,
-      // and the new server hands out ids from 1 again — a fresh
-      // notification with the same id is a coincidence, not a replaces_id
-      // update. Removing it here would silently kill a restored critical
-      // alert on an unrelated ping.
-      if (restoredPopups[row.originalId] === row.timestamp) continue
-      deletePopupFileFor(row)
+      // Not a replaces_id match — see isRestoredRow. Removing it here
+      // would silently kill a restored critical alert on an unrelated ping.
+      if (isRestoredRow(row)) continue
+      if (NotificationLogic.popupFileName(row) !== keepFileName) deletePopupFileFor(row)
       popupModel.remove(i)
     }
   }
@@ -256,12 +266,15 @@ Item {
 
   // Find a pending entry by its libnotify id and move it to pastModel. Called
   // when a popup naturally dismisses (timer expired or user clicked X / the
-  // default action) — the user is assumed to have seen it.
-  function markSeenByOriginalId(originalId) {
+  // default action) — the user is assumed to have seen it. Matches on
+  // timestamp too: a popup row and its pending row are born from the same
+  // snapshot, and id alone can point at an unrelated notification when a
+  // restored popup's old-generation id has been reused.
+  function markSeenByOriginalId(originalId, timestamp) {
     Qt.callLater(function() {
       for (var i = 0; i < pendingModel.count; i++) {
         var entry = pendingModel.get(i)
-        if (!entry || entry.originalId !== originalId) continue
+        if (!entry || entry.originalId !== originalId || entry.timestamp !== timestamp) continue
         var snapshot = service.snapshotFromRow(entry)
         pendingModel.remove(i)
         pastModel.insert(0, snapshot)
@@ -319,13 +332,17 @@ Item {
     if (index < 0 || index >= popupModel.count) return
     var entry = popupModel.get(index)
     var originalId = entry ? entry.originalId : -1
-    var ref = originalId >= 0 ? liveRefs[originalId] : null
+    var timestamp = entry ? entry.timestamp : 0
+    // A restored row has no live server object, and its old-generation id
+    // may meanwhile belong to a fresh notification — resolving liveRefs by
+    // id would dismiss that unrelated notification at the server.
+    var restored = isRestoredRow(entry)
+    var ref = !restored && originalId >= 0 ? liveRefs[originalId] : null
     // The popup is leaving the screen — for any reason — so its persisted
     // file must not survive to the next shell restart.
     if (entry) {
       deletePopupFileFor(entry)
-      if (restoredPopups[entry.originalId] === entry.timestamp)
-        delete restoredPopups[entry.originalId]
+      if (restored) delete restoredPopups[NotificationLogic.popupFileName(entry)]
     }
     popupModel.remove(index)
     if (ref) {
@@ -339,7 +356,7 @@ Item {
       }
     }
     // User (or the lifetime timer) saw the popup — archive it.
-    if (originalId >= 0) markSeenByOriginalId(originalId)
+    if (originalId >= 0) markSeenByOriginalId(originalId, timestamp)
   }
 
   function clearPopups() {
@@ -428,7 +445,9 @@ Item {
   function invokePopupDefault(index) {
     if (index < 0 || index >= popupModel.count) return
     var entry = popupModel.get(index)
-    var ref = entry ? liveRefs[entry.originalId] : null
+    // Restored rows have no live actions, and looking up liveRefs by their
+    // old-generation id could fire an unrelated fresh notification's action.
+    var ref = entry && !isRestoredRow(entry) ? liveRefs[entry.originalId] : null
     var invoked = false
     try {
       if (ref && ref.actions) {
@@ -571,9 +590,10 @@ Item {
   // of replaces_id updates must not race a single reused Process, and
   // ordering guarantees a delete issued after a write wins.
 
-  // Popups restored from a previous shell process, keyed originalId ->
-  // timestamp. Their ids predate the current server generation, so the
-  // replaces_id handling must not match them against fresh notifications.
+  // Popups restored from a previous shell process, keyed by their file
+  // name (timestamp-originalId) since ids alone repeat across server
+  // generations. The replaces_id handling and liveRefs lookups must not
+  // match these rows against fresh notifications.
   property var restoredPopups: ({})
 
   property var popupFileQueue: []
@@ -624,15 +644,11 @@ Item {
   }
 
   function restorePopups(raw) {
-    var parsed = NotificationLogic.parsePopupFiles(raw, NotificationUrgency.Normal)
-    // Duplicate originalIds (a delete that never ran): only the newest per
-    // id is restorable, the rest are dead files.
-    for (var s = 0; s < parsed.stale.length; s++) deletePopupFileFor(parsed.stale[s])
-
+    var entries = NotificationLogic.parsePopupFiles(raw, NotificationUrgency.Normal)
     var now = Date.now()
     var live = []
-    for (var i = 0; i < parsed.entries.length; i++) {
-      var entry = parsed.entries[i]
+    for (var i = 0; i < entries.length; i++) {
+      var entry = entries[i]
       var duration = durationFor(entry.urgency, entry.expireTimeout)
       if (NotificationLogic.popupExpired(entry, duration, now)) {
         deletePopupFileFor(entry)
@@ -640,7 +656,16 @@ Item {
       }
       // Survivors restart with a full lifetime on purpose: shell restarts
       // are rare, and a full look after the restart flicker beats resuming
-      // a toast with a second left on its clock.
+      // a toast with a second left on its clock. The reset is persisted as
+      // an absolute deadline so a second restart while the toast is still
+      // on screen judges it by the reset clock, not the original timestamp.
+      if (duration > 0) {
+        entry.deadline = now + duration
+        persistPopupFile(entry)
+        // deadline is persistence metadata, not a model role — fresh rows
+        // never carry it, and ListModel roles must stay consistent.
+        delete entry.deadline
+      }
       live.push(entry)
     }
     if (live.length === 0) return
@@ -649,24 +674,26 @@ Item {
       for (var j = 0; j < live.length; j++) {
         var restored = live[j]
         // A notification received while the restore was reading the dir can
-        // already occupy this originalId. Same timestamp: it IS this entry —
-        // the file was written by the fresh popup still on screen, so it
-        // must stay. Different timestamp: a previous-generation popup the
-        // fresh one superseded, and its file is dead weight.
-        var claimedRow = null
+        // already occupy this originalId with the same timestamp — then it
+        // IS this entry, live with its own file, and must be left alone. A
+        // different timestamp is indistinguishable between a genuine
+        // cross-restart replaces_id and a new-generation id coincidence, so
+        // show both: a briefly duplicated toast beats silently dropping a
+        // restored critical alert.
+        var duplicate = false
         for (var k = 0; k < popupModel.count; k++) {
           var row = popupModel.get(k)
-          if (row && row.originalId === restored.originalId) { claimedRow = row; break }
+          if (row && row.originalId === restored.originalId && row.timestamp === restored.timestamp) {
+            duplicate = true
+            break
+          }
         }
-        if (claimedRow) {
-          if (claimedRow.timestamp !== restored.timestamp) service.deletePopupFileFor(restored)
-          continue
-        }
+        if (duplicate) continue
         // Append (entries are newest-first) so restored toasts stack in
         // their original order below anything that just arrived. Restored
         // popups have no liveRefs entry — the server object died with the
         // old shell — so dismissal and action fallbacks degrade gracefully.
-        service.restoredPopups[restored.originalId] = restored.timestamp
+        service.restoredPopups[NotificationLogic.popupFileName(restored)] = true
         popupModel.append(restored)
       }
     })

@@ -215,32 +215,45 @@ assertEqual(
 
 const popupFiles = notifications.parsePopupFiles(
   [
-    notifications.serializePopup({ id: 1, originalId: 1, summary: 'old', urgency: 1, timestamp: 100 }, 1),
-    notifications.serializePopup({ id: 1, originalId: 1, summary: 'replaced', urgency: 1, timestamp: 300 }, 1),
+    notifications.serializePopup({ id: 1, originalId: 1, summary: 'old-generation', urgency: 2, timestamp: 100 }, 1),
+    notifications.serializePopup({ id: 1, originalId: 1, summary: 'new-generation', urgency: 1, timestamp: 300 }, 1),
     notifications.serializePopup({ id: 2, originalId: 2, summary: 'critical', urgency: 2, timestamp: 200 }, 1),
     '{ torn write'
   ].join('\n'),
   1
 )
 assertDeepEqual(
-  popupFiles.entries.map(row => row.summary),
-  ['replaced', 'critical'],
-  'notifications restore persisted popups newest-first, deduped by original id'
-)
-assertDeepEqual(
-  popupFiles.stale.map(row => row.summary),
-  ['old'],
-  'notifications flag superseded popup files for deletion'
+  popupFiles.map(row => row.summary),
+  ['new-generation', 'critical', 'old-generation'],
+  'notifications restore every persisted popup newest-first, never deduping ids across server generations'
 )
 assertDeepEqual(
   notifications.parsePopupFiles('', 1),
-  { entries: [], stale: [] },
+  [],
   'notifications restore nothing from an empty popup dir'
 )
 
 assert(!notifications.popupExpired({ timestamp: 0 }, 0, 999999), 'critical popups never expire on restore')
 assert(!notifications.popupExpired({ timestamp: 1000 }, 8000, 5000), 'popups within their lifetime are restored')
 assert(notifications.popupExpired({ timestamp: 1000 }, 8000, 9000), 'popups past their lifetime are not restored')
+assert(
+  !notifications.popupExpired({ timestamp: 1000, deadline: 20000 }, 8000, 15000),
+  'a restore-reset deadline outranks the original popup timestamp'
+)
+assert(
+  notifications.popupExpired({ timestamp: 1000, deadline: 20000 }, 8000, 20000),
+  'popups past their reset deadline are not restored'
+)
+assertEqual(
+  notifications.popupEntry(JSON.parse(notifications.serializePopup({ id: 1, originalId: 1, timestamp: 5, deadline: 9000 }, 1)), 1).deadline,
+  9000,
+  'notifications round-trip reset deadlines through popup files'
+)
+assertEqual(
+  'deadline' in notifications.popupEntry({ id: 1, timestamp: 5 }, 1),
+  false,
+  'notifications omit the deadline field until a restore sets it'
+)
 
 assertEqual(notifications.imageExtension('/tmp/screenshot.PNG'), 'png', 'notifications normalize image extensions')
 assertEqual(notifications.imageExtension('/tmp/no-extension'), 'png', 'notifications default missing image extension')
@@ -272,8 +285,20 @@ assert(
   'notifications service restores persisted popups on startup'
 )
 assert(
-  /if \(restoredPopups\[row\.originalId\] === row\.timestamp\) continue/.test(serviceQml),
+  /if \(isRestoredRow\(row\)\) continue/.test(serviceQml),
   'notifications service protects restored popups from new-generation id collisions'
+)
+assert(
+  /var ref = !restored && originalId >= 0 \? liveRefs\[originalId\] : null/.test(serviceQml),
+  'notifications service never resolves a restored popup to a live server object'
+)
+assert(
+  /markSeenByOriginalId\(originalId, timestamp\)/.test(serviceQml),
+  'notifications service archives pending rows by id and timestamp'
+)
+assert(
+  /popupFileName\(row\) !== keepFileName/.test(serviceQml),
+  'notifications service keeps a same-millisecond replacement popup file'
 )
 assert(
   /awk 1 \\"\$1\\"\/\*\.json/.test(serviceQml),
