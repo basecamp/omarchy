@@ -24,6 +24,10 @@ Item {
   // regeneratable cache that a `rm -rf ~/.cache` should wipe.
   readonly property string stateDir: home + "/.local/state/omarchy/"
   readonly property string historyPath: stateDir + "notifications.json"
+  // One file per on-screen popup, so live toasts survive shell restarts.
+  // A file exists exactly as long as its popup is showing: written when the
+  // toast appears, deleted when it expires, is dismissed, or is acted upon.
+  readonly property string popupStateDir: stateDir + "notifications/"
   // Thumbnails copied from /tmp screenshots are genuinely disposable — if
   // they vanish the row just renders without an image — so they stay in
   // ~/.cache where regeneratable artifacts belong.
@@ -172,8 +176,9 @@ Item {
         notification.tracked = false
         return
       }
+      persistPopupFile(snapshot)
       Qt.callLater(function() {
-        removeByOriginalId(popupModel, snapshot.originalId)
+        removePopupsByOriginalId(snapshot.originalId, NotificationLogic.popupFileName(snapshot))
         popupModel.insert(0, snapshot)
       })
       return
@@ -200,12 +205,41 @@ Item {
       return
     }
 
+    persistPopupFile(snapshot)
     // Qt.callLater avoids "QV4::Object::insertMember" crashes when a
     // Repeater is mid-incubation while we mutate its model.
     Qt.callLater(function() {
-      removeByOriginalId(popupModel, snapshot.originalId)
+      removePopupsByOriginalId(snapshot.originalId, NotificationLogic.popupFileName(snapshot))
       popupModel.insert(0, snapshot)
     })
+  }
+
+  // A restored row carries an id from the previous server generation, and
+  // the new server hands out ids from 1 again — so a fresh notification
+  // with the same originalId is a coincidence, not the same notification.
+  // The timestamp (via the file name) disambiguates: it travels with the
+  // row through every model and file round-trip.
+  function isRestoredRow(row) {
+    return !!row && !!restoredPopups[NotificationLogic.popupFileName(row)]
+  }
+
+  // Popup-specific variant of removeByOriginalId: a replaced popup
+  // (freedesktop replaces_id) leaves the screen, so its persisted file has
+  // to go too — otherwise it resurrects on the next shell restart.
+  // keepFileName is the replacement's own file: a same-millisecond
+  // replacement shares the replaced row's filename, and the new write is
+  // already queued — deleting that path here would erase the replacement's
+  // only file.
+  function removePopupsByOriginalId(originalId, keepFileName) {
+    for (var i = popupModel.count - 1; i >= 0; i--) {
+      var row = popupModel.get(i)
+      if (!row || row.originalId !== originalId) continue
+      // Not a replaces_id match — see isRestoredRow. Removing it here
+      // would silently kill a restored critical alert on an unrelated ping.
+      if (isRestoredRow(row)) continue
+      if (NotificationLogic.popupFileName(row) !== keepFileName) deletePopupFileFor(row)
+      popupModel.remove(i)
+    }
   }
 
   // Remove every row in `model` whose originalId matches. Chat apps reuse
@@ -232,12 +266,15 @@ Item {
 
   // Find a pending entry by its libnotify id and move it to pastModel. Called
   // when a popup naturally dismisses (timer expired or user clicked X / the
-  // default action) — the user is assumed to have seen it.
-  function markSeenByOriginalId(originalId) {
+  // default action) — the user is assumed to have seen it. Matches on
+  // timestamp too: a popup row and its pending row are born from the same
+  // snapshot, and id alone can point at an unrelated notification when a
+  // restored popup's old-generation id has been reused.
+  function markSeenByOriginalId(originalId, timestamp) {
     Qt.callLater(function() {
       for (var i = 0; i < pendingModel.count; i++) {
         var entry = pendingModel.get(i)
-        if (!entry || entry.originalId !== originalId) continue
+        if (!entry || entry.originalId !== originalId || entry.timestamp !== timestamp) continue
         var snapshot = service.snapshotFromRow(entry)
         pendingModel.remove(i)
         pastModel.insert(0, snapshot)
@@ -295,7 +332,18 @@ Item {
     if (index < 0 || index >= popupModel.count) return
     var entry = popupModel.get(index)
     var originalId = entry ? entry.originalId : -1
-    var ref = originalId >= 0 ? liveRefs[originalId] : null
+    var timestamp = entry ? entry.timestamp : 0
+    // A restored row has no live server object, and its old-generation id
+    // may meanwhile belong to a fresh notification — resolving liveRefs by
+    // id would dismiss that unrelated notification at the server.
+    var restored = isRestoredRow(entry)
+    var ref = !restored && originalId >= 0 ? liveRefs[originalId] : null
+    // The popup is leaving the screen — for any reason — so its persisted
+    // file must not survive to the next shell restart.
+    if (entry) {
+      deletePopupFileFor(entry)
+      if (restored) delete restoredPopups[NotificationLogic.popupFileName(entry)]
+    }
     popupModel.remove(index)
     if (ref) {
       try {
@@ -308,7 +356,7 @@ Item {
       }
     }
     // User (or the lifetime timer) saw the popup — archive it.
-    if (originalId >= 0) markSeenByOriginalId(originalId)
+    if (originalId >= 0) markSeenByOriginalId(originalId, timestamp)
   }
 
   function clearPopups() {
@@ -397,7 +445,9 @@ Item {
   function invokePopupDefault(index) {
     if (index < 0 || index >= popupModel.count) return
     var entry = popupModel.get(index)
-    var ref = entry ? liveRefs[entry.originalId] : null
+    // Restored rows have no live actions, and looking up liveRefs by their
+    // old-generation id could fire an unrelated fresh notification's action.
+    var ref = entry && !isRestoredRow(entry) ? liveRefs[entry.originalId] : null
     var invoked = false
     try {
       if (ref && ref.actions) {
@@ -511,7 +561,7 @@ Item {
 
   Process {
     id: ensureDirsProc
-    command: ["mkdir", "-p", service.stateDir, service.imageCacheDir]
+    command: ["mkdir", "-p", service.stateDir, service.popupStateDir, service.imageCacheDir]
     running: false
   }
 
@@ -531,6 +581,123 @@ Item {
   }
 
   Process { id: deleteImageProc; running: false }
+
+  // ---------------------------------------------------- popup persistence
+  //
+  // Mirror every on-screen popup to its own file under popupStateDir so
+  // toasts survive shell restarts (notably the restart `omarchy-update`
+  // performs). Writes and deletes go through one serialized queue: a burst
+  // of replaces_id updates must not race a single reused Process, and
+  // ordering guarantees a delete issued after a write wins.
+
+  // Popups restored from a previous shell process, keyed by their file
+  // name (timestamp-originalId) since ids alone repeat across server
+  // generations. The replaces_id handling and liveRefs lookups must not
+  // match these rows against fresh notifications.
+  property var restoredPopups: ({})
+
+  property var popupFileQueue: []
+
+  function enqueuePopupFileJob(command) {
+    popupFileQueue = popupFileQueue.concat([command])
+    runNextPopupFileJob()
+  }
+
+  function runNextPopupFileJob() {
+    if (popupFileProc.running || popupFileQueue.length === 0) return
+    popupFileProc.command = popupFileQueue[0]
+    popupFileQueue = popupFileQueue.slice(1)
+    popupFileProc.running = true
+  }
+
+  Process {
+    id: popupFileProc
+    running: false
+    onExited: service.runNextPopupFileJob()
+  }
+
+  function persistPopupFile(snapshot) {
+    // The JSON travels as an argument, not through shell interpolation, so
+    // summaries/bodies with quotes or backticks can't break the command. The
+    // mkdir guards notifications that arrive before ensureDirsProc has run.
+    enqueuePopupFileJob(["bash", "-c",
+      "mkdir -p \"$1\" && printf '%s\\n' \"$2\" > \"$1/$3\"", "--",
+      popupStateDir,
+      NotificationLogic.serializePopup(snapshot, NotificationUrgency.Normal),
+      NotificationLogic.popupFileName(snapshot)])
+  }
+
+  function deletePopupFileFor(row) {
+    if (!row) return
+    // History replays and the "no recent notifications" placeholder never
+    // had a file — rm -f on the computed path is a harmless no-op there.
+    enqueuePopupFileJob(["rm", "-f", popupStateDir + NotificationLogic.popupFileName(row)])
+  }
+
+  Process {
+    id: restorePopupsProc
+    running: false
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: service.restorePopups(text)
+    }
+  }
+
+  function restorePopups(raw) {
+    var entries = NotificationLogic.parsePopupFiles(raw, NotificationUrgency.Normal)
+    var now = Date.now()
+    var live = []
+    for (var i = 0; i < entries.length; i++) {
+      var entry = entries[i]
+      var duration = durationFor(entry.urgency, entry.expireTimeout)
+      if (NotificationLogic.popupExpired(entry, duration, now)) {
+        deletePopupFileFor(entry)
+        continue
+      }
+      // Survivors restart with a full lifetime on purpose: shell restarts
+      // are rare, and a full look after the restart flicker beats resuming
+      // a toast with a second left on its clock. The reset is persisted as
+      // an absolute deadline so a second restart while the toast is still
+      // on screen judges it by the reset clock, not the original timestamp.
+      if (duration > 0) {
+        entry.deadline = now + duration
+        persistPopupFile(entry)
+        // deadline is persistence metadata, not a model role — fresh rows
+        // never carry it, and ListModel roles must stay consistent.
+        delete entry.deadline
+      }
+      live.push(entry)
+    }
+    if (live.length === 0) return
+
+    Qt.callLater(function() {
+      for (var j = 0; j < live.length; j++) {
+        var restored = live[j]
+        // A notification received while the restore was reading the dir can
+        // already occupy this originalId with the same timestamp — then it
+        // IS this entry, live with its own file, and must be left alone. A
+        // different timestamp is indistinguishable between a genuine
+        // cross-restart replaces_id and a new-generation id coincidence, so
+        // show both: a briefly duplicated toast beats silently dropping a
+        // restored critical alert.
+        var duplicate = false
+        for (var k = 0; k < popupModel.count; k++) {
+          var row = popupModel.get(k)
+          if (row && row.originalId === restored.originalId && row.timestamp === restored.timestamp) {
+            duplicate = true
+            break
+          }
+        }
+        if (duplicate) continue
+        // Append (entries are newest-first) so restored toasts stack in
+        // their original order below anything that just arrived. Restored
+        // popups have no liveRefs entry — the server object died with the
+        // old shell — so dismissal and action fallbacks degrade gracefully.
+        service.restoredPopups[NotificationLogic.popupFileName(restored)] = true
+        popupModel.append(restored)
+      }
+    })
+  }
 
   // ---------------------------------------------------- history persistence
 
@@ -660,7 +827,16 @@ Item {
     // Once mkdir has had a tick, load the existing history file. FileView
     // surfaces an empty string when the file doesn't exist; loadHistory
     // handles that path.
-    Qt.callLater(function() { historyFile.reload() })
+    Qt.callLater(function() {
+      historyFile.reload()
+      // Re-show popups that were on screen when the previous shell died.
+      // The glob-through-bash tolerates a missing/empty dir (first run).
+      // awk 1 (not cat) so a torn file missing its trailing newline can't
+      // glue itself onto the next file and take a valid popup down with it.
+      restorePopupsProc.command = ["bash", "-c",
+        "awk 1 \"$1\"/*.json 2>/dev/null || true", "--", service.popupStateDir]
+      restorePopupsProc.running = true
+    })
   }
 
   // ---------------------------------------------------- IPC

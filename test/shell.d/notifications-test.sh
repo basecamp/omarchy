@@ -183,6 +183,78 @@ assertDeepEqual(
 )
 assertEqual(recentRows.length, 5, 'notifications history replay is capped at five rows')
 
+const popup = {
+  id: 7,
+  originalId: 7,
+  app: 'Mail',
+  appIcon: 'mail',
+  summary: 'New message',
+  body: 'Body',
+  image: '',
+  glyph: '',
+  urgency: 2,
+  expireTimeout: 2500,
+  timestamp: 1000
+}
+assertEqual(notifications.popupFileName(popup), '1000-7.json', 'notifications name popup files by timestamp and id')
+assertEqual(
+  notifications.serializePopup(popup, 1).indexOf('\n'),
+  -1,
+  'notifications serialize popups to a single line'
+)
+assertEqual(
+  notifications.popupEntry({ id: 1, timestamp: 5 }, 1).urgency,
+  1,
+  'notifications default popup urgency to normal'
+)
+assertEqual(
+  notifications.popupEntry({ id: 1, timestamp: 5, expireTimeout: 4000 }, 1).expireTimeout,
+  4000,
+  'notifications preserve popup expire timeouts unlike history rows'
+)
+
+const popupFiles = notifications.parsePopupFiles(
+  [
+    notifications.serializePopup({ id: 1, originalId: 1, summary: 'old-generation', urgency: 2, timestamp: 100 }, 1),
+    notifications.serializePopup({ id: 1, originalId: 1, summary: 'new-generation', urgency: 1, timestamp: 300 }, 1),
+    notifications.serializePopup({ id: 2, originalId: 2, summary: 'critical', urgency: 2, timestamp: 200 }, 1),
+    '{ torn write'
+  ].join('\n'),
+  1
+)
+assertDeepEqual(
+  popupFiles.map(row => row.summary),
+  ['new-generation', 'critical', 'old-generation'],
+  'notifications restore every persisted popup newest-first, never deduping ids across server generations'
+)
+assertDeepEqual(
+  notifications.parsePopupFiles('', 1),
+  [],
+  'notifications restore nothing from an empty popup dir'
+)
+
+assert(!notifications.popupExpired({ timestamp: 0 }, 0, 999999), 'critical popups never expire on restore')
+assert(!notifications.popupExpired({ timestamp: 1000 }, 8000, 5000), 'popups within their lifetime are restored')
+assert(notifications.popupExpired({ timestamp: 1000 }, 8000, 9000), 'popups past their lifetime are not restored')
+assert(
+  !notifications.popupExpired({ timestamp: 1000, deadline: 20000 }, 8000, 15000),
+  'a restore-reset deadline outranks the original popup timestamp'
+)
+assert(
+  notifications.popupExpired({ timestamp: 1000, deadline: 20000 }, 8000, 20000),
+  'popups past their reset deadline are not restored'
+)
+assertEqual(
+  notifications.popupEntry(JSON.parse(notifications.serializePopup({ id: 1, originalId: 1, timestamp: 5, deadline: 9000 }, 1)), 1).deadline,
+  9000,
+  'notifications round-trip reset deadlines through popup files'
+)
+assertEqual(
+  'deadline' in notifications.popupEntry({ id: 1, timestamp: 5 }, 1),
+  false,
+  'notifications omit the deadline field until a restore sets it'
+)
+
 assertEqual(notifications.imageExtension('/tmp/screenshot.PNG'), 'png', 'notifications normalize image extensions')
 assertEqual(notifications.imageExtension('/tmp/no-extension'), 'png', 'notifications default missing image extension')
 assertEqual(notifications.imageExtension('/tmp/archive.reallylong'), 'png', 'notifications reject suspicious image extensions')
@@ -195,5 +267,41 @@ assert(
 assert(
   /function showHistory\(\): string \{\s*return service\.showRecentHistory\(\)\s*\}/.test(serviceQml),
   'notifications history IPC replays recent notifications'
+)
+assert(
+  /readonly property string popupStateDir: stateDir \+ "notifications\/"/.test(serviceQml),
+  'notifications service persists popups under the omarchy state dir'
+)
+assert(
+  serviceQml.split('persistPopupFile(snapshot)').length === 4,
+  'notifications service persists both ephemeral and regular popups'
+)
+assert(
+  /if \(entry\) \{\s*\n\s*deletePopupFileFor\(entry\)[\s\S]{0,200}?popupModel\.remove\(index\)/.test(serviceQml),
+  'notifications service deletes the popup file when a popup leaves the screen'
+)
+assert(
+  /restorePopupsProc\.running = true/.test(serviceQml),
+  'notifications service restores persisted popups on startup'
+)
+assert(
+  /if \(isRestoredRow\(row\)\) continue/.test(serviceQml),
+  'notifications service protects restored popups from new-generation id collisions'
+)
+assert(
+  /var ref = !restored && originalId >= 0 \? liveRefs\[originalId\] : null/.test(serviceQml),
+  'notifications service never resolves a restored popup to a live server object'
+)
+assert(
+  /markSeenByOriginalId\(originalId, timestamp\)/.test(serviceQml),
+  'notifications service archives pending rows by id and timestamp'
+)
+assert(
+  /popupFileName\(row\) !== keepFileName/.test(serviceQml),
+  'notifications service keeps a same-millisecond replacement popup file'
+)
+assert(
+  /awk 1 \\"\$1\\"\/\*\.json/.test(serviceQml),
+  'notifications service delimits every popup file during restore'
 )
 JS
