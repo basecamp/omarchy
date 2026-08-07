@@ -9,22 +9,23 @@ CSV=/opt/vivaldi/resources/vivaldi/style/omarchy.csv
 bg=$(omarchy-theme-color background)
 fg=$(omarchy-theme-color foreground)
 accent=$(omarchy-theme-color accent)
-[[ -n $bg && -n $fg && -n $accent ]] || exit 0
+lighter_bg=$(omarchy-theme-color lighter_background)
+[[ -n $bg && -n $fg && -n $accent && -n $lighter_bg ]] || exit 0
 
-printf '%s' "$bg,$fg,$accent" > "$CSV"
+printf '%s' "$bg,$fg,$accent,$lighter_bg" > "$CSV"
 
 set_vivaldi_native_theme() {
   local prefs
   for prefs in "$HOME"/.config/vivaldi/*/Preferences; do
     [[ -f $prefs ]] || continue
-    jq --arg bg "$bg" --arg fg "$fg" --arg accent "$accent" '
+    jq --arg bg "$bg" --arg fg "$fg" --arg accent "$accent" --arg lighter_bg "$lighter_bg" '
       .vivaldi |= ((. // {}) + {
         appearance: ((.appearance // {}) + { force_dark_mode_theme: false }),
         themes: ((.themes // {}) + {
           current: "Omarchy",
           user: (
             ((.themes.user // []) | map(if .id == "Omarchy" then (. + {
-              colorAccentBg: $accent,
+              colorAccentBg: $lighter_bg,
               colorBg: $bg,
               colorFg: $fg,
               colorHighlightBg: $accent,
@@ -44,7 +45,7 @@ set_vivaldi_native_theme() {
               backgroundPosition: "stretch",
               backgroundSource: "",
               blur: 0,
-              colorAccentBg: $accent,
+              colorAccentBg: $lighter_bg,
               colorBg: $bg,
               colorFg: $fg,
               colorHighlightBg: $accent,

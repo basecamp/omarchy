@@ -1,5 +1,6 @@
 (() => {
   let synced = '';
+  let loggedError = false;
 
   const nudgeCurrentTheme = (prefs, done) => {
     const setCurrent = function(value, next) {
@@ -18,7 +19,7 @@
     }).catch(function () {});
   };
 
-  const syncNativeTheme = (bg, fg, accent, onDone) => {
+  const syncNativeTheme = (bg, fg, accent, lighterBg, onDone) => {
     try {
       const prefs = window.vivaldi && window.vivaldi.prefs;
       if (!prefs || typeof prefs.get !== 'function' || typeof prefs.set !== 'function') return;
@@ -26,7 +27,7 @@
       const colors = {
         colorBg: bg,
         colorFg: fg,
-        colorAccentBg: accent,
+        colorAccentBg: lighterBg,
         colorHighlightBg: accent,
         colorWindowBg: bg
       };
@@ -49,6 +50,7 @@
         colorAccentBg: accent,
         colorBg: bg,
         colorFg: fg,
+        colorAccentBg: lighterBg,
         colorHighlightBg: accent,
         colorPosition: 'unified',
         colorWindowBg: bg,
@@ -88,13 +90,17 @@
   const refresh = async () => {
     try {
       const raw = await (await fetch('style/omarchy.csv', { cache: 'no-store' })).text();
-      if (!/^#[a-f\d]{6}(,#[a-f\d]{6}){2}$/i.test(raw)) return;
-      const [bg, fg, accent] = raw.split(',');
+      if (!/^#[a-f\d]{6}(,#[a-f\d]{6}){3}$/i.test(raw)) return;
+      loggedError = false;
+      const [bg, fg, accent, lighterBg] = raw.split(',');
       if (raw !== synced) {
-        syncNativeTheme(bg, fg, accent, function () { synced = raw });
+        syncNativeTheme(bg, fg, accent, lighterBg, function () { synced = raw });
       }
     } catch (e) {
-      console.error(e);
+      if (!loggedError) {
+        loggedError = true;
+        console.error(e);
+      }
     }
   };
 
