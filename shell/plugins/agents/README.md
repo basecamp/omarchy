@@ -58,7 +58,9 @@ falls back to local stats only. A non-default Claude directory is honored via
 
 ## Interactions
 
-- Bar icon: left = panel, right = refresh, middle = next subscription.
+- Bar icon: left = panel, right = toggle icon style, middle = next
+  subscription. The icon comes in two styles: one robot glyph, or one chip
+  per agent with its mark and the percentage of its tightest limit.
 - Panel: `h`/`l` switch subscription, `j`/`k` scroll, `r` or Enter refresh,
   Tab moves to the neighboring bar panel, Esc closes.
 - IPC: `omarchy-shell omarchy.agents <open|close|toggle|refresh|next>`.
@@ -71,6 +73,7 @@ top-level keys can be set with
 
 | Key | Default | What it does |
 |---|---|---|
+| `barIconStyle` | `"Robot"` | `"Usage"` shows each agent's mark with its tightest limit |
 | `refreshIntervalSec` | `900` | How often the usage records regenerate |
 | `syncMode` | `"Off"` | `"On"` writes this machine's snapshot and merges the others |
 | `syncDir` | `""` | A folder synced by Syncthing, Dropbox, rsync, … |

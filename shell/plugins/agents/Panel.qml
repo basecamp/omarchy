@@ -18,6 +18,11 @@ Panel {
   readonly property color track: Style.selectedFillFor(foreground, Color.accent)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
+  // The bar mark comes in two styles: one robot glyph, or one chip per agent
+  // with its mark and the percentage of its tightest limit. Right click flips
+  // between them.
+  readonly property bool usageIconStyle: String(setting("barIconStyle", "Robot")).toLowerCase() === "usage"
+
   readonly property var providers: usage.enabledProviders
   // The selection follows the provider, not the slot it happens to sit in: a
   // provider whose first scan lands while the panel is open would otherwise
@@ -52,6 +57,18 @@ Panel {
 
   function refreshNow() {
     usage.refreshAll(true)
+  }
+
+  // Applied locally first so the bar changes on the click itself; the
+  // shell.json write comes back through the bar as the same value.
+  function toggleIconStyle() {
+    var entry = { id: root.moduleName }
+    for (var key in root.settings) if (key !== "id") entry[key] = root.settings[key]
+    entry.barIconStyle = usageIconStyle ? "Robot" : "Usage"
+
+    root.settings = entry
+    if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+      root.bar.shell.updateEntryInline(root.moduleName, entry)
   }
 
   // ---------------------------------------------------------------- limits
@@ -116,6 +133,12 @@ Panel {
       if (!best || windows[i].percent > best.percent) best = windows[i]
     }
     return best
+  }
+
+  function barPercentText(p) {
+    var w = bindingWindow(p)
+    if (!w || !(w.percent >= 0)) return "—"
+    return Math.round(w.percent * 100) + "%"
   }
 
   function resetMsFor(w) {
@@ -256,9 +279,17 @@ Panel {
   // Nothing to report, nothing in the bar: Bar.qml collapses a slot whose item
   // is invisible, so the icon appears the moment the first scan finds usage and
   // stays away entirely on a machine that has never run either CLI.
+  readonly property Item barButton: usageIconStyle ? usageButton : button
+
   visible: providers.length > 0
-  implicitWidth: button.implicitWidth
-  implicitHeight: button.implicitHeight
+  implicitWidth: barButton.implicitWidth
+  implicitHeight: barButton.implicitHeight
+
+  function handleBarPress(buttonCode) {
+    if (buttonCode === Qt.RightButton) toggleIconStyle()
+    else if (buttonCode === Qt.MiddleButton) selectProvider(providerIndex + 1)
+    else toggle()
+  }
 
   onProviderIndexChanged: if (panelFlick) panelFlick.contentY = 0
   onOpenedChanged: if (opened) {
@@ -296,20 +327,53 @@ Panel {
 
   BarIconButton {
     id: button
+    visible: !root.usageIconStyle
     anchors.fill: parent
     bar: root.bar
     text: "󱚣"
     active: root.alarming
-    onPressed: function(buttonCode) {
-      if (buttonCode === Qt.RightButton) root.refreshNow()
-      else if (buttonCode === Qt.MiddleButton) root.selectProvider(root.providerIndex + 1)
-      else root.toggle()
+    onPressed: function(buttonCode) { root.handleBarPress(buttonCode) }
+  }
+
+  WidgetButton {
+    id: usageButton
+    visible: root.usageIconStyle
+    anchors.fill: parent
+    bar: root.bar
+    labelVisible: false
+    hasVisualContent: root.usageIconStyle
+    fixedWidth: root.bar && root.bar.vertical ? -1 : chipRow.implicitWidth + Style.space(16)
+    fixedHeight: root.bar && root.bar.vertical ? chipColumn.implicitHeight + Style.space(8) : -1
+    onPressed: function(buttonCode) { root.handleBarPress(buttonCode) }
+
+    Row {
+      id: chipRow
+      visible: !usageButton.vertical
+      anchors.centerIn: parent
+      spacing: Style.space(8)
+
+      Repeater {
+        model: root.providers
+        UsageChip { vertical: false }
+      }
+    }
+
+    Column {
+      id: chipColumn
+      visible: usageButton.vertical
+      anchors.centerIn: parent
+      spacing: Style.space(4)
+
+      Repeater {
+        model: root.providers
+        UsageChip { vertical: true }
+      }
     }
   }
 
   KeyboardPanel {
     id: panel
-    anchorItem: button
+    anchorItem: root.barButton
     owner: root
     bar: root.bar
     open: root.opened
@@ -364,42 +428,9 @@ Panel {
             fontFamily: root.fontFamily
 
             iconComponent: Component {
-              Item {
-                id: heroMark
-                property var candidates: root.iconCandidatesForProvider(root.provider, root.surface)
-                // Provider objects are rebuilt on every refresh, which churns the
-                // array's identity without changing its content. Restart the fallback
-                // walk only when the URLs change: re-pointing source at a URL whose
-                // load already failed emits no statusChanged, so an identity-only
-                // reset would strand the walker on a missing -light twin.
-                property string candidatesKey: candidates.join("\n")
-                property int candidateIndex: 0
-                onCandidatesKeyChanged: candidateIndex = 0
-
-                width: Style.font.display
-                height: Style.font.display
-
-                Image {
-                  id: heroMarkImage
-                  anchors.fill: parent
-                  source: heroMark.candidateIndex < heroMark.candidates.length ? heroMark.candidates[heroMark.candidateIndex] : ""
-                  sourceSize.width: Style.font.display * 2
-                  sourceSize.height: Style.font.display * 2
-                  fillMode: Image.PreserveAspectFit
-                  // Advancing source from inside its own status change trips the
-                  // binding-loop detector; defer the step one tick.
-                  onStatusChanged: if (status === Image.Error && heroMark.candidateIndex < heroMark.candidates.length)
-                    Qt.callLater(function() { heroMark.candidateIndex++ })
-                }
-
-                Text {
-                  anchors.centerIn: parent
-                  visible: heroMarkImage.status !== Image.Ready
-                  text: button.text
-                  color: root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.display
-                }
+              AgentMark {
+                provider: root.provider
+                surfaceColor: root.surface
               }
             }
           }
@@ -590,6 +621,86 @@ Panel {
           }
         }
       }
+    }
+  }
+
+  // An agent's mark with the by-convention fallback walk: the -light twin on
+  // light surfaces, then the plain mark, then the module's bar glyph.
+  component AgentMark: Item {
+    id: mark
+    property var provider: null
+    property color surfaceColor: Color.background
+    property real size: Style.font.display
+
+    // Provider objects are rebuilt on every refresh, which churns the
+    // array's identity without changing its content. Restart the fallback
+    // walk only when the URLs change: re-pointing source at a URL whose
+    // load already failed emits no statusChanged, so an identity-only
+    // reset would strand the walker on a missing -light twin.
+    property var candidates: root.iconCandidatesForProvider(provider, surfaceColor)
+    property string candidatesKey: candidates.join("\n")
+    property int candidateIndex: 0
+    onCandidatesKeyChanged: candidateIndex = 0
+
+    width: size
+    height: size
+
+    Image {
+      id: markImage
+      anchors.fill: parent
+      source: mark.candidateIndex < mark.candidates.length ? mark.candidates[mark.candidateIndex] : ""
+      sourceSize.width: mark.size * 2
+      sourceSize.height: mark.size * 2
+      fillMode: Image.PreserveAspectFit
+      // Advancing source from inside its own status change trips the
+      // binding-loop detector; defer the step one tick.
+      onStatusChanged: if (status === Image.Error && mark.candidateIndex < mark.candidates.length)
+        Qt.callLater(function() { mark.candidateIndex++ })
+    }
+
+    Text {
+      anchors.centerIn: parent
+      visible: markImage.status !== Image.Ready
+      text: button.text
+      color: root.foreground
+      font.family: root.fontFamily
+      font.pixelSize: mark.size
+    }
+  }
+
+  // One agent in the bar: its mark and the percentage of the window that
+  // stops the next prompt.
+  component UsageChip: Grid {
+    id: chip
+    required property var modelData
+    property bool vertical: false
+
+    readonly property real pct: {
+      var window = root.bindingWindow(modelData)
+      return window ? Number(window.percent) : -1
+    }
+    readonly property bool alarming: pct >= 0.9
+    readonly property real iconSize: Style.space(13)
+
+    columns: vertical ? 1 : 2
+    columnSpacing: Style.space(4)
+    rowSpacing: Style.space(1)
+    verticalItemAlignment: Grid.AlignVCenter
+    horizontalItemAlignment: Grid.AlignHCenter
+
+    AgentMark {
+      provider: chip.modelData
+      surfaceColor: root.bar ? root.bar.background : Color.bar.background
+      size: chip.iconSize
+      opacity: chip.alarming ? 0.75 : 1
+    }
+
+    Text {
+      text: root.barPercentText(chip.modelData)
+      color: chip.alarming ? root.urgent : usageButton.foreground
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+      font.bold: chip.alarming
     }
   }
 
