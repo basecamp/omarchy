@@ -1,5 +1,4 @@
 import QtQuick
-import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
@@ -16,7 +15,6 @@ import qs.Ui
 Item {
   id: root
 
-  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   property var shell: null
   property var manifest: null
 
@@ -185,7 +183,6 @@ Item {
     title: root.connectionName
     leftLabel: "DOWNLOAD"
     rightLabel: "UPLOAD"
-    unit: "Mbps"
     runAgainTooltip: "Measure again via fast.com"
     running: root.running
     leftValue: root.downloadValue
@@ -194,7 +191,6 @@ Item {
     rightLive: root.running && root.phase === "up"
     error: root.error
     open: root.opened
-    scaleStops: [100, 250, 500, 1000, 2500, 5000, 10000]
     onCloseRequested: root.dismiss()
     onRunAgainRequested: root.runSpeedTest()
   }
