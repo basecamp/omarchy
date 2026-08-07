@@ -76,6 +76,12 @@ Commands installed by Omarchy's default package set are runtime invariants. Invo
 
 Exceptions are allowed for migration and package-helper scripts where the helper may not be available yet, where the helper itself is being implemented, or where direct package-manager behavior is required.
 
+# Menu
+
+- The menu definition lives in `default/omarchy/omarchy-menu.jsonc`.
+- Do not add `aliases` to new menu entries. Aliases are reserved for
+  established alternate names users already type, kept for compatibility.
+
 # Config Structure
 
 - `config/` - default configs copied to `~/.config/`
