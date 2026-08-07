@@ -13,6 +13,14 @@ pacman_line=$(grep -n '^configure_pacman_channel$' "$upgrade_to_quattro" | cut -
 grep -F 'omarchy-snapshot create || (($? == 127))' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade snapshots the system before mutation"
 
+# The mirrors are repointed immediately before the keyrings go in, so only a
+# forced refresh replaces the legacy database and its stale checksums.
+grep -F 'pacman -Syy --noconfirm archlinux-keyring omarchy-keyring' "$upgrade_to_quattro" >/dev/null
+if grep -F 'pacman -Sy --noconfirm archlinux-keyring omarchy-keyring' "$upgrade_to_quattro" >/dev/null; then
+  fail "Omarchy 4 upgrade forces a database refresh before installing keyrings"
+fi
+pass "Omarchy 4 upgrade forces a database refresh before installing keyrings"
+
 grep -F 'pacman -Syu --needed' "$upgrade_to_quattro" >/dev/null
 grep -F 'omarchy-update-aur-pkgs' "$upgrade_to_quattro" >/dev/null
 grep -F 'omarchy-update-available' "$upgrade_to_quattro" >/dev/null
