@@ -19,6 +19,7 @@ set_vivaldi_native_theme() {
     [[ -f $prefs ]] || continue
     jq --arg bg "$bg" --arg fg "$fg" --arg accent "$accent" '
       .vivaldi |= ((. // {}) + {
+        appearance: ((.appearance // {}) + { force_dark_mode_theme: false }),
         themes: ((.themes // {}) + {
           current: "Omarchy",
           user: (((.themes.user // []) | map(select(.id != "Omarchy"))) + [{
@@ -58,6 +59,9 @@ set_vivaldi_native_theme() {
             })
           })
         })
+      })
+      | .webkit |= ((. // {}) + {
+        webprefs: ((.webprefs // {}) + { force_dark_mode_enabled: false })
       })
     ' "$prefs" > "$prefs.omarchy-tmp" && mv "$prefs.omarchy-tmp" "$prefs"
   done
