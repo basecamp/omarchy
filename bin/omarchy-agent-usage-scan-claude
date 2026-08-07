@@ -412,9 +412,13 @@ def probe_limits(access_token: str) -> dict[str, Any]:
       help_text = f"Anthropic's usage endpoint returned status {error.code}. Local Claude Code stats are still shown."
     return {"ok": False, "helpText": help_text}
   except Exception:
+    # A transport failure reached no server at all — no route, no DNS. Any
+    # real answer, including an error status, is a server we should stop
+    # pestering; this is not.
     return {
       "ok": False,
-      "helpText": "Couldn't reach Anthropic's usage endpoint. Local Claude Code stats are still shown.",
+      "transport": True,
+      "helpText": "Couldn't reach Anthropic's usage endpoint. Retrying shortly. Local Claude Code stats are still shown.",
     }
 
   weekly = usage_bucket(payload, "seven_day_oauth_apps") or usage_bucket(payload, "seven_day")
@@ -462,7 +466,13 @@ def collect_limits(oauth: dict[str, Any], force: bool) -> dict[str, Any]:
   if probe["ok"]:
     result["limits"] = probe["limits"]
     write_json(probe_cache, {"fetchedAtMs": round(time.time() * 1000), "limits": probe["limits"]})
-  elif cached.get("limits"):
+    return result
+
+  # The first probe after login often fires before DHCP has handed out a
+  # route. Ask the shell to try again sooner than its regular interval.
+  if probe.get("transport"):
+    result["retryAdvised"] = True
+  if cached.get("limits"):
     result["limits"] = cached["limits"]
   else:
     result["usageStatusText"] = "Claude limits unavailable"
@@ -485,7 +495,15 @@ def main() -> int:
   stats = cached_scan(claude_dir / "projects", scan_age)
 
   if number(stats.get("totalPrompts")) <= 0:
-    stats = stats_cache_fallback(claude_dir) or stats
+    fallback = stats_cache_fallback(claude_dir)
+    if fallback is not None:
+      stats = fallback
+    else:
+      # No transcripts and no aggregate cache, but history.jsonl alone can
+      # still put numbers on today.
+      today_prompts, today_sessions = today_prompts_from_history(claude_dir)
+      if today_prompts or today_sessions:
+        stats = dict(stats, todayPrompts=today_prompts, todaySessions=today_sessions)
 
   oauth = read_credentials(claude_dir)
   limits = collect_limits(oauth, args.force)
@@ -502,6 +520,8 @@ def main() -> int:
     "authHelpText": limits["authHelpText"],
     "limits": limits["limits"],
   }
+  if limits.get("retryAdvised"):
+    record["retryAdvised"] = True
   record.update(stats)
   print(json.dumps(record, separators=(",", ":"), sort_keys=True))
   return 0

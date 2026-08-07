@@ -32,3 +32,23 @@ pass "Claude collector keeps mutually exclusive token categories"
 [[ $(jq -r '.id + "/" + .usageStatusText' <<<"$result") == "claude/Waiting for auth" ]] ||
   fail "Claude collector identifies itself and reports missing auth" "$result"
 pass "Claude collector identifies itself and reports missing auth"
+
+# A machine with no transcripts and no stats-cache still gets today's counts
+# from history.jsonl alone.
+HISTORY_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$HISTORY_HOME"' EXIT
+mkdir -p "$HISTORY_HOME/.claude"
+
+now_ms=$(($(date +%s) * 1000))
+cat >"$HISTORY_HOME/.claude/history.jsonl" <<EOF
+{"timestamp":86400000,"sessionId":"old","display":"ancient"}
+{"timestamp":$now_ms,"sessionId":"s1","display":"one"}
+{"timestamp":$now_ms,"sessionId":"s2","display":"two"}
+EOF
+
+result=$(HOME="$HISTORY_HOME" XDG_CACHE_HOME="$HISTORY_HOME/.cache" \
+  "$ROOT/bin/omarchy-agent-usage-scan-claude" --force)
+
+[[ $(jq -r '(.todayPrompts|tostring) + "/" + (.todaySessions|tostring)' <<<"$result") == "2/2" ]] ||
+  fail "Claude collector falls back to history.jsonl without a stats-cache" "$result"
+pass "Claude collector falls back to history.jsonl without a stats-cache"

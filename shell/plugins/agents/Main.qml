@@ -76,7 +76,30 @@ Item {
 
   function recordsChanged() {
     dataRevision++
+    scheduleLimitsRetry()
     scheduleSync()
+  }
+
+  // A collector that could not reach its limits endpoint at all — typically
+  // the seconds after login before the network is up — writes retryAdvised
+  // into its record. Honor it with one sooner try instead of waiting out the
+  // full refresh interval; a run that reaches the endpoint clears the flag.
+  Timer {
+    id: limitsRetry
+    interval: 30000
+    repeat: false
+    onTriggered: root.runUpdate("limits")
+  }
+
+  function scheduleLimitsRetry() {
+    for (var i = 0; i < agents.length; i++) {
+      var record = agents[i] ? agents[i].record : null
+      if (record && record.retryAdvised === true && providerEnabled(String(record.id || ""))) {
+        limitsRetry.restart()
+        return
+      }
+    }
+    limitsRetry.stop()
   }
 
   Component.onCompleted: {
@@ -155,12 +178,25 @@ Item {
     var rev = dataRevision
     var syncRev = syncRevision
     var result = []
+    var localIds = {}
     for (var i = 0; i < agents.length; i++) {
       var record = agents[i] ? agents[i].record : null
       if (!record || !record.id) continue
-      if (!providerEnabled(String(record.id))) continue
+      var id = String(record.id)
+      localIds[id] = true
+      if (!providerEnabled(id)) continue
       var display = displayProvider(record)
       if (providerHasData(display)) result.push(display)
+    }
+    // An agent that only ever ran on another machine has no local record, but
+    // its synced numbers still deserve a tab. Rate limits stay blank — they
+    // are per-account and never travel.
+    var syncedProviders = syncConfigured() && aggregateData && aggregateData.providers ? aggregateData.providers : {}
+    for (var syncedId in syncedProviders) {
+      if (localIds[syncedId] || !providerEnabled(syncedId)) continue
+      var stats = syncedProviders[syncedId] || {}
+      var syncedDisplay = displayProvider({ id: syncedId, name: stats.providerName || syncedId })
+      if (providerHasData(syncedDisplay)) result.push(syncedDisplay)
     }
     return result
   }
