@@ -12,6 +12,24 @@ const panelSource = fs.readFileSync(root + '/shell/plugins/panels/network/Panel.
 assert(/IpcHandler[\s\S]*?function toggleNetwork\(\) \{ root\.toggleNetwork\(\) \}/.test(panelSource), 'network exposes the Wi-Fi radio toggle over IPC')
 assert(/manageIpc: false/.test(panelSource), 'network owns its IPC handler so it can extend the target methods')
 
+// Opening from the bar must call open() and nothing else. open() runs
+// refresh(true), which defers the PHY scan; a second bare refresh() defaults
+// scanWifi to false, sets scannerEnabled synchronously, and stalls the open on
+// NetworkManager's access-point flood.
+const barPress = panelSource.match(/onPressed: function\(b\) \{[\s\S]*?\n {4}\}/)
+assert(barPress, 'network bar button has an onPressed handler')
+const barPressCode = barPress[0].replace(/\/\/.*$/gm, '')
+assert(!/refresh\(/.test(barPressCode), 'network bar click opens the panel without a second refresh that would undo the deferred scan')
+
+// A row is a primitive snapshot that can outlive its WifiNetwork, and
+// disconnect() falls back to the live connection when handed null, so row
+// activation must go through the guarded disconnectRow().
+assert(
+  /function disconnectRow\(ssid\) \{\s*var network = networkForSsid\(ssid\)\s*if \(network\) disconnect\(network\)/.test(panelSource),
+  'network guards row disconnects so a stale row cannot drop an unrelated connection'
+)
+assert(!/disconnect\(\s*(root\.)?networkForSsid\(/.test(panelSource), 'network never passes an unguarded networkForSsid() lookup to disconnect()')
+
 assertDeepEqual(
   network.parseNetworkStatus('wifi\tCafe WiFi\t78\t5200\n'),
   { kind: 'wifi', label: 'Cafe WiFi', signalStrength: 78, frequency: '5200' },

@@ -397,7 +397,10 @@ Panel {
     var net = wifiNetworks[selectedIndex]
     if (!net) return
     if (wifiActionFocused && canForgetNetwork(net)) { forget(net); return }
-    if (net.connected) { disconnect(networkForSsid(net.ssid)); return }
+    // Only act on a row that still resolves. disconnect() falls back to
+    // connectedWifiNetwork when handed null, so a row left stale by scan churn
+    // would otherwise tear down whatever is connected now instead.
+    if (net.connected) { disconnectRow(net.ssid); return }
     if (isProtected(net.security) && !net.known) { openPasswordPrompt(net.ssid); return }
     connectKnown(net.ssid)
   }
@@ -754,6 +757,15 @@ Panel {
 
   function disconnect(network) {
     runNetworkAction("disconnect", network || connectedWifiNetwork, function(net) { net.disconnect() })
+  }
+
+  // Disconnect from a row's SSID. Rows are primitive snapshots that can outlive
+  // their WifiNetwork, and disconnect()'s null fallback targets whatever is
+  // connected now, so a stale row must do nothing rather than hit an unrelated
+  // network. Callers that mean "drop the current connection" call disconnect().
+  function disconnectRow(ssid) {
+    var network = networkForSsid(ssid)
+    if (network) disconnect(network)
   }
 
   function forget(net) {
@@ -1646,7 +1658,7 @@ Panel {
         root.selectedIndex = row.index
         root.wifiActionFocused = false
         if (row.isConnected) {
-          root.disconnect(root.networkForSsid(row.net.ssid))
+          root.disconnectRow(row.net.ssid)
           return
         }
         if (row.isProtected && !row.isKnown) {
