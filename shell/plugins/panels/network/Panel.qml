@@ -17,7 +17,7 @@ Panel {
   manageIpc: false
 
   // Centralized close so callers can't forget to drop the passphrase prompt.
-  readonly property bool overlayVisible: qrVisible || speedTestModalOpen
+  readonly property bool overlayVisible: qrVisible
 
   // Shadows the base open(): a summon or toggle while a centered card is up
   // dismisses the card instead of opening the compact panel behind an
@@ -26,7 +26,6 @@ Panel {
   function open() {
     if (overlayVisible) {
       hideWifiQr()
-      hideSpeedTest()
       return
     }
     root.controller.show()
@@ -35,10 +34,9 @@ Panel {
   function close() {
     root.controller.hide()
     cancelPasswordPrompt()
-    // The centered cards outlive the compact panel, but the widget's
-    // canonical close must not leave an overlay (or its traffic) behind.
+    // The centered card outlives the compact panel, but the widget's
+    // canonical close must not leave an overlay behind.
     hideWifiQr()
-    hideSpeedTest()
   }
 
   function cancelPasswordPrompt() {
@@ -101,15 +99,6 @@ Panel {
   property string bandSelected: "auto"
   property var bandAvailable: []
   property string pendingBand: ""
-  property bool speedTestRunning: false
-  property bool speedTestModalOpen: false
-  property bool speedTestExpectedStop: false
-  property bool pendingSpeedRun: false
-  property string speedTestPhase: ""
-  property string speedTestStderr: ""
-  property string speedTestDownloadMbps: ""
-  property string speedTestUploadMbps: ""
-  property string speedTestError: ""
 
   // Per-row in-flight state. `actionSsid` flips on for the row whose action
   // is currently running so it can render "Connecting…" / "Disconnecting…" /
@@ -251,15 +240,12 @@ Panel {
       root.refresh()
       root.showWifiQr(true)
     }
-    function speedTest() {
-      root.refresh()
-      root.showSpeedTest()
-    }
+    function speedTest() { root.summonSpeedTest() }
   }
 
   function activateHeader() {
     if (headerIndex === qrHeaderIndex) showWifiQr()
-    else if (headerIndex === speedHeaderIndex) showSpeedTest()
+    else if (headerIndex === speedHeaderIndex) summonSpeedTest()
     else if (headerIndex === toggleHeaderIndex) toggleNetwork()
   }
 
@@ -691,83 +677,17 @@ Panel {
     actionProc.running = true
   }
 
-  function updateSpeedTestLine(line) {
-    var value = parseFloat(line)
-    if (!isFinite(value) || value < 0) return
-
-    if (speedTestPhase === "down") speedTestDownloadMbps = String(value)
-    else if (speedTestPhase === "up") speedTestUploadMbps = String(value)
-    speedTestError = ""
-  }
-
-  // The speed test lives in a centered modal card like the QR share.
-  // Opening it starts a fresh run; dismissing it stops the traffic, so the
-  // download workers never keep saturating the link behind a closed card.
-  function showSpeedTest() {
-    if (!speedTestModalOpen) {
-      speedTestModalOpen = true
-      controller.hide()
-      cancelPasswordPrompt()
-    }
-    runSpeedTest()
-  }
-
-  function hideSpeedTest() {
-    speedTestModalOpen = false
-    pendingSpeedRun = false
-    speedTestPhaseTimer.stop()
-    // Clear the phase before killing the process: onExited advances to the
-    // upload phase when it still reads "down".
-    speedTestPhase = ""
-    speedTestRunning = false
-    if (speedTestProc.running) {
-      speedTestExpectedStop = true
-      speedTestProc.running = false
-    }
-  }
-
-  function runSpeedTest() {
-    if (speedTestProc.running) {
-      // A dismissal's SIGTERM is still in flight; Process.running stays true
-      // until the child exits, so queue the fresh run for onExited.
-      if (speedTestExpectedStop) pendingSpeedRun = true
-      return
-    }
-    speedTestError = ""
-    speedTestDownloadMbps = ""
-    speedTestUploadMbps = ""
-    speedTestRunning = true
-    startSpeedTestPhase("down")
-  }
-
-  function startSpeedTestPhase(phase) {
-    speedTestExpectedStop = false
-    speedTestPhase = phase
-    speedTestStderr = ""
-    speedTestProc.command = ["omarchy-network-speedtest", phase]
-    speedTestProc.running = true
-    speedTestPhaseTimer.restart()
-  }
-
-  function stopSpeedTestPhase() {
-    speedTestPhaseTimer.stop()
-    if (speedTestProc.running) {
-      speedTestExpectedStop = true
-      speedTestProc.running = false
-      return
-    }
-    finishSpeedTestPhase()
-  }
-
-  function finishSpeedTestPhase() {
-    if (speedTestPhase === "down") {
-      startSpeedTestPhase("up")
-      return
-    }
-
-    speedTestPhase = ""
-    speedTestRunning = false
-    speedTestExpectedStop = false
+  // The speed test is its own panel plugin (omarchy.speedtest) so a
+  // replacement design can take it over; summon() routes to whichever
+  // implementation is enabled. The payload names the connection when this
+  // panel knows it; the plugin looks it up itself otherwise.
+  function summonSpeedTest() {
+    controller.hide()
+    cancelPasswordPrompt()
+    var connection = ""
+    if (info.type === "wifi") connection = info.ssid || "Wi-Fi"
+    else if (info.type === "ethernet") connection = "Ethernet"
+    bar.shell.summon("omarchy.speedtest", connection ? JSON.stringify({ connection: connection }) : "{}")
   }
 
   function dnsCommand(provider) {
@@ -1015,42 +935,6 @@ Panel {
       bandProc.command = ["omarchy-network-band"]
       bandProc.running = true
     }
-  }
-
-  Process {
-    id: speedTestProc
-    stdout: SplitParser { onRead: function(line) { root.updateSpeedTestLine(line) } }
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.speedTestStderr = String(text || "").trim()
-    }
-    onExited: function(exitCode) {
-      speedTestPhaseTimer.stop()
-
-      if (root.pendingSpeedRun) {
-        root.pendingSpeedRun = false
-        root.speedTestExpectedStop = false
-        if (root.speedTestModalOpen) Qt.callLater(root.runSpeedTest)
-        return
-      }
-
-      if (!root.speedTestExpectedStop && exitCode !== 0) {
-        root.speedTestError = root.speedTestStderr || "Speed test failed"
-        root.speedTestPhase = ""
-        root.speedTestRunning = false
-        return
-      }
-
-      root.speedTestExpectedStop = false
-      root.finishSpeedTestPhase()
-    }
-  }
-
-  Timer {
-    id: speedTestPhaseTimer
-    interval: 5000
-    repeat: false
-    onTriggered: root.stopSpeedTestPhase()
   }
 
   // Action runner for DNS provider changes. Wi-Fi actions use the
@@ -1316,7 +1200,7 @@ Panel {
             hasCursor: root.speedHeaderHasCursor
             Layout.alignment: Qt.AlignVCenter
             onHovered: function(on) { if (on) root.setHeaderCursor(root.speedHeaderIndex) }
-            onClicked: root.showSpeedTest()
+            onClicked: root.summonSpeedTest()
           }
 
           ToggleSwitch {
@@ -1718,24 +1602,6 @@ Panel {
     open: root.qrVisible
     onCloseRequested: root.hideWifiQr()
     onPasswordToggleRequested: root.toggleQrPassword()
-  }
-
-  SpeedTestPanel {
-    anchorItem: button
-    bar: root.bar
-    running: root.speedTestRunning
-    phase: root.speedTestPhase
-    downloadMbps: root.speedTestDownloadMbps
-    uploadMbps: root.speedTestUploadMbps
-    error: root.speedTestError
-    connectionName: {
-      if (root.info.type === "wifi") return root.info.ssid || "Wi-Fi"
-      if (root.info.type === "ethernet") return "Ethernet"
-      return ""
-    }
-    open: root.speedTestModalOpen
-    onCloseRequested: root.hideSpeedTest()
-    onRunAgainRequested: root.runSpeedTest()
   }
 
   // One Wi-Fi band pill. `active` (fill) is the band actually in use and

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Shapes
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
@@ -12,160 +13,307 @@ import qs.Ui
 // digital readout in the middle. Esc, the scrim, or the corner dismiss close
 // it; the needles sweep to full scale and back on open, then track the live
 // readings.
-PanelWindow {
+//
+// Standalone panel plugin: summoning it starts a fresh run, dismissing it
+// stops the traffic, so the download workers never keep saturating the link
+// behind a closed overlay. The payload may carry the connection's display
+// name -- {"connection": "MyWifi"} -- and the panel looks it up itself via
+// omarchy-network-status when the caller doesn't know it.
+Item {
   id: root
 
-  required property Item anchorItem
-  required property QtObject bar
-  required property bool running
-  required property string phase        // "down" | "up" | ""
-  required property string downloadMbps
-  required property string uploadMbps
-  required property string error
-  required property string connectionName
-  property bool open: false
+  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
+  property var shell: null
+  property var manifest: null
 
-  signal closeRequested()
-  signal runAgainRequested()
+  property bool opened: false
+  property string connectionName: ""
+
+  property bool running: false
+  property bool expectedStop: false
+  property bool pendingRun: false
+  property string phase: ""        // "down" | "up" | ""
+  property string stderrText: ""
+  property string downloadMbps: ""
+  property string uploadMbps: ""
+  property string error: ""
 
   readonly property real downloadValue: toMbps(downloadMbps)
   readonly property real uploadValue: toMbps(uploadMbps)
   readonly property bool failed: error !== ""
-  readonly property bool finished: !running && !failed && (downloadValue > 0 || uploadValue > 0)
 
   // The scrim below is a fixed near-black regardless of theme, so text and
-  // ticks on it need a fixed light palette, not the themed bar.foreground.
+  // ticks on it need a fixed light palette, not the themed foreground.
   readonly property color onScrim: "white"
   readonly property color onScrimDim: Qt.rgba(1, 1, 1, 0.55)
   readonly property color onScrimUrgent: "#ff6b6b"
+  readonly property string fontFamily: Style.font.family
 
   function toMbps(raw) {
     var value = parseFloat(raw)
     return isFinite(value) && value > 0 ? value : 0
   }
 
-  visible: open
-  // The window is instantiated hidden, so re-acquire focus after mapping and
-  // fire the ignition sweep once the surface is actually on screen.
-  onOpenChanged: {
-    if (open) Qt.callLater(function() {
-      if (!root.open) return
+  function open(payloadJson) {
+    var payload = {}
+    try { payload = JSON.parse(payloadJson || "{}") || {} } catch (e) {}
+    if (payload.connection !== undefined) root.connectionName = String(payload.connection)
+    else refreshConnectionName()
+    root.opened = true
+    runSpeedTest()
+    // The window is instantiated hidden, so re-acquire focus after mapping
+    // and fire the ignition sweep once the surface is actually on screen.
+    Qt.callLater(function() {
+      if (!root.opened) return
       keyCatcher.forceActiveFocus()
       downDial.ignite()
       upDial.ignite()
     })
   }
-  screen: anchorItem.QsWindow.window ? anchorItem.QsWindow.window.screen : null
-  anchors { top: true; bottom: true; left: true; right: true }
-  color: "transparent"
-  exclusionMode: ExclusionMode.Ignore
-  WlrLayershell.namespace: "omarchy-network-speedtest"
-  WlrLayershell.layer: WlrLayer.Overlay
-  WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
-  // Deep scrim: with no card behind them, the floating dials need the
-  // backdrop to carry the contrast on any wallpaper, like the near-black
-  // panel behind a real cluster.
-  Rectangle {
-    anchors.fill: parent
-    color: Qt.rgba(0, 0, 0, 0.78)
-
-    MouseArea {
-      anchors.fill: parent
-      onClicked: root.closeRequested()
+  function close() {
+    root.opened = false
+    root.pendingRun = false
+    phaseTimer.stop()
+    // Clear the phase before killing the process: onExited advances to the
+    // upload phase when it still reads "down".
+    root.phase = ""
+    root.running = false
+    if (speedTestProc.running) {
+      root.expectedStop = true
+      speedTestProc.running = false
     }
   }
 
-  Item {
-    id: keyCatcher
-    anchors.fill: parent
-    focus: true
+  function dismiss() {
+    if (root.shell && typeof root.shell.hide === "function")
+      root.shell.hide((root.manifest && root.manifest.id) || "omarchy.speedtest")
+    else close()
+  }
 
-    Keys.onEscapePressed: root.closeRequested()
-    Keys.onReturnPressed: if (!root.running) root.runAgainRequested()
-    Keys.onEnterPressed: if (!root.running) root.runAgainRequested()
+  function refreshConnectionName() {
+    root.connectionName = ""
+    statusProc.running = false
+    statusProc.running = true
+  }
+
+  function updateSpeedTestLine(line) {
+    var value = parseFloat(line)
+    if (!isFinite(value) || value < 0) return
+
+    if (phase === "down") downloadMbps = String(value)
+    else if (phase === "up") uploadMbps = String(value)
+    error = ""
+  }
+
+  function runSpeedTest() {
+    if (speedTestProc.running) {
+      // A dismissal's SIGTERM is still in flight; Process.running stays true
+      // until the child exits, so queue the fresh run for onExited.
+      if (expectedStop) pendingRun = true
+      return
+    }
+    error = ""
+    downloadMbps = ""
+    uploadMbps = ""
+    running = true
+    startPhase("down")
+  }
+
+  function startPhase(nextPhase) {
+    expectedStop = false
+    phase = nextPhase
+    stderrText = ""
+    speedTestProc.command = ["omarchy-network-speedtest", nextPhase]
+    speedTestProc.running = true
+    phaseTimer.restart()
+  }
+
+  function stopPhase() {
+    phaseTimer.stop()
+    if (speedTestProc.running) {
+      expectedStop = true
+      speedTestProc.running = false
+      return
+    }
+    finishPhase()
+  }
+
+  function finishPhase() {
+    if (phase === "down") {
+      startPhase("up")
+      return
+    }
+
+    phase = ""
+    running = false
+    expectedStop = false
+  }
+
+  Process {
+    id: speedTestProc
+    stdout: SplitParser { onRead: function(line) { root.updateSpeedTestLine(line) } }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.stderrText = String(text || "").trim()
+    }
+    onExited: function(exitCode) {
+      phaseTimer.stop()
+
+      if (root.pendingRun) {
+        root.pendingRun = false
+        root.expectedStop = false
+        if (root.opened) Qt.callLater(root.runSpeedTest)
+        return
+      }
+
+      if (!root.expectedStop && exitCode !== 0) {
+        root.error = root.stderrText || "Speed test failed"
+        root.phase = ""
+        root.running = false
+        return
+      }
+
+      root.expectedStop = false
+      root.finishPhase()
+    }
+  }
+
+  Timer {
+    id: phaseTimer
+    interval: 5000
+    repeat: false
+    onTriggered: root.stopPhase()
+  }
+
+  // Names the connection under test when the summoner didn't. First tab
+  // field is the kind, second the SSID (wifi) or device (ethernet).
+  Process {
+    id: statusProc
+    command: ["omarchy-network-status"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var fields = String(text || "").trim().split("\t")
+        if (fields[0] === "wifi") root.connectionName = fields[1] || "Wi-Fi"
+        else if (fields[0] === "ethernet") root.connectionName = "Ethernet"
+      }
+    }
+  }
+
+  PanelWindow {
+    visible: root.opened
+    anchors { top: true; bottom: true; left: true; right: true }
+    color: "transparent"
+    exclusionMode: ExclusionMode.Ignore
+    WlrLayershell.namespace: "omarchy-network-speedtest"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+
+    // Deep scrim: with no card behind them, the floating dials need the
+    // backdrop to carry the contrast on any wallpaper, like the near-black
+    // panel behind a real cluster.
+    Rectangle {
+      anchors.fill: parent
+      color: Qt.rgba(0, 0, 0, 0.78)
+
+      MouseArea {
+        anchors.fill: parent
+        onClicked: root.dismiss()
+      }
+    }
 
     Item {
-      id: cluster
-      anchors.centerIn: parent
-      width: content.implicitWidth
-      height: content.implicitHeight
-      // Narrow or heavily scaled outputs: shrink the whole cluster rather
-      // than clipping it at the screen edge.
-      scale: Math.min(1,
-        (keyCatcher.width - Style.space(32)) / Math.max(1, width),
-        (keyCatcher.height - Style.space(32)) / Math.max(1, height))
+      id: keyCatcher
+      anchors.fill: parent
+      focus: true
 
-      // Swallow clicks so only the scrim outside the cluster dismisses.
-      MouseArea { anchors.fill: parent; onClicked: {} }
+      Keys.onEscapePressed: root.dismiss()
+      Keys.onReturnPressed: if (!root.running) root.runSpeedTest()
+      Keys.onEnterPressed: if (!root.running) root.runSpeedTest()
 
-      ColumnLayout {
-        id: content
-        anchors.fill: parent
-        spacing: Style.space(16)
+      Item {
+        id: cluster
+        anchors.centerIn: parent
+        width: content.implicitWidth
+        height: content.implicitHeight
+        // Narrow or heavily scaled outputs: shrink the whole cluster rather
+        // than clipping it at the screen edge.
+        scale: Math.min(1,
+          (keyCatcher.width - Style.space(32)) / Math.max(1, width),
+          (keyCatcher.height - Style.space(32)) / Math.max(1, height))
 
-        Text {
-          visible: root.connectionName !== ""
-          text: root.connectionName.toUpperCase()
-          color: root.onScrimDim
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.caption
-          font.bold: true
-          font.letterSpacing: 2
-          Layout.fillWidth: true
-          horizontalAlignment: Text.AlignHCenter
-        }
+        // Swallow clicks so only the scrim outside the cluster dismisses.
+        MouseArea { anchors.fill: parent; onClicked: {} }
 
-        Row {
-          spacing: Style.space(48)
-          Layout.alignment: Qt.AlignHCenter
+        ColumnLayout {
+          id: content
+          anchors.fill: parent
+          spacing: Style.space(16)
 
-          SpeedDial {
-            id: downDial
-            label: "DOWNLOAD"
-            value: root.downloadValue
-            live: root.running && root.phase === "down"
+          Text {
+            visible: root.connectionName !== ""
+            text: root.connectionName.toUpperCase()
+            color: root.onScrimDim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            font.letterSpacing: 2
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignHCenter
           }
 
-          SpeedDial {
-            id: upDial
-            label: "UPLOAD"
-            value: root.uploadValue
-            live: root.running && root.phase === "up"
+          Row {
+            spacing: Style.space(48)
+            Layout.alignment: Qt.AlignHCenter
+
+            SpeedDial {
+              id: downDial
+              label: "DOWNLOAD"
+              value: root.downloadValue
+              live: root.running && root.phase === "down"
+            }
+
+            SpeedDial {
+              id: upDial
+              label: "UPLOAD"
+              value: root.uploadValue
+              live: root.running && root.phase === "up"
+            }
           }
-        }
 
-        // Centered on the dial pair. Fades rather than unmounts while a run
-        // is in flight, so the cluster never shifts.
-        Button {
-          text: "Run Again"
-          tooltipText: "Measure again via fast.com"
-          bordered: true
-          enabled: !root.running
-          opacity: root.running ? 0 : 1
-          foreground: root.onScrim
-          fontFamily: root.bar.fontFamily
-          fontSize: Style.font.bodySmall
-          horizontalPadding: Style.space(14)
-          verticalPadding: Style.space(4)
-          Layout.alignment: Qt.AlignHCenter
-          onClicked: root.runAgainRequested()
+          // Centered on the dial pair. Fades rather than unmounts while a run
+          // is in flight, so the cluster never shifts.
+          Button {
+            text: "Run Again"
+            tooltipText: "Measure again via fast.com"
+            bordered: true
+            enabled: !root.running
+            opacity: root.running ? 0 : 1
+            foreground: root.onScrim
+            fontFamily: root.fontFamily
+            fontSize: Style.font.bodySmall
+            horizontalPadding: Style.space(14)
+            verticalPadding: Style.space(4)
+            Layout.alignment: Qt.AlignHCenter
+            onClicked: root.runSpeedTest()
 
-          Behavior on opacity {
-            NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+            Behavior on opacity {
+              NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+            }
           }
-        }
 
-        Text {
-          visible: root.failed
-          text: root.error
-          color: root.onScrimUrgent
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.bodySmall
-          wrapMode: Text.Wrap
-          Layout.fillWidth: true
-          Layout.maximumWidth: Style.space(440)
-          horizontalAlignment: Text.AlignHCenter
+          Text {
+            visible: root.failed
+            text: root.error
+            color: root.onScrimUrgent
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+            Layout.maximumWidth: Style.space(440)
+            horizontalAlignment: Text.AlignHCenter
+          }
         }
       }
     }
@@ -368,7 +516,7 @@ PanelWindow {
         anchors.horizontalCenter: parent.horizontalCenter
         text: dial.reading < 10 ? dial.reading.toFixed(1) : Math.round(dial.reading).toString()
         color: root.onScrim
-        font.family: root.bar.fontFamily
+        font.family: root.fontFamily
         font.pixelSize: Style.font.display
         font.bold: true
       }
@@ -377,7 +525,7 @@ PanelWindow {
         anchors.horizontalCenter: parent.horizontalCenter
         text: "Mbps"
         color: root.onScrimDim
-        font.family: root.bar.fontFamily
+        font.family: root.fontFamily
         font.pixelSize: Style.font.caption
       }
     }
@@ -389,7 +537,7 @@ PanelWindow {
       anchors.bottom: parent.bottom
       text: dial.label
       color: root.onScrimDim
-      font.family: root.bar.fontFamily
+      font.family: root.fontFamily
       font.pixelSize: Style.font.caption
       font.bold: true
       font.letterSpacing: 1.5
