@@ -81,8 +81,12 @@ luks_device() {
   esac
 }
 
+# No trailing `| head` stage: under pipefail an infinite tr killed by
+# SIGPIPE fails the substitution and errexit aborts the whole reset.
 generate_passphrase() {
-  tr -dc 'a-zA-Z0-9' </dev/urandom | head -c 48
+  local raw
+  raw=$(head -c 4096 /dev/urandom | tr -dc 'a-zA-Z0-9')
+  printf '%s' "${raw:0:48}"
 }
 
 cleanup() {
@@ -178,13 +182,20 @@ install_oem_units() {
     "$next/etc/systemd/system/sysinit.target.wants/omarchy-factory-wipe.service"
 }
 
-# Start the ESP's limine.conf over from the shipped template and drop foreign
-# machine-id state. limine-entry-tool keys OS entries by machine-id, so after
-# a reset gives the machine a fresh identity, the previous system's entry
-# (with the now-stale UKI hash) would survive, sort first, and make Limine
-# refuse the rebuilt UKI with a hash-mismatch warning.
+# Start the ESP's limine.conf over from the shipped template and drop the
+# previous Omarchy identity's state. limine-entry-tool keys OS entries by
+# machine-id, so after a reset gives the machine a fresh identity, the
+# previous system's entry (with the now-stale UKI hash) would survive, sort
+# first, and make Limine refuse the rebuilt UKI with a hash-mismatch warning.
+# Only machine-ids the old limine.conf referenced are removed — a shared ESP
+# may hold other installations' machine-id directories.
 reset_limine_config() {
   local root="$1" esp="$2" template found=""
+
+  local old_ids=""
+  if [[ -f $root$esp/limine.conf ]]; then
+    old_ids=$(grep -o 'machine-id=[0-9a-f]\{32\}' "$root$esp/limine.conf" | cut -d= -f2 | sort -u)
+  fi
 
   for template in "$root/usr/share/omarchy/install/assets/limine/limine.conf" \
                   "$root/usr/share/omarchy/default/limine/limine.conf"; do
@@ -196,13 +207,11 @@ reset_limine_config() {
   done
   [[ -n $found ]] || fail "no limine.conf template in $root/usr/share/omarchy"
 
-  local machine_id entry
+  local machine_id old_id
   machine_id=$(cat "$root/etc/machine-id" 2>/dev/null || true)
-  for entry in "$root$esp"/*/; do
-    entry=${entry%/}
-    [[ $(basename "$entry") =~ ^[0-9a-f]{32}$ ]] || continue
-    [[ $(basename "$entry") == "$machine_id" ]] && continue
-    rm -rf "$entry"
+  for old_id in $old_ids; do
+    [[ $old_id == "$machine_id" ]] && continue
+    rm -rf "${root:?}$esp/$old_id"
   done
 }
 
@@ -247,6 +256,22 @@ rebuild_next_boot() {
     mount --make-rslave "$next/$dir"
   done
 
+  # Btrfs snapshots do not recurse into nested subvolumes, so the factory
+  # root carries only an empty /swap directory where the hibernation swapfile
+  # lived. Recreate it and refresh the resume offset before the UKI build
+  # bakes the cmdline; the empty placeholder directory has to go first so the
+  # subvolume can be recreated.
+  if [[ -x $next/usr/bin/omarchy-hibernation-setup ]] && grep -q "/swap/swapfile" "$next/etc/fstab"; then
+    log "Recreating the hibernation swapfile in the factory system"
+    if [[ -d $next/swap ]] && ! btrfs subvolume show "$next/swap" >/dev/null 2>&1; then
+      rmdir "$next/swap" 2>/dev/null || true
+    fi
+    if ! chroot "$next" env OMARCHY_PATH=/usr/share/omarchy \
+      /usr/bin/omarchy-hibernation-setup --force --no-rebuild >>"$LOG_FILE" 2>&1; then
+      fail "hibernation setup failed in the factory root (see $LOG_FILE)"
+    fi
+  fi
+
   reset_limine_config "$next" "$esp_mount"
 
   log "Rebuilding boot files from the factory system (this can take a minute)"
@@ -281,12 +306,14 @@ stage_full_reset() {
   rm -f "$next/var/lib/sddm/state.conf" "$next/etc/sddm.conf.d/autologin.conf"
 
   # A factory snapshot from a normal (non-OEM) install contains the original
-  # user account; first-boot setup must start from none.
+  # user account; first-boot setup must start from none. A leftover account
+  # would keep its password hash and group memberships (including wheel), so
+  # failure here has to abort the reset, not be shrugged off.
   local user
   for user in $(awk -F: '$3 >= 1000 && $3 < 60000 { print $1 }' "$next/etc/passwd"); do
     log "Removing user $user from the factory system"
     userdel --root "$next" "$user" 2>>"$LOG_FILE" ||
-      log "userdel $user failed (continuing)"
+      fail "could not remove user $user from the factory system (see $LOG_FILE)"
   done
   passwd --root "$next" --lock root >>"$LOG_FILE" 2>&1 || true
 
@@ -322,11 +349,10 @@ stage_degraded_reset() {
   [[ -f $unit_src/omarchy-oem-setup.service && -x /usr/bin/omarchy-oem-setup ]] ||
     fail "this Omarchy version does not ship OEM setup; update first"
 
+  # Fallible staging (re-key, boot rebuild) happens before the wipe is armed:
+  # a failure must leave the machine untouched, not schedule a wipe for a
+  # reset that never finished staging.
   install -d -m 755 "$OEM_DIR"
-  touch "$OEM_DIR/pending" "$OEM_DIR/wipe-pending" "$OEM_DIR/wipe-degraded"
-
-  install_oem_units "" "$unit_src"
-
   if encrypted_install; then
     stage_luks_rekey ""
     log "Rebuilding boot files with the OEM unlock key"
@@ -334,6 +360,9 @@ stage_degraded_reset() {
       fail "limine-update failed (see $LOG_FILE)"
     fi
   fi
+
+  install_oem_units "" "$unit_src"
+  touch "$OEM_DIR/pending" "$OEM_DIR/wipe-pending" "$OEM_DIR/wipe-degraded"
 
   swap_done=1
 }

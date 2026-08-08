@@ -43,6 +43,15 @@ root_device() {
   findmnt -no SOURCE / | sed 's/\[.*\]//'
 }
 
+abort() {
+  # Keep wipe-pending so the wipe retries next boot, and so OEM setup stays
+  # gated (it refuses to create a user on a half-wiped system).
+  log "$1 — aborting; the wipe will retry on the next boot"
+  umount "$TOP_MNT" 2>/dev/null || true
+  rmdir "$TOP_MNT" 2>/dev/null || true
+  exit 1
+}
+
 delete_subvolume() {
   local path="$1"
   [[ -d $path ]] || return 0
@@ -74,7 +83,7 @@ scrub_degraded_state() {
   local user
   for user in $(awk -F: '$3 >= 1000 && $3 < 60000 { print $1 }' /etc/passwd); do
     log "removing user $user"
-    userdel "$user" 2>/dev/null || log "userdel $user failed (continuing)"
+    userdel "$user" 2>/dev/null || abort "could not remove user $user"
   done
 
   rm -f /etc/ssh/ssh_host_*
@@ -134,12 +143,14 @@ main() {
   for old in "$TOP_MNT"/@omarchy-old-*; do
     [[ -d $old ]] || continue
     log "deleting previous system root $(basename "$old")"
-    delete_subvolume "$old"
+    delete_subvolume "$old" || abort "could not delete $(basename "$old")"
   done
 
+  # A wipe that cannot recreate @home has not wiped anything — the seller's
+  # data would survive a "successful" factory reset.
   log "recreating @home and @log"
-  recreate_subvolume @home
-  recreate_subvolume @log
+  recreate_subvolume @home || abort "could not recreate @home"
+  recreate_subvolume @log || abort "could not recreate @log"
 
   repair_snapshots_dir
 

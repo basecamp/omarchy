@@ -25,6 +25,13 @@ fi
 
 [[ -f $OEM_DIR/pending ]] || exit 0
 
+# Never set up a user on a half-wiped system: while a factory wipe is still
+# pending (i.e. it failed this boot), stand down and let it retry next boot.
+if [[ -f $OEM_DIR/wipe-pending ]]; then
+  echo "omarchy-oem-setup: factory wipe still pending; not running user setup" >&2
+  exit 1
+fi
+
 export PATH="$OMARCHY_PATH/bin:$PATH"
 
 LOGO_PATH="$OMARCHY_PATH/logo.txt"
@@ -104,7 +111,10 @@ user_form() {
     if [[ "$username" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]]; then
       if [[ "$username" =~ ^(root|bin|daemon|mail|ftp|http|nobody|dbus|systemd-coredump|systemd-network|systemd-oom|systemd-journal-remote|systemd-resolve|systemd-timesync|tss|uuidd|alpm|git|avahi|cups|lp|_talkd|polkitd|rtkit|qemu|brltty|gluster|rpc|libvirt-qemu|pcscd|nvidia-persistenced|sddm)$ ]]; then
         notice "Username is reserved for system" 1
-      elif getent passwd "$username" >/dev/null; then
+      elif getent passwd "$username" >/dev/null && (( $(id -u "$username") < 1000 )); then
+        # Regular (uid >= 1000) accounts can only exist here as leftovers from
+        # an earlier failed attempt — OEM state has no users — and create_user
+        # resumes them; only system accounts are off limits.
         notice "That username already exists on this machine" 1
       else
         break
@@ -182,7 +192,11 @@ luks_device() {
 }
 
 create_user() {
-  if ! getent passwd "$username" >/dev/null; then
+  if getent passwd "$username" >/dev/null; then
+    # Resuming a partially-completed earlier attempt: refresh what the form
+    # collected this time around.
+    usermod -aG "$(user_groups)" ${full_name:+-c "$full_name"} "$username"
+  else
     useradd -m -G "$(user_groups)" -s /bin/bash \
       ${full_name:+-c "$full_name"} "$username"
   fi
@@ -314,8 +328,14 @@ limine_entries_stale() {
 }
 
 reset_limine_config() {
-  local esp template found="" machine_id entry
+  local esp template found="" machine_id old_id old_ids=""
   esp=$(esp_path)
+
+  # Only remove machine-ids the old (Omarchy-managed) limine.conf referenced;
+  # a shared ESP may hold other installations' machine-id directories.
+  if [[ -f $esp/limine.conf ]]; then
+    old_ids=$(grep -o 'machine-id=[0-9a-f]\{32\}' "$esp/limine.conf" | cut -d= -f2 | sort -u)
+  fi
 
   for template in "$OMARCHY_PATH/install/assets/limine/limine.conf" \
                   "$OMARCHY_PATH/default/limine/limine.conf"; do
@@ -331,11 +351,9 @@ reset_limine_config() {
   fi
 
   machine_id=$(cat /etc/machine-id 2>/dev/null || true)
-  for entry in "$esp"/*/; do
-    entry=${entry%/}
-    [[ $(basename "$entry") =~ ^[0-9a-f]{32}$ ]] || continue
-    [[ $(basename "$entry") == "$machine_id" ]] && continue
-    rm -rf "$entry"
+  for old_id in $old_ids; do
+    [[ $old_id == "$machine_id" ]] && continue
+    rm -rf "${esp:?}/$old_id"
   done
 }
 
