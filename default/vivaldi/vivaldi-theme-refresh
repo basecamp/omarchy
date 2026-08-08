@@ -62,15 +62,13 @@ jq -n \
   --arg bg "$bg" --arg fg "$fg" --arg accent "$accent" --arg lighter_bg "$lighter_bg" \
   --argjson radius "$radius" --argjson dimBlurred "$dim_blurred" \
   --argjson blur "$blur" --argjson contrast "$contrast" \
-  --argjson updatedAt "$(date +%s)" \
   '{
     schemaVersion: 1,
     colors: { bg: $bg, fg: $fg, accent: $accent, lighterBg: $lighter_bg },
     radius: $radius,
     dimBlurred: $dimBlurred,
     blur: $blur,
-    contrast: $contrast,
-    updatedAt: $updatedAt
+    contrast: $contrast
   }' > "$JSON"
 
 set_vivaldi_native_theme() {
