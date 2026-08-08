@@ -19,12 +19,20 @@ else
 fi
 
 THEMES_DIR="$HOME/.config/omarchy/themes"
-THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
 # Ensure a theme was set
 if [[ -z $THEME_NAME ]]; then
   exit 1
 fi
+
+# Theme names are simple file names; reject anything that could walk out of
+# the themes directory (.. or path separators) before it reaches rm -rf.
+if [[ ! $THEME_NAME =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  echo "Error: invalid theme name '$THEME_NAME'." >&2
+  exit 1
+fi
+
+THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
 # Check if theme exists before attempting removal
 if [[ ! -d $THEME_PATH ]]; then

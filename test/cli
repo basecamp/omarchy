@@ -482,6 +482,55 @@ expected_background="$THEME_TMPDIR/.local/state/omarchy/current/theme/background
 [[ ! -e $THEME_TMPDIR/.config/omarchy/current ]] || fail "headless theme set avoids config current state"
 pass "headless theme set creates current background symlink"
 
+# Theme names are validated as simple file names so a `..` argument cannot walk
+# out of the themes directory and rm -rf / cp -r the user's config.
+TRAVERSAL_THEME_HOME="$PI_TMPDIR/traversal-home"
+mkdir -p "$TRAVERSAL_THEME_HOME/.config/omarchy/themes"
+mkdir -p "$TRAVERSAL_THEME_HOME/.local/state/omarchy/current/theme"
+printf 'marker\n' >"$TRAVERSAL_THEME_HOME/.config/omarchy/themes/keep.txt"
+printf 'marker\n' >"$TRAVERSAL_THEME_HOME/.local/state/omarchy/current/theme/keep.txt"
+
+if HOME="$TRAVERSAL_THEME_HOME" "$ROOT/bin/omarchy-theme-remove" .. >/dev/null 2>&1; then
+  fail "theme remove rejects .. traversal"
+fi
+[[ -f $TRAVERSAL_THEME_HOME/.config/omarchy/themes/keep.txt ]] || fail "theme remove .. does not delete the themes directory"
+pass "theme remove rejects .. traversal"
+
+if HOME="$TRAVERSAL_THEME_HOME" "$ROOT/bin/omarchy-theme-remove" ../.. >/dev/null 2>&1; then
+  fail "theme remove rejects ../.. traversal"
+fi
+[[ -f $TRAVERSAL_THEME_HOME/.config/omarchy/themes/keep.txt ]] || fail "theme remove ../.. does not delete the config tree"
+pass "theme remove rejects ../.. traversal"
+
+if HOME="$TRAVERSAL_THEME_HOME" "$ROOT/bin/omarchy-theme-remove" . >/dev/null 2>&1; then
+  fail "theme remove rejects the current directory"
+fi
+[[ -f $TRAVERSAL_THEME_HOME/.config/omarchy/themes/keep.txt ]] || fail "theme remove . does not delete the themes directory"
+pass "theme remove rejects the current directory"
+
+if HOME="$TRAVERSAL_THEME_HOME" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" .. >/dev/null 2>&1; then
+  fail "theme set rejects .. traversal"
+fi
+[[ ! -e $TRAVERSAL_THEME_HOME/.local/state/omarchy/current/next-theme ]] || fail "theme set .. does not create a next-theme"
+[[ -f $TRAVERSAL_THEME_HOME/.local/state/omarchy/current/theme/keep.txt ]] || fail "theme set .. does not replace the current theme"
+pass "theme set rejects .. traversal"
+
+if HOME="$TRAVERSAL_THEME_HOME" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" "../.." >/dev/null 2>&1; then
+  fail "theme set rejects ../.. traversal"
+fi
+[[ -f $TRAVERSAL_THEME_HOME/.config/omarchy/themes/keep.txt ]] || fail "theme set ../.. does not touch the config tree"
+pass "theme set rejects ../.. traversal"
+
+# plymouth-set-by-theme feeds the name through omarchy-theme-dir into a sudo
+# write; it must reject traversal names too.
+if HOME="$TRAVERSAL_THEME_HOME" "$ROOT/bin/omarchy-plymouth-set-by-theme" .. >/dev/null 2>&1; then
+  fail "plymouth-set-by-theme rejects .. traversal"
+fi
+if HOME="$TRAVERSAL_THEME_HOME" "$ROOT/bin/omarchy-plymouth-set-by-theme" ../.. >/dev/null 2>&1; then
+  fail "plymouth-set-by-theme rejects ../.. traversal"
+fi
+pass "plymouth-set-by-theme rejects traversal names"
+
 MIGRATION_TMPDIR=$(mktemp -d)
 mkdir -p \
   "$MIGRATION_TMPDIR/.config/omarchy/current/theme" \

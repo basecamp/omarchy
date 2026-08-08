@@ -128,6 +128,14 @@ if [[ ${OMARCHY_THEME_HEADLESS:-} == "1" || ${OMARCHY_THEME_OFFLINE:-} == "1" ]]
   THEME_HEADLESS=1
 fi
 
+# Theme names are simple file names; reject anything that could walk out of
+# the themes directories (.. or path separators) before it reaches the
+# cp -r into next-theme and the rm -rf of current.
+if [[ ! $THEME_NAME =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  echo "Error: invalid theme name '$THEME_NAME'." >&2
+  exit 1
+fi
+
 if [[ ! -d $OMARCHY_THEMES_PATH/$THEME_NAME ]] && [[ ! -d $USER_THEMES_PATH/$THEME_NAME ]]; then
   echo "Theme '$THEME_NAME' does not exist"
   exit 1
