@@ -103,6 +103,30 @@ grep -Fxq 'launch:uwsm-app -- gtk-launch hermes' "$HERMES_TEST_LOG" ||
   fail "Hermes installer opens the desktop app after installation"
 pass "Hermes installer provisions and registers the native desktop app"
 
+existing_home="$test_tmp/existing-home"
+existing_desktop_dir="$existing_home/.hermes/hermes-agent/apps/desktop"
+mkdir -p "$existing_desktop_dir/release/linux-unpacked" "$existing_desktop_dir/assets"
+touch "$existing_desktop_dir/release/linux-unpacked/Hermes"
+chmod +x "$existing_desktop_dir/release/linux-unpacked/Hermes"
+printf 'existing-icon\n' >"$existing_desktop_dir/assets/icon.png"
+rm -f "$HERMES_TEST_ARGS"
+: >"$HERMES_TEST_LOG"
+
+existing_output=$(HOME="$existing_home" bash "$ROOT/bin/omarchy-install-ai-hermes")
+
+[[ ! -e $HERMES_TEST_ARGS ]] ||
+  fail "Hermes installer does not rebuild an existing upstream installation"
+if grep -Eq '^(sudo-keepalive|download-installer)$' "$HERMES_TEST_LOG"; then
+  fail "Hermes installer integrates an existing installation without sudo or downloads"
+fi
+grep -Fq "Hermes Desktop is already installed. Adding Omarchy integration..." <<<"$existing_output" ||
+  fail "Hermes installer explains the lightweight integration path"
+cmp -s "$ROOT/default/applications/hermes.desktop" "$existing_home/.local/share/applications/hermes.desktop" ||
+  fail "Hermes installer registers the launcher for an existing upstream installation"
+[[ -f $existing_home/.local/share/icons/hicolor/256x256/apps/hermes.png ]] ||
+  fail "Hermes installer registers the icon for an existing upstream installation"
+pass "Hermes installer integrates an existing upstream installation without rebuilding"
+
 : >"$HERMES_TEST_LOG"
 bash "$ROOT/bin/omarchy-launch-hermes"
 grep -Fxq "launch:uwsm-app -- $HOME/.hermes/hermes-agent/apps/desktop/release/linux-unpacked/Hermes" "$HERMES_TEST_LOG" ||
@@ -152,4 +176,6 @@ grep -Fq '"install.ai.hermes"' "$ROOT/default/omarchy/omarchy-menu.jsonc" ||
   fail "Omarchy menu exposes the Hermes installer under Install > AI"
 grep -Fq 'omarchy-install-ai-hermes' "$ROOT/default/omarchy/omarchy-menu.jsonc" ||
   fail "Omarchy menu routes Hermes installation through its first-class command"
+grep -Fq '$HOME/.local/share/applications/hermes.desktop' "$ROOT/default/omarchy/omarchy-menu.jsonc" ||
+  fail "Omarchy menu offers integration when an existing Hermes install lacks its launcher"
 pass "Omarchy menu exposes the Hermes installer"
