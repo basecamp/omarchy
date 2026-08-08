@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# omarchy:summary=Route a live application audio stream to an output
+# omarchy:group=audio
+# omarchy:args=<stream-serial> <sink-serial> [override|default]
+
+stream=${1:-}
+sink=${2:-}
+mode=${3:-override}
+
+if (( $# < 2 || $# > 3 )) || [[ ! $stream =~ ^[0-9]+$ || ! $sink =~ ^[0-9]+$ ]] ||
+  [[ $mode != "override" && $mode != "default" ]]; then
+  echo "Usage: omarchy-audio-stream-route-set <stream-serial> <sink-serial> [override|default]" >&2
+  exit 1
+fi
+
+timeout 2 pactl move-sink-input "$stream" "$sink" || exit 1
+
+# Moving through Pulse normally marks a stream with an explicit target, except
+# when it is already on that sink. Write both target forms ourselves so pinning
+# to the current default is distinct from following it. Clear both when the user
+# returns to the default-following mode.
+stream_object_id=$(timeout 2 pactl -f json list sink-inputs 2>/dev/null |
+  jq -r --arg stream "$stream" 'map(select((.index | tostring) == $stream))[0].properties."object.id" // empty') || exit 1
+[[ $stream_object_id =~ ^[0-9]+$ ]] || exit 1
+
+if [[ $mode == "override" ]]; then
+  sink_object_id=$(timeout 2 pactl -f json list sinks 2>/dev/null |
+    jq -r --arg sink "$sink" 'map(select((.index | tostring) == $sink))[0].properties."object.id" // empty') || exit 1
+  [[ $sink_object_id =~ ^[0-9]+$ ]] || exit 1
+  timeout 2 pw-metadata -n default -- "$stream_object_id" target.object "$sink" Spa:Id >/dev/null 2>&1 || exit 1
+  timeout 2 pw-metadata -n default -- "$stream_object_id" target.node "$sink_object_id" Spa:Id >/dev/null 2>&1 || exit 1
+else
+  timeout 2 pw-metadata -n default -- "$stream_object_id" target.object -1 Spa:Id >/dev/null 2>&1 || exit 1
+  timeout 2 pw-metadata -n default -- "$stream_object_id" target.node -1 Spa:Id >/dev/null 2>&1 || exit 1
+fi

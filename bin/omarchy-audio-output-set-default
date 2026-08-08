@@ -1,31 +1,54 @@
 #!/bin/bash
 
-# omarchy:summary=Set the default audio output and move active streams
-# omarchy:args=<node-id> <sink-name>
+# omarchy:summary=Set the default audio output and move streams following it
+# omarchy:args=<node-id> <sink-name> [current-sink-name]
 # omarchy:examples=omarchy audio output set default 42 alsa_output.pci-0000_00_1f.3.analog-stereo
 
 node_id=${1:-}
 sink_name=${2:-}
+old_sink_name=${3:-}
 
-if [[ -z $node_id || -z $sink_name ]]; then
-  echo "Usage: omarchy-audio-output-set-default <node-id> <sink-name>" >&2
+if (( $# < 2 || $# > 3 )) || [[ -z $node_id || -z $sink_name ]]; then
+  echo "Usage: omarchy-audio-output-set-default <node-id> <sink-name> [current-sink-name]" >&2
   exit 1
+fi
+
+# Capture the applications following the old default before changing it.
+# PipeWire records explicit per-application routes in the default metadata, so
+# checking the current sink alone is not enough: an explicitly routed stream may
+# happen to be on the old default and must still remain there.
+[[ -n $old_sink_name ]] || old_sink_name=$(timeout 2 pactl get-default-sink 2>/dev/null || true)
+old_sink_index=$(timeout 2 pactl -f json list sinks 2>/dev/null |
+  jq -r --arg name "$old_sink_name" 'map(select(.name == $name))[0].index // empty' || true)
+
+following_inputs=()
+if [[ -n $old_sink_index && $old_sink_name != "$sink_name" ]]; then
+  if metadata=$(timeout 2 pw-metadata -n default 2>/dev/null); then
+    declare -A explicitly_targeted=()
+    while IFS=$'\t' read -r object_id target; do
+      if [[ $object_id =~ ^[0-9]+$ && $target != "-1" ]]; then
+        explicitly_targeted["$object_id"]=1
+      fi
+    done < <(sed -n "s/^update: id:\([0-9][0-9]*\) key:'target\.\(object\|node\)' value:'\([^']*\)'.*/\1\t\3/p" <<<"$metadata")
+
+    while IFS=$'\t' read -r input object_id; do
+      [[ -n $input ]] || continue
+      if [[ -z $object_id || -z ${explicitly_targeted[$object_id]:-} ]]; then
+        following_inputs+=("$input")
+      fi
+    done < <(timeout 2 pactl -f json list sink-inputs 2>/dev/null |
+      jq -r --arg sink "$old_sink_index" '.[]
+        | select((.sink | tostring) == $sink)
+        | select(.properties."application.name" != null)
+        | select(.properties."application.name" != "EasyEffects")
+        | [.index, (.properties."object.id" // "")]
+        | @tsv' || true)
+  fi
 fi
 
 timeout 2 wpctl set-default "$node_id" 2>/dev/null || true
 timeout 2 pactl set-default-sink "$sink_name" 2>/dev/null || true
 
-# Move only real application streams. A DSP filter-chain's own output is also a
-# sink input but carries no application.name, and moving it would rewire the
-# processing itself -- onto headphones, or into its own virtual sink, which is a
-# cycle. EasyEffects' output stream must stay put for the same reason.
-timeout 2 pactl list sink-inputs 2>/dev/null | awk '
-  /^Sink Input #/ {id = substr($3, 2)}
-  /application\.name = / {
-    app = $0
-    sub(/.*application\.name = "/, "", app)
-    sub(/"$/, "", app)
-    if (app != "EasyEffects") print id
-  }' | while read -r input; do
+for input in "${following_inputs[@]}"; do
   [[ -n $input ]] && timeout 2 pactl move-sink-input "$input" "$sink_name" 2>/dev/null || true
 done

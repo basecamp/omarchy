@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# omarchy:summary=List live application audio routes as JSON
+# omarchy:group=audio
+
+if (( $# != 0 )); then
+  echo "Usage: omarchy-audio-stream-routes" >&2
+  exit 1
+fi
+
+set -o pipefail
+
+# PipeWire's Pulse server exposes its object.serial as the sink-input index and
+# the destination sink's object.serial as `sink`. Quickshell exposes those same
+# serials on its nodes, giving the native panel an exact, label-independent map.
+# Explicit targets live in PipeWire metadata; retain that distinction so an app
+# pinned to the current default is not presented as following the default.
+metadata=$(timeout 2 pw-metadata -n default 2>/dev/null) || exit 1
+explicit_targets=$(sed -n "s/^update: id:\([0-9][0-9]*\) key:'target\.\(object\|node\)' value:'\([^']*\)'.*/\1\t\3/p" <<<"$metadata" |
+  awk -F '\t' '$2 != "-1" { print $1 }' |
+  jq -Rsc 'split("\n") | map(select(length > 0)) | map({key: ., value: true}) | from_entries') || exit 1
+
+timeout 2 pactl -f json list sink-inputs 2>/dev/null | jq -c --argjson explicit "$explicit_targets" '
+  map(
+    select(.index != null and .sink != null)
+    | {
+        key: (.index | tostring),
+        value: {
+          sink: (.sink | tostring),
+          mode: (if ($explicit[(.properties."object.id" | tostring)] // false) then "override" else "default" end)
+        }
+      }
+  )
+  | from_entries
+' || exit 1
