@@ -14,6 +14,7 @@ bin=${3:-$command}
 
 mkdir -p "$HOME/.local/bin"
 
+rm -f "$HOME/.local/bin/$command"
 cat >"$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
 mise use -g "$package" || exit 1
