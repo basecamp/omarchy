@@ -10,27 +10,27 @@ set -euo pipefail
 usage() {
   cat <<USAGE
 Usage: omarchy setup hardware --install-user USER
-       omarchy setup hardware --oem
+       omarchy setup hardware --defer-provisioning
 
 Runs idempotent hardware detection/setup for the installed machine. This is
 called by omarchy-setup-system during ISO finalization and can be rerun later
 for diagnostics or after hardware/package updates.
 
---oem runs without an install user (OEM-mode installs create the user at
-first boot); group grants are recorded in /var/lib/omarchy/oem/groups.
+--defer-provisioning runs without an install user (deferred-provisioning installs create the user at
+first boot); group grants are recorded in /var/lib/omarchy/provisioning/groups.
 USAGE
 }
 
 install_user="${OMARCHY_INSTALL_USER:-}"
-oem=0
+defer_provisioning=0
 while (($#)); do
   case "$1" in
     --install-user)
       install_user="${2:-}"
       shift 2
       ;;
-    --oem)
-      oem=1
+    --defer-provisioning)
+      defer_provisioning=1
       shift
       ;;
     -h|--help)
@@ -50,7 +50,7 @@ if (( EUID != 0 )); then
   exit 1
 fi
 
-if (( oem )); then
+if (( defer_provisioning )); then
   install_user=""
 else
   if [[ -z $install_user || $install_user == "root" ]]; then

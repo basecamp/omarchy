@@ -6,7 +6,7 @@
 # omarchy:examples=omarchy-system-factory-reset-finish
 
 # Runs once, early on the first boot after omarchy-system-factory-reset, via
-# omarchy-system-factory-reset-finish.service (armed by /var/lib/omarchy/oem/wipe-pending).
+# omarchy-system-factory-reset-finish.service (armed by /var/lib/omarchy/provisioning/wipe-pending).
 # Ordered before home.mount/var-log.mount so @home and @log can be dropped and
 # recreated as empty subvolumes instead of rm -rf'd file by file.
 #
@@ -20,10 +20,10 @@
 
 set -uo pipefail
 
-OEM_DIR=/var/lib/omarchy/oem
+PROVISIONING_DIR=/var/lib/omarchy/provisioning
 TOP_MNT=/run/omarchy-system-factory-reset-finish-top
 
-[[ -f $OEM_DIR/wipe-pending ]] || exit 0
+[[ -f $PROVISIONING_DIR/wipe-pending ]] || exit 0
 
 if (( EUID != 0 )); then
   echo "Error: omarchy-system-factory-reset-finish must run as root" >&2
@@ -44,7 +44,7 @@ root_device() {
 }
 
 abort() {
-  # Keep wipe-pending so the wipe retries next boot, and so OEM setup stays
+  # Keep wipe-pending so the wipe retries next boot, and so provisioning stays
   # gated (it refuses to create a user on a half-wiped system).
   log "$1 — aborting; the wipe will retry on the next boot"
   umount "$TOP_MNT" 2>/dev/null || true
@@ -135,7 +135,7 @@ main() {
     exit 1
   fi
 
-  if [[ -f $OEM_DIR/wipe-degraded ]]; then
+  if [[ -f $PROVISIONING_DIR/wipe-degraded ]]; then
     scrub_degraded_state
     wipe_snapper_snapshots
   fi
@@ -161,7 +161,7 @@ main() {
   log "trimming free space"
   fstrim -a 2>/dev/null || true
 
-  rm -f "$OEM_DIR/wipe-pending" "$OEM_DIR/wipe-degraded"
+  rm -f "$PROVISIONING_DIR/wipe-pending" "$PROVISIONING_DIR/wipe-degraded"
   rm -f /etc/systemd/system/sysinit.target.wants/omarchy-system-factory-reset-finish.service
   rm -f /etc/systemd/system/omarchy-system-factory-reset-finish.service
 

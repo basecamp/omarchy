@@ -1,5 +1,5 @@
-# First-boot OEM setup: asks for the user on tty1 before SDDM starts.
-# Armed by /var/lib/omarchy/oem/pending (written by an OEM-mode ISO install or
+# First-boot provisioning: asks for the user on tty1 before SDDM starts.
+# Armed by /var/lib/omarchy/provisioning/pending (written by a deferred-provisioning ISO install or
 # omarchy-system-factory-reset); installed to /etc/systemd/system by whichever of
 # those staged it. Not shipped enabled — a normal install never runs it.
 
@@ -11,9 +11,9 @@
 # the new account on state a wipe retry later deletes. While wipe-pending
 # remains, setup stays down and the wipe retries on the next boot.
 [Unit]
-Description=Omarchy OEM first-boot user setup
-ConditionPathExists=/var/lib/omarchy/oem/pending
-ConditionPathExists=!/var/lib/omarchy/oem/wipe-pending
+Description=Omarchy provisioning first-boot user setup
+ConditionPathExists=/var/lib/omarchy/provisioning/pending
+ConditionPathExists=!/var/lib/omarchy/provisioning/wipe-pending
 After=systemd-user-sessions.service omarchy-system-factory-reset-finish.service
 Before=display-manager.service getty@tty1.service
 Conflicts=getty@tty1.service
@@ -22,7 +22,7 @@ Conflicts=getty@tty1.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStartPre=-/usr/bin/plymouth quit
-ExecStart=/usr/bin/omarchy-oem-setup
+ExecStart=/usr/bin/omarchy-provision-owner
 StandardInput=tty
 StandardOutput=tty
 StandardError=tty

@@ -5,7 +5,7 @@
 # omarchy:requires-sudo=true
 # omarchy:examples=sudo omarchy-system-factory-reset
 
-# Returns the machine to OEM state — fully installed, no user, first-boot
+# Returns the machine to provisioning state — fully installed, no user, first-boot
 # setup pending — the state you want before selling or handing the machine on.
 #
 # On machines installed with an ISO that created the @factory snapshot, the
@@ -16,7 +16,7 @@
 #
 # The heavy lifting happens on the next boot via omarchy-system-factory-reset-finish, staged
 # here. On encrypted installs the LUKS volume is re-keyed to a throwaway
-# passphrase with an auto-unlock keyfile for the OEM window; first-boot setup
+# passphrase with an auto-unlock keyfile for the provisioning window; first-boot setup
 # re-keys it to the new owner's password and removes the keyfile.
 #
 # Honest limitations:
@@ -28,7 +28,7 @@
 
 set -euo pipefail
 
-OEM_DIR=/var/lib/omarchy/oem
+PROVISIONING_DIR=/var/lib/omarchy/provisioning
 OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 TOP_MNT=/run/omarchy-system-factory-reset/top
 NEXT_NAME=@omarchy-reset-next
@@ -141,7 +141,7 @@ confirm_reset() {
 }
 
 # Re-key to a throwaway passphrase whose keyfile auto-unlocks boot during the
-# OEM window. $1 is the root of the system the staging applies to ("" for the
+# provisioning window. $1 is the root of the system the staging applies to ("" for the
 # running root in degraded mode).
 stage_luks_rekey() {
   local next="$1" device passphrase
@@ -163,33 +163,33 @@ stage_luks_rekey() {
   passphrase=$(generate_passphrase)
   cryptsetup luksAddKey --key-file <(printf '%s' "$current") "$device" <(printf '%s' "$passphrase")
 
-  install -d -m 755 "$next$OEM_DIR"
-  printf '%s' "$passphrase" >"$next$OEM_DIR/luks-key"
-  chmod 600 "$next$OEM_DIR/luks-key"
+  install -d -m 755 "$next$PROVISIONING_DIR"
+  printf '%s' "$passphrase" >"$next$PROVISIONING_DIR/luks-key"
+  chmod 600 "$next$PROVISIONING_DIR/luks-key"
 
   install -d -m 755 "$next/etc/omarchy"
-  printf '%s' "$passphrase" >"$next/etc/omarchy/oem.key"
-  chmod 600 "$next/etc/omarchy/oem.key"
+  printf '%s' "$passphrase" >"$next/etc/omarchy/provisioning.key"
+  chmod 600 "$next/etc/omarchy/provisioning.key"
 
   install -d "$next/etc/limine-entry-tool.d" "$next/etc/mkinitcpio.conf.d"
-  echo 'KERNEL_CMDLINE[default]+=" cryptkey=rootfs:/etc/omarchy/oem.key"' \
-    >"$next/etc/limine-entry-tool.d/99-omarchy-oem-unlock.conf"
-  echo 'FILES+=(/etc/omarchy/oem.key)' \
-    >"$next/etc/mkinitcpio.conf.d/99-omarchy-oem-key.conf"
+  echo 'KERNEL_CMDLINE[default]+=" cryptkey=rootfs:/etc/omarchy/provisioning.key"' \
+    >"$next/etc/limine-entry-tool.d/99-omarchy-provisioning-unlock.conf"
+  echo 'FILES+=(/etc/omarchy/provisioning.key)' \
+    >"$next/etc/mkinitcpio.conf.d/99-omarchy-provisioning-key.conf"
 }
 
-install_oem_units() {
+install_provisioning_units() {
   local next="$1" unit_src="$2"
 
-  install -Dm644 "$unit_src/omarchy-oem-setup.service" \
-    "$next/etc/systemd/system/omarchy-oem-setup.service"
+  install -Dm644 "$unit_src/omarchy-provision-owner.service" \
+    "$next/etc/systemd/system/omarchy-provision-owner.service"
   install -Dm644 "$unit_src/omarchy-system-factory-reset-finish.service" \
     "$next/etc/systemd/system/omarchy-system-factory-reset-finish.service"
 
   install -d "$next/etc/systemd/system/multi-user.target.wants" \
     "$next/etc/systemd/system/sysinit.target.wants"
-  ln -sf /etc/systemd/system/omarchy-oem-setup.service \
-    "$next/etc/systemd/system/multi-user.target.wants/omarchy-oem-setup.service"
+  ln -sf /etc/systemd/system/omarchy-provision-owner.service \
+    "$next/etc/systemd/system/multi-user.target.wants/omarchy-provision-owner.service"
   ln -sf /etc/systemd/system/omarchy-system-factory-reset-finish.service \
     "$next/etc/systemd/system/sysinit.target.wants/omarchy-system-factory-reset-finish.service"
 }
@@ -245,7 +245,7 @@ verify_limine_hashes() {
 
 # Rebuild the UKI from inside the next root so the deployed kernel/initramfs
 # match the factory root's modules (the seller may have updated kernels since
-# install) and embed the OEM auto-unlock keyfile on encrypted machines.
+# install) and embed the auto-unlock keyfile on encrypted machines.
 rebuild_next_boot() {
   local next="$1"
 
@@ -340,9 +340,9 @@ stage_full_reset() {
   [[ -d $next ]] && btrfs subvolume delete --recursive "$next" >/dev/null
   btrfs subvolume snapshot "$top/@factory" "$next" >>"$LOG_FILE"
 
-  local unit_src="$next/usr/share/omarchy/install/oem"
-  [[ -f $unit_src/omarchy-oem-setup.service && -x $next/usr/bin/omarchy-oem-setup ]] ||
-    fail "the factory snapshot predates OEM setup support; cannot reset from it"
+  local unit_src="$next/usr/share/omarchy/install/provisioning"
+  [[ -f $unit_src/omarchy-provision-owner.service && -x $next/usr/bin/omarchy-provision-owner ]] ||
+    fail "the factory snapshot predates provisioning support; cannot reset from it"
 
   log "Scrubbing machine identity from the factory system"
   systemd-id128 new >"$next/etc/machine-id"
@@ -351,7 +351,7 @@ stage_full_reset() {
   rm -rf "$next"/var/lib/NetworkManager/* "$next/var/lib/tailscale" "$next/var/lib/iwd"
   rm -f "$next/var/lib/sddm/state.conf" "$next/etc/sddm.conf.d/autologin.conf"
 
-  # A factory snapshot from a normal (non-OEM) install contains the original
+  # A factory snapshot from a normal (normal) install contains the original
   # user account; first-boot setup must start from none. A leftover account
   # would keep its password hash and group memberships (including wheel), so
   # failure here has to abort the reset, not be shrugged off.
@@ -370,17 +370,17 @@ stage_full_reset() {
   sanitize_factory_baseline "$top/@factory"
 
   # Keep the Node tarball reachable for offline first-boot finalization.
-  if ! compgen -G "$next$OEM_DIR/packages/node-v*.tar.gz" >/dev/null; then
-    if compgen -G "$OEM_DIR/packages/node-v*.tar.gz" >/dev/null; then
-      install -d -m 755 "$next$OEM_DIR/packages"
-      cp "$OEM_DIR"/packages/node-v*.tar.gz "$next$OEM_DIR/packages/"
+  if ! compgen -G "$next$PROVISIONING_DIR/packages/node-v*.tar.gz" >/dev/null; then
+    if compgen -G "$PROVISIONING_DIR/packages/node-v*.tar.gz" >/dev/null; then
+      install -d -m 755 "$next$PROVISIONING_DIR/packages"
+      cp "$PROVISIONING_DIR"/packages/node-v*.tar.gz "$next$PROVISIONING_DIR/packages/"
     fi
   fi
 
-  install -d -m 755 "$next$OEM_DIR"
-  touch "$next$OEM_DIR/pending" "$next$OEM_DIR/wipe-pending"
+  install -d -m 755 "$next$PROVISIONING_DIR"
+  touch "$next$PROVISIONING_DIR/pending" "$next$PROVISIONING_DIR/wipe-pending"
 
-  install_oem_units "$next" "$unit_src"
+  install_provisioning_units "$next" "$unit_src"
 
   if encrypted_install; then
     stage_luks_rekey "$next"
@@ -397,28 +397,28 @@ stage_full_reset() {
 }
 
 stage_degraded_reset() {
-  local unit_src="$OMARCHY_PATH/install/oem"
-  [[ -f $unit_src/omarchy-oem-setup.service && -x /usr/bin/omarchy-oem-setup ]] ||
-    fail "this Omarchy version does not ship OEM setup; update first"
+  local unit_src="$OMARCHY_PATH/install/provisioning"
+  [[ -f $unit_src/omarchy-provision-owner.service && -x /usr/bin/omarchy-provision-owner ]] ||
+    fail "this Omarchy version does not ship provisioning; update first"
 
   # Fallible staging (re-key, boot rebuild) happens before the wipe is armed:
   # a failure must leave the machine untouched, not schedule a wipe for a
   # reset that never finished staging. The degraded path stages into the LIVE
   # root, so a mid-staging failure must also undo the auto-unlock material it
   # already wrote — otherwise a later boot rebuild would silently embed it.
-  install -d -m 755 "$OEM_DIR"
+  install -d -m 755 "$PROVISIONING_DIR"
   if encrypted_install; then
     degraded_rekey_staged=1
     stage_luks_rekey ""
-    log "Rebuilding boot files with the OEM unlock key"
+    log "Rebuilding boot files with the provisioning unlock key"
     if ! limine-update >>"$LOG_FILE" 2>&1; then
       fail "limine-update failed (see $LOG_FILE)"
     fi
     degraded_rekey_staged=0
   fi
 
-  install_oem_units "" "$unit_src"
-  touch "$OEM_DIR/pending" "$OEM_DIR/wipe-pending" "$OEM_DIR/wipe-degraded"
+  install_provisioning_units "" "$unit_src"
+  touch "$PROVISIONING_DIR/pending" "$PROVISIONING_DIR/wipe-pending" "$PROVISIONING_DIR/wipe-degraded"
 
   swap_done=1
 }
@@ -426,9 +426,9 @@ stage_degraded_reset() {
 # Undo the live-root auto-unlock material a failed degraded rekey left behind.
 rollback_degraded_rekey() {
   (( ${degraded_rekey_staged:-0} )) || return 0
-  rm -f /etc/omarchy/oem.key "$OEM_DIR/luks-key" \
-    /etc/limine-entry-tool.d/99-omarchy-oem-unlock.conf \
-    /etc/mkinitcpio.conf.d/99-omarchy-oem-key.conf
+  rm -f /etc/omarchy/provisioning.key "$PROVISIONING_DIR/luks-key" \
+    /etc/limine-entry-tool.d/99-omarchy-provisioning-unlock.conf \
+    /etc/mkinitcpio.conf.d/99-omarchy-provisioning-key.conf
   limine-update >>"$LOG_FILE" 2>&1 || true
 }
 

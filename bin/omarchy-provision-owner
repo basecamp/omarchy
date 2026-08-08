@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# omarchy:summary=First-boot OEM setup: create the user on a machine installed in OEM mode
+# omarchy:summary=First-boot provisioning: create the user on a machine installed in deferred provisioning
 # omarchy:group=setup
 # omarchy:requires-sudo=true
-# omarchy:examples=omarchy-oem-setup
+# omarchy:examples=omarchy-provision-owner
 
-# Runs on tty1 via omarchy-oem-setup.service when /var/lib/omarchy/oem/pending
-# exists — the state an OEM-mode ISO install or omarchy-system-factory-reset leaves
+# Runs on tty1 via omarchy-provision-owner.service when /var/lib/omarchy/provisioning/pending
+# exists — the state a deferred-provisioning ISO install or omarchy-system-factory-reset leaves
 # behind. Asks for the user (the configurator's Step 2), creates it with the
 # groups system setup recorded, finalizes it offline from the stashed Node
 # tarball, re-keys LUKS from the throwaway install passphrase to the user's
@@ -14,21 +14,21 @@
 
 set -euo pipefail
 
-OEM_DIR=/var/lib/omarchy/oem
+PROVISIONING_DIR=/var/lib/omarchy/provisioning
 OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
-LOG_FILE=/var/log/omarchy-oem-setup.log
+LOG_FILE=/var/log/omarchy-provision-owner.log
 
 if (( EUID != 0 )); then
-  echo "Error: omarchy-oem-setup must run as root" >&2
+  echo "Error: omarchy-provision-owner must run as root" >&2
   exit 1
 fi
 
-[[ -f $OEM_DIR/pending ]] || exit 0
+[[ -f $PROVISIONING_DIR/pending ]] || exit 0
 
 # Never set up a user on a half-wiped system: while a factory wipe is still
 # pending (i.e. it failed this boot), stand down and let it retry next boot.
-if [[ -f $OEM_DIR/wipe-pending ]]; then
-  echo "omarchy-oem-setup: factory wipe still pending; not running user setup" >&2
+if [[ -f $PROVISIONING_DIR/wipe-pending ]]; then
+  echo "omarchy-provision-owner: factory wipe still pending; not running user setup" >&2
   exit 1
 fi
 
@@ -188,8 +188,8 @@ user_form() {
 
   # A prior attempt that already created the account pins the username, so a
   # retry cannot strand that account by choosing a different name.
-  if [[ -f $OEM_DIR/setup-user ]]; then
-    username=$(<"$OEM_DIR/setup-user")
+  if [[ -f $PROVISIONING_DIR/setup-user ]]; then
+    username=$(<"$PROVISIONING_DIR/setup-user")
     say "Continuing setup for user: $username"
     echo
   else
@@ -200,7 +200,7 @@ user_form() {
         if [[ "$username" =~ ^(root|bin|daemon|mail|ftp|http|nobody|dbus|systemd-coredump|systemd-network|systemd-oom|systemd-journal-remote|systemd-resolve|systemd-timesync|tss|uuidd|alpm|git|avahi|cups|lp|_talkd|polkitd|rtkit|qemu|brltty|gluster|rpc|libvirt-qemu|pcscd|nvidia-persistenced|sddm)$ ]]; then
           notice "Username is reserved for system" 1
         elif getent passwd "$username" >/dev/null; then
-          # OEM state has no users, so any existing account is off limits;
+          # provisioning state has no users, so any existing account is off limits;
           # a pinned resume (above) bypasses this prompt entirely.
           notice "That username already exists on this machine" 1
         else
@@ -245,15 +245,15 @@ Email address,${email_address:-[Skipped]}" |
 }
 
 # Groups recorded by omarchy-setup-system's scripts at install time
-# (/var/lib/omarchy/oem/groups), filtered to groups that exist on this system.
+# (/var/lib/omarchy/provisioning/groups), filtered to groups that exist on this system.
 user_groups() {
   local groups="wheel" group
-  if [[ -f $OEM_DIR/groups ]]; then
+  if [[ -f $PROVISIONING_DIR/groups ]]; then
     while IFS= read -r group; do
       [[ -n $group ]] || continue
       getent group "$group" >/dev/null || continue
       [[ ",$groups," == *",$group,"* ]] || groups+=",$group"
-    done <"$OEM_DIR/groups"
+    done <"$PROVISIONING_DIR/groups"
   fi
   echo "$groups"
 }
@@ -291,7 +291,7 @@ encrypted_install() {
 create_user() {
   # Pin the username so a retry after a later failure resumes this exact
   # account rather than creating a second privileged one.
-  echo "$username" >"$OEM_DIR/setup-user"
+  echo "$username" >"$PROVISIONING_DIR/setup-user"
 
   if getent passwd "$username" >/dev/null; then
     # Resuming a partially-completed earlier attempt: refresh what the form
@@ -305,7 +305,7 @@ create_user() {
   printf '%s:%s\n' "$username" "$password" | chpasswd
   printf '%s:%s\n' root "$password" | chpasswd
 
-  # OEM installs skip archinstall's create_users, which is what normally
+  # deferred-provisioning installs skip archinstall's create_users, which is what normally
   # uncomments %wheel in /etc/sudoers. Always write the drop-in: detecting an
   # existing grant is error-prone (omarchy ships narrow %wheel NOPASSWD rules
   # for specific commands), and a duplicate grant is harmless.
@@ -314,11 +314,11 @@ create_user() {
 }
 
 install_authorized_keys() {
-  [[ -f $OEM_DIR/authorized_keys ]] || return 0
+  [[ -f $PROVISIONING_DIR/authorized_keys ]] || return 0
 
   local ssh_dir="/home/$username/.ssh"
   mkdir -p "$ssh_dir"
-  cp "$OEM_DIR/authorized_keys" "$ssh_dir/authorized_keys"
+  cp "$PROVISIONING_DIR/authorized_keys" "$ssh_dir/authorized_keys"
   chmod 700 "$ssh_dir"
   chmod 600 "$ssh_dir/authorized_keys"
   chown -R "$username:$username" "$ssh_dir"
@@ -348,11 +348,11 @@ finalize_user() {
     SHELL="${shell:-/bin/bash}" \
     OMARCHY_PATH="$OMARCHY_PATH" \
     OMARCHY_INSTALL="$OMARCHY_PATH/install" \
-    OMARCHY_SETUP_CONTEXT=oem-firstboot \
+    OMARCHY_SETUP_CONTEXT=provision-owner \
     OMARCHY_USER_NAME="$full_name" \
     OMARCHY_USER_EMAIL="$email_address" \
     OMARCHY_LOG_TO_STDOUT=1 \
-    "$OMARCHY_PATH/bin/omarchy-finalize-user" --force --first-install
+    "$OMARCHY_PATH/bin/omarchy-provision-user" --force --first-install
 }
 
 # Move the LUKS volume from the throwaway install passphrase to the user's
@@ -364,7 +364,7 @@ finalize_user() {
 # the staged auto-unlock keyfile would leave the disk effectively unencrypted
 # forever.
 rekey_luks() {
-  [[ -f $OEM_DIR/luks-key ]] || return 0
+  [[ -f $PROVISIONING_DIR/luks-key ]] || return 0
 
   local device
   if ! device=$(luks_device) || [[ ! -e $device ]]; then
@@ -373,7 +373,7 @@ rekey_luks() {
     return 1
   fi
 
-  if ! cryptsetup open --test-passphrase --key-file "$OEM_DIR/luks-key" "$device" 2>>"$LOG_FILE"; then
+  if ! cryptsetup open --test-passphrase --key-file "$PROVISIONING_DIR/luks-key" "$device" 2>>"$LOG_FILE"; then
     log_step "staged LUKS key does not unlock $device"
     say --foreground 1 "The staged LUKS key no longer unlocks $device."
     return 1
@@ -381,23 +381,23 @@ rekey_luks() {
 
   # Add the user's key (a retry with a different password just adds another
   # slot; all but the current one are killed once the rebuild succeeds).
-  cryptsetup luksAddKey --key-file "$OEM_DIR/luks-key" "$device" <(printf '%s' "$password")
+  cryptsetup luksAddKey --key-file "$PROVISIONING_DIR/luks-key" "$device" <(printf '%s' "$password")
 
   # Rebuild the no-auto-unlock UKI FIRST, keeping the throwaway key and slot as
   # a fallback. Only once that succeeds do we kill the other slots and destroy
   # the staged key — so a limine-update failure leaves a recoverable,
   # still-auto-unlocking state to retry, never a disk locked to a password the
   # user may have just changed.
-  rm -f /etc/omarchy/oem.key \
-    /etc/limine-entry-tool.d/99-omarchy-oem-unlock.conf \
-    /etc/mkinitcpio.conf.d/99-omarchy-oem-key.conf
+  rm -f /etc/omarchy/provisioning.key \
+    /etc/limine-entry-tool.d/99-omarchy-provisioning-unlock.conf \
+    /etc/mkinitcpio.conf.d/99-omarchy-provisioning-key.conf
   reset_limine_config
   if ! limine-update >>"$LOG_FILE" 2>&1; then
     log_step "limine-update failed during re-key; restoring auto-unlock for retry"
-    install -Dm600 "$OEM_DIR/luks-key" /etc/omarchy/oem.key
-    echo 'KERNEL_CMDLINE[default]+=" cryptkey=rootfs:/etc/omarchy/oem.key"' \
-      >/etc/limine-entry-tool.d/99-omarchy-oem-unlock.conf
-    echo 'FILES+=(/etc/omarchy/oem.key)' >/etc/mkinitcpio.conf.d/99-omarchy-oem-key.conf
+    install -Dm600 "$PROVISIONING_DIR/luks-key" /etc/omarchy/provisioning.key
+    echo 'KERNEL_CMDLINE[default]+=" cryptkey=rootfs:/etc/omarchy/provisioning.key"' \
+      >/etc/limine-entry-tool.d/99-omarchy-provisioning-unlock.conf
+    echo 'FILES+=(/etc/omarchy/provisioning.key)' >/etc/mkinitcpio.conf.d/99-omarchy-provisioning-key.conf
     limine-update >>"$LOG_FILE" 2>&1 || true
     return 1
   fi
@@ -412,7 +412,7 @@ rekey_luks() {
     done
   fi
 
-  shred -u "$OEM_DIR/luks-key" 2>/dev/null || rm -f "$OEM_DIR/luks-key"
+  shred -u "$PROVISIONING_DIR/luks-key" 2>/dev/null || rm -f "$PROVISIONING_DIR/luks-key"
 }
 
 # Start the ESP's limine.conf over from the shipped template and drop foreign
@@ -476,9 +476,9 @@ reset_limine_config() {
 cleanup_oem_state() {
   # Keep groups + packages: omarchy-system-factory-reset's degraded path (machines
   # without @factory) re-arms first-boot setup from the live copies.
-  rm -f "$OEM_DIR/pending" "$OEM_DIR/authorized_keys" "$OEM_DIR/setup-user"
+  rm -f "$PROVISIONING_DIR/pending" "$PROVISIONING_DIR/authorized_keys" "$PROVISIONING_DIR/setup-user"
 
-  rm -f /etc/systemd/system/multi-user.target.wants/omarchy-oem-setup.service
+  rm -f /etc/systemd/system/multi-user.target.wants/omarchy-provision-owner.service
   systemctl daemon-reload 2>/dev/null || true
 }
 
@@ -507,11 +507,11 @@ run_setup() {
   if ! finalize_user >>"$LOG_FILE" 2>&1; then
     log_step "finalize-user failed (continuing; user can retry after login)"
     say --foreground 1 "User finalization reported errors (see $LOG_FILE)."
-    say --foreground 1 "Run 'omarchy-finalize-user --force' after login to retry."
+    say --foreground 1 "Run 'omarchy-provision-user --force' after login to retry."
     sleep 3
   fi
 
-  if [[ -f $OEM_DIR/luks-key ]]; then
+  if [[ -f $PROVISIONING_DIR/luks-key ]]; then
     log_step "re-keying LUKS to the user's password"
     say "Securing disk encryption with your password..."
     rekey_luks
@@ -528,7 +528,7 @@ run_setup() {
     limine-update >>"$LOG_FILE" 2>&1
   fi
 
-  log_step "cleaning up OEM state"
+  log_step "cleaning up provisioning state"
   cleanup_oem_state
   log_step "first-boot setup complete"
 
@@ -555,7 +555,7 @@ main() {
     say --foreground 1 "Setup hit an error (details in $LOG_FILE)."
     echo
     if ! gum confirm --affirmative "Try again" --negative "Drop to console" "Retry first-boot setup?"; then
-      say "Run 'omarchy-oem-setup' as root to retry later."
+      say "Run 'omarchy-provision-owner' as root to retry later."
       exit 1
     fi
   done
