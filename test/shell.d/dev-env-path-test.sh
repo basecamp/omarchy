@@ -10,6 +10,7 @@ run_bootstrap() {
   local home="$3"
   local path_value="$4"
 
+  shell_bin=$(command -v "$shell_bin")
   HOME="$home" PATH="$path_value" "$shell_bin" -c '
     . "$1"
     printf "%s\n%s\n" "$OMARCHY_PATH" "$PATH"
@@ -70,6 +71,12 @@ mapfile -t linked_duplicate_result < <(run_bootstrap bash "$bootstrap" "$home" "
 linked_duplicate_path=${linked_duplicate_result[1]}
 [[ $linked_duplicate_path == "$tmpdir/active/bin:/usr/bin:$home/.local/share/mise/shims:$home/.local/bin" ]] || fail "env-bootstrap does not duplicate PATH entries" "actual PATH: $linked_duplicate_path"
 pass "env-bootstrap does not duplicate PATH entries"
+
+# An empty PATH must not produce empty entries (a bare ":" means the cwd)
+mapfile -t empty_path_result < <(run_bootstrap bash "$bootstrap" "$home" "")
+empty_path=${empty_path_result[1]}
+[[ $empty_path == "$tmpdir/active/bin:$home/.local/share/mise/shims:$home/.local/bin" ]] || fail "env-bootstrap builds a clean PATH from an empty one" "actual PATH: $empty_path"
+pass "env-bootstrap builds a clean PATH from an empty one"
 
 if command -v zsh >/dev/null 2>&1; then
   mapfile -t zsh_result < <(run_bootstrap zsh "$bootstrap" "$home" "$tmpdir/unrelated/bin:/usr/bin")
