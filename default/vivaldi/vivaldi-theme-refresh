@@ -138,7 +138,9 @@ set_vivaldi_native_theme() {
       | .webkit |= ((. // {}) + {
         webprefs: ((.webprefs // {}) + { force_dark_mode_enabled: false })
       })
-    ' "$prefs" > "$prefs.omarchy-tmp" && mv "$prefs.omarchy-tmp" "$prefs"
+    ' "$prefs" > "$prefs.omarchy-tmp" &&
+      chmod --reference="$prefs" "$prefs.omarchy-tmp" &&
+      mv "$prefs.omarchy-tmp" "$prefs"
   done
 }
 
