@@ -16,5 +16,3 @@ if ! gum confirm "Continue with update?"; then
   echo "Update cancelled"
   exit 1
 fi
-
-echo
