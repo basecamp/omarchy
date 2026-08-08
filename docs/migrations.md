@@ -127,6 +127,11 @@ New migration format:
 - Use helper commands such as `omarchy-cmd-present`, `omarchy-cmd-missing`,
   `omarchy-pkg-add`, `omarchy-pkg-drop`, `omarchy-pkg-present`, and
   `omarchy-pkg-missing` when appropriate.
+- Never restart the Omarchy shell. `omarchy update` restarts it unconditionally
+  after migrations run, and the login-time shell already runs current code and
+  hot-reloads `shell.json` edits.
+- Raw `pacman`, `command -v`, and direct config edits are acceptable when
+  needed for one-off repair work.
 
 Example:
 

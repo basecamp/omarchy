@@ -5,7 +5,30 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 run_node_test <<'JS'
+const fs = require('fs')
 const network = requireFromRoot('shell/plugins/panels/network/Model.js')
+const panelSource = fs.readFileSync(root + '/shell/plugins/panels/network/Panel.qml', 'utf8')
+
+assert(/IpcHandler[\s\S]*?function toggleNetwork\(\) \{ root\.toggleNetwork\(\) \}/.test(panelSource), 'network exposes the Wi-Fi radio toggle over IPC')
+assert(/manageIpc: false/.test(panelSource), 'network owns its IPC handler so it can extend the target methods')
+
+// Opening from the bar must call open() and nothing else. open() runs
+// refresh(true), which defers the PHY scan; a second bare refresh() defaults
+// scanWifi to false, sets scannerEnabled synchronously, and stalls the open on
+// NetworkManager's access-point flood.
+const barPress = panelSource.match(/onPressed: function\(b\) \{[\s\S]*?\n {4}\}/)
+assert(barPress, 'network bar button has an onPressed handler')
+const barPressCode = barPress[0].replace(/\/\/.*$/gm, '')
+assert(!/refresh\(/.test(barPressCode), 'network bar click opens the panel without a second refresh that would undo the deferred scan')
+
+// A row is a primitive snapshot that can outlive its WifiNetwork, and
+// disconnect() falls back to the live connection when handed null, so row
+// activation must go through the guarded disconnectRow().
+assert(
+  /function disconnectRow\(ssid\) \{\s*var network = networkForSsid\(ssid\)\s*if \(network\) disconnect\(network\)/.test(panelSource),
+  'network guards row disconnects so a stale row cannot drop an unrelated connection'
+)
+assert(!/disconnect\(\s*(root\.)?networkForSsid\(/.test(panelSource), 'network never passes an unguarded networkForSsid() lookup to disconnect()')
 
 assertDeepEqual(
   network.parseNetworkStatus('wifi\tCafe WiFi\t78\t5200\n'),
@@ -25,6 +48,17 @@ assertDeepEqual(
   network.parseKeyValue('iface\twlan0\nrx_bytes\t100\ntx_bytes\t50\n'),
   { iface: 'wlan0', rx_bytes: '100', tx_bytes: '50' },
   'network parses detail key values'
+)
+assertEqual(network.decodeIwSsid('Cafe\\xe2\\x80\\x99'), 'Cafe’', 'network decodes UTF-8 SSID bytes')
+assertEqual(network.decodeIwSsid('Smile \\xf0\\x9f\\x98\\x80'), 'Smile 😀', 'network decodes emoji SSID bytes')
+assertEqual(network.decodeIwSsid('\\x20Cafe\\x20'), ' Cafe ', 'network preserves edge spaces in SSIDs')
+assertEqual(network.decodeIwSsid('slash\\x5cname'), 'slash\\name', 'network decodes SSID backslashes once')
+assertEqual(network.decodeIwSsid('invalid\\xff'), 'invalid\\xff', 'network preserves invalid UTF-8 escapes')
+assertEqual(network.decodeIwSsid('already 😀'), 'already 😀', 'network safely preserves unexpected non-BMP input')
+assertDeepEqual(
+  network.parseKeyValue('ssid\tline\\x0abreak\\x09tab\\x00nul\nsignal_dbm\t-40\n'),
+  { ssid: 'line\\x0abreak\\x09tab\\x00nul', signal_dbm: '-40' },
+  'network leaves control-byte escapes safe for single-line display'
 )
 assertDeepEqual(
   network.throughputState({ prevIface: '', prevSampleTime: 0 }, { iface: 'wlan0', rx_bytes: '100', tx_bytes: '50' }, 10),
@@ -69,12 +103,16 @@ assertDeepEqual(
 
 assertEqual(network.formatBytes(1536), '1.5 KB', 'network formats bytes')
 assertEqual(network.formatRate(1536), '1.5 KB/s', 'network formats rates')
-assertEqual(network.formatSpeedMbps('250.4'), '250 Mbps', 'network formats speed test results')
 assertEqual(network.formatPingLatency('2.54'), '2.5 ms', 'network formats low ping with precision')
 assertEqual(network.formatPingLatency('25.4'), '25 ms', 'network formats ping')
 assertEqual(network.formatPingLatency(''), 'Timeout', 'network formats missing ping as timeout')
+assertEqual(network.formatPingLatency(-1, false), '--', 'network holds the ping row before the first sample')
+assertEqual(network.formatPingLatency('25.4', true), '25 ms', 'network formats ping once samples exist')
+assertEqual(network.formatPingLatency('', true), 'Timeout', 'network still reports a timeout among real samples')
 assertEqual(network.formatPacketLoss(2), '2%', 'network formats packet loss')
 assertEqual(network.formatPacketLoss(0), '0%', 'network formats zero packet loss')
+assertEqual(network.formatPacketLoss(0, false), '--', 'network holds the packet loss row before the first sample')
+assertEqual(network.formatPacketLoss(0, true), '0%', 'network reports zero loss once samples exist')
 
 const rows = network.sortWifiRows([
   { ssid: 'Open', connected: false, known: false, signal: 95 },
@@ -85,8 +123,51 @@ assertDeepEqual(rows.map(row => row.ssid), ['Connected', 'Known', 'Open'], 'netw
 assertEqual(network.wifiSectionTitle(rows, 0), 'KNOWN NETWORKS', 'network labels known wifi section')
 assertEqual(network.wifiSectionTitle(rows, 2), 'OTHER NETWORKS', 'network labels other wifi section')
 
+const wifiRow = network.wifiRow({ connected: true, known: true, name: 'Home', signalStrength: 0.8, security: 1 })
+assertDeepEqual(
+  wifiRow,
+  { connected: true, known: true, ssid: 'Home', signal: 80, security: 1 },
+  'network projects wifi rows with primitives so delegates never hold the live WifiNetwork object'
+)
+assertDeepEqual(
+  Object.keys(wifiRow).sort(),
+  ['connected', 'known', 'security', 'signal', 'ssid'],
+  'network wifi rows project exactly the primitive fields, so each delegate stores no live QObject'
+)
+
 const reasons = { NoSecrets: 1, WifiAuthTimeout: 2, WifiNetworkLost: 3, WifiClientDisconnected: 4, WifiClientFailed: 5 }
 assertEqual(network.networkFailureReason(1, reasons), 'Passphrase required', 'network maps missing passphrase failures')
 assertEqual(network.networkFailureReason(2, reasons), 'Wrong password', 'network maps auth timeout failures')
 assertEqual(network.networkFailureReason(99, reasons), 'Failed to connect', 'network maps unknown failures')
+
+assertEqual(network.shouldRepromptPassphrase(reasons.NoSecrets, false, reasons), true, 'network reprompts when secrets are missing')
+assertEqual(network.shouldRepromptPassphrase(reasons.WifiAuthTimeout, true, reasons), true, 'network reprompts a protected network after a wrong password')
+assertEqual(network.shouldRepromptPassphrase(reasons.WifiAuthTimeout, false, reasons), false, 'network does not reprompt an open network on auth timeout')
+assertEqual(network.shouldRepromptPassphrase(reasons.WifiClientFailed, true, reasons), false, 'network does not reprompt on generic connection failures')
+
+
+assertEqual(network.bandLabel('2.4'), '2.4ghz', 'network labels the 2.4GHz band')
+assertEqual(network.bandLabel('6'), '6ghz', 'network labels the 6GHz band')
+assertEqual(network.bandLabel('auto'), 'Auto', 'network labels the automatic band choice')
+
+assertEqual(network.bandSectionTitle('auto', '2.4'), 'WI-FI BAND: 2.4GHZ', 'network names the live band in the header under automatic')
+assertEqual(network.bandSectionTitle('auto', ''), 'WI-FI BAND', 'network omits an unknown band from the header')
+assertEqual(network.bandSectionTitle('5', '5'), 'WI-FI BAND', 'network drops the header band once the pills are showing')
+assertEqual(network.bandSectionTitle('5', '2.4'), 'WI-FI BAND', 'network keeps a plain header while a pin is settling')
+
+assertDeepEqual(
+  network.parseBandStatus('band\t5\navailable\t2.4 5 6\nselected\tauto\n'),
+  { band: '5', selected: 'auto', available: ['2.4', '5', '6'] },
+  'network parses band status'
+)
+assertDeepEqual(
+  network.parseBandStatus(''),
+  { band: '', selected: 'auto', available: [] },
+  'network parses empty band status without a wifi connection'
+)
+
+
+
+assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '', 'network keeps wifi band state out of the hero')
+assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit', 'network keeps ethernet speed in the hero')
 JS

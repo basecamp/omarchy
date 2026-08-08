@@ -16,5 +16,13 @@
     "description": "Status notifier items",
     "category": "Status",
     "allowMultiple": false
+  },
+  "omarchy": {
+    "clonePaths": [
+      {
+        "source": "TrayModel.js",
+        "target": "TrayModel.js"
+      }
+    ]
   }
 }

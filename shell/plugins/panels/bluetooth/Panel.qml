@@ -12,6 +12,9 @@ Panel {
   id: root
   moduleName: "omarchy.bluetooth"
   ipcTarget: "omarchy.bluetooth"
+  // manageIpc: false so this panel can own the single IpcHandler the target
+  // permits — needed for the toggleBluetooth method below.
+  manageIpc: false
 
   // Address -> "connecting" | "disconnecting" | "forgetting".
   // The actual Bluetooth sequencing lives in bin/omarchy-bluetooth-device;
@@ -91,7 +94,7 @@ Panel {
   // sits above the device sections so the adapter can be toggled by keyboard
   // even when it is off and no device rows exist.
   readonly property bool headerHasCursor: cursorActive && focusSection === "header"
-  readonly property int heroRingPad: Style.space(6)
+  readonly property string toggleHint: root.adapter && root.adapter.enabled ? "Turn Bluetooth off" : "Turn Bluetooth on"
 
   readonly property color hoverFill: bar
     ? Style.hoverFillFor(bar.foreground, Color.accent)
@@ -120,6 +123,60 @@ Panel {
 
   function devicesForSection(section) {
     return Model.sectionDevices(deviceGroups, section)
+  }
+
+  // The scrollable half of the panel — remembered devices, then whatever the
+  // scan turned up — flattened into one model so a ListView can own the
+  // viewport. Each entry carries the section it came from, which is what lets
+  // the delegate and the cursor keep working in section-relative terms.
+  readonly property var scrollRows: {
+    var rows = []
+    for (var k = 0; k < knownDevices.length; k++)
+      rows.push({ dev: Model.deviceRow(knownDevices[k]), section: "known", indexInSection: k })
+    if (sectionVisible("discovered"))
+      for (var d = 0; d < discoveredDevices.length; d++)
+        rows.push({ dev: Model.deviceRow(discoveredDevices[d]), section: "discovered", indexInSection: d })
+    return rows
+  }
+
+  // Connected devices render above the scroll area; same primitives-only
+  // projection so those delegates never hold Device QObject wrappers either.
+  readonly property var connectedRows: {
+    var rows = []
+    for (var i = 0; i < connectedDevices.length; i++)
+      rows.push(Model.deviceRow(connectedDevices[i]))
+    return rows
+  }
+
+  // Live BlueZ device behind a row. Rows carry primitives only, so actions
+  // resolve the backend object here rather than holding a wrapper that can
+  // dangle mid-incubation. `devices` is already the raw device array (see the
+  // property declaration), so it is iterated directly.
+  function deviceFor(row) {
+    if (!row || !row.dev) return null
+    var addr = row.dev.address || ""
+    var devs = devices || []
+    for (var i = 0; i < devs.length; i++) {
+      if ((devs[i].address || "") === addr) return devs[i]
+    }
+    return null
+  }
+
+  // Flat position of the keyboard cursor, or -1 while it sits on the hero or
+  // in the connected list (both of which live outside the scroll area).
+  readonly property int scrollRowIndex: {
+    if (focusSection !== "known" && focusSection !== "discovered") return -1
+    for (var i = 0; i < scrollRows.length; i++)
+      if (scrollRows[i].section === focusSection && scrollRows[i].indexInSection === selectedIndex) return i
+    return -1
+  }
+
+  // A row opens a section when it is the first of its kind in the flat list.
+  function scrollSectionTitle(index) {
+    var rows = scrollRows
+    if (index < 0 || index >= rows.length) return ""
+    if (index > 0 && rows[index - 1].section === rows[index].section) return ""
+    return rows[index].section === "known" ? "PAIRED" : "AVAILABLE"
   }
 
   function audioSinks() {
@@ -388,24 +445,13 @@ Panel {
   onDiscoveredDevicesChanged: { reselectFocusedDevice(); syncPendingActions() }
   onVisibleSectionsChanged: clampCursor()
 
-  // Keep the keyboard-focused row inside the visible viewport of the device
-  // Flickable. Each DeviceRow calls this when it gains hasCursor. Without
-  // it, j/k can walk the selection off-screen in a long device list.
-  function ensureCursorVisible(item) {
-    if (!item || !deviceFlick) return
-    var pt = item.mapToItem(deviceFlick.contentItem, 0, 0)
-    var top = pt.y
-    var bottom = top + (item.height || 0)
-    var viewTop = deviceFlick.contentY
-    var viewBottom = viewTop + deviceFlick.height
-    var margin = 6
-    if (top < viewTop + margin) deviceFlick.contentY = Math.max(0, top - margin)
-    else if (bottom > viewBottom - margin)
-      deviceFlick.contentY = bottom + margin - deviceFlick.height
-  }
-
   function clampCursor() {
     var sections = visibleSections
+    // "header" is virtual and never appears in visibleSections, so it has to
+    // be let through: toggling the adapter empties and refills the device
+    // lists, and clamping would knock the cursor off the hero switch every
+    // time it is used.
+    if (focusSection === "header") return
     if (!sections || !sections.length) {
       selectedIndex = 0
       return
@@ -495,6 +541,17 @@ Panel {
     adapter.enabled = !adapter.enabled
   }
 
+  IpcHandler {
+    target: "omarchy.bluetooth"
+
+    function open() { root.open() }
+    function close() { root.close() }
+    function show() { root.open() }
+    function hide() { root.close() }
+    function toggle() { root.toggle() }
+    function toggleBluetooth() { root.toggleBluetooth() }
+  }
+
   BarIconButton {
     id: button
     anchors.fill: parent
@@ -540,43 +597,36 @@ Panel {
         // ---------- Hero: Bluetooth icon · status ----------
         Item {
           width: parent.width
-          implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight) + root.heroRingPad * 2
+          implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, powerSwitch.implicitHeight)
 
-          // Keyboard focus ring around the hero Bluetooth toggle. heroIcon is
-          // inset by heroRingPad so this ring stays inside the panel's clip box.
-          BorderSurface {
-            anchors.fill: heroIcon
-            anchors.margins: -root.heroRingPad
-            color: "transparent"
-            radius: Style.cornerRadius
-            visible: root.headerHasCursor
-            borderSpec: Border.controlSpec("hover-cursor", root.bar.foreground, Color.accent)
-          }
-
+          // Status only — the switch owns toggling, mouse and keyboard alike.
           Text {
             id: heroIcon
             anchors.left: parent.left
-            anchors.leftMargin: root.heroRingPad
             anchors.verticalCenter: parent.verticalCenter
             text: root.icon
             color: root.bar.foreground
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.display
             opacity: root.adapter && root.adapter.enabled ? 1.0 : 0.5
+          }
 
-            MouseArea {
-              id: heroIconMouse
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: root.adapter ? Qt.PointingHandCursor : Qt.ArrowCursor
-              enabled: !!root.adapter
-              onContainsMouseChanged: if (containsMouse) root.setHeaderCursor()
-              onClicked: root.toggleBluetooth()
-            }
+          // Compact on/off switch on the trailing edge of the hero, and the
+          // header's only cursor target.
+          ToggleSwitch {
+            id: powerSwitch
+            visible: !!root.adapter
+            checked: !!root.adapter && root.adapter.enabled
+            hasCursor: root.headerHasCursor
+            foreground: root.bar.foreground
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            onHovered: function(on) { if (on) root.setHeaderCursor() }
+            onToggled: root.toggleBluetooth()
 
             PanelToolTip {
-              visible: heroIconMouse.containsMouse
-              text: root.adapter && root.adapter.enabled ? "Turn Bluetooth off" : "Turn Bluetooth on"
+              visible: powerSwitch.containsMouse
+              text: root.toggleHint
               fontFamily: root.bar.fontFamily
             }
           }
@@ -586,6 +636,7 @@ Panel {
             anchors.left: heroIcon.right
             anchors.leftMargin: Style.space(14)
             anchors.right: parent.right
+            anchors.rightMargin: powerSwitch.visible ? powerSwitch.width + Style.space(12) : 0
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(2)
 
@@ -632,7 +683,7 @@ Panel {
           }
 
           Repeater {
-            model: root.connectedDevices
+            model: root.connectedRows
             DeviceRow {
               required property var modelData
               required property int index
@@ -646,91 +697,85 @@ Panel {
         }
 
         PanelSeparator {
-          visible: root.connectedDevices.length > 0
-                   && (root.knownDevices.length > 0
-                       || (root.adapter && root.adapter.discovering && root.discoveredDevices.length > 0))
+          visible: root.connectedDevices.length > 0 && root.scrollRows.length > 0
           foreground: root.bar.foreground
         }
 
-        Flickable {
-          id: deviceFlick
+        // ListView, not a Flickable: it owns the scroll position, so it keeps
+        // the current row visible on j/k, re-clamps itself when discovery
+        // shortens the list, and — because Contain only moves when a row is
+        // actually clipped — never lurches under a hovering mouse.
+        ListView {
+          id: deviceListView
           width: parent.width
-          height: Math.min(deviceList.implicitHeight, Style.space(400))
-          contentWidth: width
-          contentHeight: deviceList.implicitHeight
+          height: Math.min(contentHeight, Style.space(400))
+          spacing: Style.space(10)
           clip: true
           boundsBehavior: Flickable.StopAtBounds
           interactive: contentHeight > height
 
           ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-          Column {
-            id: deviceList
-            width: parent.width
-            spacing: Style.space(10)
+          model: root.scrollRows
+          currentIndex: root.scrollRowIndex
+          // Deferred by a turn. Called straight out of the signal the position
+          // does not take — verified with the cursor six rows down and
+          // contentY still 0 — because scrollRows is rebuilt every time
+          // discovery reports, and swapping the model resets the view out from
+          // under the call. Network's list is stable enough not to need this.
+          onCurrentIndexChanged: if (currentIndex >= 0) Qt.callLater(keepCurrentVisible)
+          function keepCurrentVisible() {
+            if (currentIndex >= 0) positionViewAtIndex(currentIndex, ListView.Contain)
+          }
 
-            // Remembered devices.
-            PanelSectionHeader {
-              visible: root.knownDevices.length > 0
-              text: "PAIRED"
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-            }
+          delegate: Item {
+            required property var modelData
+            required property int index
+            readonly property string sectionTitle: root.scrollSectionTitle(index)
 
-            Repeater {
-              model: root.knownDevices
-              DeviceRow {
-                required property var modelData
-                required property int index
-                width: deviceList.width
-                dev: modelData
-                rowIndex: index
-                sectionName: "known"
-                isDiscovered: false
+            width: ListView.view.width
+            height: delegateColumn.implicitHeight
+
+            Column {
+              id: delegateColumn
+              width: parent.width
+              spacing: Style.space(10)
+
+              PanelSeparator {
+                visible: index > 0 && sectionTitle !== ""
+                height: visible ? implicitHeight : 0
+                foreground: root.bar.foreground
               }
-            }
 
-            // Discovered (unpaired) devices, only shown while scanning.
-            PanelSeparator {
-              visible: root.adapter && root.adapter.discovering && root.discoveredDevices.length > 0
-                       && root.knownDevices.length > 0
-              foreground: root.bar.foreground
-            }
-
-            PanelSectionHeader {
-              visible: root.adapter && root.adapter.discovering && root.discoveredDevices.length > 0
-              text: "AVAILABLE"
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-            }
-
-            Repeater {
-              model: root.adapter && root.adapter.discovering ? root.discoveredDevices : []
-              DeviceRow {
-                required property var modelData
-                required property int index
-                width: deviceList.width
-                dev: modelData
-                rowIndex: index
-                sectionName: "discovered"
-                isDiscovered: true
+              PanelSectionHeader {
+                visible: sectionTitle !== ""
+                height: visible ? implicitHeight : 0
+                text: sectionTitle
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
               }
-            }
 
-            Text {
-              visible: root.connectedDevices.length === 0
-                       && root.knownDevices.length === 0
-                       && (!root.adapter || !root.adapter.discovering || root.discoveredDevices.length === 0)
-              text: !root.adapter ? "No Bluetooth adapter"
-                  : !root.adapter.enabled ? "Turn Bluetooth on to scan"
-                  : "Scanning for devices…"
-              color: Qt.darker(root.bar.foreground, 1.5)
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              wrapMode: Text.WordWrap
-              width: deviceList.width
+              DeviceRow {
+                width: parent.width
+                dev: modelData.dev
+                rowIndex: modelData.indexInSection
+                sectionName: modelData.section
+                isDiscovered: modelData.section === "discovered"
+              }
             }
           }
+        }
+
+        Text {
+          visible: root.connectedDevices.length === 0 && root.scrollRows.length === 0
+          text: !root.adapter ? "No Bluetooth adapter"
+              : !root.adapter.enabled ? "Turn Bluetooth on to scan"
+              : "Scanning for devices…"
+          color: Qt.darker(root.bar.foreground, 1.5)
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.bodySmall
+          wrapMode: Text.WordWrap
+          width: parent.width
         }
       }
     }
@@ -760,7 +805,6 @@ Panel {
     readonly property bool showForgetButton: forgetAvailable && (rowMouse.containsMouse || rowSelected)
 
     hasCursor: rowSelected && !root.actionFocused
-    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(row)
     current: isConnected
     foreground: root.bar.foreground
     fill: root.hoverFill
@@ -802,14 +846,15 @@ Panel {
       }
 
       onClicked: function(mouse) {
-        if (!row.dev) return
+        var dev = root.deviceFor(row)
+        if (!dev) return
         if (mouse.button === Qt.RightButton) {
-          if (row.isConnected) root.disconnectDevice(row.dev)
-          else if (!row.isDiscovered) root.forgetDevice(row.dev)
+          if (row.isConnected) root.disconnectDevice(dev)
+          else if (!row.isDiscovered) root.forgetDevice(dev)
           return
         }
-        if (row.isConnected) root.disconnectDevice(row.dev)
-        else root.connectDevice(row.dev)
+        if (row.isConnected) root.disconnectDevice(dev)
+        else root.connectDevice(dev)
       }
     }
 
@@ -888,8 +933,9 @@ Panel {
           root.actionFocused = true
         }
         onClicked: {
-          if (!row.dev) return
-          root.forgetDevice(row.dev)
+          var dev = root.deviceFor(row)
+          if (!dev) return
+          root.forgetDevice(dev)
         }
       }
     }

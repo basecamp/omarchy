@@ -12,18 +12,29 @@ var WEEKDAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "fr
 // ---- Bar label formats. Right-clicking the clock walks these in order and
 //      writes the result back to shell.json, so the label the bar shows and
 //      the format the config stores are always the same thing.
+//
+// The locale-shaped time presets are each followed by their 12-hour twin, so
+// the walk from a 24-hour label to the same label in AM/PM is a single right
+// click rather than a lap of the ring. The ISO preset is deliberately left
+// without one: ISO 8601 writes time on a 24-hour clock, so an AM/PM variant
+// would contradict the only thing that format is for.
 var CLOCK_FORMATS = [
   "dddd HH:mm",
+  "dddd h:mm AP",
   "HH:mm",
+  "h:mm AP",
   "ddd d MMM HH:mm",
+  "ddd d MMM h:mm AP",
   "d MMMM 'W'ww yyyy",
   "yyyy-MM-dd HH:mm"
 ]
 
 // Vertical bars have room for a few stacked lines and nothing else, so the
-// ring stays short.
+// ring stays short. AM/PM costs a fourth line, which is why only the plain
+// time carries it here.
 var VERTICAL_CLOCK_FORMATS = [
   "HH\n—\nmm",
+  "h\n—\nmm\nAP",
   "dd\nMMM\n'W'ww\n''yy",
   "HH\nmm"
 ]

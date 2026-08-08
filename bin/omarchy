@@ -26,6 +26,7 @@ declare -A ROUTE_IS_ALIAS
 declare -A BINARY_TO_KEY
 declare -A GROUP_DESCRIPTIONS
 
+GROUP_DESCRIPTIONS[agent]="AI coding agent usage data"
 GROUP_DESCRIPTIONS[audio]="Audio input and output controls"
 GROUP_DESCRIPTIONS[bar]="Omarchy shell bar layout and settings"
 GROUP_DESCRIPTIONS[battery]="Battery status helpers"
@@ -42,6 +43,7 @@ GROUP_DESCRIPTIONS[debug]="Diagnostics and support logs"
 GROUP_DESCRIPTIONS[finalize]="Finalize user setup"
 GROUP_DESCRIPTIONS[default]="Default application selection"
 GROUP_DESCRIPTIONS[dev]="Omarchy development tools"
+GROUP_DESCRIPTIONS[disk]="Disk performance helpers"
 GROUP_DESCRIPTIONS[display]="Display and text scaling"
 GROUP_DESCRIPTIONS[dns]="DNS resolver configuration"
 GROUP_DESCRIPTIONS[drive]="Drive selection and encryption"

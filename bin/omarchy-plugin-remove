@@ -1,0 +1,123 @@
+#!/bin/bash
+
+# omarchy:summary=Remove an installed shell plugin
+# omarchy:group=plugin
+# omarchy:args=[id] [--yes]
+# omarchy:alias=omarchy plugin rm
+
+set -euo pipefail
+
+PLUGINS_DIR="$HOME/.config/omarchy/plugins"
+ASSUME_YES=0
+
+fail() {
+  echo "omarchy-plugin-remove: $*" >&2
+  exit 1
+}
+
+interactive() {
+  [[ -t 0 && -t 1 ]]
+}
+
+confirm() {
+  local prompt="$1"
+  (( ASSUME_YES )) && return 0
+  if interactive; then
+    gum confirm "$prompt"
+  else
+    fail "refusing to continue without confirmation; pass --yes"
+  fi
+}
+
+valid_plugin_id() {
+  [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $1 != *..* ]]
+}
+
+id=""
+
+while (( $# > 0 )); do
+  case "$1" in
+  --yes | -y)
+    ASSUME_YES=1
+    shift
+    ;;
+  -h | --help)
+    echo "Usage: omarchy plugin remove [id] [--yes]"
+    exit 0
+    ;;
+  -*)
+    fail "unknown remove option: $1"
+    ;;
+  *)
+    [[ -z $id ]] || fail "unexpected argument: $1"
+    id="$1"
+    shift
+    ;;
+  esac
+done
+
+[[ -d $PLUGINS_DIR ]] || fail "no plugins installed"
+
+if [[ -z $id ]]; then
+  interactive || fail "a plugin-id is required"
+  id=$(find "$PLUGINS_DIR" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) \
+    ! -name '.*' -printf '%f\n' 2>/dev/null |
+    sort |
+    gum choose --header="Remove which plugin?") || fail "cancelled"
+  [[ -n $id ]] || fail "nothing selected"
+fi
+valid_plugin_id "$id" || fail "invalid plugin id '$id'"
+
+target="$PLUGINS_DIR/$id"
+[[ -e $target || -L $target ]] || fail "plugin '$id' is not installed"
+
+was_enabled=""
+shell_plugins=$(omarchy-shell shell listPlugins)
+if [[ -n $shell_plugins ]]; then
+  was_enabled=$(jq -r --arg id "$id" '
+    .[] | select(.id == $id) | .enabled
+  ' <<<"$shell_plugins")
+fi
+
+cloned_from=""
+if [[ -f $target/manifest.json ]]; then
+  cloned_from=$(jq -r '.omarchy.clonedFrom // empty' "$target/manifest.json")
+fi
+
+if [[ -L $target ]]; then
+  confirm "Unlink '$id' (symlink -> $(readlink "$target"))?" || fail "aborted"
+elif [[ -d $target/.git ]]; then
+  confirm "Delete '$id'? Its git repo remains upstream." || fail "aborted"
+else
+  confirm "Remove '$id'? The folder will be backed up." || fail "aborted"
+fi
+
+if [[ $was_enabled == "true" ]]; then
+  omarchy-shell shell setPluginEnabled "$id" false >/dev/null
+fi
+
+if [[ -L $target ]]; then
+  rm -f "$target"
+  echo "Unlinked $id."
+elif [[ -d $target/.git ]]; then
+  rm -rf "$target"
+  echo "Removed $id."
+else
+  base="$PLUGINS_DIR/.${id}.bak.$(date -u +%Y%m%d%H%M%S)"
+  backup="$base"
+  n=1
+  while [[ -e $backup ]]; do
+    backup="${base}-${n}"
+    n=$((n + 1))
+  done
+  mv "$target" "$backup" || fail "failed to move $target to backup"
+  echo "Removed $id. Backup at: $backup"
+fi
+
+omarchy-shell shell rescanPlugins >/dev/null
+
+if [[ -n $cloned_from && $was_enabled == "true" ]]; then
+  echo "Restored $cloned_from."
+elif [[ $was_enabled == "true" ]]; then
+  echo "Plugin was enabled and was unloaded from omarchy-shell."
+fi

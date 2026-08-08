@@ -14,3 +14,7 @@ systemctl enable NetworkManager.service
 systemctl mask NetworkManager-wait-online.service
 systemctl enable power-profiles-daemon.service
 systemctl enable sddm.service
+# Kill one runaway app scope instead of letting reclaim thrashing take the
+# whole session down. [Install] pulls in systemd-oomd.socket via Also=, which
+# is what the user manager reports app.slice candidacy over.
+systemctl enable systemd-oomd.service

@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# omarchy:summary=Set and launch the default coding agent
+# omarchy:args=[pi|omp|opencode|claude|codex|grok|gemini|copilot|crush]
+# omarchy:examples=omarchy default agent | omarchy default agent codex | omarchy default agent claude
+
+installing=false
+if [[ ${1:-} == "--install" ]]; then
+  installing=true
+  shift
+fi
+
+agent_file="$HOME/.config/omarchy/defaults/agent"
+
+if (($# == 0)); then
+  if [[ -f $agent_file ]]; then
+    read -r agent <"$agent_file"
+  fi
+
+  [[ -n $agent ]] && echo "$agent" || echo "opencode"
+  exit 0
+fi
+
+case "$1" in
+pi) agent="pi"; name="Pi" ;;
+omp | oh-my-pi) agent="omp"; name="Oh My Pi"; agent_package="github:can1357/oh-my-pi" ;;
+opencode | open-code) agent="opencode"; name="OpenCode" ;;
+claude | claude-code) agent="claude"; name="Claude Code" ;;
+codex) agent="codex"; name="Codex" ;;
+crush) agent="crush"; name="Crush" ;;
+grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
+gemini | gemini-cli) agent="gemini"; name="Gemini" ;;
+copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
+*)
+  echo "Usage: omarchy-default-agent <pi|omp|opencode|claude|codex|grok|gemini|copilot|crush>"
+  exit 1
+  ;;
+esac
+
+agent_package=${agent_package:-$agent}
+
+if [[ $installing == "false" ]] && ! mise where "$agent_package" &>/dev/null; then
+  exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$agent"
+fi
+
+if ! mise use -g "$agent_package"; then
+  if [[ $installing == "true" ]]; then
+    echo "Could not install $name with mise" >&2
+  else
+    echo "Could not set $name as the default coding agent" >&2
+  fi
+  exit 1
+fi
+
+mkdir -p "$(dirname "$agent_file")"
+printf '%s\n' "$agent" >"$agent_file"
+
+if [[ $installing == "true" ]]; then
+  printf '\033[2J\033[3J\033[H'
+  exec omarchy-launch-agent --inline
+else
+  exec omarchy-launch-agent
+fi

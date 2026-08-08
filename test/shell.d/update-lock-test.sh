@@ -136,6 +136,10 @@ wait "$inhibit_update_pid"
 (( inhibitor_holds_lock == 0 )) || fail "update keeps the update lock out of the sleep inhibitor it leaves running"
 pass "omarchy-update keeps the update lock out of its sleep inhibitor"
 
+kill -0 "$inhibitor_pid" 2>/dev/null &&
+  fail "update waits for its sleep inhibitor to stop before continuing"
+pass "omarchy-update waits for its sleep inhibitor to stop"
+
 # Update-owned Stay Awake state must be cleared before the restart helper can
 # reboot the machine, rather than relying on an EXIT trap during shutdown.
 write_stub omarchy-snapshot 'exit 0'
@@ -168,3 +172,30 @@ touch "$test_home/.local/state/omarchy/indicators/stay-awake"
 OMARCHY_UPDATE_LOGGED=1 EXPECT_STAY_AWAKE=1 run_with_lock_env "$ROOT/bin/omarchy-update" -y
 [[ -f $test_home/.local/state/omarchy/indicators/stay-awake ]] || fail "update preserves pre-existing Stay Awake state"
 pass "omarchy-update restores only its own Stay Awake state before restart handling"
+
+# Stale cleanup state from a killed update must not override a Stay Awake choice
+# the user made afterward.
+stay_awake_helper_state="$runtime_dir/omarchy-update-stay-awake"
+stay_awake_state="$test_home/.local/state/omarchy/indicators/stay-awake"
+mkdir -p "$stay_awake_helper_state" "$(dirname "$stay_awake_state")"
+printf '%s\n' "old-update-owner" >"$stay_awake_helper_state/idle-owner"
+printf '%s\n' "user-choice" >"$stay_awake_state"
+
+run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" stop
+[[ $(<"$stay_awake_state") == "user-choice" ]] ||
+  fail "stale update ownership does not remove a newer Stay Awake choice"
+pass "stale update ownership preserves a newer Stay Awake choice"
+
+# A stale PID is safe even if it has been reused by another process.
+sleep 30 &
+unrelated_pid=$!
+unrelated_start_time=$(awk '{ print $22 }' "/proc/$unrelated_pid/stat")
+mkdir -p "$stay_awake_helper_state"
+printf '%s %s\n' "$unrelated_pid" "$((unrelated_start_time + 1))" >"$stay_awake_helper_state/inhibit-pid"
+
+run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" stop
+kill -0 "$unrelated_pid" 2>/dev/null ||
+  fail "stale inhibitor state does not terminate a reused PID"
+kill "$unrelated_pid"
+wait "$unrelated_pid" 2>/dev/null || true
+pass "stale inhibitor state does not terminate a reused PID"

@@ -7,29 +7,23 @@
 # Walks $OMARCHY_PATH/shell/plugins and ~/.config/omarchy/plugins, reads every
 # manifest.json / *.manifest.json, and emits one JSON object per plugin with
 # computed fields (sourceDir, barWidgetPath, barPath, firstParty). This is the
-# single source of truth that omarchy-bar (widget/option enumeration),
-# omarchy-bar-plugin (add validation), and omarchy-plugin-clone (source
-# enumeration) read, so the bar and plugin commands never re-implement
-# manifest walking.
+# single source of truth used by bar selection and plugin enable/clone, so
+# those commands never re-implement manifest walking.
 
 set -o pipefail
 
-OMARCHY_PATH="${OMARCHY_PATH:-}"
-omarchy-cmd-present jq || { echo "omarchy-plugin-catalog: jq is required" >&2; exit 1; }
-
 paths=()
 
-if [[ -n $OMARCHY_PATH && -d $OMARCHY_PATH/shell/plugins ]]; then
-  while IFS= read -r manifest; do
-    paths+=("$manifest")
-  done < <(find "$OMARCHY_PATH/shell/plugins" -mindepth 2 -maxdepth 4 -type f \( -name manifest.json -o -name '*.manifest.json' \) 2>/dev/null | sort)
-fi
+while IFS= read -r manifest; do
+  paths+=("$manifest")
+done < <(find "$OMARCHY_PATH/shell/plugins" -mindepth 2 -maxdepth 4 -type f \( -name manifest.json -o -name '*.manifest.json' \) | sort)
 
 user_dir="$HOME/.config/omarchy/plugins"
 if [[ -d $user_dir ]]; then
   while IFS= read -r manifest; do
     paths+=("$manifest")
-  done < <(find -L "$user_dir" -mindepth 2 -maxdepth 2 -type f -name manifest.json 2>/dev/null | sort)
+  done < <(find -L "$user_dir" -mindepth 2 -maxdepth 2 -type f -name manifest.json \
+    ! -path "$user_dir/.*/*" 2>/dev/null | sort)
 fi
 
 if (( ${#paths[@]} == 0 )); then

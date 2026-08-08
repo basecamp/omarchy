@@ -1,15 +1,3 @@
-function parseWeatherStatus(raw) {
-  try {
-    var data = JSON.parse(String(raw || "{}"))
-    return {
-      label: data.text || "",
-      klass: data.class || ""
-    }
-  } catch (e) {
-    return { label: "", klass: "" }
-  }
-}
-
 // weather.json holds {"name": ..., "latitude": ..., "longitude": ...} (see
 // omarchy-weather-location, which owns the format). Missing, blank, or
 // unparseable means the location is auto-detected from the IP address.
@@ -279,7 +267,6 @@ function iconForCode(code, night) {
 
 if (typeof module !== "undefined") {
   module.exports = {
-    parseWeatherStatus: parseWeatherStatus,
     parseLocationFile: parseLocationFile,
     wttrLocationQuery: wttrLocationQuery,
     parseGeocodingResults: parseGeocodingResults,

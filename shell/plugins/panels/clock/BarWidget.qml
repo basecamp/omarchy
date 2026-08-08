@@ -73,6 +73,10 @@ BarWidget {
     if (panelLoader.item) panelLoader.item.toggle()
   }
 
+  function toggleWeekStart() {
+    if (panelLoader.item) panelLoader.item.toggleWeekStart()
+  }
+
   // The clock fills more slot than it paints a mark for, at both
   // orientations: horizontally it is a text label in a padded slot, so the
   // dot takes the label width; vertically it is a stack of icon-sized lines,
@@ -127,6 +131,7 @@ BarWidget {
 
     function refresh(): void { root.broadcast("refresh") }
     function cycleFormat(): void { root.cycleFormat() }
+    function toggleWeekStart(): void { root.toggleWeekStart() }
     function open(): void { root.open() }
     function close(): void { root.close() }
     function show(): void { root.open() }

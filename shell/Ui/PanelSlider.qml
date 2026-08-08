@@ -30,6 +30,10 @@ Item {
   signal moved(real value)
   signal released(real value)
 
+  // Right-click is a secondary action on the whole track — audio uses it to
+  // mute the channel the slider belongs to. Dragging stays left-button only.
+  signal rightClicked()
+
   implicitWidth: Style.space(200)
   implicitHeight: Math.max(Style.space(22), knobSize + Style.spacing.md)
 
@@ -102,7 +106,7 @@ Item {
     anchors.fill: parent
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
-    acceptedButtons: Qt.LeftButton
+    acceptedButtons: Qt.LeftButton | Qt.RightButton
 
     function valueFromX(x) {
       var clamped = Math.max(0, Math.min(track.width, x))
@@ -112,10 +116,14 @@ Item {
     }
 
     onPressed: function(mouse) {
+      if (mouse.button !== Qt.LeftButton) return
       root.dragging = true
       var next = valueFromX(mouse.x)
       root.liveValue = next
       root.moved(next)
+    }
+    onClicked: function(mouse) {
+      if (mouse.button === Qt.RightButton) root.rightClicked()
     }
     onPositionChanged: function(mouse) {
       if (!root.dragging) return
@@ -124,6 +132,7 @@ Item {
       root.moved(next)
     }
     onReleased: function(mouse) {
+      if (mouse.button !== Qt.LeftButton) return
       root.dragging = false
       root.released(root.liveValue)
       root.liveValue = root.value

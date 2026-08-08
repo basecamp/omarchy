@@ -1,0 +1,168 @@
+#!/bin/bash
+
+# omarchy:summary=Show or adjust DDC/CI display brightness for a Hyprland monitor.
+# omarchy:args=<monitor> [+N%|N%-|N%]
+# omarchy:examples=omarchy-brightness-display-ddc DP-1 | omarchy-brightness-display-ddc DP-1 50%
+
+monitor="${1:-}"
+step="${2:-}"
+
+[[ -n $monitor ]] || exit 1
+
+cache_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-brightness-display-ddc"
+cache_name="${monitor//[^[:alnum:]_.-]/_}"
+cache_file="$cache_dir/$cache_name.bus"
+unavailable_cache_seconds=60
+range_cache_seconds=10
+
+cache_unavailable() {
+  mkdir -p "$cache_dir" 2>/dev/null || true
+  printf 'unavailable %s\n' "$(date +%s)" >"$cache_file" 2>/dev/null || true
+}
+
+detect_bus() {
+  ddcutil --skip-ddc-checks detect --brief 2>/dev/null | awk -v monitor="$monitor" '
+    /I2C bus:/ {
+      bus = $NF
+      sub(/^.*\/i2c-/, "", bus)
+    }
+
+    /DRM connector:/ {
+      connector = $NF
+      sub(/^card[0-9]+-/, "", connector)
+      if (connector == monitor && bus != "") {
+        print bus
+        exit
+      }
+      bus = ""
+    }
+  '
+}
+
+find_bus() {
+  local bus=""
+  local cached_value=""
+  local now=0
+
+  if [[ -r $cache_file ]]; then
+    read -r bus cached_value <"$cache_file" || true
+  fi
+
+  if [[ $bus == "unavailable" ]]; then
+    now=$(date +%s)
+    if [[ $cached_value =~ ^[0-9]+$ ]] && (( now - cached_value < unavailable_cache_seconds )); then
+      return 1
+    fi
+    bus=""
+    rm -f "$cache_file"
+  fi
+
+  if [[ -z $bus ]]; then
+    bus="$(detect_bus)" || return 1
+    if [[ ! $bus =~ ^[0-9]+$ ]]; then
+      cache_unavailable
+      return 1
+    fi
+    mkdir -p "$cache_dir" 2>/dev/null || true
+    printf '%s\n' "$bus" >"$cache_file" 2>/dev/null || true
+  fi
+
+  printf '%s\n' "$bus"
+}
+
+read_vcp() {
+  local bus="$1"
+
+  ddcutil --bus "$bus" --skip-ddc-checks getvcp 10 --brief 2>/dev/null | awk '
+    $1 == "VCP" && toupper($2) == "10" && $3 == "C" && $4 ~ /^[0-9]+$/ && $5 ~ /^[0-9]+$/ && $5 > 0 {
+      print $4, $5
+      found = 1
+      exit
+    }
+
+    END { exit !found }
+  '
+}
+
+read_brightness() {
+  local bus=""
+  local now=0
+  local values=""
+
+  bus="$(find_bus)" || return 1
+  values="$(read_vcp "$bus")" || {
+    rm -f "$cache_file"
+    return 1
+  }
+
+  now=$(date +%s)
+  mkdir -p "$cache_dir" 2>/dev/null || true
+  printf '%s %s %s\n' "$bus" "${values##* }" "$now" >"$cache_file" 2>/dev/null || true
+  printf '%s %s\n' "$bus" "$values"
+}
+
+bus=""
+current=""
+maximum=""
+percent=""
+range_cached_at=""
+
+if [[ -z $step ]]; then
+  read -r bus current maximum < <(read_brightness) || exit 1
+  [[ -n ${bus:-} && -n ${current:-} && -n ${maximum:-} ]] || exit 1
+  (( percent = (current * 100 + maximum / 2) / maximum ))
+  printf '%s\n' "$percent"
+  exit 0
+fi
+
+if [[ $step =~ ^([0-9]+)%$ ]]; then
+  target="${BASH_REMATCH[1]}"
+  range_cache_fresh=0
+  if [[ -r $cache_file ]]; then
+    read -r bus maximum range_cached_at <"$cache_file" || true
+  fi
+
+  if [[ $bus =~ ^[0-9]+$ && $maximum =~ ^[0-9]+$ && $range_cached_at =~ ^[0-9]+$ ]] && (( maximum > 0 )); then
+    now=$(date +%s)
+    if (( range_cached_at <= now && now - range_cached_at < range_cache_seconds )); then
+      range_cache_fresh=1
+    fi
+  fi
+
+  if (( ! range_cache_fresh )); then
+    read -r bus current maximum < <(read_brightness) || exit 1
+  fi
+elif [[ $step =~ ^\+([0-9]+)%$ ]]; then
+  read -r bus current maximum < <(read_brightness) || exit 1
+  [[ -n ${bus:-} && -n ${current:-} && -n ${maximum:-} ]] || exit 1
+  (( percent = (current * 100 + maximum / 2) / maximum ))
+  amount="${BASH_REMATCH[1]}"
+  if (( amount == 5 && percent < 5 )); then
+    (( target = percent + 1 ))
+  else
+    (( target = percent + amount ))
+  fi
+elif [[ $step =~ ^([0-9]+)%-$ ]]; then
+  read -r bus current maximum < <(read_brightness) || exit 1
+  [[ -n ${bus:-} && -n ${current:-} && -n ${maximum:-} ]] || exit 1
+  (( percent = (current * 100 + maximum / 2) / maximum ))
+  amount="${BASH_REMATCH[1]}"
+  if (( amount == 5 && percent <= 5 )); then
+    (( target = percent - 1 ))
+  else
+    (( target = percent - amount ))
+  fi
+else
+  exit 1
+fi
+
+(( target < 1 )) && target=1
+(( target > 100 )) && target=100
+(( raw_target = (target * maximum + 50) / 100 ))
+
+if ! ddcutil --bus "$bus" --skip-ddc-checks --noverify setvcp 10 "$raw_target" >/dev/null 2>&1; then
+  rm -f "$cache_file"
+  exit 1
+fi
+
+printf '%s\n' "$target"

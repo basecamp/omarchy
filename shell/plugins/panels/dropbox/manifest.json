@@ -17,6 +17,7 @@
     "description": "Log in to Dropbox, view storage usage, and open recent synced files.",
     "category": "Files",
     "allowMultiple": false,
+    "defaultSection": "right",
     "defaults": {
       "refreshIntervalSec": 60
     },

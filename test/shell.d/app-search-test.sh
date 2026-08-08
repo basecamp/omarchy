@@ -99,9 +99,14 @@ assert(
 )
 
 assert(
-  /function launch\(desktopId, name\) \{[\s\S]*?gtk-launch[\s\S]*?\n  \}/.test(appLibraryQml) &&
-    appLibraryQml.includes('Util.execDetached("gtk-launch "'),
-  'app library runs desktop entry launch through the shell'
+  /function launch\(desktopId, name\) \{[\s\S]*?uwsm-app[\s\S]*?\n  \}/.test(appLibraryQml) &&
+    appLibraryQml.includes('Util.execDetached("uwsm-app -- gtk-launch "'),
+  'app library launches desktop entries through gtk-launch in their own scope'
+)
+
+assert(
+  appLibraryQml.includes('Util.shellQuote(id + ".desktop")'),
+  'app library launches by full file name so ids ending in .desktop (org.telegram.desktop) resolve'
 )
 
 assert(
@@ -119,6 +124,13 @@ assert(iconSourceMatch, 'app library iconSource function exists')
 assert(
   iconSourceMatch[1].indexOf('root.iconIndex[value]') < iconSourceMatch[1].indexOf('Quickshell.iconPath(value, true)'),
   'app library prefers indexed app icons over ambiguous themed icons'
+)
+
+const beginLaunchMatch = appLibraryQml.match(/function beginLaunchFeedback\(name\) \{([\s\S]*?)\n  \}/)
+assert(beginLaunchMatch, 'app library beginLaunchFeedback function exists')
+assert(
+  !beginLaunchMatch[1].includes('root.launchOsdOpen = false'),
+  'app library keeps owning an OSD a previous launch left on screen'
 )
 
 const openMatch = menuQml.match(/function openExistingMenu\(initialMenu\) \{([\s\S]*?)\n  \}/)

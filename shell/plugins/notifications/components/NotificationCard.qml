@@ -77,7 +77,14 @@ BorderSurface {
   MouseArea {
     anchors.fill: parent
     cursorShape: Qt.PointingHandCursor
-    onClicked: root.cardClicked()
+    acceptedButtons: Qt.LeftButton | Qt.RightButton
+    onClicked: function(mouse) {
+      if (mouse.button === Qt.RightButton) {
+        root.closeRequested()
+      } else {
+        root.cardClicked()
+      }
+    }
   }
 
   ColumnLayout {

@@ -42,7 +42,7 @@ hl.config({
       font_family = "monospace",
       font_weight_active = "ultraheavy",
       font_weight_inactive = "normal",
-      indicator_height = 0,
+      indicator_height = 1,
       indicator_gap = 5,
       height = 22,
       gaps_in = 5,

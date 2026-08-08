@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.speedtest",
+  "name": "Speed Test",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Internet speed test with download and upload dials",
+  "kinds": [
+    "panel"
+  ],
+  "entryPoints": {
+    "panel": "Panel.qml"
+  }
+}

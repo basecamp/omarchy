@@ -194,6 +194,77 @@ function dumpRows(rows) {
   return out
 }
 
+// ---------------------------------------------------- popup persistence
+//
+// Each on-screen popup is mirrored to its own file under
+// ~/.local/state/omarchy/notifications/ so toasts survive shell restarts
+// (e.g. the restart `omarchy-update` performs). The file exists exactly as
+// long as the popup is on screen: it is written when the toast appears and
+// deleted when the toast expires, is dismissed, or its action is invoked.
+
+function popupEntry(value, normalUrgency) {
+  var entry = historyEntry(value, normalUrgency)
+  var expire = Number((value || {}).expireTimeout || 0)
+  if (!isFinite(expire) || expire < 0) expire = 0
+  entry.expireTimeout = expire
+  // Absolute expiry deadline, set only when a restore resets a surviving
+  // popup's display lifetime. Kept out of the entry entirely when unset so
+  // restored rows match the roles of freshly received ones.
+  var deadline = Number((value || {}).deadline || 0)
+  if (isFinite(deadline) && deadline > 0) entry.deadline = deadline
+  return entry
+}
+
+function popupFileName(entry) {
+  var e = entry || {}
+  return String(e.timestamp || 0) + "-" + String(e.originalId || 0) + ".json"
+}
+
+function serializePopup(entry, normalUrgency) {
+  // Compact (single-line) on purpose: restore cats every file together and
+  // parses line by line, which only works when each file is one line.
+  return JSON.stringify(popupEntry(entry, normalUrgency))
+}
+
+// Parse the concatenation of every persisted popup file into entries,
+// newest-first. Deliberately NO dedupe by originalId: ids restart from 1
+// with every server process, so two files sharing an id are usually
+// different generations — dropping the older one would silently discard a
+// restored critical alert the moment a fresh notification reuses its id.
+// The one case that leaves a genuine duplicate (a crash between a
+// replacement's write and the replaced file's delete) merely re-shows a
+// superseded toast, which expires or is dismissed and cleans itself up.
+function parsePopupFiles(raw, normalUrgency) {
+  var lines = String(raw || "").split("\n")
+  var entries = []
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim()
+    if (!line) continue
+    try {
+      var value = JSON.parse(line)
+      if (value && typeof value === "object") entries.push(popupEntry(value, normalUrgency))
+    } catch (e) {
+      // A torn write from a crash mid-save — skip the line, keep the rest.
+    }
+  }
+  entries.sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0) })
+  return entries
+}
+
+// A persisted popup whose lifetime already ran out would have expired on
+// screen had the shell kept running, so it is not restored. duration 0 means
+// the popup never expires (critical urgency) and always survives restarts.
+// A restore-reset deadline outranks the original timestamp: without it, a
+// second restart would judge a re-shown toast by a clock that no longer
+// governs its display and drop it while it is still on screen.
+function popupExpired(entry, duration, now) {
+  var deadline = Number((entry || {}).deadline || 0)
+  if (isFinite(deadline) && deadline > 0) return Number(now) >= deadline
+  var lifetime = Number(duration || 0)
+  if (!isFinite(lifetime) || lifetime <= 0) return false
+  return (Number(now) - Number((entry || {}).timestamp || 0)) >= lifetime
+}
+
 function popupPlacement(barPosition, barClearance, gapsOut) {
   var position = String(barPosition || "top")
   var clearance = Number(barClearance)
@@ -236,6 +307,11 @@ if (typeof module !== "undefined") {
     parseHistory: parseHistory,
     recentHistoryRows: recentHistoryRows,
     dumpRows: dumpRows,
+    popupEntry: popupEntry,
+    popupFileName: popupFileName,
+    serializePopup: serializePopup,
+    parsePopupFiles: parsePopupFiles,
+    popupExpired: popupExpired,
     popupPlacement: popupPlacement,
     imageExtension: imageExtension
   }

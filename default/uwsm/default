@@ -3,8 +3,9 @@
 # Install other terminals via Install > Terminal
 export TERMINAL=xdg-terminal-exec
 
-# Used by terminal programs (like gh) to open URLs detached from the terminal process tree
-export BROWSER=omarchy-launch-browser
+# BROWSER is intentionally not exported here: session-wide, it makes xdg-settings
+# refuse to change the default browser, which breaks the browsers' own "Set as
+# default" buttons. Interactive shells get BROWSER from default/bash/envs instead.
 
 # Used by terminal programs to open files with the selected Omarchy default editor
 export EDITOR="omarchy-launch-editor --inline"

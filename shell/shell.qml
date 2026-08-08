@@ -54,9 +54,14 @@ ShellRoot {
 
   property var defaultsConfig: builtinShellConfig
   property var shellConfig: builtinShellConfig
-  property bool suppressUserReload: false
   property bool pluginReloading: false
   property bool pluginReloadPending: false
+
+  Timer {
+    id: localPluginReloadTimer
+    interval: 150
+    onTriggered: shell.reloadPlugins()
+  }
 
   onShellConfigChanged: {
     if (failedBarId !== "") failedBarId = ""
@@ -101,7 +106,6 @@ ShellRoot {
   }
 
   function persistShellConfig(nextConfig) {
-    suppressUserReload = true
     var payload = JSON.parse(JSON.stringify(nextConfig))
     payload.version = 1
     shellConfig = payload
@@ -129,13 +133,7 @@ ShellRoot {
     watchChanges: true
     atomicWrites: true
     printErrors: false
-    onLoaded: {
-      if (shell.suppressUserReload) {
-        shell.suppressUserReload = false
-        return
-      }
-      shell.applyShellConfig()
-    }
+    onLoaded: shell.applyShellConfig()
     onLoadFailed: function(error) { shell.applyShellConfig() }
     onFileChanged: reload()
   }
@@ -440,7 +438,7 @@ ShellRoot {
   }
 
   function summon(pluginId, payloadJson) {
-    var id = String(pluginId || "")
+    var id = shell.pluginRegistry.resolveEnabledId(pluginId)
     if (!id) return false
     var plugins = shell.pluginRegistry.installedPlugins
     if (!plugins[id]) {
@@ -480,7 +478,7 @@ ShellRoot {
   }
 
   function hide(pluginId) {
-    var id = String(pluginId || "")
+    var id = shell.pluginRegistry.resolveEnabledId(pluginId)
     if (!id) return false
     if (shell.isBarWidgetPanelPlugin(id)) {
       var hidden = shell.bar && typeof shell.bar.hideBarWidget === "function"
@@ -497,7 +495,7 @@ ShellRoot {
   }
 
   function isPluginOpen(pluginId) {
-    var id = String(pluginId || "")
+    var id = shell.pluginRegistry.resolveEnabledId(pluginId)
     if (shell.isBarWidgetPanelPlugin(id)) {
       return shell.bar && typeof shell.bar.isBarWidgetOpen === "function"
         ? shell.bar.isBarWidgetOpen(id)
@@ -510,7 +508,7 @@ ShellRoot {
   }
 
   function toggle(pluginId, payloadJson) {
-    var id = String(pluginId || "")
+    var id = shell.pluginRegistry.resolveEnabledId(pluginId)
     return isPluginOpen(id) ? hide(id) : summon(id, payloadJson)
   }
 
@@ -567,14 +565,15 @@ ShellRoot {
   }
 
   function callIfLoaded(pluginId, method, arg) {
-    var loader = panelLoaders[pluginId]
+    var id = shell.pluginRegistry.resolveEnabledId(pluginId)
+    var loader = panelLoaders[id]
     if (!loader || !loader.item) return "unknown"
     if (typeof loader.item[method] !== "function") return "unknown"
     try {
       var result = loader.item[method](arg)
       return result === undefined || result === null ? "ok" : String(result)
     } catch (e) {
-      console.warn("plugin " + pluginId + " " + method + "() threw:", e)
+      console.warn("plugin " + id + " " + method + "() threw:", e)
       return "error"
     }
   }
@@ -761,6 +760,10 @@ ShellRoot {
 
   Connections {
     target: shell.pluginRegistry
+    function onLocalPluginChanged(pluginId) {
+      console.log("Local plugin changed, reloading:", pluginId)
+      localPluginReloadTimer.restart()
+    }
     function onScanFinished() {
       if (shell.pluginReloadPending) {
         shell.pluginReloadPending = false
@@ -893,8 +896,46 @@ ShellRoot {
       return "ok"
     }
 
+    function toggleBarTransparency(): string {
+      if (shell.bar && typeof shell.bar.toggleTransparency === "function") {
+        shell.bar.toggleTransparency()
+        return "ok"
+      }
+      return "no-bar"
+    }
+
     function setPluginEnabled(id: string, enabled: string): string {
       return shell.pluginRegistry.setEnabled(id, enabled === "true") ? "ok" : "unknown"
+    }
+
+    function enablePlugin(id: string, placementJson: string): string {
+      try {
+        var placement = JSON.parse(placementJson || "{}")
+        if (shell.pluginRegistry.setEnabled(id, true, placement)) return "ok"
+        return shell.pluginRegistry.lastEnableError || "unknown"
+      } catch (e) {
+        return "invalid placement: " + e
+      }
+    }
+
+    function moveBarWidget(id: string, placementJson: string): string {
+      try {
+        var error = shell.pluginRegistry.moveBarWidget(id, JSON.parse(placementJson || "{}"))
+        return error ? error : "ok"
+      } catch (e) {
+        return "invalid placement: " + e
+      }
+    }
+
+    function setBarWidget(id: string, key: string, valueJson: string, selectorJson: string): string {
+      try {
+        var value = JSON.parse(valueJson)
+        var selector = JSON.parse(selectorJson || "{}")
+        var error = shell.pluginRegistry.setBarWidget(id, key, value, selector)
+        return error ? error : "ok"
+      } catch (e) {
+        return "invalid widget setting: " + e
+      }
     }
 
     function listPlugins(): string {
@@ -903,16 +944,36 @@ ShellRoot {
       for (var id in plugins) {
         var kinds = plugins[id].kinds || []
         var isBarOption = Array.isArray(kinds) && kinds.indexOf("bar") !== -1
+        var isBarWidget = Array.isArray(kinds) && kinds.indexOf("bar-widget") !== -1
         var active = isBarOption && shell.isActiveBarOption(id)
+        var metadata = plugins[id].omarchy
+        var clonedFrom = Util.isPlainObject(metadata) ? String(metadata.clonedFrom || "") : ""
         out.push({
           id: id,
           name: plugins[id].name,
           kinds: kinds,
-          enabled: isBarOption ? active : shell.pluginRegistry.isEnabled(id),
+          // What `omarchy plugin enable/disable` toggles: for a widget that is
+          // its place in the bar, not whether its component is loadable.
+          enabled: isBarOption ? active
+            : (isBarWidget ? shell.pluginRegistry.inBar(id) : shell.pluginRegistry.isEnabled(id)),
           active: active,
-          firstParty: !!plugins[id].__isFirstParty
+          // A bar has no off, only a successor: you leave one by enabling
+          // another, so there is nothing for disable to do to it. Said here so
+          // that a caller offering the verbs does not have to read kinds and
+          // work it out again.
+          canDisable: !isBarOption,
+          firstParty: !!plugins[id].__isFirstParty,
+          clonedFrom: clonedFrom
         })
       }
+      // Consumers should not each invent their own presentation order.
+      out.sort(function(left, right) {
+        var leftName = String(left.name || left.id)
+        var rightName = String(right.name || right.id)
+        if (leftName < rightName) return -1
+        if (leftName > rightName) return 1
+        return String(left.id).localeCompare(String(right.id))
+      })
       return JSON.stringify(out)
     }
 

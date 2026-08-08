@@ -4,3 +4,4 @@ Description=Minimal terminal-style login theme matching the Limine bootloader ae
 Author=Omarchy
 Type=sddm-theme
 Version=1.0
+QtVersion=6

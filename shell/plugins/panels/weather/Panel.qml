@@ -11,7 +11,6 @@ Panel {
   ipcTarget: "omarchy.weather"
   manageIpc: false
 
-  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   property var anchorItem: null
   property bool openedFromHotkey: false
 
@@ -87,6 +86,7 @@ Panel {
   onLocationQueryChanged: {
     if (savingLocation) savingLocationQueryStarted = true
     forecastRetries = 0
+    dailyForecastRetries = 0
     forecastProc.running = false
     dailyForecastProc.running = false
     Qt.callLater(refresh)
@@ -112,6 +112,7 @@ Panel {
   }
 
   property int forecastRetries: 0
+  property int dailyForecastRetries: 0
 
   // Click-to-edit state for the location label.
   property bool editingLocation: false
@@ -124,7 +125,6 @@ Panel {
 
   // Shared hero/bar icon state, updated with each successful weather response.
   property string label: ""
-  property string klass: ""
 
   // wttr's current conditions when available; open-meteo's (bundled with the
   // much faster daily forecast fetch) fill the hero while wttr is in flight.
@@ -148,6 +148,11 @@ Panel {
   readonly property string reportHumidity:  current ? (current.humidity + "%") : ""
 
   function refresh() {
+    // Each full refresh cycle gets a fresh retry budget, so an earlier
+    // exhausted round (e.g. waking with the network still down) doesn't
+    // starve retries for the rest of the session.
+    forecastRetries = 0
+    dailyForecastRetries = 0
     if (!forecastProc.running) forecastProc.running = true
     if (root.locationQuery === "" && !locationProc.running) locationProc.running = true
     // With stored coordinates this fetches open-meteo right away — no need
@@ -368,22 +373,42 @@ Panel {
     onTriggered: if (!forecastProc.running) forecastProc.running = true
   }
 
+  // With configured coordinates this fetch is the only thing that updates the
+  // bar icon, so a dropped response (e.g. waking before the network is back)
+  // must retry rather than wait out the refresh timer with a stale icon.
+  function scheduleDailyForecastRetry() {
+    if (dailyForecastRetries >= 3) return
+    dailyForecastRetries++
+    dailyForecastRetryTimer.restart()
+  }
+
+  Timer {
+    id: dailyForecastRetryTimer
+    interval: 2500
+    onTriggered: root.refreshDailyForecast(null)
+  }
+
   Process {
     id: dailyForecastProc
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
         var raw = String(text || "").trim()
-        if (!raw) return
+        if (!raw) {
+          root.scheduleDailyForecastRetry()
+          return
+        }
         try {
           var parsed = JSON.parse(raw)
           var parsedCurrent = Model.openMeteoCurrentCondition(parsed)
           root.dailyForecastReport = parsed
           root.label = Model.currentIcon(parsedCurrent, root.label)
+          root.dailyForecastRetries = 0
           if (Model.weatherResponseCompletesSave(root.hasConfiguredCoordinates, "open-meteo"))
             root.finishSavingLocation()
         } catch (e) {
-          // Keep last-good daily forecast on parse failure.
+          // Keep last-good daily forecast visible, but try again shortly.
+          root.scheduleDailyForecastRetry()
         }
       }
     }
@@ -418,6 +443,7 @@ Panel {
       if (!root.savingLocationQueryStarted) {
         root.savingLocationQueryStarted = true
         root.forecastRetries = 0
+        root.dailyForecastRetries = 0
         forecastProc.running = false
         dailyForecastProc.running = false
         Qt.callLater(root.refresh)

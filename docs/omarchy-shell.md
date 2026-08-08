@@ -48,9 +48,30 @@ fast-forward pull:
 
 ```bash
 omarchy plugin add https://github.com/acme/omarchy-weather.git
-omarchy plugin update --all          # fetches, shows a diff, fast-forwards
+omarchy plugin update                # fetches, shows a diff, fast-forwards
 omarchy plugin remove acme.weather
 ```
+
+**Setup › Plugins** offers Enable, Disable, Add, Clone, and Remove. Enable and
+Disable include built-ins as well as installed plugins. Clone is limited to
+built-ins, while Remove is limited to installed plugins since a built-in has
+no checkout to delete. Add, Clone, and Remove open a terminal so their warning,
+editor, confirmation, and output stay visible.
+
+Cloning `omarchy.clock`, for example, creates and switches to
+`~/.config/omarchy/plugins/<username>.clock/` (e.g. `dhh.clock`), names it
+`My Clock`, and preserves the built-in IPC identity so existing shortcuts keep
+working. The username prefix keeps a shared clone from colliding with anyone
+else's. Saving files in any installed plugin reloads its code automatically,
+and removing an active clone switches back to its built-in source.
+
+For a bar widget, on and off means its place in the bar. Everything else is
+loaded by default when it is built in, so `shell.json` records only the
+deviation: a third-party plugin you added under `plugins[]`, a built-in you
+switched off under `disabledPlugins[]`. A full bar has no off state: enabling
+one replaces the active bar, and it is therefore never offered under Disable.
+Bar widgets may set `barWidget.defaultSection` to `left`, `center`, or `right`;
+widgets that omit it default to `center`.
 
 Plugins run as **unsandboxed code** inside `omarchy-shell`. Adding warns you
 before cloning, plugins land disabled so you can review the code before
@@ -59,9 +80,10 @@ Commands prompt when run bare in a terminal and run unattended when given
 arguments — add `--yes` to skip every prompt (the path for scripts and agents).
 
 You can still install by hand: drop a plugin into
-`~/.config/omarchy/plugins/<id>/`, run `omarchy plugin rescan`, then
-`omarchy plugin enable <id>` (bar widgets also need `omarchy bar plugin add <id>`;
-full bar replacements are selected with `omarchy bar use <id>`).
+`~/.config/omarchy/plugins/<id>/`, run `omarchy-shell shell rescanPlugins`, then
+`omarchy plugin enable <id>`. A bar widget starts in its declared default
+section and can be moved with `omarchy bar move`; enabling a full bar
+replaces the one in use.
 The lower-level IPC methods remain available through `omarchy-shell shell ...`.
 
 ## IPC
@@ -78,7 +100,11 @@ individual plugins (`bar`, `image-selector`, …).
 | `call <id> <method> <arg>`            | call an already-loaded plugin   |
 | `rescanPlugins`                       | re-walk plugin dirs and hot-reload plugin code |
 | `reloadConfig`                        | reload shell.json               |
+| `toggleBarTransparency`               | flip the bar background between solid and transparent |
 | `setPluginEnabled <id> <"true"\|…>`   | flip enabled bit (`ok` / `unknown`) |
+| `enablePlugin <id> <placementJson>`   | enable and place in one mutation |
+| `moveBarWidget <id> <placementJson>`  | move a configured widget        |
+| `setBarWidget <id> <key> <valueJson> <selectorJson>` | set an inline widget option |
 | `listPlugins`                         | JSON of every discovered plugin |
 
 `setPluginEnabled` takes a string; only literal `"true"` enables.
@@ -122,7 +148,7 @@ Rules:
 4. Built-in bar widget ids are namespaced (`omarchy.clock`, `omarchy.audio`, …).
    The migration rewrites older ids such as `Clock` and `AudioPanel` forward.
 5. Third-party enabled ⇔ present; for full bar options that means `bar.id`.
-   First-party non-bar plugins are always enabled.
+   First-party non-bar plugins are enabled unless listed in `disabledPlugins[]`.
 6. `allowMultiple: true` in the manifest permits multiple instances.
 7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
 8. `version: 1` is required.

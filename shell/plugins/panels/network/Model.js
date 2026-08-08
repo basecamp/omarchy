@@ -40,11 +40,75 @@ function formatHeaderFreq(mhz) {
   return ghz.toFixed(ghz % 1 === 0 ? 0 : 1) + "ghz"
 }
 
+// Wi-Fi band state belongs in the selector section, not beside the hero name.
+// Ethernet has no equivalent selector, so keep its negotiated link speed here.
 function headerDetail(info) {
   var value = info || {}
   if (value.type === "ethernet") return formatHeaderSpeed(value.speed || "")
-  if (value.type === "wifi") return formatHeaderFreq(value.freq || "")
   return ""
+}
+
+function bandLabel(band) {
+  if (band === "auto") return "Auto"
+  if (!band) return ""
+  return band + "ghz"
+}
+
+// Under Automatic the pills are hidden, so the header carries the live band
+// instead -- "WI-FI BAND: 2.4GHZ". Once a band is pinned the pills are on
+// screen and say it themselves, so the header drops back to a plain label.
+function bandSectionTitle(selected, current) {
+  if (selected !== "auto") return "WI-FI BAND"
+
+  var label = bandLabel(current)
+  if (label === "") return "WI-FI BAND"
+
+  return "WI-FI BAND: " + label.toUpperCase()
+}
+
+function bandTooltip(band) {
+  if (band === "auto") return "Let Wi-Fi pick the band"
+  if (!band) return ""
+  return "Stay on " + bandLabel(band)
+}
+
+function parseBandStatus(raw) {
+  var next = parseKeyValue(raw)
+  var tokens = String(next.available || "").split(" ")
+  var available = []
+
+  for (var i = 0; i < tokens.length; i++) {
+    if (tokens[i] !== "") available.push(tokens[i])
+  }
+
+  return {
+    band: next.band || "",
+    selected: next.selected || "auto",
+    available: available
+  }
+}
+
+function decodeIwSsid(value) {
+  var raw = String(value || "")
+
+  try {
+    var encoded = ""
+
+    for (var i = 0; i < raw.length; i++) {
+      if (raw[i] === "\\" && raw[i + 1] === "x" && /^[0-9a-f]{2}$/i.test(raw.substring(i + 2, i + 4))) {
+        var hex = raw.substring(i + 2, i + 4)
+        var byte = parseInt(hex, 16)
+        encoded += byte < 32 || byte === 127 ? encodeURIComponent(raw.substring(i, i + 4)) : "%" + hex
+        i += 3
+      } else {
+        encoded += encodeURIComponent(raw[i])
+      }
+    }
+
+    return decodeURIComponent(encoded)
+  } catch (error) {
+    return raw
+  }
 }
 
 function parseKeyValue(raw) {
@@ -55,7 +119,9 @@ function parseKeyValue(raw) {
     if (!line) continue
     var idx = line.indexOf("\t")
     if (idx === -1) continue
-    next[line.substring(0, idx)] = line.substring(idx + 1).trim()
+    var key = line.substring(0, idx)
+    var value = line.substring(idx + 1)
+    next[key] = key === "ssid" ? decodeIwSsid(value) : value.trim()
   }
   return next
 }
@@ -140,7 +206,9 @@ function pingPacketLossPercent(samples) {
   return Math.round((lost / values.length) * 100)
 }
 
-function formatPacketLoss(percent) {
+function formatPacketLoss(percent, hasSamples) {
+  if (hasSamples === false) return "--"
+
   var value = parseInt(percent, 10)
   if (!value || value < 0) return "0%"
   return value + "%"
@@ -182,13 +250,12 @@ function formatRate(bytesPerSec) {
   return formatBytes(bytesPerSec) + "/s"
 }
 
-function formatSpeedMbps(mbps) {
-  var value = parseFloat(mbps)
-  if (!isFinite(value) || value <= 0) return "--"
-  return value.toFixed(value > 0 && value < 10 ? 1 : 0) + " Mbps"
-}
+// `hasSamples` false means no probe has come back yet, which is different from
+// a probe that timed out. The rows stay mounted through that gap and read "--"
+// so the grid doesn't reflow a second after the panel opens.
+function formatPingLatency(ms, hasSamples) {
+  if (hasSamples === false) return "--"
 
-function formatPingLatency(ms) {
   var value = parseFloat(ms)
   if (!isFinite(value) || value < 0) return "Timeout"
   return value.toFixed(value > 0 && value < 10 ? 1 : 0) + " ms"
@@ -196,8 +263,12 @@ function formatPingLatency(ms) {
 
 function wifiRow(network) {
   if (!network) return null
+  // Primitives only: rows become list-model data, so a WifiNetwork here puts a
+  // live QObject wrapper in every delegate's var property. NetworkManager churn
+  // (scans, AP removals) can destroy the object while a delegate is still
+  // incubating, which segfaults quickshell in wrap_slowPath on the dangling
+  // wrapper. Callers that need the object resolve it via networkForSsid().
   return {
-    network: network,
     connected: !!network.connected,
     known: !!network.known,
     ssid: network.name || "",
@@ -255,6 +326,17 @@ function networkFailureReason(reason, reasons) {
   return "Failed to connect"
 }
 
+// Whether a failed connect should reopen the passphrase prompt. NoSecrets
+// always means credentials are missing. An auth timeout on a protected
+// network means the saved passphrase is wrong (the same profile a first
+// failed attempt leaves behind as "known"), so the user needs a chance to
+// re-enter it -- connectWithPsk overwrites the stored PSK on submit.
+function shouldRepromptPassphrase(reason, isProtected, reasons) {
+  var r = reasons || {}
+  if (reason === r.NoSecrets) return true
+  return !!isProtected && reason === r.WifiAuthTimeout
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     parseNetworkStatus: parseNetworkStatus,
@@ -263,6 +345,11 @@ if (typeof module !== "undefined") {
     formatHeaderSpeed: formatHeaderSpeed,
     formatHeaderFreq: formatHeaderFreq,
     headerDetail: headerDetail,
+    bandLabel: bandLabel,
+    bandSectionTitle: bandSectionTitle,
+    bandTooltip: bandTooltip,
+    parseBandStatus: parseBandStatus,
+    decodeIwSsid: decodeIwSsid,
     parseKeyValue: parseKeyValue,
     throughputState: throughputState,
     pingLatencyState: pingLatencyState,
@@ -270,13 +357,13 @@ if (typeof module !== "undefined") {
     formatPacketLoss: formatPacketLoss,
     formatBytes: formatBytes,
     formatRate: formatRate,
-    formatSpeedMbps: formatSpeedMbps,
     formatPingLatency: formatPingLatency,
     wifiRow: wifiRow,
     sortWifiRows: sortWifiRows,
     wifiSectionTitle: wifiSectionTitle,
     isProtected: isProtected,
     enterpriseConnectScript: enterpriseConnectScript,
-    networkFailureReason: networkFailureReason
+    networkFailureReason: networkFailureReason,
+    shouldRepromptPassphrase: shouldRepromptPassphrase
   }
 }

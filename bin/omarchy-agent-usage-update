@@ -1,0 +1,68 @@
+#!/bin/bash
+
+# omarchy:summary=Regenerate the AI agent usage data files
+# omarchy:args=[--force] [--limits-only] [--except <agent>] [agent...]
+# omarchy:examples=omarchy agent usage-update | omarchy agent usage-update claude | omarchy agent usage-update --except codex
+
+# Each omarchy-agent-usage-<agent> collector prints one display-ready JSON
+# record; this writes them to ~/.local/state/omarchy/agents/usage/ where the
+# agents panel watches them. Adding an agent is adding a collector — the
+# panel picks up any record that appears here.
+
+USAGE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/agents/usage"
+mkdir -p "$USAGE_DIR"
+
+flags=()
+only=()
+declare -A excluded
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+  --force | --limits-only) flags+=("$1") ;;
+  --except)
+    excluded[$2]=1
+    shift
+    ;;
+  *) only+=("$1") ;;
+  esac
+  shift
+done
+
+wanted() {
+  local agent="$1"
+  [[ -n ${excluded[$agent]} ]] && return 1
+  (( ${#only[@]} == 0 )) && return 0
+  local candidate
+  for candidate in "${only[@]}"; do
+    [[ $candidate == "$agent" ]] && return 0
+  done
+  return 1
+}
+
+collect() {
+  local collector="$1" agent="$2"
+  local record tmp
+  if ! record=$("$collector" "${flags[@]}") || [[ -z $record ]] || ! jq -e . >/dev/null 2>&1 <<<"$record"; then
+    echo "omarchy-agent-usage-update: $agent collector failed" >&2
+    return 1
+  fi
+  tmp=$(mktemp "$USAGE_DIR/.$agent.XXXXXX")
+  printf '%s\n' "$record" >"$tmp"
+  mv "$tmp" "$USAGE_DIR/$agent.json"
+}
+
+pids=()
+for collector in "$OMARCHY_PATH"/bin/omarchy-agent-usage-*; do
+  [[ -x $collector ]] || continue
+  agent="${collector##*/omarchy-agent-usage-}"
+  [[ $agent == "update" ]] && continue
+  wanted "$agent" || continue
+  collect "$collector" "$agent" &
+  pids+=($!)
+done
+
+status=0
+for pid in "${pids[@]}"; do
+  wait "$pid" || status=1
+done
+exit $status

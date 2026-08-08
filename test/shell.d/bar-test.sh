@@ -18,6 +18,9 @@ run_node_test <<'JS'
 const fs = require('fs')
 const bar = requireFromRoot('shell/plugins/bar/BarModel.js')
 const barSource = fs.readFileSync(root + '/shell/plugins/bar/Bar.qml', 'utf8')
+const shellSource = fs.readFileSync(root + '/shell/shell.qml', 'utf8')
+
+assert(/function toggleBarTransparency\(\): string \{[\s\S]*?shell\.bar\.toggleTransparency\(\)/.test(shellSource), 'shell exposes the bar transparency toggle over IPC')
 
 // The center section declares two arrangements and shows one; the hidden one
 // must not build its modules or every center widget exists twice.
@@ -39,9 +42,106 @@ assertEqual(bar.pickDrawnSlot([drawn, placeholder]), drawn, 'bar picks the drawn
 assertEqual(bar.pickDrawnSlot([placeholder]), placeholder, 'bar falls back to the placeholder when nothing is drawn')
 assertEqual(bar.pickDrawnSlot([]), null, 'bar reports no slot when there are none')
 assertEqual(bar.pickDrawnSlot(null), null, 'bar tolerates a missing slot list')
+
+// A bar surface is built per monitor, so a panel hotkey has one live copy of
+// the widget per screen to choose between.
+const internal = { moduleName: 'omarchy.audio', visible: true, width: 28, height: 81 }
+const external = { moduleName: 'omarchy.audio', visible: true, width: 28, height: 81 }
+const row = (slot, screenName, opened) => ({ slot, screenName, opened: opened === true })
+const copies = [row(internal, 'eDP-1'), row(external, 'DP-1')]
+assertEqual(
+  bar.pickPanelSlot(copies, 'DP-1'),
+  external,
+  'bar summons a panel on the focused monitor'
+)
+assertEqual(
+  bar.pickPanelSlot(copies, 'eDP-1'),
+  internal,
+  'bar summons a panel on the focused monitor whichever one it is'
+)
+assertEqual(
+  bar.pickPanelSlot(copies, 'HDMI-A-1'),
+  internal,
+  'bar falls back to any live copy when the focused monitor has no bar'
+)
+assertEqual(
+  bar.pickPanelSlot(copies, ''),
+  internal,
+  'bar falls back to any live copy before Hyprland reports a focused monitor'
+)
+assertEqual(
+  bar.pickPanelSlot([row(internal, 'eDP-1', true), row(external, 'DP-1')], 'DP-1'),
+  internal,
+  'bar hides the panel that is open rather than the focused monitor copy'
+)
+assertEqual(
+  bar.pickPanelSlot(
+    [row(placeholder, 'DP-1'), row(drawn, 'DP-1'), row(internal, 'eDP-1')],
+    'DP-1'
+  ),
+  drawn,
+  'bar still picks the drawn slot among the focused monitor copies'
+)
+assertEqual(bar.pickPanelSlot([], 'DP-1'), null, 'bar reports no panel slot when there are none')
+assertEqual(bar.pickPanelSlot(null, 'DP-1'), null, 'bar tolerates a missing panel slot list')
 assert(
-  /BarModel\.pickDrawnSlot\(candidates\)/.test(barSource),
-  'bar routes panels through the drawn-slot picker'
+  /BarModel\.pickPanelSlot\(candidates, focusedScreenName\(\)\)/.test(barSource),
+  'bar routes panel hotkeys through the focused-monitor picker'
+)
+assert(
+  /function focusedScreenName\(\) \{[\s\S]*?Hyprland\.focusedMonitor/.test(barSource),
+  'bar reads the focused monitor from Hyprland'
+)
+assert(
+  /var slots = panelNavigationSlots\(currentSlot\.region, slotWindow\(currentSlot\)\)/.test(barSource),
+  'bar tabs between panels within one bar surface'
+)
+
+const clockSlot = { id: 'clock' }
+const traySlot = { id: 'tray' }
+const horizontalTargets = [
+  { slot: clockSlot, x: 100, y: 0, width: 100, height: 26 },
+  { slot: traySlot, x: 500, y: 0, width: 50, height: 26 }
+]
+assertDeepEqual(
+  bar.nearestDropTarget(horizontalTargets, { x: 240, y: 13 }, false),
+  { slot: clockSlot, after: true },
+  'bar resolves free space beside a widget to its nearest insertion edge'
+)
+assertDeepEqual(
+  bar.nearestDropTarget(horizontalTargets, { x: 460, y: 13 }, false),
+  { slot: traySlot, after: false },
+  'bar resolves free space before a widget to its nearest insertion edge'
+)
+assertDeepEqual(
+  bar.nearestDropTarget(horizontalTargets, { x: 125, y: 13 }, false),
+  { slot: clockSlot, after: false },
+  'bar resolves the first half of a widget before it'
+)
+assertDeepEqual(
+  bar.nearestDropTarget(horizontalTargets, { x: 175, y: 13 }, false),
+  { slot: clockSlot, after: true },
+  'bar resolves the second half of a widget after it'
+)
+assertDeepEqual(
+  bar.nearestDropTarget([
+    { slot: clockSlot, x: 0, y: 100, width: 26, height: 80 }
+  ], { x: 13, y: 220 }, true),
+  { slot: clockSlot, after: true },
+  'vertical bars resolve free space along their vertical axis'
+)
+assertEqual(bar.nearestDropTarget([], { x: 10, y: 10 }, false), null, 'bar reports no insertion edge without targets')
+assert(
+  /contentItem\.mapFromItem\(null, scenePoint\.x, scenePoint\.y\)[\s\S]*?return null/.test(barSource),
+  'bar rejects free-space drops after the pointer leaves the bar'
+)
+assert(
+  /BarModel\.nearestDropTarget\(candidates, scenePoint, root\.vertical\)/.test(barSource),
+  'bar uses nearest insertion targeting for widget and free-space drops'
+)
+assert(
+  /component DragGhostPanel:[\s\S]*?readonly property var targetRect: root\.barDragTargetGeometry[\s\S]*?color: Color\.accent/.test(barSource),
+  'bar draws the insertion marker above the bar in the drag overlay'
 )
 
 // The open-panel mark sits on the module's desktop-facing edge at every
@@ -74,6 +174,50 @@ assertEqual(bar.entryId('omarchy.clock'), 'omarchy.clock', 'bar extracts string 
 const entries = [{ id: 'a' }, { id: 'omarchy.tray' }, { id: 'b' }]
 assertDeepEqual(bar.pinTrayToInner(entries, 'left').map(bar.entryId), ['a', 'b', 'omarchy.tray'], 'bar pins tray to left inner edge')
 assertDeepEqual(bar.pinTrayToInner(entries, 'right').map(bar.entryId), ['omarchy.tray', 'a', 'b'], 'bar pins tray to right inner edge')
+
+// A settings-only shell.json write must patch the live bar, not rebuild it:
+// the module Repeaters recreate every widget when their array model changes.
+const settingsLayout = { left: [{ id: 'omarchy.power' }], center: [{ id: 'omarchy.clock', format: 'HH:mm' }], right: [] }
+assertDeepEqual(
+  bar.inlineSettingsDelta(settingsLayout, { left: [{ id: 'omarchy.power', showPercentage: true }], center: [{ id: 'omarchy.clock', format: 'HH:mm' }], right: [] }),
+  [{ region: 'left', index: 0, entry: { id: 'omarchy.power', showPercentage: true } }],
+  'bar reports a settings-only change as an inline delta'
+)
+assertDeepEqual(
+  bar.inlineSettingsDelta(settingsLayout, JSON.parse(JSON.stringify(settingsLayout))),
+  [],
+  'bar reports an unchanged layout as an empty delta'
+)
+assertEqual(
+  bar.inlineSettingsDelta(settingsLayout, { left: [{ id: 'omarchy.clock', format: 'HH:mm' }], center: [{ id: 'omarchy.power' }], right: [] }),
+  null,
+  'bar treats reordered entries as structural'
+)
+assertEqual(
+  bar.inlineSettingsDelta(settingsLayout, { left: [{ id: 'omarchy.power' }, { id: 'omarchy.battery' }], center: settingsLayout.center, right: [] }),
+  null,
+  'bar treats added entries as structural'
+)
+assertEqual(
+  bar.inlineSettingsDelta(
+    { left: [{ id: 'local.status', exec: 'date' }], center: [], right: [] },
+    { left: [{ id: 'local.status', exec: 'uptime' }], center: [], right: [] }
+  ),
+  null,
+  'bar rebuilds for custom modules, which read their entry directly'
+)
+assertEqual(
+  bar.inlineSettingsDelta(
+    { left: [{ id: 'x' }], center: [], right: [{ id: 'x' }] },
+    { left: [{ id: 'x', a: 1 }], center: [], right: [{ id: 'x' }] }
+  ),
+  null,
+  'bar rebuilds when a changed id appears more than once in the layout'
+)
+assert(
+  /BarModel\.inlineSettingsDelta\(layoutConfig, next\)/.test(barSource),
+  'bar consults the inline settings delta before rebuilding the layout'
+)
 
 assertEqual(bar.moduleString({ id: 'custom', label: 42 }, 'label', 'fallback'), '42', 'bar stringifies module settings')
 assertEqual(bar.entryIndex(entries, 'b'), 2, 'bar finds entry indexes')

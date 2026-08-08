@@ -17,6 +17,6 @@ echo -e "\nReceiving Taildrop files in $HOME/Downloads..."
 systemctl --user enable --now omarchy-tailscale-receive.service
 
 echo -e "\nAdding Tailscale to the bar..."
-omarchy-bar-plugin add omarchy.tailscale
+omarchy-plugin-enable omarchy.tailscale
 
 omarchy-webapp-install "Tailscale" "https://login.tailscale.com/admin/machines" https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/tailscale-light.png

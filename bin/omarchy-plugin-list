@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# omarchy:summary=List discovered shell plugins
+# omarchy:group=plugin
+# omarchy:args=[--json]
+
+set -euo pipefail
+
+json="false"
+
+while (( $# > 0 )); do
+  case "$1" in
+  --json)
+    json="true"
+    ;;
+  -h | --help)
+    echo "Usage: omarchy plugin list [--json]"
+    exit 0
+    ;;
+  *)
+    echo "omarchy-plugin-list: unknown option: $1" >&2
+    exit 1
+    ;;
+  esac
+  shift
+done
+
+plugins=$(omarchy-shell shell listPlugins)
+
+if [[ $json == "true" ]]; then
+  printf '%s\n' "$plugins"
+  exit 0
+fi
+
+jq -r '
+  .[] |
+  [ .id,
+    (if .enabled then "enabled" else "disabled" end),
+    (if .firstParty then "first-party" else "third-party" end),
+    ((.kinds // []) | join(",")),
+    (.name // "")
+  ] | @tsv
+' <<<"$plugins" | awk -F '\t' '
+  BEGIN { printf "%-32s %-9s %-11s %-18s %s\n", "ID", "STATE", "SOURCE", "KINDS", "NAME" }
+  { printf "%-32s %-9s %-11s %-18s %s\n", $1, $2, $3, $4, $5 }
+'

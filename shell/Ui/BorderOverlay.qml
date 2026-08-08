@@ -3,10 +3,9 @@ import QtQuick.Shapes
 import qs.Commons
 import "../Commons/BorderGeometry.js" as Geometry
 
-// Visual-only border renderer. It draws a filled rounded ring so borders can
-// have gradients and independent top/right/bottom/left widths. Flat uniform
-// borders should stay on Rectangle.border; this component is the fallback for
-// cases Rectangle cannot represent.
+// Visual-only border renderer. It draws closed side-run contours, or a
+// compound winding path for all four sides, so asymmetric/gradient borders
+// do not require touching odd-even paths. Flat uniform borders use Rectangle.border.
 Item {
   id: root
 
@@ -29,7 +28,7 @@ Item {
     preferredRendererType: Shape.CurveRenderer
 
     ShapePath {
-      fillRule: ShapePath.OddEvenFill
+      fillRule: ShapePath.WindingFill
       strokeWidth: 0
       fillGradient: LinearGradient {
         x1: root._endpoints.x1

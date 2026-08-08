@@ -105,6 +105,7 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   ├─ xdg-terminal-exec/*.list                           /usr/share/xdg-terminal-exec/
   ├─ applications/mimeapps.list                         /usr/share/applications/mimeapps.list
   ├─ systemd/user/*.{service,path}                      /usr/lib/systemd/user/
+  ├─ systemd/user/app.slice.d/10-oomd.conf              /usr/lib/systemd/user/app.slice.d/
   ├─ systemd/system-sleep/unmount-fuse                  /usr/lib/systemd/system-sleep/
   ├─ systemd/zram-generator.conf.d/90-omarchy.conf      /usr/lib/systemd/zram-generator.conf.d/
   ├─ fonts/omarchy/omarchy.ttf                          /usr/share/fonts/omarchy/
@@ -164,7 +165,7 @@ Runs once per user. It does **not** copy `~/.config/**`, `~/.bashrc`,
 It only does the things `/etc/skel` can't:
 
 - Skill symlinks `~/.{agents,claude,codex,pi/agent}/skills/omarchy` →
-  `$OMARCHY_PATH/default/omarchy-skill`. Symlinks (not copies) so
+  `$OMARCHY_PATH/default/agents/skills/omarchy`. Symlinks (not copies) so
   `omarchy dev link` against a dev checkout repoints them correctly.
 - `xdg-user-dirs-update` (Templates/Public/Desktop folded back into `$HOME`)
   and `~/.config/gtk-3.0/bookmarks` (needs `$HOME` expansion).

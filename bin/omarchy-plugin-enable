@@ -1,0 +1,100 @@
+#!/bin/bash
+
+# omarchy:summary=Enable a shell plugin
+# omarchy:group=plugin
+# omarchy:args=<id> [placement]
+# omarchy:examples=omarchy plugin enable acme.weather --section right
+
+set -euo pipefail
+
+fail() {
+  echo "omarchy-plugin-enable: $*" >&2
+  exit 1
+}
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  echo "Usage: omarchy plugin enable <id> [placement]"
+  exit 0
+fi
+
+id="${1:-}"
+[[ -n $id ]] || fail "plugin id is required"
+shift
+
+if (( $# > 0 )) && omarchy-plugin-catalog | jq -e --arg id "$id" '
+  any(.[]; .id == $id and (.kinds | index("bar")))
+' >/dev/null; then
+  fail "'$id' is a bar; it replaces the bar in use rather than taking a place in one"
+fi
+
+section=""
+index=""
+before=""
+after=""
+if (( $# > 0 )) && [[ $1 != --* ]]; then
+  section="$1"
+  shift
+fi
+while (( $# > 0 )); do
+  case "$1" in
+    --section)
+      [[ -z $section ]] || fail "specify a section positionally or with --section, not both"
+      section="${2:-}"
+      [[ -n $section ]] || fail "--section requires a section"
+      shift 2
+      ;;
+    --index)
+      index="${2:-}"
+      [[ -n $index ]] || fail "--index requires an index"
+      shift 2
+      ;;
+    --before)
+      before="${2:-}"
+      [[ -n $before ]] || fail "--before requires a widget id"
+      shift 2
+      ;;
+    --after)
+      after="${2:-}"
+      [[ -n $after ]] || fail "--after requires a widget id"
+      shift 2
+      ;;
+    *)
+      fail "unknown placement option: $1"
+      ;;
+  esac
+done
+
+[[ -z $section || $section =~ ^(left|center|right)$ ]] ||
+  fail "section must be left, center, or right"
+[[ -z $index || $index =~ ^[0-9]+$ ]] ||
+  fail "index must be a non-negative integer"
+[[ -z $before || -z $after ]] || fail "use only one of --before or --after"
+
+placement=$(jq -cn \
+  --arg section "$section" \
+  --arg index "$index" \
+  --arg before "$before" \
+  --arg after "$after" '
+    {}
+    + (if $section == "" then {} else {section: $section} end)
+    + (if $index == "" then {} else {index: ($index | tonumber)} end)
+    + (if $before == "" then {} else {before: $before} end)
+    + (if $after == "" then {} else {after: $after} end)
+  ')
+
+result=$(omarchy-shell shell enablePlugin "$id" "$placement")
+if [[ $result == "unknown" ]]; then
+  fail "plugin '$id' is not known; run: omarchy-shell shell rescanPlugins"
+elif [[ $result != "ok" ]]; then
+  fail "$result"
+fi
+
+if [[ $placement != "{}" ]]; then
+  echo "Enabled and moved $id"
+elif omarchy-plugin-catalog | jq -e --arg id "$id" '
+  any(.[]; .id == $id and (.kinds | index("bar")))
+' >/dev/null; then
+  echo "Now using $id as the bar"
+else
+  echo "Enabled $id"
+fi

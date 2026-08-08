@@ -6,4 +6,4 @@ echo "Installing Emacs..."
 omarchy-pkg-aur-add omarchy-emacs && omarchy-install-emacs
 
 # emacsclient opens a frame on the running daemon, not a second Emacs
-setsid gtk-launch emacsclient
+setsid uwsm-app -- gtk-launch emacsclient >/dev/null 2>&1 &

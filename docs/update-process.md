@@ -21,12 +21,12 @@ The design goal is:
 
 | Path | Owner | Purpose |
 | --- | --- | --- |
-| `${XDG_RUNTIME_DIR:-/tmp}/omarchy-update.lock` | user | Prevent overlapping update runs. Owned by `omarchy-update`; compatibility wrappers inherit/respect it. |
+| `${XDG_RUNTIME_DIR:-/tmp}/omarchy-update.lock` | user | Prevent overlapping update runs. Owned by `omarchy-update-lock`; compatibility wrappers inherit/respect it. |
 | `/tmp/omarchy-update.log` | user | Transcript of `omarchy update`, used by `omarchy-update-analyze-logs`. |
 | `~/.local/state/omarchy/current/` | user | Generated active theme, selected theme name, and current background symlink. |
 | `~/.local/state/omarchy/migrations/` | user | Per-user migration markers. |
 | `~/.local/state/omarchy/reboot-required` | user | Optional reboot marker checked by `omarchy-update-restart`. |
-| `~/.local/state/omarchy/restart-*-required` | user | Optional service/app restart markers checked by `omarchy-update-restart`. |
+| `~/.local/state/omarchy/restart-*-required` | user | Optional service/app restart markers checked by `omarchy-update-restart`. The shell needs no marker: it is restarted unconditionally after every update. |
 
 ## Migration layout
 
@@ -113,29 +113,28 @@ High-level flow:
 ```text
 omarchy-update
   ├─ ensure transcript logging through script(1) → /tmp/omarchy-update.log
-  ├─ acquire update lock
+  ├─ omarchy-update-lock
+  │    └─ acquire the update lock and run omarchy-update inside it
+  ├─ omarchy-update-requires-free-space
+  │    └─ check free space on / and warn below the configured threshold
   ├─ confirm unless -y
   ├─ create snapper snapshot, if snapper is installed
-  └─ run update pipeline
-       ├─ block system sleep and temporarily enable shell stay-awake mode
-       ├─ omarchy-update-dev
-       ├─ omarchy-update-keyring
-       ├─ omarchy-update-system-pkgs
-       ├─ omarchy-migrate
-       ├─ omarchy-hook post-update
-       ├─ omarchy-update-aur-pkgs
-       ├─ omarchy-update-mise
-       ├─ omarchy-update-orphan-pkgs
-       ├─ omarchy-update-analyze-logs
-       ├─ omarchy-update-available, then refresh/clear shell indicator
-       ├─ omarchy-update-restart
-       └─ release sleep inhibitor and restore shell idle state, if changed
+  ├─ omarchy-update-stay-awake start
+  ├─ run package updates, migrations, hooks, and log analysis
+  ├─ omarchy-update-status
+  │    └─ refresh or clear the shell update indicator
+  ├─ omarchy-update-stay-awake stop
+  │    └─ release the sleep inhibitor and restore shell idle state, if changed
+  └─ omarchy-update-restart
 ```
 
 Important behavior:
 
 - In dev-link mode, `omarchy update` fast-forwards the active checkout from its
   configured upstream before changing system packages or running migrations.
+- The free-space requirement uses a 10 GiB threshold and stops the update before
+  confirmation when it is not met. If free space cannot be determined, the
+  check is silently skipped. Set `OMARCHY_UPDATE_FORCE=1` to bypass the check.
 - `omarchy update` checks/runs migrations in the same visible terminal via
   `omarchy-migrate` after pacman finishes.
 - A failure should leave enough output in `/tmp/omarchy-update.log` and the
@@ -179,11 +178,11 @@ file belongs to whoever created it first, so honouring it would let one user
 silence another user's notification. Missing an update and showing a redundant
 toast is the better failure.
 
-Suppression is why `omarchy-update` starts its sleep inhibitor with the lock
-descriptor closed. That inhibitor outlives the step that starts it, so an update
-killed before `restore_update_inhibitors` would otherwise leave it holding the
-flock indefinitely — blocking later updates and, now that the notifier reads the
-same lock, silencing migration notifications at every login.
+Suppression is why `omarchy-update-stay-awake` starts its sleep inhibitor with
+the lock descriptor closed. That inhibitor outlives the step that starts it, so
+an update killed before cleanup would otherwise leave it holding the flock
+indefinitely — blocking later updates and, now that the notifier reads the same
+lock, silencing migration notifications at every login.
 
 Fallbacks:
 
@@ -244,7 +243,10 @@ scripts.
 
 | Binary | Current purpose | Keep? / Question |
 | --- | --- | --- |
-| `omarchy-update` | Public user command. Adds transcript logging, lock, confirmation, snapshot, sleep/idle inhibitors, package updates, migrations, hooks, update-state refresh, and restart checks. | **Keep.** This is the blessed entry point and owns the update pipeline. |
+| `omarchy-update` | Public user command. Adds transcript logging, confirmation, snapshot, and restart checks around the locked, sleep-inhibited update pipeline. | **Keep.** This is the blessed entry point and orchestrates the update pipeline. |
+| `omarchy-update-lock` | Hidden command wrapper that holds the per-user update lock while its child runs. | **Keep internal/hidden.** Isolates update concurrency and lock descriptor handling. |
+| `omarchy-update-stay-awake` | Hidden helper that starts or stops update-owned sleep and idle inhibition, restoring only the state it changed. | **Keep internal/hidden.** Keeps inhibitor ownership and cleanup together. |
+| `omarchy-update-status` | Hidden helper that refreshes or clears the shell update indicator after rechecking available updates. | **Keep internal/hidden.** Keeps shell status synchronization out of the main pipeline. |
 | `omarchy-update-perform` | Hidden compatibility wrapper for `omarchy-update -y`. | **Temporary.** Keep only for old callers; new code should call `omarchy-update` directly. |
 | `omarchy-update-confirm` | Gum confirmation copy for `omarchy update`. | **Question.** Could be inlined into `omarchy-update`; separate file only helps keep copy isolated. |
 | `omarchy-update-dev` | Fast-forwards the active dev-linked checkout from its configured upstream; no-ops for package-backed installs. | **Keep.** Runs before package updates so a checkout conflict stops the update before system mutation. |
@@ -259,7 +261,7 @@ scripts.
 | `omarchy-update-mise` | Runs `mise up` for mise-managed tools. | **Keep.** Mise-managed tools are intentionally part of the blessed update path. |
 | `omarchy-update-orphan-pkgs` | Lists orphans and prompts before removal; noninteractive mode never removes. | **Keep for now.** Safe because it is prompt-only. |
 | `omarchy-update-analyze-logs` | Scans `/tmp/omarchy-update.log` for known failure patterns, currently initramfs generation. | **Keep/expand.** Useful safety net; should grow only for high-signal checks. |
-| `omarchy-update-restart` | Prompts for reboot after kernel/Hyprland updates and restarts components with `restart-*-required` markers. | **Keep.** Important final step; may eventually include service-restart checks. |
+| `omarchy-update-restart` | Prompts for reboot after kernel/Hyprland updates, restarts components with `restart-*-required` markers, and always restarts the shell. | **Keep.** Important final step; may eventually include service-restart checks. |
 | `omarchy-update-firmware` | Manual firmware update command using fwupd. Not part of the normal update pipeline. | **Keep separate.** Firmware is not a routine system update step. |
 | `omarchy-update-time` | Restarts `systemd-timesyncd`. | **Question.** Not really an update command. Consider renaming/moving under system/time maintenance. |
 

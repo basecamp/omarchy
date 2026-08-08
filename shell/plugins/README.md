@@ -3,10 +3,10 @@
 These plugins ship with Omarchy and are discovered by the shell at startup.
 They use the same `manifest.json` contract as third-party plugins; the
 only difference is that the shell flags them with `__isFirstParty: true`.
-First-party non-bar plugins are always enabled; `omarchy.bar` is the default
-bar option and becomes inactive only while a third-party `kind: "bar"` plugin is
-selected. Services and keep-loaded panels are mounted at startup; other panels,
-overlays, and menus are loaded on demand.
+First-party non-bar plugins are enabled unless listed in `disabledPlugins[]`;
+`omarchy.bar` is the default bar option and becomes inactive only while another
+`kind: "bar"` plugin is selected. Services and keep-loaded panels are mounted
+at startup; other panels, overlays, and menus are loaded on demand.
 
 User-installed plugins live alongside these conceptually but on disk under
 `~/.config/omarchy/plugins/<plugin-id>/` rather than in this directory.
@@ -27,7 +27,7 @@ User-installed plugins live alongside these conceptually but on disk under
 | Network       | `omarchy.network`         | `bar-widget`            | `panels/network/Panel.qml`            |
 | Power         | `omarchy.power`           | `bar-widget`            | `panels/power/Panel.qml`              |
 | Tailscale     | `omarchy.tailscale`       | `bar-widget`            | `panels/tailscale/Panel.qml`          |
-| Model usage   | `omarchy.model-usage`     | `bar-widget`            | `model-usage/Widget.qml`              |
+| Agents   | `omarchy.agents`     | `bar-widget`            | `agents/Panel.qml`               |
 | Weather       | `omarchy.weather`         | `bar-widget`            | `panels/weather/BarWidget.qml`        |
 | Media         | `omarchy.media`           | `service`, `bar-widget` | `services/media/Service.qml`, `services/media/BarWidget.qml` |
 | Battery       | `omarchy.battery`         | `service`               | `services/battery/Service.qml`        |

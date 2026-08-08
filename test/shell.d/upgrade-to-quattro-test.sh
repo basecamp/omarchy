@@ -13,6 +13,14 @@ pacman_line=$(grep -n '^configure_pacman_channel$' "$upgrade_to_quattro" | cut -
 grep -F 'omarchy-snapshot create || (($? == 127))' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade snapshots the system before mutation"
 
+# The mirrors are repointed immediately before the keyrings go in, so only a
+# forced refresh replaces the legacy database and its stale checksums.
+grep -F 'pacman -Syy --noconfirm archlinux-keyring omarchy-keyring' "$upgrade_to_quattro" >/dev/null
+if grep -F 'pacman -Sy --noconfirm archlinux-keyring omarchy-keyring' "$upgrade_to_quattro" >/dev/null; then
+  fail "Omarchy 4 upgrade forces a database refresh before installing keyrings"
+fi
+pass "Omarchy 4 upgrade forces a database refresh before installing keyrings"
+
 grep -F 'pacman -Syu --needed' "$upgrade_to_quattro" >/dev/null
 grep -F 'omarchy-update-aur-pkgs' "$upgrade_to_quattro" >/dev/null
 grep -F 'omarchy-update-available' "$upgrade_to_quattro" >/dev/null
@@ -31,11 +39,23 @@ if grep -F 'skip-first-run-update-notification' "$upgrade_to_quattro" >/dev/null
 fi
 pass "Omarchy 4 upgrade completes first-run as one lifecycle"
 
-grep -F '"$root/bin/omarchy-done" mark first-run-user' "$upgrade_to_quattro" >/dev/null
-grep -F 'rm -f "$state_dir/first-run-user.done"' "$upgrade_to_quattro" >/dev/null
-grep -F '"$root/bin/omarchy-done" mark finalize-user' "$upgrade_to_quattro" >/dev/null
-grep -F 'rm -f "$state_dir/finalize-user.done"' "$upgrade_to_quattro" >/dev/null
+grep -F 'touch "$done_dir/first-run-user" "$done_dir/finalize-user"' "$upgrade_to_quattro" >/dev/null
+grep -F 'rm -f "$state_dir/first-run-user.done" "$state_dir/finalize-user.done"' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade completes first-run and migrates legacy completion markers"
+
+# The script runs from the branch against whatever packaged tree the channel
+# serves, so a packaged command missing from an older build must never be able
+# to abort the upgrade partway through.
+if grep -F '"$root/bin/omarchy-done"' "$upgrade_to_quattro" >/dev/null; then
+  fail "Omarchy 4 upgrade writes completion markers without the packaged omarchy-done"
+fi
+pass "Omarchy 4 upgrade writes completion markers without the packaged omarchy-done"
+
+for guarded_step in omarchy-refresh-applications 'omarchy-bar defaults'; do
+  grep -F "run_as_user_omarchy $guarded_step ||" "$upgrade_to_quattro" >/dev/null ||
+    fail "Omarchy 4 upgrade survives a packaged tree without $guarded_step"
+done
+pass "Omarchy 4 upgrade survives a packaged tree missing top-level commands"
 
 grep -F 'configure_snapper_policy' "$upgrade_to_quattro" >/dev/null
 grep -F '/usr/share/omarchy/install/config/snapper.sh' "$upgrade_to_quattro" >/dev/null
@@ -53,6 +73,44 @@ grep -F 'systemd-networkd.socket' "$upgrade_to_quattro" >/dev/null
 grep -F 'systemd-networkd-resolve-hook.socket' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade retires systemd-networkd for NetworkManager"
 
+# Booting with both managers enabled leaves them fighting over the Wi-Fi
+# adapter, so enabling NetworkManager and disabling iwd cannot be separated by
+# any step that might abort in between.
+function_body() {
+  awk -v name="$1" '$0 == name "() {" { inside = 1; next } inside && $0 == "}" { exit } inside' "$upgrade_to_quattro"
+}
+
+if function_body cleanup_retired_services | grep -F 'systemctl disable iwd' >/dev/null; then
+  fail "Omarchy 4 upgrade does not retire iwd in a step separate from the NetworkManager enable"
+fi
+grep -A1 -F '  enable_system_service NetworkManager.service' "$upgrade_to_quattro" |
+  grep -F 'as_root systemctl disable iwd.service' >/dev/null ||
+  fail "Omarchy 4 upgrade retires iwd in the step that enables NetworkManager"
+pass "Omarchy 4 upgrade switches from iwd to NetworkManager atomically"
+
+# set -e aborts silently, so only an explicit banner distinguishes a
+# half-upgraded system from a finished one.
+grep -Fx 'trap cleanup_on_exit EXIT' "$upgrade_to_quattro" >/dev/null ||
+  fail "Omarchy 4 upgrade reports an aborted run instead of exiting silently"
+cleanup_body=$(function_body cleanup_on_exit)
+grep -F 'upgrade_started && ! upgrade_completed' <<<"$cleanup_body" >/dev/null ||
+  fail "Omarchy 4 upgrade reports an aborted run instead of exiting silently"
+grep -F 'Upgrade incomplete - do NOT reboot.' <<<"$cleanup_body" >/dev/null ||
+  fail "Omarchy 4 upgrade reports an aborted run instead of exiting silently"
+grep -F 'exit "$exit_status"' <<<"$cleanup_body" >/dev/null ||
+  fail "Omarchy 4 upgrade preserves the failing exit status"
+grep -F '>&2' <<<"$cleanup_body" >/dev/null ||
+  fail "Omarchy 4 upgrade reports an aborted run on stderr"
+started_line=$(grep -n '^upgrade_started=1$' "$upgrade_to_quattro" | cut -d: -f1)
+completed_line=$(grep -n '^upgrade_completed=1$' "$upgrade_to_quattro" | cut -d: -f1)
+suppress_line=$(grep -n '^suppress_hyprland_config_reload$' "$upgrade_to_quattro" | cut -d: -f1)
+shell_line=$(grep -n '^if start_omarchy_shell_session; then$' "$upgrade_to_quattro" | cut -d: -f1)
+[[ -n $started_line && -n $completed_line && -n $suppress_line && -n $shell_line ]] ||
+  fail "upgrade progress markers and the mutating step range exist"
+(( started_line < suppress_line )) || fail "the upgrade is marked started before the first mutation"
+(( completed_line > shell_line )) || fail "the upgrade is marked complete only after the last step"
+pass "Omarchy 4 upgrade reports an aborted run instead of exiting silently"
+
 grep -F 'omarchy-bar defaults' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade restores service-aware bar defaults"
 
@@ -69,3 +127,42 @@ pass "Omarchy 4 upgrade refreshes application launchers"
 grep -F '/etc/systemd/system.conf.d/99-omarchy-nofile.conf' "$upgrade_to_quattro" >/dev/null
 grep -F '/etc/systemd/user.conf.d/99-omarchy-nofile.conf' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade removes stale nofile drop-ins"
+
+cmdline_line=$(grep -n '^preserve_kernel_cmdline_root$' "$upgrade_to_quattro" | cut -d: -f1)
+packages_line=$(grep -n '^install_omarchy_quattro_packages$' "$upgrade_to_quattro" | cut -d: -f1)
+[[ -n $cmdline_line && -n $packages_line ]] || fail "kernel cmdline preservation and package install calls exist"
+(( packages_line < cmdline_line )) || fail "kernel cmdline preservation runs once limine-mkinitcpio is installed"
+grep -F '/etc/default/limine' "$upgrade_to_quattro" >/dev/null
+grep -F 'KERNEL_CMDLINE[default]+=" ${boot_params[*]}"' "$upgrade_to_quattro" >/dev/null
+grep -F 'cat /proc/cmdline' "$upgrade_to_quattro" >/dev/null
+grep -F 'findmnt -no UUID /' "$upgrade_to_quattro" >/dev/null
+grep -F 'rootflags=subvol=' "$upgrade_to_quattro" >/dev/null
+grep -F 'cryptdevice' "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade preserves the kernel cmdline root parameters"
+
+# The += drop-ins make limine-entry-tool ignore /etc/kernel/cmdline and
+# /proc/cmdline, so only the tool's own merge can say whether root= survives.
+# Queried for the default key, so a kernel-specific pin cannot cover for the
+# entries this repairs.
+grep -F 'limine-entry-tool --get-cmdline default' "$upgrade_to_quattro" >/dev/null
+grep -F "grep -qE '(^|[[:space:]])root='" "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade asks limine-entry-tool whether root= survives"
+
+# The crypt layer hides in the parents on LVM-on-LUKS, and a partial cmdline
+# for an encrypted root must not be written at all.
+grep -F 'findmnt -no SOURCE --nofsroot /' "$upgrade_to_quattro" >/dev/null
+grep -F 'lsblk -nso TYPE "$root_source"' "$upgrade_to_quattro" >/dev/null
+grep -F 'grep -qx crypt' "$upgrade_to_quattro" >/dev/null
+grep -F '((have_mount_mode)) || boot_params+=(rw)' "$upgrade_to_quattro" >/dev/null
+pass "Omarchy 4 upgrade repair path refuses a partial dm-crypt cmdline"
+
+# The cmdline that boots is the one embedded in the UKIs, and an unverified
+# root= must block the reboot rather than just warn.
+grep -F -- '--only-section=.cmdline' "$upgrade_to_quattro" >/dev/null
+grep -F "as_root find /boot/EFI/Linux -maxdepth 1 -name 'omarchy_linux*.efi'" "$upgrade_to_quattro" >/dev/null
+grep -F 'boot_cmdline_unsafe=1' "$upgrade_to_quattro" >/dev/null
+unsafe_line=$(grep -n 'if (( boot_cmdline_unsafe )); then' "$upgrade_to_quattro" | cut -d: -f1)
+reboot_line=$(grep -n 'Rebooting because --reboot was passed' "$upgrade_to_quattro" | cut -d: -f1)
+[[ -n $unsafe_line && -n $reboot_line ]] || fail "reboot gate and reboot branch exist"
+(( unsafe_line < reboot_line )) || fail "an unverified kernel cmdline blocks the reboot"
+pass "Omarchy 4 upgrade verifies the UKIs and refuses to reboot unverified"

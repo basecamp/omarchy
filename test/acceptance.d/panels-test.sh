@@ -76,7 +76,7 @@ done <<<"$panels"
 # The power widget intentionally disappears on desktops and VMs without a
 # battery. Exercise it on laptops, and verify that hardware-less sessions take
 # the supported no-panel path instead of treating that as a shell failure.
-if upower -e | grep -q '/battery_'; then
+if upower -e | grep '/battery_' >/dev/null; then
   if ! (trap - EXIT; open_and_capture_panel "power" "omarchy.power"); then
     status=1
     hide_panels
@@ -97,6 +97,23 @@ wait_until "Tab keeps a shell panel open" 15 layer_present "omarchy-keyboard-pan
 screenshot "success-panel-navigation-02-next"
 hide_panels
 wait_until "keyboard-navigated panel closes" 15 layer_absent "omarchy-keyboard-panel"
+
+# Reopening during the fade keeps the layer surface mapped. Verify the focus
+# prime reacquires compositor keyboard focus instead of relying on map-time
+# OnDemand behavior, which would leave Escape in the previously focused app.
+omarchy-shell shell summon omarchy.bluetooth >/dev/null
+wait_until "focus-prime panel opens" 15 layer_present "omarchy-keyboard-panel"
+if (( $(hyprctl -j monitors | jq length) == 1 )); then
+  layer_absent "omarchy-keyboard-panel-dismiss" || fail "single-monitor panel has no dismissal twin"
+  pass "single-monitor panel has no dismissal twin"
+fi
+omarchy-shell shell hide omarchy.bluetooth >/dev/null
+omarchy-shell shell summon omarchy.bluetooth >/dev/null
+wait_until "focus-prime panel reopens" 15 layer_present "omarchy-keyboard-panel"
+sleep 1
+screenshot "success-panel-focus-prime-reopened"
+wtype -k Escape
+wait_until "Escape closes a panel reopened during fade" 15 layer_absent "omarchy-keyboard-panel"
 
 trap - EXIT
 restore_weather

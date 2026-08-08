@@ -234,13 +234,8 @@ pass "alert removal handles the older indicators key"
   fail "alert removal leaves an already-empty list alone" "$(jq -c '.bar.layout.right[1]' "$shell_config")"
 pass "alert removal leaves an already-empty list alone"
 
-(($(wc -l <"$SHELL_RESTARTS") == 1)) || fail "alert removal restarts the shell"
-[[ ! -s $STATE_CALLS ]] || fail "a restarted shell needs no deferred restart" "$(cat "$STATE_CALLS")"
-pass "alert removal restarts the shell"
-
-# Migrations run from a TTY or over ssh have no shell to restart, and stopping
-# there would strand every migration queued behind this one.
-reset_home
-SHELL_RESTART_STATUS=1 run_migration
-grep -Fxq 'set restart-shell-required' "$STATE_CALLS" || fail "an unavailable shell defers its restart" "$(cat "$STATE_CALLS")"
-pass "an unavailable shell defers its restart"
+# The running shell hot-reloads shell.json and the post-update restart is
+# unconditional, so the migration itself never touches the shell.
+[[ ! -s $SHELL_RESTARTS ]] || fail "alert removal leaves shell restarts to the update" "$(cat "$SHELL_RESTARTS")"
+[[ ! -s $STATE_CALLS ]] || fail "alert removal defers no shell restart" "$(cat "$STATE_CALLS")"
+pass "alert removal leaves shell restarts to the update"

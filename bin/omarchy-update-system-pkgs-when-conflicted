@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Retry a system package update after resolving file conflicts
+# omarchy:hidden=true
+
 # Internal to omarchy-update-system-pkgs. Not a command to run by hand: it acts
 # on a pacman error report, and an old or hand-written one would move live files
 # out of the way for an upgrade that is not happening.

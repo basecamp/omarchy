@@ -24,8 +24,11 @@ PanelSeparator 1.0 PanelSeparator.qml
 PanelSlider 1.0 PanelSlider.qml
 PanelToolTip 1.0 PanelToolTip.qml
 PointerMoveGate 1.0 PointerMoveGate.qml
+ScreenMoveRemap 1.0 ScreenMoveRemap.qml
 PopupCard 1.0 PopupCard.qml
 SearchableDropdown 1.0 SearchableDropdown.qml
+SpeedTestOverlay 1.0 SpeedTestOverlay.qml
 TextField 1.0 TextField.qml
 Toggle 1.0 Toggle.qml
+ToggleSwitch 1.0 ToggleSwitch.qml
 WidgetButton 1.0 WidgetButton.qml

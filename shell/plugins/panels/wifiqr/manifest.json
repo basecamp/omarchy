@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.wifiqr",
+  "name": "Wi-Fi QR",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Share the connected Wi-Fi network as a scannable QR code",
+  "kinds": [
+    "panel"
+  ],
+  "entryPoints": {
+    "panel": "Panel.qml"
+  }
+}

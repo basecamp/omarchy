@@ -20,6 +20,7 @@ cups
 cups-browsed
 cups-filters
 cups-pdf
+ddcutil
 docker
 docker-buildx
 docker-compose
@@ -41,7 +42,6 @@ fontconfig
 foot
 fzf
 git
-gnome-calculator
 gnome-keyring
 gnome-themes-extra
 grim
@@ -64,7 +64,6 @@ networkmanager
 jq
 kdenlive
 kernel-modules-hook
-kvantum-qt5
 lazydocker
 lazygit
 less
@@ -91,6 +90,7 @@ nss-mdns
 nvim
 obs-studio
 obsidian
+omacalc
 omacut
 omawrite
 omarchy-nvim
@@ -105,11 +105,10 @@ python-gobject
 python-poetry-core
 python-terminaltexteffects
 qemu-user-static-binfmt
-qt5-wayland
+qrencode
 quickshell-git
 ripgrep
 ruby
-rust
 tensaku
 sddm
 slurp

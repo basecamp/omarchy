@@ -31,7 +31,9 @@ option_bool() {
   local signature="$2"
   local option="$3"
 
-  hyprctl_instance "$runtime_dir" "$signature" -j getoption "$option" 2>/dev/null | jq -r '.bool'
+  # A dead instance makes hyprctl print "Couldn't connect ..." on stdout, so
+  # silence jq too and let the failed pipeline skip the instance.
+  hyprctl_instance "$runtime_dir" "$signature" -j getoption "$option" 2>/dev/null | jq -r '.bool' 2>/dev/null
 }
 
 instances() {

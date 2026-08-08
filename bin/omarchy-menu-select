@@ -6,6 +6,12 @@
 # omarchy:args=prompt [option...] [-- menu args...]
 # omarchy:examples=omarchy menu select Format jpg png|omarchy-menu-select Resolution 4k 1080p 720p -- --width 400
 
+# An option may lead with an icon, as "<glyph><TAB><label>", and may trail a
+# subtext shown under the label, as "<glyph><TAB><label><TAB><subtext>". The
+# menu shows the glyph but never returns it. A plain option returns the label
+# alone; an option with a subtext returns "<label><TAB><subtext>", so callers
+# with same-named rows get the subtext back as the stable key.
+
 set -euo pipefail
 
 if (( $# < 1 )); then

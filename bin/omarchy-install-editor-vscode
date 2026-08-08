@@ -26,4 +26,4 @@ printf '{\n  "update.mode": "none"\n}\n' > ~/.config/Code/User/settings.json
 # Apply Omarchy theme to VSCode
 omarchy-theme-set-vscode
 
-setsid gtk-launch code
+setsid uwsm-app -- gtk-launch code >/dev/null 2>&1 &

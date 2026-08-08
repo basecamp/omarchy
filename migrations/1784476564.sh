@@ -8,7 +8,13 @@ echo "Keep non-Latin keyboard layouts out of the initramfs so the LUKS passphras
 
 hooks_conf="/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
 
-layout=$(. /etc/vconsole.conf 2>/dev/null && echo "${XKBLAYOUT%%,*}")
+# vconsole.conf only guarantees KEYMAP, and it need not exist at all. Sourcing
+# one that isn't there fails, and under omarchy-migrate's `bash -euo pipefail`
+# that aborts every migration behind this one. Unset first so an exported
+# XKBLAYOUT can't answer for a file that sets none.
+layout=""
+[[ -f /etc/vconsole.conf ]] && layout=$(unset XKBLAYOUT; . /etc/vconsole.conf; echo "${XKBLAYOUT:-}")
+layout="${layout%%,*}"
 
 if [[ $layout =~ ^(af|am|ara|bd|bg|by|et|ge|gr|il|in|iq|ir|kg|kh|kz|la|lk|mk|mm|mn|mv|np|rs|ru|sy|th|tj|ua)$ ]] &&
   [[ -f $hooks_conf ]] && grep -qx 'FILES+=(/etc/vconsole.conf)' "$hooks_conf"; then

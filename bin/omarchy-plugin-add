@@ -1,0 +1,168 @@
+#!/bin/bash
+
+# omarchy:summary=Add a shell plugin from git
+# omarchy:group=plugin
+# omarchy:args=[git-url] [--enable] [--yes]
+# omarchy:examples=omarchy plugin add https://github.com/acme/omarchy-weather.git --enable
+# omarchy:alias=omarchy plugin install
+
+set -euo pipefail
+
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -oBatchMode=yes}"
+
+PLUGINS_DIR="$HOME/.config/omarchy/plugins"
+ASSUME_YES=0
+
+fail() {
+  echo "omarchy-plugin-add: $*" >&2
+  exit 1
+}
+
+interactive() {
+  [[ -t 0 && -t 1 ]]
+}
+
+confirm() {
+  local prompt="$1"
+  (( ASSUME_YES )) && return 0
+  if interactive; then
+    gum confirm "$prompt"
+  else
+    fail "refusing to continue without confirmation; pass --yes"
+  fi
+}
+
+ENABLE_PLACEMENT=()
+
+select_bar_widget_placement() {
+  local id="$1"
+  local section
+  local default_section
+  interactive || return 0
+  (( ASSUME_YES )) && return 0
+
+  jq -e '(.kinds // []) | (index("bar") | not) and (index("bar-widget") != null)' \
+    "$PLUGINS_DIR/$id/manifest.json" >/dev/null 2>&1 || return 0
+
+  default_section=$(jq -r '.barWidget.defaultSection // "center"' "$PLUGINS_DIR/$id/manifest.json")
+  section=$(printf '%s\n' left center right |
+    gum choose --header="Place $id in which bar section?" --selected "$default_section") || return 0
+  [[ -n $section ]] || return 0
+  ENABLE_PLACEMENT=(--section "$section")
+}
+
+plugin_id_manifest() {
+  omarchy-plugin-catalog | jq -r --arg id "$1" '
+    map(select(.id == $id))[0].manifestPath // empty
+  '
+}
+
+url=""
+enable_after=""
+
+while (( $# > 0 )); do
+  case "$1" in
+  --enable)
+    enable_after=true
+    shift
+    ;;
+  --yes | -y)
+    ASSUME_YES=1
+    shift
+    ;;
+  -h | --help)
+    echo "Usage: omarchy plugin add [git-url] [--enable] [--yes]"
+    exit 0
+    ;;
+  -*)
+    fail "unknown add option: $1"
+    ;;
+  *)
+    [[ -z $url ]] || fail "unexpected argument: $1"
+    url="$1"
+    shift
+    ;;
+  esac
+done
+
+if [[ -z $url ]]; then
+  interactive ||
+    fail "a git URL is required (e.g. omarchy plugin add https://github.com/acme/omarchy-weather.git)"
+  url=$(gum input --prompt "Git URL of the plugin repo: ") || fail "cancelled"
+  [[ -n $url ]] || fail "a git URL is required"
+fi
+
+if (( ! ASSUME_YES )); then
+  cat >&2 <<WARN
+
+⚠️  Plugins run as arbitrary, unsandboxed code inside your long-lived
+  omarchy-shell process. Only add repos you trust, and review the code
+  before you enable it.
+
+      URL: $url
+
+WARN
+  confirm "Clone and add this plugin?" || fail "aborted"
+fi
+
+mkdir -p "$PLUGINS_DIR"
+
+stage="$PLUGINS_DIR/.add.tmp.$$"
+rm -rf "$stage"
+if ! git clone -- "$url" "$stage"; then
+  rm -rf "$stage"
+  fail "failed to clone $url"
+fi
+
+if ! omarchy-plugin-validate "$stage"; then
+  rm -rf "$stage"
+  fail "refusing to add: validation failed"
+fi
+
+id=$(jq -r '.id' "$stage/manifest.json")
+existing_manifest=$(plugin_id_manifest "$id") || {
+  rm -rf "$stage"
+  fail "could not inspect installed plugin ids"
+}
+if [[ -n $existing_manifest ]]; then
+  rm -rf "$stage"
+  fail "plugin id '$id' is already used by $existing_manifest"
+fi
+
+target="$PLUGINS_DIR/$id"
+if [[ -e $target || -L $target ]]; then
+  rm -rf "$stage"
+  fail "plugin '$id' is already installed; update it with: omarchy plugin update $id"
+fi
+
+mv "$stage" "$target"
+echo "Added $id into $target"
+
+omarchy-shell shell rescanPlugins >/dev/null
+
+if [[ -z $enable_after ]]; then
+  if (( ASSUME_YES )) || ! interactive; then
+    enable_after=false
+  elif confirm "Enable '$id' now?"; then
+    enable_after=true
+  else
+    enable_after=false
+  fi
+fi
+
+if [[ $enable_after == true ]]; then
+  select_bar_widget_placement "$id"
+  discovered=0
+  for (( attempt = 0; attempt < 40; attempt++ )); do
+    if omarchy-plugin-list --json | jq -e --arg id "$id" 'any(.[]; .id == $id)' >/dev/null; then
+      discovered=1
+      break
+    fi
+    sleep 0.05
+  done
+  (( discovered )) || fail "plugin '$id' is not known"
+  omarchy-plugin-enable "$id" "${ENABLE_PLACEMENT[@]}"
+else
+  echo "Enable it later with: omarchy plugin enable $id"
+fi
