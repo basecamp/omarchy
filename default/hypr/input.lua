@@ -30,11 +30,16 @@ local vconsole = read_vconsole()
 
 local kb_layout = vconsole.XKBLAYOUT or "us"
 local kb_variant = vconsole.XKBVARIANT or ""
--- CapsLock is the compose key, so Caps Lock itself has to live somewhere else.
--- Both Shifts together is the usual home for it, but it's easy to hit by
--- accident while typing. The _cancel variant sets Caps Lock the same way and
--- releases it on the next lone Shift, so a misfire clears itself.
-local kb_options = "compose:caps,shift:both_capslock_cancel"
+-- keyd puts Escape on Caps Lock (see install/config/keyd.sh), so it grabs the
+-- key at the evdev layer and compose:caps could never fire. Compose moves to
+-- <MENU>, which keyd synthesizes from the held Caps Lock layer. That also frees
+-- the <CAPS> keycode to mean Caps_Lock again, which is what the same layer
+-- emits for a real Caps Lock.
+--
+-- Both Shifts together still sets Caps Lock as before. It's easy to hit by
+-- accident while typing, and the _cancel variant releases it on the next lone
+-- Shift, so a misfire clears itself.
+local kb_options = "compose:menu,shift:both_capslock_cancel"
 
 -- Hyprland resolves keybindings against the first entry in kb_layout, not the
 -- layout that's currently active, so Omarchy's Latin-keysym bindings (SUPER + W

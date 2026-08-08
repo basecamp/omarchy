@@ -13,6 +13,7 @@ systemctl enable NetworkManager.service
 # in install/hardware/network.sh.
 systemctl mask NetworkManager-wait-online.service
 systemctl enable power-profiles-daemon.service
+systemctl enable keyd.service
 systemctl enable sddm.service
 # Kill one runaway app scope instead of letting reclaim thrashing take the
 # whole session down. [Install] pulls in systemd-oomd.socket via Also=, which

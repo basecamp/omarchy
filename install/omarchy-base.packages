@@ -63,6 +63,7 @@ inxi
 networkmanager
 jq
 kdenlive
+keyd
 kernel-modules-hook
 lazydocker
 lazygit
