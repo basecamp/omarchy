@@ -92,11 +92,15 @@ download_url() {
       -vf "crop='min(iw,ih)':'min(iw,ih)',scale=256:256" -q:v 2 \
       "$preview" -loglevel quiet 2>/dev/null || true
 
-    # Clicking the toast opens the video in mpv (-a blocks until clicked or timed out).
+    local toast_ms=10000
+    omarchy-notification-send -g 󰄬 "Download complete" "$title" \
+      -t "$toast_ms" --image "${preview:-$filepath}" \
+      --exec "$(printf 'mpv %q' "$filepath")"
+
+    # The toast renders the thumbnail for as long as it is on screen, so clear
+    # the preview once it can no longer be showing rather than waiting here.
     (
-      if [[ -n $(omarchy-notification-send -g 󰄬 "Download complete" "$title" -t 10000 --image "${preview:-$filepath}" -a) ]]; then
-        mpv "$filepath"
-      fi
+      sleep "$((toast_ms / 1000 + 5))"
       rm -f "$preview"
     ) &
   else
