@@ -75,6 +75,17 @@ case "$*" in
       grep -Fx '303' "$OMARCHY_TEST_QS_STATE" >/dev/null &&
       printf 'ok\n'
     ;;
+  *'lock lock')
+    touch "$OMARCHY_TEST_QS_STATE.locked"
+    printf 'ok\n'
+    ;;
+  *'lock status')
+    if [[ -f $OMARCHY_TEST_QS_STATE.locked ]]; then
+      printf '{"secure": true, "requested": true}\n'
+    else
+      printf '{"secure": false, "requested": false}\n'
+    fi
+    ;;
 esac
 SH
 
@@ -184,7 +195,8 @@ grep -F "ipc -n -p $restart_root/shell call -- shell ping" "$ipc_log" >/dev/null
 pass "restart replaces duplicate shell instances from the session checkout"
 
 : >"$restart_log"
-printf '404\n' >"$restart_state"
+printf '303\n' >"$restart_state"
+touch "$restart_state.locked"
 
 locked_error=$(PATH="$restart_bin:$PATH" \
   OMARCHY_PATH="$restart_root" \
@@ -198,6 +210,38 @@ locked_error=$(PATH="$restart_bin:$PATH" \
   "$ROOT/bin/omarchy-restart-shell" 2>&1) && fail "restart refuses while the shell lock is active"
 
 [[ $locked_error == "Refusing to restart Omarchy shell while the session is locked." ]] || fail "locked restart explains why it was refused" "$locked_error"
-[[ $(<"$restart_state") == 404 ]] || fail "locked restart preserves the running shell"
+[[ $(<"$restart_state") == 303 ]] || fail "locked restart preserves the running shell"
 [[ ! -s $restart_log ]] || fail "locked restart does not stop or launch Quickshell"
 pass "restart preserves the shell while its lock is active"
+
+# A LOCK session without an active locker — dead shell or a crash-handler
+# relaunch holding no lock — is the failsafe: restart must proceed,
+# re-acquire the session lock, and wait for it to report secure.
+sleep 30 &
+restart_pid_one=$!
+printf '%s\n' "$restart_pid_one" >"$restart_state"
+rm -f "$restart_state.locked"
+: >"$restart_log"
+: >"$ipc_log"
+
+PATH="$restart_bin:$PATH" \
+OMARCHY_PATH="$restart_root" \
+XDG_RUNTIME_DIR="$runtime_dir" \
+OMARCHY_TEST_SESSION_LOCKED=1 \
+OMARCHY_TEST_QS_STATE="$restart_state" \
+OMARCHY_TEST_QS_LOG="$restart_log" \
+OMARCHY_TEST_QS_ENV_LOG="$restart_env_log" \
+OMARCHY_TEST_DISPATCH_LOG="$dispatch_log" \
+OMARCHY_TEST_IPC_LOG="$ipc_log" \
+OMARCHY_TEST_SESSION_PATH="$restart_root" \
+  timeout 5 "$ROOT/bin/omarchy-restart-shell" || fail "locked restart recovers when the lock client is dead"
+
+if kill -0 "$restart_pid_one" 2>/dev/null; then
+  fail "dead-lock recovery stops the stale shell instance"
+fi
+wait "$restart_pid_one" 2>/dev/null || true
+restart_pid_one=""
+[[ $(<"$restart_state") == 303 ]] || fail "dead-lock recovery leaves one fresh shell instance"
+grep -F "ipc -n -p $restart_root/shell call -- lock lock" "$ipc_log" >/dev/null || fail "dead-lock recovery re-acquires the session lock"
+grep -F "ipc -n -p $restart_root/shell call -- lock status" "$ipc_log" >/dev/null || fail "dead-lock recovery waits for the lock to become secure"
+pass "restart recovers a locked session whose lock client died"
