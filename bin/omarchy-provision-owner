@@ -444,10 +444,15 @@ greeter_screen() {
   hpad=$(( (cols - ${#hint}) / 2 )); (( hpad < 0 )) && hpad=0
   printf '%s%d;%dH%s%s%s' "$CSI" "$hint_row" "$((hpad + 1))" "$DIM" "$hint" "$RESET"
 
-  # Loop a ColorShift over the logo until Return. The effect reads from
-  # /dev/null so it never swallows the Return the foreground read waits on.
-  # --reuse-canvas paints upward from the saved cursor, so anchor it one row
-  # below the logo to repaint exactly the rows drawn above.
+  # ColorShift the logo: a green base (indexed color 2) with a cyan accent (6)
+  # drifting through, settling on green. Indexed ANSI colors, not hex — the
+  # framebuffer console can't render tte's truecolor faithfully (it crushes the
+  # palette to a muddy lavender), but the 16 indexed colors map to the Tokyo
+  # Night palette and render true. One long-running invocation (many cycles) so
+  # it never restarts — a restart is what flashed. The effect reads from
+  # /dev/null so it never swallows the Return the foreground read waits on;
+  # --reuse-canvas paints upward from the saved cursor, anchored one row below
+  # the logo to repaint exactly the rows drawn above.
   if command -v tte >/dev/null 2>&1; then
     printf '%s%d;1H\0337' "$CSI" "$((logo_row + LOGO_HEIGHT))"
     (
@@ -455,11 +460,13 @@ greeter_screen() {
         tte -i "$LOGO_PATH" \
           --canvas-width "$cols" \
           --anchor-text c \
-          --frame-rate 100 \
+          --frame-rate 60 \
           --reuse-canvas \
           colorshift \
-          --gradient-stops 9ece6a 7dcfff 7aa2f7 bb9af7 f7768e e0af68 \
-          --cycles 2 --final-gradient-stops 9ece6a \
+          --gradient-stops 2 10 6 10 \
+          --gradient-frames 3 \
+          --cycles 1000 \
+          --final-gradient-stops 2 \
           </dev/null 2>/dev/null
         printf '\0338'
       done
@@ -469,7 +476,11 @@ greeter_screen() {
 
   IFS= read -r _ </dev/tty || true
   [[ -n ${anim:-} ]] && { kill "$anim" 2>/dev/null; wait "$anim" 2>/dev/null; }
-  printf '%s' "$SHOW_CURSOR"
+  # tte leaves the tty in raw/no-echo mode when killed; restore it or the gum
+  # prompts in the keyboard step that follows silently die. Then clear the
+  # leftover animation frame.
+  stty sane </dev/tty 2>/dev/null || true
+  printf '%s%s%s' "$RESET" "$CLEAR" "$SHOW_CURSOR"
 }
 
 # The keyboard step the ISO configurator runs — deferred to first boot for OEM
