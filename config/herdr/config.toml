@@ -84,6 +84,9 @@ accent = "blue"
 # tmux drew single-line dividers between adjacent panes
 pane_gaps = false
 
+# tmux had no scrollbar column beside its panes
+pane_scrollbars = false
+
 # kill-window and kill-session never asked
 confirm_close = false
 
