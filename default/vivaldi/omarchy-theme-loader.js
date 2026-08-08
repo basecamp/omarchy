@@ -19,7 +19,7 @@
     }).catch(function () {});
   };
 
-  const syncNativeTheme = (bg, fg, accent, lighterBg, radius, onDone) => {
+  const syncNativeTheme = (bg, fg, accent, lighterBg, radius, dimBlurred, onDone) => {
     try {
       const prefs = window.vivaldi && window.vivaldi.prefs;
       if (!prefs || typeof prefs.get !== 'function' || typeof prefs.set !== 'function') return;
@@ -32,7 +32,8 @@
         colorAccentBg: lighterBg,
         colorHighlightBg: accent,
         colorWindowBg: bg,
-        radius: radius
+        radius: radius,
+        dimBlurred: dimBlurred
       };
       const done = function () { if (onDone) onDone() };
 
@@ -57,7 +58,7 @@
         colorPosition: 'unified',
         colorWindowBg: bg,
         contrast: 0,
-        dimBlurred: false,
+        dimBlurred: dimBlurred,
         preferSystemAccent: false,
         radius: radius,
         simpleScrollbar: true,
@@ -135,9 +136,10 @@
       // radius of 0 would still round controls, so it must not be clamped away.
       const rawRadius = Number(data.radius);
       const radius = Math.max(-1, Math.min(14, Math.round(isFinite(rawRadius) ? rawRadius : -1)));
+      const dimBlurred = data.dimBlurred === true;
       if (text !== synced) {
         applyThemeCss(bg, fg, accent, lighterBg, radius);
-        syncNativeTheme(bg, fg, accent, lighterBg, radius, function () { synced = text });
+        syncNativeTheme(bg, fg, accent, lighterBg, radius, dimBlurred, function () { synced = text });
       }
     } catch (e) {
       if (!loggedError) {
