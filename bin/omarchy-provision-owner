@@ -46,6 +46,29 @@ export GUM_CONFIRM_SELECTED_BACKGROUND="2"
 export GUM_CONFIRM_UNSELECTED_FOREGROUND="7"
 export GUM_CONFIRM_UNSELECTED_BACKGROUND="0"
 
+# The ISO installer runs on a low-resolution pre-KMS console where the default
+# 8x16 font looks large; the installed system reaches full KMS resolution, where
+# that same font is tiny — so first-boot provisioning looked much smaller than
+# the installer. Scale the console font up on high-resolution framebuffers so the
+# two read at the same physical size. Both fonts ship with kbd (always present),
+# and low-resolution consoles (already installer-sized) are left untouched.
+scale_console_font() {
+  [[ $(tty 2>/dev/null) == /dev/tty* ]] || return 0
+  command -v setfont >/dev/null 2>&1 || return 0
+
+  local height="" size font=""
+  if [[ -r /sys/class/graphics/fb0/virtual_size ]]; then
+    size=$(<"/sys/class/graphics/fb0/virtual_size") # "WIDTH,HEIGHT"
+    height=${size##*,}
+  fi
+  [[ $height =~ ^[0-9]+$ ]] || return 0
+
+  if   (( height >= 1600 )); then font="latarcyrheb-sun32" # 16x32
+  elif (( height >= 1150 )); then font="sun12x22"          # 12x22
+  fi
+  [[ -n $font ]] && setfont "$font" 2>/dev/null || true
+}
+
 # Same Tokyo Night VT palette the ISO configurator sets, so the first-boot
 # form looks like a continuation of the install.
 set_tokyo_night_colors() {
@@ -838,6 +861,7 @@ if [[ ${1:-} == "--attempt" ]]; then
 fi
 
 main() {
+  scale_console_font
   set_tokyo_night_colors
 
   while ! "$0" --attempt; do
