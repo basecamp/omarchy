@@ -34,16 +34,24 @@ BarWidget {
 
   Process {
     id: queryProc
-    command: ["bash", "-c", "hyprctl -j devices 2>/dev/null | sed -n '/keyboards/,$p' | head -200"]
+    command: ["bash", "-c", "hyprctl -j devices"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        var match = String(text || "").match(/"active_keymap":\s*"([^"]+)"/)
-        if (!match) return
-        var full = match[1]
-        root.layoutFull = full
-        var token = full.split(/\s+/)[0]
-        root.layoutLabel = token.substring(0, 3).toUpperCase()
+        let data
+        try {
+          data = JSON.parse(text || "{}")
+        } catch (e) {
+          return
+        }
+
+        const keyboards = data.keyboards ?? []
+        const kb = keyboards.find(k => k.main) ?? keyboards[0]
+
+        if (!kb) return
+
+        root.layoutFull = kb.active_keymap
+        root.layoutLabel = kb.active_keymap.split(/\s+/)[0].substring(0, 3).toUpperCase()
       }
     }
   }
