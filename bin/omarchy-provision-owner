@@ -457,7 +457,9 @@ greeter_screen() {
           --anchor-text c \
           --frame-rate 100 \
           --reuse-canvas \
-          colorshift --cycles 2 --final-gradient-stops 9ece6a \
+          colorshift \
+          --gradient-stops 9ece6a 7dcfff 7aa2f7 bb9af7 f7768e e0af68 \
+          --cycles 2 --final-gradient-stops 9ece6a \
           </dev/null 2>/dev/null
         printf '\0338'
       done
