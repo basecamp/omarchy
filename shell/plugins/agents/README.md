@@ -50,11 +50,16 @@ prints the record contract (see the `claude` and `codex` collectors in
 with an `assets/<id>-light.svg` twin if the mark needs a dark variant for
 light surfaces — and the bar glyph stands in when there is none.
 
+Collectors may include a `modelLabels` object keyed like `modelUsage`, with
+`model` and `provider` display strings. The panel uses those source-provided
+labels and falls back to formatting the model key when they are absent.
+
 | Collector | Limits | Local stats |
 |---|---|---|
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `hermes` | None — Hermes has no unified multi-provider quota | `~/.hermes/state.db` plus named-profile databases, split by billing provider and model |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via

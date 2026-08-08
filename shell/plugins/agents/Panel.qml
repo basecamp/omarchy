@@ -222,6 +222,7 @@ Panel {
 
   function modelRows(p) {
     var usageByModel = p ? (p.modelUsage || {}) : {}
+    var labelsByModel = p ? (p.modelLabels || {}) : {}
     var rows = []
     for (var id in usageByModel) {
       var bucket = usageByModel[id] || {}
@@ -230,7 +231,7 @@ Panel {
       var cacheRead = Number(bucket.cacheReadInputTokens || 0)
       var cacheWrite = Number(bucket.cacheCreationInputTokens || 0)
       rows.push({
-        name: usage.friendlyModelName(id),
+        name: usage.friendlyModelName(id, labelsByModel[id]),
         total: input + output + cacheRead + cacheWrite,
         input: input,
         output: output,
@@ -244,7 +245,7 @@ Panel {
 
   function modelTooltip(row) {
     if (!row) return ""
-    return "In " + usage.formatTokenCount(row.input)
+    return row.name + "\nIn " + usage.formatTokenCount(row.input)
       + " · out " + usage.formatTokenCount(row.output)
       + " · cache read " + usage.formatTokenCount(row.cacheRead)
       + " · cache write " + usage.formatTokenCount(row.cacheWrite)
