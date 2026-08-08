@@ -1,6 +1,6 @@
 # First-boot OEM setup: asks for the user on tty1 before SDDM starts.
 # Armed by /var/lib/omarchy/oem/pending (written by an OEM-mode ISO install or
-# omarchy-reset-computer); installed to /etc/systemd/system by whichever of
+# omarchy-system-factory-reset); installed to /etc/systemd/system by whichever of
 # those staged it. Not shipped enabled — a normal install never runs it.
 
 # plymouth is dismissed via ExecStartPre rather than ordered against
@@ -14,7 +14,7 @@
 Description=Omarchy OEM first-boot user setup
 ConditionPathExists=/var/lib/omarchy/oem/pending
 ConditionPathExists=!/var/lib/omarchy/oem/wipe-pending
-After=systemd-user-sessions.service omarchy-factory-wipe.service
+After=systemd-user-sessions.service omarchy-system-factory-reset-finish.service
 Before=display-manager.service getty@tty1.service
 Conflicts=getty@tty1.service
 

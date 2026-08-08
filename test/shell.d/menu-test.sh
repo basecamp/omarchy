@@ -181,7 +181,7 @@ assert(
   'menu places Direct Boot directly under Setup'
 )
 assert(
-  defaultById['setup.reset'].action.includes('omarchy-reset-computer'),
+  defaultById['setup.reset'].action.includes('omarchy-system-factory-reset'),
   'menu exposes Reset Computer under Setup'
 )
 const setupEntries = defaultItems.filter(item => item.parent === 'setup')

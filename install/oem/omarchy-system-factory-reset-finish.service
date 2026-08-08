@@ -1,8 +1,8 @@
-# Finishes an omarchy-reset-computer reset on the first boot after it: drops
+# Finishes an omarchy-system-factory-reset reset on the first boot after it: drops
 # the previous root, recreates @home/@log, and scrubs state. Ordered before
 # home.mount/var-log.mount so those subvolumes can be deleted and recreated
 # while unmounted. Armed by /var/lib/omarchy/oem/wipe-pending; installed to
-# /etc/systemd/system by omarchy-reset-computer.
+# /etc/systemd/system by omarchy-system-factory-reset.
 
 [Unit]
 Description=Omarchy factory reset wipe
@@ -15,7 +15,7 @@ Conflicts=shutdown.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/bin/omarchy-factory-wipe
+ExecStart=/usr/bin/omarchy-system-factory-reset-finish
 
 [Install]
 WantedBy=sysinit.target

@@ -3,7 +3,7 @@
 # omarchy:summary=Factory-reset this machine back to its freshly-installed state
 # omarchy:group=setup
 # omarchy:requires-sudo=true
-# omarchy:examples=sudo omarchy-reset-computer
+# omarchy:examples=sudo omarchy-system-factory-reset
 
 # Returns the machine to OEM state — fully installed, no user, first-boot
 # setup pending — the state you want before selling or handing the machine on.
@@ -14,7 +14,7 @@
 # @factory get a degraded reset: the current system is kept and only user
 # accounts, home data, and machine identity are wiped.
 #
-# The heavy lifting happens on the next boot via omarchy-factory-wipe, staged
+# The heavy lifting happens on the next boot via omarchy-system-factory-reset-finish, staged
 # here. On encrypted installs the LUKS volume is re-keyed to a throwaway
 # passphrase with an auto-unlock keyfile for the OEM window; first-boot setup
 # re-keys it to the new owner's password and removes the keyfile.
@@ -30,9 +30,9 @@ set -euo pipefail
 
 OEM_DIR=/var/lib/omarchy/oem
 OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
-TOP_MNT=/run/omarchy-reset/top
+TOP_MNT=/run/omarchy-system-factory-reset/top
 NEXT_NAME=@omarchy-reset-next
-LOG_FILE=/var/log/omarchy-reset.log
+LOG_FILE=/var/log/omarchy-system-factory-reset.log
 
 # Self-elevate so the menu entry (and a bare shell invocation) need no sudo
 # prefix. The caller's gum theme vars are forwarded as `env` arguments rather
@@ -183,15 +183,15 @@ install_oem_units() {
 
   install -Dm644 "$unit_src/omarchy-oem-setup.service" \
     "$next/etc/systemd/system/omarchy-oem-setup.service"
-  install -Dm644 "$unit_src/omarchy-factory-wipe.service" \
-    "$next/etc/systemd/system/omarchy-factory-wipe.service"
+  install -Dm644 "$unit_src/omarchy-system-factory-reset-finish.service" \
+    "$next/etc/systemd/system/omarchy-system-factory-reset-finish.service"
 
   install -d "$next/etc/systemd/system/multi-user.target.wants" \
     "$next/etc/systemd/system/sysinit.target.wants"
   ln -sf /etc/systemd/system/omarchy-oem-setup.service \
     "$next/etc/systemd/system/multi-user.target.wants/omarchy-oem-setup.service"
-  ln -sf /etc/systemd/system/omarchy-factory-wipe.service \
-    "$next/etc/systemd/system/sysinit.target.wants/omarchy-factory-wipe.service"
+  ln -sf /etc/systemd/system/omarchy-system-factory-reset-finish.service \
+    "$next/etc/systemd/system/sysinit.target.wants/omarchy-system-factory-reset-finish.service"
 }
 
 # Start the ESP's limine.conf over from the shipped template and drop the

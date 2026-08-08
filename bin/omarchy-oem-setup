@@ -6,7 +6,7 @@
 # omarchy:examples=omarchy-oem-setup
 
 # Runs on tty1 via omarchy-oem-setup.service when /var/lib/omarchy/oem/pending
-# exists — the state an OEM-mode ISO install or omarchy-reset-computer leaves
+# exists — the state an OEM-mode ISO install or omarchy-system-factory-reset leaves
 # behind. Asks for the user (the configurator's Step 2), creates it with the
 # groups system setup recorded, finalizes it offline from the stashed Node
 # tarball, re-keys LUKS from the throwaway install passphrase to the user's
@@ -474,7 +474,7 @@ reset_limine_config() {
 }
 
 cleanup_oem_state() {
-  # Keep groups + packages: omarchy-reset-computer's degraded path (machines
+  # Keep groups + packages: omarchy-system-factory-reset's degraded path (machines
   # without @factory) re-arms first-boot setup from the live copies.
   rm -f "$OEM_DIR/pending" "$OEM_DIR/authorized_keys" "$OEM_DIR/setup-user"
 
