@@ -19,7 +19,7 @@
     }).catch(function () {});
   };
 
-  const syncNativeTheme = (bg, fg, accent, lighterBg, radius, dimBlurred, blur, onDone) => {
+  const syncNativeTheme = (bg, fg, accent, lighterBg, radius, dimBlurred, blur, contrast, onDone) => {
     try {
       const prefs = window.vivaldi && window.vivaldi.prefs;
       if (!prefs || typeof prefs.get !== 'function' || typeof prefs.set !== 'function') return;
@@ -34,7 +34,8 @@
         colorWindowBg: bg,
         radius: radius,
         dimBlurred: dimBlurred,
-        blur: blur
+        blur: blur,
+        contrast: contrast
       };
       const done = function () { if (onDone) onDone() };
 
@@ -58,7 +59,7 @@
         colorHighlightBg: accent,
         colorPosition: 'unified',
         colorWindowBg: bg,
-        contrast: 0,
+        contrast: contrast,
         dimBlurred: dimBlurred,
         preferSystemAccent: false,
         radius: radius,
@@ -139,9 +140,10 @@
       const radius = Math.max(-1, Math.min(14, Math.round(isFinite(rawRadius) ? rawRadius : -1)));
       const dimBlurred = data.dimBlurred === true;
       const blur = Math.max(0, Math.min(10, Math.round(Number(data.blur) || 0)));
+      const contrast = Math.max(-10, Math.min(20, Math.round(Number(data.contrast) || 0)));
       if (text !== synced) {
         applyThemeCss(bg, fg, accent, lighterBg, radius);
-        syncNativeTheme(bg, fg, accent, lighterBg, radius, dimBlurred, blur, function () { synced = text });
+        syncNativeTheme(bg, fg, accent, lighterBg, radius, dimBlurred, blur, contrast, function () { synced = text });
       }
     } catch (e) {
       if (!loggedError) {

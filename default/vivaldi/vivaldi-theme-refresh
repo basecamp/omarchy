@@ -26,9 +26,10 @@ lighter_bg=$(omarchy-theme-color lighter_background)
 radius=-1
 dim_blurred=false
 blur=0
+contrast=0
 
 read_appearance() {
-  local rounding dim blur_size
+  local rounding dim blur_size blur_contrast
   rounding=$(hyprctl -j getoption decoration:rounding 2>/dev/null | jq -r '.int // empty' || true)
   if [[ $rounding =~ ^[0-9]+$ ]]; then
     if (( rounding == 0 )); then
@@ -47,6 +48,12 @@ read_appearance() {
     # Vivaldi's blur intensity runs 0..10.
     blur=$(( blur_size > 10 ? 10 : blur_size ))
   fi
+  blur_contrast=$(hyprctl -j getoption decoration:blur:contrast 2>/dev/null | jq -r '.float // empty' || true)
+  if [[ $blur_contrast =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+    # Hyprland contrast is centered on 1.0; Vivaldi's is centered on 0 with a
+    # -10..20 range.
+    contrast=$(awk -v c="$blur_contrast" 'BEGIN { v = (c - 1) * 10; if (v < -10) v = -10; if (v > 20) v = 20; printf "%.0f", v }')
+  fi
 }
 
 read_appearance
@@ -54,7 +61,7 @@ read_appearance
 jq -n \
   --arg bg "$bg" --arg fg "$fg" --arg accent "$accent" --arg lighter_bg "$lighter_bg" \
   --argjson radius "$radius" --argjson dimBlurred "$dim_blurred" \
-  --argjson blur "$blur" \
+  --argjson blur "$blur" --argjson contrast "$contrast" \
   --argjson updatedAt "$(date +%s)" \
   '{
     schemaVersion: 1,
@@ -62,6 +69,7 @@ jq -n \
     radius: $radius,
     dimBlurred: $dimBlurred,
     blur: $blur,
+    contrast: $contrast,
     updatedAt: $updatedAt
   }' > "$JSON"
 
@@ -71,7 +79,7 @@ set_vivaldi_native_theme() {
     [[ -f $prefs ]] || continue
     jq --arg bg "$bg" --arg fg "$fg" --arg accent "$accent" --arg lighter_bg "$lighter_bg" \
        --argjson radius "$radius" --argjson dim_blurred "$dim_blurred" \
-       --argjson blur "$blur" '
+       --argjson blur "$blur" --argjson contrast "$contrast" '
       .vivaldi |= ((. // {}) + {
         appearance: ((.appearance // {}) + { force_dark_mode_theme: false }),
         themes: ((.themes // {}) + {
@@ -84,6 +92,7 @@ set_vivaldi_native_theme() {
               colorHighlightBg: $accent,
               colorWindowBg: $bg,
               blur: $blur,
+              contrast: $contrast,
               dimBlurred: $dim_blurred,
               radius: $radius
             }) else . end))
@@ -107,7 +116,7 @@ set_vivaldi_native_theme() {
               colorHighlightBg: $accent,
               colorPosition: "unified",
               colorWindowBg: $bg,
-              contrast: 0,
+              contrast: $contrast,
               dimBlurred: $dim_blurred,
               preferSystemAccent: false,
               radius: $radius,
