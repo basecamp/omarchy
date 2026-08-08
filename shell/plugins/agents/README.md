@@ -69,6 +69,26 @@ falls back to local stats only. A non-default Claude directory is honored via
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
 signed in there.
 
+### Remote gateways
+
+Hermes defaults to **This Computer**, reading its local usage ledger without a
+login. The popup's **Usage Source** control can switch to account-wide data
+from a **Remote Gateway**, or back to local tracking later. The meter runs only
+during the panel's normal refresh and leaves no background process. Enter the
+remote URL, username, and password in the popup; the URL is prefilled on later
+logins and stored in
+`~/.config/omarchy/agent-meter.json`:
+
+```json
+{"sources":{"hermes":{"type":"hermes","url":"http://hermes:9119","name":"Hermes","periodDays":365}}}
+```
+
+When authentication expires, use **Remote Gateway Login** in the same popup;
+the credentials travel to the meter over stdin and are never command-line
+arguments. They stay in `~/.local/state/omarchy/agent-meter/`; nothing is
+installed in the gateway application's own configuration directory. If the
+remote collection fails, the matching local collector runs instead.
+
 ### Fireworks balance
 
 The collector first asks the account's `:getBalance` endpoint for the real

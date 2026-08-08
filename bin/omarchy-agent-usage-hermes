@@ -12,6 +12,7 @@ ledger directly so the Omarchy agents panel preserves that attribution.
 import argparse
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -28,6 +29,34 @@ BUCKET_FIELDS = {
   "cache_read_tokens": "cacheReadInputTokens",
   "cache_write_tokens": "cacheCreationInputTokens",
 }
+
+
+def configured_gateway_url():
+  path = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")) / "omarchy" / "agent-meter.json"
+  try:
+    config = json.loads(path.read_text(encoding="utf-8"))
+  except (FileNotFoundError, OSError, json.JSONDecodeError):
+    return ""
+  sources = config.get("sources") if isinstance(config, dict) else None
+  source = sources.get(AGENT_ID) if isinstance(sources, dict) else None
+  return str(source.get("url") or "") if isinstance(source, dict) else ""
+
+
+def hermes_installed(paths):
+  return bool(paths) or shutil.which("hermes") is not None or (
+    Path.home() / ".local" / "share" / "applications" / "hermes.desktop"
+  ).is_file()
+
+
+def database_recently_active(path, window_seconds=300):
+  now = time.time()
+  for candidate in (path, Path(str(path) + "-wal")):
+    try:
+      if 0 <= now - candidate.stat().st_mtime <= window_seconds:
+        return True
+    except OSError:
+      pass
+  return False
 
 LABEL_HELPER = r"""
 import json
@@ -197,17 +226,6 @@ def state_paths():
   return sorted(paths, key=lambda path: str(path))
 
 
-def database_recently_active(path, window_seconds=300):
-  now = time.time()
-  for candidate in (path, Path(str(path) + "-wal")):
-    try:
-      if 0 <= now - candidate.stat().st_mtime <= window_seconds:
-        return True
-    except OSError:
-      pass
-  return False
-
-
 def table_columns(conn, table):
   try:
     return {str(row[1]) for row in conn.execute(f'PRAGMA table_info("{table}")')}
@@ -260,7 +278,7 @@ class Usage:
       self.today_sessions.add(session_key)
       self.today_tokens[key] = self.today_tokens.get(key, 0) + total
 
-  def record(self, has_databases):
+  def record(self, has_databases, installed, gateway_url):
     model_usage = {key: self.model_usage[key] for key in sorted(self.model_usage)}
     today_tokens = {key: self.today_tokens[key] for key in sorted(self.today_tokens)}
     today_total = sum(today_tokens.values())
@@ -278,11 +296,15 @@ class Usage:
       "id": AGENT_ID,
       "name": AGENT_NAME,
       "updatedAt": datetime.now(timezone.utc).isoformat(),
-      "ready": has_databases,
+      "ready": installed,
+      "remoteGateway": False,
+      "gatewayLoginAvailable": installed,
+      "gatewayConfigured": gateway_url != "",
+      "gatewayUrl": gateway_url,
       "retryAdvised": self.retry_advised,
       "hasLocalStats": has_databases,
       "hasPromptStats": False,
-      "tierLabel": tier,
+      "tierLabel": tier or ("Local" if installed else ""),
       "limits": [],
       "todayPrompts": 0,
       "todaySessions": len(self.today_sessions),
@@ -406,7 +428,10 @@ def main():
   usage.retry_advised = any(database_recently_active(path) for path in paths)
   for path in paths:
     scan_database(path, usage)
-  print(json.dumps(usage.record(bool(paths)), separators=(",", ":")))
+  print(json.dumps(
+    usage.record(bool(paths), hermes_installed(paths), configured_gateway_url()),
+    separators=(",", ":"),
+  ))
 
 
 if __name__ == "__main__":

@@ -219,7 +219,7 @@ Item {
     return numberValue(p.totalPrompts) > 0 || numberValue(p.totalSessions) > 0
       || numberValue(p.activeDays) > 0 || numberValue(p.todayPrompts) > 0
       || numberValue(p.todaySessions) > 0 || (p.limits && p.limits.length > 0)
-      || !!p.balance
+      || !!p.balance || p.gatewayLoginAvailable === true
   }
 
   // A prepaid agent's credit ledger. Like rate limits, the balance is
@@ -249,6 +249,11 @@ Item {
       ready: record.ready === true || synced,
       usageStatusText: String(record.usageStatusText || ""),
       authHelpText: String(record.authHelpText || ""),
+      remoteGateway: record.remoteGateway === true,
+      gatewayLoginAvailable: record.gatewayLoginAvailable === true,
+      gatewayConfigured: record.gatewayConfigured === true,
+      authRequired: record.authRequired === true,
+      gatewayUrl: String(record.gatewayUrl || ""),
 
       // Rate limits and balances stay per-account and are never merged
       // across devices.

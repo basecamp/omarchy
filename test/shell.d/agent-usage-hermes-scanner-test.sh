@@ -91,7 +91,7 @@ printf '%s' '{"FutureProvider::labs/future-model-v12":{"provider":"Future System
 SH
 chmod +x "$fake_runtime/venv/bin/python"
 
-result=$(HOME="$test_home" HERMES_HOME="$test_home/.hermes" \
+result=$(HOME="$test_home" XDG_CONFIG_HOME="$test_home/.config" HERMES_HOME="$test_home/.hermes" \
   HERMES_INSTALL_DIR="$fake_runtime" \
   "$ROOT/bin/omarchy-agent-usage-hermes" 2>/dev/null)
 
@@ -102,6 +102,10 @@ pass "Hermes collector identifies itself and reports no unified limits"
 [[ $(jq -r '.retryAdvised' <<<"$result") == true ]] ||
   fail "Hermes collector does not retry while its local database is active" "$result"
 pass "Hermes collector retries while the local ledger is settling"
+
+[[ $(jq -r '.gatewayLoginAvailable, .gatewayUrl' <<<"$result") == true ]] ||
+  fail "installed Hermes does not expose first-time remote gateway setup" "$result"
+pass "Hermes collector exposes remote gateway setup after installation"
 
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == 192 ]] ||
   fail "Hermes collector reconciles main usage and adds auxiliary usage once" "$result"
