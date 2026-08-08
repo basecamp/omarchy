@@ -11,6 +11,7 @@ add_whatsapp_slim_extension() {
   if grep -q "^--load-extension=" "$file"; then
     sed -i --follow-symlinks "s|^--load-extension=\(.*\)$|--load-extension=\1,$WHATSAPP_SLIM_EXT|" "$file"
   else
+    [[ -n $(tail -c1 "$file") ]] && echo >>"$file"
     echo "--load-extension=$WHATSAPP_SLIM_EXT" >>"$file"
   fi
 }
