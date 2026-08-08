@@ -3,8 +3,8 @@ set -eu
 
 omarchy-cmd-present vivaldi-stable || exit 0
 
-CSV=/opt/vivaldi/resources/vivaldi/style/omarchy.csv
-[[ -w $CSV ]] || exit 0
+JSON=${VIVALDI_OMARCHY_JSON:-/opt/vivaldi/resources/vivaldi/style/omarchy.json}
+[[ -w $JSON ]] || exit 0
 
 bg=$(omarchy-theme-color background)
 fg=$(omarchy-theme-color foreground)
@@ -12,7 +12,18 @@ accent=$(omarchy-theme-color accent)
 lighter_bg=$(omarchy-theme-color lighter_background)
 [[ -n $bg && -n $fg && -n $accent && -n $lighter_bg ]] || exit 0
 
-printf '%s' "$bg,$fg,$accent,$lighter_bg" > "$CSV"
+# Write in place (like the old CSV) instead of a temp+rename: the style
+# directory is root-owned and only the file itself is world-writable, so a
+# non-root refresh cannot create a temp file or rename into it. The loader
+# tolerates a transient partial read and retries on its next poll.
+jq -n \
+  --arg bg "$bg" --arg fg "$fg" --arg accent "$accent" --arg lighter_bg "$lighter_bg" \
+  --argjson updatedAt "$(date +%s)" \
+  '{
+    schemaVersion: 1,
+    colors: { bg: $bg, fg: $fg, accent: $accent, lighterBg: $lighter_bg },
+    updatedAt: $updatedAt
+  }' > "$JSON"
 
 set_vivaldi_native_theme() {
   local prefs

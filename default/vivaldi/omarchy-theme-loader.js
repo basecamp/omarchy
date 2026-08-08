@@ -47,10 +47,9 @@
         backgroundPosition: 'stretch',
         backgroundSource: '',
         blur: 0,
-        colorAccentBg: accent,
+        colorAccentBg: lighterBg,
         colorBg: bg,
         colorFg: fg,
-        colorAccentBg: lighterBg,
         colorHighlightBg: accent,
         colorPosition: 'unified',
         colorWindowBg: bg,
@@ -108,13 +107,19 @@
 
   const refresh = async () => {
     try {
-      const raw = await (await fetch('style/omarchy.csv', { cache: 'no-store' })).text();
-      if (!/^#[a-f\d]{6}(,#[a-f\d]{6}){3}$/i.test(raw)) return;
+      const text = await (await fetch('style/omarchy.json', { cache: 'no-store' })).text();
+      const data = JSON.parse(text);
+      const colors = data && data.colors || {};
+      const bg = colors.bg;
+      const fg = colors.fg;
+      const accent = colors.accent;
+      const lighterBg = colors.lighterBg;
+      if (!/^#[a-f\d]{6}$/i.test(bg || '') || !/^#[a-f\d]{6}$/i.test(fg || '') ||
+          !/^#[a-f\d]{6}$/i.test(accent || '') || !/^#[a-f\d]{6}$/i.test(lighterBg || '')) return;
       loggedError = false;
-      const [bg, fg, accent, lighterBg] = raw.split(',');
-      if (raw !== synced) {
+      if (text !== synced) {
         applyThemeCss(bg, fg, accent, lighterBg);
-        syncNativeTheme(bg, fg, accent, lighterBg, function () { synced = raw });
+        syncNativeTheme(bg, fg, accent, lighterBg, function () { synced = text });
       }
     } catch (e) {
       if (!loggedError) {
