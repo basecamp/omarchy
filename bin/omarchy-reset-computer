@@ -59,26 +59,32 @@ root_is_btrfs_at() {
   [[ $(findmnt -no FSTYPE /) == btrfs ]] && findmnt -no OPTIONS / | grep -q "subvol=/@\(,\|$\)"
 }
 
-encrypted_install() {
-  grep -q "cryptdevice=" /proc/cmdline
-}
-
-# Resolve the LUKS device from the encrypt hook's cryptdevice=<spec>:<name>.
-# The spec varies by installer path: archinstall writes PARTUUID=, the
-# pre-mounted path writes UUID=, and a plain /dev path is also legal.
+# Resolve the crypto_LUKS partition backing the root, or return non-zero if
+# the root is not on LUKS. Prefers the cmdline cryptdevice= spec (archinstall
+# writes PARTUUID=, the pre-mounted path UUID=), and falls back to walking the
+# device tree for roots reached via rd.luks/crypttab with a plain /dev/mapper
+# root and no cryptdevice=.
 luks_device() {
   local spec
   spec=$(grep -o 'cryptdevice=[^ :]*' /proc/cmdline | head -1 | cut -d= -f2-)
-  [[ -n $spec ]] || return 1
-
   case $spec in
-    UUID=*) echo "/dev/disk/by-uuid/${spec#UUID=}" ;;
-    PARTUUID=*) echo "/dev/disk/by-partuuid/${spec#PARTUUID=}" ;;
-    LABEL=*) echo "/dev/disk/by-label/${spec#LABEL=}" ;;
-    PARTLABEL=*) echo "/dev/disk/by-partlabel/${spec#PARTLABEL=}" ;;
-    /dev/*) echo "$spec" ;;
-    *) return 1 ;;
+    UUID=*) echo "/dev/disk/by-uuid/${spec#UUID=}"; return 0 ;;
+    PARTUUID=*) echo "/dev/disk/by-partuuid/${spec#PARTUUID=}"; return 0 ;;
+    LABEL=*) echo "/dev/disk/by-label/${spec#LABEL=}"; return 0 ;;
+    PARTLABEL=*) echo "/dev/disk/by-partlabel/${spec#PARTLABEL=}"; return 0 ;;
+    /dev/*) echo "$spec"; return 0 ;;
   esac
+
+  local src part
+  src=$(findmnt -no SOURCE / | sed 's/\[.*//')
+  [[ -n $src ]] || return 1
+  part=$(lsblk -nspo NAME,FSTYPE "$src" 2>/dev/null | awk '$2=="crypto_LUKS"{print $1; exit}')
+  [[ -n $part ]] && { echo "$part"; return 0; }
+  return 1
+}
+
+encrypted_install() {
+  luks_device >/dev/null 2>&1
 }
 
 # No trailing `| head` stage: under pipefail an infinite tr killed by
@@ -90,6 +96,9 @@ generate_passphrase() {
 }
 
 cleanup() {
+  if (( ${swap_done:-0} == 0 )); then
+    rollback_degraded_rekey
+  fi
   if mountpoint -q "$TOP_MNT" 2>/dev/null; then
     if [[ -d $TOP_MNT/$NEXT_NAME && ${swap_done:-0} == 0 ]]; then
       btrfs subvolume delete --recursive "$TOP_MNT/$NEXT_NAME" >/dev/null 2>&1 || true
@@ -268,10 +277,13 @@ rebuild_next_boot() {
     fi
     # The factory root still carries the resume drop-ins from install, which
     # make hibernation-setup conclude it has nothing to do; with the swapfile
-    # gone they must go so it reconfigures (and recomputes the resume offset)
-    # from scratch.
+    # gone they must go so it reconfigures from scratch. The resume-offset
+    # drop-in especially: hibernation-setup only recomputes the physical
+    # offset when it is absent, so a surviving one bakes the old swapfile's
+    # offset into the rebuilt UKI and breaks resume.
     if [[ ! -f $next/swap/swapfile ]]; then
-      rm -f "$next/etc/mkinitcpio.conf.d/omarchy_resume.conf"
+      rm -f "$next/etc/mkinitcpio.conf.d/omarchy_resume.conf" \
+        "$next/etc/limine-entry-tool.d/resume.conf"
     fi
     if ! chroot "$next" env OMARCHY_PATH=/usr/share/omarchy \
       /usr/bin/omarchy-hibernation-setup --force --no-rebuild >>"$LOG_FILE" 2>&1; then
@@ -294,6 +306,28 @@ rebuild_next_boot() {
     umount -R "$next/$dir" 2>/dev/null || true
   done
   umount "$next$esp_mount"
+}
+
+# Remove the seller's account material and machine identity from the retained
+# @factory baseline so it can neither be mounted for recovery nor restore the
+# seller's account on a future reset. Idempotent (a scrubbed baseline has no
+# uid>=1000 accounts left to remove).
+sanitize_factory_baseline() {
+  local factory="$1" user
+  btrfs property set -ts "$factory" ro false
+
+  for user in $(awk -F: '$3 >= 1000 && $3 < 60000 { print $1 }' "$factory/etc/passwd"); do
+    userdel --root "$factory" "$user" 2>>"$LOG_FILE" || true
+    rm -rf "${factory:?}/home/$user"
+  done
+  passwd --root "$factory" --lock root >>"$LOG_FILE" 2>&1 || true
+  rm -f "$factory"/etc/ssh/ssh_host_*
+  rm -f "$factory"/etc/NetworkManager/system-connections/*
+  rm -rf "$factory"/var/lib/NetworkManager/* "$factory/var/lib/tailscale" "$factory/var/lib/iwd"
+  rm -f "$factory/var/lib/sddm/state.conf" "$factory/etc/sddm.conf.d/autologin.conf"
+  : >"$factory/etc/machine-id"
+
+  btrfs property set -ts "$factory" ro true
 }
 
 stage_full_reset() {
@@ -325,6 +359,12 @@ stage_full_reset() {
       fail "could not remove user $user from the factory system (see $LOG_FILE)"
   done
   passwd --root "$next" --lock root >>"$LOG_FILE" 2>&1 || true
+
+  # @factory itself survives the wipe as the baseline for future resets. If it
+  # came from a normal install it still holds the seller's account and
+  # /etc/shadow, which the new wheel user could mount and read — and a second
+  # reset would restore that account. Scrub it once, in place.
+  sanitize_factory_baseline "$top/@factory"
 
   # Keep the Node tarball reachable for offline first-boot finalization.
   if ! compgen -G "$next$OEM_DIR/packages/node-v*.tar.gz" >/dev/null; then
@@ -360,20 +400,33 @@ stage_degraded_reset() {
 
   # Fallible staging (re-key, boot rebuild) happens before the wipe is armed:
   # a failure must leave the machine untouched, not schedule a wipe for a
-  # reset that never finished staging.
+  # reset that never finished staging. The degraded path stages into the LIVE
+  # root, so a mid-staging failure must also undo the auto-unlock material it
+  # already wrote — otherwise a later boot rebuild would silently embed it.
   install -d -m 755 "$OEM_DIR"
   if encrypted_install; then
+    degraded_rekey_staged=1
     stage_luks_rekey ""
     log "Rebuilding boot files with the OEM unlock key"
     if ! limine-update >>"$LOG_FILE" 2>&1; then
       fail "limine-update failed (see $LOG_FILE)"
     fi
+    degraded_rekey_staged=0
   fi
 
   install_oem_units "" "$unit_src"
   touch "$OEM_DIR/pending" "$OEM_DIR/wipe-pending" "$OEM_DIR/wipe-degraded"
 
   swap_done=1
+}
+
+# Undo the live-root auto-unlock material a failed degraded rekey left behind.
+rollback_degraded_rekey() {
+  (( ${degraded_rekey_staged:-0} )) || return 0
+  rm -f /etc/omarchy/oem.key "$OEM_DIR/luks-key" \
+    /etc/limine-entry-tool.d/99-omarchy-oem-unlock.conf \
+    /etc/mkinitcpio.conf.d/99-omarchy-oem-key.conf
+  limine-update >>"$LOG_FILE" 2>&1 || true
 }
 
 main() {

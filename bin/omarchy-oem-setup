@@ -105,24 +105,31 @@ log_step() {
 user_form() {
   step "Let's setup your user account..."
 
-  while true; do
-    username=$(gum input --placeholder "Alphanumeric without spaces (like dhh)" --prompt.foreground="#845DF9" --prompt "Username> ") || continue
+  # A prior attempt that already created the account pins the username, so a
+  # retry cannot strand that account by choosing a different name.
+  if [[ -f $OEM_DIR/setup-user ]]; then
+    username=$(<"$OEM_DIR/setup-user")
+    say "Continuing setup for user: $username"
+    echo
+  else
+    while true; do
+      username=$(gum input --placeholder "Alphanumeric without spaces (like dhh)" --prompt.foreground="#845DF9" --prompt "Username> ") || continue
 
-    if [[ "$username" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]]; then
-      if [[ "$username" =~ ^(root|bin|daemon|mail|ftp|http|nobody|dbus|systemd-coredump|systemd-network|systemd-oom|systemd-journal-remote|systemd-resolve|systemd-timesync|tss|uuidd|alpm|git|avahi|cups|lp|_talkd|polkitd|rtkit|qemu|brltty|gluster|rpc|libvirt-qemu|pcscd|nvidia-persistenced|sddm)$ ]]; then
-        notice "Username is reserved for system" 1
-      elif getent passwd "$username" >/dev/null && (( $(id -u "$username") < 1000 )); then
-        # Regular (uid >= 1000) accounts can only exist here as leftovers from
-        # an earlier failed attempt — OEM state has no users — and create_user
-        # resumes them; only system accounts are off limits.
-        notice "That username already exists on this machine" 1
+      if [[ "$username" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]]; then
+        if [[ "$username" =~ ^(root|bin|daemon|mail|ftp|http|nobody|dbus|systemd-coredump|systemd-network|systemd-oom|systemd-journal-remote|systemd-resolve|systemd-timesync|tss|uuidd|alpm|git|avahi|cups|lp|_talkd|polkitd|rtkit|qemu|brltty|gluster|rpc|libvirt-qemu|pcscd|nvidia-persistenced|sddm)$ ]]; then
+          notice "Username is reserved for system" 1
+        elif getent passwd "$username" >/dev/null; then
+          # OEM state has no users, so any existing account is off limits;
+          # a pinned resume (above) bypasses this prompt entirely.
+          notice "That username already exists on this machine" 1
+        else
+          break
+        fi
       else
-        break
+        notice "Username must be alphanumeric with no spaces" 1
       fi
-    else
-      notice "Username must be alphanumeric with no spaces" 1
-    fi
-  done
+    done
+  fi
 
   while true; do
     password=$(gum input --placeholder "Used for user + root, and disk encryption when enabled" --prompt.foreground="#845DF9" --password --prompt "Password> ") || continue
@@ -169,29 +176,41 @@ user_groups() {
   echo "$groups"
 }
 
-encrypted_install() {
-  grep -q "cryptdevice=" /proc/cmdline
-}
-
-# Resolve the LUKS device from the encrypt hook's cryptdevice=<spec>:<name>.
-# The spec varies by installer path: archinstall writes PARTUUID=, the
-# pre-mounted path writes UUID=, and a plain /dev path is also legal.
+# Resolve the crypto_LUKS partition backing the root, or return non-zero if
+# the root is not on LUKS. Prefers the cmdline cryptdevice= spec (archinstall
+# writes PARTUUID=, the pre-mounted path UUID=), and falls back to walking the
+# device tree for roots reached via rd.luks/crypttab with a plain /dev/mapper
+# root and no cryptdevice=.
 luks_device() {
   local spec
   spec=$(grep -o 'cryptdevice=[^ :]*' /proc/cmdline | head -1 | cut -d= -f2-)
-  [[ -n $spec ]] || return 1
-
   case $spec in
-    UUID=*) echo "/dev/disk/by-uuid/${spec#UUID=}" ;;
-    PARTUUID=*) echo "/dev/disk/by-partuuid/${spec#PARTUUID=}" ;;
-    LABEL=*) echo "/dev/disk/by-label/${spec#LABEL=}" ;;
-    PARTLABEL=*) echo "/dev/disk/by-partlabel/${spec#PARTLABEL=}" ;;
-    /dev/*) echo "$spec" ;;
-    *) return 1 ;;
+    UUID=*) echo "/dev/disk/by-uuid/${spec#UUID=}"; return 0 ;;
+    PARTUUID=*) echo "/dev/disk/by-partuuid/${spec#PARTUUID=}"; return 0 ;;
+    LABEL=*) echo "/dev/disk/by-label/${spec#LABEL=}"; return 0 ;;
+    PARTLABEL=*) echo "/dev/disk/by-partlabel/${spec#PARTLABEL=}"; return 0 ;;
+    /dev/*) echo "$spec"; return 0 ;;
   esac
+
+  # No cryptdevice=: walk the root source's ancestors (lsblk -s inverts the
+  # tree) for the first crypto_LUKS parent.
+  local src part
+  src=$(findmnt -no SOURCE / | sed 's/\[.*//')
+  [[ -n $src ]] || return 1
+  part=$(lsblk -nspo NAME,FSTYPE "$src" 2>/dev/null | awk '$2=="crypto_LUKS"{print $1; exit}')
+  [[ -n $part ]] && { echo "$part"; return 0; }
+  return 1
+}
+
+encrypted_install() {
+  luks_device >/dev/null 2>&1
 }
 
 create_user() {
+  # Pin the username so a retry after a later failure resumes this exact
+  # account rather than creating a second privileged one.
+  echo "$username" >"$OEM_DIR/setup-user"
+
   if getent passwd "$username" >/dev/null; then
     # Resuming a partially-completed earlier attempt: refresh what the form
     # collected this time around.
@@ -278,14 +297,33 @@ rekey_luks() {
     return 1
   fi
 
+  # Add the user's key (a retry with a different password just adds another
+  # slot; all but the current one are killed once the rebuild succeeds).
   cryptsetup luksAddKey --key-file "$OEM_DIR/luks-key" "$device" <(printf '%s' "$password")
 
-  local new_slot
+  # Rebuild the no-auto-unlock UKI FIRST, keeping the throwaway key and slot as
+  # a fallback. Only once that succeeds do we kill the other slots and destroy
+  # the staged key — so a limine-update failure leaves a recoverable,
+  # still-auto-unlocking state to retry, never a disk locked to a password the
+  # user may have just changed.
+  rm -f /etc/omarchy/oem.key \
+    /etc/limine-entry-tool.d/99-omarchy-oem-unlock.conf \
+    /etc/mkinitcpio.conf.d/99-omarchy-oem-key.conf
+  reset_limine_config
+  if ! limine-update >>"$LOG_FILE" 2>&1; then
+    log_step "limine-update failed during re-key; restoring auto-unlock for retry"
+    install -Dm600 "$OEM_DIR/luks-key" /etc/omarchy/oem.key
+    echo 'KERNEL_CMDLINE[default]+=" cryptkey=rootfs:/etc/omarchy/oem.key"' \
+      >/etc/limine-entry-tool.d/99-omarchy-oem-unlock.conf
+    echo 'FILES+=(/etc/omarchy/oem.key)' >/etc/mkinitcpio.conf.d/99-omarchy-oem-key.conf
+    limine-update >>"$LOG_FILE" 2>&1 || true
+    return 1
+  fi
+
+  local new_slot slot
   new_slot=$(cryptsetup open --test-passphrase --verbose --key-file <(printf '%s' "$password") "$device" 2>&1 |
     grep -o 'Key slot [0-9]* unlocked' | grep -o '[0-9]*' | head -1)
-
   if [[ -n $new_slot ]]; then
-    local slot
     for slot in $(cryptsetup luksDump "$device" | awk '/^ +[0-9]+: luks2/ { sub(":", "", $1); print $1 }'); do
       [[ $slot == "$new_slot" ]] && continue
       cryptsetup luksKillSlot -q --key-file <(printf '%s' "$password") "$device" "$slot"
@@ -293,13 +331,6 @@ rekey_luks() {
   fi
 
   shred -u "$OEM_DIR/luks-key" 2>/dev/null || rm -f "$OEM_DIR/luks-key"
-  rm -f /etc/omarchy/oem.key
-  rm -f /etc/limine-entry-tool.d/99-omarchy-oem-unlock.conf
-  rm -f /etc/mkinitcpio.conf.d/99-omarchy-oem-key.conf
-
-  # Rebuild the UKI so the initramfs no longer embeds the auto-unlock keyfile.
-  reset_limine_config
-  limine-update >>"$LOG_FILE" 2>&1
 }
 
 # Start the ESP's limine.conf over from the shipped template and drop foreign
@@ -323,8 +354,11 @@ limine_entries_stale() {
   esp=$(esp_path)
   machine_id=$(cat /etc/machine-id 2>/dev/null || true)
   [[ -f $esp/limine.conf && -n $machine_id ]] || return 1
+  # Stale if any foreign machine-id entry lingers, OR if this machine has no
+  # entry at all (e.g. a failed earlier rebuild left the entry-less template).
   grep -o 'machine-id=[0-9a-f]*' "$esp/limine.conf" 2>/dev/null |
-    grep -qv "machine-id=$machine_id"
+    grep -qv "machine-id=$machine_id" && return 0
+  ! grep -q "machine-id=$machine_id" "$esp/limine.conf"
 }
 
 reset_limine_config() {
@@ -360,7 +394,7 @@ reset_limine_config() {
 cleanup_oem_state() {
   # Keep groups + packages: omarchy-reset-computer's degraded path (machines
   # without @factory) re-arms first-boot setup from the live copies.
-  rm -f "$OEM_DIR/pending" "$OEM_DIR/authorized_keys"
+  rm -f "$OEM_DIR/pending" "$OEM_DIR/authorized_keys" "$OEM_DIR/setup-user"
 
   rm -f /etc/systemd/system/multi-user.target.wants/omarchy-oem-setup.service
   systemctl daemon-reload 2>/dev/null || true

@@ -83,6 +83,7 @@ scrub_degraded_state() {
   local user
   for user in $(awk -F: '$3 >= 1000 && $3 < 60000 { print $1 }' /etc/passwd); do
     log "removing user $user"
+    rm -rf "/var/lib/fprint/$user"  # enrolled fingerprints outlive userdel
     userdel "$user" 2>/dev/null || abort "could not remove user $user"
   done
 
