@@ -61,6 +61,7 @@ runtime_dir="$test_tmp/runtime"
 mkdir -p "$restart_root/shell" "$restart_bin" "$runtime_dir"
 touch "$restart_root/shell/shell.qml"
 ln -s "$ROOT/bin/omarchy-shell" "$restart_bin/omarchy-shell"
+ln -s "$ROOT/bin/omarchy-launch-shell" "$restart_bin/omarchy-launch-shell"
 ln -s "$ROOT/bin/omarchy-cmd-missing" "$restart_bin/omarchy-cmd-missing"
 
 cat >"$restart_bin/qs" <<'SH'
@@ -110,11 +111,22 @@ if [[ ${1:-} == "-j" && ${2:-} == "monitors" ]]; then
 elif [[ ${1:-} == "dispatch" && ${2:-} == hl.dsp.exec_cmd* ]]; then
   printf '%s\n' "${2:-}" >>"$OMARCHY_TEST_DISPATCH_LOG"
   OMARCHY_PATH="$OMARCHY_TEST_SESSION_PATH" \
-    env -u OMARCHY_TEST_TRANSIENT_ENV quickshell -n -p "$OMARCHY_TEST_SESSION_PATH/shell"
+    env -u OMARCHY_TEST_TRANSIENT_ENV omarchy-launch-shell
   printf 'ok\n'
 elif [[ ${1:-} == "dispatch" ]]; then
   exit 1
 fi
+SH
+
+# Keep the test hermetic where journald has no usable stream socket.
+cat >"$restart_bin/systemd-cat" <<'SH'
+#!/bin/bash
+
+while (( $# > 0 )); do
+  [[ $1 == "--" ]] && { shift; break; }
+  shift
+done
+exec "$@"
 SH
 
 cat >"$restart_bin/systemctl" <<'SH'
@@ -129,7 +141,7 @@ else
 fi
 SH
 
-chmod +x "$restart_bin/qs" "$restart_bin/quickshell" "$restart_bin/hyprctl" "$restart_bin/systemctl"
+chmod +x "$restart_bin/qs" "$restart_bin/quickshell" "$restart_bin/hyprctl" "$restart_bin/systemd-cat" "$restart_bin/systemctl"
 
 sleep 30 &
 restart_pid_one=$!
@@ -167,7 +179,7 @@ restart_pid_two=""
 [[ $(grep -c '^-n -p ' "$restart_log") == 1 ]] || fail "restart launches one fresh shell process"
 grep -F "kill -p $restart_root/shell --any-display" "$restart_log" >/dev/null || fail "restart stops the shell from the session checkout"
 [[ $(<"$restart_env_log") == "unset" ]] || fail "restart uses the Hyprland session environment for the fresh shell"
-grep -F 'hl.dsp.exec_cmd("quickshell -n -p $OMARCHY_PATH/shell")' "$dispatch_log" >/dev/null || fail "restart launches the fresh shell through Hyprland"
+grep -F 'hl.dsp.exec_cmd("omarchy-launch-shell")' "$dispatch_log" >/dev/null || fail "restart launches the fresh shell through Hyprland"
 grep -F "ipc -n -p $restart_root/shell call -- shell ping" "$ipc_log" >/dev/null || fail "restart checks readiness in the session checkout"
 pass "restart replaces duplicate shell instances from the session checkout"
 
