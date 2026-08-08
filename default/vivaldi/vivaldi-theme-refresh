@@ -16,12 +16,38 @@ lighter_bg=$(omarchy-theme-color lighter_background)
 # directory is root-owned and only the file itself is world-writable, so a
 # non-root refresh cannot create a temp file or rename into it. The loader
 # tolerates a transient partial read and retries on its next poll.
+
+# Capture the effective Hyprland look-and-feel. Hyprland is the source of truth
+# (merge of every sourced config plus runtime keyword changes), so read it
+# directly rather than parsing ~/.config/hypr/*.lua.
+# Vivaldi's corner rounding is disabled at -1 ("Disabled"); a radius of 0 would
+# still round controls (--radiusRounded stays 2px), so Hyprland's "no rounding"
+# (rounding 0, the Omarchy default) maps to -1 rather than 0.
+radius=-1
+
+read_appearance() {
+  local rounding
+  rounding=$(hyprctl -j getoption decoration:rounding 2>/dev/null | jq -r '.int // empty' || true)
+  if [[ $rounding =~ ^[0-9]+$ ]]; then
+    if (( rounding == 0 )); then
+      radius=-1
+    else
+      # Vivaldi caps corner rounding at 14.
+      radius=$(( rounding > 14 ? 14 : rounding ))
+    fi
+  fi
+}
+
+read_appearance
+
 jq -n \
   --arg bg "$bg" --arg fg "$fg" --arg accent "$accent" --arg lighter_bg "$lighter_bg" \
+  --argjson radius "$radius" \
   --argjson updatedAt "$(date +%s)" \
   '{
     schemaVersion: 1,
     colors: { bg: $bg, fg: $fg, accent: $accent, lighterBg: $lighter_bg },
+    radius: $radius,
     updatedAt: $updatedAt
   }' > "$JSON"
 
@@ -29,7 +55,8 @@ set_vivaldi_native_theme() {
   local prefs
   for prefs in "$HOME"/.config/vivaldi/*/Preferences; do
     [[ -f $prefs ]] || continue
-    jq --arg bg "$bg" --arg fg "$fg" --arg accent "$accent" --arg lighter_bg "$lighter_bg" '
+    jq --arg bg "$bg" --arg fg "$fg" --arg accent "$accent" --arg lighter_bg "$lighter_bg" \
+       --argjson radius "$radius" '
       .vivaldi |= ((. // {}) + {
         appearance: ((.appearance // {}) + { force_dark_mode_theme: false }),
         themes: ((.themes // {}) + {
@@ -40,7 +67,8 @@ set_vivaldi_native_theme() {
               colorBg: $bg,
               colorFg: $fg,
               colorHighlightBg: $accent,
-              colorWindowBg: $bg
+              colorWindowBg: $bg,
+              radius: $radius
             }) else . end))
             + (if ((.themes.user // []) | any(.id == "Omarchy")) then [] else [{
               engineVersion: 1,
@@ -65,7 +93,7 @@ set_vivaldi_native_theme() {
               contrast: 0,
               dimBlurred: false,
               preferSystemAccent: false,
-              radius: 4,
+              radius: $radius,
               simpleScrollbar: true,
               transparencyTabBar: false,
               transparencyTabs: false

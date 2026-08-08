@@ -19,17 +19,20 @@
     }).catch(function () {});
   };
 
-  const syncNativeTheme = (bg, fg, accent, lighterBg, onDone) => {
+  const syncNativeTheme = (bg, fg, accent, lighterBg, radius, onDone) => {
     try {
       const prefs = window.vivaldi && window.vivaldi.prefs;
       if (!prefs || typeof prefs.get !== 'function' || typeof prefs.set !== 'function') return;
 
-      const colors = {
+      // Apply the full Omarchy theme (colors plus Hyprland-derived appearance)
+      // from the channel so updates land in the running browser.
+      const appearance = {
         colorBg: bg,
         colorFg: fg,
         colorAccentBg: lighterBg,
         colorHighlightBg: accent,
-        colorWindowBg: bg
+        colorWindowBg: bg,
+        radius: radius
       };
       const done = function () { if (onDone) onDone() };
 
@@ -56,7 +59,7 @@
         contrast: 0,
         dimBlurred: false,
         preferSystemAccent: false,
-        radius: 4,
+        radius: radius,
         simpleScrollbar: true,
         transparencyTabBar: false,
         transparencyTabs: false
@@ -68,7 +71,7 @@
         const themes = list.map(function (t) {
           if (t && t.id === 'Omarchy') {
             found = true;
-            return Object.assign({}, t, colors);
+            return Object.assign({}, t, appearance);
           }
           return t;
         });
@@ -86,10 +89,14 @@
     }
   };
 
-  const applyThemeCss = (bg, fg, accent, lighterBg) => {
+  const applyThemeCss = (bg, fg, accent, lighterBg, radius) => {
     const style = document.getElementById('omarchy-theme');
     if (!style) return;
     const mix = (a, b, p) => `color-mix(in srgb, ${a}, ${b} ${p})`;
+    // Corner rounding is rendered from CSS custom properties, so inject them
+    // alongside the colors to update corners live. Mirrors Vivaldi's own
+    // derivation from the theme radius; -1 is "Disabled" (no rounding).
+    const radiusPx = radius > -1 ? radius + 'px' : 0;
     style.textContent = `
       #browser {
         --colorBg: ${bg} !important;
@@ -102,6 +109,13 @@
         --colorHighlightFg: ${fg} !important;
         --colorWindowBg: ${bg} !important;
         --colorTabBar: ${lighterBg} !important;
+        --radius: ${radiusPx} !important;
+        --radiusRounded: ${radius > -1 ? '2px' : 0} !important;
+        --radiusRoundedLess: ${radius > 0 ? (radius - 1) + 'px' : 0} !important;
+        --radiusHalf: ${Math.round(radius / 2)}px !important;
+        --radiusCap: ${Math.min(radius, 8)}px !important;
+        --radiusRound: ${radius > -1 ? '100px' : 0} !important;
+        --radiusWindow: 6px !important;
       }`;
   };
 
@@ -117,9 +131,13 @@
       if (!/^#[a-f\d]{6}$/i.test(bg || '') || !/^#[a-f\d]{6}$/i.test(fg || '') ||
           !/^#[a-f\d]{6}$/i.test(accent || '') || !/^#[a-f\d]{6}$/i.test(lighterBg || '')) return;
       loggedError = false;
+      // -1 is Vivaldi's "Disabled" corner rounding (Hyprland rounding 0); a
+      // radius of 0 would still round controls, so it must not be clamped away.
+      const rawRadius = Number(data.radius);
+      const radius = Math.max(-1, Math.min(14, Math.round(isFinite(rawRadius) ? rawRadius : -1)));
       if (text !== synced) {
-        applyThemeCss(bg, fg, accent, lighterBg);
-        syncNativeTheme(bg, fg, accent, lighterBg, function () { synced = text });
+        applyThemeCss(bg, fg, accent, lighterBg, radius);
+        syncNativeTheme(bg, fg, accent, lighterBg, radius, function () { synced = text });
       }
     } catch (e) {
       if (!loggedError) {
