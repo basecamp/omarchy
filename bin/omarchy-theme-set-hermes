@@ -1,0 +1,308 @@
+#!/bin/bash
+
+# omarchy:summary=Sync all Omarchy themes to Hermes
+# omarchy:args=[--activate]
+# omarchy:hidden=true
+
+set -euo pipefail
+
+CURRENT_THEME_PATH="$HOME/.local/state/omarchy/current/theme"
+CURRENT_COLORS_PATH="$CURRENT_THEME_PATH/colors.toml"
+OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
+HERMES_AGENT_DIR="$HOME/.hermes"
+HERMES_SKINS_DIR="$HERMES_AGENT_DIR/skins"
+HERMES_PLUGIN_DIR="$HERMES_AGENT_DIR/desktop-plugins/omarchy-themes"
+HERMES_PLUGIN_PATH="$HERMES_PLUGIN_DIR/plugin.js"
+HERMES_ACTIVATE=0
+
+declare -A HERMES_COLORS
+
+usage() {
+  echo "Usage: omarchy-theme-set-hermes [--activate]"
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --activate)
+      HERMES_ACTIVATE=1
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ ! -f $CURRENT_COLORS_PATH || ! -d $OMARCHY_THEMES_PATH ]]; then
+  if (( HERMES_ACTIVATE == 1 )); then
+    echo "Omarchy theme colors are unavailable." >&2
+    echo "Run omarchy-theme-refresh after selecting an Omarchy theme." >&2
+    exit 1
+  fi
+
+  exit 0
+fi
+
+if (( HERMES_ACTIVATE == 0 )) && [[ ! -d $HERMES_AGENT_DIR ]]; then
+  exit 0
+fi
+
+trim() {
+  local value="$1"
+
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf "%s" "$value"
+}
+
+load_colors() {
+  local colors_path="$1"
+  local key value
+
+  HERMES_COLORS=()
+
+  while IFS='=' read -r key value; do
+    key=$(trim "$key")
+    value=$(trim "$value")
+    value="${value#\"}"
+    value="${value%\"}"
+
+    if [[ $key =~ ^[a-z_]+$ && $value =~ ^#[0-9A-Fa-f]{6}$ ]]; then
+      HERMES_COLORS[$key]="$value"
+    fi
+  done <"$colors_path"
+
+  for key in accent selection muted background dark_background lighter_background foreground dark_foreground bright_foreground red yellow green cyan blue magenta; do
+    if [[ -z ${HERMES_COLORS[$key]:-} ]]; then
+      echo "Hermes theme generation requires '$key' in $colors_path" >&2
+      return 1
+    fi
+  done
+}
+
+theme_color() {
+  local key="$1"
+  local fallback="$2"
+
+  printf "%s" "${HERMES_COLORS[$key]:-${HERMES_COLORS[$fallback]}}"
+}
+
+theme_label() {
+  local slug="$1"
+  local label=""
+  local word
+  local -a words
+
+  read -ra words <<<"${slug//-/ }"
+  for word in "${words[@]}"; do
+    label+="${label:+ }${word^}"
+  done
+
+  printf "%s" "$label"
+}
+
+theme_json() {
+  local colors_path="$1"
+  local name="$2"
+  local label="$3"
+  local description="$4"
+
+  load_colors "$colors_path"
+
+  jq -cn \
+    --arg name "$name" \
+    --arg label "$label" \
+    --arg description "$description" \
+    --arg background "${HERMES_COLORS[background]}" \
+    --arg darkBackground "${HERMES_COLORS[dark_background]}" \
+    --arg lighterBackground "${HERMES_COLORS[lighter_background]}" \
+    --arg foreground "${HERMES_COLORS[foreground]}" \
+    --arg darkForeground "${HERMES_COLORS[dark_foreground]}" \
+    --arg brightForeground "${HERMES_COLORS[bright_foreground]}" \
+    --arg accent "${HERMES_COLORS[accent]}" \
+    --arg selection "${HERMES_COLORS[selection]}" \
+    --arg muted "${HERMES_COLORS[muted]}" \
+    --arg red "${HERMES_COLORS[red]}" \
+    --arg yellow "${HERMES_COLORS[yellow]}" \
+    --arg green "${HERMES_COLORS[green]}" \
+    --arg cyan "${HERMES_COLORS[cyan]}" \
+    --arg blue "${HERMES_COLORS[blue]}" \
+    --arg magenta "${HERMES_COLORS[magenta]}" \
+    --arg brightRed "$(theme_color bright_red red)" \
+    --arg brightYellow "$(theme_color bright_yellow yellow)" \
+    --arg brightGreen "$(theme_color bright_green green)" \
+    --arg brightCyan "$(theme_color bright_cyan cyan)" \
+    --arg brightBlue "$(theme_color bright_blue blue)" \
+    --arg brightMagenta "$(theme_color bright_magenta magenta)" \
+    '{
+      name: $name,
+      label: $label,
+      description: $description,
+      colors: {
+        background: $background,
+        foreground: $foreground,
+        card: $lighterBackground,
+        cardForeground: $foreground,
+        muted: $lighterBackground,
+        mutedForeground: $darkForeground,
+        popover: $darkBackground,
+        popoverForeground: $foreground,
+        primary: $accent,
+        primaryForeground: $background,
+        secondary: $muted,
+        secondaryForeground: $foreground,
+        accent: $selection,
+        accentForeground: $foreground,
+        border: $muted,
+        input: $lighterBackground,
+        ring: $accent,
+        midground: $accent,
+        midgroundForeground: $background,
+        composerRing: $accent,
+        destructive: $red,
+        destructiveForeground: $background,
+        sidebarBackground: $darkBackground,
+        sidebarBorder: $muted,
+        userBubble: $selection,
+        userBubbleBorder: $muted
+      },
+      terminal: {
+        foreground: $foreground,
+        cursor: $brightForeground,
+        selectionBackground: ($selection + "80"),
+        black: $darkBackground,
+        red: $red,
+        green: $green,
+        yellow: $yellow,
+        blue: $blue,
+        magenta: $magenta,
+        cyan: $cyan,
+        white: $foreground,
+        brightBlack: $muted,
+        brightRed: $brightRed,
+        brightGreen: $brightGreen,
+        brightYellow: $brightYellow,
+        brightBlue: $brightBlue,
+        brightMagenta: $brightMagenta,
+        brightCyan: $brightCyan,
+        brightWhite: $brightForeground
+      }
+    } | .darkColors = .colors | .darkTerminal = .terminal'
+}
+
+write_skin() {
+  local colors_path="$1"
+  local name="$2"
+  local description="$3"
+  local skin_path="$HERMES_SKINS_DIR/$name.yaml"
+  local tmp
+
+  load_colors "$colors_path"
+  tmp=$(mktemp "$skin_path.XXXXXX")
+
+  cat >"$tmp" <<EOF
+name: $name
+description: $description
+
+colors:
+  background: "${HERMES_COLORS[background]}"
+  banner_border: "${HERMES_COLORS[muted]}"
+  banner_title: "${HERMES_COLORS[accent]}"
+  banner_accent: "$(theme_color bright_magenta magenta)"
+  banner_dim: "${HERMES_COLORS[dark_foreground]}"
+  banner_text: "${HERMES_COLORS[bright_foreground]}"
+  ui_text: "${HERMES_COLORS[foreground]}"
+  ui_accent: "${HERMES_COLORS[accent]}"
+  ui_border: "${HERMES_COLORS[muted]}"
+  ui_label: "$(theme_color bright_magenta magenta)"
+  ui_ok: "${HERMES_COLORS[green]}"
+  ui_error: "${HERMES_COLORS[red]}"
+  ui_warn: "${HERMES_COLORS[yellow]}"
+  ui_tool: "${HERMES_COLORS[blue]}"
+  ui_thinking: "${HERMES_COLORS[magenta]}"
+  syntax_string: "${HERMES_COLORS[green]}"
+  syntax_number: "$(theme_color orange yellow)"
+  syntax_keyword: "$(theme_color bright_magenta magenta)"
+  syntax_comment: "${HERMES_COLORS[dark_foreground]}"
+  prompt: "${HERMES_COLORS[bright_foreground]}"
+  input_rule: "${HERMES_COLORS[muted]}"
+  response_border: "${HERMES_COLORS[accent]}"
+  status_bar_bg: "${HERMES_COLORS[dark_background]}"
+  status_bar_text: "${HERMES_COLORS[foreground]}"
+  status_bar_strong: "${HERMES_COLORS[bright_foreground]}"
+  status_bar_dim: "${HERMES_COLORS[dark_foreground]}"
+  status_bar_good: "${HERMES_COLORS[green]}"
+  status_bar_warn: "${HERMES_COLORS[yellow]}"
+  status_bar_bad: "$(theme_color orange yellow)"
+  status_bar_critical: "${HERMES_COLORS[red]}"
+  session_label: "${HERMES_COLORS[accent]}"
+  session_border: "${HERMES_COLORS[muted]}"
+  voice_status_bg: "${HERMES_COLORS[dark_background]}"
+  selection_bg: "${HERMES_COLORS[selection]}"
+  completion_menu_bg: "${HERMES_COLORS[lighter_background]}"
+  completion_menu_current_bg: "${HERMES_COLORS[selection]}"
+  completion_menu_meta_bg: "${HERMES_COLORS[dark_background]}"
+  completion_menu_meta_current_bg: "${HERMES_COLORS[selection]}"
+EOF
+
+  mv "$tmp" "$skin_path"
+}
+
+mkdir -p "$HERMES_SKINS_DIR" "$HERMES_PLUGIN_DIR"
+
+plugin_tmp=$(mktemp "$HERMES_PLUGIN_PATH.XXXXXX")
+{
+  echo "const themes = ["
+
+  first=1
+  for theme_path in "$OMARCHY_THEMES_PATH"/*; do
+    [[ -f $theme_path/colors.toml ]] || continue
+
+    slug=${theme_path##*/}
+    label=$(theme_label "$slug")
+    description="Omarchy $label system theme"
+
+    (( first == 1 )) || echo ","
+    theme_json "$theme_path/colors.toml" "omarchy-$slug" "Omarchy · $label" "$description"
+    first=0
+
+    write_skin "$theme_path/colors.toml" "omarchy-$slug" "$description"
+  done
+
+  echo ","
+  theme_json "$CURRENT_COLORS_PATH" "omarchy-system" "Omarchy System" "Follows the current Omarchy system theme"
+
+  cat <<'JS'
+]
+
+export default {
+  id: 'omarchy-themes',
+  name: 'Omarchy Themes',
+  register(ctx) {
+    ctx.registerMany(
+      themes.map(theme => ({
+        id: theme.name,
+        area: 'themes',
+        data: theme
+      }))
+    )
+  }
+}
+JS
+} >"$plugin_tmp"
+
+mv "$plugin_tmp" "$HERMES_PLUGIN_PATH"
+write_skin "$CURRENT_COLORS_PATH" "omarchy-system" "Follows the current Omarchy system theme"
+
+if (( HERMES_ACTIVATE == 1 )); then
+  if omarchy-cmd-missing hermes; then
+    echo "Hermes is not installed." >&2
+    exit 1
+  fi
+
+  hermes skin use omarchy-system
+fi

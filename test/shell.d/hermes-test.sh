@@ -53,6 +53,11 @@ cat >"$mock_bin/setsid" <<'SH'
 printf 'launch:%s\n' "$*" >>"$HERMES_TEST_LOG"
 SH
 
+cat >"$mock_bin/hermes" <<'SH'
+#!/bin/bash
+printf 'hermes:%s\n' "$*" >>"$HERMES_TEST_LOG"
+SH
+
 cat >"$mock_bin/omarchy-launch-floating-terminal-with-presentation" <<'SH'
 #!/bin/bash
 printf 'install:%s\n' "$*" >>"$HERMES_TEST_LOG"
@@ -79,6 +84,8 @@ export HERMES_TEST_LOG="$test_tmp/hermes.log"
 export OMARCHY_PATH="$ROOT"
 export PATH="$mock_bin:$PATH"
 
+install -Dm644 "$ROOT/themes/tokyo-night/colors.toml" "$test_home/.local/state/omarchy/current/theme/colors.toml"
+
 install_output=$(bash "$ROOT/bin/omarchy-install-ai-hermes")
 
 [[ $(<"$HERMES_TEST_ARGS") == "--skip-setup --non-interactive --include-desktop" ]] ||
@@ -99,12 +106,17 @@ grep -Fxq "desktop-database:$HOME/.local/share/applications" "$HERMES_TEST_LOG" 
   fail "Hermes installer refreshes the desktop entry database"
 grep -Fxq "icon-cache:$HOME/.local/share/icons/hicolor" "$HERMES_TEST_LOG" ||
   fail "Hermes installer refreshes the user icon cache"
+[[ -f $HOME/.hermes/desktop-plugins/omarchy-themes/plugin.js ]] ||
+  fail "Hermes installer registers the Omarchy Desktop theme bundle"
+grep -Fxq 'hermes:skin use omarchy-system' "$HERMES_TEST_LOG" ||
+  fail "Hermes installer activates the live Omarchy system theme"
 grep -Fxq 'launch:uwsm-app -- gtk-launch hermes' "$HERMES_TEST_LOG" ||
   fail "Hermes installer opens the desktop app after installation"
-pass "Hermes installer provisions and registers the native desktop app"
+pass "Hermes installer provisions, themes, and registers the native desktop app"
 
 existing_home="$test_tmp/existing-home"
 existing_desktop_dir="$existing_home/.hermes/hermes-agent/apps/desktop"
+install -Dm644 "$ROOT/themes/tokyo-night/colors.toml" "$existing_home/.local/state/omarchy/current/theme/colors.toml"
 mkdir -p "$existing_desktop_dir/release/linux-unpacked" "$existing_desktop_dir/assets"
 touch "$existing_desktop_dir/release/linux-unpacked/Hermes"
 chmod +x "$existing_desktop_dir/release/linux-unpacked/Hermes"
