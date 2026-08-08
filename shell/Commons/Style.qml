@@ -347,11 +347,30 @@ QtObject {
     readonly property int statusSlot:     root.barToken("status-slot",     21)
   }
 
+  // Track the two live look queries for the current refresh. The hook fires only
+  // after both have applied, so external automation never observes stale values.
+  property int pendingLookReads: 0
+  // A style refresh that lands while a user hook is still running must not be
+  // dropped; queue it and drain it from onExited.
+  property bool hookRunPending: false
+
   function refresh() {
+    pendingLookReads = 2
     hyprctlProc.running = true
     gapsOutProc.running = true
-    // Acknowledge a shell style refresh so external automation can react to
-    // look-affecting changes without re-running hyprctl.
+  }
+
+  function lookReadFinished() {
+    pendingLookReads -= 1
+    if (pendingLookReads > 0) return
+    runStyleHook()
+  }
+
+  function runStyleHook() {
+    if (styleHookProc.running) {
+      hookRunPending = true
+      return
+    }
     styleHookProc.running = true
   }
 
@@ -447,7 +466,10 @@ QtObject {
     command: ["hyprctl", "-j", "getoption", "decoration:rounding"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.applyRoundingJson(text)
+      onStreamFinished: {
+        root.applyRoundingJson(text)
+        root.lookReadFinished()
+      }
     }
   }
 
@@ -456,7 +478,10 @@ QtObject {
     command: ["hyprctl", "-j", "getoption", "general:gaps_out"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.applyGapsOutJson(text)
+      onStreamFinished: {
+        root.applyGapsOutJson(text)
+        root.lookReadFinished()
+      }
     }
   }
 
@@ -565,6 +590,12 @@ QtObject {
   property Process styleHookProc: Process {
     id: styleHookProc
     command: ["omarchy-hook", "shell-style-changed"]
+    onExited: function(exitCode) {
+      if (root.hookRunPending) {
+        root.hookRunPending = false
+        root.runStyleHook()
+      }
+    }
   }
 
   Component.onCompleted: {
