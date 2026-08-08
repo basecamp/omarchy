@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# The install scripts that grant group memberships must record them in the OEM
+# The install scripts that grant group memberships must record them in the provisioning
 # groups file (for first-boot user creation and factory reset) and only call
 # usermod when the install user actually exists.
 
@@ -11,7 +11,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-export OMARCHY_PROVISIONING_DIR="$TMPDIR/oem"
+export OMARCHY_PROVISIONING_DIR="$TMPDIR/provisioning"
 
 # Stub getent/usermod: the fake system knows only the user "existing".
 mkdir -p "$TMPDIR/bin"
