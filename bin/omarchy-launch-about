@@ -2,4 +2,88 @@
 
 # omarchy:summary=Launch the fastfetch TUI that gives information about the current system.
 
-exec omarchy-launch-or-focus-tui "bash -c 'fastfetch; read -n 1 -s'"
+# The float rule only sets a starting size: the exact fit depends on the terminal
+# font and the user's About logo, so once the terminal grid has settled we measure
+# the rendered content and resize the window to hug it with even padding all around.
+# Bash defers WINCH traps while read blocks, so poll for size changes and re-render
+# fastfetch at the new width whenever the window is resized.
+
+LOGO_FILE="$HOME/.config/omarchy/branding/about.txt"
+
+hypr_dispatch() {
+  local lua="$1"
+  shift
+  hyprctl dispatch "$lua" >/dev/null 2>&1 || hyprctl dispatch "$@" >/dev/null
+}
+
+fit_window() {
+  # A user-level fastfetch config can relocate or restyle the logo in ways this
+  # measurement cannot see, so leave sizing to the float rule in that case.
+  [[ -f $HOME/.config/fastfetch/config.jsonc ]] && return 0
+
+  local rows cols address width height
+  read -r rows cols <<<"$(stty size)"
+  read -r address width height <<<"$(hyprctl clients -j | jq -r '.[] | select(.class == "org.omarchy.about") | "\(.address) \(.size[0]) \(.size[1])"')"
+  [[ -f $LOGO_FILE && -n ${address:-} ]] || return 1
+  (( cols > 0 && rows > 0 && width > 0 && height > 0 )) || return 1
+
+  # Mirror the logo block in the fastfetch config: 2 columns of padding on the
+  # left of the logo, 6 between the logo and the modules, 2 rows above the logo.
+  # wc -L measures display columns, so double-width glyphs count correctly.
+  local logo_w logo_h
+  logo_w=$(wc -L <"$LOGO_FILE")
+  logo_h=$(( $(wc -l <"$LOGO_FILE") + 2 ))
+
+  # The guard character keeps command substitution from eating the trailing
+  # break line, which provides the bottom padding row.
+  local modules module_w module_h
+  modules=$(fastfetch --logo none | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g'; printf X)
+  modules=${modules%X}
+  module_w=$(printf '%s' "$modules" | wc -L)
+  module_h=$(printf '%s' "$modules" | wc -l)
+
+  # Two columns of right padding to match the logo's left padding, and one row
+  # for the cursor line so the trailing break stays visible as bottom padding.
+  local target_c=$(( 2 + logo_w + 6 + module_w + 2 ))
+  local target_r=$(( (logo_h > module_h ? logo_h : module_h) + 1 ))
+  local target_w=$(( (target_c * width + cols / 2) / cols ))
+  local target_h=$(( (target_r * height + rows / 2) / rows ))
+
+  # Skip resizes within one terminal cell so the fit doesn't churn.
+  (( (target_w - width) ** 2 <= (width / cols) ** 2 && (target_h - height) ** 2 <= (height / rows) ** 2 )) && return
+
+  hypr_dispatch "hl.dsp.window.resize({ window = \"address:$address\", x = $target_w, y = $target_h })" resizewindowpixel "exact $target_w $target_h,address:$address"
+  hypr_dispatch "hl.dsp.window.center({ window = \"address:$address\" })" centerwindow
+}
+
+if [[ ${1:-} == "--render" ]]; then
+  printf '\e[?25l'
+
+  # Give the compositor a moment to apply the float rule before measuring cells.
+  previous=""
+  for _ in {1..20}; do
+    current=$(stty size)
+    [[ $current == $previous ]] && break
+    previous=$current
+    sleep 0.05
+  done
+
+  fitted=false
+  while :; do
+    size=$(stty size)
+    logo_stamp=$(stat -c %Y "$LOGO_FILE" 2>/dev/null)
+    clear
+    fastfetch
+    if [[ $fitted == false ]] && fit_window; then
+      fitted=true
+    fi
+    while [[ $(stty size) == $size && $(stat -c %Y "$LOGO_FILE" 2>/dev/null) == $logo_stamp ]]; do
+      read -t 0.5 -n 1 -s && exit
+      (( $? > 128 )) || exit
+    done
+    # A rebranded logo changes the content dimensions, so measure again.
+    [[ $(stat -c %Y "$LOGO_FILE" 2>/dev/null) == $logo_stamp ]] || fitted=false
+  done
+fi
+
+exec omarchy-launch-or-focus-tui --app-id=org.omarchy.about omarchy-launch-about --render

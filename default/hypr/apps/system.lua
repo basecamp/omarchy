@@ -17,6 +17,13 @@ o.window({
   class = "(sublime_text|DesktopEditors|org.gnome.Nautilus)",
   title = "^(Open.*Files?|Open [F|f]older.*|Save.*Files?|Save.*As|Save|All Files|.*wants to [open|save].*|[C|c]hoose.*)",
 }, { tag = "+floating-window" })
+-- The About fastfetch layout needs more columns than the standard float provides.
+-- This size only positions the first paint: omarchy-launch-about then measures
+-- the rendered content and fits the window to it exactly.
+o.window("org.omarchy.about", { float = true })
+o.window("org.omarchy.about", { center = true })
+o.window("org.omarchy.about", { size = { 920, 480 } })
+
 o.window("dev.tensaku.Tensaku", { float = true })
 o.window("dev.tensaku.Tensaku", { center = true })
 o.window("omacalc", { float = true })
