@@ -48,7 +48,7 @@
         accentFromPage: false,
         accentOnWindow: true,
         accentSaturationLimit: 1,
-        alpha: 1,
+        alpha: 0.92,
         backgroundImage: '',
         backgroundPosition: 'stretch',
         backgroundSource: '',
@@ -57,7 +57,7 @@
         colorBg: bg,
         colorFg: fg,
         colorHighlightBg: accent,
-        colorPosition: 'unified',
+        colorPosition: 'frame',
         colorWindowBg: bg,
         contrast: contrast,
         dimBlurred: dimBlurred,
@@ -65,7 +65,7 @@
         radius: radius,
         simpleScrollbar: true,
         transparencyTabBar: false,
-        transparencyTabs: false
+        transparencyTabs: true
       };
 
       prefs.get('vivaldi.themes.user').then(function (result) {
