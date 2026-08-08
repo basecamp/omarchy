@@ -99,6 +99,10 @@ result=$(HOME="$test_home" HERMES_HOME="$test_home/.hermes" \
   fail "Hermes collector identifies itself without inventing unified limits" "$result"
 pass "Hermes collector identifies itself and reports no unified limits"
 
+[[ $(jq -r '.retryAdvised' <<<"$result") == true ]] ||
+  fail "Hermes collector does not retry while its local database is active" "$result"
+pass "Hermes collector retries while the local ledger is settling"
+
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == 192 ]] ||
   fail "Hermes collector reconciles main usage and adds auxiliary usage once" "$result"
 pass "Hermes collector reconciles main and auxiliary usage without double-counting"

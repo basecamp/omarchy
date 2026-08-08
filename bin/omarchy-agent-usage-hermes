@@ -15,6 +15,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -196,6 +197,17 @@ def state_paths():
   return sorted(paths, key=lambda path: str(path))
 
 
+def database_recently_active(path, window_seconds=300):
+  now = time.time()
+  for candidate in (path, Path(str(path) + "-wal")):
+    try:
+      if 0 <= now - candidate.stat().st_mtime <= window_seconds:
+        return True
+    except OSError:
+      pass
+  return False
+
+
 def table_columns(conn, table):
   try:
     return {str(row[1]) for row in conn.execute(f'PRAGMA table_info("{table}")')}
@@ -224,6 +236,7 @@ class Usage:
     self.providers = set()
     self.models = set()
     self.routes = {}
+    self.retry_advised = False
 
   def add(self, day, session_key, provider, model, tokens):
     total = sum(tokens.values())
@@ -266,6 +279,7 @@ class Usage:
       "name": AGENT_NAME,
       "updatedAt": datetime.now(timezone.utc).isoformat(),
       "ready": has_databases,
+      "retryAdvised": self.retry_advised,
       "hasLocalStats": has_databases,
       "hasPromptStats": False,
       "tierLabel": tier,
@@ -389,6 +403,7 @@ def main():
 
   paths = state_paths()
   usage = Usage()
+  usage.retry_advised = any(database_recently_active(path) for path in paths)
   for path in paths:
     scan_database(path, usage)
   print(json.dumps(usage.record(bool(paths)), separators=(",", ":")))

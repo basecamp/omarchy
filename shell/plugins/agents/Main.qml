@@ -80,12 +80,11 @@ Item {
     scheduleSync()
   }
 
-  // A collector that could not reach its limits endpoint at all — typically
-  // the seconds after login before the network is up — writes retryAdvised
-  // into its record. Honor it with one sooner try instead of waiting out the
-  // full refresh interval; a run that reaches the endpoint clears the flag.
-  // Only the advising agents rerun, so an outage at one provider does not
-  // put every other collector on a 30-second treadmill.
+  // A collector that expects fresher data shortly writes retryAdvised into its
+  // record — usually while a login settles or a local agent finishes flushing
+  // its live token ledger. Honor it with one sooner try instead of waiting out
+  // the full refresh interval. Only the advising agents rerun, so activity at
+  // one provider does not put every collector on a 30-second treadmill.
   property var retryAgentIds: []
 
   Timer {
