@@ -42,7 +42,6 @@ create)
   done
 
   echo "Snapshots can be selected during boot."
-  echo
   ;;
 restore)
   sudo limine-snapper-restore
