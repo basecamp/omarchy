@@ -412,6 +412,32 @@ start_prompt() {
     "" || true
 }
 
+# The first thing a new owner sees, shown once before the keyboard step. It
+# mirrors the finish screen — logo, a centered title, a single button — so the
+# setup opens and closes on the same frame. No logo animation: this is the
+# starting line, not the celebration.
+greeter_screen() {
+  local prompt_pad
+
+  printf '%s%s' "$SHOW_CURSOR" "$CLEAR"
+  blank_line
+  render_logo
+  blank_line
+  center "Welcome to Omarchy" "$LOGO_WIDTH"
+  blank_line
+
+  printf '%s%d;1H%s' "$CSI" "$((LOGO_HEIGHT + 5))" "$CLEAR_LINE"
+  prompt_pad=$((($(term_cols) - 19) / 2))
+  (( prompt_pad < 0 )) && prompt_pad=0
+  gum confirm \
+    --padding "0 0 0 $prompt_pad" \
+    --show-help=false \
+    --default \
+    --affirmative "Start setup" \
+    --negative "" \
+    "" || true
+}
+
 # The keyboard step the ISO configurator runs — deferred to first boot for OEM
 # installs, so the machine's owner picks their own layout. Applied immediately
 # (live VT + persisted) so the password typed next, and the LUKS re-key below,
@@ -892,6 +918,7 @@ fi
 main() {
   scale_console_font
   set_tokyo_night_colors
+  greeter_screen
 
   while ! "$0" --attempt; do
     clear_logo
