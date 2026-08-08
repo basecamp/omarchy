@@ -350,6 +350,9 @@ QtObject {
   function refresh() {
     hyprctlProc.running = true
     gapsOutProc.running = true
+    // Acknowledge a shell style refresh so external automation can react to
+    // look-affecting changes without re-running hyprctl.
+    styleHookProc.running = true
   }
 
   function scheduleRefresh() {
@@ -557,6 +560,11 @@ QtObject {
     onTriggered: {
       if (hyprEventsProc.running) refreshTimer.restart()
     }
+  }
+
+  property Process styleHookProc: Process {
+    id: styleHookProc
+    command: ["omarchy-hook", "shell-style-changed"]
   }
 
   Component.onCompleted: {

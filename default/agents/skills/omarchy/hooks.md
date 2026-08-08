@@ -16,10 +16,16 @@ file first, if one exists.
 ├── post-boot.d/            # After the desktop starts
 ├── post-update.d/          # During `omarchy update`, after system packages and migrations
 ├── pre-refresh-pacman.d/   # Before `omarchy refresh pacman` re-syncs packages
+├── shell-style-changed.d/  # After Hyprland reloads; shell re-syncs rounding and gaps
 └── theme-set.d/            # After theme change (theme slug in $1)
 ```
 
-Example hook script:
+`shell-style-changed` fires whenever Hyprland reloads its config. The shell applies
+the new rounding and outer gaps to its own style; hooks can query Hyprland for any
+other look value (blur, opacity, shadows, ...) after the reload. A theme change also
+reloads Hyprland, so the hook fires on theme switches too.
+
+Example hook script (theme-set):
 ```bash
 #!/bin/bash
 THEME_NAME=$1
