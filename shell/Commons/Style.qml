@@ -536,34 +536,9 @@ QtObject {
     onTriggered: root.refresh()
   }
 
-  // `omarchy toggle window-gaps` creates/removes this flag file. Hyprland
-  // reloads its config when sourced files change, then hyprctl reflects
-  // the new effective value.
-  property FileView windowNoGapsToggle: FileView {
-    path: Quickshell.env("HOME") + "/.local/state/omarchy/toggles/hypr/window-no-gaps.lua"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: refreshTimer.restart()
-    onLoaded: refreshTimer.restart()
-    onLoadFailed: refreshTimer.restart()
-  }
-
-  // Hyprland auto-reloads when any sourced config under ~/.config/hypr changes,
-  // so re-poll decoration:rounding and general:gaps_out to track looknfeel
-  // edits (rounding, gaps) live without restarting the shell.
-  property FileView hyprConfigDir: FileView {
-    path: Quickshell.env("HOME") + "/.config/hypr"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: refreshTimer.restart()
-    onLoaded: refreshTimer.restart()
-    onLoadFailed: refreshTimer.restart()
-  }
-
-  // Hyprland reloads when sourced files change even via in-place writes, which a
-  // directory FileView cannot see (directory watches only report entry
-  // create/remove/rename). Listen on the instance event socket so any reload —
-  // atomic or in-place — re-syncs the shell from Hyprland's own detection.
+  // Hyprland reloads its config whenever any sourced file changes (atomic or
+  // in-place writes, hyprctl reload, theme switches, toggles). Listen on the
+  // instance event socket and re-sync the shell from Hyprland's own detection.
   property Process hyprEventsProc: Process {
     id: hyprEventsProc
     running: true
