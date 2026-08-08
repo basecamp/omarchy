@@ -42,6 +42,8 @@ env_args=(
   PROTONPATH=GE-Proton
   GAMEID=umu-battlenet
   PROTON_VERB=run
+  DXVK_STATE_CACHE_PATH="$PREFIX"
+  STAGING_SHARED_MEMORY=1
 )
 (( with_mangohud )) && env_args+=(MANGOHUD=1)
 
