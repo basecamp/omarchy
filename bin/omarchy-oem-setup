@@ -284,7 +284,59 @@ rekey_luks() {
   rm -f /etc/mkinitcpio.conf.d/99-omarchy-oem-key.conf
 
   # Rebuild the UKI so the initramfs no longer embeds the auto-unlock keyfile.
+  reset_limine_config
   limine-update >>"$LOG_FILE" 2>&1
+}
+
+# Start the ESP's limine.conf over from the shipped template and drop foreign
+# machine-id state before rebuilding. limine-entry-tool keys OS entries by
+# machine-id: after a factory reset gave this machine a fresh identity, the
+# previous system's entry would survive the rebuild with a stale UKI hash,
+# sort first, and make Limine stop at a hash-mismatch warning.
+esp_path() {
+  local esp=""
+  if [[ -f /etc/default/limine ]]; then
+    esp=$(sed -n 's/^ESP_PATH=["'\'']\?\([^"'\'']*\).*/\1/p' /etc/default/limine | tail -1)
+  fi
+  echo "${esp:-/boot}"
+}
+
+# A factory reset gives the machine a fresh machine-id, but limine-entry-tool
+# keys its limine.conf entries by machine-id — entries from the previous
+# identity would linger and go hash-stale on the first UKI rebuild.
+limine_entries_stale() {
+  local esp machine_id
+  esp=$(esp_path)
+  machine_id=$(cat /etc/machine-id 2>/dev/null || true)
+  [[ -f $esp/limine.conf && -n $machine_id ]] || return 1
+  grep -o 'machine-id=[0-9a-f]*' "$esp/limine.conf" 2>/dev/null |
+    grep -qv "machine-id=$machine_id"
+}
+
+reset_limine_config() {
+  local esp template found="" machine_id entry
+  esp=$(esp_path)
+
+  for template in "$OMARCHY_PATH/install/assets/limine/limine.conf" \
+                  "$OMARCHY_PATH/default/limine/limine.conf"; do
+    if [[ -f $template ]]; then
+      cp "$template" "$esp/limine.conf"
+      found=1
+      break
+    fi
+  done
+  if [[ -z $found ]]; then
+    log_step "no limine.conf template found; keeping the existing config"
+    return 0
+  fi
+
+  machine_id=$(cat /etc/machine-id 2>/dev/null || true)
+  for entry in "$esp"/*/; do
+    entry=${entry%/}
+    [[ $(basename "$entry") =~ ^[0-9a-f]{32}$ ]] || continue
+    [[ $(basename "$entry") == "$machine_id" ]] && continue
+    rm -rf "$entry"
+  done
 }
 
 cleanup_oem_state() {
@@ -329,6 +381,16 @@ run_setup() {
     say "Securing disk encryption with your password..."
     rekey_luks
     log_step "LUKS re-key complete"
+  fi
+
+  # After a factory reset on an unencrypted machine nothing above rebuilds the
+  # boot entries, so entries keyed to the previous machine identity would
+  # linger and go hash-stale on the first UKI rebuild. Refresh them now.
+  if limine_entries_stale; then
+    log_step "refreshing boot entries for the new machine identity"
+    say "Refreshing boot entries (this can take a minute)..."
+    reset_limine_config
+    limine-update >>"$LOG_FILE" 2>&1
   fi
 
   log_step "cleaning up OEM state"

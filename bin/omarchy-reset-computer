@@ -178,6 +178,50 @@ install_oem_units() {
     "$next/etc/systemd/system/sysinit.target.wants/omarchy-factory-wipe.service"
 }
 
+# Start the ESP's limine.conf over from the shipped template and drop foreign
+# machine-id state. limine-entry-tool keys OS entries by machine-id, so after
+# a reset gives the machine a fresh identity, the previous system's entry
+# (with the now-stale UKI hash) would survive, sort first, and make Limine
+# refuse the rebuilt UKI with a hash-mismatch warning.
+reset_limine_config() {
+  local root="$1" esp="$2" template found=""
+
+  for template in "$root/usr/share/omarchy/install/assets/limine/limine.conf" \
+                  "$root/usr/share/omarchy/default/limine/limine.conf"; do
+    if [[ -f $template ]]; then
+      cp "$template" "$root$esp/limine.conf"
+      found=1
+      break
+    fi
+  done
+  [[ -n $found ]] || fail "no limine.conf template in $root/usr/share/omarchy"
+
+  local machine_id entry
+  machine_id=$(cat "$root/etc/machine-id" 2>/dev/null || true)
+  for entry in "$root$esp"/*/; do
+    entry=${entry%/}
+    [[ $(basename "$entry") =~ ^[0-9a-f]{32}$ ]] || continue
+    [[ $(basename "$entry") == "$machine_id" ]] && continue
+    rm -rf "$entry"
+  done
+}
+
+# Every UKI entry in limine.conf carries a #blake2b hash of the file it
+# points at; a mismatch makes Limine stop at a scary warning. Never hand over
+# a staged reset in that state.
+verify_limine_hashes() {
+  local root="$1" esp="$2" line path hash file
+  while IFS= read -r line; do
+    path=${line#*boot():}
+    path=${path%%#*}
+    hash=${line##*#}
+    file="$root$esp$path"
+    [[ -f $file ]] || fail "limine.conf points at missing $path"
+    [[ $(b2sum "$file" | cut -d' ' -f1) == "$hash" ]] ||
+      fail "limine.conf hash for $path does not match the rebuilt file"
+  done < <(grep -o 'boot():/EFI/Linux/[^#]*#[0-9a-f]*' "$root$esp/limine.conf")
+}
+
 # Rebuild the UKI from inside the next root so the deployed kernel/initramfs
 # match the factory root's modules (the seller may have updated kernels since
 # install) and embed the OEM auto-unlock keyfile on encrypted machines.
@@ -203,10 +247,14 @@ rebuild_next_boot() {
     mount --make-rslave "$next/$dir"
   done
 
+  reset_limine_config "$next" "$esp_mount"
+
   log "Rebuilding boot files from the factory system (this can take a minute)"
   if ! chroot "$next" /usr/bin/limine-update >>"$LOG_FILE" 2>&1; then
     fail "limine-update failed in the factory root (see $LOG_FILE)"
   fi
+
+  verify_limine_hashes "$next" "$esp_mount"
 
   for dir in run dev sys proc; do
     umount -R "$next/$dir" 2>/dev/null || true
@@ -311,6 +359,12 @@ main() {
   [[ -d $TOP_MNT/@factory ]] || degraded=true
 
   confirm_reset "$degraded"
+
+  # The running system's limine-snapper-sync must not rewrite the ESP's
+  # limine.conf behind the staged rebuild (subvolume changes below can
+  # trigger it). The runtime mask evaporates on the reboot that follows.
+  systemctl mask --runtime --now limine-snapper-sync.service >/dev/null 2>&1 || true
+  systemctl mask --runtime --now limine-snapper-sync.path >/dev/null 2>&1 || true
 
   if [[ $degraded == true ]]; then
     stage_degraded_reset
