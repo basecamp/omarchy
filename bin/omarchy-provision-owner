@@ -46,27 +46,38 @@ export GUM_CONFIRM_SELECTED_BACKGROUND="2"
 export GUM_CONFIRM_UNSELECTED_FOREGROUND="7"
 export GUM_CONFIRM_UNSELECTED_BACKGROUND="0"
 
-# The ISO installer runs on a low-resolution pre-KMS console where the default
-# 8x16 font looks large; the installed system reaches full KMS resolution, where
-# that same font is tiny — so first-boot provisioning looked much smaller than
-# the installer. Scale the console font up on high-resolution framebuffers so the
-# two read at the same physical size. Both fonts ship with kbd (always present),
-# and low-resolution consoles (already installer-sized) are left untouched.
+# Match the first-boot console font to the ISO installer's apparent text size.
+# The installer renders on GRUB's low-resolution console (gfxpayload=keep, on
+# the ~768-row EFI GOP mode) where the default 8x16 font fills the screen. The
+# installed system reaches native KMS resolution, where 8x16 is tiny — so
+# first-boot provisioning looked far smaller than the installer it continues.
+#
+# Pick the kbd console font whose row count lands closest to that installer feel
+# (~48 rows), but never one wide enough to wrap the 81-column logo. On a console
+# that is already installer-sized (low resolution) this lands on the default
+# font, i.e. a no-op. All three fonts ship with kbd, so there's no dependency.
 scale_console_font() {
   [[ $(tty 2>/dev/null) == /dev/tty* ]] || return 0
   command -v setfont >/dev/null 2>&1 || return 0
+  [[ -r /sys/class/graphics/fb0/virtual_size ]] || return 0
 
-  local height="" size font=""
-  if [[ -r /sys/class/graphics/fb0/virtual_size ]]; then
-    size=$(<"/sys/class/graphics/fb0/virtual_size") # "WIDTH,HEIGHT"
-    height=${size##*,}
-  fi
-  [[ $height =~ ^[0-9]+$ ]] || return 0
+  local size w h
+  size=$(<"/sys/class/graphics/fb0/virtual_size") # "WIDTH,HEIGHT"
+  w=${size%%,*}; h=${size##*,}
+  [[ $w =~ ^[0-9]+$ && $h =~ ^[0-9]+$ ]] || return 0
 
-  if   (( height >= 1600 )); then font="latarcyrheb-sun32" # 16x32
-  elif (( height >= 1150 )); then font="sun12x22"          # 12x22
-  fi
-  [[ -n $font ]] && setfont "$font" 2>/dev/null || true
+  # name:cell_width:cell_height, smallest first.
+  local fonts=("default8x16:8:16" "sun12x22:12:22" "latarcyrheb-sun32:16:32")
+  local target_rows=48 min_cols=90
+  local best="" best_diff=999999 entry name cw ch cols rows diff
+  for entry in "${fonts[@]}"; do
+    IFS=: read -r name cw ch <<<"$entry"
+    cols=$(( w / cw )); rows=$(( h / ch ))
+    (( cols >= min_cols )) || continue      # keep a margin over the 81-col logo
+    diff=$(( rows > target_rows ? rows - target_rows : target_rows - rows ))
+    (( diff < best_diff )) && { best_diff=$diff; best="$name"; }
+  done
+  [[ -n $best ]] && setfont "$best" 2>/dev/null || true
 }
 
 # Same Tokyo Night VT palette the ISO configurator sets, so the first-boot
@@ -257,17 +268,35 @@ NOW=0
 FINALIZE_BASE=-1
 FINALIZE_TOTAL=$(grep -c '^run_logged' "$OMARCHY_PATH/install/user/all.sh" 2>/dev/null || echo 0)
 
-# Per-mille bands per phase: "lo hi tau". tau shapes the asymptotic time
-# floor; it is not a duration prediction. Skipped phases (no LUKS key, fresh
-# boot entries) leave a gap the next band's floor crosses on its own.
+# Whether this boot will re-key LUKS (encrypted installs stage a throwaway key).
+# The re-key rebuilds the UKI and is the slowest single step, so it needs a wide
+# band of its own; unencrypted installs skip it and let finalize take the room.
+REKEY_PENDING=false
+[[ -f $PROVISIONING_DIR/luks-key ]] && REKEY_PENDING=true
+
+# Per-mille bands per phase: "lo hi tau". tau shapes the asymptotic time floor;
+# it is not a duration prediction. A wide band moves visibly; a narrow one looks
+# stuck. Skipped phases leave a gap the next band's floor crosses on its own.
 phase_band() {
-  case $1 in
-    finalize) echo "80 850 45" ;;
-    rekey) echo "850 930 10" ;;
-    boot) echo "930 990 20" ;;
-    done) echo "1000 1000 1" ;;
-    *) echo "10 80 3" ;;
-  esac
+  if $REKEY_PENDING; then
+    # Encrypted: finalize is quick, the LUKS re-key (UKI rebuild) is the long
+    # pole — give it nearly half the bar so it keeps moving while it works.
+    case $1 in
+      finalize) echo "80 480 40" ;;
+      rekey)    echo "480 950 30" ;;
+      boot)     echo "950 990 20" ;;
+      done)     echo "1000 1000 1" ;;
+      *)        echo "10 80 3" ;;
+    esac
+  else
+    # Unencrypted: finalize is the dominant step.
+    case $1 in
+      finalize) echo "80 900 45" ;;
+      boot)     echo "900 990 20" ;;
+      done)     echo "1000 1000 1" ;;
+      *)        echo "10 80 3" ;;
+    esac
+  fi
 }
 
 setup_progress() {
