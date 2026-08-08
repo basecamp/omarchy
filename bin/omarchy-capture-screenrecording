@@ -228,7 +228,7 @@ stop_screenrecording() {
 
     local toast_ms=10000
     omarchy-notification-send "Screen recording saved" "Open with Super + Alt + , (or click this)" \
-      -t "$toast_ms" --image "$preview" \
+      -t "$toast_ms" --image "${preview:-$filename}" \
       --exec "$(printf 'mpv %q' "$filename")"
 
     # The toast renders the thumbnail for as long as it is on screen, so clear

@@ -93,9 +93,11 @@ download_url() {
       "$preview" -loglevel quiet 2>/dev/null || true
 
     local toast_ms=10000
+    # Best-effort: the download already succeeded, and under `set -e` a failed
+    # toast would exit before the thumbnail cleanup below is ever scheduled.
     omarchy-notification-send -g 󰄬 "Download complete" "$title" \
       -t "$toast_ms" --image "${preview:-$filepath}" \
-      --exec "$(printf 'mpv %q' "$filepath")"
+      --exec "$(printf 'mpv %q' "$filepath")" || true
 
     # The toast renders the thumbnail for as long as it is on screen, so clear
     # the preview once it can no longer be showing rather than waiting here.

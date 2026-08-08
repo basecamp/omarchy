@@ -70,7 +70,9 @@ announce() {
     ;;
   esac
 
-  omarchy-notification-send "${args[@]}" --exec "$(printf 'xdg-open %q' "$path")"
+  # Announcing is best-effort: the file is already delivered, and under `set -e`
+  # a notification outage would otherwise kill the long-running receiver.
+  omarchy-notification-send "${args[@]}" --exec "$(printf 'xdg-open %q' "$path")" || true
 }
 
 deliver() {
