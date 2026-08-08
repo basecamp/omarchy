@@ -75,32 +75,6 @@ grep -q "already running" "$test_tmp/update-second.out" || fail "second omarchy-
 [[ ! -f $test_tmp/update-second-snapshot-started ]] || fail "second omarchy-update did not snapshot while lock was held"
 pass "omarchy-update prevents overlapping top-level updates"
 
-# omarchy-update-perform is now only a compatibility wrapper around
-# omarchy-update -y, but it should still respect the same update lock.
-perform_marker="$test_tmp/perform-started"
-write_stub omarchy-update-keyring 'echo started >"$TEST_MARKER"; sleep 2; exit 0'
-
-TEST_MARKER="$perform_marker" run_with_lock_env "$ROOT/bin/omarchy-update-perform" >"$test_tmp/perform-first.out" 2>&1 &
-perform_pid=$!
-
-for _ in {1..50}; do
-  [[ -f $perform_marker ]] && break
-  sleep 0.05
-done
-[[ -f $perform_marker ]] || fail "first omarchy-update-perform delegated to update under lock"
-
-set +e
-TEST_MARKER="$test_tmp/perform-second-started" run_with_lock_env "$ROOT/bin/omarchy-update-perform" >"$test_tmp/perform-second.out" 2>&1
-perform_second_status=$?
-set -e
-
-wait "$perform_pid"
-
-[[ $perform_second_status -ne 0 ]] || fail "second omarchy-update-perform exits non-zero while update lock is held"
-grep -q "already running" "$test_tmp/perform-second.out" || fail "second omarchy-update-perform reports held update lock"
-[[ ! -f $test_tmp/perform-second-started ]] || fail "second omarchy-update-perform did not snapshot while lock was held"
-pass "omarchy-update-perform compatibility wrapper respects update lock"
-
 # The sleep inhibitor deliberately outlives the step that starts it, so it must
 # not inherit the update lock. An update killed before restore_update_inhibitors
 # would otherwise leave the inhibitor holding the flock forever, blocking every

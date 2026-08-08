@@ -247,7 +247,6 @@ scripts.
 | `omarchy-update-lock` | Hidden command wrapper that holds the per-user update lock while its child runs. | **Keep internal/hidden.** Isolates update concurrency and lock descriptor handling. |
 | `omarchy-update-stay-awake` | Hidden helper that starts or stops update-owned sleep and idle inhibition, restoring only the state it changed. | **Keep internal/hidden.** Keeps inhibitor ownership and cleanup together. |
 | `omarchy-update-status` | Hidden helper that refreshes or clears the shell update indicator after rechecking available updates. | **Keep internal/hidden.** Keeps shell status synchronization out of the main pipeline. |
-| `omarchy-update-perform` | Hidden compatibility wrapper for `omarchy-update -y`. | **Temporary.** Keep only for old callers; new code should call `omarchy-update` directly. |
 | `omarchy-update-confirm` | Gum confirmation copy for `omarchy update`. | **Question.** Could be inlined into `omarchy-update`; separate file only helps keep copy isolated. |
 | `omarchy-update-dev` | Fast-forwards the active dev-linked checkout from its configured upstream; no-ops for package-backed installs. | **Keep.** Runs before package updates so a checkout conflict stops the update before system mutation. |
 | `omarchy-update-keyring` | Ensures Omarchy keyring and Arch keyring are current before the main transaction. | **Keep, but review.** It uses targeted `pacman -Sy` for keyring bootstrapping; acceptable for this special case but should remain tightly scoped. |
@@ -280,8 +279,6 @@ scripts.
 
 3. **Update pipeline ownership**
    - `omarchy-update` owns the full update pipeline now.
-   - `omarchy-update-perform` is only a hidden compatibility wrapper for
-     `omarchy-update -y`.
 
 4. **Mise remains in the blessed update path**
    - `omarchy-update-mise` intentionally runs as part of `omarchy update`.
