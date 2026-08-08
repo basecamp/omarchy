@@ -84,6 +84,7 @@
   "trigger.toggle.screensaver": {"icon":"󱄄","label":"Screensaver","action":"omarchy-toggle-screensaver"},
   "trigger.toggle.nightlight": {"icon":"󰔎","label":"Nightlight","action":"omarchy-toggle-nightlight"},
   "trigger.toggle.top-bar": {"icon":"󰍜","label":"Menu Bar","action":"omarchy-toggle-bar"},
+  "trigger.toggle.battery-percentage": {"icon":"󰁹","label":"Battery Percentage","when":"omarchy-hw-laptop","action":"omarchy-shell omarchy.power togglePercentage"},
   "trigger.toggle.workspace-layout": {"icon":"󱂬","label":"Workspace Layout","action":"omarchy-hyprland-workspace-layout-toggle"},
   "trigger.toggle.window-gaps": {"icon":"","label":"Window Gaps","action":"omarchy-hyprland-window-gaps-toggle"},
   "trigger.toggle.one-window-ratio": {"icon":"","label":"1-Window Ratio","action":"omarchy-hyprland-window-single-square-aspect-toggle"},
