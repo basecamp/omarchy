@@ -203,7 +203,7 @@ Item {
     for (var syncedId in syncedProviders) {
       if (localIds[syncedId] || !providerEnabled(syncedId)) continue
       var stats = syncedProviders[syncedId] || {}
-      var syncedDisplay = displayProvider({ id: syncedId, name: stats.providerName || syncedId })
+      var syncedDisplay = displayProvider({ id: syncedId, name: stats.providerName || syncedId, mark: stats.providerMark || "" })
       if (providerHasData(syncedDisplay)) result.push(syncedDisplay)
     }
     return result
@@ -240,13 +240,16 @@ Item {
   }
 
   function displayProvider(record) {
-    var stats = syncedStatsFor(String(record.id))
+    var stats = syncedStatsFor(String(record.id), String(record.mark || ""))
     var synced = !!stats
     var deviceCount = synced ? Number(stats.deviceCount || aggregateData.deviceCount || 0) : 0
 
     return {
       providerId: String(record.id),
       providerName: String(record.name || record.id),
+      // The tool behind the account, for the panel's icon lookup. Absent on
+      // records from before it existed, whose id names the tool anyway.
+      mark: String(record.mark || ""),
       ready: record.ready === true || synced,
       usageStatusText: String(record.usageStatusText || ""),
       authHelpText: String(record.authHelpText || ""),
@@ -559,6 +562,7 @@ Item {
       providers[id] = {
         providerId: id,
         providerName: "",
+        providerMark: "",
         ready: false,
         hasLocalStats: false,
         hasPromptStats: false,
@@ -585,6 +589,17 @@ Item {
       for (var providerId in snapshotProviders) {
         var stats = snapshotProviders[providerId] || {}
         var acc = providerAcc(String(providerId))
+        // Ids name accounts, and machines may disagree about which tool an
+        // id names — pooling a Claude account with a Codex one that happens
+        // to share its name would charge one subscription with the other's
+        // tokens. Snapshots from before marks travelled carry none and merge
+        // as they always did.
+        var snapshotMark = String(stats.providerMark || "")
+        if (snapshotMark !== "" && acc.providerMark !== "" && snapshotMark !== acc.providerMark) {
+          console.warn("agents/sync", "account", providerId, "is", acc.providerMark, "here and", snapshotMark, "on", device, "— ignoring the mismatched snapshot")
+          continue
+        }
+        if (snapshotMark !== "" && acc.providerMark === "") acc.providerMark = snapshotMark
         acc.devices[device] = true
         if (stats.providerName && acc.providerName === "") acc.providerName = String(stats.providerName)
         acc.ready = acc.ready || stats.ready === true
@@ -632,6 +647,7 @@ Item {
       outProviders[id] = {
         providerId: acc.providerId,
         providerName: acc.providerName,
+        providerMark: acc.providerMark,
         ready: acc.ready || providerDevices.length > 0,
         hasLocalStats: acc.hasLocalStats,
         hasPromptStats: acc.hasPromptStats,
@@ -665,6 +681,7 @@ Item {
     return {
       providerId: String(record.id),
       providerName: String(record.name || record.id),
+      providerMark: String(record.mark || ""),
       ready: record.ready === true,
       hasLocalStats: record.hasLocalStats !== false,
       hasPromptStats: record.hasPromptStats !== false,
@@ -698,10 +715,18 @@ Item {
     }
   }
 
-  function syncedStatsFor(providerId) {
+  // The mark is part of the match, not just the id: an aggregate whose mark
+  // names the other tool belongs to a different subscription that happens to
+  // share the name. Aggregates and records from before marks travelled carry
+  // none and still match.
+  function syncedStatsFor(providerId, mark) {
     var rev = syncRevision
     if (!syncConfigured() || !aggregateData || !aggregateData.providers) return null
-    return aggregateData.providers[providerId] || null
+    var stats = aggregateData.providers[providerId] || null
+    if (!stats) return null
+    var statsMark = String(stats.providerMark || "")
+    if (statsMark !== "" && mark && statsMark !== String(mark)) return null
+    return stats
   }
 
   // ---------------------------------------------------------------- format

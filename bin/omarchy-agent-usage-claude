@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # omarchy:summary=Print the Claude Code usage record as JSON
-# omarchy:args=[--force] [--limits-only]
+# omarchy:args=[--force] [--limits-only] [--id <id>] [--name <name>] [--shared-sessions <auto|on|off>]
 # omarchy:hidden=true
 """Collect Claude Code usage into one display-ready JSON record.
 
@@ -43,6 +43,33 @@ def config_dir() -> Path:
 
 def expand_path(value: str) -> Path:
   return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
+
+
+def normalized_dir(value: object) -> str:
+  # Spelling, not identity on disk: collapse "~", "..", and trailing slashes
+  # but leave symlinks alone, so a symlinked alias of the stock directory
+  # reads as its own account rather than inheriting the stock one's claims.
+  return os.path.normpath(os.path.abspath(os.path.expanduser(str(value))))
+
+
+def on_stock_dir() -> bool:
+  return normalized_dir(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude") == normalized_dir("~/.claude")
+
+
+# pi, omp, and opencode keep one transcript tree apiece, shared by every
+# Claude account on the machine — nothing in them says which CLAUDE_CONFIG_DIR
+# their tokens were burned against. Exactly one account may count them, or the
+# same tokens appear once per account. omarchy-agent-usage-update resolves the
+# owner across every enabled account (reading each one's preference through
+# --print-identity) and runs each collector with an explicit on or off; auto
+# is the answer for a collector run by hand, where the stock ~/.claude
+# account counts them.
+def include_shared_sessions(mode: str) -> bool:
+  if mode == "on":
+    return True
+  if mode == "off":
+    return False
+  return on_stock_dir()
 
 
 def cache_root() -> Path:
@@ -700,7 +727,7 @@ def probe_limits(access_token: str) -> dict[str, Any]:
   return {"ok": True, "limits": limits}
 
 
-def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[str, Any]:
+def collect_limits(access_token: str, expires_at_ms: int, force: bool, claude_dir: Path) -> dict[str, Any]:
   result = {"limits": [], "usageStatusText": "", "authHelpText": AUTH_HELP}
 
   if access_token == "":
@@ -711,8 +738,11 @@ def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[s
 
   # A panel that is opened and shut repeatedly must not turn into a request
   # per flick, so recent probe results are reused for a short window — and
-  # kept as the answer of record when a later probe fails.
-  probe_cache = cache_root() / "claude-limits.json"
+  # kept as the answer of record when a later probe fails. Keyed by the
+  # account's directory: limits are per-subscription, and a second account
+  # reusing the first one's cached limits would display the wrong numbers.
+  digest = hashlib.sha1(str(claude_dir).encode("utf-8")).hexdigest()[:16]
+  probe_cache = cache_root() / f"claude-limits-{digest}.json"
   cached = read_fresh_json(probe_cache, float("inf")) or {}
   fetched_at = number(cached.get("fetchedAtMs")) / 1000
   min_interval = 0 if force else PROBE_MIN_INTERVAL_SECONDS
@@ -746,7 +776,24 @@ def main() -> int:
   parser.add_argument("--force", action="store_true", help="rescan transcripts and re-probe limits, ignoring caches")
   parser.add_argument("--limits-only", action="store_true", help="reuse any recent transcript scan; only the limits probe must be fresh")
   parser.add_argument("--cache-seconds", type=float, default=20)
+  # A second account is this same collector run with CLAUDE_CONFIG_DIR
+  # pointing at its directory and an id of its own; see collectors.d in the
+  # agents README. The mark keeps every account of this tool on the Claude
+  # icon, whatever its id.
+  parser.add_argument("--id", dest="agent_id", default=AGENT_ID, help="record id, for accounts beyond the stock one")
+  parser.add_argument("--name", dest="agent_name", default="", help="display name for the account's tab")
+  parser.add_argument("--shared-sessions", choices=["auto", "on", "off"], default="auto",
+                      help="whether this account counts the shared pi/omp/opencode trees (auto: only the stock ~/.claude account does)")
+  parser.add_argument("--print-identity", action="store_true",
+                      help="print this account's tool, stock-directory status, and shared-sessions preference, then exit")
   args = parser.parse_args()
+
+  # The identity is what lets the update command resolve shared-tree
+  # ownership across accounts before any of them runs: which tool this is,
+  # whether it sits on the stock directory, and what its wrapper asked for.
+  if args.print_identity:
+    print(json.dumps({"tool": AGENT_ID, "stock": on_stock_dir(), "sharedSessions": args.shared_sessions}, separators=(",", ":")))
+    return 0
 
   claude_dir = config_dir()
   scan_age = 0 if args.force else (900 if args.limits_only else args.cache_seconds)
@@ -763,21 +810,26 @@ def main() -> int:
       if today_prompts or today_sessions:
         stats = dict(stats, todayPrompts=today_prompts, todaySessions=today_sessions)
 
-  pi_usage = scan_pi_usage(scan_age)
-  if pi_usage is not None:
-    stats = merge_stats(stats, pi_usage)
+  if include_shared_sessions(args.shared_sessions):
+    pi_usage = scan_pi_usage(scan_age)
+    if pi_usage is not None:
+      stats = merge_stats(stats, pi_usage)
 
-  opencode = scan_opencode_usage(scan_age)
-  if opencode is not None:
-    stats = merge_stats(stats, opencode)
+    opencode = scan_opencode_usage(scan_age)
+    if opencode is not None:
+      stats = merge_stats(stats, opencode)
 
   access_token, expires_at_ms, plan = oauth_login(claude_dir)
-  limits = collect_limits(access_token, expires_at_ms, args.force)
+  limits = collect_limits(access_token, expires_at_ms, args.force, claude_dir)
 
   record = {
     "schemaVersion": 1,
-    "id": AGENT_ID,
-    "name": AGENT_NAME,
+    "id": args.agent_id,
+    "name": args.agent_name or (AGENT_NAME if args.agent_id == AGENT_ID else args.agent_id),
+    # Which tool this account runs, whatever id it goes by — the panel picks
+    # the Claude mark by it, and synced machines refuse to pool accounts
+    # whose marks disagree.
+    "mark": AGENT_ID,
     "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
     "ready": number(stats.get("totalPrompts")) > 0 or len(limits["limits"]) > 0,
     "hasLocalStats": True,

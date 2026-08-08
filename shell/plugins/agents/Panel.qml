@@ -278,10 +278,14 @@ Panel {
   // if it doesn't.
   function iconCandidatesForProvider(p, surfaceColor) {
     if (!p) return []
+    // The mark names the tool an account runs, so a second account of one
+    // tool keeps that tool's icon instead of falling back to the bar glyph.
+    // Records without a mark are their own tool, as before.
+    var base = String(p.mark || p.providerId)
     var candidates = []
     if (colorLuminance(surfaceColor || Color.background) >= 0.5)
-      candidates.push(Qt.resolvedUrl("assets/" + p.providerId + "-light.svg"))
-    candidates.push(Qt.resolvedUrl("assets/" + p.providerId + ".svg"))
+      candidates.push(Qt.resolvedUrl("assets/" + base + "-light.svg"))
+    candidates.push(Qt.resolvedUrl("assets/" + base + ".svg"))
     return candidates
   }
 
