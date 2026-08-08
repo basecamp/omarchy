@@ -93,7 +93,8 @@ hdlm() {
       first=false
     else
       local pane_id
-      pane_id=$(herdr tab create --cwd "$dirpath" --no-focus | jq -r '.result.root_pane.pane_id')
+      pane_id=$(herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$dirpath" --no-focus |
+        jq -r '.result.root_pane.pane_id')
       herdr pane run "$pane_id" "hdl $ai $ai2" >/dev/null
     fi
   done
