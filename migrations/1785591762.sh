@@ -1,4 +1,4 @@
-echo "Add WhatsApp Slim extension to Chromium-based browsers"
+echo "Add WhatsApp Slim extension to Brave Origin flags for existing installs"
 
 WHATSAPP_SLIM_EXT="$OMARCHY_PATH/default/chromium/extensions/whatsapp-slim"
 
@@ -16,6 +16,4 @@ add_whatsapp_slim_extension() {
   fi
 }
 
-for conf in chromium chrome google-chrome brave brave-beta brave-nightly brave-origin microsoft-edge-stable; do
-  add_whatsapp_slim_extension "$HOME/.config/$conf-flags.conf"
-done
+add_whatsapp_slim_extension "$HOME/.config/brave-origin-flags.conf"
