@@ -508,6 +508,57 @@ QtObject {
     onLoadFailed: refreshTimer.restart()
   }
 
+  // Hyprland auto-reloads when any sourced config under ~/.config/hypr changes,
+  // so re-poll decoration:rounding and general:gaps_out to track looknfeel
+  // edits (rounding, gaps) live without restarting the shell.
+  property FileView hyprConfigDir: FileView {
+    path: Quickshell.env("HOME") + "/.config/hypr"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: refreshTimer.restart()
+    onLoaded: refreshTimer.restart()
+    onLoadFailed: refreshTimer.restart()
+  }
+
+  // Hyprland reloads when sourced files change even via in-place writes, which a
+  // directory FileView cannot see (directory watches only report entry
+  // create/remove/rename). Listen on the instance event socket so any reload —
+  // atomic or in-place — re-syncs the shell from Hyprland's own detection.
+  property Process hyprEventsProc: Process {
+    id: hyprEventsProc
+    running: true
+    command: ["socat", "-U", "-", "UNIX-CONNECT:" + Quickshell.env("XDG_RUNTIME_DIR") + "/hypr/" + Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") + "/.socket2.sock"]
+    stdout: SplitParser {
+      onRead: function(line) {
+        if (String(line).indexOf("configreloaded") === 0) refreshTimer.restart()
+      }
+    }
+  }
+
+  // Restart the event listener if Hyprland restarts and the socket goes away.
+  property Timer hyprEventsReconnect: Timer {
+    interval: 3000
+    repeat: true
+    running: true
+    onTriggered: {
+      if (!hyprEventsProc.running) {
+        hyprEventsProc.running = true
+        reconnectCheckTimer.restart()
+      }
+    }
+  }
+
+  // Only re-sync once the listener actually connected; a failed socat exits
+  // within milliseconds, so refreshing on every attempt would spam the shell
+  // and the style hook while Hyprland is down.
+  property Timer reconnectCheckTimer: Timer {
+    interval: 200
+    repeat: false
+    onTriggered: {
+      if (hyprEventsProc.running) refreshTimer.restart()
+    }
+  }
+
   Component.onCompleted: {
     refresh()
     resolveFontFamily()
