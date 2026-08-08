@@ -36,6 +36,9 @@ export PATH="$OMARCHY_PATH/bin:$PATH"
 
 LOGO_PATH="$OMARCHY_PATH/logo.txt"
 LOGO_WIDTH=$(awk '{ if (length > max) max = length } END { print max+0 }' "$LOGO_PATH" 2>/dev/null || echo 0)
+LOGO_HEIGHT=$(wc -l <"$LOGO_PATH" 2>/dev/null || echo 0)
+(( LOGO_WIDTH > 0 )) || LOGO_WIDTH=81
+(( LOGO_HEIGHT > 0 )) || LOGO_HEIGHT=1
 
 export GUM_CONFIRM_PROMPT_FOREGROUND="6"
 export GUM_CONFIRM_SELECTED_FOREGROUND="0"
@@ -99,6 +102,262 @@ notice() {
 
 log_step() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] oem-setup: $1" >>"$LOG_FILE"
+}
+
+# ── Setup progress screen ────────────────────────────────────────────────────
+#
+# A port of the ISO install dashboard's renderer, so first-boot account setup
+# looks like a continuation of the install: same logo header, same 34-cell
+# bar, same rotating tips, same tte send-off. Position = max(floor, work) in
+# per-mille, monotonic; the floor is asymptotic per phase band and the work
+# signal counts finalize-user's run_logged scripts in the log.
+
+CSI=$'\033['
+RESET="${CSI}0m"
+DIM="${CSI}2m"
+HIDE_CURSOR="${CSI}?25l"
+SHOW_CURSOR="${CSI}?25h"
+CLEAR="${CSI}2J${CSI}H"
+CLEAR_LINE="${CSI}2K"
+CLEAR_TO_END="${CSI}J"
+GREEN="${CSI}32m"
+WHITE="${CSI}37m"
+DARK="${CSI}90m"
+
+STATE_FILE=/run/omarchy-provision-owner.state
+FINALIZE_WARNING_FLAG=/run/omarchy-provision-owner.finalize-warning
+DYNAMIC_ROW=$((LOGO_HEIGHT + 3))
+
+tips=(
+  "Super + Space opens the Omarchy menu for apps, settings, and more"
+  "Super + K shows all the key bindings"
+  "Super is the Windows or command key on your keyboard"
+  "Use Xournal++ to sign PDFs"
+  "Share files with phones and laptops using LocalSend"
+  "Turn any website into an app with Install > Web App in the menu"
+  "Super + Return opens a terminal, Super + Shift + Return the browser"
+  "Edit images with Pinta, videos with Kdenlive, docs with LibreOffice"
+  "Super + Ctrl + Print grabs text off the screen with OCR"
+  "Print takes a screenshot, Alt + Print records the screen"
+  "Set a reminder with Super + Ctrl + R"
+  "Switch themes from Style > Theme in the Omarchy menu"
+  "Double-click the menu bar to make it transparent"
+  "Run a full Windows VM via Install > Windows in the menu"
+  "Super + Ctrl + V opens the clipboard manager"
+  "Super + 1 through 0 switches workspaces, add Shift to bring the window"
+  "Super + Print picks a color from anywhere on screen"
+  "Keep the system fresh with Update in the Omarchy menu"
+)
+
+term_cols() {
+  local cols
+  cols=$(stty size 2>/dev/null </dev/tty | awk '{print $2}')
+  [[ $cols =~ ^[0-9]+$ ]] && (( cols > 0 )) || cols=${COLUMNS:-80}
+  printf '%s' "$cols"
+}
+
+repeat() {
+  local char="$1" count="$2" out="" i
+  for ((i = 0; i < count; i++)); do out+="$char"; done
+  printf '%s' "$out"
+}
+
+left_padding() {
+  local width="${1:-$LOGO_WIDTH}" cols pad
+  cols=$(term_cols)
+  pad=$(((cols - width) / 2))
+  (( pad < 0 )) && pad=0
+  printf '%*s' "$pad" ''
+}
+
+visible_len() {
+  local text="$1"
+  text="$(printf '%b' "$text" | sed -E $'s/\x1b\\[[0-9;?]*[A-Za-z]//g')"
+  printf '%s' "${#text}"
+}
+
+blank_line() { printf '\r%s\n' "$CLEAR_LINE"; }
+
+line_at() {
+  local width="${1:-$LOGO_WIDTH}" indent="${2:-0}"
+  shift 2
+  printf '\r%s%s%*s' "$CLEAR_LINE" "$(left_padding "$width")" "$indent" ''
+  printf '%b' "$*"
+}
+
+center() {
+  local text="$1" width="${2:-$LOGO_WIDTH}" len inner_pad
+  len="$(visible_len "$text")"
+  inner_pad=$(((width - len) / 2))
+  (( inner_pad < 0 )) && inner_pad=0
+  printf '\r%s%s%*s%b%s\n' "$CLEAR_LINE" "$(left_padding "$width")" "$inner_pad" '' "$text" "$RESET"
+}
+
+render_logo() {
+  local pad line
+  pad="$(left_padding "$LOGO_WIDTH")"
+  while IFS= read -r line; do
+    printf '\r%s%s%b%s%b\n' "$CLEAR_LINE" "$pad" "$GREEN" "$line" "$RESET"
+  done <"$LOGO_PATH"
+}
+
+progress_bar() {
+  local pm="$1" width="${2:-34}" filled empty
+  (( pm < 0 )) && pm=0
+  (( pm > 1000 )) && pm=1000
+  filled=$((pm * width / 1000))
+  empty=$((width - filled))
+  printf '%s%s%s%s%s' "$WHITE" "$(repeat █ "$filled")" "$DARK" "$(repeat ░ "$empty")" "$RESET"
+}
+
+# Monotonic clock so an NTP step during setup cannot jump the bar.
+set_now() {
+  local up rest
+  if read -r up rest </proc/uptime 2>/dev/null && [[ $up == [0-9]* ]]; then
+    NOW=${up%%.*}
+  else
+    NOW=$EPOCHSECONDS
+  fi
+  return 0
+}
+
+# One tip per 8 seconds, elapsed-time driven like the install dashboard.
+current_tip() {
+  printf '%s' "${tips[$(((NOW - SETUP_T0) / 8 % ${#tips[@]}))]}"
+}
+
+SETUP_POS=10
+SETUP_PHASE=""
+SETUP_PHASE_T0=0
+SETUP_T0=0
+NOW=0
+FINALIZE_BASE=-1
+FINALIZE_TOTAL=$(grep -c '^run_logged' "$OMARCHY_PATH/install/user/all.sh" 2>/dev/null || echo 0)
+
+# Per-mille bands per phase: "lo hi tau". tau shapes the asymptotic time
+# floor; it is not a duration prediction. Skipped phases (no LUKS key, fresh
+# boot entries) leave a gap the next band's floor crosses on its own.
+phase_band() {
+  case $1 in
+    finalize) echo "80 850 45" ;;
+    rekey) echo "850 930 10" ;;
+    boot) echo "930 990 20" ;;
+    done) echo "1000 1000 1" ;;
+    *) echo "10 80 3" ;;
+  esac
+}
+
+setup_progress() {
+  local phase lo hi tau t span floor work completed
+  phase=$(cat "$STATE_FILE" 2>/dev/null || true)
+  [[ -n $phase ]] || phase=account
+
+  if [[ $phase != "$SETUP_PHASE" ]]; then
+    SETUP_PHASE=$phase
+    SETUP_PHASE_T0=$NOW
+    FINALIZE_BASE=-1
+  fi
+
+  read -r lo hi tau <<<"$(phase_band "$phase")"
+  (( lo < SETUP_POS )) && lo=$SETUP_POS
+
+  t=$((NOW - SETUP_PHASE_T0))
+  span=$((hi - lo))
+  floor=$lo
+  (( span > 1 )) && floor=$((lo + (span - 1) * t / (t + tau)))
+
+  work=0
+  if [[ $phase == "finalize" ]] && (( FINALIZE_TOTAL > 0 )); then
+    completed=$(grep -cE '] (Completed|Failed): ' "$LOG_FILE" 2>/dev/null || true)
+    [[ $completed =~ ^[0-9]+$ ]] || completed=0
+    (( FINALIZE_BASE < 0 )) && FINALIZE_BASE=$completed
+    completed=$((completed - FINALIZE_BASE))
+    (( completed < 0 )) && completed=0
+    (( completed > FINALIZE_TOTAL )) && completed=$FINALIZE_TOTAL
+    work=$((lo + (hi - lo) * completed / FINALIZE_TOTAL))
+  fi
+
+  (( floor > SETUP_POS )) && SETUP_POS=$floor
+  (( work > SETUP_POS )) && SETUP_POS=$work
+  (( SETUP_POS > 1000 )) && SETUP_POS=1000
+  return 0
+}
+
+render_setup_static() {
+  printf '%s%s' "$HIDE_CURSOR" "$CLEAR"
+  blank_line
+  render_logo
+  blank_line
+}
+
+render_setup_dynamic() {
+  set_now
+  setup_progress
+  printf '%s%d;1H' "$CSI" "$DYNAMIC_ROW"
+  center "Setting up your account" "$LOGO_WIDTH"
+  blank_line
+  line_at "$LOGO_WIDTH" $(((LOGO_WIDTH - 34) / 2)) ""
+  progress_bar "$SETUP_POS" 34
+  printf '\n'
+  blank_line
+  center "${DIM}Tip:${RESET} ${GREEN}$(current_tip)${RESET}" "$LOGO_WIDTH"
+  printf '%s' "$CLEAR_TO_END"
+}
+
+setup_duration() {
+  local secs=$((NOW - SETUP_T0))
+  (( secs < 0 )) && secs=0
+  if (( secs >= 3600 )); then
+    printf '%dh %dm %ds' $((secs / 3600)) $((secs % 3600 / 60)) $((secs % 60))
+  else
+    printf '%dm %ds' $((secs / 60)) $((secs % 60))
+  fi
+}
+
+render_setup_finish() {
+  local duration effect_canvas_width
+  set_now
+  duration=$(setup_duration)
+  effect_canvas_width=$(term_cols)
+  (( effect_canvas_width > 1 )) && effect_canvas_width=$((effect_canvas_width - 1))
+
+  printf '%s%s' "$SHOW_CURSOR" "$CLEAR"
+  blank_line
+  render_logo
+  blank_line
+  center "Installed Omarchy in ${duration}" "$LOGO_WIDTH"
+  blank_line
+
+  if command -v tte >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1 && [[ -f $LOGO_PATH ]]; then
+    # TTE reuse mode restores a saved cursor before moving up over its input.
+    # Save this anchor so the effect redraws the same logo rows shown above.
+    printf '%s%d;1H\0337' "$CSI" "$((LOGO_HEIGHT + 2))"
+    timeout 8s tte -i "$LOGO_PATH" \
+      --canvas-width "$effect_canvas_width" \
+      --anchor-text c \
+      --frame-rate 260 \
+      --reuse-canvas \
+      laseretch \
+      2>/dev/null || true
+    printf '%s%d;1H' "$CSI" "$((LOGO_HEIGHT + 8))"
+  fi
+}
+
+start_prompt() {
+  local prompt_pad
+
+  # Position the cursor one blank line below the title so the button sits right there.
+  printf '%s%d;1H%s' "$CSI" "$((LOGO_HEIGHT + 5))" "$CLEAR_LINE"
+
+  prompt_pad=$((($(term_cols) - 25) / 2))
+  (( prompt_pad < 0 )) && prompt_pad=0
+  gum confirm \
+    --padding "0 0 0 $prompt_pad" \
+    --show-help=false \
+    --default \
+    --affirmative "Start Omarchy Now" \
+    --negative "" \
+    "" || true
 }
 
 # The keyboard step the ISO configurator runs — deferred to first boot for OEM
@@ -351,6 +610,7 @@ finalize_user() {
     OMARCHY_SETUP_CONTEXT=provision-owner \
     OMARCHY_USER_NAME="$full_name" \
     OMARCHY_USER_EMAIL="$email_address" \
+    OMARCHY_INSTALL_LOG_FILE="$LOG_FILE" \
     OMARCHY_LOG_TO_STDOUT=1 \
     "$OMARCHY_PATH/bin/omarchy-provision-user" --force --first-install
 }
@@ -482,38 +742,24 @@ cleanup_oem_state() {
   systemctl daemon-reload 2>/dev/null || true
 }
 
-run_setup() {
-  while true; do
-    keyboard_form
-    user_form
-    confirm_form && break
-  done
-
-  clear_logo
-  echo
-  say "Setting up your account..."
-  echo
-
-  touch "$LOG_FILE"
-  chmod 600 "$LOG_FILE"
-
+# The provisioning work, backgrounded under the progress screen. Phase writes
+# to STATE_FILE drive the bar; all output lands in the log.
+run_provisioning() {
   log_step "creating user $username"
   create_user
   install_authorized_keys
   configure_login
 
   log_step "finalizing user"
-  say "Finalizing your user (this can take a minute)..."
-  if ! finalize_user >>"$LOG_FILE" 2>&1; then
+  echo finalize >"$STATE_FILE"
+  if ! finalize_user; then
     log_step "finalize-user failed (continuing; user can retry after login)"
-    say --foreground 1 "User finalization reported errors (see $LOG_FILE)."
-    say --foreground 1 "Run 'omarchy-provision-user --force' after login to retry."
-    sleep 3
+    touch "$FINALIZE_WARNING_FLAG"
   fi
 
   if [[ -f $PROVISIONING_DIR/luks-key ]]; then
     log_step "re-keying LUKS to the user's password"
-    say "Securing disk encryption with your password..."
+    echo rekey >"$STATE_FILE"
     rekey_luks
     log_step "LUKS re-key complete"
   fi
@@ -523,18 +769,63 @@ run_setup() {
   # linger and go hash-stale on the first UKI rebuild. Refresh them now.
   if limine_entries_stale; then
     log_step "refreshing boot entries for the new machine identity"
-    say "Refreshing boot entries (this can take a minute)..."
+    echo boot >"$STATE_FILE"
     reset_limine_config
-    limine-update >>"$LOG_FILE" 2>&1
+    limine-update
   fi
 
   log_step "cleaning up provisioning state"
   cleanup_oem_state
   log_step "first-boot setup complete"
+}
 
-  clear_logo
-  echo
-  gum spin --spinner "pulse" --title "All set. Starting Omarchy..." -- sleep 2
+run_setup() {
+  while true; do
+    keyboard_form
+    user_form
+    confirm_form && break
+  done
+
+  touch "$LOG_FILE"
+  chmod 600 "$LOG_FILE"
+
+  rm -f "$FINALIZE_WARNING_FLAG"
+  echo account >"$STATE_FILE"
+
+  run_provisioning >>"$LOG_FILE" 2>&1 &
+  local worker=$!
+
+  set_now
+  SETUP_T0=$NOW
+  SETUP_PHASE_T0=$NOW
+
+  render_setup_static
+  while kill -0 "$worker" 2>/dev/null; do
+    render_setup_dynamic
+    sleep 0.5
+  done
+
+  local status=0
+  wait "$worker" || status=$?
+  printf '%s' "$SHOW_CURSOR"
+  (( status == 0 )) || return "$status"
+
+  # One full-bar frame so the finish doesn't cut in mid-progress.
+  echo done >"$STATE_FILE"
+  render_setup_dynamic
+  sleep 1
+
+  if [[ -f $FINALIZE_WARNING_FLAG ]]; then
+    rm -f "$FINALIZE_WARNING_FLAG"
+    clear_logo
+    echo
+    say --foreground 1 "User finalization reported errors (see $LOG_FILE)."
+    say --foreground 1 "Run 'omarchy-provision-user --force' after login to retry."
+    sleep 3
+  fi
+
+  render_setup_finish
+  start_prompt
 }
 
 # A failed first-boot setup must not strand the machine at a user-less login
