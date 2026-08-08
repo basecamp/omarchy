@@ -455,22 +455,21 @@ greeter_screen() {
   # the logo to repaint exactly the rows drawn above.
   if command -v tte >/dev/null 2>&1; then
     printf '%s%d;1H\0337' "$CSI" "$((logo_row + LOGO_HEIGHT))"
-    (
-      while true; do
-        tte -i "$LOGO_PATH" \
-          --canvas-width "$cols" \
-          --anchor-text c \
-          --frame-rate 60 \
-          --reuse-canvas \
-          colorshift \
-          --gradient-stops 2 10 6 10 \
-          --gradient-frames 3 \
-          --cycles 1000 \
-          --final-gradient-stops 2 \
-          </dev/null 2>/dev/null
-        printf '\0338'
-      done
-    ) >/dev/tty 2>/dev/null &
+    # Run tte directly (not inside a `while` subshell) so $anim is tte's own
+    # PID: killing a wrapping subshell would orphan tte, which then keeps
+    # painting the logo over the keyboard step. --cycles is high enough that it
+    # never ends on its own before Return.
+    tte -i "$LOGO_PATH" \
+      --canvas-width "$cols" \
+      --anchor-text c \
+      --frame-rate 60 \
+      --reuse-canvas \
+      colorshift \
+      --gradient-stops 2 10 6 10 \
+      --gradient-frames 3 \
+      --cycles 1000 \
+      --final-gradient-stops 2 \
+      </dev/null >/dev/tty 2>/dev/null &
     anim=$!
   fi
 
