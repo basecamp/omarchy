@@ -266,10 +266,19 @@ rebuild_next_boot() {
     if [[ -d $next/swap ]] && ! btrfs subvolume show "$next/swap" >/dev/null 2>&1; then
       rmdir "$next/swap" 2>/dev/null || true
     fi
+    # The factory root still carries the resume drop-ins from install, which
+    # make hibernation-setup conclude it has nothing to do; with the swapfile
+    # gone they must go so it reconfigures (and recomputes the resume offset)
+    # from scratch.
+    if [[ ! -f $next/swap/swapfile ]]; then
+      rm -f "$next/etc/mkinitcpio.conf.d/omarchy_resume.conf"
+    fi
     if ! chroot "$next" env OMARCHY_PATH=/usr/share/omarchy \
       /usr/bin/omarchy-hibernation-setup --force --no-rebuild >>"$LOG_FILE" 2>&1; then
       fail "hibernation setup failed in the factory root (see $LOG_FILE)"
     fi
+    [[ -f $next/swap/swapfile ]] ||
+      fail "hibernation setup did not recreate $next/swap/swapfile (see $LOG_FILE)"
   fi
 
   reset_limine_config "$next" "$esp_mount"
