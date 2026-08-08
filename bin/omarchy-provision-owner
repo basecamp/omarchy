@@ -474,7 +474,9 @@ greeter_screen() {
   fi
 
   IFS= read -r _ </dev/tty || true
-  [[ -n ${anim:-} ]] && { kill "$anim" 2>/dev/null; wait "$anim" 2>/dev/null; }
+  # `wait` reports tte's kill signal (143); tolerate it so `set -e` doesn't
+  # abort provisioning here — that dropped straight to the login screen.
+  [[ -n ${anim:-} ]] && { kill "$anim" 2>/dev/null; wait "$anim" 2>/dev/null || true; }
   # tte leaves the tty in raw/no-echo mode when killed; restore it or the gum
   # prompts in the keyboard step that follows silently die. Then clear the
   # leftover animation frame.
