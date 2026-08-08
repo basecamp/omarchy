@@ -353,8 +353,15 @@ QtObject {
   // A style refresh that lands while a user hook is still running must not be
   // dropped; queue it and drain it from onExited.
   property bool hookRunPending: false
+  // A refresh that arrives while the previous look queries are still running
+  // must not be dropped; re-run it once the current reads finish.
+  property bool refreshPending: false
 
   function refresh() {
+    if (pendingLookReads > 0) {
+      refreshPending = true
+      return
+    }
     pendingLookReads = 2
     hyprctlProc.running = true
     gapsOutProc.running = true
@@ -363,6 +370,11 @@ QtObject {
   function lookReadFinished() {
     pendingLookReads -= 1
     if (pendingLookReads > 0) return
+    if (refreshPending) {
+      refreshPending = false
+      refresh()
+      return
+    }
     runStyleHook()
   }
 
