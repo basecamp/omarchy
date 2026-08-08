@@ -412,21 +412,29 @@ start_prompt() {
     "" || true
 }
 
-# The first thing a new owner sees, shown once before the keyboard step. It
-# mirrors the finish screen — logo, a centered title, a single button — so the
-# setup opens and closes on the same frame. No logo animation: this is the
-# starting line, not the celebration.
+# The first thing a new owner sees, shown once before the keyboard step. Logo,
+# a centered title, and a single button — the same elements the setup ends on —
+# vertically centered on the screen like the LUKS/boot logo. No logo animation:
+# this is the starting line, not the celebration.
 greeter_screen() {
-  local prompt_pad
+  local prompt_pad rows top content_h
 
   printf '%s%s' "$SHOW_CURSOR" "$CLEAR"
-  blank_line
+
+  rows=$(stty size 2>/dev/null </dev/tty | awk '{print $1}')
+  [[ $rows =~ ^[0-9]+$ ]] || rows=${LINES:-24}
+
+  # logo + blank + title + blank + button (gum draws the button over ~2 rows).
+  content_h=$(( LOGO_HEIGHT + 5 ))
+  top=$(( (rows - content_h) / 2 ))
+  (( top < 0 )) && top=0
+
+  printf '%s%d;1H' "$CSI" "$((top + 1))"
   render_logo
   blank_line
-  center "Welcome to Omarchy" "$LOGO_WIDTH"
-  blank_line
+  center "Beautiful, Modern & Opinionated Linux by DHH" "$LOGO_WIDTH"
 
-  printf '%s%d;1H%s' "$CSI" "$((LOGO_HEIGHT + 5))" "$CLEAR_LINE"
+  printf '%s%d;1H%s' "$CSI" "$((top + LOGO_HEIGHT + 3))" "$CLEAR_LINE"
   prompt_pad=$((($(term_cols) - 19) / 2))
   (( prompt_pad < 0 )) && prompt_pad=0
   gum confirm \
