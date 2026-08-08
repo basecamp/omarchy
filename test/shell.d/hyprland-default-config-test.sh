@@ -103,6 +103,8 @@ mkdir -p "$fresh_home"
 fresh_output=$(run_application_bindings "$fresh_home")
 grep -Fq $'SUPER + RETURN	Terminal' <<<"$fresh_output" || fail "default application bindings include essentials"
 grep -Fq $'SUPER + SHIFT + A	ChatGPT' <<<"$fresh_output" || fail "default application bindings include preinstalled web apps"
+grep -Eq '^SUPER \+ SHIFT \+ H[[:space:]]+Hermes$' <<<"$fresh_output" ||
+  fail "default application bindings reserve the Hermes install-or-launch shortcut"
 pass "default application bindings load from package defaults"
 
 grep -F 'hl.dsp.send_key_state({ mods = mods, key = key, state = "down" })' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
@@ -126,6 +128,9 @@ removed_output=$(run_application_bindings "$removed_home")
 grep -Fq $'SUPER + RETURN	Terminal' <<<"$removed_output" || fail "preinstall removal keeps essential bindings"
 if grep -Fq $'SUPER + SHIFT + A	ChatGPT' <<<"$removed_output"; then
   fail "preinstall removal skips preinstalled web app bindings"
+fi
+if grep -Eq '^SUPER \+ SHIFT \+ H[[:space:]]+Hermes$' <<<"$removed_output"; then
+  fail "preinstall removal skips the optional Hermes shortcut"
 fi
 pass "preinstall removal flag skips optional application bindings"
 

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Name=Hermes
+GenericName=AI Agent
+Comment=Open Hermes Desktop
+Exec=omarchy-launch-hermes
+Terminal=false
+Type=Application
+Icon=hermes
+StartupNotify=true
+StartupWMClass=Hermes
+Categories=Utility;

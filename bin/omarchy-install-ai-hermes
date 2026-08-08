@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# omarchy:summary=Install Hermes Agent with its native desktop app
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+echo "Hermes needs administrator approval to configure the Electron sandbox."
+source omarchy-sudo-keepalive
+
+installer=$(mktemp)
+cleanup() {
+  rm -f "$installer"
+  if [[ -n ${SUDO_KEEPALIVE_PID:-} ]]; then
+    kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
+echo
+echo "A fresh Hermes installation normally takes 10-15 minutes."
+echo "The installer reports these longer phases separately:"
+echo "  1. Installing Python, voice, and wake-word dependencies (usually the longest)"
+echo "  2. Installing desktop workspace dependencies"
+echo "  3. Building Hermes Desktop"
+echo
+
+echo "Downloading the Hermes Agent installer..."
+curl --fail --silent --show-error --location --retry 3 \
+  https://hermes-agent.nousresearch.com/install.sh \
+  --output "$installer"
+
+echo "Installing the Hermes backend and desktop app..."
+bash "$installer" --skip-setup --non-interactive --include-desktop
+
+hermes_root="$HOME/.hermes/hermes-agent"
+desktop_file="$HOME/.local/share/applications/hermes.desktop"
+icon_source="$hermes_root/apps/desktop/assets/icon.png"
+icon_file="$HOME/.local/share/icons/hicolor/256x256/apps/hermes.png"
+
+install -Dm644 "$OMARCHY_PATH/default/applications/hermes.desktop" "$desktop_file"
+
+if [[ -f $icon_source ]]; then
+  install -Dm644 "$icon_source" "$icon_file"
+  gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" &>/dev/null || true
+fi
+
+update-desktop-database "$HOME/.local/share/applications" &>/dev/null || true
+
+echo "Opening Hermes Desktop..."
+setsid uwsm-app -- gtk-launch hermes >/dev/null 2>&1 &
+
+echo
+echo "Hermes is installed. Open it from the app launcher or with Super + Shift + H."

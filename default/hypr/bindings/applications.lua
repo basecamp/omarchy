@@ -14,6 +14,8 @@ if o.preinstalled_bindings_enabled() then
   o.bind("SUPER + SHIFT + ALT + M", "Music TUI", { tui = "cliamp", focus = true })
   o.bind("SUPER + SHIFT + D", "Docker", { tui = "lazydocker" })
   o.bind("SUPER + SHIFT + G", "Signal", { omarchy = "signal" })
+  -- Reserved for Hermes: launch it when installed, otherwise offer installation.
+  o.bind("SUPER + SHIFT + H", "Hermes", { omarchy = "hermes" })
   o.bind("SUPER + SHIFT + O", "Obsidian", { launch = "obsidian", focus = "^obsidian$" })
   o.bind("SUPER + SHIFT + W", "Omawrite", { launch = "omawrite" })
   o.bind("SUPER + SHIFT + SLASH", "Passwords", { omarchy = "1password" })

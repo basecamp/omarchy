@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# omarchy:summary=Launch or focus Hermes Desktop, installing it when missing
+
+set -euo pipefail
+
+window_address=$(hyprctl clients -j | jq -r '
+  first(
+    .[]
+    | select((.class // "") | test("^Hermes$"; "i"))
+    | .address
+  ) // empty
+')
+
+if [[ -n $window_address ]]; then
+  hyprctl dispatch "hl.dsp.focus({ window = \"address:$window_address\" })" >/dev/null 2>&1 ||
+    hyprctl dispatch focuswindow "address:$window_address"
+  exit
+fi
+
+hermes_root="$HOME/.hermes/hermes-agent"
+desktop_binary="$hermes_root/apps/desktop/release/linux-unpacked/Hermes"
+
+if [[ -x $desktop_binary ]]; then
+  exec setsid uwsm-app -- "$desktop_binary"
+fi
+
+exec omarchy-launch-floating-terminal-with-presentation omarchy-install-ai-hermes
