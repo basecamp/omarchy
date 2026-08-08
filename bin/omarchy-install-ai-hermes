@@ -54,7 +54,7 @@ update-desktop-database "$HOME/.local/share/applications" &>/dev/null || true
 
 # Install every Omarchy palette for Hermes CLI/TUI and the client-local Desktop
 # plugin. The local plugin keeps themes available even with a remote backend.
-omarchy-theme-set-hermes --activate
+omarchy-theme-set-hermes --all --activate
 
 echo "Opening Hermes Desktop..."
 setsid uwsm-app -- gtk-launch hermes >/dev/null 2>&1 &

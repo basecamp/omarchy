@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Sync all Omarchy themes to Hermes
-# omarchy:args=[--activate]
+# omarchy:args=[--activate] [--all]
 # omarchy:hidden=true
 
 set -euo pipefail
@@ -11,20 +11,26 @@ CURRENT_COLORS_PATH="$CURRENT_THEME_PATH/colors.toml"
 OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
 HERMES_AGENT_DIR="$HOME/.hermes"
 HERMES_SKINS_DIR="$HERMES_AGENT_DIR/skins"
-HERMES_PLUGIN_DIR="$HERMES_AGENT_DIR/desktop-plugins/omarchy-themes"
-HERMES_PLUGIN_PATH="$HERMES_PLUGIN_DIR/plugin.js"
+HERMES_THEMES_PLUGIN_DIR="$HERMES_AGENT_DIR/desktop-plugins/omarchy-themes"
+HERMES_THEMES_PLUGIN_PATH="$HERMES_THEMES_PLUGIN_DIR/plugin.js"
+HERMES_SYSTEM_PLUGIN_DIR="$HERMES_AGENT_DIR/desktop-plugins/omarchy-system-theme"
+HERMES_SYSTEM_PLUGIN_PATH="$HERMES_SYSTEM_PLUGIN_DIR/plugin.js"
 HERMES_ACTIVATE=0
+HERMES_ALL=0
 
 declare -A HERMES_COLORS
 
 usage() {
-  echo "Usage: omarchy-theme-set-hermes [--activate]"
+  echo "Usage: omarchy-theme-set-hermes [--activate] [--all]"
 }
 
 for arg in "$@"; do
   case "$arg" in
     --activate)
       HERMES_ACTIVATE=1
+      ;;
+    --all)
+      HERMES_ALL=1
       ;;
     -h | --help)
       usage
@@ -252,31 +258,32 @@ EOF
   mv "$tmp" "$skin_path"
 }
 
-mkdir -p "$HERMES_SKINS_DIR" "$HERMES_PLUGIN_DIR"
+write_all_themes() {
+  local description first label plugin_tmp slug theme_path
 
-plugin_tmp=$(mktemp "$HERMES_PLUGIN_PATH.XXXXXX")
-{
-  echo "const themes = ["
+  mkdir -p "$HERMES_THEMES_PLUGIN_DIR"
+  plugin_tmp=$(mktemp "$HERMES_THEMES_PLUGIN_PATH.XXXXXX")
 
-  first=1
-  for theme_path in "$OMARCHY_THEMES_PATH"/*; do
-    [[ -f $theme_path/colors.toml ]] || continue
+  {
+    echo "// omarchy-theme-bundle-v2"
+    echo "const themes = ["
 
-    slug=${theme_path##*/}
-    label=$(theme_label "$slug")
-    description="Omarchy $label system theme"
+    first=1
+    for theme_path in "$OMARCHY_THEMES_PATH"/*; do
+      [[ -f $theme_path/colors.toml ]] || continue
 
-    (( first == 1 )) || echo ","
-    theme_json "$theme_path/colors.toml" "omarchy-$slug" "Omarchy · $label" "$description"
-    first=0
+      slug=${theme_path##*/}
+      label=$(theme_label "$slug")
+      description="Omarchy $label system theme"
 
-    write_skin "$theme_path/colors.toml" "omarchy-$slug" "$description"
-  done
+      (( first == 1 )) || echo ","
+      theme_json "$theme_path/colors.toml" "omarchy-$slug" "Omarchy · $label" "$description"
+      first=0
 
-  echo ","
-  theme_json "$CURRENT_COLORS_PATH" "omarchy-system" "Omarchy System" "Follows the current Omarchy system theme"
+      write_skin "$theme_path/colors.toml" "omarchy-$slug" "$description"
+    done
 
-  cat <<'JS'
+    cat <<'JS'
 ]
 
 export default {
@@ -293,10 +300,50 @@ export default {
   }
 }
 JS
-} >"$plugin_tmp"
+  } >"$plugin_tmp"
 
-mv "$plugin_tmp" "$HERMES_PLUGIN_PATH"
-write_skin "$CURRENT_COLORS_PATH" "omarchy-system" "Follows the current Omarchy system theme"
+  mv "$plugin_tmp" "$HERMES_THEMES_PLUGIN_PATH"
+}
+
+write_system_theme() {
+  local plugin_tmp
+
+  mkdir -p "$HERMES_SYSTEM_PLUGIN_DIR"
+  plugin_tmp=$(mktemp "$HERMES_SYSTEM_PLUGIN_PATH.XXXXXX")
+
+  {
+    echo "const theme ="
+    theme_json "$CURRENT_COLORS_PATH" "omarchy-system" "Omarchy System" "Follows the current Omarchy system theme"
+
+    cat <<'JS'
+
+export default {
+  id: 'omarchy-system-theme',
+  name: 'Omarchy System Theme',
+  register(ctx) {
+    ctx.register({
+      id: theme.name,
+      area: 'themes',
+      data: theme
+    })
+  }
+}
+JS
+  } >"$plugin_tmp"
+
+  mv "$plugin_tmp" "$HERMES_SYSTEM_PLUGIN_PATH"
+  write_skin "$CURRENT_COLORS_PATH" "omarchy-system" "Follows the current Omarchy system theme"
+}
+
+mkdir -p "$HERMES_SKINS_DIR"
+
+# Named palettes are stable across ordinary theme switches. Generate them on
+# install, or once when upgrading from the original combined plugin format.
+if (( HERMES_ALL == 1 )) || ! grep -Fqx '// omarchy-theme-bundle-v2' "$HERMES_THEMES_PLUGIN_PATH" 2>/dev/null; then
+  write_all_themes
+fi
+
+write_system_theme
 
 if (( HERMES_ACTIVATE == 1 )); then
   if omarchy-cmd-missing hermes; then

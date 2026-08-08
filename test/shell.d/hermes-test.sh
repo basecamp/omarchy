@@ -108,6 +108,8 @@ grep -Fxq "icon-cache:$HOME/.local/share/icons/hicolor" "$HERMES_TEST_LOG" ||
   fail "Hermes installer refreshes the user icon cache"
 [[ -f $HOME/.hermes/desktop-plugins/omarchy-themes/plugin.js ]] ||
   fail "Hermes installer registers the Omarchy Desktop theme bundle"
+[[ -f $HOME/.hermes/desktop-plugins/omarchy-system-theme/plugin.js ]] ||
+  fail "Hermes installer registers the live Omarchy Desktop theme"
 grep -Fxq 'hermes:skin use omarchy-system' "$HERMES_TEST_LOG" ||
   fail "Hermes installer activates the live Omarchy system theme"
 grep -Fxq 'launch:uwsm-app -- gtk-launch hermes' "$HERMES_TEST_LOG" ||

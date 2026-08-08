@@ -488,26 +488,38 @@ SH
 chmod +x "$HERMES_TEST_BIN/hermes"
 
 HERMES_TEST_CALLS="$PI_TMPDIR/hermes-calls" PATH="$HERMES_TEST_BIN:$PATH" HOME="$PI_TMPDIR" OMARCHY_PATH="$ROOT" \
-  "$ROOT/bin/omarchy-theme-set-hermes" --activate
+  "$ROOT/bin/omarchy-theme-set-hermes" --all --activate
 
-HERMES_PLUGIN_PATH="$PI_TMPDIR/.hermes/desktop-plugins/omarchy-themes/plugin.js"
-[[ -f $HERMES_PLUGIN_PATH ]] || fail "hermes Desktop theme plugin is installed"
-pass "hermes Desktop theme plugin is installed"
+HERMES_THEMES_PLUGIN_PATH="$PI_TMPDIR/.hermes/desktop-plugins/omarchy-themes/plugin.js"
+HERMES_SYSTEM_PLUGIN_PATH="$PI_TMPDIR/.hermes/desktop-plugins/omarchy-system-theme/plugin.js"
+[[ -f $HERMES_THEMES_PLUGIN_PATH && -f $HERMES_SYSTEM_PLUGIN_PATH ]] || fail "hermes Desktop theme plugins are installed"
+pass "hermes Desktop theme plugins are installed"
 
 hermes_skin_count=$(find "$PI_TMPDIR/.hermes/skins" -maxdepth 1 -type f -name 'omarchy-*.yaml' | wc -l)
 expected_hermes_theme_count=$(find "$ROOT/themes" -mindepth 1 -maxdepth 1 -type d | wc -l)
 (( hermes_skin_count == expected_hermes_theme_count + 1 )) || fail "hermes installs every Omarchy skin plus the live system skin"
 pass "hermes installs every Omarchy skin plus the live system skin"
 
-HERMES_PLUGIN_PATH="$HERMES_PLUGIN_PATH" OMARCHY_THEMES_PATH="$ROOT/themes" node --input-type=module <<'JS'
+HERMES_THEMES_PLUGIN_PATH="$HERMES_THEMES_PLUGIN_PATH" HERMES_SYSTEM_PLUGIN_PATH="$HERMES_SYSTEM_PLUGIN_PATH" \
+  OMARCHY_THEMES_PATH="$ROOT/themes" node --input-type=module <<'JS'
 import fs from 'node:fs'
 
-const source = fs.readFileSync(process.env.HERMES_PLUGIN_PATH, 'utf8')
-const url = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
-const plugin = (await import(url)).default
-let contributions = []
+const loadPlugin = async path => {
+  const source = fs.readFileSync(path, 'utf8')
+  const url = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
+  return (await import(url)).default
+}
 
-plugin.register({ registerMany: rows => (contributions = rows) })
+const contributions = []
+const context = {
+  register: row => contributions.push(row),
+  registerMany: rows => contributions.push(...rows)
+}
+
+for (const path of [process.env.HERMES_THEMES_PLUGIN_PATH, process.env.HERMES_SYSTEM_PLUGIN_PATH]) {
+  const plugin = await loadPlugin(path)
+  plugin.register(context)
+}
 
 const slugs = fs
   .readdirSync(process.env.OMARCHY_THEMES_PATH, { withFileTypes: true })
@@ -521,7 +533,20 @@ const system = contributions.find(row => row.data.name === 'omarchy-system')?.da
 if (!system || system.colors.background !== '#000000' || system.colors.primary !== '#336699') process.exit(1)
 if (!system.terminal || system.terminal.red !== '#ff0000') process.exit(1)
 JS
-pass "hermes Desktop plugin contributes every Omarchy theme and the live system theme"
+pass "hermes Desktop plugins contribute every Omarchy theme and the live system theme"
+
+sed -i '1d' "$HERMES_THEMES_PLUGIN_PATH"
+HOME="$PI_TMPDIR" OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-theme-set-hermes"
+grep -Fqx '// omarchy-theme-bundle-v2' "$HERMES_THEMES_PLUGIN_PATH" || fail "hermes theme sync upgrades the combined plugin format"
+pass "hermes theme sync upgrades the combined plugin format"
+
+hermes_bundle_hash=$(sha256sum "$HERMES_THEMES_PLUGIN_PATH")
+cp "$ROOT/themes/white/colors.toml" "$CURRENT_THEME/colors.toml"
+HOME="$PI_TMPDIR" OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-theme-set-hermes"
+[[ $(sha256sum "$HERMES_THEMES_PLUGIN_PATH") == "$hermes_bundle_hash" ]] || fail "hermes ordinary theme sync leaves named themes untouched"
+grep -Fq '"name":"omarchy-system"' "$HERMES_SYSTEM_PLUGIN_PATH" || fail "hermes ordinary theme sync keeps the live system theme"
+grep -Fq '"background":"#ffffff"' "$HERMES_SYSTEM_PLUGIN_PATH" || fail "hermes ordinary theme sync refreshes the live system palette"
+pass "hermes ordinary theme sync only refreshes the live system palette"
 
 grep -Fx 'skin use omarchy-system' "$PI_TMPDIR/hermes-calls" >/dev/null || fail "hermes generated system theme is activated"
 pass "hermes generated system theme is activated"
