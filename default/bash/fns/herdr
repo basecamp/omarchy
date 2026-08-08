@@ -117,22 +117,25 @@ hsl() {
   local cols=1
   while (( cols * cols < count )); do ((cols++)); done
 
-  # Even columns come from repeatedly splitting the first one at (n-k)/(n-k+1)
+  # Even columns come from splitting the rightmost one off at 1/(n-k+1) each time,
+  # which keeps the array in left-to-right order
   columns=("$HERDR_PANE_ID")
   local k
   for (( k = 1; k < cols; k++ )); do
-    columns+=("$(_herdr_split "${columns[0]}" right "$(_herdr_ratio $((cols - k)) $((cols - k + 1)))" "$current_dir")")
+    columns+=("$(_herdr_split "${columns[-1]}" right "$(_herdr_ratio 1 $((cols - k + 1)))" "$current_dir")")
   done
 
-  # Split each column into its share of rows, again evenly
-  local col index rows j
+  # Split each column into its share of rows, again evenly and top-to-bottom
+  local col index rows j last
   for (( index = 0; index < cols; index++ )); do
     col="${columns[index]}"
     rows=$(( count / cols ))
     (( index < count % cols )) && (( rows++ ))
     panes+=("$col")
+    last="$col"
     for (( j = 1; j < rows; j++ )); do
-      panes+=("$(_herdr_split "$col" down "$(_herdr_ratio $((rows - j)) $((rows - j + 1)))" "$current_dir")")
+      last=$(_herdr_split "$last" down "$(_herdr_ratio 1 $((rows - j + 1)))" "$current_dir")
+      panes+=("$last")
     done
   done
 
