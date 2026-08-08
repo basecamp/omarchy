@@ -101,6 +101,87 @@ log_step() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] oem-setup: $1" >>"$LOG_FILE"
 }
 
+# The keyboard step the ISO configurator runs — deferred to first boot for OEM
+# installs, so the machine's owner picks their own layout. Applied immediately
+# (live VT + persisted) so the password typed next, and the LUKS re-key below,
+# use the chosen layout.
+keyboard_form() {
+  step "Let's setup your keyboard..."
+  local keyboards choice
+  keyboards=$'Azerbaijani|azerty
+Belarusian|by
+Belgian|be-latin1
+Bosnian|ba
+Bulgarian|bg-cp1251
+Croatian|croat
+Czech|cz
+Danish|dk-latin1
+Dutch|nl
+English (UK)|uk
+English (US)|us
+English (US, Dvorak)|dvorak
+English (US, Colemak)|colemak
+Estonian|et
+Finnish|fi
+French|fr
+French (Canada)|cf
+French (Switzerland)|fr_CH
+Georgian|ge
+German|de
+German (Switzerland)|de_CH-latin1
+Greek|gr
+Hebrew|il
+Hungarian|hu
+Icelandic|is-latin1
+Irish|ie
+Italian|it
+Japanese|jp106
+Kazakh|kazakh
+Khmer (Cambodia)|khmer
+Kyrgyz|kyrgyz
+Lao|la-latin1
+Latvian|lv
+Lithuanian|lt
+Macedonian|mk-utf
+Norwegian|no-latin1
+Polish|pl
+Portuguese|pt-latin1
+Portuguese (Brazil)|br-abnt2
+Romanian|ro
+Russian|ru
+Serbian|sr-latin
+Slovak|sk-qwertz
+Slovenian|slovene
+Spanish|es
+Spanish (Latin American)|la-latin1
+Swedish|sv-latin1
+Tajik|tj_alt-UTF8
+Turkish|trq
+Ukrainian|ua'
+  choice=$(printf '%s\n' "$keyboards" | cut -d'|' -f1 | gum choose --height 10 --selected "English (US)" --header "Select keyboard layout") || choice="English (US)"
+  keyboard=$(printf '%s\n' "$keyboards" | awk -F'|' -v c="$choice" '$1==c{print $2; exit}')
+  keyboard_label="$choice"
+  apply_keyboard "$keyboard"
+}
+
+# Load the layout on the live VT and persist it for the installed system.
+# systemd-firstboot writes both the console KEYMAP and the XKB layout Hyprland
+# reads, matching what the ISO's configure_keyboard does at install time. The
+# two layouts localectl doesn't know (ba, khmer) keep the default, same as a
+# normal install.
+apply_keyboard() {
+  local keymap="$1"
+  [[ $(tty 2>/dev/null) == /dev/tty* ]] && loadkeys "$keymap" 2>/dev/null || true
+
+  if localectl --no-pager list-keymaps 2>/dev/null | grep -qix "$keymap"; then
+    systemd-firstboot --keymap="$keymap" --force >>"$LOG_FILE" 2>&1 || \
+      localectl set-keymap "$keymap" >>"$LOG_FILE" 2>&1 || \
+      log_step "could not persist keymap $keymap"
+  else
+    log_step "keymap $keymap unknown to localectl; keeping the default"
+  fi
+}
+
 # The same username/password/name/email form as the ISO configurator's Step 2.
 user_form() {
   step "Let's setup your user account..."
@@ -152,6 +233,7 @@ confirm_form() {
   clear_logo
   echo
   echo -e "Field,Value
+Keyboard,${keyboard_label:-English (US)}
 Username,$username
 Password,$(printf "%${#password}s" | tr ' ' '*')
 Full name,${full_name:-[Skipped]}
@@ -402,6 +484,7 @@ cleanup_oem_state() {
 
 run_setup() {
   while true; do
+    keyboard_form
     user_form
     confirm_form && break
   done
