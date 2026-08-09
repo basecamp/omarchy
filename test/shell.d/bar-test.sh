@@ -60,11 +60,21 @@ assert(
   'the whole-bar hover handler is a child of the bar loader, above both orientations'
 )
 
-// Opening the peek stays the empty-space gesture alone: pointing straight at a
-// widget reveals nothing.
+// The helper has to record the state it is handed and re-run the collapse once
+// the pointer leaves, or the peek either never holds or never closes. Opening it
+// stays the empty-space gesture alone: pointing straight at a widget reveals nothing.
 const setBarHovered = barSource.slice(barSource.indexOf('function setBarHovered'))
+const setBarHoveredBody = setBarHovered.slice(0, setBarHovered.indexOf('\n  }'))
 assert(
-  !/centerSectionRevealHeld = true/.test(setBarHovered.slice(0, setBarHovered.indexOf('\n  }'))),
+  /barHovered = hovered/.test(setBarHoveredBody),
+  'the whole-bar hover handler records the pointer state it is given'
+)
+assert(
+  /if \(!hovered\) centerSectionRevealTimer\.restart\(\)/.test(setBarHoveredBody),
+  'a pointer leaving the bar re-runs the peek collapse'
+)
+assert(
+  !/centerSectionRevealHeld = true/.test(setBarHoveredBody),
   'hovering the bar never opens the peek on its own'
 )
 
