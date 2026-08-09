@@ -544,7 +544,6 @@ keyboard_form() {
   keyboards=$'Azerbaijani|azerty
 Belarusian|by
 Belgian|be-latin1
-Bosnian|ba
 Bulgarian|bg-cp1251
 Croatian|croat
 Czech|cz
@@ -570,7 +569,6 @@ Irish|ie
 Italian|it
 Japanese|jp106
 Kazakh|kazakh
-Khmer (Cambodia)|khmer
 Kyrgyz|kyrgyz
 Lao|la-latin1
 Latvian|lv
@@ -599,9 +597,9 @@ Ukrainian|ua'
 
 # Load the layout on the live VT and persist it for the installed system.
 # systemd-firstboot writes both the console KEYMAP and the XKB layout Hyprland
-# reads, matching what the ISO's configure_keyboard does at install time. The
-# two layouts localectl doesn't know (ba, khmer) keep the default, same as a
-# normal install.
+# reads, matching what the ISO's configure_keyboard does at install time. A
+# keymap localectl doesn't know keeps the default rather than failing (defensive;
+# the picker no longer offers any such layout).
 apply_keyboard() {
   local keymap="$1"
   [[ $(tty 2>/dev/null) == /dev/tty* ]] && loadkeys "$keymap" 2>/dev/null || true
