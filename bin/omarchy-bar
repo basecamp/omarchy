@@ -225,24 +225,55 @@ cmd_transparent() {
   fi
 }
 
+# A plugin the catalog cannot be read for is not reason enough to refuse: one
+# malformed hand-installed manifest fails the whole catalog, and migrations add
+# widgets through here.
 bar_widget_exists() {
-  omarchy-plugin-catalog | jq -e --arg id "$1" '
+  local catalog
+  catalog=$(omarchy-plugin-catalog 2>/dev/null) || return 0
+  jq -e --arg id "$1" '
     any(.[]; .id == $id and (.kinds | index("bar-widget")))
-  ' >/dev/null
+  ' >/dev/null <<<"$catalog"
 }
 
 bar_widget_default_section() {
-  omarchy-plugin-catalog | jq -r --arg id "$1" '
+  local catalog
+  catalog=$(omarchy-plugin-catalog 2>/dev/null) || {
+    echo "center"
+    return 0
+  }
+  jq -r --arg id "$1" '
     map(select(.id == $id))[0].barWidget.defaultSection // "center"
     | if IN("left", "center", "right") then . else "center" end
-  '
+  ' <<<"$catalog"
+}
+
+# The layout actually on screen. The shell only takes a user shell.json that
+# parses, says version 1, and carries a bar layout; anything else leaves the
+# shipped defaults in effect, so that is what we read and write against.
+LAYOUT_IN_EFFECT='(type == "object") and (.version == 1) and ((.bar.layout | type) == "object")'
+
+layout_source() {
+  local file
+  file=$(source_file)
+  if jq -e "$LAYOUT_IN_EFFECT" "$file" >/dev/null 2>&1; then
+    printf '%s\n' "$file"
+  else
+    printf '%s\n' "$DEFAULTS_FILE"
+  fi
 }
 
 # Widget ids of one section, in order, one per line.
 bar_section_ids() {
   jq -r --arg section "$1" '
     (.bar.layout[$section] // [])[] | if type == "object" then (.id // "") else . end
-  ' "$(source_file)"
+  ' "$(layout_source)"
+}
+
+bar_widget_disabled() {
+  jq -e --arg id "$1" '
+    (.disabledPlugins // []) | any(. == $id)
+  ' "$(layout_source)" >/dev/null 2>&1
 }
 
 # Adding writes the config file rather than calling the running shell, so it
@@ -278,6 +309,11 @@ cmd_add() {
     fi
   done
 
+  if bar_widget_disabled "$id"; then
+    echo "$id is disabled; enable it with 'omarchy plugin enable $id'"
+    return 0
+  fi
+
   section="$PLACEMENT_SECTION"
   [[ -n $section ]] || section=$(bar_widget_default_section "$id")
 
@@ -298,7 +334,15 @@ cmd_add() {
     done
   fi
 
-  commit "$NORMALIZE | .bar.layout[\$section] |= (.[0:\$at] + [{id: \$id}] + .[\$at:])" \
+  commit "(if $LAYOUT_IN_EFFECT then . else .bar = \$defaults[0].bar end)
+    | $NORMALIZE
+    | def entry_id: if type == \"object\" then (.id // \"\") else . end;
+      if [.bar.layout[][] | entry_id] | any(. == \$id) then
+        .
+      else
+        .bar.layout[\$section] |= (.[0:\$at] + [{id: \$id}] + .[\$at:])
+      end" \
+    --slurpfile defaults "$DEFAULTS_FILE" \
     --arg section "$section" \
     --arg id "$id" \
     --argjson at "$at"
