@@ -776,11 +776,41 @@ configure_login() {
   printf '[Last]\nSession=omarchy.desktop\nUser=%s\n' "$username" >/var/lib/sddm/state.conf
   chown -R sddm:sddm /var/lib/sddm 2>/dev/null || true
 
-  # Encrypted installs autologin because the LUKS prompt is the auth boundary.
-  if encrypted_install; then
-    mkdir -p /etc/sddm.conf.d
-    printf '[Autologin]\nUser=%s\nSession=omarchy.desktop\n' "$username" >/etc/sddm.conf.d/autologin.conf
-  fi
+  # Autologin straight into the desktop after first-boot setup — the owner just
+  # authenticated in the form, so we don't make them retype at SDDM.
+  mkdir -p /etc/sddm.conf.d
+  printf '[Autologin]\nUser=%s\nSession=omarchy.desktop\n' "$username" >/etc/sddm.conf.d/autologin.conf
+
+  # Encrypted installs keep autologin permanently (the LUKS prompt is the auth
+  # boundary). Unencrypted installs autologin only this first boot, then a
+  # one-shot service removes the drop-in so later boots use the normal SDDM
+  # login and the disk isn't left permanently open.
+  encrypted_install || install_autologin_once_cleanup
+}
+
+# Install a self-removing service that deletes the first-boot autologin drop-in
+# once the desktop is up, so only this boot skips the login screen. It runs
+# after the display manager (which has already read the drop-in and autologged
+# in), removes the drop-in, then removes its own unit and enablement symlink.
+install_autologin_once_cleanup() {
+  local unit=omarchy-provision-autologin-once.service
+  cat >"/etc/systemd/system/$unit" <<UNIT
+[Unit]
+Description=Drop the first-boot autologin after the owner's first desktop login
+After=display-manager.service
+ConditionPathExists=/etc/sddm.conf.d/autologin.conf
+
+[Service]
+Type=oneshot
+ExecStartPre=-/usr/bin/sleep 3
+ExecStart=/usr/bin/rm -f /etc/sddm.conf.d/autologin.conf
+ExecStartPost=/usr/bin/rm -f /etc/systemd/system/graphical.target.wants/$unit /etc/systemd/system/$unit
+
+[Install]
+WantedBy=graphical.target
+UNIT
+  mkdir -p /etc/systemd/system/graphical.target.wants
+  ln -sf "../$unit" "/etc/systemd/system/graphical.target.wants/$unit"
 }
 
 # Apply the owner's timezone, deferred to first boot with the rest of the user
