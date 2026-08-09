@@ -43,6 +43,31 @@ assertEqual(bar.pickDrawnSlot([placeholder]), placeholder, 'bar falls back to th
 assertEqual(bar.pickDrawnSlot([]), null, 'bar reports no slot when there are none')
 assertEqual(bar.pickDrawnSlot(null), null, 'bar tolerates a missing slot list')
 
+// Revealing the indicators can slide a neighbouring widget under a stationary
+// pointer; collapsing the peek on that un-hover re-opens it and stutters the
+// bar, so the peek stays held while the pointer is anywhere on the bar.
+assert(
+  /onTriggered: root\.centerSectionRevealHeld = root\.centerSectionHovered \|\| root\.barHovered/.test(barSource),
+  'the indicator peek stays held while the pointer is anywhere on the bar'
+)
+
+// The whole-bar hover has to come from an ancestor of the sections. A sibling
+// loses hover to whichever section the pointer moved onto, which is the very
+// signal the peek must not collapse on.
+const barLoader = barSource.slice(barSource.indexOf('sourceComponent: root.vertical ? verticalBar : horizontalBar'))
+assert(
+  /setBarHovered\(hovered\)/.test(barLoader.slice(0, barLoader.indexOf('\n    }'))),
+  'the whole-bar hover handler is a child of the bar loader, above both orientations'
+)
+
+// Opening the peek stays the empty-space gesture alone: pointing straight at a
+// widget reveals nothing.
+const setBarHovered = barSource.slice(barSource.indexOf('function setBarHovered'))
+assert(
+  !/centerSectionRevealHeld = true/.test(setBarHovered.slice(0, setBarHovered.indexOf('\n  }'))),
+  'hovering the bar never opens the peek on its own'
+)
+
 // A bar surface is built per monitor, so a panel hotkey has one live copy of
 // the widget per screen to choose between.
 const internal = { moduleName: 'omarchy.audio', visible: true, width: 28, height: 81 }

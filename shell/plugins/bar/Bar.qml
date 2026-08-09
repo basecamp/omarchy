@@ -45,6 +45,8 @@ Item {
   property bool useTransparentForeground: false
   property bool transparent: false
   property bool centerSectionHovered: false
+  // True while the pointer is over the bar, widgets included.
+  property bool barHovered: false
   property bool centerSectionRevealHeld: false
   property bool centerHoverRevealSuppressed: false
   property int barConfigSerial: 0
@@ -559,6 +561,9 @@ Item {
 
   Component.onCompleted: applyBarConfig()
 
+  // Revealing the indicators widens their section, which can slide a neighbour
+  // under a stationary pointer. Collapsing on that un-hover would move it back
+  // out and re-open the peek, so hold until the pointer leaves the bar.
   function setCenterSectionHovered(hovered) {
     centerSectionHovered = hovered
     if (hovered) {
@@ -569,10 +574,15 @@ Item {
     }
   }
 
+  function setBarHovered(hovered) {
+    barHovered = hovered
+    if (!hovered) centerSectionRevealTimer.restart()
+  }
+
   Timer {
     id: centerSectionRevealTimer
     interval: 120
-    onTriggered: root.centerSectionRevealHeld = root.centerSectionHovered
+    onTriggered: root.centerSectionRevealHeld = root.centerSectionHovered || root.barHovered
   }
 
   function run(command) {
@@ -980,6 +990,13 @@ Item {
     Loader {
       anchors.fill: parent
       sourceComponent: root.vertical ? verticalBar : horizontalBar
+
+      // A child of the loader, not a sibling of the sections: an ancestor stays
+      // hovered while the pointer is over a widget, where a sibling would lose
+      // hover to the section the pointer entered.
+      HoverHandler {
+        onHoveredChanged: root.setBarHovered(hovered)
+      }
     }
 
     PopupWindow {
