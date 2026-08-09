@@ -35,6 +35,11 @@ confirm() {
 
 ENABLE_PLACEMENT=()
 
+is_bar_widget() {
+  jq -e '(.kinds // []) | (index("bar") | not) and (index("bar-widget") != null)' \
+    "$PLUGINS_DIR/$1/manifest.json" >/dev/null 2>&1
+}
+
 select_bar_widget_placement() {
   local id="$1"
   local section
@@ -42,8 +47,7 @@ select_bar_widget_placement() {
   interactive || return 0
   (( ASSUME_YES )) && return 0
 
-  jq -e '(.kinds // []) | (index("bar") | not) and (index("bar-widget") != null)' \
-    "$PLUGINS_DIR/$id/manifest.json" >/dev/null 2>&1 || return 0
+  is_bar_widget "$id" || return 0
 
   default_section=$(jq -r '.barWidget.defaultSection // "center"' "$PLUGINS_DIR/$id/manifest.json")
   section=$(printf '%s\n' left center right |
@@ -153,16 +157,22 @@ fi
 
 if [[ $enable_after == true ]]; then
   select_bar_widget_placement "$id"
-  discovered=0
-  for (( attempt = 0; attempt < 40; attempt++ )); do
-    if omarchy-plugin-list --json | jq -e --arg id "$id" 'any(.[]; .id == $id)' >/dev/null; then
-      discovered=1
-      break
-    fi
-    sleep 0.05
-  done
-  (( discovered )) || fail "plugin '$id' is not known"
-  omarchy-plugin-enable "$id" "${ENABLE_PLACEMENT[@]}"
+  if is_bar_widget "$id"; then
+    # Putting a widget on the bar is a config edit, so it needs neither the
+    # shell's rescan to have landed nor a shell at all.
+    omarchy-bar put "$id" "${ENABLE_PLACEMENT[@]}"
+  else
+    discovered=0
+    for (( attempt = 0; attempt < 40; attempt++ )); do
+      if omarchy-plugin-list --json | jq -e --arg id "$id" 'any(.[]; .id == $id)' >/dev/null; then
+        discovered=1
+        break
+      fi
+      sleep 0.05
+    done
+    (( discovered )) || fail "plugin '$id' is not known"
+    omarchy-plugin-enable "$id"
+  fi
 else
   echo "Enable it later with: omarchy plugin enable $id"
 fi
