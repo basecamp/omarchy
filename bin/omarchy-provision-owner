@@ -419,6 +419,25 @@ greeter_screen() {
   local rows top content_h cols logo_row tagline_row hint_row
   local tagline hint tpad hpad anim
 
+  # A terminal (or sudo's pty) can report a stale 24x80 for a few hundred ms
+  # after start, before its real winsize is set — which would drop the greeter
+  # into the 80x24 top-left fallback. Wait for stty to report a stable size at
+  # least as wide as the logo before measuring.
+  local _last="" _cur _w _stable=0 _waited=0
+  while (( _waited < 2000 )); do
+    _cur=$(stty size 2>/dev/null </dev/tty)
+    _w=${_cur#* }
+    if [[ $_cur == "$_last" && $_cur =~ ^[0-9]+\ [0-9]+$ ]] && (( ${_w:-0} >= LOGO_WIDTH )); then
+      _stable=$((_stable + 1))
+      if (( _stable >= 2 )); then break; fi
+    else
+      _stable=0
+    fi
+    _last=$_cur
+    sleep 0.1
+    _waited=$((_waited + 100))
+  done
+
   cols=$(term_cols)
   rows=$(stty size 2>/dev/null </dev/tty | awk '{print $1}')
   [[ $rows =~ ^[0-9]+$ ]] || rows=${LINES:-24}
