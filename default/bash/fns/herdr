@@ -20,7 +20,7 @@ hdl() {
   local current_dir="${PWD}"
   local editor_pane ai_pane ai2_pane
   local ai="$1"
-  local ai2="$2"
+  local ai2="${2:-}"
 
   # Use HERDR_PANE_ID for the pane we're running in (stable even if focus moves)
   editor_pane="$HERDR_PANE_ID"
@@ -76,9 +76,10 @@ hdlm() {
   [[ -z $HERDR_PANE_ID ]] && { echo "You must start herdr to use hdlm."; return 1; }
 
   local ai="$1"
-  local ai2="$2"
+  local ai2="${2:-}"
   local base_dir="$PWD"
   local first=true
+  local hdl_command
 
   # Rename the workspace to the current directory name
   herdr workspace rename "$HERDR_WORKSPACE_ID" "$(basename "$base_dir")" >/dev/null
@@ -87,15 +88,19 @@ hdlm() {
     [[ -d $dir ]] || continue
     local dirpath="${dir%/}"
 
+    printf -v hdl_command 'hdl %q' "$ai"
+    [[ -n $ai2 ]] && printf -v hdl_command '%s %q' "$hdl_command" "$ai2"
+
     if $first; then
       # Reuse the current tab for the first project
-      herdr pane run "$HERDR_PANE_ID" "cd '$dirpath' && hdl $ai $ai2" >/dev/null
+      printf -v hdl_command 'cd %q && %s' "$dirpath" "$hdl_command"
+      herdr pane run "$HERDR_PANE_ID" "$hdl_command" >/dev/null
       first=false
     else
       local pane_id
       pane_id=$(herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$dirpath" --no-focus |
         jq -r '.result.root_pane.pane_id')
-      herdr pane run "$pane_id" "hdl $ai $ai2" >/dev/null
+      herdr pane run "$pane_id" "$hdl_command" >/dev/null
     fi
   done
 }
