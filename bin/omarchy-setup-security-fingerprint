@@ -83,9 +83,6 @@ fi
 
 omarchy-pkg-add libfprint fprintd usbutils
 
-# Configure PAM
-setup_pam_config
-
 # Enroll first fingerprint
 echo -e "\e[32m\nLet's setup your right index finger as the first fingerprint.\e[0m"
 echo -e "Keep moving the finger around on sensor until the process completes.\n"
@@ -96,6 +93,12 @@ if sudo fprintd-enroll "$USER"; then
   # Verify
   echo -e "\nNow let's verify that it's working correctly.\n"
   if fprintd-verify; then
+    # PAM comes last, once a print is enrolled and verified. Detection only
+    # proves a reader is there, not that libfprint can drive it — an Elan MOC
+    # sensor outside the elanmoc table gets this far and then fails to enroll.
+    # Editing the stacks up front would leave those machines pointing at
+    # pam_fprintd with nothing to match.
+    setup_pam_config
     setup_lock_fingerprint_pam
     echo -e "\e[32m\nPerfect! Fingerprint authentication is now configured.\e[0m"
     echo "You can use your fingerprint for sudo, polkit, and lock screen (Super + Ctrl + L)."
