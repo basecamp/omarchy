@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 
 # omarchy:summary=Collect remote AI gateway usage for the Omarchy agents panel
-# omarchy:args=<login|local|collect> [source...]
-# omarchy:examples=omarchy agent meter login hermes | omarchy agent meter local hermes | omarchy agent meter collect
+# omarchy:args=<login|local|remote|collect> [source...]
+# omarchy:examples=omarchy agent meter login hermes | omarchy agent meter local hermes | omarchy agent meter remote hermes
 
 """Lightweight system-wide collector for remote AI gateway usage.
 
@@ -158,6 +158,16 @@ def use_local_source(path, source_id):
     write_config(path, config)
 
 
+def use_remote_source(path, source_id):
+  config = load_config(path)
+  source_id = safe_id(source_id)
+  source = config["sources"].get(source_id)
+  if not isinstance(source, dict):
+    raise MeterError(f"unknown source: {source_id}")
+  source["enabled"] = True
+  write_config(path, config)
+
+
 class HermesAdapter:
   def __init__(self, source_id, config):
     self.source_id = safe_id(source_id)
@@ -233,40 +243,66 @@ class HermesAdapter:
       "modelUsage": {},
     }
 
+  def sessions(self):
+    rows = []
+    offset = 0
+    limit = 100
+    while True:
+      query = urllib.parse.urlencode({
+        "limit": limit,
+        "offset": offset,
+        "archived": "include",
+        "order": "recent",
+      })
+      response = self.get(f"/api/sessions?{query}")
+      page = response.get("sessions") if isinstance(response.get("sessions"), list) else []
+      rows.extend(row for row in page if isinstance(row, dict))
+      offset += len(page)
+      total = number(response.get("total"))
+      if not page or len(page) < limit or (total and offset >= total):
+        return rows
+
   def collect(self):
-    usage = self.get(f"/api/analytics/usage?days={self.period_days}")
+    session_rows = self.sessions()
     models_response = self.get(f"/api/analytics/models?days={self.period_days}")
-    daily_rows = usage.get("daily") if isinstance(usage.get("daily"), list) else []
     model_rows = models_response.get("models") if isinstance(models_response.get("models"), list) else []
-    totals = usage.get("totals") if isinstance(usage.get("totals"), dict) else {}
     now = datetime.now().astimezone()
+    cutoff = now.timestamp() - self.period_days * 86400
     today = now.strftime("%Y-%m-%d")
     recent_dates = [(now - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
     recent = {day: 0 for day in recent_dates}
     daily = {}
     active_dates = set()
 
-    for raw in daily_rows:
-      if not isinstance(raw, dict):
+    for raw in session_rows:
+      try:
+        started_at = float(raw.get("started_at"))
+      except (TypeError, ValueError):
         continue
-      day = str(raw.get("day") or "")
-      if not day:
+      if started_at <= cutoff:
         continue
-      row = {
-        "inputTokens": number(raw.get("input_tokens")),
-        "outputTokens": number(raw.get("output_tokens")),
-        "cacheReadTokens": number(raw.get("cache_read_tokens")),
-        "cacheWriteTokens": number(raw.get("cache_write_tokens")),
-        "reasoningTokens": number(raw.get("reasoning_tokens")),
-        "sessions": number(raw.get("sessions")),
-        "apiCalls": number(raw.get("api_calls")),
-      }
-      daily[day] = row
+      day = datetime.fromtimestamp(started_at).astimezone().strftime("%Y-%m-%d")
+      row = daily.setdefault(day, {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "sessions": 0,
+        "apiCalls": 0,
+      })
+      row["inputTokens"] += number(raw.get("input_tokens"))
+      row["outputTokens"] += number(raw.get("output_tokens"))
+      row["cacheReadTokens"] += number(raw.get("cache_read_tokens"))
+      row["cacheWriteTokens"] += number(raw.get("cache_write_tokens"))
+      row["reasoningTokens"] += number(raw.get("reasoning_tokens"))
+      row["sessions"] += 1
+      row["apiCalls"] += number(raw.get("api_call_count"))
       total = token_total(row)
       if total > 0:
         active_dates.add(day)
       if day in recent:
-        recent[day] += total
+        recent[day] = total
 
     model_usage = {}
     model_labels = {}
@@ -296,6 +332,8 @@ class HermesAdapter:
       models.add(model)
 
     today_row = daily.get(today, {})
+    total_prompts = sum(number(row.get("apiCalls")) for row in daily.values())
+    total_sessions = sum(number(row.get("sessions")) for row in daily.values())
     tier = "Remote"
     if model_usage:
       tier += (
@@ -322,8 +360,8 @@ class HermesAdapter:
       "todayTokensByModel": {},
       "modelLabels": model_labels,
       "recentDays": [{"date": day, "messageCount": recent[day]} for day in recent_dates],
-      "totalPrompts": number(totals.get("total_api_calls")),
-      "totalSessions": number(totals.get("total_sessions")),
+      "totalPrompts": total_prompts,
+      "totalSessions": total_sessions,
       "activeDays": len(active_dates),
       "activeDates": sorted(active_dates),
       "modelUsage": model_usage,
@@ -400,6 +438,8 @@ def main():
   login_parser.add_argument("--stdin", action="store_true")
   local_parser = subparsers.add_parser("local")
   local_parser.add_argument("source")
+  remote_parser = subparsers.add_parser("remote")
+  remote_parser.add_argument("source")
   collect_parser = subparsers.add_parser("collect")
   collect_parser.add_argument("sources", nargs="*")
   args = parser.parse_args()
@@ -409,6 +449,8 @@ def main():
       use_local_source(args.config, args.source)
       print(args.source)
       return 0
+    if args.command == "remote":
+      use_remote_source(args.config, args.source)
     credentials = {}
     if args.command == "login" and args.stdin:
       try:
@@ -436,6 +478,8 @@ def main():
       return 0
     if args.command == "collect":
       return 1 if collect(select_adapters(available, args.sources)) else 0
+    if args.command == "remote":
+      return 1 if collect(select_adapters(available, [args.source])) else 0
   except (MeterError, KeyboardInterrupt) as error:
     print(f"omarchy-agent-meter: {error}", file=sys.stderr)
     return 1

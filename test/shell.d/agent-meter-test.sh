@@ -14,8 +14,9 @@ trap '[[ -n $server_pid ]] && kill "$server_pid" 2>/dev/null || true; rm -rf "$t
 cat >"$test_root/server.py" <<'PY'
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 
 port_file = sys.argv[1]
 
@@ -31,10 +32,11 @@ class Handler(BaseHTTPRequestHandler):
     self.wfile.write(payload)
 
   def do_GET(self):
-    today = datetime.now().strftime("%Y-%m-%d")
-    path = self.path.removeprefix("/locked")
-    locked = self.path.startswith("/locked/")
-    if locked and path.startswith("/api/analytics/") and "session=good" not in self.headers.get("Cookie", ""):
+    request = urlparse(self.path)
+    path = request.path.removeprefix("/locked")
+    locked = request.path.startswith("/locked/")
+    protected = path.startswith("/api/analytics/") or path.startswith("/api/sessions")
+    if locked and protected and "session=good" not in self.headers.get("Cookie", ""):
       self.send_json({"detail": "Unauthorized"}, 401)
       return
     if path == "/api/auth/providers":
@@ -46,25 +48,32 @@ class Handler(BaseHTTPRequestHandler):
       else:
         self.send_json({"display_name": "Meter Tester"})
       return
-    if path.startswith("/api/analytics/usage"):
-      body = {
-        "daily": [{
-          "day": today,
+    if path == "/api/sessions":
+      now = datetime.now().astimezone()
+      rows = [{
+          "id": "today",
+          "started_at": now.timestamp(),
           "input_tokens": 100,
           "output_tokens": 40,
           "cache_read_tokens": 20,
           "reasoning_tokens": 12,
-          "sessions": 2,
-          "api_calls": 5,
-        }],
-        "totals": {
-          "total_input": 100,
-          "total_output": 40,
-          "total_cache_read": 20,
-          "total_reasoning": 12,
-          "total_sessions": 2,
-          "total_api_calls": 5,
-        },
+          "api_call_count": 5,
+        }, {
+          "id": "yesterday",
+          "started_at": (now - timedelta(days=1)).timestamp(),
+          "input_tokens": 30,
+          "output_tokens": 10,
+          "cache_read_tokens": 0,
+          "reasoning_tokens": 0,
+          "api_call_count": 1,
+        }]
+      offset = int(parse_qs(request.query).get("offset", ["0"])[0])
+      limit = int(parse_qs(request.query).get("limit", ["20"])[0])
+      body = {
+        "sessions": rows[offset:offset + limit],
+        "total": len(rows),
+        "offset": offset,
+        "limit": limit,
       }
     elif path.startswith("/api/analytics/models"):
       body = {"models": [{
@@ -135,12 +144,16 @@ XDG_CONFIG_HOME="$test_root/config" XDG_STATE_HOME="$test_root/state" \
 record="$test_root/state/omarchy/agents/usage/hermes.json"
 [[ -f $record ]] || fail "meter did not write an agents-panel record"
 [[ $(jq -r '.todayTotalTokens' "$record") == 160 ]] ||
-  fail "meter counted reasoning twice or lost cache usage"
+  fail "meter did not group timestamped token usage into the local day"
+[[ $(jq -r '.todayPrompts' "$record") == 5 && $(jq -r '.todaySessions' "$record") == 1 ]] ||
+  fail "meter did not group timestamped activity into the local day"
+[[ $(jq -r --arg today "$(date +%F)" '.recentDays[] | select(.date == $today) | .messageCount' "$record") == 160 ]] ||
+  fail "meter did not preserve the standard current-day row"
 [[ $(jq -c '.modelLabels["ollama::future-coder:42b"]' "$record") == '{"provider":"ollama","model":"future-coder:42b"}' ]] ||
   fail "meter did not preserve dynamic provider and model attribution"
 [[ $(jq -r '.modelUsage["ollama::future-coder:42b"].reasoningOutputTokens' "$record") == 12 ]] ||
   fail "meter did not preserve reasoning detail"
-pass "system-wide meter normalizes remote Hermes analytics"
+pass "system-wide meter converts remote Hermes sessions into local calendar days"
 
 locked_record="$test_root/state/omarchy/agents/usage/locked.json"
 [[ $(jq -r '.authRequired' "$locked_record") == true ]] ||
@@ -180,3 +193,17 @@ XDG_CONFIG_HOME="$test_root/fresh-config" XDG_STATE_HOME="$test_root/fresh-state
 [[ $(jq -r '.sources.hermes.url' "$fresh_config") == "http://127.0.0.1:$port/locked" ]] ||
   fail "local usage forgets the previous remote gateway URL"
 pass "local usage preserves the remote gateway for later reconnection"
+
+cookie_path="$test_root/fresh-state/omarchy/agent-meter/credentials/hermes.cookies"
+cookie_before=$(sha256sum "$cookie_path" | cut -d' ' -f1)
+XDG_CONFIG_HOME="$test_root/fresh-config" XDG_STATE_HOME="$test_root/fresh-state" \
+  "$ROOT/bin/omarchy-agent-meter" --config "$fresh_config" remote hermes >/dev/null ||
+  fail "switching back to remote usage does not reuse the saved login"
+[[ $(jq -r '.sources.hermes.enabled' "$fresh_config") == true ]] ||
+  fail "remote usage does not re-enable the saved gateway"
+[[ $(jq -r '.authRequired' "$test_root/fresh-state/omarchy/agents/usage/hermes.json") == false ]] ||
+  fail "remote usage asks for credentials despite a valid saved login"
+cookie_after=$(sha256sum "$cookie_path" | cut -d' ' -f1)
+[[ $cookie_after == "$cookie_before" ]] ||
+  fail "switching usage sources replaced the saved gateway login"
+pass "local and remote usage switches preserve a valid gateway login"

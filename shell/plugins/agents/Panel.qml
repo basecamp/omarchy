@@ -79,6 +79,15 @@ Panel {
     gatewayLoginProcess.running = true
   }
 
+  function useRemoteUsage() {
+    if (!provider || gatewayLoginProcess.running) return
+    gatewayLoginError = ""
+    gatewayLoginProcess.sourceId = provider.providerId
+    gatewayLoginProcess.credentials = ""
+    gatewayLoginProcess.command = ["omarchy-agent-meter", "remote", provider.providerId]
+    gatewayLoginProcess.running = true
+  }
+
   // Countdowns and "updated" read this instead of Date.now() so the
   // panel keeps telling the truth while it sits open.
   property double nowMs: Date.now()
@@ -664,11 +673,16 @@ Panel {
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                   onClicked: {
-                    root.gatewayRemoteMode = true
-                    Qt.callLater(function() {
-                      if (gatewayUrl.text === "") gatewayUrl.forceActiveFocus()
-                      else gatewayUsername.forceActiveFocus()
-                    })
+                    if (root.provider && root.provider.remoteGateway !== true
+                        && root.provider.authRequired !== true)
+                      root.useRemoteUsage()
+                    else {
+                      root.gatewayRemoteMode = true
+                      Qt.callLater(function() {
+                        if (gatewayUrl.text === "") gatewayUrl.forceActiveFocus()
+                        else gatewayUsername.forceActiveFocus()
+                      })
+                    }
                   }
                 }
               }

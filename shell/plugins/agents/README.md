@@ -83,6 +83,12 @@ logins and stored in
 {"sources":{"hermes":{"type":"hermes","url":"http://hermes:9119","name":"Hermes","periodDays":365}}}
 ```
 
+The meter paginates the gateway's existing session-metadata endpoint and
+groups its timestamped token counters into this computer's local calendar
+days, matching Codex's seven-day layout without requiring gateway changes.
+Session titles, previews, prompts, and responses are never written to the
+agents panel record.
+
 When authentication expires, use **Remote Gateway Login** in the same popup;
 the credentials travel to the meter over stdin and are never command-line
 arguments. They stay in `~/.local/state/omarchy/agent-meter/`; nothing is
