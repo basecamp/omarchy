@@ -166,8 +166,7 @@ def scan_pi_sessions():
       if message.get("role") != "assistant":
         continue
       provider = str(message.get("provider") or "")
-      api = str(message.get("api") or "")
-      if provider != "openai-codex" and not api.startswith("openai-codex"):
+      if provider != "openai-codex":
         continue
 
       usage = message.get("usage") or {}
