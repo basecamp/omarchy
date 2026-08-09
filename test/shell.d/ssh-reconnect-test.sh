@@ -90,10 +90,10 @@ attempts() {
   cat "$fake_dir/count"
 }
 
-mouse_off=$(printf '\e[?1003l')
+disarm=$(printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1004l\e[?1049l\e[?25h')
 
 out=$(run_case "0 255" host)
-[[ $out == *$mouse_off* ]] || fail "stray terminal modes are reset after ssh exits" "$out"
+[[ $out == *"$disarm"* ]] || fail "stray terminal modes are reset after ssh exits" "$out"
 pass "stray terminal modes are reset after ssh exits"
 
 [[ $out == *"rc=255"* ]] && (( $(attempts) == 1 )) ||
@@ -121,3 +121,32 @@ out=$(script -qec "bash '$fake_dir/driver' host </dev/null" /dev/null | tr -d '\
 [[ $out == *"rc=255"* ]] && (( $(attempts) == 1 )) ||
   fail "redirected stdin does not reconnect" "$out"
 pass "redirected stdin does not reconnect"
+
+# Ctrl-C must stop the loop, not just the in-flight attempt. Only a real
+# interactive shell reproduces the job-control process groups this depends on,
+# so type the command, the ^C, and the status check into one over a pty. With
+# the loop killed, attempts stay low; a surviving loop would drain the whole
+# plan before reporting a different status.
+cat >"$fake_dir/rcfile" <<EOF
+PATH="$fake_dir:\$PATH"
+source <(sed 's/< 30/< 2/' "$fns")
+sleep() { :; }
+PS1='$ '
+EOF
+
+plan="2 255"
+for _ in {1..12}; do plan+=$'\n1 255'; done
+printf '%s\n' "$plan" >"$fake_dir/plan"
+rm -f "$fake_dir/count"
+out=$({
+  printf 'ssh host\n'
+  command sleep 4
+  printf '\003'
+  command sleep 1
+  printf 'echo DONE rc=$?\n'
+  command sleep 1
+  printf 'exit\n'
+} | script -qec "bash --rcfile '$fake_dir/rcfile' -i" /dev/null | tr -d '\r')
+[[ $out == *"Connection lost"* ]] && [[ $out == *"DONE rc=130"* ]] && (( $(attempts) < 10 )) ||
+  fail "Ctrl-C during a retry attempt stops the reconnect loop" "$out"
+pass "Ctrl-C during a retry attempt stops the reconnect loop"
