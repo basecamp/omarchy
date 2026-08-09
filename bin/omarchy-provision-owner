@@ -1,0 +1,564 @@
+#!/bin/bash
+
+# omarchy:summary=First-boot provisioning: create the user on a machine installed in deferred provisioning
+# omarchy:group=setup
+# omarchy:requires-sudo=true
+# omarchy:examples=omarchy-provision-owner
+
+# Runs on tty1 via omarchy-provision-owner.service when /var/lib/omarchy/provisioning/pending
+# exists — the state a deferred-provisioning ISO install or omarchy-system-factory-reset leaves
+# behind. Asks for the user (the configurator's Step 2), creates it with the
+# groups system setup recorded, finalizes it offline from the stashed Node
+# tarball, re-keys LUKS from the throwaway install passphrase to the user's
+# password, and hands off to SDDM.
+
+set -euo pipefail
+
+PROVISIONING_DIR=/var/lib/omarchy/provisioning
+OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+LOG_FILE=/var/log/omarchy-provision-owner.log
+
+if (( EUID != 0 )); then
+  echo "Error: omarchy-provision-owner must run as root" >&2
+  exit 1
+fi
+
+[[ -f $PROVISIONING_DIR/pending ]] || exit 0
+
+# Never set up a user on a half-wiped system: while a factory wipe is still
+# pending (i.e. it failed this boot), stand down and let it retry next boot.
+if [[ -f $PROVISIONING_DIR/wipe-pending ]]; then
+  echo "omarchy-provision-owner: factory wipe still pending; not running user setup" >&2
+  exit 1
+fi
+
+export PATH="$OMARCHY_PATH/bin:$PATH"
+
+LOGO_PATH="$OMARCHY_PATH/logo.txt"
+LOGO_WIDTH=$(awk '{ if (length > max) max = length } END { print max+0 }' "$LOGO_PATH" 2>/dev/null || echo 0)
+
+export GUM_CONFIRM_PROMPT_FOREGROUND="6"
+export GUM_CONFIRM_SELECTED_FOREGROUND="0"
+export GUM_CONFIRM_SELECTED_BACKGROUND="2"
+export GUM_CONFIRM_UNSELECTED_FOREGROUND="7"
+export GUM_CONFIRM_UNSELECTED_BACKGROUND="0"
+
+# Same Tokyo Night VT palette the ISO configurator sets, so the first-boot
+# form looks like a continuation of the install.
+set_tokyo_night_colors() {
+  [[ $(tty 2>/dev/null) == /dev/tty* ]] || return 0
+  echo -en "\e]P01a1b26"; echo -en "\e]P1f7768e"; echo -en "\e]P29ece6a"
+  echo -en "\e]P3e0af68"; echo -en "\e]P47aa2f7"; echo -en "\e]P5bb9af7"
+  echo -en "\e]P67dcfff"; echo -en "\e]P7a9b1d6"; echo -en "\e]P8414868"
+  echo -en "\e]P9f7768e"; echo -en "\e]PA9ece6a"; echo -en "\e]PBe0af68"
+  echo -en "\e]PC7aa2f7"; echo -en "\e]PDbb9af7"; echo -en "\e]PE7dcfff"
+  echo -en "\e]PFc0caf5"
+  echo -en "\033[0m"
+  clear
+}
+
+measure_terminal() {
+  TERM_WIDTH=$(stty size 2>/dev/null </dev/tty | awk '{print $2}')
+  (( TERM_WIDTH > 0 )) || TERM_WIDTH=${COLUMNS:-80}
+
+  PADDING_LEFT=$(((TERM_WIDTH - LOGO_WIDTH) / 2))
+  (( PADDING_LEFT < 0 )) && PADDING_LEFT=0
+  PADDING_LEFT_SPACES=$(printf "%*s" "$PADDING_LEFT" "")
+
+  local padding="0 0 0 $PADDING_LEFT"
+  export GUM_CHOOSE_PADDING="$padding"
+  export GUM_INPUT_PADDING="$padding"
+  export GUM_SPIN_PADDING="$padding"
+  export GUM_TABLE_PADDING="$padding"
+  export GUM_CONFIRM_PADDING="$padding"
+}
+
+clear_logo() {
+  measure_terminal
+  printf "\033[H\033[2J"
+  gum style --foreground 2 --padding "1 0 0 $PADDING_LEFT" "$(<"$LOGO_PATH")"
+}
+
+step() {
+  clear_logo
+  echo
+  gum style --padding "0 0 0 $PADDING_LEFT" "$1"
+  echo
+}
+
+say() {
+  gum style --padding "0 0 0 $PADDING_LEFT" "$@"
+}
+
+notice() {
+  clear_logo
+  echo
+  gum spin --spinner "pulse" --title "$1" -- sleep "${2:-2}"
+  echo
+}
+
+log_step() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] oem-setup: $1" >>"$LOG_FILE"
+}
+
+# The keyboard step the ISO configurator runs — deferred to first boot for OEM
+# installs, so the machine's owner picks their own layout. Applied immediately
+# (live VT + persisted) so the password typed next, and the LUKS re-key below,
+# use the chosen layout.
+keyboard_form() {
+  step "Let's setup your keyboard..."
+  local keyboards choice
+  keyboards=$'Azerbaijani|azerty
+Belarusian|by
+Belgian|be-latin1
+Bosnian|ba
+Bulgarian|bg-cp1251
+Croatian|croat
+Czech|cz
+Danish|dk-latin1
+Dutch|nl
+English (UK)|uk
+English (US)|us
+English (US, Dvorak)|dvorak
+English (US, Colemak)|colemak
+Estonian|et
+Finnish|fi
+French|fr
+French (Canada)|cf
+French (Switzerland)|fr_CH
+Georgian|ge
+German|de
+German (Switzerland)|de_CH-latin1
+Greek|gr
+Hebrew|il
+Hungarian|hu
+Icelandic|is-latin1
+Irish|ie
+Italian|it
+Japanese|jp106
+Kazakh|kazakh
+Khmer (Cambodia)|khmer
+Kyrgyz|kyrgyz
+Lao|la-latin1
+Latvian|lv
+Lithuanian|lt
+Macedonian|mk-utf
+Norwegian|no-latin1
+Polish|pl
+Portuguese|pt-latin1
+Portuguese (Brazil)|br-abnt2
+Romanian|ro
+Russian|ru
+Serbian|sr-latin
+Slovak|sk-qwertz
+Slovenian|slovene
+Spanish|es
+Spanish (Latin American)|la-latin1
+Swedish|sv-latin1
+Tajik|tj_alt-UTF8
+Turkish|trq
+Ukrainian|ua'
+  choice=$(printf '%s\n' "$keyboards" | cut -d'|' -f1 | gum choose --height 10 --selected "English (US)" --header "Select keyboard layout") || choice="English (US)"
+  keyboard=$(printf '%s\n' "$keyboards" | awk -F'|' -v c="$choice" '$1==c{print $2; exit}')
+  keyboard_label="$choice"
+  apply_keyboard "$keyboard"
+}
+
+# Load the layout on the live VT and persist it for the installed system.
+# systemd-firstboot writes both the console KEYMAP and the XKB layout Hyprland
+# reads, matching what the ISO's configure_keyboard does at install time. The
+# two layouts localectl doesn't know (ba, khmer) keep the default, same as a
+# normal install.
+apply_keyboard() {
+  local keymap="$1"
+  [[ $(tty 2>/dev/null) == /dev/tty* ]] && loadkeys "$keymap" 2>/dev/null || true
+
+  if localectl --no-pager list-keymaps 2>/dev/null | grep -qix "$keymap"; then
+    systemd-firstboot --keymap="$keymap" --force >>"$LOG_FILE" 2>&1 || \
+      localectl set-keymap "$keymap" >>"$LOG_FILE" 2>&1 || \
+      log_step "could not persist keymap $keymap"
+  else
+    log_step "keymap $keymap unknown to localectl; keeping the default"
+  fi
+}
+
+# The same username/password/name/email form as the ISO configurator's Step 2.
+user_form() {
+  step "Let's setup your user account..."
+
+  # A prior attempt that already created the account pins the username, so a
+  # retry cannot strand that account by choosing a different name.
+  if [[ -f $PROVISIONING_DIR/setup-user ]]; then
+    username=$(<"$PROVISIONING_DIR/setup-user")
+    say "Continuing setup for user: $username"
+    echo
+  else
+    while true; do
+      username=$(gum input --placeholder "Alphanumeric without spaces (like dhh)" --prompt.foreground="#845DF9" --prompt "Username> ") || continue
+
+      if [[ "$username" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]]; then
+        if [[ "$username" =~ ^(root|bin|daemon|mail|ftp|http|nobody|dbus|systemd-coredump|systemd-network|systemd-oom|systemd-journal-remote|systemd-resolve|systemd-timesync|tss|uuidd|alpm|git|avahi|cups|lp|_talkd|polkitd|rtkit|qemu|brltty|gluster|rpc|libvirt-qemu|pcscd|nvidia-persistenced|sddm)$ ]]; then
+          notice "Username is reserved for system" 1
+        elif getent passwd "$username" >/dev/null; then
+          # provisioning state has no users, so any existing account is off limits;
+          # a pinned resume (above) bypasses this prompt entirely.
+          notice "That username already exists on this machine" 1
+        else
+          break
+        fi
+      else
+        notice "Username must be alphanumeric with no spaces" 1
+      fi
+    done
+  fi
+
+  while true; do
+    password=$(gum input --placeholder "Used for user + root, and disk encryption when enabled" --prompt.foreground="#845DF9" --password --prompt "Password> ") || continue
+    password_confirmation=$(gum input --placeholder "Must match the password you just typed" --prompt.foreground="#845DF9" --password --prompt "Confirm> ") || continue
+
+    if [[ -n "$password" && "$password" == "$password_confirmation" ]]; then
+      break
+    elif [[ -z "$password" ]]; then
+      notice "Your password can't be blank!" 1
+    else
+      notice "Passwords didn't match!" 1
+    fi
+  done
+
+  full_name=$(gum input --placeholder "Used for git authentication (hit return to skip)" --prompt.foreground="#845DF9" --prompt "Full name> ") || full_name=""
+  email_address=$(gum input --placeholder "Used for git authentication (hit return to skip)" --prompt.foreground="#845DF9" --prompt "Email address> ") || email_address=""
+}
+
+confirm_form() {
+  clear_logo
+  echo
+  echo -e "Field,Value
+Keyboard,${keyboard_label:-English (US)}
+Username,$username
+Password,$(printf "%${#password}s" | tr ' ' '*')
+Full name,${full_name:-[Skipped]}
+Email address,${email_address:-[Skipped]}" |
+    gum table -s "," -p | sed "s/^/${PADDING_LEFT_SPACES}/"
+
+  echo
+  gum confirm --negative "No, change it" "Does this look right?"
+}
+
+# Groups recorded by omarchy-setup-system's scripts at install time
+# (/var/lib/omarchy/provisioning/groups), filtered to groups that exist on this system.
+user_groups() {
+  local groups="wheel" group
+  if [[ -f $PROVISIONING_DIR/groups ]]; then
+    while IFS= read -r group; do
+      [[ -n $group ]] || continue
+      getent group "$group" >/dev/null || continue
+      [[ ",$groups," == *",$group,"* ]] || groups+=",$group"
+    done <"$PROVISIONING_DIR/groups"
+  fi
+  echo "$groups"
+}
+
+# Resolve the crypto_LUKS partition backing the root, or return non-zero if
+# the root is not on LUKS. Prefers the cmdline cryptdevice= spec (archinstall
+# writes PARTUUID=, the pre-mounted path UUID=), and falls back to walking the
+# device tree for roots reached via rd.luks/crypttab with a plain /dev/mapper
+# root and no cryptdevice=.
+luks_device() {
+  local spec
+  spec=$(grep -o 'cryptdevice=[^ :]*' /proc/cmdline | head -1 | cut -d= -f2-)
+  case $spec in
+    UUID=*) echo "/dev/disk/by-uuid/${spec#UUID=}"; return 0 ;;
+    PARTUUID=*) echo "/dev/disk/by-partuuid/${spec#PARTUUID=}"; return 0 ;;
+    LABEL=*) echo "/dev/disk/by-label/${spec#LABEL=}"; return 0 ;;
+    PARTLABEL=*) echo "/dev/disk/by-partlabel/${spec#PARTLABEL=}"; return 0 ;;
+    /dev/*) echo "$spec"; return 0 ;;
+  esac
+
+  # No cryptdevice=: walk the root source's ancestors (lsblk -s inverts the
+  # tree) for the first crypto_LUKS parent.
+  local src part
+  src=$(findmnt -no SOURCE / | sed 's/\[.*//')
+  [[ -n $src ]] || return 1
+  part=$(lsblk -nspo NAME,FSTYPE "$src" 2>/dev/null | awk '$2=="crypto_LUKS"{print $1; exit}')
+  [[ -n $part ]] && { echo "$part"; return 0; }
+  return 1
+}
+
+encrypted_install() {
+  luks_device >/dev/null 2>&1
+}
+
+create_user() {
+  # Pin the username so a retry after a later failure resumes this exact
+  # account rather than creating a second privileged one.
+  echo "$username" >"$PROVISIONING_DIR/setup-user"
+
+  if getent passwd "$username" >/dev/null; then
+    # Resuming a partially-completed earlier attempt: refresh what the form
+    # collected this time around.
+    usermod -aG "$(user_groups)" ${full_name:+-c "$full_name"} "$username"
+  else
+    useradd -m -G "$(user_groups)" -s /bin/bash \
+      ${full_name:+-c "$full_name"} "$username"
+  fi
+
+  printf '%s:%s\n' "$username" "$password" | chpasswd
+  printf '%s:%s\n' root "$password" | chpasswd
+
+  # deferred-provisioning installs skip archinstall's create_users, which is what normally
+  # uncomments %wheel in /etc/sudoers. Always write the drop-in: detecting an
+  # existing grant is error-prone (omarchy ships narrow %wheel NOPASSWD rules
+  # for specific commands), and a duplicate grant is harmless.
+  echo "%wheel ALL=(ALL:ALL) ALL" >/etc/sudoers.d/00-omarchy-wheel
+  chmod 440 /etc/sudoers.d/00-omarchy-wheel
+}
+
+install_authorized_keys() {
+  [[ -f $PROVISIONING_DIR/authorized_keys ]] || return 0
+
+  local ssh_dir="/home/$username/.ssh"
+  mkdir -p "$ssh_dir"
+  cp "$PROVISIONING_DIR/authorized_keys" "$ssh_dir/authorized_keys"
+  chmod 700 "$ssh_dir"
+  chmod 600 "$ssh_dir/authorized_keys"
+  chown -R "$username:$username" "$ssh_dir"
+}
+
+configure_login() {
+  mkdir -p /var/lib/sddm
+  printf '[Last]\nSession=omarchy.desktop\nUser=%s\n' "$username" >/var/lib/sddm/state.conf
+  chown -R sddm:sddm /var/lib/sddm 2>/dev/null || true
+
+  # Encrypted installs autologin because the LUKS prompt is the auth boundary.
+  if encrypted_install; then
+    mkdir -p /etc/sddm.conf.d
+    printf '[Autologin]\nUser=%s\nSession=omarchy.desktop\n' "$username" >/etc/sddm.conf.d/autologin.conf
+  fi
+}
+
+finalize_user() {
+  local home shell
+  home=$(getent passwd "$username" | cut -d: -f6)
+  shell=$(getent passwd "$username" | cut -d: -f7)
+
+  runuser -u "$username" -- env \
+    HOME="$home" \
+    USER="$username" \
+    LOGNAME="$username" \
+    SHELL="${shell:-/bin/bash}" \
+    OMARCHY_PATH="$OMARCHY_PATH" \
+    OMARCHY_INSTALL="$OMARCHY_PATH/install" \
+    OMARCHY_SETUP_CONTEXT=provision-owner \
+    OMARCHY_USER_NAME="$full_name" \
+    OMARCHY_USER_EMAIL="$email_address" \
+    OMARCHY_LOG_TO_STDOUT=1 \
+    "$OMARCHY_PATH/bin/omarchy-provision-user" --force --first-install
+}
+
+# Move the LUKS volume from the throwaway install passphrase to the user's
+# password: add the user's key, kill every other slot (throwaway + any seller
+# keys a reset left behind), then rebuild the UKI without the embedded
+# auto-unlock keyfile.
+#
+# Failing here must be LOUD (abort the attempt, offer retry): silently keeping
+# the staged auto-unlock keyfile would leave the disk effectively unencrypted
+# forever.
+rekey_luks() {
+  [[ -f $PROVISIONING_DIR/luks-key ]] || return 0
+
+  local device
+  if ! device=$(luks_device) || [[ ! -e $device ]]; then
+    log_step "cannot locate the LUKS device from /proc/cmdline: $(cat /proc/cmdline)"
+    say --foreground 1 "Could not locate the LUKS device to re-key."
+    return 1
+  fi
+
+  if ! cryptsetup open --test-passphrase --key-file "$PROVISIONING_DIR/luks-key" "$device" 2>>"$LOG_FILE"; then
+    log_step "staged LUKS key does not unlock $device"
+    say --foreground 1 "The staged LUKS key no longer unlocks $device."
+    return 1
+  fi
+
+  # Add the user's key (a retry with a different password just adds another
+  # slot; all but the current one are killed once the rebuild succeeds).
+  cryptsetup luksAddKey --key-file "$PROVISIONING_DIR/luks-key" "$device" <(printf '%s' "$password")
+
+  # Rebuild the no-auto-unlock UKI FIRST, keeping the throwaway key and slot as
+  # a fallback. Only once that succeeds do we kill the other slots and destroy
+  # the staged key — so a limine-update failure leaves a recoverable,
+  # still-auto-unlocking state to retry, never a disk locked to a password the
+  # user may have just changed.
+  rm -f /etc/omarchy/provisioning.key \
+    /etc/limine-entry-tool.d/99-omarchy-provisioning-unlock.conf \
+    /etc/mkinitcpio.conf.d/99-omarchy-provisioning-key.conf
+  reset_limine_config
+  if ! limine-update >>"$LOG_FILE" 2>&1; then
+    log_step "limine-update failed during re-key; restoring auto-unlock for retry"
+    install -Dm600 "$PROVISIONING_DIR/luks-key" /etc/omarchy/provisioning.key
+    echo 'KERNEL_CMDLINE[default]+=" cryptkey=rootfs:/etc/omarchy/provisioning.key"' \
+      >/etc/limine-entry-tool.d/99-omarchy-provisioning-unlock.conf
+    echo 'FILES+=(/etc/omarchy/provisioning.key)' >/etc/mkinitcpio.conf.d/99-omarchy-provisioning-key.conf
+    limine-update >>"$LOG_FILE" 2>&1 || true
+    return 1
+  fi
+
+  local new_slot slot
+  new_slot=$(cryptsetup open --test-passphrase --verbose --key-file <(printf '%s' "$password") "$device" 2>&1 |
+    grep -o 'Key slot [0-9]* unlocked' | grep -o '[0-9]*' | head -1)
+  if [[ -n $new_slot ]]; then
+    for slot in $(cryptsetup luksDump "$device" | awk '/^ +[0-9]+: luks2/ { sub(":", "", $1); print $1 }'); do
+      [[ $slot == "$new_slot" ]] && continue
+      cryptsetup luksKillSlot -q --key-file <(printf '%s' "$password") "$device" "$slot"
+    done
+  fi
+
+  shred -u "$PROVISIONING_DIR/luks-key" 2>/dev/null || rm -f "$PROVISIONING_DIR/luks-key"
+}
+
+# Start the ESP's limine.conf over from the shipped template and drop foreign
+# machine-id state before rebuilding. limine-entry-tool keys OS entries by
+# machine-id: after a factory reset gave this machine a fresh identity, the
+# previous system's entry would survive the rebuild with a stale UKI hash,
+# sort first, and make Limine stop at a hash-mismatch warning.
+esp_path() {
+  local esp=""
+  if [[ -f /etc/default/limine ]]; then
+    esp=$(sed -n 's/^ESP_PATH=["'\'']\?\([^"'\'']*\).*/\1/p' /etc/default/limine | tail -1)
+  fi
+  echo "${esp:-/boot}"
+}
+
+# A factory reset gives the machine a fresh machine-id, but limine-entry-tool
+# keys its limine.conf entries by machine-id — entries from the previous
+# identity would linger and go hash-stale on the first UKI rebuild.
+limine_entries_stale() {
+  local esp machine_id
+  esp=$(esp_path)
+  machine_id=$(cat /etc/machine-id 2>/dev/null || true)
+  [[ -f $esp/limine.conf && -n $machine_id ]] || return 1
+  # Stale if any foreign machine-id entry lingers, OR if this machine has no
+  # entry at all (e.g. a failed earlier rebuild left the entry-less template).
+  grep -o 'machine-id=[0-9a-f]*' "$esp/limine.conf" 2>/dev/null |
+    grep -qv "machine-id=$machine_id" && return 0
+  ! grep -q "machine-id=$machine_id" "$esp/limine.conf"
+}
+
+reset_limine_config() {
+  local esp template found="" machine_id old_id old_ids=""
+  esp=$(esp_path)
+
+  # Only remove machine-ids the old (Omarchy-managed) limine.conf referenced;
+  # a shared ESP may hold other installations' machine-id directories.
+  if [[ -f $esp/limine.conf ]]; then
+    old_ids=$(grep -o 'machine-id=[0-9a-f]\{32\}' "$esp/limine.conf" | cut -d= -f2 | sort -u)
+  fi
+
+  for template in "$OMARCHY_PATH/install/assets/limine/limine.conf" \
+                  "$OMARCHY_PATH/default/limine/limine.conf"; do
+    if [[ -f $template ]]; then
+      cp "$template" "$esp/limine.conf"
+      found=1
+      break
+    fi
+  done
+  if [[ -z $found ]]; then
+    log_step "no limine.conf template found; keeping the existing config"
+    return 0
+  fi
+
+  machine_id=$(cat /etc/machine-id 2>/dev/null || true)
+  for old_id in $old_ids; do
+    [[ $old_id == "$machine_id" ]] && continue
+    rm -rf "${esp:?}/$old_id"
+  done
+}
+
+cleanup_oem_state() {
+  # Keep groups + packages: omarchy-system-factory-reset's degraded path (machines
+  # without @factory) re-arms first-boot setup from the live copies.
+  rm -f "$PROVISIONING_DIR/pending" "$PROVISIONING_DIR/authorized_keys" "$PROVISIONING_DIR/setup-user"
+
+  rm -f /etc/systemd/system/multi-user.target.wants/omarchy-provision-owner.service
+  systemctl daemon-reload 2>/dev/null || true
+}
+
+run_setup() {
+  while true; do
+    keyboard_form
+    user_form
+    confirm_form && break
+  done
+
+  clear_logo
+  echo
+  say "Setting up your account..."
+  echo
+
+  touch "$LOG_FILE"
+  chmod 600 "$LOG_FILE"
+
+  log_step "creating user $username"
+  create_user
+  install_authorized_keys
+  configure_login
+
+  log_step "finalizing user"
+  say "Finalizing your user (this can take a minute)..."
+  if ! finalize_user >>"$LOG_FILE" 2>&1; then
+    log_step "finalize-user failed (continuing; user can retry after login)"
+    say --foreground 1 "User finalization reported errors (see $LOG_FILE)."
+    say --foreground 1 "Run 'omarchy-provision-user --force' after login to retry."
+    sleep 3
+  fi
+
+  if [[ -f $PROVISIONING_DIR/luks-key ]]; then
+    log_step "re-keying LUKS to the user's password"
+    say "Securing disk encryption with your password..."
+    rekey_luks
+    log_step "LUKS re-key complete"
+  fi
+
+  # After a factory reset on an unencrypted machine nothing above rebuilds the
+  # boot entries, so entries keyed to the previous machine identity would
+  # linger and go hash-stale on the first UKI rebuild. Refresh them now.
+  if limine_entries_stale; then
+    log_step "refreshing boot entries for the new machine identity"
+    say "Refreshing boot entries (this can take a minute)..."
+    reset_limine_config
+    limine-update >>"$LOG_FILE" 2>&1
+  fi
+
+  log_step "cleaning up provisioning state"
+  cleanup_oem_state
+  log_step "first-boot setup complete"
+
+  clear_logo
+  echo
+  gum spin --spinner "pulse" --title "All set. Starting Omarchy..." -- sleep 2
+}
+
+# A failed first-boot setup must not strand the machine at a user-less login
+# screen. Each attempt runs as its own process — bash ignores errexit inside
+# `while !` conditions, but a child process keeps its own set -e — and failure
+# offers a retry; create_user and friends are idempotent, so retrying is safe.
+if [[ ${1:-} == "--attempt" ]]; then
+  run_setup
+  exit 0
+fi
+
+main() {
+  set_tokyo_night_colors
+
+  while ! "$0" --attempt; do
+    clear_logo
+    echo
+    say --foreground 1 "Setup hit an error (details in $LOG_FILE)."
+    echo
+    if ! gum confirm --affirmative "Try again" --negative "Drop to console" "Retry first-boot setup?"; then
+      say "Run 'omarchy-provision-owner' as root to retry later."
+      exit 1
+    fi
+  done
+}
+
+main
