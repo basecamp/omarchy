@@ -20,7 +20,7 @@ cat >"$TEST_HOME/.kimi-code/sessions/wd_test/session_aaaa/agents/kimi/wire.jsonl
 EOF
 
 cat >"$TEST_HOME/.pi/agent/sessions/wd_test/session-pi.jsonl" <<EOF
-{"type":"message","id":"pi-1","timestamp":"2026-08-09T12:00:00Z","message":{"role":"assistant","provider":"kimi-coding","model":"k3","usage":{"input":400,"output":100,"cacheRead":50,"cacheWrite":0,"totalTokens":550}}}
+{"type":"message","id":"pi-1","timestamp":"$(date -u -d "@$((now_ms / 1000))" +%Y-%m-%dT%H:%M:%SZ)","message":{"role":"assistant","provider":"kimi-coding","model":"k3","usage":{"input":400,"output":100,"cacheRead":50,"cacheWrite":0,"totalTokens":550}}}
 EOF
 
 result=$(HOME="$TEST_HOME" KIMI_CODE_HOME="$TEST_HOME/.kimi-code" \
