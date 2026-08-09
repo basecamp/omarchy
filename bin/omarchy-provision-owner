@@ -485,9 +485,10 @@ greeter_screen() {
 
   _greeter_kill_anim() {
     [[ -n ${anim:-} ]] || return 0
-    # `wait` reports tte's kill signal (143); tolerate it so `set -e` doesn't
-    # abort provisioning here — that once dropped straight to the login screen.
-    kill "$anim" 2>/dev/null
+    # Guard both: `kill` returns non-zero if tte already exited (crash, or a
+    # resize race), and `wait` reports tte's kill signal (143) — either would
+    # abort provisioning under `set -e` and drop straight to the login screen.
+    kill "$anim" 2>/dev/null || true
     wait "$anim" 2>/dev/null || true
     anim=""
   }
@@ -918,15 +919,30 @@ rekey_luks() {
     return 1
   fi
 
-  local new_slot slot
+  local new_slot slot other_slots
   new_slot=$(cryptsetup open --test-passphrase --verbose --key-file <(printf '%s' "$password") "$device" 2>&1 |
     grep -o 'Key slot [0-9]* unlocked' | grep -o '[0-9]*' | head -1)
-  if [[ -n $new_slot ]]; then
-    for slot in $(cryptsetup luksDump "$device" | awk '/^ +[0-9]+: luks2/ { sub(":", "", $1); print $1 }'); do
-      [[ $slot == "$new_slot" ]] && continue
-      cryptsetup luksKillSlot -q --key-file <(printf '%s' "$password") "$device" "$slot"
-    done
+  # Retiring the throwaway/seller slots must be all-or-nothing: if we can't
+  # identify the user's slot or a kill fails, keep the staged key and retry —
+  # never shred it while a slot the seller knows still unlocks the disk.
+  if [[ -z $new_slot ]]; then
+    log_step "could not identify the user's LUKS slot after re-key; keeping the staged key for retry"
+    say --foreground 1 "Could not confirm the LUKS re-key; will retry."
+    return 1
   fi
+  if ! other_slots=$(cryptsetup luksDump "$device" | awk '/^ +[0-9]+: luks2/ { sub(":", "", $1); print $1 }'); then
+    log_step "luksDump failed while retiring slots; keeping the staged key for retry"
+    say --foreground 1 "Could not enumerate LUKS slots; will retry."
+    return 1
+  fi
+  for slot in $other_slots; do
+    [[ $slot == "$new_slot" ]] && continue
+    if ! cryptsetup luksKillSlot -q --key-file <(printf '%s' "$password") "$device" "$slot"; then
+      log_step "failed to kill LUKS slot $slot; keeping the staged key for retry"
+      say --foreground 1 "Could not remove the throwaway LUKS key; will retry."
+      return 1
+    fi
+  done
 
   shred -u "$PROVISIONING_DIR/luks-key" 2>/dev/null || rm -f "$PROVISIONING_DIR/luks-key"
 }
@@ -966,7 +982,10 @@ reset_limine_config() {
   # Only remove machine-ids the old (Omarchy-managed) limine.conf referenced;
   # a shared ESP may hold other installations' machine-id directories.
   if [[ -f $esp/limine.conf ]]; then
-    old_ids=$(grep -o 'machine-id=[0-9a-f]\{32\}' "$esp/limine.conf" | cut -d= -f2 | sort -u)
+    # `|| true`: an entry-less limine.conf (left by a failed earlier rebuild)
+    # has no machine-id lines, so grep exits 1 and pipefail would abort the
+    # assignment under `set -e` — turning a recoverable retry into a dead loop.
+    old_ids=$(grep -o 'machine-id=[0-9a-f]\{32\}' "$esp/limine.conf" | cut -d= -f2 | sort -u || true)
   fi
 
   for template in "$OMARCHY_PATH/install/assets/limine/limine.conf" \
@@ -1118,8 +1137,12 @@ main() {
     say --foreground 1 "Setup hit an error (details in $LOG_FILE)."
     echo
     if ! gum confirm --affirmative "Try again" --negative "Drop to console" "Retry first-boot setup?"; then
-      say "Run 'omarchy-provision-owner' as root to retry later."
-      exit 1
+      # Give an actual usable console: this service owns tty1 (and Conflicts the
+      # getty), and on a failed deferred setup there's no user account and root
+      # is locked — so exiting would strand the machine with no way in. Exec a
+      # root shell on tty1; SDDM starts once it exits.
+      say "Dropping to a root shell. Run 'omarchy-provision-owner' to retry setup."
+      exec /bin/bash
     fi
   done
 }
