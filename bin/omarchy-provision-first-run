@@ -2,6 +2,7 @@
 
 # omarchy:summary=Finish first-login setup for Omarchy.
 # omarchy:args=[--force]
+# omarchy:hidden=true
 
 set -e
 

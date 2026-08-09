@@ -1,9 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=First-boot worker that finishes an omarchy-system-factory-reset reset
-# omarchy:group=setup
 # omarchy:requires-sudo=true
-# omarchy:examples=omarchy-system-factory-reset-finish
+# omarchy:hidden=true
 
 # Runs once, early on the first boot after omarchy-system-factory-reset, via
 # omarchy-system-factory-reset-finish.service (armed by /var/lib/omarchy/provisioning/wipe-pending).
