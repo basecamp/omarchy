@@ -30,7 +30,10 @@ for dev in /sys/bus/usb/devices/*; do
   if [[ -r $dev/product ]]; then
     product=$(<"$dev/product")
     product=${product,,}
-    [[ $product == *fingerprint* || $product == *biometric* ]] && exit 0
+    # Elan's match-on-chip readers report "ELAN:ARM-M4", the family name
+    # rather than the function. Elan is left out of the vendor list above
+    # on purpose, so without this they match nothing.
+    [[ $product == *fingerprint* || $product == *biometric* || $product == *elan:arm-m4* ]] && exit 0
   fi
 
   if [[ -r $dev/idVendor ]]; then
