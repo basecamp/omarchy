@@ -41,3 +41,53 @@ result=$(HOME="$TEST_HOME" KIMI_CODE_HOME="$TEST_HOME/.kimi-code" \
 [[ $(jq -c '.id' <<<"$result") == '"kimi"' ]] ||
   fail "Kimi record identifies itself" "$result"
 pass "Kimi local scan merges native+pi into one model"
+
+# ---------------------------------------------------------------- limits
+# The CLI's FileTokenStorage shape: a non-expired token so the collector
+# goes straight to the /usages endpoint instead of the OAuth refresh flow.
+expires_at=$(( $(date +%s) + 86400 ))
+mkdir -p "$TEST_HOME/.kimi-code/credentials"
+cat >"$TEST_HOME/.kimi-code/credentials/kimi-code.json" <<EOF
+{
+  "access_token": "test-access-token",
+  "refresh_token": "test-refresh-token",
+  "expires_at": $expires_at
+}
+EOF
+
+# Recorded /usages payload: weekly summary plus a 300-minute rolling window.
+mkdir -p "$TEST_HOME/www"
+cat >"$TEST_HOME/www/usages" <<'EOF'
+{"user":{"membership":{"level":"LEVEL_INTERMEDIATE"}},"usage":{"limit":"100","used":"50","resetTime":"2026-07-25T15:18:36.503407Z"},"limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"100","remaining":"100","resetTime":"2026-07-24T21:18:36.503407Z"}}]}
+EOF
+
+PORT=$(python3 - <<'PYEOF'
+import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
+PYEOF
+)
+
+python3 -m http.server "$PORT" --directory "$TEST_HOME/www" >/dev/null 2>&1 &
+SERVER_PID=$!
+trap 'rm -rf "$TEST_HOME"; [[ -n ${SERVER_PID:-} ]] && kill "$SERVER_PID" 2>/dev/null' EXIT
+for _ in $(seq 1 50); do
+  (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null && { exec 3>&-; break; }
+  sleep 0.1
+done
+
+quota=$(HOME="$TEST_HOME" KIMI_CODE_HOME="$TEST_HOME/.kimi-code" \
+  KIMI_CODE_BASE_URL="http://127.0.0.1:$PORT" \
+  "$ROOT/bin/omarchy-agent-usage-kimi")
+
+[[ $(jq -c '[.limits[].label]' <<<"$quota") == '["Weekly limit","5h limit"]' ]] ||
+  fail "Kimi normalizes weekly + rolling window limits" "$quota"
+[[ $(jq -c '.limits[0].percent' <<<"$quota") == "0.5" ]] ||
+  fail "Kimi reports the weekly fraction" "$quota"
+[[ $(jq -r '.tierLabel' <<<"$quota") == "Intermediate" ]] ||
+  fail "Kimi reports the membership plan" "$quota"
+[[ $(jq -r '.ready' <<<"$quota") == "true" ]] ||
+  fail "Kimi marks the record ready with limits" "$quota"
+pass "Kimi probe reports official quota limits"

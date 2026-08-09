@@ -501,6 +501,31 @@ def normalize_usage(payload):
   return metrics, plan
 
 
+def read_fresh_json(path, max_age_seconds):
+  if max_age_seconds <= 0 or not path.exists():
+    return None
+  try:
+    if time.time() - path.stat().st_mtime <= max_age_seconds:
+      return json.loads(path.read_text())
+  except Exception:
+    return None
+  return None
+
+
+def write_json(path, payload):
+  tmp = path.with_suffix(".tmp.%d" % os.getpid())
+  try:
+    tmp.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n")
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+  except Exception:
+    try:
+      tmp.unlink()
+    except OSError:
+      pass
+    raise
+
+
 def collect_limits(force):
   result = {"limits": [], "tierLabel": "", "usageStatusText": "", "authHelpText": AUTH_HELP}
   token = load_token()
@@ -509,20 +534,38 @@ def collect_limits(force):
     result["authHelpText"] = AUTH_HELP
     return result
 
+  # A panel that is opened and shut repeatedly must not turn into a request
+  # per flick: reuse a recent probe, and keep it as the answer of record when
+  # a later probe fails.
+  probe_cache = cache_root() / "kimi-limits.json"
+  cached = read_fresh_json(probe_cache, float("inf")) or {}
+  fetched_at = number(cached.get("fetchedAtMs")) / 1000
+  min_interval = 0 if force else 15
+  if cached.get("limits") and time.time() - fetched_at < max(min_interval, 15):
+    result["limits"] = cached["limits"]
+    result["tierLabel"] = cached.get("tierLabel") or ""
+    return result
+
   try:
     token = ensure_fresh(token, force)
     payload, _ = fetch_usages(token)
     metrics, plan = normalize_usage(payload)
     result["limits"] = metrics
     result["tierLabel"] = plan
-    if not metrics:
+    if metrics:
+      write_json(probe_cache, {"fetchedAtMs": round(time.time() * 1000), "limits": metrics, "tierLabel": plan})
+    else:
       result["usageStatusText"] = "Kimi limits unavailable"
   except Exception as exc:
     message = str(exc)[:200]
     if isinstance(exc, urllib.error.HTTPError) and exc.code == 401:
       message = "authorization failed (try: kimi login)"
-    result["usageStatusText"] = "Kimi limits unavailable"
-    result["authHelpText"] = message
+    if cached.get("limits"):
+      result["limits"] = cached["limits"]
+      result["tierLabel"] = cached.get("tierLabel") or ""
+    else:
+      result["usageStatusText"] = "Kimi limits unavailable"
+      result["authHelpText"] = message
   return result
 
 
