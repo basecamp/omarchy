@@ -39,6 +39,12 @@ focus_pane_right = "ctrl+alt+right"
 
 resize_mode = ["prefix+ctrl+left", "prefix+ctrl+down", "prefix+ctrl+up", "prefix+ctrl+right"]
 
+# Like resize-pane on C-M-S-arrows
+resize_pane_left = "ctrl+alt+shift+left"
+resize_pane_down = "ctrl+alt+shift+down"
+resize_pane_up = "ctrl+alt+shift+up"
+resize_pane_right = "ctrl+alt+shift+right"
+
 # No tmux equivalent; herdr's default prefix+shift+p is taken by previous session
 rename_pane = "prefix+shift+o"
 
@@ -56,27 +62,6 @@ rename_workspace = "prefix+shift+r"
 close_workspace = "prefix+shift+k"
 previous_workspace = ["prefix+shift+p", "alt+up"]
 next_workspace = ["prefix+shift+n", "alt+down"]
-
-# Resize by ~5 columns/rows, like resize-pane -L 5 on C-M-S-arrows
-[[keys.command]]
-key = "ctrl+alt+shift+left"
-type = "shell"
-command = "herdr pane resize --current --direction left --amount 0.03"
-
-[[keys.command]]
-key = "ctrl+alt+shift+down"
-type = "shell"
-command = "herdr pane resize --current --direction down --amount 0.03"
-
-[[keys.command]]
-key = "ctrl+alt+shift+up"
-type = "shell"
-command = "herdr pane resize --current --direction up --amount 0.03"
-
-[[keys.command]]
-key = "ctrl+alt+shift+right"
-type = "shell"
-command = "herdr pane resize --current --direction right --amount 0.03"
 
 [ui]
 accent = "blue"
