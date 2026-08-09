@@ -54,7 +54,7 @@ grep -Fx 'HOOK CALL: hyprland-config bindings,looknfeel' "$test_tmp/log.txt" >/d
 pass "config hook reports changed config files in filename order"
 
 run_hook
-[[ $(grep -c '^HOOK CALL:' "$test_tmp/log.txt") -eq 3 ]] || fail "unchanged reload still fires the hook"
+(( $(grep -c '^HOOK CALL:' "$test_tmp/log.txt") == 3 )) || fail "unchanged reload still fires the hook"
 grep -Fx 'HOOK CALL: hyprland-config ' "$test_tmp/log.txt" >/dev/null
 pass "unchanged reload fires the hook with no files"
 
