@@ -92,11 +92,17 @@ download_url() {
       -vf "crop='min(iw,ih)':'min(iw,ih)',scale=256:256" -q:v 2 \
       "$preview" -loglevel quiet 2>/dev/null || true
 
-    # Clicking the toast opens the video in mpv (-a blocks until clicked or timed out).
+    # Best-effort: the download already succeeded, and under `set -e` a failed
+    # toast would exit before the thumbnail cleanup below is ever scheduled.
+    omarchy-notification-send -g 󰄬 "Download complete" "$title" \
+      -t 10000 --image "${preview:-$filepath}" \
+      --exec "$(printf 'mpv %q' "$filepath")" || true
+
+    # The shell loads the thumbnail into memory when the toast appears and never
+    # re-reads the file, so the preview only has to outlive that load, not the
+    # toast.
     (
-      if [[ -n $(omarchy-notification-send -g 󰄬 "Download complete" "$title" -t 10000 --image "${preview:-$filepath}" -a) ]]; then
-        mpv "$filepath"
-      fi
+      sleep 2
       rm -f "$preview"
     ) &
   else
