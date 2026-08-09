@@ -71,7 +71,7 @@ scale_console_font() {
   local best="" best_diff=999999 name rows cols diff
   for name in "${fonts[@]}"; do
     setfont "$name" 2>/dev/null || continue
-    read -r rows cols < <(stty size </dev/tty 2>/dev/null || printf '0 0')
+    read -r rows cols < <(stty size </dev/tty 2>/dev/null || printf '0 0\n')
     [[ $rows =~ ^[0-9]+$ && $cols =~ ^[0-9]+$ ]] || continue
     (( cols > LOGO_WIDTH )) || continue      # must clear the 81-col logo
     diff=$(( rows > target_rows ? rows - target_rows : target_rows - rows ))
@@ -477,7 +477,6 @@ greeter_screen() {
     fi
     cur_sig=$(console_signature 2>/dev/null || true)
     if (( resized )) || [[ -n $cur_sig && $cur_sig != "$drawn_sig" ]]; then
-      stty sane </dev/tty 2>/dev/null || true
       wait_console_stable 50 5 || true
       scale_console_font
       wait_console_stable 30 5 || true
@@ -489,7 +488,6 @@ greeter_screen() {
   done
 
   trap - WINCH
-  stty sane </dev/tty 2>/dev/null || true
   printf '%s%s%s' "$RESET" "$CLEAR" "$SHOW_CURSOR"
 }
 
@@ -637,7 +635,9 @@ user_form() {
 
   local geo_guessed_timezone
   step "Let's set your timezone..."
-  geo_guessed_timezone=$(tzupdate -p 2>/dev/null)
+  # A fresh machine usually hasn't joined a network yet, so tzupdate fails often;
+  # guard it or `set -e` would abort setup before the gum-filter fallback below.
+  geo_guessed_timezone=$(tzupdate -p 2>/dev/null) || geo_guessed_timezone=""
   if [[ -n $geo_guessed_timezone ]]; then
     timezone=$(timedatectl list-timezones | gum choose --height 10 --selected "$geo_guessed_timezone" --header "Timezone") || timezone="$geo_guessed_timezone"
   else
@@ -760,21 +760,24 @@ configure_login() {
   encrypted_install || install_autologin_once_cleanup
 }
 
-# Install a self-removing service that deletes the first-boot autologin drop-in
-# once the desktop is up, so only this boot skips the login screen. It runs
-# after the display manager (which has already read the drop-in and autologged
-# in), removes the drop-in, then removes its own unit and enablement symlink.
+# Install a self-removing service that makes the autologin last exactly one
+# boot — this one, where the owner just authenticated in the wizard. The unit is
+# created now, but graphical.target's job for THIS boot is already computed, so
+# it won't run this boot (this boot autologins). On the NEXT boot it's in the
+# fresh transaction, ordered Before the display manager, so it runs before SDDM
+# reads its config: it removes the autologin drop-in (that boot shows the normal
+# login) and deletes its own unit and enablement symlink. Ordering Before= (not
+# After=) is what makes it deterministic — no sleep/race against SDDM's startup.
 install_autologin_once_cleanup() {
   local unit=omarchy-provision-autologin-once.service
   cat >"/etc/systemd/system/$unit" <<UNIT
 [Unit]
-Description=Drop the first-boot autologin after the owner's first desktop login
-After=display-manager.service
+Description=Drop the first-boot autologin before the next login
+Before=display-manager.service
 ConditionPathExists=/etc/sddm.conf.d/autologin.conf
 
 [Service]
 Type=oneshot
-ExecStartPre=-/usr/bin/sleep 3
 ExecStart=/usr/bin/rm -f /etc/sddm.conf.d/autologin.conf
 ExecStartPost=/usr/bin/rm -f /etc/systemd/system/graphical.target.wants/$unit /etc/systemd/system/$unit
 
@@ -798,9 +801,13 @@ configure_hostname() {
 # real zone now that the owner has chosen it.
 configure_timezone() {
   [[ -n ${timezone:-} ]] || return 0
-  timedatectl set-timezone "$timezone" 2>&1 ||
-    ln -sf "/usr/share/zoneinfo/$timezone" /etc/localtime 2>&1 ||
-    true
+  if timedatectl set-timezone "$timezone" 2>&1; then
+    return 0
+  fi
+  # Fallback only if the zone file exists, so a bad zone can't point
+  # /etc/localtime at nothing and break every localtime read afterward.
+  [[ -e /usr/share/zoneinfo/$timezone ]] &&
+    ln -sf "/usr/share/zoneinfo/$timezone" /etc/localtime 2>&1 || true
 }
 
 finalize_user() {
