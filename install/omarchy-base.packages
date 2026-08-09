@@ -50,6 +50,7 @@ gum
 gvfs-mtp
 gvfs-nfs
 gvfs-smb
+herdr
 hyprland
 hyprland-guiutils
 hyprland-preview-share-picker
@@ -93,7 +94,6 @@ obsidian
 omacalc
 omacut
 omawrite
-omarchy-herdr
 omarchy-nvim
 pacman-contrib
 pamixer
