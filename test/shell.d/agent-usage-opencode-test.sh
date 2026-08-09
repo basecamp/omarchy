@@ -278,3 +278,30 @@ no_cli_today=$(jq -r --arg d "$DAY" '.recentDays[] | select(.date == $d) | .mess
 [[ $no_cli_today == "550" ]] ||
   fail "Zen record falls back to Pi-only tokens without CLI" "$result_no_cli"
 pass "Zen record falls back to Pi-only tokens without CLI"
+
+# ---------------------------------------------------------------------------
+# Panel marks resolve by provider id (assets/<id>.svg, plus a -light twin for
+# light surfaces), so each route must ship the mark under its own id even
+# though zen and go share one OpenCode brand mark.
+
+require_command test
+
+mark() {
+  [[ -f "$ROOT/shell/plugins/agents/assets/$1" ]]
+}
+
+mark opencode-zen.svg ||
+  fail "Zen panel mark exists at assets/opencode-zen.svg"
+pass "Zen panel mark exists at assets/opencode-zen.svg"
+
+mark opencode-zen-light.svg ||
+  fail "Zen panel mark light twin exists at assets/opencode-zen-light.svg"
+pass "Zen panel mark light twin exists at assets/opencode-zen-light.svg"
+
+mark opencode-go.svg ||
+  fail "Go panel mark exists at assets/opencode-go.svg"
+pass "Go panel mark exists at assets/opencode-go.svg"
+
+mark opencode-go-light.svg ||
+  fail "Go panel mark light twin exists at assets/opencode-go-light.svg"
+pass "Go panel mark light twin exists at assets/opencode-go-light.svg"
