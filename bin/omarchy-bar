@@ -158,22 +158,14 @@ cmd_use() {
 cmd_defaults() {
   (( $# == 0 )) || fail "defaults does not take arguments"
 
-  local catalog
   local optional_widgets="[]"
   local service widget
-  catalog=$(omarchy-plugin-catalog)
   for service in dropbox tailscale; do
     if "omarchy-installed-service-$service"; then
-      widget=$(jq -c --arg id "omarchy.$service" '
-        map(select(.id == $id))[0] as $plugin
-        | {
-            id: $id,
-            section: (
-              $plugin.barWidget.defaultSection // "center"
-              | if IN("left", "center", "right") then . else "center" end
-            )
-          }
-      ' <<<"$catalog")
+      widget=$(jq -cn \
+        --arg id "omarchy.$service" \
+        --arg section "$(bar_widget_default_section "omarchy.$service")" \
+        '{id: $id, section: $section}')
       optional_widgets=$(jq -c --argjson widget "$widget" '. + [$widget]' <<<"$optional_widgets")
     fi
   done
