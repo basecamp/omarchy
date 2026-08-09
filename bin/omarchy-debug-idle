@@ -32,7 +32,7 @@ journalctl -t omarchy-shell -n "$lines" --no-pager --quiet 2>/dev/null || true
 
 section "Relevant processes"
 ps -eo pid=,args= \
-  | grep -E 'quickshell -n -p|omarchy-system-sleep-monitor|systemd-inhibit.*Lock screen before suspend|org\.omarchy\.screensaver|omarchy-screensaver|(^|/| )tte( |$)' \
+  | grep -E 'quickshell -n -p|omarchy-system-sleep-monitor|systemd-inhibit.*Lock screen before suspend|org\.omarchy\.screensaver|omarchy-screensaver|(^|/| )ttfx( |$)' \
   | grep -v grep || true
 
 section "Sleep lock service"
