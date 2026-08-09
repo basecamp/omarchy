@@ -13,6 +13,10 @@ BarWidget {
   property string layoutLabel: ""
   property string layoutFull: ""
   property string keyboardName: ""
+  // Nothing to read or switch on the single-layout install most people run, so
+  // the widget ships on the bar and stays out of the way until there are two.
+  // An older Hyprland that doesn't report the list keeps showing the label.
+  property bool multipleLayouts: true
 
   function refresh() {
     if (!queryProc.running) queryProc.running = true
@@ -27,9 +31,11 @@ BarWidget {
     return typed.find(k => k.main) ?? typed.find(k => k.name === root.keyboardName)
   }
 
+  // switchxkblayout is a hyprctl command rather than a dispatcher, so it has to
+  // be run rather than sent over the dispatch socket.
   function cycleLayout() {
-    if (!root.keyboardName) return
-    Hyprland.dispatch("switchxkblayout " + root.keyboardName + " next")
+    if (!root.keyboardName || !root.bar) return
+    root.bar.run("hyprctl switchxkblayout " + Util.shellQuote(root.keyboardName) + " next")
     refreshTimer.restart()
   }
 
@@ -59,6 +65,7 @@ BarWidget {
         if (!kb || !kb.active_keymap) return
 
         root.keyboardName = String(kb.name || "")
+        root.multipleLayouts = kb.layout === undefined || String(kb.layout).indexOf(",") !== -1
         root.layoutFull = kb.active_keymap
         root.layoutLabel = kb.active_keymap.split(/\s+/)[0].substring(0, 3).toUpperCase()
       }
@@ -78,7 +85,7 @@ BarWidget {
     onTriggered: root.refresh()
   }
 
-  visible: layoutLabel !== ""
+  visible: layoutLabel !== "" && multipleLayouts
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 

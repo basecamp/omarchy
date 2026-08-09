@@ -328,3 +328,40 @@ jq -e 'all(.[]; .id != "omarchy.audio")' <<<"$geometry" >/dev/null || {
 }
 
 pass "bar remove reloads shell config and updates bar layout"
+
+# 'bar put' is what migrations use to place a newly shipped widget, so it has
+# to place one that is missing and leave one that is already there alone,
+# however often it runs.
+bar_put() {
+  HOME="$test_home" OMARCHY_PATH="$test_root" PATH="$ROOT/bin:$PATH" "$ROOT/bin/omarchy-bar" put "$@"
+}
+
+center_ids() {
+  jq -c '[.bar.layout.center[] | .id // .]' <<<"$(shell_ipc shell listShellConfig)"
+}
+
+bar_put omarchy.keyboard-layout --after omarchy.clock >/dev/null
+for _ in {1..80}; do
+  [[ $(center_ids) == *omarchy.keyboard-layout* ]] && break
+  kill -0 "$QS_PID" 2>/dev/null || fail_with_log "test shell exited while putting a bar widget"
+  sleep 0.1
+done
+
+jq -e '
+  [.bar.layout.center[] | .id // .] as $ids
+  | ($ids | index("omarchy.clock")) as $clock
+  | ($ids | index("omarchy.keyboard-layout")) as $widget
+  | $clock != null and $widget == $clock + 1
+' <<<"$(shell_ipc shell listShellConfig)" >/dev/null ||
+  fail_with_log "bar put places a widget after the one it names ($(center_ids))"
+pass "bar put places a widget after the one it names"
+
+placed=$(center_ids)
+bar_put omarchy.keyboard-layout --section right >/dev/null
+sleep 0.5
+[[ $(center_ids) == "$placed" ]] ||
+  fail_with_log "bar put left a widget already on the bar alone (was $placed, now $(center_ids))"
+jq -e 'all(.bar.layout.right[]; (.id // .) != "omarchy.keyboard-layout")' \
+  <<<"$(shell_ipc shell listShellConfig)" >/dev/null ||
+  fail_with_log "bar put added a second copy of a widget already on the bar"
+pass "bar put leaves a widget already on the bar alone"
