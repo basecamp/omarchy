@@ -31,9 +31,11 @@ BarWidget {
     return typed.find(k => k.main) ?? typed.find(k => k.name === root.keyboardName)
   }
 
+  // switchxkblayout is a hyprctl command rather than a dispatcher, so it has to
+  // be run rather than sent over the dispatch socket.
   function cycleLayout() {
-    if (!root.keyboardName) return
-    Hyprland.dispatch("switchxkblayout " + root.keyboardName + " next")
+    if (!root.keyboardName || !root.bar) return
+    root.bar.run("hyprctl switchxkblayout " + Util.shellQuote(root.keyboardName) + " next")
     refreshTimer.restart()
   }
 
