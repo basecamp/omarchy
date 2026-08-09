@@ -38,17 +38,14 @@ BarWidget {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        let data
+        let kb
         try {
-          data = JSON.parse(text || "{}")
+          kb = JSON.parse(text || "{}").keyboards?.find(k => k.main)
         } catch (e) {
           return
         }
 
-        const keyboards = data.keyboards ?? []
-        const kb = keyboards.find(k => k.main) ?? keyboards[0]
-
-        if (!kb) return
+        if (!kb || !kb.active_keymap) return
 
         root.layoutFull = kb.active_keymap
         root.layoutLabel = kb.active_keymap.split(/\s+/)[0].substring(0, 3).toUpperCase()
