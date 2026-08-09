@@ -442,6 +442,18 @@ greeter_screen() {
   rows=$(stty size 2>/dev/null </dev/tty | awk '{print $1}')
   [[ $rows =~ ^[0-9]+$ ]] || rows=${LINES:-24}
 
+  # If the console ends up narrower than the logo, the console font is too wide
+  # for this resolution — e.g. scale_console_font sized the font from a boot
+  # resolution that then settled smaller (as virtio-gpu can), leaving ~80
+  # columns for an 81-column logo. The logo would wrap and hug the top-left.
+  # Fall back to the default (narrowest) font, which always fits, and re-measure.
+  if (( cols < LOGO_WIDTH )) && [[ $(tty 2>/dev/null) == /dev/tty* ]] && command -v setfont >/dev/null 2>&1; then
+    setfont default8x16 2>/dev/null || true
+    cols=$(term_cols)
+    rows=$(stty size 2>/dev/null </dev/tty | awk '{print $1}')
+    [[ $rows =~ ^[0-9]+$ ]] || rows=${LINES:-24}
+  fi
+
   # logo + blank + tagline + blank + hint
   content_h=$(( LOGO_HEIGHT + 4 ))
   top=$(( (rows - content_h) / 2 ))
