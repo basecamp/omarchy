@@ -661,9 +661,21 @@ user_form() {
   full_name=$(gum input --placeholder "Used for git authentication (hit return to skip)" --prompt.foreground="#845DF9" --prompt "Full name> ") || full_name=""
   email_address=$(gum input --placeholder "Used for git authentication (hit return to skip)" --prompt.foreground="#845DF9" --prompt "Email address> ") || email_address=""
 
-  # Timezone is deferred to first boot with the rest of the user step, so the
-  # machine's owner picks their own zone instead of inheriting the install's UTC
-  # default. Geo-guess the default the same way the ISO installer's user step does.
+  # Hostname and timezone are deferred to first boot with the rest of the user
+  # step (the deferred install no longer bakes them), so the owner sets their own
+  # instead of the machine keeping a default. Same validation and geo-guess the
+  # ISO installer's user step uses.
+  while true; do
+    hostname=$(gum input --placeholder "Letters, digits, and dashes (or return for 'omarchy')" --prompt.foreground="#845DF9" --prompt "Hostname> ") || hostname=""
+    if [[ -z $hostname ]]; then
+      hostname="omarchy"; break
+    elif [[ $hostname =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]]; then
+      break
+    else
+      notice "Hostname must be 1-63 letters, digits, or dashes, and cannot start or end with a dash" 1
+    fi
+  done
+
   local geo_guessed_timezone
   step "Let's set your timezone..."
   geo_guessed_timezone=$(tzupdate -p 2>/dev/null)
@@ -684,6 +696,7 @@ Username,$username
 Password,$(printf "%${#password}s" | tr ' ' '*')
 Full name,${full_name:-[Skipped]}
 Email address,${email_address:-[Skipped]}
+Hostname,${hostname:-omarchy}
 Timezone,${timezone:-UTC}" |
     gum table -s "," -p | sed "s/^/${PADDING_LEFT_SPACES}/"
 
@@ -813,9 +826,17 @@ UNIT
   ln -sf "../$unit" "/etc/systemd/system/graphical.target.wants/$unit"
 }
 
+# Apply the owner's hostname, deferred to first boot with the rest of the user
+# step. The deferred install no longer bakes a hostname, so set it now.
+configure_hostname() {
+  [[ -n ${hostname:-} ]] || return 0
+  hostnamectl set-hostname "$hostname" 2>&1 ||
+    printf '%s\n' "$hostname" >/etc/hostname
+}
+
 # Apply the owner's timezone, deferred to first boot with the rest of the user
-# step. The install left this at UTC (archinstall's default for a userless
-# deferred install); set the real zone now that the owner has chosen it.
+# step. The deferred install leaves the zone unset (system default UTC); set the
+# real zone now that the owner has chosen it.
 configure_timezone() {
   [[ -n ${timezone:-} ]] || return 0
   timedatectl set-timezone "$timezone" 2>&1 ||
@@ -977,6 +998,9 @@ run_provisioning() {
   create_user
   install_authorized_keys
   configure_login
+
+  log_step "setting hostname to ${hostname:-omarchy}"
+  configure_hostname
 
   log_step "setting timezone to ${timezone:-UTC}"
   configure_timezone
