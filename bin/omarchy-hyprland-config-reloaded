@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# omarchy:summary=Fire the hyprland-config hook with the config files changed since the last Hyprland config reload.
+# omarchy:hidden=true
+
+set -euo pipefail
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/hyprland-config"
+SNAPSHOT="$STATE_DIR/snapshot"
+
+changed=()
+declare -A snapshot_hashes=()
+
+snapshot_exists=0
+[[ -f $SNAPSHOT ]] && snapshot_exists=1
+
+# Iterating the sorted glob keeps the reported file order deterministic.
+shopt -s nullglob
+for file in "$CONFIG_DIR"/*.lua; do
+  [[ -f $file ]] || continue
+  name=$(basename "$file")
+  hash=$(sha256sum "$file" | cut -d' ' -f1)
+  snapshot_hashes["$name"]=$hash
+
+  if (( snapshot_exists )); then
+    old_hash=$(grep -F "${name}=" "$SNAPSHOT" 2>/dev/null | cut -d= -f2- || true)
+    if [[ $old_hash != "$hash" ]]; then
+      changed+=("${name%.lua}")
+    fi
+  fi
+done
+
+mkdir -p "$STATE_DIR"
+: > "$SNAPSHOT.tmp"
+for name in "${!snapshot_hashes[@]}"; do
+  printf '%s=%s\n' "$name" "${snapshot_hashes[$name]}"
+done > "$SNAPSHOT.tmp"
+mv "$SNAPSHOT.tmp" "$SNAPSHOT"
+
+csv=$(IFS=,; printf '%s' "${changed[*]}")
+omarchy-hook hyprland-config "$csv"
