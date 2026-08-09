@@ -374,8 +374,7 @@ def scan_pi_usage(max_age_seconds: float) -> dict[str, Any] | None:
               if entry.get("type") != "message" or message.get("role") != "assistant":
                 continue
               provider = str(message.get("provider") or "")
-              api = str(message.get("api") or "")
-              if provider != "anthropic" and not api.startswith("anthropic"):
+              if provider != "anthropic":
                 continue
               unique_key = f"{path}:{entry.get('id') or line_number}"
               if unique_key in seen:
