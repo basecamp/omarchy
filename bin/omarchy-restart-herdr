@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# omarchy:summary=Reload herdr if running with the latest configuration
+
+[[ $(herdr status server --json 2>/dev/null | jq -r '.running') == "true" ]] || exit 0
+
+reload=$(herdr server reload-config)
+
+jq -r '.result.diagnostics[]?, (.error.message | select(. != null))' <<<"$reload" >&2
+
+if [[ $(jq -r '.result.status // "failed"' <<<"$reload") == "failed" ]]; then
+  exit 1
+fi

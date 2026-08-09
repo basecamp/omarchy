@@ -1,7 +1,0 @@
-#!/bin/bash
-
-# omarchy:summary=Compatibility wrapper for omarchy-update -y.
-# omarchy:hidden=true
-# omarchy:requires-sudo=true
-
-exec omarchy-update -y

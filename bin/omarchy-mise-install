@@ -14,8 +14,14 @@ bin=${3:-$command}
 
 mkdir -p "$HOME/.local/bin"
 
+# These tools install and upgrade on first run, so mise's release cooldown would
+# hold a new version back for days after it ships. Exported rather than set on
+# the install line alone, so resolving the version to execute agrees with the
+# one just installed.
+rm -f "$HOME/.local/bin/$command"
 cat >"$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
+export MISE_MINIMUM_RELEASE_AGE=0
 mise use -g "$package" || exit 1
 exec mise x "$package" -- "$bin" "\$@"
 EOF

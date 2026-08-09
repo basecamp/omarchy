@@ -4,6 +4,11 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
+  pass "no Wayland compositor; skipping bar icon geometry test"
+  exit 0
+fi
+
 if ! command -v quickshell >/dev/null 2>&1; then
   pass "quickshell not installed; skipping bar icon geometry test"
   exit 0

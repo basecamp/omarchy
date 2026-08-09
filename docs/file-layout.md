@@ -219,7 +219,7 @@ files are missing. `omarchy update` runs `omarchy-migrate` after the package
 transaction in the already-visible update terminal, then runs
 `omarchy-hook post-update`.
 
-## First-run (`omarchy-first-run`)
+## First-run (`omarchy-provision-first-run`)
 
 Runs once on first interactive login, after the user manager is live. Used
 for steps that need a running graphical session and/or a working user

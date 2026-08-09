@@ -42,15 +42,29 @@ function isEphemeralApp(appName) {
   return name === "notify-send" || name === "omarchy-action"
 }
 
-function glyphFromHints(hints) {
+function stringHint(hints, name) {
   try {
     if (hints) {
-      var glyph = hints["omarchy-glyph"]
-      if (glyph !== undefined && glyph !== null) return String(glyph)
+      var value = hints[name]
+      if (value !== undefined && value !== null) return String(value)
     }
   } catch (e) {
   }
   return ""
+}
+
+function glyphFromHints(hints) {
+  return stringHint(hints, "omarchy-glyph")
+}
+
+// Shell command to run when the card is clicked, sent by
+// omarchy-notification-send --exec. Carrying the action as data means it
+// travels with the popup through the persistence files, so a toast restored
+// after a shell restart clicks through exactly like a live one. A libnotify
+// action can't: its sender is still waiting on an id from a server generation
+// that no longer exists.
+function execFromHints(hints) {
+  return stringHint(hints, "omarchy-exec")
 }
 
 function shouldRenderCompactGlyph(glyph, iconSource, singleLineToast) {
@@ -71,6 +85,7 @@ function snapshotOf(notification, timestamp) {
     body: n.body || "",
     image: n.image || "",
     glyph: glyphFromHints(n.hints),
+    exec: execFromHints(n.hints),
     urgency: n.urgency,
     expireTimeout: expireTimeout,
     timestamp: timestamp === undefined ? Date.now() : timestamp
@@ -88,6 +103,7 @@ function historyEntry(value, normalUrgency) {
     body: e.body || "",
     image: e.image || "",
     glyph: e.glyph || "",
+    exec: e.exec || "",
     urgency: typeof e.urgency === "number" ? e.urgency : normalUrgency,
     expireTimeout: 0,
     timestamp: e.timestamp || 0
@@ -187,6 +203,7 @@ function dumpRows(rows) {
       body: r.body,
       image: r.image,
       glyph: r.glyph || "",
+      exec: r.exec || "",
       urgency: r.urgency,
       timestamp: r.timestamp
     })
@@ -299,7 +316,9 @@ if (typeof module !== "undefined") {
     summaryStartsWithGlyph: summaryStartsWithGlyph,
     shouldBypassDnd: shouldBypassDnd,
     isEphemeralApp: isEphemeralApp,
+    stringHint: stringHint,
     glyphFromHints: glyphFromHints,
+    execFromHints: execFromHints,
     shouldRenderCompactGlyph: shouldRenderCompactGlyph,
     snapshotOf: snapshotOf,
     historyEntry: historyEntry,
