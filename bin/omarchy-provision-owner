@@ -1,9 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=First-boot provisioning: create the user on a machine installed in deferred provisioning
-# omarchy:group=setup
 # omarchy:requires-sudo=true
-# omarchy:examples=omarchy-provision-owner
+# omarchy:hidden=true
 
 # Runs on tty1 via omarchy-provision-owner.service when /var/lib/omarchy/provisioning/pending
 # exists — the state a deferred-provisioning ISO install or omarchy-system-factory-reset leaves

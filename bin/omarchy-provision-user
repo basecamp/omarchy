@@ -1,8 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Finalize Omarchy user setup (runtime tweaks /etc/skel can't do)
-# omarchy:group=finalize
-# omarchy:examples=omarchy finalize user | omarchy finalize user --force
+# omarchy:hidden=true
 
 set -euo pipefail
 
