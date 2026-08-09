@@ -17,6 +17,12 @@ BarWidget {
     if (!queryProc.running) queryProc.running = true
   }
 
+  // fcitx5 binds a virtual keyboard and takes over the seat's main flag whenever
+  // it injects, but that keyboard keeps the us layout the input method gave it.
+  function isTypedOn(kb) {
+    return kb.main && !String(kb.name).startsWith("hl-virtual-keyboard")
+  }
+
   function cycleLayout() {
     Hyprland.dispatch("switchxkblayout current next")
     refreshTimer.restart()
@@ -40,7 +46,7 @@ BarWidget {
       onStreamFinished: {
         let kb
         try {
-          kb = JSON.parse(text || "{}").keyboards?.find(k => k.main)
+          kb = JSON.parse(text || "{}").keyboards?.find(k => root.isTypedOn(k))
         } catch (e) {
           return
         }
