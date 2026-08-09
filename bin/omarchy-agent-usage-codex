@@ -254,6 +254,26 @@ def scan_native_codex_sessions():
   for path in files:
     current_model = "codex"
     try:
+      # A session may log token counts before its first model event. Read the
+      # first model the file records so those early counts land on the real
+      # model instead of a generic "codex" bucket.
+      with path.open(errors="replace") as handle:
+        for raw in handle:
+          try:
+            entry = json.loads(raw)
+          except Exception:
+            continue
+          payload = entry.get("payload") or {}
+          if entry.get("type") == "turn_context":
+            current_model = model_name(payload.get("model") or payload.get("model_slug") or current_model)
+            break
+          if payload.get("type") == "thread_settings_applied":
+            current_model = model_name((payload.get("thread_settings") or {}).get("model") or current_model)
+            break
+    except Exception:
+      pass
+
+    try:
       with path.open(errors="replace") as handle:
         for raw in handle:
           try:
@@ -265,6 +285,14 @@ def scan_native_codex_sessions():
             current_model = model_name(payload.get("model") or payload.get("model_slug") or current_model)
             continue
           payload = entry.get("payload") or entry
+          if entry.get("type") == "event_msg":
+            payload = entry.get("payload") or {}
+            # Newer sessions record the model in thread_settings_applied (and
+            # omit turn_context), so they would otherwise fall into a generic
+            # "codex" bucket.
+            if payload.get("type") == "thread_settings_applied":
+              current_model = model_name((payload.get("thread_settings") or {}).get("model") or current_model)
+              continue
           if entry.get("type") == "response_item" and isinstance(payload, dict):
             payload = payload.get("payload") or payload
           if not isinstance(payload, dict):

@@ -40,16 +40,33 @@ cat >"$session" <<EOF
 {"timestamp":"$timestamp","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":180,"cached_input_tokens":110,"output_tokens":30,"reasoning_output_tokens":8,"total_tokens":210},"last_token_usage":{"input_tokens":80,"cached_input_tokens":50,"output_tokens":10,"reasoning_output_tokens":3,"total_tokens":90}}}}
 EOF
 
+# A session with no turn_context at all: the model only appears in a
+# thread_settings_applied event, and the first token count precedes it. Both
+# the pre-pass model seeding and the in-loop lookup must attribute these
+# turns to the real model instead of a generic "codex" bucket.
+thread_session="$TEST_HOME/.codex/sessions/$(date +%Y/%m/%d)/rollout-thread.jsonl"
+cat >"$thread_session" <<EOF
+{"timestamp":"$timestamp","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":40,"cached_input_tokens":20,"output_tokens":10,"reasoning_output_tokens":2,"total_tokens":50},"last_token_usage":{"input_tokens":40,"cached_input_tokens":20,"output_tokens":10,"reasoning_output_tokens":2,"total_tokens":50}}}}
+{"timestamp":"$timestamp","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"gpt-thread","model_provider_id":"openai"}}}
+{"timestamp":"$timestamp","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":90,"cached_input_tokens":45,"output_tokens":22,"reasoning_output_tokens":4,"total_tokens":112},"last_token_usage":{"input_tokens":50,"cached_input_tokens":25,"output_tokens":12,"reasoning_output_tokens":2,"total_tokens":62}}}}
+EOF
+
 result=$(HOME="$TEST_HOME" CODEX_HOME="$TEST_HOME/.codex" XDG_DATA_HOME="$TEST_HOME/.local/share" PATH="$TEST_HOME/bin:$PATH" \
   "$ROOT/bin/omarchy-agent-usage-codex")
 
-[[ $(jq -r '.todayTotalTokens' <<<"$result") == "210" ]] ||
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "322" ]] ||
   fail "Codex collector counts each turn once" "$result"
 pass "Codex collector counts each turn once"
 
 [[ $(jq -c '.modelUsage["gpt-test"]' <<<"$result") == '{"inputTokens":70,"outputTokens":30,"cacheReadInputTokens":110,"cacheCreationInputTokens":0}' ]] ||
   fail "Codex collector does not double-count cache or reasoning tokens" "$result"
 pass "Codex collector does not double-count cache or reasoning tokens"
+
+[[ $(jq -c '.modelUsage["gpt-thread"]' <<<"$result") == '{"inputTokens":45,"outputTokens":22,"cacheReadInputTokens":45,"cacheCreationInputTokens":0}' ]] ||
+  fail "Codex collector attributes early token counts to the thread-settings model" "$result"
+[[ $(jq -c '.modelUsage | has("codex")' <<<"$result") == "false" ]] ||
+  fail "Codex collector leaves no generic codex bucket" "$result"
+pass "Codex collector attributes thread-settings sessions to their model"
 
 [[ $(jq -c '.id + "/" + (.limits|tostring)' <<<"$result") == '"codex/[]"' ]] ||
   fail "Codex collector identifies itself with an empty limits list" "$result"
