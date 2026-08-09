@@ -80,8 +80,9 @@ _ssh_interactive() {
   # A RemoteCommand from ssh_config or -o replays on reconnect just like a
   # positional command; ssh -G resolves the effective configuration for this
   # exact invocation without connecting. Fail closed when it cannot resolve,
-  # since an undetected RemoteCommand must not replay.
+  # since an undetected RemoteCommand must not replay. The explicit "none"
+  # cancels a configured command, and some versions emit it when unset.
   local resolved
   resolved=$(command ssh -G "${argv[@]}" 2>/dev/null) || return 1
-  ! grep -qi '^remotecommand ' <<<"$resolved"
+  ! grep -i '^remotecommand ' <<<"$resolved" | grep -qvi '^remotecommand none$'
 }

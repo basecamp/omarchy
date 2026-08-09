@@ -38,6 +38,10 @@ if run_interactive -F /dev/null -o "RemoteCommand=uptime" host; then
 fi
 pass "configured RemoteCommand is not interactive"
 
+run_interactive -F /dev/null -o "RemoteCommand=none" host ||
+  fail "explicit RemoteCommand none stays interactive"
+pass "explicit RemoteCommand none stays interactive"
+
 if run_interactive host uptime; then
   fail "remote command is not interactive"
 fi
@@ -60,7 +64,7 @@ trap 'rm -rf "$fake_dir"' EXIT
 
 cat >"$fake_dir/ssh" <<EOF
 #!/bin/bash
-[[ \$1 == "-G" ]] && exit 0
+[[ \$1 == "-G" ]] && { echo "remotecommand none"; exit 0; }
 n=\$(( \$(cat "$fake_dir/count" 2>/dev/null || echo 0) + 1 ))
 echo "\$n" >"$fake_dir/count"
 read -r duration code <<<"\$(sed -n "\${n}p" "$fake_dir/plan")"
