@@ -12,6 +12,7 @@ BarWidget {
 
   property string layoutLabel: ""
   property string layoutFull: ""
+  property string keyboardName: ""
 
   function refresh() {
     if (!queryProc.running) queryProc.running = true
@@ -19,12 +20,16 @@ BarWidget {
 
   // fcitx5 binds a virtual keyboard and takes over the seat's main flag whenever
   // it injects, but that keyboard keeps the us layout the input method gave it.
-  function isTypedOn(kb) {
-    return kb.main && !String(kb.name).startsWith("hl-virtual-keyboard")
+  // Stay on the keyboard we last read until a real one is active again, so the
+  // label keeps tracking that keyboard's layout rather than freezing.
+  function selectKeyboard(keyboards) {
+    const typed = keyboards.filter(k => !String(k.name).startsWith("hl-virtual-keyboard"))
+    return typed.find(k => k.main) ?? typed.find(k => k.name === root.keyboardName)
   }
 
   function cycleLayout() {
-    Hyprland.dispatch("switchxkblayout current next")
+    if (!root.keyboardName) return
+    Hyprland.dispatch("switchxkblayout " + root.keyboardName + " next")
     refreshTimer.restart()
   }
 
@@ -46,13 +51,14 @@ BarWidget {
       onStreamFinished: {
         let kb
         try {
-          kb = JSON.parse(text || "{}").keyboards?.find(k => root.isTypedOn(k))
+          kb = root.selectKeyboard(JSON.parse(text || "{}").keyboards ?? [])
         } catch (e) {
           return
         }
 
         if (!kb || !kb.active_keymap) return
 
+        root.keyboardName = String(kb.name || "")
         root.layoutFull = kb.active_keymap
         root.layoutLabel = kb.active_keymap.split(/\s+/)[0].substring(0, 3).toUpperCase()
       }
