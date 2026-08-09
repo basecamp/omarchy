@@ -52,3 +52,55 @@ result=$(HOME="$TEST_HOME" GROK_HOME="$TEST_HOME/.grok" \
 [[ $(jq -c '.id' <<<"$result") == '"grok"' ]] ||
   fail "Grok record identifies itself" "$result"
 pass "Grok local scan aggregates native+pi per model"
+
+# ---------------------------------------------------------------- billing
+# The CLI's auth.json shape: a grok-com entry with a non-expired token so the
+# collector goes straight to the billing endpoint instead of refreshing.
+mkdir -p "$TEST_HOME/.grok"
+cat >"$TEST_HOME/.grok/auth.json" <<'EOF'
+{
+  "https://auth.x.ai::grok-com": {
+    "key": "test-access-token",
+    "refresh_token": "test-refresh-token",
+    "user_id": "user-1",
+    "expires_at": "2030-01-01T00:00:00Z",
+    "oidc_issuer": "https://auth.x.ai",
+    "oidc_client_id": "grok-com"
+  }
+}
+EOF
+
+# Recorded billing?format=credits payload: a single-product weekly pool.
+mkdir -p "$TEST_HOME/www"
+cat >"$TEST_HOME/www/billing" <<'EOF'
+{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-07-21T02:33:55.961189+00:00","end":"2026-07-28T02:33:55.961189+00:00"},"creditUsagePercent":10.0,"onDemandCap":{"val":0},"onDemandUsed":{"val":0},"productUsage":[{"product":"GrokChat","usagePercent":10.0}],"isUnifiedBillingUser":true}}
+EOF
+
+PORT=$(python3 - <<'PYEOF'
+import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
+PYEOF
+)
+
+python3 -m http.server "$PORT" --directory "$TEST_HOME/www" >/dev/null 2>&1 &
+SERVER_PID=$!
+trap 'rm -rf "$TEST_HOME"; [[ -n ${SERVER_PID:-} ]] && kill "$SERVER_PID" 2>/dev/null' EXIT
+for _ in $(seq 1 50); do
+  (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null && { exec 3>&-; break; }
+  sleep 0.1
+done
+
+billing=$(HOME="$TEST_HOME" GROK_HOME="$TEST_HOME/.grok" \
+  _CLI_CHAT_PROXY_BASE_URL="http://127.0.0.1:$PORT" \
+  "$ROOT/bin/omarchy-agent-usage-grok")
+
+[[ $(jq -c '[.limits[].label]' <<<"$billing") == '["Weekly credits"]' ]] ||
+  fail "Grok reports a single-product pool once" "$billing"
+[[ $(jq -c '.limits[0].percent' <<<"$billing") == "0.1" ]] ||
+  fail "Grok reports the credit fraction" "$billing"
+[[ $(jq -r '.limits[0].resetsAt' <<<"$billing") == "2026-07-28T02:33:55Z" ]] ||
+  fail "Grok reports the pool reset time" "$billing"
+pass "Grok probe reports official billing limits"
