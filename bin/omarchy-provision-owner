@@ -383,7 +383,7 @@ render_setup_dynamic() {
   set_now
   setup_progress
   printf '%s%d;1H' "$CSI" "$DYNAMIC_ROW"
-  center "Setting up your account" "$LOGO_WIDTH"
+  center "Setting up your machine" "$LOGO_WIDTH"
   blank_line
   line_at "$LOGO_WIDTH" $(((LOGO_WIDTH - 34) / 2)) ""
   progress_bar "$SETUP_POS" 34
@@ -391,62 +391,6 @@ render_setup_dynamic() {
   blank_line
   center "${DIM}Tip:${RESET} ${GREEN}$(current_tip)${RESET}" "$LOGO_WIDTH"
   printf '%s' "$CLEAR_TO_END"
-}
-
-setup_duration() {
-  local secs=$((NOW - SETUP_T0))
-  (( secs < 0 )) && secs=0
-  if (( secs >= 3600 )); then
-    printf '%dh %dm %ds' $((secs / 3600)) $((secs % 3600 / 60)) $((secs % 60))
-  else
-    printf '%dm %ds' $((secs / 60)) $((secs % 60))
-  fi
-}
-
-render_setup_finish() {
-  local duration effect_canvas_width
-  set_now
-  duration=$(setup_duration)
-  effect_canvas_width=$(term_cols)
-  (( effect_canvas_width > 1 )) && effect_canvas_width=$((effect_canvas_width - 1))
-
-  printf '%s%s' "$SHOW_CURSOR" "$CLEAR"
-  blank_line
-  render_logo
-  blank_line
-  center "Installed Omarchy in ${duration}" "$LOGO_WIDTH"
-  blank_line
-
-  if command -v tte >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1 && [[ -f $LOGO_PATH ]]; then
-    # TTE reuse mode restores a saved cursor before moving up over its input.
-    # Save this anchor so the effect redraws the same logo rows shown above.
-    printf '%s%d;1H\0337' "$CSI" "$((LOGO_HEIGHT + 2))"
-    timeout 8s tte -i "$LOGO_PATH" \
-      --canvas-width "$effect_canvas_width" \
-      --anchor-text c \
-      --frame-rate 260 \
-      --reuse-canvas \
-      laseretch \
-      2>/dev/null || true
-    printf '%s%d;1H' "$CSI" "$((LOGO_HEIGHT + 8))"
-  fi
-}
-
-start_prompt() {
-  local prompt_pad
-
-  # Position the cursor one blank line below the title so the button sits right there.
-  printf '%s%d;1H%s' "$CSI" "$((LOGO_HEIGHT + 5))" "$CLEAR_LINE"
-
-  prompt_pad=$((($(term_cols) - 25) / 2))
-  (( prompt_pad < 0 )) && prompt_pad=0
-  gum confirm \
-    --padding "0 0 0 $prompt_pad" \
-    --show-help=false \
-    --default \
-    --affirmative "Start Omarchy Now" \
-    --negative "" \
-    "" || true
 }
 
 # The first thing a new owner sees, shown once before the keyboard step:
@@ -716,6 +660,19 @@ user_form() {
 
   full_name=$(gum input --placeholder "Used for git authentication (hit return to skip)" --prompt.foreground="#845DF9" --prompt "Full name> ") || full_name=""
   email_address=$(gum input --placeholder "Used for git authentication (hit return to skip)" --prompt.foreground="#845DF9" --prompt "Email address> ") || email_address=""
+
+  # Timezone is deferred to first boot with the rest of the user step, so the
+  # machine's owner picks their own zone instead of inheriting the install's UTC
+  # default. Geo-guess the default the same way the ISO installer's user step does.
+  local geo_guessed_timezone
+  step "Let's set your timezone..."
+  geo_guessed_timezone=$(tzupdate -p 2>/dev/null)
+  if [[ -n $geo_guessed_timezone ]]; then
+    timezone=$(timedatectl list-timezones | gum choose --height 10 --selected "$geo_guessed_timezone" --header "Timezone") || timezone="$geo_guessed_timezone"
+  else
+    timezone=$(timedatectl list-timezones | gum filter --height 10 --header "Timezone") || timezone="UTC"
+  fi
+  [[ -n $timezone ]] || timezone="UTC"
 }
 
 confirm_form() {
@@ -726,7 +683,8 @@ Keyboard,${keyboard_label:-English (US)}
 Username,$username
 Password,$(printf "%${#password}s" | tr ' ' '*')
 Full name,${full_name:-[Skipped]}
-Email address,${email_address:-[Skipped]}" |
+Email address,${email_address:-[Skipped]}
+Timezone,${timezone:-UTC}" |
     gum table -s "," -p | sed "s/^/${PADDING_LEFT_SPACES}/"
 
   echo
@@ -823,6 +781,16 @@ configure_login() {
     mkdir -p /etc/sddm.conf.d
     printf '[Autologin]\nUser=%s\nSession=omarchy.desktop\n' "$username" >/etc/sddm.conf.d/autologin.conf
   fi
+}
+
+# Apply the owner's timezone, deferred to first boot with the rest of the user
+# step. The install left this at UTC (archinstall's default for a userless
+# deferred install); set the real zone now that the owner has chosen it.
+configure_timezone() {
+  [[ -n ${timezone:-} ]] || return 0
+  timedatectl set-timezone "$timezone" 2>&1 ||
+    ln -sf "/usr/share/zoneinfo/$timezone" /etc/localtime 2>&1 ||
+    true
 }
 
 finalize_user() {
@@ -980,6 +948,9 @@ run_provisioning() {
   install_authorized_keys
   configure_login
 
+  log_step "setting timezone to ${timezone:-UTC}"
+  configure_timezone
+
   log_step "finalizing user"
   echo finalize >"$STATE_FILE"
   if ! finalize_user; then
@@ -1054,8 +1025,14 @@ run_setup() {
     sleep 3
   fi
 
-  render_setup_finish
-  start_prompt
+  # Deferred first boot hands straight off to the display manager: SDDM starts
+  # the moment this oneshot exits (Before=display-manager.service) and autologs
+  # in on encrypted installs. No timed celebration screen and no "start" button
+  # here — that send-off belongs to a direct install, not first-boot setup.
+  clear_logo
+  echo
+  say "Starting Omarchy..."
+  sleep 1
 }
 
 # A failed first-boot setup must not strand the machine at a user-less login
