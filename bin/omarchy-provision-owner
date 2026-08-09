@@ -619,9 +619,9 @@ user_form() {
   email_address=$(gum input --placeholder "Used for git authentication (hit return to skip)" --prompt.foreground="#845DF9" --prompt "Email address> ") || email_address=""
 
   # Hostname and timezone are deferred to first boot with the rest of the user
-  # step (the deferred install no longer bakes them), so the owner sets their own
-  # instead of the machine keeping a default. Same validation and geo-guess the
-  # ISO installer's user step uses.
+  # step: the deferred install seeds neutral placeholders (omarchy/UTC) and the
+  # owner overwrites them here. Same validation and geo-guess the ISO installer's
+  # user step uses.
   while true; do
     hostname=$(gum input --placeholder "Letters, digits, and dashes (or return for 'omarchy')" --prompt.foreground="#845DF9" --prompt "Hostname> ") || hostname=""
     if [[ -z $hostname ]]; then
@@ -789,7 +789,7 @@ UNIT
 }
 
 # Apply the owner's hostname, deferred to first boot with the rest of the user
-# step. The deferred install no longer bakes a hostname, so set it now.
+# step, overwriting the placeholder the deferred install seeded.
 configure_hostname() {
   [[ -n ${hostname:-} ]] || return 0
   hostnamectl set-hostname "$hostname" 2>&1 ||
@@ -797,8 +797,7 @@ configure_hostname() {
 }
 
 # Apply the owner's timezone, deferred to first boot with the rest of the user
-# step. The deferred install leaves the zone unset (system default UTC); set the
-# real zone now that the owner has chosen it.
+# step, overwriting the placeholder (UTC) the deferred install seeded.
 configure_timezone() {
   [[ -n ${timezone:-} ]] || return 0
   if timedatectl set-timezone "$timezone" 2>&1; then
