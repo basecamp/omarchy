@@ -217,17 +217,6 @@ cmd_transparent() {
   fi
 }
 
-# A plugin the catalog cannot be read for is not reason enough to refuse: one
-# malformed hand-installed manifest fails the whole catalog, and migrations place
-# widgets through here.
-bar_widget_exists() {
-  local catalog
-  catalog=$(omarchy-plugin-catalog 2>/dev/null) || return 0
-  jq -e --arg id "$1" '
-    any(.[]; .id == $id and (.kinds | index("bar-widget")))
-  ' >/dev/null <<<"$catalog"
-}
-
 bar_widget_default_section() {
   local catalog
   catalog=$(omarchy-plugin-catalog 2>/dev/null) || {
@@ -240,37 +229,8 @@ bar_widget_default_section() {
   ' <<<"$catalog"
 }
 
-# The layout actually on screen. The shell only takes a user shell.json that
-# parses, says version 1, and carries a bar layout; anything else leaves the
-# shipped defaults in effect, so that is what we read and write against.
-LAYOUT_IN_EFFECT='(type == "object") and (.version == 1) and ((.bar.layout | type) == "object")'
-
-layout_source() {
-  local file
-  file=$(source_file)
-  if jq -e "$LAYOUT_IN_EFFECT" "$file" >/dev/null 2>&1; then
-    printf '%s\n' "$file"
-  else
-    printf '%s\n' "$DEFAULTS_FILE"
-  fi
-}
-
-# Widget ids of one section, in order, one per line.
-bar_section_ids() {
-  jq -r --arg section "$1" '
-    (.bar.layout[$section] // [])[] | if type == "object" then (.id // "") else . end
-  ' "$(layout_source)"
-}
-
-bar_widget_disabled() {
-  jq -e --arg id "$1" '
-    (.disabledPlugins // []) | any(. == $id)
-  ' "$(layout_source)" >/dev/null 2>&1
-}
-
-# Putting writes the config file rather than calling the running shell, so it
-# also works with no shell up, which is what migrations need. A widget already
-# on the bar stays where the user put it.
+# Placement lives in the shell, which owns the config it has in memory. Putting
+# a widget therefore asks the shell rather than editing the file behind it.
 cmd_put() {
   local id="${1:-}"
   [[ -n $id ]] || fail "put requires a widget id"
@@ -290,56 +250,22 @@ cmd_put() {
   [[ -z $PLACEMENT_FROM_SECTION && -z $PLACEMENT_FROM_INDEX ]] ||
     fail "put does not accept --from-section or --from-index"
 
-  bar_widget_exists "$id" ||
-    fail "$id is not a known bar widget; run 'omarchy plugin list'"
-
-  local section
-  for section in left center right; do
-    if bar_section_ids "$section" | grep -qxF "$id"; then
-      echo "$id is already on the bar"
-      return 0
-    fi
-  done
-
-  if bar_widget_disabled "$id"; then
-    echo "$id is disabled; enable it with 'omarchy plugin enable $id'"
+  # Nothing to place into with no shell to place it, and a caller that runs
+  # unattended should say so and carry on rather than fail. A shell that is
+  # there and refuses is a real error.
+  if ! omarchy-shell shell ping >/dev/null 2>&1; then
+    echo "omarchy-shell is not running; $id was not put on the bar" >&2
     return 0
   fi
 
-  section="$PLACEMENT_SECTION"
-  [[ -n $section ]] || section=$(bar_widget_default_section "$id")
-
-  local -a entries
-  mapfile -t entries < <(bar_section_ids "$section")
-
-  local at=${#entries[@]}
-  [[ -z $PLACEMENT_INDEX ]] || at="$PLACEMENT_INDEX"
-
-  local anchor="$PLACEMENT_BEFORE$PLACEMENT_AFTER" i
-  if [[ -n $anchor ]]; then
-    for i in "${!entries[@]}"; do
-      if [[ ${entries[i]} == "$anchor" ]]; then
-        at=$i
-        [[ -z $PLACEMENT_AFTER ]] || at=$((i + 1))
-        break
-      fi
-    done
-  fi
-
-  commit "(if $LAYOUT_IN_EFFECT then . else .bar = \$defaults[0].bar end)
-    | $NORMALIZE
-    | def entry_id: if type == \"object\" then (.id // \"\") else . end;
-      if [.bar.layout[][] | entry_id] | any(. == \$id) then
-        .
-      else
-        .bar.layout[\$section] |= (.[0:\$at] + [{id: \$id}] + .[\$at:])
-      end" \
-    --slurpfile defaults "$DEFAULTS_FILE" \
-    --arg section "$section" \
-    --arg id "$id" \
-    --argjson at "$at"
-
-  echo "Added $id to $section"
+  local result
+  result=$(omarchy-shell shell putBarWidget "$id" "$(placement_json)") ||
+    fail "could not put $id on the bar"
+  [[ $result != "unknown" ]] || fail "$id is not a known widget; run 'omarchy plugin list'"
+  [[ $result == "ok" ]] || fail "$result"
+  # Says nothing about whether it had to be placed: a widget already on the bar
+  # is left where it is, and both outcomes are the same answer to the caller.
+  echo "$id is on the bar"
 }
 
 cmd_move() {

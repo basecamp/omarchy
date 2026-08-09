@@ -277,13 +277,9 @@ assert(
 
 const pluginAdd = fs.readFileSync(path.join(root, 'bin/omarchy-plugin-add'), 'utf8')
 const pluginEnable = fs.readFileSync(path.join(root, 'bin/omarchy-plugin-enable'), 'utf8')
-// A bar option is not a bar widget, so adding one still enables it through
-// the plugin command and gets that message. Only widgets take the placement
-// path, which puts them on the bar without needing the shell.
 assert(
   /Now using \$id as the bar/.test(pluginEnable)
-    && /omarchy-plugin-enable "\$id"/.test(pluginAdd)
-    && /omarchy-bar put "\$id" "\$\{ENABLE_PLACEMENT\[@\]\}"/.test(pluginAdd),
+    && /omarchy-plugin-enable "\$id" "\$\{ENABLE_PLACEMENT\[@\]\}"/.test(pluginAdd),
   'plugin enable reports a bar as replacing the one in use, whether enabled or freshly added'
 )
 assert(
