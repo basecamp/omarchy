@@ -32,11 +32,37 @@ PanelWindow {
   // Full-scale latch points for the dials, smallest first. The first stop is
   // the base scale a fresh run starts from.
   property var scaleStops: [100, 250, 500, 1000, 2500, 5000, 10000]
+  property real fullScale: scaleStops[0]
 
   signal closeRequested()
   signal runAgainRequested()
 
   readonly property bool failed: error !== ""
+
+  function resetScale() {
+    fullScale = scaleStops[0]
+  }
+
+  function expandScale(value) {
+    // Either reading ranges the entire cluster upward. Keeping this latch on
+    // the overlay ensures both dials always describe the same scale.
+    for (var i = 0; i < scaleStops.length; i++) {
+      if (value <= scaleStops[i] * 0.92) {
+        if (scaleStops[i] > fullScale) fullScale = scaleStops[i]
+        return
+      }
+    }
+    fullScale = scaleStops[scaleStops.length - 1]
+  }
+
+  onRunningChanged: if (running) resetScale()
+  onScaleStopsChanged: resetScale()
+  onLeftValueChanged: expandScale(leftValue)
+  onRightValueChanged: expandScale(rightValue)
+
+  Behavior on fullScale {
+    NumberAnimation { duration: 400; easing.type: Easing.OutCubic }
+  }
 
   // The scrim below is a fixed near-black regardless of theme, so text and
   // ticks on it need a fixed light palette, not the themed bar.foreground.
@@ -199,7 +225,7 @@ PanelWindow {
     // The digital readout stays on the real figure while the ignition sweep
     // drives the needle -- a cluster sweeps its gauges, not its numerals.
     readonly property real reading: ignition.running ? value : shown
-    property real fullScale: root.scaleStops[0]
+    readonly property real fullScale: root.fullScale
     readonly property real fraction: fullScale > 0 ? Math.max(0, Math.min(1, shown / fullScale)) : 0
     readonly property bool arcVisible: fraction > 0.004
 
@@ -217,28 +243,7 @@ PanelWindow {
       NumberAnimation { duration: 600; easing.type: Easing.OutCubic }
     }
 
-    Behavior on fullScale {
-      enabled: !ignition.running
-      NumberAnimation { duration: 400; easing.type: Easing.OutCubic }
-    }
-
-    // A fresh measurement re-ranges from the base scale. Without this, one
-    // unusually fast run would compress every later one for the lifetime of
-    // the shell process.
-    onLiveChanged: {
-      if (live) fullScale = root.scaleStops[0]
-    }
-
     onValueChanged: {
-      // Latch the scale upward to the next stop when a reading approaches the
-      // rim. Never shrink mid-run; a fresh run just re-sweeps from zero.
-      for (var i = 0; i < root.scaleStops.length; i++) {
-        if (value <= root.scaleStops[i] * 0.92) {
-          if (root.scaleStops[i] > fullScale) fullScale = root.scaleStops[i]
-          break
-        }
-        if (i === root.scaleStops.length - 1) fullScale = root.scaleStops[i]
-      }
       if (!ignition.running) shown = value
     }
 

@@ -70,11 +70,9 @@ announce() {
     ;;
   esac
 
-  # Clicking the notification opens the file, so this waits for the toast to
-  # go away. Callers background it to keep receiving in the meantime.
-  if [[ -n $(omarchy-notification-send "${args[@]}" -a) ]]; then
-    xdg-open "$path"
-  fi
+  # Announcing is best-effort: the file is already delivered, and under `set -e`
+  # a notification outage would otherwise kill the long-running receiver.
+  omarchy-notification-send "${args[@]}" --exec "$(printf 'xdg-open %q' "$path")" || true
 }
 
 deliver() {
@@ -82,7 +80,7 @@ deliver() {
 
   while IFS= read -r staged; do
     target=$(claim_path "$staged") || continue
-    announce "$target" &
+    announce "$target"
   done < <(find "$staging" -mindepth 1 -maxdepth 1)
 }
 

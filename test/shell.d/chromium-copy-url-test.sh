@@ -7,7 +7,9 @@ export PATH="$ROOT/bin:$PATH"
 TMPDIR=""
 
 cleanup() {
-  [[ -n $TMPDIR && -d $TMPDIR ]] && rm -rf "$TMPDIR"
+  if [[ -n $TMPDIR && -d $TMPDIR ]]; then
+    rm -rf "$TMPDIR"
+  fi
 }
 trap cleanup EXIT
 

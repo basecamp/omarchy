@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# omarchy:summary=Launch the Omarchy shell with its log kept in the journal
+# omarchy:hidden=true
+
+# Quickshell only logs to its instance runtime dir (tmpfs), so when the shell
+# dies the idle/lock event trail is gone after a reboot. The journal keeps it
+# across sessions, bounded and timestamped, under the omarchy-shell tag.
+exec systemd-cat -t omarchy-shell -- quickshell -n -p "$OMARCHY_PATH/shell"

@@ -38,7 +38,7 @@ if [[ -n $existing_entry ]]; then
 
   exit 0
 else
-  uki_file=$(find /boot/EFI/Linux/ -name "omarchy*.efi" -printf "%f\n" 2>/dev/null | head -1)
+  uki_file=$(sudo find /boot/EFI/Linux/ -name "omarchy*.efi" -printf "%f\n" 2>/dev/null | head -1)
 
   if [[ -z $uki_file ]]; then
     echo "Error: No Omarchy UKI found in /boot/EFI/Linux/" >&2

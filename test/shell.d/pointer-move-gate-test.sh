@@ -51,6 +51,11 @@ assert(
 )
 JS
 
+if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
+  pass "no Wayland compositor; skipping pointer movement gate runtime test"
+  exit 0
+fi
+
 if ! command -v quickshell >/dev/null 2>&1; then
   pass "quickshell not installed; skipping pointer movement gate runtime test"
   exit 0

@@ -39,11 +39,23 @@ if grep -F 'skip-first-run-update-notification' "$upgrade_to_quattro" >/dev/null
 fi
 pass "Omarchy 4 upgrade completes first-run as one lifecycle"
 
-grep -F '"$root/bin/omarchy-done" mark first-run-user' "$upgrade_to_quattro" >/dev/null
-grep -F 'rm -f "$state_dir/first-run-user.done"' "$upgrade_to_quattro" >/dev/null
-grep -F '"$root/bin/omarchy-done" mark finalize-user' "$upgrade_to_quattro" >/dev/null
-grep -F 'rm -f "$state_dir/finalize-user.done"' "$upgrade_to_quattro" >/dev/null
+grep -F 'touch "$done_dir/first-run-user" "$done_dir/finalize-user"' "$upgrade_to_quattro" >/dev/null
+grep -F 'rm -f "$state_dir/first-run-user.done" "$state_dir/finalize-user.done"' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade completes first-run and migrates legacy completion markers"
+
+# The script runs from the branch against whatever packaged tree the channel
+# serves, so a packaged command missing from an older build must never be able
+# to abort the upgrade partway through.
+if grep -F '"$root/bin/omarchy-done"' "$upgrade_to_quattro" >/dev/null; then
+  fail "Omarchy 4 upgrade writes completion markers without the packaged omarchy-done"
+fi
+pass "Omarchy 4 upgrade writes completion markers without the packaged omarchy-done"
+
+for guarded_step in omarchy-refresh-applications 'omarchy-bar defaults'; do
+  grep -F "run_as_user_omarchy $guarded_step ||" "$upgrade_to_quattro" >/dev/null ||
+    fail "Omarchy 4 upgrade survives a packaged tree without $guarded_step"
+done
+pass "Omarchy 4 upgrade survives a packaged tree missing top-level commands"
 
 grep -F 'configure_snapper_policy' "$upgrade_to_quattro" >/dev/null
 grep -F '/usr/share/omarchy/install/config/snapper.sh' "$upgrade_to_quattro" >/dev/null
@@ -60,6 +72,44 @@ grep -F 'systemd-networkd.service' "$upgrade_to_quattro" >/dev/null
 grep -F 'systemd-networkd.socket' "$upgrade_to_quattro" >/dev/null
 grep -F 'systemd-networkd-resolve-hook.socket' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade retires systemd-networkd for NetworkManager"
+
+# Booting with both managers enabled leaves them fighting over the Wi-Fi
+# adapter, so enabling NetworkManager and disabling iwd cannot be separated by
+# any step that might abort in between.
+function_body() {
+  awk -v name="$1" '$0 == name "() {" { inside = 1; next } inside && $0 == "}" { exit } inside' "$upgrade_to_quattro"
+}
+
+if function_body cleanup_retired_services | grep -F 'systemctl disable iwd' >/dev/null; then
+  fail "Omarchy 4 upgrade does not retire iwd in a step separate from the NetworkManager enable"
+fi
+grep -A1 -F '  enable_system_service NetworkManager.service' "$upgrade_to_quattro" |
+  grep -F 'as_root systemctl disable iwd.service' >/dev/null ||
+  fail "Omarchy 4 upgrade retires iwd in the step that enables NetworkManager"
+pass "Omarchy 4 upgrade switches from iwd to NetworkManager atomically"
+
+# set -e aborts silently, so only an explicit banner distinguishes a
+# half-upgraded system from a finished one.
+grep -Fx 'trap cleanup_on_exit EXIT' "$upgrade_to_quattro" >/dev/null ||
+  fail "Omarchy 4 upgrade reports an aborted run instead of exiting silently"
+cleanup_body=$(function_body cleanup_on_exit)
+grep -F 'upgrade_started && ! upgrade_completed' <<<"$cleanup_body" >/dev/null ||
+  fail "Omarchy 4 upgrade reports an aborted run instead of exiting silently"
+grep -F 'Upgrade incomplete - do NOT reboot.' <<<"$cleanup_body" >/dev/null ||
+  fail "Omarchy 4 upgrade reports an aborted run instead of exiting silently"
+grep -F 'exit "$exit_status"' <<<"$cleanup_body" >/dev/null ||
+  fail "Omarchy 4 upgrade preserves the failing exit status"
+grep -F '>&2' <<<"$cleanup_body" >/dev/null ||
+  fail "Omarchy 4 upgrade reports an aborted run on stderr"
+started_line=$(grep -n '^upgrade_started=1$' "$upgrade_to_quattro" | cut -d: -f1)
+completed_line=$(grep -n '^upgrade_completed=1$' "$upgrade_to_quattro" | cut -d: -f1)
+suppress_line=$(grep -n '^suppress_hyprland_config_reload$' "$upgrade_to_quattro" | cut -d: -f1)
+shell_line=$(grep -n '^if start_omarchy_shell_session; then$' "$upgrade_to_quattro" | cut -d: -f1)
+[[ -n $started_line && -n $completed_line && -n $suppress_line && -n $shell_line ]] ||
+  fail "upgrade progress markers and the mutating step range exist"
+(( started_line < suppress_line )) || fail "the upgrade is marked started before the first mutation"
+(( completed_line > shell_line )) || fail "the upgrade is marked complete only after the last step"
+pass "Omarchy 4 upgrade reports an aborted run instead of exiting silently"
 
 grep -F 'omarchy-bar defaults' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade restores service-aware bar defaults"

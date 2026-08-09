@@ -23,6 +23,7 @@ import os
 import re
 import sqlite3
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -230,9 +231,21 @@ def read_fresh_json(path: Path, max_age_seconds: float) -> dict[str, Any] | None
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
-  tmp = path.with_suffix(path.suffix + ".tmp")
-  tmp.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n", encoding="utf-8")
-  tmp.replace(path)
+  # A temp name unique to this writer, not derived from the target: several
+  # collectors can run at once (the update command backgrounds one per agent,
+  # the panel refreshes on its own), and a shared temp path means the second
+  # replace finds the first one's file already moved away.
+  handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n")
+    # mkstemp opens at 0600; these caches were world-readable before.
+    tmp.chmod(0o644)
+    tmp.replace(path)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
 
 
 def cached_scan(projects_path: Path, max_age_seconds: float) -> dict[str, Any]:
@@ -361,8 +374,7 @@ def scan_pi_usage(max_age_seconds: float) -> dict[str, Any] | None:
               if entry.get("type") != "message" or message.get("role") != "assistant":
                 continue
               provider = str(message.get("provider") or "")
-              api = str(message.get("api") or "")
-              if provider != "anthropic" and not api.startswith("anthropic"):
+              if provider != "anthropic":
                 continue
               unique_key = f"{path}:{entry.get('id') or line_number}"
               if unique_key in seen:

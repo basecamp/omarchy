@@ -12,13 +12,30 @@ BarWidget {
 
   property string layoutLabel: ""
   property string layoutFull: ""
+  property string keyboardName: ""
+  // Nothing to read or switch on the single-layout install most people run, so
+  // the widget ships on the bar and stays out of the way until there are two.
+  // An older Hyprland that doesn't report the list keeps showing the label.
+  property bool multipleLayouts: true
 
   function refresh() {
     if (!queryProc.running) queryProc.running = true
   }
 
+  // fcitx5 binds a virtual keyboard and takes over the seat's main flag whenever
+  // it injects, but that keyboard keeps the us layout the input method gave it.
+  // Stay on the keyboard we last read until a real one is active again, so the
+  // label keeps tracking that keyboard's layout rather than freezing.
+  function selectKeyboard(keyboards) {
+    const typed = keyboards.filter(k => !String(k.name).startsWith("hl-virtual-keyboard"))
+    return typed.find(k => k.main) ?? typed.find(k => k.name === root.keyboardName)
+  }
+
+  // switchxkblayout is a hyprctl command rather than a dispatcher, so it has to
+  // be run rather than sent over the dispatch socket.
   function cycleLayout() {
-    Hyprland.dispatch("switchxkblayout current next")
+    if (!root.keyboardName || !root.bar) return
+    root.bar.run("hyprctl switchxkblayout " + Util.shellQuote(root.keyboardName) + " next")
     refreshTimer.restart()
   }
 
@@ -34,16 +51,23 @@ BarWidget {
 
   Process {
     id: queryProc
-    command: ["bash", "-c", "hyprctl -j devices 2>/dev/null | sed -n '/keyboards/,$p' | head -200"]
+    command: ["hyprctl", "-j", "devices"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        var match = String(text || "").match(/"active_keymap":\s*"([^"]+)"/)
-        if (!match) return
-        var full = match[1]
-        root.layoutFull = full
-        var token = full.split(/\s+/)[0]
-        root.layoutLabel = token.substring(0, 3).toUpperCase()
+        let kb
+        try {
+          kb = root.selectKeyboard(JSON.parse(text || "{}").keyboards ?? [])
+        } catch (e) {
+          return
+        }
+
+        if (!kb || !kb.active_keymap) return
+
+        root.keyboardName = String(kb.name || "")
+        root.multipleLayouts = kb.layout === undefined || String(kb.layout).indexOf(",") !== -1
+        root.layoutFull = kb.active_keymap
+        root.layoutLabel = kb.active_keymap.split(/\s+/)[0].substring(0, 3).toUpperCase()
       }
     }
   }
@@ -61,7 +85,7 @@ BarWidget {
     onTriggered: root.refresh()
   }
 
-  visible: layoutLabel !== ""
+  visible: layoutLabel !== "" && multipleLayouts
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 

@@ -1,6 +1,13 @@
 #!/bin/bash
 
 # omarchy:summary=Launch a TUI command in the default terminal with Omarchy styling
-# omarchy:args=<command> [args...]
+# omarchy:args=[--app-id=<app-id>] <command> [args...]
 
-exec setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.$(basename $1) -e "$1" "${@:2}"
+if [[ ${1:-} == --app-id=* ]]; then
+  APP_ID="${1#--app-id=}"
+  shift
+else
+  APP_ID="org.omarchy.$(basename $1)"
+fi
+
+exec setsid uwsm-app -- xdg-terminal-exec --app-id=$APP_ID -e "$1" "${@:2}"
