@@ -2,8 +2,8 @@
 
 # omarchy:summary=Configure the bar and its widget layout
 # omarchy:group=bar
-# omarchy:args=use <id> | reset | defaults | position <top|bottom|left|right> | transparent <true|false|toggle> | add <id> [placement] | move <id> [placement] | set <id> <key> <value> [--json] [placement]
-# omarchy:examples=omarchy bar use local.neon-bar | omarchy bar add omarchy.keyboard-layout --after omarchy.clock | omarchy bar move omarchy.clock --section center --index 0 | omarchy bar set omarchy.clock format HH:mm
+# omarchy:args=use <id> | reset | defaults | position <top|bottom|left|right> | transparent <true|false|toggle> | put <id> [placement] | move <id> [placement] | set <id> <key> <value> [--json] [placement]
+# omarchy:examples=omarchy bar use local.neon-bar | omarchy bar put omarchy.keyboard-layout --after omarchy.clock | omarchy bar move omarchy.clock --section center --index 0 | omarchy bar set omarchy.clock format HH:mm
 
 set -euo pipefail
 
@@ -18,7 +18,7 @@ Usage: omarchy bar <command> [args...]
   defaults                             Restore the default bar and service widgets
   position <top|bottom|left|right>     Bar position
   transparent <true|false|toggle>      Bar transparency
-  add <id> [placement]                 Put a widget on the bar, leaving one
+  put <id> [placement]                 Put a widget on the bar, leaving one
                                        that is already there where it is
   move <id> [placement]                Move a widget within or between sections
   set <id> <key> <value> [--json] [placement]
@@ -35,12 +35,12 @@ Placement:
 Enable and disable widgets with 'omarchy plugin enable' and
 'omarchy plugin disable'.
 
-'add' looks for --before / --after within the section it is adding to, and
+'put' looks for --before / --after within the section it is adding to, and
 falls back to the end of that section when the named widget is not there.
 
 Examples:
   omarchy bar use local.neon-bar
-  omarchy bar add omarchy.keyboard-layout --after omarchy.clock
+  omarchy bar put omarchy.keyboard-layout --after omarchy.clock
   omarchy bar move omarchy.media left
   omarchy bar move omarchy.clock --section center --index 0
   omarchy bar set omarchy.clock format HH:mm
@@ -218,7 +218,7 @@ cmd_transparent() {
 }
 
 # A plugin the catalog cannot be read for is not reason enough to refuse: one
-# malformed hand-installed manifest fails the whole catalog, and migrations add
+# malformed hand-installed manifest fails the whole catalog, and migrations place
 # widgets through here.
 bar_widget_exists() {
   local catalog
@@ -268,12 +268,12 @@ bar_widget_disabled() {
   ' "$(layout_source)" >/dev/null 2>&1
 }
 
-# Adding writes the config file rather than calling the running shell, so it
+# Putting writes the config file rather than calling the running shell, so it
 # also works with no shell up, which is what migrations need. A widget already
 # on the bar stays where the user put it.
-cmd_add() {
+cmd_put() {
   local id="${1:-}"
-  [[ -n $id ]] || fail "add requires a widget id"
+  [[ -n $id ]] || fail "put requires a widget id"
   shift
 
   local positional_section=""
@@ -288,7 +288,7 @@ cmd_add() {
     fail "specify a section positionally or with --section, not both"
   [[ -z $positional_section ]] || PLACEMENT_SECTION="$positional_section"
   [[ -z $PLACEMENT_FROM_SECTION && -z $PLACEMENT_FROM_INDEX ]] ||
-    fail "add does not accept --from-section or --from-index"
+    fail "put does not accept --from-section or --from-index"
 
   bar_widget_exists "$id" ||
     fail "$id is not a known bar widget; run 'omarchy plugin list'"
@@ -425,8 +425,8 @@ case "$command" in
   transparent)
     cmd_transparent "$@"
     ;;
-  add)
-    cmd_add "$@"
+  put)
+    cmd_put "$@"
     ;;
   move)
     cmd_move "$@"
