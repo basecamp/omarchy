@@ -56,6 +56,10 @@ switch_tab = ["prefix+1..9", "alt+1..9"]
 previous_tab = ["prefix+p", "alt+left"]
 next_tab = ["prefix+n", "alt+right"]
 
+# Like swap-window -t -1/+1 on M-S-Left/Right
+move_tab_previous = "alt+shift+left"
+move_tab_next = "alt+shift+right"
+
 # Sessions -> workspaces
 new_workspace = "prefix+shift+c"
 rename_workspace = "prefix+shift+r"
@@ -80,3 +84,6 @@ prompt_new_tab_name = false
 
 # set -g mouse on
 mouse_capture = true
+
+# tmux showed #h in status-right; the ZOOM flag shows there automatically
+tab_bar_hostname = true
