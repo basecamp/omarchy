@@ -1,8 +1,18 @@
-# Install Panther Lake kernel for Dell XPS Panther Lake systems
-# The linux-ptl kernel includes audio driver patches not yet in mainline.
+# Install the Panther Lake kernel on machines whose hardware needs its backports.
+#
+# linux-ptl carries fixes not yet in mainline, per machine:
+#
+#   Dell XPS            SDCA audio, PSR2 and Panel Replay display patches
+#   HP EliteBook X G2i  the Panther Lake ACPI match-table entry for its RT712 +
+#                       quad TAS2783 pairing, a component name for the TAS2783A
+#                       so ALSA can resolve a speaker configuration, and the
+#                       second link frequency its OV05C10 camera needs
+#
+# Both machines have no working speakers at all on a stock kernel, so this is
+# not an optimisation.
 
-if omarchy-hw-match "XPS" && omarchy-hw-intel-ptl; then
-  echo "Detected Dell XPS Panther Lake, installing PTL kernel..."
+if omarchy-hw-intel-ptl && { omarchy-hw-match "XPS" || omarchy-hw-match "EliteBook X G2i"; }; then
+  echo "Detected Panther Lake hardware needing the PTL kernel, installing..."
 
   omarchy-pkg-add linux-ptl linux-ptl-headers
   pacman -Rdd --noconfirm linux linux-headers || true
@@ -18,8 +28,9 @@ if omarchy-hw-match "XPS" && omarchy-hw-intel-ptl; then
   # Named to sort after omarchy-defaults.conf: drop-ins are read in order and
   # the last BOOT_ORDER wins, so an earlier-sorting name is a silent no-op.
   rm -f /etc/limine-entry-tool.d/dell-xps-panther-lake.conf
-  cat > /etc/limine-entry-tool.d/zz-dell-xps-panther-lake.conf <<'EOF'
-# Only show Panther Lake kernel in boot menu on Dell XPS Panther Lake
+  rm -f /etc/limine-entry-tool.d/zz-dell-xps-panther-lake.conf
+  cat > /etc/limine-entry-tool.d/zz-panther-lake.conf <<'EOF'
+# Only show the Panther Lake kernel in the boot menu on machines that need it
 BOOT_ORDER="linux-ptl*, *fallback, Snapshots"
 EOF
 fi

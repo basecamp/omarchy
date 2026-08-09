@@ -5,9 +5,12 @@
 #   Audio  Quad TAS2783 smart amps + RT712 SDCA. Panther Lake's ACPI match table
 #          has no entry for this pairing, so the machine falls back to a
 #          barebones machine driver and NO Speaker device appears at all -- not
-#          quiet, absent. The package adds the match-table entry via DKMS (so it
-#          survives kernel upgrades), a UCM profile, and the firmware filename
-#          links the tas2783 driver asks for but linux-firmware does not ship.
+#          quiet, absent. The match-table entry and a component name for the
+#          TAS2783A ship as patches in linux-ptl, installed just above by
+#          intel/ptl-kernel.sh. This package is the userspace remainder: the
+#          Speaker device definition, the firmware filename links the tas2783
+#          driver asks for, and two layers of protection against the amp
+#          enumeration race at boot.
 #
 #   Webcam OmniVision OV05C10 on IPU7. Intel's CamHAL cannot drive it: its graph
 #          settings binary is built for a 2944-wide readout while the sensor

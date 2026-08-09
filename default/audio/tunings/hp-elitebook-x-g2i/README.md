@@ -31,7 +31,9 @@ default for media/notifications, mode1 is what Windows plays music through.
 ## GPEQ blob format
 
 Established by decoding both sample-rate variants of every mode to mutually
-consistent curves (see `../decode_dts_gpeq.py`):
+consistent curves. The decoder is a one-off analysis tool that reads a vendor
+blob this repository does not carry, so it lives with the hardware enablement
+work rather than here; the format below is the whole of its output that matters:
 
 - int32 LE words; the 4720-byte file holds **two identical banks** (L/R),
   the second starting at the exact midpoint.
@@ -91,11 +93,13 @@ independent of this and stays in place.
 - MBHL's program-dependent multiband loudness ("Boost 25", makeup gains) is a
   dynamics processor, deliberately not imitated by a static EQ.
 
-## Install
+## Activating
+
+The profile ships with Omarchy, so there is nothing to copy into place. On a
+machine whose DMI SKU matches, `install/hardware/speaker-tuning.sh` pulls in
+`lsp-plugins-lv2` for the limiter and the tuning is available as:
 
 ```
-sudo cp -r audio-tuning/hp-elitebook-x-g2i /usr/share/omarchy/default/audio/tunings/
-omarchy-audio-tuning on
+omarchy audio tuning status
+omarchy audio tuning on
 ```
-
-Requires `lsp-plugins-lv2` for the limiter.
