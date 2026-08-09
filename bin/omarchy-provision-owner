@@ -438,14 +438,18 @@ greeter_screen() {
     tagline_row=$(( top + LOGO_HEIGHT + 2 ))
     hint_row=$(( top + LOGO_HEIGHT + 4 ))
 
-    # Draw each logo row at an explicit column so nothing can wrap it even if a
-    # measurement is off by one; left_padding centers it for the current width.
+    # The logo is painted by the tte animation below, not statically here:
+    # drawing it green first and then letting tte repaint the same rows flashed.
+    # Only draw it ourselves as a fallback when tte isn't available, at an
+    # explicit column per row so nothing can wrap it even if a measurement is off.
     pad="$(left_padding "$LOGO_WIDTH")"
-    i=0
-    while IFS= read -r line; do
-      printf '%s%d;1H%s%b%s%b' "$CSI" "$((logo_row + i))" "$pad" "$GREEN" "$line" "$RESET"
-      i=$((i + 1))
-    done <"$LOGO_PATH"
+    if ! command -v tte >/dev/null 2>&1; then
+      i=0
+      while IFS= read -r line; do
+        printf '%s%d;1H%s%b%s%b' "$CSI" "$((logo_row + i))" "$pad" "$GREEN" "$line" "$RESET"
+        i=$((i + 1))
+      done <"$LOGO_PATH"
+    fi
 
     tpad=$(( (cols - ${#tagline}) / 2 )); (( tpad < 0 )) && tpad=0
     printf '%s%d;%dH%s' "$CSI" "$tagline_row" "$((tpad + 1))" "$tagline"
@@ -461,8 +465,9 @@ greeter_screen() {
     # it never restarts — a restart is what flashed. The effect reads from
     # /dev/null so it never swallows the Return the foreground read waits on;
     # --reuse-canvas paints upward from the saved cursor, anchored one row below
-    # the logo to repaint exactly the rows drawn above. --canvas-width is cols-1
-    # to stay off the autowrap column.
+    # where the logo goes, so it fills exactly the reserved rows and leaves the
+    # tagline and hint below untouched. --canvas-width is cols-1 to stay off the
+    # autowrap column.
     if command -v tte >/dev/null 2>&1; then
       printf '%s%d;1H\0337' "$CSI" "$((logo_row + LOGO_HEIGHT))"
       # Run tte directly (not inside a `while` subshell) so $anim is tte's own
