@@ -34,7 +34,7 @@ BarWidget {
 
   Process {
     id: queryProc
-    command: ["bash", "-c", "hyprctl -j devices"]
+    command: ["hyprctl", "-j", "devices"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
