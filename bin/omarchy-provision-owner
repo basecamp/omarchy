@@ -59,25 +59,27 @@ export GUM_CONFIRM_UNSELECTED_BACKGROUND="0"
 scale_console_font() {
   [[ $(tty 2>/dev/null) == /dev/tty* ]] || return 0
   command -v setfont >/dev/null 2>&1 || return 0
-  [[ -r /sys/class/graphics/fb0/virtual_size ]] || return 0
 
-  local size w h
-  size=$(<"/sys/class/graphics/fb0/virtual_size") # "WIDTH,HEIGHT"
-  w=${size%%,*}; h=${size##*,}
-  [[ $w =~ ^[0-9]+$ && $h =~ ^[0-9]+$ ]] || return 0
-
-  # name:cell_width:cell_height, smallest first.
-  local fonts=("default8x16:8:16" "sun12x22:12:22" "latarcyrheb-sun32:16:32")
-  local target_rows=48 min_cols=90
-  local best="" best_diff=999999 entry name cw ch cols rows diff
-  for entry in "${fonts[@]}"; do
-    IFS=: read -r name cw ch <<<"$entry"
-    cols=$(( w / cw )); rows=$(( h / ch ))
-    (( cols >= min_cols )) || continue      # keep a margin over the 81-col logo
+  # Pick the console font empirically: apply each candidate, read the columns
+  # fbcon actually hands back, and keep the one whose row count lands nearest a
+  # ~48-row target while still leaving room for the 81-column logo. Measuring
+  # the real result beats computing from /sys/class/graphics/fb0/virtual_size,
+  # which under virgl can report a size the text console never actually reaches —
+  # that mismatch is what wrapped the logo into the top-left corner.
+  local target_rows=48
+  local fonts=("default8x16" "sun12x22" "latarcyrheb-sun32")
+  local best="" best_diff=999999 name rows cols diff
+  for name in "${fonts[@]}"; do
+    setfont "$name" 2>/dev/null || continue
+    read -r rows cols < <(stty size </dev/tty 2>/dev/null || printf '0 0')
+    [[ $rows =~ ^[0-9]+$ && $cols =~ ^[0-9]+$ ]] || continue
+    (( cols > LOGO_WIDTH )) || continue      # must clear the 81-col logo
     diff=$(( rows > target_rows ? rows - target_rows : target_rows - rows ))
     (( diff < best_diff )) && { best_diff=$diff; best="$name"; }
   done
-  [[ -n $best ]] && setfont "$best" 2>/dev/null || true
+  # Fall back to the narrowest font if nothing cleared the logo width, so the
+  # form stays usable even on an unexpectedly tiny console.
+  setfont "${best:-default8x16}" 2>/dev/null || true
 }
 
 # Same Tokyo Night VT palette the ISO configurator sets, so the first-boot
@@ -188,6 +190,41 @@ term_cols() {
   cols=$(stty size 2>/dev/null </dev/tty | awk '{print $2}')
   [[ $cols =~ ^[0-9]+$ ]] && (( cols > 0 )) || cols=${COLUMNS:-80}
   printf '%s' "$cols"
+}
+
+# A fingerprint of the console geometry: the VT size plus the framebuffer's
+# identity and pixel size. On a fresh first boot the VT can come up in a
+# transitional ~80x25 mode and only widen to the real resolution a second or
+# more later, when virtio-gpu's KMS takes over (or the SDL window's size lands).
+# Watching this signature settle — rather than trusting one early reading — is
+# what keeps the greeter from measuring that transient and rendering into it.
+console_signature() {
+  local size fb_size="" fb_name=""
+  size=$(stty size 2>/dev/null </dev/tty) || return 1
+  [[ $size =~ ^[0-9]+\ [0-9]+$ ]] || return 1
+  [[ -r /sys/class/graphics/fb0/virtual_size ]] && fb_size=$(<"/sys/class/graphics/fb0/virtual_size")
+  [[ -r /sys/class/graphics/fb0/name ]] && fb_name=$(<"/sys/class/graphics/fb0/name")
+  printf '%s|%s|%s' "$size" "$fb_name" "$fb_size"
+}
+
+# Block until the console signature holds unchanged for a genuine quiet stretch
+# (quiet_samples * 100ms), giving up after max_samples * 100ms. Returns 0 once
+# quiet, 1 on timeout.
+wait_console_stable() {
+  local max_samples="${1:-100}" quiet_samples="${2:-15}"
+  local previous="" current="" quiet=0 i
+  for ((i = 0; i < max_samples; i++)); do
+    current=$(console_signature 2>/dev/null || true)
+    if [[ -n $current && $current == "$previous" ]]; then
+      quiet=$((quiet + 1))
+      (( quiet >= quiet_samples )) && return 0
+    else
+      previous=$current
+      quiet=0
+    fi
+    sleep 0.1
+  done
+  return 1
 }
 
 repeat() {
@@ -416,98 +453,136 @@ start_prompt() {
 # the logo (vertically centered like the boot logo) running a looping ColorShift,
 # the Omarchy tagline, and a hint. Return skips ahead into setup at any time.
 greeter_screen() {
-  local rows top content_h cols logo_row tagline_row hint_row
-  local tagline hint tpad hpad anim
+  local anim="" drawn_sig cur_sig resized=0
 
-  # A terminal (or sudo's pty) can report a stale 24x80 for a few hundred ms
-  # after start, before its real winsize is set — which would drop the greeter
-  # into the 80x24 top-left fallback. Wait for stty to report a stable size at
-  # least as wide as the logo before measuring.
-  local _last="" _cur _w _stable=0 _waited=0
-  while (( _waited < 2000 )); do
-    _cur=$(stty size 2>/dev/null </dev/tty)
-    _w=${_cur#* }
-    if [[ $_cur == "$_last" && $_cur =~ ^[0-9]+\ [0-9]+$ ]] && (( ${_w:-0} >= LOGO_WIDTH )); then
-      _stable=$((_stable + 1))
-      if (( _stable >= 2 )); then break; fi
-    else
-      _stable=0
-    fi
-    _last=$_cur
-    sleep 0.1
-    _waited=$((_waited + 100))
-  done
+  # Paint the whole splash for the console's *current* geometry. Kept in a
+  # nested function so the wait loop below can repaint it verbatim if the VT
+  # resizes out from under us: a late resize (virtio-gpu KMS handoff, or the SDL
+  # window's size arriving) scrolls the old frame into the top-left and resets
+  # the DEC saved cursor tte paints from — exactly the tiled/garbled logo we saw
+  # on a fresh first boot. Redrawing on every resize beats any fixed-length
+  # startup wait, which can only ever guess when the console has stopped moving.
+  _greeter_draw() {
+    local rows cols top content_h logo_row tagline_row hint_row
+    local tagline hint tpad hpad pad line i
 
-  cols=$(term_cols)
-  rows=$(stty size 2>/dev/null </dev/tty | awk '{print $1}')
-  [[ $rows =~ ^[0-9]+$ ]] || rows=${LINES:-24}
-
-  # If the console ends up narrower than the logo, the console font is too wide
-  # for this resolution — e.g. scale_console_font sized the font from a boot
-  # resolution that then settled smaller (as virtio-gpu can), leaving ~80
-  # columns for an 81-column logo. The logo would wrap and hug the top-left.
-  # Fall back to the default (narrowest) font, which always fits, and re-measure.
-  if (( cols < LOGO_WIDTH )) && [[ $(tty 2>/dev/null) == /dev/tty* ]] && command -v setfont >/dev/null 2>&1; then
-    setfont default8x16 2>/dev/null || true
     cols=$(term_cols)
     rows=$(stty size 2>/dev/null </dev/tty | awk '{print $1}')
     [[ $rows =~ ^[0-9]+$ ]] || rows=${LINES:-24}
-  fi
 
-  # logo + blank + tagline + blank + hint
-  content_h=$(( LOGO_HEIGHT + 4 ))
-  top=$(( (rows - content_h) / 2 ))
-  (( top < 0 )) && top=0
-  logo_row=$(( top + 1 ))
-  tagline_row=$(( top + LOGO_HEIGHT + 2 ))
-  hint_row=$(( top + LOGO_HEIGHT + 4 ))
+    tagline="Beautiful, Modern & Opinionated Linux by DHH"
+    hint="Press Return to Start Setup"
 
-  printf '%s%s' "$HIDE_CURSOR" "$CLEAR"
+    printf '%s%s' "$HIDE_CURSOR" "$CLEAR"
 
-  printf '%s%d;1H' "$CSI" "$logo_row"
-  render_logo
+    # Console still too narrow for the 81-column logo (a transient small mode):
+    # skip the logo and animation rather than wrap them into mush — just center
+    # the words. The redraw loop repaints the full splash once the VT widens.
+    if (( cols <= LOGO_WIDTH )); then
+      local mid=$(( rows / 2 ))
+      tpad=$(( (cols - ${#tagline}) / 2 )); (( tpad < 0 )) && tpad=0
+      hpad=$(( (cols - ${#hint}) / 2 )); (( hpad < 0 )) && hpad=0
+      printf '%s%d;%dH%s' "$CSI" "$mid" "$((tpad + 1))" "$tagline"
+      printf '%s%d;%dH%s%s%s' "$CSI" "$((mid + 2))" "$((hpad + 1))" "$DIM" "$hint" "$RESET"
+      return 0
+    fi
 
-  tagline="Beautiful, Modern & Opinionated Linux by DHH"
-  tpad=$(( (cols - ${#tagline}) / 2 )); (( tpad < 0 )) && tpad=0
-  printf '%s%d;%dH%s' "$CSI" "$tagline_row" "$((tpad + 1))" "$tagline"
+    # logo + blank + tagline + blank + hint
+    content_h=$(( LOGO_HEIGHT + 4 ))
+    top=$(( (rows - content_h) / 2 )); (( top < 0 )) && top=0
+    logo_row=$(( top + 1 ))
+    tagline_row=$(( top + LOGO_HEIGHT + 2 ))
+    hint_row=$(( top + LOGO_HEIGHT + 4 ))
 
-  hint="Press Return to Start Setup"
-  hpad=$(( (cols - ${#hint}) / 2 )); (( hpad < 0 )) && hpad=0
-  printf '%s%d;%dH%s%s%s' "$CSI" "$hint_row" "$((hpad + 1))" "$DIM" "$hint" "$RESET"
+    # Draw each logo row at an explicit column so nothing can wrap it even if a
+    # measurement is off by one; left_padding centers it for the current width.
+    pad="$(left_padding "$LOGO_WIDTH")"
+    i=0
+    while IFS= read -r line; do
+      printf '%s%d;1H%s%b%s%b' "$CSI" "$((logo_row + i))" "$pad" "$GREEN" "$line" "$RESET"
+      i=$((i + 1))
+    done <"$LOGO_PATH"
 
-  # ColorShift the logo: a green base (indexed color 2) with a cyan accent (6)
-  # drifting through, settling on green. Indexed ANSI colors, not hex — the
-  # framebuffer console can't render tte's truecolor faithfully (it crushes the
-  # palette to a muddy lavender), but the 16 indexed colors map to the Tokyo
-  # Night palette and render true. One long-running invocation (many cycles) so
-  # it never restarts — a restart is what flashed. The effect reads from
-  # /dev/null so it never swallows the Return the foreground read waits on;
-  # --reuse-canvas paints upward from the saved cursor, anchored one row below
-  # the logo to repaint exactly the rows drawn above.
-  if command -v tte >/dev/null 2>&1; then
-    printf '%s%d;1H\0337' "$CSI" "$((logo_row + LOGO_HEIGHT))"
-    # Run tte directly (not inside a `while` subshell) so $anim is tte's own
-    # PID: killing a wrapping subshell would orphan tte, which then keeps
-    # painting the logo over the keyboard step. --cycles is high enough that it
-    # never ends on its own before Return.
-    tte -i "$LOGO_PATH" \
-      --canvas-width "$cols" \
-      --anchor-text c \
-      --frame-rate 60 \
-      --reuse-canvas \
-      colorshift \
-      --gradient-stops 2 10 6 10 \
-      --gradient-frames 3 \
-      --cycles 1000 \
-      --final-gradient-stops 2 \
-      </dev/null >/dev/tty 2>/dev/null &
-    anim=$!
-  fi
+    tpad=$(( (cols - ${#tagline}) / 2 )); (( tpad < 0 )) && tpad=0
+    printf '%s%d;%dH%s' "$CSI" "$tagline_row" "$((tpad + 1))" "$tagline"
 
-  IFS= read -r _ </dev/tty || true
-  # `wait` reports tte's kill signal (143); tolerate it so `set -e` doesn't
-  # abort provisioning here — that dropped straight to the login screen.
-  [[ -n ${anim:-} ]] && { kill "$anim" 2>/dev/null; wait "$anim" 2>/dev/null || true; }
+    hpad=$(( (cols - ${#hint}) / 2 )); (( hpad < 0 )) && hpad=0
+    printf '%s%d;%dH%s%s%s' "$CSI" "$hint_row" "$((hpad + 1))" "$DIM" "$hint" "$RESET"
+
+    # ColorShift the logo: a green base (indexed color 2) with a cyan accent (6)
+    # drifting through, settling on green. Indexed ANSI colors, not hex — the
+    # framebuffer console can't render tte's truecolor faithfully (it crushes the
+    # palette to a muddy lavender), but the 16 indexed colors map to the Tokyo
+    # Night palette and render true. One long-running invocation (many cycles) so
+    # it never restarts — a restart is what flashed. The effect reads from
+    # /dev/null so it never swallows the Return the foreground read waits on;
+    # --reuse-canvas paints upward from the saved cursor, anchored one row below
+    # the logo to repaint exactly the rows drawn above. --canvas-width is cols-1
+    # to stay off the autowrap column.
+    if command -v tte >/dev/null 2>&1; then
+      printf '%s%d;1H\0337' "$CSI" "$((logo_row + LOGO_HEIGHT))"
+      # Run tte directly (not inside a `while` subshell) so $anim is tte's own
+      # PID: killing a wrapping subshell would orphan tte, which then keeps
+      # painting the logo over the keyboard step. --cycles is high enough that it
+      # never ends on its own before Return.
+      tte -i "$LOGO_PATH" \
+        --canvas-width "$((cols - 1))" \
+        --anchor-text c \
+        --frame-rate 60 \
+        --reuse-canvas \
+        colorshift \
+        --gradient-stops 2 10 6 10 \
+        --gradient-frames 3 \
+        --cycles 1000 \
+        --final-gradient-stops 2 \
+        </dev/null >/dev/tty 2>/dev/null &
+      anim=$!
+    fi
+  }
+
+  _greeter_kill_anim() {
+    [[ -n ${anim:-} ]] || return 0
+    # `wait` reports tte's kill signal (143); tolerate it so `set -e` doesn't
+    # abort provisioning here — that once dropped straight to the login screen.
+    kill "$anim" 2>/dev/null
+    wait "$anim" 2>/dev/null || true
+    anim=""
+  }
+
+  # Let the console settle before the first paint, then size the font to it.
+  wait_console_stable 100 15 || true
+  scale_console_font
+  wait_console_stable 30 5 || true
+
+  trap 'resized=1' WINCH
+
+  _greeter_draw
+  drawn_sig=$(console_signature 2>/dev/null || true)
+
+  # Wait for Return, but keep watching the geometry. On any resize (SIGWINCH or
+  # a changed signature) tear the animation down, settle, re-fit the font, and
+  # repaint — so a resize arriving five seconds in looks the same as one that
+  # never happened.
+  while true; do
+    if IFS= read -r -t 0.2 _ </dev/tty; then
+      break
+    fi
+    cur_sig=$(console_signature 2>/dev/null || true)
+    if (( resized )) || [[ -n $cur_sig && $cur_sig != "$drawn_sig" ]]; then
+      _greeter_kill_anim
+      stty sane </dev/tty 2>/dev/null || true
+      wait_console_stable 50 5 || true
+      scale_console_font
+      wait_console_stable 30 5 || true
+      _greeter_draw
+      drawn_sig=$(console_signature 2>/dev/null || true)
+      # Clear last so the font-fitting's own SIGWINCHes don't re-trigger a redraw.
+      resized=0
+    fi
+  done
+
+  trap - WINCH
+  _greeter_kill_anim
   # tte leaves the tty in raw/no-echo mode when killed; restore it or the gum
   # prompts in the keyboard step that follows silently die. Then clear the
   # leftover animation frame.
@@ -993,7 +1068,9 @@ if [[ ${1:-} == "--attempt" ]]; then
 fi
 
 main() {
-  scale_console_font
+  # Font sizing waits for the console to settle, so it lives inside
+  # greeter_screen (which owns that settle) rather than running here on a VT
+  # that may still be in a transitional mode this early in first boot.
   set_tokyo_night_colors
   greeter_screen
 
