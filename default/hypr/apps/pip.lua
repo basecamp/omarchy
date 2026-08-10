@@ -15,7 +15,7 @@ o.window({ tag = "pip" }, {
 o.window({
   tag = "chromium-based-browser",
   title = "^Meet - .+",
-  initial_title = "negative:.* - (Chromium|Google Chrome|Brave|Microsoft Edge|Vivaldi|Helium)$",
+  initial_title = "negative:.* - .+ - (Chromium|Google Chrome|Brave|Microsoft Edge|Vivaldi|Helium)$",
 }, {
   tag = "-default-opacity",
   float = true,
