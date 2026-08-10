@@ -108,8 +108,11 @@ set_theme() {
     local extension
     extension=$(jq -r '.extension' "$VS_CODE_THEME_DESCRIPTOR")
 
-    if [[ -n $extension ]] && ! "$editor_cmd" --list-extensions 2>/dev/null | grep -Fxq "$extension"; then
-      "$editor_cmd" --install-extension "$extension" >/dev/null 2>&1
+    if [[ -n $extension ]]; then
+      [[ $extension =~ ^[a-zA-Z0-9._-]+$ ]] || return 0
+      if ! "$editor_cmd" --list-extensions 2>/dev/null | grep -Fxq "$extension"; then
+        "$editor_cmd" --install-extension "$extension" >/dev/null 2>&1
+      fi
     fi
   elif [[ -f "$GENERATED_THEME" ]]; then
     # VS Code only discovers local color themes through an extension package.
@@ -121,17 +124,9 @@ set_theme() {
     mkdir -p "$(dirname "$settings_path")"
     [[ -f $settings_path ]] || printf '{\n}\n' >"$settings_path"
 
-    if ! grep -q '"workbench.colorTheme"' "$settings_path"; then
-      sed -i --follow-symlinks -E '0,/\{/{s/\{/{\ "workbench.colorTheme": "",/}' "$settings_path"
-    fi
-
-    local safe_name="${theme_name//\\/\\\\}"
-    safe_name="${safe_name//&/\\&}"
-    safe_name="${safe_name////\\/}"
-
-    sed -i --follow-symlinks -E \
-      "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$safe_name\2/" \
-      "$settings_path"
+    local tmp
+    tmp=$(jq --arg name "$theme_name" '."workbench.colorTheme" = $name' "$settings_path") \
+      && printf '%s\n' "$tmp" > "$settings_path"
   elif [[ -f $settings_path ]]; then
     sed -i --follow-symlinks -E 's/\"workbench\.colorTheme\"[[:space:]]*:[^,}]*,?//' "$settings_path"
   fi
