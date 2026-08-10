@@ -49,7 +49,8 @@
 --   },
 -- })
 
--- Allow output volume above 100%.
+-- Allow output volume above 100%. Useful for quiet laptop speakers. May degrade audio quality
+-- WARNING! Use with caution. This feature may cause damage to your audio output device!
 -- o.audio({
 --   max_volume = 150,
 -- })
