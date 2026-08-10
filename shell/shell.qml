@@ -921,8 +921,12 @@ ShellRoot {
     // Enable, but only where the widget is not on the bar already, so a caller
     // that cannot know whether it ran before leaves a placed widget alone.
     function putBarWidget(id: string, placementJson: string): string {
-      if (shell.pluginRegistry.inBar(id)) return "ok"
-      return enablePlugin(id, placementJson)
+      try {
+        var error = shell.pluginRegistry.putBarWidget(id, JSON.parse(placementJson || "{}"))
+        return error ? error : "ok"
+      } catch (e) {
+        return "invalid placement: " + e
+      }
     }
 
     function moveBarWidget(id: string, placementJson: string): string {

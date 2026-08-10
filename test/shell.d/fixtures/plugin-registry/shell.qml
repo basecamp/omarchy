@@ -90,6 +90,9 @@ ShellRoot {
     var localWidget = manifest("local.first-widget", ["bar-widget"], { barWidget: "Widget.qml" })
     localWidget.omarchy = { clonedFrom: "omarchy.first-widget" }
     scan += block("thirdparty", "/third/local-widget", localWidget)
+    var localWeather = manifest("local.weather", ["bar-widget"], { barWidget: "Widget.qml" })
+    localWeather.omarchy = { clonedFrom: "omarchy.weather" }
+    scan += block("thirdparty", "/third/local-weather", localWeather)
     var localHybrid = manifest("local.hybrid", ["menu", "bar-widget"], { menu: "Menu.qml", barWidget: "Widget.qml" })
     localHybrid.omarchy = { clonedFrom: "omarchy.hybrid" }
     scan += block("thirdparty", "/third/local-hybrid", localHybrid)
@@ -115,6 +118,7 @@ ShellRoot {
       "local.first-widget",
       "local.grouped-panel",
       "local.hybrid",
+      "local.weather",
       "omarchy.bar",
       "omarchy.first-widget",
       "omarchy.grouped-panel",
@@ -211,6 +215,85 @@ ShellRoot {
     root.config = { version: 1, bar: { layout: { left: [], center: [], right: [] } }, plugins: [] }
     registry.setEnabled("third.widget", true, { section: "right", index: 0 })
     root.assertDeepEqual(root.config.bar.layout.right, [{ id: "third.widget" }], "enabling with placement is one registry transition")
+
+    // A bar the placement's neighbour is not on still gets the widget: put is
+    // what a migration or an install reaches for, and neither can know what the
+    // bar it is placing into looks like.
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: [{ id: "omarchy.weather" }], right: [] } },
+      plugins: []
+    }
+    root.assertTrue(
+      !registry.setEnabled("third.center-widget", true, { after: "omarchy.first-widget" }),
+      "enabling against a widget the bar does not carry is refused"
+    )
+    root.assertEqual(
+      registry.lastEnableError,
+      "could not find target widget omarchy.first-widget",
+      "a refused enable names the target it could not find"
+    )
+    root.assertDeepEqual(root.config.bar.layout.center, [{ id: "omarchy.weather" }], "a refused enable places nothing")
+    root.assertEqual(
+      registry.putBarWidget("third.center-widget", { after: "omarchy.first-widget" }),
+      "",
+      "put accepts a placement target the bar does not carry"
+    )
+    root.assertDeepEqual(
+      root.config.bar.layout.center,
+      [{ id: "omarchy.weather" }, { id: "third.center-widget" }],
+      "put falls back to the section anchor when its target is missing"
+    )
+
+    // The anchor sits after the clone, so falling back would place the widget
+    // somewhere else: this only passes if the clone answered as the target.
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: [{ id: "local.first-widget" }, { id: "omarchy.weather" }], right: [] } },
+      plugins: []
+    }
+    root.assertEqual(
+      registry.putBarWidget("third.center-widget", { after: "omarchy.first-widget" }),
+      "",
+      "put places against a target that has been cloned"
+    )
+    root.assertDeepEqual(
+      root.config.bar.layout.center,
+      [{ id: "local.first-widget" }, { id: "third.center-widget" }, { id: "omarchy.weather" }],
+      "a clone stands in for the widget it was cloned from as a placement target"
+    )
+
+    // Falling back means the section's own anchor, which a user is as free to
+    // have cloned as the widget the placement named.
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: [{ id: "local.weather" }, { id: "omarchy.clock" }], right: [] } },
+      plugins: []
+    }
+    root.assertEqual(
+      registry.putBarWidget("third.center-widget", { after: "omarchy.first-widget" }),
+      "",
+      "put falls back past a cloned anchor"
+    )
+    root.assertDeepEqual(
+      root.config.bar.layout.center,
+      [{ id: "local.weather" }, { id: "third.center-widget" }, { id: "omarchy.clock" }],
+      "a cloned anchor still anchors the section it was cloned into"
+    )
+
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [{ id: "third.center-widget", size: 2 }], center: [], right: [] } },
+      plugins: []
+    }
+    root.assertEqual(registry.putBarWidget("third.center-widget", { section: "right" }), "", "put accepts a widget that is already on the bar")
+    root.assertDeepEqual(
+      root.config.bar.layout.left,
+      [{ id: "third.center-widget", size: 2 }],
+      "put leaves a widget that is already on the bar where its owner put it"
+    )
+    root.assertDeepEqual(root.config.bar.layout.right, [], "put adds no second entry for a widget already on the bar")
+    root.assertEqual(registry.putBarWidget("third.absent", {}), "unknown", "put reports a widget it does not know")
 
     root.config = {
       version: 1,

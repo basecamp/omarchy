@@ -35,8 +35,9 @@ Placement:
 Enable and disable widgets with 'omarchy plugin enable' and
 'omarchy plugin disable'.
 
-'put' looks for --before / --after within the section it is adding to, and
-falls back to the end of that section when the named widget is not there.
+'put' places a widget the way 'plugin enable' does, but leaves one that is
+already on the bar where it is, and falls back to the widget's usual spot when
+--before / --after names a widget the bar does not carry.
 
 Examples:
   omarchy bar use local.neon-bar

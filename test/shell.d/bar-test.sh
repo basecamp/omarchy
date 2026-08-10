@@ -22,6 +22,14 @@ const shellSource = fs.readFileSync(root + '/shell/shell.qml', 'utf8')
 
 assert(/function toggleBarTransparency\(\): string \{[\s\S]*?shell\.bar\.toggleTransparency\(\)/.test(shellSource), 'shell exposes the bar transparency toggle over IPC')
 
+// put and enable place a widget differently — put tolerates a placement target
+// the bar does not carry — so the IPC call has to reach the registry's put
+// rather than route back through enable.
+assert(
+  /function putBarWidget\(id: string, placementJson: string\): string \{[\s\S]*?shell\.pluginRegistry\.putBarWidget\(/.test(shellSource),
+  'putting a bar widget over IPC goes through the registry put'
+)
+
 // Hiding must not unmap the bar. An unmapped layer surface has to be rebuilt on
 // every reveal, which measured ~150ms against ~20ms to tear it down; parking it
 // past the screen edge keeps show and hide symmetric at ~12ms.
@@ -315,3 +323,4 @@ assertEqual(
   'bar builds default custom module paths'
 )
 JS
+

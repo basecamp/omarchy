@@ -193,6 +193,18 @@ QtObject {
     return { found: false }
   }
 
+  // Placement names a neighbour, and cloning the clock leaves a bar carrying
+  // your id where the built-in one used to be. A caller still saying
+  // omarchy.clock means the clone that took its place, the same way
+  // resolveEnabledId routes calls to it.
+  function findRelativeBarLocation(config, id, section) {
+    var location = findBarLocation(config, id, section)
+    if (location.found) return location
+    if (!Util.isPlainObject(config) || !Util.isPlainObject(config.bar)) return { found: false }
+    var clone = activeCloneFor(config, Util.canonicalWidgetId(String(id)))
+    return clone ? findBarLocation(config, clone, section) : { found: false }
+  }
+
   function findEntryLocation(config, id) {
     if (!Util.isPlainObject(config)) return { found: false }
     var key = Util.canonicalWidgetId(String(id))
@@ -218,7 +230,7 @@ QtObject {
       ? String(target.section) : fallbackSection
     var relativeId = String(target.before || target.after || "")
     if (relativeId) {
-      var relative = findBarLocation(config, relativeId, section && target.section ? section : "")
+      var relative = findRelativeBarLocation(config, relativeId, section && target.section ? section : "")
       if (!relative.found) return { error: "could not find target widget " + relativeId }
       return {
         section: relative.section,
@@ -233,7 +245,7 @@ QtObject {
     }
 
     var anchors = { left: "omarchy.workspaces", center: "omarchy.weather", right: "omarchy.tray" }
-    var anchor = findBarLocation(config, anchors[section], section)
+    var anchor = findRelativeBarLocation(config, anchors[section], section)
     return {
       section: section,
       index: anchor.found ? anchor.index + 1 : config.bar.layout[section].length
@@ -279,6 +291,26 @@ QtObject {
     registryRevision++
     pluginsChanged()
     return ""
+  }
+
+  // put is the unattended verb: a migration placing a widget cannot know what
+  // the bar it is placing into looks like, so a --before / --after naming a
+  // widget that is not on it falls back to the widget's own default spot
+  // rather than refusing. enable, which someone types, still says so. A widget
+  // already on the bar is left exactly where its owner put it.
+  function putBarWidget(id, placement) {
+    if (inBar(id)) return ""
+    var target = Util.isPlainObject(placement) ? Util.cloneJson(placement) : {}
+    var relativeId = String(target.before || target.after || "")
+    if (relativeId) {
+      var config = shellConfigProvider ? shellConfigProvider() : null
+      if (!findRelativeBarLocation(config, relativeId, String(target.section || "")).found) {
+        delete target.before
+        delete target.after
+      }
+    }
+    if (setEnabled(id, true, target)) return ""
+    return lastEnableError || "unknown"
   }
 
   function setBarWidget(id, key, value, selector) {
@@ -436,7 +468,7 @@ QtObject {
 
       if (value && placement && (placement.before || placement.after)) {
         var relativeId = String(placement.before || placement.after)
-        if (!findBarLocation(config, relativeId, String(placement.section || "")).found) {
+        if (!findRelativeBarLocation(config, relativeId, String(placement.section || "")).found) {
           lastEnableError = "could not find target widget " + relativeId
           return
         }
