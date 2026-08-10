@@ -433,8 +433,7 @@ rollback_degraded_rekey() {
 }
 
 main() {
-  command -v gum >/dev/null || { echo "Error: gum is required" >&2; exit 1; }
-  command -v btrfs >/dev/null || { echo "Error: btrfs-progs is required" >&2; exit 1; }
+  omarchy-cmd-present btrfs || { echo "Error: btrfs-progs is required" >&2; exit 1; }
 
   root_is_btrfs_at || fail "reset requires the standard Omarchy Btrfs layout (subvol=@)"
 

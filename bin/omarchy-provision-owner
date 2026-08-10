@@ -67,7 +67,6 @@ export GUM_CONFIRM_UNSELECTED_BACKGROUND="0"
 # font, i.e. a no-op. All three fonts ship with kbd, so there's no dependency.
 scale_console_font() {
   [[ $(tty 2>/dev/null) == /dev/tty* ]] || return 0
-  command -v setfont >/dev/null 2>&1 || return 0
 
   # Pick the console font empirically: apply each candidate, read the columns
   # fbcon actually hands back, and keep the one whose row count lands nearest a
@@ -472,25 +471,23 @@ greeter_screen() {
     # --reuse-canvas paints upward from the saved cursor, anchored one row below
     # the logo to repaint exactly the rows drawn above. --canvas-width is cols-1
     # to stay off the autowrap column.
-    if command -v ttfx >/dev/null 2>&1; then
-      printf '%s%d;1H\0337' "$CSI" "$((logo_row + LOGO_HEIGHT))"
-      # Run ttfx directly (not inside a `while` subshell) so $anim is ttfx's own
-      # PID: killing a wrapping subshell would orphan ttfx, which then keeps
-      # painting the logo over the keyboard step. --cycles is high enough that it
-      # never ends on its own before Return.
-      ttfx -i "$LOGO_PATH" \
-        --canvas-width "$((cols - 1))" \
-        --anchor-text c \
-        --frame-rate 60 \
-        --reuse-canvas \
-        colorshift \
-        --gradient-stops 2 10 6 10 \
-        --gradient-frames 3 \
-        --cycles 1000 \
-        --final-gradient-stops 2 \
-        </dev/null >/dev/tty 2>/dev/null &
-      anim=$!
-    fi
+    printf '%s%d;1H\0337' "$CSI" "$((logo_row + LOGO_HEIGHT))"
+    # Run ttfx directly (not inside a `while` subshell) so $anim is ttfx's own
+    # PID: killing a wrapping subshell would orphan ttfx, which then keeps
+    # painting the logo over the keyboard step. --cycles is high enough that it
+    # never ends on its own before Return.
+    ttfx -i "$LOGO_PATH" \
+      --canvas-width "$((cols - 1))" \
+      --anchor-text c \
+      --frame-rate 60 \
+      --reuse-canvas \
+      colorshift \
+      --gradient-stops 2 10 6 10 \
+      --gradient-frames 3 \
+      --cycles 1000 \
+      --final-gradient-stops 2 \
+      </dev/null >/dev/tty 2>/dev/null &
+    anim=$!
   }
 
   _greeter_kill_anim() {
