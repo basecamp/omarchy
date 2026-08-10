@@ -4,6 +4,7 @@
 # omarchy:group=setup
 # omarchy:name=lock
 # omarchy:requires-sudo=true
+# omarchy:hidden=true
 
 set -e
 

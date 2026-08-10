@@ -4,6 +4,7 @@
 # omarchy:group=setup
 # omarchy:requires-sudo=true
 # omarchy:examples=omarchy setup system --install-user dhh --first-install
+# omarchy:hidden=true
 
 set -euo pipefail
 
