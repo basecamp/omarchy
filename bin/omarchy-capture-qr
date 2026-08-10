@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# omarchy:summary=Decode a QR code from a screenshot region
+# omarchy:group=capture
+# omarchy:examples=omarchy capture qr
+
+SELECTION=$(slurp 2>/dev/null)
+[[ -z $SELECTION ]] && exit 0
+
+RESULT=$(grim -g "$SELECTION" - | zbarimg -q --raw - 2>/dev/null) || {
+  omarchy-notification-send -g 󰐲 -u critical "No QR code found" "Select a region containing a QR code"
+  exit 1
+}
+
+[[ -z $RESULT ]] && exit 1
+
+printf '%s\n' "$RESULT"
+printf '%s' "$RESULT" | wl-copy
+omarchy-notification-send -g 󰐲 "QR code copied to clipboard" "Result: $RESULT"
