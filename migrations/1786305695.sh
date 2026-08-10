@@ -1,5 +1,18 @@
 echo "Remember the Bluetooth power state across reboots"
 
+marker=/var/lib/omarchy/migrations/1786305695
+
+# Everything below is machine-wide, but migration completion is recorded per
+# user, so a second account on this box would run all of it again. That rerun
+# would undo whatever an administrator changed in between: AutoEnable flipped
+# back, hand edits to the unit, or the unit disabled outright. Grepping for the
+# applied state cannot tell "never migrated" apart from "migrated, then changed
+# on purpose", so record the machine instead. Written only at the very end, so
+# an interrupted run is retried rather than skipped.
+if [[ -e $marker ]]; then
+  exit 0
+fi
+
 # An earlier migration set AutoEnable=false believing bluetoothd would then
 # restore the adapter's last power state. BlueZ has no such behaviour: it never
 # writes a Powered key into /var/lib/bluetooth/<adapter>/settings, so the flag
@@ -36,3 +49,5 @@ sudo systemctl enable omarchy-bluetooth-state.service
 if systemctl is-active --quiet bluetooth.service; then
   sudo systemctl start omarchy-bluetooth-state.service
 fi
+
+sudo install -Dm644 /dev/null "$marker"
