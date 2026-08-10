@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Pick a screen region over frozen screen content
-# omarchy:args=[region|windows|smart|fullscreen] [--keep-freeze] [--match-monitor]
+# omarchy:args=[region|windows|smart|fullscreen] [--keep-freeze] [--match-monitor] | --take-fullscreen | --take-window | --select-window <next|prev|left|right|up|down>
 # omarchy:hidden=true
 
 # Prints the picked geometry in slurp's "X,Y WxH" format, or exits 1 when the
