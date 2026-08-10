@@ -103,6 +103,10 @@ layer_on_screen() {
   ' >/dev/null
 }
 
+layer_off_screen() {
+  ! layer_on_screen "$1"
+}
+
 # Close every window matching a class regex, by address so multi-window apps
 # are fully closed. Tries the quattro Lua dispatcher first, then classic.
 close_windows() {

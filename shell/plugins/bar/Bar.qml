@@ -27,8 +27,8 @@ Item {
   // diagnostics; the built-in bar does not otherwise need it.
   property var manifest: null
   // Mirrors the on-disk `bar-off` flag so the user can hide the bar without
-  // killing the entire shell. Wired to BarPanel.visible below; updated by the
-  // FileView watcher further down.
+  // killing the entire shell. Hidden panels stay mapped but park off-screen
+  // without an exclusion zone; updated by the FileView watcher further down.
   property bool barHidden: false
   property string home: Quickshell.env("HOME")
   property string stateHome: home + "/.local/state"

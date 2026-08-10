@@ -42,7 +42,7 @@ assert_layer_on_screen() {
 assert_layer_off_screen() {
   local namespace="$1" description="$2"
 
-  ! layer_on_screen "$namespace" && pass "$description" || fail "$description"
+  layer_off_screen "$namespace" && pass "$description" || fail "$description"
 }
 
 assert_layer_on_screen "visible-positive-offset" "visible layer is found on a positively offset monitor"
