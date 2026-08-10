@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# omarchy:summary=Turn Bluetooth on or off, remembered across reboots
+# omarchy:group=bluetooth
+# omarchy:args=<on|off|toggle|is-on>
+
+# BlueZ never persists an adapter's Powered property, so turning Bluetooth off
+# through bluetoothctl lasts only until the next boot. The rfkill soft block does
+# persist: systemd-rfkill saves every switch under /var/lib/systemd/rfkill and
+# restores it early on the next boot, which is its entire job. Blocking is also
+# what the kernel hands every radio at once, so a machine with two controllers
+# gets both, where bluetoothctl only ever addresses the default one.
+#
+# So the block is the state, and BlueZ follows it: unblocking leaves AutoEnable
+# at its stock default and bluetoothd powers the adapter up by itself. Every
+# Omarchy path that turns Bluetooth on or off goes through here, because a plain
+# `bluetoothctl power on` fails outright while the block is set.
+
+POWER_WAIT_SECONDS=${OMARCHY_BLUETOOTH_POWER_WAIT_SECONDS:-2}
+
+controllers() {
+  timeout 2s bluetoothctl list 2>/dev/null | awk '{print $2}'
+}
+
+# Any controller counts. The block is all-or-nothing across the radios, so the
+# state has to be read the same way; a bare `bluetoothctl show` would report the
+# default controller and miss a powered dongle sitting behind it.
+powered() {
+  local controller
+
+  for controller in $(controllers); do
+    [[ $(timeout 2s bluetoothctl show "$controller" 2>/dev/null) == *"Powered: yes"* ]] && return 0
+  done
+
+  return 1
+}
+
+# One deadline around the whole wait rather than a fixed number of probes: every
+# probe can sit on its own timeout when D-Bus is wedged, and counting probes then
+# stretches a two-second wait into half a minute.
+wait_powered() {
+  local deadline=$((SECONDS + POWER_WAIT_SECONDS))
+
+  while :; do
+    powered && return 0
+    ((SECONDS < deadline)) || return 1
+    sleep 0.2
+  done
+}
+
+power_on() {
+  rfkill unblock bluetooth
+
+  # Usually all it takes: with AutoEnable at its default, bluetoothd powers the
+  # adapter up on its own once the block is gone. It will not do that for an
+  # adapter powered down without a block, so ask directly before giving up.
+  wait_powered && return 0
+
+  timeout 5s bluetoothctl power on >/dev/null 2>&1
+  wait_powered && return 0
+
+  echo "omarchy-bluetooth-power: adapter did not come up" >&2
+  return 1
+}
+
+case "${1:-}" in
+  on)
+    power_on
+    ;;
+  off)
+    # No bluetoothctl power off to go with this: the block already drops the
+    # adapter to Powered: no, and it is the half that survives the reboot.
+    rfkill block bluetooth
+    ;;
+  toggle)
+    if powered; then
+      rfkill block bluetooth
+    else
+      power_on
+    fi
+    ;;
+  is-on)
+    powered
+    ;;
+  *)
+    echo "Usage: omarchy-bluetooth-power <on|off|toggle|is-on>" >&2
+    exit 1
+    ;;
+esac
