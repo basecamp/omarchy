@@ -412,7 +412,7 @@ greeter_screen() {
   # nested function so the wait loop below can repaint it verbatim if the VT
   # resizes out from under us: a late resize (virtio-gpu KMS handoff, or the SDL
   # window's size arriving) scrolls the old frame into the top-left and resets
-  # the DEC saved cursor tte paints from — exactly the tiled/garbled logo we saw
+  # the DEC saved cursor ttfx paints from — exactly the tiled/garbled logo we saw
   # on a fresh first boot. Redrawing on every resize beats any fixed-length
   # startup wait, which can only ever guess when the console has stopped moving.
   _greeter_draw() {
@@ -464,7 +464,7 @@ greeter_screen() {
 
     # ColorShift the logo: a green base (indexed color 2) with a cyan accent (6)
     # drifting through, settling on green. Indexed ANSI colors, not hex — the
-    # framebuffer console can't render tte's truecolor faithfully (it crushes the
+    # framebuffer console can't render ttfx's truecolor faithfully (it crushes the
     # palette to a muddy lavender), but the 16 indexed colors map to the Tokyo
     # Night palette and render true. One long-running invocation (many cycles) so
     # it never restarts — a restart is what flashed. The effect reads from
@@ -472,13 +472,13 @@ greeter_screen() {
     # --reuse-canvas paints upward from the saved cursor, anchored one row below
     # the logo to repaint exactly the rows drawn above. --canvas-width is cols-1
     # to stay off the autowrap column.
-    if command -v tte >/dev/null 2>&1; then
+    if command -v ttfx >/dev/null 2>&1; then
       printf '%s%d;1H\0337' "$CSI" "$((logo_row + LOGO_HEIGHT))"
-      # Run tte directly (not inside a `while` subshell) so $anim is tte's own
-      # PID: killing a wrapping subshell would orphan tte, which then keeps
+      # Run ttfx directly (not inside a `while` subshell) so $anim is ttfx's own
+      # PID: killing a wrapping subshell would orphan ttfx, which then keeps
       # painting the logo over the keyboard step. --cycles is high enough that it
       # never ends on its own before Return.
-      tte -i "$LOGO_PATH" \
+      ttfx -i "$LOGO_PATH" \
         --canvas-width "$((cols - 1))" \
         --anchor-text c \
         --frame-rate 60 \
@@ -495,8 +495,8 @@ greeter_screen() {
 
   _greeter_kill_anim() {
     [[ -n ${anim:-} ]] || return 0
-    # Guard both: `kill` returns non-zero if tte already exited (crash, or a
-    # resize race), and `wait` reports tte's kill signal (143) — either would
+    # Guard both: `kill` returns non-zero if ttfx already exited (crash, or a
+    # resize race), and `wait` reports ttfx's kill signal (143) — either would
     # abort provisioning under `set -e` and drop straight to the login screen.
     kill "$anim" 2>/dev/null || true
     wait "$anim" 2>/dev/null || true
@@ -537,7 +537,7 @@ greeter_screen() {
 
   trap - WINCH
   _greeter_kill_anim
-  # tte leaves the tty in raw/no-echo mode when killed; restore it or the gum
+  # ttfx leaves the tty in raw/no-echo mode when killed; restore it or the gum
   # prompts in the keyboard step that follows silently die. Then clear the
   # leftover animation frame.
   stty sane </dev/tty 2>/dev/null || true
