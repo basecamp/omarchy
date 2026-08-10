@@ -72,6 +72,18 @@ hl.monitor({ output = "", mode = "preferred", position = "auto-right", scale = 1
 LUA
 }
 
+# A specific-output rule that references the omarchy_monitor_scale variable
+# (the default template's pattern) instead of a literal value. The variable
+# must be resolved, not captured as the literal string "omarchy_monitor_scale".
+write_internal_monitor_var_config() {
+  cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 1.5
+local omarchy_monitor_scale = 1.5
+hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
+hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
+LUA
+}
+
 run_clamshell() {
   HOME="$home_dir" \
     PATH="$stub_bin:$PATH" \
@@ -116,3 +128,12 @@ OMARCHY_TEST_INTERNAL_DISABLED=true run_clamshell
 grep -F 'position = "0x0"' "$eval_log" >/dev/null || fail "clamshell recovery uses configured internal position"
 grep -F 'scale = 1.25' "$eval_log" >/dev/null || fail "clamshell recovery uses configured internal scale"
 pass "clamshell recovery uses configured internal monitor rule"
+
+# Regression: specific-output rule referencing the omarchy_monitor_scale
+# variable must resolve to the variable's value, not fall back to the default.
+write_internal_monitor_var_config
+rm -f "$scale_state"
+: >"$eval_log"
+OMARCHY_TEST_INTERNAL_DISABLED=true run_clamshell
+grep -F 'scale = 1.5' "$eval_log" >/dev/null || fail "clamshell recovery resolves omarchy_monitor_scale variable reference"
+pass "clamshell recovery resolves omarchy_monitor_scale variable reference"

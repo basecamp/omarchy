@@ -31,7 +31,10 @@ configured_monitor_scale() {
   [[ -f $monitor_lua ]] || return 0
   local scale
   scale=$(configured_internal_monitor_value scale)
-  if [[ -z $scale ]]; then
+  # configured_internal_monitor_value greps the hl.monitor line and can capture
+  # a variable name (e.g. scale = omarchy_monitor_scale) instead of its value,
+  # so fall through on any non-numeric capture, not just an empty one.
+  if ! valid_scale "$scale"; then
     scale=$(sed -n 's/^local omarchy_monitor_scale = //p' "$monitor_lua" | head -1)
   fi
   if [[ -z $scale ]]; then
