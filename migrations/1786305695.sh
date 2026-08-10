@@ -25,4 +25,14 @@ fi
 # Nothing here restarts bluetooth.service, so connected peripherals stay
 # connected through the update. Starting the unit now means its ExecStop is in
 # place for the next shutdown, so the state is captured without a reboot first.
-sudo systemctl enable --now omarchy-bluetooth-state.service
+sudo systemctl enable omarchy-bluetooth-state.service
+
+# Only start it if bluetoothd is already up. The unit is BindsTo=bluetooth.service,
+# so starting it otherwise would pull bluetoothd up for someone who stopped it on
+# purpose, and fail outright if they masked it. Worse, the save above could not
+# read an adapter without a running daemon, so it seeded nothing, and restore
+# would then read the machine as a fresh install and power the adapter on. Left
+# enabled, WantedBy=bluetooth.service starts it the next time bluetoothd does.
+if systemctl is-active --quiet bluetooth.service; then
+  sudo systemctl start omarchy-bluetooth-state.service
+fi
