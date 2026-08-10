@@ -27,8 +27,8 @@ Item {
   // diagnostics; the built-in bar does not otherwise need it.
   property var manifest: null
   // Mirrors the on-disk `bar-off` flag so the user can hide the bar without
-  // killing the entire shell. Wired to BarPanel.visible below; updated by the
-  // FileView watcher further down.
+  // killing the entire shell. Hidden panels stay mapped but park off-screen
+  // without an exclusion zone; updated by the FileView watcher further down.
   property bool barHidden: false
   property string home: Quickshell.env("HOME")
   property string stateHome: home + "/.local/state"
@@ -956,11 +956,24 @@ Item {
   component BarPanel: PanelWindow {
     id: barWindow
 
-    visible: !root.barHidden && !remapGuard.remapping
+    // Hiding parks the bar just past its screen edge instead of unmapping it.
+    // Unmapping frees the layer surface and the whole scene graph, so every
+    // reveal has to rebuild them — new surface, re-shaped glyphs, re-uploaded
+    // textures — which measures ~150ms against ~20ms to tear down. Parking
+    // keeps the surface alive, so showing is only a margin change.
+    visible: !remapGuard.remapping
+    exclusionMode: root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto
 
     ScreenMoveRemap {
       id: remapGuard
       window: barWindow
+    }
+
+    margins {
+      top: root.barHidden && root.position === "top" ? -root.barSize : 0
+      bottom: root.barHidden && root.position === "bottom" ? -root.barSize : 0
+      left: root.barHidden && root.position === "left" ? -root.barSize : 0
+      right: root.barHidden && root.position === "right" ? -root.barSize : 0
     }
 
     anchors {
