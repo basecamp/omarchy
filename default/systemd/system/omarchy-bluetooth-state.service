@@ -1,0 +1,18 @@
+[Unit]
+Description=Restore the Bluetooth power state across reboots
+Documentation=man:bluetoothctl(1)
+ConditionPathIsDirectory=/sys/class/bluetooth
+# Ordered after bluetoothd so restore has something to talk to. That ordering
+# is also what makes save work: systemd stops this unit before bluetooth.service
+# at shutdown, which is the only window where the adapter can still be read.
+After=bluetooth.service
+BindsTo=bluetooth.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/omarchy-bluetooth-state restore
+ExecStop=/usr/bin/omarchy-bluetooth-state save
+
+[Install]
+WantedBy=bluetooth.service

@@ -149,3 +149,49 @@ unpowered_log=$(bluetooth_device_log no)
 grep -qx "power on" "$unpowered_log" ||
   fail "bluetooth powers the adapter on when it is off"
 pass "bluetooth powers the adapter on when it is off"
+
+# BlueZ never persists Powered, so the adapter state only survives a reboot if
+# omarchy-bluetooth-state saves it on the way down and reapplies it on the way up.
+unit="$ROOT/default/systemd/system/omarchy-bluetooth-state.service"
+
+grep -q '^ConditionPathIsDirectory=/sys/class/bluetooth$' "$unit" ||
+  fail "bluetooth state restore is skipped on machines without Bluetooth hardware"
+pass "bluetooth state restore is skipped on machines without Bluetooth hardware"
+
+# Without this ordering systemd may stop bluetoothd first and save reads nothing.
+grep -q '^After=bluetooth.service$' "$unit" ||
+  fail "bluetooth state save runs while bluetoothd is still up"
+pass "bluetooth state save runs while bluetoothd is still up"
+
+state_file="$device_tmp/bluetooth-powered"
+state_log="$device_tmp/state.log"
+
+bluetooth_state_run() {
+  local action="$1" powered="${2:-no}"
+
+  : >"$state_log"
+  PATH="$mock_bin:$PATH" BLUETOOTHCTL_LOG="$state_log" BLUETOOTHCTL_POWERED="$powered" \
+    OMARCHY_BLUETOOTH_STATE_FILE="$state_file" \
+    "$ROOT/bin/omarchy-bluetooth-state" "$action" ||
+    fail "omarchy-bluetooth-state $action exits cleanly"
+}
+
+rm -f "$state_file"
+bluetooth_state_run save yes
+[[ $(cat "$state_file") == "on" ]] || fail "bluetooth state records a powered adapter"
+pass "bluetooth state records a powered adapter"
+
+bluetooth_state_run save no
+[[ $(cat "$state_file") == "off" ]] || fail "bluetooth state records an unpowered adapter"
+pass "bluetooth state records an unpowered adapter"
+
+bluetooth_state_run restore
+grep -qx "power off" "$state_log" || fail "bluetooth state restores an adapter the user turned off"
+pass "bluetooth state restores an adapter the user turned off"
+
+# A fresh install has no saved state. Touching the adapter here would mean a
+# failure in this unit could leave a brand new machine with Bluetooth dead.
+rm -f "$state_file"
+bluetooth_state_run restore
+[[ -s $state_log ]] && fail "bluetooth state leaves a fresh install to BlueZ's own default"
+pass "bluetooth state leaves a fresh install to BlueZ's own default"

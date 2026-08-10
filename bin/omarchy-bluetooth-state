@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# omarchy:summary=Save and restore the Bluetooth power state across reboots
+# omarchy:group=bluetooth
+# omarchy:args=<save|restore>
+# omarchy:hidden=true
+
+# BlueZ does not persist an adapter's Powered property. Nothing ever writes a
+# Powered key into /var/lib/bluetooth/<adapter>/settings, so bluetoothd has no
+# way to bring an adapter back up in the state the user left it. Driven by
+# omarchy-bluetooth-state.service, which saves on stop and restores on start.
+
+STATE_FILE=${OMARCHY_BLUETOOTH_STATE_FILE:-/var/lib/omarchy/bluetooth-powered}
+
+case "${1:-}" in
+  save)
+    mkdir -p "$(dirname "$STATE_FILE")"
+    if [[ $(timeout 2s bluetoothctl show 2>/dev/null) == *"Powered: yes"* ]]; then
+      echo on >"$STATE_FILE"
+    else
+      echo off >"$STATE_FILE"
+    fi
+    ;;
+  restore)
+    # No saved state means a fresh install, so leave the adapter alone and let
+    # BlueZ's own AutoEnable default power it on. Reaching for a default here
+    # instead would mean a failure in this unit could leave a brand new machine
+    # with Bluetooth dead and no obvious way to notice.
+    [[ -r $STATE_FILE ]] || exit 0
+
+    read -r state <"$STATE_FILE" || exit 0
+    [[ $state == "on" || $state == "off" ]] || exit 0
+
+    timeout 5s bluetoothctl power "$state" >/dev/null 2>&1 || true
+    ;;
+  *)
+    echo "Usage: omarchy-bluetooth-state <save|restore>" >&2
+    exit 1
+    ;;
+esac
