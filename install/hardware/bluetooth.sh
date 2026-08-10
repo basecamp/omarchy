@@ -7,9 +7,7 @@ systemctl enable bluetooth.service
 # instead would have BlueZ powering adapters up asynchronously, racing the
 # restore and winning. With no saved state yet, restore powers the adapter on,
 # so a fresh install still comes up with Bluetooth on exactly as stock does.
-if [[ -f /etc/bluetooth/main.conf ]]; then
-  sed -i 's/^#\?AutoEnable=.*/AutoEnable=false/' /etc/bluetooth/main.conf
-fi
+omarchy-bluetooth-state disable-autoenable
 
 install -Dm644 "$OMARCHY_PATH/default/systemd/system/omarchy-bluetooth-state.service" \
   /etc/systemd/system/omarchy-bluetooth-state.service

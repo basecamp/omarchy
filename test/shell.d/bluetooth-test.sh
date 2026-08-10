@@ -252,3 +252,50 @@ bluetooth_state_run seed yes
 [[ $(cat "$state_file") == "on" ]] ||
   fail "bluetooth state seeds the adapter as it actually is" "$(cat "$state_file")"
 pass "bluetooth state seeds the adapter as it actually is"
+
+# AutoEnable=false is the load-bearing half of the design: leave it on and BlueZ
+# powers adapters up on its own, so a saved "off" is silently ignored. A bluez
+# .pacnew merge can drop the key, space it out, or take main.conf away entirely,
+# and a rewrite that quietly matches nothing would hand the power-on back.
+main_conf="$device_tmp/main.conf"
+
+bluetooth_autoenable() {
+  OMARCHY_BLUETOOTH_MAIN_CONF="$main_conf" \
+    "$ROOT/bin/omarchy-bluetooth-state" disable-autoenable ||
+    fail "omarchy-bluetooth-state disable-autoenable exits cleanly" "$(cat "$main_conf")"
+}
+
+printf '[Policy]\n#AutoEnable=true\n' >"$main_conf"
+bluetooth_autoenable
+grep -qx 'AutoEnable=false' "$main_conf" ||
+  fail "bluetooth uncomments AutoEnable" "$(cat "$main_conf")"
+pass "bluetooth uncomments AutoEnable"
+
+printf '[Policy]\nAutoEnable = true\n' >"$main_conf"
+bluetooth_autoenable
+grep -qx 'AutoEnable=false' "$main_conf" ||
+  fail "bluetooth rewrites a spaced AutoEnable" "$(cat "$main_conf")"
+pass "bluetooth rewrites a spaced AutoEnable"
+
+printf '[General]\nName=Omarchy\n\n[Policy]\nReconnectAttempts=7\n' >"$main_conf"
+bluetooth_autoenable
+grep -qx 'AutoEnable=false' "$main_conf" ||
+  fail "bluetooth adds AutoEnable under an existing Policy section" "$(cat "$main_conf")"
+pass "bluetooth adds AutoEnable under an existing Policy section"
+
+grep -qx 'ReconnectAttempts=7' "$main_conf" ||
+  fail "bluetooth leaves the rest of the Policy section intact" "$(cat "$main_conf")"
+pass "bluetooth leaves the rest of the Policy section intact"
+
+printf '[General]\nName=Omarchy\n' >"$main_conf"
+bluetooth_autoenable
+grep -qx 'AutoEnable=false' "$main_conf" ||
+  fail "bluetooth adds a Policy section when main.conf has none" "$(cat "$main_conf")"
+pass "bluetooth adds a Policy section when main.conf has none"
+
+# An absent main.conf is not a free pass: BlueZ defaults AutoEnable to true.
+rm -f "$main_conf"
+bluetooth_autoenable
+grep -qx 'AutoEnable=false' "$main_conf" ||
+  fail "bluetooth writes main.conf when it does not exist" "$(cat "$main_conf")"
+pass "bluetooth writes main.conf when it does not exist"

@@ -11,8 +11,8 @@ trap 'rm -rf "$test_dir"' EXIT
 
 mkdir -p "$test_dir/bin"
 
-# sudo runs the real command, so install and sed act on the redirected paths
-# below while systemctl and the state helper resolve to the stubs beside them.
+# sudo runs the real command, so install acts on the redirected paths below
+# while systemctl and the state helper resolve to the stubs beside them.
 cat >"$test_dir/bin/sudo" <<'STUB'
 #!/bin/bash
 
@@ -36,10 +36,17 @@ fi
 exit 0
 STUB
 
-cat >"$test_dir/bin/omarchy-bluetooth-state" <<'STUB'
+# seed only needs to be observed, but disable-autoenable has to actually rewrite
+# main.conf: whether the flag lands is what the assertions below are about. The
+# real command honours OMARCHY_BLUETOOTH_MAIN_CONF, and the sudo stub above
+# preserves the environment, so it edits the redirected file.
+cat >"$test_dir/bin/omarchy-bluetooth-state" <<STUB
 #!/bin/bash
 
-printf 'omarchy-bluetooth-state %s\n' "$*" >>"$CALLS"
+printf 'omarchy-bluetooth-state %s\n' "\$*" >>"\$CALLS"
+
+[[ \$1 == "disable-autoenable" ]] && exec "$ROOT/bin/omarchy-bluetooth-state" "\$@"
+exit 0
 STUB
 
 chmod +x "$test_dir/bin/"*
@@ -128,6 +135,22 @@ pass "migration still enables the unit while bluetoothd is down"
 grep -q '^systemctl start' "$CALLS" &&
   fail "migration does not start the unit while bluetoothd is down" "$(cat "$CALLS")"
 pass "migration does not start the unit while bluetoothd is down"
+
+# A bluez .pacnew merge can leave main.conf with no AutoEnable line at all.
+# Rewriting an existing key would match nothing here, and BlueZ defaults the
+# flag to true, so the adapter would go back to auto-powering and every saved
+# "off" would be ignored. The marker means this run is the only chance to fix it.
+reset_machine
+printf '[General]\nName=Omarchy\n\n[Policy]\nReconnectAttempts=7\n' >"$main_conf"
+run_migration
+
+grep -q '^AutoEnable=false$' "$main_conf" ||
+  fail "migration adds AutoEnable when main.conf has no such key" "$(cat "$main_conf")"
+pass "migration adds AutoEnable when main.conf has no such key"
+
+grep -q '^ReconnectAttempts=7$' "$main_conf" ||
+  fail "migration leaves the rest of the Policy section intact" "$(cat "$main_conf")"
+pass "migration leaves the rest of the Policy section intact"
 
 # An interrupted run must be retried by the next user rather than skipped.
 reset_machine

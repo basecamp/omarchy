@@ -2,7 +2,7 @@
 
 # omarchy:summary=Save and restore the Bluetooth power state across reboots
 # omarchy:group=bluetooth
-# omarchy:args=<save|restore|seed>
+# omarchy:args=<save|restore|seed|disable-autoenable>
 # omarchy:hidden=true
 
 # BlueZ does not persist an adapter's Powered property. Nothing ever writes a
@@ -16,6 +16,7 @@
 # loses. Owning the power-on outright means there is no race to lose.
 
 STATE_FILE=${OMARCHY_BLUETOOTH_STATE_FILE:-/var/lib/omarchy/bluetooth-powered}
+MAIN_CONF=${OMARCHY_BLUETOOTH_MAIN_CONF:-/etc/bluetooth/main.conf}
 ADAPTER_WAIT_TRIES=${OMARCHY_BLUETOOTH_ADAPTER_WAIT_TRIES:-20}
 
 show() {
@@ -117,8 +118,38 @@ case "${1:-}" in
     [[ $(show) == *"Powered: yes"* ]] ||
       echo "omarchy-bluetooth-state: failed to power the adapter on" >&2
     ;;
+  disable-autoenable)
+    # AutoEnable=false is not a preference, it is the load-bearing half of the
+    # design above: leave it on and BlueZ powers adapters up on its own, so a
+    # saved "off" is silently ignored from then on. Rewriting an existing key is
+    # not enough to guarantee that, because a bluez .pacnew merge can drop the
+    # line outright or bring it back spaced as "AutoEnable = true". Check what
+    # actually landed and add the key when the rewrite matched nothing.
+    #
+    # An absent main.conf is not a free pass either: BlueZ defaults AutoEnable
+    # to true, so the file gets created rather than skipped.
+    mkdir -p "$(dirname "$MAIN_CONF")"
+    [[ -f $MAIN_CONF ]] || : >"$MAIN_CONF"
+
+    sed -i -E 's/^[[:space:]]*#?[[:space:]]*AutoEnable[[:space:]]*=.*/AutoEnable=false/' "$MAIN_CONF"
+
+    if ! grep -qx 'AutoEnable=false' "$MAIN_CONF"; then
+      # Under the existing [Policy] section, which is the only place BlueZ reads
+      # it, or in a fresh section when the file has none.
+      if grep -q '^\[Policy\]' "$MAIN_CONF"; then
+        sed -i '0,/^\[Policy\]/s//&\nAutoEnable=false/' "$MAIN_CONF"
+      else
+        printf '\n[Policy]\nAutoEnable=false\n' >>"$MAIN_CONF"
+      fi
+    fi
+
+    grep -qx 'AutoEnable=false' "$MAIN_CONF" || {
+      echo "omarchy-bluetooth-state: could not set AutoEnable=false in $MAIN_CONF" >&2
+      exit 1
+    }
+    ;;
   *)
-    echo "Usage: omarchy-bluetooth-state <save|restore|seed>" >&2
+    echo "Usage: omarchy-bluetooth-state <save|restore|seed|disable-autoenable>" >&2
     exit 1
     ;;
 esac
