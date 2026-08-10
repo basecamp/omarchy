@@ -257,6 +257,7 @@ def build_rate_limits(credentials: dict[str, str | None], payload: Any) -> dict[
 
   reset_at = parse_billing_cycle_end(payload.get("billingCycleEnd"))
   membership = credentials.get("membershipType") or payload.get("membershipType") or ""
+  total_percent = percent_to_fraction(plan.get("totalPercentUsed"))
   auto_percent = percent_to_fraction(plan.get("autoPercentUsed"))
   api_percent = percent_to_fraction(plan.get("apiPercentUsed"))
   # Treat a missing pool as 0% used when the plan object itself is present,
@@ -267,15 +268,22 @@ def build_rate_limits(credentials: dict[str, str | None], payload: Any) -> dict[
     api_percent = 0.0
 
   limits: list[dict[str, Any]] = []
+  if total_percent >= 0:
+    limits.append({"label": "Included total", "percent": total_percent, "resetsAt": reset_at})
   if auto_percent >= 0:
     limits.append({"label": "Cursor Models", "percent": auto_percent, "resetsAt": reset_at})
   if api_percent >= 0:
     limits.append({"label": "Other Models", "percent": api_percent, "resetsAt": reset_at})
 
+  usage_status = str(payload.get("displayMessage") or "").strip()
+  if not usage_status:
+    usage_status = str(payload.get("autoModelSelectedDisplayMessage") or "").strip()
+
   return empty_result(
     ready=len(limits) > 0,
     limits=limits,
     tierLabel=format_tier(membership),
+    usageStatusText=usage_status,
   )
 
 
