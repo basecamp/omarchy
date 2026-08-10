@@ -86,5 +86,5 @@ prompt_new_tab_name = false
 # set -g mouse on
 mouse_capture = true
 
-# tmux showed #h in status-right; the ZOOM flag shows there automatically
-tab_bar_hostname = true
+# status-right had the zoom flag followed by #h
+tab_bar_right = [{ type = "zoom" }, { type = "hostname" }]
