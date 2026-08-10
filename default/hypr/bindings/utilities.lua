@@ -47,8 +47,8 @@ hl.on("layer.opened", function(layer)
   if layer.namespace == "selection" then
     selection_layers = selection_layers + 1
     if selection_layers == 1 then
-      hl.bind("RETURN", hl.dsp.exec_cmd("omarchy-capture-region --take-fullscreen"), { description = "Capture entire screen" })
-      hl.bind("CTRL + RETURN", hl.dsp.exec_cmd("omarchy-capture-region --take-window"), { description = "Capture selected window" })
+      hl.bind("RETURN", hl.dsp.exec_cmd("omarchy-capture-region --take-window"), { description = "Capture highlighted window" })
+      hl.bind("CTRL + RETURN", hl.dsp.exec_cmd("omarchy-capture-region --take-fullscreen"), { description = "Capture entire screen" })
       hl.bind("TAB", hl.dsp.exec_cmd("omarchy-capture-region --select-window next"), { description = "Select next window to capture" })
       hl.bind("CTRL + TAB", hl.dsp.exec_cmd("omarchy-capture-region --select-window prev"), { description = "Select previous window to capture" })
       for _, direction in ipairs({ "left", "right", "up", "down" }) do

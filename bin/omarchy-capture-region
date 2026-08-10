@@ -136,8 +136,8 @@ if [[ ${1:-} == "--select-window" ]]; then
   [[ -n $rects ]] || exit 0
 
   # The selection to move from is the one slurp highlights, resolved from the
-  # same list in the same order as Ctrl+Return so navigation and capture never
-  # disagree. Measure from its center.
+  # same list in the same order as --take-window so navigation and capture
+  # never disagree. Measure from its center.
   current=$(smallest_rect_at "$origin_x" "$origin_y" <<<"$candidates")
 
   if [[ $current =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]]; then
@@ -231,8 +231,9 @@ for arg in "$@"; do
   esac
 done
 
-# Runs slurp; an empty result with a marker present means Return or
-# Ctrl+Return was pressed, so the monitor or window is the selection.
+# Runs slurp; an empty result with a marker present means one of the --take-*
+# binds was pressed, so the highlighted rectangle or the monitor is the
+# selection.
 pick() {
   local selection
   rm -f "$FULLSCREEN_MARKER" "$WINDOW_MARKER"
