@@ -1023,10 +1023,14 @@ run_setup() {
     sleep 0.5
   done
 
+  # The cursor comes back only on the failure path, where the retry prompt needs
+  # it. A clean run keeps it hidden through the last frame and the handoff.
   local status=0
   wait "$worker" || status=$?
-  printf '%s' "$SHOW_CURSOR"
-  (( status == 0 )) || return "$status"
+  if (( status != 0 )); then
+    printf '%s' "$SHOW_CURSOR"
+    return "$status"
+  fi
 
   # One full-bar frame so the finish doesn't cut in mid-progress.
   echo done >"$STATE_FILE"
@@ -1045,11 +1049,9 @@ run_setup() {
   # Deferred first boot hands straight off to the display manager: SDDM starts
   # the moment this oneshot exits (Before=display-manager.service) and autologs
   # in on encrypted installs. No timed celebration screen and no "start" button
-  # here — that send-off belongs to a direct install, not first-boot setup.
-  clear_logo
-  echo
-  say "Starting Omarchy..."
-  sleep 1
+  # here — that send-off belongs to a direct install, not first-boot setup. The
+  # finished progress bar is the last frame; clearing it for a "Starting
+  # Omarchy..." card would only add a flash of screen before the handoff.
 }
 
 # A failed first-boot setup must not strand the machine at a user-less login
