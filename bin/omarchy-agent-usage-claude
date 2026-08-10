@@ -649,6 +649,39 @@ def usage_bucket(payload: dict[str, Any], key: str) -> dict[str, Any] | None:
   return bucket if isinstance(bucket, dict) else None
 
 
+# Alongside the flat buckets, the payload carries a `limits` array, and that
+# array is the only place a model-scoped allowance shows up — a weekly window
+# that only Fable draws from, say. The matching legacy keys
+# (`seven_day_opus`, `seven_day_sonnet`, …) stayed behind at null, so a
+# collector that reads buckets alone silently drops a limit the account is
+# actually spending against. Entries name their model rather than their
+# window, so the model name is the label; the panel titles a limit off its
+# label and falls back to the plain text for anything that is neither a
+# session nor a weekly window. Percentages here are always percentages —
+# the field says so — so none of the fraction-versus-percent guessing the
+# older buckets need applies.
+def scoped_limits(payload: dict[str, Any]) -> list[dict[str, Any]]:
+  entries = payload.get("limits")
+  if not isinstance(entries, list):
+    return []
+  out: list[dict[str, Any]] = []
+  seen: set[str] = set()
+  for entry in entries:
+    if not isinstance(entry, dict):
+      continue
+    scope = entry.get("scope")
+    model = scope.get("model") if isinstance(scope, dict) else None
+    label = str(model.get("display_name") or "").strip() if isinstance(model, dict) else ""
+    if label == "" or label in seen:
+      continue
+    percent = normalize_utilization(entry.get("percent"), True)
+    if percent < 0:
+      continue
+    seen.add(label)
+    out.append({"label": label, "percent": percent, "resetsAt": normalize_reset_at(entry.get("resets_at"))})
+  return out
+
+
 def probe_limits(access_token: str) -> dict[str, Any]:
   request = urllib.request.Request(
     USAGE_ENDPOINT,
@@ -694,6 +727,7 @@ def probe_limits(access_token: str) -> dict[str, Any]:
     percent = normalize_utilization(weekly.get("utilization"), percent_scale)
     if percent >= 0:
       limits.append({"label": "Weekly (7-day)", "percent": percent, "resetsAt": normalize_reset_at(weekly.get("resets_at"))})
+  limits.extend(scoped_limits(payload))
 
   if not limits:
     return {"ok": False, "helpText": "Anthropic's usage endpoint returned no limits. Local Claude Code stats are still shown."}
