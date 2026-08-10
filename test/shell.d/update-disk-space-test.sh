@@ -65,6 +65,7 @@ exit 0'
 for command in \
   omarchy-cmd-present \
   omarchy-toggle-idle \
+  pkexec \
   systemd-inhibit \
   omarchy-update-dev \
   omarchy-update-keyring \
@@ -80,6 +81,7 @@ for command in \
   write_stub "$command" 'exit 0'
 done
 write_stub omarchy-update-available 'exit 1'
+write_stub pkexec 'exec "$@"'
 
 set +e
 TEST_AVAILABLE_BYTES=$((9 * 1024 * 1024 * 1024)) \
