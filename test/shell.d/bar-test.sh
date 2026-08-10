@@ -22,6 +22,24 @@ const shellSource = fs.readFileSync(root + '/shell/shell.qml', 'utf8')
 
 assert(/function toggleBarTransparency\(\): string \{[\s\S]*?shell\.bar\.toggleTransparency\(\)/.test(shellSource), 'shell exposes the bar transparency toggle over IPC')
 
+// Hiding must not unmap the bar. An unmapped layer surface has to be rebuilt on
+// every reveal, which measured ~150ms against ~20ms to tear it down; parking it
+// past the screen edge keeps show and hide symmetric at ~12ms.
+assert(
+  /visible: !remapGuard\.remapping/.test(barSource),
+  'bar stays mapped while hidden so revealing it does not rebuild the surface'
+)
+assert(
+  /exclusionMode: root\.barHidden \? ExclusionMode\.Ignore : ExclusionMode\.Auto/.test(barSource),
+  'a hidden bar reserves no space for itself'
+)
+for (const edge of ['top', 'bottom', 'left', 'right']) {
+  assert(
+    new RegExp(`${edge}: root\\.barHidden && root\\.position === "${edge}" \\? -root\\.barSize : 0`).test(barSource),
+    `a hidden bar parks past the ${edge} edge`
+  )
+}
+
 // The center section declares two arrangements and shows one; the hidden one
 // must not build its modules or every center widget exists twice.
 const moduleList = barSource.slice(barSource.indexOf('component ModuleList'), barSource.indexOf('component ModuleSlot'))

@@ -186,7 +186,7 @@ lock, silencing migration notifications at every login.
 
 Fallbacks:
 
-- `omarchy-first-run` enables `omarchy-migrate-notify.service`, which also
+- `omarchy-provision-first-run` enables `omarchy-migrate-notify.service`, which also
   covers users created after install: their per-user migration markers are
   missing, so their first login prompts them to run every shipped migration.
 - The package ships `omarchy-update-user-notify.service` as a symlink onto

@@ -86,5 +86,10 @@ prompt_new_tab_name = false
 # set -g mouse on
 mouse_capture = true
 
-# tmux showed #h in status-right; the ZOOM flag shows there automatically
-tab_bar_hostname = true
+# status-right had the zoom flag followed by #h
+tab_bar_right = [{ type = "zoom" }, { type = "hostname" }]
+
+# set -g set-titles on / set -g set-titles-string '#h:#W', where tmux's #W was
+# the basename of the pane cwd. This is what Hyprland shows in the group bar,
+# and it resolves on the server so remote sessions name the remote host.
+window_title = "{hostname}: {workspace}"

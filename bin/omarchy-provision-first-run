@@ -2,12 +2,13 @@
 
 # omarchy:summary=Finish first-login setup for Omarchy.
 # omarchy:args=[--force]
+# omarchy:hidden=true
 
 set -e
 
 usage() {
   cat <<USAGE
-Usage: omarchy-first-run [--force]
+Usage: omarchy-provision-first-run [--force]
 
 Run first-login user setup and notification hooks. By default this only runs
 once per user. Use --force to rerun the full sequence and refresh user setup.
@@ -42,7 +43,7 @@ if omarchy-done check "$FIRST_RUN_DONE" && (( force == 0 )); then
   exit 0
 fi
 
-omarchy-finalize-user "${finalize_user_args[@]}" || true
+omarchy-provision-user "${finalize_user_args[@]}" || true
 
 mkdir -p "$state_dir"
 
