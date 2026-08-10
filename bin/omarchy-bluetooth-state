@@ -42,14 +42,6 @@ write_state() {
     mv -f "$STATE_FILE.new" "$STATE_FILE"
 }
 
-autoenable_disabled() {
-  awk '
-    /^[[:space:]]*\[/ { in_policy = ($0 ~ /^[[:space:]]*\[Policy\][[:space:]]*$/); next }
-    in_policy && /^AutoEnable=false$/ { found = 1 }
-    END { exit !found }
-  ' "$MAIN_CONF"
-}
-
 # Echoes on or off, or nothing at all when no adapter can be read.
 current_state() {
   local state
@@ -87,21 +79,15 @@ case "${1:-}" in
     # on. A file that reads back as neither value is a write that never
     # finished: prefer off, since coming up powered is what a user who turned
     # Bluetooth off would notice.
-    target=on
+    saved=on
 
     if [[ -e $STATE_FILE ]]; then
       saved=""
       read -r saved <"$STATE_FILE" 2>/dev/null
-
-      if [[ $saved == "on" ]]; then
-        target=on
-      else
-        target=off
-      fi
     fi
 
     # Nothing to race: with AutoEnable off, bluetoothd leaves the adapter down.
-    [[ $target == "off" ]] && exit 0
+    [[ $saved == "on" ]] || exit 0
 
     if ! wait_for_adapter; then
       echo "omarchy-bluetooth-state: no adapter appeared, leaving power alone" >&2
@@ -140,9 +126,7 @@ case "${1:-}" in
         if (!in_policy) { print ""; print "[Policy]" }
         print "AutoEnable=false"
       }
-    ' "$MAIN_CONF" >"$MAIN_CONF.new" && mv -f "$MAIN_CONF.new" "$MAIN_CONF"
-
-    autoenable_disabled || {
+    ' "$MAIN_CONF" >"$MAIN_CONF.new" && mv -f "$MAIN_CONF.new" "$MAIN_CONF" || {
       echo "omarchy-bluetooth-state: could not set AutoEnable=false in $MAIN_CONF" >&2
       exit 1
     }

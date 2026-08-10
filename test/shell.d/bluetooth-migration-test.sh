@@ -38,12 +38,12 @@ STUB
 
 # seed only needs to be observed, but disable-autoenable has to actually rewrite
 # main.conf, so it runs for real against OMARCHY_BLUETOOTH_MAIN_CONF.
-cat >"$test_dir/bin/omarchy-bluetooth-state" <<STUB
+cat >"$test_dir/bin/omarchy-bluetooth-state" <<'STUB'
 #!/bin/bash
 
-printf 'omarchy-bluetooth-state %s\n' "\$*" >>"\$CALLS"
+printf 'omarchy-bluetooth-state %s\n' "$*" >>"$CALLS"
 
-[[ \$1 == "disable-autoenable" ]] && exec "$ROOT/bin/omarchy-bluetooth-state" "\$@"
+[[ $1 == "disable-autoenable" ]] && exec "$ROOT/bin/omarchy-bluetooth-state" "$@"
 exit 0
 STUB
 
