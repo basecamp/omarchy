@@ -42,31 +42,45 @@ write_state() {
     mv -f "$STATE_FILE.new" "$STATE_FILE"
 }
 
-# Non-zero means no adapter could be read and nothing was recorded.
-save_state() {
+autoenable_disabled() {
+  awk '
+    /^[[:space:]]*\[/ { in_policy = ($0 ~ /^[[:space:]]*\[Policy\][[:space:]]*$/); next }
+    in_policy && /^AutoEnable=false$/ { found = 1 }
+    END { exit !found }
+  ' "$MAIN_CONF"
+}
+
+# Echoes on or off, or nothing at all when no adapter can be read.
+current_state() {
   local state
   state=$(show)
 
-  [[ $state == *"Powered:"* ]] || return 1
+  [[ $state == *"Powered:"* ]] || return 0
 
   if [[ $state == *"Powered: yes"* ]]; then
-    write_state on
+    echo on
   else
-    write_state off
+    echo off
   fi
 }
 
 case "${1:-}" in
   save)
-    # Keep the last known state rather than recording a spurious "off".
-    save_state || exit 0
+    # Keep the last known state rather than recording a spurious "off". A write
+    # that fails is a different matter, and worth failing ExecStop over.
+    current=$(current_state)
+
+    if [[ -n $current ]]; then
+      write_state "$current"
+    fi
     ;;
   seed)
     # Run once by the migration, which has no second chance. save records
     # nothing when no adapter is readable, and no state file at all is what
     # restore takes for a fresh install and powers on. Off is what the machine
     # has been booting into all along.
-    save_state || write_state off
+    current=$(current_state)
+    write_state "${current:-off}"
     ;;
   restore)
     # No state file at all means a fresh install, so match stock BlueZ and power
@@ -104,22 +118,31 @@ case "${1:-}" in
     ;;
   disable-autoenable)
     # A bluez .pacnew merge can drop the key, space it as "AutoEnable = true", or
-    # take main.conf away entirely, and BlueZ defaults the flag to true. Check
-    # what landed rather than trusting the rewrite to have matched something.
+    # take main.conf away entirely, and BlueZ defaults the flag to true. It also
+    # reads the key only from [Policy], so a match anywhere else does not count
+    # and both the rewrite and the check that follows stay inside that section.
     mkdir -p "$(dirname "$MAIN_CONF")"
     [[ -f $MAIN_CONF ]] || : >"$MAIN_CONF"
 
-    sed -i -E 's/^[[:space:]]*#?[[:space:]]*AutoEnable[[:space:]]*=.*/AutoEnable=false/' "$MAIN_CONF"
+    awk '
+      /^[[:space:]]*\[/ {
+        if (in_policy && !done) { print "AutoEnable=false"; done = 1 }
+        in_policy = ($0 ~ /^[[:space:]]*\[Policy\][[:space:]]*$/)
+        print; next
+      }
+      in_policy && /^[[:space:]]*#?[[:space:]]*AutoEnable[[:space:]]*=/ {
+        if (!done) { print "AutoEnable=false"; done = 1 }
+        next
+      }
+      { print }
+      END {
+        if (done) exit
+        if (!in_policy) { print ""; print "[Policy]" }
+        print "AutoEnable=false"
+      }
+    ' "$MAIN_CONF" >"$MAIN_CONF.new" && mv -f "$MAIN_CONF.new" "$MAIN_CONF"
 
-    if ! grep -qx 'AutoEnable=false' "$MAIN_CONF"; then
-      if grep -q '^\[Policy\]' "$MAIN_CONF"; then
-        sed -i '0,/^\[Policy\]/s//&\nAutoEnable=false/' "$MAIN_CONF"
-      else
-        printf '\n[Policy]\nAutoEnable=false\n' >>"$MAIN_CONF"
-      fi
-    fi
-
-    grep -qx 'AutoEnable=false' "$MAIN_CONF" || {
+    autoenable_disabled || {
       echo "omarchy-bluetooth-state: could not set AutoEnable=false in $MAIN_CONF" >&2
       exit 1
     }

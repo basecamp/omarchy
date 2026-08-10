@@ -253,21 +253,27 @@ bluetooth_autoenable() {
     fail "omarchy-bluetooth-state disable-autoenable exits cleanly" "$(cat "$main_conf")"
 }
 
+# BlueZ reads the key only from [Policy], so a match anywhere else is no good.
+policy_autoenable() {
+  awk '/^[[:space:]]*\[/ { in_policy = ($0 ~ /^\[Policy\]$/); next }
+       in_policy && /^AutoEnable=/ { print }' "$main_conf"
+}
+
 printf '[Policy]\n#AutoEnable=true\n' >"$main_conf"
 bluetooth_autoenable
-grep -qx 'AutoEnable=false' "$main_conf" ||
+[[ $(policy_autoenable) == "AutoEnable=false" ]] ||
   fail "bluetooth uncomments AutoEnable" "$(cat "$main_conf")"
 pass "bluetooth uncomments AutoEnable"
 
 printf '[Policy]\nAutoEnable = true\n' >"$main_conf"
 bluetooth_autoenable
-grep -qx 'AutoEnable=false' "$main_conf" ||
+[[ $(policy_autoenable) == "AutoEnable=false" ]] ||
   fail "bluetooth rewrites a spaced AutoEnable" "$(cat "$main_conf")"
 pass "bluetooth rewrites a spaced AutoEnable"
 
 printf '[General]\nName=Omarchy\n\n[Policy]\nReconnectAttempts=7\n' >"$main_conf"
 bluetooth_autoenable
-grep -qx 'AutoEnable=false' "$main_conf" ||
+[[ $(policy_autoenable) == "AutoEnable=false" ]] ||
   fail "bluetooth adds AutoEnable under an existing Policy section" "$(cat "$main_conf")"
 pass "bluetooth adds AutoEnable under an existing Policy section"
 
@@ -277,13 +283,21 @@ pass "bluetooth leaves the rest of the Policy section intact"
 
 printf '[General]\nName=Omarchy\n' >"$main_conf"
 bluetooth_autoenable
-grep -qx 'AutoEnable=false' "$main_conf" ||
+[[ $(policy_autoenable) == "AutoEnable=false" ]] ||
   fail "bluetooth adds a Policy section when main.conf has none" "$(cat "$main_conf")"
 pass "bluetooth adds a Policy section when main.conf has none"
 
 # An absent main.conf is not a free pass: BlueZ defaults AutoEnable to true.
 rm -f "$main_conf"
 bluetooth_autoenable
-grep -qx 'AutoEnable=false' "$main_conf" ||
+[[ $(policy_autoenable) == "AutoEnable=false" ]] ||
   fail "bluetooth writes main.conf when it does not exist" "$(cat "$main_conf")"
 pass "bluetooth writes main.conf when it does not exist"
+
+# A key outside [Policy] is one BlueZ ignores, so rewriting it in place would
+# leave AutoEnable at its default while looking like the flag had landed.
+printf '[General]\nAutoEnable=true\n\n[Policy]\nReconnectAttempts=7\n' >"$main_conf"
+bluetooth_autoenable
+[[ $(policy_autoenable) == "AutoEnable=false" ]] ||
+  fail "bluetooth ignores an AutoEnable outside the Policy section" "$(cat "$main_conf")"
+pass "bluetooth ignores an AutoEnable outside the Policy section"
