@@ -24,8 +24,8 @@ for plugin in \
 done
 
 # The bar and background are actually on screen
-wait_until "bar layer is on screen" 30 layer_present "omarchy-bar"
-wait_until "background layer is on screen" 30 layer_present "omarchy-background"
+wait_until "bar layer is on screen" 30 layer_on_screen "omarchy-bar"
+wait_until "background layer is on screen" 30 layer_on_screen "omarchy-background"
 
 # Audio stack is up
 wait_until "pipewire is running" 30 wpctl status

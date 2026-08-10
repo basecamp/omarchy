@@ -956,11 +956,24 @@ Item {
   component BarPanel: PanelWindow {
     id: barWindow
 
-    visible: !root.barHidden && !remapGuard.remapping
+    // Hiding parks the bar just past its screen edge instead of unmapping it.
+    // Unmapping frees the layer surface and the whole scene graph, so every
+    // reveal has to rebuild them — new surface, re-shaped glyphs, re-uploaded
+    // textures — which measures ~150ms against ~20ms to tear down. Parking
+    // keeps the surface alive, so showing is only a margin change.
+    visible: !remapGuard.remapping
+    exclusionMode: root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto
 
     ScreenMoveRemap {
       id: remapGuard
       window: barWindow
+    }
+
+    margins {
+      top: root.barHidden && root.position === "top" ? -root.barSize : 0
+      bottom: root.barHidden && root.position === "bottom" ? -root.barSize : 0
+      left: root.barHidden && root.position === "left" ? -root.barSize : 0
+      right: root.barHidden && root.position === "right" ? -root.barSize : 0
     }
 
     anchors {

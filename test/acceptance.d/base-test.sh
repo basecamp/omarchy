@@ -79,6 +79,27 @@ layer_absent() {
   ! layer_present "$1"
 }
 
+# A layer can be mapped but parked off the monitor: the bar hides that way so
+# revealing it does not have to rebuild the surface. Assert on geometry when
+# what matters is that the user can actually see it. Layer boxes are in logical
+# coordinates, so the monitor's pixel size has to be divided by its scale.
+layer_on_screen() {
+  local monitors
+  monitors=$(hyprctl -j monitors) || return 1
+
+  hyprctl -j layers | jq -e --arg ns "$1" --argjson monitors "$monitors" '
+    to_entries[]
+    | .key as $name
+    | .value as $levels
+    | ($monitors[] | select(.name == $name)) as $m
+    | [$levels | .. | objects | select(.namespace? == $ns)][]
+    | select(
+        .x + .w > $m.x and .x < $m.x + $m.width / $m.scale and
+        .y + .h > $m.y and .y < $m.y + $m.height / $m.scale
+      )
+  ' >/dev/null
+}
+
 # Close every window matching a class regex, by address so multi-window apps
 # are fully closed. Tries the quattro Lua dispatcher first, then classic.
 close_windows() {
