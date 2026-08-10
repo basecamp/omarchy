@@ -1,7 +1,11 @@
 [Unit]
 Description=Restore the Bluetooth power state across reboots
 Documentation=man:bluetoothctl(1)
-ConditionPathIsDirectory=/sys/class/bluetooth
+# NotEmpty rather than IsDirectory: the bluetooth core module creates this
+# directory whether or not a controller exists, and only registers the hciN
+# symlinks inside it once one does. Testing the directory alone would let this
+# run on a machine with no adapter, where save would record a spurious "off".
+ConditionDirectoryNotEmpty=/sys/class/bluetooth
 # Ordered after bluetoothd so restore has something to talk to. That ordering
 # is also what makes save work: systemd stops this unit before bluetooth.service
 # at shutdown, which is the only window where the adapter can still be read.

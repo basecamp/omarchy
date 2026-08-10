@@ -154,7 +154,7 @@ pass "bluetooth powers the adapter on when it is off"
 # omarchy-bluetooth-state saves it on the way down and reapplies it on the way up.
 unit="$ROOT/default/systemd/system/omarchy-bluetooth-state.service"
 
-grep -q '^ConditionPathIsDirectory=/sys/class/bluetooth$' "$unit" ||
+grep -q '^ConditionDirectoryNotEmpty=/sys/class/bluetooth$' "$unit" ||
   fail "bluetooth state restore is skipped on machines without Bluetooth hardware"
 pass "bluetooth state restore is skipped on machines without Bluetooth hardware"
 
