@@ -127,7 +127,14 @@ cat >"$mock_bin/bluetoothctl" <<'SH'
 
 printf '%s\n' "$*" >>"$BLUETOOTHCTL_LOG"
 [[ $1 == "power" && $2 == "on" ]] && echo yes >"$POWERED_FILE"
-[[ $1 == "show" ]] && printf '\tPowered: %s\n' "$(cat "$POWERED_FILE")"
+[[ $1 == "list" ]] &&
+  for c in ${MOCK_CONTROLLERS:-AA:BB:CC:DD:EE:FF}; do printf 'Controller %s mock\n' "$c"; done
+# Per-controller state where a test set it, the shared file otherwise.
+if [[ $1 == "show" ]]; then
+  state="$POWERED_FILE"
+  [[ -n ${2:-} && -f "$POWERED_FILE.$2" ]] && state="$POWERED_FILE.$2"
+  printf '\tPowered: %s\n' "$(cat "$state")"
+fi
 exit 0
 SH
 
@@ -153,7 +160,7 @@ bluetooth_run() {
   echo "$powered" >"$POWERED_FILE"
   : >"$device_tmp/log"
   PATH="$mock_bin:$ROOT/bin:$PATH" BLUETOOTHCTL_LOG="$device_tmp/log" \
-    OMARCHY_BLUETOOTH_POWER_WAIT_TRIES=1 "$@" ||
+    OMARCHY_BLUETOOTH_POWER_WAIT_SECONDS=0 "$@" ||
     fail "$* exits cleanly with Powered: $powered"
   printf '%s' "$device_tmp/log"
 }
@@ -225,6 +232,18 @@ pass "bluetooth lifts the block before connecting"
 grep -qx "connect AA:BB:CC:DD:EE:FF" "$unpowered_log" ||
   fail "bluetooth connects once the adapter is up" "$(cat "$unpowered_log")"
 pass "bluetooth connects once the adapter is up"
+
+# Blocking hits every radio at once, so the read has to span them too. A bare
+# bluetoothctl show reports the default controller and misses a powered dongle.
+echo yes >"$POWERED_FILE.11:22:33:44:55:66"
+export MOCK_CONTROLLERS="AA:BB:CC:DD:EE:FF 11:22:33:44:55:66"
+multi_log=$(bluetooth_power no toggle)
+unset MOCK_CONTROLLERS
+rm -f "$POWERED_FILE.11:22:33:44:55:66"
+
+grep -qx "rfkill block bluetooth" "$multi_log" ||
+  fail "bluetooth counts a secondary controller as on" "$(cat "$multi_log")"
+pass "bluetooth counts a secondary controller as on"
 
 # AutoEnable=false was the old attempt at persistence and never worked. Left set,
 # it would also keep bluetoothd from powering the adapter up after an unblock.

@@ -2,7 +2,7 @@
 
 # omarchy:summary=Turn Bluetooth on or off, remembered across reboots
 # omarchy:group=bluetooth
-# omarchy:args=<on|off|toggle>
+# omarchy:args=<on|off|toggle|is-on>
 
 # BlueZ never persists an adapter's Powered property, so turning Bluetooth off
 # through bluetoothctl lasts only until the next boot. The rfkill soft block does
@@ -16,25 +16,36 @@
 # Omarchy path that turns Bluetooth on or off goes through here, because a plain
 # `bluetoothctl power on` fails outright while the block is set.
 
-POWER_WAIT_TRIES=${OMARCHY_BLUETOOTH_POWER_WAIT_TRIES:-10}
+POWER_WAIT_SECONDS=${OMARCHY_BLUETOOTH_POWER_WAIT_SECONDS:-2}
 
-show() {
-  timeout 2s bluetoothctl show 2>/dev/null
+controllers() {
+  timeout 2s bluetoothctl list 2>/dev/null | awk '{print $2}'
 }
 
+# Any controller counts. The block is all-or-nothing across the radios, so the
+# state has to be read the same way; a bare `bluetoothctl show` would report the
+# default controller and miss a powered dongle sitting behind it.
 powered() {
-  [[ $(show) == *"Powered: yes"* ]]
-}
+  local controller
 
-wait_powered() {
-  local i
-
-  for ((i = 0; i < POWER_WAIT_TRIES; i++)); do
-    powered && return 0
-    ((i < POWER_WAIT_TRIES - 1)) && sleep 0.2
+  for controller in $(controllers); do
+    [[ $(timeout 2s bluetoothctl show "$controller" 2>/dev/null) == *"Powered: yes"* ]] && return 0
   done
 
   return 1
+}
+
+# One deadline around the whole wait rather than a fixed number of probes: every
+# probe can sit on its own timeout when D-Bus is wedged, and counting probes then
+# stretches a two-second wait into half a minute.
+wait_powered() {
+  local deadline=$((SECONDS + POWER_WAIT_SECONDS))
+
+  while :; do
+    powered && return 0
+    ((SECONDS < deadline)) || return 1
+    sleep 0.2
+  done
 }
 
 power_on() {
@@ -62,16 +73,17 @@ case "${1:-}" in
     rfkill block bluetooth
     ;;
   toggle)
-    # Whatever the panel is showing is what the user is toggling, and the panel
-    # reads Powered — which a block forces to no.
     if powered; then
       rfkill block bluetooth
     else
       power_on
     fi
     ;;
+  is-on)
+    powered
+    ;;
   *)
-    echo "Usage: omarchy-bluetooth-power <on|off|toggle>" >&2
+    echo "Usage: omarchy-bluetooth-power <on|off|toggle|is-on>" >&2
     exit 1
     ;;
 esac
