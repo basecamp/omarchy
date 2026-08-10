@@ -14,6 +14,10 @@ BindsTo=bluetooth.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# Hardware that is present but never registers would otherwise hold the boot
+# transaction open for the adapter wait, and block the migration's synchronous
+# start for the same stretch.
+TimeoutStartSec=15s
 ExecStart=/usr/bin/omarchy-bluetooth-state restore
 ExecStop=/usr/bin/omarchy-bluetooth-state save
 

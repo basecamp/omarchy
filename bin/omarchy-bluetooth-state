@@ -22,13 +22,15 @@ show() {
 }
 
 # bluetoothd registers the adapter a moment after taking its bus name, and
-# systemd starts this unit the instant that name appears.
+# systemd starts this unit the instant that name appears. Leaves the reading in
+# ADAPTER_STATE so the caller does not have to ask again.
 wait_for_adapter() {
   local i
 
   for ((i = 0; i < ADAPTER_WAIT_TRIES; i++)); do
-    [[ $(show) == *"Powered:"* ]] && return 0
-    sleep 0.5
+    ADAPTER_STATE=$(show)
+    [[ $ADAPTER_STATE == *"Powered:"* ]] && return 0
+    ((i < ADAPTER_WAIT_TRIES - 1)) && sleep 0.5
   done
 
   return 1
@@ -94,7 +96,7 @@ case "${1:-}" in
       exit 0
     fi
 
-    [[ $(show) == *"Powered: yes"* ]] && exit 0
+    [[ $ADAPTER_STATE == *"Powered: yes"* ]] && exit 0
 
     timeout 5s bluetoothctl power on >/dev/null 2>&1
 
