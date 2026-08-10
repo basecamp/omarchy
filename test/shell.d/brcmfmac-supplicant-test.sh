@@ -7,6 +7,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 leaf="$ROOT/install/hardware/apple/fix-brcmfmac-supplicant.sh"
 fix_t2="$ROOT/install/hardware/apple/fix-t2.sh"
 all="$ROOT/install/hardware/all.sh"
+migration="$ROOT/migrations/1786391100.sh"
 
 grep -q 'apple/fix-brcmfmac-supplicant.sh' "$all" ||
   fail "the brcmfmac quirk runs during hardware setup"
@@ -21,6 +22,7 @@ test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 
 stub_bin="$test_tmp/bin"
+calls="$test_tmp/calls.log"
 conf="$test_tmp/etc/modprobe.d/brcmfmac.conf"
 mkdir -p "$stub_bin" "$test_tmp/dmi"
 
@@ -39,6 +41,24 @@ fi
 for _ in {1..4096}; do
   echo '02:00.0 Host bridge [0600]: Filler Device [ffff:0000]'
 done
+SH
+
+cat >"$stub_bin/sudo" <<'SH'
+#!/bin/bash
+
+printf 'sudo' >>"$TEST_LOG"
+printf '\t%s' "$@" >>"$TEST_LOG"
+printf '\n' >>"$TEST_LOG"
+"$@"
+SH
+
+# Stubbed rather than run: the real one would write the running user's state.
+cat >"$stub_bin/omarchy-state" <<'SH'
+#!/bin/bash
+
+printf 'omarchy-state' >>"$TEST_LOG"
+printf '\t%s' "$@" >>"$TEST_LOG"
+printf '\n' >>"$TEST_LOG"
 SH
 
 chmod +x "$stub_bin"/*
@@ -97,3 +117,62 @@ run_leaf "Apple Inc." "" 0 >/dev/null
 [[ ! -f $conf ]] || fail "a Mac with no wireless device is left alone"
 pass "a Mac with no wireless device is left alone"
 
+# Installs that predate the quirk never ran the leaf, so the migration has to
+# reach them. It runs as the user under pipefail, the context #6608 was about.
+run_migration() {
+  local vendor="$1" wifi_id="${2:-}" t2="${3:-0}"
+  printf '%s' "$vendor" >"$test_tmp/dmi/sys_vendor"
+  : >"$calls"
+
+  WIFI_ID="$wifi_id" T2_HARDWARE="$t2" PATH="$stub_bin:$PATH" TEST_LOG="$calls" \
+    OMARCHY_BRCMFMAC_DMI_VENDOR="$test_tmp/dmi/sys_vendor" \
+    OMARCHY_BRCMFMAC_CONF="$conf" \
+    bash -euo pipefail "$migration" >/dev/null
+}
+
+# A T2 install from before the quirk shipped has no config at all, so this is
+# the case that proves the T2 gate itself still fires -- and it is the piped
+# grep, run under pipefail, that #6608 was about.
+rm -rf "$test_tmp/etc"
+run_migration "Apple Inc." 4488 1
+grep -q '^options brcmfmac feature_disable=0x82000$' "$conf" 2>/dev/null ||
+  fail "the migration fixes a T2 install that never got the quirk" "$(ls -R "$test_tmp/etc" 2>&1)"
+# The option only reaches the driver when brcmfmac next loads.
+grep -Fq $'omarchy-state\tset\treboot-required' "$calls" ||
+  fail "the migration asks for the reboot that applies it" "$(cat "$calls")"
+pass "the migration fixes a T2 install that never got the quirk"
+
+run_migration "Apple Inc." 4488 1
+(( $(grep -c '^options brcmfmac feature_disable=0x82000$' "$conf") == 1 )) ||
+  fail "the migration is idempotent" "$(cat "$conf")"
+[[ ! -s $calls ]] || fail "a repaired install is left untouched" "$(cat "$calls")"
+pass "the migration is idempotent"
+
+# The machine this was written for, with no T2 to fall back on.
+rm -rf "$test_tmp/etc"
+run_migration "Apple Inc." 43ba 0
+grep -q '^options brcmfmac feature_disable=0x82000$' "$conf" 2>/dev/null ||
+  fail "the migration fixes an install on a Mac without a T2" "$(ls -R "$test_tmp/etc" 2>&1)"
+pass "the migration fixes an install on a Mac without a T2"
+
+# Written without a trailing newline, the way a hand-edited config often is.
+printf '%s' 'options brcmfmac roamoff=1' >"$conf"
+run_migration "Apple Inc." 43ba 0
+grep -qx 'options brcmfmac roamoff=1' "$conf" ||
+  fail "the migration keeps other options in the config" "$(cat "$conf")"
+grep -qx 'options brcmfmac feature_disable=0x82000' "$conf" ||
+  fail "the migration appends the quirk to an existing config" "$(cat "$conf")"
+pass "the migration appends to a config that holds other options"
+
+# Someone who commented their line out is still on the broken default.
+printf '#options brcmfmac feature_disable=0x82000\n' >"$conf"
+run_migration "Apple Inc." 43ba 0
+grep -qx 'options brcmfmac feature_disable=0x82000' "$conf" ||
+  fail "a commented-out option does not count as applied" "$(cat "$conf")"
+pass "a commented-out option does not count as applied"
+
+rm -rf "$test_tmp/etc"
+run_migration "Apple Inc." 43a0 0
+[[ ! -e $conf ]] || fail "the migration skips a Mac brcmfmac does not drive" "$(cat "$conf")"
+[[ ! -s $calls ]] || fail "the migration escalates nothing on unaffected Macs" "$(cat "$calls")"
+pass "the migration skips hardware brcmfmac does not drive"
