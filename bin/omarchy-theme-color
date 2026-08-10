@@ -151,6 +151,9 @@ parse_colors_file() {
       value="${value%"${value##*[![:space:]]}"}" # trim unquoted values
     fi
 
+    [[ $key   =~ ^[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_]+$      ]] || continue
+    [[ $value =~ ^[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#(),\ ]*$ ]] || continue
+
     THEME_COLORS[$key]="$value"
     [[ $OUTPUT == "raw" ]] && printf '%s\t%s\n' "$key" "$value"
   done <"$COLORS_FILE"

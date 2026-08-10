@@ -125,8 +125,12 @@ set_theme() {
       sed -i --follow-symlinks -E '0,/\{/{s/\{/{\ "workbench.colorTheme": "",/}' "$settings_path"
     fi
 
+    local safe_name="${theme_name//\\/\\\\}"
+    safe_name="${safe_name//&/\\&}"
+    safe_name="${safe_name////\\/}"
+
     sed -i --follow-symlinks -E \
-      "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$theme_name\2/" \
+      "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$safe_name\2/" \
       "$settings_path"
   elif [[ -f $settings_path ]]; then
     sed -i --follow-symlinks -E 's/\"workbench\.colorTheme\"[[:space:]]*:[^,}]*,?//' "$settings_path"
