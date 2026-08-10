@@ -45,8 +45,13 @@ Item {
   property bool useTransparentForeground: false
   property bool transparent: false
   property bool centerSectionHovered: false
-  // True while the pointer is over the bar, widgets included.
-  property bool barHovered: false
+  // One bar surface exists per monitor and each reports into this count, so a
+  // pointer crossing from one monitor's bar to another's stays counted however
+  // the enter and leave interleave. A single shared bool would be left false by
+  // whichever event landed last.
+  property int barHoverCount: 0
+  // True while the pointer is over any bar, widgets included.
+  readonly property bool barHovered: barHoverCount > 0
   property bool centerSectionRevealHeld: false
   property bool centerHoverRevealSuppressed: false
   property int barConfigSerial: 0
@@ -575,8 +580,8 @@ Item {
   }
 
   function setBarHovered(hovered) {
-    barHovered = hovered
-    if (!hovered) centerSectionRevealTimer.restart()
+    barHoverCount = Math.max(0, barHoverCount + (hovered ? 1 : -1))
+    if (barHoverCount === 0) centerSectionRevealTimer.restart()
   }
 
   Timer {
@@ -999,6 +1004,9 @@ Item {
       // hover to the section the pointer entered.
       HoverHandler {
         onHoveredChanged: root.setBarHovered(hovered)
+        // Unplugging a monitor destroys its bar without a leave event, which
+        // would strand this surface's tally and hold the peek open for good.
+        Component.onDestruction: if (hovered) root.setBarHovered(false)
       }
     }
 

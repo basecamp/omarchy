@@ -65,23 +65,32 @@ assert(
 // loses hover to whichever section the pointer moved onto, which is the very
 // signal the peek must not collapse on.
 const barLoader = barSource.slice(barSource.indexOf('sourceComponent: root.vertical ? verticalBar : horizontalBar'))
+const barLoaderBody = barLoader.slice(0, barLoader.indexOf('\n    }'))
 assert(
-  /setBarHovered\(hovered\)/.test(barLoader.slice(0, barLoader.indexOf('\n    }'))),
+  /setBarHovered\(hovered\)/.test(barLoaderBody),
   'the whole-bar hover handler is a child of the bar loader, above both orientations'
 )
 
+// Unplugging a monitor tears its bar down mid-hover with no leave event, which
+// would leave that surface counted forever and the peek stuck open.
+assert(
+  /Component\.onDestruction: if \(hovered\) root\.setBarHovered\(false\)/.test(barLoaderBody),
+  'a bar torn down while hovered gives its hover back'
+)
+
 // The helper has to record the state it is handed and re-run the collapse once
-// the pointer leaves, or the peek either never holds or never closes. Opening it
-// stays the empty-space gesture alone: pointing straight at a widget reveals nothing.
+// the pointer leaves. It counts rather than assigns because every monitor's bar
+// reports here: a slide from one bar to the next can deliver the enter before
+// the leave, and a shared bool would read as un-hovered under a live pointer.
 const setBarHovered = barSource.slice(barSource.indexOf('function setBarHovered'))
 const setBarHoveredBody = setBarHovered.slice(0, setBarHovered.indexOf('\n  }'))
 assert(
-  /barHovered = hovered/.test(setBarHoveredBody),
-  'the whole-bar hover handler records the pointer state it is given'
+  /barHoverCount = Math\.max\(0, barHoverCount \+ \(hovered \? 1 : -1\)\)/.test(setBarHoveredBody),
+  'each bar surface adds to a hover tally instead of overwriting a shared flag'
 )
 assert(
-  /if \(!hovered\) centerSectionRevealTimer\.restart\(\)/.test(setBarHoveredBody),
-  'a pointer leaving the bar re-runs the peek collapse'
+  /if \(barHoverCount === 0\) centerSectionRevealTimer\.restart\(\)/.test(setBarHoveredBody),
+  'the peek collapse re-runs once the pointer has left the last bar'
 )
 
 // Opening the peek stays the center section's own gesture: pointing straight at
