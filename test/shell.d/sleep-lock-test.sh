@@ -128,7 +128,12 @@ pass "sleep lock reports failure when the session never secures"
 # The contract is the budget plus at most one poll interval, since the pause
 # between polls is not itself clipped. Derived budgets hold back a full second
 # for logind, so that overshoot is always well inside the reserve.
-(( elapsed_us <= 1600000 )) ||
+#
+# 1500ms budget + a 100ms interval is 1600ms of script time, and this measures a
+# whole process around it, so the bound carries another interval for startup —
+# without it the assertion sits exactly on the worst case and flakes. Two
+# intervals of overshoot, the regression worth catching, is still 1800ms.
+(( elapsed_us <= 1700000 )) ||
   fail "sleep lock gives up within its budget" "elapsed: ${elapsed_us}us"
 pass "sleep lock gives up within its budget"
 
