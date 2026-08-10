@@ -13,6 +13,8 @@ Item {
   readonly property int batteryThreshold: 10
   property string pendingPowerSource: ""
 
+  property bool dismissedLowBattery: false
+
   PersistentProperties {
     id: persisted
     reloadableId: "omarchy-battery"
@@ -28,9 +30,11 @@ Item {
   }
 
   function checkBattery() {
-    var state = BatteryModel.shouldWarnLowBattery(UPower.displayDevice, UPower.onBattery, UPowerDeviceState.Discharging, batteryThreshold, persisted.notifiedLowBattery)
+    var state = BatteryModel.shouldWarnLowBattery(UPower.displayDevice, UPower.onBattery, UPowerDeviceState.Discharging, batteryThreshold, persisted.notifiedLowBattery, dismissedLowBattery)
     persisted.notifiedLowBattery = state.notifiedLowBattery
+    dismissedLowBattery = state.dismissedLowBattery
     if (state.notify) sendLowBatteryWarning(state.level)
+    else if (state.dismiss) dismissLowBatteryWarning()
   }
 
   function sendLowBatteryWarning(level) {
@@ -40,6 +44,12 @@ Item {
       String(level)
     ]
     warningProcess.running = true
+  }
+
+  function dismissLowBatteryWarning() {
+    if (dismissProcess.running) return
+    dismissProcess.command = ["omarchy-battery-low", "--dismiss"]
+    dismissProcess.running = true
   }
 
   function applyPowerProfile() {
@@ -54,6 +64,8 @@ Item {
   }
 
   Process { id: warningProcess }
+
+  Process { id: dismissProcess }
 
   Process {
     id: powerProfileProcess

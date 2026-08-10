@@ -7,15 +7,16 @@ function isDischarging(device, onBattery, dischargingState) {
   return !!(device && device.isPresent && onBattery && device.state === dischargingState)
 }
 
-function shouldWarnLowBattery(device, onBattery, dischargingState, threshold, alreadyNotified) {
+function shouldWarnLowBattery(device, onBattery, dischargingState, threshold, alreadyNotified, alreadyDismissed) {
   var level = batteryPercentage(device)
-  if (level < 0) return { level: level, notify: false, notifiedLowBattery: false }
+  var low = level >= 0 && isDischarging(device, onBattery, dischargingState) && level <= threshold
 
-  var low = isDischarging(device, onBattery, dischargingState) && level <= threshold
   return {
     level: level,
     notify: low && !alreadyNotified,
-    notifiedLowBattery: low
+    dismiss: !low && !alreadyDismissed,
+    notifiedLowBattery: low,
+    dismissedLowBattery: !low
   }
 }
 
