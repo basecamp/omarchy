@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Show the Omarchy Quickshell on-screen display
-# omarchy:args=[-i|--icon <icon>] [-m|--message <text>] [-p|--progress <value>] [--max <value>] [-d|--duration <ms>]
+# omarchy:args=[-i|--icon <icon>] [-m|--message <text>] [-p|--progress <value>] [-M|--maximum <value>] [-d|--duration <ms>]
 # omarchy:examples=omarchy osd -i brightness -p 50 | omarchy osd -m "Hello"
 
 set -euo pipefail
