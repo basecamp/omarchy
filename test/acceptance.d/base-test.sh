@@ -81,8 +81,9 @@ layer_absent() {
 
 # A layer can be mapped but parked off the monitor: the bar hides that way so
 # revealing it does not have to rebuild the surface. Assert on geometry when
-# what matters is that the user can actually see it. Layer boxes are in logical
-# coordinates, so the monitor's pixel size has to be divided by its scale.
+# what matters is that the user can actually see it. Layer boxes are local to
+# their monitor and in logical coordinates, so compare them with local bounds
+# derived from the monitor's scaled pixel size.
 layer_on_screen() {
   local monitors
   monitors=$(hyprctl -j monitors) || return 1
@@ -94,8 +95,8 @@ layer_on_screen() {
     | ($monitors[] | select(.name == $name)) as $m
     | [$levels | .. | objects | select(.namespace? == $ns)][]
     | select(
-        .x + .w > $m.x and .x < $m.x + $m.width / $m.scale and
-        .y + .h > $m.y and .y < $m.y + $m.height / $m.scale
+        .x + .w > 0 and .x < $m.width / $m.scale and
+        .y + .h > 0 and .y < $m.height / $m.scale
       )
   ' >/dev/null
 }
