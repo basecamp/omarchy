@@ -2,15 +2,12 @@
 Description=Restore the Bluetooth power state across reboots
 Documentation=man:bluetoothctl(1)
 # NotEmpty rather than IsDirectory: the bluetooth core module creates this
-# directory whether or not a controller exists, and only registers the hciN
-# symlinks inside it once one does. Testing the directory alone would run this
-# on every adapter-less machine, where restore has nothing to talk to and stalls
-# out its full wait before giving up. A controller hot-plugged later is not
-# picked up until the next boot, which is what AutoEnable=false already does.
+# directory whether or not a controller exists, and only puts the hciN symlinks
+# in it once one does. Testing the directory alone would run restore on every
+# adapter-less machine, where it stalls out its full wait before giving up.
 ConditionDirectoryNotEmpty=/sys/class/bluetooth
-# Ordered after bluetoothd so restore has something to talk to. That ordering
-# is also what makes save work: systemd stops this unit before bluetooth.service
-# at shutdown, which is the only window where the adapter can still be read.
+# After bluetoothd so restore has something to talk to, and so systemd stops this
+# unit first at shutdown — the only window where save can still read the adapter.
 After=bluetooth.service
 BindsTo=bluetooth.service
 

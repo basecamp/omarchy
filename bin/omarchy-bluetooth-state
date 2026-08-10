@@ -5,15 +5,13 @@
 # omarchy:args=<save|restore|seed|disable-autoenable>
 # omarchy:hidden=true
 
-# BlueZ does not persist an adapter's Powered property. Nothing ever writes a
-# Powered key into /var/lib/bluetooth/<adapter>/settings, so bluetoothd has no
-# way to bring an adapter back up in the state the user left it. Driven by
+# BlueZ never persists an adapter's Powered property, so bluetoothd cannot bring
+# one back up in the state the user left it. Driven by
 # omarchy-bluetooth-state.service, which saves on stop and restores on start.
 #
-# AutoEnable stays off so bluetoothd never powers the adapter itself. That is
-# what keeps restore deterministic: BlueZ powers adapters on asynchronously,
-# well after it takes its D-Bus name, so anything racing it to set the state
-# loses. Owning the power-on outright means there is no race to lose.
+# AutoEnable stays off so bluetoothd never powers the adapter itself. BlueZ
+# powers adapters on asynchronously, long after taking its D-Bus name, so
+# anything racing it loses; owning the power-on means there is no race to lose.
 
 STATE_FILE=${OMARCHY_BLUETOOTH_STATE_FILE:-/var/lib/omarchy/bluetooth-powered}
 MAIN_CONF=${OMARCHY_BLUETOOTH_MAIN_CONF:-/etc/bluetooth/main.conf}
@@ -23,9 +21,8 @@ show() {
   timeout 2s bluetoothctl show 2>/dev/null
 }
 
-# bluetoothd registers the adapter on D-Bus a moment after it takes its bus
-# name, and systemd starts this unit the instant that name appears. Until the
-# adapter exists, `bluetoothctl show` reports no Powered line at all.
+# bluetoothd registers the adapter a moment after taking its bus name, and
+# systemd starts this unit the instant that name appears.
 wait_for_adapter() {
   local i
 
@@ -37,10 +34,8 @@ wait_for_adapter() {
   return 1
 }
 
-# Write beside the file and rename over it. save runs from ExecStop, so its
-# window is a machine on its way down: a truncating redirect that loses power
-# mid-write leaves a zero-byte file behind, and an empty file is not a state
-# anyone chose. A rename swaps the whole contents or nothing.
+# Rename over the file rather than truncating it: save runs from ExecStop, and a
+# redirect cut short by the shutdown would leave a zero-byte file behind.
 write_state() {
   mkdir -p "$(dirname "$STATE_FILE")" &&
     echo "$1" >"$STATE_FILE.new" &&
@@ -63,33 +58,24 @@ save_state() {
 
 case "${1:-}" in
   save)
-    # No adapter to read. Keep the last known state rather than recording a
-    # spurious "off" that the next boot would apply.
+    # Keep the last known state rather than recording a spurious "off".
     save_state || exit 0
     ;;
   seed)
-    # Run once by the migration, before the unit has ever started. A plain save
-    # is not enough here: it deliberately records nothing when no adapter can be
-    # read, and no state file at all is exactly what restore takes for a fresh
-    # install and powers on. The migration marks the machine done either way, so
-    # that would permanently flip Bluetooth on for someone who keeps it off.
-    save_state && exit 0
-
-    # Nothing readable, so record the state the machine is already living with.
-    # AutoEnable has been off with nothing owning the power-on, which means
-    # Bluetooth has been coming up off on every boot.
-    write_state off
+    # Run once by the migration, which has no second chance. save records
+    # nothing when no adapter is readable, and no state file at all is what
+    # restore takes for a fresh install and powers on. Off is what the machine
+    # has been booting into all along.
+    save_state || write_state off
     ;;
   restore)
-    # No saved state at all means a fresh install, so power on and match what
-    # stock BlueZ would have done with AutoEnable left at its default.
+    # No state file at all means a fresh install, so match stock BlueZ and power
+    # on. A file that reads back as neither value is a write that never
+    # finished: prefer off, since coming up powered is what a user who turned
+    # Bluetooth off would notice.
     target=on
 
     if [[ -e $STATE_FILE ]]; then
-      # A file that exists but reads back as neither "on" nor "off" is a write
-      # that never finished. Take it as off: coming up powered is the failure a
-      # user who turned Bluetooth off would actually notice, and powering on is
-      # only the right default when there is genuinely nothing saved.
       saved=""
       read -r saved <"$STATE_FILE" 2>/dev/null
 
@@ -100,8 +86,7 @@ case "${1:-}" in
       fi
     fi
 
-    # Nothing to do, and nothing to race: with AutoEnable off, bluetoothd
-    # leaves the adapter down on its own.
+    # Nothing to race: with AutoEnable off, bluetoothd leaves the adapter down.
     [[ $target == "off" ]] && exit 0
 
     if ! wait_for_adapter; then
@@ -113,29 +98,20 @@ case "${1:-}" in
 
     timeout 5s bluetoothctl power on >/dev/null 2>&1
 
-    # Worth a journal line: this is the failure that leaves a machine with
-    # Bluetooth off and no obvious cause.
+    # The failure that leaves a machine with Bluetooth off and no obvious cause.
     [[ $(show) == *"Powered: yes"* ]] ||
       echo "omarchy-bluetooth-state: failed to power the adapter on" >&2
     ;;
   disable-autoenable)
-    # AutoEnable=false is not a preference, it is the load-bearing half of the
-    # design above: leave it on and BlueZ powers adapters up on its own, so a
-    # saved "off" is silently ignored from then on. Rewriting an existing key is
-    # not enough to guarantee that, because a bluez .pacnew merge can drop the
-    # line outright or bring it back spaced as "AutoEnable = true". Check what
-    # actually landed and add the key when the rewrite matched nothing.
-    #
-    # An absent main.conf is not a free pass either: BlueZ defaults AutoEnable
-    # to true, so the file gets created rather than skipped.
+    # A bluez .pacnew merge can drop the key, space it as "AutoEnable = true", or
+    # take main.conf away entirely, and BlueZ defaults the flag to true. Check
+    # what landed rather than trusting the rewrite to have matched something.
     mkdir -p "$(dirname "$MAIN_CONF")"
     [[ -f $MAIN_CONF ]] || : >"$MAIN_CONF"
 
     sed -i -E 's/^[[:space:]]*#?[[:space:]]*AutoEnable[[:space:]]*=.*/AutoEnable=false/' "$MAIN_CONF"
 
     if ! grep -qx 'AutoEnable=false' "$MAIN_CONF"; then
-      # Under the existing [Policy] section, which is the only place BlueZ reads
-      # it, or in a fresh section when the file has none.
       if grep -q '^\[Policy\]' "$MAIN_CONF"; then
         sed -i '0,/^\[Policy\]/s//&\nAutoEnable=false/' "$MAIN_CONF"
       else

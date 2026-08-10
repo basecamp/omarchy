@@ -153,8 +153,6 @@ grep -qx "power on" "$unpowered_log" ||
   fail "bluetooth powers the adapter on when it is off"
 pass "bluetooth powers the adapter on when it is off"
 
-# BlueZ never persists Powered, so the adapter state only survives a reboot if
-# omarchy-bluetooth-state saves it on the way down and reapplies it on the way up.
 unit="$ROOT/default/systemd/system/omarchy-bluetooth-state.service"
 
 grep -q '^ConditionDirectoryNotEmpty=/sys/class/bluetooth$' "$unit" ||
@@ -194,10 +192,8 @@ bluetooth_state_run save absent
 [[ $(cat "$state_file") == "off" ]] || fail "bluetooth state keeps the last state when no adapter is readable"
 pass "bluetooth state keeps the last state when no adapter is readable"
 
-# AutoEnable is off, so bluetoothd leaves the adapter down by itself. Issuing a
-# power off here would be redundant, and racing BlueZ is what broke the first
-# cut of this: it powers adapters up asynchronously, long after taking its bus
-# name, so anything competing to set the state loses.
+# Racing BlueZ is what broke the first cut of this, and with AutoEnable off a
+# power off is redundant anyway.
 bluetooth_state_run restore no
 grep -q "power" "$state_log" && fail "bluetooth state leaves a saved-off adapter alone"
 pass "bluetooth state leaves a saved-off adapter alone"
@@ -211,8 +207,7 @@ bluetooth_state_run restore yes
 grep -qx "power on" "$state_log" && fail "bluetooth state skips an adapter that is already powered"
 pass "bluetooth state skips an adapter that is already powered"
 
-# A fresh install has no saved state and must come up powered, matching what
-# stock BlueZ would have done with AutoEnable left at its default.
+# Matching what stock BlueZ does with AutoEnable left at its default.
 rm -f "$state_file"
 bluetooth_state_run restore no
 grep -qx "power on" "$state_log" || fail "bluetooth state powers on a fresh install"
@@ -223,24 +218,19 @@ bluetooth_state_run restore absent
 grep -q "power" "$state_log" && fail "bluetooth state gives up when no adapter appears"
 pass "bluetooth state gives up when no adapter appears"
 
-# save runs from ExecStop, on a machine already on its way down. A truncating
-# redirect cut short there leaves a zero-byte file, so the write lands under a
-# temporary name and is renamed over the real one.
+# A truncating redirect cut short by the shutdown would leave a zero-byte file.
 bluetooth_state_run save yes
 [[ ! -e "$state_file.new" ]] || fail "bluetooth state leaves no half-written file behind"
 pass "bluetooth state leaves no half-written file behind"
 
-# And should an empty file turn up anyway, it is not a state anyone chose.
-# Powering on here is the failure a user who turned Bluetooth off would notice.
+# And should one turn up anyway, it is not a state anyone chose.
 : >"$state_file"
 bluetooth_state_run restore no
 grep -q "power" "$state_log" && fail "bluetooth state does not power on from an unfinished write"
 pass "bluetooth state does not power on from an unfinished write"
 
-# The migration seeds through this rather than save, because save deliberately
-# records nothing when it cannot read an adapter and the migration runs once.
-# Left unseeded, the next restore reads the machine as a fresh install and
-# powers the adapter on for someone who deliberately keeps Bluetooth off.
+# save records nothing when it cannot read an adapter, and the migration has no
+# second chance to correct a machine left unseeded.
 rm -f "$state_file"
 bluetooth_state_run seed absent
 [[ $(cat "$state_file") == "off" ]] ||
@@ -253,10 +243,8 @@ bluetooth_state_run seed yes
   fail "bluetooth state seeds the adapter as it actually is" "$(cat "$state_file")"
 pass "bluetooth state seeds the adapter as it actually is"
 
-# AutoEnable=false is the load-bearing half of the design: leave it on and BlueZ
-# powers adapters up on its own, so a saved "off" is silently ignored. A bluez
-# .pacnew merge can drop the key, space it out, or take main.conf away entirely,
-# and a rewrite that quietly matches nothing would hand the power-on back.
+# Leave AutoEnable on and BlueZ powers adapters up itself, ignoring every saved
+# "off", so a rewrite that quietly matches nothing has to be caught here.
 main_conf="$device_tmp/main.conf"
 
 bluetooth_autoenable() {

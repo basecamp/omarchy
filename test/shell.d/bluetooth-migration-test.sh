@@ -37,9 +37,7 @@ exit 0
 STUB
 
 # seed only needs to be observed, but disable-autoenable has to actually rewrite
-# main.conf: whether the flag lands is what the assertions below are about. The
-# real command honours OMARCHY_BLUETOOTH_MAIN_CONF, and the sudo stub above
-# preserves the environment, so it edits the redirected file.
+# main.conf, so it runs for real against OMARCHY_BLUETOOTH_MAIN_CONF.
 cat >"$test_dir/bin/omarchy-bluetooth-state" <<STUB
 #!/bin/bash
 
@@ -105,8 +103,8 @@ pass "migration seeds the saved state before starting the unit"
 [[ -e $marker ]] || fail "migration records the machine as done"
 pass "migration records the machine as done"
 
-# A second user on the same box must not undo an administrator's opt-out made
-# after the first run, since migration completion is recorded per user.
+# Migration completion is recorded per user, so a second account must not undo
+# an administrator's opt-out made after the first run.
 printf '[Policy]\nAutoEnable=true\n' >"$main_conf"
 rm -f "$unit_dest"
 run_migration
@@ -136,10 +134,8 @@ grep -q '^systemctl start' "$CALLS" &&
   fail "migration does not start the unit while bluetoothd is down" "$(cat "$CALLS")"
 pass "migration does not start the unit while bluetoothd is down"
 
-# A bluez .pacnew merge can leave main.conf with no AutoEnable line at all.
-# Rewriting an existing key would match nothing here, and BlueZ defaults the
-# flag to true, so the adapter would go back to auto-powering and every saved
-# "off" would be ignored. The marker means this run is the only chance to fix it.
+# A bluez .pacnew merge can leave main.conf with no AutoEnable line at all, and
+# the marker means this run is the only chance to put it back.
 reset_machine
 printf '[General]\nName=Omarchy\n\n[Policy]\nReconnectAttempts=7\n' >"$main_conf"
 run_migration
