@@ -37,14 +37,24 @@ JQ_MONITOR_GEO='
     end;
 '
 
+active_workspace() {
+  hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id'
+}
+
+# Hidden group members and windows stacked at identical geometry collapse to
+# one rectangle: slurp cannot tell them apart, and duplicates would stall the
+# Tab cycle on the first copy.
 window_rects() {
-  local active_workspace=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
-  hyprctl clients -j | jq -r --arg ws "$active_workspace" '.[] | select(.workspace.id == ($ws | tonumber)) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
+  hyprctl clients -j | jq -r --arg ws "$(active_workspace)" \
+    '[.[] | select(.workspace.id == ($ws | tonumber) and .hidden != true) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"] | unique[]'
+}
+
+monitor_rects() {
+  hyprctl monitors -j | jq -r --arg ws "$(active_workspace)" "${JQ_MONITOR_GEO} .[] | select(.activeWorkspace.id == (\$ws | tonumber)) | format_geo"
 }
 
 get_rectangles() {
-  local active_workspace=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
-  hyprctl monitors -j | jq -r --arg ws "$active_workspace" "${JQ_MONITOR_GEO} .[] | select(.activeWorkspace.id == (\$ws | tonumber)) | format_geo"
+  monitor_rects
   window_rects
 }
 
@@ -52,16 +62,12 @@ focused_monitor_geo() {
   hyprctl monitors -j | jq -r "${JQ_MONITOR_GEO} .[] | select(.focused == true) | format_geo"
 }
 
-focused_window_geo() {
-  hyprctl activewindow -j | jq -r 'select(.at != null) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
-}
-
-# slurp highlights the smallest box under the cursor, so overlapping
-# windows resolve the same way here (e.g. floating over tiled).
-window_geo_at_cursor() {
-  local pos=$(hyprctl cursorpos)
-  local x=${pos%,*}
-  local y=${pos#*, }
+# slurp highlights the smallest box containing the cursor and keeps the first
+# one on a tie, so overlapping rectangles resolve the same way here (e.g.
+# floating over tiled). Reads candidates on stdin, exits 1 when none match.
+smallest_rect_at() {
+  local x=$1 y=$2
+  local rect area
   local smallest=""
   local smallest_area=0
 
@@ -70,17 +76,27 @@ window_geo_at_cursor() {
     ((x >= BASH_REMATCH[1] && x < BASH_REMATCH[1] + BASH_REMATCH[3] && y >= BASH_REMATCH[2] && y < BASH_REMATCH[2] + BASH_REMATCH[4])) || continue
 
     area=$((BASH_REMATCH[3] * BASH_REMATCH[4]))
-    if [[ -z $smallest ]] || ((area <= smallest_area)); then
+    if [[ -z $smallest ]] || ((area < smallest_area)); then
       smallest=$rect
       smallest_area=$area
     fi
-  done < <(window_rects)
+  done
 
-  if [[ -n $smallest ]]; then
-    echo "$smallest"
-  else
-    focused_window_geo
-  fi
+  [[ -n $smallest ]] || return 1
+  echo "$smallest"
+}
+
+# Whatever slurp is highlighting under the cursor. It is fed monitor rects as
+# well as window rects, so a cursor in a gap or over the bar highlights the
+# monitor rather than any window.
+geo_at_cursor() {
+  local pos=$(hyprctl cursorpos)
+  local x=${pos%,*}
+  local y=${pos#*, }
+
+  smallest_rect_at "$x" "$y" < <(window_rects) ||
+    smallest_rect_at "$x" "$y" < <(monitor_rects) ||
+    focused_monitor_geo
 }
 
 # Keyboard control while slurp is open: binds scoped to slurp's layer
@@ -110,27 +126,19 @@ if [[ ${1:-} == "--select-window" ]]; then
   origin_x=${pos%,*}
   origin_y=${pos#*, }
 
+  candidates=$(window_rects)
+
   # Reading order: top-to-bottom, then left-to-right.
   rects=$(while IFS= read -r rect; do
     [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || continue
     printf '%d\t%d\t%s\n' "${BASH_REMATCH[2]}" "${BASH_REMATCH[1]}" "$rect"
-  done < <(window_rects) | sort -n -k1,1 -k2,2 | cut -f3-)
+  done <<<"$candidates" | sort -n -k1,1 -k2,2 | cut -f3-)
   [[ -n $rects ]] || exit 0
 
-  # The selection to move from is the one slurp highlights: the smallest
-  # window under the cursor. Measure from its center.
-  current=""
-  current_area=0
-  while IFS= read -r rect; do
-    [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || continue
-    ((origin_x >= BASH_REMATCH[1] && origin_x < BASH_REMATCH[1] + BASH_REMATCH[3] && origin_y >= BASH_REMATCH[2] && origin_y < BASH_REMATCH[2] + BASH_REMATCH[4])) || continue
-
-    area=$((BASH_REMATCH[3] * BASH_REMATCH[4]))
-    if [[ -z $current ]] || ((area <= current_area)); then
-      current=$rect
-      current_area=$area
-    fi
-  done <<<"$rects"
+  # The selection to move from is the one slurp highlights, resolved from the
+  # same list in the same order as Ctrl+Return so navigation and capture never
+  # disagree. Measure from its center.
+  current=$(smallest_rect_at "$origin_x" "$origin_y" <<<"$candidates")
 
   if [[ $current =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]]; then
     origin_x=$((BASH_REMATCH[1] + BASH_REMATCH[3] / 2))
@@ -235,7 +243,7 @@ pick() {
     selection=$(focused_monitor_geo)
   elif [[ -z $selection && -e $WINDOW_MARKER ]]; then
     rm -f "$WINDOW_MARKER"
-    selection=$(window_geo_at_cursor)
+    selection=$(geo_at_cursor)
   fi
 
   printf '%s' "$selection"
