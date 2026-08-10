@@ -939,8 +939,8 @@ reset_limine_config() {
 }
 
 cleanup_oem_state() {
-  # Keep groups + packages: omarchy-system-factory-reset's degraded path (machines
-  # without @factory) re-arms first-boot setup from the live copies.
+  # Keep groups + packages: omarchy-system-factory-reset stages the bundled Node
+  # tarball from these live copies when the factory snapshot predates it.
   rm -f "$PROVISIONING_DIR/pending" "$PROVISIONING_DIR/authorized_keys" "$PROVISIONING_DIR/setup-user"
 
   rm -f /etc/systemd/system/multi-user.target.wants/omarchy-provision-owner.service

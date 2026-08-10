@@ -22,7 +22,7 @@ if [[ -n $NODE_PACKAGE_DIR ]]; then
   NODE_TARBALL=$(find "$NODE_PACKAGE_DIR" -name "node-v*-linux-x64.tar.gz" -type f 2>/dev/null | head -n1)
   if [[ -z $NODE_TARBALL ]]; then
     if [[ ${OMARCHY_SETUP_CONTEXT:-} == "provision-owner" ]]; then
-      # A degraded reset on an old install may not have the tarball staged.
+      # A factory snapshot predating the bundled tarball may not have it staged.
       # Leave Node to the network rather than failing the whole first boot.
       echo "Warning: no bundled Node.js tarball in $NODE_PACKAGE_DIR; trying the network" >&2
       mise use -g node@latest || echo "Warning: Node.js install deferred (no network)" >&2
