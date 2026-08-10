@@ -4,24 +4,6 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
-audio_config_tmp=$(mktemp -d)
-trap 'rm -rf "$audio_config_tmp"' EXIT
-
-HOME="$audio_config_tmp/home" XDG_STATE_HOME="$audio_config_tmp/state" OMARCHY_PATH="$ROOT" lua <<'LUA'
-require("default.hypr.helpers")
-
-o.audio({ max_volume = 150 })
-
-local file = assert(io.open(os.getenv("XDG_STATE_HOME") .. "/omarchy/audio-max-volume", "r"))
-assert(file:read("*l") == "150")
-file:close()
-
-assert(not pcall(o.audio, { max_volume = 0 }))
-assert(not pcall(o.audio, { max_volume = "150" }))
-assert(not pcall(o.audio, { max_volume = 150.5 }))
-LUA
-pass "audio config validates and publishes max volume"
-
 run_node_test <<'JS'
 const audio = requireFromRoot('shell/plugins/panels/audio/Model.js')
 
@@ -68,3 +50,51 @@ assertEqual(audio.unmatchedMprisStreamLabel('audio-src', players, streams), 'Spo
 assertEqual(audio.streamLabel(streams[1], players, streams), 'Spotify', 'audio labels generic streams from MPRIS')
 assert(audio.streamRepresentsPlayer(streams[1], players[0], players, streams), 'audio links generic streams to active player')
 JS
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp"/{bin,state/omarchy}
+
+HOME="$tmp" XDG_STATE_HOME="$tmp/state" OMARCHY_PATH="$ROOT" lua <<'LUA'
+require("default.hypr.helpers")
+
+o.audio({ max_volume = 150 })
+
+local file = assert(io.open(os.getenv("XDG_STATE_HOME") .. "/omarchy/audio-max-volume"))
+assert(file:read("*l") == "150")
+file:close()
+
+assert(not pcall(o.audio, { max_volume = 0 }))
+assert(not pcall(o.audio, { max_volume = "150" }))
+assert(not pcall(o.audio, { max_volume = 150.5 }))
+LUA
+
+pass "audio validates and publishes max volume"
+
+printf '#!/bin/bash\necho test_sink\n' >"$tmp/bin/omarchy-audio-output-sink"
+printf '#!/bin/bash\n:\n' >"$tmp/bin/omarchy-osd"
+
+cat >"$tmp/bin/pactl" <<'SH'
+#!/bin/bash
+case "$1" in
+  get-sink-volume) printf 'Volume: %s%%\n' "$(<"$TEST_VOLUME")" ;;
+  get-sink-mute) echo "Mute: no" ;;
+  set-sink-mute) ;;
+  set-sink-volume) echo "${3%%%}" >"$TEST_VOLUME" ;;
+esac
+SH
+
+chmod +x "$tmp/bin/"*
+
+export TEST_VOLUME="$tmp/volume"
+export XDG_STATE_HOME="$tmp/state"
+export PATH="$tmp/bin:$PATH"
+
+echo 148 >"$TEST_VOLUME"
+"$ROOT/bin/omarchy-audio-output-volume" raise
+assertEqual "$(<"$TEST_VOLUME")" 150 "audio respects configured max volume"
+
+rm "$tmp/state/omarchy/audio-max-volume"
+echo 98 >"$TEST_VOLUME"
+"$ROOT/bin/omarchy-audio-output-volume" raise
+assertEqual "$(<"$TEST_VOLUME")" 100 "audio defaults max volume to 100 percent"
