@@ -275,15 +275,10 @@ def build_rate_limits(credentials: dict[str, str | None], payload: Any) -> dict[
   if api_percent >= 0:
     limits.append({"label": "Other Models", "percent": api_percent, "resetsAt": reset_at})
 
-  usage_status = str(payload.get("displayMessage") or "").strip()
-  if not usage_status:
-    usage_status = str(payload.get("autoModelSelectedDisplayMessage") or "").strip()
-
   return empty_result(
     ready=len(limits) > 0,
     limits=limits,
     tierLabel=format_tier(membership),
-    usageStatusText=usage_status,
   )
 
 
