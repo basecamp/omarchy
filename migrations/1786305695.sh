@@ -1,6 +1,8 @@
 echo "Remember the Bluetooth power state across reboots"
 
-marker=/var/lib/omarchy/migrations/1786305695
+marker="${OMARCHY_BLUETOOTH_MIGRATION_MARKER:-/var/lib/omarchy/migrations/1786305695}"
+main_conf="${OMARCHY_BLUETOOTH_MAIN_CONF:-/etc/bluetooth/main.conf}"
+unit_dest="${OMARCHY_BLUETOOTH_STATE_UNIT:-/etc/systemd/system/omarchy-bluetooth-state.service}"
 
 # Everything below is machine-wide, but migration completion is recorded per
 # user, so a second account on this box would run all of it again. That rerun
@@ -19,12 +21,12 @@ fi
 # only ever meant "never power the adapter on" and Bluetooth came up off on
 # every boot. Keep the flag, since owning the power-on is what makes the restore
 # deterministic, and install the piece that was missing.
-if [[ -f /etc/bluetooth/main.conf ]]; then
-  sudo sed -i 's/^#\?AutoEnable=.*/AutoEnable=false/' /etc/bluetooth/main.conf
+if [[ -f $main_conf ]]; then
+  sudo sed -i 's/^#\?AutoEnable=.*/AutoEnable=false/' "$main_conf"
 fi
 
 sudo install -Dm644 "$OMARCHY_PATH/default/systemd/system/omarchy-bluetooth-state.service" \
-  /etc/systemd/system/omarchy-bluetooth-state.service
+  "$unit_dest"
 sudo systemctl daemon-reload
 
 # Record the adapter as it is right now, before the unit starts. Without this
