@@ -61,8 +61,8 @@
   "trigger.transcode": {"icon":"󰧸","label":"Transcode","action":"omarchy-transcode"},
   "trigger.share": {"icon":"","label":"Share","aliases":["share"]},
   "trigger.toggle": {"icon":"󰔎","label":"Toggle","aliases":["toggle","toggles"]},
-  "trigger.tests": {"icon":"󰙨","label":"Tests"},
   "trigger.hardware": {"icon":"","label":"Hardware","aliases":["hardware","hw"]},
+  "trigger.tests": {"icon":"󰓅","label":"Speed Test"},
   "trigger.hardware.laptop-display": {"icon":"󰛧","label":"Laptop Display","when":"omarchy-hw-laptop","action":"omarchy-hyprland-monitor-internal toggle"},
   "trigger.hardware.mirror-display": {"icon":"󰍹","label":"Mirror Display","when":"omarchy-hw-laptop","action":"omarchy-hyprland-monitor-internal-mirror toggle"},
   "trigger.hardware.hybrid-gpu": {"icon":"","label":"Hybrid GPU","when":"omarchy-hw-hybrid-gpu","action":"omarchy-launch-floating-terminal-with-presentation omarchy-toggle-hybrid-gpu"},
@@ -84,6 +84,7 @@
   "trigger.toggle.screensaver": {"icon":"󱄄","label":"Screensaver","action":"omarchy-toggle-screensaver"},
   "trigger.toggle.nightlight": {"icon":"󰔎","label":"Nightlight","action":"omarchy-toggle-nightlight"},
   "trigger.toggle.top-bar": {"icon":"󰍜","label":"Menu Bar","action":"omarchy-toggle-bar"},
+  "trigger.toggle.battery-percentage": {"icon":"󰁹","label":"Battery Percentage","when":"omarchy-hw-laptop","action":"omarchy-shell omarchy.power togglePercentage"},
   "trigger.toggle.workspace-layout": {"icon":"󱂬","label":"Workspace Layout","action":"omarchy-hyprland-workspace-layout-toggle"},
   "trigger.toggle.window-gaps": {"icon":"","label":"Window Gaps","action":"omarchy-hyprland-window-gaps-toggle"},
   "trigger.toggle.one-window-ratio": {"icon":"","label":"1-Window Ratio","action":"omarchy-hyprland-window-single-square-aspect-toggle"},
@@ -172,6 +173,7 @@
   "setup.config.hyprsunset": {"icon":"","label":"Hyprsunset","action":"omarchy-launch-config-editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset"},
   "setup.config.xcompose": {"icon":"󰞅","label":"XCompose","action":"omarchy-launch-config-editor ~/.XCompose && omarchy-restart-xcompose"},
   "setup.direct-boot": {"icon":"","label":"Direct Boot","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-direct-boot"},
+  "setup.reset": {"icon":"󰑓","label":"Reset Computer","when":"[[ $(findmnt -no FSTYPE /) == btrfs ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-system-factory-reset"},
 
   // Install
   "install.package": {"icon":"󰣇","label":"Package","action":"xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-install"},

@@ -299,6 +299,7 @@ Item {
       body: row.body,
       image: row.image,
       glyph: row.glyph || "",
+      exec: row.exec || "",
       urgency: row.urgency,
       expireTimeout: row.expireTimeout || 0,
       timestamp: row.timestamp
@@ -390,6 +391,7 @@ Item {
         body: "",
         image: "",
         glyph: "󰂚",
+        exec: "",
         urgency: NotificationUrgency.Low,
         expireTimeout: 0,
         timestamp: Date.now()
@@ -438,13 +440,22 @@ Item {
     scheduleHistorySave()
   }
 
-  // Invoke the libnotify "default" action on the popup's underlying
-  // notification, if it has one, then dismiss. Clients register the default
-  // action with the canonical identifier "default"; e.g. screenshot toasts
-  // use `notify-send -A default=Edit ...` so click-the-card opens the editor.
+  // Run the popup's click action, then dismiss. Omarchy's own toasts carry the
+  // action as a command in the `exec` role (see execFromHints), which the
+  // persistence files preserve, so restored toasts stay clickable. Third-party
+  // clients register a libnotify action under the canonical identifier
+  // "default" instead; that one only works while the sender is still live.
   function invokePopupDefault(index) {
     if (index < 0 || index >= popupModel.count) return
     var entry = popupModel.get(index)
+    var command = entry ? String(entry.exec || "") : ""
+    if (command) {
+      // Detached so the launched command outlives the shell process, which the
+      // installer toasts depend on: they restart the shell as their first act.
+      Util.execDetached(command)
+      dismissPopup(index)
+      return
+    }
     // Restored rows have no live actions, and looking up liveRefs by their
     // old-generation id could fire an unrelated fresh notification's action.
     var ref = entry && !isRestoredRow(entry) ? liveRefs[entry.originalId] : null
@@ -806,6 +817,7 @@ Item {
           body: r.body,
           image: r.image,
           glyph: r.glyph || "",
+          exec: r.exec || "",
           urgency: r.urgency,
           expireTimeout: r.expireTimeout || 0,
           timestamp: r.timestamp

@@ -255,6 +255,43 @@ assertEqual(
   'notifications omit the deadline field until a restore sets it'
 )
 
+// A click action carried as a command is the only kind that survives a shell
+// restart: a libnotify action leaves its sender waiting on an id from a server
+// generation that no longer exists.
+assertEqual(
+  notifications.snapshotOf({ id: 3, hints: { 'omarchy-exec': 'omarchy-menu-keybindings' } }, 1).exec,
+  'omarchy-menu-keybindings',
+  'notifications capture the click command from the exec hint'
+)
+assertEqual(
+  notifications.snapshotOf({ id: 3, hints: { 'omarchy-glyph': '!' } }, 1).exec,
+  '',
+  'notifications leave the click command empty without an exec hint'
+)
+assertEqual(
+  notifications.popupEntry(
+    JSON.parse(notifications.serializePopup({ id: 1, originalId: 1, timestamp: 5, exec: "mpv '/tmp/a b.mp4'" }, 1)),
+    1
+  ).exec,
+  "mpv '/tmp/a b.mp4'",
+  'notifications round-trip the click command through popup files'
+)
+assertEqual(
+  notifications.popupEntry({ id: 1, originalId: 1, timestamp: 5 }, 1).exec,
+  '',
+  'notifications restore an empty click command for popups without one'
+)
+assertEqual(
+  notifications.historyEntry({ id: 1, exec: 'xdg-open /tmp/received' }, 1).exec,
+  'xdg-open /tmp/received',
+  'notifications keep the click command on history rows'
+)
+assertEqual(
+  notifications.dumpRows([{ id: 1, exec: 'xdg-open /tmp/received' }])[0].exec,
+  'xdg-open /tmp/received',
+  'notifications write the click command back out with history'
+)
+
 assertEqual(notifications.imageExtension('/tmp/screenshot.PNG'), 'png', 'notifications normalize image extensions')
 assertEqual(notifications.imageExtension('/tmp/no-extension'), 'png', 'notifications default missing image extension')
 assertEqual(notifications.imageExtension('/tmp/archive.reallylong'), 'png', 'notifications reject suspicious image extensions')
@@ -303,5 +340,17 @@ assert(
 assert(
   /awk 1 \\"\$1\\"\/\*\.json/.test(serviceQml),
   'notifications service delimits every popup file during restore'
+)
+assert(
+  /var command = entry \? String\(entry\.exec \|\| ""\) : ""[\s\S]{0,300}?Util\.execDetached\(command\)/.test(serviceQml),
+  'notifications service runs the popup click command itself instead of a libnotify action'
+)
+assert(
+  /exec: row\.exec \|\| ""/.test(serviceQml),
+  'notifications service carries the click command between models'
+)
+assert(
+  /exec: r\.exec \|\| ""/.test(serviceQml),
+  'notifications service saves the click command with history'
 )
 JS

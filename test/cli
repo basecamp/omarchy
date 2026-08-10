@@ -182,6 +182,32 @@ if [[ $output == *"omarchy update perform"* ]]; then
 fi
 pass "hidden update perform compatibility wrapper is not shown"
 
+# These three are install-time plumbing the ISO and install leaves call, so
+# they stay out of the listing a user browses -- while still routing, because
+# those callers use the CLI. A GROUP_DESCRIPTIONS entry would put the group
+# back in the top-level listing even with every command in it hidden, which is
+# why apply has none.
+output=$(timeout 5 "$CLI")
+if [[ $output == *"apply"* ]]; then
+  fail "a group whose commands are all hidden stays out of the top-level listing"
+fi
+pass "a group whose commands are all hidden stays out of the top-level listing"
+
+for internal in omarchy-apply-system omarchy-apply-hardware omarchy-apply-lock; do
+  if "$CLI" commands --json | jq -e --arg binary "$internal" \
+    '.commands[] | select(.binary == $binary)' >/dev/null; then
+    fail "$internal stays out of the default command listing"
+  fi
+
+  "$CLI" commands --all --json | jq -e --arg binary "$internal" \
+    '.commands[] | select(.binary == $binary) | select(.hidden)' >/dev/null ||
+    fail "$internal is still listed by commands --all"
+done
+pass "install-time setup plumbing is hidden from the setup wizards"
+
+output=$(timeout 5 "$CLI" apply hardware --help)
+assert_output_contains "hidden setup plumbing still routes" "$output" "omarchy-apply-hardware"
+
 output=$("$CLI" screenshot --help)
 assert_output_contains "root alias resolves to command help" "$output" "omarchy-capture-screenshot"
 

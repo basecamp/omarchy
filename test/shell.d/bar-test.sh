@@ -22,6 +22,24 @@ const shellSource = fs.readFileSync(root + '/shell/shell.qml', 'utf8')
 
 assert(/function toggleBarTransparency\(\): string \{[\s\S]*?shell\.bar\.toggleTransparency\(\)/.test(shellSource), 'shell exposes the bar transparency toggle over IPC')
 
+// Hiding must not unmap the bar. An unmapped layer surface has to be rebuilt on
+// every reveal, which measured ~150ms against ~20ms to tear it down; parking it
+// past the screen edge keeps show and hide symmetric at ~12ms.
+assert(
+  /visible: !remapGuard\.remapping/.test(barSource),
+  'bar stays mapped while hidden so revealing it does not rebuild the surface'
+)
+assert(
+  /exclusionMode: root\.barHidden \? ExclusionMode\.Ignore : ExclusionMode\.Auto/.test(barSource),
+  'a hidden bar reserves no space for itself'
+)
+for (const edge of ['top', 'bottom', 'left', 'right']) {
+  assert(
+    new RegExp(`${edge}: root\\.barHidden && root\\.position === "${edge}" \\? -root\\.barSize : 0`).test(barSource),
+    `a hidden bar parks past the ${edge} edge`
+  )
+}
+
 // The center section declares two arrangements and shows one; the hidden one
 // must not build its modules or every center widget exists twice.
 const moduleList = barSource.slice(barSource.indexOf('component ModuleList'), barSource.indexOf('component ModuleSlot'))
@@ -42,6 +60,67 @@ assertEqual(bar.pickDrawnSlot([drawn, placeholder]), drawn, 'bar picks the drawn
 assertEqual(bar.pickDrawnSlot([placeholder]), placeholder, 'bar falls back to the placeholder when nothing is drawn')
 assertEqual(bar.pickDrawnSlot([]), null, 'bar reports no slot when there are none')
 assertEqual(bar.pickDrawnSlot(null), null, 'bar tolerates a missing slot list')
+
+// Revealing the indicators can slide a neighbouring widget under a stationary
+// pointer; collapsing the peek on that un-hover re-opens it and stutters the
+// bar, so the peek stays held while the pointer is anywhere on the bar.
+const revealTimer = barSource.slice(barSource.indexOf('id: centerSectionRevealTimer'))
+const revealTimerBody = revealTimer.slice(0, revealTimer.indexOf('\n  }'))
+assert(
+  /!root\.centerSectionHovered && !root\.barHovered/.test(revealTimerBody),
+  'the indicator peek stays held while the pointer is anywhere on the bar'
+)
+
+// The timer runs on a delay, so it can fire for a pointer that has already come
+// back. Letting it assign the held state outright would then reveal indicators
+// from bar hover alone; it may only close what the center section opened.
+assert(
+  !/centerSectionRevealHeld = (?!false)/.test(revealTimerBody),
+  'the delayed collapse can only close the peek, never open it'
+)
+
+// The whole-bar hover has to come from an ancestor of the sections. A sibling
+// loses hover to whichever section the pointer moved onto, which is the very
+// signal the peek must not collapse on.
+const barLoader = barSource.slice(barSource.indexOf('sourceComponent: root.vertical ? verticalBar : horizontalBar'))
+const barLoaderBody = barLoader.slice(0, barLoader.indexOf('\n    }'))
+assert(
+  /setBarHovered\(hovered\)/.test(barLoaderBody),
+  'the whole-bar hover handler is a child of the bar loader, above both orientations'
+)
+
+// Unplugging a monitor tears its bar down mid-hover with no leave event, which
+// would leave that surface counted forever and the peek stuck open.
+assert(
+  /Component\.onDestruction: if \(hovered\) root\.setBarHovered\(false\)/.test(barLoaderBody),
+  'a bar torn down while hovered gives its hover back'
+)
+
+// The helper has to record the state it is handed and re-run the collapse once
+// the pointer leaves. It counts rather than assigns because every monitor's bar
+// reports here: a slide from one bar to the next can deliver the enter before
+// the leave, and a shared bool would read as un-hovered under a live pointer.
+const setBarHovered = barSource.slice(barSource.indexOf('function setBarHovered'))
+const setBarHoveredBody = setBarHovered.slice(0, setBarHovered.indexOf('\n  }'))
+assert(
+  /barHoverCount = Math\.max\(0, barHoverCount \+ \(hovered \? 1 : -1\)\)/.test(setBarHoveredBody),
+  'each bar surface adds to a hover tally instead of overwriting a shared flag'
+)
+assert(
+  /if \(barHoverCount === 0\) centerSectionRevealTimer\.restart\(\)/.test(setBarHoveredBody),
+  'the peek collapse re-runs once the pointer has left the last bar'
+)
+
+// Opening the peek stays the center section's own gesture: pointing straight at
+// a widget reveals nothing. Checking that only inside setBarHovered proves
+// nothing, since the shared reveal timer is the path a bar hover leaks through.
+const opensPeek = barSource.split('\n').filter(line => /centerSectionRevealHeld = true/.test(line))
+assertEqual(opensPeek.length, 1, 'exactly one line in the bar opens the indicator peek')
+const setCenterSectionHovered = barSource.slice(barSource.indexOf('function setCenterSectionHovered'))
+assert(
+  setCenterSectionHovered.slice(0, setCenterSectionHovered.indexOf('\n  }')).includes(opensPeek[0].trim()),
+  'hovering the bar never opens the peek on its own'
+)
 
 // A bar surface is built per monitor, so a panel hotkey has one live copy of
 // the widget per screen to choose between.

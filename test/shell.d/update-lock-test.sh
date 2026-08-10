@@ -33,6 +33,7 @@ SH
 
 for command in \
   omarchy-toggle-idle \
+  pkexec \
   systemd-inhibit \
   omarchy-update-dev \
   omarchy-update-keyring \
@@ -48,6 +49,7 @@ for command in \
   write_stub "$command" 'exit 0'
 done
 write_stub omarchy-update-available 'exit 1'
+write_stub pkexec 'exec "$@"'
 
 # omarchy-update should hold the lock before snapshotting, so a second update
 # cannot even enter its pre-update snapshot.
@@ -113,6 +115,28 @@ pass "omarchy-update keeps the update lock out of its sleep inhibitor"
 kill -0 "$inhibitor_pid" 2>/dev/null &&
   fail "update waits for its sleep inhibitor to stop before continuing"
 pass "omarchy-update waits for its sleep inhibitor to stop"
+
+if (( EUID != 0 )); then
+  sudo_log="$test_tmp/sudo.log"
+  pkexec_marker="$test_tmp/pkexec-used"
+  terminal_inhibit_pid_file="$test_tmp/terminal-inhibit-pid"
+  write_stub sudo '
+printf "%s\n" "$*" >>"$SUDO_LOG"
+if [[ $1 == "-v" ]]; then
+  exit 0
+fi
+exec "$@"'
+  write_stub pkexec 'touch "$PKEXEC_MARKER"; exec "$@"'
+
+  SUDO_LOG="$sudo_log" PKEXEC_MARKER="$pkexec_marker" INHIBIT_PID_FILE="$terminal_inhibit_pid_file" \
+    run_with_lock_env script -qefc "$ROOT/bin/omarchy-update-stay-awake start" /dev/null >/dev/null
+
+  grep -qx -- '-v' "$sudo_log" || fail "terminal sleep inhibition validates sudo in the foreground"
+  grep -q '^systemd-inhibit ' "$sudo_log" || fail "terminal sleep inhibition runs through sudo"
+  [[ ! -e $pkexec_marker ]] || fail "terminal sleep inhibition does not use pkexec"
+  run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" stop
+  pass "terminal updates use sudo instead of Polkit for sleep inhibition"
+fi
 
 # Update-owned Stay Awake state must be cleared before the restart helper can
 # reboot the machine, rather than relying on an EXIT trap during shutdown.

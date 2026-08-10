@@ -112,6 +112,7 @@ mkdir -p "$PI_HOME/.pi/agent/sessions/project" "$PI_HOME/.omp/agent/sessions/pro
 cat >"$PI_HOME/.pi/agent/sessions/project/pi.jsonl" <<EOF
 {"type":"message","id":"pi-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"anthropic","api":"anthropic-messages","model":"claude-pi","usage":{"input":10,"output":4,"cacheRead":3,"cacheWrite":2,"totalTokens":19}}}
 {"type":"message","id":"codex-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","model":"gpt-test","usage":{"input":999,"output":999}}}
+{"type":"message","id":"kimi-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"kimi-coding","api":"anthropic-messages","model":"k3","usage":{"input":999,"output":999}}}
 EOF
 cat >"$PI_HOME/.omp/agent/sessions/project/omp.jsonl" <<EOF
 { "type": "message", "id": "omp-1", "timestamp": "$timestamp", "message": { "role": "assistant", "provider": "anthropic", "model": "claude-omp", "usage": { "input": 20, "output": 5, "cacheRead": 4, "cacheWrite": 1, "totalTokens": 30 } } }
@@ -125,3 +126,55 @@ result=$(HOME="$PI_HOME" XDG_CACHE_HOME="$PI_HOME/.cache" XDG_DATA_HOME="$PI_HOM
 [[ $(jq -c '.modelUsage' <<<"$result") == '{"claude-omp":{"cacheCreationInputTokens":1,"cacheReadInputTokens":4,"inputTokens":20,"outputTokens":5},"claude-pi":{"cacheCreationInputTokens":2,"cacheReadInputTokens":3,"inputTokens":10,"outputTokens":4}}' ]] ||
   fail "Claude collector filters pi and omp sessions to Anthropic providers" "$result"
 pass "Claude collector counts pi and omp subscription usage"
+
+# Collectors overlap in practice: the update command backgrounds one per agent
+# while the panel refreshes on its own. Two writers aiming at one cache file
+# must both land, not trip over a shared temp path.
+race_output=$(python3 - "$ROOT/bin/omarchy-agent-usage-claude" "$TEST_HOME/race.json" <<'PY'
+import importlib.util
+import json
+import sys
+import threading
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+
+# The collector has no .py suffix, so name its loader explicitly.
+spec = importlib.util.spec_from_loader("collector", SourceFileLoader("collector", sys.argv[1]))
+collector = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(collector)
+
+target = Path(sys.argv[2])
+failures = []
+start = threading.Barrier(8)
+
+def hammer(writer):
+  start.wait()
+  for round in range(25):
+    try:
+      collector.write_json(target, {"writer": writer, "round": round})
+    except Exception as error:
+      failures.append(repr(error))
+
+threads = [threading.Thread(target=hammer, args=(writer,)) for writer in range(8)]
+for thread in threads:
+  thread.start()
+for thread in threads:
+  thread.join()
+
+leftovers = sorted(path.name for path in target.parent.glob(target.name + ".*"))
+print(json.dumps({
+  "failures": failures[:3],
+  "mode": oct(target.stat().st_mode & 0o777),
+  "payload": json.loads(target.read_text(encoding="utf-8")),
+  "leftovers": leftovers,
+}))
+PY
+)
+
+[[ $(jq -c '.failures' <<<"$race_output") == "[]" ]] ||
+  fail "Claude collector survives concurrent writes to one cache file" "$race_output"
+[[ $(jq -r '.payload.writer != null and (.leftovers | length) == 0' <<<"$race_output") == "true" ]] ||
+  fail "Claude collector leaves one intact cache file and no temp files" "$race_output"
+[[ $(jq -r '.mode' <<<"$race_output") == "0o644" ]] ||
+  fail "Claude collector keeps cache files readable" "$race_output"
+pass "Claude collector survives concurrent writes to one cache file"

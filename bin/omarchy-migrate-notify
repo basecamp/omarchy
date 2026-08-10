@@ -26,8 +26,6 @@ else
   message="Click to run $pending_count pending migrations."
 fi
 
-notify_command=$(printf 'if [[ -n $(omarchy-notification-send -u critical -g  "Pending Omarchy Migrations" %q -a) ]]; then omarchy-launch-floating-terminal-with-presentation omarchy-migrate; fi' "$message")
-
 # This runs from omarchy-migrate-notify.service after graphical-session.target,
 # but the target can be reached before the shell has claimed
 # org.freedesktop.Notifications. Without the wait the toast is sent into the
@@ -40,11 +38,10 @@ if update_in_progress; then
   exit 0
 fi
 
-# A transient service rather than a scope, which would block here until the
-# toast was answered and keep this oneshot activating for that whole time. The
-# graphical slice ends an unanswered toast at logout.
-unit="omarchy-migrations-notification-$(date +%Y%m%d%H%M%S)"
-systemd-run --user --collect --slice=background-graphical.slice --unit="$unit" bash -lc "$notify_command" >/dev/null 2>&1 && exit 0
+# The shell keeps the click command with the toast, so this oneshot can hand the
+# invitation over and exit instead of staying activated until it is answered.
+omarchy-notification-send -u critical -g  "Pending Omarchy Migrations" "$message" \
+  --exec "omarchy-launch-floating-terminal-with-presentation omarchy-migrate" && exit 0
 
 # Reached when the notification could not be handed off, so fall back to telling
 # the user in the terminal.

@@ -2,12 +2,13 @@
 
 # omarchy:summary=Finish first-login setup for Omarchy.
 # omarchy:args=[--force]
+# omarchy:hidden=true
 
 set -e
 
 usage() {
   cat <<USAGE
-Usage: omarchy-first-run [--force]
+Usage: omarchy-provision-first-run [--force]
 
 Run first-login user setup and notification hooks. By default this only runs
 once per user. Use --force to rerun the full sequence and refresh user setup.
@@ -42,7 +43,7 @@ if omarchy-done check "$FIRST_RUN_DONE" && (( force == 0 )); then
   exit 0
 fi
 
-omarchy-finalize-user "${finalize_user_args[@]}" || true
+omarchy-provision-user "${finalize_user_args[@]}" || true
 
 mkdir -p "$state_dir"
 
@@ -82,12 +83,10 @@ run_first_run_step "apply speaker tuning" \
   bash "$OMARCHY_PATH/install/user/first-run/audio-tuning.sh"
 
 omarchy-notification-wait || log_first_run "Timed out waiting for notification service; continuing"
+# Each send returns only once the server has taken the toast, so sending in
+# order is enough to stack them newest-on-top.
 run_first_run_step "show welcome notification" \
   bash "$OMARCHY_PATH/install/user/first-run/welcome.sh"
-# The first-run notification scripts register action callbacks in background
-# notify-send processes. Give the notification server a tick to ingest the
-# welcome toast before queueing the Wi-Fi/update toasts.
-sleep 0.3
 run_first_run_step "show Wi-Fi/update notifications" \
   bash "$OMARCHY_PATH/install/user/first-run/wifi.sh"
 

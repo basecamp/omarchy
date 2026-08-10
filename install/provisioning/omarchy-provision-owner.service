@@ -1,0 +1,35 @@
+# First-boot provisioning: asks for the user on tty1 before SDDM starts.
+# Armed by /var/lib/omarchy/provisioning/pending (written by a deferred-provisioning ISO install or
+# omarchy-system-factory-reset); installed to /etc/systemd/system by whichever of
+# those staged it. Not shipped enabled — a normal install never runs it.
+
+# plymouth is dismissed via ExecStartPre rather than ordered against
+# (plymouth-quit-wait), keeping this unit free of ordering-cycle risk with
+# display-manager.service.
+# The wipe-pending condition gates against a failed factory wipe: After= is
+# ordering only, and running user setup on a half-wiped system would create
+# the new account on state a wipe retry later deletes. While wipe-pending
+# remains, setup stays down and the wipe retries on the next boot.
+[Unit]
+Description=Omarchy provisioning first-boot user setup
+ConditionPathExists=/var/lib/omarchy/provisioning/pending
+ConditionPathExists=!/var/lib/omarchy/provisioning/wipe-pending
+After=systemd-user-sessions.service omarchy-system-factory-reset-finish.service
+Before=display-manager.service getty@tty1.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=-/usr/bin/plymouth quit
+ExecStart=/usr/bin/omarchy-provision-owner
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,25 +1,16 @@
 notify_update() {
-  (
-    if [[ -n $(omarchy-notification-send -u critical -g  "Update System" "$1" -a) ]]; then
-      omarchy-launch-floating-terminal-with-presentation omarchy-update
-    fi
-  ) >/dev/null 2>&1 &
+  omarchy-notification-send -u critical -g  "Update System" "$1" \
+    --exec "omarchy-launch-floating-terminal-with-presentation omarchy-update"
 }
 
 notify_wifi() {
-  (
-    if [[ -n $(omarchy-notification-send -u critical -g 󰖩 "Setup Wi-Fi" "Click to configure the wireless network." -a) ]]; then
-      omarchy-shell shell toggle omarchy.network
-    fi
-  ) >/dev/null 2>&1 &
+  omarchy-notification-send -u critical -g 󰖩 "Setup Wi-Fi" "Click to configure the wireless network." \
+    --exec "omarchy-shell shell toggle omarchy.network"
 }
 
 if ! ping -c3 -W1 1.1.1.1 >/dev/null 2>&1; then
+  # Newest stacks on top, and Wi-Fi is what you need first, so send it last.
   notify_update "When you have internet, click to update the system."
-  # Both toasts are sent from background subshells, so let the update one
-  # register before queueing Wi-Fi. Newest stacks on top, and Wi-Fi is what
-  # you need first.
-  sleep 0.3
   notify_wifi
 else
   notify_update "Click to update the system."

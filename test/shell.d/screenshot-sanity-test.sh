@@ -12,7 +12,9 @@ cleanup() {
     kill "$QS_PID" 2>/dev/null || true
     wait "$QS_PID" 2>/dev/null || true
   fi
-  [[ -n $TMPDIR && -d $TMPDIR ]] && rm -rf "$TMPDIR"
+  if [[ -n $TMPDIR && -d $TMPDIR ]]; then
+    rm -rf "$TMPDIR"
+  fi
 }
 trap cleanup EXIT
 

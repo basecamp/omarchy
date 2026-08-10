@@ -2,8 +2,8 @@
 
 # omarchy:summary=Configure the bar and its widget layout
 # omarchy:group=bar
-# omarchy:args=use <id> | reset | defaults | position <top|bottom|left|right> | transparent <true|false|toggle> | move <id> [placement] | set <id> <key> <value> [--json] [placement]
-# omarchy:examples=omarchy bar use local.neon-bar | omarchy bar move omarchy.clock --section center --index 0 | omarchy bar set omarchy.clock format HH:mm
+# omarchy:args=use <id> | reset | defaults | position <top|bottom|left|right> | transparent <true|false|toggle> | put <id> [placement] | move <id> [placement] | set <id> <key> <value> [--json] [placement]
+# omarchy:examples=omarchy bar use local.neon-bar | omarchy bar put omarchy.keyboard-layout --after omarchy.clock | omarchy bar move omarchy.clock --section center --index 0 | omarchy bar set omarchy.clock format HH:mm
 
 set -euo pipefail
 
@@ -18,6 +18,8 @@ Usage: omarchy bar <command> [args...]
   defaults                             Restore the default bar and service widgets
   position <top|bottom|left|right>     Bar position
   transparent <true|false|toggle>      Bar transparency
+  put <id> [placement]                 Put a widget on the bar, leaving one
+                                       that is already there where it is
   move <id> [placement]                Move a widget within or between sections
   set <id> <key> <value> [--json] [placement]
                                        Set a per-widget option
@@ -33,8 +35,12 @@ Placement:
 Enable and disable widgets with 'omarchy plugin enable' and
 'omarchy plugin disable'.
 
+'put' looks for --before / --after within the section it is adding to, and
+falls back to the end of that section when the named widget is not there.
+
 Examples:
   omarchy bar use local.neon-bar
+  omarchy bar put omarchy.keyboard-layout --after omarchy.clock
   omarchy bar move omarchy.media left
   omarchy bar move omarchy.clock --section center --index 0
   omarchy bar set omarchy.clock format HH:mm
@@ -152,22 +158,14 @@ cmd_use() {
 cmd_defaults() {
   (( $# == 0 )) || fail "defaults does not take arguments"
 
-  local catalog
   local optional_widgets="[]"
   local service widget
-  catalog=$(omarchy-plugin-catalog)
   for service in dropbox tailscale; do
     if "omarchy-installed-service-$service"; then
-      widget=$(jq -c --arg id "omarchy.$service" '
-        map(select(.id == $id))[0] as $plugin
-        | {
-            id: $id,
-            section: (
-              $plugin.barWidget.defaultSection // "center"
-              | if IN("left", "center", "right") then . else "center" end
-            )
-          }
-      ' <<<"$catalog")
+      widget=$(jq -cn \
+        --arg id "omarchy.$service" \
+        --arg section "$(bar_widget_default_section "omarchy.$service")" \
+        '{id: $id, section: $section}')
       optional_widgets=$(jq -c --argjson widget "$widget" '. + [$widget]' <<<"$optional_widgets")
     fi
   done
@@ -217,6 +215,57 @@ cmd_transparent() {
     commit "$NORMALIZE | .bar.transparent = \$transparent" --argjson transparent "$transparent"
     echo "Bar transparency set to $transparent"
   fi
+}
+
+bar_widget_default_section() {
+  local catalog
+  catalog=$(omarchy-plugin-catalog 2>/dev/null) || {
+    echo "center"
+    return 0
+  }
+  jq -r --arg id "$1" '
+    map(select(.id == $id))[0].barWidget.defaultSection // "center"
+    | if IN("left", "center", "right") then . else "center" end
+  ' <<<"$catalog"
+}
+
+# Placement lives in the shell, which owns the config it has in memory. Putting
+# a widget therefore asks the shell rather than editing the file behind it.
+cmd_put() {
+  local id="${1:-}"
+  [[ -n $id ]] || fail "put requires a widget id"
+  shift
+
+  local positional_section=""
+  if (( $# > 0 )) && [[ $1 != --* ]]; then
+    positional_section="$1"
+    validate_section "$positional_section"
+    shift
+  fi
+
+  parse_placement "$@"
+  [[ -z $positional_section || -z $PLACEMENT_SECTION ]] ||
+    fail "specify a section positionally or with --section, not both"
+  [[ -z $positional_section ]] || PLACEMENT_SECTION="$positional_section"
+  [[ -z $PLACEMENT_FROM_SECTION && -z $PLACEMENT_FROM_INDEX ]] ||
+    fail "put does not accept --from-section or --from-index"
+
+  # Nothing to place into with no shell to place it, and a caller that runs
+  # unattended should say so and carry on rather than fail. A shell that is
+  # there and refuses is a real error.
+  if ! omarchy-shell shell ping >/dev/null 2>&1; then
+    echo "omarchy-shell is not running; $id was not put on the bar" >&2
+    return 0
+  fi
+
+  local result
+  result=$(omarchy-shell shell putBarWidget "$id" "$(placement_json)") ||
+    fail "could not put $id on the bar"
+  [[ $result != "unknown" ]] || fail "$id is not a known widget; run 'omarchy plugin list'"
+  [[ $result == "ok" ]] || fail "$result"
+  # Says nothing about whether it had to be placed: a widget already on the bar
+  # is left where it is, and both outcomes are the same answer to the caller.
+  echo "$id is on the bar"
 }
 
 cmd_move() {
@@ -301,6 +350,9 @@ case "$command" in
     ;;
   transparent)
     cmd_transparent "$@"
+    ;;
+  put)
+    cmd_put "$@"
     ;;
   move)
     cmd_move "$@"
