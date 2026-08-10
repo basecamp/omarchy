@@ -41,16 +41,22 @@ o.bind("SUPER + ALT + code:35", "Make webcam overlay larger", "omarchy-capture-w
 o.bind("SUPER + PRINT", "Color picker", "pkill hyprpicker || hyprpicker -a")
 o.bind("SUPER + CTRL + PRINT", "Extract text (OCR) from screenshot", "omarchy-capture-text")
 
--- While the slurp region picker is open, Return captures the entire focused
--- monitor. The bind lives exactly as long as a selection layer is on screen
--- (slurp opens one per monitor), so it cannot leak or get stuck.
+-- Keyboard control for the slurp region picker (see omarchy-capture-region).
+-- The binds live exactly as long as a selection layer is on screen (slurp
+-- opens one per monitor), so they cannot leak or get stuck.
 local selection_layers = 0
 
 hl.on("layer.opened", function(layer)
   if layer.namespace == "selection" then
     selection_layers = selection_layers + 1
     if selection_layers == 1 then
-      hl.bind("RETURN", hl.dsp.exec_cmd("omarchy-capture-region --take-fullscreen"), { description = "Capture entire screen" })
+      hl.bind("RETURN", hl.dsp.exec_cmd("omarchy-capture-region --take-window"), { description = "Capture highlighted window" })
+      hl.bind("CTRL + RETURN", hl.dsp.exec_cmd("omarchy-capture-region --take-fullscreen"), { description = "Capture entire screen" })
+      hl.bind("TAB", hl.dsp.exec_cmd("omarchy-capture-region --select-window next"), { description = "Select next window to capture" })
+      hl.bind("CTRL + TAB", hl.dsp.exec_cmd("omarchy-capture-region --select-window prev"), { description = "Select previous window to capture" })
+      for _, direction in ipairs({ "left", "right", "up", "down" }) do
+        hl.bind(direction:upper(), hl.dsp.exec_cmd("omarchy-capture-region --select-window " .. direction), { description = "Select window to capture" })
+      end
     end
   end
 end)
@@ -60,6 +66,12 @@ hl.on("layer.closed", function(layer)
     selection_layers = selection_layers - 1
     if selection_layers == 0 then
       hl.unbind("RETURN")
+      hl.unbind("CTRL + RETURN")
+      hl.unbind("TAB")
+      hl.unbind("CTRL + TAB")
+      for _, direction in ipairs({ "LEFT", "RIGHT", "UP", "DOWN" }) do
+        hl.unbind(direction)
+      end
     end
   end
 end)
