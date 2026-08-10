@@ -222,3 +222,17 @@ pass "bluetooth state powers on a fresh install"
 bluetooth_state_run restore absent
 grep -q "power" "$state_log" && fail "bluetooth state gives up when no adapter appears"
 pass "bluetooth state gives up when no adapter appears"
+
+# save runs from ExecStop, on a machine already on its way down. A truncating
+# redirect cut short there leaves a zero-byte file, so the write lands under a
+# temporary name and is renamed over the real one.
+bluetooth_state_run save yes
+[[ ! -e "$state_file.new" ]] || fail "bluetooth state leaves no half-written file behind"
+pass "bluetooth state leaves no half-written file behind"
+
+# And should an empty file turn up anyway, it is not a state anyone chose.
+# Powering on here is the failure a user who turned Bluetooth off would notice.
+: >"$state_file"
+bluetooth_state_run restore no
+grep -q "power" "$state_log" && fail "bluetooth state does not power on from an unfinished write"
+pass "bluetooth state does not power on from an unfinished write"

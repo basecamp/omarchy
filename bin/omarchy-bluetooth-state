@@ -36,28 +36,54 @@ wait_for_adapter() {
   return 1
 }
 
+# Write beside the file and rename over it. save runs from ExecStop, so its
+# window is a machine on its way down: a truncating redirect that loses power
+# mid-write leaves a zero-byte file behind, and an empty file is not a state
+# anyone chose. A rename swaps the whole contents or nothing.
+write_state() {
+  mkdir -p "$(dirname "$STATE_FILE")" &&
+    echo "$1" >"$STATE_FILE.new" &&
+    mv -f "$STATE_FILE.new" "$STATE_FILE"
+}
+
+# Non-zero means no adapter could be read and nothing was recorded.
+save_state() {
+  local state
+  state=$(show)
+
+  [[ $state == *"Powered:"* ]] || return 1
+
+  if [[ $state == *"Powered: yes"* ]]; then
+    write_state on
+  else
+    write_state off
+  fi
+}
+
 case "${1:-}" in
   save)
-    state=$(show)
-
     # No adapter to read. Keep the last known state rather than recording a
     # spurious "off" that the next boot would apply.
-    [[ $state == *"Powered:"* ]] || exit 0
-
-    mkdir -p "$(dirname "$STATE_FILE")"
-    if [[ $state == *"Powered: yes"* ]]; then
-      echo on >"$STATE_FILE"
-    else
-      echo off >"$STATE_FILE"
-    fi
+    save_state || exit 0
     ;;
   restore)
-    # No saved state means a fresh install, so power on and match what stock
-    # BlueZ would have done with AutoEnable left at its default.
+    # No saved state at all means a fresh install, so power on and match what
+    # stock BlueZ would have done with AutoEnable left at its default.
     target=on
-    if [[ -r $STATE_FILE ]]; then
-      read -r saved <"$STATE_FILE" || saved=""
-      [[ $saved == "on" || $saved == "off" ]] && target=$saved
+
+    if [[ -e $STATE_FILE ]]; then
+      # A file that exists but reads back as neither "on" nor "off" is a write
+      # that never finished. Take it as off: coming up powered is the failure a
+      # user who turned Bluetooth off would actually notice, and powering on is
+      # only the right default when there is genuinely nothing saved.
+      saved=""
+      read -r saved <"$STATE_FILE" 2>/dev/null
+
+      if [[ $saved == "on" ]]; then
+        target=on
+      else
+        target=off
+      fi
     fi
 
     # Nothing to do, and nothing to race: with AutoEnable off, bluetoothd
