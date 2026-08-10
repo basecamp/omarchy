@@ -13,4 +13,16 @@ fi
 sudo install -Dm644 "$OMARCHY_PATH/default/systemd/system/omarchy-bluetooth-state.service" \
   /etc/systemd/system/omarchy-bluetooth-state.service
 sudo systemctl daemon-reload
+
+# Record the adapter as it is right now, before the unit starts. Without this
+# the first restore finds no saved state, reads the machine as a fresh install,
+# and powers the adapter on mid-update for anyone who deliberately keeps
+# Bluetooth off. Seeded, restore matches what is already there and does nothing.
+if ! omarchy-cmd-missing omarchy-bluetooth-state; then
+  sudo omarchy-bluetooth-state save
+fi
+
+# Nothing here restarts bluetooth.service, so connected peripherals stay
+# connected through the update. Starting the unit now means its ExecStop is in
+# place for the next shutdown, so the state is captured without a reboot first.
 sudo systemctl enable --now omarchy-bluetooth-state.service
