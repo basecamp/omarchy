@@ -5,7 +5,6 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 import "OsdModel.js" as OsdModel
-import "../../Ui/RangeModel.js" as RangeModel
 
 Item {
   id: root
@@ -20,10 +19,9 @@ Item {
   property int duration: 1200
 
   readonly property bool mediaOsd: iconKey.indexOf("media") === 0 || iconKey.indexOf("player") === 0
-  readonly property bool amplificationEnabled: RangeModel.thresholdEnabled(0, maxValue, 100)
-  readonly property bool amplified: RangeModel.amplified(value, 0, maxValue, 100)
-  readonly property real normalBoundary: RangeModel.fraction(100, 0, maxValue)
-
+  readonly property bool amplificationEnabled: maxValue > 100
+  readonly property bool amplified: value > 100
+  readonly property real normalBoundary: amplificationEnabled ? 100 / maxValue : 1
   // The card is built out of measured columns instead of fixed widths, so it
   // keeps exactly `pad` between border and content on every side whatever
   // glyph or message it carries. Messages grow with their text up to

@@ -21,8 +21,7 @@ Panel {
   readonly property var activeMediaPlayer: mediaService ? mediaService.activePlayer : null
   readonly property string stateHome: Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state"
   readonly property string audioConfigPath: stateHome + "/omarchy/audio-max-volume"
-  property int maxVolumePercent: 100
-  readonly property real maxVolume: maxVolumePercent / 100
+  property real maxVolume: 1
 
   readonly property var candidateSinks: {
     var list = []
@@ -439,7 +438,7 @@ Panel {
     bar.shell.summon("omarchy.osd", JSON.stringify({
       icon: outputIcon(volume),
       value: Math.round(volume * 100),
-      max: maxVolumePercent,
+      max: Math.round(root.maxVolume * 100),
       progressText: Math.round(volume * 100) + "%"
     }))
   }
@@ -603,10 +602,10 @@ Panel {
     watchChanges: true
     printErrors: false
     onLoaded: {
-      var raw = String(text()).trim()
-      root.maxVolumePercent = /^[1-9][0-9]*$/.test(raw) ? parseInt(raw, 10) : 100
+      var value = parseInt(String(text()).trim(), 10)
+      root.maxVolume = value > 0 ? value / 100 : 1
     }
-    onLoadFailed: root.maxVolumePercent = 100
+    onLoadFailed: root.maxVolume = 1
     onFileChanged: reload()
   }
 
@@ -847,7 +846,7 @@ Panel {
                 anchors.rightMargin: Style.space(6)
                 minimum: 0
                 maximum: root.maxVolume
-                threshold: root.maxVolumePercent > 100 ? 1 : maximum
+                threshold: root.maxVolume > 1 ? 1 : maximum
                 step: 0.05
                 value: root.outputVolume
                 opacity: root.outputMuted ? 0.5 : 1.0

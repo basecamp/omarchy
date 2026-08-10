@@ -1,6 +1,5 @@
 import QtQuick
 import qs.Commons
-import "RangeModel.js" as RangeModel
 
 Item {
   id: root
@@ -44,9 +43,9 @@ Item {
 
   readonly property real range: Math.max(0.0001, maximum - minimum)
   readonly property real progress: Math.max(0, Math.min(1, (liveValue - minimum) / range))
-  readonly property bool thresholdEnabled: RangeModel.thresholdEnabled(minimum, maximum, threshold)
-  readonly property real thresholdProgress: RangeModel.fraction(threshold, minimum, maximum)
-  readonly property bool aboveThreshold: RangeModel.amplified(liveValue, minimum, maximum, threshold)
+  readonly property bool thresholdEnabled: threshold > minimum && threshold < maximum
+  readonly property real thresholdProgress: Math.max(0, Math.min(1, (threshold - minimum) / range))
+  readonly property bool aboveThreshold: thresholdEnabled && liveValue > threshold
   readonly property bool _hot: mouseArea.containsMouse || root.dragging
 
   Rectangle {
