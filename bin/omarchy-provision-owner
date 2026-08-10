@@ -171,7 +171,11 @@ DARK="${CSI}90m"
 
 STATE_FILE=/run/omarchy-provision-owner.state
 FINALIZE_WARNING_FLAG=/run/omarchy-provision-owner.finalize-warning
+# Rows the setup screen occupies: logo, blank, title, blank, bar, blank, tip.
+SETUP_HEIGHT=$((LOGO_HEIGHT + 6))
+SETUP_TOP_ROW=1
 DYNAMIC_ROW=$((LOGO_HEIGHT + 3))
+LAST_SETUP_SIZE=""
 
 tips=(
   "Super + Space opens the Omarchy menu for apps, settings, and more"
@@ -200,6 +204,8 @@ term_cols() {
   [[ $cols =~ ^[0-9]+$ ]] && (( cols > 0 )) || cols=${COLUMNS:-80}
   printf '%s' "$cols"
 }
+
+term_size() { stty size 2>/dev/null </dev/tty || printf '24 80\n'; }
 
 # A fingerprint of the console geometry: the VT size plus the framebuffer's
 # identity and pixel size. On a fresh first boot the VT can come up in a
@@ -381,14 +387,33 @@ setup_progress() {
   return 0
 }
 
+# Vertically center the setup block the way greeter_screen centers its splash,
+# so the screen the owner watches through finalization is composed rather than
+# stacked from row one — and first boot bookends the install identically.
+measure_setup_layout() {
+  local rows
+  LAST_SETUP_SIZE=$(term_size)
+  rows=${LAST_SETUP_SIZE%% *}
+  [[ $rows =~ ^[0-9]+$ ]] || rows=24
+  SETUP_TOP_ROW=$(((rows - SETUP_HEIGHT) / 2))
+  (( SETUP_TOP_ROW < 0 )) && SETUP_TOP_ROW=0
+  SETUP_TOP_ROW=$((SETUP_TOP_ROW + 1))
+  DYNAMIC_ROW=$((SETUP_TOP_ROW + LOGO_HEIGHT + 1))
+}
+
 render_setup_static() {
-  printf '%s%s' "$HIDE_CURSOR" "$CLEAR"
-  blank_line
+  measure_setup_layout
+  printf '%s%s%s%d;1H' "$HIDE_CURSOR" "$CLEAR" "$CSI" "$SETUP_TOP_ROW"
   render_logo
   blank_line
 }
 
 render_setup_dynamic() {
+  # The VT can still resize under us — the same virtio-gpu KMS handoff the
+  # greeter watches for. left_padding recomputes every frame, but the logo is
+  # drawn once, so repaint it at the new center rather than leaving the centered
+  # block stranded against a stale geometry.
+  [[ $(term_size) == "$LAST_SETUP_SIZE" ]] || render_setup_static
   set_now
   setup_progress
   printf '%s%d;1H' "$CSI" "$DYNAMIC_ROW"
@@ -470,18 +495,26 @@ greeter_screen() {
     # it never restarts — a restart is what flashed. The effect reads from
     # /dev/null so it never swallows the Return the foreground read waits on;
     # --reuse-canvas paints upward from the saved cursor, anchored one row below
-    # the logo to repaint exactly the rows drawn above. --canvas-width is cols-1
-    # to stay off the autowrap column.
+    # the logo to repaint exactly the rows drawn above.
+    #
+    # --xterm-colors is what actually keeps the palette indexed: ttfx resolves
+    # even indexed stops to truecolor otherwise, and the console reduces 256-colour
+    # codes well but 24-bit ones badly — that reduction is the muddy lavender.
+    # It also pins the settle colour to index 2, matching the green logo drawn
+    # above. --canvas-width is cols-2, not cols-1: ttfx centres its text two
+    # columns right of plain centering, so cols-1 lands the animated logo a
+    # column off the static one and it jumps when the effect starts.
     printf '%s%d;1H\0337' "$CSI" "$((logo_row + LOGO_HEIGHT))"
     # Run ttfx directly (not inside a `while` subshell) so $anim is ttfx's own
     # PID: killing a wrapping subshell would orphan ttfx, which then keeps
     # painting the logo over the keyboard step. --cycles is high enough that it
     # never ends on its own before Return.
     ttfx -i "$LOGO_PATH" \
-      --canvas-width "$((cols - 1))" \
+      --canvas-width "$((cols > 2 ? cols - 2 : cols))" \
       --anchor-text c \
       --frame-rate 60 \
       --reuse-canvas \
+      --xterm-colors \
       colorshift \
       --gradient-stops 2 10 6 10 \
       --gradient-frames 3 \
