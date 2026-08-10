@@ -74,8 +74,9 @@ fi
 
 selection_file=$(mktemp)
 done_file=$(mktemp)
+pending_file=$(mktemp)
 rm -f "$done_file"
-trap 'rm -f "$selection_file" "$done_file"' EXIT
+trap 'rm -f "$selection_file" "$done_file" "$pending_file"' EXIT
 
 image_dirs_env=""
 for dir in "${image_dirs[@]}"; do
@@ -144,7 +145,8 @@ generate_thumbnail() {
   local tmp="$thumbnail.$$.jpg"
 
   if mkdir "$lock" 2>/dev/null; then
-    if magick "${image}[0]" -auto-orient -resize '1536x864^' -gravity center -extent '1536x864' -strip -quality 82 "$tmp"; then
+    # Callers fan out one generator per image, so keep each vips single-threaded.
+    if VIPS_CONCURRENCY=1 vipsthumbnail "$image" --size 1536x864 --smartcrop=centre --path "$tmp[Q=82,strip]"; then
       mv -f "$tmp" "$thumbnail"
     else
       rm -f "$tmp" "$thumbnail"
@@ -186,10 +188,19 @@ thumbnail_for() {
       return
     fi
 
-    generate_thumbnail "$image" "$thumbnail"
+    printf '%s\0%s\0' "$image" "$thumbnail" >>"$pending_file"
   fi
 
-  [[ -f $thumbnail ]] && printf '%s' "$thumbnail"
+  printf '%s' "$thumbnail"
+}
+
+# Generate every queued thumbnail at once; each vips run is single-threaded.
+drain_pending_thumbnails() {
+  [[ -s $pending_file ]] || return 0
+
+  export -f generate_thumbnail
+  xargs -a "$pending_file" -0 -n 2 -P "$(nproc)" \
+    bash -c 'generate_thumbnail "$1" "$2"' _ >/dev/null 2>&1 || true
 }
 
 if [[ $rows_cache_hit != true && -f $rows_cache_file && -f $rows_signature_file ]] && cmp -s "$rows_signature_file" <(printf '%s' "$rows_signature"); then
@@ -209,6 +220,22 @@ elif [[ $rows_cache_hit != true ]]; then
       rows+=$'\n'"$image"$'\t'"$thumbnail"
     fi
   done
+
+  drain_pending_thumbnails
+
+  if [[ -s $pending_file ]]; then
+    pruned=""
+    while IFS=$'\t' read -r row_image row_thumbnail; do
+      [[ -e $row_thumbnail ]] || continue
+
+      if [[ -z $pruned ]]; then
+        pruned="$row_image"$'\t'"$row_thumbnail"
+      else
+        pruned+=$'\n'"$row_image"$'\t'"$row_thumbnail"
+      fi
+    done <<<"$rows"
+    rows="$pruned"
+  fi
 
   if [[ $rows_cacheable == true ]]; then
     printf '%s' "$rows" >"$rows_cache_file"
