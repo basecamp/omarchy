@@ -46,9 +46,19 @@ assertEqual(bar.pickDrawnSlot(null), null, 'bar tolerates a missing slot list')
 // Revealing the indicators can slide a neighbouring widget under a stationary
 // pointer; collapsing the peek on that un-hover re-opens it and stutters the
 // bar, so the peek stays held while the pointer is anywhere on the bar.
+const revealTimer = barSource.slice(barSource.indexOf('id: centerSectionRevealTimer'))
+const revealTimerBody = revealTimer.slice(0, revealTimer.indexOf('\n  }'))
 assert(
-  /onTriggered: root\.centerSectionRevealHeld = root\.centerSectionHovered \|\| root\.barHovered/.test(barSource),
+  /!root\.centerSectionHovered && !root\.barHovered/.test(revealTimerBody),
   'the indicator peek stays held while the pointer is anywhere on the bar'
+)
+
+// The timer runs on a delay, so it can fire for a pointer that has already come
+// back. Letting it assign the held state outright would then reveal indicators
+// from bar hover alone; it may only close what the center section opened.
+assert(
+  !/centerSectionRevealHeld = (?!false)/.test(revealTimerBody),
+  'the delayed collapse can only close the peek, never open it'
 )
 
 // The whole-bar hover has to come from an ancestor of the sections. A sibling
@@ -73,8 +83,15 @@ assert(
   /if \(!hovered\) centerSectionRevealTimer\.restart\(\)/.test(setBarHoveredBody),
   'a pointer leaving the bar re-runs the peek collapse'
 )
+
+// Opening the peek stays the center section's own gesture: pointing straight at
+// a widget reveals nothing. Checking that only inside setBarHovered proves
+// nothing, since the shared reveal timer is the path a bar hover leaks through.
+const opensPeek = barSource.split('\n').filter(line => /centerSectionRevealHeld = true/.test(line))
+assertEqual(opensPeek.length, 1, 'exactly one line in the bar opens the indicator peek')
+const setCenterSectionHovered = barSource.slice(barSource.indexOf('function setCenterSectionHovered'))
 assert(
-  !/centerSectionRevealHeld = true/.test(setBarHoveredBody),
+  setCenterSectionHovered.slice(0, setCenterSectionHovered.indexOf('\n  }')).includes(opensPeek[0].trim()),
   'hovering the bar never opens the peek on its own'
 )
 
