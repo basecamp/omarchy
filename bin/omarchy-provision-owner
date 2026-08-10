@@ -114,6 +114,7 @@ measure_terminal() {
 
   local padding="0 0 0 $PADDING_LEFT"
   export GUM_CHOOSE_PADDING="$padding"
+  export GUM_FILTER_PADDING="$padding"
   export GUM_INPUT_PADDING="$padding"
   export GUM_SPIN_PADDING="$padding"
   export GUM_TABLE_PADDING="$padding"
