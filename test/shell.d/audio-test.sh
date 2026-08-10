@@ -92,9 +92,11 @@ export PATH="$tmp/bin:$PATH"
 
 echo 148 >"$TEST_VOLUME"
 "$ROOT/bin/omarchy-audio-output-volume" raise
-assertEqual "$(<"$TEST_VOLUME")" 150 "audio respects configured max volume"
+[[ $(<"$TEST_VOLUME") == 150 ]] || fail "audio respects configured max volume"
+pass "audio respects configured max volume"
 
 rm "$tmp/state/omarchy/audio-max-volume"
 echo 98 >"$TEST_VOLUME"
 "$ROOT/bin/omarchy-audio-output-volume" raise
-assertEqual "$(<"$TEST_VOLUME")" 100 "audio defaults max volume to 100 percent"
+[[ $(<"$TEST_VOLUME") == 100 ]] || fail "audio defaults max volume to 100 percent"
+pass "audio defaults max volume to 100 percent"
