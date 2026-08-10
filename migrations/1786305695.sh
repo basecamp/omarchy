@@ -33,9 +33,9 @@ sudo systemctl daemon-reload
 # the first restore finds no saved state, reads the machine as a fresh install,
 # and powers the adapter on mid-update for anyone who deliberately keeps
 # Bluetooth off. Seeded, restore matches what is already there and does nothing.
-if ! omarchy-cmd-missing omarchy-bluetooth-state; then
-  sudo omarchy-bluetooth-state save
-fi
+# seed rather than save because save records nothing when it cannot read an
+# adapter, and this runs once: a machine left unseeded stays that way.
+sudo omarchy-bluetooth-state seed
 
 # Nothing here restarts bluetooth.service, so connected peripherals stay
 # connected through the update. Starting the unit now means its ExecStop is in
@@ -44,10 +44,9 @@ sudo systemctl enable omarchy-bluetooth-state.service
 
 # Only start it if bluetoothd is already up. The unit is BindsTo=bluetooth.service,
 # so starting it otherwise would pull bluetoothd up for someone who stopped it on
-# purpose, and fail outright if they masked it. Worse, the save above could not
-# read an adapter without a running daemon, so it seeded nothing, and restore
-# would then read the machine as a fresh install and power the adapter on. Left
-# enabled, WantedBy=bluetooth.service starts it the next time bluetoothd does.
+# purpose, and fail outright if they masked it. Left enabled,
+# WantedBy=bluetooth.service starts it the next time bluetoothd does, by which
+# point the seed above is already on disk for restore to read.
 if systemctl is-active --quiet bluetooth.service; then
   sudo systemctl start omarchy-bluetooth-state.service
 fi

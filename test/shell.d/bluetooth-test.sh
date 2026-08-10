@@ -236,3 +236,19 @@ pass "bluetooth state leaves no half-written file behind"
 bluetooth_state_run restore no
 grep -q "power" "$state_log" && fail "bluetooth state does not power on from an unfinished write"
 pass "bluetooth state does not power on from an unfinished write"
+
+# The migration seeds through this rather than save, because save deliberately
+# records nothing when it cannot read an adapter and the migration runs once.
+# Left unseeded, the next restore reads the machine as a fresh install and
+# powers the adapter on for someone who deliberately keeps Bluetooth off.
+rm -f "$state_file"
+bluetooth_state_run seed absent
+[[ $(cat "$state_file") == "off" ]] ||
+  fail "bluetooth state seeds off when no adapter is readable" "$(cat "$state_file")"
+pass "bluetooth state seeds off when no adapter is readable"
+
+rm -f "$state_file"
+bluetooth_state_run seed yes
+[[ $(cat "$state_file") == "on" ]] ||
+  fail "bluetooth state seeds the adapter as it actually is" "$(cat "$state_file")"
+pass "bluetooth state seeds the adapter as it actually is"

@@ -2,7 +2,7 @@
 
 # omarchy:summary=Save and restore the Bluetooth power state across reboots
 # omarchy:group=bluetooth
-# omarchy:args=<save|restore>
+# omarchy:args=<save|restore|seed>
 # omarchy:hidden=true
 
 # BlueZ does not persist an adapter's Powered property. Nothing ever writes a
@@ -66,6 +66,19 @@ case "${1:-}" in
     # spurious "off" that the next boot would apply.
     save_state || exit 0
     ;;
+  seed)
+    # Run once by the migration, before the unit has ever started. A plain save
+    # is not enough here: it deliberately records nothing when no adapter can be
+    # read, and no state file at all is exactly what restore takes for a fresh
+    # install and powers on. The migration marks the machine done either way, so
+    # that would permanently flip Bluetooth on for someone who keeps it off.
+    save_state && exit 0
+
+    # Nothing readable, so record the state the machine is already living with.
+    # AutoEnable has been off with nothing owning the power-on, which means
+    # Bluetooth has been coming up off on every boot.
+    write_state off
+    ;;
   restore)
     # No saved state at all means a fresh install, so power on and match what
     # stock BlueZ would have done with AutoEnable left at its default.
@@ -105,7 +118,7 @@ case "${1:-}" in
       echo "omarchy-bluetooth-state: failed to power the adapter on" >&2
     ;;
   *)
-    echo "Usage: omarchy-bluetooth-state <save|restore>" >&2
+    echo "Usage: omarchy-bluetooth-state <save|restore|seed>" >&2
     exit 1
     ;;
 esac

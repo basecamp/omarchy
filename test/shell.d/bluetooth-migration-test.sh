@@ -42,12 +42,6 @@ cat >"$test_dir/bin/omarchy-bluetooth-state" <<'STUB'
 printf 'omarchy-bluetooth-state %s\n' "$*" >>"$CALLS"
 STUB
 
-cat >"$test_dir/bin/omarchy-cmd-missing" <<'STUB'
-#!/bin/bash
-
-exit 1
-STUB
-
 chmod +x "$test_dir/bin/"*
 
 export CALLS="$test_dir/calls"
@@ -97,7 +91,7 @@ grep -q '^systemctl start omarchy-bluetooth-state.service$' "$CALLS" ||
   fail "migration starts the unit while bluetoothd is up" "$(cat "$CALLS")"
 pass "migration starts the unit while bluetoothd is up"
 
-(($(call_line '^omarchy-bluetooth-state save$') < $(call_line '^systemctl start'))) ||
+(($(call_line '^omarchy-bluetooth-state seed$') < $(call_line '^systemctl start'))) ||
   fail "migration seeds the saved state before starting the unit" "$(cat "$CALLS")"
 pass "migration seeds the saved state before starting the unit"
 
