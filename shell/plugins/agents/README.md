@@ -22,11 +22,13 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
   funded-versus-spent detail.
 - **Tokens by day** — one row per day for the last week: day, bar, tokens, with today
   bolded at the bottom. Hover today for its prompt and session count.
-  Shown only when the agent has local day history (Claude/Codex).
+  Shown only when the agent has local day history (`hasLocalStats` true — Claude,
+  Codex, Fireworks, and any collector that emits `recentDays`).
 - **Tokens by model** — tokens per model with the bar behind each row scaled
   to the heaviest model,
   the same way the weekly chart scales to its busiest day. Hover for the
-  input / output / cache split. Shown only when the agent has model totals.
+  input / output / cache split. Shown only when the agent has model totals
+  (`hasLocalStats` true).
 
 A subscription appears only when it is enabled in settings and has actually
 recorded usage — on this machine or on a synced one. With one such agent
