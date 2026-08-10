@@ -9,13 +9,11 @@
 # Ordered before home.mount/var-log.mount so @home and @log can be dropped and
 # recreated as empty subvolumes instead of rm -rf'd file by file.
 #
-# Two modes:
-#  - full reset: the root is already a fresh clone of @factory (staged by
-#    omarchy-system-factory-reset); this deletes the previous root (@omarchy-old-*),
-#    recreates @home/@log, and repairs /.snapshots.
-#  - degraded (wipe-degraded marker): machines installed before @factory
-#    existed keep their current root; user accounts and identity state are
-#    scrubbed here instead.
+# The root is already a fresh clone of @factory (staged by
+# omarchy-system-factory-reset); this deletes the previous root (@omarchy-old-*),
+# recreates @home/@log, and repairs /.snapshots. A reset staged by an older
+# Omarchy on a machine without @factory (wipe-degraded) kept its root instead,
+# and is scrubbed in place here.
 
 set -uo pipefail
 
@@ -76,7 +74,13 @@ recreate_subvolume() {
   btrfs subvolume create "$TOP_MNT/$name"
 }
 
-scrub_degraded_state() {
+# Only for a reset staged by an Omarchy that still had the degraded path: the
+# current system was kept, so accounts and identity are scrubbed in place here
+# instead of arriving pre-scrubbed in the factory clone. Reachable when a
+# degraded reset was staged, the reboot deferred, and this worker updated in
+# between — the reset must still finish, or provisioning hands the machine over
+# with the seller's accounts intact.
+scrub_legacy_degraded_state() {
   log "degraded reset: scrubbing user accounts and machine identity in place"
 
   local user
@@ -93,6 +97,15 @@ scrub_degraded_state() {
 
   # Fresh machine identity from the next boot on.
   systemd-id128 new >/etc/machine-id 2>/dev/null || :>/etc/machine-id
+
+  # The kept root still carries its accumulated snapper snapshots (nested under
+  # /.snapshots); a factory clone loses them with the old root.
+  local snapshot
+  for snapshot in /.snapshots/*/snapshot; do
+    [[ -d $snapshot ]] || continue
+    delete_subvolume "$snapshot"
+    rm -rf "$(dirname "$snapshot")"
+  done
 }
 
 repair_snapshots_dir() {
@@ -106,18 +119,6 @@ repair_snapshots_dir() {
     btrfs subvolume create /.snapshots
     chmod 750 /.snapshots
   fi
-}
-
-wipe_snapper_snapshots() {
-  # Degraded resets keep the current root, so its accumulated snapper
-  # snapshots (nested under /.snapshots) still exist. Full resets already lost
-  # them with the old root.
-  local snapshot
-  for snapshot in /.snapshots/*/snapshot; do
-    [[ -d $snapshot ]] || continue
-    delete_subvolume "$snapshot"
-    rm -rf "$(dirname "$snapshot")"
-  done
 }
 
 main() {
@@ -134,10 +135,7 @@ main() {
     exit 1
   fi
 
-  if [[ -f $PROVISIONING_DIR/wipe-degraded ]]; then
-    scrub_degraded_state
-    wipe_snapper_snapshots
-  fi
+  [[ -f $PROVISIONING_DIR/wipe-degraded ]] && scrub_legacy_degraded_state
 
   local old
   for old in "$TOP_MNT"/@omarchy-old-*; do

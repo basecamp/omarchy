@@ -8,11 +8,11 @@
 # Returns the machine to provisioning state — fully installed, no user, first-boot
 # setup pending — the state you want before selling or handing the machine on.
 #
-# On machines installed with an ISO that created the @factory snapshot, the
-# running root (@) is swapped for a fresh writable clone of @factory, so
-# user-installed packages and /etc drift are gone too. Machines without
-# @factory get a degraded reset: the current system is kept and only user
-# accounts, home data, and machine identity are wiped.
+# The running root (@) is swapped for a fresh writable clone of the @factory
+# snapshot, so user-installed packages and /etc drift are gone too. That
+# snapshot is taken by the Omarchy Quattro installer, so only machines
+# installed from that ISO can be reset; a machine upgraded to Quattro from an
+# earlier version has no baseline to return to and is turned away.
 #
 # The heavy lifting happens on the next boot via omarchy-system-factory-reset-finish, staged
 # here. On encrypted installs the LUKS volume is re-keyed to a throwaway
@@ -99,9 +99,6 @@ generate_passphrase() {
 }
 
 cleanup() {
-  if (( ${swap_done:-0} == 0 )); then
-    rollback_degraded_rekey
-  fi
   if mountpoint -q "$TOP_MNT" 2>/dev/null; then
     if [[ -d $TOP_MNT/$NEXT_NAME && ${swap_done:-0} == 0 ]]; then
       btrfs subvolume delete --recursive "$TOP_MNT/$NEXT_NAME" >/dev/null 2>&1 || true
@@ -113,23 +110,13 @@ cleanup() {
 trap cleanup EXIT
 
 confirm_reset() {
-  local degraded="$1"
-
   echo
   gum style --bold --foreground 1 "Reset this computer to factory state?"
   echo
   gum style "This will permanently erase:"
   gum style "  • All user accounts and everything in /home"
-  if [[ $degraded == true ]]; then
-    gum style --foreground 3 "  • Machine identity (network connections, host keys, machine-id)"
-    echo
-    gum style --foreground 3 "This machine was installed before factory snapshots existed, so the"
-    gum style --foreground 3 "current system (installed packages, /etc changes) is kept — only user"
-    gum style --foreground 3 "accounts and machine state are wiped."
-  else
-    gum style "  • All packages and system changes made since installation"
-    gum style "  • Machine identity (network connections, host keys, machine-id)"
-  fi
+  gum style "  • All packages and system changes made since installation"
+  gum style "  • Machine identity (network connections, host keys, machine-id)"
   echo
   gum style "The next boot asks for a new user, exactly like a fresh install."
   gum style --foreground 8 "Note: on disks without encryption this is deletion, not secure erasure."
@@ -141,8 +128,7 @@ confirm_reset() {
 }
 
 # Re-key to a throwaway passphrase whose keyfile auto-unlocks boot during the
-# provisioning window. $1 is the root of the system the staging applies to ("" for the
-# running root in degraded mode).
+# provisioning window. $1 is the root of the staged factory system.
 stage_luks_rekey() {
   local next="$1" device passphrase
 
@@ -396,40 +382,21 @@ stage_full_reset() {
   sync
 }
 
-stage_degraded_reset() {
-  local unit_src="$OMARCHY_PATH/install/provisioning"
-  [[ -f $unit_src/omarchy-provision-owner.service && -x /usr/bin/omarchy-provision-owner ]] ||
-    fail "this Omarchy version does not ship provisioning; update first"
+# A reset is a clone of @factory, so a machine without one has nothing to
+# return to. Only the Quattro installer takes that snapshot.
+require_factory_snapshot() {
+  [[ -d $TOP_MNT/@factory ]] && return 0
 
-  # Fallible staging (re-key, boot rebuild) happens before the wipe is armed:
-  # a failure must leave the machine untouched, not schedule a wipe for a
-  # reset that never finished staging. The degraded path stages into the LIVE
-  # root, so a mid-staging failure must also undo the auto-unlock material it
-  # already wrote — otherwise a later boot rebuild would silently embed it.
-  install -d -m 755 "$PROVISIONING_DIR"
-  if encrypted_install; then
-    degraded_rekey_staged=1
-    stage_luks_rekey ""
-    log "Rebuilding boot files with the provisioning unlock key"
-    if ! limine-update >>"$LOG_FILE" 2>&1; then
-      fail "limine-update failed (see $LOG_FILE)"
-    fi
-    degraded_rekey_staged=0
-  fi
-
-  install_provisioning_units "" "$unit_src"
-  touch "$PROVISIONING_DIR/pending" "$PROVISIONING_DIR/wipe-pending" "$PROVISIONING_DIR/wipe-degraded"
-
-  swap_done=1
-}
-
-# Undo the live-root auto-unlock material a failed degraded rekey left behind.
-rollback_degraded_rekey() {
-  (( ${degraded_rekey_staged:-0} )) || return 0
-  rm -f /etc/omarchy/provisioning.key "$PROVISIONING_DIR/luks-key" \
-    /etc/limine-entry-tool.d/99-omarchy-provisioning-unlock.conf \
-    /etc/mkinitcpio.conf.d/99-omarchy-provisioning-key.conf
-  limine-update >>"$LOG_FILE" 2>&1 || true
+  echo
+  gum style --bold --foreground 3 "This machine has no factory snapshot to reset to."
+  echo
+  gum style "A reset restores the @factory snapshot the Omarchy Quattro installer takes"
+  gum style "right after installing. Machines upgraded to Quattro from an earlier version,"
+  gum style "or installed some other way, never got one, so there is no baseline here to"
+  gum style "return to."
+  echo
+  gum style --foreground 8 "Reinstall from the Omarchy ISO to make this machine resettable."
+  exit 1
 }
 
 main() {
@@ -448,10 +415,9 @@ main() {
   mkdir -p "$TOP_MNT"
   mountpoint -q "$TOP_MNT" || mount -o subvolid=5 "$device" "$TOP_MNT"
 
-  local degraded=false
-  [[ -d $TOP_MNT/@factory ]] || degraded=true
+  require_factory_snapshot
 
-  confirm_reset "$degraded"
+  confirm_reset
 
   # The running system's limine-snapper-sync must not rewrite the ESP's
   # limine.conf behind the staged rebuild (subvolume changes below can
@@ -459,11 +425,7 @@ main() {
   systemctl mask --runtime --now limine-snapper-sync.service >/dev/null 2>&1 || true
   systemctl mask --runtime --now limine-snapper-sync.path >/dev/null 2>&1 || true
 
-  if [[ $degraded == true ]]; then
-    stage_degraded_reset
-  else
-    stage_full_reset
-  fi
+  stage_full_reset
 
   umount -R "$TOP_MNT" 2>/dev/null || true
 
