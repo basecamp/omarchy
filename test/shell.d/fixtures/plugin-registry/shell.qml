@@ -295,6 +295,16 @@ ShellRoot {
     root.assertDeepEqual(root.config.bar.layout.right, [], "put adds no second entry for a widget already on the bar")
     root.assertEqual(registry.putBarWidget("third.absent", {}), "unknown", "put reports a widget it does not know")
 
+    // Reading the manifests is a subprocess, and IPC answers before it
+    // returns: an id the scan has not reached yet is not one that does not
+    // exist, and refusing it would fail the migration asking for it.
+    root.config = { version: 1, bar: { layout: { left: [], center: [], right: [] } }, plugins: [] }
+    registry.scanning = true
+    root.assertEqual(registry.putBarWidget("third.absent", {}), "not ready", "put waits for a scan that has not reached its widget")
+    root.assertDeepEqual(root.config.bar.layout.center, [], "put places nothing while it is still waiting")
+    root.assertEqual(registry.putBarWidget("third.center-widget", {}), "", "put places a widget the scan has already read")
+    registry.scanning = false
+
     root.config = {
       version: 1,
       bar: { layout: { left: [], center: [{ id: "omarchy.first-widget", size: 4 }], right: [] } },

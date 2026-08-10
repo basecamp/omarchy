@@ -300,6 +300,10 @@ QtObject {
   // already on the bar is left exactly where its owner put it.
   function putBarWidget(id, placement) {
     if (inBar(id)) return ""
+    // Reading the manifests is a subprocess and IPC answers before it returns,
+    // so a widget the scan has not reached yet is not one that does not exist.
+    // Say which it is; the caller can ask again.
+    if (scanning && !installedPlugins[Util.canonicalWidgetId(String(id))]) return "not ready"
     var target = Util.isPlainObject(placement) ? Util.cloneJson(placement) : {}
     var relativeId = String(target.before || target.after || "")
     if (relativeId) {
