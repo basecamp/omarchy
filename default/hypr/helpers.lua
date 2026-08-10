@@ -3,7 +3,6 @@
 o = o or {}
 
 local paths = require("default.hypr.paths")
-local audio_config_path = paths.state_home .. "/omarchy/audio-max-volume"
 
 local function shell_quote(value)
   return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
@@ -43,18 +42,6 @@ end
 
 function o.cmd_missing(command)
   return not o.cmd_present(command)
-end
-
-function o.audio(options)
-  local max_volume = options and options.max_volume
-  if type(max_volume) ~= "number" or max_volume <= 0 or max_volume % 1 ~= 0 then
-    error("o.audio max_volume must be a positive integer")
-  end
-
-  os.execute("mkdir -p " .. shell_quote(paths.state_home .. "/omarchy"))
-  local file = assert(io.open(audio_config_path, "w"))
-  file:write(max_volume, "\n")
-  file:close()
 end
 
 local function command_from(value, description)
@@ -141,6 +128,21 @@ end
 
 function o.notify(message)
   return "notify-send -u low " .. shell_quote(message)
+end
+
+function o.audio(options)
+  local max_volume = options.max_volume
+
+  if type(max_volume) ~= "number" or max_volume <= 0 or max_volume % 1 ~= 0 then
+    error("o.audio max_volume must be a positive integer")
+  end
+
+  local state_dir = paths.state_home .. "/omarchy"
+  os.execute("mkdir -p " .. shell_quote(state_dir))
+
+  local file = assert(io.open(state_dir .. "/audio-max-volume", "w"))
+  file:write(max_volume, "\n")
+  file:close()
 end
 
 function o.window(match, rules)

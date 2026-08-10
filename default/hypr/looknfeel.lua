@@ -1,7 +1,5 @@
 -- Refer to https://wiki.hypr.land/Configuring/Basics/Variables/
 
-o.audio({ max_volume = 100 })
-
 local active_border_color = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, angle = 45 }
 local inactive_border_color = "rgba(595959aa)"
 
@@ -125,4 +123,8 @@ hl.config({
   binds = {
     hide_special_on_workspace_change = true,
   },
+})
+
+o.audio({
+  max_volume = 100
 })
