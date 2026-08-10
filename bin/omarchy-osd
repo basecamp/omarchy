@@ -18,9 +18,9 @@ while (($#)); do
     -i|--icon) icon="${2:-}"; shift 2 ;;
     -m|--message) message="${2:-}"; shift 2 ;;
     -p|--progress) progress="${2:-}"; shift 2 ;;
-    --max) max="${2:-}"; shift 2 ;;
     -d|--duration) duration="${2:-}"; shift 2 ;;
     -h|--help) omarchy osd --help; exit 0 ;;
+    -M|--maximum) max="${2:-}"; shift 2 ;;
     *) echo "Unknown OSD option: $1" >&2; exit 1 ;;
   esac
 done

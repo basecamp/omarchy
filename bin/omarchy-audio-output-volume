@@ -5,16 +5,17 @@
 # omarchy:examples=omarchy audio output volume raise | omarchy audio output volume lower | omarchy audio output volume mute-toggle | omarchy audio output volume +1
 
 action="${1:-}"
+
+if [[ -z $action ]]; then
+  echo "Usage: omarchy-audio-output-volume <raise|lower|mute-toggle|+N|-N>"
+  exit 1
+fi
+
 max_volume_file="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/audio-max-volume"
 max_volume=100
 if [[ -r $max_volume_file ]]; then
   read -r configured_max_volume <"$max_volume_file" || true
   [[ $configured_max_volume =~ ^[1-9][0-9]*$ ]] && max_volume="$configured_max_volume"
-fi
-
-if [[ -z $action ]]; then
-  echo "Usage: omarchy-audio-output-volume <raise|lower|mute-toggle|+N|-N>"
-  exit 1
 fi
 
 # Resolve through any DSP sink to the physical one, so the keys always move real
@@ -89,4 +90,4 @@ else
   icon="volume-high"
 fi
 
-omarchy-osd -i "$icon" -p "${percent:-0}" --max "$max_volume"
+omarchy-osd -i "$icon" -p "${percent:-0}" --maximum "$max_volume"
