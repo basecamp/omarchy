@@ -1,21 +1,21 @@
 #!/bin/bash
 
 # omarchy:summary=Apply Omarchy system setup in the installed target
-# omarchy:group=setup
+# omarchy:group=apply
 # omarchy:requires-sudo=true
-# omarchy:examples=omarchy setup system --install-user dhh --first-install
+# omarchy:examples=omarchy apply system --install-user dhh --first-install
 # omarchy:hidden=true
 
 set -euo pipefail
 
 usage() {
   cat <<USAGE
-Usage: omarchy setup system --install-user USER [--first-install|--upgrade]
-       omarchy setup system --defer-provisioning --first-install
+Usage: omarchy apply system --install-user USER [--first-install|--upgrade]
+       omarchy apply system --defer-provisioning --first-install
 
 Runs root-owned Omarchy system setup. The ISO calls this in the target chroot
 after packages are installed and the target user exists. It also calls
-omarchy-setup-hardware, so hardware setup cannot be accidentally skipped.
+omarchy-apply-hardware, so hardware setup cannot be accidentally skipped.
 
 --defer-provisioning runs without an install user: deferred-provisioning installs create the user at
 first boot, so scripts that grant group memberships record them in
@@ -59,7 +59,7 @@ while (($#)); do
 done
 
 if (( EUID != 0 )); then
-  echo "Error: omarchy-setup-system must run as root" >&2
+  echo "Error: omarchy-apply-system must run as root" >&2
   exit 1
 fi
 
@@ -91,9 +91,9 @@ start_install_log
 source "$OMARCHY_INSTALL/config/all.sh"
 
 if (( defer_provisioning )); then
-  omarchy-setup-hardware --defer-provisioning
+  omarchy-apply-hardware --defer-provisioning
 else
-  omarchy-setup-hardware --install-user "$install_user"
+  omarchy-apply-hardware --install-user "$install_user"
 fi
 
 source "$OMARCHY_INSTALL/login/all.sh"

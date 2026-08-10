@@ -669,7 +669,7 @@ Timezone,${timezone:-UTC}" |
   gum confirm --negative "No, change it" "Does this look right?"
 }
 
-# Groups recorded by omarchy-setup-system's scripts at install time
+# Groups recorded by omarchy-apply-system's scripts at install time
 # (/var/lib/omarchy/provisioning/groups), filtered to groups that exist on this system.
 user_groups() {
   local groups="wheel" group

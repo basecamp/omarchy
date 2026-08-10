@@ -1,20 +1,20 @@
 #!/bin/bash
 
 # omarchy:summary=Apply Omarchy hardware-specific packages and system configuration
-# omarchy:group=setup
+# omarchy:group=apply
 # omarchy:requires-sudo=true
-# omarchy:examples=omarchy setup hardware --install-user dhh
+# omarchy:examples=omarchy apply hardware --install-user dhh
 # omarchy:hidden=true
 
 set -euo pipefail
 
 usage() {
   cat <<USAGE
-Usage: omarchy setup hardware --install-user USER
-       omarchy setup hardware --defer-provisioning
+Usage: omarchy apply hardware --install-user USER
+       omarchy apply hardware --defer-provisioning
 
 Runs idempotent hardware detection/setup for the installed machine. This is
-called by omarchy-setup-system during ISO finalization and can be rerun later
+called by omarchy-apply-system during ISO finalization and can be rerun later
 for diagnostics or after hardware/package updates.
 
 --defer-provisioning runs without an install user (deferred-provisioning installs create the user at
@@ -47,7 +47,7 @@ while (($#)); do
 done
 
 if (( EUID != 0 )); then
-  echo "Error: omarchy-setup-hardware must run as root" >&2
+  echo "Error: omarchy-apply-hardware must run as root" >&2
   exit 1
 fi
 

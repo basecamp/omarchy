@@ -183,7 +183,7 @@ Idempotency marker: `~/.local/state/omarchy/done/finalize-user`, managed
 by `omarchy-done`.
 
 The ISO calls it as `omarchy-finalize-user --force --first-install` in the
-target chroot as the install user, after `omarchy-setup-system` has finished
+target chroot as the install user, after `omarchy-apply-system` has finished
 the root-side work.
 
 ## Migrations (`omarchy-migrate`)
@@ -255,13 +255,13 @@ the legacy finalization marker from `~/.local/state/omarchy/` into `done/`.
 
 ## Root-side install orchestration
 
-`omarchy-setup-system` (root, in chroot) runs target-side setup at ISO
+`omarchy-apply-system` (root, in chroot) runs target-side setup at ISO
 finalization. It sources:
 
 - `install/config/all.sh` — theme links, lockout limits, lockscreen PAM,
   powerprofilesctl shebang fix, docker setup, Snapper retention, locate
   index tuning, service enablement, firewall.
-- `install/hardware/all.sh` via `omarchy-setup-hardware` — vendor- and
+- `install/hardware/all.sh` via `omarchy-apply-hardware` — vendor- and
   device-specific kernel modules, udev rules, microcode, wireless regdom,
   ASUS / Framework / Intel / Apple / Lenovo quirks.
 - `install/login/all.sh` — SDDM theme/session config.
