@@ -238,25 +238,29 @@ bar_widget_default_section() {
 # migration that returns 0 as done and never asks for the widget again.
 #
 # Answers 0 with the shell's reply in PUT_RESULT, 1 when there was no shell to
-# ask and the caller should carry on.
+# ask and the caller should carry on. SHELL_ANSWERED outlives a single ask, so
+# a shell that spoke once is still known to have been there on the next one.
 PUT_RESULT=""
+SHELL_ANSWERED=0
 ask_to_put() {
-  local id="$1" placement="$2" attempt starting=0
+  local id="$1" placement="$2" attempt
   for (( attempt = 0; attempt < ${OMARCHY_SHELL_READY_ATTEMPTS:-50}; attempt++ )); do
     if PUT_RESULT=$(omarchy-shell shell putBarWidget "$id" "$placement" 2>&1); then
+      SHELL_ANSWERED=1
       [[ $PUT_RESULT == "not ready" ]] || return 0
+    elif [[ $PUT_RESULT == *"not ready"* ]]; then
+      SHELL_ANSWERED=1
     elif [[ $PUT_RESULT == *"is not running"* ]]; then
-      # A shell seen starting and then gone did not finish starting; it is not
-      # the machine that never had one.
-      if (( starting )); then
+      # A shell that has answered and then gone did not finish what it was
+      # asked; it is not the machine that never had one.
+      if (( SHELL_ANSWERED )); then
         fail "omarchy-shell did not become ready; $id was not put on the bar"
       fi
       echo "omarchy-shell is not running; $id was not put on the bar" >&2
       return 1
-    elif [[ $PUT_RESULT != *"not ready"* ]]; then
+    else
       fail "could not put $id on the bar: $PUT_RESULT"
     fi
-    starting=1
     sleep 0.1
   done
   fail "omarchy-shell did not become ready; $id was not put on the bar"
@@ -286,6 +290,15 @@ cmd_put() {
   local placement
   placement=$(placement_json)
   ask_to_put "$id" "$placement" || return 0
+
+  # An update runs its migrations before it restarts the shell, so the one
+  # answering here can still be from before put learned to fall back. Ask that
+  # shell again without the neighbour it says it cannot find.
+  if [[ $PUT_RESULT == "could not find target widget"* ]]; then
+    PLACEMENT_BEFORE=""
+    PLACEMENT_AFTER=""
+    ask_to_put "$id" "$(placement_json)" || return 0
+  fi
 
   [[ $PUT_RESULT != "unknown" ]] || fail "$id is not a known widget; run 'omarchy plugin list'"
   [[ $PUT_RESULT == "ok" ]] || fail "$PUT_RESULT"

@@ -353,6 +353,26 @@ case ${OMARCHY_TEST_SHELL_STATE:-ready} in
     fi
     exit 1
     ;;
+  oldshell)
+    # An update runs migrations before it restarts the shell, so this is the
+    # one that shipped before put learned to fall back.
+    if [[ $4 == *"after"* ]]; then
+      echo "could not find target widget omarchy.clock"
+    else
+      echo "ok"
+    fi
+    exit 0
+    ;;
+  vanishing)
+    # Answers the first ask, then is gone before the fallback lands.
+    if [[ ! -e $OMARCHY_TEST_SHELL_MARKER ]]; then
+      touch "$OMARCHY_TEST_SHELL_MARKER"
+      echo "could not find target widget omarchy.clock"
+      exit 0
+    fi
+    echo "omarchy-shell is not running" >&2
+    exit 1
+    ;;
   unsupported)
     # An older shell that predates this call.
     echo "Function not found." >&2
@@ -389,6 +409,19 @@ put_output=$(PATH="$put_tmp/bin:$ROOT/bin:$PATH" OMARCHY_TEST_SHELL_STATE=crashi
   fail "put fails when a starting shell disappears" "$put_output"
 [[ $put_output == *"did not become ready"* ]] || fail "put keeps a lost shell retryable" "$put_output"
 pass "put fails when a starting shell disappears"
+
+put_output=$(PATH="$put_tmp/bin:$ROOT/bin:$PATH" OMARCHY_TEST_SHELL_STATE=oldshell \
+  "$ROOT/bin/omarchy-bar" put omarchy.keyboard-layout --after omarchy.clock 2>&1) ||
+  fail "put falls back against a shell that has not restarted yet" "$put_output"
+[[ $put_output == "omarchy.keyboard-layout is on the bar" ]] || fail "put places without the missing neighbour" "$put_output"
+pass "put falls back against a shell that has not restarted yet"
+
+put_output=$(PATH="$put_tmp/bin:$ROOT/bin:$PATH" OMARCHY_TEST_SHELL_STATE=vanishing \
+  OMARCHY_TEST_SHELL_MARKER="$put_tmp/vanished" \
+  "$ROOT/bin/omarchy-bar" put omarchy.keyboard-layout --after omarchy.clock 2>&1) &&
+  fail "put fails when the shell goes away mid-fallback" "$put_output"
+[[ $put_output == *"did not become ready"* ]] || fail "put remembers the shell answered once" "$put_output"
+pass "put fails when the shell goes away mid-fallback"
 
 put_output=$(PATH="$put_tmp/bin:$ROOT/bin:$PATH" OMARCHY_TEST_SHELL_STATE=unsupported \
   "$ROOT/bin/omarchy-bar" put omarchy.keyboard-layout --after omarchy.clock 2>&1) &&
