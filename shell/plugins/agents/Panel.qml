@@ -631,10 +631,13 @@ Panel {
               Text {
                 id: limitsHeaderResetText
                 visible: text !== ""
+                width: Math.max(0, parent.width - limitsHeaderLabel.width - Style.spacing.md)
                 text: root.limitsHeaderReset
                 color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
+                horizontalAlignment: Text.AlignRight
+                elide: Text.ElideLeft
                 anchors.right: parent.right
                 // Match the header glyphs, not the padded box centre.
                 anchors.verticalCenter: limitsHeaderLabel.verticalCenter
