@@ -14,10 +14,14 @@ fi
 # only record of what the user chose, and with AutoEnable=false holding the
 # adapter down at every boot, no daemon to ask means off is what they have been
 # living with.
-if [[ $(timeout 2s bluetoothctl show 2>/dev/null) == *"Powered: yes"* ]]; then
-  omarchy-bluetooth-power on
+#
+# sudo because this runs machine-wide and /dev/rfkill is only writable without it
+# from an active graphical seat — an update over SSH would otherwise abort here,
+# before the marker, and abort again on every retry.
+if omarchy-bluetooth-power is-on; then
+  sudo omarchy-bluetooth-power on
 else
-  omarchy-bluetooth-power off
+  sudo omarchy-bluetooth-power off
 fi
 
 # Omarchy set AutoEnable=false believing bluetoothd would then restore the last

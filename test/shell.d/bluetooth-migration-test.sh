@@ -10,11 +10,12 @@ trap 'rm -rf "$test_dir"' EXIT
 
 mkdir -p "$test_dir/bin"
 
-# sudo runs the real command, so sed acts on the redirected main.conf below while
-# the power helper and bluetoothctl resolve to the stubs beside it.
+# sudo runs the real command, so sed acts on the redirected main.conf below and
+# the elevated power calls land in the stub beside it.
 cat >"$test_dir/bin/sudo" <<'STUB'
 #!/bin/bash
 
+printf 'sudo %s\n' "$*" >>"$CALLS"
 exec "$@"
 STUB
 
@@ -22,13 +23,8 @@ cat >"$test_dir/bin/omarchy-bluetooth-power" <<'STUB'
 #!/bin/bash
 
 printf 'omarchy-bluetooth-power %s\n' "$*" >>"$CALLS"
-STUB
-
-cat >"$test_dir/bin/bluetoothctl" <<'STUB'
-#!/bin/bash
-
-[[ $1 == "show" && -n ${POWERED:-} ]] && printf '\tPowered: %s\n' "$POWERED"
-exit 0
+[[ $1 == "is-on" ]] || exit 0
+[[ ${POWERED:-} == "yes" ]]
 STUB
 
 chmod +x "$test_dir/bin/"*
@@ -83,6 +79,12 @@ run_migration
 grep -qx 'omarchy-bluetooth-power off' "$CALLS" ||
   fail "migration blocks when no adapter can be read" "$(cat "$CALLS")"
 pass "migration blocks when no adapter can be read"
+
+# /dev/rfkill is only writable unelevated from an active graphical seat, so an
+# update run over SSH would abort here and abort again on every retry.
+grep -qx 'sudo omarchy-bluetooth-power off' "$CALLS" ||
+  fail "migration changes the radio through sudo" "$(cat "$CALLS")"
+pass "migration changes the radio through sudo"
 
 # A second account must not undo an administrator's later choice, since migration
 # completion is recorded per user.
