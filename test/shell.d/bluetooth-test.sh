@@ -120,7 +120,10 @@ cat >"$mock_bin/bluetoothctl" <<'SH'
 #!/bin/bash
 
 printf '%s\n' "$*" >>"$BLUETOOTHCTL_LOG"
-[[ $1 == "show" ]] && printf '\tPowered: %s\n' "$BLUETOOTHCTL_POWERED"
+# "absent" stands in for bluetoothd running with no adapter registered yet,
+# where `bluetoothctl show` reports no Powered line at all.
+[[ $1 == "show" && $BLUETOOTHCTL_POWERED != "absent" ]] &&
+  printf '\tPowered: %s\n' "$BLUETOOTHCTL_POWERED"
 exit 0
 SH
 chmod +x "$mock_bin/bluetoothctl"
@@ -172,7 +175,8 @@ bluetooth_state_run() {
   : >"$state_log"
   PATH="$mock_bin:$PATH" BLUETOOTHCTL_LOG="$state_log" BLUETOOTHCTL_POWERED="$powered" \
     OMARCHY_BLUETOOTH_STATE_FILE="$state_file" \
-    "$ROOT/bin/omarchy-bluetooth-state" "$action" ||
+    OMARCHY_BLUETOOTH_ADAPTER_WAIT_TRIES=1 \
+    "$ROOT/bin/omarchy-bluetooth-state" "$action" 2>/dev/null ||
     fail "omarchy-bluetooth-state $action exits cleanly"
 }
 
@@ -185,13 +189,36 @@ bluetooth_state_run save no
 [[ $(cat "$state_file") == "off" ]] || fail "bluetooth state records an unpowered adapter"
 pass "bluetooth state records an unpowered adapter"
 
-bluetooth_state_run restore
-grep -qx "power off" "$state_log" || fail "bluetooth state restores an adapter the user turned off"
-pass "bluetooth state restores an adapter the user turned off"
+# Recording "off" here would hand the next boot a state the user never chose.
+bluetooth_state_run save absent
+[[ $(cat "$state_file") == "off" ]] || fail "bluetooth state keeps the last state when no adapter is readable"
+pass "bluetooth state keeps the last state when no adapter is readable"
 
-# A fresh install has no saved state. Touching the adapter here would mean a
-# failure in this unit could leave a brand new machine with Bluetooth dead.
+# AutoEnable is off, so bluetoothd leaves the adapter down by itself. Issuing a
+# power off here would be redundant, and racing BlueZ is what broke the first
+# cut of this: it powers adapters up asynchronously, long after taking its bus
+# name, so anything competing to set the state loses.
+bluetooth_state_run restore no
+grep -q "power" "$state_log" && fail "bluetooth state leaves a saved-off adapter alone"
+pass "bluetooth state leaves a saved-off adapter alone"
+
+echo on >"$state_file"
+bluetooth_state_run restore no
+grep -qx "power on" "$state_log" || fail "bluetooth state powers on an adapter the user left on"
+pass "bluetooth state powers on an adapter the user left on"
+
+bluetooth_state_run restore yes
+grep -qx "power on" "$state_log" && fail "bluetooth state skips an adapter that is already powered"
+pass "bluetooth state skips an adapter that is already powered"
+
+# A fresh install has no saved state and must come up powered, matching what
+# stock BlueZ would have done with AutoEnable left at its default.
 rm -f "$state_file"
-bluetooth_state_run restore
-[[ -s $state_log ]] && fail "bluetooth state leaves a fresh install to BlueZ's own default"
-pass "bluetooth state leaves a fresh install to BlueZ's own default"
+bluetooth_state_run restore no
+grep -qx "power on" "$state_log" || fail "bluetooth state powers on a fresh install"
+pass "bluetooth state powers on a fresh install"
+
+# Waiting forever on hardware that is not there would hold up the boot.
+bluetooth_state_run restore absent
+grep -q "power" "$state_log" && fail "bluetooth state gives up when no adapter appears"
+pass "bluetooth state gives up when no adapter appears"

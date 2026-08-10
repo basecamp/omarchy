@@ -9,29 +9,74 @@
 # Powered key into /var/lib/bluetooth/<adapter>/settings, so bluetoothd has no
 # way to bring an adapter back up in the state the user left it. Driven by
 # omarchy-bluetooth-state.service, which saves on stop and restores on start.
+#
+# AutoEnable stays off so bluetoothd never powers the adapter itself. That is
+# what keeps restore deterministic: BlueZ powers adapters on asynchronously,
+# well after it takes its D-Bus name, so anything racing it to set the state
+# loses. Owning the power-on outright means there is no race to lose.
 
 STATE_FILE=${OMARCHY_BLUETOOTH_STATE_FILE:-/var/lib/omarchy/bluetooth-powered}
+ADAPTER_WAIT_TRIES=${OMARCHY_BLUETOOTH_ADAPTER_WAIT_TRIES:-20}
+
+show() {
+  timeout 2s bluetoothctl show 2>/dev/null
+}
+
+# bluetoothd registers the adapter on D-Bus a moment after it takes its bus
+# name, and systemd starts this unit the instant that name appears. Until the
+# adapter exists, `bluetoothctl show` reports no Powered line at all.
+wait_for_adapter() {
+  local i
+
+  for ((i = 0; i < ADAPTER_WAIT_TRIES; i++)); do
+    [[ $(show) == *"Powered:"* ]] && return 0
+    sleep 0.5
+  done
+
+  return 1
+}
 
 case "${1:-}" in
   save)
+    state=$(show)
+
+    # No adapter to read. Keep the last known state rather than recording a
+    # spurious "off" that the next boot would apply.
+    [[ $state == *"Powered:"* ]] || exit 0
+
     mkdir -p "$(dirname "$STATE_FILE")"
-    if [[ $(timeout 2s bluetoothctl show 2>/dev/null) == *"Powered: yes"* ]]; then
+    if [[ $state == *"Powered: yes"* ]]; then
       echo on >"$STATE_FILE"
     else
       echo off >"$STATE_FILE"
     fi
     ;;
   restore)
-    # No saved state means a fresh install, so leave the adapter alone and let
-    # BlueZ's own AutoEnable default power it on. Reaching for a default here
-    # instead would mean a failure in this unit could leave a brand new machine
-    # with Bluetooth dead and no obvious way to notice.
-    [[ -r $STATE_FILE ]] || exit 0
+    # No saved state means a fresh install, so power on and match what stock
+    # BlueZ would have done with AutoEnable left at its default.
+    target=on
+    if [[ -r $STATE_FILE ]]; then
+      read -r saved <"$STATE_FILE" || saved=""
+      [[ $saved == "on" || $saved == "off" ]] && target=$saved
+    fi
 
-    read -r state <"$STATE_FILE" || exit 0
-    [[ $state == "on" || $state == "off" ]] || exit 0
+    # Nothing to do, and nothing to race: with AutoEnable off, bluetoothd
+    # leaves the adapter down on its own.
+    [[ $target == "off" ]] && exit 0
 
-    timeout 5s bluetoothctl power "$state" >/dev/null 2>&1 || true
+    if ! wait_for_adapter; then
+      echo "omarchy-bluetooth-state: no adapter appeared, leaving power alone" >&2
+      exit 0
+    fi
+
+    [[ $(show) == *"Powered: yes"* ]] && exit 0
+
+    timeout 5s bluetoothctl power on >/dev/null 2>&1
+
+    # Worth a journal line: this is the failure that leaves a machine with
+    # Bluetooth off and no obvious cause.
+    [[ $(show) == *"Powered: yes"* ]] ||
+      echo "omarchy-bluetooth-state: failed to power the adapter on" >&2
     ;;
   *)
     echo "Usage: omarchy-bluetooth-state <save|restore>" >&2
