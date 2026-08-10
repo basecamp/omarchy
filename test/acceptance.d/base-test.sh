@@ -93,10 +93,12 @@ layer_on_screen() {
     | .key as $name
     | .value as $levels
     | ($monitors[] | select(.name == $name)) as $m
+    | (if ($m.transform // 0) % 2 == 1 then $m.height else $m.width end) / $m.scale | round as $width
+    | (if ($m.transform // 0) % 2 == 1 then $m.width else $m.height end) / $m.scale | round as $height
     | [$levels | .. | objects | select(.namespace? == $ns)][]
     | select(
-        .x + .w > 0 and .x < $m.width / $m.scale and
-        .y + .h > 0 and .y < $m.height / $m.scale
+        .x + .w > 0 and .x < $width and
+        .y + .h > 0 and .y < $height
       )
   ' >/dev/null
 }
