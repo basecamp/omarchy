@@ -1129,12 +1129,14 @@ restore_hyprland_config_reload() {
 
   set_hyprland_reload_state false
 
-  # An explicit hyprctl reload re-reads the config from disk, which resets both
-  # keywords above before it reports what it found, so suppression cannot
-  # survive one. Anything that reloaded during the swap therefore left the error
-  # bar on screen, and Hyprland keeps it there until a later clean reload that
-  # this script deliberately never performs. Clear the overlay instead: by now
-  # the shims have made the legacy config resolve again.
+  # Backstop. An explicit hyprctl reload re-reads the config from disk, which
+  # resets both keywords above before it reports what it found, so suppression
+  # cannot survive one, and Hyprland keeps the resulting error bar up until a
+  # later clean reload that this script deliberately never performs. Callers
+  # that reload during the swap are supposed to check
+  # OMARCHY_UPGRADE_TO_QUATTRO_LIVE, but one slipping through should not leave
+  # an error bar on a finished upgrade. By now the shims have made the legacy
+  # config resolve again, so clearing the overlay is safe.
   run_hyprctl_session seterror disable >/dev/null 2>&1 || true
 
   hyprland_config_reload_suppressed=0
