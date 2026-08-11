@@ -288,7 +288,11 @@ BarWidget {
             x: root.drawerExtent - root.revealExtent
             anchors.verticalCenter: parent.verticalCenter
             spacing: root.trayItemGap
-            layer.enabled: true
+            // Layer only while the drawer is revealing. The layer exists so
+            // the 600ms slide animates a single texture instead of re-rendering
+            // the icons every frame; once the drawer is fully collapsed the
+            // icons are clipped away and holding an offscreen buffer is waste.
+            layer.enabled: root.revealProgress > 0
 
             Repeater {
               model: root.drawerItems
@@ -371,7 +375,8 @@ BarWidget {
             y: root.drawerExtent - root.revealExtent
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: root.trayItemGap
-            layer.enabled: true
+            // Layer only while the drawer is revealing (see the horizontal row).
+            layer.enabled: root.revealProgress > 0
 
             Repeater {
               model: root.drawerItems

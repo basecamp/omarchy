@@ -97,13 +97,6 @@ BarWidget {
     onTriggered: root.refresh()
   }
 
-  Timer {
-    interval: 10000
-    running: true
-    repeat: true
-    onTriggered: root.refresh()
-  }
-
   visible: layoutLabel !== "" && multipleLayouts
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
