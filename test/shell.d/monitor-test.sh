@@ -54,6 +54,30 @@ assertDeepEqual(
   'monitor keeps presets until display dimensions are known'
 )
 
+// The panel re-reads state constantly; replacing the list rebuilds every row,
+// which destroys the switch under the pointer mid-click.
+const twoDisplays = [
+  { name: 'eDP-1', enabled: true, focused: false, width: 2880, height: 1920, scale: 2 },
+  { name: 'DP-7', enabled: true, focused: true, width: 5120, height: 2880, scale: 2 }
+]
+assertEqual(monitor.displaysEqual(twoDisplays, twoDisplays.slice()), true, 'an unchanged read compares equal')
+assertEqual(
+  monitor.displaysEqual(twoDisplays, [{ ...twoDisplays[0], enabled: false }, twoDisplays[1]]),
+  false,
+  'a display switching off compares different'
+)
+assertEqual(
+  monitor.displaysEqual(twoDisplays, [{ ...twoDisplays[0], focused: true }, twoDisplays[1]]),
+  false,
+  'focus moving compares different'
+)
+assertEqual(
+  monitor.displaysEqual(twoDisplays, [{ ...twoDisplays[0], scale: 1 }, twoDisplays[1]]),
+  false,
+  'a scale change compares different'
+)
+assertEqual(monitor.displaysEqual(twoDisplays, [twoDisplays[0]]), false, 'a display disappearing compares different')
+
 assertEqual(monitor.brightnessName(96), 'Sun blast', 'monitor names very bright displays')
 assertEqual(monitor.brightnessName(12), 'Candlelit', 'monitor names dim displays')
 

@@ -91,6 +91,29 @@ function brightnessName(percent) {
   return "Night owl"
 }
 
+// Whether two display lists describe the same state. The panel re-reads state
+// every few seconds and after every action, and assigning the result rebuilds
+// the row delegates — destroying the switch under the pointer, which resets its
+// cursor shape and drops a hover mid-interaction. Most reads change nothing, so
+// compare before replacing.
+function displaysEqual(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right)) return false
+  if (left.length !== right.length) return false
+
+  for (var i = 0; i < left.length; i++) {
+    var a = left[i]
+    var b = right[i]
+    if (!a || !b) return false
+    if (a.name !== b.name) return false
+    if (a.enabled !== b.enabled) return false
+    if (a.focused !== b.focused) return false
+    if (a.width !== b.width) return false
+    if (a.height !== b.height) return false
+    if (a.scale !== b.scale) return false
+  }
+  return true
+}
+
 function parseDisplays(raw) {
   var displays = []
   try {
@@ -119,6 +142,7 @@ if (typeof module !== "undefined") {
     matchingScaleIndex: matchingScaleIndex,
     availableScales: availableScales,
     brightnessName: brightnessName,
-    parseDisplays: parseDisplays
+    parseDisplays: parseDisplays,
+    displaysEqual: displaysEqual
   }
 }
