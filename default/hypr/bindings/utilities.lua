@@ -33,8 +33,8 @@ o.bind_toggle(omarchy_bindings.toggle_locking_on_idle, "Toggle locking on idle",
 o.bind_toggle(omarchy_bindings.toggle_nightlight, "Toggle nightlight", "nightlight")
 o.bind(omarchy_bindings.toggle_laptop_display, "Toggle laptop display", "omarchy-hyprland-monitor-internal toggle")
 o.bind(omarchy_bindings.toggle_laptop_display_mirroring, "Toggle laptop display mirroring", "omarchy-hyprland-monitor-internal-mirror toggle")
-o.bind(omarchy_bindings.lid_switch_on or "switch:on:Lid Switch", nil, "omarchy-system-lid-close", { locked = true })
-o.bind(omarchy_bindings.lid_switch_off or "switch:off:Lid Switch", nil, "omarchy-hyprland-monitor-clamshell", { locked = true })
+o.bind(omarchy_bindings.lid_switch_on, nil, "omarchy-system-lid-close", { locked = true })
+o.bind(omarchy_bindings.lid_switch_off, nil, "omarchy-hyprland-monitor-clamshell", { locked = true })
 
 o.bind(omarchy_bindings.screenshot, "Screenshot", "omarchy-capture-screenshot")
 o.bind(omarchy_bindings.screenrecording, "Screenrecording", "omarchy-capture-screenrecording --stop-recording || omarchy-menu toggle trigger.capture.screenrecord")

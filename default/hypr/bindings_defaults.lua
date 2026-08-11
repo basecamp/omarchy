@@ -181,6 +181,8 @@ local defaults = {
   toggle_dictation = "SUPER + CTRL + X",
   start_dictation_push_to_talk = "F9",
   stop_dictation_push_to_talk = "F9",
+  lid_switch_on = "switch:on:Lid Switch",
+  lid_switch_off = "switch:off:Lid Switch",
 }
 
 -- Dynamic loop bindings
