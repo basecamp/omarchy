@@ -912,40 +912,27 @@ legacy_hypr_config_active() {
 }
 
 populate_legacy_hypr_defaults() {
-  local shim_hypr_dir="$1" backup="$2" tmp_dir clone_dir archive_dir
+  local shim_hypr_dir="$1" backup="$2" tmp_dir archive_dir
 
   rm -rf "$shim_hypr_dir"
   mkdir -p "$shim_hypr_dir"
-  tmp_dir=$(mktemp -d)
-  clone_dir="$tmp_dir/omarchy"
-  archive_dir="$tmp_dir/archive"
 
-  if command -v git >/dev/null 2>&1; then
-    if git clone --depth 1 --branch master --single-branch --filter=blob:none --sparse https://github.com/basecamp/omarchy.git "$clone_dir" >/dev/null 2>&1 && \
-      git -C "$clone_dir" sparse-checkout set default/hypr >/dev/null 2>&1 && \
-      [[ -d $clone_dir/default/hypr ]]; then
-      cp -a "$clone_dir/default/hypr/." "$shim_hypr_dir/"
+  # The backup is the checkout the running session is sourcing right now, so it
+  # is both the correct content and already on disk. Only reach for the network
+  # when there is no backup, which means the legacy root was already a symlink.
+  if [[ -n $backup && -d $backup/default/hypr ]]; then
+    cp -a "$backup/default/hypr/." "$shim_hypr_dir/"
+  elif command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1; then
+    tmp_dir=$(mktemp -d)
+    archive_dir="$tmp_dir/archive"
+    mkdir -p "$archive_dir"
+    if curl -fsSL https://github.com/basecamp/omarchy/archive/refs/heads/master.tar.gz | tar -xz -C "$archive_dir" &&
+      [[ -d $archive_dir/omarchy-master/default/hypr ]]; then
+      cp -a "$archive_dir/omarchy-master/default/hypr/." "$shim_hypr_dir/"
     fi
+    rm -rf "$tmp_dir"
   fi
 
-  if ! find "$shim_hypr_dir" -type f -name '*.conf' -print -quit | grep -q .; then
-    if command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1; then
-      mkdir -p "$archive_dir"
-      if curl -fsSL https://github.com/basecamp/omarchy/archive/refs/heads/master.tar.gz | tar -xz -C "$archive_dir"; then
-        if [[ -d $archive_dir/omarchy-master/default/hypr ]]; then
-          cp -a "$archive_dir/omarchy-master/default/hypr/." "$shim_hypr_dir/"
-        fi
-      fi
-    fi
-  fi
-
-  if ! find "$shim_hypr_dir" -type f -name '*.conf' -print -quit | grep -q .; then
-    if [[ -n $backup && -d $backup/default/hypr ]]; then
-      cp -a "$backup/default/hypr/." "$shim_hypr_dir/"
-    fi
-  fi
-
-  rm -rf "$tmp_dir"
   find "$shim_hypr_dir" -type f -name '*.conf' -print -quit | grep -q .
 }
 
