@@ -1,0 +1,51 @@
+// Label math for the keyboard layout widget, kept Qt-free so it can be unit
+// tested under node (test/shell.d/keyboard-layout-test.sh).
+
+// xkbcli list prints YAML, and every layout and variant block pairs a brief with
+// the description hyprctl reports as the active keymap:
+//
+//   - layout: 'us'
+//     variant: ''
+//     brief: 'en'
+//     description: English (US)
+//
+// The models and option groups it also prints carry no brief, so they never
+// reach the table.
+function layoutBriefs(text) {
+  var briefs = {}
+  var brief = ""
+
+  String(text || "").split("\n").forEach(function (line) {
+    var field = line.match(/^  (brief|description): (.*)$/)
+    if (!field) return
+
+    if (field[1] === "brief") {
+      brief = field[2].replace(/^'|'$/g, "")
+    } else if (brief) {
+      briefs[field[2]] = brief
+      brief = ""
+    }
+  })
+
+  return briefs
+}
+
+// The brief is a short language code rather than a country one, which keeps the
+// label sensible for the layouts named after a language: Esperanto reads EO and
+// Arabic reads AR. It is the same code GNOME shows in its own indicator.
+//
+// Layouts missing from the table fall back to the first word of the description,
+// which reads as ENG/POR but at least says something.
+function shortLabel(description, briefs) {
+  if (!description) return ""
+
+  var brief = (briefs || {})[description]
+  return (brief || description.split(/\s+/)[0].substring(0, 3)).toUpperCase()
+}
+
+if (typeof module !== "undefined") {
+  module.exports = {
+    layoutBriefs: layoutBriefs,
+    shortLabel: shortLabel
+  }
+}
