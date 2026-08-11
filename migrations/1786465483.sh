@@ -4,4 +4,4 @@ echo "Invite the upgrade to Omarchy Quattro"
 omarchy-restart-mako || true
 
 # Tolerate a missing session so a headless update does not fail on the invitation
-omarchy-notification-send "" "Upgrade to Omarchy Quattro" "The major new version is ready!" -u critical || true
+notify-send "    Upgrade to Omarchy Quattro" "The major new version is ready!" -u critical || true
