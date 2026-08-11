@@ -31,6 +31,8 @@ Item {
   property int backgroundVersion: 0
   property string lastEvent: "init"
   property string lastEventAt: ""
+  property bool strandedLock: false
+  property bool strandedLockResolved: false
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
@@ -72,6 +74,29 @@ Item {
     pendingSessionLock = false
     pendingSessionLockTimer.stop()
     sessionLock.locked = true
+  }
+
+  // ext-session-lock outlives its client, and a restart carries no lock over, so
+  // a session locked this early is an orphan behind Hyprland's failsafe. Outputs
+  // are often still absent here, so ask until the answer means something.
+  function checkStrandedLock() {
+    if (strandedLockResolved || strandedLockCheckProc.running) return
+
+    // A lock this shell took is nobody's orphan.
+    if (locked || lockRequested) {
+      strandedLockResolved = true
+      return
+    }
+
+    strandedLockCheckProc.running = true
+  }
+
+  function recoverStrandedLock() {
+    if (!strandedLock || locked || !passwordPamConfigured) return
+
+    strandedLock = false
+    logEvent("lock-stranded: recovering")
+    beginLock()
   }
 
   function refreshBackground() {
@@ -362,6 +387,21 @@ Item {
   }
 
   Process {
+    id: strandedLockCheckProc
+    command: ["bash", "-c", "omarchy-hyprland-session-locked"]
+    onExited: function(exitCode) {
+      // No output to read the lock off yet.
+      if (exitCode === 2) return
+
+      root.strandedLockResolved = true
+
+      // A lock taken while this was in flight is this shell's own.
+      root.strandedLock = exitCode === 0 && !root.locked && !root.lockRequested
+      root.recoverStrandedLock()
+    }
+  }
+
+  Process {
     id: wakeProcess
     command: ["bash", "-c", "omarchy-system-wake"]
   }
@@ -402,9 +442,34 @@ Item {
     onTriggered: root.requestSessionLock()
   }
 
+  Timer {
+    id: strandedLockRetryTimer
+    interval: 500
+    repeat: true
+    // Covers the compositor settling; screens coming back re-arm it.
+    readonly property int budget: 20
+    property int remaining: 20
+    running: !root.strandedLockResolved && remaining > 0
+
+    function rearm() {
+      if (!root.strandedLockResolved) remaining = budget
+    }
+
+    onTriggered: {
+      remaining -= 1
+      root.checkStrandedLock()
+    }
+  }
+
   Connections {
     target: Quickshell
-    function onScreensChanged() { root.requestSessionLock() }
+    function onScreensChanged() {
+      root.requestSessionLock()
+
+      // A monitor still coming up has no workspace, so cannot answer yet.
+      strandedLockRetryTimer.rearm()
+      root.checkStrandedLock()
+    }
   }
 
   onAuthenticatingChanged: {
@@ -422,9 +487,21 @@ Item {
     onFileChanged: reload()
   }
 
+  // No lock before PAM is known good. An answer from before then may be stale --
+  // the failsafe can be cleared from a TTY -- so re-ask rather than act on it.
+  onPasswordPamConfiguredChanged: {
+    if (!passwordPamConfigured) return
+
+    strandedLock = false
+    strandedLockResolved = false
+    strandedLockRetryTimer.rearm()
+    checkStrandedLock()
+  }
+
   Component.onCompleted: {
     refreshBackground()
     refreshFingerprintStatus()
+    checkStrandedLock()
   }
 
   IpcHandler {

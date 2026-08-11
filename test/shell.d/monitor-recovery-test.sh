@@ -82,6 +82,6 @@ pass "system wake resyncs clamshell display state"
 grep -F 'lock-pending: no-real-screen' "$lock_service" >/dev/null
 grep -F 'lock-pending: screen-stabilizing' "$lock_service" >/dev/null
 grep -F 'id: sessionLockStabilizeTimer' "$lock_service" >/dev/null
-grep -F 'function onScreensChanged() { root.requestSessionLock() }' "$lock_service" >/dev/null
+grep -Pzo 'function onScreensChanged\(\) \{\n(.*\n)*?\s*root\.requestSessionLock\(\)\n' "$lock_service" >/dev/null
 grep -F 'realScreens: root.realScreenCount()' "$lock_service" >/dev/null
 pass "lock service waits for stable real screens before session lock"
