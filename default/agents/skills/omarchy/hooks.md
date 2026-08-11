@@ -26,7 +26,7 @@ portable `#!/bin/bash` script and handle the event arguments documented below.
 | `battery-low` | Low battery; percentage in `$1` |
 | `font-set` | After a font change; font name in `$1` |
 | `post-boot` | After the desktop starts |
-| `post-update` | During `omarchy update`, after packages and migrations |
+| `post-update` | After system packages and migrations, before AUR, Mise, and orphan-package updates |
 | `pre-refresh-pacman` | Before `omarchy refresh pacman` resynchronizes packages |
 | `theme-set` | After a theme change; theme slug in `$1` |
 

@@ -31,8 +31,9 @@ Choose the highest-level supported interface:
 
 Package work is complete when the command exits successfully,
 `omarchy pkg present <packages...>` confirms the expected installed state, and
-the requested program or service starts when applicable. For removal,
-`omarchy pkg missing <packages...>` must confirm the named packages are absent.
+the requested program or service starts when applicable. For removal, run
+`omarchy pkg missing <package>` separately for every named package and require
+each check to succeed.
 
 ## Updates
 
@@ -57,21 +58,26 @@ and follow the core privilege and destructive-operation rules. Exercise the
 configured capability after setup rather than treating a successful exit as
 sufficient.
 
-Factory reset is destructive recovery, not ordinary setup. Follow the reset
-rules in `SKILL.md` and obtain immediate confirmation after explaining the
-scope and available backup.
+Factory reset is destructive recovery, not ordinary setup. It permanently
+erases every user account and everything under `/home`; it does not create a
+recoverable user-data backup. It also requires the `@factory` snapshot created
+by a Quattro ISO installation and rejects upgraded systems without that
+snapshot. Follow the reset rules in `SKILL.md` and obtain immediate
+confirmation after explaining those constraints.
 
 ## Reminders
 
 ```bash
 omarchy reminder 15 "Pickup Jack"
 omarchy reminder show
+omarchy reminder show --json
 omarchy reminder clear
 ```
 
-Reminder work is complete when `omarchy reminder show` lists the requested
-message and time. Obtain confirmation before clearing reminders the user did
-not individually identify.
+Plain `omarchy reminder show` displays a desktop notification. Reminder work is
+complete when `omarchy reminder show --json` reports the requested message and
+time. Obtain confirmation before clearing reminders the user did not
+individually identify.
 
 ## Session and Power
 
