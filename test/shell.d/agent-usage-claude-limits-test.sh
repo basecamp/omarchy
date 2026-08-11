@@ -44,7 +44,7 @@ limits=$(read_limits '{
   ]
 }')
 
-expected='[{"label":"Session (5-hour)","percent":0.78,"resetsAt":""},{"label":"Weekly (7-day)","percent":0.12,"resetsAt":""},{"label":"Fable weekly","title":"Fable weekly","percent":0.17,"resetsAt":"2026-08-15T03:00:00+00:00"},{"label":"Fable session","title":"Fable session","percent":0.95,"resetsAt":""},{"label":"claude-opus-5 weekly","title":"claude-opus-5 weekly","percent":0.42,"resetsAt":""}]'
+expected='[{"label":"Session (5-hour)","percent":0.78,"resetsAt":""},{"label":"Weekly (7-day)","percent":0.12,"resetsAt":""},{"label":"Fable Weekly","title":"Fable Weekly","percent":0.17,"resetsAt":"2026-08-15T03:00:00+00:00"},{"label":"Fable Session","title":"Fable Session","percent":0.95,"resetsAt":""},{"label":"claude-opus-5 Weekly","title":"claude-opus-5 Weekly","percent":0.42,"resetsAt":""}]'
 [[ $(jq -c '.limits' <<<"$limits") == "$expected" ]] ||
   fail "Claude collector reads every model-scoped window once and drops unusable entries" "$limits"
 pass "Claude collector reads every model-scoped window once and drops unusable entries"
@@ -67,7 +67,7 @@ pass "Claude collector reads scoped percentages on the payload's own scale"
 # the array, both keep the session and weekly windows they always had.
 for payload in '{"five_hour":{"utilization":78.0},"limits":[{"kind":"session","percent":78,"scope":null}]}' \
   '{"five_hour":{"utilization":78.0},"seven_day":{"utilization":12.0}}'; do
-  [[ $(jq -c '[.limits[].label]' <<<"$(read_limits "$payload")") != *" weekly"* ]] ||
+  [[ $(jq -c '[.limits[].label]' <<<"$(read_limits "$payload")") != *" Weekly"* ]] ||
     fail "Claude collector adds no limit when the payload scopes none" "$payload"
 done
 pass "Claude collector adds no limit when the payload scopes none"
@@ -86,11 +86,11 @@ eval(source.slice(start, end))
 assertDeepEqual(
   limitWindows({ limits: [
     { label: 'Session (5-hour)', percent: 0.78, resetsAt: '' },
-    { label: 'Opus 5 (1M context) weekly', title: 'Opus 5 (1M context) weekly', percent: 0.42, resetsAt: '' }
+    { label: 'Opus 5 (1M context) Weekly', title: 'Opus 5 (1M context) Weekly', percent: 0.42, resetsAt: '' }
   ] }),
   [
     { title: 'Session', percent: 0.78, resetAt: '' },
-    { title: 'Opus 5 (1M context) weekly', percent: 0.42, resetAt: '' }
+    { title: 'Opus 5 (1M context) Weekly', percent: 0.42, resetAt: '' }
   ],
   'agents panel titles a limit off the collector when it states one'
 )

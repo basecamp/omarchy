@@ -653,15 +653,16 @@ def usage_bucket(payload: dict[str, Any], key: str) -> dict[str, Any] | None:
 # ("weekly_scoped", "five_hour_scoped"). The panel reads a window out of free
 # text, which cannot survive a model name like "Opus 5 (1M context)" — the
 # "1M" reads as a one-minute window — so the window is settled here instead
-# and travels as an explicit title.
+# and travels as an explicit title. It is capitalized the way the flat windows
+# title themselves, so "Fable Weekly" sits beside "Weekly" rather than under it.
 def scoped_window(kind: str) -> str:
   text = kind.lower()
   if "month" in text:
-    return "monthly"
+    return "Monthly"
   if "week" in text or "day" in text:
-    return "weekly"
+    return "Weekly"
   if "hour" in text or "session" in text:
-    return "session"
+    return "Session"
   return ""
 
 
