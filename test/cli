@@ -580,11 +580,28 @@ done
 # Idempotent: a second run leaves already-correct links alone.
 HOME="$REPAIR_MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/1786451567.sh" >/dev/null
 [[ $(readlink "$REPAIR_MIGRATION_TMPDIR/.config/btop/themes/current.theme") == "$repair_current_dir/theme/btop.theme" ]] || fail "theme repair migration is idempotent"
-# Custom links outside omarchy/current are left alone.
+# A resolvable custom link outside omarchy/current is left alone. Three levels
+# up from .config/btop/themes is the fake HOME, so this really does resolve.
 touch "$REPAIR_MIGRATION_TMPDIR/custom.theme"
-ln -sfn "../../../../custom.theme" "$REPAIR_MIGRATION_TMPDIR/.config/btop/themes/current.theme"
+ln -sfn "../../../custom.theme" "$REPAIR_MIGRATION_TMPDIR/.config/btop/themes/current.theme"
 HOME="$REPAIR_MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/1786451567.sh" >/dev/null
-[[ $(readlink "$REPAIR_MIGRATION_TMPDIR/.config/btop/themes/current.theme") == "../../../../custom.theme" ]] || fail "theme repair migration leaves custom symlinks alone"
+[[ $(readlink "$REPAIR_MIGRATION_TMPDIR/.config/btop/themes/current.theme") == "../../../custom.theme" ]] || fail "theme repair migration leaves custom symlinks alone"
+# A working link into the user's own dotfiles is left alone even though its
+# target contains omarchy/current/theme and the matching theme filename.
+mkdir -p "$REPAIR_MIGRATION_TMPDIR/dotfiles/omarchy/current/theme"
+touch "$REPAIR_MIGRATION_TMPDIR/dotfiles/omarchy/current/theme/btop.theme"
+ln -sfn "$REPAIR_MIGRATION_TMPDIR/dotfiles/omarchy/current/theme/btop.theme" "$REPAIR_MIGRATION_TMPDIR/.config/btop/themes/current.theme"
+HOME="$REPAIR_MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/1786451567.sh" >/dev/null
+[[ $(readlink "$REPAIR_MIGRATION_TMPDIR/.config/btop/themes/current.theme") == "$REPAIR_MIGRATION_TMPDIR/dotfiles/omarchy/current/theme/btop.theme" ]] || fail "theme repair migration leaves working omarchy/current links alone"
+# A dotfiles repo that is not mounted right now leaves a real link dangling.
+# That link still has to survive, so being broken is not enough to claim one.
+ln -sfn "$REPAIR_MIGRATION_TMPDIR/unmounted/omarchy/current/theme/btop.theme" "$REPAIR_MIGRATION_TMPDIR/.config/btop/themes/current.theme"
+HOME="$REPAIR_MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/1786451567.sh" >/dev/null
+[[ $(readlink "$REPAIR_MIGRATION_TMPDIR/.config/btop/themes/current.theme") == "$REPAIR_MIGRATION_TMPDIR/unmounted/omarchy/current/theme/btop.theme" ]] || fail "theme repair migration leaves unmounted dotfiles links alone"
+# A literal-~ target naming a different theme file is not ours either.
+ln -sfn "~/.local/state/omarchy/current/theme/other.theme" "$REPAIR_MIGRATION_TMPDIR/.config/btop/themes/current.theme"
+HOME="$REPAIR_MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/1786451567.sh" >/dev/null
+[[ $(readlink "$REPAIR_MIGRATION_TMPDIR/.config/btop/themes/current.theme") == "~/.local/state/omarchy/current/theme/other.theme" ]] || fail "theme repair migration leaves other theme filenames alone"
 pass "theme repair migration relinks dangling theme symlinks"
 
 NVIM_MIGRATION_TMPDIR=$(mktemp -d)
