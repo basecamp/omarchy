@@ -64,7 +64,7 @@ Item {
   property bool idledThisCycle: false
   property bool screensaverStartedThisCycle: false
   property bool screenOffThisCycle: false
-  property bool wakeAfterBlankPending: false
+  property string pendingDisplayState: ""
   property string pendingLockReason: ""
   property string lastEvent: "starting"
   property string lastEventAt: ""
@@ -110,31 +110,32 @@ Item {
   function turnOffScreens(reason) {
     logEvent("screen-off", reason || "requested")
     root.screenOffThisCycle = true
-    runProcess(screenOffProcess, "screen-off", "omarchy-system-blank")
+    root.pendingDisplayState = "blank"
+    flushDisplayState()
   }
 
-  // Blank and wake are separate async processes with no ordering between them.
-  // If activity lands while omarchy-system-blank is still running, firing wake
-  // right away races it -- whichever exits last wins, so the blank can finish
-  // after the wake and leave the screens dark despite the cycle being over.
-  // Record the request and let flushPendingWake() decide when it's safe to
-  // actually launch it.
   function wakeScreens() {
-    root.wakeAfterBlankPending = true
-    root.flushPendingWake()
+    root.pendingDisplayState = "wake"
+    flushDisplayState()
   }
 
-  // A pending wake can also fail to launch because wakeProcess itself is
-  // still finishing an earlier wake (reachable with the one-second rearm
-  // floor: a new blank can complete while the previous wake is still
-  // restoring the displays). The flag is only cleared once runProcess()
-  // actually starts it, so both screenOffProcess and wakeProcess retry this
-  // on exit instead of a busy launch silently dropping the request.
-  function flushPendingWake() {
-    if (!root.wakeAfterBlankPending) return
-    if (screenOffProcess.running) return
-    if (!runProcess(wakeProcess, "wake", "omarchy-system-wake")) return
-    root.wakeAfterBlankPending = false
+  // Blanking and waking are one resource seen from two sides: two async
+  // processes that must never overlap, because whichever exits last decides
+  // what the displays actually do. Launching either while the other is still
+  // running races it; refusing to launch drops the request entirely. So the
+  // wanted end state is recorded instead -- the newest request wins, since
+  // wanting the screens on then off (or the reverse) is not a queue to work
+  // through -- and it only clears once the process for it really started.
+  // Both processes flush on exit, so a request made while one was busy is
+  // retried rather than lost. Reachable with the one-second rearm floor: a
+  // reblank can come due while the previous wake is still restoring.
+  function flushDisplayState() {
+    if (!root.pendingDisplayState) return
+    if (screenOffProcess.running || wakeProcess.running) return
+    var started = root.pendingDisplayState === "blank"
+      ? runProcess(screenOffProcess, "screen-off", "omarchy-system-blank")
+      : runProcess(wakeProcess, "wake", "omarchy-system-wake")
+    if (started) root.pendingDisplayState = ""
   }
 
   // Turning the screens back on after activity that did not end the cycle. The
@@ -167,7 +168,7 @@ Item {
     // lock, so this is reachable even outside the subsumed case above) must not
     // un-blank the lock screen once it exits.
     root.screenOffThisCycle = false
-    root.wakeAfterBlankPending = false
+    root.pendingDisplayState = ""
     resetScreensaverWindows()
     // The lock service starts its own, independent wake as soon as the user
     // interacts, with no way to know a blank from here is still in flight. If
@@ -187,6 +188,20 @@ Item {
     root.pendingLockReason = ""
     logEvent("lock-system-deferred", reason)
     runProcess(lockProcess, "lock", "omarchy-system-lock")
+  }
+
+  // Dropping a deferred lock takes the displays back from a lock service that
+  // never got them: lockSystem() disowned this cycle's screen-off and its
+  // wanted display state on the promise the lock would follow, and it also
+  // ended the cycle, so nothing else here is still watching. Without a wake
+  // the blank it is waiting on lands on screens with no lock in front of them
+  // and no armed cycle to notice. A lock is only ever deferred behind a
+  // running blank, so waking is always what is wanted.
+  function cancelPendingLock() {
+    if (!root.pendingLockReason) return
+    logEvent("lock-system-cancelled", root.pendingLockReason)
+    root.pendingLockReason = ""
+    wakeScreens()
   }
 
   function startIdleCycle() {
@@ -238,8 +253,10 @@ Item {
     // A lock deferred by lockSystem() (waiting on an in-flight screen-off
     // blank) is still just a decision, not yet a running process -- activity,
     // or Stay Awake turning on, cancels it like everything else here instead
-    // of locking anyway once the blank happens to finish.
-    root.pendingLockReason = ""
+    // of locking anyway once the blank happens to finish. The wake above is
+    // gated on idledThisCycle, which lockSystem() already cleared, so
+    // cancelling the lock has to take that wake back over.
+    cancelPendingLock()
     resetScreensaverWindows()
   }
 
@@ -337,7 +354,7 @@ Item {
       screenOffActive: root.screenOffThisCycle,
       screenOffWatcherEnabled: screenOffActivityMonitor.enabled,
       screenOffWatcherIdle: screenOffActivityMonitor.isIdle,
-      wakeAfterBlankPending: root.wakeAfterBlankPending,
+      pendingDisplayState: root.pendingDisplayState,
       pendingLockReason: root.pendingLockReason,
       screensaverWindows: root.screensaverWindowCount,
       timers: {
@@ -415,18 +432,24 @@ Item {
     // screensaver's launch activity can spend the main monitor's transition
     // (see handleActiveSignal) before a later blank. Real input after that
     // blank would then go unseen until the main monitor re-idled, leaving the
-    // panels dark under a moving mouse. This watcher exists only while the
-    // screens are off -- the user is by definition idle, so it re-idles within
-    // a second and its own resumed edge relights them. Inhibitors are ignored:
-    // only raw input should wake a blanked display.
-    enabled: root.idleEnabled && root.screenOffThisCycle
+    // panels dark under a moving mouse. This watcher runs for the whole idle
+    // cycle rather than only while the screens are off: with a one-second
+    // timeout it needs a second of quiet to go idle before it has a resumed
+    // edge to give, and starting it at the blank would spend that second with
+    // the screens already dark, missing the input that lands inside it. The
+    // handler below stays gated on the screens actually being off, so the
+    // extra arming costs nothing. Inhibitors are ignored: only raw input
+    // should wake a blanked display.
+    enabled: root.idleEnabled && root.idledThisCycle
     timeout: 1
     respectInhibitors: false
     onIsIdleChanged: {
       // Disabling a monitor resets isIdle to false and re-enters this handler,
-      // so every path that clears screenOffThisCycle or idleEnabled lands here
-      // before this runs: both are re-checked instead of trusting the binding.
-      if (isIdle || !root.idleEnabled || !root.screenOffThisCycle) return
+      // and both cycle-ending paths drop idledThisCycle before this cycle's
+      // screen-off ownership, so that re-entry arrives while the blank still
+      // looks like ours. Every term is re-checked instead of trusting the
+      // binding, or ending a cycle would report input nobody gave.
+      if (isIdle || !root.idleEnabled || !root.idledThisCycle || !root.screenOffThisCycle) return
       root.logEvent("screen-off-activity", "input while screens are dark")
       root.handleActiveSignal()
     }
@@ -477,7 +500,18 @@ Item {
     if (delaySeconds > 0) timer.restart()
   }
 
-  onLockOnIdleChanged: syncSwitchTimer(root.lockOnIdle, lockTimer, root.lockDelaySeconds)
+  onLockOnIdleChanged: {
+    syncSwitchTimer(root.lockOnIdle, lockTimer, root.lockDelaySeconds)
+    // This switch also decides screenOffSubsumedByLock, so screen-off is
+    // resynced against the new verdict: turning the lock off un-subsumes a
+    // screen-off this cycle skipped, and turning it on leaves one armed that
+    // the lock now covers.
+    syncSwitchTimer(root.screenOffOnIdle && !root.screenOffSubsumedByLock, screenOffTimer, root.screenOffDelaySeconds)
+    if (root.lockOnIdle) return
+    // Only the idle timeout defers a lock, so turning that off cancels one
+    // still waiting behind a blank -- exactly like the timer above.
+    cancelPendingLock()
+  }
 
   // Lock is never subsumed by screen-off -- only screen-off can be subsumed by
   // lock (screenOffSubsumedByLock), since lock is the deadline being compared
@@ -522,7 +556,7 @@ Item {
     id: screenOffProcess
     onExited: function(exitCode, exitStatus) {
       root.logEvent("process-exit", "screen-off exitCode=" + exitCode + " status=" + exitStatus)
-      root.flushPendingWake()
+      root.flushDisplayState()
       root.flushPendingLock()
     }
   }
@@ -530,7 +564,7 @@ Item {
     id: wakeProcess
     onExited: function(exitCode, exitStatus) {
       root.logEvent("process-exit", "wake exitCode=" + exitCode + " status=" + exitStatus)
-      root.flushPendingWake()
+      root.flushDisplayState()
     }
   }
 

@@ -187,37 +187,34 @@ if rg -q 'hyprctl' "$service"; then
 fi
 pass "the idle service blanks through omarchy-system-blank"
 
-# Blank and wake are separate async processes; firing wake while a blank is
-# still in flight races it and can leave the screens dark. A pending wake can
-# also fail to launch because wakeProcess itself is still finishing an
-# earlier wake -- reachable with the one-second rearm floor. flushPendingWake()
-# must only clear the pending flag once the wake process actually launches,
-# and both process exits must retry it, so a wake requested while busy is
-# never silently dropped. This is a source-level check for that shape, not a
-# runtime one -- there's no headless way to race two Process launches from
-# this suite.
-rg -q 'function wakeScreens\(\)' "$service" || fail "wakeScreens() must exist to record a wake request"
-rg -q 'function flushPendingWake\(\)' "$service" ||
-  fail "flushPendingWake() must exist to retry a wake request once whatever was busy exits"
-rg -A4 'function flushPendingWake\(\)' "$service" | rg -q 'screenOffProcess\.running' ||
-  fail "flushPendingWake() must not launch a wake while a blank is still running"
-rg -A4 'function flushPendingWake\(\)' "$service" | rg -q 'if \(!runProcess\(wakeProcess, "wake", "omarchy-system-wake"\)\) return' ||
-  fail "flushPendingWake() must only clear the pending flag once the wake process actually launches"
-
-wake_call_sites=$(rg -c '\bwakeScreens\(\)' "$service")
-((wake_call_sites == 4)) ||
-  fail "rearmScreenOff, cancelIdleCycle, and the screen-off switch handler must all wake through wakeScreens()"
-
-for process_id in screenOffProcess wakeProcess; do
-  rg -A4 "id: $process_id" "$service" | rg -q 'root\.flushPendingWake\(\)' ||
-    fail "$process_id.onExited must retry a pending wake"
+# Blanking and waking are two async processes over one resource: whichever
+# exits last decides what the displays do, so launching either while the other
+# runs races it, and refusing to launch drops the request. Both directions are
+# reachable with the one-second rearm floor. Neither process may be launched
+# outside the serializer, the serializer must wait on BOTH of them, and the
+# wanted state may only clear once its process actually started -- with both
+# exits flushing, so nothing is silently lost. Source-level checks for that
+# shape; there is no headless way to race two Process launches from this suite.
+for helper in turnOffScreens wakeScreens flushDisplayState; do
+  rg -q "function $helper\(" "$service" || fail "$helper() must exist"
 done
 
-direct_wake_calls=$(rg -c 'runProcess\(wakeProcess, "wake", "omarchy-system-wake"\)' "$service")
-((direct_wake_calls == 1)) ||
-  fail "omarchy-system-wake should only be launched from inside flushPendingWake()"
+rg -A6 'function flushDisplayState\(\)' "$service" | rg -q 'if \(screenOffProcess\.running \|\| wakeProcess\.running\) return' ||
+  fail "flushDisplayState() must wait for both the blank and the wake process, not just one"
+rg -A6 'function flushDisplayState\(\)' "$service" | rg -q 'if \(started\) root\.pendingDisplayState = ""' ||
+  fail "flushDisplayState() must only clear the wanted state once its process actually launched"
 
-pass "a wake requested while blanking or a previous wake is in flight is retried until it launches"
+for launch in 'runProcess\(screenOffProcess, "screen-off", "omarchy-system-blank"\)' 'runProcess\(wakeProcess, "wake", "omarchy-system-wake"\)'; do
+  launches=$(rg -c "$launch" "$service")
+  ((launches == 1)) || fail "each display process must be launched from exactly one place, the serializer"
+done
+
+for process_id in screenOffProcess wakeProcess; do
+  rg -A4 "id: $process_id" "$service" | rg -q 'root\.flushDisplayState\(\)' ||
+    fail "$process_id.onExited must flush a display state left pending while it ran"
+done
+
+pass "blank and wake are serialized through one wanted state that survives either process being busy"
 
 # Locking already blanks the screens through its own service. When the lock
 # is due at or before the screen-off deadline, launching our own blank first
@@ -227,8 +224,8 @@ rg -q 'screenOffSubsumedByLock: root\.lockOnIdle && root\.screenOffDelaySeconds 
   fail "screenOffSubsumedByLock must compare against the lock's own delay"
 
 subsumption_guards=$(rg -c '!root\.screenOffSubsumedByLock' "$service")
-((subsumption_guards == 4)) ||
-  fail "startIdleCycle, both screen-off timers, and the screen-off switch handler must all check screenOffSubsumedByLock"
+((subsumption_guards == 5)) ||
+  fail "startIdleCycle, both screen-off timers, and both switch handlers must all check screenOffSubsumedByLock"
 
 pass "screen-off is skipped everywhere the lock is due at or before its own deadline"
 
@@ -245,25 +242,27 @@ pass "the screen-off rearm timer clamps a configured zero timeout instead of fir
 # ext-idle-notify only fires "resumed" when leaving the idle state, and the
 # screensaver's launch activity can spend the main monitor's transition before
 # a later blank -- mouse input would then leave the panels dark until the main
-# monitor re-idled. A second 1s monitor runs only while the screens are off to
-# catch that first real input. Source-level shape checks, as above.
+# monitor re-idled. A second 1s monitor covers that. It has to be armed for the
+# whole cycle, not just while the screens are off: it needs a second of quiet
+# to go idle before it has a resumed edge to give, and spending that second
+# after the blank would miss input landing inside it. Source-level checks.
 rg -q 'id: screenOffActivityMonitor' "$service" ||
   fail "a dedicated idle monitor must watch for input while the screens are dark"
-rg -q 'enabled: root\.idleEnabled && root\.screenOffThisCycle' "$service" ||
-  fail "the screen-off watcher must only exist while this cycle's blank is ours"
-rg -q 'if \(isIdle \|\| !root\.idleEnabled \|\| !root\.screenOffThisCycle\) return' "$service" ||
-  fail "the screen-off watcher must guard against the isIdle reset its own disable emits"
+rg -q 'enabled: root\.idleEnabled && root\.idledThisCycle' "$service" ||
+  fail "the screen-off watcher must be armed for the whole cycle so it is already idle when a delayed blank lands"
+rg -q 'if \(isIdle \|\| !root\.idleEnabled \|\| !root\.idledThisCycle \|\| !root\.screenOffThisCycle\) return' "$service" ||
+  fail "the screen-off watcher must re-check every term of its own binding, including the one that disables it"
 rg -A2 'screen-off-activity' "$service" | rg -q 'root\.handleActiveSignal\(\)' ||
   fail "dark-screen input must route through handleActiveSignal, not wake the screens directly"
 pass "input while the screens are dark wakes them through a dedicated 1s idle monitor"
 
 # Screen-off can legitimately fire before the lock (not subsumed), so a blank
 # can still be finishing in the background when lockSystem() hands display
-# ownership to the lock service. Without disowning a pending wake here, that
-# blank's own exit would later fire an errant wake through the lock screen.
-rg -A20 'function lockSystem\(reason\)' "$service" | rg -q 'root\.wakeAfterBlankPending = false' ||
-  fail "lockSystem() must disown a pending wake, not just this cycle's screen-off ownership"
-pass "locking disowns any pending wake left over from a screen-off blank that outlives it"
+# ownership to the lock service. Without disowning the wanted display state
+# here, that blank's own exit would drive the displays through the lock screen.
+rg -A20 'function lockSystem\(reason\)' "$service" | rg -q 'root\.pendingDisplayState = ""' ||
+  fail "lockSystem() must disown the wanted display state, not just this cycle's screen-off ownership"
+pass "locking disowns a display state left wanted by a screen-off blank that outlives it"
 
 # The lock service starts its own independent wake with no way to know a
 # screen-off blank from here is still in flight; if that wake finishes first,
@@ -283,7 +282,29 @@ pass "locking waits for an in-flight screen-off blank instead of racing the lock
 # A deferred lock is still just a decision, not yet a running process --
 # cancelIdleCycle() must disown it like every other piece of cycle state, so
 # activity or Stay Awake during the defer window doesn't lock anyway once the
-# blank happens to finish.
-rg -A19 'function cancelIdleCycle\(reason\)' "$service" | rg -q 'root\.pendingLockReason = ""' ||
-  fail "cancelIdleCycle() must disown a lock deferred by an in-flight blank"
-pass "canceling the idle cycle also cancels a lock still waiting on an in-flight blank"
+# blank happens to finish. Dropping it has to hand the displays back too:
+# lockSystem() disowned them expecting that lock to arrive, and its own wake
+# is gated on idledThisCycle, which lockSystem() already cleared.
+rg -q 'function cancelPendingLock\(\)' "$service" ||
+  fail "one helper must own dropping a deferred lock, so every door does it the same way"
+rg -A5 'function cancelPendingLock\(\)' "$service" | rg -q 'wakeScreens\(\)' ||
+  fail "cancelling a deferred lock must wake the screens it was going to take over"
+
+for door in 'function cancelIdleCycle\(reason\)' 'onLockOnIdleChanged'; do
+  rg -A19 "$door" "$service" | rg -q 'cancelPendingLock\(\)' ||
+    fail "every path that drops a deferred lock must go through cancelPendingLock()"
+done
+
+reason_writes=$(rg -c 'root\.pendingLockReason = ' "$service")
+((reason_writes == 3)) ||
+  fail "pendingLockReason should only be written where it is deferred, flushed, and cancelled"
+
+pass "dropping a deferred lock hands the darkening displays back instead of abandoning them"
+
+# lockOnIdle decides screenOffSubsumedByLock too, so its handler cannot only
+# touch lockTimer: flipping it re-decides whether screen-off is covered by the
+# lock this cycle, and turning it off has to drop a lock the idle timeout
+# already deferred behind an in-flight blank.
+rg -A12 'onLockOnIdleChanged' "$service" | rg -q 'syncSwitchTimer\(root\.screenOffOnIdle && !root\.screenOffSubsumedByLock, screenOffTimer' ||
+  fail "onLockOnIdleChanged must resync the screen-off timer it just re-decided"
+pass "flipping lock-on-idle resyncs the screen-off it subsumes"
