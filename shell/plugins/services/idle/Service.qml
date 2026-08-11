@@ -65,6 +65,7 @@ Item {
   property bool screensaverStartedThisCycle: false
   property bool screenOffThisCycle: false
   property bool wakeAfterBlankPending: false
+  property string pendingLockReason: ""
   property string lastEvent: "starting"
   property string lastEventAt: ""
   property var screensaverWindows: ({})
@@ -168,6 +169,23 @@ Item {
     root.screenOffThisCycle = false
     root.wakeAfterBlankPending = false
     resetScreensaverWindows()
+    // The lock service starts its own, independent wake as soon as the user
+    // interacts, with no way to know a blank from here is still in flight. If
+    // that wake finishes first, the stale blank disabling DPMS afterward would
+    // leave the unlock screen dark. Wait for it to actually exit before handing
+    // display ownership over, instead of racing the two.
+    if (screenOffProcess.running) {
+      root.pendingLockReason = reason || "requested"
+      return
+    }
+    runProcess(lockProcess, "lock", "omarchy-system-lock")
+  }
+
+  function flushPendingLock() {
+    if (!root.pendingLockReason) return
+    var reason = root.pendingLockReason
+    root.pendingLockReason = ""
+    logEvent("lock-system-deferred", reason)
     runProcess(lockProcess, "lock", "omarchy-system-lock")
   }
 
@@ -217,6 +235,11 @@ Item {
     root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
     root.screenOffThisCycle = false
+    // A lock deferred by lockSystem() (waiting on an in-flight screen-off
+    // blank) is still just a decision, not yet a running process -- activity,
+    // or Stay Awake turning on, cancels it like everything else here instead
+    // of locking anyway once the blank happens to finish.
+    root.pendingLockReason = ""
     resetScreensaverWindows()
   }
 
@@ -315,6 +338,7 @@ Item {
       screenOffWatcherEnabled: screenOffActivityMonitor.enabled,
       screenOffWatcherIdle: screenOffActivityMonitor.isIdle,
       wakeAfterBlankPending: root.wakeAfterBlankPending,
+      pendingLockReason: root.pendingLockReason,
       screensaverWindows: root.screensaverWindowCount,
       timers: {
         screensaver: screensaverTimer.running,
@@ -499,6 +523,7 @@ Item {
     onExited: function(exitCode, exitStatus) {
       root.logEvent("process-exit", "screen-off exitCode=" + exitCode + " status=" + exitStatus)
       root.flushPendingWake()
+      root.flushPendingLock()
     }
   }
   Process {

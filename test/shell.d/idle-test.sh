@@ -264,3 +264,26 @@ pass "input while the screens are dark wakes them through a dedicated 1s idle mo
 rg -A20 'function lockSystem\(reason\)' "$service" | rg -q 'root\.wakeAfterBlankPending = false' ||
   fail "lockSystem() must disown a pending wake, not just this cycle's screen-off ownership"
 pass "locking disowns any pending wake left over from a screen-off blank that outlives it"
+
+# The lock service starts its own independent wake with no way to know a
+# screen-off blank from here is still in flight; if that wake finishes first,
+# the stale blank disabling DPMS afterward would leave the unlock screen
+# dark. lockSystem() must defer the actual lock until the blank exits instead
+# of racing it, and screenOffProcess.onExited must flush that deferred lock.
+rg -A32 'function lockSystem\(reason\)' "$service" | rg -q 'if \(screenOffProcess\.running\) \{' ||
+  fail "lockSystem() must defer locking while a screen-off blank is still running"
+rg -A32 'function lockSystem\(reason\)' "$service" | rg -q 'root\.pendingLockReason = reason \|\| "requested"' ||
+  fail "lockSystem() must record the reason before deferring"
+rg -q 'function flushPendingLock\(\)' "$service" ||
+  fail "flushPendingLock() must exist to fire a lock deferred by an in-flight blank"
+rg -A5 'id: screenOffProcess' "$service" | rg -q 'root\.flushPendingLock\(\)' ||
+  fail "screenOffProcess.onExited must flush a deferred lock, not just a deferred wake"
+pass "locking waits for an in-flight screen-off blank instead of racing the lock service's own wake"
+
+# A deferred lock is still just a decision, not yet a running process --
+# cancelIdleCycle() must disown it like every other piece of cycle state, so
+# activity or Stay Awake during the defer window doesn't lock anyway once the
+# blank happens to finish.
+rg -A19 'function cancelIdleCycle\(reason\)' "$service" | rg -q 'root\.pendingLockReason = ""' ||
+  fail "cancelIdleCycle() must disown a lock deferred by an in-flight blank"
+pass "canceling the idle cycle also cancels a lock still waiting on an in-flight blank"
