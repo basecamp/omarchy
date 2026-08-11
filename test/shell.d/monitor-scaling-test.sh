@@ -22,7 +22,7 @@ if [[ $1 == "monitors" && $2 == "-j" ]]; then
   # eDP-1 is focused; DP-1 stands in for a second display the panel can target
   # with --monitor without walking over to it, and for the neighbour a rescaled
   # display can collide with.
-  printf '[{"name":"eDP-1","focused":true,"scale":%s,"width":%s,"height":%s,"refreshRate":120.0,"x":%s,"y":%s},{"name":"DP-1","focused":false,"scale":1,"width":2560,"height":1440,"refreshRate":60.0,"x":%s,"y":0}]' \
+  printf '[{"name":"eDP-1","focused":true,"description":"Acme Internal 0x1234","scale":%s,"width":%s,"height":%s,"refreshRate":120.0,"x":%s,"y":%s},{"name":"DP-1","focused":false,"description":"Acme Wide 42 SN123","scale":1,"width":2560,"height":1440,"refreshRate":60.0,"x":%s,"y":0}]' \
     "${OMARCHY_TEST_MONITOR_SCALE:-2}" "${OMARCHY_TEST_MONITOR_WIDTH:-2880}" "${OMARCHY_TEST_MONITOR_HEIGHT:-1800}" \
     "${OMARCHY_TEST_MONITOR_X:-0}" "${OMARCHY_TEST_MONITOR_Y:-0}" "${OMARCHY_TEST_NEIGHBOUR_X:-4000}"
 elif [[ $1 == "eval" ]]; then
@@ -174,3 +174,87 @@ pass "an unknown --monitor is refused before it can hit every display"
 [[ $(OMARCHY_TEST_MONITOR_SCALE=2 run_scaling) == "2" ]] ||
   fail "no --monitor still reports the focused display's scale"
 pass "--monitor reads the named display's scale"
+
+# --- a display with a rule of its own has that rule rewritten ---
+
+# A rule keyed to one display overrides the catch-all, so writing the catch-all
+# would leave the rule applying the old scale. Worse than not persisting: the
+# write reloads Hyprland, and the reload undoes what was just applied.
+
+write_pinned_config() {
+  cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+
+hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
+
+hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x1000", scale = 2 })
+hl.monitor({ output = "desc:Acme Wide 42", mode = "preferred", position = "1440x0", scale = 2 })
+
+-- hl.monitor({ output = "DP-1", mode = "preferred", position = "auto", scale = 4 })
+LUA
+}
+
+write_pinned_config
+run_scaling 1.6
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x1000", scale = 1.6 })' "$monitor_lua" >/dev/null ||
+  fail "the focused display's own rule carries the new scale"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "the catch-all is left alone when the display has a rule of its own"
+pass "a display with a rule of its own has that rule rewritten, not the catch-all"
+
+# The position and the mode are the user's, and a scale change is not a licence
+# to move a display or restate its mode.
+write_pinned_config
+run_scaling 1.6
+grep -F 'position = "0x1000"' "$monitor_lua" >/dev/null || fail "the pinned position survives"
+grep -F 'mode = "preferred"' "$monitor_lua" >/dev/null || fail "the mode survives"
+pass "rewriting a rule's scale leaves its position and mode untouched"
+
+# --- a desc: rule is matched the way Hyprland matches it ---
+
+# `desc:` matches by prefix, so an abbreviated description still names the
+# display, and the identifier the user chose is what stays in the file.
+write_pinned_config
+run_scaling --monitor DP-1 1.6
+grep -Fx 'hl.monitor({ output = "desc:Acme Wide 42", mode = "preferred", position = "1440x0", scale = 1.6 })' "$monitor_lua" >/dev/null ||
+  fail "an abbreviated desc: rule is matched and keeps its identifier"
+pass "a desc: rule is matched by prefix and keeps the identifier the user wrote"
+
+# --- commented-out rules are not rules ---
+
+# The shipped config carries commented examples. Matching one would rewrite a
+# comment and leave the real configuration untouched.
+write_pinned_config
+run_scaling --monitor DP-1 1.6
+grep -F -- '-- hl.monitor({ output = "DP-1", mode = "preferred", position = "auto", scale = 4 })' "$monitor_lua" >/dev/null ||
+  fail "a commented example is left as written"
+pass "a commented-out rule is not mistaken for a rule"
+
+# --- a display with no rule of its own, targeted remotely ---
+
+# The catch-all speaks for every display, so moving it would resize the rest.
+write_monitor_config
+run_scaling --monitor DP-1 1.6
+grep -Fx 'hl.monitor({ output = "DP-1", mode = "preferred", position = "auto", scale = 1.6 })' "$monitor_lua" >/dev/null ||
+  fail "a remotely scaled display gains a rule of its own"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "the catch-all still speaks for the displays that have no rule"
+pass "a display scaled from the selector gains its own rule, leaving the rest alone"
+
+# --- GDK_SCALE follows only the display the user is on ---
+
+# One value serves the whole session, so a display the user is not on does not
+# get to redefine it.
+write_monitor_config
+run_scaling --monitor DP-1 1.6
+grep -Fx 'local omarchy_gdk_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "scaling another display leaves GDK_SCALE alone"
+pass "GDK_SCALE is left alone when the change is to a display the user is not on"
+
+write_pinned_config
+run_scaling 3
+grep -Fx 'local omarchy_gdk_scale = 3' "$monitor_lua" >/dev/null ||
+  fail "scaling the focused display still moves GDK_SCALE"
+pass "GDK_SCALE still follows the focused display"
