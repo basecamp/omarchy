@@ -83,5 +83,6 @@ assertEqual(orphaned['Greek'], undefined, 'a brief stops at the end of its block
 
 assertEqual(model.shortLabel('Elvish (Tengwar)', briefs), 'ELV', 'an unlisted layout falls back to its description')
 assertEqual(model.shortLabel('English (US)', {}), 'ENG', 'the label survives an empty table')
+assertEqual(model.shortLabel('constructor', {}), 'CON', 'a description naming a built-in still falls back')
 assertEqual(model.shortLabel('', briefs), '', 'no keymap means no label')
 JS

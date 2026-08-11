@@ -47,8 +47,10 @@ function layoutBriefs(text) {
 function shortLabel(description, briefs) {
   if (!description) return ""
 
+  // A description like "constructor" reaches an inherited member rather than a
+  // brief, so take the lookup only when it hands back the string it promises.
   var brief = (briefs || {})[description]
-  var label = brief ? brief.split("-")[0] : description.split(/\s+/)[0]
+  var label = typeof brief === "string" && brief ? brief.split("-")[0] : description.split(/\s+/)[0]
   return label.substring(0, 3).toUpperCase()
 }
 
