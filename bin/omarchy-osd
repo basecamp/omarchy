@@ -10,7 +10,7 @@ icon=""
 message=""
 progress=""
 progress_text=""
-max="100"
+maximum="100"
 duration=""
 
 while (($#)); do
