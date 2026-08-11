@@ -78,10 +78,13 @@ BarWidget {
     }
   }
 
-  // The table only changes when xkb data is upgraded, so read it once at startup.
+  // The table only changes when xkb data is upgraded, so read it at startup and
+  // leave it alone. The bar is built per monitor, so this runs once per widget.
+  // The exotic rulesets cover layouts like trans (IPA) that ship in the same xkb
+  // package and set just as well, so load them or those labels lose their code.
   Process {
     id: briefsProc
-    command: ["xkbcli", "list"]
+    command: ["xkbcli", "list", "--load-exotic"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.layoutBriefs = KeyboardLayoutModel.layoutBriefs(text)
