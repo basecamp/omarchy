@@ -7,9 +7,9 @@ set -euo pipefail
 
 command="${1:-}"
 case "$command" in
-  pause | resume) ;;
+  pause | resume | paused) ;;
   *)
-    echo "Usage: omarchy-hyprland-reload-guard pause|resume" >&2
+    echo "Usage: omarchy-hyprland-reload-guard pause|resume|paused" >&2
     exit 1
     ;;
 esac
@@ -96,6 +96,9 @@ resume_instance() {
 }
 
 case "$command" in
+  paused)
+    compgen -G "$state_dir/*" >/dev/null
+    ;;
   pause)
     while IFS=$'\t' read -r runtime_dir signature; do
       pause_instance "$runtime_dir" "$signature"
