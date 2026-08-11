@@ -30,9 +30,9 @@ require_command jq
 TMPDIR=$(mktemp -d)
 result="$TMPDIR/result.json"
 log="$TMPDIR/quickshell.log"
-config_dir="$TMPDIR/lock-fingerprint-indicator"
+config_dir="$TMPDIR/lock-biometric-indicators"
 mkdir -p "$config_dir" "$TMPDIR/home"
-cp "$SHELL_TEST_DIR/fixtures/lock-fingerprint-indicator/shell.qml" "$config_dir/shell.qml"
+cp "$SHELL_TEST_DIR/fixtures/lock-biometric-indicators/shell.qml" "$config_dir/shell.qml"
 ln -s "$ROOT/shell/Ui" "$config_dir/Ui"
 ln -s "$ROOT/shell/Commons" "$config_dir/Commons"
 
@@ -52,22 +52,22 @@ for _ in {1..80}; do
   [[ -s $result ]] && break
   if ! kill -0 "$QS_PID" 2>/dev/null; then
     sed -n '1,220p' "$log" >&2
-    fail "lock fingerprint indicator quickshell exited before writing result"
+    fail "lock biometric indicators quickshell exited before writing result"
   fi
   sleep 0.1
 done
 
 [[ -s $result ]] || {
   sed -n '1,220p' "$log" >&2
-  fail "lock fingerprint indicator test timed out"
+  fail "lock biometric indicators test timed out"
 }
 
 if ! jq -e '.ok == true' "$result" >/dev/null; then
-  printf 'Lock fingerprint indicator result:\n' >&2
+  printf 'Lock biometric indicators result:\n' >&2
   jq . "$result" >&2
-  printf 'Lock fingerprint indicator log:\n' >&2
+  printf 'Lock biometric indicators log:\n' >&2
   sed -n '1,220p' "$log" >&2
-  fail "fingerprint indicator tracks the configured sensor"
+  fail "biometric indicators preserve the lock field layout"
 fi
 
-pass "fingerprint indicator tracks the configured sensor"
+pass "biometric indicators preserve the lock field layout"

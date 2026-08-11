@@ -8,6 +8,7 @@ Item {
 
   property string backgroundPath: ""
   property int backgroundVersion: 0
+  property bool faceConfigured: false
   property bool fingerprintConfigured: false
   property bool authenticatingPassword: false
   property string failureMessage: ""
@@ -24,9 +25,12 @@ Item {
   readonly property int fieldFontSize: Math.round(Style.font.heading * 1.125)
   readonly property int passwordDotFontSize: Math.round(Style.font.heading * 1.33)
   readonly property int passwordDotLetterSpacing: Math.round(Style.font.heading * 0.19)
-  // Space to keep clear on each side of the field for the fingerprint icon
-  // (icon width plus a gap) so the centered dots never run under it.
-  readonly property real fingerprintReserve: fingerprintConfigured ? Math.round(fingerprintIcon.implicitWidth + 12) : 0
+  // Reserve the widest configured biometric icon plus a gap on both sides, so
+  // centered text stays clear when either or both indicators are visible.
+  readonly property real biometricReserve: Math.round(Math.max(
+    faceConfigured ? faceIcon.implicitWidth + 12 : 0,
+    fingerprintConfigured ? fingerprintIcon.implicitWidth + 12 : 0
+  ))
   // Shrink the dots to fit once the password outgrows the field, so every
   // keystroke stays visible — otherwise long passwords clip with no feedback.
   readonly property real passwordDotScale: dotMetrics.advanceWidth > 0
@@ -133,11 +137,9 @@ Item {
         id: passwordInput
         anchors.fill: parent
         anchors.topMargin: inputField.borderTop
-        // Reserve the fingerprint icon's width on both sides so the centered
-        // dots stay symmetric and never slide under the icon as they grow.
-        anchors.rightMargin: inputField.borderRight + 18 + root.fingerprintReserve
+        anchors.rightMargin: inputField.borderRight + 18 + root.biometricReserve
         anchors.bottomMargin: inputField.borderBottom
-        anchors.leftMargin: inputField.borderLeft + 18 + root.fingerprintReserve
+        anchors.leftMargin: inputField.borderLeft + 18 + root.biometricReserve
         verticalAlignment: TextInput.AlignVCenter
         horizontalAlignment: TextInput.AlignHCenter
         activeFocusOnPress: true
@@ -194,6 +196,21 @@ Item {
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
+      }
+
+      Text {
+        id: faceIcon
+        objectName: "faceIndicator"
+        anchors.left: parent.left
+        anchors.leftMargin: inputField.borderLeft + 18
+        anchors.verticalCenter: parent.verticalCenter
+        visible: root.faceConfigured
+        text: "󰱻"
+        color: Color.lock.placeholder
+        font.family: Style.font.family
+        font.pixelSize: Math.round(root.fieldFontSize * 1.1)
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
       }
 
       // Fingerprint hint pinned inside the field's right edge when a sensor is
