@@ -44,6 +44,8 @@
   "learn.neovim": {"icon":"","label":"Neovim","action":"omarchy-launch-webapp 'https://www.lazyvim.org/keymaps'"},
   "learn.bash": {"icon":"󱆃","label":"Bash","action":"omarchy-launch-webapp 'https://devhints.io/bash'"},
   "learn.tmux-keybindings": {"icon":"","label":"Tmux","action":"omarchy-menu-tmux-keybindings"},
+  "learn.herdr-keybindings": {"icon":"","label":"Herdr","action":"omarchy-menu-herdr-keybindings"},
+  "learn.community": {"icon":"󰙯","label":"Community","action":"omarchy-launch-discord-community"},
 
   // Trigger
   "trigger.emoji": {"icon":"","label":"Emoji","aliases":["emoji","emojis"],"action":"omarchy-menu-emoji"},
@@ -53,6 +55,7 @@
   "trigger.capture.screenrecord.stop": {"icon":"","label":"Stop Screenrecording","when":"pgrep -f '^gpu-screen-recorder'","action":"omarchy-capture-screenrecording --stop-recording"},
   "trigger.capture.screenrecord": {"icon":"","label":"Screenrecord"},
   "trigger.capture.text": {"icon":"󰴑","label":"Text","action":"omarchy-capture-text"},
+  "trigger.capture.qr": {"icon":"󰐲","label":"QR Code","action":"omarchy-capture-qr"},
   "trigger.capture.color": {"icon":"󰃉","label":"Color","action":"pkill hyprpicker || hyprpicker -a"},
   "trigger.capture.screenrecord.no-audio": {"icon":"","label":"With no audio","action":"omarchy-capture-screenrecording"},
   "trigger.capture.screenrecord.desktop-audio": {"icon":"","label":"With desktop audio","action":"omarchy-capture-screenrecording --with-desktop-audio"},
@@ -61,8 +64,8 @@
   "trigger.transcode": {"icon":"󰧸","label":"Transcode","action":"omarchy-transcode"},
   "trigger.share": {"icon":"","label":"Share","aliases":["share"]},
   "trigger.toggle": {"icon":"󰔎","label":"Toggle","aliases":["toggle","toggles"]},
-  "trigger.tests": {"icon":"󰙨","label":"Tests"},
   "trigger.hardware": {"icon":"","label":"Hardware","aliases":["hardware","hw"]},
+  "trigger.tests": {"icon":"󰓅","label":"Speed Test"},
   "trigger.hardware.laptop-display": {"icon":"󰛧","label":"Laptop Display","when":"omarchy-hw-laptop","action":"omarchy-hyprland-monitor-internal toggle"},
   "trigger.hardware.mirror-display": {"icon":"󰍹","label":"Mirror Display","when":"omarchy-hw-laptop","action":"omarchy-hyprland-monitor-internal-mirror toggle"},
   "trigger.hardware.hybrid-gpu": {"icon":"","label":"Hybrid GPU","when":"omarchy-hw-hybrid-gpu","action":"omarchy-launch-floating-terminal-with-presentation omarchy-toggle-hybrid-gpu"},
@@ -76,14 +79,15 @@
   "trigger.reminder.show": {"icon":"󰢌","label":"Show all","action":"omarchy-reminder show"},
   "trigger.reminder.clear": {"icon":"󰢌","label":"Clear all","action":"omarchy-reminder clear"},
   "trigger.share.clipboard": {"icon":"","label":"Clipboard","action":"omarchy-menu-share clipboard"},
-  "trigger.share.file": {"icon":"","label":"File","action":"xdg-terminal-exec --app-id=org.omarchy.terminal bash -c 'omarchy-menu-share file'"},
-  "trigger.share.folder": {"icon":"","label":"Folder","action":"xdg-terminal-exec --app-id=org.omarchy.terminal bash -c 'omarchy-menu-share folder'"},
+  "trigger.share.file": {"icon":"","label":"File","action":"omarchy-menu-share file"},
+  "trigger.share.folder": {"icon":"","label":"Folder","action":"omarchy-menu-share folder"},
   "trigger.share.receive": {"icon":"󰥦","label":"Receive","action":"uwsm-app -- localsend"},
   "trigger.toggle.idle-lock": {"icon":"󰅶","label":"Stay Awake","action":"omarchy-toggle-idle"},
   "trigger.toggle.notifications": {"icon":"󰂛","label":"Notifications","action":"omarchy-toggle-notification-silencing"},
   "trigger.toggle.screensaver": {"icon":"󱄄","label":"Screensaver","action":"omarchy-toggle-screensaver"},
   "trigger.toggle.nightlight": {"icon":"󰔎","label":"Nightlight","action":"omarchy-toggle-nightlight"},
   "trigger.toggle.top-bar": {"icon":"󰍜","label":"Menu Bar","action":"omarchy-toggle-bar"},
+  "trigger.toggle.battery-percentage": {"icon":"󰁹","label":"Battery Percentage","when":"omarchy-hw-laptop","action":"omarchy-shell omarchy.power togglePercentage"},
   "trigger.toggle.workspace-layout": {"icon":"󱂬","label":"Workspace Layout","action":"omarchy-hyprland-workspace-layout-toggle"},
   "trigger.toggle.window-gaps": {"icon":"","label":"Window Gaps","action":"omarchy-hyprland-window-gaps-toggle"},
   "trigger.toggle.one-window-ratio": {"icon":"","label":"1-Window Ratio","action":"omarchy-hyprland-window-single-square-aspect-toggle"},
@@ -92,8 +96,8 @@
 
   // Style
   "style.theme": {"icon":"󰸌","label":"Theme","aliases":["theme","themes"],"action":"theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\""},
-  "style.unlock": {"icon":"󰟵","label":"Unlock","aliases":["unlock"],"action":"unlock=$(omarchy-plymouth-switcher); if [[ $unlock == default ]]; then omarchy-launch-floating-terminal-with-presentation omarchy-plymouth-reset; elif [[ -n $unlock ]]; then omarchy-launch-floating-terminal-with-presentation \"omarchy-plymouth-set-by-theme '$unlock'\"; fi"},
   "style.background": {"icon":"","label":"Background","aliases":["background","wallpaper"],"action":"background=$(omarchy-theme-bg-switcher); [[ -n $background ]] && omarchy-theme-bg-set \"$background\""},
+  "style.unlock": {"icon":"󰟵","label":"Unlock","aliases":["unlock"],"action":"unlock=$(omarchy-plymouth-switcher); if [[ $unlock == default ]]; then omarchy-launch-floating-terminal-with-presentation omarchy-plymouth-reset; elif [[ -n $unlock ]]; then omarchy-launch-floating-terminal-with-presentation \"omarchy-plymouth-set-by-theme '$unlock'\"; fi"},
   "style.font": {"icon":"","label":"Font","provider":"fonts"},
   "style.bar": {"icon":"󰍜","label":"Menu Bar"},
   "style.bar.position": {"icon":"","label":"Position"},
@@ -172,6 +176,7 @@
   "setup.config.hyprsunset": {"icon":"","label":"Hyprsunset","action":"omarchy-launch-config-editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset"},
   "setup.config.xcompose": {"icon":"󰞅","label":"XCompose","action":"omarchy-launch-config-editor ~/.XCompose && omarchy-restart-xcompose"},
   "setup.direct-boot": {"icon":"","label":"Direct Boot","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-direct-boot"},
+  "setup.reset": {"icon":"󰑓","label":"Reset Computer","when":"[[ $(findmnt -no FSTYPE /) == btrfs ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-system-factory-reset"},
 
   // Install
   "install.package": {"icon":"󰣇","label":"Package","action":"xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-install"},

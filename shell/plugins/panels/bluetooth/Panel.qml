@@ -536,9 +536,17 @@ Panel {
     }
   }
 
+  // Not adapter.enabled: that writes BlueZ's Powered, which nothing persists, so
+  // the adapter came back on at the next boot. omarchy-bluetooth-power moves the
+  // rfkill soft block instead, which systemd-rfkill restores across reboots.
+  // Powered still follows the block, so the switch and icon read it as before.
+  //
+  // Asking for a direction rather than a toggle: the helper runs detached and the
+  // switch only moves once BlueZ catches up, so a second click inside that window
+  // would re-read the old state and undo the first.
   function toggleBluetooth() {
     if (!adapter) return
-    adapter.enabled = !adapter.enabled
+    Quickshell.execDetached(["omarchy-bluetooth-power", adapter.enabled ? "off" : "on"])
   }
 
   IpcHandler {

@@ -1,9 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Configure Quickshell lock screen authentication
-# omarchy:group=setup
-# omarchy:name=lock
 # omarchy:requires-sudo=true
+# omarchy:hidden=true
 
 set -e
 

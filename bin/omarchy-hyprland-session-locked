@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true when the compositor holds a session lock
+# omarchy:hidden=true
+
+# Hyprland reports no lock state directly, but an active ext-session-lock is one
+# of the reasons a monitor cannot go solitary: LOCK in solitaryBlockedBy. It
+# stays set once the lock's client dies, which is the case worth detecting.
+#
+# Exits 0 locked, 1 unlocked, 2 undetermined. Hyprland stops at the first reason
+# on a monitor with no workspace yet, before it ever reaches the lock, so a
+# missing LOCK there means nothing was asked. Callers branching only on success
+# treat 2 as unlocked.
+monitors=$(hyprctl -j monitors 2>/dev/null) || exit 2
+
+state=$(jq '
+  def blockers: .solitaryBlockedBy // [];
+  def readable: blockers | index("WORKSPACE") | not;
+
+  if   any(.[]; blockers | index("LOCK")) then 0
+  elif any(.[]; readable)                 then 1
+  else                                         2
+  end
+' <<<"$monitors" 2>/dev/null)
+
+case $state in
+  0 | 1) exit "$state" ;;
+  *) exit 2 ;;
+esac

@@ -23,6 +23,7 @@ import os
 import re
 import sqlite3
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -230,9 +231,21 @@ def read_fresh_json(path: Path, max_age_seconds: float) -> dict[str, Any] | None
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
-  tmp = path.with_suffix(path.suffix + ".tmp")
-  tmp.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n", encoding="utf-8")
-  tmp.replace(path)
+  # A temp name unique to this writer, not derived from the target: several
+  # collectors can run at once (the update command backgrounds one per agent,
+  # the panel refreshes on its own), and a shared temp path means the second
+  # replace finds the first one's file already moved away.
+  handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n")
+    # mkstemp opens at 0600; these caches were world-readable before.
+    tmp.chmod(0o644)
+    tmp.replace(path)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
 
 
 def cached_scan(projects_path: Path, max_age_seconds: float) -> dict[str, Any]:
@@ -361,8 +374,7 @@ def scan_pi_usage(max_age_seconds: float) -> dict[str, Any] | None:
               if entry.get("type") != "message" or message.get("role") != "assistant":
                 continue
               provider = str(message.get("provider") or "")
-              api = str(message.get("api") or "")
-              if provider != "anthropic" and not api.startswith("anthropic"):
+              if provider != "anthropic":
                 continue
               unique_key = f"{path}:{entry.get('id') or line_number}"
               if unique_key in seen:
@@ -637,6 +649,65 @@ def usage_bucket(payload: dict[str, Any], key: str) -> dict[str, Any] | None:
   return bucket if isinstance(bucket, dict) else None
 
 
+# An entry's `kind` names its window the way the flat buckets' keys do
+# ("weekly_scoped", "five_hour_scoped"). The panel reads a window out of free
+# text, which cannot survive a model name like "Opus 5 (1M context)" — the
+# "1M" reads as a one-minute window — so the window is settled here instead
+# and travels as an explicit title. It is capitalized the way the flat windows
+# title themselves, so "Fable Weekly" sits beside "Weekly" rather than under it.
+def scoped_window(kind: str) -> str:
+  text = kind.lower()
+  if "month" in text:
+    return "Monthly"
+  if "week" in text or "day" in text:
+    return "Weekly"
+  if "hour" in text or "session" in text:
+    return "Session"
+  return ""
+
+
+# Alongside the flat buckets, the payload carries a `limits` array, and that
+# array is the only place a model-scoped allowance shows up — a weekly window
+# that only Fable draws from, say. The matching legacy keys
+# (`seven_day_opus`, `seven_day_sonnet`, …) stayed behind at null, so a
+# collector that reads buckets alone silently drops a limit the account is
+# actually spending against. A model can hold more than one scoped window, and
+# only the pair of model and window tells them apart, so both make the title
+# and both make the key that keeps a repeat out.
+def scoped_limits(payload: dict[str, Any], percent_scale: bool) -> list[dict[str, Any]]:
+  entries = payload.get("limits")
+  if not isinstance(entries, list):
+    return []
+  out: list[dict[str, Any]] = []
+  seen: set[tuple[str, str]] = set()
+  for entry in entries:
+    if not isinstance(entry, dict):
+      continue
+    scope = entry.get("scope")
+    model = scope.get("model") if isinstance(scope, dict) else None
+    if not isinstance(model, dict):
+      continue
+    # A display name is what the panel wants, but an entry carrying only an id
+    # still names a window worth showing.
+    name = str(model.get("display_name") or model.get("id") or "").strip()
+    kind = str(entry.get("kind") or "").strip()
+    if name == "" or (name, kind) in seen:
+      continue
+    percent = normalize_utilization(entry.get("percent"), percent_scale)
+    if percent < 0:
+      continue
+    seen.add((name, kind))
+    window = scoped_window(kind)
+    title = name + " " + window if window else name
+    out.append({
+      "label": title,
+      "title": title,
+      "percent": percent,
+      "resetsAt": normalize_reset_at(entry.get("resets_at")),
+    })
+  return out
+
+
 def probe_limits(access_token: str) -> dict[str, Any]:
   request = urllib.request.Request(
     USAGE_ENDPOINT,
@@ -671,6 +742,11 @@ def probe_limits(access_token: str) -> dict[str, Any]:
   weekly = usage_bucket(payload, "seven_day_oauth_apps") or usage_bucket(payload, "seven_day")
   session = usage_bucket(payload, "five_hour")
   raw = [session.get("utilization") if session else None, weekly.get("utilization") if weekly else None]
+  # One payload speaks one convention, so the scoped entries settle the scale
+  # alongside the buckets rather than assuming their own.
+  entries = payload.get("limits")
+  if isinstance(entries, list):
+    raw += [entry.get("percent") for entry in entries if isinstance(entry, dict)]
   percent_scale = any(parse_utilization(v) >= 1 for v in raw)
 
   limits = []
@@ -682,6 +758,7 @@ def probe_limits(access_token: str) -> dict[str, Any]:
     percent = normalize_utilization(weekly.get("utilization"), percent_scale)
     if percent >= 0:
       limits.append({"label": "Weekly (7-day)", "percent": percent, "resetsAt": normalize_reset_at(weekly.get("resets_at"))})
+  limits.extend(scoped_limits(payload, percent_scale))
 
   if not limits:
     return {"ok": False, "helpText": "Anthropic's usage endpoint returned no limits. Local Claude Code stats are still shown."}

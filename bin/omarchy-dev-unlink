@@ -13,6 +13,8 @@ fi
 
 prompt_reboot=1
 
+sudoers_file="/etc/sudoers.d/omarchy-dev-path"
+
 if (( $# > 1 )); then
   echo "Usage: omarchy dev unlink [--no-reboot]" >&2
   exit 1
@@ -32,6 +34,9 @@ Writes /etc/omarchy.conf so OMARCHY_PATH resolves to /usr/share/omarchy
 after reboot. This intentionally does not rewrite the running Hyprland,
 systemd, shell, or app-launcher environment; reboot to make every layer agree.
 
+Removes $sudoers_file, the drop-in that pointed sudo
+at the checkout, so sudo goes back to the packaged omarchy-* immediately.
+
 Use --no-reboot when another command will handle the reboot prompt.
 USAGE
     exit 0
@@ -45,6 +50,11 @@ esac
 default_target="/usr/share/omarchy"
 
 printf 'export OMARCHY_PATH="%s"\n' "$default_target" | sudo tee /etc/omarchy.conf >/dev/null
+
+# omarchy-dev-link prepended the checkout to sudo's secure_path. Drop it in the
+# same step that drops the checkout, or sudo keeps running a tree nothing else
+# points at — and keeps trusting a user-writable directory for root's commands.
+sudo rm -f "$sudoers_file"
 
 echo "Pointed Omarchy at $default_target"
 echo

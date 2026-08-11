@@ -7,8 +7,9 @@ o.bind("SUPER + CTRL + H", "Hardware menu", "omarchy-menu toggle hardware")
 o.bind("SUPER + SHIFT + code:201", "Omarchy menu", "omarchy-menu toggle root")
 o.bind("SUPER + ESCAPE", "System menu", "omarchy-menu toggle system")
 o.bind("XF86PowerOff", "Power menu", "omarchy-menu toggle system", { locked = true })
-o.bind("SUPER + K", "Show key bindings", "omarchy-menu-keybindings")
-o.bind("SUPER + ALT + K", "Show Tmux key bindings", "omarchy-menu-tmux-keybindings")
+o.bind("SUPER + K", "Keybindings", "omarchy-menu-keybindings")
+o.bind("SUPER + ALT + K", "Tmux keybindings", "omarchy-menu-tmux-keybindings")
+o.bind("SUPER + CTRL + K", "Herdr keybindings", "omarchy-menu-herdr-keybindings")
 o.bind("SUPER + CTRL + Q", "Calculator", "omacalc")
 o.bind("XF86Calculator", "Calculator", "omacalc")
 
@@ -40,16 +41,30 @@ o.bind("SUPER + ALT + code:35", "Make webcam overlay larger", "omarchy-capture-w
 o.bind("SUPER + PRINT", "Color picker", "pkill hyprpicker || hyprpicker -a")
 o.bind("SUPER + CTRL + PRINT", "Extract text (OCR) from screenshot", "omarchy-capture-text")
 
--- While the slurp region picker is open, Return captures the entire focused
--- monitor. The bind lives exactly as long as a selection layer is on screen
--- (slurp opens one per monitor), so it cannot leak or get stuck.
+-- Keyboard control for the slurp region picker (see omarchy-capture-region).
+-- The binds live exactly as long as a selection layer is on screen (slurp
+-- opens one per monitor), so they cannot leak or get stuck.
+-- Unbinding by key would take a same-key binding out of the user's own config
+-- with it, so each handle is kept and removed individually.
 local selection_layers = 0
+local selection_binds = {}
 
 hl.on("layer.opened", function(layer)
   if layer.namespace == "selection" then
     selection_layers = selection_layers + 1
     if selection_layers == 1 then
-      hl.bind("RETURN", hl.dsp.exec_cmd("omarchy-capture-region --take-fullscreen"), { description = "Capture entire screen" })
+      selection_binds = {
+        hl.bind("RETURN", hl.dsp.exec_cmd("omarchy-capture-region --take-window"), { description = "Capture highlighted window" }),
+        hl.bind("CTRL + RETURN", hl.dsp.exec_cmd("omarchy-capture-region --take-fullscreen"), { description = "Capture entire screen" }),
+        hl.bind("TAB", hl.dsp.exec_cmd("omarchy-capture-region --select-window next"), { description = "Select next window to capture" }),
+        hl.bind("CTRL + TAB", hl.dsp.exec_cmd("omarchy-capture-region --select-window prev"), { description = "Select previous window to capture" }),
+      }
+      for _, direction in ipairs({ "left", "right", "up", "down" }) do
+        table.insert(
+          selection_binds,
+          hl.bind(direction:upper(), hl.dsp.exec_cmd("omarchy-capture-region --select-window " .. direction), { description = "Select window to capture" })
+        )
+      end
     end
   end
 end)
@@ -58,7 +73,10 @@ hl.on("layer.closed", function(layer)
   if layer.namespace == "selection" and selection_layers > 0 then
     selection_layers = selection_layers - 1
     if selection_layers == 0 then
-      hl.unbind("RETURN")
+      for _, keybind in ipairs(selection_binds) do
+        keybind:unbind()
+      end
+      selection_binds = {}
     end
   end
 end)
@@ -83,6 +101,18 @@ o.bind("SUPER + CTRL + ALT + D", "Calendar", "omarchy-shell shell toggle omarchy
 o.bind("SUPER + CTRL + W", "Network", "omarchy-shell shell toggle omarchy.network")
 o.bind("SUPER + CTRL + P", "Power", "omarchy-shell shell toggle omarchy.power")
 o.bind("SUPER + CTRL + T", "Activity", { tui = "btop" })
+
+-- The letters above name a panel; the numbers count them. 1 is the leftmost
+-- panel in the bar's right section, and a widget with no panel of its own (the
+-- tray) is not counted, so the number matches the icon a user would point at.
+-- A bar with fewer panels than this leaves the tail of the range doing nothing.
+for panel = 1, 9 do
+  o.bind(
+    "SUPER + CTRL + code:" .. tostring(panel + 9),
+    "Bar panel " .. panel,
+    "omarchy-shell -q shell togglePanelAt right " .. panel
+  )
+end
 
 o.bind("SUPER + CTRL + Z", "Zoom in", function()
   local zoom = hl.get_config("cursor.zoom_factor") or 1

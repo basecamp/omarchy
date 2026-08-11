@@ -24,7 +24,9 @@ matching guide before starting:
 
 All commands start with `omarchy-`. Prefixes indicate purpose.
 
-The authoritative command group list lives in `bin/omarchy` in `GROUP_DESCRIPTIONS`. Keep `GROUP_DESCRIPTIONS` updated when adding a new command prefix.
+The authoritative list of user-facing command groups lives in `bin/omarchy` in `GROUP_DESCRIPTIONS`. Keep `GROUP_DESCRIPTIONS` updated when adding a new command prefix users are meant to browse to.
+
+A group whose commands are all `# omarchy:hidden=true` gets no entry. That table drives the top-level group listing on its own, so an entry there advertises the group even when every command in it is hidden. `apply-` and `provision-` are deliberately absent for that reason; both still route, and `omarchy <group>` still prints a group header without one.
 
 Common prefixes include:
 

@@ -158,6 +158,19 @@ Sourced by every entry point that needs the env set:
 
 Idempotent — safe to source more than once in the same shell.
 
+`PATH` covers everything the user runs, but not `sudo`, which resolves command
+names against `secure_path` from `/etc/sudoers`. So `omarchy-dev-link` also
+writes `/etc/sudoers.d/omarchy-dev-path`:
+
+```
+Defaults secure_path="<checkout>/bin:/usr/local/sbin:/usr/local/bin:/usr/bin"
+```
+
+Without it, `sudo omarchy-*` fails for a command the package has not shipped
+yet and silently runs the packaged copy of one it has. The drop-in is validated
+with `visudo -c` before install and removed by `omarchy-dev-unlink`; unlike
+`/etc/omarchy.conf`, it takes effect without a reboot.
+
 ## Runtime finalization (`omarchy-finalize-user`)
 
 Runs once per user. It does **not** copy `~/.config/**`, `~/.bashrc`,
@@ -183,7 +196,7 @@ Idempotency marker: `~/.local/state/omarchy/done/finalize-user`, managed
 by `omarchy-done`.
 
 The ISO calls it as `omarchy-finalize-user --force --first-install` in the
-target chroot as the install user, after `omarchy-setup-system` has finished
+target chroot as the install user, after `omarchy-apply-system` has finished
 the root-side work.
 
 ## Migrations (`omarchy-migrate`)
@@ -219,7 +232,7 @@ files are missing. `omarchy update` runs `omarchy-migrate` after the package
 transaction in the already-visible update terminal, then runs
 `omarchy-hook post-update`.
 
-## First-run (`omarchy-first-run`)
+## First-run (`omarchy-provision-first-run`)
 
 Runs once on first interactive login, after the user manager is live. Used
 for steps that need a running graphical session and/or a working user
@@ -237,9 +250,11 @@ systemd instance:
 - `install/user/first-run/gnome-theme.sh`,
   `install/user/first-run/gtk-primary-paste.sh` — GNOME/GTK settings that
   need the dconf daemon.
-- `install/user/first-run/welcome.sh`,
-  `install/user/first-run/wifi.sh` — welcome and Wi-Fi/update toasts
-  (waits for a live notification server before firing).
+- `install/user/first-run/welcome.sh` — keybindings toast that greets the
+  first login and opens the cheatsheet when clicked.
+- `install/user/first-run/wifi.sh` — Wi-Fi/update toasts (waits for a live
+  notification server before firing, then waits detached on `nm-online` so the
+  update prompt only lands once there is a connection).
 
 The entire sequence has one idempotency marker:
 `~/.local/state/omarchy/done/first-run-user`, managed by `omarchy-done`.
@@ -255,13 +270,13 @@ the legacy finalization marker from `~/.local/state/omarchy/` into `done/`.
 
 ## Root-side install orchestration
 
-`omarchy-setup-system` (root, in chroot) runs target-side setup at ISO
+`omarchy-apply-system` (root, in chroot) runs target-side setup at ISO
 finalization. It sources:
 
 - `install/config/all.sh` — theme links, lockout limits, lockscreen PAM,
   powerprofilesctl shebang fix, docker setup, Snapper retention, locate
   index tuning, service enablement, firewall.
-- `install/hardware/all.sh` via `omarchy-setup-hardware` — vendor- and
+- `install/hardware/all.sh` via `omarchy-apply-hardware` — vendor- and
   device-specific kernel modules, udev rules, microcode, wireless regdom,
   ASUS / Framework / Intel / Apple / Lenovo quirks.
 - `install/login/all.sh` — SDDM theme/session config.

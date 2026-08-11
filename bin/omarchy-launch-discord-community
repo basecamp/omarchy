@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Open the Omarchy Discord community in the Discord app or a browser.
+
+invite="https://discord.gg/tXFUdasqhY"
+
+if omarchy-cmd-present discord; then
+  exec setsid uwsm-app -- discord --url -- "discord://-/invite/${invite##*/}"
+else
+  exec omarchy-launch-webapp "$invite"
+fi

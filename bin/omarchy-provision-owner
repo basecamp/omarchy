@@ -1,0 +1,1123 @@
+#!/bin/bash
+
+# omarchy:summary=First-boot provisioning: create the user on a machine installed in deferred provisioning
+# omarchy:requires-sudo=true
+# omarchy:hidden=true
+
+# Runs on tty1 via omarchy-provision-owner.service when /var/lib/omarchy/provisioning/pending
+# exists — the state a deferred-provisioning ISO install or omarchy-system-factory-reset leaves
+# behind. Asks for the user (the configurator's Step 2), creates it with the
+# groups system setup recorded, finalizes it offline from the stashed Node
+# tarball, re-keys LUKS from the throwaway install passphrase to the user's
+# password, and hands off to SDDM.
+
+set -euo pipefail
+
+PROVISIONING_DIR=/var/lib/omarchy/provisioning
+OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+LOG_FILE=/var/log/omarchy-provision-owner.log
+
+if (( EUID != 0 )); then
+  echo "Error: omarchy-provision-owner must run as root" >&2
+  exit 1
+fi
+
+[[ -f $PROVISIONING_DIR/pending ]] || exit 0
+
+# Never set up a user on a half-wiped system: while a factory wipe is still
+# pending (i.e. it failed this boot), stand down and let it retry next boot.
+if [[ -f $PROVISIONING_DIR/wipe-pending ]]; then
+  echo "omarchy-provision-owner: factory wipe still pending; not running user setup" >&2
+  exit 1
+fi
+
+export PATH="$OMARCHY_PATH/bin:$PATH"
+
+# The shared setup form — the same questions, prompts, and validation the ISO
+# configurator's user step asks. The ISO vendors this very file out of the
+# runtime package it bundles, so an install and the first boot that finishes it
+# can never offer different layouts or accept different usernames.
+source "$OMARCHY_PATH/install/provisioning/setup-form.sh"
+
+# Unlike a fresh install target, this machine already has accounts; a pinned
+# resume (below) bypasses the prompt entirely.
+omarchy_username_taken() { getent passwd "$1" >/dev/null; }
+
+LOGO_PATH="$OMARCHY_PATH/logo.txt"
+LOGO_WIDTH=$(awk '{ if (length > max) max = length } END { print max+0 }' "$LOGO_PATH" 2>/dev/null || echo 0)
+LOGO_HEIGHT=$(wc -l <"$LOGO_PATH" 2>/dev/null || echo 0)
+(( LOGO_WIDTH > 0 )) || LOGO_WIDTH=81
+(( LOGO_HEIGHT > 0 )) || LOGO_HEIGHT=1
+
+export GUM_CONFIRM_PROMPT_FOREGROUND="6"
+export GUM_CONFIRM_SELECTED_FOREGROUND="0"
+export GUM_CONFIRM_SELECTED_BACKGROUND="2"
+export GUM_CONFIRM_UNSELECTED_FOREGROUND="7"
+export GUM_CONFIRM_UNSELECTED_BACKGROUND="0"
+
+# Match the first-boot console font to the ISO installer's apparent text size.
+# The installer renders on GRUB's low-resolution console (gfxpayload=keep, on
+# the ~768-row EFI GOP mode) where the default 8x16 font fills the screen. The
+# installed system reaches native KMS resolution, where 8x16 is tiny — so
+# first-boot provisioning looked far smaller than the installer it continues.
+#
+# Pick the kbd console font whose row count lands closest to that installer feel
+# (~48 rows), but never one wide enough to wrap the 81-column logo. On a console
+# that is already installer-sized (low resolution) this lands on the default
+# font, i.e. a no-op. All three fonts ship with kbd, so there's no dependency.
+scale_console_font() {
+  [[ $(tty 2>/dev/null) == /dev/tty* ]] || return 0
+
+  # Pick the console font empirically: apply each candidate, read the columns
+  # fbcon actually hands back, and keep the one whose row count lands nearest a
+  # ~48-row target while still leaving room for the 81-column logo. Measuring
+  # the real result beats computing from /sys/class/graphics/fb0/virtual_size,
+  # which under virgl can report a size the text console never actually reaches —
+  # that mismatch is what wrapped the logo into the top-left corner.
+  local target_rows=48
+  local fonts=("default8x16" "sun12x22" "latarcyrheb-sun32")
+  local best="" best_diff=999999 name rows cols diff
+  for name in "${fonts[@]}"; do
+    setfont "$name" 2>/dev/null || continue
+    read -r rows cols < <(stty size </dev/tty 2>/dev/null || printf '0 0\n')
+    [[ $rows =~ ^[0-9]+$ && $cols =~ ^[0-9]+$ ]] || continue
+    (( cols > LOGO_WIDTH )) || continue      # must clear the 81-col logo
+    diff=$(( rows > target_rows ? rows - target_rows : target_rows - rows ))
+    (( diff < best_diff )) && { best_diff=$diff; best="$name"; }
+  done
+  # Fall back to the narrowest font if nothing cleared the logo width, so the
+  # form stays usable even on an unexpectedly tiny console.
+  setfont "${best:-default8x16}" 2>/dev/null || true
+}
+
+# Same Tokyo Night VT palette the ISO configurator sets, so the first-boot
+# form looks like a continuation of the install.
+set_tokyo_night_colors() {
+  [[ $(tty 2>/dev/null) == /dev/tty* ]] || return 0
+  echo -en "\e]P01a1b26"; echo -en "\e]P1f7768e"; echo -en "\e]P29ece6a"
+  echo -en "\e]P3e0af68"; echo -en "\e]P47aa2f7"; echo -en "\e]P5bb9af7"
+  echo -en "\e]P67dcfff"; echo -en "\e]P7a9b1d6"; echo -en "\e]P8414868"
+  echo -en "\e]P9f7768e"; echo -en "\e]PA9ece6a"; echo -en "\e]PBe0af68"
+  echo -en "\e]PC7aa2f7"; echo -en "\e]PDbb9af7"; echo -en "\e]PE7dcfff"
+  echo -en "\e]PFc0caf5"
+  echo -en "\033[0m"
+  clear
+}
+
+measure_terminal() {
+  TERM_WIDTH=$(stty size 2>/dev/null </dev/tty | awk '{print $2}')
+  (( TERM_WIDTH > 0 )) || TERM_WIDTH=${COLUMNS:-80}
+
+  PADDING_LEFT=$(((TERM_WIDTH - LOGO_WIDTH) / 2))
+  (( PADDING_LEFT < 0 )) && PADDING_LEFT=0
+  PADDING_LEFT_SPACES=$(printf "%*s" "$PADDING_LEFT" "")
+
+  local padding="0 0 0 $PADDING_LEFT"
+  export GUM_CHOOSE_PADDING="$padding"
+  export GUM_FILTER_PADDING="$padding"
+  export GUM_INPUT_PADDING="$padding"
+  export GUM_SPIN_PADDING="$padding"
+  export GUM_TABLE_PADDING="$padding"
+  export GUM_CONFIRM_PADDING="$padding"
+}
+
+clear_logo() {
+  measure_terminal
+  printf "\033[H\033[2J"
+  gum style --foreground 2 --padding "1 0 0 $PADDING_LEFT" "$(<"$LOGO_PATH")"
+}
+
+step() {
+  clear_logo
+  echo
+  gum style --padding "0 0 0 $PADDING_LEFT" "$1"
+  echo
+}
+
+say() {
+  gum style --padding "0 0 0 $PADDING_LEFT" "$@"
+}
+
+notice() {
+  clear_logo
+  echo
+  gum spin --spinner "pulse" --title "$1" -- sleep "${2:-2}"
+  echo
+}
+
+log_step() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] oem-setup: $1" >>"$LOG_FILE"
+}
+
+# ── Setup progress screen ────────────────────────────────────────────────────
+#
+# A port of the ISO install dashboard's renderer, so first-boot account setup
+# looks like a continuation of the install: same logo header, same 34-cell
+# bar, same rotating tips. Position = max(floor, work) in
+# per-mille, monotonic; the floor is asymptotic per phase band and the work
+# signal counts finalize-user's run_logged scripts in the log.
+
+CSI=$'\033['
+RESET="${CSI}0m"
+DIM="${CSI}2m"
+HIDE_CURSOR="${CSI}?25l"
+SHOW_CURSOR="${CSI}?25h"
+CLEAR="${CSI}2J${CSI}H"
+CLEAR_LINE="${CSI}2K"
+CLEAR_TO_END="${CSI}J"
+GREEN="${CSI}32m"
+WHITE="${CSI}37m"
+DARK="${CSI}90m"
+
+STATE_FILE=/run/omarchy-provision-owner.state
+FINALIZE_WARNING_FLAG=/run/omarchy-provision-owner.finalize-warning
+# Rows the setup screen occupies: logo, blank, title, blank, bar, blank, tip.
+SETUP_HEIGHT=$((LOGO_HEIGHT + 6))
+SETUP_TOP_ROW=1
+DYNAMIC_ROW=$((LOGO_HEIGHT + 3))
+LAST_SETUP_SIZE=""
+
+tips=(
+  "Super + Space opens the Omarchy menu for apps, settings, and more"
+  "Super + K shows all the key bindings"
+  "Super is the Windows or command key on your keyboard"
+  "Use Xournal++ to sign PDFs"
+  "Share files with phones and laptops using LocalSend"
+  "Turn any website into an app with Install > Web App in the menu"
+  "Super + Return opens a terminal, Super + Shift + Return the browser"
+  "Edit images with Pinta, videos with Kdenlive, docs with LibreOffice"
+  "Super + Ctrl + Print grabs text off the screen with OCR"
+  "Print takes a screenshot, Alt + Print records the screen"
+  "Set a reminder with Super + Ctrl + R"
+  "Switch themes from Style > Theme in the Omarchy menu"
+  "Double-click the menu bar to make it transparent"
+  "Run a full Windows VM via Install > Windows in the menu"
+  "Super + Ctrl + V opens the clipboard manager"
+  "Super + 1 through 0 switches workspaces, add Shift to bring the window"
+  "Super + Print picks a color from anywhere on screen"
+  "Keep the system fresh with Update in the Omarchy menu"
+)
+
+term_cols() {
+  local cols
+  cols=$(stty size 2>/dev/null </dev/tty | awk '{print $2}')
+  [[ $cols =~ ^[0-9]+$ ]] && (( cols > 0 )) || cols=${COLUMNS:-80}
+  printf '%s' "$cols"
+}
+
+term_size() { stty size 2>/dev/null </dev/tty || printf '24 80\n'; }
+
+# A fingerprint of the console geometry: the VT size plus the framebuffer's
+# identity and pixel size. On a fresh first boot the VT can come up in a
+# transitional ~80x25 mode and only widen to the real resolution a second or
+# more later, when virtio-gpu's KMS takes over (or the SDL window's size lands).
+# Watching this signature settle — rather than trusting one early reading — is
+# what keeps the greeter from measuring that transient and rendering into it.
+console_signature() {
+  local size fb_size="" fb_name=""
+  size=$(stty size 2>/dev/null </dev/tty) || return 1
+  [[ $size =~ ^[0-9]+\ [0-9]+$ ]] || return 1
+  [[ -r /sys/class/graphics/fb0/virtual_size ]] && fb_size=$(<"/sys/class/graphics/fb0/virtual_size")
+  [[ -r /sys/class/graphics/fb0/name ]] && fb_name=$(<"/sys/class/graphics/fb0/name")
+  printf '%s|%s|%s' "$size" "$fb_name" "$fb_size"
+}
+
+# Block until the console signature holds unchanged for a genuine quiet stretch
+# (quiet_samples * 100ms), giving up after max_samples * 100ms. Returns 0 once
+# quiet, 1 on timeout.
+wait_console_stable() {
+  local max_samples="${1:-100}" quiet_samples="${2:-15}"
+  local previous="" current="" quiet=0 i
+  for ((i = 0; i < max_samples; i++)); do
+    current=$(console_signature 2>/dev/null || true)
+    if [[ -n $current && $current == "$previous" ]]; then
+      quiet=$((quiet + 1))
+      (( quiet >= quiet_samples )) && return 0
+    else
+      previous=$current
+      quiet=0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
+repeat() {
+  local char="$1" count="$2" out="" i
+  for ((i = 0; i < count; i++)); do out+="$char"; done
+  printf '%s' "$out"
+}
+
+left_padding() {
+  local width="${1:-$LOGO_WIDTH}" cols pad
+  cols=$(term_cols)
+  pad=$(((cols - width) / 2))
+  (( pad < 0 )) && pad=0
+  printf '%*s' "$pad" ''
+}
+
+visible_len() {
+  local text="$1"
+  text="$(printf '%b' "$text" | sed -E $'s/\x1b\\[[0-9;?]*[A-Za-z]//g')"
+  printf '%s' "${#text}"
+}
+
+blank_line() { printf '\r%s\n' "$CLEAR_LINE"; }
+
+line_at() {
+  local width="${1:-$LOGO_WIDTH}" indent="${2:-0}"
+  shift 2
+  printf '\r%s%s%*s' "$CLEAR_LINE" "$(left_padding "$width")" "$indent" ''
+  printf '%b' "$*"
+}
+
+center() {
+  local text="$1" width="${2:-$LOGO_WIDTH}" len inner_pad
+  len="$(visible_len "$text")"
+  inner_pad=$(((width - len) / 2))
+  (( inner_pad < 0 )) && inner_pad=0
+  printf '\r%s%s%*s%b%s\n' "$CLEAR_LINE" "$(left_padding "$width")" "$inner_pad" '' "$text" "$RESET"
+}
+
+render_logo() {
+  local pad line
+  pad="$(left_padding "$LOGO_WIDTH")"
+  while IFS= read -r line; do
+    printf '\r%s%s%b%s%b\n' "$CLEAR_LINE" "$pad" "$GREEN" "$line" "$RESET"
+  done <"$LOGO_PATH"
+}
+
+progress_bar() {
+  local pm="$1" width="${2:-34}" filled empty
+  (( pm < 0 )) && pm=0
+  (( pm > 1000 )) && pm=1000
+  filled=$((pm * width / 1000))
+  empty=$((width - filled))
+  printf '%s%s%s%s%s' "$WHITE" "$(repeat █ "$filled")" "$DARK" "$(repeat ░ "$empty")" "$RESET"
+}
+
+# Monotonic clock so an NTP step during setup cannot jump the bar.
+set_now() {
+  local up rest
+  if read -r up rest </proc/uptime 2>/dev/null && [[ $up == [0-9]* ]]; then
+    NOW=${up%%.*}
+  else
+    NOW=$EPOCHSECONDS
+  fi
+  return 0
+}
+
+# One tip per 8 seconds, elapsed-time driven like the install dashboard.
+current_tip() {
+  printf '%s' "${tips[$(((NOW - SETUP_T0) / 8 % ${#tips[@]}))]}"
+}
+
+SETUP_POS=10
+SETUP_PHASE=""
+SETUP_PHASE_T0=0
+SETUP_T0=0
+NOW=0
+FINALIZE_BASE=-1
+FINALIZE_TOTAL=$(grep -c '^run_logged' "$OMARCHY_PATH/install/user/all.sh" 2>/dev/null || echo 0)
+
+# Whether this boot will re-key LUKS (encrypted installs stage a throwaway key).
+# The re-key rebuilds the UKI and is the slowest single step, so it needs a wide
+# band of its own; unencrypted installs skip it and let finalize take the room.
+REKEY_PENDING=false
+[[ -f $PROVISIONING_DIR/luks-key ]] && REKEY_PENDING=true
+
+# Per-mille bands per phase: "lo hi tau". tau shapes the asymptotic time floor;
+# it is not a duration prediction. A wide band moves visibly; a narrow one looks
+# stuck. Skipped phases leave a gap the next band's floor crosses on its own.
+phase_band() {
+  if $REKEY_PENDING; then
+    # Encrypted: finalize is quick, the LUKS re-key (UKI rebuild) is the long
+    # pole — give it nearly half the bar so it keeps moving while it works.
+    case $1 in
+      finalize) echo "80 480 40" ;;
+      rekey)    echo "480 950 30" ;;
+      boot)     echo "950 990 20" ;;
+      done)     echo "1000 1000 1" ;;
+      *)        echo "10 80 3" ;;
+    esac
+  else
+    # Unencrypted: finalize is the dominant step.
+    case $1 in
+      finalize) echo "80 900 45" ;;
+      boot)     echo "900 990 20" ;;
+      done)     echo "1000 1000 1" ;;
+      *)        echo "10 80 3" ;;
+    esac
+  fi
+}
+
+setup_progress() {
+  local phase lo hi tau t span floor work completed
+  phase=$(cat "$STATE_FILE" 2>/dev/null || true)
+  [[ -n $phase ]] || phase=account
+
+  if [[ $phase != "$SETUP_PHASE" ]]; then
+    SETUP_PHASE=$phase
+    SETUP_PHASE_T0=$NOW
+    FINALIZE_BASE=-1
+  fi
+
+  read -r lo hi tau <<<"$(phase_band "$phase")"
+  (( lo < SETUP_POS )) && lo=$SETUP_POS
+
+  t=$((NOW - SETUP_PHASE_T0))
+  span=$((hi - lo))
+  floor=$lo
+  (( span > 1 )) && floor=$((lo + (span - 1) * t / (t + tau)))
+
+  work=0
+  if [[ $phase == "finalize" ]] && (( FINALIZE_TOTAL > 0 )); then
+    completed=$(grep -cE '] (Completed|Failed): ' "$LOG_FILE" 2>/dev/null || true)
+    [[ $completed =~ ^[0-9]+$ ]] || completed=0
+    (( FINALIZE_BASE < 0 )) && FINALIZE_BASE=$completed
+    completed=$((completed - FINALIZE_BASE))
+    (( completed < 0 )) && completed=0
+    (( completed > FINALIZE_TOTAL )) && completed=$FINALIZE_TOTAL
+    work=$((lo + (hi - lo) * completed / FINALIZE_TOTAL))
+  fi
+
+  (( floor > SETUP_POS )) && SETUP_POS=$floor
+  (( work > SETUP_POS )) && SETUP_POS=$work
+  (( SETUP_POS > 1000 )) && SETUP_POS=1000
+  return 0
+}
+
+# Vertically center the setup block the way greeter_screen centers its splash,
+# so the screen the owner watches through finalization is composed rather than
+# stacked from row one — and first boot bookends the install identically.
+measure_setup_layout() {
+  local rows
+  LAST_SETUP_SIZE=$(term_size)
+  rows=${LAST_SETUP_SIZE%% *}
+  [[ $rows =~ ^[0-9]+$ ]] || rows=24
+  SETUP_TOP_ROW=$(((rows - SETUP_HEIGHT) / 2))
+  (( SETUP_TOP_ROW < 0 )) && SETUP_TOP_ROW=0
+  SETUP_TOP_ROW=$((SETUP_TOP_ROW + 1))
+  DYNAMIC_ROW=$((SETUP_TOP_ROW + LOGO_HEIGHT + 1))
+}
+
+render_setup_static() {
+  measure_setup_layout
+  printf '%s%s%s%d;1H' "$HIDE_CURSOR" "$CLEAR" "$CSI" "$SETUP_TOP_ROW"
+  render_logo
+  blank_line
+}
+
+render_setup_dynamic() {
+  # The VT can still resize under us — the same virtio-gpu KMS handoff the
+  # greeter watches for. left_padding recomputes every frame, but the logo is
+  # drawn once, so repaint it at the new center rather than leaving the centered
+  # block stranded against a stale geometry.
+  [[ $(term_size) == "$LAST_SETUP_SIZE" ]] || render_setup_static
+  set_now
+  setup_progress
+  printf '%s%d;1H' "$CSI" "$DYNAMIC_ROW"
+  center "Setting up your machine" "$LOGO_WIDTH"
+  blank_line
+  line_at "$LOGO_WIDTH" $(((LOGO_WIDTH - 34) / 2)) ""
+  progress_bar "$SETUP_POS" 34
+  printf '\n'
+  blank_line
+  center "${DIM}Tip:${RESET} ${GREEN}$(current_tip)${RESET}" "$LOGO_WIDTH"
+  printf '%s' "$CLEAR_TO_END"
+}
+
+# The first thing a new owner sees, shown once before the keyboard step:
+# the logo (vertically centered like the boot logo) running a looping ColorShift,
+# the Omarchy tagline, and a hint. Return skips ahead into setup at any time.
+greeter_screen() {
+  local anim="" drawn_sig cur_sig resized=0
+
+  # Paint the whole splash for the console's *current* geometry. Kept in a
+  # nested function so the wait loop below can repaint it verbatim if the VT
+  # resizes out from under us: a late resize (virtio-gpu KMS handoff, or the SDL
+  # window's size arriving) scrolls the old frame into the top-left and resets
+  # the DEC saved cursor ttfx paints from — exactly the tiled/garbled logo we saw
+  # on a fresh first boot. Redrawing on every resize beats any fixed-length
+  # startup wait, which can only ever guess when the console has stopped moving.
+  _greeter_draw() {
+    local rows cols top content_h logo_row tagline_row hint_row
+    local tagline hint tpad hpad pad line i
+
+    cols=$(term_cols)
+    rows=$(stty size 2>/dev/null </dev/tty | awk '{print $1}')
+    [[ $rows =~ ^[0-9]+$ ]] || rows=${LINES:-24}
+
+    tagline="Beautiful, Modern & Opinionated Linux by DHH"
+    hint="Press Return to Start Setup"
+
+    printf '%s%s' "$HIDE_CURSOR" "$CLEAR"
+
+    # Console still too narrow for the 81-column logo (a transient small mode):
+    # skip the logo and animation rather than wrap them into mush — just center
+    # the words. The redraw loop repaints the full splash once the VT widens.
+    if (( cols <= LOGO_WIDTH )); then
+      local mid=$(( rows / 2 ))
+      tpad=$(( (cols - ${#tagline}) / 2 )); (( tpad < 0 )) && tpad=0
+      hpad=$(( (cols - ${#hint}) / 2 )); (( hpad < 0 )) && hpad=0
+      printf '%s%d;%dH%s' "$CSI" "$mid" "$((tpad + 1))" "$tagline"
+      printf '%s%d;%dH%s%s%s' "$CSI" "$((mid + 2))" "$((hpad + 1))" "$DIM" "$hint" "$RESET"
+      return 0
+    fi
+
+    # logo + blank + tagline + blank + hint
+    content_h=$(( LOGO_HEIGHT + 4 ))
+    top=$(( (rows - content_h) / 2 )); (( top < 0 )) && top=0
+    logo_row=$(( top + 1 ))
+    tagline_row=$(( top + LOGO_HEIGHT + 2 ))
+    hint_row=$(( top + LOGO_HEIGHT + 4 ))
+
+    # Draw each logo row at an explicit column so nothing can wrap it even if a
+    # measurement is off by one; left_padding centers it for the current width.
+    pad="$(left_padding "$LOGO_WIDTH")"
+    i=0
+    while IFS= read -r line; do
+      printf '%s%d;1H%s%b%s%b' "$CSI" "$((logo_row + i))" "$pad" "$GREEN" "$line" "$RESET"
+      i=$((i + 1))
+    done <"$LOGO_PATH"
+
+    tpad=$(( (cols - ${#tagline}) / 2 )); (( tpad < 0 )) && tpad=0
+    printf '%s%d;%dH%s' "$CSI" "$tagline_row" "$((tpad + 1))" "$tagline"
+
+    hpad=$(( (cols - ${#hint}) / 2 )); (( hpad < 0 )) && hpad=0
+    printf '%s%d;%dH%s%s%s' "$CSI" "$hint_row" "$((hpad + 1))" "$DIM" "$hint" "$RESET"
+
+    # ColorShift the logo: a green base (indexed color 2) with a cyan accent (6)
+    # drifting through, settling on green. Indexed ANSI colors, not hex — the
+    # framebuffer console can't render ttfx's truecolor faithfully (it crushes the
+    # palette to a muddy lavender), but the 16 indexed colors map to the Tokyo
+    # Night palette and render true. One long-running invocation (many cycles) so
+    # it never restarts — a restart is what flashed. The effect reads from
+    # /dev/null so it never swallows the Return the foreground read waits on;
+    # --reuse-canvas paints upward from the saved cursor, anchored one row below
+    # the logo to repaint exactly the rows drawn above.
+    #
+    # --xterm-colors is what actually keeps the palette indexed: ttfx resolves
+    # even indexed stops to truecolor otherwise, and the console reduces 256-colour
+    # codes well but 24-bit ones badly — that reduction is the muddy lavender.
+    # It also pins the settle colour to index 2, matching the green logo drawn
+    # above. --canvas-width is cols-2, not cols-1: ttfx centres its text two
+    # columns right of plain centering, so cols-1 lands the animated logo a
+    # column off the static one and it jumps when the effect starts.
+    printf '%s%d;1H\0337' "$CSI" "$((logo_row + LOGO_HEIGHT))"
+    # Run ttfx directly (not inside a `while` subshell) so $anim is ttfx's own
+    # PID: killing a wrapping subshell would orphan ttfx, which then keeps
+    # painting the logo over the keyboard step. --cycles is high enough that it
+    # never ends on its own before Return.
+    ttfx -i "$LOGO_PATH" \
+      --canvas-width "$((cols > 2 ? cols - 2 : cols))" \
+      --anchor-text c \
+      --frame-rate 60 \
+      --reuse-canvas \
+      --xterm-colors \
+      colorshift \
+      --gradient-stops 2 10 6 10 \
+      --gradient-frames 3 \
+      --cycles 1000 \
+      --final-gradient-stops 2 \
+      </dev/null >/dev/tty 2>/dev/null &
+    anim=$!
+  }
+
+  _greeter_kill_anim() {
+    [[ -n ${anim:-} ]] || return 0
+    # Guard both: `kill` returns non-zero if ttfx already exited (crash, or a
+    # resize race), and `wait` reports ttfx's kill signal (143) — either would
+    # abort provisioning under `set -e` and drop straight to the login screen.
+    kill "$anim" 2>/dev/null || true
+    wait "$anim" 2>/dev/null || true
+    anim=""
+  }
+
+  # Let the console settle before the first paint, then size the font to it.
+  wait_console_stable 100 15 || true
+  scale_console_font
+  wait_console_stable 30 5 || true
+
+  trap 'resized=1' WINCH
+
+  _greeter_draw
+  drawn_sig=$(console_signature 2>/dev/null || true)
+
+  # Wait for Return, but keep watching the geometry. On any resize (SIGWINCH or
+  # a changed signature) tear the animation down, settle, re-fit the font, and
+  # repaint — so a resize arriving five seconds in looks the same as one that
+  # never happened.
+  while true; do
+    if IFS= read -r -t 0.2 _ </dev/tty; then
+      break
+    fi
+    cur_sig=$(console_signature 2>/dev/null || true)
+    if (( resized )) || [[ -n $cur_sig && $cur_sig != "$drawn_sig" ]]; then
+      _greeter_kill_anim
+      stty sane </dev/tty 2>/dev/null || true
+      wait_console_stable 50 5 || true
+      scale_console_font
+      wait_console_stable 30 5 || true
+      _greeter_draw
+      drawn_sig=$(console_signature 2>/dev/null || true)
+      # Clear last so the font-fitting's own SIGWINCHes don't re-trigger a redraw.
+      resized=0
+    fi
+  done
+
+  trap - WINCH
+  _greeter_kill_anim
+  # ttfx leaves the tty in raw/no-echo mode when killed; restore it or the gum
+  # prompts in the keyboard step that follows silently die. Then clear the
+  # leftover animation frame.
+  stty sane </dev/tty 2>/dev/null || true
+  printf '%s%s%s' "$RESET" "$CLEAR" "$SHOW_CURSOR"
+}
+
+# The keyboard step the ISO configurator runs — deferred to first boot for OEM
+# installs, so the machine's owner picks their own layout. Applied immediately
+# (live VT + persisted) so the password typed next, and the LUKS re-key below,
+# use the chosen layout.
+keyboard_form() {
+  local status
+
+  while true; do
+    step "Let's setup your keyboard..."
+    omarchy_prompt_keyboard && status=0 || status=$?
+    ((status == 0)) && break
+
+    # Esc means "back", and nothing precedes the first screen, so re-ask.
+    ((status == OMARCHY_FORM_BACK)) && continue
+
+    # Ctrl+C is the way out of a screen the owner cannot get past. Rebooting is
+    # safe but not an escape from setup: this service runs again at next boot,
+    # and encrypted machines still auto-unlock from the staged keyfile until the
+    # re-key below. Confirm it so a stray Ctrl+C doesn't bounce the machine.
+    confirm_reboot && exec systemctl reboot
+  done
+
+  apply_keyboard "$keyboard"
+}
+
+confirm_reboot() {
+  clear_logo
+  echo
+  say "Setup starts again after the reboot."
+  echo
+  gum confirm --affirmative "Yes, reboot" --negative "No, keep setting up" "Reboot this machine?"
+}
+
+# Load the layout on the live VT and persist it for the installed system.
+# systemd-firstboot writes both the console KEYMAP and the XKB layout Hyprland
+# reads, matching what the ISO's configure_keyboard does at install time. A
+# keymap localectl doesn't know keeps the default rather than failing (defensive;
+# the picker no longer offers any such layout).
+apply_keyboard() {
+  local keymap="$1"
+  [[ $(tty 2>/dev/null) == /dev/tty* ]] && loadkeys "$keymap" 2>/dev/null || true
+
+  if localectl --no-pager list-keymaps 2>/dev/null | grep -qix "$keymap"; then
+    systemd-firstboot --keymap="$keymap" --force >>"$LOG_FILE" 2>&1 || \
+      localectl set-keymap "$keymap" >>"$LOG_FILE" 2>&1 || \
+      log_step "could not persist keymap $keymap"
+  else
+    log_step "keymap $keymap unknown to localectl; keeping the default"
+  fi
+}
+
+# The same username/password/name/email form as the ISO configurator's Step 2.
+user_form() {
+  step "Let's setup your user account..."
+
+  # A prior attempt that already created the account pins the username, so a
+  # retry cannot strand that account by choosing a different name.
+  if [[ -f $PROVISIONING_DIR/setup-user ]]; then
+    username=$(<"$PROVISIONING_DIR/setup-user")
+    say "Continuing setup for user: $username"
+    echo
+  else
+    omarchy_prompt_username || return $?
+  fi
+
+  omarchy_prompt_password || return $?
+  omarchy_prompt_identity || return $?
+
+  # Hostname and timezone are deferred to first boot with the rest of the user
+  # step: the deferred install seeds neutral placeholders (omarchy/UTC) and the
+  # owner overwrites them here.
+  omarchy_prompt_hostname || return $?
+
+  step "Let's set your timezone..."
+  omarchy_prompt_timezone || return $?
+}
+
+confirm_form() {
+  clear_logo
+  echo
+  echo -e "Field,Value
+Keyboard,${keyboard_label:-English (US)}
+Username,$username
+Password,$(printf "%${#password}s" | tr ' ' '*')
+Full name,${full_name:-[Skipped]}
+Email address,${email_address:-[Skipped]}
+Hostname,${hostname:-omarchy}
+Timezone,${timezone:-UTC}" |
+    gum table -s "," -p | sed "s/^/${PADDING_LEFT_SPACES}/"
+
+  echo
+  gum confirm --negative "No, change it" "Does this look right?"
+}
+
+# Groups recorded by omarchy-apply-system's scripts at install time
+# (/var/lib/omarchy/provisioning/groups), filtered to groups that exist on this system.
+user_groups() {
+  local groups="wheel" group
+  if [[ -f $PROVISIONING_DIR/groups ]]; then
+    while IFS= read -r group; do
+      [[ -n $group ]] || continue
+      getent group "$group" >/dev/null || continue
+      [[ ",$groups," == *",$group,"* ]] || groups+=",$group"
+    done <"$PROVISIONING_DIR/groups"
+  fi
+  echo "$groups"
+}
+
+# Resolve the crypto_LUKS partition backing the root, or return non-zero if
+# the root is not on LUKS. Prefers the cmdline cryptdevice= spec (archinstall
+# writes PARTUUID=, the pre-mounted path UUID=), and falls back to walking the
+# device tree for roots reached via rd.luks/crypttab with a plain /dev/mapper
+# root and no cryptdevice=.
+luks_device() {
+  local spec
+  spec=$(grep -o 'cryptdevice=[^ :]*' /proc/cmdline | head -1 | cut -d= -f2-)
+  case $spec in
+    UUID=*) echo "/dev/disk/by-uuid/${spec#UUID=}"; return 0 ;;
+    PARTUUID=*) echo "/dev/disk/by-partuuid/${spec#PARTUUID=}"; return 0 ;;
+    LABEL=*) echo "/dev/disk/by-label/${spec#LABEL=}"; return 0 ;;
+    PARTLABEL=*) echo "/dev/disk/by-partlabel/${spec#PARTLABEL=}"; return 0 ;;
+    /dev/*) echo "$spec"; return 0 ;;
+  esac
+
+  # No cryptdevice=: walk the root source's ancestors (lsblk -s inverts the
+  # tree) for the first crypto_LUKS parent.
+  local src part
+  src=$(findmnt -no SOURCE / | sed 's/\[.*//')
+  [[ -n $src ]] || return 1
+  part=$(lsblk -nspo NAME,FSTYPE "$src" 2>/dev/null | awk '$2=="crypto_LUKS"{print $1; exit}')
+  [[ -n $part ]] && { echo "$part"; return 0; }
+  return 1
+}
+
+encrypted_install() {
+  luks_device >/dev/null 2>&1
+}
+
+create_user() {
+  # Pin the username so a retry after a later failure resumes this exact
+  # account rather than creating a second privileged one.
+  echo "$username" >"$PROVISIONING_DIR/setup-user"
+
+  if getent passwd "$username" >/dev/null; then
+    # Resuming a partially-completed earlier attempt: refresh what the form
+    # collected this time around.
+    usermod -aG "$(user_groups)" ${full_name:+-c "$full_name"} "$username"
+  else
+    useradd -m -G "$(user_groups)" -s /bin/bash \
+      ${full_name:+-c "$full_name"} "$username"
+  fi
+
+  printf '%s:%s\n' "$username" "$password" | chpasswd
+  printf '%s:%s\n' root "$password" | chpasswd
+
+  # deferred-provisioning installs skip archinstall's create_users, which is what normally
+  # uncomments %wheel in /etc/sudoers. Always write the drop-in: detecting an
+  # existing grant is error-prone (omarchy ships narrow %wheel NOPASSWD rules
+  # for specific commands), and a duplicate grant is harmless.
+  echo "%wheel ALL=(ALL:ALL) ALL" >/etc/sudoers.d/00-omarchy-wheel
+  chmod 440 /etc/sudoers.d/00-omarchy-wheel
+}
+
+install_authorized_keys() {
+  [[ -f $PROVISIONING_DIR/authorized_keys ]] || return 0
+
+  local ssh_dir="/home/$username/.ssh"
+  mkdir -p "$ssh_dir"
+  cp "$PROVISIONING_DIR/authorized_keys" "$ssh_dir/authorized_keys"
+  chmod 700 "$ssh_dir"
+  chmod 600 "$ssh_dir/authorized_keys"
+  chown -R "$username:$username" "$ssh_dir"
+}
+
+configure_login() {
+  mkdir -p /var/lib/sddm
+  printf '[Last]\nSession=omarchy.desktop\nUser=%s\n' "$username" >/var/lib/sddm/state.conf
+  chown -R sddm:sddm /var/lib/sddm 2>/dev/null || true
+
+  # Autologin straight into the desktop after first-boot setup — the owner just
+  # authenticated in the form, so we don't make them retype at SDDM.
+  mkdir -p /etc/sddm.conf.d
+  printf '[Autologin]\nUser=%s\nSession=omarchy.desktop\n' "$username" >/etc/sddm.conf.d/autologin.conf
+
+  # Encrypted installs keep autologin permanently (the LUKS prompt is the auth
+  # boundary). Unencrypted installs autologin only this first boot, then a
+  # one-shot service removes the drop-in so later boots use the normal SDDM
+  # login and the disk isn't left permanently open.
+  encrypted_install || install_autologin_once_cleanup
+}
+
+# Install a self-removing service that makes the autologin last exactly one
+# boot — this one, where the owner just authenticated in the wizard. The unit is
+# created now, but graphical.target's job for THIS boot is already computed, so
+# it won't run this boot (this boot autologins). On the NEXT boot it's in the
+# fresh transaction, ordered Before the display manager, so it runs before SDDM
+# reads its config: it removes the autologin drop-in (that boot shows the normal
+# login) and deletes its own unit and enablement symlink. Ordering Before= (not
+# After=) is what makes it deterministic — no sleep/race against SDDM's startup.
+install_autologin_once_cleanup() {
+  local unit=omarchy-provision-autologin-once.service
+  cat >"/etc/systemd/system/$unit" <<UNIT
+[Unit]
+Description=Drop the first-boot autologin before the next login
+Before=display-manager.service
+ConditionPathExists=/etc/sddm.conf.d/autologin.conf
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/rm -f /etc/sddm.conf.d/autologin.conf
+ExecStartPost=/usr/bin/rm -f /etc/systemd/system/graphical.target.wants/$unit /etc/systemd/system/$unit
+
+[Install]
+WantedBy=graphical.target
+UNIT
+  mkdir -p /etc/systemd/system/graphical.target.wants
+  ln -sf "../$unit" "/etc/systemd/system/graphical.target.wants/$unit"
+}
+
+# Apply the owner's hostname, deferred to first boot with the rest of the user
+# step, overwriting the placeholder the deferred install seeded.
+configure_hostname() {
+  [[ -n ${hostname:-} ]] || return 0
+  hostnamectl set-hostname "$hostname" 2>&1 ||
+    printf '%s\n' "$hostname" >/etc/hostname
+}
+
+# Apply the owner's timezone, deferred to first boot with the rest of the user
+# step, overwriting the placeholder (UTC) the deferred install seeded.
+configure_timezone() {
+  [[ -n ${timezone:-} ]] || return 0
+  if timedatectl set-timezone "$timezone" 2>&1; then
+    return 0
+  fi
+  # Fallback only if the zone file exists, so a bad zone can't point
+  # /etc/localtime at nothing and break every localtime read afterward.
+  [[ -e /usr/share/zoneinfo/$timezone ]] &&
+    ln -sf "/usr/share/zoneinfo/$timezone" /etc/localtime 2>&1 || true
+}
+
+finalize_user() {
+  local home shell
+  home=$(getent passwd "$username" | cut -d: -f6)
+  shell=$(getent passwd "$username" | cut -d: -f7)
+
+  runuser -u "$username" -- env \
+    HOME="$home" \
+    USER="$username" \
+    LOGNAME="$username" \
+    SHELL="${shell:-/bin/bash}" \
+    OMARCHY_PATH="$OMARCHY_PATH" \
+    OMARCHY_INSTALL="$OMARCHY_PATH/install" \
+    OMARCHY_SETUP_CONTEXT=provision-owner \
+    OMARCHY_USER_NAME="$full_name" \
+    OMARCHY_USER_EMAIL="$email_address" \
+    OMARCHY_INSTALL_LOG_FILE="$LOG_FILE" \
+    OMARCHY_LOG_TO_STDOUT=1 \
+    "$OMARCHY_PATH/bin/omarchy-provision-user" --force --first-install
+}
+
+# Move the LUKS volume from the throwaway install passphrase to the user's
+# password: add the user's key, kill every other slot (throwaway + any seller
+# keys a reset left behind), then rebuild the UKI without the embedded
+# auto-unlock keyfile.
+#
+# Failing here must be LOUD (abort the attempt, offer retry): silently keeping
+# the staged auto-unlock keyfile would leave the disk effectively unencrypted
+# forever.
+rekey_luks() {
+  [[ -f $PROVISIONING_DIR/luks-key ]] || return 0
+
+  local device
+  if ! device=$(luks_device) || [[ ! -e $device ]]; then
+    log_step "cannot locate the LUKS device from /proc/cmdline: $(cat /proc/cmdline)"
+    say --foreground 1 "Could not locate the LUKS device to re-key."
+    return 1
+  fi
+
+  if ! cryptsetup open --test-passphrase --key-file "$PROVISIONING_DIR/luks-key" "$device" 2>>"$LOG_FILE"; then
+    log_step "staged LUKS key does not unlock $device"
+    say --foreground 1 "The staged LUKS key no longer unlocks $device."
+    return 1
+  fi
+
+  # Add the user's key (a retry with a different password just adds another
+  # slot; all but the current one are killed once the rebuild succeeds).
+  cryptsetup luksAddKey --key-file "$PROVISIONING_DIR/luks-key" "$device" <(printf '%s' "$password")
+
+  # Rebuild the no-auto-unlock UKI FIRST, keeping the throwaway key and slot as
+  # a fallback. Only once that succeeds do we kill the other slots and destroy
+  # the staged key — so a limine-update failure leaves a recoverable,
+  # still-auto-unlocking state to retry, never a disk locked to a password the
+  # user may have just changed.
+  rm -f /etc/omarchy/provisioning.key \
+    /etc/limine-entry-tool.d/99-omarchy-provisioning-unlock.conf \
+    /etc/mkinitcpio.conf.d/99-omarchy-provisioning-key.conf
+  reset_limine_config
+  if ! limine-update >>"$LOG_FILE" 2>&1; then
+    log_step "limine-update failed during re-key; restoring auto-unlock for retry"
+    install -Dm600 "$PROVISIONING_DIR/luks-key" /etc/omarchy/provisioning.key
+    echo 'KERNEL_CMDLINE[default]+=" cryptkey=rootfs:/etc/omarchy/provisioning.key"' \
+      >/etc/limine-entry-tool.d/99-omarchy-provisioning-unlock.conf
+    echo 'FILES+=(/etc/omarchy/provisioning.key)' >/etc/mkinitcpio.conf.d/99-omarchy-provisioning-key.conf
+    limine-update >>"$LOG_FILE" 2>&1 || true
+    return 1
+  fi
+
+  local new_slot slot other_slots
+  new_slot=$(cryptsetup open --test-passphrase --verbose --key-file <(printf '%s' "$password") "$device" 2>&1 |
+    grep -o 'Key slot [0-9]* unlocked' | grep -o '[0-9]*' | head -1)
+  # Retiring the throwaway/seller slots must be all-or-nothing: if we can't
+  # identify the user's slot or a kill fails, keep the staged key and retry —
+  # never shred it while a slot the seller knows still unlocks the disk.
+  if [[ -z $new_slot ]]; then
+    log_step "could not identify the user's LUKS slot after re-key; keeping the staged key for retry"
+    say --foreground 1 "Could not confirm the LUKS re-key; will retry."
+    return 1
+  fi
+  if ! other_slots=$(cryptsetup luksDump "$device" | awk '/^ +[0-9]+: luks2/ { sub(":", "", $1); print $1 }'); then
+    log_step "luksDump failed while retiring slots; keeping the staged key for retry"
+    say --foreground 1 "Could not enumerate LUKS slots; will retry."
+    return 1
+  fi
+  for slot in $other_slots; do
+    [[ $slot == "$new_slot" ]] && continue
+    if ! cryptsetup luksKillSlot -q --key-file <(printf '%s' "$password") "$device" "$slot"; then
+      log_step "failed to kill LUKS slot $slot; keeping the staged key for retry"
+      say --foreground 1 "Could not remove the throwaway LUKS key; will retry."
+      return 1
+    fi
+  done
+
+  shred -u "$PROVISIONING_DIR/luks-key" 2>/dev/null || rm -f "$PROVISIONING_DIR/luks-key"
+}
+
+# Start the ESP's limine.conf over from the shipped template and drop foreign
+# machine-id state before rebuilding. limine-entry-tool keys OS entries by
+# machine-id: after a factory reset gave this machine a fresh identity, the
+# previous system's entry would survive the rebuild with a stale UKI hash,
+# sort first, and make Limine stop at a hash-mismatch warning.
+esp_path() {
+  local esp=""
+  if [[ -f /etc/default/limine ]]; then
+    esp=$(sed -n 's/^ESP_PATH=["'\'']\?\([^"'\'']*\).*/\1/p' /etc/default/limine | tail -1)
+  fi
+  echo "${esp:-/boot}"
+}
+
+# A factory reset gives the machine a fresh machine-id, but limine-entry-tool
+# keys its limine.conf entries by machine-id — entries from the previous
+# identity would linger and go hash-stale on the first UKI rebuild.
+limine_entries_stale() {
+  local esp machine_id
+  esp=$(esp_path)
+  machine_id=$(cat /etc/machine-id 2>/dev/null || true)
+  [[ -f $esp/limine.conf && -n $machine_id ]] || return 1
+  # Stale if any foreign machine-id entry lingers, OR if this machine has no
+  # entry at all (e.g. a failed earlier rebuild left the entry-less template).
+  grep -o 'machine-id=[0-9a-f]*' "$esp/limine.conf" 2>/dev/null |
+    grep -qv "machine-id=$machine_id" && return 0
+  ! grep -q "machine-id=$machine_id" "$esp/limine.conf"
+}
+
+reset_limine_config() {
+  local esp template found="" machine_id old_id old_ids=""
+  esp=$(esp_path)
+
+  # Only remove machine-ids the old (Omarchy-managed) limine.conf referenced;
+  # a shared ESP may hold other installations' machine-id directories.
+  if [[ -f $esp/limine.conf ]]; then
+    # `|| true`: an entry-less limine.conf (left by a failed earlier rebuild)
+    # has no machine-id lines, so grep exits 1 and pipefail would abort the
+    # assignment under `set -e` — turning a recoverable retry into a dead loop.
+    old_ids=$(grep -o 'machine-id=[0-9a-f]\{32\}' "$esp/limine.conf" | cut -d= -f2 | sort -u || true)
+  fi
+
+  for template in "$OMARCHY_PATH/install/assets/limine/limine.conf" \
+                  "$OMARCHY_PATH/default/limine/limine.conf"; do
+    if [[ -f $template ]]; then
+      cp "$template" "$esp/limine.conf"
+      found=1
+      break
+    fi
+  done
+  if [[ -z $found ]]; then
+    log_step "no limine.conf template found; keeping the existing config"
+    return 0
+  fi
+
+  machine_id=$(cat /etc/machine-id 2>/dev/null || true)
+  for old_id in $old_ids; do
+    [[ $old_id == "$machine_id" ]] && continue
+    rm -rf "${esp:?}/$old_id"
+  done
+}
+
+cleanup_oem_state() {
+  # Keep groups + packages: omarchy-system-factory-reset stages the bundled Node
+  # tarball from these live copies when the factory snapshot predates it.
+  rm -f "$PROVISIONING_DIR/pending" "$PROVISIONING_DIR/authorized_keys" "$PROVISIONING_DIR/setup-user"
+
+  rm -f /etc/systemd/system/multi-user.target.wants/omarchy-provision-owner.service
+  systemctl daemon-reload 2>/dev/null || true
+}
+
+# The provisioning work, backgrounded under the progress screen. Phase writes
+# to STATE_FILE drive the bar; all output lands in the log.
+run_provisioning() {
+  log_step "creating user $username"
+  create_user
+  install_authorized_keys
+  configure_login
+
+  log_step "setting hostname to ${hostname:-omarchy}"
+  configure_hostname
+
+  log_step "setting timezone to ${timezone:-UTC}"
+  configure_timezone
+
+  log_step "finalizing user"
+  echo finalize >"$STATE_FILE"
+  if ! finalize_user; then
+    log_step "finalize-user failed (continuing; user can retry after login)"
+    touch "$FINALIZE_WARNING_FLAG"
+  fi
+
+  if [[ -f $PROVISIONING_DIR/luks-key ]]; then
+    log_step "re-keying LUKS to the user's password"
+    echo rekey >"$STATE_FILE"
+    rekey_luks
+    log_step "LUKS re-key complete"
+  fi
+
+  # After a factory reset on an unencrypted machine nothing above rebuilds the
+  # boot entries, so entries keyed to the previous machine identity would
+  # linger and go hash-stale on the first UKI rebuild. Refresh them now.
+  if limine_entries_stale; then
+    log_step "refreshing boot entries for the new machine identity"
+    echo boot >"$STATE_FILE"
+    reset_limine_config
+    limine-update
+  fi
+
+  log_step "cleaning up provisioning state"
+  cleanup_oem_state
+  log_step "first-boot setup complete"
+}
+
+run_setup() {
+  local status
+
+  while true; do
+    keyboard_form
+    user_form && status=0 || status=$?
+    if ((status != 0)); then
+      # Esc unwinds to the keyboard step. Ctrl+C is the only other way out of a
+      # prompt, and it offers the reboot instead of returning a value.
+      ((status == OMARCHY_FORM_SIGNAL)) && confirm_reboot && exec systemctl reboot
+      continue
+    fi
+    confirm_form && break
+  done
+
+  touch "$LOG_FILE"
+  chmod 600 "$LOG_FILE"
+
+  rm -f "$FINALIZE_WARNING_FLAG"
+  echo account >"$STATE_FILE"
+
+  run_provisioning >>"$LOG_FILE" 2>&1 &
+  local worker=$!
+
+  set_now
+  SETUP_T0=$NOW
+  SETUP_PHASE_T0=$NOW
+
+  render_setup_static
+  while kill -0 "$worker" 2>/dev/null; do
+    render_setup_dynamic
+    sleep 0.5
+  done
+
+  # The cursor comes back only on the failure path, where the retry prompt needs
+  # it. A clean run keeps it hidden through the last frame and the handoff.
+  local status=0
+  wait "$worker" || status=$?
+  if (( status != 0 )); then
+    printf '%s' "$SHOW_CURSOR"
+    return "$status"
+  fi
+
+  # One full-bar frame so the finish doesn't cut in mid-progress.
+  echo done >"$STATE_FILE"
+  render_setup_dynamic
+  sleep 1
+
+  if [[ -f $FINALIZE_WARNING_FLAG ]]; then
+    rm -f "$FINALIZE_WARNING_FLAG"
+    clear_logo
+    echo
+    say --foreground 1 "User finalization reported errors (see $LOG_FILE)."
+    say --foreground 1 "Run 'omarchy-provision-user --force' after login to retry."
+    sleep 3
+  fi
+
+  # Deferred first boot hands straight off to the display manager: SDDM starts
+  # the moment this oneshot exits (Before=display-manager.service) and autologs
+  # in on encrypted installs. No timed celebration screen and no "start" button
+  # here — that send-off belongs to a direct install, not first-boot setup. The
+  # finished progress bar is the last frame; clearing it for a "Starting
+  # Omarchy..." card would only add a flash of screen before the handoff.
+}
+
+# A failed first-boot setup must not strand the machine at a user-less login
+# screen. Each attempt runs as its own process — bash ignores errexit inside
+# `while !` conditions, but a child process keeps its own set -e — and failure
+# offers a retry; create_user and friends are idempotent, so retrying is safe.
+if [[ ${1:-} == "--attempt" ]]; then
+  run_setup
+  exit 0
+fi
+
+main() {
+  # Font sizing waits for the console to settle, so it lives inside
+  # greeter_screen (which owns that settle) rather than running here on a VT
+  # that may still be in a transitional mode this early in first boot.
+  set_tokyo_night_colors
+  greeter_screen
+
+  while ! "$0" --attempt; do
+    clear_logo
+    echo
+    say --foreground 1 "Setup hit an error (details in $LOG_FILE)."
+    echo
+    if ! gum confirm --affirmative "Try again" --negative "Drop to console" "Retry first-boot setup?"; then
+      # Give an actual usable console: this service owns tty1 (and Conflicts the
+      # getty), and on a failed deferred setup there's no user account and root
+      # is locked — so exiting would strand the machine with no way in. Exec a
+      # root shell on tty1; SDDM starts once it exits.
+      say "Dropping to a root shell. Run 'omarchy-provision-owner' to retry setup."
+      exec /bin/bash
+    fi
+  done
+}
+
+main

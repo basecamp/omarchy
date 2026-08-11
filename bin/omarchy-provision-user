@@ -1,8 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Finalize Omarchy user setup (runtime tweaks /etc/skel can't do)
-# omarchy:group=finalize
-# omarchy:examples=omarchy finalize user | omarchy finalize user --force
+# omarchy:hidden=true
 
 set -euo pipefail
 
@@ -25,7 +24,7 @@ USAGE
 }
 
 if (( EUID == 0 )); then
-  echo "Error: run omarchy-finalize-user as the user being configured, not as root." >&2
+  echo "Error: run omarchy-provision-user as the user being configured, not as root." >&2
   exit 1
 fi
 
@@ -67,7 +66,9 @@ export OMARCHY_INSTALL="${OMARCHY_INSTALL:-$OMARCHY_PATH/install}"
 export OMARCHY_SETUP_CONTEXT="${OMARCHY_SETUP_CONTEXT:-runtime}"
 export PATH="$OMARCHY_PATH/bin:$PATH"
 
-if (( first_install )); then
+if (( first_install )) && [[ $OMARCHY_SETUP_CONTEXT == "runtime" ]]; then
+  # The ISO chroot doesn't set a context; omarchy-provision-owner runs first-install
+  # finalization too but with OMARCHY_SETUP_CONTEXT=provision-owner already set.
   export OMARCHY_SETUP_CONTEXT=iso-chroot
 fi
 

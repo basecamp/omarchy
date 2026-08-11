@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Pick a screen region over frozen screen content
-# omarchy:args=[region|windows|smart|fullscreen] [--keep-freeze] [--match-monitor]
+# omarchy:args=[region|windows|smart|fullscreen] [--keep-freeze] [--match-monitor] | --take-fullscreen | --take-window | --select-window <next|prev|left|right|up|down>
 # omarchy:hidden=true
 
 # Prints the picked geometry in slurp's "X,Y WxH" format, or exits 1 when the
@@ -21,28 +21,7 @@
 #                   exactly matches a monitor
 
 FULLSCREEN_MARKER="${XDG_RUNTIME_DIR:-/tmp}/omarchy-capture-region-fullscreen"
-
-# Pressing Return while slurp is open captures the entire focused monitor:
-# a bind scoped to slurp's layer surface (default/hypr/bindings/utilities.lua)
-# invokes this mode, which flags the intent and dismisses slurp.
-if [[ ${1:-} == "--take-fullscreen" ]]; then
-  pgrep -x slurp >/dev/null || exit 0
-  touch "$FULLSCREEN_MARKER"
-  pkill -x slurp
-  exit 0
-fi
-
-MODE=smart
-KEEP_FREEZE=false
-MATCH_MONITOR=false
-
-for arg in "$@"; do
-  case $arg in
-  --keep-freeze) KEEP_FREEZE=true ;;
-  --match-monitor) MATCH_MONITOR=true ;;
-  *) MODE=$arg ;;
-  esac
-done
+WINDOW_MARKER="${XDG_RUNTIME_DIR:-/tmp}/omarchy-capture-region-window"
 
 # accounting for portrait/transformed displays
 JQ_MONITOR_GEO='
@@ -58,26 +37,266 @@ JQ_MONITOR_GEO='
     end;
 '
 
+active_workspace() {
+  hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id'
+}
+
+# Hidden group members and windows stacked at identical geometry collapse to
+# one rectangle: slurp cannot tell them apart, and duplicates would stall the
+# Tab cycle on the first copy.
+window_rects() {
+  hyprctl clients -j | jq -r --arg ws "$(active_workspace)" \
+    '[.[] | select(.workspace.id == ($ws | tonumber) and .hidden != true) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"] | unique[]'
+}
+
+monitor_rects() {
+  hyprctl monitors -j | jq -r --arg ws "$(active_workspace)" "${JQ_MONITOR_GEO} .[] | select(.activeWorkspace.id == (\$ws | tonumber)) | format_geo"
+}
+
 get_rectangles() {
-  local active_workspace=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
-  hyprctl monitors -j | jq -r --arg ws "$active_workspace" "${JQ_MONITOR_GEO} .[] | select(.activeWorkspace.id == (\$ws | tonumber)) | format_geo"
-  hyprctl clients -j | jq -r --arg ws "$active_workspace" '.[] | select(.workspace.id == ($ws | tonumber)) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
+  monitor_rects
+  window_rects
 }
 
 focused_monitor_geo() {
   hyprctl monitors -j | jq -r "${JQ_MONITOR_GEO} .[] | select(.focused == true) | format_geo"
 }
 
-# Runs slurp; an empty result with the fullscreen marker present means Return
-# was pressed, so the focused monitor is the selection.
+# slurp highlights the smallest box containing the point and keeps the first
+# one on a tie, so overlapping rectangles resolve the same way here (e.g.
+# floating over tiled). Reads candidates on stdin and leaves the answer in
+# RESOLVED_RECT; returns 1 when no candidate contains the point. Assigning to
+# a global rather than printing keeps the probing in warp_point_in fork-free.
+resolve_rect_at() {
+  local x=$1 y=$2
+  local rect area
+  local smallest_area=0
+
+  RESOLVED_RECT=""
+
+  while IFS= read -r rect; do
+    [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || continue
+    ((x >= BASH_REMATCH[1] && x < BASH_REMATCH[1] + BASH_REMATCH[3] && y >= BASH_REMATCH[2] && y < BASH_REMATCH[2] + BASH_REMATCH[4])) || continue
+
+    area=$((BASH_REMATCH[3] * BASH_REMATCH[4]))
+    if [[ -z $RESOLVED_RECT ]] || ((area < smallest_area)); then
+      RESOLVED_RECT=$rect
+      smallest_area=$area
+    fi
+  done
+
+  [[ -n $RESOLVED_RECT ]]
+}
+
+# A rectangle whose center is covered by a smaller one cannot be selected by
+# warping to that center: slurp would go on highlighting the coverer. Probe
+# points inside the rectangle, nearest its center first, for one that resolves
+# back to it, and leave that point in WARP_X / WARP_Y. Returns 1 when the
+# rectangle is buried well enough that no point resolves to it, in which case
+# hovering could not reach it either.
+warp_point_in() {
+  local rect=$1 candidates=$2
+  [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || return 1
+  local rect_x=${BASH_REMATCH[1]} rect_y=${BASH_REMATCH[2]}
+  local rect_width=${BASH_REMATCH[3]} rect_height=${BASH_REMATCH[4]}
+  local probe x y
+
+  for probe in "${WARP_PROBES[@]}"; do
+    x=$((rect_x + rect_width * ${probe% *} / 8))
+    y=$((rect_y + rect_height * ${probe#* } / 8))
+
+    resolve_rect_at "$x" "$y" <<<"$candidates" || continue
+    [[ $RESOLVED_RECT == "$rect" ]] || continue
+
+    WARP_X=$x
+    WARP_Y=$y
+    return 0
+  done
+
+  return 1
+}
+
+# Whatever slurp is highlighting under the cursor. It is fed monitor rects as
+# well as window rects, so a cursor in a gap or over the bar highlights the
+# monitor rather than any window.
+geo_at_cursor() {
+  local pos=$(hyprctl cursorpos)
+  local x=${pos%,*}
+  local y=${pos#*, }
+
+  if resolve_rect_at "$x" "$y" < <(window_rects) || resolve_rect_at "$x" "$y" < <(monitor_rects); then
+    echo "$RESOLVED_RECT"
+  else
+    focused_monitor_geo
+  fi
+}
+
+# Keyboard control while slurp is open: binds scoped to slurp's layer
+# surface (default/hypr/bindings/utilities.lua) invoke these modes. The
+# --take-* modes flag the intent with a marker file and dismiss slurp.
+if [[ ${1:-} == "--take-fullscreen" ]]; then
+  pgrep -x slurp >/dev/null || exit 0
+  touch "$FULLSCREEN_MARKER"
+  pkill -x slurp
+  exit 0
+fi
+
+if [[ ${1:-} == "--take-window" ]]; then
+  pgrep -x slurp >/dev/null || exit 0
+  touch "$WINDOW_MARKER"
+  pkill -x slurp
+  exit 0
+fi
+
+# Warps the cursor to another window's center, so slurp's own hover
+# highlight tracks the selection.
+if [[ ${1:-} == "--select-window" ]]; then
+  pgrep -x slurp >/dev/null || exit 0
+
+  direction=${2:-}
+  pos=$(hyprctl cursorpos)
+  origin_x=${pos%,*}
+  origin_y=${pos#*, }
+
+  candidates=$(window_rects)
+
+  # Eighth fractions of a rectangle's width and height, ordered by distance
+  # from its center so warp_point_in prefers the most central point it can use.
+  mapfile -t WARP_PROBES < <(
+    for fx in {1..7}; do
+      for fy in {1..7}; do
+        printf '%d %d %d\n' $(((fx - 4) * (fx - 4) + (fy - 4) * (fy - 4))) "$fx" "$fy"
+      done
+    done | sort -n | cut -d' ' -f2-
+  )
+
+  # Only rectangles that hovering could actually reach take part in navigation,
+  # each paired with the point to warp to.
+  declare -A warp_points
+  reachable=""
+  while IFS= read -r rect; do
+    warp_point_in "$rect" "$candidates" || continue
+    warp_points[$rect]="$WARP_X $WARP_Y"
+    reachable+="$rect"$'\n'
+  done <<<"$candidates"
+  [[ -n $reachable ]] || exit 0
+
+  # Reading order: top-to-bottom, then left-to-right.
+  rects=$(while IFS= read -r rect; do
+    [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || continue
+    printf '%d\t%d\t%s\n' "${BASH_REMATCH[2]}" "${BASH_REMATCH[1]}" "$rect"
+  done <<<"$reachable" | sort -n -k1,1 -k2,2 | cut -f3-)
+
+  # The selection to move from is the one slurp highlights, resolved from the
+  # same list in the same order as --take-window so navigation and capture
+  # never disagree. Measure from its center.
+  current=""
+  resolve_rect_at "$origin_x" "$origin_y" <<<"$candidates" && current=$RESOLVED_RECT
+
+  if [[ $current =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]]; then
+    origin_x=$((BASH_REMATCH[1] + BASH_REMATCH[3] / 2))
+    origin_y=$((BASH_REMATCH[2] + BASH_REMATCH[4] / 2))
+  fi
+
+  target=""
+
+  case $direction in
+  next | prev)
+    mapfile -t ordered <<<"$rects"
+    count=${#ordered[@]}
+    current_index=-1
+
+    for i in "${!ordered[@]}"; do
+      if [[ -n $current && ${ordered[i]} == "$current" ]]; then
+        current_index=$i
+        break
+      fi
+    done
+
+    if [[ $direction == next ]]; then
+      target=${ordered[$(((current_index + 1) % count))]}
+    elif ((current_index == -1)); then
+      target=${ordered[count - 1]}
+    else
+      target=${ordered[$(((current_index - 1 + count) % count))]}
+    fi
+    ;;
+  left | right | up | down)
+    best_score=""
+
+    while IFS= read -r rect; do
+      [[ $rect == "$current" ]] && continue
+      [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || continue
+      center_x=$((BASH_REMATCH[1] + BASH_REMATCH[3] / 2))
+      center_y=$((BASH_REMATCH[2] + BASH_REMATCH[4] / 2))
+
+      case $direction in
+      left)
+        primary=$((origin_x - center_x))
+        perp=$((center_y - origin_y))
+        ;;
+      right)
+        primary=$((center_x - origin_x))
+        perp=$((center_y - origin_y))
+        ;;
+      up)
+        primary=$((origin_y - center_y))
+        perp=$((center_x - origin_x))
+        ;;
+      down)
+        primary=$((center_y - origin_y))
+        perp=$((center_x - origin_x))
+        ;;
+      esac
+
+      ((primary > 0)) || continue
+      ((perp < 0)) && perp=$((-perp))
+      score=$((primary + perp * 2))
+
+      if [[ -z $best_score ]] || ((score < best_score)); then
+        best_score=$score
+        target=$rect
+      fi
+    done <<<"$rects"
+    ;;
+  *)
+    exit 1
+    ;;
+  esac
+
+  if [[ -n $target && -n ${warp_points[$target]} ]]; then
+    read -r target_x target_y <<<"${warp_points[$target]}"
+    hyprctl eval "hl.dispatch(hl.dsp.cursor.move({ x = $target_x, y = $target_y }))" >/dev/null
+  fi
+  exit 0
+fi
+
+MODE=smart
+KEEP_FREEZE=false
+MATCH_MONITOR=false
+
+for arg in "$@"; do
+  case $arg in
+  --keep-freeze) KEEP_FREEZE=true ;;
+  --match-monitor) MATCH_MONITOR=true ;;
+  *) MODE=$arg ;;
+  esac
+done
+
+# Runs slurp; an empty result with a marker present means one of the --take-*
+# binds was pressed, so the highlighted rectangle or the monitor is the
+# selection.
 pick() {
   local selection
-  rm -f "$FULLSCREEN_MARKER"
+  rm -f "$FULLSCREEN_MARKER" "$WINDOW_MARKER"
   selection=$(slurp "$@" 2>/dev/null)
 
   if [[ -z $selection && -e $FULLSCREEN_MARKER ]]; then
     rm -f "$FULLSCREEN_MARKER"
     selection=$(focused_monitor_geo)
+  elif [[ -z $selection && -e $WINDOW_MARKER ]]; then
+    rm -f "$WINDOW_MARKER"
+    selection=$(geo_at_cursor)
   fi
 
   printf '%s' "$selection"

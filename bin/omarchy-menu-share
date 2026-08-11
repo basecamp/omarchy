@@ -22,13 +22,22 @@ elif (($# > 0)); then
   FILE_ARRAY=("$@")
 else
   if [[ $MODE == "folder" ]]; then
-    # Pick a single folder from home directory
-    picked=$(find "$HOME" -type d 2>/dev/null | fzf)
+    select_args=(--title "Share folder" --directory)
   else
-    # Pick one or more files from home directory
-    picked=$(find "$HOME" -type f 2>/dev/null | fzf --multi)
+    select_args=(--title "Share files" --multiple)
   fi
-  [[ -z $picked ]] && exit 0
+
+  # Command substitution so the chooser's exit status survives: reading it
+  # through a process substitution reports success for a chooser that never
+  # opened, which is indistinguishable here from someone deciding not to share.
+  picked=$(omarchy-file-select "${select_args[@]}") || status=$?
+
+  if ((${status:-0} > 1)); then
+    omarchy-notification-send -g "" -u critical "Could not share" "The file chooser did not open"
+    exit 1
+  fi
+
+  [[ -n $picked ]] || exit 0
   readarray -t FILE_ARRAY <<<"$picked"
 fi
 
