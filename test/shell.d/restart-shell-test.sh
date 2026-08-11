@@ -27,6 +27,8 @@ cat >"$wrapper_bin/qs" <<'SH'
 
 if [[ ${OMARCHY_TEST_QS_HANG:-0} == 1 ]]; then
   sleep 5
+elif [[ ${OMARCHY_TEST_QS_STARTING:-0} == 1 ]]; then
+  printf 'Not ready to accept queries yet.\n'
 else
   printf 'ok\n'
 fi
@@ -40,6 +42,21 @@ wrapper_error=$(PATH="$wrapper_bin:$PATH" \
   "$ROOT/bin/omarchy-shell" shell ping 2>&1) && fail "hung shell IPC returns a failure"
 [[ $wrapper_error == "omarchy-shell is not responding" ]] || fail "hung shell IPC reports that the shell is unresponsive" "$wrapper_error"
 pass "shell IPC calls time out when Quickshell is unresponsive"
+
+# A starting shell answers on stdout and exits 0, so a ping reads it as up.
+wrapper_error=$(PATH="$wrapper_bin:$PATH" \
+  OMARCHY_PATH="$wrapper_root" \
+  OMARCHY_TEST_QS_STARTING=1 \
+  "$ROOT/bin/omarchy-shell" shell ping 2>&1) && fail "a starting shell answers IPC calls with a failure"
+[[ $wrapper_error == "omarchy-shell is not ready" ]] || fail "a starting shell reports that it is not ready" "$wrapper_error"
+pass "shell IPC calls fail while Quickshell is still starting"
+
+PATH="$wrapper_bin:$PATH" \
+OMARCHY_PATH="$wrapper_root" \
+OMARCHY_TEST_QS_STARTING=1 \
+  "$ROOT/bin/omarchy-shell" -q shell ping >/dev/null 2>&1 ||
+  fail "quiet best-effort IPC calls tolerate a starting shell"
+pass "quiet best-effort IPC calls tolerate a starting shell"
 
 wrapper_args="$test_tmp/wrapper-args"
 PATH="$wrapper_bin:$PATH" \
