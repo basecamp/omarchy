@@ -30,6 +30,7 @@ fi
 # QR codes routinely carry secrets, like the otpauth:// URIs behind 2FA setup
 # codes, so the decoded value goes to the clipboard and nowhere else. Printing it
 # or putting it in the notification would leak it to the session journal and to
-# the notification history.
-printf '%s' "$RESULT" | wl-copy
+# the notification history, and an unmarked copy would be retained by clipboard
+# history. Pasting still works; only the recorded copy is given up.
+printf '%s' "$RESULT" | wl-copy --sensitive
 omarchy-notification-send -g 󰐲 "QR code copied to clipboard"
