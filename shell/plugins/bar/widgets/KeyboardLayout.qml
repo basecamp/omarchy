@@ -4,19 +4,23 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import qs.Ui
 import qs.Commons
+import "KeyboardLayoutModel.js" as KeyboardLayoutModel
 
 BarWidget {
   id: root
   moduleName: "omarchy.keyboard-layout"
 
 
-  property string layoutLabel: ""
   property string layoutFull: ""
   property string keyboardName: ""
   // Nothing to read or switch on the single-layout install most people run, so
   // the widget ships on the bar and stays out of the way until there are two.
   // An older Hyprland that doesn't report the list keeps showing the label.
   property bool multipleLayouts: true
+  // Short language code per layout description ("English (US)": "en"), read from
+  // xkb's own table rather than maintained by hand.
+  property var layoutBriefs: ({})
+  readonly property string layoutLabel: KeyboardLayoutModel.shortLabel(layoutFull, layoutBriefs)
 
   function refresh() {
     if (!queryProc.running) queryProc.running = true
@@ -39,7 +43,10 @@ BarWidget {
     refreshTimer.restart()
   }
 
-  Component.onCompleted: refresh()
+  Component.onCompleted: {
+    briefsProc.running = true
+    refresh()
+  }
 
   Connections {
     target: Hyprland
@@ -67,8 +74,20 @@ BarWidget {
         root.keyboardName = String(kb.name || "")
         root.multipleLayouts = kb.layout === undefined || String(kb.layout).indexOf(",") !== -1
         root.layoutFull = kb.active_keymap
-        root.layoutLabel = kb.active_keymap.split(/\s+/)[0].substring(0, 3).toUpperCase()
       }
+    }
+  }
+
+  // The table only changes when xkb data is upgraded, so read it at startup and
+  // leave it alone. The bar is built per monitor, so this runs once per widget.
+  // The exotic rulesets cover layouts like trans (IPA) that ship in the same xkb
+  // package and set just as well, so load them or those labels lose their code.
+  Process {
+    id: briefsProc
+    command: ["xkbcli", "list", "--load-exotic"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.layoutBriefs = KeyboardLayoutModel.layoutBriefs(text)
     }
   }
 

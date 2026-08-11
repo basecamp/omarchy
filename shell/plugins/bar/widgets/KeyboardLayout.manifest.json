@@ -16,5 +16,13 @@
     "description": "Current xkb layout, click cycles",
     "category": "Compositor",
     "allowMultiple": false
+  },
+  "omarchy": {
+    "clonePaths": [
+      {
+        "source": "KeyboardLayoutModel.js",
+        "target": "KeyboardLayoutModel.js"
+      }
+    ]
   }
 }
