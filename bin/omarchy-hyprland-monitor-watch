@@ -4,6 +4,7 @@
 
 SOCKET="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
 LOCK="${XDG_RUNTIME_DIR:-/tmp}/omarchy-monitor-clamshell.lock"
+MODELESS_LOCK="${XDG_RUNTIME_DIR:-/tmp}/omarchy-monitor-modeless.lock"
 
 sync_clamshell() {
   (
@@ -21,6 +22,42 @@ sync_clamshell_after_monitor_change() {
       sync_clamshell
     done
   ) &
+}
+
+# Powering the monitor on fires no DRM hotplug, and forcing a re-probe needs
+# root, so only a reload re-reads the EDID and only a reload reveals whether it
+# worked. Back off: the machine can sit like this all night. The lock keeps one
+# loop running across the events that call this; the wait is for an event landing
+# in the moment one is exiting, which would otherwise be the last one to come.
+recover_modeless() {
+  (
+    flock -w 1 9 || exit 0
+
+    local delay=3 state reloaded unanswered=0
+
+    while true; do
+      omarchy-hyprland-monitor-modeless
+      state=$?
+
+      # A monitor reporting a mode is recovered. One the compositor cannot speak
+      # for is not an answer, and nothing else will ask again -- but a compositor
+      # that stays silent has gone, taking the session and this loop's reason
+      # with it.
+      (( state == 1 )) && break
+      (( state == 2 )) && (( ++unanswered > 20 )) && break
+      (( state == 0 )) && unanswered=0
+
+      reloaded=0
+      # Reloading into half-replaced package config is what the guard prevents.
+      if (( state == 0 )) && ! omarchy-hyprland-reload-guard paused; then
+        hyprctl reload >/dev/null 2>&1 || true
+        reloaded=1
+      fi
+
+      sleep "$delay"
+      (( reloaded )) && (( delay = delay * 2 > 60 ? 60 : delay * 2 ))
+    done
+  ) 9>"$MODELESS_LOCK" &
 }
 
 poll_clamshell_state() {
@@ -51,6 +88,7 @@ sync_poll_state() {
 
 sync_clamshell_after_monitor_change
 sync_poll_state
+recover_modeless
 
 # Process substitution (not a pipe) keeps this loop in the main shell, so
 # sync_poll_state can start and stop the background poll as monitors come and go.
@@ -59,10 +97,18 @@ while read -r event; do
     monitoradded\>\>*|monitoraddedv2\>\>*)
       sync_clamshell_after_monitor_change
       sync_poll_state
+      recover_modeless
       ;;
     monitorremoved\>\>*|monitorremovedv2\>\>*)
       sync_clamshell_after_monitor_change
       sync_poll_state
+      recover_modeless
+      ;;
+    # A reload while the monitor is unpowered leaves it at 0x0 with no hotplug
+    # to notice, same as at boot. Our own recovery reload lands here too, and is
+    # a no-op while its loop still holds the pid.
+    configreloaded\>\>*)
+      recover_modeless
       ;;
   esac
 done < <(socat -U - "UNIX-CONNECT:$SOCKET")
