@@ -31,15 +31,21 @@ cat >"$stub_bin/omarchy-notification-wait" <<'SH'
 [[ ${OMARCHY_TEST_LOCK_DURING_WAIT:-0} == 1 ]] || exit 0
 
 lock="$XDG_RUNTIME_DIR/omarchy-update.lock"
+held="$lock.held"
+rm -f "$held"
 : >"$lock"
 # Hold the lock through a bash-allocated descriptor rather than `flock <file>
 # <command>`: bash marks those close-on-exec, so the holder owns the lock alone
-# and killing it releases immediately, with no exec'd child to outlive it.
-bash -c 'exec {fd}>"$1"; flock -n $fd || exit 1; sleep 60' _ "$lock" &
+# and killing it releases immediately, with no exec'd child to outlive it. The
+# holder blocks for the lock instead of taking it non-blockingly, so it cannot
+# lose a startup race and leave the lock unheld.
+bash -c 'exec {fd}>"$1"; flock $fd || exit 1; : >"$2"; sleep 60' _ "$lock" "$held" &
 echo "$!" >"$OMARCHY_TEST_LOCK_HOLDER_PID"
 
+# Wait on the holder's own signal rather than probing with flock. Probing would
+# contend for the very lock we are waiting to see taken.
 for _ in {1..200}; do
-  flock -n "$lock" true 2>/dev/null || exit 0
+  [[ -e $held ]] && exit 0
   sleep 0.05
 done
 
