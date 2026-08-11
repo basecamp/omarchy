@@ -24,6 +24,7 @@ Item {
   property bool passwordPamConfigured: false
   property bool fingerprintConfigured: false
   property bool faceConfigured: false
+  property int faceAttemptCount: 0
   property bool previewVisible: false
   property string enteredPassword: ""
   property string pendingPassword: ""
@@ -38,6 +39,8 @@ Item {
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating || faceAuthenticating
+  readonly property int faceAttemptLimit: 3
+  readonly property int faceRetryDelay: 250
 
   function realScreenCount() {
     var screens = Quickshell.screens || []
@@ -115,6 +118,16 @@ Item {
     console.log("omarchy lock " + lastEventAt + " " + event)
   }
 
+  function resetFaceAuthentication() {
+    faceRetryTimer.stop()
+    faceAttemptCount = 0
+    faceAuthenticating = false
+
+    // PamContext.abort() emits no completion, so cleanup cannot enter the
+    // failure path and accidentally restart the camera.
+    if (facePam.active) facePam.abort()
+  }
+
   function resetAuthenticationState() {
     enteredPassword = ""
     pendingPassword = ""
@@ -122,11 +135,10 @@ Item {
     failedAttempts = 0
     authenticatingPassword = false
     fingerprintAuthenticating = false
-    faceAuthenticating = false
     fingerprintRetryTimer.stop()
     if (passwordPam.active) passwordPam.abort()
     if (fingerprintPam.active) fingerprintPam.abort()
-    if (facePam.active) facePam.abort()
+    resetFaceAuthentication()
   }
 
   function beginLock() {
@@ -231,6 +243,49 @@ Item {
     }
   }
 
+  function activateFaceAuthentication() {
+    // A nonzero count covers both an active PAM call and a pending retry.
+    if (faceAttemptCount > 0) return false
+
+    startFaceAttempt()
+    return faceAttemptCount > 0
+  }
+
+  function startFaceAttempt() {
+    // A retry runs later, so recheck the same safety conditions each time.
+    if (!lockRequested || !sessionLock.secure || !faceConfigured) {
+      resetFaceAuthentication()
+      return
+    }
+    if (facePam.active || faceAuthenticating) return
+
+    faceAttemptCount += 1
+    faceAuthenticating = true
+
+    if (!facePam.start()) finishFaceAttempt(false)
+  }
+
+  function finishFaceAttempt(succeeded) {
+    faceAuthenticating = false
+
+    if (!lockRequested || !sessionLock.secure || !faceConfigured) {
+      resetFaceAuthentication()
+      return
+    }
+    if (succeeded) {
+      faceAttemptCount = 0
+      finishUnlock()
+      return
+    }
+
+    if (faceAttemptCount < faceAttemptLimit) {
+      faceRetryTimer.restart()
+    } else {
+      // Three failures stop here; a later key, click, or touch may try again.
+      faceAttemptCount = 0
+    }
+  }
+
   WlSessionLock {
     id: sessionLock
 
@@ -243,6 +298,8 @@ Item {
         sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
         root.startFingerprint()
+      } else {
+        root.resetFaceAuthentication()
       }
     }
 
@@ -364,15 +421,10 @@ Item {
     config: "omarchy-lock-face"
     user: root.userName
 
+    // PamContext follows errors with completed(Error); one handler avoids
+    // consuming the same failed attempt twice.
     onCompleted: function(result) {
-      root.faceAuthenticating = false
-
-      if (!root.lockRequested) return
-      if (result === PamResult.Success) root.finishUnlock()
-    }
-
-    onError: function(error) {
-      root.faceAuthenticating = false
+      root.finishFaceAttempt(result === PamResult.Success)
     }
   }
 
@@ -381,6 +433,13 @@ Item {
     interval: 250
     repeat: false
     onTriggered: root.startFingerprint()
+  }
+
+  Timer {
+    id: faceRetryTimer
+    interval: root.faceRetryDelay
+    repeat: false
+    onTriggered: root.startFaceAttempt()
   }
 
   Process {
@@ -523,8 +582,7 @@ Item {
   }
 
   onFaceConfiguredChanged: {
-    if (!faceConfigured && facePam.active) facePam.abort()
-    if (!faceConfigured) faceAuthenticating = false
+    if (!faceConfigured) resetFaceAuthentication()
   }
 
   // No lock before PAM is known good. An answer from before then may be stale --

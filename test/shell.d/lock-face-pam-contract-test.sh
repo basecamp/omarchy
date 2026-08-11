@@ -31,7 +31,8 @@ assert(
 )
 
 assert(
-  /onCompleted: function\(result\)[\s\S]*result === PamResult\.Success[\s\S]*root\.finishUnlock\(\)/.test(facePam),
+  /onCompleted: function\(result\)[\s\S]*root\.finishFaceAttempt\(result === PamResult\.Success\)/.test(facePam) &&
+    /function finishFaceAttempt\(succeeded\)[\s\S]*if \(succeeded\)[\s\S]*finishUnlock\(\)/.test(serviceQml),
   'face PAM success uses the shared unlock path'
 )
 
@@ -50,7 +51,8 @@ for (const passwordState of [
 }
 
 assert(
-  /function resetAuthenticationState\(\)[\s\S]*faceAuthenticating = false[\s\S]*if \(facePam\.active\) facePam\.abort\(\)/.test(serviceQml),
+  /function resetFaceAuthentication\(\)[\s\S]*faceAuthenticating = false[\s\S]*if \(facePam\.active\) facePam\.abort\(\)/.test(serviceQml) &&
+    /function resetAuthenticationState\(\)[\s\S]*resetFaceAuthentication\(\)/.test(serviceQml),
   'lock cleanup clears and aborts face authentication'
 )
 
@@ -60,7 +62,7 @@ assert(
 )
 
 assert(
-  /onFaceConfiguredChanged:[\s\S]*if \(!faceConfigured && facePam\.active\) facePam\.abort\(\)/.test(serviceQml),
+  /onFaceConfiguredChanged:[\s\S]*if \(!faceConfigured\) resetFaceAuthentication\(\)/.test(serviceQml),
   'removing face configuration aborts its active PAM transaction'
 )
 
