@@ -31,6 +31,7 @@
 "attribute" = "color3"
 
 # Markup
+"markup.heading" = "color1"
 "markup.heading.1" = "color1"
 "markup.heading.2" = "color3"
 "markup.heading.3" = "color3"
