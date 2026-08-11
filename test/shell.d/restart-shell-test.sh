@@ -80,6 +80,7 @@ touch "$restart_root/shell/shell.qml"
 ln -s "$ROOT/bin/omarchy-shell" "$restart_bin/omarchy-shell"
 ln -s "$ROOT/bin/omarchy-launch-shell" "$restart_bin/omarchy-launch-shell"
 ln -s "$ROOT/bin/omarchy-cmd-missing" "$restart_bin/omarchy-cmd-missing"
+ln -s "$ROOT/bin/omarchy-hyprland-session-locked" "$restart_bin/omarchy-hyprland-session-locked"
 
 cat >"$restart_bin/qs" <<'SH'
 #!/bin/bash
@@ -131,10 +132,12 @@ cat >"$restart_bin/hyprctl" <<'SH'
 #!/bin/bash
 
 if [[ ${1:-} == "-j" && ${2:-} == "monitors" ]]; then
+  # Hyprland reports an active session lock as a reason the monitor cannot hand
+  # a client the whole screen, not as a workspace.
   if [[ ${OMARCHY_TEST_SESSION_LOCKED:-0} == 1 ]]; then
-    printf '[{"activeWorkspace":{"name":"LOCK"}}]\n'
+    printf '[{"name":"eDP-1","solitaryBlockedBy":["WINDOWED","LOCK","CANDIDATE"]}]\n'
   else
-    printf '[]\n'
+    printf '[{"name":"eDP-1","solitaryBlockedBy":["WINDOWED","CANDIDATE"]}]\n'
   fi
 elif [[ ${1:-} == "dispatch" && ${2:-} == hl.dsp.exec_cmd* ]]; then
   printf '%s\n' "${2:-}" >>"$OMARCHY_TEST_DISPATCH_LOG"
