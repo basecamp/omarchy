@@ -65,8 +65,7 @@ Item {
     height: track.height
     radius: track.radius
     color: root.fillColor
-    width: track.width * root.progress
-
+    width: track.width * Math.min(root.progress, root.thresholdEnabled ? root.thresholdProgress : 1)
     Behavior on width {
       enabled: !root.dragging
       NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
@@ -74,6 +73,7 @@ Item {
   }
 
   Rectangle {
+    id: thresholdTrack
     visible: root.thresholdEnabled
     anchors.top: track.top
     anchors.bottom: track.bottom
@@ -84,6 +84,7 @@ Item {
   }
 
   Rectangle {
+    id: thresholdFill
     visible: root.thresholdEnabled && root.progress > root.thresholdProgress
     anchors.top: track.top
     anchors.bottom: track.bottom
@@ -98,14 +99,13 @@ Item {
   }
 
   Rectangle {
+    id: thresholdSeparator
     visible: root.thresholdEnabled
-    width: Math.max(1, Style.spacing.hairline)
-    height: root.trackHeight + Style.spacing.xs
-    radius: width / 2
+    width: Style.spacing.hairline * 2
+    height: root.trackHeight
     color: root.tickColor
     anchors.verticalCenter: track.verticalCenter
-    x: Math.max(0, Math.min(track.width - width,
-                            track.width * root.thresholdProgress - width / 2))
+    x: track.width * root.thresholdProgress - Style.spacing.hairline
   }
 
   Repeater {
