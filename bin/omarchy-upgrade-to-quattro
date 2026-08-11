@@ -1105,30 +1105,38 @@ suppress_hyprland_config_reload() {
   fi
 
   log "Suppressing live Hyprland reloads during the config swap"
+  set_hyprland_reload_state true
+  hyprland_config_reload_suppressed=1
+}
 
-  local changed=0
-  if run_hyprctl_session keyword misc:disable_autoreload true >/dev/null 2>&1; then
-    changed=1
-  fi
-  if run_hyprctl_session eval 'hl.config({ misc = { disable_autoreload = true }, debug = { suppress_errors = true } })' >/dev/null 2>&1; then
-    changed=1
-  fi
-  run_hyprctl_session keyword debug:suppress_errors true >/dev/null 2>&1 || true
+# Which API answers depends on the parser the running Hyprland was started
+# with: the legacy .conf parser only takes keyword, and Quattro's Lua parser
+# rejects it outright with "keyword can't work with non-legacy parsers". The
+# session being upgraded is the legacy one, but the hyprctl binary is whichever
+# the package transaction has installed by then, so ask both ways.
+set_hyprland_reload_state() {
+  local value="$1"
 
-  if (( changed )); then
-    hyprland_config_reload_suppressed=1
-  else
-    warn "Could not disable Hyprland auto-reload; the live session may briefly report config errors."
-  fi
+  run_hyprctl_session keyword misc:disable_autoreload "$value" >/dev/null 2>&1 || true
+  run_hyprctl_session keyword debug:suppress_errors "$value" >/dev/null 2>&1 || true
+  run_hyprctl_session eval \
+    "hl.config({ misc = { disable_autoreload = $value }, debug = { suppress_errors = $value } })" \
+    >/dev/null 2>&1 || true
 }
 
 restore_hyprland_config_reload() {
   (( hyprland_config_reload_suppressed )) || return 0
 
-  run_hyprctl_session keyword misc:disable_autoreload false >/dev/null 2>&1 || true
-  run_hyprctl_session eval 'hl.config({ misc = { disable_autoreload = false } })' >/dev/null 2>&1 || true
-  run_hyprctl_session keyword debug:suppress_errors false >/dev/null 2>&1 || true
-  run_hyprctl_session eval 'hl.config({ debug = { suppress_errors = false } })' >/dev/null 2>&1 || true
+  set_hyprland_reload_state false
+
+  # An explicit hyprctl reload re-reads the config from disk, which resets both
+  # keywords above before it reports what it found, so suppression cannot
+  # survive one. Anything that reloaded during the swap therefore left the error
+  # bar on screen, and Hyprland keeps it there until a later clean reload that
+  # this script deliberately never performs. Clear the overlay instead: by now
+  # the shims have made the legacy config resolve again.
+  run_hyprctl_session seterror disable >/dev/null 2>&1 || true
+
   hyprland_config_reload_suppressed=0
 }
 
