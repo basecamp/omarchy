@@ -137,6 +137,10 @@ function o.audio(options)
     error("o.audio max_volume must be a positive integer")
   end
 
+  if max_volume > 200 then
+    max_volume = 200
+  end
+
   local state_dir = paths.state_home .. "/omarchy"
   os.execute("mkdir -p " .. shell_quote(state_dir))
 
