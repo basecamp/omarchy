@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# omarchy:summary=Install Bitwarden, optionally add it as SSH agent
+# omarchy:requires-sudo=true
+
+set -e
+
+echo "Installing Bitwarden..."
+omarchy-pkg-add bitwarden bitwarden-cli
+
+env_file=$HOME/.config/uwsm/env.d/bitwarden
+use_bitwarden_as_ssh_agent=false
+
+if [[ -z $SSH_AUTH_SOCK ]]; then
+  # ask user if they want to use Bitwarden as their SSH agent and configure SSH_AUTH_SOCK accordingly
+  if gum confirm "Use Bitwarden as SSH agent?"; then
+    mkdir -p "$(dirname "$env_file")"
+    use_bitwarden_as_ssh_agent=true
+    echo 'export SSH_AUTH_SOCK="$HOME/.bitwarden-ssh-agent.sock"' | tee -a "$env_file" >/dev/null
+    echo "Make sure to enable SSH agent support in Bitwarden settings."
+  fi
+fi
+
+echo "Opening Bitwarden..."
+uwsm-app -- bitwarden-desktop >/dev/null 2>&1 &
+
+echo ""
+echo "Bitwarden has been installed."
+if [[ $use_bitwarden_as_ssh_agent == true ]]; then
+  echo "Bitwarden is configured as your SSH agent. Please reboot for the changes to take effect."
+fi
