@@ -4,11 +4,18 @@ set -euo pipefail
 
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 CLI="$ROOT/bin/omarchy"
-TMPDIR=""
-PI_TMPDIR=""
-THEME_TMPDIR=""
+TMPDIRS=()
 
 export PATH="$ROOT/bin:$PATH"
+
+# Assigns a fresh temporary directory to the named variable and registers it for
+# removal on exit, so every scratch directory this suite makes is cleaned up.
+make_tmpdir() {
+  local -n dir_ref="$1"
+
+  dir_ref=$(mktemp -d)
+  TMPDIRS+=("$dir_ref")
+}
 
 pass() {
   printf 'ok - %s\n' "$1"
@@ -34,9 +41,13 @@ assert_output_contains() {
 }
 
 cleanup() {
-  [[ -n $TMPDIR && -d $TMPDIR ]] && rm -rf "$TMPDIR"
-  [[ -n $PI_TMPDIR && -d $PI_TMPDIR ]] && rm -rf "$PI_TMPDIR"
-  [[ -n $THEME_TMPDIR && -d $THEME_TMPDIR ]] && rm -rf "$THEME_TMPDIR"
+  local dir
+
+  for dir in ${TMPDIRS[@]+"${TMPDIRS[@]}"}; do
+    [[ -d $dir ]] && rm -rf "$dir"
+  done
+
+  return 0
 }
 trap cleanup EXIT
 
@@ -236,7 +247,7 @@ pass "safe dispatch works for font list"
 "$CLI" font current >/dev/null
 pass "safe dispatch works for font current"
 
-PI_TMPDIR=$(mktemp -d)
+make_tmpdir PI_TMPDIR
 NEXT_THEME="$PI_TMPDIR/.local/state/omarchy/current/next-theme"
 CURRENT_THEME="$PI_TMPDIR/.local/state/omarchy/current/theme"
 USER_THEMED="$PI_TMPDIR/.config/omarchy/themed"
@@ -499,7 +510,7 @@ HOME="$PI_TMPDIR" CLAUDE_CONFIG_DIR="$CLAUDE_TEST_CONFIG" "$ROOT/bin/omarchy-the
 jq -e '.theme == "custom:omarchy" and .model == "keep-me"' "$CLAUDE_TEST_CONFIG/settings.json" >/dev/null
 pass "claude theme activation preserves configured settings"
 
-THEME_TMPDIR=$(mktemp -d)
+make_tmpdir THEME_TMPDIR
 OMARCHY_PATH="$ROOT" HOME="$THEME_TMPDIR" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" "Tokyo Night"
 background_path=$(readlink -f "$THEME_TMPDIR/.local/state/omarchy/current/background" 2>/dev/null || true)
 expected_background="$THEME_TMPDIR/.local/state/omarchy/current/theme/backgrounds/0-swirl-buck.jpg"
@@ -508,7 +519,7 @@ expected_background="$THEME_TMPDIR/.local/state/omarchy/current/theme/background
 [[ ! -e $THEME_TMPDIR/.config/omarchy/current ]] || fail "headless theme set avoids config current state"
 pass "headless theme set creates current background symlink"
 
-MIGRATION_TMPDIR=$(mktemp -d)
+make_tmpdir MIGRATION_TMPDIR
 mkdir -p \
   "$MIGRATION_TMPDIR/.config/omarchy/current/theme" \
   "$MIGRATION_TMPDIR/.config/alacritty" \
@@ -536,7 +547,7 @@ grep -Fq '/.local/state/?.lua;' "$MIGRATION_TMPDIR/.config/hypr/hyprland.lua" ||
 [[ $(readlink "$MIGRATION_TMPDIR/.config/btop/themes/current.theme") == "$MIGRATION_TMPDIR/.local/state/omarchy/current/theme/btop.theme" ]] || fail "current theme migration updates btop symlink"
 pass "current theme migration moves state and rewrites shipped references"
 
-NVIM_MIGRATION_TMPDIR=$(mktemp -d)
+make_tmpdir NVIM_MIGRATION_TMPDIR
 nvim_theme_link="$NVIM_MIGRATION_TMPDIR/.config/nvim/lua/plugins/theme.lua"
 nvim_expected_target="../../../../.local/state/omarchy/current/theme/neovim.lua"
 nvim_expected_resolved_target="$NVIM_MIGRATION_TMPDIR/.local/state/omarchy/current/theme/neovim.lua"
@@ -579,7 +590,7 @@ HOME="$NVIM_MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/1785002349.sh
 [[ $(readlink "$nvim_theme_link") == "../../../../custom-theme.lua" ]] || fail "nvim theme repair migration leaves custom symlinks alone"
 pass "nvim theme repair migration relinks every legacy spelling"
 
-HYPR_MIGRATION_TMPDIR=$(mktemp -d)
+make_tmpdir HYPR_MIGRATION_TMPDIR
 mkdir -p "$HYPR_MIGRATION_TMPDIR/.config/hypr"
 cat >"$HYPR_MIGRATION_TMPDIR/.config/hypr/hyprland.lua" <<'LUA'
 -- Learn how to configure Hyprland: https://wiki.hypr.land/Configuring/Start/
@@ -695,7 +706,7 @@ while IFS= read -r binary_path; do
 done < <(find "$ROOT/bin" -maxdepth 1 -type f -executable -name 'omarchy-*' | sort)
 pass "all executable bins have slim self-documenting metadata"
 
-TMPDIR=$(mktemp -d)
+make_tmpdir TMPDIR
 ln -s "$CLI" "$TMPDIR/omarchy"
 
 {
