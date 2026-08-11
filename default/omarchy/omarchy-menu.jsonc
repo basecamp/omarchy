@@ -53,6 +53,7 @@
   "trigger.capture.screenrecord.stop": {"icon":"","label":"Stop Screenrecording","when":"pgrep -f '^gpu-screen-recorder'","action":"omarchy-capture-screenrecording --stop-recording"},
   "trigger.capture.screenrecord": {"icon":"","label":"Screenrecord"},
   "trigger.capture.text": {"icon":"󰴑","label":"Text","action":"omarchy-capture-text"},
+  "trigger.capture.qr": {"icon":"󰐲","label":"QR Code","action":"omarchy-capture-qr"},
   "trigger.capture.color": {"icon":"󰃉","label":"Color","action":"pkill hyprpicker || hyprpicker -a"},
   "trigger.capture.screenrecord.no-audio": {"icon":"","label":"With no audio","action":"omarchy-capture-screenrecording"},
   "trigger.capture.screenrecord.desktop-audio": {"icon":"","label":"With desktop audio","action":"omarchy-capture-screenrecording --with-desktop-audio"},
