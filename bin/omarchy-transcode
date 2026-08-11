@@ -4,7 +4,7 @@
 # omarchy:name=
 # omarchy:summary=Transcode pictures and videos for sharing
 # omarchy:args=[--path path] [input] [format] [resolution]
-# omarchy:examples=omarchy transcode|omarchy transcode --path ~/Downloads|omarchy transcode ~/Videos/demo.mov mp4 1080p|omarchy transcode ~/Pictures/background.heic jpg medium
+# omarchy:examples=omarchy transcode|omarchy transcode --path ~/Downloads|omarchy transcode ~/Videos/demo.mov mp4 1080p|omarchy transcode ~/Pictures/background.heic jpg medium|omarchy transcode ~/Pictures/export jpg medium
 
 set -euo pipefail
 
@@ -140,9 +140,9 @@ transcode_file() {
   output=$(output_path "$input" "$format" "$resolution")
 
   if [[ $type == "video" ]]; then
-    transcode_video "$input" "$format" "$resolution" "$output"
+    transcode_video "$input" "$format" "$resolution" "$output" || return
   else
-    transcode_picture "$input" "$format" "$resolution" "$output"
+    transcode_picture "$input" "$format" "$resolution" "$output" || return
   fi
 
   printf '%s\n' "$output"
@@ -150,7 +150,7 @@ transcode_file() {
 
 transcode_directory() {
   local input="$1" format="$2" resolution="$3"
-  local target_type path type output count=0 skipped=0
+  local target_type path type output count=0 failed=0 skipped=0
 
   target_type=$(media_type_for_format "$format")
 
@@ -168,29 +168,32 @@ transcode_directory() {
       continue
     fi
 
-    output=$(output_path "$path" "$format" "$resolution")
     if [[ $type == "video" ]]; then
       omarchy-notification-send -g  "Transcoding video…" "$(basename -- "$path") to $format ($resolution)"
-      transcode_video "$path" "$format" "$resolution" "$output"
-    else
-      transcode_picture "$path" "$format" "$resolution" "$output"
     fi
 
-    (( count += 1 ))
-    printf 'Transcoded %s -> %s\n' "$path" "$output"
+    if output=$(transcode_file "$path" "$format" "$resolution"); then
+      (( count += 1 ))
+      printf 'Transcoded %s -> %s\n' "$path" "$output"
+    else
+      (( failed += 1 ))
+      printf 'Failed to transcode %s\n' "$path" >&2
+    fi
   done
   shopt -u nullglob
 
-  if (( count == 0 )); then
+  if (( count == 0 && failed == 0 )); then
     echo "No supported $target_type files found in: $input" >&2
     return 1
   fi
 
-  omarchy-notification-send "Transcoded $count item(s) to $resolution $format" "Saved in $(basename -- "$input")"
+  omarchy-notification-send "Transcoded $count item(s) to $resolution $format" "$failed failed in $(basename -- "$input")"
 
   if (( skipped > 0 )); then
     printf 'Skipped %d unsupported or mismatched item(s).\n' "$skipped"
   fi
+
+  (( count > 0 ))
 }
 
 copy_to_clipboard() {

@@ -42,13 +42,11 @@ class TranscodeAction(GObject.GObject, Nautilus.MenuProvider):
             f"format=$(omarchy-menu-select 'Select {media_type} format' {format_options}) || exit 1",
             f"resolution=$(omarchy-menu-select 'Select {media_type} resolution' {resolution_options}) || exit 1",
         ]
-
-        for path in paths:
-            commands.append(
-                f"echo {shlex.quote(f'Transcoding {path}')} && "
-                f"{shlex.join([binary, path])} \"$format\" \"$resolution\" || true"
-            )
-
+        commands.extend(
+            f"echo {shlex.quote(f'Transcoding {path}')} && "
+            f"{shlex.join([binary, path])} \"$format\" \"$resolution\" || true"
+            for path in paths
+        )
         return "; ".join(commands)
 
     def _launch_transcode(self, paths):
@@ -74,11 +72,12 @@ class TranscodeAction(GObject.GObject, Nautilus.MenuProvider):
     def _selected_paths(self, files):
         paths = []
         seen = set()
+        directories = [file for file in files if file.is_directory()]
+        if directories and len(files) != 1:
+            return []
 
         for file in files:
-            if file.is_directory():
-                continue
-            media_type = self._media_type(file)
+            media_type = "directory" if file.is_directory() else self._media_type(file)
             if not media_type:
                 continue
             location = file.get_location()
