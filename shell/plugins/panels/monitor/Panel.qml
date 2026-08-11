@@ -18,6 +18,7 @@ Panel {
   property int pendingBrightnessPercent: 0
   property bool brightnessSetQueued: false
   property bool stateRefreshQueued: false
+  property var queuedAction: null
   property bool brightnessAvailable: false
   property string internalMonitor: ""
   property string externalMonitor: ""
@@ -366,6 +367,22 @@ Panel {
     return !!display && display.enabled && !display.focused && root.enabledDisplayCount > 1
   }
 
+  // One process serves both the toggles and the scale buttons, and switching a
+  // display on takes seconds while the output is rebuilt. Assigning a command
+  // while it runs neither starts it nor leaves anything to start it later, so a
+  // scale picked during a toggle used to be dropped with nothing said. Hold the
+  // most recent one and run it when the process stops.
+  function runAction(command) {
+    if (actionProc.running) {
+      root.queuedAction = command
+      return
+    }
+
+    root.queuedAction = null
+    actionProc.command = command
+    actionProc.running = true
+  }
+
   function toggleDisplay(name, enabled) {
     if (!name) return
     if (enabled && !root.canDisableDisplay(root.displayNamed(name))) return
@@ -373,13 +390,11 @@ Panel {
     // Not `hyprctl keyword`: Hyprland's Lua parser rejects that command, so the
     // row silently did nothing in either direction. The helper applies the
     // change and persists it through the toggles directory.
-    actionProc.command = ["omarchy-hyprland-monitor-toggle", name, enabled ? "off" : "on"]
-    if (!actionProc.running) actionProc.running = true
+    root.runAction(["omarchy-hyprland-monitor-toggle", name, enabled ? "off" : "on"])
   }
 
   function setScale(scale) {
-    actionProc.command = ["omarchy-hyprland-monitor-scaling", "--monitor", root.targetMonitor(), String(scale)]
-    if (!actionProc.running) actionProc.running = true
+    root.runAction(["omarchy-hyprland-monitor-scaling", "--monitor", root.targetMonitor(), String(scale)])
   }
 
   // ---- Text size (shell base font + GTK text-scaling, via one CLI) ----
@@ -516,7 +531,14 @@ Panel {
   Process {
     id: actionProc
     stdout: StdioCollector { waitForEnd: true }
-    onRunningChanged: if (!running) root.refresh()
+    onRunningChanged: {
+      if (running) return
+      if (root.queuedAction) {
+        root.runAction(root.queuedAction)
+        return
+      }
+      root.refresh()
+    }
   }
 
   // Applies text size via the CLI, which rewrites the shell override file;
