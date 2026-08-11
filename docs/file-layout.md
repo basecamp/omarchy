@@ -237,11 +237,11 @@ systemd instance:
 - `install/user/first-run/gnome-theme.sh`,
   `install/user/first-run/gtk-primary-paste.sh` — GNOME/GTK settings that
   need the dconf daemon.
+- `install/user/first-run/welcome.sh` — keybindings toast that greets the
+  first login and opens the cheatsheet when clicked.
 - `install/user/first-run/wifi.sh` — Wi-Fi/update toasts (waits for a live
   notification server before firing, then waits detached on `nm-online` so the
   update prompt only lands once there is a connection).
-- `install/user/first-run/keybindings.sh` — opens the keybindings menu to
-  greet the first login; blocks until it is answered.
 
 The entire sequence has one idempotency marker:
 `~/.local/state/omarchy/done/first-run-user`, managed by `omarchy-done`.
