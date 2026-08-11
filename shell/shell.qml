@@ -1011,6 +1011,19 @@ ShellRoot {
       shell.toggle(id, payloadJson)
     }
 
+    // A bar section's panels answer to their position as well as their id, so a
+    // hotkey can mean "the third panel in the right section" and keep meaning
+    // it after the bar is rearranged. Returns the id it acted on, or "unknown"
+    // when the section holds no panel at that position.
+    function togglePanelAt(section: string, index: string): string {
+      var id = shell.bar && typeof shell.bar.panelWidgetIdAt === "function"
+        ? shell.bar.panelWidgetIdAt(section, index)
+        : ""
+      if (!id) return "unknown"
+      shell.toggle(id, "{}")
+      return id
+    }
+
     function call(id: string, method: string, arg: string): string {
       return shell.callIfLoaded(id, method, arg)
     }

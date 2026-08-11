@@ -102,6 +102,18 @@ o.bind("SUPER + CTRL + W", "Network", "omarchy-shell shell toggle omarchy.networ
 o.bind("SUPER + CTRL + P", "Power", "omarchy-shell shell toggle omarchy.power")
 o.bind("SUPER + CTRL + T", "Activity", { tui = "btop" })
 
+-- The letters above name a panel; the numbers count them. 1 is the leftmost
+-- panel in the bar's right section, and a widget with no panel of its own (the
+-- tray) is not counted, so the number matches the icon a user would point at.
+-- A bar with fewer panels than this leaves the tail of the range doing nothing.
+for panel = 1, 9 do
+  o.bind(
+    "SUPER + CTRL + code:" .. tostring(panel + 9),
+    "Bar panel " .. panel,
+    "omarchy-shell -q shell togglePanelAt right " .. panel
+  )
+end
+
 o.bind("SUPER + CTRL + Z", "Zoom in", function()
   local zoom = hl.get_config("cursor.zoom_factor") or 1
   hl.config({ cursor = { zoom_factor = zoom + 1 } })
