@@ -14,6 +14,15 @@ fi
 
 prompt_reboot=1
 
+# sudo resolves a bare command name against secure_path, never the caller's
+# PATH, so a dev-linked checkout is invisible to `sudo omarchy-*`: a command the
+# package does not ship yet fails outright, and one it does ship silently runs
+# the packaged copy while every unprivileged call runs the checkout. Prepending
+# the checkout's bin keeps root on the code being edited — the same trust the
+# link already extends to every system script Omarchy runs out of $OMARCHY_PATH.
+sudoers_file="/etc/sudoers.d/omarchy-dev-path"
+system_secure_path="/usr/local/sbin:/usr/local/bin:/usr/bin"
+
 if (( $# < 1 || $# > 2 )) || [[ $1 == "-h" || $1 == "--help" ]]; then
   cat <<USAGE
 Usage: omarchy dev link <path-to-checkout> [--no-reboot]
@@ -27,6 +36,10 @@ themes/, applications/, config/. Files installed at fixed system paths
 (/etc/, /usr/lib/systemd/, udev rule bodies, /etc/skel after user
 creation, /usr/share/plymouth) are NOT covered — for those, use
 omarchy-dev-pkg-test to build and install the package from the checkout.
+
+Also writes $sudoers_file so sudo resolves omarchy-*
+from the checkout instead of the packaged copies. That part takes effect
+immediately, no reboot needed.
 
 Use --no-reboot when another command will handle the reboot prompt.
 USAGE
@@ -51,6 +64,16 @@ omarchy_conf_quote() {
   printf '"%s"' "$value"
 }
 
+# A double-quoted sudoers string takes a backslash escape for a literal
+# backslash or quote, and nothing else — a checkout path with a space in it is
+# already covered by the quotes.
+sudoers_quote() {
+  local value="$1"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  printf '"%s"' "$value"
+}
+
 target=$(realpath -e "$1" 2>/dev/null) || {
   echo "Error: path does not exist: $1" >&2
   exit 1
@@ -62,13 +85,33 @@ for required in bin default shell; do
   fi
 done
 
+# Staged and parsed before anything is installed: a sudoers file sudo refuses to
+# read takes every rule after it down with it, including the %wheel grant, and
+# the password prompt needed to undo that is on the other side of the breakage.
+staged_sudoers=$(mktemp)
+trap 'rm -f "$staged_sudoers"' EXIT
+
+{
+  printf 'Defaults secure_path='
+  sudoers_quote "$target/bin:$system_secure_path"
+  printf '\n'
+} >"$staged_sudoers"
+
+if ! visudo -cf "$staged_sudoers" >/dev/null; then
+  echo "Error: refusing to install an invalid $sudoers_file for $target" >&2
+  exit 1
+fi
+
 {
   printf 'export OMARCHY_PATH='
   omarchy_conf_quote "$target"
   printf '\n'
 } | sudo tee /etc/omarchy.conf >/dev/null
 
+sudo install -Dm440 -o root -g root "$staged_sudoers" "$sudoers_file"
+
 echo "Pointed Omarchy at $target"
+echo "sudo now resolves omarchy-* from $target/bin"
 echo
 
 if (( prompt_reboot )) && gum confirm "Reboot now to activate?"; then

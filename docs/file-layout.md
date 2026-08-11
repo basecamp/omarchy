@@ -158,6 +158,19 @@ Sourced by every entry point that needs the env set:
 
 Idempotent — safe to source more than once in the same shell.
 
+`PATH` covers everything the user runs, but not `sudo`, which resolves command
+names against `secure_path` from `/etc/sudoers`. So `omarchy-dev-link` also
+writes `/etc/sudoers.d/omarchy-dev-path`:
+
+```
+Defaults secure_path="<checkout>/bin:/usr/local/sbin:/usr/local/bin:/usr/bin"
+```
+
+Without it, `sudo omarchy-*` fails for a command the package has not shipped
+yet and silently runs the packaged copy of one it has. The drop-in is validated
+with `visudo -c` before install and removed by `omarchy-dev-unlink`; unlike
+`/etc/omarchy.conf`, it takes effect without a reboot.
+
 ## Runtime finalization (`omarchy-finalize-user`)
 
 Runs once per user. It does **not** copy `~/.config/**`, `~/.bashrc`,

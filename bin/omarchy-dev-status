@@ -6,6 +6,7 @@
 set -euo pipefail
 
 default_target="/usr/share/omarchy"
+sudoers_file="/etc/sudoers.d/omarchy-dev-path"
 configured="$default_target"
 conf_present=0
 linked=0
@@ -23,9 +24,30 @@ if [[ -f /etc/omarchy.conf ]]; then
   fi
 fi
 
+# /etc/sudoers.d is root-only, so report what sudo resolves rather than reading
+# the drop-in — and say so plainly instead of guessing when there is no cached
+# credential to ask with. A missing entry here is what makes `sudo omarchy-*`
+# run the packaged copy of a command the checkout has changed.
+sudo_bin_dir() {
+  local resolved
+
+  if ! sudo -n true 2>/dev/null; then
+    echo "unknown (needs sudo)"
+    return
+  fi
+
+  resolved=$(sudo -n bash -c 'type -P omarchy-dev-status' 2>/dev/null) || {
+    echo "not on sudo's PATH"
+    return
+  }
+
+  dirname "$resolved"
+}
+
 if (( linked )); then
   echo "dev-link: configured"
   echo "  /etc/omarchy.conf -> OMARCHY_PATH=$configured"
+  echo "  sudo resolves omarchy-* from: $(sudo_bin_dir)"
   echo "  status: reboot required before all session layers use this checkout"
 else
   echo "dev-link: inactive"
