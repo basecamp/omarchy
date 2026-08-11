@@ -1,0 +1,140 @@
+#!/bin/bash
+
+# omarchy:summary=Shared helpers for reading and editing ~/.config/hypr/monitors.lua (source this, don't run it).
+# omarchy:hidden=true
+
+# One reader for the monitor config, so the commands that consult it and the
+# commands that edit it agree on what a rule is. Getting that wrong is quiet:
+# a rule matched loosely rewrites a comment, and a rule missed entirely writes a
+# value Hyprland never applies.
+
+MONITOR_LUA="$HOME/.config/hypr/monitors.lua"
+
+lua_identifier() {
+  [[ $1 =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+}
+
+# Value assigned by `local <name> = ...`, without its quotes or trailing comment.
+# Only a lone scalar counts: an expression like `1080 / 720` must stay unresolved
+# so the caller falls back rather than applying the first half of the sum.
+lua_local_value() {
+  local name="$1" value
+  lua_identifier "$name" && [[ -f $MONITOR_LUA ]] || return 0
+
+  value=$(sed -nE 's/^[[:space:]]*local[[:space:]]+'"$name"'[[:space:]]*=[[:space:]]*("[^"]*"|[^"[:space:]]+)[[:space:]]*(--.*)?$/\1/p' "$MONITOR_LUA" | head -1)
+  [[ $value == \"*\" ]] && value="${value:1:-1}"
+  printf '%s\n' "$value"
+}
+
+# A quoted capture is a Lua string and stands for itself; a bare word may instead
+# name a local the rule refers to, as the shipped scale = omarchy_monitor_scale
+# does. A bare word naming no local is left alone to fail validation.
+lua_scalar() {
+  local value="$1" resolved
+
+  if [[ $value == \"*\" ]]; then
+    printf '%s\n' "${value:1:-1}"
+    return
+  fi
+
+  resolved=$(lua_local_value "$value")
+  printf '%s\n' "${resolved:-$value}"
+}
+
+# The config with its comments cut away, so commented-out text can pose neither
+# as a rule nor as one of its keys.
+monitor_rules() {
+  [[ -f $MONITOR_LUA ]] || return 0
+
+  sed -E -e 's/--\[\[[^]]*\]\]//g' -e 's/--.*$//' "$MONITOR_LUA"
+}
+
+monitor_rule_regex() {
+  printf '^[[:space:]]*hl\\.monitor\\(\\{.*output[[:space:]]*=[[:space:]]*"%s"' "$1"
+}
+
+# A key is preceded by a table separator, so a longer key cannot stand in for it,
+# and its value is the whole of what sits between the `=` and the next separator.
+# Anything else is an expression this cannot evaluate.
+configured_monitor_value() {
+  local output="$1" key="$2" value
+
+  value=$(monitor_rules | sed -nE '/'"$(monitor_rule_regex "$output")"'/s/.*[{,;[:space:]]'"$key"'[[:space:]]*=[[:space:]]*("[^"]*"|[^,;}[:space:]]+)[[:space:]]*([,;}].*)?$/\1/p' | head -1)
+  lua_scalar "$value"
+}
+
+# The identifier a rule names its display by, or nothing when the line is not a
+# rule. Read from the comment-stripped config, so the commented examples the
+# config ships with cannot answer for a display that has no rule of its own.
+monitor_rule_output() {
+  local line="$1"
+
+  [[ $line =~ hl\.monitor ]] || return 0
+  [[ $line =~ output[[:space:]]*=[[:space:]]*\"([^\"]*)\" ]] || return 0
+  printf '%s\n' "${BASH_REMATCH[1]}"
+}
+
+# The line holding the rule that governs this display, or nothing when the user
+# has not written one. The catch-all is skipped: it describes every display, so
+# it is nobody's own rule. A `desc:` identifier matches by prefix, the way
+# Hyprland matches it, so the abbreviated descriptions people actually write
+# still resolve to their display.
+display_rule_line() {
+  local name="$1" description="$2" line number=0 output
+
+  [[ -f $MONITOR_LUA ]] || return 0
+
+  while IFS= read -r line; do
+    ((number++))
+
+    output="$(monitor_rule_output "$line")"
+    [[ -n $output ]] || continue
+
+    if [[ $output == "$name" ]]; then
+      printf '%s\n' "$number"
+      return 0
+    fi
+
+    if [[ $output == desc:* && -n $description && $description == "${output#desc:}"* ]]; then
+      printf '%s\n' "$number"
+      return 0
+    fi
+  done < <(monitor_rules)
+}
+
+# Rewrite one rule's scale and nothing else, so the mode, the position and the
+# identifier the user chose all survive. A rule naming no scale gains one; a
+# rule whose scale is a variable reference gets the literal, since the value the
+# user just picked is not the one the variable stands for.
+set_rule_scale() {
+  local line="$1" scale="$2"
+
+  awk -v target="$line" -v scale="$scale" '
+    NR != target { print; next }
+    {
+      if (match($0, /scale[[:space:]]*=[[:space:]]*("[^"]*"|[^,;)}[:space:]]+)/)) {
+        printf "%s%s%s\n", substr($0, 1, RSTART - 1), "scale = " scale, substr($0, RSTART + RLENGTH)
+      } else if (match($0, /}[[:space:]]*\)/)) {
+        prefix = substr($0, 1, RSTART - 1)
+        sub(/[[:space:]]+$/, "", prefix)
+        printf "%s, scale = %s %s\n", prefix, scale, substr($0, RSTART)
+      } else {
+        print
+      }
+    }
+  ' "$MONITOR_LUA" >"$MONITOR_LUA.tmp" && mv "$MONITOR_LUA.tmp" "$MONITOR_LUA"
+}
+
+# Give a display a rule of its own. `preferred` and `auto` are what the catch-all
+# was already giving it, so the scale is the only thing that changes.
+append_display_rule() {
+  local name="$1" scale="$2"
+
+  # A file whose last line has no newline would otherwise take the rule onto the
+  # end of that line, and a config that does not parse takes the whole session's
+  # monitor configuration with it.
+  [[ -s $MONITOR_LUA && -n $(tail -c1 "$MONITOR_LUA") ]] && printf '\n' >>"$MONITOR_LUA"
+
+  printf 'hl.monitor({ output = "%s", mode = "preferred", position = "auto", scale = %s })\n' \
+    "$name" "$scale" >>"$MONITOR_LUA"
+}
