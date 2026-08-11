@@ -113,6 +113,15 @@ last_step_line=$(grep -n '^restore_hyprland_config_reload$' "$upgrade_to_quattro
 (( completed_line > last_step_line )) || fail "the upgrade is marked complete only after the last step"
 pass "Omarchy 4 upgrade reports an aborted run instead of exiting silently"
 
+# Ordering alone would still pass if either retired entry point came back, so
+# name them: the reboot is the cutover, and nothing may swap the shell out from
+# under the session being replaced.
+! grep -q 'start_omarchy_shell_session' "$upgrade_to_quattro" ||
+  fail "Omarchy 4 upgrade does not start the shell in the session it is replacing"
+! grep -q 'stop_retired_session_processes' "$upgrade_to_quattro" ||
+  fail "Omarchy 4 upgrade leaves the retired session processes running until reboot"
+pass "Omarchy 4 upgrade leaves the Omarchy 3 session alone until the reboot"
+
 grep -F 'omarchy-bar defaults' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade restores service-aware bar defaults"
 
