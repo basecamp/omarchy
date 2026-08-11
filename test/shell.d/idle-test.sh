@@ -209,3 +209,13 @@ direct_wake_calls=$(rg -c 'runProcess\(wakeProcess, "wake", "omarchy-system-wake
   fail "omarchy-system-wake should only be launched from wakeScreens() and screenOffProcess.onExited"
 
 pass "a wake requested while blanking is in flight is deferred until the blank exits"
+
+# screenOffTimeoutSeconds is a raw config value and can be configured to 0,
+# unlike the shared idleSchedule() deadline math which already clamps this.
+# A zero rearm interval would fire on every event loop tick, blanking the
+# display again the instant it wakes.
+rg -q 'screenOffRearmSeconds: Math\.max\(1, screenOffTimeoutSeconds\)' "$service" ||
+  fail "screenOffRearmSeconds must clamp a configured zero screenOff timeout to 1s"
+rg -A4 'id: screenOffRearmTimer' "$service" | rg -q 'interval: root\.screenOffRearmSeconds \* 1000' ||
+  fail "screenOffRearmTimer must use the clamped screenOffRearmSeconds, not the raw timeout"
+pass "the screen-off rearm timer clamps a configured zero timeout instead of firing every tick"

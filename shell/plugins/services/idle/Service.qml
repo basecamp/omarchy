@@ -21,6 +21,12 @@ Item {
   readonly property int screensaverTimeoutSeconds: secondsFromConfig(idleConfig.screensaver, defaultScreensaverSeconds)
   readonly property int lockTimeoutSeconds: secondsFromConfig(idleConfig.lock, defaultLockSeconds)
   readonly property int screenOffTimeoutSeconds: secondsFromConfig(idleConfig.screenOff, defaultScreenOffSeconds)
+  // screenOffTimeoutSeconds is a raw config value and can be 0 (the shared
+  // idleSchedule() clamps its own first-deadline math, but this timer sits
+  // outside that): a configured screenOff: 0 would otherwise make the rearm
+  // timer fire on every event-loop tick, blanking the display again the
+  // instant it wakes and leaving no way to keep it on.
+  readonly property int screenOffRearmSeconds: Math.max(1, screenOffTimeoutSeconds)
 
   // Locking on idle predates its switch, so it stays on unless turned off.
   // Turning the screens off is new, so it stays off until asked for. Both are
@@ -121,7 +127,7 @@ Item {
     screenOffTimer.stop()
     wakeScreens()
     if (root.screenOffOnIdle) screenOffRearmTimer.restart()
-    logEvent("screen-off-wake", root.screenOffTimeoutSeconds + "s")
+    logEvent("screen-off-wake", root.screenOffRearmSeconds + "s")
   }
 
   function lockSystem(reason) {
@@ -372,7 +378,7 @@ Item {
     id: screenOffRearmTimer
     // The full timeout: after activity that did not end the cycle, the clock
     // starts over rather than resuming a spent offset.
-    interval: root.screenOffTimeoutSeconds * 1000
+    interval: root.screenOffRearmSeconds * 1000
     repeat: false
     onTriggered: if (root.screenOffOnIdle && root.idleEnabled && root.idledThisCycle) root.turnOffScreens("screen-off-rearmed")
   }
