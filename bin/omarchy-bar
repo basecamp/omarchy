@@ -230,16 +230,9 @@ bar_widget_default_section() {
   ' <<<"$catalog"
 }
 
-# Nothing to place into with no shell to place it, and a caller that runs
-# unattended should say so and carry on rather than fail. A shell coming up
-# answers before it has read the plugins it is being asked about, so keep
-# asking: it is put's own answer that says when it has. Everything else fails,
-# including a shell too old to know the call, because omarchy-migrate records a
-# migration that returns 0 as done and never asks for the widget again.
-#
-# Answers 0 with the shell's reply in PUT_RESULT, 1 when there was no shell to
-# ask and the caller should carry on. SHELL_ANSWERED outlives a single ask, so
-# a shell that spoke once is still known to have been there on the next one.
+# Asks the shell to place a widget, waiting out one still coming up. Answers 0
+# with the reply in PUT_RESULT, 1 when there was no shell to ask. Only an
+# absent shell is carried on from: omarchy-migrate marks a 0 return as done.
 PUT_RESULT=""
 SHELL_ANSWERED=0
 ask_to_put() {
@@ -251,14 +244,12 @@ ask_to_put() {
     elif [[ $PUT_RESULT == *"not ready"* ]]; then
       SHELL_ANSWERED=1
     elif [[ $PUT_RESULT == *"is not running"* ]]; then
-      # A shell that has answered and then gone did not finish what it was
-      # asked; it is not the machine that never had one.
+      # Answered once and now gone: it stopped mid-request.
       if (( SHELL_ANSWERED )); then
         fail "omarchy-shell did not become ready; $id was not put on the bar"
       fi
-      # A shell being spawned has no socket to answer on yet and nothing says
-      # a launch is under way, so silence is the same either way. Give one a
-      # few seconds to turn up before calling it a machine without a shell.
+      # A shell being spawned has no socket yet, and nothing says a launch is
+      # under way, so give one a few seconds to turn up.
       if (( ++absent >= ${OMARCHY_SHELL_ABSENT_ATTEMPTS:-30} )); then
         echo "omarchy-shell is not running; $id was not put on the bar" >&2
         return 1
@@ -296,9 +287,8 @@ cmd_put() {
   placement=$(placement_json)
   ask_to_put "$id" "$placement" || return 0
 
-  # An update runs its migrations before it restarts the shell, so the one
-  # answering here can still be from before put learned to fall back. Ask that
-  # shell again without the neighbour it says it cannot find.
+  # An update runs migrations before it restarts the shell, so this one can
+  # predate the fallback. Ask it again without the neighbour it cannot find.
   if [[ $PUT_RESULT == "could not find target widget"* ]]; then
     PLACEMENT_BEFORE=""
     PLACEMENT_AFTER=""

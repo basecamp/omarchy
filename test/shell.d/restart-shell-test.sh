@@ -43,9 +43,7 @@ wrapper_error=$(PATH="$wrapper_bin:$PATH" \
 [[ $wrapper_error == "omarchy-shell is not responding" ]] || fail "hung shell IPC reports that the shell is unresponsive" "$wrapper_error"
 pass "shell IPC calls time out when Quickshell is unresponsive"
 
-# Quickshell answers a call made before it finishes loading on stdout and exits
-# 0, so a caller polling with a ping would read a starting shell as up and then
-# take that sentence for the answer to its real call.
+# A starting shell answers on stdout and exits 0, so a ping reads it as up.
 wrapper_error=$(PATH="$wrapper_bin:$PATH" \
   OMARCHY_PATH="$wrapper_root" \
   OMARCHY_TEST_QS_STARTING=1 \

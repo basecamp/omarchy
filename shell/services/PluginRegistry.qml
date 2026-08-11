@@ -193,10 +193,8 @@ QtObject {
     return { found: false }
   }
 
-  // Placement names a neighbour, and cloning the clock leaves a bar carrying
-  // your id where the built-in one used to be. A caller still saying
-  // omarchy.clock means the clone that took its place, the same way
-  // resolveEnabledId routes calls to it.
+  // A caller naming a widget that has been cloned means the clone that took
+  // its place, the way resolveEnabledId routes calls to it.
   function findRelativeBarLocation(config, id, section) {
     var location = findBarLocation(config, id, section)
     if (location.found) return location
@@ -293,22 +291,16 @@ QtObject {
     return ""
   }
 
-  // put is the unattended verb: a migration placing a widget cannot know what
-  // the bar it is placing into looks like, so a --before / --after naming a
-  // widget that is not on it falls back to the widget's own default spot
-  // rather than refusing. enable, which someone types, still says so. A widget
-  // already on the bar is left exactly where its owner put it.
+  // put is the unattended verb: where enable errors, it falls back, and it
+  // leaves a widget that is already on the bar where its owner put it.
   function putBarWidget(id, placement) {
     if (inBar(id)) return ""
     var config = shellConfigProvider ? shellConfigProvider() : null
-    // A clone is the widget it was cloned from wearing its owner's name, so a
-    // bar carrying one already has what is being put on it. Enabling the
-    // source here is how you switch back to the built-in, which is not
-    // something an unattended caller may decide for them.
+    // Enabling a source whose clone is active switches back to the built-in,
+    // which is the owner's call, not an unattended caller's.
     if (findRelativeBarLocation(config, id, "").found) return ""
-    // Reading the manifests is a subprocess and IPC answers before it returns,
-    // so a widget the scan has not reached yet is not one that does not exist.
-    // Say which it is; the caller can ask again.
+    // The manifest scan is a subprocess and IPC answers before it returns, so
+    // an id it has not reached yet is not one that does not exist.
     if (scanning && !installedPlugins[Util.canonicalWidgetId(String(id))]) return "not ready"
     var target = Util.isPlainObject(placement) ? Util.cloneJson(placement) : {}
     var relativeId = String(target.before || target.after || "")

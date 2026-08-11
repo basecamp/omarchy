@@ -69,9 +69,8 @@ case $output in
   "Target not found." | "Function not found." | "Too few arguments provided"* | "Too many arguments provided"*)
     fail "$output"
     ;;
-  # A shell that is still starting answers on stdout and exits 0, so callers
-  # polling with a ping would otherwise read it as up and take the answer to
-  # the real call for a result. It is as unreachable as one that is not there.
+  # A starting shell answers on stdout and exits 0, so a ping reads it as up
+  # and the next call's answer as a result. It is as unreachable as none.
   "Not ready to accept queries yet"*)
     fail "omarchy-shell is not ready"
     ;;

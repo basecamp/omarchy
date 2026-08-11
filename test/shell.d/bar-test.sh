@@ -22,9 +22,8 @@ const shellSource = fs.readFileSync(root + '/shell/shell.qml', 'utf8')
 
 assert(/function toggleBarTransparency\(\): string \{[\s\S]*?shell\.bar\.toggleTransparency\(\)/.test(shellSource), 'shell exposes the bar transparency toggle over IPC')
 
-// put and enable place a widget differently — put tolerates a placement target
-// the bar does not carry — so the IPC call has to reach the registry's put
-// rather than route back through enable.
+// put tolerates a placement target the bar does not carry, so the IPC call
+// must reach the registry's put rather than route back through enable.
 assert(
   /function putBarWidget\(id: string, placementJson: string\): string \{[\s\S]*?shell\.pluginRegistry\.putBarWidget\(/.test(shellSource),
   'putting a bar widget over IPC goes through the registry put'
@@ -324,9 +323,6 @@ assertEqual(
 )
 JS
 
-# A migration cannot know whether a shell is there to place into. No shell is
-# nothing to fail over, but one that never finishes starting has to fail, or
-# the migration is recorded as done having placed nothing.
 put_tmp=$(mktemp -d)
 trap 'rm -rf "$put_tmp"' EXIT
 mkdir -p "$put_tmp/bin"
@@ -354,8 +350,7 @@ case ${OMARCHY_TEST_SHELL_STATE:-ready} in
     exit 1
     ;;
   oldshell)
-    # An update runs migrations before it restarts the shell, so this is the
-    # one that shipped before put learned to fall back.
+    # A shell from before put learned to fall back.
     if [[ $4 == *"after"* ]]; then
       echo "could not find target widget omarchy.clock"
     else
@@ -406,8 +401,6 @@ put_output=$(PATH="$put_tmp/bin:$ROOT/bin:$PATH" OMARCHY_TEST_SHELL_STATE=missin
 [[ $put_output == *"is not running"* ]] || fail "put says why it placed nothing" "$put_output"
 pass "put carries on when no shell is running"
 
-# A shell being spawned has no socket to answer on yet, and nothing tells the
-# command a launch is under way.
 put_output=$(PATH="$put_tmp/bin:$ROOT/bin:$PATH" OMARCHY_TEST_SHELL_STATE=spawning \
   OMARCHY_TEST_SHELL_MARKER="$put_tmp/spawned" \
   "$ROOT/bin/omarchy-bar" put omarchy.keyboard-layout --after omarchy.clock 2>&1) ||

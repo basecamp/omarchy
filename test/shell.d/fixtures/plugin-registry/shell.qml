@@ -216,9 +216,7 @@ ShellRoot {
     registry.setEnabled("third.widget", true, { section: "right", index: 0 })
     root.assertDeepEqual(root.config.bar.layout.right, [{ id: "third.widget" }], "enabling with placement is one registry transition")
 
-    // A bar the placement's neighbour is not on still gets the widget: put is
-    // what a migration or an install reaches for, and neither can know what the
-    // bar it is placing into looks like.
+    // A bar the placement's neighbour is not on still gets the widget.
     root.config = {
       version: 1,
       bar: { layout: { left: [], center: [{ id: "omarchy.weather" }], right: [] } },
@@ -245,8 +243,7 @@ ShellRoot {
       "put falls back to the section anchor when its target is missing"
     )
 
-    // The anchor sits after the clone, so falling back would place the widget
-    // somewhere else: this only passes if the clone answered as the target.
+    // The anchor sits after the clone, so a fallback would land elsewhere.
     root.config = {
       version: 1,
       bar: { layout: { left: [], center: [{ id: "local.first-widget" }, { id: "omarchy.weather" }], right: [] } },
@@ -263,8 +260,7 @@ ShellRoot {
       "a clone stands in for the widget it was cloned from as a placement target"
     )
 
-    // Falling back means the section's own anchor, which a user is as free to
-    // have cloned as the widget the placement named.
+    // The anchor a fallback lands against is as clonable as the target.
     root.config = {
       version: 1,
       bar: { layout: { left: [], center: [{ id: "local.weather" }, { id: "omarchy.clock" }], right: [] } },
@@ -295,8 +291,6 @@ ShellRoot {
     root.assertDeepEqual(root.config.bar.layout.right, [], "put adds no second entry for a widget already on the bar")
     root.assertEqual(registry.putBarWidget("third.absent", {}), "unknown", "put reports a widget it does not know")
 
-    // Enabling a source whose clone is on the bar is how you switch back to
-    // the built-in. That is the owner's call, not an unattended caller's.
     root.config = {
       version: 1,
       bar: { layout: { left: [], center: [{ id: "local.first-widget", size: 5 }], right: [] } },
@@ -309,9 +303,7 @@ ShellRoot {
       "put leaves a clone of the widget it was asked to place alone"
     )
 
-    // Reading the manifests is a subprocess, and IPC answers before it
-    // returns: an id the scan has not reached yet is not one that does not
-    // exist, and refusing it would fail the migration asking for it.
+    // Refusing an id the scan has not reached would fail the migration.
     root.config = { version: 1, bar: { layout: { left: [], center: [], right: [] } }, plugins: [] }
     registry.scanning = true
     root.assertEqual(registry.putBarWidget("third.absent", {}), "not ready", "put waits for a scan that has not reached its widget")
