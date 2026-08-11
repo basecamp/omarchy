@@ -79,6 +79,7 @@ function o.preinstalled_bindings_enabled()
 end
 
 function o.bind(keys, description, dispatcher, options)
+  if not keys then return end
   local opts = options or {}
 
   if description then
@@ -121,6 +122,7 @@ function o.launch_sole(match, command)
 end
 
 function o.bind_toggle(keys, description, toggle, options)
+  if not keys then return end
   o.bind(keys, description, "omarchy-toggle-" .. toggle, options)
 end
 
