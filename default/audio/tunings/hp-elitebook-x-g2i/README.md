@@ -1,7 +1,7 @@
 # HP EliteBook X G2i speaker tuning (Omarchy)
 
 Omarchy `omarchy-audio-tuning` profile for the HP EliteBook X G2i
-(DMI product SKU `D4DU1UT#ABA`, HP subsystem ID `8E86103C`), whose four
+(HP subsystem ID `8E86103C`, measured on SKU `D4DU1UT#ABA`), whose four
 TAS2783 smart amps sound boxy on Linux because the DSP voicing that Windows
 applies in the DTS:X Ultra APO is absent.
 
@@ -96,7 +96,7 @@ independent of this and stays in place.
 ## Activating
 
 The profile ships with Omarchy, so there is nothing to copy into place. On a
-machine whose DMI SKU matches, `install/hardware/speaker-tuning.sh` pulls in
+machine whose DMI product name matches, `install/hardware/speaker-tuning.sh` pulls in
 `lsp-plugins-lv2` for the limiter and the tuning is available as:
 
 ```
