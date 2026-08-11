@@ -19,8 +19,12 @@ cat >"$stub_bin/hyprctl" <<'SH'
 #!/bin/bash
 
 if [[ $1 == "monitors" && $2 == "-j" ]]; then
-  printf '[{"name":"eDP-1","focused":true,"scale":%s,"width":%s,"height":%s,"refreshRate":120.0}]' \
-    "${OMARCHY_TEST_MONITOR_SCALE:-2}" "${OMARCHY_TEST_MONITOR_WIDTH:-2880}" "${OMARCHY_TEST_MONITOR_HEIGHT:-1800}"
+  # eDP-1 is focused; DP-1 stands in for a second display the panel can target
+  # with --monitor without walking over to it, and for the neighbour a rescaled
+  # display can collide with.
+  printf '[{"name":"eDP-1","focused":true,"scale":%s,"width":%s,"height":%s,"refreshRate":120.0,"x":%s,"y":%s},{"name":"DP-1","focused":false,"scale":1,"width":2560,"height":1440,"refreshRate":60.0,"x":%s,"y":0}]' \
+    "${OMARCHY_TEST_MONITOR_SCALE:-2}" "${OMARCHY_TEST_MONITOR_WIDTH:-2880}" "${OMARCHY_TEST_MONITOR_HEIGHT:-1800}" \
+    "${OMARCHY_TEST_MONITOR_X:-0}" "${OMARCHY_TEST_MONITOR_Y:-0}" "${OMARCHY_TEST_NEIGHBOUR_X:-4000}"
 elif [[ $1 == "eval" ]]; then
   printf '%s\n' "$2" >"$OMARCHY_TEST_HYPRCTL_EVAL_OUT"
 else
@@ -42,6 +46,9 @@ run_scaling() {
     PATH="$stub_bin:$PATH" \
     OMARCHY_TEST_HYPRCTL_EVAL_OUT="$eval_out" \
     OMARCHY_TEST_MONITOR_SCALE="${OMARCHY_TEST_MONITOR_SCALE:-2}" \
+    OMARCHY_TEST_MONITOR_X="${OMARCHY_TEST_MONITOR_X:-0}" \
+    OMARCHY_TEST_MONITOR_Y="${OMARCHY_TEST_MONITOR_Y:-0}" \
+    OMARCHY_TEST_NEIGHBOUR_X="${OMARCHY_TEST_NEIGHBOUR_X:-4000}" \
     "$ROOT/bin/omarchy-hyprland-monitor-scaling" "$@"
 }
 
@@ -129,3 +136,41 @@ grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling down skips d
 grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
   fail "monitor scaling down persists 2x after skipping duplicate approximation"
 pass "monitor scaling down skips duplicate approximation"
+
+# --- --monitor targets a display other than the focused one ---
+
+write_monitor_config
+: >"$eval_out"
+run_scaling --monitor DP-1 2
+grep -F 'output = "DP-1"' "$eval_out" >/dev/null || fail "--monitor scales the named display"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "scaling a non-focused display leaves the shared default alone"
+pass "--monitor scales the named display without rewriting the shared default"
+
+# The catch-all in monitors.lua covers every display, so only the focused one
+# may write it.
+write_monitor_config
+: >"$eval_out"
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling --monitor eDP-1 1
+grep -F 'output = "eDP-1"' "$eval_out" >/dev/null || fail "--monitor accepts the focused display"
+grep -Fx 'local omarchy_monitor_scale = 1' "$monitor_lua" >/dev/null ||
+  fail "scaling the focused display still persists the shared default"
+pass "--monitor on the focused display still persists"
+
+# An empty output is Hyprland's catch-all, so an unknown name must never reach
+# the eval — it would rescale every display instead of none.
+write_monitor_config
+: >"$eval_out"
+run_scaling --monitor NOPE-1 2 && fail "an unknown --monitor exits non-zero"
+[[ ! -s $eval_out ]] || fail "an unknown --monitor dispatches no eval"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "an unknown --monitor leaves monitors.lua alone"
+pass "an unknown --monitor is refused before it can hit every display"
+
+# --- reading a specific display's scale ---
+
+[[ $(OMARCHY_TEST_MONITOR_SCALE=2 run_scaling --monitor DP-1) == "1" ]] ||
+  fail "--monitor reports the named display's scale"
+[[ $(OMARCHY_TEST_MONITOR_SCALE=2 run_scaling) == "2" ]] ||
+  fail "no --monitor still reports the focused display's scale"
+pass "--monitor reads the named display's scale"
