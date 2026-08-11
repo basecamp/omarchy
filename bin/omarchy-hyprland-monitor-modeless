@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true when Hyprland has an enabled monitor with no mode
+# omarchy:hidden=true
+
+# A monitor powered off at boot answers with a partial EDID carrying no video
+# modes, so Hyprland brings it up at 0x0 and the screen stays black. Mirrors are
+# absent from plain `monitors`, hence `all` plus an explicit disabled filter.
+#
+# Exits 0 modeless, 1 not, 2 when the compositor cannot say. Nothing fires an
+# event for this state, so a caller that gave up on an unanswered query would
+# leave the screen black for good.
+monitors=$(hyprctl monitors all -j 2>/dev/null) || exit 2
+
+state=$(jq 'if any(.[]; .disabled != true and (.width == 0 or .height == 0)) then 0 else 1 end' \
+  <<<"$monitors" 2>/dev/null)
+
+case $state in
+  0 | 1) exit "$state" ;;
+  *) exit 2 ;;
+esac

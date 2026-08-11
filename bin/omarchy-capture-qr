@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# omarchy:summary=Decode a QR code from a screenshot region
+# omarchy:group=capture
+# omarchy:examples=omarchy capture qr
+
+# Keep hyprpicker alive until after grim captures so the screenshot sees the
+# frozen overlay rather than live content shifting during teardown.
+cleanup_freeze() {
+  [[ -n $PID ]] && kill $PID 2>/dev/null
+}
+trap cleanup_freeze EXIT
+
+hyprpicker -r -z >/dev/null 2>&1 &
+PID=$!
+sleep .1
+SELECTION=$(slurp 2>/dev/null)
+
+[[ -z $SELECTION ]] && exit 0
+
+# Decode QR codes only. Leaving the other symbologies enabled lets dense screen
+# content false-positive as an EAN or Code 39 barcode and take over the clipboard.
+RESULT=$(grim -g "$SELECTION" - | zbarimg -q --raw -Sdisable -Sqrcode.enable - 2>/dev/null)
+
+if [[ -z $RESULT ]]; then
+  omarchy-notification-send -g 󰐲 -u critical "No QR code found" "Select a region containing a QR code"
+  exit 1
+fi
+
+# QR codes routinely carry secrets, like the otpauth:// URIs behind 2FA setup
+# codes, so the decoded value goes to the clipboard and nowhere else. Printing it
+# or putting it in the notification would leak it to the session journal and to
+# the notification history, and an unmarked copy would be retained by clipboard
+# history. Pasting still works; only the recorded copy is given up.
+printf '%s' "$RESULT" | wl-copy --sensitive
+omarchy-notification-send -g 󰐲 "QR code copied to clipboard"

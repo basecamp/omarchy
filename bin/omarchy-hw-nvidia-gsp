@@ -2,5 +2,19 @@
 
 # omarchy:summary=Detect whether the computer has an NVIDIA GPU with GSP firmware (Turing or newer).
 
-# GTX 16xx, RTX 20xx-50xx, RTX Pro, Quadro RTX, datacenter A/H/T/L series.
-lspci | grep -i 'nvidia' | grep -qE "GTX 16[0-9]{2}|RTX [2-5][0-9]{3}|RTX PRO [0-9]{4}|Quadro RTX|RTX A[0-9]{4}|A[1-9][0-9]{2}|H[1-9][0-9]{2}|T4|L[0-9]+"
+# Turing is the first generation with GSP firmware, and the first to use device
+# IDs at 0x1e00 or above; Maxwell, Pascal, and Volta all sit below that line.
+#
+# Read the cached sysfs IDs rather than lspci, which reads PCI config space and
+# resumes runtime-suspended GPUs.
+pci_devices_path="${OMARCHY_PCI_DEVICES_PATH:-/sys/bus/pci/devices}"
+
+shopt -s nullglob
+
+for device in "$pci_devices_path"/*; do
+  [[ $(< "$device/vendor") == "0x10de" ]] || continue
+  [[ $(< "$device/class") == 0x03* ]] || continue
+  (( $(< "$device/device") >= 0x1e00 )) && exit 0
+done
+
+exit 1

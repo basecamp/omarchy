@@ -921,8 +921,12 @@ ShellRoot {
     // Enable, but only where the widget is not on the bar already, so a caller
     // that cannot know whether it ran before leaves a placed widget alone.
     function putBarWidget(id: string, placementJson: string): string {
-      if (shell.pluginRegistry.inBar(id)) return "ok"
-      return enablePlugin(id, placementJson)
+      try {
+        var error = shell.pluginRegistry.putBarWidget(id, JSON.parse(placementJson || "{}"))
+        return error ? error : "ok"
+      } catch (e) {
+        return "invalid placement: " + e
+      }
     }
 
     function moveBarWidget(id: string, placementJson: string): string {
@@ -1005,6 +1009,19 @@ ShellRoot {
 
     function toggle(id: string, payloadJson: string): void {
       shell.toggle(id, payloadJson)
+    }
+
+    // A bar section's panels answer to their position as well as their id, so a
+    // hotkey can mean "the third panel in the right section" and keep meaning
+    // it after the bar is rearranged. Returns the id it acted on, or "unknown"
+    // when the section holds no panel at that position.
+    function togglePanelAt(section: string, index: string): string {
+      var id = shell.bar && typeof shell.bar.panelWidgetIdAt === "function"
+        ? shell.bar.panelWidgetIdAt(section, index)
+        : ""
+      if (!id) return "unknown"
+      shell.toggle(id, "{}")
+      return id
     }
 
     function call(id: string, method: string, arg: string): string {

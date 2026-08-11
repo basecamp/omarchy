@@ -650,7 +650,7 @@ Panel {
     bar: root.bar
     text: root.outputIcon()
     onPressed: function(b) {
-      if (b === Qt.RightButton) root.toggleOutputMute()
+      if (b === Qt.RightButton) root.toggleAllMuted()
       else root.toggle()
     }
 

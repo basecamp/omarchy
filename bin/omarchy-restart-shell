@@ -26,7 +26,7 @@ fi
 # ask the lock service rather than merely pinging the shell: only a locker
 # that reports the lock secure or in progress is worth preserving.
 relock=0
-if [[ $(hyprctl -j monitors 2>/dev/null) == *'"LOCK"'* ]]; then
+if omarchy-hyprland-session-locked; then
   locking=$(OMARCHY_PATH="$session_omarchy_path" OMARCHY_SHELL_IPC_TIMEOUT=0.5s omarchy-shell lock status 2>/dev/null |
     jq -r '.secure or .requested' 2>/dev/null)
   if [[ $locking == "true" ]]; then

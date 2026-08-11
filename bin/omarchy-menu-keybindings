@@ -376,57 +376,58 @@ prioritize_entries() {
   {
     line = $1
     prio = 50
-    if (match(line, /Terminal/)) prio = 0
-    if (match(line, /Tmux/)) prio = 1
-    if (match(line, /Herdr/)) prio = 2
+    if (match(line, /Keybindings/)) prio = 0
+    if (match(line, /Omarchy menu/))  prio = 1
+    if (match(line, /Terminal/)) prio = 2
     if (match(line, /Browser/) && !match(line, /Browser[[:space:]]*\(/) && !match(line, /SUPER SHIFT.*\+.*B.*→.*Browser/)) prio = 3
     if (match(line, /File manager/) && !match(line, /File manager \(cwd\)/))  prio = 4
     if (match(line, /Launch apps/))  prio = 5
-    if (match(line, /Omarchy menu/))  prio = 6
-    if (match(line, /System menu/))  prio = 7
-    if (match(line, /Theme menu/))  prio = 8
-    if (match(line, /Full screen/))  prio = 9
-    if (match(line, /Full width/))  prio = 10
-    if (match(line, /Close window/))  prio = 11
-    if (match(line, /Close all windows/))  prio = 12
-    if (match(line, /Lock system/))  prio = 13
-    if (match(line, /Toggle window floating/))  prio = 14
-    if (match(line, /Toggle window split/))  prio = 15
-    if (match(line, /Pop window/))  prio = 16
-    if (match(line, /Universal/))  prio = 17
-    if (match(line, /Clipboard/))  prio = 18
-    if (match(line, /Audio controls/))  prio = 19
-    if (match(line, /Bluetooth controls/))  prio = 20
-    if (match(line, /Wifi controls/))  prio = 21
-    if (match(line, /Emojis/))  prio = 22
-    if (match(line, /Color picker/))  prio = 23
-    if (match(line, /Screenshot/))  prio = 24
-    if (match(line, /Screenrecording/))  prio = 25
-    if (match(line, /SUPER SHIFT.*\+.*B.*→.*Browser/)) prio = 26
-    if (match(line, /File manager \(cwd\)/))  prio = 27
-    if (match(line, /(Switch|Next|Former|Previous).*workspace/))  prio = 28
-    if (match(line, /Move window to workspace/))  prio = 29
-    if (match(line, /Move window silently to workspace/))  prio = 30
-    if (match(line, /Swap window/))  prio = 31
-    if (match(line, /Focus/))  prio = 32
-    if (match(line, /Move window$/))  prio = 33
-    if (match(line, /Resize window/))  prio = 34
-    if (match(line, /Expand window/))  prio = 35
-    if (match(line, /Shrink window/))  prio = 36
-    if (match(line, /scratchpad/))  prio = 37
-    if (match(line, /notification/))  prio = 38
-    if (match(line, /Toggle window transparency/))  prio = 39
-    if (match(line, /Toggle workspace gaps/))  prio = 40
-    if (match(line, /Toggle nightlight/))  prio = 41
-    if (match(line, /Toggle locking/))  prio = 42
+    if (match(line, /System menu/))  prio = 6
+    if (match(line, /Theme menu/))  prio = 7
+    if (match(line, /Full screen/))  prio = 8
+    if (match(line, /Full width/))  prio = 9
+    if (match(line, /Close window/))  prio = 10
+    if (match(line, /Close all windows/))  prio = 11
+    if (match(line, /Lock system/))  prio = 12
+    if (match(line, /Toggle window floating/))  prio = 13
+    if (match(line, /Toggle window split/))  prio = 14
+    if (match(line, /Pop window/))  prio = 15
+    if (match(line, /Universal/))  prio = 16
+    if (match(line, /Clipboard/))  prio = 17
+    if (match(line, /Audio controls/))  prio = 18
+    if (match(line, /Bluetooth controls/))  prio = 19
+    if (match(line, /Wifi controls/))  prio = 20
+    if (match(line, /Emojis/))  prio = 21
+    if (match(line, /Color picker/))  prio = 22
+    if (match(line, /Screenshot/))  prio = 23
+    if (match(line, /Screenrecording/))  prio = 24
+    if (match(line, /Tmux/)) prio = 25
+    if (match(line, /Herdr/)) prio = 26
+    if (match(line, /SUPER SHIFT.*\+.*B.*→.*Browser/)) prio = 27
+    if (match(line, /File manager \(cwd\)/))  prio = 28
+    if (match(line, /(Switch|Next|Former|Previous).*workspace/))  prio = 29
+    if (match(line, /Move window to workspace/))  prio = 30
+    if (match(line, /Move window silently to workspace/))  prio = 31
+    if (match(line, /Swap window/))  prio = 32
+    if (match(line, /Focus/))  prio = 33
+    if (match(line, /Move window$/))  prio = 34
+    if (match(line, /Resize window/))  prio = 35
+    if (match(line, /Expand window/))  prio = 36
+    if (match(line, /Shrink window/))  prio = 37
+    if (match(line, /scratchpad/))  prio = 38
+    if (match(line, /notification/))  prio = 39
+    if (match(line, /Toggle window transparency/))  prio = 40
+    if (match(line, /Toggle workspace gaps/))  prio = 41
+    if (match(line, /Toggle nightlight/))  prio = 42
+    if (match(line, /Toggle locking/))  prio = 43
     if (match(line, /group/))  prio = 94
     if (match(line, /Scroll active workspace/))  prio = 95
     if (match(line, /Cycle to/))  prio = 96
     if (match(line, /Reveal active/))  prio = 97
     if (match(line, /Apple Display/))  prio = 98
     if (match(line, /XF86/))  prio = 99
-    if (match(line, /Show Tmux key ?bindings/)) prio = 100
-    if (match(line, /Show Herdr key ?bindings/)) prio = 101
+    if (match(line, /Tmux keybindings/)) prio = 100
+    if (match(line, /Herdr keybindings/)) prio = 101
 
     # print "priority<TAB>record"
     printf "%d\t%s\n", prio, $0
@@ -457,7 +458,7 @@ output_binding_records_uncached() {
 
 keybindings_cache_key() {
   {
-    printf 'v9\n'
+    printf 'v11\n'
     hyprctl devices 2>/dev/null | grep -F 'active keymap:'
     hyprctl binds 2>/dev/null
   } | sha256sum | awk '{ print $1 }'

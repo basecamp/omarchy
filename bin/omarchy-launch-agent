@@ -11,6 +11,10 @@ else
   inline=false
 fi
 
+# Agents refuse to remember trust for $HOME, so launches from the keybinding or
+# menu start in the work directory instead of re-asking on every session.
+[[ $PWD == "$HOME" && -d $HOME/Work ]] && cd "$HOME/Work"
+
 agent=$(omarchy-default-agent)
 
 if omarchy-cmd-missing "$agent"; then

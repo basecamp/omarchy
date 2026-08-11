@@ -175,6 +175,21 @@ if grep -Fq $'SUPER + CTRL + X	Toggle dictation' <<<"$missing_voxtype_output"; t
 fi
 pass "missing Voxtype skips dictation bindings"
 
+# The panel hotkeys claim a row of keys that workspace switching already uses
+# under other modifiers, so the count matters as much as the bindings: a tenth
+# claim on SUPER + CTRL + a number is a collision with one of these.
+panels_home="$tmpdir/panels-home"
+mkdir -p "$panels_home"
+panels_output=$(run_omarchy_bindings "$panels_home")
+for panel in 1 2 3 4 5 6 7 8 9; do
+  grep -Fqx "SUPER + CTRL + code:$((panel + 9))"$'\t'"Bar panel $panel" <<<"$panels_output" ||
+    fail "bar panel hotkeys count the right section" "$panel"
+done
+number_claims=$(cut -f1 <<<"$panels_output" | grep -cE '^SUPER \+ CTRL \+ code:1[0-9]$' || true)
+(( number_claims == 9 )) ||
+  fail "only the bar panel hotkeys bind SUPER + CTRL + a number" "$number_claims"
+pass "bar panel hotkeys bind SUPER + CTRL + a number without a collision"
+
 migration=$(grep -rl 'Move stock Hyprland user overrides into package defaults' "$ROOT/migrations" | head -n 1 || true)
 [[ -n $migration ]] || fail "Hyprland default config migration exists"
 

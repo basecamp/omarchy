@@ -7,8 +7,11 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 timezone_menu="$ROOT/bin/omarchy-menu-timezone"
 sudoers_file="$ROOT/etc/sudoers.d/omarchy-tzupdate"
 
-grep -F '%wheel ALL=(root) NOPASSWD: /usr/bin/tzupdate, /usr/bin/timedatectl set-timezone *' "$sudoers_file" >/dev/null ||
+grep -F '%wheel ALL=(root) NOPASSWD: /usr/bin/timedatectl set-timezone *' "$sudoers_file" >/dev/null ||
   fail "timezone sudoers rule allows passwordless timedatectl timezone changes"
+
+! grep -F 'tzupdate' "$sudoers_file" >/dev/null ||
+  fail "timezone sudoers rule does not grant passwordless tzupdate"
 
 grep -F 'sudo timedatectl set-timezone "$timezone"' "$timezone_menu" >/dev/null ||
   fail "timezone menu uses the passwordless sudoers timedatectl rule"

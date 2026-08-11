@@ -27,6 +27,8 @@ cat >"$wrapper_bin/qs" <<'SH'
 
 if [[ ${OMARCHY_TEST_QS_HANG:-0} == 1 ]]; then
   sleep 5
+elif [[ ${OMARCHY_TEST_QS_STARTING:-0} == 1 ]]; then
+  printf 'Not ready to accept queries yet.\n'
 else
   printf 'ok\n'
 fi
@@ -40,6 +42,21 @@ wrapper_error=$(PATH="$wrapper_bin:$PATH" \
   "$ROOT/bin/omarchy-shell" shell ping 2>&1) && fail "hung shell IPC returns a failure"
 [[ $wrapper_error == "omarchy-shell is not responding" ]] || fail "hung shell IPC reports that the shell is unresponsive" "$wrapper_error"
 pass "shell IPC calls time out when Quickshell is unresponsive"
+
+# A starting shell answers on stdout and exits 0, so a ping reads it as up.
+wrapper_error=$(PATH="$wrapper_bin:$PATH" \
+  OMARCHY_PATH="$wrapper_root" \
+  OMARCHY_TEST_QS_STARTING=1 \
+  "$ROOT/bin/omarchy-shell" shell ping 2>&1) && fail "a starting shell answers IPC calls with a failure"
+[[ $wrapper_error == "omarchy-shell is not ready" ]] || fail "a starting shell reports that it is not ready" "$wrapper_error"
+pass "shell IPC calls fail while Quickshell is still starting"
+
+PATH="$wrapper_bin:$PATH" \
+OMARCHY_PATH="$wrapper_root" \
+OMARCHY_TEST_QS_STARTING=1 \
+  "$ROOT/bin/omarchy-shell" -q shell ping >/dev/null 2>&1 ||
+  fail "quiet best-effort IPC calls tolerate a starting shell"
+pass "quiet best-effort IPC calls tolerate a starting shell"
 
 wrapper_args="$test_tmp/wrapper-args"
 PATH="$wrapper_bin:$PATH" \
@@ -63,6 +80,7 @@ touch "$restart_root/shell/shell.qml"
 ln -s "$ROOT/bin/omarchy-shell" "$restart_bin/omarchy-shell"
 ln -s "$ROOT/bin/omarchy-launch-shell" "$restart_bin/omarchy-launch-shell"
 ln -s "$ROOT/bin/omarchy-cmd-missing" "$restart_bin/omarchy-cmd-missing"
+ln -s "$ROOT/bin/omarchy-hyprland-session-locked" "$restart_bin/omarchy-hyprland-session-locked"
 
 cat >"$restart_bin/qs" <<'SH'
 #!/bin/bash
@@ -114,10 +132,12 @@ cat >"$restart_bin/hyprctl" <<'SH'
 #!/bin/bash
 
 if [[ ${1:-} == "-j" && ${2:-} == "monitors" ]]; then
+  # Hyprland reports an active session lock as a reason the monitor cannot hand
+  # a client the whole screen, not as a workspace.
   if [[ ${OMARCHY_TEST_SESSION_LOCKED:-0} == 1 ]]; then
-    printf '[{"activeWorkspace":{"name":"LOCK"}}]\n'
+    printf '[{"name":"eDP-1","solitaryBlockedBy":["WINDOWED","LOCK","CANDIDATE"]}]\n'
   else
-    printf '[]\n'
+    printf '[{"name":"eDP-1","solitaryBlockedBy":["WINDOWED","CANDIDATE"]}]\n'
   fi
 elif [[ ${1:-} == "dispatch" && ${2:-} == hl.dsp.exec_cmd* ]]; then
   printf '%s\n' "${2:-}" >>"$OMARCHY_TEST_DISPATCH_LOG"
