@@ -314,3 +314,21 @@ pass "dropping a deferred lock hands the darkening displays back instead of aban
 qml_block 'onLockOnIdleChanged' | rg -q 'syncSwitchTimer\(root\.screenOffOnIdle && !root\.screenOffSubsumedByLock, screenOffTimer' ||
   fail "onLockOnIdleChanged must resync the screen-off timer it just re-decided"
 pass "flipping lock-on-idle resyncs the screen-off it subsumes"
+
+# Screen-off can be configured ahead of the screensaver, so the activity the
+# screensaver provokes when it maps can land on already-dark panels. Treating
+# that as a bump would relight a screen nobody asked to wake, for a whole
+# rearm period, with no one at the machine. The launch claims its own report
+# and handleActiveSignal spends it instead of waking.
+qml_block 'function launchScreensaver()' | rg -q 'root\.screensaverActivityExpected = true' ||
+  fail "launchScreensaver() must claim the activity report its own mapping provokes"
+rg -q 'if \(root\.screensaverActivityExpected\) root\.screensaverActivityExpected = false' "$service" ||
+  fail "handleActiveSignal must spend the screensaver's own activity report rather than act on it"
+rg -A2 'if \(root\.screensaverActivityExpected\)' "$service" | rg -q 'else if \(root\.screenOffThisCycle\) rearmScreenOff\(\)' ||
+  fail "only a bump that is not the screensaver's own may relight the panels"
+
+claim_releases=$(rg -c 'root\.screensaverActivityExpected = false' "$service")
+((claim_releases == 4)) ||
+  fail "an unspent claim must be released everywhere the launch it belongs to is forgotten"
+
+pass "the screensaver's own launch activity does not relight panels screen-off just darkened"

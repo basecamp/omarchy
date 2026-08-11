@@ -63,6 +63,7 @@ Item {
   property bool pendingStayAwakePersist: false
   property bool idledThisCycle: false
   property bool screensaverStartedThisCycle: false
+  property bool screensaverActivityExpected: false
   property bool screenOffThisCycle: false
   property string pendingDisplayState: ""
   property string pendingLockReason: ""
@@ -99,6 +100,9 @@ Item {
 
   function launchScreensaver() {
     root.screensaverStartedThisCycle = true
+    // Mapping the screensaver makes the compositor report activity; claim that
+    // one report here so handleActiveSignal can tell it from a real bump.
+    root.screensaverActivityExpected = true
     screensaverLaunchGraceTimer.restart()
     runProcess(screensaverProcess, "screensaver", "[[ $(omarchy-shell lock isLocked 2>/dev/null) == \"true\" ]] || omarchy-launch-screensaver")
   }
@@ -162,6 +166,7 @@ Item {
     screensaverLaunchGraceTimer.stop()
     root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
+    root.screensaverActivityExpected = false
     // The lock service owns the displays from here, so this cycle's blank is no
     // longer ours to report, re-arm, or wake from -- a screen-off blank still
     // finishing in the background (screen-off can legitimately fire before the
@@ -215,6 +220,7 @@ Item {
       + " screenOff=" + (root.screenOffOnIdle ? root.screenOffTimeoutSeconds : "off"))
     root.idledThisCycle = true
     root.screensaverStartedThisCycle = false
+    root.screensaverActivityExpected = false
     root.screenOffThisCycle = false
     resetScreensaverWindows()
 
@@ -249,6 +255,7 @@ Item {
 
     root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
+    root.screensaverActivityExpected = false
     root.screenOffThisCycle = false
     // A lock deferred by lockSystem() (waiting on an in-flight screen-off
     // blank) is still just a decision, not yet a running process -- activity,
@@ -316,8 +323,12 @@ Item {
       // when it maps, so this branch is also where a real bump lands while the
       // panels are asleep. Restore them and take a fresh run-up: leaving the
       // displays dark for the rest of the cycle -- or lit, once the timer is
-      // spent -- is the failure this feature exists to prevent.
-      if (root.screenOffThisCycle) rearmScreenOff()
+      // spent -- is the failure this feature exists to prevent. The mapping
+      // itself is not a bump, though, and screen-off can be configured ahead
+      // of the screensaver: that report lands on already-dark panels, and
+      // relighting them for it would wake a screen nobody asked to wake.
+      if (root.screensaverActivityExpected) root.screensaverActivityExpected = false
+      else if (root.screenOffThisCycle) rearmScreenOff()
       logEvent("idle-monitor-active", "screensaver cycle remains armed")
       return
     }
