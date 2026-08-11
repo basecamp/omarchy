@@ -296,9 +296,6 @@ case "$channel" in
 esac
 
 if (( ! yes )); then
-  package_mode="production Omarchy packages"
-  (( use_dev_packages )) && package_mode="dev packages [omarchy-dev / omarchy-settings-dev]"
-
   printf '\033[2J\033[3J\033[H' >/dev/tty
   cat <<EOF
 ████████▄   ███    █▄     ▄████████     ███         ███        ▄████████  ▄██████▄
@@ -1224,7 +1221,6 @@ run_post_upgrade_update_steps() {
     fi
   fi
 }
-
 
 enable_system_service() {
   local unit="$1"
