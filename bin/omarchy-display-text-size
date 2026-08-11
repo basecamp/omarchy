@@ -165,22 +165,56 @@ set_terminal_size() {
       new_id="$(omarchy-notification-send \
         "Restart Foot to apply the new terminal font size" \
         "${replace[@]}" -p 2>/dev/null)" || true
-      [[ $new_id =~ ^[0-9]+$ ]] && printf '%s\n' "$new_id" >"$id_file"
+      # Not a `&&` chain: this is the last statement in the function, so a
+      # non-numeric id would become the exit status of the whole command.
+      if [[ $new_id =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$new_id" >"$id_file"
+      fi
     fi
   fi
 }
 
-# Report the current terminal point size from whichever config we find first.
+# Point size as configured for one named terminal, or nothing if that terminal
+# has no config here.
+term_pt_of() {
+  case "$1" in
+  ghostty)
+    [[ -f ~/.config/ghostty/config ]] && grep -oP '^font-size = \K[0-9.]+' ~/.config/ghostty/config | head -1
+    ;;
+  alacritty)
+    [[ -f ~/.config/alacritty/alacritty.toml ]] && grep -oP '^size[[:space:]]*=[[:space:]]*\K[0-9.]+' ~/.config/alacritty/alacritty.toml | head -1
+    ;;
+  kitty)
+    [[ -f ~/.config/kitty/kitty.conf ]] && grep -oP '^font_size[[:space:]]+\K[0-9.]+' ~/.config/kitty/kitty.conf | head -1
+    ;;
+  foot)
+    [[ -f ~/.config/foot/foot.ini ]] && grep -oP ':size=\K[0-9.]+' ~/.config/foot/foot.ini | head -1
+    ;;
+  esac
+  return 0
+}
+
+# Report the size of the terminal actually in use. Every terminal's config gets
+# written, since the default can change later, but reporting the first config
+# found on disk names a different program than the one the user is looking at:
+# with several installed it always answered for ghostty, however wrong.
 term_current_pt() {
-  if [[ -f ~/.config/ghostty/config ]]; then
-    grep -oP '^font-size = \K[0-9.]+' ~/.config/ghostty/config | head -1
-  elif [[ -f ~/.config/alacritty/alacritty.toml ]]; then
-    grep -oP '^size[[:space:]]*=[[:space:]]*\K[0-9.]+' ~/.config/alacritty/alacritty.toml | head -1
-  elif [[ -f ~/.config/kitty/kitty.conf ]]; then
-    grep -oP '^font_size[[:space:]]+\K[0-9.]+' ~/.config/kitty/kitty.conf | head -1
-  elif [[ -f ~/.config/foot/foot.ini ]]; then
-    grep -oP ':size=\K[0-9.]+' ~/.config/foot/foot.ini | head -1
+  local size
+
+  size="$(term_pt_of "$(omarchy-default-terminal 2>/dev/null)")"
+  if [[ -n $size ]]; then
+    printf '%s\n' "$size"
+    return 0
   fi
+
+  local terminal
+  for terminal in ghostty alacritty kitty foot; do
+    size="$(term_pt_of "$terminal")"
+    [[ -n $size ]] && {
+      printf '%s\n' "$size"
+      return 0
+    }
+  done
 }
 
 case "${1:-}" in
