@@ -183,6 +183,23 @@ assert(
   'bar tabs between panels within one bar surface'
 )
 
+// A positional hotkey means "the third panel in this section", so it counts the
+// panels the bar actually draws. Reusing the tab-order walk is what keeps the
+// count honest: a widget with no panel and a hidden one are already passed over
+// there, and reading the layout config a second time would count both.
+assert(
+  /function panelWidgetIdAt\(region, index\) \{[\s\S]*?panelNavigationSlots\(String\(region \|\| ""\), null\)/.test(barSource),
+  'bar counts positional panels off the drawn tab order'
+)
+assert(
+  /var slot = slots\[Math\.round\(Number\(index\)\) - 1\]/.test(barSource),
+  'positional panels are one-based, and anything off the end lands on no slot'
+)
+assert(
+  /function togglePanelAt\(section: string, index: string\): string \{[\s\S]*?shell\.bar\.panelWidgetIdAt\(section, index\)[\s\S]*?shell\.toggle\(id, "\{\}"\)/.test(shellSource),
+  'shell toggles a bar panel by its position over IPC'
+)
+
 const clockSlot = { id: 'clock' }
 const traySlot = { id: 'tray' }
 const horizontalTargets = [
