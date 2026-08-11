@@ -36,6 +36,10 @@ omarchy refresh <component>
 omarchy refresh config <path-relative-to-~/.config>
 ```
 
+Pass `omarchy refresh config` a plain relative path with no `..` component. The
+command resolves that argument in its source and destination paths, so a parent
+segment can replace state outside `~/.config`.
+
 Obtain user confirmation immediately before refreshing. State the exact target
 path, what customization will be replaced, and where the backup should appear.
 Afterward, confirm the backup exists, apply the restored component, and repeat

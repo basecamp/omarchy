@@ -91,8 +91,10 @@ mode, position, and scale for every affected output.
 
 ## Window Rules
 
-Window-rule syntax changes frequently. Fetch the current official documentation
-immediately before writing a rule and use it as the syntax authority:
+Window-rule syntax changes frequently. Record the installed release with
+`hyprctl version`, then use documentation or source matching that release.
+Treat the current official documentation as authoritative only after confirming
+that it covers the installed version:
 
 <https://wiki.hypr.land/Configuring/Window-Rules/>
 

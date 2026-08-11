@@ -54,8 +54,9 @@ Otherwise write the smallest durable override under the user-owned locations
 named below. Before directly editing an existing configuration file, preserve
 a timestamped copy unless the operation already creates its own backup.
 
-The change is complete when it lives in user-owned state and packaged files
-remain untouched.
+The change is complete when a customization lives in user-owned state or a
+supported command has changed the requested package or system state. Packaged
+files are changed through supported commands rather than direct edits.
 
 ### 4. Apply and Verify
 
