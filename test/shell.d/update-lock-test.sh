@@ -128,8 +128,22 @@ fi
 exec "$@"'
   write_stub pkexec 'touch "$PKEXEC_MARKER"; exec "$@"'
 
+  # start leaves the inhibitor running on purpose, but script tears the pty down
+  # the moment its command returns, which SIGHUPs that inhibitor before it can
+  # exec. Keep the session open from the inside until the stub has logged.
+  terminal_driver="$test_tmp/terminal-stay-awake"
+  cat >"$terminal_driver" <<'SH'
+#!/bin/bash
+omarchy-update-stay-awake start
+for _ in {1..200}; do
+  grep -q '^systemd-inhibit ' "$SUDO_LOG" && break
+  sleep 0.05
+done
+SH
+  chmod +x "$terminal_driver"
+
   SUDO_LOG="$sudo_log" PKEXEC_MARKER="$pkexec_marker" INHIBIT_PID_FILE="$terminal_inhibit_pid_file" \
-    run_with_lock_env script -qefc "$ROOT/bin/omarchy-update-stay-awake start" /dev/null >/dev/null
+    run_with_lock_env script -qefc "$terminal_driver" /dev/null >/dev/null
 
   grep -qx -- '-v' "$sudo_log" || fail "terminal sleep inhibition validates sudo in the foreground"
   grep -q '^systemd-inhibit ' "$sudo_log" || fail "terminal sleep inhibition runs through sudo"
