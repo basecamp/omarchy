@@ -171,45 +171,41 @@ Item {
           }
         }
         Rectangle {
+          id: progressTrack
           visible: root.hasProgress
           width: root.barWidth
           height: Math.max(Style.space(6), Style.spacing.sm)
           anchors.verticalCenter: parent.verticalCenter
           color: Util.alpha(Color.popups.text, 0.45)
-          Rectangle {
-            visible: !root.amplificationEnabled
-            height: parent.height
-            width: parent.width * (root.hasProgress ? root.value / root.maxValue : 0)
-            color: Color.accent
 
-            Behavior on width {
-              enabled: root.opened
-              NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
-            }
-          }
           Rectangle {
+            id: thresholdTrack
             visible: root.amplificationEnabled
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             x: parent.width * root.normalBoundary
             width: parent.width * (1 - root.normalBoundary)
-            radius: parent.radius
             color: Util.alpha(Color.accent, Style.selectionFillAlpha)
           }
+
           Rectangle {
-            visible: root.amplificationEnabled
+            id: progressFill
             height: parent.height
-            width: parent.width * Math.min(root.value / root.maxValue, root.normalBoundary)
-            radius: parent.radius
-            color: Color.popups.text
+            width: parent.width * Math.min(
+              root.value / root.maxValue,
+              root.amplificationEnabled ? root.normalBoundary : 1
+            )
+            color: root.amplificationEnabled ? Color.popups.text : Color.accent
 
             Behavior on width {
               enabled: root.opened
               NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
             }
           }
+
           Rectangle {
-            visible: root.amplificationEnabled && root.value > 100
+            id: thresholdFill
+            visible: root.amplified
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             x: parent.width * root.normalBoundary
@@ -221,14 +217,15 @@ Item {
               NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
             }
           }
+
           Rectangle {
+            id: thresholdSeparator
             visible: root.amplificationEnabled
-            width: Math.max(2, Style.spacing.hairline)
-            height: parent.height + Style.spacing.xs
-            color: Color.background
+            width: Math.max(3, Style.spacing.hairline)
+            height: parent.height
             anchors.verticalCenter: parent.verticalCenter
-            x: Math.max(0, Math.min(parent.width - width,
-                                    parent.width * root.normalBoundary - width / 2))
+            x: parent.width * root.normalBoundary - width / 2
+            color: card.color
           }
         }
         Text {
