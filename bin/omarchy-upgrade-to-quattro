@@ -1112,6 +1112,13 @@ start_omarchy_shell_session() {
   shell_log="$target_home/.local/state/omarchy/omarchy-shell-upgrade.log"
   run_as_user mkdir -p "$target_home/.local/state/omarchy" >/dev/null 2>&1 || true
 
+  # Separate the two failure modes. Both used to report as one message, which
+  # read as nonsense on a machine that plainly had Hyprland on screen.
+  if ! run_as_user_wayland_session true >/dev/null 2>&1; then
+    warn "Could not reach the live Hyprland session, so the Omarchy shell was not started; it will start after reboot."
+    return 1
+  fi
+
   log "Starting Omarchy shell in the current session"
   run_as_user_wayland_session \
     QT_QPA_PLATFORM=wayland \
@@ -1122,7 +1129,7 @@ start_omarchy_shell_session() {
       : >"$shell_log"
       "$restart_shell_bin" >>"$shell_log" 2>&1
     ' bash "$restart_shell_bin" "$shell_log" \
-    || { warn "Could not start Omarchy shell in the current session (no live Hyprland session, or shell startup failed); it will start after reboot. See $shell_log"; return 1; }
+    || { warn "Omarchy shell failed to start in the current session; it will start after reboot. See $shell_log"; return 1; }
 }
 
 # Run a command inside the user's live Wayland session. Fails if no session
@@ -1153,6 +1160,14 @@ run_hyprctl_session() {
 }
 
 suppress_hyprland_config_reload() {
+  # Say so up front when the session cannot be reached at all. Otherwise this
+  # silently does nothing and the only evidence is the config error bar that
+  # shows up minutes later.
+  if ! run_as_user_wayland_session true >/dev/null 2>&1; then
+    warn "Could not reach the live Hyprland session; it will report config errors during the swap, and the Omarchy shell will start after reboot."
+    return 0
+  fi
+
   log "Suppressing live Hyprland reloads during the config swap"
 
   local changed=0
