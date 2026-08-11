@@ -63,10 +63,12 @@ grep -F 'omarchy-hw-laptop-closed && omarchy-hw-external-monitors' "$hw_clamshel
 grep -F '/proc/acpi/button/lid/*/state' "$hw_laptop_closed" >/dev/null
 pass "clamshell helper detects closed-lid external monitor state"
 
-grep -F 'hyprctl monitors -j' "$monitor_external_active" >/dev/null
+# A mirrored external is absent from plain `monitors`, so asking without `all`
+# reads as a disconnect and hands the mirror toggle straight to recovery.
+grep -F 'hyprctl monitors all -j' "$monitor_external_active" >/dev/null
 grep -F 'select(.name | test("^(eDP|LVDS|DSI)-") | not)' "$monitor_external_active" >/dev/null
 grep -F 'select(.disabled == false)' "$monitor_external_active" >/dev/null
-pass "active external monitor helper checks Hyprland outputs"
+pass "active external monitor helper sees mirrors and ignores monitors disabled on purpose"
 
 grep -F 'omarchy-hyprland-monitor-internal recover >/dev/null 2>&1 || true' "$clamshell" >/dev/null
 grep -F 'omarchy-hyprland-monitor-internal-mirror recover >/dev/null 2>&1 || true' "$clamshell" >/dev/null
