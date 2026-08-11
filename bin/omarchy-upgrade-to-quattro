@@ -1225,20 +1225,27 @@ enable_system_service() {
 }
 
 apply_firewall_defaults() {
+  # Run the packaged config script rather than a copy of it, the same way
+  # configure_snapper_policy and configure_lock_authentication already do. The
+  # copy this replaces had drifted: it never installed the ufw-docker rules, so
+  # upgraded machines came up without the Docker firewall protections a fresh
+  # install gets.
+  local firewall_script=/usr/share/omarchy/install/config/firewall.sh
+
   if ! command -v ufw >/dev/null 2>&1; then
     warn "ufw is not installed; skipping firewall defaults."
     return 0
   fi
 
+  if ! as_root test -f "$firewall_script"; then
+    warn "$firewall_script is unavailable; firewall defaults were not applied."
+    return 0
+  fi
+
   log "Applying Omarchy firewall defaults"
-  as_root ufw default deny incoming >/dev/null || true
-  as_root ufw default allow outgoing >/dev/null || true
-  as_root ufw allow 53317/udp >/dev/null || true
-  as_root ufw allow 53317/tcp >/dev/null || true
-  as_root ufw allow in proto udp from 172.16.0.0/12 to 172.17.0.1 port 53 comment 'allow-docker-dns' >/dev/null || true
-  as_root ufw allow in proto udp from 192.168.0.0/16 to 172.17.0.1 port 53 comment 'allow-docker-dns' >/dev/null || true
-  as_root sed -i 's/^ENABLED=.*/ENABLED=yes/' /etc/ufw/ufw.conf 2>/dev/null || true
-  enable_system_service ufw.service
+  as_root env OMARCHY_PATH=/usr/share/omarchy PATH="$package_path" \
+    bash -euo pipefail "$firewall_script" ||
+    warn "Could not apply firewall defaults; run 'sudo bash $firewall_script' after reboot."
 }
 
 root_filesystem_encrypted() {
