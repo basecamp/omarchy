@@ -77,6 +77,10 @@ BarWidget {
   function resetTrayMenu() {
     menuLevelSettling = false
     menuLevelSettleTimer.stop()
+    // Flickable keeps its offset across a model swap whenever the new content
+    // is still tall enough to hold it, so a menu dismissed while scrolled
+    // would otherwise reopen part-way down with its first entries off screen.
+    trayMenuFlick.contentY = 0
     // Clear the reactive stack before tearing anything down, so no binding can
     // read a partially-destroyed opener while this runs. Then destroy deepest
     // first: an inner opener's menu entry is owned by its parent's children
