@@ -51,12 +51,32 @@ BarWidget {
     ? submenuStack[submenuDepth - 1].opener.children
     : trayMenuOpener.children
 
+  // Changing level rebuilds the row delegates synchronously, so the next
+  // row lands under a cursor that hasn't moved. Submenu clicks used to be
+  // silent no-ops, which trained users to click them twice, and that second
+  // click would now fire whatever entry took the spot. Ignore row clicks for
+  // a beat after each level change; a deliberate follow-up click is slower.
+  property bool menuLevelSettling: false
+
   Component {
     id: submenuOpenerComponent
     QsMenuOpener {}
   }
 
+  Timer {
+    id: menuLevelSettleTimer
+    interval: 250
+    onTriggered: root.menuLevelSettling = false
+  }
+
+  function settleMenuLevel() {
+    menuLevelSettling = true
+    menuLevelSettleTimer.restart()
+  }
+
   function resetTrayMenu() {
+    menuLevelSettling = false
+    menuLevelSettleTimer.stop()
     // Clear the reactive stack before tearing anything down, so no binding can
     // read a partially-destroyed opener while this runs. Then destroy deepest
     // first: an inner opener's menu entry is owned by its parent's children
@@ -73,6 +93,7 @@ BarWidget {
     var stack = submenuStack.slice()
     stack.push({ opener: opener, title: title })
     submenuStack = stack
+    settleMenuLevel()
   }
 
   function leaveSubmenu() {
@@ -81,6 +102,7 @@ BarWidget {
     var top = stack.pop()
     submenuStack = stack
     top.opener.destroy()
+    settleMenuLevel()
   }
 
   function close() {
@@ -570,6 +592,7 @@ BarWidget {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
+              if (root.menuLevelSettling) return
               // Reset before the model swap so the parent level shows from
               // the top (same ordering as the row delegate below).
               trayMenuFlick.contentY = 0
@@ -697,6 +720,7 @@ BarWidget {
               enabled: !menuRow.modelData.isSeparator && menuRow.modelData.enabled
               cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
               onClicked: {
+                if (root.menuLevelSettling) return
                 if (menuRow.modelData.hasChildren) {
                   // Reset scroll BEFORE swapping the model: the swap destroys
                   // this delegate synchronously and ids stop resolving after.
