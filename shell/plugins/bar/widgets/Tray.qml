@@ -33,6 +33,52 @@ BarWidget {
   property real revealProgress: expanded ? 1 : 0
   readonly property real revealExtent: drawerExtent * revealProgress
 
+  // Submenu drill-down state. QsMenuEntry.display() renders a *platform* menu,
+  // which Quickshell refuses unless the shell root sets `//@ pragma
+  // UseQApplication` - omarchy's shell.qml does not, so every submenu click was
+  // a silent no-op ("Cannot display PlatformMenuEntry as quickshell was not
+  // started in QApplication mode" in the shell log) and apps whose whole UI is
+  // submenus, e.g. radiotray-ng's station list, were unusable. QsMenuEntry
+  // inherits QsMenuHandle, so a child entry can feed a nested QsMenuOpener and
+  // render inside this popup instead of going through the platform. Each level
+  // keeps its own live opener: a child entry is owned by its parent opener's
+  // model, so collapsing the stack to a single opener would destroy the very
+  // entry being displayed (submenu turns up empty).
+  property var submenuStack: []
+  readonly property int submenuDepth: submenuStack.length
+  readonly property string currentTitle: submenuDepth > 0 ? submenuStack[submenuDepth - 1].title : ""
+  readonly property var currentChildren: submenuDepth > 0
+    ? submenuStack[submenuDepth - 1].opener.children
+    : trayMenuOpener.children
+
+  onTrayMenuOpenChanged: if (!trayMenuOpen) resetTrayMenu()
+
+  Component {
+    id: submenuOpenerComponent
+    QsMenuOpener {}
+  }
+
+  function resetTrayMenu() {
+    for (var i = 0; i < submenuStack.length; i++) submenuStack[i].opener.destroy()
+    submenuStack = []
+  }
+
+  function enterSubmenu(entry, title) {
+    var opener = submenuOpenerComponent.createObject(root, { menu: entry })
+    if (!opener) return
+    var stack = submenuStack.slice()
+    stack.push({ opener: opener, title: title })
+    submenuStack = stack
+  }
+
+  function leaveSubmenu() {
+    if (submenuStack.length === 0) return
+    var stack = submenuStack.slice()
+    var top = stack.pop()
+    submenuStack = stack
+    top.opener.destroy()
+  }
+
   function close() {
     managePopupOpen = false
     trayMenuOpen = false
@@ -47,6 +93,7 @@ BarWidget {
 
     activeTrayItem = item
     activeTrayAnchor = anchorItem
+    resetTrayMenu()
     trayMenuOpen = true
   }
 
@@ -464,8 +511,77 @@ BarWidget {
         width: trayMenuFlick.width
         spacing: 0
 
+        // Header for a drilled-into submenu: names where we are and walks back
+        // out. Only present below the root level, so the root menu is unchanged.
+        Item {
+          id: menuBackRow
+          visible: root.submenuDepth > 0
+          width: trayMenuColumn.width
+          implicitHeight: Style.space(30)
+
+          Rectangle {
+            anchors.fill: parent
+            radius: Math.max(2, Style.cornerRadius)
+            color: backMouse.containsMouse ? Style.hoverFillFor(root.foreground, root.foreground) : "transparent"
+          }
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: parent.left
+            width: Style.space(22)
+            horizontalAlignment: Text.AlignHCenter
+            text: "\u2039"
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+          }
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: parent.left
+            anchors.leftMargin: Style.space(28)
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(10)
+            text: root.currentTitle
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            elide: Text.ElideRight
+          }
+
+          MouseArea {
+            id: backMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+              // Reset before the model swap so the parent level shows from
+              // the top (same ordering as the row delegate below).
+              trayMenuFlick.contentY = 0
+              root.leaveSubmenu()
+            }
+          }
+        }
+
+        Item {
+          visible: root.submenuDepth > 0
+          width: trayMenuColumn.width
+          implicitHeight: Style.space(11)
+
+          Rectangle {
+            anchors.left: parent.left
+            anchors.leftMargin: Style.space(10)
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(10)
+            anchors.verticalCenter: parent.verticalCenter
+            height: 1
+            color: Color.popups.border
+            opacity: 0.45
+          }
+        }
+
         Repeater {
-          model: trayMenuOpener.children
+          model: root.currentChildren
 
           delegate: Item {
             id: menuRow
@@ -474,8 +590,11 @@ BarWidget {
 
             readonly property string rowText: String(modelData.text || "")
             readonly property string activeTitle: root.activeTrayItem ? String(root.activeTrayItem.title || root.activeTrayItem.id || "") : ""
-            readonly property bool rootTitleEntry: index === 0 && modelData.hasChildren && rowText.toLowerCase() === activeTitle.toLowerCase()
-            readonly property bool leadingSeparator: modelData.isSeparator && index <= 1
+            // Both only ever describe the root menu; inside a submenu the first
+            // rows are real entries and must not be swallowed.
+            readonly property bool atRoot: root.submenuDepth === 0
+            readonly property bool rootTitleEntry: atRoot && index === 0 && modelData.hasChildren && rowText.toLowerCase() === activeTitle.toLowerCase()
+            readonly property bool leadingSeparator: atRoot && modelData.isSeparator && index <= 1
             readonly property bool hiddenRow: rootTitleEntry || leadingSeparator
 
             visible: !hiddenRow
@@ -564,8 +683,10 @@ BarWidget {
               cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
               onClicked: {
                 if (menuRow.modelData.hasChildren) {
-                  var point = menuRow.QsWindow.contentItem.mapFromItem(menuRow, menuRow.width, menuRow.height / 2)
-                  menuRow.modelData.display(menuRow.QsWindow.window, point.x, point.y)
+                  // Reset scroll BEFORE swapping the model: the swap destroys
+                  // this delegate synchronously and ids stop resolving after.
+                  trayMenuFlick.contentY = 0
+                  root.enterSubmenu(menuRow.modelData, menuRow.rowText)
                 } else {
                   menuRow.modelData.triggered()
                   root.close()
