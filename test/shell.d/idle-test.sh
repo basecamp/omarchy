@@ -169,6 +169,12 @@ pass "screens-off timeout reader floors and falls back like the other timeouts"
 # its own cycle. This is a source-order proxy for that guarantee, not a runtime
 # check -- there's no headless way to drive startIdleCycle() from this suite.
 service="$ROOT/shell/plugins/services/idle/Service.qml"
+
+# Print one top-level QML block (a function, handler, or object) by its opening
+# line, up to its own closing brace. Assertions below scope themselves to a
+# block instead of a fixed -A window, which silently stops covering the thing
+# it names as soon as the block grows a line.
+qml_block() { awk -v want="$1" 'index($0, want) { inside = 1 } inside { print } inside && /^  \}$/ { exit }' "$service"; }
 screen_off_line=$(rg -n 'if \(root\.screenOffOnIdle && !root\.screenOffSubsumedByLock\) \{' "$service" | head -1 | cut -d: -f1)
 lock_line=$(rg -n 'if \(root\.lockOnIdle\) \{' "$service" | head -1 | cut -d: -f1)
 ((screen_off_line < lock_line)) || fail "screen-off is armed before the lock in startIdleCycle"
@@ -199,9 +205,9 @@ for helper in turnOffScreens wakeScreens flushDisplayState; do
   rg -q "function $helper\(" "$service" || fail "$helper() must exist"
 done
 
-rg -A6 'function flushDisplayState\(\)' "$service" | rg -q 'if \(screenOffProcess\.running \|\| wakeProcess\.running\) return' ||
+qml_block 'function flushDisplayState()' | rg -q 'if \(screenOffProcess\.running \|\| wakeProcess\.running\) return' ||
   fail "flushDisplayState() must wait for both the blank and the wake process, not just one"
-rg -A6 'function flushDisplayState\(\)' "$service" | rg -q 'if \(started\) root\.pendingDisplayState = ""' ||
+qml_block 'function flushDisplayState()' | rg -q 'if \(started\) root\.pendingDisplayState = ""' ||
   fail "flushDisplayState() must only clear the wanted state once its process actually launched"
 
 for launch in 'runProcess\(screenOffProcess, "screen-off", "omarchy-system-blank"\)' 'runProcess\(wakeProcess, "wake", "omarchy-system-wake"\)'; do
@@ -210,7 +216,7 @@ for launch in 'runProcess\(screenOffProcess, "screen-off", "omarchy-system-blank
 done
 
 for process_id in screenOffProcess wakeProcess; do
-  rg -A4 "id: $process_id" "$service" | rg -q 'root\.flushDisplayState\(\)' ||
+  qml_block "id: $process_id" | rg -q 'root\.flushDisplayState\(\)' ||
     fail "$process_id.onExited must flush a display state left pending while it ran"
 done
 
@@ -235,7 +241,7 @@ pass "screen-off is skipped everywhere the lock is due at or before its own dead
 # display again the instant it wakes.
 rg -q 'screenOffRearmSeconds: Math\.max\(1, screenOffTimeoutSeconds\)' "$service" ||
   fail "screenOffRearmSeconds must clamp a configured zero screenOff timeout to 1s"
-rg -A4 'id: screenOffRearmTimer' "$service" | rg -q 'interval: root\.screenOffRearmSeconds \* 1000' ||
+qml_block 'id: screenOffRearmTimer' | rg -q 'interval: root\.screenOffRearmSeconds \* 1000' ||
   fail "screenOffRearmTimer must use the clamped screenOffRearmSeconds, not the raw timeout"
 pass "the screen-off rearm timer clamps a configured zero timeout instead of firing every tick"
 
@@ -260,7 +266,7 @@ pass "input while the screens are dark wakes them through a dedicated 1s idle mo
 # can still be finishing in the background when lockSystem() hands display
 # ownership to the lock service. Without disowning the wanted display state
 # here, that blank's own exit would drive the displays through the lock screen.
-rg -A20 'function lockSystem\(reason\)' "$service" | rg -q 'root\.pendingDisplayState = ""' ||
+qml_block 'function lockSystem(reason)' | rg -q 'root\.pendingDisplayState = ""' ||
   fail "lockSystem() must disown the wanted display state, not just this cycle's screen-off ownership"
 pass "locking disowns a display state left wanted by a screen-off blank that outlives it"
 
@@ -269,13 +275,13 @@ pass "locking disowns a display state left wanted by a screen-off blank that out
 # the stale blank disabling DPMS afterward would leave the unlock screen
 # dark. lockSystem() must defer the actual lock until the blank exits instead
 # of racing it, and screenOffProcess.onExited must flush that deferred lock.
-rg -A32 'function lockSystem\(reason\)' "$service" | rg -q 'if \(screenOffProcess\.running\) \{' ||
+qml_block 'function lockSystem(reason)' | rg -q 'if \(screenOffProcess\.running\) \{' ||
   fail "lockSystem() must defer locking while a screen-off blank is still running"
-rg -A32 'function lockSystem\(reason\)' "$service" | rg -q 'root\.pendingLockReason = reason \|\| "requested"' ||
+qml_block 'function lockSystem(reason)' | rg -q 'root\.pendingLockReason = reason \|\| "requested"' ||
   fail "lockSystem() must record the reason before deferring"
 rg -q 'function flushPendingLock\(\)' "$service" ||
   fail "flushPendingLock() must exist to fire a lock deferred by an in-flight blank"
-rg -A5 'id: screenOffProcess' "$service" | rg -q 'root\.flushPendingLock\(\)' ||
+qml_block 'id: screenOffProcess' | rg -q 'root\.flushPendingLock\(\)' ||
   fail "screenOffProcess.onExited must flush a deferred lock, not just a deferred wake"
 pass "locking waits for an in-flight screen-off blank instead of racing the lock service's own wake"
 
@@ -287,11 +293,11 @@ pass "locking waits for an in-flight screen-off blank instead of racing the lock
 # is gated on idledThisCycle, which lockSystem() already cleared.
 rg -q 'function cancelPendingLock\(\)' "$service" ||
   fail "one helper must own dropping a deferred lock, so every door does it the same way"
-rg -A5 'function cancelPendingLock\(\)' "$service" | rg -q 'wakeScreens\(\)' ||
+qml_block 'function cancelPendingLock()' | rg -q 'wakeScreens\(\)' ||
   fail "cancelling a deferred lock must wake the screens it was going to take over"
 
-for door in 'function cancelIdleCycle\(reason\)' 'onLockOnIdleChanged'; do
-  rg -A19 "$door" "$service" | rg -q 'cancelPendingLock\(\)' ||
+for door in 'function cancelIdleCycle(reason)' 'onLockOnIdleChanged'; do
+  qml_block "$door" | rg -q 'cancelPendingLock\(\)' ||
     fail "every path that drops a deferred lock must go through cancelPendingLock()"
 done
 
@@ -305,6 +311,6 @@ pass "dropping a deferred lock hands the darkening displays back instead of aban
 # touch lockTimer: flipping it re-decides whether screen-off is covered by the
 # lock this cycle, and turning it off has to drop a lock the idle timeout
 # already deferred behind an in-flight blank.
-rg -A12 'onLockOnIdleChanged' "$service" | rg -q 'syncSwitchTimer\(root\.screenOffOnIdle && !root\.screenOffSubsumedByLock, screenOffTimer' ||
+qml_block 'onLockOnIdleChanged' | rg -q 'syncSwitchTimer\(root\.screenOffOnIdle && !root\.screenOffSubsumedByLock, screenOffTimer' ||
   fail "onLockOnIdleChanged must resync the screen-off timer it just re-decided"
 pass "flipping lock-on-idle resyncs the screen-off it subsumes"
