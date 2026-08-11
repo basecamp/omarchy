@@ -1,9 +1,33 @@
 #!/bin/bash
 
-# omarchy:summary=Clear the internal-monitor-disable toggle if no external display is connected.
+# omarchy:summary=Re-enable the internal display if no external monitor is connected.
 
-TOGGLE="$HOME/.local/state/omarchy/toggles/hypr/internal-monitor-disable.lua"
+# This is the rescue for a laptop panel that was switched off while docked and
+# then undocked: without it the machine boots to a dark screen with no way in.
+# It runs before the graphical session, so it reads DRM directly and never
+# calls hyprctl — there is no compositor to ask yet.
 
-if [[ -f $TOGGLE ]] && ! omarchy-hw-external-monitors; then
-  rm -f "$TOGGLE"
-fi
+# The connected internal panel's connector name, straight from sysfs.
+internal_display_name() {
+  local status connector
+
+  for status in /sys/class/drm/card*-eDP-*/status /sys/class/drm/card*-LVDS-*/status /sys/class/drm/card*-DSI-*/status; do
+    [[ -e $status ]] || continue
+    [[ $(<"$status") == "connected" ]] || continue
+
+    connector="${status%/status}"
+    connector="${connector##*/}"
+    printf '%s\n' "${connector#*-}"
+    return 0
+  done
+}
+
+internal="$(internal_display_name)"
+[[ -n $internal ]] || exit 0
+
+omarchy-hw-external-monitors && exit 0
+
+# Clears the setting wherever it lives — the overrides file and every location
+# that predates it — so a machine part-way through the move still recovers.
+omarchy-hyprland-monitor-override is-disabled "$internal" || exit 0
+omarchy-hyprland-monitor-override clear-disabled "$internal"
