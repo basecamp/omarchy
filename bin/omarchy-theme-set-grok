@@ -1,0 +1,247 @@
+#!/bin/bash
+
+# omarchy:summary=Map the active Omarchy theme to a built-in Grok TUI theme
+# omarchy:args=[--activate]
+# omarchy:hidden=true
+
+# Grok's only live external retint path is theme=auto + OS light/dark (the
+# system-appearance watcher). Writing an explicit [ui].theme only applies on
+# the next Grok start. So when following, we set theme=auto, pick the closest
+# built-in for auto_dark_theme / auto_light_theme, and rely on theme-set-gnome
+# flipping the desktop color-scheme for live light↔dark.
+#
+# Follow mode is sticky until the user leaves auto:
+#   - omarchy-theme-set-grok --activate (or install/user/theme.sh) starts it
+#   - each Omarchy theme switch updates mappings while [ui].theme is "auto"
+#   - if they pick a fixed Grok theme, we stop and leave them alone
+#   - --activate again opts back in
+
+set -euo pipefail
+
+GROK_HOME="${GROK_HOME:-$HOME/.grok}"
+GROK_CONFIG_PATH="$GROK_HOME/config.toml"
+GROK_FOLLOW_FLAG="$HOME/.local/state/omarchy/grok-theme-follow"
+CURRENT_THEME_PATH="$HOME/.local/state/omarchy/current/theme"
+GROK_ACTIVATE=0
+
+usage() {
+  echo "Usage: omarchy-theme-set-grok [--activate]"
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --activate)
+      GROK_ACTIVATE=1
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+# No-op when Grok is not installed. Finalize runs --activate unconditionally
+# under set -e, so this must not exit 1 (otherwise btop theme linking is skipped).
+# Interactive hand-runs still get a stderr note when stdout is a TTY.
+if [[ ! -d $GROK_HOME ]]; then
+  if (( GROK_ACTIVATE == 1 )) && [[ -t 1 ]]; then
+    echo "Grok config directory missing: $GROK_HOME" >&2
+    echo "Install Grok first, then re-run omarchy-theme-set-grok --activate." >&2
+  fi
+  exit 0
+fi
+
+# Read [ui].theme (or legacy top-level theme) from config.toml.
+current_ui_theme() {
+  local config="$GROK_CONFIG_PATH"
+
+  [[ -f $config ]] || return 0
+
+  python3 - "$config" <<'PY'
+import pathlib
+import sys
+import tomllib
+
+path = pathlib.Path(sys.argv[1])
+try:
+    data = tomllib.loads(path.read_text())
+except tomllib.TOMLDecodeError:
+    print("")
+    raise SystemExit(0)
+
+ui = data.get("ui")
+if isinstance(ui, dict) and "theme" in ui:
+    print(ui["theme"] if ui["theme"] is not None else "")
+elif "theme" in data:
+    # Legacy top-level theme key
+    print(data["theme"] if data["theme"] is not None else "")
+else:
+    print("")
+PY
+}
+
+stop_following() {
+  rm -f "$GROK_FOLLOW_FLAG"
+}
+
+start_following() {
+  mkdir -p "$(dirname "$GROK_FOLLOW_FLAG")"
+  : >"$GROK_FOLLOW_FLAG"
+}
+
+if (( GROK_ACTIVATE == 1 )); then
+  start_following
+elif [[ ! -f $GROK_FOLLOW_FLAG ]]; then
+  exit 0
+else
+  # Still following only while Grok remains on auto (or theme unset).
+  theme_now=$(current_ui_theme)
+  if [[ -n $theme_now && $theme_now != "auto" && $theme_now != "system" ]]; then
+    stop_following
+    exit 0
+  fi
+fi
+
+omarchy_theme_slug() {
+  local path
+
+  if [[ -f $HOME/.local/state/omarchy/current/theme.name ]]; then
+    tr -d '[:space:]' <"$HOME/.local/state/omarchy/current/theme.name"
+    return
+  fi
+
+  path=$(readlink -f "$CURRENT_THEME_PATH" 2>/dev/null || true)
+  if [[ -n $path ]]; then
+    basename "$path"
+    return
+  fi
+
+  printf '%s' ""
+}
+
+# Closest dark built-in for the current Omarchy slug (never "auto" / "grokday").
+map_grok_dark_theme() {
+  local slug
+
+  slug=$(omarchy_theme_slug)
+
+  case "$slug" in
+    tokyo-night | tokyonight | tokyo | nord | catppuccin | kanagawa | everforest | ethereal)
+      printf '%s' "tokyonight"
+      ;;
+    rose-pine | rosepine | rose-pine-moon | rosepine-moon)
+      printf '%s' "rosepine-moon"
+      ;;
+    matte-black | vantablack | hackerman | osaka-jade | ristretto | solitude)
+      printf '%s' "oscura-midnight"
+      ;;
+    *)
+      printf '%s' "groknight"
+      ;;
+  esac
+}
+
+# Write [ui] theme + auto_* keys, preserving the rest of config.toml.
+write_grok_ui_keys() {
+  local config="$GROK_CONFIG_PATH"
+  local theme="$1"
+  local auto_dark="$2"
+  local auto_light="$3"
+
+  mkdir -p "$(dirname "$config")"
+
+  python3 - "$config" "$theme" "$auto_dark" "$auto_light" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+wanted = {
+    "theme": sys.argv[2],
+    "auto_dark_theme": sys.argv[3],
+    "auto_light_theme": sys.argv[4],
+}
+
+text = path.read_text() if path.exists() else ""
+lines = text.splitlines(keepends=True)
+out = []
+section = None
+ui_seen = False
+written = {k: False for k in wanted}
+
+def emit_missing_ui_keys():
+    for key, value in wanted.items():
+        if not written[key]:
+            out.append(f'{key} = "{value}"\n')
+            written[key] = True
+
+for line in lines:
+    stripped = line.strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        if section == "ui":
+            emit_missing_ui_keys()
+        name = stripped[1:-1].strip()
+        section = name
+        if name == "ui":
+            ui_seen = True
+        out.append(line)
+        continue
+
+    m = re.match(r"^([A-Za-z0-9_]+)\s*=", stripped)
+    if m and section == "ui" and m.group(1) in wanted:
+        key = m.group(1)
+        out.append(f'{key} = "{wanted[key]}"\n')
+        written[key] = True
+        continue
+
+    if m and section is None and m.group(1) == "theme":
+        # Legacy top-level theme — drop; live under [ui].
+        continue
+
+    out.append(line)
+
+if section == "ui":
+    emit_missing_ui_keys()
+
+if not ui_seen:
+    body = "".join(out)
+    if body and not body.endswith("\n"):
+        out.append("\n")
+    if out and out[-1].strip() != "":
+        out.append("\n")
+    out.append("[ui]\n")
+    for key, value in wanted.items():
+        out.append(f'{key} = "{value}"\n')
+
+tmp = path.with_suffix(path.suffix + ".tmp")
+tmp.write_text("".join(out))
+tmp.replace(path)
+PY
+}
+
+dark_theme=$(map_grok_dark_theme)
+light_theme="grokday"
+
+# theme=auto so running sessions follow OS light/dark (Omarchy sets that via GNOME).
+# auto_dark_theme carries the closest dark built-in for the current Omarchy slug.
+write_grok_ui_keys "auto" "$dark_theme" "$light_theme"
+
+# Interactive only — finalize/install redirect stdout and should stay quiet
+# (same as pi's silent activate). Config + follow flag are still written above.
+if (( GROK_ACTIVATE == 1 )) && [[ -t 1 ]]; then
+  echo "Grok will follow Omarchy light/dark (auto mode)."
+  echo "  auto_dark_theme  = $dark_theme"
+  echo "  auto_light_theme = $light_theme"
+  echo "  config: $GROK_CONFIG_PATH"
+  echo
+  echo "Restart Grok once so it enters theme=auto. After that, light↔dark"
+  echo "desktop switches retint live. Same-polarity maps (e.g. tokyo-night"
+  echo "vs groknight) still need a restart or /theme to apply."
+  echo
+  echo "If you pick a fixed Grok theme later, Omarchy stops updating Grok until"
+  echo "you run: omarchy-theme-set-grok --activate"
+fi
