@@ -104,11 +104,13 @@ grep -F '>&2' <<<"$cleanup_body" >/dev/null ||
 started_line=$(grep -n '^upgrade_started=1$' "$upgrade_to_quattro" | cut -d: -f1)
 completed_line=$(grep -n '^upgrade_completed=1$' "$upgrade_to_quattro" | cut -d: -f1)
 suppress_line=$(grep -n '^suppress_hyprland_config_reload$' "$upgrade_to_quattro" | cut -d: -f1)
-shell_line=$(grep -n '^if start_omarchy_shell_session; then$' "$upgrade_to_quattro" | cut -d: -f1)
-[[ -n $started_line && -n $completed_line && -n $suppress_line && -n $shell_line ]] ||
+# The reboot is the cutover, so the last mutating step hands the live session
+# back rather than swapping the shell out underneath it.
+last_step_line=$(grep -n '^restore_hyprland_config_reload$' "$upgrade_to_quattro" | cut -d: -f1)
+[[ -n $started_line && -n $completed_line && -n $suppress_line && -n $last_step_line ]] ||
   fail "upgrade progress markers and the mutating step range exist"
 (( started_line < suppress_line )) || fail "the upgrade is marked started before the first mutation"
-(( completed_line > shell_line )) || fail "the upgrade is marked complete only after the last step"
+(( completed_line > last_step_line )) || fail "the upgrade is marked complete only after the last step"
 pass "Omarchy 4 upgrade reports an aborted run instead of exiting silently"
 
 grep -F 'omarchy-bar defaults' "$upgrade_to_quattro" >/dev/null
