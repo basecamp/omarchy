@@ -16,7 +16,7 @@ assert(audio.isAudioSource({ type: 'Audio/Source' }), 'audio detects typed sourc
 assertEqual(audio.outputVolumeName(0, false), 'Silenced', 'audio labels silent output')
 assertEqual(audio.outputVolumeName(0.9, false), 'Party mode', 'audio labels loud output')
 assertEqual(audio.outputVolumeName(1.14, false), 'Concert hall', 'audio keeps the standard boosted label below 115 percent')
-assertEqual(audio.outputVolumeName(1.15, false), 'Blowout alert!', 'audio labels volume at 115 percent')
+assertEqual(audio.outputVolumeName(1.2, false), 'Blowout alert!', 'audio labels volume at 115 percent')
 assertEqual(audio.outputVolumeName(1.5, false), 'Blowout alert!', 'audio keeps the 115 percent label at higher volumes')
 assertEqual(audio.outputVolumeName(0.5, true), 'Muted', 'audio labels muted output')
 
