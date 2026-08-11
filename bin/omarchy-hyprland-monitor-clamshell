@@ -5,7 +5,6 @@
 
 TOGGLES_DIR="$HOME/.local/state/omarchy/toggles/hypr"
 CLAMSHELL_FLAG="$TOGGLES_DIR/internal-monitor-clamshell.lua"
-MANUAL_DISABLE_FLAG="$TOGGLES_DIR/internal-monitor-disable.lua"
 SCALE_STATE="$TOGGLES_DIR/internal-monitor-scale"
 MONITOR_LUA="$HOME/.config/hypr/monitors.lua"
 
@@ -188,7 +187,7 @@ enable_internal() {
     hyprctl reload >/dev/null 2>&1 || true
   fi
 
-  [[ -f $MANUAL_DISABLE_FLAG ]] && omarchy-hyprland-monitor-external-active && return 0
+  omarchy-hyprland-monitor-override is-disabled "$INTERNAL" && omarchy-hyprland-monitor-external-active && return 0
   sync_internal_scale
 
   if (( changed )); then
@@ -198,7 +197,7 @@ enable_internal() {
 
 disable_internal() {
   [[ -n $INTERNAL ]] || exit 0
-  [[ -f $MANUAL_DISABLE_FLAG ]] && return 0
+  omarchy-hyprland-monitor-override is-disabled "$INTERNAL" && return 0
 
   mkdir -p "$TOGGLES_DIR"
   remember_internal_scale

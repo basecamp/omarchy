@@ -4,18 +4,29 @@
 # omarchy:args=<on|off|toggle|recover>
 
 TOGGLE="internal-monitor-disable"
-TOGGLE_FLAG="$HOME/.local/state/omarchy/toggles/hypr/$TOGGLE.lua"
 MIRROR_TOGGLE="internal-monitor-mirror"
 
 INTERNAL=$(omarchy-hyprland-monitor-laptop)
+
+# Reads go through the overrides command, which accepts both the overrides file
+# and the flag files that predate it, and clears every one of them. A machine
+# part-way through the move must still be able to bring this display back.
+internal_disabled() {
+  omarchy-hyprland-monitor-override is-disabled "$INTERNAL"
+}
+
+enable_internal_display() {
+  omarchy-hyprland-monitor-override clear-disabled "$INTERNAL"
+  hyprctl reload >/dev/null
+}
 
 wake() {
   hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })' >/dev/null 2>&1 || true
 }
 
 on() {
-  if omarchy-hyprland-toggle-enabled $TOGGLE; then
-    omarchy-hyprland-toggle $TOGGLE off
+  if internal_disabled; then
+    enable_internal_display
     omarchy-notification-send -g 󰍹 "Laptop display enabled"
   fi
 
@@ -33,8 +44,8 @@ off() {
     exit 1
   fi
 
-  if omarchy-hyprland-toggle-disabled $TOGGLE && omarchy-hyprland-toggle-disabled $MIRROR_TOGGLE; then
-    printf 'hl.monitor({ output = "%s", disabled = true })\n' "$INTERNAL" >"$TOGGLE_FLAG"
+  if ! internal_disabled && omarchy-hyprland-toggle-disabled $MIRROR_TOGGLE; then
+    omarchy-hyprland-monitor-override set "$INTERNAL" disabled true
     omarchy-notification-send -g 󰍹 "Laptop display disabled"
     hyprctl reload
   fi
@@ -45,14 +56,14 @@ recover() {
   # unless it actually re-enables a display: an unconditional wake here undoes
   # lock-screen blanking and races the resume modeset into a visible flash.
   omarchy-hyprland-monitor-external-active && return 0
-  omarchy-hyprland-toggle-enabled $TOGGLE || return 0
+  internal_disabled || return 0
 
-  omarchy-hyprland-toggle $TOGGLE off
+  enable_internal_display
   wake
 }
 
 toggle() {
-  if omarchy-hyprland-toggle-enabled $TOGGLE; then
+  if internal_disabled; then
     on
   else
     off

@@ -1,11 +1,22 @@
 #!/bin/bash
 
 # omarchy:summary=Enable, disable, toggle, or recover mirroring the internal display to an external monitor
-# omarchy:args=<on|off|toggle|recover>
+# omarchy:args=<on|off|toggle|recover> [--quiet]
 
 TOGGLE="internal-monitor-mirror"
 TOGGLE_FLAG="$HOME/.local/state/omarchy/toggles/hypr/$TOGGLE.lua"
 DISABLE_TOGGLE="internal-monitor-disable"
+
+# Callers that cycle mirroring as plumbing rather than as the user's request
+# pass --quiet, so a single action does not stack up notifications nobody asked
+# for. Failures still speak up.
+quiet=0
+[[ ${2:-} == "--quiet" ]] && quiet=1
+
+announce() {
+  ((quiet)) && return 0
+  omarchy-notification-send "$@"
+}
 
 INTERNAL=$(omarchy-hyprland-monitor-laptop)
 # The first active external monitor
@@ -22,11 +33,14 @@ on() {
     exit 1
   fi
 
-  omarchy-hyprland-toggle $DISABLE_TOGGLE off
+  # Clears the disable wherever it is recorded. A display switched off from the
+  # panel is noted in the overrides file, and clearing only the old flag would
+  # leave mirroring pointed at a display that stays dark.
+  omarchy-hyprland-monitor-override clear-disabled "$INTERNAL"
 
   if omarchy-hyprland-toggle-disabled $TOGGLE; then
     printf 'hl.monitor({ output = "%s", mode = "preferred", position = "auto", scale = 1, mirror = "%s" })\n' "$EXTERNAL" "$INTERNAL" >"$TOGGLE_FLAG"
-    omarchy-notification-send -g 󰍹 "Mirroring enabled ($EXTERNAL)"
+    announce -g 󰍹 "Mirroring enabled ($EXTERNAL)"
     hyprctl reload
   fi
 }
@@ -34,7 +48,7 @@ on() {
 off() {
   if omarchy-hyprland-toggle-enabled $TOGGLE; then
     omarchy-hyprland-toggle $TOGGLE off
-    omarchy-notification-send -g 󰍹 "Extended mode restored"
+    announce -g 󰍹 "Extended mode restored"
   fi
 }
 

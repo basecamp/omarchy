@@ -74,9 +74,9 @@ grep -F 'omarchy-hyprland-monitor-internal recover >/dev/null 2>&1 || true' "$cl
 grep -F 'omarchy-hyprland-monitor-internal-mirror recover >/dev/null 2>&1 || true' "$clamshell" >/dev/null
 grep -F 'internal-monitor-clamshell.lua' "$clamshell" >/dev/null
 grep -F 'disabled = true' "$clamshell" >/dev/null
-grep -F 'MANUAL_DISABLE_FLAG' "$clamshell" >/dev/null
-! grep -F 'rm -f "$MANUAL_DISABLE_FLAG"' "$clamshell" >/dev/null
-! grep -F '>"$MANUAL_DISABLE_FLAG"' "$clamshell" >/dev/null
+grep -F 'omarchy-hyprland-monitor-override is-disabled "$INTERNAL"' "$clamshell" >/dev/null
+! grep -F 'clear-disabled' "$clamshell" >/dev/null
+! grep -F 'override set' "$clamshell" >/dev/null
 grep -F 'read_monitor_scale' "$clamshell" >/dev/null
 grep -F 'scale = $scale' "$clamshell" >/dev/null
 grep -F 'hyprctl dispatch "hl.dsp.dpms({ action = \"$action\", monitor = \"$INTERNAL\" })"' "$clamshell" >/dev/null
@@ -90,7 +90,7 @@ grep -F 'omarchy-hyprland-monitor-laptop' "$monitor_internal" >/dev/null
 grep -F 'hyprctl monitors all -j' "$monitor_laptop" >/dev/null
 grep -F 'omarchy-hyprland-monitor-external-active' "$monitor_internal" >/dev/null
 grep -F 'wake' "$monitor_internal" >/dev/null
-grep -F 'omarchy-hyprland-toggle-enabled $TOGGLE || return 0' "$monitor_internal" >/dev/null
+grep -F 'internal_disabled || return 0' "$monitor_internal" >/dev/null
 pass "internal monitor helper can re-enable disabled laptop displays"
 pass "internal monitor recovery only wakes displays when it re-enables one"
 
@@ -110,3 +110,24 @@ grep -F 'id: sessionLockStabilizeTimer' "$lock_service" >/dev/null
 grep -Pzo 'function onScreensChanged\(\) \{\n(.*\n)*?\s*root\.requestSessionLock\(\)\n' "$lock_service" >/dev/null
 grep -F 'realScreens: root.realScreenCount()' "$lock_service" >/dev/null
 pass "lock service waits for stable real screens before session lock"
+
+# The rescue for a laptop panel disabled while docked and then undocked runs
+# before the graphical session, so it must not depend on a compositor. It also
+# has to clear the setting wherever it lives, or a machine part-way through the
+# move to the overrides file boots to a dark screen with no way in.
+recover_internal="$ROOT/bin/omarchy-hw-recover-internal-monitor"
+
+! grep -F 'hyprctl' "$recover_internal" >/dev/null
+grep -F '/sys/class/drm/card*-eDP-*/status' "$recover_internal" >/dev/null
+grep -F 'omarchy-hw-external-monitors' "$recover_internal" >/dev/null
+grep -F 'omarchy-hyprland-monitor-override clear-disabled' "$recover_internal" >/dev/null
+pass "internal display rescue reads DRM directly and clears every disable location"
+
+# Clearing has to cover the flag files that predate the overrides file, in both
+# the internal display's name and the per-display form.
+override="$ROOT/bin/omarchy-hyprland-monitor-override"
+
+grep -F 'internal-monitor-disable.lua' "$override" >/dev/null
+grep -F 'monitor-$name-disable.lua' "$override" >/dev/null
+grep -F 'existing_key_for' "$override" >/dev/null
+pass "overrides command recognises the disable locations that predate it"
