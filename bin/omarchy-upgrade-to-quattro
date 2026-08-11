@@ -117,26 +117,30 @@ esac
 
 # Land on the Quattro equivalent of wherever the machine already is, unless the
 # caller said otherwise. Stable machines get the production packages off the
-# stable channel. A machine on rc is a release-candidate machine, and until
-# Quattro ships that means the dev packages out of the edge repo, which is what
-# --dev selects.
+# stable channel. rc and edge machines stay on their own mirror, but take the
+# dev packages, because that is where Quattro lives until it ships.
 if [[ -z $channel_override ]] && (( ! use_dev_packages )); then
   case "$(detect_installed_channel || true)" in
     stable) channel_override=stable ;;
-    rc | edge) use_dev_packages=1 ;;
+    rc) channel_override=rc use_dev_packages=1 ;;
+    edge) channel_override=edge use_dev_packages=1 ;;
   esac
 fi
 
 if (( use_dev_packages )); then
-  if (( channel_override_cli )); then
+  # The dev packages are only published to the edge package repo, which the rc
+  # and edge channels both point at; only stable is incompatible. rc keeps its
+  # own Arch mirror either way.
+  if [[ -n $channel_override ]]; then
     if ! valid_channel "$channel_override"; then
       fail "Invalid channel '$channel_override'. Use stable, rc, or edge."
     fi
-    if [[ $(normalize_channel "$channel_override") != edge ]]; then
-      fail "--dev uses the edge channel; remove --channel or pass --channel edge."
+    if [[ $(normalize_channel "$channel_override") == stable ]]; then
+      fail "--dev needs the edge package repo; use --channel rc or --channel edge."
     fi
+  else
+    channel_override=edge
   fi
-  channel_override=edge
 fi
 
 if { [[ -n $channel_override ]] || (( channel_override_cli )); } && ! valid_channel "$channel_override"; then
