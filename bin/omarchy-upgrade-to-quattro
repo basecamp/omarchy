@@ -1080,57 +1080,9 @@ cleanup_retired_services() {
   fi
 }
 
-stop_retired_session_processes() {
-  log "Stopping retired Omarchy 3 session processes"
-
-  if [[ -S $target_runtime_dir/bus ]]; then
-    run_as_user_session systemctl --user stop "${retired_user_units[@]}" >/dev/null 2>&1 || true
-  fi
-
-  # Removed packages do not stop already-running processes. Stop the old UI
-  # only after the new Quickshell has been verified, so users are not left
-  # without a bar/launcher if current-session shell startup fails.
-  run_as_user pkill -x waybar >/dev/null 2>&1 || true
-  run_as_user pkill -x walker >/dev/null 2>&1 || true
-  run_as_user pkill -x elephant >/dev/null 2>&1 || true
-  run_as_user pkill -x mako >/dev/null 2>&1 || true
-  run_as_user pkill -x swayosd-server >/dev/null 2>&1 || true
-  run_as_user_session systemctl --user daemon-reload >/dev/null 2>&1 || true
-}
-
-start_omarchy_shell_session() {
-  # Omarchy quattro starts Quickshell from Hyprland autostart, not a user service.
-  # Reboot is still the real cutover, but start the new shell in the current
-  # Wayland session when possible so users do not sit without a bar after the
-  # retired waybar/walker/elephant processes are stopped.
-  local restart_shell_bin shell_log
-  command -v quickshell >/dev/null || { warn "quickshell is not available; Omarchy shell will start after reboot."; return 1; }
-  restart_shell_bin=/usr/share/omarchy/bin/omarchy-restart-shell
-  [[ -x $restart_shell_bin ]] || { warn "omarchy-restart-shell is not available; Omarchy shell will start after reboot."; return 1; }
-  [[ -f /usr/share/omarchy/shell/shell.qml ]] || { warn "/usr/share/omarchy/shell is missing; Omarchy shell will start after reboot."; return 1; }
-
-  shell_log="$target_home/.local/state/omarchy/omarchy-shell-upgrade.log"
-  run_as_user mkdir -p "$target_home/.local/state/omarchy" >/dev/null 2>&1 || true
-
-  # Separate the two failure modes. Both used to report as one message, which
-  # read as nonsense on a machine that plainly had Hyprland on screen.
-  if ! run_as_user_wayland_session true >/dev/null 2>&1; then
-    warn "Could not reach the live Hyprland session, so the Omarchy shell was not started; it will start after reboot."
-    return 1
-  fi
-
-  log "Starting Omarchy shell in the current session"
-  run_as_user_wayland_session \
-    QT_QPA_PLATFORM=wayland \
-    'GDK_BACKEND=wayland,x11,*' \
-    bash -c '
-      restart_shell_bin=$1
-      shell_log=$2
-      : >"$shell_log"
-      "$restart_shell_bin" >>"$shell_log" 2>&1
-    ' bash "$restart_shell_bin" "$shell_log" \
-    || { warn "Omarchy shell failed to start in the current session; it will start after reboot. See $shell_log"; return 1; }
-}
+# The Omarchy 3 session keeps its bar, launcher, and notifications until the
+# reboot, which is the real cutover. Swapping the UI out underneath a running
+# session buys nothing and only creates ways for the upgrade to look broken.
 
 # Run a command inside the user's live Wayland session. Fails if no session
 # can be discovered. Extra NAME=VALUE args extend the environment.
@@ -2441,11 +2393,6 @@ refresh_current_theme_after_upgrade
 # pre-reboot session can keep running safely; the reboot performs the real
 # Omarchy quattro Lua-config cutover.
 restore_hyprland_config_reload
-if start_omarchy_shell_session; then
-  stop_retired_session_processes
-else
-  warn "Leaving retired Omarchy 3 session processes running until reboot."
-fi
 
 upgrade_completed=1
 
