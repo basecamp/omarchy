@@ -43,7 +43,7 @@ LUA
 run_scaling() {
   HOME="$home_dir" \
     XDG_STATE_HOME="$home_dir/.local/state" \
-    PATH="$stub_bin:$PATH" \
+    PATH="$stub_bin:$ROOT/bin:$PATH" \
     OMARCHY_TEST_HYPRCTL_EVAL_OUT="$eval_out" \
     OMARCHY_TEST_MONITOR_SCALE="${OMARCHY_TEST_MONITOR_SCALE:-2}" \
     OMARCHY_TEST_MONITOR_X="${OMARCHY_TEST_MONITOR_X:-0}" \
@@ -55,26 +55,26 @@ run_scaling() {
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 run_scaling up
 grep -F 'scale = 3' "$eval_out" >/dev/null || fail "monitor scaling up reaches 3x"
-grep -Fx 'local omarchy_monitor_scale = 3' "$monitor_lua" >/dev/null || fail "monitor scaling up persists 3x"
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 3 })' "$monitor_lua" >/dev/null || fail "monitor scaling up persists 3x"
 grep -F $'requested=up\tcurrent=2\tnew=3\tmonitor=eDP-1' "$scale_log" >/dev/null || fail "monitor scaling up writes audit log"
 pass "monitor scaling up reaches 3x"
 
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=3 run_scaling down
 grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling down recovers 3x to 2x"
-grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null || fail "monitor scaling down persists 2x from 3x"
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 2 })' "$monitor_lua" >/dev/null || fail "monitor scaling down persists 2x from 3x"
 pass "monitor scaling down recovers 3x to 2x"
 
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=3.0000000000000004 run_scaling down
 grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling down snaps floating point 3x to 2x"
-grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null || fail "monitor scaling down persists 2x from floating point 3x"
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 2 })' "$monitor_lua" >/dev/null || fail "monitor scaling down persists 2x from floating point 3x"
 pass "monitor scaling down snaps floating point 3x to 2x"
 
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 3
 grep -F 'scale = 3' "$eval_out" >/dev/null || fail "monitor scaling explicit 3x remains available"
-grep -Fx 'local omarchy_monitor_scale = 3' "$monitor_lua" >/dev/null || fail "monitor scaling explicit 3x persists"
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 3 })' "$monitor_lua" >/dev/null || fail "monitor scaling explicit 3x persists"
 grep -Fx 'local omarchy_gdk_scale = 3' "$monitor_lua" >/dev/null || fail "monitor scaling explicit 3x persists GDK scale"
 pass "monitor scaling explicit 3x remains available"
 
@@ -83,13 +83,13 @@ pass "monitor scaling explicit 3x remains available"
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
 grep -F 'scale = 1.6' "$eval_out" >/dev/null || fail "monitor scaling explicit 1.6x remains available"
-grep -Fx 'local omarchy_monitor_scale = 1.6' "$monitor_lua" >/dev/null || fail "monitor scaling explicit 1.6x persists"
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 1.6 })' "$monitor_lua" >/dev/null || fail "monitor scaling explicit 1.6x persists"
 grep -Fx 'local omarchy_gdk_scale = 2' "$monitor_lua" >/dev/null || fail "monitor scaling 1.6x persists integer GDK scale 2"
 pass "monitor scaling 1.6x persists integer GDK scale 2"
 
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.25
-grep -Fx 'local omarchy_monitor_scale = 1.25' "$monitor_lua" >/dev/null || fail "monitor scaling explicit 1.25x persists"
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 1.25 })' "$monitor_lua" >/dev/null || fail "monitor scaling explicit 1.25x persists"
 grep -Fx 'local omarchy_gdk_scale = 1' "$monitor_lua" >/dev/null || fail "monitor scaling 1.25x persists integer GDK scale 1"
 pass "monitor scaling 1.25x persists integer GDK scale 1"
 
@@ -105,7 +105,7 @@ pass "monitor scaling reports the actual non-preset scale"
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 OMARCHY_TEST_MONITOR_WIDTH=1280 OMARCHY_TEST_MONITOR_HEIGHT=800 run_scaling 3
 grep -F 'scale = 3.2' "$eval_out" >/dev/null || fail "monitor scaling approximates explicit 3x as 3.2x"
-grep -Fx 'local omarchy_monitor_scale = 3.2' "$monitor_lua" >/dev/null ||
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 3.2 })' "$monitor_lua" >/dev/null ||
   fail "monitor scaling persists approximated 3.2x"
 pass "monitor scaling approximates explicit 3x as 3.2x"
 
@@ -133,7 +133,7 @@ pass "monitor scaling accepts displayed approximate values"
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=4 OMARCHY_TEST_MONITOR_WIDTH=1280 OMARCHY_TEST_MONITOR_HEIGHT=804 run_scaling down
 grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling down skips duplicate 4x approximation"
-grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 2 })' "$monitor_lua" >/dev/null ||
   fail "monitor scaling down persists 2x after skipping duplicate approximation"
 pass "monitor scaling down skips duplicate approximation"
 
@@ -147,15 +147,17 @@ grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
   fail "scaling a non-focused display leaves the shared default alone"
 pass "--monitor scales the named display without rewriting the shared default"
 
-# The catch-all in monitors.lua covers every display, so only the focused one
-# may write it.
+# The catch-all in monitors.lua covers every display, so no single display's
+# scale is ever written there.
 write_monitor_config
 : >"$eval_out"
 OMARCHY_TEST_MONITOR_SCALE=2 run_scaling --monitor eDP-1 1
 grep -F 'output = "eDP-1"' "$eval_out" >/dev/null || fail "--monitor accepts the focused display"
-grep -Fx 'local omarchy_monitor_scale = 1' "$monitor_lua" >/dev/null ||
-  fail "scaling the focused display still persists the shared default"
-pass "--monitor on the focused display still persists"
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 1 })' "$monitor_lua" >/dev/null ||
+  fail "naming the focused display persists to its own rule"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "naming the focused display leaves the shared default alone"
+pass "--monitor on the focused display persists to that display's rule"
 
 # An empty output is Hyprland's catch-all, so an unknown name must never reach
 # the eval — it would rescale every display instead of none.
@@ -282,3 +284,19 @@ run_scaling --monitor DP-1 1
   fail "scaling a display twice leaves one rule"
 grep -F 'scale = 1 }' "$monitor_lua" >/dev/null || fail "the surviving rule carries the latest scale"
 pass "scaling the same display twice rewrites its rule instead of adding another"
+
+# --- scaling one display never reaches another (issue #6673) ---
+
+# Both displays start on the catch-all. Scaling each in turn used to rewrite the
+# shared value, so the second choice landed on the first display a second later,
+# when writing the file tripped Hyprland's config auto-reload.
+write_monitor_config
+run_scaling --monitor eDP-1 2
+run_scaling --monitor DP-1 1.6
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 2 })' "$monitor_lua" >/dev/null ||
+  fail "the first display keeps the scale it was given"
+grep -Fx 'hl.monitor({ output = "DP-1", mode = "preferred", position = "auto", scale = 1.6 })' "$monitor_lua" >/dev/null ||
+  fail "the second display gets the scale it was given"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "neither display moved the shared default"
+pass "scaling two displays in turn leaves each with the scale it was given"

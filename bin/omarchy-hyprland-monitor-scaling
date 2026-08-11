@@ -4,6 +4,8 @@
 # omarchy:args=[--monitor name] [up|down|SCALE]
 # omarchy:examples=omarchy hyprland monitor scaling | omarchy hyprland monitor scaling 1.6 | omarchy hyprland monitor scaling --monitor DP-1 2 | omarchy hyprland monitor scaling up
 
+source omarchy-hyprland-monitor-config
+
 SCALES=(1 1.25 1.6 2 3 4)
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
 SCALE_LOG="$STATE_DIR/monitor-scaling.log"
@@ -103,72 +105,13 @@ normalize_scale() {
   awk 'NR == 1 { printf "%g\n", $0 }'
 }
 
-monitor_lua() {
-  echo "$HOME/.config/hypr/monitors.lua"
-}
-
-# The line holding the rule that governs this display, or nothing when the user
-# has not written one. Comments are cut before matching, because the shipped
-# config carries commented examples that otherwise read as rules. The catch-all
-# is skipped: it describes every display, so it is nobody's own rule. A `desc:`
-# identifier matches by prefix, the way Hyprland matches it, so the abbreviated
-# descriptions people actually write still resolve.
-display_rule_line() {
-  local name="$1" description="$2" lua
-
-  lua="$(monitor_lua)"
-  [[ -f $lua ]] || return 0
-
-  awk -v name="$name" -v description="$description" '
-    { line = $0; sub(/--.*/, "", line) }
-    line !~ /hl\.monitor/ { next }
-    match(line, /output[[:space:]]*=[[:space:]]*"[^"]*"/) {
-      id = substr(line, RSTART, RLENGTH)
-      sub(/^output[[:space:]]*=[[:space:]]*"/, "", id)
-      sub(/"$/, "", id)
-      if (id == "") next
-      if (id == name) { print NR; exit }
-      if (index(id, "desc:") == 1 && description != "" && index(description, substr(id, 6)) == 1) { print NR; exit }
-    }
-  ' "$lua"
-}
-
-# Rewrite one rule's scale and nothing else, so the mode, the position and the
-# identifier the user chose all survive. A rule naming no scale gains one; a
-# rule whose scale is a variable reference gets the literal, since the value the
-# user just picked is not the one the variable stands for.
-set_rule_scale() {
-  local line="$1" scale="$2" lua
-
-  lua="$(monitor_lua)"
-
-  awk -v target="$line" -v scale="$scale" '
-    NR != target { print; next }
-    {
-      if (match($0, /scale[[:space:]]*=[[:space:]]*("[^"]*"|[^,;)}[:space:]]+)/)) {
-        printf "%s%s%s\n", substr($0, 1, RSTART - 1), "scale = " scale, substr($0, RSTART + RLENGTH)
-      } else if (match($0, /}[[:space:]]*\)/)) {
-        prefix = substr($0, 1, RSTART - 1)
-        sub(/[[:space:]]+$/, "", prefix)
-        printf "%s, scale = %s %s\n", prefix, scale, substr($0, RSTART)
-      } else {
-        print
-      }
-    }
-  ' "$lua" >"$lua.tmp" && mv "$lua.tmp" "$lua"
-}
-
-# GDK_SCALE is one value for the whole session, so only a change to the display
-# the user is actually on gets to redefine it.
 set_gdk_scale() {
-  local gdk_scale="$1" lua
+  local gdk_scale="$1"
 
-  lua="$(monitor_lua)"
-
-  if grep -q '^local omarchy_gdk_scale = ' "$lua"; then
-    sed -i -E "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${gdk_scale}|" "$lua"
+  if grep -q '^local omarchy_gdk_scale = ' "$MONITOR_LUA"; then
+    sed -i -E "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${gdk_scale}|" "$MONITOR_LUA"
   else
-    sed -i -E 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$gdk_scale"'")|' "$lua"
+    sed -i -E 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$gdk_scale"'")|' "$MONITOR_LUA"
   fi
 }
 
@@ -187,7 +130,6 @@ set_scale() {
   # GTK only honors integer GDK_SCALE values, so persist the nearest whole
   # factor even when the monitor scale itself is fractional.
   local new_gdk_scale="$(awk -v scale="$new_scale" 'BEGIN { printf "%d", int(scale + 0.5) }')"
-  local monitor_lua="$HOME/.config/hypr/monitors.lua"
 
   # `position = "auto"` lets Hyprland place the displays, as it always has here.
   # A display's logical size changes with its scale, so deciding where the others
@@ -201,41 +143,24 @@ set_scale() {
   # reloads Hyprland, which re-applies every rule — so a write that does not
   # describe what was just applied does not merely fail to persist, it undoes
   # the change a second after it was made.
-  [[ -f $monitor_lua ]] || return 0
+  #
+  # It goes to the rule for this display, never to the catch-all. The catch-all
+  # speaks for every display, so writing a scale there answers for monitors
+  # nobody asked about, and it is overridden anyway for any display that has a
+  # rule of its own.
+  [[ -f $MONITOR_LUA ]] || return 0
 
   local rule_line
   rule_line="$(display_rule_line "$active_monitor" "$target_description")"
 
   if [[ -n $rule_line ]]; then
-    # A rule of the display's own overrides the catch-all, so the catch-all is
-    # the wrong thing to write: Hyprland would keep applying the rule and the
-    # new scale would never take effect.
     set_rule_scale "$rule_line" "$new_scale"
-  elif [[ $target_focused == "true" ]]; then
-    # Nothing describes this display on its own and the user is on it, so the
-    # generic default is theirs to move — which is what Omarchy has always done.
-    if grep -q '^local omarchy_monitor_scale = ' "$monitor_lua"; then
-      sed -i -E "s|^local omarchy_monitor_scale = .*|local omarchy_monitor_scale = ${new_scale}|" "$monitor_lua"
-    elif grep -Eq '^hl\.monitor\(\{ output = "", mode = "preferred", position = "auto", scale = ("auto"|[0-9.]+) \}\)' "$monitor_lua"; then
-      sed -i -E "s|^(hl\.monitor\(\{ output = \"\", mode = \"preferred\", position = \"auto\", scale = )([^ ]+)( \}\))|\\1${new_scale}\\3|" "$monitor_lua"
-    else
-      return 0
-    fi
   else
-    # A display the user is not on, following a catch-all that speaks for every
-    # display. Moving that would resize the rest, so give this one a rule of its
-    # own instead. `preferred` and `auto` are what the catch-all was already
-    # giving it, so the scale is the only thing that changes.
-    # A file whose last line has no newline would otherwise take the rule onto
-    # the end of that line, and a config that does not parse takes the whole
-    # session's monitor configuration with it.
-    [[ -s $monitor_lua && -n $(tail -c1 "$monitor_lua") ]] && printf '\n' >>"$monitor_lua"
-
-    printf 'hl.monitor({ output = "%s", mode = "preferred", position = "auto", scale = %s })\n' \
-      "$active_monitor" "$new_scale" >>"$monitor_lua"
-    return 0
+    append_display_rule "$active_monitor" "$new_scale"
   fi
 
+  # GDK_SCALE is one value for the whole session, so only a change to the
+  # display the user is actually on gets to redefine it.
   [[ $target_focused == "true" ]] && set_gdk_scale "$new_gdk_scale"
 
   return 0
