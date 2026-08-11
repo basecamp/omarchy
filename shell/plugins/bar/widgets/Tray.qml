@@ -529,31 +529,30 @@ BarWidget {
     padding: Style.space(8)
     borderColor: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.45)
     contentWidth: trayMenuPopup.fittedContentWidth(Style.space(232))
-    contentHeight: trayMenuPopup.fittedContentHeight(trayMenuColumn.implicitHeight, Style.space(420))
+    contentHeight: trayMenuPopup.fittedContentHeight(menuHeaderHeight + trayMenuColumn.implicitHeight, Style.space(420))
 
-    Flickable {
-      id: trayMenuFlick
+    // Column skips invisible children but keeps reporting their height, so
+    // read the header's extent through its own visibility.
+    readonly property int menuHeaderHeight: menuHeader.visible ? menuHeader.implicitHeight : 0
+
+    Column {
+      id: trayMenuLayout
       anchors.fill: parent
-      contentWidth: width
-      contentHeight: trayMenuColumn.implicitHeight
-      clip: true
-      boundsBehavior: Flickable.StopAtBounds
-      flickableDirection: Flickable.VerticalFlick
-      interactive: contentHeight > height
+      spacing: 0
 
-      ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
+      // Header for a drilled-into submenu: names where we are and walks back
+      // out. Pinned above the Flickable rather than scrolling with the rows,
+      // so the way back stays reachable in a submenu taller than the card.
+      // Only present below the root level, so the root menu is unchanged.
       Column {
-        id: trayMenuColumn
-        width: trayMenuFlick.width
+        id: menuHeader
+        visible: root.submenuDepth > 0
+        width: trayMenuLayout.width
         spacing: 0
 
-        // Header for a drilled-into submenu: names where we are and walks back
-        // out. Only present below the root level, so the root menu is unchanged.
         Item {
           id: menuBackRow
-          visible: root.submenuDepth > 0
-          width: trayMenuColumn.width
+          width: menuHeader.width
           implicitHeight: Style.space(30)
 
           Rectangle {
@@ -602,8 +601,7 @@ BarWidget {
         }
 
         Item {
-          visible: root.submenuDepth > 0
-          width: trayMenuColumn.width
+          width: menuHeader.width
           implicitHeight: Style.space(11)
 
           Rectangle {
@@ -617,118 +615,138 @@ BarWidget {
             opacity: 0.45
           }
         }
+      }
 
-        Repeater {
-          model: root.currentChildren
+      Flickable {
+        id: trayMenuFlick
+        width: trayMenuLayout.width
+        height: trayMenuLayout.height - trayMenuPopup.menuHeaderHeight
+        contentWidth: width
+        contentHeight: trayMenuColumn.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        flickableDirection: Flickable.VerticalFlick
+        interactive: contentHeight > height
 
-          delegate: Item {
-            id: menuRow
-            required property var modelData
-            required property int index
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-            readonly property string rowText: String(modelData.text || "")
-            readonly property string activeTitle: root.activeTrayItem ? String(root.activeTrayItem.title || root.activeTrayItem.id || "") : ""
-            // Both only ever describe the root menu; inside a submenu the first
-            // rows are real entries and must not be swallowed.
-            readonly property bool atRoot: root.submenuDepth === 0
-            readonly property bool rootTitleEntry: atRoot && index === 0 && modelData.hasChildren && rowText.toLowerCase() === activeTitle.toLowerCase()
-            readonly property bool leadingSeparator: atRoot && modelData.isSeparator && index <= 1
-            readonly property bool hiddenRow: rootTitleEntry || leadingSeparator
+        Column {
+          id: trayMenuColumn
+          width: trayMenuFlick.width
+          spacing: 0
 
-            visible: !hiddenRow
-            width: trayMenuColumn.width
-            implicitHeight: hiddenRow ? 0 : (modelData.isSeparator ? Style.space(11) : Style.space(30))
-            opacity: modelData.enabled ? 1.0 : 0.45
+          Repeater {
+            model: root.currentChildren
 
-            Rectangle {
-              visible: menuRow.modelData.isSeparator
-              anchors.left: parent.left
-              anchors.leftMargin: Style.space(10)
-              anchors.right: parent.right
-              anchors.rightMargin: Style.space(10)
-              anchors.verticalCenter: parent.verticalCenter
-              height: 1
-              color: Color.popups.border
-              opacity: 0.45
-            }
+            delegate: Item {
+              id: menuRow
+              required property var modelData
+              required property int index
 
-            Rectangle {
-              visible: !menuRow.modelData.isSeparator
-              anchors.fill: parent
-              radius: Math.max(2, Style.cornerRadius)
-              color: rowMouse.containsMouse && menuRow.modelData.enabled ? Style.hoverFillFor(root.foreground, root.foreground) : "transparent"
-            }
+              readonly property string rowText: String(modelData.text || "")
+              readonly property string activeTitle: root.activeTrayItem ? String(root.activeTrayItem.title || root.activeTrayItem.id || "") : ""
+              // Both only ever describe the root menu; inside a submenu the first
+              // rows are real entries and must not be swallowed.
+              readonly property bool atRoot: root.submenuDepth === 0
+              readonly property bool rootTitleEntry: atRoot && index === 0 && modelData.hasChildren && rowText.toLowerCase() === activeTitle.toLowerCase()
+              readonly property bool leadingSeparator: atRoot && modelData.isSeparator && index <= 1
+              readonly property bool hiddenRow: rootTitleEntry || leadingSeparator
 
-            Text {
-              visible: !menuRow.modelData.isSeparator && menuRow.modelData.buttonType !== QsMenuButtonType.None
-              anchors.verticalCenter: parent.verticalCenter
-              anchors.left: parent.left
-              width: Style.space(22)
-              horizontalAlignment: Text.AlignHCenter
-              text: menuRow.modelData.checkState === Qt.Checked ? "\uf00c" : ""
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-            }
+              visible: !hiddenRow
+              width: trayMenuColumn.width
+              implicitHeight: hiddenRow ? 0 : (modelData.isSeparator ? Style.space(11) : Style.space(30))
+              opacity: modelData.enabled ? 1.0 : 0.45
 
-            Image {
-              id: menuIcon
-              visible: !menuRow.modelData.isSeparator && String(menuRow.modelData.icon || "") !== ""
-              anchors.verticalCenter: parent.verticalCenter
-              anchors.left: parent.left
-              anchors.leftMargin: Style.space(24)
-              width: Style.space(16)
-              height: Style.space(16)
-              fillMode: Image.PreserveAspectFit
-              // Decode at physical pixels: IconImage uses the logical size,
-              // which leaves PNG icons upscaled and blurry on HiDPI displays.
-              sourceSize.width: width * Screen.devicePixelRatio
-              sourceSize.height: height * Screen.devicePixelRatio
-              source: menuRow.modelData.icon
-            }
+              Rectangle {
+                visible: menuRow.modelData.isSeparator
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(10)
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(10)
+                anchors.verticalCenter: parent.verticalCenter
+                height: 1
+                color: Color.popups.border
+                opacity: 0.45
+              }
 
-            Text {
-              visible: !menuRow.modelData.isSeparator
-              anchors.verticalCenter: parent.verticalCenter
-              anchors.left: parent.left
-              anchors.leftMargin: menuIcon.visible ? Style.space(46) : Style.space(28)
-              anchors.right: submenuGlyph.left
-              anchors.rightMargin: Style.space(8)
-              text: menuRow.rowText
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              elide: Text.ElideRight
-            }
+              Rectangle {
+                visible: !menuRow.modelData.isSeparator
+                anchors.fill: parent
+                radius: Math.max(2, Style.cornerRadius)
+                color: rowMouse.containsMouse && menuRow.modelData.enabled ? Style.hoverFillFor(root.foreground, root.foreground) : "transparent"
+              }
 
-            Text {
-              id: submenuGlyph
-              visible: !menuRow.modelData.isSeparator && menuRow.modelData.hasChildren
-              anchors.verticalCenter: parent.verticalCenter
-              anchors.right: parent.right
-              anchors.rightMargin: Style.space(10)
-              text: "\u203a"
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-            }
+              Text {
+                visible: !menuRow.modelData.isSeparator && menuRow.modelData.buttonType !== QsMenuButtonType.None
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                width: Style.space(22)
+                horizontalAlignment: Text.AlignHCenter
+                text: menuRow.modelData.checkState === Qt.Checked ? "\uf00c" : ""
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+              }
 
-            MouseArea {
-              id: rowMouse
-              anchors.fill: parent
-              hoverEnabled: true
-              enabled: !menuRow.modelData.isSeparator && menuRow.modelData.enabled
-              cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-              onClicked: {
-                if (root.menuLevelSettling) return
-                if (menuRow.modelData.hasChildren) {
-                  // Reset scroll BEFORE swapping the model: the swap destroys
-                  // this delegate synchronously and ids stop resolving after.
-                  trayMenuFlick.contentY = 0
-                  root.enterSubmenu(menuRow.modelData, menuRow.rowText)
-                } else {
-                  menuRow.modelData.triggered()
-                  root.close()
+              Image {
+                id: menuIcon
+                visible: !menuRow.modelData.isSeparator && String(menuRow.modelData.icon || "") !== ""
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(24)
+                width: Style.space(16)
+                height: Style.space(16)
+                fillMode: Image.PreserveAspectFit
+                // Decode at physical pixels: IconImage uses the logical size,
+                // which leaves PNG icons upscaled and blurry on HiDPI displays.
+                sourceSize.width: width * Screen.devicePixelRatio
+                sourceSize.height: height * Screen.devicePixelRatio
+                source: menuRow.modelData.icon
+              }
+
+              Text {
+                visible: !menuRow.modelData.isSeparator
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: menuIcon.visible ? Style.space(46) : Style.space(28)
+                anchors.right: submenuGlyph.left
+                anchors.rightMargin: Style.space(8)
+                text: menuRow.rowText
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                elide: Text.ElideRight
+              }
+
+              Text {
+                id: submenuGlyph
+                visible: !menuRow.modelData.isSeparator && menuRow.modelData.hasChildren
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(10)
+                text: "\u203a"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+              }
+
+              MouseArea {
+                id: rowMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                enabled: !menuRow.modelData.isSeparator && menuRow.modelData.enabled
+                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: {
+                  if (root.menuLevelSettling) return
+                  if (menuRow.modelData.hasChildren) {
+                    // Reset scroll BEFORE swapping the model: the swap destroys
+                    // this delegate synchronously and ids stop resolving after.
+                    trayMenuFlick.contentY = 0
+                    root.enterSubmenu(menuRow.modelData, menuRow.rowText)
+                  } else {
+                    menuRow.modelData.triggered()
+                    root.close()
+                  }
                 }
               }
             }
