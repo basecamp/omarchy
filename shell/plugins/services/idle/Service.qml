@@ -48,6 +48,12 @@ Item {
   readonly property int lockDelaySeconds: idleSchedule.lockDelaySeconds
   readonly property int screenOffDelaySeconds: idleSchedule.screenOffDelaySeconds
 
+  // Locking already blanks the screens through its own service. When the lock
+  // is due at or before this cycle's screen-off deadline, launching our own
+  // blank first would race the lock service's independent wake path with a
+  // process it doesn't know about -- the lock subsumes it, so skip it.
+  readonly property bool screenOffSubsumedByLock: root.lockOnIdle && root.screenOffDelaySeconds >= root.lockDelaySeconds
+
   readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
   readonly property string screensaverClass: "org.omarchy.screensaver"
 
@@ -110,13 +116,24 @@ Item {
   // If activity lands while omarchy-system-blank is still running, firing wake
   // right away races it -- whichever exits last wins, so the blank can finish
   // after the wake and leave the screens dark despite the cycle being over.
-  // Queue the wake for screenOffProcess's own onExited instead.
+  // Record the request and let flushPendingWake() decide when it's safe to
+  // actually launch it.
   function wakeScreens() {
-    if (screenOffProcess.running) {
-      root.wakeAfterBlankPending = true
-      return
-    }
-    runProcess(wakeProcess, "wake", "omarchy-system-wake")
+    root.wakeAfterBlankPending = true
+    root.flushPendingWake()
+  }
+
+  // A pending wake can also fail to launch because wakeProcess itself is
+  // still finishing an earlier wake (reachable with the one-second rearm
+  // floor: a new blank can complete while the previous wake is still
+  // restoring the displays). The flag is only cleared once runProcess()
+  // actually starts it, so both screenOffProcess and wakeProcess retry this
+  // on exit instead of a busy launch silently dropping the request.
+  function flushPendingWake() {
+    if (!root.wakeAfterBlankPending) return
+    if (screenOffProcess.running) return
+    if (!runProcess(wakeProcess, "wake", "omarchy-system-wake")) return
+    root.wakeAfterBlankPending = false
   }
 
   // Turning the screens back on after activity that did not end the cycle. The
@@ -144,8 +161,12 @@ Item {
     root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
     // The lock service owns the displays from here, so this cycle's blank is no
-    // longer ours to report or re-arm.
+    // longer ours to report, re-arm, or wake from -- a screen-off blank still
+    // finishing in the background (screen-off can legitimately fire before the
+    // lock, so this is reachable even outside the subsumed case above) must not
+    // un-blank the lock screen once it exits.
     root.screenOffThisCycle = false
+    root.wakeAfterBlankPending = false
     resetScreensaverWindows()
     runProcess(lockProcess, "lock", "omarchy-system-lock")
   }
@@ -169,7 +190,10 @@ Item {
 
     // Armed before the lock: lockSystem() stops every idle timer and a zero delay
     // runs it inline, so anything started after it would outlive its own cycle.
-    if (root.screenOffOnIdle) {
+    // Skipped entirely when the lock subsumes this deadline (see
+    // screenOffSubsumedByLock): racing our own blank against the lock
+    // service's independent wake path would be worse than doing nothing.
+    if (root.screenOffOnIdle && !root.screenOffSubsumedByLock) {
       if (root.screenOffDelaySeconds === 0) turnOffScreens("screen-off-immediate")
       else screenOffTimer.restart()
     }
@@ -396,7 +420,7 @@ Item {
     // The offset from the shared idle notification: the first blank of a cycle.
     interval: root.screenOffDelaySeconds * 1000
     repeat: false
-    onTriggered: if (root.screenOffOnIdle && root.idleEnabled && root.idledThisCycle) root.turnOffScreens("screen-off-timeout")
+    onTriggered: if (root.screenOffOnIdle && !root.screenOffSubsumedByLock && root.idleEnabled && root.idledThisCycle) root.turnOffScreens("screen-off-timeout")
   }
 
   Timer {
@@ -405,7 +429,7 @@ Item {
     // starts over rather than resuming a spent offset.
     interval: root.screenOffRearmSeconds * 1000
     repeat: false
-    onTriggered: if (root.screenOffOnIdle && root.idleEnabled && root.idledThisCycle) root.turnOffScreens("screen-off-rearmed")
+    onTriggered: if (root.screenOffOnIdle && !root.screenOffSubsumedByLock && root.idleEnabled && root.idledThisCycle) root.turnOffScreens("screen-off-rearmed")
   }
 
   Timer {
@@ -431,8 +455,11 @@ Item {
 
   onLockOnIdleChanged: syncSwitchTimer(root.lockOnIdle, lockTimer, root.lockDelaySeconds)
 
+  // Lock is never subsumed by screen-off -- only screen-off can be subsumed by
+  // lock (screenOffSubsumedByLock), since lock is the deadline being compared
+  // against.
   onScreenOffOnIdleChanged: {
-    syncSwitchTimer(root.screenOffOnIdle, screenOffTimer, root.screenOffDelaySeconds)
+    syncSwitchTimer(root.screenOffOnIdle && !root.screenOffSubsumedByLock, screenOffTimer, root.screenOffDelaySeconds)
     if (root.screenOffOnIdle) return
     screenOffRearmTimer.stop()
     // Turning the switch off while the panels are already asleep must not leave
@@ -471,15 +498,15 @@ Item {
     id: screenOffProcess
     onExited: function(exitCode, exitStatus) {
       root.logEvent("process-exit", "screen-off exitCode=" + exitCode + " status=" + exitStatus)
-      if (root.wakeAfterBlankPending) {
-        root.wakeAfterBlankPending = false
-        root.runProcess(wakeProcess, "wake", "omarchy-system-wake")
-      }
+      root.flushPendingWake()
     }
   }
   Process {
     id: wakeProcess
-    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "wake exitCode=" + exitCode + " status=" + exitStatus) }
+    onExited: function(exitCode, exitStatus) {
+      root.logEvent("process-exit", "wake exitCode=" + exitCode + " status=" + exitStatus)
+      root.flushPendingWake()
+    }
   }
 
   Process {

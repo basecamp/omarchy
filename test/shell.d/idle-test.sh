@@ -169,7 +169,7 @@ pass "screens-off timeout reader floors and falls back like the other timeouts"
 # its own cycle. This is a source-order proxy for that guarantee, not a runtime
 # check -- there's no headless way to drive startIdleCycle() from this suite.
 service="$ROOT/shell/plugins/services/idle/Service.qml"
-screen_off_line=$(rg -n 'if \(root\.screenOffOnIdle\) \{' "$service" | head -1 | cut -d: -f1)
+screen_off_line=$(rg -n 'if \(root\.screenOffOnIdle && !root\.screenOffSubsumedByLock\) \{' "$service" | head -1 | cut -d: -f1)
 lock_line=$(rg -n 'if \(root\.lockOnIdle\) \{' "$service" | head -1 | cut -d: -f1)
 ((screen_off_line < lock_line)) || fail "screen-off is armed before the lock in startIdleCycle"
 pass "screen-off is armed before the lock in startIdleCycle"
@@ -188,27 +188,49 @@ fi
 pass "the idle service blanks through omarchy-system-blank"
 
 # Blank and wake are separate async processes; firing wake while a blank is
-# still in flight races it and can leave the screens dark. wakeScreens() must
-# check screenOffProcess.running and defer to its onExited instead of every
-# caller firing the wake process directly. This is a source-level check for
-# that shape, not a runtime one -- there's no headless way to race two
-# Process launches from this suite.
-rg -q 'function wakeScreens\(\)' "$service" || fail "wakeScreens() must exist to serialize blank and wake"
-rg -A3 'function wakeScreens\(\)' "$service" | rg -q 'screenOffProcess\.running' ||
-  fail "wakeScreens() must check screenOffProcess.running before firing a wake"
+# still in flight races it and can leave the screens dark. A pending wake can
+# also fail to launch because wakeProcess itself is still finishing an
+# earlier wake -- reachable with the one-second rearm floor. flushPendingWake()
+# must only clear the pending flag once the wake process actually launches,
+# and both process exits must retry it, so a wake requested while busy is
+# never silently dropped. This is a source-level check for that shape, not a
+# runtime one -- there's no headless way to race two Process launches from
+# this suite.
+rg -q 'function wakeScreens\(\)' "$service" || fail "wakeScreens() must exist to record a wake request"
+rg -q 'function flushPendingWake\(\)' "$service" ||
+  fail "flushPendingWake() must exist to retry a wake request once whatever was busy exits"
+rg -A4 'function flushPendingWake\(\)' "$service" | rg -q 'screenOffProcess\.running' ||
+  fail "flushPendingWake() must not launch a wake while a blank is still running"
+rg -A4 'function flushPendingWake\(\)' "$service" | rg -q 'if \(!runProcess\(wakeProcess, "wake", "omarchy-system-wake"\)\) return' ||
+  fail "flushPendingWake() must only clear the pending flag once the wake process actually launches"
 
 wake_call_sites=$(rg -c '\bwakeScreens\(\)' "$service")
-((wake_call_sites >= 3)) ||
+((wake_call_sites == 4)) ||
   fail "rearmScreenOff, cancelIdleCycle, and the screen-off switch handler must all wake through wakeScreens()"
 
-rg -A5 'id: screenOffProcess' "$service" | rg -q 'wakeAfterBlankPending' ||
-  fail "screenOffProcess.onExited must fire a wake deferred during blanking"
+for process_id in screenOffProcess wakeProcess; do
+  rg -A4 "id: $process_id" "$service" | rg -q 'root\.flushPendingWake\(\)' ||
+    fail "$process_id.onExited must retry a pending wake"
+done
 
 direct_wake_calls=$(rg -c 'runProcess\(wakeProcess, "wake", "omarchy-system-wake"\)' "$service")
-((direct_wake_calls == 2)) ||
-  fail "omarchy-system-wake should only be launched from wakeScreens() and screenOffProcess.onExited"
+((direct_wake_calls == 1)) ||
+  fail "omarchy-system-wake should only be launched from inside flushPendingWake()"
 
-pass "a wake requested while blanking is in flight is deferred until the blank exits"
+pass "a wake requested while blanking or a previous wake is in flight is retried until it launches"
+
+# Locking already blanks the screens through its own service. When the lock
+# is due at or before the screen-off deadline, launching our own blank first
+# would race the lock service's independent wake path with a process it
+# doesn't know about, so screen-off must be skipped everywhere it could fire.
+rg -q 'screenOffSubsumedByLock: root\.lockOnIdle && root\.screenOffDelaySeconds >= root\.lockDelaySeconds' "$service" ||
+  fail "screenOffSubsumedByLock must compare against the lock's own delay"
+
+subsumption_guards=$(rg -c '!root\.screenOffSubsumedByLock' "$service")
+((subsumption_guards == 4)) ||
+  fail "startIdleCycle, both screen-off timers, and the screen-off switch handler must all check screenOffSubsumedByLock"
+
+pass "screen-off is skipped everywhere the lock is due at or before its own deadline"
 
 # screenOffTimeoutSeconds is a raw config value and can be configured to 0,
 # unlike the shared idleSchedule() deadline math which already clamps this.
@@ -234,3 +256,11 @@ rg -q 'if \(isIdle \|\| !root\.idleEnabled \|\| !root\.screenOffThisCycle\) retu
 rg -A2 'screen-off-activity' "$service" | rg -q 'root\.handleActiveSignal\(\)' ||
   fail "dark-screen input must route through handleActiveSignal, not wake the screens directly"
 pass "input while the screens are dark wakes them through a dedicated 1s idle monitor"
+
+# Screen-off can legitimately fire before the lock (not subsumed), so a blank
+# can still be finishing in the background when lockSystem() hands display
+# ownership to the lock service. Without disowning a pending wake here, that
+# blank's own exit would later fire an errant wake through the lock screen.
+rg -A20 'function lockSystem\(reason\)' "$service" | rg -q 'root\.wakeAfterBlankPending = false' ||
+  fail "lockSystem() must disown a pending wake, not just this cycle's screen-off ownership"
+pass "locking disowns any pending wake left over from a screen-off blank that outlives it"
