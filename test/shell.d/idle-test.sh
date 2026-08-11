@@ -219,3 +219,18 @@ rg -q 'screenOffRearmSeconds: Math\.max\(1, screenOffTimeoutSeconds\)' "$service
 rg -A4 'id: screenOffRearmTimer' "$service" | rg -q 'interval: root\.screenOffRearmSeconds \* 1000' ||
   fail "screenOffRearmTimer must use the clamped screenOffRearmSeconds, not the raw timeout"
 pass "the screen-off rearm timer clamps a configured zero timeout instead of firing every tick"
+
+# ext-idle-notify only fires "resumed" when leaving the idle state, and the
+# screensaver's launch activity can spend the main monitor's transition before
+# a later blank -- mouse input would then leave the panels dark until the main
+# monitor re-idled. A second 1s monitor runs only while the screens are off to
+# catch that first real input. Source-level shape checks, as above.
+rg -q 'id: screenOffActivityMonitor' "$service" ||
+  fail "a dedicated idle monitor must watch for input while the screens are dark"
+rg -q 'enabled: root\.idleEnabled && root\.screenOffThisCycle' "$service" ||
+  fail "the screen-off watcher must only exist while this cycle's blank is ours"
+rg -q 'if \(isIdle \|\| !root\.idleEnabled \|\| !root\.screenOffThisCycle\) return' "$service" ||
+  fail "the screen-off watcher must guard against the isIdle reset its own disable emits"
+rg -A2 'screen-off-activity' "$service" | rg -q 'root\.handleActiveSignal\(\)' ||
+  fail "dark-screen input must route through handleActiveSignal, not wake the screens directly"
+pass "input while the screens are dark wakes them through a dedicated 1s idle monitor"

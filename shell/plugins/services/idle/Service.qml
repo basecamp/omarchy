@@ -288,6 +288,8 @@ Item {
       lockDelay: root.lockDelaySeconds,
       screenOffDelay: root.screenOffDelaySeconds,
       screenOffActive: root.screenOffThisCycle,
+      screenOffWatcherEnabled: screenOffActivityMonitor.enabled,
+      screenOffWatcherIdle: screenOffActivityMonitor.isIdle,
       wakeAfterBlankPending: root.wakeAfterBlankPending,
       screensaverWindows: root.screensaverWindowCount,
       timers: {
@@ -357,6 +359,29 @@ Item {
     timeout: root.firstIdleTimeoutSeconds
     respectInhibitors: true
     onIsIdleChanged: root.handleIdleChanged()
+  }
+
+  IdleMonitor {
+    id: screenOffActivityMonitor
+    // ext-idle-notify only reports "resumed" on the way out of idle, and the
+    // screensaver's launch activity can spend the main monitor's transition
+    // (see handleActiveSignal) before a later blank. Real input after that
+    // blank would then go unseen until the main monitor re-idled, leaving the
+    // panels dark under a moving mouse. This watcher exists only while the
+    // screens are off -- the user is by definition idle, so it re-idles within
+    // a second and its own resumed edge relights them. Inhibitors are ignored:
+    // only raw input should wake a blanked display.
+    enabled: root.idleEnabled && root.screenOffThisCycle
+    timeout: 1
+    respectInhibitors: false
+    onIsIdleChanged: {
+      // Disabling a monitor resets isIdle to false and re-enters this handler,
+      // so every path that clears screenOffThisCycle or idleEnabled lands here
+      // before this runs: both are re-checked instead of trusting the binding.
+      if (isIdle || !root.idleEnabled || !root.screenOffThisCycle) return
+      root.logEvent("screen-off-activity", "input while screens are dark")
+      root.handleActiveSignal()
+    }
   }
 
   Timer {
