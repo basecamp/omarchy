@@ -59,8 +59,14 @@ BarWidget {
   }
 
   function resetTrayMenu() {
-    for (var i = 0; i < submenuStack.length; i++) submenuStack[i].opener.destroy()
+    // Clear the reactive stack before tearing anything down, so no binding can
+    // read a partially-destroyed opener while this runs. Then destroy deepest
+    // first: an inner opener's menu entry is owned by its parent's children
+    // model, so destroying a parent first would invalidate an entry a still-
+    // live child opener references.
+    var openers = submenuStack
     submenuStack = []
+    for (var i = openers.length - 1; i >= 0; i--) openers[i].opener.destroy()
   }
 
   function enterSubmenu(entry, title) {
@@ -91,9 +97,13 @@ BarWidget {
       return
     }
 
+    // Reset before switching items: trayMenuOpener.menu binds to
+    // activeTrayItem.menu, so assigning a new item invalidates the old root's
+    // children immediately, before any nested opener referencing them would
+    // otherwise get torn down.
+    resetTrayMenu()
     activeTrayItem = item
     activeTrayAnchor = anchorItem
-    resetTrayMenu()
     trayMenuOpen = true
   }
 
