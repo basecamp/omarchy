@@ -9,13 +9,16 @@
 //     brief: 'en'
 //     description: English (US)
 //
-// The models and option groups it also prints carry no brief, so they never
-// reach the table.
+// The models and option groups it also prints carry no brief of their own, and
+// a brief never carries past the block it was printed in, so neither reaches
+// the table.
 function layoutBriefs(text) {
   var briefs = {}
   var brief = ""
 
   String(text || "").split("\n").forEach(function (line) {
+    if (/^\s*- /.test(line)) brief = ""
+
     var field = line.match(/^  (brief|description): (.*)$/)
     if (!field) return
 
