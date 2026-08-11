@@ -17,6 +17,7 @@ Panel {
   property int brightnessPercent: 0
   property int pendingBrightnessPercent: 0
   property bool brightnessSetQueued: false
+  property bool stateRefreshQueued: false
   property bool brightnessAvailable: false
   property string internalMonitor: ""
   property string externalMonitor: ""
@@ -263,9 +264,18 @@ Panel {
     function hide() { root.close() }
   }
 
+  // A read in flight was started for whichever display was selected at the time,
+  // so dropping a later request leaves that display's brightness and scale shown
+  // under the newly selected one until the next poll, and a brightness set made
+  // in between sends the value the old display reported to the new one. Queue
+  // instead, and run once when the reader stops.
   function refresh() {
-    if (stateProc.running) return
+    if (stateProc.running) {
+      root.stateRefreshQueued = true
+      return
+    }
 
+    root.stateRefreshQueued = false
     stateProc.command = root.selectedMonitor
       ? ["omarchy-monitor-state", root.selectedMonitor]
       : ["omarchy-monitor-state"]
@@ -470,6 +480,11 @@ Panel {
         // whatever Hyprland has focus on.
         if (!root.selectedDisplay) root.selectedMonitor = root.focusedMonitor
       }
+    }
+
+    onRunningChanged: {
+      if (running) return
+      if (root.stateRefreshQueued) root.refresh()
     }
   }
 
