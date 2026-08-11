@@ -51,6 +51,23 @@ valid_channel() {
   normalize_channel "$1" >/dev/null 2>&1
 }
 
+# The channel the legacy install is already on, read the way
+# omarchy-version-channel reads it. Order matters: mirror.omarchy.org is a
+# substring of both of the others.
+detect_installed_channel() {
+  [[ -f /etc/pacman.d/mirrorlist ]] || return 1
+
+  if grep -q 'https://stable-mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
+    echo stable
+  elif grep -q 'https://rc-mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
+    echo rc
+  elif grep -q 'https://mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
+    echo edge
+  else
+    return 1
+  fi
+}
+
 channel_override="${OMARCHY_UPGRADE_CHANNEL:-}"
 channel_override_cli=0
 target_user="${OMARCHY_INSTALL_USER:-}"
@@ -97,6 +114,18 @@ case "$use_dev_packages" in
   0|false|no|off|"") use_dev_packages=0 ;;
   *) fail "Invalid OMARCHY_UPGRADE_DEV value '$use_dev_packages'. Use 1/0, true/false, or pass --dev." ;;
 esac
+
+# Land on the Quattro equivalent of wherever the machine already is, unless the
+# caller said otherwise. Stable machines get the production packages off the
+# stable channel. A machine on rc is a release-candidate machine, and until
+# Quattro ships that means the dev packages out of the edge repo, which is what
+# --dev selects.
+if [[ -z $channel_override ]] && (( ! use_dev_packages )); then
+  case "$(detect_installed_channel || true)" in
+    stable) channel_override=stable ;;
+    rc | edge) use_dev_packages=1 ;;
+  esac
+fi
 
 if (( use_dev_packages )); then
   if (( channel_override_cli )); then
