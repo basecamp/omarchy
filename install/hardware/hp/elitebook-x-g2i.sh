@@ -12,13 +12,13 @@
 #          driver asks for, and two layers of protection against the amp
 #          enumeration race at boot.
 #
-#   Webcam OmniVision OV05C10 on IPU7. Intel's CamHAL cannot drive it: its graph
-#          settings binary is built for a 2944-wide readout while the sensor
-#          exposes 2888x1808, so the ISP receives a negative crop and emits
-#          black frames. The package bypasses psys/CamHAL and does debayer, auto
-#          exposure and white balance in userspace instead. See its README for
-#          the trade-offs -- it is a workaround, not a fix, and the underlying
-#          bug is filed against intel/ipu7-camera-hal.
+#   Webcam OmniVision OV05C10 on IPU7. Intel's CamHAL does not produce usable
+#          frames here -- psys completes them and the output is black -- and the
+#          cause is not established. The package bypasses psys/CamHAL and does
+#          debayer, auto exposure and white balance in userspace instead. See its
+#          README for the trade-offs and for why the obvious reading of the crop
+#          log is wrong. It is a workaround, and the hardware path remains an
+#          open question rather than a closed one.
 #
 # Both are gated on the model string so they cannot touch other EliteBooks,
 # whose speaker layout and camera module differ.
