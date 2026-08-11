@@ -94,8 +94,11 @@ grep -F 'omarchy-hyprland-toggle-enabled $TOGGLE || return 0' "$monitor_internal
 pass "internal monitor helper can re-enable disabled laptop displays"
 pass "internal monitor recovery only wakes displays when it re-enables one"
 
-grep -F 'omarchy-hyprland-monitor-external-active' "$monitor_mirror" >/dev/null
-pass "internal mirror helper recovers when no active external display remains"
+# Physical presence, not Hyprland's enabled state: a display the user switched
+# off is still plugged in, and clearing the mirror for it discards a choice that
+# re-enabling cannot restore.
+grep -F 'omarchy-hw-external-monitors' "$monitor_mirror" >/dev/null
+pass "internal mirror helper recovers only when the external display is unplugged"
 
 grep -F 'switch:on:Lid Switch", nil, "omarchy-system-lid-close"' "$utilities" >/dev/null
 grep -F 'switch:off:Lid Switch", nil, "omarchy-hyprland-monitor-clamshell"' "$utilities" >/dev/null

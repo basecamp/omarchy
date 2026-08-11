@@ -1,11 +1,22 @@
 #!/bin/bash
 
 # omarchy:summary=Enable, disable, toggle, or recover mirroring the internal display to an external monitor
-# omarchy:args=<on|off|toggle|recover>
+# omarchy:args=<on|off|toggle|recover> [--quiet]
+
+# Callers that cycle mirroring as plumbing rather than as the user's request
+# pass --quiet, so a single action does not stack up notifications nobody asked
+# for. Failures still speak up.
+quiet=0
+[[ ${2:-} == "--quiet" ]] && quiet=1
+
+announce() {
+  ((quiet)) && return 0
+  omarchy-notification-send "$@"
+}
 
 TOGGLE="internal-monitor-mirror"
-TOGGLE_FLAG="$HOME/.local/state/omarchy/toggles/hypr/$TOGGLE.lua"
 DISABLE_TOGGLE="internal-monitor-disable"
+TOGGLE_FLAG="$HOME/.local/state/omarchy/toggles/hypr/$TOGGLE.lua"
 
 INTERNAL=$(omarchy-hyprland-monitor-laptop)
 # The first active external monitor
@@ -25,8 +36,31 @@ on() {
   omarchy-hyprland-toggle $DISABLE_TOGGLE off
 
   if omarchy-hyprland-toggle-disabled $TOGGLE; then
-    printf 'hl.monitor({ output = "%s", mode = "preferred", position = "auto", scale = 1, mirror = "%s" })\n' "$EXTERNAL" "$INTERNAL" >"$TOGGLE_FLAG"
-    omarchy-notification-send -g 󰍹 "Mirroring enabled ($EXTERNAL)"
+    # Pin the mirror to the source's position rather than "auto". A mirrored
+    # display has to occupy the same region as the display it mirrors, and
+    # "auto" only lands there while the output stays up: disabling and
+    # re-enabling it rebuilds the output from the rules, where the user's own
+    # monitors.lua entry supplies its extended position instead. The two then
+    # cover different regions and each shows different content while still
+    # reporting as mirroring.
+    local position
+    position=$(hyprctl monitors -j | jq -r --arg name "$INTERNAL" '[.[] | select(.name == $name)][0] | if . then "\(.x)x\(.y)" else "auto" end')
+    [[ $position =~ ^[0-9-]+x[0-9-]+$ ]] || position="auto"
+
+    # Carry the external display's rotation. Hyprland merges monitor rules per
+    # identifier, so anything this rule leaves out is dropped rather than kept,
+    # and a rotated display would start mirroring sideways relative to the panel
+    # it is on.
+    local transform
+    transform=$(hyprctl monitors -j | jq -r --arg name "$EXTERNAL" '[.[] | select(.name == $name)][0].transform // 0')
+    [[ $transform =~ ^[0-9]+$ ]] || transform=0
+
+    local transform_rule=""
+    ((transform != 0)) && transform_rule=", transform = $transform"
+
+    printf 'hl.monitor({ output = "%s", mode = "preferred", position = "%s", scale = 1, mirror = "%s"%s })\n' \
+      "$EXTERNAL" "$position" "$INTERNAL" "$transform_rule" >"$TOGGLE_FLAG"
+    announce -g 󰍹 "Mirroring enabled ($EXTERNAL)"
     hyprctl reload
   fi
 }
@@ -34,7 +68,7 @@ on() {
 off() {
   if omarchy-hyprland-toggle-enabled $TOGGLE; then
     omarchy-hyprland-toggle $TOGGLE off
-    omarchy-notification-send -g 󰍹 "Extended mode restored"
+    announce -g 󰍹 "Extended mode restored"
   fi
 }
 
@@ -47,7 +81,12 @@ toggle() {
 }
 
 recover() {
-  if ! omarchy-hyprland-monitor-external-active && omarchy-hyprland-toggle-enabled $TOGGLE; then
+  # Physical presence rather than Hyprland's enabled state. A display the user
+  # switched off is still plugged in, and dropping the mirror for it discards a
+  # deliberate choice that re-enabling then cannot restore. Unplugging still
+  # clears the mirror, since a rule pointing at an absent output would leave
+  # mirroring stuck on with nothing to mirror to.
+  if ! omarchy-hw-external-monitors && omarchy-hyprland-toggle-enabled $TOGGLE; then
     omarchy-hyprland-toggle $TOGGLE off
   fi
 }
