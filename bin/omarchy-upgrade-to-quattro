@@ -51,6 +51,23 @@ valid_channel() {
   normalize_channel "$1" >/dev/null 2>&1
 }
 
+# The channel the legacy install is already on, read the way
+# omarchy-version-channel reads it. Order matters: mirror.omarchy.org is a
+# substring of both of the others.
+detect_installed_channel() {
+  [[ -f /etc/pacman.d/mirrorlist ]] || return 1
+
+  if grep -q 'https://stable-mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
+    echo stable
+  elif grep -q 'https://rc-mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
+    echo rc
+  elif grep -q 'https://mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
+    echo edge
+  else
+    return 1
+  fi
+}
+
 channel_override="${OMARCHY_UPGRADE_CHANNEL:-}"
 channel_override_cli=0
 target_user="${OMARCHY_INSTALL_USER:-}"
@@ -98,16 +115,32 @@ case "$use_dev_packages" in
   *) fail "Invalid OMARCHY_UPGRADE_DEV value '$use_dev_packages'. Use 1/0, true/false, or pass --dev." ;;
 esac
 
+# Land on the Quattro equivalent of wherever the machine already is, unless the
+# caller said otherwise. Stable machines get the production packages off the
+# stable channel. rc and edge machines stay on their own mirror, but take the
+# dev packages, because that is where Quattro lives until it ships.
+if [[ -z $channel_override ]] && (( ! use_dev_packages )); then
+  case "$(detect_installed_channel || true)" in
+    stable) channel_override=stable ;;
+    rc) channel_override=rc use_dev_packages=1 ;;
+    edge) channel_override=edge use_dev_packages=1 ;;
+  esac
+fi
+
 if (( use_dev_packages )); then
-  if (( channel_override_cli )); then
+  # The dev packages are only published to the edge package repo, which the rc
+  # and edge channels both point at; only stable is incompatible. rc keeps its
+  # own Arch mirror either way.
+  if [[ -n $channel_override ]]; then
     if ! valid_channel "$channel_override"; then
       fail "Invalid channel '$channel_override'. Use stable, rc, or edge."
     fi
-    if [[ $(normalize_channel "$channel_override") != edge ]]; then
-      fail "--dev uses the edge channel; remove --channel or pass --channel edge."
+    if [[ $(normalize_channel "$channel_override") == stable ]]; then
+      fail "--dev needs the edge package repo; use --channel rc or --channel edge."
     fi
+  else
+    channel_override=edge
   fi
-  channel_override=edge
 fi
 
 if { [[ -n $channel_override ]] || (( channel_override_cli )); } && ! valid_channel "$channel_override"; then
@@ -296,9 +329,6 @@ case "$channel" in
 esac
 
 if (( ! yes )); then
-  package_mode="production Omarchy packages"
-  (( use_dev_packages )) && package_mode="dev packages [omarchy-dev / omarchy-settings-dev]"
-
   printf '\033[2J\033[3J\033[H' >/dev/tty
   cat <<EOF
 ████████▄   ███    █▄     ▄████████     ███         ███        ▄████████  ▄██████▄
@@ -612,9 +642,17 @@ configure_snapper_policy() {
 }
 
 configure_lock_authentication() {
-  local apply_lock=/usr/share/omarchy/bin/omarchy-apply-lock
+  # The upgrade runs against whatever the channel currently ships, which can
+  # still predate the rename of omarchy-setup-lock to omarchy-apply-lock.
+  local apply_lock="" candidate
+  for candidate in /usr/share/omarchy/bin/omarchy-{apply,setup}-lock; do
+    if [[ -x $candidate ]]; then
+      apply_lock=$candidate
+      break
+    fi
+  done
 
-  [[ -x $apply_lock ]] || fail "$apply_lock is unavailable; lock screen authentication could not be configured."
+  [[ -n $apply_lock ]] || fail "Neither omarchy-apply-lock nor omarchy-setup-lock is available under /usr/share/omarchy/bin; lock screen authentication could not be configured."
 
   log "Configuring lock screen authentication"
   as_root env \
@@ -907,40 +945,27 @@ legacy_hypr_config_active() {
 }
 
 populate_legacy_hypr_defaults() {
-  local shim_hypr_dir="$1" backup="$2" tmp_dir clone_dir archive_dir
+  local shim_hypr_dir="$1" backup="$2" tmp_dir archive_dir
 
   rm -rf "$shim_hypr_dir"
   mkdir -p "$shim_hypr_dir"
-  tmp_dir=$(mktemp -d)
-  clone_dir="$tmp_dir/omarchy"
-  archive_dir="$tmp_dir/archive"
 
-  if command -v git >/dev/null 2>&1; then
-    if git clone --depth 1 --branch master --single-branch --filter=blob:none --sparse https://github.com/basecamp/omarchy.git "$clone_dir" >/dev/null 2>&1 && \
-      git -C "$clone_dir" sparse-checkout set default/hypr >/dev/null 2>&1 && \
-      [[ -d $clone_dir/default/hypr ]]; then
-      cp -a "$clone_dir/default/hypr/." "$shim_hypr_dir/"
+  # The backup is the checkout the running session is sourcing right now, so it
+  # is both the correct content and already on disk. Only reach for the network
+  # when there is no backup, which means the legacy root was already a symlink.
+  if [[ -n $backup && -d $backup/default/hypr ]]; then
+    cp -a "$backup/default/hypr/." "$shim_hypr_dir/"
+  elif command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1; then
+    tmp_dir=$(mktemp -d)
+    archive_dir="$tmp_dir/archive"
+    mkdir -p "$archive_dir"
+    if curl -fsSL https://github.com/basecamp/omarchy/archive/refs/heads/master.tar.gz | tar -xz -C "$archive_dir" &&
+      [[ -d $archive_dir/omarchy-master/default/hypr ]]; then
+      cp -a "$archive_dir/omarchy-master/default/hypr/." "$shim_hypr_dir/"
     fi
+    rm -rf "$tmp_dir"
   fi
 
-  if ! find "$shim_hypr_dir" -type f -name '*.conf' -print -quit | grep -q .; then
-    if command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1; then
-      mkdir -p "$archive_dir"
-      if curl -fsSL https://github.com/basecamp/omarchy/archive/refs/heads/master.tar.gz | tar -xz -C "$archive_dir"; then
-        if [[ -d $archive_dir/omarchy-master/default/hypr ]]; then
-          cp -a "$archive_dir/omarchy-master/default/hypr/." "$shim_hypr_dir/"
-        fi
-      fi
-    fi
-  fi
-
-  if ! find "$shim_hypr_dir" -type f -name '*.conf' -print -quit | grep -q .; then
-    if [[ -n $backup && -d $backup/default/hypr ]]; then
-      cp -a "$backup/default/hypr/." "$shim_hypr_dir/"
-    fi
-  fi
-
-  rm -rf "$tmp_dir"
   find "$shim_hypr_dir" -type f -name '*.conf' -print -quit | grep -q .
 }
 
@@ -1072,50 +1097,9 @@ cleanup_retired_services() {
   fi
 }
 
-stop_retired_session_processes() {
-  log "Stopping retired Omarchy 3 session processes"
-
-  if [[ -S $target_runtime_dir/bus ]]; then
-    run_as_user_session systemctl --user stop "${retired_user_units[@]}" >/dev/null 2>&1 || true
-  fi
-
-  # Removed packages do not stop already-running processes. Stop the old UI
-  # only after the new Quickshell has been verified, so users are not left
-  # without a bar/launcher if current-session shell startup fails.
-  run_as_user pkill -x waybar >/dev/null 2>&1 || true
-  run_as_user pkill -x walker >/dev/null 2>&1 || true
-  run_as_user pkill -x elephant >/dev/null 2>&1 || true
-  run_as_user pkill -x mako >/dev/null 2>&1 || true
-  run_as_user pkill -x swayosd-server >/dev/null 2>&1 || true
-  run_as_user_session systemctl --user daemon-reload >/dev/null 2>&1 || true
-}
-
-start_omarchy_shell_session() {
-  # Omarchy quattro starts Quickshell from Hyprland autostart, not a user service.
-  # Reboot is still the real cutover, but start the new shell in the current
-  # Wayland session when possible so users do not sit without a bar after the
-  # retired waybar/walker/elephant processes are stopped.
-  local restart_shell_bin shell_log
-  command -v quickshell >/dev/null || { warn "quickshell is not available; Omarchy shell will start after reboot."; return 1; }
-  restart_shell_bin=/usr/share/omarchy/bin/omarchy-restart-shell
-  [[ -x $restart_shell_bin ]] || { warn "omarchy-restart-shell is not available; Omarchy shell will start after reboot."; return 1; }
-  [[ -f /usr/share/omarchy/shell/shell.qml ]] || { warn "/usr/share/omarchy/shell is missing; Omarchy shell will start after reboot."; return 1; }
-
-  shell_log="$target_home/.local/state/omarchy/omarchy-shell-upgrade.log"
-  run_as_user mkdir -p "$target_home/.local/state/omarchy" >/dev/null 2>&1 || true
-
-  log "Starting Omarchy shell in the current session"
-  run_as_user_wayland_session \
-    QT_QPA_PLATFORM=wayland \
-    'GDK_BACKEND=wayland,x11,*' \
-    bash -c '
-      restart_shell_bin=$1
-      shell_log=$2
-      : >"$shell_log"
-      "$restart_shell_bin" >>"$shell_log" 2>&1
-    ' bash "$restart_shell_bin" "$shell_log" \
-    || { warn "Could not start Omarchy shell in the current session (no live Hyprland session, or shell startup failed); it will start after reboot. See $shell_log"; return 1; }
-}
+# The Omarchy 3 session keeps its bar, launcher, and notifications until the
+# reboot, which is the real cutover. Swapping the UI out underneath a running
+# session buys nothing and only creates ways for the upgrade to look broken.
 
 # Run a command inside the user's live Wayland session. Fails if no session
 # can be discovered. Extra NAME=VALUE args extend the environment.
@@ -1145,31 +1129,49 @@ run_hyprctl_session() {
 }
 
 suppress_hyprland_config_reload() {
+  # Say so up front when the session cannot be reached at all. Otherwise this
+  # silently does nothing and the only evidence is the config error bar that
+  # shows up minutes later.
+  if ! run_as_user_wayland_session true >/dev/null 2>&1; then
+    warn "Could not reach the live Hyprland session; it will report config errors during the swap, and the Omarchy shell will start after reboot."
+    return 0
+  fi
+
   log "Suppressing live Hyprland reloads during the config swap"
+  set_hyprland_reload_state true
+  hyprland_config_reload_suppressed=1
+}
 
-  local changed=0
-  if run_hyprctl_session keyword misc:disable_autoreload true >/dev/null 2>&1; then
-    changed=1
-  fi
-  if run_hyprctl_session eval 'hl.config({ misc = { disable_autoreload = true }, debug = { suppress_errors = true } })' >/dev/null 2>&1; then
-    changed=1
-  fi
-  run_hyprctl_session keyword debug:suppress_errors true >/dev/null 2>&1 || true
+# Which API answers depends on the parser the running Hyprland was started
+# with: the legacy .conf parser only takes keyword, and Quattro's Lua parser
+# rejects it outright with "keyword can't work with non-legacy parsers". The
+# session being upgraded is the legacy one, but the hyprctl binary is whichever
+# the package transaction has installed by then, so ask both ways.
+set_hyprland_reload_state() {
+  local value="$1"
 
-  if (( changed )); then
-    hyprland_config_reload_suppressed=1
-  else
-    warn "Could not disable Hyprland auto-reload; the live session may briefly report config errors."
-  fi
+  run_hyprctl_session keyword misc:disable_autoreload "$value" >/dev/null 2>&1 || true
+  run_hyprctl_session keyword debug:suppress_errors "$value" >/dev/null 2>&1 || true
+  run_hyprctl_session eval \
+    "hl.config({ misc = { disable_autoreload = $value }, debug = { suppress_errors = $value } })" \
+    >/dev/null 2>&1 || true
 }
 
 restore_hyprland_config_reload() {
   (( hyprland_config_reload_suppressed )) || return 0
 
-  run_hyprctl_session keyword misc:disable_autoreload false >/dev/null 2>&1 || true
-  run_hyprctl_session eval 'hl.config({ misc = { disable_autoreload = false } })' >/dev/null 2>&1 || true
-  run_hyprctl_session keyword debug:suppress_errors false >/dev/null 2>&1 || true
-  run_hyprctl_session eval 'hl.config({ debug = { suppress_errors = false } })' >/dev/null 2>&1 || true
+  set_hyprland_reload_state false
+
+  # Backstop. An explicit hyprctl reload re-reads the config from disk, which
+  # resets both keywords above before it reports what it found, so suppression
+  # cannot survive one, and Hyprland keeps the resulting error bar up until a
+  # later clean reload that this script deliberately never performs. Callers
+  # that reload during the swap are supposed to check
+  # OMARCHY_UPGRADE_TO_QUATTRO_LIVE, but one slipping through should not leave
+  # an error bar on a finished upgrade. By now the shims have made the legacy
+  # config resolve again, so clearing the overlay is safe.
+  run_hyprctl_session seterror disable >/dev/null 2>&1 || true
+
   hyprland_config_reload_suppressed=0
 }
 
@@ -1250,27 +1252,33 @@ run_post_upgrade_update_steps() {
   fi
 }
 
-
 enable_system_service() {
   local unit="$1"
   as_root systemctl enable "$unit" >/dev/null 2>&1 || warn "Could not enable $unit; it may not be installed on this system."
 }
 
 apply_firewall_defaults() {
+  # Run the packaged config script rather than a copy of it, the same way
+  # configure_snapper_policy and configure_lock_authentication already do. The
+  # copy this replaces had drifted: it never installed the ufw-docker rules, so
+  # upgraded machines came up without the Docker firewall protections a fresh
+  # install gets.
+  local firewall_script=/usr/share/omarchy/install/config/firewall.sh
+
   if ! command -v ufw >/dev/null 2>&1; then
     warn "ufw is not installed; skipping firewall defaults."
     return 0
   fi
 
+  if ! as_root test -f "$firewall_script"; then
+    warn "$firewall_script is unavailable; firewall defaults were not applied."
+    return 0
+  fi
+
   log "Applying Omarchy firewall defaults"
-  as_root ufw default deny incoming >/dev/null || true
-  as_root ufw default allow outgoing >/dev/null || true
-  as_root ufw allow 53317/udp >/dev/null || true
-  as_root ufw allow 53317/tcp >/dev/null || true
-  as_root ufw allow in proto udp from 172.16.0.0/12 to 172.17.0.1 port 53 comment 'allow-docker-dns' >/dev/null || true
-  as_root ufw allow in proto udp from 192.168.0.0/16 to 172.17.0.1 port 53 comment 'allow-docker-dns' >/dev/null || true
-  as_root sed -i 's/^ENABLED=.*/ENABLED=yes/' /etc/ufw/ufw.conf 2>/dev/null || true
-  enable_system_service ufw.service
+  as_root env OMARCHY_PATH=/usr/share/omarchy PATH="$package_path" \
+    bash -euo pipefail "$firewall_script" ||
+    warn "Could not apply firewall defaults; run 'sudo bash $firewall_script' after reboot."
 }
 
 root_filesystem_encrypted() {
@@ -2418,11 +2426,6 @@ refresh_current_theme_after_upgrade
 # pre-reboot session can keep running safely; the reboot performs the real
 # Omarchy quattro Lua-config cutover.
 restore_hyprland_config_reload
-if start_omarchy_shell_session; then
-  stop_retired_session_processes
-else
-  warn "Leaving retired Omarchy 3 session processes running until reboot."
-fi
 
 upgrade_completed=1
 
