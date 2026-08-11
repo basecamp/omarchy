@@ -83,7 +83,7 @@ run_first_run_step "apply speaker tuning" \
   bash "$OMARCHY_PATH/install/user/first-run/audio-tuning.sh"
 
 omarchy-notification-wait || log_first_run "Timed out waiting for notification service; continuing"
-run_first_run_step "show Wi-Fi/update notifications" \
+run_first_run_step "schedule Wi-Fi/update notifications" \
   bash "$OMARCHY_PATH/install/user/first-run/wifi.sh"
 # Waits for the menu to be answered, so it goes last and leaves the toasts
 # waiting underneath.
