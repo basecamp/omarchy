@@ -36,11 +36,17 @@ function layoutBriefs(text) {
 //
 // Layouts missing from the table fall back to the first word of the description,
 // which reads as ENG/POR but at least says something.
+//
+// Nearly every brief is a bare two-letter code, but a few tack a script onto it
+// (Burmese (Zawgyi) is my-zwg) and the custom layout's is a word, so drop the
+// script and cap the result at the same three characters the fallback gets.
+// The widget sits between fixed neighbours on the bar and has no room to grow.
 function shortLabel(description, briefs) {
   if (!description) return ""
 
   var brief = (briefs || {})[description]
-  return (brief || description.split(/\s+/)[0].substring(0, 3)).toUpperCase()
+  var label = brief ? brief.split("-")[0] : description.split(/\s+/)[0]
+  return label.substring(0, 3).toUpperCase()
 }
 
 if (typeof module !== "undefined") {

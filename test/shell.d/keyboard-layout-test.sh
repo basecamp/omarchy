@@ -36,6 +36,10 @@ const listing = [
   "  variant: ''",
   "  brief: 'es'",
   '  description: Spanish (Latin American)',
+  "- layout: 'mm'",
+  "  variant: 'zawgyi'",
+  "  brief: 'my-zwg'",
+  '  description: Burmese (Zawgyi)',
   'option_groups:',
   "- name: 'grp'",
   '  description: Switching to another layout',
@@ -52,6 +56,8 @@ assertEqual(model.shortLabel('English (US)', briefs), 'EN', 'the label is the la
 assertEqual(model.shortLabel('Portuguese (Brazil)', briefs), 'PT', 'a country variant keeps its language')
 assertEqual(model.shortLabel('Esperanto', briefs), 'EO', 'a layout without a country still gets a code')
 assertEqual(model.shortLabel('Spanish (Latin American)', briefs), 'ES', 'a layout spanning countries still gets a code')
+assertEqual(model.shortLabel('Burmese (Zawgyi)', briefs), 'MY', 'a brief carrying a script drops it')
+assertEqual(model.shortLabel('A user-defined custom Layout', { 'A user-defined custom Layout': 'custom' }), 'CUS', 'a brief that is a word is cut to size')
 
 assertEqual(model.shortLabel('Elvish (Tengwar)', briefs), 'ELV', 'an unlisted layout falls back to its description')
 assertEqual(model.shortLabel('English (US)', {}), 'ENG', 'the label survives an empty table')
