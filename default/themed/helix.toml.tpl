@@ -8,17 +8,16 @@
 "type.builtin" = "magenta"
 "type.enum.variant" = "cyan"
 "constructor" = "blue"
-"constant" = "yellow"
-"constant.builtin" = "yellow"
-"constant.numeric" = "yellow"
+"constant" = "orange"
 "constant.character" = "cyan"
 "constant.character.escape" = "magenta"
 "string" = "green"
 "string.regexp" = "magenta"
 "string.special" = "blue"
+"string.special.symbol" = "red"
 "comment" = { fg = "muted", modifiers = ["italic"] }
 "variable" = "foreground"
-"variable.parameter" = { fg = "magenta", modifiers = ["italic"] }
+"variable.parameter" = { fg = "red", modifiers = ["italic"] }
 "variable.builtin" = "red"
 "variable.other.member" = "blue"
 "label" = "blue"
@@ -27,13 +26,13 @@
 "operator" = "cyan"
 "tag" = "blue"
 "namespace" = { fg = "yellow", modifiers = ["italic"] }
-"special" = "magenta"
+"special" = "blue"
 "attribute" = "yellow"
 
 # Markup
 "markup.heading" = "red"
 "markup.heading.1" = "red"
-"markup.heading.2" = "yellow"
+"markup.heading.2" = "orange"
 "markup.heading.3" = "yellow"
 "markup.heading.4" = "green"
 "markup.heading.5" = "blue"
@@ -92,7 +91,7 @@
 
 "ui.cursor" = { fg = "background", bg = "bright_foreground" }
 "ui.cursor.primary" = { fg = "background", bg = "bright_foreground" }
-"ui.cursor.match" = { fg = "yellow", modifiers = ["bold"] }
+"ui.cursor.match" = { fg = "orange", modifiers = ["bold"] }
 "ui.cursor.primary.normal" = { fg = "background", bg = "bright_foreground" }
 "ui.cursor.primary.insert" = { fg = "background", bg = "green" }
 "ui.cursor.primary.select" = { fg = "background", bg = "magenta" }
@@ -127,6 +126,7 @@ selection_foreground = "{{ selection_foreground }}"
 red = "{{ red }}"
 green = "{{ green }}"
 yellow = "{{ yellow }}"
+orange = "{{ orange }}"
 blue = "{{ blue }}"
 magenta = "{{ magenta }}"
 cyan = "{{ cyan }}"
