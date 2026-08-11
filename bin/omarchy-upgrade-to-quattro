@@ -612,9 +612,17 @@ configure_snapper_policy() {
 }
 
 configure_lock_authentication() {
-  local apply_lock=/usr/share/omarchy/bin/omarchy-apply-lock
+  # The upgrade runs against whatever the channel currently ships, which can
+  # still predate the rename of omarchy-setup-lock to omarchy-apply-lock.
+  local apply_lock="" candidate
+  for candidate in /usr/share/omarchy/bin/omarchy-{apply,setup}-lock; do
+    if [[ -x $candidate ]]; then
+      apply_lock=$candidate
+      break
+    fi
+  done
 
-  [[ -x $apply_lock ]] || fail "$apply_lock is unavailable; lock screen authentication could not be configured."
+  [[ -n $apply_lock ]] || fail "Neither omarchy-apply-lock nor omarchy-setup-lock is available under /usr/share/omarchy/bin; lock screen authentication could not be configured."
 
   log "Configuring lock screen authentication"
   as_root env \
