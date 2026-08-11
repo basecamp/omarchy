@@ -226,6 +226,11 @@ set_scale() {
     # display. Moving that would resize the rest, so give this one a rule of its
     # own instead. `preferred` and `auto` are what the catch-all was already
     # giving it, so the scale is the only thing that changes.
+    # A file whose last line has no newline would otherwise take the rule onto
+    # the end of that line, and a config that does not parse takes the whole
+    # session's monitor configuration with it.
+    [[ -s $monitor_lua && -n $(tail -c1 "$monitor_lua") ]] && printf '\n' >>"$monitor_lua"
+
     printf 'hl.monitor({ output = "%s", mode = "preferred", position = "auto", scale = %s })\n' \
       "$active_monitor" "$new_scale" >>"$monitor_lua"
     return 0

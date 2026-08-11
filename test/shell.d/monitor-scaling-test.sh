@@ -258,3 +258,27 @@ run_scaling 3
 grep -Fx 'local omarchy_gdk_scale = 3' "$monitor_lua" >/dev/null ||
   fail "scaling the focused display still moves GDK_SCALE"
 pass "GDK_SCALE still follows the focused display"
+
+# --- appending a rule to a file that does not end in a newline ---
+
+# The rule would otherwise land on the end of the last line, and a monitors.lua
+# that does not parse takes the session's whole monitor configuration with it.
+printf 'local omarchy_gdk_scale = 2\nlocal omarchy_monitor_scale = 2' >"$monitor_lua"
+run_scaling --monitor DP-1 1.6
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "the last line survives an appended rule"
+grep -Fx 'hl.monitor({ output = "DP-1", mode = "preferred", position = "auto", scale = 1.6 })' "$monitor_lua" >/dev/null ||
+  fail "the appended rule stands on its own line"
+pass "a rule appended to a file with no trailing newline stays on its own line"
+
+# --- scaling the same display twice does not accumulate rules ---
+
+# The second change has to find the rule the first one wrote, or every
+# adjustment leaves another rule behind and the last one silently wins.
+write_monitor_config
+run_scaling --monitor DP-1 1.6
+run_scaling --monitor DP-1 1
+(( $(grep -c 'output = "DP-1"' "$monitor_lua") == 1 )) ||
+  fail "scaling a display twice leaves one rule"
+grep -F 'scale = 1 }' "$monitor_lua" >/dev/null || fail "the surviving rule carries the latest scale"
+pass "scaling the same display twice rewrites its rule instead of adding another"
