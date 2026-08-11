@@ -17,6 +17,7 @@ Panel {
   property int brightnessPercent: 0
   property int pendingBrightnessPercent: 0
   property bool brightnessSetQueued: false
+  property string pendingBrightnessMonitor: ""
   property bool stateRefreshQueued: false
   property var queuedAction: null
   property bool brightnessAvailable: false
@@ -283,18 +284,26 @@ Panel {
     stateProc.running = true
   }
 
-  function setBrightness(value) {
+  function setBrightness(value, monitor) {
     var percent = Model.clampBrightness(value)
     root.brightnessPercent = percent
     root.pendingBrightnessPercent = percent
 
+    // The display is settled here rather than when the queue drains. Draining
+    // later would read whichever display is selected by then, so a value queued
+    // for one display would be sent to another if the selection moved while the
+    // write was in flight.
+    var target = monitor || root.targetMonitor()
+
     if (setBrightnessProc.running) {
       root.brightnessSetQueued = true
+      root.pendingBrightnessMonitor = target
       return
     }
 
     root.brightnessSetQueued = false
-    setBrightnessProc.command = ["omarchy-brightness-display", "--no-osd", "--monitor", root.targetMonitor(), percent + "%"]
+    root.pendingBrightnessMonitor = ""
+    setBrightnessProc.command = ["omarchy-brightness-display", "--no-osd", "--monitor", target, percent + "%"]
     setBrightnessProc.running = true
   }
 
@@ -523,7 +532,7 @@ Panel {
     onRunningChanged: {
       if (running) return
       if (root.brightnessSetQueued) {
-        root.setBrightness(root.pendingBrightnessPercent)
+        root.setBrightness(root.pendingBrightnessPercent, root.pendingBrightnessMonitor)
       }
     }
   }
