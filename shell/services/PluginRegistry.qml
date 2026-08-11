@@ -300,6 +300,12 @@ QtObject {
   // already on the bar is left exactly where its owner put it.
   function putBarWidget(id, placement) {
     if (inBar(id)) return ""
+    var config = shellConfigProvider ? shellConfigProvider() : null
+    // A clone is the widget it was cloned from wearing its owner's name, so a
+    // bar carrying one already has what is being put on it. Enabling the
+    // source here is how you switch back to the built-in, which is not
+    // something an unattended caller may decide for them.
+    if (findRelativeBarLocation(config, id, "").found) return ""
     // Reading the manifests is a subprocess and IPC answers before it returns,
     // so a widget the scan has not reached yet is not one that does not exist.
     // Say which it is; the caller can ask again.
@@ -307,7 +313,6 @@ QtObject {
     var target = Util.isPlainObject(placement) ? Util.cloneJson(placement) : {}
     var relativeId = String(target.before || target.after || "")
     if (relativeId) {
-      var config = shellConfigProvider ? shellConfigProvider() : null
       if (!findRelativeBarLocation(config, relativeId, String(target.section || "")).found) {
         delete target.before
         delete target.after

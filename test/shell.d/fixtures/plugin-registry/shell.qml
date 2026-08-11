@@ -295,6 +295,20 @@ ShellRoot {
     root.assertDeepEqual(root.config.bar.layout.right, [], "put adds no second entry for a widget already on the bar")
     root.assertEqual(registry.putBarWidget("third.absent", {}), "unknown", "put reports a widget it does not know")
 
+    // Enabling a source whose clone is on the bar is how you switch back to
+    // the built-in. That is the owner's call, not an unattended caller's.
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: [{ id: "local.first-widget", size: 5 }], right: [] } },
+      plugins: []
+    }
+    root.assertEqual(registry.putBarWidget("omarchy.first-widget", {}), "", "put accepts a widget whose clone is on the bar")
+    root.assertDeepEqual(
+      root.config.bar.layout.center,
+      [{ id: "local.first-widget", size: 5 }],
+      "put leaves a clone of the widget it was asked to place alone"
+    )
+
     // Reading the manifests is a subprocess, and IPC answers before it
     // returns: an id the scan has not reached yet is not one that does not
     // exist, and refusing it would fail the migration asking for it.
