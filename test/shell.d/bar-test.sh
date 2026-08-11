@@ -363,6 +363,14 @@ case ${OMARCHY_TEST_SHELL_STATE:-ready} in
     fi
     exit 0
     ;;
+  spawning)
+    # Launched, but with no socket to answer on yet.
+    if [[ ! -e $OMARCHY_TEST_SHELL_MARKER ]]; then
+      touch "$OMARCHY_TEST_SHELL_MARKER"
+      echo "omarchy-shell is not running" >&2
+      exit 1
+    fi
+    ;;
   vanishing)
     # Answers the first ask, then is gone before the fallback lands.
     if [[ ! -e $OMARCHY_TEST_SHELL_MARKER ]]; then
@@ -392,10 +400,20 @@ STUB
 chmod +x "$put_tmp/bin/omarchy-shell"
 
 put_output=$(PATH="$put_tmp/bin:$ROOT/bin:$PATH" OMARCHY_TEST_SHELL_STATE=missing \
+  OMARCHY_SHELL_ABSENT_ATTEMPTS=2 \
   "$ROOT/bin/omarchy-bar" put omarchy.keyboard-layout --after omarchy.clock 2>&1) ||
   fail "put carries on when no shell is running" "$put_output"
 [[ $put_output == *"is not running"* ]] || fail "put says why it placed nothing" "$put_output"
 pass "put carries on when no shell is running"
+
+# A shell being spawned has no socket to answer on yet, and nothing tells the
+# command a launch is under way.
+put_output=$(PATH="$put_tmp/bin:$ROOT/bin:$PATH" OMARCHY_TEST_SHELL_STATE=spawning \
+  OMARCHY_TEST_SHELL_MARKER="$put_tmp/spawned" \
+  "$ROOT/bin/omarchy-bar" put omarchy.keyboard-layout --after omarchy.clock 2>&1) ||
+  fail "put waits for a shell that is being spawned" "$put_output"
+[[ $put_output == "omarchy.keyboard-layout is on the bar" ]] || fail "put places once the shell answers" "$put_output"
+pass "put waits for a shell that is being spawned"
 
 put_output=$(PATH="$put_tmp/bin:$ROOT/bin:$PATH" OMARCHY_TEST_SHELL_STATE=starting OMARCHY_SHELL_READY_ATTEMPTS=2 \
   "$ROOT/bin/omarchy-bar" put omarchy.keyboard-layout --after omarchy.clock 2>&1) &&

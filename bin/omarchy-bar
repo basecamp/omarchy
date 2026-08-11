@@ -243,7 +243,7 @@ bar_widget_default_section() {
 PUT_RESULT=""
 SHELL_ANSWERED=0
 ask_to_put() {
-  local id="$1" placement="$2" attempt
+  local id="$1" placement="$2" attempt absent=0
   for (( attempt = 0; attempt < ${OMARCHY_SHELL_READY_ATTEMPTS:-50}; attempt++ )); do
     if PUT_RESULT=$(omarchy-shell shell putBarWidget "$id" "$placement" 2>&1); then
       SHELL_ANSWERED=1
@@ -256,8 +256,13 @@ ask_to_put() {
       if (( SHELL_ANSWERED )); then
         fail "omarchy-shell did not become ready; $id was not put on the bar"
       fi
-      echo "omarchy-shell is not running; $id was not put on the bar" >&2
-      return 1
+      # A shell being spawned has no socket to answer on yet and nothing says
+      # a launch is under way, so silence is the same either way. Give one a
+      # few seconds to turn up before calling it a machine without a shell.
+      if (( ++absent >= ${OMARCHY_SHELL_ABSENT_ATTEMPTS:-30} )); then
+        echo "omarchy-shell is not running; $id was not put on the bar" >&2
+        return 1
+      fi
     else
       fail "could not put $id on the bar: $PUT_RESULT"
     fi
