@@ -110,6 +110,7 @@ function displaysEqual(left, right) {
     if (a.width !== b.width) return false
     if (a.height !== b.height) return false
     if (a.scale !== b.scale) return false
+    if (a.driven !== b.driven) return false
   }
   return true
 }

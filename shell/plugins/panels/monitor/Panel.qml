@@ -109,9 +109,20 @@ Panel {
     var list = []
     if (brightnessAvailable) list.push("brightness")
     list.push("textsize")
-    if (!selectedDisplay || selectedDisplay.enabled) list.push("scale")
+    if (root.displayTakesScale(selectedDisplay)) list.push("scale")
     if (displays.length > 1) list.push("monitors")
     return list
+  }
+
+  // A display Hyprland is not driving as an output of its own, which today means
+  // one that is mirroring another, is enabled but cannot take a scale: the
+  // scaling command refuses it. Offering the controls anyway means every press
+  // is silently rejected. `driven` is absent from older state output, and an
+  // absent flag must not hide the controls.
+  function displayTakesScale(display) {
+    if (!display) return true
+    if (!display.enabled) return false
+    return display.driven !== false
   }
 
   function sectionCount(section) {
@@ -844,7 +855,7 @@ Panel {
 
           // ---------- Scale ----------
           PanelSeparator {
-            visible: !root.selectedDisplay || root.selectedDisplay.enabled
+            visible: root.displayTakesScale(root.selectedDisplay)
             foreground: root.bar.foreground
           }
 
@@ -853,7 +864,7 @@ Panel {
             spacing: Style.space(10)
             // A dark display has no mode to scale, and the command refuses a
             // display Hyprland is not driving.
-            visible: !root.selectedDisplay || root.selectedDisplay.enabled
+            visible: root.displayTakesScale(root.selectedDisplay)
 
             Item {
               width: parent.width

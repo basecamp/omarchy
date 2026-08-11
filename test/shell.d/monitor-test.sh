@@ -100,3 +100,29 @@ assertDeepEqual(
 
 assertDeepEqual(monitor.parseDisplays('{'), { displays: [], enabledDisplayCount: 0 }, 'monitor handles invalid display JSON')
 JS
+
+# A mirroring display is enabled in `monitors all` but absent from plain
+# `monitors`, and the scaling command refuses it. The panel has to be able to
+# tell it apart from a display that is simply switched off, or it offers scale
+# controls whose every press is silently rejected.
+run_node_test <<'JS'
+const monitor = requireFromRoot('shell/plugins/panels/monitor/Model.js')
+
+const parsed = monitor.parseDisplays(JSON.stringify([
+  { name: 'eDP-1', enabled: true, driven: true, focused: true, width: 2880, height: 1920, scale: 2 },
+  { name: 'DP-7', enabled: true, driven: false, focused: false, width: 5120, height: 2880, scale: 2 }
+]))
+
+assertEqual(parsed.displays.length, 2, 'monitor lists a mirroring display')
+assertEqual(parsed.displays[1].driven, false, 'monitor carries through a display it is not driving')
+assertEqual(parsed.displays[1].enabled, true, 'monitor keeps a mirroring display enabled')
+
+const same = JSON.parse(JSON.stringify(parsed.displays))
+same[1].driven = true
+assertEqual(
+  monitor.displaysEqual(parsed.displays, same),
+  false,
+  'monitor treats a change in driven as a change'
+)
+JS
+pass "monitor distinguishes a display it is not driving from a disabled one"

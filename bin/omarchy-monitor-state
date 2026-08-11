@@ -42,5 +42,14 @@ else
   echo
 fi
 
+# `driven` is not the same as `enabled`. A display that is mirroring another is
+# enabled here but absent from plain `hyprctl monitors`, because Hyprland is not
+# driving it as an output of its own, and the commands that take a `--monitor`
+# refuse it for exactly that reason. Without this the panel offers scale controls
+# for a mirroring display and every press is silently rejected.
+#
+# Read from the payload already in hand rather than asking for the other listing:
+# mirrored and disabled outputs are precisely the ones plain `monitors` leaves
+# out, so a second call would add a way for this to fail without adding an answer.
 printf '%s\n' "$monitors_json" | jq -c \
-  '[.[] | {name, enabled:(.disabled != true), focused:(.focused == true), width, height, scale}]'
+  '[.[] | {name, enabled:(.disabled != true), driven:((.disabled != true) and ((.mirrorOf // "none") == "none")), focused:(.focused == true), width, height, scale}]'
