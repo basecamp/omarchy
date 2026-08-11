@@ -1,3 +1,5 @@
+require("default.hypr.bindings_defaults")
+
 -- Send with explicit mods to the focused surface by omitting the window target,
 -- so universal clipboard shortcuts reach both normal windows and focused
 -- layer-shell surfaces such as Omarchy panels. A virtual keyboard (wtype) won't

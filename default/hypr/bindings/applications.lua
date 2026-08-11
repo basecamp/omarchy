@@ -1,3 +1,5 @@
+require("default.hypr.bindings_defaults")
+
 -- Essential application bindings.
 o.bind(omarchy_bindings.terminal, "Terminal", { omarchy = "terminal" })
 o.bind(omarchy_bindings.browser, "Browser", { omarchy = "browser" })

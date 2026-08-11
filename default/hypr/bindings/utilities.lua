@@ -1,3 +1,5 @@
+require("default.hypr.bindings_defaults")
+
 o.bind(omarchy_bindings.omarchy_menu, "Omarchy menu", "omarchy-menu toggle")
 o.bind(omarchy_bindings.apps_menu, "Apps menu", "omarchy-menu toggle apps")
 o.bind(omarchy_bindings.emojis, "Emojis", "omarchy-shell shell toggle omarchy.emojis")

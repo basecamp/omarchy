@@ -1,3 +1,5 @@
+require("default.hypr.bindings_defaults")
+
 o.bind(omarchy_bindings.close_window, "Close window", hl.dsp.window.close())
 o.bind(omarchy_bindings.close_all_windows, "Close all windows", "omarchy-hyprland-window-close-all")
 

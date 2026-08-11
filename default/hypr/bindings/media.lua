@@ -1,3 +1,5 @@
+require("default.hypr.bindings_defaults")
+
 -- Volume, brightness, keyboard backlight, and touchpad controls.
 o.bind(omarchy_bindings.volume_up, "Volume up", "omarchy-audio-output-volume raise",  { locked = true, repeating = true })
 o.bind(omarchy_bindings.volume_down, "Volume down", "omarchy-audio-output-volume lower",  { locked = true, repeating = true })
