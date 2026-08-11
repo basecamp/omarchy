@@ -305,6 +305,7 @@ Panel {
     // for one display would be sent to another if the selection moved while the
     // write was in flight.
     var target = monitor || root.targetMonitor()
+    if (!target) return
 
     if (setBrightnessProc.running) {
       root.brightnessSetQueued = true
@@ -380,6 +381,11 @@ Panel {
     return root.targetDisplayName
   }
 
+  // Until the first read of an open answers, there is no display to act on. An
+  // empty `--monitor` is Hyprland's catch-all, so acting anyway would reach
+  // every display rather than none.
+  readonly property bool targetKnown: root.targetDisplayName !== ""
+
   // A display can be switched off only when it is neither the one being looked
   // at nor the last one lit. The command enforces both again; this keeps the
   // row from looking actionable when it isn't.
@@ -414,6 +420,7 @@ Panel {
   }
 
   function setScale(scale) {
+    if (!root.targetKnown) return
     root.runAction(["omarchy-hyprland-monitor-scaling", "--monitor", root.targetMonitor(), String(scale)])
   }
 
@@ -464,8 +471,13 @@ Panel {
   // the cursor until hover or the first navigation key.
   onOpenedChanged: {
     if (opened) {
-      // Every open starts on the display the user is actually looking at.
+      // Every open starts on the display the user is actually looking at. Both
+      // are cleared, not just the selection: the read below is asynchronous, and
+      // the focused display left over from the previous open is not necessarily
+      // the one being looked at now. An empty target means "not known yet", and
+      // the controls stay out of the way until the read answers.
       selectedMonitor = ""
+      focusedMonitor = ""
       refresh()
       if (brightnessAvailable) {
         focusSection = "brightness"
