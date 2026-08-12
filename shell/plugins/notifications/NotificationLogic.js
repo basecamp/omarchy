@@ -110,105 +110,24 @@ function historyEntry(value, normalUrgency) {
   }
 }
 
-function dedupeByOriginalId(rows) {
-  var values = Array.isArray(rows) ? rows : []
-  var keep = {}
-  for (var i = 0; i < values.length; i++) {
-    var row = values[i]
-    if (!row) continue
-    var key = row.originalId
-    if (key === undefined || key === null) key = "_" + i
-    var prior = keep[key]
-    if (!prior || (row.timestamp || 0) >= (prior.timestamp || 0)) keep[key] = row
-  }
-
-  var out = []
-  for (var id in keep) out.push(keep[id])
-  out.sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0) })
-  return out
-}
-
-function parseHistory(raw, normalUrgency, historyCap) {
+// notifications.json holds nothing but the last-set DND preference now that
+// history is a directory of files. Older versions kept `pending`/`past`
+// (and, older still, `entries`) arrays in there; their presence is reported
+// so the service can rewrite the file without the dead payload.
+function parseSettings(raw) {
   var text = String(raw || "").trim()
-  var cap = historyCap === undefined || historyCap === null ? 100 : Number(historyCap)
-  if (isNaN(cap)) cap = 100
-  cap = Math.max(0, cap)
-  if (!text) return { empty: true, error: false, dnd: null, pending: [], past: [], hadDuplicates: false }
+  if (!text) return { error: false, dnd: null, legacy: false }
 
   try {
     var parsed = JSON.parse(text)
-    var pendingRaw = (parsed && Array.isArray(parsed.pending)) ? parsed.pending : []
-    var pastRaw = (parsed && Array.isArray(parsed.past)) ? parsed.past : []
-    if (parsed && Array.isArray(parsed.entries)) pastRaw = pastRaw.concat(parsed.entries)
-
-    var pendingDeduped = dedupeByOriginalId(pendingRaw)
-    var pastDeduped = dedupeByOriginalId(pastRaw)
-
     return {
-      empty: false,
       error: false,
       dnd: parsed && typeof parsed.dnd === "boolean" ? parsed.dnd : null,
-      pending: pendingDeduped.slice(0, cap).map(function(entry) { return historyEntry(entry, normalUrgency) }),
-      past: pastDeduped.slice(0, cap).map(function(entry) { return historyEntry(entry, normalUrgency) }),
-      hadDuplicates: pendingDeduped.length !== pendingRaw.length || pastDeduped.length !== pastRaw.length
+      legacy: !!(parsed && (parsed.pending || parsed.past || parsed.entries))
     }
   } catch (e) {
-    return { empty: false, error: true, errorMessage: String(e), dnd: null, pending: [], past: [], hadDuplicates: false }
+    return { error: true, errorMessage: String(e), dnd: null, legacy: false }
   }
-}
-
-function recentHistoryRows(pending, past, limit, normalUrgency) {
-  var max = limit === undefined || limit === null ? 5 : Number(limit)
-  if (isNaN(max)) max = 5
-  max = Math.max(0, max)
-
-  var values = []
-  function collect(rows) {
-    var source = Array.isArray(rows) ? rows : []
-    for (var i = 0; i < source.length; i++) {
-      if (source[i]) values.push(source[i])
-    }
-  }
-  collect(pending)
-  collect(past)
-
-  var keep = {}
-  for (var j = 0; j < values.length; j++) {
-    var row = values[j]
-    var key = row.originalId
-    if (key === undefined || key === null) key = row.id
-    if (key === undefined || key === null) key = "_" + j
-    var prior = keep[key]
-    if (!prior || (row.timestamp || 0) >= (prior.timestamp || 0)) keep[key] = row
-  }
-
-  var out = []
-  for (var id in keep) out.push(historyEntry(keep[id], normalUrgency))
-  out.sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0) })
-  return out.slice(0, max)
-}
-
-function dumpRows(rows) {
-  var values = Array.isArray(rows) ? rows : []
-  var out = []
-  for (var i = 0; i < values.length; i++) {
-    var r = values[i]
-    if (!r) continue
-    out.push({
-      id: r.id,
-      originalId: r.originalId,
-      app: r.app,
-      appIcon: r.appIcon,
-      summary: r.summary,
-      body: r.body,
-      image: r.image,
-      glyph: r.glyph || "",
-      exec: r.exec || "",
-      urgency: r.urgency,
-      timestamp: r.timestamp
-    })
-  }
-  return out
 }
 
 // ---------------------------------------------------- popup persistence
@@ -217,7 +136,8 @@ function dumpRows(rows) {
 // ~/.local/state/omarchy/notifications/ so toasts survive shell restarts
 // (e.g. the restart `omarchy-update` performs). The file exists exactly as
 // long as the popup is on screen: it is written when the toast appears and
-// deleted when the toast expires, is dismissed, or its action is invoked.
+// moved into the history/ subdirectory when the toast expires, is dismissed,
+// or its action is invoked. History is those moved files, newest last-10.
 
 function popupEntry(value, normalUrgency) {
   var entry = historyEntry(value, normalUrgency)
@@ -300,13 +220,37 @@ function popupPlacement(barPosition, barClearance, gapsOut) {
   }
 }
 
-function imageExtension(srcPath) {
-  var lower = String(srcPath || "").toLowerCase()
-  var dot = lower.lastIndexOf(".")
-  if (dot < 0) return "png"
-  var ext = lower.substring(dot + 1)
-  if (ext.length === 0 || ext.length > 5) return "png"
-  return ext
+// The archived files are the history. They are read back exactly like the
+// live popup files, then normalized into history rows: replaying a toast
+// must not inherit the original's expire timeout or restore deadline, so it
+// gets the standard on-screen lifetime for its urgency instead.
+//
+// liveRows are the toasts still on screen when the replay was asked for.
+// They belong in it — they're the newest notifications there are — but the
+// directory read races their archival, so they're carried across by hand and
+// keyed by file name (timestamp + id) to drop the copy the read already saw.
+function historyRows(raw, liveRows, normalUrgency, limit) {
+  var max = limit === undefined || limit === null ? 10 : Number(limit)
+  if (isNaN(max)) max = 10
+  max = Math.max(0, max)
+
+  var out = []
+  var seen = {}
+  function collect(rows) {
+    for (var i = 0; i < rows.length; i++) {
+      var entry = rows[i]
+      if (!entry) continue
+      var key = popupFileName(entry)
+      if (seen[key]) continue
+      seen[key] = true
+      out.push(historyEntry(entry, normalUrgency))
+    }
+  }
+
+  collect(Array.isArray(liveRows) ? liveRows : [])
+  collect(parsePopupFiles(raw, normalUrgency))
+  out.sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0) })
+  return out.slice(0, max)
 }
 
 if (typeof module !== "undefined") {
@@ -322,16 +266,13 @@ if (typeof module !== "undefined") {
     shouldRenderCompactGlyph: shouldRenderCompactGlyph,
     snapshotOf: snapshotOf,
     historyEntry: historyEntry,
-    dedupeByOriginalId: dedupeByOriginalId,
-    parseHistory: parseHistory,
-    recentHistoryRows: recentHistoryRows,
-    dumpRows: dumpRows,
+    parseSettings: parseSettings,
+    historyRows: historyRows,
     popupEntry: popupEntry,
     popupFileName: popupFileName,
     serializePopup: serializePopup,
     parsePopupFiles: parsePopupFiles,
     popupExpired: popupExpired,
-    popupPlacement: popupPlacement,
-    imageExtension: imageExtension
+    popupPlacement: popupPlacement
   }
 }
