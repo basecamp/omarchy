@@ -18,6 +18,7 @@ mise_log="$test_tmp/mise"
 mise_history="$test_tmp/mise-history"
 stub_log="$test_tmp/stubs"
 terminal_log="$test_tmp/terminal"
+menu_log="$test_tmp/menu"
 mkdir -p "$mock_bin" "$test_home"
 
 cat >"$mock_bin/omarchy-notification-send" <<'SH'
@@ -63,6 +64,11 @@ fi
 [[ ${OMARCHY_TEST_MISE_FAIL:-false} != "true" ]]
 SH
 
+cat >"$mock_bin/omarchy-menu" <<'SH'
+#!/bin/bash
+printf '%s\0' "$@" >"$OMARCHY_TEST_AGENT_MENU_LOG"
+SH
+
 cat >"$mock_bin/omarchy-test-noop" <<'SH'
 #!/bin/bash
 exit 0
@@ -84,6 +90,7 @@ export OMARCHY_TEST_MISE_LOG="$mise_log"
 export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
+export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
 
 grok_package="npm:@xai-official/grok"
 omp_package="github:can1357/oh-my-pi"
@@ -152,12 +159,23 @@ grep -Fq "Choose default agent with" "$test_tmp/no-agent-output" ||
 [[ ! -s $launch_log ]] || fail "agent launcher starts nothing without a default"
 pass "agent launcher refuses to launch without a default"
 
+# The keybinding uses --pick, where an error on stderr nobody sees would make
+# the keypress look broken. It offers the choice instead.
+: >"$launch_log"
+: >"$menu_log"
+omarchy-agent --pick
+mapfile -d '' -t menu_args <"$menu_log"
+[[ ${menu_args[*]} == "summon setup.default.agent" ]] ||
+  fail "--pick opens the agent defaults menu when none is set"
+[[ ! -s $launch_log ]] || fail "--pick starts nothing when no agent is set"
+pass "--pick opens the agent defaults menu when none is set"
+
 source "$ROOT/default/bash/aliases"
 [[ $(alias a) == "alias a='omarchy-agent --inline'" ]] ||
   fail "terminal alias launches the default agent inline"
 pass "terminal alias launches the default agent inline"
 
-grep -Fq 'o.bind("SUPER + SHIFT + CTRL + A", "Agent", "omarchy-agent")' \
+grep -Fq 'o.bind("SUPER + SHIFT + CTRL + A", "Agent", "omarchy-agent --pick")' \
   "$ROOT/default/hypr/bindings/utilities.lua" ||
   fail "agent launcher has a keyboard shortcut"
 pass "agent launcher has a keyboard shortcut"
@@ -372,6 +390,16 @@ omarchy agent
 mapfile -d '' -t launch_args <"$launch_log"
 [[ ${launch_args[*]} == "--app-id=org.omarchy.agent opencode --auto" ]] ||
   fail "omarchy agent routes to the launcher"
+
+# With an agent chosen there is nothing to pick, so the keybinding launches.
+: >"$launch_log"
+: >"$menu_log"
+omarchy-agent --pick
+mapfile -d '' -t launch_args <"$launch_log"
+[[ ${launch_args[*]} == "--app-id=org.omarchy.agent opencode --auto" ]] ||
+  fail "--pick launches once an agent is chosen"
+[[ ! -s $menu_log ]] || fail "--pick opens no menu once an agent is chosen"
+pass "--pick launches once an agent is chosen"
 
 : >"$launch_log"
 omarchy agent prompt "Review this project"

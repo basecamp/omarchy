@@ -1,10 +1,11 @@
 #!/bin/bash
 
 # omarchy:summary=Launch the default coding agent in a terminal
-# omarchy:args=[--inline]
+# omarchy:args=[--inline] [--pick]
 # omarchy:examples=omarchy agent | omarchy agent --inline
 
 inline=false
+pick=false
 
 # Flags only. A bare prompt would shadow the subcommands under this group, so
 # prompts go through omarchy-agent-prompt, which passes one here as --prompt.
@@ -12,6 +13,10 @@ while (($#)); do
   case "$1" in
     --inline)
       inline=true
+      shift
+      ;;
+    --pick)
+      pick=true
       shift
       ;;
     --prompt)
@@ -33,8 +38,10 @@ done
 agent=$(omarchy-default-agent)
 
 # Omarchy ships without a default, so there is nothing to launch until one is
-# picked. Send them where the first-run invitation would have.
+# picked. --pick offers the choice instead of the error, which is what the
+# keybinding wants: a keypress that opens nothing explains nothing.
 if [[ -z $agent ]]; then
+  [[ $pick == "true" ]] && exec omarchy-menu summon setup.default.agent
   echo "Choose default agent with: omarchy default agent <name>" >&2
   exit 1
 fi
