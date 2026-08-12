@@ -208,12 +208,29 @@ function nearestDropTarget(candidates, point, vertical) {
   return best
 }
 
+// How far a dragged module sits outside the bar surface, in pixels. Zero
+// while the pointer is anywhere over the bar, so a drag along the bar can
+// never arm removal; the Euclidean distance past the nearest edge otherwise,
+// so a corner escape needs the same pull as a straight one.
+function dragDistanceOutside(point, width, height) {
+  var x = Number(point && point.x)
+  var y = Number(point && point.y)
+  var w = Number(width)
+  var h = Number(height)
+  if (!isFinite(x) || !isFinite(y) || !isFinite(w) || !isFinite(h)) return 0
+
+  var dx = x < 0 ? -x : (x > w ? x - w : 0)
+  var dy = y < 0 ? -y : (y > h ? y - h : 0)
+  return Math.sqrt(dx * dx + dy * dy)
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     isDrawnSlot: isDrawnSlot,
     pickDrawnSlot: pickDrawnSlot,
     pickPanelSlot: pickPanelSlot,
     nearestDropTarget: nearestDropTarget,
+    dragDistanceOutside: dragDistanceOutside,
     normalizePosition: normalizePosition,
     entrySettings: entrySettings,
     entryId: entryId,

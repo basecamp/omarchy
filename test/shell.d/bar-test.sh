@@ -247,6 +247,47 @@ assert(
   'bar draws the insertion marker above the bar in the drag overlay'
 )
 
+// Dragging a module off the bar removes it. The distance is zero anywhere
+// over the bar, so a drag along it can never arm removal, and Euclidean past
+// the nearest edge, so a corner escape needs the same pull as a straight one.
+assertEqual(bar.dragDistanceOutside({ x: 400, y: 13 }, 1920, 26), 0, 'a drag over the bar is never a removal')
+assertEqual(bar.dragDistanceOutside({ x: 400, y: 86 }, 1920, 26), 60, 'a drag below a top bar measures its pull straight down')
+assertEqual(bar.dragDistanceOutside({ x: -30, y: 66 }, 1920, 26), 50, 'a corner escape measures the diagonal, not one axis')
+assertEqual(bar.dragDistanceOutside({ x: 400, y: -25 }, 1920, 26), 25, 'a drag past the desktop-far edge also counts')
+assertEqual(bar.dragDistanceOutside(null, 1920, 26), 0, 'a missing drag point never arms removal')
+
+// Removal arms only when the pull is past the threshold with no insertion
+// edge under it, so an overshoot next to a drop target still reads as a
+// reorder, and it must reset with the rest of the drag state.
+assert(
+  /barDragRemoveArmed = !drop && root\.moduleRemoveDistance\(scenePoint\) >= root\.barDragRemoveDistance/.test(barSource),
+  'removal arms only past the pull threshold with no drop target in reach'
+)
+const clearBarDrag = barSource.slice(barSource.indexOf('function clearBarDrag'))
+assert(
+  /barDragRemoveArmed = false/.test(clearBarDrag.slice(0, clearBarDrag.indexOf('\n  }'))),
+  'clearing the drag disarms removal'
+)
+
+// The poof plays only for a removal that actually landed in the config, at
+// the point the module was let go.
+assert(
+  /if \(wasDragging && removeArmed\) \{\s*\n\s*if \(root\.removeBarModule\(slot\)\) root\.playPoof\(poofScreen, poofX, poofY\)/.test(barSource),
+  'an armed release removes the module and poofs where it was dropped'
+)
+
+// The ghost overlay is the poof's canvas, so it must stay mapped for the
+// burst after the drag state clears, while the ghost itself hides with the
+// drag rather than lingering through the animation.
+assert(
+  /visible: \(active && sourceItem !== null\) \|\| poofShown/.test(barSource),
+  'the drag overlay stays mapped while the poof plays'
+)
+assert(
+  /visible: ghostWindow\.active && ghostWindow\.sourceItem !== null/.test(barSource),
+  'the drag ghost hides with the drag instead of lingering through the poof'
+)
+
 // The open-panel mark sits on the module's desktop-facing edge at every
 // position: under a top bar, over a bottom one, inward from left and right.
 const indicator = barSource.slice(barSource.indexOf('id: openPanelIndicator'), barSource.indexOf('id: openPanelIndicator') + 1600)

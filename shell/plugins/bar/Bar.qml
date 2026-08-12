@@ -94,6 +94,17 @@ Item {
   property real barDragScreenY: 0
   property real barDragOffsetX: 0
   property real barDragOffsetY: 0
+  // True once the drag has pulled far enough off the bar that releasing
+  // removes the module instead of reordering it.
+  property bool barDragRemoveArmed: false
+  // Dragging a module this far past the bar edge arms removal. Generous
+  // enough that overshooting a drop target keeps reading as a reorder.
+  readonly property real barDragRemoveDistance: Style.spaceReal(48)
+  property bool barPoofActive: false
+  property var barPoofScreen: null
+  property real barPoofX: 0
+  property real barPoofY: 0
+  property int barPoofSerial: 0
   property bool barMoveActive: false
   property string barMoveCandidate: ""
   property var barMoveWindow: null
@@ -191,6 +202,7 @@ Item {
     barDragTarget = null
     barDragTargetGeometry = null
     barDragAfter = false
+    barDragRemoveArmed = false
     barDragSceneX = 0
     barDragSceneY = 0
     barDragScreenX = 0
@@ -680,6 +692,55 @@ Item {
     return changed
   }
 
+  function removeModuleFromConfig(config, region, name) {
+    var entries = rawLayoutSection(config, region)
+    var index = rawEntryIndex(entries, name)
+    if (index < 0) return false
+
+    entries.splice(index, 1)
+    return true
+  }
+
+  // Drag-off removal drops the layout entry and nothing else, the same way a
+  // reorder only moves it: for a bar widget the layout entry is the whole
+  // story, and a clone dragged off should vanish rather than resurrect the
+  // widget it shadows the way a settings-page disable would.
+  function removeBarModule(source) {
+    if (!source || !source.region || !source.moduleName) return false
+    if (!root.shell || typeof root.shell.mutateShellConfig !== "function") return false
+
+    var changed = false
+    root.shell.mutateShellConfig(function(config) {
+      changed = removeModuleFromConfig(config, source.region, source.moduleName)
+    })
+    return changed
+  }
+
+  function moduleRemoveDistance(scenePoint) {
+    var window = barDragWindow
+    if (!window || !window.contentItem) return 0
+
+    var barPoint = window.contentItem.mapFromItem(null, scenePoint.x, scenePoint.y)
+    return BarModel.dragDistanceOutside(barPoint, window.contentItem.width, window.contentItem.height)
+  }
+
+  function playPoof(screen, x, y) {
+    barPoofScreen = screen
+    barPoofX = x
+    barPoofY = y
+    barPoofSerial++
+    barPoofActive = true
+    poofTimer.restart()
+  }
+
+  // Outlives the burst animation slightly so the last frames are not cut off
+  // by the overlay window unmapping.
+  Timer {
+    id: poofTimer
+    interval: 520
+    onTriggered: root.barPoofActive = false
+  }
+
   function moduleDropAtScene(scenePoint, sourceSlot) {
     var sourceWindow = root.slotWindow(sourceSlot) || root.barDragWindow
     if (sourceWindow && sourceWindow.contentItem) {
@@ -1155,12 +1216,15 @@ Item {
     readonly property bool screenMatches: root.barDragScreen === ghostScreen ||
       (root.barDragScreen && ghostScreen && root.barDragScreen.name && ghostScreen.name && root.barDragScreen.name === ghostScreen.name)
     readonly property bool active: root.barDragSource && root.barDragScreen && screenMatches
+    readonly property bool poofMatches: root.barPoofScreen === ghostScreen ||
+      (root.barPoofScreen && ghostScreen && root.barPoofScreen.name && ghostScreen.name && root.barPoofScreen.name === ghostScreen.name)
+    readonly property bool poofShown: root.barPoofActive && poofMatches
     readonly property var sourceItem: root.barDragSource ? root.barDragSource.activeItem : null
     readonly property int ghostPadding: Style.space(1)
     readonly property int ghostWidth: sourceItem ? Math.max(1, Math.ceil(sourceItem.width)) : 1
     readonly property int ghostHeight: sourceItem ? Math.max(1, Math.ceil(sourceItem.height)) : 1
 
-    visible: active && sourceItem !== null
+    visible: (active && sourceItem !== null) || poofShown
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: "omarchy-bar-drag-ghost"
@@ -1179,11 +1243,18 @@ Item {
     mask: Region {}
 
     Item {
-      visible: ghostWindow.visible
+      visible: ghostWindow.active && ghostWindow.sourceItem !== null
       x: Math.round(root.barDragScreenX - root.barDragOffsetX - ghostWindow.ghostPadding)
       y: Math.round(root.barDragScreenY - root.barDragOffsetY - ghostWindow.ghostPadding)
       width: ghostWindow.ghostWidth + ghostWindow.ghostPadding * 2
       height: ghostWindow.ghostHeight + ghostWindow.ghostPadding * 2
+      // Pulling past the removal threshold shrinks and dims the ghost, the
+      // cue that letting go now poofs the module instead of reordering it.
+      scale: root.barDragRemoveArmed ? 0.82 : 1
+      opacity: root.barDragRemoveArmed ? 0.55 : 1
+
+      Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+      Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
       BorderSurface {
         anchors.fill: parent
@@ -1213,6 +1284,66 @@ Item {
       height: targetRect ? targetRect.height : 0
       color: Color.accent
       radius: Math.min(width, height) / 2
+    }
+
+    // The macOS-style puff of smoke a removed module vanishes in: a ring of
+    // soft dots that drift outward and fade around a collapsing center puff.
+    Item {
+      id: poofBurst
+
+      property real progress: 1
+
+      visible: ghostWindow.poofShown
+      x: Math.round(root.barPoofX)
+      y: Math.round(root.barPoofY)
+
+      Connections {
+        target: root
+        function onBarPoofSerialChanged() {
+          if (ghostWindow.poofMatches) poofAnimation.restart()
+        }
+      }
+
+      NumberAnimation {
+        id: poofAnimation
+        target: poofBurst
+        property: "progress"
+        from: 0
+        to: 1
+        duration: 460
+        easing.type: Easing.OutCubic
+      }
+
+      Rectangle {
+        readonly property real puffSize: Style.spaceReal(9) * (1.2 - poofBurst.progress * 0.6)
+
+        width: puffSize
+        height: puffSize
+        radius: puffSize / 2
+        x: -puffSize / 2
+        y: -puffSize / 2
+        color: root.barForeground
+        opacity: (1 - poofBurst.progress) * 0.7
+      }
+
+      Repeater {
+        model: 8
+
+        Rectangle {
+          required property int index
+          readonly property real angle: Math.PI * 2 * index / 8
+          readonly property real drift: Style.spaceReal(5) + Style.spaceReal(15) * poofBurst.progress
+          readonly property real puffSize: Style.spaceReal(4 + index % 3 * 2) * (0.6 + poofBurst.progress * 0.9)
+
+          width: puffSize
+          height: puffSize
+          radius: puffSize / 2
+          x: Math.cos(angle) * drift - puffSize / 2
+          y: Math.sin(angle) * drift - puffSize / 2
+          color: root.barForeground
+          opacity: (1 - poofBurst.progress) * 0.85
+        }
+      }
     }
   }
 
@@ -1703,6 +1834,7 @@ Item {
           root.barDragTarget = drop ? drop.slot : null
           root.barDragAfter = drop ? drop.after : false
           root.barDragTargetGeometry = drop ? root.dropMarkerRect(drop.slot, drop.after) : null
+          root.barDragRemoveArmed = !drop && root.moduleRemoveDistance(scenePoint) >= root.barDragRemoveDistance
         }
       }
 
@@ -1710,13 +1842,20 @@ Item {
         var wasDragging = dragging
         var targetSlot = root.barDragTarget
         var afterTarget = root.barDragAfter
+        var removeArmed = root.barDragRemoveArmed
+        var poofScreen = root.barDragScreen
+        var poofX = root.barDragScreenX
+        var poofY = root.barDragScreenY
 
         if (wasDragging) suppressClick = true
 
         dragging = false
         root.clearBarDrag()
 
-        if (wasDragging && targetSlot) {
+        if (wasDragging && removeArmed) {
+          if (root.removeBarModule(slot)) root.playPoof(poofScreen, poofX, poofY)
+          mouse.accepted = true
+        } else if (wasDragging && targetSlot) {
           root.dropBarModuleAtTarget(slot, targetSlot, afterTarget)
           mouse.accepted = true
         } else if (!wasDragging) {
