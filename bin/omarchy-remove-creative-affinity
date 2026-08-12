@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# omarchy:summary=Remove Affinity and its desktop entry
+
+rm -f ~/.local/share/applications/affinity.desktop
+rm -f ~/.local/share/applications/icons/affinity.png
+
+yay -Rns --noconfirm affinity-appimage-bin 2>/dev/null
