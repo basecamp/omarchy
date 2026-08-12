@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# omarchy:summary=List Chromium profiles (dirname<TAB>name) for the effective webapp browser
+# omarchy:args=[--browser]
+
+effective_browser() {
+  case "$(omarchy-default-browser)" in
+  chromium | chrome | brave | brave-origin | edge | opera | vivaldi | helium) omarchy-default-browser ;;
+  *) echo "chromium" ;; # firefox/zen/unknown → webapps fall back to chromium
+  esac
+}
+
+config_dir_for() {
+  case "$1" in
+  chromium) echo "$HOME/.config/chromium" ;;
+  chrome) echo "$HOME/.config/google-chrome" ;;
+  brave) echo "$HOME/.config/BraveSoftware/Brave-Browser" ;;
+  brave-origin) echo "$HOME/.config/BraveSoftware/Brave-Browser-Origin-Beta" ;;
+  edge) echo "$HOME/.config/microsoft-edge" ;;
+  opera) echo "$HOME/.config/opera" ;;
+  vivaldi) echo "$HOME/.config/vivaldi" ;;
+  helium) echo "$HOME/.config/net.imput.helium" ;;
+  *) echo "" ;;
+  esac
+}
+
+browser="$(effective_browser)"
+[[ ${1:-} == "--browser" ]] && {
+  echo "$browser"
+  exit 0
+}
+
+cfg="$(config_dir_for "$browser")"
+[[ -n $cfg && -f "$cfg/Local State" ]] || exit 0
+command -v jq >/dev/null || exit 0
+
+jq -r '(.profile.info_cache // {}) | to_entries[] | "\(.key)\t\(.value.name // .key)"' \
+  "$cfg/Local State" 2>/dev/null | sort

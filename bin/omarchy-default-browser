@@ -32,9 +32,14 @@ zen) desktop_id="zen.desktop"; name="Zen"; glyph="󰖟" ;;
   ;;
 esac
 
+prev="$(xdg-settings get default-web-browser)"
+
 xdg-settings set default-web-browser "$desktop_id"
 xdg-mime default "$desktop_id" x-scheme-handler/http
 xdg-mime default "$desktop_id" x-scheme-handler/https
 xdg-mime default "$desktop_id" text/html
+
+# A different browser may have different profiles, so drop remembered webapp selections.
+[[ $prev != "$desktop_id" ]] && omarchy-webapp-profile-store clear-all
 
 notify-send -u low "$glyph    $name is now the default browser"

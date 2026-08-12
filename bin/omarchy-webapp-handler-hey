@@ -12,4 +12,7 @@ if [[ $url =~ ^mailto: ]]; then
   web_url="https://app.hey.com/messages/new?to=$email"
 fi
 
+# Keep the remembered profile stable across the dynamic mailto: URLs.
+export OMARCHY_WEBAPP_REMEMBER_KEY="https://app.hey.com"
+
 exec omarchy-launch-webapp "$web_url"
