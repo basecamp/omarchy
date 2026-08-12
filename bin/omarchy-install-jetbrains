@@ -1,0 +1,193 @@
+#!/bin/bash
+
+set -e
+
+if (( $# != 2 )); then
+  echo "Usage: omarchy-install-jetbrains PRODUCT_CODE INSTALL_PATH"
+  exit 1
+fi
+
+PRODUCT_CODE="$1"
+INSTALL_PATH="${2%/}"
+PRODUCTS_URL="https://data.services.jetbrains.com/products?fields=code,name"
+RELEASES_URL="https://data.services.jetbrains.com/products/releases?code=$PRODUCT_CODE&type=release&latest=true"
+sudo_keepalive_pid=""
+install_path_tmp="$INSTALL_PATH-tmp"
+archive=""
+install_succeeded="false"
+
+cleanup() {
+  if [[ -n $archive && -f $archive ]]; then
+    rm -f "$archive" || true
+  fi
+
+  if [[ $install_succeeded != "true" && -d $install_path_tmp ]]; then
+    sudo -n rm -rf "$install_path_tmp" || true
+  fi
+
+  if [[ -n $sudo_keepalive_pid ]]; then
+    kill "$sudo_keepalive_pid" >/dev/null 2>&1 || true
+  fi
+}
+
+trap cleanup EXIT
+
+for command in curl gum jq sha256sum tar sudo; do
+  if omarchy-cmd-missing "$command"; then
+    echo "Missing required command: $command"
+    exit 1
+  fi
+done
+
+echo "Fetching JetBrains product information for $PRODUCT_CODE..."
+products_info=$(curl -fsSL "$PRODUCTS_URL")
+product_name=$(jq -r --arg code "$PRODUCT_CODE" '.[] | select(.code == $code).name // empty' <<<"$products_info")
+
+if [[ -z $product_name ]]; then
+  echo "Unable to find a JetBrains product for code: $PRODUCT_CODE"
+  exit 1
+fi
+
+echo "Fetching latest $product_name release..."
+release_info=$(curl -fsSL "$RELEASES_URL")
+version=$(jq -r --arg code "$PRODUCT_CODE" '.[$code][0].version // empty' <<<"$release_info")
+download_url=$(jq -r --arg code "$PRODUCT_CODE" '.[$code][0].downloads.linux.link // empty' <<<"$release_info")
+checksum_url=$(jq -r --arg code "$PRODUCT_CODE" '.[$code][0].downloads.linux.checksumLink // empty' <<<"$release_info")
+notes_link=$(jq -r --arg code "$PRODUCT_CODE" '.[$code][0].notesLink // empty' <<<"$release_info")
+
+if [[ -z $version || -z $download_url || -z $checksum_url ]]; then
+  echo "Unable to find a Linux release for $product_name."
+  exit 1
+fi
+
+if [[ $INSTALL_PATH != /* ]]; then
+  echo "INSTALL_PATH must be absolute."
+  exit 1
+fi
+
+if [[ -f $INSTALL_PATH/product-info.json ]]; then
+  installed_version=$(jq -r '.version // empty' "$INSTALL_PATH/product-info.json")
+
+  if [[ $installed_version == "$version" ]]; then
+    echo "$product_name $version is already installed at $INSTALL_PATH."
+    exit 0
+  fi
+elif [[ -e $INSTALL_PATH ]]; then
+  echo "$INSTALL_PATH already exists but is not a JetBrains installation."
+  exit 1
+fi
+
+style_lines=("Ready to install $product_name $version?")
+
+if [[ -n $notes_link ]]; then
+  style_lines+=("" "Release notes: $notes_link")
+fi
+
+gum style --border normal --border-foreground 6 --padding "1 2" "${style_lines[@]}"
+
+echo
+
+if ! gum confirm "Continue with installation?"; then
+  echo "Cancelled $product_name installation."
+  exit 0
+fi
+
+# Ask for user's sudo permission before the download so he can fire and forget.
+sudo -v
+while true; do
+  sudo -n -v
+  sleep 60
+done &
+sudo_keepalive_pid=$!
+
+sudo -n rm -rf "$install_path_tmp"
+sudo -n mkdir -p "$install_path_tmp"
+sudo -n chown "$USER:$USER" "$install_path_tmp"
+
+archive="$install_path_tmp/$PRODUCT_CODE-$version.tar.gz"
+
+echo "Downloading $product_name $version..."
+curl -fL -o "$archive" "$download_url"
+
+echo "Verifying the checksum..."
+read -r expected_checksum _ <<<"$(curl -fsSL "$checksum_url")"
+actual_checksum=$(sha256sum "$archive" | cut -d " " -f 1)
+
+if [[ -z $expected_checksum || $actual_checksum != "$expected_checksum" ]]; then
+  echo "Downloaded archive checksum mismatch."
+  exit 1
+fi
+
+echo "Extracting to $install_path_tmp..."
+tar -xzf "$archive" -C "$install_path_tmp" --strip-components=1
+
+rm -f "$archive"
+
+sudo -n chown -R "$USER:$USER" "$install_path_tmp"
+
+product_info="$install_path_tmp/product-info.json"
+if [[ ! -f $product_info ]]; then
+  echo "Missing product-info.json in $install_path_tmp"
+  exit 1
+fi
+
+product_name=$(jq -r '.name // empty' "$product_info")
+wmclass=$(jq -r '.launch[0].startupWmClass // empty' "$product_info")
+svg_path=$(jq -r '.svgIconPath // empty' "$product_info")
+bin_path=$(jq -r '.launch[0].launcherPath // empty' "$product_info")
+conf_path=$(jq -r '.launch[0].vmOptionsFilePath // empty' "$product_info")
+
+if [[ -z $product_name || -z $wmclass || -z $svg_path || -z $bin_path || -z $conf_path ]]; then
+  echo "Unable to read required launcher details from $product_info"
+  exit 1
+fi
+
+bin_name=$(basename "$bin_path")
+if [[ -z $bin_name ]]; then
+  echo "Unable to determine launcher symlink name from $bin_path"
+  exit 1
+fi
+
+conf_path="$install_path_tmp/$conf_path"
+if [[ ! -f $conf_path ]]; then
+  echo "Missing VM options file at $conf_path"
+  exit 1
+elif ! grep -qxF -- "-Dawt.toolkit.name=WLToolkit" "$conf_path"; then
+  printf '\n-Dawt.toolkit.name=WLToolkit\n' >>"$conf_path"
+fi
+
+echo "Moving $install_path_tmp to $INSTALL_PATH"
+sudo -n rm -rf "$INSTALL_PATH"
+sudo -n mv "$install_path_tmp" "$INSTALL_PATH"
+
+svg_path="$INSTALL_PATH/$svg_path"
+bin_path="$INSTALL_PATH/$bin_path"
+
+mkdir -p "$HOME/.local/share/applications"
+desktop_file="$HOME/.local/share/applications/$wmclass.desktop"
+echo "Installing desktop file to $desktop_file"
+cat >"$desktop_file" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=$product_name
+Icon=$svg_path
+Exec="$bin_path" %f
+Categories=Development;IDE;
+Terminal=false
+StartupWMClass=$wmclass
+StartupNotify=true
+EOF
+
+chmod +x "$desktop_file"
+
+echo "Creating symlink to /usr/local/bin/$bin_name"
+sudo -n ln -sfn "$bin_path" "/usr/local/bin/$bin_name"
+
+if omarchy-cmd-present update-desktop-database; then
+  update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
+fi
+
+install_succeeded="true"
+
+echo "$product_name $version is installed."
