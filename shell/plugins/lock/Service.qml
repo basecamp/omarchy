@@ -26,6 +26,7 @@ Item {
   property bool faceConfigured: false
   property int faceAttemptCount: 0
   property double faceActivityEligibleAt: 0
+  property bool lidClosedDuringLock: false
   property bool previewVisible: false
   property string enteredPassword: ""
   property string pendingPassword: ""
@@ -43,6 +44,7 @@ Item {
   readonly property int faceAttemptLimit: 3
   readonly property int faceRetryDelay: 250
   readonly property int faceActivityDebounce: 750
+  readonly property int lidPollInterval: 1000
 
   function realScreenCount() {
     var screens = Quickshell.screens || []
@@ -124,6 +126,7 @@ Item {
     faceRetryTimer.stop()
     faceAttemptCount = 0
     faceActivityEligibleAt = 0
+    lidClosedDuringLock = false
     faceAuthenticating = false
 
     // PamContext.abort() emits no completion, so cleanup cannot enter the
@@ -481,6 +484,21 @@ Item {
   }
 
   Process {
+    id: lidCheckProc
+    command: ["omarchy-hw-laptop-closed"]
+    onExited: function(exitCode) {
+      if (!root.lockRequested || !root.faceConfigured) return
+      if (exitCode === 0) {
+        root.lidClosedDuringLock = true
+      } else if (root.lidClosedDuringLock && sessionLock.secure) {
+        // Clear the flag first so later open polls do nothing.
+        root.lidClosedDuringLock = false
+        root.activateFaceAuthentication()
+      }
+    }
+  }
+
+  Process {
     id: strandedLockCheckProc
     command: ["bash", "-c", "omarchy-hyprland-session-locked"]
     onExited: function(exitCode) {
@@ -522,6 +540,17 @@ Item {
       // fingerprint PAM stays armed for the whole lock, so gating on
       // `authenticating` here would keep the panel lit until unlock.
       if (root.lockRequested && !root.authenticatingPassword) root.runBlank()
+    }
+  }
+
+  Timer {
+    id: lidPollTimer
+    interval: root.lidPollInterval
+    repeat: true
+    running: root.lockRequested && root.faceConfigured && root.faceAttemptCount === 0
+    triggeredOnStart: true
+    onTriggered: {
+      if (!lidCheckProc.running) lidCheckProc.running = true
     }
   }
 
@@ -594,7 +623,11 @@ Item {
   }
 
   onFaceConfiguredChanged: {
-    if (!faceConfigured) resetFaceAuthentication()
+    if (!faceConfigured) {
+      resetFaceAuthentication()
+    } else if (lockRequested) {
+      if (sessionLock.secure) faceActivityEligibleAt = Date.now()
+    }
   }
 
   // No lock before PAM is known good. An answer from before then may be stale --

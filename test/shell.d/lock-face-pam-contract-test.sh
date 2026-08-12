@@ -62,7 +62,7 @@ assert(
 )
 
 assert(
-  /onFaceConfiguredChanged:[\s\S]*if \(!faceConfigured\) resetFaceAuthentication\(\)/.test(serviceQml),
+  /onFaceConfiguredChanged:[\s\S]*if \(!faceConfigured\) \{\s*resetFaceAuthentication\(\)/.test(serviceQml),
   'removing face configuration aborts its active PAM transaction'
 )
 
