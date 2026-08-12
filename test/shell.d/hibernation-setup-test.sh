@@ -51,7 +51,8 @@ run_setup >/dev/null
 pass "configured hibernation remains a no-op without force"
 
 run_setup --force >/dev/null
-[[ $(grep -cFx 'sudo limine-mkinitcpio' "$test_log") == "1" ]] ||
+rebuild_count=$(grep -cFx 'sudo limine-mkinitcpio' "$test_log")
+(( rebuild_count == 1 )) ||
   fail "forced hibernation setup rebuilds the UKI once" "$(cat "$test_log")"
 pass "forced hibernation setup rebuilds an already-configured UKI"
 
@@ -66,6 +67,7 @@ run_setup --force >/dev/null
 
 grep -qF 'resume_offset=12345"' "$resume_drop_in" ||
   fail "forced hibernation setup repairs an empty resume offset"
-[[ $(grep -cFx 'sudo limine-mkinitcpio' "$test_log") == "1" ]] ||
+rebuild_count=$(grep -cFx 'sudo limine-mkinitcpio' "$test_log")
+(( rebuild_count == 1 )) ||
   fail "offset repair and force share one UKI rebuild" "$(cat "$test_log")"
 pass "forced offset repair rebuilds the UKI exactly once"
