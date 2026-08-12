@@ -31,9 +31,13 @@ for dev in "$usb_devices_path"/*; do
   if [[ -r $dev/product ]]; then
     product=$(<"$dev/product")
     product=${product,,}
-    # Elan's match-on-chip readers and FPC readers identify their family or
-    # manufacturer rather than their function, so match those signatures too.
-    [[ $product == *fingerprint* || $product == *biometric* || $product == *elan:arm-m4* || $product == *fpc* ]] && exit 0
+    # Elan's match-on-chip readers report "ELAN:ARM-M4" and Fingerprint Cards'
+    # report "FPC Sensor Controller" or "FPC L:0000 FW:1425046" — the family or
+    # the manufacturer rather than the function. Both vendors are left out of
+    # the list above on purpose (Elan also makes touchscreens), so without these
+    # they match nothing. FPC leads the string on every reader on record, and
+    # three letters are little to match on, so require the prefix.
+    [[ $product == *fingerprint* || $product == *biometric* || $product == *elan:arm-m4* || $product == "fpc "* ]] && exit 0
   fi
 
   if [[ -r $dev/idVendor ]]; then

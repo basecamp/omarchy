@@ -54,6 +54,14 @@ assert_detects "an FPC reader is detected by its product string"
 write_usb_devices '10a5:1234:Generic USB Device'
 assert_rejects "a generic 10a5 USB device is not detected"
 
+write_usb_devices '10a5:9800:FPC Sensor Controller L:0002 FW:25.26.23.14'
+assert_detects "an FPC reader is detected by its sensor-controller string"
+
+# Pins the match to a prefix. FPC abbreviates unrelated things too, and this
+# branch is trusted with no kernel-driver check, so the token is not enough.
+write_usb_devices '0bda:5842:USB2.0 FPC Camera'
+assert_rejects "an FPC token mid-string is not detected"
+
 write_usb_devices '1234:5678:Goodix Fingerprint USB Device'
 assert_detects "a reader is detected by an existing product-name match"
 
