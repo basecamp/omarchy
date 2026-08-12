@@ -14,7 +14,14 @@ if [[ ! -d $OUTPUT_DIR ]]; then
   notify-send "Created screenshot directory: $OUTPUT_DIR" -u normal -t 2000
 fi
 
-pkill slurp && exit 0
+# Re-pressing the binding cancels an in-progress selection. Kill hyprpicker
+# too: its frozen overlay can outlive a stale slurp and hold keyboard focus,
+# leaving the session feeling locked (#5468).
+if pgrep -x slurp >/dev/null || pgrep -x hyprpicker >/dev/null; then
+  pkill -x slurp 2>/dev/null
+  pkill -x hyprpicker 2>/dev/null
+  exit 0
+fi
 
 SCREENSHOT_EDITOR="${OMARCHY_SCREENSHOT_EDITOR:-satty}"
 
@@ -65,6 +72,19 @@ get_rectangles() {
   hyprctl clients -j | jq -r --arg ws "$active_workspace" '.[] | select(.workspace.id == ($ws | tonumber)) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
 }
 
+# Hyprpicker freezes the screen during selection, but its overlay registers at
+# layer level 3 above slurp's level 2 and can grab keyboard focus, leaving Esc
+# unable to dismiss slurp (#5468). Off by default; opt in with
+# OMARCHY_SCREENSHOT_FREEZE=1.
+FREEZE="${OMARCHY_SCREENSHOT_FREEZE:-0}"
+
+start_freeze() {
+  [[ $FREEZE == 1 ]] || return 0
+  hyprpicker -r -z >/dev/null 2>&1 &
+  PID=$!
+  sleep .1
+}
+
 # Keep hyprpicker alive until after grim captures so the screenshot sees the
 # frozen overlay rather than live content shifting during teardown.
 cleanup_freeze() {
@@ -75,15 +95,11 @@ trap cleanup_freeze EXIT
 # Select based on mode
 case "$MODE" in
 region)
-  hyprpicker -r -z >/dev/null 2>&1 &
-  PID=$!
-  sleep .1
+  start_freeze
   SELECTION=$(slurp 2>/dev/null)
   ;;
 windows)
-  hyprpicker -r -z >/dev/null 2>&1 &
-  PID=$!
-  sleep .1
+  start_freeze
   SELECTION=$(get_rectangles | slurp -r 2>/dev/null)
   ;;
 fullscreen)
@@ -91,9 +107,7 @@ fullscreen)
   ;;
 smart | *)
   RECTS=$(get_rectangles)
-  hyprpicker -r -z >/dev/null 2>&1 &
-  PID=$!
-  sleep .1
+  start_freeze
   SELECTION=$(echo "$RECTS" | slurp 2>/dev/null)
 
   # If the selection area is L * W < 20, we'll assume you were trying to select whichever
