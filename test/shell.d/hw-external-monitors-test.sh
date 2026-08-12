@@ -27,6 +27,16 @@ has_external_monitor() {
   OMARCHY_DRM_PATH="$drm_path" "$ROOT/bin/omarchy-hw-external-monitors"
 }
 
+write_connectors
+set +e
+empty_error=$(has_external_monitor 2>&1 >/dev/null)
+empty_status=$?
+set -e
+
+(( empty_status != 0 )) || fail "an empty DRM tree has no external display"
+[[ -z $empty_error ]] || fail "an empty DRM tree is handled quietly" "$empty_error"
+pass "physical monitor detection handles an empty DRM tree"
+
 for connector in eDP-1 LVDS-1 DSI-1; do
   write_connectors "$connector" connected
 
