@@ -1,0 +1,22 @@
+[Unit]
+Description=Reload SOF audio driver to fix initialization race
+Wants=sound.target
+After=sound.target
+ConditionPathExists=!/proc/asound/sofsoundwire
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -eu -c '\
+  sleep 2 && \
+  modprobe -r snd_soc_sof_sdw snd_sof_pci_intel_mtl && \
+  sleep 1 && \
+  modprobe snd_sof_pci_intel_mtl && \
+  sleep 5 && \
+  card=$(awk "/sofsoundwire|sof-soundwire/ { print \$1; exit }" /proc/asound/cards) && \
+  [ -n "$card" ] || { echo "fix-sof-audio: SOF card not found" >&2; exit 1; } && \
+  amixer -c "$card" cset name="rt1320 Amp 1 Switch" on && \
+  amixer -c "$card" cset name="rt1320 Amp 2 Switch" on'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
