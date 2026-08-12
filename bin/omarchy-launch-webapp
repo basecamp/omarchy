@@ -1,9 +1,29 @@
 #!/bin/bash
 
-# omarchy:summary=Launch a URL as a web app in the default supported browser
-# omarchy:args=<url>
+# omarchy:summary=Launch a URL as a web app in the default supported browser, or user specified browser
+# omarchy:args=[--browser <name>] <url>
 
-browser=$(xdg-settings get default-web-browser)
+browser=""
+
+while (( $# > 0 )); do
+  case $1 in
+    --browser)
+      browser="$2"
+      shift 2
+      ;;
+    --browser=*)
+      browser="${1#--browser=}"
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if [[ -z $browser ]]; then
+  browser=$(xdg-settings get default-web-browser)
+fi
 
 case $browser in
 google-chrome* | brave* | microsoft-edge* | opera* | vivaldi* | helium*) ;;
