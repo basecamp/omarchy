@@ -1,15 +1,19 @@
 #!/bin/bash
 
-# omarchy:summary=Get remote tag
+# omarchy:summary=Check whether a newer Omarchy release is available
 
-latest_tag=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
+# Only consider tags in the v3 series; v4 and later require an explicit upgrade
+VERSION_PATTERN='^v3\.[0-9]+\.[0-9]+$'
+
+# Get remote tag
+latest_tag=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | grep -E "$VERSION_PATTERN" | sort -V | tail -n 1)
 if [[ -z $latest_tag ]]; then
   echo "Error: Could not retrieve latest tag."
   exit 1
 fi
 
 # Get local tag
-current_tag=$(git -C "$OMARCHY_PATH" describe --tags $(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1))
+current_tag=$(git -C "$OMARCHY_PATH" tag --list | grep -E "$VERSION_PATTERN" | sort -V | tail -n 1)
 if [[ -z $current_tag ]]; then
   echo "Error: Could not retrieve current tag."
   exit 1
