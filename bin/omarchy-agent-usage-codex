@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # omarchy:summary=Print the Codex usage record as JSON
-# omarchy:args=[--force] [--limits-only]
+# omarchy:args=[--force] [--limits-only] [--id <id>] [--name <name>] [--shared-sessions <auto|on|off>]
 # omarchy:hidden=true
 """Collect Codex usage into one display-ready JSON record.
 
@@ -77,6 +77,33 @@ ENV = runtime_env()
 
 def find_command(name):
   return shutil.which(name, path=ENV.get("PATH"))
+
+
+def normalized_dir(value):
+  # Spelling, not identity on disk: collapse "~", "..", and trailing slashes
+  # but leave symlinks alone, so a symlinked alias of the stock directory
+  # reads as its own account rather than inheriting the stock one's claims.
+  return os.path.normpath(os.path.abspath(os.path.expanduser(str(value))))
+
+
+def on_stock_dir():
+  return normalized_dir(os.environ.get("CODEX_HOME") or "~/.codex") == normalized_dir("~/.codex")
+
+
+# pi, omp, and opencode keep one transcript tree apiece, shared by every
+# Codex account on the machine — nothing in them says which CODEX_HOME their
+# tokens were burned against. Exactly one account may count them, or the same
+# tokens appear once per account. omarchy-agent-usage-update resolves the
+# owner across every enabled account (reading each one's preference through
+# --print-identity) and runs each collector with an explicit on or off; auto
+# is the answer for a collector run by hand, where the stock ~/.codex account
+# counts them.
+def include_shared_sessions(mode):
+  if mode == "on":
+    return True
+  if mode == "off":
+    return False
+  return on_stock_dir()
 
 
 now = datetime.now()
@@ -395,17 +422,36 @@ def main():
   # every collector accepts the same invocation.
   parser.add_argument("--force", action="store_true")
   parser.add_argument("--limits-only", action="store_true")
-  parser.parse_args()
+  # A second account is this same collector run with CODEX_HOME pointing at
+  # its directory and an id of its own; see collectors.d in the agents
+  # README. The mark keeps every account of this tool on the Codex icon,
+  # whatever its id.
+  parser.add_argument("--id", dest="agent_id", default=AGENT_ID)
+  parser.add_argument("--name", dest="agent_name", default="")
+  parser.add_argument("--shared-sessions", choices=["auto", "on", "off"], default="auto")
+  parser.add_argument("--print-identity", action="store_true")
+  args = parser.parse_args()
 
-  scan_pi_sessions()
+  # The identity is what lets the update command resolve shared-tree
+  # ownership across accounts before any of them runs.
+  if args.print_identity:
+    print(json.dumps({"tool": AGENT_ID, "stock": on_stock_dir(), "sharedSessions": args.shared_sessions}, separators=(",", ":")))
+    return
+
+  if include_shared_sessions(args.shared_sessions):
+    scan_pi_sessions()
+    scan_opencode_sessions()
   scan_native_codex_sessions()
-  scan_opencode_sessions()
   rpc = fetch_codex_rpc()
 
   record = {
     "schemaVersion": 1,
-    "id": AGENT_ID,
-    "name": AGENT_NAME,
+    "id": args.agent_id,
+    "name": args.agent_name or (AGENT_NAME if args.agent_id == AGENT_ID else args.agent_id),
+    # Which tool this account runs, whatever id it goes by — the panel picks
+    # the Codex mark by it, and synced machines refuse to pool accounts
+    # whose marks disagree.
+    "mark": AGENT_ID,
     "updatedAt": datetime.now(timezone.utc).isoformat(),
     "ready": True,
     "hasLocalStats": True,

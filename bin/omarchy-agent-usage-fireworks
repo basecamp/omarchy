@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # omarchy:summary=Print the Fireworks usage record as JSON
-# omarchy:args=[--force] [--limits-only]
+# omarchy:args=[--force] [--limits-only] [--id <id>] [--name <name>]
 # omarchy:hidden=true
 """Collect Fireworks serverless usage into one display-ready JSON record.
 
@@ -29,6 +29,9 @@ from typing import Any
 
 AGENT_ID = "fireworks"
 AGENT_NAME = "Fireworks"
+# The stock id doubles as the mark, and survives --id rebinding AGENT_ID so
+# every Fireworks account keeps the Fireworks icon.
+AGENT_MARK = AGENT_ID
 AUTH_HELP = "Set FIREWORKS_API_KEY, run `firectl set-api-key`, or sign in to Fireworks in opencode."
 API_BASE_URL = "https://api.fireworks.ai"
 
@@ -108,6 +111,7 @@ def base_record(**overrides: Any) -> dict[str, Any]:
     "schemaVersion": 1,
     "id": AGENT_ID,
     "name": AGENT_NAME,
+    "mark": AGENT_MARK,
     "updatedAt": datetime.now(timezone.utc).isoformat(),
     "ready": False,
     "hasLocalStats": False,
@@ -486,6 +490,10 @@ def scan(api_base_url: str, auth_path: Path) -> dict[str, Any]:
 
 
 def main() -> int:
+  # Every record leaves through base_record, so a renamed account rebinds the
+  # module identity rather than threading the id through each call.
+  global AGENT_ID, AGENT_NAME
+
   parser = argparse.ArgumentParser(description="Print the Fireworks usage record as JSON")
   # Stats and balance come from the same few API calls, so there is no cache
   # to force past and no faster limits-only path. The flags exist so every
@@ -494,7 +502,14 @@ def main() -> int:
   parser.add_argument("--limits-only", action="store_true")
   parser.add_argument("--auth-path", default=os.environ.get("FIREWORKS_AUTH_PATH", "~/.fireworks/auth.ini"))
   parser.add_argument("--api-base-url", default=os.environ.get("FIREWORKS_API_BASE_URL", API_BASE_URL))
+  # A second account is this same collector run from a collectors.d wrapper
+  # with its own credentials in the environment and an id of its own.
+  parser.add_argument("--id", dest="agent_id", default=AGENT_ID)
+  parser.add_argument("--name", dest="agent_name", default="")
   args = parser.parse_args()
+
+  AGENT_ID = args.agent_id
+  AGENT_NAME = args.agent_name or (AGENT_NAME if args.agent_id == AGENT_MARK else args.agent_id)
 
   try:
     record = scan(args.api_base_url, Path(args.auth_path).expanduser())

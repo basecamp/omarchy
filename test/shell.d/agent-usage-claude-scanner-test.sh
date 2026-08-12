@@ -18,7 +18,7 @@ cat >"$projects/session.jsonl" <<EOF
 {"timestamp":"$timestamp","type":"assistant","sessionId":"session-1","uuid":"event-3","message":{"id":"message-2","role":"assistant","model":"claude-test","usage":{"input_tokens":2,"cache_creation_input_tokens":454,"cache_read_input_tokens":28857,"output_tokens":390}}}
 EOF
 
-result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" XDG_DATA_HOME="$TEST_HOME/.local/share" \
+result=$(HOME="$TEST_HOME" CLAUDE_CONFIG_DIR="" XDG_CACHE_HOME="$TEST_HOME/.cache" XDG_DATA_HOME="$TEST_HOME/.local/share" \
   "$ROOT/bin/omarchy-agent-usage-claude" --force)
 
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "58793" ]] ||
@@ -46,7 +46,7 @@ cat >"$HISTORY_HOME/.claude/history.jsonl" <<EOF
 {"timestamp":$now_ms,"sessionId":"s2","display":"two"}
 EOF
 
-result=$(HOME="$HISTORY_HOME" XDG_CACHE_HOME="$HISTORY_HOME/.cache" XDG_DATA_HOME="$HISTORY_HOME/.local/share" \
+result=$(HOME="$HISTORY_HOME" CLAUDE_CONFIG_DIR="" XDG_CACHE_HOME="$HISTORY_HOME/.cache" XDG_DATA_HOME="$HISTORY_HOME/.local/share" \
   "$ROOT/bin/omarchy-agent-usage-claude" --force)
 
 [[ $(jq -r '(.todayPrompts|tostring) + "/" + (.todaySessions|tostring)' <<<"$result") == "2/2" ]] ||
@@ -92,7 +92,7 @@ conn.commit()
 conn.close()
 PY
 
-result=$(HOME="$OPENCODE_HOME" XDG_CACHE_HOME="$OPENCODE_HOME/.cache" XDG_DATA_HOME="$OPENCODE_HOME/.local/share" \
+result=$(HOME="$OPENCODE_HOME" CLAUDE_CONFIG_DIR="" XDG_CACHE_HOME="$OPENCODE_HOME/.cache" XDG_DATA_HOME="$OPENCODE_HOME/.local/share" \
   "$ROOT/bin/omarchy-agent-usage-claude" --force)
 
 [[ $(jq -r '(.ready|tostring) + "/" + (.todayTotalTokens|tostring)' <<<"$result") == "true/192" ]] ||
@@ -118,7 +118,7 @@ cat >"$PI_HOME/.omp/agent/sessions/project/omp.jsonl" <<EOF
 { "type": "message", "id": "omp-1", "timestamp": "$timestamp", "message": { "role": "assistant", "provider": "anthropic", "model": "claude-omp", "usage": { "input": 20, "output": 5, "cacheRead": 4, "cacheWrite": 1, "totalTokens": 30 } } }
 EOF
 
-result=$(HOME="$PI_HOME" XDG_CACHE_HOME="$PI_HOME/.cache" XDG_DATA_HOME="$PI_HOME/.local/share" \
+result=$(HOME="$PI_HOME" CLAUDE_CONFIG_DIR="" XDG_CACHE_HOME="$PI_HOME/.cache" XDG_DATA_HOME="$PI_HOME/.local/share" \
   "$ROOT/bin/omarchy-agent-usage-claude" --force)
 
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "49" ]] ||
@@ -178,3 +178,84 @@ PY
 [[ $(jq -r '.mode' <<<"$race_output") == "0o644" ]] ||
   fail "Claude collector keeps cache files readable" "$race_output"
 pass "Claude collector survives concurrent writes to one cache file"
+
+[[ $(jq -r '.mark' <<<"$result") == "claude" ]] ||
+  fail "Claude collector records which tool the account runs" "$result"
+pass "Claude collector records which tool the account runs"
+
+# A second account is the same collector pointed at another CLAUDE_CONFIG_DIR
+# with an id of its own. It reports under that id wearing the Claude mark,
+# reads its own transcripts, and leaves the shared pi/omp/opencode trees to
+# the stock account — they carry no account, so counting them for both would
+# count them twice.
+work_projects="$PI_HOME/.claude-work/projects/example"
+mkdir -p "$work_projects"
+cat >"$work_projects/session.jsonl" <<EOF
+{"timestamp":"$timestamp","type":"assistant","sessionId":"work-1","uuid":"w-1","message":{"id":"wm-1","role":"assistant","model":"claude-test","usage":{"input_tokens":5,"output_tokens":7}}}
+EOF
+
+result=$(HOME="$PI_HOME" XDG_CACHE_HOME="$PI_HOME/.cache" XDG_DATA_HOME="$PI_HOME/.local/share" \
+  CLAUDE_CONFIG_DIR="$PI_HOME/.claude-work" \
+  "$ROOT/bin/omarchy-agent-usage-claude" --force --id claude-work --name "Work")
+
+[[ $(jq -r '.id + "/" + .name + "/" + .mark' <<<"$result") == "claude-work/Work/claude" ]] ||
+  fail "a second Claude account reports its own id and name under the Claude mark" "$result"
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "12" ]] ||
+  fail "a second Claude account reads its own directory and leaves the shared trees to the stock account" "$result"
+pass "a second Claude account keeps its own identity and leaves shared trees alone"
+
+result=$(HOME="$PI_HOME" XDG_CACHE_HOME="$PI_HOME/.cache" XDG_DATA_HOME="$PI_HOME/.local/share" \
+  CLAUDE_CONFIG_DIR="$PI_HOME/.claude-work" \
+  "$ROOT/bin/omarchy-agent-usage-claude" --force --id claude-work --shared-sessions on)
+
+[[ $(jq -r '.name + "/" + (.todayTotalTokens|tostring)' <<<"$result") == "claude-work/61" ]] ||
+  fail "--shared-sessions on claims the shared trees for a chosen account, which defaults its name to its id" "$result"
+pass "--shared-sessions on claims the shared trees for a chosen account"
+
+result=$(HOME="$PI_HOME" CLAUDE_CONFIG_DIR="" XDG_CACHE_HOME="$PI_HOME/.cache" XDG_DATA_HOME="$PI_HOME/.local/share" \
+  "$ROOT/bin/omarchy-agent-usage-claude" --force --shared-sessions off)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "0" ]] ||
+  fail "--shared-sessions off keeps the shared trees out of the stock account" "$result"
+pass "--shared-sessions off keeps the shared trees out of the stock account"
+
+# Rate limits are per-subscription, so each account keeps its own probe
+# cache — a second account answering with the first one's cached limits would
+# display the wrong subscription's numbers. Fresh per-directory caches are
+# seeded the way collect_limits writes them, so no probe leaves the machine.
+LIMITS_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$HISTORY_HOME" "$OPENCODE_HOME" "$PI_HOME" "$LIMITS_HOME"' EXIT
+future_ms=$(( ($(date +%s) + 3600) * 1000 ))
+for dir in .claude .claude-work; do
+  mkdir -p "$LIMITS_HOME/$dir"
+  cat >"$LIMITS_HOME/$dir/.credentials.json" <<EOF
+{"claudeAiOauth":{"accessToken":"token-$dir","expiresAt":$future_ms,"subscriptionType":"max"}}
+EOF
+done
+
+python3 - "$LIMITS_HOME" <<'PY'
+import hashlib, json, sys, time
+from pathlib import Path
+
+home = Path(sys.argv[1])
+cache = home / ".cache" / "omarchy" / "agent-usage"
+cache.mkdir(parents=True, exist_ok=True)
+for dirname, label in ((".claude", "Stock window"), (".claude-work", "Work window")):
+  digest = hashlib.sha1(str((home / dirname).resolve()).encode("utf-8")).hexdigest()[:16]
+  (cache / f"claude-limits-{digest}.json").write_text(json.dumps({
+    "fetchedAtMs": round(time.time() * 1000),
+    "limits": [{"label": label, "percent": 0.5, "resetsAt": ""}],
+  }))
+PY
+
+result=$(HOME="$LIMITS_HOME" CLAUDE_CONFIG_DIR="" XDG_CACHE_HOME="$LIMITS_HOME/.cache" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+  "$ROOT/bin/omarchy-agent-usage-claude")
+[[ $(jq -r '.limits[0].label' <<<"$result") == "Stock window" ]] ||
+  fail "the stock account answers with its own cached limits" "$result"
+
+result=$(HOME="$LIMITS_HOME" XDG_CACHE_HOME="$LIMITS_HOME/.cache" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+  CLAUDE_CONFIG_DIR="$LIMITS_HOME/.claude-work" \
+  "$ROOT/bin/omarchy-agent-usage-claude" --id claude-work)
+[[ $(jq -r '.limits[0].label' <<<"$result") == "Work window" ]] ||
+  fail "a second account keeps a limits cache of its own" "$result"
+pass "each account keeps a limits cache of its own"

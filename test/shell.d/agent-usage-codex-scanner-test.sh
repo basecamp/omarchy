@@ -55,6 +55,10 @@ pass "Codex collector does not double-count cache or reasoning tokens"
   fail "Codex collector identifies itself with an empty limits list" "$result"
 pass "Codex collector identifies itself with an empty limits list"
 
+[[ $(jq -r '.mark' <<<"$result") == "codex" ]] ||
+  fail "Codex collector records which tool the account runs" "$result"
+pass "Codex collector records which tool the account runs"
+
 # Pi and omp can both spend a Codex subscription without creating native
 # Codex sessions. Their compatible JSONL transcripts must be included.
 PI_HOME=$(mktemp -d)
@@ -77,6 +81,33 @@ result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" XDG_DATA_HOME="$PI_HOME/.l
 [[ $(jq -c '.modelUsage' <<<"$result") == '{"gpt-pi":{"inputTokens":10,"outputTokens":4,"cacheReadInputTokens":3,"cacheCreationInputTokens":2},"gpt-omp":{"inputTokens":20,"outputTokens":5,"cacheReadInputTokens":4,"cacheCreationInputTokens":1}}' ]] ||
   fail "Codex collector filters pi and omp sessions to Codex providers" "$result"
 pass "Codex collector counts pi and omp subscription usage"
+
+# A second account is the same collector pointed at another CODEX_HOME with an
+# id of its own. It reports under that id wearing the Codex mark, and leaves
+# the shared pi/omp trees to the stock account — they carry no account, so
+# counting them for both would count them twice.
+result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex-work" XDG_DATA_HOME="$PI_HOME/.local/share" \
+  PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --id codex-work --name "Work")
+
+[[ $(jq -r '.id + "/" + .name + "/" + .mark' <<<"$result") == "codex-work/Work/codex" ]] ||
+  fail "a second Codex account reports its own id and name under the Codex mark" "$result"
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "0" ]] ||
+  fail "a second Codex account leaves the shared pi and omp trees to the stock account" "$result"
+pass "a second Codex account keeps its own identity and leaves shared trees alone"
+
+result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex-work" XDG_DATA_HOME="$PI_HOME/.local/share" \
+  PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --id codex-work --shared-sessions on)
+
+[[ $(jq -r '.name + "/" + (.todayTotalTokens|tostring)' <<<"$result") == "codex-work/49" ]] ||
+  fail "--shared-sessions on claims the shared trees for a chosen account, which defaults its name to its id" "$result"
+pass "--shared-sessions on claims the shared trees for a chosen account"
+
+result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" XDG_DATA_HOME="$PI_HOME/.local/share" \
+  PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --shared-sessions off)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "0" ]] ||
+  fail "--shared-sessions off keeps the shared trees out of the stock account" "$result"
+pass "--shared-sessions off keeps the shared trees out of the stock account"
 
 # A subscription burned entirely through opencode has no native session files;
 # usage must come from opencode's message database, filtered to OpenAI.

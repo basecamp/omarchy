@@ -48,7 +48,9 @@ Adding an agent therefore never touches this plugin: ship a collector that
 prints the record contract (see the `claude` and `codex` collectors in
 `bin/`), and the panel gains a tab. An `assets/<id>.svg` mark is optional —
 with an `assets/<id>-light.svg` twin if the mark needs a dark variant for
-light surfaces — and the bar glyph stands in when there is none.
+light surfaces — and the bar glyph stands in when there is none. A record may
+instead name the tool it runs with `"mark"`, and the panel uses that mark's
+assets — how a second account of a shipped agent keeps its tool's icon.
 
 | Collector | Limits | Local stats |
 |---|---|---|
@@ -91,6 +93,59 @@ period. `accountId` only matters when one API key can access several
 accounts. Without a configured `fundedAmount` the tab still shows token
 usage, just no balance. With a live ledger, `fundedAmount` is optional and
 only adds the meter and the spent-of-funded line under the real figure.
+
+## Accounts
+
+An account is one subscription: a work Claude and a personal one are two
+accounts, each with its own config directory — `CLAUDE_CONFIG_DIR` for
+Claude, `CODEX_HOME` for Codex, the only mechanisms that keep two logins'
+credentials *and* transcripts apart — and each with its own tab, limits, and
+totals.
+
+The shipped collectors cover the stock directories. Every further account is
+a collector of its own in `~/.config/omarchy/agents/collectors.d/`: an
+executable named for the account's id that points a shipped collector at the
+account's directory.
+
+```bash
+# ~/.config/omarchy/agents/collectors.d/claude-work   (chmod +x)
+#!/bin/bash
+export CLAUDE_CONFIG_DIR="$HOME/.claude-work"
+exec omarchy-agent-usage-claude --id claude-work --name "Work" "$@"
+```
+
+The file name, the `--id`, and the record's id are one string — the update
+command names the record file after the collector, and per-agent `enabled`
+matches on it. `"$@"` keeps `--force` and `--limits-only` flowing. The
+account appears in the panel on the next refresh wearing the Claude mark:
+the record carries which tool it runs, so it never falls back to the bar
+glyph. A user collector with a shipped collector's name replaces the shipped
+one. Codex accounts work the same way with `CODEX_HOME` and
+`omarchy-agent-usage-codex`; Fireworks with its credential environment
+variables and `omarchy-agent-usage-fireworks`.
+
+pi, omp, and opencode keep one transcript tree apiece with nothing tying
+them to an account, so exactly one account may count them. The update
+command resolves whose they are across every enabled account — it reads each
+collector's tool and preference through `--print-identity`, then runs each
+one with an explicit `--shared-sessions on` or `off`. A wrapper claiming
+them with `--shared-sessions on` wins, and the stock account is switched off
+for that run without any paired override; with no claim the stock account
+counts them; with neither enabled they stay uncounted rather than landing
+under a subscription they may not belong to. Two claims keep the first, with
+a warning. A collector run by hand outside the update command falls back to
+its own `auto`: the stock directory counts the trees.
+
+Synced snapshots carry each account's tool, and machines refuse to pool a
+name that runs Claude here with one that runs Codex elsewhere — the
+mismatched snapshot is ignored with a warning rather than summed.
+
+Removing an account is removing its collector and the record it left:
+
+```bash
+rm ~/.config/omarchy/agents/collectors.d/claude-work
+rm ~/.local/state/omarchy/agents/usage/claude-work.json
+```
 
 ## Interactions
 

@@ -100,6 +100,10 @@ ShellRoot {
       var lightIcons = item.iconCandidatesForProvider({ providerId: "codex" }, Qt.color("#ffffff")).join(" ")
       root.assertTrue(darkIcons.indexOf("codex.svg") >= 0 && darkIcons.indexOf("codex-light.svg") < 0, entry.id + " uses the dark-theme Codex icon on dark surfaces")
       root.assertTrue(lightIcons.indexOf("codex-light.svg") >= 0, entry.id + " prefers the light-theme Codex icon on light surfaces")
+      // The mark names the tool an account runs, so a second account keeps
+      // that tool's icon instead of falling back to the bar glyph.
+      var accountIcons = item.iconCandidatesForProvider({ providerId: "claude-work", mark: "claude" }, Qt.color("#1a1b26")).join(" ")
+      root.assertTrue(accountIcons.indexOf("/claude.svg") >= 0, entry.id + " marks a second account with its tool's icon")
     }
 
     safeCall(item, "refresh", entry)
