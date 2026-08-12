@@ -4,6 +4,11 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+# The command fixture follows the runtime invariant and reads defaults through
+# OMARCHY_PATH. Point it at this checkout rather than whichever install launched
+# the test (or nothing at all on a non-Omarchy development machine).
+export OMARCHY_PATH="$ROOT"
+
 if perl -0ne 'exit(/drag\s*\.\s*target\s*:\s*[^;]*\bslot\b/s ? 0 : 1)' "$ROOT/shell/plugins/bar/Bar.qml"; then
   fail "bar module dragging must not mutate ModuleSlot positions"
 fi
