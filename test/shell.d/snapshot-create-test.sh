@@ -89,7 +89,7 @@ STUB
 
 cat >"$fake_bin/btrfs" <<'STUB'
 #!/bin/bash
-[[ "$*" == "inspect-internal rootid /" || "$*" == "inspect-internal rootid /swapfile" ]] || exit 1
+[[ $* == "inspect-internal rootid /" || $* == "inspect-internal rootid /swapfile" ]] || exit 1
 echo 256
 STUB
 chmod +x "$fake_bin/swapon" "$fake_bin/btrfs"
