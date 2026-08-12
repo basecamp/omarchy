@@ -2,13 +2,14 @@
 name: omarchy
 description: >
   REQUIRED for end-user customization of Linux desktop, window manager, or system config.
-  Use when editing ~/.config/hypr/, ~/.config/waybar/, ~/.config/walker/,
+  Use when editing ANY file in ~/.config/, ~/.config/hypr/, ~/.config/waybar/, ~/.config/walker/,
   ~/.config/alacritty/, ~/.config/foot/, ~/.config/kitty/, ~/.config/ghostty/, ~/.config/mako/,
   or ~/.config/omarchy/. Triggers: Hyprland, window rules, animations, keybindings,
   monitors, gaps, borders, blur, opacity, waybar, walker, terminal config, themes,
-  background, night light, idle, lock screen, screenshots, reminders, layer rules,
-  workspace settings, display config, and user-facing omarchy commands. Excludes Omarchy
-  source development in ~/.local/share/omarchy/ and `omarchy dev` workflows.
+  fonts, background, night light, idle, lock screen, screenshots, reminders, layer
+  rules, workspace settings, display config, appearance changes, and user-facing
+  omarchy commands. Excludes Omarchy source development in ~/.local/share/omarchy/
+  and `omarchy dev` workflows.
 ---
 
 # Omarchy Skill
@@ -17,24 +18,6 @@ Manage [Omarchy](https://omarchy.org/) Linux systems - a beautiful, modern, opin
 
 This skill is for end-user customization on installed systems.
 It is not for contributing to Omarchy source code.
-
-## When This Skill MUST Be Used
-
-**ALWAYS invoke this skill for end-user requests involving ANY of these:**
-
-- Editing ANY file in `~/.config/hypr/` (window rules, animations, keybindings, monitors, etc.)
-- Editing ANY file in `~/.config/waybar/`, `~/.config/walker/`, `~/.config/mako/`
-- Editing terminal configs (alacritty, foot, kitty, ghostty)
-- Editing ANY file in `~/.config/omarchy/`
-- Window behavior, animations, opacity, blur, gaps, borders
-- Layer rules, workspace settings, display/monitor configuration
-- Themes, backgrounds, fonts, appearance changes
-- User-facing `omarchy` commands (`omarchy theme ...`, `omarchy refresh ...`, `omarchy restart ...`, etc.)
-- Screenshots, screen recording, reminders, night light, idle behavior, lock screen
-
-**If you're about to edit a config file in ~/.config/ on this system, STOP and use this skill first.**
-
-**Do NOT use this skill for Omarchy development tasks** (editing files in `~/.local/share/omarchy/`, creating migrations, or running `omarchy dev ...` workflows).
 
 ## Critical Safety Rules
 
