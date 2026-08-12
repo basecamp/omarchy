@@ -399,6 +399,14 @@ assert(
   'notifications service reads history only once its queued file work has landed'
 )
 assert(
+  /function runNextPopupFileJob\(\) \{[\s\S]{0,500}?if \(readHistoryProc\.running\) return/.test(serviceQml),
+  'notifications service holds queued file work until a history read finishes'
+)
+assert(
+  /id: readHistoryProc[\s\S]{0,300}?onExited: service\.runNextPopupFileJob\(\)/.test(serviceQml),
+  'notifications service releases the file queue even when a history read comes back empty'
+)
+assert(
   /onSummaryChanged: cardSlot\.remainingLifetime = 1\.0/.test(serviceQml),
   'notifications service restarts the countdown when a toast is updated under it'
 )

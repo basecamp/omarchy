@@ -397,6 +397,12 @@ Item {
   }
 
   function runNextPopupFileJob() {
+    // A replay's directory read is a barrier in this queue. It only starts
+    // once everything queued ahead of it has landed, and everything queued
+    // behind it waits here until it finishes — so it sees the history exactly
+    // as it stood when the replay was asked for, not a clear or an archive
+    // half applied underneath the read.
+    if (readHistoryProc.running) return
     if (popupFileProc.running || popupFileQueue.length === 0) {
       if (!popupFileProc.running) startHistoryReadWhenIdle()
       return
@@ -484,6 +490,9 @@ Item {
   Process {
     id: readHistoryProc
     running: false
+    // Let the file queue go again, whatever the read did — a failed or empty
+    // read must not leave archives and clears parked behind it forever.
+    onExited: service.runNextPopupFileJob()
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: service.replayHistory(text)
