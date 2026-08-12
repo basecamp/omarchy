@@ -24,7 +24,7 @@ fi
 
 gpu_mode=""
 for attempt in {1..3}; do
-  if gpu_mode=$(timeout 3s supergfxctl -g 2>/dev/null) && [[ -n $gpu_mode ]]; then
+  if gpu_mode=$(timeout --kill-after=1s 3s supergfxctl -g 2>/dev/null) && [[ -n $gpu_mode ]]; then
     break
   fi
 

@@ -13,13 +13,6 @@ cat >"$fake_bin/omarchy-cmd-missing" <<'STUB'
 exit 1
 STUB
 
-cat >"$fake_bin/timeout" <<'STUB'
-#!/bin/bash
-printf 'timeout %s\n' "$*" >>"$TEST_LOG"
-shift
-exec "$@"
-STUB
-
 cat >"$fake_bin/sleep" <<'STUB'
 #!/bin/bash
 :
@@ -51,8 +44,6 @@ TEST_TMP="$test_tmp" TEST_LOG="$test_tmp/calls.log" SUCCEED_ON_ATTEMPT=3 \
   PATH="$fake_bin:$PATH" bash "$ROOT/bin/omarchy-toggle-hybrid-gpu" >/dev/null
 
 [[ $(<"$test_tmp/attempts") == "3" ]] || fail "hybrid GPU mode query retries transient failures"
-[[ $(grep -c '^timeout 3s supergfxctl -g$' "$test_tmp/calls.log") == "3" ]] ||
-  fail "hybrid GPU mode query bounds every attempt"
 pass "hybrid GPU mode query recovers from a transient supergfxd failure"
 
 rm -f "$test_tmp/attempts" "$test_tmp/calls.log"
@@ -70,3 +61,21 @@ set -e
 grep -qF 'supergfxd is not responding' <<<"$error" ||
   fail "hybrid GPU mode query explains how to diagnose supergfxd" "$error"
 pass "hybrid GPU mode query fails clearly instead of hanging"
+
+cat >"$fake_bin/supergfxctl" <<'STUB'
+#!/bin/bash
+trap '' TERM
+/usr/bin/sleep 30
+STUB
+chmod +x "$fake_bin/supergfxctl"
+
+set +e
+output=$(TEST_TMP="$test_tmp" PATH="$fake_bin:$PATH" timeout 15s bash "$ROOT/bin/omarchy-toggle-hybrid-gpu" 2>&1)
+status=$?
+set -e
+
+(( status != 124 )) || fail "hybrid GPU mode query terminates a blocked client"
+(( status != 0 )) || fail "hybrid GPU mode query reports a blocked client as unavailable"
+grep -qF 'supergfxd is not responding' <<<"$output" ||
+  fail "hybrid GPU mode query diagnoses a blocked client" "$output"
+pass "hybrid GPU mode query kills a client that ignores the timeout signal"
