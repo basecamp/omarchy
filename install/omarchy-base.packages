@@ -116,6 +116,8 @@ satty
 sddm
 signal-desktop
 slurp
+speech-dispatcher
+espeak-ng
 spotify
 socat
 starship
