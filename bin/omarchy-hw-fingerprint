@@ -9,6 +9,7 @@
 # also make USB touchscreens) are left out to avoid nagging laptops with no
 # reader — those still match on the product string below when present.
 fingerprint_vendors=" 27c6 138a 06cb 08ff 1c7a 147e "
+usb_devices_path="${OMARCHY_USB_DEVICES_PATH:-/sys/bus/usb/devices}"
 
 # libfprint drives every reader it supports from userspace over libusb, so a
 # real reader sits there with no kernel driver bound to any of its interfaces.
@@ -24,16 +25,19 @@ has_kernel_driver() {
   return 1
 }
 
-for dev in /sys/bus/usb/devices/*; do
+for dev in "$usb_devices_path"/*; do
   # The device's own product descriptor usually names it, e.g. "Goodix
   # Fingerprint USB Device" — driver-independent and vendor-agnostic.
   if [[ -r $dev/product ]]; then
     product=$(<"$dev/product")
     product=${product,,}
-    # Elan's match-on-chip readers report "ELAN:ARM-M4", the family name
-    # rather than the function. Elan is left out of the vendor list above
-    # on purpose, so without this they match nothing.
-    [[ $product == *fingerprint* || $product == *biometric* || $product == *elan:arm-m4* ]] && exit 0
+    # Elan's match-on-chip readers report "ELAN:ARM-M4" and Fingerprint Cards'
+    # report "FPC Sensor Controller" or "FPC L:0000 FW:1425046" — the family or
+    # the manufacturer rather than the function. Both vendors are left out of
+    # the list above on purpose (Elan also makes touchscreens), so without these
+    # they match nothing. FPC leads the string on every reader on record, and
+    # three letters are little to match on, so require the prefix.
+    [[ $product == *fingerprint* || $product == *biometric* || $product == *elan:arm-m4* || $product == "fpc "* ]] && exit 0
   fi
 
   if [[ -r $dev/idVendor ]]; then
