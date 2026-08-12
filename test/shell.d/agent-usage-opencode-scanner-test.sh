@@ -39,6 +39,7 @@ loader = importlib.machinery.SourceFileLoader("opencode_collector", collector_pa
 spec = importlib.util.spec_from_loader(loader.name, loader)
 scanner = importlib.util.module_from_spec(spec)
 loader.exec_module(scanner)
+RealGoUsageClient = scanner.GoUsageClient
 
 data_home = test_home / "data"
 auth_path = data_home / "opencode" / "auth.json"
@@ -171,6 +172,65 @@ summary["offline"] = {
   "retryAdvised": offline.get("retryAdvised") is True,
   "totalPrompts": offline["totalPrompts"],
 }
+
+# The probe itself is exercised against a stubbed transport so the request
+# (path, bearer, user agent) and the failure mapping are pinned too — the
+# client swaps above never see them. The collector's urlopen is swapped, not
+# its GoUsageClient, the way the claude limits test swaps it.
+scanner.GoUsageClient = RealGoUsageClient
+captured = {}
+class FakeResponse:
+  def __init__(self, body):
+    self._body = body
+  def read(self):
+    return self._body
+  def __enter__(self):
+    return self
+  def __exit__(self, *args):
+    return False
+
+def stub_urlopen(request, timeout=None):
+  captured["url"] = request.full_url
+  captured["headers"] = {name.lower(): value for name, value in request.header_items()}
+  if stub_urlopen.error is not None:
+    raise stub_urlopen.error
+  return FakeResponse(stub_urlopen.body)
+stub_urlopen.error = None
+stub_urlopen.body = b"{}"
+scanner.urllib.request.urlopen = stub_urlopen
+
+probe_client = scanner.GoUsageClient("sk_probe", "https://example.invalid")
+stub_urlopen.body = json.dumps(live_payload).encode()
+payload = probe_client.probe()
+summary["probe"] = {
+  "payloadIsLive": isinstance(payload, dict) and payload.get("usage") is not None,
+  "url": captured["url"],
+  "auth": captured["headers"].get("authorization", ""),
+  "ua": captured["headers"].get("user-agent", ""),
+  "accept": captured["headers"].get("accept", ""),
+}
+
+def error_text(error):
+  return type(error).__name__ + ":" + str(error)
+
+stub_urlopen.error = scanner.urllib.error.HTTPError("https://example.invalid", 401, "Unauthorized", {}, None)
+try:
+  probe_client.probe()
+  summary["probe401"] = "no-error"
+except scanner.GoUsageError as error:
+  summary["probe401"] = error_text(error)
+stub_urlopen.error = scanner.urllib.error.HTTPError("https://example.invalid", 500, "Server Error", {}, None)
+try:
+  probe_client.probe()
+  summary["probe500"] = "no-error"
+except scanner.GoUsageError as error:
+  summary["probe500"] = error_text(error)
+stub_urlopen.error = scanner.urllib.error.URLError(OSError("no route to host"))
+try:
+  probe_client.probe()
+  summary["probeOffline"] = "no-error"
+except scanner.GoUsageError as error:
+  summary["probeOffline"] = error_text(error)
 print(json.dumps(summary, separators=(",", ":")))
 PY
 )
@@ -253,3 +313,19 @@ pass "OpenCode collector explains a rejected key"
 [[ $(jq -r '(.offline.retryAdvised | tostring) + ":" + (.offline.totalPrompts | tostring)' <<<"$result") == "true:3" ]] ||
   fail "OpenCode collector asks for a sooner retry after a transport failure" "$result"
 pass "OpenCode collector asks for a sooner retry after a transport failure"
+
+[[ $(jq -r '.probe.url' <<<"$result") == "https://example.invalid/zen/go/v1/usage" ]] ||
+  fail "OpenCode probe hits the official usage path" "$result"
+pass "OpenCode probe hits the official usage path"
+
+[[ $(jq -r '.probe.auth + ":" + .probe.accept + ":" + .probe.ua' <<<"$result") == "Bearer sk_probe:application/json:omarchy-agent-usage/1" ]] ||
+  fail "OpenCode probe sends the bearer, accept, and user-agent headers" "$result"
+pass "OpenCode probe sends the bearer, accept, and user-agent headers"
+
+[[ $(jq -r '.probe.payloadIsLive' <<<"$result") == "true" ]] ||
+  fail "OpenCode probe decodes the deployed response shape" "$result"
+pass "OpenCode probe decodes the deployed response shape"
+
+{ [[ $(jq -r '.probe401' <<<"$result") == *"rejected"* ]] && [[ $(jq -r '.probe500' <<<"$result") == *"status 500"* ]] && [[ $(jq -r '.probeOffline' <<<"$result") == *"Could not reach"* ]]; } ||
+  fail "OpenCode probe maps rejected keys, status errors, and transport failures distinctly" "$result"
+pass "OpenCode probe maps rejected keys, status errors, and transport failures distinctly"
