@@ -100,6 +100,6 @@ if [[ $inline == "true" ]]; then
   exec "${command[@]}"
 else
   # A fixed app-id rather than the default org.omarchy.<binary>, so every agent
-  # window shares one class for default/hypr/apps/agent.lua to float.
+  # window shares one class for window rules and themes to single out.
   exec omarchy-launch-tui --app-id=org.omarchy.agent "${command[@]}"
 fi

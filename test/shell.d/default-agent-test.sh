@@ -316,7 +316,7 @@ assert_launched() {
   local description=$2
   shift 2
   # Every agent window launches under the same app-id, whichever agent is
-  # default, so default/hypr/apps/agent.lua can float them all.
+  # default, so window rules and themes see one class for all of them.
   local expected=(--app-id=org.omarchy.agent "$@")
 
   mapfile -d '' -t actual <"$launch_log"
