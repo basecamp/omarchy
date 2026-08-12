@@ -18,9 +18,9 @@ focused=$(omarchy-hyprland-monitor-focused)
 terminal=$(xdg-terminal-exec --print-id)
 
 case $terminal in
-*Alacritty* | *ghostty* | *foot* | *kitty*) ;;
+*Alacritty* | *ghostty* | *foot* | *kitty* | *com.oldjobobo.splinterm*) ;;
 *)
-  omarchy-notification-send -g ✋ "Screensaver only runs in Alacritty, Foot, Ghostty, or Kitty"
+  omarchy-notification-send -g ✋ "Screensaver only runs in Alacritty, Foot, Ghostty, Kitty, or Splinterm"
   exit 1
   ;;
 esac
@@ -68,6 +68,13 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
     ;;
   *kitty*)
     hypr_exec kitty --class=org.omarchy.screensaver --override font_size=18 --override window_padding_width=0 -e omarchy-screensaver
+    ;;
+  *com.oldjobobo.splinterm*)
+    hypr_exec env \
+      SPLINTERM_CONFIG=/usr/share/splinterm/omarchy/screensaver.ini \
+      xdg-terminal-exec \
+      --app-id=org.omarchy.screensaver \
+      -- omarchy-screensaver
     ;;
   esac
 
