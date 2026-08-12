@@ -517,14 +517,24 @@ normalize_limine_config() {
   fi
 }
 
-root_param_regex='(^|[[:space:]])root=([^[:space:]]*)'
+# Captures the value of the *last* root=, which is the one that counts:
+# getarg reads the cmdline with tail -1, so a later root= overrides an earlier
+# one. The greedy prefix walks to the final occurrence. A value is required,
+# since a bare root= names nothing.
+root_param_regex='.*(^|[[:space:]])root=([^[:space:]]+)'
 
 # Naming an encrypted volume is what tells the initramfs to unlock it, so only
 # these prove a cmdline can reach an encrypted root. Keyfiles, ciphers and
-# crypttab switches modify an unlock selected elsewhere; on their own they
-# unlock nothing, so they must not vouch for a cmdline. A value is required:
-# a bare rd.luks.uuid= selects no volume either.
-unlock_selector_regex='(^|[[:space:]])(cryptdevice|dm-mod\.create|(rd\.)?luks\.(name|uuid))=[^[:space:]]'
+# crypttab switches modify an unlock selected elsewhere and open nothing on
+# their own, so they must not vouch for a cmdline.
+#
+# rd.luks.*/luks.* are deliberately absent. They are systemd's, and Omarchy
+# builds its initramfs with the busybox encrypt hook, which reads only
+# cryptdevice, cryptkey and crypto — it ignores every rd.luks parameter. A
+# machine carrying one and nothing else would be approved for a reboot into an
+# initramfs that cannot act on it. They are still copied forward below, so a
+# setup that does use them keeps them.
+unlock_selector_regex='(^|[[:space:]])(cryptdevice|dm-mod\.create)=[^[:space:]]'
 
 # Everything the unlock depends on, which is broader than what proves it:
 # these have to survive into the rebuilt cmdline even though none of them
@@ -563,6 +573,27 @@ cmdline_boots() {
   [[ $root_value != /dev/mapper/* && $root_value != /dev/dm-* ]]
 }
 
+# Whether any boot entry in a limine.conf can reach root. Judged one entry at
+# a time, because a root= in one entry and a selector in another compose into
+# nothing that boots, and only on the cmdline: keys — a title, a path or a
+# module_cmdline: is not the kernel command line, and a commented-out example
+# must not vouch for a live entry.
+limine_conf_boots() {
+  local text="$1" encrypted="$2" line
+  local cmdline_key_regex='^cmdline:[[:space:]]*'
+
+  # `|| [[ -n $line ]]` reads a final line that carries no trailing newline.
+  while IFS= read -r line || [[ -n $line ]]; do
+    line=${line#"${line%%[![:space:]]*}"}
+    [[ $line =~ $cmdline_key_regex ]] || continue
+    if cmdline_boots "${line#cmdline:}" "$encrypted"; then
+      return 0
+    fi
+  done <<<"$text"
+
+  return 1
+}
+
 # lsblk -s walks the parents, where the crypt layer hides on LVM-on-LUKS;
 # --nofsroot keeps findmnt from appending a btrfs subvolume lsblk cannot
 # resolve; the capture keeps a SIGPIPE under pipefail from reading as "no
@@ -579,10 +610,10 @@ root_on_dm_crypt() {
 
 preserve_kernel_cmdline_root() {
   local default_conf=/etc/default/limine
-  local cmdline effective_cmdline entry uki_cmdline param root_uuid subvol uki
+  local cmdline effective_cmdline limine_conf uki_cmdline param root_uuid subvol uki
   local boot_params=()
   local missing=()
-  local have_root=0 have_mount_mode=0 have_unlock=0 encrypted_root=0 limine_boots=0
+  local have_root=0 have_mount_mode=0 have_unlock=0 encrypted_root=0
 
   command -v limine-mkinitcpio >/dev/null 2>&1 || return 0
   as_root test -f /boot/limine.conf || return 0
@@ -689,20 +720,8 @@ EOF
     boot_cmdline_unsafe=1
   fi
 
-  # Judged one entry at a time: the file lists them all, and a root= in one
-  # entry with the selector in another composes into nothing that boots.
-  # Comments are skipped so a disabled line cannot vouch for a live one.
-  while IFS= read -r entry; do
-    entry=${entry#"${entry%%[![:space:]]*}"}
-    if [[ $entry == \#* ]]; then
-      continue
-    fi
-    if cmdline_boots "$entry" "$encrypted_root"; then
-      limine_boots=1
-      break
-    fi
-  done < <(as_root cat /boot/limine.conf 2>/dev/null || true)
-  ((limine_boots)) || missing+=(/boot/limine.conf)
+  limine_conf=$(as_root cat /boot/limine.conf 2>/dev/null || true)
+  limine_conf_boots "$limine_conf" "$encrypted_root" || missing+=(/boot/limine.conf)
 
   # The cmdline that boots is the one embedded in the UKIs, so check those too.
   if command -v objcopy >/dev/null 2>&1; then

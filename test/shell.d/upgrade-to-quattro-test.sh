@@ -195,11 +195,7 @@ grep -F -- '--only-section=.cmdline' "$upgrade_to_quattro" >/dev/null
 grep -F "as_root find /boot/EFI/Linux -maxdepth 1 -name 'omarchy_linux*.efi'" "$upgrade_to_quattro" >/dev/null
 grep -F 'cmdline_boots "$uki_cmdline" "$encrypted_root"' "$upgrade_to_quattro" >/dev/null
 
-# /boot/limine.conf lists every entry, so it is judged one at a time: a root=
-# in one entry and a selector in another compose into nothing that boots.
-grep -F 'if cmdline_boots "$entry" "$encrypted_root"; then' "$upgrade_to_quattro" >/dev/null
-grep -F 'if [[ $entry == \#* ]]; then' "$upgrade_to_quattro" >/dev/null
-grep -F '((limine_boots)) || missing+=(/boot/limine.conf)' "$upgrade_to_quattro" >/dev/null
+grep -F 'limine_conf_boots "$limine_conf" "$encrypted_root" || missing+=(/boot/limine.conf)' "$upgrade_to_quattro" >/dev/null
 grep -F 'boot_cmdline_unsafe=1' "$upgrade_to_quattro" >/dev/null
 unsafe_line=$(grep -n 'if (( boot_cmdline_unsafe )); then' "$upgrade_to_quattro" | cut -d: -f1)
 reboot_line=$(grep -n 'Rebooting because --reboot was passed' "$upgrade_to_quattro" | cut -d: -f1)
@@ -214,6 +210,7 @@ pass "Omarchy 4 upgrade verifies the UKIs and refuses to reboot unverified"
 cmdline_logic=$(
   grep -E '^(root_param_regex|unlock_selector_regex)=' "$upgrade_to_quattro"
   sed -n '/^cmdline_boots() {$/,/^}$/p' "$upgrade_to_quattro"
+  sed -n '/^limine_conf_boots() {$/,/^}$/p' "$upgrade_to_quattro"
 )
 grep -Fq 'cmdline_boots() {' <<<"$cmdline_logic" || fail "cmdline_boots is liftable from the upgrade script"
 eval "$cmdline_logic"
@@ -236,8 +233,6 @@ assert_stuck "no root= boots nothing" "quiet splash rw" 0
 assert_stuck "root= alone does not boot an encrypted root" "root=/dev/mapper/root rw" 1
 assert_stuck "a /dev/dm- node needs a selector too" "root=/dev/dm-0 rw" 1
 assert_boots "cryptdevice= selects the volume" "cryptdevice=PARTUUID=x:root root=/dev/mapper/root rw" 1
-assert_boots "rd.luks.uuid= selects the volume" "rd.luks.uuid=abc root=/dev/mapper/root rw" 1
-assert_boots "luks.name= selects the volume" "luks.name=abc=root root=/dev/mapper/root rw" 1
 assert_boots "dm-mod.create= creates the mapper" "root=/dev/mapper/root dm-mod.create=x rw" 1
 
 # Keyfiles, ciphers and crypttab switches modify an unlock chosen elsewhere.
@@ -245,7 +240,19 @@ assert_boots "dm-mod.create= creates the mapper" "root=/dev/mapper/root dm-mod.c
 assert_stuck "a keyfile alone selects no volume" "root=/dev/mapper/root cryptkey=rootfs:/key" 1
 assert_stuck "crypttab handling alone selects no volume" "root=/dev/mapper/root rd.luks.crypttab=0" 1
 assert_stuck "unlock options alone select no volume" "root=/dev/mapper/root rd.luks.options=discard" 1
-assert_stuck "a selector without a value selects no volume" "root=/dev/mapper/root rd.luks.uuid=" 1
+assert_stuck "a selector without a value selects no volume" "root=/dev/mapper/root cryptdevice=" 1
+
+# rd.luks.*/luks.* are systemd's. Omarchy builds its initramfs with the busybox
+# encrypt hook, which reads only cryptdevice, cryptkey and crypto, so a machine
+# carrying one of these and nothing else must not be approved for a reboot.
+assert_stuck "rd.luks.uuid= does not unlock an encrypt-hook initramfs" "rd.luks.uuid=abc root=/dev/mapper/root rw" 1
+assert_stuck "luks.name= does not unlock an encrypt-hook initramfs" "luks.name=abc=root root=/dev/mapper/root rw" 1
+
+# getarg reads the cmdline with tail -1, so a later root= overrides an earlier
+# one and the last value is the one that has to be judged.
+assert_stuck "the last root= is the one that counts" "root=UUID=abc root=/dev/mapper/root rw" 1
+assert_boots "an overridden mapper root= is not held against it" "root=/dev/mapper/root root=UUID=abc rw" 1
+assert_stuck "a bare root= names nothing" "root= rw" 0
 
 # The encrypt hook opens root= itself when cryptdevice= is absent, so a root=
 # naming the container rather than a mapper node still boots.
@@ -255,9 +262,36 @@ assert_boots "root= may name the encrypted container itself" "root=UUID=abc rw" 
 assert_stuck "a parameter merely ending in root= is not root=" "subroot=/dev/sda rw" 0
 assert_stuck "a parameter merely ending in cryptdevice= does not select" "root=/dev/mapper/root xcryptdevice=y" 1
 
-# /boot/limine.conf is judged one entry at a time, which is what stops a root=
-# in one entry and a selector in another from vouching for each other. Neither
-# half passes alone, so the loop over the file finds nothing bootable.
-assert_stuck "an entry carrying only root= does not boot" "  cmdline: root=/dev/mapper/root rw" 1
-assert_stuck "an entry carrying only a selector does not boot" "  cmdline: cryptdevice=x:root" 1
 pass "the kernel cmdline judgement requires a selector for an encrypted root"
+
+assert_conf_boots() {
+  limine_conf_boots "$2" "$3" || fail "$1"
+}
+
+assert_conf_stuck() {
+  if limine_conf_boots "$2" "$3"; then
+    fail "$1"
+  fi
+}
+
+assert_conf_boots "a working entry is found" $'/Omarchy\n  protocol: linux\n  cmdline: cryptdevice=x:root root=/dev/mapper/root rw' 1
+assert_conf_boots "an unencrypted entry needs only root=" $'/Omarchy\n  cmdline: root=UUID=abc rw' 0
+assert_conf_stuck "no entry at all boots nothing" $'/Omarchy\n  protocol: linux' 1
+
+# The whole point of judging per entry: neither half is bootable alone, so a
+# root= in one entry must not be rescued by a selector in another.
+assert_conf_stuck "one entry's selector does not rescue another's root=" \
+  $'/Omarchy\n  cmdline: root=/dev/mapper/root rw\n/Snapshot\n  cmdline: cryptdevice=x:root' 1
+
+# Only cmdline: keys are the kernel command line. A title, a path, a comment or
+# a module_cmdline: must not vouch for a broken entry.
+assert_conf_stuck "a commented example does not vouch for a live entry" \
+  $'#cmdline: cryptdevice=x:root root=/dev/mapper/root\n  cmdline: root=/dev/mapper/root rw' 1
+assert_conf_stuck "a module_cmdline: is not the kernel command line" \
+  $'  module_cmdline: cryptdevice=x:root root=/dev/mapper/root' 1
+
+# A generated file need not end in a newline, and dropping its last line would
+# refuse a machine that boots.
+printf -v unterminated '/Omarchy\n  cmdline: cryptdevice=x:root root=/dev/mapper/root rw'
+assert_conf_boots "a final line without a trailing newline is read" "$unterminated" 1
+pass "limine.conf is judged one boot entry at a time"
