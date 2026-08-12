@@ -183,6 +183,10 @@ Item {
     Qt.callLater(function() {
       removePopupsByOriginalId(snapshot.originalId, NotificationLogic.popupFileName(snapshot))
       popupModel.insert(0, snapshot)
+      // An update that arrived while the insert was deferred found no row to
+      // write to, and a property that already changed will not change again.
+      // Reading the object once the row exists catches up on it.
+      service.refreshPopup(notification, snapshot.originalId, snapshot.timestamp)
     })
   }
 
@@ -223,18 +227,12 @@ Item {
       return
     }
 
+    var roles = NotificationLogic.popupRoles()
     for (var i = 0; i < popupModel.count; i++) {
       var row = popupModel.get(i)
       if (!row || row.originalId !== originalId || row.timestamp !== timestamp) continue
-      popupModel.setProperty(i, "app", updated.app)
-      popupModel.setProperty(i, "appIcon", updated.appIcon)
-      popupModel.setProperty(i, "summary", updated.summary)
-      popupModel.setProperty(i, "body", updated.body)
-      popupModel.setProperty(i, "image", updated.image)
-      popupModel.setProperty(i, "glyph", updated.glyph)
-      popupModel.setProperty(i, "exec", updated.exec)
-      popupModel.setProperty(i, "urgency", updated.urgency)
-      popupModel.setProperty(i, "expireTimeout", updated.expireTimeout)
+      if (!NotificationLogic.popupRowChanged(row, updated)) return
+      for (var r = 0; r < roles.length; r++) popupModel.setProperty(i, roles[r], updated[roles[r]])
       // The file name is the timestamp and id this popup was persisted under,
       // so the rewrite lands on the same file: a restart restores the version
       // last shown, and so does the copy that ends up in history.
@@ -391,17 +389,37 @@ Item {
   // match these rows against fresh notifications.
   property var restoredPopups: ({})
 
+  // Entries are either { command } for a file job or { read: true } for a
+  // replay's directory read. Queueing the read rather than running it beside
+  // the queue is what makes it a barrier: it takes its place in line, so the
+  // history it sees is the one that existed when the replay was asked for.
+  // Everything queued after it — a clear, an archive, a silenced write — waits
+  // for it, and no amount of later traffic can push it back.
   property var popupFileQueue: []
 
   function enqueuePopupFileJob(command) {
-    popupFileQueue = popupFileQueue.concat([command])
+    popupFileQueue = popupFileQueue.concat([{ command: command }])
+    runNextPopupFileJob()
+  }
+
+  function enqueueHistoryRead() {
+    popupFileQueue = popupFileQueue.concat([{ read: true }])
     runNextPopupFileJob()
   }
 
   function runNextPopupFileJob() {
-    if (popupFileProc.running || popupFileQueue.length === 0) return
-    popupFileProc.command = popupFileQueue[0]
+    if (readHistoryProc.running || popupFileProc.running) return
+    if (popupFileQueue.length === 0) return
+
+    var job = popupFileQueue[0]
     popupFileQueue = popupFileQueue.slice(1)
+
+    if (job.read) {
+      startHistoryRead()
+      return
+    }
+
+    popupFileProc.command = job.command
     popupFileProc.running = true
   }
 
@@ -483,6 +501,9 @@ Item {
   Process {
     id: readHistoryProc
     running: false
+    // Let the file queue go again, whatever the read did — a failed or empty
+    // read must not leave archives and clears parked behind it forever.
+    onExited: service.runNextPopupFileJob()
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: service.replayHistory(text)
@@ -494,15 +515,26 @@ Item {
   // by then, so they're handed over in memory instead of being waited for.
   property var replayCarryOver: []
 
-  // Re-show what's in historyDir as toasts. Reading the directory is a
-  // subprocess, so the replay lands in replayHistory a moment later.
+  // Set from the moment a read is queued until it starts, so a second
+  // showHistory while one is still waiting its turn doesn't queue another.
+  property bool historyReadQueued: false
+
+  // Re-show what's in historyDir as toasts. The read goes through the file
+  // queue and its own subprocess, so the replay lands in replayHistory once
+  // the work queued ahead of it has finished.
   function showRecentHistory() {
-    if (readHistoryProc.running) return "ok"
+    if (readHistoryProc.running || service.historyReadQueued) return "ok"
     service.replayCarryOver = liveRowsForReplay()
+    service.historyReadQueued = true
+    enqueueHistoryRead()
+    return "ok"
+  }
+
+  function startHistoryRead() {
+    service.historyReadQueued = false
     readHistoryProc.command = ["bash", "-c",
       "awk 1 \"$1\"/*.json 2>/dev/null || true", "--", historyDir]
     readHistoryProc.running = true
-    return "ok"
   }
 
   // Copy the on-screen rows out of the model. The placeholder from an earlier
