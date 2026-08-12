@@ -145,7 +145,7 @@ pass "default agent falls back to OpenCode"
 
 omarchy-launch-agent
 mapfile -d '' -t launch_args <"$launch_log"
-[[ ${#launch_args[@]} == 1 && ${launch_args[0]} == "opencode" ]] ||
+[[ ${launch_args[*]} == "opencode --auto" ]] ||
   fail "agent launcher falls back to OpenCode before a default is selected"
 pass "agent launcher falls back to OpenCode before a default is selected"
 
@@ -290,45 +290,73 @@ pass "default agent reports mise failures without notifications"
 rm "$mock_bin/omarchy-launch-agent"
 hash -r
 
-assert_launch() {
+assert_launched() {
   local agent=$1
-  shift
+  local description=$2
+  shift 2
   local expected=("$@")
 
-  printf '%s\n' "$agent" >"$agent_file"
-  omarchy-launch-agent "Review this" project
   mapfile -d '' -t actual <"$launch_log"
 
   (( ${#actual[@]} == ${#expected[@]} )) ||
-    fail "$agent launch has the expected argument count" "expected: ${expected[*]}\nactual: ${actual[*]}"
+    fail "$agent launch $description" "expected: ${expected[*]}\nactual: ${actual[*]}"
 
   for ((index = 0; index < ${#expected[@]}; index++)); do
     [[ ${actual[$index]} == ${expected[$index]} ]] ||
-      fail "$agent launch forwards the interactive prompt" "expected: ${expected[*]}\nactual: ${actual[*]}"
+      fail "$agent launch $description" "expected: ${expected[*]}\nactual: ${actual[*]}"
   done
 }
 
+assert_launch() {
+  local agent=$1
+  shift
+
+  printf '%s\n' "$agent" >"$agent_file"
+  omarchy-launch-agent "Review this" project
+  assert_launched "$agent" "forwards the interactive prompt" "$@"
+}
+
+assert_bypass() {
+  local agent=$1
+  shift
+
+  printf '%s\n' "$agent" >"$agent_file"
+  omarchy-launch-agent
+  assert_launched "$agent" "skips permission prompts" "$@"
+}
+
 assert_launch pi pi -- "Review this project"
-assert_launch omp omp -- "Review this project"
-assert_launch opencode opencode --prompt "Review this project"
-assert_launch claude claude -- "Review this project"
-assert_launch codex codex -- "Review this project"
+assert_launch omp omp --auto-approve -- "Review this project"
+assert_launch opencode opencode --auto --prompt "Review this project"
+assert_launch claude claude --permission-mode bypassPermissions -- "Review this project"
+assert_launch codex codex --dangerously-bypass-approvals-and-sandbox -- "Review this project"
 assert_launch crush crush run "Review this project"
-assert_launch grok grok -- "Review this project"
-assert_launch gemini gemini --prompt-interactive "Review this project"
-assert_launch copilot copilot --interactive "Review this project"
+assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
+assert_launch gemini gemini --yolo --prompt-interactive "Review this project"
+assert_launch copilot copilot --allow-all --interactive "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
+
+assert_bypass pi pi
+assert_bypass omp omp --auto-approve
+assert_bypass opencode opencode --auto
+assert_bypass claude claude --permission-mode bypassPermissions
+assert_bypass codex codex --dangerously-bypass-approvals-and-sandbox
+assert_bypass crush crush --yolo
+assert_bypass grok grok --permission-mode bypassPermissions
+assert_bypass gemini gemini --yolo
+assert_bypass copilot copilot --allow-all
+pass "agent launcher skips permission prompts for every supported agent"
 
 printf '%s\n' "opencode" >"$agent_file"
 omarchy-launch-agent
 mapfile -d '' -t launch_args <"$launch_log"
-[[ ${#launch_args[@]} == 1 && ${launch_args[0]} == "opencode" ]] ||
+[[ ${launch_args[*]} == "opencode --auto" ]] ||
   fail "agent launcher starts the selected agent without an initial prompt"
 pass "agent launcher starts the selected agent without an initial prompt"
 
 omarchy-launch-agent --inline "Review this project"
 mapfile -d '' -t inline_args <"$inline_log"
-[[ ${inline_args[0]} == "opencode" && ${inline_args[1]} == "--prompt" && ${inline_args[2]} == "Review this project" ]] ||
+[[ ${inline_args[*]} == "opencode --auto --prompt Review this project" ]] ||
   fail "inline agent launcher runs in the current terminal"
 pass "inline agent launcher runs in the current terminal"
 
