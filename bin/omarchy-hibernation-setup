@@ -13,7 +13,9 @@ for arg in "$@"; do
   esac
 done
 
-if [[ ! -f /sys/power/image_size ]]; then
+POWER_IMAGE_SIZE="${OMARCHY_HIBERNATION_IMAGE_SIZE_PATH:-/sys/power/image_size}"
+
+if [[ ! -f $POWER_IMAGE_SIZE ]]; then
   echo -e "Hibernation is not supported on your system" >&2
   exit 0
 fi
@@ -26,23 +28,30 @@ if ! $NO_REBUILD && omarchy-cmd-missing limine-mkinitcpio; then
   exit 0
 fi
 
-MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
-SWAP_FILE="/swap/swapfile"
-RESUME_DROP_IN="/etc/limine-entry-tool.d/resume.conf"
+MKINITCPIO_CONF="${OMARCHY_HIBERNATION_MKINITCPIO_CONF:-/etc/mkinitcpio.conf.d/omarchy_resume.conf}"
+SWAP_FILE="${OMARCHY_HIBERNATION_SWAP_FILE:-/swap/swapfile}"
+RESUME_DROP_IN="${OMARCHY_HIBERNATION_RESUME_DROP_IN:-/etc/limine-entry-tool.d/resume.conf}"
 
 # Check if hibernation is already configured
 if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+  NEEDS_REBUILD=$FORCE
+
   # Fix empty resume_offset if btrfs map-swapfile failed during initial setup
   if [[ -f $RESUME_DROP_IN ]] && grep -q 'resume_offset="$' "$RESUME_DROP_IN" && [[ -f $SWAP_FILE ]]; then
     RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE" 2>/dev/null)
     if [[ -n $RESUME_OFFSET ]]; then
       echo "Fixing empty resume_offset ($RESUME_OFFSET)"
       sudo sed -i "s/resume_offset=\"$/resume_offset=$RESUME_OFFSET\"/" "$RESUME_DROP_IN"
-      if ! $NO_REBUILD; then
-        sudo limine-mkinitcpio
-      fi
+      NEEDS_REBUILD=true
     fi
   fi
+
+  if $NEEDS_REBUILD && ! $NO_REBUILD; then
+    echo "Regenerating initramfs..."
+    sudo limine-mkinitcpio
+    echo
+  fi
+
   echo "Hibernation is already set up"
   exit 0
 fi
