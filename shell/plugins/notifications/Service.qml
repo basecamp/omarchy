@@ -389,26 +389,37 @@ Item {
   // match these rows against fresh notifications.
   property var restoredPopups: ({})
 
+  // Entries are either { command } for a file job or { read: true } for a
+  // replay's directory read. Queueing the read rather than running it beside
+  // the queue is what makes it a barrier: it takes its place in line, so the
+  // history it sees is the one that existed when the replay was asked for.
+  // Everything queued after it — a clear, an archive, a silenced write — waits
+  // for it, and no amount of later traffic can push it back.
   property var popupFileQueue: []
 
   function enqueuePopupFileJob(command) {
-    popupFileQueue = popupFileQueue.concat([command])
+    popupFileQueue = popupFileQueue.concat([{ command: command }])
+    runNextPopupFileJob()
+  }
+
+  function enqueueHistoryRead() {
+    popupFileQueue = popupFileQueue.concat([{ read: true }])
     runNextPopupFileJob()
   }
 
   function runNextPopupFileJob() {
-    // A replay's directory read is a barrier in this queue. It only starts
-    // once everything queued ahead of it has landed, and everything queued
-    // behind it waits here until it finishes — so it sees the history exactly
-    // as it stood when the replay was asked for, not a clear or an archive
-    // half applied underneath the read.
-    if (readHistoryProc.running) return
-    if (popupFileProc.running || popupFileQueue.length === 0) {
-      if (!popupFileProc.running) startHistoryReadWhenIdle()
+    if (readHistoryProc.running || popupFileProc.running) return
+    if (popupFileQueue.length === 0) return
+
+    var job = popupFileQueue[0]
+    popupFileQueue = popupFileQueue.slice(1)
+
+    if (job.read) {
+      startHistoryRead()
       return
     }
-    popupFileProc.command = popupFileQueue[0]
-    popupFileQueue = popupFileQueue.slice(1)
+
+    popupFileProc.command = job.command
     popupFileProc.running = true
   }
 
@@ -504,28 +515,23 @@ Item {
   // by then, so they're handed over in memory instead of being waited for.
   property var replayCarryOver: []
 
-  // Set while a replay is waiting for the file queue to drain.
-  property bool historyReadPending: false
+  // Set from the moment a read is queued until it starts, so a second
+  // showHistory while one is still waiting its turn doesn't queue another.
+  property bool historyReadQueued: false
 
-  // Re-show what's in historyDir as toasts. Reading the directory is a
-  // subprocess, so the replay lands in replayHistory a moment later.
+  // Re-show what's in historyDir as toasts. The read goes through the file
+  // queue and its own subprocess, so the replay lands in replayHistory once
+  // the work queued ahead of it has finished.
   function showRecentHistory() {
-    if (readHistoryProc.running || service.historyReadPending) return "ok"
+    if (readHistoryProc.running || service.historyReadQueued) return "ok"
     service.replayCarryOver = liveRowsForReplay()
-    service.historyReadPending = true
-    startHistoryReadWhenIdle()
+    service.historyReadQueued = true
+    enqueueHistoryRead()
     return "ok"
   }
 
-  // The archives, silenced writes and clears the queue is still working
-  // through are what the replay is about to show. Reading the directory past
-  // them would replay a history that is one dismissal short, or one a clear
-  // was in the middle of emptying, so the read waits its turn.
-  function startHistoryReadWhenIdle() {
-    if (!service.historyReadPending) return
-    if (popupFileProc.running || popupFileQueue.length > 0) return
-
-    service.historyReadPending = false
+  function startHistoryRead() {
+    service.historyReadQueued = false
     readHistoryProc.command = ["bash", "-c",
       "awk 1 \"$1\"/*.json 2>/dev/null || true", "--", historyDir]
     readHistoryProc.running = true

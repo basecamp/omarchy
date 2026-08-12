@@ -395,11 +395,15 @@ assert(
   'notifications service catches up on an update that beat the deferred row insert'
 )
 assert(
-  /function startHistoryReadWhenIdle\(\) \{[\s\S]{0,300}?if \(popupFileProc\.running \|\| popupFileQueue\.length > 0\) return/.test(serviceQml),
-  'notifications service reads history only once its queued file work has landed'
+  /function showRecentHistory\(\)[\s\S]{0,300}?enqueueHistoryRead\(\)/.test(serviceQml),
+  'notifications service reads history from its place in the file queue'
 )
 assert(
-  /function runNextPopupFileJob\(\) \{[\s\S]{0,500}?if \(readHistoryProc\.running\) return/.test(serviceQml),
+  /if \(job\.read\) \{\s*\n\s*startHistoryRead\(\)/.test(serviceQml),
+  'notifications service runs the queued read when its turn comes'
+)
+assert(
+  /function runNextPopupFileJob\(\) \{\s*\n\s*if \(readHistoryProc\.running \|\| popupFileProc\.running\) return/.test(serviceQml),
   'notifications service holds queued file work until a history read finishes'
 )
 assert(
