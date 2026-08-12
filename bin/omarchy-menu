@@ -455,6 +455,7 @@ show_setup_default_terminal_menu() {
 show_setup_default_editor_menu() {
   local options=""
   omarchy-cmd-present nvim && options="$options  Neovim"
+  omarchy-cmd-present antigravity && options="${options:+$options\n}  Antigravity"
   omarchy-cmd-present code && options="${options:+$options\n}  VSCode"
   omarchy-cmd-present cursor && options="${options:+$options\n}  Cursor"
   omarchy-cmd-present zeditor && options="${options:+$options\n}  Zed"
@@ -466,6 +467,7 @@ show_setup_default_editor_menu() {
   local current=""
   case "$(omarchy-default-editor)" in
   nvim) current="  Neovim" ;;
+  antigravity) current="  Antigravity" ;;
   code) current="  VSCode" ;;
   cursor) current="  Cursor" ;;
   zed | zeditor) current="  Zed" ;;
@@ -477,6 +479,7 @@ show_setup_default_editor_menu() {
 
   case $(menu "Default Editor" "$options" "" "$current") in
   *Neovim*) omarchy-default-editor nvim ;;
+  *Antigravity*) omarchy-default-editor antigravity ;;
   *VSCode*) omarchy-default-editor code ;;
   *Cursor*) omarchy-default-editor cursor ;;
   *Zed*) omarchy-default-editor zed ;;
@@ -570,8 +573,9 @@ show_install_service_menu() {
 }
 
 show_install_editor_menu() {
-  case $(menu "Install" "  VSCode\n  Cursor\n  Zed\n  Sublime Text\n  Helix\n  Vim\n  Emacs") in
+  case $(menu "Install" "  Antigravity\n  VSCode\n  Cursor\n  Zed\n  Sublime Text\n  Helix\n  Vim\n  Emacs") in
   *VSCode*) present_terminal omarchy-install-vscode ;;
+  *Antigravity*) install_and_launch "Antigravity" "antigravity" "antigravity" ;;
   *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor" ;;
   *Zed*) present_terminal omarchy-install-zed ;;
   *Sublime*) install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
