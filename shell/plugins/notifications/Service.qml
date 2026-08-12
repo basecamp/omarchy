@@ -177,12 +177,70 @@ Item {
     }
 
     persistPopupFile(snapshot)
+    watchForUpdates(notification, snapshot)
     // Qt.callLater avoids "QV4::Object::insertMember" crashes when a
     // Repeater is mid-incubation while we mutate its model.
     Qt.callLater(function() {
       removePopupsByOriginalId(snapshot.originalId, NotificationLogic.popupFileName(snapshot))
       popupModel.insert(0, snapshot)
     })
+  }
+
+  // Everything the card draws. A change to any of these is a client updating
+  // the notification in place, which is the only kind of update we ever hear
+  // about after the popup exists.
+  readonly property var updateSignals: [
+    "summaryChanged", "bodyChanged", "appNameChanged", "appIconChanged",
+    "imageChanged", "urgencyChanged", "expireTimeoutChanged", "hintsChanged"
+  ]
+
+  // A client that updates a notification through replaces_id does not produce
+  // a second onNotification: the server writes the new content onto the object
+  // we are already holding. The card draws a snapshot copied out of that
+  // object — deliberately, since the object itself must stay out of the model
+  // — so nothing reaches the screen until we copy it again.
+  function watchForUpdates(notification, snapshot) {
+    function refresh() {
+      service.refreshPopup(notification, snapshot.originalId, snapshot.timestamp)
+    }
+
+    for (var i = 0; i < updateSignals.length; i++) {
+      var signal = notification[updateSignals[i]]
+      if (signal && typeof signal.connect === "function") signal.connect(refresh)
+    }
+  }
+
+  function refreshPopup(notification, originalId, timestamp) {
+    // A newer notification may have taken this id over, and the object may
+    // outlive its popup — in both cases there is nothing here to refresh.
+    if (service.liveRefs[originalId] !== notification) return
+
+    var updated
+    try {
+      updated = NotificationLogic.replacementSnapshot(notification, originalId, timestamp)
+    } catch (e) {
+      // Object torn down by the server while the signal was in flight.
+      return
+    }
+
+    for (var i = 0; i < popupModel.count; i++) {
+      var row = popupModel.get(i)
+      if (!row || row.originalId !== originalId || row.timestamp !== timestamp) continue
+      popupModel.setProperty(i, "app", updated.app)
+      popupModel.setProperty(i, "appIcon", updated.appIcon)
+      popupModel.setProperty(i, "summary", updated.summary)
+      popupModel.setProperty(i, "body", updated.body)
+      popupModel.setProperty(i, "image", updated.image)
+      popupModel.setProperty(i, "glyph", updated.glyph)
+      popupModel.setProperty(i, "exec", updated.exec)
+      popupModel.setProperty(i, "urgency", updated.urgency)
+      popupModel.setProperty(i, "expireTimeout", updated.expireTimeout)
+      // The file name is the timestamp and id this popup was persisted under,
+      // so the rewrite lands on the same file: a restart restores the version
+      // last shown, and so does the copy that ends up in history.
+      persistPopupFile(updated)
+      return
+    }
   }
 
   // A restored row carries an id from the previous server generation, and
@@ -808,6 +866,16 @@ Item {
             readonly property real lifetime: service.durationFor(cardSlot.urgency, cardSlot.expireTimeout)
             property real remainingLifetime: 1.0
             readonly property bool ticking: cardSlot.lifetime > 0 && !card.hovered
+
+            // A client updating this notification in place rewrites the row
+            // under the card (see refreshPopup). New text deserves a full look,
+            // so the countdown starts over instead of running out the clock the
+            // superseded text was already most of the way through. Delegates
+            // keep their own row as the model changes around them, so only a
+            // real content change lands here.
+            onSummaryChanged: cardSlot.remainingLifetime = 1.0
+            onBodyChanged: cardSlot.remainingLifetime = 1.0
+            onImageChanged: cardSlot.remainingLifetime = 1.0
 
             Timer {
               interval: 50

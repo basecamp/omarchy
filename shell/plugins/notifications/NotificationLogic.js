@@ -92,6 +92,17 @@ function snapshotOf(notification, timestamp) {
   }
 }
 
+// A client updating a notification through replaces_id keeps the identity of
+// the popup it took over: the file name is the timestamp and id the popup was
+// first persisted under, and the restore, replace and archive paths all key
+// off that name. Only what the card draws comes from the updated object.
+function replacementSnapshot(notification, originalId, timestamp) {
+  var updated = snapshotOf(notification, timestamp)
+  updated.id = originalId
+  updated.originalId = originalId
+  return updated
+}
+
 function historyEntry(value, normalUrgency) {
   var e = value || {}
   return {
@@ -265,6 +276,7 @@ if (typeof module !== "undefined") {
     execFromHints: execFromHints,
     shouldRenderCompactGlyph: shouldRenderCompactGlyph,
     snapshotOf: snapshotOf,
+    replacementSnapshot: replacementSnapshot,
     historyEntry: historyEntry,
     parseSettings: parseSettings,
     historyRows: historyRows,
