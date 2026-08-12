@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# omarchy:summary=Copy tmux selections to a client's terminal with OSC 52.
+# omarchy:args=<client-tty>
+# omarchy:hidden=true
+
+client_tty="${1:-}"
+
+[[ -n $client_tty && -w $client_tty ]] || exit 0
+
+{
+  printf '\033]52;c;'
+  base64 | tr -d '\n'
+  printf '\007'
+} >"$client_tty"
