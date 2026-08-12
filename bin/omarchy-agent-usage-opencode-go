@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 AGENT_ID = "opencode-go"
-AGENT_NAME = "OpenCode Go"
+AGENT_NAME = "OpenCode"
 AUTH_HELP = "Run `opencode auth login` and subscribe to OpenCode Go, or set OPENCODE_GO_API_KEY."
 API_BASE_URL = "https://opencode.ai"
 USAGE_PATH = "/zen/go/v1/usage"

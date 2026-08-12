@@ -13,7 +13,7 @@ trap 'rm -rf "$TEST_HOME"' EXIT
 no_key=$(HOME="$TEST_HOME" XDG_DATA_HOME="$TEST_HOME/.local/share" XDG_CACHE_HOME="$TEST_HOME/.cache" \
   OPENCODE_GO_API_KEY="" "$ROOT/bin/omarchy-agent-usage-opencode-go")
 
-[[ $(jq -r '.id + ":" + (.ready | tostring) + ":" + .tierLabel' <<<"$no_key") == "opencode-go:false:Go" ]] ||
+[[ $(jq -r '.id + ":" + (.ready | tostring) + ":" + .name + ":" + .tierLabel' <<<"$no_key") == "opencode-go:false:OpenCode:Go" ]] ||
   fail "OpenCode collector prints a valid record without credentials" "$no_key"
 pass "OpenCode collector prints a valid record without credentials"
 
@@ -144,6 +144,7 @@ live_record = scanner.scan(auth_path, db, "https://example.invalid")
 summary["record"] = {
   "schemaVersion": live_record["schemaVersion"],
   "id": live_record["id"],
+  "name": live_record["name"],
   "ready": live_record["ready"],
   "hasLocalStats": live_record["hasLocalStats"],
   "scope": live_record["scope"],
@@ -174,8 +175,8 @@ print(json.dumps(summary, separators=(",", ":")))
 PY
 )
 
-[[ $(jq -r '.record | {schemaVersion, id, ready, hasLocalStats, scope, hasPromptStats, tierLabel} | tostring' <<<"$result") == \
-  '{"schemaVersion":1,"id":"opencode-go","ready":true,"hasLocalStats":true,"scope":"device","hasPromptStats":true,"tierLabel":"Go"}' ]] ||
+[[ $(jq -r '.record | {schemaVersion, id, name, ready, hasLocalStats, scope, hasPromptStats, tierLabel} | tostring' <<<"$result") == \
+  '{"schemaVersion":1,"id":"opencode-go","name":"OpenCode","ready":true,"hasLocalStats":true,"scope":"device","hasPromptStats":true,"tierLabel":"Go"}' ]] ||
   fail "OpenCode collector prints the display-ready record contract" "$result"
 pass "OpenCode collector prints the display-ready record contract"
 
