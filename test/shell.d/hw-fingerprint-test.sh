@@ -17,7 +17,13 @@ write_usb_devices() {
     local vendor=${spec%%:*}
     local remainder=${spec#*:}
     local product_id=${remainder%%:*}
-    local product=${remainder#*:}
+    # A spec with no third field describes a device with no product
+    # descriptor. Without this guard ${remainder#*:} would return the product
+    # id unchanged and quietly write it out as the product string.
+    local product=""
+    if [[ $remainder == *:* ]]; then
+      product=${remainder#*:}
+    fi
     local dev="$tmp_dir/devices/1-$index"
 
     mkdir -p "$dev"
@@ -65,10 +71,10 @@ assert_rejects "an FPC token mid-string is not detected"
 write_usb_devices '1234:5678:Goodix Fingerprint USB Device'
 assert_detects "a reader is detected by an existing product-name match"
 
-write_usb_devices '27c6:1234:'
+write_usb_devices '27c6:1234'
 assert_detects "a reader is detected by an existing vendor match"
 
-write_usb_devices '27c6:1234:'
+write_usb_devices '27c6:1234'
 mkdir -p "$tmp_dir/devices/1-0/1-0:1.0"
 touch "$tmp_dir/devices/1-0/1-0:1.0/driver"
 assert_rejects "a vendor guess with a bound kernel driver is rejected"
