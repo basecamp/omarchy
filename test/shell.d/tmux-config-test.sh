@@ -65,3 +65,16 @@ HOME="$home" TMUX_LOG="$tmux_log" PATH="$test_tmp/bin:$PATH" bash -euo pipefail 
 [[ $before == $(sha256sum "$home/.config/tmux/tmux.conf") ]] ||
   fail "tmux clipboard migration is idempotent"
 pass "tmux clipboard migration is idempotent"
+
+custom_home="$test_tmp/custom-home"
+mkdir -p "$custom_home/.config/tmux"
+custom_binding='bind -T copy-mode-vi y send -X copy-pipe "custom-copy"'
+printf '%s\n' 'set -g mouse on' "$custom_binding" >"$custom_home/.config/tmux/tmux.conf"
+HOME="$custom_home" TMUX_LOG="$tmux_log" PATH="$test_tmp/bin:$PATH" bash -euo pipefail "$migration" >/dev/null
+
+grep -Fqx "$custom_binding" "$custom_home/.config/tmux/tmux.conf" ||
+  fail "tmux migration preserves a custom copy binding"
+if grep -Fq 'omarchy-tmux-osc52-copy' "$custom_home/.config/tmux/tmux.conf"; then
+  fail "tmux migration replaces a custom copy binding"
+fi
+pass "tmux migration leaves custom copy bindings alone"
