@@ -85,7 +85,9 @@ signal handler, a main loop, or a worker thread.
 Be straight about the limits of the evidence. If the cause is genuinely
 ambiguous, say so rather than assembling confidence out of guesswork.
 
-**Do not modify or delete anything while investigating.** Diagnosis is read-only.
+**Leave the system as you found it.** Diagnosis reads; it does not fix, tidy, or
+reconfigure. The one thing to clean up is your own: delete the core you extracted
+above, which is a copy of the crashed process's memory.
 
 ## If it is an Omarchy bug
 
