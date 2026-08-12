@@ -105,7 +105,9 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   ├─ xdg-terminal-exec/*.list                           /usr/share/xdg-terminal-exec/
   ├─ applications/mimeapps.list                         /usr/share/applications/mimeapps.list
   ├─ systemd/user/*.{service,path}                      /usr/lib/systemd/user/
-  ├─ systemd/user/app.slice.d/10-oomd.conf              /usr/lib/systemd/user/app.slice.d/
+  ├─ systemd/user/app.slice.d/10-oomd.conf              generator template (kept under /usr/share/omarchy/)
+  ├─ systemd/user-generators/omarchy-oomd-generator     /usr/lib/systemd/user-generators/
+  │                                                       → runtime app.slice drop-in when PID 1 is visible
   ├─ systemd/system-sleep/unmount-fuse                  /usr/lib/systemd/system-sleep/
   ├─ systemd/zram-generator.conf.d/90-omarchy.conf      /usr/lib/systemd/zram-generator.conf.d/
   ├─ fonts/omarchy/omarchy.ttf                          /usr/share/fonts/omarchy/

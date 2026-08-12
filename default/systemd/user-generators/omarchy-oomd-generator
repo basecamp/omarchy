@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -euo pipefail
+
+proc_root="${OMARCHY_OOMD_PROC_ROOT:-/proc}"
+oomd_dropin="${OMARCHY_OOMD_DROPIN:-/usr/share/omarchy/default/systemd/user/app.slice.d/10-oomd.conf}"
+generator_dir="${1:?systemd user generator output directory is required}"
+
+# systemd resolves ManagedOOM dependencies by reading PID 1's cgroup. A
+# hidepid=noaccess/invisible procfs makes that lookup fail and the whole slice
+# unloadable, which also prevents D-Bus and graphical app scopes from starting.
+[[ -r $proc_root/1/cgroup ]] || exit 0
+[[ -f $oomd_dropin ]] || exit 0
+
+mkdir -p "$generator_dir/app.slice.d"
+ln -s "$oomd_dropin" "$generator_dir/app.slice.d/10-oomd.conf"

@@ -140,6 +140,7 @@ package_defaults = [
   ("default/systemd/user/omarchy-migrate-notify.service", "/usr/lib/systemd/user/omarchy-migrate-notify.service", "systemd/user/omarchy-migrate-notify.service"),
   ("default/systemd/user/omarchy-tailscale-receive.service", "/usr/lib/systemd/user/omarchy-tailscale-receive.service", "systemd/user/omarchy-tailscale-receive.service"),
   ("default/systemd/user/omarchy-fcitx5.service", "/usr/lib/systemd/user/omarchy-fcitx5.service", "systemd/user/omarchy-fcitx5.service"),
+  ("default/systemd/user-generators/omarchy-oomd-generator", "/usr/lib/systemd/user-generators/omarchy-oomd-generator", "systemd/user-generators/omarchy-oomd-generator"),
   ("default/systemd/zram-generator.conf.d/90-omarchy.conf", "/usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf", "systemd/zram-generator.conf.d/90-omarchy.conf"),
   ("default/fonts/omarchy/omarchy.ttf", "/usr/share/fonts/omarchy/omarchy.ttf", "omarchy.ttf"),
   ("default/snapper/root", "/etc/snapper/config-templates/omarchy", "snapper/root"),
@@ -152,6 +153,14 @@ for source, destination, legacy in package_defaults:
     errors.append(f"legacy path still in config/: {legacy}")
   if destination and (source not in pkgbuild or destination not in pkgbuild):
     errors.append(f"PKGBUILD does not explicitly install {source} -> {destination}")
+
+oomd_vendor_source = "default/systemd/user/app.slice.d/10-oomd.conf"
+oomd_vendor_destination = "/usr/lib/systemd/user/app.slice.d/10-oomd.conf"
+if oomd_vendor_source in pkgbuild and oomd_vendor_destination in pkgbuild:
+  errors.append(
+    "PKGBUILD installs app.slice OOM candidacy unconditionally instead of through "
+    "omarchy-oomd-generator"
+  )
 
 # Existing users have an absolute wants symlink to the old unit path, and the
 # migration that repoints it only runs for users who run an update -- the

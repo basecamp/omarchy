@@ -23,9 +23,9 @@ else
     echo "Could not enable systemd-oomd.service; memory pressure will still take the session down."
 fi
 
-# Pick up /usr/lib/systemd/user/app.slice.d/10-oomd.conf without waiting for
-# the next login. That drop-in is what marks app.slice as a kill candidate;
-# until the user manager reloads and reports it, oomd is running with nothing
-# to act on. An `omarchy update` over SSH or from a TTY has no user manager to
-# reload, and there the next graphical login picks it up on its own.
+# Run the user generator and pick up app.slice candidacy without waiting for
+# the next login. The generator skips the drop-in when procfs hides PID 1,
+# because systemd cannot resolve ManagedOOM dependencies in that setup. An
+# `omarchy update` over SSH or from a TTY has no user manager to reload, and
+# there the next graphical login runs the generator on its own.
 systemctl --user daemon-reload >/dev/null 2>&1 || true
