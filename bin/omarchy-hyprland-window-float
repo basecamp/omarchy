@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle float/tile and remove pop tag if pinned
+
+active=$(hyprctl activewindow -j)
+pinned=$(echo "$active" | jq ".pinned")
+addr=$(echo "$active" | jq -r ".address")
+window="address:$addr"
+
+hypr_dispatch() {
+  local lua="$1"
+  shift
+
+  hyprctl dispatch "$lua" >/dev/null 2>&1 || hyprctl dispatch "$@" >/dev/null
+}
+
+if [[ $pinned == "true" ]]; then
+  hypr_dispatch "hl.dsp.window.pin({ window = \"$window\" })" pin "$window"
+  hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
+  hypr_dispatch "hl.dsp.window.tag({ window = \"$window\", tag = \"-pop\" })" tagwindow -pop "$window"
+else
+  hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
+fi
