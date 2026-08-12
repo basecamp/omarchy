@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Install a supported browser
-# omarchy:args=<chrome|brave|brave-origin|edge|firefox|zen>
+# omarchy:args=<chrome|brave|brave-origin|edge|firefox|vivaldi|zen>
 # omarchy:examples=omarchy install browser firefox | omarchy install browser brave
 
 setup_policy_directory() {
@@ -78,6 +78,20 @@ firefox)
   setup_firefox_wayland
   announce_browser_installed "Firefox"
   ;;
+vivaldi)
+  echo "Installing Vivaldi..."
+  omarchy-pkg-add vivaldi || exit 1
+
+  sudo mkdir -p /etc/1password
+  grep -qx vivaldi-bin /etc/1password/custom_allowed_browsers 2>/dev/null || \
+    echo vivaldi-bin | sudo tee -a /etc/1password/custom_allowed_browsers >/dev/null
+
+  copy_chromium_flags ~/.config/vivaldi-stable.conf
+
+  hook="$OMARCHY_PATH/default/vivaldi/vivaldi-post-update"
+  omarchy-hook-install post-update "$hook" && "$hook"
+  announce_browser_installed "Vivaldi"
+  ;;
 zen)
   echo "Installing Zen..."
   omarchy-pkg-aur-add zen-browser-bin || exit 1
@@ -87,7 +101,7 @@ zen)
   announce_browser_installed "Zen"
   ;;
 *)
-  echo "Usage: omarchy-install-browser <chrome|brave|brave-origin|edge|firefox|zen>"
+  echo "Usage: omarchy-install-browser <chrome|brave|brave-origin|edge|firefox|vivaldi|zen>"
   exit 1
   ;;
 esac

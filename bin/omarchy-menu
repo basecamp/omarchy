@@ -403,6 +403,7 @@ show_setup_default_browser_menu() {
   browser_desktop_exists brave-origin-beta.desktop && options="${options:+$options\n}󰖟  Brave Origin"
   browser_desktop_exists microsoft-edge.desktop && options="${options:+$options\n}󰇩  Edge"
   browser_desktop_exists firefox.desktop && options="${options:+$options\n}󰈹  Firefox"
+  browser_desktop_exists vivaldi-stable.desktop && options="${options:+$options\n}󰰫  Vivaldi"
   browser_desktop_exists zen.desktop && options="${options:+$options\n}󰖟  Zen"
 
   local current=""
@@ -413,6 +414,7 @@ show_setup_default_browser_menu() {
   brave-origin) current="󰖟  Brave Origin" ;;
   edge) current="󰇩  Edge" ;;
   firefox) current="󰈹  Firefox" ;;
+  vivaldi) current="󰰫  Vivaldi" ;;
   zen) current="󰖟  Zen" ;;
   esac
 
@@ -423,6 +425,7 @@ show_setup_default_browser_menu() {
   *Brave*) omarchy-default-browser brave ;;
   *Edge*) omarchy-default-browser edge ;;
   *Firefox*) omarchy-default-browser firefox ;;
+  *Vivaldi*) omarchy-default-browser vivaldi ;;
   *Zen*) omarchy-default-browser zen ;;
   *) show_setup_default_menu ;;
   esac
@@ -545,12 +548,13 @@ show_install_menu() {
 }
 
 show_install_browser_menu() {
-  case $(menu "Install" "  Chrome\n  Edge\n  Brave\n  Brave Origin\n  Firefox\n󰖟  Zen") in
+  case $(menu "Install" "  Chrome\n  Edge\n  Brave\n  Brave Origin\n  Firefox\n󰰫  Vivaldi\n󰖟  Zen") in
   *Chrome*) present_terminal "omarchy-install-browser chrome" ;;
   *Edge*) present_terminal "omarchy-install-browser edge" ;;
   *"Brave Origin"*) present_terminal "omarchy-install-browser brave-origin" ;;
   *Brave*) present_terminal "omarchy-install-browser brave" ;;
   *Firefox*) present_terminal "omarchy-install-browser firefox" ;;
+  *Vivaldi*) present_terminal "omarchy-install-browser vivaldi" ;;
   *Zen*) present_terminal "omarchy-install-browser zen" ;;
   *) show_install_menu ;;
   esac
@@ -717,12 +721,13 @@ show_remove_security_menu() {
 }
 
 show_remove_browser_menu() {
-  case $(menu "Remove" "  Chrome\n  Edge\n  Brave\n  Brave Origin\n  Firefox\n  Zen") in
+  case $(menu "Remove" "  Chrome\n  Edge\n  Brave\n  Brave Origin\n  Firefox\n󰰫  Vivaldi\n  Zen") in
   *Chrome*) present_terminal "omarchy-remove-browser chrome" ;;
   *Edge*) present_terminal "omarchy-remove-browser edge" ;;
   *"Brave Origin"*) present_terminal "omarchy-remove-browser brave-origin" ;;
   *Brave*) present_terminal "omarchy-remove-browser brave" ;;
   *Firefox*) present_terminal "omarchy-remove-browser firefox" ;;
+  *Vivaldi*) present_terminal "omarchy-remove-browser vivaldi" ;;
   *Zen*) present_terminal "omarchy-remove-browser zen" ;;
   *) show_remove_menu ;;
   esac

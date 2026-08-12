@@ -1,0 +1,11 @@
+#!/bin/bash
+set -eu
+
+omarchy-pkg-present vivaldi || exit 0
+
+COLORS="$HOME/.config/omarchy/current/theme/colors.toml"
+bg=$(awk -F'"' '/^background/{print $2}' "$COLORS")
+fg=$(awk -F'"' '/^foreground/{print $2}' "$COLORS")
+accent=$(awk -F'"' '/^accent/{print $2}' "$COLORS")
+
+echo -n "$bg,$fg,$accent" > /opt/vivaldi/resources/vivaldi/style/omarchy.csv # owned by user
