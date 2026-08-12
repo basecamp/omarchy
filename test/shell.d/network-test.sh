@@ -21,6 +21,30 @@ assert(barPress, 'network bar button has an onPressed handler')
 const barPressCode = barPress[0].replace(/\/\/.*$/gm, '')
 assert(!/refresh\(/.test(barPressCode), 'network bar click opens the panel without a second refresh that would undo the deferred scan')
 
+// A closed panel has no nearby-network list to fill. Quickshell's scanner
+// re-arms RequestScan on its own timer, and every sweep takes the radio off
+// the operating channel, so a scanner left enabled behind a closed panel keeps
+// degrading the connection it is scanning from.
+const refreshFn = panelSource.match(/function refresh\(scanWifi\)[\s\S]*?\n {2}\}/)
+assert(refreshFn, 'network has a refresh() function')
+assert(/if \(opened && wifiDevice\)/.test(refreshFn[0]), 'network only touches the scanner from refresh() while its panel is open')
+
+// The 100ms deferral can outlive the panel: closing inside the window would
+// otherwise re-enable scanning from a timer nobody is watching.
+const scanRestart = panelSource.match(/id: scanRestart[\s\S]*?onTriggered: \{[\s\S]*?\n {4}\}/)
+assert(scanRestart, 'network has the deferred scan restart timer')
+assert(/root\.opened/.test(scanRestart[0]), 'network re-checks the panel before the deferred restart re-enables scanning')
+assert(/scanRestart\.stop\(\)/.test(panelSource), 'network cancels a pending scan restart when the panel closes')
+
+// scannerEnabled lives on a shared WifiDevice with no reference counting, so
+// the panel has to release the device it enabled — including when the widget
+// is destroyed with the panel still open, as a bar reload does.
+assert(
+  /Component\.onDestruction[\s\S]{0,140}scannerDevice\.scannerEnabled = false/.test(panelSource),
+  'network releases the scanner it owns when the widget is destroyed'
+)
+assert(!/wifiDevice\.scannerEnabled\s*=/.test(panelSource), 'network routes every scanner write through setScannerEnabled() so the device it enabled is the device it releases')
+
 // A row is a primitive snapshot that can outlive its WifiNetwork, and
 // disconnect() falls back to the live connection when handed null, so row
 // activation must go through the guarded disconnectRow().
