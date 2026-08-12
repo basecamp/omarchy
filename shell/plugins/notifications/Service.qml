@@ -20,19 +20,19 @@ Item {
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   readonly property string home: Quickshell.env("HOME")
   // History + DND live under XDG_STATE_HOME: they're persistent user state
-  // (history of received notifications, last-set DND preference), not
+  // (the notifications received, the last-set DND preference), not
   // regeneratable cache that a `rm -rf ~/.cache` should wipe.
   readonly property string stateDir: home + "/.local/state/omarchy/"
-  readonly property string historyPath: stateDir + "notifications.json"
+  readonly property string settingsPath: stateDir + "notifications.json"
   // One file per on-screen popup, so live toasts survive shell restarts.
   // A file exists exactly as long as its popup is showing: written when the
-  // toast appears, deleted when it expires, is dismissed, or is acted upon.
+  // toast appears, moved into historyDir when it expires, is dismissed, or is
+  // acted upon.
   readonly property string popupStateDir: stateDir + "notifications/"
-  // Thumbnails copied from /tmp screenshots are genuinely disposable — if
-  // they vanish the row just renders without an image — so they stay in
-  // ~/.cache where regeneratable artifacts belong.
-  readonly property string cacheDir: home + "/.cache/omarchy/"
-  readonly property string imageCacheDir: cacheDir + "notification-images/"
+  // The notifications that already left the screen, one file each, trimmed to
+  // the newest historyLimit. This directory IS the history: `showHistory`
+  // replays exactly what has been moved in here.
+  readonly property string historyDir: popupStateDir + "history/"
   // Corner radius is shared with the menu and shell panels.
   // It mirrors Hyprland's current decoration:rounding value.
   readonly property int cornerRadius: Style.cornerRadius
@@ -57,7 +57,7 @@ Item {
   // PersistentProperties handles in-process QML reloads. The on-disk
   // notifications.json file is the cross-restart backstop — its `dnd` key
   // is hydrated into persisted.doNotDisturb on startup and written back via
-  // the same debounced save timer used for history entries.
+  // a debounced save timer.
   PersistentProperties {
     id: persisted
     reloadableId: "omarchy-notifications"
@@ -65,7 +65,7 @@ Item {
     onDoNotDisturbChanged: {
       // Suppress the write that load-time hydration would otherwise trigger.
       if (service._hydrating) return
-      service.scheduleHistorySave()
+      service.scheduleSettingsSave()
     }
   }
 
@@ -79,27 +79,17 @@ Item {
     persisted.doNotDisturb = !!value
   }
 
-  // popupModel feeds the on-screen toast stack.
-  // pendingModel  = notifications received but not yet "seen" by the user.
-  //                 Anything DND-suppressed lands here and stays there until
-  //                 the user reviews it; anything that pops up also lives
-  //                 here until the popup dismisses, then moves to pastModel.
-  // pastModel     = notifications the user has already seen on-screen.
-  //                 Surfaced under the Past tab in the history panel.
+  // popupModel feeds the on-screen toast stack — the only model the service
+  // keeps. Everything a toast leaves behind lives on disk under historyDir.
   //
-  // Aliased as properties so the bar widget and HistoryPanel (outside this
-  // Item's id scope) can bind to them. QML ids aren't visible to external
-  // consumers without the alias.
+  // Aliased as a property so consumers outside this Item's id scope can bind
+  // to it. QML ids aren't visible to external consumers without the alias.
   property alias popupModel: popupModel
-  property alias pendingModel: pendingModel
-  property alias pastModel: pastModel
   ListModel { id: popupModel }
-  ListModel { id: pendingModel }
-  ListModel { id: pastModel }
 
-  readonly property int historyCap: 100
-  readonly property int historyReplayLimit: 5
-  property var imageCacheQueue: []
+  // How many notifications the history directory keeps, and therefore how
+  // many `showHistory` can replay.
+  readonly property int historyLimit: 10
 
   readonly property int lowPopupDuration: 5000
   readonly property int normalPopupDuration: 8000
@@ -141,6 +131,24 @@ Item {
     return NotificationLogic.snapshotOf(notification, Date.now())
   }
 
+  // A notification nobody looks back at:
+  //   - the freedesktop `transient` hint is set ("popup only, don't store")
+  //   - app_name is "notify-send" (the CLI default — means the sender
+  //     didn't bother declaring an identity, so it's almost certainly
+  //     ephemeral test/feedback noise)
+  //   - app_name is "omarchy-action" (Omarchy's own user-action toasts —
+  //     the user just triggered them)
+  // Their toasts still land in history like any other once they've been on
+  // screen; the distinction only decides whether a DND-silenced one is worth
+  // recording at all.
+  function isEphemeral(notification) {
+    var transient = false
+    try {
+      transient = !!(notification.hints && notification.hints["transient"])
+    } catch (e) { transient = false }
+    return transient || NotificationLogic.isEphemeralApp(String(notification.appName || ""))
+  }
+
   function handleNotification(notification) {
     // Without `tracked = true` the Notification object is destroyed as soon
     // as this signal handler returns, which would null out the `ref` we just
@@ -154,52 +162,15 @@ Item {
       if (service.liveRefs[snapshot.originalId] === notification)
         delete service.liveRefs[snapshot.originalId]
     })
-    // History is for notifications from real apps (Slack, Discord, mailer,
-    // etc.) — things the user might want to look back at. Skip the pending
-    // / past bookkeeping when:
-    //   - the freedesktop `transient` hint is set ("popup only, don't store")
-    //   - app_name is "notify-send" (the CLI default — means the sender
-    //     didn't bother declaring an identity, so it's almost certainly
-    //     ephemeral test/feedback noise)
-    //   - app_name is "omarchy-action" (Omarchy's own user-action
-    //     toasts — the user just triggered them, they don't
-    //     need to be archived)
-    var transient = false
-    try {
-      transient = !!(notification.hints && notification.hints["transient"])
-    } catch (e) { transient = false }
-    var appName = String(notification.appName || "")
-    var ephemeralApp = NotificationLogic.isEphemeralApp(appName)
-    if (transient || ephemeralApp) {
-      if (service.doNotDisturb && !shouldBypassDnd(notification)) {
-        delete liveRefs[snapshot.originalId]
-        notification.tracked = false
-        return
-      }
-      persistPopupFile(snapshot)
-      Qt.callLater(function() {
-        removePopupsByOriginalId(snapshot.originalId, NotificationLogic.popupFileName(snapshot))
-        popupModel.insert(0, snapshot)
-      })
-      return
-    }
 
-    // Pending first, unconditionally. DND only suppresses the toast — the
-    // record still has to land somewhere the user can review later.
-    addToPending(snapshot)
-
-    // Kick off a copy of any /tmp screenshot into the persistent image cache.
-    // The cp races the popup; the popup keeps the original path so it always
-    // renders, and the history row gets rewritten to the cached path once
-    // cp.exits.
-    maybeCacheImage(snapshot)
-
-    // DND bypass rules — see ~/Work/omarchy/dnd-fix-plan.md. The pending
-    // entry already captured this notification above; we just decide here
-    // whether to also pop a toast. Chat apps abuse urgency=critical to
-    // force visibility, so critical alone isn't enough — we also require
-    // the sender to be CLI-style. See shouldBypassDnd().
+    // DND bypass rules: chat apps abuse urgency=critical to force
+    // visibility, so critical alone isn't enough — we also require the
+    // sender to be CLI-style. See shouldBypassDnd().
     if (service.doNotDisturb && !shouldBypassDnd(notification)) {
+      // The toast never shows, so the only record a silenced notification
+      // can leave is a history entry. Write it straight into history —
+      // "what did I miss while silenced" is exactly what history is for.
+      if (!isEphemeral(notification)) writeHistoryFile(snapshot)
       delete liveRefs[snapshot.originalId]
       notification.tracked = false
       return
@@ -223,9 +194,11 @@ Item {
     return !!row && !!restoredPopups[NotificationLogic.popupFileName(row)]
   }
 
-  // Popup-specific variant of removeByOriginalId: a replaced popup
-  // (freedesktop replaces_id) leaves the screen, so its persisted file has
-  // to go too — otherwise it resurrects on the next shell restart.
+  // A notification arriving under an originalId a popup on screen already
+  // holds supersedes it, so that row leaves the screen. Its file is deleted
+  // rather than archived: the row taking its place archives itself when it
+  // goes, and history would otherwise hold two entries for what the sender
+  // means as one notification.
   // keepFileName is the replacement's own file: a same-millisecond
   // replacement shares the replaced row's filename, and the new write is
   // already queued — deleting that path here would erase the replacement's
@@ -242,85 +215,6 @@ Item {
     }
   }
 
-  // Remove every row in `model` whose originalId matches. Chat apps reuse
-  // `replaces_id` per the freedesktop spec to update a single notification
-  // in place — without this, every Discord/Slack ping leaves a fresh row
-  // behind and pending fills with hundreds of duplicates.
-  function removeByOriginalId(model, originalId) {
-    for (var i = model.count - 1; i >= 0; i--) {
-      var row = model.get(i)
-      if (row && row.originalId === originalId) model.remove(i)
-    }
-  }
-
-  function addToPending(snapshot) {
-    Qt.callLater(function() {
-      removeByOriginalId(pendingModel, snapshot.originalId)
-      pendingModel.insert(0, snapshot)
-      while (pendingModel.count > service.historyCap) {
-        pendingModel.remove(pendingModel.count - 1)
-      }
-      scheduleHistorySave()
-    })
-  }
-
-  // Find a pending entry by its libnotify id and move it to pastModel. Called
-  // when a popup naturally dismisses (timer expired or user clicked X / the
-  // default action) — the user is assumed to have seen it. Matches on
-  // timestamp too: a popup row and its pending row are born from the same
-  // snapshot, and id alone can point at an unrelated notification when a
-  // restored popup's old-generation id has been reused.
-  function markSeenByOriginalId(originalId, timestamp) {
-    Qt.callLater(function() {
-      for (var i = 0; i < pendingModel.count; i++) {
-        var entry = pendingModel.get(i)
-        if (!entry || entry.originalId !== originalId || entry.timestamp !== timestamp) continue
-        var snapshot = service.snapshotFromRow(entry)
-        pendingModel.remove(i)
-        pastModel.insert(0, snapshot)
-        while (pastModel.count > service.historyCap) {
-          pastModel.remove(pastModel.count - 1)
-        }
-        scheduleHistorySave()
-        return
-      }
-    })
-  }
-
-  // Copy a ListModel row into a plain JS object so we can re-insert it into
-  // a different model without sharing references.
-  function snapshotFromRow(row) {
-    return {
-      id: row.id,
-      originalId: row.originalId,
-      app: row.app,
-      appIcon: row.appIcon,
-      summary: row.summary,
-      body: row.body,
-      image: row.image,
-      glyph: row.glyph || "",
-      exec: row.exec || "",
-      urgency: row.urgency,
-      expireTimeout: row.expireTimeout || 0,
-      timestamp: row.timestamp
-    }
-  }
-
-  function markAllSeen() {
-    Qt.callLater(function() {
-      while (pendingModel.count > 0) {
-        var entry = pendingModel.get(0)
-        var snapshot = service.snapshotFromRow(entry)
-        pendingModel.remove(0)
-        pastModel.insert(0, snapshot)
-      }
-      while (pastModel.count > service.historyCap) {
-        pastModel.remove(pastModel.count - 1)
-      }
-      scheduleHistorySave()
-    })
-  }
-
   function dismissPopup(index) {
     removePopup(index, "dismiss")
   }
@@ -333,16 +227,17 @@ Item {
     if (index < 0 || index >= popupModel.count) return
     var entry = popupModel.get(index)
     var originalId = entry ? entry.originalId : -1
-    var timestamp = entry ? entry.timestamp : 0
     // A restored row has no live server object, and its old-generation id
     // may meanwhile belong to a fresh notification — resolving liveRefs by
     // id would dismiss that unrelated notification at the server.
     var restored = isRestoredRow(entry)
     var ref = !restored && originalId >= 0 ? liveRefs[originalId] : null
-    // The popup is leaving the screen — for any reason — so its persisted
-    // file must not survive to the next shell restart.
+    // The popup is leaving the screen — for any reason — so its file must not
+    // survive to the next shell restart. It becomes the newest history entry
+    // instead. Rows that never had a file (a history replay, the empty-history
+    // placeholder) archive to nothing, which the move tolerates.
     if (entry) {
-      deletePopupFileFor(entry)
+      archivePopupFileFor(entry)
       if (restored) delete restoredPopups[NotificationLogic.popupFileName(entry)]
     }
     popupModel.remove(index)
@@ -356,88 +251,10 @@ Item {
         // Object already torn down by the server — nothing to dismiss.
       }
     }
-    // User (or the lifetime timer) saw the popup — archive it.
-    if (originalId >= 0) markSeenByOriginalId(originalId, timestamp)
   }
 
   function clearPopups() {
     while (popupModel.count > 0) dismissPopup(0)
-  }
-
-  function rowsFromModel(model) {
-    var rows = []
-    for (var i = 0; i < model.count; i++) {
-      var entry = model.get(i)
-      if (entry) rows.push(snapshotFromRow(entry))
-    }
-    return rows
-  }
-
-  function showRecentHistory() {
-    var rows = NotificationLogic.recentHistoryRows(
-      rowsFromModel(pendingModel),
-      rowsFromModel(pastModel),
-      service.historyReplayLimit,
-      NotificationUrgency.Normal)
-
-    // Replaying nothing at all looks like a dead keybinding, so say so.
-    if (rows.length === 0) {
-      popupModel.insert(0, {
-        id: -1,
-        originalId: -1,
-        app: "omarchy-action",
-        appIcon: "",
-        summary: "No recent notifications",
-        body: "",
-        image: "",
-        glyph: "󰂚",
-        exec: "",
-        urgency: NotificationUrgency.Low,
-        expireTimeout: 0,
-        timestamp: Date.now()
-      })
-      return "none"
-    }
-
-    clearPopups()
-    for (var i = 0; i < rows.length; i++) {
-      popupModel.append(rows[i])
-    }
-    return "ok"
-  }
-
-  function dismissPending(index) {
-    if (index < 0 || index >= pendingModel.count) return
-    var entry = pendingModel.get(index)
-    if (entry) maybeDeleteCachedImage(entry.image)
-    pendingModel.remove(index)
-    scheduleHistorySave()
-  }
-
-  function dismissPast(index) {
-    if (index < 0 || index >= pastModel.count) return
-    var entry = pastModel.get(index)
-    if (entry) maybeDeleteCachedImage(entry.image)
-    pastModel.remove(index)
-    scheduleHistorySave()
-  }
-
-  function clearPending() {
-    for (var i = 0; i < pendingModel.count; i++) {
-      var entry = pendingModel.get(i)
-      if (entry) maybeDeleteCachedImage(entry.image)
-    }
-    pendingModel.clear()
-    scheduleHistorySave()
-  }
-
-  function clearPast() {
-    for (var i = 0; i < pastModel.count; i++) {
-      var entry = pastModel.get(i)
-      if (entry) maybeDeleteCachedImage(entry.image)
-    }
-    pastModel.clear()
-    scheduleHistorySave()
   }
 
   // Run the popup's click action, then dismiss. Omarchy's own toasts carry the
@@ -496,109 +313,18 @@ Item {
 
   Process { id: focusAppProc; running: false }
 
-  // ---------------------------------------------------- image cache
-  //
-  // Notifications coming from screenshot helpers ship an `image-path` hint
-  // pointing at /tmp/<file>. We want the history thumbnail to outlive that
-  // file, so we copy it into a long-lived cache dir on ingress and rewrite
-  // the history row's `image` to point at the cache once cp finishes.
-  // image:// (raw-bytes) URIs aren't trivially copyable from QML; document
-  // and skip them for v1.
-
-  function imageExtension(srcPath) {
-    return NotificationLogic.imageExtension(srcPath)
-  }
-
-  function maybeCacheImage(snapshot) {
-    var image = String(snapshot.image || "")
-    if (!image) return
-    // image:// URIs are decoded from raw bytes by Quickshell's image provider.
-    // We can't copy them out from QML, so let history reference them by URI
-    // and accept that they disappear with the source notification.
-    if (image.indexOf("image://") === 0) return
-    if (image.indexOf("file:///tmp/") !== 0) return
-
-    var srcPath = decodeURIComponent(image.substring(7))
-    var ext = imageExtension(srcPath)
-    var destPath = imageCacheDir + snapshot.timestamp + "-" + snapshot.originalId + "." + ext
-    var destUri = Util.fileUrl(destPath)
-
-    imageCacheQueue = imageCacheQueue.concat([{
-      srcPath: srcPath,
-      destPath: destPath,
-      targetUri: destUri,
-      originalId: snapshot.originalId,
-      timestamp: snapshot.timestamp
-    }])
-    runNextImageCacheJob()
-  }
-
-  function runNextImageCacheJob() {
-    if (imageCacheProc.running || imageCacheQueue.length === 0) return
-
-    var job = imageCacheQueue[0]
-    imageCacheQueue = imageCacheQueue.slice(1)
-    imageCacheProc.targetUri = job.targetUri
-    imageCacheProc.matchOriginalId = job.originalId
-    imageCacheProc.matchTimestamp = job.timestamp
-    imageCacheProc.command = ["cp", "-f", job.srcPath, job.destPath]
-    imageCacheProc.running = true
-  }
-
-  function rewriteCachedImage(targetUri, originalId, timestamp) {
-    function rewrite(model) {
-      for (var i = 0; i < model.count; i++) {
-        var row = model.get(i)
-        if (row && row.originalId === originalId && row.timestamp === timestamp) {
-          model.setProperty(i, "image", targetUri)
-          return true
-        }
-      }
-      return false
-    }
-
-    return rewrite(pendingModel) || rewrite(pastModel)
-  }
-
-  function maybeDeleteCachedImage(image) {
-    var path = String(image || "")
-    if (!path) return
-    if (path.indexOf("file://") !== 0) return
-    var local = decodeURIComponent(path.substring(7))
-    if (local.indexOf(imageCacheDir) !== 0) return
-    deleteImageProc.command = ["rm", "-f", local]
-    deleteImageProc.running = true
-  }
-
   Process {
     id: ensureDirsProc
-    command: ["mkdir", "-p", service.stateDir, service.popupStateDir, service.imageCacheDir]
+    command: ["mkdir", "-p", service.stateDir, service.popupStateDir, service.historyDir]
     running: false
   }
-
-  Process {
-    id: imageCacheProc
-    property string targetUri: ""
-    property int matchOriginalId: -1
-    property double matchTimestamp: 0
-    onExited: function(exitCode) {
-      if (exitCode === 0 && targetUri && rewriteCachedImage(targetUri, matchOriginalId, matchTimestamp))
-        scheduleHistorySave()
-      targetUri = ""
-      matchOriginalId = -1
-      matchTimestamp = 0
-      runNextImageCacheJob()
-    }
-  }
-
-  Process { id: deleteImageProc; running: false }
 
   // ---------------------------------------------------- popup persistence
   //
   // Mirror every on-screen popup to its own file under popupStateDir so
   // toasts survive shell restarts (notably the restart `omarchy-update`
-  // performs). Writes and deletes go through one serialized queue: a burst
-  // of replaces_id updates must not race a single reused Process, and
+  // performs). Writes, moves and deletes go through one serialized queue: a
+  // burst of replaces_id updates must not race a single reused Process, and
   // ordering guarantees a delete issued after a write wins.
 
   // Popups restored from a previous shell process, keyed by their file
@@ -645,6 +371,142 @@ Item {
     enqueuePopupFileJob(["rm", "-f", popupStateDir + NotificationLogic.popupFileName(row)])
   }
 
+  // ---------------------------------------------------- history
+  //
+  // A popup that leaves the screen keeps its file — it just moves one level
+  // down, into historyDir. Trimming happens right there in the same shell
+  // job: the names sort numerically by their leading millisecond timestamp,
+  // so everything but the newest historyLimit files is the tail to drop.
+  // $1 is historyDir and $2 the limit in both jobs below.
+  readonly property string trimHistoryScript:
+    "ls -1 \"$1\" 2>/dev/null | sort -n | head -n \"-$2\" | while IFS= read -r stale; do rm -f \"$1/$stale\"; done"
+
+  function archivePopupFileFor(row) {
+    if (!row) return
+    // A history replay or the empty-history placeholder has no file to move;
+    // the failed mv leaves the history untouched, trimming included.
+    enqueuePopupFileJob(["bash", "-c",
+      "mkdir -p \"$1\" || exit 0\n" +
+      "mv -f \"$4/$3\" \"$1/$3\" 2>/dev/null || exit 0\n" +
+      trimHistoryScript, "--",
+      historyDir,
+      String(historyLimit),
+      NotificationLogic.popupFileName(row),
+      popupStateDir])
+  }
+
+  // Record a notification that never made it to the screen (DND silenced it),
+  // straight into history. Same file format as an archived popup, so the
+  // replay can't tell the two apart.
+  //
+  // A silenced notification is untracked the moment it arrives, so the server
+  // has nothing left for a later replaces_id to replace and hands the sender a
+  // fresh id instead. Every update from a chatty thread is therefore its own
+  // notification here, and several can sit in the ten slots together — there
+  // is no id to recognize them by, and guessing from app and summary would
+  // merge genuinely separate messages.
+  function writeHistoryFile(entry) {
+    if (!entry) return
+    enqueuePopupFileJob(["bash", "-c",
+      "mkdir -p \"$1\" || exit 0\n" +
+      "printf '%s\\n' \"$4\" > \"$1/$3\" || exit 0\n" +
+      trimHistoryScript, "--",
+      historyDir,
+      String(historyLimit),
+      NotificationLogic.popupFileName(entry),
+      NotificationLogic.serializePopup(entry, NotificationUrgency.Normal)])
+  }
+
+  function clearHistory() {
+    enqueuePopupFileJob(["bash", "-c",
+      "rm -f \"$1\"/*.json", "--", historyDir])
+  }
+
+  Process {
+    id: readHistoryProc
+    running: false
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: service.replayHistory(text)
+    }
+  }
+
+  // Toasts that were on screen when the replay was asked for. The clear in
+  // replayHistory archives them, but the directory read is already in flight
+  // by then, so they're handed over in memory instead of being waited for.
+  property var replayCarryOver: []
+
+  // Re-show what's in historyDir as toasts. Reading the directory is a
+  // subprocess, so the replay lands in replayHistory a moment later.
+  function showRecentHistory() {
+    if (readHistoryProc.running) return "ok"
+    service.replayCarryOver = liveRowsForReplay()
+    readHistoryProc.command = ["bash", "-c",
+      "awk 1 \"$1\"/*.json 2>/dev/null || true", "--", historyDir]
+    readHistoryProc.running = true
+    return "ok"
+  }
+
+  // Copy the on-screen rows out of the model. The placeholder from an earlier
+  // empty replay carries originalId -1 and is not a notification, so it is
+  // left behind rather than replayed as one.
+  function liveRowsForReplay() {
+    var rows = []
+    for (var i = 0; i < popupModel.count; i++) {
+      var row = popupModel.get(i)
+      if (!row || row.originalId < 0) continue
+      rows.push({
+        id: row.id,
+        originalId: row.originalId,
+        app: row.app,
+        appIcon: row.appIcon,
+        summary: row.summary,
+        body: row.body,
+        image: row.image,
+        glyph: row.glyph || "",
+        exec: row.exec || "",
+        urgency: row.urgency,
+        timestamp: row.timestamp
+      })
+    }
+    return rows
+  }
+
+  function replayHistory(raw) {
+    var rows = NotificationLogic.historyRows(
+      raw, service.replayCarryOver, NotificationUrgency.Normal, service.historyLimit)
+    service.replayCarryOver = []
+
+    // Replaying nothing at all looks like a dead keybinding, so say so.
+    if (rows.length === 0) {
+      popupModel.insert(0, {
+        id: -1,
+        originalId: -1,
+        app: "omarchy-action",
+        appIcon: "",
+        summary: "No recent notifications",
+        body: "",
+        image: "",
+        glyph: "󰂚",
+        exec: "",
+        urgency: NotificationUrgency.Low,
+        expireTimeout: 0,
+        timestamp: Date.now()
+      })
+      return
+    }
+
+    clearPopups()
+    // Rows arrive newest-first, and index 0 is the top of the toast stack.
+    for (var i = 0; i < rows.length; i++) {
+      // Replayed rows are restored rows: their notification died with the
+      // sender long ago, so they must never resolve to a live server object
+      // that has since been handed their old id.
+      service.restoredPopups[NotificationLogic.popupFileName(rows[i])] = true
+      popupModel.append(rows[i])
+    }
+  }
+
   Process {
     id: restorePopupsProc
     running: false
@@ -662,7 +524,9 @@ Item {
       var entry = entries[i]
       var duration = durationFor(entry.urgency, entry.expireTimeout)
       if (NotificationLogic.popupExpired(entry, duration, now)) {
-        deletePopupFileFor(entry)
+        // It would have expired on screen had the shell kept running, so it
+        // gets archived exactly like an expiry that happened while it did.
+        archivePopupFileFor(entry)
         continue
       }
       // Survivors restart with a full lifetime on purpose: shell restarts
@@ -710,82 +574,44 @@ Item {
     })
   }
 
-  // ---------------------------------------------------- history persistence
+  // ---------------------------------------------------- settings persistence
 
   FileView {
-    id: historyFile
-    path: service.historyPath
+    id: settingsFile
+    path: service.settingsPath
     watchChanges: false
     atomicWrites: true
     printErrors: false
-    onLoaded: service.loadHistory(text())
+    onLoaded: service.loadSettings(text())
     // First-run: the file doesn't exist yet. Without this branch,
-    // `historyLoaded` stays false forever and `scheduleHistorySave` becomes
-    // a no-op — so the file is never created and history vanishes on
-    // shell restart.
-    onLoadFailed: service.loadHistory("")
+    // `settingsLoaded` stays false forever and `scheduleSettingsSave` becomes
+    // a no-op — so the file is never created and the DND preference vanishes
+    // on shell restart.
+    onLoadFailed: service.loadSettings("")
   }
 
   Timer {
-    id: historySaveTimer
+    id: settingsSaveTimer
     interval: 200
     repeat: false
-    onTriggered: service.flushHistory()
+    onTriggered: service.flushSettings()
   }
 
-  // Past is a rolling "recently" window. Sweep every minute and drop
-  // anything older than 15 minutes so the tab doesn't accumulate forever.
-  readonly property int pastTtlMs: 15 * 60 * 1000
-
-  Timer {
-    id: pastPruneTimer
-    interval: 60 * 1000
-    repeat: true
-    running: true
-    triggeredOnStart: true
-    onTriggered: service.prunePast()
+  function scheduleSettingsSave() {
+    if (!service.settingsLoaded) return
+    settingsSaveTimer.restart()
   }
 
-  function prunePast() {
-    if (pastModel.count === 0) return
-    var cutoff = Date.now() - service.pastTtlMs
-    var removed = false
-    for (var i = pastModel.count - 1; i >= 0; i--) {
-      var entry = pastModel.get(i)
-      if (entry && entry.timestamp && entry.timestamp < cutoff) {
-        if (entry.image) maybeDeleteCachedImage(entry.image)
-        pastModel.remove(i)
-        removed = true
-      }
-    }
-    if (removed) scheduleHistorySave()
-  }
+  property bool settingsLoaded: false
 
-  function scheduleHistorySave() {
-    if (!service.historyLoaded) return
-    historySaveTimer.restart()
-  }
-
-  property bool historyLoaded: false
-
-  function loadHistory(raw) {
+  function loadSettings(raw) {
     // FileView can fire onLoaded more than once during startup — the implicit
-    // preload when `path` resolves, plus the explicit `historyFile.reload()`
-    // in Component.onCompleted can both end up calling here. Without this
-    // guard, the second fire appends a second copy of every persisted row
-    // to the in-memory model.
-    if (service.historyLoaded) return
+    // preload when `path` resolves, plus the explicit `settingsFile.reload()`
+    // in Component.onCompleted can both end up calling here.
+    if (service.settingsLoaded) return
 
-    var parsed = NotificationLogic.parseHistory(raw, NotificationUrgency.Normal, service.historyCap)
-    if (parsed.empty) {
-      service.historyLoaded = true
-      return
-    }
-    if (parsed.error) {
-      console.warn("notifications: history parse failed:", parsed.errorMessage || "")
-      service.historyLoaded = true
-      return
-    }
+    var parsed = NotificationLogic.parseSettings(raw)
+    if (parsed.error) console.warn("notifications: settings parse failed:", parsed.errorMessage || "")
 
     if (parsed.dnd !== null) {
       service._hydrating = true
@@ -793,54 +619,24 @@ Item {
       service._hydrating = false
     }
 
-    // Newest-first on disk; append in order so models match.
-    Qt.callLater(function() {
-      for (var i = 0; i < parsed.pending.length; i++) pendingModel.append(parsed.pending[i])
-      for (var j = 0; j < parsed.past.length; j++) pastModel.append(parsed.past[j])
-      service.historyLoaded = true
-      if (parsed.hadDuplicates) service.scheduleHistorySave()
-    })
+    service.settingsLoaded = true
+    // Versions before the history moved into its own directory kept every
+    // notification in here. Rewrite once so that dead payload doesn't sit in
+    // the file until the next DND toggle happens to clear it.
+    if (parsed.legacy) service.scheduleSettingsSave()
   }
 
-  function flushHistory() {
-    function dump(model) {
-      var out = []
-      for (var i = 0; i < model.count; i++) {
-        var r = model.get(i)
-        if (!r) continue
-        out.push({
-          id: r.id,
-          originalId: r.originalId,
-          app: r.app,
-          appIcon: r.appIcon,
-          summary: r.summary,
-          body: r.body,
-          image: r.image,
-          glyph: r.glyph || "",
-          exec: r.exec || "",
-          urgency: r.urgency,
-          expireTimeout: r.expireTimeout || 0,
-          timestamp: r.timestamp
-        })
-      }
-      return out
-    }
-    var payload = {
-      version: 2,
-      dnd: persisted.doNotDisturb,
-      pending: dump(pendingModel),
-      past: dump(pastModel)
-    }
-    historyFile.setText(JSON.stringify(payload, null, 2) + "\n")
+  function flushSettings() {
+    settingsFile.setText(JSON.stringify({ version: 3, dnd: persisted.doNotDisturb }, null, 2) + "\n")
   }
 
   Component.onCompleted: {
     ensureDirsProc.running = true
-    // Once mkdir has had a tick, load the existing history file. FileView
-    // surfaces an empty string when the file doesn't exist; loadHistory
+    // Once mkdir has had a tick, load the existing settings file. FileView
+    // surfaces an empty string when the file doesn't exist; loadSettings
     // handles that path.
     Qt.callLater(function() {
-      historyFile.reload()
+      settingsFile.reload()
       // Re-show popups that were on screen when the previous shell died.
       // The glob-through-bash tolerates a missing/empty dir (first run).
       // awk 1 (not cat) so a torn file missing its trailing newline can't
@@ -876,49 +672,27 @@ Item {
       return dndState()
     }
 
+    // Replay the notifications that have been moved into the history dir.
     function showHistory(): string {
       return service.showRecentHistory()
     }
 
-    // `clear` empties the past tab (the "I already saw these" bucket).
+    // `clear` forgets the recorded history; the toasts on screen stay put.
     function clear(): string {
-      service.clearPast()
-      return "ok"
-    }
-
-    function clearPending(): string {
-      service.clearPending()
-      return "ok"
-    }
-
-    function markAllSeen(): string {
-      service.markAllSeen()
+      service.clearHistory()
       return "ok"
     }
 
     function dismissAll(): string {
       service.clearPopups()
-      service.clearPending()
-      service.clearPast()
       return "ok"
     }
 
-    // dismiss the most recent popup; fall back to the most recent pending
-    // entry, then past, if no popup is currently showing.
+    // Dismiss the most recent popup.
     function dismissOne(): string {
-      if (popupModel.count > 0) {
-        service.dismissPopup(0)
-        return "ok"
-      }
-      if (pendingModel.count > 0) {
-        service.dismissPending(0)
-        return "ok"
-      }
-      if (pastModel.count > 0) {
-        service.dismissPast(0)
-        return "ok"
-      }
-      return "none"
+      if (popupModel.count === 0) return "none"
+      service.dismissPopup(0)
+      return "ok"
     }
 
     // Fire the default action on the most recent popup, then dismiss it.
@@ -928,22 +702,19 @@ Item {
       return "ok"
     }
 
+    // Take a toast off the screen by summary substring, used by the
+    // first-run notifications once their action has been clicked.
     function dismiss(summary: string): string {
       var needle = String(summary || "")
       if (!needle) return "none"
       var hit = false
-      function sweep(model, dismissFn) {
-        for (var i = model.count - 1; i >= 0; i--) {
-          var row = model.get(i)
-          if (row && String(row.summary || "").indexOf(needle) !== -1) {
-            dismissFn(i)
-            hit = true
-          }
+      for (var i = popupModel.count - 1; i >= 0; i--) {
+        var row = popupModel.get(i)
+        if (row && String(row.summary || "").indexOf(needle) !== -1) {
+          service.dismissPopup(i)
+          hit = true
         }
       }
-      sweep(pendingModel, service.dismissPending)
-      sweep(pastModel, service.dismissPast)
-      sweep(popupModel, service.dismissPopup)
       return hit ? "ok" : "none"
     }
 
