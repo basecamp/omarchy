@@ -46,7 +46,19 @@ compositor_reachable() {
   # it is still answering. Only when it can be asked: hyprctl needs
   # HYPRLAND_INSTANCE_SIGNATURE, and treating a missing signature as a dead
   # compositor would skip tests that would have run fine.
-  [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || hyprctl -j monitors >/dev/null 2>&1
+  [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || return 0
+
+  # Hyprland can miss a query while it reconfigures outputs, and one miss is not
+  # a dead compositor; retry the way omarchy-launch-shell does rather than
+  # discard a whole file's runtime coverage. Only a leftover socket gets this
+  # far, so the waiting is rare.
+  local attempt
+  for attempt in 1 2 3; do
+    hyprctl -j monitors >/dev/null 2>&1 && return 0
+    (( attempt < 3 )) && sleep 0.5
+  done
+
+  return 1
 }
 
 require_compositor() {
