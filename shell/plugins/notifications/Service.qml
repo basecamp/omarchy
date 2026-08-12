@@ -399,7 +399,10 @@ Item {
   }
 
   function runNextPopupFileJob() {
-    if (popupFileProc.running || popupFileQueue.length === 0) return
+    if (popupFileProc.running || popupFileQueue.length === 0) {
+      if (!popupFileProc.running) startHistoryReadWhenIdle()
+      return
+    }
     popupFileProc.command = popupFileQueue[0]
     popupFileQueue = popupFileQueue.slice(1)
     popupFileProc.running = true
@@ -494,15 +497,31 @@ Item {
   // by then, so they're handed over in memory instead of being waited for.
   property var replayCarryOver: []
 
+  // Set while a replay is waiting for the file queue to drain.
+  property bool historyReadPending: false
+
   // Re-show what's in historyDir as toasts. Reading the directory is a
   // subprocess, so the replay lands in replayHistory a moment later.
   function showRecentHistory() {
-    if (readHistoryProc.running) return "ok"
+    if (readHistoryProc.running || service.historyReadPending) return "ok"
     service.replayCarryOver = liveRowsForReplay()
+    service.historyReadPending = true
+    startHistoryReadWhenIdle()
+    return "ok"
+  }
+
+  // The archives, silenced writes and clears the queue is still working
+  // through are what the replay is about to show. Reading the directory past
+  // them would replay a history that is one dismissal short, or one a clear
+  // was in the middle of emptying, so the read waits its turn.
+  function startHistoryReadWhenIdle() {
+    if (!service.historyReadPending) return
+    if (popupFileProc.running || popupFileQueue.length > 0) return
+
+    service.historyReadPending = false
     readHistoryProc.command = ["bash", "-c",
       "awk 1 \"$1\"/*.json 2>/dev/null || true", "--", historyDir]
     readHistoryProc.running = true
-    return "ok"
   }
 
   // Copy the on-screen rows out of the model. The placeholder from an earlier

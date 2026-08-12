@@ -363,6 +363,10 @@ assert(
   'notifications service carries the toasts still on screen into the replay'
 )
 assert(
+  /function startHistoryReadWhenIdle\(\) \{[\s\S]{0,300}?if \(popupFileProc\.running \|\| popupFileQueue\.length > 0\) return/.test(serviceQml),
+  'notifications service reads history only once its queued file work has landed'
+)
+assert(
   /watchForUpdates\(notification, snapshot\)/.test(serviceQml),
   'notifications service watches a shown notification for in-place updates'
 )
