@@ -37,13 +37,43 @@ assert(/root\.opened/.test(scanRestart[0]), 'network re-checks the panel before 
 assert(/scanRestart\.stop\(\)/.test(panelSource), 'network cancels a pending scan restart when the panel closes')
 
 // scannerEnabled lives on a shared WifiDevice with no reference counting, so
-// the panel has to release the device it enabled — including when the widget
-// is destroyed with the panel still open, as a bar reload does.
+// the panel has to own what it enabled. Run the helper's own JavaScript against
+// stand-in devices: the two invariants it carries are that a closed panel never
+// takes a device, and that adopting a new one releases the previous.
+const scannerHelper = panelSource.match(/function setScannerEnabled\(enabled\) \{[\s\S]*?\n {2}\}/)
+assert(scannerHelper, 'network has a scanner ownership helper')
+
+var opened = false
+var wifiDevice = { scannerEnabled: false }
+var scannerDevice = null
+eval(scannerHelper[0])
+
+setScannerEnabled(true)
+assert(
+  scannerDevice === null && wifiDevice.scannerEnabled === false,
+  'network does not let a closed panel claim or enable a scanner device'
+)
+
+var previousScannerDevice = { scannerEnabled: true }
+var replacementScannerDevice = { scannerEnabled: false }
+opened = true
+scannerDevice = previousScannerDevice
+wifiDevice = replacementScannerDevice
+setScannerEnabled(true)
+assert(
+  previousScannerDevice.scannerEnabled === false &&
+    scannerDevice === replacementScannerDevice &&
+    replacementScannerDevice.scannerEnabled === true,
+  'network releases the previous scanner device before enabling its replacement'
+)
+
+// Destruction is the case a guard-only fix misses: the widget dies with the
+// panel still open, as a bar reload does, and nothing else would release it.
 assert(
   /Component\.onDestruction[\s\S]{0,140}scannerDevice\.scannerEnabled = false/.test(panelSource),
   'network releases the scanner it owns when the widget is destroyed'
 )
-assert(!/wifiDevice\.scannerEnabled\s*=/.test(panelSource), 'network routes every scanner write through setScannerEnabled() so the device it enabled is the device it releases')
+assert(!/wifiDevice\.scannerEnabled\s*=/.test(panelSource), 'network writes scanner state through its owned device reference rather than the moving wifiDevice reference')
 
 // A row is a primitive snapshot that can outlive its WifiNetwork, and
 // disconnect() falls back to the live connection when handed null, so row
