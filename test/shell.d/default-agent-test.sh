@@ -147,7 +147,7 @@ pass "default agent is unset until one is chosen"
 if omarchy-agent >"$test_tmp/no-agent-output" 2>&1; then
   fail "agent launcher refuses to launch without a default"
 fi
-grep -Fq "No default coding agent set" "$test_tmp/no-agent-output" ||
+grep -Fq "Choose default agent with" "$test_tmp/no-agent-output" ||
   fail "agent launcher explains that no default is set"
 [[ ! -s $launch_log ]] || fail "agent launcher starts nothing without a default"
 pass "agent launcher refuses to launch without a default"
@@ -364,6 +364,29 @@ mapfile -d '' -t inline_args <"$inline_log"
 [[ ${inline_args[*]} == "opencode --auto --prompt Review this project" ]] ||
   fail "inline agent launcher runs in the current terminal"
 pass "inline agent launcher runs in the current terminal"
+
+# The prompt route exists so the router can tell a prompt from a subcommand, so
+# cover the public routes and not only the binaries behind them.
+: >"$launch_log"
+omarchy agent
+mapfile -d '' -t launch_args <"$launch_log"
+[[ ${launch_args[*]} == "--app-id=org.omarchy.agent opencode --auto" ]] ||
+  fail "omarchy agent routes to the launcher"
+
+: >"$launch_log"
+omarchy agent prompt "Review this project"
+mapfile -d '' -t launch_args <"$launch_log"
+[[ ${launch_args[*]} == "--app-id=org.omarchy.agent opencode --auto --prompt Review this project" ]] ||
+  fail "omarchy agent prompt routes the prompt to the launcher"
+
+: >"$launch_log"
+if omarchy agent Review this project >"$test_tmp/positional-output" 2>&1; then
+  fail "omarchy agent rejects a positional prompt"
+fi
+grep -F "omarchy agent prompt" "$test_tmp/positional-output" >/dev/null ||
+  fail "omarchy agent points a positional prompt at the prompt route"
+[[ ! -s $launch_log ]] || fail "omarchy agent starts nothing for a positional prompt"
+pass "omarchy agent keeps prompts on the prompt route"
 
 printf '%s\n' "missing" >"$agent_file"
 if OMARCHY_TEST_MISSING_COMMAND=missing omarchy-agent >"$test_tmp/missing-output" 2>&1; then
