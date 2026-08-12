@@ -4,8 +4,10 @@
 # omarchy:examples=omarchy logout | omarchy system logout
 # omarchy:aliases=omarchy logout
 
-nohup bash -c "sleep 2 && uwsm stop" >/dev/null 2>&1 &
+window_count=$(hyprctl clients -j | jq length)
 
-# Now close all windows
-omarchy-hyprland-window-close-all
-sleep 1 # Allow apps like Chrome to shutdown correctly
+if ((window_count > 0)); then
+  timeout 2s omarchy-hyprland-window-close-all && sleep 1 || true
+fi
+
+exec uwsm stop
