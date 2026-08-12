@@ -87,5 +87,19 @@ write_usb_devices '27c6:1234'
 bind_driver '1-0/1-0:1.0' uvcvideo
 assert_rejects "a vendor guess bound to a kernel driver is rejected"
 
+write_usb_devices '27c6:1234'
+bind_driver '1-0/1-0:1.0' usbfs
+assert_detects "a vendor guess claimed through usbfs is still detected"
+
+write_usb_devices '27c6:1234'
+bind_driver '1-0/1-0:1.0' usbfs
+bind_driver '1-0/1-0:1.1' uvcvideo
+assert_rejects "a real driver alongside a usbfs claim is still rejected"
+
+# The product-name branch is trusted outright, whatever is bound to it.
+write_usb_devices '27c6:1234:Goodix Fingerprint USB Device'
+bind_driver '1-0/1-0:1.0' uvcvideo
+assert_detects "a self-named reader is detected with a driver bound"
+
 write_usb_devices '1234:5678:Generic USB Device'
 assert_rejects "a machine with no matching USB devices detects nothing"
