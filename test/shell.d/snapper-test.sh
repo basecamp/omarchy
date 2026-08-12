@@ -37,6 +37,18 @@ printf 'systemctl %s\n' "$*" >>"$TEST_LOG"
 STUB
 chmod +x "$fake_bin/systemctl"
 
+cat >"$fake_bin/findmnt" <<'STUB'
+#!/bin/bash
+echo "${TEST_ROOT_FSTYPE:-btrfs}"
+STUB
+chmod +x "$fake_bin/findmnt"
+
+cat >"$fake_bin/sudo" <<'STUB'
+#!/bin/bash
+"$@"
+STUB
+chmod +x "$fake_bin/sudo"
+
 notification_migration=$(grep -rl 'Disable Limine Snapper warning notifier' "$ROOT/migrations" | head -n 1 || true)
 [[ -n $notification_migration ]] || fail "Limine Snapper warning notifier migration exists"
 grep -F 'limine-snapper-notify.desktop' "$notification_migration" >/dev/null
@@ -71,6 +83,42 @@ grep -Fx 'systemctl disable --now snapper-timeline.timer' "$test_tmp/calls.log" 
 grep -Fx 'systemctl enable --now snapper-cleanup.timer limine-snapper-sync.service' "$test_tmp/calls.log" >/dev/null || fail "snapshot configure enables cleanup and Limine snapshot sync"
 pass "snapshot configure normalizes Snapper policy and services"
 
+: >"$test_tmp/calls.log"
+TEST_ROOT_FSTYPE=ext4 \
+TEST_LOG="$test_tmp/calls.log" \
+PATH="$fake_bin:$PATH" \
+OMARCHY_PATH="$ROOT" \
+OMARCHY_SNAPPER_CONFIG_PATH="$test_tmp/etc/snapper/configs/root" \
+OMARCHY_SNAPPER_CONF_PATH="$test_tmp/etc/conf.d/snapper" \
+  bash -euo pipefail "$ROOT/install/config/snapper.sh" >/dev/null
+
+[[ ! -e $test_tmp/etc/snapper/configs/root ]] || fail "snapshot configure removes the invalid Btrfs root config"
+grep -Fx 'SNAPPER_CONFIGS=""' "$test_tmp/etc/conf.d/snapper" >/dev/null || fail "snapshot configure drops the invalid root config from snapper defaults"
+grep -Fx 'systemctl disable --now snapper-cleanup.timer' "$test_tmp/calls.log" >/dev/null || fail "snapshot configure disables cleanup without snapshot configs"
+grep -Fx 'systemctl disable --now limine-snapper-sync.service' "$test_tmp/calls.log" >/dev/null || fail "snapshot configure disables Limine snapshot sync on non-Btrfs roots"
+! grep -F 'systemctl enable' "$test_tmp/calls.log" >/dev/null || fail "snapshot configure does not enable snapshot services on non-Btrfs roots"
+pass "snapshot configure removes Btrfs-only setup from non-Btrfs roots"
+
+other_config_root="$test_tmp/other/etc/snapper/configs"
+mkdir -p "$other_config_root" "$test_tmp/other/etc/conf.d"
+cp "$template" "$other_config_root/root"
+: >"$other_config_root/home"
+printf '%s\n' 'SNAPPER_CONFIGS="root home"' >"$test_tmp/other/etc/conf.d/snapper"
+: >"$test_tmp/calls.log"
+
+TEST_ROOT_FSTYPE=ext4 \
+TEST_LOG="$test_tmp/calls.log" \
+PATH="$fake_bin:$PATH" \
+OMARCHY_PATH="$ROOT" \
+OMARCHY_SNAPPER_CONFIG_PATH="$other_config_root/root" \
+OMARCHY_SNAPPER_CONF_PATH="$test_tmp/other/etc/conf.d/snapper" \
+  bash -euo pipefail "$ROOT/install/config/snapper.sh" >/dev/null
+
+[[ -f $other_config_root/home ]] || fail "snapshot configure preserves other snapshot configs"
+grep -Fx 'SNAPPER_CONFIGS="home"' "$test_tmp/other/etc/conf.d/snapper" >/dev/null || fail "snapshot configure keeps other configs registered"
+! grep -Fx 'systemctl disable --now snapper-cleanup.timer' "$test_tmp/calls.log" >/dev/null || fail "snapshot configure keeps cleanup available for other configs"
+pass "snapshot configure preserves cleanup for other snapshot configs"
+
 setup_system="$ROOT/bin/omarchy-apply-system"
 grep -F 'config/all.sh' "$setup_system" >/dev/null ||
   fail "system setup runs the config phase"
@@ -86,6 +134,33 @@ grep -F 'sudo "$@"' "$migration" >/dev/null
 grep -F 'as_root env OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$snapper_config_script"' "$migration" >/dev/null
 ! grep -F 'NUMBER_LIMIT="5"' "$migration" >/dev/null || fail "Snapper service migration does not overwrite working custom retention"
 pass "Snapper service migration only repairs broken services idempotently"
+
+non_btrfs_migration="$ROOT/migrations/1786517763.sh"
+grep -Fx '[[ $(findmnt -no FSTYPE /) != "btrfs" ]] || exit 0' "$non_btrfs_migration" >/dev/null
+grep -F 'bash -euo pipefail "$snapper_config_script"' "$non_btrfs_migration" >/dev/null
+
+migration_root="$test_tmp/migration-root"
+mkdir -p "$migration_root/install/config"
+cat >"$migration_root/install/config/snapper.sh" <<'STUB'
+printf '%s\n' snapper-config >>"$TEST_LOG"
+STUB
+
+: >"$test_tmp/calls.log"
+TEST_ROOT_FSTYPE=ext4 \
+TEST_LOG="$test_tmp/calls.log" \
+PATH="$fake_bin:$PATH" \
+OMARCHY_PATH="$migration_root" \
+  bash -euo pipefail "$non_btrfs_migration" >/dev/null
+grep -Fx 'snapper-config' "$test_tmp/calls.log" >/dev/null || fail "non-Btrfs migration runs the guarded snapshot configuration"
+
+: >"$test_tmp/calls.log"
+TEST_ROOT_FSTYPE=btrfs \
+TEST_LOG="$test_tmp/calls.log" \
+PATH="$fake_bin:$PATH" \
+OMARCHY_PATH="$migration_root" \
+  bash -euo pipefail "$non_btrfs_migration" >/dev/null
+[[ ! -s $test_tmp/calls.log ]] || fail "non-Btrfs migration leaves Btrfs roots alone"
+pass "non-Btrfs migration reuses the guarded snapshot configuration"
 
 # Checkouts differ per machine, so allow an explicit pointer at the sibling repo.
 # Accepts either the omarchy-pkgs checkout or its pkgbuilds/ directory.
