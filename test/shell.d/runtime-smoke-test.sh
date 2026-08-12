@@ -17,10 +17,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
-  pass "no Wayland compositor; skipping shell runtime smoke test"
-  exit 0
-fi
+require_compositor "shell runtime smoke test"
 
 if ! command -v quickshell >/dev/null 2>&1; then
   pass "quickshell not installed; skipping shell runtime smoke test"
