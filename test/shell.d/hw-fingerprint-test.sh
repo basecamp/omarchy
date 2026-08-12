@@ -1,0 +1,69 @@
+#!/bin/bash
+
+set -euo pipefail
+
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
+
+tmp_dir=$(mktemp -d)
+trap 'rm -rf "$tmp_dir"' EXIT
+
+write_usb_devices() {
+  rm -rf "$tmp_dir/devices"
+  mkdir -p "$tmp_dir/devices"
+
+  local index=0
+  local spec
+  for spec in "$@"; do
+    local vendor=${spec%%:*}
+    local remainder=${spec#*:}
+    local product_id=${remainder%%:*}
+    local product=${remainder#*:}
+    local dev="$tmp_dir/devices/1-$index"
+
+    mkdir -p "$dev"
+    printf '%s\n' "$vendor" >"$dev/idVendor"
+    printf '%s\n' "$product_id" >"$dev/idProduct"
+    [[ -n $product ]] && printf '%s\n' "$product" >"$dev/product"
+    index=$((index + 1))
+  done
+}
+
+hw_fingerprint() {
+  OMARCHY_USB_DEVICES_PATH="$tmp_dir/devices" "$ROOT/bin/omarchy-hw-fingerprint"
+}
+
+assert_detects() {
+  local description="$1"
+
+  hw_fingerprint || fail "$description"
+  pass "$description"
+}
+
+assert_rejects() {
+  local description="$1"
+
+  if hw_fingerprint; then
+    fail "$description"
+  fi
+  pass "$description"
+}
+
+write_usb_devices '10a5:a305:FPC L:0000 FW:1425046'
+assert_detects "an FPC reader is detected by its product string"
+
+write_usb_devices '10a5:1234:Generic USB Device'
+assert_rejects "a generic 10a5 USB device is not detected"
+
+write_usb_devices '1234:5678:Goodix Fingerprint USB Device'
+assert_detects "a reader is detected by an existing product-name match"
+
+write_usb_devices '27c6:1234:'
+assert_detects "a reader is detected by an existing vendor match"
+
+write_usb_devices '27c6:1234:'
+mkdir -p "$tmp_dir/devices/1-0/1-0:1.0"
+touch "$tmp_dir/devices/1-0/1-0:1.0/driver"
+assert_rejects "a vendor guess with a bound kernel driver is rejected"
+
+write_usb_devices '1234:5678:Generic USB Device'
+assert_rejects "a machine with no matching USB devices detects nothing"
