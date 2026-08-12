@@ -140,30 +140,33 @@ for command in omp grok crush; do
 done
 pass "Remove Preinstalls deletes every optional agent lazy stub"
 
-[[ $(omarchy-default-agent) == "opencode" ]] || fail "default agent falls back to OpenCode"
-pass "default agent falls back to OpenCode"
+[[ -z $(omarchy-default-agent) ]] || fail "default agent is unset until one is chosen"
+pass "default agent is unset until one is chosen"
 
-omarchy-launch-agent
-mapfile -d '' -t launch_args <"$launch_log"
-[[ ${launch_args[*]} == "opencode --auto" ]] ||
-  fail "agent launcher falls back to OpenCode before a default is selected"
-pass "agent launcher falls back to OpenCode before a default is selected"
+: >"$launch_log"
+if omarchy-agent >"$test_tmp/no-agent-output" 2>&1; then
+  fail "agent launcher refuses to launch without a default"
+fi
+grep -Fq "No default coding agent set" "$test_tmp/no-agent-output" ||
+  fail "agent launcher explains that no default is set"
+[[ ! -s $launch_log ]] || fail "agent launcher starts nothing without a default"
+pass "agent launcher refuses to launch without a default"
 
 source "$ROOT/default/bash/aliases"
-[[ $(alias a) == "alias a='omarchy-launch-agent --inline'" ]] ||
+[[ $(alias a) == "alias a='omarchy-agent --inline'" ]] ||
   fail "terminal alias launches the default agent inline"
 pass "terminal alias launches the default agent inline"
 
-grep -Fq 'o.bind("SUPER + SHIFT + CTRL + A", "Agent", "omarchy-launch-agent")' \
+grep -Fq 'o.bind("SUPER + SHIFT + CTRL + A", "Agent", "omarchy-agent")' \
   "$ROOT/default/hypr/bindings/utilities.lua" ||
   fail "agent launcher has a keyboard shortcut"
 pass "agent launcher has a keyboard shortcut"
 
-cat >"$mock_bin/omarchy-launch-agent" <<'SH'
+cat >"$mock_bin/omarchy-agent" <<'SH'
 #!/bin/bash
-printf '%s\0' omarchy-launch-agent "$@" >"$OMARCHY_TEST_AGENT_OPEN_LOG"
+printf '%s\0' omarchy-agent "$@" >"$OMARCHY_TEST_AGENT_OPEN_LOG"
 SH
-chmod +x "$mock_bin/omarchy-launch-agent"
+chmod +x "$mock_bin/omarchy-agent"
 hash -r
 
 declare -A expected_agents=(
@@ -206,7 +209,7 @@ for selection in "${!expected_agents[@]}"; do
     fail "default agent installs $selection globally through mise"
 
   mapfile -d '' -t agent_open_args <"$agent_open_log"
-  [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-launch-agent" ]] ||
+  [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
     fail "default agent opens $selection after selecting it"
 done
 pass "default agent selects and opens every supported provider and alias"
@@ -235,7 +238,7 @@ mapfile -d '' -t mise_args <"$mise_log"
 [[ $(<"$test_tmp/install-output") == $'\033[2J\033[3J\033[H' ]] ||
   fail "visible agent installation clears its terminal before opening the agent"
 mapfile -d '' -t agent_open_args <"$agent_open_log"
-[[ ${#agent_open_args[@]} == 2 && ${agent_open_args[0]} == "omarchy-launch-agent" && ${agent_open_args[1]} == "--inline" ]] ||
+[[ ${#agent_open_args[@]} == 2 && ${agent_open_args[0]} == "omarchy-agent" && ${agent_open_args[1]} == "--inline" ]] ||
   fail "newly installed agent opens in the installation terminal"
 pass "missing agents install visibly and open in the same terminal"
 
@@ -249,7 +252,7 @@ mapfile -d '' -t mise_args <"$mise_log"
 [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == "copilot" ]] ||
   fail "default agent still activates an installed provider globally through mise"
 mapfile -d '' -t agent_open_args <"$agent_open_log"
-[[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-launch-agent" ]] ||
+[[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
   fail "installed agent opens in a new terminal after selection"
 pass "installed agents select and open without notifications"
 
@@ -287,14 +290,16 @@ grep -F "Could not set Codex as the default coding agent" "$test_tmp/setup-failu
 [[ ! -s $agent_open_log ]] || fail "failed activation does not open an agent"
 pass "default agent reports mise failures without notifications"
 
-rm "$mock_bin/omarchy-launch-agent"
+rm "$mock_bin/omarchy-agent"
 hash -r
 
 assert_launched() {
   local agent=$1
   local description=$2
   shift 2
-  local expected=("$@")
+  # Every agent window launches under the same app-id, whichever agent is
+  # default, so default/hypr/apps/agent.lua can float them all.
+  local expected=(--app-id=org.omarchy.agent "$@")
 
   mapfile -d '' -t actual <"$launch_log"
 
@@ -312,7 +317,7 @@ assert_launch() {
   shift
 
   printf '%s\n' "$agent" >"$agent_file"
-  omarchy-launch-agent "Review this" project
+  omarchy-agent-prompt "Review this" project
   assert_launched "$agent" "forwards the interactive prompt" "$@"
 }
 
@@ -321,7 +326,7 @@ assert_bypass() {
   shift
 
   printf '%s\n' "$agent" >"$agent_file"
-  omarchy-launch-agent
+  omarchy-agent
   assert_launched "$agent" "skips permission prompts" "$@"
 }
 
@@ -348,20 +353,20 @@ assert_bypass copilot copilot --allow-all
 pass "agent launcher skips permission prompts for every supported agent"
 
 printf '%s\n' "opencode" >"$agent_file"
-omarchy-launch-agent
+omarchy-agent
 mapfile -d '' -t launch_args <"$launch_log"
-[[ ${launch_args[*]} == "opencode --auto" ]] ||
+[[ ${launch_args[*]} == "--app-id=org.omarchy.agent opencode --auto" ]] ||
   fail "agent launcher starts the selected agent without an initial prompt"
 pass "agent launcher starts the selected agent without an initial prompt"
 
-omarchy-launch-agent --inline "Review this project"
+omarchy-agent-prompt --inline "Review this project"
 mapfile -d '' -t inline_args <"$inline_log"
 [[ ${inline_args[*]} == "opencode --auto --prompt Review this project" ]] ||
   fail "inline agent launcher runs in the current terminal"
 pass "inline agent launcher runs in the current terminal"
 
 printf '%s\n' "missing" >"$agent_file"
-if OMARCHY_TEST_MISSING_COMMAND=missing omarchy-launch-agent >"$test_tmp/missing-output" 2>&1; then
+if OMARCHY_TEST_MISSING_COMMAND=missing omarchy-agent >"$test_tmp/missing-output" 2>&1; then
   fail "agent launcher rejects a missing default command"
 fi
 grep -F "missing is not installed" "$test_tmp/missing-output" >/dev/null ||

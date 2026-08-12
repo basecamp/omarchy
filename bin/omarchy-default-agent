@@ -17,7 +17,9 @@ if (($# == 0)); then
     read -r agent <"$agent_file"
   fi
 
-  [[ -n $agent ]] && echo "$agent" || echo "opencode"
+  # Silent when unset rather than defaulting: Omarchy picks no agent for you, so
+  # the menu leaves every entry unchecked until one is chosen.
+  [[ -n ${agent:-} ]] && echo "$agent"
   exit 0
 fi
 
@@ -57,7 +59,7 @@ printf '%s\n' "$agent" >"$agent_file"
 
 if [[ $installing == "true" ]]; then
   printf '\033[2J\033[3J\033[H'
-  exec omarchy-launch-agent --inline
+  exec omarchy-agent --inline
 else
-  exec omarchy-launch-agent
+  exec omarchy-agent
 fi
