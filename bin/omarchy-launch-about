@@ -10,6 +10,14 @@
 
 LOGO_FILE="$HOME/.config/omarchy/branding/about.txt"
 
+# wc -L measures display columns, so double-width glyphs count correctly, but
+# only in a UTF-8 locale. A session that never set one leaves it counting bytes
+# it considers unprintable as nothing, which undercounts every box-drawing and
+# Nerd Font glyph in the About layout and fits the window too narrow.
+display_columns() {
+  LC_ALL=C.UTF-8 wc -L
+}
+
 hypr_dispatch() {
   local lua="$1"
   shift
@@ -29,9 +37,8 @@ fit_window() {
 
   # Mirror the logo block in the fastfetch config: 2 columns of padding on the
   # left of the logo, 6 between the logo and the modules, 2 rows above the logo.
-  # wc -L measures display columns, so double-width glyphs count correctly.
   local logo_w logo_h
-  logo_w=$(wc -L <"$LOGO_FILE")
+  logo_w=$(display_columns <"$LOGO_FILE")
   logo_h=$(( $(wc -l <"$LOGO_FILE") + 2 ))
 
   # The guard character keeps command substitution from eating the trailing
@@ -39,7 +46,7 @@ fit_window() {
   local modules module_w module_h
   modules=$(fastfetch --logo none | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g'; printf X)
   modules=${modules%X}
-  module_w=$(printf '%s' "$modules" | wc -L)
+  module_w=$(printf '%s' "$modules" | display_columns)
   module_h=$(printf '%s' "$modules" | wc -l)
 
   # Two columns of right padding to match the logo's left padding, and one row
