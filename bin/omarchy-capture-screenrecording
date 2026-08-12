@@ -100,15 +100,18 @@ default_resolution() {
   fi
 }
 
-# Monitor + window rectangles on the focused workspace, in slurp's "X,Y WxH" format.
+# All monitor geometries + windows on visible workspaces, in slurp's "X,Y WxH" format.
 # Mirrors omarchy-capture-screenshot so the picker UX is identical.
 get_rectangles() {
-  local active_workspace=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
-  hyprctl monitors -j | jq -r --arg ws "$active_workspace" '
-    .[] | select(.activeWorkspace.id == ($ws | tonumber)) |
-    "\(.x),\(.y) \(.width / .scale | floor)x\(.height / .scale | floor)"'
-  hyprctl clients -j | jq -r --arg ws "$active_workspace" '
-    .[] | select(.workspace.id == ($ws | tonumber)) |
+  local monitors_json=$(hyprctl monitors -j)
+  local clients_json=$(hyprctl clients -j)
+
+  echo "$monitors_json" | jq -r '
+    .[] | "\(.x),\(.y) \(.width / .scale | floor)x\(.height / .scale | floor)"'
+
+  echo "$clients_json" | jq -r --argjson active \
+    "$(echo "$monitors_json" | jq -c 'map(.activeWorkspace.id)')" '
+    .[] | select(.workspace.id as $id | $active | index($id)) |
     "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
 }
 
