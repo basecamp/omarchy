@@ -2,6 +2,9 @@
 
 # omarchy:summary=Restart tmux if running with the latest configuration
 
-if pgrep -x tmux; then
+if tmux ls >/dev/null 2>&1; then
   tmux source-file ~/.config/tmux/tmux.conf
+  if [[ -f ~/.config/omarchy/current/theme/tmux.conf ]]; then
+    tmux source-file ~/.config/omarchy/current/theme/tmux.conf
+  fi
 fi
