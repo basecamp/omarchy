@@ -85,6 +85,43 @@ if [[ -n $MIME_TYPES ]]; then
   echo "MimeType=$MIME_TYPES" >>"$DESKTOP_FILE"
 fi
 
+# Add StartupWMClass so app switchers/launchers can match this .desktop
+# file to the running window and resolve its icon. Chromium-family browsers
+# derive WM_CLASS for `--app=<URL>` as:
+#   <prefix>-<host>/<path>-Default   (port stripped, '/' -> '_', empty path -> '/')
+if [[ -z $CUSTOM_EXEC ]]; then
+  browser=$(xdg-settings get default-web-browser 2>/dev/null)
+  case $browser in
+  brave*)          class_prefix="brave" ;;
+  google-chrome*)  class_prefix="google-chrome" ;;
+  microsoft-edge*) class_prefix="microsoft-edge" ;;
+  vivaldi*)        class_prefix="vivaldi" ;;
+  opera*)          class_prefix="opera" ;;
+  helium*)         class_prefix="helium" ;;
+  chromium*)       class_prefix="chromium" ;;
+  *)               class_prefix="" ;;
+  esac
+
+  if [[ -n $class_prefix ]]; then
+    url_rest="${APP_URL#*://}"
+    if [[ $url_rest == */* ]]; then
+      url_host_port="${url_rest%%/*}"
+      url_path="/${url_rest#*/}"
+    else
+      url_host_port="$url_rest"
+      url_path="/"
+    fi
+    url_path="${url_path%%\?*}"
+    url_path="${url_path%%#*}"
+    [[ -z $url_path ]] && url_path="/"
+    url_host="${url_host_port%%:*}"
+
+    raw="${url_host}/${url_path}"
+    encoded="${raw//\//_}"
+    echo "StartupWMClass=${class_prefix}-${encoded}-Default" >>"$DESKTOP_FILE"
+  fi
+fi
+
 chmod +x "$DESKTOP_FILE"
 
 if [[ $INTERACTIVE_MODE == "true" ]]; then
