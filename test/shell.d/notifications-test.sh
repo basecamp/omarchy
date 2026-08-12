@@ -124,6 +124,53 @@ assertDeepEqual(
   'notifications create stable snapshots'
 )
 
+// An in-place update keeps the popup's identity — the file name it was
+// persisted under — and takes everything the card draws from the new content.
+const replacement = notifications.replacementSnapshot(
+  {
+    id: 12,
+    appName: 'Slack',
+    summary: 'Thread v2',
+    body: 'message 2',
+    image: 'file:///tmp/new.png',
+    hints: { 'omarchy-glyph': '!' },
+    urgency: 2,
+    expireTimeout: 4000
+  },
+  12,
+  12345
+)
+assertDeepEqual(
+  {
+    id: replacement.id,
+    originalId: replacement.originalId,
+    timestamp: replacement.timestamp,
+    summary: replacement.summary,
+    body: replacement.body,
+    image: replacement.image,
+    glyph: replacement.glyph,
+    urgency: replacement.urgency,
+    expireTimeout: replacement.expireTimeout
+  },
+  {
+    id: 12,
+    originalId: 12,
+    timestamp: 12345,
+    summary: 'Thread v2',
+    body: 'message 2',
+    image: 'file:///tmp/new.png',
+    glyph: '!',
+    urgency: 2,
+    expireTimeout: 4000
+  },
+  'notifications take updated content without moving the popup it replaces'
+)
+assertEqual(
+  notifications.popupFileName(replacement),
+  '12345-12.json',
+  'notifications keep the persisted file name across an in-place update'
+)
+
 const settings = notifications.parseSettings(JSON.stringify({ version: 3, dnd: true }))
 assertEqual(settings.dnd, true, 'notifications parse the persisted DND state')
 assertEqual(settings.legacy, false, 'notifications do not flag a current settings file as legacy')
@@ -314,6 +361,22 @@ assert(
 assert(
   /service\.replayCarryOver = liveRowsForReplay\(\)/.test(serviceQml),
   'notifications service carries the toasts still on screen into the replay'
+)
+assert(
+  /watchForUpdates\(notification, snapshot\)/.test(serviceQml),
+  'notifications service watches a shown notification for in-place updates'
+)
+assert(
+  /if \(signal && typeof signal\.connect === "function"\) signal\.connect\(refresh\)/.test(serviceQml),
+  'notifications service refreshes the popup from every property the card draws'
+)
+assert(
+  /popupModel\.setProperty\(i, "summary", updated\.summary\)[\s\S]{0,600}?persistPopupFile\(updated\)/.test(serviceQml),
+  'notifications service rewrites both the row and its file when a notification is updated in place'
+)
+assert(
+  /onSummaryChanged: cardSlot\.remainingLifetime = 1\.0/.test(serviceQml),
+  'notifications service restarts the countdown when a toast is updated under it'
 )
 assert(
   /awk 1 \\"\$1\\"\/\*\.json 2>\/dev\/null \|\| true", "--", historyDir/.test(serviceQml),
