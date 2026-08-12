@@ -269,11 +269,31 @@ assert(
   'clearing the drag disarms removal'
 )
 
-// The poof plays only for a removal that actually landed in the config, at
-// the point the module was let go.
+// An armed release must poof before the drag state clears — the overlay
+// window would unmap between ghost and burst otherwise — and must defer the
+// config write until the poof has played: persisting shell.json rebuilds
+// every widget on every monitor, which stalls rendering long enough to
+// swallow the whole animation.
 assert(
-  /if \(wasDragging && removeArmed\) \{\s*\n\s*if \(root\.removeBarModule\(slot\)\) root\.playPoof\(poofScreen, poofX, poofY\)/.test(barSource),
-  'an armed release removes the module and poofs where it was dropped'
+  /if \(wasDragging && removeArmed && root\.scheduleModuleRemoval\(slot\)\)\s*\n\s*root\.playPoof\(poofScreen, poofX, poofY\)\s*\n\s*\n?\s*root\.clearBarDrag\(\)/.test(barSource),
+  'an armed release starts the poof before the drag state clears'
+)
+assert(
+  !/removeModuleFromConfig[\s\S]{0,400}?onReleased/.test(barSource.slice(barSource.indexOf('onReleased'))),
+  'the release handler never writes the config synchronously'
+)
+const poofTimerBody = barSource.slice(barSource.indexOf('id: poofTimer'))
+assert(
+  /root\.commitPendingRemoval\(\)/.test(poofTimerBody.slice(0, poofTimerBody.indexOf('\n  }'))),
+  'the config write lands only after the poof has played'
+)
+
+// The module still vanishes at release, not half a second later: its slot
+// collapses while the removal is pending in the layout.
+assert(
+  /implicitWidth: !removalPending && activeItem && activeItem\.visible/.test(barSource) &&
+  /implicitHeight: !removalPending && activeItem && activeItem\.visible/.test(barSource),
+  'a module pending removal collapses out of the bar immediately'
 )
 
 // The ghost overlay is the poof's canvas, so it must stay mapped for the

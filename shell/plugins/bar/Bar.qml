@@ -100,6 +100,8 @@ Item {
   // Dragging a module this far past the bar edge arms removal. Generous
   // enough that overshooting a drop target keeps reading as a reorder.
   readonly property real barDragRemoveDistance: Style.spaceReal(48)
+  // Removal committed after the poof finishes: { region, name }.
+  property var barPendingRemoval: null
   property bool barPoofActive: false
   property var barPoofScreen: null
   property real barPoofX: 0
@@ -705,15 +707,34 @@ Item {
   // reorder only moves it: for a bar widget the layout entry is the whole
   // story, and a clone dragged off should vanish rather than resurrect the
   // widget it shadows the way a settings-page disable would.
-  function removeBarModule(source) {
+  //
+  // The config write is deferred until the poof has played. Persisting
+  // shell.json rebuilds every widget on every monitor, which stalls the
+  // render loop for long enough to swallow the whole burst; so the release
+  // hides the slot and starts the poof, and the write lands afterwards.
+  function scheduleModuleRemoval(source) {
     if (!source || !source.region || !source.moduleName) return false
     if (!root.shell || typeof root.shell.mutateShellConfig !== "function") return false
 
-    var changed = false
+    commitPendingRemoval()
+    barPendingRemoval = { region: source.region, name: source.moduleName }
+    return true
+  }
+
+  function commitPendingRemoval() {
+    var pending = barPendingRemoval
+    barPendingRemoval = null
+    if (!pending) return
+    if (!root.shell || typeof root.shell.mutateShellConfig !== "function") return
+
     root.shell.mutateShellConfig(function(config) {
-      changed = removeModuleFromConfig(config, source.region, source.moduleName)
+      removeModuleFromConfig(config, pending.region, pending.name)
     })
-    return changed
+  }
+
+  function isPendingRemoval(region, name) {
+    var pending = barPendingRemoval
+    return !!pending && pending.region === region && pending.name === name
   }
 
   function moduleRemoveDistance(scenePoint) {
@@ -734,11 +755,15 @@ Item {
   }
 
   // Outlives the burst animation slightly so the last frames are not cut off
-  // by the overlay window unmapping.
+  // by the overlay window unmapping, and only then commits the deferred
+  // removal — the rebuild it triggers would freeze a poof still playing.
   Timer {
     id: poofTimer
     interval: 520
-    onTriggered: root.barPoofActive = false
+    onTriggered: {
+      root.barPoofActive = false
+      root.commitPendingRemoval()
+    }
   }
 
   function moduleDropAtScene(scenePoint, sourceSlot) {
@@ -1679,6 +1704,10 @@ Item {
     }
     readonly property bool hovered: moduleHover.hovered
     readonly property bool dragSource: root.barDragSource === slot
+    // A module let go past the removal threshold vanishes from the bar the
+    // moment the poof starts, even though its layout entry survives until
+    // the deferred config write lands.
+    readonly property bool removalPending: root.isPendingRemoval(region, moduleName)
     readonly property bool panelOpen: root.activePopout === slot.activeItem
     // Modules bigger than the mark they want (a text label in a padded slot,
     // a multi-line stack on a vertical bar) can say how long the open-panel
@@ -1690,8 +1719,8 @@ Item {
       if (hint !== undefined && hint !== null && hint > 0) return Math.round(hint)
       return Math.max(Style.space(10), Math.round((root.vertical ? slot.height : slot.width) * 0.55))
     }
-    implicitWidth: activeItem && activeItem.visible ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
-    implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
+    implicitWidth: !removalPending && activeItem && activeItem.visible ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
+    implicitHeight: !removalPending && activeItem && activeItem.visible ? activeItem.implicitHeight : 0
     width: implicitWidth
     height: implicitHeight
     z: modulePointer.dragging ? 100 : 0
@@ -1850,10 +1879,17 @@ Item {
         if (wasDragging) suppressClick = true
 
         dragging = false
+
+        // Order matters for an armed release: the poof state goes up before
+        // the drag state clears so the overlay window never unmaps between
+        // ghost and burst, and the slot hides via the pending removal in the
+        // same frame the ghost disappears.
+        if (wasDragging && removeArmed && root.scheduleModuleRemoval(slot))
+          root.playPoof(poofScreen, poofX, poofY)
+
         root.clearBarDrag()
 
         if (wasDragging && removeArmed) {
-          if (root.removeBarModule(slot)) root.playPoof(poofScreen, poofX, poofY)
           mouse.accepted = true
         } else if (wasDragging && targetSlot) {
           root.dropBarModuleAtTarget(slot, targetSlot, afterTarget)
