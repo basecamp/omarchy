@@ -48,10 +48,13 @@ BarWidget {
     return keyboards.filter(k => !String(k.name).startsWith("hl-virtual-keyboard"))
   }
 
-  // Stay on the keyboard we last read until a real one is active again, so an
-  // input method holding the main flag freezes nothing.
+  // The main flag names no keyboard for long: fcitx5 takes it with the virtual
+  // keyboard it binds to inject, which leaves no typed keyboard holding it and
+  // nothing to read at all, and once that unbinds it lands on whichever device
+  // libinput listed last, as easily a lid switch as a keyboard. Go by layout
+  // progress instead, and by the keyboard activelayout named.
   function selectKeyboard(typed) {
-    return typed.find(k => k.main) ?? typed.find(k => k.name === root.keyboardName)
+    return KeyboardLayoutModel.selectKeyboard(typed, root.keyboardName)
   }
 
   // switchxkblayout is a hyprctl command rather than a dispatcher, so it has to
@@ -72,6 +75,13 @@ BarWidget {
     function onRawEvent(event) {
       if (!event || !event.name) return
       var name = String(event.name)
+      // The event names the keyboard that switched ahead of the layout it moved
+      // to, and that is the keyboard being typed on whatever holds the main flag.
+      if (name === "activelayout") {
+        var named = String(event.data || "").split(",")[0]
+        if (named && !named.startsWith("hl-virtual-keyboard")) root.keyboardName = named
+      }
+
       // A reload that edits kb_layout changes both the label and whether the
       // widget shows at all, and switches no layout, so it raises no
       // activelayout of its own.
@@ -114,7 +124,6 @@ BarWidget {
         // that named a keyboard gets to speak for the seat.
         root.keyboardUnresolved = false
         root.keyboardCount = typed.length
-        root.keyboardName = String(kb.name || "")
         root.multipleLayouts = kb.layout === undefined || String(kb.layout).indexOf(",") !== -1
         root.layoutFull = kb.active_keymap
       }

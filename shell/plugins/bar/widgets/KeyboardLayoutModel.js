@@ -54,9 +54,30 @@ function shortLabel(description, briefs) {
   return label.substring(0, 3).toUpperCase()
 }
 
+// Every device on the seat carries the same layout list, but only the keyboard
+// being typed on advances through it: the buttons libinput also reports as
+// keyboards stay on the layout they started on. The furthest-advanced device is
+// the one worth reading, and the keyboard activelayout named settles it once a
+// switch has said which that is. A Hyprland that reports no index leaves them
+// level, which keeps the pick on the first rather than losing it to undefined.
+function selectKeyboard(typed, namedByEvent) {
+  var keyboards = typed || []
+
+  return keyboards.find(function (keyboard) {
+    return keyboard.name === namedByEvent
+  }) || keyboards.reduce(function (furthest, keyboard) {
+    return layoutIndex(keyboard) > layoutIndex(furthest) ? keyboard : furthest
+  }, keyboards[0])
+}
+
+function layoutIndex(keyboard) {
+  return (keyboard && keyboard.active_layout_index) || 0
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     layoutBriefs: layoutBriefs,
+    selectKeyboard: selectKeyboard,
     shortLabel: shortLabel
   }
 }

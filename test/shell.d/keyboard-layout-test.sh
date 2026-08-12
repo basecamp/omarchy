@@ -85,4 +85,19 @@ assertEqual(model.shortLabel('Elvish (Tengwar)', briefs), 'ELV', 'an unlisted la
 assertEqual(model.shortLabel('English (US)', {}), 'ENG', 'the label survives an empty table')
 assertEqual(model.shortLabel('constructor', {}), 'CON', 'a description naming a built-in still falls back')
 assertEqual(model.shortLabel('', briefs), '', 'no keymap means no label')
+
+// The seat as hyprctl reports it, virtual keyboards already filtered out: the
+// buttons libinput calls keyboards sit beside the one being typed on, and the
+// main flag lands on either, or on the virtual keyboard that isn't here.
+const seat = (activeIndex, main) => [
+  { name: 'power-button', active_layout_index: 0, active_keymap: 'English (US)', main: main === 'power-button' },
+  { name: 'at-translated-set-2-keyboard', active_layout_index: activeIndex, active_keymap: activeIndex ? 'French' : 'English (US)', main: main === 'keyboard' },
+]
+
+assertEqual(model.selectKeyboard(seat(1)).active_keymap, 'French', 'the keyboard that switched is read when nothing holds main')
+assertEqual(model.selectKeyboard(seat(1, 'power-button')).active_keymap, 'French', 'the keyboard that switched outranks a button holding main')
+assertEqual(model.selectKeyboard(seat(0)).active_keymap, 'English (US)', 'before a switch every keyboard reads the same layout')
+assertEqual(model.selectKeyboard(seat(0), 'at-translated-set-2-keyboard').name, 'at-translated-set-2-keyboard', 'the keyboard activelayout named is kept once it switches back')
+assertEqual(model.selectKeyboard([{ name: 'a' }, { name: 'b' }]).name, 'a', 'a keyboard reporting no index still gets picked')
+assertEqual(model.selectKeyboard([]), undefined, 'a seat with no typed keyboard picks none')
 JS
