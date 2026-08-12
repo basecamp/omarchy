@@ -111,8 +111,8 @@ cache_key=$(printf '%s' "$image_dirs_env" | md5sum | cut -d ' ' -f 1)
 rows_cache_file="$cache_dir/$cache_key.rows"
 rows_signature_file="$cache_dir/$cache_key.signature"
 rows_fast_signature_file="$cache_dir/$cache_key.fast-signature"
-rows_signature="v2"$'\n'
-rows_fast_signature="v1"$'\n'
+rows_signature="v3"$'\n'
+rows_fast_signature="v2"$'\n'
 rows_cacheable=true
 rows_cache_hit=false
 image_files=()
@@ -142,23 +142,23 @@ generate_thumbnail() {
   local image="$1"
   local thumbnail="$2"
   local lock="$thumbnail.lock"
+  local lock_fd
   local tmp="$thumbnail.$$.jpg"
 
-  if mkdir "$lock" 2>/dev/null; then
-    # Callers fan out one generator per image, so keep each vips single-threaded.
-    if VIPS_CONCURRENCY=1 vipsthumbnail "$image" --size 1536x864 --smartcrop=centre --path "$tmp[Q=82,strip]"; then
-      mv -f "$tmp" "$thumbnail"
-    else
-      rm -f "$tmp" "$thumbnail"
-    fi
+  # Older releases used directories as locks, which could survive a killed
+  # generator and block this thumbnail forever.
+  [[ -d $lock ]] && rmdir "$lock" 2>/dev/null
 
-    rmdir "$lock" 2>/dev/null || true
+  exec {lock_fd}>"$lock" || return
+  flock "$lock_fd"
+
+  [[ -f $thumbnail ]] && return
+
+  # Callers fan out one generator per image, so keep each vips single-threaded.
+  if VIPS_CONCURRENCY=1 vipsthumbnail "$image" --size 1536x864 --smartcrop=centre --path "$tmp[Q=82,strip]"; then
+    mv -f "$tmp" "$thumbnail"
   else
-    for ((i = 0; i < 3000; i++)); do
-      [[ -f $thumbnail ]] && return
-      [[ -d $lock ]] || break
-      sleep 0.01
-    done
+    rm -f "$tmp" "$thumbnail"
   fi
 }
 
@@ -226,7 +226,10 @@ elif [[ $rows_cache_hit != true ]]; then
   if [[ -s $pending_file ]]; then
     pruned=""
     while IFS=$'\t' read -r row_image row_thumbnail; do
-      [[ -e $row_thumbnail ]] || continue
+      if [[ ! -e $row_thumbnail ]]; then
+        rows_cacheable=false
+        continue
+      fi
 
       if [[ -z $pruned ]]; then
         pruned="$row_image"$'\t'"$row_thumbnail"
