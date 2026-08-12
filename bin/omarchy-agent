@@ -35,8 +35,7 @@ agent=$(omarchy-default-agent)
 # Omarchy ships without a default, so there is nothing to launch until one is
 # picked. Send them where the first-run invitation would have.
 if [[ -z $agent ]]; then
-  echo "No default coding agent set. Choose one with: omarchy default agent <name>" >&2
-  echo "Or from the menu: Setup > Defaults > Agent" >&2
+  echo "Choose default agent with: omarchy default agent <name>" >&2
   exit 1
 fi
 
