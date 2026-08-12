@@ -59,9 +59,9 @@ printf 'v1\n%s:%s\n' "$images" "$(stat -Lc '%Y' "$images")" >"$cache_dir/$cache_
 PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" \
   "$ROOT/bin/omarchy-menu-images" --cache-only "$images"
 
-[[ $(find "$cache_dir" -maxdepth 1 -name '*.jpg' -type f | wc -l) == 3 ]] ||
+(( $(find "$cache_dir" -maxdepth 1 -name '*.jpg' -type f | wc -l) == 3 )) ||
   fail "image menu recovers thumbnails from stranded locks"
-[[ $(awk 'END { print NR }' "$cache_dir/$cache_key.rows") == 3 ]] ||
+(( $(awk 'END { print NR }' "$cache_dir/$cache_key.rows") == 3 )) ||
   fail "image menu rebuilds every row after cache invalidation"
 [[ $(head -n 1 "$cache_dir/$cache_key.signature") == "v3" ]] ||
   fail "image menu invalidates stale row caches"
@@ -84,9 +84,9 @@ rm "$tmp/failures"
 PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" \
   "$ROOT/bin/omarchy-menu-images" --cache-only "$images"
 
-[[ $(find "$cache_dir" -maxdepth 1 -name '*.jpg' -type f | wc -l) == 3 ]] ||
+(( $(find "$cache_dir" -maxdepth 1 -name '*.jpg' -type f | wc -l) == 3 )) ||
   fail "image menu retries a previously failed thumbnail"
-[[ $(awk 'END { print NR }' "$cache_dir/$cache_key.rows") == 3 ]] ||
+(( $(awk 'END { print NR }' "$cache_dir/$cache_key.rows") == 3 )) ||
   fail "image menu caches every row after retry"
 pass "image menu completes and caches a later retry"
 
@@ -101,12 +101,12 @@ for run in 1 2; do
 done
 wait
 
-[[ $(wc -l <"$tmp/calls") == 3 ]] || fail "image menu serializes concurrent thumbnail generators"
+(( $(wc -l <"$tmp/calls") == 3 )) || fail "image menu serializes concurrent thumbnail generators"
 
 rm -f "$cache_dir"/*.jpg
 rm -f "$cache_dir/$cache_key.rows" "$cache_dir/$cache_key.signature" "$cache_dir/$cache_key.fast-signature"
 PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" VIPSTHUMBNAIL_CALLS_FILE="$tmp/calls" \
   "$ROOT/bin/omarchy-menu-images" --cache-only "$images"
 
-[[ $(wc -l <"$tmp/calls") == 6 ]] || fail "image menu releases thumbnail locks after generation"
+(( $(wc -l <"$tmp/calls") == 6 )) || fail "image menu releases thumbnail locks after generation"
 pass "image menu owns locks for exactly one generator lifetime"
