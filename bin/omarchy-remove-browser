@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Remove a supported browser and clean up Omarchy browser defaults
-# omarchy:args=<chrome|brave|brave-origin|edge|firefox|zen>
+# omarchy:args=<chrome|chrome-beta|brave|brave-origin|edge|firefox|zen>
 # omarchy:examples=omarchy remove browser firefox | omarchy remove browser brave
 # omarchy:requires-sudo=true
 
@@ -27,7 +27,20 @@ chrome)
   set_fallback_default_browser google-chrome.desktop
   omarchy-pkg-drop google-chrome
   rm -f ~/.config/chrome-flags.conf
-  sudo rm -f /etc/opt/chrome/policies/managed/color.json
+
+  if omarchy-pkg-missing google-chrome-beta; then
+    sudo rm -f /etc/opt/chrome/policies/managed/color.json
+  fi
+  ;;
+chrome-beta)
+  echo "Removing Chrome Beta..."
+  set_fallback_default_browser google-chrome-beta.desktop
+  omarchy-pkg-drop google-chrome-beta
+  rm -f ~/.config/chrome-beta-flags.conf
+
+  if omarchy-pkg-missing google-chrome; then
+    sudo rm -f /etc/opt/chrome/policies/managed/color.json
+  fi
   ;;
 edge)
   echo "Removing Edge..."
@@ -67,7 +80,7 @@ zen)
   omarchy-pkg-drop zen-browser-bin
   ;;
 *)
-  echo "Usage: omarchy-remove-browser <chrome|brave|brave-origin|edge|firefox|zen>"
+  echo "Usage: omarchy-remove-browser <chrome|chrome-beta|brave|brave-origin|edge|firefox|zen>"
   exit 1
   ;;
 esac
