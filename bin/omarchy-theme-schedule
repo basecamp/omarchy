@@ -1,0 +1,204 @@
+#!/bin/bash
+
+# omarchy:summary=Schedule dark and light themes based on time or sunrise/sunset
+# omarchy:args=[--light <theme>] [--dark <theme>] [--mode <time|auto>] [--light-time <HH:MM>] [--dark-time <HH:MM>] [--check]
+# omarchy:examples=omarchy theme schedule --mode auto --light "Catppuccin Latte" --dark "Tokyo Night"
+
+set -o pipefail
+
+# --- Infrastructure ---
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy"
+CONFIG_FILE="$CONFIG_DIR/theme-schedule.conf"
+LOG_FILE="$CONFIG_DIR/theme-schedule.log"
+LOCK_DIR="/tmp/omarchy-theme-schedule.lock.dir"
+
+log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+}
+
+# --- Atomic Locking ---
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  if [[ $(find "$LOCK_DIR" -maxdepth 0 -mmin +30 2>/dev/null) ]]; then
+    rmdir "$LOCK_DIR"
+    mkdir "$LOCK_DIR" || exit 0
+  else
+    exit 0
+  fi
+fi
+trap 'rmdir "$LOCK_DIR" 2>/dev/null' EXIT
+
+# --- Helpers ---
+show_help() {
+  cat <<EOF
+Usage: omarchy theme schedule [options]
+
+Automate theme switching based on time or local sunrise/sunset.
+
+Options:
+  --light <theme>      Theme to use for daytime
+  --dark <theme>       Theme to use for nighttime
+  --mode <time|auto>   Switching mode: 'time' (fixed) or 'auto' (astronomy)
+  --light-time <HH:MM> Time to switch to light theme (default: 07:00)
+  --dark-time <HH:MM>  Time to switch to dark theme (default: 19:00)
+  --check              Evaluate conditions and apply the correct theme
+  --help               Show this help message
+
+Examples:
+  omarchy theme schedule --mode auto --light "Catppuccin Latte" --dark "Tokyo Night"
+  omarchy theme schedule --mode time --light-time 08:30 --dark-time 20:15
+EOF
+}
+
+validate_theme() {
+  local theme="$1"
+  if ! omarchy-theme-list | grep -qFx "$theme"; then
+    echo "Error: Theme '$theme' is not a valid Omarchy theme."
+    return 1
+  fi
+  return 0
+}
+
+load_config() {
+  MODE="time"
+  LIGHT_TIME="07:00"
+  DARK_TIME="19:00"
+  LIGHT_THEME=""
+  DARK_THEME=""
+
+  if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source <(grep -E '^(MODE|LIGHT_TIME|DARK_TIME|LIGHT_THEME|DARK_THEME)=' "$CONFIG_FILE")
+  fi
+}
+
+save_config() {
+  mkdir -p "$CONFIG_DIR"
+  cat > "$CONFIG_FILE" <<EOL
+MODE="$MODE"
+LIGHT_TIME="$LIGHT_TIME"
+DARK_TIME="$DARK_TIME"
+LIGHT_THEME="$LIGHT_THEME"
+DARK_THEME="$DARK_THEME"
+EOL
+}
+
+setup_systemd() {
+  # Enable the timer. The files themselves are managed by Omarchy installation/refresh.
+  systemctl --user enable --now omarchy-theme-schedule.timer >/dev/null 2>&1
+  log "Systemd units synchronized."
+}
+
+notify() {
+  omarchy-notification-send -g "󰸌" "Theme Schedule" "$1"
+}
+
+check_and_apply() {
+  load_config
+  
+  if [[ -z "$LIGHT_THEME" || -z "$DARK_THEME" ]]; then
+    return
+  fi
+
+  local target_mode="light"
+
+  if [[ "$MODE" == "auto" ]]; then
+    local data
+    data=$(curl -fsS --max-time 10 "https://wttr.in?format=j1" 2>/dev/null | jq -er '[.weather[0].astronomy[0].sunrise, .weather[0].astronomy[0].sunset] | select(all(. != null and . != "")) | @tsv' 2>/dev/null)
+    
+    if [[ $? -eq 0 ]]; then
+      local sunrise sunset
+      IFS=$'\t' read -r sunrise sunset <<< "$data"
+      
+      local now_epoch sunrise_epoch sunset_epoch
+      now_epoch=$(date +%s)
+      sunrise_epoch=$(date -d "today $sunrise" +%s 2>/dev/null || echo 0)
+      sunset_epoch=$(date -d "today $sunset" +%s 2>/dev/null || echo 0)
+
+      if (( sunrise_epoch > 0 && sunset_epoch > 0 )); then
+        if (( now_epoch < sunrise_epoch || now_epoch >= sunset_epoch )); then
+          target_mode="dark"
+        else
+          target_mode="light"
+        fi
+      else
+        MODE="time"
+      fi
+    else
+      MODE="time"
+    fi
+  fi
+
+  if [[ "$MODE" == "time" ]]; then
+    local current_time
+    current_time=$(date +%H:%M)
+    if [[ "$current_time" < "$LIGHT_TIME" ]] || [[ "$current_time" > "$DARK_TIME" ]] || [[ "$current_time" == "$DARK_TIME" ]]; then
+      target_mode="dark"
+    else
+      target_mode="light"
+    fi
+  fi
+
+  local target_theme
+  [[ "$target_mode" == "light" ]] && target_theme="$LIGHT_THEME" || target_theme="$DARK_THEME"
+
+  local current_theme
+  current_theme=$(omarchy-theme-current)
+
+  if [[ "$current_theme" != "$target_theme" ]]; then
+    log "Applying theme change: $current_theme -> $target_theme ($target_mode mode)"
+    omarchy-theme-set "$target_theme"
+    notify "Switched to $target_theme ($target_mode mode)"
+  else
+    # Redundancy Check: Ensure only one waybar is running
+    if [[ $(pgrep -x waybar | wc -l) -gt 1 ]]; then
+      log "Cleaning up duplicate Waybar instances."
+      omarchy-restart-waybar
+    fi
+  fi
+}
+
+# --- Entry Point ---
+load_config
+
+if [[ $# -eq 0 ]]; then
+  show_help
+  exit 0
+fi
+
+NEED_SAVE=false
+MSG=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --light)
+      validate_theme "$2" || exit 1
+      LIGHT_THEME="$2"; NEED_SAVE=true
+      MSG="${MSG:+$MSG\n}Day theme: $2"; shift 2 ;;
+    --dark)
+      validate_theme "$2" || exit 1
+      DARK_THEME="$2"; NEED_SAVE=true
+      MSG="${MSG:+$MSG\n}Night theme: $2"; shift 2 ;;
+    --mode)
+      MODE="$2"; NEED_SAVE=true
+      MSG="${MSG:+$MSG\n}Mode: ${2^}"; shift 2 ;;
+    --light-time)
+      LIGHT_TIME="$2"; NEED_SAVE=true
+      MSG="${MSG:+$MSG\n}Day start: $2"; shift 2 ;;
+    --dark-time)
+      DARK_TIME="$2"; NEED_SAVE=true
+      MSG="${MSG:+$MSG\n}Night start: $2"; shift 2 ;;
+    --check)
+      check_and_apply; exit 0 ;;
+    --help)
+      show_help; exit 0 ;;
+    *)
+      echo "Unknown option: $1"; show_help; exit 1 ;;
+  esac
+done
+
+if [[ "$NEED_SAVE" == "true" ]]; then
+  save_config
+  setup_systemd
+  [[ -n "$MSG" ]] && notify "Schedule Updated:\n$MSG"
+  check_and_apply
+fi
