@@ -109,6 +109,45 @@ omarchy plugin remove acme.weather
 > enabling, and updates show a diff of the changes before touching anything.
 > Only add repos whose code you are willing to run.
 
+Reading it yourself is not the only option: the clone can go to your default
+coding agent first, before any of it is installed.
+
+```bash
+omarchy plugin add https://github.com/acme/omarchy-weather.git --verify-with-agent
+omarchy plugin verify acme.weather       # review something already installed
+```
+
+The agent reads the staged clone in its own window and reports back in a private
+`/tmp/verify-plugin-<run>/` directory: `status` while it works, `full-audit` for
+the reasoning, and `verdict` last. The install prints that directory, streams the
+agent's own progress as it lands, offers the full audit, and stops on anything
+but `safe` unless you say otherwise. A review that dies halfway is offered again
+rather than guessed at.
+
+What the agent looks for is the `verify-plugin` skill, not something buried in
+the command. Omarchy links its copy into `~/.agents/skills/verify-plugin` (and
+the per-agent skill directories beside it), so replacing that link with a folder
+of your own makes your review the one that runs, every time and with no flag to
+remember:
+
+```bash
+rm ~/.agents/skills/verify-plugin
+mkdir -p ~/.agents/skills/verify-plugin
+$EDITOR ~/.agents/skills/verify-plugin/SKILL.md
+
+omarchy plugin verify acme.weather --skill ~/other-review.md   # or just this once
+```
+
+The command keeps the contract either way — which files to write, and a one-line
+verdict starting with `safe`, `suspicious`, or `unsafe` — so a review of your own
+changes what is looked for, not what the install does about it.
+
+Once a default agent is set (`omarchy default agent <name>`), adding a plugin
+without the flag asks whether to review it, and remembers the answer if you want
+it to. `--no-verify-with-agent` skips the review for one install, and
+`~/.local/state/omarchy/settings/plugin-verification` is where a remembered
+`always` or `never` lives.
+
 Each command is **interactive** when run bare in a terminal (gum pickers,
 confirmation, a diff to review) and fully **non-interactive** when given
 arguments. Pass `--yes` to skip every prompt — this is the path for scripts and
