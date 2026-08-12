@@ -45,6 +45,7 @@ Item {
   signal submitPassword(string password)
   signal passwordTextEdited(string password)
   signal clearFailureRequested()
+  signal activityRequested()
   signal wakeRequested()
 
   // Cache-busts the lock background by appending `?v=`. Adding a query
@@ -119,8 +120,16 @@ Item {
     MouseArea {
       anchors.fill: parent
       hoverEnabled: true
-      onClicked: { root.wakeRequested(); root.forcePasswordFocus() }
       onPositionChanged: root.wakeRequested()
+    }
+
+    // Observe mouse and touch taps without taking them from the password field.
+    TapHandler {
+      onTapped: {
+        root.activityRequested()
+        root.wakeRequested()
+        root.forcePasswordFocus()
+      }
     }
 
     BorderSurface {
@@ -177,6 +186,7 @@ Item {
         }
 
         Keys.onPressed: function(event) {
+          root.activityRequested()
           root.wakeRequested()
           if (event.key === Qt.Key_Escape || (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_U)) {
             root.passwordTextEdited("")

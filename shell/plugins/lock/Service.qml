@@ -25,6 +25,7 @@ Item {
   property bool fingerprintConfigured: false
   property bool faceConfigured: false
   property int faceAttemptCount: 0
+  property double faceActivityEligibleAt: 0
   property bool previewVisible: false
   property string enteredPassword: ""
   property string pendingPassword: ""
@@ -41,6 +42,7 @@ Item {
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating || faceAuthenticating
   readonly property int faceAttemptLimit: 3
   readonly property int faceRetryDelay: 250
+  readonly property int faceActivityDebounce: 750
 
   function realScreenCount() {
     var screens = Quickshell.screens || []
@@ -121,6 +123,7 @@ Item {
   function resetFaceAuthentication() {
     faceRetryTimer.stop()
     faceAttemptCount = 0
+    faceActivityEligibleAt = 0
     faceAuthenticating = false
 
     // PamContext.abort() emits no completion, so cleanup cannot enter the
@@ -251,6 +254,11 @@ Item {
     return faceAttemptCount > 0
   }
 
+  function recordFaceActivity() {
+    if (faceActivityEligibleAt === 0 || Date.now() < faceActivityEligibleAt) return
+    activateFaceAuthentication()
+  }
+
   function startFaceAttempt() {
     // A retry runs later, so recheck the same safety conditions each time.
     if (!lockRequested || !sessionLock.secure || !faceConfigured) {
@@ -297,6 +305,9 @@ Item {
         root.pendingSessionLock = false
         sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
+        // Input that initiated the lock may arrive after secure; only later
+        // discrete activity should start face authentication.
+        root.faceActivityEligibleAt = Date.now() + root.faceActivityDebounce
         root.startFingerprint()
       } else {
         root.resetFaceAuthentication()
@@ -342,6 +353,7 @@ Item {
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
         onSubmitPassword: function(password) { root.submitPassword(password) }
         onClearFailureRequested: root.failureMessage = ""
+        onActivityRequested: root.recordFaceActivity()
         onWakeRequested: root.runWake()
       }
 
