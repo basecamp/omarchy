@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# omarchy:summary=Launch a floating terminal
+# omarchy:args=<command>
+
+cmd="$*"
+exec setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.terminal --title=Omarchy -e bash -c "$cmd"
