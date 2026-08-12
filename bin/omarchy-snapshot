@@ -25,11 +25,11 @@ create)
   echo -e "\e[32mCreate system snapshot\e[0m"
 
   # Get existing snapper config names from CSV output
-  mapfile -t CONFIGS < <(sudo snapper --csvout list-configs | awk -F, 'NR>1 {print $1}')
+  mapfile -t CONFIGS < <(sudo snapper --csvout list-configs 2>&1 | awk -F, '/^[a-zA-Z]/ {print $1}')
 
   for config in "${CONFIGS[@]}"; do
-    sudo snapper -c "$config" create -c number -d "$DESC"
-    sudo snapper -c "$config" cleanup number
+    sudo snapper -c "$config" create -c number -d "$DESC" 2>/dev/null || true
+    sudo snapper -c "$config" cleanup number 2>/dev/null || true
   done
   echo
   ;;
