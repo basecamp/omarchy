@@ -37,8 +37,14 @@ assert(
   'bar stays mapped while hidden so revealing it does not rebuild the surface'
 )
 assert(
-  /exclusionMode: root\.barHidden \? ExclusionMode\.Ignore : ExclusionMode\.Auto/.test(barSource),
+  /exclusionMode: root\.barHidden \? ExclusionMode\.Ignore : ExclusionMode\.Normal/.test(barSource),
   'a hidden bar reserves no space for itself'
+)
+// The zone is explicit because the window is not always strip-sized: it
+// grows to the whole screen during a drag, and Auto would reserve all of it.
+assert(
+  /exclusiveZone: root\.barSize/.test(barSource),
+  'the bar reserves exactly its strip regardless of window size'
 )
 for (const edge of ['top', 'bottom', 'left', 'right']) {
   assert(
@@ -260,8 +266,44 @@ assertEqual(bar.dragDistanceOutside(null, 1920, 26), 0, 'a missing drag point ne
 // edge under it, so an overshoot next to a drop target still reads as a
 // reorder, and it must reset with the rest of the drag state.
 assert(
-  /barDragRemoveArmed = !drop && root\.moduleRemoveDistance\(scenePoint\) >= root\.barDragRemoveDistance/.test(barSource),
+  /barDragRemoveArmed = !drop && root\.moduleRemoveDistance\(screenPoint\) >= root\.barDragRemoveDistance/.test(barSource),
   'removal arms only past the pull threshold with no drop target in reach'
+)
+
+// The drag must survive leaving the bar on an empty workspace. The
+// compositor re-picks a pointer target on any surface commit while nothing
+// holds keyboard focus, and a pointer that has strayed onto another surface
+// is ripped off the bar mid-drag with a synthesized release. The bar window
+// therefore grows to cover its whole screen while its drag is live, so the
+// pointer never leaves the pressed surface however far the drag goes.
+assert(
+  /readonly property bool dragGrown: \(root\.barDragSource !== null && root\.sameWindow\(root\.barDragWindow, barWindow\)\)/.test(barSource),
+  'the bar grows for its own live drag, matched by window rather than identity'
+)
+assert(
+  /root\.barMoveActive && root\.sameWindow\(root\.barMoveWindow, barWindow\)/.test(barSource),
+  'the bar-move gesture grows the window too'
+)
+for (const edge of ['top', 'bottom', 'left', 'right']) {
+  assert(
+    new RegExp(`${edge}: root\\.position === "\\w+" \\|\\| ${edge === 'top' || edge === 'bottom' ? 'root\\.vertical' : '!root\\.vertical'} \\|\\| barWindow\\.dragGrown`).test(barSource),
+    `a grown bar anchors its ${edge} edge`
+  )
+}
+assert(
+  /implicitWidth: root\.vertical && !barWindow\.dragGrown \? root\.barSize : 0/.test(barSource) &&
+  /implicitHeight: root\.vertical \|\| barWindow\.dragGrown \? 0 : root\.barSize/.test(barSource),
+  'a grown bar stretches: layer-shell keeps a non-zero requested size fixed'
+)
+// The window is no longer the bar's boundary once it can grow, so both the
+// free-space drop rejection and the removal arming measure against the strip.
+assert(
+  /var stripX = root\.position === "right" \? sourceWindow\.contentItem\.width - root\.barSize : 0/.test(barSource),
+  'free-space drops are bounded by the strip, not the window'
+)
+assert(
+  /function moduleRemoveDistance\(screenPoint\) \{[\s\S]*?barDragScreen[\s\S]*?dragDistanceOutside/.test(barSource),
+  'removal distance is measured from the strip in screen space'
 )
 const clearBarDrag = barSource.slice(barSource.indexOf('function clearBarDrag'))
 assert(

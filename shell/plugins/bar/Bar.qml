@@ -114,6 +114,7 @@ Item {
   property var clickTargets: []
   property var moduleSlots: []
 
+
   function registerClickTarget(target) {
     if (!target || clickTargets.indexOf(target) !== -1) return
     var next = clickTargets.slice()
@@ -737,12 +738,23 @@ Item {
     return !!pending && pending.region === region && pending.name === name
   }
 
-  function moduleRemoveDistance(scenePoint) {
-    var window = barDragWindow
-    if (!window || !window.contentItem) return 0
+  // How far past the bar strip the drag point sits, in screen space. The
+  // strip, not the window, is the boundary: the window grows to the whole
+  // screen while a drag is live (see BarPanel.dragGrown), so its own bounds
+  // say nothing about leaving the bar.
+  function moduleRemoveDistance(screenPoint) {
+    var screen = barDragScreen
+    if (!screen) return 0
 
-    var barPoint = window.contentItem.mapFromItem(null, scenePoint.x, scenePoint.y)
-    return BarModel.dragDistanceOutside(barPoint, window.contentItem.width, window.contentItem.height)
+    var x = screenPoint.x
+    var y = screenPoint.y
+    if (vertical) {
+      if (position === "right") x -= Math.max(0, screen.width - barSize)
+      return BarModel.dragDistanceOutside({ x: x, y: y }, barSize, screen.height)
+    }
+
+    if (position === "bottom") y -= Math.max(0, screen.height - barSize)
+    return BarModel.dragDistanceOutside({ x: x, y: y }, screen.width, barSize)
   }
 
   function playPoof(screen, x, y) {
@@ -769,9 +781,16 @@ Item {
   function moduleDropAtScene(scenePoint, sourceSlot) {
     var sourceWindow = root.slotWindow(sourceSlot) || root.barDragWindow
     if (sourceWindow && sourceWindow.contentItem) {
+      // Free-space drops count only inside the bar strip. The window itself
+      // can be grown to the full screen mid-drag, so its bounds are not the
+      // bar's bounds.
       var barPoint = sourceWindow.contentItem.mapFromItem(null, scenePoint.x, scenePoint.y)
-      if (barPoint.x < 0 || barPoint.x > sourceWindow.contentItem.width ||
-          barPoint.y < 0 || barPoint.y > sourceWindow.contentItem.height)
+      var stripX = root.position === "right" ? sourceWindow.contentItem.width - root.barSize : 0
+      var stripY = root.position === "bottom" ? sourceWindow.contentItem.height - root.barSize : 0
+      var stripWidth = root.vertical ? root.barSize : sourceWindow.contentItem.width
+      var stripHeight = root.vertical ? sourceWindow.contentItem.height : root.barSize
+      if (barPoint.x < stripX || barPoint.x > stripX + stripWidth ||
+          barPoint.y < stripY || barPoint.y > stripY + stripHeight)
         return null
     }
 
@@ -1075,13 +1094,29 @@ Item {
   component BarPanel: PanelWindow {
     id: barWindow
 
+    // While this window's module or bar-move drag is live, the surface grows
+    // to cover its whole screen (transparent outside the painted strip). The
+    // pointer then never leaves the bar surface however far the drag goes,
+    // which is what keeps the gesture alive: the compositor re-picks a
+    // pointer target on any surface commit while nothing on the workspace
+    // holds keyboard focus — an empty workspace — and a pointer that has
+    // strayed onto another surface is ripped off the bar mid-drag, ending
+    // the gesture with a synthesized release.
+    // sameWindow, not identity: the drag records the QsWindow interface of
+    // the slot's window, which is not this PanelWindow object itself.
+    readonly property bool dragGrown: (root.barDragSource !== null && root.sameWindow(root.barDragWindow, barWindow)) ||
+      (root.barMoveActive && root.sameWindow(root.barMoveWindow, barWindow))
+
     // Hiding parks the bar just past its screen edge instead of unmapping it.
     // Unmapping frees the layer surface and the whole scene graph, so every
     // reveal has to rebuild them — new surface, re-shaped glyphs, re-uploaded
     // textures — which measures ~150ms against ~20ms to tear down. Parking
     // keeps the surface alive, so showing is only a margin change.
     visible: !remapGuard.remapping
-    exclusionMode: root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto
+    // An explicit zone instead of Auto: the reserved area must stay the
+    // strip's thickness while the window is grown for a drag.
+    exclusionMode: root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Normal
+    exclusiveZone: root.barSize
 
     ScreenMoveRemap {
       id: remapGuard
@@ -1096,31 +1131,51 @@ Item {
     }
 
     anchors {
-      top: root.position === "top" || root.vertical
-      bottom: root.position === "bottom" || root.vertical
-      left: root.position === "left" || !root.vertical
-      right: root.position === "right" || !root.vertical
+      top: root.position === "top" || root.vertical || barWindow.dragGrown
+      bottom: root.position === "bottom" || root.vertical || barWindow.dragGrown
+      left: root.position === "left" || !root.vertical || barWindow.dragGrown
+      right: root.position === "right" || !root.vertical || barWindow.dragGrown
     }
 
-    implicitWidth: root.vertical ? root.barSize : 0
-    implicitHeight: root.vertical ? 0 : root.barSize
-    color: root.transparent ? "transparent" : root.background
+    // A zero size on an anchored axis means "stretch": the strip's thickness
+    // normally, the whole screen while grown for a drag.
+    implicitWidth: root.vertical && !barWindow.dragGrown ? root.barSize : 0
+    implicitHeight: root.vertical || barWindow.dragGrown ? 0 : root.barSize
+    // The window is transparent; the strip below paints the bar. Painting the
+    // window would flood the whole screen with bar color while grown.
+    color: "transparent"
     surfaceFormat.opaque: false
     WlrLayershell.namespace: "omarchy-bar"
     WlrLayershell.layer: WlrLayer.Top
 
-    Loader {
-      anchors.fill: parent
-      sourceComponent: root.vertical ? verticalBar : horizontalBar
+    // The bar itself, pinned to its screen edge. Coincides with the window
+    // when not grown.
+    Item {
+      id: barStrip
 
-      // A child of the loader, not a sibling of the sections: an ancestor stays
-      // hovered while the pointer is over a widget, where a sibling would lose
-      // hover to the section the pointer entered.
-      HoverHandler {
-        onHoveredChanged: root.setBarHovered(hovered)
-        // Unplugging a monitor destroys its bar without a leave event, which
-        // would strand this surface's tally and hold the peek open for good.
-        Component.onDestruction: if (hovered) root.setBarHovered(false)
+      x: root.position === "right" ? parent.width - root.barSize : 0
+      y: root.position === "bottom" ? parent.height - root.barSize : 0
+      width: root.vertical ? root.barSize : parent.width
+      height: root.vertical ? parent.height : root.barSize
+
+      Rectangle {
+        anchors.fill: parent
+        color: root.transparent ? "transparent" : root.background
+      }
+
+      Loader {
+        anchors.fill: parent
+        sourceComponent: root.vertical ? verticalBar : horizontalBar
+
+        // A child of the loader, not a sibling of the sections: an ancestor stays
+        // hovered while the pointer is over a widget, where a sibling would lose
+        // hover to the section the pointer entered.
+        HoverHandler {
+          onHoveredChanged: root.setBarHovered(hovered)
+          // Unplugging a monitor destroys its bar without a leave event, which
+          // would strand this surface's tally and hold the peek open for good.
+          Component.onDestruction: if (hovered) root.setBarHovered(false)
+        }
       }
     }
 
@@ -1863,7 +1918,7 @@ Item {
           root.barDragTarget = drop ? drop.slot : null
           root.barDragAfter = drop ? drop.after : false
           root.barDragTargetGeometry = drop ? root.dropMarkerRect(drop.slot, drop.after) : null
-          root.barDragRemoveArmed = !drop && root.moduleRemoveDistance(scenePoint) >= root.barDragRemoveDistance
+          root.barDragRemoveArmed = !drop && root.moduleRemoveDistance(screenPoint) >= root.barDragRemoveDistance
         }
       }
 
