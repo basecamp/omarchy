@@ -74,10 +74,18 @@ assert_detects "a reader is detected by an existing product-name match"
 write_usb_devices '27c6:1234'
 assert_detects "a reader is detected by an existing vendor match"
 
+bind_driver() {
+  local dev="$1" driver="$2"
+
+  # sysfs links the interface at a driver directory, and the detector's [[ -e ]]
+  # follows the link, so the target has to exist for this to model anything.
+  mkdir -p "$tmp_dir/drivers/$driver" "$tmp_dir/devices/$dev"
+  ln -sf "$tmp_dir/drivers/$driver" "$tmp_dir/devices/$dev/driver"
+}
+
 write_usb_devices '27c6:1234'
-mkdir -p "$tmp_dir/devices/1-0/1-0:1.0"
-touch "$tmp_dir/devices/1-0/1-0:1.0/driver"
-assert_rejects "a vendor guess with a bound kernel driver is rejected"
+bind_driver '1-0/1-0:1.0' uvcvideo
+assert_rejects "a vendor guess bound to a kernel driver is rejected"
 
 write_usb_devices '1234:5678:Generic USB Device'
 assert_rejects "a machine with no matching USB devices detects nothing"
