@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Launch Chromium with Mesa EGL (same GPU as the Hyprland compositor) and a
+# matching VAAPI driver, working around cross-GPU DMA-BUF import failures on
+# hybrid NVIDIA + iGPU laptops. Used by the user chromium.desktop override
+# installed by install/config/hardware/fix-hybrid-chromium.sh.
+#
+# On non-hybrid hosts the env vars are harmless: Mesa EGL is what Intel/AMD
+# systems would pick anyway, and LIBVA_DRIVER_NAME only applies when libva is
+# loaded. We still gate each var on a quick sanity check so this stays a
+# no-op on systems where it shouldn't matter.
+#
+# See: https://github.com/basecamp/omarchy/issues/4901
+
+MESA_EGL=/usr/share/glvnd/egl_vendor.d/50_mesa.json
+if [[ -f $MESA_EGL ]]; then
+  export __EGL_VENDOR_LIBRARY_FILENAMES="$MESA_EGL"
+fi
+
+IGPU="$(lspci 2>/dev/null | grep -iE 'vga|3d|display' | grep -iv 'nvidia' | grep -iE 'intel|amd|advanced micro devices|radeon|ati ')"
+if echo "$IGPU" | grep -qi 'intel'; then
+  export LIBVA_DRIVER_NAME=iHD
+elif [[ -n $IGPU ]]; then
+  export LIBVA_DRIVER_NAME=radeonsi
+fi
+
+exec /usr/bin/chromium "$@"
