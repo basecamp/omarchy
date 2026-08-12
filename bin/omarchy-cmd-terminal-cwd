@@ -4,7 +4,7 @@
 # omarchy:hidden=true
 
 terminal_pid=$(hyprctl activewindow | awk '/pid:/ {print $2}')
-shell_pid=$(pgrep -P "$terminal_pid" | tail -n1)
+shell_pid=$(ps --ppid "$terminal_pid" -o pid=,tty= | awk '$2 != "?" {print $1}' | tail -n1)
 
 if [[ -n $shell_pid ]]; then
   cwd=$(readlink -f "/proc/$shell_pid/cwd" 2>/dev/null)
