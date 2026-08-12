@@ -183,6 +183,10 @@ Item {
     Qt.callLater(function() {
       removePopupsByOriginalId(snapshot.originalId, NotificationLogic.popupFileName(snapshot))
       popupModel.insert(0, snapshot)
+      // An update that arrived while the insert was deferred found no row to
+      // write to, and a property that already changed will not change again.
+      // Reading the object once the row exists catches up on it.
+      service.refreshPopup(notification, snapshot.originalId, snapshot.timestamp)
     })
   }
 
@@ -223,18 +227,12 @@ Item {
       return
     }
 
+    var roles = NotificationLogic.popupRoles()
     for (var i = 0; i < popupModel.count; i++) {
       var row = popupModel.get(i)
       if (!row || row.originalId !== originalId || row.timestamp !== timestamp) continue
-      popupModel.setProperty(i, "app", updated.app)
-      popupModel.setProperty(i, "appIcon", updated.appIcon)
-      popupModel.setProperty(i, "summary", updated.summary)
-      popupModel.setProperty(i, "body", updated.body)
-      popupModel.setProperty(i, "image", updated.image)
-      popupModel.setProperty(i, "glyph", updated.glyph)
-      popupModel.setProperty(i, "exec", updated.exec)
-      popupModel.setProperty(i, "urgency", updated.urgency)
-      popupModel.setProperty(i, "expireTimeout", updated.expireTimeout)
+      if (!NotificationLogic.popupRowChanged(row, updated)) return
+      for (var r = 0; r < roles.length; r++) popupModel.setProperty(i, roles[r], updated[roles[r]])
       // The file name is the timestamp and id this popup was persisted under,
       // so the rewrite lands on the same file: a restart restores the version
       // last shown, and so does the copy that ends up in history.

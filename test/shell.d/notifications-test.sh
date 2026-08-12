@@ -170,6 +170,18 @@ assertEqual(
   '12345-12.json',
   'notifications keep the persisted file name across an in-place update'
 )
+assert(
+  !notifications.popupRowChanged(replacement, replacement),
+  'notifications skip a refresh that matches the row it would write'
+)
+assert(
+  notifications.popupRowChanged(replacement, Object.assign({}, replacement, { body: 'message 3' })),
+  'notifications refresh a row whose content moved on'
+)
+assert(
+  !notifications.popupRowChanged(replacement, Object.assign({}, replacement, { timestamp: 999 })),
+  'notifications ignore identity fields when deciding whether a refresh has work'
+)
 
 const settings = notifications.parseSettings(JSON.stringify({ version: 3, dnd: true }))
 assertEqual(settings.dnd, true, 'notifications parse the persisted DND state')
@@ -363,10 +375,6 @@ assert(
   'notifications service carries the toasts still on screen into the replay'
 )
 assert(
-  /function startHistoryReadWhenIdle\(\) \{[\s\S]{0,300}?if \(popupFileProc\.running \|\| popupFileQueue\.length > 0\) return/.test(serviceQml),
-  'notifications service reads history only once its queued file work has landed'
-)
-assert(
   /watchForUpdates\(notification, snapshot\)/.test(serviceQml),
   'notifications service watches a shown notification for in-place updates'
 )
@@ -375,8 +383,20 @@ assert(
   'notifications service refreshes the popup from every property the card draws'
 )
 assert(
-  /popupModel\.setProperty\(i, "summary", updated\.summary\)[\s\S]{0,600}?persistPopupFile\(updated\)/.test(serviceQml),
+  /popupModel\.setProperty\(i, roles\[r\], updated\[roles\[r\]\]\)[\s\S]{0,600}?persistPopupFile\(updated\)/.test(serviceQml),
   'notifications service rewrites both the row and its file when a notification is updated in place'
+)
+assert(
+  /if \(!NotificationLogic\.popupRowChanged\(row, updated\)\) return/.test(serviceQml),
+  'notifications service leaves the row and its file alone when a refresh finds nothing changed'
+)
+assert(
+  /popupModel\.insert\(0, snapshot\)[\s\S]{0,300}?service\.refreshPopup\(notification, snapshot\.originalId, snapshot\.timestamp\)/.test(serviceQml),
+  'notifications service catches up on an update that beat the deferred row insert'
+)
+assert(
+  /function startHistoryReadWhenIdle\(\) \{[\s\S]{0,300}?if \(popupFileProc\.running \|\| popupFileQueue\.length > 0\) return/.test(serviceQml),
+  'notifications service reads history only once its queued file work has landed'
 )
 assert(
   /onSummaryChanged: cardSlot\.remainingLifetime = 1\.0/.test(serviceQml),

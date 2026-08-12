@@ -92,6 +92,28 @@ function snapshotOf(notification, timestamp) {
   }
 }
 
+// Everything the popup card draws, and therefore everything an in-place
+// update has to write through to the row and its file.
+var POPUP_ROLES = ["app", "appIcon", "summary", "body", "image", "glyph", "exec", "urgency", "expireTimeout"]
+
+function popupRoles() {
+  return POPUP_ROLES
+}
+
+// Whether a refresh has anything to write. Each property a client updates
+// emits its own signal, and the catch-up refresh after a row is inserted
+// usually finds the object exactly as it was snapshotted — without this,
+// one update would rewrite the file several times over.
+function popupRowChanged(row, updated) {
+  var current = row || {}
+  var next = updated || {}
+  for (var i = 0; i < POPUP_ROLES.length; i++) {
+    var role = POPUP_ROLES[i]
+    if (current[role] !== next[role]) return true
+  }
+  return false
+}
+
 // A client updating a notification through replaces_id keeps the identity of
 // the popup it took over: the file name is the timestamp and id the popup was
 // first persisted under, and the restore, replace and archive paths all key
@@ -276,6 +298,8 @@ if (typeof module !== "undefined") {
     execFromHints: execFromHints,
     shouldRenderCompactGlyph: shouldRenderCompactGlyph,
     snapshotOf: snapshotOf,
+    popupRoles: popupRoles,
+    popupRowChanged: popupRowChanged,
     replacementSnapshot: replacementSnapshot,
     historyEntry: historyEntry,
     parseSettings: parseSettings,
