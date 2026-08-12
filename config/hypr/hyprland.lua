@@ -10,6 +10,14 @@ dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/boo
 -- keeping core window-manager bindings:
 -- omarchy_preinstalled_bindings = false
 
+-- Customize or selectively override Omarchy's default bindings. Set the merge
+-- flag to false to drop all unconfigured defaults.
+-- omarchy_bindings_merge = false
+-- omarchy_custom_bindings = {
+--   close_window = "SUPER + Q",
+--   terminal = "SUPER + RETURN"
+-- }
+
 -- Load Omarchy defaults.
 require("default.hypr.omarchy")
 

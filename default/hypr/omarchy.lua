@@ -6,6 +6,7 @@ local require_optional = require("default.hypr.require_optional")
 -- Use Omarchy defaults, but don't edit these directly.
 require("default.hypr.autostart")
 if _G.omarchy_default_bindings ~= false then
+  require("default.hypr.bindings_defaults")
   require("default.hypr.bindings.media")
   require("default.hypr.bindings.clipboard")
   require("default.hypr.bindings.tiling")
