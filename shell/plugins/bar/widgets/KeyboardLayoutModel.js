@@ -54,12 +54,52 @@ function shortLabel(description, briefs) {
   return label.substring(0, 3).toUpperCase()
 }
 
-// Every device on the seat carries the same layout list, but only the keyboard
-// being typed on advances through it: the buttons libinput also reports as
-// keyboards stay on the layout they started on. The furthest-advanced device is
-// the one worth reading, and the keyboard activelayout named settles it once a
-// switch has said which that is. A Hyprland that reports no index leaves them
-// level, which keeps the pick on the first rather than losing it to undefined.
+// Hyprland's activelayout event pairs the keyboard that switched with the layout
+// it moved to. Quickshell cuts the event into that many fields, so a description
+// carrying a comma of its own stays in one piece; a binding old enough to hand
+// back only the raw string gets split by hand. The virtual keyboard fcitx5 binds
+// to inject announces switches too, and names a keyboard nobody types on.
+function eventKeyboardName(event) {
+  var parts
+
+  try {
+    if (event && event.parse) parts = event.parse(2)
+  } catch (error) {
+  }
+
+  if (!parts) parts = String(event && event.data ? event.data : "").split(",")
+
+  var name = String(parts[0] || "")
+  return name.indexOf("hl-virtual-keyboard") === 0 ? "" : name
+}
+
+// Hyprland reports more than keyboards as keyboards. fcitx5 binds a virtual one
+// to inject through, which keeps the us layout the input method gave it, and the
+// ACPI power button, lid switch and sleep key each arrive carrying the seat's
+// layout list without anyone ever typing on them. Both answer to switchxkblayout
+// and both can hold the main flag, so a widget that reads or switches whatever
+// the seat hands it ends up describing a button. Leave them out and what remains
+// is keyboards, which is what the rest of this file can then assume.
+//
+// Missing a name here costs the accuracy the seat had before, never a keyboard:
+// anything unrecognised stays in the list.
+var UNTYPED_KEYBOARDS = /^(hl-virtual-keyboard|power-button|sleep-button|lid-switch|video-bus)/
+
+function isTypedKeyboard(name) {
+  return !UNTYPED_KEYBOARDS.test(String(name || ""))
+}
+
+// Every keyboard on the seat carries the same layout list unless one was given
+// its own, but only the one being typed on advances through it. So the
+// furthest-advanced is the one worth reading, and a switch names the keyboard it
+// moved, which settles a seat holding two real keyboards outright.
+//
+// The name is taken whenever a keyboard still answers to it, wherever that
+// keyboard sits in the list. Comparing positions instead would read the wrong
+// keyboard the moment one wrapped from the last layout back to the first, which
+// is the ordinary way round a pair of them. Applying a layout to the whole seat
+// names a keyboard too, but leaves every one of them on the same layout, so the
+// label reads the same whichever of them the name settles on.
 function selectKeyboard(typed, namedByEvent) {
   var keyboards = typed || []
 
@@ -76,6 +116,8 @@ function layoutIndex(keyboard) {
 
 if (typeof module !== "undefined") {
   module.exports = {
+    eventKeyboardName: eventKeyboardName,
+    isTypedKeyboard: isTypedKeyboard,
     layoutBriefs: layoutBriefs,
     selectKeyboard: selectKeyboard,
     shortLabel: shortLabel
