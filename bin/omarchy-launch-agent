@@ -26,37 +26,43 @@ if (($# > 0)); then
   prompt="$*"
 fi
 
+# Agents launched from the keybinding or menu run unattended, so each one starts
+# with its own spelling of "don't stop to ask". Pi has no approval prompts.
 case "$agent" in
 opencode)
-  if [[ -n ${prompt:-} ]]; then
-    command=(opencode --prompt "$prompt")
-  else
-    command=(opencode)
-  fi
+  command=(opencode --auto)
+  [[ -n ${prompt:-} ]] && command+=(--prompt "$prompt")
   ;;
 gemini)
-  if [[ -n ${prompt:-} ]]; then
-    command=(gemini --prompt-interactive "$prompt")
-  else
-    command=(gemini)
-  fi
+  command=(gemini --yolo)
+  [[ -n ${prompt:-} ]] && command+=(--prompt-interactive "$prompt")
   ;;
 copilot)
-  if [[ -n ${prompt:-} ]]; then
-    command=(copilot --interactive "$prompt")
-  else
-    command=(copilot)
-  fi
+  command=(copilot --allow-all)
+  [[ -n ${prompt:-} ]] && command+=(--interactive "$prompt")
   ;;
 crush)
+  # --yolo belongs to the interactive command only; `crush run` never prompts.
   if [[ -n ${prompt:-} ]]; then
     command=(crush run "$prompt")
   else
-    command=(crush)
+    command=(crush --yolo)
   fi
   ;;
-pi | omp | claude | codex | grok)
-  command=("$agent")
+claude | grok)
+  command=("$agent" --permission-mode bypassPermissions)
+  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
+codex)
+  command=(codex --dangerously-bypass-approvals-and-sandbox)
+  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
+omp)
+  command=(omp --auto-approve)
+  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
+pi)
+  command=(pi)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
 *)
