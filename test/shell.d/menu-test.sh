@@ -243,6 +243,11 @@ assertEqual(
   'omarchy-bar transparent toggle',
   'menu exposes Menu Bar transparency as a toggle'
 )
+assert(
+  defaultById['trigger.toggle.agents-widget'].label === 'Agents Widget'
+    && defaultById['trigger.toggle.agents-widget'].action === 'omarchy-toggle-agents-widget',
+  'menu exposes the Agents widget under Trigger > Toggle'
+)
 assertDeepEqual(
   defaultItems.filter(item => item.parent === 'setup.plugin').map(item => item.label),
   ['Enable Plugin', 'Disable Plugin', 'Add Plugin', 'Clone Plugin', 'Remove Plugin'],

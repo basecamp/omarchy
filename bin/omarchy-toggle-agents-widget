@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle the Agents bar widget
+
+set -euo pipefail
+
+enabled=$(omarchy-plugin-list --json | jq -r '.[] | select(.id == "omarchy.agents") | .enabled')
+
+case "$enabled" in
+  true)
+    omarchy-plugin-disable omarchy.agents
+    ;;
+  false)
+    omarchy-bar put omarchy.agents --section right --after omarchy.tray
+    ;;
+  *)
+    echo "omarchy-toggle-agents-widget: plugin 'omarchy.agents' is not known; run: omarchy-shell shell rescanPlugins" >&2
+    exit 1
+    ;;
+esac
