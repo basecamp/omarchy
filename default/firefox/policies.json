@@ -20,6 +20,10 @@
       "widget.wayland.fractional-scale.enabled": {
         "Value": true,
         "Status": "default"
+      },
+      "media.webrtc.camera.allow-pipewire": {
+        "Value": true,
+        "Status": "default"
       }
     }
   }
