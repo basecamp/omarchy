@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# omarchy:summary=Diagnose a crashed process with the default coding agent
+# omarchy:args=<pid> [comm] [exe] [signal]
+# omarchy:examples=omarchy agent crash 1516893
+
+# Clicked from a "Process crashed:" notification, or run by hand against any PID
+# in `coredumpctl list`. The method lives in the diagnose-crash skill so it is
+# edited in one place and works with whichever agent is default; this only
+# gathers the facts and points at it.
+
+set -euo pipefail
+
+pid=${1:?usage: omarchy-agent-crash <pid> [comm] [exe] [signal]}
+
+if [[ ! $pid =~ ^[0-9]+$ ]]; then
+  echo "Not a PID: $pid" >&2
+  echo "Usage: omarchy agent crash <pid>   (see: coredumpctl list)" >&2
+  exit 1
+fi
+
+comm=${2:-unknown}
+exe=${3:-unknown}
+signal=${4:-unknown}
+
+skill="$OMARCHY_PATH/default/agents/skills/diagnose-crash/SKILL.md"
+
+# Looked up live so a hand-run PID still gets a timestamp. A rotated-away core
+# only costs the timestamp, so failure is tolerated.
+when=$(coredumpctl list "$pid" --no-pager --no-legend 2>/dev/null | tail -1 | cut -d' ' -f1-4) || true
+when=${when:-unknown}
+
+prompt=$(
+  cat <<PROMPT
+A process crashed on this Omarchy machine and I want to know why.
+
+What systemd-coredump recorded:
+  process:  $comm
+  PID:      $pid
+  binary:   $exe
+  signal:   $signal
+  time:     $when
+
+Use the diagnose-crash skill: it covers how to investigate, what to report, and
+when a crash is worth reporting upstream to Omarchy. If your harness has no skill
+mechanism, read the skill files directly and follow them instead:
+
+  $skill
+PROMPT
+)
+
+exec omarchy-agent --prompt "$prompt"
