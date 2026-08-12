@@ -227,6 +227,7 @@
   "install.terminal.foot": {"icon":"","label":"Foot","when":"! omarchy-pkg-present foot","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-terminal foot'"},
   "install.terminal.ghostty": {"icon":"","label":"Ghostty","when":"! omarchy-pkg-present ghostty","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-terminal ghostty'"},
   "install.terminal.kitty": {"icon":"","label":"Kitty","when":"! omarchy-pkg-present kitty","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-terminal kitty'"},
+  "install.ai.chatgpt": {"icon":"󱚤","label":"ChatGPT Desktop","when":"! omarchy-pkg-present openai-codex-desktop","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-ai-chatgpt"},
   "install.ai.dictation": {"icon":"","label":"Dictation","when":"! omarchy-pkg-present voxtype-bin","action":"omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install"},
   "install.ai.lm-studio": {"icon":"󱚤","label":"LM Studio","when":"! omarchy-pkg-present lmstudio-bin","action":"omarchy-install-app 'LM Studio' lmstudio-bin"},
   "install.ai.ollama": {"icon":"󱚤","label":"Ollama","when":"! omarchy-cmd-present ollama","action":"if omarchy-cmd-present nvidia-smi; then ollama_pkg=ollama-cuda; elif omarchy-cmd-present rocminfo; then ollama_pkg=ollama-rocm; else ollama_pkg=ollama; fi; omarchy-install-app Ollama \"$ollama_pkg\""},
