@@ -3,16 +3,17 @@ echo "Keep tmux clipboard copies working over mosh"
 tmux_config="$HOME/.config/tmux/tmux.conf"
 
 if [[ -f $tmux_config ]]; then
-  if ! grep -qF 'xterm*:Ms=\E]52;c;%p2%s\007' "$tmux_config"; then
+  mosh_override='set -ag terminal-overrides ",xterm*:Ms=\\E]52;c;%p2%s\\007"'
+  if ! grep -qFx "$mosh_override" "$tmux_config"; then
     printf '\n%s\n' \
       '# Make OSC 52 clipboard writes compatible with mosh 1.4.' \
-      'set -ag terminal-overrides ",xterm*:Ms=\E]52;c;%p2%s\007"' >>"$tmux_config"
+      "$mosh_override" >>"$tmux_config"
   fi
 
   stock_copy_binding='bind -N "Copy selection" -T copy-mode-vi y send -X copy-selection-and-cancel'
   if grep -qFx "$stock_copy_binding" "$tmux_config" && ! grep -qF 'omarchy-tmux-osc52-copy' "$tmux_config"; then
     tmp=$(mktemp)
-    while IFS= read -r line; do
+    while IFS= read -r line || [[ -n $line ]]; do
       if [[ $line == "$stock_copy_binding" ]]; then
         printf '%s\n' \
           'bind -N "Copy selection" -T copy-mode-vi y send -FX copy-pipe-and-cancel "omarchy-tmux-osc52-copy '\''#{client_tty}'\''"' \

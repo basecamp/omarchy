@@ -6,7 +6,8 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 test_tmp=$(mktemp -d)
 socket="omarchy-tmux-config-$$"
-trap 'tmux -L "$socket" kill-server 2>/dev/null || true; rm -rf "$test_tmp"' EXIT
+migrated_socket="omarchy-tmux-migrated-$$"
+trap 'tmux -L "$socket" kill-server 2>/dev/null || true; tmux -L "$migrated_socket" kill-server 2>/dev/null || true; rm -rf "$test_tmp"' EXIT
 
 tmux -L "$socket" -f "$ROOT/config/tmux/tmux.conf" new-session -d
 
@@ -34,6 +35,7 @@ printf '%s\n' \
   'set -g mouse on' \
   'bind -N "Copy selection" -T copy-mode-vi y send -X copy-selection-and-cancel' \
   >"$home/.config/tmux/tmux.conf"
+printf '%s' 'set -g status off' >>"$home/.config/tmux/tmux.conf"
 
 cat >"$test_tmp/bin/tmux" <<'SH'
 #!/bin/bash
@@ -52,13 +54,21 @@ migration="$ROOT/migrations/1786553531.sh"
 tmux_log="$test_tmp/tmux.log"
 HOME="$home" TMUX_LOG="$tmux_log" PATH="$test_tmp/bin:$PATH" bash -euo pipefail "$migration" >/dev/null
 
-grep -Fq 'xterm*:Ms=\E]52;c;%p2%s\007' "$home/.config/tmux/tmux.conf" ||
+grep -Fq 'xterm*:Ms=\\E]52;c;%p2%s\\007' "$home/.config/tmux/tmux.conf" ||
   fail "tmux migration adds the mosh selector override"
 grep -Fq 'omarchy-tmux-osc52-copy' "$home/.config/tmux/tmux.conf" ||
   fail "tmux migration adds direct copy bindings"
+grep -Fqx 'set -g status off' "$home/.config/tmux/tmux.conf" ||
+  fail "tmux migration preserves a final line without a newline"
 grep -Fqx "source-file $home/.config/tmux/tmux.conf" "$tmux_log" ||
   fail "tmux migration reloads a running server"
 pass "tmux migration updates existing configs and live servers"
+
+tmux -L "$migrated_socket" -f "$home/.config/tmux/tmux.conf" new-session -d
+migrated_overrides=$(tmux -L "$migrated_socket" show-options -s terminal-overrides)
+[[ $migrated_overrides == *'xterm*:Ms=\\E]52;c;%p2%s\\007'* ]] ||
+  fail "migrated tmux override parses like the packaged default" "$migrated_overrides"
+pass "tmux migration writes a valid terminal capability"
 
 before=$(sha256sum "$home/.config/tmux/tmux.conf")
 HOME="$home" TMUX_LOG="$tmux_log" PATH="$test_tmp/bin:$PATH" bash -euo pipefail "$migration" >/dev/null
