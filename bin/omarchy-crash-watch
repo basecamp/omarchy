@@ -28,6 +28,12 @@ announce() {
 
   exec_command=$(printf 'omarchy-agent-crash %q %q %q %q' "$pid" "$comm" "$exe" "$signal")
 
+  # The shell owns org.freedesktop.Notifications, so a shell crash takes the
+  # notification server down with it and a toast sent into that gap is lost.
+  # Wait for the restarted shell to claim the name again: the crash least
+  # likely to be delivered is the one most worth reporting.
+  omarchy-notification-wait || return 1
+
   # --exec rather than a libnotify action: the shell runs clicks from its own
   # omarchy-exec hint and never emits ActionInvoked. Keeps the default
   # "omarchy-action" app name too, the only one shouldBypassDnd() lets through.
@@ -72,7 +78,9 @@ journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
 
     now=$EPOCHSECONDS
     (((now - ${last_notified[$name]:-0}) < dedupe_seconds)) && continue
-    last_notified[$name]=$now
 
-    announce "$name" "$pid" "$exe" "$signal"
+    # Only a delivered toast starts the dedupe window. A failed send that
+    # counted would suppress the rest of a crash loop for a minute, and
+    # `journalctl -n 0` never replays what was missed.
+    announce "$name" "$pid" "$exe" "$signal" && last_notified[$name]=$now
   done
