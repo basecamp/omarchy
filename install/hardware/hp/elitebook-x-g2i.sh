@@ -27,8 +27,10 @@ if omarchy-hw-match "EliteBook X G2i"; then
   omarchy-pkg-add hp-elitebook-x-g2i-audio
 
   # The camera stack only makes sense where the IPU7 + OV05C10 pairing is
-  # actually present; the audio fix applies to the whole model line.
-  if grep -q "OVTI05C1" /sys/bus/acpi/devices/*/hid 2>/dev/null; then
+  # actually fitted; the audio fix applies to the whole model line. This DSDT
+  # declares three sensors it does not have, so match on ACPI _STA rather than
+  # on the HID appearing at all.
+  if omarchy-hw-acpi-present OVTI05C1; then
     omarchy-pkg-add hp-elitebook-x-g2i-camera
   fi
 fi
