@@ -18,9 +18,15 @@ usb_devices_path="${OMARCHY_USB_DEVICES_PATH:-/sys/bus/usb/devices}"
 # — all bind one. Only the vendor-ID guess needs this; a device that names
 # itself a fingerprint reader is trusted outright.
 has_kernel_driver() {
-  local intf
+  local intf driver
   for intf in "$1"/*:*; do
-    [[ -e $intf/driver ]] && return 0
+    [[ -e $intf/driver ]] || continue
+    # usbfs is the exception: libusb claims an interface through it, so a reader
+    # fprintd is enrolling or verifying against binds a driver for as long as it
+    # holds the claim. That is userspace driving the device — what a reader is
+    # supposed to look like — so it must not read as a kernel driver here.
+    driver=$(readlink -f "$intf/driver")
+    [[ ${driver##*/} == "usbfs" ]] || return 0
   done
   return 1
 }
