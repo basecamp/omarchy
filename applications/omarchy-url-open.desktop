@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Omarchy URL Opener
+Comment=Opens links in native apps when available, otherwise the default browser
+Exec=omarchy-url-open %u
+Terminal=false
+NoDisplay=true
+MimeType=x-scheme-handler/http;x-scheme-handler/https;
