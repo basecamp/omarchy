@@ -3,7 +3,6 @@ import QtQuick.Layouts
 import Quickshell.Hyprland
 import qs.Commons
 import qs.Ui
-import "WorkspaceModel.js" as WorkspaceModel
 
 BarWidget {
   id: root
@@ -18,11 +17,17 @@ BarWidget {
     return null
   }
 
-  // The module keeps a stable array and hands it back while the id set is
-  // unchanged, so the Repeater below keeps its delegates instead of rebuilding
-  // them on every workspace signal.
   function workspaceIds() {
-    return WorkspaceModel.sync(Hyprland.workspaces.values)
+    var ids = [1, 2, 3, 4, 5]
+    var values = Hyprland.workspaces.values
+
+    for (var i = 0; i < values.length; i++) {
+      var id = values[i].id
+      if (id > 0 && id <= 10 && ids.indexOf(id) === -1) ids.push(id)
+    }
+
+    ids.sort(function(left, right) { return left - right })
+    return ids
   }
 
   function focusWorkspace(id) {
