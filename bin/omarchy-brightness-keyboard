@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Adjust keyboard backlight brightness using available steps.
-# omarchy:args=<up|down|cycle|off|restore>
+# omarchy:args=<up|down|cycle|off|save|restore>
 
 direction="${1:-up}"
 
@@ -21,6 +21,11 @@ fi
 
 if [[ $direction == "off" ]]; then
   brightnessctl -sd "$device" set 0 >/dev/null
+  exit 0
+elif [[ $direction == "save" ]]; then
+  # Save current brightness without changing it (used before suspend).
+  current=$(brightnessctl -d "$device" get)
+  brightnessctl -sd "$device" set "$current" >/dev/null
   exit 0
 elif [[ $direction == "restore" ]]; then
   brightnessctl -rd "$device" >/dev/null
