@@ -10,3 +10,4 @@ set -e
 # retains by version order, never by what is installed.
 echo -e "\e[32m\nPrune package cache\e[0m"
 sudo paccache -rk2 || echo -e "\e[33mCould not prune the package cache.\e[0m" >&2
+echo
