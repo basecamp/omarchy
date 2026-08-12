@@ -22,6 +22,10 @@ trap 'omarchy-update-stay-awake stop' EXIT
 omarchy-update-requires-free-space
 
 if [[ ${1:-} == "-y" ]] || omarchy-update-confirm; then
+  # Before the snapshot: the cache is on the snapshotted subvolume, so pruning
+  # after it frees nothing until that snapshot ages out.
+  omarchy-update-pkg-prune
+
   # 127 means Snapper is deliberately absent. Any other failure already said
   # what went wrong, and a missing snapshot is not worth blocking an update
   # over, but it must not pass for one either.
