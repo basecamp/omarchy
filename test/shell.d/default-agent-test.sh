@@ -92,6 +92,7 @@ export OMARCHY_TEST_STUB_LOG="$stub_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
 
+amp_package="npm:@ampcode/cli"
 grok_package="npm:@xai-official/grok"
 omp_package="github:can1357/oh-my-pi"
 crush_package="crush"
@@ -109,12 +110,14 @@ assert_lazy_stub() {
     fail "$command lazy stub preserves its mise package"
 }
 
+assert_lazy_stub "$amp_package" amp
 assert_lazy_stub "$grok_package" grok
 assert_lazy_stub "$omp_package" omp
 assert_lazy_stub "$crush_package" crush
 pass "custom agent lazy stubs preserve their mise packages"
 
 source "$ROOT/install/user/mise.sh"
+grep -Fx "$amp_package amp" "$stub_log" >/dev/null || fail "user setup creates the Amp lazy stub"
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates the Grok lazy stub"
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
@@ -130,19 +133,24 @@ grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "agent migration repa
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "agent migration creates the Grok lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "agent migration creates the Crush lazy stub"
 
+: >"$stub_log"
+source "$ROOT/migrations/1786557910.sh" >/dev/null
+grep -Fx "$amp_package amp" "$stub_log" >/dev/null || fail "Amp migration creates the Amp lazy stub"
+
 mkdir -p "$test_home/.local/state/omarchy"
 touch "$test_home/.local/state/omarchy/preinstalls-removed"
 "$ROOT/bin/omarchy-mise-install" oh-my-pi omp
 : >"$stub_log"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
 source "$ROOT/migrations/1785846769.sh" >/dev/null
+source "$ROOT/migrations/1786557910.sh" >/dev/null
 [[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
 [[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
 rm "$test_home/.local/state/omarchy/preinstalls-removed"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"
 
 omarchy-remove-preinstalls >/dev/null
-for command in omp grok crush; do
+for command in amp omp grok crush; do
   [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
 done
 pass "Remove Preinstalls deletes every optional agent lazy stub"
@@ -188,6 +196,7 @@ chmod +x "$mock_bin/omarchy-agent"
 hash -r
 
 declare -A expected_agents=(
+  [amp]="amp"
   [pi]="pi"
   [omp]="omp"
   [oh-my-pi]="omp"
@@ -205,6 +214,7 @@ declare -A expected_agents=(
 )
 
 declare -A expected_packages=(
+  [amp]="$amp_package"
   [pi]="pi"
   [omp]="$omp_package"
   [opencode]="opencode"
@@ -348,6 +358,7 @@ assert_bypass() {
   assert_launched "$agent" "skips permission prompts" "$@"
 }
 
+assert_launch amp bash -c 'echo "$1" | exec amp' _ "Review this project"
 assert_launch pi pi -- "Review this project"
 assert_launch omp omp --auto-approve -- "Review this project"
 assert_launch opencode opencode --auto --prompt "Review this project"
@@ -359,6 +370,7 @@ assert_launch gemini gemini --yolo --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
 
+assert_bypass amp amp
 assert_bypass pi pi
 assert_bypass omp omp --auto-approve
 assert_bypass opencode opencode --auto

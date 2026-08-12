@@ -54,6 +54,15 @@ fi
 # Agents launched from the keybinding or menu run unattended, so each one starts
 # with its own spelling of "don't stop to ask". Pi has no approval prompts.
 case "$agent" in
+amp)
+  # Amp has no approval prompts by default, and no --prompt flag. An initial
+  # message is piped into an interactive session, as Amp's CLI documents.
+  if [[ -n ${prompt:-} ]]; then
+    command=(bash -c 'echo "$1" | exec amp' _ "$prompt")
+  else
+    command=(amp)
+  fi
+  ;;
 opencode)
   command=(opencode --auto)
   [[ -n ${prompt:-} ]] && command+=(--prompt "$prompt")

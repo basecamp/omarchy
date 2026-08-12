@@ -191,6 +191,7 @@ assertEqual(
   'menu lists Reset Computer last under Setup'
 )
 const expectedAgents = {
+  amp: { icon: '', label: 'Amp' },
   pi: { icon: '\ue901', iconFont: 'omarchy', label: 'Pi' },
   omp: { icon: '\ue903', iconFont: 'omarchy', label: 'omp' },
   opencode: { icon: '\ue902', iconFont: 'omarchy', label: 'OpenCode' },
@@ -218,7 +219,7 @@ assertDeepEqual(
   defaultItems
     .filter(item => item.parent === 'setup.default.agent')
     .map(item => item.label),
-  ['Claude', 'Codex', 'Copilot', 'Crush', 'Gemini', 'Grok', 'omp', 'OpenCode', 'Pi'],
+  ['Amp', 'Claude', 'Codex', 'Copilot', 'Crush', 'Gemini', 'Grok', 'omp', 'OpenCode', 'Pi'],
   'menu sorts coding agents alphabetically'
 )
 assert(!defaultById['install.ai.crush'], 'menu removes Crush from Install > AI')

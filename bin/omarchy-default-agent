@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Set and launch the default coding agent
-# omarchy:args=[pi|omp|opencode|claude|codex|grok|gemini|copilot|crush]
+# omarchy:args=[amp|pi|omp|opencode|claude|codex|grok|gemini|copilot|crush]
 # omarchy:examples=omarchy default agent | omarchy default agent codex | omarchy default agent claude
 
 installing=false
@@ -24,6 +24,7 @@ if (($# == 0)); then
 fi
 
 case "$1" in
+amp) agent="amp"; name="Amp"; agent_package="npm:@ampcode/cli" ;;
 pi) agent="pi"; name="Pi" ;;
 omp | oh-my-pi) agent="omp"; name="Oh My Pi"; agent_package="github:can1357/oh-my-pi" ;;
 opencode | open-code) agent="opencode"; name="OpenCode" ;;
@@ -34,7 +35,7 @@ grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
 gemini | gemini-cli) agent="gemini"; name="Gemini" ;;
 copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
 *)
-  echo "Usage: omarchy-default-agent <pi|omp|opencode|claude|codex|grok|gemini|copilot|crush>"
+  echo "Usage: omarchy-default-agent <amp|pi|omp|opencode|claude|codex|grok|gemini|copilot|crush>"
   exit 1
   ;;
 esac
