@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # omarchy:summary=Remove a development environment that was previously installed via omarchy-install-dev-env.
-# omarchy:args=<ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure|scala>
+# omarchy:args=<ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure|scala|julia>
 # omarchy:requires-sudo=true
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-remove-dev-env <ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure|scala>" >&2
+  echo "Usage: omarchy-remove-dev-env <ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure|scala|julia>" >&2
   exit 1
 fi
 
@@ -103,6 +103,26 @@ scala)
   mise uninstall scala-cli --all
   mise rm -g scala
   mise rm -g scala-cli
+  ;;
+julia)
+  echo -e "Removing Julia...\n"
+  juliaup self uninstall
+  if [[ -d ~/.julia/dev ]]; then
+    echo
+    echo "Warning: ~/.julia/dev contains packages under development:"
+    ls -1 ~/.julia/dev
+    echo
+    read -r -p "Have all your changes been pushed? Delete ~/.julia anyway? [y/N] " reply
+    if [[ $reply =~ ^[Yy]$ ]]; then
+      echo "Deleting the ~/.julia folder."
+      rm -rf ~/.julia
+    else
+      echo "Keeping ~/.julia"
+    fi
+  else
+    echo "Deleting the ~/.julia folder."
+    rm -rf ~/.julia
+  fi
   ;;
 *)
   echo "Unknown environment: $1"
