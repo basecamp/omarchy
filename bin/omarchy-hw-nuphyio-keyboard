@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Detect whether a NuPhy Air75 V3 keyboard is connected.
+
+grep -q "^HID_NAME=NuPhy Air75 V3" /sys/bus/hid/devices/*/uevent 2>/dev/null
