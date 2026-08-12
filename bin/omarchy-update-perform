@@ -19,6 +19,11 @@ omarchy-hook post-update
 
 omarchy-update-analyze-logs
 
+# Updates stay on the v3 tag series, so say how to get to Quattro. This has to
+# come before omarchy-update-restart, which may reboot the moment it is answered.
+echo
+echo -e "\e[33mYou're still running an older version of Omarchy. To upgrade to Omarchy Quattro, you'll need to run \e[1momarchy upgrade-to-quattro\e[0m\e[33m manually.\e[0m"
+
 omarchy-update-restart
 
 # Re-enable screensaver/sleep after updates
