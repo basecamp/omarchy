@@ -17,6 +17,29 @@ if omarchy-cmd-missing snapper; then
   exit 127 # omarchy-update can use this to just ignore if snapper is not available
 fi
 
+active_root_swapfile() {
+  local root_id swapfile swapfile_id
+  local -a swapfiles
+
+  mapfile -t swapfiles < <(
+    swapon --show=NAME,TYPE --json 2>/dev/null |
+      jq -r '.swapdevices[] | select(.type == "file") | .name'
+  )
+  (( ${#swapfiles[@]} > 0 )) || return 1
+
+  root_id=$(sudo btrfs inspect-internal rootid / 2>/dev/null) || return 1
+
+  for swapfile in "${swapfiles[@]}"; do
+    swapfile_id=$(sudo btrfs inspect-internal rootid "$swapfile" 2>/dev/null) || continue
+    if [[ $swapfile_id == $root_id ]]; then
+      printf '%s\n' "$swapfile"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 case "$COMMAND" in
 create)
   # The description is just a label, so never let it abort the snapshot.
@@ -37,6 +60,12 @@ create)
   echo -e "\e[32mCreate system snapshot\e[0m"
 
   for config in "${CONFIGS[@]}"; do
+    if [[ $config == "root" ]] && swapfile=$(active_root_swapfile); then
+      echo "Cannot snapshot / while the active swapfile $swapfile is inside its Btrfs subvolume." >&2
+      echo "Move the swapfile into its own subvolume, or disable it before retrying." >&2
+      exit 1
+    fi
+
     sudo snapper -c "$config" create -c number -d "$DESC"
     sudo snapper -c "$config" cleanup number
   done
