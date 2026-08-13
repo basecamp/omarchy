@@ -51,7 +51,8 @@ for (const passwordState of [
 }
 
 assert(
-  /function resetFaceAuthentication\(\)[\s\S]*faceAuthenticating = false[\s\S]*if \(facePam\.active\) facePam\.abort\(\)/.test(serviceQml) &&
+  /function stopFaceAuthentication\(\)[\s\S]*faceAuthenticating = false[\s\S]*if \(facePam\.active\) facePam\.abort\(\)/.test(serviceQml) &&
+    /function resetFaceAuthentication\(\)[\s\S]*stopFaceAuthentication\(\)/.test(serviceQml) &&
     /function resetAuthenticationState\(\)[\s\S]*resetFaceAuthentication\(\)/.test(serviceQml),
   'lock cleanup clears and aborts face authentication'
 )

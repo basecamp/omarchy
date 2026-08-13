@@ -9,29 +9,41 @@ const fs = require('fs')
 const serviceQml = fs.readFileSync(path.join(root, 'shell/plugins/lock/Service.qml'), 'utf8')
 
 assert(
-  /id: lidCheckProc\s*command: \["omarchy-hw-laptop-closed"\]/.test(serviceQml),
+  /id: lidCheckProc[\s\S]*command: \["omarchy-hw-laptop-closed"\]/.test(serviceQml),
   'lid state is observed through the existing hardware helper'
 )
 
 assert(
   /readonly property int lidPollInterval: 1000/.test(serviceQml) &&
-    /id: lidPollTimer\s*interval: root\.lidPollInterval\s*repeat: true\s*running: root\.lockRequested && root\.faceConfigured && root\.faceAttemptCount === 0\s*triggeredOnStart: true/.test(serviceQml),
+    /id: lidPollTimer\s*interval: root\.lidPollInterval\s*repeat: true\s*running: root\.lockRequested && root\.faceConfigured\s*triggeredOnStart: true/.test(serviceQml),
   'lid state is polled immediately and then every second while observation is needed'
 )
 
 assert(
-  /onTriggered: \{\s*if \(!lidCheckProc\.running\) lidCheckProc\.running = true/.test(serviceQml),
+  /function startLidCheck\(\)[\s\S]*lidCheckProc\.generation = lidObservationGeneration[\s\S]*lidCheckProc\.running = true/.test(serviceQml) &&
+    /onTriggered: root\.startLidCheck\(\)/.test(serviceQml),
   'lid polling never overlaps helper processes'
 )
 
 assert(
-  /if \(!root\.lockRequested \|\| !root\.faceConfigured\) return/.test(serviceQml),
-  'a stale lid result after unlock or configuration removal is ignored'
+  /generation !== root\.lidObservationGeneration \|\| !root\.lockRequested \|\| !root\.faceConfigured/.test(serviceQml) &&
+    /function resetFaceAuthentication\(\)[\s\S]*lidObservationGeneration \+= 1/.test(serviceQml),
+  'a stale lid result from an earlier lock or configuration is ignored'
 )
 
 assert(
-  /if \(exitCode === 0\) \{\s*root\.lidClosedDuringLock = true\s*\} else if \(root\.lidClosedDuringLock && sessionLock\.secure\)/.test(serviceQml),
+  /if \(exitCode === 0\) \{\s*root\.recordLidClosed\(\)\s*\} else if \(root\.lidClosedDuringLock && sessionLock\.secure\)/.test(serviceQml),
   'an open result activates only after this lock observed a closed lid and became secure'
+)
+
+assert(
+  /function recordLidClosed\(\)[\s\S]*stopFaceAuthentication\(\)[\s\S]*lidClosedDuringLock = true/.test(serviceQml),
+  'closing the lid aborts face authentication before preserving the closed state'
+)
+
+assert(
+  /function lock\(\): string \{[\s\S]*if \(root\.locked\) \{[\s\S]*root\.stopFaceAuthentication\(\)[\s\S]*root\.startLidCheck\(\)/.test(serviceQml),
+  'a repeated lock request stops face PAM and immediately samples the lid'
 )
 
 assert(

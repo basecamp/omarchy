@@ -20,7 +20,7 @@ assert(
 )
 
 assert(
-  /function recordFaceActivity\(\) \{\s*if \(faceActivityEligibleAt === 0 \|\| Date\.now\(\) < faceActivityEligibleAt\) return\s*activateFaceAuthentication\(\)/.test(serviceQml),
+  /function recordFaceActivity\(\) \{\s*if \(lidClosedDuringLock \|\| faceActivityEligibleAt === 0 \|\| Date\.now\(\) < faceActivityEligibleAt\) return\s*activateFaceAuthentication\(\)/.test(serviceQml),
   'activity before the debounce expires cannot start face authentication'
 )
 

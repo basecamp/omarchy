@@ -20,7 +20,7 @@ assert(
 )
 
 assert(
-  /function startFaceAttempt\(\) \{[\s\S]*!lockRequested \|\| !sessionLock\.secure \|\| !faceConfigured[\s\S]*faceAttemptCount \+= 1[\s\S]*facePam\.start\(\)/.test(serviceQml),
+  /function startFaceAttempt\(\) \{[\s\S]*!lockRequested \|\| !sessionLock\.secure \|\| !faceConfigured \|\| lidClosedDuringLock[\s\S]*faceAttemptCount \+= 1[\s\S]*facePam\.start\(\)/.test(serviceQml),
   'each face PAM start rechecks lock safety and consumes attempt budget'
 )
 
@@ -30,7 +30,7 @@ assert(
 )
 
 assert(
-  /function resetFaceAuthentication\(\)[\s\S]*faceRetryTimer\.stop\(\)[\s\S]*faceAttemptCount = 0[\s\S]*facePam\.abort\(\)/.test(serviceQml),
+  /function stopFaceAuthentication\(\)[\s\S]*faceRetryTimer\.stop\(\)[\s\S]*faceAttemptCount = 0[\s\S]*facePam\.abort\(\)/.test(serviceQml),
   'intentional cleanup stops retries and aborts active face PAM'
 )
 

@@ -27,6 +27,7 @@ Item {
   property int faceAttemptCount: 0
   property double faceActivityEligibleAt: 0
   property bool lidClosedDuringLock: false
+  property int lidObservationGeneration: 0
   property bool previewVisible: false
   property string enteredPassword: ""
   property string pendingPassword: ""
@@ -122,16 +123,21 @@ Item {
     console.log("omarchy lock " + lastEventAt + " " + event)
   }
 
-  function resetFaceAuthentication() {
+  function stopFaceAuthentication() {
     faceRetryTimer.stop()
     faceAttemptCount = 0
-    faceActivityEligibleAt = 0
-    lidClosedDuringLock = false
     faceAuthenticating = false
 
     // PamContext.abort() emits no completion, so cleanup cannot enter the
     // failure path and accidentally restart the camera.
     if (facePam.active) facePam.abort()
+  }
+
+  function resetFaceAuthentication() {
+    stopFaceAuthentication()
+    lidObservationGeneration += 1
+    faceActivityEligibleAt = 0
+    lidClosedDuringLock = false
   }
 
   function resetAuthenticationState() {
@@ -258,13 +264,25 @@ Item {
   }
 
   function recordFaceActivity() {
-    if (faceActivityEligibleAt === 0 || Date.now() < faceActivityEligibleAt) return
+    if (lidClosedDuringLock || faceActivityEligibleAt === 0 || Date.now() < faceActivityEligibleAt) return
     activateFaceAuthentication()
+  }
+
+  function recordLidClosed() {
+    if (!lockRequested || !faceConfigured) return
+    stopFaceAuthentication()
+    lidClosedDuringLock = true
+  }
+
+  function startLidCheck() {
+    if (!lockRequested || !faceConfigured || lidCheckProc.running) return
+    lidCheckProc.generation = lidObservationGeneration
+    lidCheckProc.running = true
   }
 
   function startFaceAttempt() {
     // A retry runs later, so recheck the same safety conditions each time.
-    if (!lockRequested || !sessionLock.secure || !faceConfigured) {
+    if (!lockRequested || !sessionLock.secure || !faceConfigured || lidClosedDuringLock) {
       resetFaceAuthentication()
       return
     }
@@ -485,11 +503,12 @@ Item {
 
   Process {
     id: lidCheckProc
+    property int generation: -1
     command: ["omarchy-hw-laptop-closed"]
     onExited: function(exitCode) {
-      if (!root.lockRequested || !root.faceConfigured) return
+      if (generation !== root.lidObservationGeneration || !root.lockRequested || !root.faceConfigured) return
       if (exitCode === 0) {
-        root.lidClosedDuringLock = true
+        root.recordLidClosed()
       } else if (root.lidClosedDuringLock && sessionLock.secure) {
         // Clear the flag first so later open polls do nothing.
         root.lidClosedDuringLock = false
@@ -547,11 +566,9 @@ Item {
     id: lidPollTimer
     interval: root.lidPollInterval
     repeat: true
-    running: root.lockRequested && root.faceConfigured && root.faceAttemptCount === 0
+    running: root.lockRequested && root.faceConfigured
     triggeredOnStart: true
-    onTriggered: {
-      if (!lidCheckProc.running) lidCheckProc.running = true
-    }
+    onTriggered: root.startLidCheck()
   }
 
   Timer {
@@ -651,8 +668,16 @@ Item {
     target: "lock"
 
     function lock(): string {
+      if (root.locked) {
+        // A face attempt must not continue while the laptop sleeps. Lid close
+        // repeats this request, so abort the attempt and record the closed lid
+        // for a fresh attempt after it reopens.
+        root.stopFaceAuthentication()
+        root.startLidCheck()
+        return "ok"
+      }
       if (!root.passwordPamConfigured) return "missing-pam"
-      if (!root.locked && !root.beginLock()) return "failed"
+      if (!root.beginLock()) return "failed"
       return "ok"
     }
 
