@@ -155,6 +155,63 @@ unreachable=$(collect_limits "token" 0 "$cache")
   fail "Claude collector advises a retry after a transport failure" "$unreachable"
 pass "Claude collector falls back to cache when the probe cannot connect"
 
+# Reuse and --force are decided against a cache that is fresh by the clock, so
+# the probe is answered rather than refused: what matters is whether it ran.
+probe_with_cache() {
+  COLLECTOR="$ROOT/bin/omarchy-agent-usage-claude" FORCE="$1" CACHED="$2" PAYLOAD="$3" \
+    XDG_CACHE_HOME="$CACHE_HOME" python3 - <<'PY'
+import importlib.machinery, importlib.util, io, json, os
+
+loader = importlib.machinery.SourceFileLoader("collector", os.environ["COLLECTOR"])
+spec = importlib.util.spec_from_loader(loader.name, loader)
+collector = importlib.util.module_from_spec(spec)
+loader.exec_module(collector)
+
+cache = collector.cache_root() / "claude-limits.json"
+cache.write_text(os.environ["CACHED"], encoding="utf-8")
+
+probes = []
+
+def urlopen(request, timeout=None):
+  probes.append(1)
+  return io.BytesIO(os.environ["PAYLOAD"].encode())
+
+collector.urllib.request.urlopen = urlopen
+result = collector.collect_limits("token", 0, os.environ["FORCE"] == "true")
+print(json.dumps({
+  "result": result,
+  "probes": len(probes),
+  "cached": json.loads(cache.read_text(encoding="utf-8")),
+}))
+PY
+}
+
+fresh=$(jq -nc --arg open "$open_at" --argjson now "$(python3 -c 'import time; print(round(time.time() * 1000))')" '{
+  fetchedAtMs: $now,
+  limits: [{ label: "Weekly (7-day)", percent: 0.11, resetsAt: $open }]
+}')
+payload='{"five_hour":{"utilization":44.0}}'
+
+# Repeated panel opens share one answer rather than one request apiece.
+reused=$(probe_with_cache false "$fresh" "$payload")
+[[ $(jq -r '.probes' <<<"$reused") == "0" && $(jq -c '[.result.limits[].percent]' <<<"$reused") == "[0.11]" ]] ||
+  fail "Claude collector reuses a cache younger than the probe interval" "$reused"
+pass "Claude collector reuses a cache younger than the probe interval"
+
+# --force is someone pressing refresh, and its help text promises the caches are
+# ignored — so the reuse window must not outrank it.
+forced=$(probe_with_cache true "$fresh" "$payload")
+[[ $(jq -r '.probes' <<<"$forced") == "1" ]] ||
+  fail "Claude collector re-probes on --force despite a fresh cache" "$forced"
+[[ $(jq -c '[.result.limits[].percent]' <<<"$forced") == "[0.44]" ]] ||
+  fail "Claude collector returns the forced probe's numbers" "$forced"
+pass "Claude collector re-probes on --force despite a fresh cache"
+
+# A probe that lands becomes the next run's fallback.
+[[ $(jq -c '[.cached.limits[].percent]' <<<"$forced") == "[0.44]" ]] ||
+  fail "Claude collector caches a successful probe" "$forced"
+pass "Claude collector caches a successful probe"
+
 # The panel reads a window out of a label, and that guess cannot survive a
 # model name — "Opus 5 (1M context)" parses as a one-minute window. A collector
 # that states the title outright is taken at its word.
