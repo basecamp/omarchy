@@ -45,11 +45,14 @@ done
 cache_dir="$cache_home/omarchy/image-selector"
 mkdir -p "$cache_dir"
 
+stale_tmp=""
 for image in "$images"/*; do
   signature=$(stat -Lc '%s:%Y' "$image")
   hash=$(printf '%s\t%s' "$image" "$signature" | md5sum | cut -d ' ' -f 1)
   mkdir "$cache_dir/$hash.jpg.lock"
+  stale_tmp="$cache_dir/$hash.jpg.4242.jpg"
 done
+printf 'partial' >"$stale_tmp"
 
 cache_key=$(printf '%s' "$images" | md5sum | cut -d ' ' -f 1)
 printf '%s\t%s' "$images/one.png" "$cache_dir/missing.jpg" >"$cache_dir/$cache_key.rows"
@@ -65,6 +68,8 @@ PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" \
   fail "image menu rebuilds every row after cache invalidation"
 [[ $(head -n 1 "$cache_dir/$cache_key.signature") == "v3" ]] ||
   fail "image menu invalidates stale row caches"
+[[ ! -e $stale_tmp ]] ||
+  fail "image menu clears partial thumbnails left by killed generators"
 pass "image menu recovers stranded locks and stale rows"
 
 rm -rf "$cache_home"

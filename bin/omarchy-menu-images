@@ -150,7 +150,11 @@ generate_thumbnail() {
   [[ -d $lock ]] && rmdir "$lock" 2>/dev/null
 
   exec {lock_fd}>"$lock" || return
-  flock "$lock_fd"
+  flock -w 30 "$lock_fd" || return
+
+  # A generator killed mid-write leaves its partial $thumbnail.<pid>.jpg
+  # behind. Only the lock holder writes these, so any found now are stale.
+  rm -f "$thumbnail".*.jpg
 
   [[ -f $thumbnail ]] && return
 
