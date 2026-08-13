@@ -58,9 +58,9 @@ opencode)
   command=(opencode --auto)
   [[ -n ${prompt:-} ]] && command+=(--prompt "$prompt")
   ;;
-gemini)
-  command=(gemini --yolo)
-  [[ -n ${prompt:-} ]] && command+=(--prompt-interactive "$prompt")
+agy)
+  command=(agy --dangerously-skip-permissions)
+  [[ -n ${prompt:-} ]] && command+=("$prompt")
   ;;
 copilot)
   command=(copilot --allow-all)

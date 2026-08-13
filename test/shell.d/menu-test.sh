@@ -197,7 +197,7 @@ const expectedAgents = {
   claude: { icon: '󰛄', label: 'Claude' },
   codex: { icon: '\ue905', iconFont: 'omarchy', label: 'Codex' },
   grok: { icon: '\ue904', iconFont: 'omarchy', label: 'Grok' },
-  gemini: { icon: '󰫢', label: 'Gemini' },
+  antigravity: { icon: '󱓞', label: 'Antigravity', checked: 'agy' },
   copilot: { icon: '', label: 'Copilot' },
   crush: { icon: '󰋑', label: 'Crush' },
 }
@@ -210,7 +210,7 @@ assert(
       && entry.label === expected.label
       && entry.action === `omarchy-default-agent ${agent}`
       && !entry.when
-      && entry.checked.includes(`== \"${agent}\"`)
+      && entry.checked.includes(`== \"${expected.checked || agent}\"`)
   }),
   'menu exposes every mise-installable coding agent with its own glyph under Defaults > Agent'
 )
@@ -218,7 +218,7 @@ assertDeepEqual(
   defaultItems
     .filter(item => item.parent === 'setup.default.agent')
     .map(item => item.label),
-  ['Claude', 'Codex', 'Copilot', 'Crush', 'Gemini', 'Grok', 'omp', 'OpenCode', 'Pi'],
+  ['Antigravity', 'Claude', 'Codex', 'Copilot', 'Crush', 'Grok', 'omp', 'OpenCode', 'Pi'],
   'menu sorts coding agents alphabetically'
 )
 assert(!defaultById['install.ai.crush'], 'menu removes Crush from Install > AI')
