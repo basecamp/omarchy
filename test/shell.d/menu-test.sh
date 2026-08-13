@@ -367,6 +367,10 @@ assert(
   'menu Left key follows empty-filter Backspace navigation'
 )
 assert(
+  /event\.key === Qt\.Key_Escape[\s\S]*if \(root\.filterText\) root\.setFilter\(""\)\s*else if \(!root\.goBack\(\)\) root\.cancel\(\)/.test(menuQml),
+  'menu Escape goes back a submenu before closing at the root menu'
+)
+assert(
   /PointerMoveGate\s*\{[\s\S]*id: pointerGate[\s\S]*referenceItem: card[\s\S]*\}/.test(menuQml),
   'menu uses shared pointer movement gate in card coordinates'
 )
