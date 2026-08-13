@@ -46,7 +46,17 @@ if [[ -z $agent ]]; then
   exit 1
 fi
 
-if omarchy-cmd-missing "$agent"; then
+if [[ $agent == "cursor" ]]; then
+  cursor_agent="$HOME/.local/bin/agent"
+  if [[ ! -x $cursor_agent ]]; then
+    echo "Cursor Agent CLI is not installed at $cursor_agent. Install it with: omarchy default agent cursor" >&2
+    exit 1
+  fi
+  if ! "$cursor_agent" --version &>/dev/null; then
+    echo "$cursor_agent is not a working Cursor Agent CLI. Reinstall it with: omarchy default agent cursor" >&2
+    exit 1
+  fi
+elif omarchy-cmd-missing "$agent"; then
   echo "$agent is not installed. Choose an installed agent with: omarchy default agent <name>" >&2
   exit 1
 fi
@@ -89,6 +99,10 @@ omp)
 pi)
   command=(pi)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
+cursor)
+  command=("$cursor_agent" --force)
+  [[ -n ${prompt:-} ]] && command+=("$prompt")
   ;;
 *)
   echo "Unsupported default agent: $agent" >&2

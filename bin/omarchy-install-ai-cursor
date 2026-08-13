@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# omarchy:summary=Install Cursor Agent CLI with the official Cursor installer
+# omarchy:group=install
+# omarchy:name=ai cursor
+
+if ! installer=$(mktemp); then
+  echo "Could not create a temporary file for the Cursor Agent CLI installer" >&2
+  exit 1
+fi
+trap 'rm -f "$installer"' EXIT
+
+if ! curl https://cursor.com/install -fsS -o "$installer"; then
+  echo "Could not download the Cursor Agent CLI installer" >&2
+  exit 1
+fi
+
+# Omarchy already exports ~/.local/bin on PATH. Supplying it explicitly keeps
+# Cursor's installer from suggesting or making shell-startup changes.
+if ! PATH="$HOME/.local/bin:$PATH" bash "$installer"; then
+  echo "Cursor Agent CLI installation failed" >&2
+  exit 1
+fi
+
+cursor_agent="$HOME/.local/bin/agent"
+if [[ ! -x $cursor_agent ]]; then
+  echo "Cursor Agent CLI installer did not create $cursor_agent" >&2
+  exit 1
+fi
+
+if ! "$cursor_agent" --version >/dev/null 2>&1; then
+  echo "Cursor Agent CLI was installed but failed its version check" >&2
+  exit 1
+fi
+
+echo "Cursor Agent CLI installed successfully"

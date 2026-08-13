@@ -18,6 +18,10 @@ else
   editor="nvim"
 fi
 
+# Cursor IDE is provided by cursor-bin at this path. Never resolve a
+# PATH-provided `cursor` compatibility shim from Cursor Agent CLI.
+[[ $editor == "cursor" ]] && editor="/usr/bin/cursor"
+
 omarchy-cmd-present "$editor" || editor="nvim"
 
 case "${editor##*/}" in

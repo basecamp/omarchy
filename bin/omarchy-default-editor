@@ -17,7 +17,13 @@ fi
 
 case "$1" in
 code) editor="code"; name="VSCode"; glyph= ;;
-cursor) editor="cursor"; name="Cursor"; glyph= ;;
+cursor)
+  if ! omarchy-pkg-present cursor-bin || ! omarchy-cmd-present /usr/bin/cursor; then
+    echo "Cursor IDE is not installed. Install the cursor-bin package first." >&2
+    exit 1
+  fi
+  editor="cursor"; name="Cursor"; glyph=
+  ;;
 zed | zeditor) editor="zeditor"; name="Zed"; glyph= ;;
 sublime_text) editor="sublime_text"; name="Sublime Text"; glyph= ;;
 helix) editor="helix"; name="Helix"; glyph= ;;
