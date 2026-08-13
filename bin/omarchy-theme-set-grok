@@ -1,0 +1,106 @@
+#!/bin/bash
+
+# omarchy:summary=Configure Grok to use terminal palette colors
+# omarchy:args=[--activate]
+# omarchy:hidden=true
+
+set -euo pipefail
+
+GROK_CONFIG_DIR="${GROK_CONFIG_DIR:-$HOME/.grok}"
+GROK_CONFIG_PATH="${GROK_CONFIG_PATH:-$GROK_CONFIG_DIR/config.toml}"
+GROK_ACTIVATE=0
+
+usage() {
+  echo "Usage: omarchy-theme-set-grok [--activate]"
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --activate)
+      GROK_ACTIVATE=1
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+# Grok's "minimal" color theme is independent of its screen mode and renders
+# with the terminal palette. Activate it once, then let later user choices win.
+(( GROK_ACTIVATE == 1 )) || exit 0
+
+mkdir -p "$(dirname "$GROK_CONFIG_PATH")"
+
+if [[ ! -f $GROK_CONFIG_PATH ]]; then
+  printf '[ui]\ntheme = "minimal"\n' >"$GROK_CONFIG_PATH"
+  exit 0
+fi
+
+tmp=$(mktemp)
+awk '
+  function section(line) {
+    return line ~ /^[[:space:]]*\[[^][]+\][[:space:]]*(#.*)?$/
+  }
+
+  function ui_section(line) {
+    return line ~ /^[[:space:]]*\[ui\][[:space:]]*(#.*)?$/
+  }
+
+  function add_theme_if_missing() {
+    if (in_ui && !wrote_theme) {
+      print "theme = \"minimal\""
+      wrote_theme = 1
+    }
+  }
+
+  BEGIN { at_root = 1 }
+
+  at_root && /^[[:space:]]*ui\.theme[[:space:]]*=/ {
+    print "ui.theme = \"minimal\""
+    saw_ui = 1
+    wrote_theme = 1
+    next
+  }
+
+  section($0) {
+    add_theme_if_missing()
+    at_root = 0
+    in_ui = ui_section($0)
+    if (in_ui) {
+      saw_ui = 1
+      wrote_theme = 0
+    }
+    print
+    next
+  }
+
+  in_ui && /^[[:space:]]*theme[[:space:]]*=/ {
+    if (!wrote_theme) {
+      print "theme = \"minimal\""
+      wrote_theme = 1
+    }
+    next
+  }
+
+  { print }
+
+  END {
+    add_theme_if_missing()
+    if (!saw_ui) {
+      if (NR) print ""
+      print "[ui]"
+      print "theme = \"minimal\""
+    }
+  }
+' "$GROK_CONFIG_PATH" >"$tmp"
+
+if ! cmp -s "$tmp" "$GROK_CONFIG_PATH"; then
+  # Write through the path so dotfile symlinks remain intact.
+  cat "$tmp" >"$GROK_CONFIG_PATH"
+fi
+rm -f "$tmp"
