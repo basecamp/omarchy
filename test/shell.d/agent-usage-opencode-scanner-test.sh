@@ -82,7 +82,7 @@ conn.commit()
 conn.close()
 
 summary = {}
-summary["dbStats"] = scanner.scan_opencode_db(db)
+summary["dbStats"] = scanner.scan_opencode_db(db)[0]
 
 # The official endpoint nests the windows under "usage"; the merged PR shape
 # spelled them "<window>Usage" with resetInSec. Both must parse to the same
@@ -341,6 +341,127 @@ try:
   summary["probeOffline"] = "no-error"
 except scanner.GoUsageError as error:
   summary["probeOffline"] = error_text(error)
+
+# ------------------------------------------------------------- cache layer
+# The stats cache is a versioned envelope stamped with the scan date,
+# reused by --limits-only, bypassed by --force, and never allowed to kill
+# the collector. Each scenario gets its own cache root.
+
+def cache_dir(name):
+  return test_home / "cache-layer" / name
+
+def cached_stats_result(cache_home, max_age):
+  os.environ["XDG_CACHE_HOME"] = str(cache_home)
+  return scanner.cached_scan(db, max_age)
+
+# First scan writes a versioned envelope stamped with today.
+fresh = cache_dir("fresh")
+stats1 = cached_stats_result(fresh, 20)
+cache_file = sorted((fresh / "omarchy" / "agent-usage").glob("opencode-scan-*.json"))[0]
+envelope = json.loads(cache_file.read_text())
+summary["cacheEnvelope"] = {
+  "scanDateMatches": envelope["scanDate"] == scanner.local_date_string(),
+  "schemaVersion": envelope["schemaVersion"],
+  "statsToday": envelope["stats"]["todayTotalTokens"],
+  "mode": f"{cache_file.stat().st_mode & 0o777:03o}",
+  "todayTotalTokens": stats1["todayTotalTokens"],
+}
+
+# A corrupt-but-parseable cache (wrong shape) is a miss: rescan + rewrite.
+cache_file.write_text("[]")
+stats2 = cached_stats_result(fresh, 900)
+summary["cacheCorrupt"] = {
+  "todayTotalTokens": stats2["todayTotalTokens"],
+  "rewritten": json.loads(cache_file.read_text()).get("schemaVersion") == 1,
+}
+
+# --limits-only reuses the cache; --force rescans past it. A new message
+# lands only in the forced result.
+conn = sqlite3.connect(db)
+now_ms = int(time.time() * 1000)
+conn.execute("INSERT INTO message (id, session_id, data) VALUES (?, ?, ?)", (
+  "m_extra", "s_extra", json.dumps({"role": "assistant", "providerID": "opencode-go",
+    "modelID": "deepseek-v4-flash", "tokens": {"input": 10, "output": 0},
+    "time": {"created": now_ms}})))
+conn.commit()
+conn.close()
+summary["cacheReuse"] = {
+  "limitsOnly": cached_stats_result(fresh, 900)["totalPrompts"],
+  "forced": cached_stats_result(fresh, 0)["totalPrompts"],
+}
+
+# A cache stamped with another date is a miss even under a fresh mtime, and
+# so is one whose mtime sits in the future (the clock moved backwards).
+other_day = cache_dir("other-day")
+cached_stats_result(other_day, 20)
+other_cache = sorted((other_day / "omarchy" / "agent-usage").glob("opencode-scan-*.json"))[0]
+envelope = json.loads(other_cache.read_text())
+envelope["scanDate"] = "1999-01-01"
+other_cache.write_text(json.dumps(envelope))  # fresh mtime, wrong day
+summary["cacheOtherDay"] = cached_stats_result(other_day, 900)["totalPrompts"]
+
+future = cache_dir("future")
+cached_stats_result(future, 20)
+future_cache = sorted((future / "omarchy" / "agent-usage").glob("opencode-scan-*.json"))[0]
+future_time = time.time() + 3600
+os.utime(future_cache, (future_time, future_time))
+summary["cacheFuture"] = cached_stats_result(future, 900)["totalPrompts"]
+
+# Malformed rows must not abort the scan: json_valid() guards the parse.
+malformed_db = test_home / "malformed" / "opencode" / "opencode.db"
+malformed_db.parent.mkdir(parents=True, exist_ok=True)
+mconn = sqlite3.connect(malformed_db)
+mconn.execute("CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, data TEXT NOT NULL)")
+good = json.dumps({"role": "assistant", "providerID": "opencode-go", "modelID": "deepseek-v4-flash",
+                   "tokens": {"input": 5, "output": 0}, "time": {"created": now_ms}}, separators=(",", ":"))
+mconn.executemany("INSERT INTO message (id, session_id, data) VALUES (?, ?, ?)", [
+  ("mm_1", "s", good),
+  ("mm_2", "s", good + " trailing-garbage"),
+  ("mm_3", "s", "this is not json"),
+])
+mconn.commit()
+mconn.close()
+malformed_stats, malformed_complete = scanner.scan_opencode_db(malformed_db)
+summary["malformed"] = {"totalPrompts": malformed_stats["totalPrompts"], "complete": malformed_complete}
+
+# A scan cut short by a database error must not be cached as the whole
+# story, or the missing usage would be suppressed for every reader until
+# the cache expires. A database without the message table makes the scan
+# fail mid-flight.
+interrupted = cache_dir("interrupted")
+interrupted_db = test_home / "interrupted" / "opencode" / "opencode.db"
+interrupted_db.parent.mkdir(parents=True, exist_ok=True)
+iconn = sqlite3.connect(interrupted_db)
+iconn.execute("CREATE TABLE unrelated (id TEXT PRIMARY KEY)")
+iconn.commit()
+iconn.close()
+os.environ["XDG_CACHE_HOME"] = str(interrupted)
+stats_i, complete_i = scanner.scan_opencode_db(interrupted_db)
+scanner.cached_scan(interrupted_db, 20)
+summary["interrupted"] = {
+  "todayTotalTokens": stats_i["todayTotalTokens"],
+  "complete": complete_i,
+  "cacheWritten": len(list((interrupted / "omarchy" / "agent-usage").glob("opencode-scan-*.json"))) > 0,
+}
+
+# Once the database is whole again, the next limits-only run rescans it
+# instead of reusing a zero snapshot.
+iconn = sqlite3.connect(interrupted_db)
+iconn.execute("CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, data TEXT NOT NULL)")
+now_ms = int(time.time() * 1000)
+iconn.execute("INSERT INTO message (id, session_id, data) VALUES (?, ?, ?)", (
+  "i_1", "s", json.dumps({"role": "assistant", "providerID": "opencode-go",
+    "modelID": "deepseek-v4-flash", "tokens": {"input": 9, "output": 0},
+    "time": {"created": now_ms}})))
+iconn.commit()
+iconn.close()
+summary["interrupted"]["rescanned"] = scanner.cached_scan(interrupted_db, 900)["todayTotalTokens"]
+
+# An unwritable cache root must not kill the collector: direct scan instead.
+unwritable = test_home / "unwritable"
+unwritable.write_text("not a directory")
+os.environ["XDG_CACHE_HOME"] = str(unwritable)
+summary["unwritableCache"] = scanner.cached_scan(db, 20)["totalPrompts"]
 print(json.dumps(summary, separators=(",", ":")))
 PY
 )
@@ -479,3 +600,33 @@ pass "OpenCode probe decodes the deployed response shape"
   [[ $(jq -r '.probeOffline' <<<"$result") == "GoUsageError:Could not reach OpenCode's usage endpoint:transport" ]]; } ||
   fail "OpenCode probe maps rejected keys, status errors, and transport failures distinctly" "$result"
 pass "OpenCode probe maps rejected keys, status errors, and transport failures distinctly"
+
+[[ $(jq -c '.cacheEnvelope | {scanDateMatches, schemaVersion, statsToday, mode, todayTotalTokens}' <<<"$result") == \
+  '{"scanDateMatches":true,"schemaVersion":1,"statsToday":1850,"mode":"644","todayTotalTokens":1850}' ]] ||
+  fail "OpenCode collector writes a versioned, dated stats cache" "$result"
+pass "OpenCode collector writes a versioned, dated stats cache"
+
+[[ $(jq -c '.cacheCorrupt' <<<"$result") == '{"todayTotalTokens":1850,"rewritten":true}' ]] ||
+  fail "OpenCode collector recovers from a corrupt cache" "$result"
+pass "OpenCode collector recovers from a corrupt cache"
+
+[[ $(jq -c '.cacheReuse' <<<"$result") == '{"limitsOnly":3,"forced":4}' ]] ||
+  fail "OpenCode collector reuses the cache for limits-only and bypasses it on force" "$result"
+pass "OpenCode collector reuses the cache for limits-only and bypasses it on force"
+
+[[ $(jq -r '(.cacheOtherDay | tostring) + ":" + (.cacheFuture | tostring)' <<<"$result") == "4:4" ]] ||
+  fail "OpenCode collector treats dated and future caches as misses" "$result"
+pass "OpenCode collector treats dated and future caches as misses"
+
+[[ $(jq -c '.malformed' <<<"$result") == '{"totalPrompts":1,"complete":true}' ]] ||
+  fail "OpenCode collector counts good rows past malformed ones" "$result"
+pass "OpenCode collector counts good rows past malformed ones"
+
+[[ $(jq -c '.interrupted | {todayTotalTokens, complete, cacheWritten, rescanned}' <<<"$result") == \
+  '{"todayTotalTokens":0,"complete":false,"cacheWritten":false,"rescanned":9}' ]] ||
+  fail "OpenCode collector never caches an interrupted scan" "$result"
+pass "OpenCode collector never caches an interrupted scan"
+
+[[ $(jq -r '.unwritableCache' <<<"$result") == "4" ]] ||
+  fail "OpenCode collector degrades to a direct scan when the cache is unwritable" "$result"
+pass "OpenCode collector degrades to a direct scan when the cache is unwritable"
