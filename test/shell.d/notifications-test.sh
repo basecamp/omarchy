@@ -472,6 +472,11 @@ assert(
   'notifications service grabs image-data pixels when persisting a popup'
 )
 assert(
+  /service\.sweepCaptureImage\(job\.to\)/.test(serviceQml) &&
+    /function sweepCaptureImage\(to\)[\s\S]{0,500}?\|\| rm -f \\"\$3\\"/.test(serviceQml),
+  'notifications service sweeps a capture that landed after its entry was removed'
+)
+assert(
   /startCaptures\(persistable\.captures, finished\)[\s\S]{0,1000}?enqueuePopupFileJob\(command, finished\)/.test(serviceQml),
   'notifications service holds a silenced notification for its captures as well as its write'
 )

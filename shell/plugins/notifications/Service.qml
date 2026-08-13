@@ -426,12 +426,26 @@ Item {
       if (done) done()
       return
     }
-    for (var i = 0; i < captures.length; i++) {
-      imageCapture.request(captures[i].url, captures[i].to, function() {
+    function one(job) {
+      imageCapture.request(job.url, job.to, function() {
+        service.sweepCaptureImage(job.to)
         remaining--
         if (remaining === 0 && done) done()
       })
     }
+    for (var i = 0; i < captures.length; i++) one(captures[i])
+  }
+
+  // Captures run outside the file queue, so one can land after the trim,
+  // clear, or delete that removed its entry — recreating an image nothing
+  // owns until the startup sweep. Re-check this one file through the queue:
+  // queued behind whatever removed the entry, it sees the final state.
+  function sweepCaptureImage(to) {
+    enqueuePopupFileJob(["bash", "-c",
+      "stem=\"${3##*/}\"\n" +
+      "stem=\"${stem%-*}\"\n" +
+      "[[ -e $1/$stem.json || -e $2/$stem.json ]] || rm -f \"$3\"", "--",
+      popupStateDir, historyDir, to])
   }
 
   // ---------------------------------------------------- popup persistence
