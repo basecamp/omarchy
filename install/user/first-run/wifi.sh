@@ -23,6 +23,13 @@ announce_network() {
     nm-online -q -t 3600 || return
   fi
 
+  # A captive portal answers DHCP and passes nm-online while still blocking the
+  # mirrors, so prompting for an update here would only hand the user a failed
+  # one. omarchy-network-portal-watch.service is already asking them to sign in.
+  if omarchy-network-portal --check; then
+    return
+  fi
+
   notify_update
 }
 
