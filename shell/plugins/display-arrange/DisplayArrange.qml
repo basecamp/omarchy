@@ -71,10 +71,6 @@ Item {
   readonly property color scrim: Util.alpha(Color.background, 0.97)
 
   // Long enough for Hyprland to finish re-modesetting every display after a
-  // layout is written. Only the paths that reconfigure outputs need to wait it
-  // out; an ordinary open has nothing settling and must not pay for it.
-  readonly property int settleDelay: 1500
-
   function scheduleReopen(delay) {
     reopen.interval = delay
     reopen.restart()
@@ -87,8 +83,7 @@ Item {
     // outputs and taken the surface with it, leaving this believing it is still
     // open — in which case showing it again would do nothing at all. Dropping
     // it only needs to land before the window is stood back up, so this hands
-    // the change to the next event loop turn rather than waiting on a modeset
-    // that is not happening.
+    // the change to the next event loop turn.
     opened = false
     scheduleReopen(0)
   }
@@ -96,6 +91,9 @@ Item {
   function close() {
     opened = false
     closeWhenApplied = false
+    // An apply still in flight must not raise the window again behind a user
+    // who has just dismissed it.
+    reopenWhenApplied = false
     reopen.stop()
     revertTimer.stop()
     countdown.stop()
@@ -282,12 +280,15 @@ Item {
     countdown.restart()
     revertTimer.restart()
 
-    // The write above reloads Hyprland and re-modesets every display, which
-    // destroys this overlay's surface underneath it. Stand the window back up
-    // once the new geometry has settled, so the confirm-or-revert prompt is
-    // still there to answer.
-    opened = false
-    scheduleReopen(settleDelay)
+    // Applying does not reload Hyprland: writeLayout sets each rule directly,
+    // precisely so no display takes a modeset. So there is nothing for the
+    // overlay to sit out — it stays up while the geometry moves under it.
+    //
+    // It is still stood back up once the work finishes, because a compositor
+    // that does take the surface leaves this believing it is still open, and
+    // the confirm-or-revert prompt has to be there to answer. Waiting on the
+    // apply itself rather than on a fixed delay keeps that to a blink.
+    reopenWhenApplied = true
   }
 
   function confirmLayout() {
@@ -321,7 +322,7 @@ Item {
   // holding.
   Timer {
     id: reopen
-    interval: root.settleDelay
+    interval: 0
     repeat: false
     onTriggered: {
       root.refresh()
@@ -373,14 +374,29 @@ Item {
   }
 
   property bool closeWhenApplied: false
+  property bool reopenWhenApplied: false
 
   Process {
     id: applyProc
     stdout: StdioCollector { waitForEnd: true }
     onRunningChanged: {
-      if (running || !root.closeWhenApplied) return
-      root.closeWhenApplied = false
-      root.close()
+      if (running) return
+
+      if (root.closeWhenApplied) {
+        root.closeWhenApplied = false
+        root.reopenWhenApplied = false
+        root.close()
+        return
+      }
+
+      if (root.reopenWhenApplied) {
+        root.reopenWhenApplied = false
+        // Only a false-to-true turn builds a new surface, so a window that is
+        // still up is dropped and immediately raised again rather than left to
+        // an assumption about whether the compositor kept it.
+        root.opened = false
+        root.scheduleReopen(0)
+      }
     }
   }
 
