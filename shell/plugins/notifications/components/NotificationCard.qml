@@ -34,9 +34,14 @@ BorderSurface {
 
   signal closeRequested()
   signal cardClicked()
+  // A persisted image reference can go stale — a capture that never landed,
+  // a trimmed copy — so a load failure falls back to the app icon.
+  property bool imageFailed: false
+  onImageChanged: imageFailed = false
+
   // Prefer per-notification media/avatar data, then fall back to the app icon.
   // The `check` flag avoids Qt's missing-texture placeholder for unknown names.
-  readonly property string smallIconSource: image.length > 0 ? image : iconSource(appIcon)
+  readonly property string smallIconSource: image.length > 0 && !imageFailed ? image : iconSource(appIcon)
   readonly property bool hasGlyph: glyph.length > 0
   readonly property bool compactGlyph: NotificationLogic.shouldRenderCompactGlyph(glyph, smallIconSource, singleLineToast)
   readonly property bool hasSmallIcon: smallIconSource.length > 0
@@ -128,6 +133,12 @@ BorderSurface {
           asynchronous: true
           smooth: true
           visible: !root.hasGlyph || smallIconImage.status === Image.Ready
+          // When image.length > 0 and imageFailed is still false, the source
+          // IS the image — so this error is the image's, not the app icon's.
+          onStatusChanged: {
+            if (status === Image.Error && root.image.length > 0 && !root.imageFailed)
+              root.imageFailed = true
+          }
         }
 
         // Glyph fallback (Nerd Font character) when no image icon is
