@@ -11,12 +11,16 @@ panel only ever reads the JSON this prints.
 """
 
 import argparse
+import fcntl
+import hashlib
 import json
 import os
 import select
 import shutil
 import sqlite3
 import subprocess
+import sys
+import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -24,6 +28,14 @@ from pathlib import Path
 AGENT_ID = "codex"
 AGENT_NAME = "Codex"
 AUTH_HELP = "Run `codex login` to authenticate."
+
+# A scan this recent is only reused to dedup concurrent collector runs (the
+# update command backgrounds one per agent while the panel refreshes on its
+# own); every periodic widget refresh lands a real rescan, however low
+# refreshIntervalSec is set. --limits-only promises only fresh limits, so it
+# may reuse a scan for up to 15 minutes.
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
 
 
 def local_day(value):
@@ -197,16 +209,47 @@ def scan_opencode_sessions():
   # A subscription burned entirely through opencode leaves no native session
   # files, but opencode records per-message provider, model, and token usage
   # in its own database. Read-only: opencode may be writing right now.
+  # Returns whether the scan ran to completion: a scan cut short by a
+  # database error still contributes what it read, but must not be cached
+  # as if it were the whole story.
   db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
   if not db.is_file():
-    return
+    return True
   try:
     conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
   except sqlite3.Error:
-    return
+    return False
   try:
     conn.execute("PRAGMA query_only = ON")
-    for session_id, raw in conn.execute("SELECT session_id, data FROM message"):
+    # OpenCode DBs grow huge (every historical message, JSON included), and
+    # Python-side json.loads of every row wasted ~600 MB of RSS on machines
+    # whose subscription never ran on OpenAI. The json_extract conditions are
+    # the authority for the rows that reach them: role == "assistant" and
+    # providerID == "openai", the same exact-match values the Python filter
+    # below checks. The guards in front are pure acceleration, not a perfect
+    # proxy for the Python filter:
+    #   - The LIKE gates skip rows whose JSON cannot contain the two
+    #     key/value pairs, avoiding the JSON parse of tens-of-MB blobs. They
+    #     can differ from json.loads on duplicate keys (Python keeps the
+    #     last, SQLite json_extract keeps the first) and ASCII-escaped
+    #     values (\"ass\\u0069stant\" decodes for Python but not for LIKE),
+    #     so a row the authority would accept can be gated out. Both cases
+    #     are vanishingly rare in real opencode data.
+    #   - json_valid guards the parse itself: json_extract() RAISES on
+    #     malformed JSON instead of returning NULL, and one such row would
+    #     otherwise abort the whole scan. SQLite does not promise that AND
+    #     terms evaluate left to right, so the guard is a CASE around each
+    #     json_extract rather than a separate AND term. Rows that are not
+    #     well-formed JSON are skipped here; the per-row try/except below
+    #     stays as the final safety net for rows that pass the SQL filter
+    #     but fail json.loads.
+    for session_id, raw in conn.execute(
+      "SELECT session_id, data FROM message"
+      " WHERE data LIKE '%\"role\"%:%\"assistant\"%'"
+      " AND data LIKE '%\"providerID\"%:%\"openai\"%'"
+      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.role') END = 'assistant'"
+      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.providerID') END = 'openai'"
+    ):
       # One malformed row must not abort the scan, so every shape assumption
       # lives inside the try.
       try:
@@ -232,9 +275,12 @@ def scan_opencode_sessions():
         continue
       add_usage(day, "opencode:" + str(session_id), model, input_tokens, output_tokens, cache_read, cache_write)
   except sqlite3.Error:
-    pass
+    # Transient lock, schema migration, corruption: the numbers stop here,
+    # incomplete.
+    return False
   finally:
     conn.close()
+  return True
 
 
 def scan_native_codex_sessions():
@@ -289,6 +335,143 @@ def scan_native_codex_sessions():
           add_usage(day, str(path), current_model, input_tokens, output_tokens, cache_read, cache_write)
     except Exception:
       continue
+
+
+def cache_root():
+  root = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def scan_cache_paths():
+  codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+  db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
+  # The digest covers every data path the scan reads: the codex session
+  # roots, the opencode DB, and (via Path.home()) the pi/omp session roots.
+  digest = hashlib.sha1((str(Path.home()) + "\n" + str(codex_home) + "\n" + str(db)).encode("utf-8")).hexdigest()[:16]
+  root = cache_root()
+  return root / f"codex-scan-{digest}.json", root / f"codex-scan-{digest}.lock"
+
+
+def read_fresh_json(path, max_age_seconds):
+  if max_age_seconds <= 0 or not path.exists():
+    return None
+  try:
+    # A negative age means the mtime is in the future: the clock moved
+    # backwards since the write, so the cache's freshness cannot be trusted.
+    age = time.time() - path.stat().st_mtime
+    if 0 <= age <= max_age_seconds:
+      return json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+  return None
+
+
+def write_json(path, payload):
+  # A temp name unique to this writer, not derived from the target: several
+  # collectors can run at once (the update command backgrounds one per agent,
+  # the panel refreshes on its own), and a shared temp path means the second
+  # replace finds the first one's file already moved away.
+  handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    # mkstemp opens at 0600; nothing in the cache is sensitive, so open it
+    # up to the usual 0644.
+    tmp.chmod(0o644)
+    tmp.replace(path)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
+
+
+# The cache payload is a versioned envelope around the local-stats dict, so a
+# corrupted or foreign-shaped file is a cache miss (rescan + rewrite) instead
+# of a crash or a garbage record.
+def read_cached_stats(cache_file, max_age_seconds):
+  cached = read_fresh_json(cache_file, max_age_seconds)
+  if not isinstance(cached, dict) or cached.get("schemaVersion") != 1:
+    return None
+  # today* fields only mean "today" on the day they were scanned. A cache
+  # from another local date (midnight passed, or the clock moved) is a miss,
+  # not merely old, whatever its mtime says.
+  if cached.get("scanDate") != today:
+    return None
+  stats = cached.get("stats")
+  if not isinstance(stats, dict):
+    return None
+  if not all(key in stats for key in ("todayPrompts", "todayTotalTokens", "recentDays", "activeDates", "modelUsage")):
+    return None
+  return stats
+
+
+def write_cached_stats(cache_file, stats):
+  try:
+    write_json(cache_file, {"schemaVersion": 1, "scanDate": today, "stats": stats})
+  except Exception as exc:
+    print(f"omarchy-agent-usage-codex: could not write usage cache ({exc})", file=sys.stderr)
+
+
+def local_stats():
+  """Snapshot the aggregated local usage into the record's stats dict."""
+  return {
+    "todayPrompts": today_prompts,
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": today_total_tokens,
+    "todayTokensByModel": today_tokens_by_model,
+    "recentDays": [recent[day] for day in recent_dates],
+    "totalPrompts": total_prompts,
+    "totalSessions": len(total_sessions),
+    # Days with any recorded usage, for the all-time "N days" summary. The
+    # dates travel too: merging snapshots from several machines needs their
+    # union, which a count alone cannot give.
+    "activeDays": len(active_days),
+    "activeDates": sorted(active_days),
+    "modelUsage": model_usage,
+  }
+
+
+def run_local_scans():
+  scan_pi_sessions()
+  scan_native_codex_sessions()
+  complete = scan_opencode_sessions()
+  return local_stats(), complete
+
+
+def cached_local_stats(max_age):
+  """Local stats, with the cache as a pure optimization.
+
+  The cache must never take the collector down: any cache-layer failure
+  (unwritable cache root, lock errors, disk full) degrades to a direct scan
+  and a warning on stderr. The JSON record is the contract; the cache is not.
+  """
+  try:
+    return _cached_local_stats(max_age)
+  except Exception as exc:
+    print(f"omarchy-agent-usage-codex: cache unavailable ({exc}); scanning directly", file=sys.stderr)
+    stats, _ = run_local_scans()
+    return stats
+
+
+def _cached_local_stats(max_age):
+  cache_file, lock_file = scan_cache_paths()
+
+  cached = read_cached_stats(cache_file, max_age)
+  if cached is not None:
+    return cached
+
+  with lock_file.open("w") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    cached = read_cached_stats(cache_file, max_age)
+    if cached is not None:
+      return cached
+    stats, complete = run_local_scans()
+    # An interrupted scan still serves this run, but caching it would
+    # suppress the missing usage for every reader until the cache expires.
+    if complete:
+      write_cached_stats(cache_file, stats)
+    return stats
 
 
 def rpc_request(proc, request_id, method, params=None, timeout=8):
@@ -390,16 +573,17 @@ def fetch_codex_rpc():
 
 def main():
   parser = argparse.ArgumentParser()
-  # Local stats and limits come from the same cheap scan, so there is no
-  # cache to force past and no faster limits-only path. The flags exist so
-  # every collector accepts the same invocation.
+  # --force rescans everything and rewrites the cache. --limits-only is kept
+  # for CLI compatibility with the panel's refreshLimits() call: only the
+  # limits probe must be fresh, so it may reuse a scan for far longer than a
+  # normal run, whose short window exists purely to dedup concurrent
+  # collector runs.
   parser.add_argument("--force", action="store_true")
   parser.add_argument("--limits-only", action="store_true")
-  parser.parse_args()
+  args = parser.parse_args()
 
-  scan_pi_sessions()
-  scan_native_codex_sessions()
-  scan_opencode_sessions()
+  max_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else SCAN_REUSE_SECONDS)
+  stats = cached_local_stats(max_age)
   rpc = fetch_codex_rpc()
 
   record = {
@@ -409,20 +593,8 @@ def main():
     "updatedAt": datetime.now(timezone.utc).isoformat(),
     "ready": True,
     "hasLocalStats": True,
-    "todayPrompts": today_prompts,
-    "todaySessions": len(today_sessions),
-    "todayTotalTokens": today_total_tokens,
-    "todayTokensByModel": today_tokens_by_model,
-    "recentDays": [recent[day] for day in recent_dates],
-    "totalPrompts": total_prompts,
-    "totalSessions": len(total_sessions),
-    # Days with any recorded usage, for the all-time "N days" summary. The
-    # dates travel too: merging snapshots from several machines needs their
-    # union, which a count alone cannot give.
-    "activeDays": len(active_days),
-    "activeDates": sorted(active_days),
-    "modelUsage": model_usage,
   }
+  record.update(stats)
   record.update(rpc)
   print(json.dumps(record, separators=(",", ":")))
 
