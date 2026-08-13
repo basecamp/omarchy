@@ -552,6 +552,13 @@ ShellRoot {
       return hidden === true
     }
     invokeIfLoaded(id, "close", null)
+    // Drop any queued open payloads: a payload staged for a load or reload
+    // still in flight must not reopen a panel the user just dismissed.
+    if (pendingPayloads[id]) {
+      var pendingNext = ({})
+      for (var p in pendingPayloads) if (p !== id) pendingNext[p] = pendingPayloads[p].slice()
+      pendingPayloads = pendingNext
+    }
     if (!openPanelIds[id]) return true
     var next = ({})
     for (var k in openPanelIds) if (k !== id) next[k] = openPanelIds[k]
@@ -686,6 +693,22 @@ ShellRoot {
     return out
   }
 
+  // Forget a panel's open state and any staged payload — for a plugin whose
+  // panel went away, they would otherwise replay on a later summon or enable.
+  function dropPanelStateFor(pluginId) {
+    var id = String(pluginId || "")
+    if (openPanelIds[id]) {
+      var opened = ({})
+      for (var openId in openPanelIds) if (openId !== id) opened[openId] = openPanelIds[openId]
+      openPanelIds = opened
+    }
+    if (pendingPayloads[id]) {
+      var pendingNext = ({})
+      for (var p in pendingPayloads) if (p !== id) pendingNext[p] = pendingPayloads[p].slice()
+      pendingPayloads = pendingNext
+    }
+  }
+
   function syncReloadedPanelEntries(reloadIds) {
     var next = panelEntries.slice()
     var changed = false
@@ -705,6 +728,7 @@ ShellRoot {
       } else if (index !== -1 && !entry) {
         next.splice(index, 1)
         changed = true
+        shell.dropPanelStateFor(id)
       }
     }
     if (changed) panelEntries = next
@@ -1017,6 +1041,12 @@ ShellRoot {
       var interrupted = shell.pluginRegistry.registryRevision !== shell.pluginReloadBaseRevision + 1
       shell._syncServices()
       if (fullReload || interrupted || !shell.hasPluginReloads(reloads)) {
+        // Replacing panelEntries wholesale skips syncReloadedPanelEntries'
+        // cleanup, so drop state for reloaded plugins whose panel went away.
+        if (!fullReload) {
+          for (var droppedId in reloads)
+            if (!shell.panelEntryFor(droppedId)) shell.dropPanelStateFor(droppedId)
+        }
         shell.panelEntries = shell.computePanelEntries()
         shell.syncPluginWidgets()
       } else {
