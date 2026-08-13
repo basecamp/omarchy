@@ -91,9 +91,6 @@ Item {
   function close() {
     opened = false
     closeWhenApplied = false
-    // An apply still in flight must not raise the window again behind a user
-    // who has just dismissed it.
-    reopenWhenApplied = false
     reopen.stop()
     revertTimer.stop()
     countdown.stop()
@@ -280,15 +277,11 @@ Item {
     countdown.restart()
     revertTimer.restart()
 
-    // Applying does not reload Hyprland: writeLayout sets each rule directly,
-    // precisely so no display takes a modeset. So there is nothing for the
-    // overlay to sit out — it stays up while the geometry moves under it.
-    //
-    // It is still stood back up once the work finishes, because a compositor
-    // that does take the surface leaves this believing it is still open, and
-    // the confirm-or-revert prompt has to be there to answer. Waiting on the
-    // apply itself rather than on a fixed delay keeps that to a blink.
-    reopenWhenApplied = true
+    // Nothing else to do. Applying does not reload Hyprland — writeLayout sets
+    // each rule directly, precisely so no display takes a modeset — so the
+    // surface this overlay is drawn on outlives the change, and the window can
+    // stay exactly where it is while the geometry moves under it. Dropping and
+    // raising it here to be safe would be the one thing that made it flash.
   }
 
   function confirmLayout() {
@@ -374,29 +367,14 @@ Item {
   }
 
   property bool closeWhenApplied: false
-  property bool reopenWhenApplied: false
 
   Process {
     id: applyProc
     stdout: StdioCollector { waitForEnd: true }
     onRunningChanged: {
-      if (running) return
-
-      if (root.closeWhenApplied) {
-        root.closeWhenApplied = false
-        root.reopenWhenApplied = false
-        root.close()
-        return
-      }
-
-      if (root.reopenWhenApplied) {
-        root.reopenWhenApplied = false
-        // Only a false-to-true turn builds a new surface, so a window that is
-        // still up is dropped and immediately raised again rather than left to
-        // an assumption about whether the compositor kept it.
-        root.opened = false
-        root.scheduleReopen(0)
-      }
+      if (running || !root.closeWhenApplied) return
+      root.closeWhenApplied = false
+      root.close()
     }
   }
 
