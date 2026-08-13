@@ -114,7 +114,6 @@ Item {
   property var clickTargets: []
   property var moduleSlots: []
 
-
   function registerClickTarget(target) {
     if (!target || clickTargets.indexOf(target) !== -1) return
     var next = clickTargets.slice()
@@ -178,10 +177,16 @@ Item {
     return targetWindow(slot.activeItem) || targetWindow(slot)
   }
 
+  function sameScreen(left, right) {
+    if (!left || !right) return false
+    if (left === right) return true
+    return !!left.name && !!right.name && left.name === right.name
+  }
+
   function sameWindow(left, right) {
     if (!left || !right) return false
     if (left === right) return true
-    return !!left.screen && !!right.screen && !!left.screen.name && !!right.screen.name && left.screen.name === right.screen.name
+    return sameScreen(left.screen, right.screen)
   }
 
   function targetTooltipHovered(target) {
@@ -722,11 +727,12 @@ Item {
     return true
   }
 
+  // Only scheduleModuleRemoval sets a pending removal, and it has already
+  // checked the mutator is wired.
   function commitPendingRemoval() {
     var pending = barPendingRemoval
     barPendingRemoval = null
     if (!pending) return
-    if (!root.shell || typeof root.shell.mutateShellConfig !== "function") return
 
     root.shell.mutateShellConfig(function(config) {
       removeModuleFromConfig(config, pending.region, pending.name)
@@ -757,10 +763,12 @@ Item {
     return BarModel.dragDistanceOutside({ x: x, y: y }, screen.width, barSize)
   }
 
-  function playPoof(screen, x, y) {
-    barPoofScreen = screen
-    barPoofX = x
-    barPoofY = y
+  // Bursts at the live drag point, so it must run before clearBarDrag
+  // wipes it.
+  function playPoof() {
+    barPoofScreen = barDragScreen
+    barPoofX = barDragScreenX
+    barPoofY = barDragScreenY
     barPoofSerial++
     barPoofActive = true
     poofTimer.restart()
@@ -780,18 +788,9 @@ Item {
 
   function moduleDropAtScene(scenePoint, sourceSlot) {
     var sourceWindow = root.slotWindow(sourceSlot) || root.barDragWindow
-    if (sourceWindow && sourceWindow.contentItem) {
-      // Free-space drops count only inside the bar strip. The window itself
-      // spans the whole screen, so its bounds are not the bar's bounds.
-      var barPoint = sourceWindow.contentItem.mapFromItem(null, scenePoint.x, scenePoint.y)
-      var stripX = root.position === "right" ? sourceWindow.contentItem.width - root.barSize : 0
-      var stripY = root.position === "bottom" ? sourceWindow.contentItem.height - root.barSize : 0
-      var stripWidth = root.vertical ? root.barSize : sourceWindow.contentItem.width
-      var stripHeight = root.vertical ? sourceWindow.contentItem.height : root.barSize
-      if (barPoint.x < stripX || barPoint.x > stripX + stripWidth ||
-          barPoint.y < stripY || barPoint.y > stripY + stripHeight)
-        return null
-    }
+    // Free-space drops count only inside the bar strip. The window itself
+    // spans the whole screen, so its bounds are not the bar's bounds.
+    if (moduleRemoveDistance(windowScreenPoint(scenePoint, sourceWindow)) > 0) return null
 
     var candidates = []
     for (var i = 0; i < moduleSlots.length; i++) {
@@ -1165,10 +1164,10 @@ Item {
 
     Region {
       id: stripInputRegion
-      x: root.position === "right" ? barWindow.width - root.barSize : 0
-      y: root.position === "bottom" ? barWindow.height - root.barSize : 0
-      width: root.vertical ? root.barSize : barWindow.width
-      height: root.vertical ? barWindow.height : root.barSize
+      x: barStrip.x
+      y: barStrip.y
+      width: barStrip.width
+      height: barStrip.height
     }
 
     // The bar itself, pinned to its screen edge.
@@ -1315,11 +1314,8 @@ Item {
     id: ghostWindow
 
     required property var ghostScreen
-    readonly property bool screenMatches: root.barDragScreen === ghostScreen ||
-      (root.barDragScreen && ghostScreen && root.barDragScreen.name && ghostScreen.name && root.barDragScreen.name === ghostScreen.name)
-    readonly property bool active: root.barDragSource && root.barDragScreen && screenMatches
-    readonly property bool poofMatches: root.barPoofScreen === ghostScreen ||
-      (root.barPoofScreen && ghostScreen && root.barPoofScreen.name && ghostScreen.name && root.barPoofScreen.name === ghostScreen.name)
+    readonly property bool active: root.barDragSource && root.sameScreen(root.barDragScreen, ghostScreen)
+    readonly property bool poofMatches: root.sameScreen(root.barPoofScreen, ghostScreen)
     readonly property bool poofShown: root.barPoofActive && poofMatches
     readonly property var sourceItem: root.barDragSource ? root.barDragSource.activeItem : null
     readonly property int ghostPadding: Style.space(1)
@@ -1453,9 +1449,7 @@ Item {
     id: moveGhostWindow
 
     required property var ghostScreen
-    readonly property bool screenMatches: root.barMoveScreen === ghostScreen ||
-      (root.barMoveScreen && ghostScreen && root.barMoveScreen.name && ghostScreen.name && root.barMoveScreen.name === ghostScreen.name)
-    visible: root.barMoveActive && screenMatches
+    visible: root.barMoveActive && root.sameScreen(root.barMoveScreen, ghostScreen)
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: "omarchy-bar-move-ghost"
@@ -1949,9 +1943,6 @@ Item {
         var targetSlot = root.barDragTarget
         var afterTarget = root.barDragAfter
         var removeArmed = root.barDragRemoveArmed
-        var poofScreen = root.barDragScreen
-        var poofX = root.barDragScreenX
-        var poofY = root.barDragScreenY
 
         if (wasDragging) suppressClick = true
 
@@ -1962,7 +1953,7 @@ Item {
         // ghost and burst, and the slot hides via the pending removal in the
         // same frame the ghost disappears.
         if (wasDragging && removeArmed && root.scheduleModuleRemoval(slot))
-          root.playPoof(poofScreen, poofX, poofY)
+          root.playPoof()
 
         root.clearBarDrag()
 

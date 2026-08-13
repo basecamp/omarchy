@@ -241,7 +241,7 @@ assertDeepEqual(
 )
 assertEqual(bar.nearestDropTarget([], { x: 10, y: 10 }, false), null, 'bar reports no insertion edge without targets')
 assert(
-  /contentItem\.mapFromItem\(null, scenePoint\.x, scenePoint\.y\)[\s\S]*?return null/.test(barSource),
+  /if \(moduleRemoveDistance\(windowScreenPoint\(scenePoint, sourceWindow\)\) > 0\) return null/.test(barSource),
   'bar rejects free-space drops after the pointer leaves the bar'
 )
 assert(
@@ -307,15 +307,12 @@ for (const edge of ['top', 'bottom', 'left', 'right']) {
 // Idle, only the strip may take input, or the transparent expanse would eat
 // every click meant for the windows and desktop below it.
 assert(
-  /Region \{\s*\n\s*id: stripInputRegion[\s\S]*?height: root\.vertical \? barWindow\.height : root\.barSize/.test(barSource),
+  /Region \{\s*\n\s*id: stripInputRegion\s*\n\s*x: barStrip\.x\s*\n\s*y: barStrip\.y\s*\n\s*width: barStrip\.width\s*\n\s*height: barStrip\.height/.test(barSource),
   'the idle input region is exactly the bar strip'
 )
-// The window is no longer the bar's boundary once it can grow, so both the
-// free-space drop rejection and the removal arming measure against the strip.
-assert(
-  /var stripX = root\.position === "right" \? sourceWindow\.contentItem\.width - root\.barSize : 0/.test(barSource),
-  'free-space drops are bounded by the strip, not the window'
-)
+// The window is not the bar's boundary — it spans the whole screen — so both
+// the free-space drop rejection and the removal arming measure against the
+// strip, through the one function that knows its screen-space geometry.
 assert(
   /function moduleRemoveDistance\(screenPoint\) \{[\s\S]*?barDragScreen[\s\S]*?dragDistanceOutside/.test(barSource),
   'removal distance is measured from the strip in screen space'
@@ -332,7 +329,7 @@ assert(
 // every widget on every monitor, which stalls rendering long enough to
 // swallow the whole animation.
 assert(
-  /if \(wasDragging && removeArmed && root\.scheduleModuleRemoval\(slot\)\)\s*\n\s*root\.playPoof\(poofScreen, poofX, poofY\)\s*\n\s*\n?\s*root\.clearBarDrag\(\)/.test(barSource),
+  /if \(wasDragging && removeArmed && root\.scheduleModuleRemoval\(slot\)\)\s*\n\s*root\.playPoof\(\)\s*\n\s*\n?\s*root\.clearBarDrag\(\)/.test(barSource),
   'an armed release starts the poof before the drag state clears'
 )
 assert(
