@@ -39,10 +39,20 @@ Item {
   // how displays relate in space, and it collapses the arrangement to a single
   // display, which is exactly what this canvas draws.
   property string mirroringMonitor: ""
-  property string internalMonitor: ""
-  property string externalMonitor: ""
   readonly property bool mirrorEnabled: mirroringMonitor !== ""
-  readonly property bool mirrorAvailable: internalMonitor !== "" && externalMonitor !== ""
+
+  // Offer mirroring against the displays that are actually live, which is what
+  // the canvas draws. `omarchy-monitor-state` names its internal and external
+  // displays out of `hyprctl monitors all`, so it names ones the user switched
+  // off too: gating on those put Mirror above a canvas holding a single
+  // rectangle, and pressing it silently re-enabled the panel that was off.
+  readonly property bool internalActive: Model.hasActiveDisplay(displays, true)
+  readonly property bool externalActive: Model.hasActiveDisplay(displays, false)
+
+  // Mirroring withdraws the mirrored output from the active listing altogether,
+  // so the pair test cannot hold while it is on. Keep the row up in that case
+  // regardless, or Extend becomes unreachable from the only place offering it.
+  readonly property bool mirrorAvailable: mirrorEnabled || (internalActive && externalActive)
 
   // Switching mode adds or removes an output, and this overlay is anchored to
   // one: mirroring withdraws the mirrored display from Wayland, which leaves
@@ -380,8 +390,6 @@ Item {
       waitForEnd: true
       onStreamFinished: {
         var lines = String(text || "").split("\n")
-        root.internalMonitor = String(lines[1] || "").trim()
-        root.externalMonitor = String(lines[2] || "").trim()
         root.mirroringMonitor = String(lines[4] || "").trim()
       }
     }

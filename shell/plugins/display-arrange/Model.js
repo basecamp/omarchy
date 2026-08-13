@@ -6,6 +6,23 @@
 // show two rectangles whose relative sizes have nothing to do with how the
 // desktop behaves.
 
+// The built-in panel, by the connector names Hyprland gives it.
+function isInternalName(name) {
+  return /^(eDP|LVDS|DSI)-/.test(String(name || ""))
+}
+
+// Whether the live displays include a built-in panel, or an external one. Fed
+// the active listing rather than `monitors all`, so a display the user switched
+// off does not count as one that mirroring can act on.
+function hasActiveDisplay(displays, internal) {
+  if (!Array.isArray(displays)) return false
+
+  for (var i = 0; i < displays.length; i++) {
+    if (isInternalName(displays[i] && displays[i].name) === internal) return true
+  }
+  return false
+}
+
 // Transforms 1, 3, 5 and 7 are the 90 and 270 degree rotations, which swap the
 // display's width and height.
 function isRotated(transform) {
@@ -362,6 +379,8 @@ var displayGlyph = "\uf0379"
 if (typeof module !== "undefined") {
   module.exports = {
     displayGlyph: displayGlyph,
+    isInternalName: isInternalName,
+    hasActiveDisplay: hasActiveDisplay,
     isRotated: isRotated,
     logicalRect: logicalRect,
     logicalRects: logicalRects,

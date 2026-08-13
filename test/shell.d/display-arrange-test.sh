@@ -25,6 +25,29 @@ assertDeepEqual(
   'a missing scale falls back to 1 rather than dividing by zero'
 )
 
+// --- mirroring is offered against live displays, not switched-off ones ---
+
+assertEqual(arrange.isInternalName('eDP-1'), true, 'eDP is the built-in panel')
+assertEqual(arrange.isInternalName('DP-7'), false, 'DP is an external display')
+assertEqual(arrange.isInternalName(''), false, 'a nameless display is not the panel')
+
+const bothLive = [{ name: 'eDP-1' }, { name: 'DP-7' }]
+assertEqual(arrange.hasActiveDisplay(bothLive, true), true, 'the built-in panel is live')
+assertEqual(arrange.hasActiveDisplay(bothLive, false), true, 'the external display is live')
+
+// The regression: `hyprctl monitors all` still names a display the user
+// switched off, so gating mirroring on it offered Mirror with nothing to
+// mirror to, and pressing it re-enabled the panel that was deliberately off.
+const panelOff = [{ name: 'DP-7' }]
+assertEqual(arrange.hasActiveDisplay(panelOff, true), false, 'a switched-off panel is not live')
+assertEqual(arrange.hasActiveDisplay(panelOff, false), true, 'the external display is still live')
+
+const laptopOnly = [{ name: 'eDP-1' }]
+assertEqual(arrange.hasActiveDisplay(laptopOnly, false), false, 'no external display to mirror to')
+
+assertEqual(arrange.hasActiveDisplay([], true), false, 'no displays means nothing is live')
+assertEqual(arrange.hasActiveDisplay(null, true), false, 'a missing listing is not live')
+
 // --- the canvas fits the whole layout ---
 
 const twoUp = [
