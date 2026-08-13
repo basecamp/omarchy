@@ -35,6 +35,7 @@ Item {
   property int failedAttempts: 0
   property string backgroundPath: ""
   property int backgroundVersion: 0
+  property bool displayBlanked: false
   property string lastEvent: "init"
   property string lastEventAt: ""
   property bool strandedLock: false
@@ -193,12 +194,20 @@ Item {
   }
 
   function runWake() {
+    displayBlanked = false
     if (!wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
   }
 
   function runBlank() {
+    displayBlanked = true
     if (!blankProcess.running) blankProcess.running = true
+  }
+
+  function handlePointerMoved() {
+    var wasBlanked = displayBlanked
+    runWake()
+    if (wasBlanked) recordFaceActivity()
   }
 
   function submitPassword(value) {
@@ -375,6 +384,7 @@ Item {
         onSubmitPassword: function(password) { root.submitPassword(password) }
         onClearFailureRequested: root.failureMessage = ""
         onActivityRequested: root.recordFaceActivity()
+        onPointerMoved: root.handlePointerMoved()
         onWakeRequested: root.runWake()
       }
 

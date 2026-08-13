@@ -43,14 +43,22 @@ assert(
 const mouseAreaMatch = lockViewQml.match(/MouseArea \{([\s\S]*?)\n    \}/)
 const mouseArea = mouseAreaMatch ? mouseAreaMatch[1] : ''
 assert(
-  /onPositionChanged: root\.wakeRequested\(\)/.test(mouseArea) && !mouseArea.includes('activityRequested'),
-  'passive pointer movement wakes the display but does not start face authentication'
+  /onPositionChanged: root\.pointerMoved\(\)/.test(mouseArea) && !mouseArea.includes('activityRequested'),
+  'pointer movement delegates wake-sensitive activation to the lock service'
+)
+
+assert(
+  /function runWake\(\) \{\s*displayBlanked = false/.test(serviceQml) &&
+    /function runBlank\(\) \{\s*displayBlanked = true/.test(serviceQml) &&
+    /function handlePointerMoved\(\) \{\s*var wasBlanked = displayBlanked\s*runWake\(\)\s*if \(wasBlanked\) recordFaceActivity\(\)/.test(serviceQml),
+  'only pointer movement that wakes a blanked lock requests face authentication'
 )
 
 assert(
   /enabled: root\.inputEnabled && !root\.authenticatingPassword/.test(lockViewQml) &&
     /readOnly: root\.authenticatingPassword/.test(lockViewQml) &&
-    /onActivityRequested: root\.recordFaceActivity\(\)/.test(serviceQml),
+    /onActivityRequested: root\.recordFaceActivity\(\)/.test(serviceQml) &&
+    /onPointerMoved: root\.handlePointerMoved\(\)/.test(serviceQml),
   'face activity observation leaves password input enabled and is wired only by the live lock view'
 )
 JS

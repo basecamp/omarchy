@@ -46,6 +46,7 @@ Item {
   signal passwordTextEdited(string password)
   signal clearFailureRequested()
   signal activityRequested()
+  signal pointerMoved()
   signal wakeRequested()
 
   // Cache-busts the lock background by appending `?v=`. Adding a query
@@ -120,7 +121,7 @@ Item {
     MouseArea {
       anchors.fill: parent
       hoverEnabled: true
-      onPositionChanged: root.wakeRequested()
+      onPositionChanged: root.pointerMoved()
     }
 
     // Observe mouse and touch taps without taking them from the password field.
