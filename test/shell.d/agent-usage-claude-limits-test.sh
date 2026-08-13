@@ -72,6 +72,89 @@ for payload in '{"five_hour":{"utilization":78.0},"limits":[{"kind":"session","p
 done
 pass "Claude collector adds no limit when the payload scopes none"
 
+# Only the Claude Code CLI refreshes the saved token, so between its runs the
+# collector can find a lapsed one. Drive collect_limits over a planted cache
+# with the network unreachable, so nothing but the credential state decides
+# the answer.
+CACHE_HOME=$(mktemp -d)
+trap 'rm -rf "$CACHE_HOME"' EXIT
+
+collect_limits() {
+  COLLECTOR="$ROOT/bin/omarchy-agent-usage-claude" TOKEN="$1" EXPIRES_AT="$2" CACHED="$3" \
+    XDG_CACHE_HOME="$CACHE_HOME" python3 - <<'PY'
+import importlib.machinery, importlib.util, json, os, pathlib
+
+loader = importlib.machinery.SourceFileLoader("collector", os.environ["COLLECTOR"])
+spec = importlib.util.spec_from_loader(loader.name, loader)
+collector = importlib.util.module_from_spec(spec)
+loader.exec_module(collector)
+
+cache = collector.cache_root() / "claude-limits.json"
+cached = os.environ["CACHED"]
+if cached:
+  cache.write_text(cached, encoding="utf-8")
+elif cache.exists():
+  cache.unlink()
+
+def unreachable(request, timeout=None):
+  raise OSError("no route to host")
+
+collector.urllib.request.urlopen = unreachable
+print(json.dumps(collector.collect_limits(os.environ["TOKEN"], int(os.environ["EXPIRES_AT"]), False)))
+PY
+}
+
+# An open window and one that already reset, cached long enough ago that a live
+# token would re-probe rather than reuse them.
+open_at=$(python3 -c 'import datetime as dt; print((dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=3)).isoformat())')
+past_at=$(python3 -c 'import datetime as dt; print((dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=3)).isoformat())')
+cache=$(jq -nc --arg open "$open_at" --arg past "$past_at" '{
+  fetchedAtMs: 1,
+  limits: [
+    { label: "Session (5-hour)", percent: 0.31, resetsAt: $past },
+    { label: "Weekly (7-day)", percent: 0.11, resetsAt: $open }
+  ]
+}')
+
+# An expired token used to return an empty limits list and no status at all,
+# which hides the panel's whole limits section without saying why.
+expired=$(collect_limits "token" 1000 "$cache")
+[[ $(jq -r '.usageStatusText' <<<"$expired") == "Sign-in expired" ]] ||
+  fail "Claude collector reports an expired sign-in" "$expired"
+[[ $(jq -r '.authHelpText' <<<"$expired") == *"claude auth login"* ]] ||
+  fail "Claude collector says how to refresh an expired sign-in" "$expired"
+pass "Claude collector reports an expired sign-in instead of hiding the section"
+
+# The window that has not reset is still true; the one that has is not.
+[[ $(jq -c '[.limits[].label]' <<<"$expired") == '["Weekly (7-day)"]' ]] ||
+  fail "Claude collector keeps only cached windows that have not reset" "$expired"
+pass "Claude collector keeps only cached windows that have not reset"
+
+# Nothing worth showing: the status still explains the silence.
+stale=$(collect_limits "token" 1000 "$(jq -c '.limits |= [.[0]]' <<<"$cache")")
+[[ $(jq -c '.limits' <<<"$stale") == "[]" && $(jq -r '.usageStatusText' <<<"$stale") == "Sign-in expired" ]] ||
+  fail "Claude collector drops a wholly reset cache but keeps explaining itself" "$stale"
+[[ $(jq -r '.authHelpText' <<<"$stale") != *"last known"* ]] ||
+  fail "Claude collector promises no last-known limits when it has none" "$stale"
+pass "Claude collector drops a wholly reset cache but keeps explaining itself"
+
+# A signed-out machine says so, and still shows what it last knew.
+signed_out=$(collect_limits "" 0 "$cache")
+[[ $(jq -r '.usageStatusText' <<<"$signed_out") == "Waiting for auth" ]] ||
+  fail "Claude collector still reports a missing token" "$signed_out"
+[[ $(jq -c '[.limits[].label]' <<<"$signed_out") == '["Weekly (7-day)"]' ]] ||
+  fail "Claude collector serves open cached windows without a token" "$signed_out"
+pass "Claude collector serves open cached windows without a token"
+
+# A live token that cannot reach the endpoint keeps the old contract: the open
+# window stands in, and the shell is asked to retry sooner than its interval.
+unreachable=$(collect_limits "token" 0 "$cache")
+[[ $(jq -c '[.limits[].label]' <<<"$unreachable") == '["Weekly (7-day)"]' ]] ||
+  fail "Claude collector falls back to cache when the probe cannot connect" "$unreachable"
+[[ $(jq -r '.retryAdvised' <<<"$unreachable") == "true" ]] ||
+  fail "Claude collector advises a retry after a transport failure" "$unreachable"
+pass "Claude collector falls back to cache when the probe cannot connect"
+
 # The panel reads a window out of a label, and that guess cannot survive a
 # model name — "Opus 5 (1M context)" parses as a one-minute window. A collector
 # that states the title outright is taken at its word.
