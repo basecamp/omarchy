@@ -19,11 +19,13 @@ DISABLE_TOGGLE="internal-monitor-disable"
 TOGGLE_FLAG="$HOME/.local/state/omarchy/toggles/hypr/$TOGGLE.lua"
 
 INTERNAL=$(omarchy-hyprland-monitor-laptop)
-# The first active external monitor
-EXTERNAL=$(hyprctl monitors -j | jq -r '.[] | select(.name | test("^(eDP|LVDS|DSI)-") | not).name' | head -n 1)
+# Every active external monitor, not just the first. Mirroring means every other
+# display shows the laptop panel; leaving the second and third extended made
+# "Mirror" only half true, and which display got it came down to output order.
+mapfile -t EXTERNALS < <(hyprctl monitors -j | jq -r '.[] | select(.name | test("^(eDP|LVDS|DSI)-") | not).name')
 
 on() {
-  if [[ -z $EXTERNAL ]]; then
+  if ((${#EXTERNALS[@]} == 0)); then
     omarchy-notification-send -g 󰍹 "No external monitors found for mirror"
     exit 1
   fi
@@ -47,20 +49,28 @@ on() {
     position=$(hyprctl monitors -j | jq -r --arg name "$INTERNAL" '[.[] | select(.name == $name)][0] | if . then "\(.x)x\(.y)" else "auto" end')
     [[ $position =~ ^[0-9-]+x[0-9-]+$ ]] || position="auto"
 
-    # Carry the external display's rotation. Hyprland merges monitor rules per
-    # identifier, so anything this rule leaves out is dropped rather than kept,
-    # and a rotated display would start mirroring sideways relative to the panel
-    # it is on.
-    local transform
-    transform=$(hyprctl monitors -j | jq -r --arg name "$EXTERNAL" '[.[] | select(.name == $name)][0].transform // 0')
-    [[ $transform =~ ^[0-9]+$ ]] || transform=0
+    # Every mirror sits on the source's region, so they all take the same
+    # position. Rotation is per display: Hyprland merges monitor rules per
+    # identifier, so anything a rule leaves out is dropped rather than kept, and
+    # a rotated display would start mirroring sideways relative to the panel.
+    local external transform transform_rule
+    : >"$TOGGLE_FLAG"
+    for external in "${EXTERNALS[@]}"; do
+      transform=$(hyprctl monitors -j | jq -r --arg name "$external" '[.[] | select(.name == $name)][0].transform // 0')
+      [[ $transform =~ ^[0-9]+$ ]] || transform=0
 
-    local transform_rule=""
-    ((transform != 0)) && transform_rule=", transform = $transform"
+      transform_rule=""
+      ((transform != 0)) && transform_rule=", transform = $transform"
 
-    printf 'hl.monitor({ output = "%s", mode = "preferred", position = "%s", scale = 1, mirror = "%s"%s })\n' \
-      "$EXTERNAL" "$position" "$INTERNAL" "$transform_rule" >"$TOGGLE_FLAG"
-    announce -g 󰍹 "Mirroring enabled ($EXTERNAL)"
+      printf 'hl.monitor({ output = "%s", mode = "preferred", position = "%s", scale = 1, mirror = "%s"%s })\n' \
+        "$external" "$position" "$INTERNAL" "$transform_rule" >>"$TOGGLE_FLAG"
+    done
+
+    if ((${#EXTERNALS[@]} == 1)); then
+      announce -g 󰍹 "Mirroring enabled (${EXTERNALS[0]})"
+    else
+      announce -g 󰍹 "Mirroring enabled (${#EXTERNALS[@]} displays)"
+    fi
     hyprctl reload
   fi
 }
