@@ -76,14 +76,16 @@ function eventKeyboardName(event) {
 // Hyprland reports more than keyboards as keyboards. fcitx5 binds a virtual one
 // to inject through, which keeps the us layout the input method gave it, and the
 // ACPI power button, lid switch and sleep key each arrive carrying the seat's
-// layout list without anyone ever typing on them. Both answer to switchxkblayout
-// and both can hold the main flag, so a widget that reads or switches whatever
-// the seat hands it ends up describing a button. Leave them out and what remains
-// is keyboards, which is what the rest of this file can then assume.
+// layout list without anyone ever typing on them. T2 Macs do the same with the
+// headphone jack's inline remote, exposed through apple-bce as apple-headset.
+// They all answer to switchxkblayout and can hold the main flag, so a widget
+// that reads or switches whatever the seat hands it ends up describing a
+// button. Leave them out and what remains is keyboards, which is what the rest
+// of this file can then assume.
 //
 // Missing a name here costs the accuracy the seat had before, never a keyboard:
 // anything unrecognised stays in the list.
-var UNTYPED_KEYBOARDS = /^(hl-virtual-keyboard|power-button|sleep-button|lid-switch|video-bus)/
+var UNTYPED_KEYBOARDS = /^(hl-virtual-keyboard|power-button|sleep-button|lid-switch|video-bus|apple-headset)/
 
 function isTypedKeyboard(name) {
   return !UNTYPED_KEYBOARDS.test(String(name || ""))
