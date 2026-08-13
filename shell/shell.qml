@@ -304,6 +304,8 @@ ShellRoot {
   }
 
   property var _services: ({})
+  property int pluginServiceLoadRevision: 0
+  property var pluginServiceLoadRevisions: ({})
 
   function serviceFor(pluginId) {
     return _services[String(pluginId)] || null
@@ -311,6 +313,17 @@ ShellRoot {
 
   function firstPartyServiceFor(pluginId) {
     return serviceFor(pluginId)
+  }
+
+  function advancePluginServiceLoad(pluginId) {
+    var key = String(pluginId || "")
+    if (!key) return 0
+    pluginServiceLoadRevision++
+    var next = ({})
+    for (var id in pluginServiceLoadRevisions) next[id] = pluginServiceLoadRevisions[id]
+    next[key] = pluginServiceLoadRevision
+    pluginServiceLoadRevisions = next
+    return pluginServiceLoadRevision
   }
 
   function ensureService(pluginId) {
@@ -324,8 +337,10 @@ ShellRoot {
     var url = shell.pluginEntryPointUrl(manifest, "service")
     if (!url) return null
 
+    var loadRevision = shell.advancePluginServiceLoad(key)
     var comp = Qt.createComponent(url, Component.PreferSynchronous)
     function finalize() {
+      if (shell.pluginServiceLoadRevisions[key] !== loadRevision) return
       if (comp.status !== Component.Ready) {
         console.warn("service plugin load failed for " + key + ": " + comp.errorString())
         return
@@ -380,6 +395,7 @@ ShellRoot {
 
   function unloadPluginService(pluginId) {
     var key = String(pluginId || "")
+    shell.advancePluginServiceLoad(key)
     var inst = _services[key]
     if (!inst) return
     if (typeof inst.destroy === "function") inst.destroy()
@@ -389,6 +405,7 @@ ShellRoot {
   }
 
   function unloadPluginServices() {
+    pluginServiceLoadRevisions = ({})
     for (var existingId in _services) {
       var inst = _services[existingId]
       if (inst && typeof inst.destroy === "function") inst.destroy()
@@ -941,7 +958,8 @@ ShellRoot {
       shell.activePluginReloads = ({})
       return
     }
-    if (typeof Qt.clearComponentCache === "function") Qt.clearComponentCache()
+    if (shell.fullPluginReloading && typeof Qt.clearComponentCache === "function")
+      Qt.clearComponentCache()
     shell.pluginRegistry.rescan()
   }
 
