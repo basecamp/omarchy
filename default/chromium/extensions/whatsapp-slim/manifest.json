@@ -2,12 +2,19 @@
   "manifest_version": 3,
   "name": "WhatsApp Slim",
   "version": "1.1",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAszLhFYxjvKqx1VAORt3M6b0H1Kz03cmQ1MrUjJZ8gj3nhRcvufk6PS17yUIjEdKKmuj+1HuFVwOaHJQsACGJXwn2TeKQqZmZx/83yd7ydgabHXTsJbhy5O+Yunv+VA1B2IX/phcXpkH9bPv2PuC/bQ13nmmAvT2b+EMyq8EPQHOoSWhE4M4kIhLDczTmxfJX5X3tTxH66952DYuQWvGpIXLAUXkvIgap0qemW68/LymPaWzcg6g3oE/nZ7C0j7JE5bnqLFxqXNlA9Jt+Ss/1Y33QL3OSD9EEsrpgueS0bbqtkmFQ9/jGlruIL+qj0xe+CAtqbJ5ty9H/sqi01kjfyQIDAQAB",
   "description": "Make WhatsApp Web follow the system theme and collapse its chat list in narrow windows, this extension is installed by Omarchy",
   "content_scripts": [
     {
-      "matches": ["https://web.whatsapp.com/*"],
-      "css": ["whatsapp.css"],
-      "js": ["system-theme.js"],
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "css": [
+        "whatsapp.css"
+      ],
+      "js": [
+        "system-theme.js"
+      ],
       "run_at": "document_start"
     }
   ]
