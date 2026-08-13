@@ -60,19 +60,76 @@ cat >"$hot_reload_dir/manifest.json" <<JSON
   "id": "$hot_reload_id",
   "name": "Before Hot Reload",
   "version": "1.0.0",
-  "kinds": ["overlay"],
-  "entryPoints": {"overlay": "Overlay.qml"},
+  "kinds": ["service", "overlay"],
+  "entryPoints": {"service": "Service.qml", "overlay": "Overlay.qml"},
+  "keepLoaded": true,
   "omarchy": {"clonedFrom": "omarchy.emojis"}
 }
 JSON
+cat >"$hot_reload_dir/Service.qml" <<'QML'
+import QtQuick
+
+Item {
+  Component.onCompleted: console.log("HOT_RELOAD_TARGET_SERVICE_BEFORE")
+}
+QML
 cat >"$hot_reload_dir/Overlay.qml" <<'QML'
 import QtQuick
 
 Item {
+  Component.onCompleted: console.log("HOT_RELOAD_TARGET_OVERLAY_BEFORE")
   function open(payloadJson) {}
   function close() {}
 }
 QML
+
+reload_sentinel_id="acme.reload-sentinel"
+reload_sentinel_dir="$test_home/.config/omarchy/plugins/$reload_sentinel_id"
+mkdir -p "$reload_sentinel_dir"
+cat >"$reload_sentinel_dir/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$reload_sentinel_id",
+  "name": "Reload sentinel",
+  "version": "1.0.0",
+  "kinds": ["service", "overlay"],
+  "entryPoints": {"service": "Service.qml", "overlay": "Overlay.qml"},
+  "keepLoaded": true
+}
+JSON
+cat >"$reload_sentinel_dir/Service.qml" <<'QML'
+import QtQuick
+import Quickshell.Io
+
+Item {
+  id: root
+  property int count: 0
+
+  Component.onCompleted: console.log("HOT_RELOAD_SENTINEL_SERVICE")
+
+  IpcHandler {
+    target: "hot-reload-sentinel"
+
+    function increment(): string {
+      root.count++
+      return String(root.count)
+    }
+  }
+}
+QML
+cat >"$reload_sentinel_dir/Overlay.qml" <<'QML'
+import QtQuick
+
+Item {
+  Component.onCompleted: console.log("HOT_RELOAD_SENTINEL_OVERLAY")
+  function open(payloadJson) {}
+  function close() {}
+}
+QML
+
+jq --arg target "$hot_reload_id" --arg sentinel "$reload_sentinel_id" '
+  .plugins = ((.plugins // []) + [{id: $target}, {id: $sentinel}])
+' "$ROOT/config/omarchy/shell.json" >"$test_home/.config/omarchy/shell.json"
 
 cat >"$stub_bin/omarchy-update-available" <<'SH'
 #!/bin/bash
@@ -140,6 +197,33 @@ jq -e '
 }
 pass "shell IPC lists plugin metadata"
 
+sentinel_count=""
+for _ in {1..80}; do
+  sentinel_count=$(shell_ipc hot-reload-sentinel increment 2>/dev/null || true)
+  [[ $sentinel_count == "1" ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited before hot reload fixtures became available"
+  fi
+  sleep 0.1
+done
+[[ $sentinel_count == "1" ]] || fail_with_log "hot reload sentinel service starts"
+
+for _ in {1..80}; do
+  if grep -q "HOT_RELOAD_TARGET_SERVICE_BEFORE" "$log" \
+      && grep -q "HOT_RELOAD_TARGET_OVERLAY_BEFORE" "$log" \
+      && grep -q "HOT_RELOAD_SENTINEL_OVERLAY" "$log"; then
+    break
+  fi
+  sleep 0.1
+done
+grep -q "HOT_RELOAD_TARGET_SERVICE_BEFORE" "$log" || fail_with_log "hot reload target service starts"
+grep -q "HOT_RELOAD_TARGET_OVERLAY_BEFORE" "$log" || fail_with_log "hot reload target overlay starts"
+grep -q "HOT_RELOAD_SENTINEL_OVERLAY" "$log" || fail_with_log "hot reload sentinel overlay starts"
+sleep 0.1
+hot_reload_log_offset=$(wc -c <"$log")
+
+sed -i 's/HOT_RELOAD_TARGET_SERVICE_BEFORE/HOT_RELOAD_TARGET_SERVICE_AFTER/' "$hot_reload_dir/Service.qml"
+sed -i 's/HOT_RELOAD_TARGET_OVERLAY_BEFORE/HOT_RELOAD_TARGET_OVERLAY_AFTER/' "$hot_reload_dir/Overlay.qml"
 jq '.name = "After Hot Reload"' "$hot_reload_dir/manifest.json" >"$hot_reload_dir/manifest.json.tmp"
 mv "$hot_reload_dir/manifest.json.tmp" "$hot_reload_dir/manifest.json"
 
@@ -156,6 +240,31 @@ done
 [[ $hot_reload_name == "After Hot Reload" ]] ||
   fail_with_log "installed plugin changes reload without an explicit rescan"
 pass "installed plugin changes reload without an explicit rescan"
+
+hot_reload_log="$TMPDIR/hot-reload.log"
+for _ in {1..80}; do
+  tail -c "+$(( hot_reload_log_offset + 1 ))" "$log" >"$hot_reload_log"
+  if grep -q "HOT_RELOAD_TARGET_SERVICE_AFTER" "$hot_reload_log" \
+      && grep -q "HOT_RELOAD_TARGET_OVERLAY_AFTER" "$hot_reload_log"; then
+    break
+  fi
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while loading changed plugin code"
+  fi
+  sleep 0.1
+done
+grep -q "HOT_RELOAD_TARGET_SERVICE_AFTER" "$hot_reload_log" || fail_with_log "changed plugin service code reloads"
+grep -q "HOT_RELOAD_TARGET_OVERLAY_AFTER" "$hot_reload_log" || fail_with_log "changed plugin overlay code reloads"
+
+sentinel_count=$(shell_ipc hot-reload-sentinel increment 2>/dev/null || true)
+[[ $sentinel_count == "2" ]] || fail_with_log "hot reload keeps unrelated plugin services alive"
+if grep -q "HOT_RELOAD_SENTINEL_" "$hot_reload_log"; then
+  fail_with_log "hot reload keeps unrelated plugin panels alive"
+fi
+if grep -qE "Cannot read property.*of null" "$hot_reload_log"; then
+  fail_with_log "hot reload keeps unrelated bar widgets alive"
+fi
+pass "hot reload only rebuilds the changed plugin"
 
 [[ $(shell_ipc shell setPluginEnabled "$hot_reload_id" true) == "ok" ]] ||
   fail_with_log "installed plugin could not be enabled"

@@ -54,13 +54,17 @@ ShellRoot {
 
   property var defaultsConfig: builtinShellConfig
   property var shellConfig: builtinShellConfig
-  property bool pluginReloading: false
-  property bool pluginReloadPending: false
+  property bool fullPluginReloading: false
+  property bool fullPluginReloadPending: false
+  property var activePluginReloads: ({})
+  property var pendingLocalPluginReloads: ({})
+  property var pluginSourceRevisions: ({})
+  readonly property bool pluginReloading: fullPluginReloading || Object.keys(activePluginReloads).length > 0
 
   Timer {
     id: localPluginReloadTimer
     interval: 150
-    onTriggered: shell.reloadPlugins()
+    onTriggered: shell.reloadLocalPlugins()
   }
 
   onShellConfigChanged: {
@@ -182,7 +186,7 @@ ShellRoot {
     var revision = shell.pluginRegistry.registryRevision
     return shell.barManifestFor(shell.activeBarId)
   }
-  readonly property string activeBarSourceUrl: activeBarId === defaultBarId ? "" : shell.pluginRegistry.entryPointUrl(activeBarManifest, "bar")
+  readonly property string activeBarSourceUrl: activeBarId === defaultBarId ? "" : shell.pluginEntryPointUrl(activeBarManifest, "bar")
   property var bar: null
 
   onSelectedBarIdChanged: if (failedBarId !== "") failedBarId = ""
@@ -190,6 +194,15 @@ ShellRoot {
   function barManifestFor(pluginId) {
     var plugins = shell.pluginRegistry ? shell.pluginRegistry.installedPlugins : null
     return plugins ? plugins[String(pluginId || "")] || null : null
+  }
+
+  function pluginEntryPointUrl(manifest, kind) {
+    var url = shell.pluginRegistry.entryPointUrl(manifest, kind)
+    if (!url || !manifest) return url
+    // Destroyed Components can retain compiled QML past clearComponentCache().
+    // A per-plugin URL revision guarantees local edits load the new code.
+    var revision = shell.pluginSourceRevisions[String(manifest.id || "")] || 0
+    return revision > 0 ? url + "?reload=" + revision : url
   }
 
   function isBarOptionManifest(manifest) {
@@ -246,7 +259,9 @@ ShellRoot {
   Loader {
     id: pluginBarLoader
 
-    active: !shell.pluginReloading && shell.activeBarId !== shell.defaultBarId && shell.activeBarSourceUrl !== ""
+    active: !shell.pluginReloadAffects(shell.activeBarId)
+      && shell.activeBarId !== shell.defaultBarId
+      && shell.activeBarSourceUrl !== ""
     source: shell.activeBarId !== shell.defaultBarId ? shell.activeBarSourceUrl : ""
     asynchronous: true
     onLoaded: shell.configureBar(item, shell.activeBarManifest)
@@ -288,7 +303,7 @@ ShellRoot {
     if (!manifest) return null
     if (!Array.isArray(manifest.kinds) || manifest.kinds.indexOf("service") === -1) return null
     if (!manifest.entryPoints || !manifest.entryPoints.service) return null
-    var url = pluginRegistry.entryPointUrl(manifest, "service")
+    var url = shell.pluginEntryPointUrl(manifest, "service")
     if (!url) return null
 
     var comp = Qt.createComponent(url, Component.PreferSynchronous)
@@ -343,6 +358,16 @@ ShellRoot {
       for (var k in _services) if (k !== existingId) next[k] = _services[k]
       _services = next
     }
+  }
+
+  function unloadPluginService(pluginId) {
+    var key = String(pluginId || "")
+    var inst = _services[key]
+    if (!inst) return
+    if (typeof inst.destroy === "function") inst.destroy()
+    var next = ({})
+    for (var existingId in _services) if (existingId !== key) next[existingId] = _services[existingId]
+    _services = next
   }
 
   function unloadPluginServices() {
@@ -530,6 +555,19 @@ ShellRoot {
     panelLoaders = next
   }
 
+  function preparePanelReload(pluginId) {
+    var key = String(pluginId || "")
+    if (!key || shell.isBarWidgetPanelPlugin(key) || !shell.isPluginOpen(key)) return
+    shell.invokeIfLoaded(key, "close", null)
+
+    var next = ({})
+    for (var id in pendingPayloads) next[id] = pendingPayloads[id].slice()
+    var queue = next[key] || []
+    if (queue.length === 0) queue.push("")
+    next[key] = queue
+    pendingPayloads = next
+  }
+
   function unloadPanels() {
     for (var id in panelLoaders) hide(id)
     panelEntries = []
@@ -583,23 +621,53 @@ ShellRoot {
   // plugin's FloatingWindow + state survive between summons within a session.
   property var panelEntries: []
 
+  function panelKindForManifest(manifest) {
+    if (!manifest || !Array.isArray(manifest.kinds)) return ""
+    if (manifest.kinds.indexOf("panel") !== -1) return "panel"
+    if (manifest.kinds.indexOf("overlay") !== -1) return "overlay"
+    if (manifest.kinds.indexOf("menu") !== -1) return "menu"
+    return ""
+  }
+
+  function panelEntryFor(pluginId) {
+    var id = String(pluginId || "")
+    var manifest = shell.pluginRegistry.installedPlugins[id]
+    if (!shell.panelKindForManifest(manifest) || !shell.pluginRegistry.isEnabled(id)) return null
+    return { id: id }
+  }
+
   function computePanelEntries() {
     var out = []
     var plugins = shell.pluginRegistry.installedPlugins
-    var panelKinds = ["panel", "overlay", "menu"]
     for (var id in plugins) {
-      var m = plugins[id]
-      if (!m || !Array.isArray(m.kinds)) continue
-      var matched = false
-      for (var i = 0; i < panelKinds.length; i++)
-        if (m.kinds.indexOf(panelKinds[i]) !== -1) { matched = true; break }
-      if (!matched) continue
-      if (!shell.pluginRegistry.isEnabled(id)) continue
-      var kind = m.kinds.indexOf("panel") !== -1 ? "panel"
-        : (m.kinds.indexOf("overlay") !== -1 ? "overlay" : "menu")
-      out.push({ id: id, manifest: m, kind: kind, keepLoaded: m.keepLoaded === true })
+      var entry = shell.panelEntryFor(id)
+      if (entry) out.push(entry)
     }
     return out
+  }
+
+  function syncReloadedPanelEntries(reloadIds) {
+    var next = panelEntries.slice()
+    var changed = false
+    for (var id in reloadIds) {
+      var index = -1
+      for (var i = 0; i < next.length; i++) {
+        if (next[i].id === id) {
+          index = i
+          break
+        }
+      }
+
+      var entry = shell.panelEntryFor(id)
+      if (index === -1 && entry) {
+        next.push(entry)
+        changed = true
+      } else if (index !== -1 && !entry) {
+        next.splice(index, 1)
+        changed = true
+      }
+    }
+    if (changed) panelEntries = next
   }
 
   Connections {
@@ -615,14 +683,16 @@ ShellRoot {
       id: panelEntry
       required property var modelData
       readonly property string pluginId: modelData.id
-      readonly property var manifest: modelData.manifest
-      readonly property string entryKind: modelData.kind
-      readonly property bool keepLoaded: modelData.keepLoaded === true
-      readonly property string sourceUrl: shell.pluginRegistry.entryPointUrl(manifest, entryKind)
+      readonly property var manifest: shell.pluginRegistry.installedPlugins[pluginId] || null
+      readonly property string entryKind: shell.panelKindForManifest(manifest)
+      readonly property bool keepLoaded: manifest ? manifest.keepLoaded === true : false
+      readonly property string sourceUrl: shell.pluginEntryPointUrl(manifest, entryKind)
 
       property Loader panelLoader: Loader {
         source: panelEntry.sourceUrl
-        active: panelEntry.sourceUrl !== "" && (panelEntry.keepLoaded || shell.openPanelIds[panelEntry.pluginId] === true)
+        active: !shell.pluginReloadAffects(panelEntry.pluginId)
+          && panelEntry.sourceUrl !== ""
+          && (panelEntry.keepLoaded || shell.openPanelIds[panelEntry.pluginId] === true)
         asynchronous: true
         onLoaded: {
           if (!item) return
@@ -665,10 +735,12 @@ ShellRoot {
   }
 
   property var pluginWidgetComponents: ({})
+  property int pluginWidgetLoadRevision: 0
 
-  function syncPluginWidgets() {
+  function syncPluginWidgets(reloadIds) {
     var plugins = shell.pluginRegistry.installedPlugins
     var seen = ({})
+    var targeted = reloadIds && Object.keys(reloadIds).length > 0
 
     for (var pluginId in plugins) {
       var manifest = plugins[pluginId]
@@ -677,10 +749,11 @@ ShellRoot {
 
       var registryKey = String(manifest.id)
       seen[registryKey] = true
+      if (targeted && reloadIds[registryKey] !== true) continue
 
       // Already loaded with matching source — leave it alone.
       var existing = pluginWidgetComponents[registryKey]
-      var url = shell.pluginRegistry.entryPointUrl(manifest, "barWidget")
+      var url = shell.pluginEntryPointUrl(manifest, "barWidget")
       if (!url) {
         console.warn("Plugin " + manifest.id + " has no barWidget entry point")
         continue
@@ -721,6 +794,7 @@ ShellRoot {
     var allIds = shell.barWidgetRegistry.availableIds()
     for (var i = 0; i < allIds.length; i++) {
       var id = allIds[i]
+      if (targeted && reloadIds[id] !== true) continue
       if (!pluginWidgetComponents[id]) continue
       if (!seen[id]) {
         shell.barWidgetRegistry.unregister(id)
@@ -731,17 +805,75 @@ ShellRoot {
     }
   }
 
+  function unloadPluginWidget(pluginId) {
+    var key = String(pluginId || "")
+    shell.barWidgetRegistry.unregister(key)
+    shell.setPluginWidgetComponent(key, null)
+  }
+
   function unloadPluginWidgets() {
     for (var id in pluginWidgetComponents) shell.barWidgetRegistry.unregister(id)
     pluginWidgetComponents = ({})
   }
 
+  function hasPluginReloads(reloads) {
+    return reloads && Object.keys(reloads).length > 0
+  }
+
+  function mergePluginReloads(current, additions) {
+    var next = ({})
+    for (var id in current) next[id] = true
+    for (var addedId in additions) next[addedId] = true
+    return next
+  }
+
+  function bumpPluginSourceRevisions(reloads) {
+    var next = ({})
+    for (var id in pluginSourceRevisions) next[id] = pluginSourceRevisions[id]
+    for (var reloadId in reloads) next[reloadId] = (next[reloadId] || 0) + 1
+    pluginSourceRevisions = next
+  }
+
+  function pluginReloadAffects(pluginId) {
+    return shell.fullPluginReloading || shell.activePluginReloads[String(pluginId || "")] === true
+  }
+
+  function queueLocalPluginReload(pluginId) {
+    var id = String(pluginId || "")
+    if (!id) return
+    var reload = ({})
+    reload[id] = true
+    pendingLocalPluginReloads = shell.mergePluginReloads(pendingLocalPluginReloads, reload)
+    localPluginReloadTimer.restart()
+  }
+
+  function reloadLocalPlugins() {
+    if (!shell.hasPluginReloads(shell.pendingLocalPluginReloads)) return
+    if (shell.pluginReloading || shell.pluginRegistry.scanning) return
+
+    var reloads = shell.pendingLocalPluginReloads
+    pendingLocalPluginReloads = ({})
+    for (var id in reloads) shell.preparePanelReload(id)
+
+    // The watcher already resolved the owning plugin, so keep every unrelated
+    // service, panel, bar, and widget mounted while the registry rescans.
+    activePluginReloads = reloads
+    shell.bumpPluginSourceRevisions(reloads)
+    for (var pluginId in reloads) {
+      shell.unloadPluginService(pluginId)
+      shell.unloadPluginWidget(pluginId)
+    }
+    Qt.callLater(shell.finishPluginReload)
+  }
+
   function reloadPlugins() {
     if (shell.pluginReloading || shell.pluginRegistry.scanning) {
-      shell.pluginReloadPending = true
+      shell.fullPluginReloadPending = true
       return
     }
-    shell.pluginReloading = true
+    pendingLocalPluginReloads = ({})
+    activePluginReloads = ({})
+    fullPluginReloading = true
     shell.unloadPanels()
     shell.unloadPluginServices()
     shell.unloadPluginWidgets()
@@ -751,7 +883,14 @@ ShellRoot {
   function finishPluginReload() {
     if (!shell.pluginReloading) return
     if (shell.pluginRegistry.scanning) {
-      shell.pluginReloadPending = true
+      if (shell.fullPluginReloading) {
+        shell.fullPluginReloadPending = true
+      } else {
+        shell.pendingLocalPluginReloads = shell.mergePluginReloads(
+          shell.pendingLocalPluginReloads, shell.activePluginReloads)
+      }
+      shell.fullPluginReloading = false
+      shell.activePluginReloads = ({})
       return
     }
     if (typeof Qt.clearComponentCache === "function") Qt.clearComponentCache()
@@ -762,19 +901,32 @@ ShellRoot {
     target: shell.pluginRegistry
     function onLocalPluginChanged(pluginId) {
       console.log("Local plugin changed, reloading:", pluginId)
-      localPluginReloadTimer.restart()
+      shell.queueLocalPluginReload(pluginId)
     }
     function onScanFinished() {
-      if (shell.pluginReloadPending) {
-        shell.pluginReloadPending = false
-        shell.pluginReloading = false
+      if (shell.fullPluginReloadPending) {
+        shell.fullPluginReloadPending = false
+        shell.fullPluginReloading = false
+        shell.activePluginReloads = ({})
+        shell.pendingLocalPluginReloads = ({})
         Qt.callLater(shell.reloadPlugins)
         return
       }
-      shell.pluginReloading = false
+
+      var fullReload = shell.fullPluginReloading
+      var reloads = shell.activePluginReloads
       shell._syncServices()
-      shell.panelEntries = shell.computePanelEntries()
-      shell.syncPluginWidgets()
+      if (fullReload || !shell.hasPluginReloads(reloads)) {
+        shell.panelEntries = shell.computePanelEntries()
+        shell.syncPluginWidgets()
+      } else {
+        shell.syncReloadedPanelEntries(reloads)
+        shell.syncPluginWidgets(reloads)
+      }
+      shell.fullPluginReloading = false
+      shell.activePluginReloads = ({})
+      if (shell.hasPluginReloads(shell.pendingLocalPluginReloads))
+        Qt.callLater(shell.reloadLocalPlugins)
     }
   }
 
@@ -786,17 +938,27 @@ ShellRoot {
   }
 
   function loadPluginWidget(registryKey, url, meta) {
-    // Claim the key before the component exists. Qt.createComponent is
-    // asynchronous and syncPluginWidgets runs several times while the shell
-    // starts, so without a marker the later passes cannot tell a load in
-    // flight from one that never happened.
-    setPluginWidgetComponent(registryKey, { url: url, component: null })
+    // Claim the key before the component exists. The revision also prevents a
+    // canceled asynchronous load from registering after a targeted reload.
+    pluginWidgetLoadRevision++
+    var loadRevision = pluginWidgetLoadRevision
+    setPluginWidgetComponent(registryKey, {
+      url: url,
+      component: null,
+      loadRevision: loadRevision
+    })
 
     var comp = Qt.createComponent(url, Component.Asynchronous)
     function finalize() {
+      var pending = shell.pluginWidgetComponents[registryKey]
+      if (!pending || pending.loadRevision !== loadRevision) return
       if (comp.status === Component.Ready) {
         shell.barWidgetRegistry.register(registryKey, comp, meta)
-        shell.setPluginWidgetComponent(registryKey, { url: url, component: comp })
+        shell.setPluginWidgetComponent(registryKey, {
+          url: url,
+          component: comp,
+          loadRevision: loadRevision
+        })
       } else if (comp.status === Component.Error) {
         console.warn("Plugin widget " + registryKey + " failed: " + comp.errorString())
         // Drop the claim so a later rescan can retry.
