@@ -43,3 +43,17 @@ grep -F 'hl.dsp.focus({ window = "address:0xagent" })' "$dispatch_log" >/dev/nul
   fail "app focus falls back to the initial window title"
 
 pass "app focus finds terminals launched under a shared agent class"
+
+clients_json='[
+  {"address":"0xbrowser","class":"chromium","initialClass":"chromium","initialTitle":"Mail settings"}
+]'
+rm -f "$dispatch_log"
+if PATH="$mock_bin:$PATH" OMARCHY_TEST_CLIENTS_JSON="$clients_json" \
+  OMARCHY_TEST_FOCUS_DISPATCH="$dispatch_log" \
+  bash "$ROOT/bin/omarchy-hyprland-focus-app" Mail; then
+  fail "app focus rejects title matches from non-agent windows"
+fi
+
+[[ ! -e $dispatch_log ]] || fail "app focus leaves focus unchanged for unrelated title matches"
+
+pass "app focus restricts title matching to agent terminals"

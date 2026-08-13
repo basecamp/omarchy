@@ -21,7 +21,11 @@ address=$(
       'def matches($value): ($value // "") | test($pattern; "i");
        ([.[] | select(matches(.class))] +
         [.[] | select(matches(.initialClass))] +
-        [.[] | select(matches(.initialTitle))]) |
+        [.[] | select(
+          ((.class // "") == "org.omarchy.agent" or
+           (.initialClass // "") == "org.omarchy.agent") and
+          matches(.initialTitle)
+        )]) |
        first.address // empty'
 )
 
