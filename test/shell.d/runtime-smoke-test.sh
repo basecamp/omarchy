@@ -70,7 +70,16 @@ cat >"$hot_reload_dir/Service.qml" <<'QML'
 import QtQuick
 
 Item {
+  Child {}
+
   Component.onCompleted: console.log("HOT_RELOAD_TARGET_SERVICE_BEFORE")
+}
+QML
+cat >"$hot_reload_dir/Child.qml" <<'QML'
+import QtQuick
+
+Item {
+  Component.onCompleted: console.log("HOT_RELOAD_TARGET_CHILD_BEFORE")
 }
 QML
 cat >"$hot_reload_dir/Overlay.qml" <<'QML'
@@ -321,6 +330,7 @@ done
 
 for _ in {1..80}; do
   if grep -q "HOT_RELOAD_TARGET_SERVICE_BEFORE" "$log" \
+      && grep -q "HOT_RELOAD_TARGET_CHILD_BEFORE" "$log" \
       && grep -q "HOT_RELOAD_TARGET_OVERLAY_BEFORE" "$log" \
       && grep -q "HOT_RELOAD_SENTINEL_OVERLAY" "$log" \
       && grep -q "HOT_RELOAD_TARGET_WIDGET_BEFORE" "$log" \
@@ -331,6 +341,7 @@ for _ in {1..80}; do
   sleep 0.1
 done
 grep -q "HOT_RELOAD_TARGET_SERVICE_BEFORE" "$log" || fail_with_log "hot reload target service starts"
+grep -q "HOT_RELOAD_TARGET_CHILD_BEFORE" "$log" || fail_with_log "hot reload target child starts"
 grep -q "HOT_RELOAD_TARGET_OVERLAY_BEFORE" "$log" || fail_with_log "hot reload target overlay starts"
 grep -q "HOT_RELOAD_SENTINEL_OVERLAY" "$log" || fail_with_log "hot reload sentinel overlay starts"
 grep -q "HOT_RELOAD_TARGET_WIDGET_BEFORE" "$log" || fail_with_log "hot reload target widget starts"
@@ -382,6 +393,23 @@ if grep -qE "Cannot read property.*of null" "$hot_reload_log"; then
   fail_with_log "hot reload keeps unrelated bar widgets alive"
 fi
 pass "hot reload only rebuilds the changed plugin"
+
+hot_reload_log_offset=$(wc -c <"$log")
+sed -i 's/HOT_RELOAD_TARGET_CHILD_BEFORE/HOT_RELOAD_TARGET_CHILD_AFTER/' "$hot_reload_dir/Child.qml"
+
+for _ in {1..80}; do
+  tail -c "+$(( hot_reload_log_offset + 1 ))" "$log" >"$hot_reload_log"
+  grep -q "HOT_RELOAD_TARGET_CHILD_AFTER" "$hot_reload_log" && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while loading changed child code"
+  fi
+  sleep 0.1
+done
+grep -q "HOT_RELOAD_TARGET_CHILD_AFTER" "$hot_reload_log" || fail_with_log "changed imported child code reloads"
+if grep -q "HOT_RELOAD_TARGET_CHILD_BEFORE" "$hot_reload_log"; then
+  fail_with_log "changed imported child code does not reuse stale QML"
+fi
+pass "hot reload rebuilds changed imported QML"
 
 bar_count=$(shell_ipc hot-reload-bar increment 2>/dev/null || true)
 [[ $bar_count == "1" ]] || fail_with_log "hot reload bar state starts"

@@ -59,12 +59,23 @@ ShellRoot {
   property var activePluginReloads: ({})
   property var pendingLocalPluginReloads: ({})
   property var pluginSourceRevisions: ({})
+  property var preparedPluginSourceRevisions: ({})
+  property int pluginSourceRevisionCounter: 0
+  readonly property string pluginReloadSession: String(Date.now()) + "-"
+    + String(Math.floor(Math.random() * 1000000))
+  readonly property string pluginReloadSourceRoot: Quickshell.env("XDG_RUNTIME_DIR")
+    + "/omarchy-shell/plugin-reloads/" + pluginReloadSession
   readonly property bool pluginReloading: fullPluginReloading || Object.keys(activePluginReloads).length > 0
 
   Timer {
     id: localPluginReloadTimer
     interval: 150
     onTriggered: shell.reloadLocalPlugins()
+  }
+
+  Process {
+    id: pluginSourceRevisionProcess
+    onExited: function(exitCode) { shell.finishPluginSourceRevisionPreparation(exitCode) }
   }
 
   onShellConfigChanged: {
@@ -197,12 +208,19 @@ ShellRoot {
   }
 
   function pluginEntryPointUrl(manifest, kind) {
-    var url = shell.pluginRegistry.entryPointUrl(manifest, kind)
-    if (!url || !manifest) return url
-    // Destroyed Components can retain compiled QML past clearComponentCache().
-    // A per-plugin URL revision guarantees local edits load the new code.
+    if (!manifest) return ""
+    var sourceDir = String(manifest.__sourceDir || "")
     var revision = shell.pluginSourceRevisions[String(manifest.id || "")] || 0
-    return revision > 0 ? url + "?reload=" + revision : url
+    if (revision > 0) {
+      // A revisioned base URL also changes cache keys for relative QML and JS.
+      var pluginsDir = shell.pluginRegistry.pluginsDir.replace(/\/$/, "")
+      var expectedPrefix = pluginsDir + "/"
+      if (sourceDir.indexOf(expectedPrefix) === 0) {
+        sourceDir = shell.pluginReloadSourceRoot + "/" + revision + "/plugins/"
+          + sourceDir.slice(expectedPrefix.length)
+      }
+    }
+    return shell.pluginRegistry.entryPointUrl(manifest, kind, sourceDir)
   }
 
   function isBarOptionManifest(manifest) {
@@ -827,11 +845,39 @@ ShellRoot {
     return next
   }
 
-  function bumpPluginSourceRevisions(reloads) {
+  function preparePluginSourceRevision(reloads) {
+    pluginSourceRevisionCounter++
     var next = ({})
     for (var id in pluginSourceRevisions) next[id] = pluginSourceRevisions[id]
-    for (var reloadId in reloads) next[reloadId] = (next[reloadId] || 0) + 1
-    pluginSourceRevisions = next
+    for (var reloadId in reloads) next[reloadId] = pluginSourceRevisionCounter
+    preparedPluginSourceRevisions = next
+
+    var script = "mkdir -p -- \"$0/$2\" && ln -s -- \"$1\" \"$0/$2/plugins\""
+    pluginSourceRevisionProcess.command = [
+      "bash", "-c", script,
+      pluginReloadSourceRoot,
+      pluginRegistry.pluginsDir,
+      String(pluginSourceRevisionCounter)
+    ]
+    pluginSourceRevisionProcess.running = true
+  }
+
+  function finishPluginSourceRevisionPreparation(exitCode) {
+    if (exitCode === 0) {
+      pluginSourceRevisions = preparedPluginSourceRevisions
+      preparedPluginSourceRevisions = ({})
+      Qt.callLater(shell.finishPluginReload)
+      return
+    }
+
+    console.warn("Could not prepare versioned plugin sources; falling back to a full plugin reload")
+    preparedPluginSourceRevisions = ({})
+    activePluginReloads = ({})
+    fullPluginReloading = true
+    shell.unloadPanels()
+    shell.unloadPluginServices()
+    shell.unloadPluginWidgets()
+    Qt.callLater(shell.finishPluginReload)
   }
 
   function pluginReloadAffects(pluginId) {
@@ -858,12 +904,11 @@ ShellRoot {
     // The watcher already resolved the owning plugin, so keep every unrelated
     // service, panel, bar, and widget mounted while the registry rescans.
     activePluginReloads = reloads
-    shell.bumpPluginSourceRevisions(reloads)
     for (var pluginId in reloads) {
       shell.unloadPluginService(pluginId)
       shell.unloadPluginWidget(pluginId)
     }
-    Qt.callLater(shell.finishPluginReload)
+    shell.preparePluginSourceRevision(reloads)
   }
 
   function reloadPlugins() {

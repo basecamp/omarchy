@@ -90,14 +90,14 @@ QtObject {
     return manifest
   }
 
-  function entryPointUrl(manifest, kind) {
+  function entryPointUrl(manifest, kind, sourceDir) {
     if (!Util.isPlainObject(manifest)) return ""
     var ep = manifest.entryPoints ? manifest.entryPoints[kind] : null
     if (!ep) return ""
-    var dir = manifest.__sourceDir || ""
+    var dir = sourceDir || manifest.__sourceDir || ""
     if (!dir) return ""
     // Defense in depth: even after validateManifest, confirm the resolved
-    // path stays inside the plugin's sourceDir.
+    // path stays inside the selected source directory.
     var resolved = dir.replace(/\/$/, "") + "/" + String(ep)
     var expectedPrefix = dir.replace(/\/$/, "") + "/"
     if (resolved.indexOf(expectedPrefix) !== 0) {

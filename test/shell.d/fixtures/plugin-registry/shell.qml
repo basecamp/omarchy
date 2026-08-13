@@ -134,6 +134,7 @@ ShellRoot {
     root.assertTrue(registry.installedPlugins["third.panel"].__isFirstParty === false, "third-party manifests are stamped")
     root.assertEqual(registry.installedPlugins["omarchy.grouped-panel"].__sourceDir, "/first/panels/grouped", "grouped plugin source paths are preserved")
     root.assertEqual(registry.entryPointUrl(registry.installedPlugins["third.panel"], "panel"), "file:///third/panel/Panel.qml", "entryPointUrl resolves plugin-relative paths")
+    root.assertEqual(registry.entryPointUrl(registry.installedPlugins["third.panel"], "panel", "/revised/third.panel"), "file:///revised/third.panel/Panel.qml", "entryPointUrl accepts a revised source directory")
     root.assertEqual(registry.entryPointUrl(registry.installedPlugins["third.widget"], "barWidget"), "file:///third/widget/Widget.qml", "entryPointUrl resolves bar widget paths")
 
     root.assertTrue(!has("omarchy.reserved"), "third-party omarchy namespace ids are rejected")
