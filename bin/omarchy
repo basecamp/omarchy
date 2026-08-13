@@ -122,6 +122,18 @@ append_pipe_value() {
   fi
 }
 
+# A route can resolve to a binary before all args are consumed (`update aur` only matches the `update` binary, leaving `aur` and `--help` as leftovers)
+# --help must never be lost among those leftovers and get forwarded into the real command, so this checks the whole remainder rather than just the first token
+remaining_has_help_flag() {
+  local token=""
+
+  for token in "$@"; do
+    [[ $token == "--help" || $token == "-h" ]] && return 0
+  done
+
+  return 1
+}
+
 register_route() {
   local route="$1"
   local key="$2"
@@ -930,7 +942,7 @@ dispatch_fast_or_help() {
     remaining=("${args[@]:DIRECT_RESOLVED_COUNT}")
     binary_path="$OMARCHY_BIN_DIR/$DIRECT_RESOLVED_BINARY"
 
-    if (( ${#remaining[@]} > 0 )) && [[ ${remaining[0]} == "--help" || ${remaining[0]} == "-h" ]]; then
+    if remaining_has_help_flag "${remaining[@]}"; then
       if ! load_command_by_binary "$DIRECT_RESOLVED_BINARY"; then
         echo "Binary is missing or not executable: $DIRECT_RESOLVED_BINARY" >&2
         return 127
@@ -994,7 +1006,7 @@ dispatch_or_help() {
     key="$RESOLVED_KEY"
     remaining=("${args[@]:RESOLVED_COUNT}")
 
-    if (( ${#remaining[@]} > 0 )) && [[ ${remaining[0]} == "--help" || ${remaining[0]} == "-h" ]]; then
+    if remaining_has_help_flag "${remaining[@]}"; then
       if [[ " ${remaining[*]} " == *" --json "* ]]; then
         show_command_json "$key"
       else
