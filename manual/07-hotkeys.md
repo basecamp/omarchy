@@ -51,8 +51,8 @@ You can see all the main keyboard bindings with `Super + K` (Tmux bindings with 
 | `Super + Alt + S` | Move window to scratchpad workspace |
 | `Super + Ctrl + Z` | Zoom in on screen (repeat for more zoom) |
 | `Super + Ctrl + Alt + Z` | Zoom fully out from screen |
-| `Super + /` | Cycle forward through monitor scaling options |
-| `Super + Alt + /` | Cycle backward through monitor scaling options |
+| `Super + /` | Step forward through monitor scaling options |
+| `Super + Alt + /` | Step backward through monitor scaling options |
 | `Alt + Tab` | Cycle forward through windows on the active workspace |
 | `Alt + Shift + Tab` | Cycle backward through windows on the active workspace |
 | `Ctrl + Alt + Tab`| Cycle focus forward through monitors |
@@ -153,7 +153,7 @@ Usually on Linux, you need `Ctrl + Shift + C/V` to copy'n'paste in the terminal 
 | `Super + Ctrl + X` | Start/stop dictation (requires _Install > AI > Dictation_) |
 | `F9` | Push-to-talk dictation (requires _Install > AI > Dictation_) |
 
-With screenrecordings, the hotkey first asks which audio you want, then starts recording. Hit it again to stop. See [screenshots and recording](11-screenshots-recording.md) for the details.
+With screenrecordings, the hotkey first asks which audio you want, then starts recording. Hit it again to stop. See [screenshots and recording](12-screenshots-recording.md) for the details.
 
 All capture options are also accessible under _Trigger > Capture_ in the Omarchy menu (`Super + Space`).
 
@@ -289,7 +289,7 @@ Ghostty terminal is installed using _Install > Terminal_ via the Omarchy menu.
 | `Super + Ctrl + Shift + Arrows` | Resize split by 10 lines |
 | `Super + Ctrl + Shift + Alt + Arrows` | Resize split by 100 lines |
 | `Ctrl + Shift + T` | New tab  |
-| `Ctrl + Shift + Arrows` | Move between tabs tab |
+| `Ctrl + Shift + Arrows` | Move between tabs |
 | `Alt + Numbers` | Go to specific tab |
 | `Shift + Pg Up/Down` | Scroll the history |
 | `Ctrl + Left mouse` | Open link in browser |

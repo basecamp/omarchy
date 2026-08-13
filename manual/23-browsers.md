@@ -1,6 +1,6 @@
 # Browsers
 
-Omarchy ships with [Chromium](https://www.chromium.org/) as the default browser. It's the plain open-source build, themed to match the rest of your system, and it's what `Super + Shift + Return` opens and what every [web app](24-web-apps.md) runs inside.
+Omarchy ships with [Chromium](https://www.chromium.org/) as the default browser. It's the plain open-source build, themed to match the rest of your system, and it's what `Super + Shift + Return` opens and what every [web app](25-web-apps.md) runs inside.
 
 If Chromium isn't your taste, you're not stuck with it. Under _Install > Browser_ in the Omarchy menu you'll find Chrome, Edge, Brave, Brave Origin, Firefox, and [Zen](https://zen-browser.app/). Pick one and Omarchy installs it, sets up its policy directory, and applies your current theme to it.
 
@@ -20,9 +20,9 @@ Run it with no argument and it tells you the current default. This sets the XDG 
 
 The Chromium-family browsers (Chromium itself, Chrome, Edge, and Brave) come with two Omarchy extensions that reach out of the browser and into the rest of your system.
 
-**Copy URL** puts the current tab's address on your clipboard with `Alt + Shift + L`. That's faster than clicking into the address bar and copying, and because it goes through the system clipboard rather than the browser's, you get an Omarchy notification confirming it and the URL is immediately available in [clipboard history](07-unified-clipboard-history.md) and every other app. There's a toolbar button too, if you prefer clicking.
+**Copy URL** puts the current tab's address on your clipboard with `Alt + Shift + L`. That's faster than clicking into the address bar and copying, and because it goes through the system clipboard rather than the browser's, you get an Omarchy notification confirming it and the URL is immediately available in [clipboard history](08-unified-clipboard-history.md) and every other app. There's a toolbar button too, if you prefer clicking.
 
-**Download Video** grabs the video playing on the page you're looking at with `Alt + Shift + D`. It hands the URL to [yt-dlp](https://github.com/yt-dlp/yt-dlp), so it works on far more than YouTube, and the download lands in `~/Videos`. Progress shows up in the same on-screen display that volume and brightness use, updating in place rather than stacking up notifications. Set `OMARCHY_YTDLP_DIR` if you'd rather the files went somewhere else — see the [FAQ](46-faq.md) for where to put environment variables.
+**Download Video** grabs the video playing on the page you're looking at with `Alt + Shift + D`. It hands the URL to [yt-dlp](https://github.com/yt-dlp/yt-dlp), so it works on far more than YouTube, and the download lands in `~/Videos`. Progress shows up in the same on-screen display that volume and brightness use, updating in place rather than stacking up notifications. Set `OMARCHY_YTDLP_DIR` if you'd rather the files went somewhere else — see the [FAQ](47-faq.md) for where to put environment variables.
 
 Both extensions talk to Omarchy through a small native messaging host, which gets installed for you along with the browser. That's the piece that lets a web page's video end up in your home directory and a URL end up in your clipboard manager, which a normal extension can't do on its own.
 

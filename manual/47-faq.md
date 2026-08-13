@@ -32,7 +32,7 @@ Run _Update > Timezone_ in the Omarchy menu and pick from the list. If the timez
 
 ### How do I change my DNS, share my Wi-Fi, or check my connection speed?
 
-Those all live in [networking](34-networking.md).
+Those all live in [networking](35-networking.md).
 
 ### How do I check how fast my disk is?
 
@@ -76,4 +76,4 @@ Or run _Remove > Preinstalls_ to sweep out all the preinstalled extras — web a
 
 ---
 
-For errors and broken bits, see [the Troubleshooting section](45-troubleshooting.md).
+For errors and broken bits, see [the Troubleshooting section](46-troubleshooting.md).

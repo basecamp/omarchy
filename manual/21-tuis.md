@@ -44,7 +44,7 @@ When the drive fills up and you have no idea what's eating it, launch _Disk Usag
 
 ## What about Wi-Fi and Bluetooth?
 
-You won't find TUIs for Wi-Fi and Bluetooth — those jobs belong to the Omarchy shell. Click the Wi-Fi icon in the top bar (or hit `Super + Ctrl + W`) to see networks and connect, and click the Bluetooth icon (or hit `Super + Ctrl + B`) to pair and connect devices. See [networking](34-networking.md) for the full story.
+You won't find TUIs for Wi-Fi and Bluetooth — those jobs belong to the Omarchy shell. Click the Wi-Fi icon in the top bar (or hit `Super + Ctrl + W`) to see networks and connect, and click the Bluetooth icon (or hit `Super + Ctrl + B`) to pair and connect devices. See [networking](35-networking.md) for the full story.
 
 ## Adding your own
 

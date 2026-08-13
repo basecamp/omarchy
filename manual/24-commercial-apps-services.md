@@ -26,7 +26,7 @@ You start Spotify using `Super + Shift + M`. Like 1Password, the hotkey kicks of
 
 [Tailscale](https://tailscale.com/) is a mesh VPN that makes getting access to all your computers and servers over the internet securely super simple. To set it up, select _Install > Service > Tailscale_ from the Omarchy menu.
 
-It gets a panel in the bar, a web app for the admin console, and Taildrop for sending files between your machines — see [networking](34-networking.md).
+It gets a panel in the bar, a web app for the admin console, and Taildrop for sending files between your machines — see [networking](35-networking.md).
 
 ## ONCE
 
