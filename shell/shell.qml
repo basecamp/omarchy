@@ -59,6 +59,7 @@ ShellRoot {
   property var activePluginReloads: ({})
   property var pendingLocalPluginReloads: ({})
   property bool pendingLocalPluginFullReload: false
+  property int pluginReloadBaseRevision: 0
   property var pluginSourceRevisions: ({})
   property var preparedPluginSourceRevisions: ({})
   property int pluginSourceRevisionCounter: 0
@@ -930,6 +931,7 @@ ShellRoot {
 
     var reloads = shell.pendingLocalPluginReloads
     pendingLocalPluginReloads = ({})
+    pluginReloadBaseRevision = shell.pluginRegistry.registryRevision
     for (var id in reloads) shell.preparePanelReload(id)
 
     // Keep every unrelated service, panel, bar, and widget mounted while the
@@ -994,8 +996,13 @@ ShellRoot {
 
       var fullReload = shell.fullPluginReloading
       var reloads = shell.activePluginReloads
+      // While a targeted reload gates the pluginsChanged handlers, only our
+      // own rescan should bump registryRevision (by exactly one). Any extra
+      // bump means shell.json or plugin enablement changed inside the window;
+      // fall back to a full sync so that change is not silently dropped.
+      var interrupted = shell.pluginRegistry.registryRevision !== shell.pluginReloadBaseRevision + 1
       shell._syncServices()
-      if (fullReload || !shell.hasPluginReloads(reloads)) {
+      if (fullReload || interrupted || !shell.hasPluginReloads(reloads)) {
         shell.panelEntries = shell.computePanelEntries()
         shell.syncPluginWidgets()
       } else {
