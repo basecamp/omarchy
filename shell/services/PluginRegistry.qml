@@ -29,7 +29,7 @@ QtObject {
   signal pluginsChanged()
   signal scanFinished()
   signal pluginLoadFailed(string id, string error)
-  signal localPluginChanged(string id)
+  signal localPluginChanged(string sourceDir)
 
   // ---------------------------------------------------------------- helpers
 
@@ -647,8 +647,8 @@ QtObject {
     ]
     stdout: SplitParser {
       onRead: function(path) {
-        var pluginId = registry.localPluginIdForPath(path)
-        if (pluginId) registry.localPluginChanged(pluginId)
+        var sourceDir = registry.localPluginSourceDirForPath(path)
+        if (sourceDir) registry.localPluginChanged(sourceDir)
       }
     }
     onExited: localPluginWatcherRestart.restart()
@@ -710,6 +710,21 @@ QtObject {
 
     var slash = relative.indexOf("/")
     return slash === -1 ? relative : relative.slice(0, slash)
+  }
+
+  function localPluginSourceDirForPath(filePath) {
+    var directory = localPluginIdForPath(filePath)
+    return directory ? pluginsDir.replace(/\/$/, "") + "/" + directory : ""
+  }
+
+  function pluginIdForSourceDir(sourceDir) {
+    var source = String(sourceDir || "").replace(/\/$/, "")
+    if (!source) return ""
+    for (var id in installedPlugins) {
+      var manifest = installedPlugins[id]
+      if (String(manifest.__sourceDir || "").replace(/\/$/, "") === source) return id
+    }
+    return ""
   }
 
   Component.onCompleted: ensureUserDir()

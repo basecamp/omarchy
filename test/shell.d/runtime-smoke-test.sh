@@ -52,7 +52,8 @@ ln -s "$ROOT/bin" "$test_root/bin"
 
 # Every plugin under ~/.config/omarchy/plugins hot-reloads, whoever wrote it.
 hot_reload_id="acme.hot-reload"
-hot_reload_dir="$test_home/.config/omarchy/plugins/$hot_reload_id"
+# Installed directory names are not required to match their manifest IDs.
+hot_reload_dir="$test_home/.config/omarchy/plugins/hot-reload-directory"
 mkdir -p "$hot_reload_dir"
 cat >"$hot_reload_dir/manifest.json" <<JSON
 {

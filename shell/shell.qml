@@ -884,11 +884,14 @@ ShellRoot {
     return shell.fullPluginReloading || shell.activePluginReloads[String(pluginId || "")] === true
   }
 
-  function queueLocalPluginReload(pluginId) {
-    var id = String(pluginId || "")
-    if (!id) return
+  function queueLocalPluginReload(sourceDir) {
+    var pluginId = shell.pluginRegistry.pluginIdForSourceDir(sourceDir)
+    if (!pluginId) {
+      shell.reloadPlugins()
+      return
+    }
     var reload = ({})
-    reload[id] = true
+    reload[pluginId] = true
     pendingLocalPluginReloads = shell.mergePluginReloads(pendingLocalPluginReloads, reload)
     localPluginReloadTimer.restart()
   }
@@ -901,8 +904,8 @@ ShellRoot {
     pendingLocalPluginReloads = ({})
     for (var id in reloads) shell.preparePanelReload(id)
 
-    // The watcher already resolved the owning plugin, so keep every unrelated
-    // service, panel, bar, and widget mounted while the registry rescans.
+    // Keep every unrelated service, panel, bar, and widget mounted while the
+    // registry rescans.
     activePluginReloads = reloads
     for (var pluginId in reloads) {
       shell.unloadPluginService(pluginId)
@@ -944,9 +947,9 @@ ShellRoot {
 
   Connections {
     target: shell.pluginRegistry
-    function onLocalPluginChanged(pluginId) {
-      console.log("Local plugin changed, reloading:", pluginId)
-      shell.queueLocalPluginReload(pluginId)
+    function onLocalPluginChanged(sourceDir) {
+      console.log("Local plugin changed, reloading:", sourceDir)
+      shell.queueLocalPluginReload(sourceDir)
     }
     function onScanFinished() {
       if (shell.fullPluginReloadPending) {
