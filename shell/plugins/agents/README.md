@@ -54,15 +54,39 @@ light surfaces — and the bar glyph stands in when there is none.
 |---|---|---|
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
+| `grok` | The weekly credit allowance, when the billing endpoint (or grok's log) includes a percentage | `~/.grok/sessions` transcripts |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
-`CLAUDE_CONFIG_DIR`, Codex via `CODEX_HOME`. Fireworks reads
+`CLAUDE_CONFIG_DIR`, Codex via `CODEX_HOME`, Grok via `GROK_HOME`. Fireworks reads
 `FIREWORKS_API_KEY` and `FIREWORKS_ACCOUNT_ID` first, then
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
 signed in there.
+
+### Grok credits
+
+Grok publishes no supported way to read its weekly allowance: no subcommand
+prints it and the ACP surface has no account-credits method. The collector
+asks the same billing endpoint the CLI itself calls — with the token grok
+has already cached, never one of its own — and falls back to the newest
+usable reading in `~/.grok/logs/unified.jsonl` when the call can't be made
+or the answer can't be read.
+
+A usable reading is a percentage that belongs to a period that is still
+open, and neither half is guaranteed. A log line from a closed week is the
+wrong week's number. More to the point, grok 1.0.0 stopped reporting the
+percentage: it answers with the current window and no percentage at all,
+where 0.2.118 carried one in 100 of 102 readings on the same account. So the
+meter is omitted rather than guessed, and on 1.0.0 the tab shows tokens
+only until xAI publishes the figure again.
+
+Worth knowing when reading the panel: the meter and the token chart do not
+agree and cannot be made to. Grok's transcripts are overwhelmingly cache
+reads, and the allowance is billed per X identity rather than per machine, so
+usage from the web or another box lands in the meter with nothing local to
+explain it.
 
 ### Fireworks balance
 
@@ -128,6 +152,7 @@ edit `shell.json` directly):
 omarchy bar set omarchy.agents providers '{
   "claude": { "enabled": true },
   "codex": { "enabled": false },
+  "grok": { "enabled": true },
   "fireworks": { "enabled": true }
 }' --json
 ```
