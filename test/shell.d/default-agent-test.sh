@@ -198,8 +198,9 @@ declare -A expected_agents=(
   [codex]="codex"
   [crush]="crush"
   [grok]="grok"
-  [gemini]="gemini"
-  [gemini-cli]="gemini"
+  [antigravity]="antigravity"
+  [agy]="antigravity"
+  [antigravity-cli]="antigravity"
   [copilot]="copilot"
   [github-copilot]="copilot"
 )
@@ -212,7 +213,7 @@ declare -A expected_packages=(
   [codex]="codex"
   [crush]="$crush_package"
   [grok]="$grok_package"
-  [gemini]="gemini"
+  [antigravity]="antigravity-cli"
   [copilot]="copilot"
 )
 
@@ -355,7 +356,7 @@ assert_launch claude claude --permission-mode bypassPermissions -- "Review this 
 assert_launch codex codex --dangerously-bypass-approvals-and-sandbox -- "Review this project"
 assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
-assert_launch gemini gemini --yolo --prompt-interactive "Review this project"
+assert_launch antigravity agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
 
@@ -366,7 +367,7 @@ assert_bypass claude claude --permission-mode bypassPermissions
 assert_bypass codex codex --dangerously-bypass-approvals-and-sandbox
 assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
-assert_bypass gemini gemini --yolo
+assert_bypass antigravity agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
 pass "agent launcher skips permission prompts for every supported agent"
 
