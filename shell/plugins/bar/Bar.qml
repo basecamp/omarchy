@@ -1131,16 +1131,23 @@ Item {
     }
 
     anchors {
-      top: root.position === "top" || root.vertical || barWindow.dragGrown
-      bottom: root.position === "bottom" || root.vertical || barWindow.dragGrown
-      left: root.position === "left" || !root.vertical || barWindow.dragGrown
-      right: root.position === "right" || !root.vertical || barWindow.dragGrown
+      top: root.position === "top" || root.vertical
+      bottom: root.position === "bottom" || root.vertical
+      left: root.position === "left" || !root.vertical
+      right: root.position === "right" || !root.vertical
     }
 
-    // A zero size on an anchored axis means "stretch": the strip's thickness
-    // normally, the whole screen while grown for a drag.
-    implicitWidth: root.vertical && !barWindow.dragGrown ? root.barSize : 0
-    implicitHeight: root.vertical || barWindow.dragGrown ? 0 : root.barSize
+    // The grow extends the requested size along the open axis; the anchors
+    // never change. Anchoring all four edges instead would void the
+    // exclusive zone — layer-shell reserves space from an anchored edge —
+    // and the tiled windows would jump up behind the bar for the length of
+    // the drag.
+    implicitWidth: root.vertical
+      ? (barWindow.dragGrown && barWindow.screen ? barWindow.screen.width : root.barSize)
+      : 0
+    implicitHeight: root.vertical
+      ? 0
+      : (barWindow.dragGrown && barWindow.screen ? barWindow.screen.height : root.barSize)
     // The window is transparent; the strip below paints the bar. Painting the
     // window would flood the whole screen with bar color while grown.
     color: "transparent"

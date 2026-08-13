@@ -284,16 +284,19 @@ assert(
   /root\.barMoveActive && root\.sameWindow\(root\.barMoveWindow, barWindow\)/.test(barSource),
   'the bar-move gesture grows the window too'
 )
+// The grow may only extend the requested size along the open axis. Anchoring
+// all four edges instead voids the exclusive zone — layer-shell reserves
+// space from an anchored edge — and tiled windows jump up behind the bar.
 for (const edge of ['top', 'bottom', 'left', 'right']) {
   assert(
-    new RegExp(`${edge}: root\\.position === "\\w+" \\|\\| ${edge === 'top' || edge === 'bottom' ? 'root\\.vertical' : '!root\\.vertical'} \\|\\| barWindow\\.dragGrown`).test(barSource),
-    `a grown bar anchors its ${edge} edge`
+    !new RegExp(`${edge}:[^\\n]*dragGrown`).test(barSource),
+    `a drag never changes the bar's ${edge} anchor`
   )
 }
 assert(
-  /implicitWidth: root\.vertical && !barWindow\.dragGrown \? root\.barSize : 0/.test(barSource) &&
-  /implicitHeight: root\.vertical \|\| barWindow\.dragGrown \? 0 : root\.barSize/.test(barSource),
-  'a grown bar stretches: layer-shell keeps a non-zero requested size fixed'
+  /implicitWidth: root\.vertical\s*\n\s*\? \(barWindow\.dragGrown && barWindow\.screen \? barWindow\.screen\.width : root\.barSize\)/.test(barSource) &&
+  /implicitHeight: root\.vertical\s*\n\s*\? 0\s*\n\s*: \(barWindow\.dragGrown && barWindow\.screen \? barWindow\.screen\.height : root\.barSize\)/.test(barSource),
+  'a grown bar extends its requested size along the open axis only'
 )
 // The window is no longer the bar's boundary once it can grow, so both the
 // free-space drop rejection and the removal arming measure against the strip.
