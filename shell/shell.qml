@@ -212,7 +212,10 @@ ShellRoot {
   function pluginEntryPointUrl(manifest, kind) {
     if (!manifest) return ""
     var sourceDir = String(manifest.__sourceDir || "")
-    var revision = shell.pluginSourceRevisions[String(manifest.id || "")] || 0
+    // Revisions are keyed by source directory, not manifest id: the symlinked
+    // revision versions the directory's files, and a rescan may change which
+    // id a directory carries.
+    var revision = shell.pluginSourceRevisions[sourceDir] || 0
     if (revision > 0) {
       // A revisioned base URL also changes cache keys for relative QML and JS.
       var pluginsDir = shell.pluginRegistry.pluginsDir.replace(/\/$/, "")
@@ -786,7 +789,7 @@ ShellRoot {
 
       var registryKey = String(manifest.id)
       seen[registryKey] = true
-      if (targeted && reloadIds[registryKey] !== true) continue
+      if (targeted && !reloadIds[registryKey]) continue
 
       // Already loaded with matching source — leave it alone.
       var existing = pluginWidgetComponents[registryKey]
@@ -831,7 +834,7 @@ ShellRoot {
     var allIds = shell.barWidgetRegistry.availableIds()
     for (var i = 0; i < allIds.length; i++) {
       var id = allIds[i]
-      if (targeted && reloadIds[id] !== true) continue
+      if (targeted && !reloadIds[id]) continue
       if (!pluginWidgetComponents[id]) continue
       if (!seen[id]) {
         shell.barWidgetRegistry.unregister(id)
@@ -857,18 +860,20 @@ ShellRoot {
     return reloads && Object.keys(reloads).length > 0
   }
 
+  // Reload sets map pluginId -> sourceDir, so a rescan that changes which id
+  // a directory carries can still be reconciled afterwards.
   function mergePluginReloads(current, additions) {
     var next = ({})
-    for (var id in current) next[id] = true
-    for (var addedId in additions) next[addedId] = true
+    for (var id in current) next[id] = current[id]
+    for (var addedId in additions) next[addedId] = additions[addedId]
     return next
   }
 
   function preparePluginSourceRevision(reloads) {
     pluginSourceRevisionCounter++
     var next = ({})
-    for (var id in pluginSourceRevisions) next[id] = pluginSourceRevisions[id]
-    for (var reloadId in reloads) next[reloadId] = pluginSourceRevisionCounter
+    for (var dir in pluginSourceRevisions) next[dir] = pluginSourceRevisions[dir]
+    for (var reloadId in reloads) next[reloads[reloadId]] = pluginSourceRevisionCounter
     preparedPluginSourceRevisions = next
 
     var script = "mkdir -p -- \"$0/$2\" && ln -s -- \"$1\" \"$0/$2/plugins\""
@@ -900,7 +905,7 @@ ShellRoot {
   }
 
   function pluginReloadAffects(pluginId) {
-    return shell.fullPluginReloading || shell.activePluginReloads[String(pluginId || "")] === true
+    return shell.fullPluginReloading || !!shell.activePluginReloads[String(pluginId || "")]
   }
 
   function queueLocalPluginReload(sourceDir) {
@@ -914,7 +919,7 @@ ShellRoot {
       pendingLocalPluginFullReload = true
     } else {
       var reload = ({})
-      reload[pluginId] = true
+      reload[pluginId] = String(sourceDir)
       pendingLocalPluginReloads = shell.mergePluginReloads(pendingLocalPluginReloads, reload)
     }
     localPluginReloadTimer.restart()
@@ -995,7 +1000,16 @@ ShellRoot {
       }
 
       var fullReload = shell.fullPluginReloading
-      var reloads = shell.activePluginReloads
+      // A rescan can change which manifest id a reloaded directory carries;
+      // sync the directory's current id as well as the one it had before, so
+      // a renamed plugin is picked up and the old one dropped.
+      var reloads = ({})
+      for (var reloadId in shell.activePluginReloads) {
+        var reloadDir = shell.activePluginReloads[reloadId]
+        reloads[reloadId] = reloadDir
+        var currentId = shell.pluginRegistry.pluginIdForSourceDir(reloadDir)
+        if (currentId && currentId !== reloadId) reloads[currentId] = reloadDir
+      }
       // While a targeted reload gates the pluginsChanged handlers, only our
       // own rescan should bump registryRevision (by exactly one). Any extra
       // bump means shell.json or plugin enablement changed inside the window;
