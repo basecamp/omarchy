@@ -595,9 +595,13 @@ Item {
             if (root.mirrorEnabled) return "MIRRORING — SWITCH TO EXTEND TO ARRANGE DISPLAYS"
             if (root.layoutOverlaps) return "DISPLAYS OVERLAP"
             if (!root.layoutContiguous) return "DISPLAYS MUST TOUCH — A GAP IS A DEAD ZONE FOR THE POINTER"
-            if (!root.hasChanges) return "DRAG A DISPLAY  ·  H J K L TO NUDGE  ·  R TO ROTATE"
+            // Nothing to say until something is actually wrong or pending: the
+            // controls below name themselves, and a single display has nothing
+            // to drag against anyway.
+            if (!root.hasChanges) return ""
             return "ENTER TO APPLY  ·  ESC TO CANCEL"
           }
+          visible: text !== ""
           color: root.layoutValid || root.awaitingConfirmation ? Qt.darker(Color.foreground, 1.4) : Color.accent
           font.family: Style.font.family
           font.pixelSize: Style.font.caption
