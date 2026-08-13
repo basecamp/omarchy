@@ -11,7 +11,7 @@ mock_bin="$tmpdir/bin"
 call_log="$tmpdir/calls"
 mkdir -p "$mock_bin"
 
-for command in omarchy-shell hyprctl pkill; do
+for command in omarchy-shell hyprctl pkill timeout; do
   cat >"$mock_bin/$command" <<'SH'
 #!/bin/bash
 printf '%s %s\n' "$(basename "$0")" "$*" >>"$CALL_LOG"
@@ -25,10 +25,12 @@ SH
 chmod +x "$mock_bin"/*
 
 PATH="$mock_bin:$PATH" CALL_LOG="$call_log" "$ROOT/bin/omarchy-system-lock"
-mapfile -t kills < <(rg '^pkill ' "$call_log")
+mapfile -t shutdown < <(rg '^(pkill|timeout) ' "$call_log")
 
-[[ ${kills[0]} == "pkill -x ttfx" ]] ||
-  fail "system lock stops ttfx before closing its terminal" "calls: ${kills[*]}"
-[[ ${kills[1]} == "pkill -f [o]rg.omarchy.screensaver" ]] ||
-  fail "system lock closes the screensaver terminal after ttfx" "calls: ${kills[*]}"
-pass "system lock stops ttfx before closing its terminal"
+[[ ${shutdown[0]} == "pkill -x ttfx" ]] ||
+  fail "system lock stops ttfx before closing its terminal" "calls: ${shutdown[*]}"
+[[ ${shutdown[1]} == "timeout 1s pidwait -x ttfx" ]] ||
+  fail "system lock waits for ttfx to exit" "calls: ${shutdown[*]}"
+[[ ${shutdown[2]} == "pkill -f [o]rg.omarchy.screensaver" ]] ||
+  fail "system lock closes the screensaver terminal after ttfx exits" "calls: ${shutdown[*]}"
+pass "system lock waits for ttfx before closing its terminal"
