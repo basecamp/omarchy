@@ -8,6 +8,7 @@
   "kinds": [
     "overlay"
   ],
+  "keepLoaded": true,
   "entryPoints": {
     "overlay": "DisplayArrange.qml"
   }
