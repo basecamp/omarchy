@@ -12,21 +12,17 @@ usage() {
 app=${1:-}
 [[ -n $app ]] || usage
 
-# Keep current classes first, but fall back to stable launch-time identities.
 # Agent terminals notify as kitty/foot/etc. while their shared window class is
-# org.omarchy.agent, leaving the terminal name only in initialTitle.
+# org.omarchy.agent, leaving the terminal name only in initialTitle. So match
+# by class first, then fall back to the launch-time title of agent windows.
 address=$(
   hyprctl clients -j 2>/dev/null |
     jq -r --arg pattern "$app" \
       'def matches($value): ($value // "") | test($pattern; "i");
-       ([.[] | select(matches(.class))] +
-        [.[] | select(matches(.initialClass))] +
-        [.[] | select(
-          ((.class // "") == "org.omarchy.agent" or
-           (.initialClass // "") == "org.omarchy.agent") and
-          matches(.initialTitle)
-        )]) |
-       first.address // empty'
+       first(
+         (.[] | select(matches(.class))),
+         (.[] | select(.initialClass == "org.omarchy.agent" and matches(.initialTitle)))
+       ).address // empty'
 )
 
 [[ -n $address ]] || exit 1
