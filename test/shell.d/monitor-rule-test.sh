@@ -158,3 +158,46 @@ run_rule DP-1
 [[ $(grep -c '^hl.monitor' "$monitor_lua") == "1" ]] ||
   fail "a commented-out rule does not stand in for a real one"
 pass "a commented-out rule does not stand in for a real one"
+
+# A rule is a Lua statement, not a line. Splitting one over several lines is
+# ordinary formatting, and reading line-by-line saw `hl.monitor({` with no
+# output key on it, took the rule for one naming its display by a variable, and
+# refused to place a display whose rule was sitting right there.
+printf 'hl.monitor({\n  output = "DP-1",\n  position = "0x0",\n  scale = 1,\n})\n' >"$monitor_lua"
+run_rule DP-1
+[[ $(grep -c 'hl.monitor' "$monitor_lua") == "1" ]] ||
+  fail "a rule split over several lines is rewritten rather than duplicated"
+grep -Fq 'output = "DP-1"' "$monitor_lua" || fail "the rewritten rule keeps its display"
+pass "a rule split over several lines is rewritten rather than duplicated"
+
+# The identifier can sit on any line of the rule, and it is the user's choice to
+# keep — swapping it for ours leaves their comments pointing at nothing.
+printf 'hl.monitor({\n  output = "desc:Acme Wide",\n  scale = 1,\n})\n' >"$monitor_lua"
+run_rule DP-1
+grep -Fq 'output = "desc:Acme Wide"' "$monitor_lua" ||
+  fail "a multi-line rule keeps the identifier the user wrote"
+pass "a multi-line rule keeps the identifier the user wrote"
+
+# Only the rule being replaced may move; its neighbours are the user's file.
+printf 'hl.monitor({ output = "eDP-1", scale = 2 })\nhl.monitor({\n  output = "DP-1",\n  scale = 1,\n})\nhl.monitor({ output = "HDMI-A-1", scale = 1 })\n' >"$monitor_lua"
+run_rule DP-1
+grep -Fq 'output = "eDP-1", scale = 2' "$monitor_lua" || fail "the rule above is untouched"
+grep -Fq 'output = "HDMI-A-1", scale = 1' "$monitor_lua" || fail "the rule below is untouched"
+[[ $(grep -c 'hl.monitor' "$monitor_lua") == "3" ]] || fail "the file still holds three rules"
+pass "collapsing a multi-line rule leaves its neighbours alone"
+
+# Quoting decides what is syntax: a description may hold braces, parentheses or
+# a "--" without ending the rule or starting a comment.
+printf 'hl.monitor({ output = "desc:Weird (Brand) -- v2", scale = 1 })\nhl.monitor({ output = "DP-1", scale = 1 })\n' >"$monitor_lua"
+run_rule DP-1
+grep -Fq 'output = "desc:Weird (Brand) -- v2", scale = 1' "$monitor_lua" ||
+  fail "a description holding braces and dashes is left alone"
+pass "punctuation inside a description is not read as syntax"
+
+# An unterminated rule is a broken file, not a display without one: appending
+# below it would land the new rule inside the open call.
+printf 'hl.monitor({\n  output = "DP-1",\n' >"$monitor_lua"
+cp "$monitor_lua" "$test_tmp/unterminated.lua"
+run_rule DP-1 2>/dev/null && fail "an unterminated rule is refused"
+diff "$test_tmp/unterminated.lua" "$monitor_lua" >/dev/null || fail "a refused file is left untouched"
+pass "an unterminated rule is refused rather than appended to"

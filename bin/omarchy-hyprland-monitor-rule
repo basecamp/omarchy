@@ -45,53 +45,116 @@ transform="$(printf '%s' "$monitor" | jq -r '.transform // 0')"
 # noise in a file the user reads.
 scale="$(awk -v value="$scale" 'BEGIN { printf "%g", value }')"
 
-# Every line that configures this display, whatever shape it is written in.
-# Lua allows `hl.monitor { … }` without parentheses, spacing is free, and a line
-# may be indented — so match on content rather than on the formatting Omarchy
-# happens to ship. Hyprland also matches `desc:` by prefix and users abbreviate,
-# so a rule saying "desc:Acme Wide" configures a display reporting
-# "Acme Wide 42 SN123".
+# Every rule that configures this display, whatever shape it is written in, as
+# a "first last" line range.
+#
+# A rule is a Lua statement, not a line: `hl.monitor({ … })` is as valid split
+# over six lines as it is on one, and both are ordinary things to write. So read
+# whole statements — track quoting and delimiter depth from `hl.monitor` to its
+# closing brace — rather than assuming the whole rule fits on the line its
+# `output` key happens to sit on. Lua also allows `hl.monitor { … }` without
+# parentheses, spacing is free, and a rule may be indented.
+#
+# Hyprland matches `desc:` by prefix and users abbreviate, so a rule saying
+# "desc:Acme Wide" configures a display reporting "Acme Wide 42 SN123".
 matching_rule_lines() {
   awk -v name="$output" -v description="$description" '
-    {
-      line = $0
-      sub(/^[[:space:]]+/, "", line)
-      if (line !~ /^hl\.monitor[[:space:]]*[({]/) next
-      if (line ~ /^--/) next
-
-      if (match(line, /output[[:space:]]*=[[:space:]]*"[^"]*"/) == 0) {
+    function report(first, last, text,   identifier, key) {
+      if (match(text, /output[[:space:]]*=[[:space:]]*"[^"]*"/) == 0) {
         # A rule whose display is named by something other than a literal, a
         # variable say. It may or may not be this display, and guessing wrong
         # means either mangling an unrelated rule or adding a second one for
         # this display. Report it so the caller can decline.
         print "?"
-        next
+        return
       }
 
-      identifier = substr(line, RSTART, RLENGTH)
+      identifier = substr(text, RSTART, RLENGTH)
       sub(/^output[[:space:]]*=[[:space:]]*"/, "", identifier)
       sub(/"$/, "", identifier)
 
-      if (identifier == name) { print NR; next }
+      if (identifier == name) { print first " " last; return }
       if (substr(identifier, 1, 5) == "desc:") {
         key = substr(identifier, 6)
-        if (key != "" && description != "" && substr(description, 1, length(key)) == key) {
-          print NR
-          next
-        }
+        if (key != "" && description != "" && substr(description, 1, length(key)) == key)
+          print first " " last
       }
+    }
+
+    {
+      line = $0
+      len = length(line)
+      i = 1
+
+      while (i <= len) {
+        c = substr(line, i, 1)
+
+        # A quote flips string state, and nothing inside a string counts as
+        # syntax: a description may hold braces, parentheses or a "--".
+        if (c == "\"") {
+          in_string = !in_string
+          if (collecting) buffer = buffer c
+          i++
+          continue
+        }
+
+        if (!in_string && substr(line, i, 2) == "--") break   # comment to end of line
+
+        if (in_string) {
+          if (collecting) buffer = buffer c
+          i++
+          continue
+        }
+
+        if (!collecting) {
+          if (substr(line, i, 10) == "hl.monitor") {
+            collecting = 1
+            depth = 0
+            first = NR
+            buffer = "hl.monitor"
+            i += 10
+            continue
+          }
+          i++
+          continue
+        }
+
+        buffer = buffer c
+        if (c == "(" || c == "{") depth++
+        else if (c == ")" || c == "}") {
+          depth--
+          if (depth <= 0) {
+            report(first, NR, buffer)
+            collecting = 0
+            buffer = ""
+          }
+        }
+        i++
+      }
+
+      # A statement continuing onto the next line: keep the tokens either side
+      # of the break apart.
+      if (collecting) buffer = buffer " "
+    }
+
+    END {
+      # An unterminated hl.monitor( … . Refuse to place this display rather than
+      # append a second rule below a broken one.
+      if (collecting) print "?"
     }
   ' "$monitor_lua"
 }
 
 identifier_for() {
-  local line="$1"
+  local first="$1" last="$2"
 
   # Keep the identifier the user chose for this display rather than swapping it
   # for ours: theirs may be deliberate, and rewriting it would leave their other
   # references — comments, notes — pointing at something that no longer exists.
-  if [[ -n $line ]]; then
-    sed -n "${line}p" "$monitor_lua" |
+  # The key can be on any line of the rule, so read the whole range.
+  if [[ -n $first ]]; then
+    sed -n "${first},${last}p" "$monitor_lua" |
+      tr '\n' ' ' |
       sed -E 's/.*output[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/'
     return
   fi
@@ -101,6 +164,15 @@ identifier_for() {
   else
     printf '%s\n' "$output"
   fi
+}
+
+# The indentation the rule already sits at, so replacing it does not shove it
+# against the margin in a file the user reads.
+indent_of() {
+  local first="$1"
+
+  [[ -n $first ]] || return 0
+  sed -n "${first}p" "$monitor_lua" | sed -E 's/^([[:space:]]*).*/\1/'
 }
 
 mapfile -t matches < <(matching_rule_lines)
@@ -121,16 +193,22 @@ if ((${#matches[@]} > 1)); then
   exit 1
 fi
 
-line="${matches[0]:-}"
-identifier="$(identifier_for "$line")"
+read -r first last <<<"${matches[0]:-}"
+identifier="$(identifier_for "$first" "$last")"
 
-rule="hl.monitor({ output = \"$identifier\", mode = \"preferred\", position = \"${x}x${y}\", scale = $scale"
+rule="$(indent_of "$first")hl.monitor({ output = \"$identifier\", mode = \"preferred\", position = \"${x}x${y}\", scale = $scale"
 ((transform != 0)) && rule+=", transform = $transform"
 rule+=" })"
 
+# A rule written across several lines collapses to the one line replacing it,
+# which is the shape every rule this command writes takes.
 tmp="$(mktemp)"
-if [[ -n $line ]]; then
-  awk -v target="$line" -v rule="$rule" 'NR == target { print rule; next } { print }' "$monitor_lua" >"$tmp"
+if [[ -n $first ]]; then
+  awk -v first="$first" -v last="$last" -v rule="$rule" '
+    NR == first { print rule }
+    NR >= first && NR <= last { next }
+    { print }
+  ' "$monitor_lua" >"$tmp"
 else
   cat "$monitor_lua" >"$tmp"
   printf '%s\n' "$rule" >>"$tmp"
