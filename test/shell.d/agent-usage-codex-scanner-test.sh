@@ -348,6 +348,19 @@ result=$(HOME="$CACHE_HOME" CODEX_HOME="$CACHE_HOME/.codex" XDG_CACHE_HOME="$CAC
   fail "Codex collector --limits-only reuses a scan the no-flag mode would refresh" "$result"
 pass "Codex collector --limits-only reuses a scan the no-flag mode would refresh"
 
+# A cache written on another local date holds another day's today* stats even
+# under a fresh mtime (midnight passed, or the clock moved backwards): the
+# envelope's scanDate must turn it into a miss.
+jq -c '.scanDate = "1999-01-01"' "$cache_file" >"$cache_file.tmp" && mv "$cache_file.tmp" "$cache_file"
+result=$(HOME="$CACHE_HOME" CODEX_HOME="$CACHE_HOME/.codex" XDG_CACHE_HOME="$CACHE_HOME/.cache" XDG_DATA_HOME="$CACHE_HOME/.local/share" \
+  PATH="$CACHE_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --limits-only)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "45" ]] ||
+  fail "Codex collector treats a cache from another day as a miss" "$result"
+[[ $(jq -r '.scanDate' "$cache_file") == "$(date +%Y-%m-%d)" ]] ||
+  fail "Codex collector stamps the rewritten cache with the scan date" "$result"
+pass "Codex collector treats a cache from another day as a miss"
+
 # First --limits-only on a machine with no cache falls back to a full scan.
 FRESH_HOME=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$CACHE_HOME" "$FRESH_HOME"' EXIT

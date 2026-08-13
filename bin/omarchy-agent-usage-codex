@@ -381,6 +381,11 @@ def read_cached_stats(cache_file, max_age_seconds):
   cached = read_fresh_json(cache_file, max_age_seconds)
   if not isinstance(cached, dict) or cached.get("schemaVersion") != 1:
     return None
+  # today* fields only mean "today" on the day they were scanned. A cache
+  # from another local date (midnight passed, or the clock moved) is a miss,
+  # not merely old, whatever its mtime says.
+  if cached.get("scanDate") != today:
+    return None
   stats = cached.get("stats")
   if not isinstance(stats, dict):
     return None
@@ -391,7 +396,7 @@ def read_cached_stats(cache_file, max_age_seconds):
 
 def write_cached_stats(cache_file, stats):
   try:
-    write_json(cache_file, {"schemaVersion": 1, "stats": stats})
+    write_json(cache_file, {"schemaVersion": 1, "scanDate": today, "stats": stats})
   except Exception as exc:
     print(f"omarchy-agent-usage-codex: could not write usage cache ({exc})", file=sys.stderr)
 
