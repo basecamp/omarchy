@@ -166,6 +166,26 @@ identifier_for() {
   fi
 }
 
+# Keep the mode the user wrote, the same way the identifier is kept. Hyprland
+# merges monitor rules per identifier and drops whatever a rule leaves out, so
+# the rewritten rule has to restate a mode: saying "preferred" over a display
+# pinned to 2560x1440@144 would quietly drop it to whatever the monitor calls
+# best. This command changes geometry, so the mode it finds is the mode it
+# writes back. A rule that named no mode was already running the preferred one.
+mode_for() {
+  local first="$1" last="$2" existing
+
+  if [[ -n $first ]]; then
+    existing="$(sed -n "${first},${last}p" "$monitor_lua" | tr '\n' ' ')"
+    if [[ $existing =~ mode[[:space:]]*=[[:space:]]*\"([^\"]*)\" ]]; then
+      printf '%s\n' "${BASH_REMATCH[1]}"
+      return
+    fi
+  fi
+
+  printf 'preferred\n'
+}
+
 # The indentation the rule already sits at, so replacing it does not shove it
 # against the margin in a file the user reads.
 indent_of() {
@@ -195,8 +215,9 @@ fi
 
 read -r first last <<<"${matches[0]:-}"
 identifier="$(identifier_for "$first" "$last")"
+mode="$(mode_for "$first" "$last")"
 
-rule="$(indent_of "$first")hl.monitor({ output = \"$identifier\", mode = \"preferred\", position = \"${x}x${y}\", scale = $scale"
+rule="$(indent_of "$first")hl.monitor({ output = \"$identifier\", mode = \"$mode\", position = \"${x}x${y}\", scale = $scale"
 ((transform != 0)) && rule+=", transform = $transform"
 rule+=" })"
 

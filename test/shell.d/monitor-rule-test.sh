@@ -201,3 +201,33 @@ cp "$monitor_lua" "$test_tmp/unterminated.lua"
 run_rule DP-1 2>/dev/null && fail "an unterminated rule is refused"
 diff "$test_tmp/unterminated.lua" "$monitor_lua" >/dev/null || fail "a refused file is left untouched"
 pass "an unterminated rule is refused rather than appended to"
+
+# The rewritten rule has to restate a mode, because Hyprland merges rules per
+# identifier and drops whatever one leaves out. Which mode is the user's call,
+# not this command's: it is here to move a display, not to change its
+# resolution or refresh rate.
+printf 'hl.monitor({ output = "DP-1", mode = "2560x1440@144", scale = 1 })\n' >"$monitor_lua"
+run_rule DP-1
+grep -Fq 'mode = "2560x1440@144"' "$monitor_lua" ||
+  fail "a pinned mode survives a move"
+pass "a pinned mode survives a move"
+
+printf 'hl.monitor({ output = "DP-1", mode = "preferred", scale = 1 })\n' >"$monitor_lua"
+run_rule DP-1
+grep -Fq 'mode = "preferred"' "$monitor_lua" ||
+  fail "a rule asking for the preferred mode keeps asking for it"
+pass "a rule asking for the preferred mode keeps asking for it"
+
+# A rule naming no mode was already running the preferred one, so that is what
+# restating it means.
+printf 'hl.monitor({ output = "DP-1", scale = 1 })\n' >"$monitor_lua"
+run_rule DP-1
+grep -Fq 'mode = "preferred"' "$monitor_lua" ||
+  fail "a rule with no mode gains the preferred one"
+pass "a rule that named no mode is restated as preferred"
+
+printf 'hl.monitor({\n  output = "DP-1",\n  mode = "2560x1440@144",\n  scale = 1,\n})\n' >"$monitor_lua"
+run_rule DP-1
+grep -Fq 'mode = "2560x1440@144"' "$monitor_lua" ||
+  fail "a pinned mode on its own line survives a move"
+pass "a pinned mode survives even when the rule spans several lines"
