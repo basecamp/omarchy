@@ -127,8 +127,119 @@ Item {
 }
 QML
 
-jq --arg target "$hot_reload_id" --arg sentinel "$reload_sentinel_id" '
-  .plugins = ((.plugins // []) + [{id: $target}, {id: $sentinel}])
+hot_reload_widget_id="acme.hot-reload-widget"
+hot_reload_widget_dir="$test_home/.config/omarchy/plugins/$hot_reload_widget_id"
+mkdir -p "$hot_reload_widget_dir"
+cat >"$hot_reload_widget_dir/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$hot_reload_widget_id",
+  "name": "Hot reload widget",
+  "version": "1.0.0",
+  "kinds": ["bar-widget"],
+  "entryPoints": {"barWidget": "Widget.qml"},
+  "barWidget": {
+    "displayName": "Hot reload widget",
+    "description": "Runtime hot reload fixture",
+    "category": "Test",
+    "allowMultiple": false
+  }
+}
+JSON
+cat >"$hot_reload_widget_dir/Widget.qml" <<'QML'
+import QtQuick
+
+Item {
+  implicitWidth: 12
+  implicitHeight: 12
+  Component.onCompleted: console.log("HOT_RELOAD_TARGET_WIDGET_BEFORE")
+}
+QML
+
+reload_sentinel_widget_id="acme.reload-sentinel-widget"
+reload_sentinel_widget_dir="$test_home/.config/omarchy/plugins/$reload_sentinel_widget_id"
+mkdir -p "$reload_sentinel_widget_dir"
+cat >"$reload_sentinel_widget_dir/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$reload_sentinel_widget_id",
+  "name": "Reload sentinel widget",
+  "version": "1.0.0",
+  "kinds": ["bar-widget"],
+  "entryPoints": {"barWidget": "Widget.qml"},
+  "barWidget": {
+    "displayName": "Reload sentinel widget",
+    "description": "Runtime hot reload sentinel",
+    "category": "Test",
+    "allowMultiple": false
+  }
+}
+JSON
+cat >"$reload_sentinel_widget_dir/Widget.qml" <<'QML'
+import QtQuick
+
+Item {
+  implicitWidth: 12
+  implicitHeight: 12
+  Component.onCompleted: console.log("HOT_RELOAD_SENTINEL_WIDGET")
+}
+QML
+
+hot_reload_bar_id="acme.hot-reload-bar"
+hot_reload_bar_dir="$test_home/.config/omarchy/plugins/$hot_reload_bar_id"
+mkdir -p "$hot_reload_bar_dir"
+cat >"$hot_reload_bar_dir/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$hot_reload_bar_id",
+  "name": "Hot reload bar",
+  "version": "1.0.0",
+  "kinds": ["bar"],
+  "entryPoints": {"bar": "Bar.qml"}
+}
+JSON
+cat >"$hot_reload_bar_dir/Bar.qml" <<QML
+import QtQuick
+import Quickshell.Io
+
+Item {
+  id: root
+
+  property var barWidgetRegistry: null
+  property int count: 0
+  readonly property var targetWidget: {
+    var widgets = barWidgetRegistry ? barWidgetRegistry.widgets : ({})
+    return widgets["$hot_reload_widget_id"] ? widgets["$hot_reload_widget_id"].component : null
+  }
+  readonly property var sentinelWidget: {
+    var widgets = barWidgetRegistry ? barWidgetRegistry.widgets : ({})
+    return widgets["$reload_sentinel_widget_id"] ? widgets["$reload_sentinel_widget_id"].component : null
+  }
+
+  Component.onCompleted: console.log("HOT_RELOAD_TARGET_BAR_BEFORE")
+
+  Loader { sourceComponent: root.targetWidget }
+  Loader { sourceComponent: root.sentinelWidget }
+
+  IpcHandler {
+    target: "hot-reload-bar"
+
+    function increment(): string {
+      root.count++
+      return String(root.count)
+    }
+  }
+}
+QML
+
+jq --arg target "$hot_reload_id" \
+   --arg sentinel "$reload_sentinel_id" \
+   --arg targetWidget "$hot_reload_widget_id" \
+   --arg sentinelWidget "$reload_sentinel_widget_id" \
+   --arg targetBar "$hot_reload_bar_id" '
+  .plugins = ((.plugins // []) + [{id: $target}, {id: $sentinel}]) |
+  .bar.id = $targetBar |
+  .bar.layout.left += [{id: $targetWidget}, {id: $sentinelWidget}]
 ' "$ROOT/config/omarchy/shell.json" >"$test_home/.config/omarchy/shell.json"
 
 cat >"$stub_bin/omarchy-update-available" <<'SH'
@@ -211,7 +322,10 @@ done
 for _ in {1..80}; do
   if grep -q "HOT_RELOAD_TARGET_SERVICE_BEFORE" "$log" \
       && grep -q "HOT_RELOAD_TARGET_OVERLAY_BEFORE" "$log" \
-      && grep -q "HOT_RELOAD_SENTINEL_OVERLAY" "$log"; then
+      && grep -q "HOT_RELOAD_SENTINEL_OVERLAY" "$log" \
+      && grep -q "HOT_RELOAD_TARGET_WIDGET_BEFORE" "$log" \
+      && grep -q "HOT_RELOAD_SENTINEL_WIDGET" "$log" \
+      && grep -q "HOT_RELOAD_TARGET_BAR_BEFORE" "$log"; then
     break
   fi
   sleep 0.1
@@ -219,6 +333,9 @@ done
 grep -q "HOT_RELOAD_TARGET_SERVICE_BEFORE" "$log" || fail_with_log "hot reload target service starts"
 grep -q "HOT_RELOAD_TARGET_OVERLAY_BEFORE" "$log" || fail_with_log "hot reload target overlay starts"
 grep -q "HOT_RELOAD_SENTINEL_OVERLAY" "$log" || fail_with_log "hot reload sentinel overlay starts"
+grep -q "HOT_RELOAD_TARGET_WIDGET_BEFORE" "$log" || fail_with_log "hot reload target widget starts"
+grep -q "HOT_RELOAD_SENTINEL_WIDGET" "$log" || fail_with_log "hot reload sentinel widget starts"
+grep -q "HOT_RELOAD_TARGET_BAR_BEFORE" "$log" || fail_with_log "hot reload target bar starts"
 sleep 0.1
 hot_reload_log_offset=$(wc -c <"$log")
 
@@ -265,6 +382,54 @@ if grep -qE "Cannot read property.*of null" "$hot_reload_log"; then
   fail_with_log "hot reload keeps unrelated bar widgets alive"
 fi
 pass "hot reload only rebuilds the changed plugin"
+
+bar_count=$(shell_ipc hot-reload-bar increment 2>/dev/null || true)
+[[ $bar_count == "1" ]] || fail_with_log "hot reload bar state starts"
+hot_reload_log_offset=$(wc -c <"$log")
+sed -i 's/HOT_RELOAD_TARGET_WIDGET_BEFORE/HOT_RELOAD_TARGET_WIDGET_AFTER/' "$hot_reload_widget_dir/Widget.qml"
+
+for _ in {1..80}; do
+  tail -c "+$(( hot_reload_log_offset + 1 ))" "$log" >"$hot_reload_log"
+  grep -q "HOT_RELOAD_TARGET_WIDGET_AFTER" "$hot_reload_log" && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while loading changed widget code"
+  fi
+  sleep 0.1
+done
+grep -q "HOT_RELOAD_TARGET_WIDGET_AFTER" "$hot_reload_log" || fail_with_log "changed widget code reloads"
+sleep 0.2
+tail -c "+$(( hot_reload_log_offset + 1 ))" "$log" >"$hot_reload_log"
+if grep -q "HOT_RELOAD_TARGET_WIDGET_BEFORE" "$hot_reload_log"; then
+  fail_with_log "stale widget loads stay canceled"
+fi
+if grep -q "HOT_RELOAD_SENTINEL_WIDGET" "$hot_reload_log"; then
+  fail_with_log "widget hot reload keeps unrelated widgets alive"
+fi
+if grep -q "HOT_RELOAD_TARGET_BAR_" "$hot_reload_log"; then
+  fail_with_log "widget hot reload keeps the active bar alive"
+fi
+bar_count=$(shell_ipc hot-reload-bar increment 2>/dev/null || true)
+[[ $bar_count == "2" ]] || fail_with_log "widget hot reload preserves active bar state"
+pass "hot reload only rebuilds the changed bar widget"
+
+hot_reload_log_offset=$(wc -c <"$log")
+sed -i 's/HOT_RELOAD_TARGET_BAR_BEFORE/HOT_RELOAD_TARGET_BAR_AFTER/' "$hot_reload_bar_dir/Bar.qml"
+
+for _ in {1..80}; do
+  tail -c "+$(( hot_reload_log_offset + 1 ))" "$log" >"$hot_reload_log"
+  grep -q "HOT_RELOAD_TARGET_BAR_AFTER" "$hot_reload_log" && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while loading changed bar code"
+  fi
+  sleep 0.1
+done
+grep -q "HOT_RELOAD_TARGET_BAR_AFTER" "$hot_reload_log" || fail_with_log "changed bar code reloads"
+bar_count=$(shell_ipc hot-reload-bar increment 2>/dev/null || true)
+[[ $bar_count == "1" ]] || fail_with_log "changed bar is recreated"
+pass "hot reload rebuilds the changed custom bar"
+
+[[ $(shell_ipc shell setPluginEnabled omarchy.bar true) == "ok" ]] ||
+  fail_with_log "runtime smoke test restores the built-in bar"
 
 [[ $(shell_ipc shell setPluginEnabled "$hot_reload_id" true) == "ok" ]] ||
   fail_with_log "installed plugin could not be enabled"
