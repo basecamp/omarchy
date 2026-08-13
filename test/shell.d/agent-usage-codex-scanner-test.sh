@@ -273,6 +273,81 @@ result=$(HOME="$CACHE_HOME" CODEX_HOME="$CACHE_HOME/.codex" XDG_CACHE_HOME="$CAC
   fail "Codex collector --limits-only rescans when the cache is stale" "$result"
 pass "Codex collector --limits-only rescans when the cache is stale"
 
+# The 15-minute reuse window belongs to --limits-only alone. A no-flag run
+# (the widget's periodic refresh) reuses a scan only while it is young enough
+# to be a concurrent collector run; past that it rescans, so stats stay as
+# fresh as refreshIntervalSec, however low the user sets it.
+python3 - "$CACHE_HOME/.local/share/opencode/opencode.db" <<'PY'
+import json
+import sqlite3
+import sys
+import time
+from pathlib import Path
+
+db = Path(sys.argv[1])
+conn = sqlite3.connect(db)
+now_ms = int(time.time() * 1000)
+conn.execute("INSERT INTO message VALUES (?, ?, ?, ?, ?)", (
+  "c_4", "ses_1", now_ms, now_ms, json.dumps({
+    "role": "assistant",
+    "providerID": "openai",
+    "modelID": "gpt-5.2-codex",
+    "tokens": {"input": 10, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+    "time": {"created": now_ms},
+  }),
+))
+conn.commit()
+conn.close()
+PY
+
+result=$(HOME="$CACHE_HOME" CODEX_HOME="$CACHE_HOME/.codex" XDG_CACHE_HOME="$CACHE_HOME/.cache" XDG_DATA_HOME="$CACHE_HOME/.local/share" \
+  PATH="$CACHE_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "25" ]] ||
+  fail "Codex collector no-flag reuses a seconds-old cache" "$result"
+
+# 30 seconds is the lowest refreshIntervalSec the widget supports, so a
+# cache that old must already be past the no-flag reuse window.
+touch -d "30 seconds ago" "$cache_file"
+result=$(HOME="$CACHE_HOME" CODEX_HOME="$CACHE_HOME/.codex" XDG_CACHE_HOME="$CACHE_HOME/.cache" XDG_DATA_HOME="$CACHE_HOME/.local/share" \
+  PATH="$CACHE_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "35" ]] ||
+  fail "Codex collector no-flag rescans past the concurrent-run window" "$result"
+pass "Codex collector no-flag mode rescans instead of serving a stale cache"
+
+# The same age from the other side: a cache far past the no-flag window but
+# well inside 15 minutes is still good enough for --limits-only.
+python3 - "$CACHE_HOME/.local/share/opencode/opencode.db" <<'PY'
+import json
+import sqlite3
+import sys
+import time
+from pathlib import Path
+
+db = Path(sys.argv[1])
+conn = sqlite3.connect(db)
+now_ms = int(time.time() * 1000)
+conn.execute("INSERT INTO message VALUES (?, ?, ?, ?, ?)", (
+  "c_5", "ses_1", now_ms, now_ms, json.dumps({
+    "role": "assistant",
+    "providerID": "openai",
+    "modelID": "gpt-5.2-codex",
+    "tokens": {"input": 10, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+    "time": {"created": now_ms},
+  }),
+))
+conn.commit()
+conn.close()
+PY
+touch -d "10 minutes ago" "$cache_file"
+result=$(HOME="$CACHE_HOME" CODEX_HOME="$CACHE_HOME/.codex" XDG_CACHE_HOME="$CACHE_HOME/.cache" XDG_DATA_HOME="$CACHE_HOME/.local/share" \
+  PATH="$CACHE_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --limits-only)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "35" ]] ||
+  fail "Codex collector --limits-only reuses a scan the no-flag mode would refresh" "$result"
+pass "Codex collector --limits-only reuses a scan the no-flag mode would refresh"
+
 # First --limits-only on a machine with no cache falls back to a full scan.
 FRESH_HOME=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$CACHE_HOME" "$FRESH_HOME"' EXIT

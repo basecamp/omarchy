@@ -29,9 +29,13 @@ AGENT_ID = "codex"
 AGENT_NAME = "Codex"
 AUTH_HELP = "Run `codex login` to authenticate."
 
-# The agents widget refreshes every 15 minutes; a cached local scan that is
-# fresher than the widget's own interval is never meaningfully stale.
-CACHE_MAX_AGE_SECONDS = 900
+# A scan this recent is only reused to dedup concurrent collector runs (the
+# update command backgrounds one per agent while the panel refreshes on its
+# own); every periodic widget refresh lands a real rescan, however low
+# refreshIntervalSec is set. --limits-only promises only fresh limits, so it
+# may reuse a scan for up to 15 minutes.
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
 
 
 def local_day(value):
@@ -418,7 +422,7 @@ def run_local_scans():
   return local_stats()
 
 
-def cached_local_stats(force):
+def cached_local_stats(max_age):
   """Local stats, with the cache as a pure optimization.
 
   The cache must never take the collector down: any cache-layer failure
@@ -426,24 +430,15 @@ def cached_local_stats(force):
   and a warning on stderr. The JSON record is the contract; the cache is not.
   """
   try:
-    return _cached_local_stats(force)
+    return _cached_local_stats(max_age)
   except Exception as exc:
     print(f"omarchy-agent-usage-codex: cache unavailable ({exc}); scanning directly", file=sys.stderr)
     return run_local_scans()
 
 
-def _cached_local_stats(force):
+def _cached_local_stats(max_age):
   cache_file, lock_file = scan_cache_paths()
 
-  if force:
-    stats = run_local_scans()
-    write_cached_stats(cache_file, stats)
-    return stats
-
-  # One freshness contract for every mode: reuse recent local stats but never
-  # serve yesterday's today* fields under a fresh updatedAt, so an expired
-  # cache falls through to a full scan.
-  max_age = CACHE_MAX_AGE_SECONDS
   cached = read_cached_stats(cache_file, max_age)
   if cached is not None:
     return cached
@@ -558,14 +553,16 @@ def fetch_codex_rpc():
 def main():
   parser = argparse.ArgumentParser()
   # --force rescans everything and rewrites the cache. --limits-only is kept
-  # for CLI compatibility with the panel's refreshLimits() call: it follows
-  # the same freshness contract (reuse a fresh cache, full scan otherwise),
-  # so a warm cache makes that call cheap while stale data never leaks out.
+  # for CLI compatibility with the panel's refreshLimits() call: only the
+  # limits probe must be fresh, so it may reuse a scan for far longer than a
+  # normal run, whose short window exists purely to dedup concurrent
+  # collector runs.
   parser.add_argument("--force", action="store_true")
   parser.add_argument("--limits-only", action="store_true")
   args = parser.parse_args()
 
-  stats = cached_local_stats(args.force)
+  max_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else SCAN_REUSE_SECONDS)
+  stats = cached_local_stats(max_age)
   rpc = fetch_codex_rpc()
 
   record = {
