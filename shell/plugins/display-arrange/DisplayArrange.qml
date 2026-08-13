@@ -328,9 +328,24 @@ Item {
       + " && sleep 0.4"
       + " && hyprctl dispatch \"hl.dsp.focus({ workspace = \\\"$workspace\\\" })\""
 
+    runScript(script)
+    return true
+  }
+
+  // Every write goes through one process, so a second asked for while the first
+  // is still running has to wait its turn. Assigning `command` and `running` to
+  // a Process that is already running starts nothing, so the second write would
+  // simply be dropped: press Escape during the apply's own settle and the
+  // revert never runs, while `closeWhenApplied` still takes the prompt away and
+  // leaves the layout applied. Queue it and run it when the first exits.
+  function runScript(script) {
+    if (applyProc.running) {
+      queuedScript = script
+      return
+    }
+
     applyProc.command = ["bash", "-c", script]
     applyProc.running = true
-    return true
   }
 
   function apply() {
@@ -437,11 +452,26 @@ Item {
   // until the revert it triggered has finished writing.
   property var pendingMirror: null
 
+  // A write asked for while another was still running.
+  property string queuedScript: ""
+
   Process {
     id: applyProc
     stdout: StdioCollector { waitForEnd: true }
     onRunningChanged: {
-      if (running || !root.closeWhenApplied) return
+      if (running) return
+
+      // Whatever was waiting on this process goes first, and everything that
+      // waits on the writing being finished waits for that too.
+      if (root.queuedScript !== "") {
+        var next = root.queuedScript
+        root.queuedScript = ""
+        applyProc.command = ["bash", "-c", next]
+        applyProc.running = true
+        return
+      }
+
+      if (!root.closeWhenApplied) return
       root.closeWhenApplied = false
 
       // Read before closing: closing clears the state this was waiting on.
