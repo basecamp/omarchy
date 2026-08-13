@@ -274,7 +274,10 @@ def credentials(auth_path: Path) -> str:
 
 
 class GoUsageError(Exception):
-  pass
+  def __init__(self, message: str, auth: bool = False, transport: bool = False):
+    super().__init__(message)
+    self.auth = auth
+    self.transport = transport
 
 
 class GoUsageClient:
@@ -300,10 +303,10 @@ class GoUsageClient:
         return payload if isinstance(payload, dict) else {}
     except urllib.error.HTTPError as error:
       if error.code in (401, 403):
-        raise GoUsageError("OpenCode Go rejected the API key")
+        raise GoUsageError("OpenCode Go rejected the API key", auth=True)
       raise GoUsageError(f"OpenCode's usage endpoint returned status {error.code}")
     except urllib.error.URLError as error:
-      raise GoUsageError("Could not reach OpenCode's usage endpoint") from error
+      raise GoUsageError("Could not reach OpenCode's usage endpoint", transport=True) from error
     except (json.JSONDecodeError, TimeoutError) as error:
       raise GoUsageError("OpenCode returned an invalid usage response") from error
 
@@ -373,23 +376,55 @@ def parse_usage_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
   return out
 
 
+# A cached percentage outlives the probe that measured it, but only until its
+# window rolls over: once a window has reset, the figure describes a period
+# that is over, and a stale 78% would misreport an allowance that is now
+# untouched. A window with no reset time, or one that will not parse, is kept
+# — an unreadable timestamp is no reason to throw away a real number.
+def limit_window_open(entry: dict[str, Any], now: dt.datetime) -> bool:
+  raw = str(entry.get("resetsAt") or "")
+  if raw == "":
+    return True
+  try:
+    resets_at = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+  except Exception:
+    return True
+  if resets_at.tzinfo is None:
+    resets_at = resets_at.replace(tzinfo=dt.timezone.utc)
+  return resets_at > now
+
+
+def usable_cached_limits(cached: dict[str, Any]) -> list[dict[str, Any]]:
+  entries = cached.get("limits")
+  if not isinstance(entries, list):
+    return []
+  now = dt.datetime.now(dt.timezone.utc)
+  return [entry for entry in entries if isinstance(entry, dict) and limit_window_open(entry, now)]
+
+
 def collect_limits(api_key: str, base_url: str, force: bool) -> dict[str, Any]:
   result = {"limits": [], "usageStatusText": "", "authHelpText": AUTH_HELP}
 
+  # A panel that is opened and shut repeatedly must not turn into a request
+  # per flick, so recent probe results are reused for a short window — and
+  # kept as the answer of record when a later probe fails, for as long as
+  # their windows have not since reset. A forced refresh bypasses the window:
+  # that is what the user asked for.
+  probe_cache = cache_root() / "opencode-go-limits.json"
+  cached = read_fresh_json(probe_cache, float("inf")) or {}
+  fallback = usable_cached_limits(cached)
+
   if api_key == "":
+    # Still-open windows outlive the key that fetched them, so show them
+    # under the auth status rather than an empty section.
+    result["limits"] = fallback
     result["usageStatusText"] = "Waiting for auth"
     return result
 
-  # A panel that is opened and shut repeatedly must not turn into a request
-  # per flick, so recent probe results are reused for a short window — and
-  # kept as the answer of record when a later probe fails. A forced refresh
-  # bypasses the window: that is what the user asked for.
-  probe_cache = cache_root() / "opencode-go-limits.json"
-  cached = read_fresh_json(probe_cache, float("inf")) or {}
   fetched_at = number(cached.get("fetchedAtMs")) / 1000
   min_interval = 0 if force else PROBE_MIN_INTERVAL_SECONDS
-  if cached.get("limits") and min_interval > 0 and time.time() - fetched_at < min_interval:
-    result["limits"] = cached["limits"]
+  if fallback and min_interval > 0 and time.time() - fetched_at < min_interval:
+    result["limits"] = fallback
     return result
 
   try:
@@ -398,18 +433,32 @@ def collect_limits(api_key: str, base_url: str, force: bool) -> dict[str, Any]:
     # A transport failure reached no server at all — no route, no DNS. Any
     # real answer, including an error status, is a server we should stop
     # pestering; this is not.
-    if "Could not reach" in str(error):
+    if error.transport:
       result["retryAdvised"] = True
-    if cached.get("limits"):
-      result["limits"] = cached["limits"]
+    if error.auth:
+      # A rejected key is an account problem, not a transient outage: keep
+      # any still-open numbers, but say the sign-in is bad.
+      result["limits"] = fallback
+      result["usageStatusText"] = "Sign-in rejected"
+      result["authHelpText"] = (
+        "OpenCode Go rejected the API key"
+        + (" — showing the last known limits." if fallback else ".")
+        + " " + AUTH_HELP
+      )
+      return result
+    if fallback:
+      result["limits"] = fallback
     else:
       result["usageStatusText"] = "OpenCode Go limits unavailable"
       result["authHelpText"] = str(error)
     return result
 
   if not limits:
-    result["usageStatusText"] = "OpenCode Go limits unavailable"
-    result["authHelpText"] = "OpenCode's usage endpoint returned no windows."
+    if fallback:
+      result["limits"] = fallback
+    else:
+      result["usageStatusText"] = "OpenCode Go limits unavailable"
+      result["authHelpText"] = "OpenCode's usage endpoint returned no windows."
     return result
   result["limits"] = limits
   write_json(probe_cache, {"fetchedAtMs": round(time.time() * 1000), "limits": limits})

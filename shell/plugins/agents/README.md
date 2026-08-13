@@ -74,8 +74,9 @@ opencode.ai dashboard does, so the meters are authoritative account-wide —
 even for usage burned on other machines or in other harnesses. Local token
 stats are only what opencode recorded on this machine, like the claude and
 codex collectors. The endpoint is rate-limited on the server, so probes are
-reused for 15 seconds; a probe that cannot reach the server keeps the last
-successful numbers and asks the panel to retry sooner.
+reused for 15 seconds; a failed probe keeps the last successful numbers while
+their windows are still open — a rejected key says so in the panel — and one
+that cannot reach the server at all asks the panel to retry sooner.
 
 ### Fireworks balance
 

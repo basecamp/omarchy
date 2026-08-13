@@ -25,7 +25,7 @@ import os
 import sqlite3
 import sys
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 collector_path = str(Path(sys.argv[1]))
@@ -34,6 +34,7 @@ test_home = Path(sys.argv[2])
 os.environ["TZ"] = "UTC"
 time.tzset()
 os.environ.pop("OPENCODE_GO_API_KEY", None)
+os.environ["XDG_CACHE_HOME"] = str(test_home / "cache" / "default")
 
 loader = importlib.machinery.SourceFileLoader("opencode_collector", collector_path)
 spec = importlib.util.spec_from_loader(loader.name, loader)
@@ -143,13 +144,13 @@ class RejectingClient:
   def __init__(self, api_key, base_url):
     pass
   def probe(self):
-    raise scanner.GoUsageError("OpenCode Go rejected the API key")
+    raise scanner.GoUsageError("OpenCode Go rejected the API key", auth=True)
 
 class OfflineClient:
   def __init__(self, api_key, base_url):
     pass
   def probe(self):
-    raise scanner.GoUsageError("Could not reach OpenCode's usage endpoint")
+    raise scanner.GoUsageError("Could not reach OpenCode's usage endpoint", transport=True)
 
 os.environ["XDG_CACHE_HOME"] = str(fresh_cache("live"))
 scanner.GoUsageClient = LiveClient
@@ -183,6 +184,96 @@ offline = scanner.scan(auth_path, db, "https://example.invalid")
 summary["offline"] = {
   "retryAdvised": offline.get("retryAdvised") is True,
   "totalPrompts": offline["totalPrompts"],
+}
+
+# A cached window only stands in for a failed probe while it is still open: a
+# window whose reset time has passed describes a period that is over and must
+# drop out instead of sitting on the panel as a dead meter.
+def seed_probe_cache(limits, age_seconds=3600):
+  cache_dir = Path(os.environ["XDG_CACHE_HOME"]) / "omarchy" / "agent-usage"
+  cache_dir.mkdir(parents=True, exist_ok=True)
+  (cache_dir / "opencode-go-limits.json").write_text(json.dumps(
+    {"fetchedAtMs": int((time.time() - age_seconds) * 1000), "limits": limits}))
+
+open_window = {"label": "Weekly (7-day)", "percent": 0.4,
+               "resetsAt": (datetime.now(timezone.utc) + timedelta(hours=6)).isoformat()}
+closed_window = {"label": "Session (5-hour)", "percent": 0.9,
+                 "resetsAt": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()}
+# A missing or unreadable timestamp is no reason to throw away a real number.
+unstamped_window = {"label": "Monthly (30-day)", "percent": 0.2, "resetsAt": ""}
+odd_window = {"label": "Session (5-hour)", "percent": 0.1, "resetsAt": "not-a-date"}
+
+os.environ["XDG_CACHE_HOME"] = str(fresh_cache("stale"))
+seed_probe_cache([closed_window, open_window, unstamped_window, odd_window])
+scanner.GoUsageClient = OfflineClient
+stale = scanner.collect_limits("sk_fixture", "https://example.invalid", False)
+summary["staleCache"] = {
+  "labels": [w["label"] for w in stale["limits"]],
+  "usageStatusText": stale["usageStatusText"],
+  "retryAdvised": stale.get("retryAdvised") is True,
+}
+
+# A fresh-but-expired cache must not satisfy the probe-reuse window either;
+# the collector re-probes and shows the live numbers.
+os.environ["XDG_CACHE_HOME"] = str(fresh_cache("expired-fresh"))
+seed_probe_cache([closed_window], age_seconds=0)
+scanner.GoUsageClient = LiveClient
+summary["expiredCacheReprobes"] = [w["label"] for w in scanner.collect_limits("sk_fixture", "https://example.invalid", False)["limits"]]
+
+# A fresh cache of open windows satisfies the reuse window without a request;
+# a forced refresh probes anyway — that is what the user asked for.
+class CountingClient:
+  calls = 0
+  def __init__(self, api_key, base_url):
+    pass
+  def probe(self):
+    CountingClient.calls += 1
+    return live_payload
+
+os.environ["XDG_CACHE_HOME"] = str(fresh_cache("reuse"))
+seed_probe_cache([open_window], age_seconds=0)
+scanner.GoUsageClient = CountingClient
+reused = scanner.collect_limits("sk_fixture", "https://example.invalid", False)
+calls_after_reuse = CountingClient.calls
+forced = scanner.collect_limits("sk_fixture", "https://example.invalid", True)
+summary["probeReuse"] = {
+  "reusedLabels": [w["label"] for w in reused["limits"]],
+  "callsAfterReuse": calls_after_reuse,
+  "forcedLabels": [w["label"] for w in forced["limits"]],
+  "callsAfterForce": CountingClient.calls,
+}
+
+# A payload with no recognizable windows is a failure too: still-open cached
+# numbers beat an empty section.
+class EmptyClient:
+  def __init__(self, api_key, base_url):
+    pass
+  def probe(self):
+    return {}
+
+os.environ["XDG_CACHE_HOME"] = str(fresh_cache("empty-payload"))
+seed_probe_cache([closed_window, open_window])
+scanner.GoUsageClient = EmptyClient
+summary["emptyPayloadFallback"] = [w["label"] for w in scanner.collect_limits("sk_fixture", "https://example.invalid", False)["limits"]]
+
+# A rejected key keeps still-open numbers but says the sign-in is bad.
+os.environ["XDG_CACHE_HOME"] = str(fresh_cache("rejected-cached"))
+seed_probe_cache([closed_window, open_window])
+scanner.GoUsageClient = RejectingClient
+rejected_cached = scanner.collect_limits("sk_fixture", "https://example.invalid", False)
+summary["rejectedCached"] = {
+  "labels": [w["label"] for w in rejected_cached["limits"]],
+  "usageStatusText": rejected_cached["usageStatusText"],
+  "authHelpText": rejected_cached["authHelpText"],
+}
+
+# So does a missing key: still-open windows outlive the key that fetched them.
+os.environ["XDG_CACHE_HOME"] = str(fresh_cache("no-key-cached"))
+seed_probe_cache([closed_window, open_window])
+no_key_cached = scanner.collect_limits("", "https://example.invalid", False)
+summary["noKeyCached"] = {
+  "labels": [w["label"] for w in no_key_cached["limits"]],
+  "usageStatusText": no_key_cached["usageStatusText"],
 }
 
 # The probe itself is exercised against a stubbed transport so the request
@@ -223,7 +314,8 @@ summary["probe"] = {
 }
 
 def error_text(error):
-  return type(error).__name__ + ":" + str(error)
+  flags = (":auth" if error.auth else "") + (":transport" if error.transport else "")
+  return type(error).__name__ + ":" + str(error) + flags
 
 stub_urlopen.error = scanner.urllib.error.HTTPError("https://example.invalid", 401, "Unauthorized", {}, None)
 try:
@@ -231,6 +323,12 @@ try:
   summary["probe401"] = "no-error"
 except scanner.GoUsageError as error:
   summary["probe401"] = error_text(error)
+stub_urlopen.error = scanner.urllib.error.HTTPError("https://example.invalid", 403, "Forbidden", {}, None)
+try:
+  probe_client.probe()
+  summary["probe403"] = "no-error"
+except scanner.GoUsageError as error:
+  summary["probe403"] = error_text(error)
 stub_urlopen.error = scanner.urllib.error.HTTPError("https://example.invalid", 500, "Server Error", {}, None)
 try:
   probe_client.probe()
@@ -319,7 +417,7 @@ pass "OpenCode collector reads the key from the environment or the opencode auth
 pass "OpenCode collector says so when no key exists"
 
 [[ $(jq -c '.rejected | {ready, limits, usageStatusText, totalPrompts}' <<<"$result") == \
-  '{"ready":true,"limits":[],"usageStatusText":"OpenCode Go limits unavailable","totalPrompts":3}' ]] ||
+  '{"ready":true,"limits":[],"usageStatusText":"Sign-in rejected","totalPrompts":3}' ]] ||
   fail "OpenCode collector keeps local stats when the endpoint rejects the key" "$result"
 pass "OpenCode collector keeps local stats when the endpoint rejects the key"
 
@@ -330,6 +428,38 @@ pass "OpenCode collector explains a rejected key"
 [[ $(jq -r '(.offline.retryAdvised | tostring) + ":" + (.offline.totalPrompts | tostring)' <<<"$result") == "true:3" ]] ||
   fail "OpenCode collector asks for a sooner retry after a transport failure" "$result"
 pass "OpenCode collector asks for a sooner retry after a transport failure"
+
+[[ $(jq -c '.staleCache' <<<"$result") == \
+  '{"labels":["Weekly (7-day)","Monthly (30-day)","Session (5-hour)"],"usageStatusText":"","retryAdvised":true}' ]] ||
+  fail "OpenCode collector drops cached windows that have reset when a probe fails" "$result"
+pass "OpenCode collector drops cached windows that have reset when a probe fails"
+
+[[ $(jq -c '.probeReuse' <<<"$result") == \
+  '{"reusedLabels":["Weekly (7-day)"],"callsAfterReuse":0,"forcedLabels":["Session (5-hour)","Weekly (7-day)","Monthly (30-day)"],"callsAfterForce":1}' ]] ||
+  fail "OpenCode collector reuses a fresh probe unless the refresh is forced" "$result"
+pass "OpenCode collector reuses a fresh probe unless the refresh is forced"
+
+[[ $(jq -r '.expiredCacheReprobes | join(",")' <<<"$result") == "Session (5-hour),Weekly (7-day),Monthly (30-day)" ]] ||
+  fail "OpenCode collector re-probes instead of reusing a cache of expired windows" "$result"
+pass "OpenCode collector re-probes instead of reusing a cache of expired windows"
+
+[[ $(jq -c '.emptyPayloadFallback' <<<"$result") == '["Weekly (7-day)"]' ]] ||
+  fail "OpenCode collector keeps open windows when the endpoint returns none" "$result"
+pass "OpenCode collector keeps open windows when the endpoint returns none"
+
+[[ $(jq -c '.rejectedCached | {labels, usageStatusText}' <<<"$result") == \
+  '{"labels":["Weekly (7-day)"],"usageStatusText":"Sign-in rejected"}' ]] ||
+  fail "OpenCode collector keeps open windows and flags the sign-in when the key is rejected" "$result"
+pass "OpenCode collector keeps open windows and flags the sign-in when the key is rejected"
+
+{ [[ $(jq -r '.rejectedCached.authHelpText' <<<"$result") == *"last known limits"* ]] &&
+  [[ $(jq -r '.rejectedCached.authHelpText' <<<"$result") == *"opencode auth login"* ]]; } ||
+  fail "OpenCode collector says the shown limits are the last known ones and how to fix the key" "$result"
+pass "OpenCode collector says the shown limits are the last known ones and how to fix the key"
+
+[[ $(jq -c '.noKeyCached' <<<"$result") == '{"labels":["Weekly (7-day)"],"usageStatusText":"Waiting for auth"}' ]] ||
+  fail "OpenCode collector keeps open windows while waiting for auth" "$result"
+pass "OpenCode collector keeps open windows while waiting for auth"
 
 [[ $(jq -r '.probe.url' <<<"$result") == "https://example.invalid/zen/go/v1/usage" ]] ||
   fail "OpenCode probe hits the official usage path" "$result"
@@ -343,6 +473,9 @@ pass "OpenCode probe sends the bearer, accept, and user-agent headers"
   fail "OpenCode probe decodes the deployed response shape" "$result"
 pass "OpenCode probe decodes the deployed response shape"
 
-{ [[ $(jq -r '.probe401' <<<"$result") == *"rejected"* ]] && [[ $(jq -r '.probe500' <<<"$result") == *"status 500"* ]] && [[ $(jq -r '.probeOffline' <<<"$result") == *"Could not reach"* ]]; } ||
+{ [[ $(jq -r '.probe401' <<<"$result") == "GoUsageError:OpenCode Go rejected the API key:auth" ]] &&
+  [[ $(jq -r '.probe403' <<<"$result") == "GoUsageError:OpenCode Go rejected the API key:auth" ]] &&
+  [[ $(jq -r '.probe500' <<<"$result") == "GoUsageError:OpenCode's usage endpoint returned status 500" ]] &&
+  [[ $(jq -r '.probeOffline' <<<"$result") == "GoUsageError:Could not reach OpenCode's usage endpoint:transport" ]]; } ||
   fail "OpenCode probe maps rejected keys, status errors, and transport failures distinctly" "$result"
 pass "OpenCode probe maps rejected keys, status errors, and transport failures distinctly"
