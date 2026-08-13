@@ -820,9 +820,11 @@ def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[s
     )
     return result
 
+  # --force is a person asking for fresh numbers, so it skips the reuse window
+  # entirely; the interval is there to absorb repeated panel opens, not to
+  # overrule someone who pressed refresh.
   fetched_at = number(cached.get("fetchedAtMs")) / 1000
-  min_interval = 0 if force else PROBE_MIN_INTERVAL_SECONDS
-  if fallback and time.time() - fetched_at < max(min_interval, PROBE_MIN_INTERVAL_SECONDS):
+  if fallback and not force and time.time() - fetched_at < PROBE_MIN_INTERVAL_SECONDS:
     result["limits"] = fallback
     return result
 
