@@ -25,6 +25,17 @@ if [[ $1 == -Qo ]]; then
   exit $?
 fi
 
+if [[ $1 == -Qdq ]]; then
+  [[ " $DEPENDENCY_PACKAGES " == *" $2 "* ]]
+  exit $?
+fi
+
+if [[ $1 == -Qmq ]]; then
+  [[ " $RETIRED_PACKAGES " == *" $2 "* ]]
+  exit $?
+fi
+
+printf '%s\n' "$*" >>"$PACMAN_CALLS"
 attempt=$(($(cat "$PACMAN_ATTEMPTS") + 1))
 echo "$attempt" >"$PACMAN_ATTEMPTS"
 if ((attempt == 1)); then
@@ -51,6 +62,10 @@ run_update() {
     PACMAN_ATTEMPTS="$test_tmp/attempts" \
     CONFLICT_REPORT="$test_tmp/report" \
     OWNED_PATHS="${OWNED_PATHS:-}" \
+    DEPENDENCY_PACKAGES="${DEPENDENCY_PACKAGES:-}" \
+    RETIRED_PACKAGES="${RETIRED_PACKAGES:-}" \
+    PACMAN_CALLS="$test_tmp/pacman-calls" \
+    OMARCHY_UPDATE_REMOVE_CONFLICTS="${OMARCHY_UPDATE_REMOVE_CONFLICTS:-}" \
     PATH="$stub_bin:$ROOT/bin:$PATH" \
     bash "$ROOT/bin/omarchy-update-system-pkgs"
 }
@@ -58,6 +73,7 @@ run_update() {
 # $1 blamed package, $2 path, $3 optional owning package.
 write_report() {
   echo 0 >"$test_tmp/attempts"
+  : >"$test_tmp/pacman-calls"
   {
     echo "error: failed to commit transaction (conflicting files)"
     echo "$1: $2 exists in filesystem${3:+ (owned by $3)}"
@@ -67,6 +83,7 @@ write_report() {
 # Raw conflict lines, for reports the recovery must refuse wholesale.
 write_raw_report() {
   echo 0 >"$test_tmp/attempts"
+  : >"$test_tmp/pacman-calls"
   {
     echo "error: failed to commit transaction (conflicting files)"
     printf '%s\n' "$@"
@@ -251,6 +268,68 @@ fi
   fail "a symlink that dangles from the quarantine is never restored"
 pass "a dangling symlink is restored rather than stranded in the quarantine"
 
+# Repository package splits occasionally retire a dependency by moving its
+# contents into another package. Pacman knows the transaction is valid but its
+# conflict-removal prompt defaults to No under --noconfirm.
+write_raw_report \
+  ":: qemu-common-11.1.0-1 and qemu-block-gluster-11.0.3-1 are in conflict (qemu-block-gluster). Remove qemu-block-gluster? [y/N]" \
+  "error: unresolvable package conflicts detected" \
+  "error: failed to prepare transaction (conflicting dependencies)"
+DEPENDENCY_PACKAGES=qemu-block-gluster RETIRED_PACKAGES=qemu-block-gluster \
+  run_update >"$test_tmp/out" 2>"$test_tmp/err" ||
+  fail "a retired dependency blocks the package update"
+[[ $(cat "$test_tmp/attempts") == 2 ]] ||
+  fail "a retired dependency does not get one conflict-removal retry"
+tail -n 1 "$test_tmp/pacman-calls" | grep -q -- '--ask 4' ||
+  fail "the retry does not accept Pacman's conflict-removal prompt"
+grep -qF 'qemu-block-gluster' "$test_tmp/out" ||
+  fail "the update does not say which retired dependency it is removing"
+pass "a retired dependency is removed atomically with its replacement"
+
+# A package the user explicitly installed is their decision even after its
+# repository retires it. Never turn every package conflict into an automatic
+# removal just because this one transition is safe.
+write_raw_report \
+  ":: next-package-2-1 and chosen-package-1-1 are in conflict. Remove chosen-package? [y/N]" \
+  "error: unresolvable package conflicts detected"
+if RETIRED_PACKAGES=chosen-package run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
+  fail "an explicitly installed package is removed to complete an update"
+fi
+[[ $(cat "$test_tmp/attempts") == 1 ]] ||
+  fail "an explicit package conflict triggers a retry"
+! grep -q -- '--ask 4' "$test_tmp/pacman-calls" ||
+  fail "an explicit package conflict is accepted non-interactively"
+pass "an explicit retired package conflict stays a human decision"
+
+# A dependency that still exists in a sync repository may be temporarily
+# conflicting or intentionally held. Its maintainer has not retired it, so the
+# update must not infer permission to remove it.
+write_raw_report \
+  ":: next-package-2-1 and published-package-1-1 are in conflict. Remove published-package? [y/N]" \
+  "error: unresolvable package conflicts detected"
+if DEPENDENCY_PACKAGES=published-package run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
+  fail "a still-published dependency is removed to complete an update"
+fi
+[[ $(cat "$test_tmp/attempts") == 1 ]] ||
+  fail "a published package conflict triggers a retry"
+pass "a still-published dependency conflict stays a human decision"
+
+# Every removal prompt must be safe. Accepting only the first would let Pacman
+# decide the second one non-interactively under the same --ask bit.
+write_raw_report \
+  ":: replacement-one-2-1 and retired-dependency-1-1 are in conflict. Remove retired-dependency? [y/N]" \
+  ":: replacement-two-2-1 and explicit-package-1-1 are in conflict. Remove explicit-package? [y/N]" \
+  "error: unresolvable package conflicts detected"
+if DEPENDENCY_PACKAGES=retired-dependency RETIRED_PACKAGES="retired-dependency explicit-package" \
+  run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
+  fail "a mixed safe and unsafe conflict set is accepted"
+fi
+[[ $(cat "$test_tmp/attempts") == 1 ]] ||
+  fail "a mixed conflict set triggers a partial retry"
+! grep -q -- '--ask 4' "$test_tmp/pacman-calls" ||
+  fail "a mixed conflict set accepts every removal prompt"
+pass "package conflict recovery is all-or-nothing"
+
 # The handler acts on a pacman report; an old or hand-written one would move
 # live files aside for an upgrade that is not happening.
 fresh_work
@@ -269,8 +348,10 @@ pass "the handler refuses a report handed to it outside an update"
 fresh_work
 : >"$test_tmp/report"
 echo 1 >"$test_tmp/attempts"
-run_update >"$test_tmp/out" 2>"$test_tmp/err" ||
+OMARCHY_UPDATE_REMOVE_CONFLICTS=1 run_update >"$test_tmp/out" 2>"$test_tmp/err" ||
   fail "a clean upgrade fails"
 [[ $(cat "$test_tmp/attempts") == 2 ]] ||
   fail "a clean upgrade runs more than one pacman transaction"
-pass "a clean upgrade runs a single pacman transaction"
+! grep -q -- '--ask 4' "$test_tmp/pacman-calls" ||
+  fail "a caller can enable automatic conflict removals directly"
+pass "a clean upgrade runs once without accepting conflict removals"

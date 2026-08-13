@@ -1,16 +1,16 @@
 #!/bin/bash
 
-# omarchy:summary=Retry a system package update after resolving file conflicts
+# omarchy:summary=Retry a system package update after resolving safe conflicts
 # omarchy:hidden=true
 
 # Internal to omarchy-update-system-pkgs. Not a command to run by hand: it acts
 # on a pacman error report, and an old or hand-written one would move live files
 # out of the way for an upgrade that is not happening.
 #
-# Paths written by a script rather than installed by a package -- an earlier
-# release's installer, an in-place edit -- belong to nobody, and pacman refuses
-# to install over a file it doesn't own. This clears them and runs the upgrade
-# again.
+# This recovers from two conflicts that can be settled without guessing:
+# unowned files under Omarchy's package paths, and dependency-installed packages
+# absent from the sync repositories when a repository package conflicts with
+# them. Anything involving an explicit or still-published package stops.
 
 set -e
 
@@ -56,6 +56,31 @@ restore_moved() {
 # Cleaning it up is this script's job from now on.
 trap 'restore_moved; rm -f "$errors"' EXIT
 trap 'exit 1' INT TERM
+
+# Pacman defaults conflict removals to No under --noconfirm. An obsolete split
+# package can therefore block every unattended update even though the upgrade
+# transaction knows how to remove it safely. Only invert those prompts when
+# every package is both dependency-installed and absent from the freshly
+# synchronized repositories. This refuses packages the user chose explicitly
+# and any package still published by a configured repository.
+mapfile -t retired_dependencies < <(
+  grep -oP '^:: .+ are in conflict(?: \([^)]*\))?\. Remove \K[^?]+(?=\? \[y/N\]$)' "$errors" |
+    while IFS= read -r package; do
+      pacman -Qdq "$package" &>/dev/null && pacman -Qmq "$package" &>/dev/null && echo "$package"
+    done
+)
+
+conflict_removal_count=$(grep -cP '^:: .+ are in conflict(?: \([^)]*\))?\. Remove [^?]+\? \[y/N\]$' "$errors" || true)
+if (( conflict_removal_count > 0 )); then
+  (( ${#retired_dependencies[@]} == conflict_removal_count )) || exit 1
+
+  echo -e "\e[33m\nRemoving dependency packages no longer in configured repositories:\e[0m"
+  printf '  %s\n' "${retired_dependencies[@]}"
+  echo
+
+  OMARCHY_UPDATE_REMOVE_CONFLICTS=1 OMARCHY_UPDATE_RETRY=1 omarchy-update-system-pkgs
+  exit $?
+fi
 
 # Paths one of these packages installs that pacman doesn't own. Moving them out
 # of the way is what lets the upgrade through, and works on a leftover directory

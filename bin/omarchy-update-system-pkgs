@@ -10,21 +10,29 @@ echo -e "\e[32m\nUpdate system packages\e[0m"
 errors=$(mktemp)
 trap 'rm -f "$errors"' EXIT
 
+pacman_options=(-Syu --noconfirm --overwrite '/usr/share/omarchy/*')
+if [[ ${OMARCHY_UPDATE_CONFLICT:-} == 1 &&
+  ${OMARCHY_UPDATE_RETRY:-} == 1 &&
+  ${OMARCHY_UPDATE_REMOVE_CONFLICTS:-} == 1 ]]; then
+  # Pacman's conflict-removal question is bit 4. This is set only by the
+  # conflict handler after it proves every removal is a retired dependency.
+  pacman_options+=(--ask 4)
+fi
+
 # /usr/share/omarchy is wholly Omarchy's; files can land there unowned and would
 # otherwise abort the upgrade. Packaged content wins there.
 #
 # Progress bars stay on stdout. Errors are on stderr, kept for the conflict
 # handler below; LC_ALL=C is what keeps them parseable in any locale.
-if sudo env LC_ALL=C OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm \
-  --overwrite '/usr/share/omarchy/*' 2>"$errors"; then
+if sudo env LC_ALL=C OMARCHY_UPDATE_PACMAN=1 pacman "${pacman_options[@]}" 2>"$errors"; then
   cat "$errors" >&2
   exit 0
 fi
 cat "$errors" >&2
 
-# An upgrade blocked only by files pacman doesn't own yet is the one failure
-# worth retrying: the handler clears them and runs this again. Anything else,
-# including a second failure, is for a human.
+# The conflict handler retries only failures it can settle without guessing:
+# unowned Omarchy files and dependency packages no longer in the sync repos.
+# Anything else, including a second failure, is for a human.
 [[ ${OMARCHY_UPDATE_RETRY:-} != 1 ]] || exit 1
 # exec, so the EXIT trap above does not fire and the handler can still read the
 # report. It takes over deleting it.
