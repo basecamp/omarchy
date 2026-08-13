@@ -118,6 +118,8 @@ source "$ROOT/install/user/mise.sh"
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates the Grok lazy stub"
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
+grep -Fx "antigravity-cli agy" "$stub_log" >/dev/null || fail "user setup creates the Antigravity lazy stub"
+grep -Fx "antigravity-cli antigravity agy" "$stub_log" >/dev/null || fail "user setup creates the Antigravity alias lazy stub"
 pass "user setup creates the custom agent lazy stubs"
 
 : >"$stub_log"
@@ -130,12 +132,18 @@ grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "agent migration repa
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "agent migration creates the Grok lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "agent migration creates the Crush lazy stub"
 
+: >"$stub_log"
+source "$ROOT/migrations/1786650000.sh" >/dev/null
+grep -Fx "antigravity-cli agy" "$stub_log" >/dev/null || fail "agent migration creates the Antigravity agy lazy stub"
+grep -Fx "antigravity-cli antigravity agy" "$stub_log" >/dev/null || fail "agent migration creates the Antigravity alias lazy stub"
+
 mkdir -p "$test_home/.local/state/omarchy"
 touch "$test_home/.local/state/omarchy/preinstalls-removed"
 "$ROOT/bin/omarchy-mise-install" oh-my-pi omp
 : >"$stub_log"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
 source "$ROOT/migrations/1785846769.sh" >/dev/null
+source "$ROOT/migrations/1786650000.sh" >/dev/null
 [[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
 [[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
 rm "$test_home/.local/state/omarchy/preinstalls-removed"
