@@ -70,14 +70,27 @@ Item {
 
   readonly property color scrim: Util.alpha(Color.background, 0.97)
 
+  // Long enough for Hyprland to finish re-modesetting every display after a
+  // layout is written. Only the paths that reconfigure outputs need to wait it
+  // out; an ordinary open has nothing settling and must not pay for it.
+  readonly property int settleDelay: 1500
+
+  function scheduleReopen(delay) {
+    reopen.interval = delay
+    reopen.restart()
+  }
+
   function open(payloadJson) {
     refresh()
 
     // Drop any stale window first. A previous apply may have reconfigured the
     // outputs and taken the surface with it, leaving this believing it is still
-    // open — in which case showing it again would do nothing at all.
+    // open — in which case showing it again would do nothing at all. Dropping
+    // it only needs to land before the window is stood back up, so this hands
+    // the change to the next event loop turn rather than waiting on a modeset
+    // that is not happening.
     opened = false
-    reopen.restart()
+    scheduleReopen(0)
   }
 
   function close() {
@@ -274,7 +287,7 @@ Item {
     // once the new geometry has settled, so the confirm-or-revert prompt is
     // still there to answer.
     opened = false
-    reopen.restart()
+    scheduleReopen(settleDelay)
   }
 
   function confirmLayout() {
@@ -303,9 +316,12 @@ Item {
     closeWhenApplied = true
   }
 
+  // Every caller goes through scheduleReopen, which sets the interval to suit
+  // what it is waiting for; the value here is only what the timer starts life
+  // holding.
   Timer {
     id: reopen
-    interval: 1500
+    interval: root.settleDelay
     repeat: false
     onTriggered: {
       root.refresh()
