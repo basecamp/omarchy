@@ -60,6 +60,25 @@ Item {
   // invisible overlay that swallows input until Escape. Close first, so the
   // outputs change with nothing anchored to them.
   function setMirror(enabled) {
+    // A layout waiting to be confirmed has to be put back before the outputs
+    // are reconfigured under it. Both the revert and the mirror write rules for
+    // the same displays, so starting them together would leave the geometry
+    // that ends up in the user's config to whichever finished last. Hold the
+    // mode switch until the revert has landed.
+    //
+    // A revert already on its way counts too: it clears the prompt as it starts
+    // but keeps writing for a moment afterwards, and a second press landing in
+    // that gap would race it just the same.
+    if (awaitingConfirmation || closeWhenApplied) {
+      pendingMirror = enabled
+      if (awaitingConfirmation) revertLayout()
+      return
+    }
+
+    applyMirror(enabled)
+  }
+
+  function applyMirror(enabled) {
     mirrorProc.command = ["omarchy-hyprland-monitor-internal-mirror", enabled ? "on" : "off"]
     if (!mirrorProc.running) mirrorProc.running = true
     close()
@@ -105,6 +124,7 @@ Item {
   function dismiss() {
     opened = false
     closeWhenApplied = false
+    pendingMirror = null
     reopen.stop()
     revertTimer.stop()
     countdown.stop()
@@ -413,13 +433,23 @@ Item {
 
   property bool closeWhenApplied: false
 
+  // A mode switch asked for while a layout was waiting to be confirmed, held
+  // until the revert it triggered has finished writing.
+  property var pendingMirror: null
+
   Process {
     id: applyProc
     stdout: StdioCollector { waitForEnd: true }
     onRunningChanged: {
       if (running || !root.closeWhenApplied) return
       root.closeWhenApplied = false
+
+      // Read before closing: closing clears the state this was waiting on.
+      var wanted = root.pendingMirror
+      root.pendingMirror = null
+
       root.close()
+      if (wanted !== null) root.applyMirror(wanted)
     }
   }
 
