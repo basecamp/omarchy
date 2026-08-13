@@ -427,20 +427,24 @@ assert(
   'notifications service copies images before writing the JSON that references them'
 )
 assert(
-  /\[\[ -f \$1 \]\] && \(\( \$\(stat -c%s -- \\"\$1\\" 2>\/dev\/null \|\| echo 0\) <= 5242880 \)\) && cp -f/.test(serviceQml),
-  'notifications service only copies bounded regular files'
+  /timeout 5 head -c 5242881 -- \\"\$1\\" > \\"\$2\.tmp\\"[\s\S]{0,120}?mv -f -- \\"\$2\.tmp\\" \\"\$2\\"/.test(serviceQml),
+  'notifications service bounds image copies through a validated temp file'
 )
 assert(
   /rm -f \\"\$1\/\$2\.json\\" \\"\$3\/\$2\\"-\*/.test(serviceQml),
   'notifications service deletes a superseded popup\'s image copies with its file'
 )
 assert(
-  /if \(!isEphemeral\(notification\)\) \{\s*\n\s*writeHistoryFile\(snapshot, function\(\) \{\s*\n\s*service\.releaseSilenced\(notification, snapshot\.originalId\)/.test(serviceQml),
+  /if \(!isEphemeral\(notification\)\) \{\s*\n\s*writeSilenced\(notification, snapshot\)/.test(serviceQml),
   'notifications service records DND-silenced notifications straight into history'
 )
 assert(
   /function releaseSilenced\(notification, originalId\)[\s\S]{0,300}?notification\.tracked = false/.test(serviceQml),
   'notifications service holds a silenced notification until its history write has run'
+)
+assert(
+  /if \(updated && NotificationLogic\.popupRowChanged\(written, updated\)\) \{\s*\n\s*service\.writeSilenced\(notification, updated\)/.test(serviceQml),
+  'notifications service re-persists a silenced notification updated while its write was queued'
 )
 assert(
   /rows\.push\(NotificationLogic\.persistablePopup\(\{[\s\S]{0,400}?\}, imagesDir\)\.entry\)/.test(serviceQml),

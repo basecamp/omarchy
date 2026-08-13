@@ -174,12 +174,8 @@ Item {
       // The toast never shows, so the only record a silenced notification
       // can leave is a history entry. Write it straight into history —
       // "what did I miss while silenced" is exactly what history is for.
-      // Release only after the write: untracking tells the sender its
-      // notification closed, and Chromium deletes its avatar file on close.
       if (!isEphemeral(notification)) {
-        writeHistoryFile(snapshot, function() {
-          service.releaseSilenced(notification, snapshot.originalId)
-        })
+        writeSilenced(notification, snapshot)
         return
       }
       delete liveRefs[snapshot.originalId]
@@ -198,6 +194,27 @@ Item {
       // write to, and a property that already changed will not change again.
       // Reading the object once the row exists catches up on it.
       service.refreshPopup(notification, snapshot.originalId, snapshot.timestamp)
+    })
+  }
+
+  // Persist a silenced notification, held tracked until its content is
+  // stable: untracking tells the sender its notification closed (Chromium
+  // then deletes its avatar file), and a replaces_id update lands on this
+  // object without a second onNotification — releasing on a stale snapshot
+  // would drop it. Each catch-up write reuses the original file identity.
+  function writeSilenced(notification, written) {
+    writeHistoryFile(written, function() {
+      var updated = null
+      try {
+        updated = NotificationLogic.replacementSnapshot(notification, written.originalId, written.timestamp)
+      } catch (e) {
+        // Torn down by the server while the write was queued.
+      }
+      if (updated && NotificationLogic.popupRowChanged(written, updated)) {
+        service.writeSilenced(notification, updated)
+        return
+      }
+      service.releaseSilenced(notification, written.originalId)
     })
   }
 
@@ -466,12 +483,14 @@ Item {
     }
   }
 
-  // Consumes the remaining args as from/to pairs. Only bounded regular files
-  // are copied: a sender pointing at a FIFO or device must not hang the
-  // queue or fill the state dir.
+  // Consumes the remaining args as from/to pairs. Bounded read into a temp
+  // file, validated, then renamed into place: the source path is
+  // sender-controlled and may grow, block, or become a FIFO mid-copy, and
+  // must neither hang the serialized queue nor fill the state dir.
   readonly property string copyImagesScript:
     "while (( $# >= 2 )); do\n" +
-    "  [[ -f $1 ]] && (( $(stat -c%s -- \"$1\" 2>/dev/null || echo 0) <= 5242880 )) && cp -f -- \"$1\" \"$2\" 2>/dev/null\n" +
+    "  if [[ -f $1 ]] && timeout 5 head -c 5242881 -- \"$1\" > \"$2.tmp\" 2>/dev/null &&\n" +
+    "     (( $(stat -c%s -- \"$2.tmp\") <= 5242880 )); then mv -f -- \"$2.tmp\" \"$2\"; else rm -f -- \"$2.tmp\"; fi\n" +
     "  shift 2\n" +
     "done\n"
 
@@ -581,6 +600,7 @@ Item {
     enqueuePopupFileJob(["bash", "-c",
       "for img in \"$3\"/*; do\n" +
       "  [[ -e $img ]] || continue\n" +
+      "  [[ $img == *.tmp ]] && { rm -f -- \"$img\"; continue; }\n" +
       "  stem=\"${img##*/}\"\n" +
       "  stem=\"${stem%-*}\"\n" +
       "  [[ -e $1/$stem.json || -e $2/$stem.json ]] || rm -f \"$img\"\n" +
