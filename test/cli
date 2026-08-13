@@ -763,7 +763,7 @@ assert_output_contains "body metadata command dispatches by filename" "$output" 
   printf '#!/bin/bash\n\n'
   printf '# omarchy:summary=Partial resolution help test parent\n'
   printf '# omarchy:alias=omarchy parenthelp-alias\n'
-  printf 'echo parenthelp-parent-ran\n'
+  printf 'echo "parenthelp-parent-ran args=[$*]"\n'
 } >"$TMPDIR/omarchy-parenthelp"
 chmod +x "$TMPDIR/omarchy-parenthelp"
 
@@ -792,8 +792,18 @@ if [[ $output == *"parenthelp-parent-ran"* ]]; then
 fi
 pass "trailing --help on an alias route does not execute the command"
 
+output=$("$TMPDIR/omarchy" parenthelp bogus --json --help)
+grep -q '"ok": true' <<<"$output" || fail "--json with --help renders JSON help"
+pass "--json with --help renders JSON help"
+
+output=$("$TMPDIR/omarchy" parenthelp "explain --json output" --help)
+assert_output_contains "a --json embedded inside one argument does not switch help to JSON" "$output" "Partial resolution help test parent"
+
 output=$("$TMPDIR/omarchy" parenthelp bogus trailing)
-assert_output_contains "leftover args without a help flag still forward" "$output" "parenthelp-parent-ran"
+assert_output_contains "leftover args without a help flag still forward" "$output" "parenthelp-parent-ran args=[bogus trailing]"
+
+output=$("$TMPDIR/omarchy" parenthelp run -- --help)
+assert_output_contains "a --help behind -- belongs to the command and still forwards" "$output" "parenthelp-parent-ran args=[run -- --help]"
 
 output=$("$TMPDIR/omarchy" parenthelp --helpme x--help)
-assert_output_contains "help lookalike tokens do not trigger help" "$output" "parenthelp-parent-ran"
+assert_output_contains "help lookalike tokens do not trigger help" "$output" "parenthelp-parent-ran args=[--helpme x--help]"

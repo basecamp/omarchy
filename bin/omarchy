@@ -123,12 +123,25 @@ append_pipe_value() {
 }
 
 # A route can resolve to a binary before all args are consumed (`update aur` only matches the `update` binary, leaving `aur` and `--help` as leftovers)
-# --help must never be lost among those leftovers and get forwarded into the real command, so this checks the whole remainder rather than just the first token
+# --help must never be lost among those leftovers and get forwarded into the real command, so this checks the whole remainder rather than just the first token.
+# A `--` marks everything after it as belonging to the command itself, so scanning stops there.
 remaining_has_help_flag() {
   local token=""
 
   for token in "$@"; do
+    [[ $token == "--" ]] && break
     [[ $token == "--help" || $token == "-h" ]] && return 0
+  done
+
+  return 1
+}
+
+remaining_has_json_flag() {
+  local token=""
+
+  for token in "$@"; do
+    [[ $token == "--" ]] && break
+    [[ $token == "--json" ]] && return 0
   done
 
   return 1
@@ -953,7 +966,7 @@ dispatch_fast_or_help() {
       fi
 
       key="${BINARY_TO_KEY[$DIRECT_RESOLVED_BINARY]}"
-      if [[ " ${remaining[*]} " == *" --json "* ]]; then
+      if remaining_has_json_flag "${remaining[@]}"; then
         show_command_json "$key"
       else
         show_command_help "$key"
@@ -1007,7 +1020,7 @@ dispatch_or_help() {
     remaining=("${args[@]:RESOLVED_COUNT}")
 
     if remaining_has_help_flag "${remaining[@]}"; then
-      if [[ " ${remaining[*]} " == *" --json "* ]]; then
+      if remaining_has_json_flag "${remaining[@]}"; then
         show_command_json "$key"
       else
         show_command_help "$key"
