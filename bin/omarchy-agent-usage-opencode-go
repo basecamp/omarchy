@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import os
@@ -34,10 +35,6 @@ AUTH_HELP = "Run `opencode auth login` and subscribe to OpenCode Go, or set OPEN
 API_BASE_URL = "https://opencode.ai"
 USAGE_PATH = "/zen/go/v1/usage"
 PROBE_MIN_INTERVAL_SECONDS = 15
-
-
-def expand_path(value: str) -> Path:
-  return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
 
 
 def data_home() -> Path:
@@ -93,7 +90,10 @@ def opencode_db_path() -> Path:
   return data_home() / "opencode" / "opencode.db"
 
 
-def scan_opencode_db(db: Path) -> dict[str, Any]:
+def scan_opencode_db(db: Path) -> tuple[dict[str, Any], bool]:
+  """Returns (stats, complete): a scan cut short by a database error still
+  contributes what it read, but its caller must not cache it as the whole
+  story."""
   today = local_date_string()
   recent_dates = recent_date_strings()
   recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
@@ -110,10 +110,22 @@ def scan_opencode_db(db: Path) -> dict[str, Any]:
     # Read-only: opencode may be writing right now.
     conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
   except sqlite3.Error:
-    return empty_stats()
+    return empty_stats(), False
   try:
     conn.execute("PRAGMA query_only = ON")
-    for session_id, raw in conn.execute("SELECT session_id, data FROM message"):
+    # The DB holds every historical message, JSON included, so filtering in
+    # SQL keeps tens-of-MB blobs out of Python. The json_extract conditions
+    # are the authority; the LIKE gates in front are pure acceleration (they
+    # differ only on duplicate keys or ASCII escapes, vanishingly rare), and
+    # the CASE guards keep json_extract — which raises on malformed JSON —
+    # from aborting the scan.
+    for session_id, raw in conn.execute(
+      "SELECT session_id, data FROM message"
+      " WHERE data LIKE '%\"role\"%:%\"assistant\"%'"
+      " AND data LIKE '%\"providerID\"%:%\"opencode-go\"%'"
+      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.role') END = 'assistant'"
+      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.providerID') END = 'opencode-go'"
+    ):
       # One malformed row must not abort the scan, so every shape assumption
       # lives inside the try.
       try:
@@ -161,7 +173,7 @@ def scan_opencode_db(db: Path) -> dict[str, Any]:
         today_token_total += total
         today_tokens[model] = today_tokens.get(model, 0) + total
   except sqlite3.Error:
-    return empty_stats()
+    return empty_stats(), False
   finally:
     conn.close()
 
@@ -176,7 +188,7 @@ def scan_opencode_db(db: Path) -> dict[str, Any]:
     "activeDays": len(active_days),
     "activeDates": sorted(active_days),
     "modelUsage": usage_by_model,
-  }
+  }, True
 
 
 def empty_stats() -> dict[str, Any]:
@@ -209,7 +221,10 @@ def read_fresh_json(path: Path, max_age_seconds: float) -> dict[str, Any] | None
   if max_age_seconds <= 0 or not path.exists():
     return None
   try:
-    if time.time() - path.stat().st_mtime <= max_age_seconds:
+    # A negative age means the mtime is in the future: the clock moved
+    # backwards since the write, so the cache's freshness cannot be trusted.
+    age = time.time() - path.stat().st_mtime
+    if 0 <= age <= max_age_seconds:
       return json.loads(path.read_text(encoding="utf-8"))
   except Exception:
     return None
@@ -229,23 +244,56 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     raise
 
 
+def read_cached_stats(cache_file: Path, max_age_seconds: float) -> dict[str, Any] | None:
+  cached = read_fresh_json(cache_file, max_age_seconds)
+  if not isinstance(cached, dict) or cached.get("schemaVersion") != 1:
+    return None
+  # today* fields only mean "today" on the day they were scanned: a cache
+  # from another local date (midnight passed, or the clock moved) is a miss,
+  # not merely old, whatever its mtime says.
+  if cached.get("scanDate") != local_date_string():
+    return None
+  stats = cached.get("stats")
+  if not isinstance(stats, dict):
+    return None
+  if not all(key in stats for key in ("todayPrompts", "todayTotalTokens", "recentDays", "activeDates", "modelUsage")):
+    return None
+  return stats
+
+
+def write_cached_stats(cache_file: Path, stats: dict[str, Any]) -> None:
+  write_json(cache_file, {"schemaVersion": 1, "scanDate": local_date_string(), "stats": stats})
+
+
 def cached_scan(db: Path, max_age_seconds: float) -> dict[str, Any]:
+  # The cache is a pure optimization: any cache-layer failure (unwritable
+  # root, lock errors, disk full) degrades to a direct scan, never a crash.
+  try:
+    return _cached_scan(db, max_age_seconds)
+  except Exception as exc:
+    print(f"omarchy-agent-usage-opencode-go: cache unavailable ({exc}); scanning directly", file=sys.stderr)
+    stats, _ = scan_opencode_db(db)
+    return stats
+
+
+def _cached_scan(db: Path, max_age_seconds: float) -> dict[str, Any]:
   cache_file, lock_file = scan_cache_paths(db)
 
-  cached = read_fresh_json(cache_file, max_age_seconds)
+  cached = read_cached_stats(cache_file, max_age_seconds)
   if cached is not None:
     return cached
 
-  import fcntl
-
   with lock_file.open("w") as lock:
     fcntl.flock(lock, fcntl.LOCK_EX)
-    cached = read_fresh_json(cache_file, max_age_seconds)
+    cached = read_cached_stats(cache_file, max_age_seconds)
     if cached is not None:
       return cached
-    summary = scan_opencode_db(db)
-    write_json(cache_file, summary)
-    return summary
+    stats, complete = scan_opencode_db(db)
+    # An interrupted scan still serves this run, but caching it would
+    # suppress the missing usage for every reader until the cache expires.
+    if complete:
+      write_cached_stats(cache_file, stats)
+    return stats
 
 
 # ------------------------------------------------------------------ limits
