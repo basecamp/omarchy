@@ -34,7 +34,12 @@ resolved_hooks() {
   local modules_decl=""
   [[ $1 == "unset" ]] || modules_decl="MODULES=($1)"
 
+  # The vconsole block sources the host's /etc/vconsole.conf, which may set
+  # only KEYMAP; predefine XKBLAYOUT so its expansion survives set -u and the
+  # test stays independent of the machine it runs on.
   OMARCHY_PCI_DEVICES_PATH="$tmp_dir/devices" bash -uc "
+    FILES=()
+    XKBLAYOUT=us
     $modules_decl
     source '$hooks_conf'
     echo \"\${HOOKS[*]}\"
@@ -84,9 +89,15 @@ write_pci_devices
 assert_hooks "empty PCI tree keeps kms" \
   "$nvidia_modules" "$with_kms"
 
-# A device directory missing its class/vendor attributes must be skipped
-# without erroring, and without dropping kms on its own.
+# A device directory missing its class/vendor attributes must not error, and
+# counts as inconclusive: it could be another GPU, so kms stays.
 write_pci_devices
 mkdir -p "$tmp_dir/devices/0000:00:00.0"
 assert_hooks "unreadable PCI device keeps kms" \
+  "$nvidia_modules" "$with_kms"
+
+# Even next to a readable NVIDIA GPU — the unreadable device may be the iGPU.
+write_pci_devices 0x10de:0x030000
+mkdir -p "$tmp_dir/devices/0000:01:00.0"
+assert_hooks "unreadable device beside an NVIDIA GPU keeps kms" \
   "$nvidia_modules" "$with_kms"
