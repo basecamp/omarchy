@@ -81,6 +81,22 @@ assertDeepEqual(
   'against where they actually are, the shifted neighbour needs writing too'
 )
 
+// --- putting a layout back means where it was, not a tidied version ---
+
+// Normalising is how a layout is drawn and how a new one is written. Reverting
+// is neither: a layout that started off the origin has to come back off the
+// origin, or the fail-safe meant to undo a change makes one of its own.
+assertDeepEqual(
+  arrange.positionsOf(offOrigin),
+  { 'eDP-1': '-1440x0', 'DP-7': '0x0' },
+  'a revert writes the positions the displays actually had'
+)
+assertDeepEqual(
+  arrange.positionsOf(arrange.normalized(offOrigin)),
+  { 'eDP-1': '0x0', 'DP-7': '1440x0' },
+  'the normalised version of those positions is a different layout'
+)
+
 // --- the canvas fits the whole layout ---
 
 const twoUp = [

@@ -380,8 +380,13 @@ Item {
     transforms = originalTransforms
     rects = originalRects
 
-    var previous = Model.positionsOf(Model.normalized(originalRects))
-    writeLayout(previous)
+    // Where the displays actually were, not the normalised version of it.
+    // Normalising is how the canvas draws a layout and how a new one is written,
+    // but putting one back is not writing a new one: a layout that started off
+    // the origin, anything with a display left of or above 0x0, would come back
+    // shifted, so the fail-safe meant to undo a change would make one of its
+    // own and there would be nothing left to undo it with.
+    writeLayout(Model.positionsOf(originalRects))
 
     // Step out once the layout is actually back, not before. Tearing this
     // overlay's surface down while Hyprland is still re-modesetting leaves
