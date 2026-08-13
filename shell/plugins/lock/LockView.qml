@@ -43,15 +43,6 @@ Item {
   signal clearFailureRequested()
   signal wakeRequested()
 
-  // Cache-busts the lock background by appending `?v=`. Adding a query
-  // string keeps Image's loader happy while forcing it to reload when the
-  // user picks a new background mid-session.
-  function fileUrl(path) {
-    if (!path) return ""
-    var encoded = String(path).split("/").map(encodeURIComponent).join("/")
-    return "file://" + encoded + "?v=" + backgroundVersion
-  }
-
   function forcePasswordFocus() {
     passwordInput.forceActiveFocus()
   }
@@ -90,26 +81,32 @@ Item {
     anchors.fill: parent
     color: Color.background
 
-    Image {
+    BackgroundMedia {
       id: wallpaper
       anchors.fill: parent
-      source: root.loadBackground ? root.fileUrl(root.backgroundPath) : ""
-      fillMode: Image.PreserveAspectCrop
-      asynchronous: true
-      cache: false
-      sourceSize.width: width
-      sourceSize.height: height
+      path: root.loadBackground ? root.backgroundPath : ""
+      version: root.backgroundVersion
+      playbackEnabled: root.loadBackground
     }
 
     MultiEffect {
       anchors.fill: wallpaper
-      source: wallpaper
+      source: wallpaper.video ? null : wallpaper
+      visible: !wallpaper.video
       autoPaddingEnabled: false
-      blurEnabled: root.loadBackground && wallpaper.status === Image.Ready
+      blurEnabled: root.loadBackground && wallpaper.ready
       blur: 1.0
       blurMax: 128
       blurMultiplier: 1.25
       contrast: -0.08
+    }
+
+    // Qt's video output cannot be sampled by MultiEffect on every renderer.
+    // Keep video wallpapers visible and darken them slightly for legibility.
+    Rectangle {
+      anchors.fill: wallpaper
+      visible: wallpaper.video
+      color: "#22000000"
     }
 
     MouseArea {

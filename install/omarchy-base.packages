@@ -109,6 +109,8 @@ ttfx
 qemu-user-static-binfmt
 qrencode
 quickshell-git
+qt6-multimedia
+qt6-multimedia-ffmpeg
 ripgrep
 ruby
 tensaku

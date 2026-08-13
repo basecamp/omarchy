@@ -111,8 +111,8 @@ cache_key=$(printf '%s' "$image_dirs_env" | md5sum | cut -d ' ' -f 1)
 rows_cache_file="$cache_dir/$cache_key.rows"
 rows_signature_file="$cache_dir/$cache_key.signature"
 rows_fast_signature_file="$cache_dir/$cache_key.fast-signature"
-rows_signature="v3"$'\n'
-rows_fast_signature="v2"$'\n'
+rows_signature="v4"$'\n'
+rows_fast_signature="v3"$'\n'
 rows_cacheable=true
 rows_cache_hit=false
 image_files=()
@@ -133,7 +133,10 @@ else
         image_files+=("$image")
         image_signature=$(stat -Lc '%s:%Y' "$image") || continue
         rows_signature+="$image:$image_signature"$'\n'
-      done < <(find -L "$dir" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print0 2>/dev/null | sort -z)
+      done < <(find -L "$dir" -maxdepth 1 -type f \
+        \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \
+           -o -iname '*.mp4' -o -iname '*.m4v' -o -iname '*.mov' -o -iname '*.webm' -o -iname '*.mkv' -o -iname '*.avi' \) \
+        -print0 2>/dev/null | sort -z)
     fi
   done
 fi
@@ -144,6 +147,7 @@ generate_thumbnail() {
   local lock="$thumbnail.lock"
   local lock_fd
   local tmp="$thumbnail.$$.jpg"
+  local thumbnail_command
 
   # Older releases used directories as locks, which could survive a killed
   # generator and block this thumbnail forever. Only reap aged ones, so a
@@ -161,10 +165,17 @@ generate_thumbnail() {
 
   [[ -f $thumbnail ]] && return
 
-  # Callers fan out one generator per image, so keep each vips single-threaded.
-  # Close the lock fd for vips: an orphaned or hung vips must not keep holding
-  # the lock after this shell is killed.
-  if VIPS_CONCURRENCY=1 vipsthumbnail "$image" --size 1536x864 --smartcrop=centre --path "$tmp[Q=82,strip]" {lock_fd}>&-; then
+  # Callers fan out one generator per file, so keep each image conversion
+  # single-threaded. ffmpegthumbnailer provides a still preview for videos.
+  if [[ ${image,,} =~ \.(mp4|m4v|mov|webm|mkv|avi)$ ]]; then
+    thumbnail_command=(ffmpegthumbnailer -i "$image" -o "$tmp" -s 1536 -q 8)
+  else
+    thumbnail_command=(env VIPS_CONCURRENCY=1 vipsthumbnail "$image" --size 1536x864 --smartcrop=centre --path "$tmp[Q=82,strip]")
+  fi
+
+  # Close the lock fd for the converter: an orphaned or hung child must not
+  # keep holding the lock after this shell is killed.
+  if "${thumbnail_command[@]}" {lock_fd}>&-; then
     mv -f "$tmp" "$thumbnail"
   else
     rm -f "$tmp" "$thumbnail"

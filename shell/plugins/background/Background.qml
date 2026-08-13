@@ -26,6 +26,10 @@ Item {
   property string pendingShellRaw: ""
   property real revealProgress: 1
 
+  function isVideo(path) {
+    return Util.isVideoPath(path)
+  }
+
   function imageUrl(path) {
     return Util.fileUrl(path)
   }
@@ -50,10 +54,12 @@ Item {
     revealAnimation.stop()
     finishingTransition = false
 
-    if (instant || !displayedBackground) {
+    // Video frames are not fed through the image-only reveal stack. Switching
+    // instantly also avoids decoding two full videos during a transition.
+    if (instant || !displayedBackground || isVideo(path) || isVideo(displayedBackground)) {
       oldBackground = ""
       incomingBackground = ""
-      displayedBackground = path
+      displayedBackground = finalPath
       revealProgress = 1
       return
     }
@@ -218,15 +224,12 @@ Item {
       WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
       exclusionMode: ExclusionMode.Ignore
 
-      Image {
+      BackgroundMedia {
         id: base
         anchors.fill: parent
-        source: root.imageUrl(root.displayedBackground)
-        fillMode: Image.PreserveAspectCrop
-        asynchronous: true
-        cache: true
-        onStatusChanged: {
-          if (status === Image.Ready && root.finishingTransition) {
+        path: root.displayedBackground
+        onReadyChanged: {
+          if (ready && root.finishingTransition) {
             root.incomingBackground = ""
             root.oldBackground = ""
             root.finishingTransition = false

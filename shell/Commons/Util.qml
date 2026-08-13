@@ -44,6 +44,10 @@ QtObject {
     return "file://" + String(path).split("/").map(encodeURIComponent).join("/")
   }
 
+  function isVideoPath(path) {
+    return /\.(mp4|m4v|mov|webm|mkv|avi)$/i.test(String(path || ""))
+  }
+
   // Single-quote a string for bash. The replace handles embedded single
   // quotes by closing, escaping, and re-opening the literal.
   function shellQuote(value) {
