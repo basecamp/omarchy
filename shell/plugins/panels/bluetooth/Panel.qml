@@ -971,7 +971,7 @@ Panel {
 
       Text {
         id: deviceIcon
-        text: row.isConnected ? "󰂱" : "󰂯"
+        text: Model.deviceGlyph(Model.deviceKind(row.dev), row.isConnected)
         color: row.statusColor
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.heading
