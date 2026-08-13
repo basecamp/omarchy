@@ -739,9 +739,9 @@ Item {
   }
 
   // How far past the bar strip the drag point sits, in screen space. The
-  // strip, not the window, is the boundary: the window grows to the whole
-  // screen while a drag is live (see BarPanel.dragGrown), so its own bounds
-  // say nothing about leaving the bar.
+  // strip, not the window, is the boundary: the window spans the whole
+  // screen (see BarPanel), so its own bounds say nothing about leaving
+  // the bar.
   function moduleRemoveDistance(screenPoint) {
     var screen = barDragScreen
     if (!screen) return 0
@@ -782,8 +782,7 @@ Item {
     var sourceWindow = root.slotWindow(sourceSlot) || root.barDragWindow
     if (sourceWindow && sourceWindow.contentItem) {
       // Free-space drops count only inside the bar strip. The window itself
-      // can be grown to the full screen mid-drag, so its bounds are not the
-      // bar's bounds.
+      // spans the whole screen, so its bounds are not the bar's bounds.
       var barPoint = sourceWindow.contentItem.mapFromItem(null, scenePoint.x, scenePoint.y)
       var stripX = root.position === "right" ? sourceWindow.contentItem.width - root.barSize : 0
       var stripY = root.position === "bottom" ? sourceWindow.contentItem.height - root.barSize : 0
@@ -1104,7 +1103,7 @@ Item {
     // the gesture with a synthesized release.
     // sameWindow, not identity: the drag records the QsWindow interface of
     // the slot's window, which is not this PanelWindow object itself.
-    readonly property bool dragGrown: (root.barDragSource !== null && root.sameWindow(root.barDragWindow, barWindow)) ||
+    readonly property bool dragActive: (root.barDragSource !== null && root.sameWindow(root.barDragWindow, barWindow)) ||
       (root.barMoveActive && root.sameWindow(root.barMoveWindow, barWindow))
 
     // Hiding parks the bar just past its screen edge instead of unmapping it.
@@ -1114,7 +1113,7 @@ Item {
     // keeps the surface alive, so showing is only a margin change.
     visible: !remapGuard.remapping
     // An explicit zone instead of Auto: the reserved area must stay the
-    // strip's thickness while the window is grown for a drag.
+    // strip's thickness even though the window spans the screen.
     exclusionMode: root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Normal
     exclusiveZone: root.barSize
 
@@ -1137,26 +1136,42 @@ Item {
       right: root.position === "right" || !root.vertical
     }
 
-    // The grow extends the requested size along the open axis; the anchors
-    // never change. Anchoring all four edges instead would void the
-    // exclusive zone — layer-shell reserves space from an anchored edge —
-    // and the tiled windows would jump up behind the bar for the length of
-    // the drag.
+    // The surface is full-screen along its open axis at all times; what a
+    // drag toggles is the input region below. Resizing the surface for the
+    // drag instead flashes the bar's stale strip buffer stretched across the
+    // new geometry until the freshly rendered frame lands — the dark blink —
+    // and the size must not come from anchoring all four edges either, which
+    // would void the exclusive zone (layer-shell reserves space from an
+    // anchored edge) and drop the tiled windows behind the bar.
     implicitWidth: root.vertical
-      ? (barWindow.dragGrown && barWindow.screen ? barWindow.screen.width : root.barSize)
+      ? (barWindow.screen ? barWindow.screen.width : root.barSize)
       : 0
     implicitHeight: root.vertical
       ? 0
-      : (barWindow.dragGrown && barWindow.screen ? barWindow.screen.height : root.barSize)
+      : (barWindow.screen ? barWindow.screen.height : root.barSize)
     // The window is transparent; the strip below paints the bar. Painting the
-    // window would flood the whole screen with bar color while grown.
+    // window would flood the whole screen with bar color.
     color: "transparent"
     surfaceFormat.opaque: false
     WlrLayershell.namespace: "omarchy-bar"
     WlrLayershell.layer: WlrLayer.Top
 
-    // The bar itself, pinned to its screen edge. Coincides with the window
-    // when not grown.
+    // Idle, only the strip takes input, so the transparent expanse stays
+    // click-through for the windows and desktop below. During this window's
+    // drag the whole surface takes input, which is what keeps the gesture
+    // alive: the pointer never has a reason to be handed to another surface,
+    // however far off the bar the drag goes.
+    mask: barWindow.dragActive ? null : stripInputRegion
+
+    Region {
+      id: stripInputRegion
+      x: root.position === "right" ? barWindow.width - root.barSize : 0
+      y: root.position === "bottom" ? barWindow.height - root.barSize : 0
+      width: root.vertical ? root.barSize : barWindow.width
+      height: root.vertical ? barWindow.height : root.barSize
+    }
+
+    // The bar itself, pinned to its screen edge.
     Item {
       id: barStrip
 

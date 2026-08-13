@@ -273,30 +273,42 @@ assert(
 // The drag must survive leaving the bar on an empty workspace. The
 // compositor re-picks a pointer target on any surface commit while nothing
 // holds keyboard focus, and a pointer that has strayed onto another surface
-// is ripped off the bar mid-drag with a synthesized release. The bar window
-// therefore grows to cover its whole screen while its drag is live, so the
-// pointer never leaves the pressed surface however far the drag goes.
+// is ripped off the bar mid-drag with a synthesized release. The bar surface
+// therefore spans the whole screen at all times, and a live drag toggles
+// only its input region — never its size: resizing flashes the stale strip
+// buffer stretched across the new geometry, the dark full-screen blink.
 assert(
-  /readonly property bool dragGrown: \(root\.barDragSource !== null && root\.sameWindow\(root\.barDragWindow, barWindow\)\)/.test(barSource),
-  'the bar grows for its own live drag, matched by window rather than identity'
+  /readonly property bool dragActive: \(root\.barDragSource !== null && root\.sameWindow\(root\.barDragWindow, barWindow\)\)/.test(barSource),
+  'the bar arms drag input for its own drag, matched by window rather than identity'
 )
 assert(
   /root\.barMoveActive && root\.sameWindow\(root\.barMoveWindow, barWindow\)/.test(barSource),
-  'the bar-move gesture grows the window too'
+  'the bar-move gesture arms drag input too'
 )
-// The grow may only extend the requested size along the open axis. Anchoring
-// all four edges instead voids the exclusive zone — layer-shell reserves
-// space from an anchored edge — and tiled windows jump up behind the bar.
+assert(
+  /mask: barWindow\.dragActive \? null : stripInputRegion/.test(barSource),
+  'a drag toggles only the input region, never the surface size'
+)
+assert(
+  !/dragActive[^\n]*\?[^\n]*screen\.(width|height)/.test(barSource) &&
+  /implicitWidth: root\.vertical\s*\n\s*\? \(barWindow\.screen \? barWindow\.screen\.width : root\.barSize\)/.test(barSource) &&
+  /implicitHeight: root\.vertical\s*\n\s*\? 0\s*\n\s*: \(barWindow\.screen \? barWindow\.screen\.height : root\.barSize\)/.test(barSource),
+  'the bar surface spans the screen unconditionally instead of resizing mid-drag'
+)
+// Anchoring all four edges would void the exclusive zone — layer-shell
+// reserves space from an anchored edge — and tiled windows would jump up
+// behind the bar.
 for (const edge of ['top', 'bottom', 'left', 'right']) {
   assert(
-    !new RegExp(`${edge}:[^\\n]*dragGrown`).test(barSource),
+    !new RegExp(`${edge}:[^\\n]*dragActive`).test(barSource),
     `a drag never changes the bar's ${edge} anchor`
   )
 }
+// Idle, only the strip may take input, or the transparent expanse would eat
+// every click meant for the windows and desktop below it.
 assert(
-  /implicitWidth: root\.vertical\s*\n\s*\? \(barWindow\.dragGrown && barWindow\.screen \? barWindow\.screen\.width : root\.barSize\)/.test(barSource) &&
-  /implicitHeight: root\.vertical\s*\n\s*\? 0\s*\n\s*: \(barWindow\.dragGrown && barWindow\.screen \? barWindow\.screen\.height : root\.barSize\)/.test(barSource),
-  'a grown bar extends its requested size along the open axis only'
+  /Region \{\s*\n\s*id: stripInputRegion[\s\S]*?height: root\.vertical \? barWindow\.height : root\.barSize/.test(barSource),
+  'the idle input region is exactly the bar strip'
 )
 // The window is no longer the bar's boundary once it can grow, so both the
 // free-space drop rejection and the removal arming measure against the strip.
