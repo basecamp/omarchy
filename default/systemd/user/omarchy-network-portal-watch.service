@@ -1,0 +1,18 @@
+[Unit]
+Description=Announce networks that need a captive portal sign-in
+# Needs the session bus to notify and the default browser to open the login
+# page, both up only after graphical-session.target, plus the bus NetworkManager
+# reports connectivity on.
+After=graphical-session.target dbus.socket
+Requires=dbus.socket
+PartOf=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omarchy-network-portal --watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
