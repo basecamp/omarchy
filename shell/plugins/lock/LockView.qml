@@ -186,7 +186,7 @@ Item {
         }
 
         Keys.onPressed: function(event) {
-          root.activityRequested()
+          if (!event.isAutoRepeat) root.activityRequested()
           root.wakeRequested()
           if (event.key === Qt.Key_Escape || (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_U)) {
             root.passwordTextEdited("")

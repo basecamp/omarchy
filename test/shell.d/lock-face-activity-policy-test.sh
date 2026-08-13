@@ -31,8 +31,8 @@ assert(
 
 assert(
   /signal activityRequested\(\)/.test(lockViewQml) &&
-    /Keys\.onPressed: function\(event\) \{\s*root\.activityRequested\(\)\s*root\.wakeRequested\(\)/.test(lockViewQml),
-  'key presses request face authentication and still follow the normal input path'
+    /Keys\.onPressed: function\(event\) \{\s*if \(!event\.isAutoRepeat\) root\.activityRequested\(\)\s*root\.wakeRequested\(\)/.test(lockViewQml),
+  'new key presses request face authentication without retriggering on auto-repeat'
 )
 
 assert(
