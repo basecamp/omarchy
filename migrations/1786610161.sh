@@ -10,5 +10,6 @@ fi
 
 agent_file="$HOME/.config/omarchy/defaults/agent"
 if [[ -f $agent_file ]] && [[ $(<$agent_file) == "gemini" ]]; then
+  omarchy-mise-install github:google-antigravity/antigravity-cli agy
   printf 'agy\n' >"$agent_file"
 fi

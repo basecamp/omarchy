@@ -152,6 +152,12 @@ source "$ROOT/migrations/1785846769.sh" >/dev/null
 source "$ROOT/migrations/1786610161.sh" >/dev/null
 [[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
 [[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
+printf '%s\n' "gemini" >"$agent_file"
+: >"$stub_log"
+source "$ROOT/migrations/1786610161.sh" >/dev/null
+grep -Fx "$antigravity_package agy" "$stub_log" >/dev/null || fail "Antigravity migration treats a Gemini default as an opt-in after opt-out"
+[[ $(<"$agent_file") == "agy" ]] || fail "Antigravity migration moves a Gemini default to agy after opt-out"
+rm "$agent_file"
 rm "$test_home/.local/state/omarchy/preinstalls-removed"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"
 
