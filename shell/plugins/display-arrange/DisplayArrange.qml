@@ -315,16 +315,25 @@ Item {
     var commands = []
     for (var name in positions) {
       var transform = root.transformOf(name)
-      commands.push("hyprctl eval 'hl.monitor({ output = \"" + name + "\", mode = \"" + root.modeOf(name)
-        + "\", position = \"" + positions[name] + "\", scale = " + root.scaleOf(name)
-        + (transform !== 0 ? ", transform = " + transform : "") + " })'")
       // A layout that could not be saved has to say so. The alternative is the
       // arrangement holding until the next reload and then reverting, with
       // nothing having reported a problem.
-      commands.push("omarchy-hyprland-monitor-rule " + name
+      //
+      // The fallback is grouped, and the group hangs off the move rather than
+      // sitting beside it. Bash gives && and || the same precedence and reads
+      // left to right, so an ungrouped `move && save || warn` sends a failed
+      // move to the warning about saving, and then carries on to the next
+      // display with the whole run still reporting success. Only a failed save
+      // is recovered here; a failed move ends the run and says so through the
+      // exit status.
+      commands.push("hyprctl eval 'hl.monitor({ output = \"" + name + "\", mode = \"" + root.modeOf(name)
+        + "\", position = \"" + positions[name] + "\", scale = " + root.scaleOf(name)
+        + (transform !== 0 ? ", transform = " + transform : "") + " })'"
+        + " && { omarchy-hyprland-monitor-rule " + name
         + " || omarchy-notification-send -g \"" + Model.displayGlyph + "\" "
         + "\"Couldn't save " + name + " to monitors.lua\" "
-        + "\"Its rule there could not be identified, so the change lasts until the next reload\"")
+        + "\"Its rule there could not be identified, so the change lasts until the next reload\""
+        + "; }")
     }
     if (commands.length === 0) return false
 
@@ -475,9 +484,7 @@ Item {
   Process {
     id: applyProc
     stdout: StdioCollector { waitForEnd: true }
-    onRunningChanged: {
-      if (running) return
-
+    onExited: function(exitCode) {
       // Whatever was waiting on this process goes first, and everything that
       // waits on the writing being finished waits for that too.
       if (root.queuedScript !== "") {
@@ -490,6 +497,18 @@ Item {
 
       if (!root.closeWhenApplied) return
       root.closeWhenApplied = false
+
+      // Only step out once the layout is actually back. A revert that failed
+      // part way leaves the arrangement it was undoing on screen, and closing
+      // on it would be the same as never having reverted: the prompt would be
+      // gone with the change still applied. Stay up and say so instead.
+      if (exitCode !== 0) {
+        root.pendingMirror = null
+        Quickshell.execDetached(["omarchy-notification-send", "-g", Model.displayGlyph,
+          "Couldn't put the previous layout back",
+          "The displays are still arranged as they were just applied"])
+        return
+      }
 
       // Read before closing: closing clears the state this was waiting on.
       var wanted = root.pendingMirror
