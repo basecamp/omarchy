@@ -59,14 +59,14 @@ its screenshots are also hosted.
 
 **The Rest**
 
-- [Manual installation](manual/38-manual-installation.md)
-- [Mac support](manual/39-mac-support.md)
-- [Troubleshooting](manual/40-troubleshooting.md)
-- [FAQ](manual/41-faq.md)
-- [System snapshots](manual/42-system-snapshots.md)
-- [Security](manual/43-security.md)
-- [Omarchy on...](manual/44-omarchy-on.md)
-- [Dual Boot Install](manual/45-dual-boot-install.md)
+- [Mac support](manual/38-mac-support.md)
+- [Troubleshooting](manual/39-troubleshooting.md)
+- [FAQ](manual/40-faq.md)
+- [System snapshots](manual/41-system-snapshots.md)
+- [Security](manual/42-security.md)
+- [Omarchy on...](manual/43-omarchy-on.md)
+- [Dual Boot Install](manual/44-dual-boot-install.md)
+- [Unattended Installs](manual/45-unattended-installs.md)
 
 ## License
 
