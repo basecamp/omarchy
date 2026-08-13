@@ -34,13 +34,17 @@ You start it (or reattach to your existing session) with `Super + Ctrl + Return`
 
 Omarchy has packaged this as _About_ in the Omarchy menu (`Super + Space`).
 
+## Disk Usage
+
+When the drive fills up and you have no idea what's eating it, launch _Disk Usage_ from the app launcher (`Super + Space`). It's [dua](https://github.com/Byron/dua-cli) in interactive mode pointed at the whole file system, so you can walk down into whatever directory is the culprit, sorted biggest first, and delete from right inside it.
+
 ## Cliamp
 
 [Cliamp](https://www.cliamp.stream/) is a retro terminal music player inspired by Winamp 2.x, complete with built-in radio stations for lo-fi beats. Launch it with `Super + Shift + Alt + M`, or from the Omarchy menu under _Apps_. Press `?` for the full keybinding list.
 
 ## What about Wi-Fi and Bluetooth?
 
-You won't find TUIs for Wi-Fi and Bluetooth — those jobs belong to the Omarchy shell. Click the Wi-Fi icon in the top bar (or hit `Super + Ctrl + W`) to see networks and connect, and click the Bluetooth icon (or hit `Super + Ctrl + B`) to pair and connect devices. Networking itself is handled by NetworkManager, and there are `omarchy network` and `omarchy bluetooth` commands if you prefer the terminal.
+You won't find TUIs for Wi-Fi and Bluetooth — those jobs belong to the Omarchy shell. Click the Wi-Fi icon in the top bar (or hit `Super + Ctrl + W`) to see networks and connect, and click the Bluetooth icon (or hit `Super + Ctrl + B`) to pair and connect devices. See [networking](34-networking.md) for the full story.
 
 ## Adding your own
 

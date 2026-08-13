@@ -18,8 +18,14 @@ If you'd like to color-match the file manager icons to your theme, add a file ca
 
 Themes supplied with `unlock.png` and `preview-unlock.png` images will be listed under _Style > Unlock_. Your `unlock.png` should preferably be a transparent png. And you can create the preview image using `omarchy plymouth preview`.
 
+### Theming apps Omarchy doesn't cover
+
+If you use an app that isn't in that list, you can teach Omarchy to theme it yourself with a template. Drop a file in `~/.config/omarchy/themed/` named after the config it generates plus a `.tpl` extension, and write the config with `{{ background }}`, `{{ foreground }}`, `{{ accent }}`, `{{ red }}`, `{{ color0 }}` through `{{ color15 }}`, and the rest of the palette as placeholders. Every time you switch themes, the file is regenerated with that theme's colors.
+
+There's a fully commented `alacritty.toml.tpl.sample` in that folder to copy from — it lists every variable you can use, plus the `_strip` and `_rgb` modifiers for apps that want their colors without the `#` or as decimal RGB. Your templates take priority over Omarchy's own, so you can also use this to override how a built-in app gets themed.
+
 ### Distributing your theme
 
 If you want to distribute your theme so others can use it, you need to put it on a public git server, like GitHub. Then people can install it using _Install > Style > Theme_ in the Omarchy menu using that URL. It's recommended that you follow the naming convention of `omarchy-[themename]-theme`, as the theme will show correctly as just `[themename]` in the theme selection menu after installation.
 
-You can have your theme added to [the extra themes page](36-extra-themes.md) by pinging @tahayvr on [the #omarchy Discord](https://discord.gg/tXFUdasqhY).
+You can have your theme added to [the extra themes page](42-extra-themes.md) by pinging @tahayvr on [the #omarchy Discord](https://discord.gg/tXFUdasqhY).

@@ -75,6 +75,7 @@ You can see all the main keyboard bindings with `Super + K` (Tmux bindings with 
 | `Super + Ctrl + O` | Toggle menu |
 | `Super + Ctrl + H` | Hardware menu |
 | `Super + Ctrl + Q` | Calculator |
+| `Super + Ctrl + E` | Emoji picker |
 | `Super + Ctrl + .` | Transcode media |
 | `Super + Shift + Ctrl + A` | Pick an AI agent |
 
@@ -86,6 +87,10 @@ You can see all the main keyboard bindings with `Super + K` (Tmux bindings with 
 | `Shift + Brightness Down` | Minimum screen brightness |
 | `Alt + Brightness Up/Down` | Precise 1% brightness changes |
 | `Alt + Volume Up/Down` | Precise 1% volume changes |
+| `Keyboard Brightness Up/Down` | Keyboard backlight brighter/dimmer |
+| `Keyboard Backlight` | Cycle the keyboard backlight levels |
+| `Alt + Play` | Next track |
+| `Alt + Shift + Play` | Previous track |
 
 ## Launching apps
 
@@ -144,10 +149,11 @@ Usually on Linux, you need `Ctrl + Shift + C/V` to copy'n'paste in the terminal 
 | `Super + Alt + [` | Make webcam overlay smaller while recording |
 | `Super + Alt + ]` | Make webcam overlay larger while recording |
 | `Alt + Shift + L` | Copy current URL from webapp or Chromium |
+| `Alt + Shift + D` | Download the video on the current page to `~/Videos` |
 | `Super + Ctrl + X` | Start/stop dictation (requires _Install > AI > Dictation_) |
 | `F9` | Push-to-talk dictation (requires _Install > AI > Dictation_) |
 
-With screenrecordings, hit the hotkey to start, hit it again to stop.
+With screenrecordings, the hotkey first asks which audio you want, then starts recording. Hit it again to stop. See [screenshots and recording](11-screenshots-recording.md) for the details.
 
 All capture options are also accessible under _Trigger > Capture_ in the Omarchy menu (`Super + Space`).
 

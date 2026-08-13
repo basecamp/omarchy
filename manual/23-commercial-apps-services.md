@@ -8,6 +8,10 @@ Keeping your passwords in a password manager is a best practice. Doubly so if yo
 
 You start 1Password with `Super + Shift + /`. If it isn't installed yet, that hotkey kicks off the installation first (you can also use _Install > Service > 1Password_ from the Omarchy menu). The installer sets up the 1Password extension for Chromium as well.
 
+## Bitwarden
+
+[Bitwarden](https://bitwarden.com/) is the open source alternative in the password manager space, with a free tier that covers most personal use. Install it with _Install > Service > Bitwarden_ from the Omarchy menu, which brings along the Bitwarden command line tool as well.
+
 ## Spotify
 
 [Spotify](https://spotify.com/) is the world's most popular streaming music service. And the Linux application provides everything you'd expect, including offline playing.
@@ -20,9 +24,13 @@ You start Spotify using `Super + Shift + M`. Like 1Password, the hotkey kicks of
 
 ## Tailscale
 
-[Tailscale](https://tailscale.com/) is a mesh VPN that makes getting access to all your computers and servers over the internet securely super simple way. To set it up, select _Install > Service > Tailscale_ from the Omarchy menu.
+[Tailscale](https://tailscale.com/) is a mesh VPN that makes getting access to all your computers and servers over the internet securely super simple. To set it up, select _Install > Service > Tailscale_ from the Omarchy menu.
 
-Installing it also puts a Tailscale indicator in the bar, adds a web app for the Tailscale admin console, and sets up Taildrop. That means you can send files between your machines with `omarchy tailscale send <machine> <file>`, and incoming files automatically land in `~/Downloads`.
+It gets a panel in the bar, a web app for the admin console, and Taildrop for sending files between your machines — see [networking](34-networking.md).
+
+## ONCE
+
+[ONCE](https://once.com/) is 37signals' line of software you buy once and run on your own server, like the Campfire chat system. Select _Install > Service > ONCE_ from the Omarchy menu to install it, which enables its background service and drops you into the ONCE terminal interface to take it from there.
 
 ## NordVPN
 

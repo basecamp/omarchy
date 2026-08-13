@@ -38,6 +38,22 @@ The full manual can be found via `man eza`.
 
 The full manual can be found via `man fd`.
 
+## bat
+
+[bat](https://github.com/sharkdp/bat) is `cat` with syntax highlighting, line numbers, and paging. Run `bat somefile.rb` and you'll see why it's hard to go back. It's also quietly doing work for you elsewhere: it's what colors your man pages, and what renders the previews in `ff`.
+
+The full manual can be found via `man bat`.
+
+## tldr
+
+[tldr](https://tldr.sh/) is the antidote to man pages that open with three screens of history before showing you a single example. `tldr tar` gives you the handful of invocations you actually wanted.
+
+## yt-dlp
+
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) downloads video from YouTube and hundreds of other sites. `yt-dlp <url>` grabs the best quality available into the current directory.
+
+The full manual can be found via `man yt-dlp`.
+
 ## try
 
 [try](https://github.com/tobi/try) makes it easy to manage programming experiments with date-stamped directories. All experiments live in `~/Work/tries` and you can access them via `try`.

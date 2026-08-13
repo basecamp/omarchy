@@ -12,7 +12,7 @@ Tmux provides a consistent, programmable interface for panes, windows (aka tabs)
 
 You start a new Tmux session in a fresh terminal using `Super + Alt + Return`, and because Tmux is a persistent process, you can resume your session even if you close that terminal. Just hit `Ctrl + Space` (called the prefix key) then `s` to see all your active sessions.
 
-Omarchy ships with an ergonomically-optimized Tmux configuration, which has a lot of keybindings to learn, so keep [the cheatsheet handy](05-hotkeys.md#tmux).
+Omarchy ships with an ergonomically-optimized Tmux configuration, which has a lot of keybindings to learn, so keep [the cheatsheet handy](06-hotkeys.md#tmux).
 
 ## Tmux layout functions
 

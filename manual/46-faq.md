@@ -26,6 +26,26 @@ omarchy bar set omarchy.clock format "dddd h:mm AP"
 
 This will display Sunday 10:55 AM.
 
+### How do I change my timezone?
+
+Run _Update > Timezone_ in the Omarchy menu and pick from the list. If the timezone is right but the clock itself has drifted, _Update > Time_ restarts the time synchronization for you.
+
+### How do I change my DNS, share my Wi-Fi, or check my connection speed?
+
+Those all live in [networking](34-networking.md).
+
+### How do I check how fast my disk is?
+
+_Trigger > Speed Test > Disk Speed Test_ measures live read and write speed on your drive, or `omarchy disk speedtest` from the terminal.
+
+### Why can't I sign into my Google account in Chromium?
+
+The plain open source Chromium build doesn't ship with the OAuth credentials that Google requires for account sign-in. Run _Install > Service > Chromium Account_ in the Omarchy menu to add them, restart the browser, and the sign-in will go through.
+
+### How do I add a printer?
+
+Printing is set up and running out of the box, so a printer on your network is usually already discovered. Launch _Print Settings_ from the app launcher (`Super + Space`) to see what's there, add one by hand, or set the default. Printing to a PDF file works without any printer at all.
+
 ### How do I change where screenshots or screenrecordings are saved?
 
 If you want screenshots to be saved to `~/Pictures/Screenshots` instead of just `~/Pictures`, you can add this to a file under `~/.config/uwsm/env.d/` (like `~/.config/uwsm/env.d/capture`):
@@ -52,8 +72,8 @@ Run _Remove > Package_ to see every package that's installed. Then you can selec
 
 And you can use _Remove > Web App_ from the Omarchy menu to remove any of the preinstalled web apps you don't want.
 
-Or run _Remove > Preinstalls_ to sweep out all the preinstalled extras — web apps, TUIs, and optional applications — in one go.
+Or run _Remove > Preinstalls_ to sweep out all the preinstalled extras — web apps, TUIs, and optional applications — in one go. The hotkeys that launched them go away with them, so you're left with a clean slate of bindings to fill with your own in `~/.config/hypr/bindings.lua`.
 
 ---
 
-For errors and broken bits, see [the Troubleshooting section](39-troubleshooting.md).
+For errors and broken bits, see [the Troubleshooting section](45-troubleshooting.md).

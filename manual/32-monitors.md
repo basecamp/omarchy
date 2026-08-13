@@ -20,6 +20,16 @@ Changes to `GDK_SCALE` apply to applications started after the change (and GTK o
 
 You can also quickly cycle through the major monitor scaling ratios (1x, 1.25x, 1.6x, 2x, 3x, 4x) using `Super + /` to go higher and `Super + Alt + /` to go lower. If you have the default configuration, these changes will also persist past reboot.
 
+### Making text bigger or smaller
+
+Monitor scaling changes the size of everything. If all you want is bigger or smaller _text_, there's a single knob for that:
+
+```
+omarchy display text size 14
+```
+
+That takes a pixel size between 9 and 20, and moves the Omarchy shell, GTK applications, and your terminal together, so the whole desktop stays in proportion. Run it without an argument to see where you're at, and `omarchy display text size reset` to go back to the default. Foot is the one straggler: it has no way to reload its config, so running terminals keep their old size until you open a new one.
+
 ### Extending and mirroring laptop displays
 
 When you connect an external screen to your laptop, the display is automatically extended. But you can change that to mirroring instead using _Trigger > Hardware_ in the Omarchy menu or `Super + Ctrl + Alt + Delete`. This is especially helpful if that external screen is a projector, and you want to show something while working.
