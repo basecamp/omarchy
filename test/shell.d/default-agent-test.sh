@@ -142,7 +142,7 @@ rm "$test_home/.local/state/omarchy/preinstalls-removed"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"
 
 omarchy-remove-preinstalls >/dev/null
-for command in omp grok crush; do
+for command in omp grok crush agy antigravity; do
   [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
 done
 pass "Remove Preinstalls deletes every optional agent lazy stub"
