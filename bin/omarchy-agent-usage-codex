@@ -349,7 +349,10 @@ def read_fresh_json(path, max_age_seconds):
   if max_age_seconds <= 0 or not path.exists():
     return None
   try:
-    if time.time() - path.stat().st_mtime <= max_age_seconds:
+    # A negative age means the mtime is in the future: the clock moved
+    # backwards since the write, so the cache's freshness cannot be trusted.
+    age = time.time() - path.stat().st_mtime
+    if 0 <= age <= max_age_seconds:
       return json.loads(path.read_text(encoding="utf-8"))
   except Exception:
     return None

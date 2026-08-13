@@ -361,6 +361,39 @@ result=$(HOME="$CACHE_HOME" CODEX_HOME="$CACHE_HOME/.codex" XDG_CACHE_HOME="$CAC
   fail "Codex collector stamps the rewritten cache with the scan date" "$result"
 pass "Codex collector treats a cache from another day as a miss"
 
+# A cache stamped in the future (the clock was set backwards after the write)
+# has no trustworthy age: it must be a miss, not fresh until the clock
+# catches up.
+python3 - "$CACHE_HOME/.local/share/opencode/opencode.db" <<'PY'
+import json
+import sqlite3
+import sys
+import time
+from pathlib import Path
+
+db = Path(sys.argv[1])
+conn = sqlite3.connect(db)
+now_ms = int(time.time() * 1000)
+conn.execute("INSERT INTO message VALUES (?, ?, ?, ?, ?)", (
+  "c_6", "ses_1", now_ms, now_ms, json.dumps({
+    "role": "assistant",
+    "providerID": "openai",
+    "modelID": "gpt-5.2-codex",
+    "tokens": {"input": 10, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+    "time": {"created": now_ms},
+  }),
+))
+conn.commit()
+conn.close()
+PY
+touch -d "@$(( $(date +%s) + 3600 ))" "$cache_file"
+result=$(HOME="$CACHE_HOME" CODEX_HOME="$CACHE_HOME/.codex" XDG_CACHE_HOME="$CACHE_HOME/.cache" XDG_DATA_HOME="$CACHE_HOME/.local/share" \
+  PATH="$CACHE_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --limits-only)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "55" ]] ||
+  fail "Codex collector treats a future-dated cache as a miss" "$result"
+pass "Codex collector treats a future-dated cache as a miss"
+
 # First --limits-only on a machine with no cache falls back to a full scan.
 FRESH_HOME=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$CACHE_HOME" "$FRESH_HOME"' EXIT
