@@ -27,13 +27,16 @@ PopupWindow {
   readonly property bool containsMouse: cardHover.hovered
   readonly property real screenW: popupScreen ? popupScreen.width : 0
   readonly property real screenH: popupScreen ? popupScreen.height : 0
-  readonly property real barW: anchorWindow ? anchorWindow.width : 0
-  readonly property real barH: anchorWindow ? anchorWindow.height : 0
+  // Thickness of the painted bar strip. The bar window spans its whole
+  // screen (only the strip inside it is painted and takes input), so the
+  // window's dimensions say nothing about the bar; the bar's own barSize
+  // is the strip's thickness against its anchored screen edge.
+  readonly property real barThickness: bar ? bar.barSize : 0
   readonly property real availableCardWidth: screenW > 0
-    ? Math.max(120, screenW - ((bar && (bar.position === "left" || bar.position === "right")) ? barW : 0) - root.margin * 2)
+    ? Math.max(120, screenW - ((bar && (bar.position === "left" || bar.position === "right")) ? barThickness : 0) - root.margin * 2)
     : 0
   readonly property real availableCardHeight: screenH > 0
-    ? Math.max(120, screenH - ((bar && (bar.position === "top" || bar.position === "bottom")) ? barH : 0) - root.margin * 2)
+    ? Math.max(120, screenH - ((bar && (bar.position === "top" || bar.position === "bottom")) ? barThickness : 0) - root.margin * 2)
     : 0
   readonly property real verticalContentInset: padding * 2 + Border.top(borderSpec) + Border.bottom(borderSpec)
 
@@ -121,10 +124,14 @@ PopupWindow {
         var cy = 0;
         if (root.bar.position === "top" || root.bar.position === "bottom") {
           cx = window.width / 2 - popupWidth / 2
-          cy = root.bar.position === "bottom" ? -popupHeight - root.margin : window.height + root.margin
+          cy = root.bar.position === "bottom"
+            ? window.height - root.barThickness - popupHeight - root.margin
+            : root.barThickness + root.margin
           cx = Math.max(root.margin, Math.min(cx, window.width - popupWidth - root.margin))
         } else {
-          cx = root.bar.position === "left" ? window.width + root.margin : -popupWidth - root.margin
+          cx = root.bar.position === "left"
+            ? root.barThickness + root.margin
+            : window.width - root.barThickness - popupWidth - root.margin
           cy = window.height / 2 - popupHeight / 2
           cy = Math.max(root.margin, Math.min(cy, window.height - popupHeight - root.margin))
         }
