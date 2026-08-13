@@ -37,6 +37,13 @@ printf '%s\n' "\$*" >>"$test_tmp/calls"
 printf '%s\n' '$new_rule' >"\$rule"
 SH
 
+  # Switching mirroring off reloads Hyprland, so a rollback has to reload too
+  # or the rule and the live session disagree.
+  cat >"$stub_bin/hyprctl" <<SH
+#!/bin/bash
+printf 'hyprctl %s\n' "\$*" >>"$test_tmp/calls"
+SH
+
   chmod +x "$stub_bin"/*
   rm -f "$test_tmp/calls"
 }
@@ -81,6 +88,14 @@ run_migration
 [[ -f $flag ]] || fail "a failed repair leaves the machine extended"
 [[ $(cat "$flag") == "$old_rule" ]] || fail "a failed repair restores the rule that was there"
 pass "a repair that cannot switch mirroring back on restores the original rule"
+
+# Switching mirroring off already removed the rule and reloaded, so the session
+# is extended by the time anything can fail. Putting the file back without a
+# reload would leave the rule claiming mirroring while the displays stay
+# extended, which is the state the rollback exists to avoid.
+grep -Fq 'hyprctl reload' "$test_tmp/calls" ||
+  fail "restoring the rule reloads so the session matches it again"
+pass "a restored rule is reloaded rather than left disagreeing with the session"
 
 # Cycling needs somewhere to mirror to. Switching off and then failing to switch
 # back on would drop mirroring for a user who never asked to lose it.

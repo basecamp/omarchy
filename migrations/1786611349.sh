@@ -33,9 +33,19 @@ fi
 # leaving a machine extended that was mirroring when the migration started.
 previous=$(cat "$flag")
 
+# Switching mirroring off removes the rule and reloads Hyprland, so by the time
+# anything can fail the session is already extended. Putting the file back is
+# not enough on its own: without a reload the rule would claim mirroring while
+# the displays stay extended, which is the state this is here to avoid.
 restore() {
   printf '%s\n' "$previous" >"$flag"
-  echo "  could not pin the mirror, put the existing rule back"
+
+  if hyprctl reload >/dev/null 2>&1; then
+    echo "  could not pin the mirror, put the existing rule back"
+  else
+    echo "  could not pin the mirror, and could not reload to restore it"
+    echo "  mirroring is off until the next reload, and the rule is back in $flag"
+  fi
   exit 0
 }
 
