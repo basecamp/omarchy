@@ -54,3 +54,9 @@ Capture commands — Screenshots and screen recording:
   omarchy capture text                                                                                                                                                                                                     Extract text from a screenshot region with OCR
   omarchy capture webcam resize <smaller|larger|reset|small|medium|large>                                                                                                                                                  Resize the active webcam recording overlay
 ```
+
+Every command takes `--help` too, whether you ask a whole group (`omarchy capture --help`) or a single command (`omarchy capture screenshot --help`).
+
+### Opening the menu from the terminal
+
+The Omarchy menu is scriptable as well, which is handy for your own keybindings. `omarchy menu` opens it at the root, and you can jump straight to any point in the tree by naming it: `omarchy menu summon style.theme` goes right to the theme picker, `omarchy menu toggle system` opens the system menu and closes it again if it's already up, and `omarchy menu close` puts it away.
