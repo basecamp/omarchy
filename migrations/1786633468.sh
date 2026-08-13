@@ -1,6 +1,6 @@
 echo "Make Herdr follow the Omarchy terminal palette"
 
-config_file="${HERDR_CONFIG_PATH:-$HOME/.config/herdr/config.toml}"
+config_file="${HERDR_CONFIG_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/config.toml}"
 
 # New installs already receive theme.name = "terminal" from the shipped config,
 # but the first Herdr migration deliberately kept configs from standalone

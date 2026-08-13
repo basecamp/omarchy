@@ -51,7 +51,8 @@ reset_home() {
 }
 
 run_migration() {
-  HOME="$home" PATH="$test_dir/bin:$PATH" bash -euo pipefail "$migration" >/dev/null
+  HOME="$home" XDG_CONFIG_HOME="${TEST_XDG_CONFIG_HOME:-}" PATH="$test_dir/bin:$PATH" \
+    bash -euo pipefail "$migration" >/dev/null
 }
 
 reset_home
@@ -85,8 +86,10 @@ pass "Herdr migration selects the terminal theme and keeps other preferences"
 backup="$config_file.bak.1234567890"
 cmp -s "$test_dir/original-config" "$backup" ||
   fail "Herdr migration backs up the original config" "$(diff -u "$test_dir/original-config" "$backup" || true)"
-[[ $(wc -l <"$HERDR_CALLS") == 1 ]] || fail "Herdr migration validates once"
-[[ $(wc -l <"$HERDR_RESTARTS") == 1 ]] || fail "Herdr migration reloads once"
+validation_count=$(wc -l <"$HERDR_CALLS")
+restart_count=$(wc -l <"$HERDR_RESTARTS")
+(( validation_count == 1 )) || fail "Herdr migration validates once"
+(( restart_count == 1 )) || fail "Herdr migration reloads once"
 pass "Herdr migration validates, backs up, and reloads"
 
 : >"$HERDR_CALLS"
@@ -108,7 +111,8 @@ prefix = "ctrl+space"
 EOF
 
 run_migration
-[[ $(sed -n '/^\[theme\]$/,/^\[/p' "$config_file" | grep -c '^name = "terminal"$') == 1 ]] ||
+theme_name_count=$(sed -n '/^\[theme\]$/,/^\[/p' "$config_file" | grep -c '^name = "terminal"$' || true)
+(( theme_name_count == 1 )) ||
   fail "Herdr migration adds a missing name inside the theme section" "$(cat "$config_file")"
 grep -Fxq 'prefix = "ctrl+space"' "$config_file" || fail "Herdr migration keeps the following section"
 pass "Herdr migration fills an existing theme section"
@@ -148,6 +152,21 @@ run_migration
 pass "Herdr migration leaves a missing config to the install path"
 
 reset_home
+TEST_XDG_CONFIG_HOME="$home/custom-config"
+xdg_config_file="$TEST_XDG_CONFIG_HOME/herdr/config.toml"
+mkdir -p "$(dirname "$xdg_config_file")"
+cat >"$xdg_config_file" <<'EOF'
+[theme]
+name = "nord"
+EOF
+
+run_migration
+grep -Fxq 'name = "terminal"' "$xdg_config_file" || fail "Herdr migration ignores XDG_CONFIG_HOME"
+[[ ! -e $config_file ]] || fail "Herdr migration writes the fallback config when XDG_CONFIG_HOME is set"
+pass "Herdr migration follows Herdr's XDG-aware config lookup"
+unset TEST_XDG_CONFIG_HOME
+
+reset_home
 mkdir -p "$home/dotfiles"
 cat >"$home/dotfiles/herdr.toml" <<'EOF'
 [theme]
@@ -157,7 +176,8 @@ ln -s "$home/dotfiles/herdr.toml" "$config_file"
 
 run_migration
 [[ -L $config_file ]] || fail "Herdr migration preserves a config symlink"
-[[ $(readlink "$config_file") == "$home/dotfiles/herdr.toml" ]] || fail "Herdr migration preserves the symlink target"
+symlink_target=$(readlink "$config_file")
+[[ $symlink_target == $home/dotfiles/herdr.toml ]] || fail "Herdr migration preserves the symlink target"
 grep -Fxq 'name = "terminal"' "$home/dotfiles/herdr.toml" || fail "Herdr migration writes through the symlink"
 pass "Herdr migration preserves dotfile symlinks"
 
