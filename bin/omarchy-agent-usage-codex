@@ -237,16 +237,18 @@ def scan_opencode_sessions():
     #     are vanishingly rare in real opencode data.
     #   - json_valid guards the parse itself: json_extract() RAISES on
     #     malformed JSON instead of returning NULL, and one such row would
-    #     otherwise abort the whole scan. Rows that are not well-formed JSON
-    #     are skipped here; the per-row try/except below stays as the final
-    #     safety net for rows that pass the SQL filter but fail json.loads.
+    #     otherwise abort the whole scan. SQLite does not promise that AND
+    #     terms evaluate left to right, so the guard is a CASE around each
+    #     json_extract rather than a separate AND term. Rows that are not
+    #     well-formed JSON are skipped here; the per-row try/except below
+    #     stays as the final safety net for rows that pass the SQL filter
+    #     but fail json.loads.
     for session_id, raw in conn.execute(
       "SELECT session_id, data FROM message"
       " WHERE data LIKE '%\"role\"%:%\"assistant\"%'"
       " AND data LIKE '%\"providerID\"%:%\"openai\"%'"
-      " AND json_valid(data) = 1"
-      " AND json_extract(data, '$.role') = 'assistant'"
-      " AND json_extract(data, '$.providerID') = 'openai'"
+      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.role') END = 'assistant'"
+      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.providerID') END = 'openai'"
     ):
       # One malformed row must not abort the scan, so every shape assumption
       # lives inside the try.
