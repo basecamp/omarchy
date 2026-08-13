@@ -14,18 +14,20 @@ capture_capable() {
 }
 
 name=""
-checked=0
+emitted=0
 
 while IFS= read -r line; do
   if [[ -n $line && $line != [[:space:]]* ]]; then
     name="$line"
-    checked=0
-  elif (( ! checked )); then
+    emitted=0
+  elif (( ! emitted )); then
     device="${line#"${line%%[![:space:]]*}"}"
 
-    if [[ $device == /dev/video* ]]; then
-      checked=1
-      capture_capable "$device" && printf '%s  %s\n' "$device" "$name"
+    if [[ $device == /dev/video* ]] && capture_capable "$device"; then
+      emitted=1
+      printf '%s  %s\n' "$device" "$name"
     fi
   fi
 done < <(v4l2-ctl --list-devices 2>/dev/null)
+
+exit 0

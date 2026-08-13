@@ -28,11 +28,20 @@ case "$1" in
     printf '\n%s\n' "USB Capture Card: External Camera"
     printf '\t%s\n' "/dev/video2"
   fi
+
+  if [[ ${OMARCHY_TEST_DUAL_NODE_WEBCAM:-false} == "true" ]]; then
+    printf '\n%s\n' "Dual Node Camera: ISP Wrapper"
+    printf '\t%s\n' "/dev/video7"
+    printf '\t%s\n' "/dev/video8"
+    printf '\n%s\n' "Metadata Only: Sensor"
+    printf '\t%s\n' "/dev/video9"
+  fi
   ;;
 --device)
   case "$2" in
   /dev/video0) device_capability="Video Output" ;;
   /dev/video1) device_capability="Metadata Capture" ;;
+  /dev/video7 | /dev/video9) device_capability="Video Output" ;;
   *) device_capability="Video Capture" ;;
   esac
 
@@ -85,6 +94,17 @@ if [[ ${capture_devices[*]} != "${expected_capture_devices[*]}" ]]; then
     "expected: ${expected_capture_devices[*]}\nactual:   ${capture_devices[*]}"
 fi
 pass "webcam detection filters output-only devices and collapses each capture group"
+
+dual_node=$(OMARCHY_TEST_DUAL_NODE_WEBCAM=true omarchy-capture-webcam-list) ||
+  fail "webcam listing exits zero when the trailing device is filtered"
+pass "webcam listing exits zero when the trailing device is filtered"
+
+expected_dual_node="/dev/video42  Built-in Webcam: Integrated Camera
+/dev/video2  USB Capture Card: External Camera
+/dev/video8  Dual Node Camera: ISP Wrapper"
+[[ $dual_node == "$expected_dual_node" ]] ||
+  fail "webcam detection falls through to a later capture-capable node in a group" "$dual_node"
+pass "webcam detection falls through to a later capture-capable node in a group"
 
 if "$ROOT/bin/omarchy-hw-webcam"; then
   pass "webcam hardware detection succeeds when a capture device is available"
