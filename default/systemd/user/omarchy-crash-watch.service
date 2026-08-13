@@ -5,6 +5,9 @@ Description=Announce process crashes and offer an AI diagnosis
 After=graphical-session.target
 PartOf=graphical-session.target
 ConditionEnvironment=WAYLAND_DISPLAY
+# Set by omarchy-toggle-crash-capture. Checked here so a disabled watcher stays
+# disabled across logins without the unit having to be disabled.
+ConditionPathExists=!%h/.local/state/omarchy/toggles/crash-capture-off
 
 [Service]
 Type=simple
