@@ -88,7 +88,21 @@ Item {
     scheduleReopen(0)
   }
 
+  // A layout that has been applied but not confirmed is only safe because it
+  // puts itself back. Every way out of that prompt other than Keep has to
+  // revert, including the ones that are not a decision about the layout at all:
+  // clicking the scrim, the toggle hotkey, a hide over IPC, switching to
+  // Mirror. Dropping the timer instead would make an arrangement the user could
+  // not see permanent, which is the one thing the prompt exists to prevent.
   function close() {
+    if (awaitingConfirmation) {
+      revertLayout()
+      return
+    }
+    dismiss()
+  }
+
+  function dismiss() {
     opened = false
     closeWhenApplied = false
     reopen.stop()
@@ -163,7 +177,20 @@ Item {
   readonly property bool layoutOverlaps: Model.anyOverlap(rects)
   readonly property bool layoutContiguous: Model.isContiguous(rects)
   readonly property bool layoutValid: !layoutOverlaps && layoutContiguous
-  readonly property var pendingChanges: Model.changedPositions(Model.normalized(originalRects), normalizedRects)
+  // What the canvas draws is normalised, so an edit is judged against the
+  // normalised layout: shifting every display by the same amount is not an edit.
+  //
+  // Writing is judged against where the displays actually are. A layout whose
+  // top-left is not already the origin — anything with a display left of or
+  // above 0x0 — moves under normalisation, so a display the user never touched
+  // can still need a new position. Writing only the ones they dragged would
+  // apply a normalised position beside an un-normalised one and leave the gap
+  // the canvas just showed them closing.
+  readonly property var pendingChanges: {
+    var edited = Model.changedPositions(Model.normalized(originalRects), normalizedRects)
+    if (Object.keys(edited).length === 0) return edited
+    return Model.changedPositions(originalRects, normalizedRects)
+  }
   readonly property bool rotationChanged: {
     for (var i = 0; i < displays.length; i++) {
       var name = displays[i].name
@@ -230,6 +257,24 @@ Item {
     return 1
   }
 
+  // The mode the display is actually running, to restate in its rule. Hyprland
+  // merges monitor rules per identifier and drops whatever a rule leaves out,
+  // so a rule saying "preferred" takes a display the user pinned to a mode like
+  // 2560x1440@144 and drops it back to whatever the monitor reports as best.
+  // Nothing here is trying to change the mode, so say the one already in use.
+  function modeOf(name) {
+    for (var i = 0; i < displays.length; i++) {
+      if (displays[i].name !== name) continue
+
+      var width = Number(displays[i].width)
+      var height = Number(displays[i].height)
+      var refresh = Number(displays[i].refreshRate)
+      if (width > 0 && height > 0 && refresh > 0) return width + "x" + height + "@" + refresh
+      break
+    }
+    return "preferred"
+  }
+
   // Geometry is applied first and then recorded in the user's own monitors.lua,
   // which is where they already write it and where they will edit it next.
   // Keeping it anywhere else means two files describing one display, and
@@ -238,8 +283,8 @@ Item {
     var commands = []
     for (var name in positions) {
       var transform = root.transformOf(name)
-      commands.push("hyprctl eval 'hl.monitor({ output = \"" + name + "\", mode = \"preferred\", position = \""
-        + positions[name] + "\", scale = " + root.scaleOf(name)
+      commands.push("hyprctl eval 'hl.monitor({ output = \"" + name + "\", mode = \"" + root.modeOf(name)
+        + "\", position = \"" + positions[name] + "\", scale = " + root.scaleOf(name)
         + (transform !== 0 ? ", transform = " + transform : "") + " })'")
       // A layout that could not be saved has to say so. The alternative is the
       // arrangement holding until the next reload and then reverting, with

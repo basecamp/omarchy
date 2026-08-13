@@ -373,8 +373,10 @@ function changedPositions(before, after) {
   return changed
 }
 
-// The display glyph the panel and notifications use.
-var displayGlyph = "\uf0379"
+// The display glyph the panel and notifications use. Written literally: it sits
+// outside the basic plane, and a "\u" escape takes exactly four hex digits, so
+// "\uf0379" is U+F037 followed by a stray "9" rather than this one character.
+var displayGlyph = "\udb80\udf79"
 
 if (typeof module !== "undefined") {
   module.exports = {

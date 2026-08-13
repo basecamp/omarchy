@@ -48,6 +48,39 @@ assertEqual(arrange.hasActiveDisplay(laptopOnly, false), false, 'no external dis
 assertEqual(arrange.hasActiveDisplay([], true), false, 'no displays means nothing is live')
 assertEqual(arrange.hasActiveDisplay(null, true), false, 'a missing listing is not live')
 
+// --- the notification glyph is one character ---
+
+// A "\\u" escape takes exactly four hex digits, so writing this glyph escaped
+// yields U+F037 followed by a stray "9".
+assertEqual([...arrange.displayGlyph].length, 1, 'the display glyph is a single character')
+assertEqual(arrange.displayGlyph.codePointAt(0), 0xf0379, 'the display glyph is the one the panel uses')
+
+// --- a layout that does not start at the origin ---
+
+// The canvas draws a normalised layout, so a display left of 0x0 is drawn
+// shifted even when the user never touched it. Comparing where displays
+// actually are against where the canvas puts them is what catches that; against
+// the normalised original it looks unchanged, and writing only the display the
+// user dragged would leave the two covering different regions.
+const offOrigin = [
+  { name: 'eDP-1', x: -1440, y: 0, width: 1440, height: 900 },
+  { name: 'DP-7', x: 0, y: 0, width: 2560, height: 1440 }
+]
+const dragged = [
+  { name: 'eDP-1', x: -1440, y: 0, width: 1440, height: 900 },
+  { name: 'DP-7', x: 0, y: 100, width: 2560, height: 1440 }
+]
+assertDeepEqual(
+  arrange.changedPositions(arrange.normalized(offOrigin), arrange.normalized(dragged)),
+  { 'DP-7': '1440x100' },
+  'against the normalised original only the dragged display looks moved'
+)
+assertDeepEqual(
+  arrange.changedPositions(offOrigin, arrange.normalized(dragged)),
+  { 'eDP-1': '0x0', 'DP-7': '1440x100' },
+  'against where they actually are, the shifted neighbour needs writing too'
+)
+
 // --- the canvas fits the whole layout ---
 
 const twoUp = [
