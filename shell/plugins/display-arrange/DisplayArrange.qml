@@ -54,6 +54,15 @@ Item {
   // regardless, or Extend becomes unreachable from the only place offering it.
   readonly property bool mirrorAvailable: mirrorEnabled || (internalActive && externalActive)
 
+  // Mirroring collapses every display onto one region, so there is no
+  // arrangement left to edit and the canvas draws the source alone. Writing a
+  // position for it would move it out from under the mirror rule, which pins
+  // the mirror to where the source was: the two would then cover different
+  // regions while still reporting as mirroring, which is the split this branch
+  // already had to fix once. Rotating is enough to reach it, since the lone
+  // display normalises to 0x0 whatever it was at.
+  readonly property bool editable: !mirrorEnabled
+
   // Switching mode adds or removes an output, and this overlay is anchored to
   // one: mirroring withdraws the mirrored display from Wayland, which leaves
   // the window without a surface while it still holds keyboard focus — an
@@ -89,7 +98,6 @@ Item {
 
   readonly property color scrim: Util.alpha(Color.background, 0.97)
 
-  // Long enough for Hyprland to finish re-modesetting every display after a
   function scheduleReopen(delay) {
     reopen.interval = delay
     reopen.restart()
@@ -178,6 +186,8 @@ Item {
   }
 
   function nudge(dx, dy) {
+    if (!editable) return
+
     var rect = selectedRect()
     if (!rect) return
     moveTo(rect.name, rect.x + dx * root.nudgeStep, rect.y + dy * root.nudgeStep)
@@ -251,6 +261,8 @@ Item {
   // Turning a display re-measures it, then settles the layout around the new
   // shape the same way a drag does.
   function rotateSelected() {
+    if (!editable) return
+
     var rect = selectedRect()
     if (!rect) return
 
@@ -349,7 +361,7 @@ Item {
   }
 
   function apply() {
-    if (!hasChanges || !layoutValid) return
+    if (!editable || !hasChanges || !layoutValid) return
     if (!writeLayout(pendingWrites)) return
 
     awaitingConfirmation = true
@@ -686,7 +698,7 @@ Item {
               MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.SizeAllCursor
-                enabled: !root.awaitingConfirmation
+                enabled: !root.awaitingConfirmation && root.editable
                 drag.target: tile
                 drag.axis: Drag.XAndYAxis
                 drag.smoothed: false
@@ -736,7 +748,7 @@ Item {
 
           Button {
             text: "Rotate " + Model.transformLabel(Model.nextTransform(root.transformOf(root.selectedName)))
-            visible: !root.awaitingConfirmation && root.selectedName !== ""
+            visible: root.editable && !root.awaitingConfirmation && root.selectedName !== ""
             fontSize: Style.font.body
             foreground: Color.foreground
             fontFamily: Style.font.family
@@ -748,6 +760,7 @@ Item {
 
           Button {
             text: root.awaitingConfirmation ? "Keep" : "Apply"
+            visible: root.editable || root.awaitingConfirmation
             foreground: Color.foreground
             fontFamily: Style.font.family
             fontSize: Style.font.body
