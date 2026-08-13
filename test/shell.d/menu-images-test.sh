@@ -46,11 +46,14 @@ cache_dir="$cache_home/omarchy/image-selector"
 mkdir -p "$cache_dir"
 
 stale_tmp=""
+live_lock=""
 for image in "$images"/*; do
   signature=$(stat -Lc '%s:%Y' "$image")
   hash=$(printf '%s\t%s' "$image" "$signature" | md5sum | cut -d ' ' -f 1)
   mkdir "$cache_dir/$hash.jpg.lock"
+  touch -m -d '10 minutes ago' "$cache_dir/$hash.jpg.lock"
   stale_tmp="$cache_dir/$hash.jpg.4242.jpg"
+  live_lock="$cache_dir/$hash.jpg.lock"
 done
 printf 'partial' >"$stale_tmp"
 
@@ -71,6 +74,21 @@ PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" \
 [[ ! -e $stale_tmp ]] ||
   fail "image menu clears partial thumbnails left by killed generators"
 pass "image menu recovers stranded locks and stale rows"
+
+rm -rf "$cache_home"
+mkdir -p "$cache_dir"
+mkdir "$live_lock"
+
+PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" \
+  "$ROOT/bin/omarchy-menu-images" --cache-only "$images"
+
+(( $(find "$cache_dir" -maxdepth 1 -name '*.jpg' -type f | wc -l) == 2 )) ||
+  fail "image menu skips a thumbnail whose fresh legacy lock may still be owned"
+[[ -d $live_lock ]] ||
+  fail "image menu leaves a fresh legacy lock directory alone"
+[[ ! -e $cache_dir/$cache_key.rows ]] ||
+  fail "image menu does not cache rows while a legacy generator holds a lock"
+pass "image menu respects a live legacy generator's lock"
 
 rm -rf "$cache_home"
 mkdir -p "$cache_home"
@@ -99,12 +117,18 @@ rm -rf "$cache_home"
 mkdir -p "$cache_home"
 : >"$tmp/calls"
 
+# The delay keeps both runs inside the generation window so the locks are
+# actually contended rather than the second run arriving after the first.
+pids=()
 for run in 1 2; do
   PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" \
-    VIPSTHUMBNAIL_CALLS_FILE="$tmp/calls" VIPSTHUMBNAIL_DELAY=0.05 \
+    VIPSTHUMBNAIL_CALLS_FILE="$tmp/calls" VIPSTHUMBNAIL_DELAY=0.25 \
     "$ROOT/bin/omarchy-menu-images" --cache-only "$images" &
+  pids+=($!)
 done
-wait
+for pid in "${pids[@]}"; do
+  wait "$pid" || fail "concurrent image menu runs exit cleanly"
+done
 
 (( $(wc -l <"$tmp/calls") == 3 )) || fail "image menu serializes concurrent thumbnail generators"
 
