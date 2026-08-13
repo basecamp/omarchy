@@ -103,9 +103,21 @@ summary["rateLimited"] = scanner.parse_usage_payload(
   {"usage": {"rolling": {"status": "rate-limited", "percent": 88, "resetsAt": "2026-08-13T00:15:17.598Z"}}}
 )
 summary["percentScaling"] = [
-  scanner.normalize_percent(2), scanner.normalize_percent(0.5),
-  scanner.normalize_percent(100), scanner.normalize_percent(-1), scanner.normalize_percent("x"),
+  scanner.normalize_percent(2, True), scanner.normalize_percent(0.5, True),
+  scanner.normalize_percent(100, True), scanner.normalize_percent(-1, True), scanner.normalize_percent("x", True),
 ]
+
+# The scale is settled payload-wide, the way the claude collector does it: any
+# value reaching 1 means the payload speaks percentages, so a lone 1 is 1% and
+# a 0.5 beside a 2 is 0.5%, while an all-fraction payload keeps its values.
+summary["onePercent"] = [w["percent"] for w in scanner.parse_usage_payload(
+  {"usage": {"rolling": {"status": "ok", "percent": 1, "resetsAt": ""}}})]
+summary["mixedScale"] = [w["percent"] for w in scanner.parse_usage_payload(
+  {"usage": {"rolling": {"status": "ok", "percent": 0.5}, "weekly": {"status": "ok", "percent": 2}}})]
+summary["mixedScaleLegacy"] = [w["percent"] for w in scanner.parse_usage_payload(
+  {"rollingUsage": {"status": "ok", "usagePercent": 0.5}, "weeklyUsage": {"status": "ok", "usagePercent": 2}})]
+summary["fractionScale"] = [w["percent"] for w in scanner.parse_usage_payload(
+  {"usage": {"rolling": {"status": "ok", "percent": 0.25}, "weekly": {"status": "ok", "percent": 0.8}}})]
 
 # The env var is an explicit override; the opencode auth.json entry is the
 # native source. Empty store means no key at all.
@@ -289,9 +301,14 @@ pass "OpenCode collector turns resetInSec into a timestamp"
   fail "OpenCode collector reports a rate-limited window at 100%" "$result"
 pass "OpenCode collector reports a rate-limited window at 100%"
 
-[[ $(jq -c '.percentScaling' <<<"$result") == '[0.02,0.5,1.0,null,null]' ]] ||
-  fail "OpenCode collector distinguishes percent and fraction scales" "$result"
-pass "OpenCode collector distinguishes percent and fraction scales"
+[[ $(jq -c '.percentScaling' <<<"$result") == '[0.02,0.005,1.0,null,null]' ]] ||
+  fail "OpenCode collector scales every value once the payload speaks percentages" "$result"
+pass "OpenCode collector scales every value once the payload speaks percentages"
+
+{ [[ $(jq -c '.onePercent' <<<"$result") == '[0.01]' ]] && [[ $(jq -c '.mixedScale' <<<"$result") == '[0.005,0.02]' ]] &&
+  [[ $(jq -c '.mixedScaleLegacy' <<<"$result") == '[0.005,0.02]' ]] && [[ $(jq -c '.fractionScale' <<<"$result") == '[0.25,0.8]' ]]; } ||
+  fail "OpenCode collector settles the percent scale payload-wide" "$result"
+pass "OpenCode collector settles the percent scale payload-wide"
 
 [[ $(jq -r '(.envKeyWins | tostring) + ":" + .authJsonKey + ":" + .missingKey' <<<"$result") == "true:sk_fixture:" ]] ||
   fail "OpenCode collector reads the key from the environment or the opencode auth store" "$result"
