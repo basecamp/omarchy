@@ -209,13 +209,16 @@ def scan_opencode_sessions():
   # A subscription burned entirely through opencode leaves no native session
   # files, but opencode records per-message provider, model, and token usage
   # in its own database. Read-only: opencode may be writing right now.
+  # Returns whether the scan ran to completion: a scan cut short by a
+  # database error still contributes what it read, but must not be cached
+  # as if it were the whole story.
   db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
   if not db.is_file():
-    return
+    return True
   try:
     conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
   except sqlite3.Error:
-    return
+    return False
   try:
     conn.execute("PRAGMA query_only = ON")
     # OpenCode DBs grow huge (every historical message, JSON included), and
@@ -270,9 +273,12 @@ def scan_opencode_sessions():
         continue
       add_usage(day, "opencode:" + str(session_id), model, input_tokens, output_tokens, cache_read, cache_write)
   except sqlite3.Error:
-    pass
+    # Transient lock, schema migration, corruption: the numbers stop here,
+    # incomplete.
+    return False
   finally:
     conn.close()
+  return True
 
 
 def scan_native_codex_sessions():
@@ -426,8 +432,8 @@ def local_stats():
 def run_local_scans():
   scan_pi_sessions()
   scan_native_codex_sessions()
-  scan_opencode_sessions()
-  return local_stats()
+  complete = scan_opencode_sessions()
+  return local_stats(), complete
 
 
 def cached_local_stats(max_age):
@@ -441,7 +447,8 @@ def cached_local_stats(max_age):
     return _cached_local_stats(max_age)
   except Exception as exc:
     print(f"omarchy-agent-usage-codex: cache unavailable ({exc}); scanning directly", file=sys.stderr)
-    return run_local_scans()
+    stats, _ = run_local_scans()
+    return stats
 
 
 def _cached_local_stats(max_age):
@@ -456,8 +463,11 @@ def _cached_local_stats(max_age):
     cached = read_cached_stats(cache_file, max_age)
     if cached is not None:
       return cached
-    stats = run_local_scans()
-    write_cached_stats(cache_file, stats)
+    stats, complete = run_local_scans()
+    # An interrupted scan still serves this run, but caching it would
+    # suppress the missing usage for every reader until the cache expires.
+    if complete:
+      write_cached_stats(cache_file, stats)
     return stats
 
 

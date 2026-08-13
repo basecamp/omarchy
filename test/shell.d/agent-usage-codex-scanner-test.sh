@@ -527,3 +527,66 @@ result=$(HOME="$UNWRITABLE_HOME" CODEX_HOME="$UNWRITABLE_HOME/.codex" XDG_CACHE_
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "3" ]] ||
   fail "Codex collector still prints a complete record when the cache is unwritable" "$result"
 pass "Codex collector still prints a complete record when the cache is unwritable"
+
+# A scan cut short by a database error (schema migration, transient lock,
+# corruption) must not be cached as the whole story, or the missing usage
+# would be suppressed for every reader until the cache expires.
+INTERRUPTED_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$CACHE_HOME" "$FRESH_HOME" "$MALFORMED_HOME" "$UNWRITABLE_HOME" "$INTERRUPTED_HOME"' EXIT
+mkdir -p "$INTERRUPTED_HOME/bin"
+cp "$TEST_HOME/bin/codex" "$INTERRUPTED_HOME/bin/codex"
+
+# A database without the message table makes the scan fail mid-flight.
+python3 - "$INTERRUPTED_HOME/.local/share/opencode/opencode.db" <<'PY'
+import sqlite3
+import sys
+from pathlib import Path
+
+db = Path(sys.argv[1])
+db.parent.mkdir(parents=True, exist_ok=True)
+conn = sqlite3.connect(db)
+conn.execute("CREATE TABLE unrelated (id text PRIMARY KEY)")
+conn.commit()
+conn.close()
+PY
+
+result=$(HOME="$INTERRUPTED_HOME" CODEX_HOME="$INTERRUPTED_HOME/.codex" XDG_CACHE_HOME="$INTERRUPTED_HOME/.cache" XDG_DATA_HOME="$INTERRUPTED_HOME/.local/share" \
+  PATH="$INTERRUPTED_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "0" ]] ||
+  fail "Codex collector reports what it could read from a broken database" "$result"
+[[ -z $(ls "$INTERRUPTED_HOME/.cache/omarchy/agent-usage/"codex-scan-*.json 2>/dev/null) ]] ||
+  fail "Codex collector must not cache an interrupted scan" "$result"
+
+# Once the database is whole again, the very next --limits-only run scans it
+# instead of reusing a zero snapshot.
+python3 - "$INTERRUPTED_HOME/.local/share/opencode/opencode.db" <<'PY'
+import json
+import sqlite3
+import sys
+import time
+from pathlib import Path
+
+db = Path(sys.argv[1])
+conn = sqlite3.connect(db)
+conn.execute("CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)")
+now_ms = int(time.time() * 1000)
+conn.execute("INSERT INTO message VALUES (?, ?, ?, ?, ?)", (
+  "i_1", "ses_1", now_ms, now_ms, json.dumps({
+    "role": "assistant",
+    "providerID": "openai",
+    "modelID": "gpt-5.2-codex",
+    "tokens": {"input": 9, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+    "time": {"created": now_ms},
+  }),
+))
+conn.commit()
+conn.close()
+PY
+
+result=$(HOME="$INTERRUPTED_HOME" CODEX_HOME="$INTERRUPTED_HOME/.codex" XDG_CACHE_HOME="$INTERRUPTED_HOME/.cache" XDG_DATA_HOME="$INTERRUPTED_HOME/.local/share" \
+  PATH="$INTERRUPTED_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --limits-only)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "9" ]] ||
+  fail "Codex collector does not reuse a snapshot from an interrupted scan" "$result"
+pass "Codex collector does not cache an interrupted opencode scan"
