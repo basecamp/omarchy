@@ -12,7 +12,7 @@ When you arrive inside, a notification will popup notifying you that you're in a
 
  ![omarchy-restore-snapshot.png](https://learn.omacom.io/u/omarchy-restore-snapshot-2TrMhj.png)
 
-This will restore your `/root`, but not your `/home`. So it works for reverting a broken system update, but not for recovering lost personal files.
+This will restore your root filesystem, but not your `/home`. So it works for reverting a broken system update, but not for recovering lost personal files.
 
 This also means that your `~/.config` directory is kept as-is. So if you're rolling back to an earlier version of a library or application that stores configuration files in a new format, you'll have to sort that out manually.
 

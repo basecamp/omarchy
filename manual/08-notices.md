@@ -4,7 +4,7 @@ You can quickly access the date and time, battery status, and current weather us
 
 ### Date & Time
 
-`Super + Ctrl + At + T`
+`Super + Ctrl + Alt + T`
 
  ![datetime-notice.png](https://learn.omacom.io/u/datetime-notice-dnB5VT.png)
 

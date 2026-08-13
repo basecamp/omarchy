@@ -1,16 +1,16 @@
 # Navigation
 
-Everything in Omarchy happens via the keyboard — _EVERYTHING!_ When the system first starts, you literally can't do a thing with the mouse alone. But you can hit `Super + Space` to reveal the application launcher and `Super + Alt + Space` to open the Omarchy Menu. These two commands allow you to do just about everything.
+Everything in Omarchy happens via the keyboard — _EVERYTHING!_ When the system first starts, you literally can't do a thing with the mouse alone. But you can hit `Super + Space` to reveal the Omarchy Menu and from here you to do just about everything.
 
-But the application launcher is not intended to be the main way to operate the system most of the time. We can get faster than that! All the most important applications are bound directly to individual hotkeys. You start the terminal with `Super + Return` and a browser with `Super + Shift + Return`. Try doing one after the other, and you'll see the magic of Hyprland's tiling in action:
+But the Omarchy menu is not even intended to be the main way to operate the system most of the time. We can get faster than that! All the most important applications are bound directly to individual hotkeys. You start the terminal with `Super + Return` and a browser with `Super + Shift + Return`. Try doing one after the other, and you'll see the magic of Hyprland's tiling in action:
 
  ![browser+terminal.png](https://manual.omakub.org/u/browser-terminal-yCV75f.png)
 
-You can then hit `Super + J` to stack them horizontally instead of vertically:
+You can then hit `Super + J` to stack them on top of each other instead of side by side:
 
  ![stacked.png](https://learn.omacom.io/u/stacked-sswEJE.png)
 
-Hit `Super + J` again to return them to horizontal positions. Then try `Super + Shift + Arrow Right` while on the browser to swap the windows.
+Hit `Super + J` again to return them to their side-by-side positions. Then try `Super + Shift + Arrow Right` while on the browser to swap the windows.
 
 Now try `Super + Ctrl + T` to start the Activity monitor. That'll appears as a floating window. You can tile it using `Super + T` (and hit that again to make it floating again). Now press `Super + Shift + F` to open the files manager. You'll have a neat four-way setup:
 
@@ -36,11 +36,19 @@ But you can also choose to turn a workspace into the scrolling layout where wind
 
  ![niri-layout.png](https://learn.omacom.io/u/niri-layout-LvV25i.png)
 
-If you wish to ue the scrolling layout as the default, you can set that in `~/.config/hypr/looknfeel.conf` under `general { layout = scrolling }`.
+If you wish to use the scrolling layout as the default, you can set that in `~/.config/hypr/looknfeel.lua`:
+
+```lua
+hl.config({
+  general = {
+    layout = "scrolling",
+  },
+})
+```
 
 ### Grouping windows
 
-Windows can be grouped using `Super + G`. Once you're in a group, every window you start while that's active will belong to the group. You can move between these grouped windows using `Super + Ctrl + Arrows` or `Super + Alt + 1/2/3/4` to go directly to grouped window in order.
+Windows can be grouped using `Super + G`. Once you're in a group, every window you start while that's active will belong to the group. You can move between these grouped windows using `Super + Ctrl + Arrow Left/Right` or `Super + Alt + 1/2/3/4` to go directly to grouped window in order.
 
 You can move a window out of the grouping with `Super + Alt + G` or disassemble the entire group by hitting `Super + G` again. Finally, you can move windows outside the group into it with `Super + Alt + Arrows`.
 

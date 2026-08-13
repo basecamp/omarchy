@@ -14,7 +14,7 @@ The full manual can be found via `man fzf`.
 
 ## Zoxide
 
-[Zoxide](https://github.com/ajeetdsouza/zoxide) is a replacement for cd. It remembers the directories you've been in, so you can more easily jump to them next time. Say you do `cd ~/.local/share/omarchy` once. Next time, you can just do `cd omarchy` (or even just `cd oma`), and Zoxide will take you directly there.
+[Zoxide](https://github.com/ajeetdsouza/zoxide) is a replacement for cd. It remembers the directories you've been in, so you can more easily jump to them next time. Say you do `cd ~/.config/omarchy` once. Next time, you can just do `cd omarchy` (or even just `cd oma`), and Zoxide will take you directly there.
 
 The full manual can be found via `man zoxide`.
 

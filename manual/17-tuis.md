@@ -20,22 +20,28 @@ You stop a container using `s` or start/restart it using `r`. See all commands u
 
 [Btop](https://github.com/aristocratos/btop) is a beautiful resource manager that shows memory, CPU, disk, and network usage. It also lists all active processes, and allows you to manage them.
 
-Omarchy has added an app for it called Activity, which you can start from the application launcher. But it's quicker to just hit `Super + Shift + T`.
+Omarchy calls it Activity, and you start it by hitting `Super + Ctrl + T`. It opens as a floating window, which you can tile with `Super + T`.
 
-## Impala
+## Herdr
 
-[Impala](https://github.com/pythops/impala) is a TUI for managing your Wi-Fi connection. You hop between sections on tab, then select a network with space. If a password is needed, just input and hit return. It's available by clicking the Wi-Fi icon in the top menu bar.
+[Herdr](https://github.com/omacom-io/herdr) is a terminal workspace manager that gives you workspaces, tabs, and panes, and keeps them all running in a persistent session you can detach from and come back to later.
 
-## BlueTUI
-
-[BlueTUI](https://github.com/pythops/bluetui) is a TUI for managing your Bluetooth connections. It's made by the same creator as Impala and works the same way.
+You start it (or reattach to your existing session) with `Super + Ctrl + Return`. Omarchy ships a Herdr configuration that mirrors its Tmux config, so the prefix key is `Ctrl + Space` here too. You can browse all the keybindings with `Super + Ctrl + K`.
 
 ## Fastfetch
 
 [Fastfetch](https://github.com/fastfetch-cli/fastfetch) shows system information, like kernel version, uptime, theme, CPU, memory, and more. It's a successor to the popular neofetch tool.
 
-Omarchy has packaged this as _About_ in the Omarchy menu (`Super + Alt + Space`).
+Omarchy has packaged this as _About_ in the Omarchy menu (`Super + Space`).
 
 ## Cliamp
 
-[Cliamp](https://www.cliamp.stream/) is a retro terminal music player inspired by Winamp 2.x," letting you play built-in radio stations for low-fi Launch it with `Super + Shift + Alt + M`, or from the Omarchy menu under _Apps_. Press `?` for the full keybinding list.
+[Cliamp](https://www.cliamp.stream/) is a retro terminal music player inspired by Winamp 2.x, complete with built-in radio stations for lo-fi beats. Launch it with `Super + Shift + Alt + M`, or from the Omarchy menu under _Apps_. Press `?` for the full keybinding list.
+
+## What about Wi-Fi and Bluetooth?
+
+You won't find TUIs for Wi-Fi and Bluetooth — those jobs belong to the Omarchy shell. Click the Wi-Fi icon in the top bar (or hit `Super + Ctrl + W`) to see networks and connect, and click the Bluetooth icon (or hit `Super + Ctrl + B`) to pair and connect devices. Networking itself is handled by NetworkManager, and there are `omarchy network` and `omarchy bluetooth` commands if you prefer the terminal.
+
+## Adding your own
+
+Any terminal program can get the full app treatment. Go to _Install > TUI_ in the Omarchy menu (`Super + Space`), give it a name, a launch command, a window style, and an icon, and it'll show up in the app launcher like any other application. You can remove it again under _Remove > TUI_.

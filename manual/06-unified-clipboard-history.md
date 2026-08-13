@@ -15,7 +15,7 @@ _Note that most agent harnesses will use `Ctrl + V` for pasting images, but `Sup
 
 ### Clipboard history
 
-The clipboard history is provided by Walker and works for both text and images. You trigger it by `Super + Ctrl + V`, select your entry with return, and then that'll be placed on the clipboard ready to paste on `Super + V`.
+The clipboard history is provided by the Omarchy shell and works for both text and images. You trigger it by `Super + Ctrl + V`, select your entry with return, and then that'll be placed on the clipboard ready to paste on `Super + V`.
 
  ![clipbord-history.png](https://learn.omacom.io/u/clipbord-history-soxtYp.png)
 

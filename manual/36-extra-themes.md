@@ -1,6 +1,6 @@
 # Extra themes
 
-You can install any of these themes by copying the GitHub URL and selecting `Install > Style > Theme` via the Omarchy menu (`Super + Alt + Space`). If you want to remove it again, just use `Remove > Style > Theme` and select it there.
+You can install any of these themes by copying the GitHub URL and selecting `Install > Style > Theme` via the Omarchy menu (`Super + Space`). If you want to remove it again, just use `Remove > Theme` and select it there.
 
  ![aetheria.png](https://learn.omacom.io/u/aetheria-jaDcHN.png)
 [Aetheria](https://github.com/JJDizz1L/aetheria)

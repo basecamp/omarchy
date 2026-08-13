@@ -1,6 +1,6 @@
 # Omarchy CLI
 
-Omarchy is usually controlled through the hotkeys and the Omarchy menu (`Super + Alt + Space`). But you can also control it through the `omarchy` CLI. This is particularly helpful when you're having an AI agent work with you on customization or configuration.
+Omarchy is usually controlled through the hotkeys and the Omarchy menu (`Super + Space`). But you can also control it through the `omarchy` CLI. This is particularly helpful when you're having an AI agent work with you on customization or configuration.
 
 The CLI has access to all the internal tooling that is used both via the menu and otherwise. You can see everything that's available by running `omarchy` in the terminal.
 
@@ -25,18 +25,21 @@ Common commands:
   omarchy debug               Print debugging information
 
 Groups:
-  ac             AC power detection
+  agent          AI coding agent usage data
+  audio          Audio input and output controls
+  bar            Omarchy shell bar layout and settings
   battery        Battery status helpers
+  bluetooth      Bluetooth device controls
   branch         Omarchy git branch management
+  branding       About and screensaver branding
   brightness     Display and keyboard brightness
   capture        Screenshots and screen recording
   channel        Omarchy release channel management
+  clipboard      Clipboard helpers
   cmd            Command and shortcut helpers
   config         System configuration helpers
   debug          Diagnostics and support logs
-  dev            Omarchy development tools
-  drive          Drive selection and encryption
-  font           Font management
+  ...
 ```
 
 And you can dive deeper on every group:
@@ -44,7 +47,10 @@ And you can dive deeper on every group:
 ```
 ~ ❯ omarchy capture
 Capture commands — Screenshots and screen recording:
-  omarchy capture screenrecording [--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--resolution=<size>] [--stop-recording]  Start or stop screen recording
-  omarchy capture screenshot [smart|region|windows|fullscreen] [slurp|copy] [--editor=<name>]                                                                           Take a screenshot
-  omarchy capture text extraction                                                                                                                                       Extract text from a screenshot region with OCR
+  omarchy capture qr                                                                                                                                                                                                       Decode a QR code from a screenshot region
+  omarchy capture screenrecording [--fullscreen] [--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--webcam-size=<small|medium|large>] [--resolution=<size>] [--stop-recording]  Start or stop screen recording
+  omarchy capture screenrecording with webcam                                                                                                                                                                              Pick a webcam and start a screen recording with it
+  omarchy capture screenshot [smart|region|windows|fullscreen] [slurp|copy|save] [--editor=<name>]                                                                                                                         Take a screenshot
+  omarchy capture text                                                                                                                                                                                                     Extract text from a screenshot region with OCR
+  omarchy capture webcam resize <smaller|larger|reset|small|medium|large>                                                                                                                                                  Resize the active webcam recording overlay
 ```

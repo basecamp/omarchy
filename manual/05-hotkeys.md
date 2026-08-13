@@ -1,13 +1,13 @@
 # Hotkeys
 
-You can see all the main keyboard bindings with `Super + K`.
+You can see all the main keyboard bindings with `Super + K` (Tmux bindings with `Super + Alt + K` and Herdr bindings with `Super + Ctrl + K`).
 
 ## Navigating
 
 | Hotkey                  | Function              |
 | ----------------------- | --------------------- |
-| `Super + Space`           | Application launcher    |
-| `Super + Alt + Space` | Omarchy control menu |
+| `Super + Space`           | Omarchy menu (apps and everything else)    |
+| `Super + Alt + Space` | Apps menu |
 | `Super + Escape` | System menu (suspend, restart, etc)  |
 | `Super + Ctrl + L` | Lock computer |
 | `Super + W`               | Close window             |
@@ -29,19 +29,24 @@ You can see all the main keyboard bindings with `Super + K`.
 | `Super + Shift + Alt + Arrows` | Move workspaces to directional monitor |
 | `Super + Arrow`  | Move focus to window in direction of arrow              |
 | `Super + Shift + Arrow`  | Swap window with another in direction of arrow     |
-| `Super + Equal` | Grow windows to the left |
-| `Super + Minus` | Grow windows to the right |
-| `Super + Shift + Equal` | Grow windows to the bottom |
-| `Super + Shift + Minus` | Grow windows to the top |
+| `Super + Minus` | Expand window left |
+| `Super + Equal` | Shrink window left |
+| `Super + Shift + Minus` | Shrink window up |
+| `Super + Shift + Equal` | Expand window down |
+| `Super + Alt + Minus/Equal` | Same resizing in smaller steps |
+| `Super + Ctrl + Minus/Equal` | Same resizing in bigger steps |
+| `Super + Alt + Home` | Save window width |
+| `Super + Home` | Restore saved window width |
 | `Super + Left Mouse` | Drag window around |
 | `Super + Right Mouse` | Resize window |
 | `Super + Scroll Wheel` | Scroll through workspaces |
 | `Super + G`               | Toggle window grouping      |
 | `Super + Alt + G`               | Move window out of grouping      |
 | `Super + Alt + Tab`               | Cycle between windows in grouping      |
-| `Super + Alt + 1/2/3/4`               | Jump to specific window in grouping      |
+| `Super + Alt + Shift + Tab`               | Cycle backward between windows in grouping      |
+| `Super + Alt + 1/2/3/4/5`               | Jump to specific window in grouping      |
 | `Super + Alt + Arrow`  | Move window into grouping in direction of arrow  |
-| `Super + Ctrl + Arrow`  | Move between windows inside a tiling group |
+| `Super + Ctrl + Left/Right`  | Move between windows inside a tiling group |
 | `Super + S` | Show scratchpad workspace overlay |
 | `Super + Alt + S` | Move window to scratchpad workspace |
 | `Super + Ctrl + Z` | Zoom in on screen (repeat for more zoom) |
@@ -57,22 +62,28 @@ You can see all the main keyboard bindings with `Super + K`.
 
 | Hotkey                  | Function              |
 | ----------------------- | --------------------- |
-| `Super + Ctrl + A`           | Audio controls (wiremix)    |
-| `Super + Ctrl + B`           | Bluetooth controls (bluetui)    |
-| `Super + Ctrl + W`           | Wifi controls (impala)    |
+| `Super + Ctrl + A`           | Audio panel    |
+| `Super + Ctrl + B`           | Bluetooth panel    |
+| `Super + Ctrl + W`           | Wifi/network panel    |
+| `Super + Ctrl + D`           | Display panel    |
+| `Super + Ctrl + P`           | Power panel    |
+| `Super + Ctrl + Alt + D`           | Calendar panel    |
+| `Super + Ctrl + 1-9`           | Toggle bar panel by position    |
 | `Super + Ctrl + S` | Share menu (via LocalSend) |
 | `Super + Ctrl + T`           | Activity (btop)    |
 | `Super + Ctrl + C` | Capture controls (screenshot/-recording/picker) |
 | `Super + Ctrl + O` | Toggle menu |
 | `Super + Ctrl + H` | Hardware menu |
-| `Super + Ctrl + .` | Transcoding menu |
+| `Super + Ctrl + Q` | Calculator |
+| `Super + Ctrl + .` | Transcode media |
+| `Super + Shift + Ctrl + A` | Pick an AI agent |
 
 ## Adjustments
 
 | Hotkey                  | Function              |
 | ----------------------- | --------------------- |
 | `Shift + Brightness Up` | Maximum screen brightness |
-| `Shift + Brightness Up` | Minimum screen brightness |
+| `Shift + Brightness Down` | Minimum screen brightness |
 | `Alt + Brightness Up/Down` | Precise 1% brightness changes |
 | `Alt + Volume Up/Down` | Precise 1% volume changes |
 
@@ -82,6 +93,7 @@ You can see all the main keyboard bindings with `Super + K`.
 | ----------------------- | --------------------- |
 | `Super + Return`           | Terminal    |
 | `Super + Alt + Return` | Tmux terminal |
+| `Super + Ctrl + Return` | Herdr (agent manager) |
 | `Super + Shift + Return`           | Browser    |
 | `Super + Shift + Alt + B`           | Browser (private/incognito)    |
 | `Super + Shift + F`           | File manager    |
@@ -89,23 +101,25 @@ You can see all the main keyboard bindings with `Super + K`.
 | `Super + Shift + M`           | Music (Spotify)    |
 | `Super + Shift + Alt + M`           | Music (cliamp)    |
 | `Super + Shift + /`           | Password manager (1password)    |
-| `Super + Shift + N`           | Neovim  |
+| `Super + Shift + N`           | Editor (Neovim)  |
 | `Super + Shift + C`           | Calendar ([HEY](https://hey.com/))  |
 | `Super + Shift + E`           | Email ([HEY](https://hey.com/))  |
+| `Super + Shift + Alt + E`           | New email ([HEY](https://hey.com/))  |
 | `Super + Shift + A`           | AI (ChatGPT)  |
 | `Super + Shift + Alt + A`           | AI (Grok)  |
 | `Super + Shift + G`           | Messenger (Signal)  |
 | `Super + Shift + P`           | Google Photos  |
+| `Super + Shift + S`           | Google Maps  |
 | `Super + Shift + Alt + G`           | Messenger (WhatsApp)  |
 | `Super + Shift + Ctrl + G`           | Messenger (Google)  |
 | `Super + Shift + D`           | Docker (LazyDocker)  |
 | `Super + Shift + O`           | Obsidian  |
-| `Super + Shift + W`           | Writing (Typora)  |
+| `Super + Shift + W`           | Writing (Omawrite)  |
 | `Super + Shift + X`           | X |
 | `Super + Shift + Alt + X`           | X Compose |
 | `Super + Shift + Y`           | YouTube |
 
-Change/add bindings in `~/.config/hypr/bindings.conf`.
+Change/add bindings in `~/.config/hypr/bindings.lua`.
 
 ## Universal clipboard
 
@@ -116,7 +130,7 @@ Change/add bindings in `~/.config/hypr/bindings.conf`.
 | `Super + V`           | Paste    |
 | `Super + Ctrl + V`           | Clipboard manager    |
 
-Usually on Linux, you need `Ctrl + Shift + C/V` to copy'n'paste in the terminal and `Ctrl + C/V` to do it everywhere else. These Omarchy unified clipboard hotkeys work everywhere (except the file manager).
+Usually on Linux, you need `Ctrl + Shift + C/V` to copy'n'paste in the terminal and `Ctrl + C/V` to do it everywhere else. These Omarchy unified clipboard hotkeys work everywhere.
 
 ## Capture
 
@@ -127,13 +141,15 @@ Usually on Linux, you need `Ctrl + Shift + C/V` to copy'n'paste in the terminal 
 | `Alt + Print Screen`            | Screenrecord                     |
 | `Super + Print Screen` | Color picker |
 | `Super + Ctrl + Print Screen` | Text extraction to clipboard |
+| `Super + Alt + [` | Make webcam overlay smaller while recording |
+| `Super + Alt + ]` | Make webcam overlay larger while recording |
 | `Alt + Shift + L` | Copy current URL from webapp or Chromium |
 | `Super + Ctrl + X` | Start/stop dictation (requires _Install > AI > Dictation_) |
 | `F9` | Push-to-talk dictation (requires _Install > AI > Dictation_) |
 
 With screenrecordings, hit the hotkey to start, hit it again to stop.
 
-All capture options are also accessible under _Capture_ in the Omarchy menu (`Super + Alt + Space`).
+All capture options are also accessible under _Trigger > Capture_ in the Omarchy menu (`Super + Space`).
 
 ## Notifications
 
@@ -143,6 +159,7 @@ All capture options are also accessible under _Capture_ in the Omarchy menu (`Su
 | `Super + Shift + ,` | Dismiss all notifications |
 | `Super + Ctrl + ,` | Toggle silencing notifications  |
 | `Super + Alt + ,` | Invoke most recent notification  |
+| `Super + Shift + Alt + ,` | Open notification history  |
 
 ## Style
 
@@ -153,20 +170,21 @@ All capture options are also accessible under _Capture_ in the Omarchy menu (`Su
 | `Super + Backspace` | Toggle transparency on a window |
 | `Super + Ctrl + Backspace` | Toggle single-window square aspect |
 
-Extra background images live in `~/.config/omarchy/current/backgrounds`. Also available via _Install > Background_ in the Omarchy menu.
+Extra background images live in `~/.config/omarchy/backgrounds/<theme name>`. Also available via _Install > Style > Background_ in the Omarchy menu.
 
-All style options are also accessible under _Style_ in the Omarchy menu (`Super + Alt + Space`).
+All style options are also accessible under _Style_ in the Omarchy menu (`Super + Space`).
 
 ## Toggles
 
 | Hotkey                  | Function              |
 | ----------------------- | --------------------- |
-| `Super + Ctrl + I` | Toggle idle/sleep prevention |
+| `Super + Ctrl + I` | Toggle locking on idle |
 | `Super + Ctrl + N` | Toggle nightlight display temperature |
 | `Super + Ctrl + Delete` | Toggle laptop display on/off |
 | `Super + Ctrl + Alt + Delete` | Toggle laptop display mirroring |
 | `Super + Shift + Space` | Toggle the top bar  |
-| `Super + Mute` | Switch to next audio output |
+| `Shift + Mute` | Switch to next audio output |
+| `Shift + Play` | Switch to next media source |
 | `Super + Shift + Backspace` | Toggle window gaps |
 
 ## Reminders
@@ -183,7 +201,7 @@ All style options are also accessible under _Style_ in the Omarchy menu (`Super 
 | ----------------------- | --------------------- |
 | `Super + Ctrl + Alt + T` | Show time as notification  |
 | `Super + Ctrl + Alt + B` | Show battery as notification  |
-| `Super + Ctrl + Alt + W` | Show weather as notification  |
+| `Super + Ctrl + Alt + W` | Toggle weather as notification  |
 
 ## Tmux
 
@@ -197,6 +215,9 @@ The prefix key is `Ctrl + Space` (`Ctrl + B` also works). You can change these b
 | `Prefix + h` | Split pane below (horizontal) |
 | `Prefix + x` | Kill pane |
 | `Prefix + z` | Toggle pane zoom (fullscreen) |
+| `Alt + Enter` | Split pane below (no prefix) |
+| `Alt + Shift + Enter` | Split pane beside (no prefix) |
+| `Alt + Escape` | Kill pane (no prefix) |
 | `Ctrl + Alt + Arrows` | Move between panes |
 | `Ctrl + Alt + Shift + Arrows` | Resize panes |
 
@@ -209,6 +230,7 @@ The prefix key is `Ctrl + Space` (`Ctrl + B` also works). You can change these b
 | `Prefix + r` | Rename window |
 | `Alt + 1-9` | Go to specific window |
 | `Alt + Arrow Left/Right` | Move between windows |
+| `Alt + Shift + Arrow Left/Right` | Move window left/right |
 
 ### Sessions
 
@@ -236,6 +258,7 @@ The prefix key is `Ctrl + Space` (`Ctrl + B` also works). You can change these b
 | Hotkey                  | Function              |
 | ----------------------- | --------------------- |
 | `Prefix + q` | Reload config |
+| `Prefix + ?` | Show Tmux keybindings |
 | `Prefix + :` | Command prompt |
 
 ### Tmux layout functions
@@ -321,6 +344,7 @@ You can use `Super + Ctrl + E` to show a complete emoji picker that'll put the s
 | `CapsLock M R` | 🤘 | rock       |
 | `CapsLock M K` | 😘 | kiss       |
 | `CapsLock M E` | 🙄 | eyeroll    |
+| `CapsLock M I` | 😉 | wink       |
 | `CapsLock M P` | 🙏 | pray |
 | `CapsLock M D` | 🤤 | drool      |
 | `CapsLock M M` | 💰 | money      |
@@ -333,6 +357,7 @@ You can use `Super + Ctrl + E` to show a complete emoji picker that'll put the s
 | `CapsLock M B` |🤯 | blowing |
 
 ## Quick Completions
+
 | Hotkey       | Completion       |
 | ------------ |  ---------- |
 | `CapsLock Space Space` | — (mdash)   |

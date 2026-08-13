@@ -6,7 +6,7 @@ If you're totally new to vim-style editing, I recommend you checkout [ThePrimeag
 
 Now Neovim is basically infinitely configurable. If you really want to go nuts, you can create your own Neovim configuration from scratch. There's a great course from [Typecraft on setting up Neovim from scratch](https://www.youtube.com/watch?v=zHTeCSVAFNY). And [ThePrimegean has one as well](https://www.youtube.com/watch?v=w7i4amO_zaE).
 
-But Omarchy ships with a complete Neovim setup that's been lovingly tuned to showcase the best of what's possible out of the box. Without you having to write a single line of configuration! It's called [LazyVim](https://www.lazyvim.org/), and it's a distribution of Neovim plugins and configurations. It's awesome.
+But Omarchy ships with a complete Neovim setup — the `omarchy-nvim` package — that's been lovingly tuned to showcase the best of what's possible out of the box. Without you having to write a single line of configuration! It's built on [LazyVim](https://www.lazyvim.org/), a distribution of Neovim plugins and configurations. It's awesome.
 
 ## LazyVim Basics
 
@@ -35,7 +35,7 @@ You can see all the possible commands on [the LazyVim Keymaps page](https://www.
 
 ## Starting Neovim
 
-You can start Neovim using `Super + Shift + N`, but it's usually easier to drive it from the terminal by navigating to the directory you wish to work in and typing `n`. The `n` is the alias for `nvim`, which will use the the present directory to open by default. You can open a single file with `n myfile.txt`.
+You can start Neovim using `Super + Shift + N` (the binding launches your default editor, which is Neovim out of the box), but it's usually easier to drive it from the terminal by navigating to the directory you wish to work in and typing `n`. The `n` is the alias for `nvim`, which will use the the present directory to open by default. You can open a single file with `n myfile.txt`.
 
 ## Using Neovim for sudo edits
 
