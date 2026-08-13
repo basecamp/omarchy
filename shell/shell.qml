@@ -58,6 +58,7 @@ ShellRoot {
   property bool fullPluginReloadPending: false
   property var activePluginReloads: ({})
   property var pendingLocalPluginReloads: ({})
+  property bool pendingLocalPluginFullReload: false
   property var pluginSourceRevisions: ({})
   property var preparedPluginSourceRevisions: ({})
   property int pluginSourceRevisionCounter: 0
@@ -904,16 +905,26 @@ ShellRoot {
   function queueLocalPluginReload(sourceDir) {
     var pluginId = shell.pluginRegistry.pluginIdForSourceDir(sourceDir)
     if (!pluginId) {
-      shell.reloadPlugins()
-      return
+      // A directory the registry does not know yet — a new plugin still being
+      // written, or a stray file at the plugins root — needs a full reload to
+      // discover it. Still route it through the debounce timer: a burst of
+      // file events (git clone, an editor saving many files) must coalesce
+      // into one reload instead of tearing the shell down once per event.
+      pendingLocalPluginFullReload = true
+    } else {
+      var reload = ({})
+      reload[pluginId] = true
+      pendingLocalPluginReloads = shell.mergePluginReloads(pendingLocalPluginReloads, reload)
     }
-    var reload = ({})
-    reload[pluginId] = true
-    pendingLocalPluginReloads = shell.mergePluginReloads(pendingLocalPluginReloads, reload)
     localPluginReloadTimer.restart()
   }
 
   function reloadLocalPlugins() {
+    if (shell.pendingLocalPluginFullReload) {
+      shell.pendingLocalPluginFullReload = false
+      shell.reloadPlugins()
+      return
+    }
     if (!shell.hasPluginReloads(shell.pendingLocalPluginReloads)) return
     if (shell.pluginReloading || shell.pluginRegistry.scanning) return
 
@@ -937,6 +948,7 @@ ShellRoot {
       return
     }
     pendingLocalPluginReloads = ({})
+    pendingLocalPluginFullReload = false
     activePluginReloads = ({})
     fullPluginReloading = true
     shell.unloadPanels()
@@ -975,6 +987,7 @@ ShellRoot {
         shell.fullPluginReloading = false
         shell.activePluginReloads = ({})
         shell.pendingLocalPluginReloads = ({})
+        shell.pendingLocalPluginFullReload = false
         Qt.callLater(shell.reloadPlugins)
         return
       }
@@ -991,7 +1004,7 @@ ShellRoot {
       }
       shell.fullPluginReloading = false
       shell.activePluginReloads = ({})
-      if (shell.hasPluginReloads(shell.pendingLocalPluginReloads))
+      if (shell.hasPluginReloads(shell.pendingLocalPluginReloads) || shell.pendingLocalPluginFullReload)
         Qt.callLater(shell.reloadLocalPlugins)
     }
   }

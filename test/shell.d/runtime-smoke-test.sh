@@ -460,6 +460,55 @@ pass "hot reload rebuilds the changed custom bar"
 [[ $(shell_ipc shell setPluginEnabled omarchy.bar true) == "ok" ]] ||
   fail_with_log "runtime smoke test restores the built-in bar"
 
+# A directory the registry does not know yet cannot be reloaded in a targeted
+# way; discovering it takes a full reload. A new plugin arrives as a burst of
+# file events (git clone, an editor writing several files), which must
+# coalesce into one reload instead of tearing the shell down once per event.
+discovered_id="acme.discovered"
+discovered_dir="$test_home/.config/omarchy/plugins/discovered-plugin"
+discovery_log_offset=$(wc -c <"$log")
+mkdir -p "$discovered_dir"
+cat >"$discovered_dir/Overlay.qml" <<'QML'
+import QtQuick
+
+Item {
+  function open(payloadJson) {}
+  function close() {}
+}
+QML
+cat >"$discovered_dir/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$discovered_id",
+  "name": "Discovered plugin",
+  "version": "1.0.0",
+  "kinds": ["overlay"],
+  "entryPoints": {"overlay": "Overlay.qml"}
+}
+JSON
+
+discovered=""
+for _ in {1..80}; do
+  discovered=$(shell_ipc shell listPlugins 2>/dev/null || true)
+  if jq -e --arg id "$discovered_id" 'any(.[]; .id == $id)' <<<"$discovered" >/dev/null 2>&1; then
+    break
+  fi
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while discovering a new plugin"
+  fi
+  sleep 0.1
+done
+jq -e --arg id "$discovered_id" 'any(.[]; .id == $id)' <<<"$discovered" >/dev/null 2>&1 ||
+  fail_with_log "new local plugin is discovered without an explicit rescan"
+
+# The sentinel service restarts once per full reload; more than one restart in
+# this window means the file-event burst did not coalesce.
+sleep 0.7
+discovery_restarts=$(tail -c "+$(( discovery_log_offset + 1 ))" "$log" | grep -c "HOT_RELOAD_SENTINEL_SERVICE" || true)
+[[ $discovery_restarts == "1" ]] ||
+  fail_with_log "new plugin discovery coalesces into one full reload (saw $discovery_restarts sentinel restarts)"
+pass "new local plugin discovery reloads once"
+
 [[ $(shell_ipc shell setPluginEnabled "$hot_reload_id" true) == "ok" ]] ||
   fail_with_log "installed plugin could not be enabled"
 [[ $(shell_ipc shell summon omarchy.emojis "{}") == "ok" ]] ||
