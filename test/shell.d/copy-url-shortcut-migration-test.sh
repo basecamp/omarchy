@@ -45,6 +45,20 @@ run_migration && fail "migration defers while a browser is running"
   fail "migration leaves preferences alone while a browser is running"
 pass "migration defers the repair while a browser is running"
 
+# gum paints its prompt on stderr, so that stream has to stay attached:
+# suppressing it leaves gum reading keys behind an unpainted screen, which
+# reads as a hung update.
+cat >"$stub_bin/gum" <<'STUB'
+#!/bin/bash
+echo "gum-prompt-painted" >&2
+exit 1
+STUB
+prompt_stderr="$test_dir/prompt-stderr"
+HOME="$home" PATH="$stub_bin:$PATH" bash -euo pipefail "$migration" >/dev/null 2>"$prompt_stderr" &&
+  fail "migration defers when the browser prompt is declined"
+grep -q "gum-prompt-painted" "$prompt_stderr" || fail "migration keeps the browser prompt visible"
+pass "migration keeps the browser prompt visible"
+
 # Confirming the prompt after closing the browser lets the repair proceed.
 cat >"$stub_bin/gum" <<'STUB'
 #!/bin/bash
