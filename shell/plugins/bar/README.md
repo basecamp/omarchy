@@ -26,6 +26,7 @@ Example `shell.json` (bar subtree only shown):
   "bar": {
     "position": "top",
     "transparent": false,
+    "screens": [],
     "centerAnchor": "omarchy.clock",
     "layout": {
       "left": [
@@ -47,6 +48,8 @@ Example `shell.json` (bar subtree only shown):
 ```
 
 `centerAnchor` pins one center module to the exact horizontal/vertical center and flanks others around it. Set to an empty string to disable anchoring (the center list is centered as a group).
+
+`screens` restricts which monitors get a bar. It is a list of Wayland output names (the same names `hyprctl monitors` prints, e.g. `["DP-1"]`). Leave it empty (`[]`) or omit it for the default behavior of one bar per screen. The bar re-evaluates the filter live, so editing the value in `shell.json` moves the bar immediately without a shell restart.
 
 ## Module catalogue
 

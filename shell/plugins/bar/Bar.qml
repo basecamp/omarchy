@@ -56,6 +56,12 @@ Item {
   property bool centerHoverRevealSuppressed: false
   property int barConfigSerial: 0
   property string position: "top"
+  // The screens that get a bar, honoring barConfig.screens: an optional
+  // list of output names (e.g. ["DP-1"], matching `hyprctl monitors`).
+  // Empty or unset means every screen gets a bar, which is the default
+  // behavior. The binding references Quickshell.screens and barConfig, so
+  // it re-evaluates on screen hotplug and on shell.json reloads.
+  readonly property var barScreens: BarModel.screensFor(barConfig, Quickshell.screens)
   // Resolves through fontconfig at paint time (Style.font.family defaults
   // to "monospace"), so changing the system font (via `omarchy-font-set`)
   // updates the bar without a reload.
@@ -949,7 +955,7 @@ Item {
   }
 
   Variants {
-    model: Quickshell.screens
+    model: root.barScreens
 
     delegate: Component {
       BarPanel {
@@ -961,7 +967,7 @@ Item {
   }
 
   Variants {
-    model: Quickshell.screens
+    model: root.barScreens
 
     delegate: Component {
       DragGhostPanel {
@@ -974,7 +980,7 @@ Item {
   }
 
   Variants {
-    model: Quickshell.screens
+    model: root.barScreens
 
     delegate: Component {
       BarMoveGhostPanel {
