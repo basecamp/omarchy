@@ -148,16 +148,21 @@ kill "$holder_pid" 2>/dev/null
 holder_pid=""
 close_browser
 
-# A pid that answers nothing about itself — pid 1 is alive and root-owned, so
-# neither its files nor its binary are readable here — is no proof of a dead
-# browser, and a deferred repair beats one made under a live one.
-write_stale_preferences
-ln -sfn "$(uname -n)-1" "$profile_root/SingletonLock"
-run_migration && fail "migration defers to a lock whose pid it cannot read"
-[[ $(jq -r '.extensions.commands["linux:Alt+Shift+L"].extension' "$preferences") == "$ghost_id" ]] ||
-  fail "migration leaves preferences alone while the lock's pid is unreadable"
-pass "migration defers to a lock whose pid it cannot read"
-close_browser
+# A pid that answers nothing about itself is no proof of a dead browser, and a
+# deferred repair beats one made under a live one. Pid 1 is that process on a
+# normal system, being root-owned; inside a container that hands the test user
+# its own pid 1, nothing here is unreadable to point at.
+if readlink /proc/1/exe >/dev/null 2>&1; then
+  pass "pid 1 is readable here; skipping the unreadable lock pid case"
+else
+  write_stale_preferences
+  ln -sfn "$(uname -n)-1" "$profile_root/SingletonLock"
+  run_migration && fail "migration defers to a lock whose pid it cannot read"
+  [[ $(jq -r '.extensions.commands["linux:Alt+Shift+L"].extension' "$preferences") == "$ghost_id" ]] ||
+    fail "migration leaves preferences alone while the lock's pid is unreadable"
+  pass "migration defers to a lock whose pid it cannot read"
+  close_browser
+fi
 
 # Closing the affected profile and confirming the prompt lets the repair
 # proceed.
@@ -323,3 +328,32 @@ grep -q "Singleton" "$give_up_stderr" || fail "migration says how to clear a lef
   fail "migration leaves preferences alone when it gives up"
 pass "migration gives up instead of asking forever about a profile that stays open"
 close_browser
+
+# Working through open profiles one prompt at a time is progress, not a stuck
+# wait: the budget for a profile that never closes must not run out on someone
+# closing four of them in a row.
+multi_roots=("$home/.config/chromium" "$home/.config/google-chrome" "$home/.config/vivaldi" "$home/.config/opera")
+for root in "${multi_roots[@]}"; do
+  mkdir -p "$root/Default"
+  jq -n --arg ghost "$ghost_id" '{extensions: {commands: {"linux:Alt+Shift+L": {command_name: "copy-url", extension: $ghost, global: false}}, settings: {}}}' >"$root/Default/Preferences"
+  ln -sfn "$LIVE_LOCK" "$root/SingletonLock"
+done
+cat >"$stub_bin/gum" <<'STUB'
+#!/bin/bash
+# One window closed per prompt, in the order the migration asks about them.
+for root in "$HOME/.config/chromium" "$HOME/.config/google-chrome" "$HOME/.config/vivaldi" "$HOME/.config/opera"; do
+  [[ -L $root/SingletonLock ]] || continue
+  rm -f "$root/SingletonLock"
+  break
+done
+exit 0
+STUB
+chmod +x "$stub_bin/gum"
+status=0
+HOME="$home" PATH="$stub_bin:$PATH" timeout 60 bash -euo pipefail "$migration" >/dev/null 2>&1 || status=$?
+(( status == 0 )) || fail "migration works through profiles closed one prompt at a time"
+for root in "${multi_roots[@]}"; do
+  jq -e --arg pinned "$pinned_id" '.extensions.commands["linux:Alt+Shift+L"].extension == $pinned' \
+    "$root/Default/Preferences" >/dev/null || fail "migration repairs every profile once it closes"
+done
+pass "migration works through profiles closed one prompt at a time"

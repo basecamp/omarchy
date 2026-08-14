@@ -208,9 +208,17 @@ fi
 # Three rounds is someone closing windows. Past that the profile reads as open
 # whatever the user does, and this loop runs inside omarchy-update: waiting on
 # it forever hangs the update itself, where deferring only postpones a repair
-# the next run can still make.
+# the next run can still make. Closing one profile and moving on to the next is
+# progress, so the count follows the profile being waited on rather than the
+# prompt.
 attempts=0
+waiting_on=""
 while affected_profile_open; do
+  if [[ $open_profile != "$waiting_on" ]]; then
+    waiting_on=$open_profile
+    attempts=0
+  fi
+
   if (( ++attempts > 3 )); then
     echo "$open_profile still looks like it has a browser attached." >&2
     echo "If none is running, delete the leftover $open_profile/Singleton* links, then run: omarchy-migrate" >&2
