@@ -14,11 +14,13 @@ notification_history="$test_tmp/notification-history"
 agent_open_log="$test_tmp/agent-open"
 launch_log="$test_tmp/launch"
 inline_log="$test_tmp/inline"
+amp_stdin_log="$test_tmp/amp-stdin"
 mise_log="$test_tmp/mise"
 mise_history="$test_tmp/mise-history"
 stub_log="$test_tmp/stubs"
 terminal_log="$test_tmp/terminal"
 menu_log="$test_tmp/menu"
+curl_log="$test_tmp/curl"
 mkdir -p "$mock_bin" "$test_home"
 
 cat >"$mock_bin/omarchy-notification-send" <<'SH'
@@ -28,6 +30,7 @@ SH
 
 cat >"$mock_bin/omarchy-cmd-missing" <<'SH'
 #!/bin/bash
+[[ $1 == "amp" && -x $HOME/.local/bin/amp && :$PATH: == *":$HOME/.local/bin:"* ]] && exit 1
 [[ $1 == ${OMARCHY_TEST_MISSING_COMMAND:-} ]]
 SH
 
@@ -44,6 +47,25 @@ SH
 cat >"$mock_bin/opencode" <<'SH'
 #!/bin/bash
 printf '%s\0' opencode "$@" >"$OMARCHY_TEST_AGENT_INLINE_LOG"
+SH
+
+cat >"$mock_bin/amp" <<'SH'
+#!/bin/bash
+cat >"$OMARCHY_TEST_AMP_STDIN_LOG"
+SH
+
+cat >"$mock_bin/curl" <<'SH'
+#!/bin/bash
+printf '%s\0' "$@" >"$OMARCHY_TEST_CURL_LOG"
+[[ ${OMARCHY_TEST_CURL_FAIL:-false} != "true" ]] || exit 1
+cat <<'INSTALLER'
+mkdir -p "$HOME/.local/bin"
+cat >"$HOME/.local/bin/amp" <<'AMP'
+#!/bin/bash
+cat >"$OMARCHY_TEST_AMP_STDIN_LOG"
+AMP
+chmod +x "$HOME/.local/bin/amp"
+INSTALLER
 SH
 
 cat >"$mock_bin/omarchy-mise-install" <<'SH'
@@ -86,13 +108,14 @@ export OMARCHY_TEST_NOTIFICATION_HISTORY="$notification_history"
 export OMARCHY_TEST_AGENT_OPEN_LOG="$agent_open_log"
 export OMARCHY_TEST_AGENT_LAUNCH_LOG="$launch_log"
 export OMARCHY_TEST_AGENT_INLINE_LOG="$inline_log"
+export OMARCHY_TEST_AMP_STDIN_LOG="$amp_stdin_log"
 export OMARCHY_TEST_MISE_LOG="$mise_log"
 export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
+export OMARCHY_TEST_CURL_LOG="$curl_log"
 
-amp_package="npm:@ampcode/cli"
 grok_package="npm:@xai-official/grok"
 omp_package="github:can1357/oh-my-pi"
 crush_package="crush"
@@ -110,14 +133,13 @@ assert_lazy_stub() {
     fail "$command lazy stub preserves its mise package"
 }
 
-assert_lazy_stub "$amp_package" amp
 assert_lazy_stub "$grok_package" grok
 assert_lazy_stub "$omp_package" omp
 assert_lazy_stub "$crush_package" crush
 pass "custom agent lazy stubs preserve their mise packages"
 
 source "$ROOT/install/user/mise.sh"
-grep -Fx "$amp_package amp" "$stub_log" >/dev/null || fail "user setup creates the Amp lazy stub"
+grep -Fq '@ampcode/cli' "$stub_log" && fail "user setup leaves Amp to its official installer"
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates the Grok lazy stub"
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
@@ -133,27 +155,30 @@ grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "agent migration repa
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "agent migration creates the Grok lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "agent migration creates the Crush lazy stub"
 
-: >"$stub_log"
-source "$ROOT/migrations/1786557910.sh" >/dev/null
-grep -Fx "$amp_package amp" "$stub_log" >/dev/null || fail "Amp migration creates the Amp lazy stub"
-
 mkdir -p "$test_home/.local/state/omarchy"
 touch "$test_home/.local/state/omarchy/preinstalls-removed"
 "$ROOT/bin/omarchy-mise-install" oh-my-pi omp
 : >"$stub_log"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
 source "$ROOT/migrations/1785846769.sh" >/dev/null
-source "$ROOT/migrations/1786557910.sh" >/dev/null
 [[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
 [[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
 rm "$test_home/.local/state/omarchy/preinstalls-removed"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"
 
+official_amp_target="$test_tmp/official-amp"
+printf '#!/bin/bash\n' >"$official_amp_target"
+chmod +x "$official_amp_target"
+rm -f "$test_home/.local/bin/amp"
+ln -s "$official_amp_target" "$test_home/.local/bin/amp"
 omarchy-remove-preinstalls >/dev/null
-for command in amp omp grok crush; do
+for command in omp grok crush; do
   [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
 done
-pass "Remove Preinstalls deletes every optional agent lazy stub"
+[[ -L $test_home/.local/bin/amp && $(readlink "$test_home/.local/bin/amp") == "$official_amp_target" ]] ||
+  fail "Remove Preinstalls preserves an independent Amp installation"
+rm "$test_home/.local/bin/amp"
+pass "Remove Preinstalls leaves Amp installations it does not own alone"
 
 [[ -z $(omarchy-default-agent) ]] || fail "default agent is unset until one is chosen"
 pass "default agent is unset until one is chosen"
@@ -214,7 +239,6 @@ declare -A expected_agents=(
 )
 
 declare -A expected_packages=(
-  [amp]="$amp_package"
   [pi]="pi"
   [omp]="$omp_package"
   [opencode]="opencode"
@@ -229,12 +253,17 @@ declare -A expected_packages=(
 for selection in "${!expected_agents[@]}"; do
   expected=${expected_agents[$selection]}
   : >"$agent_open_log"
+  : >"$mise_log"
   OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent "$selection"
   [[ $(omarchy-default-agent) == $expected ]] || fail "default agent canonicalizes $selection"
 
-  mapfile -d '' -t mise_args <"$mise_log"
-  [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
-    fail "default agent installs $selection globally through mise"
+  if [[ $expected == "amp" ]]; then
+    [[ ! -s $mise_log ]] || fail "default agent leaves an installed Amp outside mise"
+  else
+    mapfile -d '' -t mise_args <"$mise_log"
+    [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
+      fail "default agent installs $selection globally through mise"
+  fi
 
   mapfile -d '' -t agent_open_args <"$agent_open_log"
   [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
@@ -283,6 +312,39 @@ mapfile -d '' -t agent_open_args <"$agent_open_log"
 [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
   fail "installed agent opens in a new terminal after selection"
 pass "installed agents select and open without notifications"
+
+: >"$agent_open_log"
+: >"$terminal_log"
+: >"$mise_log"
+export OMARCHY_TEST_MISSING_COMMAND=amp
+omarchy-default-agent amp
+mapfile -d '' -t terminal_args <"$terminal_log"
+[[ ${terminal_args[0]} == "omarchy-default-agent" && ${terminal_args[1]} == "--install" && ${terminal_args[2]} == "amp" ]] ||
+  fail "missing Amp installation opens in a terminal"
+[[ $(omarchy-default-agent) == "copilot" ]] || fail "missing Amp waits to change the selection"
+
+if OMARCHY_TEST_CURL_FAIL=true omarchy-default-agent --install amp >"$test_tmp/amp-install-failure-output" 2>&1; then
+  fail "default agent rejects a failed Amp installation"
+fi
+grep -Fq "Could not install Amp" "$test_tmp/amp-install-failure-output" ||
+  fail "default agent reports a failed Amp installation"
+[[ $(omarchy-default-agent) == "copilot" ]] || fail "failed Amp installation preserves the current default"
+
+: >"$curl_log"
+omarchy-default-agent --install amp >"$test_tmp/amp-install-output"
+unset OMARCHY_TEST_MISSING_COMMAND
+mapfile -d '' -t curl_args <"$curl_log"
+[[ ${curl_args[0]} == "-fsSL" && ${curl_args[1]} == "https://ampcode.com/install.sh" ]] ||
+  fail "Amp installation uses the official installer"
+[[ -x $test_home/.local/bin/amp ]] || fail "official Amp installer creates the command"
+[[ $(omarchy-default-agent) == "amp" ]] || fail "Amp becomes the default after installation"
+[[ ! -s $mise_log ]] || fail "Amp installation does not use the incompatible mise npm backend"
+mapfile -d '' -t agent_open_args <"$agent_open_log"
+[[ ${#agent_open_args[@]} == 2 && ${agent_open_args[0]} == "omarchy-agent" && ${agent_open_args[1]} == "--inline" ]] ||
+  fail "newly installed Amp opens in the installation terminal"
+pass "missing Amp installs officially, becomes the default, and opens inline"
+
+OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent copilot
 
 : >"$agent_open_log"
 if omarchy-default-agent unsupported >"$test_tmp/invalid-output" 2>&1; then
@@ -335,7 +397,7 @@ assert_launched() {
     fail "$agent launch $description" "expected: ${expected[*]}\nactual: ${actual[*]}"
 
   for ((index = 0; index < ${#expected[@]}; index++)); do
-    [[ ${actual[$index]} == ${expected[$index]} ]] ||
+    [[ ${actual[$index]} == "${expected[$index]}" ]] ||
       fail "$agent launch $description" "expected: ${expected[*]}\nactual: ${actual[*]}"
   done
 }
@@ -358,7 +420,7 @@ assert_bypass() {
   assert_launched "$agent" "skips permission prompts" "$@"
 }
 
-assert_launch amp bash -c 'echo "$1" | exec amp' _ "Review this project"
+assert_launch amp bash -c "printf '%s\n' \"\$1\" | exec amp" _ "Review this project"
 assert_launch pi pi -- "Review this project"
 assert_launch omp omp --auto-approve -- "Review this project"
 assert_launch opencode opencode --auto --prompt "Review this project"
@@ -381,6 +443,13 @@ assert_bypass grok grok --permission-mode bypassPermissions
 assert_bypass gemini gemini --yolo
 assert_bypass copilot copilot --allow-all
 pass "agent launcher skips permission prompts for every supported agent"
+
+printf '%s\n' "amp" >"$agent_file"
+omarchy-agent-prompt --inline -n
+printf '%s\n' '-n' >"$test_tmp/expected-amp-stdin"
+cmp -s "$test_tmp/expected-amp-stdin" "$amp_stdin_log" ||
+  fail "Amp launcher forwards prompts that resemble echo options verbatim"
+pass "Amp launcher forwards its initial prompt verbatim"
 
 printf '%s\n' "opencode" >"$agent_file"
 omarchy-agent

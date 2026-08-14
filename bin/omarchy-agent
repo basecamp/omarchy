@@ -46,6 +46,8 @@ if [[ -z $agent ]]; then
   exit 1
 fi
 
+[[ $agent == "amp" ]] && export PATH="${PATH:+$PATH:}$HOME/.local/bin"
+
 if omarchy-cmd-missing "$agent"; then
   echo "$agent is not installed. Choose an installed agent with: omarchy default agent <name>" >&2
   exit 1
@@ -58,7 +60,7 @@ amp)
   # Amp has no approval prompts by default, and no --prompt flag. An initial
   # message is piped into an interactive session, as Amp's CLI documents.
   if [[ -n ${prompt:-} ]]; then
-    command=(bash -c 'echo "$1" | exec amp' _ "$prompt")
+    command=(bash -c "printf '%s\n' \"\$1\" | exec amp" _ "$prompt")
   else
     command=(amp)
   fi
