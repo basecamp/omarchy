@@ -292,6 +292,29 @@ Panel {
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
 
+  // scannerEnabled lives on the shared WifiDevice, which has no reference
+  // counting, and a bar widget is instantiated once per monitor. Tracking the
+  // device this instance turned scanning on for keeps the release correct when
+  // the panel closes, the device is replaced, or the widget is destroyed —
+  // without a closed instance ever claiming the scanner.
+  property var scannerDevice: null
+
+  function setScannerEnabled(enabled) {
+    var nextDevice = opened ? wifiDevice : null
+
+    if (scannerDevice && scannerDevice !== nextDevice)
+      scannerDevice.scannerEnabled = false
+
+    scannerDevice = nextDevice
+
+    if (scannerDevice)
+      scannerDevice.scannerEnabled = enabled
+  }
+
+  Component.onDestruction: {
+    if (scannerDevice) scannerDevice.scannerEnabled = false
+  }
+
   // KeyboardPanel primes layer-shell focus whenever the panel opens. That's
   // what makes the SUPER+CTRL+W keybind land here with navigation ready.
   onOpenedChanged: {
@@ -305,6 +328,10 @@ Panel {
       syncBandIndex()
       cursorActive = false
     } else {
+      // Drop a restart armed by this open: without it a close/reopen inside
+      // the 100ms window reuses the running timer and re-enables the scanner
+      // almost immediately, undoing the deferral #6605 restored.
+      scanRestart.stop()
       // Reset throughput tracking so the next open doesn't compute a fake
       // rate from a sample taken minutes ago.
       prevSampleTime = 0
@@ -316,7 +343,7 @@ Panel {
       routerPingLatency = -1
       internetPingLatency = -1
       internetPingPacketLoss = 0
-      if (wifiDevice) wifiDevice.scannerEnabled = false
+      setScannerEnabled(false)
     }
   }
 
@@ -357,7 +384,7 @@ Panel {
   }
 
   onWifiDeviceChanged: {
-    if (wifiDevice) wifiDevice.scannerEnabled = opened
+    setScannerEnabled(true)
     syncWifiNetworks()
   }
 
@@ -452,13 +479,15 @@ Panel {
       bandProc.command = ["omarchy-network-band"]
       bandProc.running = true
     }
-    if (wifiDevice) {
+    // A closed panel has no nearby-network list to fill, and bare refresh()
+    // reaches here from action completion, timeouts and construction.
+    if (opened && wifiDevice) {
       if (scanWifi) {
         scanning = true
-        wifiDevice.scannerEnabled = false
+        setScannerEnabled(false)
         scanRestart.start()
       } else {
-        wifiDevice.scannerEnabled = true
+        setScannerEnabled(true)
       }
     }
     syncWifiNetworks()
@@ -792,8 +821,10 @@ Panel {
     interval: 100
     repeat: false
     onTriggered: {
-      if (root.wifiDevice) root.wifiDevice.scannerEnabled = true
-      scanDone.start()
+      if (root.opened && root.wifiDevice) {
+        root.setScannerEnabled(true)
+        scanDone.start()
+      }
     }
   }
 

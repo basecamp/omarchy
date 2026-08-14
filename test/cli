@@ -755,3 +755,55 @@ assert_output_contains "partial metadata command dispatches" "$output" "partial-
 
 output=$("$TMPDIR/omarchy" body metadata test)
 assert_output_contains "body metadata command dispatches by filename" "$output" "body-metadata-ok"
+
+# A trailing --help must render help even when the route only partially
+# resolves, leaving unresolved words ahead of the flag (e.g. `update aur --help`
+# used to start a real update because only the first leftover token was checked).
+{
+  printf '#!/bin/bash\n\n'
+  printf '# omarchy:summary=Partial resolution help test parent\n'
+  printf '# omarchy:alias=omarchy parenthelp-alias\n'
+  printf 'echo "parenthelp-parent-ran args=[$*]"\n'
+} >"$TMPDIR/omarchy-parenthelp"
+chmod +x "$TMPDIR/omarchy-parenthelp"
+
+{
+  printf '#!/bin/bash\n\n'
+  printf '# omarchy:summary=Partial resolution help test child\n'
+  printf 'echo parenthelp-child-ran\n'
+} >"$TMPDIR/omarchy-parenthelp-child"
+chmod +x "$TMPDIR/omarchy-parenthelp-child"
+
+output=$("$TMPDIR/omarchy" parenthelp bogus --help)
+assert_output_contains "trailing --help after an unresolved word renders help" "$output" "omarchy-parenthelp"
+assert_output_contains "partial resolution help lists related commands" "$output" "omarchy parenthelp child"
+if [[ $output == *"parenthelp-parent-ran"* ]]; then
+  fail "trailing --help after an unresolved word does not execute the command"
+fi
+pass "trailing --help after an unresolved word does not execute the command"
+
+output=$("$TMPDIR/omarchy" parenthelp bogus -h)
+assert_output_contains "trailing -h after an unresolved word renders help" "$output" "omarchy-parenthelp"
+
+output=$("$TMPDIR/omarchy" parenthelp-alias bogus --help)
+assert_output_contains "trailing --help after an unresolved word renders help via alias route" "$output" "omarchy-parenthelp"
+if [[ $output == *"parenthelp-parent-ran"* ]]; then
+  fail "trailing --help on an alias route does not execute the command"
+fi
+pass "trailing --help on an alias route does not execute the command"
+
+output=$("$TMPDIR/omarchy" parenthelp bogus --json --help)
+grep -q '"ok": true' <<<"$output" || fail "--json with --help renders JSON help"
+pass "--json with --help renders JSON help"
+
+output=$("$TMPDIR/omarchy" parenthelp "explain --json output" --help)
+assert_output_contains "a --json embedded inside one argument does not switch help to JSON" "$output" "Partial resolution help test parent"
+
+output=$("$TMPDIR/omarchy" parenthelp bogus trailing)
+assert_output_contains "leftover args without a help flag still forward" "$output" "parenthelp-parent-ran args=[bogus trailing]"
+
+output=$("$TMPDIR/omarchy" parenthelp run -- --help)
+assert_output_contains "a --help behind -- belongs to the command and still forwards" "$output" "parenthelp-parent-ran args=[run -- --help]"
+
+output=$("$TMPDIR/omarchy" parenthelp --helpme x--help)
+assert_output_contains "help lookalike tokens do not trigger help" "$output" "parenthelp-parent-ran args=[--helpme x--help]"
