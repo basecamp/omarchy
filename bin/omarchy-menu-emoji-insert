@@ -14,7 +14,7 @@ printf '%s' "$emoji" | wl-copy --type text/plain --sensitive --foreground &
 copy_pid=$!
 
 sleep 0.15
-wtype -M shift -k Insert -m shift 2>/dev/null || true
+wtype -M ctrl -M shift -k v -m shift -m ctrl 2>/dev/null || true
 sleep 0.2
 
 kill "$copy_pid" 2>/dev/null || true
