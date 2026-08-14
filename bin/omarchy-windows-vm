@@ -336,6 +336,18 @@ To stop: omarchy-windows-vm stop"
     "" \
     "$LIFECYCLE"
 
+  # FreeRDP 3 tries Kerberos before NTLM for NLA, and krb5 ships /etc/krb5.conf
+  # as the MIT sample with default_realm = ATHENA.MIT.EDU. Every connect then
+  # goes looking for MIT's KDC: with internet up it fails fast, but off the
+  # network each attempt blocks ~23s and no RDP window is ever drawn. The VM
+  # authenticates against a local Windows account, so point FreeRDP at a
+  # realm-less config and let it fall straight through to NTLM.
+  KRB5_CONF="$(dirname "$COMPOSE_FILE")/krb5.conf"
+  if [[ ! -f $KRB5_CONF ]]; then
+    printf '[libdefaults]\n  dns_lookup_kdc = false\n  dns_lookup_realm = false\n' >"$KRB5_CONF"
+  fi
+  export KRB5_CONFIG="$KRB5_CONF"
+
   # Detect display scale from Hyprland
   HYPR_SCALE=$(hyprctl monitors -j | jq -r '.[] | select (.focused == true) | .scale')
   SCALE_PERCENT=$(echo "$HYPR_SCALE" | awk '{print int($1 * 100)}')
