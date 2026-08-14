@@ -9,14 +9,17 @@
 #   - unloads T2 modules (reverse dep order)
 #     * on BCM4377b brcmfmac removed before sleep to avoid D3 timeout
 #     * on BCM4364  brcmfmac stays bound; kernel PCI PM handles D3cold
+#   - suspends the keyboard backlight before unloading apple_bce
 # Post:
 #   - reloads apple_bce, then sleeps to let T2 firmware init
-#   - reloads T2 modules (forward dep order), restarts tiny-dfr
+#   - reloads T2 modules (forward dep order)
+#   - resumes the keyboard backlight, then restarts tiny-dfr
 
 set -euo pipefail
 
 LOG_TAG="t2-suspend"
 BRCMF_D3COLD_PCI_ID=14e4:4464
+KBD_BACKLIGHT_DEVICE="*kbd_backlight*"
 PRE_MODS=(appletbdrm hid_appletb_kbd hid_appletb_bl brcmfmac_wcc brcmfmac hci_bcm4377)
 POST_MODS=(hci_bcm4377 brcmfmac brcmfmac_wcc hid_appletb_bl hid_appletb_kbd appletbdrm)
 
@@ -48,6 +51,16 @@ is_bcm4364() { lspci -nn | grep -q "$BRCMF_D3COLD_PCI_ID"; }
 
 skip() { is_bcm4364 && [[ $1 == "brcmfmac" || $1 == "brcmfmac_wcc" ]]; }
 
+keyboard_backlight_suspend() {
+  brightnessctl -sd "$KBD_BACKLIGHT_DEVICE" set 0 >/dev/null 2>&1 &&
+    log "Suspended keyboard backlight" || true
+}
+
+keyboard_backlight_resume() {
+  brightnessctl -rd "$KBD_BACKLIGHT_DEVICE" >/dev/null 2>&1 &&
+    log "Resumed keyboard backlight" || true
+}
+
 case "${1:-}" in
   pre)
     require_legacy_driver
@@ -61,6 +74,7 @@ case "${1:-}" in
     systemctl stop tiny-dfr 2>/dev/null || true
 
     for m in "${PRE_MODS[@]}"; do skip "$m" || unload "$m"; done
+    keyboard_backlight_suspend
     unload apple_bce
 
     if ! udevadm settle --timeout=5; then
@@ -75,6 +89,7 @@ case "${1:-}" in
     load apple_bce; sleep 2
 
     for m in "${POST_MODS[@]}"; do skip "$m" || load "$m"; done
+    keyboard_backlight_resume
 
     systemctl reset-failed tiny-dfr 2>/dev/null &&
       systemctl restart tiny-dfr 2>/dev/null || true
