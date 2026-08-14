@@ -127,7 +127,7 @@ unverified_repairs_exist() {
 # Whether a profile is open is mechanical: a running Chromium-family browser
 # holds a SingletonLock (and socket) inside its user-data-dir.
 profile_open() {
-  local lock=$1/SingletonLock target host pid
+  local lock=$1/SingletonLock target host pid fds exe
 
   # The lock always dangles: it points at <hostname>-<pid>, never at a file. So
   # only that pid says whether a browser is still attached, and a crash or a
@@ -142,8 +142,20 @@ profile_open() {
     # browser we cannot see.
     [[ $host == "$(uname -n)" && $pid =~ ^[0-9]+$ ]] || return 0
 
-    [[ -d /proc/$pid ]]
-    return
+    # The number outlives the browser and the kernel hands it on, so the lock
+    # holds only while that pid still keeps a file open inside this profile —
+    # a browser holds dozens, from leveldb locks to the login database.
+    fds=$(readlink -- /proc/$pid/fd/* 2>/dev/null) || fds=""
+    [[ $fds == *"$1/"* ]] && return 0
+
+    # Failing that, take a browser binary as owner enough: better a repair
+    # deferred than one made under a browser that reverts it on exit.
+    exe=$(readlink "/proc/$pid/exe" 2>/dev/null)
+    case ${exe##*/} in
+      *chrom* | brave* | msedge* | microsoft-edge* | vivaldi* | opera* | helium*) return 0 ;;
+    esac
+
+    return 1
   fi
 
   [[ -e $lock || -S $1/SingletonSocket ]]

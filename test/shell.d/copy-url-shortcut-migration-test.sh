@@ -38,8 +38,22 @@ run_migration() {
 # A running Chromium-family browser marks its profile root with a SingletonLock
 # symlink to <hostname>-<pid>, a target that never exists on disk. That lock —
 # not the mere presence of a browser process — is what the migration waits on,
-# and it counts as held only while the pid it names is alive: this test's own.
-LIVE_LOCK="$(uname -n)-$$"
+# and it holds only while the pid it names is still a live browser. A copy of
+# sleep under a browser's name is one, as far as /proc/<pid>/exe is concerned.
+cp "$(command -v sleep)" "$stub_bin/chromium"
+"$stub_bin/chromium" 600 &
+browser_pid=$!
+
+# Every stand-in has to go on the way out, including a failing exit: one left
+# running holds this test's output pipe open long after the run.
+holder_pid=""
+cleanup() {
+  kill $browser_pid ${holder_pid:-} 2>/dev/null
+  rm -rf "$test_dir"
+}
+trap cleanup EXIT
+
+LIVE_LOCK="$(uname -n)-$browser_pid"
 export LIVE_LOCK
 
 open_browser() {
@@ -106,6 +120,32 @@ jq -e --arg pinned "$pinned_id" '.extensions.commands["linux:Alt+Shift+L"].exten
 pass "migration repairs through a stale singleton lock"
 close_browser
 rm -f "$preferences.omarchy-copy-url-repair.bak"
+
+# The kernel hands a dead browser's pid on to whatever starts next, and this
+# test's own shell stands in for that unrelated process: the number matches,
+# but nothing about it is a browser.
+write_stale_preferences
+ln -sfn "$(uname -n)-$$" "$profile_root/SingletonLock"
+run_migration || fail "migration repairs through a lock whose pid was reused"
+jq -e --arg pinned "$pinned_id" '.extensions.commands["linux:Alt+Shift+L"].extension == $pinned' "$preferences" >/dev/null ||
+  fail "migration repairs the shortcut through a lock whose pid was reused"
+pass "migration repairs through a lock whose pid was reused"
+close_browser
+rm -f "$preferences.omarchy-copy-url-repair.bak"
+
+# Browsers this migration has never heard of still hold their profile open, so
+# a lock whose pid keeps a file open in there counts however it is named.
+write_stale_preferences
+bash -c "exec 9<\"$preferences\"; sleep 600" >/dev/null 2>&1 &
+holder_pid=$!
+sleep 0.2
+ln -sfn "$(uname -n)-$holder_pid" "$profile_root/SingletonLock"
+run_migration && fail "migration defers to a lock whose pid holds the profile open"
+[[ $(jq -r '.extensions.commands["linux:Alt+Shift+L"].extension' "$preferences") == "$ghost_id" ]] ||
+  fail "migration leaves preferences alone while the lock's pid holds the profile open"
+pass "migration defers to a lock whose pid holds the profile open"
+kill "$holder_pid" 2>/dev/null
+close_browser
 
 # Closing the affected profile and confirming the prompt lets the repair
 # proceed.
