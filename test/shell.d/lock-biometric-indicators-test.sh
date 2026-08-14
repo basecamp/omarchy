@@ -18,10 +18,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-require_compositor "lock fingerprint indicator test"
+require_compositor "lock biometric indicators test"
 
 if ! command -v quickshell >/dev/null 2>&1; then
-  pass "quickshell not installed; skipping lock fingerprint indicator test"
+  pass "quickshell not installed; skipping lock biometric indicators test"
   exit 0
 fi
 
