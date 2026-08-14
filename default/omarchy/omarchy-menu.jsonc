@@ -202,6 +202,7 @@
   "install.ai": {"icon":"󱚤","label":"AI"},
   "install.gaming": {"icon":"","label":"Gaming"},
   "install.windows": {"icon":"󰍲","label":"Windows","when":"[[ ! -f $HOME/.local/share/applications/windows-vm.desktop ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-windows-vm install'"},
+  "install.preinstalls": {"icon":"󰏓","label":"Preinstalls","when":"[[ -f $HOME/.local/state/omarchy/preinstalls-removed ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-preinstalls"},
   "install.browser.chrome": {"icon":"","label":"Chrome","when":"! omarchy-pkg-present google-chrome","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-browser chrome'"},
   "install.browser.edge": {"icon":"󰇩","label":"Edge","when":"! omarchy-pkg-present microsoft-edge-stable-bin","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-browser edge'"},
   "install.browser.brave": {"icon":"","label":"Brave","when":"! omarchy-pkg-present brave-bin","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-browser brave'"},
