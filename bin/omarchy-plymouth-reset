@@ -3,5 +3,6 @@
 # omarchy:summary=Restore the default Omarchy Plymouth boot theme and SDDM login screen
 # omarchy:requires-sudo=true
 
+rm -f "$HOME/.local/state/omarchy/current/plymouth.name"
 omarchy-refresh-plymouth
 omarchy-refresh-sddm

@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# omarchy:summary=Restore the selected unlock theme after package updates
+# omarchy:hidden=true
+
+set -e
+
+state_file="$HOME/.local/state/omarchy/current/plymouth.name"
+[[ -s $state_file ]] || exit 0
+
+theme=$(<"$state_file")
+[[ $(omarchy-plymouth-current) != "$theme" ]] || exit 0
+
+if ! omarchy-plymouth-list | grep -Fxq -- "$theme"; then
+  echo "Unlock theme '$theme' is no longer available; keeping the packaged default." >&2
+  exit 0
+fi
+
+omarchy-plymouth-set-by-theme "$theme"
