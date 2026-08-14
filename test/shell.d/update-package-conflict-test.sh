@@ -49,8 +49,8 @@ write_conflict_report() {
   echo 0 >"$test_tmp/attempts"
   : >"$test_tmp/calls"
   {
-    echo "error: unresolvable package conflicts detected"
-    echo "error: failed to prepare transaction (conflicting dependencies)"
+    printf '\e[1;31merror: \e[0munresolvable package conflicts detected\n'
+    printf '\e[1;31merror: \e[0mfailed to prepare transaction (conflicting dependencies)\n'
   } >"$test_tmp/report"
 }
 

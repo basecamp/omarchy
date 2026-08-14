@@ -66,7 +66,7 @@ trap 'exit 1' INT TERM
 # decision -- an upstream split retires one, but so does a package the user
 # picked on purpose -- so put the question to whoever started the update rather
 # than guess at it. Pacman printed what conflicts just above.
-if grep -q '^error: unresolvable package conflicts detected$' "$errors"; then
+if grep -q 'unresolvable package conflicts detected' "$errors"; then
   # -y promised not to ask anything, and without a terminal there is nowhere to
   # ask; either way pacman would sit on a prompt nobody answers. An upgrade that
   # isn't running --noconfirm puts its questions on stderr and reads the answers
