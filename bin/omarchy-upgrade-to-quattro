@@ -2259,6 +2259,19 @@ if [[ -d $legacy_icons_dir ]]; then
   done
   rmdir "$legacy_icons_dir" 2>/dev/null || true
   rmdir "$legacy_icons_backup" 2>/dev/null || true
+
+  # Webapp .desktop files that reference the legacy icon directory keep a
+  # dead Icon= path after the icons move to the backup. Rewrite them to the
+  # bare icon name, which the hicolor theme still resolves from the icon
+  # dirs that hold a copy; a missing icon falls back to a generic placeholder
+  # instead of a broken file path.
+  for desktop in "$HOME"/.local/share/applications/*.desktop; do
+    [[ -e $desktop ]] || continue
+    icon=$(sed -n 's/^Icon=//p' "$desktop" | head -n1)
+    [[ -n $icon && $icon == "$legacy_icons_dir"/* ]] || continue
+    icon_name=$(basename "$icon")
+    sed -i "s|^Icon=$icon$|Icon=${icon_name%.png}|" "$desktop"
+  done
 fi
 
 if [[ -d $root/applications ]]; then
