@@ -40,9 +40,14 @@ copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
   ;;
 esac
 
-if [[ $agent == "amp" ]]; then
-  export PATH="${PATH:+$PATH:}$HOME/.local/bin"
+# A long-running session can predate env-bootstrap's user path update. Restore
+# the standard user command path without duplicating it.
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) export PATH="${PATH:+$PATH:}$HOME/.local/bin" ;;
+esac
 
+if [[ $agent == "amp" ]]; then
   if omarchy-cmd-missing amp; then
     if [[ $installing == "false" ]]; then
       exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install amp

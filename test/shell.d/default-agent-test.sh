@@ -30,6 +30,7 @@ SH
 
 cat >"$mock_bin/omarchy-cmd-missing" <<'SH'
 #!/bin/bash
+[[ -z ${OMARCHY_TEST_PATH_LOG:-} ]] || printf '%s\n' "$PATH" >"$OMARCHY_TEST_PATH_LOG"
 if [[ $1 == ${OMARCHY_TEST_LOCAL_COMMAND:-} ]]; then
   if [[ -x $HOME/.local/bin/$1 && :$PATH: == *":$HOME/.local/bin:"* ]]; then
     exit 1
@@ -279,6 +280,13 @@ pass "default agent selects and opens every supported provider and alias"
 [[ -f $agent_file && ! -e $test_home/.local/state/omarchy/defaults/agent ]] ||
   fail "default agent stores its selection in Omarchy user config"
 pass "default agent stores its selection in Omarchy user config"
+
+path_log="$test_tmp/path"
+path_with_local_bin="$mock_bin:$ROOT/bin:$test_home/.local/bin:/usr/bin"
+PATH="$path_with_local_bin" OMARCHY_TEST_PATH_LOG="$path_log" omarchy-default-agent amp
+[[ $(<"$path_log") == "$path_with_local_bin" ]] ||
+  fail "default agent leaves the standard user command path unduplicated"
+pass "default agent does not duplicate the standard user command path"
 
 OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent pi
 : >"$notification_history"
