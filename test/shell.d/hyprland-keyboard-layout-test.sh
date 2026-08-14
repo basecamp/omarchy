@@ -49,15 +49,16 @@ resolved_greeter_input() {
   resolved_input_for "default.sddm.hyprland" "${1-}"
 }
 
-assert_input() {
-  local description="$1"
-  local expected="$2"
+assert_resolved_input() {
+  local resolver="$1"
+  local description="$2"
+  local expected="$3"
   local actual
 
-  if (( $# > 2 )); then
-    actual=$(resolved_input "$3")
+  if (( $# > 3 )); then
+    actual=$("$resolver" "$4")
   else
-    actual=$(resolved_input)
+    actual=$("$resolver")
   fi
 
   [[ $actual == "$expected" ]] ||
@@ -65,20 +66,12 @@ assert_input() {
   pass "$description"
 }
 
+assert_input() {
+  assert_resolved_input resolved_input "$@"
+}
+
 assert_greeter_input() {
-  local description="$1"
-  local expected="$2"
-  local actual
-
-  if (( $# > 2 )); then
-    actual=$(resolved_greeter_input "$3")
-  else
-    actual=$(resolved_greeter_input)
-  fi
-
-  [[ $actual == "$expected" ]] ||
-    fail "$description" "expected: $expected"$'\n'"actual:   $actual"
-  pass "$description"
+  assert_resolved_input resolved_greeter_input "$@"
 }
 
 base_options="compose:caps,shift:both_capslock_cancel"
