@@ -60,14 +60,6 @@ Every panel takes the keyboard as well as the mouse: arrows move, Return activat
 
 `Super + Ctrl + 1-9` counts panels left to right in the right section, skipping the tray since it has no panel of its own. So the number matches the icon you'd point at.
 
-### Panels without a bar icon
-
-A few panels live in the shell but never take up bar space. They're summoned from the [menu](04-navigation.md) instead:
-
-- **Trigger → Speed Test → Network Speed Test** runs an internet speed test with download and upload dials.
-- **Trigger → Speed Test → Disk Speed Test** does the same for disk read and write.
-- **Setup → Network → QR Code** turns your current Wi-Fi network into a QR code someone can scan to join. Lovely for guests.
-
 ### Tailscale and Dropbox
 
 Two more widgets appear on the bar only once you install the matching service from **Install → Service**, and both are worth knowing about because they do more than report status.
@@ -90,6 +82,8 @@ The bar configures itself. You don't have to open a config file to move things.
 
 Grab an empty patch of the bar around the center and drag it toward another screen edge, and the bar moves there — left, right, top, or bottom all work, and every widget adapts (vertical bars fall back to compact icon-only forms). A click-and-hold starts the same drag. Double-left-click that same empty space to toggle transparency. And drag any widget to reorder it or throw it into another section.
 
+If you'd rather pick from a menu, **Style → Menu Bar** has both position and transparency.
+
 The same things have commands, which is what you want for a [dotfiles](31-dotfiles.md) setup:
 
 ```bash
@@ -106,8 +100,6 @@ To add or remove a widget entirely, use the plugin commands. `omarchy plugin lis
 omarchy plugin enable omarchy.media --section center
 omarchy plugin disable omarchy.weather
 ```
-
-There's also a menu route for the common bits: **Style → Menu Bar** has position and transparency.
 
 ## Hiding the bar
 
