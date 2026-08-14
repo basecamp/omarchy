@@ -12,13 +12,13 @@ omarchy plymouth preview '#1d2021' '#ebdbb2' logo.png preview.png
 
 Then apply the setup with `omarchy plymouth set '#1d2021' '#ebdbb2' logo.png`, which will also give the SDDM login screen the same colors and logo. If you want to revert, you can use `omarchy plymouth reset`.
 
- ![shopify-plymouth.jpeg](https://learn.omacom.io/u/shopify-plymouth-AjqlgW.jpeg)
+ ![branding-plymouth-shopify](images/branding-plymouth-shopify.webp)
 
 ### Screensaver
 
 You can change the logo used for the screensaver under _Style > Screensaver_. It's an ASCII logo, so you can edit the text directly, but you can also hand it a png or svg image, and we'll convert that to ASCII. It looks pretty cool.
 
- ![screensaver.gif](https://learn.omacom.io/u/screensaver-xDOE2Y.gif)
+ ![branding-screensaver](images/branding-screensaver.webp)
 
 There are three entries in that menu:
 
@@ -30,7 +30,7 @@ There are three entries in that menu:
 
 The same three options are under _Style > About_ for the _About_ screen you get from the Omarchy menu, and they work identically — the file is `~/.config/omarchy/branding/about.txt`, and the About window pops up after each change. The About art is converted to a smaller size than the screensaver's, since it has to fit in a window rather than fill your display.
 
- ![about.png](https://learn.omacom.io/u/about-wi4tkl.png)
+ ![branding-about](images/branding-about.webp)
 
 ### Converting images yourself
 

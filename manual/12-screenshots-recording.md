@@ -17,7 +17,7 @@ Hit `Print Screen` and the screen freezes so nothing shifts under you while you 
 
 The result goes two places at once: a PNG in your pictures directory, and the clipboard, so you can paste it straight into a chat window with `Super + V`. A notification pops up with a thumbnail. Click it (or hit `Super + Alt + ,` to invoke the last notification) and the shot opens in Tensaku, the annotation editor, where you can draw arrows and boxes on it before you send it.
 
-Files land in `~/Pictures` by default, named `screenshot-2026-08-13_14-22-05.png`. If you'd rather keep them in their own folder, set `OMARCHY_SCREENSHOT_DIR` — see [the FAQ](47-faq.md) for where to put session environment variables. Omarchy creates the directory for you if it isn't there. You can swap the editor too with `OMARCHY_SCREENSHOT_EDITOR`.
+Files land in `~/Pictures` by default, named `screenshot-2026-08-13_14-22-05.png`. If you'd rather keep them in their own folder, set `OMARCHY_SCREENSHOT_DIR` — see [the FAQ](46-faq.md) for where to put session environment variables. Omarchy creates the directory for you if it isn't there. You can swap the editor too with `OMARCHY_SCREENSHOT_EDITOR`.
 
 From the terminal, `omarchy screenshot` takes the same shot, and you can be explicit about it: `omarchy capture screenshot region` for freeform only, `windows` to snap to window and monitor rectangles, or `fullscreen` to skip the picker entirely and grab the focused monitor. A second argument of `copy` puts the shot only on the clipboard, and `save` only on disk.
 

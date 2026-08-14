@@ -32,7 +32,7 @@ You start Pinta via the application launcher (`Super + Space`).
 
 ## Aether
 
-[Aether](https://github.com/bjarneo/aether) is a theming application that can extract colors from a background image and turn them into a complete, cohesive theme. It's the easiest way to [make your own theme](44-making-your-own-theme.md).
+[Aether](https://github.com/bjarneo/aether) is a theming application that can extract colors from a background image and turn them into a complete, cohesive theme. It's the easiest way to [make your own theme](43-making-your-own-theme.md).
 
 You start Aether via the application launcher (`Super + Space`).
 
@@ -51,7 +51,7 @@ The same thing works from the terminal with `omarchy share clipboard`, `omarchy 
 
 You can also send straight from the file manager: right-click any selection in Nautilus and pick _Send via LocalSend_.
 
-Omarchy's firewall is closed by default except for LocalSend's port, so this works out of the box on a fresh install. See [security](49-security.md).
+Omarchy's firewall is closed by default except for LocalSend's port, so this works out of the box on a fresh install. See [security](48-security.md).
 
 ## LibreOffice
 

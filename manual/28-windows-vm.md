@@ -6,7 +6,7 @@ Your machine needs KVM virtualization for this, which most do — but it's somet
 
 The installer asks how much RAM, how many CPU cores, and how much disk to hand over (64GB or more is the sensible floor), then for a Windows username and password. Leave those blank and you get `docker` / `admin`. The download takes a while — 10-15 minutes is normal — and you can follow the progress in the browser at `http://127.0.0.1:8006`.
 
- ![windows.png](https://learn.omacom.io/u/windows-bhXSXL.png)
+ ![windows-vm](images/windows-vm.webp)
 
 ## Using it
 

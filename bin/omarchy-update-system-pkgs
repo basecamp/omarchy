@@ -5,6 +5,14 @@
 
 set -e
 
+# The conflict handler's last resort: pacman puts its questions to the person
+# running the update instead of answering them itself. Nothing here may capture
+# a stream, because an upgrade without --noconfirm prompts on stderr. The
+# handler has already said why, so no heading here either.
+if [[ ${OMARCHY_UPDATE_CONFLICT:-} == 1 && ${OMARCHY_UPDATE_INTERACTIVE:-} == 1 ]]; then
+  exec sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --overwrite '/usr/share/omarchy/*'
+fi
+
 echo -e "\e[32m\nUpdate system packages\e[0m"
 
 errors=$(mktemp)
@@ -22,9 +30,9 @@ if sudo env LC_ALL=C OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm \
 fi
 cat "$errors" >&2
 
-# An upgrade blocked only by files pacman doesn't own yet is the one failure
-# worth retrying: the handler clears them and runs this again. Anything else,
-# including a second failure, is for a human.
+# The handler takes it from here: it clears files pacman doesn't own yet and
+# runs this again, and puts a package conflict to whoever started the update.
+# Anything else, including a second failure, is for a human.
 [[ ${OMARCHY_UPDATE_RETRY:-} != 1 ]] || exit 1
 # exec, so the EXIT trap above does not fire and the handler can still read the
 # report. It takes over deleting it.

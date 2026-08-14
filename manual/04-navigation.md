@@ -4,17 +4,17 @@ Everything in Omarchy happens via the keyboard — _EVERYTHING!_ When the system
 
 But the Omarchy menu is not even intended to be the main way to operate the system most of the time. We can get faster than that! All the most important applications are bound directly to individual hotkeys. You start the terminal with `Super + Return` and a browser with `Super + Shift + Return`. Try doing one after the other, and you'll see the magic of Hyprland's tiling in action:
 
- ![browser+terminal.png](https://manual.omakub.org/u/browser-terminal-yCV75f.png)
+ ![navigation-browser-terminal](images/navigation-browser-terminal.webp)
 
 You can then hit `Super + J` to stack them on top of each other instead of side by side:
 
- ![stacked.png](https://learn.omacom.io/u/stacked-sswEJE.png)
+ ![navigation-stacked](images/navigation-stacked.webp)
 
 Hit `Super + J` again to return them to their side-by-side positions. Then try `Super + Shift + Arrow Right` while on the browser to swap the windows.
 
 Now try `Super + Ctrl + T` to start the Activity monitor. That'll appears as a floating window. You can tile it using `Super + T` (and hit that again to make it floating again). Now press `Super + Shift + F` to open the files manager. You'll have a neat four-way setup:
 
- ![fourway-tiling.png](https://learn.omacom.io/u/fourway-tiling-SHbfzO.png)
+ ![navigation-fourway-tiling](images/navigation-fourway-tiling.webp)
 
 You navigate between the window you want to be active with `Super + Arrow`. This will switch focus and move the cursor to the center of the new application.
 
@@ -30,11 +30,11 @@ You can also go full screen with `Super + F` or even just full-width (keeping th
 
 Omarchy's default layout is called dwindle. It keeps all the windows you open on a single workspace visible at all time, even if it has to shrink them down.
 
- ![dwindle-layout.png](https://learn.omacom.io/u/dwindle-layout-BNU9qb.png)
+ ![navigation-dwindle-layout](images/navigation-dwindle-layout.webp)
 
 But you can also choose to turn a workspace into the scrolling layout where windows are lined up side-by-side, beyond the visible edge of the display. You turn a single workspace into this layout via `Super + L`.
 
- ![niri-layout.png](https://learn.omacom.io/u/niri-layout-LvV25i.png)
+ ![navigation-scrolling-layout](images/navigation-scrolling-layout.webp)
 
 The choice is per workspace, and it sticks. So you can keep workspace 1 on dwindle for browsing and workspace 2 on scrolling for code, and they'll come back that way after a restart. (The same toggle is under _Trigger > Toggle > Workspace Layout_ in the Omarchy menu).
 
@@ -58,7 +58,7 @@ You can move a window out of the grouping with `Super + Alt + G` or disassemble 
 
 You can pop a window out of its workspace allocation with `Super + O`. That'll pin it as a floating window that follows you on whatever workspace you go to. Great for video players and the like.
 
- ![popped-window.jpg](https://learn.omacom.io/u/popped-window-L8N3dk.jpg)
+ ![navigation-popped-window](images/navigation-popped-window.webp)
 
 ### Scratchpad workspace
 

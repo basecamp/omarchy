@@ -6,122 +6,122 @@ Each theme styles the desktop, terminal, neovim, activity screen (btop), Chromiu
 
 Themes have a set of background images that you can pick between using `Super + Ctrl + Space`.
 
-You can find even more themes on [the extra themes page](43-extra-themes.md) or even [make your own theme](44-making-your-own-theme.md).
+You can install extra community themes via _Install > Style > Theme_ in the Omarchy menu, or even [make your own theme](43-making-your-own-theme.md).
 
- ![tokyo-night.png](https://learn.omacom.io/u/tokyo-night-yN9jzd.png)
+ ![tokyo-night](../themes/tokyo-night/preview.png)
 _Tokyo Night_
 
- ![catppuccin.png](https://learn.omacom.io/u/catppuccin-DEGjke.png)
+ ![catppuccin](../themes/catppuccin/preview.png)
 _Catppuccin_
 
- ![preview.png](https://learn.omacom.io/u/preview-LFlhHZ.png)
+ ![lumon](../themes/lumon/preview.png)
 _Lumon_
 
- ![preview.png](https://learn.omacom.io/u/preview-bAfGjN.png)
+ ![ethereal](../themes/ethereal/preview.png)
 _Ethereal_
 
- ![everforest.png](https://learn.omacom.io/u/everforest-VTw7rC.png)
+ ![everforest](../themes/everforest/preview.png)
 _Everforest_
 
- ![gruvbox.png](https://learn.omacom.io/u/gruvbox-zTUJ1I.png)
+ ![gruvbox](../themes/gruvbox/preview.png)
 _Gruvbox_
 
- ![preview.png](https://learn.omacom.io/u/preview-9laZfK.png)
+ ![miasma](../themes/miasma/preview.png)
 _Miasma_
 
- ![hackerman-6k-tc.png](https://learn.omacom.io/u/hackerman-6k-tc-9s09Op.png)
+ ![hackerman](../themes/hackerman/preview.png)
 _Hackerman_
 
- ![osaka-jade.jpg](https://learn.omacom.io/u/osaka-jade-15wLcY.jpg)
+ ![osaka-jade](../themes/osaka-jade/preview.png)
 _Osaka Jade_
 
- ![kanagawa.png](https://learn.omacom.io/u/kanagawa-qNhehU.png)
+ ![kanagawa](../themes/kanagawa/preview.png)
 _Kanagawa_
 
- ![nord.png](https://learn.omacom.io/u/nord-Rd2Y6y.png)
+ ![nord](../themes/nord/preview.png)
 _Nord_
 
- ![2025-07-15-193947_hyprshot.png](https://learn.omacom.io/u/2025-07-15-193947_hyprshot-b4lj4R.png)
+ ![matte-black](../themes/matte-black/preview.png)
 _Matte Black_
 
- ![preview.png](https://learn.omacom.io/u/preview-sQ8537.png)
+ ![vantablack](../themes/vantablack/preview.png)
 _Vantablack_
 
- ![ristretto-theme.png](https://learn.omacom.io/u/ristretto-theme-c99Sux.png)
+ ![ristretto](../themes/ristretto/preview.png)
 _Ristretto_
 
- ![preview.png](https://learn.omacom.io/u/preview-Owc1Dr.png)
+ ![retro-82](../themes/retro-82/preview.png)
 _Retro 82_
 
- ![flexoki-theme.png](https://learn.omacom.io/u/flexoki-theme-YaATok.png)
+ ![flexoki-light](../themes/flexoki-light/preview.png)
 _Flexoki Light_
 
- ![omarchy-rose-pine.png](https://learn.omacom.io/u/omarchy-rose-pine-MUH6hH.png)
+ ![rose-pine](../themes/rose-pine/preview.png)
 _Rose Pine_
 
- ![catppuccin-latte-theme.png](https://learn.omacom.io/u/catppuccin-latte-theme-1-jrWCjt.png)
+ ![catppuccin-latte](../themes/catppuccin-latte/preview.png)
 _Catppuccin Latte_
 
- ![preview.png](https://learn.omacom.io/u/preview-Vkqw3x.png)
+ ![white](../themes/white/preview.png)
 _White_
 
 ### Unlocks
 
 Themes can also have a custom unlock design, which is used for the boot decryption process. You can select one of these under _Style > Unlock_. They look like this:
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-f99Qj5.png)
+ ![catppuccin](../themes/catppuccin/preview-unlock.png)
 _Catppuccin_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-YKXUd2.png)
+ ![catppuccin-latte](../themes/catppuccin-latte/preview-unlock.png)
 _Catppuccin Latte_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-bGBH8Q.png)
+ ![ethereal](../themes/ethereal/preview-unlock.png)
 _Ethereal_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-FlHgXd.png)
+ ![everforest](../themes/everforest/preview-unlock.png)
 _Everforest_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-BhGaEN.png)
+ ![flexoki-light](../themes/flexoki-light/preview-unlock.png)
 _Flexoki Light_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-olzWHR.png)
+ ![gruvbox](../themes/gruvbox/preview-unlock.png)
 _Gruvbox_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-Tuon1J.png)
+ ![hackerman](../themes/hackerman/preview-unlock.png)
 _Hackerman_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-gocOzZ.png)
+ ![kanagawa](../themes/kanagawa/preview-unlock.png)
 _Kanagawa_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-6q3QpH.png)
+ ![lumon](../themes/lumon/preview-unlock.png)
 _Lumon_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-nl4qCr.png)
+ ![matte-black](../themes/matte-black/preview-unlock.png)
 _Matte Black_
 
-![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-1eSMmK.png)
+![miasma](../themes/miasma/preview-unlock.png)
 _Miasma_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-GTK6ej.png)
+ ![nord](../themes/nord/preview-unlock.png)
 _Nord_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-fYJ662.png)
+ ![osaka-jade](../themes/osaka-jade/preview-unlock.png)
 _Osaka Jade_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-To0aVk.png)
+ ![retro-82](../themes/retro-82/preview-unlock.png)
 _Retro 82_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-VRxFRi.png)
+ ![ristretto](../themes/ristretto/preview-unlock.png)
 _Ristretto_
 
-![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-H96PoE.png)
+![rose-pine](../themes/rose-pine/preview-unlock.png)
 _Rose Pine_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-EuHzFS.png)
+ ![tokyo-night](../themes/tokyo-night/preview-unlock.png)
 _Tokyo Night_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-GDGhfQ.png)
+ ![vantablack](../themes/vantablack/preview-unlock.png)
 _Vantablack_
 
- ![preview-unlock.png](https://learn.omacom.io/u/preview-unlock-5kJYE8.png)
+ ![white](../themes/white/preview-unlock.png)
 _White_
