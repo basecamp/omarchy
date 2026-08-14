@@ -297,20 +297,27 @@ launch_windows() {
       omarchy-notification-send -u critical "Windows VM" "Failed to start Windows VM"
       exit 1
     fi
-
-    echo "Waiting for Windows VM to start..."
-    WAIT_COUNT=0
-    until docker logs omarchy-windows 2>&1 | grep -qi "windows started successfully"; do
-      sleep 2
-      WAIT_COUNT=$((WAIT_COUNT + 1))
-      if (( WAIT_COUNT > 60 )); then  # 2 minutes timeout
-        echo ""
-        echo "❌ Timeout: Windows VM failed to start within 2 minutes"
-        echo "   Check logs: docker logs omarchy-windows"
-        exit 1
-      fi
-    done
   fi
+
+  # docker logs keeps output across stop/start and is only cleared when the
+  # container is removed, so an unanchored grep matches "started successfully"
+  # from an earlier boot and returns immediately. Anchor the scan to the current
+  # container start, and run it even when the container was already up: the
+  # image restarts the guest in place whenever Windows reboots.
+  STARTED_AT=$(docker inspect --format='{{.State.StartedAt}}' omarchy-windows)
+
+  echo "Waiting for Windows VM to start..."
+  WAIT_COUNT=0
+  until docker logs --since "$STARTED_AT" omarchy-windows 2>&1 | grep -qi "windows started successfully"; do
+    sleep 2
+    WAIT_COUNT=$((WAIT_COUNT + 1))
+    if (( WAIT_COUNT > 60 )); then  # 2 minutes timeout
+      echo ""
+      echo "❌ Timeout: Windows VM failed to start within 2 minutes"
+      echo "   Check logs: docker logs omarchy-windows"
+      exit 1
+    fi
+  done
 
   # Build the connection info
   if [[ $KEEP_ALIVE = "true" ]]; then
