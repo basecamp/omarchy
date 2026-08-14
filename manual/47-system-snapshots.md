@@ -6,11 +6,11 @@ To boot and restore a snapshot, you select it from the Limine boot loader. (If y
 
 From that screen, choose the snapshot you'd like to boot into based on the date and version. The version of Omarchy at the time of the snapshot can be seen at the bottom left corner.
 
- ![omarchy-bootloader.png](https://learn.omacom.io/u/omarchy-bootloader-Qz7kQ1.png)
+ ![snapshots-bootloader](images/snapshots-bootloader.webp)
 
 When you arrive inside, a notification will popup notifying you that you're in a bootable snapshot and if you click it, will start the restoration process. Alternatively, you can utilize `omarchy-snapshot restore`.
 
- ![omarchy-restore-snapshot.png](https://learn.omacom.io/u/omarchy-restore-snapshot-2TrMhj.png)
+ ![snapshots-restore](images/snapshots-restore.webp)
 
 This will restore your root filesystem, but not your `/home`. So it works for reverting a broken system update, but not for recovering lost personal files.
 

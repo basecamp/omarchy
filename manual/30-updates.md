@@ -6,7 +6,7 @@ Omarchy itself is installed as regular pacman packages from the [Omarchy Package
 
 When new releases are made, a circle arrow icon will appear to the right of your clock. Click it and the update process will start.
 
-![screenshot-2025-09-28_19-06-08.png](https://learn.omacom.io/u/screenshot-2025-09-28_19-06-08-yZI06N.png)
+![update-available](images/update-available.webp)
 
 ### Four channels
 
@@ -32,6 +32,6 @@ If you're already familiar with Arch, you might be tempted to just run `pacman -
 
 If you ever have a problem after doing an update, you can rollback your system to the snapshot taken before the update. Just restart and pick the snapshot in the boot loading menu from before you started the update.
 
-![omarchy-bootloader.png](https://learn.omacom.io/u/omarchy-bootloader-EVTCUU.png)
+![bootloader](images/bootloader.webp)
 
 If somehow your configuration files have been corrupted, you can also perform an Omarchy reinstall using `omarchy reinstall` in the terminal. This will reinstall all the default Omarchy packages, put you on stable and downgrade any packages that are too new, and reset all the configuration files. Note that all your user config changes to the Omarchy defaults will be overwritten doing this!

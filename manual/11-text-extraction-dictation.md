@@ -6,7 +6,7 @@ Hit `Super + Ctrl + PrtScr` to select a region on the screen for text extraction
 
 This is very helpful for grabbing addresses out of image footers or phone numbers embedded in website headlines.
 
- ![text-extraction.png](https://learn.omacom.io/u/text-extraction-1x3Oe3.png)
+ ![text-extraction](images/text-extraction.webp)
 
 ### Dictation
 

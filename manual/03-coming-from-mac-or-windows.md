@@ -34,7 +34,7 @@ Windows folks: your Win + V clipboard history lives on `Super + Ctrl + V`, and i
 | AirDrop | LocalSend, via `Super + Ctrl + S` — see [GUIs](22-guis.md) |
 | Cmd + Shift + 4 / Win + Shift + S | `Print Screen` — see [screenshots & recording](12-screenshots-recording.md) |
 | Notification Center | Notification history on `Super + Shift + Alt + ,` |
-| Time Machine (for the system) | Automatic [system snapshots](48-system-snapshots.md) on every update |
+| Time Machine (for the system) | Automatic [system snapshots](47-system-snapshots.md) on every update |
 | App Store / downloading an installer | _Install_ in the menu, or `omarchy pkg add` — see [other packages](29-other-packages.md) |
 | System Settings / Control Panel | _Setup_ in the menu, which edits plain config files — see [dotfiles](31-dotfiles.md) |
 
@@ -50,7 +50,7 @@ And when you close a window, the app actually quits. There's no macOS limbo wher
 
 ### On Mac hardware
 
-Omarchy runs well on Intel Macs — see [Mac support](45-mac-support.md). And the keyboard is kind to you: Omarchy doesn't remap anything, and Linux treats the Command key as Super, so Super sits right where Cmd always was. Your thumb won't notice the move.
+Omarchy runs well on Intel Macs — see [Mac support](44-mac-support.md). And the keyboard is kind to you: Omarchy doesn't remap anything, and Linux treats the Command key as Super, so Super sits right where Cmd always was. Your thumb won't notice the move.
 
 ### Give it two weeks
 

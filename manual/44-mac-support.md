@@ -6,7 +6,7 @@ Please note that installing on an M-series Mac is not directly supported at this
 
 In a simple test, we were able to achieve 36% performance gains on a 2019 MacBook Pro just by installing Omarchy.
 
- ![G0-1NXRWQAAn_IH.jpeg](https://learn.omacom.io/u/g0-1nxrwqaan_ih-nOdzdG.jpeg)
+ ![macbook-omarchy](images/macbook-omarchy.webp)
 
 ### Installing Omarchy on Mac
 

@@ -76,4 +76,4 @@ Or run _Remove > Preinstalls_ to sweep out all the preinstalled extras — web a
 
 ---
 
-For errors and broken bits, see [the Troubleshooting section](46-troubleshooting.md).
+For errors and broken bits, see [the Troubleshooting section](45-troubleshooting.md).
