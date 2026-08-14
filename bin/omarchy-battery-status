@@ -71,9 +71,14 @@ for supply in "${batteries[@]}"; do
   if [[ -r $supply/power_now ]]; then
     microwatts=$(<"$supply/power_now")
   elif [[ -r $supply/current_now && -r $supply/voltage_now ]]; then
+    # A failed read() (ENODEV) can leave a readable attribute empty; validate
+    # before awk, which would silently coerce that to 0.
+    microamps=$(<"$supply/current_now")
+    microvolts=$(<"$supply/voltage_now")
+    [[ $microamps =~ ^-?[0-9]+$ && $microvolts =~ ^-?[0-9]+$ ]] || continue
     microwatts=$(awk \
-      -v microamps="$(<"$supply/current_now")" \
-      -v microvolts="$(<"$supply/voltage_now")" \
+      -v microamps="$microamps" \
+      -v microvolts="$microvolts" \
       'BEGIN { printf "%d", microamps * microvolts / 1000000 }')
   else
     continue

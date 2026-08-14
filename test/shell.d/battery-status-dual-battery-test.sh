@@ -115,3 +115,25 @@ shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power2" PATH="$tmp_dir/bin:$P
 grep -Fx $'rate\t30.9W' <<<"$shell_output" >/dev/null || fail "an unmetered pack falls back to the aggregate rate instead of a partial sum" "$shell_output"
 
 pass "a pack without power telemetry falls back to UPower's aggregate rate"
+
+# Some ACPI firmware fails the read() on a present telemetry attribute with
+# ENODEV, yielding an empty string rather than a missing file. Neither an
+# empty power_now nor an empty current_now may be coerced into a metered 0W
+# (basecamp/omarchy#6895).
+: >"$tmp_dir/power2/BAT1/power_now"
+
+shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power2" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
+
+grep -Fx $'rate\t30.9W' <<<"$shell_output" >/dev/null || fail "an empty power_now read falls back to the aggregate rate instead of 0W" "$shell_output"
+
+pass "an empty power_now read falls back to UPower's aggregate rate"
+
+rm "$tmp_dir/power2/BAT1/power_now"
+: >"$tmp_dir/power2/BAT1/current_now"
+printf '12600000\n' >"$tmp_dir/power2/BAT1/voltage_now"
+
+shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power2" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
+
+grep -Fx $'rate\t30.9W' <<<"$shell_output" >/dev/null || fail "an empty current_now read falls back to the aggregate rate instead of 0W" "$shell_output"
+
+pass "an empty current_now read falls back to UPower's aggregate rate"
