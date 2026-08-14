@@ -32,9 +32,13 @@ trust_device() {
 case "$action" in
   pair)
     power_on
-    timeout 20s bluetoothctl pair "$address" >/dev/null 2>&1 || true
-    trust_device
-    timeout 20s bluetoothctl connect "$address" >/dev/null 2>&1 || true
+    # Do not trust a device that never bonded. A failed pair + trust made the
+    # panel treat the device as known and connect-only, so a BLE keyboard that
+    # needs a passkey could never be retried.
+    if timeout 60s bluetoothctl pair "$address" >/dev/null 2>&1; then
+      trust_device
+      timeout 20s bluetoothctl connect "$address" >/dev/null 2>&1 || true
+    fi
     ;;
   connect)
     power_on

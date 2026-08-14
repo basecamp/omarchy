@@ -12,6 +12,14 @@ pass "bt-agent skips when bluetooth.service is inactive"
 grep -Fx 'Restart=on-failure' "$service" >/dev/null
 pass "bt-agent still restarts after runtime failures"
 
+grep -Fx 'ExecStart=/usr/bin/omarchy-bluetooth-agent' "$service" >/dev/null ||
+  fail "bt-agent still launches NoInputNoOutput bt-agent, which cannot show a keyboard passkey"
+pass "bt-agent shows pairing passkeys through omarchy-bluetooth-agent"
+
+grep -q 'KeyboardDisplay' "$ROOT/bin/omarchy-bluetooth-agent" ||
+  fail "pairing agent is not registered as KeyboardDisplay"
+pass "pairing agent is registered as KeyboardDisplay"
+
 sleep_service="$ROOT/default/systemd/user/omarchy-sleep-lock.service"
 grep -Fx 'ExecStart=/usr/bin/omarchy-system-sleep-monitor' "$sleep_service" >/dev/null
 pass "sleep lock service uses the package-backed monitor path"

@@ -85,6 +85,10 @@ function sortedByLabel(devices) {
 // var property, and BlueZ churn (discovery timeouts, unpair) can destroy the
 // object while a delegate is still incubating, which segfaults quickshell.
 // Actions resolve the backend object via Panel.deviceFor().
+function isBonded(device) {
+  return !!(device && (device.paired || device.bonded))
+}
+
 function deviceRow(d) {
   if (!d) return null
   return {
@@ -92,6 +96,9 @@ function deviceRow(d) {
     name: d.name || "",
     deviceName: d.deviceName || "",
     connected: !!d.connected,
+    paired: !!d.paired,
+    bonded: !!d.bonded,
+    trusted: !!d.trusted,
     state: d.state !== undefined ? d.state : -1,
     batteryAvailable: !!d.batteryAvailable,
     battery: d.battery !== undefined ? d.battery : 0,
@@ -166,6 +173,7 @@ if (typeof module !== "undefined") {
     nodeText: nodeText,
     bluetoothSinkMatchesDevice: bluetoothSinkMatchesDevice,
     sortedByLabel: sortedByLabel,
+    isBonded: isBonded,
     deviceRow: deviceRow,
     deviceLists: deviceLists,
     cloneMap: cloneMap,
