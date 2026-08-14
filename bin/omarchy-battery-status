@@ -48,31 +48,25 @@ time_remaining=$(awk '/time to (empty|full)/ {
 }' <<<"$battery_info")
 power_rate_raw=$(awk '/energy-rate/ { print $2; exit }' <<<"$battery_info")
 
-# Per-pack readings (live wattage, cycle counts) cover every battery that
-# actually holds a charge. A pack with zero full-charge capacity is dead or
-# disconnected and must not mask a working one; if every pack reads that way
-# we fall back to all of them rather than reporting nothing.
-present_batteries=()
-live_batteries=()
+# Per-pack readings (live wattage, cycle counts) cover every system battery.
+# Peripheral batteries (mice, keyboards) also report type Battery, but carry
+# scope Device and are not part of the machine's power budget.
+batteries=()
 for supply in "$power_supply_path"/*; do
   [[ -r $supply/type && $(<"$supply/type") == "Battery" ]] || continue
+  [[ -r $supply/scope && $(<"$supply/scope") == "Device" ]] && continue
   if [[ -r $supply/present ]]; then
     [[ $(<"$supply/present") == "1" ]] || continue
   fi
-  present_batteries+=("$supply")
-
-  full=$(cat "$supply/energy_full" 2>/dev/null || cat "$supply/charge_full" 2>/dev/null)
-  [[ $full =~ ^[0-9]+$ ]] && (( full > 0 )) && live_batteries+=("$supply")
+  batteries+=("$supply")
 done
-
-(( ${#live_batteries[@]} )) || live_batteries=("${present_batteries[@]}")
 
 # UPower's energy-rate can lag the kernel telemetry by tens of seconds. Sum
 # the instantaneous sysfs readings when available so the open panel stays
 # live and a multi-battery machine shows its combined draw.
 total_microwatts=0
 have_sysfs_rate=false
-for supply in "${live_batteries[@]}"; do
+for supply in "${batteries[@]}"; do
   if [[ -r $supply/power_now ]]; then
     microwatts=$(<"$supply/power_now")
   elif [[ -r $supply/current_now && -r $supply/voltage_now ]]; then
@@ -148,10 +142,11 @@ if [[ $shell_output == "true" ]]; then
   printf 'size\t%s\n' "${capacity}Wh"
   printf 'time\t%s\n' "$time_remaining"
 
-  # One cycle count per live pack, so a multi-battery machine reports both
-  # rather than silently showing whichever sorts first.
+  # One cycle count per pack, so a multi-battery machine reports both rather
+  # than silently showing whichever sorts first. A dead pack's -1 falls to
+  # the digit check.
   cycles=""
-  for supply in "${live_batteries[@]}"; do
+  for supply in "${batteries[@]}"; do
     count=$(cat "$supply/cycle_count" 2>/dev/null) || continue
     [[ $count =~ ^[0-9]+$ ]] || continue
     cycles+="${cycles:+ / }$count"

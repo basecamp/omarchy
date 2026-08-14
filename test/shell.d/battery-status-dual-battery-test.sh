@@ -25,6 +25,14 @@ printf '46530000\n' >"$tmp_dir/power/BAT1/energy_full"
 printf '5\n' >"$tmp_dir/power/BAT1/cycle_count"
 printf '30500000\n' >"$tmp_dir/power/BAT1/power_now"
 
+# A wireless mouse also reports type Battery, but its scope marks it as a
+# peripheral: it must not leak into the machine's wattage or cycle counts.
+mkdir -p "$tmp_dir/power/hidpp_battery_0"
+printf 'Battery\n' >"$tmp_dir/power/hidpp_battery_0/type"
+printf 'Device\n' >"$tmp_dir/power/hidpp_battery_0/scope"
+printf '1000000\n' >"$tmp_dir/power/hidpp_battery_0/power_now"
+printf '99\n' >"$tmp_dir/power/hidpp_battery_0/cycle_count"
+
 cat >"$tmp_dir/bin/upower" <<'STUB'
 #!/bin/bash
 
