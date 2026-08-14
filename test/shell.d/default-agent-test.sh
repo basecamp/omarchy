@@ -32,11 +32,12 @@ cat >"$mock_bin/omarchy-cmd-missing" <<'SH'
 #!/bin/bash
 [[ -z ${OMARCHY_TEST_PATH_LOG:-} ]] || printf '%s\n' "$PATH" >"$OMARCHY_TEST_PATH_LOG"
 if [[ $1 == ${OMARCHY_TEST_LOCAL_COMMAND:-} ]]; then
-  if [[ -x $HOME/.local/bin/$1 && :$PATH: == *":$HOME/.local/bin:"* ]]; then
-    exit 1
-  else
-    exit 0
+  if [[ -x $HOME/.local/bin/$1 ]]; then
+    case ":$PATH:" in
+      *":$HOME/.local/bin:"*) exit 1 ;;
+    esac
   fi
+  exit 0
 fi
 [[ $1 == ${OMARCHY_TEST_MISSING_COMMAND:-} ]]
 SH
@@ -182,7 +183,7 @@ omarchy-remove-preinstalls >/dev/null
 for command in omp grok crush; do
   [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
 done
-[[ -L $test_home/.local/bin/amp && $(readlink "$test_home/.local/bin/amp") == "$official_amp_target" ]] ||
+[[ -L $test_home/.local/bin/amp && $(readlink "$test_home/.local/bin/amp") == $official_amp_target ]] ||
   fail "Remove Preinstalls preserves an independent Amp installation"
 rm "$test_home/.local/bin/amp"
 pass "Remove Preinstalls leaves Amp installations it does not own alone"
@@ -284,7 +285,7 @@ pass "default agent stores its selection in Omarchy user config"
 path_log="$test_tmp/path"
 path_with_local_bin="$mock_bin:$ROOT/bin:$test_home/.local/bin:/usr/bin"
 PATH="$path_with_local_bin" OMARCHY_TEST_PATH_LOG="$path_log" omarchy-default-agent amp
-[[ $(<"$path_log") == "$path_with_local_bin" ]] ||
+[[ $(<"$path_log") == $path_with_local_bin ]] ||
   fail "default agent leaves the standard user command path unduplicated"
 pass "default agent does not duplicate the standard user command path"
 
@@ -427,8 +428,10 @@ assert_launched() {
     fail "$agent launch $description" "expected: ${expected[*]}\nactual: ${actual[*]}"
 
   for ((index = 0; index < ${#expected[@]}; index++)); do
-    [[ ${actual[$index]} == "${expected[$index]}" ]] ||
-      fail "$agent launch $description" "expected: ${expected[*]}\nactual: ${actual[*]}"
+    case ${actual[$index]} in
+      "${expected[$index]}") ;;
+      *) fail "$agent launch $description" "expected: ${expected[*]}\nactual: ${actual[*]}" ;;
+    esac
   done
 }
 
