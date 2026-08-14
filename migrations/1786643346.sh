@@ -127,9 +127,26 @@ unverified_repairs_exist() {
 # Whether a profile is open is mechanical: a running Chromium-family browser
 # holds a SingletonLock (and socket) inside its user-data-dir.
 profile_open() {
-  # -L catches a SingletonLock left as a dangling symlink; -e covers a plain
-  # file, and -S the socket — any of them means a browser is attached.
-  [[ -L $1/SingletonLock || -e $1/SingletonLock || -S $1/SingletonSocket ]]
+  local lock=$1/SingletonLock target host pid
+
+  # The lock always dangles: it points at <hostname>-<pid>, never at a file. So
+  # only that pid says whether a browser is still attached, and a crash or a
+  # reboot routinely leaves the link behind with a pid that is long gone.
+  if [[ -L $lock ]]; then
+    target=$(readlink "$lock")
+    host=${target%-*}
+    pid=${target##*-}
+
+    # A lock another machine wrote (or one that doesn't parse) says nothing
+    # from here, so leave it counting as open rather than repair under a
+    # browser we cannot see.
+    [[ $host == "$(uname -n)" && $pid =~ ^[0-9]+$ ]] || return 0
+
+    [[ -d /proc/$pid ]]
+    return
+  fi
+
+  [[ -e $lock || -S $1/SingletonSocket ]]
 }
 
 # Gate on a pending — or to-be-verified — profile actually being open, not on

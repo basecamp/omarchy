@@ -37,10 +37,14 @@ run_migration() {
 
 # A running Chromium-family browser marks its profile root with a SingletonLock
 # symlink to <hostname>-<pid>, a target that never exists on disk. That lock —
-# not the mere presence of a browser process — is what the migration waits on.
+# not the mere presence of a browser process — is what the migration waits on,
+# and it counts as held only while the pid it names is alive: this test's own.
+LIVE_LOCK="$(uname -n)-$$"
+export LIVE_LOCK
+
 open_browser() {
   mkdir -p "$profile_root"
-  ln -sfn "test-host-1234" "$profile_root/SingletonLock"
+  ln -sfn "$LIVE_LOCK" "$profile_root/SingletonLock"
 }
 close_browser() {
   rm -f "$profile_root/SingletonLock"
@@ -80,13 +84,28 @@ pass "migration keeps the browser prompt visible"
 # prompt, which the still-declining gum stub would otherwise fail.
 close_browser
 mkdir -p "$home/.config/google-chrome"
-ln -sfn "test-host-1234" "$home/.config/google-chrome/SingletonLock"
+ln -sfn "$LIVE_LOCK" "$home/.config/google-chrome/SingletonLock"
 write_stale_preferences
 run_migration || fail "migration repairs while a different profile root is open"
 jq -e --arg pinned "$pinned_id" '.extensions.commands["linux:Alt+Shift+L"].extension == $pinned' "$preferences" >/dev/null ||
   fail "migration repairs the shortcut while a different profile root is open"
 pass "migration ignores a browser on a different profile root"
 rm -f "$home/.config/google-chrome/SingletonLock" "$preferences.omarchy-copy-url-repair.bak"
+
+# A crash or a reboot leaves the lock behind naming a pid that is gone. Waiting
+# on that profile can never end — no keypress makes a dead browser exit — so a
+# stale lock has to read as closed.
+write_stale_preferences
+(exit) &
+stale_pid=$!
+wait "$stale_pid"
+ln -sfn "$(uname -n)-$stale_pid" "$profile_root/SingletonLock"
+run_migration || fail "migration repairs through a stale singleton lock"
+jq -e --arg pinned "$pinned_id" '.extensions.commands["linux:Alt+Shift+L"].extension == $pinned' "$preferences" >/dev/null ||
+  fail "migration repairs the shortcut through a stale singleton lock"
+pass "migration repairs through a stale singleton lock"
+close_browser
+rm -f "$preferences.omarchy-copy-url-repair.bak"
 
 # Closing the affected profile and confirming the prompt lets the repair
 # proceed.
@@ -167,7 +186,7 @@ cat >"$stub_bin/python3" <<'STUB'
 # the check calls report a surviving ghost through their exit status.
 "${REAL_PYTHON}" "$@"
 status=$?
-[[ ${5:-} == "repair" ]] && ln -sfn "test-host-1234" "$HOME/.config/chromium/SingletonLock"
+[[ ${5:-} == "repair" ]] && ln -sfn "${LIVE_LOCK:?}" "$HOME/.config/chromium/SingletonLock"
 exit $status
 STUB
 chmod +x "$stub_bin/python3"
