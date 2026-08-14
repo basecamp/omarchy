@@ -348,7 +348,7 @@ assert_bypass() {
   assert_launched "$agent" "skips permission prompts" "$@"
 }
 
-assert_launch pi pi -- "Review this project"
+assert_launch pi pi "Review this project"
 assert_launch omp omp --auto-approve -- "Review this project"
 assert_launch opencode opencode --auto --prompt "Review this project"
 assert_launch claude claude --permission-mode bypassPermissions -- "Review this project"

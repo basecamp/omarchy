@@ -88,7 +88,7 @@ omp)
   ;;
 pi)
   command=(pi)
-  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  [[ -n ${prompt:-} ]] && command+=("$prompt")
   ;;
 *)
   echo "Unsupported default agent: $agent" >&2
