@@ -8,120 +8,120 @@ Themes have a set of background images that you can pick between using `Super + 
 
 You can install extra community themes via _Install > Style > Theme_ in the Omarchy menu, or even [make your own theme](43-making-your-own-theme.md).
 
- ![theme-tokyo-night](images/theme-tokyo-night.webp)
+ ![tokyo-night](../themes/tokyo-night/preview.png)
 _Tokyo Night_
 
- ![theme-catppuccin](images/theme-catppuccin.webp)
+ ![catppuccin](../themes/catppuccin/preview.png)
 _Catppuccin_
 
- ![theme-lumon](images/theme-lumon.webp)
+ ![lumon](../themes/lumon/preview.png)
 _Lumon_
 
- ![theme-ethereal](images/theme-ethereal.webp)
+ ![ethereal](../themes/ethereal/preview.png)
 _Ethereal_
 
- ![theme-everforest](images/theme-everforest.webp)
+ ![everforest](../themes/everforest/preview.png)
 _Everforest_
 
- ![theme-gruvbox](images/theme-gruvbox.webp)
+ ![gruvbox](../themes/gruvbox/preview.png)
 _Gruvbox_
 
- ![theme-miasma](images/theme-miasma.webp)
+ ![miasma](../themes/miasma/preview.png)
 _Miasma_
 
- ![theme-hackerman](images/theme-hackerman.webp)
+ ![hackerman](../themes/hackerman/preview.png)
 _Hackerman_
 
- ![theme-osaka-jade](images/theme-osaka-jade.webp)
+ ![osaka-jade](../themes/osaka-jade/preview.png)
 _Osaka Jade_
 
- ![theme-kanagawa](images/theme-kanagawa.webp)
+ ![kanagawa](../themes/kanagawa/preview.png)
 _Kanagawa_
 
- ![theme-nord](images/theme-nord.webp)
+ ![nord](../themes/nord/preview.png)
 _Nord_
 
- ![theme-matte-black](images/theme-matte-black.webp)
+ ![matte-black](../themes/matte-black/preview.png)
 _Matte Black_
 
- ![theme-vantablack](images/theme-vantablack.webp)
+ ![vantablack](../themes/vantablack/preview.png)
 _Vantablack_
 
- ![theme-ristretto](images/theme-ristretto.webp)
+ ![ristretto](../themes/ristretto/preview.png)
 _Ristretto_
 
- ![theme-retro-82](images/theme-retro-82.webp)
+ ![retro-82](../themes/retro-82/preview.png)
 _Retro 82_
 
- ![theme-flexoki-light](images/theme-flexoki-light.webp)
+ ![flexoki-light](../themes/flexoki-light/preview.png)
 _Flexoki Light_
 
- ![theme-rose-pine](images/theme-rose-pine.webp)
+ ![rose-pine](../themes/rose-pine/preview.png)
 _Rose Pine_
 
- ![theme-catppuccin-latte](images/theme-catppuccin-latte.webp)
+ ![catppuccin-latte](../themes/catppuccin-latte/preview.png)
 _Catppuccin Latte_
 
- ![theme-white](images/theme-white.webp)
+ ![white](../themes/white/preview.png)
 _White_
 
 ### Unlocks
 
 Themes can also have a custom unlock design, which is used for the boot decryption process. You can select one of these under _Style > Unlock_. They look like this:
 
- ![unlock-catppuccin](images/unlock-catppuccin.webp)
+ ![catppuccin](../themes/catppuccin/preview-unlock.png)
 _Catppuccin_
 
- ![unlock-catppuccin-latte](images/unlock-catppuccin-latte.webp)
+ ![catppuccin-latte](../themes/catppuccin-latte/preview-unlock.png)
 _Catppuccin Latte_
 
- ![unlock-ethereal](images/unlock-ethereal.webp)
+ ![ethereal](../themes/ethereal/preview-unlock.png)
 _Ethereal_
 
- ![unlock-everforest](images/unlock-everforest.webp)
+ ![everforest](../themes/everforest/preview-unlock.png)
 _Everforest_
 
- ![unlock-flexoki-light](images/unlock-flexoki-light.webp)
+ ![flexoki-light](../themes/flexoki-light/preview-unlock.png)
 _Flexoki Light_
 
- ![unlock-gruvbox](images/unlock-gruvbox.webp)
+ ![gruvbox](../themes/gruvbox/preview-unlock.png)
 _Gruvbox_
 
- ![unlock-hackerman](images/unlock-hackerman.webp)
+ ![hackerman](../themes/hackerman/preview-unlock.png)
 _Hackerman_
 
- ![unlock-kanagawa](images/unlock-kanagawa.webp)
+ ![kanagawa](../themes/kanagawa/preview-unlock.png)
 _Kanagawa_
 
- ![unlock-lumon](images/unlock-lumon.webp)
+ ![lumon](../themes/lumon/preview-unlock.png)
 _Lumon_
 
- ![unlock-matte-black](images/unlock-matte-black.webp)
+ ![matte-black](../themes/matte-black/preview-unlock.png)
 _Matte Black_
 
-![unlock-miasma](images/unlock-miasma.webp)
+![miasma](../themes/miasma/preview-unlock.png)
 _Miasma_
 
- ![unlock-nord](images/unlock-nord.webp)
+ ![nord](../themes/nord/preview-unlock.png)
 _Nord_
 
- ![unlock-osaka-jade](images/unlock-osaka-jade.webp)
+ ![osaka-jade](../themes/osaka-jade/preview-unlock.png)
 _Osaka Jade_
 
- ![unlock-retro-82](images/unlock-retro-82.webp)
+ ![retro-82](../themes/retro-82/preview-unlock.png)
 _Retro 82_
 
- ![unlock-ristretto](images/unlock-ristretto.webp)
+ ![ristretto](../themes/ristretto/preview-unlock.png)
 _Ristretto_
 
-![unlock-rose-pine](images/unlock-rose-pine.webp)
+![rose-pine](../themes/rose-pine/preview-unlock.png)
 _Rose Pine_
 
- ![unlock-tokyo-night](images/unlock-tokyo-night.webp)
+ ![tokyo-night](../themes/tokyo-night/preview-unlock.png)
 _Tokyo Night_
 
- ![unlock-vantablack](images/unlock-vantablack.webp)
+ ![vantablack](../themes/vantablack/preview-unlock.png)
 _Vantablack_
 
- ![unlock-white](images/unlock-white.webp)
+ ![white](../themes/white/preview-unlock.png)
 _White_
