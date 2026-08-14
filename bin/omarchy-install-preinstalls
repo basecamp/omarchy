@@ -11,7 +11,7 @@ if gum confirm "Are you sure you want to restore all preinstalled web apps, TUI 
   omarchy-refresh-applications
 
   # Mirrors the list in omarchy-remove-preinstalls; both track omarchy-base.packages
-  omarchy-pkg-add \
+  if ! omarchy-pkg-add \
     aether \
     cliamp \
     libreoffice-fresh \
@@ -23,8 +23,13 @@ if gum confirm "Are you sure you want to restore all preinstalled web apps, TUI 
     lazydocker \
     omacut \
     omacalc \
-    omawrite
+    omawrite; then
+    echo -e "\nPreinstalls are still marked as removed. Fix the errors above and try again."
+    exit 1
+  fi
 
+  # Last, so a failure above leaves the opt-out intact rather than restoring
+  # keybindings for apps that never came back
   rm -f ~/.local/state/omarchy/preinstalls-removed
   hyprctl reload
 fi
