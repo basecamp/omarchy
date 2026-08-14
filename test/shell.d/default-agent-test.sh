@@ -30,7 +30,13 @@ SH
 
 cat >"$mock_bin/omarchy-cmd-missing" <<'SH'
 #!/bin/bash
-[[ $1 == "amp" && -x $HOME/.local/bin/amp && :$PATH: == *":$HOME/.local/bin:"* ]] && exit 1
+if [[ $1 == ${OMARCHY_TEST_LOCAL_COMMAND:-} ]]; then
+  if [[ -x $HOME/.local/bin/$1 && :$PATH: == *":$HOME/.local/bin:"* ]]; then
+    exit 1
+  else
+    exit 0
+  fi
+fi
 [[ $1 == ${OMARCHY_TEST_MISSING_COMMAND:-} ]]
 SH
 
@@ -317,6 +323,7 @@ pass "installed agents select and open without notifications"
 : >"$terminal_log"
 : >"$mise_log"
 export OMARCHY_TEST_MISSING_COMMAND=amp
+export OMARCHY_TEST_LOCAL_COMMAND=amp
 omarchy-default-agent amp
 mapfile -d '' -t terminal_args <"$terminal_log"
 [[ ${terminal_args[0]} == "omarchy-default-agent" && ${terminal_args[1]} == "--install" && ${terminal_args[2]} == "amp" ]] ||
@@ -333,6 +340,7 @@ grep -Fq "Could not install Amp" "$test_tmp/amp-install-failure-output" ||
 : >"$curl_log"
 omarchy-default-agent --install amp >"$test_tmp/amp-install-output"
 unset OMARCHY_TEST_MISSING_COMMAND
+unset OMARCHY_TEST_LOCAL_COMMAND
 mapfile -d '' -t curl_args <"$curl_log"
 [[ ${curl_args[0]} == "-fsSL" && ${curl_args[1]} == "https://ampcode.com/install.sh" ]] ||
   fail "Amp installation uses the official installer"
@@ -382,6 +390,20 @@ pass "default agent reports mise failures without notifications"
 
 rm "$mock_bin/omarchy-agent"
 hash -r
+
+cat >"$test_home/.local/bin/pi" <<'SH'
+#!/bin/bash
+exit 0
+SH
+chmod +x "$test_home/.local/bin/pi"
+printf '%s\n' "pi" >"$agent_file"
+: >"$launch_log"
+OMARCHY_TEST_LOCAL_COMMAND=pi PATH="$mock_bin:$ROOT/bin:/usr/bin" omarchy-agent
+mapfile -d '' -t launch_args <"$launch_log"
+[[ ${launch_args[*]} == "--app-id=org.omarchy.agent pi" ]] ||
+  fail "agent launcher finds a non-Amp agent in the standard user command path"
+rm "$test_home/.local/bin/pi"
+pass "agent launcher restores the standard user command path for every provider"
 
 assert_launched() {
   local agent=$1

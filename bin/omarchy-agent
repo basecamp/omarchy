@@ -46,7 +46,12 @@ if [[ -z $agent ]]; then
   exit 1
 fi
 
-[[ $agent == "amp" ]] && export PATH="${PATH:+$PATH:}$HOME/.local/bin"
+# A long-running session can predate env-bootstrap's user path update. Restore
+# the standard user command path for any locally installed agent.
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) export PATH="${PATH:+$PATH:}$HOME/.local/bin" ;;
+esac
 
 if omarchy-cmd-missing "$agent"; then
   echo "$agent is not installed. Choose an installed agent with: omarchy default agent <name>" >&2
