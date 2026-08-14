@@ -157,8 +157,10 @@ profile_open() {
     fds=$(readlink -- /proc/$pid/fd/* 2>/dev/null) || fds=""
     [[ $fds == *"$1/"* ]] && return 0
 
-    # A process that answers for neither counts as open: better a repair
-    # deferred than one made under a browser that reverts it on exit.
+    # A browser whose files this cannot see — one reaching the profile through
+    # a symlink, or holding it open only in a child — still counts as open by
+    # its name alone. Waiting on the wrong browser costs a deferred repair the
+    # next run makes; repairing under a live one loses the fix for good.
     exe=$(readlink "/proc/$pid/exe" 2>/dev/null) || return 0
     case ${exe##*/} in
       *chrom* | brave* | msedge* | microsoft-edge* | vivaldi* | opera* | helium*) return 0 ;;
