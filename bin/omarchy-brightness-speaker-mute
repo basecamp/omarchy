@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# omarchy:summary=Set the speaker-mute indicator LED on laptops that expose a platform::mute LED node.
+# omarchy:args=<on|off>
+
+if [[ -e /sys/class/leds/platform::mute/brightness ]]; then
+  case "$1" in
+    on)  value=1 ;;
+    off) value=0 ;;
+    *)   echo "Usage: $(basename "$0") <on|off>" >&2; exit 1 ;;
+  esac
+
+  brightnessctl --device="platform::mute" set "$value" >/dev/null 2>&1 || true
+fi
