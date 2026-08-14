@@ -20,6 +20,7 @@ if gum confirm "Are you sure you want to restore all preinstalled web apps, TUI 
     obsidian \
     obs-studio \
     kdenlive \
+    moonlight-qt \
     lazydocker \
     omacut \
     omacalc \
