@@ -96,6 +96,7 @@ individual plugins (`bar`, `image-selector`, …).
 | `ping`                                | health check                    |
 | `summon <id> <payloadJson>`           | load + open a plugin            |
 | `hide <id>`                           | close a previously-summoned     |
+| `hideOpen`                            | close an open panel/overlay (`hidden` / `none`) |
 | `toggle <id> <payloadJson>`           | summon if closed, hide if open  |
 | `call <id> <method> <arg>`            | call an already-loaded plugin   |
 | `rescanPlugins`                       | re-walk plugin dirs and hot-reload plugin code |

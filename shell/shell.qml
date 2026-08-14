@@ -512,6 +512,26 @@ ShellRoot {
     return isPluginOpen(id) ? hide(id) : summon(id, payloadJson)
   }
 
+  // Super+W asks this before closing the focused window. OSD is a keep-loaded
+  // panel that reports opened while a toast is up; it must not steal the key.
+  function hideOpen() {
+    var ids = []
+    var seen = ({})
+    function consider(pluginId) {
+      var id = String(pluginId || "")
+      if (!id || seen[id] || id === "omarchy.osd") return
+      seen[id] = true
+      if (isPluginOpen(id)) ids.push(id)
+    }
+    for (var openId in openPanelIds) consider(openId)
+    for (var loaderId in panelLoaders) consider(loaderId)
+    if (ids.length > 0) {
+      for (var i = 0; i < ids.length; i++) hide(ids[i])
+      return true
+    }
+    return !!(shell.bar && typeof shell.bar.hideOpenPanel === "function" && shell.bar.hideOpenPanel())
+  }
+
   // Map of pluginId -> Loader, populated by the Instantiator delegate below.
   property var panelLoaders: ({})
 
@@ -1005,6 +1025,10 @@ ShellRoot {
 
     function hide(id: string): void {
       shell.hide(id)
+    }
+
+    function hideOpen(): string {
+      return shell.hideOpen() ? "hidden" : "none"
     }
 
     function toggle(id: string, payloadJson: string): void {

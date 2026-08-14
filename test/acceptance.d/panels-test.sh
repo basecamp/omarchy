@@ -115,6 +115,15 @@ screenshot "success-panel-focus-prime-reopened"
 wtype -k Escape
 wait_until "Escape closes a panel reopened during fade" 15 layer_absent "omarchy-keyboard-panel"
 
+if command -v omarchy-hyprland-window-close >/dev/null; then
+  omarchy-shell shell summon omarchy.network >/dev/null
+  wait_until "network panel opens for Super+W close" 15 layer_present "omarchy-keyboard-panel"
+  omarchy-hyprland-window-close
+  wait_until "window close hides the open panel" 15 layer_absent "omarchy-keyboard-panel"
+else
+  pass "window-close command not installed; skipping Super+W panel dismiss"
+fi
+
 trap - EXIT
 restore_weather
 exit $status

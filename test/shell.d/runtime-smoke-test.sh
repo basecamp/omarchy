@@ -182,6 +182,12 @@ shell_ipc_quiet shell hide omarchy.menu >/dev/null
 [[ $(shell_ipc shell summon missing.plugin "{}") == "unknown" ]] || fail_with_log "shell IPC rejects unknown plugin"
 pass "shell IPC summon and hide contract works"
 
+[[ $(shell_ipc shell hideOpen) == "none" ]] || fail_with_log "hideOpen reports none when nothing is open"
+[[ $(shell_ipc shell summon omarchy.emojis "{}") == "ok" ]] || fail_with_log "shell IPC summons emojis for hideOpen"
+[[ $(shell_ipc shell hideOpen) == "hidden" ]] || fail_with_log "hideOpen hides a summoned overlay"
+[[ $(shell_ipc shell hideOpen) == "none" ]] || fail_with_log "hideOpen reports none after dismissing the overlay"
+pass "shell IPC hideOpen dismisses an open overlay"
+
 [[ $(shell_ipc notifications ping) == "ok" ]] || fail_with_log "notifications IPC responds"
 [[ $(shell_ipc notifications setDnd false) == "off" ]] || fail_with_log "notifications IPC toggles DND"
 [[ $(shell_ipc media ping) == "ok" ]] || fail_with_log "media IPC responds"
