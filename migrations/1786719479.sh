@@ -2,7 +2,7 @@ echo "Replace the Gemini coding agent with Antigravity"
 
 agent_file="$HOME/.config/omarchy/defaults/agent"
 
-if [[ ! -f $HOME/.local/state/omarchy/preinstalls-removed ]] && omarchy-cmd-missing agy; then
+if [[ ! -f "$HOME/.local/state/omarchy/preinstalls-removed" ]] && omarchy-cmd-missing agy; then
   omarchy-mise-install antigravity-cli agy
 fi
 
