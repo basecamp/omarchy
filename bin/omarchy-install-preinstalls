@@ -7,18 +7,15 @@ if gum confirm "Are you sure you want to restore all preinstalled web apps, TUI 
   echo -e "Restoring preinstalled Omarchy applications...\n"
 
   # Recreates the shipped .desktop launchers (web apps and TUIs) and the mise stubs
+  # that back claude, gh, opencode, and the rest of the agents
   omarchy-refresh-applications
 
+  # Mirrors the list in omarchy-remove-preinstalls; both track omarchy-base.packages
   omarchy-pkg-add \
     aether \
     cliamp \
-    typora \
-    spotify \
     libreoffice-fresh \
-    1password \
-    1password-cli \
     xournalpp \
-    signal-desktop \
     pinta \
     obsidian \
     obs-studio \
@@ -26,10 +23,7 @@ if gum confirm "Are you sure you want to restore all preinstalled web apps, TUI 
     lazydocker \
     omacut \
     omacalc \
-    omawrite \
-    opencode \
-    claude-code \
-    github-cli
+    omawrite
 
   rm -f ~/.local/state/omarchy/preinstalls-removed
   hyprctl reload
