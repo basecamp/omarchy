@@ -1792,82 +1792,6 @@ CHROMIUM_FLAGS_PATCH_PY
   done
 }
 
-# True if any Chromium-family browser that stores the Copy URL shortcut is running.
-browser_is_running() {
-  pgrep -x 'chromium|chrome|brave|msedge|vivaldi-bin|vivaldi|opera|helium' >/dev/null 2>&1
-}
-
-repair_chromium_copy_url_shortcuts() {
-  local profile_root preferences
-  local -a profile_roots=(
-    "$HOME/.config/chromium"
-    "$HOME/.config/google-chrome"
-    "$HOME/.config/google-chrome-beta"
-    "$HOME/.config/BraveSoftware/Brave-Browser"
-    "$HOME/.config/BraveSoftware/Brave-Browser-Beta"
-    "$HOME/.config/microsoft-edge"
-    "$HOME/.config/microsoft-edge-beta"
-    "$HOME/.config/vivaldi"
-    "$HOME/.config/opera"
-    "$HOME/.config/helium"
-  )
-  local -a pending=()
-
-  for profile_root in "${profile_roots[@]}"; do
-    [[ -d $profile_root ]] || continue
-
-    for preferences in "$profile_root"/*/Preferences; do
-      [[ -f $preferences ]] || continue
-      grep -qF 'bocglpkldciamkbmlphanhkfnhpmnbma' "$preferences" || continue
-      pending+=("$preferences")
-    done
-  done
-
-  (( ${#pending[@]} )) || return 0
-
-  # A running browser holds Preferences in memory and rewrites it on exit,
-  # which would revert this repair. Ask the user to close it first.
-  if browser_is_running && (( ! OMARCHY_UPGRADE_YES )) && [[ -r /dev/tty ]]; then
-    if ! gum confirm "Close all browser windows before the Copy URL shortcut is repaired, then continue" </dev/tty; then
-      echo "Skipped Copy URL shortcut repair; re-run after closing your browser." >&2
-      return 0
-    fi
-  fi
-
-  for preferences in "${pending[@]}"; do
-    python3 - "$preferences" "$preferences.omarchy-upgrade-to-quattro.$BACKUP_SUFFIX.bak" <<'CHROMIUM_SHORTCUTS_PATCH_PY'
-import json
-import shutil
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-backup_path = Path(sys.argv[2])
-old_id = "bocglpkldciamkbmlphanhkfnhpmnbma"
-new_id = "bgpiichlckmfanooecilcjemknkcpngb"
-preferences = json.loads(path.read_text())
-extensions = preferences.get("extensions", {})
-commands = extensions.get("commands", {})
-changed = False
-
-for command in commands.values():
-    if command.get("extension") == old_id and command.get("command_name") == "copy-url":
-        command["extension"] = new_id
-        changed = True
-
-if changed:
-    settings = extensions.get("settings", {})
-    old_command = settings.get(old_id, {}).get("commands", {}).get("copy-url", {})
-    new_command = settings.get(new_id, {}).get("commands", {}).get("copy-url", {})
-    old_command.pop("was_assigned", None)
-    if new_command:
-        new_command["was_assigned"] = True
-    shutil.copy2(path, backup_path)
-    path.write_text(json.dumps(preferences, separators=(",", ":")))
-CHROMIUM_SHORTCUTS_PATCH_PY
-  done
-}
-
 repair_sleep_lock_unit_override() {
   local unit="$HOME/.config/systemd/user/omarchy-sleep-lock.service"
   local legacy_exec='ExecStart=%h/.local/share/omarchy/bin/omarchy-system-sleep-monitor'
@@ -1964,7 +1888,6 @@ copy_missing_config_defaults "$root/config" "$HOME/.config"
 mark_removed_preinstalls_from_legacy_bindings
 copy_always_config_defaults
 repair_chromium_copy_url_extension_flags
-repair_chromium_copy_url_shortcuts
 
 # Carry over user-added backgrounds from the legacy git checkout backup, then
 # remove old symlinks that pointed ~/.config/omarchy/themes/* back into the

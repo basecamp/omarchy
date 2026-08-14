@@ -8,7 +8,7 @@ It's also the one piece of the desktop that's always on screen, so it's worth kn
 
 The bar has three sections. On the left sits the Omarchy logo (the menu launcher) and the workspace indicators. In the center you get the status indicators, the clock, the keyboard layout, the weather, and an Omarchy update badge. On the right: the system tray, agents, bluetooth, network, audio, display, and power.
 
-A few of those only show up when they have something to say. The keyboard layout appears only if you've configured more than one layout. The update badge appears only when there's an Omarchy update waiting. And the agents icon appears the first time Omarchy finds AI coding usage on the machine (see [AI](16-ai.md)).
+A few of those only show up when they have something to say. The keyboard layout appears only if you've configured more than one layout. The update badge appears only when there's an Omarchy update waiting. And the agents icon appears the first time Omarchy finds AI coding usage on the machine (see [AI](17-ai.md)).
 
 ## Clicking around
 
@@ -22,9 +22,9 @@ Nearly every widget does something on left, right, and middle click, and several
 | Weather | Forecast popup | Full weather as a notification | Middle: refresh |
 | Audio | Audio panel | Mute | Middle: panel · scroll: volume |
 | Microphone | Mute the mic | — | Middle: audio panel · scroll: input volume |
-| Network | Network panel | `nmtui` in a terminal | — |
-| Bluetooth | Bluetooth panel | Toggle the radio | Middle: `bluetoothctl` TUI |
-| Display | Display panel | — | — |
+| Network | Network panel | — | — |
+| Bluetooth | Bluetooth panel | Toggle the radio | — |
+| Display | Display panel | — | Scroll: brightness |
 | Power | Power panel | Toggle the battery percentage | — |
 | Media | Play/pause | Cover-art popup | Middle: next · scroll: prev/next |
 | Agents | Agents panel | Launch your agent | Middle: next subscription |
@@ -53,7 +53,7 @@ The panels aren't read-outs. They're where you actually do the thing:
 - **Network** scans for Wi-Fi, shows signal strength, connects, and lets you pick a DNS provider.
 - **Bluetooth** lists your devices with connect/disconnect and battery levels.
 - **Power** shows battery stats, switches power profiles (it remembers a separate choice for battery and AC), and prints some system info.
-- **Display** carries a brightness slider, text size, monitor scaling presets, and — when you have more than one screen — per-monitor controls. See [monitors](32-monitors.md) for the deeper story.
+- **Display** carries a brightness slider, text size, monitor scaling presets, and — when you have more than one screen — per-monitor controls. See [monitors](33-monitors.md) for the deeper story.
 - **Clock** opens a month grid with ISO week numbers and month stepping.
 
 Every panel takes the keyboard as well as the mouse: arrows move, Return activates, Tab steps to the neighbouring panel, and Escape closes.
@@ -62,7 +62,7 @@ Every panel takes the keyboard as well as the mouse: arrows move, Return activat
 
 ### Panels without a bar icon
 
-A few panels live in the shell but never take up bar space. They're summoned from the [menu](03-navigation.md) instead:
+A few panels live in the shell but never take up bar space. They're summoned from the [menu](04-navigation.md) instead:
 
 - **Trigger → Speed Test → Network Speed Test** runs an internet speed test with download and upload dials.
 - **Trigger → Speed Test → Disk Speed Test** does the same for disk read and write.
@@ -80,7 +80,7 @@ Removing either service takes its widget back off the bar.
 
 ## Indicators
 
-The little cluster in the center is the indicators widget. These are status glyphs for modes you've turned on: do not disturb, night light, a queued [reminder](08-reminders.md), an active screen recording, stay awake, and [dictation](10-text-extraction-dictation.md). They light up when the mode is active and otherwise stay out of the way — hover the center of the bar to peek at the inactive ones. Clicking an indicator toggles that mode.
+The little cluster in the center is the indicators widget. These are status glyphs for modes you've turned on: do not disturb, night light, a queued [reminder](09-reminders.md), an active screen recording, stay awake, and [dictation](11-text-extraction-dictation.md). They light up when the mode is active and otherwise stay out of the way — hover the center of the bar to peek at the inactive ones. Clicking an indicator toggles that mode.
 
 If you'd rather they were always visible, set `alwaysShow` to `true` on the widget. And if you only care about some of them, list the ones you want in `items`: `["Dnd", "Reminder", "NightLight"]`. You can have more than one indicators widget, so different sections can show different subsets.
 
@@ -90,7 +90,7 @@ The bar configures itself. You don't have to open a config file to move things.
 
 Grab an empty patch of the bar around the center and drag it toward another screen edge, and the bar moves there — left, right, top, or bottom all work, and every widget adapts (vertical bars fall back to compact icon-only forms). A click-and-hold starts the same drag. Double-left-click that same empty space to toggle transparency. And drag any widget to reorder it or throw it into another section.
 
-The same things have commands, which is what you want for a [dotfiles](30-dotfiles.md) setup:
+The same things have commands, which is what you want for a [dotfiles](31-dotfiles.md) setup:
 
 ```bash
 omarchy bar position bottom

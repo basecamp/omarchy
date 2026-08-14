@@ -17,7 +17,7 @@ Hit `Print Screen` and the screen freezes so nothing shifts under you while you 
 
 The result goes two places at once: a PNG in your pictures directory, and the clipboard, so you can paste it straight into a chat window with `Super + V`. A notification pops up with a thumbnail. Click it (or hit `Super + Alt + ,` to invoke the last notification) and the shot opens in Tensaku, the annotation editor, where you can draw arrows and boxes on it before you send it.
 
-Files land in `~/Pictures` by default, named `screenshot-2026-08-13_14-22-05.png`. If you'd rather keep them in their own folder, set `OMARCHY_SCREENSHOT_DIR` — see [the FAQ](46-faq.md) for where to put session environment variables. Omarchy creates the directory for you if it isn't there. You can swap the editor too with `OMARCHY_SCREENSHOT_EDITOR`.
+Files land in `~/Pictures` by default, named `screenshot-2026-08-13_14-22-05.png`. If you'd rather keep them in their own folder, set `OMARCHY_SCREENSHOT_DIR` — see [the FAQ](47-faq.md) for where to put session environment variables. Omarchy creates the directory for you if it isn't there. You can swap the editor too with `OMARCHY_SCREENSHOT_EDITOR`.
 
 From the terminal, `omarchy screenshot` takes the same shot, and you can be explicit about it: `omarchy capture screenshot region` for freeform only, `windows` to snap to window and monitor rectangles, or `fullscreen` to skip the picker entirely and grab the focused monitor. A second argument of `copy` puts the shot only on the clipboard, and `save` only on disk.
 
@@ -59,9 +59,9 @@ You can also call it directly with `omarchy-capture-webcam-resize small`, or `re
 
 ## Text, QR codes, and colours
 
-`Super + Ctrl + Print Screen` selects a region and OCRs it to the clipboard. That's covered properly in [Text Extraction & Dictation](10-text-extraction-dictation.md).
+`Super + Ctrl + Print Screen` selects a region and OCRs it to the clipboard. That's covered properly in [Text Extraction & Dictation](11-text-extraction-dictation.md).
 
-_Trigger > Capture > QR Code_ does the same trick for QR codes. Select the region with the code in it, and the decoded value goes to the clipboard. It only looks for QR codes — dense screen content has a habit of false-positiving as a barcode otherwise. Worth knowing: the decoded value goes to the clipboard and nowhere else. It isn't printed, it isn't in the notification, and it's marked sensitive so it doesn't stick around in [clipboard history](07-unified-clipboard-history.md). QR codes routinely carry secrets — the `otpauth://` URI behind a 2FA setup code, for one — and you don't want that in a log. Pasting still works fine.
+_Trigger > Capture > QR Code_ does the same trick for QR codes. Select the region with the code in it, and the decoded value goes to the clipboard. It only looks for QR codes — dense screen content has a habit of false-positiving as a barcode otherwise. Worth knowing: the decoded value goes to the clipboard and nowhere else. It isn't printed, it isn't in the notification, and it's marked sensitive so it doesn't stick around in [clipboard history](08-unified-clipboard-history.md). QR codes routinely carry secrets — the `otpauth://` URI behind a 2FA setup code, for one — and you don't want that in a log. Pasting still works fine.
 
 `Super + Print Screen` (or _Trigger > Capture > Color_) turns the cursor into an eyedropper. Click anything on screen and the colour lands on the clipboard. Press the hotkey again to back out without picking.
 
@@ -71,8 +71,8 @@ A 4K screen recording or a raw HEIC off your phone is often too big to just send
 
 Pictures go to jpg or png at high, medium, or low, which cap the width at 3160, 2160, and 1080 pixels. Videos go to mp4 or an animated gif at 4k, 1080p, or 720p. The converted file is written next to the original with the resolution in the name — `demo-1080p.mp4` — and the path is copied to the clipboard as a file URI, so you can paste it directly into an app that takes file drops.
 
-It works from the terminal too, if you already know what you want: `omarchy transcode ~/Videos/demo.mov mp4 1080p`. There's also `omarchy transcode ascii`, which turns an image into ASCII art — that one's mostly for [branding](40-branding.md).
+It works from the terminal too, if you already know what you want: `omarchy transcode ~/Videos/demo.mov mp4 1080p`. There's also `omarchy transcode ascii`, which turns an image into ASCII art — that one's mostly for [branding](41-branding.md).
 
 ## Sending it somewhere
 
-Once you've got the file, `Super + Ctrl + S` opens the Share menu and sends it to another device on your network via LocalSend. See [GUIs](21-guis.md) for that.
+Once you've got the file, `Super + Ctrl + S` opens the Share menu and sends it to another device on your network via LocalSend. See [GUIs](22-guis.md) for that.

@@ -1,6 +1,6 @@
 # Getting Started
 
-Omarchy is installed using an ISO. You can choose between a full-disk install, which takes over the entire drive, or a free-space install, which puts Omarchy in the unallocated space on a drive — that's how you dual boot alongside Windows or another OS (see [dual-boot install](50-dual-boot-install.md) — note that you'll need to turn off BitLocker in Windows first). Either way, the installation uses full-disk encryption, and the full-disk option will wipe the selected drive, so be sure to take a backup before using an existing one!
+Omarchy is installed using an ISO. You can choose between a full-disk install, which takes over the entire drive, or a free-space install, which puts Omarchy in the unallocated space on a drive — that's how you dual boot alongside Windows or another OS (see [dual-boot install](51-dual-boot-install.md) — note that you'll need to turn off BitLocker in Windows first). Either way, the installation uses full-disk encryption, and the full-disk option will wipe the selected drive, so be sure to take a backup before using an existing one!
 
 [Download the Omarchy ISO](https://omarchy.org/) first, put it on a USB stick (use [balenaEtcher](https://etcher.balena.io/) on Mac/Windows or [caligula](https://github.com/ifd3f/caligula) on Linux), and boot off the stick.
 
@@ -32,7 +32,7 @@ It works by restoring the baseline snapshot the installer takes, so it's only av
 
 ### Unattended installs
 
-The ISO can also install completely on its own — no keyboard, no wizard — when it's handed its configuration on a second drive. That's the way to treat Omarchy as a base image for VMs and fleet machines. See [unattended installs](51-unattended-installs.md).
+The ISO can also install completely on its own — no keyboard, no wizard — when it's handed its configuration on a second drive. That's the way to treat Omarchy as a base image for VMs and fleet machines. See [unattended installs](52-unattended-installs.md).
 
 ### No-encryption installations
 

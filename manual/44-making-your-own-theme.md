@@ -28,4 +28,4 @@ There's a fully commented `alacritty.toml.tpl.sample` in that folder to copy fro
 
 If you want to distribute your theme so others can use it, you need to put it on a public git server, like GitHub. Then people can install it using _Install > Style > Theme_ in the Omarchy menu using that URL. It's recommended that you follow the naming convention of `omarchy-[themename]-theme`, as the theme will show correctly as just `[themename]` in the theme selection menu after installation.
 
-You can have your theme added to [the extra themes page](42-extra-themes.md) by pinging @tahayvr on [the #omarchy Discord](https://discord.gg/tXFUdasqhY).
+You can have your theme added to [the extra themes page](43-extra-themes.md) by pinging @tahayvr on [the #omarchy Discord](https://discord.gg/tXFUdasqhY).
