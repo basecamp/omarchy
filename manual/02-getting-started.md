@@ -8,11 +8,11 @@ _You must turn off Secure Boot and/or TPM in the BIOS. You have to turn these of
 
 Then answer the configuration questions, and confirm them like this:
 
- ![omarchy-install.png](https://learn.omacom.io/u/omarchy-install-k5Iksv.png)
+ ![install-config](images/install-config.webp)
 
 Then select a drive for your installation, and sit back and watch the installation show go. It takes between 2-10 minutes, depending on the speed of your computer.
 
- ![omarchy-installed.png](https://learn.omacom.io/u/omarchy-installed-NR1wu1.png)
+ ![install-done](images/install-done.webp)
 
 Now you're ready to Omarchy!
 

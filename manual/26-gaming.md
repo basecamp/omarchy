@@ -14,7 +14,7 @@ After you've installed it, you'll be able to launch Steam with `Super + Space`.
 
 Note that Steam can take 10-20 seconds to start up, and it's not going to provide any visual feedback that it's loading.
 
- ![steam.png](https://learn.omacom.io/u/steam-tC5srj.png)
+ ![gaming-steam](images/gaming-steam.webp)
 
 ## RetroArch
 
@@ -30,7 +30,7 @@ To get going:
 
 You can also give a favorite game its own entry in the app launcher with _Install > Gaming > RetroArch Game Launcher_, which lets you pick a core and a ROM, and jump straight into the game from `Super + Space`.
 
- ![retroarch.jpg](https://learn.omacom.io/u/retroarch-wd6cuZ.jpg)
+ ![gaming-retroarch](images/gaming-retroarch.webp)
 
 ## Xbox Cloud Gaming
 
@@ -38,13 +38,13 @@ Install the Xbox Cloud Gaming web app by selecting _Install > Gaming > Xbox Clou
 
 If you already have Xbox Game Pass, this is a solid way to play Fortnite and other titles you can't run natively on Linux.
 
- ![xbox-cloud.jpg](https://learn.omacom.io/u/xbox-cloud-vEuyin.jpg)
+ ![gaming-xbox-cloud](images/gaming-xbox-cloud.webp)
 
 ## NVIDIA GeForce Now
 
 Install the cloud-gaming service [NVIDIA GeForce NOW](https://www.nvidia.com/en-us/geforce-now/) by selecting _Install > Gaming > NVIDIA GeForce NOW_ from the Omarchy menu (`Super + Space`). Another great way to play titles that aren't available natively on Linux.
 
- ![screenshot-2026-05-05_09-00-11-medium.jpg](https://learn.omacom.io/u/screenshot-2026-05-05_09-00-11-medium-tSjM9x.jpg)
+ ![gaming-geforce-now](images/gaming-geforce-now.webp)
 
 ## Minecraft
 
@@ -52,7 +52,7 @@ Install Minecraft by selecting _Install > Gaming > Minecraft_ from the Omarchy m
 
 Like Steam, note that it can take a while after logging in or starting up for the next screen to appear, and you're not going to get any feedback while you're waiting.
 
- ![screenshot-2026-05-05_09-02-39-medium.jpg](https://learn.omacom.io/u/screenshot-2026-05-05_09-02-39-medium-Vapoct.jpg)
+ ![gaming-minecraft](images/gaming-minecraft.webp)
 
 ## Xbox Controllers
 
@@ -70,7 +70,7 @@ You can also turn an Omarchy machine into the host by running `omarchy install s
 
 Install [Battle.net](https://eu.shop.battle.net/en-us) by selecting _Install > Gaming > Battle.net_ from the Omarchy menu (`Super + Space`). This gives you titles like Diablo, Starcraft, and World of Warcraft as a standalone install running under GE-Proton — no Steam, Lutris, or Heroic needed.
 
- ![starcraft.png](https://learn.omacom.io/u/starcraft-WU9zw7.png)
+ ![gaming-starcraft](images/gaming-starcraft.webp)
 
 ## Lutris (Windows games)
 

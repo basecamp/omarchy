@@ -44,6 +44,6 @@ This can happen for 2 reasons:
 
 In order for the rich approval prompt to appear, Settings > Advanced > Use Hardware Acceleration must be turned on. _Note: This requires a reboot to begin working._
 
- ![1pw-hw-accel.png](https://learn.omacom.io/u/1pw-hw-accel-w6VzWp.png)
+ ![troubleshooting-1password](images/troubleshooting-1password.webp)
 
 Or if you haven't launched 1Password since booting up, the prompt will not appear.

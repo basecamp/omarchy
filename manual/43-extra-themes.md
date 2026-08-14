@@ -2,344 +2,344 @@
 
 You can install any of these themes by copying the GitHub URL and selecting `Install > Style > Theme` via the Omarchy menu (`Super + Space`). If you want to remove it again, just use `Remove > Theme` and select it there.
 
- ![aetheria.png](https://learn.omacom.io/u/aetheria-jaDcHN.png)
+ ![aetheria](images/aetheria.webp)
 [Aetheria](https://github.com/JJDizz1L/aetheria)
 
- ![amberbyte.png](https://learn.omacom.io/u/amberbyte-gevf2N.png)
+ ![amberbyte](images/amberbyte.webp)
 [Amberbyte](https://github.com/tahfizhabib/omarchy-amberbyte-theme)
 
- ![arc-blueberry.png](https://learn.omacom.io/u/arc-blueberry-e64rOP.png)
+ ![arc-blueberry](images/arc-blueberry.webp)
 [Arc Blueberry](https://github.com/vale-c/omarchy-arc-blueberry)
 
- ![archwave.png](https://learn.omacom.io/u/archwave-ogNCX2.png)
+ ![archwave](images/archwave.webp)
 [Archwave](https://github.com/davidguttman/archwave)
 
- ![ash-theme.png](https://learn.omacom.io/u/ash-theme-DnGpEy.png)
+ ![ash](images/ash.webp)
 [Ash](https://github.com/bjarneo/omarchy-ash-theme)
 
- ![artzen.png](https://learn.omacom.io/u/artzen-ddIz8i.png)
+ ![artzen](images/artzen.webp)
 [Artzen](https://github.com/tahfizhabib/omarchy-artzen-theme)
 
- ![aura-theme.png](https://learn.omacom.io/u/aura-theme-LfFuUo.png)
+ ![aura](images/aura.webp)
 [Aura](https://github.com/bjarneo/omarchy-aura-theme)
 
- ![all-hallows-eve-theme.webp](https://learn.omacom.io/u/all-hallows-eve-theme-XQuTDB.webp)
+ ![all-hallow-s-eve](images/all-hallow-s-eve.webp)
 [All Hallow's Eve](https://github.com/guilhermetk/omarchy-all-hallows-eve-theme)
 
- ![atelier.png](https://learn.omacom.io/u/atelier-L2xcft.png)
+ ![atelier](images/atelier.webp)
 [Atelier](https://github.com/atif-1402/omarchy-atelier-theme)
 
- ![ayaka.png](https://learn.omacom.io/u/ayaka-FcJ4UP.png)
+ ![ayaka](images/ayaka.webp)
 [Ayaka](https://github.com/abhijeet-swami/omarchy-ayaka-theme)
 
- ![azure-glow-theme.png](https://learn.omacom.io/u/azure-glow-theme-vLp53z.png)
+ ![azure-glow](images/azure-glow.webp)
 [Azure Glow](https://github.com/Hydradevx/omarchy-azure-glow-theme)
 
- ![batman.png](https://learn.omacom.io/u/batman-ec0yWD.png)
+ ![batman](images/batman.webp)
 [Batman](https://github.com/OldJobobo/omarchy-batman-theme)
 
- ![batou.png](https://learn.omacom.io/u/batou-pCugc6.png)
+ ![batou](images/batou.webp)
 [Batou](https://github.com/HANCORE-linux/omarchy-batou-theme)
 
- ![bauhaus.png](https://learn.omacom.io/u/bauhaus-ZDRJnD.png)
+ ![bauhaus](images/bauhaus.webp)
 [Bauhaus](https://github.com/somerocketeer/omarchy-bauhaus-theme)
 
- ![biscuit.png](https://learn.omacom.io/u/biscuit-5ZFemm.png)
+ ![biscuit-de-mar-dark](images/biscuit-de-mar-dark.webp)
 [Biscuit de Mar Dark](https://github.com/OldJobobo/omarchy-biscuit-de-mar-dark-theme)
 
- ![black-arch.png](https://learn.omacom.io/u/black-arch-gveh1G.png)
+ ![black-arch](images/black-arch.webp)
 [Black Arch](https://github.com/ankur311sudo/black_arch)
 
-![black-gold.png](https://learn.omacom.io/u/black-gold-qUepi7.png)
+![black-gold](images/black-gold.webp)
 [Black Gold](https://github.com/HANCORE-linux/omarchy-blackgold-theme)
 
- ![black-turq.png](https://learn.omacom.io/u/black-turq-YQQZhg.png)
+ ![black-turq](images/black-turq.webp)
 [Black Turq](https://github.com/HANCORE-linux/omarchy-blackturq-theme)
 
- ![bluedotrb.png](https://learn.omacom.io/u/bluedotrb-D9Cqtr.png)
+ ![bluedotrb](images/bluedotrb.webp)
 [bluedotrb](https://github.com/dotsilva/omarchy-bluedotrb-theme)
 
- ![blueridge-theme.png](https://learn.omacom.io/u/blueridge-theme-fkB0tl.png)
+ ![blue-ridge-dark](images/blue-ridge-dark.webp)
 [Blue Ridge Dark](https://github.com/hipsterusername/omarchy-blueridge-dark-theme)
 
- ![catppuccin-mocha-dark.png](https://learn.omacom.io/u/catppuccin-mocha-dark-mNVF5H.png)
+ ![catppuccin-mocha-dark](images/catppuccin-mocha-dark.webp)
 [Catppuccin Mocha Dark](https://github.com/Luquatic/omarchy-catppuccin-dark)
 
- ![citrus-cynapse.png](https://learn.omacom.io/u/citrus-cynapse-9rtDDg.png)
+ ![citrus-cynapse](images/citrus-cynapse.webp)
 [Citrus Cynapse](https://github.com/Grey-007/citrus-cynapse)
 
- ![city-783.png](https://learn.omacom.io/u/city-783-7xHciV.png)
+ ![city-783](images/city-783.webp)
 [City-783](https://github.com/OldJobobo/omarchy-city-783-theme)
 
- ![cobalt2.png](https://learn.omacom.io/u/cobalt2-RGgNWQ.png)
+ ![cobalt2](images/cobalt2.webp)
 [Cobalt2](https://github.com/hoblin/omarchy-cobalt2-theme)
 
- ![cpunk.png](https://learn.omacom.io/u/cpunk-hcNDrl.png)
+ ![cpunk](images/cpunk.webp)
 [CpUnk](https://github.com/stannorbvb-cmd/cpunk)
 
- ![darcula.png](https://learn.omacom.io/u/darcula-boUMqL.png)
+ ![darcula](images/darcula.webp)
 [Darcula](https://github.com/noahljungberg/omarchy-darcula-theme)
 
- ![demon.png](https://learn.omacom.io/u/demon-b0AEYS.png)
+ ![demon](images/demon.webp)
 [Demon](https://github.com/HANCORE-linux/omarchy-demon-theme)
 
- ![dotrb.png](https://learn.omacom.io/u/dotrb-Ev8dB3.png)
+ ![dotrb](images/dotrb.webp)
 [Dotrb](https://github.com/dotsilva/omarchy-dotrb-theme)
 
- ![dos-moos.png](https://learn.omacom.io/u/dos-moos-GGqdkw.png)
+ ![dos-moos](images/dos-moos.webp)
 [Dos Moos](https://github.com/HANCORE-linux/omarchy-dos-moos-theme)
 
- ![drac.png](https://learn.omacom.io/u/drac-jUSHEO.png)
+ ![drac](images/drac.webp)
 [Drac](https://github.com/ShehabShaef/omarchy-drac-theme)
 
- ![dracula-theme.png](https://learn.omacom.io/u/dracula-theme-Rq2gWj.png)
+ ![dracula](images/dracula.webp)
 [Dracula](https://github.com/catlee/omarchy-dracula-theme)
 
- ![eldritch.png](https://learn.omacom.io/u/eldritch-6rfAov.png)
+ ![eldritch](images/eldritch.webp)
 [Eldritch](https://github.com/eldritch-theme/omarchy)
 
- ![event-horizon.png](https://learn.omacom.io/u/event-horizon-c8ryZU.png)
+ ![event-horizon](images/event-horizon.webp)
 [Event Horizon](https://github.com/OldJobobo/omarchy-event-horizon-theme)
 
- ![evergarden.png](https://learn.omacom.io/u/evergarden-euPINv.png)
+ ![evergarden](images/evergarden.webp)
 [Evergarden](https://github.com/celsobenedetti/omarchy-evergarden)
 
- ![felix-theme.png](https://learn.omacom.io/u/felix-theme-vk8Fgx.png)
+ ![felix](images/felix.webp)
 [Felix](https://github.com/TyRichards/omarchy-felix-theme)
 
- ![fireside.png](https://learn.omacom.io/u/fireside-3NyKEj.png)
+ ![fireside](images/fireside.webp)
 [Fireside](https://github.com/bjarneo/omarchy-fireside-theme)
 
- ![flat-dracula.png](https://learn.omacom.io/u/flat-dracula-UDlJ2T.png)
+ ![flat-dracula](images/flat-dracula.webp)
 [Flat Dracula](https://github.com/OldJobobo/omarchy-flat-dracula-theme)
 
- ![flexoki-dark-theme.png](https://learn.omacom.io/u/flexoki-dark-theme-meZCr4.png)
+ ![flexoki-dark](images/flexoki-dark.webp)
 [Flexoki Dark](https://github.com/euandeas/omarchy-flexoki-dark-theme)
 
- ![forest-green.png](https://learn.omacom.io/u/forest-green-hYkgXb.png)
+ ![forest-green](images/forest-green.webp)
 [Forest Green](https://github.com/abhijeet-swami/omarchy-forest-green-theme)
 
- ![frost.png](https://learn.omacom.io/u/frost-zu4B6C.png)
+ ![frost](images/frost.webp)
 [Frost](https://github.com/bjarneo/omarchy-frost-theme)
 
- ![futurism-theme.png](https://learn.omacom.io/u/futurism-theme-2w6HZI.png)
+ ![futurism](images/futurism.webp)
 [Futurism](https://github.com/bjarneo/omarchy-futurism-theme)
 
- ![ghost-pastel.png](https://learn.omacom.io/u/ghost-pastel-ZgK0Ne.png)
+ ![ghost-pastel](images/ghost-pastel.webp)
 [Ghost Pastel](https://github.com/row-huh/omarchy-ghost-pastel-theme)
 
-![goldrush.png](https://learn.omacom.io/u/goldrush-bzSWXn.png)
+![gold-rush](images/gold-rush.webp)
 [Gold Rush](https://github.com/tahayvr/omarchy-gold-rush-theme)
 
- ![Golden-brown.png](https://learn.omacom.io/u/golden-brown-LcSn39.png)
+ ![golden-brown](images/golden-brown.webp)
 [Golden Brown](https://github.com/atif-1402/omarchy-golden-brown-theme)
 
- ![thegreek.png](https://learn.omacom.io/u/thegreek-rPS5HB.png)
+ ![the-greek](images/the-greek.webp)
 [The Greek](https://github.com/HANCORE-linux/omarchy-thegreek-theme)
 
- ![greek-noir.png](https://learn.omacom.io/u/greek-noir-u9xqyi.png)
+ ![greek-noir](images/greek-noir.webp)
 [Greek Noir](https://github.com/HANCORE-linux/omarchy-greek-noir-theme)
 
-![omarchy-lush-green.png](https://learn.omacom.io/u/omarchy-lush-green-fZgXeQ.png)
+![green-garden](images/green-garden.webp)
 [Green Garden](https://github.com/kalk-ak/omarchy-green-garden-theme)
 
- ![gruvu.png](https://learn.omacom.io/u/gruvu-wYS1LM.png)
+ ![gruvu](images/gruvu.webp)
 [Gruvu](https://github.com/ankur311sudo/gruvu)
 
- ![harbor.png](https://learn.omacom.io/u/harbor-FYmTgs.png)
+ ![harbor](images/harbor.webp)
 [Harbor](https://github.com/HANCORE-linux/omarchy-harbor-theme)
 
- ![harbor-dark.png](https://learn.omacom.io/u/harbor-dark-tLwJe3.png)
+ ![harbor-dark](images/harbor-dark.webp)
 [Harbor Dark](https://github.com/HANCORE-linux/omarchy-harbordark-theme)
 
- ![hinterlands.png](https://learn.omacom.io/u/hinterlands-nh7aFP.png)
+ ![hinterlands](images/hinterlands.webp)
 [Hinterlands](https://github.com/OldJobobo/omarchy-hinterlands-theme)
 
- ![infernium.png](https://learn.omacom.io/u/infernium-jTFC59.png)
+ ![infernium](images/infernium.webp)
 [Infernium](https://github.com/RiO7MAKK3R/omarchy-infernium-dark-theme)
 
- ![inky-pink.png](https://learn.omacom.io/u/inky-pink-VoKwwC.png)
+ ![inky-pinky](images/inky-pinky.webp)
 [Inky Pinky](https://github.com/HANCORE-linux/omarchy-inkypinky-theme)
 
- ![last-horizon.png](https://learn.omacom.io/u/last-horizon-YLrE41.png)
+ ![last-horizon](images/last-horizon.webp)
 [Last Horizon](https://github.com/HANCORE-linux/omarchy-lasthorizon-theme)
 
- ![mapquest.png](https://learn.omacom.io/u/mapquest-WsJvyQ.png)
+ ![map-quest](images/map-quest.webp)
 [Map Quest](https://github.com/ItsABigIgloo/omarchy-mapquest-theme)
 
- ![mars-theme.png](https://learn.omacom.io/u/mars-theme-r03GXm.png)
+ ![mars](images/mars.webp)
 [Mars](https://github.com/steve-lohmeyer/omarchy-mars-theme)
 
- ![mechanoonna.png](https://learn.omacom.io/u/mechanoonna-DNCESY.png)
+ ![mechanoonna](images/mechanoonna.webp)
 [Mechanoonna](https://github.com/HANCORE-linux/omarchy-mechanoonna-theme)
 
- ![miasma.png](https://learn.omacom.io/u/miasma-FCluYv.png)
+ ![miasma](images/miasma.webp)
 [Miasma](https://github.com/OldJobobo/omarchy-miasma-theme)
 
-![midnight-theme.png](https://learn.omacom.io/u/midnight-theme-I5HKym.png)
+![midnight](images/midnight.webp)
 [Midnight](https://github.com/JaxonWright/omarchy-midnight-theme)
 
- ![milkymatcha-theme.png](https://learn.omacom.io/u/milkymatcha-theme-JFT2X2.png)
+ ![milky-matcha](images/milky-matcha.webp)
 [Milky Matcha](https://github.com/hipsterusername/omarchy-milkmatcha-light-theme)
 
- ![monochrome-theme.png](https://learn.omacom.io/u/monochrome-theme-GwATD6.png)
+ ![monochrome](images/monochrome.webp)
 [Monochrome](https://github.com/Swarnim114/omarchy-monochrome-theme)
 
- ![monokai.png](https://learn.omacom.io/u/monokai-UoJwdC.png)
+ ![monokai](images/monokai.webp)
 [Monokai](https://github.com/bjarneo/omarchy-monokai-theme)
 
- ![moodpeak.png](https://learn.omacom.io/u/moodpeak-CCiNoe.png)
+ ![moodpeak](images/moodpeak.webp)
 [Moodpeak](https://github.com/HANCORE-linux/omarchy-moodpeak-theme)
 
- ![nagai-poolside.png](https://learn.omacom.io/u/nagai-poolside-twaJTF.png)
+ ![nagai-poolside](images/nagai-poolside.webp)
 [Nagai Poolside](https://github.com/somerocketeer/omarchy-nagai-poolside-theme)
 
- ![neo-sploosh.png](https://learn.omacom.io/u/neo-sploosh-JWbVVa.png)
+ ![neo-sploosh](images/neo-sploosh.webp)
 [Neo Sploosh](https://github.com/monoooki/omarchy-neo-sploosh-theme)
 
- ![neovoid.png](https://learn.omacom.io/u/neovoid-fVklHO.png)
+ ![neovoid](images/neovoid.webp)
 [Neovoid](https://github.com/RiO7MAKK3R/omarchy-neovoid-theme)
 
- ![nes-theme.png](https://learn.omacom.io/u/nes-theme-1Z6uqG.png)
+ ![nes](images/nes.webp)
 [NES](https://github.com/bjarneo/omarchy-nes-theme)
 
- ![omacarchy.png](https://learn.omacom.io/u/omacarchy-QPQF1d.png)
+ ![omacarchy](images/omacarchy.webp)
 [Omacarchy](https://github.com/RiO7MAKK3R/omarchy-omacarchy-theme)
 
- ![one-dark-pro.png](https://learn.omacom.io/u/one-dark-pro-lm5SO2.png)
+ ![one-dark-pro](images/one-dark-pro.webp)
 [One Dark Pro](https://github.com/sc0ttman/omarchy-one-dark-pro-theme)
 
- ![oxocarbon.png](https://learn.omacom.io/u/oxocarbon-3C2AtT.png)
+ ![oxo-carbon](images/oxo-carbon.webp)
 [Oxo Carbon](https://github.com/HANCORE-linux/omarchy-oxocarbon-theme)
 
- ![pandora.png](https://learn.omacom.io/u/pandora-WwROvb.png)
+ ![pandora](images/pandora.webp)
 [Pandora](https://github.com/imbypass/omarchy-pandora-theme)
 
- ![pina.png](https://learn.omacom.io/u/pina-0TNGvx.png)
+ ![pina](images/pina.webp)
 [Pina](https://github.com/bjarneo/omarchy-pina-theme)
 
- ![pink-blood.png](https://learn.omacom.io/u/pink-blood-Fh9voH.png)
+ ![pink-blood](images/pink-blood.webp)
 [Pink Blood](https://github.com/ITSZXY/pink-blood-omarchy-theme)
 
- ![pulsar-theme.png](https://learn.omacom.io/u/pulsar-theme-DMUX7U.png)
+ ![pulsar](images/pulsar.webp)
 [Pulsar](https://github.com/bjarneo/omarchy-pulsar-theme)
 
- ![purple-moon.png](https://learn.omacom.io/u/purple-moon-S9IiCU.png)
+ ![purple-moon](images/purple-moon.webp)
 [Purple Moon](https://github.com/Grey-007/purple-moon)
 
- ![purplewave.png](https://learn.omacom.io/u/purplewave-ZGiAbQ.png)
+ ![purplewave](images/purplewave.webp)
 [Purplewave](https://github.com/dotsilva/omarchy-purplewave-theme)
 
- ![rainynight.png](https://learn.omacom.io/u/rainynight-auQymU.png)
+ ![rainy-night](images/rainy-night.webp)
 [Rainy Night](https://github.com/atif-1402/omarchy-rainynight-theme)
 
- ![red-monarch.png](https://learn.omacom.io/u/red-monarch-VYuVL2.png)
+ ![red-monarch](images/red-monarch.webp)
 [Red Monarch](https://github.com/kamatealif/omarchy-red-monarch-theme)
 
- ![retro-82.png](https://learn.omacom.io/u/retro-82-pegjCg.png)
+ ![retro-82](images/retro-82.webp)
 [Retro 82](https://github.com/OldJobobo/omarchy-retro-82-theme)
 
- ![retropc-theme.png](https://learn.omacom.io/u/retropc-theme-a24vKN.png)
+ ![retropc](images/retropc.webp)
 [RetroPC](https://github.com/rondilley/omarchy-retropc-theme)
 
- ![ristretto-light.png](https://learn.omacom.io/u/ristretto-light-IcJFUF.png)
+ ![ristretto-light](images/ristretto-light.webp)
 [Ristretto Light](https://github.com/brokkoli71/omarchy-ristretto-light-theme)
 
- ![robzee84.png](https://learn.omacom.io/u/robzee84-N1hj0E.png)
+ ![robzee84](images/robzee84.webp)
 [RobZee84](https://github.com/robzolkos/omarchy-robzee84-theme)
 
- ![rose-pine-dark.webp](https://learn.omacom.io/u/rose-pine-dark-pIMUcV.webp)
+ ![rose-pine-dark](images/rose-pine-dark.webp)
 [Rose Pine Dark](https://github.com/guilhermetk/omarchy-rose-pine-dark)
 
- ![rose-of-dune.png](https://learn.omacom.io/u/rose-of-dune-bX5Vhf.png)
+ ![rose-of-dune](images/rose-of-dune.webp)
 [Rose of Dune](https://github.com/HANCORE-linux/omarchy-roseofdune-theme)
 
- ![ryu.png](https://learn.omacom.io/u/ryu-9OnK9B.png)
+ ![ryu](images/ryu.webp)
 [Ryu](https://github.com/HANCORE-linux/omarchy-ryu-theme)
 
- ![sakura.png](https://learn.omacom.io/u/sakura-njsB9m.png)
+ ![sakura](images/sakura.webp)
 [Sakura](https://github.com/bjarneo/omarchy-sakura-theme)
 
- ![sakura-mochi.png](https://learn.omacom.io/u/sakura-mochi-Um17iV.png)
+ ![sakura-mochi](images/sakura-mochi.webp)
 [Sakura Mochi](https://github.com/OldJobobo/omarchy-sakura-mochi-theme)
 
- ![saga.png](https://learn.omacom.io/u/saga-4taZZI.png)
+ ![saga](images/saga.webp)
 [Saga](https://github.com/HANCORE-linux/omarchy-saga-theme)
 
- ![sapphire.png](https://learn.omacom.io/u/sapphire-tocQNg.png)
+ ![sapphire](images/sapphire.webp)
 [Sapphire](https://github.com/HANCORE-linux/omarchy-sapphire-theme)
 
- ![shades-of-jade.png](https://learn.omacom.io/u/shades-of-jade-uSYodf.png)
+ ![shades-of-jade](images/shades-of-jade.webp)
 [Shades of Jade](https://github.com/HANCORE-linux/omarchy-shadesofjade-theme)
 
- ![space-monkey-theme.jpg](https://learn.omacom.io/u/space-monkey-theme-UGmUHp.jpg)
+ ![space-monkey](images/space-monkey.webp)
 [Space Monkey](https://github.com/TyRichards/omarchy-space-monkey-theme/)
 
- ![snow-theme.png](https://learn.omacom.io/u/snow-theme-MDtvlu.png)
+ ![snow](images/snow.webp)
 [Snow](https://github.com/bjarneo/omarchy-snow-theme)
 
- ![snow-black.png](https://learn.omacom.io/u/snow-black-LXbCcU.png)
+ ![snow-black](images/snow-black.webp)
 [Snow Black](https://github.com/ankur311sudo/snow_black)
 
- ![solarized-theme.png](https://learn.omacom.io/u/solarized-theme-9OhQ7Y.png)
+ ![solarized](images/solarized.webp)
 [Solarized](https://github.com/Gazler/omarchy-solarized-theme)
 
- ![solarized-light2.png](https://learn.omacom.io/u/solarized-light2-OTGWbc.png)
+ ![solarized-light](images/solarized-light.webp)
 [Solarized Light](https://github.com/dfrico/omarchy-solarized-light-theme)
 
- ![solarized-osaka-theme.png](https://learn.omacom.io/u/solarized-osaka-theme-9pnXgG.png)
+ ![solarized-osaka](images/solarized-osaka.webp)
 [Solarized Osaka](https://github.com/motorsss/omarchy-solarizedosaka-theme)
 
- ![solitude.png](https://learn.omacom.io/u/solitude-gJpmBW.png)
+ ![solitude](images/solitude.webp)
 [Solitude](https://github.com/HANCORE-linux/omarchy-solitude-theme)
 
- ![sunset.png](https://learn.omacom.io/u/sunset-PsLG4m.png)
+ ![sunset](images/sunset.webp)
 [Sunset](https://github.com/rondilley/omarchy-sunset-theme)
 
- ![sunsetdrive.png](https://learn.omacom.io/u/sunsetdrive-UV9Gss.png)
+ ![sunset-drive](images/sunset-drive.webp)
 [Sunset Drive](https://github.com/tahayvr/omarchy-sunset-drive-theme)
 
- ![super-game-bro-theme.png](https://learn.omacom.io/u/super-game-bro-theme-2DNtSt.png)
+ ![super-game-bro](images/super-game-bro.webp)
 [Super Game Bro](https://github.com/TyRichards/omarchy-super-game-bro-theme)
 
-![synthwave-theme.png](https://learn.omacom.io/u/synthwave-theme-7yHWFA.png)
+![synthwave-84](images/synthwave-84.webp)
 [Synthwave '84](https://github.com/omacom-io/omarchy-synthwave84-theme/)
 
- ![Temerald.png](https://learn.omacom.io/u/temerald-aTOeZ9.png)
+ ![temerald](images/temerald.webp)
 [Temerald](https://github.com/Ahmad-Mtr/omarchy-temerald-theme)
 
- ![tokyo-night-oled.png](https://learn.omacom.io/u/tokyo-night-oled-nTsHOs.png)
+ ![tokyo-night-oled](images/tokyo-night-oled.webp)
 [Tokyo Night OLED](https://github.com/Justin-De-Sio/omarchy-tokyoled-theme)
 
- ![tycho.png](https://learn.omacom.io/u/tycho-vTGePC.png)
+ ![tycho](images/tycho.webp)
 [Tycho](https://github.com/leonardobetti/omarchy-tycho)
 
- ![waffle-cat.png](https://learn.omacom.io/u/waffle-cat-SSnrsG.png)
+ ![waffle-cat](images/waffle-cat.webp)
 [Waffle Cat](https://github.com/OldJobobo/omarchy-waffle-cat-theme)
 
-![waveform-theme.png](https://learn.omacom.io/u/waveform-theme-ZiWq97.png)
+![waveform-dark](images/waveform-dark.webp)
 [Waveform Dark](https://github.com/hipsterusername/omarchy-waveform-dark-theme)
 
- ![whitegold.png](https://learn.omacom.io/u/whitegold-HGrllY.png)
+ ![white-gold](images/white-gold.webp)
 [White Gold](https://github.com/HANCORE-linux/omarchy-whitegold-theme)
 
- ![windows-dark-mode.png](https://learn.omacom.io/u/windows-dark-mode-5MIFmi.png)
+ ![windows-dark-mode](images/windows-dark-mode.webp)
 [Windows Dark Mode](https://github.com/oldjobobo/omarchy-windows-dark-mode-theme)
 
- ![van-gogh.png](https://learn.omacom.io/u/van-gogh-bwoogF.png)
+ ![van-gogh](images/van-gogh.webp)
 [Van Gogh](https://github.com/Nirmal314/omarchy-van-gogh-theme)
 
- ![velvet-night.png](https://learn.omacom.io/u/velvet-night-tGkahY.png)
+ ![velvet-night](images/velvet-night.webp)
 [Velvet Night](https://github.com/HANCORE-linux/omarchy-velvetnight-theme)
 
- ![venice.png](https://learn.omacom.io/u/venice-5IEmB6.png)
+ ![venice-from-above](images/venice-from-above.webp)
 [Venice from Above](https://github.com/mattbbia/venice-from-above-omarchy)
 
- ![vesper.png](https://learn.omacom.io/u/vesper-1tdScF.png)
+ ![vesper](images/vesper.webp)
 [Vesper](https://github.com/thmoee/omarchy-vesper-theme)
 
- ![vhs80.png](https://learn.omacom.io/u/vhs80-8MnZ4x.png)
+ ![vhs-80](images/vhs-80.webp)
 [VHS 80](https://github.com/tahayvr/omarchy-vhs80-theme)
 
- ![void.png](https://learn.omacom.io/u/void-Q9aUIc.png)
+ ![void](images/void.webp)
 [Void](https://github.com/vyrx-dev/omarchy-void-theme)
