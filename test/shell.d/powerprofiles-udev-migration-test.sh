@@ -9,11 +9,13 @@ trap 'rm -rf "$test_tmp"' EXIT
 
 stub_bin="$test_tmp/bin"
 rules_dir="$test_tmp/rules.d"
+sudo_calls="$test_tmp/sudo-calls"
 udevadm_calls="$test_tmp/udevadm-calls"
 mkdir -p "$stub_bin" "$rules_dir"
 
 cat >"$stub_bin/sudo" <<'STUB'
 #!/bin/bash
+printf '%s\n' "$*" >>"$SUDO_CALLS"
 exec "$@"
 STUB
 
@@ -29,6 +31,7 @@ migration="$ROOT/migrations/1786691707.sh"
 run_migration() {
   PATH="$stub_bin:$PATH" \
     OMARCHY_POWERPROFILES_UDEV_RULES_DIR="$rules_dir" \
+    SUDO_CALLS="$sudo_calls" \
     UDEVADM_CALLS="$udevadm_calls" \
     bash -euo pipefail "$migration" >/dev/null
 }
@@ -52,5 +55,12 @@ pass "power profile migration removes only retired Omarchy rules"
   fail "power profile migration reloads udev without retriggering power events" "$(<"$udevadm_calls")"
 pass "power profile migration reloads udev without triggering a profile race"
 
+: >"$sudo_calls"
+: >"$udevadm_calls"
 run_migration
-pass "power profile migration is idempotent"
+
+[[ ! -s $sudo_calls ]] ||
+  fail "power profile migration avoids sudo after the machine-wide repair" "$(<"$sudo_calls")"
+[[ ! -s $udevadm_calls ]] ||
+  fail "power profile migration avoids a redundant udev reload" "$(<"$udevadm_calls")"
+pass "power profile migration is a machine-level no-op after repair"
