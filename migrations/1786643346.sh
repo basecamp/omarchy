@@ -142,15 +142,18 @@ profile_open() {
     # browser we cannot see.
     [[ $host == "$(uname -n)" && $pid =~ ^[0-9]+$ ]] || return 0
 
-    # The number outlives the browser and the kernel hands it on, so the lock
-    # holds only while that pid still keeps a file open inside this profile —
+    # Whatever wrote a lock naming a pid that is gone is gone with it.
+    [[ -d /proc/$pid ]] || return 1
+
+    # The kernel hands that number on to whatever starts next, so the lock
+    # holds only while the pid still keeps a file open inside this profile —
     # a browser holds dozens, from leveldb locks to the login database.
     fds=$(readlink -- /proc/$pid/fd/* 2>/dev/null) || fds=""
     [[ $fds == *"$1/"* ]] && return 0
 
-    # Failing that, take a browser binary as owner enough: better a repair
+    # A process that answers for neither counts as open: better a repair
     # deferred than one made under a browser that reverts it on exit.
-    exe=$(readlink "/proc/$pid/exe" 2>/dev/null)
+    exe=$(readlink "/proc/$pid/exe" 2>/dev/null) || return 0
     case ${exe##*/} in
       *chrom* | brave* | msedge* | microsoft-edge* | vivaldi* | opera* | helium*) return 0 ;;
     esac

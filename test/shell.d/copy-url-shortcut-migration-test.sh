@@ -145,6 +145,18 @@ run_migration && fail "migration defers to a lock whose pid holds the profile op
   fail "migration leaves preferences alone while the lock's pid holds the profile open"
 pass "migration defers to a lock whose pid holds the profile open"
 kill "$holder_pid" 2>/dev/null
+holder_pid=""
+close_browser
+
+# A pid that answers nothing about itself — pid 1 is alive and root-owned, so
+# neither its files nor its binary are readable here — is no proof of a dead
+# browser, and a deferred repair beats one made under a live one.
+write_stale_preferences
+ln -sfn "$(uname -n)-1" "$profile_root/SingletonLock"
+run_migration && fail "migration defers to a lock whose pid it cannot read"
+[[ $(jq -r '.extensions.commands["linux:Alt+Shift+L"].extension' "$preferences") == "$ghost_id" ]] ||
+  fail "migration leaves preferences alone while the lock's pid is unreadable"
+pass "migration defers to a lock whose pid it cannot read"
 close_browser
 
 # Closing the affected profile and confirming the prompt lets the repair
