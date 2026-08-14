@@ -127,7 +127,7 @@ unverified_repairs_exist() {
 # Whether a profile is open is mechanical: a running Chromium-family browser
 # holds a SingletonLock (and socket) inside its user-data-dir.
 profile_open() {
-  local lock=$1/SingletonLock target host pid fds exe
+  local lock=$1/SingletonLock target host pid state fds exe
 
   # The lock always dangles: it points at <hostname>-<pid>, never at a file. So
   # only that pid says whether a browser is still attached, and a crash or a
@@ -144,6 +144,12 @@ profile_open() {
 
     # Whatever wrote a lock naming a pid that is gone is gone with it.
     [[ -d /proc/$pid ]] || return 1
+
+    # A zombie is just as gone; it only still has an entry because nobody has
+    # reaped it. Left to the checks below it would read as a process too
+    # secretive to see into, since a zombie has no files and no binary.
+    state=$(</proc/$pid/stat) || state=""
+    [[ ${state##*") "} == Z* ]] && return 1
 
     # The kernel hands that number on to whatever starts next, so the lock
     # holds only while the pid still keeps a file open inside this profile —

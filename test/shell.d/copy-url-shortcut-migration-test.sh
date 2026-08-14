@@ -47,8 +47,9 @@ browser_pid=$!
 # Every stand-in has to go on the way out, including a failing exit: one left
 # running holds this test's output pipe open long after the run.
 holder_pid=""
+zombie_parent=""
 cleanup() {
-  kill $browser_pid ${holder_pid:-} 2>/dev/null
+  kill $browser_pid ${holder_pid:-} ${zombie_parent:-} 2>/dev/null
   rm -rf "$test_dir"
 }
 trap cleanup EXIT
@@ -163,6 +164,40 @@ else
   pass "migration defers to a lock whose pid it cannot read"
   close_browser
 fi
+
+# A browser that crashed while its parent was not watching leaves a zombie: an
+# entry in /proc with no files and no binary behind it, which is a dead browser
+# however much of the pid survives.
+python3 -c "
+import os, sys, time
+pid = os.fork()
+if pid == 0:
+    os._exit(0)
+open(sys.argv[1], 'w').write(str(pid))
+time.sleep(600)
+" "$test_dir/zombie-pid" &
+zombie_parent=$!
+for _ in {1..50}; do
+  [[ -s $test_dir/zombie-pid ]] && break
+  sleep 0.1
+done
+zombie_pid=$(cat "$test_dir/zombie-pid" 2>/dev/null) || zombie_pid=""
+zombie_state=$(awk '{print $3}' "/proc/${zombie_pid:-0}/stat" 2>/dev/null) || zombie_state=""
+
+if [[ $zombie_state == "Z" ]]; then
+  write_stale_preferences
+  ln -sfn "$(uname -n)-$zombie_pid" "$profile_root/SingletonLock"
+  run_migration || fail "migration repairs through a lock naming a zombie"
+  jq -e --arg pinned "$pinned_id" '.extensions.commands["linux:Alt+Shift+L"].extension == $pinned' "$preferences" >/dev/null ||
+    fail "migration repairs the shortcut through a lock naming a zombie"
+  pass "migration repairs through a lock naming a zombie"
+  close_browser
+  rm -f "$preferences.omarchy-copy-url-repair.bak"
+else
+  pass "no zombie to point a lock at; skipping the zombie lock pid case"
+fi
+kill "$zombie_parent" 2>/dev/null
+zombie_parent=""
 
 # Closing the affected profile and confirming the prompt lets the repair
 # proceed.
