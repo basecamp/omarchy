@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # omarchy:summary=Remove a development environment that was previously installed via omarchy-install-dev-env.
-# omarchy:args=<ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure|scala>
+# omarchy:args=<ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|android|dotnet|ocaml|clojure|scala>
 # omarchy:requires-sudo=true
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-remove-dev-env <ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure|scala>" >&2
+  echo "Usage: omarchy-remove-dev-env <ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|android|dotnet|ocaml|clojure|scala>" >&2
   exit 1
 fi
 
@@ -80,6 +80,40 @@ java)
   echo -e "Removing Java...\n"
   mise uninstall java --all
   mise rm -g java
+  ;;
+android)
+  echo -e "Removing Android SDK...\n"
+  mise uninstall android-sdk --all
+  mise rm -g android-sdk
+
+  # Resolve the same Android user home the installer and the real tools use
+  # (ANDROID_USER_HOME, then XDG_CONFIG_HOME/.android, then HOME/.android).
+  # $HOME/.android is wrong on any system with XDG_CONFIG_HOME set, and would
+  # otherwise miss the real AVD/adb data entirely.
+  android_user_home=${ANDROID_USER_HOME:-${XDG_CONFIG_HOME:+$XDG_CONFIG_HOME/.android}}
+  android_user_home=${android_user_home:-$HOME/.android}
+
+  # Only remove what this feature created (the 'omarchy' AVD), not the whole
+  # Android user home: that directory also holds adbkey/adbkey.pub (adb's
+  # per-machine authorization, shared with every paired device) and any AVDs
+  # the user built by hand. Wiping it all would revoke every device pairing.
+  rm -rf "$android_user_home/avd/omarchy.avd" "$android_user_home/avd/omarchy.ini"
+  echo "Left $android_user_home in place (adb keys and any other AVDs live there)."
+
+  # The lazy eas wrapper and its mise pin; see omarchy-mise-install.
+  rm -f ~/.local/bin/eas
+  mise uninstall npm:eas-cli --all 2>/dev/null || true
+  mise rm -g npm:eas-cli 2>/dev/null || true
+
+  # Only unpin Java if it is still exactly what this installer pinned. A
+  # different pin means the user (or another project) took it over since, and
+  # removing Android must not clobber that.
+  installed_java_pin=$(mise ls --global java 2>/dev/null | awk '{print $4}')
+  if [[ $installed_java_pin == "temurin-17" ]]; then
+    mise rm -g java
+  fi
+
+  omarchy-pkg-drop android-udev
   ;;
 dotnet)
   echo -e "Removing .NET...\n"
