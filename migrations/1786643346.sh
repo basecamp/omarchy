@@ -169,17 +169,23 @@ profile_open() {
 # machines whose main browser is effectively never closed: the pending ghosts
 # commonly sit in a stale profile nobody has open, yet the update blocks on the
 # always-open one.
+# Leaves the profile it stopped on in open_profile, so a wait that goes
+# nowhere can say which one it is waiting for.
 affected_profile_open() {
-  local preferences backup profile_root
+  local preferences backup profile_root profile
+
+  open_profile=""
 
   for preferences in "${pending[@]}"; do
-    profile_open "$(dirname "$(dirname "$preferences")")" && return 0
+    profile=$(dirname "$(dirname "$preferences")")
+    profile_open "$profile" && open_profile=$profile && return 0
   done
 
   for profile_root in "${profile_roots[@]}"; do
     for backup in "$profile_root"/*/Preferences.omarchy-copy-url-repair.bak; do
       [[ -f $backup ]] || continue
-      profile_open "$(dirname "$(dirname "$backup")")" && return 0
+      profile=$(dirname "$(dirname "$backup")")
+      profile_open "$profile" && open_profile=$profile && return 0
     done
   done
 
@@ -198,7 +204,19 @@ fi
 # ask in, gum fails; then — as on decline — fail so the migration stays
 # pending, and the login notifier keeps prompting until a rerun goes through
 # with the affected profiles closed.
+#
+# Three rounds is someone closing windows. Past that the profile reads as open
+# whatever the user does, and this loop runs inside omarchy-update: waiting on
+# it forever hangs the update itself, where deferring only postpones a repair
+# the next run can still make.
+attempts=0
 while affected_profile_open; do
+  if (( ++attempts > 3 )); then
+    echo "$open_profile still looks like it has a browser attached." >&2
+    echo "If none is running, delete the leftover $open_profile/Singleton* links, then run: omarchy-migrate" >&2
+    exit 1
+  fi
+
   if ! gum confirm "Close the browser windows to repair the Copy URL shortcut, then continue"; then
     echo "A running browser would undo the Copy URL shortcut repair." >&2
     echo "Close the browser windows, then run: omarchy-migrate" >&2

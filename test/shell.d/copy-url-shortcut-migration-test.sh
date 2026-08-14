@@ -297,3 +297,29 @@ run_migration || fail "migration leaves installed third-party extensions alone"
 [[ $(sha256sum "$preferences" | cut -d' ' -f1) == "$untouched_hash" ]] ||
   fail "migration does not steal a third-party copy-url command registration"
 pass "migration leaves installed third-party extensions alone"
+
+# Confirming a prompt that changes nothing must end the wait rather than ask
+# again forever: this loop runs inside omarchy-update, so an unbounded one
+# hangs the update with nothing the user can do about it.
+write_stale_preferences
+open_browser
+cat >"$stub_bin/gum" <<'STUB'
+#!/bin/bash
+echo asked >>"${GUM_CALLS:?}"
+exit 0
+STUB
+give_up_stderr="$test_dir/give-up-stderr"
+gum_calls="$test_dir/gum-calls"
+: >"$gum_calls"
+status=0
+HOME="$home" PATH="$stub_bin:$PATH" GUM_CALLS="$gum_calls" timeout 30 bash -euo pipefail "$migration" \
+  >/dev/null 2>"$give_up_stderr" || status=$?
+(( $(wc -l <"$gum_calls") == 3 )) || fail "migration asks three times before giving up"
+(( status != 124 )) || fail "migration gives up instead of asking forever about a profile that stays open"
+(( status != 0 )) || fail "migration defers while the profile stays open"
+grep -q "$profile_root" "$give_up_stderr" || fail "migration names the profile it gave up on"
+grep -q "Singleton" "$give_up_stderr" || fail "migration says how to clear a leftover lock"
+[[ $(jq -r '.extensions.commands["linux:Alt+Shift+L"].extension' "$preferences") == "$ghost_id" ]] ||
+  fail "migration leaves preferences alone when it gives up"
+pass "migration gives up instead of asking forever about a profile that stays open"
+close_browser
