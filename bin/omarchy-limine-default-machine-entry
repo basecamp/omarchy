@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# omarchy:summary=Make one machine identity the default Limine boot entry
+# omarchy:hidden=true
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+machine_id="${1:-}"
+if [[ ! $machine_id =~ ^[0-9a-f]{32}$ ]]; then
+  echo "Error: expected a 32-character machine ID" >&2
+  exit 1
+fi
+
+esp="${OMARCHY_LIMINE_ESP_PATH:-}"
+if [[ -z $esp && -f /etc/default/limine ]]; then
+  esp=$(sed -n 's/^ESP_PATH=["'\'']\?\([^"'\'']*\).*/\1/p' /etc/default/limine | tail -1)
+fi
+esp=${esp:-/boot}
+config="${OMARCHY_LIMINE_CONFIG:-$esp/limine.conf}"
+[[ -f $config ]] || { echo "Error: $config not found" >&2; exit 1; }
+
+mapfile -t entry_names < <(
+  awk -v marker="machine-id=$machine_id" '
+    /^[[:space:]]*\/[^/]/ {
+      parent = $0
+      sub(/^[[:space:]]*\//, "", parent)
+      sub(/^\+/, "", parent)
+      owned = 0
+      next
+    }
+    index($0, marker) { owned = 1; next }
+    owned && /^[[:space:]]*\/\/[^/]/ {
+      child = $0
+      sub(/^[[:space:]]*\/\//, "", child)
+      sub(/^\+/, "", child)
+      print parent
+      print child
+      exit
+    }
+  ' "$config"
+)
+(( ${#entry_names[@]} == 2 )) || {
+  echo "Error: no bootable Limine entry for machine ID $machine_id" >&2
+  exit 1
+}
+
+escape_entry_name() {
+  local name="$1"
+  name=${name//\\/\\\\}
+  name=${name//\//\\/}
+  name=${name//#/\\#}
+  printf '%s' "$name"
+}
+
+default_path="$(escape_entry_name "${entry_names[0]}")/$(escape_entry_name "${entry_names[1]}")"
+sed -i "s|^default_entry:.*|default_entry: $default_path|" "$config"
+grep -Fqx "default_entry: $default_path" "$config" || {
+  echo "Error: limine.conf has no default_entry setting" >&2
+  exit 1
+}
+
+# The config may be enrolled into Limine's EFI binary. Re-enroll after editing
+# it so Secure Boot machines do not reject the otherwise valid change.
+limine-enroll-config
