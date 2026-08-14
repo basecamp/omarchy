@@ -55,6 +55,7 @@ light surfaces — and the bar glyph stands in when there is none.
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `hermes` | None (bring-your-own provider) | `~/.hermes/state.db` session store, summed the way Hermes itself counts |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
@@ -92,6 +93,16 @@ accounts. Without a configured `fundedAmount` the tab still shows token
 usage, just no balance. With a live ledger, `fundedAmount` is optional and
 only adds the meter and the spent-of-funded line under the real figure.
 
+### Hermes
+
+Hermes runs on whatever providers you sign in to, so there is no account to
+probe for limits — the panel shows local token usage only. The collector
+reads `~/.hermes/state.db` (honored via `HERMES_HOME`), summing the same
+sessions Hermes counts: root sessions with at least one message that are not
+archived. Tokens are attributed to the day each session started, reasoning
+tokens count as output, and each API call is one prompt. A machine that has
+never run `hermes` simply reports no usage.
+
 ## Interactions
 
 - Bar icon: left = panel, right = launch agent, middle = next subscription.
@@ -128,7 +139,8 @@ edit `shell.json` directly):
 omarchy bar set omarchy.agents providers '{
   "claude": { "enabled": true },
   "codex": { "enabled": false },
-  "fireworks": { "enabled": true }
+  "fireworks": { "enabled": true },
+  "hermes": { "enabled": true }
 }' --json
 ```
 
@@ -147,4 +159,4 @@ the same account synced from two machines is not counted twice.
 One caveat on "all-time": the Codex collector only reads native session files
 touched in the last 30 days, and Fireworks requests the last 30 days from its
 billing API, so their totals and day counts cover that window. Claude's cover
-every transcript still on disk.
+every transcript still on disk, and Hermes' every session row in its store.
