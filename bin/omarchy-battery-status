@@ -62,10 +62,11 @@ for supply in "$power_supply_path"/*; do
 done
 
 # UPower's energy-rate can lag the kernel telemetry by tens of seconds. Sum
-# the instantaneous sysfs readings when available so the open panel stays
-# live and a multi-battery machine shows its combined draw.
+# the instantaneous sysfs readings so the open panel stays live and a
+# multi-battery machine shows its combined draw — but only when every pack
+# reports, since a partial sum would understate the total.
 total_microwatts=0
-have_sysfs_rate=false
+metered_packs=0
 for supply in "${batteries[@]}"; do
   if [[ -r $supply/power_now ]]; then
     microwatts=$(<"$supply/power_now")
@@ -80,10 +81,10 @@ for supply in "${batteries[@]}"; do
 
   [[ $microwatts =~ ^-?[0-9]+$ ]] || continue
   total_microwatts=$((total_microwatts + microwatts))
-  have_sysfs_rate=true
+  ((metered_packs += 1))
 done
 
-if [[ $have_sysfs_rate == "true" ]]; then
+if (( metered_packs > 0 && metered_packs == ${#batteries[@]} )); then
   power_rate_raw=$(awk -v microwatts="$total_microwatts" 'BEGIN { print microwatts / 1000000 }')
 fi
 

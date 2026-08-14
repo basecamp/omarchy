@@ -105,3 +105,13 @@ grep -Fx $'rate\t30.5W' <<<"$shell_output" >/dev/null || fail "two live packs re
 grep -Fx $'cycles\t7 / 5' <<<"$shell_output" >/dev/null || fail "two live packs report both cycle counts in sysfs order" "$shell_output"
 
 pass "dual-battery machine with two live packs sums wattage and lists both cycle counts"
+
+# A pack without sysfs power telemetry would make the sum a partial total, so
+# the rate falls back to UPower's aggregate instead.
+rm "$tmp_dir/power2/BAT1/power_now"
+
+shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power2" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
+
+grep -Fx $'rate\t30.9W' <<<"$shell_output" >/dev/null || fail "an unmetered pack falls back to the aggregate rate instead of a partial sum" "$shell_output"
+
+pass "a pack without power telemetry falls back to UPower's aggregate rate"
