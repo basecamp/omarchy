@@ -74,3 +74,26 @@ grep -Fx $'cycles\t5' <<<"$shell_output" >/dev/null || fail "dual battery report
 grep -Fx $'threshold\t75-80%' <<<"$shell_output" >/dev/null || fail "threshold still comes from the first battery's UPower info" "$shell_output"
 
 pass "dual-battery machine with a dead pack reports the working battery"
+
+# Both packs alive: wattage is the combined draw and each pack contributes
+# its own cycle count, in sysfs order.
+mkdir -p "$tmp_dir/power2/BAT0" "$tmp_dir/power2/BAT1"
+
+printf 'Battery\n' >"$tmp_dir/power2/BAT0/type"
+printf '1\n' >"$tmp_dir/power2/BAT0/present"
+printf '23800000\n' >"$tmp_dir/power2/BAT0/energy_full"
+printf '7\n' >"$tmp_dir/power2/BAT0/cycle_count"
+printf '12000000\n' >"$tmp_dir/power2/BAT0/power_now"
+
+printf 'Battery\n' >"$tmp_dir/power2/BAT1/type"
+printf '1\n' >"$tmp_dir/power2/BAT1/present"
+printf '46530000\n' >"$tmp_dir/power2/BAT1/energy_full"
+printf '5\n' >"$tmp_dir/power2/BAT1/cycle_count"
+printf '18500000\n' >"$tmp_dir/power2/BAT1/power_now"
+
+shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power2" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
+
+grep -Fx $'rate\t30.5W' <<<"$shell_output" >/dev/null || fail "two live packs report their combined sysfs wattage" "$shell_output"
+grep -Fx $'cycles\t7 / 5' <<<"$shell_output" >/dev/null || fail "two live packs report both cycle counts in sysfs order" "$shell_output"
+
+pass "dual-battery machine with two live packs sums wattage and lists both cycle counts"
