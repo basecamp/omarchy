@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# omarchy:summary=Remove one retired machine identity from Limine
+# omarchy:hidden=true
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+machine_id="${1:-}"
+if [[ ! $machine_id =~ ^[0-9a-f]{32}$ ]]; then
+  echo "Error: expected a 32-character machine ID" >&2
+  exit 1
+fi
+
+esp="${OMARCHY_LIMINE_ESP_PATH:-}"
+if [[ -z $esp && -f /etc/default/limine ]]; then
+  esp=$(sed -n 's/^ESP_PATH=["'\'']\?\([^"'\'']*\).*/\1/p' /etc/default/limine | tail -1)
+fi
+esp=${esp:-/boot}
+config="${OMARCHY_LIMINE_CONFIG:-$esp/limine.conf}"
+
+# remove-entry edits only the OS block carrying this machine ID. Starting the
+# whole config over from Omarchy's template would also erase Windows and other
+# Linux entries on a shared ESP.
+if [[ -f $config ]] && grep -Fq "machine-id=$machine_id" "$config"; then
+  limine-entry-tool --remove-entry "$machine_id" --no-hooks
+fi
+
+# Remove any boot files left for the retired identity. The validated directory
+# name cannot escape the ESP; unrelated installations remain untouched.
+if [[ -d $esp/$machine_id ]]; then
+  rm -rf "${esp:?}/$machine_id"
+fi
