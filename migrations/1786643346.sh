@@ -134,12 +134,14 @@ if (( ! ${#pending[@]} )) && ! unverified_repairs_exist; then
 fi
 
 # A running browser holds Preferences in memory and rewrites the file on exit,
-# reverting the repair, so ask for the windows to be closed first. Without a
-# terminal to ask in, gum fails; then — as on decline — fail so the migration
-# stays pending, and the login notifier keeps prompting until a rerun goes
-# through with browsers closed.
+# reverting the repair, so ask for the windows to be closed first. gum draws
+# the prompt on stderr, so it must stay attached: suppressing it leaves gum
+# waiting for a keypress behind an unpainted screen. Without a terminal to ask
+# in, gum fails; then — as on decline — fail so the migration stays pending,
+# and the login notifier keeps prompting until a rerun goes through with
+# browsers closed.
 while browsers_running; do
-  if ! gum confirm "Close all browser windows to repair the Copy URL shortcut, then continue" 2>/dev/null; then
+  if ! gum confirm "Close all browser windows to repair the Copy URL shortcut, then continue"; then
     echo "A running browser would undo the Copy URL shortcut repair." >&2
     echo "Close all browser windows, then run: omarchy-migrate" >&2
     exit 1
