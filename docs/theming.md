@@ -6,6 +6,13 @@ Omarchy themes live under `themes/<name>/` in the source tree (installed at
 `colors.toml`; Omarchy generates the active theme files from
 `default/themed/*.tpl` when `omarchy-theme-set <name>` runs.
 
+Beyond `colors.toml` and hand-written config overrides, a theme can ship
+`backgrounds/` (users overlay their own via
+`~/.config/omarchy/backgrounds/<name>/`; the active image is the
+`~/.local/state/omarchy/current/background` symlink), `preview.png` and
+`preview-unlock.png` for the theme switcher, `icons.theme`, `keyboard.rgb`,
+`unlock.png`, and a `light.mode` marker file.
+
 ## Theme activation flow
 
 `omarchy-theme-set <name>` builds a clean staging directory at
@@ -27,6 +34,14 @@ Existing files are never overwritten by a template, so a hand-written
 User templates in `~/.config/omarchy/themed/*.tpl` are processed before the
 built-in templates. If a user template has the same output filename as a
 built-in template, the built-in output is skipped.
+
+After activation, `omarchy-theme-set` fires the `theme-set` hook
+(`~/.config/omarchy/hooks/theme-set*`, theme name in `$1`) and dispatches a
+parallel retint of running apps — terminals, Hyprland, btop, browser, editors,
+and the rest of the `post_theme_commands` list in `bin/omarchy-theme-set`.
+Making a new app follow theme changes means adding its restart/retint command
+to that list. Runs serialize on a `flock`, so scripted theme changes queue
+instead of racing.
 
 ## `colors.toml`
 
@@ -64,7 +79,8 @@ shell palette is loaded from:
   `color4`
 - `muted` — de-emphasized elements (comments, placeholders, dividers); also
   serves as ANSI `color8`
-- `urgent` / `red` / `color1`
+- `red` / `color1` — populate the shell's urgent role; there is no `urgent`
+  palette key (one defined in `colors.toml` is ignored)
 
 Themes and user templates using the legacy short names remain supported.
 Canonical names take precedence when both forms are defined, and resolved
@@ -304,10 +320,11 @@ BorderSurface {
 }
 ```
 
-Use `Border.surfaceSpec(section, token, fallbackColor, fallbackWidth)` for
-shell theme tokens, `Border.controlSpec(state, foreground, accent)` for shared
-controls, and `Border.flat(color, width)` for a deliberate local border that
-should not be overridden by the active theme. `Color.<section>.border` is the
+Use `Border.surfaceSpec(section, token, fallbackColor, fallbackWidth, alphaKey)`
+for shell theme tokens (the optional `alphaKey` names the alpha token, e.g.
+`"border-alpha"`), `Border.controlSpec(state, foreground, accent, urgent)` for
+shared controls, and `Border.flat(color, width)` for a deliberate local border
+that should not be overridden by the active theme. `Color.<section>.border` is the
 flat first-stop color for consumers that cannot render full border specs.
 
 ## Hyprland templates

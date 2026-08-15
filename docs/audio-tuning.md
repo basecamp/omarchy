@@ -12,7 +12,9 @@ default/audio/tunings/<vendor>-<model>/
 ```
 
 `on` renders the graph into `~/.config/pipewire/omarchy-speaker-tuning.conf.d/`
-and runs it as its own PipeWire client via `omarchy-speaker-tuning.service`, rather than
+(plus the shared host config `omarchy-speaker-tuning.conf`, from
+`default/audio/filter-chain-host.conf`) and runs it as its own PipeWire client via
+`omarchy-speaker-tuning.service`, rather than
 loading it into the audio daemon. The daemon only reads its own config at startup,
 so a daemon-loaded tuning could only be switched by restarting PipeWire — which
 drops every PulseAudio client's connection, and applications that do not reconnect
@@ -40,6 +42,13 @@ omarchy audio tuning status    # installed? in use? what matches?
 `match` and `fronted-sink` are also accepted; they exist for the install hooks
 and the sink-listing scripts rather than for daily use.
 
+`on` verifies its own work: it waits for the tuning sink to appear and confirms
+its output linked to the expected physical sink, and uninstalls everything again
+on either failure — so a broken tuning cannot be left half-applied. It also
+switches the default sink to the tuning and moves existing app streams onto it
+(`off` reverses both). When everything is already installed and linked, `on` is
+a no-op; pass `--force` when iterating on a tuning in place.
+
 ## Adding a tuning
 
 Add a directory with a `tuning.conf` and a `filter-chain.conf`. No new command is
@@ -59,8 +68,16 @@ been validated on:
 match_sku=("0DB9" "0DBA")   # XPS 14 and XPS 16
 ```
 
+Only the first *defined* key is consulted, in the order `match_command`,
+`match_sku`, `match_dmi` — keys below a defined one are ignored, and a tuning
+defining none never matches.
+
 `sink_pattern` is required whichever method you use, since the graph's target sink
-is substituted from it.
+is substituted from it. The graph must also keep two fixed properties: the sink
+node is named `omarchy_speaker_tuning` (the install checks for that exact name,
+so renaming it silently fails verification), and its output stream sets
+`node.dont-fallback` alongside `node.dont-move`, so WirePlumber cannot link it
+somewhere else when the target sink is absent at host start.
 
 Gate narrowly and widen as models are validated; a tuning aimed at the wrong
 drivers can sound worse than none and can stress them. When a tuning covers a model

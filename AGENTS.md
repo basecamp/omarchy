@@ -90,7 +90,8 @@ Exceptions are allowed for migration and package-helper scripts where the helper
 
 # Menu
 
-- The menu definition lives in `default/omarchy/omarchy-menu.jsonc`.
+- The menu definition lives in `default/omarchy/omarchy-menu.jsonc`;
+  [`docs/menu.md`](docs/menu.md) covers the schema, guards, and providers.
 - Do not add `aliases` to new menu entries. Aliases are reserved for
   established alternate names users already type, kept for compatibility.
 
@@ -102,7 +103,9 @@ Exceptions are allowed for migration and package-helper scripts where the helper
 
 # Tests
 
-Run focused automated tests for the area you changed. Current test entry points:
+Run focused automated tests for the area you changed;
+[`docs/testing.md`](docs/testing.md) covers how the suites are shaped. Current
+test entry points:
 
 - `./test/all` - aggregate runner for CLI and shell tests; it intentionally does not run graphical acceptance tests
 - `./test/cli` - CLI routing, command metadata, theme helpers, and safe dispatch coverage
