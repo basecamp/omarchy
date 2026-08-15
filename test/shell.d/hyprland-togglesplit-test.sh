@@ -4,7 +4,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/base-test.sh"
 
 require_command lua
 
-output=$(OMARCHY_PATH="$ROOT" lua <<'LUA'
+if ! output=$(OMARCHY_PATH="$ROOT" lua <<'LUA'
 package.path = os.getenv("OMARCHY_PATH") .. "/?.lua;" .. package.path
 
 local function proxy()
@@ -67,7 +67,9 @@ special_workspace = { tiled_layout = "scrolling" }
 toggle_split()
 assert(#dispatched == 1)
 LUA
-)
+); then
+  fail "toggle split binding assertions pass" "$output"
+fi
 
 [[ -z $output ]] || fail "toggle split binding produces no output" "$output"
 pass "toggle split only dispatches in a Dwindle workspace"
