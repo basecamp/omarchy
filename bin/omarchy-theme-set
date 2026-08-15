@@ -9,10 +9,48 @@ if [[ -z $1 ]]; then
   exit 1
 fi
 
-CURRENT_THEME_PATH="$HOME/.config/omarchy/current/theme"
-NEXT_THEME_PATH="$HOME/.config/omarchy/current/next-theme"
+CURRENT_THEME_DIR="$HOME/.config/omarchy/current"
+CURRENT_THEME_PATH="$CURRENT_THEME_DIR/theme"
 USER_THEMES_PATH="$HOME/.config/omarchy/themes"
 OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
+
+if ! mkdir -p "$CURRENT_THEME_DIR"; then
+  echo "Failed to create theme state directory"
+  exit 1
+fi
+
+if ! NEXT_THEME_PATH=$(mktemp -d "$CURRENT_THEME_DIR/next-theme.XXXXXX"); then
+  echo "Failed to create theme staging directory"
+  exit 1
+fi
+
+if ! PREVIOUS_THEME_DIR=$(mktemp -d "$CURRENT_THEME_DIR/previous-theme.XXXXXX"); then
+  rm -rf "$NEXT_THEME_PATH"
+  echo "Failed to create theme backup directory"
+  exit 1
+fi
+PREVIOUS_THEME_PATH="$PREVIOUS_THEME_DIR/theme"
+CURRENT_THEME_STAGED=0
+POST_THEME_FAILURES=()
+
+cleanup() {
+  local exit_status=$?
+
+  if (( CURRENT_THEME_STAGED )) && [[ ! -e $CURRENT_THEME_PATH ]] && [[ -e $PREVIOUS_THEME_PATH ]]; then
+    if mv "$PREVIOUS_THEME_PATH" "$CURRENT_THEME_PATH"; then
+      echo "Restored the previous theme after interrupted activation" >&2
+    else
+      echo "Failed to restore the previous theme after interrupted activation" >&2
+      exit_status=1
+    fi
+  fi
+
+  rm -rf "$NEXT_THEME_PATH" "$PREVIOUS_THEME_DIR"
+  return "$exit_status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
 
@@ -21,53 +59,101 @@ if [[ ! -d $OMARCHY_THEMES_PATH/$THEME_NAME ]] && [[ ! -d $USER_THEMES_PATH/$THE
   exit 1
 fi
 
-# Setup clean next theme directory (for atomic theme config swapping)
-rm -rf "$NEXT_THEME_PATH"
+# Setup a unique staging directory for atomic theme config swapping
 mkdir -p "$NEXT_THEME_PATH"
 
 # Copy official theme first, then overlay user customizations on top
-cp -r "$OMARCHY_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
-cp -r "$USER_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
+copy_theme_files() {
+  local source="$1"
+  [[ -d $source ]] || return 0
+  cp -a "$source"/. "$NEXT_THEME_PATH/"
+}
+
+if ! copy_theme_files "$OMARCHY_THEMES_PATH/$THEME_NAME" ||
+  ! copy_theme_files "$USER_THEMES_PATH/$THEME_NAME"; then
+  echo "Failed to copy theme '$THEME_NAME'"
+  exit 1
+fi
 
 # Generate colors.toml from alacritty.toml if theme is missing colors.toml
 if [[ ! -f $NEXT_THEME_PATH/colors.toml && -f $NEXT_THEME_PATH/alacritty.toml ]]; then
-  omarchy-theme-colors-from-alacritty "$NEXT_THEME_PATH"
+  if ! omarchy-theme-colors-from-alacritty "$NEXT_THEME_PATH"; then
+    echo "Failed to generate theme colors for '$THEME_NAME'"
+    exit 1
+  fi
 fi
 
 # Generate dynamic configs
-omarchy-theme-set-templates
+if ! OMARCHY_THEME_STAGE_DIR="$NEXT_THEME_PATH" omarchy-theme-set-templates; then
+  echo "Failed to generate themed configuration for '$THEME_NAME'"
+  exit 1
+fi
 
-# Swap next theme in as current
-rm -rf "$CURRENT_THEME_PATH"
-mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"
+# Swap the staged theme in as current, retaining the old theme until the move succeeds
+if [[ -e $CURRENT_THEME_PATH ]]; then
+  CURRENT_THEME_STAGED=1
+  if ! mv "$CURRENT_THEME_PATH" "$PREVIOUS_THEME_PATH"; then
+    CURRENT_THEME_STAGED=0
+    echo "Failed to stage the current theme for replacement"
+    exit 1
+  fi
+fi
+
+if ! mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"; then
+  if [[ -e $PREVIOUS_THEME_PATH ]]; then
+    if ! mv "$PREVIOUS_THEME_PATH" "$CURRENT_THEME_PATH"; then
+      echo "Failed to activate theme '$THEME_NAME' and restore the previous theme"
+      exit 1
+    fi
+  fi
+  echo "Failed to activate theme '$THEME_NAME'"
+  exit 1
+fi
+CURRENT_THEME_STAGED=0
 
 # Store theme name for reference
-echo "$THEME_NAME" >"$HOME/.config/omarchy/current/theme.name"
+if ! echo "$THEME_NAME" >"$HOME/.config/omarchy/current/theme.name"; then
+  POST_THEME_FAILURES+=("recording the current theme")
+fi
+
+run_optional() {
+  local description="$1"
+  shift
+
+  if ! "$@"; then
+    POST_THEME_FAILURES+=("$description")
+    echo "Warning: $description failed" >&2
+  fi
+}
 
 # Change background with theme
 if [[ $OMARCHY_THEME_SKIP_BACKGROUND != "1" ]]; then
-  omarchy-theme-bg-next
+  run_optional "changing the theme background" omarchy-theme-bg-next
 fi
 
 # Restart components to apply new theme
 if pgrep -x waybar >/dev/null; then
-  omarchy-restart-waybar
+  run_optional "restarting Waybar" omarchy-restart-waybar
 fi
-omarchy-restart-swayosd
-omarchy-restart-terminal
-omarchy-restart-hyprctl
-omarchy-restart-btop
-omarchy-restart-opencode
-omarchy-restart-mako
-omarchy-restart-helix
+run_optional "restarting SwayOSD" omarchy-restart-swayosd
+run_optional "restarting the terminal" omarchy-restart-terminal
+run_optional "restarting Hyprland helpers" omarchy-restart-hyprctl
+run_optional "restarting btop" omarchy-restart-btop
+run_optional "restarting Opencode" omarchy-restart-opencode
+run_optional "restarting Mako" omarchy-restart-mako
+run_optional "restarting Helix" omarchy-restart-helix
 
 # Change app-specific themes
-omarchy-theme-set-foot
-omarchy-theme-set-gnome
-omarchy-theme-set-browser
-omarchy-theme-set-vscode
-omarchy-theme-set-obsidian
-omarchy-theme-set-keyboard
+run_optional "updating Foot theme" omarchy-theme-set-foot
+run_optional "updating GNOME theme" omarchy-theme-set-gnome
+run_optional "updating browser theme" omarchy-theme-set-browser
+run_optional "updating VS Code theme" omarchy-theme-set-vscode
+run_optional "updating Obsidian theme" omarchy-theme-set-obsidian
+run_optional "updating keyboard theme" omarchy-theme-set-keyboard
 
 # Call hook on theme set
-omarchy-hook theme-set "$THEME_NAME" >/dev/null
+run_optional "running the theme-set hook" omarchy-hook theme-set "$THEME_NAME"
+
+if (( ${#POST_THEME_FAILURES[@]} > 0 )); then
+  echo "Theme '$THEME_NAME' activated with ${#POST_THEME_FAILURES[@]} integration warning(s)." >&2
+fi
