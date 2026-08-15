@@ -41,6 +41,10 @@ It does **not** authorize, ever, in any mode:
 - Pushing directly to `quattro`, `master`, or `dev`.
 - Force-pushing anything, anywhere.
 
+Everything in the first list is further conditional on *Preflight* below: a run
+that cannot confirm the default branch is protected keeps only the read-only
+half of that list.
+
 When triage concludes "this should be closed as a duplicate", it says so in the
 report and leaves the closing to the maintainer. It can say so on the issue too —
 but recommending and doing remain different things.
@@ -92,6 +96,48 @@ It also has to run where none of that exists — a headless bot or CI runner. Th
 - If `codex` is missing or unauthenticated, run the review without it and record
   in every report that no second opinion was available. Never silently skip it,
   and never let its absence stop the run.
+
+## Preflight
+
+The posture above is worth nothing if it is only written down, so check it at
+the start of every run and let the result decide what this run may do.
+
+```bash
+ACCOUNT=$(gh api user --jq .login)
+ADMIN=$(gh api repos/basecamp/omarchy --jq .permissions.admin)
+DEFAULT=$(gh api repos/basecamp/omarchy --jq .default_branch)
+
+# A ruleset that forces changes through a PR is what bounds a stolen token.
+gh api repos/basecamp/omarchy/rulesets --jq \
+  '[.[] | select(.enforcement == "active" and .target == "branch")] | .[].id' |
+  while read -r id; do
+    gh api "repos/basecamp/omarchy/rulesets/$id" --jq \
+      '{name, refs: .conditions.ref_name.include, rules: [.rules[].type]}'
+  done
+```
+
+Two things decide the run:
+
+- **Is the default branch push-restricted?** An active branch ruleset covering
+  it (or `~DEFAULT_BRANCH`/`~ALL`) carrying a `pull_request` rule. A ruleset
+  that only carries `copilot_code_review` does not count — it reviews, it does
+  not restrict.
+- **Is this an admin token?** `.permissions.admin` true means the credential can
+  do far more than triage needs, and is probably a maintainer's rather than the
+  bot's.
+
+**Unattended** — fired by a timer, or `OMARCHY_TRIAGE_UNATTENDED=1`: if either
+check fails, run read-only. Diagnose, correlate and report, but push nothing,
+open nothing, post nothing. Put the reason in the first line of the report. An
+unattended agent with an over-broad token and no backstop is the exact shape of
+the problem this skill is trying not to be.
+
+**Interactive** — a human typed `/omarchy-triage`: proceed, but say plainly in
+the report which check failed. Someone is present and accountable, so the call
+is theirs; silently proceeding is what is not allowed.
+
+Record the outcome in the report either way, so a run that quietly lost half its
+authority does not look like a quiet week.
 
 ## Speaking in public
 
@@ -171,25 +217,34 @@ executing code that branch controls. `./test/cli`, anything under
 the maintainer. A PR that edits a test file gets arbitrary execution on this
 machine, with no cleverness required and no prompt injection involved.
 
-So the protection has to be in where this runs, not in how carefully it reads:
+Running the tests is the point, so the token and the untrusted code share a
+machine on purpose. The design therefore **assumes this box can be compromised**
+and bounds what that buys an attacker, rather than pretending it cannot happen.
 
-- **Untrusted code must not execute where credentials live.** Either tests run in
-  a disposable sandbox with no network and no tokens, or PR tests do not run at
-  all on this box and CI is trusted for that instead. Losing test coverage is a
-  real cost; paying it with a token that can push to the repository is worse.
-- **The GitHub token must be unreachable from executed PR code.** A token that
-  can push to contributor branches and open PRs is exactly what an attacker
-  wants: it launders their code through an agent the maintainer trusts.
-- **Branch protection on `quattro`, `master` and `dev`** is the backstop that
-  survives a stolen token. Nothing here should be able to push to a default
-  branch even if everything else fails.
-- **A dedicated account, not a maintainer's.** Scope it to this one repository,
-  contents and pull-requests only, no admin and no merge.
-- **Nothing else on the box.** No SSH keys, no personal credentials, no other
-  repositories, no password manager.
+The deployment this skill is written for:
 
-If those cannot be arranged, run triage with `--dry-run`, which diagnoses and
-reports without pushing anything, and let a human act on the report.
+- **A dedicated GitHub account**, never a maintainer's. An outside collaborator
+  with write on `basecamp/omarchy` and nothing else — not an org member, no
+  admin, no other repositories. A fine-grained token scoped to that one repo,
+  contents plus issues plus pull-requests. A GitHub App installation token is
+  better still, for short-lived credentials and cleaner revocation.
+- **A dedicated box** running nothing else. No SSH keys, no personal
+  credentials, no other checkouts, no password manager. The bot token is the
+  only secret present, so it is the only thing a compromise yields.
+- **Branch protection on `quattro`, `master` and `dev`**, as a ruleset whose
+  bypass list holds the maintainers and never this account. This is the control
+  that matters: it is what stands between a compromised box and code reaching
+  every user through `omarchy update`.
+
+What a total compromise of the box then buys an attacker: comments, PRs, and
+pushes to contributor fork branches. All visible, all revocable by deleting one
+account, and none of it reaching a user without a maintainer merging it.
+
+What it still buys them, and what no token design can take away: **laundering**.
+Plausible-looking malicious code pushed to a contributor's PR, merged later as
+"the bot's fix". The defence is a human reading what the bot pushed, which is
+why its commits stay small, single-purpose, and explained, and why it opens at
+most three PRs a run.
 
 ## Safety on a live machine
 
@@ -216,7 +271,9 @@ rules do not change, because a bot cannot tell the difference either. Hard rules
 - `/omarchy-triage 6893 6912 7001` — exactly those items, PR or issue.
 - `/omarchy-triage issues` / `/omarchy-triage prs` — one side only.
 
-Add `--dry-run` to diagnose and report without pushing any fix.
+Add `--dry-run` to diagnose and report without pushing, opening or posting
+anything. Set `OMARCHY_TRIAGE_UNATTENDED=1` for timer-fired runs, which makes
+the *Preflight* checks binding rather than advisory.
 
 ## State
 
@@ -549,7 +606,11 @@ and send one desktop notification pointing at it:
 omarchy-notification-send "Omarchy triage" "<n> items — <k> need you"
 ```
 
-Group by what the maintainer does next, never by number:
+Open with one line on posture: which account ran, whether the default branch was
+confirmed protected, and anything the preflight withheld. A reader should never
+have to guess whether a short report means a quiet week or a hobbled run.
+
+Then group by what the maintainer does next, never by number:
 
 - **Needs you now** — blockers, regressions, anything that would ship broken.
 - **Merge as-is** — clean PRs.
