@@ -2,7 +2,9 @@
 
 set -e
 
-if omarchy-done ensure voxtype-install-invitation; then
+# Upgraded accounts reach this hook through a backfill migration, and Voxtype
+# predates the upgrade, so many of them already run it. Invite only who needs it.
+if omarchy-cmd-missing voxtype && omarchy-done ensure voxtype-install-invitation; then
   omarchy-notification-send -u critical -g  "Install Dictation with Voxtype" \
     "Click to install voice dictation for Omarchy." \
     --exec "omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install"
