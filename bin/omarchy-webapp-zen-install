@@ -225,7 +225,7 @@ cat >"$DESKTOP_FILE" <<EOF
 Type=Application
 Version=1.5
 Name=$SAFE_NAME
-Icon="$ICON_PATH"
+Icon=$ICON_PATH
 Exec="$ZEN_BIN" "-taskbar-tab" "$UUID" "-new-window" "$SAFE_URL" "-profile" "$PROFILE_DIR" "-container" "0"
 EOF
 
