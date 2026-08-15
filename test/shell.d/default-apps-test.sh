@@ -271,5 +271,4 @@ if OMARCHY_TEST_INSTALL_FAIL=true omarchy-default-editor --install vim >"$test_t
   fail "failed default installation returns an error"
 fi
 [[ $(omarchy-default-editor) == "$previous_editor" ]] || fail "failed installation preserves the default"
-grep -Fq 'Could not install Vim' "$test_tmp/install-failure" || fail "failed installation explains the error"
 pass "failed installation preserves the current default"

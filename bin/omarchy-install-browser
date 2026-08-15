@@ -1,10 +1,10 @@
 #!/bin/bash
 
-set -e
-
 # omarchy:summary=Install a supported browser
 # omarchy:args=<chromium|chrome|brave|brave-origin|edge|firefox|zen>
 # omarchy:examples=omarchy install browser chromium | omarchy install browser firefox
+
+set -e
 
 setup_policy_directory() {
   sudo mkdir -p "$1"

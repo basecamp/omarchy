@@ -44,10 +44,6 @@ if omarchy-cmd-missing "$command"; then
   fi
 
   omarchy-install-browser "$browser" || exit 1
-  if omarchy-cmd-missing "$command"; then
-    echo "Could not install $name" >&2
-    exit 1
-  fi
 fi
 
 env -u BROWSER xdg-settings set default-web-browser "$desktop_id" || exit 1

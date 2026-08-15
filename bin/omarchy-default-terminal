@@ -39,11 +39,7 @@ if omarchy-cmd-missing "$terminal"; then
     exec omarchy-launch-floating-terminal-with-presentation omarchy-default-terminal --install "$terminal"
   fi
 
-  omarchy-install-terminal "$terminal"
-  if omarchy-cmd-missing "$terminal"; then
-    echo "Could not install $name" >&2
-    exit 1
-  fi
+  omarchy-install-terminal "$terminal" || exit 1
 fi
 
 cat >~/.config/xdg-terminals.list <<EOF

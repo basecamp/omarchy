@@ -50,12 +50,7 @@ if omarchy-cmd-missing "$editor"; then
   vim) omarchy-pkg-add vim ;;
   emacs) omarchy-install-editor-emacs ;;
   nvim) omarchy-pkg-add neovim ;;
-  esac
-
-  if omarchy-cmd-missing "$editor"; then
-    echo "Could not install $name" >&2
-    exit 1
-  fi
+  esac || exit 1
 fi
 
 mkdir -p "$(dirname "$editor_file")"
