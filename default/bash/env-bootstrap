@@ -38,4 +38,9 @@ case ":$PATH:" in
   *":$HOME/.local/bin:"*) ;;
   *) PATH="${PATH:+$PATH:}$HOME/.local/bin" ;;
 esac
+# GHCup writes this when Haskell is installed. Source it so session apps
+# (including Neovim) see ghc/cabal/hls without an interactive shell.
+if [ -r "$HOME/.ghcup/env" ]; then
+  . "$HOME/.ghcup/env"
+fi
 export PATH

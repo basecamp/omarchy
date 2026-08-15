@@ -56,7 +56,20 @@ pass "env-bootstrap resolves default OMARCHY_PATH"
 assert_path_present "$default_path" "$tmpdir/unrelated/bin" "env-bootstrap preserves PATH entries in default mode"
 assert_path_present "$default_path" "$home/.local/share/mise/shims" "env-bootstrap appends mise shims"
 assert_path_present "$default_path" "$home/.local/bin" "env-bootstrap appends ~/.local/bin"
+case ":$default_path:" in
+  *":$home/.ghcup/bin:"*) fail "env-bootstrap skips GHCup env when it is absent" "PATH: $default_path" ;;
+esac
+pass "env-bootstrap skips GHCup env when it is absent"
 assert_path_first "$default_path" "$tmpdir/unrelated/bin" "env-bootstrap appends user-level paths after existing entries"
+
+mkdir -p "$home/.ghcup"
+cat >"$home/.ghcup/env" <<EOF
+export PATH="$home/.ghcup/bin:\$PATH"
+EOF
+mapfile -t ghcup_result < <(run_bootstrap bash "$bootstrap" "$home" "$tmpdir/unrelated/bin:/usr/bin")
+ghcup_path=${ghcup_result[1]}
+assert_path_present "$ghcup_path" "$home/.ghcup/bin" "env-bootstrap sources ~/.ghcup/env when present"
+rm -rf "$home/.ghcup"
 
 printf 'export OMARCHY_PATH="%s"\n' "$tmpdir/active" >"$tmpdir/omarchy.conf"
 mapfile -t linked_result < <(run_bootstrap bash "$bootstrap" "$home" "$tmpdir/unrelated/bin:/usr/bin")
