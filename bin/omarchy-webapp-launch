@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# omarchy:summary=Launch an installed web app by name or id (Zen Taskbar Tab or Chromium)
+# omarchy:args=<name-or-id>
+# omarchy:examples=omarchy webapp launch "Google Gemini" | omarchy webapp launch d7c919a4-bbf6-440e-8eec-64276a732899
+
+set -e
+
+if (( $# < 1 )); then
+  echo "usage: omarchy webapp launch <name-or-id>" >&2
+  exit 1
+fi
+
+QUERY="$1"
+
+# Prefer Zen: the registry resolves by id, name, or shortcut basename.
+if omarchy-webapp-zen-launch "$QUERY" 2>/dev/null; then
+  exit 0
+fi
+
+# Fallback: Chromium launcher by desktop id or visible Name.
+DESKTOP_DIR="$HOME/.local/share/applications"
+if [[ -f "$DESKTOP_DIR/$QUERY.desktop" ]]; then
+  exec uwsm-app -- gtk-launch "$QUERY.desktop"
+fi
+
+# Match by Name= field
+MATCH=""
+while IFS= read -r -d '' file; do
+  name=$(sed -n 's/^Name=//p' "$file" | head -1)
+  if [[ $name == "$QUERY" ]]; then
+    MATCH="$file"
+    break
+  fi
+done < <(find "$DESKTOP_DIR" -maxdepth 1 -name '*.desktop' -print0 2>/dev/null)
+
+if [[ -n $MATCH ]]; then
+  exec uwsm-app -- gtk-launch "$(basename "$MATCH")"
+fi
+
+echo "Error: no web app matches '$QUERY'." >&2
+exit 1

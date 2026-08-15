@@ -1,9 +1,20 @@
 #!/bin/bash
 
-# omarchy:summary=Create a desktop launcher for a web app
+# omarchy:summary=Create a desktop launcher for a web app (Zen Taskbar Tab or Chromium app window)
 # omarchy:args=[name url icon-url-or-name [custom-exec] [mime-types]]
+# omarchy:examples=omarchy webapp install "Google Maps" https://maps.google.com
 
 set -e
+
+# Backend selection is automatic: when the default browser is Zen and no
+# Chromium-specific options (custom-exec / mime-types) are given, install as a
+# native Zen Taskbar Tab (standalone app window, no browser UI, uses the Zen
+# profile/accounts). Otherwise keep the classic Chromium launcher behavior.
+if [[ $(xdg-settings get default-web-browser 2>/dev/null || true) == zen* ]] &&
+   (( $# >= 2 && $# < 4 )); then
+  echo "Installing as a Zen Taskbar Tab (default browser is Zen)." >&2
+  exec omarchy-webapp-zen-install "$@"
+fi
 
 ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
 

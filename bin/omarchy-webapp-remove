@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# omarchy:summary=Remove a web app desktop launcher
-# omarchy:args=[name]
+# omarchy:summary=Remove a web app desktop launcher (Chromium or Zen Taskbar Tab)
+# omarchy:args=[name|id]
 
 set -e
 
@@ -9,17 +9,41 @@ ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
 OLD_ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_DIR="$HOME/.local/share/applications/"
 
-if (( $# == 0 )); then
-  # Find all web apps
+# List visible names for the interactive picker: Chromium launchers use their
+# .desktop basename; Zen Taskbar Tabs use the Name= field (their file is
+# zen.webapp-<uuid>.desktop, not the app name).
+list_webapp_names() {
+  local file name
   while IFS= read -r -d '' file; do
     if grep -q '^Exec=.*\(omarchy-launch-webapp\|omarchy-webapp-handler\).*' "$file"; then
-      WEB_APPS+=("$(basename "${file%.desktop}")")
+      printf '%s\n' "$(basename "${file%.desktop}")"
+    elif grep -q '^Exec=.*zen-bin.*-taskbar-tab' "$file"; then
+      name=$(sed -n 's/^Name=//p' "$file" | head -1)
+      printf '%s\n' "${name:-$(basename "${file%.desktop}")}"
     fi
-  done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0)
+  done < <(find "$DESKTOP_DIR" -maxdepth 1 -name '*.desktop' -print0)
+}
 
+# Resolve a display name (or id) to the Zen Taskbar Tab .desktop file, if any.
+find_zen_desktop() {
+  local query="$1" file name
+  while IFS= read -r -d '' file; do
+    if grep -q '^Exec=.*zen-bin.*-taskbar-tab' "$file"; then
+      name=$(sed -n 's/^Name=//p' "$file" | head -1)
+      if [[ $name == "$query" ]] || [[ $(basename "${file%.desktop}") == "$query" ]] ||
+         [[ $(basename "$file" .desktop) == "zen.webapp-$query" ]]; then
+        printf '%s\n' "$file"
+        return 0
+      fi
+    fi
+  done < <(find "$DESKTOP_DIR" -maxdepth 1 -name '*.desktop' -print0)
+  return 1
+}
+
+if (( $# == 0 )); then
+  mapfile -t WEB_APPS < <(list_webapp_names | sort -u)
   if ((${#WEB_APPS[@]})); then
-    mapfile -t SORTED_WEB_APPS < <(printf '%s\n' "${WEB_APPS[@]}" | sort)
-    APP_NAME=$(omarchy-menu-select "Select web app to remove" "${SORTED_WEB_APPS[@]}" -- --width 520 --maxheight 520)
+    APP_NAME=$(omarchy-menu-select "Select web app to remove" "${WEB_APPS[@]}" -- --width 520 --maxheight 520)
   else
     echo "No web apps to remove."
     exit 1
@@ -33,6 +57,26 @@ if [[ -z $APP_NAME ]]; then
   exit 1
 fi
 
+# Zen Taskbar Tab: remove the registry entry + launcher + icon via the backend.
+if ZEN_DESKTOP=$(find_zen_desktop "$APP_NAME"); then
+  zen_basename=$(basename "${ZEN_DESKTOP%.desktop}")
+  if ! omarchy-webapp-zen-remove "$zen_basename"; then
+    echo "Error: no se pudo limpiar la web app de Zen; el registro puede quedar inconsistente." >&2
+    exit 1
+  fi
+  rm -f "$ZEN_DESKTOP"
+  if [[ ${OMARCHY_REMOVE_NOTIFY:-true} != "false" ]]; then
+    omarchy-notification-send -g  "Web app removed" "$APP_NAME"
+  fi
+  update-desktop-database "$DESKTOP_DIR" &>/dev/null || true
+  exit 0
+fi
+
+# Classic Chromium launcher path.
+if [[ ! -f "$DESKTOP_DIR/$APP_NAME.desktop" ]]; then
+  echo "Error: no web app matches '$APP_NAME'." >&2
+  exit 1
+fi
 icon_name=$(printf '%s\n' "$APP_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')
 rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
 rm -f "$ICON_DIR/$icon_name.png" "$ICON_DIR/$APP_NAME.png" "$OLD_ICON_DIR/$APP_NAME.png"
@@ -40,4 +84,4 @@ rm -f "$ICON_DIR/$icon_name.png" "$ICON_DIR/$APP_NAME.png" "$OLD_ICON_DIR/$APP_N
 if [[ ${OMARCHY_REMOVE_NOTIFY:-true} != "false" ]]; then
   omarchy-notification-send -g  "Web app removed" "$APP_NAME"
 fi
-update-desktop-database "$DESKTOP_DIR" &>/dev/null
+update-desktop-database "$DESKTOP_DIR" &>/dev/null || true

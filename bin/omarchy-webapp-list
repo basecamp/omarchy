@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# omarchy:summary=List installed web apps (Chromium launchers and Zen Taskbar Tabs)
+# omarchy:args=[--json]
+# omarchy:examples=omarchy webapp list | omarchy webapp list --json
+
+set -e
+
+JSON=0
+if [[ ${1:-} == "--json" ]]; then
+  JSON=1
+fi
+
+DESKTOP_DIR="$HOME/.local/share/applications"
+
+python3 - "$DESKTOP_DIR" "$JSON" <<'PYEOF'
+import json, os, sys
+
+desktop_dir, want_json = sys.argv[1:]
+want_json = want_json == "1"
+
+apps = []
+
+# Chromium-style launchers (Exec=omarchy-launch-webapp / omarchy-webapp-handler)
+if os.path.isdir(desktop_dir):
+    for entry in sorted(os.listdir(desktop_dir)):
+        if not entry.endswith(".desktop"):
+            continue
+        path = os.path.join(desktop_dir, entry)
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                content = f.read()
+        except OSError:
+            continue
+        if "Exec=omarchy-launch-webapp" in content or "Exec=omarchy-webapp-handler" in content:
+            name = entry[:-len(".desktop")]
+            for line in content.splitlines():
+                if line.startswith("Name="):
+                    name = line[5:]
+                    break
+            apps.append({"backend": "chromium", "id": entry[:-len(".desktop")], "name": name})
+
+# Zen Taskbar Tabs from the registry (shared backend reads the Zen profile)
+try:
+    zen_out = os.popen("omarchy-webapp-zen-list --json 2>/dev/null").read()
+    zen = json.loads(zen_out) if zen_out.strip() else []
+    for t in zen:
+        apps.append({"backend": "zen", "id": t.get("id"), "name": t.get("name"), "startUrl": t.get("startUrl")})
+except (ValueError, OSError):
+    pass
+
+if want_json:
+    json.dump(apps, sys.stdout, indent=2)
+    print()
+else:
+    if not apps:
+        print("No web apps installed.")
+    else:
+        for a in sorted(apps, key=lambda x: (x.get("name") or "").lower()):
+            extra = f"  {a.get('startUrl','')}" if a.get("backend") == "zen" and a.get("startUrl") else ""
+            print(f"[{a.get('backend')}] {a.get('name')}{extra}")
+PYEOF
