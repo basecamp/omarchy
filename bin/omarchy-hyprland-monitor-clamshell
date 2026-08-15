@@ -3,6 +3,8 @@
 # omarchy:summary=Apply clamshell display state to Hyprland monitors
 # omarchy:hidden=true
 
+omarchy-toggle-enabled monitor-management || exit 0
+
 TOGGLES_DIR="$HOME/.local/state/omarchy/toggles/hypr"
 CLAMSHELL_FLAG="$TOGGLES_DIR/internal-monitor-clamshell.lua"
 MANUAL_DISABLE_FLAG="$TOGGLES_DIR/internal-monitor-disable.lua"

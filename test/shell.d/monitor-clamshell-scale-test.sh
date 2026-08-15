@@ -15,6 +15,8 @@ state_dir="$home_dir/.local/state/omarchy/toggles/hypr"
 scale_state="$state_dir/internal-monitor-scale"
 
 mkdir -p "$stub_bin" "$home_dir/.config/hypr"
+mkdir -p "$home_dir/.local/state/omarchy/toggles"
+touch "$home_dir/.local/state/omarchy/toggles/monitor-management"
 
 cat >"$stub_bin/hyprctl" <<'SH'
 #!/bin/bash

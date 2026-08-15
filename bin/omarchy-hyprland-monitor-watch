@@ -2,6 +2,8 @@
 
 # omarchy:summary=Watch Hyprland monitor events and recover monitor toggles when a monitor is removed
 
+omarchy-toggle-enabled monitor-management || exit 0
+
 SOCKET="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
 LOCK="${XDG_RUNTIME_DIR:-/tmp}/omarchy-monitor-clamshell.lock"
 MODELESS_LOCK="${XDG_RUNTIME_DIR:-/tmp}/omarchy-monitor-modeless.lock"
