@@ -112,13 +112,17 @@ ACCOUNT=$(gh api user --jq .login)
 ADMIN=$(gh api repos/basecamp/omarchy --jq .permissions.admin)
 DEFAULT=$(gh api repos/basecamp/omarchy --jq .default_branch)
 
-# A ruleset that forces changes through a PR is what bounds a stolen token.
+# A ruleset that forces changes through a PR is what bounds a stolen token --
+# but only if this account cannot bypass it, so read bypass_actors too.
 gh api repos/basecamp/omarchy/rulesets --jq \
   '[.[] | select(.enforcement == "active" and .target == "branch")] | .[].id' |
   while read -r id; do
     gh api "repos/basecamp/omarchy/rulesets/$id" --jq \
-      '{name, refs: .conditions.ref_name.include, rules: [.rules[].type]}'
+      '{name, refs: .conditions.ref_name.include, rules: [.rules[].type], bypass: .bypass_actors}'
   done
+
+# The acting account's own repository role, to compare against those bypasses.
+gh api repos/basecamp/omarchy/collaborators/$ACCOUNT/permission --jq .role_name
 ```
 
 Two things decide the run:
@@ -132,6 +136,14 @@ Two things decide the run:
 - **Is this an admin token?** `.permissions.admin` true means the credential can
   do far more than triage needs, and is probably a maintainer's rather than the
   bot's.
+- **Can this account bypass those rules?** A `pull_request` rule the acting
+  account is exempt from is not protection — it is protection for everyone else.
+  Reject any ruleset whose `bypass_actors` covers this account: its repository
+  role (`RepositoryRole` matching the role from the command above), any team it
+  belongs to, `OrganizationAdmin` when it is an org owner, or an `Integration`
+  it acts as. A ruleset that only protects the branch from other people leaves a
+  stolen token free to push straight to a release branch, which is the exact
+  outcome this preflight exists to rule out.
 
 **Unattended** — fired by a timer, or `OMARCHY_TRIAGE_UNATTENDED=1`: if either
 check fails, run read-only. Diagnose, correlate and report, but push nothing,
