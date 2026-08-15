@@ -115,8 +115,18 @@ class FakeClient:
 
 scanner.CursorClient = FakeClient
 
-# Pin "today" for summarize_events by monkeypatching date resolution through
-# local_day_from_ms timestamps already chosen above (2026-08-15 / 2026-08-10).
+# Freeze the collector clock so scan()'s "today" stays on the fixture dates
+# (2026-08-15 / 2026-08-10) even after those calendar days pass.
+class FixedDateTime(datetime):
+  @classmethod
+  def now(cls, tz=None):
+    fixed = datetime(2026, 8, 15, 12, 0, 0, tzinfo=timezone.utc)
+    if tz is None:
+      return fixed.astimezone().replace(tzinfo=None)
+    return fixed.astimezone(tz)
+
+scanner.datetime = FixedDateTime
+
 stats = scanner.summarize_events(events, today=date(2026, 8, 15))
 limits = scanner.plan_limits(period)
 assert abs(limits[0]["percent"] - 0.3163) < 1e-6, limits
