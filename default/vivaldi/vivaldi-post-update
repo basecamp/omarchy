@@ -19,10 +19,24 @@ sudo sed -i \
 
 # Replace the pre-JSON CSV channel left by older installs.
 sudo rm -f style/omarchy.csv
-sudo touch style/omarchy.json
-# Shared system-wide for now; world-writable so any user's refresh can update
-# it. A true per-user channel is out of scope while Omarchy targets a single
-# user.
-sudo chmod 666 style/omarchy.json
+
+# The channel is consumed by Vivaldi's privileged UI context, so it must not
+# be world- or group-writable. Point style/omarchy.json at a per-user file in
+# the owner's home; the actual channel is written by the owner (no sudo, no
+# group, no 0666) the moment the theme changes.
+ACTUAL_USER="${SUDO_USER:-$USER}"
+ACTUAL_HOME=$(getent passwd "$ACTUAL_USER" | cut -d: -f6)
+CHANNEL="$ACTUAL_HOME/.config/vivaldi/omarchy.json"
+
+# Create the channel as its owner. Running as the target user (instead of
+# root chown/touch) means a symlink planted under the home can only ever do
+# what the owner could already do: no privilege boundary is crossed.
+sudo -u "$ACTUAL_USER" mkdir -p "$(dirname "$CHANNEL")"
+sudo -u "$ACTUAL_USER" touch "$CHANNEL"
+
+# The link itself lives in the root-owned resources tree, so only root can
+# create it and no user-controlled path is involved.
+sudo rm -f style/omarchy.json
+sudo ln -s "$CHANNEL" style/omarchy.json
 
 omarchy-theme-set-browser
