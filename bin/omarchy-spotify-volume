@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# omarchy:summary=Control Spotify volume independently from system volume. Useful for Spotify Connect.
+# omarchy:args=raise|lower
+
+playerctl -p spotify status &>/dev/null || exit 0
+
+case "$1" in
+  raise) playerctl -p spotify volume 0.05+ ;;
+  lower) playerctl -p spotify volume 0.05- ;;
+  *) exit 1 ;;
+esac
+
+vol=$(playerctl -p spotify volume)
+pct=$(awk "BEGIN {printf \"%d\", $vol * 100}")
+omarchy-swayosd-client --custom-icon "spotify" --custom-progress "$vol" --custom-progress-text "${pct}%"
