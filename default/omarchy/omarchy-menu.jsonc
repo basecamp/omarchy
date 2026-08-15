@@ -4,8 +4,9 @@
   // IDs are object keys. Dotted IDs imply hierarchy: trigger.share.file belongs
   // under trigger.share.
   // Kind is inferred: action -> action, target -> link, otherwise submenu.
-  // Dotted IDs define the tree. Use provider:"name" only when the submenu
-  // calls provider_name() or a command named "name" to return JSON rows.
+  // Dotted IDs define the tree. provider:"name" points a submenu at one of
+  // the shell's providers (the providers map in shell/plugins/menu/Menu.qml);
+  // new provider names cannot be declared here. See docs/menu.md.
   // Optional fields:
   //   aliases        alternate `omarchy menu summon <name>` routes; also searchable.
   //                  Reserved for established names users already type; new entries

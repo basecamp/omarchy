@@ -9,7 +9,15 @@ matching guide before starting:
 - [`agents/skills/icon-font.md`](agents/skills/icon-font.md) - adding branded glyphs to `default/fonts/omarchy/omarchy.ttf`
 - [`agents/skills/acceptance-tests.md`](agents/skills/acceptance-tests.md) - writing or running graphical acceptance tests under `test/acceptance.d/`
 - [`agents/skills/visual-verification.md`](agents/skills/visual-verification.md) - verifying any change with a visual effect in the running UI
-- [`docs/migrations.md`](docs/migrations.md) - creating or changing migrations under `migrations/`
+- [`agents/skills/migrations.md`](agents/skills/migrations.md) - creating or changing migrations under `migrations/`
+
+# Documentation Layout
+
+Three documentation trees, split by genre and audience:
+
+- `agents/skills/` - task procedure ("do this when doing X"), for anyone working on the codebase
+- `docs/` - reference on how the system is shaped (file layout, update pipeline, theming, shell architecture), for anyone working on the codebase; skills link here for depth
+- `manual/` - end-user documentation for using Omarchy, published; never codebase internals
 
 # Style
 
@@ -82,7 +90,8 @@ Exceptions are allowed for migration and package-helper scripts where the helper
 
 # Menu
 
-- The menu definition lives in `default/omarchy/omarchy-menu.jsonc`.
+- The menu definition lives in `default/omarchy/omarchy-menu.jsonc`;
+  [`docs/menu.md`](docs/menu.md) covers the schema, guards, and providers.
 - Do not add `aliases` to new menu entries. Aliases are reserved for
   established alternate names users already type, kept for compatibility.
 
@@ -94,7 +103,9 @@ Exceptions are allowed for migration and package-helper scripts where the helper
 
 # Tests
 
-Run focused automated tests for the area you changed. Current test entry points:
+Run focused automated tests for the area you changed;
+[`docs/testing.md`](docs/testing.md) covers how the suites are shaped. Current
+test entry points:
 
 - `./test/all` - aggregate runner for CLI and shell tests; it intentionally does not run graphical acceptance tests
 - `./test/cli` - CLI routing, command metadata, theme helpers, and safe dispatch coverage

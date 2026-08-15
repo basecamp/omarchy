@@ -38,7 +38,7 @@ id=$(cut -f2 <<<"$selection")
 
 if [[ $1 == "clone" ]]; then
   omarchy-launch-floating-terminal-with-presentation \
-    "omarchy-plugin-clone --edit $(printf '%q' "$id")"
+    "omarchy-plugin-clone $(printf '%q' "$id") --edit"
 elif [[ $1 == "remove" ]]; then
   omarchy-launch-floating-terminal-with-presentation "omarchy-plugin-remove $(printf '%q' "$id")"
 else

@@ -1417,6 +1417,9 @@ Item {
     }
 
     onPressAndHold: function(mouse) {
+      // A widget above us propagates its composed press-and-hold down here without
+      // ever handing over the grab, so we'd get no release or cancel to end the move.
+      if (!gestureArea.pressed) return
       startDrag(mouse.x, mouse.y)
     }
 

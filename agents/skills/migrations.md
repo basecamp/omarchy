@@ -1,5 +1,7 @@
 # Omarchy migrations
 
+Read this before creating or changing migrations under `migrations/`.
+
 Omarchy migrations are one-time repair scripts for existing installs. They are
 used when a package update needs to change state that pacman cannot safely own by
 itself.
