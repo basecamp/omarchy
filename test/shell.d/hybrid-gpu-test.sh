@@ -48,11 +48,13 @@ STUB
 cat >"$fake_bin/limine-mkinitcpio" <<'STUB'
 #!/bin/bash
 echo rebuild >>"$TEST_TMP/rebuilds"
+exit "${REBUILD_STATUS:-0}"
 STUB
 
 cat >"$fake_bin/mkinitcpio" <<'STUB'
 #!/bin/bash
 echo rebuild >>"$TEST_TMP/rebuilds"
+exit "${REBUILD_STATUS:-0}"
 STUB
 
 cat >"$fake_bin/omarchy-system-reboot" <<'STUB'
@@ -117,6 +119,23 @@ grep -Fxq 'options apple-gmux force_igd=n' "$gmux_conf" ||
 [[ $(wc -l <"$test_tmp/rebuilds") == "2" ]] ||
   fail "declining a T2 graphics switch skips the boot image rebuild"
 pass "T2 hybrid graphics leaves a declined switch unchanged"
+
+: >"$test_tmp/prompts"
+set +e
+error=$(
+  TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=0 REBUILD_STATUS=1 \
+    OMARCHY_T2_GMUX_CONF="$gmux_conf" PATH="$fake_bin:$PATH" \
+    bash "$ROOT/bin/omarchy-toggle-hybrid-gpu" 2>&1 >/dev/null
+)
+status=$?
+set -e
+
+(( status != 0 )) || fail "a failed boot image rebuild fails the T2 graphics switch"
+[[ $(wc -l <"$test_tmp/reboots") == "2" ]] ||
+  fail "a failed boot image rebuild leaves the machine running"
+grep -qF 'Not rebooting' <<<"$error" ||
+  fail "a failed boot image rebuild says why nothing happened" "$error"
+pass "T2 hybrid graphics does not reboot onto a boot image that failed to build"
 
 TEST_TMP="$test_tmp" SUCCEED_ON_ATTEMPT=3 \
   PATH="$fake_bin:$PATH" bash "$ROOT/bin/omarchy-toggle-hybrid-gpu" >/dev/null

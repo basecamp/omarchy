@@ -6,6 +6,7 @@
 toggle_t2_hybrid_gpu() {
   local gmux_conf="${OMARCHY_T2_GMUX_CONF:-/etc/modprobe.d/apple-gmux.conf}"
   local force_igd prompt
+  local -a rebuild
 
   if [[ -f $gmux_conf ]] && grep -Eq '^[[:space:]]*options[[:space:]]+apple-gmux[[:space:]].*force_igd=(y|Y|1)([[:space:]]|$)' "$gmux_conf"; then
     force_igd=n
@@ -17,15 +18,25 @@ toggle_t2_hybrid_gpu() {
 
   if gum confirm "$prompt"; then
     sudo mkdir -p "$(dirname "$gmux_conf")"
-    echo "options apple-gmux force_igd=$force_igd" | sudo tee "$gmux_conf" >/dev/null
+
+    if ! echo "options apple-gmux force_igd=$force_igd" | sudo tee "$gmux_conf" >/dev/null; then
+      echo "Could not write $gmux_conf. Graphics mode unchanged." >&2
+      exit 1
+    fi
 
     # apple-gmux binds an ACPI device every T2 Mac has, so autodetect pulls it
     # into the initramfs and udev loads it there, reading the bundled copy of
     # /etc/modprobe.d. Without a rebuild the reboot lands in the old mode.
     if omarchy-cmd-present limine-mkinitcpio; then
-      sudo limine-mkinitcpio
+      rebuild=(limine-mkinitcpio)
     else
-      sudo mkinitcpio -P
+      rebuild=(mkinitcpio -P)
+    fi
+
+    # Rebooting on a half-written boot image is how a machine stops booting.
+    if ! sudo "${rebuild[@]}"; then
+      echo "Boot image rebuild failed. Not rebooting." >&2
+      exit 1
     fi
 
     omarchy-system-reboot
