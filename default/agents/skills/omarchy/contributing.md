@@ -23,9 +23,13 @@ report at all. Before drafting anything, confirm all three:
    upstream tag** — not just the default branch, since an unreleased fix
    there wouldn't apply to what's actually installed, and a fix already
    released after the installed version means it's not a live bug either.
+   `omarchy version` doesn't necessarily match a release tag verbatim (it may
+   carry a packaging suffix, e.g. `4.0.0-1` for tag `v4.0.0`), so look up the
+   matching tag rather than assuming a `v<version>` prefix:
    ```bash
    omarchy version
-   curl -fsSL "https://raw.githubusercontent.com/basecamp/omarchy/v<version>/<path>"
+   gh release list --repo basecamp/omarchy   # find the matching tag
+   curl -fsSL "https://raw.githubusercontent.com/basecamp/omarchy/<tag>/<path>"
    # diff that against the local file/behavior
    ```
 2. **No existing issue already covers it** — search open *and* closed. A
