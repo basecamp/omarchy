@@ -437,6 +437,31 @@ PY
   fail "Grok collector does not retry a rejected login" "$rejected"
 pass "Grok collector does not retry a rejected login"
 
+# A server that answered with an error status is not a transport miss either.
+server_error=$(COLLECTOR="$ROOT/bin/omarchy-agent-usage-grok" HOME="$AUTH_HOME" \
+  XDG_CACHE_HOME="$AUTH_HOME/.cache" GROK_HOME="$AUTH_HOME/.grok" python3 - <<'PY'
+import importlib.machinery, importlib.util, json, os, urllib.error
+
+loader = importlib.machinery.SourceFileLoader("collector", os.environ["COLLECTOR"])
+spec = importlib.util.spec_from_loader(loader.name, loader)
+collector = importlib.util.module_from_spec(spec)
+loader.exec_module(collector)
+
+def urlopen(request, timeout=None):
+  raise urllib.error.HTTPError(request.full_url, 503, "Service Unavailable", None, None)
+
+collector.urllib.request.urlopen = urlopen
+print(json.dumps(collector.build_record(force=True, limits_only=False)))
+PY
+)
+[[ $(jq -r '.usageStatusText' <<<"$server_error") == "Grok limits unavailable" ]] ||
+  fail "Grok collector reports a server error status" "$server_error"
+[[ $(jq -r '.authHelpText' <<<"$server_error") == *"status 503"* ]] ||
+  fail "Grok collector names the status it got back" "$server_error"
+[[ $(jq -r '.retryAdvised // false' <<<"$server_error") == "false" ]] ||
+  fail "Grok collector does not retry a server error status" "$server_error"
+pass "Grok collector does not retry a server error status"
+
 unreachable=$(COLLECTOR="$ROOT/bin/omarchy-agent-usage-grok" HOME="$AUTH_HOME" \
   XDG_CACHE_HOME="$AUTH_HOME/.cache" GROK_HOME="$AUTH_HOME/.grok" python3 - <<'PY'
 import importlib.machinery, importlib.util, json, os, urllib.error

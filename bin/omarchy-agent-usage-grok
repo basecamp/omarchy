@@ -524,6 +524,12 @@ def collect_limits(token: str, expires_at: dt.datetime | None) -> dict[str, Any]
     result["usageStatusText"] = "Sign-in expired"
     result["authHelpText"] = str(error)
     return result
+  except urllib.error.HTTPError as error:
+    # A status came from a server that answered, so retrying in 30 seconds
+    # would only pester it; the regular refresh will pick the limits back up.
+    result["usageStatusText"] = "Grok limits unavailable"
+    result["authHelpText"] = f"Grok's usage endpoint returned status {error.code}. Local Grok Build stats are still shown."
+    return result
   except Exception as error:
     result["usageStatusText"] = "Grok limits unavailable"
     result["authHelpText"] = str(error)
