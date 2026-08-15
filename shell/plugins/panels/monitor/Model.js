@@ -105,7 +105,7 @@ function quoteLua(text) {
 function displayToggleSpec(name, enabled) {
   if (!name) return ""
   if (enabled) return "hl.monitor({ output = " + quoteLua(name) + ", disabled = true })"
-  return "hl.monitor({ output = " + quoteLua(name) + ", mode = \"preferred\", position = \"auto\", scale = 1 })"
+  return "hl.monitor({ output = " + quoteLua(name) + ", mode = \"preferred\", position = \"auto\", scale = \"auto\" })"
 }
 
 function parseDisplays(raw) {
