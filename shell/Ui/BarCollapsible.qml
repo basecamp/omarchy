@@ -48,11 +48,12 @@ Item {
   signal chevronPressed(int button)
 
   // A hover reveals transiently; a chevron click pins the drawer open so it
-  // survives the pointer leaving. collapsedByDefault only *seeds* the initial
-  // pinned state; freeze the binding on completion so a later collapsedByDefault
-  // change (e.g. a future in-place group update) can't retroactively flip it.
+  // survives the pointer leaving. pinnedOpen follows collapsedByDefault until the
+  // first chevron click breaks the binding and hands control to the user. It must
+  // stay a live binding: BarGroup sets the group's entry — and thus
+  // collapsedByDefault — right after load, so freezing on completion would lock in
+  // the pre-entry default and ignore a configured collapsed: false.
   property bool pinnedOpen: !collapsedByDefault
-  Component.onCompleted: pinnedOpen = !collapsedByDefault
   property bool hovered: false
   readonly property bool open: pinnedOpen || (expandOnHover && hovered)
 
