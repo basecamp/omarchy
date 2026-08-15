@@ -82,8 +82,9 @@ Session-lock surface using Quickshell's native `WlSessionLock` and
 separate PAM services: `omarchy-lock-password` for password auth, and only
 when the matching biometric is set up, `omarchy-lock-fingerprint` for
 fingerprint auth and `omarchy-lock-face` for face auth (howdy). Fingerprint
-stays armed for the whole lock; face runs one bounded scan when the lock
-engages, when the user wakes a blanked screen, and on an empty Enter. It
+stays armed for the whole lock; face runs one bounded scan on the first key
+or pointer event after a quiet gap (someone arriving at the machine, opening
+the lid, or waking it) and on an empty Enter, never on the lock itself. It
 mirrors the previous lock screen field dimensions, colors, blurred
 wallpaper, placeholder, and Hyprland-driven corners.
 

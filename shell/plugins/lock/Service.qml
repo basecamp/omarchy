@@ -25,7 +25,11 @@ Item {
   property bool passwordPamConfigured: false
   property bool fingerprintConfigured: false
   property bool faceConfigured: false
-  property bool displayBlanked: false
+  // Wall-clock time of the last key or pointer event on the lock surface. A
+  // gap longer than faceIdleGap before the next one means the user was away
+  // (or the machine slept), which is when a face scan is worth starting.
+  property double lastInputAt: 0
+  readonly property int faceIdleGap: 5000
   property bool previewVisible: false
   property string enteredPassword: ""
   property string pendingPassword: ""
@@ -144,6 +148,9 @@ Item {
 
     resetAuthenticationState()
     lockRequested = true
+    // The lock keystroke itself counts as input: whoever just pressed
+    // Super+Ctrl+L is still at the keyboard and has not asked to be scanned.
+    lastInputAt = Date.now()
     armBlankTimer()
     logEvent("lock-requested")
     queueSessionLock()
@@ -179,18 +186,23 @@ Item {
   function runWake() {
     if (!wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
+  }
 
-    // Coming back to a dark screen is the moment to look for a face: the
-    // first key or mouse move wakes the panel and starts one scan.
-    if (displayBlanked) {
-      displayBlanked = false
-      startFace(false)
-    }
+  // Every key or pointer event on the lock surface lands here. The first one
+  // after a quiet spell is someone arriving at the machine -- back from a
+  // break, opening the lid, waking it from sleep -- so it starts one scan.
+  // Events that follow within the gap (typing a password, nudging the mouse
+  // right after locking) do not.
+  function noteInput() {
+    var now = Date.now()
+    var idle = now - lastInputAt
+    lastInputAt = now
+    runWake()
+    if (idle > faceIdleGap) startFace(false)
   }
 
   function runBlank() {
     if (!blankProcess.running) blankProcess.running = true
-    displayBlanked = true
   }
 
   function submitPassword(value) {
@@ -226,10 +238,12 @@ Item {
     runWake()
   }
 
-  // Face auth is one bounded scan per trigger (lock, wake, or empty Enter),
-  // never a retry loop like fingerprint: howdy keeps the IR camera and CPU
-  // busy for the whole scan, so a loop would drain the battery of a locked
-  // laptop. howdy times out on its own after a few seconds.
+  // Face auth is one bounded scan per trigger (arriving at the machine after
+  // a quiet spell, or an empty Enter), never a retry loop like fingerprint:
+  // howdy keeps the IR camera and CPU busy for the whole scan, so a loop
+  // would drain the battery of a locked laptop, and it never fires just
+  // because the screen locked -- the person who locked it is still there.
+  // howdy times out on its own after a few seconds.
   function startFace(explicit) {
     if (!lockRequested || !sessionLock.secure || !faceConfigured) return
     if (facePam.active || faceAuthenticating) {
@@ -249,9 +263,6 @@ Item {
 
   function submitFace() {
     if (!lockRequested || !faceConfigured) return
-    // The Enter itself is the wake; do not let runWake spend the scan as a
-    // silent one before the explicit request below gets its turn.
-    displayBlanked = false
     runWake()
     failureMessage = ""
     startFace(true)
@@ -266,8 +277,8 @@ Item {
     if (result === PamResult.Success) {
       finishUnlock()
     } else if (explicit) {
-      // Only an Enter-triggered scan reports back; automatic scans on lock
-      // and wake stay silent, like a fingerprint that was never touched.
+      // Only an Enter-triggered scan reports back; automatic scans on
+      // arrival stay silent, like a fingerprint that was never touched.
       failureMessage = "Face not recognized"
       runWake()
     }
@@ -306,7 +317,6 @@ Item {
         sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
         root.startFingerprint()
-        root.startFace(false)
       }
     }
 
@@ -351,7 +361,7 @@ Item {
         onSubmitPassword: function(password) { root.submitPassword(password) }
         onSubmitFace: root.submitFace()
         onClearFailureRequested: root.failureMessage = ""
-        onWakeRequested: root.runWake()
+        onWakeRequested: root.noteInput()
       }
 
     }

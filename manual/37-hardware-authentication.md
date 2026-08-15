@@ -16,7 +16,7 @@ If your laptop has an infrared camera (the kind Windows Hello uses), you can unl
 
 That'll install [howdy](https://github.com/boltgolt/howdy) from the AUR, configure the IR emitter, take a model of your face, and wire it up for the lock screen, `sudo`, and system authorization prompts.
 
-The lock screen looks for you as soon as it locks, again when you come back to a blanked screen, and whenever you press `Enter` on the empty password field. Typing your password still works at any time. In `sudo` and system prompts, press `Enter` on the empty password prompt to scan; a typed password skips the camera. Face unlock is skipped when the lid is closed.
+The lock screen looks for you when you come back to it, on the first key or mouse movement after you have been away, and whenever you press `Enter` on the empty password field. Locking the screen yourself does not scan, so you are not unlocked straight back in. Typing your password still works at any time. In `sudo` and system prompts, press `Enter` on the empty password prompt to scan; a typed password skips the camera. Face unlock is skipped when the lid is closed.
 
 You can remove face unlock under _Remove > Security > Face Unlock_ in the Omarchy menu.
 
