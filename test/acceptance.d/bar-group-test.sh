@@ -17,8 +17,12 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 abs_omarchy="$HOME/.local/share/omarchy"
 
+# Track whether OMARCHY_PATH was set in the session env, so restore() puts it
+# back exactly — unsetting it when it was never set rather than defaulting it to
+# a value and permanently changing the environment.
 original_path=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^OMARCHY_PATH=//p' | tail -1)
-: "${original_path:=/usr/share/omarchy}"
+had_omarchy_path=0
+[[ -n $original_path ]] && had_omarchy_path=1
 
 config_dir="$HOME/.config/omarchy"
 config="$config_dir/shell.json"
@@ -38,7 +42,11 @@ restore() {
     rm -f "$config"
   fi
   rm -f "$backup"
-  systemctl --user set-environment OMARCHY_PATH="$original_path" >/dev/null 2>&1 || true
+  if (( had_omarchy_path )); then
+    systemctl --user set-environment OMARCHY_PATH="$original_path" >/dev/null 2>&1 || true
+  else
+    systemctl --user unset-environment OMARCHY_PATH >/dev/null 2>&1 || true
+  fi
   omarchy-restart-shell >/dev/null 2>&1 || true
 }
 trap restore EXIT
