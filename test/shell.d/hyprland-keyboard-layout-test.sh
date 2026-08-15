@@ -17,7 +17,9 @@ io.open = function(path, mode)
     return real_open(path, mode)
   end
 
-  if not vconsole then
+  -- An unset OMARCHY_VCONSOLE reaches Lua as "", never nil, so the cases that
+  -- ask for a missing /etc/vconsole.conf need the empty string to fail the open.
+  if not vconsole or vconsole == "" then
     return nil
   end
 
