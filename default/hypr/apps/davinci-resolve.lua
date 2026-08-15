@@ -3,6 +3,7 @@
 o.window(".*[Rr]esolve.*", {
   float = true,
   stay_focused = true,
+  -- Prevent modal dialog pointer warps when focus follows the mouse.
   no_follow_mouse = true,
   tag = "-default-opacity",
   opacity = "1 1",
