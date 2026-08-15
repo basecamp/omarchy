@@ -13,6 +13,19 @@ assertEqual(monitor.clampBrightness(42.4), 42, 'monitor rounds brightness')
 assertEqual(monitor.clampBrightness('nope'), 1, 'monitor rejects invalid brightness')
 
 assertEqual(monitor.normalizeScale('1.250'), '1.25', 'monitor normalizes fractional scale')
+
+assertEqual(
+  monitor.displayToggleSpec('DP-1', false),
+  'hl.monitor({ output = "DP-1", mode = "preferred", position = "auto", scale = 1 })',
+  'monitor enables a display through the Lua config API'
+)
+assertEqual(
+  monitor.displayToggleSpec('DP-1', true),
+  'hl.monitor({ output = "DP-1", disabled = true })',
+  'monitor disables a display through the Lua config API'
+)
+assertEqual(monitor.displayToggleSpec('', false), '', 'monitor ignores a display with no name')
+assertEqual(monitor.quoteLua('DP"1'), '"DP\\"1"', 'monitor escapes a quote in a display name')
 assertEqual(monitor.normalizeScale('nope'), '', 'monitor rejects invalid scale')
 assertEqual(monitor.cleanScale(3, 1280, 800), '3.2', 'monitor matches clean VM scale')
 assertEqual(monitor.cleanScale(1.25, 1280, 800), '1.25', 'monitor preserves an already clean scale')

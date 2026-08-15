@@ -91,6 +91,23 @@ function brightnessName(percent) {
   return "Night owl"
 }
 
+function quoteLua(text) {
+  return '"' + String(text === undefined || text === null ? "" : text)
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, " ") + '"'
+}
+
+// Hyprland's keyword command refuses to run under the Lua config parser
+// ("keyword can't work with non-legacy parsers. Use eval."), so display
+// changes go out as a Lua hl.monitor call instead. Field names match
+// HL.MonitorSpec in Hyprland's own stubs.
+function displayToggleSpec(name, enabled) {
+  if (!name) return ""
+  if (enabled) return "hl.monitor({ output = " + quoteLua(name) + ", disabled = true })"
+  return "hl.monitor({ output = " + quoteLua(name) + ", mode = \"preferred\", position = \"auto\", scale = 1 })"
+}
+
 function parseDisplays(raw) {
   var displays = []
   try {
@@ -119,6 +136,8 @@ if (typeof module !== "undefined") {
     matchingScaleIndex: matchingScaleIndex,
     availableScales: availableScales,
     brightnessName: brightnessName,
+    quoteLua: quoteLua,
+    displayToggleSpec: displayToggleSpec,
     parseDisplays: parseDisplays
   }
 }
