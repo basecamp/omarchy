@@ -17,4 +17,12 @@ assert(
   'menu widget toggles the menu plugin in process'
 )
 
+const workspacesQml = fs.readFileSync(
+  path.join(root, 'shell/plugins/bar/widgets/Workspaces.qml'), 'utf8')
+
+assert(
+  /function focusWorkspace\(id\)[\s\S]*?Hyprland\.dispatch\(/.test(workspacesQml),
+  'workspace widget dispatches over Hyprland IPC'
+)
+
 JS
