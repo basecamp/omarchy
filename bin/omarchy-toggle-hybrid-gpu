@@ -18,6 +18,16 @@ toggle_t2_hybrid_gpu() {
   if gum confirm "$prompt"; then
     sudo mkdir -p "$(dirname "$gmux_conf")"
     echo "options apple-gmux force_igd=$force_igd" | sudo tee "$gmux_conf" >/dev/null
+
+    # apple-gmux binds an ACPI device every T2 Mac has, so autodetect pulls it
+    # into the initramfs and udev loads it there, reading the bundled copy of
+    # /etc/modprobe.d. Without a rebuild the reboot lands in the old mode.
+    if omarchy-cmd-present limine-mkinitcpio; then
+      sudo limine-mkinitcpio
+    else
+      sudo mkinitcpio -P
+    fi
+
     omarchy-system-reboot
   fi
 }

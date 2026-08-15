@@ -39,6 +39,22 @@ cat >"$fake_bin/sudo" <<'STUB'
 "$@"
 STUB
 
+cat >"$fake_bin/omarchy-cmd-present" <<'STUB'
+#!/bin/bash
+command -v "$1" >/dev/null
+STUB
+
+# Both names, so the test never reaches a real one whichever branch is taken.
+cat >"$fake_bin/limine-mkinitcpio" <<'STUB'
+#!/bin/bash
+echo rebuild >>"$TEST_TMP/rebuilds"
+STUB
+
+cat >"$fake_bin/mkinitcpio" <<'STUB'
+#!/bin/bash
+echo rebuild >>"$TEST_TMP/rebuilds"
+STUB
+
 cat >"$fake_bin/omarchy-system-reboot" <<'STUB'
 #!/bin/bash
 echo reboot >>"$TEST_TMP/reboots"
@@ -72,6 +88,8 @@ grep -Fxq 'options apple-gmux force_igd=y' "$gmux_conf" ||
 grep -Fq 'Use only integrated GPU and reboot?' "$test_tmp/prompts" ||
   fail "T2 Intel mode uses the existing integrated GPU prompt"
 [[ $(wc -l <"$test_tmp/reboots") == "1" ]] || fail "T2 Intel mode requests one reboot"
+[[ $(wc -l <"$test_tmp/rebuilds") == "1" ]] ||
+  fail "T2 Intel mode rebuilds the boot image so the new module option is read"
 pass "T2 hybrid graphics switches to integrated mode"
 
 : >"$test_tmp/prompts"
@@ -84,6 +102,8 @@ grep -Fxq 'options apple-gmux force_igd=n' "$gmux_conf" ||
 grep -Fq 'Enable dedicated GPU and reboot?' "$test_tmp/prompts" ||
   fail "T2 AMD mode uses the existing dedicated GPU prompt"
 [[ $(wc -l <"$test_tmp/reboots") == "2" ]] || fail "T2 AMD mode requests one reboot"
+[[ $(wc -l <"$test_tmp/rebuilds") == "2" ]] ||
+  fail "T2 AMD mode rebuilds the boot image so the new module option is read"
 pass "T2 hybrid graphics switches back to dedicated mode"
 
 : >"$test_tmp/prompts"
@@ -94,6 +114,8 @@ TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=1 \
 grep -Fxq 'options apple-gmux force_igd=n' "$gmux_conf" ||
   fail "declining a T2 graphics switch preserves the selected mode"
 [[ $(wc -l <"$test_tmp/reboots") == "2" ]] || fail "declining a T2 graphics switch skips reboot"
+[[ $(wc -l <"$test_tmp/rebuilds") == "2" ]] ||
+  fail "declining a T2 graphics switch skips the boot image rebuild"
 pass "T2 hybrid graphics leaves a declined switch unchanged"
 
 TEST_TMP="$test_tmp" SUCCEED_ON_ATTEMPT=3 \
