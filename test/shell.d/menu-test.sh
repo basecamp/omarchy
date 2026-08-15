@@ -221,6 +221,19 @@ assertDeepEqual(
   ['Claude', 'Codex', 'Copilot', 'Crush', 'Gemini', 'Grok', 'omp', 'OpenCode', 'Pi'],
   'menu sorts coding agents alphabetically'
 )
+const expectedDefaults = {
+  browser: ['Chromium', 'Chrome', 'Brave', 'Brave Origin', 'Edge', 'Firefox', 'Zen'],
+  terminal: ['Alacritty', 'Foot', 'Ghostty', 'Kitty'],
+  editor: ['Neovim', 'VSCode', 'Cursor', 'Zed', 'Sublime Text', 'Helix', 'Vim', 'Emacs']
+}
+assert(
+  Object.entries(expectedDefaults).every(([type, labels]) => {
+    const entries = defaultItems.filter(item => item.parent === `setup.default.${type}`)
+    return entries.map(item => item.label).join('\0') === labels.join('\0')
+      && entries.every(item => !item.when)
+  }),
+  'menu always exposes every supported browser, terminal, and editor under Defaults'
+)
 assert(!defaultById['install.ai.crush'], 'menu removes Crush from Install > AI')
 assert(
   defaultById['setup.security.passwordless-sudo'].action.includes('omarchy-sudo-passwordless'),
