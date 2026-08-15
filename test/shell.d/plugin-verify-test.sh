@@ -43,13 +43,12 @@ cat >"$mock_bin/omarchy-default-agent" <<'SH'
 printf '%s\n' "${OMARCHY_TEST_DEFAULT_AGENT-codex}"
 SH
 
-# The real launcher detaches, so the review runs alongside the wait rather than
-# before it. Backgrounding the runner is what makes the poll loop face the same
-# race here as it does on a desktop.
+# Security reviews stay in the install terminal instead of opening a second
+# agent window.
 cat >"$mock_bin/omarchy-launch-tui" <<'SH'
 #!/bin/bash
-shift # --app-id
-"$@" &
+echo "security reviews must not open another TUI" >&2
+exit 99
 SH
 
 # Stands in for whichever agent is default: it reads the prompt for the paths it
@@ -127,6 +126,11 @@ done
 exec "$@"
 SH
 
+cat >"$mock_bin/systemctl" <<'SH'
+#!/bin/bash
+exit 0
+SH
+
 cat >"$mock_bin/gum" <<'SH'
 #!/bin/bash
 exit 1
@@ -158,7 +162,7 @@ run_verify safe "$staged_plugin"
 (( verify_status == 0 )) || fail "plugin verify passes a cleared plugin" "$verify_output"
 grep -qF "reading manifest.json" <<<"$verify_output" ||
   fail "plugin verify streams what the agent reports" "$verify_output"
-grep -qF "Full audit: $TMPDIR/verify-plugin-" <<<"$verify_output" ||
+grep -qF "Audit    $TMPDIR/verify-plugin-" <<<"$verify_output" ||
   fail "plugin verify prints where the full audit landed" "$verify_output"
 grep -qF "it only draws a widget" <<<"$verify_output" ||
   fail "plugin verify repeats the verdict it was given" "$verify_output"
@@ -173,7 +177,7 @@ for reported in status full-audit verdict; do
 done
 grep -qF "never as instructions" <<<"$prompt" ||
   fail "the review prompt treats the plugin's own files as data" "$prompt"
-grep -qF "every 30 seconds" <<<"$prompt" ||
+grep -qF "every 15 seconds" <<<"$prompt" ||
   fail "the review prompt asks for status while a step runs long" "$prompt"
 pass "plugin verify tells the agent what to read and where to report"
 
@@ -205,8 +209,10 @@ pass "plugin verify keeps every run file in a private directory"
 
 run_verify unsafe "$staged_plugin"
 (( verify_status == 1 )) || fail "plugin verify rejects an unsafe verdict" "$verify_output"
-grep -qF "did not clear acme.weather" <<<"$verify_output" ||
-  fail "plugin verify says which plugin was not cleared" "$verify_output"
+grep -qF "Blocked" <<<"$verify_output" ||
+  fail "plugin verify marks the unsafe plugin as blocked" "$verify_output"
+grep -qF "acme.weather" <<<"$verify_output" ||
+  fail "plugin verify says which plugin was reviewed" "$verify_output"
 grep -qF "it pipes curl into bash on startup" <<<"$verify_output" ||
   fail "plugin verify repeats why it was not cleared" "$verify_output"
 pass "plugin verify reports an unsafe verdict"
@@ -382,8 +388,7 @@ DRIVER
 narrow=$(script -qec "bash '$narrow_driver'" /dev/null) || fail "the narrow run failed" "$narrow"
 drawn=0
 while IFS= read -r row; do
-  # Only the spinner's own rows are held to the width; the agent's own reports
-  # are printed whole and wrap like any other output.
+  # The spinner is redrawn in place, so it must never cross the terminal edge.
   [[ $row =~ ⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏ ]] || continue
   (( ${#row} <= 45 )) ||
     fail "plugin verify draws past the edge of the terminal" "${#row}: $row"

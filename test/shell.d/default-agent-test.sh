@@ -383,14 +383,14 @@ assert_non_interactive pi pi --no-session --no-extensions --no-skills --no-conte
   --no-approve -p "Review this project"
 assert_non_interactive omp omp --auto-approve --no-session --no-extensions --no-skills \
   --no-rules --cwd "$PWD" -p "Review this project"
-assert_non_interactive opencode opencode run "Review this project"
+assert_non_interactive opencode opencode run --pure --auto "Review this project"
 assert_non_interactive claude claude --print --no-session-persistence --safe-mode \
   --disable-slash-commands --strict-mcp-config --mcp-config '{}' \
   --permission-mode bypassPermissions -- "Review this project"
 assert_non_interactive codex codex exec --dangerously-bypass-approvals-and-sandbox \
   --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check \
   -C "$PWD" "Review this project"
-assert_non_interactive crush crush run --cwd "$PWD" "Review this project"
+assert_non_interactive crush crush --data-dir "$PWD/crush-data" run --cwd "$PWD" "Review this project"
 assert_non_interactive grok grok --permission-mode bypassPermissions --no-memory \
   --no-subagents --disable-web-search --single "Review this project"
 assert_non_interactive gemini gemini --yolo --prompt "Review this project"

@@ -28,8 +28,8 @@ echo codex
 STUB
 cat >"$stub_bin/omarchy-launch-tui" <<'STUB'
 #!/bin/bash
-shift
-"$@" &
+echo "security reviews must not open another TUI" >&2
+exit 99
 STUB
 cat >"$stub_bin/omarchy-agent" <<'STUB'
 #!/bin/bash
@@ -68,6 +68,10 @@ while (( $# > 0 )); do
 done
 exec "$@"
 STUB
+cat >"$stub_bin/systemctl" <<'STUB'
+#!/bin/bash
+exit 0
+STUB
 chmod +x "$stub_bin"/*
 
 export HOME="$test_home"
@@ -89,7 +93,7 @@ pass "security review calls the agent for new content"
 
 output=$(review)
 [[ $(<"$count_file") == "1" ]] || fail "unchanged security review spends another agent call"
-grep -qF "Reused the unchanged" <<<"$output" || fail "cached security review identifies the cache hit" "$output"
+grep -qF "Reusing an exact-content review" <<<"$output" || fail "cached security review identifies the cache hit" "$output"
 pass "security review caches exact content and policy"
 
 printf 'safe content version two\n' >"$source_dir/payload"
