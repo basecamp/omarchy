@@ -43,6 +43,13 @@ assertEqual(
   'bar rebuilds when a group changes rather than patching in place'
 )
 
+// The assertions above run BarModel's exported helpers to validate behavior.
+// The source-text regex checks below are deliberate: they guard QML *structure*
+// the node harness cannot execute — e.g. that a group renders through the
+// BarGroup file rather than an inline component (the fix for a load-time
+// "inline components form a cycle" crash). Each is scoped to a specific
+// regression with no runtime equivalent in this suite.
+
 // Layout normalization must keep group entries (they have no id of their own)
 // and normalize their children recursively, or the group would be dropped.
 assert(/entry\.type[\s\S]*?=== "group"/.test(utilSource), 'layout normalization preserves group entries')
