@@ -37,6 +37,7 @@ seed_backup_list() {
   cat >"$BACKUP_DIR/backup.list" <<'LIST'
 # Extra paths for omarchy backup, one per line, relative to your home directory.
 # List config files, not state directories (sockets, caches, logs).
+# Paths that are git repos are captured as plain files, without their history.
 # Lines starting with # are ignored.
 #
 # Examples:
@@ -82,8 +83,6 @@ for terminal in alacritty ghostty kitty foot; do
   mirror_dir "$HOME/.config/$terminal" "$BACKUP_DIR/config/$terminal"
 done
 
-find "$BACKUP_DIR/config" \( -name "*.bak" -o -name "*.bak.*" \) -delete 2>/dev/null
-
 # Packages: explicitly installed, native and AUR
 pacman -Qqen >"$BACKUP_DIR/packages.txt"
 pacman -Qqem >"$BACKUP_DIR/packages-aur.txt"
@@ -91,9 +90,11 @@ pacman -Qqem >"$BACKUP_DIR/packages-aur.txt"
 # Themes: record where each installed theme came from
 : >"$BACKUP_DIR/themes.txt"
 for theme in "$HOME/.config/omarchy/themes"/*; do
-  [[ -e $theme ]] || continue
+  [[ -e $theme || -L $theme ]] || continue
   name=$(basename "$theme")
-  if [[ -L $theme ]]; then
+  if [[ $name == *[[:space:]]* ]]; then
+    echo -e "\e[33mSkipping theme with whitespace in its name: $name\e[0m" >&2
+  elif [[ -L $theme ]]; then
     echo "builtin:$name" >>"$BACKUP_DIR/themes.txt"
   elif [[ -d $theme/.git ]]; then
     if url=$(git -C "$theme" remote get-url origin 2>/dev/null); then
@@ -144,9 +145,13 @@ fi
 # Extras: user-listed paths from backup.list
 if [[ -f $BACKUP_DIR/backup.list ]]; then
   while IFS= read -r line; do
-    line="${line%%#*}"
+    line="${line#"${line%%[![:space:]]*}"}"
     line="${line%"${line##*[![:space:]]}"}"
-    [[ -z $line ]] && continue
+    [[ -z $line || $line == \#* ]] && continue
+    if [[ $line == *..* ]]; then
+      echo -e "\e[33mIgnoring backup.list entry with '..': $line\e[0m" >&2
+      continue
+    fi
     source_path="$HOME/$line"
     if [[ -e $source_path ]]; then
       mkdir -p "$BACKUP_DIR/extras/$(dirname "$line")"
@@ -157,6 +162,12 @@ if [[ -f $BACKUP_DIR/backup.list ]]; then
   done <"$BACKUP_DIR/backup.list"
 fi
 
+# Keep the mirrors committable: drop restore's .bak asides, and strip nested
+# .git dirs so cloned configs are captured as files, not as embedded repos
+# that git add would silently skip.
+find "$BACKUP_DIR/config" "$BACKUP_DIR/extras" \( -name "*.bak" -o -name "*.bak.*" \) -delete 2>/dev/null
+find "$BACKUP_DIR/config" "$BACKUP_DIR/extras" -name .git -prune -exec rm -rf {} + 2>/dev/null
+
 # Commit, and push when a remote is configured
 git -C "$BACKUP_DIR" add -A
 
@@ -164,8 +175,12 @@ if git -C "$BACKUP_DIR" diff --cached --quiet; then
   echo "No changes since last backup."
 else
   git -C "$BACKUP_DIR" status --short
-  git -C "$BACKUP_DIR" commit --quiet -m "Backup from $(hostname) on $(date '+%Y-%m-%d %H:%M')"
-  echo -e "\e[32mBackup committed.\e[0m"
+  if git -C "$BACKUP_DIR" commit --quiet -m "Backup from $(hostname) on $(date '+%Y-%m-%d %H:%M')"; then
+    echo -e "\e[32mBackup committed.\e[0m"
+  else
+    echo -e "\e[31mCommit failed; backup is staged but NOT saved.\e[0m" >&2
+    exit 1
+  fi
 fi
 
 if git -C "$BACKUP_DIR" remote get-url origin &>/dev/null; then

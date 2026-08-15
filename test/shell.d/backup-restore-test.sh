@@ -9,7 +9,7 @@ TEST_HOME=$(mktemp -d)
 SCRATCH=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME" "$SCRATCH"' EXIT
 
-# The backup ends by reapplying the current theme; shim omarchy-theme-set so
+# Restore ends by reapplying the current theme; shim omarchy-theme-set so
 # the test never reaches into the live desktop.
 mkdir -p "$SCRATCH/bin"
 cat >"$SCRATCH/bin/omarchy-theme-set" <<EOF
@@ -29,12 +29,11 @@ run() {
 
 mkdir -p "$TEST_HOME/.config/hypr" "$TEST_HOME/.config/alacritty" \
   "$TEST_HOME/.config/omarchy/themes" "$TEST_HOME/.local/share/applications" \
-  "$TEST_HOME/.local/state/omarchy/current" "$TEST_HOME/.config/extratool"
+  "$TEST_HOME/.local/state/omarchy/current"
 
 echo "monitor=eDP-1" >"$TEST_HOME/.config/hypr/hyprland.conf"
 echo "junk" >"$TEST_HOME/.config/hypr/old.conf.bak.123"
 echo "font = Test" >"$TEST_HOME/.config/alacritty/alacritty.toml"
-echo "setting = 1" >"$TEST_HOME/.config/extratool/config.toml"
 
 cat >"$TEST_HOME/.local/share/applications/FakeApp.desktop" <<'EOF'
 [Desktop Entry]
@@ -49,15 +48,28 @@ git -C "$SCRATCH/theme-src" -c user.email=t@t -c user.name=t commit -qm seed
 git clone -q "$SCRATCH/theme-src" "$TEST_HOME/.config/omarchy/themes/fake-theme"
 echo "fake-theme" >"$TEST_HOME/.local/state/omarchy/current/theme.name"
 
-# --- first backup ---
+# An extras path that is itself a git clone: its files must be captured even
+# though git would normally treat the copied directory as an embedded repo.
+git clone -q "$SCRATCH/theme-src" "$TEST_HOME/.config/extratool"
+echo "setting = 1" >"$TEST_HOME/.config/extratool/config.toml"
+
+# --- first run seeds the repo ---
 
 backup_dir="$TEST_HOME/omarchy-backup"
-mkdir -p "$backup_dir"
-git -C "$backup_dir" init -q
-echo ".config/extratool" >"$backup_dir/backup.list"
 
-run "$ROOT/bin/omarchy-backup" >"$SCRATCH/backup.log" 2>&1 ||
-  fail "backup runs cleanly" "$(cat "$SCRATCH/backup.log")"
+run "$ROOT/bin/omarchy-backup" >"$SCRATCH/backup0.log" 2>&1 ||
+  fail "first backup initializes and runs cleanly" "$(cat "$SCRATCH/backup0.log")"
+pass "first backup initializes and runs cleanly"
+
+[[ -s $backup_dir/README.md && -s $backup_dir/backup.list ]] ||
+  fail "first run seeds README.md and backup.list"
+pass "first run seeds README.md and backup.list"
+
+# --- second backup with a populated backup.list ---
+
+echo ".config/extratool" >>"$backup_dir/backup.list"
+run "$ROOT/bin/omarchy-backup" >"$SCRATCH/backup1.log" 2>&1 ||
+  fail "backup runs cleanly" "$(cat "$SCRATCH/backup1.log")"
 pass "backup runs cleanly"
 
 [[ -f $backup_dir/config/hypr/hyprland.conf ]] || fail "backup mirrors hypr config"
@@ -78,6 +90,14 @@ pass "backup captures webapp launchers"
 [[ -f $backup_dir/extras/.config/extratool/config.toml ]] || fail "backup carries backup.list extras"
 pass "backup carries backup.list extras"
 
+[[ ! -e $backup_dir/extras/.config/extratool/.git ]] ||
+  fail "backup strips nested .git so extras commit as files"
+pass "backup strips nested .git so extras commit as files"
+
+git -C "$backup_dir" ls-files --error-unmatch extras/.config/extratool/config.toml >/dev/null 2>&1 ||
+  fail "extras from a cloned repo are tracked by the backup commit"
+pass "extras from a cloned repo are tracked by the backup commit"
+
 [[ -s $backup_dir/recovery/disk-map.txt && -s $backup_dir/recovery/cmdline.txt ]] ||
   fail "backup captures the recovery boot snapshot"
 pass "backup captures the recovery boot snapshot"
@@ -93,8 +113,8 @@ rm -f "$TEST_HOME/.local/share/applications/FakeApp.desktop"
 echo "MODIFIED" >"$TEST_HOME/.config/alacritty/alacritty.toml"
 recovery_before=$(cat "$backup_dir/recovery/disk-map.txt")
 
-run "$ROOT/bin/omarchy-restore" configs themes webapps extras >"$SCRATCH/restore.log" 2>&1 ||
-  fail "restore runs cleanly" "$(cat "$SCRATCH/restore.log")"
+run "$ROOT/bin/omarchy-restore" configs themes webapps extras >"$SCRATCH/restore1.log" 2>&1 ||
+  fail "restore runs cleanly" "$(cat "$SCRATCH/restore1.log")"
 pass "restore runs cleanly"
 
 [[ -f $TEST_HOME/.config/hypr/hyprland.conf ]] || fail "restore brings back deleted configs"
@@ -107,6 +127,10 @@ pass "restore replaces modified files"
 ls "$TEST_HOME/.config/alacritty/alacritty.toml.bak."* >/dev/null 2>&1 ||
   fail "restore keeps the modified version as a .bak aside"
 pass "restore keeps the modified version as a .bak aside"
+
+grep -q "1 files that differed" "$SCRATCH/restore1.log" ||
+  fail "restore reports how many files it set aside"
+pass "restore reports how many files it set aside"
 
 [[ -d $TEST_HOME/.config/omarchy/themes/fake-theme/.git ]] || fail "restore reclones missing themes"
 pass "restore reclones missing themes"
@@ -127,12 +151,19 @@ pass "restore never touches the recovery snapshot"
 # --- idempotence ---
 
 baks_before=$(find "$TEST_HOME" -name "*.bak.*" | sort)
-run "$ROOT/bin/omarchy-restore" configs themes webapps extras >/dev/null 2>&1
+run "$ROOT/bin/omarchy-restore" configs themes webapps extras >"$SCRATCH/restore2.log" 2>&1 ||
+  fail "a second restore exits cleanly" "$(cat "$SCRATCH/restore2.log")"
+pass "a second restore exits cleanly"
+
 baks_after=$(find "$TEST_HOME" -name "*.bak.*" | sort)
 [[ $baks_before == "$baks_after" ]] || fail "a second restore changes nothing"
 pass "a second restore changes nothing"
 
+# Recovery output (mounts, EFI order) may legitimately shift between runs on a
+# live machine, so only non-recovery paths must be unchanged after a restore.
 run "$ROOT/bin/omarchy-backup" >"$SCRATCH/backup2.log" 2>&1
-grep -q "No changes since last backup" "$SCRATCH/backup2.log" ||
-  fail "a backup after a clean restore records no changes"
-pass "a backup after a clean restore records no changes"
+if ! grep -q "No changes since last backup" "$SCRATCH/backup2.log"; then
+  git -C "$backup_dir" show --name-only --format= HEAD | grep -v "^recovery/" | grep -q . &&
+    fail "a backup after a clean restore records no non-recovery changes" "$(cat "$SCRATCH/backup2.log")"
+fi
+pass "a backup after a clean restore records no non-recovery changes"
