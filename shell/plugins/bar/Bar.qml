@@ -11,15 +11,18 @@ import "BarModel.js" as BarModel
 Item {
   id: root
 
-  // The omarchy-shell host injects omarchyPath from OMARCHY_PATH.
-  required property string omarchyPath
+  // The omarchy-shell host injects omarchyPath from OMARCHY_PATH. Not
+  // required: the plugin bar loader assigns it after creation (Loader's
+  // dynamic `source:` instantiation can't satisfy required properties the
+  // way the default bar's inline Component literal can).
+  property string omarchyPath: ""
   // Injected by the host shell so bar slots can resolve enabled widgets.
-  required property var barWidgetRegistry
+  property var barWidgetRegistry: null
   // Injected by the host shell every time shell.json is reloaded. Holds the
   // `bar:` subtree: position, centerAnchor, layout. The host owns file IO;
   // the bar just renders whatever it's handed. The bar font follows the
   // OS-level fontconfig monospace binding — it is not stored in shell.json.
-  required property var barConfig
+  property var barConfig: null
   // Injected by the host shell. Used for shell-wide actions such as opening
   // settings and persisting inline widget state.
   property var shell: null
