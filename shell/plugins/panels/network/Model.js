@@ -20,6 +20,20 @@ function connectionIcon(kind, signalStrength) {
   return "󰤮"
 }
 
+function connectionKind(wiredConnected, wifiNetworkConnected, wifiDeviceConnected) {
+  if (wiredConnected) return "ethernet"
+  if (wifiNetworkConnected || wifiDeviceConnected) return "wifi"
+  return "disconnected"
+}
+
+function connectionSignalStrength(networkStrength, wifiConnected) {
+  if (networkStrength !== null && networkStrength !== undefined) {
+    return Math.round((networkStrength || 0) * 100)
+  }
+
+  return wifiConnected ? 0 : -1
+}
+
 function formatHeaderSpeed(mbps) {
   var v = parseInt(mbps, 10)
   if (!v || v < 0) return ""
@@ -342,6 +356,8 @@ if (typeof module !== "undefined") {
     parseNetworkStatus: parseNetworkStatus,
     wifiIconFor: wifiIconFor,
     connectionIcon: connectionIcon,
+    connectionKind: connectionKind,
+    connectionSignalStrength: connectionSignalStrength,
     formatHeaderSpeed: formatHeaderSpeed,
     formatHeaderFreq: formatHeaderFreq,
     headerDetail: headerDetail,

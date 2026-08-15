@@ -90,6 +90,13 @@ assertDeepEqual(
   'network parses bar status'
 )
 assertEqual(network.connectionIcon('wifi', 80), network.wifiIconFor(80), 'network maps wifi icon from signal')
+assertEqual(network.connectionKind(false, false, false), 'disconnected', 'network reports disconnected when no device is online')
+assertEqual(network.connectionKind(true, true, true), 'ethernet', 'network prefers ethernet when multiple devices are online')
+assertEqual(network.connectionKind(false, true, false), 'wifi', 'network reports wifi from a connected access point')
+assertEqual(network.connectionKind(false, false, true), 'wifi', 'network reports wifi from a connected device when access points are missing')
+assertEqual(network.connectionSignalStrength(0.78, true), 78, 'network maps access-point signal strength to percent')
+assertEqual(network.connectionSignalStrength(null, true), 0, 'network keeps connected wifi online when signal strength is unknown')
+assertEqual(network.connectionSignalStrength(null, false), -1, 'network has no signal strength while disconnected')
 assertEqual(network.formatHeaderSpeed('1000'), '1gbit', 'network formats gigabit speed')
 assertEqual(network.formatHeaderSpeed('2500'), '2.5gbit', 'network formats fractional gigabit speed')
 assertEqual(network.formatHeaderFreq('2462'), '2.4ghz', 'network formats 2.4GHz wifi band')
