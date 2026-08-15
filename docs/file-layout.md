@@ -201,7 +201,7 @@ the root-side work.
 
 ## Migrations (`omarchy-migrate`)
 
-See [`migrations.md`](migrations.md) for the full migration model, authoring
+See [`migrations.md`](../agents/skills/migrations.md) for the full migration model, authoring
 guidelines, and troubleshooting notes.
 
 Omarchy migrations live in `migrations/*.sh` and run per-user through

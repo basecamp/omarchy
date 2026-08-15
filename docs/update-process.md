@@ -30,7 +30,7 @@ The design goal is:
 
 ## Migration layout
 
-See [`migrations.md`](migrations.md) for the full migration model, authoring
+See [`migrations.md`](../agents/skills/migrations.md) for the full migration model, authoring
 guidelines, and troubleshooting notes.
 
 Migrations live in:
