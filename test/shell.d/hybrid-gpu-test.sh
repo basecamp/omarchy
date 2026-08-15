@@ -20,7 +20,28 @@ STUB
 
 cat >"$fake_bin/gum" <<'STUB'
 #!/bin/bash
-exit 1
+printf '%s\n' "$*" >>"$TEST_TMP/prompts"
+exit "${CONFIRM_STATUS:-1}"
+STUB
+
+cat >"$fake_bin/lspci" <<'STUB'
+#!/bin/bash
+
+if [[ ${T2_HARDWARE:-0} == "1" ]]; then
+  echo '00:02.0 VGA compatible controller [0300]: Intel Corporation UHD Graphics [8086:3e9b]'
+  echo '03:00.0 VGA compatible controller [0300]: AMD Radeon Pro [1002:7340]'
+  echo '04:00.1 Non-VGA unclassified device [0000]: Apple T2 Bridge [106b:1801]'
+fi
+STUB
+
+cat >"$fake_bin/sudo" <<'STUB'
+#!/bin/bash
+"$@"
+STUB
+
+cat >"$fake_bin/omarchy-system-reboot" <<'STUB'
+#!/bin/bash
+echo reboot >>"$TEST_TMP/reboots"
 STUB
 
 cat >"$fake_bin/supergfxctl" <<'STUB'
@@ -39,6 +60,41 @@ echo Hybrid
 STUB
 
 chmod +x "$fake_bin"/*
+
+gmux_conf="$test_tmp/modprobe.d/apple-gmux.conf"
+
+TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=0 \
+  OMARCHY_T2_GMUX_CONF="$gmux_conf" PATH="$fake_bin:$PATH" \
+  bash "$ROOT/bin/omarchy-toggle-hybrid-gpu" >/dev/null
+
+grep -Fxq 'options apple-gmux force_igd=y' "$gmux_conf" ||
+  fail "T2 hybrid graphics can switch to cooler Intel graphics"
+grep -Fq 'cooler Intel graphics for longer battery life' "$test_tmp/prompts" ||
+  fail "T2 Intel mode explains its tradeoff"
+[[ $(wc -l <"$test_tmp/reboots") == "1" ]] || fail "T2 Intel mode requests one reboot"
+pass "T2 hybrid graphics switches to cooler Intel mode"
+
+: >"$test_tmp/prompts"
+TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=0 \
+  OMARCHY_T2_GMUX_CONF="$gmux_conf" PATH="$fake_bin:$PATH" \
+  bash "$ROOT/bin/omarchy-toggle-hybrid-gpu" >/dev/null
+
+grep -Fxq 'options apple-gmux force_igd=n' "$gmux_conf" ||
+  fail "T2 hybrid graphics can switch to faster AMD graphics"
+grep -Fq 'faster AMD graphics instead of cooler Intel graphics' "$test_tmp/prompts" ||
+  fail "T2 AMD mode explains its tradeoff"
+[[ $(wc -l <"$test_tmp/reboots") == "2" ]] || fail "T2 AMD mode requests one reboot"
+pass "T2 hybrid graphics switches back to faster AMD mode"
+
+: >"$test_tmp/prompts"
+TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=1 \
+  OMARCHY_T2_GMUX_CONF="$gmux_conf" PATH="$fake_bin:$PATH" \
+  bash "$ROOT/bin/omarchy-toggle-hybrid-gpu" >/dev/null
+
+grep -Fxq 'options apple-gmux force_igd=n' "$gmux_conf" ||
+  fail "declining a T2 graphics switch preserves the selected mode"
+[[ $(wc -l <"$test_tmp/reboots") == "2" ]] || fail "declining a T2 graphics switch skips reboot"
+pass "T2 hybrid graphics leaves a declined switch unchanged"
 
 TEST_TMP="$test_tmp" SUCCEED_ON_ATTEMPT=3 \
   PATH="$fake_bin:$PATH" bash "$ROOT/bin/omarchy-toggle-hybrid-gpu" >/dev/null

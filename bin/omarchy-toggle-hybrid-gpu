@@ -1,7 +1,43 @@
 #!/bin/bash
 
-# omarchy:summary=Toggle dedicated vs integrated GPU mode via supergfxd (for hybrid gpu laptops, like Asus G14).
+# omarchy:summary=Toggle between cooler integrated and faster dedicated graphics on supported hybrid laptops
 # omarchy:requires-sudo=true
+
+t2_hybrid_graphics() {
+  local pci_devices="$1"
+
+  grep -q '106b:180[12]' <<<"$pci_devices" &&
+    grep -q 'VGA compatible controller.*\[8086:' <<<"$pci_devices" &&
+    grep -q 'VGA compatible controller.*\[1002:' <<<"$pci_devices"
+}
+
+toggle_t2_graphics() {
+  local gmux_conf="${OMARCHY_T2_GMUX_CONF:-/etc/modprobe.d/apple-gmux.conf}"
+
+  if [[ -f $gmux_conf ]] && grep -Eq '^[[:space:]]*options[[:space:]]+apple-gmux[[:space:]].*force_igd=(y|Y|1)([[:space:]]|$)' "$gmux_conf"; then
+    if gum confirm "Use faster AMD graphics instead of cooler Intel graphics and reboot?"; then
+      sudo mkdir -p "$(dirname "$gmux_conf")"
+      printf '%s\n' \
+        '# Make the AMD GPU the primary display adapter at boot.' \
+        'options apple-gmux force_igd=n' |
+        sudo tee "$gmux_conf" >/dev/null
+      omarchy-system-reboot
+    fi
+  elif gum confirm "Use cooler Intel graphics for longer battery life and reboot?"; then
+    sudo mkdir -p "$(dirname "$gmux_conf")"
+    printf '%s\n' \
+      '# Make the Intel integrated GPU the primary display adapter at boot.' \
+      'options apple-gmux force_igd=y' |
+      sudo tee "$gmux_conf" >/dev/null
+    omarchy-system-reboot
+  fi
+}
+
+pci_devices="$(lspci -nn)"
+if t2_hybrid_graphics "$pci_devices"; then
+  toggle_t2_graphics
+  exit
+fi
 
 if omarchy-cmd-missing supergfxctl; then
   omarchy-pkg-add supergfxctl
