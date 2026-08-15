@@ -177,9 +177,10 @@ Runs once per user. It does **not** copy `~/.config/**`, `~/.bashrc`,
 `flags.lua`, or the nautilus extensions — `/etc/skel` already seeded those.
 It only does the things `/etc/skel` can't:
 
-- Skill symlinks `~/.{agents,claude,codex,pi/agent}/skills/omarchy` →
+- Skill symlinks `~/.{agents,claude}/skills/omarchy` →
   `$OMARCHY_PATH/default/agents/skills/omarchy`. Symlinks (not copies) so
-  `omarchy dev link` against a dev checkout repoints them correctly.
+  `omarchy dev link` against a dev checkout repoints them correctly. Codex and
+  Pi both read `~/.agents/skills`; only Claude Code needs its own directory.
 - `xdg-user-dirs-update` (Templates/Public/Desktop folded back into `$HOME`)
   and `~/.config/gtk-3.0/bookmarks` (needs `$HOME` expansion).
 - Hyprland's package-owned default input reads `XKBLAYOUT` / `XKBVARIANT`
