@@ -14,6 +14,37 @@ right place:
   https://omarchy.org/discord. Start here when the problem isn't clearly a bug
   in Omarchy itself.
 
+## Verify Before Filing
+
+A duplicate or already-fixed report costs a maintainer more time than no
+report at all. Before drafting anything, confirm all three:
+
+1. **It reproduces against the exact installed version, on the matching
+   upstream tag** — not just the default branch, since an unreleased fix
+   there wouldn't apply to what's actually installed, and a fix already
+   released after the installed version means it's not a live bug either.
+   ```bash
+   omarchy version
+   curl -fsSL "https://raw.githubusercontent.com/basecamp/omarchy/v<version>/<path>"
+   # diff that against the local file/behavior
+   ```
+2. **No existing issue already covers it** — search open *and* closed. A
+   closed-as-fixed issue that still reproduces on the current release is a
+   regression worth reporting; a closed-as-not-a-bug issue on the same
+   symptom (e.g. a stale local dependency, not an Omarchy bug) means don't
+   file at all.
+   ```bash
+   gh issue list --repo basecamp/omarchy --state all --search "<keywords>"
+   ```
+3. **No pull request already fixes it**, open or merged. A merged PR not yet
+   in a release means "update and it's fixed," not a new bug. An open PR
+   means point the user at it instead of filing a duplicate.
+   ```bash
+   gh pr list --repo basecamp/omarchy --state all --search "<keywords>"
+   ```
+
+Only proceed to drafting a report once all three come back clean.
+
 ## Filing a Good Bug Report
 
 The bug template asks for system details (CPU, GPU, Omarchy version), a
