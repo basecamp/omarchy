@@ -297,20 +297,33 @@ launch_windows() {
       omarchy-notification-send -u critical "Windows VM" "Failed to start Windows VM"
       exit 1
     fi
-
-    echo "Waiting for Windows VM to start..."
-    WAIT_COUNT=0
-    until docker logs omarchy-windows 2>&1 | grep -qi "windows started successfully"; do
-      sleep 2
-      WAIT_COUNT=$((WAIT_COUNT + 1))
-      if (( WAIT_COUNT > 60 )); then  # 2 minutes timeout
-        echo ""
-        echo "❌ Timeout: Windows VM failed to start within 2 minutes"
-        echo "   Check logs: docker logs omarchy-windows"
-        exit 1
-      fi
-    done
   fi
+
+  # docker logs keeps output across stop/start and is only cleared when the
+  # container is removed, so an unanchored grep matches "started successfully"
+  # from an earlier boot and returns immediately. Anchor the scan to the current
+  # container start, and run it even when the container was already up: the
+  # image restarts the guest in place whenever Windows reboots.
+  windows_started() {
+    local started_at
+    started_at=$(docker inspect --format='{{.State.StartedAt}}' omarchy-windows 2>/dev/null)
+    # An empty --since would drop the filter and match a stale boot again
+    [[ -n $started_at ]] || return 1
+    docker logs --since "$started_at" omarchy-windows 2>&1 | grep -qi "windows started successfully"
+  }
+
+  echo "Waiting for Windows VM to start..."
+  WAIT_COUNT=0
+  until windows_started; do
+    sleep 2
+    WAIT_COUNT=$((WAIT_COUNT + 1))
+    if (( WAIT_COUNT > 60 )); then  # 2 minutes timeout
+      echo ""
+      echo "❌ Timeout: Windows VM failed to start within 2 minutes"
+      echo "   Check logs: docker logs omarchy-windows"
+      exit 1
+    fi
+  done
 
   # Build the connection info
   if [[ $KEEP_ALIVE = "true" ]]; then
@@ -328,6 +341,18 @@ To stop: omarchy-windows-vm stop"
     "Connecting to Windows VM" \
     "" \
     "$LIFECYCLE"
+
+  # FreeRDP 3 tries Kerberos before NTLM for NLA, and krb5 ships /etc/krb5.conf
+  # as the MIT sample with default_realm = ATHENA.MIT.EDU. Every connect then
+  # goes looking for MIT's KDC: with internet up it fails fast, but off the
+  # network each attempt blocks ~23s and no RDP window is ever drawn. The VM
+  # authenticates against a local Windows account, so point FreeRDP at a
+  # realm-less config and let it fall straight through to NTLM.
+  KRB5_CONF="$(dirname "$COMPOSE_FILE")/krb5.conf"
+  if [[ ! -f $KRB5_CONF ]]; then
+    printf '[libdefaults]\n  dns_lookup_kdc = false\n  dns_lookup_realm = false\n' >"$KRB5_CONF"
+  fi
+  export KRB5_CONFIG="$KRB5_CONF"
 
   # Detect display scale from Hyprland
   HYPR_SCALE=$(hyprctl monitors -j | jq -r '.[] | select (.focused == true) | .scale')
