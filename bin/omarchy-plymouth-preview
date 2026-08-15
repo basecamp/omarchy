@@ -38,9 +38,9 @@ trap 'rm -rf "$staging_dir"' EXIT
 find "$OMARCHY_PATH/default/plymouth" -maxdepth 1 -type f -exec cp -t "$staging_dir/" {} +
 cp "$logo_path" "$staging_dir/logo.png"
 
-for asset in bullet.png entry.png lock.png; do
-  magick "$staging_dir/$asset" -channel RGB +level-colors "#$text_hex","#$text_hex" "$staging_dir/$asset"
-done
+# A preview is a fixed-size thumbnail, so the icons stay at 1x here regardless
+# of what scale the installed theme was rendered for.
+omarchy-plymouth-render-icons "$staging_dir" "#$text_hex"
 
 canvas_w=1920
 canvas_h=1080

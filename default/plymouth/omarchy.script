@@ -1,5 +1,10 @@
 # Omarchy Plymouth Theme Script
 
+# Every pixel constant below is written in 1x logical units and multiplied by
+# this scale. omarchy-plymouth-generate rewrites the line to match the art it
+# renders for the display; 1 is the plain unscaled theme.
+global.scale = 1;
+
 Window.SetBackgroundTopColor(0.101, 0.105, 0.149);
 Window.SetBackgroundBottomColor(0.101, 0.105, 0.149);
 
@@ -109,19 +114,19 @@ bullet.image = Image("bullet.png");
 
 entry.sprite = Sprite(entry.image);
 entry.x = Window.GetWidth() / 2 - entry.image.GetWidth() / 2;
-entry.y = logo.sprite.GetY() + logo.image.GetHeight() + 40;
+entry.y = logo.sprite.GetY() + logo.image.GetHeight() + 40 * global.scale;
 entry.sprite.SetPosition(entry.x, entry.y, 10001);
 entry.sprite.SetOpacity(0);
 
 # Scale lock to be slightly shorter than entry field height
 # Original lock is 84x96, entry height determines scale
 lock_height = entry.image.GetHeight() * 0.8;
-lock_scale = lock_height / 96;
-lock_width = 84 * lock_scale;
+lock_scale = lock_height / (96 * global.scale);
+lock_width = 84 * global.scale * lock_scale;
 
 scaled_lock = lock.image.Scale(lock_width, lock_height);
 lock.sprite = Sprite(scaled_lock);
-lock.x = entry.x - lock_width - 15;
+lock.x = entry.x - lock_width - 15 * global.scale;
 lock.y = entry.y + entry.image.GetHeight() / 2 - lock_height / 2;
 lock.sprite.SetPosition(lock.x, lock.y, 10001);
 lock.sprite.SetOpacity(0);
@@ -165,10 +170,10 @@ fun display_password_callback(prompt, bullets) {
   for (index = 0; index < bullets_to_show; index++) {
     if (!bullet.sprites[index]) {
       # Scale bullet image to 7x7 pixels
-      scaled_bullet = bullet.image.Scale(7, 7);
+      scaled_bullet = bullet.image.Scale(7 * global.scale, 7 * global.scale);
       bullet.sprites[index] = Sprite(scaled_bullet);
-      bullet.x = entry.x + 20 + index * (7 + 5);
-      bullet.y = entry.y + entry.image.GetHeight() / 2 - 3.5;
+      bullet.x = entry.x + (20 + index * (7 + 5)) * global.scale;
+      bullet.y = entry.y + entry.image.GetHeight() / 2 - 3.5 * global.scale;
       bullet.sprites[index].SetPosition(bullet.x, bullet.y, 10002);
     }
 
@@ -219,7 +224,7 @@ Plymouth.SetBootProgressFunction(progress_callback);
 #----------------------------------------- Message --------------------------------
 
 message_sprite = Sprite();
-message_sprite.SetPosition(10, 10, 10000);
+message_sprite.SetPosition(10 * global.scale, 10 * global.scale, 10000);
 
 fun display_message_callback(text) {
   message = Image.Text(text, 1, 1, 1);

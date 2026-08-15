@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="286" height="48" viewBox="0 0 286 48">
+  <!-- Authored in 1x logical units; rendered at the target device scale.
+       Half-pixel offsets keep the 1-unit stroke on the pixel grid so it stays
+       crisp at every integer scale. -->
+  <rect x="0.5" y="0.5" width="285" height="47"
+        fill="#000000" fill-opacity="0.051"
+        stroke="#C0CAF5" stroke-width="1"/>
+</svg>

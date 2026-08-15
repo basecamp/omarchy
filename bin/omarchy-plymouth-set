@@ -50,18 +50,10 @@ sed -i \
   -e "s/^Window.SetBackgroundBottomColor.*/Window.SetBackgroundBottomColor($bg_r, $bg_g, $bg_b);/" \
   "$staging_dir/omarchy.script"
 
-for asset in bullet.png entry.png lock.png progress_bar.png; do
-  magick "$staging_dir/$asset" -channel RGB +level-colors "#$text_hex","#$text_hex" "$staging_dir/$asset"
-done
+omarchy-plymouth-generate "$staging_dir" "#$text_hex" >/dev/null
 
 sudo cp -a --no-preserve=mode,ownership "$staging_dir/." "$theme_dir/"
-sudo plymouth-set-default-theme omarchy
-
-if omarchy-cmd-present limine-mkinitcpio; then
-  sudo limine-mkinitcpio
-else
-  sudo mkinitcpio -P
-fi
+omarchy-plymouth-activate
 
 # Sync the SDDM login screen with the same colors and logo.
 sddm_dir="/usr/share/sddm/themes/omarchy"
@@ -73,11 +65,19 @@ sed \
   "$sddm_template" | sudo tee "$sddm_dir/Main.qml" >/dev/null
 
 sudo cp "$logo_path" "$sddm_dir/logo.png"
+
+# SDDM is a Qt app and does its own HiDPI scaling, so it keeps the art at 1x
+# while Plymouth's copy above is rendered for the display's device scale.
+sddm_stage=$(mktemp -d)
+trap 'rm -rf "$staging_dir" "$sddm_stage"' EXIT
+
+omarchy-plymouth-render-icons "$sddm_stage" "#$text_hex"
 for asset in bullet.png entry.png lock.png; do
-  sudo cp "$staging_dir/$asset" "$sddm_dir/$asset"
+  sudo cp "$sddm_stage/$asset" "$sddm_dir/$asset"
 done
+
+omarchy-plymouth-render-icons "$sddm_stage" "#f7768e"
 for asset in entry lock; do
-  magick "$staging_dir/$asset.png" -channel RGB +level-colors "#f7768e","#f7768e" "$staging_dir/$asset-failed.png"
-  sudo cp "$staging_dir/$asset-failed.png" "$sddm_dir/$asset-failed.png"
+  sudo cp "$sddm_stage/$asset.png" "$sddm_dir/$asset-failed.png"
 done
 sudo rm -f "$sddm_dir/logo.svg"

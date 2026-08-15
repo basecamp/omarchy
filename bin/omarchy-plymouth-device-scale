@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# omarchy:summary=Print the device scale Plymouth picks for the primary display
+# omarchy:hidden=true
+
+# Mirrors get_device_scale() in plymouth's src/libply/ply-utils.c so generated
+# theme assets match what plymouthd would do on its own:
+#
+#   diag_inches  = hypot(width_mm, height_mm) / 25.4
+#   physical_dpi = hypot(width_px, height_px) / diag_inches
+#   target_dpi   = diag_inches >= 20 ? 110 : 135
+#   scale        = (physical_dpi / target_dpi) > 1.625 ? 2 : 1
+#
+# Falls back to 1 whenever the panel cannot be measured, which is what plymouth
+# does with a missing or bogus physical size.
+
+for conn in /sys/class/drm/card*-*; do
+  [[ -r $conn/status ]] || continue
+  [[ $(<"$conn/status") == connected ]] || continue
+
+  mode=$(head -n1 "$conn/modes" 2>/dev/null) || continue
+  [[ $mode =~ ^([0-9]+)x([0-9]+) ]] || continue
+
+  # EDID 1.x basic display parameters: byte 0x15 = h size (cm), 0x16 = v size.
+  read -r wcm hcm < <(od -An -tu1 -j21 -N2 "$conn/edid" 2>/dev/null)
+  [[ -n ${wcm:-} && -n ${hcm:-} ]] || continue
+  ((wcm > 0 && hcm > 0)) || continue
+
+  awk -v w="${BASH_REMATCH[1]}" -v h="${BASH_REMATCH[2]}" \
+      -v wmm="$((wcm * 10))" -v hmm="$((hcm * 10))" '
+    BEGIN {
+      # An aspect ratio encoded where the physical size belongs is not a size.
+      if ((wmm == 160 && hmm == 90) || (wmm == 160 && hmm == 100) ||
+          (wmm == 10 && hmm == 10)) { print 1; exit }
+      diag_in = sqrt(wmm * wmm + hmm * hmm) / 25.4
+      dpi     = sqrt(w * w + h * h) / diag_in
+      target  = (diag_in >= 20) ? 110 : 135
+      print (dpi / target > 1.625) ? 2 : 1
+    }'
+  exit 0
+done
+
+echo 1

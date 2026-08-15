@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# omarchy:summary=Render the Plymouth entry field, lock and bullet at a scale
+# omarchy:args=<output-dir> <text-hex> [scale]
+# omarchy:hidden=true
+
+# These three are drawn from vector rather than shipped as bitmaps because
+# neither survives resampling: entry.png's border is baked in as
+# 58%-alpha / solid / 58%-alpha rows — an anti-aliased line frozen into a
+# bitmap — and lock.png is anti-aliased throughout. Rendering them at the size
+# they will actually occupy is the only way to get a crisp edge.
+#
+# Consumers want different scales: Plymouth needs the display's device scale,
+# while SDDM (Qt, scales itself) and the theme previews (fixed-size thumbnails)
+# want 1x.
+
+set -euo pipefail
+
+out_dir="${1:?Usage: omarchy-plymouth-render-icons <output-dir> <text-hex> [scale]}"
+text_hex="${2:?Usage: omarchy-plymouth-render-icons <output-dir> <text-hex> [scale]}"
+scale="${3:-1}"
+
+src_dir="$OMARCHY_PATH/default/plymouth/src"
+
+[[ $text_hex =~ ^#[0-9a-fA-F]{6}$ ]] || { echo "text colour must be #RRGGBB" >&2; exit 1; }
+[[ $scale =~ ^[1-9][0-9]*$ ]] || { echo "scale must be a positive integer" >&2; exit 1; }
+
+render() { # render <name> <1x-width> <1x-height>
+  sed "s/#C0CAF5/$text_hex/g" "$src_dir/$1.svg" |
+    rsvg-convert -w "$(($2 * scale))" -h "$(($3 * scale))" -o "$out_dir/$1.png"
+}
+
+render entry 286 48
+render lock 84 96
+render bullet 7 7

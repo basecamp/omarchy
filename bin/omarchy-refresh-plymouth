@@ -3,11 +3,15 @@
 # omarchy:summary=Overwrite the user config for the Plymouth drive decryption and boot sequence with the Omarchy default and rebuild it.
 # omarchy:requires-sudo=true
 
-sudo cp -r "$OMARCHY_PATH/default/plymouth/." /usr/share/plymouth/themes/omarchy/
-sudo plymouth-set-default-theme omarchy
+theme_dir="/usr/share/plymouth/themes/omarchy"
+staging_dir=$(mktemp -d)
+trap 'rm -rf "$staging_dir"' EXIT
 
-if omarchy-cmd-present limine-mkinitcpio; then
-  sudo limine-mkinitcpio
-else
-  sudo mkinitcpio -P
-fi
+cp -r "$OMARCHY_PATH/default/plymouth/." "$staging_dir/"
+
+# The defaults ship 1x art; render it for this display's device scale.
+omarchy-plymouth-generate "$staging_dir" "#C0CAF5" >/dev/null
+rm -rf "$staging_dir/src"
+
+sudo cp -a --no-preserve=mode,ownership "$staging_dir/." "$theme_dir/"
+omarchy-plymouth-activate

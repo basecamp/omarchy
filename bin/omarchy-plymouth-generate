@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# omarchy:summary=Render the Plymouth theme assets and script for a device scale
+# omarchy:args=<theme-dir> <text-hex> [scale]
+# omarchy:hidden=true
+
+# Plymouth picks a device scale from the panel's DPI and resamples every sprite
+# to match, so 1x art reaches a HiDPI framebuffer through an upscale. The entry
+# field suffers worst: its border is baked in as 58%-alpha / solid / 58%-alpha
+# rows, an anti-aliased line frozen into a bitmap that stays soft at any scale.
+#
+# This renders each asset at its final device-pixel size instead, from the
+# vector sources in default/plymouth/src, and expresses the script's hard-coded
+# 1x constants in terms of a generated `global.scale`. Callers pin DeviceScale=1
+# (see omarchy-plymouth-activate) so plymouthd blits the result 1:1.
+#
+# Operates in place on a directory that already holds a copy of
+# default/plymouth. Prints the scale it rendered for.
+
+set -euo pipefail
+
+theme_dir="${1:?Usage: omarchy-plymouth-generate <theme-dir> <text-hex> [scale]}"
+text_hex="${2:?Usage: omarchy-plymouth-generate <theme-dir> <text-hex> [scale]}"
+scale="${3:-$(omarchy-plymouth-device-scale)}"
+
+omarchy-plymouth-render-icons "$theme_dir" "$text_hex" "$scale"
+
+# The logo is pixel art, so nearest-neighbour reproduces it exactly at any
+# integer scale. Themes supply their own, so it is scaled rather than redrawn.
+magick "$theme_dir/logo.png" -filter point -resize "$((100 * scale))%" "$theme_dir/logo.png"
+
+# progress_bar takes the theme's text colour; progress_box keeps its own.
+magick -size "$((300 * scale))x$((10 * scale))" "xc:$text_hex" "$theme_dir/progress_bar.png"
+magick -size "$((300 * scale))x$((10 * scale))" "xc:#292E42" "$theme_dir/progress_box.png"
+
+sed -i -e "s/^global.scale = .*/global.scale = $scale;/" "$theme_dir/omarchy.script"
+sed -i -E "s/^(MonospaceFont|Font)=Cantarell [0-9]+/\1=Cantarell $((11 * scale))/" \
+  "$theme_dir/omarchy.plymouth"
+
+echo "$scale"

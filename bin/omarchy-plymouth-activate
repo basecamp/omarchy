@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# omarchy:summary=Select the Omarchy Plymouth theme and rebuild the initramfs
+# omarchy:hidden=true
+# omarchy:requires-sudo=true
+
+# omarchy-plymouth-generate renders the theme's art at the display's device
+# scale, so plymouthd must not scale it a second time: with the art already
+# sized in device pixels, one logical pixel has to equal one device pixel.
+#
+# plymouth-set-default-theme rewrites only the Theme key, so DeviceScale
+# survives a theme switch. The plymouth mkinitcpio hook bundles this config
+# into the initramfs, which is where the disk passphrase is asked for.
+
+set -euo pipefail
+
+conf=/etc/plymouth/plymouthd.conf
+
+sudo python3 - "$conf" <<'PY'
+import os, sys
+
+path = sys.argv[1]
+lines = open(path).read().splitlines() if os.path.exists(path) else []
+
+out, in_daemon, written, seen_daemon = [], False, False, False
+for line in lines:
+    stripped = line.strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        if in_daemon and not written:
+            out.append("DeviceScale=1")
+            written = True
+        in_daemon = stripped == "[Daemon]"
+        seen_daemon = seen_daemon or in_daemon
+        out.append(line)
+        continue
+    if in_daemon and stripped.split("=")[0].strip() == "DeviceScale":
+        if not written:
+            out.append("DeviceScale=1")
+            written = True
+        continue
+    out.append(line)
+
+if in_daemon and not written:
+    out.append("DeviceScale=1")
+    written = True
+if not seen_daemon:
+    out += ["[Daemon]", "DeviceScale=1"]
+
+open(path, "w").write("\n".join(out) + "\n")
+PY
+
+sudo plymouth-set-default-theme omarchy
+
+if omarchy-cmd-present limine-mkinitcpio; then
+  sudo limine-mkinitcpio
+else
+  sudo mkinitcpio -P
+fi
