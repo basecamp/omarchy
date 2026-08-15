@@ -36,9 +36,11 @@ report at all. Before drafting anything, confirm all three:
    ```bash
    gh issue list --repo basecamp/omarchy --state all --search "<keywords>"
    ```
-3. **No pull request already fixes it**, open or merged. A merged PR not yet
-   in a release means "update and it's fixed," not a new bug. An open PR
-   means point the user at it instead of filing a duplicate.
+3. **No pull request already fixes it**, open or merged. A merged-but-unreleased
+   PR means the fix is on the default branch and will ship in the next
+   release — not installable yet via `omarchy update`, so only worth a new
+   report if it still reproduces after that release ships. An open PR means
+   point the user at it instead of filing a duplicate.
    ```bash
    gh pr list --repo basecamp/omarchy --state all --search "<keywords>"
    ```

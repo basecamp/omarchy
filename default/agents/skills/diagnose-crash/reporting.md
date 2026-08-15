@@ -54,9 +54,11 @@ Include **closed** issues. A matching issue closed as fixed, when the crash stil
 reproduces on a current system, is a regression — and reporting that is worth far
 more than another duplicate.
 
-Also search pull requests, open and merged — a fix already merged but not yet in
-a release means "update and it's fixed," not a new bug; an open PR means point
-the user at it instead of filing a duplicate:
+Also search pull requests, open and merged — a merged-but-unreleased fix means
+it's on the default branch and will ship in the next release, not something the
+user can install yet via `omarchy update`, so only worth a new report if it
+still reproduces after that release ships. An open PR means point the user at
+it instead of filing a duplicate:
 
 ```bash
 gh pr list --repo basecamp/omarchy --state all --search "<signal> <program>"
