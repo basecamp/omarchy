@@ -31,7 +31,6 @@ function shortDnsName(name) {
 
 function displayHostName(hostName, dnsName) {
   var host = String(hostName || "")
-  if (host !== "" && host.toLowerCase() !== "localhost") return host
   return shortDnsName(dnsName) || host || "Unknown"
 }
 
