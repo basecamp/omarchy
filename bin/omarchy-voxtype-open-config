@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Open Voxtype configuration, or the installer if Voxtype isn't installed yet
+
+set -e
+
+if omarchy-cmd-missing voxtype; then
+  omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install
+else
+  omarchy-voxtype-config
+fi

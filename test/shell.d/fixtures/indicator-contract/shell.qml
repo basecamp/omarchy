@@ -204,7 +204,7 @@ ShellRoot {
         root.injectBar(dictation)
         dictation.triggerPress(Qt.LeftButton)
         dictation.triggerPress(Qt.RightButton)
-        root.assertTrue(root.commandCount("omarchy-cmd-missing voxtype && omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install || omarchy-voxtype-config") === 2, "Dictation clicks check voxtype install state before opening config")
+        root.assertTrue(root.commandCount("omarchy-voxtype-open-config") === 2, "Dictation clicks open config, checking voxtype install state first")
         root.assertTrue(root.commandCount("omarchy-voxtype-model") === 0, "Dictation clicks do not run model command")
       }
 
