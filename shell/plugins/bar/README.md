@@ -108,8 +108,8 @@ Group settings:
   an `{ id, ...settings }` object, or a custom `command`/`qml` module), so
   children keep their own settings, panels, and IPC ids.
 - `collapsed` — start collapsed (default `true`). Set `false` to start open.
-- `expandOnHover` — reveal on hover (default `true`). With it `false`, click the
-  chevron to toggle.
+- `expandOnHover` — reveal on hover (default `true`). With it set to `false`, click
+  the chevron to toggle.
 - `icon` — override the chevron glyph.
 - `id` — optional; only needed if you want to address the group by id.
 
