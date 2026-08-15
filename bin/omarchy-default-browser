@@ -41,12 +41,9 @@ esac
 if omarchy-cmd-missing "$command"; then
   if [[ $installing == "false" ]]; then
     exec omarchy-launch-floating-terminal-with-presentation omarchy-default-browser --install "$browser"
-  elif [[ $browser == "chromium" ]]; then
-    omarchy-pkg-add chromium
-  else
-    omarchy-install-browser "$browser"
   fi
 
+  omarchy-install-browser "$browser" || exit 1
   if omarchy-cmd-missing "$command"; then
     echo "Could not install $name" >&2
     exit 1
