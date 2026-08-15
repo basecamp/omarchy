@@ -7,6 +7,8 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 fix_t2="$ROOT/install/hardware/apple/fix-t2.sh"
 other_packages="$ROOT/install/omarchy-other.packages"
 migration="$ROOT/migrations/1785944594.sh"
+touchpad_rule="$ROOT/default/udev/apple-t2-touchpad.rules"
+touchpad_migration="$ROOT/migrations/1786776556.sh"
 
 grep -Fq 'KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt pm_async=off mem_sleep_default=deep"' "$fix_t2" ||
   fail "T2 setup installs the suspend kernel parameters"
@@ -20,6 +22,10 @@ grep -Fq 'KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt pm_async=off mem_sl
   fail "T2 setup leaves optional Touch Bar customization uninstalled"
 ! grep -qx 'tiny-dfr' "$other_packages" ||
   fail "the ISO no longer caches tiny-dfr"
+grep -Fq 'ID_INPUT_TOUCHPAD_INTEGRATION}="internal"' "$touchpad_rule" ||
+  fail "T2 touchpad rule enables libinput disable-while-typing"
+grep -Fq '99-omarchy-apple-t2-touchpad.rules' "$fix_t2" ||
+  fail "fresh T2 setup installs the touchpad integration rule"
 pass "fresh T2 setup uses t2bce-compatible suspend, fan, and Touch Bar defaults"
 
 test_tmp=$(mktemp -d)
@@ -71,6 +77,14 @@ cat >"$stub_bin/omarchy-pkg-drop" <<'SH'
 #!/bin/bash
 
 printf 'omarchy-pkg-drop' >>"$TEST_LOG"
+printf '\t%s' "$@" >>"$TEST_LOG"
+printf '\n' >>"$TEST_LOG"
+SH
+
+cat >"$stub_bin/omarchy-state" <<'SH'
+#!/bin/bash
+
+printf 'omarchy-state' >>"$TEST_LOG"
 printf '\t%s' "$@" >>"$TEST_LOG"
 printf '\n' >>"$TEST_LOG"
 SH
@@ -212,3 +226,45 @@ grep -Fxq 'limine-mkinitcpio' "$calls" ||
   fail "T2 rerun migration rebuilds the boot image"
 [[ -f $repair_marker ]] || fail "T2 rerun migration records the machine-wide repair"
 pass "T2 rerun migration repairs installs the broken hardware check skipped"
+
+touchpad_rule_target="$test_tmp/99-omarchy-apple-t2-touchpad.rules"
+: >"$calls"
+
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=1 \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_T2_TOUCHPAD_RULE="$touchpad_rule_target" \
+  bash -euo pipefail "$touchpad_migration" >/dev/null
+
+cmp -s "$touchpad_rule" "$touchpad_rule_target" ||
+  fail "T2 touchpad migration installs the integration rule"
+grep -Fq $'omarchy-state\tset\treboot-required' "$calls" ||
+  fail "T2 touchpad migration requests a reboot"
+pass "T2 touchpad migration repairs existing installs"
+
+: >"$calls"
+
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=1 \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_T2_TOUCHPAD_RULE="$touchpad_rule_target" \
+  bash -euo pipefail "$touchpad_migration" >/dev/null
+
+[[ ! -s $calls ]] || fail "an already repaired T2 touchpad is left unchanged" "$(cat "$calls")"
+pass "T2 touchpad migration is idempotent"
+
+: >"$calls"
+rm -f "$touchpad_rule_target"
+
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=0 \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_T2_TOUCHPAD_RULE="$touchpad_rule_target" \
+  bash -euo pipefail "$touchpad_migration" >/dev/null
+
+[[ ! -e $touchpad_rule_target ]] || fail "non-T2 systems do not receive the touchpad rule"
+[[ ! -s $calls ]] || fail "non-T2 systems skip the touchpad repair" "$(cat "$calls")"
+pass "T2 touchpad migration skips unrelated hardware"
