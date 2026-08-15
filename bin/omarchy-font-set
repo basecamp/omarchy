@@ -41,7 +41,14 @@ if [[ -f ~/.config/ghostty/config ]]; then
 fi
 
 if [[ -f ~/.config/foot/foot.ini ]]; then
-  sed -i "s/^font=.*/font=$font_name:size=9/g" ~/.config/foot/foot.ini
+  # Preserve the existing :size=N (set by omarchy display text size) so a
+  # family change never resets the terminal font size. Fall back to the
+  # default 9pt when no size is present.
+  foot_size="$(sed -n 's/^font=.*:size=\([0-9.]\+\).*/\1/p' ~/.config/foot/foot.ini | head -1)"
+  if [[ -z $foot_size ]]; then
+    foot_size=9
+  fi
+  sed -i "s/^font=.*/font=$font_name:size=$foot_size/g" ~/.config/foot/foot.ini
 fi
 
 # fontconfig is the canonical source of truth — the omarchy shell, Qt apps,
