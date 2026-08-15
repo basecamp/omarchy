@@ -345,8 +345,9 @@ show_setup_power_menu() {
 }
 
 show_setup_security_menu() {
-  case $(menu "Setup" "󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Setup" "󰈷  Fingerprint\n󰗹  Howdy Face ID\n  Fido2") in
   *Fingerprint*) present_terminal omarchy-setup-security-fingerprint ;;
+  *Howdy*) present_terminal omarchy-setup-security-howdy ;;
   *Fido2*) present_terminal omarchy-setup-security-fido2 ;;
   *) show_setup_menu ;;
   esac
@@ -677,8 +678,9 @@ show_remove_menu() {
 }
 
 show_remove_security_menu() {
-  case $(menu "Remove" "󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Remove" "󰈷  Fingerprint\n󰗹  Howdy Face ID\n  Fido2") in
   *Fingerprint*) present_terminal omarchy-remove-security-fingerprint ;;
+  *Howdy*) present_terminal omarchy-remove-security-howdy ;;
   *Fido2*) present_terminal omarchy-remove-security-fido2 ;;
   *) show_remove_menu ;;
   esac

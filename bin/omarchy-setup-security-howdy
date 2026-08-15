@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# omarchy:summary=Set up Howdy face authentication for sudo and polkit
+# omarchy:requires-sudo=true
+
+set -e
+
+
+find_ir_camera() {
+  local sys_device device name
+
+  for sys_device in /sys/class/video4linux/video*; do
+    [[ -e $sys_device ]] || continue
+
+    name=$(<"$sys_device/name")
+    if [[ $name =~ [Ii]nfrared|[[:space:]]IR([[:space:]]|$)|Integrated[[:space:]]I ]]; then
+      device="/dev/${sys_device##*/}"
+      if v4l2-ctl --device "$device" --all 2>/dev/null | grep -q 'Video Capture'; then
+        printf '%s\n' "$device"
+        return 0
+      fi
+    fi
+  done
+
+  return 1
+}
+
+setup_pam_config() {
+  if ! grep -q 'pam_howdy\.so' /etc/pam.d/sudo; then
+    echo "Configuring sudo for face authentication..."
+    sudo sed -i '1i auth    sufficient pam_howdy.so' /etc/pam.d/sudo
+  fi
+
+  if [[ -f /etc/pam.d/polkit-1 ]] && ! grep -q 'pam_howdy\.so' /etc/pam.d/polkit-1; then
+    echo "Configuring polkit for face authentication..."
+    sudo sed -i '1i auth      sufficient pam_howdy.so' /etc/pam.d/polkit-1
+  elif [[ ! -f /etc/pam.d/polkit-1 ]]; then
+    echo "Creating polkit configuration with face authentication..."
+    sudo tee /etc/pam.d/polkit-1 >/dev/null <<'EOF'
+auth      sufficient pam_howdy.so
+auth      required pam_unix.so
+
+account   required pam_unix.so
+password  required pam_unix.so
+session   required pam_unix.so
+EOF
+  fi
+}
+
+echo -e "\e[32mSetting up Howdy face authentication.\n\e[0m"
+echo "Installing required packages..."
+
+omarchy-pkg-add v4l-utils
+omarchy-pkg-aur-add howdy-next
+
+if ! camera=$(find_ir_camera); then
+  echo -e "\e[31m\nNo usable infrared camera was detected.\e[0m"
+  echo "Check that the camera is enabled and exposed as a V4L2 capture device."
+  exit 1
+fi
+
+echo "Using infrared camera at $camera."
+sudo howdy download-models
+sudo howdy set device_path "$camera"
+
+echo -e "\e[32m\nLook directly at the camera to enroll your face.\e[0m"
+sudo howdy -U "$USER" add
+
+setup_pam_config
+
+echo -e "\nTesting face recognition..."
+if sudo howdy -U "$USER" test; then
+  echo -e "\e[32m\nHowdy face authentication is configured.\e[0m"
+  echo "You can use it for sudo and polkit; your password remains available as fallback."
+else
+  echo -e "\e[31m\nFace recognition failed. Run 'sudo howdy -U $USER test' to troubleshoot.\e[0m"
+  exit 1
+fi
