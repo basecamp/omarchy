@@ -123,6 +123,27 @@ function customModuleType(entry) {
   return ""
 }
 
+// A group is a structural entry that wraps child widgets behind a collapsible
+// chevron. It carries type:"group" and an items[] array; an id is optional and
+// only used for addressing. Because customModuleType() reports "group" for it,
+// the inline-settings delta already treats any change inside a group as
+// structural and rebuilds the section — groups are opaque to the live patch for
+// now, which is correct if not yet optimal.
+function isGroupEntry(entry) {
+  return isPlainObject(entry) && String(entry.type || "") === "group"
+}
+
+function groupItems(entry) {
+  if (!isGroupEntry(entry)) return []
+  var items = entry.items
+  // Array.isArray() returns false for an array created in another QML JS realm
+  // (the entry is built in Bar.qml but read from BarGroup.qml), so accept any
+  // length-shaped value too rather than dropping the children.
+  if (Array.isArray(items)) return items
+  if (items && typeof items.length === "number") return items
+  return []
+}
+
 function customModulePath(entry, home, configDir) {
   var settings = entrySettings(entry)
   var name = entryId(entry)
@@ -226,6 +247,8 @@ if (typeof module !== "undefined") {
     expandPath: expandPath,
     customModuleSafeName: customModuleSafeName,
     customModuleType: customModuleType,
-    customModulePath: customModulePath
+    customModulePath: customModulePath,
+    isGroupEntry: isGroupEntry,
+    groupItems: groupItems
   }
 }
