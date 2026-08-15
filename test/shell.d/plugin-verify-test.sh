@@ -13,7 +13,8 @@ mock_bin="$test_tmp/bin"
 test_home="$test_tmp/home"
 staged_plugin="$test_tmp/staged"
 prompt_log="$test_tmp/prompt"
-mkdir -p "$mock_bin" "$test_home"
+mkdir -p "$mock_bin" "$test_home/.codex"
+printf '{}\n' >"$test_home/.codex/auth.json"
 
 write_plugin() {
   local dir="$1"
@@ -55,7 +56,13 @@ SH
 # is told to write, then plays out the outcome the test asked for.
 cat >"$mock_bin/omarchy-agent" <<'SH'
 #!/bin/bash
-prompt="$3"
+while (( $# > 0 )); do
+  if [[ $1 == "--prompt" ]]; then
+    prompt="$2"
+    break
+  fi
+  shift
+done
 printf '%s' "$prompt" >"$OMARCHY_TEST_AGENT_PROMPT"
 printf '%s' "$PWD" >"$OMARCHY_TEST_AGENT_PWD"
 
@@ -103,6 +110,23 @@ crash)
 esac
 SH
 
+cat >"$mock_bin/codex" <<'SH'
+#!/bin/bash
+exit 0
+SH
+
+cat >"$mock_bin/systemd-run" <<'SH'
+#!/bin/bash
+while (( $# > 0 )); do
+  if [[ $1 == "--" ]]; then
+    shift
+    break
+  fi
+  shift
+done
+exec "$@"
+SH
+
 cat >"$mock_bin/gum" <<'SH'
 #!/bin/bash
 exit 1
@@ -116,6 +140,8 @@ export PATH="$mock_bin:$ROOT/bin:$PATH"
 export TMPDIR="$test_tmp"
 export OMARCHY_TEST_AGENT_PROMPT="$prompt_log"
 export OMARCHY_TEST_AGENT_PWD="$test_tmp/agent-pwd"
+export OMARCHY_SECURITY_SCAN_CACHE=off
+export OMARCHY_SECURITY_SCAN_RUN_ROOT="$test_tmp"
 
 run_verify() {
   local behavior="$1"
@@ -201,7 +227,7 @@ pass "plugin verify treats an empty verdict as unfinished"
 
 # Hedging is not clearing: only the bare word installs a plugin.
 run_verify hedged "$staged_plugin"
-(( verify_status == 1 )) || fail "plugin verify reads a hedged verdict as safe" "$verify_output"
+(( verify_status == 2 )) || fail "plugin verify accepts a malformed hedged verdict" "$verify_output"
 grep -qF "safe-looking" <<<"$verify_output" ||
   fail "plugin verify repeats the hedged verdict" "$verify_output"
 pass "plugin verify clears a plugin only on the word itself"

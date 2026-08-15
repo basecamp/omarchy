@@ -57,13 +57,17 @@ grep -qF "plugin id 'acme.same' is already used by" <<<"$output" ||
   fail "plugin add leaves a target behind after refusing a duplicate id"
 pass "plugin add refuses an installed manifest id regardless of directory name"
 
-# The rest of this file covers the agent review: whether it is asked for, what
-# the answer is remembered as, and what an unfinished or unhappy verdict does to
-# the install.
+# The rest covers the shared security toggle, explicit overrides, and what an
+# unfinished or unhappy verdict does to the install.
 
 cat >"$stub_dir/omarchy-default-agent" <<'STUB'
 #!/bin/bash
 printf '%s\n' "${OMARCHY_TEST_DEFAULT_AGENT-codex}"
+STUB
+
+cat >"$stub_dir/omarchy-toggle-enabled" <<'STUB'
+#!/bin/bash
+[[ $1 == "agent-security-scan" && ${OMARCHY_TEST_SCANS:-0} == "1" ]]
 STUB
 
 # Stands in for the review itself: it records the folder it was pointed at and
@@ -109,7 +113,6 @@ STUB
 chmod +x "$stub_dir"/*
 
 add_home="$TMPDIR/add-home"
-preference_file="$add_home/.local/state/omarchy/settings/plugin-verification"
 verify_log="$TMPDIR/verify-log"
 choose_log="$TMPDIR/choose-log"
 choose_answers="$TMPDIR/choose-answers"
@@ -137,7 +140,7 @@ reset_add() {
   : >"$choose_log"
   : >"$choose_answers"
   : >"$confirm_log"
-  unset OMARCHY_TEST_VERIFY_EXITS OMARCHY_TEST_DEFAULT_AGENT OMARCHY_TEST_CONFIRM
+  unset OMARCHY_TEST_VERIFY_EXITS OMARCHY_TEST_DEFAULT_AGENT OMARCHY_TEST_CONFIRM OMARCHY_TEST_SCANS
 }
 
 run_add() {
@@ -186,6 +189,8 @@ run_add --verify-with-agent --yes
 # installed unless the install survives its verdict.
 grep -qF "$add_home/.config/omarchy/plugins/.add.tmp." "$verify_log" ||
   fail "plugin add reviews the staged clone" "$(<"$verify_log")"
+grep -qF -- "--revision" "$verify_log" ||
+  fail "plugin add does not bind the review to the staged commit" "$(<"$verify_log")"
 pass "plugin add installs what the agent cleared"
 
 reset_add
@@ -233,90 +238,30 @@ grep -qF "no default coding agent to verify with" <<<"$add_output" ||
 pass "plugin add refuses --verify-with-agent without a default agent"
 
 reset_add
-mkdir -p "$(dirname "$preference_file")"
-printf 'always\n' >"$preference_file"
-run_add --yes
-(( add_status == 0 )) || fail "a remembered yes reviews an unattended install" "$add_output"
+OMARCHY_TEST_SCANS=1 run_add --yes
+(( add_status == 0 )) || fail "the shared toggle adds a cleared plugin" "$add_output"
 [[ $(wc -l <"$verify_log") == 1 ]] ||
-  fail "a remembered yes reviews without being asked again" "$(<"$verify_log")"
-[[ ! -s $choose_log ]] || fail "a remembered yes asks nothing" "$(<"$choose_log")"
-pass "plugin add reviews when the answer is remembered as always"
+  fail "the shared toggle automatically reviews plugin installs" "$(<"$verify_log")"
+[[ ! -s $choose_log ]] || fail "the shared toggle needs no per-plugin preference question" "$(<"$choose_log")"
+pass "plugin add follows the shared agent security toggle"
 
 reset_add
-mkdir -p "$(dirname "$preference_file")"
-printf 'always\n' >"$preference_file"
-run_add --no-verify-with-agent --yes
+OMARCHY_TEST_SCANS=1 run_add --no-verify-with-agent --yes
 (( add_status == 0 )) || fail "--no-verify-with-agent adds the plugin" "$add_output"
-[[ ! -s $verify_log ]] || fail "--no-verify-with-agent overrides a remembered yes" "$(<"$verify_log")"
-pass "an explicit flag outranks the remembered answer"
+[[ ! -s $verify_log ]] || fail "--no-verify-with-agent overrides the shared toggle" "$(<"$verify_log")"
+pass "an explicit no outranks the shared toggle"
 
 reset_add
-mkdir -p "$(dirname "$preference_file")"
-printf 'never\n' >"$preference_file"
-run_add --verify-with-agent --yes
-(( add_status == 0 )) || fail "--verify-with-agent adds the plugin" "$add_output"
-[[ $(wc -l <"$verify_log") == 1 ]] ||
-  fail "--verify-with-agent overrides a remembered no" "$(<"$verify_log")"
-pass "an explicit flag outranks a remembered no"
-
-reset_add
-printf '%s\n' "Yes, and remember that" >"$choose_answers"
-run_add_answering
-(( add_status == 0 )) || fail "an answered yes adds the plugin" "$add_output"
-[[ $(wc -l <"$verify_log") == 1 ]] || fail "an answered yes reviews the plugin" "$(<"$verify_log")"
-grep -qF "review this plugin's code" "$choose_log" ||
-  fail "plugin add asks about the review" "$(<"$choose_log")"
-grep -qF "codex" "$choose_log" || fail "plugin add names the agent it would ask" "$(<"$choose_log")"
-[[ $(<"$preference_file") == "always" ]] ||
-  fail "plugin add remembers a yes" "$(<"$preference_file")"
-pass "plugin add asks once and remembers a yes"
-
-# Remembered means never asked again, which is the whole promise of the option.
-rm -rf "$added_plugin"
-: >"$verify_log"
-: >"$choose_log"
-run_add_answering
-(( add_status == 0 )) || fail "a remembered yes keeps adding plugins" "$add_output"
-[[ $(wc -l <"$verify_log") == 1 ]] || fail "a remembered yes keeps reviewing" "$(<"$verify_log")"
-[[ ! -s $choose_log ]] || fail "a remembered yes stops asking" "$(<"$choose_log")"
-pass "plugin add stops asking once the answer is remembered"
-
-reset_add
-printf '%s\n' "Yes, just this once" >"$choose_answers"
-run_add_answering
-(( add_status == 0 )) || fail "a one-time yes adds the plugin" "$add_output"
-[[ $(wc -l <"$verify_log") == 1 ]] || fail "a one-time yes reviews the plugin" "$(<"$verify_log")"
-[[ ! -e $preference_file ]] || fail "a one-time yes is remembered" "$(<"$preference_file")"
-pass "plugin add forgets a one-time yes"
-
-reset_add
-printf '%s\n' "No, skip this one" >"$choose_answers"
-run_add_answering
-(( add_status == 0 )) || fail "a one-time no adds the plugin" "$add_output"
-[[ ! -s $verify_log ]] || fail "a one-time no skips the review" "$(<"$verify_log")"
-[[ ! -e $preference_file ]] || fail "a one-time no is remembered" "$(<"$preference_file")"
-pass "plugin add forgets a one-time no"
-
-reset_add
-printf '%s\n' "No, and stop asking" >"$choose_answers"
-run_add_answering
-(( add_status == 0 )) || fail "an answered no adds the plugin" "$add_output"
-[[ ! -s $verify_log ]] || fail "an answered no skips the review" "$(<"$verify_log")"
-[[ $(<"$preference_file") == "never" ]] ||
-  fail "plugin add remembers a no" "$(<"$preference_file")"
-pass "plugin add asks once and remembers a no"
-
-reset_add
-run_add_answering
-(( add_status == 0 )) || fail "an escaped question adds the plugin" "$add_output"
-[[ ! -s $verify_log ]] || fail "an escaped question skips the review" "$(<"$verify_log")"
-[[ ! -e $preference_file ]] || fail "an escaped question is remembered" "$(<"$preference_file")"
-pass "plugin add remembers nothing when the question is escaped"
+OMARCHY_TEST_SCANS=1 OMARCHY_TEST_DEFAULT_AGENT="" run_add --yes
+(( add_status == 0 )) || fail "plugin add works when the enabled toggle has no selected agent" "$add_output"
+[[ ! -s $verify_log ]] || fail "plugin add scans without a selected default agent" "$(<"$verify_log")"
+pass "automatic scans require both the toggle and a default agent"
 
 # A review that crashed says nothing about the plugin, so the offer is to run it
 # again rather than to decide on what it never reported.
 reset_add
-printf '%s\n' "Yes, just this once" "Run the review again" >"$choose_answers"
+printf '%s\n' "Run the review again" >"$choose_answers"
+export OMARCHY_TEST_SCANS=1
 OMARCHY_TEST_VERIFY_EXITS="2 0" run_add_answering
 (( add_status == 0 )) || fail "a re-run review can still clear a plugin" "$add_output"
 [[ -d $added_plugin ]] || fail "a re-run review can still install a plugin" "$add_output"
@@ -326,7 +271,8 @@ grep -qF "The review did not finish" "$choose_log" ||
 pass "plugin add offers to run an unfinished review again"
 
 reset_add
-printf '%s\n' "Yes, just this once" "Run the review again" >"$choose_answers"
+printf '%s\n' "Run the review again" >"$choose_answers"
+export OMARCHY_TEST_SCANS=1
 OMARCHY_TEST_VERIFY_EXITS="127 0" run_add_answering
 (( add_status == 0 )) || fail "a review that could not run can be run again" "$add_output"
 [[ $(wc -l <"$verify_log") == 2 ]] ||
@@ -334,14 +280,16 @@ OMARCHY_TEST_VERIFY_EXITS="127 0" run_add_answering
 pass "plugin add offers to run a review that could not run again"
 
 reset_add
-printf '%s\n' "Yes, just this once" "Skip the review and add it" >"$choose_answers"
+printf '%s\n' "Skip the review and add it" >"$choose_answers"
+export OMARCHY_TEST_SCANS=1
 OMARCHY_TEST_VERIFY_EXITS=2 run_add_answering
 (( add_status == 0 )) || fail "a skipped review adds the plugin" "$add_output"
 [[ -d $added_plugin ]] || fail "a skipped review adds the plugin" "$add_output"
 pass "plugin add can skip a review that never finished"
 
 reset_add
-printf '%s\n' "Yes, just this once" "Stop the install" >"$choose_answers"
+printf '%s\n' "Stop the install" >"$choose_answers"
+export OMARCHY_TEST_SCANS=1
 OMARCHY_TEST_VERIFY_EXITS=2 run_add_answering
 (( add_status != 0 )) || fail "a stopped install adds nothing" "$add_output"
 [[ ! -e $added_plugin ]] || fail "a stopped install adds nothing" "$add_output"
@@ -350,7 +298,7 @@ pass "plugin add can stop on a review that never finished"
 # A verdict is a decision, not a crash: it is answered with yes or no, not with
 # a re-run.
 reset_add
-printf '%s\n' "Yes, just this once" >"$choose_answers"
+export OMARCHY_TEST_SCANS=1
 OMARCHY_TEST_VERIFY_EXITS=1 run_add_answering
 (( add_status == 0 )) || fail "an overridden verdict adds the plugin" "$add_output"
 [[ -d $added_plugin ]] || fail "an overridden verdict adds the plugin" "$add_output"
@@ -359,7 +307,7 @@ grep -qF "Add it anyway?" "$confirm_log" ||
 pass "plugin add can add a plugin the agent refused"
 
 reset_add
-printf '%s\n' "Yes, just this once" >"$choose_answers"
+export OMARCHY_TEST_SCANS=1
 OMARCHY_TEST_CONFIRM=no OMARCHY_TEST_VERIFY_EXITS=1 run_add_answering
 (( add_status != 0 )) || fail "an accepted verdict stops the install" "$add_output"
 [[ ! -e $added_plugin ]] || fail "an accepted verdict stops the install" "$add_output"

@@ -294,6 +294,12 @@ assert(
   'menu places Passwordless Sudo under Setup > Security'
 )
 assert(
+  defaultById['setup.security.agent-security-scan'].when.includes('omarchy-default-agent')
+    && defaultById['setup.security.agent-security-scan'].checked === 'omarchy-toggle-enabled agent-security-scan'
+    && defaultById['setup.security.agent-security-scan'].action === 'omarchy-agent-security-scan toggle',
+  'menu exposes agent security scans only when a default agent is selected'
+)
+assert(
   !defaultById['trigger.toggle.direct-boot'] && !defaultById['trigger.toggle.passwordless-sudo'],
   'menu removes the relocated toggles from Trigger > Toggle'
 )

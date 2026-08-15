@@ -2,7 +2,7 @@
 
 # omarchy:summary=Add a shell plugin from git
 # omarchy:group=plugin
-# omarchy:args=[git-url] [--enable] [--verify-with-agent] [--skill <file>] [--yes]
+# omarchy:args=[git-url] [--enable] [--verify-with-agent|--no-verify-with-agent] [--skill <file>] [--yes]
 # omarchy:examples=omarchy plugin add https://github.com/acme/omarchy-weather.git --enable
 # omarchy:alias=omarchy plugin install
 
@@ -12,7 +12,6 @@ export GIT_TERMINAL_PROMPT=0
 export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -oBatchMode=yes}"
 
 PLUGINS_DIR="$HOME/.config/omarchy/plugins"
-VERIFICATION_FILE="$HOME/.local/state/omarchy/settings/plugin-verification"
 ASSUME_YES=0
 
 fail() {
@@ -40,74 +39,17 @@ confirm() {
   fi
 }
 
-remembered_verification() {
-  local remembered=""
-
-  [[ -f $VERIFICATION_FILE ]] || return 0
-  read -r remembered <"$VERIFICATION_FILE" || true
-  printf '%s' "$remembered"
-}
-
-remember_verification() {
-  mkdir -p "$(dirname "$VERIFICATION_FILE")"
-  printf '%s\n' "$1" >"$VERIFICATION_FILE"
-}
-
-# Asked before the clone, because it is a question about trust rather than about
-# this repo's code, and answered once: whichever way it is remembered, the
-# question does not come back.
+# Explicit flags win. Otherwise the shared security toggle is deliberately the
+# only preference, so AUR and plugin installs cannot silently disagree.
 resolve_verification() {
   [[ -n $verify ]] && return 0
 
-  # An agent nobody has chosen cannot review anything, so there is no question to
-  # ask and nothing worth remembering.
   agent=$(omarchy-default-agent)
-  [[ -n $agent ]] || {
-    verify=false
-    return 0
-  }
-
-  case "$(remembered_verification)" in
-  always)
+  if [[ -n $agent ]] && omarchy-toggle-enabled agent-security-scan; then
     verify=true
-    return 0
-    ;;
-  never)
+  else
     verify=false
-    return 0
-    ;;
-  esac
-
-  if unattended; then
-    verify=false
-    return 0
   fi
-
-  local answer
-  answer=$(gum choose --header="Have $agent review this plugin's code first?" \
-    "Yes, and remember that" \
-    "Yes, just this once" \
-    "No, skip this one" \
-    "No, and stop asking") || answer=""
-
-  case "$answer" in
-  "Yes, and remember that")
-    remember_verification always
-    verify=true
-    ;;
-  "Yes, just this once")
-    verify=true
-    ;;
-  "No, and stop asking")
-    remember_verification never
-    verify=false
-    ;;
-  *)
-    # Skipped this one, or escaped out of the question: either way there is
-    # nothing to remember, and the plugin is added the way it always was.
-    verify=false
-    ;;
-  esac
 }
 
 # The agent reads the staged clone before any of it is installed, and the
@@ -115,8 +57,9 @@ resolve_verification() {
 # call to make, except when nobody is there to make it.
 verify_plugin() {
   local dir="$1"
+  local revision="$2"
   local outcome choice
-  local -a review=(omarchy-plugin-verify)
+  local -a review=(omarchy-plugin-verify "$dir" --revision "$revision")
 
   # Someone who brought their own review method said what they wanted reviewed
   # with; the rest take the skill Omarchy ships.
@@ -124,7 +67,7 @@ verify_plugin() {
 
   while :; do
     outcome=0
-    "${review[@]}" "$dir" || outcome=$?
+    "${review[@]}" || outcome=$?
     (( outcome == 0 )) && return 0
 
     if (( outcome != 1 )); then
@@ -208,7 +151,7 @@ while (( $# > 0 )); do
     shift
     ;;
   -h | --help)
-    echo "Usage: omarchy plugin add [git-url] [--enable] [--verify-with-agent] [--skill <file>] [--yes]"
+    echo "Usage: omarchy plugin add [git-url] [--enable] [--verify-with-agent|--no-verify-with-agent] [--skill <file>] [--yes]"
     exit 0
     ;;
   -*)
@@ -268,6 +211,15 @@ if ! omarchy-plugin-validate "$stage"; then
   fail "refusing to add: validation failed"
 fi
 
+staged_revision=$(git -C "$stage" rev-parse HEAD^{commit}) || {
+  rm -rf "$stage"
+  fail "refusing to add: the staged plugin has no committed revision"
+}
+if [[ -n $(git -C "$stage" status --porcelain --untracked-files=all) ]]; then
+  rm -rf "$stage"
+  fail "refusing to add: the staged plugin differs from its committed revision"
+fi
+
 id=$(jq -r '.id' "$stage/manifest.json")
 existing_manifest=$(plugin_id_manifest "$id") || {
   rm -rf "$stage"
@@ -287,9 +239,17 @@ fi
 # Last, because a review is the expensive part and there is no point spending an
 # agent on a clone that is about to be rejected anyway. Still before the move:
 # nothing the agent read gets installed unless the install survives its verdict.
-if [[ $verify == true ]] && ! verify_plugin "$stage"; then
-  rm -rf "$stage"
-  fail "aborted: '$id' was not added"
+if [[ $verify == true ]]; then
+  if ! verify_plugin "$stage" "$staged_revision"; then
+    rm -rf "$stage"
+    fail "aborted: '$id' was not added"
+  fi
+  if [[ $(git -C "$stage" rev-parse HEAD^{commit}) != $staged_revision ||
+    -n $(git -C "$stage" status --porcelain --untracked-files=all) ]] ||
+    ! omarchy-plugin-validate "$stage"; then
+    rm -rf "$stage"
+    fail "aborted: '$id' changed after its security review"
+  fi
 fi
 
 mv "$stage" "$target"

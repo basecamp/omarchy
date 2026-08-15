@@ -28,6 +28,11 @@ Read every file in the folder, not only the entry points the manifest names.
 A `manifest.json` that declares one small widget says nothing about the other
 files shipped beside it.
 
+When the review prompt gives a last safe revision, begin with that complete
+diff and inspect every changed file plus the unchanged code needed to understand
+it. A first review, missing baseline, or rewritten history still requires a full
+review. Never check out or execute the revision being reviewed.
+
 Worth particular attention:
 
 - `manifest.json` — the declared `kinds` and `entryPoints`, and whether the rest

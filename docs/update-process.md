@@ -139,6 +139,10 @@ Important behavior:
   `omarchy-migrate` after pacman finishes.
 - A failure should leave enough output in `/tmp/omarchy-update.log` and the
   terminal transcript to debug.
+- When [agent security scans](agent-security-scans.md) are enabled, AUR updates
+  are reviewed one at a time. A held package does not prevent the remaining AUR
+  or system updates from continuing. Third-party plugins are only updated by an
+  explicit `omarchy plugin update`, never as a side effect of this flow.
 
 ## Path 2: direct `sudo pacman -Syu` attempt
 
