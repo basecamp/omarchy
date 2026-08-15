@@ -138,10 +138,15 @@ function groupItems(entry) {
   var items = entry.items
   // Array.isArray() returns false for an array created in another QML JS realm
   // (the entry is built in Bar.qml but read from BarGroup.qml), so accept
-  // array-like objects too rather than dropping the children.
+  // array-like objects too rather than dropping the children. Convert any
+  // accepted array-like object into a real local Array so QML/JS consumers can
+  // safely use Array semantics.
   if (Array.isArray(items)) return items
-  if (items && typeof items === "object" && typeof items.length === "number")
-    return items
+  if (items && typeof items === "object" && typeof items.length === "number") {
+    var result = []
+    for (var i = 0; i < items.length; ++i) result.push(items[i])
+    return result
+  }
   return []
 }
 
