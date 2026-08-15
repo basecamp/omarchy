@@ -29,8 +29,10 @@ BLUEZ = "org.bluez"
 def notify(headline, description):
     sender = shutil.which("omarchy-notification-send")
     if sender:
+        # Critical toasts never expire in the Omarchy shell and nothing here can
+        # retract one, so an unanswered passkey would sit on screen forever.
         subprocess.Popen(
-            [sender, "-u", "critical", "-g", "󰂯", headline, description],
+            [sender, "-u", "normal", "-g", "󰂯", headline, description, "-t", "30000"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
