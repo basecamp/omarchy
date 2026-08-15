@@ -220,10 +220,18 @@ function mullvadCountryOptions(nodes) {
   return mullvadRegionOptions(nodes)
 }
 
+function isCgnatIPv4(cidr) {
+  var match = String(cidr || "").match(/^(\d+)\.(\d+)\./)
+  if (!match) return false
+  var first = parseInt(match[1], 10)
+  var second = parseInt(match[2], 10)
+  return first === 100 && second >= 64 && second <= 127
+}
+
 function isSubnetRoute(cidr) {
   var value = String(cidr || "")
   if (value === "" || value === "0.0.0.0/0" || value === "::/0") return false
-  if (/^100\./.test(value)) return false
+  if (isCgnatIPv4(value)) return false
   if (/^fd7a:115c:a1e0:/i.test(value)) return false
   return true
 }
@@ -394,6 +402,7 @@ if (typeof module !== "undefined") {
     parseExitNodeList: parseExitNodeList,
     mullvadRegionOptions: mullvadRegionOptions,
     mullvadCountryOptions: mullvadCountryOptions,
+    isCgnatIPv4: isCgnatIPv4,
     isSubnetRoute: isSubnetRoute,
     advertisedRoutesFromPeers: advertisedRoutesFromPeers,
     formatRouteSummary: formatRouteSummary,

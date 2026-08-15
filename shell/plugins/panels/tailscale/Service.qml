@@ -44,6 +44,7 @@ Item {
   property bool routesNotAccepted: false
   property var advertisedRoutes: []
   readonly property string advertisedRouteSummary: Model.formatRouteSummary(advertisedRoutes, 4)
+  readonly property var dnsRepairActions: Model.dnsRepairActions(dnsUnreachable, routesNotAccepted)
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
   readonly property bool busy: whichProcess.running || statusProcess.running || mullvadExitNodesProcess.running || accountsProcess.running || actionProcess.running || loginProcess.running || switchProcess.running || operatorProcess.running || exitNodeProcess.running

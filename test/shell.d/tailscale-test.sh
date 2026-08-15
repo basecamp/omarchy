@@ -10,8 +10,7 @@ const tailscale = requireFromRoot('shell/plugins/panels/tailscale/Model.js')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/tailscale/Panel.qml', 'utf8')
 
 assert(/function toggleTailscale\(\): string \{ tailscale\.toggleTailscale\(\); return "ok" \}/.test(panelSource), 'tailscale exposes the connection toggle over IPC')
-assert(panelSource.includes('Accept subnet routes'), 'tailscale panel offers an explicit accept-routes repair')
-assert(panelSource.includes("Don't use tailnet DNS"), 'tailscale panel offers an explicit keep-local-DNS repair')
+assert(panelSource.includes('tailscale.dnsRepairActions'), 'tailscale panel uses the shared DNS repair actions')
 assert(panelSource.includes('tailscale.acceptRoutes()'), 'tailscale panel accepts routes only from the repair action')
 assert(panelSource.includes('tailscale.ignoreTailnetDns()'), 'tailscale panel disables tailnet DNS only from the repair action')
 assert(!/tailscale up --accept-routes/.test(panelSource), 'tailscale panel does not pass --accept-routes to up')
@@ -234,7 +233,7 @@ const brokenDns = tailscale.parseStatus(JSON.stringify({
       TailscaleIPs: ['100.1.1.9'],
       Online: true,
       OS: 'linux',
-      PrimaryRoutes: ['10.2.0.0/16', '10.1.0.0/16', '0.0.0.0/0', '100.64.0.0/10']
+      PrimaryRoutes: ['10.2.0.0/16', '10.1.0.0/16', '0.0.0.0/0', '100.64.0.0/10', '100.1.0.0/16']
     }
   }
 }))
@@ -243,12 +242,16 @@ assert(brokenDns.health.dnsUnreachable, 'tailscale detects unreachable tailnet D
 assert(brokenDns.health.routesNotAccepted, 'tailscale detects unaccepted advertised routes from Health')
 assertDeepEqual(
   brokenDns.advertisedRoutes,
-  ['10.1.0.0/16', '10.2.0.0/16'],
+  ['10.1.0.0/16', '10.2.0.0/16', '100.1.0.0/16'],
   'tailscale lists advertised subnet routes and skips default and CGNAT prefixes'
 )
+assert(tailscale.isCgnatIPv4('100.64.0.0/10') && tailscale.isCgnatIPv4('100.127.1.0/24'), 'tailscale treats 100.64.0.0/10 as CGNAT')
+assert(!tailscale.isCgnatIPv4('100.1.0.0/16') && !tailscale.isCgnatIPv4('100.63.0.0/16') && !tailscale.isCgnatIPv4('100.128.0.0/16'), 'tailscale does not treat the rest of 100.0.0.0/8 as CGNAT')
+assert(tailscale.isSubnetRoute('100.1.0.0/16'), 'tailscale keeps advertised 100.x routes outside CGNAT')
+assert(!tailscale.isSubnetRoute('100.100.100.0/24'), 'tailscale skips Tailscale CGNAT prefixes')
 assertEqual(
   tailscale.formatRouteSummary(brokenDns.advertisedRoutes, 4),
-  '10.1.0.0/16, 10.2.0.0/16',
+  '10.1.0.0/16, 10.2.0.0/16, 100.1.0.0/16',
   'tailscale formats a short advertised-route summary'
 )
 assertEqual(

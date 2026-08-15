@@ -44,7 +44,7 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property bool showConnections: tailscale.accounts.length > 1 || tailscale.accountsAccessDenied
   readonly property bool showDnsRepair: tailscale.active && tailscale.dnsUnreachable
-  readonly property var dnsActions: dnsRepairActions()
+  readonly property var dnsActions: showDnsRepair ? tailscale.dnsRepairActions : []
   readonly property bool showPeers: tailscale.active && tailscale.peers.length > 0
   readonly property var recentMullvadRegions: settings.recentMullvadRegions instanceof Array ? settings.recentMullvadRegions : (settings.recentMullvadCountries instanceof Array ? settings.recentMullvadCountries : [])
   readonly property var recentMullvadExitNodes: recentMullvadNodes()
@@ -59,24 +59,6 @@ Panel {
   readonly property color barIconColor: tailscale.active ? barForeground : Qt.darker(barForeground, 1.55)
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
-
-  function dnsRepairActions() {
-    var actions = []
-    if (!showDnsRepair) return actions
-    if (tailscale.routesNotAccepted) {
-      actions.push({
-        id: "routes",
-        title: "Accept subnet routes",
-        subtitle: "Reach the tailnet's DNS servers via advertised routes"
-      })
-    }
-    actions.push({
-      id: "dns",
-      title: "Don't use tailnet DNS",
-      subtitle: "Keep using this machine's DNS resolvers"
-    })
-    return actions
-  }
 
   function selectedDnsAction() {
     if (dnsActions.length === 0) return null
