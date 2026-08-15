@@ -34,13 +34,6 @@ setup_pam_config() {
 auth    sufficient pam_howdy.so' /etc/pam.d/sudo
   fi
 
-  if ! grep -q 'pam_howdy.so' /etc/pam.d/hyprlock; then
-    echo "Configuring hyprlock for face authentication..."
-    sudo sed -i '/pam_unix\.so.*try_first_pass.*likeauth.*nullok/d' /etc/pam.d/hyprlock
-    sudo sed -i '1i auth    sufficient pam_unix.so try_first_pass likeauth nullok\
-auth    sufficient pam_howdy.so' /etc/pam.d/hyprlock
-  fi
-
   if [[ -f /etc/pam.d/polkit-1 ]]; then
     if ! grep -q 'pam_howdy.so' /etc/pam.d/polkit-1; then
       echo "Configuring polkit for face authentication..."
@@ -50,7 +43,7 @@ auth      sufficient pam_howdy.so' /etc/pam.d/polkit-1
     fi
   else
     echo "Creating polkit configuration with face authentication..."
-    sudo tee /etc/pam.d/polkit-1 >/dev/null <<'EOF'
+    sudo tee /etc/pam.d/polkit-1 >/dev/null <<'PAM'
 auth      sufficient pam_unix.so try_first_pass likeauth nullok
 auth      sufficient pam_howdy.so
 auth      required pam_unix.so
@@ -58,8 +51,21 @@ auth      required pam_unix.so
 account   required pam_unix.so
 password  required pam_unix.so
 session   required pam_unix.so
-EOF
+PAM
   fi
+}
+
+setup_lock_face_pam() {
+  # The lock screen drives face auth through its own PAM service, alongside
+  # omarchy-lock-password and omarchy-lock-fingerprint, so a scan can run
+  # while the password field stays live. This file is also what tells the
+  # lock screen face unlock is available.
+  echo "Configuring lock screen for face authentication..."
+  sudo tee /etc/pam.d/omarchy-lock-face >/dev/null <<'PAM'
+#%PAM-1.0
+auth       required                    pam_howdy.so
+account    include                     system-local-login
+PAM
 }
 
 install_dlib_rebuild_check() {
@@ -71,7 +77,7 @@ install_dlib_rebuild_check() {
   # imports at runtime.
   echo "Installing pacman hook to detect broken face unlock after updates..."
   sudo mkdir -p /etc/pacman.d/hooks
-  sudo tee /etc/pacman.d/hooks/howdy-dlib-check.hook >/dev/null <<'EOF'
+  sudo tee /etc/pacman.d/hooks/howdy-dlib-check.hook >/dev/null <<'HOOK'
 [Trigger]
 Type = Package
 Operation = Upgrade
@@ -91,26 +97,9 @@ Target = libx11
 Description = Checking that howdy face unlock still works
 When = PostTransaction
 Exec = /usr/bin/bash -c 'if ! /usr/bin/python -c "import dlib, cv2" &>/dev/null; then printf "\033[1;33mWARNING: face unlock (howdy) is broken: python-dlib no longer imports.\nA library update likely changed a soname it links against.\nRebuild it with: yay -S --rebuild python-dlib\nUntil then, authentication silently falls back to password.\033[0m\n"; fi'
-EOF
+HOOK
 }
 
-add_hyprlock_face_icon() {
-  echo "Adding face icon to hyprlock placeholder text..."
-  if grep -q '󰱻' ~/.config/hypr/hyprlock.conf; then
-    return 0
-  fi
-  if grep -q '󰈷' ~/.config/hypr/hyprlock.conf; then
-    # Fingerprint icon already present, append face glyph alongside
-    sed -i 's|󰈷 </span>|󰈷 󰱻 </span>|' ~/.config/hypr/hyprlock.conf
-  else
-    sed -i 's|placeholder_text = .*|placeholder_text = <span> Enter Password 󰱻 </span>|' ~/.config/hypr/hyprlock.conf
-  fi
-}
-
-enable_hyprlock_face_unlock() {
-  # Allow empty Enter to trigger PAM so face detection starts without typing
-  sed -i 's/ignore_empty_input = true/ignore_empty_input = false/' ~/.config/hypr/hyprlock.conf
-}
 
 echo -e "\e[32mSetting up face unlock (howdy) for authentication.\n\e[0m"
 
@@ -134,6 +123,12 @@ echo "Configuring howdy..."
 sudo sed -i "s|^device_path = .*|device_path = $ir_device|" /etc/howdy/config.ini
 sudo sed -i 's/^detection_notice = .*/detection_notice = true/' /etc/howdy/config.ini
 sudo sed -i 's/^dark_threshold = .*/dark_threshold = 100/' /etc/howdy/config.ini
+# With any other workaround pam_howdy also opens a password prompt inside the
+# same PAM conversation and then tries to dismiss it by injecting an Enter
+# key. The lock screen talks to PAM without a terminal and cannot answer that
+# prompt, so keep howdy to a plain face scan; sudo/polkit take the password
+# through their own pam_unix line above howdy anyway.
+sudo sed -i 's/^workaround = .*/workaround = off/' /etc/howdy/config.ini
 
 # linux-enable-ir-emitter-beta (the Rust rewrite) ships no systemd unit, so the
 # systemctl call below is guarded to keep this script forward-compatible.
@@ -146,19 +141,25 @@ if systemctl list-unit-files linux-enable-ir-emitter.service &>/dev/null; then
   sudo systemctl enable --now linux-enable-ir-emitter.service
 fi
 
-setup_pam_config
 install_dlib_rebuild_check
-add_hyprlock_face_icon
-enable_hyprlock_face_unlock
 
 echo -e "\e[32m\nLet's add your face model.\e[0m"
 echo -e "Look straight into the camera until enrollment completes.\n"
 
 if sudo howdy add; then
   echo -e "\e[32m\nFace model added successfully!\e[0m"
+
+  # PAM comes last, once a face model exists. Wiring the stacks up front would
+  # leave a machine whose enrollment failed pointing at pam_howdy with nothing
+  # to match, and the lock screen offering a scan that can never succeed.
+  setup_pam_config
+  setup_lock_face_pam
+
   echo -e "\e[32m\nFace unlock is now configured.\e[0m"
-  echo "Works with sudo, polkit (1Password), and lock screen (Super + Escape)."
-  echo "On the lock screen, press Enter to trigger face detection."
+  echo "Works with sudo, polkit (1Password), and the lock screen (Super + Ctrl + L)."
+  echo "The lock screen scans when it locks and when you come back to it; press Enter to scan again."
+  echo "For sudo and polkit, press Enter on the empty password prompt to scan."
 else
   echo -e "\e[31m\nFace enrollment failed. Please try again with: sudo howdy add\e[0m"
+  exit 1
 fi
