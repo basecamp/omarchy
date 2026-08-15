@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# omarchy:summary=Link the maintainer agent skills into your agent skill directories
+# omarchy:group=dev
+# omarchy:args=[--unlink]
+# omarchy:hidden=true
+
+set -euo pipefail
+
+if (( EUID == 0 )); then
+  echo "Error: run omarchy-dev-maintainer-skills as your user, not under sudo." >&2
+  exit 1
+fi
+
+source_dir="$OMARCHY_PATH/agents/maintainers"
+skill_dirs=(~/.agents/skills ~/.claude/skills ~/.codex/skills ~/.pi/agent/skills)
+
+if (( $# > 1 )); then
+  echo "Usage: omarchy dev maintainer-skills [--unlink]" >&2
+  exit 1
+fi
+
+action="link"
+
+case "${1:-}" in
+  "")
+    ;;
+  --unlink)
+    action="unlink"
+    ;;
+  *)
+    echo "Usage: omarchy dev maintainer-skills [--unlink]" >&2
+    exit 1
+    ;;
+esac
+
+# agents/ is repo-only: the package ships default/ but not the maintainer
+# workflows, so this needs a checkout (see omarchy dev link).
+if [[ ! -d $source_dir ]]; then
+  echo "No maintainer skills at $source_dir." >&2
+  echo "They live in the git checkout only -- point Omarchy at one with 'omarchy dev link'." >&2
+  exit 1
+fi
+
+shopt -s nullglob
+skills=("$source_dir"/*/)
+shopt -u nullglob
+
+if (( ${#skills[@]} == 0 )); then
+  echo "No maintainer skills found in $source_dir." >&2
+  exit 1
+fi
+
+count=0
+skipped=0
+
+for skill in "${skills[@]}"; do
+  name=$(basename "$skill")
+
+  for skill_dir in "${skill_dirs[@]}"; do
+    link="$skill_dir/$name"
+
+    if [[ $action == "link" ]]; then
+      # A real directory here is someone's own copy of the skill. ln would put
+      # the symlink inside it rather than replacing it, so refuse instead.
+      if [[ -e $link && ! -L $link ]]; then
+        echo "Skipping $link: already exists and is not a symlink." >&2
+        skipped=$((skipped + 1))
+      else
+        mkdir -p "$skill_dir"
+        ln -sfn "$source_dir/$name" "$link"
+        count=$((count + 1))
+      fi
+    else
+      # Only reclaim our own symlinks, for the same reason.
+      if [[ -L $link && $(readlink -f "$link") == "$(readlink -f "$source_dir/$name")" ]]; then
+        rm "$link"
+        count=$((count + 1))
+      fi
+    fi
+  done
+done
+
+if [[ $action == "link" ]]; then
+  echo "Linked $count symlink(s) for ${#skills[@]} maintainer skill(s):"
+  for skill in "${skills[@]}"; do
+    echo "  $(basename "$skill")"
+  done
+
+  if (( skipped > 0 )); then
+    echo
+    echo "Left $skipped existing non-symlink path(s) alone; remove them by hand to link."
+  fi
+
+  echo
+  echo "Restart your agent session to pick them up."
+else
+  echo "Removed $count maintainer skill symlink(s)."
+fi

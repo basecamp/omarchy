@@ -20,6 +20,10 @@ Three documentation trees, split by genre and audience:
 - `docs/` - reference on how the system is shaped (file layout, update pipeline, theming, shell architecture), for anyone working on the codebase; skills link here for depth
 - `manual/` - end-user documentation for using Omarchy, published; never codebase internals
 
+Maintainer workflows are not symlinked into your agent skill directories
+automatically; `omarchy dev maintainer-skills` does that from a checkout, and
+`--unlink` undoes it.
+
 # Style
 
 - Two spaces for indentation, no tabs
