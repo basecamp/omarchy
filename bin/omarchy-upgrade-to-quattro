@@ -2260,17 +2260,21 @@ if [[ -d $legacy_icons_dir ]]; then
   rmdir "$legacy_icons_dir" 2>/dev/null || true
   rmdir "$legacy_icons_backup" 2>/dev/null || true
 
-  # Webapp .desktop files that reference the legacy icon directory keep a
-  # dead Icon= path after the icons move to the backup. Rewrite them to the
-  # bare icon name, which the hicolor theme still resolves from the icon
-  # dirs that hold a copy; a missing icon falls back to a generic placeholder
-  # instead of a broken file path.
+  # Webapp .desktop files point Icon= at the legacy directory, so the entries
+  # whose icon just moved to the backup are left with a dead path. Rewrite only
+  # those, to the normalized name Quattro installs into the icon theme; icons
+  # that are still on disk keep resolving and are left alone.
   for desktop in "$HOME"/.local/share/applications/*.desktop; do
-    [[ -e $desktop ]] || continue
-    icon=$(sed -n 's/^Icon=//p' "$desktop" | head -n1)
-    [[ -n $icon && $icon == "$legacy_icons_dir"/* ]] || continue
+    [[ -f $desktop ]] || continue
+    icon=$(sed -n '/^Icon=/{s///;p;q;}' "$desktop")
+    [[ $icon == "$legacy_icons_dir"/* && ! -e $icon ]] || continue
     icon_name=$(basename "$icon")
-    sed -i "s|^Icon=$icon$|Icon=${icon_name%.png}|" "$desktop"
+    icon_name=$(printf '%s\n' "${icon_name%.*}" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')
+    # Compared and written through the environment so an icon name carrying
+    # sed metacharacters cannot corrupt the entry.
+    old="Icon=$icon" new="Icon=$icon_name" \
+      awk '$0 == ENVIRON["old"] { print ENVIRON["new"]; next } { print }' "$desktop" >"$desktop.tmp" &&
+      mv -f "$desktop.tmp" "$desktop"
   done
 fi
 
