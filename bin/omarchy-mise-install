@@ -18,11 +18,20 @@ mkdir -p "$HOME/.local/bin"
 # hold a new version back for days after it ships. Exported rather than set on
 # the install line alone, so resolving the version to execute agrees with the
 # one just installed.
+#
+# `mise use -g` rewrites the whole global config in place, and it takes no lock
+# while doing so. Two of these wrappers starting at once therefore race on
+# ~/.config/mise/config.toml: the slower writer overwrites the file the faster
+# one just wrote, silently dropping its tools, and an interleaved write can
+# leave a shorter config on top of a longer one with the old tail still
+# attached, which is invalid TOML and breaks mise for every later command.
+# Serialize the write so concurrent launches queue instead of clobbering.
 rm -f "$HOME/.local/bin/$command"
 cat >"$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
 export MISE_MINIMUM_RELEASE_AGE=0
-mise use -g "$package" || exit 1
+mkdir -p "\$HOME/.config/mise"
+flock "\$HOME/.config/mise/.config.lock" mise use -g "$package" || exit 1
 exec mise x "$package" -- "$bin" "\$@"
 EOF
 
