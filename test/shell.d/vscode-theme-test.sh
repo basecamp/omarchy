@@ -40,10 +40,10 @@ grep -Fxq '/usr/bin/cursor' "$TEST_HOME/editor-probes.log" || fail "VS Code them
 [[ ! -e $TEST_HOME/.config/Cursor/User/settings.json ]] || fail "VS Code theme sync skips Cursor when the packaged executable is unavailable"
 pass "VS Code theme sync selects the packaged Cursor executable"
 
-# A theme descriptor always exists once a theme has been applied, even when it
-# names no preferred 3rd-party theme. The generated local theme is the only
-# fallback VS Code-family editors can discover, so an empty/absent name must
-# not be mistaken for "descriptor present, nothing further to do".
+# A theme can ship a descriptor that names no usable 3rd-party theme. The
+# generated local theme is the only fallback VS Code-family editors can
+# discover, so an empty name must not be mistaken for "descriptor present,
+# nothing further to do".
 GENERATED_HOME=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME" "$GENERATED_HOME"' EXIT
 
