@@ -66,6 +66,11 @@ assert(dispatched[1] == "layout:togglesplit")
 special_workspace = { tiled_layout = "scrolling" }
 toggle_split()
 assert(#dispatched == 1)
+
+special_workspace = { tiled_layout = "dwindle" }
+toggle_split()
+assert(#dispatched == 2)
+assert(dispatched[2] == "layout:togglesplit")
 LUA
 ); then
   fail "toggle split binding assertions pass" "$output"
