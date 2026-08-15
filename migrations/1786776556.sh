@@ -4,8 +4,8 @@ if ! lspci -nn | grep "106b:180[12]" >/dev/null; then
   exit 0
 fi
 
-rule="${OMARCHY_T2_TOUCHPAD_RULE:-/etc/udev/rules.d/99-omarchy-apple-t2-touchpad.rules}"
 source_rule="$OMARCHY_PATH/default/udev/apple-t2-touchpad.rules"
+rule=/etc/udev/rules.d/99-omarchy-apple-t2-touchpad.rules
 
 if [[ -f $rule ]] && cmp -s "$source_rule" "$rule"; then
   exit 0
