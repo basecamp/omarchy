@@ -12,6 +12,10 @@ function hasTrackMetadata(player) {
   return !!(player && (player.trackTitle || player.trackArtist || player.trackAlbum || player.trackArtUrl))
 }
 
+function hasTrackTitle(player) {
+  return !!(player && player.trackTitle)
+}
+
 function playerCanControl(player) {
   return !!(player && (player.canTogglePlaying || player.canPlay || player.canPause || player.canGoNext || player.canGoPrevious))
 }
@@ -124,6 +128,7 @@ if (typeof module !== "undefined") {
     isProxyPlayer: isProxyPlayer,
     hasMetadata: hasMetadata,
     hasTrackMetadata: hasTrackMetadata,
+    hasTrackTitle: hasTrackTitle,
     playerCanControl: playerCanControl,
     canHandleAction: canHandleAction,
     canCycleSource: canCycleSource,

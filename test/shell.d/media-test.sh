@@ -11,6 +11,8 @@ assert(media.isProxyPlayer({ dbusName: 'org.mpris.MediaPlayer2.playerctld' }), '
 assert(media.isProxyPlayer({ desktopEntry: 'playerctld' }), 'media detects playerctld proxy by desktop entry')
 assert(media.hasMetadata({ identity: 'Spotify' }), 'media detects identity metadata')
 assert(media.hasTrackMetadata({ trackTitle: 'Track' }), 'media detects track metadata')
+assert(media.hasTrackTitle({ trackTitle: 'Track' }), 'media detects track titles')
+assert(!media.hasTrackTitle({ trackArtUrl: 'file:///cover.jpg' }), 'media ignores blank titles with stale art')
 assert(media.playerCanControl({ canGoNext: true }), 'media detects controllable players')
 assert(media.canHandleAction({ canTogglePlaying: true }, 'playPause'), 'media maps playPause capability')
 assert(media.canCycleSource({ identity: 'Spotify', canPlay: true }), 'media detects cycleable sources')
