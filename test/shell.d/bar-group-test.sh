@@ -26,6 +26,7 @@ assertDeepEqual(
   ['omarchy.agents', 'omarchy.system-update'],
   'bar reads a group child ids'
 )
+assert(bar.groupItems(group) !== group.items, 'bar returns a fresh group items array, not the config reference')
 assertDeepEqual(bar.groupItems({ id: 'omarchy.clock' }), [], 'a non-group has no group items')
 assertDeepEqual(bar.groupItems({ type: 'group' }), [], 'a group with no items reads as empty')
 assertEqual(bar.entryId(group), '', 'an id-less group has no entry id')
