@@ -20,6 +20,16 @@ theme sources, and webapps. Replay it on a fresh install with:
 other details you don't want public.
 
 Add extra paths to back up in `backup.list` (one $HOME-relative path per line).
+
+## Emergency recovery
+
+`recovery/` is a reference snapshot of how this machine boots, captured while
+it works: partition layout with UUIDs (`disk-map.txt`), kernel command line,
+fstab, bootloader config, and EFI boot entries. `omarchy restore` never
+applies these files — machine-specific IDs must be regenerated, not copied.
+Their job is the day the machine won't boot: open this repo from any device,
+and `recovery/` tells you which partition to unlock and mount from a live USB
+session, and what the boot setup looked like when it was healthy.
 README
 }
 
@@ -116,6 +126,20 @@ for desktop in "$HOME/.local/share/applications"/*.desktop; do
     done
   fi
 done
+
+# Recovery reference: how this machine boots, captured while it works.
+# Never applied by omarchy-restore. When the machine won't boot, read these
+# from a live USB session to identify partitions, boot entries and the
+# kernel command line instead of guessing.
+mkdir -p "$BACKUP_DIR/recovery"
+lsblk -o NAME,FSTYPE,LABEL,SIZE,PARTUUID,UUID,MOUNTPOINTS >"$BACKUP_DIR/recovery/disk-map.txt" 2>/dev/null
+cat /proc/cmdline >"$BACKUP_DIR/recovery/cmdline.txt" 2>/dev/null
+cp -f /etc/fstab "$BACKUP_DIR/recovery/fstab" 2>/dev/null
+[[ -r /boot/limine.conf ]] && cp -f /boot/limine.conf "$BACKUP_DIR/recovery/limine.conf"
+if [[ -d /sys/firmware/efi ]]; then
+  efibootmgr -v >"$BACKUP_DIR/recovery/efi-entries.txt" 2>/dev/null ||
+    rm -f "$BACKUP_DIR/recovery/efi-entries.txt"
+fi
 
 # Extras: user-listed paths from backup.list
 if [[ -f $BACKUP_DIR/backup.list ]]; then
