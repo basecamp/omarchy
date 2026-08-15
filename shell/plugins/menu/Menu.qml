@@ -373,6 +373,7 @@ Item {
         parent: menuId,
         kind: "action",
         icon: (value === current) ? "✓" : (spec.icon || ""),
+        labelFont: providerKey === "fonts" ? value : "",
         label: label,
         title: "",
         target: "",
@@ -533,6 +534,7 @@ Item {
         kind: "dmenu",
         icon: icon,
         iconFont: "",
+        labelFont: "",
         appIcon: "",
         appId: "",
         label: label,
@@ -1203,6 +1205,7 @@ Item {
               required property string kind
               required property string icon
               required property string iconFont
+              required property string labelFont
               required property string appIcon
               required property string appId
               required property string label
@@ -1279,7 +1282,7 @@ Item {
                   width: parent.width
                   text: row.label
                   color: row.hasCursor ? root.selectedText : root.foreground
-                  font.family: root.fontFamily
+                  font.family: row.labelFont.length > 0 ? row.labelFont : root.fontFamily
                   font.pixelSize: Style.font.heading
                   font.weight: Font.Medium
                   elide: Text.ElideRight
@@ -1299,11 +1302,24 @@ Item {
 
               Row {
                 id: trail
-                width: Style.space(14)
+                width: row.labelFont.length > 0 ? Style.space(82) : Style.space(14)
                 anchors.right: parent.right
                 anchors.rightMargin: root.rowReservedBorderRight + Style.space(8)
                 y: contentColumn.y + labelText.y + (labelText.height - height) / 2
                 spacing: 0
+
+                Text {
+                  visible: row.labelFont.length > 0
+                  width: visible ? Style.space(68) : 0
+                  text: "Ag 01"
+                  color: row.hasCursor ? root.selectedText : root.foreground
+                  opacity: row.hasCursor ? 1 : 0.72
+                  font.family: row.labelFont
+                  font.pixelSize: Style.font.heading
+                  font.weight: Font.Normal
+                  horizontalAlignment: Text.AlignRight
+                  verticalAlignment: Text.AlignVCenter
+                }
 
                 Text {
                   visible: false
