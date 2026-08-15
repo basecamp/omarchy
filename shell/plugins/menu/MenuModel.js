@@ -312,6 +312,72 @@ function termInSearchWords(term, text) {
   return false
 }
 
+// Terms shorter than this stay substring-only, so a single stray character
+// cannot pull half the menu into the results.
+var FUZZY_MIN_TERM = 2
+// A subsequence that had to skip more than this much text is not a match.
+var FUZZY_MAX_PENALTY = 24
+
+// Greedy leftmost subsequence match. Returns -1 when the needle is not a
+// subsequence of the text, otherwise a penalty where 0 is a perfect prefix or
+// word-start match and larger values mean more scattered characters. A
+// character landing on a word boundary costs nothing, so "sysup" stays cheap
+// against "system update".
+function fuzzyPenalty(needle, text) {
+  needle = String(needle || "")
+  text = String(text || "")
+  if (needle.length < FUZZY_MIN_TERM || !text) return -1
+
+  var next = 0
+  var previous = -1
+  var penalty = 0
+
+  for (var i = 0; i < needle.length; i++) {
+    var character = needle.charAt(i)
+    var found = -1
+    while (next < text.length) {
+      if (text.charAt(next) === character) {
+        found = next
+        next += 1
+        break
+      }
+      next += 1
+    }
+    if (found < 0) return -1
+
+    if (!(found === 0 || /[\s._\-\/]/.test(text.charAt(found - 1))))
+      penalty += previous < 0 ? found : found - previous - 1
+    previous = found
+  }
+
+  return penalty > FUZZY_MAX_PENALTY ? -1 : penalty
+}
+
+// Fuzzy matching runs against each name field on its own. Matching the joined
+// nameSearchText instead would let one subsequence straddle two fields, so
+// "instl" could borrow its "l" from the second copy of "Qt Linguist".
+function fuzzyCandidates(entry) {
+  var candidates = [String(entry.label || "").toLowerCase(), searchableToken(leafIdFor(entry.id)).toLowerCase()]
+  var values = Array.isArray(entry.aliases) ? entry.aliases : []
+  for (var i = 0; i < values.length; i++) candidates.push(searchableToken(values[i]).toLowerCase())
+  return candidates
+}
+
+// Best (lowest) penalty across an entry's name fields, or -1 for no match.
+function fuzzyEntryPenalty(needle, entry) {
+  if (!entry) return -1
+
+  var candidates = fuzzyCandidates(entry)
+  var best = -1
+
+  for (var i = 0; i < candidates.length; i++) {
+    var penalty = fuzzyPenalty(needle, candidates[i])
+    if (penalty >= 0 && (best < 0 || penalty < best)) best = penalty
+  }
+
+  return best
+}
+
 function descriptionTextMatches(query, text) {
   var terms = String(query || "").toLowerCase().trim().split(/\s+/)
   for (var i = 0; i < terms.length; i++) {
@@ -332,6 +398,8 @@ function matchesQuery(entry, query, visible) {
     if (!terms[i]) continue
     if (nameText.indexOf(terms[i]) >= 0) continue
     if (termInSearchWords(terms[i], descriptionText)) continue
+    // Typing through a name from memory ("instl", "blth") still finds it.
+    if (fuzzyEntryPenalty(terms[i], entry) >= 0) continue
     return false
   }
 
@@ -344,6 +412,7 @@ function searchScore(items, entry, query) {
   var nameText = nameSearchText(entry)
   var descriptionText = String(entry.description || "").toLowerCase()
   var score = 80
+  var fuzzy = -1
 
   if (label === needle) score = entry.parent === "root" ? 2 : 0
   // An installed app whose name contains the query as a whole word ("zen"
@@ -352,6 +421,9 @@ function searchScore(items, entry, query) {
   else if (label.indexOf(needle) === 0) score = 10
   else if (label.indexOf(needle) >= 0) score = 30
   else if (nameText.indexOf(needle) >= 0) score = 40
+  // Every literal match above outranks every fuzzy one below it.
+  else if ((fuzzy = fuzzyPenalty(needle, label)) >= 0) score = 50
+  else if ((fuzzy = fuzzyEntryPenalty(needle, entry)) >= 0) score = 55
   else if (descriptionTextMatches(needle, descriptionText)) score = 60
 
   if (entry.kind === "menu" || entry.kind === "link") score -= 2
@@ -359,7 +431,8 @@ function searchScore(items, entry, query) {
   // equal match. Outrank those, but stay inside the tier so better ones win.
   if (entry.kind === "app") score -= 5
 
-  return score * 1000 + depthFor(items, entry.id) * 25 + entry.order
+  // Tighter subsequences sort ahead of scattered ones inside the fuzzy tiers.
+  return score * 1000 + (fuzzy > 0 ? fuzzy * 4 : 0) + depthFor(items, entry.id) * 25 + entry.order
 }
 
 function displayRow(items, itemOrder, checkedResults, disabledResults, entry, detail, score, section) {
@@ -516,6 +589,8 @@ if (typeof module !== "undefined") {
     leafIdFor: leafIdFor,
     nameSearchText: nameSearchText,
     termInSearchWords: termInSearchWords,
+    fuzzyPenalty: fuzzyPenalty,
+    fuzzyEntryPenalty: fuzzyEntryPenalty,
     descriptionTextMatches: descriptionTextMatches,
     matchesQuery: matchesQuery,
     searchScore: searchScore,
