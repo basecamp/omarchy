@@ -125,9 +125,12 @@ cd $WT
 REPORTS=$TRIAGE_HOME/reports
 # write your prompt to $REPORTS/issue-$ISSUE.codex-prompt.txt first --
 # never a shared filename: sibling agents run concurrently and will clobber it.
+# Check codex's own status: piping to tail reports the pipe's success instead.
 codex exec -c model_reasoning_effort="xhigh" -s read-only \
   -o "$REPORTS/issue-$ISSUE.codex.md" \
-  "$(cat "$REPORTS/issue-$ISSUE.codex-prompt.txt")" < /dev/null 2>&1 | tail -40
+  "$(cat "$REPORTS/issue-$ISSUE.codex-prompt.txt")" < /dev/null > "$REPORTS/issue-$ISSUE.codex.log" 2>&1
+codex_status=$?
+tail -40 "$REPORTS/issue-$ISSUE.codex.log"
 ```
 
 Give it the issue text, the version, and the code paths you suspect. Ask for a
@@ -159,8 +162,9 @@ BASE=$TRIAGE_HOME/worktrees
 git -C $WT worktree add $BASE/fix-$ISSUE -b fix/issue-$ISSUE origin/quattro
 cd $BASE/fix-$ISSUE
 # make the edit
+git add <the paths you changed>   # bare `git commit` stages nothing and fails
 ./test/cli
-$BASE/run-shell-tests $PWD ./test/shell.d/<relevant>-test.sh
+$TRIAGE_HOME/run-shell-tests $PWD ./test/shell.d/<relevant>-test.sh
 git commit          # Co-Authored-By trailer; never a Claude-Session trailer
 git push -u origin fix/issue-$ISSUE
 gh pr create -R basecamp/omarchy --base quattro --head fix/issue-$ISSUE \

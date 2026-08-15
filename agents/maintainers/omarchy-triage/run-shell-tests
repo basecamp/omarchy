@@ -38,6 +38,13 @@ cd "$wt" || exit 2
 # Agents run without a session environment, so the compositor-backed tests would
 # all skip. Point them at the live Hyprland instance -- serialized by the lock
 # above, so only one agent ever drives it.
+# base-test.sh resolves a bare WAYLAND_DISPLAY against XDG_RUNTIME_DIR, so
+# exporting only the socket name leaves it looking for /wayland-N and skipping
+# every compositor test this wrapper exists to enable. Export the directory too.
+if [[ -z ${XDG_RUNTIME_DIR:-} && -d /run/user/$UID ]]; then
+  export XDG_RUNTIME_DIR=/run/user/$UID
+fi
+
 if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
   for sock in "${XDG_RUNTIME_DIR:-/run/user/$UID}"/wayland-*; do
     [[ -S $sock ]] || continue

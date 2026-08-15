@@ -77,8 +77,13 @@ account it was posted under:
 ```
 
 When triage runs as a dedicated bot account, that account *is* the author and
-"on behalf of" reads wrong. Set `OMARCHY_TRIAGE_SIGNATURE` to override the whole
-line — e.g. `— 🤖 Automated triage`. Use it verbatim when set.
+"on behalf of" reads wrong, so `OMARCHY_TRIAGE_SIGNATURE` overrides the whole
+line. Resolve it once, here, and hand the result to every agent — nothing
+downstream composes an account name of its own:
+
+```bash
+SIGNATURE=${OMARCHY_TRIAGE_SIGNATURE:-"— 🤖 Claude, posting on behalf of @$ACCOUNT"}
+```
 
 ## Where it can run
 
@@ -118,10 +123,12 @@ gh api repos/basecamp/omarchy/rulesets --jq \
 
 Two things decide the run:
 
-- **Is the default branch push-restricted?** An active branch ruleset covering
-  it (or `~DEFAULT_BRANCH`/`~ALL`) carrying a `pull_request` rule. A ruleset
-  that only carries `copilot_code_review` does not count — it reviews, it does
-  not restrict.
+- **Are the protected branches push-restricted?** `quattro`, `master` and `dev`
+  each need an active branch ruleset covering them (directly or via
+  `~DEFAULT_BRANCH`/`~ALL`) carrying a `pull_request` rule. Checking only the
+  default branch is not enough — the threat model rests on all three, and an
+  unprotected `master` still ships to 3.x users. A ruleset that only carries
+  `copilot_code_review` does not count: it reviews, it does not restrict.
 - **Is this an admin token?** `.permissions.admin` true means the credential can
   do far more than triage needs, and is probably a maintainer's rather than the
   bot's.
@@ -220,6 +227,17 @@ machine, with no cleverness required and no prompt injection involved.
 Running the tests is the point, so the token and the untrusted code share a
 machine on purpose. The design therefore **assumes this box can be compromised**
 and bounds what that buys an attacker, rather than pretending it cannot happen.
+
+**That bargain only holds where the bounding actually exists.** Executing a pull
+request's tests hands it the machine, so it is allowed only when both are true:
+the branches in *Preflight* are confirmed protected, and the credential present is
+the scoped bot token rather than a maintainer's. When either fails — including
+under `--dry-run`, which withholds writes but does nothing about execution —
+**do not run the contributor's code at all**. Read it, reason about it, take CI's
+word for whether it passes, and say in the report that tests were not run and why.
+Suppressing pushes while still executing hostile code protects nothing: the code
+can use the credential directly, which is precisely the case the withheld push was
+supposed to cover.
 
 The deployment this skill is written for:
 
@@ -343,6 +361,11 @@ gh issue list -R basecamp/omarchy --state open --limit 200 \
   --json number,title,author,createdAt,updatedAt,labels,comments
 ```
 
+Those `--limit` values are a page size, not a scope. Keep paging until you reach
+items older than the watermark — stopping at the first page and then advancing
+`last_run_at` skips whatever fell off the end, permanently. Cap the work *after*
+the watermark filter, never before it.
+
 Every open item sorts into one of three buckets:
 
 - **New** — `createdAt` after the watermark, no entry in `seen`. Full triage.
@@ -438,11 +461,21 @@ silently dropped.
 
 ## 3. Set up
 
-Worktrees, one per PR (issues do not need one unless a fix is being drafted):
+Worktrees, one per PR — plus one per issue, at the base branch. An issue agent
+reads the tree through `$WT` and may branch a fix in it, so they cannot share one:
+a single mutable checkout means one agent drafting a fix corrupts every other
+diagnosis running beside it.
+
+```bash
+git worktree add "$BASE/issue-$n" "origin/$BASE_BRANCH" --detach
+```
+
 
 ```bash
 BASE=$TRIAGE_HOME/worktrees
-git fetch origin "pull/$n/head:triage/pr-$n" --force
+# Fetch the base too: the merge-base and diff are computed against it, and a
+# long unattended run against a stale base reviews changes that already landed.
+git fetch origin "$base" "pull/$n/head:triage/pr-$n" --force
 git worktree add "$BASE/pr-$n" "triage/pr-$n"
 ```
 
@@ -452,8 +485,10 @@ agents push to the wrong repository. Use worktree-scoped config, then verify:
 
 ```bash
 git config extensions.worktreeConfig true          # once, in the main repo
+# Take the URL from the API. A fork can be renamed, and guessing "omarchy"
+# can miss -- or hit an unrelated repository that happens to carry the name.
 git -C "$BASE/pr-$n" config --worktree remote.fork.url \
-  "https://github.com/<headRepositoryOwner>/omarchy.git"
+  "<headRepository.url from the collect query>"
 git -C "$BASE/pr-$n" config --worktree remote.fork.fetch \
   "+refs/heads/*:refs/remotes/fork/*"
 git -C "$BASE/pr-$n" remote get-url fork           # must match the PR author
@@ -461,7 +496,7 @@ git -C "$BASE/pr-$n" remote get-url fork           # must match the PR author
 
 `maintainerCanModify: false` means no fix can be pushed — that agent reports only.
 
-Copy `run-shell-tests` from this skill directory to `$BASE/` and `chmod +x` it.
+Copy `run-shell-tests` from this skill directory to `$TRIAGE_HOME/` and `chmod +x` it.
 It `flock`s a shared lock and wires `WAYLAND_DISPLAY`/`HYPRLAND_INSTANCE_SIGNATURE`
 from the live session when there is one, so compositor tests get real coverage
 instead of silently skipping.
@@ -488,6 +523,7 @@ Read <BASE>/pr-protocol.md first and follow it exactly.
 - $HEAD_REF = <head>
 - $ITEM = pr-<n>
 - $REPO, $TRIAGE_HOME, $SIGNATURE = <the values resolved in Environment>
+- $DRY_RUN = <true|false — true means push nothing, open nothing, post nothing>
 
 <the failure mode that would actually hurt a user, the neighbouring code to
 compare against, the regression to rule out, any known collision.>
