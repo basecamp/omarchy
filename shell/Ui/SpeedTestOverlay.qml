@@ -369,7 +369,13 @@ PanelWindow {
 
       Text {
         anchors.horizontalCenter: parent.horizontalCenter
-        text: dial.reading < 10 ? dial.reading.toFixed(1) : Math.round(dial.reading).toLocaleString(Qt.locale(), 'f', 0)
+        // Both branches go through the locale: a reading is a measurement, so
+        // its separators follow the system's number conventions rather than the
+        // interface language. toFixed would have hardcoded a dot below 10 while
+        // everything above it was already grouped for the locale.
+        text: dial.reading < 10
+          ? dial.reading.toLocaleString(Qt.locale(), 'f', 1)
+          : Math.round(dial.reading).toLocaleString(Qt.locale(), 'f', 0)
         color: root.onScrim
         font.family: root.fontFamily
         font.pixelSize: Style.font.display
