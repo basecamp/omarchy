@@ -1,0 +1,115 @@
+#!/bin/bash
+
+# omarchy:summary=Restore configs, packages, themes and webapps from your backup repo (to revert a bad update, see omarchy snapshot instead)
+# omarchy:args=[git-url] [packages|configs|themes|webapps|extras]
+# omarchy:examples=omarchy restore | omarchy restore git@github.com:user/omarchy-backup.git | omarchy restore configs
+# omarchy:requires-sudo=true
+
+BACKUP_DIR="$HOME/omarchy-backup"
+STAMP=$(date +%s)
+
+usage() {
+  echo "Usage: omarchy restore [git-url] [packages|configs|themes|webapps|extras]" >&2
+  exit 1
+}
+
+# A leading git-url argument clones the backup repo on a fresh machine
+if [[ ${1:-} == *"://"* || ${1:-} == *"@"*:* ]]; then
+  if [[ ! -d $BACKUP_DIR ]]; then
+    git clone "$1" "$BACKUP_DIR" || exit 1
+  fi
+  shift
+fi
+
+if [[ ! -d $BACKUP_DIR ]]; then
+  echo "No backup found at $BACKUP_DIR. Pass your repo URL to clone it:" >&2
+  usage
+fi
+
+declare -A RESTORE
+if (( $# == 0 )); then
+  RESTORE=([packages]=1 [configs]=1 [themes]=1 [webapps]=1 [extras]=1)
+else
+  for part in "$@"; do
+    case $part in
+    packages | configs | themes | webapps | extras) RESTORE[$part]=1 ;;
+    *) usage ;;
+    esac
+  done
+fi
+
+# Freshen the backup when possible; a local copy is still a valid source
+if git -C "$BACKUP_DIR" remote get-url origin &>/dev/null; then
+  git -C "$BACKUP_DIR" pull --ff-only --quiet 2>/dev/null ||
+    echo -e "\e[33mCould not pull latest backup; restoring from local copy.\e[0m" >&2
+fi
+
+# Copy one file into place, setting aside any differing existing version
+restore_file() {
+  local source=$1 target=$2
+  if [[ -e $target || -L $target ]] && ! cmp -s "$source" "$target"; then
+    cp -a "$target" "$target.bak.$STAMP" 2>/dev/null
+  fi
+  mkdir -p "$(dirname "$target")"
+  cp -a "$source" "$target"
+}
+
+restore_tree() {
+  local source_root=$1 target_root=$2
+  [[ -d $source_root ]] || return 0
+  while IFS= read -r -d '' file; do
+    restore_file "$file" "$target_root/${file#"$source_root"/}"
+  done < <(find "$source_root" \( -type f -o -type l \) -print0)
+}
+
+if [[ -n ${RESTORE[packages]:-} ]]; then
+  echo -e "\e[32mRestoring packages\e[0m"
+  missing=$(comm -23 <(sort "$BACKUP_DIR/packages.txt") <(pacman -Qqen | sort))
+  if [[ -n $missing ]]; then
+    # shellcheck disable=SC2086
+    sudo pacman -S --needed --noconfirm $missing
+  fi
+
+  missing_aur=$(comm -23 <(sort "$BACKUP_DIR/packages-aur.txt") <(pacman -Qqem | sort))
+  if [[ -n $missing_aur ]]; then
+    # shellcheck disable=SC2086
+    yay -S --needed --noconfirm $missing_aur
+  fi
+fi
+
+if [[ -n ${RESTORE[configs]:-} ]]; then
+  echo -e "\e[32mRestoring configs\e[0m"
+  restore_tree "$BACKUP_DIR/config" "$HOME/.config"
+fi
+
+if [[ -n ${RESTORE[themes]:-} ]]; then
+  echo -e "\e[32mRestoring themes\e[0m"
+  while read -r name url; do
+    [[ -z $name || $name == builtin:* || -z $url ]] && continue
+    if [[ ! -d $HOME/.config/omarchy/themes/$name ]]; then
+      git clone "$url" "$HOME/.config/omarchy/themes/$name" ||
+        echo -e "\e[33mCould not clone theme: $url\e[0m" >&2
+    fi
+  done <"$BACKUP_DIR/themes.txt"
+fi
+
+if [[ -n ${RESTORE[webapps]:-} ]]; then
+  echo -e "\e[32mRestoring webapps\e[0m"
+  mkdir -p "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/256x256/apps"
+  cp -f "$BACKUP_DIR/webapps"/*.desktop "$HOME/.local/share/applications/" 2>/dev/null
+  cp -f "$BACKUP_DIR/webapps/icons"/* "$HOME/.local/share/icons/hicolor/256x256/apps/" 2>/dev/null
+  gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
+fi
+
+if [[ -n ${RESTORE[extras]:-} ]]; then
+  echo -e "\e[32mRestoring extras\e[0m"
+  restore_tree "$BACKUP_DIR/extras" "$HOME"
+fi
+
+# Reapply the active theme so every component reloads with restored settings
+if [[ -n ${RESTORE[configs]:-} || -n ${RESTORE[themes]:-} ]] && [[ -f $BACKUP_DIR/theme-current.txt ]]; then
+  omarchy-theme-set "$(<"$BACKUP_DIR/theme-current.txt")"
+fi
+
+echo -e "\e[32mRestore complete.\e[0m Run omarchy update to apply any pending migrations."
+echo "Files that differed were kept next to the restored copies as *.bak.$STAMP"
