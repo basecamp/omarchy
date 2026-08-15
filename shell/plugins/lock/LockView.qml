@@ -9,6 +9,8 @@ Item {
   property string backgroundPath: ""
   property int backgroundVersion: 0
   property bool fingerprintConfigured: false
+  property bool faceConfigured: false
+  property bool faceAuthenticating: false
   property bool authenticatingPassword: false
   property string failureMessage: ""
   property int failedAttempts: 0
@@ -24,9 +26,11 @@ Item {
   readonly property int fieldFontSize: Math.round(Style.font.heading * 1.125)
   readonly property int passwordDotFontSize: Math.round(Style.font.heading * 1.33)
   readonly property int passwordDotLetterSpacing: Math.round(Style.font.heading * 0.19)
-  // Space to keep clear on each side of the field for the fingerprint icon
-  // (icon width plus a gap) so the centered dots never run under it.
-  readonly property real fingerprintReserve: fingerprintConfigured ? Math.round(fingerprintIcon.implicitWidth + 12) : 0
+  // Space to keep clear on each side of the field for the biometric icons
+  // (fingerprint and/or face: icon widths plus a gap each) so the centered
+  // dots never run under them.
+  readonly property real fingerprintReserve: (fingerprintConfigured ? Math.round(fingerprintIcon.implicitWidth + 12) : 0)
+    + (faceConfigured ? Math.round(faceIcon.implicitWidth + 12) : 0)
   // Shrink the dots to fit once the password outgrows the field, so every
   // keystroke stays visible — otherwise long passwords clip with no feedback.
   readonly property real passwordDotScale: dotMetrics.advanceWidth > 0
@@ -39,6 +43,7 @@ Item {
     : Border.surfaceSpec("lock", "border-active", Color.lock.borderActive, root.outlineThickness, "border-alpha")
 
   signal submitPassword(string password)
+  signal submitFace()
   signal passwordTextEdited(string password)
   signal clearFailureRequested()
   signal wakeRequested()
@@ -131,6 +136,7 @@ Item {
 
       TextInput {
         id: passwordInput
+        objectName: "passwordInput"
         anchors.fill: parent
         anchors.topMargin: inputField.borderTop
         // Reserve the fingerprint icon's width on both sides so the centered
@@ -172,6 +178,9 @@ Item {
           var submitted = root.passwordText
           root.passwordTextEdited("")
           if (submitted.length > 0) root.submitPassword(submitted)
+          // A bare Enter asks the camera to look, mirroring hyprlock where an
+          // empty submit was the way to kick off face auth.
+          else if (root.faceConfigured) root.submitFace()
         }
 
         Keys.onPressed: function(event) {
@@ -212,6 +221,25 @@ Item {
         font.pixelSize: Math.round(root.fieldFontSize * 1.1)
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
+      }
+
+      // Face hint next to the fingerprint one (or in its spot when there is
+      // no reader) once a howdy model is enrolled. Brightens while the camera
+      // is actually looking, so the user knows a scan is in progress.
+      Text {
+        id: faceIcon
+        objectName: "faceIndicator"
+        anchors.right: fingerprintIcon.visible ? fingerprintIcon.left : parent.right
+        anchors.rightMargin: fingerprintIcon.visible ? 10 : inputField.borderRight + 18
+        anchors.verticalCenter: parent.verticalCenter
+        visible: root.faceConfigured
+        text: "󰱻"
+        color: root.faceAuthenticating ? Color.lock.text : Color.lock.placeholder
+        font.family: Style.font.family
+        font.pixelSize: Math.round(root.fieldFontSize * 1.1)
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+        Behavior on color { ColorAnimation { duration: 150 } }
       }
     }
   }
