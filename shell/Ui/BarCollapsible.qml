@@ -125,14 +125,17 @@ Item {
     clip: true
 
     // The content is laid out at its full extent regardless of how far the
-    // drawer has opened, so its widgets never reflow as it animates.
+    // drawer has opened, so its widgets never reflow as it animates. On the
+    // cross axis it is sized to the content and centered, so content shorter
+    // than the bar (e.g. tray icons) sits centered like the pinned items rather
+    // than top/left-aligned — matching the tray drawer's original centering.
     Loader {
       id: contentLoader
-      x: root.vertical ? 0 : Math.round(root.contentOffset)
-      y: root.vertical ? Math.round(root.contentOffset) : 0
-      width: root.vertical ? root.barSize : root.drawerExtent
-      height: root.vertical ? root.drawerExtent : root.barSize
       sourceComponent: root.contentComponent
+      x: root.vertical ? Math.round((root.barSize - implicitWidth) / 2) : Math.round(root.contentOffset)
+      y: root.vertical ? Math.round(root.contentOffset) : Math.round((root.barSize - implicitHeight) / 2)
+      width: root.vertical ? implicitWidth : root.drawerExtent
+      height: root.vertical ? root.drawerExtent : implicitHeight
     }
   }
 }
