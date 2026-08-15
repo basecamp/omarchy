@@ -177,13 +177,30 @@ under which account. Never write an account name of your own.
 
 You may open **one** PR. If your fix would also resolve other issues in this
 batch, say so in the body and reference them rather than filing again — one PR
-per body of work, never a stack. Never merge it, never close the issue, and
-never comment on the issue itself.
+per body of work, never a stack. Never merge it and never close the issue.
 
 If you are the second agent to reach the same root cause, do not file a
 competing PR. Report the collision and let the synthesis phase resolve it.
 
-## 6. Report
+## 6. Comment, when it helps the reporter
+
+You may leave **one** comment on the issue. It earns its place only when the
+reporter or a later reader gains something they cannot already see:
+
+- Exactly what is needed to diagnose it — named precisely. "`omarchy-debug`
+  output and the exact `hyprctl version`", never "more details".
+- That it is already fixed on `quattro`, naming the commit and the release.
+- That it duplicates an older issue, naming it.
+- That a fix is up as PR #N.
+
+Say nothing when the verdict is NOT A BUG, SUPPORT REQUEST, or anything else
+that amounts to a decision about the project — those go to the maintainer, who
+decides how to answer. Never argue with a reporter; if they push back, that goes
+in the report, not into a second comment.
+
+Sign it with `$SIGNATURE`. Post nothing under `--dry-run`.
+
+## 7. Report
 
 Write to `$TRIAGE_HOME/reports/issue-$ISSUE.md` and return the same
 content as your final message. Keep it tight.
@@ -202,6 +219,7 @@ file:line. Say if the reporter's own diagnosis is wrong.
 **Related:** other issues or PRs in or out of this batch, with numbers.
 
 **Fix:** <branch name and one-line summary, or "none drafted -- <why>">
+**Posted:** <the comment you left, or "nothing -- <why>">
 **Codex:** what it added; what you rejected and why.
 **For the maintainer:** the one action to take, or "nothing".
 ```

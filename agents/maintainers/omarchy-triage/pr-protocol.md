@@ -196,7 +196,11 @@ Rules for fixing:
 - If a defect is real but the fix is a judgement call the maintainer should make
   (architecture, product behaviour, naming of a user-facing thing), do NOT push it.
   Report it instead.
-- Do not post comments on the PR. Do not merge, close, approve, or label anything.
+- You may leave **one** comment on the PR, consolidating everything worth telling
+  the author: verified defects, what you pushed and why, what is still open. Post
+  nothing unverified, nothing they can already see, and no filler. Sign it with
+  `$SIGNATURE`. Skip it entirely when there is nothing for them to act on.
+- Do not merge, close, approve, request changes, or label anything.
 - If the push is rejected, do not force-push. Report it.
 
 ## 6. Report
@@ -215,6 +219,7 @@ the user. Use exactly this shape:
 - [severity: high|medium|low] file.sh:42 — what is wrong and what it would do to a user.
 
 **Pushed:** <commit sha + subject, or "nothing">
+**Posted:** <the comment you left, or "nothing -- <why>">
 **Tests:** <what you ran and the result>
 **Related:** <issues this PR would fix, PRs it competes or overlaps with, by number — or "none found">
 **Codex:** <what it added beyond your own review; what you rejected and why>

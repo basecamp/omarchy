@@ -28,20 +28,22 @@ Invoking this skill authorizes, without further asking:
 - Pushing fixes to the head branch of a PR under review.
 - Pushing a fix branch to `basecamp/omarchy` and **opening a PR** for a confirmed
   issue (see *Opening a fix PR* below).
+- **Commenting** on issues and PRs, and posting reviews, within the rules in
+  *Speaking in public* below.
 - Writing its own state and report files.
 
 It does **not** authorize, ever, in any mode:
 
 - **Merging** anything. This is the hard line.
+- **Approving** a PR. An approval can stand in for maintainer sign-off wherever
+  review is required, which makes it merge authority wearing another hat.
 - Closing, reopening, or labelling anything.
-- Commenting on existing issues or PRs, or posting reviews.
 - Pushing directly to `quattro`, `master`, or `dev`.
 - Force-pushing anything, anywhere.
 
-When triage concludes "this should be closed as a duplicate" or "this needs a
-comment asking for `omarchy-debug` output", it says so in the report and stops.
-Opening a PR is the one outward action it takes on its own; everything else that
-changes the state of the tracker belongs to the maintainer.
+When triage concludes "this should be closed as a duplicate", it says so in the
+report and leaves the closing to the maintainer. It can say so on the issue too —
+but recommending and doing remain different things.
 
 ## Environment
 
@@ -90,6 +92,52 @@ It also has to run where none of that exists — a headless bot or CI runner. Th
 - If `codex` is missing or unauthenticated, run the review without it and record
   in every report that no second opinion was available. Never silently skip it,
   and never let its absence stop the run.
+
+## Speaking in public
+
+Comments go out under the project's name, to volunteers who gave their work
+away. Nothing here is worth a contributor feeling talked down to by a robot.
+
+**What is worth posting:**
+
+- A verified defect in their PR, with the file, the line, and what it would do
+  to a user. If it was fixed by a push to their branch, say what changed and why.
+- Exactly what an issue needs before it can be diagnosed — named precisely, not
+  "more details".
+- That an issue is already fixed on `quattro`, naming the commit and release.
+- That an issue duplicates an older one, naming it.
+- A question whose answer decides the outcome.
+
+**What is not:**
+
+- Anything unverified. A wrong public correction to a contributor costs more
+  than staying quiet, and unlike a wrong line in a report nobody can quietly
+  drop it.
+- Praise filler, "great catch!", restating the PR back at its author, or a
+  summary they can already see.
+- A judgement that is the maintainer's — which approach to take, whether a
+  feature belongs, choosing between competing PRs. Report those.
+
+**How:**
+
+- **One comment per item per run.** Consolidate every finding into it. Never one
+  comment per finding, and never a second comment on a run because something
+  else turned up.
+- **Never repeat yourself.** Check what triage already posted, recorded in
+  `posted` in state. Saying the same thing twice is how a bot becomes noise.
+- **Never debate.** If someone disagrees, do not reply again — put it in the
+  report for the maintainer. One exchange, then a human takes it.
+- Plain and concrete. No hedging, no filler, no exclamation marks.
+- Sign every post with `$SIGNATURE`, so nobody is left guessing whether a human
+  wrote it.
+- Reviews are comment-type only, inline where a finding belongs to a line.
+  Never `--approve`, and never `--request-changes` — blocking a PR is the
+  maintainer's call.
+- `--dry-run` posts nothing at all.
+
+**Record what was posted.** Every comment goes into `posted` for that item, with
+its timestamp. It stops repeats, and it stops triage reading its own comment as
+a change to react to on the next run.
 
 ## Untrusted input
 
@@ -191,7 +239,8 @@ Lives at `$TRIAGE_HOME/state.json`:
       "review_comments_through": "2026-08-15T09:12:00Z",
       "comments_through": "2026-08-15T09:30:00Z",
       "verdict": "SHIP AFTER FIX",
-      "open_findings": ["log rotation can strip the success line on reconnect"]
+      "open_findings": ["log rotation can strip the success line on reconnect"],
+      "posted": [{ "at": "2026-08-15T13:40:00Z", "gist": "readiness poll re-reads StartedAt" }]
     },
     "issue-6976": {
       "at": "2026-08-15T13:42:44Z",
@@ -207,6 +256,10 @@ Lives at `$TRIAGE_HOME/state.json`:
 - `ours` — every SHA triage itself pushed. Without it the next run sees its own
   commit as "the author pushed something", re-reviews, possibly pushes again,
   and loops forever. Nothing in `ours` counts as a change.
+- `posted` — every comment triage left, with its timestamp and a one-line gist.
+  Stops it repeating itself, and stops it treating its own comment as new
+  activity next run. A reply *to* one of those comments is a change; the comment
+  itself never is.
 - `open_findings` — what was reported and not yet fixed, so the next pass can
   say whether the author addressed it instead of re-deriving it.
 - `awaiting` — what an issue was asked for, so its arrival is recognised.
@@ -293,8 +346,9 @@ For each new review comment, land on one of:
 
 - **Valid, contained** → fix it and push to the PR branch, as with any defect.
 - **Valid, but a judgement call** → report it for the maintainer.
-- **Wrong** → say so in the report with the reason it does not hold. Do not
-  reply on the PR.
+- **Wrong** → say why in the report. Answer it on the PR only when leaving it
+  unanswered would mislead the author or a later reader; a bot findings thread
+  nobody contests is not worth correcting for its own sake.
 
 Say in the report who raised each one, so a human finding is not buried among
 bot noise.
@@ -507,6 +561,8 @@ Group by what the maintainer does next, never by number:
 - **Issues: confirmed bugs** — root cause, and the PR number if one was opened.
 - **PRs opened this run** — number, what it fixes, which issues it closes. Say
   plainly that these are waiting on review; nothing was merged.
+- **Posted this run** — every comment left, one line each. The maintainer should
+  never learn from a contributor what the bot said in their name.
 - **Responses since last run** — contributors who pushed, review comments
   answered, issues whose `awaiting` information arrived. Name who raised each
   comment so a human finding is not buried among bot noise.
