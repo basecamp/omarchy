@@ -78,10 +78,10 @@ assert(/if \(slot\.isGroup \|\| !slot\.draggable\) continue/.test(barSource), 'a
 // The shared collapsible is registered and reuses the tray drawer motion.
 assert(/BarCollapsible 1\.0 BarCollapsible\.qml/.test(uiQmldir), 'the shared collapsible is registered in the Ui module')
 assert(
-  /duration: root\.animationDuration; easing\.type: Easing\.OutCubic/.test(collapsibleSource),
+  /duration:\s*root\.animationDuration[\s\S]*?easing\.type:\s*Easing\.OutCubic/.test(collapsibleSource),
   'the collapsible animates its reveal with an OutCubic curve'
 )
-assert(/animationDuration: 600/.test(collapsibleSource), 'the collapsible matches the tray drawer duration')
+assert(/animationDuration:\s*600/.test(collapsibleSource), 'the collapsible matches the tray drawer duration')
 
 // The tray drawer and the widget group share BarCollapsible rather than forking
 // the collapse/expand animation. The collapsible offers the tray's reserve-space
