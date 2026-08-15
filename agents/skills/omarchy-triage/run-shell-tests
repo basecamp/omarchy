@@ -1,0 +1,71 @@
+#!/bin/bash
+# Serializes Omarchy shell/acceptance test runs across concurrent review agents.
+# These tests launch Quickshell against the one live compositor, so two runs at
+# once corrupt each other's results. flock makes the second caller wait.
+
+set -uo pipefail
+
+LOCK=/tmp/omarchy-shell-test.lock
+WAIT=${SHELL_TEST_LOCK_WAIT:-5400}
+
+if (( $# < 1 )); then
+  echo "usage: run-shell-tests <worktree-path> [test-file-or-runner ...]" >&2
+  exit 2
+fi
+
+wt="$1"
+shift
+
+if [[ ! -d $wt ]]; then
+  echo "no such worktree: $wt" >&2
+  exit 2
+fi
+
+touch "$LOCK"
+
+echo "[lock] waiting for $LOCK (up to ${WAIT}s)..." >&2
+exec 9>"$LOCK"
+if ! flock -w "$WAIT" 9; then
+  echo "[lock] timed out after ${WAIT}s waiting for the shell-test lock" >&2
+  exit 75
+fi
+echo "[lock] acquired by pid $$ for $wt at $(date -Is)" >&2
+
+cd "$wt" || exit 2
+
+# Agents run without a session environment, so the compositor-backed tests would
+# all skip. Point them at the live Hyprland instance -- serialized by the lock
+# above, so only one agent ever drives it.
+if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
+  for sock in "${XDG_RUNTIME_DIR:-/run/user/$UID}"/wayland-*; do
+    [[ -S $sock ]] || continue
+    export WAYLAND_DISPLAY=${sock##*/}
+    break
+  done
+fi
+
+if [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+  for dir in "${XDG_RUNTIME_DIR:-/run/user/$UID}"/hypr/*/; do
+    [[ -S "$dir/.socket.sock" ]] || continue
+    export HYPRLAND_INSTANCE_SIGNATURE=$(basename "$dir")
+  done
+fi
+
+echo "[lock] WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-unset} HIS=${HYPRLAND_INSTANCE_SIGNATURE:-unset}" >&2
+
+if (( $# == 0 )); then
+  set -- ./test/shell
+fi
+
+status=0
+for target in "$@"; do
+  echo "[lock] running: $target" >&2
+  if [[ -x $target ]]; then
+    "$target" || status=$?
+  else
+    bash "$target" || status=$?
+  fi
+done
+
+echo "[lock] released by pid $$ at $(date -Is)" >&2
+exit $status
