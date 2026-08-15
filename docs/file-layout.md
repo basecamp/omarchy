@@ -125,7 +125,11 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   ├─ systemd/user/*.service                             /usr/lib/systemd/user/
   ├─ systemd/user/app.slice.d/10-oomd.conf              /usr/lib/systemd/user/app.slice.d/
   ├─ systemd/system-sleep/{force-igpu,
-  │    keyboard-backlight,unmount-fuse}                 /usr/lib/systemd/system-sleep/
+  │    keyboard-backlight,unmount-fuse,
+  │    rtw89-8852be}                                    /usr/lib/systemd/system-sleep/
+  │                                                       (rtw89-8852be and force-igpu
+  │                                                       are copied only on machines
+  │                                                       that need them)
   ├─ systemd/zram-generator.conf.d/90-omarchy.conf      /usr/lib/systemd/zram-generator.conf.d/
   ├─ fonts/omarchy/omarchy.ttf                          /usr/share/fonts/omarchy/
   ├─ sddm/omarchy/                                      /usr/share/sddm/themes/omarchy/
