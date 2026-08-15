@@ -211,7 +211,7 @@ git -C "$BASE/pr-$n" remote get-url fork           # must match the PR author
 `maintainerCanModify: false` means no fix can be pushed — that agent reports only.
 
 Copy `run-shell-tests` from this skill directory to `$BASE/` and `chmod +x` it.
-It `flock`s a per-user lock and wires `WAYLAND_DISPLAY`/`HYPRLAND_INSTANCE_SIGNATURE`
+It `flock`s a shared lock and wires `WAYLAND_DISPLAY`/`HYPRLAND_INSTANCE_SIGNATURE`
 from the live session when there is one, so compositor tests get real coverage
 instead of silently skipping.
 

@@ -5,15 +5,7 @@
 
 set -uo pipefail
 
-# Per-user: $XDG_RUNTIME_DIR is already user-owned, so a second maintainer or a
-# bot on the same machine gets its own lock instead of colliding on a /tmp file
-# it may not even own. Serializing across users would be wrong anyway -- each
-# drives its own compositor. A bot can have the variable set to a directory that
-# does not exist, so fall back rather than fail on a lock we never created.
-lock_dir=${XDG_RUNTIME_DIR:-}
-[[ -d $lock_dir && -w $lock_dir ]] || lock_dir=/tmp
-
-LOCK="$lock_dir/omarchy-shell-test.$UID.lock"
+LOCK=/tmp/omarchy-shell-test.lock
 WAIT=${SHELL_TEST_LOCK_WAIT:-5400}
 
 if (( $# < 1 )); then
