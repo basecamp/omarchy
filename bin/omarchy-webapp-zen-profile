@@ -1,0 +1,75 @@
+#!/bin/bash
+
+# omarchy:summary=Resolve the active Zen profile dir and zen binary (shared helper)
+# omarchy:hidden=true
+
+# Prints the active Zen profile directory (e.g. /home/user/.zen/xxx.Default (release)).
+# Exits 1 when no Zen profile is found or the profile dir does not exist.
+zen_profile_dir() {
+  local ini="$HOME/.zen/profiles.ini"
+  [[ -f $ini ]] || return 1
+
+  # Prefer the [Install*] section: Default= is the active profile Path.
+  local active
+  active=$(awk -F= '
+    /^\[Install/ { in_install=1; next }
+    /^\[/ { if (in_install && $0 !~ /^\[Install/) in_install=0 }
+    in_install && $1 == "Default" { print $2; exit }
+  ' "$ini")
+
+  # Fallback: profile marked Default=1
+  if [[ -z $active ]]; then
+    active=$(awk -F= '
+      /^\[Profile/ { in_profile=1; path=""; next }
+      /^\[/ { if (in_profile && $0 !~ /^\[Profile/) in_profile=0 }
+      in_profile && $1 == "Path" { path=$2 }
+      in_profile && $1 == "Default" && $2 == 1 && path != "" { print path; exit }
+    ' "$ini")
+  fi
+
+  [[ -n $active ]] || return 1
+
+  # profiles.ini Path may be absolute (IsRelative=0); join only when relative.
+  local dir
+  if [[ $active == /* ]]; then
+    dir="$active"
+  else
+    dir="$HOME/.zen/$active"
+  fi
+
+  [[ -d $dir ]] || return 1
+  printf '%s\n' "$dir"
+}
+
+# Prints the path to the zen binary, falling back to the known install dir.
+zen_bin() {
+  local bin
+  bin=$(sed -n 's/^Exec=\([^ %]*\).*/\1/p' /usr/share/applications/zen.desktop 2>/dev/null | head -1)
+  if [[ -z $bin || ! -x $bin ]]; then
+    bin="/opt/zen-browser-bin/zen-bin"
+  fi
+  printf '%s\n' "$bin"
+}
+
+# Exits 0 when a Zen process is running, 1 otherwise.
+zen_running() {
+  pgrep -x zen-bin >/dev/null 2>&1
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  case "${1:-}" in
+  profile)
+    zen_profile_dir
+    ;;
+  bin)
+    zen_bin
+    ;;
+  running)
+    zen_running
+    ;;
+  *)
+    echo "usage: omarchy-webapp-zen-profile <profile|bin|running>" >&2
+    exit 1
+    ;;
+  esac
+fi
