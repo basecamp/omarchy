@@ -43,13 +43,62 @@ comment asking for `omarchy-debug` output", it says so in the report and stops.
 Opening a PR is the one outward action it takes on its own; everything else that
 changes the state of the tracker belongs to the maintainer.
 
+## Environment
+
+Resolve these once, at the start of the run, and pass them to every agent.
+Nothing in this skill may hardcode a person, a home directory, or a harness.
+
+```bash
+# Where triage keeps its state, worktrees and reports. Harness-neutral: this
+# runs under Claude Code, Codex, Pi or a bot, so never assume ~/.claude.
+TRIAGE_HOME=${OMARCHY_TRIAGE_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-triage}
+
+# The checkout being maintained. $OMARCHY_PATH exists on an Omarchy desktop;
+# a bot or CI runner has a plain clone instead.
+REPO=${OMARCHY_PATH:-$(git rev-parse --show-toplevel)}
+
+# Who is acting. Never a hardcoded username.
+ACCOUNT=$(gh api user --jq .login)
+
+mkdir -p "$TRIAGE_HOME"/{worktrees,reports}
+```
+
+**Signing.** Anything posted to GitHub says an agent wrote it, and names the
+account it was posted under:
+
+```
+— 🤖 Claude, posting on behalf of @$ACCOUNT
+```
+
+When triage runs as a dedicated bot account, that account *is* the author and
+"on behalf of" reads wrong. Set `OMARCHY_TRIAGE_SIGNATURE` to override the whole
+line — e.g. `— 🤖 Automated triage`. Use it verbatim when set.
+
+## Where it can run
+
+An Omarchy desktop is the richest environment: a live compositor means the
+`test/shell.d/` suite gives real runtime coverage, and issues can be checked
+against actual hardware and live system state.
+
+It also has to run where none of that exists — a headless bot or CI runner. Then:
+
+- Compositor-backed tests skip themselves. That is expected, not a failure. Say
+  in the report that runtime coverage was reduced, and do not treat a skip as a
+  passing test.
+- Issues needing live hardware to confirm come back as *explained* or
+  *plausible* rather than *confirmed*. Say which, and say why.
+- If `codex` is missing or unauthenticated, run the review without it and record
+  in every report that no second opinion was available. Never silently skip it,
+  and never let its absence stop the run.
+
 ## Safety on a live machine
 
-This runs on the maintainer's daily-driver Omarchy desktop, possibly while they
-are using it. Hard rules:
+When this runs on a maintainer's Omarchy desktop it is running on the machine
+someone is using, possibly at that moment. On a bot the stakes are lower but the
+rules do not change, because a bot cannot tell the difference either. Hard rules:
 
-- Never check out anything in `~/omarchy` — that is the running desktop. All
-  work happens in worktrees under `~/.claude/worktrees/triage/`.
+- Never check out anything in `$REPO` — on a desktop that is the running system.
+  All work happens in worktrees under `$TRIAGE_HOME/worktrees/`.
 - Never install or remove packages, never run `omarchy update`, never run a
   migration against the real `$HOME`. Migrations get exercised in a throwaway
   `HOME=$(mktemp -d)`.
@@ -71,7 +120,7 @@ Add `--dry-run` to diagnose and report without pushing any fix.
 
 ## State
 
-Lives at `~/.claude/omarchy-triage/state.json`:
+Lives at `$TRIAGE_HOME/state.json`:
 
 ```json
 {
@@ -98,7 +147,7 @@ Rules:
   returns. A run that dies halfway must not skip what it never looked at.
 - `deferred` holds items that exceeded this run's cap; they go first next run.
 
-Take a run lock (`flock` on `~/.claude/omarchy-triage/run.lock`, non-blocking)
+Take a run lock (`flock` on `$TRIAGE_HOME/run.lock`, non-blocking)
 and exit immediately if another triage is in flight. Two concurrent runs would
 double-push.
 
@@ -114,9 +163,9 @@ gh issue list -R basecamp/omarchy --state open --limit 200 \
 
 Filter against the watermark. Exclude:
 
-- PRs authored by the repo owner (those are "ours", not submissions) unless they
-  collide with a community PR — then carry them in as *context* for comparison,
-  not as items to review.
+- PRs authored by `$ACCOUNT` — triage does not review its own work. When one
+  collides with a community PR, carry it in as *context* for comparison rather
+  than as an item to review. PRs from other maintainers are reviewed normally.
 - Draft PRs, unless explicitly named in the argument.
 
 ## 2. Prioritize and cap
@@ -141,7 +190,7 @@ silently dropped.
 Worktrees, one per PR (issues do not need one unless a fix is being drafted):
 
 ```bash
-BASE=~/.claude/worktrees/triage
+BASE=$TRIAGE_HOME/worktrees
 git fetch origin "pull/$n/head:triage/pr-$n" --force
 git worktree add "$BASE/pr-$n" "triage/pr-$n"
 ```
@@ -162,10 +211,14 @@ git -C "$BASE/pr-$n" remote get-url fork           # must match the PR author
 `maintainerCanModify: false` means no fix can be pushed — that agent reports only.
 
 Copy `run-shell-tests` from this skill directory to `$BASE/` and `chmod +x` it.
-It `flock`s a shared lock and wires `WAYLAND_DISPLAY`/`HYPRLAND_INSTANCE_SIGNATURE`
-from the live session, so compositor tests get real coverage instead of silently
-skipping. Smoke-test it on one cheap file and confirm the output is not
-`no Wayland compositor; skipping` before dispatching anything.
+It `flock`s a per-user lock and wires `WAYLAND_DISPLAY`/`HYPRLAND_INSTANCE_SIGNATURE`
+from the live session when there is one, so compositor tests get real coverage
+instead of silently skipping.
+
+Smoke-test it on one cheap file before dispatching. On a desktop, a
+`no Wayland compositor; skipping` result means the session was not found and is
+worth fixing before the run. Headless, it is the expected result — carry on, and
+record the reduced coverage in the report.
 
 ## 4. Dispatch
 
@@ -183,6 +236,7 @@ Read <BASE>/pr-protocol.md first and follow it exactly.
 - $BASE_BRANCH = <base>
 - $HEAD_REF = <head>
 - $ITEM = pr-<n>
+- $REPO, $TRIAGE_HOME, $SIGNATURE = <the values resolved in Environment>
 
 <the failure mode that would actually hurt a user, the neighbouring code to
 compare against, the regression to rule out, any known collision.>
@@ -272,8 +326,8 @@ Rules for the PR itself:
 - The description says what was wrong, why, and which issue it closes. No
   Testing section — CI reports that, and a written copy goes stale.
 - Prose paragraphs on one line, not hard-wrapped.
-- Sign it, so readers know an agent wrote it:
-  `— 🤖 Claude, posting on behalf of @dhh`
+- Sign it with the signature resolved in *Environment* above, so readers know an
+  agent wrote it and under which account.
 - Cap it at **3 opened PRs per run**. Beyond that, report the remaining fixes as
   ready-to-file branches. A triage run that opens twelve PRs overnight is worse
   than one that opens three and explains the rest.
@@ -294,7 +348,7 @@ landed without this check is a lie waiting to happen.
 
 ## 8. Report
 
-Write `~/.claude/omarchy-triage/reports/<date>.md`, publish it as an artifact,
+Write `$TRIAGE_HOME/reports/<date>.md`, publish it as an artifact,
 and send one desktop notification pointing at it:
 
 ```bash
@@ -329,7 +383,7 @@ Then write state and release the run lock.
   findings were rejected and why — that is signal about both tools.
 - **Unique scratch paths per agent.** Concurrent agents sharing a filename
   clobber each other's codex prompts and end up reviewing the wrong item. Always
-  `$BASE/reports/<item>.codex-prompt.txt`.
+  `$TRIAGE_HOME/reports/<item>.codex-prompt.txt`.
 - **Fix, do not rewrite.** A contributor must recognise their PR afterwards.
 - **An unattended run reports uncertainty instead of resolving it.** If two
   readings of an issue lead to different actions, say so and let the maintainer

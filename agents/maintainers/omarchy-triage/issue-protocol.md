@@ -13,12 +13,12 @@ You may not comment on the issue, label it, or close it. Report only.
 You are running on the maintainer's live Omarchy desktop, possibly while they
 are using it.
 
-- Read the repo through `$WT` (a worktree at current `quattro`), never `~/omarchy`.
+- Read the repo through `$WT` (a worktree at current `quattro`), never `$REPO`.
 - Never install or remove packages, never run `omarchy update`, never run a
   migration against the real `$HOME` — use `HOME=$(mktemp -d)`.
 - Never restart the shell or compositor, never `hyprctl dispatch`, never `qs`.
 - Compositor-backed tests only via
-  `~/.claude/worktrees/triage/run-shell-tests <worktree> <test file>`.
+  `$TRIAGE_HOME/run-shell-tests <worktree> <test file>`.
 - If confirming the bug would require changing live system state, **do not**.
   Reason from the source and say the reproduction was not attempted.
 
@@ -93,7 +93,7 @@ State clearly which of these you achieved:
 
 ```bash
 cd $WT
-REPORTS=~/.claude/worktrees/triage/reports
+REPORTS=$TRIAGE_HOME/reports
 # write your prompt to $REPORTS/issue-$ISSUE.codex-prompt.txt first --
 # never a shared filename: sibling agents run concurrently and will clobber it.
 codex exec -c model_reasoning_effort="xhigh" -s read-only \
@@ -126,7 +126,7 @@ All of these must hold first:
 - Tests pass.
 
 ```bash
-BASE=~/.claude/worktrees/triage
+BASE=$TRIAGE_HOME/worktrees
 git -C $WT worktree add $BASE/fix-$ISSUE -b fix/issue-$ISSUE origin/quattro
 cd $BASE/fix-$ISSUE
 # make the edit
@@ -142,12 +142,9 @@ Branch off what the fix belongs on: `quattro` for current work, `dev` for a fix
 to the 3.x upgrade path.
 
 The PR body says what was wrong, why, and `Fixes #$ISSUE`. Prose paragraphs go on
-one line, not hard-wrapped. No Testing section — CI reports that. Sign it so
-readers know an agent wrote it:
-
-```
-— 🤖 Claude, posting on behalf of @dhh
-```
+one line, not hard-wrapped. No Testing section — CI reports that. End with the
+signature given to you in `$SIGNATURE`, so readers know an agent wrote it and
+under which account. Never write an account name of your own.
 
 You may open **one** PR. If your fix would also resolve other issues in this
 batch, say so in the body and reference them rather than filing again — one PR
@@ -159,7 +156,7 @@ competing PR. Report the collision and let the synthesis phase resolve it.
 
 ## 6. Report
 
-Write to `~/.claude/worktrees/triage/reports/issue-$ISSUE.md` and return the same
+Write to `$TRIAGE_HOME/reports/issue-$ISSUE.md` and return the same
 content as your final message. Keep it tight.
 
 ```

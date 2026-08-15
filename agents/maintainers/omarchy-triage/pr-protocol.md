@@ -1,8 +1,8 @@
 # PR review protocol
 
 You are reviewing exactly one PR to basecamp/omarchy. Everything happens inside your
-assigned worktree. Never touch `~/omarchy` itself — that is the maintainer's live
-running desktop, and a checkout there breaks their session.
+assigned worktree. Never touch `$REPO` itself — on a maintainer's machine that is
+the running desktop, and a checkout there breaks their session.
 
 This may be running unattended, with the report read hours later by someone who has
 none of your context. Write for that reader: name numbers, files and lines, and never
@@ -70,7 +70,7 @@ mid-run, which sends codex off to review someone else's PR:
 
 ```bash
 cd $WT
-REPORTS=~/.claude/worktrees/triage/reports
+REPORTS=$TRIAGE_HOME/reports
 # write your prompt to $REPORTS/pr-$PR.codex-prompt.txt first
 codex exec -c model_reasoning_effort="xhigh" -s read-only \
   -o "$REPORTS/pr-$PR.codex.md" \
@@ -100,7 +100,7 @@ For anything under `shell/`, or any test in `test/shell.d/`, you MUST go through
 lock — those tests drive the one live compositor and two at once corrupt each other:
 
 ```bash
-~/.claude/worktrees/triage/run-shell-tests $WT ./test/shell.d/foo-test.sh
+$TRIAGE_HOME/run-shell-tests $WT ./test/shell.d/foo-test.sh
 ```
 
 Pass the specific relevant test files. Only pass no arguments (which runs all 180
@@ -109,7 +109,9 @@ free — that wait is expected, do not work around it, do not run `test/shell` o
 `test/shell.d/*-test.sh` file directly, and do not run the graphical acceptance suite.
 
 Never launch `omarchy-launch-shell`, `qs`, or `hyprctl dispatch` yourself outside the
-wrapper; the user is working on that desktop.
+wrapper; someone may be working on that desktop. Where there is no compositor the
+wrapper reports the tests as skipped — that is expected, and a skip is not a pass.
+Say so in your report rather than claiming the coverage.
 
 ## 5. Fix
 
@@ -155,7 +157,7 @@ Rules for fixing:
 
 ## 6. Report
 
-Write your findings to `~/.claude/worktrees/triage/reports/pr-$PR.md` and
+Write your findings to `$TRIAGE_HOME/reports/pr-$PR.md` and
 return the same content as your final message. Keep it tight — this feeds a summary for
 the user. Use exactly this shape:
 
