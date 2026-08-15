@@ -1,0 +1,27 @@
+# Deprioritize iPhone USB tethering below Wi-Fi so plugging in an iPhone
+# to charge does not hijack the default route.
+#
+# ipheth is the Linux kernel driver specific to iPhone USB Ethernet.
+# Without this drop-in, the iPhone matches /etc/systemd/network/20-ethernet.network
+# (which catches eth*/en*) and gets RouteMetric=100 — beating Wi-Fi (600) and
+# taking over the default route the moment the phone hands out a DHCP lease.
+#
+# This file sorts before 20-ethernet.network lexically, so systemd-networkd
+# matches it first for any interface whose driver is ipheth. Setting
+# RouteMetric=700 keeps Wi-Fi primary when both are up. If Wi-Fi drops, the
+# iPhone route automatically takes over.
+
+[Match]
+Driver=ipheth
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+DHCP=yes
+
+[DHCPv4]
+RouteMetric=700
+
+[IPv6AcceptRA]
+RouteMetric=700
