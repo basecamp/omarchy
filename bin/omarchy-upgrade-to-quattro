@@ -2259,6 +2259,23 @@ if [[ -d $legacy_icons_dir ]]; then
   done
   rmdir "$legacy_icons_dir" 2>/dev/null || true
   rmdir "$legacy_icons_backup" 2>/dev/null || true
+
+  # Webapp .desktop files point Icon= at the legacy directory, so the entries
+  # whose icon just moved to the backup are left with a dead path. Rewrite only
+  # those, to the normalized name Quattro installs into the icon theme; icons
+  # that are still on disk keep resolving and are left alone.
+  for desktop in "$HOME"/.local/share/applications/*.desktop; do
+    [[ -f $desktop ]] || continue
+    icon=$(sed -n '/^Icon=/{s///;p;q;}' "$desktop")
+    [[ $icon == "$legacy_icons_dir"/* && ! -e $icon ]] || continue
+    icon_name=$(basename "$icon")
+    icon_name=$(printf '%s\n' "${icon_name%.*}" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')
+    # Compared and written through the environment so an icon name carrying
+    # sed metacharacters cannot corrupt the entry.
+    old="Icon=$icon" new="Icon=$icon_name" \
+      awk '$0 == ENVIRON["old"] { print ENVIRON["new"]; next } { print }' "$desktop" >"$desktop.tmp" &&
+      mv -f "$desktop.tmp" "$desktop"
+  done
 fi
 
 if [[ -d $root/applications ]]; then
