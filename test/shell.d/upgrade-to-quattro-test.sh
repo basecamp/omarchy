@@ -138,7 +138,7 @@ pass "Omarchy 4 upgrade refreshes application launchers"
 # Stock launchers must land (and rewrite Icon= to theme names) before the
 # matching PNGs move, so a leftover custom launcher that still names one of
 # those files keeps a working icon instead of a dangling path.
-packaged_apps_line=$(grep -n 'find "$root/applications"' "$upgrade_to_quattro" | head -1 | cut -d: -f1)
+packaged_apps_line=$(grep -n -F 'find "$root/applications"' "$upgrade_to_quattro" | head -1 | cut -d: -f1)
 icon_move_line=$(grep -n 'legacy_desktop_names_icon' "$upgrade_to_quattro" | head -1 | cut -d: -f1)
 [[ -n $packaged_apps_line && -n $icon_move_line ]] ||
   fail "upgrade copies packaged launchers before moving leftover icons"
