@@ -48,8 +48,11 @@ Item {
   signal chevronPressed(int button)
 
   // A hover reveals transiently; a chevron click pins the drawer open so it
-  // survives the pointer leaving. collapsedByDefault seeds the pinned state.
+  // survives the pointer leaving. collapsedByDefault only *seeds* the initial
+  // pinned state; freeze the binding on completion so a later collapsedByDefault
+  // change (e.g. a future in-place group update) can't retroactively flip it.
   property bool pinnedOpen: !collapsedByDefault
+  Component.onCompleted: pinnedOpen = !collapsedByDefault
   property bool hovered: false
   readonly property bool open: pinnedOpen || (expandOnHover && hovered)
 
