@@ -137,10 +137,11 @@ function groupItems(entry) {
   if (!isGroupEntry(entry)) return []
   var items = entry.items
   // Array.isArray() returns false for an array created in another QML JS realm
-  // (the entry is built in Bar.qml but read from BarGroup.qml), so accept any
-  // length-shaped value too rather than dropping the children.
+  // (the entry is built in Bar.qml but read from BarGroup.qml), so accept
+  // array-like objects too rather than dropping the children.
   if (Array.isArray(items)) return items
-  if (items && typeof items.length === "number") return items
+  if (items && typeof items === "object" && typeof items.length === "number")
+    return items
   return []
 }
 

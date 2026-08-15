@@ -84,10 +84,10 @@ Item {
     function contains(point: point): bool {
       if (root.vertical) {
         if (point.x < 0 || point.x > root.width) return false
-        return point.y >= root.chevronOffset && point.y <= root.implicitHeight
+        return point.y >= root.chevronOffset && point.y <= root.height
       }
       if (point.y < 0 || point.y > root.height) return false
-      return point.x >= root.chevronOffset && point.x <= root.implicitWidth
+      return point.x >= root.chevronOffset && point.x <= root.width
     }
   }
 
