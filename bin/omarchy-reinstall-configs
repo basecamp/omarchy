@@ -1,9 +1,13 @@
 #!/bin/bash
+
+# omarchy:summary=Reset all Omarchy user configs to the defaults
+# omarchy:requires-sudo=true
+
 set -e
 
 # Overwrite all user configs with the Omarchy defaults.
 
-if [ "$EUID" -eq 0 ]; then
+if (( EUID == 0 )); then
   echo "Error: This script should not be run as root"
   exit 1
 fi

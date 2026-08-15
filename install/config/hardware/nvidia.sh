@@ -1,18 +1,16 @@
-NVIDIA="$(lspci | grep -i 'nvidia')"
-
-if [ -n "$NVIDIA" ]; then
+if lspci | grep -qi 'nvidia'; then
   # Check which kernel is installed and set appropriate headers package
   KERNEL_HEADERS="$(pacman -Qqs '^linux(-zen|-lts|-hardened)?$' | head -1)-headers"
 
-  if echo "$NVIDIA" | grep -qE "RTX [2-9][0-9]|GTX 16"; then
-    # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
+  if omarchy-hw-nvidia-gsp; then
     PACKAGES=(nvidia-open-dkms nvidia-utils lib32-nvidia-utils libva-nvidia-driver)
-  elif echo "$NVIDIA" | grep -qE "GTX 9|GTX 10|Quadro P"; then
-    # Pascal (10xx or Quadro Pxxx) and Maxwell (9xx) use legacy branch that can only be installed from AUR
+    GPU_ARCH="turing_plus"
+  elif omarchy-hw-nvidia-without-gsp; then
     PACKAGES=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils)
+    GPU_ARCH="maxwell_pascal_volta"
   fi
   # Bail if no supported GPU
-  if [ -z "${PACKAGES+x}" ]; then
+  if [[ -z ${PACKAGES+x} ]]; then
     echo "No compatible driver for your NVIDIA GPU. See: https://wiki.archlinux.org/title/NVIDIA"
     exit 0
   fi
@@ -29,12 +27,23 @@ EOF
 MODULES+=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)
 EOF
 
-  # Add NVIDIA environment variables
-  cat >>$HOME/.config/hypr/envs.conf <<'EOF'
+  # Add NVIDIA environment variables based on GPU architecture
+  if [[ $GPU_ARCH = "turing_plus" ]]; then
+    # Turing+ (RTX 20xx, GTX 16xx, and newer) with GSP firmware support
+    cat >>"$HOME/.config/hypr/envs.lua" <<'EOF'
 
-# NVIDIA
-env = NVD_BACKEND,direct
-env = LIBVA_DRIVER_NAME,nvidia
-env = __GLX_VENDOR_LIBRARY_NAME,nvidia
+-- NVIDIA (Turing+ with GSP firmware)
+hl.env("NVD_BACKEND", "direct")
+hl.env("LIBVA_DRIVER_NAME", "nvidia")
+hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
 EOF
+  elif [[ $GPU_ARCH = "maxwell_pascal_volta" ]]; then
+    # Maxwell/Pascal/Volta (GTX 9xx/10xx, GT 10xx, Quadro P/M/GV, MX series, Titan X/Xp/V) lack GSP firmware
+    cat >>"$HOME/.config/hypr/envs.lua" <<'EOF'
+
+-- NVIDIA (Maxwell/Pascal/Volta without GSP firmware)
+hl.env("NVD_BACKEND", "egl")
+hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
+EOF
+  fi
 fi

@@ -1,0 +1,163 @@
+#!/bin/bash
+
+# omarchy:summary=Measure theme switcher cache and selector prep times
+# omarchy:args=[--repeat=<count>] [--keep-cache]
+# omarchy:examples=omarchy dev benchmark theme switcher | omarchy dev benchmark theme-switcher --repeat=10
+# omarchy:aliases=omarchy dev benchmark theme-switcher
+
+set -euo pipefail
+
+OMARCHY_BIN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+OMARCHY_PATH=${OMARCHY_PATH:-$(cd -- "$OMARCHY_BIN_DIR/.." && pwd)}
+REPEAT=5
+KEEP_CACHE=false
+
+show_help() {
+  cat <<'EOF'
+Usage:
+  omarchy dev benchmark theme switcher [--repeat=<count>] [--keep-cache]
+
+Measure the non-interactive parts of the theme switcher:
+- theme preview index build (omarchy-theme-switcher before UI handoff)
+- lazy selector row prep used by the interactive theme switcher
+- full thumbnail cache warmup cost (omarchy-menu-images --cache-only)
+
+Options:
+  --repeat=<count>  Number of warm runs to measure for each case (default: 5)
+  --keep-cache      Keep the temporary benchmark cache and print its path
+EOF
+}
+
+now_us() {
+  local now="${EPOCHREALTIME/./}"
+  printf '%s' "$now"
+}
+
+format_ms() {
+  local us="$1"
+  printf '%d.%03d' "$(( us / 1000 ))" "$(( us % 1000 ))"
+}
+
+measure_once() {
+  local start_us end_us
+  start_us=$(now_us)
+  "$@" >/dev/null
+  end_us=$(now_us)
+  printf '%s' "$(( end_us - start_us ))"
+}
+
+run_case() {
+  local label="$1"
+  shift
+  local total_us=0
+  local min_us=0
+  local max_us=0
+  local elapsed_us=0
+
+  for (( i = 1; i <= REPEAT; i++ )); do
+    elapsed_us=$(measure_once "$@")
+    total_us=$(( total_us + elapsed_us ))
+
+    if (( i == 1 || elapsed_us < min_us )); then
+      min_us=$elapsed_us
+    fi
+
+    if (( elapsed_us > max_us )); then
+      max_us=$elapsed_us
+    fi
+  done
+
+  printf '%-34s avg %8s ms  min %8s ms  max %8s ms\n' \
+    "$label" \
+    "$(format_ms "$(( total_us / REPEAT ))")" \
+    "$(format_ms "$min_us")" \
+    "$(format_ms "$max_us")"
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+  --repeat=*)
+    REPEAT="${1#*=}"
+    ;;
+  --keep-cache)
+    KEEP_CACHE=true
+    ;;
+  --help | -h)
+    show_help
+    exit 0
+    ;;
+  *)
+    echo "Unknown option: $1" >&2
+    show_help >&2
+    exit 2
+    ;;
+  esac
+  shift
+done
+
+if [[ ! $REPEAT =~ ^[0-9]+$ ]] || (( REPEAT < 1 )); then
+  echo "--repeat must be a positive integer" >&2
+  exit 2
+fi
+
+benchmark_cache=$(mktemp -d)
+thumbnail_cache=$(mktemp -d)
+stub_bin=$(mktemp -d)
+
+cleanup() {
+  rm -rf "$stub_bin"
+
+  if [[ $KEEP_CACHE == "true" ]]; then
+    printf 'Benchmark cache: %s\n' "$benchmark_cache"
+    printf 'Thumbnail cache: %s\n' "$thumbnail_cache"
+  else
+    rm -rf "$benchmark_cache" "$thumbnail_cache"
+  fi
+}
+trap cleanup EXIT
+
+cat >"$stub_bin/omarchy-menu-images" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+chmod +x "$stub_bin/omarchy-menu-images"
+
+benchmark_env=(
+  env
+  "OMARCHY_PATH=$OMARCHY_PATH"
+  "XDG_CACHE_HOME=$benchmark_cache"
+  "PATH=$stub_bin:$OMARCHY_BIN_DIR:$PATH"
+)
+
+thumbnail_env=(
+  env
+  "OMARCHY_PATH=$OMARCHY_PATH"
+  "XDG_CACHE_HOME=$thumbnail_cache"
+  "PATH=$stub_bin:$OMARCHY_BIN_DIR:$PATH"
+)
+
+preview_dir="$benchmark_cache/omarchy/theme-selector/previews"
+thumbnail_preview_dir="$thumbnail_cache/omarchy/theme-selector/previews"
+
+build_theme_index() {
+  "${benchmark_env[@]}" "$OMARCHY_BIN_DIR/omarchy-theme-switcher"
+}
+
+prepare_selector_lazy() {
+  "${benchmark_env[@]}" "$OMARCHY_BIN_DIR/omarchy-menu-images" --prepare-only --lazy-thumbnails --show-labels --filterable "$preview_dir"
+}
+
+prepare_image_cache() {
+  "${thumbnail_env[@]}" "$OMARCHY_BIN_DIR/omarchy-menu-images" --cache-only "$thumbnail_preview_dir"
+}
+
+printf 'Theme switcher benchmark (%d warm runs each)\n\n' "$REPEAT"
+printf '%-34s %s ms\n' "theme index cold" "$(format_ms "$(measure_once build_theme_index)")"
+run_case "theme index warm" build_theme_index
+printf '%-34s %s ms\n' "selector prep cold (lazy)" "$(format_ms "$(measure_once prepare_selector_lazy)")"
+run_case "selector prep warm (lazy)" prepare_selector_lazy
+"${thumbnail_env[@]}" "$OMARCHY_BIN_DIR/omarchy-theme-switcher" >/dev/null
+printf '%-34s %s ms\n' "thumbnail cache cold" "$(format_ms "$(measure_once prepare_image_cache)")"
+run_case "thumbnail cache warm" prepare_image_cache
+
+printf '\nTheme previews: %d\n' "$(find -L "$preview_dir" -maxdepth 1 -type f 2>/dev/null | wc -l)"

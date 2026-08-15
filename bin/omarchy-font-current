@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Returns the name of the current monospace font being used by extracting it from the Waybar stylesheet.
-# This can be changed using omarchy-font-set.
+# omarchy:summary=Show current monospace font
+# omarchy:examples=omarchy font current
 
 grep -oP 'font-family:\s*["'\'']?\K[^;"'\'']+' ~/.config/waybar/style.css | head -n1

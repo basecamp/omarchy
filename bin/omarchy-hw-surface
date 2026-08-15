@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether the computer is a Microsoft Surface device.
+
+[[ $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null) == "Microsoft Corporation" ]] &&
+  omarchy-hw-match "Surface"

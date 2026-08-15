@@ -28,7 +28,7 @@ for pkg in "${PACKAGES[@]}"; do
 done
 
 WALKER_MAJOR=$(walker -v 2>&1 | grep -oP '^\d+' || echo "0")
-if [[ "$WALKER_MAJOR" -lt 2 ]]; then
+if (( WALKER_MAJOR < 2 )); then
   NEEDS_MIGRATION=true
 fi
 

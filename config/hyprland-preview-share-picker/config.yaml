@@ -3,7 +3,7 @@
 # relative paths are resolved relative to the location of the config file
 stylesheets: ["../omarchy/current/theme/hyprland-preview-share-picker.css"]
 # default page selected when the picker is opened
-default_page: windows
+default_page: outputs
 
 window:
   # height of the application window

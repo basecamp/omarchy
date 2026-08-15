@@ -3,11 +3,14 @@
 # Print the current image file
 <Ctrl+p> = exec lp "$imv_current_file"
 
-# Delete the current image and quit the viewer
-<Ctrl+x> = exec rm "$imv_current_file"; quit
+# Trash the current image and quit the viewer (recoverable from Trash)
+<Ctrl+x> = exec gio trash -- "$imv_current_file"; quit
 
-# Delete the current image and move to the next one
-<Ctrl+Shift+X> = exec rm "$imv_current_file"; close
+# Trash the current image and move to the next one
+<Ctrl+Shift+X> = exec gio trash -- "$imv_current_file"; close
 
 # Rotate the currently open image by 90 degrees
 <Ctrl+r> = exec mogrify -rotate 90 "$imv_current_file"
+
+# Edit the current image in Satty and quit the viewer
+<Ctrl+e> = exec satty --filename "$imv_current_file" & ; quit

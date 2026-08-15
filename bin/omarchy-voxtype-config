@@ -1,4 +1,7 @@
 #!/bin/bash
+
+# omarchy:summary=Open the Voxtype configuration file
+
 set -e
 
 # Used by Voxtype waybar module to open config on right click

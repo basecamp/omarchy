@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# This hook is called by `omarchy refresh pacman` AFTER the channel template
+# is copied to /etc/pacman.conf and BEFORE `pacman -Syyuu` runs. Use it to
+# layer customizations onto the freshly-written pacman.conf so they're
+# respected by the upgrade — common cases are adding a custom repository
+# (e.g. CachyOS, Chaotic-AUR, an internal company repo) or extra IgnorePkg
+# lines.
+#
+# The hook runs as the invoking user with a warm sudo cache.
+#
+# To put it into use, remove .sample from this file name.
+
+# Example: add an Include line above [core] for a custom repo.
+# Maintain the repo entries in /etc/pacman.d/custom-repos.conf yourself.
+
+CONF=/etc/pacman.conf
+SNIPPET=/etc/pacman.d/custom-repos.conf
+MARKER="Include = $SNIPPET"
+
+[[ -r $SNIPPET ]] || exit 0
+grep -qxF "$MARKER" "$CONF" && exit 0
+
+sudo sed -i "0,/^\[core\]/s||$MARKER\n\n[core]|" "$CONF"

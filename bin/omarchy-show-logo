@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# omarchy:summary=Display the Omarchy logo in the terminal using green color.
+
 clear
 echo -e "\033[32m"
 cat <~/.local/share/omarchy/logo.txt

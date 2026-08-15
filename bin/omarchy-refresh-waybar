@@ -1,7 +1,19 @@
 #!/bin/bash
 
-# Overwrite the user configs for the Waybar menu bar with the Omarchy defaults and restart the service.
+# omarchy:summary=Reset Waybar config to Omarchy defaults
+# omarchy:examples=omarchy refresh waybar
+
+WAYBAR_CONFIG="$HOME/.config/waybar/config.jsonc"
+
+position=$(sed -nE 's/.*"position"[[:space:]]*:[[:space:]]*"(top|bottom|left|right)".*/\1/p' "$WAYBAR_CONFIG" 2>/dev/null | head -n 1)
+height=$(sed -nE 's/.*"height"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$WAYBAR_CONFIG" 2>/dev/null | head -n 1)
+width=$(sed -nE 's/.*"width"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$WAYBAR_CONFIG" 2>/dev/null | head -n 1)
 
 omarchy-refresh-config waybar/config.jsonc
 omarchy-refresh-config waybar/style.css
+
+[[ -n $position ]] && sed -i -E "s/(\"position\"[[:space:]]*:[[:space:]]*\")[a-z]+(\")/\\1${position}\\2/" "$WAYBAR_CONFIG"
+[[ -n $height ]] && sed -i -E "s/(\"height\"[[:space:]]*:[[:space:]]*)[0-9]+/\\1${height}/" "$WAYBAR_CONFIG"
+[[ -n $width ]] && sed -i -E "s/(\"width\"[[:space:]]*:[[:space:]]*)[0-9]+/\\1${width}/" "$WAYBAR_CONFIG"
+
 omarchy-restart-waybar

@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# omarchy:summary=Remove all web apps installed via omarchy-webapp-install.
+
+set -e
+
+APP_DIR="${1:-$HOME/.local/share/applications}"
+ICON_DIR="$HOME/.local/share/applications/icons"
+
+echo "Scanning for web apps in $APP_DIR..."
+
+webapp_desktop_files=()
+while IFS= read -r -d '' file; do
+  if grep -q "Exec=omarchy-launch-webapp\|Exec=omarchy-webapp-handler" "$file" 2>/dev/null; then
+    webapp_desktop_files+=("$file")
+  fi
+done < <(find "$APP_DIR" -maxdepth 1 -name "*.desktop" -print0 2>/dev/null)
+
+if (( ${#webapp_desktop_files[@]} == 0 )); then
+  echo "No web apps found."
+  exit 0
+fi
+
+for file in "${webapp_desktop_files[@]}"; do
+  app_name=$(basename "$file" .desktop)
+  echo "Removing web app: $app_name"
+  rm -f "$file"
+  rm -f "$ICON_DIR/$app_name.png"
+done
+
+if command -v update-desktop-database &>/dev/null; then
+  update-desktop-database "$APP_DIR" &>/dev/null || true
+fi
+
+omarchy-restart-walker
+
+echo "Web apps removed successfully."

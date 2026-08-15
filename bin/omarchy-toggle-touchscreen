@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# omarchy:summary=Enable, disable, or toggle the touch functionality of the screen
+# omarchy:args=[on|off|toggle]
+
+STATE_FILE="$HOME/.local/state/omarchy/toggles/hypr/touchscreen-disabled.lua"
+
+device="$(omarchy-hw-touchscreen)"
+
+if [[ -z $device ]]; then
+  echo "No touchscreen device found" >&2
+  exit 1
+fi
+
+enable() {
+  hyprctl eval "hl.device({ name = \"$device\", enabled = true })" >/dev/null
+  rm -f "$STATE_FILE"
+  omarchy-swayosd-client --custom-icon device-support-touch-symbolic --custom-message "Touchscreen enabled"
+}
+
+disable() {
+  hyprctl eval "hl.device({ name = \"$device\", enabled = false })" >/dev/null
+  mkdir -p "$(dirname "$STATE_FILE")"
+  printf 'hl.device({ name = "%s", enabled = false })\n' "$device" >"$STATE_FILE"
+  omarchy-swayosd-client --custom-icon touch-disabled-symbolic --custom-message "Touchscreen disabled"
+}
+
+case "${1:-toggle}" in
+  on) enable ;;
+  off) disable ;;
+  toggle) if [[ -f $STATE_FILE ]]; then enable; else disable; fi ;;
+esac

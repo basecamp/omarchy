@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# omarchy:summary=Edit, set, or reset About branding
+# omarchy:group=branding
+# omarchy:name=about
+# omarchy:args=<image|text|reset>
+# omarchy:examples=omarchy branding about image | omarchy branding about text | omarchy branding about reset
+
+set -euo pipefail
+
+SOURCE_DIR="${XDG_PICTURES_DIR:-$HOME/Pictures}"
+
+case "${1:-}" in
+image)
+  image=$(omarchy-menu-file "Pick png/svg from $SOURCE_DIR" "${SOURCE_DIR}" "svg png")
+  if [[ -n $image ]] && omarchy-transcode-ascii "$image" ~/.config/omarchy/branding/about.txt --width 54 --height 26; then
+    omarchy-launch-about >/dev/null 2>&1
+  fi
+  ;;
+text)
+  omarchy-launch-editor ~/.config/omarchy/branding/about.txt >/dev/null 2>&1 && omarchy-launch-about >/dev/null 2>&1
+  ;;
+reset)
+  cp "$OMARCHY_PATH/icon.txt" ~/.config/omarchy/branding/about.txt && omarchy-launch-about >/dev/null 2>&1
+  ;;
+*)
+  echo "Usage: omarchy-branding-about <image|text|reset>" >&2
+  exit 1
+  ;;
+esac

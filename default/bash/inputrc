@@ -37,3 +37,11 @@ set skip-completed-text on
 
 # Coloring for Bash 4 tab completions.
 set colored-stats on
+
+# Cycle forward and backward through completion candidates (tab/shift+tab)
+# (completion listing and display behavior configured above)
+TAB: menu-complete
+"\e[Z": menu-complete-backward
+
+# On first Tab, complete the common prefix before cycling candidates
+set menu-complete-display-prefix on

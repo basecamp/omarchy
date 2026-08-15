@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Overwrite the user config for the Limine bootloader and rebuild it.
+# omarchy:summary=Overwrite the user config for the Limine bootloader and rebuild it.
+# omarchy:requires-sudo=true
 
 if [[ -f /boot/EFI/Linux/omarchy_linux.efi ]] && [[ -f /boot/EFI/Linux/$(cat /etc/machine-id)_linux.efi ]]; then
   echo "Cleanup extra UKI"

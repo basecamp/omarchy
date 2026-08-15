@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Print the monitor scale of the internal monitor or first other monitor
+
+hyprctl monitors -j | jq -r '([.[] | select(.name | contains("eDP"))][0] // .[0]).scale // empty | tonumber | if . == floor then floor else . end'

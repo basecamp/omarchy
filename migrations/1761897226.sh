@@ -1,3 +1,4 @@
 echo "Install Copy URL extension for Brave"
 
-omarchy-refresh-config brave-flags.conf
+mkdir -p ~/.config
+cp "$OMARCHY_PATH/config/chromium-flags.conf" ~/.config/brave-flags.conf

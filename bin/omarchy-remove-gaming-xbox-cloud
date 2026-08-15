@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# omarchy:summary=Remove the Xbox Cloud Gaming web app.
+
+set -e
+
+omarchy-webapp-remove "Xbox Cloud Gaming"

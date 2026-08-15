@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# omarchy:summary=Remove RetroArch, all libretro cores, and its config/saves. Leaves ~/Games/roms and ~/Games/bios alone.
+# omarchy:requires-sudo=true
+
+set -e
+
+omarchy-pkg-drop \
+  retroarch \
+  retroarch-assets-glui retroarch-assets-ozone retroarch-assets-xmb \
+  libretro-beetle-pce libretro-beetle-pce-fast libretro-beetle-psx libretro-beetle-psx-hw libretro-beetle-supergrafx \
+  libretro-blastem \
+  libretro-bsnes libretro-bsnes-hd libretro-bsnes2014 \
+  libretro-core-info \
+  libretro-desmume libretro-dolphin libretro-flycast \
+  libretro-gambatte libretro-genesis-plus-gx \
+  libretro-kronos \
+  libretro-mame libretro-mame2016 libretro-melonds libretro-mesen libretro-mesen-s libretro-mgba libretro-mupen64plus-next \
+  libretro-nestopia \
+  libretro-overlays \
+  libretro-parallel-n64 libretro-picodrive libretro-play libretro-ppsspp \
+  libretro-sameboy libretro-scummvm libretro-shaders-slang libretro-snes9x \
+  libretro-yabause \
+  libretro-cap32-git libretro-fbneo-git libretro-uae-git \
+  libretro-vice-x128-git libretro-vice-x64-git libretro-vice-x64dtv-git libretro-vice-x64sc-git \
+  libretro-vice-xcbm2-git libretro-vice-xcbm5x0-git libretro-vice-xpet-git \
+  libretro-vice-xplus4-git libretro-vice-xscpu64-git libretro-vice-xvic-git \
+  retroarch-joypad-autoconfig-git
+
+rm -rf \
+  "$HOME/.config/retroarch" \
+  "$HOME/.local/share/retroarch" \
+  "$HOME/.cache/retroarch"
+
+echo ""
+echo "RetroArch and its cores have been removed."
+echo "ROMs and BIOS files at ~/Games/roms and ~/Games/bios were left in place."

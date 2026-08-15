@@ -1,0 +1,33 @@
+# Transcoding helpers have moved to omarchy-transcode.
+
+transcode-video-1080p() {
+  omarchy-transcode "$1" mp4 1080p
+}
+
+transcode-video-4K() {
+  omarchy-transcode "$1" mp4 4k
+}
+
+transcode-video-gif() {
+  omarchy-transcode "$1" gif 1080p
+}
+
+img2jpg() {
+  omarchy-transcode "$1" jpg high
+}
+
+img2jpg-small() {
+  omarchy-transcode "$1" jpg low
+}
+
+img2jpg-medium() {
+  omarchy-transcode "$1" jpg medium
+}
+
+img2jpg-large() {
+  omarchy-transcode "$1" jpg high
+}
+
+img2png() {
+  omarchy-transcode "$1" png high
+}
