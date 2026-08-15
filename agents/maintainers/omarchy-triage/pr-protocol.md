@@ -18,7 +18,7 @@ git diff --stat $BASE..HEAD
 git diff $BASE..HEAD
 ```
 
-Read `AGENTS.md` at the repo root and any guide under `agents/skills/` that matches the
+Read `AGENTS.md` at the repo root and any guide under `agents/contributors/` that matches the
 area the PR touches (`shell/` → `shell-dev.md`, `bin/` → `command-metadata.md`,
 `install/` → `install-scripts.md`, `migrations/` → `docs/migrations.md`). The house
 style rules there are binding on any code you write.

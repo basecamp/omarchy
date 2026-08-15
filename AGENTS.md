@@ -1,21 +1,22 @@
 # Task Guides
 
-Deeper instructions for specific kinds of work live in `agents/skills/`. Read the
-matching guide before starting:
+Deeper instructions for specific kinds of work live in `agents/contributors/`. Read
+the matching guide before starting:
 
-- [`agents/skills/command-metadata.md`](agents/skills/command-metadata.md) - adding or changing commands in `bin/`
-- [`agents/skills/install-scripts.md`](agents/skills/install-scripts.md) - working under `install/` or on system/user setup commands
-- [`agents/skills/shell-dev.md`](agents/skills/shell-dev.md) - editing the Quickshell desktop under `shell/`
-- [`agents/skills/icon-font.md`](agents/skills/icon-font.md) - adding branded glyphs to `default/fonts/omarchy/omarchy.ttf`
-- [`agents/skills/acceptance-tests.md`](agents/skills/acceptance-tests.md) - writing or running graphical acceptance tests under `test/acceptance.d/`
-- [`agents/skills/visual-verification.md`](agents/skills/visual-verification.md) - verifying any change with a visual effect in the running UI
-- [`agents/skills/migrations.md`](agents/skills/migrations.md) - creating or changing migrations under `migrations/`
+- [`agents/contributors/command-metadata.md`](agents/contributors/command-metadata.md) - adding or changing commands in `bin/`
+- [`agents/contributors/install-scripts.md`](agents/contributors/install-scripts.md) - working under `install/` or on system/user setup commands
+- [`agents/contributors/shell-dev.md`](agents/contributors/shell-dev.md) - editing the Quickshell desktop under `shell/`
+- [`agents/contributors/icon-font.md`](agents/contributors/icon-font.md) - adding branded glyphs to `default/fonts/omarchy/omarchy.ttf`
+- [`agents/contributors/acceptance-tests.md`](agents/contributors/acceptance-tests.md) - writing or running graphical acceptance tests under `test/acceptance.d/`
+- [`agents/contributors/visual-verification.md`](agents/contributors/visual-verification.md) - verifying any change with a visual effect in the running UI
+- [`agents/contributors/migrations.md`](agents/contributors/migrations.md) - creating or changing migrations under `migrations/`
 
 # Documentation Layout
 
 Three documentation trees, split by genre and audience:
 
-- `agents/skills/` - task procedure ("do this when doing X"), for anyone working on the codebase
+- `agents/contributors/` - task procedure ("do this when doing X"), for anyone working on the codebase
+- `agents/maintainers/` - workflows run to maintain the project itself, not to contribute a change
 - `docs/` - reference on how the system is shaped (file layout, update pipeline, theming, shell architecture), for anyone working on the codebase; skills link here for depth
 - `manual/` - end-user documentation for using Omarchy, published; never codebase internals
 
@@ -114,10 +115,10 @@ test entry points:
 New Omarchy shell tests should live in `test/shell.d/*-test.sh` so `./test/shell` picks them up automatically. Source `test/shell.d/base-test.sh` for shared root-path discovery, assertions, and Node test helpers.
 
 The graphical acceptance suite runs in a disposable VM, not in the active
-development session; see [`agents/skills/acceptance-tests.md`](agents/skills/acceptance-tests.md).
+development session; see [`agents/contributors/acceptance-tests.md`](agents/contributors/acceptance-tests.md).
 
 Visual changes must be verified in the running UI in addition to automated
-tests; follow [`agents/skills/visual-verification.md`](agents/skills/visual-verification.md).
+tests; follow [`agents/contributors/visual-verification.md`](agents/contributors/visual-verification.md).
 
 # Refresh Pattern
 
