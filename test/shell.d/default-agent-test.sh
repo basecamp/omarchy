@@ -135,12 +135,20 @@ grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "agent migration create
 : >"$stub_log"
 mkdir -p "$(dirname "$agent_file")"
 printf '%s\n' gemini >"$agent_file"
+"$ROOT/bin/omarchy-mise-install" gemini
 export OMARCHY_TEST_MISSING_COMMAND=agy
 source "$ROOT/migrations/1786719479.sh" >/dev/null
 unset OMARCHY_TEST_MISSING_COMMAND
 grep -Fx "$agy_package agy" "$stub_log" >/dev/null || fail "Antigravity migration creates its lazy stub"
 [[ $(<"$agent_file") == "agy" ]] || fail "Antigravity migration replaces a Gemini default"
+[[ ! -e $test_home/.local/bin/gemini ]] || fail "Antigravity migration removes the dead Gemini wrapper"
 pass "Antigravity migration transitions the Gemini coding agent"
+
+printf '%s\n' '#!/bin/bash' 'exec /opt/gemini "$@"' >"$test_home/.local/bin/gemini"
+source "$ROOT/migrations/1786719479.sh" >/dev/null
+[[ -e $test_home/.local/bin/gemini ]] || fail "Antigravity migration leaves a hand-written gemini alone"
+rm "$test_home/.local/bin/gemini"
+pass "Antigravity migration only removes the Gemini wrapper Omarchy wrote"
 
 : >"$stub_log"
 mkdir -p "$test_home/.local/state/omarchy"
