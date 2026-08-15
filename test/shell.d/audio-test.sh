@@ -31,6 +31,31 @@ assertEqual(audio.sinkGlyph(headphones), '󰋋', 'audio uses headphone sink glyp
 assert(audio.sourceGlyph({ ready: true, properties: { 'device.icon-name': 'camera-webcam' } }).length > 0, 'audio maps webcam source glyph')
 
 assertEqual(audio.friendlyStreamLabel('spotify'), 'Spotify', 'audio normalizes known stream labels')
+
+assertDeepEqual(
+  audio.routeCommand(64, 'alsa_output.analog-stereo'),
+  ['pw-metadata', '-n', 'default', '64', 'target.object', 'alsa_output.analog-stereo'],
+  'audio pins a stream to an output'
+)
+assertDeepEqual(
+  audio.routeCommand(64, audio.DEFAULT_ROUTE),
+  ['pw-metadata', '-n', 'default', '64', 'target.object', '-1'],
+  'audio hands a stream back to the default output'
+)
+assertEqual(audio.routeTargetOf({ ready: true, properties: {} }), audio.DEFAULT_ROUTE, 'audio reads an unpinned stream as following the default')
+assertEqual(audio.routeTargetOf({ ready: true, properties: { 'target.object': '-1' } }), audio.DEFAULT_ROUTE, 'audio reads a cleared pin as following the default')
+assertEqual(audio.routeTargetOf({ ready: true, properties: { 'target.object': 'sink.a' } }), 'sink.a', 'audio reads a pinned stream')
+assert(!audio.routeIsPinned({ ready: true, properties: {} }), 'audio reports an unpinned stream')
+
+const routeSinks = [
+  { ready: true, name: 'sink.a', nickname: 'Speakers' },
+  { ready: true, name: 'sink.b', nickname: 'HDMI' }
+]
+assertDeepEqual(audio.routeOptions(routeSinks), [audio.DEFAULT_ROUTE, 'sink.a', 'sink.b'], 'audio offers the default output first')
+assertEqual(audio.nextRouteTarget(audio.routeOptions(routeSinks), audio.DEFAULT_ROUTE), 'sink.a', 'audio cycles from the default to the first output')
+assertEqual(audio.nextRouteTarget(audio.routeOptions(routeSinks), 'sink.b'), audio.DEFAULT_ROUTE, 'audio cycles from the last output back to the default')
+assertEqual(audio.routeLabel({ ready: true, properties: {} }, routeSinks, null), 'Follow default output', 'audio labels an unpinned stream')
+assertEqual(audio.routeLabel({ ready: true, properties: { 'target.object': 'sink.a' } }, routeSinks, null), 'Speakers', 'audio labels a pinned stream by device')
 assert(audio.streamRepresentsMprisPlayer('Chromium', 'Chromium Browser'), 'audio matches related stream and MPRIS labels')
 
 const players = [
