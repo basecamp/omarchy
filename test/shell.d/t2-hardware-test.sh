@@ -27,9 +27,9 @@ grep -Fq 'ID_INPUT_TOUCHPAD_INTEGRATION}="internal"' "$touchpad_rule" ||
 grep -Fq 'ID_INTEGRATION}="internal"' "$touchpad_rule" ||
   fail "T2 touchpad rule sets systemd's canonical integration property"
 grep -Fq 'ID_VENDOR_ID}=="05ac"' "$touchpad_rule" &&
-  grep -Fq 'ID_MODEL_ID}=="0340"' "$touchpad_rule" &&
+  grep -Fq 'ID_MODEL_ID}=="0278|027[a-f]|0280|0340"' "$touchpad_rule" &&
   grep -Fq 'ID_INPUT_TOUCHPAD}=="1"' "$touchpad_rule" ||
-  fail "T2 touchpad rule is limited to the affected Apple touchpad"
+  fail "T2 touchpad rule covers every T2 keyboard/trackpad and nothing else"
 grep -Fq 'install -D -m 0644' "$fix_t2" &&
   grep -Fq '99-omarchy-apple-t2-touchpad.rules' "$fix_t2" ||
   fail "fresh T2 setup installs the touchpad integration rule with fixed permissions"
