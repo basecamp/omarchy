@@ -24,9 +24,13 @@ local bindings = {}
 local dispatched = {}
 local workspace = { tiled_layout = "scrolling" }
 local special_workspace = nil
+local dsp = proxy()
+dsp.layout = function(message)
+  return "layout:" .. message
+end
 
 hl = setmetatable({
-  dsp = proxy(),
+  dsp = dsp,
   bind = function(keys, dispatcher)
     bindings[keys] = dispatcher
   end,
@@ -57,6 +61,7 @@ assert(#dispatched == 0)
 workspace = { tiled_layout = "dwindle" }
 toggle_split()
 assert(#dispatched == 1)
+assert(dispatched[1] == "layout:togglesplit")
 
 special_workspace = { tiled_layout = "scrolling" }
 toggle_split()
