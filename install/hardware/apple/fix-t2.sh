@@ -21,8 +21,7 @@ if lspci -nn | grep "106b:180[12]" >/dev/null; then
 
   # The virtual USB bus makes udev mistake the built-in touchpad for an
   # external one, preventing libinput from disabling it while typing.
-  mkdir -p /etc/udev/rules.d
-  cp -f "$OMARCHY_PATH/default/udev/apple-t2-touchpad.rules" \
+  install -D -m 0644 "$OMARCHY_PATH/default/udev/apple-t2-touchpad.rules" \
     /etc/udev/rules.d/99-omarchy-apple-t2-touchpad.rules
 
   # linux-t2 7.1.4 replaced the apple-bce driver with t2bce; t2bce_vhci is the
