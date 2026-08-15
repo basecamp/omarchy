@@ -277,8 +277,17 @@ EOF
   chmod +x "$FONT_TMPDIR/fake-bin/$shim"
 done
 
-# The family argument must exist in fontconfig; use any installed monospace.
-FONT_FAMILY="$(fc-list :spacing=100 -f '%{family[0]}\n' | head -1)"
+# The family argument must exist in fontconfig. Resolve the monospace alias
+# deterministically with fc-match and fall back to enumerating fc-list; the
+# command's own validation requires a family that fontconfig knows about.
+if command -v fc-match >/dev/null 2>&1; then
+  FONT_FAMILY="$(fc-match -f '%{family[0]}\n' monospace | head -1)"
+else
+  FONT_FAMILY="$(fc-list :spacing=100 -f '%{family[0]}\n' | head -1)"
+fi
+if [[ -z $FONT_FAMILY ]]; then
+  fail "fontconfig has no resolvable monospace family for the font-set size test"
+fi
 PATH="$FONT_TMPDIR/fake-bin:$ROOT/bin:$PATH" HOME="$FONT_TMPDIR" \
   "$ROOT/bin/omarchy-font-set" "$FONT_FAMILY" >/dev/null
 
