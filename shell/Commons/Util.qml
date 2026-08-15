@@ -121,7 +121,7 @@ QtObject {
     // id of its own (one is optional, for addressing), so it must be recognized
     // before the id branch below, which would otherwise drop it. Its children
     // are normalized recursively so the same rules apply at every depth.
-    if (isPlainObject(entry) && entry.type === "group") {
+    if (isPlainObject(entry) && String(entry.type || "") === "group") {
       var group = cloneJson(entry)
       if (group.id) group.id = canonicalWidgetId(group.id)
       group.items = normalizeLayoutSection(group.items)

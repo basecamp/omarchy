@@ -44,7 +44,7 @@ assertEqual(
 
 // Layout normalization must keep group entries (they have no id of their own)
 // and normalize their children recursively, or the group would be dropped.
-assert(/entry\.type === "group"/.test(utilSource), 'layout normalization preserves group entries')
+assert(/entry\.type[\s\S]*?=== "group"/.test(utilSource), 'layout normalization preserves group entries')
 assert(
   /group\.items = normalizeLayoutSection\(group\.items\)/.test(utilSource),
   'layout normalization recurses into group items'
