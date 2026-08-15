@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Remove a Zen Taskbar Tab web app (launcher, registry entry, and icon) (shared backend)
+# omarchy:summary=Remove a Zen Taskbar Tab web app (profile, launcher, and icon) (shared backend)
 # omarchy:args=<id-or-name-or-shortcut-basename>
 # omarchy:hidden=true
 
@@ -13,91 +13,54 @@ fi
 
 QUERY="$1"
 
-PROFILE_DIR=$(omarchy-webapp-zen-profile profile) || {
-  echo "Error: no Zen profile found in ~/.zen." >&2
-  exit 1
-}
+WEBAPPS_ROOT="$HOME/.zen/webapps"
 
-TASKBAR_DIR="$PROFILE_DIR/taskbartabs"
-REGISTRY="$TASKBAR_DIR/taskbartabs.json"
-[[ -f $REGISTRY ]] || { echo "Error: no Taskbar Tab registry in Zen." >&2; exit 1; }
-
-# Resolve the id: exact id, name, or the shortcut basename (zen.webapp-<uuid>)
-# that the generic remove passes when it only knows the .desktop file name.
-# Report ambiguity when several apps share the name.
-ID=$(python3 - "$REGISTRY" "$QUERY" <<'PYEOF'
-import json, re, sys
-reg_path, query = sys.argv[1:]
-try:
-    with open(reg_path, encoding="utf-8") as f:
-        data = json.load(f)
-except (ValueError, OSError) as e:
-    print("CORRUPT")
+# Resolve the query (id, name, or zen.webapp-<uuid> basename) to the app profile.
+APP_PROFILE=$(python3 - "$WEBAPPS_ROOT" "$QUERY" <<'PYEOF'
+import json, os, re, sys
+root, query = sys.argv[1:]
+if not os.path.isdir(root):
     sys.exit(0)
-matches = [tt for tt in data.get("taskbarTabs", []) if tt.get("id") == query or tt.get("name") == query]
-if len(matches) > 1:
-    print("AMBIGUOUS")
-    sys.exit(0)
-if matches:
-    print(matches[0].get("id", ""))
-    sys.exit(0)
-# Fallback: query looks like "zen.webapp-<uuid>"
+for entry in sorted(os.listdir(root)):
+    reg = os.path.join(root, entry, "taskbartabs", "taskbartabs.json")
+    if not os.path.isfile(reg):
+        continue
+    try:
+        with open(reg, encoding="utf-8") as f:
+            data = json.load(f)
+    except (ValueError, OSError):
+        continue
+    for tt in data.get("taskbarTabs", []):
+        if tt.get("id") == query or tt.get("name") == query:
+            print(os.path.dirname(os.path.dirname(reg)))
+            sys.exit(0)
 m = re.match(r"zen\.webapp-([0-9a-fA-F-]+)$", query)
 if m:
     uuid = m.group(1)
-    for tt in data.get("taskbarTabs", []):
-        if tt.get("id") == uuid:
-            print(uuid)
-            sys.exit(0)
+    for entry in sorted(os.listdir(root)):
+        reg = os.path.join(root, entry, "taskbartabs", "taskbartabs.json")
+        if not os.path.isfile(reg):
+            continue
+        try:
+            with open(reg, encoding="utf-8") as f:
+                data = json.load(f)
+        except (ValueError, OSError):
+            continue
+        for tt in data.get("taskbarTabs", []):
+            if tt.get("id") == uuid:
+                print(os.path.dirname(os.path.dirname(reg)))
+                sys.exit(0)
 sys.exit(0)
 PYEOF
 )
 
-if [[ $ID == "CORRUPT" ]]; then
-  echo "Error: el registro de Zen no se pudo leer." >&2
-  exit 1
-fi
+[[ -n $APP_PROFILE ]] || { echo "Error: no web app matches '$QUERY'." >&2; exit 1; }
 
-if [[ $ID == "AMBIGUOUS" ]]; then
-  echo "Error: varias web apps coinciden con '$QUERY'. Usá el id explícito (omarchy webapp list)." >&2
-  exit 1
-fi
+UUID=$(basename "$APP_PROFILE")
 
-[[ -n $ID ]] || { echo "Error: no web app matches '$QUERY'." >&2; exit 1; }
-
-# Pull the shortcut path (may be null), defaulting to the standard name.
-SHORTCUT=$(python3 - "$REGISTRY" "$ID" <<'PYEOF'
-import json, sys
-reg_path, uuid = sys.argv[1:]
-with open(reg_path, encoding="utf-8") as f:
-    data = json.load(f)
-for tt in data.get("taskbarTabs", []):
-    if tt.get("id") == uuid:
-        print(tt.get("shortcutRelativePath") or f"zen.webapp-{uuid}.desktop")
-        break
-PYEOF
-)
-
-# Remove the registry entry (atomic write)
-python3 - "$REGISTRY" "$ID" <<'PYEOF'
-import json, os, sys, tempfile
-reg_path, uuid = sys.argv[1:]
-with open(reg_path, encoding="utf-8") as f:
-    data = json.load(f)
-data["taskbarTabs"] = [t for t in data.get("taskbarTabs", []) if t.get("id") != uuid]
-fd, tmp = tempfile.mkstemp(dir=os.path.dirname(reg_path), suffix=".tmp")
-try:
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump(data, f, separators=(",", ":"))
-    os.replace(tmp, reg_path)
-except Exception:
-    os.unlink(tmp)
-    raise
-PYEOF
-
-# Remove the launcher and the icon
-rm -f "$HOME/.local/share/applications/$SHORTCUT"
-rm -f "$TASKBAR_DIR/icons/$ID.png"
+# Remove the launcher, then the whole web app profile (registry + icon + sessions)
+rm -f "$HOME/.local/share/applications/zen.webapp-$UUID.desktop"
+rm -rf "$APP_PROFILE"
 update-desktop-database "$HOME/.local/share/applications" &>/dev/null || true
 
 echo "Web app removed: $QUERY"

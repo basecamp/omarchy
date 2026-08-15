@@ -1,15 +1,10 @@
 #!/bin/bash
 
-# omarchy:summary=Install a web app as a native Zen Taskbar Tab (shared backend)
+# omarchy:summary=Install a web app as a native Zen Taskbar Tab in its own profile (shared backend)
 # omarchy:args=<name> <url> [icon-url-or-name]
 # omarchy:hidden=true
 
 set -e
-
-PROFILE_DIR=$(omarchy-webapp-zen-profile profile) || {
-  echo "Error: no Zen profile found in ~/.zen. Open Zen once and retry." >&2
-  exit 1
-}
 
 if (( $# < 2 )); then
   echo "usage: omarchy webapp zen install <name> <url> [icon-url-or-name]" >&2
@@ -55,29 +50,32 @@ else:
 PYEOF
 )
 
-# ── Taskbar Tabs registry files ──
-TASKBAR_DIR="$PROFILE_DIR/taskbartabs"
-ICONS_DIR="$TASKBAR_DIR/icons"
-REGISTRY="$TASKBAR_DIR/taskbartabs.json"
-mkdir -p "$ICONS_DIR"
+# ── Web app profile: each web app gets its own Zen profile so the regular
+# browser (main profile) never collides with a Taskbar Tab process. ──
+WEBAPPS_ROOT="$HOME/.zen/webapps"
+mkdir -p "$WEBAPPS_ROOT"
 
-# ── Dedupe: reuse an existing Taskbar Tab for the same base domain ──
+# ── Dedupe: reuse an existing web app profile for the same base domain ──
 UUID=""
-if [[ -f $REGISTRY ]]; then
-  UUID=$(python3 - "$REGISTRY" "$BASE_DOMAIN" <<'PYEOF'
-import json, sys
-reg_path, base_domain = sys.argv[1:]
-try:
-    with open(reg_path, encoding="utf-8") as f:
-        data = json.load(f)
-except (ValueError, OSError):
-    sys.exit(0)
-for tt in data.get("taskbarTabs", []):
-    for scope in tt.get("scopes", []):
-        scope_host = scope.get("hostname", "")
-        if scope_host == base_domain or scope_host.endswith("." + base_domain):
-            print(tt.get("id", ""))
-            sys.exit(0)
+if compgen -G "$WEBAPPS_ROOT"/*/taskbartabs/taskbartabs.json >/dev/null 2>&1; then
+  UUID=$(python3 - "$WEBAPPS_ROOT" "$BASE_DOMAIN" <<'PYEOF'
+import json, os, sys
+root, base_domain = sys.argv[1:]
+for entry in sorted(os.listdir(root)):
+    reg = os.path.join(root, entry, "taskbartabs", "taskbartabs.json")
+    if not os.path.isfile(reg):
+        continue
+    try:
+        with open(reg, encoding="utf-8") as f:
+            data = json.load(f)
+    except (ValueError, OSError):
+        continue
+    for tt in data.get("taskbarTabs", []):
+        for scope in tt.get("scopes", []):
+            scope_host = scope.get("hostname", "")
+            if scope_host == base_domain or scope_host.endswith("." + base_domain):
+                print(tt.get("id", ""))
+                sys.exit(0)
 sys.exit(0)
 PYEOF
 )
@@ -85,9 +83,34 @@ fi
 
 if [[ -n $UUID ]]; then
   echo "Existing web app for $BASE_DOMAIN (id $UUID); reusing it."
-fi
-if [[ -z $UUID ]]; then
+else
   UUID=$(cat /proc/sys/kernel/random/uuid)
+fi
+
+APP_PROFILE="$WEBAPPS_ROOT/$UUID"
+TASKBAR_DIR="$APP_PROFILE/taskbartabs"
+ICONS_DIR="$TASKBAR_DIR/icons"
+REGISTRY="$TASKBAR_DIR/taskbartabs.json"
+mkdir -p "$ICONS_DIR"
+
+# ── Seed the app profile with sessions from the main Zen profile (cookies,
+# logins, encryption keys). Only done on first install; an existing profile
+# keeps its own sessions from then on. ──
+if [[ ! -f "$APP_PROFILE/cookies.sqlite" ]]; then
+  MAIN_PROFILE=$(omarchy-webapp-zen-profile profile) || true
+  if [[ -n $MAIN_PROFILE && -d $MAIN_PROFILE ]]; then
+    if omarchy-webapp-zen-profile running; then
+      echo "Note: Zen is running; sessions are copied from disk and may be stale." >&2
+    fi
+    for f in cookies.sqlite cookies.sqlite-wal cookies.sqlite-shm logins.json key4.db cert9.db; do
+      if [[ -f "$MAIN_PROFILE/$f" ]]; then
+        cp -f "$MAIN_PROFILE/$f" "$APP_PROFILE/$f" 2>/dev/null || true
+      fi
+    done
+    echo "Seeded $APP_NAME profile with sessions from the main Zen profile."
+  else
+    echo "Warning: could not find the main Zen profile; the web app starts logged out." >&2
+  fi
 fi
 
 SHORTCUT="zen.webapp-$UUID.desktop"
@@ -163,12 +186,7 @@ elif [[ ! -s $ICON_PATH ]] || [[ $(file -b --mime-type "$ICON_PATH" 2>/dev/null)
   fi
 fi
 
-# Zen keeps the registry in memory; warn so the user knows it needs a restart.
-if omarchy-webapp-zen-profile running; then
-  echo "Note: Zen is running and keeps the registry in memory; restart Zen to see the new app." >&2
-fi
-
-# ── Register the Taskbar Tab in Zen's registry (atomic write, upsert by id) ──
+# ── Register the Taskbar Tab in the web app profile (atomic write, upsert) ──
 python3 - "$REGISTRY" "$UUID" "$BASE_DOMAIN" "$APP_URL" "$APP_NAME" "$SHORTCUT" <<'PYEOF'
 import json, os, sys, tempfile
 
@@ -215,8 +233,7 @@ ZEN_BIN=$(omarchy-webapp-zen-profile bin)
 DESKTOP_FILE="$HOME/.local/share/applications/$SHORTCUT"
 mkdir -p "$(dirname "$DESKTOP_FILE")"
 
-# Sanitize user input for the Desktop Entry spec: Name= cannot contain
-# newlines or reserved chars; Exec= argument values need quoting of & and $.
+# Sanitize user input for the Desktop Entry spec.
 SAFE_NAME=$(printf '%s' "$APP_NAME" | tr '\n' ' ' | sed 's/[=;]//g')
 SAFE_URL=$(printf '%s' "$APP_URL" | sed 's/&/\\&/g; s/\$/\\$/g; s/`/\\`/g')
 
@@ -226,12 +243,13 @@ Type=Application
 Version=1.5
 Name=$SAFE_NAME
 Icon=$ICON_PATH
-Exec="$ZEN_BIN" "-taskbar-tab" "$UUID" "-new-window" "$SAFE_URL" "-profile" "$PROFILE_DIR" "-container" "0"
+Exec="$ZEN_BIN" "-taskbar-tab" "$UUID" "-new-window" "$SAFE_URL" "-profile" "$APP_PROFILE" "-container" "0"
 EOF
 
 chmod +x "$DESKTOP_FILE"
 update-desktop-database "$HOME/.local/share/applications" &>/dev/null || true
 
 echo "Web app installed: $APP_NAME"
+echo "  Profile: $APP_PROFILE"
 echo "  Launcher: $DESKTOP_FILE"
 echo "  Open it from the app launcher (SUPER + SPACE) or: omarchy webapp launch $APP_NAME"
