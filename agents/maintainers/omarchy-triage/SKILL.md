@@ -26,18 +26,22 @@ Invoking this skill authorizes, without further asking:
 
 - Creating worktrees, fetching, running tests, committing.
 - Pushing fixes to the head branch of a PR under review.
+- Pushing a fix branch to `basecamp/omarchy` and **opening a PR** for a confirmed
+  issue (see *Opening a fix PR* below).
 - Writing its own state and report files.
 
 It does **not** authorize, ever, in any mode:
 
-- Merging, closing, reopening, or labelling anything.
-- Commenting on issues or PRs, or posting reviews.
-- Opening new PRs or pushing to `quattro`/`master`/`dev`.
+- **Merging** anything. This is the hard line.
+- Closing, reopening, or labelling anything.
+- Commenting on existing issues or PRs, or posting reviews.
+- Pushing directly to `quattro`, `master`, or `dev`.
 - Force-pushing anything, anywhere.
 
-Those are the maintainer's. When triage concludes "this should be closed as a
-duplicate" or "this needs a comment asking for `omarchy-debug` output", it says
-so in the report and stops. The report is the deliverable, not the action.
+When triage concludes "this should be closed as a duplicate" or "this needs a
+comment asking for `omarchy-debug` output", it says so in the report and stops.
+Opening a PR is the one outward action it takes on its own; everything else that
+changes the state of the tracker belongs to the maintainer.
 
 ## Safety on a live machine
 
@@ -233,12 +237,48 @@ Fixes get pushed to PR branches per `pr-protocol.md` — defects only, no
 rewrites, no scope creep, `Co-Authored-By:` and never a `Claude-Session:`
 trailer.
 
-For an issue with a confirmed root cause and a contained fix: prepare the branch
-in a worktree, commit it, and **stop there**. Report the branch name and the
-diff summary. Opening the PR is the maintainer's call — one PR per body of work,
-and an autonomous agent should not be filing them.
+### Opening a fix PR
 
-Never push anything in `--dry-run`.
+For an issue with a **confirmed** root cause and a **contained** fix, open the
+PR. Do not wait to be asked.
+
+All of these must hold, or it stays a report entry instead:
+
+- The root cause is confirmed or proven in source — not "plausible".
+- The fix is contained: a defect corrected, not a design chosen. Anything
+  turning on product behaviour, user-facing naming, architecture, or how a
+  machine boots gets reported, never filed.
+- No open PR already fixes it. Check before branching.
+- Tests pass — `./test/cli` always, plus the relevant `test/shell.d/` files
+  through the lock wrapper.
+
+Then:
+
+```bash
+git worktree add $BASE/fix-$ISSUE -b fix/issue-$ISSUE origin/quattro
+# edit, test, commit
+git push -u origin fix/issue-$ISSUE
+gh pr create -R basecamp/omarchy --base quattro --head fix/issue-$ISSUE ...
+```
+
+Rules for the PR itself:
+
+- Branch off the branch the fix belongs on. That is `quattro` for current work;
+  a fix to the 3.x upgrade path belongs on `dev`, which is ahead of `quattro`'s
+  stale copy of the upgrade script.
+- **One PR per body of work.** If several issues in the batch share one root
+  cause, they get one PR that references all of them — never a PR each, and
+  never a stack.
+- The description says what was wrong, why, and which issue it closes. No
+  Testing section — CI reports that, and a written copy goes stale.
+- Prose paragraphs on one line, not hard-wrapped.
+- Sign it, so readers know an agent wrote it:
+  `— 🤖 Claude, posting on behalf of @dhh`
+- Cap it at **3 opened PRs per run**. Beyond that, report the remaining fixes as
+  ready-to-file branches. A triage run that opens twelve PRs overnight is worse
+  than one that opens three and explains the rest.
+
+Never push or open anything in `--dry-run`.
 
 ## 7. Audit
 
@@ -270,8 +310,11 @@ Group by what the maintainer does next, never by number:
   (packaging, another repo, a product decision).
 - **Decisions waiting** — competing PRs, collisions, retargeting questions.
 - **Issues: close / duplicate / redirect** — with the reasoning, ready to act on.
-- **Issues: confirmed bugs** — root cause, and the branch name if one is ready.
-- **Deferred** — what the cap pushed to next run.
+- **Issues: confirmed bugs** — root cause, and the PR number if one was opened.
+- **PRs opened this run** — number, what it fixes, which issues it closes. Say
+  plainly that these are waiting on review; nothing was merged.
+- **Deferred** — what the cap pushed to next run, including fixes that were
+  ready but over the three-PR limit.
 
 Lead with what would have shipped a broken desktop. Say plainly when something
 is clean — a clean PR reported as clean is a useful result. Never manufacture

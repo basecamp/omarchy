@@ -110,25 +110,52 @@ Codex is a second opinion, not an oracle. Verify every claim against the source
 which of its findings you rejected and why. If its output describes a different
 issue, your prompt file was clobbered: rewrite it under a unique name and re-run.
 
-## 5. Fix, only if it is contained
+## 5. Fix and file it
 
-If you have a confirmed root cause **and** the fix is small and obvious:
+If you have a **confirmed** root cause and the fix is **contained**, fix it and
+open the PR. You do not need permission for this.
+
+All of these must hold first:
+
+- Confirmed or proven in source — not "plausible". A plausible cause gets
+  reported, not filed.
+- Contained: a defect corrected, not a design chosen. Anything turning on
+  product behaviour, user-facing naming, architecture, or how a machine boots
+  gets reported instead — those are the maintainer's to decide.
+- No open PR already fixes it (you checked in step 2).
+- Tests pass.
 
 ```bash
-cd $WT
-git checkout -b fix/issue-$ISSUE
+BASE=~/.claude/worktrees/triage
+git -C $WT worktree add $BASE/fix-$ISSUE -b fix/issue-$ISSUE origin/quattro
+cd $BASE/fix-$ISSUE
 # make the edit
 ./test/cli
-# compositor tests via the lock wrapper only
+$BASE/run-shell-tests $PWD ./test/shell.d/<relevant>-test.sh
 git commit          # Co-Authored-By trailer; never a Claude-Session trailer
+git push -u origin fix/issue-$ISSUE
+gh pr create -R basecamp/omarchy --base quattro --head fix/issue-$ISSUE \
+  --title "<what it fixes>" --body "<see below>"
 ```
 
-Then **stop**. Do not push, do not open a PR. Report the branch name and what it
-changes. Filing the PR is the maintainer's call.
+Branch off what the fix belongs on: `quattro` for current work, `dev` for a fix
+to the 3.x upgrade path.
 
-Do not draft a fix when the right change is a judgement call — product
-behaviour, naming, architecture, or anything touching how a user's machine
-boots. Report those instead.
+The PR body says what was wrong, why, and `Fixes #$ISSUE`. Prose paragraphs go on
+one line, not hard-wrapped. No Testing section — CI reports that. Sign it so
+readers know an agent wrote it:
+
+```
+— 🤖 Claude, posting on behalf of @dhh
+```
+
+You may open **one** PR. If your fix would also resolve other issues in this
+batch, say so in the body and reference them rather than filing again — one PR
+per body of work, never a stack. Never merge it, never close the issue, and
+never comment on the issue itself.
+
+If you are the second agent to reach the same root cause, do not file a
+competing PR. Report the collision and let the synthesis phase resolve it.
 
 ## 6. Report
 
