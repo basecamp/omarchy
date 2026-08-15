@@ -8,7 +8,27 @@ cp "$OMARCHY_PATH"/applications/*.desktop ~/.local/share/applications/
 
 if omarchy-cmd-present alacritty; then
   cp "$OMARCHY_PATH/default/alacritty/Alacritty.desktop" ~/.local/share/applications/
+else
+  rm -f ~/.local/share/applications/Alacritty.desktop
 fi
+
+# Quattro moved stock PNGs out of this directory. Custom launchers that still
+# point at those paths would otherwise keep a dangling Icon=.
+apps_dir="$HOME/.local/share/applications"
+icons_dir="$apps_dir/icons"
+for desktop in "$apps_dir"/*.desktop; do
+  [[ -f $desktop ]] || continue
+  icon=$(sed -n 's/^Icon=//p' "$desktop" | head -1)
+  [[ $icon == "$icons_dir/"* ]] || continue
+  [[ -e $icon ]] && continue
+  icon_name="${icon##*/}"
+  for backup in "$apps_dir"/icons.omarchy-upgrade-to-quattro.*.bak/"$icon_name"; do
+    [[ -f $backup ]] || continue
+    mkdir -p "$icons_dir"
+    cp -f "$backup" "$icon"
+    break
+  done
+done
 
 if [[ -f "$OMARCHY_PATH/install/user/mise.sh" ]]; then
   bash "$OMARCHY_PATH/install/user/mise.sh"
