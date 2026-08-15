@@ -19,6 +19,7 @@ mise_history="$test_tmp/mise-history"
 stub_log="$test_tmp/stubs"
 terminal_log="$test_tmp/terminal"
 menu_log="$test_tmp/menu"
+cursor_install_log="$test_tmp/cursor-install"
 mkdir -p "$mock_bin" "$test_home"
 
 cat >"$mock_bin/omarchy-notification-send" <<'SH'
@@ -74,6 +75,35 @@ cat >"$mock_bin/omarchy-test-noop" <<'SH'
 exit 0
 SH
 
+cat >"$mock_bin/curl" <<'SH'
+#!/bin/bash
+[[ ${OMARCHY_TEST_CURSOR_DOWNLOAD_FAIL:-false} != "true" ]] || exit 22
+
+while (($#)); do
+  if [[ $1 == "-o" ]]; then
+    output=$2
+    break
+  fi
+  shift
+done
+
+cat >"$output" <<'INSTALLER'
+#!/bin/bash
+[[ ${OMARCHY_TEST_CURSOR_INSTALLER_FAIL:-false} != "true" ]] || exit 1
+mkdir -p "$HOME/.local/bin"
+cat >"$HOME/.local/bin/agent" <<'AGENT'
+#!/bin/bash
+if [[ ${1:-} == "--version" ]]; then
+  [[ ${OMARCHY_TEST_CURSOR_VERSION_FAIL:-false} != "true" ]] || exit 1
+  echo "Cursor Agent 1.0.0"
+  exit 0
+fi
+printf '%s\0' agent "$@" >"$OMARCHY_TEST_AGENT_INLINE_LOG"
+AGENT
+chmod +x "$HOME/.local/bin/agent"
+INSTALLER
+SH
+
 for command in gum hyprctl omarchy-webapp-remove-all omarchy-tui-remove-all omarchy-pkg-drop; do
   ln -s omarchy-test-noop "$mock_bin/$command"
 done
@@ -91,6 +121,45 @@ export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
+export OMARCHY_TEST_CURSOR_INSTALL_LOG="$cursor_install_log"
+
+if OMARCHY_TEST_CURSOR_DOWNLOAD_FAIL=true "$ROOT/bin/omarchy-install-ai-cursor" >"$test_tmp/cursor-download-output" 2>&1; then
+  fail "Cursor installer reports download failures"
+fi
+grep -Fq "Could not download" "$test_tmp/cursor-download-output" || fail "Cursor installer explains download failures"
+
+if OMARCHY_TEST_CURSOR_INSTALLER_FAIL=true "$ROOT/bin/omarchy-install-ai-cursor" >"$test_tmp/cursor-install-output" 2>&1; then
+  fail "Cursor installer reports official installer failures"
+fi
+grep -Fq "installation failed" "$test_tmp/cursor-install-output" || fail "Cursor installer explains official installer failures"
+
+if OMARCHY_TEST_CURSOR_VERSION_FAIL=true "$ROOT/bin/omarchy-install-ai-cursor" >"$test_tmp/cursor-version-output" 2>&1; then
+  fail "Cursor installer reports verification failures"
+fi
+grep -Fq "failed its version check" "$test_tmp/cursor-version-output" || fail "Cursor installer explains verification failures"
+
+"$ROOT/bin/omarchy-install-ai-cursor" >"$test_tmp/cursor-success-output"
+grep -Fq "installed successfully" "$test_tmp/cursor-success-output" || fail "Cursor installer reports success"
+pass "Cursor installer mocks download, installation, and verification outcomes"
+
+rm "$test_home/.local/bin/agent"
+
+cat >"$mock_bin/omarchy-install-ai-cursor" <<'SH'
+#!/bin/bash
+printf '%s\n' install >>"$OMARCHY_TEST_CURSOR_INSTALL_LOG"
+[[ ${OMARCHY_TEST_CURSOR_INSTALL_FAIL:-false} != "true" ]] || exit 1
+mkdir -p "$HOME/.local/bin"
+cat >"$HOME/.local/bin/agent" <<'AGENT'
+#!/bin/bash
+if [[ ${1:-} == "--version" ]]; then
+  echo "Cursor Agent 1.0.0"
+  exit 0
+fi
+printf '%s\0' agent "$@" >"$OMARCHY_TEST_AGENT_INLINE_LOG"
+AGENT
+chmod +x "$HOME/.local/bin/agent"
+SH
+chmod +x "$mock_bin/omarchy-install-ai-cursor"
 
 grok_package="npm:@xai-official/grok"
 omp_package="github:can1357/oh-my-pi"
@@ -274,6 +343,63 @@ mapfile -d '' -t agent_open_args <"$agent_open_log"
   fail "installed agent opens in a new terminal after selection"
 pass "installed agents select and open without notifications"
 
+# Cursor has its own official installation backend and must never pass through
+# mise's package lookup or activation path.
+omarchy-install-ai-cursor
+: >"$cursor_install_log"
+: >"$mise_history"
+: >"$agent_open_log"
+: >"$terminal_log"
+omarchy-default-agent cursor
+[[ $(omarchy-default-agent) == "cursor" ]] || fail "default agent selects Cursor canonically"
+[[ ! -s $cursor_install_log ]] || fail "installed Cursor selection skips installation"
+[[ ! -s $mise_history ]] || fail "Cursor selection never invokes mise"
+[[ ! -s $terminal_log ]] || fail "installed Cursor selection skips the installer terminal"
+mapfile -d '' -t agent_open_args <"$agent_open_log"
+[[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
+  fail "installed Cursor opens after selection"
+
+: >"$agent_open_log"
+omarchy-default-agent cursor-agent
+[[ $(omarchy-default-agent) == "cursor" ]] || fail "cursor-agent alias canonicalizes to cursor"
+[[ ! -s $cursor_install_log ]] || fail "installed Cursor alias skips installation"
+pass "Cursor and cursor-agent select the official installed CLI without mise"
+
+OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent pi
+rm "$test_home/.local/bin/agent"
+: >"$agent_open_log"
+: >"$terminal_log"
+omarchy-default-agent cursor
+mapfile -d '' -t terminal_args <"$terminal_log"
+[[ ${terminal_args[*]} == "omarchy-default-agent --install cursor" ]] ||
+  fail "missing Cursor opens the visible installer flow"
+[[ $(omarchy-default-agent) == "pi" ]] || fail "missing Cursor preserves the prior default"
+[[ ! -s $agent_open_log ]] || fail "missing Cursor launches nothing before installation"
+pass "missing Cursor opens the visible installer flow"
+
+: >"$cursor_install_log"
+: >"$agent_open_log"
+omarchy-default-agent --install cursor >"$test_tmp/cursor-visible-install-output"
+[[ $(omarchy-default-agent) == "cursor" ]] || fail "successful Cursor installation saves the default"
+[[ $(wc -l <"$cursor_install_log") == "1" ]] || fail "visible Cursor flow runs the official installer once"
+mapfile -d '' -t agent_open_args <"$agent_open_log"
+[[ ${agent_open_args[*]} == "omarchy-agent --inline" ]] ||
+  fail "newly installed Cursor launches inline in the installer terminal"
+pass "successful Cursor installation saves and launches inline"
+
+OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent copilot
+rm "$test_home/.local/bin/agent"
+: >"$cursor_install_log"
+: >"$agent_open_log"
+if OMARCHY_TEST_CURSOR_INSTALL_FAIL=true omarchy-default-agent --install cursor >"$test_tmp/cursor-failure-output" 2>&1; then
+  fail "default agent rejects a failed Cursor installation"
+fi
+[[ $(omarchy-default-agent) == "copilot" ]] || fail "failed Cursor installation preserves the prior default"
+[[ ! -s $agent_open_log ]] || fail "failed Cursor installation launches nothing"
+grep -Fq "Could not install Cursor Agent CLI" "$test_tmp/cursor-failure-output" ||
+  fail "failed Cursor installation has a useful diagnostic"
+pass "failed Cursor installation preserves the prior default and launches nothing"
+
 : >"$agent_open_log"
 if omarchy-default-agent unsupported >"$test_tmp/invalid-output" 2>&1; then
   fail "default agent rejects unsupported providers"
@@ -310,6 +436,7 @@ pass "default agent reports mise failures without notifications"
 
 rm "$mock_bin/omarchy-agent"
 hash -r
+omarchy-install-ai-cursor
 
 assert_launched() {
   local agent=$1
@@ -357,6 +484,7 @@ assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
 assert_launch gemini gemini --yolo --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
+assert_launch cursor "$test_home/.local/bin/agent" --force "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
 
 assert_bypass pi pi
@@ -368,6 +496,7 @@ assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
 assert_bypass gemini gemini --yolo
 assert_bypass copilot copilot --allow-all
+assert_bypass cursor "$test_home/.local/bin/agent" --force
 pass "agent launcher skips permission prompts for every supported agent"
 
 printf '%s\n' "opencode" >"$agent_file"
@@ -382,6 +511,16 @@ mapfile -d '' -t inline_args <"$inline_log"
 [[ ${inline_args[*]} == "opencode --auto --prompt Review this project" ]] ||
   fail "inline agent launcher runs in the current terminal"
 pass "inline agent launcher runs in the current terminal"
+
+printf '%s\n' "cursor" >"$agent_file"
+: >"$inline_log"
+omarchy-agent-prompt --inline "Review this project"
+mapfile -d '' -t inline_args <"$inline_log"
+[[ ${inline_args[*]} == "agent --force Review this project" ]] ||
+  fail "Cursor inline launch stays interactive and forwards the prompt"
+pass "Cursor launches inline with interactive --force mode"
+
+printf '%s\n' "opencode" >"$agent_file"
 
 # The prompt route exists so the router can tell a prompt from a subcommand, so
 # cover the public routes and not only the binaries behind them.
@@ -415,6 +554,17 @@ grep -F "omarchy agent prompt" "$test_tmp/positional-output" >/dev/null ||
   fail "omarchy agent points a positional prompt at the prompt route"
 [[ ! -s $launch_log ]] || fail "omarchy agent starts nothing for a positional prompt"
 pass "omarchy agent keeps prompts on the prompt route"
+
+printf '%s\n' "cursor" >"$agent_file"
+rm "$test_home/.local/bin/agent"
+if omarchy-agent >"$test_tmp/cursor-missing-output" 2>&1; then
+  fail "agent launcher rejects a missing Cursor executable"
+fi
+grep -Fq "$test_home/.local/bin/agent" "$test_tmp/cursor-missing-output" ||
+  fail "agent launcher identifies Cursor's expected executable path"
+grep -Fq "omarchy default agent cursor" "$test_tmp/cursor-missing-output" ||
+  fail "agent launcher explains how to install missing Cursor"
+pass "agent launcher reports useful missing Cursor diagnostics"
 
 printf '%s\n' "missing" >"$agent_file"
 if OMARCHY_TEST_MISSING_COMMAND=missing omarchy-agent >"$test_tmp/missing-output" 2>&1; then

@@ -200,6 +200,7 @@ const expectedAgents = {
   gemini: { icon: '󰫢', label: 'Gemini' },
   copilot: { icon: '', label: 'Copilot' },
   crush: { icon: '󰋑', label: 'Crush' },
+  cursor: { icon: '', label: 'Cursor' },
 }
 assert(
   Object.entries(expectedAgents).every(([agent, expected]) => {
@@ -212,14 +213,19 @@ assert(
       && !entry.when
       && entry.checked.includes(`== \"${agent}\"`)
   }),
-  'menu exposes every mise-installable coding agent with its own glyph under Defaults > Agent'
+  'menu exposes every supported coding agent with its own glyph under Defaults > Agent'
 )
 assertDeepEqual(
   defaultItems
     .filter(item => item.parent === 'setup.default.agent')
     .map(item => item.label),
-  ['Claude', 'Codex', 'Copilot', 'Crush', 'Gemini', 'Grok', 'omp', 'OpenCode', 'Pi'],
+  ['Claude', 'Codex', 'Copilot', 'Crush', 'Cursor', 'Gemini', 'Grok', 'omp', 'OpenCode', 'Pi'],
   'menu sorts coding agents alphabetically'
+)
+assertEqual(
+  defaultById['setup.default.editor.cursor'].when,
+  'omarchy-pkg-present cursor-bin && omarchy-cmd-present /usr/bin/cursor',
+  'menu detects Cursor IDE by its package and packaged executable'
 )
 assert(!defaultById['install.ai.crush'], 'menu removes Crush from Install > AI')
 assert(
