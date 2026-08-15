@@ -4,7 +4,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/base-test.sh"
 
 require_command lua
 
-if ! output=$(OMARCHY_PATH="$ROOT" lua <<'LUA'
+if ! output=$(OMARCHY_PATH="$ROOT" lua 2>&1 <<'LUA'
 package.path = os.getenv("OMARCHY_PATH") .. "/?.lua;" .. package.path
 
 local function proxy()
@@ -73,7 +73,7 @@ assert(#dispatched == 2)
 assert(dispatched[2] == "layout:togglesplit")
 LUA
 ); then
-  fail "toggle split binding assertions pass" "$output"
+  fail "toggle split binding assertions failed" "$output"
 fi
 
 [[ -z $output ]] || fail "toggle split binding produces no output" "$output"
