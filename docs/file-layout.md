@@ -27,7 +27,7 @@ Two other packages live in `omarchy-pkgs` but stand alone:
 setup; independently seeds `/etc/skel`).
 
 Some trees ship in neither package and exist only in the repo: `manual/`
-(user manual chapters), `agents/skills/` (contributor task guides), `docs/`,
+(user manual chapters), `agents/contributors/` (contributor task guides), `agents/maintainers/` (maintainer workflows), `docs/`,
 `test/`, and `plans/`.
 
 Three layers populate `$HOME`:
@@ -199,7 +199,7 @@ Runs once per user. It does **not** copy `~/.config/**`, `~/.bashrc`,
 It only does the things `/etc/skel` can't:
 
 - Skill symlinks `~/.{agents,claude,codex,pi/agent}/skills/<name>` →
-  `$OMARCHY_PATH/default/agents/skills/<name>`, looping over every skill
+  `$OMARCHY_PATH/default/agents/contributors/<name>`, looping over every skill
   directory there (currently `omarchy` and `diagnose-crash`) so new skills
   need no edit. Symlinks (not copies) so `omarchy dev link` against a dev
   checkout repoints them correctly.
@@ -226,7 +226,7 @@ deferred first-boot provisioning.
 
 ## Migrations (`omarchy-migrate`)
 
-See [`migrations.md`](../agents/skills/migrations.md) for the full migration model, authoring
+See [`migrations.md`](../agents/contributors/migrations.md) for the full migration model, authoring
 guidelines, and troubleshooting notes.
 
 Omarchy migrations live in `migrations/*.sh` and run per-user through

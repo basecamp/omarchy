@@ -4,7 +4,7 @@ How the non-graphical test suites are organized: what each runner owns, the
 protocol test files speak, and the conventions that keep them runnable on any
 machine — including headless CI sandboxes with no compositor. The graphical
 acceptance suite is a separate thing that drives a live session in a disposable
-VM; see [`agents/skills/acceptance-tests.md`](../agents/skills/acceptance-tests.md).
+VM; see [`agents/contributors/acceptance-tests.md`](../agents/contributors/acceptance-tests.md).
 
 ## Suite map
 

@@ -5,7 +5,7 @@
 registry to maintain — every executable `bin/omarchy-*` file is a command, and
 its filename is its default route. Metadata comments in the file header refine
 how it presents and routes; the keys are documented in
-[`agents/skills/command-metadata.md`](../agents/skills/command-metadata.md).
+[`agents/contributors/command-metadata.md`](../agents/contributors/command-metadata.md).
 This document covers what that guide does not: how resolution and dispatch
 actually work.
 
