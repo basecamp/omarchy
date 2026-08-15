@@ -4,4 +4,8 @@
 # omarchy:args=[toggle|on|off]
 # omarchy:examples=omarchy toggle bar | omarchy toggle bar off | omarchy toggle bar on
 
-omarchy-toggle bar-off "${1:-toggle}"
+case "${1:-toggle}" in
+  on) omarchy-toggle bar-off off ;;
+  off) omarchy-toggle bar-off on ;;
+  *) omarchy-toggle bar-off toggle ;;
+esac
