@@ -243,9 +243,23 @@ function streamRepresentsPlayer(node, player, players, streams) {
 // -1, which hands the stream back to the default output.
 var DEFAULT_ROUTE = "__default__"
 
-function routeTargetOf(node) {
-  var props = nodeProps(node)
-  var target = props["target.object"]
+// pw-metadata writes target.object into the separate "default" metadata
+// object rather than back into the node's own properties, so the current
+// routing has to be read from there. Lines look like:
+//   update: id:120 key:'target.object' value:'alsa_output.analog-stereo' ...
+function parseRouteTargets(raw) {
+  var targets = {}
+  var pattern = /id:(\d+)\s+key:'target\.object'\s+value:'([^']*)'/g
+  var match
+  while ((match = pattern.exec(String(raw || ""))) !== null) {
+    targets[match[1]] = match[2]
+  }
+  return targets
+}
+
+function routeTargetOf(node, targets) {
+  if (!node) return DEFAULT_ROUTE
+  var target = targets ? targets[String(node.id)] : undefined
   if (target === undefined || target === null || target === "" || String(target) === "-1") return DEFAULT_ROUTE
   return String(target)
 }
@@ -282,16 +296,16 @@ function sinkNamed(sinks, name) {
 
 // Prefer where the stream is linked, and fall back to the pinned preference,
 // because a link group is not always resolved for a stream that just started.
-function routeLabel(node, sinks, linkedSink) {
+function routeLabel(node, sinks, linkedSink, targets) {
   if (linkedSink) return nodeLabel(linkedSink)
-  var target = routeTargetOf(node)
+  var target = routeTargetOf(node, targets)
   if (target === DEFAULT_ROUTE) return "Follow default output"
   var sink = sinkNamed(sinks, target)
   return sink ? nodeLabel(sink) : String(target)
 }
 
-function routeIsPinned(node) {
-  return routeTargetOf(node) !== DEFAULT_ROUTE
+function routeIsPinned(node, targets) {
+  return routeTargetOf(node, targets) !== DEFAULT_ROUTE
 }
 
 if (typeof module !== "undefined") {
@@ -302,6 +316,7 @@ if (typeof module !== "undefined") {
     outputVolumeName: outputVolumeName,
     parseSinkAvailability: parseSinkAvailability,
     DEFAULT_ROUTE: DEFAULT_ROUTE,
+    parseRouteTargets: parseRouteTargets,
     routeTargetOf: routeTargetOf,
     routeCommand: routeCommand,
     routeOptions: routeOptions,

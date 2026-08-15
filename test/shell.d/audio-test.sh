@@ -42,10 +42,20 @@ assertDeepEqual(
   ['pw-metadata', '-n', 'default', '64', 'target.object', '-1'],
   'audio hands a stream back to the default output'
 )
-assertEqual(audio.routeTargetOf({ ready: true, properties: {} }), audio.DEFAULT_ROUTE, 'audio reads an unpinned stream as following the default')
-assertEqual(audio.routeTargetOf({ ready: true, properties: { 'target.object': '-1' } }), audio.DEFAULT_ROUTE, 'audio reads a cleared pin as following the default')
-assertEqual(audio.routeTargetOf({ ready: true, properties: { 'target.object': 'sink.a' } }), 'sink.a', 'audio reads a pinned stream')
-assert(!audio.routeIsPinned({ ready: true, properties: {} }), 'audio reports an unpinned stream')
+const routeMetadata = [
+  "update: id:120 key:'target.object' value:'sink.a' type:'(null)'",
+  "update: id:121 key:'target.object' value:'-1' type:'(null)'",
+  "update: id:122 key:'volume' value:'0.5' type:'(null)'"
+].join('\n')
+const routeTargets = audio.parseRouteTargets(routeMetadata)
+
+assertDeepEqual(routeTargets, { '120': 'sink.a', '121': '-1' }, 'audio reads routing out of the default metadata object')
+assertDeepEqual(audio.parseRouteTargets(''), {}, 'audio handles empty metadata')
+assertEqual(audio.routeTargetOf({ id: 120 }, routeTargets), 'sink.a', 'audio reads a pinned stream')
+assertEqual(audio.routeTargetOf({ id: 121 }, routeTargets), audio.DEFAULT_ROUTE, 'audio reads a cleared pin as following the default')
+assertEqual(audio.routeTargetOf({ id: 999 }, routeTargets), audio.DEFAULT_ROUTE, 'audio reads an unlisted stream as following the default')
+assert(audio.routeIsPinned({ id: 120 }, routeTargets), 'audio reports a pinned stream')
+assert(!audio.routeIsPinned({ id: 999 }, routeTargets), 'audio reports an unpinned stream')
 
 const routeSinks = [
   { ready: true, name: 'sink.a', nickname: 'Speakers' },
@@ -54,8 +64,9 @@ const routeSinks = [
 assertDeepEqual(audio.routeOptions(routeSinks), [audio.DEFAULT_ROUTE, 'sink.a', 'sink.b'], 'audio offers the default output first')
 assertEqual(audio.nextRouteTarget(audio.routeOptions(routeSinks), audio.DEFAULT_ROUTE), 'sink.a', 'audio cycles from the default to the first output')
 assertEqual(audio.nextRouteTarget(audio.routeOptions(routeSinks), 'sink.b'), audio.DEFAULT_ROUTE, 'audio cycles from the last output back to the default')
-assertEqual(audio.routeLabel({ ready: true, properties: {} }, routeSinks, null), 'Follow default output', 'audio labels an unpinned stream')
-assertEqual(audio.routeLabel({ ready: true, properties: { 'target.object': 'sink.a' } }, routeSinks, null), 'Speakers', 'audio labels a pinned stream by device')
+assertEqual(audio.routeLabel({ id: 999 }, routeSinks, null, routeTargets), 'Follow default output', 'audio labels an unpinned stream')
+assertEqual(audio.routeLabel({ id: 120 }, routeSinks, null, routeTargets), 'Speakers', 'audio labels a pinned stream by device')
+assertEqual(audio.routeLabel({ id: 999 }, routeSinks, routeSinks[1], routeTargets), 'HDMI', 'audio prefers the linked output over the pin')
 assert(audio.streamRepresentsMprisPlayer('Chromium', 'Chromium Browser'), 'audio matches related stream and MPRIS labels')
 
 const players = [

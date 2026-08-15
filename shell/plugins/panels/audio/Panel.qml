@@ -310,6 +310,7 @@ Panel {
   onOpenedChanged: {
     if (opened) {
       refreshDisplayAudioModels()
+      routeTargetsProc.restart()
       focusSection = "output"
       selectedIndex = -1  // first keyboard cursor reveal starts on the output slider
       cursorActive = false
@@ -443,10 +444,33 @@ Panel {
     source.audio.volume = Math.max(0, Math.min(1, v))
   }
 
+  // Routing offers the same sinks the picker does. candidateSinks still holds
+  // outputs sinkAvailable() removes, including the physical sink hidden behind
+  // speaker tuning, and sending a stream there would bypass the tuning.
   function cycleStreamRoute(node) {
     if (!node) return
-    var options = Model.routeOptions(root.candidateSinks)
-    Quickshell.execDetached(Model.routeCommand(node.id, Model.nextRouteTarget(options, Model.routeTargetOf(node))))
+    var options = Model.routeOptions(root.audioSinks)
+    var next = Model.nextRouteTarget(options, Model.routeTargetOf(node, root.routeTargets))
+    Quickshell.execDetached(Model.routeCommand(node.id, next))
+    routeTargetsProc.restart()
+  }
+
+  // The routing lives in the default metadata object, so it is read back from
+  // there rather than from the node properties.
+  property var routeTargets: ({})
+
+  Process {
+    id: routeTargetsProc
+    command: ["pw-metadata", "-n", "default"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.routeTargets = Model.parseRouteTargets(text)
+    }
+
+    function restart() {
+      if (running) return
+      running = true
+    }
   }
 
   function toggleOutputMute() {
@@ -1158,10 +1182,10 @@ Panel {
     readonly property real streamVolume: node && node.audio ? node.audio.volume : 0
     readonly property bool streamMuted: node && node.audio ? node.audio.muted : false
     readonly property bool isActive: root.streamRepresentsPlayer(node, root.activeMediaPlayer)
-    readonly property var linkedSink: streamLinks.linkGroups && streamLinks.linkGroups.values.length > 0
-      ? streamLinks.linkGroups.values[0].target
+    readonly property var linkedSink: streamLinks.linkGroups.length > 0
+      ? streamLinks.linkGroups[0].target
       : null
-    readonly property bool routePinned: Model.routeIsPinned(streamRow.node)
+    readonly property bool routePinned: Model.routeIsPinned(streamRow.node, root.routeTargets)
 
     hasCursor: root.cursorActive && root.focusSection === "streams" && root.selectedIndex === rowIndex
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(streamRow)
@@ -1281,7 +1305,7 @@ Panel {
           anchors.leftMargin: Style.space(6)
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          text: Model.routeLabel(streamRow.node, root.candidateSinks, streamRow.linkedSink)
+          text: Model.routeLabel(streamRow.node, root.audioSinks, streamRow.linkedSink, root.routeTargets)
           color: Qt.darker(root.bar.foreground, streamRow.routePinned ? 1.2 : 1.6)
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.caption
