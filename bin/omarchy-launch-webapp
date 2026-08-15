@@ -6,8 +6,15 @@
 browser=$(xdg-settings get default-web-browser)
 
 case $browser in
-google-chrome* | brave* | microsoft-edge* | opera* | vivaldi* | helium*) ;;
+google-chrome* | brave* | microsoft-edge* | opera* | vivaldi* | helium* | firefox*) ;;
 *) browser="chromium.desktop" ;;
 esac
 
-exec setsid uwsm-app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1) --app="$1" "${@:2}"
+binary=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1)
+
+if [[ -z $binary ]]; then
+  echo "error: no browser installed that supports web app mode ($browser not found)" >&2
+  exit 1
+fi
+
+exec setsid uwsm-app -- "$binary" --app="$1" "${@:2}"
