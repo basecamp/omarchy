@@ -31,6 +31,10 @@ announce_network() {
   # the wait gets the same hour-long budget as the link above.
   portal_waited=0
   while omarchy-network-portal --check; do
+    # The portal can sit on one link while another -- a phone tether, say --
+    # carries traffic, and then the update works right now. Machine-wide
+    # connectivity is the maximum across devices, so "full" means a link gets out.
+    if [[ $(LC_ALL=C nmcli networking connectivity) == "full" ]]; then break; fi
     if ((portal_waited >= 3600)); then return; fi
     sleep 30
     ((portal_waited += 30))

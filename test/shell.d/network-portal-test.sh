@@ -21,6 +21,15 @@ assert(
   /notify_update/.test(announce[0].split('while omarchy-network-portal --check; do')[1] || ''),
   'first run still reaches the update prompt once the portal clears'
 )
+
+// A tether at full connectivity can carry the update while the portal on
+// another link waits, so the loop must yield to the machine-wide answer
+// instead of holding the prompt for its full hour.
+const portalWait = announce[0].split('while omarchy-network-portal --check; do')[1] || ''
+assert(
+  /if \[\[ \$\(LC_ALL=C nmcli networking connectivity\) == "full" \]\]; then break; fi/.test(portalWait),
+  'first run releases the update prompt when another link has full connectivity'
+)
 JS
 
 # The command talks to nmcli, busctl and curl, so the stubs below stand in for
