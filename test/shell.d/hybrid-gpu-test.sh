@@ -68,11 +68,11 @@ TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=0 \
   bash "$ROOT/bin/omarchy-toggle-hybrid-gpu" >/dev/null
 
 grep -Fxq 'options apple-gmux force_igd=y' "$gmux_conf" ||
-  fail "T2 hybrid graphics can switch to cooler Intel graphics"
-grep -Fq 'cooler Intel graphics for longer battery life' "$test_tmp/prompts" ||
-  fail "T2 Intel mode explains its tradeoff"
+  fail "T2 hybrid graphics can switch to integrated graphics"
+grep -Fq 'Use only integrated GPU and reboot?' "$test_tmp/prompts" ||
+  fail "T2 Intel mode uses the existing integrated GPU prompt"
 [[ $(wc -l <"$test_tmp/reboots") == "1" ]] || fail "T2 Intel mode requests one reboot"
-pass "T2 hybrid graphics switches to cooler Intel mode"
+pass "T2 hybrid graphics switches to integrated mode"
 
 : >"$test_tmp/prompts"
 TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=0 \
@@ -80,11 +80,11 @@ TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=0 \
   bash "$ROOT/bin/omarchy-toggle-hybrid-gpu" >/dev/null
 
 grep -Fxq 'options apple-gmux force_igd=n' "$gmux_conf" ||
-  fail "T2 hybrid graphics can switch to faster AMD graphics"
-grep -Fq 'faster AMD graphics instead of cooler Intel graphics' "$test_tmp/prompts" ||
-  fail "T2 AMD mode explains its tradeoff"
+  fail "T2 hybrid graphics can switch to dedicated graphics"
+grep -Fq 'Enable dedicated GPU and reboot?' "$test_tmp/prompts" ||
+  fail "T2 AMD mode uses the existing dedicated GPU prompt"
 [[ $(wc -l <"$test_tmp/reboots") == "2" ]] || fail "T2 AMD mode requests one reboot"
-pass "T2 hybrid graphics switches back to faster AMD mode"
+pass "T2 hybrid graphics switches back to dedicated mode"
 
 : >"$test_tmp/prompts"
 TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=1 \

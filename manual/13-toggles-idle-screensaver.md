@@ -23,8 +23,6 @@ From the terminal, the same switches are `omarchy toggle <thing>`. Run `omarchy 
 
 The touchpad, touchscreen, and hybrid GPU switches live under _Trigger > Hardware_ (`Super + Ctrl + H`) rather than under Toggle, since they only show up when you actually have that hardware. The touchpad and touchscreen ones survive a Hyprland reload — the disabled state is written back out as a small Lua file that Hyprland sources on startup.
 
-On hybrid T2 MacBooks, the GPU switch chooses between cooler Intel graphics with longer battery life and faster AMD graphics with higher power use. Changing the primary GPU requires a reboot.
-
 The Toggle menu also carries a few things that aren't `omarchy toggle` commands but behave the same: battery percentage in the bar, workspace layout (`Super + L`), window gaps (`Super + Shift + Backspace`), and the 1-window square aspect (`Super + Ctrl + Backspace`).
 
 Most of these are just a flag file under `~/.local/state/omarchy/toggles/`. If you want to branch on one in a script, `omarchy-toggle-enabled` gives you an exit code instead of making you go looking:
