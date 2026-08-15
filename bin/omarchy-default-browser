@@ -41,9 +41,9 @@ esac
 if omarchy-cmd-missing "$command"; then
   if [[ $installing == "false" ]]; then
     exec omarchy-launch-floating-terminal-with-presentation omarchy-default-browser --install "$browser"
+  else
+    omarchy-install-browser "$browser" || exit 1
   fi
-
-  omarchy-install-browser "$browser" || exit 1
 fi
 
 env -u BROWSER xdg-settings set default-web-browser "$desktop_id" || exit 1

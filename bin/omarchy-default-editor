@@ -39,18 +39,18 @@ esac
 if omarchy-cmd-missing "$editor"; then
   if [[ $installing == "false" ]]; then
     exec omarchy-launch-floating-terminal-with-presentation omarchy-default-editor --install "$selection"
+  else
+    case "$selection" in
+    code) omarchy-install-editor-vscode ;;
+    cursor) omarchy-pkg-add cursor-bin ;;
+    zed) omarchy-install-editor-zed ;;
+    sublime_text) omarchy-pkg-add sublime-text-4 ;;
+    helix) omarchy-install-editor-helix ;;
+    vim) omarchy-pkg-add vim ;;
+    emacs) omarchy-install-editor-emacs ;;
+    nvim) omarchy-pkg-add neovim ;;
+    esac || exit 1
   fi
-
-  case "$selection" in
-  code) omarchy-install-editor-vscode ;;
-  cursor) omarchy-pkg-add cursor-bin ;;
-  zed) omarchy-install-editor-zed ;;
-  sublime_text) omarchy-pkg-add sublime-text-4 ;;
-  helix) omarchy-install-editor-helix ;;
-  vim) omarchy-pkg-add vim ;;
-  emacs) omarchy-install-editor-emacs ;;
-  nvim) omarchy-pkg-add neovim ;;
-  esac || exit 1
 fi
 
 mkdir -p "$(dirname "$editor_file")"

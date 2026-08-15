@@ -37,9 +37,9 @@ esac
 if omarchy-cmd-missing "$terminal"; then
   if [[ $installing == "false" ]]; then
     exec omarchy-launch-floating-terminal-with-presentation omarchy-default-terminal --install "$terminal"
+  else
+    omarchy-install-terminal "$terminal" || exit 1
   fi
-
-  omarchy-install-terminal "$terminal" || exit 1
 fi
 
 cat >~/.config/xdg-terminals.list <<EOF
