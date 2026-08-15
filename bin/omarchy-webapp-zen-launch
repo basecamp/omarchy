@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# omarchy:summary=Launch a Zen Taskbar Tab web app by registry id or name (shared backend)
+# omarchy:args=<id-or-name>
+# omarchy:hidden=true
+
+set -e
+
+if (( $# < 1 )); then
+  echo "usage: omarchy webapp zen launch <id-or-name>" >&2
+  exit 1
+fi
+
+QUERY="$1"
+
+PROFILE_DIR=$(omarchy-webapp-zen-profile profile) || {
+  echo "Error: no Zen profile found in ~/.zen." >&2
+  exit 1
+}
+
+REGISTRY="$PROFILE_DIR/taskbartabs/taskbartabs.json"
+[[ -f $REGISTRY ]] || { echo "Error: no Taskbar Tab registry in Zen." >&2; exit 1; }
+
+# Look up by id or name; report ambiguity when several apps share the name.
+read -r ID URL < <(python3 - "$REGISTRY" "$QUERY" <<'PYEOF'
+import json, sys
+reg_path, query = sys.argv[1:]
+try:
+    with open(reg_path, encoding="utf-8") as f:
+        data = json.load(f)
+except (ValueError, OSError) as e:
+    print("CORRUPT", "\t", str(e))
+    sys.exit(0)
+matches = [tt for tt in data.get("taskbarTabs", []) if tt.get("id") == query or tt.get("name") == query]
+if len(matches) > 1:
+    print("AMBIGUOUS", "\t", " ".join(m.get("id", "") for m in matches))
+    sys.exit(0)
+if matches:
+    print(matches[0].get("id", ""), "\t", matches[0].get("startUrl", ""))
+PYEOF
+)
+
+if [[ $ID == "CORRUPT" ]]; then
+  echo "Error: el registro de Zen no se pudo leer: $URL" >&2
+  exit 1
+fi
+
+if [[ $ID == "AMBIGUOUS" ]]; then
+  echo "Error: varias web apps coinciden con '$QUERY'. Usá el id explícito:" >&2
+  echo "  $URL" >&2
+  exit 1
+fi
+
+[[ -n $ID && -n $URL ]] || { echo "Error: no web app matches '$QUERY'." >&2; exit 1; }
+
+ZEN_BIN=$(omarchy-webapp-zen-profile bin)
+
+exec setsid uwsm-app -- "$ZEN_BIN" "-taskbar-tab" "$ID" "-new-window" "$URL" "-profile" "$PROFILE_DIR" "-container" "0"

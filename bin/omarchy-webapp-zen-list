@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# omarchy:summary=List Zen Taskbar Tab web apps (shared backend)
+# omarchy:args=[--json]
+# omarchy:hidden=true
+
+set -e
+
+JSON=0
+if [[ ${1:-} == "--json" ]]; then
+  JSON=1
+fi
+
+PROFILE_DIR=$(omarchy-webapp-zen-profile profile) || {
+  if (( JSON )); then
+    echo "[]"
+  else
+    echo "No Zen profile found in ~/.zen."
+  fi
+  exit 0
+}
+
+REGISTRY="$PROFILE_DIR/taskbartabs/taskbartabs.json"
+if [[ ! -f $REGISTRY ]]; then
+  if (( JSON )); then
+    echo "[]"
+  else
+    echo "No Zen web apps installed."
+  fi
+  exit 0
+fi
+
+python3 - "$REGISTRY" "$JSON" <<'PYEOF'
+import json, sys
+reg_path, want_json = sys.argv[1:]
+want_json = want_json == "1"
+try:
+    with open(reg_path, encoding="utf-8") as f:
+        data = json.load(f)
+except (ValueError, OSError) as e:
+    if want_json:
+        print("[]")
+    else:
+        print(f"Error: el registro de Zen no se pudo leer ({e}).", file=sys.stderr)
+    sys.exit(1)
+
+tabs = data.get("taskbarTabs", [])
+if want_json:
+    json.dump([{"id": t.get("id"), "name": t.get("name"), "startUrl": t.get("startUrl")} for t in tabs], sys.stdout, indent=2)
+    print()
+else:
+    if not tabs:
+        print("No Zen web apps installed.")
+    else:
+        for t in tabs:
+            print(f"{t.get('id','')}  {t.get('name','')}  {t.get('startUrl','')}")
+PYEOF

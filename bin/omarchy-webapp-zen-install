@@ -1,0 +1,237 @@
+#!/bin/bash
+
+# omarchy:summary=Install a web app as a native Zen Taskbar Tab (shared backend)
+# omarchy:args=<name> <url> [icon-url-or-name]
+# omarchy:hidden=true
+
+set -e
+
+PROFILE_DIR=$(omarchy-webapp-zen-profile profile) || {
+  echo "Error: no Zen profile found in ~/.zen. Open Zen once and retry." >&2
+  exit 1
+}
+
+if (( $# < 2 )); then
+  echo "usage: omarchy webapp zen install <name> <url> [icon-url-or-name]" >&2
+  exit 1
+fi
+
+APP_NAME="$1"
+APP_URL="$2"
+ICON_REF="${3:-}"
+
+if [[ ! $APP_URL =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]]; then
+  APP_URL="https://$APP_URL"
+fi
+
+# Hostname + base domain. Zen matches scopes by base domain (eTLD+1), so the
+# dedupe key must be the registrable domain, not a heuristic. Uses the Public
+# Suffix List via publicsuffix2 when available; falls back to a conservative
+# last-two-labels guess otherwise.
+HOSTNAME=$(python3 - "$APP_URL" <<'PYEOF'
+import sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+print(u.hostname or "")
+PYEOF
+)
+
+[[ -n $HOSTNAME ]] || { echo "Error: invalid URL: $APP_URL" >&2; exit 1; }
+
+BASE_DOMAIN=$(python3 - "$HOSTNAME" <<'PYEOF'
+import sys
+host = sys.argv[1]
+try:
+    import publicsuffix2
+    print(publicsuffix2.get_sld(host, strict=False))
+    sys.exit(0)
+except ImportError:
+    pass
+parts = host.split(".")
+if len(parts) > 2 and parts[-1] in ("uk", "au", "jp", "br", "nz") and parts[-2] in ("co", "com", "org", "net", "gov", "ac"):
+    print(".".join(parts[-3:]))
+else:
+    print(".".join(parts[-2:]) if len(parts) >= 2 else host)
+PYEOF
+)
+
+# ── Taskbar Tabs registry files ──
+TASKBAR_DIR="$PROFILE_DIR/taskbartabs"
+ICONS_DIR="$TASKBAR_DIR/icons"
+REGISTRY="$TASKBAR_DIR/taskbartabs.json"
+mkdir -p "$ICONS_DIR"
+
+# ── Dedupe: reuse an existing Taskbar Tab for the same base domain ──
+UUID=""
+if [[ -f $REGISTRY ]]; then
+  UUID=$(python3 - "$REGISTRY" "$BASE_DOMAIN" <<'PYEOF'
+import json, sys
+reg_path, base_domain = sys.argv[1:]
+try:
+    with open(reg_path, encoding="utf-8") as f:
+        data = json.load(f)
+except (ValueError, OSError):
+    sys.exit(0)
+for tt in data.get("taskbarTabs", []):
+    for scope in tt.get("scopes", []):
+        scope_host = scope.get("hostname", "")
+        if scope_host == base_domain or scope_host.endswith("." + base_domain):
+            print(tt.get("id", ""))
+            sys.exit(0)
+sys.exit(0)
+PYEOF
+)
+fi
+
+if [[ -n $UUID ]]; then
+  echo "Existing web app for $BASE_DOMAIN (id $UUID); reusing it."
+fi
+if [[ -z $UUID ]]; then
+  UUID=$(cat /proc/sys/kernel/random/uuid)
+fi
+
+SHORTCUT="zen.webapp-$UUID.desktop"
+
+# ── Icon: manifest icons (192/512) -> apple-touch-icon -> favicon service ──
+fetch_icon() {
+  local site_url="$1" dest="$2"
+  local origin page icon_url
+  origin=$(sed -E 's|^(https?://[^/]+).*|\1|' <<<"$site_url")
+
+  local manifest icon_src
+  manifest=$(curl -fsSL --max-time 5 "$site_url/manifest.json" 2>/dev/null || true)
+  icon_src=$(python3 - "$manifest" <<'PYEOF' 2>/dev/null || true
+import json, sys
+try:
+    m = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(0)
+icons = m.get("icons", [])
+def size_of(i):
+    s = i.get("sizes", "")
+    if "x" not in s:
+        return 0
+    try:
+        return int(s.split("x")[0])
+    except ValueError:
+        return 0
+icons = sorted(icons, key=size_of, reverse=True)
+for i in icons:
+    src = i.get("src", "")
+    if src:
+        print(src)
+        break
+PYEOF
+)
+  if [[ -n $icon_src ]]; then
+    case $icon_src in
+    http://* | https://*) ;;
+    //*) icon_src="https:$icon_src" ;;
+    /*) icon_src="$origin$icon_src" ;;
+    ?*) icon_src="$origin/$icon_src" ;;
+    esac
+    curl -fsSL --max-time 10 -o "$dest" "$icon_src" 2>/dev/null && return 0
+  fi
+
+  page=$(curl -fsSL --max-time 5 "$site_url" 2>/dev/null | head -c 100000 | tr '\n' ' ')
+  icon_url=$(grep -oiE "<link[^>]*rel=[\"'][^\"']*apple-touch-icon[^\"']*[\"'][^>]*>" <<<"$page" |
+    grep -oiE "href=[\"'][^\"']+" | head -1 | sed -E "s/^href=[\"']//")
+
+  case $icon_url in
+  http://* | https://*) ;;
+  //*) icon_url="https:$icon_url" ;;
+  /*) icon_url="$origin$icon_url" ;;
+  ?*) icon_url="$origin/$icon_url" ;;
+  esac
+
+  { [[ -n $icon_url ]] && curl -fsSL --max-time 10 -o "$dest" "$icon_url" 2>/dev/null; } ||
+    curl -fsSL --max-time 10 -o "$dest" "$origin/apple-touch-icon.png" 2>/dev/null ||
+    curl -fsSL --max-time 10 -o "$dest" "https://www.google.com/s2/favicons?domain=$site_url&sz=256" 2>/dev/null
+
+  [[ -s $dest ]] && [[ $(file -b --mime-type "$dest" 2>/dev/null) == image/* ]]
+}
+
+ICON_PATH="$ICONS_DIR/$UUID.png"
+if [[ -n $ICON_REF && -f $ICON_REF ]]; then
+  cp "$ICON_REF" "$ICON_PATH"
+elif [[ $ICON_REF =~ ^https?:// ]]; then
+  curl -fsSL --max-time 10 -o "$ICON_PATH" "$ICON_REF" 2>/dev/null || true
+elif [[ ! -s $ICON_PATH ]] || [[ $(file -b --mime-type "$ICON_PATH" 2>/dev/null) != image/* ]]; then
+  if ! fetch_icon "$APP_URL" "$ICON_PATH"; then
+    rm -f "$ICON_PATH"
+    echo "Warning: could not fetch an icon; the generic one will be used." >&2
+  fi
+fi
+
+# Zen keeps the registry in memory; warn so the user knows it needs a restart.
+if omarchy-webapp-zen-profile running; then
+  echo "Note: Zen is running and keeps the registry in memory; restart Zen to see the new app." >&2
+fi
+
+# ── Register the Taskbar Tab in Zen's registry (atomic write, upsert by id) ──
+python3 - "$REGISTRY" "$UUID" "$BASE_DOMAIN" "$APP_URL" "$APP_NAME" "$SHORTCUT" <<'PYEOF'
+import json, os, sys, tempfile
+
+registry_path, uuid, base_domain, start_url, name, shortcut = sys.argv[1:]
+
+data = {"version": 1, "taskbarTabs": []}
+if os.path.exists(registry_path):
+    try:
+        with open(registry_path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (ValueError, OSError):
+        data = {"version": 1, "taskbarTabs": []}
+
+entry = {
+    "id": uuid,
+    "scopes": [{"hostname": base_domain}],
+    "userContextId": 0,
+    "startUrl": start_url,
+    "name": name,
+    "shortcutRelativePath": shortcut,
+}
+
+tabs = data.setdefault("taskbarTabs", [])
+for i, tt in enumerate(tabs):
+    if tt.get("id") == uuid:
+        tabs[i] = entry
+        break
+else:
+    tabs.append(entry)
+
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(registry_path), suffix=".tmp")
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(data, f, separators=(",", ":"))
+    os.replace(tmp, registry_path)
+except Exception:
+    os.unlink(tmp)
+    raise
+PYEOF
+
+# ── Create the .desktop launcher (same shape Zen generates itself) ──
+ZEN_BIN=$(omarchy-webapp-zen-profile bin)
+
+DESKTOP_FILE="$HOME/.local/share/applications/$SHORTCUT"
+mkdir -p "$(dirname "$DESKTOP_FILE")"
+
+# Sanitize user input for the Desktop Entry spec: Name= cannot contain
+# newlines or reserved chars; Exec= argument values need quoting of & and $.
+SAFE_NAME=$(printf '%s' "$APP_NAME" | tr '\n' ' ' | sed 's/[=;]//g')
+SAFE_URL=$(printf '%s' "$APP_URL" | sed 's/&/\\&/g; s/\$/\\$/g; s/`/\\`/g')
+
+cat >"$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=$SAFE_NAME
+Icon="$ICON_PATH"
+Exec="$ZEN_BIN" "-taskbar-tab" "$UUID" "-new-window" "$SAFE_URL" "-profile" "$PROFILE_DIR" "-container" "0"
+EOF
+
+chmod +x "$DESKTOP_FILE"
+update-desktop-database "$HOME/.local/share/applications" &>/dev/null || true
+
+echo "Web app installed: $APP_NAME"
+echo "  Launcher: $DESKTOP_FILE"
+echo "  Open it from the app launcher (SUPER + SPACE) or: omarchy webapp launch $APP_NAME"
