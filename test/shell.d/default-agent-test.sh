@@ -369,8 +369,8 @@ assert_bypass() {
 assert_launch pi pi "Review this project"
 assert_launch omp omp --auto-approve -- "Review this project"
 assert_launch opencode opencode --auto --prompt "Review this project"
-assert_launch claude claude --permission-mode bypassPermissions -- "Review this project"
-assert_launch codex codex --dangerously-bypass-approvals-and-sandbox -- "Review this project"
+assert_launch claude claude --permission-mode auto -- "Review this project"
+assert_launch codex codex --approve-for-me -- "Review this project"
 assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
 assert_launch gemini gemini --yolo --prompt-interactive "Review this project"
@@ -380,8 +380,8 @@ pass "agent launcher adapts initial prompts for every supported agent"
 assert_bypass pi pi
 assert_bypass omp omp --auto-approve
 assert_bypass opencode opencode --auto
-assert_bypass claude claude --permission-mode bypassPermissions
-assert_bypass codex codex --dangerously-bypass-approvals-and-sandbox
+assert_bypass claude claude --permission-mode auto
+assert_bypass codex codex --approve-for-me
 assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
 assert_bypass gemini gemini --yolo
