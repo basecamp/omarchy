@@ -13,7 +13,10 @@ if (( EUID == 0 )); then
 fi
 
 source_dir="$OMARCHY_PATH/agents/maintainers"
-skill_dirs=(~/.agents/skills ~/.claude/skills ~/.codex/skills ~/.pi/agent/skills)
+
+# Codex and Pi both read ~/.agents/skills, so they need no directory of their
+# own. Claude Code only reads ~/.claude/skills.
+skill_dirs=(~/.agents/skills ~/.claude/skills)
 
 if (( $# > 1 )); then
   echo "Usage: omarchy dev maintainer-skills [--unlink]" >&2
