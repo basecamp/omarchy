@@ -333,6 +333,7 @@
   "update.config": {"icon":"","label":"Config","title":"Reset to default"},
   "update.themes": {"icon":"󰸌","label":"Extra Themes","action":"omarchy-launch-floating-terminal-with-presentation omarchy-theme-update"},
   "update.backup": {"icon":"󰁯","label":"Backup","action":"omarchy-launch-floating-terminal-with-presentation omarchy-backup"},
+  "update.restore": {"icon":"󰦛","label":"Restore","action":"omarchy-launch-floating-terminal-with-presentation omarchy-restore"},
   "update.process": {"icon":"","label":"Process","title":"Restart"},
   "update.hardware": {"icon":"󰇅","label":"Hardware","title":"Restart"},
   "update.firmware": {"icon":"","label":"Firmware","action":"omarchy-launch-floating-terminal-with-presentation omarchy-update-firmware"},

@@ -159,6 +159,13 @@ baks_after=$(find "$TEST_HOME" -name "*.bak.*" | sort)
 [[ $baks_before == "$baks_after" ]] || fail "a second restore changes nothing"
 pass "a second restore changes nothing"
 
+# Without a backup, a URL, or a terminal to prompt in, restore must refuse
+EMPTY_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$SCRATCH" "$EMPTY_HOME"' EXIT
+HOME="$EMPTY_HOME" PATH="$SCRATCH/bin:$PATH" "$ROOT/bin/omarchy-restore" </dev/null >/dev/null 2>&1 &&
+  fail "restore refuses to run without a backup or URL"
+pass "restore refuses to run without a backup or URL"
+
 # Recovery output (mounts, EFI order) may legitimately shift between runs on a
 # live machine, so only non-recovery paths must be unchanged after a restore.
 run "$ROOT/bin/omarchy-backup" >"$SCRATCH/backup2.log" 2>&1

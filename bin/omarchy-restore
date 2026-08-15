@@ -29,9 +29,18 @@ if [[ ${1:-} == *"://"* || ${1:-} == *"@"*:* ]]; then
   shift
 fi
 
+# No backup and no URL: ask for one, the way omarchy-theme-install does.
+# For a private repo, git prompts for credentials during the clone.
 if [[ ! -d $BACKUP_DIR ]]; then
-  echo "No backup found at $BACKUP_DIR. Pass your repo URL to clone it:" >&2
-  usage
+  echo -e "\e[32mRestore your machine from its backup repo\e[0m\n"
+  REPO_URL=$(gum input --placeholder="Git repo URL (https or git@host:org/repo.git)" --header="")
+
+  if [[ -z $REPO_URL ]]; then
+    echo "No backup found at $BACKUP_DIR. Pass your repo URL to clone it:" >&2
+    usage
+  fi
+
+  git clone "$REPO_URL" "$BACKUP_DIR" || exit 1
 fi
 
 declare -A RESTORE
