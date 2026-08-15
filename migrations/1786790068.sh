@@ -14,9 +14,9 @@ restored=0
 for desktop in "$apps_dir"/*.desktop; do
   [[ -f $desktop ]] || continue
   icon=$(sed -n 's/^Icon=//p' "$desktop" | head -1)
-  [[ $icon == "$icons_dir/"* ]] || continue
-  [[ -e $icon ]] && continue
   icon_name="${icon##*/}"
+  [[ $icon == "$icons_dir/$icon_name" ]] || continue
+  [[ -e $icon ]] && continue
   for backup in "$apps_dir"/icons.omarchy-upgrade-to-quattro.*.bak/"$icon_name"; do
     [[ -f $backup ]] || continue
     mkdir -p "$icons_dir"

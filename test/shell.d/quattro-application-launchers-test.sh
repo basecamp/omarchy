@@ -87,3 +87,12 @@ ALACRITTY_PRESENT=0 run_migration
 [[ $(<"$icons/GitHub.png") == already-there ]] || fail "migration does not overwrite an icon that is already in place"
 [[ ! -e $CALLS || ! -s $CALLS ]] || fail "migration is a no-op when nothing needs repair" "$(cat "$CALLS")"
 pass "migration is a no-op when icons are already present"
+
+reset_home
+printf 'github-icon\n' >"$backup/GitHub.png"
+write_desktop "$apps/GitHub.desktop" "$icons/../GitHub.png"
+ALACRITTY_PRESENT=0 run_migration
+
+[[ ! -e $apps/GitHub.png ]] || fail "migration does not restore through a parent path in Icon="
+[[ ! -e $icons/GitHub.png ]] || fail "migration does not restore a non-exact Icon= path"
+pass "migration ignores Icon= paths that leave the icons directory"
