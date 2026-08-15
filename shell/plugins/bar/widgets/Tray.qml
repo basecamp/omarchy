@@ -234,6 +234,10 @@ BarWidget {
         reserveSpace: true
         pinOnClick: false
         animationDuration: root.animationDuration
+        // Size explicitly to the reserved drawer block so the hover/click area
+        // is unambiguous (Item defaults to implicit size, but be explicit here).
+        width: implicitWidth
+        height: root.barSize
         visible: root.allItems.length > 0
         onChevronPressed: function(button) {
           if (button === Qt.RightButton) root.managePopupOpen = !root.managePopupOpen
@@ -281,6 +285,10 @@ BarWidget {
         reserveSpace: true
         pinOnClick: false
         animationDuration: root.animationDuration
+        // Size explicitly to the reserved drawer block so the hover/click area
+        // is unambiguous (Item defaults to implicit size, but be explicit here).
+        width: root.barSize
+        height: implicitHeight
         visible: root.allItems.length > 0
         onChevronPressed: function(button) {
           if (button === Qt.RightButton) root.managePopupOpen = !root.managePopupOpen
