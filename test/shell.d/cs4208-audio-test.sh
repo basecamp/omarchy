@@ -50,7 +50,8 @@ cat >"$stub_bin/dkms" <<'SH'
 #!/bin/bash
 
 if (( ${CS4208_DKMS_INSTALLED:-0} == 1 )); then
-  echo 'macbook12-audio/0.1, 7.1.8-arch1-3, x86_64: installed (Original modules exist)'
+  # The name upstream's dkms.conf registers, which is what dkms status prints.
+  echo 'macbook12-audio-driver/0.1, 7.1.8-arch1-3, x86_64: installed (Original modules exist)'
   exit 0
 fi
 echo 'macbook12-spi-driver/0+git.315: added'

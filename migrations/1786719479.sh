@@ -15,7 +15,7 @@ if omarchy-pkg-present macbook12-audio-driver-dkms; then
   exit 0
 fi
 
-if dkms status 2>/dev/null | grep -q '^macbook12-audio/'; then
+if dkms status 2>/dev/null | grep -q '^macbook12-audio-driver/'; then
   exit 0
 fi
 
