@@ -437,9 +437,9 @@ def usage_percent(value: Any) -> float:
     return -1.0
   if n != n or n < 0:
     return -1.0
-  if n > 1:
-    return min(1.0, n / 100.0)
-  return min(1.0, n)
+  # creditUsagePercent is 0-100, like the productUsage percentages beside it,
+  # so 1.0 is one percent of the pool rather than all of it.
+  return min(1.0, n / 100.0)
 
 
 def period_label(period_type: str) -> str:

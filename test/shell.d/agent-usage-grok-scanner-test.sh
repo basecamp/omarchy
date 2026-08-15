@@ -218,6 +218,12 @@ limits=$(probe_record "$billing" "$user" force)
   fail "Grok collector probes billing and user once" "$limits"
 pass "Grok collector reads weekly limits and extra credits"
 
+# creditUsagePercent is a 0-100 percentage, so 0.4 is under one percent used.
+fraction=$(probe_record '{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","end":"2026-08-15T14:46:02.562637+00:00"},"creditUsagePercent":0.4}}' "$user" force)
+[[ $(jq -r '.limits[0].percent' <<<"$fraction") == "0.004" ]] ||
+  fail "Grok collector reads creditUsagePercent as a percentage" "$fraction"
+pass "Grok collector reads creditUsagePercent as a percentage"
+
 # An expired token must not hit the network.
 EXPIRED_HOME=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME" "$OTHER_HOME" "$CACHE_HOME" "$EXPIRED_HOME"' EXIT
