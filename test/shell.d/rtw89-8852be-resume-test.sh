@@ -12,6 +12,8 @@ migration="$ROOT/migrations/1786812448.sh"
 grep -q 'realtek/fix-rtw89-8852be-resume.sh' "$all" ||
   fail "the RTL8852BE resume hook runs during hardware setup"
 [[ -x $hook ]] || fail "the sleep hook is executable so systemd-sleep will run it"
+! grep -E 'lspci[^\n]*\|' "$leaf" "$migration" ||
+  fail "hardware detection buffers lspci instead of piping it to grep"
 pass "the RTL8852BE resume hook is wired and executable"
 
 test_tmp=$(mktemp -d)
