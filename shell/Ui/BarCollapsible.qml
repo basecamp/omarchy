@@ -2,22 +2,20 @@ import QtQuick
 import qs.Commons
 
 // Collapsible bar container. Hides its content behind a chevron and reveals it
-// with the same hover-to-expand motion the system tray drawer uses, so a group
-// of bar widgets can be tucked away and slid back into view.
+// with a hover-to-expand slide. This is the single source of the collapse/expand
+// motion for the bar: the system tray drawer and the widget group both use it,
+// so the two never drift.
 //
-// The animation constants (600ms, OutCubic) are meant to be the shared source
-// of truth for every collapsing bar surface: the tray drawer in
-// `plugins/bar/widgets/Tray.qml` currently inlines the same values and is meant
-// to migrate onto this component so the two never drift.
+// Two layout modes:
+//   reserveSpace: false (default, widget groups) — space-saving: collapsed the
+//     container is just the chevron and it grows to fit its content as it opens.
+//   reserveSpace: true (system tray) — the full extent is always reserved; the
+//     chevron migrates and the content slides in and out beneath it, and the
+//     empty reserved area is masked so it does not steal hover or clicks.
 //
-// This first cut is space-saving: collapsed the container is just the chevron,
-// and it grows to fit its content as it opens. (The tray additionally reserves
-// its full extent while collapsed; adding that mode here is the follow-up that
-// lets the tray adopt this component.)
-//
-// Content is supplied as a Component rather than as default children so the
-// chevron and clip declared below are not swallowed by a default-property alias,
-// and so the instantiated item is available to measure for the drawer extent.
+// Content is supplied as a Component (not default children) so the chevron and
+// clip below are not swallowed by a default-property alias, and so the loaded
+// item is available to measure for the drawer extent.
 Item {
   id: root
 
@@ -34,11 +32,20 @@ Item {
 
   property bool collapsedByDefault: true
   property bool expandOnHover: true
+  // Reserve the full extent while collapsed (tray drawer) instead of shrinking
+  // to just the chevron (widget group).
+  property bool reserveSpace: false
+  // Left-click the chevron to pin the drawer open. The tray drives reveal by
+  // hover alone and uses the chevron's right button for its manage popup, so it
+  // turns this off and listens to chevronPressed instead.
+  property bool pinOnClick: true
   // Chevron glyph (the same one the tray drawer uses). Escaped codepoint on
   // purpose: raw Nerd Font glyphs can be mangled by file tooling, so the default
   // stays stable this way.
   property string icon: "\uf053"
   property int animationDuration: 600
+
+  signal chevronPressed(int button)
 
   // A hover reveals transiently; a chevron click pins the drawer open so it
   // survives the pointer leaving. collapsedByDefault seeds the pinned state.
@@ -50,12 +57,39 @@ Item {
   property real revealProgress: open ? 1 : 0
   readonly property real revealExtent: drawerExtent * revealProgress
 
+  // Extent occupied beyond the chevron: the full drawer when space is reserved,
+  // otherwise only the slice revealed so far.
+  readonly property real reservedExtent: reserveSpace ? drawerExtent : revealExtent
+  // In reserve mode the chevron migrates as the drawer opens and the content
+  // slides under it; in space-saving mode the chevron is fixed and the content
+  // is wiped in from it.
+  readonly property real chevronOffset: reserveSpace ? (drawerExtent - revealExtent) : 0
+  readonly property real clipExtent: reserveSpace ? drawerExtent : revealExtent
+  readonly property real contentOffset: reserveSpace ? (drawerExtent - revealExtent) : 0
+
   Behavior on revealProgress {
     NumberAnimation { duration: root.animationDuration; easing.type: Easing.OutCubic }
   }
 
-  implicitWidth: vertical ? barSize : Math.round(chevron.implicitWidth + revealExtent)
-  implicitHeight: vertical ? Math.round(chevron.implicitHeight + revealExtent) : barSize
+  implicitWidth: vertical ? barSize : Math.round(chevron.implicitWidth + reservedExtent)
+  implicitHeight: vertical ? Math.round(chevron.implicitHeight + reservedExtent) : barSize
+
+  // Reserved-but-empty space must not react to the pointer, or hovering the gap
+  // beside a collapsed drawer would expand it and clicks would be swallowed.
+  // Only the chevron and the revealed content are live. Nothing to mask in
+  // space-saving mode, where the block shrinks to the chevron.
+  containmentMask: root.reserveSpace ? reserveMask : null
+  QtObject {
+    id: reserveMask
+    function contains(point: point): bool {
+      if (root.vertical) {
+        if (point.x < 0 || point.x > root.width) return false
+        return point.y >= root.chevronOffset && point.y <= root.implicitHeight
+      }
+      if (point.y < 0 || point.y > root.height) return false
+      return point.x >= root.chevronOffset && point.x <= root.implicitWidth
+    }
+  }
 
   // Whole-container hover drives the transient reveal. A HoverHandler on the
   // root sees the chevron and the revealed content as one region, so sliding
@@ -68,34 +102,34 @@ Item {
   BarIconButton {
     id: chevron
     bar: root.bar
-    x: 0
-    y: 0
+    x: root.vertical ? 0 : root.chevronOffset
+    y: root.vertical ? root.chevronOffset : 0
     width: implicitWidth
     height: implicitHeight
     text: root.icon
     textRotation: root.vertical ? 90 : 0
-    // Left-click pins/unpins; the reveal itself is handled by hover above.
     onPressed: function(button) {
-      if (button === Qt.LeftButton) root.pinnedOpen = !root.pinnedOpen
+      root.chevronPressed(button)
+      if (root.pinOnClick && button === Qt.LeftButton) root.pinnedOpen = !root.pinnedOpen
     }
   }
 
-  // The revealed slice. Clipped so the content is wiped in from the chevron as
-  // the slice grows, and so a partially-open drawer never paints past its edge.
+  // The revealed slice. Clipped so the content is wiped/slid in from the chevron
+  // as the slice grows, and so a partially-open drawer never paints past its edge.
   Item {
     id: revealClip
     x: root.vertical ? 0 : chevron.implicitWidth
     y: root.vertical ? chevron.implicitHeight : 0
-    width: root.vertical ? root.barSize : Math.round(root.revealExtent)
-    height: root.vertical ? Math.round(root.revealExtent) : root.barSize
+    width: root.vertical ? root.barSize : Math.round(root.clipExtent)
+    height: root.vertical ? Math.round(root.clipExtent) : root.barSize
     clip: true
 
-    // The content is laid out at its full extent regardless of how far the slice
-    // has opened, so its widgets never reflow as the drawer animates.
+    // The content is laid out at its full extent regardless of how far the
+    // drawer has opened, so its widgets never reflow as it animates.
     Loader {
       id: contentLoader
-      x: 0
-      y: 0
+      x: root.vertical ? 0 : Math.round(root.contentOffset)
+      y: root.vertical ? Math.round(root.contentOffset) : 0
       width: root.vertical ? root.barSize : root.drawerExtent
       height: root.vertical ? root.drawerExtent : root.barSize
       sourceComponent: root.contentComponent

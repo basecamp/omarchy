@@ -12,6 +12,7 @@ const utilSource = fs.readFileSync(root + '/shell/Commons/Util.qml', 'utf8')
 const uiQmldir = fs.readFileSync(root + '/shell/Ui/qmldir', 'utf8')
 const collapsibleSource = fs.readFileSync(root + '/shell/Ui/BarCollapsible.qml', 'utf8')
 const barGroupSource = fs.readFileSync(root + '/shell/plugins/bar/BarGroup.qml', 'utf8')
+const traySource = fs.readFileSync(root + '/shell/plugins/bar/widgets/Tray.qml', 'utf8')
 
 // A type:"group" entry is a structural wrapper the bar renders as a collapsible
 // drawer of child widgets. BarModel recognises it and reads its children.
@@ -81,4 +82,14 @@ assert(
   'the collapsible animates its reveal with an OutCubic curve'
 )
 assert(/animationDuration: 600/.test(collapsibleSource), 'the collapsible matches the tray drawer duration')
+
+// The tray drawer and the widget group share BarCollapsible rather than forking
+// the collapse/expand animation. The collapsible offers the tray's reserve-space
+// mode and a chevron-press hook for its manage popup, and the tray drives both
+// through it instead of running its own reveal.
+assert(/property bool reserveSpace/.test(collapsibleSource), 'the collapsible offers a reserve-space (tray) mode')
+assert(/signal chevronPressed/.test(collapsibleSource), 'the collapsible exposes chevron presses for the tray manage popup')
+assert(/BarCollapsible \{[\s\S]*?reserveSpace: true/.test(traySource), 'the tray drawer uses BarCollapsible in reserve-space mode')
+assert(/onChevronPressed:[\s\S]*?managePopupOpen/.test(traySource), 'the tray opens its manage popup from the shared chevron')
+assert(!/Behavior on revealProgress/.test(traySource), 'the tray no longer runs its own forked reveal animation')
 JS
