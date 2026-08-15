@@ -39,3 +39,10 @@ case ":$PATH:" in
   *) PATH="${PATH:+$PATH:}$HOME/.local/bin" ;;
 esac
 export PATH
+
+# Omarchy installs libvips for image-picker thumbnails, not as a Node.js build
+# dependency. Keep sharp <= 0.34 on its packaged binaries unless the user opts
+# in to the system libvips by setting this variable to an empty value.
+if [ -z "${SHARP_IGNORE_GLOBAL_LIBVIPS+x}" ]; then
+  export SHARP_IGNORE_GLOBAL_LIBVIPS=1
+fi
