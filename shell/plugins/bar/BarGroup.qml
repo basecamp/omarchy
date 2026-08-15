@@ -33,9 +33,10 @@ Item {
     bar: root.bar
     collapsedByDefault: root.groupSettings.collapsed !== false
     expandOnHover: root.groupSettings.expandOnHover !== false
-    // Defaults to the tray drawer's chevron; an entry may override it via "icon".
+    // A distinct default glyph so a group next to the tray drawer does not read
+    // as a second tray; an entry may override it via "icon".
     icon: root.groupSettings.icon !== undefined && root.groupSettings.icon !== null
-      ? String(root.groupSettings.icon) : "\uf053"
+      ? String(root.groupSettings.icon) : "\uf141"
 
     contentComponent: Component {
       Loader {
