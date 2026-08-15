@@ -144,6 +144,6 @@ set_vivaldi_native_theme() {
 
 # A running Vivaldi overwrites Preferences on exit, so only persist the native
 # theme while it is closed. The live loader covers the running session.
-if ! pgrep -x 'vivaldi|vivaldi-bin' >/dev/null 2>&1; then
+if ! pgrep -x vivaldi >/dev/null 2>&1 && ! pgrep -x vivaldi-bin >/dev/null 2>&1; then
   set_vivaldi_native_theme
 fi
