@@ -44,11 +44,21 @@ if git -C "$BACKUP_DIR" remote get-url origin &>/dev/null; then
     echo -e "\e[33mCould not pull latest backup; restoring from local copy.\e[0m" >&2
 fi
 
-# Copy one file into place, setting aside any differing existing version
+# Copy one file into place, setting aside any differing existing version.
+# Symlinks are compared by link target and replaced, never followed, so a
+# link to a directory can't cause a copy into the directory it points at.
 restore_file() {
   local source=$1 target=$2
-  if [[ -e $target || -L $target ]] && ! cmp -s "$source" "$target"; then
+
+  if [[ -L $source && -L $target ]]; then
+    [[ $(readlink "$source") == $(readlink "$target") ]] && return 0
+  elif [[ ! -L $source && ! -L $target && -f $target ]]; then
+    cmp -s "$source" "$target" && return 0
+  fi
+
+  if [[ -e $target || -L $target ]]; then
     cp -a "$target" "$target.bak.$STAMP" 2>/dev/null
+    rm -rf "$target"
   fi
   mkdir -p "$(dirname "$target")"
   cp -a "$source" "$target"
