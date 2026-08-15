@@ -118,7 +118,11 @@ if [[ ! -f $authfile ]]; then
   # closed pipe as soon as a second key is attached, and pipefail reports that
   # SIGPIPE as a failure that set -e acts on.
   device=${tokens%%:*}
-  device_info=$(fido2-token -I "$device")
+
+  if ! device_info=$(fido2-token -I "$device"); then
+    echo -e "\e[31m\nCouldn't read the FIDO2 key's capabilities. Replug it and try again.\e[0m"
+    exit 1
+  fi
 
   # Refuse a key that cannot be registered before asking for a password, not
   # after.

@@ -12,6 +12,7 @@ stages="$test_tmp/stages.log"
 calls="$test_tmp/calls.log"
 pamu_targets="$test_tmp/pamu-targets.log"
 pamu_args="$test_tmp/pamu-args.log"
+output="$test_tmp/output.log"
 bare_mktemp="$test_tmp/bare-mktemp.log"
 credential="tester:credential-handle,public-key,es256,+presence"
 authdir="$test_tmp/etc-fido2"
@@ -19,6 +20,7 @@ authfile="$authdir/fido2"
 setup_copy="$test_tmp/setup.sh"
 default_token_info='options: rk, up, noplat, clientPin, pinUvAuthToken'
 token_info=$default_token_info
+token_info_fails=0
 mkdir -p "$stub_bin"
 
 cleanup() {
@@ -221,6 +223,7 @@ case "${1:-}" in
     ;;
   -I)
     [[ ${2:-} == "/dev/hidraw0" ]] || exit 94
+    [[ $TEST_TOKEN_INFO_FAILS == "0" ]] || exit 1
     printf '%s\n' "$TEST_TOKEN_INFO"
     ;;
   *)
@@ -280,7 +283,9 @@ reset_run() {
   : >"$pamu_targets"
   : >"$pamu_args"
   : >"$bare_mktemp"
+  : >"$output"
   token_info=$default_token_info
+  token_info_fails=0
   rm -rf "$authdir"
 }
 
@@ -295,8 +300,9 @@ invoke_setup() {
     TEST_LOG="$calls" TEST_MKTEMP_MODE="$mktemp_mode" TEST_PAMU_MODE="$pamu_mode" \
     TEST_PAMU_ARGS="$pamu_args" TEST_PAMU_TARGETS="$pamu_targets" TEST_STAGES="$stages" \
     TEST_TMP="$test_tmp" TEST_TOKEN_INFO="$token_info" \
+    TEST_TOKEN_INFO_FAILS="$token_info_fails" \
     PATH="$stub_bin:$ROOT/bin:$PATH" \
-    bash "$setup_copy" </dev/null >/dev/null
+    bash "$setup_copy" </dev/null >"$output"
 }
 
 run_setup() {
@@ -575,3 +581,19 @@ invoke_setup >/dev/null 2>&1 &&
 [[ ! -s $calls ]] ||
   fail "FIDO2 setup refuses an unregisterable key before it escalates" "$(cat "$calls")"
 pass "FIDO2 setup refuses an alwaysUv key with no verification configured, before escalating"
+
+# fido2-token -I failing aborted the setup through set -e, printing nothing at
+# all: the terminal closed on a successful-looking run that had registered
+# nothing. Assert the explanation, not just the exit status.
+reset_run
+token_info_fails=1
+invoke_setup >/dev/null 2>&1 &&
+  fail "FIDO2 setup fails when it cannot read the key's capabilities"
+grep -Fq "Couldn't read the FIDO2 key's capabilities" "$output" ||
+  fail "FIDO2 setup says why it gave up on a key it cannot read" "$(cat "$output")"
+[[ ! -s $stages && ! -s $pamu_args ]] ||
+  fail "FIDO2 setup stages nothing for a key it cannot read"
+[[ ! -e $authfile ]] || fail "FIDO2 setup publishes nothing for a key it cannot read"
+[[ ! -s $calls ]] ||
+  fail "FIDO2 setup gives up on an unreadable key before it escalates" "$(cat "$calls")"
+pass "FIDO2 setup reports why it bailed when the key cannot be read"
