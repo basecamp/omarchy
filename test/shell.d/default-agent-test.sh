@@ -95,6 +95,7 @@ export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
 grok_package="npm:@xai-official/grok"
 omp_package="github:can1357/oh-my-pi"
 crush_package="crush"
+antigravity_package="ubi:google-antigravity/antigravity-cli"
 
 assert_lazy_stub() {
   local package=$1
@@ -231,7 +232,7 @@ declare -A expected_packages=(
   [codex]="codex"
   [crush]="$crush_package"
   [grok]="$grok_package"
-  [antigravity]="antigravity"
+  [antigravity]="$antigravity_package"
   [copilot]="copilot"
 )
 

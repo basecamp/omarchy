@@ -31,7 +31,7 @@ claude | claude-code) agent="claude"; name="Claude Code" ;;
 codex) agent="codex"; name="Codex" ;;
 crush) agent="crush"; name="Crush" ;;
 grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
-antigravity | antigravity-cli | agy) agent="antigravity"; name="Antigravity" ;;
+antigravity | antigravity-cli | agy) agent="antigravity"; name="Antigravity"; agent_package="ubi:google-antigravity/antigravity-cli" ;;
 copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
 *)
   echo "Usage: omarchy-default-agent <pi|omp|opencode|claude|codex|grok|antigravity|copilot|crush>"
