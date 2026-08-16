@@ -1034,8 +1034,8 @@ Item {
         && completedQuery === root.calculatorQueuedQuery
         && completedQuery === MenuModel.calculatorExpression(root.filterText)
 
-      if (isCurrent && answer) {
-        root.calculatorResultQuery = completedQuery
+      if (isCurrent) {
+        root.calculatorResultQuery = answer ? completedQuery : ""
         root.calculatorResult = answer
         if (root.opened) root.rebuildDisplay()
       }

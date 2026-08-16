@@ -1,3 +1,6 @@
+var CALCULATOR_MAX_EXPRESSION_LENGTH = 160
+var CALCULATOR_MAX_RESULT_LENGTH = 240
+
 function stripJsonc(raw) {
   return String(raw || "")
     .replace(/^\s*\/\/[^\n]*(\n|$)/gm, "")
@@ -9,7 +12,7 @@ function calculatorExpression(value) {
   if (raw.charAt(0) !== "=") return ""
 
   var expression = raw.substring(1).trim()
-  return expression && expression.length <= 160 ? expression : ""
+  return expression && expression.length <= CALCULATOR_MAX_EXPRESSION_LENGTH ? expression : ""
 }
 
 function calculatorResult(output, expression, exitCode, exitStatus) {
@@ -17,7 +20,7 @@ function calculatorResult(output, expression, exitCode, exitStatus) {
 
   var source = String(expression || "").trim()
   var answer = String(output || "").trim().replace(/\s*\n\s*/g, " ")
-  if (!source || !answer || answer.length > 240) return ""
+  if (!source || !answer || answer.length > CALCULATOR_MAX_RESULT_LENGTH) return ""
   if (answer.toLowerCase().indexOf("error") === 0) return ""
 
   var normalized = function(value) {
