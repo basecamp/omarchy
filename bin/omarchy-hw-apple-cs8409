@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether the computer is a 2016–2017 MacBook Pro with CS8409 audio
+# omarchy:hidden=true
+
+# Cirrus CS8409 + MAX98706/SSM3515/TAS5764L. In-tree snd_hda_codec_cs8409
+# does not program those amps. Covers the 2016–2017 13" and 15" MacBook Pros
+# (including the two-port 13" models that have no Touch Bar). T2 and later
+# use a different codec and must not get this driver.
+product_name=$(cat "${OMARCHY_DMI_PRODUCT_NAME:-/sys/class/dmi/id/product_name}" 2>/dev/null)
+[[ $product_name =~ MacBookPro13,[123]|MacBookPro14,[123] ]]
