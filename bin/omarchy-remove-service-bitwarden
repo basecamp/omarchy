@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Remove Bitwarden and its SSH agent configuration.
+# omarchy:requires-sudo=true
+
+env_file=$HOME/.config/uwsm/env.d/bitwarden
+
+rm -f "$env_file"
+omarchy-pkg-drop bitwarden bitwarden-cli
+
+echo ""
+echo "Bitwarden has been removed."
