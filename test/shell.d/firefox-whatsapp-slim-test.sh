@@ -6,15 +6,16 @@ require_command jq
 
 EXT_DIR="$ROOT/default/firefox/extensions/whatsapp-slim"
 
-# The Firefox/Zen port keeps the same content scripts as the Chromium version
-jq -e '
-  .content_scripts[0].css == ["whatsapp.css"] and
-  .content_scripts[0].js == ["system-theme.js"] and
-  .content_scripts[0].run_at == "document_start"
-' "$EXT_DIR/manifest.json" >/dev/null || fail "Firefox WhatsApp Slim keeps the Chromium content scripts"
-pass "Firefox WhatsApp Slim keeps the Chromium content scripts"
+# The Firefox/Zen port keeps the same CSS as the Chromium version
+cmp -s "$EXT_DIR/whatsapp.css" "$ROOT/default/chromium/extensions/whatsapp-slim/whatsapp.css" \
+  || fail "Firefox WhatsApp Slim keeps the Chromium whatsapp.css"
+pass "Firefox WhatsApp Slim keeps the Chromium whatsapp.css"
 
-# It must be a Firefox WebExtension with a stable id, and no Chromium key
+cmp -s "$EXT_DIR/system-theme.js" "$ROOT/default/chromium/extensions/whatsapp-slim/system-theme.js" \
+  || fail "Firefox WhatsApp Slim keeps the Chromium system-theme.js"
+pass "Firefox WhatsApp Slim keeps the Chromium system-theme.js"
+
+# The manifest is a Firefox WebExtension: gecko id, no Chromium key
 jq -e '
   .manifest_version == 3 and
   (.browser_specific_settings.gecko.id == "whatsapp-slim@omarchy.org") and
@@ -22,10 +23,8 @@ jq -e '
 ' "$EXT_DIR/manifest.json" >/dev/null || fail "Firefox WhatsApp Slim has a gecko id and no Chromium key"
 pass "Firefox WhatsApp Slim has a gecko id and no Chromium key"
 
-# The shared CSS/JS files are identical to the Chromium originals
-for f in whatsapp.css system-theme.js; do
-  cmp -s "$ROOT/default/firefox/extensions/whatsapp-slim/$f" \
-        "$ROOT/default/chromium/extensions/whatsapp-slim/$f" \
-    || fail "$f is identical to the Chromium version"
-  pass "$f is identical to the Chromium version"
-done
+# The installer must wrap the CSS in a @-moz-document rule for userContent.css
+installer="$ROOT/bin/omarchy-webapp-zen-install"
+grep -q 'url-prefix("https://web.whatsapp.com/")' "$installer" \
+  || fail "zen-install wraps WhatsApp Slim CSS in @-moz-document"
+pass "zen-install wraps WhatsApp Slim CSS in @-moz-document"
