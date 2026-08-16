@@ -105,7 +105,7 @@ assert_lazy_stub() {
   "$test_home/.local/bin/$command" --version
   mapfile -t mise_calls <"$mise_history"
 
-  [[ ${mise_calls[0]} == "use -g $package" && ${mise_calls[1]} == "x $package -- $command --version" ]] ||
+  [[ ${mise_calls[0]} == "use -g --quiet $package" && ${mise_calls[1]} == "x $package -- $command --version" ]] ||
     fail "$command lazy stub preserves its mise package"
 }
 
@@ -138,6 +138,24 @@ source "$ROOT/migrations/1785617047.sh" >/dev/null
 source "$ROOT/migrations/1785846769.sh" >/dev/null
 [[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
 [[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
+
+# The matcher has to catch a bare oh-my-pi wrapper from either generation of the
+# installer, and leave a wrapper built on the fully qualified package alone.
+for obsolete_form in 'mise use -g "oh-my-pi"' 'mise use -g --quiet "oh-my-pi"'; do
+  printf '#!/bin/bash\n%s || exit 1\n' "$obsolete_form" >"$test_home/.local/bin/omp"
+  chmod +x "$test_home/.local/bin/omp"
+  source "$ROOT/migrations/1785846769.sh" >/dev/null
+  [[ ! -e $test_home/.local/bin/omp ]] ||
+    fail "agent migration removes a wrapper built on [$obsolete_form]"
+done
+
+printf '#!/bin/bash\nmise use -g --quiet "%s" || exit 1\n' "$omp_package" >"$test_home/.local/bin/omp"
+chmod +x "$test_home/.local/bin/omp"
+source "$ROOT/migrations/1785846769.sh" >/dev/null
+[[ -e $test_home/.local/bin/omp ]] ||
+  fail "agent migration keeps a wrapper built on $omp_package"
+rm -f "$test_home/.local/bin/omp"
+
 rm "$test_home/.local/state/omarchy/preinstalls-removed"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"
 
@@ -351,8 +369,8 @@ assert_bypass() {
 assert_launch pi pi "Review this project"
 assert_launch omp omp --auto-approve -- "Review this project"
 assert_launch opencode opencode --auto --prompt "Review this project"
-assert_launch claude claude --permission-mode bypassPermissions -- "Review this project"
-assert_launch codex codex --dangerously-bypass-approvals-and-sandbox -- "Review this project"
+assert_launch claude claude --permission-mode auto -- "Review this project"
+assert_launch codex codex --approve-for-me -- "Review this project"
 assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
 assert_launch gemini gemini --yolo --prompt-interactive "Review this project"
@@ -362,8 +380,8 @@ pass "agent launcher adapts initial prompts for every supported agent"
 assert_bypass pi pi
 assert_bypass omp omp --auto-approve
 assert_bypass opencode opencode --auto
-assert_bypass claude claude --permission-mode bypassPermissions
-assert_bypass codex codex --dangerously-bypass-approvals-and-sandbox
+assert_bypass claude claude --permission-mode auto
+assert_bypass codex codex --approve-for-me
 assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
 assert_bypass gemini gemini --yolo

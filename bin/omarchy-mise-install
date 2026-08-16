@@ -31,7 +31,7 @@ cat >"$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
 export MISE_MINIMUM_RELEASE_AGE=0
 mkdir -p "\$HOME/.config/mise"
-flock "\$HOME/.config/mise/.config.lock" mise use -g "$package" || exit 1
+flock "\$HOME/.config/mise/.config.lock" mise use -g --quiet "$package" || exit 1
 exec mise x "$package" -- "$bin" "\$@"
 EOF
 
