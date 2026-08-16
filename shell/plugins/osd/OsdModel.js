@@ -4,14 +4,14 @@ function clamp(value, min, max) {
 
 // The widest glyph `iconFor` can return. The progress OSD sizes its icon
 // column to it so the bar keeps its place as the icon changes.
-var widestIcon = ""
+var widestIcon = "󰕾"
 
 function iconFor(name, percent) {
   var n = String(name || "").toLowerCase()
-  if (n === "volume-muted" || n === "volume-mute" || n === "muted" || n === "mute") return ""
-  if (n === "volume-low") return ""
-  if (n === "volume-medium") return ""
-  if (n === "volume-high" || n === "volume") return ""
+  if (n === "volume-muted" || n === "volume-mute" || n === "muted" || n === "mute") return "󰖁"
+  if (n === "volume-low") return "󰕿"
+  if (n === "volume-medium") return "󰖀"
+  if (n === "volume-high" || n === "volume") return "󰕾"
   if (n === "microphone-muted" || n === "microphone-off" || n === "mic-muted" || n === "mic-off") return "󰍭"
   if (n === "microphone" || n === "mic") return "󰍬"
   if (n === "keyboard") return "󰌌"
@@ -28,10 +28,10 @@ function iconFor(name, percent) {
   if (n === "media-next" || n === "player-next") return "󰒭"
   if (n === "media-previous" || n === "player-previous") return "󰒮"
   if (n.length > 0) return name
-  if (percent <= 0) return ""
-  if (percent <= 33) return ""
-  if (percent <= 66) return ""
-  return ""
+  if (percent <= 0) return "󰖁"
+  if (percent <= 33) return "󰕿"
+  if (percent <= 66) return "󰖀"
+  return "󰕾"
 }
 
 function stateForShow(iconName, rawMessage, rawValue, rawMax, rawProgressText, rawDuration) {
