@@ -42,14 +42,14 @@ The installer detects Mac hardware and applies the needed fixes automatically: B
 The T1 coprocessor loads `EFI/APPLE/EMBEDDEDOS` from the EFI System Partition at boot. That tree is written by macOS, is unique to this machine (`FDRData`), and cannot be shipped in Omarchy. Collect it while macOS still works, then let Omarchy copy it back after the install.
 
 1. On macOS, wait until the Touch Bar lights up (and any "critical software update" finishes).
-2. Download the collector and run it (double-click in Finder, or `bash copy-t1-firmware.command`). It copies `APPLE/EMBEDDEDOS` onto a USB stick:
+2. Copy the collector off the Omarchy ISO at `install/hardware/apple/copy-t1-firmware.command` onto a USB stick. If you do not have the ISO handy, download the same file:
 
 ```bash
-curl -fsSL https://github.com/basecamp/omarchy/raw/quattro/install/hardware/apple/copy-t1-firmware.command -o copy-t1-firmware.command
+curl -fsSL https://github.com/basecamp/omarchy/raw/HEAD/install/hardware/apple/copy-t1-firmware.command -o copy-t1-firmware.command
 chmod +x copy-t1-firmware.command
 ```
 
-   The same file also ships on the Omarchy ISO at `install/hardware/apple/copy-t1-firmware.command` if you would rather copy it off the stick.
+   Double-click it in Finder, or run `bash copy-t1-firmware.command`. It copies `APPLE/EMBEDDEDOS` onto a USB stick.
 3. Leave that USB plugged in during the Omarchy install. The installer copies the firmware onto the EFI partition when it sees it.
 4. If you install first and copy firmware later: plug the stick in and run `omarchy setup apple touchbar`, then reboot.
 

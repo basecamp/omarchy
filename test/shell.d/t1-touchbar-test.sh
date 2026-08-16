@@ -63,8 +63,12 @@ grep -Fq 'omarchy setup apple touchbar' "$manual" ||
   fail "Mac support chapter documents the setup command"
 ! grep -q 'Touch Bar is non-functional' "$manual" ||
   fail "Mac support chapter no longer lists the bar as unsupported"
-grep -Fq 'copy-t1-firmware.command' "$manual" ||
-  fail "Mac support chapter names the macOS collector"
+grep -Fq 'install/hardware/apple/copy-t1-firmware.command' "$manual" ||
+  fail "Mac support chapter names the ISO collector path"
+! grep -q '/raw/quattro/' "$manual" ||
+  fail "Mac support chapter does not pin the collector to the quattro branch"
+grep -Fq 'https://github.com/basecamp/omarchy/raw/HEAD/install/hardware/apple/copy-t1-firmware.command' "$manual" ||
+  fail "Mac support chapter uses a durable GitHub HEAD URL"
 pass "Mac support chapter documents the USB handoff"
 
 test_tmp=$(mktemp -d)
@@ -179,6 +183,27 @@ grep -Fq $'omarchy-pkg-add\tlinux-headers' "$calls" ||
   fail "T1 migration installs linux-headers"
 [[ -f $OMARCHY_T1_UDEV_DEST ]] || fail "T1 migration writes the udev rule"
 pass "T1 migration installs wiring on T1 hardware"
+
+fail_esp="$test_tmp/fail-esp"
+printf 'not-a-dir\n' >"$fail_esp"
+copy_log="$test_tmp/copy-fail.log"
+: >"$calls"
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_DMI_PRODUCT_NAME="$dmi" \
+  OMARCHY_T1_UDEV_SRC="$udev_src" \
+  OMARCHY_T1_UDEV_DEST="$etc/udev/rules.d/90-apple-t1-touchbar.rules" \
+  OMARCHY_T1_MODULES_LOAD="$etc/modules-load.d/apple-t1-touchbar.conf" \
+  OMARCHY_T1_ESP="$fail_esp" \
+  OMARCHY_T1_MEDIA_ROOTS="$usb" \
+  bash -euo pipefail "$migration" >"$copy_log" 2>&1
+[[ -f $OMARCHY_T1_UDEV_DEST ]] || fail "T1 migration keeps wiring after a firmware copy failure"
+grep -Fq 'could not copy it to the EFI partition' "$copy_log" ||
+  fail "T1 migration reports a firmware copy failure" "$(cat "$copy_log")"
+grep -Fq 'omarchy setup apple touchbar' "$copy_log" ||
+  fail "T1 migration points at the setup command after a copy failure" "$(cat "$copy_log")"
+pass "T1 migration reports a firmware copy failure without aborting"
 
 cat >"$stub_bin/omarchy-hw-apple-t1" <<'SH'
 #!/bin/bash

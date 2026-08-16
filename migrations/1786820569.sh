@@ -22,6 +22,9 @@ t1_install_wiring
 
 if src=$(t1_find_firmware); then
   if esp=$(t1_esp_mount); then
-    t1_copy_firmware "$src" "$esp" || true
+    if ! t1_copy_firmware "$src" "$esp"; then
+      echo "Found T1 firmware on USB but could not copy it to the EFI partition."
+      echo "Wiring is installed; later run: omarchy setup apple touchbar"
+    fi
   fi
 fi
