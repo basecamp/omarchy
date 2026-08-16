@@ -58,7 +58,7 @@ grep -F '/usr/bin/chromium --app=https://messenger.com' "$launch_log" >/dev/null
   fail "webapp launcher keeps the chromium fallback for unsupported browsers" "launch: $(cat "$launch_log")"
 pass "webapp launcher keeps the chromium fallback for unsupported browsers"
 
-rm -f "$test_home/.local/share/applications/chromium.desktop"
+rm -f "$test_home/.local/share/applications/chromium.desktop" "$test_home/.local/share/applications/firefox.desktop"
 
 HOME="$test_home" PATH="$mock_bin:$PATH" BROWSER=epiphany.desktop \
   OMARCHY_TEST_WEBAPP_LAUNCH="$launch_log" \
