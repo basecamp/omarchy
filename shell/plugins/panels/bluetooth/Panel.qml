@@ -31,10 +31,10 @@ Panel {
   // after Bluetooth is switched off.
   //
   // Hardware presence is assumed (true) until a probe proves otherwise: a
-  // completed probe may conclude yes or no from rfkill's stdout, while a
-  // probe that never runs (missing rfkill) concludes nothing and keeps the
-  // previous value. An adapter that reappears immediately clears any stale
-  // "no hardware" conclusion.
+  // completed probe concludes yes or no from rfkill's stdout, and when the
+  // probe cannot run at all (missing rfkill) the state falls back to adapter
+  // presence — the same gate the widget used before. An adapter that appears
+  // at any point is authoritative and clears a stale "no hardware" answer.
   property bool hardwarePresent: true
   property bool probePending: false
   // Set when the user asks to power on while the first probe's answer is
@@ -52,9 +52,14 @@ Panel {
       waitForEnd: true
       onStreamFinished: root.finishProbe(String(text || "").trim().length > 0)
     }
-    // Never strand a probe: a run that produced no stream can't conclude
-    // anything, so it just leaves hardwarePresent at its previous value.
-    onErrorOccurred: root.probePending = false
+    // A probe that never ran can't conclude anything: fall back to adapter
+    // presence, and drop a deferred power-on so a stale intent can't fire
+    // against a much later, unrelated probe.
+    onErrorOccurred: {
+      root.probePending = false
+      root.deferredPowerOn = false
+      root.hardwarePresent = Bluetooth.defaultAdapter !== null
+    }
   }
 
   function probeHardware() {
@@ -65,11 +70,13 @@ Panel {
 
   // Single completion path for every probe. The probePending gate drops any
   // late signal from a superseded run, which keeps one probe in flight at a
-  // time.
+  // time. A live adapter is authoritative even here: a probe that started
+  // before a dongle appeared may report a stale empty listing, so it must
+  // not flip hardwarePresent back to false.
   function finishProbe(devicesListed) {
     if (!root.probePending) return
     root.probePending = false
-    root.hardwarePresent = devicesListed
+    root.hardwarePresent = root.adapter !== null || devicesListed
     if (root.deferredPowerOn) {
       root.deferredPowerOn = false
       if (root.hardwarePresent && !root.adapter)
