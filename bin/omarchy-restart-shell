@@ -24,11 +24,12 @@ fi
 # that holds no lock — sits in that failsafe with no way to authenticate,
 # and a restart plus re-lock is the only way back in without a reboot. So
 # ask the lock service rather than merely pinging the shell: only a locker
-# that reports the lock secure or in progress is worth preserving.
+# that is drawing a surface (sessionLocked) is worth preserving. secure or
+# requested alone is also the wedged "lockscreen app died" state.
 relock=0
 if omarchy-hyprland-session-locked; then
   locking=$(OMARCHY_PATH="$session_omarchy_path" OMARCHY_SHELL_IPC_TIMEOUT=0.5s omarchy-shell lock status 2>/dev/null |
-    jq -r '.secure or .requested' 2>/dev/null)
+    jq -r '(.sessionLocked == true) and (.secure == true or .requested == true)' 2>/dev/null)
   if [[ $locking == "true" ]]; then
     echo "Refusing to restart Omarchy shell while the session is locked." >&2
     exit 1
@@ -47,7 +48,7 @@ relock_session() {
 
   while (( SECONDS < deadline )); do
     state=$(OMARCHY_PATH="$session_omarchy_path" OMARCHY_SHELL_IPC_TIMEOUT=0.5s omarchy-shell lock status 2>/dev/null |
-      jq -r 'if .secure == true then "secure" elif .requested == true then "locking" else "idle" end' 2>/dev/null)
+      jq -r 'if .sessionLocked == true and .secure == true then "secure" elif .sessionLocked == true and .requested == true then "locking" else "idle" end' 2>/dev/null)
 
     case $state in
       secure) return 0 ;;
