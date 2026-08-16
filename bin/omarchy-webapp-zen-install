@@ -154,6 +154,64 @@ if [[ ! -f "$APP_PROFILE/chrome/userChrome.css" ]]; then
 CSS
 fi
 
+# ── Per-site Firefox extensions: install Omarchy's Firefox port of WhatsApp
+# Slim (system theme + collapsed chat list) into the WhatsApp web app profile.
+# Unpacked MV3 extensions need xpinstall.signatures.required=false to load,
+# and a first boot to register them; afterwards we enable them explicitly. ──
+INSTALLED_EXT=""
+install_firefox_extension() {
+  local ext_dir="$1" ext_id="$2" dest_dir="$3"
+  [[ -d $ext_dir ]] || return 0
+  mkdir -p "$dest_dir"
+  (cd "$ext_dir" && zip -qr "$dest_dir/$ext_id.xpi" .) || return 0
+  if ! grep -q "xpinstall.signatures.required" "$APP_PROFILE/user.js" 2>/dev/null; then
+    printf '%s\n' 'user_pref("xpinstall.signatures.required", false);' >> "$APP_PROFILE/user.js"
+  fi
+  INSTALLED_EXT="$ext_id"
+}
+
+case "$BASE_DOMAIN" in
+whatsapp.com)
+  install_firefox_extension \
+    "$OMARCHY_PATH/default/firefox/extensions/whatsapp-slim" \
+    "whatsapp-slim@omarchy.org" \
+    "$APP_PROFILE/extensions"
+  ;;
+esac
+
+# Enable the just-installed extension: Firefox registers new xpi files during
+# a boot but leaves them userDisabled. Do one short headless boot, then flip
+# the flag in extensions.json so the web app starts with the extension on.
+if [[ -n $INSTALLED_EXT && -f "$APP_PROFILE/extensions/$INSTALLED_EXT.xpi" ]]; then
+  ZEN_BIN_BOOT=$(omarchy-webapp-zen-profile bin)
+  setsid "$ZEN_BIN_BOOT" -profile "$APP_PROFILE" >/dev/null 2>&1 &
+  BOOT_PID=$!
+  sleep 6
+  kill "$BOOT_PID" 2>/dev/null || true
+  sleep 1
+  python3 - "$APP_PROFILE/extensions.json" "$INSTALLED_EXT" <<'PYEOF'
+import json, os, sys
+ext_json, ext_id = sys.argv[1:]
+if not os.path.isfile(ext_json):
+    sys.exit(0)
+try:
+    with open(ext_json, encoding="utf-8") as f:
+        data = json.load(f)
+except (ValueError, OSError):
+    sys.exit(0)
+changed = False
+for a in data.get("addons", []):
+    if a.get("id") == ext_id:
+        a["active"] = True
+        a["userDisabled"] = False
+        a["softDisabled"] = False
+        changed = True
+if changed:
+    with open(ext_json, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+PYEOF
+fi
+
 SHORTCUT="zen.webapp-$UUID.desktop"
 
 # ── Icon: manifest icons (192/512) -> apple-touch-icon -> favicon service ──
