@@ -13,6 +13,10 @@ agent_file="$HOME/.config/omarchy/defaults/agent"
 if [[ -f $agent_file ]]; then
   agent=$(<"$agent_file")
   if [[ $agent == "gemini" || $agent == "gemini-cli" ]]; then
-    printf 'antigravity\n' >"$agent_file"
+    if [[ ! -f $HOME/.local/state/omarchy/preinstalls-removed ]]; then
+      printf 'antigravity\n' >"$agent_file"
+    else
+      rm -f "$agent_file"
+    fi
   fi
 fi
