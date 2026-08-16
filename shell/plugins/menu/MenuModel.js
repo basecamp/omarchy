@@ -275,18 +275,42 @@ function parseKeybindings(raw) {
 var SESSION_WRAPPERS = ["setsid", "uwsm-app", "systemd-cat"]
 var LAUNCHER_PREFIX = "omarchy-launch-"
 
+// Words the way a shell splits them, because a pattern matching quoted runs on
+// their own gets `'o'\''h'` — what shell_quote writes for an apostrophe — wrong:
+// the fragments around the escape belong to one word, not three.
 function commandTokens(command) {
   if (Array.isArray(command)) return command.slice()
 
+  var text = String(command || "")
   var tokens = []
-  var pattern = /'([^']*)'|"([^"]*)"|(\S+)/g
-  var match
+  var word = ""
+  var open = false
+  var quote = ""
 
-  while ((match = pattern.exec(String(command || "")))) {
-    if (match[1] !== undefined) tokens.push(match[1])
-    else if (match[2] !== undefined) tokens.push(match[2])
-    else tokens.push(match[3])
+  for (var i = 0; i < text.length; i++) {
+    var character = text.charAt(i)
+
+    if (quote) {
+      if (character === quote) quote = ""
+      else if (character === "\\" && quote === "\"") { word += text.charAt(i + 1); i += 1 }
+      else word += character
+      continue
+    }
+
+    if (character === "'" || character === "\"") { quote = character; open = true; continue }
+    if (character === "\\") { word += text.charAt(i + 1); i += 1; open = true; continue }
+    if (character === " " || character === "\t") {
+      if (word || open) tokens.push(word)
+      word = ""
+      open = false
+      continue
+    }
+
+    word += character
+    open = true
   }
+
+  if (word || open) tokens.push(word)
 
   return tokens
 }

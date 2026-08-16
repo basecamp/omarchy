@@ -170,6 +170,12 @@ assertEqual(
   'menu never guesses an app out of an undeclared launcher name'
 )
 assertEqual(launchKey('uwsm-app -- omawrite'), 'omawrite', 'menu looks past the session wrapper')
+// o.shell_quote writes an apostrophe as '\'' -- three fragments that are one word.
+assertEqual(
+  launchKey("omarchy-launch-webapp 'https://x.test/o'\\''h'"),
+  launchKey(['omarchy-launch-webapp', "https://x.test/o'h"]),
+  'menu splits a command into words the way a shell does, escapes included'
+)
 assertEqual(launchKey('setsid -f chromium'), 'chromium', 'menu looks past the wrapper flags too')
 assertEqual(launchKey('/usr/bin/chromium'), 'chromium', 'menu compares programs by name, not by path')
 assertEqual(
