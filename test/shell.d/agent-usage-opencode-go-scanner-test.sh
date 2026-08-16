@@ -149,7 +149,7 @@ result=$(HOME="$CACHE_HOME" XDG_DATA_HOME="$CACHE_HOME/.local/share" XDG_CACHE_H
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "5" ]] ||
   fail "OpenCode Go collector writes a fresh local-stats cache on first scan" "$result"
 cache_file=$(find "$CACHE_HOME/.cache/omarchy/agent-usage" -maxdepth 1 -name 'opencode-go-scan-*.json' -print -quit 2>/dev/null)
-[[ -n $cache_file && -s $cache_file ]] ||
+[[ -n "$cache_file" && -s "$cache_file" ]] ||
   fail "OpenCode Go collector leaves a cache file behind" "$result"
 [[ $(jq -r '.schemaVersion' "$cache_file") == "1" && $(jq -r '.stats.todayTotalTokens' "$cache_file") == "5" ]] ||
   fail "OpenCode Go collector writes a versioned cache envelope" "$result"
