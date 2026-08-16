@@ -6,6 +6,8 @@
 
 action="${1:-}"
 
+max_percent=150
+
 if [[ -z $action ]]; then
   echo "Usage: omarchy-audio-output-volume <raise|lower|mute-toggle|+N|-N>"
   exit 1
@@ -63,7 +65,7 @@ elif [[ $action =~ ^([+-])([0-9]+)$ ]]; then
 
   if [[ $direction == "+" ]]; then
     next=$((current + step))
-    ((next <= 100)) || next=100
+    ((next <= max_percent)) || next=$max_percent
   else
     next=$((current - step))
     ((next >= 0)) || next=0

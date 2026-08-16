@@ -26,6 +26,7 @@ function outputVolumeName(volume, muted) {
   if (muted) return "Muted"
   var p = Math.round(volume * 100)
   if (p === 0) return "Silenced"
+  if (p > 100) return "Overdrive"
   if (p >= 100) return "Concert hall"
   if (p >= 85) return "Party mode"
   if (p >= 70) return "Cranked up"

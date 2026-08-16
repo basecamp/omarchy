@@ -15,6 +15,7 @@ assert(audio.isAudioSource({ type: 'Audio/Source' }), 'audio detects typed sourc
 
 assertEqual(audio.outputVolumeName(0, false), 'Silenced', 'audio labels silent output')
 assertEqual(audio.outputVolumeName(0.9, false), 'Party mode', 'audio labels loud output')
+assertEqual(audio.outputVolumeName(1.2, false), 'Overdrive', 'audio labels over-amplified output')
 assertEqual(audio.outputVolumeName(0.5, true), 'Muted', 'audio labels muted output')
 
 assertDeepEqual(audio.parseSinkAvailability('alsa_output\t1\nhdmi_output\t0\n'), { alsa_output: true, hdmi_output: false }, 'audio parses sink availability')
