@@ -11,15 +11,16 @@ manual="$ROOT/manual/44-mac-support.md"
 
 assert_hw() {
   local model=$1 expect=$2 description=$3
-  local tmp
+  local tmp got
   tmp=$(mktemp)
   printf '%s\n' "$model" >"$tmp"
   if OMARCHY_DMI_PRODUCT_NAME="$tmp" "$hw"; then
-    [[ $expect == yes ]] || fail "$description"
+    got=yes
   else
-    [[ $expect == no ]] || fail "$description"
+    got=no
   fi
   rm -f "$tmp"
+  [[ $got == "$expect" ]] || fail "$description"
   pass "$description"
 }
 
