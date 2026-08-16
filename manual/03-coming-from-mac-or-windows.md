@@ -6,7 +6,7 @@ If you've spent years on macOS or Windows, your fingers know a hundred things yo
 
 All the muscle memory you've built around Cmd or the Windows key transfers to one key: Super. That's the Windows key on a PC keyboard, and it's the anchor for nearly every hotkey in Omarchy.
 
-Your Spotlight or Raycast or Start-menu reflex becomes `Super + Space`. That opens the Omarchy menu, which launches apps, changes settings, installs software, captures the screen — just about everything. Start typing to filter. There's also a dedicated apps-only menu on `Super + Alt + Space`. See [navigation](04-navigation.md).
+Your Spotlight or Raycast or Start-menu reflex becomes `Super + Space`. That opens the Omarchy menu, which launches apps, changes settings, installs software, captures the screen — just about everything. Start typing to filter, or prefix an expression with `=` to calculate it and press `Enter` to copy the result. There's also a dedicated apps-only menu on `Super + Alt + Space`. See [navigation](04-navigation.md).
 
 ### There's no dock and no desktop icons
 

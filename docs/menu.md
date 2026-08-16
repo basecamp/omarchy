@@ -130,6 +130,17 @@ Adding a provider means adding an entry to the `providers` map in `Menu.qml`
 (script, icon, `actionFor`, optionally `volatile`) and pointing a submenu at
 it with `provider:`.
 
+## Inline calculator
+
+A search beginning with `=` is evaluated by `qalc` after a short debounce.
+The answer appears as the first menu row, and selecting it copies the answer
+to the clipboard. The prefix is deliberate: it keeps searches containing
+numbers from accidentally triggering the calculator.
+
+`MenuModel.js` owns expression and result normalization so the edge cases stay
+headless-testable. `Menu.qml` owns the asynchronous process, discards stale
+answers when the query changes, and caps each calculation at 250 ms.
+
 ## Driving the menu from the CLI
 
 `bin/omarchy-menu` is a thin wrapper over the standard plugin IPC surface:
