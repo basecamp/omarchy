@@ -1,18 +1,16 @@
-echo "Point OpenCode at the npm package and stop fighting v2 next pins"
+echo "Point OpenCode at the npm package"
 
 opencode_package="npm:@opencode-ai/cli"
-mise_config="$HOME/.config/mise/config.toml"
-wrapper="$HOME/.local/bin/opencode"
 
 if [[ -f $HOME/.local/state/omarchy/preinstalls-removed ]]; then
-  if [[ -f $wrapper ]] && grep -Eq 'mise use -g (--quiet )?"opencode"' "$wrapper"; then
-    rm -f "$wrapper"
+  if [[ -f $HOME/.local/bin/opencode ]] && grep -Eq 'mise use -g (--quiet )?"opencode"' "$HOME/.local/bin/opencode"; then
+    rm -f "$HOME/.local/bin/opencode"
   fi
   exit 0
 fi
 
 omarchy-mise-install "$opencode_package" opencode
 
-if [[ -f $mise_config ]] && grep -q '@opencode-ai/cli' "$mise_config" && omarchy-cmd-present mise; then
+if [[ -f $HOME/.config/mise/config.toml ]] && grep -q '@opencode-ai/cli' "$HOME/.config/mise/config.toml" && omarchy-cmd-present mise; then
   mise unuse -g opencode &>/dev/null || true
 fi

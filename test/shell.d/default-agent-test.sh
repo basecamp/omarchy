@@ -263,8 +263,14 @@ for selection in "${!expected_agents[@]}"; do
   OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent "$selection"
   [[ $(omarchy-default-agent) == $expected ]] || fail "default agent canonicalizes $selection"
 
-  grep -Eq '^use -g ' "$mise_history" &&
-    fail "default agent preserves an existing mise pin when selecting $selection"
+  if [[ $expected == "opencode" ]]; then
+    grep -Eq '^use -g ' "$mise_history" &&
+      fail "default agent preserves an existing OpenCode mise pin"
+  else
+    mapfile -d '' -t mise_args <"$mise_log"
+    [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
+      fail "default agent installs $selection globally through mise"
+  fi
 
   mapfile -d '' -t agent_open_args <"$agent_open_log"
   [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
@@ -303,12 +309,12 @@ pass "missing agents install visibly and open in the same terminal"
 : >"$notification_history"
 : >"$agent_open_log"
 : >"$terminal_log"
-: >"$mise_history"
 OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent github-copilot
 [[ ! -s $terminal_log ]] || fail "installed agent selection skips the terminal"
 [[ ! -s $notification_history ]] || fail "installed agent selection skips notifications"
-grep -Eq '^use -g ' "$mise_history" &&
-  fail "installed agent selection preserves an existing mise pin"
+mapfile -d '' -t mise_args <"$mise_log"
+[[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == "copilot" ]] ||
+  fail "default agent still activates an installed provider globally through mise"
 mapfile -d '' -t agent_open_args <"$agent_open_log"
 [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
   fail "installed agent opens in a new terminal after selection"
@@ -338,17 +344,15 @@ pass "default agent opens only after mise installs the provider"
 
 : >"$notification_history"
 : >"$agent_open_log"
-: >"$mise_history"
-OMARCHY_TEST_AGENT_INSTALLED=true OMARCHY_TEST_MISE_FAIL=true omarchy-default-agent codex
-[[ $(omarchy-default-agent) == "codex" ]] ||
-  fail "installed agent selection succeeds without reactivating through mise"
-grep -Eq '^use -g ' "$mise_history" &&
-  fail "installed agent selection skips mise when the provider is already present"
-[[ ! -s $notification_history ]] || fail "installed agent selection skips notifications"
-mapfile -d '' -t agent_open_args <"$agent_open_log"
-[[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
-  fail "installed agent opens after selection without mise reactivation"
-pass "default agent selects installed providers without reactivating through mise"
+if OMARCHY_TEST_AGENT_INSTALLED=true OMARCHY_TEST_MISE_FAIL=true omarchy-default-agent codex >"$test_tmp/setup-failure-output" 2>&1; then
+  fail "default agent rejects a failed mise activation"
+fi
+[[ $(omarchy-default-agent) == "copilot" ]] || fail "failed activation preserves the current default agent"
+grep -F "Could not set Codex as the default coding agent" "$test_tmp/setup-failure-output" >/dev/null ||
+  fail "default agent reports a failed activation for an installed provider"
+[[ ! -s $notification_history ]] || fail "failed activation skips notifications"
+[[ ! -s $agent_open_log ]] || fail "failed activation does not open an agent"
+pass "default agent reports mise failures without notifications"
 
 rm "$mock_bin/omarchy-agent"
 hash -r

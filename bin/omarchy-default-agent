@@ -45,15 +45,15 @@ if [[ $installing == "false" ]] && ! mise where "$agent_package" &>/dev/null; th
   exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$agent"
 fi
 
-if ! mise where "$agent_package" &>/dev/null; then
-  if ! mise use -g "$agent_package"; then
-    if [[ $installing == "true" ]]; then
-      echo "Could not install $name with mise" >&2
-    else
-      echo "Could not set $name as the default coding agent" >&2
-    fi
-    exit 1
+if [[ $agent == "opencode" ]] && mise where "$agent_package" &>/dev/null; then
+  :
+elif ! mise use -g "$agent_package"; then
+  if [[ $installing == "true" ]]; then
+    echo "Could not install $name with mise" >&2
+  else
+    echo "Could not set $name as the default coding agent" >&2
   fi
+  exit 1
 fi
 
 mkdir -p "$(dirname "$agent_file")"
