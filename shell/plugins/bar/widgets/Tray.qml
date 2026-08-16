@@ -782,9 +782,25 @@ BarWidget {
       layer.enabled: trayIconRoot.symbolic
     }
 
+    // Colorization multiplies the target color by the source's luminance, so it
+    // can only reach the foreground from a near-white fill: #333 comes out at
+    // #2b2b2b however it is tinted. Symbolic icons are not required to be light
+    // — Solaar asks for the themed "battery-full", which Yaru draws at #333 —
+    // so flatten the fill to white first and let the second pass land on the
+    // exact foreground. Brightness is applied after colorization within a single
+    // MultiEffect, so this has to be two.
     MultiEffect {
+      id: trayIconWhitened
       anchors.fill: trayIconImage
       source: trayIconImage
+      visible: false
+      layer.enabled: trayIconRoot.symbolic
+      brightness: 1.0
+    }
+
+    MultiEffect {
+      anchors.fill: trayIconImage
+      source: trayIconWhitened
       visible: trayIconRoot.symbolic
       colorization: 1.0
       colorizationColor: root.foreground
