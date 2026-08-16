@@ -94,8 +94,9 @@ REGISTRY="$TASKBAR_DIR/taskbartabs.json"
 mkdir -p "$ICONS_DIR"
 
 # ── Seed the app profile with sessions from the main Zen profile (cookies,
-# logins, encryption keys). Only done on first install; an existing profile
-# keeps its own sessions from then on. ──
+# logins, encryption keys) and its preferences, so the new profile does not
+# go through the first-run setup wizard. Only done on first install; an
+# existing profile keeps its own state from then on. ──
 if [[ ! -f "$APP_PROFILE/cookies.sqlite" ]]; then
   MAIN_PROFILE=$(omarchy-webapp-zen-profile profile) || true
   if [[ -n $MAIN_PROFILE && -d $MAIN_PROFILE ]]; then
@@ -107,7 +108,12 @@ if [[ ! -f "$APP_PROFILE/cookies.sqlite" ]]; then
         cp -f "$MAIN_PROFILE/$f" "$APP_PROFILE/$f" 2>/dev/null || true
       fi
     done
-    echo "Seeded $APP_NAME profile with sessions from the main Zen profile."
+    # Copy preferences too: without them the fresh profile shows the
+    # first-run setup wizard (welcome screen, default browser check, etc.).
+    if [[ -f "$MAIN_PROFILE/prefs.js" ]]; then
+      cp -f "$MAIN_PROFILE/prefs.js" "$APP_PROFILE/prefs.js" 2>/dev/null || true
+    fi
+    echo "Seeded $APP_NAME profile with sessions and preferences from the main Zen profile."
   else
     echo "Warning: could not find the main Zen profile; the web app starts logged out." >&2
   fi
