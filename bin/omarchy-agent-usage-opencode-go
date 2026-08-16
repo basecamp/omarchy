@@ -23,6 +23,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -31,7 +32,6 @@ from typing import Any
 AGENT_ID = "opencode-go"
 AGENT_NAME = "OpenCode Go"
 TIER_LABEL = "Go"
-AUTH_HELP = "Sign in to OpenCode Go in opencode, or set OPENCODE_API_KEY."
 USAGE_URL = "https://opencode.ai/zen/go/v1/usage"
 # opencode.ai sits behind Cloudflare and rejects the default urllib agent.
 USER_AGENT = "omarchy-agent-usage-opencode-go/1.0"
@@ -377,6 +377,8 @@ def fetch_limits(api_key_value: str, usage_url: str) -> tuple[list[Any], str, st
   """Return (limits, usage_status_text, auth_help_text, retry_advised)."""
   if not api_key_value:
     return [], "", "", False
+  if urllib.parse.urlparse(usage_url).scheme != "https":
+    return [], "OpenCode Go limits unavailable", "The usage endpoint must be HTTPS.", False
 
   request = urllib.request.Request(
     usage_url,
@@ -390,6 +392,11 @@ def fetch_limits(api_key_value: str, usage_url: str) -> tuple[list[Any], str, st
       return [], "OpenCode Go limits unavailable", "opencode.ai rejected the API key.", False
     if error.code == 403:
       return [], "OpenCode Go limits unavailable", "This key has no OpenCode Go subscription.", False
+    if error.code == 429 or 500 <= error.code < 600:
+      cached = read_limits_cache()
+      if cached:
+        return cached, "OpenCode Go limits stale", "", True
+      return [], "OpenCode Go limits unavailable", "opencode.ai returned HTTP %d." % error.code, True
     return [], "OpenCode Go limits unavailable", "opencode.ai returned HTTP %d." % error.code, False
   except Exception:
     # A flaky network should not blank the meters: reuse the last-known-good

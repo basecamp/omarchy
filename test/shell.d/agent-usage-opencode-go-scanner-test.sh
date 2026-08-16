@@ -12,7 +12,7 @@ trap 'rm -rf "$TEST_HOME"' EXIT
 # default record: the update runner writes whatever valid JSON appears on
 # stdout, and a machine that never ran opencode shows no tab.
 no_source=$(HOME="$TEST_HOME" XDG_DATA_HOME="$TEST_HOME/.local/share" XDG_CACHE_HOME="$TEST_HOME/.cache" \
-  OPENCODE_API_KEY= "$ROOT/bin/omarchy-agent-usage-opencode-go")
+  OPENCODE_API_KEY='' "$ROOT/bin/omarchy-agent-usage-opencode-go")
 
 [[ $(jq -r '.id + ":" + (.ready | tostring) + ":" + (.hasLocalStats | tostring)' <<<"$no_source") == "opencode-go:false:false" ]] ||
   fail "OpenCode Go collector prints a valid hidden record without a database or key" "$no_source"
@@ -58,7 +58,7 @@ conn.close()
 PY
 
 result=$(HOME="$TEST_HOME" XDG_DATA_HOME="$TEST_HOME/.local/share" XDG_CACHE_HOME="$TEST_HOME/.cache" \
-  OPENCODE_API_KEY= "$ROOT/bin/omarchy-agent-usage-opencode-go" --force)
+  OPENCODE_API_KEY='' "$ROOT/bin/omarchy-agent-usage-opencode-go" --force)
 
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "155" ]] ||
   fail "OpenCode Go collector counts opencode-go usage, reasoning included, from opencode sessions" "$result"
@@ -110,7 +110,7 @@ conn.close()
 PY
 
 result=$(HOME="$MALFORMED_HOME" XDG_DATA_HOME="$MALFORMED_HOME/.local/share" XDG_CACHE_HOME="$MALFORMED_HOME/.cache" \
-  OPENCODE_API_KEY= "$ROOT/bin/omarchy-agent-usage-opencode-go")
+  OPENCODE_API_KEY='' "$ROOT/bin/omarchy-agent-usage-opencode-go")
 
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "12" ]] ||
   fail "OpenCode Go collector counts good rows past malformed ones" "$result"
@@ -145,10 +145,10 @@ conn.close()
 PY
 
 result=$(HOME="$CACHE_HOME" XDG_DATA_HOME="$CACHE_HOME/.local/share" XDG_CACHE_HOME="$CACHE_HOME/.cache" \
-  OPENCODE_API_KEY= "$ROOT/bin/omarchy-agent-usage-opencode-go")
+  OPENCODE_API_KEY='' "$ROOT/bin/omarchy-agent-usage-opencode-go")
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "5" ]] ||
   fail "OpenCode Go collector writes a fresh local-stats cache on first scan" "$result"
-cache_file=$(ls "$CACHE_HOME/.cache/omarchy/agent-usage/"/opencode-go-scan-*.json 2>/dev/null | head -n 1)
+cache_file=$(find "$CACHE_HOME/.cache/omarchy/agent-usage" -maxdepth 1 -name 'opencode-go-scan-*.json' -print -quit 2>/dev/null)
 [[ -n $cache_file && -s $cache_file ]] ||
   fail "OpenCode Go collector leaves a cache file behind" "$result"
 [[ $(jq -r '.schemaVersion' "$cache_file") == "1" && $(jq -r '.stats.todayTotalTokens' "$cache_file") == "5" ]] ||
@@ -179,13 +179,13 @@ conn.close()
 PY
 
 result=$(HOME="$CACHE_HOME" XDG_DATA_HOME="$CACHE_HOME/.local/share" XDG_CACHE_HOME="$CACHE_HOME/.cache" \
-  OPENCODE_API_KEY= "$ROOT/bin/omarchy-agent-usage-opencode-go" --limits-only)
+  OPENCODE_API_KEY='' "$ROOT/bin/omarchy-agent-usage-opencode-go" --limits-only)
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "5" ]] ||
   fail "OpenCode Go collector --limits-only reuses cached local stats" "$result"
 pass "OpenCode Go collector --limits-only reuses cached local stats"
 
 result=$(HOME="$CACHE_HOME" XDG_DATA_HOME="$CACHE_HOME/.local/share" XDG_CACHE_HOME="$CACHE_HOME/.cache" \
-  OPENCODE_API_KEY= "$ROOT/bin/omarchy-agent-usage-opencode-go" --force)
+  OPENCODE_API_KEY='' "$ROOT/bin/omarchy-agent-usage-opencode-go" --force)
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "15" ]] ||
   fail "OpenCode Go collector --force rescans past the cache" "$result"
 pass "OpenCode Go collector --force rescans past the cache"
@@ -193,7 +193,7 @@ pass "OpenCode Go collector --force rescans past the cache"
 # The limits fetch and key resolution are exercised without the network by
 # importing the module and stubbing urlopen, the same way the Fireworks
 # scanner test stubs its client.
-python3 - "$ROOT/bin/omarchy-agent-usage-opencode-go" "$TEST_HOME/.local/share" <<'PY'
+if ! python3 - "$ROOT/bin/omarchy-agent-usage-opencode-go" "$TEST_HOME/.local/share" <<'PY'
 import importlib.machinery
 import importlib.util
 import json
@@ -233,7 +233,7 @@ scanner.urllib.request.urlopen = respond({"usage": {
   "weekly": {"status": "ok", "percent": 50, "resetsAt": "2026-08-17T00:00:00Z"},
   "monthly": {"status": "ok", "percent": 0.5, "resetsAt": "2026-08-28T00:00:00Z"},
 }})
-limits, usage_status, auth_help, retry = scanner.fetch_limits("sk-test", "http://stub")
+limits, usage_status, auth_help, retry = scanner.fetch_limits("sk-test", "https://stub")
 assert [w["label"] for w in limits] == ["Rolling (5-hour)", "Weekly (7-day)", "Monthly (30-day)"]
 assert limits[0]["percent"] == 0.01, limits[0]
 assert limits[1]["percent"] == 0.5, limits[1]
@@ -242,16 +242,51 @@ assert limits[0]["resetsAt"] == "2026-08-16T06:00:00+00:00", limits[0]
 assert usage_status == "" and auth_help == "" and retry is False
 
 # A missing key is a clean no-op, not an error card.
-limits, usage_status, auth_help, retry = scanner.fetch_limits("", "http://stub")
+limits, usage_status, auth_help, retry = scanner.fetch_limits("", "https://stub")
 assert limits == [] and usage_status == "" and auth_help == "" and retry is False
 
 # Auth failures map to stable help text and never reuse stale limits.
 scanner.urllib.request.urlopen = http_error(401)
-limits, usage_status, auth_help, retry = scanner.fetch_limits("sk-test", "http://stub")
+limits, usage_status, auth_help, retry = scanner.fetch_limits("sk-test", "https://stub")
 assert auth_help == "opencode.ai rejected the API key.", auth_help
 scanner.urllib.request.urlopen = http_error(403)
-limits, usage_status, auth_help, retry = scanner.fetch_limits("sk-test", "http://stub")
+limits, usage_status, auth_help, retry = scanner.fetch_limits("sk-test", "https://stub")
 assert auth_help == "This key has no OpenCode Go subscription.", auth_help
+
+# The key must never travel over a non-HTTPS endpoint.
+scanner.urllib.request.urlopen = respond({"usage": {
+  "rolling": {"status": "ok", "percent": 10, "resetsAt": "2026-08-16T06:00:00Z"},
+}})
+limits, usage_status, auth_help, retry = scanner.fetch_limits("sk-test", "http://insecure")
+assert limits == [] and usage_status == "OpenCode Go limits unavailable" and retry is False, (limits, usage_status, retry)
+assert "HTTPS" in auth_help, auth_help
+
+# Transient failures (429, 5xx, and network errors) reuse cached limits and
+# ask the panel to retry, instead of blanking the meters.
+os.environ["XDG_CACHE_HOME"] = str(Path(sys.argv[2]) / "cache")
+scanner.urllib.request.urlopen = respond({"usage": {
+  "rolling": {"status": "ok", "percent": 10, "resetsAt": "2026-08-16T06:00:00Z"},
+}})
+limits, _, _, _ = scanner.fetch_limits("sk-test", "https://stub")
+assert limits and limits[0]["percent"] == 0.1, limits
+
+scanner.urllib.request.urlopen = http_error(429)
+limits, usage_status, auth_help, retry = scanner.fetch_limits("sk-test", "https://stub")
+assert limits and limits[0]["percent"] == 0.1, limits
+assert usage_status == "OpenCode Go limits stale" and auth_help == "" and retry is True, (usage_status, auth_help, retry)
+
+scanner.urllib.request.urlopen = http_error(503)
+limits, usage_status, auth_help, retry = scanner.fetch_limits("sk-test", "https://stub")
+assert limits and limits[0]["percent"] == 0.1, limits
+assert usage_status == "OpenCode Go limits stale" and auth_help == "" and retry is True, (usage_status, auth_help, retry)
+
+def url_error(*a, **k):
+  raise urllib.error.URLError("network down")
+
+scanner.urllib.request.urlopen = url_error
+limits, usage_status, auth_help, retry = scanner.fetch_limits("sk-test", "https://stub")
+assert limits and limits[0]["percent"] == 0.1, limits
+assert usage_status == "OpenCode Go limits stale" and auth_help == "" and retry is True, (usage_status, auth_help, retry)
 
 # OPENCODE_API_KEY wins over opencode's own auth.json.
 os.environ["XDG_DATA_HOME"] = sys.argv[2]
@@ -265,6 +300,7 @@ assert scanner.api_key() == "sk-from-auth-file"
 
 print("limits and key checks ok")
 PY
-
-[[ $? -eq 0 ]] || fail "OpenCode Go collector limits and key resolution checks"
+then
+  fail "OpenCode Go collector limits and key resolution checks"
+fi
 pass "OpenCode Go collector maps limits, scales percent, and resolves keys"
