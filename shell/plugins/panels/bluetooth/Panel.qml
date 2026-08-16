@@ -29,19 +29,36 @@ Panel {
   // to tell the two apart. Everything UI-facing keys off this instead of
   // adapter === null, which is what keeps the icon and its toggle reachable
   // after Bluetooth is switched off.
+  //
+  // Hardware presence is assumed (true) until a probe proves otherwise: only
+  // a cleanly run probe with a definite yes/no answer may move it, so a
+  // missing or failing rfkill can never hide the panel, and an adapter that
+  // reappears immediately clears any stale "no hardware" conclusion.
   property bool hardwarePresent: true
   property bool probePending: false
 
   Process {
     id: rfkillProbe
-    command: ["rfkill", "list", "bluetooth"]
+    // Three-state answer on stdout so the conclusion needs neither the exit
+    // code nor stderr: "yes" (a radio is listed), "no" (clean probe, none),
+    // "unknown" (rfkill unavailable). Anything else keeps the previous value.
+    command: ["sh", "-c",
+      "if ! command -v rfkill >/dev/null 2>&1; then echo unknown;"
+      + " elif rfkill list bluetooth 2>/dev/null | grep -q .; then echo yes;"
+      + " else echo no; fi"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        root.hardwarePresent = String(text || "").trim().length > 0
         root.probePending = false
+        var answer = String(text || "").trim()
+        if (answer === "yes") root.hardwarePresent = true
+        else if (answer === "no") root.hardwarePresent = false
       }
     }
+    // A run that never delivers output (e.g. failed start) must not strand
+    // probePending; the hardware conclusion simply stays "unknown".
+    onErrorOccurred: root.probePending = false
+    onExited: root.probePending = false
   }
 
   function probeHardware() {
@@ -55,7 +72,14 @@ Panel {
   Connections {
     target: Bluetooth
     function onDefaultAdapterChanged() {
-      if (Bluetooth.defaultAdapter === null) root.probeHardware()
+      if (Bluetooth.defaultAdapter === null) {
+        root.probeHardware()
+      } else {
+        // An adapter existing is definitive proof of hardware; clear any
+        // stale "no hardware" conclusion (e.g. a dongle plugged in later).
+        root.hardwarePresent = true
+        root.probePending = false
+      }
     }
   }
 
