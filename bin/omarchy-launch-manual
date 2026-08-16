@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# omarchy:summary=Read the Omarchy manual in a themed reader window
+# omarchy:args=[chapter]
+# omarchy:examples=omarchy launch manual | omarchy launch manual themes | omarchy launch manual 07
+#
+# Pass a chapter to open the reader on it instead of where you left off.
+# Chapters resolve by number, filename, or any fragment of the slug or
+# title — `themes`, `06-themes.md`, and `6` all land on the same page.
+# Unknown chapters are ignored and the reader opens at its usual position.
+
+if (( $# > 0 )) && [[ -n $1 ]]; then
+  payload=$(printf '{"chapter":"%s"}' "${1//\"/}")
+else
+  payload='{}'
+fi
+
+omarchy-shell shell summon omarchy.manual "$payload"
