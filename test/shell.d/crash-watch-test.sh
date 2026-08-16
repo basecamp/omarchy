@@ -18,7 +18,7 @@ boot=deadbeefdeadbeefdeadbeefdeadbeef
 # like a watch that dropped. The watcher must process every name it sees.
 cat >"$TMPDIR/bin/inotifywait" <<'SH'
 #!/bin/bash
-printf '%s\n' $WATCH_ITEMS
+tr ' ' '\n' <<<"$WATCH_ITEMS"
 SH
 
 # coredumpctl: the watcher calls `info COREDUMP_PID=<pid> _BOOT_ID=<boot>`;
