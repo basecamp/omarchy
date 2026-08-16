@@ -5,10 +5,13 @@
 
 Local stats come from opencode's per-message provider/model/token records in
 ~/.local/share/opencode/opencode.db, filtered to messages that ran on the
-opencode-go provider. OpenCode Go exposes no local rate-limit or balance API,
-so the record carries token usage (today, the last week, and all time, broken
-down by model) with an empty limits list -- the same shape a Codex install
-with no account reports.
+opencode-go provider. Rate limits come from the OpenCode Go usage endpoint
+(https://opencode.ai/zen/go/v1/usage), which reports the rolling 5-hour,
+weekly, and monthly dollar allowances as percentages. The key is read from
+opencode's own auth store, so no separate sign-in is needed. When the endpoint
+is unreachable the record still carries the local token stats with an empty
+limits list and a status note, the same graceful shape a Codex install without
+an account reports.
 
 This collector is a user-local companion to the packaged omarchy agent usage
 collectors. It prints one JSON record that the agents panel picks up exactly
@@ -27,11 +30,15 @@ import sqlite3
 import sys
 import tempfile
 import time
+import urllib.request
+import urllib.error
 from datetime import datetime, timedelta
 from pathlib import Path
 
 AGENT_ID = "opencode-go"
 AGENT_NAME = "OpenCode Go"
+AUTH_HELP = "Sign in to OpenCode Go at https://opencode.ai/auth to restore limits."
+USAGE_URL = os.environ.get("OPENCODE_GO_USAGE_URL") or "https://opencode.ai/zen/go/v1/usage"
 
 SCAN_REUSE_SECONDS = 20
 LIMITS_ONLY_REUSE_SECONDS = 900
@@ -254,6 +261,80 @@ def _cached_local_stats(max_age):
     return stats
 
 
+# ------------------------------------------------------------------ limits
+
+
+def auth_key():
+  data_home = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share"))
+  auth = data_home / "opencode" / "auth.json"
+  try:
+    data = json.loads(auth.read_text(encoding="utf-8"))
+    entry = data.get("opencode-go") or {}
+    return str(entry.get("key") or "")
+  except Exception:
+    return ""
+
+
+def fetch_usage():
+  """Return the OpenCode Go usage payload as a dict, or None on any failure."""
+  key = auth_key()
+  if not key:
+    return None
+  # Cloudflare answers urllib's default UA with a 403 bot check, so send a
+  # plain browser UA like curl would.
+  request = urllib.request.Request(
+    USAGE_URL,
+    headers={
+      "Authorization": "Bearer " + key,
+      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+    },
+  )
+  try:
+    with urllib.request.urlopen(request, timeout=8) as response:
+      return json.loads(response.read().decode("utf-8"))
+  except Exception:
+    return None
+
+
+def limit_entry(label, window):
+  if not isinstance(window, dict):
+    return None
+  try:
+    percent = float(window.get("percent"))
+  except Exception:
+    return None
+  if not (percent >= 0):
+    return None
+  return {
+    "label": label,
+    "percent": min(1.0, percent / 100.0),
+    "resetsAt": str(window.get("resetsAt") or ""),
+  }
+
+
+def fetch_limits():
+  """Map the API's rolling/weekly/monthly windows onto the panel's limits.
+
+  The endpoint reports each window as a percentage of its dollar allowance
+  ($12 / 5-hour, $30 weekly, $60 monthly), which the panel renders as the
+  percentage of the allowance used. Any failure returns empty limits and a
+  status note so the tab keeps showing local token usage instead of hiding.
+  """
+  result = {"limits": [], "tierLabel": "Go", "usageStatusText": "", "authHelpText": ""}
+  payload = fetch_usage()
+  if payload is None:
+    result["usageStatusText"] = "OpenCode Go limits unavailable"
+    result["authHelpText"] = AUTH_HELP
+    return result
+
+  usage = payload.get("usage") or {}
+  for label, key in (("Session (5-hour)", "rolling"), ("Weekly (7-day)", "weekly"), ("Monthly", "monthly")):
+    entry = limit_entry(label, usage.get(key))
+    if entry:
+      result["limits"].append(entry)
+  return result
+
+
 def main():
   parser = argparse.ArgumentParser()
   parser.add_argument("--force", action="store_true")
@@ -262,6 +343,7 @@ def main():
 
   max_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else SCAN_REUSE_SECONDS)
   stats = cached_local_stats(max_age)
+  limits = fetch_limits()
 
   record = {
     "schemaVersion": 1,
@@ -271,10 +353,10 @@ def main():
     "ready": True,
     "hasLocalStats": True,
     "hasPromptStats": True,
-    "limits": [],
-    "tierLabel": "",
-    "usageStatusText": "",
-    "authHelpText": "",
+    "limits": limits["limits"],
+    "tierLabel": limits["tierLabel"],
+    "usageStatusText": limits["usageStatusText"],
+    "authHelpText": limits["authHelpText"],
   }
   record.update(stats)
   print(json.dumps(record, separators=(",", ":")))
