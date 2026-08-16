@@ -48,6 +48,11 @@ Panel {
   // Sentinel finishProbe receives when the watchdog gives up on a probe that
   // never signalled completion (missing executable or a hung process).
   readonly property int probeSpawnFailedExitCode: -1
+  // Sentinel finishProbe receives as exitStatus from the watchdog. The probe
+  // never completed, so it is never a clean exit (QProcess reports abnormal
+  // termination as exitStatus 1 / CrashExit); a non-zero status keeps the
+  // "clean exit only" gate closed regardless of the sentinel exit code.
+  readonly property int probeSpawnFailedExitStatus: 1
   // How long a probe may run before the watchdog gives up on it. rfkill
   // answers in milliseconds; the timeout exists only to unstick a probe that
   // never completed, so a hung process cannot strand probePending.
@@ -81,7 +86,7 @@ Panel {
   Timer {
     id: probeWatchdog
     interval: root.probeWatchdogMs
-    onTriggered: root.finishProbe(root.probeSpawnFailedExitCode)
+    onTriggered: root.finishProbe(root.probeSpawnFailedExitCode, root.probeSpawnFailedExitStatus)
   }
 
   function probeHardware() {
@@ -864,10 +869,12 @@ Panel {
           }
 
           // Compact on/off switch on the trailing edge of the hero, and the
-          // header's only cursor target.
+          // header's only cursor target. Same known/unknown gate as the panel
+          // root and the icon: while presence is unknown, the switch follows
+          // the adapter instead of the optimistic hardwarePresent default.
           ToggleSwitch {
             id: powerSwitch
-            visible: root.hardwarePresent
+            visible: root.hardwarePresenceKnown ? root.hardwarePresent : root.adapter !== null
             checked: !!root.adapter && root.adapter.enabled
             hasCursor: root.headerHasCursor
             foreground: root.bar.foreground
