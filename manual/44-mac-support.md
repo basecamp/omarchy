@@ -52,6 +52,7 @@ The Apple T1 chip was introduced in late 2016 and used exclusively in the first-
 
 - Touch Bar is non-functional
 - Sound is not functioning
+- 15-inch models (`MacBookPro13,3` / `14,3`) cannot resume from suspend or s2idle. The installer locks the lid instead of sleeping and puts the Radeon on the POWER_SAVING profile so a closed lid does not cook the chassis. The discrete GPU stays on.
 
 #### Devices with T2 Chip
 
