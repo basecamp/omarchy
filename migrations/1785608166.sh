@@ -39,6 +39,17 @@ if ! error=$(systemctl --user daemon-reload 2>&1); then
   exit 1
 fi
 
+# An install where the unit never reached a systemd search path has no monitor
+# to repair, and every systemctl call below would fail on a unit the manager
+# does not know -- taking the rest of the migration queue with it.
+if ! load_state=$(systemctl --user show --property=LoadState --value omarchy-sleep-lock.service 2>&1); then
+  echo "Could not inspect omarchy-sleep-lock.service: $load_state"
+  echo "The pre-suspend lock repair will be retried by omarchy-migrate."
+  exit 1
+elif [[ $load_state == "not-found" ]]; then
+  exit 0
+fi
+
 if ! graphical_state=$(systemctl --user show --property=ActiveState --value graphical-session.target 2>&1); then
   echo "Could not inspect graphical-session.target: $graphical_state"
   echo "The pre-suspend lock repair will be retried by omarchy-migrate."
