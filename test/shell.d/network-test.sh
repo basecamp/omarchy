@@ -84,6 +84,18 @@ assert(
 )
 assert(!/disconnect\(\s*(root\.)?networkForSsid\(/.test(panelSource), 'network never passes an unguarded networkForSsid() lookup to disconnect()')
 
+// A password attempt can take 25 seconds to fail. Other rows must remain
+// available so the user can leave that attempt without waiting for its
+// timeout. Enterprise connections use a separate nmcli process and remain
+// serialized because stopping that process can leave a partial profile.
+const cancelConnect = panelSource.match(/function cancelActiveConnect\(\) \{[\s\S]*?\n {2}\}/)
+assert(cancelConnect, 'network has a helper to cancel the active connection attempt')
+assert(/actionSsid = ""[\s\S]*actionKind = ""[\s\S]*network\.disconnect\(\)/.test(cancelConnect[0]), 'network stops tracking an attempt before disconnecting it')
+assert(/enterpriseConnect\.running/.test(cancelConnect[0]), 'network does not interrupt an enterprise connection process')
+assert(/enabled: !root\.busy \|\| root\.canReplaceActiveConnect\(row\.net\)/.test(panelSource), 'other network rows stay enabled during a native connection attempt')
+assert(/function activateSelected\(\)[\s\S]*activateNetwork\(net\)/.test(panelSource), 'keyboard activation can replace a connection attempt')
+assert(/onClicked:[\s\S]*root\.activateNetwork\(row\.net\)/.test(panelSource), 'pointer activation can replace a connection attempt')
+
 assertDeepEqual(
   network.parseNetworkStatus('wifi\tCafe WiFi\t78\t5200\n'),
   { kind: 'wifi', label: 'Cafe WiFi', signalStrength: 78, frequency: '5200' },

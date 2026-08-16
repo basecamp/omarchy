@@ -420,16 +420,14 @@ Panel {
   // connected → disconnect, protected-unknown → password prompt,
   // open/known → connect.
   function activateSelected() {
-    if (busy || selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
+    if (selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
     var net = wifiNetworks[selectedIndex]
     if (!net) return
-    if (wifiActionFocused && canForgetNetwork(net)) { forget(net); return }
-    // Only act on a row that still resolves. disconnect() falls back to
-    // connectedWifiNetwork when handed null, so a row left stale by scan churn
-    // would otherwise tear down whatever is connected now instead.
-    if (net.connected) { disconnectRow(net.ssid); return }
-    if (isProtected(net.security) && !net.known) { openPasswordPrompt(net.ssid); return }
-    connectKnown(net.ssid)
+    if (wifiActionFocused) {
+      if (canForgetNetwork(net) && !busy) forget(net)
+      return
+    }
+    activateNetwork(net)
   }
 
   // Bar pill state, derived from the native NetworkManager service so the
@@ -719,6 +717,52 @@ Panel {
     // throws, etc.), clear the busy state so the row doesn't get stuck on
     // "Connecting…" / "Disconnecting…" forever.
     actionTimeout.restart()
+  }
+
+  // Native NetworkManager connections can replace one another. Stop tracking
+  // the old attempt before disconnecting it, so its completion signals cannot
+  // clear the state of the network the user picked next.
+  function cancelActiveConnect() {
+    if (actionKind !== "connect" || enterpriseConnect.running) return false
+
+    var network = networkForSsid(actionSsid)
+    actionTimeout.stop()
+    actionSsid = ""
+    actionKind = ""
+    failureSsid = ""
+    failureReason = ""
+    cancelPasswordPrompt()
+
+    if (network) network.disconnect()
+    return true
+  }
+
+  function canReplaceActiveConnect(net) {
+    return !!net && actionKind === "connect" && !enterpriseConnect.running
+      && actionSsid !== (net.ssid || "")
+  }
+
+  function activateNetwork(net) {
+    if (!net) return
+
+    var replacedConnect = false
+    if (busy) {
+      if (!canReplaceActiveConnect(net) || !cancelActiveConnect()) return
+      replacedConnect = true
+    }
+
+    // The previous connection can remain active while NetworkManager tries a
+    // new one. Picking it again cancels the new attempt and keeps the working
+    // connection instead of disconnecting it.
+    if (net.connected) {
+      if (!replacedConnect) disconnectRow(net.ssid)
+      return
+    }
+    if (isProtected(net.security) && !net.known) {
+      openPasswordPrompt(net.ssid)
+      return
+    }
+    connectKnown(net.ssid)
   }
 
   function clearNetworkAction() {
@@ -1673,7 +1717,7 @@ Panel {
       hoverEnabled: true
       acceptedButtons: Qt.LeftButton
       cursorShape: Qt.PointingHandCursor
-      enabled: !root.busy
+      enabled: !root.busy || root.canReplaceActiveConnect(row.net)
 
       // Move the cursor here when the mouse enters; mouse leaving doesn't
       // clear it (so the cursor stays where the mouse last was and
@@ -1688,15 +1732,7 @@ Panel {
         root.focusSection = "wifi"
         root.selectedIndex = row.index
         root.wifiActionFocused = false
-        if (row.isConnected) {
-          root.disconnectRow(row.net.ssid)
-          return
-        }
-        if (row.isProtected && !row.isKnown) {
-          root.openPasswordPrompt(row.net.ssid)
-          return
-        }
-        root.connectKnown(row.net.ssid)
+        root.activateNetwork(row.net)
       }
     }
 
