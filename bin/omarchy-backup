@@ -20,6 +20,8 @@ theme sources, and webapps. Replay it on a fresh install with:
 other details you don't want public.
 
 Add extra paths to back up in `backup.list` (one $HOME-relative path per line).
+Local Omarchy plugins and their bar placement are captured automatically with
+`~/.config/omarchy`; installed theme repositories remain source references.
 
 ## Emergency recovery
 

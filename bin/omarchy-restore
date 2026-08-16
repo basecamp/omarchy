@@ -94,6 +94,23 @@ restore_tree() {
   done < <(find "$source_root" \( -type f -o -type l \) -print0)
 }
 
+validate_restored_plugins() {
+  local plugins_root="$HOME/.config/omarchy/plugins"
+  local plugin
+  [[ -d $plugins_root ]] || return 0
+
+  while IFS= read -r -d '' plugin; do
+    if ! omarchy-plugin-validate "$plugin"; then
+      warn "Restored plugin failed validation: ${plugin##*/}"
+      FAILURES=$((FAILURES + 1))
+    fi
+  done < <(find "$plugins_root" -mindepth 1 -maxdepth 1 -type d -print0)
+
+  # A fresh shell discovers restored plugins at startup. If it is already
+  # running, rescan now so restored plugin files and shell.json take effect.
+  omarchy-shell -q shell rescanPlugins
+}
+
 if [[ -n ${RESTORE[packages]:-} ]]; then
   echo -e "\e[32mRestoring packages\e[0m"
   if [[ -f $BACKUP_DIR/packages.txt ]]; then
@@ -124,6 +141,7 @@ fi
 if [[ -n ${RESTORE[configs]:-} ]]; then
   echo -e "\e[32mRestoring configs\e[0m"
   restore_tree "$BACKUP_DIR/config" "$HOME/.config"
+  validate_restored_plugins
 fi
 
 if [[ -n ${RESTORE[themes]:-} ]]; then

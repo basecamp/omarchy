@@ -16,7 +16,16 @@ cat >"$SCRATCH/bin/omarchy-theme-set" <<EOF
 #!/bin/bash
 echo "\$@" >>"$SCRATCH/theme-set.log"
 EOF
-chmod +x "$SCRATCH/bin/omarchy-theme-set"
+cat >"$SCRATCH/bin/omarchy-plugin-validate" <<EOF
+#!/bin/bash
+[[ -f \$1/manifest.json ]] || exit 1
+echo "\$1" >>"$SCRATCH/plugin-validate.log"
+EOF
+cat >"$SCRATCH/bin/omarchy-shell" <<EOF
+#!/bin/bash
+echo "\$*" >>"$SCRATCH/omarchy-shell.log"
+EOF
+chmod +x "$SCRATCH/bin/omarchy-theme-set" "$SCRATCH/bin/omarchy-plugin-validate" "$SCRATCH/bin/omarchy-shell"
 
 # The scripts commit; give them an identity without touching the real one.
 printf '[user]\n\temail = test@omarchy\n\tname = omarchy-test\n' >"$SCRATCH/gitconfig"
@@ -30,10 +39,16 @@ run() {
 mkdir -p "$TEST_HOME/.config/hypr" "$TEST_HOME/.config/alacritty" \
   "$TEST_HOME/.config/omarchy/themes" "$TEST_HOME/.local/share/applications" \
   "$TEST_HOME/.local/state/omarchy/current"
+mkdir -p "$TEST_HOME/.config/omarchy/plugins/test.power"
 
 echo "monitor=eDP-1" >"$TEST_HOME/.config/hypr/hyprland.conf"
 echo "junk" >"$TEST_HOME/.config/hypr/old.conf.bak.123"
 echo "font = Test" >"$TEST_HOME/.config/alacritty/alacritty.toml"
+echo '{"bar":{"layout":{"right":[{"id":"test.power"}]}}}' >"$TEST_HOME/.config/omarchy/shell.json"
+cat >"$TEST_HOME/.config/omarchy/plugins/test.power/manifest.json" <<'EOF'
+{"schemaVersion":1,"id":"test.power","name":"Test Power","version":"1.0.0","kinds":["bar-widget"],"entryPoints":{"barWidget":"Panel.qml"}}
+EOF
+echo 'Panel {}' >"$TEST_HOME/.config/omarchy/plugins/test.power/Panel.qml"
 
 cat >"$TEST_HOME/.local/share/applications/FakeApp.desktop" <<'EOF'
 [Desktop Entry]
@@ -75,6 +90,14 @@ pass "backup runs cleanly"
 [[ -f $backup_dir/config/hypr/hyprland.conf ]] || fail "backup mirrors hypr config"
 pass "backup mirrors hypr config"
 
+[[ -f $backup_dir/config/omarchy/plugins/test.power/manifest.json ]] ||
+  fail "backup captures local Omarchy plugins"
+pass "backup captures local Omarchy plugins"
+
+grep -q 'test.power' "$backup_dir/config/omarchy/shell.json" ||
+  fail "backup captures plugin bar placement"
+pass "backup captures plugin bar placement"
+
 [[ ! -e $backup_dir/config/hypr/old.conf.bak.123 ]] || fail "backup excludes .bak noise"
 pass "backup excludes .bak noise"
 
@@ -108,7 +131,9 @@ pass "backup commits its capture"
 # --- damage the system, then restore ---
 
 rm -rf "$TEST_HOME/.config/hypr" "$TEST_HOME/.config/extratool" \
-  "$TEST_HOME/.config/omarchy/themes/fake-theme"
+  "$TEST_HOME/.config/omarchy/themes/fake-theme" \
+  "$TEST_HOME/.config/omarchy/plugins/test.power"
+rm -f "$TEST_HOME/.config/omarchy/shell.json"
 rm -f "$TEST_HOME/.local/share/applications/FakeApp.desktop"
 echo "MODIFIED" >"$TEST_HOME/.config/alacritty/alacritty.toml"
 recovery_before=$(cat "$backup_dir/recovery/disk-map.txt")
@@ -119,6 +144,22 @@ pass "restore runs cleanly"
 
 [[ -f $TEST_HOME/.config/hypr/hyprland.conf ]] || fail "restore brings back deleted configs"
 pass "restore brings back deleted configs"
+
+[[ -f $TEST_HOME/.config/omarchy/plugins/test.power/Panel.qml ]] ||
+  fail "restore brings back local Omarchy plugins"
+pass "restore brings back local Omarchy plugins"
+
+grep -q 'test.power' "$TEST_HOME/.config/omarchy/shell.json" ||
+  fail "restore brings back plugin bar placement"
+pass "restore brings back plugin bar placement"
+
+grep -q '/plugins/test.power' "$SCRATCH/plugin-validate.log" ||
+  fail "restore validates local Omarchy plugins"
+pass "restore validates local Omarchy plugins"
+
+grep -q -- '-q shell rescanPlugins' "$SCRATCH/omarchy-shell.log" ||
+  fail "restore asks the running shell to rescan plugins"
+pass "restore asks the running shell to rescan plugins"
 
 [[ $(cat "$TEST_HOME/.config/alacritty/alacritty.toml") == "font = Test" ]] ||
   fail "restore replaces modified files"
