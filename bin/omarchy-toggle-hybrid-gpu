@@ -4,8 +4,11 @@
 # omarchy:requires-sudo=true
 
 toggle_t2_hybrid_gpu() {
+  local config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
   local gmux_conf="${OMARCHY_T2_GMUX_CONF:-/etc/modprobe.d/apple-gmux.conf}"
   local dpm_rule="${OMARCHY_T2_DGPU_RULE:-/etc/udev/rules.d/30-omarchy-t2-amdgpu-pm.rules}"
+  local renderer_env="${OMARCHY_T2_RENDERER_ENV:-$config_home/uwsm/env-hyprland.d/20-omarchy-t2-gpu}"
+  local renderer_source="$OMARCHY_PATH/default/uwsm/env-hyprland.d/20-omarchy-t2-gpu"
   local force_igd prompt
   local -a rebuild
 
@@ -30,8 +33,16 @@ toggle_t2_hybrid_gpu() {
         echo "Could not write $dpm_rule. Graphics mode change incomplete." >&2
         exit 1
       fi
+
+      if ! install -Dm644 "$renderer_source" "$renderer_env"; then
+        echo "Could not install $renderer_env. Graphics mode change incomplete." >&2
+        exit 1
+      fi
     elif ! sudo rm -f "$dpm_rule"; then
       echo "Could not remove $dpm_rule. Graphics mode change incomplete." >&2
+      exit 1
+    elif ! rm -f "$renderer_env"; then
+      echo "Could not remove $renderer_env. Graphics mode change incomplete." >&2
       exit 1
     fi
 

@@ -1,0 +1,19 @@
+t2_igpu=
+t2_dgpu=
+
+# DRM card numbers can change between boots, so resolve them from their drivers
+# each time UWSM prepares the Hyprland environment.
+for t2_card in /sys/class/drm/card[0-9]*; do
+  [ -e "$t2_card/device/driver" ] || continue
+
+  case "$(basename "$(readlink -f "$t2_card/device/driver")")" in
+  i915) t2_igpu="/dev/dri/${t2_card##*/}" ;;
+  amdgpu) t2_dgpu="/dev/dri/${t2_card##*/}" ;;
+  esac
+done
+
+if [ -n "$t2_igpu" ]; then
+  export AQ_DRM_DEVICES="$t2_igpu${t2_dgpu:+:$t2_dgpu}"
+fi
+
+unset t2_igpu t2_dgpu t2_card
