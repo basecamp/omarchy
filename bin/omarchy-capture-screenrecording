@@ -151,12 +151,12 @@ start_screenrecording() {
   # the portal backend supports and the kms backend doesn't). Default flow uses
   # slurp + the kms backend, which avoids the EGL DMA-BUF modifier import
   # failures the portal path can hit on some configurations.
-  if [[ $FULLSCREEN == "true" ]]; then
-    target="monitor:$(omarchy-hyprland-monitor-focused)"
-    capture_args=(-w "${target#monitor:}" -s "${RESOLUTION:-$(default_resolution)}")
-  elif [[ ${OMARCHY_SCREENRECORD_USE_PORTAL:-false} == "true" ]]; then
+  if [[ ${OMARCHY_SCREENRECORD_USE_PORTAL:-false} == "true" ]]; then
     target="portal"
     capture_args=(-w portal -s "${RESOLUTION:-$(default_resolution)}")
+  elif [[ $FULLSCREEN == "true" ]]; then
+    target="monitor:$(omarchy-hyprland-monitor-focused)"
+    capture_args=(-w "${target#monitor:}" -s "${RESOLUTION:-$(default_resolution)}")
   else
     target=$(select_capture_target) || return 1
 
