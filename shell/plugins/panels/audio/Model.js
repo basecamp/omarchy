@@ -233,6 +233,47 @@ function streamRepresentsPlayer(node, player, players, streams) {
   return streamRepresentsMprisPlayer(streamLabel(node, players, streams), playerLabel)
 }
 
+function mediaMetadataPresent(title, artist) {
+  return !!(title || artist)
+}
+
+function mediaVisible(player, cachedTitle, cachedArtist, allowCachedMetadata) {
+  if (player && mediaMetadataPresent(player.trackTitle, player.trackArtist)) return true
+  return allowCachedMetadata === true && mediaMetadataPresent(cachedTitle, cachedArtist)
+}
+
+function mediaActionEnabled(player, action) {
+  if (!player) return false
+  if (action === "previous") return !!player.canGoPrevious
+  if (action === "next") return !!player.canGoNext
+  if (action === "playPause") return !!(player.canTogglePlaying || player.canPlay || player.canPause)
+  return false
+}
+
+function mediaActions(player) {
+  return ["previous", "playPause", "next"].map(function(action) {
+    return { action: action, enabled: mediaActionEnabled(player, action) }
+  })
+}
+
+function firstEnabledMediaControl(player) {
+  var controls = mediaActions(player)
+  if (controls[1].enabled) return 1
+  for (var i = 0; i < controls.length; i++) if (controls[i].enabled) return i
+  return 0
+}
+
+function nextEnabledMediaControl(player, index, delta) {
+  var controls = mediaActions(player)
+  var i = index
+  for (var step = 0; step < controls.length; step++) {
+    i += delta
+    if (i < 0 || i >= controls.length) return Math.max(0, Math.min(controls.length - 1, index))
+    if (controls[i].enabled) return i
+  }
+  return index
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     isPlaybackStream: isPlaybackStream,
@@ -257,6 +298,12 @@ if (typeof module !== "undefined") {
     matchingMprisStreamLabel: matchingMprisStreamLabel,
     unmatchedMprisStreamLabel: unmatchedMprisStreamLabel,
     streamLabel: streamLabel,
-    streamRepresentsPlayer: streamRepresentsPlayer
+    streamRepresentsPlayer: streamRepresentsPlayer,
+    mediaMetadataPresent: mediaMetadataPresent,
+    mediaVisible: mediaVisible,
+    mediaActionEnabled: mediaActionEnabled,
+    mediaActions: mediaActions,
+    firstEnabledMediaControl: firstEnabledMediaControl,
+    nextEnabledMediaControl: nextEnabledMediaControl
   }
 }
