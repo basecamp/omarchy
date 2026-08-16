@@ -80,15 +80,19 @@ STUB
 chmod +x "$fake_bin"/*
 
 gmux_conf="$test_tmp/modprobe.d/apple-gmux.conf"
+dpm_rule="$test_tmp/udev/rules.d/30-omarchy-t2-amdgpu-pm.rules"
 
 TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=0 \
-  OMARCHY_T2_GMUX_CONF="$gmux_conf" PATH="$fake_bin:$PATH" \
+  OMARCHY_T2_GMUX_CONF="$gmux_conf" OMARCHY_T2_DGPU_RULE="$dpm_rule" \
+  PATH="$fake_bin:$PATH" \
   bash "$ROOT/bin/omarchy-toggle-hybrid-gpu" >/dev/null
 
 grep -Fxq 'options apple-gmux force_igd=y' "$gmux_conf" ||
   fail "T2 hybrid graphics can switch to integrated graphics"
-grep -Fq 'Use only integrated GPU and reboot?' "$test_tmp/prompts" ||
-  fail "T2 Intel mode uses the existing integrated GPU prompt"
+grep -Fxq 'SUBSYSTEM=="drm", DRIVERS=="amdgpu", ATTR{device/power_dpm_force_performance_level}="low"' "$dpm_rule" ||
+  fail "T2 integrated graphics keeps Radeon in its safe low-power mode"
+grep -Fq 'Use integrated low-power mode and reboot?' "$test_tmp/prompts" ||
+  fail "T2 Intel mode makes the Radeon performance tradeoff explicit"
 [[ $(wc -l <"$test_tmp/reboots") == "1" ]] || fail "T2 Intel mode requests one reboot"
 [[ $(wc -l <"$test_tmp/rebuilds") == "1" ]] ||
   fail "T2 Intel mode rebuilds the boot image so the new module option is read"
@@ -96,11 +100,13 @@ pass "T2 hybrid graphics switches to integrated mode"
 
 : >"$test_tmp/prompts"
 TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=0 \
-  OMARCHY_T2_GMUX_CONF="$gmux_conf" PATH="$fake_bin:$PATH" \
+  OMARCHY_T2_GMUX_CONF="$gmux_conf" OMARCHY_T2_DGPU_RULE="$dpm_rule" \
+  PATH="$fake_bin:$PATH" \
   bash "$ROOT/bin/omarchy-toggle-hybrid-gpu" >/dev/null
 
 grep -Fxq 'options apple-gmux force_igd=n' "$gmux_conf" ||
   fail "T2 hybrid graphics can switch to dedicated graphics"
+[[ ! -e $dpm_rule ]] || fail "T2 dedicated graphics restores automatic Radeon performance"
 grep -Fq 'Enable dedicated GPU and reboot?' "$test_tmp/prompts" ||
   fail "T2 AMD mode uses the existing dedicated GPU prompt"
 [[ $(wc -l <"$test_tmp/reboots") == "2" ]] || fail "T2 AMD mode requests one reboot"
@@ -110,7 +116,8 @@ pass "T2 hybrid graphics switches back to dedicated mode"
 
 : >"$test_tmp/prompts"
 TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=1 \
-  OMARCHY_T2_GMUX_CONF="$gmux_conf" PATH="$fake_bin:$PATH" \
+  OMARCHY_T2_GMUX_CONF="$gmux_conf" OMARCHY_T2_DGPU_RULE="$dpm_rule" \
+  PATH="$fake_bin:$PATH" \
   bash "$ROOT/bin/omarchy-toggle-hybrid-gpu" >/dev/null
 
 grep -Fxq 'options apple-gmux force_igd=n' "$gmux_conf" ||
@@ -123,8 +130,29 @@ pass "T2 hybrid graphics leaves a declined switch unchanged"
 : >"$test_tmp/prompts"
 set +e
 error=$(
+  TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=0 \
+    OMARCHY_T2_GMUX_CONF="$gmux_conf" OMARCHY_T2_DGPU_RULE=/dev/full \
+    PATH="$fake_bin:$PATH" \
+    bash "$ROOT/bin/omarchy-toggle-hybrid-gpu" 2>&1 >/dev/null
+)
+status=$?
+set -e
+
+(( status != 0 )) || fail "a failed Radeon power policy fails the T2 graphics switch"
+[[ $(wc -l <"$test_tmp/reboots") == "2" ]] ||
+  fail "a failed Radeon power policy leaves the machine running"
+[[ $(wc -l <"$test_tmp/rebuilds") == "2" ]] ||
+  fail "a failed Radeon power policy skips the boot image rebuild"
+grep -qF 'Graphics mode change incomplete' <<<"$error" ||
+  fail "a failed Radeon power policy explains the partial change" "$error"
+pass "T2 hybrid graphics does not reboot without its Radeon power policy"
+
+: >"$test_tmp/prompts"
+set +e
+error=$(
   TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=0 REBUILD_STATUS=1 \
-    OMARCHY_T2_GMUX_CONF="$gmux_conf" PATH="$fake_bin:$PATH" \
+    OMARCHY_T2_GMUX_CONF="$gmux_conf" OMARCHY_T2_DGPU_RULE="$dpm_rule" \
+    PATH="$fake_bin:$PATH" \
     bash "$ROOT/bin/omarchy-toggle-hybrid-gpu" 2>&1 >/dev/null
 )
 status=$?

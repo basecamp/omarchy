@@ -1,10 +1,11 @@
 #!/bin/bash
 
-# omarchy:summary=Toggle dedicated vs integrated GPU mode via supergfxd (for hybrid gpu laptops, like Asus G14).
+# omarchy:summary=Toggle dedicated vs integrated GPU mode on supported hybrid laptops.
 # omarchy:requires-sudo=true
 
 toggle_t2_hybrid_gpu() {
   local gmux_conf="${OMARCHY_T2_GMUX_CONF:-/etc/modprobe.d/apple-gmux.conf}"
+  local dpm_rule="${OMARCHY_T2_DGPU_RULE:-/etc/udev/rules.d/30-omarchy-t2-amdgpu-pm.rules}"
   local force_igd prompt
   local -a rebuild
 
@@ -13,14 +14,24 @@ toggle_t2_hybrid_gpu() {
     prompt="Enable dedicated GPU and reboot?"
   else
     force_igd=y
-    prompt="Use only integrated GPU and reboot?"
+    prompt="Use integrated low-power mode and reboot?"
   fi
 
   if gum confirm "$prompt"; then
-    sudo mkdir -p "$(dirname "$gmux_conf")"
+    sudo mkdir -p "$(dirname "$gmux_conf")" "$(dirname "$dpm_rule")"
 
     if ! echo "options apple-gmux force_igd=$force_igd" | sudo tee "$gmux_conf" >/dev/null; then
       echo "Could not write $gmux_conf. Graphics mode unchanged." >&2
+      exit 1
+    fi
+
+    if [[ $force_igd == "y" ]]; then
+      if ! echo 'SUBSYSTEM=="drm", DRIVERS=="amdgpu", ATTR{device/power_dpm_force_performance_level}="low"' | sudo tee "$dpm_rule" >/dev/null; then
+        echo "Could not write $dpm_rule. Graphics mode change incomplete." >&2
+        exit 1
+      fi
+    elif ! sudo rm -f "$dpm_rule"; then
+      echo "Could not remove $dpm_rule. Graphics mode change incomplete." >&2
       exit 1
     fi
 
