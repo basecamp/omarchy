@@ -29,9 +29,9 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-AGENT_ID = "opencode-go"
+AGENT_ID = "opencode"
 AGENT_NAME = "OpenCode"
-AUTH_HELP = "Run `opencode auth login` and subscribe to OpenCode Go, or set OPENCODE_GO_API_KEY."
+AUTH_HELP = "Run `opencode auth login` and subscribe to OpenCode Go, or set OPENCODE_API_KEY."
 API_BASE_URL = "https://opencode.ai"
 USAGE_PATH = "/zen/go/v1/usage"
 PROBE_MIN_INTERVAL_SECONDS = 15
@@ -271,7 +271,7 @@ def cached_scan(db: Path, max_age_seconds: float) -> dict[str, Any]:
   try:
     return _cached_scan(db, max_age_seconds)
   except Exception as exc:
-    print(f"omarchy-agent-usage-opencode-go: cache unavailable ({exc}); scanning directly", file=sys.stderr)
+    print(f"omarchy-agent-usage-opencode: cache unavailable ({exc}); scanning directly", file=sys.stderr)
     stats, _ = scan_opencode_db(db)
     return stats
 
@@ -318,7 +318,7 @@ def read_auth_json(path: Path) -> str:
 
 def credentials(auth_path: Path) -> str:
   # An explicit key beats whatever opencode happens to be signed in with.
-  return str(os.environ.get("OPENCODE_GO_API_KEY", "")).strip() or read_auth_json(auth_path)
+  return str(os.environ.get("OPENCODE_API_KEY", "")).strip() or read_auth_json(auth_path)
 
 
 class GoUsageError(Exception):
@@ -458,7 +458,7 @@ def collect_limits(api_key: str, base_url: str, force: bool) -> dict[str, Any]:
   # kept as the answer of record when a later probe fails, for as long as
   # their windows have not since reset. A forced refresh bypasses the window:
   # that is what the user asked for.
-  probe_cache = cache_root() / "opencode-go-limits.json"
+  probe_cache = cache_root() / "opencode-limits.json"
   cached = read_fresh_json(probe_cache, float("inf")) or {}
   fallback = usable_cached_limits(cached)
 
@@ -550,7 +550,7 @@ def main() -> int:
   parser.add_argument("--force", action="store_true", help="rescan the database and re-probe limits, ignoring caches")
   parser.add_argument("--limits-only", action="store_true", help="reuse any recent database scan; only the limits probe must be fresh")
   parser.add_argument("--cache-seconds", type=float, default=20)
-  parser.add_argument("--api-base-url", default=os.environ.get("OPENCODE_GO_API_BASE_URL", API_BASE_URL))
+  parser.add_argument("--api-base-url", default=os.environ.get("OPENCODE_API_BASE_URL", API_BASE_URL))
   args = parser.parse_args()
 
   record = scan(

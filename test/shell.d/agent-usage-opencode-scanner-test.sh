@@ -11,13 +11,13 @@ trap 'rm -rf "$TEST_HOME"' EXIT
 # Without credentials the collector must still print a full, hidden-by-default
 # record: the update runner writes whatever valid JSON appears on stdout.
 no_key=$(HOME="$TEST_HOME" XDG_DATA_HOME="$TEST_HOME/.local/share" XDG_CACHE_HOME="$TEST_HOME/.cache" \
-  OPENCODE_GO_API_KEY="" "$ROOT/bin/omarchy-agent-usage-opencode-go")
+  OPENCODE_API_KEY="" "$ROOT/bin/omarchy-agent-usage-opencode")
 
-[[ $(jq -r '.id + ":" + (.ready | tostring) + ":" + .name + ":" + .tierLabel' <<<"$no_key") == "opencode-go:false:OpenCode:Go" ]] ||
+[[ $(jq -r '.id + ":" + (.ready | tostring) + ":" + .name + ":" + .tierLabel' <<<"$no_key") == "opencode:false:OpenCode:Go" ]] ||
   fail "OpenCode collector prints a valid record without credentials" "$no_key"
 pass "OpenCode collector prints a valid record without credentials"
 
-result=$(python3 - "$ROOT/bin/omarchy-agent-usage-opencode-go" "$TEST_HOME" <<'PY'
+result=$(python3 - "$ROOT/bin/omarchy-agent-usage-opencode" "$TEST_HOME" <<'PY'
 import importlib.machinery
 import importlib.util
 import json
@@ -33,7 +33,7 @@ test_home = Path(sys.argv[2])
 
 os.environ["TZ"] = "UTC"
 time.tzset()
-os.environ.pop("OPENCODE_GO_API_KEY", None)
+os.environ.pop("OPENCODE_API_KEY", None)
 os.environ["XDG_CACHE_HOME"] = str(test_home / "cache" / "default")
 
 loader = importlib.machinery.SourceFileLoader("opencode_collector", collector_path)
@@ -122,9 +122,9 @@ summary["fractionScale"] = [w["percent"] for w in scanner.parse_usage_payload(
 
 # The env var is an explicit override; the opencode auth.json entry is the
 # native source. Empty store means no key at all.
-os.environ["OPENCODE_GO_API_KEY"] = "sk_env"
+os.environ["OPENCODE_API_KEY"] = "sk_env"
 summary["envKeyWins"] = scanner.credentials(auth_path) == "sk_env"
-os.environ.pop("OPENCODE_GO_API_KEY", None)
+os.environ.pop("OPENCODE_API_KEY", None)
 summary["authJsonKey"] = scanner.credentials(auth_path)
 empty_auth = test_home / "empty-auth.json"
 empty_auth.write_text("{}")
@@ -192,7 +192,7 @@ summary["offline"] = {
 def seed_probe_cache(limits, age_seconds=3600):
   cache_dir = Path(os.environ["XDG_CACHE_HOME"]) / "omarchy" / "agent-usage"
   cache_dir.mkdir(parents=True, exist_ok=True)
-  (cache_dir / "opencode-go-limits.json").write_text(json.dumps(
+  (cache_dir / "opencode-limits.json").write_text(json.dumps(
     {"fetchedAtMs": int((time.time() - age_seconds) * 1000), "limits": limits}))
 
 open_window = {"label": "Weekly (7-day)", "percent": 0.4,
@@ -467,7 +467,7 @@ PY
 )
 
 [[ $(jq -r '.record | {schemaVersion, id, name, ready, hasLocalStats, scope, hasPromptStats, tierLabel} | tostring' <<<"$result") == \
-  '{"schemaVersion":1,"id":"opencode-go","name":"OpenCode","ready":true,"hasLocalStats":true,"scope":"device","hasPromptStats":true,"tierLabel":"Go"}' ]] ||
+  '{"schemaVersion":1,"id":"opencode","name":"OpenCode","ready":true,"hasLocalStats":true,"scope":"device","hasPromptStats":true,"tierLabel":"Go"}' ]] ||
   fail "OpenCode collector prints the display-ready record contract" "$result"
 pass "OpenCode collector prints the display-ready record contract"
 
