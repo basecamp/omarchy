@@ -19,28 +19,14 @@ mkdir -p "$HOME/.local/bin"
 # the install line alone, so resolving the version to execute agrees with the
 # one just installed.
 #
-# `mise use -g` rewrites the whole global config in place, and it takes no lock
-# while doing so. Two of these wrappers starting at once therefore race on
-# ~/.config/mise/config.toml: the slower writer overwrites the file the faster
-# one just wrote, silently dropping its tools, and an interleaved write can
-# leave a shorter config on top of a longer one with the old tail still
-# attached, which is invalid TOML and breaks mise for every later command.
-# Serialize the write so concurrent launches queue instead of clobbering.
+# `mise use -g` rewrites the whole global config with no lock, so two wrappers
+# starting at once drop each other's tools or leave invalid TOML behind.
 #
-# The lock is state, not configuration, so it lives under XDG_STATE_HOME rather
-# than in ~/.config/mise, which is a directory people keep in a dotfiles
-# repository and mise itself owns. It is also a fixed path rather than
-# XDG_RUNTIME_DIR: that variable is set in a desktop session and unset under
-# cron or a bare ssh command, and a lock resolving to two different files for the
-# same config is not a lock at all.
-# Staged and moved into place rather than written where it lives: a migration now
-# runs this across every wrapper on the machine, and an interrupted run that had
-# removed the old file without finishing the new one would leave the command
-# missing for good. The move also replaces a symlinked alias instead of writing
-# through it to whatever it points at.
+# Fixed lock path, not XDG_RUNTIME_DIR: that is unset under cron, and a lock
+# resolving two ways is not a lock.
 #
-# mktemp rather than a predictable name, because two of these can run at once --
-# which is the very thing the lock below exists to survive.
+# Staged and moved, so an interrupted run cannot leave the command missing and a
+# symlinked alias is replaced rather than written through.
 wrapper="$HOME/.local/bin/$command"
 staged=$(mktemp "$HOME/.local/bin/.$command.XXXXXX") || exit 1
 trap 'rm -f "$staged"' EXIT
@@ -55,8 +41,7 @@ exec mise x "$package" -- "$bin" "\$@"
 EOF
 staged_status=$?
 
-# Without this a full disk gives a truncated wrapper that chmod and mv would
-# install over the working one, and the script carries no set -e to catch it.
+# No set -e here, so a truncated write would otherwise be chmod'd and installed.
 if (( staged_status != 0 )); then
   echo "omarchy-mise-install: could not write the wrapper for $command" >&2
   exit 1
