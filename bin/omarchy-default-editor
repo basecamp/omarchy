@@ -4,6 +4,12 @@
 # omarchy:args=[code|cursor|zed|sublime_text|helix|vim|emacs|nvim]
 # omarchy:examples=omarchy default editor | omarchy default editor code | omarchy default editor helix
 
+installing=false
+if [[ ${1:-} == "--install" ]]; then
+  installing=true
+  shift
+fi
+
 editor_file="$HOME/.local/state/omarchy/defaults/editor"
 
 if (($# == 0)); then
@@ -16,19 +22,36 @@ if (($# == 0)); then
 fi
 
 case "$1" in
-code) editor="code"; name="VSCode"; glyph= ;;
-cursor) editor="cursor"; name="Cursor"; glyph= ;;
-zed | zeditor) editor="zeditor"; name="Zed"; glyph= ;;
-sublime_text) editor="sublime_text"; name="Sublime Text"; glyph= ;;
-helix) editor="helix"; name="Helix"; glyph= ;;
-vim) editor="vim"; name="Vim"; glyph= ;;
-emacs) editor="emacs"; name="Emacs"; glyph= ;;
-nvim) editor="nvim"; name="Neovim"; glyph= ;;
+code) selection="code"; editor="code"; name="VSCode"; glyph= ;;
+cursor) selection="cursor"; editor="cursor"; name="Cursor"; glyph= ;;
+zed | zeditor) selection="zed"; editor="zeditor"; name="Zed"; glyph= ;;
+sublime_text) selection="sublime_text"; editor="sublime_text"; name="Sublime Text"; glyph= ;;
+helix) selection="helix"; editor="helix"; name="Helix"; glyph= ;;
+vim) selection="vim"; editor="vim"; name="Vim"; glyph= ;;
+emacs) selection="emacs"; editor="emacs"; name="Emacs"; glyph= ;;
+nvim) selection="nvim"; editor="nvim"; name="Neovim"; glyph= ;;
 *)
   echo "Usage: omarchy-default-editor <code|cursor|zed|sublime_text|helix|vim|emacs|nvim>"
   exit 1
   ;;
 esac
+
+if omarchy-cmd-missing "$editor"; then
+  if [[ $installing == "false" ]]; then
+    exec omarchy-launch-floating-terminal-with-presentation omarchy-default-editor --install "$selection"
+  else
+    case "$selection" in
+    code) omarchy-install-editor-vscode ;;
+    cursor) omarchy-pkg-add cursor-bin ;;
+    zed) omarchy-install-editor-zed ;;
+    sublime_text) omarchy-pkg-add sublime-text-4 ;;
+    helix) omarchy-install-editor-helix ;;
+    vim) omarchy-pkg-add vim ;;
+    emacs) omarchy-install-editor-emacs ;;
+    nvim) omarchy-pkg-add neovim ;;
+    esac || exit 1
+  fi
+fi
 
 mkdir -p "$(dirname "$editor_file")"
 printf '%s\n' "$editor" >"$editor_file"

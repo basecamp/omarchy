@@ -179,6 +179,32 @@ assertEqual(
   2,
   'clipboard respawns both watchers when they die'
 )
+
+assertDeepEqual(
+  clipboard.displayRows([{ type: 'text', text: 'a'.repeat(8192) + 'needle' }], 'needle', 50),
+  [],
+  'clipboard display rows do not search text past the cap'
+)
+
+assertDeepEqual(
+  clipboard.displayRows([{ type: 'text', text: 'needle' + 'a'.repeat(100000) }], 'needle', 50).map(row => row.index),
+  [0],
+  'clipboard display rows search text up to the cap'
+)
+
+const hugeTextRow = clipboard.displayRows([{ type: 'text', text: 'z'.repeat(100000) }], '', 50)[0]
+assert(
+  hugeTextRow.fullText.length === 8192 && hugeTextRow.previewText.length === 8192,
+  'clipboard display rows cap what a huge text entry renders'
+)
+
+const hugeFileList = []
+for (let i = 0; i < 5000; i++) hugeFileList.push('file:///home/dhh/clip-' + i + '.mp4')
+const hugeFileRow = clipboard.displayRows([{ type: 'text', text: hugeFileList.join('\n') + '\n' }], '', 50)[0]
+assert(
+  hugeFileRow.entryType === 'file' && hugeFileRow.fullText.split('\n').every(path => path.endsWith('.mp4')),
+  'clipboard display rows cap a huge file list without truncating a path'
+)
 JS
 
 TMPDIR=$(mktemp -d)
@@ -318,7 +344,7 @@ PATH="$TMPDIR/bin:$PATH" wl-paste --type text --watch "$current_script" text &
 stale_pid=$!
 PIDS_TO_KILL+=("$stale_pid")
 sleep 0.2
-pgrep -f 'wl-paste .*--watch .*/shell/plugins/clipboard/capture\.sh' | grep -qx "$stale_pid" || fail "clipboard reaper pattern matches running watchers"
+pgrep -f 'wl-paste .*--watch .*/shell/plugins/clipboard/capture\.sh' | grep -x "$stale_pid" >/dev/null || fail "clipboard reaper pattern matches running watchers"
 kill "$stale_pid" 2>/dev/null || true
 wait "$stale_pid" 2>/dev/null || true
 pass "clipboard reaper pattern matches running watchers"

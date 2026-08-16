@@ -98,6 +98,16 @@ Panel {
   property string passwordText: ""
   property string identityText: ""
 
+  // ConnectionFailReason values as a plain object, so Model.js helpers stay
+  // pure JS and Node-testable.
+  readonly property var connectionFailReasons: ({
+    NoSecrets: ConnectionFailReason.NoSecrets,
+    WifiAuthTimeout: ConnectionFailReason.WifiAuthTimeout,
+    WifiNetworkLost: ConnectionFailReason.WifiNetworkLost,
+    WifiClientDisconnected: ConnectionFailReason.WifiClientDisconnected,
+    WifiClientFailed: ConnectionFailReason.WifiClientFailed
+  })
+
   // True while any wifi action is mid-flight. Rows
   // disable themselves on this so clicks on the other rows don't silently
   // no-op against runNetworkAction's serialized guard.
@@ -282,6 +292,29 @@ Panel {
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
 
+  // scannerEnabled lives on the shared WifiDevice, which has no reference
+  // counting, and a bar widget is instantiated once per monitor. Tracking the
+  // device this instance turned scanning on for keeps the release correct when
+  // the panel closes, the device is replaced, or the widget is destroyed —
+  // without a closed instance ever claiming the scanner.
+  property var scannerDevice: null
+
+  function setScannerEnabled(enabled) {
+    var nextDevice = opened ? wifiDevice : null
+
+    if (scannerDevice && scannerDevice !== nextDevice)
+      scannerDevice.scannerEnabled = false
+
+    scannerDevice = nextDevice
+
+    if (scannerDevice)
+      scannerDevice.scannerEnabled = enabled
+  }
+
+  Component.onDestruction: {
+    if (scannerDevice) scannerDevice.scannerEnabled = false
+  }
+
   // KeyboardPanel primes layer-shell focus whenever the panel opens. That's
   // what makes the SUPER+CTRL+W keybind land here with navigation ready.
   onOpenedChanged: {
@@ -295,6 +328,10 @@ Panel {
       syncBandIndex()
       cursorActive = false
     } else {
+      // Drop a restart armed by this open: without it a close/reopen inside
+      // the 100ms window reuses the running timer and re-enables the scanner
+      // almost immediately, undoing the deferral #6605 restored.
+      scanRestart.stop()
       // Reset throughput tracking so the next open doesn't compute a fake
       // rate from a sample taken minutes ago.
       prevSampleTime = 0
@@ -306,7 +343,7 @@ Panel {
       routerPingLatency = -1
       internetPingLatency = -1
       internetPingPacketLoss = 0
-      if (wifiDevice) wifiDevice.scannerEnabled = false
+      setScannerEnabled(false)
     }
   }
 
@@ -347,7 +384,7 @@ Panel {
   }
 
   onWifiDeviceChanged: {
-    if (wifiDevice) wifiDevice.scannerEnabled = opened
+    setScannerEnabled(true)
     syncWifiNetworks()
   }
 
@@ -387,7 +424,10 @@ Panel {
     var net = wifiNetworks[selectedIndex]
     if (!net) return
     if (wifiActionFocused && canForgetNetwork(net)) { forget(net); return }
-    if (net.connected) { disconnect(net.network); return }
+    // Only act on a row that still resolves. disconnect() falls back to
+    // connectedWifiNetwork when handed null, so a row left stale by scan churn
+    // would otherwise tear down whatever is connected now instead.
+    if (net.connected) { disconnectRow(net.ssid); return }
     if (isProtected(net.security) && !net.known) { openPasswordPrompt(net.ssid); return }
     connectKnown(net.ssid)
   }
@@ -439,13 +479,15 @@ Panel {
       bandProc.command = ["omarchy-network-band"]
       bandProc.running = true
     }
-    if (wifiDevice) {
+    // A closed panel has no nearby-network list to fill, and bare refresh()
+    // reaches here from action completion, timeouts and construction.
+    if (opened && wifiDevice) {
       if (scanWifi) {
         scanning = true
-        wifiDevice.scannerEnabled = false
+        setScannerEnabled(false)
         scanRestart.start()
       } else {
-        wifiDevice.scannerEnabled = true
+        setScannerEnabled(true)
       }
     }
     syncWifiNetworks()
@@ -700,13 +742,11 @@ Panel {
   }
 
   function networkFailureReason(reason) {
-    return Model.networkFailureReason(reason, {
-      NoSecrets: ConnectionFailReason.NoSecrets,
-      WifiAuthTimeout: ConnectionFailReason.WifiAuthTimeout,
-      WifiNetworkLost: ConnectionFailReason.WifiNetworkLost,
-      WifiClientDisconnected: ConnectionFailReason.WifiClientDisconnected,
-      WifiClientFailed: ConnectionFailReason.WifiClientFailed
-    })
+    return Model.networkFailureReason(reason, connectionFailReasons)
+  }
+
+  function shouldRepromptPassphrase(reason, isProtected) {
+    return Model.shouldRepromptPassphrase(reason, isProtected, connectionFailReasons)
   }
 
   function checkActionCompletion(network) {
@@ -748,8 +788,17 @@ Panel {
     runNetworkAction("disconnect", network || connectedWifiNetwork, function(net) { net.disconnect() })
   }
 
+  // Disconnect from a row's SSID. Rows are primitive snapshots that can outlive
+  // their WifiNetwork, and disconnect()'s null fallback targets whatever is
+  // connected now, so a stale row must do nothing rather than hit an unrelated
+  // network. Callers that mean "drop the current connection" call disconnect().
+  function disconnectRow(ssid) {
+    var network = networkForSsid(ssid)
+    if (network) disconnect(network)
+  }
+
   function forget(net) {
-    runNetworkAction("forget", net ? net.network : null, function(network) { network.forget() })
+    runNetworkAction("forget", net ? networkForSsid(net.ssid) : null, function(network) { network.forget() })
   }
 
   implicitWidth: button.implicitWidth
@@ -772,8 +821,10 @@ Panel {
     interval: 100
     repeat: false
     onTriggered: {
-      if (root.wifiDevice) root.wifiDevice.scannerEnabled = true
-      scanDone.start()
+      if (root.opened && root.wifiDevice) {
+        root.setScannerEnabled(true)
+        scanDone.start()
+      }
     }
   }
 
@@ -882,7 +933,11 @@ Panel {
 
   Timer {
     id: actionTimeout
-    interval: 15000
+    // Must outlast NetworkManager's 25s supplicant timeout: a wrong saved
+    // PSK fails with WifiAuthTimeout at ~25s, and that failure has to land
+    // while the action is still tracked to show "Wrong password" and reopen
+    // the passphrase prompt.
+    interval: 30000
     repeat: false
     onTriggered: {
       if (!root.actionKind) return
@@ -906,7 +961,11 @@ Panel {
 
     onPressed: function(b) {
       if (root.opened) root.close()
-      else { root.open(); root.refresh() }
+      // open() is enough: onOpenedChanged runs refresh(true), which defers the
+      // PHY scan past the first frame. The bare refresh() that used to follow
+      // took the no-scan branch and set scannerEnabled synchronously, undoing
+      // that deferral and stalling the open on NetworkManager's AP flood.
+      else root.open()
     }
   }
 
@@ -1565,19 +1624,23 @@ Panel {
     }
 
     Connections {
-      target: row.net ? row.net.network : null
+      target: row.net ? root.networkForSsid(row.net.ssid) : null
       function onConnectionFailed(reason) {
-        root.failNetworkAction(row.net.network, reason)
-        if (reason === ConnectionFailReason.NoSecrets) root.openPasswordPrompt(row.net.ssid)
+        // Background auto-connect retries fire this too; only reprompt for
+        // the connect started from this panel. Checked before
+        // failNetworkAction, which clears the action state.
+        var ours = root.actionKind === "connect" && root.actionSsid === (row.net.ssid || "")
+        root.failNetworkAction(root.networkForSsid(row.net.ssid), reason)
+        if (ours && root.shouldRepromptPassphrase(reason, row.isProtected)) root.openPasswordPrompt(row.net.ssid)
       }
       function onConnectedChanged() {
-        if (row.net) root.checkActionCompletion(row.net.network)
+        if (row.net) root.checkActionCompletion(root.networkForSsid(row.net.ssid))
       }
       function onKnownChanged() {
-        if (row.net) root.checkActionCompletion(row.net.network)
+        if (row.net) root.checkActionCompletion(root.networkForSsid(row.net.ssid))
       }
       function onStateChangingChanged() {
-        if (row.net) root.checkActionCompletion(row.net.network)
+        if (row.net) root.checkActionCompletion(root.networkForSsid(row.net.ssid))
       }
     }
 
@@ -1626,7 +1689,7 @@ Panel {
         root.selectedIndex = row.index
         root.wifiActionFocused = false
         if (row.isConnected) {
-          root.disconnect(row.net.network)
+          root.disconnectRow(row.net.ssid)
           return
         }
         if (row.isProtected && !row.isKnown) {
@@ -1750,9 +1813,10 @@ Panel {
       }
     }
 
-    // Inline passphrase prompt — only shown when we hit a protected network
-    // we don't have saved credentials for. Submitting (Enter or the check
-    // button) fires connect; Esc cancels back to the row.
+    // Inline passphrase prompt — shown when we hit a protected network we
+    // don't have saved credentials for, or when a connect fails because the
+    // saved passphrase is wrong. Submitting (Enter or the check button) fires
+    // connect; Esc cancels back to the row.
     Item {
       id: passwordPanel
       visible: row.isPasswordOpen

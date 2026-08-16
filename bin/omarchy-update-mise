@@ -4,6 +4,9 @@
 
 if omarchy-cmd-present mise; then
   echo -e "\e[32m\nUpdate mise tools\e[0m"
-  mise up
-  echo
+
+  # mise withholds releases younger than its cooldown, so tools stay behind for
+  # days after they ship. Running omarchy update is the user asking for current
+  # versions now, which is the same call the mup alias makes by hand.
+  MISE_MINIMUM_RELEASE_AGE=0 mise up
 fi

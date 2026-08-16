@@ -12,14 +12,13 @@ cleanup() {
     kill "$QS_PID" 2>/dev/null || true
     wait "$QS_PID" 2>/dev/null || true
   fi
-  [[ -n $TMPDIR && -d $TMPDIR ]] && rm -rf "$TMPDIR"
+  if [[ -n $TMPDIR && -d $TMPDIR ]]; then
+    rm -rf "$TMPDIR"
+  fi
 }
 trap cleanup EXIT
 
-if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
-  pass "no Wayland compositor; skipping manifest entrypoint load test"
-  exit 0
-fi
+require_compositor "manifest entrypoint load test"
 
 if ! command -v quickshell >/dev/null 2>&1; then
   pass "quickshell not installed; skipping manifest entrypoint load test"
@@ -80,6 +79,9 @@ OMARCHY_PATH="$ROOT" \
 OMARCHY_QML_TEST_RESULT="$result" \
 OMARCHY_QML_MANIFESTS="$manifest_entries" \
 HOME="$TMPDIR/home" \
+XDG_CONFIG_HOME="$TMPDIR/home/.config" \
+XDG_CACHE_HOME="$TMPDIR/home/.cache" \
+XDG_STATE_HOME="$TMPDIR/home/.local/state" \
 QML2_IMPORT_PATH="$ROOT/shell${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}" \
 QML_IMPORT_PATH="$ROOT/shell${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}" \
 PATH="$ROOT/bin:$PATH" \

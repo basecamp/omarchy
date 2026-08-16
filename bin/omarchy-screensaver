@@ -8,7 +8,7 @@ screensaver_in_focus() {
 
 exit_screensaver() {
   hyprctl eval 'hl.config({ cursor = { invisible = false } })' &>/dev/null || hyprctl keyword cursor:invisible false &>/dev/null || true
-  pkill -x tte 2>/dev/null
+  pkill -x ttfx 2>/dev/null
   pkill -f '[o]rg.omarchy.screensaver' 2>/dev/null
   exit 0
 }
@@ -22,12 +22,25 @@ hyprctl eval 'hl.config({ cursor = { invisible = true } })' &>/dev/null || hyprc
 
 tty=$(tty 2>/dev/null)
 
+# Terminals allocate the pty at the default 80x24 and only resize it once the
+# compositor has told the window how big it is. ttfx measures the terminal once,
+# at startup, so starting it before the resize lands sizes an 80x24 canvas and
+# paints it into the corner of a fullscreen window.
+wait_for_terminal_resize() {
+  local deadline=$((SECONDS + 2))
+  while ((SECONDS < deadline)) && [[ $(stty size 2>/dev/null) == "24 80" ]]; do
+    sleep 0.02
+  done
+}
+
+wait_for_terminal_resize
+
 while true; do
-  tte -i ~/.config/omarchy/branding/screensaver.txt \
+  ttfx -i ~/.config/omarchy/branding/screensaver.txt \
     --frame-rate 120 --canvas-width 0 --canvas-height 0 --reuse-canvas --anchor-canvas c --anchor-text c\
     --random-effect --no-eol --no-restore-cursor &
 
-  while pgrep -t "${tty#/dev/}" -x tte >/dev/null; do
+  while pgrep -t "${tty#/dev/}" -x ttfx >/dev/null; do
     if read -n1 -t 1 || ! screensaver_in_focus; then
       exit_screensaver
     fi

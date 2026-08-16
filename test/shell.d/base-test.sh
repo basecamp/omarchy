@@ -29,6 +29,53 @@ require_command() {
   command -v "$command" >/dev/null || fail "required command is available: $command"
 }
 
+# WAYLAND_DISPLAY proves the variable was inherited, not that the compositor
+# answers. Sandboxes pass the environment through while blocking
+# $XDG_RUNTIME_DIR, so Quickshell clears a bare variable check and then aborts
+# inside QGuiApplication, before any QML loads: a core dump per launch where a
+# skip belonged. Probe the socket, then Hyprland itself, since a compositor that
+# died mid-session can leave its socket behind.
+compositor_reachable() {
+  local socket=${WAYLAND_DISPLAY:-}
+
+  [[ -n $socket ]] || return 1
+  [[ $socket == /* ]] || socket=${XDG_RUNTIME_DIR:-}/$socket
+  [[ -S $socket ]] || return 1
+
+  # A compositor that died can leave its socket behind, so ask Hyprland whether
+  # it is still answering. Only when it can be asked: hyprctl needs
+  # HYPRLAND_INSTANCE_SIGNATURE, and treating a missing signature as a dead
+  # compositor would skip tests that would have run fine.
+  [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || return 0
+
+  # Hyprland can miss a query while it reconfigures outputs, and one miss is not
+  # a dead compositor; retry the way omarchy-launch-shell does rather than
+  # discard a whole file's runtime coverage. Only a leftover socket gets this
+  # far, so the waiting is rare.
+  local attempt
+  for attempt in 1 2 3; do
+    hyprctl -j monitors >/dev/null 2>&1 && return 0
+    (( attempt < 3 )) && sleep 0.5
+  done
+
+  return 1
+}
+
+require_compositor() {
+  local description="$1"
+
+  if compositor_reachable; then
+    # No probe outruns a compositor that dies mid-run, and Quickshell leaves
+    # through qFatal() when its connection drops. Keep that abort from writing a
+    # core; the test still fails, just without the debris.
+    ulimit -c 0 2>/dev/null || true
+    return 0
+  fi
+
+  pass "no Wayland compositor; skipping $description"
+  exit 0
+}
+
 run_node_test() {
   require_command node
 

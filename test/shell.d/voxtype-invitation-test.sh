@@ -18,27 +18,18 @@ mkdir -p "$(dirname "$hook_path")"
 cat >"$test_bin/omarchy-notification-send" <<'EOF'
 #!/bin/bash
 echo notification >>"$TEST_LOG"
-echo action
+while (($# > 0)); do
+  [[ $1 == "--exec" ]] && echo "exec:$2" >>"$TEST_LOG"
+  shift
+done
 EOF
 chmod +x "$test_bin/omarchy-notification-send"
 
-cat >"$test_bin/omarchy-launch-floating-terminal-with-presentation" <<'EOF'
-#!/bin/bash
-echo launch >>"$TEST_LOG"
-EOF
-chmod +x "$test_bin/omarchy-launch-floating-terminal-with-presentation"
-
+# The shell runs the click command, so the invitation must not need a unit of its
+# own to keep a blocked sender alive until the toast is answered.
 cat >"$test_bin/systemd-run" <<'EOF'
 #!/bin/bash
 echo "systemd-run:$*" >>"$TEST_LOG"
-while (($# > 0)); do
-  case $1 in
-    -p) shift 2 ;;
-    -*) shift ;;
-    *) break ;;
-  esac
-done
-exec "$@"
 EOF
 chmod +x "$test_bin/systemd-run"
 
@@ -51,19 +42,14 @@ run_invitation_hook
 
 [[ -f $test_home/.local/state/omarchy/done/voxtype-install-invitation ]] || fail "Voxtype invitation records completion"
 [[ -f $hook_path ]] || fail "Voxtype invitation keeps its hook installed"
-[[ $(grep -c '^systemd-run:' "$log_file") -eq 2 ]] || fail "Voxtype invitation uses durable user services"
-grep -q -- '--user --collect --quiet --service-type=exec --unit=omarchy-voxtype-install-invitation' "$log_file" || fail "Voxtype invitation configures its user service"
-# KillMode=process keeps the launcher's setsid child alive once the short-lived
-# main process exits, otherwise the install terminal never appears.
-grep -q -- '--user --collect --quiet -p KillMode=process --unit=omarchy-voxtype-install ' "$log_file" || fail "Voxtype invitation outlives its launcher unit"
 [[ $(grep -c '^notification$' "$log_file") -eq 1 ]] || fail "Voxtype invitation sends one notification"
-[[ $(grep -c '^launch$' "$log_file") -eq 1 ]] || fail "Voxtype invitation handles the notification action"
+grep -qx 'exec:omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install' "$log_file" ||
+  fail "Voxtype invitation attaches the installer to the notification"
+grep -q '^systemd-run:' "$log_file" && fail "Voxtype invitation needs no unit to hold an unanswered toast"
 
 HOME="$test_home" PATH="$test_bin:$ROOT/bin:$PATH" TEST_LOG="$log_file" bash "$hook_path"
 
 [[ -f $hook_path ]] || fail "completed Voxtype invitation keeps its hook installed"
-[[ $(grep -c '^systemd-run:' "$log_file") -eq 2 ]] || fail "completed Voxtype invitation does not schedule again"
 [[ $(grep -c '^notification$' "$log_file") -eq 1 ]] || fail "completed Voxtype invitation hook does not notify again"
-[[ $(grep -c '^launch$' "$log_file") -eq 1 ]] || fail "completed Voxtype invitation hook does not launch again"
 
 pass "Voxtype invitation only runs once"

@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# omarchy:summary=Finish first-login setup for Omarchy.
+# omarchy:args=[--force]
+# omarchy:hidden=true
+
+set -e
+
+usage() {
+  cat <<USAGE
+Usage: omarchy-provision-first-run [--force]
+
+Run first-login user setup and notification hooks. By default this only runs
+once per user. Use --force to rerun the full sequence and refresh user setup.
+USAGE
+}
+
+force=0
+finalize_user_args=()
+while (($#)); do
+  case "$1" in
+    --force)
+      force=1
+      finalize_user_args+=(--force)
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+state_dir=~/.local/state/omarchy
+FIRST_RUN_DONE="first-run-user"
+if omarchy-done check "$FIRST_RUN_DONE" && (( force == 0 )); then
+  echo "First-run already complete (rerun with --force to refresh)."
+  exit 0
+fi
+
+omarchy-provision-user "${finalize_user_args[@]}" || true
+
+mkdir -p "$state_dir"
+
+FIRST_RUN_LOG="$state_dir/first-run.log"
+first_run_failed=0
+
+log_first_run() {
+  printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$FIRST_RUN_LOG"
+}
+
+run_first_run_step() {
+  local name="$1"
+  shift
+
+  log_first_run "Starting: $name"
+  if "$@"; then
+    log_first_run "Completed: $name"
+  else
+    local status=$?
+    first_run_failed=1
+    log_first_run "Failed: $name (exit code: $status)"
+  fi
+}
+
+run_first_run_step "install Voxtype post-update hook" \
+  omarchy-hook-install post-update "$OMARCHY_PATH/install/user/first-run/install-voxtype.hook"
+run_first_run_step "install fingerprint setup post-update hook" \
+  omarchy-hook-install post-update "$OMARCHY_PATH/install/user/first-run/setup-fingerprint.hook"
+run_first_run_step "install agent setup post-update hook" \
+  omarchy-hook-install post-update "$OMARCHY_PATH/install/user/first-run/setup-agent.hook"
+
+run_first_run_step "enable user systemd units" \
+  bash "$OMARCHY_PATH/install/user/first-run/enable-user-units.sh"
+run_first_run_step "set GNOME theme" \
+  bash "$OMARCHY_PATH/install/user/first-run/gnome-theme.sh"
+run_first_run_step "set GTK primary paste" \
+  bash "$OMARCHY_PATH/install/user/first-run/gtk-primary-paste.sh"
+run_first_run_step "apply speaker tuning" \
+  bash "$OMARCHY_PATH/install/user/first-run/audio-tuning.sh"
+
+omarchy-notification-wait || log_first_run "Timed out waiting for notification service; continuing"
+# Each send returns only once the server has taken the toast, so sending in
+# order is enough to stack them newest-on-top.
+run_first_run_step "show welcome notification" \
+  bash "$OMARCHY_PATH/install/user/first-run/welcome.sh"
+run_first_run_step "schedule Wi-Fi/update notifications" \
+  bash "$OMARCHY_PATH/install/user/first-run/wifi.sh"
+
+if (( first_run_failed == 0 )); then
+  omarchy-done mark "$FIRST_RUN_DONE"
+else
+  log_first_run "One or more first-run steps failed; first-run will retry next login"
+fi

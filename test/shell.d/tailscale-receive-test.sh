@@ -25,14 +25,6 @@ SH
 cat >"$WORKDIR/bin/omarchy-notification-send" <<SH
 #!/bin/bash
 printf '%s\n' "\$*" >>"$WORKDIR/notifications"
-# Only the photo notification gets clicked.
-[[ \$* == *photo.png* ]] && echo default
-exit 0
-SH
-
-cat >"$WORKDIR/bin/xdg-open" <<SH
-#!/bin/bash
-printf '%s\n' "\$1" >>"$WORKDIR/opened"
 SH
 
 chmod +x "$WORKDIR/bin/"*
@@ -68,9 +60,14 @@ grep -q "^Received notes with space.pdf .* -g " <<<"$notifications" ||
   fail "taildrop receive announces other files with a glyph" "$notifications"
 pass "taildrop receive announces other files with a glyph"
 
-grep -qxF "$downloads/photo.png" "$WORKDIR/opened" ||
-  fail "taildrop receive opens a clicked file" "$(cat "$WORKDIR/opened" 2>/dev/null)"
-pass "taildrop receive opens a clicked file"
+# The shell keeps the click command with the toast, so receiving does not have
+# to sit blocked on an answer -- and the toast still opens the file after a shell
+# restart. Names with spaces have to arrive quoted for the shell to run them.
+grep -qF -- "--exec xdg-open $downloads/photo.png" <<<"$notifications" ||
+  fail "taildrop receive attaches the open command to the notification" "$notifications"
+grep -qF -- "--exec xdg-open $(printf %q "$downloads/notes with space.pdf")" <<<"$notifications" ||
+  fail "taildrop receive quotes spaced names in the open command" "$notifications"
+pass "taildrop receive lets a click open the received file"
 
 grep -q "unrelated.txt" <<<"$notifications" &&
   fail "taildrop receive leaves the rest of the downloads directory alone" "$notifications"

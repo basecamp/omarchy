@@ -1,6 +1,11 @@
 # Editor used by CLI
 export EDITOR="${EDITOR:-omarchy-launch-editor --inline}"
 export SUDO_EDITOR="$EDITOR"
+
+# Used by terminal programs (like gh) to open URLs detached from the terminal
+# process tree. Shell-scoped on purpose: exporting BROWSER session-wide makes
+# xdg-settings refuse to change the default browser.
+export BROWSER="${BROWSER:-omarchy-launch-browser}"
 export BAT_THEME=ansi
 
 # Color man pages with bat
@@ -10,6 +15,18 @@ export MANPAGER="sh -c 'col -bx | bat -l man -p'"
 # Idempotent — already sourced by /etc/skel/.bashrc; re-source here so SSH and
 # other non-interactive non-login bash sessions still get OMARCHY_PATH.
 [ -r /usr/share/omarchy/default/bash/env-bootstrap ] && . /usr/share/omarchy/default/bash/env-bootstrap
+
+# /etc/profile.d/locale.sh is what puts /etc/locale.conf into the environment,
+# and it only runs for login shells. Bash started by SSH or herdr's remote
+# bridge misses it and lands in the C locale, where printf emits \u/\U escapes
+# literally instead of the character. Mirror locale.sh for those sessions.
+if [ -z "${LANG:-}" ]; then
+  [ -r /etc/locale.conf ] && . /etc/locale.conf
+  LANG="${LANG:-C.UTF-8}"
+  export LANG LANGUAGE LC_CTYPE LC_NUMERIC LC_TIME LC_COLLATE LC_MONETARY \
+    LC_MESSAGES LC_PAPER LC_NAME LC_ADDRESS LC_TELEPHONE LC_MEASUREMENT \
+    LC_IDENTIFICATION
+fi
 
 case ":$PATH:" in
   *":$HOME/.local/bin:"*) ;;

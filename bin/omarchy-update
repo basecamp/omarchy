@@ -21,13 +21,29 @@ trap 'omarchy-update-stay-awake stop' EXIT
 
 omarchy-update-requires-free-space
 
+# -y is a promise not to ask anything. Steps that would need an answer report
+# and move on instead of waiting on a prompt nobody is here to give.
+[[ ${1:-} != "-y" ]] || export OMARCHY_UPDATE_UNATTENDED=1
+
 if [[ ${1:-} == "-y" ]] || omarchy-update-confirm; then
-  omarchy-snapshot create || (($? == 127))
+  # Before the snapshot: the cache is on the snapshotted subvolume, so pruning
+  # after it frees nothing until that snapshot ages out.
+  omarchy-update-pkg-prune
+
+  # 127 means Snapper is deliberately absent. Any other failure already said
+  # what went wrong, and a missing snapshot is not worth blocking an update
+  # over, but it must not pass for one either.
+  omarchy-snapshot create || (($? == 127)) ||
+    echo -e "\e[33mContinuing the update without a snapshot.\e[0m" >&2
 
   omarchy-update-stay-awake start
 
   omarchy-update-dev
   omarchy-update-keyring
+
+  # Migrations ship with the packages installed here and are written against
+  # them, so everything below waits on this finishing. An upgrade that stopped
+  # takes the update with it rather than migrating against what is still on disk.
   omarchy-update-system-pkgs
   omarchy-migrate
   omarchy-hook post-update

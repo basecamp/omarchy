@@ -1,1 +1,1 @@
-omarchy-setup-lock
+omarchy-apply-lock

@@ -13,7 +13,7 @@ verb="${1-toggle}"
 route="${2-root}"
 
 menu_payload() {
-  perl -MEncode=decode -MJSON::PP=encode_json -e 'print encode_json({ menu => decode("UTF-8", $ARGV[0]) })' "$1"
+  jq -nc --arg menu "$1" '{ menu: $menu }'
 }
 
 case "$verb" in

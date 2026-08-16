@@ -39,7 +39,12 @@ Panel {
   readonly property var limits: limitWindows(provider)
   readonly property var models: modelRows(provider)
   readonly property var headline: bindingWindow(provider)
-  readonly property bool alarming: !!headline && headline.percent >= 0.9
+  readonly property var balance: provider ? (provider.balance || null) : null
+  // A prepaid account runs low the way a subscription window fills up: the
+  // last 10% of the funded credits lights the same alarm.
+  readonly property bool balanceAlarming: !!balance && balance.funded > 0
+    && balance.remaining / balance.funded <= 0.1
+  readonly property bool alarming: (!!headline && headline.percent >= 0.9) || balanceAlarming
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
   function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
@@ -52,6 +57,11 @@ Panel {
 
   function refreshNow() {
     usage.refreshAll(true)
+  }
+
+  function launchAgent() {
+    if (root.bar) root.bar.run("omarchy-agent --pick")
+    root.close()
   }
 
   // ---------------------------------------------------------------- limits
@@ -87,9 +97,13 @@ Panel {
     return plain === "" ? "Limit" : plain
   }
 
-  function limitWindow(label, percent, resetAt) {
+  // A collector that already knows which window a limit belongs to says so,
+  // and that beats reading it back out of the label: a model-scoped limit is
+  // titled after its model, and a name like "Opus 5 (1M context)" would parse
+  // as a one-minute window.
+  function limitWindow(label, percent, resetAt, title) {
     return {
-      title: windowTitle(label),
+      title: String(title || "") !== "" ? String(title) : windowTitle(label),
       percent: Number(percent),
       resetAt: String(resetAt || "")
     }
@@ -102,7 +116,7 @@ Panel {
     for (var i = 0; i < list.length; i++) {
       var entry = list[i] || {}
       var percent = Number(entry.percent)
-      if (percent >= 0) out.push(limitWindow(entry.label, percent, entry.resetsAt))
+      if (percent >= 0) out.push(limitWindow(entry.label, percent, entry.resetsAt, entry.title))
     }
     return out
   }
@@ -132,6 +146,32 @@ Panel {
     if (days > 0) return days + "d " + (hours % 24) + "h"
     if (hours > 0) return hours + "h " + (minutes % 60) + "m"
     return Math.max(1, minutes) + "m"
+  }
+
+  // ---------------------------------------------------------------- balance
+  //
+  // Prepaid agents report a credit ledger instead of rate-limit windows: the
+  // record's balance object carries remaining, funded, and spent amounts.
+
+  function currencyPrefix(currency) {
+    var code = String(currency || "USD").toUpperCase()
+    if (code === "USD") return "$"
+    if (code === "EUR") return "€"
+    if (code === "GBP") return "£"
+    return code + " "
+  }
+
+  function formatMoney(value, currency) {
+    var amount = Number(value)
+    if (!isFinite(amount)) amount = 0
+    return currencyPrefix(currency) + amount.toFixed(2)
+  }
+
+  function balanceDetailText(b) {
+    if (!b || !(b.funded > 0)) return ""
+    var text = formatMoney(b.spent, b.currency) + " spent of " + formatMoney(b.funded, b.currency) + " funded"
+    if (b.estimated) text += " · estimated"
+    return text
   }
 
   // ---------------------------------------------------------------- content
@@ -174,8 +214,9 @@ Panel {
       : dayName(day.date) + " " + (parsed.getMonth() + 1) + "/" + parsed.getDate()
     var text = label + " · " + usage.formatTokenCount(Number(day.messageCount || 0)) + " tokens"
     // Prompt and session counts only exist for today, so they ride along here
-    // instead of taking a section of their own.
-    if (today && provider)
+    // instead of taking a section of their own. Billing-API agents never
+    // count prompts, and "0 prompts" would read as a quiet day, not a gap.
+    if (today && provider && provider.hasPromptStats !== false)
       text += " · " + Number(provider.todayPrompts || 0) + " prompts · "
         + Number(provider.todaySessions || 0) + " sessions"
     return text
@@ -301,7 +342,7 @@ Panel {
     text: "󱚣"
     active: root.alarming
     onPressed: function(buttonCode) {
-      if (buttonCode === Qt.RightButton) root.refreshNow()
+      if (buttonCode === Qt.RightButton) root.launchAgent()
       else if (buttonCode === Qt.MiddleButton) root.selectProvider(root.providerIndex + 1)
       else root.toggle()
     }
@@ -367,8 +408,14 @@ Panel {
               Item {
                 id: heroMark
                 property var candidates: root.iconCandidatesForProvider(root.provider, root.surface)
+                // Provider objects are rebuilt on every refresh, which churns the
+                // array's identity without changing its content. Restart the fallback
+                // walk only when the URLs change: re-pointing source at a URL whose
+                // load already failed emits no statusChanged, so an identity-only
+                // reset would strand the walker on a missing -light twin.
+                property string candidatesKey: candidates.join("\n")
                 property int candidateIndex: 0
-                onCandidatesChanged: candidateIndex = 0
+                onCandidatesKeyChanged: candidateIndex = 0
 
                 width: Style.font.display
                 height: Style.font.display
@@ -380,7 +427,10 @@ Panel {
                   sourceSize.width: Style.font.display * 2
                   sourceSize.height: Style.font.display * 2
                   fillMode: Image.PreserveAspectFit
-                  onStatusChanged: if (status === Image.Error && heroMark.candidateIndex < heroMark.candidates.length) heroMark.candidateIndex++
+                  // Advancing source from inside its own status change trips the
+                  // binding-loop detector; defer the step one tick.
+                  onStatusChanged: if (status === Image.Error && heroMark.candidateIndex < heroMark.candidates.length)
+                    Qt.callLater(function() { heroMark.candidateIndex++ })
                 }
 
                 Text {
@@ -467,10 +517,71 @@ Panel {
             }
           }
 
-          // ---------- Limits ----------
+          // ---------- Balance / limits ----------
           PanelSeparator {
-            visible: limitsSection.visible
+            visible: balanceSection.visible || limitsSection.visible
             foreground: root.foreground
+          }
+
+          Column {
+            id: balanceSection
+            visible: !!root.balance
+            width: parent.width
+            spacing: Style.space(10)
+
+            // The meter shows what is left, not what is used: a prepaid
+            // account drains toward empty rather than filling toward a cap.
+            readonly property real ratio: root.balance && root.balance.funded > 0
+              ? root.clamp(root.balance.remaining / root.balance.funded, 0, 1)
+              : -1
+
+            PanelSectionHeader {
+              width: parent.width
+              text: "BALANCE"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(balanceLabel.implicitHeight, balanceValue.implicitHeight)
+
+              Text {
+                id: balanceLabel
+                text: "Prepaid credits"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                id: balanceValue
+                text: root.balance ? root.formatMoney(root.balance.remaining, root.balance.currency) : ""
+                color: root.balanceAlarming ? root.urgent : root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            Meter {
+              visible: balanceSection.ratio >= 0
+              width: parent.width
+              value: balanceSection.ratio
+              alarming: root.balanceAlarming
+            }
+
+            Text {
+              visible: text !== ""
+              width: parent.width
+              text: root.balanceDetailText(root.balance)
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
           }
 
           Column {
@@ -599,11 +710,16 @@ Panel {
 
       Text {
         id: limitLabel
+        // A model-scoped window is titled after its model, and those names run
+        // long enough to reach the percentage, so the title gives way first.
         text: limitRow.window ? limitRow.window.title : ""
         color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
+        elide: Text.ElideRight
         anchors.left: parent.left
+        anchors.right: limitValue.left
+        anchors.rightMargin: Style.spacing.sm
         anchors.verticalCenter: parent.verticalCenter
       }
 

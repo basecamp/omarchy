@@ -69,3 +69,18 @@ FAKE_HYPRCTL_LOG="$hyprctl_log" \
 grep -F -- '--instance test-signature reload' "$hyprctl_log" >/dev/null || fail "reload guard forces one Hyprland reload after package transaction"
 grep -F 'hl.config({ misc = { disable_autoreload = false }, debug = { suppress_errors = false } })' "$hyprctl_log" >/dev/null || fail "reload guard restores previous Hyprland reload settings"
 pass "reload guard resumes live Hyprland reloads"
+
+# The modeless monitor recovery loop reloads on its own schedule, so it needs to
+# ask whether a transaction is in flight.
+rm -rf "$state_dir"
+OMARCHY_HYPRLAND_RELOAD_GUARD_STATE_DIR="$state_dir" "$ROOT/bin/omarchy-hyprland-reload-guard" paused &&
+  fail "reload guard reports itself unpaused before any transaction"
+
+mkdir -p "$state_dir"
+OMARCHY_HYPRLAND_RELOAD_GUARD_STATE_DIR="$state_dir" "$ROOT/bin/omarchy-hyprland-reload-guard" paused &&
+  fail "an empty state directory is not a paused transaction"
+
+touch "$state_dir/some-signature"
+OMARCHY_HYPRLAND_RELOAD_GUARD_STATE_DIR="$state_dir" "$ROOT/bin/omarchy-hyprland-reload-guard" paused ||
+  fail "reload guard reports itself paused during a transaction"
+pass "reload guard reports whether a transaction is holding reloads"

@@ -23,5 +23,19 @@ if [ "$OMARCHY_PATH" != /usr/share/omarchy ]; then
     *":${OMARCHY_PATH%/}/bin:"*) ;;
     *) PATH="${OMARCHY_PATH%/}/bin${PATH:+:$PATH}" ;;
   esac
-  export PATH
 fi
+
+# User-level tool paths, appended so system binaries keep precedence. This is
+# what lets login shells (ssh, bash -lc) and the uwsm session find mise-managed
+# tools without an interactive rc. Keep these directories in sync with the PAM
+# PATH line from install/config/ssh-command-path.sh, which covers SSH commands
+# that run no shell setup at all.
+case ":$PATH:" in
+  *":$HOME/.local/share/mise/shims:"*) ;;
+  *) PATH="${PATH:+$PATH:}$HOME/.local/share/mise/shims" ;;
+esac
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) PATH="${PATH:+$PATH:}$HOME/.local/bin" ;;
+esac
+export PATH

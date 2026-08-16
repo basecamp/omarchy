@@ -33,9 +33,15 @@ mkdir -p "$stub_bin"
 cat >"$stub_bin/lspci" <<'SH'
 #!/bin/bash
 
+# Chatty like real lspci: keep writing well past the pipe buffer after the T2
+# match, so a grep -q consumer would kill this stub with SIGPIPE and pipefail
+# would read that as "no T2 hardware" (#6608).
 if (( ${T2_HARDWARE:-0} == 1 )); then
   echo '01:00.0 Bridge [0680]: Apple Inc. T2 Security Chip [106b:1801]'
 fi
+for _ in {1..4096}; do
+  echo '02:00.0 Host bridge [0600]: Filler Device [ffff:0000]'
+done
 SH
 
 cat >"$stub_bin/sudo" <<'SH'
@@ -179,3 +185,30 @@ grep -q 'pcie_ports=compat' "$limine_conf" || fail "non-T2 Limine configuration 
 ! grep -q '\[Fan2\]' "$fan_conf" || fail "non-T2 fan configuration is unchanged"
 [[ ! -s $calls ]] || fail "non-T2 systems skip the repair" "$(cat "$calls")"
 pass "T2 migration skips unrelated hardware"
+
+# The previous block left the fixtures looking like an install the SIGPIPE bug
+# skipped: stale Limine parameters, one fan section, and no repair marker. The
+# rerun migration must complete the repair the original was marked as done for.
+rerun_migration="$ROOT/migrations/1786137597.sh"
+rm -f "$repair_marker"
+: >"$calls"
+
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=1 \
+  TINY_DFR_INSTALLED=0 \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_T2_LIMINE_CONF="$limine_conf" \
+  OMARCHY_T2_FAN_CONF="$fan_conf" \
+  OMARCHY_T2_RUNNING_CMDLINE="$running_cmdline" \
+  OMARCHY_T2_REPAIR_MARKER="$repair_marker" \
+  bash -euo pipefail "$rerun_migration" >/dev/null
+
+grep -Fq 'pm_async=off mem_sleep_default=deep' "$limine_conf" ||
+  fail "T2 rerun migration updates the Limine suspend parameters"
+(( $(grep -Ec '^[[:space:]]*\[Fan2\][[:space:]]*$' "$fan_conf") == 1 )) ||
+  fail "T2 rerun migration adds the second-fan section"
+grep -Fxq 'limine-mkinitcpio' "$calls" ||
+  fail "T2 rerun migration rebuilds the boot image"
+[[ -f $repair_marker ]] || fail "T2 rerun migration records the machine-wide repair"
+pass "T2 rerun migration repairs installs the broken hardware check skipped"

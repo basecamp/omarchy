@@ -18,10 +18,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
-  pass "no Wayland compositor; skipping bar widget contract test"
-  exit 0
-fi
+require_compositor "bar widget contract test"
 
 if ! command -v quickshell >/dev/null 2>&1; then
   pass "quickshell not installed; skipping bar widget contract test"
@@ -69,6 +66,9 @@ OMARCHY_PATH="$ROOT" \
 OMARCHY_QML_TEST_RESULT="$result" \
 OMARCHY_QML_BAR_WIDGETS="$bar_widgets" \
 HOME="$TMPDIR/home" \
+XDG_CONFIG_HOME="$TMPDIR/home/.config" \
+XDG_CACHE_HOME="$TMPDIR/home/.cache" \
+XDG_STATE_HOME="$TMPDIR/home/.local/state" \
 QML2_IMPORT_PATH="$ROOT/shell${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}" \
 QML_IMPORT_PATH="$ROOT/shell${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}" \
 PATH="$ROOT/bin:$PATH" \

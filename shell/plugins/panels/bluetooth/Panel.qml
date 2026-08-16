@@ -22,6 +22,13 @@ Panel {
   property var pendingActions: ({})
 
   readonly property var adapter: Bluetooth.defaultAdapter
+
+  // True while this instance owes BlueZ a StopDiscovery: set when it starts
+  // discovery (or opens onto a session already running) and cleared once
+  // discovery is confirmed down after close. Ownership, not state — BlueZ's
+  // Discovering property also reflects sessions other clients hold, which are
+  // never this panel's to stop.
+  property bool owesDiscoveryStop: false
   readonly property var devices: Bluetooth.devices ? Bluetooth.devices.values : []
   readonly property var pipewireNodes: Pipewire.nodes ? Pipewire.nodes.values : []
   property var pendingAudioOutputDevice: null
@@ -132,11 +139,34 @@ Panel {
   readonly property var scrollRows: {
     var rows = []
     for (var k = 0; k < knownDevices.length; k++)
-      rows.push({ dev: knownDevices[k], section: "known", indexInSection: k })
+      rows.push({ dev: Model.deviceRow(knownDevices[k]), section: "known", indexInSection: k })
     if (sectionVisible("discovered"))
       for (var d = 0; d < discoveredDevices.length; d++)
-        rows.push({ dev: discoveredDevices[d], section: "discovered", indexInSection: d })
+        rows.push({ dev: Model.deviceRow(discoveredDevices[d]), section: "discovered", indexInSection: d })
     return rows
+  }
+
+  // Connected devices render above the scroll area; same primitives-only
+  // projection so those delegates never hold Device QObject wrappers either.
+  readonly property var connectedRows: {
+    var rows = []
+    for (var i = 0; i < connectedDevices.length; i++)
+      rows.push(Model.deviceRow(connectedDevices[i]))
+    return rows
+  }
+
+  // Live BlueZ device behind a row. Rows carry primitives only, so actions
+  // resolve the backend object here rather than holding a wrapper that can
+  // dangle mid-incubation. `devices` is already the raw device array (see the
+  // property declaration), so it is iterated directly.
+  function deviceFor(row) {
+    if (!row || !row.dev) return null
+    var addr = row.dev.address || ""
+    var devs = devices || []
+    for (var i = 0; i < devs.length; i++) {
+      if ((devs[i].address || "") === addr) return devs[i]
+    }
+    return null
   }
 
   // Flat position of the keyboard cursor, or -1 while it sits on the hero or
@@ -377,6 +407,10 @@ Panel {
 
   onOpenedChanged: {
     if (opened) {
+      // Adopt a discovery session that is already running — a popout handoff
+      // from another monitor, or one leaked by an instance that could not
+      // finish its own stop — so this close settles it either way.
+      if (adapter !== null && adapter.discovering) owesDiscoveryStop = true
       if (connectedDevices.length > 0) { focusSection = "connected"; selectedIndex = 0 }
       else if (knownDevices.length > 0) { focusSection = "known"; selectedIndex = 0 }
       else if (discoveredDevices.length > 0) { focusSection = "discovered"; selectedIndex = 0 }
@@ -384,6 +418,19 @@ Panel {
       actionFocused = false
       cursorActive = false
     }
+  }
+
+  // Another per-monitor instance of this widget whose panel is open, if any.
+  // All instances share the default adapter, and switching the popout to a
+  // different monitor closes one instance as it opens the next, so the
+  // closing side has to leave the scan alone for the side still on screen.
+  function openSibling() {
+    if (!bar || typeof bar.moduleWidgets !== "function") return null
+    var items = bar.moduleWidgets(moduleName)
+    for (var i = 0; i < items.length; i++) {
+      if (items[i] && items[i] !== root && items[i].opened === true) return items[i]
+    }
+    return null
   }
 
   function updateFocusedAddress() {
@@ -463,7 +510,71 @@ Panel {
     repeat: true
     triggeredOnStart: true
     running: root.opened && root.adapter !== null && root.adapter.enabled && !root.adapter.discovering
-    onTriggered: root.adapter.discovering = true
+    onTriggered: {
+      root.owesDiscoveryStop = true
+      root.adapter.discovering = true
+    }
+  }
+
+  // The way back down. The BlueZ discovery session behind adapter.discovering
+  // is held by quickshell's D-Bus connection, so nothing ends it at close:
+  // without this timer, one visit to the panel left the radio in inquiry
+  // until the next shell restart, starving A2DP audio on the same controller
+  // into stutters.
+  //
+  // A timer bound to the confirmed state rather than a write at close time:
+  // quickshell only forwards a discovering write that differs from the last
+  // state BlueZ reported, so a stop issued while a just-fired StartDiscovery
+  // is still awaiting confirmation would be swallowed and leak the session.
+  // Binding to adapter.discovering means a confirmation landing at any point
+  // after close re-arms the stop, and a reopen inside the first interval
+  // keeps the scan running uninterrupted. Attempts are bounded so a session
+  // some other BlueZ client keeps up cannot draw StopDiscovery fire forever.
+  Timer {
+    id: discoveryStop
+    interval: 1000
+    repeat: true
+    property int attempts: 0
+    running: !root.opened && root.owesDiscoveryStop && root.adapter !== null && root.adapter.discovering === true
+    onRunningChanged: if (running) attempts = 0
+    onTriggered: {
+      // The scan now serves the open panel, so the debt moves with it — B may
+      // have opened before BlueZ confirmed A's start, in which case B's own
+      // open-time adoption saw nothing to adopt.
+      var sibling = root.openSibling()
+      if (sibling) {
+        sibling.owesDiscoveryStop = true
+        root.owesDiscoveryStop = false
+        return
+      }
+      attempts += 1
+      if (attempts > 3) { root.owesDiscoveryStop = false; return }
+      root.adapter.discovering = false
+    }
+  }
+
+  // The debt is settled the moment BlueZ reports discovery down — whether
+  // because the stop above landed or the session ended some other way — so a
+  // stale claim never touches a scan another client starts later. While the
+  // panel is open, discoveryRetry re-incurs it as it restarts the scan.
+  Connections {
+    target: root.adapter
+    function onDiscoveringChanged() {
+      if (!root.adapter.discovering) root.owesDiscoveryStop = false
+    }
+  }
+
+  // A destroyed instance cannot wait for BlueZ confirmations, so it hands any
+  // debt to a surviving sibling — whose declarative stop catches even a start
+  // confirmed after this object is gone — and only writes the stop directly
+  // when it is the last one standing.
+  Component.onDestruction: {
+    if (!owesDiscoveryStop) return
+    var items = bar && typeof bar.moduleWidgets === "function" ? bar.moduleWidgets(moduleName) : []
+    for (var i = 0; i < items.length; i++) {
+      if (items[i] && items[i] !== root) { items[i].owesDiscoveryStop = true; return }
+    }
+    if (adapter !== null && adapter.discovering) adapter.discovering = false
   }
 
   Timer {
@@ -513,9 +624,17 @@ Panel {
     }
   }
 
+  // Not adapter.enabled: that writes BlueZ's Powered, which nothing persists, so
+  // the adapter came back on at the next boot. omarchy-bluetooth-power moves the
+  // rfkill soft block instead, which systemd-rfkill restores across reboots.
+  // Powered still follows the block, so the switch and icon read it as before.
+  //
+  // Asking for a direction rather than a toggle: the helper runs detached and the
+  // switch only moves once BlueZ catches up, so a second click inside that window
+  // would re-read the old state and undo the first.
   function toggleBluetooth() {
     if (!adapter) return
-    adapter.enabled = !adapter.enabled
+    Quickshell.execDetached(["omarchy-bluetooth-power", adapter.enabled ? "off" : "on"])
   }
 
   IpcHandler {
@@ -660,7 +779,7 @@ Panel {
           }
 
           Repeater {
-            model: root.connectedDevices
+            model: root.connectedRows
             DeviceRow {
               required property var modelData
               required property int index
@@ -823,14 +942,15 @@ Panel {
       }
 
       onClicked: function(mouse) {
-        if (!row.dev) return
+        var dev = root.deviceFor(row)
+        if (!dev) return
         if (mouse.button === Qt.RightButton) {
-          if (row.isConnected) root.disconnectDevice(row.dev)
-          else if (!row.isDiscovered) root.forgetDevice(row.dev)
+          if (row.isConnected) root.disconnectDevice(dev)
+          else if (!row.isDiscovered) root.forgetDevice(dev)
           return
         }
-        if (row.isConnected) root.disconnectDevice(row.dev)
-        else root.connectDevice(row.dev)
+        if (row.isConnected) root.disconnectDevice(dev)
+        else root.connectDevice(dev)
       }
     }
 
@@ -909,8 +1029,9 @@ Panel {
           root.actionFocused = true
         }
         onClicked: {
-          if (!row.dev) return
-          root.forgetDevice(row.dev)
+          var dev = root.deviceFor(row)
+          if (!dev) return
+          root.forgetDevice(dev)
         }
       }
     }

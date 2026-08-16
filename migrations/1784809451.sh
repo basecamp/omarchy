@@ -16,7 +16,7 @@ as_root() {
 [[ -f $locate_config_script ]] || exit 0
 
 if grep -q '^PRUNE_BIND_MOUNTS = "no"' "$UPDATEDB_CONF_PATH" &&
-  grep -E '^PRUNEPATHS' "$UPDATEDB_CONF_PATH" | grep -qE '(^|[[:space:]"])/\.snapshots([[:space:]"]|$)'; then
+  grep -E '^PRUNEPATHS' "$UPDATEDB_CONF_PATH" | grep -E '(^|[[:space:]"])/\.snapshots([[:space:]"]|$)' >/dev/null; then
   exit 0
 fi
 

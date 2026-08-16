@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# omarchy:summary=Install the ChatGPT desktop app
+# omarchy:requires-sudo=true
+
+set -e
+
+echo "Installing ChatGPT..."
+omarchy-pkg-add openai-codex-desktop
+
+echo "Opening ChatGPT..."
+setsid uwsm-app -- /usr/bin/chatgpt >/dev/null 2>&1 &
+
+echo ""
+echo "ChatGPT has been installed."

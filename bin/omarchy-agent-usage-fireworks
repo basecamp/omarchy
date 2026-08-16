@@ -1,0 +1,511 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Fireworks usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Fireworks serverless usage into one display-ready JSON record.
+
+Token stats come from the Fireworks billing API grouped by day and model for
+the last 30 days. Fireworks does not expose its prepaid ledger, so the record
+carries an estimated balance instead of rate limits: the credits configured in
+~/.config/omarchy/agents/fireworks.json minus rated account costs since the
+funding date. The agents panel only ever reads the JSON this prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import configparser
+import json
+import os
+import re
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "fireworks"
+AGENT_NAME = "Fireworks"
+AUTH_HELP = "Set FIREWORKS_API_KEY, run `firectl set-api-key`, or sign in to Fireworks in opencode."
+API_BASE_URL = "https://api.fireworks.ai"
+
+
+class FireworksError(Exception):
+  pass
+
+
+def number(value: Any) -> int:
+  try:
+    return max(0, round(float(value or 0)))
+  except (TypeError, ValueError):
+    return 0
+
+
+def money_value(value: Any) -> Decimal:
+  if not isinstance(value, dict):
+    return Decimal("0")
+  try:
+    units = Decimal(str(value.get("units", 0) or 0))
+    nanos = Decimal(str(value.get("nanos", 0) or 0)) / Decimal("1000000000")
+    return units + nanos
+  except (InvalidOperation, TypeError, ValueError):
+    return Decimal("0")
+
+
+def model_id(row: dict[str, Any]) -> str:
+  group = row.get("group") if isinstance(row.get("group"), dict) else {}
+  raw = group.get("model_name") or row.get("modelName") or "unknown"
+  name = str(raw).rstrip("/").split("/")[-1] or "unknown"
+  return re.sub(r"(?<=\d)p(?=\d)", ".", name)
+
+
+def row_date(row: dict[str, Any]) -> str:
+  # The query asks for day buckets in the local timezone, but the API reports
+  # each bucket's boundary in UTC: local Aug 7 starts at Aug 6 22:00Z east of
+  # Greenwich. Convert back to local time to recover the day the bucket names —
+  # taking the raw date prefix would file every day under its predecessor.
+  raw = str(row.get("startTime") or "")
+  if not raw:
+    return ""
+  try:
+    parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+  except ValueError:
+    return raw[:10] if len(raw) >= 10 else ""
+  if parsed.tzinfo is None:
+    parsed = parsed.replace(tzinfo=timezone.utc)
+  return parsed.astimezone().date().isoformat()
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def empty_stats() -> dict[str, Any]:
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  }
+
+
+def base_record(**overrides: Any) -> dict[str, Any]:
+  record: dict[str, Any] = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": False,
+    "hasLocalStats": False,
+    # Billing-API numbers are account-global, not machine-local: every synced
+    # device reports the same truth, so aggregation must not sum them.
+    "scope": "account",
+    # The billing API reports tokens, never prompt or session counts; the
+    # panel keeps those numbers out of today's tooltip when this is false.
+    "hasPromptStats": False,
+    "tierLabel": "Prepaid",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "limits": [],
+  }
+  record.update(empty_stats())
+  record.update(overrides)
+  return record
+
+
+def summarize_usage(payload: dict[str, Any], today: date | None = None) -> dict[str, Any]:
+  today = today or datetime.now().astimezone().date()
+  recent_dates = [(today - timedelta(days=offset)).isoformat() for offset in range(6, -1, -1)]
+  recent = {day: 0 for day in recent_dates}
+  today_by_model: dict[str, int] = {}
+  model_usage: dict[str, dict[str, int]] = {}
+  active_dates: set[str] = set()
+
+  rows = payload.get("serverlessCosts")
+  if not isinstance(rows, list):
+    rows = []
+
+  for raw_row in rows:
+    if not isinstance(raw_row, dict):
+      continue
+    day = row_date(raw_row)
+    model = model_id(raw_row)
+    prompt = number(raw_row.get("promptTokens"))
+    cached = min(prompt, number(raw_row.get("cachedPromptTokens")))
+    uncached = number(raw_row.get("uncachedPromptTokens"))
+    if "uncachedPromptTokens" not in raw_row:
+      uncached = max(0, prompt - cached)
+    output = number(raw_row.get("completionTokens"))
+    total = uncached + cached + output
+    if total <= 0:
+      continue
+
+    bucket = model_usage.setdefault(model, empty_bucket())
+    bucket["inputTokens"] += uncached
+    bucket["outputTokens"] += output
+    bucket["cacheReadInputTokens"] += cached
+
+    if day:
+      active_dates.add(day)
+    if day in recent:
+      recent[day] += total
+    if day == today.isoformat():
+      today_by_model[model] = today_by_model.get(model, 0) + total
+
+  return {
+    "todayTotalTokens": sum(today_by_model.values()),
+    "todayTokensByModel": today_by_model,
+    "recentDays": [{"date": day, "messageCount": recent[day]} for day in recent_dates],
+    "activeDays": len(active_dates),
+    "activeDates": sorted(active_dates),
+    "modelUsage": model_usage,
+  }
+
+
+def read_auth_file(path: Path) -> tuple[str, str]:
+  if not path.is_file():
+    return "", ""
+
+  parser = configparser.ConfigParser(interpolation=None)
+  try:
+    parser.read(path)
+  except configparser.Error:
+    return "", ""
+
+  api_key = ""
+  account_id = ""
+  sections = [parser.defaults()]
+  sections.extend(parser[section] for section in parser.sections())
+  for values in sections:
+    api_key = api_key or str(values.get("api_key", values.get("api-key", ""))).strip()
+    account_id = account_id or str(values.get("account_id", values.get("account-id", ""))).strip()
+  return api_key, account_id
+
+
+def opencode_auth_path() -> Path:
+  data_home = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share"))
+  return data_home / "opencode" / "auth.json"
+
+
+def read_opencode_key(path: Path) -> str:
+  try:
+    parsed = json.loads(path.read_text())
+  except (OSError, json.JSONDecodeError):
+    return ""
+  entry = parsed.get("fireworks-ai") if isinstance(parsed, dict) else None
+  if not isinstance(entry, dict):
+    return ""
+  return str(entry.get("key") or "").strip()
+
+
+def config_path() -> Path:
+  config_home = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+  return config_home / "omarchy" / "agents" / "fireworks.json"
+
+
+def read_config() -> dict[str, Any]:
+  try:
+    parsed = json.loads(config_path().read_text())
+    return parsed if isinstance(parsed, dict) else {}
+  except (OSError, json.JSONDecodeError):
+    return {}
+
+
+def credentials(auth_path: Path, config: dict[str, Any]) -> tuple[str, str]:
+  file_key, file_account = read_auth_file(auth_path)
+  # opencode is the last resort: an explicit key or a firectl login should
+  # win over whatever another tool happens to be signed in with.
+  api_key = (
+    str(os.environ.get("FIREWORKS_API_KEY", "")).strip()
+    or file_key
+    or read_opencode_key(opencode_auth_path())
+  )
+  account_id = (
+    str(os.environ.get("FIREWORKS_ACCOUNT_ID", "")).strip()
+    or str(config.get("accountId") or "").strip()
+    or file_account
+  )
+  return api_key, account_id
+
+
+def normalize_account_id(value: str) -> str:
+  return str(value or "").strip().removeprefix("accounts/").strip("/")
+
+
+def timezone_name() -> str:
+  configured = str(os.environ.get("TZ", "")).strip()
+  if configured:
+    return configured
+  try:
+    target = (Path("/etc/localtime").resolve()).as_posix()
+    marker = "/zoneinfo/"
+    if marker in target:
+      return target.split(marker, 1)[1]
+  except OSError:
+    pass
+  return "UTC"
+
+
+def local_midnight_utc(day: date) -> str:
+  # The API buckets by the requested timezone, so the window must run between
+  # local midnights — expressed in UTC, since a bare date with a Z suffix
+  # shifts the window by the UTC offset and clips today's tail west of
+  # Greenwich.
+  return datetime.combine(day, time.min).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def iso_timestamp(value: str) -> str:
+  raw = str(value or "").strip()
+  if not raw:
+    return ""
+  try:
+    if len(raw) == 10:
+      parsed = datetime.combine(date.fromisoformat(raw), time.min, tzinfo=timezone.utc)
+    else:
+      parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+      if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+  except ValueError:
+    raise FireworksError("Fireworks fundedAt must be an ISO date such as 2026-07-01")
+
+
+class FireworksClient:
+  def __init__(self, api_key: str, base_url: str = API_BASE_URL):
+    self.api_key = api_key
+    self.base_url = base_url.rstrip("/")
+
+  def request(
+    self,
+    path: str,
+    query: dict[str, Any] | None = None,
+    body: dict[str, Any] | None = None,
+  ) -> dict[str, Any]:
+    url = self.base_url + path
+    if query:
+      url += "?" + urllib.parse.urlencode(query, doseq=True)
+    data = None if body is None else json.dumps(body).encode("utf-8")
+    request = urllib.request.Request(
+      url,
+      data=data,
+      method="POST" if body is not None else "GET",
+      headers={
+        "Authorization": "Bearer " + self.api_key,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+      },
+    )
+    try:
+      with urllib.request.urlopen(request, timeout=15) as response:
+        decoded = json.load(response)
+        return decoded if isinstance(decoded, dict) else {}
+    except urllib.error.HTTPError as error:
+      if error.code == 401:
+        raise FireworksError("Fireworks rejected the API key")
+      if error.code == 403:
+        raise FireworksError("The Fireworks API key cannot read billing data")
+      if error.code == 404:
+        raise FireworksError("Fireworks account not found")
+      raise FireworksError(f"Fireworks API returned HTTP {error.code}")
+    except urllib.error.URLError as error:
+      raise FireworksError("Could not reach the Fireworks API") from error
+    except (json.JSONDecodeError, TimeoutError) as error:
+      raise FireworksError("Fireworks returned an invalid billing response") from error
+
+  def discover_account(self) -> tuple[str, dict[str, Any]]:
+    payload = self.request("/v1/accounts", query={"pageSize": 100})
+    accounts = [item for item in payload.get("accounts", []) if isinstance(item, dict)]
+    if len(accounts) == 1:
+      account = accounts[0]
+      return normalize_account_id(str(account.get("name") or "")), account
+    if not accounts:
+      raise FireworksError("No Fireworks account is available for this API key")
+    raise FireworksError("Set accountId in fireworks.json when the API key can access multiple accounts")
+
+  def account(self, account_id: str) -> dict[str, Any]:
+    quoted = urllib.parse.quote(normalize_account_id(account_id), safe="")
+    return self.request(f"/v1/accounts/{quoted}")
+
+  def usage(self, account_id: str, start_day: date, end_day: date) -> dict[str, Any]:
+    quoted = urllib.parse.quote(normalize_account_id(account_id), safe="")
+    query = {
+      "startTime": local_midnight_utc(start_day),
+      "endTime": local_midnight_utc(end_day),
+      "usageType": "SERVERLESS",
+      "timezone": timezone_name(),
+      "groupBy": ["model_name"],
+    }
+    # 30 days grouped by model can exceed one page; follow the continuation
+    # tokens or heavy accounts lose their tail. The bound is a runaway stop.
+    rows: list[Any] = []
+    for _ in range(20):
+      payload = self.request(f"/v1/accounts/{quoted}/billingUsage", query=query)
+      page = payload.get("serverlessCosts")
+      if isinstance(page, list):
+        rows.extend(page)
+      token = str(payload.get("nextPageToken") or "")
+      if not token:
+        break
+      query = dict(query, pageToken=token)
+    return {"serverlessCosts": rows}
+
+  def spent(self, account_id: str, start_at: str, end_at: str) -> Decimal:
+    quoted = urllib.parse.quote(normalize_account_id(account_id), safe="")
+    body = {
+      "startTime": start_at,
+      "endTime": end_at,
+      "scope": "ACCOUNT",
+    }
+    try:
+      payload = self.request(f"/v1/accounts/{quoted}/usageCosts:query", body=body)
+      if not isinstance(payload.get("subtotal"), dict):
+        raise FireworksError("Fireworks cost response did not include a subtotal")
+      return money_value(payload.get("subtotal"))
+    except FireworksError:
+      parsed_end = datetime.fromisoformat(end_at.replace("Z", "+00:00"))
+      summary_end = (parsed_end.date() + timedelta(days=1)).isoformat() + "T00:00:00Z"
+      payload = self.request(
+        f"/v1/accounts/{quoted}/billing/summary",
+        query={"startTime": start_at, "endTime": summary_end},
+      )
+      return sum(
+        (money_value(item.get("totalCost")) for item in payload.get("lineItems", []) if isinstance(item, dict)),
+        Decimal("0"),
+      )
+
+
+def live_balance(client: FireworksClient, account_id: str) -> Decimal | None:
+  # accounts/{id}:getBalance exists but is permission-gated: keys without the
+  # billing role get PERMISSION_DENIED, and then the configured estimate below
+  # is the best we can do. The response shape is undocumented, so accept a
+  # Money object at the top level or under any plausible field name.
+  quoted = urllib.parse.quote(normalize_account_id(account_id), safe="")
+  try:
+    payload = client.request(f"/v1/accounts/{quoted}:getBalance")
+  except FireworksError:
+    return None
+  candidates = [payload] + [payload.get(field) for field in ("balance", "creditBalance", "prepaidBalance", "amount")]
+  for value in candidates:
+    if isinstance(value, dict) and ("units" in value or "nanos" in value):
+      return money_value(value)
+  return None
+
+
+def estimated_balance(
+  client: FireworksClient,
+  account_id: str,
+  account: dict[str, Any],
+  config: dict[str, Any],
+) -> dict[str, Any] | None:
+  try:
+    funded = Decimal(str(config.get("fundedAmount") or "0"))
+  except InvalidOperation:
+    raise FireworksError("Fireworks fundedAmount must be a number")
+  if not funded.is_finite():
+    raise FireworksError("Fireworks fundedAmount must be a finite number")
+  if funded <= 0:
+    return None
+
+  funded_at = iso_timestamp(str(config.get("fundedAt") or ""))
+  if not funded_at:
+    if not account:
+      account = client.account(account_id)
+    funded_at = iso_timestamp(str(account.get("createTime") or ""))
+  if not funded_at:
+    raise FireworksError("Set fundedAt because the Fireworks account creation date is unavailable")
+
+  end_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+  spent = max(Decimal("0"), client.spent(account_id, funded_at, end_at))
+  return {
+    "remaining": float(max(Decimal("0"), funded - spent)),
+    "funded": float(funded),
+    "spent": float(spent),
+    "currency": "USD",
+    "estimated": True,
+  }
+
+
+def scan(api_base_url: str, auth_path: Path) -> dict[str, Any]:
+  config = read_config()
+  api_key, account_id = credentials(auth_path, config)
+  if not api_key:
+    return base_record(usageStatusText="Fireworks unavailable", authHelpText=AUTH_HELP)
+
+  client = FireworksClient(api_key, api_base_url)
+  account: dict[str, Any] = {}
+  if account_id:
+    account_id = normalize_account_id(account_id)
+  else:
+    account_id, account = client.discover_account()
+
+  today = datetime.now().astimezone().date()
+  usage = client.usage(account_id, today - timedelta(days=29), today + timedelta(days=1))
+  record = base_record(ready=True, hasLocalStats=True)
+  record.update(summarize_usage(usage, today))
+
+  live = live_balance(client, account_id)
+  if live is not None:
+    try:
+      funded = Decimal(str(config.get("fundedAmount") or "0"))
+      if not funded.is_finite() or funded < 0:
+        funded = Decimal("0")
+    except InvalidOperation:
+      funded = Decimal("0")
+    record["balance"] = {
+      "remaining": float(live),
+      "funded": float(funded),
+      "spent": float(max(Decimal("0"), funded - live)),
+      "currency": "USD",
+      "estimated": False,
+    }
+    return record
+
+  try:
+    balance = estimated_balance(client, account_id, account, config)
+    if balance:
+      record["balance"] = balance
+  except FireworksError as error:
+    record["usageStatusText"] = "Balance unavailable"
+    record["authHelpText"] = str(error)
+
+  return record
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description="Print the Fireworks usage record as JSON")
+  # Stats and balance come from the same few API calls, so there is no cache
+  # to force past and no faster limits-only path. The flags exist so every
+  # collector accepts the same invocation.
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  parser.add_argument("--auth-path", default=os.environ.get("FIREWORKS_AUTH_PATH", "~/.fireworks/auth.ini"))
+  parser.add_argument("--api-base-url", default=os.environ.get("FIREWORKS_API_BASE_URL", API_BASE_URL))
+  args = parser.parse_args()
+
+  try:
+    record = scan(args.api_base_url, Path(args.auth_path).expanduser())
+  except FireworksError as error:
+    record = base_record(usageStatusText="Fireworks unavailable", authHelpText=str(error))
+  except Exception as error:
+    record = base_record(usageStatusText="Fireworks unavailable", authHelpText="Fireworks usage scan failed")
+    print(f"omarchy-agent-usage-fireworks: {type(error).__name__}", file=sys.stderr)
+  print(json.dumps(record, separators=(",", ":")))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

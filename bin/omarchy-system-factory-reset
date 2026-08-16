@@ -1,0 +1,441 @@
+#!/bin/bash
+
+# omarchy:summary=Factory-reset this machine back to its freshly-installed state
+# omarchy:group=setup
+# omarchy:requires-sudo=true
+# omarchy:examples=sudo omarchy-system-factory-reset
+
+# Returns the machine to provisioning state — fully installed, no user, first-boot
+# setup pending — the state you want before selling or handing the machine on.
+#
+# The running root (@) is swapped for a fresh writable clone of the @factory
+# snapshot, so user-installed packages and /etc drift are gone too. That
+# snapshot is taken by the Omarchy Quattro installer, so only machines
+# installed from that ISO can be reset; a machine upgraded to Quattro from an
+# earlier version has no baseline to return to and is turned away.
+#
+# The heavy lifting happens on the next boot via omarchy-system-factory-reset-finish, staged
+# here. On encrypted installs the LUKS volume is re-keyed to a throwaway
+# passphrase with an auto-unlock keyfile for the provisioning window; first-boot setup
+# re-keys it to the new owner's password and removes the keyfile.
+#
+# Honest limitations:
+#  - On unencrypted disks this is deletion, not forensic erasure. fstrim helps
+#    on SSDs; use blkdiscard + a reinstall if you need certainty.
+#  - LUKS re-keying changes passphrases, not the volume key. Freed extents
+#    remain readable to someone with raw-device access and a valid passphrase.
+#    Use cryptsetup reencrypt or a reinstall if you need certainty.
+
+set -euo pipefail
+
+PROVISIONING_DIR=/var/lib/omarchy/provisioning
+OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+TOP_MNT=/run/omarchy-system-factory-reset/top
+NEXT_NAME=@omarchy-reset-next
+LOG_FILE=/var/log/omarchy-system-factory-reset.log
+
+# Self-elevate so the menu entry (and a bare shell invocation) need no sudo
+# prefix. The caller's gum theme vars are forwarded as `env` arguments rather
+# than via `sudo -E`, so styling survives even under an env_reset sudoers.
+if (( EUID != 0 )); then
+  mapfile -t gum_env < <(env | grep '^GUM_' || true)
+  exec sudo env "${gum_env[@]}" "$0" "$@"
+fi
+
+export PATH="$OMARCHY_PATH/bin:$PATH"
+
+log() {
+  echo "$1" | tee -a "$LOG_FILE" >/dev/null
+  gum style --foreground 8 "  $1"
+}
+
+fail() {
+  gum style --foreground 1 "Error: $1"
+  exit 1
+}
+
+root_device() {
+  findmnt -no SOURCE / | sed 's/\[.*\]//'
+}
+
+root_is_btrfs_at() {
+  [[ $(findmnt -no FSTYPE /) == btrfs ]] && findmnt -no OPTIONS / | grep -q "subvol=/@\(,\|$\)"
+}
+
+# Resolve the crypto_LUKS partition backing the root, or return non-zero if
+# the root is not on LUKS. Prefers the cmdline cryptdevice= spec (archinstall
+# writes PARTUUID=, the pre-mounted path UUID=), and falls back to walking the
+# device tree for roots reached via rd.luks/crypttab with a plain /dev/mapper
+# root and no cryptdevice=.
+luks_device() {
+  local spec
+  spec=$(grep -o 'cryptdevice=[^ :]*' /proc/cmdline | head -1 | cut -d= -f2-)
+  case $spec in
+    UUID=*) echo "/dev/disk/by-uuid/${spec#UUID=}"; return 0 ;;
+    PARTUUID=*) echo "/dev/disk/by-partuuid/${spec#PARTUUID=}"; return 0 ;;
+    LABEL=*) echo "/dev/disk/by-label/${spec#LABEL=}"; return 0 ;;
+    PARTLABEL=*) echo "/dev/disk/by-partlabel/${spec#PARTLABEL=}"; return 0 ;;
+    /dev/*) echo "$spec"; return 0 ;;
+  esac
+
+  local src part
+  src=$(findmnt -no SOURCE / | sed 's/\[.*//')
+  [[ -n $src ]] || return 1
+  part=$(lsblk -nspo NAME,FSTYPE "$src" 2>/dev/null | awk '$2=="crypto_LUKS"{print $1; exit}')
+  [[ -n $part ]] && { echo "$part"; return 0; }
+  return 1
+}
+
+encrypted_install() {
+  luks_device >/dev/null 2>&1
+}
+
+# No trailing `| head` stage: under pipefail an infinite tr killed by
+# SIGPIPE fails the substitution and errexit aborts the whole reset.
+generate_passphrase() {
+  local raw
+  raw=$(head -c 4096 /dev/urandom | tr -dc 'a-zA-Z0-9')
+  printf '%s' "${raw:0:48}"
+}
+
+cleanup() {
+  if mountpoint -q "$TOP_MNT" 2>/dev/null; then
+    if [[ -d $TOP_MNT/$NEXT_NAME && ${swap_done:-0} == 0 ]]; then
+      btrfs subvolume delete --recursive "$TOP_MNT/$NEXT_NAME" >/dev/null 2>&1 || true
+    fi
+    umount -R "$TOP_MNT" 2>/dev/null || true
+  fi
+  rmdir "$TOP_MNT" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+confirm_reset() {
+  echo
+  gum style --bold --foreground 1 "Reset this computer to factory state?"
+  echo
+  gum style "This will permanently erase:"
+  gum style "  • All user accounts and everything in /home"
+  gum style "  • All packages and system changes made since installation"
+  gum style "  • Machine identity (network connections, host keys, machine-id)"
+  echo
+  gum style "The next boot asks for a new user, exactly like a fresh install."
+  gum style --foreground 8 "Note: on disks without encryption this is deletion, not secure erasure."
+  echo
+
+  local typed
+  typed=$(gum input --placeholder "Type 'reset' to continue" --prompt "> ") || exit 1
+  [[ $typed == "reset" ]] || fail "Reset not confirmed."
+}
+
+# Re-key to a throwaway passphrase whose keyfile auto-unlocks boot during the
+# provisioning window. $1 is the root of the staged factory system.
+stage_luks_rekey() {
+  local next="$1" device passphrase
+
+  device=$(luks_device) || fail "encrypted install, but no usable cryptdevice= in /proc/cmdline"
+  [[ -e $device ]] || fail "LUKS device $device not found"
+
+  echo
+  gum style "Confirm your disk encryption passphrase to authorize the re-key."
+  local current
+  while true; do
+    current=$(gum input --password --placeholder "Current disk encryption passphrase" --prompt "Passphrase> ") || exit 1
+    if cryptsetup open --test-passphrase --key-file <(printf '%s' "$current") "$device" 2>/dev/null; then
+      break
+    fi
+    gum style --foreground 1 "That passphrase does not unlock $device. Try again."
+  done
+
+  passphrase=$(generate_passphrase)
+  cryptsetup luksAddKey --key-file <(printf '%s' "$current") "$device" <(printf '%s' "$passphrase")
+
+  install -d -m 755 "$next$PROVISIONING_DIR"
+  printf '%s' "$passphrase" >"$next$PROVISIONING_DIR/luks-key"
+  chmod 600 "$next$PROVISIONING_DIR/luks-key"
+
+  install -d -m 755 "$next/etc/omarchy"
+  printf '%s' "$passphrase" >"$next/etc/omarchy/provisioning.key"
+  chmod 600 "$next/etc/omarchy/provisioning.key"
+
+  install -d "$next/etc/limine-entry-tool.d" "$next/etc/mkinitcpio.conf.d"
+  echo 'KERNEL_CMDLINE[default]+=" cryptkey=rootfs:/etc/omarchy/provisioning.key"' \
+    >"$next/etc/limine-entry-tool.d/99-omarchy-provisioning-unlock.conf"
+  echo 'FILES+=(/etc/omarchy/provisioning.key)' \
+    >"$next/etc/mkinitcpio.conf.d/99-omarchy-provisioning-key.conf"
+}
+
+install_provisioning_units() {
+  local next="$1" unit_src="$2"
+
+  install -Dm644 "$unit_src/omarchy-provision-owner.service" \
+    "$next/etc/systemd/system/omarchy-provision-owner.service"
+  install -Dm644 "$unit_src/omarchy-system-factory-reset-finish.service" \
+    "$next/etc/systemd/system/omarchy-system-factory-reset-finish.service"
+
+  install -d "$next/etc/systemd/system/multi-user.target.wants" \
+    "$next/etc/systemd/system/sysinit.target.wants"
+  ln -sf /etc/systemd/system/omarchy-provision-owner.service \
+    "$next/etc/systemd/system/multi-user.target.wants/omarchy-provision-owner.service"
+  ln -sf /etc/systemd/system/omarchy-system-factory-reset-finish.service \
+    "$next/etc/systemd/system/sysinit.target.wants/omarchy-system-factory-reset-finish.service"
+}
+
+# Start the ESP's limine.conf over from the shipped template and drop the
+# previous Omarchy identity's state. limine-entry-tool keys OS entries by
+# machine-id, so after a reset gives the machine a fresh identity, the
+# previous system's entry (with the now-stale UKI hash) would survive, sort
+# first, and make Limine refuse the rebuilt UKI with a hash-mismatch warning.
+# Only machine-ids the old limine.conf referenced are removed — a shared ESP
+# may hold other installations' machine-id directories.
+reset_limine_config() {
+  local root="$1" esp="$2" template found=""
+
+  local old_ids=""
+  if [[ -f $root$esp/limine.conf ]]; then
+    old_ids=$(grep -o 'machine-id=[0-9a-f]\{32\}' "$root$esp/limine.conf" | cut -d= -f2 | sort -u)
+  fi
+
+  for template in "$root/usr/share/omarchy/install/assets/limine/limine.conf" \
+                  "$root/usr/share/omarchy/default/limine/limine.conf"; do
+    if [[ -f $template ]]; then
+      cp "$template" "$root$esp/limine.conf"
+      found=1
+      break
+    fi
+  done
+  [[ -n $found ]] || fail "no limine.conf template in $root/usr/share/omarchy"
+
+  local machine_id old_id
+  machine_id=$(cat "$root/etc/machine-id" 2>/dev/null || true)
+  for old_id in $old_ids; do
+    [[ $old_id == "$machine_id" ]] && continue
+    rm -rf "${root:?}$esp/$old_id"
+  done
+}
+
+# Every UKI entry in limine.conf carries a #blake2b hash of the file it
+# points at; a mismatch makes Limine stop at a scary warning. Never hand over
+# a staged reset in that state.
+verify_limine_hashes() {
+  local root="$1" esp="$2" line path hash file
+  while IFS= read -r line; do
+    path=${line#*boot():}
+    path=${path%%#*}
+    hash=${line##*#}
+    file="$root$esp$path"
+    [[ -f $file ]] || fail "limine.conf points at missing $path"
+    [[ $(b2sum "$file" | cut -d' ' -f1) == "$hash" ]] ||
+      fail "limine.conf hash for $path does not match the rebuilt file"
+  done < <(grep -o 'boot():/EFI/Linux/[^#]*#[0-9a-f]*' "$root$esp/limine.conf")
+}
+
+# Rebuild the UKI from inside the next root so the deployed kernel/initramfs
+# match the factory root's modules (the seller may have updated kernels since
+# install) and embed the auto-unlock keyfile on encrypted machines.
+rebuild_next_boot() {
+  local next="$1"
+
+  local esp_source esp_mount
+  esp_mount=$(awk '$3 == "vfat" && $2 ~ /^\/(boot|efi)/ { print $2; exit }' "$next/etc/fstab")
+  esp_source=$(awk '$3 == "vfat" && $2 ~ /^\/(boot|efi)/ { print $1; exit }' "$next/etc/fstab")
+  [[ -n $esp_mount && -n $esp_source ]] || fail "could not find the ESP in $next/etc/fstab"
+
+  local esp_device=$esp_source
+  if [[ $esp_source == UUID=* ]]; then
+    esp_device="/dev/disk/by-uuid/${esp_source#UUID=}"
+  fi
+  [[ -e $esp_device ]] || fail "ESP device $esp_device not found"
+
+  mount "$esp_device" "$next$esp_mount"
+
+  local dir
+  for dir in proc sys dev run; do
+    mount --rbind "/$dir" "$next/$dir"
+    mount --make-rslave "$next/$dir"
+  done
+
+  # Btrfs snapshots do not recurse into nested subvolumes, so the factory
+  # root carries only an empty /swap directory where the hibernation swapfile
+  # lived. Recreate it and refresh the resume offset before the UKI build
+  # bakes the cmdline; the empty placeholder directory has to go first so the
+  # subvolume can be recreated.
+  if [[ -x $next/usr/bin/omarchy-hibernation-setup ]] && grep -q "/swap/swapfile" "$next/etc/fstab"; then
+    log "Recreating the hibernation swapfile in the factory system"
+    if [[ -d $next/swap ]] && ! btrfs subvolume show "$next/swap" >/dev/null 2>&1; then
+      rmdir "$next/swap" 2>/dev/null || true
+    fi
+    # The factory root still carries the resume drop-ins from install, which
+    # make hibernation-setup conclude it has nothing to do; with the swapfile
+    # gone they must go so it reconfigures from scratch. The resume-offset
+    # drop-in especially: hibernation-setup only recomputes the physical
+    # offset when it is absent, so a surviving one bakes the old swapfile's
+    # offset into the rebuilt UKI and breaks resume.
+    if [[ ! -f $next/swap/swapfile ]]; then
+      rm -f "$next/etc/mkinitcpio.conf.d/omarchy_resume.conf" \
+        "$next/etc/limine-entry-tool.d/resume.conf"
+    fi
+    if ! chroot "$next" env OMARCHY_PATH=/usr/share/omarchy \
+      /usr/bin/omarchy-hibernation-setup --force --no-rebuild >>"$LOG_FILE" 2>&1; then
+      fail "hibernation setup failed in the factory root (see $LOG_FILE)"
+    fi
+    [[ -f $next/swap/swapfile ]] ||
+      fail "hibernation setup did not recreate $next/swap/swapfile (see $LOG_FILE)"
+  fi
+
+  reset_limine_config "$next" "$esp_mount"
+
+  log "Rebuilding boot files from the factory system (this can take a minute)"
+  if ! chroot "$next" /usr/bin/limine-update >>"$LOG_FILE" 2>&1; then
+    fail "limine-update failed in the factory root (see $LOG_FILE)"
+  fi
+
+  verify_limine_hashes "$next" "$esp_mount"
+
+  for dir in run dev sys proc; do
+    umount -R "$next/$dir" 2>/dev/null || true
+  done
+  umount "$next$esp_mount"
+}
+
+# Remove the seller's account material and machine identity from the retained
+# @factory baseline so it can neither be mounted for recovery nor restore the
+# seller's account on a future reset. Idempotent (a scrubbed baseline has no
+# uid>=1000 accounts left to remove).
+sanitize_factory_baseline() {
+  local factory="$1" user
+  btrfs property set -ts "$factory" ro false
+
+  for user in $(awk -F: '$3 >= 1000 && $3 < 60000 { print $1 }' "$factory/etc/passwd"); do
+    userdel --root "$factory" "$user" 2>>"$LOG_FILE" || true
+    rm -rf "${factory:?}/home/$user"
+  done
+  passwd --root "$factory" --lock root >>"$LOG_FILE" 2>&1 || true
+  rm -f "$factory"/etc/ssh/ssh_host_*
+  rm -f "$factory"/etc/NetworkManager/system-connections/*
+  rm -rf "$factory"/var/lib/NetworkManager/* "$factory/var/lib/tailscale" "$factory/var/lib/iwd"
+  rm -f "$factory/var/lib/sddm/state.conf" "$factory/etc/sddm.conf.d/autologin.conf"
+  : >"$factory/etc/machine-id"
+
+  btrfs property set -ts "$factory" ro true
+}
+
+stage_full_reset() {
+  local top="$TOP_MNT" next="$TOP_MNT/$NEXT_NAME"
+
+  log "Cloning the factory snapshot"
+  [[ -d $next ]] && btrfs subvolume delete --recursive "$next" >/dev/null
+  btrfs subvolume snapshot "$top/@factory" "$next" >>"$LOG_FILE"
+
+  local unit_src="$next/usr/share/omarchy/install/provisioning"
+  [[ -f $unit_src/omarchy-provision-owner.service && -x $next/usr/bin/omarchy-provision-owner ]] ||
+    fail "the factory snapshot predates provisioning support; cannot reset from it"
+
+  log "Scrubbing machine identity from the factory system"
+  systemd-id128 new >"$next/etc/machine-id"
+  rm -f "$next"/etc/ssh/ssh_host_*
+  rm -f "$next"/etc/NetworkManager/system-connections/*
+  rm -rf "$next"/var/lib/NetworkManager/* "$next/var/lib/tailscale" "$next/var/lib/iwd"
+  rm -f "$next/var/lib/sddm/state.conf" "$next/etc/sddm.conf.d/autologin.conf"
+
+  # A factory snapshot from a normal (normal) install contains the original
+  # user account; first-boot setup must start from none. A leftover account
+  # would keep its password hash and group memberships (including wheel), so
+  # failure here has to abort the reset, not be shrugged off.
+  local user
+  for user in $(awk -F: '$3 >= 1000 && $3 < 60000 { print $1 }' "$next/etc/passwd"); do
+    log "Removing user $user from the factory system"
+    userdel --root "$next" "$user" 2>>"$LOG_FILE" ||
+      fail "could not remove user $user from the factory system (see $LOG_FILE)"
+  done
+  passwd --root "$next" --lock root >>"$LOG_FILE" 2>&1 || true
+
+  # @factory itself survives the wipe as the baseline for future resets. If it
+  # came from a normal install it still holds the seller's account and
+  # /etc/shadow, which the new wheel user could mount and read — and a second
+  # reset would restore that account. Scrub it once, in place.
+  sanitize_factory_baseline "$top/@factory"
+
+  # Keep the Node tarball reachable for offline first-boot finalization.
+  if ! compgen -G "$next$PROVISIONING_DIR/packages/node-v*.tar.gz" >/dev/null; then
+    if compgen -G "$PROVISIONING_DIR/packages/node-v*.tar.gz" >/dev/null; then
+      install -d -m 755 "$next$PROVISIONING_DIR/packages"
+      cp "$PROVISIONING_DIR"/packages/node-v*.tar.gz "$next$PROVISIONING_DIR/packages/"
+    fi
+  fi
+
+  install -d -m 755 "$next$PROVISIONING_DIR"
+  touch "$next$PROVISIONING_DIR/pending" "$next$PROVISIONING_DIR/wipe-pending"
+
+  install_provisioning_units "$next" "$unit_src"
+
+  if encrypted_install; then
+    stage_luks_rekey "$next"
+  fi
+
+  rebuild_next_boot "$next"
+
+  log "Activating the factory system"
+  local old="@omarchy-old-$(date +%s)"
+  mv "$top/@" "$top/$old"
+  mv "$next" "$top/@"
+  swap_done=1
+  sync
+}
+
+# A reset is a clone of @factory, so a machine without one has nothing to
+# return to. Only the Quattro installer takes that snapshot.
+require_factory_snapshot() {
+  [[ -d $TOP_MNT/@factory ]] && return 0
+
+  echo
+  gum style --bold --foreground 3 "This machine has no factory snapshot to reset to."
+  echo
+  gum style "A reset restores the @factory snapshot the Omarchy Quattro installer takes"
+  gum style "right after installing. Machines upgraded to Quattro from an earlier version,"
+  gum style "or installed some other way, never got one, so there is no baseline here to"
+  gum style "return to."
+  echo
+  gum style --foreground 8 "Reinstall from the Omarchy ISO to make this machine resettable."
+  exit 1
+}
+
+main() {
+  omarchy-cmd-present btrfs || { echo "Error: btrfs-progs is required" >&2; exit 1; }
+
+  root_is_btrfs_at || fail "reset requires the standard Omarchy Btrfs layout (subvol=@)"
+
+  touch "$LOG_FILE"
+  chmod 600 "$LOG_FILE"
+  swap_done=0
+
+  local device
+  device=$(root_device)
+  [[ -n $device ]] || fail "could not determine the root device"
+
+  mkdir -p "$TOP_MNT"
+  mountpoint -q "$TOP_MNT" || mount -o subvolid=5 "$device" "$TOP_MNT"
+
+  require_factory_snapshot
+
+  confirm_reset
+
+  # The running system's limine-snapper-sync must not rewrite the ESP's
+  # limine.conf behind the staged rebuild (subvolume changes below can
+  # trigger it). The runtime mask evaporates on the reboot that follows.
+  systemctl mask --runtime --now limine-snapper-sync.service >/dev/null 2>&1 || true
+  systemctl mask --runtime --now limine-snapper-sync.path >/dev/null 2>&1 || true
+
+  stage_full_reset
+
+  umount -R "$TOP_MNT" 2>/dev/null || true
+
+  echo
+  gum style --bold "Reset staged. The wipe finishes on the next boot."
+  if gum confirm --affirmative "Reboot now" --negative "Reboot later" "Reboot to complete the reset?"; then
+    systemctl reboot
+  else
+    gum style --foreground 3 "Do not keep using this machine — changes made now will be lost."
+  fi
+}
+
+main "$@"

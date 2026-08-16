@@ -124,64 +124,114 @@ assertDeepEqual(
   'notifications create stable snapshots'
 )
 
-const history = notifications.parseHistory(JSON.stringify({
-  dnd: true,
-  pending: [
-    { id: 1, originalId: 10, summary: 'old', timestamp: 100 },
-    { id: 2, originalId: 10, summary: 'new', timestamp: 200 },
-    { id: 3, originalId: 11, summary: 'other', timestamp: 150 }
-  ],
-  past: [
-    { id: 4, summary: 'past', timestamp: 50 }
-  ],
-  entries: [
-    { id: 5, summary: 'legacy', timestamp: 75 }
-  ]
-}), 1, 100)
+// An in-place update keeps the popup's identity — the file name it was
+// persisted under — and takes everything the card draws from the new content.
+const replacement = notifications.replacementSnapshot(
+  {
+    id: 12,
+    appName: 'Slack',
+    summary: 'Thread v2',
+    body: 'message 2',
+    image: 'file:///tmp/new.png',
+    hints: { 'omarchy-glyph': '!' },
+    urgency: 2,
+    expireTimeout: 4000
+  },
+  12,
+  12345
+)
+assertDeepEqual(
+  {
+    id: replacement.id,
+    originalId: replacement.originalId,
+    timestamp: replacement.timestamp,
+    summary: replacement.summary,
+    body: replacement.body,
+    image: replacement.image,
+    glyph: replacement.glyph,
+    urgency: replacement.urgency,
+    expireTimeout: replacement.expireTimeout
+  },
+  {
+    id: 12,
+    originalId: 12,
+    timestamp: 12345,
+    summary: 'Thread v2',
+    body: 'message 2',
+    image: 'file:///tmp/new.png',
+    glyph: '!',
+    urgency: 2,
+    expireTimeout: 4000
+  },
+  'notifications take updated content without moving the popup it replaces'
+)
+assertEqual(
+  notifications.popupFileName(replacement),
+  '12345-12.json',
+  'notifications keep the persisted file name across an in-place update'
+)
+assert(
+  !notifications.popupRowChanged(replacement, replacement),
+  'notifications skip a refresh that matches the row it would write'
+)
+assert(
+  notifications.popupRowChanged(replacement, Object.assign({}, replacement, { body: 'message 3' })),
+  'notifications refresh a row whose content moved on'
+)
+assert(
+  !notifications.popupRowChanged(replacement, Object.assign({}, replacement, { timestamp: 999 })),
+  'notifications ignore identity fields when deciding whether a refresh has work'
+)
 
-assertEqual(history.dnd, true, 'notifications parse persisted DND state')
-assertEqual(history.hadDuplicates, true, 'notifications report duplicate history rows')
-assertDeepEqual(
-  history.pending.map(row => ({ id: row.id, originalId: row.originalId, summary: row.summary, urgency: row.urgency, timestamp: row.timestamp })),
-  [
-    { id: 2, originalId: 10, summary: 'new', urgency: 1, timestamp: 200 },
-    { id: 3, originalId: 11, summary: 'other', urgency: 1, timestamp: 150 }
-  ],
-  'notifications dedupe pending history by original id'
+const settings = notifications.parseSettings(JSON.stringify({ version: 3, dnd: true }))
+assertEqual(settings.dnd, true, 'notifications parse the persisted DND state')
+assertEqual(settings.legacy, false, 'notifications do not flag a current settings file as legacy')
+assertEqual(notifications.parseSettings('').dnd, null, 'notifications leave DND unset without a settings file')
+assertEqual(
+  notifications.parseSettings(JSON.stringify({ dnd: false, pending: [], past: [] })).legacy,
+  true,
+  'notifications flag a settings file still carrying the retired history rows'
 )
-assertDeepEqual(
-  history.past.map(row => row.summary),
-  ['legacy', 'past'],
-  'notifications merge legacy entries into past history'
-)
-assertDeepEqual(
-  notifications.parseHistory(JSON.stringify({ pending: [{ id: 1, timestamp: 1 }] }), 1, 0).pending,
-  [],
-  'notifications history parser supports zero result cap'
-)
-assert(notifications.parseHistory('{', 1, 100).error, 'notifications flag invalid history JSON')
+assert(notifications.parseSettings('{').error, 'notifications flag invalid settings JSON')
 
-const recentRows = notifications.recentHistoryRows(
-  [
-    { id: 1, originalId: 10, summary: 'pending-old', timestamp: 100 },
-    { id: 2, originalId: 11, summary: 'pending-new', timestamp: 700 },
-    { id: 3, originalId: 12, summary: 'pending-mid', timestamp: 300 }
-  ],
-  [
-    { id: 4, originalId: 13, summary: 'past-newest', timestamp: 900 },
-    { id: 5, originalId: 14, summary: 'past-second', timestamp: 800 },
-    { id: 6, originalId: 10, summary: 'past-replaced', timestamp: 200 },
-    { id: 7, originalId: 15, summary: 'past-extra', timestamp: 50 }
-  ],
-  5,
-  1
+// History is the notification files moved into the history dir, read back
+// exactly like live popup files.
+const archived = [
+  notifications.serializePopup({ id: 1, originalId: 1, summary: 'oldest', timestamp: 100 }, 1),
+  notifications.serializePopup({ id: 2, originalId: 2, summary: 'newest', timestamp: 900, expireTimeout: 30000, deadline: 5000 }, 1),
+  notifications.serializePopup({ id: 3, originalId: 3, summary: 'middle', timestamp: 500 }, 1)
+].join('\n')
+
+const historyReplay = notifications.historyRows(archived, [], 1, 2)
+assertDeepEqual(
+  historyReplay.map(row => row.summary),
+  ['newest', 'middle'],
+  'notifications replay the newest history rows up to the limit'
+)
+assertEqual(historyReplay[0].expireTimeout, 0, 'notifications replay history rows with the standard toast lifetime')
+assertEqual('deadline' in historyReplay[0], false, 'notifications drop the restore deadline from replayed history rows')
+assertDeepEqual(notifications.historyRows('', [], 1, 10), [], 'notifications replay nothing from an empty history dir')
+
+// A toast still on screen is the newest notification there is, and its move
+// into the history dir races the read, so the replay takes it from memory.
+assertDeepEqual(
+  notifications.historyRows(archived, [{ id: 4, originalId: 4, summary: 'on screen', timestamp: 1500 }], 1, 10)
+    .map(row => row.summary),
+  ['on screen', 'newest', 'middle', 'oldest'],
+  'notifications replay the toasts still on screen alongside the archived ones'
 )
 assertDeepEqual(
-  recentRows.map(row => row.summary),
-  ['past-newest', 'past-second', 'pending-new', 'pending-mid', 'past-replaced'],
-  'notifications pick the last five history rows across pending and past'
+  notifications.historyRows(archived, [{ id: 2, originalId: 2, summary: 'newest', timestamp: 900 }], 1, 10)
+    .map(row => row.summary),
+  ['newest', 'middle', 'oldest'],
+  'notifications replay a toast once when its archived file already landed'
 )
-assertEqual(recentRows.length, 5, 'notifications history replay is capped at five rows')
+assertDeepEqual(
+  notifications.historyRows('', [{ id: 4, originalId: 4, summary: 'on screen', timestamp: 1500 }], 1, 10)
+    .map(row => row.summary),
+  ['on screen'],
+  'notifications replay an on-screen toast even when nothing is archived yet'
+)
 
 const popup = {
   id: 7,
@@ -211,6 +261,54 @@ assertEqual(
   notifications.popupEntry({ id: 1, timestamp: 5, expireTimeout: 4000 }, 1).expireTimeout,
   4000,
   'notifications preserve popup expire timeouts unlike history rows'
+)
+
+// Persisted entries must not reference images another process owns: Chromium
+// web apps (WhatsApp avatars included) delete their scoped /tmp files when
+// the notification closes, and image:// URLs die with the live object.
+assertEqual(
+  notifications.localImageFile('file:///tmp/scoped_dir/logo%20a.png'),
+  '/tmp/scoped_dir/logo a.png',
+  'notifications resolve file URLs to copyable paths'
+)
+assertEqual(notifications.localImageFile('/tmp/avatar.png'), '/tmp/avatar.png', 'notifications treat absolute paths as copyable')
+assertEqual(notifications.localImageFile('mail'), '', 'notifications leave themed icon names uncopied')
+assertEqual(notifications.localImageFile('image://notifs/1'), '', 'notifications cannot copy in-process image URLs')
+
+const persistable = notifications.persistablePopup(
+  { id: 9, originalId: 9, timestamp: 2000, appIcon: 'file:///tmp/scoped/logo.png', image: 'image://notifs/9', summary: 'Hi' },
+  '/state/images/'
+)
+assertDeepEqual(
+  persistable.copies,
+  [{ from: '/tmp/scoped/logo.png', to: '/state/images/2000-9-appIcon' }],
+  'notifications copy file-backed images into the state dir when persisting'
+)
+assertEqual(
+  persistable.entry.appIcon,
+  'file:///state/images/2000-9-appIcon',
+  'notifications persist the image copy instead of the sender-owned original'
+)
+assertEqual(persistable.entry.image, '', 'notifications drop dead in-process image URLs from persisted entries')
+assertEqual(persistable.entry.summary, 'Hi', 'notifications leave the rest of the persisted entry untouched')
+
+const repersisted = notifications.persistablePopup(persistable.entry, '/state/images/')
+assertDeepEqual(repersisted.copies, [], 'notifications do not re-copy an entry already pointing at its copies')
+assertEqual(
+  repersisted.entry.appIcon,
+  'file:///state/images/2000-9-appIcon',
+  'notifications keep a restored entry pointing at its existing copy'
+)
+
+assertEqual(
+  notifications.persistablePopup({ id: 9, originalId: 9, timestamp: 2000, appIcon: 'mail', image: '' }, '/state/images/').copies.length,
+  0,
+  'notifications leave themed icons alone when persisting'
+)
+assertEqual(
+  notifications.imageStem({ originalId: 9, timestamp: 2000 }) + '.json',
+  notifications.popupFileName({ originalId: 9, timestamp: 2000 }),
+  'notifications name image copies by the stem of the entry file they belong to'
 )
 
 const popupFiles = notifications.parsePopupFiles(
@@ -255,14 +353,42 @@ assertEqual(
   'notifications omit the deadline field until a restore sets it'
 )
 
-assertEqual(notifications.imageExtension('/tmp/screenshot.PNG'), 'png', 'notifications normalize image extensions')
-assertEqual(notifications.imageExtension('/tmp/no-extension'), 'png', 'notifications default missing image extension')
-assertEqual(notifications.imageExtension('/tmp/archive.reallylong'), 'png', 'notifications reject suspicious image extensions')
+// A click action carried as a command is the only kind that survives a shell
+// restart: a libnotify action leaves its sender waiting on an id from a server
+// generation that no longer exists.
+assertEqual(
+  notifications.snapshotOf({ id: 3, hints: { 'omarchy-exec': 'omarchy-menu-keybindings' } }, 1).exec,
+  'omarchy-menu-keybindings',
+  'notifications capture the click command from the exec hint'
+)
+assertEqual(
+  notifications.snapshotOf({ id: 3, hints: { 'omarchy-glyph': '!' } }, 1).exec,
+  '',
+  'notifications leave the click command empty without an exec hint'
+)
+assertEqual(
+  notifications.popupEntry(
+    JSON.parse(notifications.serializePopup({ id: 1, originalId: 1, timestamp: 5, exec: "mpv '/tmp/a b.mp4'" }, 1)),
+    1
+  ).exec,
+  "mpv '/tmp/a b.mp4'",
+  'notifications round-trip the click command through popup files'
+)
+assertEqual(
+  notifications.popupEntry({ id: 1, originalId: 1, timestamp: 5 }, 1).exec,
+  '',
+  'notifications restore an empty click command for popups without one'
+)
+assertEqual(
+  notifications.historyEntry({ id: 1, exec: 'xdg-open /tmp/received' }, 1).exec,
+  'xdg-open /tmp/received',
+  'notifications keep the click command on history rows'
+)
 
 const serviceQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/Service.qml'), 'utf8')
 assert(
-  /readonly property int historyReplayLimit: 5/.test(serviceQml),
-  'notifications service limits history replay to five rows'
+  /readonly property int historyLimit: 10/.test(serviceQml),
+  'notifications service keeps the last ten notifications in history'
 )
 assert(
   /function showHistory\(\): string \{\s*return service\.showRecentHistory\(\)\s*\}/.test(serviceQml),
@@ -273,12 +399,108 @@ assert(
   'notifications service persists popups under the omarchy state dir'
 )
 assert(
-  serviceQml.split('persistPopupFile(snapshot)').length === 4,
-  'notifications service persists both ephemeral and regular popups'
+  /readonly property string historyDir: popupStateDir \+ "history\/"/.test(serviceQml),
+  'notifications service keeps history in a subdirectory of the popup state dir'
 )
 assert(
-  /if \(entry\) \{\s*\n\s*deletePopupFileFor\(entry\)[\s\S]{0,200}?popupModel\.remove\(index\)/.test(serviceQml),
-  'notifications service deletes the popup file when a popup leaves the screen'
+  /if \(entry\) \{\s*\n\s*archivePopupFileFor\(entry\)[\s\S]{0,200}?popupModel\.remove\(index\)/.test(serviceQml),
+  'notifications service archives the popup file when a popup leaves the screen'
+)
+assert(
+  /mv -f \\"\$4\/\$3\\" \\"\$1\/\$3\\"/.test(serviceQml),
+  'notifications service archives by moving the popup file into the history dir'
+)
+assert(
+  /head -n \\"-\$limit\\"/.test(serviceQml),
+  'notifications service trims history to the newest entries in the same job'
+)
+assert(
+  /\\"\$imgs\/\$\{stale%\.json\}\\"-\*/.test(serviceQml),
+  'notifications service drops a trimmed history entry\'s image copies with it'
+)
+assert(
+  /readonly property string imagesDir: popupStateDir \+ "images\/"/.test(serviceQml),
+  'notifications service keeps image copies beside the popup and history files'
+)
+assert(
+  /copyImagesScript \+\n\s*"printf/.test(serviceQml),
+  'notifications service copies images before writing the JSON that references them'
+)
+assert(
+  /timeout 5 head -c 5242881 -- \\"\$1\\" > \\"\$2\.tmp\\"[\s\S]{0,120}?mv -f -- \\"\$2\.tmp\\" \\"\$2\\"/.test(serviceQml),
+  'notifications service bounds image copies through a validated temp file'
+)
+assert(
+  /rm -f \\"\$1\/\$2\.json\\" \\"\$3\/\$2\\"-\*/.test(serviceQml),
+  'notifications service deletes a superseded popup\'s image copies with its file'
+)
+assert(
+  /if \(!isEphemeral\(notification\)\) \{\s*\n\s*writeSilenced\(notification, snapshot\)/.test(serviceQml),
+  'notifications service records DND-silenced notifications straight into history'
+)
+assert(
+  /function releaseSilenced\(notification, originalId\)[\s\S]{0,300}?notification\.tracked = false/.test(serviceQml),
+  'notifications service holds a silenced notification until its history write has run'
+)
+assert(
+  /if \(updated && NotificationLogic\.popupRowChanged\(written, updated\)\) \{\s*\n\s*service\.writeSilenced\(notification, updated\)/.test(serviceQml),
+  'notifications service re-persists a silenced notification updated while its write was queued'
+)
+assert(
+  /rows\.push\(NotificationLogic\.persistablePopup\(\{[\s\S]{0,400}?\}, imagesDir\)\.entry\)/.test(serviceQml),
+  'notifications service replays carried-over toasts from their persisted image copies'
+)
+assert(
+  /function sweepOrphanImages\(\)[\s\S]{0,400}?\|\| rm -f \\"\$img\\"/.test(serviceQml),
+  'notifications service sweeps image copies whose JSON never landed'
+)
+assert(
+  /service\.replayCarryOver = liveRowsForReplay\(\)/.test(serviceQml),
+  'notifications service carries the toasts still on screen into the replay'
+)
+assert(
+  /watchForUpdates\(notification, snapshot\)/.test(serviceQml),
+  'notifications service watches a shown notification for in-place updates'
+)
+assert(
+  /if \(signal && typeof signal\.connect === "function"\) signal\.connect\(refresh\)/.test(serviceQml),
+  'notifications service refreshes the popup from every property the card draws'
+)
+assert(
+  /popupModel\.setProperty\(i, roles\[r\], updated\[roles\[r\]\]\)[\s\S]{0,600}?persistPopupFile\(updated\)/.test(serviceQml),
+  'notifications service rewrites both the row and its file when a notification is updated in place'
+)
+assert(
+  /if \(!NotificationLogic\.popupRowChanged\(row, updated\)\) return/.test(serviceQml),
+  'notifications service leaves the row and its file alone when a refresh finds nothing changed'
+)
+assert(
+  /popupModel\.insert\(0, snapshot\)[\s\S]{0,300}?service\.refreshPopup\(notification, snapshot\.originalId, snapshot\.timestamp\)/.test(serviceQml),
+  'notifications service catches up on an update that beat the deferred row insert'
+)
+assert(
+  /function showRecentHistory\(\)[\s\S]{0,300}?enqueueHistoryRead\(\)/.test(serviceQml),
+  'notifications service reads history from its place in the file queue'
+)
+assert(
+  /if \(job\.read\) \{\s*\n\s*startHistoryRead\(\)/.test(serviceQml),
+  'notifications service runs the queued read when its turn comes'
+)
+assert(
+  /function runNextPopupFileJob\(\) \{\s*\n\s*if \(readHistoryProc\.running \|\| popupFileProc\.running\) return/.test(serviceQml),
+  'notifications service holds queued file work until a history read finishes'
+)
+assert(
+  /id: readHistoryProc[\s\S]{0,300}?onExited: service\.runNextPopupFileJob\(\)/.test(serviceQml),
+  'notifications service releases the file queue even when a history read comes back empty'
+)
+assert(
+  /onSummaryChanged: cardSlot\.remainingLifetime = 1\.0/.test(serviceQml),
+  'notifications service restarts the countdown when a toast is updated under it'
+)
+assert(
+  /awk 1 \\"\$1\\"\/\*\.json 2>\/dev\/null \|\| true", "--", historyDir/.test(serviceQml),
+  'notifications service replays history by reading the archived files'
 )
 assert(
   /restorePopupsProc\.running = true/.test(serviceQml),
@@ -293,8 +515,8 @@ assert(
   'notifications service never resolves a restored popup to a live server object'
 )
 assert(
-  /markSeenByOriginalId\(originalId, timestamp\)/.test(serviceQml),
-  'notifications service archives pending rows by id and timestamp'
+  /service\.restoredPopups\[NotificationLogic\.popupFileName\(rows\[i\]\)\] = true/.test(serviceQml),
+  'notifications service treats replayed history rows as restored, never as live notifications'
 )
 assert(
   /popupFileName\(row\) !== keepFileName/.test(serviceQml),
@@ -303,5 +525,17 @@ assert(
 assert(
   /awk 1 \\"\$1\\"\/\*\.json/.test(serviceQml),
   'notifications service delimits every popup file during restore'
+)
+assert(
+  /var command = entry \? String\(entry\.exec \|\| ""\) : ""[\s\S]{0,300}?Util\.execDetached\(command\)/.test(serviceQml),
+  'notifications service runs the popup click command itself instead of a libnotify action'
+)
+assert(
+  /function clear\(\): string \{\s*service\.clearHistory\(\)/.test(serviceQml),
+  'notifications clear IPC forgets the recorded history'
+)
+assert(
+  !/pendingModel|pastModel/.test(serviceQml),
+  'notifications service keeps no in-memory history models'
 )
 JS

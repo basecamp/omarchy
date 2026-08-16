@@ -193,6 +193,16 @@ QtObject {
     return { found: false }
   }
 
+  // A caller naming a widget that has been cloned means the clone that took
+  // its place, the way resolveEnabledId routes calls to it.
+  function findRelativeBarLocation(config, id, section) {
+    var location = findBarLocation(config, id, section)
+    if (location.found) return location
+    if (!Util.isPlainObject(config) || !Util.isPlainObject(config.bar)) return { found: false }
+    var clone = activeCloneFor(config, Util.canonicalWidgetId(String(id)))
+    return clone ? findBarLocation(config, clone, section) : { found: false }
+  }
+
   function findEntryLocation(config, id) {
     if (!Util.isPlainObject(config)) return { found: false }
     var key = Util.canonicalWidgetId(String(id))
@@ -218,7 +228,7 @@ QtObject {
       ? String(target.section) : fallbackSection
     var relativeId = String(target.before || target.after || "")
     if (relativeId) {
-      var relative = findBarLocation(config, relativeId, section && target.section ? section : "")
+      var relative = findRelativeBarLocation(config, relativeId, section && target.section ? section : "")
       if (!relative.found) return { error: "could not find target widget " + relativeId }
       return {
         section: relative.section,
@@ -233,7 +243,7 @@ QtObject {
     }
 
     var anchors = { left: "omarchy.workspaces", center: "omarchy.weather", right: "omarchy.tray" }
-    var anchor = findBarLocation(config, anchors[section], section)
+    var anchor = findRelativeBarLocation(config, anchors[section], section)
     return {
       section: section,
       index: anchor.found ? anchor.index + 1 : config.bar.layout[section].length
@@ -279,6 +289,29 @@ QtObject {
     registryRevision++
     pluginsChanged()
     return ""
+  }
+
+  // put is the unattended verb: where enable errors, it falls back, and it
+  // leaves a widget that is already on the bar where its owner put it.
+  function putBarWidget(id, placement) {
+    if (inBar(id)) return ""
+    var config = shellConfigProvider ? shellConfigProvider() : null
+    // Enabling a source whose clone is active switches back to the built-in,
+    // which is the owner's call, not an unattended caller's.
+    if (findRelativeBarLocation(config, id, "").found) return ""
+    // The manifest scan is a subprocess and IPC answers before it returns, so
+    // an id it has not reached yet is not one that does not exist.
+    if (scanning && !installedPlugins[Util.canonicalWidgetId(String(id))]) return "not ready"
+    var target = Util.isPlainObject(placement) ? Util.cloneJson(placement) : {}
+    var relativeId = String(target.before || target.after || "")
+    if (relativeId) {
+      if (!findRelativeBarLocation(config, relativeId, String(target.section || "")).found) {
+        delete target.before
+        delete target.after
+      }
+    }
+    if (setEnabled(id, true, target)) return ""
+    return lastEnableError || "unknown"
   }
 
   function setBarWidget(id, key, value, selector) {
@@ -436,7 +469,7 @@ QtObject {
 
       if (value && placement && (placement.before || placement.after)) {
         var relativeId = String(placement.before || placement.after)
-        if (!findBarLocation(config, relativeId, String(placement.section || "")).found) {
+        if (!findRelativeBarLocation(config, relativeId, String(placement.section || "")).found) {
           lastEnableError = "could not find target widget " + relativeId
           return
         }

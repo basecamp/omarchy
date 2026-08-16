@@ -22,16 +22,26 @@ create)
   # The description is just a label, so never let it abort the snapshot.
   DESC="$(omarchy-version 2>/dev/null || echo unknown)"
 
-  echo -e "\e[32mCreate system snapshot\e[0m"
-
   # Get existing snapper config names from CSV output
   mapfile -t CONFIGS < <(sudo snapper --csvout list-configs | awk -F, 'NR>1 {print $1}')
+
+  # Snapper installed but unconfigured snapshots nothing. Staying quiet here
+  # reads as a successful snapshot, so the next update looks recoverable when
+  # nothing has ever been captured.
+  if (( ${#CONFIGS[@]} == 0 )); then
+    echo -e "\e[33mNo Snapper configs found, so no snapshot was created.\e[0m" >&2
+    echo "Configure Snapper with: sudo bash -euo pipefail \"$OMARCHY_PATH/install/config/snapper.sh\"" >&2
+    exit 1
+  fi
+
+  echo -e "\e[32mCreate system snapshot\e[0m"
 
   for config in "${CONFIGS[@]}"; do
     sudo snapper -c "$config" create -c number -d "$DESC"
     sudo snapper -c "$config" cleanup number
   done
-  echo
+
+  echo "Snapshots can be selected during boot."
   ;;
 restore)
   sudo limine-snapper-restore

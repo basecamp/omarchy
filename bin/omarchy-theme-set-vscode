@@ -103,12 +103,20 @@ set_theme() {
   local theme_name=""
 
   if [[ -f "$VS_CODE_THEME_DESCRIPTOR" ]]; then
-    # Theme specifies a preferred 3rd-party extension/theme pair.
-    theme_name=$(jq -r '.name' "$VS_CODE_THEME_DESCRIPTOR")
+    # Theme specifies a preferred 3rd-party extension/theme pair. Both fields
+    # come from the theme, so neither is trusted as a shell or sed argument.
     local extension
-    extension=$(jq -r '.extension' "$VS_CODE_THEME_DESCRIPTOR")
+    theme_name=$(jq -r '.name // empty' "$VS_CODE_THEME_DESCRIPTOR")
+    extension=$(jq -r '.extension // empty' "$VS_CODE_THEME_DESCRIPTOR")
 
-    if [[ -n $extension ]] && ! "$editor_cmd" --list-extensions 2>/dev/null | grep -Fxq "$extension"; then
+    # A label with quotes, backslashes, or control characters can't land in
+    # settings.json as valid JSON, so drop it rather than write it out.
+    [[ $theme_name =~ ^[^[:cntrl:]\"\\]+$ ]] || theme_name=""
+
+    # Only install a well-formed publisher.name id; a malformed one skips the
+    # install without skipping the colorTheme write below.
+    if [[ $extension =~ ^[a-zA-Z0-9._-]+$ ]] &&
+      ! "$editor_cmd" --list-extensions 2>/dev/null | grep -Fxq "$extension"; then
       "$editor_cmd" --install-extension "$extension" >/dev/null 2>&1
     fi
   elif [[ -f "$GENERATED_THEME" ]]; then
@@ -121,12 +129,18 @@ set_theme() {
     mkdir -p "$(dirname "$settings_path")"
     [[ -f $settings_path ]] || printf '{\n}\n' >"$settings_path"
 
+    # settings.json is JSONC: comments and trailing commas are legal there and
+    # common in practice, so it's edited in place rather than round-tripped
+    # through a strict JSON parser that would reject it and reformat the rest.
+    local escaped=${theme_name//&/\\&}
+    escaped=${escaped//|/\\|}
+
     if ! grep -q '"workbench.colorTheme"' "$settings_path"; then
       sed -i --follow-symlinks -E '0,/\{/{s/\{/{\ "workbench.colorTheme": "",/}' "$settings_path"
     fi
 
     sed -i --follow-symlinks -E \
-      "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$theme_name\2/" \
+      "s|(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")|\1$escaped\2|" \
       "$settings_path"
   elif [[ -f $settings_path ]]; then
     sed -i --follow-symlinks -E 's/\"workbench\.colorTheme\"[[:space:]]*:[^,}]*,?//' "$settings_path"
@@ -136,4 +150,4 @@ set_theme() {
 ! omarchy-toggle-enabled skip-vscode-theme-changes && set_theme "code" "$HOME/.config/Code/User/settings.json" "$HOME/.vscode/extensions"
 ! omarchy-toggle-enabled skip-vscode-insiders-theme-changes && set_theme "code-insiders" "$HOME/.config/Code - Insiders/User/settings.json" "$HOME/.vscode-insiders/extensions"
 ! omarchy-toggle-enabled skip-codium-theme-changes && set_theme "codium" "$HOME/.config/VSCodium/User/settings.json" "$HOME/.vscode-oss/extensions"
-! omarchy-toggle-enabled skip-cursor-theme-changes && set_theme "cursor" "$HOME/.config/Cursor/User/settings.json" "$HOME/.cursor/extensions"
+! omarchy-toggle-enabled skip-cursor-theme-changes && set_theme "/usr/bin/cursor" "$HOME/.config/Cursor/User/settings.json" "$HOME/.cursor/extensions"

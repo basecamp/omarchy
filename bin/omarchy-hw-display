@@ -3,11 +3,17 @@
 # omarchy:summary=Print the most likely display backlight device.
 # omarchy:examples=omarchy-hw-display
 
+backlight_path="${OMARCHY_BACKLIGHT_PATH:-/sys/class/backlight}"
+
 # Start with the first possible output, then refine to the most likely given an order heuristic.
-device="$(ls -1 /sys/class/backlight 2>/dev/null | head -n1)"
-for candidate in amdgpu_bl* intel_backlight acpi_video*; do
-  if [[ -e /sys/class/backlight/$candidate ]]; then
-    device="$candidate"
+# Glob the candidates in the loop list: [[ ]] does not do pathname expansion.
+# The Touch Bar on T2 Macs registers a backlight that never drives the display panel.
+device="$(ls -1 "$backlight_path" 2>/dev/null | grep -vx appletb_backlight | head -n1)"
+# gmux comes first: apple-gmux only registers when the kernel has already picked it, and on
+# dual-GPU Macs the GPU's own PWM stops driving the panel once that GPU suspends.
+for candidate in "$backlight_path"/gmux_backlight "$backlight_path"/amdgpu_bl* "$backlight_path"/intel_backlight "$backlight_path"/acpi_video*; do
+  if [[ -e $candidate ]]; then
+    device="${candidate##*/}"
     break
   fi
 done

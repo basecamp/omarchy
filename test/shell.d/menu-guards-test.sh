@@ -10,6 +10,7 @@ const menu = requireFromRoot('shell/plugins/menu/MenuModel.js')
 const items = {
   'setup.default.browser.brave': { id: 'setup.default.browser.brave', when: 'omarchy-pkg-present brave-bin', checked: '[[ "$(omarchy-default-browser)" == "brave" ]]' },
   'setup.default.browser.zen': { id: 'setup.default.browser.zen', when: 'omarchy-pkg-present zen-browser-bin', checked: '[[ "$(omarchy-default-browser)" == "zen" ]]' },
+  'install.browser.zen': { id: 'install.browser.zen', disabled: 'omarchy-pkg-present zen-browser-bin' },
   'plain': { id: 'plain', label: 'No guards' }
 }
 const script = menu.guardScript(items)
@@ -23,7 +24,11 @@ assert(
   script.includes('then echo setup.default.browser.zen:c:1; else echo setup.default.browser.zen:c:0; fi'),
   'guard script reports a checked: as <id>:c:<0|1>'
 )
-assert(!/\bplain:[wc]:/.test(script), 'guard script skips items with nothing to evaluate')
+assert(
+  script.includes('if { omarchy-pkg-present zen-browser-bin; } >/dev/null 2>&1; then echo install.browser.zen:d:1; else echo install.browser.zen:d:0; fi'),
+  'guard script reports a disabled: as <id>:d:<0|1>'
+)
+assert(!/\bplain:[wcd]:/.test(script), 'guard script skips items with nothing to evaluate')
 assertEqual(menu.guardScript({ plain: items.plain }), '', 'guard script is empty when no item carries a guard')
 
 // The cost the menu is paying is per fork, not per expression, so what makes
@@ -64,7 +69,7 @@ assert(
 // keeps forking once per row that reads it.
 const fs = require('fs')
 const defaultItems = menu.parseMenuJsonc(fs.readFileSync(path.join(root, 'default/omarchy/omarchy-menu.jsonc'), 'utf8'))
-const guardText = defaultItems.map(item => `${item.when}\n${item.checked}`).join('\n')
+const guardText = defaultItems.map(item => `${item.when}\n${item.checked}\n${item.disabled}`).join('\n')
 const repeated = [...new Set(
   (guardText.match(/\$\((omarchy-[a-z0-9-]+)\)/g) || []).map(match => match.slice(2, -1))
 )].filter(command => guardText.split(`$(${command})`).length > 2)
