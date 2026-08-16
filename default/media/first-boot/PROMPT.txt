@@ -1,0 +1,19 @@
+Strictly use the first image as the exact starting keyframe and the second image as the exact middle keyframe. Generate a smooth cinematic 5–7 second video of a classic white Audi Quattro Group B rally car (Castrol and Michelin liveries, race number 1, headlights blazing) launching into a dramatic but realistic high jump over the dirt road.
+
+The car enters from behind the hill, becomes fully airborne with all four wheels off the ground while staying relatively low with realistic physics, then continues flying leftward and exits through the left side of the frame while expanding and heavily interacting with a massive red-tinted dust and debris cloud.
+
+CRITICAL – TRUE HARD OCCLUSION REVEAL ONLY:
+
+The Omarchy logo must be a clean, sharp, solid black official Omarchy wordmark (smooth continuous letters, vector-like, completely non-pixelated, no glitch, no broken fragments, no digital artifacts, matching the clean solid graphic style of the existing black “quattro” banner).
+
+This solid logo is a fixed midground element locked in the center / slightly lower-center, directly behind the car’s flight path.
+
+The entire solid logo is completely invisible and fully occluded by the opaque body of the car from the starting keyframe through the middle keyframe and until the car has already begun exiting left. Zero pixels of the logo are visible while the car is still covering the center of the frame.
+
+Only in the final portion of the video (as the car is flying out the left side) does the progressive reveal begin: the solid car body acts as a hard opaque moving mask. The trailing edge of the car uncovers the clean solid logo bit by bit, section by section, with realistic hard-edged occlusion. The logo does not fade in, does not assemble, does not pixelate into existence, and does not appear independently. It is only revealed by the physical movement of the car body out of the way. Fully visible only after the car has largely cleared the center.
+
+Absolutely no early appearance. No pixelated, blocky, glitchy, fragmented, or digital-style letters at any time.
+
+Preserve the exact same epic synthwave sunset with streaky pink-magenta-orange clouds, large yellow sun with horizontal lines, layered purple mountains, reflective lake, and the stationary black “quattro” banner in the lower right. Locked background, consistent colors, composition, and lighting throughout.
+
+Dynamic wide tracking camera smoothly following the jump. Realistic high-speed dust particle physics with volumetric lighting, subtle motion blur only on the car, highly detailed 1980s rally aesthetic.
