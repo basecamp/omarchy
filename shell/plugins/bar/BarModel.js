@@ -32,14 +32,14 @@ function pinTrayToInner(entries, section) {
   for (var i = 0; i < values.length; i++) {
     if (entryId(values[i]) === "omarchy.tray") { trayIndex = i; break }
   }
-  if (trayIndex === -1) return values
+  if (trayIndex === -1) return values.slice()
 
   // Entries listed before the tray collapse into it: they render inside the
   // tray's reveal drawer instead of as their own bar slots. Entries after it
   // stay visible beside the tray. Attach the collapsed entries to the tray
   // entry so the tray widget can read them off its injected `settings.widgets`.
   var inner = values.slice(0, trayIndex)
-  var outer = values.slice(trayIndex + 1)
+  var outer = values.slice(trayIndex + 1).filter(function(e) { return entryId(e) !== "omarchy.tray" })
 
   var source = isPlainObject(values[trayIndex]) ? values[trayIndex] : { id: "omarchy.tray" }
   var trayCopy = {}

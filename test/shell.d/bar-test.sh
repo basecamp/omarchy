@@ -303,6 +303,13 @@ assertDeepEqual(manyInner[0].widgets.map(bar.entryId), ['a', 'c'], 'bar preserve
 assertDeepEqual(bar.pinTrayToInner([{ id: 'omarchy.tray' }, { id: 'b' }], 'right')[0].widgets, [], 'bar keeps an empty widget list when the tray is first')
 assertDeepEqual(bar.pinTrayToInner([{ id: 'a' }, { id: 'b' }], 'right'), [{ id: 'a' }, { id: 'b' }], 'bar leaves a tray-less section untouched')
 assertDeepEqual(bar.pinTrayToInner([{ id: 'omarchy.tray', pinned: ['x'] }], 'right')[0].pinned, ['x'], 'bar preserves existing tray settings when nesting')
+assertDeepEqual(
+  bar.pinTrayToInner([{ id: 'a' }, { id: 'omarchy.tray' }, { id: 'omarchy.tray' }, { id: 'b' }], 'right').map(bar.entryId),
+  ['omarchy.tray', 'b'],
+  'bar drops duplicate tray entries instead of rendering them beside the tray'
+)
+const trayLess = [{ id: 'a' }, { id: 'b' }]
+assert(bar.pinTrayToInner(trayLess, 'right') !== trayLess, 'bar returns a fresh array for a tray-less section')
 
 // A settings-only shell.json write must patch the live bar, not rebuild it:
 // the module Repeaters recreate every widget when their array model changes.
