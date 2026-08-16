@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# omarchy:summary=Paste into a terminal according to the clipboard content type
+# omarchy:group=clipboard
+# omarchy:hidden=true
+
+pid=${1:-}
+stable_id=${2:-}
+address=${3:-}
+
+[[ $pid =~ ^[0-9]+$ && $stable_id =~ ^[0-9]+$ && $address =~ ^0x[0-9a-fA-F]+$ ]] || exit 1
+
+executable=$(readlink "/proc/$pid/exe" 2>/dev/null) || exit 1
+terminal=${executable##*/}
+terminal=${terminal%" (deleted)"}
+
+if [[ $terminal == "ghostty" || $terminal == "kitty" ]] &&
+  timeout 1 wl-paste --list-types 2>/dev/null | grep -q '^image/'; then
+  mods="CTRL"
+  key="V"
+else
+  mods="SHIFT"
+  key="Insert"
+fi
+
+hyprctl eval "
+local mods, key = \"$mods\", \"$key\"
+local function original_window()
+  local window = hl.get_window(\"address:$address\")
+  if window and window.pid == $pid and window.stable_id == $stable_id then
+    return window
+  end
+end
+
+local window = original_window()
+if not window then return end
+hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = \"down\", window = window }))
+hl.timer(function()
+  local original = original_window()
+  if original then
+    hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = \"up\", window = original }))
+  end
+end, { timeout = 50, type = \"oneshot\" })
+" >/dev/null

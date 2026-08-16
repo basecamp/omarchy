@@ -17,8 +17,11 @@ end
 
 -- Lean on the terminal tag from default/hypr/apps/terminals.lua so there's one
 -- definition of what counts as a terminal. Dynamic tags carry a trailing "*".
-local function active_window_is_terminal()
-  local window = hl.get_active_window()
+local function active_window()
+  return hl.get_active_window()
+end
+
+local function window_is_terminal(window)
   if not window then
     return false
   end
@@ -34,7 +37,8 @@ end
 
 local function universal_clipboard_shortcut(default_mods, default_key, terminal_mods, terminal_key)
   return function()
-    if active_window_is_terminal() then
+    local window = active_window()
+    if window_is_terminal(window) then
       send_shortcut_once(terminal_mods, terminal_key)()
     else
       send_shortcut_once(default_mods, default_key)()
@@ -42,7 +46,19 @@ local function universal_clipboard_shortcut(default_mods, default_key, terminal_
   end
 end
 
+local function universal_paste()
+  local window = active_window()
+  if window_is_terminal(window) then
+    -- Clipboard inspection must run outside Hyprland: wl-paste needs the
+    -- compositor's event loop, so waiting for it here would deadlock.
+    local command = "omarchy-clipboard-paste-terminal " .. tostring(window.pid) .. " " .. tostring(window.stable_id) .. " " .. o.shell_quote(window.address)
+    hl.dispatch(hl.dsp.exec_cmd(command))
+  else
+    send_shortcut_once("CTRL", "V")()
+  end
+end
+
 o.bind("SUPER + C", "Universal copy", universal_clipboard_shortcut("CTRL", "C", "CTRL", "Insert"))
-o.bind("SUPER + V", "Universal paste", universal_clipboard_shortcut("CTRL", "V", "SHIFT", "Insert"))
+o.bind("SUPER + V", "Universal paste", universal_paste)
 o.bind("SUPER + X", "Universal cut", send_shortcut_once("CTRL", "X"))
 o.bind("SUPER + CTRL + V", "Clipboard manager", "omarchy-shell shell toggle omarchy.clipboard")
