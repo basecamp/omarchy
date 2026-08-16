@@ -40,6 +40,9 @@ Panel {
   // Set when the user asks to power on while the first probe's answer is
   // still unknown; acted on once that probe confirms the radio exists.
   property bool deferredPowerOn: false
+  // Sentinel finishProbe receives when the watchdog gives up on a probe that
+  // never signalled completion (missing executable or a hung process).
+  readonly property int probeSpawnFailedExitCode: -1
   property string lastProbeStdout: ""
 
   Process {
@@ -69,7 +72,7 @@ Panel {
   Timer {
     id: probeWatchdog
     interval: 2000
-    onTriggered: root.finishProbe(-1)
+    onTriggered: root.finishProbe(root.probeSpawnFailedExitCode)
   }
 
   function probeHardware() {
@@ -88,6 +91,10 @@ Panel {
   function finishProbe(exitCode) {
     probeWatchdog.stop()
     if (!root.probePending) return
+    // A watchdog timeout means the process never completed: stop it so the
+    // next probe starts from a clean slate instead of stacking on a hung
+    // run. A real exit leaves no process behind to stop.
+    if (exitCode === root.probeSpawnFailedExitCode) rfkillProbe.running = false
     root.probePending = false
     root.hardwarePresent = exitCode === 0
       ? root.adapter !== null || String(root.lastProbeStdout).trim().length > 0
@@ -740,9 +747,10 @@ Panel {
       if (hardwarePresent && !probePending) {
         Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
       } else if (probePending) {
-        // The first probe hasn't answered yet; remember the intent instead
-        // of acting on the unverified default (finishProbe runs the command).
-        deferredPowerOn = true
+        // The first probe hasn't answered yet; record the intent instead of
+        // acting on the unverified default (finishProbe runs the command).
+        // Each click toggles it, so a change of mind can cancel the request.
+        deferredPowerOn = !deferredPowerOn
       }
       return
     }
