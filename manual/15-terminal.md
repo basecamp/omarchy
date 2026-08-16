@@ -12,6 +12,8 @@ Tmux provides a consistent, programmable interface for panes, windows (aka tabs)
 
 You start a new Tmux session in a fresh terminal using `Super + Alt + Return`, and because Tmux is a persistent process, you can resume your session even if you close that terminal. Just hit `Ctrl + Space` (called the prefix key) then `s` to see all your active sessions.
 
+Omarchy saves Tmux workspaces when their sessions, windows, panes, or layouts change, and when a client detaches. After a restart, press `Ctrl + Space`, then `Ctrl + R`, to restore the most recent workspace: sessions, windows, pane layouts, working directories, and safely supported programs. This is workspace recovery rather than process hibernation: a shell or program that was not safely restorable starts fresh in its original directory.
+
 Omarchy ships with an ergonomically-optimized Tmux configuration, which has a lot of keybindings to learn, so keep [the cheatsheet handy](07-hotkeys.md#tmux).
 
 ## Tmux layout functions
