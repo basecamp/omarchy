@@ -23,6 +23,9 @@ Item {
   property bool passwordPamConfigured: false
   property bool fingerprintConfigured: false
   property bool previewVisible: false
+  property int fingerprintErrorStreak: 0
+  readonly property int fingerprintRetryBaseMs: 250
+  readonly property int fingerprintRetryMaxMs: 30000
   property string enteredPassword: ""
   property string pendingPassword: ""
   property string failureMessage: ""
@@ -120,6 +123,7 @@ Item {
     failedAttempts = 0
     authenticatingPassword = false
     fingerprintAuthenticating = false
+    fingerprintErrorStreak = 0
     fingerprintRetryTimer.stop()
     if (passwordPam.active) passwordPam.abort()
     if (fingerprintPam.active) fingerprintPam.abort()
@@ -216,14 +220,35 @@ Item {
     }
   }
 
+  function fingerprintRetryDelay(streak) {
+    if (streak <= 0) return fingerprintRetryBaseMs
+    return Math.min(fingerprintRetryBaseMs * Math.pow(2, streak - 1), fingerprintRetryMaxMs)
+  }
+
+  // A device error (fprintd down, reader thermally throttled) returns
+  // instantly and keeps returning instantly, so retrying at the base interval
+  // spins as fast as PAM sessions can be created and never lets the reader
+  // recover. Back those off; a swipe that just didn't match is a real attempt
+  // and keeps the responsive base delay.
+  function scheduleFingerprintRetry(isDeviceError) {
+    if (!lockRequested || !fingerprintConfigured) return
+
+    if (isDeviceError) fingerprintErrorStreak += 1
+    else fingerprintErrorStreak = 0
+
+    fingerprintRetryTimer.interval = fingerprintRetryDelay(fingerprintErrorStreak)
+    fingerprintRetryTimer.restart()
+  }
+
   function handleFingerprintFinished(result) {
     fingerprintAuthenticating = false
 
     if (!lockRequested) return
     if (result === PamResult.Success) {
+      fingerprintErrorStreak = 0
       finishUnlock()
     } else if (fingerprintConfigured) {
-      fingerprintRetryTimer.restart()
+      scheduleFingerprintRetry(false)
     }
   }
 
@@ -349,13 +374,13 @@ Item {
 
     onError: function(error) {
       root.fingerprintAuthenticating = false
-      if (root.lockRequested && root.fingerprintConfigured) fingerprintRetryTimer.restart()
+      root.scheduleFingerprintRetry(true)
     }
   }
 
   Timer {
     id: fingerprintRetryTimer
-    interval: 250
+    interval: root.fingerprintRetryBaseMs
     repeat: false
     onTriggered: root.startFingerprint()
   }
