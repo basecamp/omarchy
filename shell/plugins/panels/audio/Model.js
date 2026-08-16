@@ -233,6 +233,8 @@ function streamRepresentsPlayer(node, player, players, streams) {
   return streamRepresentsMprisPlayer(streamLabel(node, players, streams), playerLabel)
 }
 
+var MEDIA_ACTION_NAMES = ["previous", "playPause", "next"]
+
 function mediaMetadataPresent(title, artist) {
   return !!(title || artist)
 }
@@ -250,8 +252,12 @@ function mediaActionEnabled(player, action) {
   return false
 }
 
+function mediaActionNames() {
+  return MEDIA_ACTION_NAMES.slice()
+}
+
 function mediaActions(player) {
-  return ["previous", "playPause", "next"].map(function(action) {
+  return mediaActionNames().map(function(action) {
     return { action: action, enabled: mediaActionEnabled(player, action) }
   })
 }
@@ -302,6 +308,7 @@ if (typeof module !== "undefined") {
     mediaMetadataPresent: mediaMetadataPresent,
     mediaVisible: mediaVisible,
     mediaActionEnabled: mediaActionEnabled,
+    mediaActionNames: mediaActionNames,
     mediaActions: mediaActions,
     firstEnabledMediaControl: firstEnabledMediaControl,
     nextEnabledMediaControl: nextEnabledMediaControl

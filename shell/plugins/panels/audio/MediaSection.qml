@@ -13,11 +13,11 @@ Column {
   required property bool displayCanGoNext
   required property bool cursorActive
   required property int cursorIndex
+  required property var actions
   signal controlHovered(int index)
   signal actionRequested(string action)
 
   readonly property bool hasMedia: displayTitle !== "" || displayArtist !== ""
-  readonly property var actions: ["previous", "playPause", "next"]
   readonly property var enabledActions: [
     displayCanGoPrevious,
     displayCanPlayPause,
@@ -72,6 +72,7 @@ Column {
         horizontalPadding: index === 1 ? Style.spacing.panelGap : Style.spacing.controlPaddingX
         verticalPadding: Style.spacing.controlPaddingY
         iconSize: index === 1 ? Style.font.iconLarge : Style.font.icon
+        tooltipText: index === 0 ? "Previous track" : (index === 1 ? "Play/Pause" : "Next track")
         enabled: root.enabledActions[index]
         opacity: enabled ? 1.0 : 0.4
         hasCursor: root.cursorActive && root.cursorIndex === index

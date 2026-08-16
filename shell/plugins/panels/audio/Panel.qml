@@ -67,7 +67,11 @@ Panel {
   }
 
   function refreshMediaPresentationState() {
-    if (!activeMediaPlayer || !Model.mediaMetadataPresent(liveMediaTitle, liveMediaArtist)) return
+    if (!activeMediaPlayer || !Model.mediaMetadataPresent(liveMediaTitle, liveMediaArtist)) {
+      // Retain the last complete presentation and action target during a
+      // transient MPRIS handoff instead of mixing the replacement player's state.
+      return
+    }
     mediaDisplayPlayerKey = mediaService ? String(mediaService.playerKey(activeMediaPlayer) || "") : ""
     mediaDisplayPlaying = !!activeMediaPlayer.isPlaying
     mediaDisplayCanGoPrevious = !!activeMediaPlayer.canGoPrevious
@@ -116,7 +120,7 @@ Panel {
       if (focusSection === "media") { focusSection = "output"; selectedIndex = -1 }
       return
     }
-    if (focusSection === "media" && !Model.mediaActionEnabled(mediaControlState, ["previous", "playPause", "next"][mediaControlIndex]))
+    if (focusSection === "media" && !Model.mediaActionEnabled(mediaControlState, mediaActions[mediaControlIndex]))
       mediaControlIndex = Model.firstEnabledMediaControl(mediaControlState)
   }
 
@@ -296,6 +300,7 @@ Panel {
   property int selectedIndex: -1
   property bool cursorActive: false
   property int mediaControlIndex: 1
+  readonly property var mediaActions: Model.mediaActionNames()
 
   // "header" is a virtual section for the hero output mute toggle; it sits
   // above the output section so the speaker can be muted from the keyboard.
@@ -370,10 +375,10 @@ Panel {
 
     var idx = selectedIndex
     if (focusSection === "media") {
-      if (delta > 0 && sections.indexOf("media") < sections.length - 1) {
-        focusSection = sections[sections.indexOf("media") + 1]
+      var mediaIndex = sections.indexOf("media")
+      if (delta > 0 && mediaIndex < sections.length - 1) {
+        focusSection = sections[mediaIndex + 1]
         selectedIndex = sectionHasSlider(focusSection) ? -1 : 0
-        if (focusSection === "media") mediaControlIndex = Model.firstEnabledMediaControl(mediaControlState)
       } else if (delta < 0) {
         focusSection = "header"
       }
@@ -453,7 +458,7 @@ Panel {
     if (focusSection === "header") { toggleAllMuted(); return }
     if (focusSection === "media") {
       if (!mediaVisible || !mediaService) return
-      var action = ["previous", "playPause", "next"][mediaControlIndex]
+      var action = mediaActions[mediaControlIndex]
       if (Model.mediaActionEnabled(mediaControlState, action))
         mediaService.runAction(action, false, mediaActionTargetKey())
       return
@@ -979,6 +984,7 @@ Panel {
             id: mediaSection
             visible: root.mediaVisible
             bar: root.bar
+            actions: root.mediaActions
             displayTitle: root.effectiveMediaTitle
             displayArtist: root.effectiveMediaArtist
             displayPlaying: root.effectiveMediaPlaying
