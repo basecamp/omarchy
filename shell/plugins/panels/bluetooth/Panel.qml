@@ -92,9 +92,14 @@ Panel {
   // late signal from a superseded run. A live adapter is authoritative (a
   // probe started before a dongle appeared may report a stale empty
   // listing). An inconclusive probe — non-zero exit, or the watchdog's
-  // sentinel — changes nothing: hardwarePresent keeps its previous value and
-  // a deferred power-on survives for a later definitive probe, so probe
-  // uncertainty can never hide the panel or drop the user's intent.
+  // sentinel — changes nothing: presence stays unknown, hardwarePresent keeps
+  // its previous value and a deferred power-on survives for a later definitive
+  // probe, so probe uncertainty can never hide the panel or drop the user's
+  // intent. Leaving it unknown matters: hardwarePresent defaults to true, so
+  // marking an inconclusive probe "known" would promote that optimistic guess
+  // into the answer and show the panel on a machine with no Bluetooth at all
+  // (`rfkill list` exits non-zero when /dev/rfkill is absent, as on a VM with
+  // no radios). Unknown falls back to the plain adapter gate, which hides it.
   function finishProbe(exitCode) {
     probeWatchdog.stop()
     if (!root.probePending) return
@@ -103,8 +108,8 @@ Panel {
     // run. A real exit leaves no process behind to stop.
     if (exitCode === root.probeSpawnFailedExitCode) rfkillProbe.running = false
     root.probePending = false
-    root.hardwarePresenceKnown = true
     if (exitCode === 0) {
+      root.hardwarePresenceKnown = true
       root.hardwarePresent = root.adapter !== null || String(root.lastProbeStdout).trim().length > 0
       // Definitive answer: act on the deferred intent now, or drop it.
       if (root.deferredPowerOn) {
