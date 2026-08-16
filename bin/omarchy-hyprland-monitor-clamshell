@@ -220,3 +220,6 @@ if omarchy-hw-clamshell && omarchy-hyprland-monitor-external-active; then
 else
   enable_internal
 fi
+
+# Lid is open again (or this was not a close): drop the 15" power-saver overlay.
+omarchy-hw-apple-mbp15-lid open >/dev/null 2>&1 || true

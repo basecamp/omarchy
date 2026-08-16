@@ -5,6 +5,13 @@ if ! omarchy-hw-apple-mbp15-dgpu; then
   exit 0
 fi
 
+# Default AC profile is performance. Seed balanced once so a reboot does
+# not cook the chassis. Do not overwrite a profile the user already chose.
+ac_state="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/powerprofiles/ac"
+if [[ ! -f $ac_state ]]; then
+  omarchy-powerprofiles-set ac balanced >/dev/null 2>&1 || true
+fi
+
 # shellcheck source=../install/hardware/apple/mbp15-dgpu.sh
 source "$OMARCHY_PATH/install/hardware/apple/mbp15-dgpu.sh"
 

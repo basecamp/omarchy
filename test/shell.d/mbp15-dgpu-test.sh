@@ -122,3 +122,52 @@ PATH="$ROOT/bin:$PATH" \
   bash -euo pipefail "$migration" >/dev/null
 [[ ! -e $etc/logind.conf.bak ]] || true
 pass "migration skips non-15-inch hardware"
+
+lid="$ROOT/bin/omarchy-hw-apple-mbp15-lid"
+grep -Fq 'omarchy-hw-apple-mbp15-lid close' "$ROOT/bin/omarchy-system-lid-close" ||
+  fail "lid-close calls the 15-inch chill helper"
+grep -Fq 'omarchy-hw-apple-mbp15-lid open' "$ROOT/bin/omarchy-hyprland-monitor-clamshell" ||
+  fail "clamshell restore calls the 15-inch open helper"
+grep -Fq 'omarchy-powerprofiles-set ac balanced' "$migration" ||
+  fail "migration seeds AC balanced when unset"
+pass "lid chill is wired without changing the default lid bind"
+
+lid_state=$test_tmp/lid-state
+mkdir -p "$lid_state" "$test_tmp/stub"
+echo 675 >"$test_tmp/bl"
+: >"$test_tmp/pp.log"
+
+cat >"$test_tmp/stub/omarchy-hw-laptop-closed" <<'SH'
+#!/bin/bash
+exit 0
+SH
+cat >"$test_tmp/stub/omarchy-hw-external-monitors" <<'SH'
+#!/bin/bash
+exit 1
+SH
+cat >"$test_tmp/stub/powerprofilesctl" <<SH
+#!/bin/bash
+echo "pp \$*" >>"$test_tmp/pp.log"
+SH
+cat >"$test_tmp/bl-get" <<SH
+#!/bin/bash
+cat "$test_tmp/bl"
+SH
+cat >"$test_tmp/bl-set" <<SH
+#!/bin/bash
+printf '%s\n' "\$1" >"$test_tmp/bl"
+SH
+chmod +x "$test_tmp/stub/"* "$test_tmp/bl-get" "$test_tmp/bl-set"
+
+PATH="$test_tmp/stub:$ROOT/bin:$PATH" \
+  OMARCHY_DMI_PRODUCT_NAME="$dmi" \
+  OMARCHY_MBP15_LID_STATE="$lid_state" \
+  OMARCHY_MBP15_BRIGHTNESS_GET="$test_tmp/bl-get" \
+  OMARCHY_MBP15_BRIGHTNESS_SET="$test_tmp/bl-set" \
+  "$lid" close
+
+[[ $(cat "$test_tmp/bl") == 0 ]] || fail "lid close dims the backlight" "bl=$(cat "$test_tmp/bl")"
+[[ $(cat "$lid_state/backlight") == 675 ]] || fail "lid close remembers brightness"
+grep -Fq 'pp set power-saver' "$test_tmp/pp.log" || fail "lid close overlays power-saver"
+! grep -q omarchy-powerprofiles-set "$test_tmp/pp.log" || fail "lid close must not persist via omarchy-powerprofiles-set"
+pass "lid close dims and overlays power-saver without persisting the profile"
