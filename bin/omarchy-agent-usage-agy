@@ -1,0 +1,413 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Antigravity usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Antigravity usage into one display-ready JSON record.
+
+Quotas and tier come from the local Antigravity Language Server RPCs
+(GetUserStatus and RetrieveUserQuotaSummary); local session stats come
+from Antigravity CLI transcript and session logs under ~/.gemini/antigravity-cli/.
+The agents panel only ever reads the JSON this prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import glob
+import json
+import os
+import re
+import socket
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "agy"
+AGENT_NAME = "Antigravity"
+AUTH_HELP = "Start an `agy` CLI session or open Antigravity to restore live usage."
+
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+HTTP_TIMEOUT_SECONDS = 4
+
+
+def cache_dir() -> Path:
+  path = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  path.mkdir(parents=True, exist_ok=True)
+  return path
+
+
+def local_date_string(date: dt.date | None = None) -> str:
+  target = date or dt.datetime.now().date()
+  return target.strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = dt.datetime.now().date()
+  return [local_date_string(today - dt.timedelta(days=offset)) for offset in range(6, -1, -1)]
+
+
+# ─── Language Server Discovery ─────────────────────────────────────────────
+
+
+def discover_candidate_ports() -> list[int]:
+  ports: list[int] = []
+
+  # Check environment variable override first
+  override = os.environ.get("ANTIGRAVITY_LS_ADDRESS", "").strip()
+  if override:
+    m = re.search(r":(\d+)$", override)
+    if m:
+      try:
+        return [int(m.group(1))]
+      except ValueError:
+        pass
+
+  # Linux: probe /proc for language_server, agy, or antigravity processes
+  if os.path.exists("/proc"):
+    inodes: set[int] = set()
+    try:
+      for pid_entry in os.scandir("/proc"):
+        if not pid_entry.name.isdigit():
+          continue
+        pid_dir = Path(pid_entry.path)
+        comm_file = pid_dir / "comm"
+        if not comm_file.exists():
+          continue
+        try:
+          comm = comm_file.read_text(encoding="utf-8", errors="ignore").strip().lower()
+        except Exception:
+          continue
+
+        exe_path = ""
+        try:
+          exe_path = os.readlink(str(pid_dir / "exe")).lower()
+        except Exception:
+          pass
+
+        is_agy = (
+            "language_server" in comm
+            or comm == "agy"
+            or comm.startswith("antigravity")
+            or "antigravity" in exe_path
+            or exe_path.endswith("/agy")
+        )
+        if not is_agy:
+          continue
+
+        fd_dir = pid_dir / "fd"
+        if not fd_dir.exists():
+          continue
+        try:
+          for fd_entry in os.scandir(fd_dir):
+            try:
+              target = os.readlink(fd_entry.path)
+              if target.startswith("socket:[") and target.endswith("]"):
+                ino_str = target[8:-1]
+                inodes.add(int(ino_str))
+            except Exception:
+              continue
+        except Exception:
+          continue
+    except Exception:
+      pass
+
+    if inodes:
+      for net_file in ["/proc/net/tcp", "/proc/net/tcp6"]:
+        if not os.path.exists(net_file):
+          continue
+        try:
+          with open(net_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()[1:]
+          for line in lines:
+            cols = line.split()
+            if len(cols) < 10:
+              continue
+            # state 0A is LISTEN
+            state = cols[3]
+            if state != "0A":
+              continue
+            ino = int(cols[9])
+            if ino in inodes:
+              local_addr = cols[1]
+              if ":" in local_addr:
+                port_hex = local_addr.split(":")[1]
+                port = int(port_hex, 16)
+                if port not in ports:
+                  ports.append(port)
+        except Exception:
+          continue
+
+  return ports
+
+
+def post_json_rpc(base_url: str, rpc_path: str, csrf_token: str | None) -> dict[str, Any] | None:
+  url = f"{base_url}/{rpc_path}"
+  headers = {"Content-Type": "application/json"}
+  if csrf_token:
+    headers["x-codeium-csrf-token"] = csrf_token
+
+  req = urllib.request.Request(url, data=b"{}", headers=headers, method="POST")
+  try:
+    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as resp:
+      if resp.status == 200:
+        data = resp.read()
+        return json.loads(data.decode("utf-8"))
+  except Exception:
+    return None
+  return None
+
+
+def fetch_csrf_token(base_url: str) -> str | None:
+  try:
+    req = urllib.request.Request(base_url, headers={"User-Agent": "omarchy-agent-usage-agy"})
+    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as resp:
+      html = resp.read().decode("utf-8", errors="ignore")
+      m = re.search(r'csrfToken":"([^"]+)"', html)
+      if m:
+        return m.group(1)
+  except Exception:
+    return None
+  return None
+
+
+def fetch_antigravity_rpc() -> dict[str, Any]:
+  result: dict[str, Any] = {
+      "tierLabel": "",
+      "limits": [],
+      "usageStatusText": "",
+      "authHelpText": AUTH_HELP,
+  }
+
+  candidate_ports = discover_candidate_ports()
+  if not candidate_ports:
+    cached = read_cached_limits()
+    if cached:
+      cached["usageStatusText"] = "Cached · Antigravity closed"
+      return cached
+    result["usageStatusText"] = "Antigravity closed"
+    return result
+
+  for port in candidate_ports:
+    base_url = f"http://127.0.0.1:{port}"
+    csrf = fetch_csrf_token(base_url)
+
+    status_data = post_json_rpc(
+        base_url,
+        "exa.language_server_pb.LanguageServerService/GetUserStatus",
+        csrf,
+    )
+    if not status_data:
+      continue
+
+    # Plan / tier
+    user_status = status_data.get("userStatus", {})
+    tier = (
+        user_status.get("userTier", {}).get("name")
+        or user_status.get("userTier", {}).get("description")
+        or user_status.get("planStatus", {}).get("planInfo", {}).get("planName")
+        or "Antigravity"
+    )
+    result["tierLabel"] = str(tier)
+
+    quota_data = post_json_rpc(
+        base_url,
+        "exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary",
+        csrf,
+    )
+    if not quota_data:
+      continue
+
+    groups = (
+        quota_data.get("response", {}).get("groups")
+        or quota_data.get("groups")
+        or []
+    )
+
+    limits: list[dict[str, Any]] = []
+    for group in groups:
+      group_name = group.get("displayName", "")
+      is_gemini_group = "gemini" in group_name.lower()
+      is_3p_group = "claude" in group_name.lower() or "gpt" in group_name.lower()
+
+      for bucket in group.get("buckets", []):
+        bucket_id = bucket.get("bucketId", "").lower()
+        window = bucket.get("window", "").lower()
+        remaining = bucket.get("remainingFraction")
+        if remaining is None or not isinstance(remaining, (int, float)):
+          continue
+
+        used_pct = max(0.0, min(1.0, round((1.0 - float(remaining)) * 100) / 100.0))
+        reset_time = bucket.get("resetTime") or ""
+
+        is_weekly = bucket_id.endswith("weekly") or window == "weekly"
+        is_5h = bucket_id.endswith("5h") or window == "5h"
+
+        is_gemini = bucket_id.startswith("gemini") or is_gemini_group
+        is_3p = bucket_id.startswith("3p") or is_3p_group
+
+        if is_gemini and is_5h:
+          limits.append({
+              "title": "Gemini Session",
+              "label": "5h window",
+              "percent": used_pct,
+              "resetsAt": reset_time,
+          })
+        elif is_gemini and is_weekly:
+          limits.append({
+              "title": "Gemini Weekly",
+              "label": "Weekly (7-day)",
+              "percent": used_pct,
+              "resetsAt": reset_time,
+          })
+        elif is_3p and is_5h:
+          limits.append({
+              "title": "Claude & GPT Session",
+              "label": "5h window",
+              "percent": used_pct,
+              "resetsAt": reset_time,
+          })
+        elif is_3p and is_weekly:
+          limits.append({
+              "title": "Claude & GPT Weekly",
+              "label": "Weekly (7-day)",
+              "percent": used_pct,
+              "resetsAt": reset_time,
+          })
+
+    if limits:
+      result["limits"] = limits
+      write_cached_limits(result)
+      return result
+
+  cached = read_cached_limits()
+  if cached:
+    cached["usageStatusText"] = "Cached · Antigravity closed"
+    return cached
+
+  result["usageStatusText"] = "Antigravity limits unavailable"
+  return result
+
+
+def cache_file() -> Path:
+  return cache_dir() / "agy-limits-cache.json"
+
+
+def write_cached_limits(data: dict[str, Any]) -> None:
+  try:
+    cache_file().write_text(json.dumps(data), encoding="utf-8")
+  except Exception:
+    pass
+
+
+def read_cached_limits() -> dict[str, Any] | None:
+  f = cache_file()
+  if not f.exists():
+    return None
+  try:
+    if dt.datetime.now().timestamp() - f.stat().st_mtime > 7 * 86400:
+      return None
+    return json.loads(f.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+
+
+# ─── Local Transcript / Usage Scanning ──────────────────────────────────────
+
+
+def scan_local_transcripts() -> dict[str, Any]:
+  recent_dates = recent_date_strings()
+  recent_by_day = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+  models_usage: dict[str, dict[str, int]] = {}
+  today_sessions: set[str] = set()
+  all_sessions: set[str] = set()
+  active_dates: set[str] = set()
+  today_prompts = 0
+  total_prompts = 0
+
+  today = local_date_string()
+
+  search_dirs = [
+      Path.home() / ".gemini" / "antigravity-cli" / "brain",
+      Path.home() / ".gemini" / "antigravity" / "brain",
+      Path.home() / ".gemini" / "antigravity-ide" / "brain",
+  ]
+
+  for base_dir in search_dirs:
+    if not base_dir.exists():
+      continue
+    try:
+      for log_path in base_dir.glob("*/.system_generated/logs/transcript.jsonl"):
+        conv_id = log_path.parent.parent.parent.name
+        try:
+          mtime = log_path.stat().st_mtime
+          log_date = dt.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+        except Exception:
+          continue
+
+        try:
+          with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+              if not line.strip():
+                continue
+              try:
+                entry = json.loads(line)
+                step_type = entry.get("type", "")
+                if step_type == "USER_INPUT":
+                  total_prompts += 1
+                  active_dates.add(log_date)
+                  all_sessions.add(conv_id)
+                  if log_date in recent_by_day:
+                    recent_by_day[log_date]["messageCount"] += 1
+                  if log_date == today:
+                    today_prompts += 1
+                    today_sessions.add(conv_id)
+              except Exception:
+                continue
+        except Exception:
+          continue
+    except Exception:
+      continue
+
+  return {
+      "todayPrompts": today_prompts,
+      "todaySessions": len(today_sessions),
+      "todayTotalTokens": 0,
+      "todayTokensByModel": {},
+      "recentDays": [recent_by_day[d] for d in recent_dates],
+      "totalPrompts": total_prompts,
+      "totalSessions": len(all_sessions),
+      "activeDays": len(active_dates),
+      "activeDates": sorted(active_dates),
+      "modelUsage": models_usage,
+  }
+
+
+def main() -> None:
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  args = parser.parse_args()
+
+  rpc = fetch_antigravity_rpc()
+  stats = {} if args.limits_only else scan_local_transcripts()
+
+  record = {
+      "schemaVersion": 1,
+      "id": AGENT_ID,
+      "name": AGENT_NAME,
+      "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+      "ready": True,
+      "hasLocalStats": True,
+  }
+  record.update(stats)
+  record.update(rpc)
+
+  print(json.dumps(record, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+  main()
