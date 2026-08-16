@@ -59,6 +59,11 @@ Panel {
     usage.refreshAll(true)
   }
 
+  function launchAgent() {
+    if (root.bar) root.bar.run("omarchy-agent --pick")
+    root.close()
+  }
+
   // ---------------------------------------------------------------- limits
   //
   // Both providers report the same two shapes: a short rolling session window
@@ -337,7 +342,7 @@ Panel {
     text: "󱚣"
     active: root.alarming
     onPressed: function(buttonCode) {
-      if (buttonCode === Qt.RightButton) root.refreshNow()
+      if (buttonCode === Qt.RightButton) root.launchAgent()
       else if (buttonCode === Qt.MiddleButton) root.selectProvider(root.providerIndex + 1)
       else root.toggle()
     }

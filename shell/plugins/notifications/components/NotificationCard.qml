@@ -154,6 +154,8 @@ BorderSurface {
       ColumnLayout {
         Layout.fillWidth: true
         Layout.alignment: Qt.AlignVCenter
+        // Keep the first line clear of the hover-revealed close button.
+        Layout.rightMargin: Style.space(10)
         spacing: Style.space(2)
 
         Text {
@@ -183,6 +185,36 @@ BorderSurface {
           maximumLineCount: 3
         }
       }
+    }
+  }
+
+  // Hover-revealed close. Stacked after mainColumn so its MouseArea sits
+  // above the full-card one and the click never reaches cardClicked.
+  Item {
+    anchors.top: parent.top
+    anchors.right: parent.right
+    anchors.topMargin: root.borderTop + Style.space(3)
+    anchors.rightMargin: root.borderRight + Style.space(3)
+    width: Style.space(18)
+    height: Style.space(18)
+    visible: opacity > 0
+    opacity: root.hovered ? 1 : 0
+
+    Behavior on opacity { NumberAnimation { duration: 100 } }
+
+    Text {
+      anchors.centerIn: parent
+      text: "✕"
+      color: closeArea.containsMouse ? Color.notifications.text : root.dimColor
+      font.pixelSize: Math.round(Style.font.caption * 1.44)
+    }
+
+    MouseArea {
+      id: closeArea
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: root.closeRequested()
     }
   }
 

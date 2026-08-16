@@ -1,0 +1,86 @@
+#!/bin/bash
+
+# omarchy:summary=Watch for process crashes and offer an AI diagnosis
+# omarchy:hidden=true
+
+# systemd-coredump journals every core dump under a known MESSAGE_ID with
+# structured COREDUMP_* fields, which carry more than the core filenames do.
+
+set -uo pipefail
+
+# See systemd.journal-fields(7).
+readonly COREDUMP_MESSAGE_ID=fc2e22bc6ee647b6b90729ab34a250b1
+
+# nf-md-robot_dead, escaped so this file reads without a Nerd Font.
+readonly CRASH_GLYPH=$'\U000f16a1'
+
+# Crash loops dump core repeatedly, so announce each program at most once a
+# window.
+readonly dedupe_seconds=${OMARCHY_CRASH_DEDUPE_SECONDS:-60}
+
+# Extended regex of process names never worth announcing.
+readonly ignore_pattern=${OMARCHY_CRASH_IGNORE:-}
+
+declare -A last_notified
+
+announce() {
+  local comm=$1 pid=$2 exe=$3 signal=$4 exec_command
+
+  exec_command=$(printf 'omarchy-agent-crash %q %q %q %q' "$pid" "$comm" "$exe" "$signal")
+
+  # The shell owns org.freedesktop.Notifications, so a shell crash takes the
+  # notification server down with it and a toast sent into that gap is lost.
+  # Wait for the restarted shell to claim the name again: the crash least
+  # likely to be delivered is the one most worth reporting.
+  omarchy-notification-wait || return 1
+
+  # --exec rather than a libnotify action: the shell runs clicks from its own
+  # omarchy-exec hint and never emits ActionInvoked. Keeps the default
+  # "omarchy-action" app name too, the only one shouldBypassDnd() lets through.
+  omarchy-notification-send \
+    --urgency critical \
+    --glyph "$CRASH_GLYPH" \
+    --exec "$exec_command" \
+    "Process crashed: $comm" \
+    "Click to diagnose with AI"
+}
+
+# -n 0 so a restart does not re-announce crashes already dealt with.
+journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
+  while IFS= read -r entry; do
+    IFS=$'\t' read -r uid comm pid exe signal < <(
+      jq -r '[(._UID // "-"),
+              (.COREDUMP_COMM // "-"),
+              (.COREDUMP_PID // "-"),
+              (.COREDUMP_EXE // "-"),
+              (.COREDUMP_SIGNAL_NAME // "-")] | @tsv' <<<"$entry" 2>/dev/null
+    )
+
+    [[ $pid =~ ^[0-9]+$ ]] || continue
+
+    # The toast only offers a diagnosis, so it has nothing to offer until an
+    # agent is chosen. Checked per crash, not at startup, so picking one takes
+    # effect without restarting this service.
+    [[ -n $(omarchy-default-agent) ]] || continue
+
+    # Only this user's crashes; a daemon dumping core is a sysadmin's problem.
+    [[ $uid =~ ^[0-9]+$ ]] || continue
+    ((uid == UID)) || continue
+
+    # comm is truncated to 15 characters, so prefer the executable's basename.
+    name=$comm
+    [[ $exe == /* ]] && name=${exe##*/}
+
+    [[ -n $ignore_pattern && $name =~ $ignore_pattern ]] && continue
+
+    # Never announce our own machinery, or it notifies about itself.
+    [[ $name == omarchy-crash-* || $name == omarchy-agent-* ]] && continue
+
+    now=$EPOCHSECONDS
+    (((now - ${last_notified[$name]:-0}) < dedupe_seconds)) && continue
+
+    # Only a delivered toast starts the dedupe window. A failed send that
+    # counted would suppress the rest of a crash loop for a minute, and
+    # `journalctl -n 0` never replays what was missed.
+    announce "$name" "$pid" "$exe" "$signal" && last_notified[$name]=$now
+  done

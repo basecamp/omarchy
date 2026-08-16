@@ -187,9 +187,13 @@ Item {
     property string text: ""
   }
 
+  // Both scans must run in non-login shells. A login shell sources the user's
+  // profile, and tools like mise touch ~/.local/share on activation — a
+  // directory the desktop-entry watcher monitors — so every scan would
+  // trigger the next one, pinning a core at idle.
   Process {
     id: hiddenEntryScan
-    command: ["bash", "-lc", root.hiddenEntryScanCommand()]
+    command: ["bash", "-c", root.hiddenEntryScanCommand()]
     stdout: SplitParser { onRead: function(line) { hiddenEntryOutput.text += line + "\n" } }
     onStarted: hiddenEntryOutput.text = ""
     onExited: root.loadDesktopHiddenEntries(hiddenEntryOutput.text)
@@ -197,7 +201,7 @@ Item {
 
   Process {
     id: iconIndexScan
-    command: ["bash", "-lc", root.iconIndexScanCommand()]
+    command: ["bash", "-c", root.iconIndexScanCommand()]
     stdout: SplitParser { onRead: function(line) { root.indexIconLine(line) } }
     onStarted: root.pendingIconIndex = ({})
     // Swapping the property re-evaluates every iconSource() binding, so

@@ -18,6 +18,7 @@ mise_log="$test_tmp/mise"
 mise_history="$test_tmp/mise-history"
 stub_log="$test_tmp/stubs"
 terminal_log="$test_tmp/terminal"
+menu_log="$test_tmp/menu"
 mkdir -p "$mock_bin" "$test_home"
 
 cat >"$mock_bin/omarchy-notification-send" <<'SH'
@@ -63,6 +64,11 @@ fi
 [[ ${OMARCHY_TEST_MISE_FAIL:-false} != "true" ]]
 SH
 
+cat >"$mock_bin/omarchy-menu" <<'SH'
+#!/bin/bash
+printf '%s\0' "$@" >"$OMARCHY_TEST_AGENT_MENU_LOG"
+SH
+
 cat >"$mock_bin/omarchy-test-noop" <<'SH'
 #!/bin/bash
 exit 0
@@ -84,6 +90,7 @@ export OMARCHY_TEST_MISE_LOG="$mise_log"
 export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
+export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
 
 grok_package="npm:@xai-official/grok"
 omp_package="github:can1357/oh-my-pi"
@@ -98,7 +105,7 @@ assert_lazy_stub() {
   "$test_home/.local/bin/$command" --version
   mapfile -t mise_calls <"$mise_history"
 
-  [[ ${mise_calls[0]} == "use -g $package" && ${mise_calls[1]} == "x $package -- $command --version" ]] ||
+  [[ ${mise_calls[0]} == "use -g --quiet $package" && ${mise_calls[1]} == "x $package -- $command --version" ]] ||
     fail "$command lazy stub preserves its mise package"
 }
 
@@ -131,6 +138,24 @@ source "$ROOT/migrations/1785617047.sh" >/dev/null
 source "$ROOT/migrations/1785846769.sh" >/dev/null
 [[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
 [[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
+
+# The matcher has to catch a bare oh-my-pi wrapper from either generation of the
+# installer, and leave a wrapper built on the fully qualified package alone.
+for obsolete_form in 'mise use -g "oh-my-pi"' 'mise use -g --quiet "oh-my-pi"'; do
+  printf '#!/bin/bash\n%s || exit 1\n' "$obsolete_form" >"$test_home/.local/bin/omp"
+  chmod +x "$test_home/.local/bin/omp"
+  source "$ROOT/migrations/1785846769.sh" >/dev/null
+  [[ ! -e $test_home/.local/bin/omp ]] ||
+    fail "agent migration removes a wrapper built on [$obsolete_form]"
+done
+
+printf '#!/bin/bash\nmise use -g --quiet "%s" || exit 1\n' "$omp_package" >"$test_home/.local/bin/omp"
+chmod +x "$test_home/.local/bin/omp"
+source "$ROOT/migrations/1785846769.sh" >/dev/null
+[[ -e $test_home/.local/bin/omp ]] ||
+  fail "agent migration keeps a wrapper built on $omp_package"
+rm -f "$test_home/.local/bin/omp"
+
 rm "$test_home/.local/state/omarchy/preinstalls-removed"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"
 
@@ -140,30 +165,44 @@ for command in omp grok crush; do
 done
 pass "Remove Preinstalls deletes every optional agent lazy stub"
 
-[[ $(omarchy-default-agent) == "opencode" ]] || fail "default agent falls back to OpenCode"
-pass "default agent falls back to OpenCode"
+[[ -z $(omarchy-default-agent) ]] || fail "default agent is unset until one is chosen"
+pass "default agent is unset until one is chosen"
 
-omarchy-launch-agent
-mapfile -d '' -t launch_args <"$launch_log"
-[[ ${launch_args[*]} == "opencode --auto" ]] ||
-  fail "agent launcher falls back to OpenCode before a default is selected"
-pass "agent launcher falls back to OpenCode before a default is selected"
+: >"$launch_log"
+if omarchy-agent >"$test_tmp/no-agent-output" 2>&1; then
+  fail "agent launcher refuses to launch without a default"
+fi
+grep -Fq "Choose default agent with" "$test_tmp/no-agent-output" ||
+  fail "agent launcher explains that no default is set"
+[[ ! -s $launch_log ]] || fail "agent launcher starts nothing without a default"
+pass "agent launcher refuses to launch without a default"
+
+# The keybinding uses --pick, where an error on stderr nobody sees would make
+# the keypress look broken. It offers the choice instead.
+: >"$launch_log"
+: >"$menu_log"
+omarchy-agent --pick
+mapfile -d '' -t menu_args <"$menu_log"
+[[ ${menu_args[*]} == "summon setup.default.agent" ]] ||
+  fail "--pick opens the agent defaults menu when none is set"
+[[ ! -s $launch_log ]] || fail "--pick starts nothing when no agent is set"
+pass "--pick opens the agent defaults menu when none is set"
 
 source "$ROOT/default/bash/aliases"
-[[ $(alias a) == "alias a='omarchy-launch-agent --inline'" ]] ||
+[[ $(alias a) == "alias a='omarchy-agent --inline'" ]] ||
   fail "terminal alias launches the default agent inline"
 pass "terminal alias launches the default agent inline"
 
-grep -Fq 'o.bind("SUPER + SHIFT + CTRL + A", "Agent", "omarchy-launch-agent")' \
+grep -Fq 'o.bind("SUPER + SHIFT + CTRL + A", "Agent", "omarchy-agent --pick")' \
   "$ROOT/default/hypr/bindings/utilities.lua" ||
   fail "agent launcher has a keyboard shortcut"
 pass "agent launcher has a keyboard shortcut"
 
-cat >"$mock_bin/omarchy-launch-agent" <<'SH'
+cat >"$mock_bin/omarchy-agent" <<'SH'
 #!/bin/bash
-printf '%s\0' omarchy-launch-agent "$@" >"$OMARCHY_TEST_AGENT_OPEN_LOG"
+printf '%s\0' omarchy-agent "$@" >"$OMARCHY_TEST_AGENT_OPEN_LOG"
 SH
-chmod +x "$mock_bin/omarchy-launch-agent"
+chmod +x "$mock_bin/omarchy-agent"
 hash -r
 
 declare -A expected_agents=(
@@ -206,7 +245,7 @@ for selection in "${!expected_agents[@]}"; do
     fail "default agent installs $selection globally through mise"
 
   mapfile -d '' -t agent_open_args <"$agent_open_log"
-  [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-launch-agent" ]] ||
+  [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
     fail "default agent opens $selection after selecting it"
 done
 pass "default agent selects and opens every supported provider and alias"
@@ -235,7 +274,7 @@ mapfile -d '' -t mise_args <"$mise_log"
 [[ $(<"$test_tmp/install-output") == $'\033[2J\033[3J\033[H' ]] ||
   fail "visible agent installation clears its terminal before opening the agent"
 mapfile -d '' -t agent_open_args <"$agent_open_log"
-[[ ${#agent_open_args[@]} == 2 && ${agent_open_args[0]} == "omarchy-launch-agent" && ${agent_open_args[1]} == "--inline" ]] ||
+[[ ${#agent_open_args[@]} == 2 && ${agent_open_args[0]} == "omarchy-agent" && ${agent_open_args[1]} == "--inline" ]] ||
   fail "newly installed agent opens in the installation terminal"
 pass "missing agents install visibly and open in the same terminal"
 
@@ -249,7 +288,7 @@ mapfile -d '' -t mise_args <"$mise_log"
 [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == "copilot" ]] ||
   fail "default agent still activates an installed provider globally through mise"
 mapfile -d '' -t agent_open_args <"$agent_open_log"
-[[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-launch-agent" ]] ||
+[[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
   fail "installed agent opens in a new terminal after selection"
 pass "installed agents select and open without notifications"
 
@@ -287,14 +326,16 @@ grep -F "Could not set Codex as the default coding agent" "$test_tmp/setup-failu
 [[ ! -s $agent_open_log ]] || fail "failed activation does not open an agent"
 pass "default agent reports mise failures without notifications"
 
-rm "$mock_bin/omarchy-launch-agent"
+rm "$mock_bin/omarchy-agent"
 hash -r
 
 assert_launched() {
   local agent=$1
   local description=$2
   shift 2
-  local expected=("$@")
+  # Every agent window launches under the same app-id, whichever agent is
+  # default, so window rules and themes see one class for all of them.
+  local expected=(--app-id=org.omarchy.agent "$@")
 
   mapfile -d '' -t actual <"$launch_log"
 
@@ -312,7 +353,7 @@ assert_launch() {
   shift
 
   printf '%s\n' "$agent" >"$agent_file"
-  omarchy-launch-agent "Review this" project
+  omarchy-agent-prompt "Review this" project
   assert_launched "$agent" "forwards the interactive prompt" "$@"
 }
 
@@ -321,15 +362,15 @@ assert_bypass() {
   shift
 
   printf '%s\n' "$agent" >"$agent_file"
-  omarchy-launch-agent
+  omarchy-agent
   assert_launched "$agent" "skips permission prompts" "$@"
 }
 
-assert_launch pi pi -- "Review this project"
+assert_launch pi pi "Review this project"
 assert_launch omp omp --auto-approve -- "Review this project"
 assert_launch opencode opencode --auto --prompt "Review this project"
-assert_launch claude claude --permission-mode bypassPermissions -- "Review this project"
-assert_launch codex codex --dangerously-bypass-approvals-and-sandbox -- "Review this project"
+assert_launch claude claude --permission-mode auto -- "Review this project"
+assert_launch codex codex --approve-for-me -- "Review this project"
 assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
 assert_launch gemini gemini --yolo --prompt-interactive "Review this project"
@@ -339,8 +380,8 @@ pass "agent launcher adapts initial prompts for every supported agent"
 assert_bypass pi pi
 assert_bypass omp omp --auto-approve
 assert_bypass opencode opencode --auto
-assert_bypass claude claude --permission-mode bypassPermissions
-assert_bypass codex codex --dangerously-bypass-approvals-and-sandbox
+assert_bypass claude claude --permission-mode auto
+assert_bypass codex codex --approve-for-me
 assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
 assert_bypass gemini gemini --yolo
@@ -348,20 +389,53 @@ assert_bypass copilot copilot --allow-all
 pass "agent launcher skips permission prompts for every supported agent"
 
 printf '%s\n' "opencode" >"$agent_file"
-omarchy-launch-agent
+omarchy-agent
 mapfile -d '' -t launch_args <"$launch_log"
-[[ ${launch_args[*]} == "opencode --auto" ]] ||
+[[ ${launch_args[*]} == "--app-id=org.omarchy.agent opencode --auto" ]] ||
   fail "agent launcher starts the selected agent without an initial prompt"
 pass "agent launcher starts the selected agent without an initial prompt"
 
-omarchy-launch-agent --inline "Review this project"
+omarchy-agent-prompt --inline "Review this project"
 mapfile -d '' -t inline_args <"$inline_log"
 [[ ${inline_args[*]} == "opencode --auto --prompt Review this project" ]] ||
   fail "inline agent launcher runs in the current terminal"
 pass "inline agent launcher runs in the current terminal"
 
+# The prompt route exists so the router can tell a prompt from a subcommand, so
+# cover the public routes and not only the binaries behind them.
+: >"$launch_log"
+omarchy agent
+mapfile -d '' -t launch_args <"$launch_log"
+[[ ${launch_args[*]} == "--app-id=org.omarchy.agent opencode --auto" ]] ||
+  fail "omarchy agent routes to the launcher"
+
+# With an agent chosen there is nothing to pick, so the keybinding launches.
+: >"$launch_log"
+: >"$menu_log"
+omarchy-agent --pick
+mapfile -d '' -t launch_args <"$launch_log"
+[[ ${launch_args[*]} == "--app-id=org.omarchy.agent opencode --auto" ]] ||
+  fail "--pick launches once an agent is chosen"
+[[ ! -s $menu_log ]] || fail "--pick opens no menu once an agent is chosen"
+pass "--pick launches once an agent is chosen"
+
+: >"$launch_log"
+omarchy agent prompt "Review this project"
+mapfile -d '' -t launch_args <"$launch_log"
+[[ ${launch_args[*]} == "--app-id=org.omarchy.agent opencode --auto --prompt Review this project" ]] ||
+  fail "omarchy agent prompt routes the prompt to the launcher"
+
+: >"$launch_log"
+if omarchy agent Review this project >"$test_tmp/positional-output" 2>&1; then
+  fail "omarchy agent rejects a positional prompt"
+fi
+grep -F "omarchy agent prompt" "$test_tmp/positional-output" >/dev/null ||
+  fail "omarchy agent points a positional prompt at the prompt route"
+[[ ! -s $launch_log ]] || fail "omarchy agent starts nothing for a positional prompt"
+pass "omarchy agent keeps prompts on the prompt route"
+
 printf '%s\n' "missing" >"$agent_file"
-if OMARCHY_TEST_MISSING_COMMAND=missing omarchy-launch-agent >"$test_tmp/missing-output" 2>&1; then
+if OMARCHY_TEST_MISSING_COMMAND=missing omarchy-agent >"$test_tmp/missing-output" 2>&1; then
   fail "agent launcher rejects a missing default command"
 fi
 grep -F "missing is not installed" "$test_tmp/missing-output" >/dev/null ||

@@ -1,0 +1,109 @@
+#!/bin/bash
+
+# omarchy:summary=Launch the default coding agent in a terminal
+# omarchy:args=[--inline] [--pick]
+# omarchy:examples=omarchy agent | omarchy agent --inline
+
+inline=false
+pick=false
+
+# Flags only. A bare prompt would shadow the subcommands under this group, so
+# prompts go through omarchy-agent-prompt, which passes one here as --prompt.
+while (($#)); do
+  case "$1" in
+    --inline)
+      inline=true
+      shift
+      ;;
+    --pick)
+      pick=true
+      shift
+      ;;
+    --prompt)
+      prompt=${2:?--prompt needs a value}
+      shift 2
+      ;;
+    *)
+      echo "Unexpected argument: $1" >&2
+      echo "To pass a prompt: omarchy agent prompt \"$*\"" >&2
+      exit 1
+      ;;
+  esac
+done
+
+# Agents refuse to remember trust for $HOME, so launches from the keybinding or
+# menu start in the work directory instead of re-asking on every session.
+[[ $PWD == "$HOME" && -d $HOME/Work ]] && cd "$HOME/Work"
+
+agent=$(omarchy-default-agent)
+
+# Omarchy ships without a default, so there is nothing to launch until one is
+# picked. --pick offers the choice instead of the error, which is what the
+# keybinding wants: a keypress that opens nothing explains nothing.
+if [[ -z $agent ]]; then
+  [[ $pick == "true" ]] && exec omarchy-menu summon setup.default.agent
+  echo "Choose default agent with: omarchy default agent <name>" >&2
+  exit 1
+fi
+
+if omarchy-cmd-missing "$agent"; then
+  echo "$agent is not installed. Choose an installed agent with: omarchy default agent <name>" >&2
+  exit 1
+fi
+
+# Agents launched from the keybinding or menu run unattended, so each one starts
+# with its own spelling of "don't stop to ask". Pi has no approval prompts.
+case "$agent" in
+opencode)
+  command=(opencode --auto)
+  [[ -n ${prompt:-} ]] && command+=(--prompt "$prompt")
+  ;;
+gemini)
+  command=(gemini --yolo)
+  [[ -n ${prompt:-} ]] && command+=(--prompt-interactive "$prompt")
+  ;;
+copilot)
+  command=(copilot --allow-all)
+  [[ -n ${prompt:-} ]] && command+=(--interactive "$prompt")
+  ;;
+crush)
+  # --yolo belongs to the interactive command only; `crush run` never prompts.
+  if [[ -n ${prompt:-} ]]; then
+    command=(crush run "$prompt")
+  else
+    command=(crush --yolo)
+  fi
+  ;;
+claude)
+  command=(claude --permission-mode auto)
+  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
+grok)
+  command=(grok --permission-mode bypassPermissions)
+  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
+codex)
+  command=(codex --approve-for-me)
+  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
+omp)
+  command=(omp --auto-approve)
+  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
+pi)
+  command=(pi)
+  [[ -n ${prompt:-} ]] && command+=("$prompt")
+  ;;
+*)
+  echo "Unsupported default agent: $agent" >&2
+  exit 1
+  ;;
+esac
+
+if [[ $inline == "true" ]]; then
+  exec "${command[@]}"
+else
+  # A fixed app-id rather than the default org.omarchy.<binary>, so every agent
+  # window shares one class for window rules and themes to single out.
+  exec omarchy-launch-tui --app-id=org.omarchy.agent "${command[@]}"
+fi
