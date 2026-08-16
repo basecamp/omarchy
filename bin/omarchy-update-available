@@ -2,7 +2,7 @@
 
 # omarchy:summary=Get remote tag
 
-latest_tag=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
+latest_tag=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | grep -vE -- '-[A-Za-z]' | sort -V | tail -n 1)
 if [[ -z $latest_tag ]]; then
   echo "Error: Could not retrieve latest tag."
   exit 1
