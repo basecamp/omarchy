@@ -20,6 +20,78 @@ function parseKeyValue(raw) {
   return next
 }
 
+function parsePacks(info) {
+  var kv = info || {}
+  var packs = []
+  for (var i = 0; i < 16; i++) {
+    var prefix = "pack." + i + "."
+    if (kv[prefix + "path"] === undefined && kv[prefix + "percentage"] === undefined) break
+    packs.push({
+      path: kv[prefix + "path"] || ("BAT" + i),
+      percentage: kv[prefix + "percentage"] || "",
+      state: kv[prefix + "state"] || "",
+      size: kv[prefix + "size"] || "",
+      rate: kv[prefix + "rate"] || "",
+      cycles: kv[prefix + "cycles"] || ""
+    })
+  }
+  return packs
+}
+
+function packSummary(pack) {
+  var parts = []
+  if (pack && pack.percentage) parts.push(pack.percentage)
+  if (pack && pack.state) parts.push(pack.state)
+  if (pack && pack.rate && pack.state === "charging") parts.push(pack.rate)
+  return parts.join(" · ")
+}
+
+function combinedFractionFromStatus(info) {
+  var raw = info && info.percentage
+  if (raw === undefined || raw === "") return -1
+  var value = parseFloat(String(raw).replace("%", ""))
+  if (isNaN(value)) return -1
+  return Math.max(0, Math.min(1, value / 100))
+}
+
+function laptopDevices(devices) {
+  var list = Array.isArray(devices) ? devices : []
+  var packs = []
+  for (var i = 0; i < list.length; i++) {
+    var device = list[i]
+    if (!device || !device.isPresent) continue
+    if (device.isLaptopBattery === false) continue
+    var path = String(device.nativePath || "")
+    if (path === "DisplayDevice") continue
+    packs.push(device)
+  }
+  return packs
+}
+
+function combinedEnergyFraction(devices) {
+  var packs = laptopDevices(devices)
+  if (packs.length === 0) return -1
+
+  var now = 0
+  var full = 0
+  for (var i = 0; i < packs.length; i++) {
+    now += Number(packs[i].energy || 0)
+    full += Number(packs[i].energyCapacity || 0)
+  }
+  if (full > 0) return Math.max(0, Math.min(1, now / full))
+  return batteryFraction(packs[0])
+}
+
+function anyPackCharging(devices, states) {
+  var packs = laptopDevices(devices)
+  var s = states || {}
+  for (var i = 0; i < packs.length; i++) {
+    var device = packs[i]
+    if (device.state === s.Charging && Number(device.changeRate || 0) > 0.2) return true
+  }
+  return false
+}
+
 function parseProfiles(raw, previousIndex) {
   var lines = String(raw || "").split("\n")
   var list = []
@@ -60,17 +132,33 @@ function chargeThresholdActive(device, onBattery, states) {
   if (d.state === s.FullyCharged && fraction < 0.99) return true
   if (d.state !== s.Charging || fraction >= 0.99) return false
 
-  return Number(d.changeRate || 0) <= 0.2 || Number(d.timeToFull || 0) >= 8 * 60 * 60
+  // A slow charge into a large or second pack can take well over eight hours.
+  // Only treat the pack as holding when current has actually stalled.
+  return Number(d.changeRate || 0) <= 0.2
 }
 
-function batteryIcon(device, onBattery, states) {
+function chargeThresholdActiveForPacks(devices, onBattery, states, statusInfo) {
+  if (statusInfo && statusInfo.state === "holding") return true
+  if (statusInfo && (statusInfo.state === "charging" || statusInfo.state === "discharging")) return false
+  if (anyPackCharging(devices, states)) return false
+
+  var packs = laptopDevices(devices)
+  if (packs.length === 0) return chargeThresholdActive(null, onBattery, states)
+
+  for (var i = 0; i < packs.length; i++) {
+    if (!chargeThresholdActive(packs[i], onBattery, states)) return false
+  }
+  return true
+}
+
+function batteryIcon(device, onBattery, states, thresholdOverride) {
   var d = device || {}
   if (!d.isPresent) return ""
 
   var chargingIcons = ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"]
   var defaultIcons = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
   var index = Math.max(0, Math.min(9, Math.floor(d.percentage * 10)))
-  var threshold = chargeThresholdActive(d, onBattery, states)
+  var threshold = thresholdOverride !== undefined ? !!thresholdOverride : chargeThresholdActive(d, onBattery, states)
 
   if (threshold) return defaultIcons[index]
   if (d.state === states.FullyCharged) return "󰂅"
@@ -94,10 +182,17 @@ if (typeof module !== "undefined") {
     clampIndex: clampIndex,
     selectProfileIndex: selectProfileIndex,
     parseKeyValue: parseKeyValue,
+    parsePacks: parsePacks,
+    packSummary: packSummary,
     parseProfiles: parseProfiles,
     profileIcon: profileIcon,
     batteryFraction: batteryFraction,
+    combinedFractionFromStatus: combinedFractionFromStatus,
+    laptopDevices: laptopDevices,
+    combinedEnergyFraction: combinedEnergyFraction,
+    anyPackCharging: anyPackCharging,
     chargeThresholdActive: chargeThresholdActive,
+    chargeThresholdActiveForPacks: chargeThresholdActiveForPacks,
     batteryIcon: batteryIcon,
     modeLabel: modeLabel
   }
