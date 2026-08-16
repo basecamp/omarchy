@@ -61,7 +61,7 @@ run_watch() {
   shift
   (
     export PATH="$TMPDIR/bin:$ROOT/bin:$PATH"
-    export WATCH_ITEMS=$items NOTIFY_LOG=$NOTIFY_LOG
+    export WATCH_ITEMS="$items" NOTIFY_LOG="$NOTIFY_LOG"
     for kv in "$@"; do export "$kv"; done
     "$ROOT/bin/omarchy-crash-watch"
   )
