@@ -391,6 +391,7 @@ require_root "$provider"
 
 case "$provider" in
 Cloudflare)
+  rm -f "$RESOLVED_DROP_IN"
   write_networkmanager_dns "1.1.1.1,1.0.0.1,2606:4700:4700::1111,2606:4700:4700::1001"
   set_connection_dns "1.1.1.1 1.0.0.1" "2606:4700:4700::1111 2606:4700:4700::1001"
   tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
@@ -402,6 +403,7 @@ EOF
   ;;
 
 Google)
+  rm -f "$RESOLVED_DROP_IN"
   write_networkmanager_dns "8.8.8.8,8.8.4.4,2001:4860:4860::8888,2001:4860:4860::8844"
   set_connection_dns "8.8.8.8 8.8.4.4" "2001:4860:4860::8888 2001:4860:4860::8844"
   tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
@@ -449,6 +451,7 @@ Custom)
     clear_networkmanager_dns
     clear_connection_dns_dot
   else
+    rm -f "$RESOLVED_DROP_IN"
     dns_servers=$(normalize_servers "$dns_servers")
     split_dns_servers "$dns_servers"
     write_networkmanager_dns "$dns_servers"
