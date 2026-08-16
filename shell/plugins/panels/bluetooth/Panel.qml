@@ -741,7 +741,7 @@ Panel {
       Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
       return
     }
-    Quickshell.execDetached(["omarchy-bluetooth-power", targetState ? "on" : "off"])
+    Quickshell.execDetached(["omarchy-bluetooth-power", adapter.enabled ? "off" : "on"])
   }
 
   IpcHandler {
