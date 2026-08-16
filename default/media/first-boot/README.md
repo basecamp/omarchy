@@ -20,6 +20,10 @@ The 6-second rally clip, isolated audio, stills, and the Grok Imagine prompt.
 
 Made by Steve Derico. Two stills in, one video out. The prompt is the recipe.
 
+License: [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+Public domain. Use, copy, modify, and redistribute this pack (video,
+audio, stills, prompt) with no credit required.
+
 Ships at `/usr/share/omarchy/default/media/first-boot/` with the rest of
 `default/`. This directory is the source pack only — it does not play on
 login by itself.
