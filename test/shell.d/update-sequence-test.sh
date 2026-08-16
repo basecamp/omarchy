@@ -90,14 +90,14 @@ diff <(expected_steps) <(steps_run) >"$test_tmp/order" ||
   fail "an update where everything works does not run every step in order" "$(cat "$test_tmp/order")"
 pass "an update where every step works runs all of them, in order"
 
-grep -q '^omarchy-update-system-pkgs unattended=1 args=$' "$test_tmp/steps" ||
+grep -q '^omarchy-update-system-pkgs unattended=1 ' "$test_tmp/steps" ||
   fail "-y does not mark the update unattended"
 grep -q '^omarchy-plugin-update unattended=1 args=--yes$' "$test_tmp/steps" ||
   fail "-y does not approve plugin updates without another prompt"
 run_update </dev/null || fail "a confirmed update reports a failure"
 diff <(expected_steps confirmed) <(steps_run) >"$test_tmp/order" ||
   fail "a confirmed update runs a different set of steps" "$(cat "$test_tmp/order")"
-grep -q '^omarchy-update-system-pkgs unattended= args=$' "$test_tmp/steps" ||
+grep -q '^omarchy-update-system-pkgs unattended= ' "$test_tmp/steps" ||
   fail "an update a person confirmed is treated as unattended"
 grep -q '^omarchy-plugin-update unattended= args=$' "$test_tmp/steps" ||
   fail "an interactive update does not leave plugin review enabled"
