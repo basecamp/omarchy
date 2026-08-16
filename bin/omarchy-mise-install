@@ -26,13 +26,33 @@ mkdir -p "$HOME/.local/bin"
 # leave a shorter config on top of a longer one with the old tail still
 # attached, which is invalid TOML and breaks mise for every later command.
 # Serialize the write so concurrent launches queue instead of clobbering.
-rm -f "$HOME/.local/bin/$command"
-cat >"$HOME/.local/bin/$command" <<EOF
+# Staged and moved into place rather than written where it lives: a migration now
+# runs this across every wrapper on the machine, and an interrupted run that had
+# removed the old file without finishing the new one would leave the command
+# missing for good. The move also replaces a symlinked alias instead of writing
+# through it to whatever it points at.
+#
+# mktemp rather than a predictable name, because two of these can run at once --
+# which is the very thing the lock below exists to survive.
+wrapper="$HOME/.local/bin/$command"
+staged=$(mktemp "$HOME/.local/bin/.$command.XXXXXX") || exit 1
+trap 'rm -f "$staged"' EXIT
+
+cat >"$staged" <<EOF
 #!/bin/bash
 export MISE_MINIMUM_RELEASE_AGE=0
 mkdir -p "\$HOME/.config/mise"
 flock "\$HOME/.config/mise/.config.lock" mise use -g --quiet "$package" || exit 1
 exec mise x "$package" -- "$bin" "\$@"
 EOF
+staged_status=$?
 
-chmod +x "$HOME/.local/bin/$command"
+# Without this a full disk gives a truncated wrapper that chmod and mv would
+# install over the working one, and the script carries no set -e to catch it.
+if (( staged_status != 0 )); then
+  echo "omarchy-mise-install: could not write the wrapper for $command" >&2
+  exit 1
+fi
+
+chmod +x "$staged" && mv -f "$staged" "$wrapper" || exit 1
+trap - EXIT
