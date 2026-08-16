@@ -198,6 +198,10 @@ start_screenrecording() {
   if kill -0 $pid 2>/dev/null; then
     echo "$filename" >"$RECORDING_FILE"
     toggle_screenrecording_indicator
+  else
+    omarchy-notification-send -u critical -t 3000 "Screen recording failed to start" \
+      "Set OMARCHY_SCREENRECORD_DEBUG=true and retry to log why."
+    return 1
   fi
 }
 
