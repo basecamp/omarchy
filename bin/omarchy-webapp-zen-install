@@ -113,6 +113,23 @@ if [[ ! -f "$APP_PROFILE/cookies.sqlite" ]]; then
   fi
 fi
 
+# ── Taskbar Tabs must be enabled in the web app profile, or Zen opens the
+# taskbar-tab command as a normal browser window. Seed user.js with the pref
+# (and any user.js preferences from the main profile) BEFORE the first launch,
+# so prefs.js is generated with the feature on. ──
+if [[ ! -f "$APP_PROFILE/prefs.js" ]]; then
+  MAIN_PROFILE=$(omarchy-webapp-zen-profile profile) || true
+  if [[ -f "$MAIN_PROFILE/user.js" ]]; then
+    cp -f "$MAIN_PROFILE/user.js" "$APP_PROFILE/user.js"
+  else
+    printf '%s\n' '// Taskbar Tabs (web apps nativas)' 'user_pref("browser.taskbarTabs.enabled", true);' > "$APP_PROFILE/user.js"
+  fi
+  # Safety net: make sure the pref is present even if the main user.js lacks it.
+  if ! grep -q "browser.taskbarTabs.enabled" "$APP_PROFILE/user.js" 2>/dev/null; then
+    printf '%s\n' 'user_pref("browser.taskbarTabs.enabled", true);' >> "$APP_PROFILE/user.js"
+  fi
+fi
+
 SHORTCUT="zen.webapp-$UUID.desktop"
 
 # ── Icon: manifest icons (192/512) -> apple-touch-icon -> favicon service ──
