@@ -56,6 +56,9 @@ vulkan-intel
 vulkan-radeon
 vulkan-asahi
 
+# AMD GPU tools (auto-detected by hardware)
+rocm-smi-lib
+
 # Surface laptop support packages
 linux-firmware-marvell
 
