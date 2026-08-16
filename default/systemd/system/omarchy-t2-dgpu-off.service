@@ -3,6 +3,7 @@ Description=Power off the T2 MacBook discrete GPU in integrated mode
 After=systemd-modules-load.service
 Before=display-manager.service
 ConditionPathExists=/etc/modprobe.d/apple-gmux.conf
+RequiresMountsFor=/sys/kernel/debug
 
 [Service]
 Type=oneshot

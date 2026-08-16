@@ -12,6 +12,8 @@ grep -Fxq 'After=systemd-modules-load.service' "$service" ||
   fail "the T2 dGPU service waits for graphics modules"
 grep -Fxq 'Before=display-manager.service' "$service" ||
   fail "the T2 dGPU service runs before the display manager"
+grep -Fxq 'RequiresMountsFor=/sys/kernel/debug' "$service" ||
+  fail "the T2 dGPU service waits for debugfs"
 grep -Fq 'force_igd=(y|Y|1)' "$service" ||
   fail "the T2 dGPU service only runs in integrated mode"
 grep -Fq 'echo OFF > /sys/kernel/debug/vgaswitcheroo/switch' "$service" ||
