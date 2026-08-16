@@ -30,13 +30,18 @@ Panel {
   // adapter === null, which is what keeps the icon and its toggle reachable
   // after Bluetooth is switched off.
   //
-  // Hardware presence is assumed (true) until a probe proves otherwise: a
-  // cleanly run probe concludes yes or no from rfkill's stdout, and when a
-  // probe cannot run at all the state falls back to adapter presence — the
-  // same gate the widget used before. An adapter that appears at any point
-  // is authoritative and clears a stale "no hardware" answer.
+  // Hardware presence is assumed (true) until a probe proves otherwise. Only
+  // a definitive probe — clean exit, empty stdout, no live adapter — may
+  // conclude "no hardware"; an inconclusive probe (failed spawn or non-zero
+  // exit) keeps the previous value, so probe uncertainty can never hide the
+  // panel or strand a deferred power-on. An adapter that appears at any
+  // point is authoritative and clears a stale "no hardware" answer.
   property bool hardwarePresent: true
   property bool probePending: false
+  // False until the first probe (or an adapter) settles the question; the
+  // widget falls back to the plain adapter gate while unknown, which avoids
+  // a brief phantom panel on machines without Bluetooth hardware.
+  property bool hardwarePresenceKnown: false
   // Set when the user asks to power on while the first probe's answer is
   // still unknown; acted on once that probe confirms the radio exists.
   property bool deferredPowerOn: false
@@ -78,6 +83,7 @@ Panel {
   function probeHardware() {
     if (root.probePending) return
     root.probePending = true
+    root.lastProbeStdout = ""
     probeWatchdog.start()
     rfkillProbe.running = true
   }
@@ -85,9 +91,10 @@ Panel {
   // Single completion path for every probe; the probePending gate drops any
   // late signal from a superseded run. A live adapter is authoritative (a
   // probe started before a dongle appeared may report a stale empty
-  // listing), and a probe that did not run cleanly — non-zero exit, or the
-  // watchdog's -1 sentinel — falls back to adapter presence rather than
-  // concluding "no hardware".
+  // listing). An inconclusive probe — non-zero exit, or the watchdog's
+  // sentinel — changes nothing: hardwarePresent keeps its previous value and
+  // a deferred power-on survives for a later definitive probe, so probe
+  // uncertainty can never hide the panel or drop the user's intent.
   function finishProbe(exitCode) {
     probeWatchdog.stop()
     if (!root.probePending) return
@@ -96,13 +103,15 @@ Panel {
     // run. A real exit leaves no process behind to stop.
     if (exitCode === root.probeSpawnFailedExitCode) rfkillProbe.running = false
     root.probePending = false
-    root.hardwarePresent = exitCode === 0
-      ? root.adapter !== null || String(root.lastProbeStdout).trim().length > 0
-      : root.adapter !== null
-    if (root.deferredPowerOn) {
-      root.deferredPowerOn = false
-      if (root.hardwarePresent && (root.adapter === null || !root.adapter.enabled))
-        Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
+    root.hardwarePresenceKnown = true
+    if (exitCode === 0) {
+      root.hardwarePresent = root.adapter !== null || String(root.lastProbeStdout).trim().length > 0
+      // Definitive answer: act on the deferred intent now, or drop it.
+      if (root.deferredPowerOn) {
+        root.deferredPowerOn = false
+        if (root.hardwarePresent && (root.adapter === null || !root.adapter.enabled))
+          Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
+      }
     }
   }
 
@@ -120,6 +129,7 @@ Panel {
         // probe is left to finish (it reads live rfkill state and reaches
         // the same conclusion). Honor a deferred power-on instead of
         // dropping it when the adapter is back but still powered off.
+        root.hardwarePresenceKnown = true
         root.hardwarePresent = true
         if (root.deferredPowerOn) {
           root.deferredPowerOn = false
@@ -604,7 +614,7 @@ Panel {
     if (selectedIndex < 0) selectedIndex = 0
   }
 
-  visible: hardwarePresent
+  visible: hardwarePresenceKnown ? hardwarePresent : adapter !== null
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
