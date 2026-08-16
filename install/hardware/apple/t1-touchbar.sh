@@ -77,11 +77,11 @@ t1_firmware_present() {
 t1_copy_firmware() {
   local src=$1 dest_root=$2 dest
   dest="$dest_root/EFI/APPLE"
-  mkdir -p "$dest_root/EFI"
-  rm -rf "$dest"
+  mkdir -p "$dest_root/EFI" || return 1
+  rm -rf "$dest" || return 1
   # VFAT cannot store Unix ownership; -r not -a so a failed chown does not abort.
-  cp -r "$src" "$dest"
-  sync
+  cp -r "$src" "$dest" || return 1
+  sync || true
   [[ -s $dest/$t1_marker ]]
 }
 

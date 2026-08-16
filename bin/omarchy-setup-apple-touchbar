@@ -38,7 +38,11 @@ if src=$(t1_find_firmware); then
     exit 1
   }
   echo "Copying to $esp/EFI/APPLE"
-  t1_copy_firmware "$src" "$esp"
+  if ! t1_copy_firmware "$src" "$esp"; then
+    echo "Found T1 firmware but could not copy it to the EFI partition."
+    echo "Wiring is installed; later run: omarchy setup apple touchbar"
+    exit 1
+  fi
   echo
   echo "OK. Reboot so Apple's EFI can memboot the T1:"
   echo "  sudo reboot"
