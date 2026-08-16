@@ -40,7 +40,6 @@ Panel {
   }
 
   function startHardwareProbe() {
-    hardwareCheckStdout.lastOutput = ""
     hardwareCheck.running = true
     probeTimeout.restart()
   }
