@@ -634,18 +634,42 @@ Item {
         else drilldownRows.push(row)
       }
 
-      var searchSort = function(a, b) {
-        if (a.score !== b.score) return a.score - b.score
-        return a.path.localeCompare(b.path)
-      }
+      if (currentRows.length === 0 && drilldownRows.length === 0) {
+        // Nothing matched: offer to hand the query to the default browser
+        // instead of returning an empty list the user has to Esc out of.
+        var searchUrl = "https://www.google.com/search?q=" + encodeURIComponent(query)
+        rows.push({
+          itemId: "search-web." + query,
+          disabled: false,
+          kind: "action",
+          icon: "",
+          iconFont: "",
+          appIcon: "",
+          appId: "",
+          label: "Search for \"" + query + "\" in browser",
+          target: "",
+          detail: "Open in default browser",
+          path: "web search",
+          childCount: 0,
+          action: "omarchy-launch-browser " + Util.shellQuote(searchUrl),
+          provider: "",
+          score: -1,
+          section: ""
+        })
+      } else {
+        var searchSort = function(a, b) {
+          if (a.score !== b.score) return a.score - b.score
+          return a.path.localeCompare(b.path)
+        }
 
-      currentRows.sort(searchSort)
-      drilldownRows.sort(searchSort)
-      root.searchDivider = currentRows.length > 0 && drilldownRows.length > 0
-      if (root.searchDivider) {
-        for (var d = 0; d < drilldownRows.length; d++) drilldownRows[d].section = "drilldown"
+        currentRows.sort(searchSort)
+        drilldownRows.sort(searchSort)
+        root.searchDivider = currentRows.length > 0 && drilldownRows.length > 0
+        if (root.searchDivider) {
+          for (var d = 0; d < drilldownRows.length; d++) drilldownRows[d].section = "drilldown"
+        }
+        rows = currentRows.concat(drilldownRows)
       }
-      rows = currentRows.concat(drilldownRows)
     } else {
       for (var j = 0; j < root.itemOrder.length; j++) {
         var child = root.item(root.itemOrder[j])
