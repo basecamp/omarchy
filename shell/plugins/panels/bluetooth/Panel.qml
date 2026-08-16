@@ -112,17 +112,32 @@ Panel {
       root.hardwarePresenceKnown = true
       root.hardwarePresent = root.adapter !== null || String(root.lastProbeStdout).trim().length > 0
       // Definitive answer: act on the deferred intent now, or drop it.
-      if (root.deferredPowerOn) {
-        root.deferredPowerOn = false
-        if (root.hardwarePresent && (root.adapter === null || !root.adapter.enabled))
-          Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
-      }
+      root.applyDeferredPowerOnIfNeeded()
     }
   }
 
+  // Consume a deferred power-on once the probe (or an adapter) confirms the
+  // radio exists. Shared by finishProbe and onDefaultAdapterChanged so the
+  // two consumption paths cannot drift apart; in the adapter-changed path
+  // adapter is non-null, so the null half of the condition is inert there.
+  function applyDeferredPowerOnIfNeeded() {
+    if (!root.deferredPowerOn) return
+    root.deferredPowerOn = false
+    if (root.hardwarePresent && (root.adapter === null || !root.adapter.enabled))
+      Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
+  }
+
   // Hardware presence is already known while an adapter exists; only probe
-  // when there is none to disambiguate.
-  Component.onCompleted: { if (root.adapter === null) root.probeHardware() }
+  // when there is none to disambiguate. An adapter present at startup also
+  // settles the question, so the flags leave their initial 'unknown' state
+  // instead of staying unset until the first probe or a later change.
+  Component.onCompleted: {
+    if (root.adapter === null) root.probeHardware()
+    else {
+      root.hardwarePresenceKnown = true
+      root.hardwarePresent = true
+    }
+  }
 
   Connections {
     target: Bluetooth
@@ -136,11 +151,7 @@ Panel {
         // dropping it when the adapter is back but still powered off.
         root.hardwarePresenceKnown = true
         root.hardwarePresent = true
-        if (root.deferredPowerOn) {
-          root.deferredPowerOn = false
-          if (!root.adapter.enabled)
-            Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
-        }
+        root.applyDeferredPowerOnIfNeeded()
       }
     }
   }
@@ -178,7 +189,7 @@ Panel {
   readonly property var discoveredDevices: deviceGroups.discovered || []
 
   readonly property string icon: {
-    if (!adapter) return hardwarePresent ? "󰂲" : ""
+    if (!adapter) return hardwarePresenceKnown && hardwarePresent ? "󰂲" : ""
     if (!adapter.enabled) return "󰂲"
     if (connectedDevices.length > 0) return "󰂱"
     return "󰂯"
@@ -197,7 +208,7 @@ Panel {
   ]
   readonly property bool rotatingPhrases: adapter && adapter.enabled
   readonly property string heroStatusText: {
-    if (!adapter) return hardwarePresent ? "Turned Off" : "No adapter"
+    if (!adapter) return hardwarePresenceKnown ? (hardwarePresent ? "Turned Off" : "No adapter") : ""
     if (!adapter.enabled) return "Turned Off"
     return activePhrases[phraseIndex % activePhrases.length]
   }
