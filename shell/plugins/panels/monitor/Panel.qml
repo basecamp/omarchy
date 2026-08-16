@@ -26,6 +26,18 @@ Panel {
   property string monitorScale: ""
   property var displays: []
   property int enabledDisplayCount: 0
+  property var layoutMonitors: []
+  property bool externalConnected: false
+  property bool clamshell: false
+  property bool internalOn: false
+  property bool mirrorOn: false
+  property string layoutError: ""
+  property bool layoutReady: false
+  property bool layoutReadOnly: false
+  property bool keepLayoutError: false
+  property bool dragging: false
+  property string placeTarget: ""
+  readonly property string layoutHelper: "omarchy-hyprland-monitor-layout"
 
   // Carry sub-notch touchpad deltas between wheel events.
   property real wheelAccumulator: 0
@@ -37,8 +49,6 @@ Panel {
   //   "scale"      - 6 Button scale presets; treated as a single
   //                  horizontal row from j/k's perspective. h/l moves
   //                  between presets, identical to bluetooth's header.
-  //   "monitors"   - vertical display row list for enabling/disabling displays;
-  //                  j/k walks each row.
   // Mouse hover on a target updates root state via the components' `hovered`
   // signal so keyboard cursor and pointer share one highlight.
   readonly property var scalePresets: ["1", "1.25", "1.6", "2", "3", "4"]
@@ -77,7 +87,6 @@ Panel {
     if (brightnessAvailable) list.push("brightness")
     list.push("textsize")
     list.push("scale")
-    if (displays.length > 1) list.push("monitors")
     return list
   }
 
@@ -85,7 +94,6 @@ Panel {
     if (section === "brightness") return 0  // only the slider sentinel at -1
     if (section === "textsize") return 0    // slider sentinel at -1, like brightness
     if (section === "scale") return scaleValues.length
-    if (section === "monitors") return displays.length
     return 0
   }
 
@@ -150,10 +158,6 @@ Panel {
     if (focusSection === "scale" && selectedIndex >= 0 && selectedIndex < scaleValues.length) {
       setScale(scaleValues[selectedIndex])
       return
-    }
-    if (focusSection === "monitors" && selectedIndex >= 0 && selectedIndex < displays.length) {
-      var d = displays[selectedIndex]
-      if (d) toggleDisplay(d.name, d.enabled)
     }
     // brightness: no separate action; the slider value is the action.
   }
@@ -231,6 +235,183 @@ Panel {
 
   function refresh() {
     if (!stateProc.running) stateProc.running = true
+    refreshLayout()
+  }
+
+  function refreshLayout() {
+    if (root.dragging) return
+    if (!layoutProc.running) layoutProc.running = true
+  }
+
+  function applyLayoutFlags(obj) {
+    root.layoutMonitors = obj.monitors || []
+    root.externalConnected = obj.externalConnected === true
+    root.clamshell = obj.clamshell === true
+    root.internalOn = obj.internalOn === true
+    root.mirrorOn = obj.mirrorOn === true
+    root.layoutReady = true
+    root.layoutReadOnly = false
+    if (root.keepLayoutError)
+      root.keepLayoutError = false
+    else
+      root.layoutError = ""
+  }
+
+  function runStock(bin, action) {
+    actionProc.command = [bin, action]
+    if (!actionProc.running) actionProc.running = true
+  }
+
+  function enabledLayoutMonitors() {
+    var out = []
+    for (var i = 0; i < layoutMonitors.length; i++) {
+      if (layoutMonitors[i] && layoutMonitors[i].enabled) out.push(layoutMonitors[i])
+    }
+    return out
+  }
+
+  function disabledLayoutMonitors() {
+    var out = []
+    for (var i = 0; i < layoutMonitors.length; i++) {
+      if (layoutMonitors[i] && !layoutMonitors[i].enabled) out.push(layoutMonitors[i])
+    }
+    return out
+  }
+
+  function toRect(m) {
+    var size = Model.layoutSize(m.width, m.height, m.scale)
+    return { name: m.name, x: m.x, y: m.y, w: size.w, h: size.h }
+  }
+
+  function canvasItems() {
+    var enabled = enabledLayoutMonitors()
+    var items = []
+    for (var i = 0; i < enabled.length; i++) {
+      var m = enabled[i]
+      var size = Model.layoutSize(m.width, m.height, m.scale)
+      items.push({
+        output: m.name,
+        posX: m.x,
+        posY: m.y,
+        layoutW: size.w,
+        layoutH: size.h,
+        modeW: m.width,
+        modeH: m.height,
+        scaleLabel: m.scale,
+        focused: m.focused === true
+      })
+    }
+    return items
+  }
+
+  function arrangementSide() {
+    var list = canvasItems()
+    if (list.length < 2) return ""
+    var moved = null
+    var other = null
+    var i
+    if (root.placeTarget) {
+      for (i = 0; i < list.length; i++) {
+        if (list[i].output === root.placeTarget) moved = list[i]
+        else if (!other) other = list[i]
+      }
+    }
+    if (!moved) {
+      moved = list[0]
+      other = list[1]
+    }
+    if (!other) {
+      for (i = 0; i < list.length; i++) {
+        if (list[i].output !== moved.output) {
+          other = list[i]
+          break
+        }
+      }
+    }
+    if (!moved || !other) return ""
+    var cx = moved.posX + moved.layoutW / 2
+    var cy = moved.posY + moved.layoutH / 2
+    if (cy >= other.posY + other.layoutH) return "bottom"
+    if (cy <= other.posY) return "top"
+    if (cx >= other.posX + other.layoutW) return "right"
+    if (cx <= other.posX) return "left"
+    return ""
+  }
+
+  function sideCaption(side) {
+    if (side === "left") return "LEFT"
+    if (side === "right") return "RIGHT"
+    if (side === "top") return "ABOVE"
+    if (side === "bottom") return "BELOW"
+    return ""
+  }
+
+  function commitDrag(name, x, y) {
+    var enabled = enabledLayoutMonitors()
+    if (enabled.length <= 1 || root.layoutReadOnly) {
+      root.dragging = false
+      return
+    }
+    var moved = null
+    var current = null
+    var others = []
+    for (var i = 0; i < enabled.length; i++) {
+      var r = toRect(enabled[i])
+      if (enabled[i].name === name) {
+        current = { x: r.x, y: r.y }
+        r.x = x
+        r.y = y
+        moved = r
+      } else {
+        others.push(r)
+      }
+    }
+    if (!moved || !others.length) {
+      root.dragging = false
+      return
+    }
+    var snapped = Model.snapWindows(moved, others)
+    if (!snapped || (current && snapped.x === current.x && snapped.y === current.y)) {
+      root.dragging = false
+      return
+    }
+    applySnapped(name, snapped.x, snapped.y)
+  }
+
+  function applySnapped(name, x, y) {
+    var next = []
+    var payload = { monitors: [] }
+    for (var j = 0; j < layoutMonitors.length; j++) {
+      var item = layoutMonitors[j]
+      var nx = item.name === name ? x : item.x
+      var ny = item.name === name ? y : item.y
+      next.push({
+        name: item.name,
+        width: item.width,
+        height: item.height,
+        x: nx,
+        y: ny,
+        scale: item.scale,
+        refreshRate: item.refreshRate,
+        enabled: item.enabled,
+        focused: item.focused,
+        internal: item.internal
+      })
+      if (item.enabled)
+        payload.monitors.push({ name: item.name, x: nx, y: ny })
+    }
+    root.layoutMonitors = next
+    applyLayoutProc.running = false
+    applyLayoutProc.command = [root.layoutHelper, "apply", JSON.stringify(payload)]
+    applyLayoutProc.running = true
+  }
+
+  function placeBeside(side) {
+    var args = [root.layoutHelper, "place"]
+    if (root.placeTarget) args.push(root.placeTarget)
+    args.push(side)
+    applyLayoutProc.command = args
+    if (!applyLayoutProc.running) applyLayoutProc.running = true
   }
 
   function setBrightness(value) {
@@ -349,7 +530,10 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  Component.onCompleted: refresh()
+  Component.onCompleted: {
+    refresh()
+    layoutMissingCheck.start()
+  }
 
   // KeyboardPanel primes focus at open-time, so SUPER-bound IPC summons land
   // with j/k ready to navigate. Keep a default landing point, but don't paint
@@ -380,7 +564,79 @@ Panel {
     interval: 5000
     running: root.opened
     repeat: true
-    onTriggered: root.refresh()
+    onTriggered: {
+      root.refresh()
+      root.refreshLayout()
+    }
+  }
+
+  Timer {
+    id: layoutMissingCheck
+    interval: 200
+    repeat: false
+    onTriggered: {
+      if (!root.layoutReady && root.layoutError === "") {
+        root.layoutError = "layout helper missing"
+        root.layoutReadOnly = true
+      }
+    }
+  }
+
+  Process {
+    id: layoutProc
+    command: [root.layoutHelper, "state"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try {
+          root.applyLayoutFlags(JSON.parse(String(text || "{}")))
+        } catch (e) {
+          root.layoutError = "layout helper failed"
+          root.layoutReadOnly = true
+        }
+      }
+    }
+    onExited: function(code) {
+      if (code !== 0 && !root.layoutReady) {
+        root.layoutError = "layout helper missing"
+        root.layoutReadOnly = true
+      }
+    }
+  }
+
+  Process {
+    id: applyLayoutProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try {
+          var obj = JSON.parse(String(text || "{}"))
+          if (obj.monitors) root.applyLayoutFlags(obj)
+        } catch (e) {
+          if (!root.layoutError)
+            root.layoutError = "layout helper failed"
+          root.keepLayoutError = true
+          root.refreshLayout()
+        }
+      }
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var err = String(text || "").trim()
+        if (err) {
+          root.layoutError = err
+          root.keepLayoutError = true
+        }
+      }
+    }
+    onExited: function(code) {
+      root.dragging = false
+      if (code !== 0) {
+        root.keepLayoutError = true
+        root.refreshLayout()
+      }
+    }
   }
 
   Process {
@@ -488,7 +744,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(380))
+    contentWidth: panel.fittedContentWidth(Style.space(Quickshell.screens.length > 1 ? 520 : 380))
     contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(560))
 
     PanelKeyCatcher {
@@ -516,7 +772,7 @@ Panel {
         Binding {
           target: scrollArea.contentItem
           property: "interactive"
-          value: panelColumn.implicitHeight > scrollArea.height
+          value: panelColumn.implicitHeight > scrollArea.height && !root.dragging
         }
 
         Column {
@@ -785,33 +1041,206 @@ Panel {
             }
           }
 
-          // ---------- Monitors ----------
           PanelSeparator {
-            visible: root.displays.length > 1
             foreground: root.bar.foreground
           }
 
-          Column {
+          Text {
+            visible: root.layoutError !== ""
             width: parent.width
-            spacing: Style.space(10)
-            visible: root.displays.length > 1
+            text: root.layoutError
+            color: root.bar.foreground
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.Wrap
+          }
 
-            PanelSectionHeader {
-              text: "DISPLAYS"
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
+          Row {
+            width: parent.width
+            spacing: Style.space(6)
+
+            StatusChip {
+              label: root.externalConnected ? "EXT · connected" : "EXT · none"
+              clickable: false
             }
+            StatusChip {
+              label: root.clamshell ? "CLAM · on" : "CLAM · off"
+              clickable: false
+            }
+            StatusChip {
+              label: root.internalOn ? "INT · on" : "INT · off"
+              clickable: true
+              onActivated: root.runStock("omarchy-hyprland-monitor-internal", "toggle")
+            }
+            StatusChip {
+              label: root.mirrorOn ? "MIRROR · on" : "MIRROR · off"
+              clickable: true
+              onActivated: root.runStock("omarchy-hyprland-monitor-internal-mirror", "toggle")
+            }
+          }
+
+          Text {
+            width: parent.width
+            visible: canvasHost.canvasList.length > 1
+            text: root.sideCaption(root.arrangementSide())
+            color: Qt.darker(root.bar.foreground, 1.4)
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+          }
+
+          Text {
+            width: parent.width
+            visible: Quickshell.screens.length > 1
+            text: "Drag a display to rearrange"
+            color: Qt.darker(root.bar.foreground, 1.4)
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+
+          Item {
+            id: canvasHost
+            width: parent.width
+            height: Style.space(280)
+            clip: true
+            readonly property var canvasList: root.canvasItems()
+            readonly property var bounds: {
+              var list = canvasList
+              if (!list.length) return { x: 0, y: 0, w: 1, h: 1 }
+              var minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9
+              var padX = 0
+              var padY = 0
+              for (var i = 0; i < list.length; i++) {
+                var r = list[i]
+                if (r.posX < minX) minX = r.posX
+                if (r.posY < minY) minY = r.posY
+                if (r.posX + r.layoutW > maxX) maxX = r.posX + r.layoutW
+                if (r.posY + r.layoutH > maxY) maxY = r.posY + r.layoutH
+                if (r.layoutW > padX) padX = r.layoutW
+                if (r.layoutH > padY) padY = r.layoutH
+              }
+              padX = Math.round(padX * 0.55)
+              padY = Math.round(padY * 0.55)
+              return { x: minX - padX, y: minY - padY, w: Math.max(1, maxX - minX + padX * 2), h: Math.max(1, maxY - minY + padY * 2) }
+            }
+            readonly property real fit: Math.min(width / bounds.w, height / bounds.h) * 0.92
 
             Repeater {
-              model: root.displays
-
-              MonitorRow {
-                required property var modelData
+              model: canvasHost.canvasList.length
+              CursorSurface {
+                id: tile
                 required property int index
+                readonly property var mon: canvasHost.canvasList[index]
+                readonly property real baseX: mon ? (mon.posX - canvasHost.bounds.x) * canvasHost.fit + (canvasHost.width - canvasHost.bounds.w * canvasHost.fit) / 2 : 0
+                readonly property real baseY: mon ? (mon.posY - canvasHost.bounds.y) * canvasHost.fit + (canvasHost.height - canvasHost.bounds.h * canvasHost.fit) / 2 : 0
+                property real dragDx: 0
+                property real dragDy: 0
 
-                width: panelColumn.width
-                display: modelData
-                rowIndex: index
+                width: mon ? mon.layoutW * canvasHost.fit : 0
+                height: mon ? mon.layoutH * canvasHost.fit : 0
+                x: baseX + (drag.active ? drag.translation.x : 0)
+                y: baseY + (drag.active ? drag.translation.y : 0)
+                visible: !!mon
+                foreground: root.bar.foreground
+                fill: Style.hoverFillFor(root.bar.foreground, Color.accent)
+                currentFill: Style.selectedFillFor(root.bar.foreground, Color.accent)
+                current: !!mon && (mon.focused || root.placeTarget === mon.output)
+                hasCursor: drag.active
+                bordered: true
+
+                Column {
+                  anchors.centerIn: parent
+                  spacing: Style.space(2)
+                  width: Math.max(0, parent.width - Style.space(12))
+
+                  Text {
+                    text: String(tile.index + 1)
+                    color: root.bar.foreground
+                    font.family: root.bar.fontFamily
+                    font.pixelSize: Style.font.title
+                    font.bold: true
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                  }
+
+                  Text {
+                    text: tile.mon ? tile.mon.output : ""
+                    color: Qt.darker(root.bar.foreground, 1.4)
+                    font.family: root.bar.fontFamily
+                    font.pixelSize: Style.font.caption
+                    font.bold: true
+                    font.letterSpacing: 1.2
+                    elide: Text.ElideRight
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                  }
+                }
+
+                DragHandler {
+                  id: drag
+                  enabled: canvasHost.canvasList.length > 1 && !root.layoutReadOnly && !!tile.mon
+                  target: null
+                  acceptedButtons: Qt.LeftButton
+                  grabPermissions: PointerHandler.CanTakeOverFromAnything
+                  onTranslationChanged: {
+                    if (!active) return
+                    tile.dragDx = translation.x
+                    tile.dragDy = translation.y
+                  }
+                  onActiveChanged: {
+                    if (!tile.mon) return
+                    if (active) {
+                      tile.dragDx = 0
+                      tile.dragDy = 0
+                      root.dragging = true
+                      root.placeTarget = tile.mon.output
+                      return
+                    }
+                    var dx = tile.dragDx
+                    var dy = tile.dragDy
+                    if (dx === 0 && dy === 0) {
+                      dx = translation.x
+                      dy = translation.y
+                    }
+                    var layoutX = tile.mon.posX + dx / canvasHost.fit
+                    var layoutY = tile.mon.posY + dy / canvasHost.fit
+                    root.commitDrag(tile.mon.output, Math.round(layoutX), Math.round(layoutY))
+                  }
+                }
+
+                TapHandler {
+                  enabled: !!tile.mon
+                  acceptedButtons: Qt.LeftButton
+                  onTapped: if (tile.mon) root.placeTarget = tile.mon.output
+                }
+              }
+            }
+          }
+
+          Row {
+            visible: Quickshell.screens.length > 1
+            width: parent.width
+            spacing: Style.space(6)
+
+            StatusChip { label: "LEFT"; clickable: true; onActivated: root.placeBeside("left") }
+            StatusChip { label: "RIGHT"; clickable: true; onActivated: root.placeBeside("right") }
+            StatusChip { label: "ABOVE"; clickable: true; onActivated: root.placeBeside("top") }
+            StatusChip { label: "BELOW"; clickable: true; onActivated: root.placeBeside("bottom") }
+          }
+
+          Row {
+            visible: root.disabledLayoutMonitors().length > 0
+            width: parent.width
+            spacing: Style.space(6)
+            Repeater {
+              model: root.disabledLayoutMonitors()
+              Text {
+                required property var modelData
+                text: modelData.name + " · off"
+                opacity: 0.45
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
               }
             }
           }
@@ -850,73 +1279,20 @@ Panel {
     }
   }
 
-  component MonitorRow: CursorSurface {
-    id: monitorRow
-    required property var display
-    required property int rowIndex
-
-    readonly property bool isFocused: display && display.focused
-    readonly property bool canToggle: display && (!display.enabled || root.enabledDisplayCount > 1)
-
-    hasCursor: root.cursorActive && root.focusSection === "monitors" && root.selectedIndex === rowIndex
-    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(monitorRow)
-    current: isFocused
+  component StatusChip: Button {
+    id: chip
+    required property string label
+    property bool clickable: false
+    property bool on: false
+    signal activated()
+    text: chip.label
+    fontSize: Style.font.caption
     foreground: root.bar.foreground
-    fill: Style.hoverFillFor(root.bar.foreground, Color.accent)
-    currentFill: Style.selectedFillFor(root.bar.foreground, Color.accent)
-    implicitHeight: monitorInner.implicitHeight + Style.spacing.xl
-    opacity: canToggle ? 1.0 : 0.45
-
-    Row {
-      id: monitorInner
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: Style.space(6)
-      anchors.rightMargin: Style.space(6)
-      spacing: Style.space(8)
-
-      Text {
-        text: "󰍹"
-        color: root.bar.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: Style.font.title
-        width: Style.space(22)
-        horizontalAlignment: Text.AlignHCenter
-        anchors.verticalCenter: parent.verticalCenter
-      }
-
-      Text {
-        text: monitorRow.display.name + (monitorRow.display.focused ? " · focused" : "")
-        color: root.bar.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: Style.font.body
-        elide: Text.ElideRight
-        width: parent.width - Style.space(22) - Style.space(14) - Style.space(16)
-        anchors.verticalCenter: parent.verticalCenter
-      }
-
-      Text {
-        text: monitorRow.display.enabled ? "󰄬" : ""
-        color: root.bar.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: Style.font.subtitle
-        width: Style.space(14)
-        horizontalAlignment: Text.AlignRight
-        anchors.verticalCenter: parent.verticalCenter
-      }
-    }
-
-    MouseArea {
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: monitorRow.canToggle ? Qt.PointingHandCursor : Qt.ArrowCursor
-      onContainsMouseChanged: if (containsMouse && !root.reflowingText) {
-        root.cursorActive = true
-        root.focusSection = "monitors"
-        root.selectedIndex = monitorRow.rowIndex
-      }
-      onClicked: if (monitorRow.canToggle) root.toggleDisplay(monitorRow.display.name, monitorRow.display.enabled)
-    }
+    fontFamily: root.bar.fontFamily
+    horizontalPadding: Style.spacing.sm
+    verticalPadding: Style.spacing.controlPaddingY
+    bordered: true
+    active: chip.on
+    onClicked: if (chip.clickable) chip.activated()
   }
 }

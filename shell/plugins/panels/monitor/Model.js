@@ -111,6 +111,80 @@ function parseDisplays(raw) {
   }
 }
 
+function layoutSize(width, height, scale) {
+  var s = Number(scale)
+  if (!isFinite(s) || s <= 0) s = 1
+  return {
+    w: Math.floor(Number(width) / s),
+    h: Math.floor(Number(height) / s)
+  }
+}
+
+function snapPosition(moved, others) {
+  return snapWindows(moved, others)
+}
+
+function snapWindows(moved, others, prefer) {
+  function clamp(v, a, b) {
+    if (a > b) return Math.round((a + b) / 2)
+    if (v < a) return a
+    if (v > b) return b
+    return v
+  }
+
+  function sideFor(o) {
+    var cx = moved.x + moved.w / 2
+    var cy = moved.y + moved.h / 2
+    var left = o.x
+    var right = o.x + o.w
+    var top = o.y
+    var bottom = o.y + o.h
+    var outLeft = Math.max(0, left - cx)
+    var outRight = Math.max(0, cx - right)
+    var outTop = Math.max(0, top - cy)
+    var outBottom = Math.max(0, cy - bottom)
+    var outX = Math.max(outLeft, outRight)
+    var outY = Math.max(outTop, outBottom)
+    if (prefer === "vertical") return outTop > 0 || (outY === 0 && (cy - top) < (bottom - cy)) ? "top" : "bottom"
+    if (prefer === "horizontal") return outLeft > 0 || (outX === 0 && (cx - left) < (right - cx)) ? "left" : "right"
+    if (outY > outX) return outTop > 0 ? "top" : "bottom"
+    if (outX > outY) return outLeft > 0 ? "left" : "right"
+    var distLeft = cx - left
+    var distRight = right - cx
+    var distTop = cy - top
+    var distBottom = bottom - cy
+    var nearest = Math.min(distLeft, distRight, distTop, distBottom)
+    if (nearest === distBottom) return "bottom"
+    if (nearest === distTop) return "top"
+    if (nearest === distLeft) return "left"
+    return "right"
+  }
+
+  var best = null
+  var bestDist = Infinity
+  var overlap = 48
+  for (var i = 0; i < others.length; i++) {
+    var o = others[i]
+    var minY = o.y + overlap - moved.h
+    var maxY = o.y + o.h - overlap
+    var minX = o.x + overlap - moved.w
+    var maxX = o.x + o.w - overlap
+    var side = sideFor(o)
+    var c = side === "right" ? { side: "right", x: o.x + o.w, y: clamp(moved.y, minY, maxY) }
+      : side === "left" ? { side: "left", x: o.x - moved.w, y: clamp(moved.y, minY, maxY) }
+      : side === "bottom" ? { side: "bottom", x: clamp(moved.x, minX, maxX), y: o.y + o.h }
+      : { side: "top", x: clamp(moved.x, minX, maxX), y: o.y - moved.h }
+    var dx = c.x - moved.x
+    var dy = c.y - moved.y
+    var dist = dx * dx + dy * dy
+    if (dist < bestDist) {
+      bestDist = dist
+      best = c
+    }
+  }
+  return best
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     clampBrightness: clampBrightness,
@@ -119,6 +193,9 @@ if (typeof module !== "undefined") {
     matchingScaleIndex: matchingScaleIndex,
     availableScales: availableScales,
     brightnessName: brightnessName,
-    parseDisplays: parseDisplays
+    parseDisplays: parseDisplays,
+    layoutSize: layoutSize,
+    snapPosition: snapPosition,
+    snapWindows: snapWindows
   }
 }
