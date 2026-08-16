@@ -131,12 +131,23 @@ grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "agent migration repa
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "agent migration creates the Grok lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "agent migration creates the Crush lazy stub"
 
+: >"$stub_log"
+touch "$test_home/.local/bin/gemini"
+mkdir -p "$(dirname "$agent_file")"
+printf 'gemini\n' >"$agent_file"
+source "$ROOT/migrations/1786800000.sh" >/dev/null
+grep -Fx "$antigravity_package agy" "$stub_log" >/dev/null || fail "Antigravity migration creates the agy lazy stub"
+[[ ! -e $test_home/.local/bin/gemini ]] || fail "Antigravity migration removes the obsolete gemini wrapper"
+[[ $(<"$agent_file") == "antigravity" ]] || fail "Antigravity migration updates persisted default agent from gemini to antigravity"
+rm -f "$agent_file"
+
 mkdir -p "$test_home/.local/state/omarchy"
 touch "$test_home/.local/state/omarchy/preinstalls-removed"
 "$ROOT/bin/omarchy-mise-install" oh-my-pi omp
 : >"$stub_log"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
 source "$ROOT/migrations/1785846769.sh" >/dev/null
+source "$ROOT/migrations/1786800000.sh" >/dev/null
 [[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
 [[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
 
