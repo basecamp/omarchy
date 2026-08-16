@@ -48,6 +48,10 @@ Panel {
   // Sentinel finishProbe receives when the watchdog gives up on a probe that
   // never signalled completion (missing executable or a hung process).
   readonly property int probeSpawnFailedExitCode: -1
+  // How long a probe may run before the watchdog gives up on it. rfkill
+  // answers in milliseconds; the timeout exists only to unstick a probe that
+  // never completed, so a hung process cannot strand probePending.
+  readonly property int probeWatchdogMs: 2000
   property string lastProbeStdout: ""
 
   Process {
@@ -61,13 +65,13 @@ Panel {
       waitForEnd: true
       onStreamFinished: root.lastProbeStdout = String(text || "")
     }
-    // exited is the process-completion signal and carries the exit code. It
-    // fires after stdout has been fully collected, so lastProbeStdout is
-    // complete here. A failed spawn never reaches it — the watchdog handles
-    // that case.
+    // exited is the process-completion signal and carries the exit code and
+    // exit status. It fires after stdout has been fully collected, so
+    // lastProbeStdout is complete here. A failed spawn never reaches it — the
+    // watchdog handles that case.
     onExited: function(exitCode, exitStatus) {
       probeWatchdog.stop()
-      root.finishProbe(exitCode)
+      root.finishProbe(exitCode, exitStatus)
     }
   }
 
@@ -76,7 +80,7 @@ Panel {
   // probePending with no signal to clear it.
   Timer {
     id: probeWatchdog
-    interval: 2000
+    interval: root.probeWatchdogMs
     onTriggered: root.finishProbe(root.probeSpawnFailedExitCode)
   }
 
@@ -91,8 +95,9 @@ Panel {
   // Single completion path for every probe; the probePending gate drops any
   // late signal from a superseded run. A live adapter is authoritative (a
   // probe started before a dongle appeared may report a stale empty
-  // listing). An inconclusive probe — non-zero exit, or the watchdog's
-  // sentinel — changes nothing: presence stays unknown, hardwarePresent keeps
+  // listing). An inconclusive probe — non-zero exit, abnormal termination,
+  // or the watchdog's sentinel — changes nothing: presence stays unknown,
+  // hardwarePresent keeps
   // its previous value and a deferred power-on survives for a later definitive
   // probe, so probe uncertainty can never hide the panel or drop the user's
   // intent. Leaving it unknown matters: hardwarePresent defaults to true, so
@@ -100,7 +105,7 @@ Panel {
   // into the answer and show the panel on a machine with no Bluetooth at all
   // (`rfkill list` exits non-zero when /dev/rfkill is absent, as on a VM with
   // no radios). Unknown falls back to the plain adapter gate, which hides it.
-  function finishProbe(exitCode) {
+  function finishProbe(exitCode, exitStatus) {
     probeWatchdog.stop()
     if (!root.probePending) return
     // A watchdog timeout means the process never completed: stop it so the
@@ -108,7 +113,12 @@ Panel {
     // run. A real exit leaves no process behind to stop.
     if (exitCode === root.probeSpawnFailedExitCode) rfkillProbe.running = false
     root.probePending = false
-    if (exitCode === 0) {
+    // Definitive only on a clean run. The exitStatus check is belt-and-
+    // suspenders: a signal-killed process already reports the signal number
+    // as its exit code (SIGKILL -> 9, SIGTERM -> 15), so exitCode === 0 alone
+    // would never admit a crash — the explicit check just states the
+    // "clean exit only" invariant.
+    if (exitCode === 0 && exitStatus === 0) {
       root.hardwarePresenceKnown = true
       root.hardwarePresent = root.adapter !== null || String(root.lastProbeStdout).trim().length > 0
       // Definitive answer: act on the deferred intent now, or drop it.
@@ -208,7 +218,7 @@ Panel {
   ]
   readonly property bool rotatingPhrases: adapter && adapter.enabled
   readonly property string heroStatusText: {
-    if (!adapter) return hardwarePresenceKnown ? (hardwarePresent ? "Turned Off" : "No adapter") : ""
+    if (!adapter) return hardwarePresenceKnown ? (hardwarePresent ? "Turned Off" : "No Bluetooth adapter") : ""
     if (!adapter.enabled) return "Turned Off"
     return activePhrases[phraseIndex % activePhrases.length]
   }
