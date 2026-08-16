@@ -5,19 +5,21 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 installer="$ROOT/install/hardware/apple/fix-t2-dgpu-power.sh"
-service="$ROOT/default/systemd/system/omarchy-t2-dgpu-off.service"
+service="$ROOT/default/systemd/system/omarchy-t2-dgpu-low-power.service"
 migration="$ROOT/migrations/1786820569.sh"
 
 grep -Fxq 'After=systemd-modules-load.service' "$service" ||
   fail "the T2 dGPU service waits for graphics modules"
 grep -Fxq 'Before=display-manager.service' "$service" ||
   fail "the T2 dGPU service runs before the display manager"
-grep -Fxq 'RequiresMountsFor=/sys/kernel/debug' "$service" ||
-  fail "the T2 dGPU service waits for debugfs"
 grep -Fq 'force_igd=(y|Y|1)' "$service" ||
   fail "the T2 dGPU service only runs in integrated mode"
-grep -Fq 'echo OFF > /sys/kernel/debug/vgaswitcheroo/switch' "$service" ||
-  fail "the T2 dGPU service powers Radeon off through vga_switcheroo"
+grep -Fq 'power_dpm_force_performance_level' "$service" ||
+  fail "the T2 dGPU service waits for the Radeon DPM control"
+grep -Fq 'echo low > "$level"' "$service" ||
+  fail "the T2 dGPU service selects the safe low-power level"
+! grep -Fq 'vgaswitcheroo' "$service" ||
+  fail "the T2 dGPU service must not cut Radeon power"
 pass "the T2 dGPU service follows the selected graphics mode"
 
 grep -Fq 'apple/fix-t2-dgpu-power.sh' "$ROOT/install/hardware/all.sh" ||
@@ -28,7 +30,7 @@ trap 'rm -rf "$test_tmp"' EXIT
 
 stub_bin="$test_tmp/bin"
 calls="$test_tmp/calls.log"
-service_path="$test_tmp/etc/systemd/system/omarchy-t2-dgpu-off.service"
+service_path="$test_tmp/etc/systemd/system/omarchy-t2-dgpu-low-power.service"
 repair_marker="$test_tmp/var/lib/omarchy/migrations/1786820569"
 mkdir -p "$stub_bin"
 : >"$calls"
@@ -81,9 +83,9 @@ run_installer
 
 cmp -s "$service" "$service_path" ||
   fail "fresh hybrid T2 installs copy the dGPU service"
-grep -Fxq $'systemctl\tenable\tomarchy-t2-dgpu-off.service' "$calls" ||
+grep -Fxq $'systemctl\tenable\tomarchy-t2-dgpu-low-power.service' "$calls" ||
   fail "fresh hybrid T2 installs enable the dGPU service"
-pass "fresh hybrid T2 installs enable automatic Radeon power-off"
+pass "fresh hybrid T2 installs enable safe Radeon power management"
 
 rm -f "$service_path"
 : >"$calls"
@@ -117,7 +119,7 @@ run_migration
 
 cmp -s "$service" "$service_path" ||
   fail "the migration installs the dGPU service on existing hybrid T2 Macs"
-grep -Fxq $'sudo\tsystemctl\tenable\tomarchy-t2-dgpu-off.service' "$calls" ||
+grep -Fxq $'sudo\tsystemctl\tenable\tomarchy-t2-dgpu-low-power.service' "$calls" ||
   fail "the migration enables the dGPU service"
 [[ -f $repair_marker ]] || fail "the migration records the machine-wide repair"
 ! grep -Eq $'systemctl\t(enable --now|start)' "$calls" ||

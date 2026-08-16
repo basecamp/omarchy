@@ -1,14 +1,13 @@
 [Unit]
-Description=Power off the T2 MacBook discrete GPU in integrated mode
+Description=Keep the T2 MacBook discrete GPU in low-power mode
 After=systemd-modules-load.service
 Before=display-manager.service
 ConditionPathExists=/etc/modprobe.d/apple-gmux.conf
-RequiresMountsFor=/sys/kernel/debug
 
 [Service]
 Type=oneshot
 ExecCondition=/usr/bin/grep -Eq '^[[:space:]]*options[[:space:]]+apple-gmux[[:space:]].*force_igd=(y|Y|1)([[:space:]]|$)' /etc/modprobe.d/apple-gmux.conf
-ExecStart=/bin/bash -c 'for _ in {1..30}; do if [[ -e /sys/kernel/debug/vgaswitcheroo/switch ]]; then echo OFF > /sys/kernel/debug/vgaswitcheroo/switch; exit; fi; sleep 1; done; exit 1'
+ExecStart=/bin/bash -c 'for _ in {1..30}; do for level in /sys/bus/pci/drivers/amdgpu/0000:*/power_dpm_force_performance_level; do [[ -e $level ]] || continue; echo low > "$level"; exit; done; sleep 1; done; exit 1'
 
 [Install]
 WantedBy=multi-user.target
