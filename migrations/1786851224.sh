@@ -13,6 +13,7 @@ if [[ -d $beta ]]; then
   if profile_open "$beta" || { [[ -d $stable ]] && profile_open "$stable"; }; then
     echo "Brave is running — skipping profile migration." >&2
     echo "Quit Brave completely, then run: omarchy-update" >&2
+    exit 1
   else
     if [[ -d $stable ]]; then
       backup="$stable.bak.$(date +%Y%m%d%H%M%S)"
@@ -22,7 +23,7 @@ if [[ -d $beta ]]; then
 
     mv "$beta" "$stable"
     rm -f "$stable"/Singleton*
-    rm -rf ~/.cache/BraveSoftware/Brave-Origin-Beta
+    rm -rf "$HOME/.cache/BraveSoftware/Brave-Origin-Beta"
 
     echo "Beta profile migrated. Previous stable data (if any) kept as a .bak directory."
   fi
