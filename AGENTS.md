@@ -21,6 +21,7 @@ Three documentation trees, split by genre and audience:
 
 # Style
 
+- In markdown documents (`plans/`, `docs/`, `manual/`), write full lines — no hard wrapping at 80 columns; break only at structural boundaries like headings and list items
 - Two spaces for indentation, no tabs
 - Use bash 5 conditionals: use `[[ ]]` for string/file tests and `(( ))` for numeric tests
 - In `[[ ]]`, don't quote variables, but do quote string literals when comparing values (e.g., `[[ $branch == "dev" ]]`)
