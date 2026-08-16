@@ -108,6 +108,7 @@ python-poetry-core
 ttfx
 qemu-user-static-binfmt
 qrencode
+qt6-imageformats
 quickshell-git
 ripgrep
 ruby
