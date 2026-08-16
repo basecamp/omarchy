@@ -129,7 +129,9 @@ PY
   fail "Synthetic credentials follow environment, Pi, then OpenCode priority" "$result"
 pass "Synthetic credentials follow the documented priority"
 
-[[ $(jq -c '[.modern[] | {label,percent,detail,resetLabel}]' <<<"$result") == '[{"label":"Requests used / 5h","percent":0.0017000000000000348,"detail":"1.7 / 1,000 used","resetLabel":"Next tick in"},{"label":"Credits used / week","percent":0.3530021133333334,"detail":"$31.05 / $48.00 left","resetLabel":"Next regen in"},{"label":"Search used / hour","percent":0.016,"detail":"4 / 250 used","resetLabel":null}]' ]] ||
+# Round percentages to 4 decimals so the assertion does not depend on exact
+# IEEE-754 rendering across Python/jq versions.
+[[ $(jq -c '[.modern[] | {label, percent: (.percent * 10000 | round / 10000), detail, resetLabel}]' <<<"$result") == '[{"label":"Requests used / 5h","percent":0.0017,"detail":"1.7 / 1,000 used","resetLabel":"Next tick in"},{"label":"Credits used / week","percent":0.353,"detail":"$31.05 / $48.00 left","resetLabel":"Next regen in"},{"label":"Search used / hour","percent":0.016,"detail":"4 / 250 used","resetLabel":null}]' ]] ||
   fail "Synthetic collector maps modern quota windows" "$result"
 [[ $(jq -r '.modern | map(.label) | index("Subscription requests")' <<<"$result") == "null" ]] ||
   fail "Synthetic collector hides the stale legacy bucket on modern accounts" "$result"
