@@ -36,7 +36,7 @@ But you can also choose to turn a workspace into the scrolling layout where wind
 
  ![navigation-scrolling-layout](images/navigation-scrolling-layout.webp)
 
-On a scrolling workspace, `Super + J` consumes a window that is alone into the previous column. Use it again to expel the focused window from a stacked column into its own column.
+On a scrolling workspace, `Super + J` moves a window that is alone in its column into the previous column. Press `Super + J` again to move the focused window out of a stacked column into its own column.
 
 The choice is per workspace, and it sticks. So you can keep workspace 1 on dwindle for browsing and workspace 2 on scrolling for code, and they'll come back that way after a restart. (The same toggle is under _Trigger > Toggle > Workspace Layout_ in the Omarchy menu).
 
