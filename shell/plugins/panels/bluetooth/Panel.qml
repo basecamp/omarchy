@@ -31,60 +31,77 @@ Panel {
   // after Bluetooth is switched off.
   //
   // Hardware presence is assumed (true) until a probe proves otherwise: a
-  // completed probe concludes yes or no from rfkill's stdout, and when the
-  // probe cannot run at all (missing rfkill) the state falls back to adapter
-  // presence — the same gate the widget used before. An adapter that appears
-  // at any point is authoritative and clears a stale "no hardware" answer.
+  // cleanly run probe concludes yes or no from rfkill's stdout, and when a
+  // probe cannot run at all the state falls back to adapter presence — the
+  // same gate the widget used before. An adapter that appears at any point
+  // is authoritative and clears a stale "no hardware" answer.
   property bool hardwarePresent: true
   property bool probePending: false
   // Set when the user asks to power on while the first probe's answer is
-  // still unknown; acted on once that probe concludes the radio exists.
+  // still unknown; acted on once that probe confirms the radio exists.
   property bool deferredPowerOn: false
+  property string lastProbeStdout: ""
 
   Process {
     id: rfkillProbe
     // Direct call, no shell: `rfkill list bluetooth` prints one or more
     // radio entries whenever Bluetooth hardware exists (blocked or not) and
-    // nothing on machines without it. A failed spawn (missing executable)
-    // surfaces as errorOccurred and never reaches the stream.
+    // nothing on machines without it. The exit code tells a clean empty
+    // listing (no hardware) apart from a failed run (tool unusable).
     command: ["rfkill", "list", "bluetooth"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.finishProbe(String(text || "").trim().length > 0)
+      onStreamFinished: root.lastProbeStdout = String(text || "")
     }
-    // A probe that never ran can't conclude anything: fall back to adapter
-    // presence, and drop a deferred power-on so a stale intent can't fire
-    // against a much later, unrelated probe.
-    onErrorOccurred: {
-      root.probePending = false
-      root.deferredPowerOn = false
-      root.hardwarePresent = Bluetooth.defaultAdapter !== null
+    // exited is the process-completion signal and carries the exit code. It
+    // fires after stdout has been fully collected, so lastProbeStdout is
+    // complete here. A failed spawn never reaches it — the watchdog handles
+    // that case.
+    onExited: function(exitCode, exitStatus) {
+      probeWatchdog.stop()
+      root.finishProbe(exitCode)
     }
+  }
+
+  // rfkill completes in milliseconds; if no exited signal arrives by now the
+  // probe never ran (missing executable), which would otherwise strand
+  // probePending with no signal to clear it.
+  Timer {
+    id: probeWatchdog
+    interval: 2000
+    onTriggered: root.finishProbe(-1)
   }
 
   function probeHardware() {
     if (root.probePending) return
     root.probePending = true
+    probeWatchdog.start()
     rfkillProbe.running = true
   }
 
-  // Single completion path for every probe. The probePending gate drops any
-  // late signal from a superseded run, which keeps one probe in flight at a
-  // time. A live adapter is authoritative even here: a probe that started
-  // before a dongle appeared may report a stale empty listing, so it must
-  // not flip hardwarePresent back to false.
-  function finishProbe(devicesListed) {
+  // Single completion path for every probe; the probePending gate drops any
+  // late signal from a superseded run. A live adapter is authoritative (a
+  // probe started before a dongle appeared may report a stale empty
+  // listing), and a probe that did not run cleanly — non-zero exit, or the
+  // watchdog's -1 sentinel — falls back to adapter presence rather than
+  // concluding "no hardware".
+  function finishProbe(exitCode) {
+    probeWatchdog.stop()
     if (!root.probePending) return
     root.probePending = false
-    root.hardwarePresent = root.adapter !== null || devicesListed
+    root.hardwarePresent = exitCode === 0
+      ? root.adapter !== null || String(root.lastProbeStdout).trim().length > 0
+      : root.adapter !== null
     if (root.deferredPowerOn) {
       root.deferredPowerOn = false
-      if (root.hardwarePresent && !root.adapter)
+      if (root.hardwarePresent && (root.adapter === null || !root.adapter.enabled))
         Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
     }
   }
 
-  Component.onCompleted: root.probeHardware()
+  // Hardware presence is already known while an adapter exists; only probe
+  // when there is none to disambiguate.
+  Component.onCompleted: { if (root.adapter === null) root.probeHardware() }
 
   Connections {
     target: Bluetooth
@@ -92,12 +109,16 @@ Panel {
       if (Bluetooth.defaultAdapter === null) {
         root.probeHardware()
       } else {
-        // An adapter existing is definitive proof of hardware; clear any
-        // stale "no hardware" conclusion (e.g. a dongle plugged in later).
-        // An in-flight probe is left to finish — it reads live rfkill state
-        // and reaches the same conclusion.
+        // Adapter presence is definitive proof of hardware; an in-flight
+        // probe is left to finish (it reads live rfkill state and reaches
+        // the same conclusion). Honor a deferred power-on instead of
+        // dropping it when the adapter is back but still powered off.
         root.hardwarePresent = true
-        root.deferredPowerOn = false
+        if (root.deferredPowerOn) {
+          root.deferredPowerOn = false
+          if (!root.adapter.enabled)
+            Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
+        }
       }
     }
   }
