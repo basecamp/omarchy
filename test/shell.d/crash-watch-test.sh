@@ -9,7 +9,9 @@ trap 'rm -rf "$TMPDIR"' EXIT
 
 mkdir -p "$TMPDIR/bin"
 NOTIFY_LOG="$TMPDIR/notify-log"
+FAIL_COUNT="$TMPDIR/fail-count"
 : >"$NOTIFY_LOG"
+: >"$FAIL_COUNT"
 
 uid=$(id -u)
 boot=deadbeefdeadbeefdeadbeefdeadbeef
@@ -23,7 +25,8 @@ SH
 
 # coredumpctl: the watcher calls `info COREDUMP_PID=<pid> _BOOT_ID=<boot>`;
 # reply with the fields the awk extraction reads. Unknown pids get no entry,
-# exercising the tolerated-lookup-failure path.
+# exercising the tolerated-lookup-failure path. pid 5001 fails twice first,
+# exercising the retry that waits for the journal entry to land.
 cat >"$TMPDIR/bin/coredumpctl" <<'SH'
 #!/bin/bash
 case "$2" in
@@ -35,6 +38,16 @@ case "$2" in
       '           PID: 1002 (other)' \
       '        Signal: 6 (ABRT)' \
       '    Executable: /usr/bin/other-real' ;;
+  COREDUMP_PID=5001)
+    fails=$(cat "$FAIL_COUNT" 2>/dev/null || printf '0')
+    if (( fails < 2 )); then
+      printf '%s\n' "$((fails + 1))" >"$FAIL_COUNT"
+      exit 1
+    fi
+    printf '%s\n' \
+      '           PID: 5001 (slowcore)' \
+      '        Signal: 6 (ABRT)' \
+      '    Executable: /usr/bin/slowcore-real' ;;
   *) : ;;
 esac
 SH
@@ -61,7 +74,7 @@ run_watch() {
   shift
   (
     export PATH="$TMPDIR/bin:$ROOT/bin:$PATH"
-    export WATCH_ITEMS="$items" NOTIFY_LOG="$NOTIFY_LOG"
+    export WATCH_ITEMS="$items" NOTIFY_LOG="$NOTIFY_LOG" FAIL_COUNT="$FAIL_COUNT"
     for kv in "$@"; do export "$kv"; done
     "$ROOT/bin/omarchy-crash-watch"
   )
@@ -133,3 +146,14 @@ grep -Fq "Process crashed: barecomm" "$NOTIFY_LOG" ||
 grep -Fq "omarchy-agent-crash 3001 barecomm unknown unknown" "$NOTIFY_LOG" ||
   fail "falls back to unknown executable and signal"
 pass "watcher tolerates a failed coredumpctl lookup"
+
+: >"$NOTIFY_LOG"
+: >"$FAIL_COUNT"
+run_watch "$(core_file slowcore "$uid" 5001)"
+[[ $(notify_count) -eq 1 ]] ||
+  fail "crash whose journal entry lands late is still announced" "got: $(notify_count) toasts"
+grep -Fq "Process crashed: slowcore-real" "$NOTIFY_LOG" ||
+  fail "the retry recovered the executable"
+grep -Fq "omarchy-agent-crash 5001 slowcore-real /usr/bin/slowcore-real ABRT" "$NOTIFY_LOG" ||
+  fail "the retry recovered the signal"
+pass "watcher retries the lookup until the journal entry lands"
