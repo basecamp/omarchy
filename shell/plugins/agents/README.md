@@ -13,8 +13,8 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
   Auth and endpoint problems replace the plan line and repeat in a card.
 - **Subscription switch** — one chip per enabled agent (`h`/`l` or click).
   It appears only when more than one agent is enabled.
-- **Limits** — the percentage of each allowance used, a matching meter, and
-  the time until the session or weekly window resets.
+- **Limits** — the percentage of each allowance used, a matching meter,
+  optional exact usage, and the time until the window resets or regenerates.
 - **Balance** — prepaid agents report a credit ledger instead of limits:
   remaining credit, a fuel-gauge meter that drains toward empty, and
   funded-versus-spent detail.
@@ -55,6 +55,11 @@ light surfaces — and the bar glyph stands in when there is none.
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `synthetic` | Synthetic's quota endpoint (rolling 5-hour requests, weekly credits, and hourly search) | None; Synthetic reports account-global limits |
+
+Limit entries may optionally provide `title`, `detail`, and `resetLabel`.
+The panel falls back to its inferred title and “Resets in” wording when those
+display hints are absent.
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
@@ -62,7 +67,8 @@ falls back to local stats only. A non-default Claude directory is honored via
 `FIREWORKS_API_KEY` and `FIREWORKS_ACCOUNT_ID` first, then
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
-signed in there.
+signed in there. Synthetic reads `SYNTHETIC_API_KEY` first, then the
+`synthetic` key stored in `~/.pi/agent/auth.json`, then opencode's auth file.
 
 ### Fireworks balance
 
@@ -128,7 +134,8 @@ edit `shell.json` directly):
 omarchy bar set omarchy.agents providers '{
   "claude": { "enabled": true },
   "codex": { "enabled": false },
-  "fireworks": { "enabled": true }
+  "fireworks": { "enabled": true },
+  "synthetic": { "enabled": true }
 }' --json
 ```
 

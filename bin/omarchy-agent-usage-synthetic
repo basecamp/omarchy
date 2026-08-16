@@ -1,0 +1,317 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Synthetic Labs usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Synthetic Labs quotas into one display-ready JSON record.
+
+The account-global limits come from Synthetic's /v2/quotas endpoint. There
+are no local transcript stats: the agents panel displays the weekly credit,
+rolling request, and search allowances this collector prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import sys
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "synthetic"
+AGENT_NAME = "Synthetic Labs"
+API_BASE_URL = "https://api.synthetic.new"
+AUTH_HELP = "Set SYNTHETIC_API_KEY or sign in to Synthetic in Pi or OpenCode."
+
+
+class SyntheticError(Exception):
+  def __init__(self, message: str, retry_advised: bool = False):
+    super().__init__(message)
+    self.retry_advised = retry_advised
+
+
+def utc_now() -> str:
+  return datetime.now(timezone.utc).isoformat()
+
+
+def finite_number(value: Any) -> float | None:
+  try:
+    parsed = float(value)
+    return parsed if math.isfinite(parsed) else None
+  except (TypeError, ValueError):
+    return None
+
+
+def number(value: Any, fallback: float = 0.0) -> float:
+  parsed = finite_number(value)
+  if parsed is None:
+    return fallback
+  return parsed
+
+
+def ratio(used: Any, limit: Any) -> float | None:
+  used_value = finite_number(used)
+  total = finite_number(limit)
+  if used_value is None or total is None or total <= 0:
+    return None
+  return max(0.0, min(1.0, used_value / total))
+
+
+def remaining_ratio(remaining: Any, maximum: Any) -> float | None:
+  remaining_value = finite_number(remaining)
+  total = finite_number(maximum)
+  if remaining_value is None or total is None or total <= 0:
+    return None
+  return max(0.0, min(1.0, 1.0 - remaining_value / total))
+
+
+def reset_at(value: Any) -> str:
+  return str(value or "").strip()
+
+
+def format_quantity(value: Any) -> str:
+  parsed = number(value)
+  if parsed.is_integer():
+    return f"{int(parsed):,}"
+  return f"{parsed:,.2f}".rstrip("0").rstrip(".")
+
+
+def empty_stats() -> dict[str, Any]:
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  }
+
+
+def base_record(**overrides: Any) -> dict[str, Any]:
+  record: dict[str, Any] = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": utc_now(),
+    "ready": False,
+    "hasLocalStats": False,
+    "hasPromptStats": False,
+    "scope": "account",
+    "tierLabel": "Subscription",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "limits": [],
+  }
+  record.update(empty_stats())
+  record.update(overrides)
+  return record
+
+
+def stored_key(path: Path) -> str:
+  try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+  except (OSError, json.JSONDecodeError):
+    return ""
+  entry = payload.get("synthetic") if isinstance(payload, dict) else None
+  if not isinstance(entry, dict):
+    return ""
+  return str(entry.get("key") or "").strip()
+
+
+def credentials() -> str:
+  explicit = str(os.environ.get("SYNTHETIC_API_KEY", "")).strip()
+  if explicit:
+    return explicit
+  # Pi and OpenCode use the same provider id and {"key": ...} auth shape.
+  pi_key = stored_key(Path.home() / ".pi" / "agent" / "auth.json")
+  if pi_key:
+    return pi_key
+  data_home = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share"))
+  return stored_key(data_home / "opencode" / "auth.json")
+
+
+def quota_limit(label: str, payload: Any) -> dict[str, Any] | None:
+  if not isinstance(payload, dict):
+    return None
+  used = payload.get("requests")
+  maximum = payload.get("limit")
+  percent = ratio(used, maximum)
+  if percent is None:
+    return None
+  return {
+    "label": label,
+    "title": label,
+    "percent": percent,
+    "detail": f"{format_quantity(used)} / {format_quantity(maximum)} used",
+    "resetsAt": reset_at(payload.get("renewsAt")),
+  }
+
+
+def parse_limits(payload: dict[str, Any]) -> tuple[list[dict[str, Any]], str, str]:
+  limits: list[dict[str, Any]] = []
+
+  rolling = payload.get("rollingFiveHourLimit")
+  weekly = payload.get("weeklyTokenLimit")
+  has_modern_limit = False
+  limited = False
+  if isinstance(rolling, dict):
+    percent = remaining_ratio(rolling.get("remaining"), rolling.get("max"))
+    if percent is not None:
+      has_modern_limit = True
+      maximum = number(rolling.get("max"))
+      used = max(0.0, min(maximum, maximum - number(rolling.get("remaining"))))
+      limits.append({
+        "label": "Requests used / 5h",
+        "title": "Requests used / 5h",
+        "percent": percent,
+        "detail": f"{format_quantity(used)} / {format_quantity(maximum)} used",
+        "resetsAt": reset_at(rolling.get("nextTickAt")),
+        "resetLabel": "Next tick in",
+      })
+      limited = rolling.get("limited") is True
+
+  weekly_remaining = None
+  weekly_percent = finite_number(weekly.get("percentRemaining")) if isinstance(weekly, dict) else None
+  if isinstance(weekly, dict) and weekly_percent is not None:
+    has_modern_limit = True
+    remaining_percent = max(0.0, min(100.0, weekly_percent))
+    weekly_remaining = remaining_percent
+    remaining_credits = str(weekly.get("remainingCredits") or "").strip()
+    maximum_credits = str(weekly.get("maxCredits") or "").strip()
+    detail = (
+      f"{remaining_credits} / {maximum_credits} left"
+      if remaining_credits and maximum_credits
+      else f"{format_quantity(remaining_percent)}% left"
+    )
+    limits.append({
+      "label": "Credits used / week",
+      "title": "Credits used / week",
+      "percent": 1.0 - remaining_percent / 100.0,
+      "detail": detail,
+      "resetsAt": reset_at(weekly.get("nextRegenAt")),
+      "resetLabel": "Next regen in",
+    })
+
+  # The endpoint documented only this bucket originally. Modern accounts
+  # still receive it at zero alongside the credit/request system, so use it
+  # only when neither modern allowance parsed successfully.
+  if not has_modern_limit:
+    subscription = quota_limit("Subscription requests", payload.get("subscription"))
+    if subscription:
+      limits.insert(0, subscription)
+
+  search = payload.get("search")
+  if isinstance(search, dict):
+    hourly = quota_limit("Search used / hour", search.get("hourly"))
+    if hourly:
+      limits.append(hourly)
+
+  free_tools = quota_limit("Free tool calls", payload.get("freeToolCalls"))
+  if free_tools:
+    limits.append(free_tools)
+
+  if limited:
+    return limits, "Rolling limit reached", "Synthetic reports that the rolling five-hour limit is currently active."
+  if weekly_remaining is not None and weekly_remaining <= 0:
+    return limits, "Weekly credits exhausted", "Synthetic reports no weekly credits remaining."
+  return limits, "", ""
+
+
+class SyntheticClient:
+  def __init__(self, api_key: str, base_url: str = API_BASE_URL):
+    self.api_key = api_key
+    self.base_url = base_url.rstrip("/")
+
+  def quotas(self) -> dict[str, Any]:
+    request = urllib.request.Request(
+      self.base_url + "/v2/quotas",
+      headers={
+        "Authorization": "Bearer " + self.api_key,
+        "Accept": "application/json",
+        "User-Agent": "omarchy-agents-synthetic/1.0",
+      },
+    )
+    try:
+      with urllib.request.urlopen(request, timeout=15) as response:
+        payload = json.load(response)
+    except urllib.error.HTTPError as error:
+      if error.code == 401:
+        raise SyntheticError("Synthetic rejected the API key") from error
+      if error.code == 403:
+        raise SyntheticError("The Synthetic API key cannot read quota data") from error
+      if error.code == 429:
+        raise SyntheticError("Synthetic is rate limiting quota checks") from error
+      raise SyntheticError(f"Synthetic quota API returned HTTP {error.code}") from error
+    except urllib.error.URLError as error:
+      raise SyntheticError("Could not reach the Synthetic quota API", retry_advised=True) from error
+    except TimeoutError as error:
+      raise SyntheticError("Synthetic quota request timed out", retry_advised=True) from error
+    except json.JSONDecodeError as error:
+      raise SyntheticError("Synthetic returned an invalid quota response") from error
+    if not isinstance(payload, dict):
+      raise SyntheticError("Synthetic returned an invalid quota response")
+    return payload
+
+
+def scan(base_url: str) -> dict[str, Any]:
+  api_key = credentials()
+  if not api_key:
+    return base_record(usageStatusText="Waiting for auth", authHelpText=AUTH_HELP)
+
+  payload = SyntheticClient(api_key, base_url).quotas()
+  limits, status, help_text = parse_limits(payload)
+  if not limits:
+    return base_record(
+      usageStatusText="Synthetic quota unavailable",
+      authHelpText="The quota endpoint returned no supported limits.",
+    )
+  tier_label = "Subscription"
+  weekly = payload.get("weeklyTokenLimit")
+  if isinstance(weekly, dict) and str(weekly.get("remainingCredits") or "").strip():
+    tier_label = str(weekly["remainingCredits"]).strip() + " weekly credits left"
+  return base_record(
+    ready=True,
+    tierLabel=tier_label,
+    usageStatusText=status,
+    authHelpText=help_text,
+    limits=limits,
+  )
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description="Print Synthetic quota status as JSON")
+  # The shared updater passes these flags to every collector. Synthetic's
+  # quota request is inexpensive and does not count against subscription limits.
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  parser.parse_args()
+
+  try:
+    record = scan(os.environ.get("SYNTHETIC_API_BASE_URL", API_BASE_URL))
+  except SyntheticError as error:
+    record = base_record(
+      usageStatusText="Synthetic unavailable",
+      authHelpText=str(error),
+      retryAdvised=error.retry_advised,
+    )
+  except Exception as error:
+    record = base_record(
+      usageStatusText="Synthetic unavailable",
+      authHelpText="Synthetic quota scan failed.",
+    )
+    print(f"omarchy-agent-usage-synthetic: {type(error).__name__}", file=sys.stderr)
+
+  print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
