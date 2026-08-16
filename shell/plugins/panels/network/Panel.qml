@@ -423,8 +423,8 @@ Panel {
     if (selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
     var net = wifiNetworks[selectedIndex]
     if (!net) return
-    if (wifiActionFocused) {
-      if (canForgetNetwork(net) && !busy) forget(net)
+    if (wifiActionFocused && canForgetNetwork(net) && !busy) {
+      forget(net)
       return
     }
     activateNetwork(net)

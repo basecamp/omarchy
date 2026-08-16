@@ -9,6 +9,19 @@ const fs = require('fs')
 const network = requireFromRoot('shell/plugins/panels/network/Model.js')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/network/Panel.qml', 'utf8')
 
+function qmlFunction(name) {
+  const start = panelSource.indexOf(`function ${name}(`)
+  if (start < 0) return null
+
+  const bodyStart = panelSource.indexOf('{', start)
+  var depth = 0
+  for (var index = bodyStart; index < panelSource.length; index++) {
+    if (panelSource[index] === '{') depth++
+    else if (panelSource[index] === '}' && --depth === 0) return panelSource.slice(start, index + 1)
+  }
+  return null
+}
+
 assert(/IpcHandler[\s\S]*?function toggleNetwork\(\) \{ root\.toggleNetwork\(\) \}/.test(panelSource), 'network exposes the Wi-Fi radio toggle over IPC')
 assert(/manageIpc: false/.test(panelSource), 'network owns its IPC handler so it can extend the target methods')
 
@@ -88,12 +101,37 @@ assert(!/disconnect\(\s*(root\.)?networkForSsid\(/.test(panelSource), 'network n
 // available so the user can leave that attempt without waiting for its
 // timeout. Enterprise connections use a separate nmcli process and remain
 // serialized because stopping that process can leave a partial profile.
-const cancelConnect = panelSource.match(/function cancelActiveConnect\(\) \{[\s\S]*?\n {2}\}/)
+const cancelConnect = qmlFunction('cancelActiveConnect')
 assert(cancelConnect, 'network has a helper to cancel the active connection attempt')
-assert(/actionSsid = ""[\s\S]*actionKind = ""[\s\S]*network\.disconnect\(\)/.test(cancelConnect[0]), 'network stops tracking an attempt before disconnecting it')
-assert(/enterpriseConnect\.running/.test(cancelConnect[0]), 'network does not interrupt an enterprise connection process')
+const clearSsid = cancelConnect.indexOf('actionSsid = ""')
+const clearKind = cancelConnect.indexOf('actionKind = ""')
+const disconnectNetwork = cancelConnect.indexOf('network.disconnect()')
+assert(clearSsid >= 0 && clearKind > clearSsid && disconnectNetwork > clearKind, 'network stops tracking an attempt before disconnecting it')
+assert(cancelConnect.includes('enterpriseConnect.running'), 'network does not interrupt an enterprise connection process')
 assert(/enabled: !root\.busy \|\| root\.canReplaceActiveConnect\(row\.net\)/.test(panelSource), 'other network rows stay enabled during a native connection attempt')
-assert(/function activateSelected\(\)[\s\S]*activateNetwork\(net\)/.test(panelSource), 'keyboard activation can replace a connection attempt')
+const activateSelectedSource = qmlFunction('activateSelected')
+assert(activateSelectedSource, 'network has a keyboard activation helper')
+var selectedIndex = 0
+var wifiNetworks = [{}]
+var wifiActionFocused = true
+var busy = true
+var forgettable = true
+var activationCalls = []
+function canForgetNetwork() { return forgettable }
+function forget() { activationCalls.push('forget') }
+function activateNetwork() { activationCalls.push('activate') }
+eval(activateSelectedSource)
+activateSelected()
+assertDeepEqual(activationCalls, ['activate'], 'keyboard activation falls through to the primary action while forget is busy')
+busy = false
+forgettable = false
+activationCalls = []
+activateSelected()
+assertDeepEqual(activationCalls, ['activate'], 'keyboard activation falls through to the primary action when the network cannot be forgotten')
+forgettable = true
+activationCalls = []
+activateSelected()
+assertDeepEqual(activationCalls, ['forget'], 'keyboard activation stops after forgetting the network')
 assert(/onClicked:[\s\S]*root\.activateNetwork\(row\.net\)/.test(panelSource), 'pointer activation can replace a connection attempt')
 
 assertDeepEqual(
