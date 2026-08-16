@@ -77,8 +77,6 @@ OMARCHY_PATH="$ROOT" \
   OMARCHY_MBP15_SLEEP="$etc/sleep.conf" \
   OMARCHY_MBP15_UDEV_SRC="$ROOT/default/udev/apple-mbp15-amdgpu-idle.rules" \
   OMARCHY_MBP15_UDEV_DEST="$etc/udev.rules" \
-  OMARCHY_MBP15_UNIT_SRC="$ROOT/default/systemd/omarchy-mbp15-amdgpu-idle.service" \
-  OMARCHY_MBP15_UNIT_DEST="$etc/idle.service" \
   OMARCHY_MBP15_SKIP_SYSTEMCTL=1 \
   bash -c 'source "$1"; mbp15_apply' _ "$helper"
 
@@ -126,11 +124,15 @@ pass "migration skips non-15-inch hardware"
 lid="$ROOT/bin/omarchy-hw-apple-mbp15-lid"
 grep -Fq 'omarchy-hw-apple-mbp15-lid close' "$ROOT/bin/omarchy-system-lid-close" ||
   fail "lid-close calls the 15-inch chill helper"
-grep -Fq 'omarchy-hw-apple-mbp15-lid open' "$ROOT/bin/omarchy-hyprland-monitor-clamshell" ||
-  fail "clamshell restore calls the 15-inch open helper"
+grep -Fq 'omarchy-hw-apple-mbp15-lid open' "$ROOT/bin/omarchy-system-lid-open" ||
+  fail "lid-open restores the 15-inch overlay"
+grep -Fq 'omarchy-system-lid-open' "$ROOT/default/hypr/bindings/utilities.lua" ||
+  fail "default lid-open bind is omarchy-system-lid-open"
+! grep -Fq 'omarchy-hw-apple-mbp15-lid' "$ROOT/bin/omarchy-hyprland-monitor-clamshell" ||
+  fail "clamshell helper must not own 15-inch power policy"
 grep -Fq 'omarchy-powerprofiles-set ac balanced' "$migration" ||
   fail "migration seeds AC balanced when unset"
-pass "lid chill is wired without changing the default lid bind"
+pass "lid close/open own the overlay; clamshell stays display-only"
 
 lid_state=$test_tmp/lid-state
 mkdir -p "$lid_state" "$test_tmp/stub"

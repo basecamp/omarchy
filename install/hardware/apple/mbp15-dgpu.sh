@@ -17,13 +17,7 @@ mbp15_udev_dest() {
   printf '%s\n' "${OMARCHY_MBP15_UDEV_DEST:-/etc/udev/rules.d/90-omarchy-apple-mbp15-amdgpu-idle.rules}"
 }
 
-mbp15_unit_src() {
-  printf '%s\n' "${OMARCHY_MBP15_UNIT_SRC:-$OMARCHY_PATH/default/systemd/omarchy-mbp15-amdgpu-idle.service}"
-}
 
-mbp15_unit_dest() {
-  printf '%s\n' "${OMARCHY_MBP15_UNIT_DEST:-/etc/systemd/system/omarchy-mbp15-amdgpu-idle.service}"
-}
 
 mbp15_write_sleep_policy() {
   local dest
@@ -54,9 +48,6 @@ mbp15_write_amdgpu_idle() {
   dest=$(mbp15_udev_dest)
   mkdir -p "$(dirname "$dest")"
   cp -f "$(mbp15_udev_src)" "$dest"
-  dest=$(mbp15_unit_dest)
-  mkdir -p "$(dirname "$dest")"
-  cp -f "$(mbp15_unit_src)" "$dest"
 }
 
 mbp15_apply() {
@@ -67,8 +58,8 @@ mbp15_apply() {
     return 0
   fi
 
-  systemctl daemon-reload
-  systemctl enable --now omarchy-mbp15-amdgpu-idle.service || true
   systemctl reload systemd-logind.service || true
   command -v udevadm >/dev/null && udevadm control --reload || true
+  command -v omarchy-hw-apple-mbp15-amdgpu-idle >/dev/null &&
+    omarchy-hw-apple-mbp15-amdgpu-idle || true
 }
