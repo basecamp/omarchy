@@ -254,7 +254,7 @@ Item {
     root.providerQueue = []
     root.items = mergedMenu.items
     root.itemOrder = mergedMenu.itemOrder
-    root.shortcutsById = MenuModel.resolveShortcuts(root.items, root.itemOrder, root.keybindings)
+    root.refreshShortcuts()
     root.rowsLoaded = true
     root.evaluateGuards()
     if (root.opened) {
@@ -266,11 +266,15 @@ Item {
     }
   }
 
+  function refreshShortcuts() {
+    root.shortcutsById = MenuModel.resolveShortcuts(root.items, root.itemOrder, root.keybindings, root.readerResults)
+  }
+
   // The bindings change only when Hyprland reloads its config, so the rows are
   // re-labelled where they stand rather than rebuilt.
   function applyKeybindings(raw) {
     root.keybindings = raw === null ? null : MenuModel.parseKeybindings(raw)
-    root.shortcutsById = MenuModel.resolveShortcuts(root.items, root.itemOrder, root.keybindings)
+    root.refreshShortcuts()
     if (root.opened) root.rebuildDisplay()
   }
 
@@ -311,8 +315,11 @@ Item {
       if (!appId) continue
       var subtext = root.appLibrary.entrySubtext(entry)
       var aliases = subtext ? [subtext] : []
+      var exec = []
       try {
         if (entry.keywords && typeof entry.keywords.join === "function") aliases = aliases.concat(entry.keywords)
+        // The parsed argv, so the field codes (%U and friends) are already gone.
+        if (entry.command && typeof entry.command.slice === "function") exec = entry.command.slice()
       } catch (e) { }
       appRows.push({
         id: "apps." + appId,
@@ -326,6 +333,7 @@ Item {
         target: "",
         description: subtext,
         action: "",
+        exec: exec,
         provider: "",
         aliases: aliases,
         when: "",
@@ -338,6 +346,7 @@ Item {
     var merged = MenuModel.mergeAppRows(root.items, root.itemOrder, appRows)
     root.items = merged.items
     root.itemOrder = merged.itemOrder
+    root.refreshShortcuts()
     if (root.opened) root.rebuildDisplay()
   }
 
@@ -1017,6 +1026,7 @@ Item {
   property var whenResults: ({})       // id → true|false (allow visibility)
   property var checkedResults: ({})    // id → true|false (show ✓)
   property var disabledResults: ({})   // id → true|false (dim, skip cursor)
+  property var readerResults: ({})     // reader command → what it printed
   property bool guardsPending: false
 
   function evaluateGuards() {
@@ -1037,6 +1047,7 @@ Item {
       root.whenResults = ({})
       root.checkedResults = ({})
       root.disabledResults = ({})
+      root.readerResults = ({})
       return
     }
     guardProc.collected = ""
@@ -1063,10 +1074,21 @@ Item {
       var nextWhen = ({})
       var nextChecked = ({})
       var nextDisabled = ({})
+      var nextReaders = ({})
       var lines = guardProc.collected.split("\n")
       for (var i = 0; i < lines.length; i++) {
         var line = lines[i].trim()
         if (!line) continue
+        // `reader:<index>:<value>` before the guard lines: a reader's value is
+        // free text and may carry the colons the guard parse splits on.
+        if (line.indexOf("reader:") === 0) {
+          var readerAt = line.indexOf(":", 7)
+          if (readerAt > 7) {
+            var reader = MenuModel.GUARD_READERS[Number(line.substring(7, readerAt))]
+            if (reader) nextReaders[reader] = line.substring(readerAt + 1)
+          }
+          continue
+        }
         var colon = line.lastIndexOf(":")
         if (colon < 0) continue
         var value = line.substring(colon + 1) === "1"
@@ -1082,6 +1104,12 @@ Item {
       root.whenResults = nextWhen
       root.checkedResults = nextChecked
       root.disabledResults = nextDisabled
+      // Guards run on every open; the defaults they read almost never move, so
+      // the shortcuts are only rebuilt when one actually did.
+      if (JSON.stringify(nextReaders) !== JSON.stringify(root.readerResults)) {
+        root.readerResults = nextReaders
+        root.refreshShortcuts()
+      }
       if (root.opened) root.rebuildDisplay()
       // Run the evaluation that had to stand aside. Deferred by a turn so the
       // process is settled before its command is set again.

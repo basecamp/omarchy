@@ -259,20 +259,126 @@ function parseKeybindings(raw) {
   return { byCommand: byCommand, byRoute: byRoute }
 }
 
+// An app row and a binding reach the same application by different routes: the
+// row runs the desktop entry's Exec, the binding runs whatever `o.bind` was
+// handed. Both reduce to the same key.
+//
+// Omarchy's launchers are most of the distance between them, and their names
+// already say what they do. `omarchy-launch-X` wraps X, so alone it stands for
+// X — unless an `omarchy-default-X` can answer, which makes it a resolver and X
+// whatever that reader currently says, so Browser lands on the browser in use.
+// The `-or-focus` wrappers take a window pattern first and delegate the rest,
+// so they unwrap to what they delegate to. None of this knows an app by name.
+var SESSION_WRAPPERS = ["setsid", "uwsm-app", "systemd-cat"]
+var LAUNCHER_PREFIX = "omarchy-launch-"
+
+function commandTokens(command) {
+  if (Array.isArray(command)) return command.slice()
+
+  var tokens = []
+  var pattern = /'([^']*)'|"([^"]*)"|(\S+)/g
+  var match
+
+  while ((match = pattern.exec(String(command || "")))) {
+    if (match[1] !== undefined) tokens.push(match[1])
+    else if (match[2] !== undefined) tokens.push(match[2])
+    else tokens.push(match[3])
+  }
+
+  return tokens
+}
+
+// Two keys come back: the whole command, and the program on its own. Only a
+// binding that runs a bare program is allowed to match on the program — it then
+// claims the app that is that program whatever arguments the desktop entry adds
+// (`spotify --uri=%u`). A binding carrying arguments of its own has to match in
+// full, so `omarchy-launch-browser --private` never claims the browser that the
+// plain binding does.
+function launchKeys(command, readers) {
+  var tokens = commandTokens(command)
+
+  if (tokens[0] === "uwsm" && tokens[1] === "app") tokens = tokens.slice(2)
+  while (tokens.length && (tokens[0] === "--" || SESSION_WRAPPERS.indexOf(tokens[0]) >= 0)) tokens = tokens.slice(1)
+  if (!tokens.length) return { command: "", program: "", bare: false }
+
+  if (tokens[0] === LAUNCHER_PREFIX + "or-focus" && tokens.length > 1) return launchKeys(tokens[tokens.length - 1], readers)
+  if (tokens[0] === LAUNCHER_PREFIX + "or-focus-webapp") tokens = [LAUNCHER_PREFIX + "webapp"].concat(tokens.slice(2))
+
+  var program = String(tokens[0] || "").replace(/^.*\//, "")
+  var wrapped = program.indexOf(LAUNCHER_PREFIX) === 0 ? program.slice(LAUNCHER_PREFIX.length) : ""
+
+  if (wrapped && tokens.length === 1) {
+    var resolved = (readers && readers["omarchy-default-" + wrapped]) || ""
+    tokens = commandTokens(resolved || wrapped)
+    program = String(tokens[0] || "").replace(/^.*\//, "")
+  }
+
+  // A desktop entry and a binding disagree over a trailing slash on the same
+  // URL often enough that it cannot be what separates them.
+  tokens[0] = program
+  var whole = tokens.map(function(token) { return String(token).replace(/\/+$/, "") }).join(" ")
+
+  return { command: whole, program: program, bare: tokens.length === 1 }
+}
+
+// Several apps can run one program: every Chrome web app runs the browser with
+// arguments after it. Only one of them is that program, and it is the one that
+// runs it plainly — so a bare entry owns the name, an argument-carrying entry
+// owns it only when it is the sole claimant, and a name several entries claim
+// alike belongs to none of them. Spotify keeps its key off `spotify --uri=%u`;
+// `chromium --app=...` does not inherit the browser's.
+function programOwner(program) {
+  if (!program) return ""
+  if (program.bare === 1) return program.bareId
+  return program.bare === 0 && program.count === 1 ? program.id : ""
+}
+
 // id → shortcut label, resolved once per (re)load instead of per row. Routes go
 // through the same alias resolution `omarchy menu summon` uses, so a binding on
 // `theme` finds `style.theme`. An action match wins: it names one row, while a
 // route names whatever currently answers to that name.
-function resolveShortcuts(items, itemOrder, shortcuts) {
+function resolveShortcuts(items, itemOrder, shortcuts, readers) {
   var byId = ({})
   if (!shortcuts) return byId
 
+  var byLaunch = ({})
+  var byProgram = ({})
+  for (var command in shortcuts.byCommand) {
+    var launch = launchKeys(command, readers)
+    if (launch.command && !byLaunch[launch.command]) byLaunch[launch.command] = shortcuts.byCommand[command]
+    if (launch.bare && !byProgram[launch.program]) byProgram[launch.program] = shortcuts.byCommand[command]
+  }
+
+  // Several apps can run one program: every Chrome web app runs the browser
+  // with arguments. Only one of them is that program, and it is the one running
+  // it plainly, so a bare entry owns the name outright and an argument-carrying
+  // entry owns it only when nothing else claims it — which is how Spotify keeps
+  // its key while `chromium --app=...` does not inherit the browser's.
   var order = Array.isArray(itemOrder) ? itemOrder : []
+  var launches = ({})
+  var programs = ({})
+
   for (var i = 0; i < order.length; i++) {
     var entry = item(items, order[i])
-    if (!entry || !entry.action) continue
-    var keys = shortcuts.byCommand[entry.action]
-    if (keys) byId[entry.id] = keys
+    if (!entry || !entry.exec) continue
+
+    var launch = launches[entry.id] = launchKeys(entry.exec, readers)
+    if (!launch.program) continue
+
+    var program = programs[launch.program] || (programs[launch.program] = { bare: 0, bareId: "", count: 0, id: "" })
+    program.count += 1
+    program.id = entry.id
+    if (launch.bare) { program.bare += 1; program.bareId = entry.id }
+  }
+
+  for (var j = 0; j < order.length; j++) {
+    var row = item(items, order[j])
+    if (!row) continue
+
+    var keys = row.action ? shortcuts.byCommand[row.action] : ""
+    var rowLaunch = launches[row.id]
+    if (!keys && rowLaunch) keys = byLaunch[rowLaunch.command] || (programOwner(programs[rowLaunch.program]) === row.id ? byProgram[rowLaunch.program] : "") || ""
+    if (keys) byId[row.id] = keys
   }
 
   for (var route in shortcuts.byRoute) {
@@ -544,6 +650,11 @@ function guardPrelude(guards) {
     // `|| :` so a reader that exits nonzero cannot take the batch down with
     // it under a login shell that turned on errexit.
     prelude += "__omarchy_read_" + i + "=$(" + GUARD_READERS[i] + " 2>/dev/null) || :\n"
+    // Report it too. The default browser and terminal are what the Browser and
+    // Terminal keybindings actually open, and the batch has already paid for
+    // the answer — reading it back costs an echo. Indexed rather than named so
+    // a value carrying colons cannot be mistaken for the guard lines.
+    prelude += "printf 'reader:" + i + ":%s\\n' \"$__omarchy_read_" + i + "\"\n"
   }
 
   return prelude
@@ -599,6 +710,7 @@ if (typeof module !== "undefined") {
     resolveRoute: resolveRoute,
     parseKeybindings: parseKeybindings,
     shortcutLabel: shortcutLabel,
+    launchKeys: launchKeys,
     resolveShortcuts: resolveShortcuts,
     slugify: slugify,
     depthFor: depthFor,

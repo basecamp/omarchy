@@ -180,9 +180,20 @@ reader_result=$(bash -c '
 omarchy-dns() { printf "Cloudflare\n"; }
 export -f omarchy-dns
 '"$reader_script")
-[[ $reader_result == $'hit:c:1\nmiss:c:0' ]] ||
+[[ $reader_result == $'reader:5:Cloudflare\nhit:c:1\nmiss:c:0' ]] ||
   fail "guard prelude compares a captured reader as the substitution did" "got: $reader_result"
 pass "guard prelude compares a captured reader exactly as the substitution it replaced"
+
+# The batch also reports what each reader printed, so the menu can label the
+# Browser and Terminal keybindings with the app they currently open. A reader
+# value is free text and may carry the colons the guard lines are split on.
+colon_result=$(bash -c '
+omarchy-dns() { printf "10.0.0.1:53\n"; }
+export -f omarchy-dns
+'"$reader_script")
+[[ $colon_result == $'reader:5:10.0.0.1:53\nhit:c:0\nmiss:c:0' ]] ||
+  fail "guard prelude reports a reader value containing colons intact" "got: $colon_result"
+pass "guard prelude reports what each reader printed, colons and all"
 
 # The batch inherits whatever a login shell left set. A reader that exits
 # nonzero must not take the rest of the menu's rows down with it.
@@ -191,6 +202,6 @@ omarchy-dns() { printf "Cloudflare\n"; return 3; }
 export -f omarchy-dns
 '"$reader_script"'
 printf "survived\n"' 2>/dev/null)
-[[ $errexit_result == $'hit:c:1\nmiss:c:0\nsurvived' ]] ||
+[[ $errexit_result == $'reader:5:Cloudflare\nhit:c:1\nmiss:c:0\nsurvived' ]] ||
   fail "guard batch survives a failing reader under errexit" "got: $errexit_result"
 pass "guard batch survives a reader that exits nonzero under errexit"

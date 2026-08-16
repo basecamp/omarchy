@@ -147,6 +147,61 @@ assert(
   'menu drops a binding on a raw keycode, which names nothing a reader could press'
 )
 
+// An app row launches through its desktop entry, a binding through whatever
+// o.bind was handed; both reduce to the same key. The readers are what the
+// guard batch reported, so a wrapper that resolves a default lands on the app
+// that default currently names.
+const readers = { 'omarchy-default-browser': 'chromium', 'omarchy-default-terminal': 'foot' }
+const launchKey = command => menu.launchKeys(command, readers).command
+
+assertEqual(launchKey('omarchy-launch-browser'), 'chromium', 'menu resolves a launcher that wraps a default')
+assertEqual(launchKey('omarchy-launch-spotify'), 'spotify', 'menu reads a launcher with no default as the app it wraps')
+assertEqual(launchKey('uwsm-app -- omawrite'), 'omawrite', 'menu looks past the session wrapper')
+assertEqual(launchKey('/usr/bin/chromium'), 'chromium', 'menu compares programs by name, not by path')
+assertEqual(
+  launchKey("omarchy-launch-or-focus '^obsidian$' 'uwsm-app -- obsidian'"),
+  'obsidian',
+  'menu unwraps a launcher that delegates past its window pattern'
+)
+assertEqual(
+  launchKey("omarchy-launch-or-focus-webapp 'Google Maps' 'https://maps.google.com/'"),
+  launchKey('omarchy-launch-webapp https://maps.google.com'),
+  'menu reads the focusing webapp launcher as the webapp launcher it delegates to'
+)
+assertEqual(
+  launchKey("omarchy-launch-webapp 'https://chatgpt.com'"),
+  launchKey(['omarchy-launch-webapp', 'https://chatgpt.com/']),
+  'menu does not let a trailing slash separate a binding from its desktop entry'
+)
+assert(!menu.launchKeys('omarchy-launch-browser --private', readers).bare, 'menu keeps a binding carrying its own arguments off the program match')
+
+const appBindings = menu.parseKeybindings([
+  'SUPER + SHIFT + B\tomarchy-launch-browser',
+  'SUPER + SHIFT + ALT + B\tomarchy-launch-browser --private',
+  'SUPER + SHIFT + A\tomarchy-launch-webapp \'https://chatgpt.com\'',
+  'SUPER + SHIFT + M\tomarchy-launch-spotify'
+].join('\n'))
+const appItems = {
+  'apps.chromium': { id: 'apps.chromium', parent: 'apps', kind: 'app', label: 'Chromium', action: '', exec: ['/usr/bin/chromium'] },
+  'apps.ChatGPT': { id: 'apps.ChatGPT', parent: 'apps', kind: 'app', label: 'ChatGPT', action: '', exec: ['omarchy-launch-webapp', 'https://chatgpt.com/'] },
+  'apps.spotify': { id: 'apps.spotify', parent: 'apps', kind: 'app', label: 'Spotify', action: '', exec: ['spotify', '--uri='] },
+  'apps.firefox': { id: 'apps.firefox', parent: 'apps', kind: 'app', label: 'Firefox', action: '', exec: ['/usr/bin/firefox'] }
+}
+const appShortcuts = menu.resolveShortcuts(appItems, Object.keys(appItems), appBindings, readers)
+assertEqual(appShortcuts['apps.chromium'], '⌘⇧ B', 'menu labels the app the default browser currently resolves to')
+assertEqual(appShortcuts['apps.ChatGPT'], '⌘⇧ A', 'menu labels a web app by the launcher its desktop entry runs')
+assertEqual(appShortcuts['apps.spotify'], '⌘⇧ M', 'menu labels an app whose desktop entry adds arguments of its own')
+assert(!appShortcuts['apps.firefox'], 'menu leaves an app alone when no binding reaches it')
+
+// Every Chrome web app runs the browser with arguments after it, and none of
+// them is the browser.
+const pwaItems = {}
+for (const id in appItems) pwaItems[id] = appItems[id]
+pwaItems['apps.chrome-hey'] = { id: 'apps.chrome-hey', parent: 'apps', kind: 'app', label: 'HEY', action: '', exec: ['/usr/bin/chromium', '--app-id=ipcjik'] }
+const pwaShortcuts = menu.resolveShortcuts(pwaItems, Object.keys(pwaItems), appBindings, readers)
+assertEqual(pwaShortcuts['apps.chromium'], '⌘⇧ B', 'menu keeps the browser key on the entry that runs the browser plainly')
+assert(!pwaShortcuts['apps.chrome-hey'], 'menu does not hand the browser key to a web app that runs the browser with arguments')
+
 const shortcutBase = menu.mergeMenuSources(menu.parseMenuJsonc(defaultMenuJsonc), [])
 const shortcuts = menu.resolveShortcuts(shortcutBase.items, shortcutBase.itemOrder, keybindings)
 assertEqual(shortcuts['style.theme'], '⌘⇧⌃ SPACE', 'menu resolves a route through the alias it was bound to')

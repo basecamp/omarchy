@@ -77,19 +77,50 @@ and `config.reloaded` alike. The shell watches that file the way it watches the
 JSONC, so a reloaded binding relabels the rows without a shell restart, and a
 machine whose config predates the file loses the shortcuts and nothing else.
 
-`resolveShortcuts` in `MenuModel.js` matches a binding to a row two ways, once
+`resolveShortcuts` in `MenuModel.js` matches a binding to a row three ways, once
 per (re)load rather than per row:
 
 - the binding runs the row's `action` verbatim — `omarchy-system-lock` labels
   System > Lock, `PRINT` labels Trigger > Capture > Screenshot
 - the binding opens the row by route — `omarchy-menu toggle theme` goes through
   the same alias resolution `omarchy menu summon` uses, so it finds `style.theme`
+- the binding and an app row launch the same application, which is what puts a
+  key on Chromium and ChatGPT in the Apps list
 
 An action match wins, since it names one row while a route names whatever
 currently answers to that name. Two keys for one command keep the first, so a
 user file adding a second reads as an alternative rather than a replacement.
 Bindings on a raw `code:34` are dropped: the keycode names nothing a reader
 could press, and resolving one costs a keymap compile the open path will not pay.
+
+## Matching an app row
+
+An app row launches through its desktop entry, a binding through whatever
+`o.bind` was handed, and `launchKeys` reduces both to the same key. Session
+wrappers (`uwsm-app --`, `setsid`) come off, a program is compared by name
+rather than by path, and a trailing slash on a URL is ignored, since a desktop
+entry and a binding disagree about one often enough that it cannot be what
+separates them.
+
+The rest of the distance is Omarchy's own launchers, whose names already say
+what they do, so nothing here knows an application by name:
+
+- `omarchy-launch-X` wraps X, and on its own it stands for X
+- unless an `omarchy-default-X` can answer, which makes it a resolver and X
+  whatever that reader currently says — this is how Browser and Terminal land on
+  the browser and terminal actually in use. The values come from the guard
+  batch, which already runs those readers for the ✓ on the Defaults rows and now
+  reports what they printed, so the answer costs an `echo` rather than a fork.
+- the `-or-focus` wrappers take a window pattern first and delegate the rest, so
+  they unwrap to what they delegate to
+
+A binding that runs a bare program claims the app that *is* that program, whatever
+arguments the desktop entry adds — Spotify keeps its key off `spotify --uri=%u`.
+A binding carrying arguments of its own has to match in full, so
+`omarchy-launch-browser --private` never claims the browser the plain binding
+does. Where several apps run one program — every Chrome web app runs the browser
+with arguments after it — the entry that runs it plainly owns the name, and a
+name several entries claim alike belongs to none of them.
 
 Modifiers render as symbols (`⌘⇧⌃⌥`) because the spelled-out form is several
 times wider than the label it sits beside; the key itself stays spelled out so
