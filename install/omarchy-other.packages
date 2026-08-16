@@ -37,6 +37,7 @@ pipewire
 pipewire-alsa
 pipewire-jack
 pipewire-pulse
+qt6-imageformats
 qt6-wayland
 snapper
 sof-firmware
