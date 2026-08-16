@@ -19,8 +19,9 @@ if pgrep -x "1password" >/dev/null && omarchy-cmd-present 1password; then
   ) 9>"${XDG_RUNTIME_DIR:-/tmp}/omarchy-1password-lock.lock" &
 fi
 
-# Avoid running screensaver when locked
-pkill -x ttfx 2>/dev/null || true
-# ttfx handles SIGTERM asynchronously, so keep its terminal alive until it exits.
-timeout 1s pidwait -x ttfx 2>/dev/null || true
-pkill -f '[o]rg.omarchy.screensaver' 2>/dev/null || true
+# Avoid running the screensaver when locked. Give its signal handler time to
+# restore the cursor and release Wayland resources, then force a stuck process.
+screensaver='[/]usr/lib/omarchy-screensaver/omarchy-screensaver'
+pkill -f "$screensaver" 2>/dev/null || true
+timeout 1s pidwait -f "$screensaver" 2>/dev/null || true
+pkill -KILL -f "$screensaver" 2>/dev/null || true
