@@ -48,6 +48,17 @@ if [[ ${1:-} == "-y" ]] || omarchy-update-confirm; then
   omarchy-migrate
   omarchy-hook post-update
   omarchy-update-aur-pkgs
+
+  if compgen -G "$HOME/.config/omarchy/plugins/*/.git" >/dev/null; then
+    plugin_update_args=()
+    if [[ ${OMARCHY_UPDATE_UNATTENDED:-} == 1 ]]; then
+      plugin_update_args=(--yes)
+    fi
+    if ! omarchy-plugin-update "${plugin_update_args[@]}"; then
+      echo -e "\e[33mCould not update one or more plugins; continuing.\e[0m" >&2
+    fi
+  fi
+
   omarchy-update-mise
   omarchy-update-orphan-pkgs
 
