@@ -16,7 +16,7 @@ assertEqual(monitor.normalizeScale('1.250'), '1.25', 'monitor normalizes fractio
 
 assertEqual(
   monitor.displayToggleSpec('DP-1', false),
-  'hl.monitor({ output = "DP-1", mode = "preferred", position = "auto", scale = "auto" })',
+  'hl.monitor({ output = "DP-1", disabled = false, mode = "preferred", position = "auto", scale = "auto" })',
   'monitor enables a display through the Lua config API'
 )
 assertEqual(

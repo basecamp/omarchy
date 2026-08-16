@@ -102,10 +102,14 @@ function quoteLua(text) {
 // ("keyword can't work with non-legacy parsers. Use eval."), so display
 // changes go out as a Lua hl.monitor call instead. Field names match
 // HL.MonitorSpec in Hyprland's own stubs.
+//
+// A second call for the same output edits the rule the first one left rather
+// than replacing it, so enabling has to say disabled = false. Naming only the
+// mode, position and scale leaves the disable in place and the display off.
 function displayToggleSpec(name, enabled) {
   if (!name) return ""
   if (enabled) return "hl.monitor({ output = " + quoteLua(name) + ", disabled = true })"
-  return "hl.monitor({ output = " + quoteLua(name) + ", mode = \"preferred\", position = \"auto\", scale = \"auto\" })"
+  return "hl.monitor({ output = " + quoteLua(name) + ", disabled = false, mode = \"preferred\", position = \"auto\", scale = \"auto\" })"
 }
 
 function parseDisplays(raw) {
