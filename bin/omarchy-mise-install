@@ -26,6 +26,13 @@ mkdir -p "$HOME/.local/bin"
 # leave a shorter config on top of a longer one with the old tail still
 # attached, which is invalid TOML and breaks mise for every later command.
 # Serialize the write so concurrent launches queue instead of clobbering.
+#
+# The lock is state, not configuration, so it lives under XDG_STATE_HOME rather
+# than in ~/.config/mise, which is a directory people keep in a dotfiles
+# repository and mise itself owns. It is also a fixed path rather than
+# XDG_RUNTIME_DIR: that variable is set in a desktop session and unset under
+# cron or a bare ssh command, and a lock resolving to two different files for the
+# same config is not a lock at all.
 # Staged and moved into place rather than written where it lives: a migration now
 # runs this across every wrapper on the machine, and an interrupted run that had
 # removed the old file without finishing the new one would leave the command
@@ -41,8 +48,9 @@ trap 'rm -f "$staged"' EXIT
 cat >"$staged" <<EOF
 #!/bin/bash
 export MISE_MINIMUM_RELEASE_AGE=0
-mkdir -p "\$HOME/.config/mise"
-flock "\$HOME/.config/mise/.config.lock" mise use -g --quiet "$package" || exit 1
+lock="\${XDG_STATE_HOME:-\$HOME/.local/state}/omarchy/mise-use.lock"
+mkdir -p "\${lock%/*}"
+flock "\$lock" mise use -g --quiet "$package" || exit 1
 exec mise x "$package" -- "$bin" "\$@"
 EOF
 staged_status=$?

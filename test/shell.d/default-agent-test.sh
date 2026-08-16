@@ -114,7 +114,7 @@ assert_lazy_stub "$omp_package" omp
 assert_lazy_stub "$crush_package" crush
 pass "custom agent lazy stubs preserve their mise packages"
 
-grep -Fxq 'flock "$HOME/.config/mise/.config.lock" mise use -g --quiet "'"$grok_package"'" || exit 1' "$test_home/.local/bin/grok" ||
+grep -Fxq 'flock "$lock" mise use -g --quiet "'"$grok_package"'" || exit 1' "$test_home/.local/bin/grok" ||
   fail "lazy stub serializes its mise use -g config write"
 pass "custom agent lazy stubs serialize their mise config writes"
 
