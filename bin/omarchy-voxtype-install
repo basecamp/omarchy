@@ -16,7 +16,7 @@ if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
 
   voxtype setup --download --no-post-install
   if omarchy-hw-vulkan; then
-    voxtype setup gpu --enable || true
+    sudo voxtype setup gpu --enable
   fi
   voxtype setup systemd
 
