@@ -6,8 +6,6 @@ if ! omarchy-hw-apple-t1; then
   exit 0
 fi
 
-omarchy-pkg-add linux-headers
-
 # shellcheck source=../install/hardware/apple/t1-touchbar.sh
 source "$OMARCHY_PATH/install/hardware/apple/t1-touchbar.sh"
 
@@ -17,6 +15,8 @@ if (( $(id -u) != 0 )) && [[ $(t1_udev_rule_dest) == /etc/* ]]; then
   exec sudo --preserve-env=OMARCHY_PATH,OMARCHY_T1_UDEV_DEST,OMARCHY_T1_UDEV_SRC,OMARCHY_T1_MODULES_LOAD,OMARCHY_T1_ESP,OMARCHY_T1_MEDIA_ROOTS,OMARCHY_T1_COLLECTOR,OMARCHY_DMI_PRODUCT_NAME \
     /bin/bash -euo pipefail "$OMARCHY_PATH/migrations/1786820569.sh"
 fi
+
+omarchy-pkg-add linux-headers
 
 t1_install_wiring
 
