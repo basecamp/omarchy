@@ -7,5 +7,9 @@
 case "${1:-toggle}" in
   on) omarchy-toggle bar-off off ;;
   off) omarchy-toggle bar-off on ;;
-  *) omarchy-toggle bar-off toggle ;;
+  toggle) omarchy-toggle bar-off toggle ;;
+  *)
+    echo "Usage: omarchy-toggle-bar [toggle|on|off]" >&2
+    exit 1
+    ;;
 esac

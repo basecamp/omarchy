@@ -51,3 +51,7 @@ pass "bar off is idempotent"
 HOME="$test_home" omarchy-toggle-bar on
 [[ ! -f $bar_flag ]] || fail "bar on disables bar-off toggle"
 pass "bar on disables bar-off toggle"
+
+HOME="$test_home" omarchy-toggle-bar bogus 2>/dev/null && fail "bar rejects an unknown action"
+[[ ! -f $bar_flag ]] || fail "bar rejects an unknown action" "unknown action changed the bar-off flag"
+pass "bar rejects an unknown action"
