@@ -1,0 +1,16 @@
+[Unit]
+Description=Reset Broadcom Wi-Fi around sleep on affected Apple hardware
+Before=sleep.target
+StopWhenUnneeded=yes
+ConditionPathExists=/sys/bus/pci/drivers/brcmfmac
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/omarchy-hw-brcmfmac-suspend pre
+ExecStop=/usr/bin/omarchy-hw-brcmfmac-suspend post
+TimeoutStartSec=10s
+TimeoutStopSec=10s
+
+[Install]
+WantedBy=sleep.target

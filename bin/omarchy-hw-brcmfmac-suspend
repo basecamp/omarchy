@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# omarchy:hidden=true
+# omarchy:summary=Unbind affected Broadcom Wi-Fi around system sleep
+# omarchy:args=<pre|post>
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+driver_path="${OMARCHY_BRCMFMAC_DRIVER_PATH:-/sys/bus/pci/drivers/brcmfmac}"
+device_root="${OMARCHY_BRCMFMAC_DEVICE_ROOT:-/sys/bus/pci/devices}"
+state_file="${OMARCHY_BRCMFMAC_SUSPEND_STATE:-/run/omarchy-brcmfmac-suspend.devices}"
+
+case "${1:-}" in
+  pre)
+    install -d -m755 "$(dirname "$state_file")"
+    : >"$state_file"
+
+    for bound_device in "$driver_path"/????:??:??.?; do
+      [[ -e $bound_device/vendor && -e $bound_device/device ]] || continue
+      [[ $(<"$bound_device/vendor") == "0x14e4" ]] || continue
+      [[ $(<"$bound_device/device") == "0x43a3" ]] || continue
+
+      pci_address="${bound_device##*/}"
+      if ! printf '%s' "$pci_address" >"$driver_path/unbind"; then
+        rm -f "$state_file"
+        exit 1
+      fi
+      printf '%s\n' "$pci_address" >>"$state_file"
+    done
+
+    if [[ ! -s $state_file ]]; then
+      rm -f "$state_file"
+      echo "No bound Apple BCM4350 Wi-Fi device found" >&2
+      exit 1
+    fi
+    ;;
+  post)
+    [[ -f $state_file ]] || exit 0
+    bind_failed=false
+
+    while IFS= read -r pci_address; do
+      [[ -n $pci_address ]] || continue
+      if [[ ! -e $device_root/$pci_address ]]; then
+        echo "Broadcom Wi-Fi device $pci_address disappeared" >&2
+        bind_failed=true
+        continue
+      fi
+      if [[ ! -L $device_root/$pci_address/driver ]] &&
+        ! printf '%s' "$pci_address" >"$driver_path/bind"; then
+        echo "Failed to rebind Broadcom Wi-Fi device $pci_address" >&2
+        bind_failed=true
+      fi
+    done <"$state_file"
+
+    if [[ $bind_failed == true ]]; then
+      exit 1
+    fi
+
+    rm -f "$state_file"
+    ;;
+  *)
+    echo "Usage: omarchy-hw-brcmfmac-suspend <pre|post>" >&2
+    exit 2
+    ;;
+esac
