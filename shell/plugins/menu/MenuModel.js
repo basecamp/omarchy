@@ -243,9 +243,11 @@ function parseKeybindings(raw) {
   var lines = String(raw || "").split("\n")
 
   for (var i = 0; i < lines.length; i++) {
-    var parts = lines[i].split("\t")
-    var keys = String(parts[0] || "").trim()
-    var command = String(parts[1] || "").trim()
+    var tab = lines[i].indexOf("\t")
+    if (tab < 0) continue
+    // Split on the first tab only: a command may well contain one of its own.
+    var keys = lines[i].substring(0, tab).trim()
+    var command = lines[i].substring(tab + 1).trim()
     if (!keys || !command || !keysArePressable(keys)) continue
 
     var label = shortcutLabel(keys)
@@ -263,12 +265,13 @@ function parseKeybindings(raw) {
 // row runs the desktop entry's Exec, the binding runs whatever `o.bind` was
 // handed. Both reduce to the same key.
 //
-// Omarchy's launchers are most of the distance between them, and their names
-// already say what they do. `omarchy-launch-X` wraps X, so alone it stands for
-// X — unless an `omarchy-default-X` can answer, which makes it a resolver and X
-// whatever that reader currently says, so Browser lands on the browser in use.
-// The `-or-focus` wrappers take a window pattern first and delegate the rest,
-// so they unwrap to what they delegate to. None of this knows an app by name.
+// Omarchy's launchers are the rest of the distance, and they say what they open
+// rather than being guessed at: `# omarchy:launches=` in the launcher itself,
+// collected into `targets` (see Menu.qml). A launcher that declares nothing
+// matches nothing, because a name is not evidence — `omarchy-launch-signal`
+// runs signal-desktop, and `omarchy-launch-browser` runs whichever browser is
+// currently the default. The `-or-focus` wrappers take a window pattern first
+// and delegate the rest, so they unwrap to what they delegate to.
 var SESSION_WRAPPERS = ["setsid", "uwsm-app", "systemd-cat"]
 var LAUNCHER_PREFIX = "omarchy-launch-"
 
@@ -294,24 +297,29 @@ function commandTokens(command) {
 // (`spotify --uri=%u`). A binding carrying arguments of its own has to match in
 // full, so `omarchy-launch-browser --private` never claims the browser that the
 // plain binding does.
-function launchKeys(command, readers) {
+function launchKeys(command, targets, depth) {
   var tokens = commandTokens(command)
+  var stripped = false
 
-  if (tokens[0] === "uwsm" && tokens[1] === "app") tokens = tokens.slice(2)
-  while (tokens.length && (tokens[0] === "--" || SESSION_WRAPPERS.indexOf(tokens[0]) >= 0)) tokens = tokens.slice(1)
+  if (tokens[0] === "uwsm" && tokens[1] === "app") { tokens = tokens.slice(2); stripped = true }
+  while (tokens.length && (tokens[0] === "--" || SESSION_WRAPPERS.indexOf(tokens[0]) >= 0)) {
+    tokens = tokens.slice(1)
+    stripped = true
+  }
+  // `setsid -f chromium` runs chromium, not -f.
+  while (stripped && tokens.length && tokens[0].charAt(0) === "-") tokens = tokens.slice(1)
   if (!tokens.length) return { command: "", program: "", bare: false }
 
-  if (tokens[0] === LAUNCHER_PREFIX + "or-focus" && tokens.length > 1) return launchKeys(tokens[tokens.length - 1], readers)
+  // Bounded: a launcher that resolves to another launcher cannot loop forever.
+  var next = (depth || 0) + 1
+  if (next > 4) return { command: "", program: "", bare: false }
+
+  if (tokens[0] === LAUNCHER_PREFIX + "or-focus" && tokens.length > 1) return launchKeys(tokens[tokens.length - 1], targets, next)
   if (tokens[0] === LAUNCHER_PREFIX + "or-focus-webapp") tokens = [LAUNCHER_PREFIX + "webapp"].concat(tokens.slice(2))
 
   var program = String(tokens[0] || "").replace(/^.*\//, "")
-  var wrapped = program.indexOf(LAUNCHER_PREFIX) === 0 ? program.slice(LAUNCHER_PREFIX.length) : ""
 
-  if (wrapped && tokens.length === 1) {
-    var resolved = (readers && readers["omarchy-default-" + wrapped]) || ""
-    tokens = commandTokens(resolved || wrapped)
-    program = String(tokens[0] || "").replace(/^.*\//, "")
-  }
+  if (tokens.length === 1 && targets && targets[program]) return launchKeys(targets[program], targets, next)
 
   // A desktop entry and a binding disagree over a trailing slash on the same
   // URL often enough that it cannot be what separates them.
@@ -337,14 +345,14 @@ function programOwner(program) {
 // through the same alias resolution `omarchy menu summon` uses, so a binding on
 // `theme` finds `style.theme`. An action match wins: it names one row, while a
 // route names whatever currently answers to that name.
-function resolveShortcuts(items, itemOrder, shortcuts, readers) {
+function resolveShortcuts(items, itemOrder, shortcuts, targets) {
   var byId = ({})
   if (!shortcuts) return byId
 
   var byLaunch = ({})
   var byProgram = ({})
   for (var command in shortcuts.byCommand) {
-    var launch = launchKeys(command, readers)
+    var launch = launchKeys(command, targets)
     if (launch.command && !byLaunch[launch.command]) byLaunch[launch.command] = shortcuts.byCommand[command]
     if (launch.bare && !byProgram[launch.program]) byProgram[launch.program] = shortcuts.byCommand[command]
   }
@@ -362,7 +370,7 @@ function resolveShortcuts(items, itemOrder, shortcuts, readers) {
     var entry = item(items, order[i])
     if (!entry || !entry.exec) continue
 
-    var launch = launches[entry.id] = launchKeys(entry.exec, readers)
+    var launch = launches[entry.id] = launchKeys(entry.exec, targets)
     if (!launch.program) continue
 
     var program = programs[launch.program] || (programs[launch.program] = { bare: 0, bareId: "", count: 0, id: "" })
@@ -650,11 +658,6 @@ function guardPrelude(guards) {
     // `|| :` so a reader that exits nonzero cannot take the batch down with
     // it under a login shell that turned on errexit.
     prelude += "__omarchy_read_" + i + "=$(" + GUARD_READERS[i] + " 2>/dev/null) || :\n"
-    // Report it too. The default browser and terminal are what the Browser and
-    // Terminal keybindings actually open, and the batch has already paid for
-    // the answer — reading it back costs an echo. Indexed rather than named so
-    // a value carrying colons cannot be mistaken for the guard lines.
-    prelude += "printf 'reader:" + i + ":%s\\n' \"$__omarchy_read_" + i + "\"\n"
   }
 
   return prelude

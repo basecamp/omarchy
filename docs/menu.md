@@ -97,34 +97,43 @@ could press, and resolving one costs a keymap compile the open path will not pay
 
 An app row launches through its desktop entry, a binding through whatever
 `o.bind` was handed, and `launchKeys` reduces both to the same key. Session
-wrappers (`uwsm-app --`, `setsid`) come off, a program is compared by name
+wrappers (`uwsm-app --`, `setsid -f`) come off, a program is compared by name
 rather than by path, and a trailing slash on a URL is ignored, since a desktop
 entry and a binding disagree about one often enough that it cannot be what
-separates them.
+separates them. That is the whole of it for a web app, whose two halves already
+run the same `omarchy-launch-webapp <url>`.
 
-The rest of the distance is Omarchy's own launchers, whose names already say
-what they do, so nothing here knows an application by name:
+Omarchy's own launchers are the rest of the distance, and they say what they
+open rather than being guessed at. A launcher name is not evidence:
+`omarchy-launch-signal` runs `signal-desktop`, and `omarchy-launch-browser` runs
+whichever browser is currently the default. So the launcher declares it, beside
+the `omarchy:summary=` metadata it already carries:
 
-- `omarchy-launch-X` wraps X, and on its own it stands for X
-- unless an `omarchy-default-X` can answer, which makes it a resolver and X
-  whatever that reader currently says — this is how Browser and Terminal land on
-  the browser and terminal actually in use. The values come from the guard
-  batch, which already runs those readers for the ✓ on the Defaults rows and now
-  reports what they printed, so the answer costs an `echo` rather than a fork.
-- the `-or-focus` wrappers take a window pattern first and delegate the rest, so
-  they unwrap to what they delegate to
+```bash
+# omarchy:launches=signal-desktop      # a fixed app
+# omarchy:launches=default:browser     # ask omarchy-default-browser --command
+```
 
-A binding that runs a bare program claims the app that *is* that program, whatever
-arguments the desktop entry adds — Spotify keeps its key off `spotify --uri=%u`.
-A binding carrying arguments of its own has to match in full, so
-`omarchy-launch-browser --private` never claims the browser the plain binding
-does. Where several apps run one program — every Chrome web app runs the browser
-with arguments after it — the entry that runs it plainly owns the name, and a
-name several entries claim alike belongs to none of them.
+`default:X` defers to `omarchy-default-X --command`, which is the only place
+that knows the browser you picked as `chrome` runs `google-chrome-stable`, or
+that `zed` runs `zeditor`. Those scripts keep one table for both questions —
+what is selected, and what that selection runs — so the two cannot drift.
 
-Modifiers render as symbols (`⌘⇧⌃⌥`) because the spelled-out form is several
-times wider than the label it sits beside; the key itself stays spelled out so
-the row still reads as a key to press.
+The shell collects the declarations in one bash pass when the bindings file
+loads, which is to say once per Hyprland config reload, never on the open path.
+A launcher that declares nothing matches nothing.
+
+The `-or-focus` wrappers take a window pattern first and delegate the rest, so
+they unwrap to what they delegate to, and resolution is depth-bounded so a
+launcher declaring itself cannot loop.
+
+A binding that runs a bare program claims the app that *is* that program,
+whatever arguments the desktop entry adds — Spotify keeps its key off
+`spotify --uri=%u`. A binding carrying arguments of its own has to match in
+full, so `omarchy-launch-browser --private` never claims the browser the plain
+binding does. Where several apps run one program — every Chrome web app runs the
+browser with arguments after it — the entry that runs it plainly owns the name,
+and a name several entries claim alike belongs to none of them.
 
 ## Guards
 

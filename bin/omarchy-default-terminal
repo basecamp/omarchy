@@ -10,6 +10,18 @@ if [[ ${1:-} == "--install" ]]; then
   shift
 fi
 
+# The selection and the command behind it agree for every terminal here, but the
+# menu asks the same question of every default, so answer it the same way.
+terminal_spec() {
+  case "$1" in
+  alacritty) terminal="alacritty"; desktop_id="Alacritty.desktop"; name="Alacritty"; glyph= ;;
+  foot) terminal="foot"; desktop_id="foot.desktop"; name="Foot"; glyph= ;;
+  ghostty) terminal="ghostty"; desktop_id="com.mitchellh.ghostty.desktop"; name="Ghostty"; glyph= ;;
+  kitty) terminal="kitty"; desktop_id="kitty.desktop"; name="Kitty"; glyph= ;;
+  *) return 1 ;;
+  esac
+}
+
 if (($# == 0)); then
   desktop_id=$(xdg-terminal-exec --print-id 2>/dev/null || true)
   desktop_id=${desktop_id%%:*}
@@ -23,16 +35,16 @@ if (($# == 0)); then
   exit 0
 fi
 
-case "$1" in
-alacritty) terminal="alacritty"; desktop_id="Alacritty.desktop"; name="Alacritty"; glyph= ;;
-foot) terminal="foot"; desktop_id="foot.desktop"; name="Foot"; glyph= ;;
-ghostty) terminal="ghostty"; desktop_id="com.mitchellh.ghostty.desktop"; name="Ghostty"; glyph= ;;
-kitty) terminal="kitty"; desktop_id="kitty.desktop"; name="Kitty"; glyph= ;;
-*)
+# What the menu needs to label the Terminal keybinding with the app it opens.
+if [[ $1 == "--command" ]]; then
+  terminal_spec "$(omarchy-default-terminal)" && echo "$terminal"
+  exit 0
+fi
+
+if ! terminal_spec "$1"; then
   echo "Usage: omarchy-default-terminal <alacritty|foot|ghostty|kitty>"
   exit 1
-  ;;
-esac
+fi
 
 if omarchy-cmd-missing "$terminal"; then
   if [[ $installing == "false" ]]; then

@@ -54,6 +54,7 @@ Item {
   property var defaultMenuItems: []
   property var userMenuItems: []
   property var keybindings: null
+  property var launchTargets: ({})
   property var shortcutsById: ({})
   property bool opened: false
   property string mode: "menu"
@@ -267,7 +268,7 @@ Item {
   }
 
   function refreshShortcuts() {
-    root.shortcutsById = MenuModel.resolveShortcuts(root.items, root.itemOrder, root.keybindings, root.readerResults)
+    root.shortcutsById = MenuModel.resolveShortcuts(root.items, root.itemOrder, root.keybindings, root.launchTargets)
   }
 
   // The bindings change only when Hyprland reloads its config, so the rows are
@@ -1011,9 +1012,41 @@ Item {
     path: root.keybindingsPath
     watchChanges: true
     printErrors: false
-    onLoaded: root.applyKeybindings(text())
+    onLoaded: { root.applyKeybindings(text()); resolveProc.running = true }
     onLoadFailed: root.applyKeybindings(null)
     onFileChanged: reload()
+  }
+
+  // What each launcher opens, straight from the `# omarchy:launches=` line in
+  // the launcher itself, so the menu never infers an app from a command name.
+  // `default:X` defers to `omarchy-default-X --command`, the only place that
+  // knows the browser you picked runs google-chrome-stable. Runs once per
+  // bindings load — a config reload — and never on the open path.
+  Process {
+    id: resolveProc
+    property string collected: ""
+    command: ["bash", "-lc",
+      'shopt -s nullglob; for launcher in "${OMARCHY_PATH:-/usr/share/omarchy}"/bin/omarchy-launch-*; do '
+      + 'target=$(sed -n "s/^# omarchy:launches=//p" "$launcher" | head -1); [[ -n $target ]] || continue; '
+      + '[[ $target == default:* ]] && target=$(omarchy-default-"${target#default:}" --command 2>/dev/null); '
+      + '[[ -n $target ]] && printf "%s\t%s\n" "${launcher##*/}" "$target"; done']
+    stdout: SplitParser {
+      onRead: function(data) { resolveProc.collected += data + "\n" }
+    }
+    onRunningChanged: if (resolveProc.running) resolveProc.collected = ""
+    onExited: function(exitCode) {
+      if (exitCode !== 0) return
+      var targets = ({})
+      var lines = resolveProc.collected.split("\n")
+      for (var i = 0; i < lines.length; i++) {
+        var tab = lines[i].indexOf("\t")
+        if (tab <= 0) continue
+        targets[lines[i].substring(0, tab)] = lines[i].substring(tab + 1).trim()
+      }
+      root.launchTargets = targets
+      root.refreshShortcuts()
+      if (root.opened) root.rebuildDisplay()
+    }
   }
 
   // ---------------------------------------------------------------- guards
@@ -1026,7 +1059,6 @@ Item {
   property var whenResults: ({})       // id → true|false (allow visibility)
   property var checkedResults: ({})    // id → true|false (show ✓)
   property var disabledResults: ({})   // id → true|false (dim, skip cursor)
-  property var readerResults: ({})     // reader command → what it printed
   property bool guardsPending: false
 
   function evaluateGuards() {
@@ -1047,7 +1079,6 @@ Item {
       root.whenResults = ({})
       root.checkedResults = ({})
       root.disabledResults = ({})
-      root.readerResults = ({})
       return
     }
     guardProc.collected = ""
@@ -1074,21 +1105,10 @@ Item {
       var nextWhen = ({})
       var nextChecked = ({})
       var nextDisabled = ({})
-      var nextReaders = ({})
       var lines = guardProc.collected.split("\n")
       for (var i = 0; i < lines.length; i++) {
         var line = lines[i].trim()
         if (!line) continue
-        // `reader:<index>:<value>` before the guard lines: a reader's value is
-        // free text and may carry the colons the guard parse splits on.
-        if (line.indexOf("reader:") === 0) {
-          var readerAt = line.indexOf(":", 7)
-          if (readerAt > 7) {
-            var reader = MenuModel.GUARD_READERS[Number(line.substring(7, readerAt))]
-            if (reader) nextReaders[reader] = line.substring(readerAt + 1)
-          }
-          continue
-        }
         var colon = line.lastIndexOf(":")
         if (colon < 0) continue
         var value = line.substring(colon + 1) === "1"
@@ -1104,12 +1124,6 @@ Item {
       root.whenResults = nextWhen
       root.checkedResults = nextChecked
       root.disabledResults = nextDisabled
-      // Guards run on every open; the defaults they read almost never move, so
-      // the shortcuts are only rebuilt when one actually did.
-      if (JSON.stringify(nextReaders) !== JSON.stringify(root.readerResults)) {
-        root.readerResults = nextReaders
-        root.refreshShortcuts()
-      }
       if (root.opened) root.rebuildDisplay()
       // Run the evaluation that had to stand aside. Deferred by a turn so the
       // process is settled before its command is set again.

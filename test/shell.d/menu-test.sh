@@ -148,15 +148,29 @@ assert(
 )
 
 // An app row launches through its desktop entry, a binding through whatever
-// o.bind was handed; both reduce to the same key. The readers are what the
-// guard batch reported, so a wrapper that resolves a default lands on the app
-// that default currently names.
-const readers = { 'omarchy-default-browser': 'chromium', 'omarchy-default-terminal': 'foot' }
-const launchKey = command => menu.launchKeys(command, readers).command
+// o.bind was handed; both reduce to the same key. What a launcher opens is
+// declared by the launcher (`# omarchy:launches=`) and collected into targets,
+// never inferred from its name.
+const targets = {
+  'omarchy-launch-browser': 'chromium',
+  'omarchy-launch-signal': 'signal-desktop',
+  'omarchy-launch-spotify': 'spotify'
+}
+const launchKey = command => menu.launchKeys(command, targets).command
 
-assertEqual(launchKey('omarchy-launch-browser'), 'chromium', 'menu resolves a launcher that wraps a default')
-assertEqual(launchKey('omarchy-launch-spotify'), 'spotify', 'menu reads a launcher with no default as the app it wraps')
+assertEqual(launchKey('omarchy-launch-browser'), 'chromium', 'menu resolves a launcher to the app it declares')
+assertEqual(
+  launchKey('omarchy-launch-signal'),
+  'signal-desktop',
+  'menu takes the declared app over the launcher name, which does not match it'
+)
+assertEqual(
+  launchKey('omarchy-launch-obscure'),
+  'omarchy-launch-obscure',
+  'menu never guesses an app out of an undeclared launcher name'
+)
 assertEqual(launchKey('uwsm-app -- omawrite'), 'omawrite', 'menu looks past the session wrapper')
+assertEqual(launchKey('setsid -f chromium'), 'chromium', 'menu looks past the wrapper flags too')
 assertEqual(launchKey('/usr/bin/chromium'), 'chromium', 'menu compares programs by name, not by path')
 assertEqual(
   launchKey("omarchy-launch-or-focus '^obsidian$' 'uwsm-app -- obsidian'"),
@@ -173,24 +187,40 @@ assertEqual(
   launchKey(['omarchy-launch-webapp', 'https://chatgpt.com/']),
   'menu does not let a trailing slash separate a binding from its desktop entry'
 )
-assert(!menu.launchKeys('omarchy-launch-browser --private', readers).bare, 'menu keeps a binding carrying its own arguments off the program match')
+assert(!menu.launchKeys('omarchy-launch-browser --private', targets).bare, 'menu keeps a binding carrying its own arguments off the program match')
+assertEqual(
+  menu.launchKeys('omarchy-launch-loop', { 'omarchy-launch-loop': 'omarchy-launch-loop' }).command,
+  '',
+  'menu gives up on a launcher declaring itself rather than recursing forever'
+)
+
+// A command may contain a tab; only the first one separates it from the keys.
+const tabbed = menu.parseKeybindings("SUPER + T\tomarchy-launch-webapp 'https://x.test/a\tb'")
+assertEqual(
+  tabbed.byCommand["omarchy-launch-webapp 'https://x.test/a\tb'"],
+  '⌘ T',
+  'menu keeps a command that contains a tab intact'
+)
 
 const appBindings = menu.parseKeybindings([
   'SUPER + SHIFT + B\tomarchy-launch-browser',
   'SUPER + SHIFT + ALT + B\tomarchy-launch-browser --private',
   'SUPER + SHIFT + A\tomarchy-launch-webapp \'https://chatgpt.com\'',
-  'SUPER + SHIFT + M\tomarchy-launch-spotify'
+  'SUPER + SHIFT + M\tomarchy-launch-spotify',
+  'SUPER + SHIFT + G\tomarchy-launch-signal'
 ].join('\n'))
 const appItems = {
   'apps.chromium': { id: 'apps.chromium', parent: 'apps', kind: 'app', label: 'Chromium', action: '', exec: ['/usr/bin/chromium'] },
   'apps.ChatGPT': { id: 'apps.ChatGPT', parent: 'apps', kind: 'app', label: 'ChatGPT', action: '', exec: ['omarchy-launch-webapp', 'https://chatgpt.com/'] },
   'apps.spotify': { id: 'apps.spotify', parent: 'apps', kind: 'app', label: 'Spotify', action: '', exec: ['spotify', '--uri='] },
+  'apps.signal-desktop': { id: 'apps.signal-desktop', parent: 'apps', kind: 'app', label: 'Signal', action: '', exec: ['/usr/bin/signal-desktop'] },
   'apps.firefox': { id: 'apps.firefox', parent: 'apps', kind: 'app', label: 'Firefox', action: '', exec: ['/usr/bin/firefox'] }
 }
-const appShortcuts = menu.resolveShortcuts(appItems, Object.keys(appItems), appBindings, readers)
+const appShortcuts = menu.resolveShortcuts(appItems, Object.keys(appItems), appBindings, targets)
 assertEqual(appShortcuts['apps.chromium'], '⌘⇧ B', 'menu labels the app the default browser currently resolves to')
 assertEqual(appShortcuts['apps.ChatGPT'], '⌘⇧ A', 'menu labels a web app by the launcher its desktop entry runs')
 assertEqual(appShortcuts['apps.spotify'], '⌘⇧ M', 'menu labels an app whose desktop entry adds arguments of its own')
+assertEqual(appShortcuts['apps.signal-desktop'], '⌘⇧ G', 'menu labels an app whose launcher name differs from its executable')
 assert(!appShortcuts['apps.firefox'], 'menu leaves an app alone when no binding reaches it')
 
 // Every Chrome web app runs the browser with arguments after it, and none of
@@ -198,7 +228,7 @@ assert(!appShortcuts['apps.firefox'], 'menu leaves an app alone when no binding 
 const pwaItems = {}
 for (const id in appItems) pwaItems[id] = appItems[id]
 pwaItems['apps.chrome-hey'] = { id: 'apps.chrome-hey', parent: 'apps', kind: 'app', label: 'HEY', action: '', exec: ['/usr/bin/chromium', '--app-id=ipcjik'] }
-const pwaShortcuts = menu.resolveShortcuts(pwaItems, Object.keys(pwaItems), appBindings, readers)
+const pwaShortcuts = menu.resolveShortcuts(pwaItems, Object.keys(pwaItems), appBindings, targets)
 assertEqual(pwaShortcuts['apps.chromium'], '⌘⇧ B', 'menu keeps the browser key on the entry that runs the browser plainly')
 assert(!pwaShortcuts['apps.chrome-hey'], 'menu does not hand the browser key to a web app that runs the browser with arguments')
 

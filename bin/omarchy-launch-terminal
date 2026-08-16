@@ -2,5 +2,6 @@
 
 # omarchy:summary=Launch a terminal in the active terminal's current directory
 # omarchy:args=[command...]
+# omarchy:launches=default:terminal
 
 exec setsid uwsm-app -- xdg-terminal-exec --dir="$(omarchy-cmd-terminal-cwd)" "$@"

@@ -227,3 +227,56 @@ copy_line=$(awk '/^copy_always_config_defaults$/ { print NR; exit }' "$upgrade_s
 [[ -n $mark_line && -n $copy_line ]] || fail "upgrade-to-quattro preinstall marker and config refresh calls exist"
 (( mark_line < copy_line )) || fail "upgrade-to-quattro detects plain legacy bindings before overwriting Hyprland bindings"
 pass "upgrade-to-quattro preserves preinstall removal before refreshing Hyprland bindings"
+
+# o.bind is the only place a key and the command it runs are both in hand, so
+# what it records is all the menu can label. Register the way Hyprland does,
+# fire the lifecycle callback, and read back the snapshot it wrote.
+snapshot_home="$tmpdir/snapshot-home"
+mkdir -p "$snapshot_home"
+
+snapshot=$(HOME="$snapshot_home" OMARCHY_PATH="$ROOT" lua <<'LUA'
+package.path = os.getenv("OMARCHY_PATH") .. "/?.lua;" .. package.path
+
+local handlers = {}
+
+hl = {
+  dsp = { exec_cmd = function(command) return { kind = "exec", arg = command } end },
+  bind = function() end,
+  on = function(event, handler) handlers[event] = handler end,
+}
+
+require("default.hypr.helpers")
+
+o.bind("SUPER + RETURN", "Terminal", { omarchy = "terminal" })
+o.bind("SUPER + SHIFT + A", "ChatGPT", { webapp = "https://chatgpt.com" })
+o.bind("SUPER + CTRL + N", "Nightlight", function() end)
+
+assert(handlers["config.reloaded"], "o.bind registered no config.reloaded writer")
+assert(handlers["hyprland.start"], "o.bind registered no hyprland.start writer")
+handlers["config.reloaded"]()
+
+local file = assert(io.open(os.getenv("HOME") .. "/.local/state/omarchy/keybindings.tsv", "r"))
+io.write(file:read("*a"))
+file:close()
+LUA
+)
+
+grep -qF "$(printf 'SUPER + RETURN\tomarchy-launch-terminal')" <<<"$snapshot" ||
+  fail "o.bind records the command an omarchy launcher spec expands to" "got: $snapshot"
+pass "o.bind records the command an omarchy launcher spec expands to"
+
+grep -qF "$(printf "SUPER + SHIFT + A\tomarchy-launch-webapp 'https://chatgpt.com'")" <<<"$snapshot" ||
+  fail "o.bind records a web app binding with the command that runs it" "got: $snapshot"
+pass "o.bind records a web app binding with the command that runs it"
+
+grep -q "SUPER + CTRL + N" <<<"$snapshot" &&
+  fail "o.bind records nothing for a dispatcher it cannot name" "got: $snapshot"
+pass "o.bind records nothing for a binding whose dispatcher is a function"
+
+# The snapshot lands whole or not at all, so a shell reading the file never
+# sees half of one, and the state directory is created rather than assumed.
+[[ -f $snapshot_home/.local/state/omarchy/keybindings.tsv ]] ||
+  fail "o.bind creates the state directory it writes into" "no keybindings.tsv"
+[[ ! -e $snapshot_home/.local/state/omarchy/keybindings.tsv.new ]] ||
+  fail "o.bind renames its snapshot into place" "left keybindings.tsv.new behind"
+pass "o.bind creates the state directory and renames its snapshot into place"

@@ -94,17 +94,32 @@ end
 -- carries the keys and drops the command. Record the pairs while the config
 -- loads and hand them to the shell, which labels menu rows with the shortcut
 -- that reaches them (see docs/menu.md).
-local keybindings_path = (os.getenv("HOME") or "") .. "/.local/state/omarchy/keybindings.tsv"
+local keybindings_dir = (os.getenv("HOME") or "") .. "/.local/state/omarchy"
+local keybindings_path = keybindings_dir .. "/keybindings.tsv"
 local keybindings = {}
 
+local function open_keybindings_file()
+  local file = io.open(keybindings_path .. ".new", "w")
+  if file then
+    return file
+  end
+
+  -- Only reached before the state directory exists, so the fork is a one-off
+  -- rather than part of every config load.
+  os.execute("mkdir -p " .. shell_quote(keybindings_dir))
+  return io.open(keybindings_path .. ".new", "w")
+end
+
 local function write_keybindings()
-  local file = io.open(keybindings_path, "w")
+  local file = open_keybindings_file()
   if not file then
     return
   end
 
   file:write(table.concat(keybindings, "\n"), "\n")
   file:close()
+  -- Renamed into place so a shell reading the file never sees half a snapshot.
+  os.rename(keybindings_path .. ".new", keybindings_path)
 end
 
 -- Both events fire once per config load, and Hyprland drops the handlers a
