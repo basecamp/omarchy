@@ -89,7 +89,7 @@ assert(menu.isDisabled({ 'install.browser.zen': true }, installed), 'menu disabl
 assert(!menu.isDisabled({ 'install.browser.zen': false }, installed), 'menu leaves a row selectable when its disabled: failed')
 assert(!menu.isDisabled({ 'install.browser.zen': true }, visibilityItems.laptop), 'menu never disables a row that declares no disabled:')
 assert(
-  menu.displayRow({ 'install.browser.zen': installed }, ['install.browser.zen'], {}, { 'install.browser.zen': true }, installed, '', 0).disabled,
+  menu.displayRow({ 'install.browser.zen': installed }, ['install.browser.zen'], {}, { 'install.browser.zen': true }, {}, installed, '', 0).disabled,
   'menu display rows carry their disabled state'
 )
 assert(
@@ -105,10 +105,11 @@ assert(!menu.matchesQuery(entry, 'theme', false), 'menu hides invisible matches'
 assert(menu.searchScore(merged.items, entry, 'theme') < menu.searchScore(merged.items, entry, 'appearance'), 'menu scores name matches above description matches')
 
 assertDeepEqual(
-  menu.displayRow(merged.items, merged.itemOrder, {}, {}, entry, 'Style', 12, 'search'),
+  menu.displayRow(merged.items, merged.itemOrder, {}, {}, { 'style.theme': '⌘⇧⌃ SPACE' }, entry, 'Style', 12, 'search'),
   {
     itemId: 'style.theme',
     disabled: false,
+    shortcut: '⌘⇧⌃ SPACE',
     kind: 'action',
     icon: '',
     iconFont: '',
@@ -126,6 +127,32 @@ assertDeepEqual(
   },
   'menu builds display rows'
 )
+
+// Shortcuts come from the file `o.bind` writes as Hyprland loads its config,
+// because Hyprland reports Lua binds as dispatcher __lua and drops the command.
+const keybindings = menu.parseKeybindings([
+  'SUPER + SHIFT + CTRL + SPACE\tomarchy-menu toggle theme',
+  'SUPER + ESCAPE\tomarchy-menu toggle system',
+  'SUPER + CTRL + L\tomarchy-system-lock',
+  'SUPER + ALT + code:34\tomarchy-capture-webcam-resize smaller',
+  'SUPER + CTRL + ALT + T\tomarchy-notification-time',
+  'SUPER + SHIFT + ALT + T\tomarchy-notification-time'
+].join('\n'))
+
+assertEqual(keybindings.byRoute['theme'], '⌘⇧⌃ SPACE', 'menu reads the route a binding opens')
+assertEqual(keybindings.byCommand['omarchy-system-lock'], '⌘⌃ L', 'menu reads the command a binding runs')
+assertEqual(keybindings.byCommand['omarchy-notification-time'], '⌘⌃⌥ T', 'menu keeps the first of two keys for one command')
+assert(
+  !keybindings.byCommand['omarchy-capture-webcam-resize smaller'],
+  'menu drops a binding on a raw keycode, which names nothing a reader could press'
+)
+
+const shortcutBase = menu.mergeMenuSources(menu.parseMenuJsonc(defaultMenuJsonc), [])
+const shortcuts = menu.resolveShortcuts(shortcutBase.items, shortcutBase.itemOrder, keybindings)
+assertEqual(shortcuts['style.theme'], '⌘⇧⌃ SPACE', 'menu resolves a route through the alias it was bound to')
+assertEqual(shortcuts['system'], '⌘ ESCAPE', 'menu resolves a route naming an id outright')
+assertEqual(shortcuts['system.lock'], '⌘⌃ L', 'menu labels a row whose own action is bound')
+assertDeepEqual(menu.resolveShortcuts(shortcutBase.items, shortcutBase.itemOrder, null), {}, 'menu carries no shortcuts before the bindings file is read')
 
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))

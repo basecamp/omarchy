@@ -190,6 +190,99 @@ function resolveRoute(items, itemOrder, input) {
   return raw
 }
 
+// ------------------------------------------------------------- shortcuts
+//
+// `o.bind` writes ~/.local/state/omarchy/keybindings.tsv as it registers each
+// binding, one `<keys>\t<command>` line per bind, because Hyprland reports Lua
+// binds as dispatcher `__lua` and keeps the command to itself. A row earns its
+// shortcut two ways: the binding runs the row's own `action`, or it opens the
+// row by route — the `omarchy menu toggle theme` that Style > Theme answers to.
+var MENU_ROUTE_PATTERN = /^omarchy(?:-menu|\s+menu)\s+(?:toggle|summon)\s+(\S+)$/
+
+// A `code:34` key names an XKB keycode, not anything a reader could press, and
+// resolving one costs a keymap compile the open path will not pay.
+function keysArePressable(keys) {
+  return keys.indexOf("code:") < 0 && keys.indexOf("mouse:") < 0
+}
+
+function menuRouteFor(command) {
+  var match = MENU_ROUTE_PATTERN.exec(command)
+  return match ? match[1] : ""
+}
+
+// Keys as authored ("SUPER + SHIFT + CTRL + SPACE") are four times as wide as
+// the label they sit beside. Modifiers become their symbols, which the menu has
+// room for; the key itself stays spelled out so the row still reads as a key to
+// press. Media keys drop the XF86 vendor prefix nobody has printed on a keycap.
+var MODIFIER_SYMBOLS = ({
+  SUPER: "⌘",
+  SHIFT: "⇧",
+  CTRL: "⌃",
+  CONTROL: "⌃",
+  ALT: "⌥"
+})
+
+function shortcutLabel(keys) {
+  var parts = String(keys || "").split("+")
+  var modifiers = ""
+  var key = ""
+
+  for (var i = 0; i < parts.length; i++) {
+    var part = parts[i].trim().toUpperCase()
+    if (!part) continue
+    if (MODIFIER_SYMBOLS[part]) modifiers += MODIFIER_SYMBOLS[part]
+    else key = part.indexOf("XF86") === 0 ? part.slice(4) : part
+  }
+
+  return modifiers && key ? modifiers + " " + key : modifiers + key
+}
+
+function parseKeybindings(raw) {
+  var byCommand = ({})
+  var byRoute = ({})
+  var lines = String(raw || "").split("\n")
+
+  for (var i = 0; i < lines.length; i++) {
+    var parts = lines[i].split("\t")
+    var keys = String(parts[0] || "").trim()
+    var command = String(parts[1] || "").trim()
+    if (!keys || !command || !keysArePressable(keys)) continue
+
+    var label = shortcutLabel(keys)
+    // First binding wins, so a user file that adds a second key for a command
+    // reads as an alternative rather than a replacement.
+    if (!byCommand[command]) byCommand[command] = label
+    var route = menuRouteFor(command)
+    if (route && !byRoute[route]) byRoute[route] = label
+  }
+
+  return { byCommand: byCommand, byRoute: byRoute }
+}
+
+// id → shortcut label, resolved once per (re)load instead of per row. Routes go
+// through the same alias resolution `omarchy menu summon` uses, so a binding on
+// `theme` finds `style.theme`. An action match wins: it names one row, while a
+// route names whatever currently answers to that name.
+function resolveShortcuts(items, itemOrder, shortcuts) {
+  var byId = ({})
+  if (!shortcuts) return byId
+
+  var order = Array.isArray(itemOrder) ? itemOrder : []
+  for (var i = 0; i < order.length; i++) {
+    var entry = item(items, order[i])
+    if (!entry || !entry.action) continue
+    var keys = shortcuts.byCommand[entry.action]
+    if (keys) byId[entry.id] = keys
+  }
+
+  for (var route in shortcuts.byRoute) {
+    var id = resolveRoute(items, itemOrder, route)
+    if (item(items, id) && !byId[id]) byId[id] = shortcuts.byRoute[route]
+  }
+
+  return byId
+}
+
 function slugify(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item"
 }
@@ -362,11 +455,12 @@ function searchScore(items, entry, query) {
   return score * 1000 + depthFor(items, entry.id) * 25 + entry.order
 }
 
-function displayRow(items, itemOrder, checkedResults, disabledResults, entry, detail, score, section) {
+function displayRow(items, itemOrder, checkedResults, disabledResults, shortcutsById, entry, detail, score, section) {
   var target = entry.kind === "link" ? entry.target : entry.id
   return {
     itemId: entry.id,
     disabled: isDisabled(disabledResults, entry),
+    shortcut: (shortcutsById && shortcutsById[entry.id]) || "",
     kind: entry.kind,
     icon: entry.icon,
     iconFont: entry.iconFont || "",
@@ -503,6 +597,9 @@ if (typeof module !== "undefined") {
     swapProviderRows: swapProviderRows,
     item: item,
     resolveRoute: resolveRoute,
+    parseKeybindings: parseKeybindings,
+    shortcutLabel: shortcutLabel,
+    resolveShortcuts: resolveShortcuts,
     slugify: slugify,
     depthFor: depthFor,
     pathFor: pathFor,

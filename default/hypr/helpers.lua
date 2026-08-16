@@ -89,6 +89,29 @@ function o.preinstalled_bindings_enabled()
   return not file_exists((os.getenv("HOME") or "") .. "/.local/state/omarchy/preinstalls-removed")
 end
 
+-- o.bind is the only place that sees a key combination and the command it runs
+-- together: Hyprland reports Lua binds as dispatcher `__lua`, so `hyprctl binds`
+-- carries the keys and drops the command. Record the pairs while the config
+-- loads and hand them to the shell, which labels menu rows with the shortcut
+-- that reaches them (see docs/menu.md).
+local keybindings_path = (os.getenv("HOME") or "") .. "/.local/state/omarchy/keybindings.tsv"
+local keybindings = {}
+
+local function write_keybindings()
+  local file = io.open(keybindings_path, "w")
+  if not file then
+    return
+  end
+
+  file:write(table.concat(keybindings, "\n"), "\n")
+  file:close()
+end
+
+-- Both events fire once per config load, and Hyprland drops the handlers a
+-- reload registers again, so this stays one write per load however it started.
+hl.on("hyprland.start", write_keybindings)
+hl.on("config.reloaded", write_keybindings)
+
 function o.bind(keys, description, dispatcher, options)
   local opts = options or {}
 
@@ -99,6 +122,7 @@ function o.bind(keys, description, dispatcher, options)
   dispatcher = command_from(dispatcher, description)
 
   if type(dispatcher) == "string" then
+    keybindings[#keybindings + 1] = keys .. "\t" .. dispatcher
     dispatcher = hl.dsp.exec_cmd(dispatcher)
   end
 

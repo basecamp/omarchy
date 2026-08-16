@@ -49,8 +49,12 @@ Item {
   // path doesn't have to shell out to bash + jq on every open.
   property string defaultMenuPath: omarchyPath + "/default/omarchy/omarchy-menu.jsonc"
   property string userMenuPath: Quickshell.env("HOME") + "/.config/omarchy/extensions/omarchy-menu.jsonc"
+  // Keys → command pairs recorded by `o.bind` while Hyprland loaded its config.
+  property string keybindingsPath: Quickshell.env("HOME") + "/.local/state/omarchy/keybindings.tsv"
   property var defaultMenuItems: []
   property var userMenuItems: []
+  property var keybindings: null
+  property var shortcutsById: ({})
   property bool opened: false
   property string mode: "menu"
   readonly property bool dmenuActive: mode === "select" || mode === "input"
@@ -250,6 +254,7 @@ Item {
     root.providerQueue = []
     root.items = mergedMenu.items
     root.itemOrder = mergedMenu.itemOrder
+    root.shortcutsById = MenuModel.resolveShortcuts(root.items, root.itemOrder, root.keybindings)
     root.rowsLoaded = true
     root.evaluateGuards()
     if (root.opened) {
@@ -259,6 +264,14 @@ Item {
         else root.loadProviderForMenu(root.activeMenu)
       }
     }
+  }
+
+  // The bindings change only when Hyprland reloads its config, so the rows are
+  // re-labelled where they stand rather than rebuilt.
+  function applyKeybindings(raw) {
+    root.keybindings = raw === null ? null : MenuModel.parseKeybindings(raw)
+    root.shortcutsById = MenuModel.resolveShortcuts(root.items, root.itemOrder, root.keybindings)
+    if (root.opened) root.rebuildDisplay()
   }
 
   // Each known provider is a tiny bash one-liner that enumerates a list and
@@ -516,7 +529,7 @@ Item {
   }
 
   function displayRow(entry, detail, score, section) {
-    return MenuModel.displayRow(root.items, root.itemOrder, root.checkedResults, root.disabledResults, entry, detail, score, section)
+    return MenuModel.displayRow(root.items, root.itemOrder, root.checkedResults, root.disabledResults, root.shortcutsById, entry, detail, score, section)
   }
 
   function rowSelectable(index) {
@@ -574,6 +587,7 @@ Item {
       displayModel.append({
         itemId: "dmenu." + i,
         disabled: false,
+        shortcut: "",
         kind: "dmenu",
         icon: icon,
         iconFont: "",
@@ -981,6 +995,18 @@ Item {
     onFileChanged: reload()
   }
 
+  // Written by `o.bind` on every Hyprland config load. Absent on a machine
+  // whose config predates it, which costs the shortcuts and nothing else.
+  FileView {
+    id: keybindingsFile
+    path: root.keybindingsPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.applyKeybindings(text())
+    onLoadFailed: root.applyKeybindings(null)
+    onFileChanged: reload()
+  }
+
   // ---------------------------------------------------------------- guards
   //
   // `when:` (visibility) and `checked:` (✓ marker) are bash expressions the
@@ -1258,6 +1284,7 @@ Item {
               required property string detail
               required property string path
               required property string action
+              required property string shortcut
               required property int childCount
               required property bool disabled
 
@@ -1321,7 +1348,7 @@ Item {
                 id: contentColumn
                 anchors.left: row.hasIcon ? iconText.right : parent.left
                 anchors.leftMargin: row.hasIcon ? Style.space(6) : root.rowReservedBorderLeft + Style.space(18)
-                anchors.right: trail.left
+                anchors.right: shortcutText.visible ? shortcutText.left : trail.left
                 anchors.rightMargin: Style.space(6)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Style.space(3)
@@ -1347,6 +1374,22 @@ Item {
                   font.pixelSize: Style.font.bodySmall
                   elide: Text.ElideRight
                 }
+              }
+
+              // The key that reaches this row without opening the menu. Sits
+              // outside the label column so a long shortcut elides the label
+              // rather than being elided by it.
+              Text {
+                id: shortcutText
+                visible: row.shortcut.length > 0
+                text: row.shortcut
+                color: row.hasCursor ? root.selectedText : root.foreground
+                opacity: 0.4
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                anchors.right: trail.left
+                anchors.rightMargin: Style.space(6)
+                y: contentColumn.y + labelText.y + (labelText.height - height) / 2
               }
 
               Row {

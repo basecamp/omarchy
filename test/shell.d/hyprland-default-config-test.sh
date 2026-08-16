@@ -28,6 +28,7 @@ hl = {
       print(keys .. "\t" .. opts.description)
     end
   end,
+  on = function() end,
 }
 
 require("default.hypr.helpers")

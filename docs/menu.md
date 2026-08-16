@@ -60,6 +60,41 @@ The sample extension at `config/omarchy/extensions/omarchy-menu.jsonc`
 (refreshed into `~/.config/`) documents the format in its header and ships
 only comments, so the default state adds nothing.
 
+## Shortcuts
+
+A row that a keybinding also reaches shows that key beside its label — Style >
+Theme reads `⌘⇧⌃ SPACE` — so the menu teaches the shortcut for the thing you
+just came to it for. Nothing declares this: no menu entry names a key and no
+binding names a row.
+
+The pairing comes from `o.bind` in `default/hypr/helpers.lua`, the single funnel
+every Omarchy binding passes through and the only place a key combination and
+the command it runs are both in hand. `hyprctl binds` is not that place:
+Hyprland reports Lua binds as dispatcher `__lua` and keeps the command to
+itself. So `o.bind` records each `<keys>\t<command>` pair as the config loads and
+writes `~/.local/state/omarchy/keybindings.tsv` once it has, on `hyprland.start`
+and `config.reloaded` alike. The shell watches that file the way it watches the
+JSONC, so a reloaded binding relabels the rows without a shell restart, and a
+machine whose config predates the file loses the shortcuts and nothing else.
+
+`resolveShortcuts` in `MenuModel.js` matches a binding to a row two ways, once
+per (re)load rather than per row:
+
+- the binding runs the row's `action` verbatim — `omarchy-system-lock` labels
+  System > Lock, `PRINT` labels Trigger > Capture > Screenshot
+- the binding opens the row by route — `omarchy-menu toggle theme` goes through
+  the same alias resolution `omarchy menu summon` uses, so it finds `style.theme`
+
+An action match wins, since it names one row while a route names whatever
+currently answers to that name. Two keys for one command keep the first, so a
+user file adding a second reads as an alternative rather than a replacement.
+Bindings on a raw `code:34` are dropped: the keycode names nothing a reader
+could press, and resolving one costs a keymap compile the open path will not pay.
+
+Modifiers render as symbols (`⌘⇧⌃⌥`) because the spelled-out form is several
+times wider than the label it sits beside; the key itself stays spelled out so
+the row still reads as a key to press.
+
 ## Guards
 
 `when`, `checked`, and `disabled` are bash conditions. The shell never
