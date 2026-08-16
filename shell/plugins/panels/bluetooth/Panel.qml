@@ -30,41 +30,51 @@ Panel {
   // adapter === null, which is what keeps the icon and its toggle reachable
   // after Bluetooth is switched off.
   //
-  // Hardware presence is assumed (true) until a probe proves otherwise: only
-  // a cleanly run probe with a definite yes/no answer may move it, so a
-  // missing or failing rfkill can never hide the panel, and an adapter that
-  // reappears immediately clears any stale "no hardware" conclusion.
+  // Hardware presence is assumed (true) until a probe proves otherwise: a
+  // completed probe may conclude yes or no from rfkill's stdout, while a
+  // probe that never runs (missing rfkill) concludes nothing and keeps the
+  // previous value. An adapter that reappears immediately clears any stale
+  // "no hardware" conclusion.
   property bool hardwarePresent: true
   property bool probePending: false
+  // Set when the user asks to power on while the first probe's answer is
+  // still unknown; acted on once that probe concludes the radio exists.
+  property bool deferredPowerOn: false
 
   Process {
     id: rfkillProbe
-    // Three-state answer on stdout so the conclusion needs neither the exit
-    // code nor stderr: "yes" (a radio is listed), "no" (clean probe, none),
-    // "unknown" (rfkill unavailable). Anything else keeps the previous value.
-    command: ["sh", "-c",
-      "if ! command -v rfkill >/dev/null 2>&1; then echo unknown;"
-      + " elif rfkill list bluetooth 2>/dev/null | grep -q .; then echo yes;"
-      + " else echo no; fi"]
+    // Direct call, no shell: `rfkill list bluetooth` prints one or more
+    // radio entries whenever Bluetooth hardware exists (blocked or not) and
+    // nothing on machines without it. A failed spawn (missing executable)
+    // surfaces as errorOccurred and never reaches the stream.
+    command: ["rfkill", "list", "bluetooth"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: {
-        root.probePending = false
-        var answer = String(text || "").trim()
-        if (answer === "yes") root.hardwarePresent = true
-        else if (answer === "no") root.hardwarePresent = false
-      }
+      onStreamFinished: root.finishProbe(String(text || "").trim().length > 0)
     }
-    // A run that never delivers output (e.g. failed start) must not strand
-    // probePending; the hardware conclusion simply stays "unknown".
+    // Never strand a probe: a run that produced no stream can't conclude
+    // anything, so it just leaves hardwarePresent at its previous value.
     onErrorOccurred: root.probePending = false
-    onExited: root.probePending = false
   }
 
   function probeHardware() {
     if (root.probePending) return
     root.probePending = true
     rfkillProbe.running = true
+  }
+
+  // Single completion path for every probe. The probePending gate drops any
+  // late signal from a superseded run, which keeps one probe in flight at a
+  // time.
+  function finishProbe(devicesListed) {
+    if (!root.probePending) return
+    root.probePending = false
+    root.hardwarePresent = devicesListed
+    if (root.deferredPowerOn) {
+      root.deferredPowerOn = false
+      if (root.hardwarePresent && !root.adapter)
+        Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
+    }
   }
 
   Component.onCompleted: root.probeHardware()
@@ -77,8 +87,10 @@ Panel {
       } else {
         // An adapter existing is definitive proof of hardware; clear any
         // stale "no hardware" conclusion (e.g. a dongle plugged in later).
+        // An in-flight probe is left to finish — it reads live rfkill state
+        // and reaches the same conclusion.
         root.hardwarePresent = true
-        root.probePending = false
+        root.deferredPowerOn = false
       }
     }
   }
@@ -697,7 +709,13 @@ Panel {
       // The block removed the adapter from BlueZ; only an unblock brings it
       // back. Bailing here left a toggled-off radio with no way back on from
       // the UI.
-      if (hardwarePresent) Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
+      if (hardwarePresent && !probePending) {
+        Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
+      } else if (probePending) {
+        // The first probe hasn't answered yet; remember the intent instead
+        // of acting on the unverified default (finishProbe runs the command).
+        deferredPowerOn = true
+      }
       return
     }
     Quickshell.execDetached(["omarchy-bluetooth-power", adapter.enabled ? "off" : "on"])
