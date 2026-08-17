@@ -356,9 +356,10 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(380))
-    // Taller than the control panels on purpose: this one is a dashboard, and
-    // the whole point is reading limits and history without scrolling.
-    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(640))
+    // No fixed cap: this one is a dashboard, and the whole point is reading
+    // limits and history without scrolling. The panel grows to fit its
+    // content; fittedContentHeight still bounds it to the screen.
+    contentHeight: panel.fittedContentHeight(column.implicitHeight)
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -386,8 +387,15 @@ Panel {
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         flickableDirection: Flickable.VerticalFlick
-        interactive: contentHeight > height
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        // Sub-pixel slop: fittedContentHeight rounds the card height, so on a
+        // fractional-scale display the viewport can land a fraction of a pixel
+        // short of the content. That is not overflow worth a scrollbar or a
+        // wheel that nudges the content around.
+        readonly property bool overflows: contentHeight > height + 1
+        interactive: overflows
+        ScrollBar.vertical: ScrollBar {
+          policy: panelFlick.overflows ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+        }
 
         Column {
           id: column
