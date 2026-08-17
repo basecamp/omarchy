@@ -1,7 +1,7 @@
 # Reporting Issues and Submitting PRs
 
-Read this when the user explicitly wants to report an Omarchy bug, suggest a
-feature, or contribute a fix upstream.
+Read this when the user wants to diagnose or report an Omarchy bug, suggest a
+feature, or explicitly contribute a fix upstream.
 
 ## Keep Upstream Work Explicit
 
