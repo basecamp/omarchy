@@ -9,10 +9,13 @@ require_command python3
 # token, the CLI's profile for the account it belongs to. The profile sits
 # beside the directory by default and inside it when CLAUDE_CONFIG_DIR moved
 # the whole config elsewhere, so the caller says which shape to plant.
+SANDBOX=$(mktemp -d)
+trap 'rm -rf "$SANDBOX"' EXIT
+
 read_plan() {
   local credentials="$1" profile="$2" where="${3:-beside}"
   local dir plan
-  dir=$(mktemp -d)
+  dir=$(mktemp -d "$SANDBOX/config.XXXXXX")
   printf '%s' "$credentials" >"$dir/.credentials.json"
   if [[ -n $profile ]]; then
     if [[ $where == "inside" ]]; then
@@ -34,7 +37,6 @@ print(collector.oauth_login(pathlib.Path(os.environ["CLAUDE_DIR"]))[2])
 PY
   )
 
-  rm -rf "$dir" "$dir.json"
   printf '%s' "$plan"
 }
 
