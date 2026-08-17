@@ -12,14 +12,14 @@ Item {
   id: root
 
   // The omarchy-shell host injects omarchyPath from OMARCHY_PATH.
-  required property string omarchyPath
+  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   // Injected by the host shell so bar slots can resolve enabled widgets.
-  required property var barWidgetRegistry
+  property var barWidgetRegistry: null
   // Injected by the host shell every time shell.json is reloaded. Holds the
   // `bar:` subtree: position, centerAnchor, layout. The host owns file IO;
   // the bar just renders whatever it's handed. The bar font follows the
   // OS-level fontconfig monospace binding — it is not stored in shell.json.
-  required property var barConfig
+  property var barConfig: null
   // Injected by the host shell. Used for shell-wide actions such as opening
   // settings and persisting inline widget state.
   property var shell: null
