@@ -76,7 +76,11 @@ Panel {
     if (toggled >= Qt.Sunday && toggled <= Qt.Saturday) return toggled
     // JS range (0-6) — shift to Qt range
     if (toggled >= 0 && toggled <= 6) return toggled + 1
-    return weekStart
+    // Fallback: normalize weekStart too so this property always returns
+    // a valid Qt.DayOfWeek value for dayName().
+    if (weekStart >= Qt.Sunday && weekStart <= Qt.Saturday) return weekStart
+    if (weekStart >= 0 && weekStart <= 6) return weekStart + 1
+    return Qt.locale().firstDayOfWeek
   }
   readonly property string nextWeekStartLabel: labelLocale.dayName(nextWeekStartDayOfWeek, Locale.LongFormat)
   readonly property var weekdays: Model.weekdayOrder(weekStart)
