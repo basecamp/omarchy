@@ -225,6 +225,13 @@ Item {
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: true
+        // Decode at the size this screen needs rather than the file's native
+        // resolution. PreserveAspectCrop makes sourceSize a cover bound, not a
+        // fit one, so the wallpaper still fills the panel. Without it an
+        // 7680x4320 background decodes to ~126 MB of RGBA on every machine
+        // regardless of display, and a transition holds three of these at once.
+        sourceSize.width: Math.round(width * Screen.devicePixelRatio)
+        sourceSize.height: Math.round(height * Screen.devicePixelRatio)
         onStatusChanged: {
           if (status === Image.Ready && root.finishingTransition) {
             root.incomingBackground = ""
@@ -243,6 +250,8 @@ Item {
         cache: false
         smooth: true
         mipmap: true
+        sourceSize.width: Math.round(width * Screen.devicePixelRatio)
+        sourceSize.height: Math.round(height * Screen.devicePixelRatio)
         visible: root.oldBackground !== "" && root.revealProgress < 1
         onStatusChanged: panel.maybeStartReveal()
       }
@@ -269,6 +278,8 @@ Item {
           cache: false
           smooth: true
           mipmap: true
+          sourceSize.width: Math.round(width * Screen.devicePixelRatio)
+          sourceSize.height: Math.round(height * Screen.devicePixelRatio)
           onStatusChanged: panel.maybeStartReveal()
         }
       }
