@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Pick one option from a menu
+# omarchy:summary=Pick options from a menu
 # omarchy:group=menu
 # omarchy:name=select
 # omarchy:args=prompt [option...] [-- menu args...]
@@ -10,7 +10,8 @@
 # subtext shown under the label, as "<glyph><TAB><label><TAB><subtext>". The
 # menu shows the glyph but never returns it. A plain option returns the label
 # alone; an option with a subtext returns "<label><TAB><subtext>", so callers
-# with same-named rows get the subtext back as the stable key.
+# with same-named rows get the subtext back as the stable key. Pass --multi after
+# the separator to let Tab pin options and Enter return them one per line.
 
 set -euo pipefail
 
@@ -25,12 +26,16 @@ shift
 options=()
 menu_width=""
 menu_maxheight=""
+multi_select=0
 
 while (( $# > 0 )); do
   if [[ $1 == "--" ]]; then
     shift
     while (( $# > 0 )); do
       case "$1" in
+        --multi)
+          multi_select=1
+          ;;
         --width)
           shift
           if (( $# == 0 )); then
@@ -83,8 +88,9 @@ payload=$(perl -MEncode=decode -MJSON::PP=encode_json,decode_json -e '
   };
   $payload->{width} = int($ARGV[4]) if length($ARGV[4] // "");
   $payload->{maxHeight} = int($ARGV[5]) if length($ARGV[5] // "");
+  $payload->{multiSelect} = JSON::PP::true if $ARGV[6] eq "1";
   print encode_json($payload)
-' "$prompt" "$options_json" "$selection_file" "$done_file" "$menu_width" "$menu_maxheight")
+' "$prompt" "$options_json" "$selection_file" "$done_file" "$menu_width" "$menu_maxheight" "$multi_select")
 
 omarchy-shell shell summon omarchy.menu "$payload" >/dev/null
 
