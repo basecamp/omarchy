@@ -15,11 +15,17 @@ o.bind("SUPER + RIGHT", "Focus on right window", hl.dsp.focus({ direction = "r" 
 o.bind("SUPER + UP", "Focus on above window", hl.dsp.focus({ direction = "u" }))
 o.bind("SUPER + DOWN", "Focus on below window", hl.dsp.focus({ direction = "d" }))
 
+-- Physical numpad keycodes matching the alphanumeric digits 1 through 10.
+local numpad_keycodes = { 79, 80, 81, 83, 84, 85, 87, 88, 89, 90 }
+
 for workspace = 1, 10 do
-  local key = "code:" .. tostring(workspace + 9)
-  o.bind("SUPER + " .. key, "Switch to workspace " .. workspace, hl.dsp.focus({ workspace = tostring(workspace) }))
-  o.bind("SUPER + SHIFT + " .. key, "Move window to workspace " .. workspace, hl.dsp.window.move({ workspace = tostring(workspace) }))
-  o.bind("SUPER + SHIFT + ALT + " .. key, "Move window silently to workspace " .. workspace, hl.dsp.window.move({ workspace = tostring(workspace), follow = false }))
+  local keys = { "code:" .. tostring(workspace + 9), "code:" .. tostring(numpad_keycodes[workspace]) }
+
+  for _, key in ipairs(keys) do
+    o.bind("SUPER + " .. key, "Switch to workspace " .. workspace, hl.dsp.focus({ workspace = tostring(workspace) }))
+    o.bind("SUPER + SHIFT + " .. key, "Move window to workspace " .. workspace, hl.dsp.window.move({ workspace = tostring(workspace) }))
+    o.bind("SUPER + SHIFT + ALT + " .. key, "Move window silently to workspace " .. workspace, hl.dsp.window.move({ workspace = tostring(workspace), follow = false }))
+  end
 end
 
 o.bind("SUPER + S", "Toggle scratchpad", hl.dsp.workspace.toggle_special("scratchpad"))
@@ -87,6 +93,7 @@ o.bind("SUPER + ALT + mouse_up", "Previous window in group", hl.dsp.group.prev()
 
 for index = 1, 5 do
   o.bind("SUPER + ALT + code:" .. tostring(index + 9), "Switch to group window " .. index, hl.dsp.group.active({ index = index }))
+  o.bind("SUPER + ALT + code:" .. tostring(numpad_keycodes[index]), "Switch to group window " .. index, hl.dsp.group.active({ index = index }))
 end
 
 o.bind("SUPER + code:61", "Cycle monitor scaling", "omarchy-hyprland-monitor-scaling-cycle")
