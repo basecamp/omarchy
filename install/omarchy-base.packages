@@ -78,7 +78,7 @@ lua51
 luarocks
 man-db
 mariadb-libs
-mise
+mise-bin
 moonlight-qt
 mpv
 mpv-mpris
