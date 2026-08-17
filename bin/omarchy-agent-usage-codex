@@ -2,7 +2,7 @@
 # omarchy:summary=Print the Codex usage record as JSON
 # omarchy:args=[--force] [--limits-only]
 # omarchy:hidden=true
-"""Collect Codex usage into one display-ready JSON record.
+"""Collect OpenAI usage into one display-ready account record.
 
 Local stats come from native Codex CLI session files, pi/omp sessions that
 ran through openai-codex, and opencode sessions that ran on an OpenAI
@@ -25,9 +25,15 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-AGENT_ID = "codex"
+PROVIDER_ID = "openai"
 AGENT_NAME = "Codex"
 AUTH_HELP = "Run `codex login` to authenticate."
+
+ACCOUNT_ID = os.environ.get("OMARCHY_AGENT_USAGE_ACCOUNT_ID", "")
+ACCOUNT_LABEL = os.environ.get("OMARCHY_AGENT_USAGE_ACCOUNT_LABEL", ACCOUNT_ID)
+ACCOUNT_ACTIVE = os.environ.get("OMARCHY_AGENT_USAGE_ACCOUNT_ACTIVE", "true").lower() == "true"
+RECORD_ID = PROVIDER_ID + (f"@{ACCOUNT_ID}" if ACCOUNT_ID else "")
+_SWITCH_LEDGER = False
 
 # A scan this recent is only reused to dedup concurrent collector runs (the
 # update command backgrounds one per agent while the panel refreshes on its
@@ -49,14 +55,80 @@ def local_day(value):
   text = str(value)
   try:
     if text.endswith("Z"):
-      dt = datetime.fromisoformat(text[:-1] + "+00:00")
+      parsed = datetime.fromisoformat(text[:-1] + "+00:00")
     else:
-      dt = datetime.fromisoformat(text)
-    if dt.tzinfo is not None:
-      dt = dt.astimezone()
-    return dt.strftime("%Y-%m-%d")
+      parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is not None:
+      parsed = parsed.astimezone()
+    return parsed.strftime("%Y-%m-%d")
   except Exception:
     return datetime.now().strftime("%Y-%m-%d")
+
+
+def timestamp_seconds(value):
+  if isinstance(value, (int, float)):
+    try:
+      numeric = float(value)
+      return numeric / 1000 if numeric > 10_000_000_000 else numeric
+    except Exception:
+      return None
+
+  raw = str(value or "").strip()
+  if not raw:
+    return None
+  try:
+    parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+      parsed = parsed.astimezone()
+    return parsed.timestamp()
+  except Exception:
+    return None
+
+
+def switch_ledger():
+  global _SWITCH_LEDGER
+
+  if _SWITCH_LEDGER is not False:
+    return _SWITCH_LEDGER
+
+  path = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state")) / "omarchy" / "agents" / "switches" / f"{PROVIDER_ID}.json"
+  try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list) or not payload:
+      raise ValueError("empty switch ledger")
+    entries = []
+    for entry in payload:
+      if not isinstance(entry, dict) or entry.get("providerId") != PROVIDER_ID:
+        raise ValueError("invalid switch ledger entry")
+      timestamp = timestamp_seconds(entry.get("timestamp"))
+      account_id = entry.get("accountId")
+      if timestamp is None or not isinstance(account_id, str) or not account_id:
+        raise ValueError("invalid switch ledger entry")
+      entries.append((timestamp, account_id))
+    _SWITCH_LEDGER = sorted(entries, key=lambda entry: entry[0])
+  except Exception:
+    _SWITCH_LEDGER = None
+  return _SWITCH_LEDGER
+
+
+def shared_message_belongs_to_account(timestamp):
+  if not ACCOUNT_ID:
+    return True
+
+  ledger = switch_ledger()
+  if ledger is None:
+    return ACCOUNT_ACTIVE
+
+  message_time = timestamp_seconds(timestamp)
+  if message_time is None:
+    return ACCOUNT_ACTIVE
+
+  owner = ledger[0][1]
+  for switched_at, account_id in ledger:
+    if switched_at > message_time:
+      break
+    owner = account_id
+  return owner == ACCOUNT_ID
 
 
 def number(value):
@@ -105,14 +177,17 @@ today_total_tokens = 0
 total_prompts = 0
 total_sessions = set()
 seen_pi_messages = set()
+includes_shared_sessions = False
 
 
-def add_usage(day, session_key, model, input_tokens, output_tokens, cache_read, cache_write):
-  global today_prompts, today_total_tokens, total_prompts
+def add_usage(day, session_key, model, input_tokens, output_tokens, cache_read, cache_write, shared=False):
+  global today_prompts, today_total_tokens, total_prompts, includes_shared_sessions
   total = input_tokens + output_tokens + cache_read + cache_write
   total_prompts += 1
   total_sessions.add(session_key)
   active_days.add(day)
+  if shared:
+    includes_shared_sessions = True
 
   bucket = model_usage.setdefault(model, {
     "inputTokens": 0,
@@ -195,9 +270,12 @@ def scan_pi_sessions():
       if not (input_tokens or output_tokens or cache_read or cache_write):
         continue
 
-      day = local_day(entry.get("timestamp") or message.get("timestamp"))
+      timestamp = entry.get("timestamp") or message.get("timestamp")
+      if not shared_message_belongs_to_account(timestamp):
+        continue
+      day = local_day(timestamp)
       session_key = path
-      add_usage(day, session_key, model_name(message.get("model")), input_tokens, output_tokens, cache_read, cache_write)
+      add_usage(day, session_key, model_name(message.get("model")), input_tokens, output_tokens, cache_read, cache_write, shared=True)
 
     try:
       proc.wait(timeout=1)
@@ -243,8 +321,8 @@ def scan_opencode_sessions():
     #     well-formed JSON are skipped here; the per-row try/except below
     #     stays as the final safety net for rows that pass the SQL filter
     #     but fail json.loads.
-    for session_id, raw in conn.execute(
-      "SELECT session_id, data FROM message"
+    for session_id, row_created, raw in conn.execute(
+      "SELECT session_id, time_created, data FROM message"
       " WHERE data LIKE '%\"role\"%:%\"assistant\"%'"
       " AND data LIKE '%\"providerID\"%:%\"openai\"%'"
       " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.role') END = 'assistant'"
@@ -269,11 +347,14 @@ def scan_opencode_sessions():
         cache_write = number(cache.get("write"))
         if not (input_tokens or output_tokens or cache_read or cache_write):
           continue
-        day = local_day((entry.get("time") or {}).get("created"))
+        created = (entry.get("time") or {}).get("created") or row_created
+        if not shared_message_belongs_to_account(created):
+          continue
+        day = local_day(created)
         model = model_name(str(entry.get("modelID") or "").rstrip("/").split("/")[-1])
       except Exception:
         continue
-      add_usage(day, "opencode:" + str(session_id), model, input_tokens, output_tokens, cache_read, cache_write)
+      add_usage(day, "opencode:" + str(session_id), model, input_tokens, output_tokens, cache_read, cache_write, shared=True)
   except sqlite3.Error:
     # Transient lock, schema migration, corruption: the numbers stop here,
     # incomplete.
@@ -284,7 +365,7 @@ def scan_opencode_sessions():
 
 
 def scan_native_codex_sessions():
-  codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+  codex_home = resolved_codex_home()
   roots = [codex_home / "sessions", codex_home / "archived_sessions"]
   files = []
   cutoff = time.time() - 30 * 24 * 60 * 60
@@ -343,12 +424,16 @@ def cache_root():
   return root
 
 
+def resolved_codex_home():
+  return Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex")).expanduser().resolve()
+
+
 def scan_cache_paths():
-  codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+  codex_home = resolved_codex_home()
   db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
   # The digest covers every data path the scan reads: the codex session
   # roots, the opencode DB, and (via Path.home()) the pi/omp session roots.
-  digest = hashlib.sha1((str(Path.home()) + "\n" + str(codex_home) + "\n" + str(db)).encode("utf-8")).hexdigest()[:16]
+  digest = hashlib.sha1((str(Path.home().resolve()) + "\n" + str(codex_home) + "\n" + str(db.resolve())).encode("utf-8")).hexdigest()[:16]
   root = cache_root()
   return root / f"codex-scan-{digest}.json", root / f"codex-scan-{digest}.lock"
 
@@ -391,7 +476,7 @@ def write_json(path, payload):
 # of a crash or a garbage record.
 def read_cached_stats(cache_file, max_age_seconds):
   cached = read_fresh_json(cache_file, max_age_seconds)
-  if not isinstance(cached, dict) or cached.get("schemaVersion") != 1:
+  if not isinstance(cached, dict) or cached.get("schemaVersion") != 2:
     return None
   # today* fields only mean "today" on the day they were scanned. A cache
   # from another local date (midnight passed, or the clock moved) is a miss,
@@ -401,14 +486,14 @@ def read_cached_stats(cache_file, max_age_seconds):
   stats = cached.get("stats")
   if not isinstance(stats, dict):
     return None
-  if not all(key in stats for key in ("todayPrompts", "todayTotalTokens", "recentDays", "activeDates", "modelUsage")):
+  if not all(key in stats for key in ("todayPrompts", "todayTotalTokens", "recentDays", "activeDates", "modelUsage", "includesSharedSessions")):
     return None
   return stats
 
 
 def write_cached_stats(cache_file, stats):
   try:
-    write_json(cache_file, {"schemaVersion": 1, "scanDate": today, "stats": stats})
+    write_json(cache_file, {"schemaVersion": 2, "scanDate": today, "stats": stats})
   except Exception as exc:
     print(f"omarchy-agent-usage-codex: could not write usage cache ({exc})", file=sys.stderr)
 
@@ -429,6 +514,7 @@ def local_stats():
     "activeDays": len(active_days),
     "activeDates": sorted(active_days),
     "modelUsage": model_usage,
+    "includesSharedSessions": includes_shared_sessions,
   }
 
 
@@ -588,7 +674,11 @@ def main():
 
   record = {
     "schemaVersion": 1,
-    "id": AGENT_ID,
+    "id": RECORD_ID,
+    "providerId": PROVIDER_ID,
+    "accountId": ACCOUNT_ID,
+    "accountLabel": ACCOUNT_LABEL,
+    "accountActive": ACCOUNT_ACTIVE,
     "name": AGENT_NAME,
     "updatedAt": datetime.now(timezone.utc).isoformat(),
     "ready": True,

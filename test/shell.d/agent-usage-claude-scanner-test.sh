@@ -29,7 +29,7 @@ pass "Claude collector counts each API message once"
   fail "Claude collector keeps mutually exclusive token categories" "$result"
 pass "Claude collector keeps mutually exclusive token categories"
 
-[[ $(jq -r '.id + "/" + .usageStatusText' <<<"$result") == "claude/Waiting for auth" ]] ||
+[[ $(jq -r '.id + "/" + .providerId + "/" + .usageStatusText' <<<"$result") == "anthropic/anthropic/Waiting for auth" ]] ||
   fail "Claude collector identifies itself and reports missing auth" "$result"
 pass "Claude collector identifies itself and reports missing auth"
 

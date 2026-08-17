@@ -43,6 +43,11 @@ pass "update reports a failing collector"
   fail "update writes each collector's record to the usage directory"
 pass "update writes each collector's record to the usage directory"
 
+jq -e '.id == "good" and .providerId == "good" and .accountId == "" and .accountLabel == "" and .accountActive' \
+  "$usage_dir/good.json" >/dev/null ||
+  fail "update gives a bare provider the account identity contract"
+pass "update gives bare providers the account identity contract"
+
 [[ ! -e $usage_dir/noisy.json ]] ||
   fail "update refuses records that are not valid JSON"
 pass "update refuses records that are not valid JSON"

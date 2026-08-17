@@ -51,7 +51,7 @@ pass "Codex collector counts each turn once"
   fail "Codex collector does not double-count cache or reasoning tokens" "$result"
 pass "Codex collector does not double-count cache or reasoning tokens"
 
-[[ $(jq -c '.id + "/" + (.limits|tostring)' <<<"$result") == '"codex/[]"' ]] ||
+[[ $(jq -c '.id + "/" + .providerId + "/" + (.limits|tostring)' <<<"$result") == '"openai/openai/[]"' ]] ||
   fail "Codex collector identifies itself with an empty limits list" "$result"
 pass "Codex collector identifies itself with an empty limits list"
 
@@ -175,7 +175,7 @@ cache_file=$(ls "$CACHE_HOME/.cache/omarchy/agent-usage/"/codex-scan-*.json 2>/d
   fail "Codex collector leaves a cache file behind" "$result"
 [[ $(stat -c %a "$cache_file") == "644" ]] ||
   fail "Codex collector keeps cache files readable" "$result"
-[[ $(jq -r '.schemaVersion' "$cache_file") == "1" && $(jq -r '.stats.todayTotalTokens' "$cache_file") == "5" ]] ||
+[[ $(jq -r '.schemaVersion' "$cache_file") == "2" && $(jq -r '.stats.todayTotalTokens' "$cache_file") == "5" ]] ||
   fail "Codex collector writes a versioned cache envelope" "$result"
 pass "Codex collector writes a local-stats cache on first scan"
 
@@ -187,7 +187,7 @@ result=$(HOME="$CACHE_HOME" CODEX_HOME="$CACHE_HOME/.codex" XDG_CACHE_HOME="$CAC
 
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "5" ]] ||
   fail "Codex collector recovers from a corrupt cache file" "$result"
-[[ $(jq -r '.schemaVersion' "$cache_file") == "1" ]] ||
+[[ $(jq -r '.schemaVersion' "$cache_file") == "2" ]] ||
   fail "Codex collector rewrites the cache after a corrupt read" "$result"
 pass "Codex collector recovers from a corrupt cache file"
 

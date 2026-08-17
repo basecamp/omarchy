@@ -137,6 +137,10 @@ record = scanner.scan("https://example.invalid", auth_path)
 summary["record"] = {
   "schemaVersion": record["schemaVersion"],
   "id": record["id"],
+  "providerId": record["providerId"],
+  "accountId": record["accountId"],
+  "accountLabel": record["accountLabel"],
+  "accountActive": record["accountActive"],
   "ready": record["ready"],
   "hasPromptStats": record["hasPromptStats"],
   "scope": record["scope"],
@@ -211,7 +215,7 @@ pass "Fireworks collector reads firectl credentials"
   fail "Fireworks collector parses Money units and nanos" "$result"
 pass "Fireworks collector parses Money units and nanos"
 
-[[ $(jq -c '.record | {schemaVersion, id, ready, hasPromptStats, scope, tierLabel, limits}' <<<"$result") == '{"schemaVersion":1,"id":"fireworks","ready":true,"hasPromptStats":false,"scope":"account","tierLabel":"Prepaid","limits":[]}' ]] ||
+[[ $(jq -c '.record | {schemaVersion, id, providerId, accountId, accountLabel, accountActive, ready, hasPromptStats, scope, tierLabel, limits}' <<<"$result") == '{"schemaVersion":1,"id":"fireworks","providerId":"fireworks","accountId":"","accountLabel":"","accountActive":true,"ready":true,"hasPromptStats":false,"scope":"account","tierLabel":"Prepaid","limits":[]}' ]] ||
   fail "Fireworks collector prints the display-ready record contract" "$result"
 pass "Fireworks collector prints the display-ready record contract"
 

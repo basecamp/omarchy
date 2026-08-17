@@ -107,6 +107,10 @@ def base_record(**overrides: Any) -> dict[str, Any]:
   record: dict[str, Any] = {
     "schemaVersion": 1,
     "id": AGENT_ID,
+    "providerId": AGENT_ID,
+    "accountId": "",
+    "accountLabel": "",
+    "accountActive": True,
     "name": AGENT_NAME,
     "updatedAt": datetime.now(timezone.utc).isoformat(),
     "ready": False,
