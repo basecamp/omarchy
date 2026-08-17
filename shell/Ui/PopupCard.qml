@@ -116,24 +116,6 @@ PopupWindow {
       var window = target.QsWindow.window
       if (!window) return
 
-      if (root.centerOnBar) {
-        var cx = 0;
-        var cy = 0;
-        if (root.bar.position === "top" || root.bar.position === "bottom") {
-          cx = window.width / 2 - popupWidth / 2
-          cy = root.bar.position === "bottom" ? -popupHeight - root.margin : window.height + root.margin
-          cx = Math.max(root.margin, Math.min(cx, window.width - popupWidth - root.margin))
-        } else {
-          cx = root.bar.position === "left" ? window.width + root.margin : -popupWidth - root.margin
-          cy = window.height / 2 - popupHeight / 2
-          cy = Math.max(root.margin, Math.min(cy, window.height - popupHeight - root.margin))
-        }
-
-        popupAnchor.rect.x = Math.round(cx)
-        popupAnchor.rect.y = Math.round(cy)
-        return
-      }
-
       var point = window.contentItem.mapFromItem(target, localX, localY)
 
       if (root.bar.position === "top" || root.bar.position === "bottom") {

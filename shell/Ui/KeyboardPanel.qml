@@ -194,13 +194,7 @@ PanelWindow {
   readonly property point cardOrigin: {
     if (!anchorItem || !bar) return Qt.point(margin, margin)
     var x = 0, y = 0
-    if (centerOnBar && (barPos === "top" || barPos === "bottom")) {
-      x = screenW / 2 - contentWidth / 2
-      y = barPos === "bottom" ? screenH - barH - contentHeight - gap : barH + gap
-    } else if (centerOnBar) {
-      x = barPos === "left" ? barW + gap : screenW - barW - contentWidth - gap
-      y = screenH / 2 - contentHeight / 2
-    } else if (barPos === "bottom") {
+    if (barPos === "bottom") {
       x = anchorScreenPos.x + anchorW / 2 - contentWidth / 2
       y = screenH - barH - contentHeight - gap
     } else if (barPos === "left") {
