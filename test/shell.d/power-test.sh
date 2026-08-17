@@ -20,6 +20,14 @@ assertDeepEqual(
   'power parses profile output and clamps selection'
 )
 
+assertDeepEqual(
+  power.batteryPacks({ batteries: '2', battery1: '16Wh · 80%', battery2: '71Wh · 74%' }),
+  [{ label: 'Battery 1', value: '16Wh · 80%' }, { label: 'Battery 2', value: '71Wh · 74%' }],
+  'power lists a row per pack on multi-battery machines'
+)
+assertDeepEqual(power.batteryPacks({ size: '56Wh' }), [], 'power lists no packs on single-battery machines')
+assertDeepEqual(power.batteryPacks({}), [], 'power tolerates an empty battery payload')
+
 assert(power.profileIcon('performance').length > 0, 'power maps profile icons')
 assertEqual(power.batteryFraction({ isPresent: true, percentage: 1.5 }), 1, 'power clamps battery fraction')
 

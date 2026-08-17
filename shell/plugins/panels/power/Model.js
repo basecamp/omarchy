@@ -20,6 +20,23 @@ function parseKeyValue(raw) {
   return next
 }
 
+// Machines with more than one pack (ThinkPad T480 and friends) get a row per
+// pack under the totals. omarchy-battery-status only emits these keys when a
+// second pack exists, so single-battery hardware keeps the panel as it was.
+function batteryPacks(info) {
+  var data = info || {}
+  var count = parseInt(data.batteries, 10)
+  if (!(count > 1)) return []
+
+  var packs = []
+  for (var i = 1; i <= count; i++) {
+    var value = data["battery" + i]
+    if (!value) continue
+    packs.push({ label: "Battery " + i, value: value })
+  }
+  return packs
+}
+
 function parseProfiles(raw, previousIndex) {
   var lines = String(raw || "").split("\n")
   var list = []
@@ -94,6 +111,7 @@ if (typeof module !== "undefined") {
     clampIndex: clampIndex,
     selectProfileIndex: selectProfileIndex,
     parseKeyValue: parseKeyValue,
+    batteryPacks: batteryPacks,
     parseProfiles: parseProfiles,
     profileIcon: profileIcon,
     batteryFraction: batteryFraction,

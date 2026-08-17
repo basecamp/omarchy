@@ -18,67 +18,135 @@ case "${1:-}" in
     ;;
 esac
 
-battery=$(upower -e 2>/dev/null | grep BAT | head -n 1)
-[[ -z $battery ]] && exit 0
+mapfile -t batteries < <(upower -e 2>/dev/null | grep BAT)
+((${#batteries[@]} == 0)) && exit 0
 
-battery_info=$(upower -i "$battery")
+# Machines like the ThinkPad T480 carry more than one pack, so every reading is
+# aggregated across all of them: energies sum, the rate sums, and the reported
+# percentage is the combined charge rather than whichever battery upower lists
+# first.
+energy_total=0
+capacity_total=0
+rate_total=0
+percentage_weighted=0
+states=()
+cycles_list=()
+pack_labels=()
+threshold_starts=()
+threshold_ends=()
 
-percentage=$(awk '/percentage/ { print int($2); exit }' <<<"$battery_info")
-capacity=$(awk '/energy-full:/ { printf "%d", $2; exit }' <<<"$battery_info")
-time_remaining=$(awk '/time to (empty|full)/ {
-  value = $4
-  unit = $5
-  if (unit ~ /^minute/) {
-    printf "%dm", int(value)
-  } else {
-    hours = int(value)
-    minutes = int((value - hours) * 60)
-    if (minutes > 0) {
-      printf "%dh %dm", hours, minutes
-    } else {
-      printf "%dh", hours
-    }
-  }
-  exit
-}' <<<"$battery_info")
-power_rate_raw=$(awk '/energy-rate/ { print $2; exit }' <<<"$battery_info")
-native_path=$(awk '/native-path/ { print $2; exit }' <<<"$battery_info")
-battery_path="$power_supply_path/$native_path"
+for battery in "${batteries[@]}"; do
+  battery_info=$(upower -i "$battery")
 
-# UPower's energy-rate can lag the kernel telemetry by tens of seconds. Use
-# the instantaneous sysfs reading when available so the open panel stays live.
-if [[ -r $battery_path/power_now ]]; then
-  power_rate_raw=$(awk -v microwatts="$(<"$battery_path/power_now")" 'BEGIN { print microwatts / 1000000 }')
-elif [[ -r $battery_path/current_now && -r $battery_path/voltage_now ]]; then
-  power_rate_raw=$(awk \
-    -v microamps="$(<"$battery_path/current_now")" \
-    -v microvolts="$(<"$battery_path/voltage_now")" \
-    'BEGIN { print microamps * microvolts / 1000000000000 }')
-fi
+  present=$(awk '/present:/ { print $2; exit }' <<<"$battery_info")
+  [[ $present == "no" ]] && continue
 
+  energy=$(awk '/^ *energy: / { print $2; exit }' <<<"$battery_info")
+  capacity=$(awk '/energy-full:/ { print $2; exit }' <<<"$battery_info")
+  rate=$(awk '/energy-rate/ { print $2; exit }' <<<"$battery_info")
+  native_path=$(awk '/native-path/ { print $2; exit }' <<<"$battery_info")
+  battery_path="$power_supply_path/$native_path"
+
+  # UPower's energy-rate can lag the kernel telemetry by tens of seconds. Use
+  # the instantaneous sysfs reading when available so the open panel stays live.
+  if [[ -r $battery_path/power_now ]]; then
+    rate=$(awk -v microwatts="$(<"$battery_path/power_now")" 'BEGIN { print microwatts / 1000000 }')
+  elif [[ -r $battery_path/current_now && -r $battery_path/voltage_now ]]; then
+    rate=$(awk \
+      -v microamps="$(<"$battery_path/current_now")" \
+      -v microvolts="$(<"$battery_path/voltage_now")" \
+      'BEGIN { print (microamps < 0 ? -microamps : microamps) * microvolts / 1000000000000 }')
+  fi
+
+  energy_total=$(awk -v a="$energy_total" -v b="${energy:-0}" 'BEGIN { print a + b }')
+  capacity_total=$(awk -v a="$capacity_total" -v b="${capacity:-0}" 'BEGIN { print a + b }')
+  rate_total=$(awk -v a="$rate_total" -v b="${rate:-0}" 'BEGIN { print a + b }')
+
+  share=$(awk '/^ *percentage:/ { gsub(/%/, "", $2); print $2; exit }' <<<"$battery_info")
+  percentage_weighted=$(awk -v a="$percentage_weighted" -v p="${share:-0}" -v c="${capacity:-0}" 'BEGIN { print a + p * c }')
+
+  # UPower's state label lags the kernel the same way its energy-rate does, and
+  # on a threshold-limited pack it can still read pending-charge while the pack
+  # is drawing 30W. Prefer sysfs when it's readable.
+  state=$(awk '/^ *state:/ { print $2; exit }' <<<"$battery_info")
+  if [[ -r $battery_path/status ]]; then
+    case "$(<"$battery_path/status")" in
+      "Charging") state=charging ;;
+      "Discharging") state=discharging ;;
+      "Not charging") state=pending-charge ;;
+      "Full") state=fully-charged ;;
+    esac
+  fi
+  states+=("$state")
+
+  pack_labels+=("$(awk -v c="${capacity:-0}" -v p="${share:-0}" 'BEGIN { printf "%dWh · %d%%", c, p + 0.5 }')")
+
+  cycles=$(awk '/charge-cycles:/ { print $2; exit }' <<<"$battery_info")
+  [[ -n $cycles && $cycles != "N/A" ]] && cycles_list+=("$cycles")
+
+  start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
+  end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
+  [[ -n $start ]] && threshold_starts+=("$start")
+  [[ -n $end ]] && threshold_ends+=("$end")
+done
+
+((${#states[@]} == 0)) && exit 0
+
+# Each pack's own percentage, weighted by how much of the total capacity it
+# holds, so a small auxiliary pack can't skew the number the panel shows.
+percentage=$(awk -v w="$percentage_weighted" -v c="$capacity_total" -v e="$energy_total" 'BEGIN {
+  if (c > 0 && w > 0) print int(w / c + 0.5)
+  else if (c > 0) print int(e / c * 100 + 0.5)
+  else print 0
+}')
+capacity=$(awk -v c="$capacity_total" 'BEGIN { printf "%d", c }')
+power_rate_raw=$rate_total
 power_rate=$(awk -v rate="${power_rate_raw:-0}" 'BEGIN {
   rounded = sprintf("%.1f", rate)
   sub(/\.0$/, "", rounded)
   print rounded
 }')
-state=$(awk '/state/ { print $2; exit }' <<<"$battery_info")
 
-# UPower's state lags the kernel the same way its energy-rate does: a pack held
-# at a charge threshold keeps reporting pending-charge for tens of seconds after
-# it starts drawing again. Use sysfs when it is available.
-if [[ -r $battery_path/status ]]; then
-  case "$(<"$battery_path/status")" in
-    "Charging") state=charging ;;
-    "Discharging") state=discharging ;;
-    "Not charging") state=pending-charge ;;
-    "Full") state=fully-charged ;;
-  esac
+# The system is charging if any pack is taking charge, discharging if any pack
+# is feeding the system, and otherwise reports whatever the packs agree on.
+state=${states[0]}
+for candidate in "${states[@]}"; do
+  [[ $candidate == "discharging" ]] && state="discharging" && break
+done
+if [[ $state != "discharging" ]]; then
+  for candidate in "${states[@]}"; do
+    [[ $candidate == "charging" ]] && state="charging" && break
+  done
 fi
-threshold_start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
-threshold_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
 
-[[ -z $threshold_end ]] && threshold_end=$(cat "$power_supply_path"/BAT*/charge_control_end_threshold 2>/dev/null | head -1)
-[[ -z $threshold_start ]] && threshold_start=$(cat "$power_supply_path"/BAT*/charge_control_start_threshold 2>/dev/null | head -1)
+# Time remaining is derived from the combined energy and draw so a second pack
+# extends the estimate instead of being ignored.
+if [[ $state == "charging" ]]; then
+  remaining_energy=$(awk -v e="$energy_total" -v c="$capacity_total" 'BEGIN { print (c > e) ? c - e : 0 }')
+else
+  remaining_energy=$energy_total
+fi
+
+time_remaining=$(awk -v energy="$remaining_energy" -v rate="${power_rate_raw:-0}" 'BEGIN {
+  if (rate <= 0.2 || energy <= 0) exit
+  hours_total = energy / rate
+  hours = int(hours_total)
+  minutes = int((hours_total - hours) * 60 + 0.5)
+  if (minutes == 60) { hours += 1; minutes = 0 }
+  if (hours == 0) printf "%dm", minutes
+  else if (minutes > 0) printf "%dh %dm", hours, minutes
+  else printf "%dh", hours
+}')
+
+dedupe_min() { printf '%s\n' "$@" | sort -n | head -1; }
+
+threshold_start=""
+threshold_end=""
+((${#threshold_starts[@]})) && threshold_start=$(dedupe_min "${threshold_starts[@]}")
+((${#threshold_ends[@]})) && threshold_end=$(dedupe_min "${threshold_ends[@]}")
+
+[[ -z $threshold_end ]] && threshold_end=$(cat "$power_supply_path"/BAT*/charge_control_end_threshold 2>/dev/null | sort -n | head -1)
+[[ -z $threshold_start ]] && threshold_start=$(cat "$power_supply_path"/BAT*/charge_control_start_threshold 2>/dev/null | sort -n | head -1)
 
 ac_online=false
 for supply in "$power_supply_path"/*; do
@@ -97,10 +165,10 @@ if awk -v rate="${power_rate_raw:-0}" 'BEGIN { exit !(rate <= 0.2) }'; then
   charge_idle=true
 fi
 
-# Holding means no power is moving, so an idle rate is a precondition for every
-# branch below: a stale state label must not report holding while the battery is
-# drawing watts.
 charge_holding=false
+# Holding means no power is moving. With more than one pack a single pack can
+# sit parked at its threshold while another still charges, so the combined rate
+# decides: any real draw means we are charging, whatever the labels say.
 if [[ $ac_online == "true" && -n $threshold_end && $charge_idle == "true" ]]; then
   if [[ $state == "pending-charge" ]]; then
     charge_holding=true
@@ -121,10 +189,22 @@ if [[ $shell_output == "true" ]]; then
   printf 'rate\t%s\n' "${power_rate}W"
   printf 'size\t%s\n' "${capacity}Wh"
   printf 'time\t%s\n' "$time_remaining"
+  # Single-battery machines already say everything in the totals above, so the
+  # per-pack breakdown only shows up when there is more than one pack.
+  if ((${#pack_labels[@]} > 1)); then
+    printf 'batteries\t%s\n' "${#pack_labels[@]}"
+    for index in "${!pack_labels[@]}"; do
+      printf 'battery%d\t%s\n' "$((index + 1))" "${pack_labels[index]}"
+    done
+  fi
 
-  cycles=$(cat "$power_supply_path"/BAT*/cycle_count 2>/dev/null | head -1)
-
-  [[ -n $cycles ]] && printf 'cycles\t%s\n' "$cycles"
+  if ((${#cycles_list[@]})); then
+    cycles_label=${cycles_list[0]}
+    for cycles in "${cycles_list[@]:1}"; do
+      cycles_label+=" / $cycles"
+    done
+    printf 'cycles\t%s\n' "$cycles_label"
+  fi
 
   if [[ -n $threshold_end ]]; then
     if [[ -n $threshold_start && $threshold_start != $threshold_end ]]; then
@@ -146,7 +226,7 @@ if [[ $charge_holding == "true" ]]; then
 
   echo "Battery ${percentage}%  ·  Holding at ${threshold_label}  ·  ${power_rate}W / ${capacity}Wh"
 elif [[ $state == "charging" ]]; then
-  echo "Battery ${percentage}%  ·  ${time_remaining} to full  ·   ${power_rate}W / ${capacity}Wh"
+  echo "Battery ${percentage}%  ·  ${time_remaining} to full  ·   ${power_rate}W / ${capacity}Wh"
 else
-  echo "Battery ${percentage}%  ·  ${time_remaining} left  ·   ${power_rate}W / ${capacity}Wh"
+  echo "Battery ${percentage}%  ·  ${time_remaining} left  ·   ${power_rate}W / ${capacity}Wh"
 fi

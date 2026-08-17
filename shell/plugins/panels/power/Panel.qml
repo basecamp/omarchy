@@ -24,6 +24,7 @@ Panel {
   // icon, so the open-panel mark takes the painted width instead of the
   // icon-sized fraction of the slot the fallback assumes.
   readonly property real openPanelIndicatorWidth: showPercentage && !button.vertical ? button.glyphPaintedWidth : 0
+  readonly property var batteryPacks: Model.batteryPacks(batteryInfo)
   readonly property bool batteryPresent: {
     var device = UPower.displayDevice
     return !!(device && device.isPresent)
@@ -444,6 +445,33 @@ Panel {
             InfoPair {
               label: root.chargeThresholdActive ? "Battery state" : (root.discharging ? "Discharging" : "Charging")
               value: root.chargeThresholdActive ? "Holding" : (root.batteryFull ? "-" : (root.batteryInfo.rate || ""))
+            }
+          }
+        }
+
+        // ---------- Per-pack breakdown (multi-battery machines only) ----------
+        Row {
+          visible: root.batteryPacks.length > 1
+          width: parent.width
+          spacing: Style.space(20)
+
+          Column {
+            width: (parent.width - parent.spacing) / 2
+            spacing: Style.spacing.labelGap
+
+            Repeater {
+              model: root.batteryPacks.filter(function (pack, index) { return index % 2 === 0 })
+              InfoPair { label: modelData.label; value: modelData.value }
+            }
+          }
+
+          Column {
+            width: (parent.width - parent.spacing) / 2
+            spacing: Style.spacing.labelGap
+
+            Repeater {
+              model: root.batteryPacks.filter(function (pack, index) { return index % 2 === 1 })
+              InfoPair { label: modelData.label; value: modelData.value }
             }
           }
         }
