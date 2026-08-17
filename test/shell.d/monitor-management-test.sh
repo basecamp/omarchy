@@ -111,7 +111,7 @@ start_watcher() {
     "$ROOT/bin/omarchy-hyprland-monitor-watch" &
   watch_pid=$!
 
-  exec {events_fd}>"$events"
+  exec {events_fd}<>"$events"
 }
 
 HOME="$test_tmp/home" \
