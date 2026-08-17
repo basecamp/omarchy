@@ -114,7 +114,7 @@ else
   echo "Removed $id. Backup at: $backup"
 fi
 
-omarchy-shell shell rescanPlugins >/dev/null
+omarchy-restart-shell
 
 if [[ -n $cloned_from && $was_enabled == "true" ]]; then
   echo "Restored $cloned_from."
