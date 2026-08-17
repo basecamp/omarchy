@@ -46,6 +46,13 @@ if [[ -z $agent ]]; then
   exit 1
 fi
 
+# A long-running session can predate env-bootstrap's user path update. Restore
+# the standard user command path for any locally installed agent.
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) export PATH="${PATH:+$PATH:}$HOME/.local/bin" ;;
+esac
+
 if omarchy-cmd-missing "$agent"; then
   echo "$agent is not installed. Choose an installed agent with: omarchy default agent <name>" >&2
   exit 1
@@ -54,6 +61,15 @@ fi
 # Agents launched from the keybinding or menu run unattended, so each one starts
 # with its own spelling of "don't stop to ask". Pi has no approval prompts.
 case "$agent" in
+amp)
+  # Amp has no approval prompts by default, and no --prompt flag. An initial
+  # message is piped into an interactive session, as Amp's CLI documents.
+  if [[ -n ${prompt:-} ]]; then
+    command=(bash -c "printf '%s\n' \"\$1\" | exec amp" _ "$prompt")
+  else
+    command=(amp)
+  fi
+  ;;
 opencode)
   command=(opencode --auto)
   [[ -n ${prompt:-} ]] && command+=(--prompt "$prompt")
