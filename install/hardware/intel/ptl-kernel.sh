@@ -22,7 +22,7 @@ if [[ $needs_ptl_kernel == "true" ]]; then
     pacman -Qi linux | grep -i "required by"
   fi
 
-  if [[ ${OMARCHY_TESTING:-0} == "1" ]] && (( EUID != 0 )); then
+  if [[ ${OMARCHY_TESTING:-0} == "1" ]]; then
     boot_order_conf="${OMARCHY_PTL_BOOT_ORDER_CONF:?missing test boot-order path}"
     old_boot_order_conf="${OMARCHY_PTL_OLD_BOOT_ORDER_CONF:?missing test old boot-order path}"
     legacy_boot_order_conf="${OMARCHY_PTL_LEGACY_BOOT_ORDER_CONF:?missing test legacy boot-order path}"
