@@ -250,9 +250,12 @@ ShellRoot {
     // QML refuses to instantiate a component whose required properties are
     // unset. Binding `source` therefore failed before onLoaded could run, and
     // configureBar()'s `if (!target) return` made the injection a no-op -- so no
-    // bar plugin could ever load. setSource supplies them at creation instead,
-    // and Qt.binding keeps them live afterwards, the way defaultBarComponent's
-    // declarative bindings do.
+    // bar plugin could ever load. setSource supplies them at creation instead.
+    //
+    // Plain values, not Qt.binding: onLoaded hands the item straight to
+    // configureBar(), which reassigns all of them from the live shell properties,
+    // and onBarConfigChanged keeps barConfig current from then on. A binding here
+    // would be replaced moments after it was made.
     function loadPluginBar() {
       if (!active) {
         setSource("")
@@ -260,11 +263,11 @@ ShellRoot {
       }
 
       setSource(shell.activeBarSourceUrl, {
-        omarchyPath: Qt.binding(function() { return shell.omarchyPath }),
-        barWidgetRegistry: Qt.binding(function() { return shell.barWidgetRegistry }),
-        barConfig: Qt.binding(function() { return shell.barConfig }),
+        omarchyPath: shell.omarchyPath,
+        barWidgetRegistry: shell.barWidgetRegistry,
+        barConfig: shell.barConfig,
         shell: shell,
-        manifest: Qt.binding(function() { return shell.activeBarManifest })
+        manifest: shell.activeBarManifest
       })
     }
 
