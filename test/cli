@@ -807,3 +807,42 @@ assert_output_contains "a --help behind -- belongs to the command and still forw
 
 output=$("$TMPDIR/omarchy" parenthelp --helpme x--help)
 assert_output_contains "help lookalike tokens do not trigger help" "$output" "parenthelp-parent-ran args=[--helpme x--help]"
+
+# An empty option list piped into menu-select is the caller's "nothing to
+# offer", not a usage mistake: it must exit 2 quietly instead of leaking the
+# usage string, and callers must report what came up empty.
+status=0
+output=$(printf '' | "$ROOT/bin/omarchy-menu-select" "Pick" 2>&1) || status=$?
+(( status == 2 )) || fail "menu-select exits 2 on an empty piped option list (got $status)"
+[[ -z $output ]] || fail "menu-select is quiet on an empty piped option list"
+pass "menu-select exits 2 quietly on an empty piped option list"
+
+status=0
+output=$("$ROOT/bin/omarchy-menu-select" </dev/null 2>&1) || status=$?
+(( status == 1 )) || fail "menu-select without a prompt exits 1 (got $status)"
+assert_output_contains "menu-select without a prompt still prints usage" "$output" "Usage: omarchy-menu-select"
+
+make_tmpdir EMPTY_MEDIA_TMPDIR
+status=0
+output=$("$ROOT/bin/omarchy-menu-file" "Pick media" "$EMPTY_MEDIA_TMPDIR" "jpg png" 2>&1) || status=$?
+(( status == 2 )) || fail "menu-file exits 2 when no files match (got $status)"
+assert_output_contains "menu-file reports an empty search instead of usage" "$output" "No matching files"
+
+make_tmpdir NOTIFY_TMPDIR
+NOTIFY_FAKE_BIN="$NOTIFY_TMPDIR/fake-bin"
+mkdir -p "$NOTIFY_FAKE_BIN"
+
+cat >"$NOTIFY_FAKE_BIN/omarchy-notification-send" <<'EOF'
+#!/bin/bash
+echo "$*" >>"${NOTIFY_LOG:-/dev/null}"
+EOF
+chmod +x "$NOTIFY_FAKE_BIN/omarchy-notification-send"
+
+status=0
+output=$(NOTIFY_LOG="$NOTIFY_TMPDIR/notify.log" PATH="$NOTIFY_FAKE_BIN:$PATH" "$ROOT/bin/omarchy-transcode" --path "$EMPTY_MEDIA_TMPDIR" 2>&1) || status=$?
+(( status == 1 )) || fail "transcode exits 1 when nothing matches (got $status)"
+grep -q "Nothing to transcode" "$NOTIFY_TMPDIR/notify.log" || fail "transcode notifies when nothing matches"
+if [[ $output == *"Usage: omarchy-menu-select"* ]]; then
+  fail "transcode does not leak the menu-select usage string"
+fi
+pass "transcode notifies instead of leaking usage when nothing matches"

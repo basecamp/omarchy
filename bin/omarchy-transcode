@@ -130,7 +130,7 @@ copy_to_clipboard() {
 
 main() {
   local input="" format="" resolution="" search_path=""
-  local type output positional=()
+  local type output positional=() menu_status=0
 
   while (( $# > 0 )); do
     case "$1" in
@@ -166,7 +166,14 @@ main() {
   search_path="${search_path:-$HOME/Pictures:$HOME/Videos}"
 
   if [[ -z $input ]]; then
-    input=$(omarchy-menu-file "Transcode picture or video" "$search_path" "jpg jpeg png webp gif heic avif mp4 mov m4v mkv webm avi")
+    input=$(omarchy-menu-file "Transcode picture or video" "$search_path" "jpg jpeg png webp gif heic avif mp4 mov m4v mkv webm avi") || menu_status=$?
+
+    # The menu entry has no terminal, so an empty search needs a notification
+    # rather than the stderr line omarchy-menu-file already printed.
+    if (( menu_status == 2 )); then
+      omarchy-notification-send -g  "Nothing to transcode" "No pictures or videos under ${search_path//:/ }"
+      return 1
+    fi
   fi
 
   [[ -n $input ]] || return 1
