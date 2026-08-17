@@ -12,7 +12,7 @@ For Spotify, you can use `Ctrl + Minus` to shrink the UI (and `Ctrl + Plus` to m
 
 ### Why isn't Caps Lock working?
 
-In Omarchy, Caps Lock has been designated to be the xcompose key. That's how you get [quick emojis](07-hotkeys.md#quick-emojis) and [other autocompletions](07-hotkeys.md#quick-completions) done. If you really miss using Caps Lock, you can remap the xcompose key to something else by editing `~/.config/hypr/input.lua`, like setting it to the right alt key:
+In Omarchy, Caps Lock has been designated to be the xcompose key. That's how you get [quick emojis](07-hotkeys.md#quick-emojis) and [other autocompletions](07-hotkeys.md#quick-completions) done. If you really miss using Caps Lock, change _Compose key_ under _Setup > Input_. The equivalent advanced configuration for Right Alt is:
 
 ```
 hl.config({

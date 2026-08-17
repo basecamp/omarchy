@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.input",
+  "name": "Input",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Keyboard, mouse, and touchpad essentials",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Input",
+    "description": "Keyboard, mouse, and touchpad essentials",
+    "category": "System",
+    "allowMultiple": false
+  },
+  "omarchy": {
+    "clonePaths": [
+      {
+        "source": "Model.js",
+        "target": "Model.js"
+      }
+    ]
+  }
+}

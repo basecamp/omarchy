@@ -193,8 +193,8 @@ assert(
   'menu update Omarchy entry renders the private glyph with the Omarchy font'
 )
 assert(
-  defaultById['setup.input'].action.includes('input.lua'),
-  'menu keeps Input as a direct config action'
+  defaultById['setup.input'].action.includes('shell summon omarchy.input'),
+  'menu opens the Input panel'
 )
 assert(
   defaultById['setup.direct-boot'].action.includes('omarchy-setup-direct-boot'),

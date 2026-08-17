@@ -1,0 +1,228 @@
+#!/bin/bash
+
+# omarchy:hidden=true
+# omarchy:summary=Read and persist Input panel settings
+# omarchy:args=status | set <setting> <value>
+
+set -euo pipefail
+
+CONFIG_FILE="$HOME/.config/omarchy/input.json"
+HYPR_FILE="$HOME/.local/state/omarchy/hypr/input.lua"
+
+usage() {
+  echo "Usage: omarchy-input-config status | set <setting> <value>" >&2
+  exit 1
+}
+
+hypr_value() {
+  local option="$1"
+  local field="$2"
+  local fallback="$3"
+  local output
+
+  if output=$(hyprctl -j getoption "$option" 2>/dev/null); then
+    jq -r --arg field "$field" --arg fallback "$fallback" '.[$field] // $fallback' <<<"$output"
+  else
+    printf '%s\n' "$fallback"
+  fi
+}
+
+vconsole_value() {
+  local key="$1"
+  local fallback="$2"
+  local value=""
+
+  if [[ -f /etc/vconsole.conf ]]; then
+    value=$(sed -n -E "s/^[[:space:]]*$key[[:space:]]*=[[:space:]]*['\"]?([^'\"#[:space:]]+).*/\\1/p" /etc/vconsole.conf | head -n 1)
+  fi
+
+  printf '%s\n' "${value:-$fallback}"
+}
+
+initial_status() {
+  local layouts variants options primary alternate primary_variant alternate_variant
+  local compose="caps" super_key="super" extra_options=""
+  local numlock sensitivity natural_scroll clickfinger disable_while_typing
+  local option
+
+  layouts=$(hypr_value "input:kb_layout" str "$(vconsole_value XKBLAYOUT us)")
+  variants=$(hypr_value "input:kb_variant" str "$(vconsole_value XKBVARIANT '')")
+  options=$(hypr_value "input:kb_options" str "compose:caps,shift:both_capslock_cancel")
+
+  IFS=',' read -r primary alternate _ <<<"$layouts"
+  IFS=',' read -r primary_variant alternate_variant _ <<<"$variants"
+
+  IFS=',' read -ra option_list <<<"$options"
+  for option in "${option_list[@]}"; do
+    case "$option" in
+      compose:caps) compose="caps" ;;
+      compose:ralt) compose="ralt" ;;
+      compose:menu) compose="menu" ;;
+      shift:both_capslock_cancel | grp:alts_toggle) ;;
+      altwin:swap_alt_win) super_key="alt" ;;
+      "") ;;
+      *)
+        if [[ -n $extra_options ]]; then
+          extra_options+=","
+        fi
+        extra_options+="$option"
+        ;;
+    esac
+  done
+
+  numlock=$(hypr_value "input:numlock_by_default" int "1")
+  sensitivity=$(hypr_value "input:sensitivity" float "0")
+  natural_scroll=$(hypr_value "input:touchpad:natural_scroll" int "0")
+  clickfinger=$(hypr_value "input:touchpad:clickfinger_behavior" int "1")
+  disable_while_typing=$(hypr_value "input:touchpad:disable_while_typing" int "1")
+
+  jq -n \
+    --arg primary "${primary:-us}" \
+    --arg alternate "${alternate:-}" \
+    --arg primaryVariant "${primary_variant:-}" \
+    --arg alternateVariant "${alternate_variant:-}" \
+    --arg compose "$compose" \
+    --arg superKey "$super_key" \
+    --arg extraOptions "$extra_options" \
+    --argjson numlock "$([[ $numlock == "1" ]] && echo true || echo false)" \
+    --argjson sensitivity "${sensitivity:-0}" \
+    --argjson naturalScroll "$([[ $natural_scroll == "1" ]] && echo true || echo false)" \
+    --argjson clickfinger "$([[ $clickfinger == "1" ]] && echo true || echo false)" \
+    --argjson disableWhileTyping "$([[ $disable_while_typing == "1" ]] && echo true || echo false)" \
+    '{version: 1, primary: $primary, alternate: $alternate,
+      primaryVariant: $primaryVariant, alternateVariant: $alternateVariant,
+      compose: $compose, superKey: $superKey, extraOptions: $extraOptions,
+      numlock: $numlock, sensitivity: $sensitivity,
+      naturalScroll: $naturalScroll, clickfinger: $clickfinger,
+      disableWhileTyping: $disableWhileTyping}'
+}
+
+status() {
+  if [[ -f $CONFIG_FILE ]] && jq -e '.version == 1' "$CONFIG_FILE" >/dev/null 2>&1; then
+    jq -c . "$CONFIG_FILE"
+  else
+    initial_status | jq -c .
+  fi
+}
+
+lua_quote() {
+  local value="$1"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  printf '"%s"' "$value"
+}
+
+write_files() {
+  local config="$1"
+  local primary alternate primary_variant alternate_variant compose super_key extra_options sensitivity
+  local layouts variants options=""
+  local config_tmp hypr_tmp
+
+  primary=$(jq -r '.primary' <<<"$config")
+  alternate=$(jq -r '.alternate' <<<"$config")
+  primary_variant=$(jq -r '.primaryVariant' <<<"$config")
+  alternate_variant=$(jq -r '.alternateVariant' <<<"$config")
+  compose=$(jq -r '.compose' <<<"$config")
+  super_key=$(jq -r '.superKey' <<<"$config")
+  extra_options=$(jq -r '.extraOptions' <<<"$config")
+  sensitivity=$(jq -r '.sensitivity' <<<"$config")
+
+  layouts="$primary"
+  variants="$primary_variant"
+  if [[ -n $alternate ]]; then
+    layouts+=",$alternate"
+    variants+=",$alternate_variant"
+  fi
+
+  case "$compose" in
+    caps) options="compose:caps,shift:both_capslock_cancel" ;;
+    ralt) options="compose:ralt" ;;
+    menu) options="compose:menu" ;;
+  esac
+  if [[ -n $alternate ]]; then
+    options+="${options:+,}grp:alts_toggle"
+  fi
+  if [[ $super_key == "alt" ]]; then
+    options+="${options:+,}altwin:swap_alt_win"
+  fi
+  if [[ -n $extra_options ]]; then
+    options+="${options:+,}$extra_options"
+  fi
+
+  mkdir -p "$(dirname "$CONFIG_FILE")" "$(dirname "$HYPR_FILE")"
+  config_tmp=$(mktemp "$(dirname "$CONFIG_FILE")/.input.json.XXXXXX")
+  hypr_tmp=$(mktemp "$(dirname "$HYPR_FILE")/.input.lua.XXXXXX")
+  trap 'rm -f "$config_tmp" "$hypr_tmp"' RETURN
+
+  jq . <<<"$config" >"$config_tmp"
+  {
+    echo "-- Generated by the Omarchy input panel."
+    echo "hl.config({"
+    echo "  input = {"
+    printf '    kb_layout = %s,\n' "$(lua_quote "$layouts")"
+    printf '    kb_variant = %s,\n' "$(lua_quote "$variants")"
+    printf '    kb_options = %s,\n' "$(lua_quote "$options")"
+    printf '    numlock_by_default = %s,\n' "$(jq -r '.numlock' <<<"$config")"
+    printf '    sensitivity = %s,\n' "$sensitivity"
+    echo "    touchpad = {"
+    printf '      natural_scroll = %s,\n' "$(jq -r '.naturalScroll' <<<"$config")"
+    printf '      clickfinger_behavior = %s,\n' "$(jq -r '.clickfinger' <<<"$config")"
+    printf '      disable_while_typing = %s,\n' "$(jq -r '.disableWhileTyping' <<<"$config")"
+    echo "    },"
+    echo "  },"
+    echo "})"
+  } >"$hypr_tmp"
+
+  chmod 600 "$config_tmp"
+  chmod 644 "$hypr_tmp"
+  mv "$config_tmp" "$CONFIG_FILE"
+  mv "$hypr_tmp" "$HYPR_FILE"
+  trap - RETURN
+
+  hyprctl reload >/dev/null 2>&1 || true
+}
+
+set_value() {
+  local key="${1:-}"
+  local value="${2:-}"
+  local config
+
+  config=$(status)
+  case "$key" in
+    primary | alternate)
+      [[ $value =~ ^[a-zA-Z0-9_-]*$ ]] || usage
+      if [[ $key == "primary" && -z $value ]]; then
+        usage
+      fi
+      config=$(jq -c --arg key "$key" --arg value "$value" \
+        '.[$key] = $value | .[($key + "Variant")] = ""' <<<"$config")
+      ;;
+    compose)
+      [[ $value == "caps" || $value == "ralt" || $value == "menu" || $value == "none" ]] || usage
+      config=$(jq -c --arg value "$value" '.compose = $value' <<<"$config")
+      ;;
+    superKey)
+      [[ $value == "super" || $value == "alt" ]] || usage
+      config=$(jq -c --arg value "$value" '.superKey = $value' <<<"$config")
+      ;;
+    numlock | naturalScroll | clickfinger | disableWhileTyping)
+      [[ $value == "true" || $value == "false" ]] || usage
+      config=$(jq -c --arg key "$key" --argjson value "$value" '.[$key] = $value' <<<"$config")
+      ;;
+    sensitivity)
+      [[ $value =~ ^-?(0(\.[0-9]+)?|1(\.0+)?)$ ]] || usage
+      config=$(jq -c --argjson value "$value" '.sensitivity = $value' <<<"$config")
+      ;;
+    *) usage ;;
+  esac
+
+  write_files "$config"
+  printf '%s\n' "$config"
+}
+
+case "${1:-}" in
+  status) status ;;
+  set) set_value "${2:-}" "${3:-}" ;;
+  *) usage ;;
+esac

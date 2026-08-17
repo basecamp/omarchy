@@ -51,6 +51,9 @@
           "id": "omarchy.network"
         },
         {
+          "id": "omarchy.input"
+        },
+        {
           "id": "omarchy.audio"
         },
         {
