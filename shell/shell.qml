@@ -271,6 +271,14 @@ ShellRoot {
     active: !shell.pluginReloading && shell.activeBarId !== shell.defaultBarId && shell.activeBarSourceUrl !== ""
     asynchronous: true
     onLoaded: shell.configureBar(item, shell.activeBarManifest)
+
+    // The load is driven by signals now that `source` is not bound, so a loader
+    // built with `active` already true would never get its initial setSource.
+    // That does not happen today -- the bar config arrives after construction, so
+    // `active` starts false and onActiveChanged does it -- but nothing enforces
+    // that ordering, and the failure mode is a session with no bar.
+    Component.onCompleted: loadPluginBar()
+
     onActiveChanged: {
       if (!active) shell.bar = null
       loadPluginBar()
