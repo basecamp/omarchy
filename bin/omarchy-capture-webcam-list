@@ -3,13 +3,17 @@
 # omarchy:summary=List webcam devices that support video capture
 # omarchy:hidden=true
 
+# Raw sensor nodes (Intel IPU6/IPU7 ISYS) advertise Video Capture but also set
+# I/O MC, meaning their media-controller pipeline must be configured before they
+# can stream. mpv opens devices directly, so those nodes always fail on it.
 capture_capable() {
   local device="$1"
 
   v4l2-ctl --device "$device" --info 2>/dev/null | awk '
     /^[[:space:]]*Device Caps[[:space:]]*:/ { inspect = 1; next }
     inspect && /^[[:space:]]*Video Capture/ { found = 1 }
-    END { exit !found }
+    inspect && /^[[:space:]]*I\/O MC/ { media_controller = 1 }
+    END { exit !(found && !media_controller) }
   '
 }
 
