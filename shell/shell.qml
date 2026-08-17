@@ -246,20 +246,52 @@ ShellRoot {
   Loader {
     id: pluginBarLoader
 
+    // A bar entry point declares the host-injected properties as required, and
+    // QML refuses to instantiate a component whose required properties are
+    // unset. Binding `source` therefore failed before onLoaded could run, and
+    // configureBar()'s `if (!target) return` made the injection a no-op -- so no
+    // bar plugin could ever load. setSource supplies them at creation instead,
+    // and Qt.binding keeps them live afterwards, the way defaultBarComponent's
+    // declarative bindings do.
+    function loadPluginBar() {
+      if (!active) {
+        setSource("")
+        return
+      }
+
+      setSource(shell.activeBarSourceUrl, {
+        omarchyPath: Qt.binding(function() { return shell.omarchyPath }),
+        barWidgetRegistry: Qt.binding(function() { return shell.barWidgetRegistry }),
+        barConfig: Qt.binding(function() { return shell.barConfig }),
+        shell: shell,
+        manifest: Qt.binding(function() { return shell.activeBarManifest })
+      })
+    }
+
     active: !shell.pluginReloading && shell.activeBarId !== shell.defaultBarId && shell.activeBarSourceUrl !== ""
-    source: shell.activeBarId !== shell.defaultBarId ? shell.activeBarSourceUrl : ""
     asynchronous: true
     onLoaded: shell.configureBar(item, shell.activeBarManifest)
-    onActiveChanged: if (!active) shell.bar = null
+    onActiveChanged: {
+      if (!active) shell.bar = null
+      loadPluginBar()
+    }
     onStatusChanged: {
       if (status === Loader.Error) {
         // Loader exposes no errorString; the engine has already logged the
         // component's own QML errors by the time this runs. Reaching for one
         // threw a ReferenceError here, which aborted the handler before the
         // fallback below and left the session with no bar and no explanation.
-        console.warn("bar option " + shell.activeBarId + " failed to load, falling back to " + shell.defaultBarId)
+        console.warn("bar option " + shell.activeBarId + " (" + shell.activeBarSourceUrl + ") failed to load, falling back to " + shell.defaultBarId)
         shell.failedBarId = shell.activeBarId
       }
+    }
+
+    // Switching straight from one bar plugin to another keeps `active` true, so
+    // the url change has to drive the reload by itself.
+    Connections {
+      target: shell
+
+      function onActiveBarSourceUrlChanged() { pluginBarLoader.loadPluginBar() }
     }
   }
 
