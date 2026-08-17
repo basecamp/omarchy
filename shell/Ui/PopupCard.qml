@@ -16,7 +16,6 @@ PopupWindow {
   property color borderColor: Color.popups.border
   property var borderSpec: Border.localOrSurfaceSpec("popups", "border", borderColor, Color.popups.border, Math.max(1, Style.space(2)))
   property bool open: false
-  property bool centerOnBar: false
   // "click" — uses HyprlandFocusGrab so clicking outside dismisses the popup.
   // "hover" — passive overlay; the owning widget controls open via hover.
   property string triggerMode: "click"

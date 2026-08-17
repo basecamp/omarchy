@@ -19,7 +19,7 @@ import qs.Commons
 // reach the dismissal surfaces below.
 //
 // API is a subset of Common.PopupCard: anchorItem, owner, bar, open,
-// padding, margin, contentWidth/Height, centerOnBar, default contentItem.
+// padding, margin, contentWidth/Height, default contentItem.
 // Missing on purpose (for now): triggerMode ("hover"), containsMouse.
 //
 // Positioning: full-screen layer-shell with the card placed inside at
@@ -45,7 +45,6 @@ PanelWindow {
   property int contentWidth: Style.space(280)
   property int contentHeight: Style.space(200)
   property var borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
-  property bool centerOnBar: false
   property bool open: false
   property int gap: Style.gapsOut  // distance between bar edge and panel
   property bool popoutSwitching: false
