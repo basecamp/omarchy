@@ -500,13 +500,13 @@ cp "$NEXT_THEME/claude.json" "$CURRENT_THEME/claude.json"
 
 CLAUDE_TEST_CONFIG="$PI_TMPDIR/.claude-work"
 mkdir -p "$CLAUDE_TEST_CONFIG"
-HOME="$PI_TMPDIR" CLAUDE_CONFIG_DIR="$CLAUDE_TEST_CONFIG" "$ROOT/bin/omarchy-theme-set-claude"
+OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" CLAUDE_CONFIG_DIR="$CLAUDE_TEST_CONFIG" "$ROOT/bin/omarchy-theme-set-claude"
 [[ -f $CLAUDE_TEST_CONFIG/themes/omarchy.json ]] || fail "claude theme is synced to the configured directory"
 [[ ! -d $PI_TMPDIR/.claude ]] || fail "claude theme sync avoids the default directory when configured"
 pass "claude theme sync respects CLAUDE_CONFIG_DIR"
 
 echo '{"model":"keep-me"}' >"$CLAUDE_TEST_CONFIG/settings.json"
-HOME="$PI_TMPDIR" CLAUDE_CONFIG_DIR="$CLAUDE_TEST_CONFIG" "$ROOT/bin/omarchy-theme-set-claude" --activate
+OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" CLAUDE_CONFIG_DIR="$CLAUDE_TEST_CONFIG" "$ROOT/bin/omarchy-theme-set-claude" --activate
 jq -e '.theme == "custom:omarchy" and .model == "keep-me"' "$CLAUDE_TEST_CONFIG/settings.json" >/dev/null
 pass "claude theme activation preserves configured settings"
 

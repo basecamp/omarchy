@@ -1,0 +1,752 @@
+#!/bin/bash
+
+agent_account_provider_load() {
+  local requested="$1"
+
+  case "$requested" in
+  anthropic | claude)
+    AGENT_ACCOUNT_PROVIDER_ID="anthropic"
+    AGENT_ACCOUNT_PROVIDER_NAME="Anthropic"
+    AGENT_ACCOUNT_CONFIG_SLOT="claude"
+    AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT="$HOME/.claude"
+    AGENT_ACCOUNT_SLOTS=(claude pi opencode)
+    ;;
+  openai | codex)
+    AGENT_ACCOUNT_PROVIDER_ID="openai"
+    AGENT_ACCOUNT_PROVIDER_NAME="OpenAI"
+    AGENT_ACCOUNT_CONFIG_SLOT="codex"
+    AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT="$HOME/.codex"
+    AGENT_ACCOUNT_SLOTS=(codex pi opencode)
+    ;;
+  *)
+    echo "Unknown subscription provider: $requested" >&2
+    return 1
+    ;;
+  esac
+
+  AGENT_ACCOUNT_MANAGED_ROOT="$HOME/.local/share/omarchy/agents/$AGENT_ACCOUNT_PROVIDER_ID"
+  AGENT_ACCOUNT_LOCK="$AGENT_ACCOUNT_MANAGED_ROOT/.lock"
+  AGENT_ACCOUNT_ADOPTION_MARKER="$AGENT_ACCOUNT_MANAGED_ROOT/.adopted"
+  AGENT_ACCOUNT_SWITCH_JOURNAL="$AGENT_ACCOUNT_MANAGED_ROOT/.switching.json"
+  AGENT_ACCOUNT_LEDGER_ROOT="$HOME/.local/state/omarchy/agents/switches"
+  AGENT_ACCOUNT_LEDGER="$AGENT_ACCOUNT_LEDGER_ROOT/$AGENT_ACCOUNT_PROVIDER_ID.json"
+}
+
+agent_account_slot_load() {
+  local slot="$1"
+
+  AGENT_ACCOUNT_SLOT_ID="$slot"
+  AGENT_ACCOUNT_SLOT_KIND=""
+  AGENT_ACCOUNT_SLOT_AUTH_FILE=""
+  AGENT_ACCOUNT_SLOT_AUTH_KEY=""
+  AGENT_ACCOUNT_SLOT_CONFIG_ENV=""
+  AGENT_ACCOUNT_SLOT_CREDENTIAL_FILE=""
+  AGENT_ACCOUNT_SLOT_LOGIN_COMMAND=()
+  AGENT_ACCOUNT_SLOT_COMMAND=""
+  AGENT_ACCOUNT_SLOT_LOGIN_NOTE=""
+
+  case "$AGENT_ACCOUNT_PROVIDER_ID:$slot" in
+  anthropic:claude)
+    AGENT_ACCOUNT_SLOT_KIND="config-dir"
+    AGENT_ACCOUNT_SLOT_CONFIG_ENV="CLAUDE_CONFIG_DIR"
+    AGENT_ACCOUNT_SLOT_CREDENTIAL_FILE=".credentials.json"
+    AGENT_ACCOUNT_SLOT_LOGIN_COMMAND=(claude auth login)
+    AGENT_ACCOUNT_SLOT_COMMAND="claude"
+    ;;
+  openai:codex)
+    AGENT_ACCOUNT_SLOT_KIND="config-dir"
+    AGENT_ACCOUNT_SLOT_CONFIG_ENV="CODEX_HOME"
+    AGENT_ACCOUNT_SLOT_CREDENTIAL_FILE="auth.json"
+    AGENT_ACCOUNT_SLOT_LOGIN_COMMAND=(codex login)
+    AGENT_ACCOUNT_SLOT_COMMAND="codex"
+    ;;
+  anthropic:pi)
+    AGENT_ACCOUNT_SLOT_KIND="auth-key"
+    AGENT_ACCOUNT_SLOT_AUTH_FILE="$HOME/.pi/agent/auth.json"
+    AGENT_ACCOUNT_SLOT_AUTH_KEY="anthropic"
+    AGENT_ACCOUNT_SLOT_LOGIN_COMMAND=(pi)
+    AGENT_ACCOUNT_SLOT_COMMAND="pi"
+    AGENT_ACCOUNT_SLOT_LOGIN_NOTE="In Pi, run /login and choose Claude Pro/Max, then exit Pi."
+    ;;
+  openai:pi)
+    AGENT_ACCOUNT_SLOT_KIND="auth-key"
+    AGENT_ACCOUNT_SLOT_AUTH_FILE="$HOME/.pi/agent/auth.json"
+    # Pi separates ChatGPT subscription OAuth from API-billed OpenAI auth.
+    AGENT_ACCOUNT_SLOT_AUTH_KEY="openai-codex"
+    AGENT_ACCOUNT_SLOT_LOGIN_COMMAND=(pi)
+    AGENT_ACCOUNT_SLOT_COMMAND="pi"
+    AGENT_ACCOUNT_SLOT_LOGIN_NOTE="In Pi, run /login and choose ChatGPT Plus/Pro, then exit Pi."
+    ;;
+  anthropic:opencode)
+    AGENT_ACCOUNT_SLOT_KIND="auth-key"
+    AGENT_ACCOUNT_SLOT_AUTH_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/opencode/auth.json"
+    AGENT_ACCOUNT_SLOT_AUTH_KEY="anthropic"
+    AGENT_ACCOUNT_SLOT_LOGIN_COMMAND=(opencode auth login --provider anthropic)
+    AGENT_ACCOUNT_SLOT_COMMAND="opencode"
+    ;;
+  openai:opencode)
+    AGENT_ACCOUNT_SLOT_KIND="auth-key"
+    AGENT_ACCOUNT_SLOT_AUTH_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/opencode/auth.json"
+    AGENT_ACCOUNT_SLOT_AUTH_KEY="openai"
+    AGENT_ACCOUNT_SLOT_LOGIN_COMMAND=(opencode auth login --provider openai)
+    AGENT_ACCOUNT_SLOT_COMMAND="opencode"
+    ;;
+  *)
+    echo "$AGENT_ACCOUNT_PROVIDER_NAME has no '$slot' credential slot." >&2
+    return 1
+    ;;
+  esac
+}
+
+agent_account_slot_installed() {
+  agent_account_slot_load "$1"
+  ! omarchy-cmd-missing "$AGENT_ACCOUNT_SLOT_COMMAND"
+}
+
+agent_account_is_known_provider() {
+  case "$1" in
+  anthropic | claude | openai | codex)
+    return 0
+    ;;
+  *)
+    return 1
+    ;;
+  esac
+}
+
+agent_account_load_selected_provider() {
+  local requested=${1:-}
+
+  if [[ -z $requested ]]; then
+    requested=$(omarchy-default-agent)
+    case "$requested" in
+    claude)
+      requested="anthropic"
+      ;;
+    codex)
+      requested="openai"
+      ;;
+    *)
+      echo "The default agent '$requested' does not select a subscription provider; pass anthropic or openai." >&2
+      return 1
+      ;;
+    esac
+  fi
+
+  agent_account_provider_load "$requested"
+}
+
+agent_account_prepare_managed_root() {
+  install -d -m 700 "$AGENT_ACCOUNT_MANAGED_ROOT"
+  chmod 700 "$AGENT_ACCOUNT_MANAGED_ROOT"
+}
+
+agent_account_lock() {
+  agent_account_prepare_managed_root
+  exec {AGENT_ACCOUNT_LOCK_FD}>"$AGENT_ACCOUNT_LOCK"
+  flock "$AGENT_ACCOUNT_LOCK_FD"
+}
+
+agent_account_unlock() {
+  if [[ -n ${AGENT_ACCOUNT_LOCK_FD:-} ]]; then
+    flock -u "$AGENT_ACCOUNT_LOCK_FD"
+    exec {AGENT_ACCOUNT_LOCK_FD}>&-
+    unset AGENT_ACCOUNT_LOCK_FD
+  fi
+}
+
+agent_account_cleanup() {
+  local status=$?
+
+  trap - EXIT
+  if [[ -n ${AGENT_ACCOUNT_LOCK_FD:-} ]]; then
+    if [[ -e $AGENT_ACCOUNT_SWITCH_JOURNAL ]]; then
+      agent_account_recover_switch_locked || status=1
+    fi
+    agent_account_unlock
+  fi
+  exit "$status"
+}
+
+agent_account_name_is_slug() {
+  [[ $1 =~ ^[a-z0-9][a-z0-9_-]{0,62}$ ]]
+}
+
+agent_account_validate_name() {
+  local name="$1"
+  local managed_root candidate
+
+  case "$name" in
+  . | .. | .lock | .trash)
+    echo "Invalid account name '$name': that name is reserved." >&2
+    return 1
+    ;;
+  esac
+
+  if agent_account_is_known_provider "$name"; then
+    echo "Invalid account name '$name': provider names and aliases are reserved." >&2
+    return 1
+  fi
+
+  if ! agent_account_name_is_slug "$name"; then
+    echo "Invalid account name '$name': use 1-63 lowercase letters, numbers, hyphens, or underscores." >&2
+    return 1
+  fi
+
+  managed_root=$(realpath -m -- "$AGENT_ACCOUNT_MANAGED_ROOT")
+  candidate=$(realpath -m -- "$AGENT_ACCOUNT_MANAGED_ROOT/$name")
+  if [[ $(dirname -- "$candidate") != "$managed_root" ]]; then
+    echo "Invalid account name '$name': its profile would escape the managed account root." >&2
+    return 1
+  fi
+}
+
+agent_account_profile_path() {
+  printf '%s/%s\n' "$AGENT_ACCOUNT_MANAGED_ROOT" "$1"
+}
+
+agent_account_config_path() {
+  printf '%s/%s\n' "$(agent_account_profile_path "$1")" "$AGENT_ACCOUNT_CONFIG_SLOT"
+}
+
+agent_account_slot_path() {
+  printf '%s/slots/%s.json\n' "$(agent_account_profile_path "$1")" "$2"
+}
+
+agent_account_profiles() {
+  [[ -d $AGENT_ACCOUNT_MANAGED_ROOT ]] || return 0
+
+  find "$AGENT_ACCOUNT_MANAGED_ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -printf '%f\n' | LC_ALL=C sort
+}
+
+agent_account_profile_exists() {
+  local profile
+
+  profile=$(agent_account_profile_path "$1")
+  [[ -d $profile && ! -L $profile && -d $profile/$AGENT_ACCOUNT_CONFIG_SLOT && ! -L $profile/$AGENT_ACCOUNT_CONFIG_SLOT ]]
+}
+
+agent_account_active() {
+  local target normalized_target normalized_root profile name
+
+  [[ -L $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT ]] || return 1
+  target=$(readlink -- "$AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT")
+  if [[ $target != /* ]]; then
+    target="$(dirname -- "$AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT")/$target"
+  fi
+
+  normalized_target=$(realpath -m -- "$target")
+  normalized_root=$(realpath -m -- "$AGENT_ACCOUNT_MANAGED_ROOT")
+  [[ $(basename -- "$normalized_target") == "$AGENT_ACCOUNT_CONFIG_SLOT" ]] || return 1
+
+  profile=$(dirname -- "$normalized_target")
+  [[ $(dirname -- "$profile") == "$normalized_root" ]] || return 1
+  name=$(basename -- "$profile")
+  agent_account_name_is_slug "$name" || return 1
+  [[ -d $profile && ! -L $profile && -d $normalized_target && ! -L $normalized_target ]] || return 1
+  printf '%s\n' "$name"
+}
+
+agent_account_provision_config_dir() {
+  local config_dir="$1"
+  local skill name
+
+  install -d -m 700 "$config_dir"
+  chmod 700 "$config_dir"
+  mkdir -p "$config_dir/skills"
+
+  for skill in "$OMARCHY_PATH"/default/agents/skills/*/; do
+    [[ -d $skill ]] || continue
+    skill=${skill%/}
+    name=${skill##*/}
+    ln -sfn "$skill" "$config_dir/skills/$name"
+  done
+}
+
+agent_account_provision_profile() {
+  local profile="$1"
+
+  install -d -m 700 "$profile"
+  chmod 700 "$profile"
+  agent_account_provision_config_dir "$profile/$AGENT_ACCOUNT_CONFIG_SLOT"
+}
+
+agent_account_provision_managed_profiles() {
+  local name
+
+  while IFS= read -r name; do
+    [[ -n $name ]] || continue
+    agent_account_provision_profile "$(agent_account_profile_path "$name")"
+  done < <(agent_account_profiles)
+}
+
+agent_account_config_roots() {
+  local roots=()
+  local name
+
+  while IFS= read -r name; do
+    [[ -n $name ]] && roots+=("$(agent_account_config_path "$name")")
+  done < <(agent_account_profiles)
+
+  if (( ${#roots[@]} > 0 )); then
+    printf '%s\n' "${roots[@]}"
+  else
+    printf '%s\n' "$AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT"
+  fi
+}
+
+agent_account_repoint_locked() {
+  local name="$1"
+  local config_dir tmp_link
+
+  agent_account_validate_name "$name" || return 1
+  if ! agent_account_profile_exists "$name"; then
+    echo "$AGENT_ACCOUNT_PROVIDER_NAME account '$name' does not exist." >&2
+    return 1
+  fi
+  config_dir=$(agent_account_config_path "$name")
+
+  if [[ -e $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT && ! -L $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT ]]; then
+    echo "Cannot switch $AGENT_ACCOUNT_PROVIDER_NAME accounts while $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT is not a managed symlink." >&2
+    return 1
+  fi
+
+  tmp_link="$AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT.omarchy-account.tmp"
+  if [[ -e $tmp_link && ! -L $tmp_link ]]; then
+    echo "Cannot replace account link: unexpected path exists at $tmp_link." >&2
+    return 1
+  fi
+
+  rm -f -- "$tmp_link"
+  ln -s -- "$config_dir" "$tmp_link"
+  if ! mv -Tf -- "$tmp_link" "$AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT"; then
+    rm -f -- "$tmp_link"
+    return 1
+  fi
+}
+
+agent_account_auth_file_validate() {
+  local auth_file="$1"
+
+  if [[ -L $auth_file || -e $auth_file && ! -f $auth_file ]]; then
+    echo "Cannot manage credential keys in $auth_file because it is not a regular file." >&2
+    return 1
+  fi
+  if [[ -f $auth_file ]] && ! jq -e 'type == "object"' "$auth_file" >/dev/null; then
+    echo "Cannot manage credential keys in $auth_file because it is not a JSON object." >&2
+    return 1
+  fi
+}
+
+agent_account_auth_key_write() {
+  local auth_file="$1"
+  local auth_key="$2"
+  local credential_file=${3:-}
+  local auth_dir tmp
+
+  agent_account_auth_file_validate "$auth_file" || return 1
+  auth_dir=$(dirname -- "$auth_file")
+  install -d -m 700 "$auth_dir"
+  tmp=$(mktemp "$auth_dir/.auth.json.omarchy.XXXXXX")
+
+  if [[ -n $credential_file ]]; then
+    if ! jq -e 'type == "object"' "$credential_file" >/dev/null; then
+      rm -f -- "$tmp"
+      echo "Stored $AGENT_ACCOUNT_SLOT_ID credential is not a JSON object." >&2
+      return 1
+    fi
+    if [[ -f $auth_file ]]; then
+      if ! jq --arg key "$auth_key" --slurpfile credential "$credential_file" '.[$key] = $credential[0]' "$auth_file" >"$tmp"; then
+        rm -f -- "$tmp"
+        return 1
+      fi
+    else
+      if ! jq -n --arg key "$auth_key" --slurpfile credential "$credential_file" '{($key): $credential[0]}' >"$tmp"; then
+        rm -f -- "$tmp"
+        return 1
+      fi
+    fi
+  elif [[ -f $auth_file ]]; then
+    if ! jq --arg key "$auth_key" 'del(.[$key])' "$auth_file" >"$tmp"; then
+      rm -f -- "$tmp"
+      return 1
+    fi
+  else
+    printf '{}\n' >"$tmp"
+  fi
+
+  chmod 600 "$tmp"
+  mv -Tf -- "$tmp" "$auth_file"
+  chmod 600 "$auth_file"
+}
+
+agent_account_auth_slot_stash_locked() {
+  local account="$1"
+  local slot="$2"
+  local stored auth_dir tmp
+
+  agent_account_slot_load "$slot"
+  stored=$(agent_account_slot_path "$account" "$slot")
+  agent_account_auth_file_validate "$AGENT_ACCOUNT_SLOT_AUTH_FILE" || return 1
+
+  if [[ -f $AGENT_ACCOUNT_SLOT_AUTH_FILE ]] &&
+    jq -e --arg key "$AGENT_ACCOUNT_SLOT_AUTH_KEY" '.[$key] != null' "$AGENT_ACCOUNT_SLOT_AUTH_FILE" >/dev/null; then
+    if ! jq -e --arg key "$AGENT_ACCOUNT_SLOT_AUTH_KEY" '(.[$key] | type) == "object"' "$AGENT_ACCOUNT_SLOT_AUTH_FILE" >/dev/null; then
+      echo "Cannot stash $slot because its $AGENT_ACCOUNT_SLOT_AUTH_KEY credential is not a JSON object." >&2
+      return 1
+    fi
+
+    auth_dir=$(dirname -- "$stored")
+    install -d -m 700 "$auth_dir"
+    chmod 700 "$auth_dir"
+    tmp=$(mktemp "$auth_dir/.$slot.json.XXXXXX")
+    if ! jq -c --arg key "$AGENT_ACCOUNT_SLOT_AUTH_KEY" '.[$key]' "$AGENT_ACCOUNT_SLOT_AUTH_FILE" >"$tmp"; then
+      rm -f -- "$tmp"
+      return 1
+    fi
+    chmod 600 "$tmp"
+    mv -Tf -- "$tmp" "$stored"
+    chmod 600 "$stored"
+  else
+    rm -f -- "$stored"
+  fi
+}
+
+agent_account_stash_auth_slots_locked() {
+  local account="$1"
+  local slot
+
+  for slot in "${AGENT_ACCOUNT_SLOTS[@]}"; do
+    if agent_account_slot_installed "$slot" && [[ $AGENT_ACCOUNT_SLOT_KIND == "auth-key" ]]; then
+      agent_account_auth_slot_stash_locked "$account" "$slot"
+    fi
+  done
+}
+
+agent_account_restore_auth_slots_locked() {
+  local account="$1"
+  local slot stored
+
+  for slot in "${AGENT_ACCOUNT_SLOTS[@]}"; do
+    if agent_account_slot_installed "$slot" && [[ $AGENT_ACCOUNT_SLOT_KIND == "auth-key" ]]; then
+      stored=$(agent_account_slot_path "$account" "$slot")
+      if [[ -f $stored && ! -L $stored ]]; then
+        agent_account_auth_key_write "$AGENT_ACCOUNT_SLOT_AUTH_FILE" "$AGENT_ACCOUNT_SLOT_AUTH_KEY" "$stored"
+      else
+        agent_account_auth_key_write "$AGENT_ACCOUNT_SLOT_AUTH_FILE" "$AGENT_ACCOUNT_SLOT_AUTH_KEY"
+      fi
+    fi
+  done
+}
+
+agent_account_slot_filled() {
+  local account="$1"
+  local slot="$2"
+  local credential
+
+  agent_account_slot_load "$slot"
+  if [[ $AGENT_ACCOUNT_SLOT_KIND == "config-dir" ]]; then
+    credential="$(agent_account_config_path "$account")/$AGENT_ACCOUNT_SLOT_CREDENTIAL_FILE"
+  else
+    credential=$(agent_account_slot_path "$account" "$slot")
+  fi
+
+  [[ -f $credential && ! -L $credential ]] && jq -e 'type == "object" and length > 0' "$credential" >/dev/null
+}
+
+agent_account_missing_slots() {
+  local account="$1"
+  local slot
+
+  for slot in "${AGENT_ACCOUNT_SLOTS[@]}"; do
+    if agent_account_slot_installed "$slot" && ! agent_account_slot_filled "$account" "$slot"; then
+      printf '%s\n' "$slot"
+    fi
+  done
+}
+
+agent_account_has_filled_slot() {
+  local account="$1"
+  local slot
+
+  for slot in "${AGENT_ACCOUNT_SLOTS[@]}"; do
+    if agent_account_slot_installed "$slot" && agent_account_slot_filled "$account" "$slot"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+agent_account_report_missing_slots() {
+  local account="$1"
+  shift
+  local slot
+
+  for slot in "$@"; do
+    printf '  %s: omarchy agent account login %s %s %s\n' "$slot" "$AGENT_ACCOUNT_PROVIDER_ID" "$account" "$slot" >&2
+  done
+}
+
+agent_account_check_switch_slots_locked() {
+  local account="$1"
+  local missing=()
+
+  mapfile -t missing < <(agent_account_missing_slots "$account")
+  if ! agent_account_has_filled_slot "$account"; then
+    echo "$AGENT_ACCOUNT_PROVIDER_NAME account '$account' has no filled credential slots." >&2
+    agent_account_report_missing_slots "$account" "${missing[@]}"
+    return 1
+  fi
+  if (( ${#missing[@]} > 0 )); then
+    echo "$AGENT_ACCOUNT_PROVIDER_NAME account '$account' has empty installed credential slots:" >&2
+    agent_account_report_missing_slots "$account" "${missing[@]}"
+  fi
+}
+
+agent_account_atomic_marker_write() {
+  local path="$1"
+  local value="$2"
+  local dir tmp
+
+  dir=$(dirname -- "$path")
+  install -d -m 700 "$dir"
+  tmp=$(mktemp "$dir/.marker.XXXXXX")
+  printf '%s\n' "$value" >"$tmp"
+  chmod 600 "$tmp"
+  mv -Tf -- "$tmp" "$path"
+}
+
+agent_account_record_switch_locked() {
+  local account="$1"
+  local tmp timestamp
+
+  install -d -m 700 "$AGENT_ACCOUNT_LEDGER_ROOT"
+  chmod 700 "$AGENT_ACCOUNT_LEDGER_ROOT"
+  if [[ -L $AGENT_ACCOUNT_LEDGER || -e $AGENT_ACCOUNT_LEDGER && ! -f $AGENT_ACCOUNT_LEDGER ]]; then
+    echo "Cannot write switch ledger because $AGENT_ACCOUNT_LEDGER is not a regular file." >&2
+    return 1
+  fi
+  if [[ -f $AGENT_ACCOUNT_LEDGER ]] && ! jq -e 'type == "array"' "$AGENT_ACCOUNT_LEDGER" >/dev/null; then
+    echo "Cannot write switch ledger because $AGENT_ACCOUNT_LEDGER is not a JSON array." >&2
+    return 1
+  fi
+
+  timestamp=$(date --utc +'%Y-%m-%dT%H:%M:%SZ')
+  tmp=$(mktemp "$AGENT_ACCOUNT_LEDGER_ROOT/.$AGENT_ACCOUNT_PROVIDER_ID.json.XXXXXX")
+  if [[ -f $AGENT_ACCOUNT_LEDGER ]]; then
+    if ! jq \
+      --arg timestamp "$timestamp" \
+      --arg providerId "$AGENT_ACCOUNT_PROVIDER_ID" \
+      --arg accountId "$account" \
+      '. + [{timestamp: $timestamp, providerId: $providerId, accountId: $accountId}]' \
+      "$AGENT_ACCOUNT_LEDGER" >"$tmp"; then
+      rm -f -- "$tmp"
+      return 1
+    fi
+  else
+    jq -n \
+      --arg timestamp "$timestamp" \
+      --arg providerId "$AGENT_ACCOUNT_PROVIDER_ID" \
+      --arg accountId "$account" \
+      '[{timestamp: $timestamp, providerId: $providerId, accountId: $accountId}]' >"$tmp"
+  fi
+  chmod 600 "$tmp"
+  mv -Tf -- "$tmp" "$AGENT_ACCOUNT_LEDGER"
+  chmod 600 "$AGENT_ACCOUNT_LEDGER"
+}
+
+agent_account_begin_switch_locked() {
+  local from="$1"
+  local to="$2"
+  local tmp
+
+  tmp=$(mktemp "$AGENT_ACCOUNT_MANAGED_ROOT/.switching.json.XXXXXX")
+  jq -n --arg from "$from" --arg to "$to" '{from: $from, to: $to}' >"$tmp"
+  chmod 600 "$tmp"
+  mv -Tf -- "$tmp" "$AGENT_ACCOUNT_SWITCH_JOURNAL"
+}
+
+agent_account_recover_switch_locked() {
+  local from
+
+  [[ -e $AGENT_ACCOUNT_SWITCH_JOURNAL ]] || return 0
+  if [[ -L $AGENT_ACCOUNT_SWITCH_JOURNAL || ! -f $AGENT_ACCOUNT_SWITCH_JOURNAL ]] ||
+    ! jq -e 'type == "object" and (.from | type == "string") and (.to | type == "string")' "$AGENT_ACCOUNT_SWITCH_JOURNAL" >/dev/null; then
+    echo "Cannot recover the interrupted $AGENT_ACCOUNT_PROVIDER_NAME switch because $AGENT_ACCOUNT_SWITCH_JOURNAL is invalid." >&2
+    return 1
+  fi
+
+  from=$(jq -r '.from' "$AGENT_ACCOUNT_SWITCH_JOURNAL")
+  if [[ -n $from ]]; then
+    agent_account_validate_name "$from" || return 1
+    if ! agent_account_profile_exists "$from"; then
+      echo "Cannot recover the interrupted $AGENT_ACCOUNT_PROVIDER_NAME switch because account '$from' is missing." >&2
+      return 1
+    fi
+    agent_account_restore_auth_slots_locked "$from"
+    agent_account_repoint_locked "$from"
+    agent_account_record_switch_locked "$from"
+  else
+    agent_account_restore_auth_slots_locked ""
+    if [[ -L $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT ]]; then
+      rm -f -- "$AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT"
+    elif [[ -e $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT ]]; then
+      echo "Cannot recover the interrupted $AGENT_ACCOUNT_PROVIDER_NAME switch because $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT is not a symlink." >&2
+      return 1
+    fi
+  fi
+
+  rm -f -- "$AGENT_ACCOUNT_SWITCH_JOURNAL"
+}
+
+agent_account_adopt_config_locked() {
+  local active=""
+  local target normalized_target normalized_root profile name default_profile default_config
+
+  active=$(agent_account_active 2>/dev/null || true)
+  if [[ -n $active ]]; then
+    agent_account_provision_managed_profiles
+    return 0
+  fi
+
+  if [[ -L $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT ]]; then
+    target=$(readlink -- "$AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT")
+    if [[ $target != /* ]]; then
+      target="$(dirname -- "$AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT")/$target"
+    fi
+    normalized_target=$(realpath -m -- "$target")
+    normalized_root=$(realpath -m -- "$AGENT_ACCOUNT_MANAGED_ROOT")
+    profile=$(dirname -- "$normalized_target")
+
+    if [[ $(basename -- "$normalized_target") != "$AGENT_ACCOUNT_CONFIG_SLOT" || $(dirname -- "$profile") != "$normalized_root" ]]; then
+      echo "Cannot adopt $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT because it is a symlink outside Omarchy's managed account root." >&2
+      return 1
+    fi
+
+    name=$(basename -- "$profile")
+    agent_account_validate_name "$name" || return 1
+    if [[ -e $profile && ! -d $profile || -L $profile ]]; then
+      echo "Cannot repair $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT because its account profile is not a directory." >&2
+      return 1
+    fi
+    if [[ -e $normalized_target && ! -d $normalized_target || -L $normalized_target ]]; then
+      echo "Cannot repair $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT because its config slot is not a directory." >&2
+      return 1
+    fi
+
+    agent_account_provision_profile "$profile"
+    agent_account_provision_managed_profiles
+    return 0
+  fi
+
+  if [[ -e $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT && ! -d $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT ]]; then
+    echo "Cannot adopt $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT because it is not a directory." >&2
+    return 1
+  fi
+
+  default_profile=$(agent_account_profile_path default)
+  default_config=$(agent_account_config_path default)
+  if [[ -d $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT ]]; then
+    if [[ -L $default_profile || -e $default_profile && ! -d $default_profile ]]; then
+      echo "Cannot adopt $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT because the managed 'default' account is not a directory." >&2
+      return 1
+    fi
+    install -d -m 700 "$default_profile"
+    chmod 700 "$default_profile"
+    if [[ -e $default_config || -L $default_config ]]; then
+      echo "Cannot adopt $AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT because the managed 'default' config slot already exists." >&2
+      return 1
+    fi
+
+    mv -T -- "$AGENT_ACCOUNT_CONFIG_CANONICAL_ROOT" "$default_config"
+    chmod 700 "$default_config"
+    agent_account_repoint_locked default
+  elif [[ -d $default_config && ! -L $default_config ]]; then
+    agent_account_repoint_locked default
+  fi
+
+  agent_account_provision_managed_profiles
+}
+
+agent_account_prepare_locked() {
+  local active
+
+  agent_account_adopt_config_locked
+  agent_account_recover_switch_locked
+  active=$(agent_account_active 2>/dev/null || true)
+  if [[ -n $active && ! -e $AGENT_ACCOUNT_ADOPTION_MARKER ]]; then
+    agent_account_stash_auth_slots_locked "$active"
+    agent_account_record_switch_locked "$active"
+    agent_account_atomic_marker_write "$AGENT_ACCOUNT_ADOPTION_MARKER" "$active"
+  elif [[ -L $AGENT_ACCOUNT_ADOPTION_MARKER || -e $AGENT_ACCOUNT_ADOPTION_MARKER && ! -f $AGENT_ACCOUNT_ADOPTION_MARKER ]]; then
+    echo "Cannot finish $AGENT_ACCOUNT_PROVIDER_NAME adoption because $AGENT_ACCOUNT_ADOPTION_MARKER is invalid." >&2
+    return 1
+  fi
+}
+
+agent_account_create_locked() {
+  local name="$1"
+  local profile
+
+  agent_account_validate_name "$name" || return 1
+  profile=$(agent_account_profile_path "$name")
+  if [[ -e $profile || -L $profile ]]; then
+    if [[ ! -d $profile || -L $profile ]]; then
+      echo "Cannot use $AGENT_ACCOUNT_PROVIDER_NAME account '$name': its managed profile is not a directory." >&2
+      return 1
+    fi
+  else
+    install -d -m 700 "$profile"
+  fi
+
+  agent_account_provision_profile "$profile"
+}
+
+agent_account_switch_locked() {
+  local name="$1"
+  local check_slots=${2:-true}
+  local active
+
+  agent_account_validate_name "$name" || return 1
+  if ! agent_account_profile_exists "$name"; then
+    echo "$AGENT_ACCOUNT_PROVIDER_NAME account '$name' does not exist." >&2
+    return 1
+  fi
+  if [[ $check_slots == "true" ]]; then
+    agent_account_check_switch_slots_locked "$name" || return 1
+  fi
+
+  active=$(agent_account_active 2>/dev/null || true)
+  if [[ -n $active ]]; then
+    agent_account_stash_auth_slots_locked "$active"
+  fi
+
+  agent_account_begin_switch_locked "$active" "$name"
+  agent_account_restore_auth_slots_locked "$name"
+  agent_account_repoint_locked "$name"
+  if [[ $active != "$name" ]]; then
+    agent_account_record_switch_locked "$name"
+  fi
+  if [[ ! -e $AGENT_ACCOUNT_ADOPTION_MARKER ]]; then
+    agent_account_atomic_marker_write "$AGENT_ACCOUNT_ADOPTION_MARKER" "$name"
+  fi
+  rm -f -- "$AGENT_ACCOUNT_SWITCH_JOURNAL"
+}
+
+agent_account_capture_login_slot_locked() {
+  local account="$1"
+  local slot="$2"
+
+  agent_account_slot_load "$slot"
+  if [[ $AGENT_ACCOUNT_SLOT_KIND == "auth-key" ]]; then
+    agent_account_auth_slot_stash_locked "$account" "$slot"
+  fi
+  if ! agent_account_slot_filled "$account" "$slot"; then
+    echo "$AGENT_ACCOUNT_SLOT_ID did not write a $AGENT_ACCOUNT_PROVIDER_NAME credential; the slot is still empty." >&2
+    return 1
+  fi
+}
+
+agent_account_refresh_shell() {
+  omarchy-shell -q omarchy.agents refresh >/dev/null 2>&1 || true
+}

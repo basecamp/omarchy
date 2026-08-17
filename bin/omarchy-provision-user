@@ -66,6 +66,8 @@ export OMARCHY_INSTALL="${OMARCHY_INSTALL:-$OMARCHY_PATH/install}"
 export OMARCHY_SETUP_CONTEXT="${OMARCHY_SETUP_CONTEXT:-runtime}"
 export PATH="$OMARCHY_PATH/bin:$PATH"
 
+source "$OMARCHY_PATH/bin/omarchy-agent-account-backends"
+
 if (( first_install )) && [[ $OMARCHY_SETUP_CONTEXT == "runtime" ]]; then
   # The ISO chroot doesn't set a context; omarchy-provision-owner runs first-install
   # finalization too but with OMARCHY_SETUP_CONTEXT=provision-owner already set.
@@ -83,15 +85,21 @@ fi
 
 # Dev-aware skill symlinks. Cannot live in /etc/skel because OMARCHY_PATH may
 # point at a dev checkout (omarchy dev link) where the target differs.
-# Loops every skill directory, so shipping a new one needs no edit here.
-mkdir -p ~/.agents/skills ~/.claude/skills ~/.codex/skills ~/.pi/agent/skills
+mkdir -p ~/.agents/skills ~/.pi/agent/skills
 for skill in "$OMARCHY_PATH"/default/agents/skills/*/; do
   skill=${skill%/}
   name=${skill##*/}
   ln -sfn "$skill" ~/.agents/skills/"$name"
-  ln -sfn "$skill" ~/.claude/skills/"$name"
-  ln -sfn "$skill" ~/.codex/skills/"$name"
   ln -sfn "$skill" ~/.pi/agent/skills/"$name"
+done
+
+for provider in anthropic openai; do
+  agent_account_provider_load "$provider"
+  agent_account_lock
+  while IFS= read -r config_dir; do
+    agent_account_provision_config_dir "$config_dir"
+  done < <(agent_account_config_roots)
+  agent_account_unlock
 done
 
 mkdir -p ~/Downloads ~/Pictures ~/Videos ~/.config/gtk-3.0

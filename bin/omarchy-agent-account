@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# omarchy:summary=Print the active account for a subscription provider
+# omarchy:args=[provider]
+# omarchy:examples=omarchy agent account anthropic | omarchy agent account codex
+
+set -euo pipefail
+
+source "$OMARCHY_PATH/bin/omarchy-agent-account-backends"
+
+usage() {
+  echo "Usage: omarchy agent account [provider]"
+}
+
+if (( $# > 1 )); then
+  usage >&2
+  exit 1
+fi
+
+if (( $# == 1 )) && [[ $1 == "-h" || $1 == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+if (( $# == 0 )); then
+  default_agent=$(omarchy-default-agent)
+  if [[ -z $default_agent ]]; then
+    account_found="false"
+    for provider in anthropic openai; do
+      agent_account_provider_load "$provider"
+      active=$(agent_account_active 2>/dev/null || true)
+      if [[ -n $active ]]; then
+        printf '%s: %s\n' "$AGENT_ACCOUNT_PROVIDER_NAME" "$active"
+        account_found="true"
+      fi
+    done
+    if [[ $account_found == "false" ]]; then
+      echo "No agent accounts are set up yet."
+    fi
+    exit 0
+  fi
+fi
+
+agent_account_load_selected_provider "${1:-}"
+agent_account_lock
+trap agent_account_cleanup EXIT
+agent_account_prepare_locked
+agent_account_active || true

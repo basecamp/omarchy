@@ -1,0 +1,70 @@
+#!/bin/bash
+
+# omarchy:summary=Forget a provider account without deleting its credential bundle
+# omarchy:args=[provider] [account]
+# omarchy:examples=omarchy agent account logout work | omarchy agent account logout anthropic work
+
+set -euo pipefail
+
+source "$OMARCHY_PATH/bin/omarchy-agent-account-backends"
+
+usage() {
+  echo "Usage: omarchy agent account logout [provider] [account]"
+}
+
+requested=""
+if (( $# > 0 )) && agent_account_is_known_provider "$1"; then
+  requested="$1"
+  shift
+fi
+
+if (( $# > 1 )); then
+  usage >&2
+  exit 1
+fi
+if (( $# == 1 )) && [[ $1 == "-h" || $1 == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+agent_account_load_selected_provider "$requested"
+agent_account_lock
+trap agent_account_cleanup EXIT
+agent_account_prepare_locked
+
+active=$(agent_account_active 2>/dev/null || true)
+name=${1:-$active}
+if [[ -z $name ]]; then
+  echo "$AGENT_ACCOUNT_PROVIDER_NAME has no active account to forget." >&2
+  exit 1
+fi
+
+agent_account_validate_name "$name"
+if [[ $name == $active ]]; then
+  echo "Cannot forget active $AGENT_ACCOUNT_PROVIDER_NAME account '$name'; switch to another account first." >&2
+  exit 1
+fi
+
+profile=$(agent_account_profile_path "$name")
+if ! agent_account_profile_exists "$name"; then
+  echo "$AGENT_ACCOUNT_PROVIDER_NAME account '$name' does not exist." >&2
+  exit 1
+fi
+
+trash_root="$AGENT_ACCOUNT_MANAGED_ROOT/.trash"
+install -d -m 700 "$trash_root"
+chmod 700 "$trash_root"
+trash_path="$trash_root/$name.$(date +%s).$$"
+counter=0
+while [[ -e $trash_path || -L $trash_path ]]; do
+  ((counter += 1))
+  trash_path="$trash_root/$name.$(date +%s).$$.$counter"
+done
+
+mv -T -- "$profile" "$trash_path"
+rm -f -- "$HOME/.local/state/omarchy/agents/usage/$AGENT_ACCOUNT_PROVIDER_ID@$name.json"
+agent_account_unlock
+trap - EXIT
+agent_account_refresh_shell
+
+echo "Forgot $AGENT_ACCOUNT_PROVIDER_NAME account '$name'. Its credential bundle can be recovered from $trash_path"
