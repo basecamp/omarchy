@@ -577,12 +577,6 @@ Panel {
   PwObjectTracker { objects: root.candidateSources }
   PwObjectTracker { objects: root.audioStreams }
 
-  PwNodePeakMonitor {
-    id: inputPeakMonitor
-    node: root.source
-    enabled: root.opened && !!root.source
-  }
-
   Process {
     id: sinkAvailabilityProc
     command: ["omarchy-audio-sink-availability"]
@@ -928,20 +922,6 @@ Panel {
 
                   onMoved: function(v) { root.setInputVolume(v) }
                   onRightClicked: root.toggleInputMute()
-                }
-
-                Rectangle {
-                  width: parent.width
-                  height: Math.max(Style.space(5), Style.spacing.xs)
-                  color: Util.alpha(root.bar.foreground, 0.18)
-                  opacity: root.inputMuted ? 0.35 : 1.0
-
-                  Rectangle {
-                    height: parent.height
-                    width: parent.width * Math.max(0, Math.min(1, inputPeakMonitor.peak))
-                    color: root.bar.foreground
-                    Behavior on width { NumberAnimation { duration: 70 } }
-                  }
                 }
               }
 
