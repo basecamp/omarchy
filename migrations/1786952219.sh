@@ -12,6 +12,6 @@ echo "Switch mise to the mise-bin package from the Omarchy repo"
 # with No under --noconfirm and fails the whole transaction ("unresolvable
 # package conflicts detected"). --ask=4 is that one question, answered yes.
 
-omarchy-pkg-missing mise-bin || exit 0
-
-sudo pacman -S --noconfirm --ask=4 mise-bin
+if omarchy-pkg-missing mise-bin; then
+  sudo pacman -S --noconfirm --ask=4 mise-bin
+fi
