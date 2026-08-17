@@ -189,13 +189,82 @@ assertDeepEqual(
   'network wifi rows project exactly the primitive fields, so each delegate stores no live QObject'
 )
 
-const reasons = { NoSecrets: 1, WifiAuthTimeout: 2, WifiNetworkLost: 3, WifiClientDisconnected: 4, WifiClientFailed: 5 }
-assertEqual(network.networkFailureReason(1, reasons), 'Passphrase required', 'network maps missing passphrase failures')
-assertEqual(network.networkFailureReason(2, reasons), 'Wrong password', 'network maps auth timeout failures')
-assertEqual(network.networkFailureReason(99, reasons), 'Failed to connect', 'network maps unknown failures')
+const security = {
+  Wpa3SuiteB192: 0,
+  Sae: 1,
+  Wpa2Eap: 2,
+  Wpa2Psk: 3,
+  WpaEap: 4,
+  WpaPsk: 5,
+  StaticWep: 6,
+  DynamicWep: 7,
+  Leap: 8,
+  Owe: 9,
+  Open: 10,
+  Unknown: 11
+}
+for (const name of ['Wpa3SuiteB192', 'Sae', 'Wpa2Eap', 'Wpa2Psk', 'WpaEap', 'WpaPsk', 'StaticWep', 'DynamicWep', 'Leap', 'Unknown']) {
+  assertEqual(network.requiresCredentials(security[name], security.Open, security.Owe), true, 'network asks for ' + name + ' credentials')
+}
+assertEqual(network.requiresCredentials(security.Owe, security.Open, security.Owe), false, 'network does not ask for OWE credentials')
+assertEqual(network.requiresCredentials(security.Open, security.Open, security.Owe), false, 'network does not ask for open-network credentials')
 
-assertEqual(network.shouldRepromptPassphrase(reasons.NoSecrets, false, reasons), true, 'network reprompts when secrets are missing')
-assertEqual(network.shouldRepromptPassphrase(reasons.WifiAuthTimeout, true, reasons), true, 'network reprompts a protected network after a wrong password')
+assert(
+  /Model\.requiresCredentials\(security, WifiSecurityType\.Open, WifiSecurityType\.Owe\)/.test(panelSource),
+  'network wires the Quickshell OWE enum into credential detection'
+)
+assert(
+  /if \(requiresCredentials\(net\.security\) && !net\.known\)/.test(panelSource),
+  'network keyboard activation gates unknown-network prompts on credential requirements'
+)
+assert(
+  /if \(row\.requiresCredentials && !row\.isKnown\)/.test(panelSource),
+  'network row clicks gate unknown-network prompts on credential requirements'
+)
+assert(
+  /shouldRepromptPassphrase\(reason, row\.requiresCredentials\)/.test(panelSource),
+  'network failure reprompts use the row credential requirement'
+)
+assert(
+  /networkFailureReason\(reason, requiresCredentials\(network\.security\)\)/.test(panelSource),
+  'network failure copy uses the live network credential requirement'
+)
+assert(
+  /readonly property bool canForget: root\.canForgetNetwork\(net\)/.test(panelSource),
+  'network rows derive forget eligibility from the tested model helper'
+)
+const rightAction = panelSource.match(/Item \{\s*id: rightAction\b[\s\S]*?\n {6}\}/)
+assert(rightAction, 'network has a right-edge action target')
+assert(
+  /visible: row\.requiresCredentials \|\| row\.canForget/.test(rightAction[0]),
+  'network keeps a forget target for known passwordless networks'
+)
+const lockIndicator = panelSource.match(/Text \{\s*id: lockIndicator\b[\s\S]*?\n {8}\}/)
+assert(lockIndicator, 'network has a lock/forget indicator')
+assert(
+  /visible: row\.requiresCredentials \|\| row\.forgetVisible/.test(lockIndicator[0]),
+  'network hides the lock on passwordless networks until showing their forget action'
+)
+assert(
+  /forgetVisible: canForget && \(!requiresCredentials \|\| forgetFocused \|\| rightMouse\.containsMouse\)/.test(panelSource),
+  'network shows the forget action directly for known passwordless networks'
+)
+
+const reasons = { NoSecrets: 1, WifiAuthTimeout: 2, WifiNetworkLost: 3, WifiClientDisconnected: 4, WifiClientFailed: 5 }
+assertEqual(network.networkFailureReason(reasons.NoSecrets, true, reasons), 'Passphrase required', 'network maps missing credential failures')
+assertEqual(network.networkFailureReason(reasons.WifiAuthTimeout, true, reasons), 'Wrong password', 'network maps credentialed auth timeouts')
+assertEqual(network.networkFailureReason(reasons.NoSecrets, false, reasons), 'Failed to connect', 'network gives passwordless missing-secret failures generic copy')
+assertEqual(network.networkFailureReason(reasons.WifiAuthTimeout, false, reasons), 'Failed to connect', 'network gives passwordless auth timeouts generic copy')
+assertEqual(network.networkFailureReason(99, true, reasons), 'Failed to connect', 'network maps unknown failures')
+
+assertEqual(network.canForgetNetwork({ known: true, connected: false, security: security.Owe }), true, 'network can forget known disconnected OWE networks')
+assertEqual(network.canForgetNetwork({ known: true, connected: false, security: security.Open }), true, 'network can forget known disconnected open networks')
+assertEqual(network.canForgetNetwork({ known: false, connected: false, security: security.Owe }), false, 'network cannot forget unknown networks')
+assertEqual(network.canForgetNetwork({ known: true, connected: true, security: security.Owe }), false, 'network cannot forget the connected network')
+
+assertEqual(network.shouldRepromptPassphrase(reasons.NoSecrets, true, reasons), true, 'network reprompts when required credentials are missing')
+assertEqual(network.shouldRepromptPassphrase(reasons.NoSecrets, false, reasons), false, 'network does not ask a passwordless network for missing secrets')
+assertEqual(network.shouldRepromptPassphrase(reasons.WifiAuthTimeout, true, reasons), true, 'network reprompts a credentialed network after a wrong password')
 assertEqual(network.shouldRepromptPassphrase(reasons.WifiAuthTimeout, false, reasons), false, 'network does not reprompt an open network on auth timeout')
 assertEqual(network.shouldRepromptPassphrase(reasons.WifiClientFailed, true, reasons), false, 'network does not reprompt on generic connection failures')
 
