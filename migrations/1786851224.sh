@@ -17,11 +17,14 @@ if [[ -d $beta ]]; then
   else
     if [[ -d $stable ]]; then
       backup="$stable.bak.$(date +%Y%m%d%H%M%S)"
-      mv "$stable" "$backup"
+      mv -T "$stable" "$backup"
       echo "Existing stable profile preserved at $backup"
     fi
 
-    mv "$beta" "$stable"
+    # -T so a destination that exists is replaced rather than moved into. A
+    # plain mv would nest the profile as Brave-Origin/Brave-Origin-Beta and
+    # still report success, stranding the data the migration exists to rescue.
+    mv -T "$beta" "$stable"
     rm -f "$stable"/Singleton*
     rm -rf "$HOME/.cache/BraveSoftware/Brave-Origin-Beta"
 
