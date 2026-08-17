@@ -24,12 +24,19 @@ QtObject {
   property var installedPlugins: ({})
   property int registryRevision: 0
   property bool scanning: false
+  property bool shuttingDown: false
   property string lastEnableError: ""
 
   signal pluginsChanged()
   signal scanFinished()
   signal pluginLoadFailed(string id, string error)
   signal localPluginChanged(string id)
+
+  Component.onDestruction: {
+    shuttingDown = true
+    localPluginWatcherRestart.stop()
+    localPluginWatcher.running = false
+  }
 
   // ---------------------------------------------------------------- helpers
 
@@ -628,6 +635,7 @@ QtObject {
 
   property Process initProcess: Process {
     onExited: {
+      if (registry.shuttingDown) return
       localPluginWatcher.running = true
       registry.rescan()
     }
@@ -651,12 +659,12 @@ QtObject {
         if (pluginId) registry.localPluginChanged(pluginId)
       }
     }
-    onExited: localPluginWatcherRestart.restart()
+    onExited: if (!registry.shuttingDown) localPluginWatcherRestart.restart()
   }
 
   property Timer localPluginWatcherRestart: Timer {
     interval: 1000
-    onTriggered: localPluginWatcher.running = true
+    onTriggered: if (!registry.shuttingDown) localPluginWatcher.running = true
   }
 
   function rescan() {
