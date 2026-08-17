@@ -1,0 +1,394 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Grok usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Grok CLI usage into one display-ready JSON record.
+
+Local stats come from session files under $GROK_HOME/sessions (default
+~/.grok/sessions). Grok does not expose an Omarchy-friendly rate-limit API,
+so the record carries prompt and session counts with empty limits. The
+agents panel only ever reads the JSON this prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import sys
+import tempfile
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "grok"
+AGENT_NAME = "Grok"
+AUTH_HELP = "Run `grok login` to sign in."
+
+# Same freshness contract as the Claude/Codex collectors: a scan this recent
+# is only reused to dedup concurrent collector runs. --limits-only may reuse
+# a scan for up to 15 minutes because this collector has no live limits probe.
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+
+
+def expand_path(value: str) -> Path:
+  return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
+
+
+def grok_home() -> Path:
+  return expand_path(os.environ.get("GROK_HOME") or "~/.grok")
+
+
+def cache_root() -> Path:
+  root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def number(value: Any) -> int:
+  try:
+    n = float(value or 0)
+    return round(n) if n == n else 0
+  except Exception:
+    return 0
+
+
+def date_string(value: datetime | None = None) -> str:
+  return (value or datetime.now()).strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = datetime.now().date()
+  return [(today - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
+
+
+def local_date_from_timestamp(value: Any) -> str:
+  if value is None or value == "":
+    return date_string()
+
+  if isinstance(value, (int, float)):
+    try:
+      seconds = float(value) / 1000.0 if float(value) > 10_000_000_000 else float(value)
+      return date_string(datetime.fromtimestamp(seconds))
+    except Exception:
+      return date_string()
+
+  raw = str(value).strip()
+  try:
+    parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    if parsed.tzinfo is not None:
+      parsed = parsed.astimezone()
+    return date_string(parsed)
+  except Exception:
+    return date_string()
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def empty_stats() -> dict[str, Any]:
+  recent_dates = recent_date_strings()
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [{"date": day, "messageCount": 0} for day in recent_dates],
+    "modelUsage": {},
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+  }
+
+
+def read_json(path: Path) -> dict[str, Any] | None:
+  try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+  return data if isinstance(data, dict) else None
+
+
+def usage_token(usage: dict[str, Any], *keys: str) -> int:
+  for key in keys:
+    if key in usage:
+      return max(0, number(usage.get(key)))
+  return 0
+
+
+def add_usage(bucket: dict[str, int], usage: dict[str, Any]) -> int:
+  input_tokens = usage_token(usage, "inputTokens", "input_tokens", "input")
+  output_tokens = usage_token(usage, "outputTokens", "output_tokens", "output")
+  output_tokens += usage_token(usage, "reasoningTokens", "reasoning_tokens", "reasoning")
+  cache_read = usage_token(usage, "cacheReadInputTokens", "cache_read_input_tokens", "cacheRead")
+  cache_write = usage_token(
+    usage, "cacheCreationInputTokens", "cache_creation_input_tokens", "cacheWrite"
+  )
+  total = input_tokens + output_tokens + cache_read + cache_write
+  if total <= 0:
+    return 0
+  bucket["inputTokens"] += input_tokens
+  bucket["outputTokens"] += output_tokens
+  bucket["cacheReadInputTokens"] += cache_read
+  bucket["cacheCreationInputTokens"] += cache_write
+  return total
+
+
+def iter_session_dirs(sessions_root: Path):
+  if not sessions_root.is_dir():
+    return
+  for group in sessions_root.iterdir():
+    if not group.is_dir() or group.name.startswith("."):
+      continue
+    for session in group.iterdir():
+      if session.is_dir() and (session / "summary.json").is_file():
+        yield session
+
+
+def signed_in(home: Path) -> bool:
+  auth = read_json(home / "auth.json")
+  return bool(auth)
+
+
+def parse_events(path: Path) -> list[dict[str, Any]]:
+  turns: list[dict[str, Any]] = []
+  if not path.is_file():
+    return turns
+  try:
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+      for line in handle:
+        if '"turn_started"' not in line:
+          continue
+        try:
+          entry = json.loads(line)
+        except Exception:
+          continue
+        if entry.get("type") != "turn_started":
+          continue
+        turns.append(entry)
+  except Exception as exc:
+    print(f"Ignoring unreadable Grok events file {path}: {exc}", file=sys.stderr)
+  return turns
+
+
+def parse_chat_users(path: Path) -> int:
+  if not path.is_file():
+    return 0
+  count = 0
+  try:
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+      for line in handle:
+        try:
+          entry = json.loads(line)
+        except Exception:
+          continue
+        if entry.get("type") == "user":
+          count += 1
+  except Exception as exc:
+    print(f"Ignoring unreadable Grok chat history {path}: {exc}", file=sys.stderr)
+  return count
+
+
+def parse_embedded_usage(path: Path, model: str, stats: dict[str, Any], recent: dict[str, dict[str, int]], today: str) -> None:
+  # Grok does not currently write billed token usage into session files. If a
+  # future CLI starts embedding a usage object on assistant/event lines, pick
+  # it up without inventing numbers from context-window snapshots.
+  if not path.is_file():
+    return
+  try:
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+      for line in handle:
+        if '"usage"' not in line:
+          continue
+        try:
+          entry = json.loads(line)
+        except Exception:
+          continue
+        usage = entry.get("usage")
+        if not isinstance(usage, dict):
+          message = entry.get("message") if isinstance(entry.get("message"), dict) else {}
+          usage = message.get("usage") if isinstance(message.get("usage"), dict) else None
+        if not isinstance(usage, dict):
+          continue
+        used_model = str(entry.get("model_id") or entry.get("model") or model or "grok")
+        bucket = stats["modelUsage"].setdefault(used_model, empty_bucket())
+        total = add_usage(bucket, usage)
+        if total <= 0:
+          continue
+        day = local_date_from_timestamp(
+          entry.get("ts") or entry.get("timestamp") or entry.get("updated_at")
+        )
+        if day in recent:
+          recent[day]["messageCount"] += total
+        if day == today:
+          stats["todayTotalTokens"] += total
+          stats["todayTokensByModel"][used_model] = (
+            stats["todayTokensByModel"].get(used_model, 0) + total
+          )
+  except Exception as exc:
+    print(f"Ignoring unreadable Grok usage file {path}: {exc}", file=sys.stderr)
+
+
+def scan_sessions(sessions_root: Path) -> dict[str, Any]:
+  today = date_string()
+  recent_dates = recent_date_strings()
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+  stats = empty_stats()
+  stats["recentDays"] = [recent[day] for day in recent_dates]
+  stats["modelUsage"] = {}
+  stats["todayTokensByModel"] = {}
+
+  sessions: set[str] = set()
+  today_sessions: set[str] = set()
+  active_days: set[str] = set()
+  prompts = 0
+  today_prompts = 0
+
+  for session_dir in iter_session_dirs(sessions_root):
+    summary = read_json(session_dir / "summary.json") or {}
+    signals = read_json(session_dir / "signals.json") or {}
+    session_id = str(
+      (summary.get("info") or {}).get("id") or session_dir.name
+    )
+    model = str(
+      summary.get("current_model_id")
+      or signals.get("primaryModelId")
+      or "grok"
+    )
+    activity_day = local_date_from_timestamp(
+      summary.get("last_active_at") or summary.get("updated_at") or summary.get("created_at")
+    )
+
+    turns = parse_events(session_dir / "events.jsonl")
+    session_prompts = 0
+    session_days: set[str] = set()
+    if turns:
+      for turn in turns:
+        day = local_date_from_timestamp(turn.get("ts") or turn.get("timestamp"))
+        session_days.add(day)
+        session_prompts += 1
+        if day == today:
+          today_prompts += 1
+    else:
+      session_prompts = parse_chat_users(session_dir / "chat_history.jsonl")
+      if session_prompts <= 0:
+        session_prompts = number(signals.get("userMessageCount"))
+      if session_prompts > 0:
+        session_days.add(activity_day)
+        if activity_day == today:
+          today_prompts += session_prompts
+
+    if session_prompts <= 0 and not summary:
+      continue
+
+    sessions.add(session_id)
+    prompts += session_prompts
+    if not session_days:
+      session_days.add(activity_day)
+    active_days.update(session_days)
+    if today in session_days or activity_day == today:
+      today_sessions.add(session_id)
+
+    parse_embedded_usage(session_dir / "chat_history.jsonl", model, stats, recent, today)
+    parse_embedded_usage(session_dir / "events.jsonl", model, stats, recent, today)
+
+  stats["todayPrompts"] = today_prompts
+  stats["todaySessions"] = len(today_sessions)
+  stats["totalPrompts"] = prompts
+  stats["totalSessions"] = len(sessions)
+  stats["activeDays"] = len(active_days)
+  stats["activeDates"] = sorted(active_days)
+  stats["recentDays"] = [recent[day] for day in recent_dates]
+  return stats
+
+
+def scan_cache_paths(sessions_root: Path) -> tuple[Path, Path]:
+  digest = hashlib.sha1(str(sessions_root).encode("utf-8")).hexdigest()[:16]
+  root = cache_root()
+  return root / f"grok-scan-{digest}.json", root / f"grok-scan-{digest}.lock"
+
+
+def read_fresh_json(path: Path, max_age_seconds: float) -> dict[str, Any] | None:
+  if max_age_seconds <= 0 or not path.exists():
+    return None
+  try:
+    if time.time() - path.stat().st_mtime <= max_age_seconds:
+      data = json.loads(path.read_text(encoding="utf-8"))
+      return data if isinstance(data, dict) else None
+  except Exception:
+    return None
+  return None
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+  handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n")
+    tmp.chmod(0o644)
+    tmp.replace(path)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
+
+
+def cached_scan(sessions_root: Path, max_age_seconds: float) -> dict[str, Any]:
+  cache_file, lock_file = scan_cache_paths(sessions_root)
+  cached = read_fresh_json(cache_file, max_age_seconds)
+  if cached is not None:
+    return cached
+
+  with lock_file.open("w") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    cached = read_fresh_json(cache_file, max_age_seconds)
+    if cached is not None:
+      return cached
+    summary = scan_sessions(sessions_root)
+    write_json(cache_file, summary)
+    return summary
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--force", action="store_true", help="rescan sessions, ignoring caches")
+  parser.add_argument("--limits-only", action="store_true", help="reuse any recent session scan")
+  parser.add_argument("--cache-seconds", type=float, default=SCAN_REUSE_SECONDS)
+  args = parser.parse_args()
+
+  home = grok_home()
+  scan_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else args.cache_seconds)
+  stats = cached_scan(home / "sessions", scan_age)
+  has_data = number(stats.get("totalPrompts")) > 0 or number(stats.get("totalSessions")) > 0
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": has_data or signed_in(home),
+    "hasLocalStats": True,
+    "hasPromptStats": True,
+    "tierLabel": "",
+    "usageStatusText": "",
+    "authHelpText": "" if signed_in(home) or has_data else AUTH_HELP,
+    "limits": [],
+  }
+  record.update(stats)
+  print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
