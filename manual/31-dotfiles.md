@@ -14,7 +14,7 @@ Here's a list of the key files in `~/.config` and what they control:
 | `~/.config/hypr/input.lua` | Controls your keyboard layout, mouse, and trackpad settings. |
 | `~/.config/hypr/looknfeel.lua` | Controls gaps, borders, animations, and the rest of the look. |
 | `~/.config/hypr/autostart.lua` | Controls extra processes started with the session. |
-| `~/.config/omarchy/shell.json` | Controls the Omarchy shell: bar position, layout, and widgets, plus screensaver, lock, and idle timings. |
+| `~/.config/omarchy/shell.json` | Controls the Omarchy shell: bar position, layout, and widgets, plus screensaver, lock, and suspend timings. |
 | `~/.config/foot/foot.ini` | Controls your terminal (foot is the default). |
 | `~/.XCompose` | Defines your quick-access emoji and name/email autocomplete. Make sure to run `omarchy-restart-xcompose` after making changes. |
 
