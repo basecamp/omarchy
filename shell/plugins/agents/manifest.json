@@ -19,8 +19,8 @@
     "allowMultiple": false,
     "defaults": {
       "providers": {
-        "claude": { "enabled": true },
-        "codex": { "enabled": true },
+        "anthropic": { "enabled": true },
+        "openai": { "enabled": true },
         "fireworks": { "enabled": true }
       },
       "refreshIntervalSec": 900,

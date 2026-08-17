@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=List a provider's accounts, slot readiness, and active account
+# omarchy:summary=List subscription accounts, slot readiness, and active accounts
 # omarchy:args=[provider] [--json]
 # omarchy:examples=omarchy agent account list anthropic | omarchy agent account list openai --json
 
@@ -34,64 +34,91 @@ while (( $# > 0 )); do
   shift
 done
 
-agent_account_load_selected_provider "$requested"
-agent_account_lock
 trap agent_account_cleanup EXIT
-agent_account_prepare_locked
 
-active=$(agent_account_active 2>/dev/null || true)
-mapfile -t accounts < <(agent_account_profiles)
+list_provider() {
+  local provider="$1"
+  local active account account_active slot_rows slot filled marker
+  local accounts=()
+
+  agent_account_provider_load "$provider"
+  agent_account_lock
+  agent_account_prepare_locked
+
+  active=$(agent_account_active 2>/dev/null || true)
+  mapfile -t accounts < <(agent_account_profiles)
+
+  if [[ $json == "true" ]]; then
+    for account in "${accounts[@]}"; do
+      if [[ $account == $active ]]; then
+        account_active="true"
+      else
+        account_active="false"
+      fi
+
+      slot_rows=$(
+        for slot in "${AGENT_ACCOUNT_SLOTS[@]}"; do
+          agent_account_slot_installed "$slot" || continue
+          if agent_account_slot_filled "$account" "$slot"; then
+            filled="true"
+          else
+            filled="false"
+          fi
+          jq -cn \
+            --arg slotId "$slot" \
+            --argjson filled "$filled" \
+            --arg loginCommand "omarchy agent account login $AGENT_ACCOUNT_PROVIDER_ID $account $slot" \
+            '{slotId: $slotId, filled: $filled, loginCommand: $loginCommand}'
+        done | jq -s '.'
+      )
+
+      jq -cn \
+        --arg providerId "$AGENT_ACCOUNT_PROVIDER_ID" \
+        --arg providerName "$AGENT_ACCOUNT_PROVIDER_NAME" \
+        --arg accountId "$account" \
+        --arg accountLabel "$account" \
+        --argjson accountActive "$account_active" \
+        --argjson slotRows "$slot_rows" \
+        '{
+          providerId: $providerId,
+          providerName: $providerName,
+          accountId: $accountId,
+          accountLabel: $accountLabel,
+          accountActive: $accountActive,
+          slots: ($slotRows | map({key: .slotId, value: {filled: .filled, loginCommand: .loginCommand}}) | from_entries),
+          missingSlots: ($slotRows | map(select(.filled | not) | .slotId))
+        }'
+    done
+  else
+    for account in "${accounts[@]}"; do
+      if [[ $account == $active ]]; then
+        marker="*"
+      else
+        marker=" "
+      fi
+      printf '%s %s %s\n' "$marker" "$AGENT_ACCOUNT_PROVIDER_ID" "$account"
+      while IFS= read -r slot; do
+        [[ -n $slot ]] || continue
+        printf '    missing %s: omarchy agent account login %s %s %s\n' "$slot" "$AGENT_ACCOUNT_PROVIDER_ID" "$account" "$slot"
+      done < <(agent_account_missing_slots "$account")
+    done
+  fi
+
+  agent_account_unlock
+}
+
+if [[ -n $requested ]]; then
+  providers=("$requested")
+else
+  providers=(anthropic openai)
+fi
 
 if [[ $json == "true" ]]; then
-  for account in "${accounts[@]}"; do
-    if [[ $account == $active ]]; then
-      account_active="true"
-    else
-      account_active="false"
-    fi
-
-    slot_rows=$(
-      for slot in "${AGENT_ACCOUNT_SLOTS[@]}"; do
-        agent_account_slot_installed "$slot" || continue
-        if agent_account_slot_filled "$account" "$slot"; then
-          filled="true"
-        else
-          filled="false"
-        fi
-        jq -cn \
-          --arg slotId "$slot" \
-          --argjson filled "$filled" \
-          --arg loginCommand "omarchy agent account login $AGENT_ACCOUNT_PROVIDER_ID $account $slot" \
-          '{slotId: $slotId, filled: $filled, loginCommand: $loginCommand}'
-      done | jq -s '.'
-    )
-
-    jq -cn \
-      --arg providerId "$AGENT_ACCOUNT_PROVIDER_ID" \
-      --arg accountId "$account" \
-      --arg accountLabel "$account" \
-      --argjson accountActive "$account_active" \
-      --argjson slotRows "$slot_rows" \
-      '{
-        providerId: $providerId,
-        accountId: $accountId,
-        accountLabel: $accountLabel,
-        accountActive: $accountActive,
-        slots: ($slotRows | map({key: .slotId, value: {filled: .filled, loginCommand: .loginCommand}}) | from_entries),
-        missingSlots: ($slotRows | map(select(.filled | not) | .slotId))
-      }'
+  for provider in "${providers[@]}"; do
+    list_provider "$provider"
   done | jq -s '.'
 else
-  for account in "${accounts[@]}"; do
-    if [[ $account == $active ]]; then
-      marker="*"
-    else
-      marker=" "
-    fi
-    printf '%s %s %s\n' "$marker" "$AGENT_ACCOUNT_PROVIDER_ID" "$account"
-    while IFS= read -r slot; do
-      [[ -n $slot ]] || continue
-      printf '    missing %s: omarchy agent account login %s %s %s\n' "$slot" "$AGENT_ACCOUNT_PROVIDER_ID" "$account" "$slot"
-    done < <(agent_account_missing_slots "$account")
+  for provider in "${providers[@]}"; do
+    list_provider "$provider"
   done
 fi

@@ -273,6 +273,18 @@ Item {
       volatile: true,
       actionFor: function(value) { return "omarchy-font-set " + Util.shellQuote(value) }
     },
+    "agent-accounts": {
+      script: "omarchy agent account list --json 2>/dev/null | jq -r '.[] | [((.providerName // .providerId) + \" · \" + .accountLabel), (.providerId + \"@\" + .accountId), (if .accountActive then (.providerId + \"@\" + .accountId) else \"\" end)] | @tsv' 2>/dev/null",
+      icon: "󰚩",
+      volatile: true,
+      actionFor: function(value) {
+        var separator = value.indexOf("@")
+        if (separator < 1) return ""
+        var providerId = value.substring(0, separator)
+        var accountId = value.substring(separator + 1)
+        return "omarchy agent account switch " + Util.shellQuote(providerId) + " " + Util.shellQuote(accountId)
+      }
+    },
     "power-profiles": {
       script: "current=$(powerprofilesctl get 2>/dev/null); omarchy-powerprofiles-list 2>/dev/null | while read -r p; do [[ -z $p ]] && continue; printf '%s\\t%s\\t%s\\n' \"$p\" \"$p\" \"$current\"; done",
       icon: "\udb81\udc0b",

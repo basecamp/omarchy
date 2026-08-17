@@ -123,6 +123,12 @@ bare_output=$(HOME="$bare_home" OMARCHY_TEST_DEFAULT_AGENT="" omarchy-agent-acco
 [[ $bare_output == "No agent accounts are set up yet." ]] || fail "bare account command explains that no accounts are configured"
 pass "bare account command succeeds when no default agent is set"
 
+if ! bare_list=$(HOME="$bare_home" OMARCHY_TEST_DEFAULT_AGENT="" omarchy-agent-account-list); then
+  fail "bare account list succeeds without a default agent"
+fi
+[[ -z $bare_list ]] || fail "bare account list is empty before accounts exist"
+pass "bare account list succeeds without a default agent"
+
 claude_only_home="$test_tmp/claude-only-home"
 mkdir -p "$claude_only_home/.claude"
 printf '{"oauth":"claude-only-default"}\n' >"$claude_only_home/.claude/.credentials.json"
@@ -371,6 +377,25 @@ ln -s "$openai_root/recovered/codex" "$HOME/.codex"
 [[ $(omarchy-agent-account openai) == "recovered" ]] || fail "managed dangling config slots are repaired"
 [[ -d $openai_root/recovered/codex ]] || fail "dangling config-slot repair creates a private account profile"
 pass "OpenAI uses the verified harness-specific keys and resumable config adoption"
+
+explicit_anthropic=$(omarchy-agent-account-list anthropic --json)
+if ! all_accounts_text=$(OMARCHY_TEST_DEFAULT_AGENT="" omarchy-agent-account-list); then
+  fail "bare text account list succeeds with both providers and no default agent"
+fi
+[[ $all_accounts_text == *"anthropic default"* && $all_accounts_text == *"openai default"* ]] ||
+  fail "bare text account list includes accounts from every provider"
+if ! all_accounts=$(OMARCHY_TEST_DEFAULT_AGENT="" omarchy-agent-account-list --json); then
+  fail "bare account list succeeds with both providers and no default agent"
+fi
+jq -e '
+  any(.[]; .providerId == "anthropic") and
+  any(.[]; .providerId == "openai")
+' <<<"$all_accounts" >/dev/null || fail "bare account list includes accounts from every provider"
+jq -e --argjson explicit "$explicit_anthropic" \
+  '[.[] | select(.providerId == "anthropic")] == $explicit' <<<"$all_accounts" >/dev/null ||
+  fail "explicit provider account list remains scoped and unchanged"
+pass "bare account list returns every provider without consulting the default agent"
+pass "explicit provider account list keeps its provider-scoped output"
 
 if (( EUID == 0 )); then
   pass "running as root; skipping user finalization provisioning check"
