@@ -64,11 +64,21 @@ Panel {
   // convention. Clicking the grid's "W" heading writes the choice back to
   // shell.json.
   readonly property int weekStart: Model.normalizedWeekStart(setting("weekStartDay", null), Qt.locale().firstDayOfWeek)
-  // The interface is English throughout, so day names are not taken from the
-  // system locale. Where the week starts still is: that is a regional
-  // convention rather than a translation, and it stays overridable above.
-  readonly property var labelLocale: Qt.locale("en_US")
-  readonly property string nextWeekStartLabel: labelLocale.dayName(Model.toggledWeekStart(weekStart), Locale.LongFormat)
+  // Day names follow the system locale so the calendar respects the user's
+  // language. The week start is a regional convention rather than a
+  // translation, and it stays overridable above.
+  readonly property var labelLocale: Qt.locale()
+  // Normalize toggledWeekStart (0-based JS index) to Qt.DayOfWeek range (1-7)
+  // before passing to dayName(), which expects Qt.Sunday(1)..Qt.Saturday(7).
+  readonly property int nextWeekStartDayOfWeek: {
+    const toggled = Model.toggledWeekStart(weekStart)
+    // Already in Qt range (1-7)
+    if (toggled >= Qt.Sunday && toggled <= Qt.Saturday) return toggled
+    // JS range (0-6) — shift to Qt range
+    if (toggled >= 0 && toggled <= 6) return toggled + 1
+    return weekStart
+  }
+  readonly property string nextWeekStartLabel: labelLocale.dayName(nextWeekStartDayOfWeek, Locale.LongFormat)
   readonly property var weekdays: Model.weekdayOrder(weekStart)
   readonly property var weeks: Model.monthGrid(viewYear, viewMonth, weekStart, todayKey)
 
