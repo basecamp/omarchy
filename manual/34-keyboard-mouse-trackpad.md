@@ -4,6 +4,12 @@ Open _Setup > Input_ in the Omarchy menu (`Super + Space`) for the settings most
 
 Hyprland has many more input options. Choose _Advanced input config_ at the bottom of the panel to edit `~/.config/hypr/input.lua` for keyboard repeat, gestures, per-app scrolling, and other specialized settings.
 
+![Input settings panel](images/input-panel.webp)
+
+The layout pickers search every layout installed with XKB, so adding another language does not turn the panel into a long list of regional options.
+
+![Searchable keyboard layout picker](images/input-panel-layout-picker.webp)
+
 Here's an example:
 
 ```lua
