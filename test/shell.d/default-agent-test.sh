@@ -92,7 +92,8 @@ export OMARCHY_TEST_STUB_LOG="$stub_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
 
-grok_package="npm:@xai-official/grok"
+grok_package="grok"
+legacy_grok_package="npm:@xai-official/grok"
 omp_package="github:can1357/oh-my-pi"
 crush_package="crush"
 
@@ -115,7 +116,7 @@ assert_lazy_stub "$crush_package" crush
 pass "custom agent lazy stubs preserve their mise packages"
 
 source "$ROOT/install/user/mise.sh"
-grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates the Grok lazy stub"
+grep -Fx "$grok_package" "$stub_log" >/dev/null || fail "user setup creates the Grok lazy stub"
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
 pass "user setup creates the custom agent lazy stubs"
@@ -127,8 +128,12 @@ grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "Oh My Pi migration c
 : >"$stub_log"
 source "$ROOT/migrations/1785846769.sh" >/dev/null
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "agent migration repairs the Oh My Pi lazy stub"
-grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "agent migration creates the Grok lazy stub"
+grep -Fx "$legacy_grok_package grok" "$stub_log" >/dev/null || fail "agent migration creates the Grok lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "agent migration creates the Crush lazy stub"
+
+: >"$stub_log"
+source "$ROOT/migrations/1786956325.sh" >/dev/null
+grep -Fx "$grok_package" "$stub_log" >/dev/null || fail "registry migration rewrites Grok onto mise's first-party backend"
 
 mkdir -p "$test_home/.local/state/omarchy"
 touch "$test_home/.local/state/omarchy/preinstalls-removed"
@@ -136,6 +141,7 @@ touch "$test_home/.local/state/omarchy/preinstalls-removed"
 : >"$stub_log"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
 source "$ROOT/migrations/1785846769.sh" >/dev/null
+source "$ROOT/migrations/1786956325.sh" >/dev/null
 [[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
 [[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
 
@@ -155,6 +161,18 @@ source "$ROOT/migrations/1785846769.sh" >/dev/null
 [[ -e $test_home/.local/bin/omp ]] ||
   fail "agent migration keeps a wrapper built on $omp_package"
 rm -f "$test_home/.local/bin/omp"
+
+printf '#!/bin/bash\nmise use -g --quiet "%s" || exit 1\n' "$legacy_grok_package" >"$test_home/.local/bin/grok"
+chmod +x "$test_home/.local/bin/grok"
+mkdir -p "$test_home/.grok/bin"
+: >"$test_home/.grok/bin/agent"
+ln -s "$test_home/.grok/bin/agent" "$test_home/.local/bin/agent"
+: >"$stub_log"
+source "$ROOT/migrations/1786956325.sh" >/dev/null
+[[ ! -s $stub_log ]] || fail "Grok registry migration respects the preinstall opt-out"
+[[ ! -e $test_home/.local/bin/grok ]] || fail "Grok registry migration removes the npm wrapper after opt-out"
+[[ ! -e $test_home/.local/bin/agent ]] || fail "Grok registry migration removes the curl-installer agent symlink"
+rm -f "$test_home/.local/bin/grok" "$test_home/.local/bin/agent"
 
 rm "$test_home/.local/state/omarchy/preinstalls-removed"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"

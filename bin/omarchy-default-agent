@@ -30,7 +30,7 @@ opencode | open-code) agent="opencode"; name="OpenCode" ;;
 claude | claude-code) agent="claude"; name="Claude Code" ;;
 codex) agent="codex"; name="Codex" ;;
 crush) agent="crush"; name="Crush" ;;
-grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
+grok) agent="grok"; name="Grok" ;;
 gemini | gemini-cli) agent="gemini"; name="Gemini" ;;
 copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
 *)
