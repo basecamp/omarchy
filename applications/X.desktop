@@ -1,7 +1,7 @@
 [Desktop Entry]
 Version=1.0
 Name=X
-Exec=omarchy-launch-webapp https://x.com/
+Exec=omarchy-launch-webapp https://x.com/ --force-device-scale-factor=1 --disable-accelerated-video-decode
 Terminal=false
 Type=Application
 Icon=x
