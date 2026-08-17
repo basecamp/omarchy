@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# omarchy:summary=Launch Foot via footclient when the server socket is up
+# omarchy:hidden=true
+
+# New clients inherit the server's startup config. Re-apply the live theme
+# include and font so a theme or font change reaches the next Super+Return.
+runtime=${XDG_RUNTIME_DIR:-/run/user/$UID}
+
+if [[ -n $WAYLAND_DISPLAY && -S $runtime/foot-$WAYLAND_DISPLAY.sock ]] || [[ -S $runtime/foot.sock ]]; then
+  overrides=()
+  theme_ini=$HOME/.local/state/omarchy/current/theme/foot.ini
+  [[ -f $theme_ini ]] && overrides+=(--override=include="$theme_ini")
+  if [[ -f $HOME/.config/foot/foot.ini ]]; then
+    font=$(grep -m1 '^font=' "$HOME/.config/foot/foot.ini" || true)
+    [[ -n $font ]] && overrides+=(--override=font="${font#font=}")
+  fi
+  exec footclient "${overrides[@]}" "$@"
+else
+  exec foot "$@"
+fi

@@ -1,6 +1,6 @@
 # Terminal
 
-[Foot](https://codeberg.org/dnkl/foot) is the default terminal for Omarchy. It's fast, lightweight, and compatible with even old computers. It does not, however, support native tabs or splits.
+[Foot](https://codeberg.org/dnkl/foot) is the default terminal for Omarchy. It's fast, lightweight, and compatible with even old computers. Extra windows attach through `footclient` when the Foot server is running. It does not, however, support native tabs or splits.
 
 If you use Tmux, you may not mind, but if not, we fully support _Alacritty_, _Ghostty_, and _Kitty_ as options as well. Pick your preference under _Install > Terminal_ in the Omarchy menu.
 

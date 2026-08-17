@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+TryExec=footclient
+Exec=omarchy-launch-foot
+Icon=foot
+Terminal=false
+Categories=System;TerminalEmulator;
+Name=Foot Client
+GenericName=Terminal
+Comment=A fast, lightweight and minimalistic Wayland terminal emulator (client)
+StartupNotify=true
+NoDisplay=true
+X-TerminalArgExec=-e
+X-TerminalArgAppId=--app-id=
+X-TerminalArgTitle=--title=
+X-TerminalArgDir=--working-directory=

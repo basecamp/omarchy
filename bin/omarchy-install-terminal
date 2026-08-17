@@ -14,7 +14,7 @@ package="$1"
 # Map package name to desktop entry ID
 case "$package" in
 alacritty) desktop_id="Alacritty.desktop" ;;
-foot) desktop_id="foot.desktop" ;;
+foot) desktop_id="footclient.desktop" ;;
 ghostty) desktop_id="com.mitchellh.ghostty.desktop" ;;
 kitty) desktop_id="kitty.desktop" ;;
 *)
@@ -33,7 +33,9 @@ if omarchy-pkg-add $package; then
     cp "$OMARCHY_PATH/default/alacritty/$desktop_id" ~/.local/share/applications/
   elif [[ $package == "foot" ]]; then
     mkdir -p ~/.local/share/applications
-    cp "$OMARCHY_PATH/applications/$desktop_id" ~/.local/share/applications/
+    cp "$OMARCHY_PATH/applications/foot.desktop" ~/.local/share/applications/
+    cp "$OMARCHY_PATH/applications/footclient.desktop" ~/.local/share/applications/
+    systemctl --user enable --now foot-server.socket || true
   fi
 
   # Copy default config for optional terminals when missing
