@@ -71,6 +71,13 @@ result="$TMPDIR/result.json"
 log="$TMPDIR/quickshell.log"
 config_dir="$TMPDIR/manifest-entrypoints"
 mkdir -p "$config_dir" "$TMPDIR/home"
+audio_icon_provider="$TMPDIR/audio-output-icon"
+cat >"$audio_icon_provider" <<'PROVIDER'
+#!/bin/bash
+(( $# == 5 )) || exit 1
+printf '󰃋\n'
+PROVIDER
+chmod +x "$audio_icon_provider"
 cp "$SHELL_TEST_DIR/fixtures/manifest-entrypoints/shell.qml" "$config_dir/shell.qml"
 ln -s "$ROOT/shell/Ui" "$config_dir/Ui"
 ln -s "$ROOT/shell/Commons" "$config_dir/Commons"
@@ -78,6 +85,7 @@ ln -s "$ROOT/shell/Commons" "$config_dir/Commons"
 OMARCHY_PATH="$ROOT" \
 OMARCHY_QML_TEST_RESULT="$result" \
 OMARCHY_QML_MANIFESTS="$manifest_entries" \
+OMARCHY_QML_AUDIO_ICON_PROVIDER="$audio_icon_provider" \
 HOME="$TMPDIR/home" \
 XDG_CONFIG_HOME="$TMPDIR/home/.config" \
 XDG_CACHE_HOME="$TMPDIR/home/.cache" \

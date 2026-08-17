@@ -35,6 +35,10 @@ function outputVolumeName(volume, muted) {
   return "Whisper"
 }
 
+function parseOutputIcon(raw) {
+  return String(raw || "").split(/\r?\n/, 1)[0].trim()
+}
+
 function parseSinkAvailability(raw) {
   var next = {}
   var lines = String(raw || "").split("\n")
@@ -239,6 +243,7 @@ if (typeof module !== "undefined") {
     isAudioSource: isAudioSource,
     listSnapshot: listSnapshot,
     outputVolumeName: outputVolumeName,
+    parseOutputIcon: parseOutputIcon,
     parseSinkAvailability: parseSinkAvailability,
     friendlyDeviceLabel: friendlyDeviceLabel,
     nodeProps: nodeProps,

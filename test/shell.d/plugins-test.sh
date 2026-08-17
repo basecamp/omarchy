@@ -14,7 +14,8 @@ const kindEntryPoints = {
   'menu': 'menu',
   'overlay': 'overlay',
   'panel': 'panel',
-  'service': 'service'
+  'service': 'service',
+  'audio-output-icon': 'audioOutputIcon'
 }
 
 function isPlainObject(value) {
@@ -54,6 +55,10 @@ function assertSafeEntryPoint(manifest, manifestPath, key, value) {
   check(!path.isAbsolute(value), `${label} must be relative`)
   check(!String(value).split(/[\\/]+/).includes('..'), `${label} must stay inside plugin source`)
   check(fs.existsSync(path.join(sourceDirForManifest(manifestPath), String(value))), `${label} file must exist`)
+  if (key === 'audioOutputIcon') {
+    const mode = fs.statSync(path.join(sourceDirForManifest(manifestPath), String(value))).mode
+    check((mode & 0o111) !== 0, `${label} must be executable`)
+  }
 }
 
 const manifests = walk(pluginsDir)

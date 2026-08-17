@@ -33,6 +33,7 @@ JSON
   while IFS= read -r entry; do
     [[ -n $entry ]] || continue
     touch "$dir/$entry"
+    chmod +x "$dir/$entry"
   done < <(jq -r '.[]' <<<"$entry_points")
 
   printf '%s\n' "$dir"
@@ -65,7 +66,15 @@ menu:menu
 overlay:overlay
 panel:panel
 service:service
+audio-output-icon:audioOutputIcon
 KINDS
+
+dir=$(write_plugin "non-executable-audio-icon" '["audio-output-icon"]' '{"audioOutputIcon": "icon-provider"}')
+chmod -x "$dir/icon-provider"
+output=$(validate "$dir") && fail "validate refuses a non-executable audio output icon provider" "$output"
+grep -qF "audio output icon entry point must be executable" <<<"$output" \
+  || fail "validate explains that the audio output icon provider must be executable" "$output"
+pass "validate refuses a non-executable audio output icon provider"
 
 # A plugin that is both a bar and a widget owes an entry point for each.
 dir=$(write_plugin "both" '["bar","bar-widget"]' '{"bar": "Bar.qml", "barWidget": "Widget.qml"}')

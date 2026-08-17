@@ -34,6 +34,7 @@ wait).
 | `overlay`    | Fullscreen overlay (e.g. background picker)    |
 | `menu`       | Summoned menu surface                          |
 | `service`    | Headless singleton, no UI                      |
+| `audio-output-icon` | Executable that may override the stock audio output glyph |
 
 Only one full bar option is active at a time. The built-in `omarchy.bar` is
 used when `bar.id` is omitted or when a selected third-party bar cannot load.
@@ -41,7 +42,28 @@ Panels, overlays, and menus are loaded when summoned. Plugins can set the
 top-level manifest key `keepLoaded: true` to survive between summons.
 First-party services are loaded at startup.
 
-Entry points are QML `Item`s. Panel, overlay, and menu entry points expose
+### Audio output icon providers
+
+An enabled plugin can replace only the audio output glyph without cloning the built-in audio widget. Declare the `audio-output-icon` kind and point `entryPoints.audioOutputIcon` at an executable file in the plugin:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "my.org.audio-device",
+  "name": "My audio device",
+  "version": "1.0.0",
+  "kinds": ["audio-output-icon"],
+  "entryPoints": { "audioOutputIcon": "bin/output-icon" }
+}
+```
+
+Omarchy invokes the provider with the stock glyph, PipeWire sink name, sink description, volume percentage, and mute state as positional arguments. Print one glyph to stdout to override the icon, or print nothing to keep the stock icon. The provider is polled every two seconds while enabled so it can reflect device state that PipeWire does not expose. It must finish quickly and must not change device state.
+
+The arguments are `$1` stock glyph, `$2` sink name, `$3` sink description, `$4` integer volume percentage, and `$5` mute state (`true` or `false`).
+
+If multiple providers are enabled, the plugin with the lexicographically first id wins. Plugins run as unsandboxed code, and this executable follows the same trust model as QML entry points.
+
+QML entry points are `Item`s. Panel, overlay, and menu entry points expose
 `open(payloadJson)` and `close()` for summon/hide; on load the host injects
 `omarchyPath`, `shell`, `manifest`, and the registries (`pluginRegistry` /
 `barWidgetRegistry`) as properties.

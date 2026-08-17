@@ -100,13 +100,20 @@ for kind_entry_point in \
   "menu:menu" \
   "overlay:overlay" \
   "panel:panel" \
-  "service:service"; do
+  "service:service" \
+  "audio-output-icon:audioOutputIcon"; do
   kind="${kind_entry_point%%:*}"
   entry_point="${kind_entry_point##*:}"
   jq -e --arg kind "$kind" '(.kinds | index($kind)) != null' "$MANIFEST" >/dev/null 2>&1 || continue
   jq -e --arg ep "$entry_point" '.entryPoints | has($ep)' "$MANIFEST" >/dev/null 2>&1 \
     || fail "kind '$kind' requires an 'entryPoints.$entry_point' to load"
 done
+
+if jq -e '(.kinds | index("audio-output-icon")) != null' "$MANIFEST" >/dev/null 2>&1; then
+  provider=$(jq -r '.entryPoints.audioOutputIcon // ""' "$MANIFEST")
+  [[ -x "$PLUGIN_DIR/$provider" ]] \
+    || fail "audio output icon entry point must be executable: '$provider'"
+fi
 
 # Refuse any symlink anywhere inside the plugin folder. Symlinks could point a
 # copied plugin back at arbitrary files on disk after it lands in the trusted

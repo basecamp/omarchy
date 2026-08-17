@@ -16,6 +16,8 @@ assert(audio.isAudioSource({ type: 'Audio/Source' }), 'audio detects typed sourc
 assertEqual(audio.outputVolumeName(0, false), 'Silenced', 'audio labels silent output')
 assertEqual(audio.outputVolumeName(0.9, false), 'Party mode', 'audio labels loud output')
 assertEqual(audio.outputVolumeName(0.5, true), 'Muted', 'audio labels muted output')
+assertEqual(audio.parseOutputIcon('󰃋\nignored'), '󰃋', 'audio accepts the first provider output line')
+assertEqual(audio.parseOutputIcon('  \n'), '', 'audio falls back when a provider returns no icon')
 
 assertDeepEqual(audio.parseSinkAvailability('alsa_output\t1\nhdmi_output\t0\n'), { alsa_output: true, hdmi_output: false }, 'audio parses sink availability')
 assertEqual(audio.friendlyDeviceLabel('Built-in Audio Speakers Output'), 'Speakers', 'audio cleans device labels')
@@ -47,3 +49,14 @@ assertEqual(audio.unmatchedMprisStreamLabel('audio-src', players, streams), 'Spo
 assertEqual(audio.streamLabel(streams[1], players, streams), 'Spotify', 'audio labels generic streams from MPRIS')
 assert(audio.streamRepresentsPlayer(streams[1], players[0], players, streams), 'audio links generic streams to active player')
 JS
+
+panel_source=$(<"$ROOT/shell/plugins/panels/audio/Panel.qml")
+registry_source=$(<"$ROOT/shell/services/PluginRegistry.qml")
+
+[[ $panel_source == *'firstEnabledEntryPointPath("audio-output-icon", "audioOutputIcon")'* ]] \
+  || fail "audio discovers the enabled output icon provider"
+[[ $panel_source == *'running: root.outputIconProvider !== ""'* ]] \
+  || fail "audio polls only when an output icon provider is enabled"
+[[ $registry_source == *'var ids = Object.keys(installedPlugins).sort()'* ]] \
+  || fail "plugin entry point selection is deterministic"
+pass "audio supports plugin-provided output icons"

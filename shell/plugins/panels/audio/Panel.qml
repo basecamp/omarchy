@@ -137,7 +137,10 @@ Panel {
 
   // Re-resolve whenever the selected output changes; the timer below is only a
   // safety net for the tuning being applied or removed underneath us.
-  onSinkChanged: resolveVolumeSink()
+  onSinkChanged: {
+    resolveVolumeSink()
+    scheduleOutputIconRefresh()
+  }
 
   function resolveVolumeSink() {
     if (!volumeSinkProc.running) volumeSinkProc.running = true
@@ -147,6 +150,21 @@ Panel {
   readonly property bool outputMuted: volumeSink && volumeSink.audio ? volumeSink.audio.muted : false
   readonly property real inputVolume: source && source.audio ? source.audio.volume : 0
   readonly property bool inputMuted: source && source.audio ? source.audio.muted : false
+
+  readonly property string outputIconProvider: {
+    var registry = bar?.shell?.pluginRegistry
+    if (!registry) return ""
+    var revision = registry.registryRevision
+    return registry.firstEnabledEntryPointPath("audio-output-icon", "audioOutputIcon")
+  }
+  property string customOutputIcon: ""
+
+  onOutputVolumeChanged: scheduleOutputIconRefresh()
+  onOutputMutedChanged: scheduleOutputIconRefresh()
+  onOutputIconProviderChanged: {
+    customOutputIcon = ""
+    scheduleOutputIconRefresh()
+  }
 
   onRawAudioSinksChanged: if (rawAudioSinks.length > 0) cachedAudioSinks = rawAudioSinks
   onRawAudioSourcesChanged: if (rawAudioSources.length > 0) cachedAudioSources = rawAudioSources
@@ -398,7 +416,7 @@ Panel {
     if (selectedIndex < floor) selectedIndex = floor
   }
 
-  function outputIcon(volume) {
+  function stockOutputIcon(volume) {
     // Match the old Waybar pulseaudio glyph set. The Material Design speaker
     // icons render visually smaller in JetBrainsMono Nerd Font.
     if (!sink || !sink.audio) return ""
@@ -409,6 +427,27 @@ Panel {
     if (v >= 0.34) return ""
     if (v > 0) return ""
     return ""
+  }
+
+  function outputIcon(volume) {
+    return customOutputIcon || stockOutputIcon(volume)
+  }
+
+  function scheduleOutputIconRefresh() {
+    if (!outputIconProvider) return
+    outputIconRefreshTimer.restart()
+  }
+
+  function refreshOutputIcon() {
+    if (!outputIconProvider) {
+      customOutputIcon = ""
+      return
+    }
+    if (!outputIconProc.running) outputIconProc.running = true
+  }
+
+  function updateOutputIcon(raw) {
+    customOutputIcon = outputIconProvider ? Model.parseOutputIcon(raw) : ""
   }
 
   function inputIcon() {
@@ -599,6 +638,40 @@ Panel {
       waitForEnd: true
       onStreamFinished: root.volumeSinkName = String(text).trim()
     }
+  }
+
+  Process {
+    id: outputIconProc
+    command: [
+      root.outputIconProvider,
+      root.stockOutputIcon(),
+      root.sink ? String(root.sink.name || "") : "",
+      root.sink ? String(root.sink.description || "") : "",
+      String(Math.round(root.outputVolume * 100)),
+      root.outputMuted ? "true" : "false"
+    ]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateOutputIcon(text)
+    }
+  }
+
+  Timer {
+    id: outputIconRefreshTimer
+    interval: 100
+    repeat: false
+    onTriggered: root.refreshOutputIcon()
+  }
+
+  // Provider logic may reflect hardware state that PipeWire cannot see. Poll
+  // only while such a plugin is enabled; the stock widget starts no extra
+  // process when it has no provider.
+  Timer {
+    interval: 2000
+    running: root.outputIconProvider !== ""
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.refreshOutputIcon()
   }
 
   Timer {

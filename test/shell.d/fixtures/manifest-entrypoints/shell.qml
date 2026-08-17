@@ -102,6 +102,23 @@ ShellRoot {
     createdIds.push(entry.id + ":" + entry.kind)
   }
 
+  function verifyCreatedEntries(entries) {
+    root.assertTrue(root.createdIds.length === entries.length, "all manifest entrypoints instantiate")
+    var audio = null
+    for (var i = 0; i < root.createdObjects.length; i++) {
+      var item = root.createdObjects[i]
+      if (item && item.moduleName === "omarchy.audio") audio = item
+    }
+    root.assertTrue(audio !== null, "audio entrypoint instantiates")
+    if (audio) root.assertTrue(audio.customOutputIcon === "󰃋", "audio entrypoint reads its executable icon provider")
+
+    for (var j = 0; j < root.createdObjects.length; j++) {
+      var created = root.createdObjects[j]
+      if (created && typeof created.destroy === "function") created.destroy()
+    }
+    root.writeResult()
+  }
+
   Item { id: host }
 
   QtObject {
@@ -132,7 +149,12 @@ ShellRoot {
   QtObject {
     id: mockPluginRegistry
     property var installedPlugins: ({})
+    property int registryRevision: 0
     function isEnabled(id) { return true }
+    function firstEnabledEntryPointPath(kind, entryPoint) {
+      return kind === "audio-output-icon" && entryPoint === "audioOutputIcon"
+        ? Quickshell.env("OMARCHY_QML_AUDIO_ICON_PROVIDER") : ""
+    }
     function entryPointUrl(manifest, kind) { return "" }
     function rescan() {}
   }
@@ -140,6 +162,7 @@ ShellRoot {
   QtObject {
     id: mockShell
     property var bar: fakeBar
+    property var pluginRegistry: mockPluginRegistry
     property var barConfig: ({ position: "top" })
     property var shellConfig: ({ version: 1, idle: {}, plugins: [], bar: { layout: { left: [], center: [], right: [] } } })
     function firstPartyServiceFor(id) { return null }
@@ -172,6 +195,14 @@ ShellRoot {
   }
 
   Timer {
+    id: verificationTimer
+    interval: 500
+    repeat: false
+    property var entries: []
+    onTriggered: root.verifyCreatedEntries(entries)
+  }
+
+  Timer {
     interval: 1
     running: true
     repeat: false
@@ -179,15 +210,8 @@ ShellRoot {
       var entries = manifests()
       root.assertTrue(entries.length > 0, "manifest entry list is not empty")
       for (var i = 0; i < entries.length; i++) root.loadEntry(entries[i])
-
-      Qt.callLater(function() {
-        root.assertTrue(root.createdIds.length === entries.length, "all manifest entrypoints instantiate")
-        for (var j = 0; j < root.createdObjects.length; j++) {
-          var item = root.createdObjects[j]
-          if (item && typeof item.destroy === "function") item.destroy()
-        }
-        root.writeResult()
-      })
+      verificationTimer.entries = entries
+      verificationTimer.start()
     }
   }
 }

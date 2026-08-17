@@ -90,7 +90,7 @@ QtObject {
     return manifest
   }
 
-  function entryPointUrl(manifest, kind) {
+  function entryPointPath(manifest, kind) {
     if (!Util.isPlainObject(manifest)) return ""
     var ep = manifest.entryPoints ? manifest.entryPoints[kind] : null
     if (!ep) return ""
@@ -104,7 +104,27 @@ QtObject {
       console.warn("PluginRegistry: entry point escapes sourceDir: " + resolved)
       return ""
     }
-    return Util.fileUrl(resolved)
+    return resolved
+  }
+
+  function entryPointUrl(manifest, kind) {
+    var resolved = entryPointPath(manifest, kind)
+    return resolved ? Util.fileUrl(resolved) : ""
+  }
+
+  // Non-QML extension points use executable files rather than Components.
+  // Pick deterministically so enabling two providers never depends on scan
+  // order; users can disable the provider they do not want.
+  function firstEnabledEntryPointPath(kind, entryPoint) {
+    var ids = Object.keys(installedPlugins).sort()
+    for (var i = 0; i < ids.length; i++) {
+      var manifest = installedPlugins[ids[i]]
+      if (!manifest || !Array.isArray(manifest.kinds) || manifest.kinds.indexOf(kind) === -1) continue
+      if (!isEnabled(ids[i])) continue
+      var path = entryPointPath(manifest, entryPoint)
+      if (path) return path
+    }
+    return ""
   }
 
   // Enabled = the plugin id is referenced somewhere in shell.json. That can

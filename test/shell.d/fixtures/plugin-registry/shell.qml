@@ -87,6 +87,8 @@ ShellRoot {
     scan += block("thirdparty", "/third/widget", manifest("third.widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "left" }))
     scan += block("thirdparty", "/third/center-widget", manifest("third.center-widget", ["bar-widget"], { barWidget: "Widget.qml" }))
     scan += block("thirdparty", "/third/right-widget", manifest("third.right-widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "right" }))
+    scan += block("thirdparty", "/third/audio-a", manifest("third.audio-a", ["audio-output-icon"], { audioOutputIcon: "output-icon" }))
+    scan += block("thirdparty", "/third/audio-z", manifest("third.audio-z", ["audio-output-icon"], { audioOutputIcon: "output-icon" }))
     var localWidget = manifest("local.first-widget", ["bar-widget"], { barWidget: "Widget.qml" })
     localWidget.omarchy = { clonedFrom: "omarchy.first-widget" }
     scan += block("thirdparty", "/third/local-widget", localWidget)
@@ -123,6 +125,8 @@ ShellRoot {
       "omarchy.first-widget",
       "omarchy.grouped-panel",
       "omarchy.hybrid",
+      "third.audio-a",
+      "third.audio-z",
       "third.bar",
       "third.center-widget",
       "third.panel",
@@ -135,6 +139,7 @@ ShellRoot {
     root.assertEqual(registry.installedPlugins["omarchy.grouped-panel"].__sourceDir, "/first/panels/grouped", "grouped plugin source paths are preserved")
     root.assertEqual(registry.entryPointUrl(registry.installedPlugins["third.panel"], "panel"), "file:///third/panel/Panel.qml", "entryPointUrl resolves plugin-relative paths")
     root.assertEqual(registry.entryPointUrl(registry.installedPlugins["third.widget"], "barWidget"), "file:///third/widget/Widget.qml", "entryPointUrl resolves bar widget paths")
+    root.assertEqual(registry.entryPointPath(registry.installedPlugins["third.audio-a"], "audioOutputIcon"), "/third/audio-a/output-icon", "entryPointPath resolves executable plugin paths")
 
     root.assertTrue(!has("omarchy.reserved"), "third-party omarchy namespace ids are rejected")
     root.assertTrue(!has("third.unsafe"), "unsafe entry points are rejected")
@@ -147,6 +152,24 @@ ShellRoot {
     root.assertTrue(!registry.isEnabled("third.bar"), "third-party bar options start inactive")
     root.assertTrue(!registry.isEnabled("third.panel"), "third-party plugins start disabled")
     root.assertEqual(registry.resolveEnabledId("omarchy.first-widget"), "omarchy.first-widget", "inactive clones do not replace their source id")
+
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: [], right: [] } },
+      plugins: [{ id: "third.audio-z" }, { id: "third.audio-a" }]
+    }
+    root.assertEqual(
+      registry.firstEnabledEntryPointPath("audio-output-icon", "audioOutputIcon"),
+      "/third/audio-a/output-icon",
+      "executable extension points select the enabled provider deterministically"
+    )
+    root.config.plugins = [{ id: "third.audio-z" }]
+    root.assertEqual(
+      registry.firstEnabledEntryPointPath("audio-output-icon", "audioOutputIcon"),
+      "/third/audio-z/output-icon",
+      "executable extension points ignore disabled providers"
+    )
+    root.config = { version: 1, bar: { layout: { left: [], center: [], right: [] } }, plugins: [] }
 
     registry.setEnabled("third.bar", true)
     root.assertEqual(root.config.bar.id, "third.bar", "enabling third-party bar options writes bar id")
