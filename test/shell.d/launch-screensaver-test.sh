@@ -32,9 +32,21 @@ mapfile -t args <"$call_log"
 CALL_LOG="$call_log" "$launcher"
 [[ ! -s $call_log ]] || fail "screensaver launcher accepts an empty argument list"
 
-rm -f "$runtime"
-if CALL_LOG="$call_log" "$launcher" 2>/dev/null; then
-  fail "screensaver launcher fails when the native implementation is missing"
-fi
+mock_bin="$tmpdir/bin"
+fallback_log="$tmpdir/fallback"
+mkdir -p "$mock_bin"
+cat >"$mock_bin/omarchy-cmd-missing" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >"$FALLBACK_LOG"
+exit 0
+SH
+chmod +x "$mock_bin/omarchy-cmd-missing"
 
-pass "screensaver launcher delegates to the packaged native implementation"
+rm -f "$runtime"
+if PATH="$mock_bin:$PATH" FALLBACK_LOG="$fallback_log" "$launcher" 2>/dev/null; then
+  fail "terminal fallback stops when ttfx is unavailable"
+fi
+[[ $(<"$fallback_log") == "ttfx" ]] ||
+  fail "screensaver launcher checks the terminal fallback dependencies"
+
+pass "screensaver launcher prefers native and retains terminal fallback"
