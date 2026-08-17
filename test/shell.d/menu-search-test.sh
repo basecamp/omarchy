@@ -5,6 +5,8 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 run_node_test <<'JS'
+const fs = require('fs')
+const menu = requireFromRoot('shell/plugins/menu/MenuModel.js')
 const search = requireFromRoot('shell/services/MenuSearch.js')
 
 const menuEntry = (id, label) => ({ id, parent: 'system', kind: 'action', label, description: '', aliases: [] })
@@ -19,6 +21,18 @@ assert(
   search.compareRanks(search.rank(suspend, 'ss'), search.rank(screensaver, 'ss')) < 0,
   'menu fzf rank prefers the shorter equivalent chunk match'
 )
+
+const defaultMenu = menu.parseMenuJsonc(fs.readFileSync(path.join(root, 'default/omarchy/omarchy-menu.jsonc'), 'utf8'))
+const systemSsMatches = defaultMenu
+  .filter(entry => entry.parent === 'system' && search.matchesQuery(entry, 'ss', true))
+  .sort((a, b) => search.compareRanks(search.rank(a, 'ss'), search.rank(b, 'ss')))
+  .map(entry => entry.id)
+assertDeepEqual(
+  systemSsMatches,
+  ['system.suspend', 'system.screensaver'],
+  'system ss search lists Suspend first and excludes Shutdown'
+)
+
 assert(
   search.compareRanks(
     search.rank(menuEntry('tools.one', 'Suspend'), 'sud'),
