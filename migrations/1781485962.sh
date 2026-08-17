@@ -93,6 +93,23 @@ if [[ -f $input_file ]] && input_is_stock_or_installer_synced "$input_file"; the
   replace_with_packaged_config input.lua
 fi
 
+# Ensure shift:both_capslock_cancel is in kb_options for users who customized
+# their keyboard options before Quattro. Without this, Caps Lock can get stuck
+# ON with no way to toggle it off. See #7255.
+ensure_capslock_cancel_option() {
+  local input_file="$1"
+  [[ -f $input_file ]] || return 0
+
+  local current_options
+  current_options=$(active_lua_string_value kb_options "$input_file")
+
+  if [[ -n $current_options && ! "$current_options" == *"shift:both_capslock_cancel"* ]]; then
+    sed -i "s/kb_options = \"$current_options\"/kb_options = \"$current_options,shift:both_capslock_cancel\"/" "$input_file"
+  fi
+}
+
+ensure_capslock_cancel_option "$input_file"
+
 bindings_file="$HOME/.config/hypr/bindings.lua"
 if [[ -f $bindings_file ]]; then
   case "$(file_sha "$bindings_file")" in
