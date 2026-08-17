@@ -55,7 +55,7 @@ light surfaces — and the bar glyph stands in when there is none.
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
-| `grok` | SuperGrok weekly pool and extra credits from Grok Build's cli-chat-proxy billing/user endpoints | `$GROK_HOME/sessions` (default `~/.grok/sessions`) `turn_completed` usage; subagent forks are skipped so parent totals are not counted twice |
+| `grok` | SuperGrok weekly pool and extra credits from Grok Build's cli-chat-proxy billing/user endpoints | `$GROK_HOME/sessions` `turn_completed` usage (subagent forks skipped) plus pi/omp sessions on an xAI provider |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
