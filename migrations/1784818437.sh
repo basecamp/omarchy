@@ -18,6 +18,6 @@ for pam in /etc/pam.d/sudo /etc/pam.d/polkit-1; do
   if [[ -f $pam ]] &&
     grep -q 'pam_fprintd\.so' "$pam" &&
     ! grep -q 'omarchy-hw-laptop-closed' "$pam"; then
-    sudo sed -i "/pam_fprintd\.so/i $gate" "$pam"
+    sudo sed -i --follow-symlinks "/pam_fprintd\.so/i $gate" "$pam"
   fi
 done

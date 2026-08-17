@@ -35,13 +35,13 @@ install_php() {
   )
 
   # Enable Xdebug
-  sudo sed -i \
+  sudo sed -i --follow-symlinks \
     -e 's/^;zend_extension=xdebug.so/zend_extension=xdebug.so/' \
     -e 's/^;xdebug.mode=debug/xdebug.mode=debug/' \
     /etc/php/conf.d/xdebug.ini
 
   for ext in "${extensions_to_enable[@]}"; do
-    sudo sed -i "s/^;extension=${ext}/extension=${ext}/" "$php_ini_path"
+    sudo sed -i --follow-symlinks "s/^;extension=${ext}/extension=${ext}/" "$php_ini_path"
   done
 }
 

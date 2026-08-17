@@ -30,7 +30,7 @@ fi
 # powering the adapter up when the block above is lifted. Only the exact line
 # Omarchy wrote is reverted, so a hand-edited opt-out survives.
 if [[ -f $main_conf ]]; then
-  sudo sed -i 's/^AutoEnable=false$/#AutoEnable=true/' "$main_conf"
+  sudo sed -i --follow-symlinks 's/^AutoEnable=false$/#AutoEnable=true/' "$main_conf"
 fi
 
 sudo install -Dm644 /dev/null "$marker"

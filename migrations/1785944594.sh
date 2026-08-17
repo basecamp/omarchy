@@ -11,7 +11,7 @@ repair_marker="${OMARCHY_T2_REPAIR_MARKER:-/var/lib/omarchy/migrations/178594459
 needs_limine_rebuild=0
 
 if [[ -f $limine_conf ]] && grep -q 'pcie_ports=compat' "$limine_conf"; then
-  sudo sed -i \
+  sudo sed -i --follow-symlinks \
     's/pcie_ports=compat/pm_async=off mem_sleep_default=deep/' \
     "$limine_conf"
   needs_limine_rebuild=1

@@ -40,8 +40,8 @@ fi
 if grep -Fq "$SWAP_FILE" /etc/fstab; then
   echo "Removing swapfile from /etc/fstab"
   sudo cp -a /etc/fstab "/etc/fstab.$(date +%Y%m%d%H%M%S).back"
-  sudo sed -i "\|$SWAP_FILE|d" /etc/fstab
-  sudo sed -i '/^# Btrfs swapfile for system hibernation$/d' /etc/fstab
+  sudo sed -i --follow-symlinks "\|$SWAP_FILE|d" /etc/fstab
+  sudo sed -i --follow-symlinks '/^# Btrfs swapfile for system hibernation$/d' /etc/fstab
 fi
 
 # Remove mkinitcpio resume hook
