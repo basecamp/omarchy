@@ -589,8 +589,31 @@ def oauth_login(claude_dir: Path) -> tuple[str, int, str]:
   login = data.get("claudeAiOauth")
   if not isinstance(login, dict):
     return "", 0, ""
-  plan = plan_label(str(login.get("rateLimitTier") or ""), str(login.get("subscriptionType") or ""))
+  plan = plan_label(profile_tier(claude_dir), "")
+  if not plan:
+    plan = plan_label(str(login.get("rateLimitTier") or ""), str(login.get("subscriptionType") or ""))
   return str(login.get("accessToken") or ""), number(login.get("expiresAt")), plan
+
+
+# The credentials carry the tier their token was minted with, and an upgrade
+# does not restamp it: a refresh rewrites the file and keeps the old value, so
+# an account moved to Max 20x keeps reading Max 5x. The CLI's own profile is
+# refreshed against the account, so the tier it states there is asked first.
+def profile_tier(claude_dir: Path) -> str:
+  for path in (claude_dir / ".claude.json", claude_dir.with_name(claude_dir.name + ".json")):
+    try:
+      account = json.loads(path.read_text(encoding="utf-8")).get("oauthAccount")
+    except Exception:
+      continue
+    if not isinstance(account, dict):
+      continue
+    # A seat with no tier of its own is limited by its organization, which is
+    # the shape a personal Max subscription takes.
+    for key in ("userRateLimitTier", "organizationRateLimitTier"):
+      tier = str(account.get(key) or "")
+      if tier:
+        return tier
+  return ""
 
 
 def plan_label(tier: str, subscription: str) -> str:
