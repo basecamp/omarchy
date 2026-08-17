@@ -17,7 +17,7 @@ printf 'systemd-run %s\n' "$*" >>"$CALL_LOG"
 exit 0
 SH
 
-for command in omarchy-state omarchy-hyprland-window-close-all sleep; do
+for command in omarchy-osd omarchy-state omarchy-hyprland-window-close-all sleep; do
   cat >"$mock_bin/$command" <<'SH'
 #!/bin/bash
 
@@ -36,10 +36,12 @@ run_power_command() {
 assert_power_calls() {
   local action="$1"
   local systemctl_action="$2"
+  local osd_message="$3"
   local expected_log="$test_tmp/$action-expected.log"
 
   cat >"$expected_log" <<EOF
 systemd-run --user --collect --quiet --on-active=2s --timer-property=AccuracySec=100ms systemctl $systemctl_action --no-wall
+omarchy-osd -i $action -m $osd_message -d 5000
 omarchy-state clear re*-required
 omarchy-hyprland-window-close-all 
 sleep 1
@@ -50,10 +52,10 @@ EOF
 }
 
 run_power_command reboot
-assert_power_calls reboot reboot
+assert_power_calls reboot reboot Rebooting
 
 run_power_command shutdown
-assert_power_calls shutdown poweroff
+assert_power_calls shutdown poweroff "Shutting down"
 
 for action in reboot shutdown; do
   : >"$call_log"
