@@ -24,8 +24,11 @@ Item {
   property bool fingerprintConfigured: false
   property bool previewVisible: false
   property int fingerprintErrorStreak: 0
+  property bool fingerprintAttemptErrored: false
+  property double fingerprintAttemptStartedAt: 0
   readonly property int fingerprintRetryBaseMs: 250
   readonly property int fingerprintRetryMaxMs: 30000
+  readonly property int fingerprintFastErrorMs: 2000
   property string enteredPassword: ""
   property string pendingPassword: ""
   property string failureMessage: ""
@@ -124,6 +127,7 @@ Item {
     authenticatingPassword = false
     fingerprintAuthenticating = false
     fingerprintErrorStreak = 0
+    fingerprintAttemptErrored = false
     fingerprintRetryTimer.stop()
     if (passwordPam.active) passwordPam.abort()
     if (fingerprintPam.active) fingerprintPam.abort()
@@ -215,6 +219,8 @@ Item {
     if (fingerprintPam.active || fingerprintAuthenticating) return
 
     fingerprintAuthenticating = true
+    fingerprintAttemptErrored = false
+    fingerprintAttemptStartedAt = Date.now()
     if (!fingerprintPam.start()) {
       fingerprintAuthenticating = false
     }
@@ -225,16 +231,28 @@ Item {
     return Math.min(fingerprintRetryBaseMs * Math.pow(2, streak - 1), fingerprintRetryMaxMs)
   }
 
-  // A device error (fprintd down, reader thermally throttled) returns
-  // instantly and keeps returning instantly, so retrying at the base interval
-  // spins as fast as PAM sessions can be created and never lets the reader
-  // recover. Back those off; a swipe that just didn't match is a real attempt
-  // and keeps the responsive base delay.
+  // A device error (fprintd down, reader thermally throttled) returns instantly
+  // and keeps returning instantly, so retrying at the base interval spins as
+  // fast as PAM sessions can be created and never lets the reader recover.
+  // Back those off. A swipe that timed out reports the same PAM code but only
+  // after the full wait, so elapsed time is what separates the two -- backing
+  // off on a timeout would leave the reader unarmed when the user does swipe.
+  // A failed attempt raises both error and completed, so the device error has
+  // to win the attempt no matter which signal arrives first.
   function scheduleFingerprintRetry(isDeviceError) {
     if (!lockRequested || !fingerprintConfigured) return
 
-    if (isDeviceError) fingerprintErrorStreak += 1
-    else fingerprintErrorStreak = 0
+    var fast = Date.now() - fingerprintAttemptStartedAt < fingerprintFastErrorMs
+
+    if (isDeviceError && fast) {
+      if (fingerprintAttemptErrored) return
+      fingerprintAttemptErrored = true
+      fingerprintErrorStreak += 1
+    } else if (fingerprintAttemptErrored) {
+      return
+    } else {
+      fingerprintErrorStreak = 0
+    }
 
     fingerprintRetryTimer.interval = fingerprintRetryDelay(fingerprintErrorStreak)
     fingerprintRetryTimer.restart()
@@ -246,6 +264,7 @@ Item {
     if (!lockRequested) return
     if (result === PamResult.Success) {
       fingerprintErrorStreak = 0
+      fingerprintAttemptErrored = false
       finishUnlock()
     } else if (fingerprintConfigured) {
       scheduleFingerprintRetry(false)

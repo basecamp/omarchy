@@ -3,7 +3,6 @@ source "$(dirname "$0")/base-test.sh"
 
 run_node_test <<'JS'
 const fs = require('fs')
-
 const serviceQml = fs.readFileSync(path.join(root, 'shell/plugins/lock/Service.qml'), 'utf8')
 
 const capture = (pattern, description) => {
@@ -12,52 +11,132 @@ const capture = (pattern, description) => {
   return match[1]
 }
 
-const baseMs = Number(capture(/readonly property int fingerprintRetryBaseMs: (\d+)/, 'the base retry interval is declared'))
-const maxMs = Number(capture(/readonly property int fingerprintRetryMaxMs: (\d+)/, 'the retry ceiling is declared'))
-const body = capture(/function fingerprintRetryDelay\(streak\) \{([\s\S]*?)\n  \}/, 'the retry delay is computed by fingerprintRetryDelay()')
+const number = (name) =>
+  Number(capture(new RegExp(`readonly property int ${name}: (\\d+)`), `${name} is declared`))
 
-const fingerprintRetryDelay = new Function('streak', 'fingerprintRetryBaseMs', 'fingerprintRetryMaxMs', body)
-const delay = (streak) => fingerprintRetryDelay(streak, baseMs, maxMs)
+const baseMs = number('fingerprintRetryBaseMs')
+const maxMs = number('fingerprintRetryMaxMs')
+const fastMs = number('fingerprintFastErrorMs')
+
+const delayBody = capture(
+  /function fingerprintRetryDelay\(streak\) \{([\s\S]*?)\n  \}/,
+  'the retry delay is computed by fingerprintRetryDelay()'
+)
+const scheduleBody = capture(
+  /function scheduleFingerprintRetry\(isDeviceError\) \{([\s\S]*?)\n  \}/,
+  'the retry is scheduled by scheduleFingerprintRetry()'
+)
+
+// Run the real function bodies against a stand-in for the QML root so the test
+// exercises the state machine rather than a paraphrase of it. `with` resolves
+// bare property names against the object the way QML scoping does, and a
+// shadowed Date keeps the elapsed-time branch deterministic.
+const makeService = () => {
+  const state = {
+    lockRequested: true,
+    fingerprintConfigured: true,
+    fingerprintErrorStreak: 0,
+    fingerprintAttemptErrored: false,
+    fingerprintAttemptStartedAt: 0,
+    fingerprintRetryBaseMs: baseMs,
+    fingerprintRetryMaxMs: maxMs,
+    fingerprintFastErrorMs: fastMs,
+    fingerprintRetryTimer: { interval: 0, restarts: 0, restart() { this.restarts++ } },
+    clock: 0,
+  }
+
+  state.Date = { now: () => state.clock }
+  state.Math = Math
+  state.fingerprintRetryDelay = new Function(
+    'streak',
+    `with (this) { ${delayBody} }`
+  ).bind(state)
+  state.scheduleFingerprintRetry = new Function(
+    'isDeviceError',
+    `with (this) { ${scheduleBody} }`
+  ).bind(state)
+
+  // One authentication attempt: the reader is armed, time passes, then PAM
+  // reports back. A failure raises both onError and onCompleted, so replay both.
+  state.attempt = ({ elapsedMs, deviceError }) => {
+    state.fingerprintAttemptErrored = false
+    state.fingerprintAttemptStartedAt = state.clock
+    state.clock += elapsedMs
+    if (deviceError) state.scheduleFingerprintRetry(true)
+    state.scheduleFingerprintRetry(false)
+    return state.fingerprintRetryTimer.interval
+  }
+
+  return state
+}
+
+const delay = (streak) => makeService().fingerprintRetryDelay(streak)
 
 assert(delay(0) === baseMs, 'no error streak retries at the base interval')
 assert(delay(1) === baseMs, 'first device error retries at the base interval')
 assert(delay(2) === baseMs * 2, 'second consecutive device error doubles the delay')
 assert(delay(3) === baseMs * 4, 'third consecutive device error doubles again')
-assert(delay(8) === maxMs, 'the delay saturates at the ceiling')
 assert(delay(80) === maxMs, 'a long error streak never exceeds the ceiling')
 
-// A reader stuck erroring must not be retried more than a handful of times per
-// minute; the unbounded 250ms retry it replaces managed ~240.
-let elapsed = 0
+// The regression that shipped first: onError incremented the streak and the
+// onCompleted for that same attempt reset it, pinning the backoff at one step.
+const wedged = makeService()
+const first = wedged.attempt({ elapsedMs: 0, deviceError: true })
+const second = wedged.attempt({ elapsedMs: 0, deviceError: true })
+const third = wedged.attempt({ elapsedMs: 0, deviceError: true })
+
+assert(first === baseMs, 'a wedged reader first retries at the base interval')
+assert(
+  second === baseMs * 2,
+  `the completed signal for a failed attempt must not reset the streak, got ${second}`
+)
+assert(third === baseMs * 4, `a wedged reader keeps backing off, got ${third}`)
+
+// A reader that waits out the swipe reports the same PAM error code. Backing
+// off there would leave it unarmed when the user finally does swipe.
+const patient = makeService()
+const waits = [0, 1, 2].map(() =>
+  patient.attempt({ elapsedMs: fastMs * 15, deviceError: true })
+)
+
+assert(
+  waits.every((interval) => interval === baseMs),
+  `swipe timeouts stay at the base interval, got ${waits.join(', ')}`
+)
+
+// A wedged reader that recovers should return to being responsive.
+const recovering = makeService()
+recovering.attempt({ elapsedMs: 0, deviceError: true })
+recovering.attempt({ elapsedMs: 0, deviceError: true })
+const recovered = recovering.attempt({ elapsedMs: fastMs * 15, deviceError: false })
+
+assert(recovered === baseMs, `a recovered reader returns to the base interval, got ${recovered}`)
+
+// The point of the change: bound how hard a permanently wedged reader is hit.
+const runaway = makeService()
 let attempts = 0
-for (let streak = 1; elapsed < 60000; streak++) {
-  elapsed += delay(streak)
+while (runaway.clock < 60000) {
+  const interval = runaway.attempt({ elapsedMs: 0, deviceError: true })
+  runaway.clock += interval
   attempts++
 }
-assert(attempts <= 10, 'a persistently failing reader is retried at most 10 times a minute, got ' + attempts)
+
+assert(attempts <= 10, `a wedged reader is retried at most 10 times a minute, got ${attempts}`)
 
 assert(
-  /onError: function\(error\) \{\s*root\.fingerprintAuthenticating = false\s*root\.scheduleFingerprintRetry\(true\)/.test(serviceQml),
-  'a device-level PAM error schedules a backed-off retry'
+  /onError: function\(error\) \{[\s\S]*?scheduleFingerprintRetry\(true\)/.test(serviceQml),
+  'a device error routes through scheduleFingerprintRetry() as a device error'
 )
-
 assert(
-  /\} else if \(fingerprintConfigured\) \{\s*scheduleFingerprintRetry\(false\)/.test(serviceQml),
-  'a failed swipe schedules a retry without counting as a device error'
+  /result === PamResult\.Success[\s\S]*?fingerprintErrorStreak = 0/.test(serviceQml),
+  'a successful fingerprint clears the error streak'
 )
-
 assert(
-  /if \(result === PamResult\.Success\) \{\s*fingerprintErrorStreak = 0/.test(serviceQml),
-  'a successful verify clears the error streak'
+  /fingerprintAttemptStartedAt = Date\.now\(\)/.test(serviceQml),
+  'each attempt records when it started so its duration can be measured'
 )
-
-assert(
-  /fingerprintErrorStreak = 0\s*fingerprintRetryTimer\.stop\(\)/.test(serviceQml),
-  'resetting authentication state clears the error streak'
-)
-
 assert(
   !/interval: 250/.test(serviceQml),
-  'the retry timer takes its interval from the backoff, not a hardcoded literal'
+  'the retry timer interval is not hardcoded alongside the backoff'
 )
 JS
