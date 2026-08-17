@@ -253,8 +253,11 @@ ShellRoot {
     onActiveChanged: if (!active) shell.bar = null
     onStatusChanged: {
       if (status === Loader.Error) {
-        var detail = errorString && errorString() ? errorString() : ""
-        console.warn("bar option " + shell.activeBarId + " failed to load, falling back to " + shell.defaultBarId + ":", detail)
+        // Loader exposes no errorString; the engine has already logged the
+        // component's own QML errors by the time this runs. Reaching for one
+        // threw a ReferenceError here, which aborted the handler before the
+        // fallback below and left the session with no bar and no explanation.
+        console.warn("bar option " + shell.activeBarId + " failed to load, falling back to " + shell.defaultBarId)
         shell.failedBarId = shell.activeBarId
       }
     }
