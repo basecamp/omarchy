@@ -26,9 +26,11 @@ Item {
   property int fingerprintErrorStreak: 0
   property bool fingerprintAttemptErrored: false
   property double fingerprintAttemptStartedAt: 0
+  property double fingerprintNudgedAt: 0
   readonly property int fingerprintRetryBaseMs: 250
   readonly property int fingerprintRetryMaxMs: 30000
   readonly property int fingerprintFastErrorMs: 2000
+  readonly property int fingerprintNudgeCooldownMs: 2000
   property string enteredPassword: ""
   property string pendingPassword: ""
   property string failureMessage: ""
@@ -128,6 +130,7 @@ Item {
     fingerprintAuthenticating = false
     fingerprintErrorStreak = 0
     fingerprintAttemptErrored = false
+    fingerprintNudgedAt = 0
     fingerprintRetryTimer.stop()
     if (passwordPam.active) passwordPam.abort()
     if (fingerprintPam.active) fingerprintPam.abort()
@@ -175,6 +178,23 @@ Item {
   function runWake() {
     if (!wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
+    nudgeFingerprint()
+  }
+
+  // Backing off is right while nobody is there, but it leaves the reader
+  // unarmed for up to the ceiling, so someone who walks up and swipes gets
+  // nothing. Any sign of the user is a reason to try again now. The streak
+  // survives, so a still-wedged reader keeps its long gaps, and the cooldown
+  // stops a moving cursor from spinning the loop back up.
+  function nudgeFingerprint() {
+    if (!lockRequested || !fingerprintConfigured) return
+    if (fingerprintAuthenticating || fingerprintPam.active) return
+    if (!fingerprintRetryTimer.running) return
+    if (Date.now() - fingerprintNudgedAt < fingerprintNudgeCooldownMs) return
+
+    fingerprintNudgedAt = Date.now()
+    fingerprintRetryTimer.stop()
+    startFingerprint()
   }
 
   function runBlank() {

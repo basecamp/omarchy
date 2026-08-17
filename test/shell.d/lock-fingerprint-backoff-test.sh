@@ -35,6 +35,7 @@ const makeService = () => {
   const state = {
     lockRequested: true,
     fingerprintConfigured: true,
+    fingerprintAuthenticating: false,
     fingerprintErrorStreak: 0,
     fingerprintAttemptErrored: false,
     fingerprintAttemptStartedAt: 0,
@@ -123,6 +124,66 @@ while (runaway.clock < 60000) {
 
 assert(attempts <= 10, `a wedged reader is retried at most 10 times a minute, got ${attempts}`)
 
+// Backing off must not leave the reader unarmed for someone standing there, so
+// any sign of the user cuts the wait short -- but not so freely that a moving
+// cursor spins the loop back up.
+const nudgeBody = capture(
+  /function nudgeFingerprint\(\) \{([\s\S]*?)\n  \}/,
+  'a present user re-arms the reader through nudgeFingerprint()'
+)
+const cooldownMs = number('fingerprintNudgeCooldownMs')
+
+const makeNudger = () => {
+  const service = makeService()
+  // resetAuthenticationState() zeroes the nudge stamp while the real clock is
+  // far past it, so start the fixture's clock somewhere realistic.
+  service.clock = 1e9
+  service.fingerprintNudgedAt = 0
+  service.fingerprintNudgeCooldownMs = cooldownMs
+  service.fingerprintPam = { active: false }
+  service.starts = 0
+  service.startFingerprint = () => { service.starts++ }
+  service.fingerprintRetryTimer.running = false
+  service.fingerprintRetryTimer.stop = function() { this.running = false }
+  service.nudgeFingerprint = new Function(`with (this) { ${nudgeBody} }`).bind(service)
+  return service
+}
+
+const waiting = makeNudger()
+waiting.fingerprintErrorStreak = 8
+waiting.fingerprintRetryTimer.running = true
+waiting.nudgeFingerprint()
+
+assert(waiting.starts === 1, 'a present user re-arms the reader without waiting out the backoff')
+assert(
+  waiting.fingerprintErrorStreak === 8,
+  `the streak survives a nudge so a wedged reader keeps backing off, got ${waiting.fingerprintErrorStreak}`
+)
+
+waiting.fingerprintRetryTimer.running = true
+waiting.clock += cooldownMs - 1
+waiting.nudgeFingerprint()
+assert(waiting.starts === 1, 'a second nudge inside the cooldown is ignored')
+
+waiting.clock += 2
+waiting.nudgeFingerprint()
+assert(waiting.starts === 2, 'a nudge after the cooldown re-arms again')
+
+const idle = makeNudger()
+idle.fingerprintRetryTimer.running = false
+idle.nudgeFingerprint()
+assert(idle.starts === 0, 'a nudge with no retry pending does not start a second attempt')
+
+const busy = makeNudger()
+busy.fingerprintRetryTimer.running = true
+busy.fingerprintAuthenticating = true
+busy.nudgeFingerprint()
+assert(busy.starts === 0, 'a nudge during an attempt in flight is ignored')
+
+assert(
+  /function runWake\(\) \{[\s\S]*?nudgeFingerprint\(\)/.test(serviceQml),
+  'waking the lock screen nudges the reader'
+)
 assert(
   /onError: function\(error\) \{[\s\S]*?scheduleFingerprintRetry\(true\)/.test(serviceQml),
   'a device error routes through scheduleFingerprintRetry() as a device error'
