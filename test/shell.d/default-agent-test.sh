@@ -174,6 +174,13 @@ source "$ROOT/migrations/1786956325.sh" >/dev/null
 [[ ! -e $test_home/.local/bin/agent ]] || fail "Grok registry migration removes the curl-installer agent symlink"
 rm -f "$test_home/.local/bin/grok" "$test_home/.local/bin/agent"
 
+ln -s "$test_home/.grok/bin/agent" "$test_home/.local/bin/agent"
+rm -rf "$test_home/.grok"
+: >"$stub_log"
+source "$ROOT/migrations/1786956325.sh" >/dev/null
+[[ ! -e $test_home/.local/bin/agent ]] || fail "Grok registry migration removes a dangling curl-installer agent symlink"
+rm -f "$test_home/.local/bin/agent"
+
 rm "$test_home/.local/state/omarchy/preinstalls-removed"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"
 
