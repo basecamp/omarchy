@@ -14,8 +14,42 @@
 # A package upgrade rewriting $OMARCHY_PATH/shell would otherwise reload it
 # against a half-written tree, and that failed reload leaves a second engine
 # generation behind that turns the next restart's IPC kill into a crash.
+
+# Qt refuses threaded OpenGL rendering on the proprietary NVIDIA driver (the
+# QTBUG-95817 resize-freeze workaround in qtwayland), which drops Qt Quick to
+# the timer-driven basic render loop: every shell animation runs at ~60 fps
+# regardless of monitor refresh rate. The Vulkan scene graph backend is not
+# subject to that workaround and uses the vsync-driven threaded loop by
+# design, so prefer it where that bug actually applies. Forcing
+# QSG_RENDER_LOOP=threaded on GL instead would re-expose the very freeze the
+# vendor check protects against.
+#
+# The workaround only bites when the compositor's EGL stack is NVIDIA's, so
+# gate on the NVIDIA GPU being the primary display adapter: on hybrid laptops
+# with the iGPU driving the display, clients get Mesa's EGL, the threaded
+# loop stays available, and forcing Vulkan would only add cross-GPU risk for
+# no benefit. Turing-or-newer (GSP) limits this to the current driver family
+# with a solid Wayland Vulkan WSI; legacy branches keep today's behavior.
+nvidia_is_primary_gpu() {
+  local card
+
+  for card in /sys/class/drm/card*/device; do
+    [[ -f $card/boot_vga && $(< "$card/boot_vga") == 1 ]] || continue
+    [[ $(< "$card/vendor") == "0x10de" ]] && return 0
+  done
+
+  return 1
+}
+
+shell_render_env=()
+if [[ -f /usr/share/vulkan/icd.d/nvidia_icd.json ]] &&
+  "$OMARCHY_PATH/bin/omarchy-hw-nvidia-gsp" &&
+  nvidia_is_primary_gpu; then
+  shell_render_env=(QSG_RHI_BACKEND=vulkan)
+fi
+
 run_shell() {
-  QS_DISABLE_FILE_WATCHER=1 QS_NO_RELOAD_POPUP=1 \
+  QS_DISABLE_FILE_WATCHER=1 QS_NO_RELOAD_POPUP=1 env "${shell_render_env[@]}" \
     systemd-cat -t omarchy-shell -- quickshell -n -p "$OMARCHY_PATH/shell" &
   shell_pid=$!
 
