@@ -169,6 +169,26 @@ assertEqual(menu.resolveRoute(routed.items, routed.itemOrder, 'power_menu'), 'sy
 assertEqual(menu.resolveRoute(routed.items, routed.itemOrder, ''), 'root', 'menu routes empty input to root')
 assertEqual(menu.resolveRoute(routed.items, routed.itemOrder, 'no-such-route'), 'no-such-route', 'menu falls through to the literal input')
 assert(menu.matchesQuery(routed.items['apps.htop'], 'system', true), 'menu still finds an app by its keywords in search')
+
+// Fuzzy fallback: once substring and whole-word matching both fail for a
+// term, a subsequence match against the label still finds the row — "lean"
+// finds "Learn" because l-e-a-n is in order inside L-e-a-r-n, skipping the r.
+const learnEntry = rankBase.items['learn']
+assert(learnEntry && learnEntry.label === 'Learn', 'fixture: default menu ships a Learn entry')
+assert(menu.matchesQuery(learnEntry, 'lean', true), 'menu fuzzy-matches a skipped letter against the label ("lean" -> "Learn")')
+assert(
+  menu.searchScore(rankBase.items, learnEntry, 'learn') < menu.searchScore(rankBase.items, learnEntry, 'lean'),
+  'menu ranks an exact label match above its own fuzzy fallback match'
+)
+assert(menu.matchesQuery(learnEntry, 'lrn', true), 'menu fuzzy-matches multiple skipped letters')
+assert(!menu.matchesQuery(learnEntry, 'xqz', true), 'menu still rejects a query with no subsequence match')
+
+// Fuzzy is scoped to the label, not the description or aliases: "pearl" is a
+// genuine subsequence of "appearance colors" but must not match, or fuzzy
+// would turn near-arbitrary short queries into hits through the description
+// — the same failure mode "contact" would hit against Calculator's keywords.
+assert(!menu.matchesQuery(entry, 'pearl', true), 'menu fuzzy fallback does not reach into the description')
+
 assert(
   /function resolveRoute\(input\) \{\s*\n\s*return MenuModel\.resolveRoute\(root\.items, root\.itemOrder, input\)\s*\n\s*\}/.test(menuQml),
   'menu delegates route resolution to the shared model'
