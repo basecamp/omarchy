@@ -1,0 +1,388 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Kimi usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Kimi for Coding quota into one display-ready JSON record.
+
+Quoted limits come from api.kimi.com's usage monitor (the same payload the
+kimi /usage command renders): a weekly quota plus per-window limits such as
+the 5-hour session window. The bearer token comes from KIMI_API_KEY when set,
+otherwise from the kimi-code sign-in at $KIMI_CODE_HOME/credentials/kimi-code.json
+(default ~/.kimi-code/credentials/kimi-code.json), falling back to the legacy
+kimi-cli store at ~/.kimi/credentials/kimi-code.json.
+
+Access tokens expire, so this collector refreshes them the way the CLI does:
+POST the refresh_token to auth.kimi.com/api/oauth/token with the public client
+id, take the flock on kimi-code.lock first (another kimi process may be
+refreshing), and persist the rotated tokens back to the credentials file,
+since the server issues single-use refresh tokens, so the new one must never
+be discarded. Tokens are sent only to hosts under kimi.com over HTTPS
+(redirects are refused; plain HTTP is allowed only for loopback testing
+endpoints) and never written anywhere but the credentials file itself. The
+agents panel only ever reads the JSON this prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "kimi"
+AGENT_NAME = "Kimi"
+AUTH_HELP = "Set KIMI_API_KEY or sign in to Kimi (run `kimi login`)."
+USAGE_URL = os.environ.get("KIMI_USAGE_URL") or (
+  os.environ.get("KIMI_CODE_BASE_URL", "https://api.kimi.com/coding/v1").rstrip("/") + "/usages"
+)
+OAUTH_HOST = (
+  os.environ.get("KIMI_CODE_OAUTH_HOST") or os.environ.get("KIMI_OAUTH_HOST") or "https://auth.kimi.com"
+)
+TOKEN_URL = OAUTH_HOST.rstrip("/") + "/api/oauth/token"
+OAUTH_CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098"
+# Tokens may only leave this machine for hosts under this domain.
+ALLOWED_DOMAIN = "kimi.com"
+REFRESH_SKEW_S = 60
+
+
+def credentials_dir() -> Path:
+  # kimi-code keeps its OAuth pair under KIMI_CODE_HOME (default ~/.kimi-code);
+  # the legacy kimi-cli used ~/.kimi. Prefer the kimi-code store when both exist.
+  candidates = []
+  if home := os.environ.get("KIMI_CODE_HOME"):
+    candidates.append(Path(home) / "credentials")
+  candidates.append(Path.home() / ".kimi-code" / "credentials")
+  candidates.append(Path.home() / ".kimi" / "credentials")
+  for candidate in candidates:
+    if (candidate / "kimi-code.json").is_file():
+      return candidate
+  return candidates[0]
+
+
+CREDENTIALS_DIR = credentials_dir()
+CREDENTIALS_PATH = CREDENTIALS_DIR / "kimi-code.json"
+CREDENTIALS_LOCK = CREDENTIALS_DIR / "kimi-code.lock"
+
+
+class KimiError(Exception):
+  pass
+
+
+class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+  # urllib would copy every header (including the bearer token) onto the
+  # redirect target, potentially leaking it cross-host. Never follow.
+  def redirect_request(self, req, fp, code, msg, headers, newurl):
+    return None
+
+
+def trusted_url(url: str) -> tuple[str, bool]:
+  """Require HTTPS (plain HTTP only for loopback); report credential trust."""
+  try:
+    parts = urllib.parse.urlsplit(url)
+  except ValueError as error:
+    raise KimiError("Kimi endpoint URL is invalid") from error
+  host = (parts.hostname or "").lower()
+  loopback = host in ("localhost", "127.0.0.1", "::1")
+  if parts.scheme != "https" and not (loopback and parts.scheme == "http"):
+    raise KimiError("Kimi endpoint must use HTTPS")
+  return url, host == ALLOWED_DOMAIN or host.endswith("." + ALLOWED_DOMAIN)
+
+
+def empty_stats() -> dict[str, Any]:
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  }
+
+
+def base_record(**overrides: Any) -> dict[str, Any]:
+  record: dict[str, Any] = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": False,
+    "hasLocalStats": False,
+    # Quota numbers are account-global, not machine-local: every synced device
+    # reports the same truth, so aggregation must not sum them.
+    "scope": "account",
+    "hasPromptStats": False,
+    "tierLabel": "",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "limits": [],
+  }
+  record.update(empty_stats())
+  record.update(overrides)
+  return record
+
+
+# --------------------------------------------------------------- kimi auth
+
+
+def read_credentials() -> dict[str, Any]:
+  try:
+    credentials = json.loads(CREDENTIALS_PATH.read_text())
+  except (OSError, json.JSONDecodeError):
+    return {}
+  return credentials if isinstance(credentials, dict) else {}
+
+
+def write_credentials(credentials: dict[str, Any]) -> None:
+  CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True)
+  temporary = CREDENTIALS_PATH.with_suffix(".json.tmp")
+  temporary.write_text(json.dumps(credentials))
+  os.chmod(temporary, 0o600)
+  os.replace(temporary, CREDENTIALS_PATH)
+
+
+def token_fresh(credentials: dict[str, Any]) -> bool:
+  try:
+    return float(credentials.get("expires_at") or 0) - REFRESH_SKEW_S > time.time()
+  except (TypeError, ValueError):
+    return False
+
+
+def request_refresh(refresh_token: str) -> dict[str, Any]:
+  url, _ = trusted_url(TOKEN_URL)
+  form = urllib.parse.urlencode(
+    {
+      "client_id": OAUTH_CLIENT_ID,
+      "grant_type": "refresh_token",
+      "refresh_token": refresh_token,
+    }
+  ).encode()
+  headers = {"Content-Type": "application/x-www-form-urlencoded"}
+  request = urllib.request.Request(url, data=form, headers=headers)
+  try:
+    with urllib.request.build_opener(NoRedirectHandler()).open(request, timeout=15) as response:
+      decoded = json.load(response)
+  except urllib.error.HTTPError as error:
+    body = {}
+    try:
+      body = json.load(error)
+    except Exception:
+      body = {}
+    description = body.get("error_description") or f"HTTP {error.code}"
+    if error.code in (400, 401, 403):
+      raise KimiError(f"Kimi rejected the sign-in ({description}); sign in again with `kimi login`") from error
+    raise KimiError(f"Kimi token refresh failed ({description})") from error
+  except urllib.error.URLError as error:
+    raise KimiError("Could not reach the Kimi login service") from error
+  except (json.JSONDecodeError, TimeoutError) as error:
+    raise KimiError("Kimi returned an invalid token response") from error
+  if not isinstance(decoded, dict) or not decoded.get("access_token"):
+    raise KimiError("Kimi returned an invalid token response")
+  return decoded
+
+
+def refresh_credentials() -> dict[str, Any]:
+  """Refresh under the CLI's lock, persisting the rotated refresh token."""
+  lock_fd = None
+  try:
+    CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True)
+    lock_fd = os.open(str(CREDENTIALS_LOCK), os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(lock_fd, fcntl.LOCK_EX)
+  except OSError:
+    # Lock unavailable: the CLI also falls back to an unlocked refresh.
+    if lock_fd is not None:
+      os.close(lock_fd)
+      lock_fd = None
+  try:
+    # The lock holder may have just refreshed; never reuse a stale read.
+    credentials = read_credentials()
+    if token_fresh(credentials):
+      return credentials
+    refresh_token = str(credentials.get("refresh_token") or "")
+    if not refresh_token:
+      raise KimiError("Kimi sign-in is missing; sign in with `kimi login`")
+    granted = request_refresh(refresh_token)
+    credentials.update(
+      {
+        "access_token": str(granted["access_token"]),
+        "refresh_token": str(granted.get("refresh_token") or refresh_token),
+        "expires_at": time.time() + float(granted.get("expires_in") or 0),
+        "expires_in": float(granted.get("expires_in") or 0),
+        "scope": str(granted.get("scope") or credentials.get("scope") or ""),
+        "token_type": str(granted.get("token_type") or "Bearer"),
+      }
+    )
+    write_credentials(credentials)
+    return credentials
+  finally:
+    if lock_fd is not None:
+      fcntl.flock(lock_fd, fcntl.LOCK_UN)
+      os.close(lock_fd)
+
+
+def api_key() -> str:
+  key = os.environ.get("KIMI_API_KEY", "").strip()
+  if key:
+    return key
+  credentials = read_credentials()
+  if not token_fresh(credentials):
+    credentials = refresh_credentials()
+  return str(credentials.get("access_token") or "")
+
+
+# -------------------------------------------------------------------- quota
+
+
+def quota(key: str) -> dict[str, Any]:
+  url, trusted = trusted_url(USAGE_URL)
+  headers = {"Accept": "application/json"}
+  if trusted:
+    headers["Authorization"] = "Bearer " + key
+  request = urllib.request.Request(url, headers=headers)
+  try:
+    with urllib.request.build_opener(NoRedirectHandler()).open(request, timeout=15) as response:
+      decoded = json.load(response)
+  except urllib.error.HTTPError as error:
+    if error.code in (401, 403):
+      raise KimiError("Kimi rejected the credentials; sign in again with `kimi login`") from error
+    if error.code == 404:
+      raise KimiError("Kimi usage endpoint not available. Try Kimi for Coding.") from error
+    raise KimiError(f"Kimi API returned HTTP {error.code}") from error
+  except urllib.error.URLError as error:
+    raise KimiError("Could not reach the Kimi API") from error
+  except (json.JSONDecodeError, TimeoutError) as error:
+    raise KimiError("Kimi returned an invalid usage response") from error
+  if not isinstance(decoded, dict):
+    raise KimiError("Kimi returned an empty usage response")
+  return decoded
+
+
+def to_int(value: Any) -> int | None:
+  try:
+    return int(value)
+  except (OverflowError, TypeError, ValueError):
+    return None
+
+
+def reset_at(detail: dict[str, Any]) -> str:
+  for key in ("reset_at", "resetAt", "reset_time", "resetTime"):
+    raw = str(detail.get(key) or "").strip()
+    if not raw:
+      continue
+    if raw.isdigit():
+      stamp = int(raw)
+      if stamp < 1_000_000_000_000:
+        stamp *= 1000
+      try:
+        return datetime.fromtimestamp(stamp / 1000, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+      except (OverflowError, OSError, ValueError):
+        return raw
+    # Kimi stamps carry nanosecond fractions Python cannot parse; trim them.
+    normalized = raw.replace("Z", "+00:00")
+    if "." in normalized:
+      head, tail = normalized.split(".", 1)
+      digits = ""
+      for character in tail:
+        if not character.isdigit():
+          break
+        digits += character
+      tail = digits[:6] + tail[len(digits) :]
+      normalized = head + "." + tail
+    try:
+      return datetime.fromisoformat(normalized).isoformat().replace("+00:00", "Z")
+    except ValueError:
+      return raw
+  return ""
+
+
+def window_label(item: dict[str, Any], detail: dict[str, Any], window: dict[str, Any], index: int) -> str:
+  for key in ("name", "title", "scope"):
+    value = item.get(key) or detail.get(key)
+    if value:
+      return str(value)
+  duration = to_int(window.get("duration") or item.get("duration") or detail.get("duration"))
+  unit = str(window.get("timeUnit") or item.get("timeUnit") or detail.get("timeUnit") or "")
+  if duration:
+    if "MINUTE" in unit.upper():
+      return "Session (5-hour)" if duration == 300 else f"{duration}m limit"
+    if "HOUR" in unit.upper():
+      return f"{duration}h limit"
+    if "DAY" in unit.upper():
+      return "Weekly (7-day)" if duration == 7 else f"{duration}d limit"
+    return f"{duration} limit"
+  return f"Limit #{index + 1}"
+
+
+def limit_row(detail: dict[str, Any], default_label: str) -> dict[str, Any] | None:
+  limit = to_int(detail.get("limit"))
+  used = to_int(detail.get("used"))
+  if used is None and limit is not None:
+    remaining = to_int(detail.get("remaining"))
+    if remaining is not None:
+      used = limit - remaining
+  if not limit or limit <= 0 or used is None:
+    return None
+  label = str(detail.get("name") or detail.get("title") or default_label)
+  percent = min(1.0, max(0.0, used / limit))
+  return {"label": label, "percent": percent, "resetsAt": reset_at(detail)}
+
+
+def to_limits(data: dict[str, Any]) -> list[dict[str, Any]]:
+  limits = []
+  usage = data.get("usage")
+  if isinstance(usage, dict):
+    row = limit_row(usage, "Weekly limit")
+    if row:
+      limits.append(row)
+  entries = data.get("limits")
+  if isinstance(entries, list):
+    for index, entry in enumerate(entries):
+      if not isinstance(entry, dict):
+        continue
+      detail = entry.get("detail") if isinstance(entry.get("detail"), dict) else entry
+      window = entry.get("window") if isinstance(entry.get("window"), dict) else {}
+      row = limit_row(detail, window_label(entry, detail, window, index))
+      if row:
+        limits.append(row)
+  return limits
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description="Print the Kimi usage record as JSON")
+  # Flags accepted so the collector answers the same invocation as the others.
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  parser.parse_args()
+
+  try:
+    key = api_key()
+    if not key:
+      record = base_record(usageStatusText="Kimi unavailable", authHelpText=AUTH_HELP)
+    else:
+      data = quota(key)
+      record = base_record(
+        ready=True,
+        hasLocalStats=True,
+        limits=to_limits(data),
+      )
+  except KimiError as error:
+    record = base_record(usageStatusText="Kimi unavailable", authHelpText=str(error))
+  except Exception:
+    record = base_record(usageStatusText="Kimi unavailable", authHelpText="Kimi usage scan failed")
+  print(json.dumps(record, separators=(",", ":")))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

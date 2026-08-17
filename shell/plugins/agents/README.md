@@ -55,6 +55,7 @@ light surfaces — and the bar glyph stands in when there is none.
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `kimi` | api.kimi.com's usage monitor (weekly quota + per-window limits such as the 5-hour session) | none; quota only |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
@@ -63,6 +64,15 @@ falls back to local stats only. A non-default Claude directory is honored via
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
 signed in there.
+
+Kimi reads `KIMI_API_KEY` first, then the kimi-code sign-in at
+`$KIMI_CODE_HOME/credentials/kimi-code.json` (default
+`~/.kimi-code/credentials/kimi-code.json`), then the legacy kimi-cli store at
+`~/.kimi/credentials/kimi-code.json`. Expired access tokens are refreshed the
+way the CLI does, under a `flock` on the sibling `kimi-code.lock`; the rotated
+single-use refresh token is always persisted back, so the CLI keeps working
+from the same file. When the refresh token itself expires, sign in again with
+`kimi login`.
 
 ### Fireworks balance
 
