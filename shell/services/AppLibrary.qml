@@ -44,6 +44,10 @@ Item {
     return AppSearch.entrySubtext(entry)
   }
 
+  function entryAcronym(entry) {
+    return AppSearch.entryAcronym(entry)
+  }
+
   function isHiddenEntry(entry) {
     var id = String((entry && entry.id) || "")
     return root.configuredHiddenEntryIds[id] === true || root.desktopHiddenEntryIds[id] === true

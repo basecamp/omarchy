@@ -7,6 +7,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 run_node_test <<'JS'
 const fs = require('fs')
 const menu = requireFromRoot('shell/plugins/menu/MenuModel.js')
+const search = requireFromRoot('shell/services/MenuSearch.js')
 const menuQml = fs.readFileSync(path.join(root, 'shell/plugins/menu/Menu.qml'), 'utf8')
 const defaultMenuJsonc = fs.readFileSync(path.join(root, 'default/omarchy/omarchy-menu.jsonc'), 'utf8')
 
@@ -93,16 +94,20 @@ assert(
   'menu display rows carry their disabled state'
 )
 assert(
-  /function matchesQuery\(entry, query\) \{\s*\n\s*return MenuModel\.matchesQuery\(entry, query, root\.isVisible\(entry\) && !root\.isDisabled\(entry\)\)/.test(menuQml),
+  /function matchesQuery\(entry, query\) \{\s*\n\s*return MenuSearch\.matchesQuery\(entry, query, root\.isVisible\(entry\) && !root\.isDisabled\(entry\)\)/.test(menuQml),
   'menu search skips disabled rows, which belong to the submenu they sit in rather than a list of what you can do'
+)
+assert(
+  /var rankOrder = MenuSearch\.compareRanks\(a\.searchRank, b\.searchRank\)[\s\S]*var depthOrder = root\.depthFor[\s\S]*var itemOrder = root\.item/.test(menuQml),
+  'menu resolves fuzzy rank before applying depth and declaration order tie-breaks'
 )
 
 const entry = merged.items['style.theme']
-assert(menu.matchesQuery(entry, 'theme', true), 'menu matches labels and aliases')
-assert(menu.matchesQuery(entry, 'colors', true), 'menu matches aliases')
-assert(!menu.matchesQuery(entry, 'missing', true), 'menu rejects missing terms')
-assert(!menu.matchesQuery(entry, 'theme', false), 'menu hides invisible matches')
-assert(menu.searchScore(merged.items, entry, 'theme') < menu.searchScore(merged.items, entry, 'appearance'), 'menu scores name matches above description matches')
+assert(search.matchesQuery(entry, 'theme', true), 'menu matches labels and aliases')
+assert(search.matchesQuery(entry, 'colors', true), 'menu matches aliases')
+assert(!search.matchesQuery(entry, 'missing', true), 'menu rejects missing terms')
+assert(!search.matchesQuery(entry, 'theme', false), 'menu hides invisible matches')
+assert(search.compareRanks(search.rank(entry, 'theme'), search.rank(entry, 'appearance')) < 0, 'menu scores name matches above description matches')
 
 assertDeepEqual(
   menu.displayRow(merged.items, merged.itemOrder, {}, {}, entry, 'Style', 12, 'search'),
@@ -138,21 +143,22 @@ const ranked = menu.mergeAppRows(rankBase.items, rankBase.itemOrder, [
   { id: 'apps.fontforge', parent: 'apps', kind: 'app', label: 'FontForge', description: '', aliases: [] },
   { id: 'apps.zen', parent: 'apps', kind: 'app', label: 'Zen Browser', description: '', aliases: [] }
 ])
-const rankScore = (id, query) => menu.searchScore(ranked.items, ranked.items[id], query)
+const rankScore = (id, query) => search.rank(ranked.items[id], query)
+const ranksBefore = (left, right, query) => search.compareRanks(rankScore(left, query), rankScore(right, query)) < 0
 assert(
   ['install.browser.brave', 'remove.browser.brave', 'setup.default.browser.brave'].every(
-    id => rankScore('apps.brave', 'brave') < rankScore(id, 'brave')
+    id => ranksBefore('apps.brave', id, 'brave')
   ),
   'menu ranks an installed app above menu entries matching the query equally well'
 )
 assert(
   ['install.browser.zen', 'remove.browser.zen', 'setup.default.browser.zen'].every(
-    id => rankScore('apps.zen', 'zen') < rankScore(id, 'zen')
+    id => ranksBefore('apps.zen', id, 'zen')
   ),
   'menu ranks an app matching the query as a whole word above exact-labeled menu entries'
 )
 assert(
-  rankScore('style.font', 'font') < rankScore('apps.fontforge', 'font'),
+  ranksBefore('style.font', 'apps.fontforge', 'font'),
   'menu keeps a better-matching menu entry above a weaker app match'
 )
 
@@ -168,7 +174,7 @@ assertEqual(menu.resolveRoute(routed.items, routed.itemOrder, 'power-menu'), 'sy
 assertEqual(menu.resolveRoute(routed.items, routed.itemOrder, 'power_menu'), 'system', 'menu normalizes underscores in routes')
 assertEqual(menu.resolveRoute(routed.items, routed.itemOrder, ''), 'root', 'menu routes empty input to root')
 assertEqual(menu.resolveRoute(routed.items, routed.itemOrder, 'no-such-route'), 'no-such-route', 'menu falls through to the literal input')
-assert(menu.matchesQuery(routed.items['apps.htop'], 'system', true), 'menu still finds an app by its keywords in search')
+assert(search.matchesQuery(routed.items['apps.htop'], 'system', true), 'menu still finds an app by its keywords in search')
 assert(
   /function resolveRoute\(input\) \{\s*\n\s*return MenuModel\.resolveRoute\(root\.items, root\.itemOrder, input\)\s*\n\s*\}/.test(menuQml),
   'menu delegates route resolution to the shared model'
