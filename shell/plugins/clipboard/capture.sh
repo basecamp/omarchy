@@ -43,7 +43,25 @@ emit_image() {
 }
 
 emit_text() {
-  jq -cRs 'select(length > 0) | {type:"text", text:.}'
+  perl -MEncode=decode,FB_CROAK -MJSON::PP=encode_json -0777 -e '
+    my $raw = <STDIN>;
+    exit unless length $raw;
+
+    my $encoding;
+    if ($raw =~ /^(?:\xFF\xFE|\xFE\xFF)/) {
+      $encoding = "UTF-16";
+    } elsif ($raw =~ /^(?:[^\0]\0)+\z/s) {
+      # BOM-less UTF-16 is indistinguishable from NUL-separated bytes, so only
+      # decode the consistent whole-payload pattern seen from affected apps.
+      $encoding = "UTF-16LE";
+    } elsif ($raw =~ /^(?:\0[^\0])+\z/s) {
+      $encoding = "UTF-16BE";
+    }
+
+    my $text = $encoding ? eval { decode($encoding, $raw, FB_CROAK) } : undef;
+    $text = decode("UTF-8", $raw) unless defined $text;
+    print "{\"type\":\"text\",\"text\":", encode_json($text), "}\n";
+  '
 }
 
 case "${1:-}" in
