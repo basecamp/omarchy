@@ -46,7 +46,7 @@ matching guide before starting:
 - [`theming.md`](theming.md) - themes, backgrounds, and fonts
 - [`hooks.md`](hooks.md) - automation hooks that run on system events
 - [`capture.md`](capture.md) - screenshots, screen recordings, OCR text capture, and file sharing
-- [`contributing.md`](contributing.md) - reporting Omarchy bugs and submitting fixes upstream
+- [`contributing.md`](contributing.md) - reporting Omarchy bugs and, when explicitly requested, submitting fixes upstream
 
 ## Critical Safety Rules
 
