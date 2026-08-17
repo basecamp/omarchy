@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# omarchy:summary=List selectable audio output sink ports as JSON
+# omarchy:group=audio
+
+set -euo pipefail
+
+# A speaker tuning is a virtual sink in front of the real speakers. Exposing
+# the fronted physical sink would let the panel bypass the processing chain.
+fronted=$(omarchy-audio-tuning fronted-sink 2>/dev/null || true)
+default_sink=$(timeout 2 pactl get-default-sink 2>/dev/null || true)
+
+timeout 2 pactl --format=json list sinks | jq \
+  --arg fronted "$fronted" \
+  --arg defaultSink "$default_sink" '
+  def text_kind($text):
+    $text | ascii_downcase
+    | if test("headphone|headset|earbud|earphone|airpod") then "headphones"
+      elif test("bluetooth|bluez") then "bluetooth"
+      elif test("hdmi|displayport|display port|display") then "display"
+      else "speaker"
+      end;
+
+  [
+    .[]
+    | select($fronted == "" or .name != $fronted)
+    | . as $sink
+    | (($sink.active_port // "")
+        | if type == "object" then (.name // "") else tostring end) as $activePort
+    | if (($sink.ports // []) | length) == 0 then
+        {
+          sinkName: $sink.name,
+          portName: "",
+          portDescription: "",
+          sinkDescription: ($sink.description // $sink.name),
+          kind: text_kind(
+            ($sink.name // "") + " " +
+            ($sink.description // "") + " " +
+            ($sink.properties["device.product.name"] // "") + " " +
+            ($sink.properties["device.icon_name"] // "")
+          ),
+          active: ($sink.name == $defaultSink)
+        }
+      else
+        $sink.ports[]
+        | select((.availability // "unknown") as $availability
+            | $availability != "no"
+            and $availability != "not available"
+            and $availability != "unavailable")
+        | {
+          sinkName: $sink.name,
+          portName: .name,
+          portDescription: (.description // .name),
+          sinkDescription: ($sink.description // $sink.name),
+          kind: text_kind(
+            (.name // "") + " " +
+            (.description // "") + " " +
+            (.type // "") + " " +
+            ($sink.properties["device.product.name"] // "")
+          ),
+          active: ($sink.name == $defaultSink and .name == $activePort)
+        }
+      end
+  ]
+  | unique_by([.sinkName, .portName])
+  | sort_by([.sinkDescription, .portDescription, .sinkName, .portName])
+'

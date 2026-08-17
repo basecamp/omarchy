@@ -18,6 +18,30 @@ assertEqual(audio.outputVolumeName(0.9, false), 'Party mode', 'audio labels loud
 assertEqual(audio.outputVolumeName(0.5, true), 'Muted', 'audio labels muted output')
 
 assertDeepEqual(audio.parseSinkAvailability('alsa_output\t1\nhdmi_output\t0\n'), { alsa_output: true, hdmi_output: false }, 'audio parses sink availability')
+assertEqual(audio.parseOutputTargets('not json'), null, 'audio rejects malformed output target JSON')
+assertDeepEqual(audio.parseOutputTargets('[]'), [], 'audio accepts an empty output target snapshot')
+assertEqual(audio.parseOutputTargets('[{"portName":"missing-sink"}]'), null, 'audio rejects snapshots containing no valid targets')
+
+const parsedTargets = audio.parseOutputTargets(JSON.stringify([
+  { sinkName: 'analog', portName: 'lineout', portDescription: 'Line Out', sinkDescription: 'Built-in Audio Analog Stereo', kind: 'speaker', active: true },
+  { sinkName: 'analog', portName: 'headphones', portDescription: 'Headphones', sinkDescription: 'Built-in Audio Analog Stereo', kind: 'headphones', active: false },
+  { sinkName: 'analog', portName: 'headphones', portDescription: 'Duplicate' },
+  { portName: 'missing-sink' },
+  null
+]))
+assertEqual(parsedTargets.length, 2, 'audio validates and deduplicates output targets')
+
+const analogSink = { id: 42, name: 'analog', description: 'Analog Stereo' }
+const joinedTargets = audio.joinOutputTargets(parsedTargets, [analogSink])
+assertEqual(joinedTargets.length, 2, 'audio joins output targets to live sinks')
+assertEqual(joinedTargets[0].label, 'Line Out', 'audio labels a multi-port line-out target')
+assertEqual(joinedTargets[1].label, 'Headphones', 'audio labels a headphone target')
+assert(joinedTargets[0].active && !joinedTargets[1].active, 'audio keeps port-specific active state')
+
+const fallbackTargets = audio.fallbackOutputTargets([analogSink], analogSink)
+assertEqual(fallbackTargets.length, 1, 'audio builds a sink-only fallback target')
+assert(fallbackTargets[0].active, 'audio marks the default fallback sink active')
+assert(audio.outputTargetGlyph(joinedTargets[1]).length > 0, 'audio maps output target glyphs')
 assertEqual(audio.friendlyDeviceLabel('Built-in Audio Speakers Output'), 'Speakers', 'audio cleans device labels')
 assertEqual(
   audio.nodeLabel({ ready: true, properties: { 'node.nick': 'Built-in Audio Microphones Input' }, name: 'alsa_input' }),

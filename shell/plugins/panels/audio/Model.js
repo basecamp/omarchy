@@ -47,6 +47,110 @@ function parseSinkAvailability(raw) {
   return next
 }
 
+function parseOutputTargets(raw) {
+  var parsed
+  try {
+    parsed = JSON.parse(String(raw || ""))
+  } catch (_) {
+    return null
+  }
+  if (!Array.isArray(parsed)) return null
+
+  var targets = []
+  var seen = {}
+  for (var i = 0; i < parsed.length; i++) {
+    var item = parsed[i]
+    if (!item || typeof item !== "object") continue
+
+    var sinkName = String(item.sinkName || "").trim()
+    var portName = String(item.portName || "").trim()
+    if (!sinkName) continue
+
+    var key = sinkName + "|" + portName
+    if (seen[key]) continue
+    seen[key] = true
+    targets.push({
+      sinkName: sinkName,
+      portName: portName,
+      portDescription: String(item.portDescription || "").trim(),
+      sinkDescription: String(item.sinkDescription || sinkName).trim(),
+      kind: String(item.kind || "speaker"),
+      active: item.active === true
+    })
+  }
+  if (parsed.length > 0 && targets.length === 0) return null
+  return targets
+}
+
+function outputTargetLabel(target, targetCountForSink) {
+  if (!target) return "Unknown"
+  var portLabel = friendlyDeviceLabel(target.portDescription)
+  var sinkLabel = friendlyDeviceLabel(target.sinkDescription)
+  if (targetCountForSink > 1 && portLabel) return portLabel
+  if (target.kind === "headphones" && portLabel) return portLabel
+  return sinkLabel || portLabel || target.sinkName || "Unknown"
+}
+
+function joinOutputTargets(targets, sinks) {
+  var values = Array.isArray(targets) ? targets : []
+  var nodes = Array.isArray(sinks) ? sinks : []
+  var counts = {}
+  var joined = []
+
+  for (var i = 0; i < values.length; i++)
+    counts[values[i].sinkName] = (counts[values[i].sinkName] || 0) + 1
+
+  for (var j = 0; j < values.length; j++) {
+    var target = values[j]
+    var node = null
+    for (var k = 0; k < nodes.length; k++) {
+      if (nodes[k] && String(nodes[k].name || "") === target.sinkName) {
+        node = nodes[k]
+        break
+      }
+    }
+    if (!node) continue
+
+    joined.push({
+      sinkName: target.sinkName,
+      portName: target.portName,
+      label: outputTargetLabel(target, counts[target.sinkName]),
+      description: target.sinkDescription,
+      kind: target.kind,
+      active: target.active,
+      node: node
+    })
+  }
+  return joined
+}
+
+function fallbackOutputTargets(sinks, defaultSink) {
+  var nodes = Array.isArray(sinks) ? sinks : []
+  var targets = []
+  for (var i = 0; i < nodes.length; i++) {
+    var node = nodes[i]
+    if (!node) continue
+    targets.push({
+      sinkName: String(node.name || ""),
+      portName: "",
+      label: nodeLabel(node),
+      description: nodeLabel(node),
+      kind: isHeadphones(node) ? "headphones" : "speaker",
+      active: !!defaultSink && (node === defaultSink || node.id === defaultSink.id),
+      node: node
+    })
+  }
+  return targets
+}
+
+function outputTargetGlyph(target) {
+  var kind = String(target && target.kind || "")
+  if (kind === "headphones") return "󰋋"
+  if (kind === "bluetooth") return "󰂯"
+  if (kind === "display") return "󰍹"
+  return "󰓃"
+}
+
 function friendlyDeviceLabel(text) {
   var label = String(text || "").trim()
   label = label.replace(/^sof-soundwire\s+/i, "")
@@ -240,6 +344,11 @@ if (typeof module !== "undefined") {
     listSnapshot: listSnapshot,
     outputVolumeName: outputVolumeName,
     parseSinkAvailability: parseSinkAvailability,
+    parseOutputTargets: parseOutputTargets,
+    outputTargetLabel: outputTargetLabel,
+    joinOutputTargets: joinOutputTargets,
+    fallbackOutputTargets: fallbackOutputTargets,
+    outputTargetGlyph: outputTargetGlyph,
     friendlyDeviceLabel: friendlyDeviceLabel,
     nodeProps: nodeProps,
     nodeLabel: nodeLabel,
