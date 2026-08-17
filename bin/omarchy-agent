@@ -94,6 +94,14 @@ pi)
   command=(pi)
   [[ -n ${prompt:-} ]] && command+=("$prompt")
   ;;
+kimi)
+  # --prompt is non-interactive print mode only; it cannot combine with --yolo.
+  if [[ -n ${prompt:-} ]]; then
+    command=(kimi --prompt "$prompt")
+  else
+    command=(kimi --yolo)
+  fi
+  ;;
 *)
   echo "Unsupported default agent: $agent" >&2
   exit 1

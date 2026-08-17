@@ -95,6 +95,7 @@ export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
 grok_package="npm:@xai-official/grok"
 omp_package="github:can1357/oh-my-pi"
 crush_package="crush"
+kimi_package="npm:@moonshot-ai/kimi-code"
 
 assert_lazy_stub() {
   local package=$1
@@ -220,6 +221,8 @@ declare -A expected_agents=(
   [gemini-cli]="gemini"
   [copilot]="copilot"
   [github-copilot]="copilot"
+  [kimi]="kimi"
+  [kimi-code]="kimi"
 )
 
 declare -A expected_packages=(
@@ -232,6 +235,7 @@ declare -A expected_packages=(
   [grok]="$grok_package"
   [gemini]="gemini"
   [copilot]="copilot"
+  [kimi]="$kimi_package"
 )
 
 for selection in "${!expected_agents[@]}"; do
@@ -375,6 +379,7 @@ assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
 assert_launch gemini gemini --yolo --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
+assert_launch kimi kimi --prompt "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
 
 assert_bypass pi pi
@@ -386,6 +391,7 @@ assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
 assert_bypass gemini gemini --yolo
 assert_bypass copilot copilot --allow-all
+assert_bypass kimi kimi --yolo
 pass "agent launcher skips permission prompts for every supported agent"
 
 printf '%s\n' "opencode" >"$agent_file"
