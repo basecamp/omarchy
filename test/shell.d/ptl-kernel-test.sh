@@ -82,7 +82,7 @@ run_leaf() {
   touch "$legacy_boot_order_conf"
 
   XPS_MATCH="$xps" PTL_MATCH="$ptl" B9406_MATCH="$b9406" \
-    TEST_LOG="$calls" PATH="$stub_bin:$PATH" \
+    TEST_LOG="$calls" PATH="$stub_bin:$PATH" OMARCHY_TESTING=1 \
     OMARCHY_PTL_BOOT_ORDER_CONF="$boot_order_conf" \
     OMARCHY_PTL_OLD_BOOT_ORDER_CONF="$old_boot_order_conf" \
     OMARCHY_PTL_LEGACY_BOOT_ORDER_CONF="$legacy_boot_order_conf" \
@@ -117,7 +117,7 @@ pass "unrelated hardware does not install the custom kernel"
 rm -f "$boot_order_conf"
 
 B9406_MATCH=1 XPS_MATCH=0 PTL_MATCH=1 TEST_LOG="$calls" \
-  PATH="$stub_bin:$PATH" OMARCHY_PATH="$ROOT" \
+  PATH="$stub_bin:$PATH" OMARCHY_PATH="$ROOT" OMARCHY_TESTING=1 \
   OMARCHY_PTL_BOOT_ORDER_CONF="$boot_order_conf" \
   OMARCHY_PTL_OLD_BOOT_ORDER_CONF="$old_boot_order_conf" \
   OMARCHY_PTL_LEGACY_BOOT_ORDER_CONF="$legacy_boot_order_conf" \
@@ -133,7 +133,7 @@ pass "existing B9406 installs receive the patched kernel"
 rm -f "$boot_order_conf"
 
 B9406_MATCH=0 XPS_MATCH=0 PTL_MATCH=1 TEST_LOG="$calls" \
-  PATH="$stub_bin:$PATH" OMARCHY_PATH="$ROOT" \
+  PATH="$stub_bin:$PATH" OMARCHY_PATH="$ROOT" OMARCHY_TESTING=1 \
   OMARCHY_PTL_BOOT_ORDER_CONF="$boot_order_conf" \
   OMARCHY_PTL_OLD_BOOT_ORDER_CONF="$old_boot_order_conf" \
   OMARCHY_PTL_LEGACY_BOOT_ORDER_CONF="$legacy_boot_order_conf" \
