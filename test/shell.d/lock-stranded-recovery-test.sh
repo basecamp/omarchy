@@ -66,6 +66,21 @@ assert(
 )
 
 assert(
+  /readonly property bool lockSurfaceOrphaned: sessionSecured && !lockOwned/.test(serviceQml),
+  'an orphan is a compositor-secured session with no surface this client owns'
+)
+
+assert(
+  /function recoverStrandedLock\(\) \{\s*if \(!strandedLock \|\| !passwordPamConfigured\) return/.test(serviceQml),
+  'recovery is skipped unless a stranded lock is waiting and PAM can authenticate it'
+)
+
+assert(
+  /function recoverStrandedLock\(\) \{[\s\S]*if \(lockSurfaceOrphaned\) \{\s*restartForOrphanedLock\(\)/.test(serviceQml),
+  'stranded recovery restarts only when the lock surface is an in-process orphan'
+)
+
+assert(
   /function recoverStrandedLock\(\) \{[\s\S]*if \(sessionLock\.locked\) return/.test(serviceQml),
   'recovery is skipped when this client already owns a lock surface'
 )
@@ -76,8 +91,8 @@ assert(
 )
 
 assert(
-  /sessionLock\.secure && !sessionLock\.locked[\s\S]*recoverStrandedLock\(\)/.test(serviceQml),
-  'a compositor-secured session with no surface recovers instead of setting locked'
+  /lockSurfaceOrphaned[\s\S]*restartForOrphanedLock\(\)/.test(serviceQml),
+  'a compositor-secured session with no surface restarts instead of setting locked'
 )
 
 // The compositor answer and the PAM config land asynchronously, in either
@@ -94,18 +109,28 @@ assert(
 )
 
 assert(
-  /logEvent\("lock-stranded: recovering"\)\s*\n\s*restartShellProc\.running = true/.test(serviceQml),
-  'recovery restarts the shell instead of beginLock in the same process'
+  /logEvent\("lock-stranded: recovering"\)\s*\n\s*beginLock\(\)/.test(serviceQml),
+  'a fresh process takes the stranded compositor lock in-process'
+)
+
+assert(
+  /function restartForOrphanedLock\(\) \{[\s\S]*if \(sessionLock\.locked \|\| !lockSurfaceOrphaned\) return/.test(serviceQml),
+  'a shell restart is reserved for an orphaned lock surface'
+)
+
+assert(
+  /logEvent\("lock-stranded: restarting-for-orphan"\)\s*\n\s*restartShellProc\.running = true/.test(serviceQml),
+  'an in-process orphan restarts the shell instead of beginLock'
 )
 
 assert(
   /id: restartShellProc[\s\S]*omarchy-restart-shell/.test(serviceQml),
-  'recovery goes through omarchy-restart-shell so relock happens in a new process'
+  'orphan recovery goes through omarchy-restart-shell so relock happens in a new process'
 )
 
 assert(
   /property bool strandedRestartAttempted/.test(serviceQml),
-  'recovery attempts a shell restart at most once per process'
+  'orphan recovery attempts a shell restart at most once per process'
 )
 
 assert(

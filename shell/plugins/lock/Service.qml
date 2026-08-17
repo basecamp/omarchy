@@ -40,6 +40,7 @@ Item {
   // A healthy lock is one this client is drawing.
   readonly property bool lockOwned: sessionLock.locked
   readonly property bool sessionSecured: sessionLock.secure
+  readonly property bool lockSurfaceOrphaned: sessionSecured && !lockOwned
   readonly property bool locked: lockRequested || lockOwned || sessionSecured
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
 
@@ -80,9 +81,9 @@ Item {
 
     // secure without a surface this client owns is an orphan, not a lock.
     // Setting sessionLock.locked here qFatal's in Quickshell (no active lock).
-    if (sessionLock.secure && !sessionLock.locked) {
+    if (lockSurfaceOrphaned) {
       logEvent("lock-stranded: compositor-secured-without-surface")
-      recoverStrandedLock()
+      restartForOrphanedLock()
       return
     }
 
@@ -108,8 +109,25 @@ Item {
   }
 
   function recoverStrandedLock() {
-    if (!passwordPamConfigured) return
+    if (!strandedLock || !passwordPamConfigured) return
     if (sessionLock.locked) return
+
+    // A fresh process can take the compositor lock directly. Restarting
+    // here loops: every relaunch sees the same stranded compositor lock
+    // and kills itself again. Restart only the in-process orphan below.
+    if (lockSurfaceOrphaned) {
+      restartForOrphanedLock()
+      return
+    }
+
+    strandedLock = false
+    logEvent("lock-stranded: recovering")
+    beginLock()
+  }
+
+  function restartForOrphanedLock() {
+    if (!passwordPamConfigured) return
+    if (sessionLock.locked || !lockSurfaceOrphaned) return
     if (strandedRestartAttempted || restartShellProc.running) return
 
     // Same-process beginLock() cannot retake the lock: Quickshell's
@@ -120,7 +138,7 @@ Item {
     strandedLock = false
     pendingSessionLockTimer.stop()
     sessionLockStabilizeTimer.stop()
-    logEvent("lock-stranded: recovering")
+    logEvent("lock-stranded: restarting-for-orphan")
     restartShellProc.running = true
   }
 
@@ -483,7 +501,7 @@ Item {
         stop()
         attempts = 0
         root.logEvent("lock-pending: gave-up")
-        root.recoverStrandedLock()
+        if (root.lockSurfaceOrphaned) root.restartForOrphanedLock()
         return
       }
       root.requestSessionLock()
