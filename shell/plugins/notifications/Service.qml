@@ -955,7 +955,14 @@ Item {
       id: popupWindow
       required property var modelData
       screen: modelData
-      visible: popupModel.count > 0
+      // Stay mapped for the life of the shell. Mapping and unmapping the
+      // layer surface per toast batch makes Hyprland run
+      // simulateMouseMovement() on every unmap, which desyncs the cursor of a
+      // pointer-locked fullscreen client -- seen in games as the aim jumping
+      // on the next click. The surface is transparent and its input region is
+      // empty while popupColumn is empty, so staying mapped is
+      // indistinguishable from being unmapped.
+      visible: true
 
       WlrLayershell.namespace: "omarchy-notifications"
       WlrLayershell.layer: WlrLayer.Overlay

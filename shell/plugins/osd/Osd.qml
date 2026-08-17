@@ -125,7 +125,11 @@ Item {
 
   PanelWindow {
     id: panel
-    visible: root.opened
+    // Stay mapped for the same reason as the notification popup surface: an
+    // unmap makes Hyprland run simulateMouseMovement(), which desyncs the
+    // cursor of a pointer-locked fullscreen client. The input region is empty
+    // and the card fades itself out, so a mapped surface shows nothing.
+    visible: true
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     WlrLayershell.namespace: "omarchy-osd"
