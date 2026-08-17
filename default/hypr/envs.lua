@@ -27,13 +27,24 @@ hl.env("XCOMPOSEFILE", paths.home .. "/.XCompose")
 -- hyprctl setenv doesn't reach keybind dispatcher env; use hl.env.
 hl.env("OMARCHY_PATH", paths.omarchy_path)
 
-local bin_dir = paths.omarchy_path .. "/bin"
-local kept = {}
-for entry in (os.getenv("PATH") or "/usr/local/bin:/usr/bin"):gmatch("[^:]+") do
-  if entry ~= bin_dir then table.insert(kept, entry) end
+-- Prepend only in dev-link mode, matching default/bash/env-bootstrap. On a
+-- production install /usr/share/omarchy/bin holds symlinks for the `omarchy`
+-- package's binaries alone, so putting it first shadows the complete /usr/bin
+-- with an incomplete copy -- and the dispatcher scans its own directory, so
+-- every omarchy-* command another package ships to /usr/bin (omarchy-debug,
+-- omarchy-debug-idle, omarchy-upload-log from omarchy-settings;
+-- omarchy-nvim-setup, omarchy-nvim-refresh from omarchy-nvim) loses its route
+-- for the whole graphical session.
+local omarchy_path = paths.omarchy_path:gsub("/+$", "")
+if omarchy_path ~= "/usr/share/omarchy" then
+  local bin_dir = omarchy_path .. "/bin"
+  local kept = {}
+  for entry in (os.getenv("PATH") or "/usr/local/bin:/usr/bin"):gmatch("[^:]+") do
+    if entry ~= bin_dir then table.insert(kept, entry) end
+  end
+  table.insert(kept, 1, bin_dir)
+  hl.env("PATH", table.concat(kept, ":"))
 end
-table.insert(kept, 1, bin_dir)
-hl.env("PATH", table.concat(kept, ":"))
 
 -- Hardware-specific environment.
 require("default.hypr.nvidia")
