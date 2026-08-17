@@ -21,6 +21,8 @@ Panel {
   manageIpc: false
 
   property var anchorItem: null
+  // Inline shell.json settings (see docs/omarchy-shell.md).
+  property var settings: ({})
 
   // The bar tracks the widget mounted in its slot — BarWidget.qml — not this
   // nested panel. Everything the bar identifies a panel by has to be that
@@ -239,7 +241,9 @@ Panel {
     owner: root.barIdentity
     bar: root.bar
     open: root.opened
-    centerOnBar: true
+    // Centered by default; shell.json can set "centerOnBar": false to
+    // anchor the panel under its bar icon instead.
+    centerOnBar: root.settings.centerOnBar !== false
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(560))
     contentHeight: panel.fittedContentHeight(calendarColumn.implicitHeight)
