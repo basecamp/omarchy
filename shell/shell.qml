@@ -178,6 +178,12 @@ ShellRoot {
     return shell.barOptionAvailable(shell.selectedBarId)
   }
   readonly property string activeBarId: selectedBarId !== failedBarId && selectedBarAvailable ? selectedBarId : defaultBarId
+  // configureBar() assigns manifest imperatively at load, which replaces the
+  // binding the bar was created with -- and a manifest can be re-read (a plugin
+  // rescan) without its entry-point url changing, so nothing would reload the
+  // bar or refresh the value. Push it the same way barConfig is pushed above.
+  onActiveBarManifestChanged: if (bar && "manifest" in bar) bar.manifest = shell.activeBarManifest
+
   readonly property var activeBarManifest: {
     var revision = shell.pluginRegistry.registryRevision
     return shell.barManifestFor(shell.activeBarId)
