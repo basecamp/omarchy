@@ -807,3 +807,28 @@ assert_output_contains "a --help behind -- belongs to the command and still forw
 
 output=$("$TMPDIR/omarchy" parenthelp --helpme x--help)
 assert_output_contains "help lookalike tokens do not trigger help" "$output" "parenthelp-parent-ran args=[--helpme x--help]"
+
+# A command file without the executable bit never registers as a command, so
+# only a directory sweep in commands --check can catch the lost bit.
+make_tmpdir EXECBIT_TMPDIR
+ln -s "$CLI" "$EXECBIT_TMPDIR/omarchy"
+
+{
+  printf '#!/bin/bash\n\n'
+  printf '# omarchy:summary=Executable sibling keeps the check green\n'
+  printf 'echo execbit-ok\n'
+} >"$EXECBIT_TMPDIR/omarchy-execbit-test"
+chmod +x "$EXECBIT_TMPDIR/omarchy-execbit-test"
+
+"$EXECBIT_TMPDIR/omarchy" commands --check >/dev/null
+pass "commands --check passes when every command file is executable"
+
+{
+  printf '#!/bin/bash\n\n'
+  printf '# omarchy:summary=Never discovered without the executable bit\n'
+} >"$EXECBIT_TMPDIR/omarchy-execbit-lost"
+
+if output=$("$EXECBIT_TMPDIR/omarchy" commands --check 2>&1); then
+  fail "commands --check fails when a command file is not executable"
+fi
+assert_output_contains "commands --check names the non-executable file" "$output" "Not executable: omarchy-execbit-lost"
