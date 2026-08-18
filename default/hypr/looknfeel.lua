@@ -20,14 +20,24 @@ hl.config({
   },
 
   decoration = {
-    rounding = 0,
+    rounding = 5,
+    dim_special = 0.6,
 
     shadow = {
-      enabled = false,
+      enabled = true,
+      range = 8,
+      render_power = 2,
+      color = "rgba(50, 50, 50, 0.35)",
     },
 
     blur = {
-      enabled = false,
+      enabled = true,
+      size = 1,
+      passes = 1,
+      new_optimizations = true,
+      xray = true,
+      brightness = 0.5,
+      special = true,
     },
   },
 
@@ -64,6 +74,17 @@ hl.config({
   },
 })
 
+-- Give the scratchpad a floating Quake-console presentation.
+hl.workspace_rule({
+  workspace = "special:scratchpad",
+  gaps_out = 80,
+  gaps_in = 40,
+  no_border = false,
+  no_rounding = false,
+  no_shadow = false,
+  decorate = true,
+})
+
 -- Default animations, see https://wiki.hypr.land/Configuring/Advanced-and-Cool/Animations/
 hl.curve("easeOutQuint", { type = "bezier", points = { { 0.23, 1 }, { 0.32, 1 } } })
 hl.curve("easeInOutCubic", { type = "bezier", points = { { 0.65, 0.05 }, { 0.36, 1 } } })
@@ -86,7 +107,8 @@ hl.animation({ leaf = "layersOut", enabled = true, speed = 1.5, bezier = "linear
 hl.animation({ leaf = "fadeLayersIn", enabled = true, speed = 1.79, bezier = "almostLinear" })
 hl.animation({ leaf = "fadeLayersOut", enabled = true, speed = 1.39, bezier = "almostLinear" })
 hl.animation({ leaf = "workspaces", enabled = false })
-hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 3, bezier = "easeOutQuint", style = "slidevert" })
+hl.animation({ leaf = "specialWorkspaceIn", enabled = true, speed = 3, bezier = "easeOutQuint", style = "slide top" })
+hl.animation({ leaf = "specialWorkspaceOut", enabled = true, speed = 2, bezier = "easeInOutCubic", style = "slide bottom" })
 
 hl.config({
   dwindle = {
