@@ -57,6 +57,8 @@ ShellRoot {
   property bool pluginReloading: false
   property bool pluginReloadPending: false
 
+  signal appSelectedAfterSearch(var event)
+
   Timer {
     id: localPluginReloadTimer
     interval: 150
@@ -110,6 +112,31 @@ ShellRoot {
     payload.version = 1
     shellConfig = payload
     userConfigFile.setText(JSON.stringify(payload, null, 2) + "\n")
+  }
+
+  function pluginSupportStatus(pluginId, capability, minimumVersion) {
+    var version = shell.pluginRegistry.capabilityVersion(pluginId, capability)
+    if (version < 0) return "checking"
+    return version >= Math.max(1, Number(minimumVersion) || 1) ? "supported" : "unsupported"
+  }
+
+  function publishAppSelectedAfterSearch(sourceId, event) {
+    var activeMenuId = shell.pluginRegistry.resolveEnabledId("omarchy.menu")
+    if (String(sourceId || "") !== activeMenuId) return false
+    if (shell.pluginSupportStatus("omarchy.menu", "app-selected-after-search", 1) !== "supported") return false
+    if (!Util.isPlainObject(event) || Number(event.schemaVersion) !== 1) return false
+
+    var desktopId = String(event.desktopId || "").trim()
+    var name = String(event.name || "").trim()
+    if (!desktopId || !name) return false
+
+    shell.appSelectedAfterSearch({
+      schemaVersion: 1,
+      sourceId: activeMenuId,
+      desktopId: desktopId,
+      name: name
+    })
+    return true
   }
 
   readonly property var barConfig: shellConfig && Util.isPlainObject(shellConfig.bar) ? shellConfig.bar : builtinShellConfig.bar
@@ -894,6 +921,10 @@ ShellRoot {
     function reloadConfig(): string {
       userConfigFile.reload()
       return "ok"
+    }
+
+    function pluginSupports(id: string, capability: string, minimumVersion: string): string {
+      return shell.pluginSupportStatus(id, capability, Number(minimumVersion) || 1)
     }
 
     function toggleBarTransparency(): string {

@@ -8,7 +8,25 @@ run_node_test <<'JS'
 const fs = require('fs')
 const menu = requireFromRoot('shell/plugins/menu/MenuModel.js')
 const menuQml = fs.readFileSync(path.join(root, 'shell/plugins/menu/Menu.qml'), 'utf8')
+const shellQml = fs.readFileSync(path.join(root, 'shell/shell.qml'), 'utf8')
+const menuManifest = JSON.parse(fs.readFileSync(path.join(root, 'shell/plugins/menu/manifest.json'), 'utf8'))
 const defaultMenuJsonc = fs.readFileSync(path.join(root, 'default/omarchy/omarchy-menu.jsonc'), 'utf8')
+
+assertEqual(
+  menuManifest.capabilities['app-selected-after-search'],
+  1,
+  'menu declares the searched-app selection event contract'
+)
+const publishIndex = menuQml.indexOf('root.shell.publishAppSelectedAfterSearch(')
+const clearFilterIndex = menuQml.indexOf('filterText = ""', publishIndex)
+assert(publishIndex >= 0, 'menu publishes explicit app selections made after search')
+assert(clearFilterIndex > publishIndex, 'menu publishes before clearing its search state')
+const publishedEvent = menuQml.slice(publishIndex, clearFilterIndex)
+assert(publishedEvent.includes('desktopId: appId') && publishedEvent.includes('name: label'), 'menu publishes stable app identity and display name')
+assert(!publishedEvent.includes('filterText') && !publishedEvent.includes('query:'), 'menu does not publish the search query')
+assert(shellQml.includes('signal appSelectedAfterSearch(var event)'), 'shell exposes a semantic searched-app event')
+assert(shellQml.includes('String(sourceId || "") !== activeMenuId'), 'shell rejects publications from inactive menu implementations')
+assert(shellQml.includes('function pluginSupports(id: string, capability: string, minimumVersion: string)'), 'shell IPC exposes capability detection')
 
 const parsed = menu.parseMenuJsonc(`
 {

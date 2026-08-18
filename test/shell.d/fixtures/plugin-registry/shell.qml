@@ -50,7 +50,7 @@ ShellRoot {
     }
   }
 
-  function manifest(id, kinds, entryPoints, barWidget) {
+  function manifest(id, kinds, entryPoints, barWidget, capabilities) {
     var value = {
       schemaVersion: 1,
       id: id,
@@ -60,6 +60,7 @@ ShellRoot {
       entryPoints: entryPoints
     }
     if (barWidget) value.barWidget = barWidget
+    if (capabilities) value.capabilities = capabilities
     return value
   }
 
@@ -82,7 +83,13 @@ ShellRoot {
     scan += block("firstparty", "/first/widgets/clock", manifest("omarchy.first-widget", ["bar-widget"], { barWidget: "Widget.qml" }))
     scan += block("firstparty", "/first/bar", manifest("omarchy.bar", ["bar"], { bar: "Bar.qml" }))
     scan += block("firstparty", "/first/panels/grouped", manifest("omarchy.grouped-panel", ["panel"], { panel: "Panel.qml" }))
-    scan += block("firstparty", "/first/hybrid", manifest("omarchy.hybrid", ["menu", "bar-widget"], { menu: "Menu.qml", barWidget: "Widget.qml" }))
+    scan += block("firstparty", "/first/hybrid", manifest(
+      "omarchy.hybrid",
+      ["menu", "bar-widget"],
+      { menu: "Menu.qml", barWidget: "Widget.qml" },
+      null,
+      { "app-selected-after-search": 1 }
+    ))
     scan += block("thirdparty", "/third/panel", manifest("third.panel", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/widget", manifest("third.widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "left" }))
     scan += block("thirdparty", "/third/center-widget", manifest("third.center-widget", ["bar-widget"], { barWidget: "Widget.qml" }))
@@ -108,6 +115,7 @@ ShellRoot {
     scan += block("thirdparty", "/third/unsafe", manifest("third.unsafe", ["panel"], { panel: "../Panel.qml" }))
     scan += block("thirdparty", "/third/missing", { schemaVersion: 1, id: "third.missing", name: "missing", version: "1.0.0", kinds: ["panel"] })
     scan += block("thirdparty", "/third/bad-section", manifest("third.bad-section", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "bottom" }))
+    scan += block("thirdparty", "/third/bad-capability", manifest("third.bad-capability", ["panel"], { panel: "Panel.qml" }, null, { broken: 0 }))
     scan += block("thirdparty", "/third/schema", { schemaVersion: 2, id: "third.schema", name: "schema", version: "1.0.0", kinds: ["panel"], entryPoints: { panel: "Panel.qml" } })
     scan += block("thirdparty", "/third/bad-json", "{")
 
@@ -140,6 +148,7 @@ ShellRoot {
     root.assertTrue(!has("third.unsafe"), "unsafe entry points are rejected")
     root.assertTrue(!has("third.missing"), "incomplete manifests are rejected")
     root.assertTrue(!has("third.bad-section"), "invalid default bar widget sections are rejected")
+    root.assertTrue(!has("third.bad-capability"), "invalid capability versions are rejected")
     root.assertTrue(!has("third.schema"), "unsupported schema versions are rejected")
 
     root.assertTrue(registry.isEnabled("omarchy.first-widget"), "first-party plugins are implicitly enabled")
@@ -147,6 +156,8 @@ ShellRoot {
     root.assertTrue(!registry.isEnabled("third.bar"), "third-party bar options start inactive")
     root.assertTrue(!registry.isEnabled("third.panel"), "third-party plugins start disabled")
     root.assertEqual(registry.resolveEnabledId("omarchy.first-widget"), "omarchy.first-widget", "inactive clones do not replace their source id")
+    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "app-selected-after-search"), 1, "registry reads versioned plugin capabilities")
+    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "missing"), 0, "registry reports unsupported capabilities")
 
     registry.setEnabled("third.bar", true)
     root.assertEqual(root.config.bar.id, "third.bar", "enabling third-party bar options writes bar id")
@@ -306,6 +317,7 @@ ShellRoot {
     // Refusing an id the scan has not reached would fail the migration.
     root.config = { version: 1, bar: { layout: { left: [], center: [], right: [] } }, plugins: [] }
     registry.scanning = true
+    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "app-selected-after-search"), -1, "capability checks wait for registry scans")
     root.assertEqual(registry.putBarWidget("third.absent", {}), "not ready", "put waits for a scan that has not reached its widget")
     root.assertDeepEqual(root.config.bar.layout.center, [], "put places nothing while it is still waiting")
     root.assertEqual(registry.putBarWidget("third.center-widget", {}), "", "put places a widget the scan has already read")
@@ -355,9 +367,11 @@ ShellRoot {
     registry.setEnabled("local.hybrid", true)
     root.assertDeepEqual(root.config.bar.layout.left, [{ id: "local.hybrid" }], "enabling a multi-kind clone replaces its widget")
     root.assertDeepEqual(root.config.disabledPlugins, ["omarchy.hybrid"], "enabling a multi-kind clone disables the source")
+    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "app-selected-after-search"), 0, "an active clone without the capability reports unsupported")
     registry.setEnabled("local.hybrid", false)
     root.assertDeepEqual(root.config.bar.layout.left, [{ id: "omarchy.hybrid" }], "disabling a multi-kind clone restores its widget")
     root.assertTrue(root.config.disabledPlugins === undefined, "disabling a multi-kind clone enables the source")
+    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "app-selected-after-search"), 1, "restoring the source restores its capabilities")
 
     root.config = { version: 1, bar: { layout: { left: [], center: [], right: [] } }, plugins: [] }
     registry.setEnabled("local.grouped-panel", true)

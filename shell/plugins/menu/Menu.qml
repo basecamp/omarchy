@@ -777,6 +777,13 @@ Item {
     } else if (row.kind === "app") {
       var appId = row.appId
       var label = row.label
+      if (root.filterText.trim() && root.shell
+          && typeof root.shell.publishAppSelectedAfterSearch === "function") {
+        root.shell.publishAppSelectedAfterSearch(
+          root.manifest ? root.manifest.id : "",
+          { schemaVersion: 1, desktopId: appId, name: label }
+        )
+      }
       applySerial = requestSerial
       opened = false
       filterText = ""
