@@ -24,13 +24,17 @@ Panel {
   }
 
   moduleName: "omarchy.omatask"
-  ipcTarget: "omatask"
+  ipcTarget: "omarchy.omatask"
   // The base Panel would register its own handler for that target; this widget
   // owns the single allowed one so it can add expand() alongside the standard
   // open/close/toggle.
   manageIpc: false
 
-  readonly property var service: bar && bar.shell ? bar.shell.serviceFor(moduleName) : null
+  // Bound, not readonly: the shell's own manifest-entrypoint test instantiates
+  // every entry point and assigns `service` to check the contract, and a
+  // readonly property makes that assignment throw — which aborts the harness
+  // mid-load rather than failing one plugin.
+  property var service: bar && bar.shell ? bar.shell.serviceFor(moduleName) : null
 
   readonly property int intervalSec: Math.max(1, Number(setting("intervalSec", 2)) || 2)
   readonly property int historyPoints: Math.max(10, Number(setting("historyPoints", 60)) || 60)
