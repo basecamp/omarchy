@@ -11,7 +11,7 @@
   ],
   "keepLoaded": true,
   "capabilities": {
-    "app-selected-after-search": 1
+    "menu-selection-after-search": 1
   },
   "entryPoints": {
     "menu": "Menu.qml",

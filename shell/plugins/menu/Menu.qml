@@ -772,18 +772,16 @@ Item {
     if (!root.rowSelectable(index)) return
 
     var row = displayModel.get(index)
+    var selection = MenuModel.selectionAfterSearch(root.items, row, root.filterText)
+    if (selection && root.shell
+        && typeof root.shell.publishMenuSelectionAfterSearch === "function") {
+      root.shell.publishMenuSelectionAfterSearch(root.manifest ? root.manifest.id : "", selection)
+    }
     if (row.kind === "menu" || row.kind === "link") {
       root.setActiveMenu(row.target || row.itemId, true, fromPointer)
     } else if (row.kind === "app") {
       var appId = row.appId
       var label = row.label
-      if (root.filterText.trim() && root.shell
-          && typeof root.shell.publishAppSelectedAfterSearch === "function") {
-        root.shell.publishAppSelectedAfterSearch(
-          root.manifest ? root.manifest.id : "",
-          { schemaVersion: 1, desktopId: appId, name: label }
-        )
-      }
       applySerial = requestSerial
       opened = false
       filterText = ""

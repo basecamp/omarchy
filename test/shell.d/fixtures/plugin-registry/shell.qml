@@ -88,7 +88,7 @@ ShellRoot {
       ["menu", "bar-widget"],
       { menu: "Menu.qml", barWidget: "Widget.qml" },
       null,
-      { "app-selected-after-search": 1 }
+      { "menu-selection-after-search": 1 }
     ))
     scan += block("thirdparty", "/third/panel", manifest("third.panel", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/widget", manifest("third.widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "left" }))
@@ -160,8 +160,8 @@ ShellRoot {
     root.assertTrue(!registry.isEnabled("third.bar"), "third-party bar options start inactive")
     root.assertTrue(!registry.isEnabled("third.panel"), "third-party plugins start disabled")
     root.assertEqual(registry.resolveEnabledId("omarchy.first-widget"), "omarchy.first-widget", "inactive clones do not replace their source id")
-    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "app-selected-after-search"), 1, "registry reads versioned plugin capabilities")
-    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", " app-selected-after-search "), 1, "capability lookup trims caller input")
+    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "menu-selection-after-search"), 1, "registry reads versioned plugin capabilities")
+    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", " menu-selection-after-search "), 1, "capability lookup trims caller input")
     root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "missing"), 0, "registry reports unsupported capabilities")
 
     registry.setEnabled("third.bar", true)
@@ -322,7 +322,7 @@ ShellRoot {
     // Refusing an id the scan has not reached would fail the migration.
     root.config = { version: 1, bar: { layout: { left: [], center: [], right: [] } }, plugins: [] }
     registry.scanning = true
-    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "app-selected-after-search"), -1, "capability checks wait for registry scans")
+    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "menu-selection-after-search"), -1, "capability checks wait for registry scans")
     root.assertEqual(registry.putBarWidget("third.absent", {}), "not ready", "put waits for a scan that has not reached its widget")
     root.assertDeepEqual(root.config.bar.layout.center, [], "put places nothing while it is still waiting")
     root.assertEqual(registry.putBarWidget("third.center-widget", {}), "", "put places a widget the scan has already read")
@@ -372,11 +372,11 @@ ShellRoot {
     registry.setEnabled("local.hybrid", true)
     root.assertDeepEqual(root.config.bar.layout.left, [{ id: "local.hybrid" }], "enabling a multi-kind clone replaces its widget")
     root.assertDeepEqual(root.config.disabledPlugins, ["omarchy.hybrid"], "enabling a multi-kind clone disables the source")
-    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "app-selected-after-search"), 0, "an active clone without the capability reports unsupported")
+    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "menu-selection-after-search"), 0, "an active clone without the capability reports unsupported")
     registry.setEnabled("local.hybrid", false)
     root.assertDeepEqual(root.config.bar.layout.left, [{ id: "omarchy.hybrid" }], "disabling a multi-kind clone restores its widget")
     root.assertTrue(root.config.disabledPlugins === undefined, "disabling a multi-kind clone enables the source")
-    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "app-selected-after-search"), 1, "restoring the source restores its capabilities")
+    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "menu-selection-after-search"), 1, "restoring the source restores its capabilities")
 
     root.config = { version: 1, bar: { layout: { left: [], center: [], right: [] } }, plugins: [] }
     registry.setEnabled("local.grouped-panel", true)

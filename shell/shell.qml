@@ -57,7 +57,7 @@ ShellRoot {
   property bool pluginReloading: false
   property bool pluginReloadPending: false
 
-  signal appSelectedAfterSearch(var event)
+  signal menuSelectionAfterSearch(var event)
 
   Timer {
     id: localPluginReloadTimer
@@ -122,21 +122,31 @@ ShellRoot {
     return version >= minimum ? "supported" : "unsupported"
   }
 
-  function publishAppSelectedAfterSearch(sourceId, event) {
+  function publishMenuSelectionAfterSearch(sourceId, event) {
     var activeMenuId = shell.pluginRegistry.resolveEnabledId("omarchy.menu")
     if (String(sourceId || "") !== activeMenuId) return false
-    if (shell.pluginRegistry.capabilityVersionForResolvedId(activeMenuId, "app-selected-after-search") < 1) return false
+    if (shell.pluginRegistry.capabilityVersionForResolvedId(activeMenuId, "menu-selection-after-search") < 1) return false
     if (!Util.isPlainObject(event) || Number(event.schemaVersion) !== 1) return false
 
+    var itemId = String(event.itemId || "").trim()
+    var kind = String(event.kind || "").trim()
+    var allowedKinds = ["action", "app", "link", "menu"]
+    var label = String(event.label || "").trim()
+    var path = String(event.path || "").trim()
     var desktopId = String(event.desktopId || "").trim()
-    var name = String(event.name || "").trim()
-    if (!desktopId || !name) return false
+    if (!itemId || allowedKinds.indexOf(kind) === -1 || !label || !path) return false
+    if (kind === "app" && !desktopId) return false
+    if (kind !== "app") desktopId = ""
+    if (itemId.length > 256 || label.length > 256 || path.length > 1024 || desktopId.length > 256) return false
 
-    shell.appSelectedAfterSearch({
+    shell.menuSelectionAfterSearch({
       schemaVersion: 1,
       sourceId: activeMenuId,
+      itemId: itemId,
+      kind: kind,
+      label: label,
+      path: path,
       desktopId: desktopId,
-      name: name
     })
     return true
   }
