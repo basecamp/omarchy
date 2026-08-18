@@ -62,6 +62,13 @@ agy)
   command=(agy --dangerously-skip-permissions)
   [[ -n ${prompt:-} ]] && command+=(--prompt-interactive "$prompt")
   ;;
+hermes)
+  # Hermes has no unattended flag in the spirit of the other harnesses'
+  # "don't stop to ask" modes, so it launches in its normal approval mode.
+  # One-shot prompts go through -z, which still asks before dangerous work.
+  command=(hermes)
+  [[ -n ${prompt:-} ]] && command+=(-z "$prompt")
+  ;;
 copilot)
   command=(copilot --allow-all)
   [[ -n ${prompt:-} ]] && command+=(--interactive "$prompt")

@@ -233,8 +233,9 @@ rm -f "$agent_file"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"
 
 touch "$test_home/.local/bin/agy"
+touch "$test_home/.local/bin/hermes"
 omarchy-remove-preinstalls >/dev/null
-for command in agy omp grok crush; do
+for command in agy omp grok crush hermes; do
   [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
 done
 pass "Remove Preinstalls deletes every optional agent lazy stub"
@@ -297,6 +298,8 @@ declare -A expected_agents=(
   [gemini-cli]="agy"
   [copilot]="copilot"
   [github-copilot]="copilot"
+  [hermes]="hermes"
+  [nous-hermes]="hermes"
 )
 
 declare -A expected_packages=(
@@ -309,6 +312,7 @@ declare -A expected_packages=(
   [grok]="$grok_package"
   [agy]="$agy_package"
   [copilot]="copilot"
+  [hermes]="pipx:hermes-agent"
 )
 
 for selection in "${!expected_agents[@]}"; do
@@ -452,6 +456,7 @@ assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
 assert_launch agy agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
+assert_launch hermes hermes -z "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
 
 assert_bypass pi pi
@@ -463,6 +468,7 @@ assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
 assert_bypass agy agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
+assert_bypass hermes hermes
 pass "agent launcher skips permission prompts for every supported agent"
 
 printf '%s\n' "opencode" >"$agent_file"
