@@ -884,9 +884,11 @@ def read_btrfs():
 def read_failed_units():
     """systemd units in a failed state, system and user.
 
-    Read from the cgroup-adjacent file systemd maintains rather than by forking
-    `systemctl`, which costs orders of magnitude more than everything else in
-    this sampler combined.
+    There is no file to read this from: failure is derived state, so the answer
+    has to come from systemd itself. Forking `systemctl` twice costs several
+    milliseconds — more than everything else in a sample combined — which is why
+    the caller polls this on its own slow timer and carries the last answer
+    between polls rather than asking every tick.
     """
     failed = []
     for scope, command in (("system", ["systemctl", "--failed", "--no-legend", "--plain"]),
@@ -1564,6 +1566,34 @@ CHIP_DISPLAY_NAMES = (
 GENERIC_LABEL_PREFIXES = ("temp", "fan", "in")
 
 
+NVME_NAMESPACE = re.compile(r"^nvme\d+n\d+$")
+
+
+def block_devices_for(chip_dir):
+    """Block devices an hwmon chip reports temperatures for.
+
+    An NVMe controller's hwmon node carries its namespaces (`nvme0n1`) directly
+    under `device/`; a SATA drive's `drivetemp` node carries them under
+    `device/block/`. Without this association a surface asking for one drive's
+    temperature can only guess, and on a two-drive machine it guesses the first
+    one for both — a plausible wrong number, which is the failure mode a monitor
+    must never have.
+    """
+    names = []
+    device_dir = os.path.join(chip_dir, "device")
+    try:
+        for entry in os.listdir(device_dir):
+            if NVME_NAMESPACE.match(entry):
+                names.append(entry)
+    except OSError:
+        pass
+    try:
+        names.extend(os.listdir(os.path.join(device_dir, "block")))
+    except OSError:
+        pass
+    return sorted(set(names))
+
+
 def display_chip(chip):
     for prefix, name, _ in CHIP_DISPLAY_NAMES:
         if chip.startswith(prefix):
@@ -1652,7 +1682,7 @@ class Thermals:
                     name = pretty  # "temp1" says nothing the chip name doesn't
                 else:
                     name = label if pretty == label else "%s %s" % (pretty, label)
-                entry_list[index] = (path, chip, label, name)
+                entry_list[index] = (path, chip, label, name, block_devices_for(chip_dir))
 
     @staticmethod
     def _read_text(path):
@@ -1694,17 +1724,20 @@ class Thermals:
         }
 
         sources = self.cpu_temps + self.other_temps if detailed else self.cpu_temps
-        for path, chip, label, name in sources:
+        for path, chip, label, name, block_devices in sources:
             millidegrees = self._read_number(path)
             if millidegrees is None:
                 continue
             celsius = round(millidegrees / 1000.0, 1)
             if path == self.cpu_path:
                 out["cpu"] = celsius
-            out["sensors"].append({"chip": chip, "kind": chip_kind(chip), "label": label,
-                                   "name": name, "temp": celsius})
+            sensor = {"chip": chip, "kind": chip_kind(chip), "label": label,
+                      "name": name, "temp": celsius}
+            if block_devices:
+                sensor["devices"] = block_devices
+            out["sensors"].append(sensor)
 
-        for path, chip, label, name in self.fans:
+        for path, chip, label, name, _ in self.fans:
             rpm = self._read_number(path)
             if rpm is None:
                 continue

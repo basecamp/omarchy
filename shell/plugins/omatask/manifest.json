@@ -58,8 +58,8 @@
       {
         "key": "processLimit",
         "type": "integer",
-        "label": "Processes tracked",
-        "description": "How many processes the sampler reports, ordered by CPU.",
+        "label": "Command lines resolved",
+        "description": "Every process is always reported; this is how many of them, busiest by CPU and by memory, get their full command line read from /proc. Reading command lines is the part that scales badly.",
         "min": 10,
         "max": 500,
         "step": 10,

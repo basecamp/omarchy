@@ -6,8 +6,14 @@ has to be runnable on a fresh Omarchy install with nothing added.
 
 The parsers are the part worth testing: a sampler bug is silent by nature, and
 a mis-parsed field shows up as a plausible-looking wrong number rather than a
-crash. Everything here works on fixture strings, so the suite is deterministic
-and does not depend on what the machine happens to be doing.
+crash. Most of what follows works on fixture strings and is deterministic
+regardless of what the machine is doing.
+
+The exception is the baseline group at the end, which builds a real Sampler and
+therefore reads this host's /proc, /sys and cgroup files. That is deliberate —
+it is the only way to check that priming actually takes a baseline — and it is
+written to assert against what the host exposes rather than assuming any of it
+is present, so a container without cgroup v2 passes rather than failing.
 """
 
 import importlib.util

@@ -266,14 +266,24 @@ Item {
     }
     return peak
   }
-  // Drive temperatures arrive through hwmon, tagged by kind, so they can be
-  // matched back to the block devices they belong to by name.
+  // Drive temperatures arrive through hwmon, which knows nothing about block
+  // devices, so the sampler resolves each chip to the devices it speaks for and
+  // sends them along. Matching on that, rather than on the first sensor that
+  // happens to say "composite", is what stops a second drive from reporting the
+  // first one's temperature.
   function tempForDevice(name) {
-    var list = driveSensors
-    for (var i = 0; i < list.length; i++) {
-      if (String(list[i].name).toLowerCase().indexOf("composite") !== -1) return list[i].temp
+    var wanted = String(name)
+    var fallback = null
+    for (var i = 0; i < driveSensors.length; i++) {
+      var sensor = driveSensors[i]
+      var owned = sensor.devices || []
+      if (owned.indexOf(wanted) === -1) continue
+      // An NVMe chip reports Composite alongside per-die sensors; Composite is
+      // the one that means "this drive". The others run hotter and are parts.
+      if (String(sensor.label).toLowerCase().indexOf("composite") !== -1) return sensor.temp
+      if (fallback === null) fallback = sensor.temp
     }
-    return null
+    return fallback
   }
 
   property bool diskDetail: false
@@ -443,13 +453,13 @@ Item {
     netRxHistory = Model.pushHistory(netRxHistory, data.net ? data.net.rx : 0, historyPoints)
     netTxHistory = Model.pushHistory(netTxHistory, data.net ? data.net.tx : 0, historyPoints)
 
-    var devices = data.gpu ? (data.gpu.devices || []) : []
-    if (devices.length > 0) {
-      gpuHistory = Model.pushHistory(gpuHistory, devices[0].util, historyPoints)
-      gpuEncodeHistory = Model.pushHistory(gpuEncodeHistory, devices[0].encode || 0, historyPoints)
-      gpuDecodeHistory = Model.pushHistory(gpuDecodeHistory, devices[0].decode || 0, historyPoints)
-      if (devices[0].temp !== null && devices[0].temp !== undefined) {
-        gpuTempHistory = Model.pushHistory(gpuTempHistory, devices[0].temp, historyPoints)
+    var sampledGpus = data.gpu ? (data.gpu.devices || []) : []
+    if (sampledGpus.length > 0) {
+      gpuHistory = Model.pushHistory(gpuHistory, sampledGpus[0].util, historyPoints)
+      gpuEncodeHistory = Model.pushHistory(gpuEncodeHistory, sampledGpus[0].encode || 0, historyPoints)
+      gpuDecodeHistory = Model.pushHistory(gpuDecodeHistory, sampledGpus[0].decode || 0, historyPoints)
+      if (sampledGpus[0].temp !== null && sampledGpus[0].temp !== undefined) {
+        gpuTempHistory = Model.pushHistory(gpuTempHistory, sampledGpus[0].temp, historyPoints)
       }
     }
 
@@ -464,10 +474,10 @@ Item {
     memCacheHistory = Model.pushHistory(memCacheHistory, Number(sampledMem.cached) || 0, historyPoints)
     swapUsedHistory = Model.pushHistory(swapUsedHistory, Number(sampledMem.swapUsed) || 0, historyPoints)
 
-    var devices = (data.disk || {}).devices || []
+    var sampledDisks = (data.disk || {}).devices || []
     var busiest = 0
-    for (var di = 0; di < devices.length; di++) {
-      busiest = Math.max(busiest, Number(devices[di].util) || 0)
+    for (var di = 0; di < sampledDisks.length; di++) {
+      busiest = Math.max(busiest, Number(sampledDisks[di].util) || 0)
     }
     diskUtilHistory = Model.pushHistory(diskUtilHistory, busiest, historyPoints)
     diskReadHistory = Model.pushHistory(diskReadHistory, (data.disk || {}).read || 0, historyPoints)
