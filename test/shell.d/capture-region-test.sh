@@ -25,7 +25,7 @@ case "$*" in
     printf '%s\n' '[{"at":[0,26],"size":[1920,1054],"workspace":{"id":1},"hidden":false}]'
     ;;
   "cursorpos")
-    printf '%s\n' '110,10'
+    printf '%s\n' '110, 10'
     ;;
   *)
     exit 1
