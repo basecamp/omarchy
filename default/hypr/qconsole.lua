@@ -39,6 +39,12 @@ local function cover(bottom)
     workspace = "special:scratchpad",
     gaps_in = 10,
     gaps_out = { top = 0, right = 0, bottom = bottom, left = 0 },
+
+    -- Nothing to highlight in a console that is only ever focused when it is
+    -- open, and the active border reads as a stray frame around a panel that
+    -- is already set apart by the dimming behind it.
+    no_border = true,
+
     on_created_empty = seed,
   })
 end

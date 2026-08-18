@@ -58,6 +58,7 @@ local final = current()
 assert(final.gaps_out.top == 0 and final.gaps_out.left == 0 and final.gaps_out.right == 0,
   "the console is flush to the top and sides")
 assert(final.on_created_empty:find("omarchy%-agent"), "refitting keeps the console seeded")
+assert(final.no_border == true, "the console drops the active window border")
 
 -- A monitor that cannot be read must not wipe the last good rule.
 local before = current().gaps_out.bottom
