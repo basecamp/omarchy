@@ -89,7 +89,6 @@ check("_cg_pressure_total on irq-style input with only a `full` line",
 
 # ---------------------------------------------------------------- disk
 
-DISKSTATS_FIELDS = ("8 0 sda 100 0 2000 50 200 0 4000 80 0 300 130 0 0 0 0 0 0").split()
 now = {"sda": {"reads": 100, "readBytes": 1024000, "msReading": 50,
                "writes": 200, "writeBytes": 2048000, "msWriting": 80,
                "inFlight": 2, "msDoingIO": 500}}
@@ -134,9 +133,13 @@ def fake_open(path, *args, **kwargs):
     return _orig_open(path, *args, **kwargs)
 
 
+# Restored in a finally: if read_wireless() raises, a leaked fake_open would
+# answer every later check and make those failures point anywhere but here.
 sampler.open = fake_open
-wireless = sampler.read_wireless()
-del sampler.open
+try:
+    wireless = sampler.read_wireless()
+finally:
+    del sampler.open
 check("wireless: strips the kernel's trailing dots", wireless["wlp13s0"]["signal"], -56.0)
 check("wireless: link quality", wireless["wlp13s0"]["quality"], 54.0)
 check("wireless: a -256 noise floor means 'unknown' and is dropped",

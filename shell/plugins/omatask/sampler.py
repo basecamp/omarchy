@@ -309,14 +309,18 @@ def read_links(ifaces, detailed=False):
     out = []
     for iface in sorted(ifaces):
         speed = read_sysfs_net(iface, "speed")
+        # Parsed once, then judged: -1 is the kernel's "not applicable" (wifi,
+        # tunnels) and 0 is "not negotiated". Both mean there is no speed to show.
+        link_speed = int(speed) if speed and speed.lstrip("-").isdigit() else None
+        if link_speed is not None and link_speed <= 0:
+            link_speed = None
         entry = {
             "name": iface,
             "state": read_sysfs_net(iface, "operstate") or "unknown",
             "carrier": read_sysfs_net(iface, "carrier") == "1",
             "mtu": int(read_sysfs_net(iface, "mtu") or 0),
             "duplex": read_sysfs_net(iface, "duplex"),
-            # -1 is the kernel's "not applicable", e.g. wifi and tunnels.
-            "speed": int(speed) if speed and speed.lstrip("-").isdigit() and int(speed) > 0 else None,
+            "speed": link_speed,
         }
         if iface in wireless:
             entry["wireless"] = wireless[iface]
