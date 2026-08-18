@@ -1448,13 +1448,26 @@ class AmdGpu:
         except (OSError, ValueError):
             return None
 
+    @staticmethod
+    def _hwmon_dir(device_dir):
+        """The card's hwmon node, whatever number the kernel gave it.
+
+        hwmon indices are global allocation order, not per-device: on a machine
+        whose NVMe drives claim hwmon0 and hwmon1, an amdgpu card is hwmon2 or
+        later. Assuming hwmon0 left temperature, power and clocks permanently
+        null on any machine with another hwmon device enumerated first.
+        """
+        nodes = sorted(glob.glob(os.path.join(device_dir, "hwmon", "hwmon*")))
+        return nodes[0] if nodes else None
+
     def sample(self, detailed=False):
         out = []
         for device_dir, label in self.devices:
             used = self._read_number(os.path.join(device_dir, "mem_info_vram_used"))
             total = self._read_number(os.path.join(device_dir, "mem_info_vram_total"))
-            temp = self._read_number(os.path.join(device_dir, "hwmon/hwmon0/temp1_input"))
-            power = self._read_number(os.path.join(device_dir, "hwmon/hwmon0/power1_average"))
+            hwmon = self._hwmon_dir(device_dir)
+            temp = self._read_number(os.path.join(hwmon, "temp1_input")) if hwmon else None
+            power = self._read_number(os.path.join(hwmon, "power1_average")) if hwmon else None
             out.append({
                 "name": label,
                 "util": self._read_number(os.path.join(device_dir, "gpu_busy_percent")) or 0,
@@ -1470,8 +1483,8 @@ class AmdGpu:
                 "powerLimit": None,
                 "encode": None,
                 "decode": None,
-                "smClock": self._read_number(os.path.join(device_dir, "hwmon/hwmon0/freq1_input")),
-                "memClock": self._read_number(os.path.join(device_dir, "hwmon/hwmon0/freq2_input")),
+                "smClock": self._read_number(os.path.join(hwmon, "freq1_input")) if hwmon else None,
+                "memClock": self._read_number(os.path.join(hwmon, "freq2_input")) if hwmon else None,
                 "fan": None,
                 "pcieTx": None,
                 "pcieRx": None,
