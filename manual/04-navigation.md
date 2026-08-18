@@ -62,9 +62,9 @@ You can pop a window out of its workspace allocation with `Super + O`. That'll p
 
 ### Scratchpad workspace
 
-Finally, there's a special scratchpad workspace that overlays on whatever workspace you're currently on. You access what's on that using `Super + S` and you place windows there using `Super + Alt + S`.
+Finally, there's a special scratchpad workspace that drops down over whatever workspace you're currently on, much like a Quake console. Toggle it with `Super + Grave` or `Super + S`, and place a window there using `Super + Shift + Grave` or `Super + Alt + S`.
 
-It works well for controls or perhaps a terminal that you quickly want to interact with in an overlay without leaving the current workspace. If you want to move a window off the scratchpad, you just move it directly to another workspace with something like `Super + Shift + 1` to move it to workspace 1.
+It works especially well for a terminal running an agent, or for controls you want to interact with quickly without leaving the current workspace. To move a window off the scratchpad, send it directly to another workspace with something like `Super + Shift + 1`.
 
 ### It takes some getting used to!
 
