@@ -21,6 +21,7 @@ Options:
   --dev                     Use dev packages [omarchy-dev / omarchy-settings-dev] (uses edge channel)
   --channel stable|rc|edge  Override the default stable Omarchy package channel
   --user USER               User account to refresh after package install
+  --no-recovery-check       Skip the pre-upgrade recovery snapshot requirement on non-Btrfs roots
   -h, --help                Show this help
 USAGE
 }
@@ -75,6 +76,7 @@ yes=0
 auto_reboot=0
 boot_cmdline_unsafe=0
 use_dev_packages=${OMARCHY_UPGRADE_DEV:-0}
+skip_recovery_check=0
 
 while (($#)); do
   case "$1" in
@@ -88,6 +90,10 @@ while (($#)); do
       ;;
     --dev)
       use_dev_packages=1
+      shift
+      ;;
+    --no-recovery-check)
+      skip_recovery_check=1
       shift
       ;;
     --channel)
@@ -639,6 +645,35 @@ configure_snapper_policy() {
 
   log "Configuring Omarchy snapshot retention"
   as_root env OMARCHY_PATH=/usr/share/omarchy bash -euo pipefail "$snapper_config_script"
+
+  # On non-Btrfs roots the configured recovery mechanism is Timeshift (rsync),
+  # not Snapper. Omarchy would rather hold a one-way upgrade than run without
+  # any pre-update recovery snapshot, so offer to install Timeshift when it is
+  # missing and abort if the user declines.
+  local root_fstype
+  root_fstype="$(as_root findmnt -no FSTYPE / 2>/dev/null || true)"
+  if [[ $root_fstype == "btrfs" || $root_fstype == "" ]]; then
+    return 0
+  fi
+
+  if as_root command -v timeshift >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if (( skip_recovery_check )); then
+    warn "Skipping the non-Btrfs recovery snapshot requirement because --no-recovery-check was passed; no pre-update recovery snapshot will be available."
+    return 0
+  fi
+
+  warn "This system's root filesystem ($root_fstype) cannot use Btrfs snapshots, so Omarchy relies on Timeshift for pre-update recovery."
+  if (( yes )) || gum confirm </dev/tty "Install Timeshift so the upgrade can create a recovery snapshot before it starts?"; then
+    log "Installing Timeshift"
+    if ! as_root pacman -S --noconfirm timeshift; then
+      fail "Timeshift could not be installed. Install it manually and re-run the upgrade, or re-run with --no-recovery-check to proceed without a recovery snapshot."
+    fi
+  else
+    fail "Timeshift is required to capture a pre-update recovery snapshot on a non-Btrfs root. Install it and re-run the upgrade, or re-run with --no-recovery-check to proceed without one."
+  fi
 }
 
 configure_lock_authentication() {
