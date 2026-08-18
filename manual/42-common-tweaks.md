@@ -50,4 +50,4 @@ hl.config({
 })
 ```
 
-On Mac-style keyboards, where a command key takes the place of Right Alt next to the space bar, use `compose:rwin` instead.
+On many Mac-style keyboards, the physical key in that position is the right Command key, which Linux often maps as the right Super/Windows key. In that case, use `compose:rwin` instead. If your keyboard is mapped differently, pick the compose option that matches the physical key you want to use.
