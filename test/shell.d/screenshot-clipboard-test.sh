@@ -63,7 +63,7 @@ run_screenshot() {
 slurp_path=$(run_screenshot slurp)
 [[ -f $slurp_path ]] || fail "screenshot slurp saves its image"
 [[ $(<"$TMPDIR/published-path") == "$slurp_path" ]] || fail "screenshot slurp publishes its saved file"
-grep -Fq "omarchy-clipboard-publish-image image/png $slurp_path" "$TMPDIR/publish" || fail "screenshot slurp uses the file-backed publisher"
+grep -Fq "publish-image.py image/png $slurp_path" "$TMPDIR/publish" || fail "screenshot slurp uses the file-backed publisher"
 pass "screenshot slurp publishes its saved image with file-backed representations"
 
 rm -f "$TMPDIR/publish" "$TMPDIR/published-path"
@@ -71,7 +71,7 @@ run_screenshot copy
 copy_path=$(<"$TMPDIR/published-path")
 [[ $copy_path == "$TMPDIR/state/omarchy/clipboard-images/"*.png ]] || fail "screenshot copy stores its backing file in clipboard state"
 [[ -f $copy_path && $(<"$copy_path") == $'\x89PNG\r\n\x1a\nscreenshot-data' ]] || fail "screenshot copy preserves captured image bytes"
-grep -Fq "omarchy-clipboard-publish-image image/png $copy_path" "$TMPDIR/publish" || fail "screenshot copy uses the file-backed publisher"
+grep -Fq "publish-image.py image/png $copy_path" "$TMPDIR/publish" || fail "screenshot copy uses the file-backed publisher"
 pass "screenshot copy publishes a state-backed image"
 
 rm -f "$TMPDIR/publish" "$TMPDIR/published-path"

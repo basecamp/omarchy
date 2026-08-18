@@ -18,7 +18,7 @@ fi
 
 emit_image() {
   local mime="$1"
-  local ext tmp hash file
+  local ext tmp hash file file_backed=false
 
   ext=${mime#image/}
   [[ $ext == jpeg ]] && ext=jpg
@@ -38,8 +38,9 @@ emit_image() {
     mv "$tmp" "$file"
   fi
 
-  jq -cn --arg mime "$mime" --arg path "$file" --arg captured_at "$(date +'%A %H:%M')" \
-    '{type:"image", mime:$mime, path:$path, capturedAt:$captured_at}'
+  grep -qx 'application/x-omarchy-file-backed-image' <<<"$types" && file_backed=true
+  jq -cn --arg mime "$mime" --arg path "$file" --arg captured_at "$(date +'%A %H:%M')" --argjson file_backed "$file_backed" \
+    '{type:"image", mime:$mime, path:$path, capturedAt:$captured_at} + if $file_backed then {fileBacked:true} else {} end'
 }
 
 emit_text() {

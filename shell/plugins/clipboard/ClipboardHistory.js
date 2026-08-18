@@ -20,6 +20,7 @@ function normalizeEntry(value) {
     }
     if (value.capturedAt !== undefined && value.capturedAt !== null)
       entry.capturedAt = String(value.capturedAt)
+    if (value.fileBacked === true) entry.fileBacked = true
     return entry
   }
 
@@ -190,7 +191,7 @@ function displayRows(history, query, limit) {
     var isFile = paths.length > 0
     var isImage = entry.type === "image"
     var previewPath = isImage ? String(entry.path || "") : (isFile && paths.length === 1 && isImagePath(paths[0]) ? paths[0] : "")
-    rows.push({
+    var row = {
       entryType: isFile ? "file" : entry.type,
       fullText: isImage ? "" : fullText(entry),
       previewText: previewText(entry),
@@ -198,7 +199,9 @@ function displayRows(history, query, limit) {
       path: isImage ? String(entry.path || "") : (isFile && paths.length === 1 ? paths[0] : ""),
       mime: isImage ? String(entry.mime || "image/png") : "text/plain",
       index: i
-    })
+    }
+    if (isImage && entry.fileBacked === true) row.fileBacked = true
+    rows.push(row)
     if (rows.length >= max) break
   }
 

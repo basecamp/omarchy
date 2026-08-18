@@ -60,21 +60,6 @@ set_no_hw_cursors 0
 FILENAME="screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png"
 FILEPATH="$OUTPUT_DIR/$FILENAME"
 
-publish_image() {
-  local path="$1" copied_path
-
-  setsid -f omarchy-clipboard-publish-image image/png "$path" >/dev/null 2>&1
-  for _ in {1..50}; do
-    if wl-paste --list-types 2>/dev/null | grep -qx 'application/x-omarchy-file-backed-image'; then
-      copied_path=$(wl-paste --type text/plain --no-newline 2>/dev/null || true)
-      [[ $copied_path == "$path" ]] && return 0
-    fi
-    sleep 0.01
-  done
-
-  return 1
-}
-
 capture_to_cache() {
   local tmp hash path
   local image_dir="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/clipboard-images"
@@ -99,7 +84,7 @@ case "$PROCESSING" in
   slurp)
     grim -g "$SELECTION" "$FILEPATH" || exit 1
     echo "$FILEPATH"
-    publish_image "$FILEPATH" || exit 1
+    omarchy-clipboard-publish-image image/png "$FILEPATH" || exit 1
 
     # Best-effort: the screenshot is already saved and on the clipboard, so a
     # notification outage must not report the capture itself as failed.
@@ -109,7 +94,7 @@ case "$PROCESSING" in
     ;;
   copy)
     FILEPATH=$(capture_to_cache) || exit 1
-    publish_image "$FILEPATH" || exit 1
+    omarchy-clipboard-publish-image image/png "$FILEPATH" || exit 1
     ;;
   save)
     grim -g "$SELECTION" "$FILEPATH" || exit 1
