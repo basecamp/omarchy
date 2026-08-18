@@ -20,6 +20,15 @@ BarWidget {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property var pinnedIds: settings.pinned instanceof Array ? settings.pinned : []
   readonly property var hiddenIds: settings.hidden instanceof Array ? settings.hidden : []
+
+  // Measured verdicts, keyed by icon URL. This doubles as the "already done"
+  // flag: a URL present here is never measured again, so the sampler below
+  // touches each distinct icon once no matter how often the tray churns.
+  property var autoRecolorMap: ({})
+  // URLs waiting for the sampler, and the one it currently holds.
+  property var measureQueue: []
+  property string measuringUrl: ""
+  readonly property color barBackground: bar ? bar.background : Color.background
   readonly property var pinnedItems: bucket("pinned")
   readonly property var drawerItems: bucket("drawer")
   readonly property var allItems: bucket("all")
@@ -148,6 +157,75 @@ BarWidget {
     return name.slice(-9) === "-symbolic"
   }
 
+  // Reassign rather than mutate: a binding on autoRecolorMap only re-evaluates
+  // when the property itself changes.
+  function noteAutoRecolor(url, value) {
+    var next = {}
+    for (var key in root.autoRecolorMap) next[key] = root.autoRecolorMap[key]
+    next[url] = value
+    root.autoRecolorMap = next
+  }
+
+  // Called whenever the tray changes. allItems hands back a fresh array on
+  // every evaluation, so this runs constantly — that is fine, because it only
+  // ever appends URLs it has not seen. Crucially it instantiates no QML
+  // object: driving a Repeater from this list instead recreates a Canvas per
+  // icon on every tray update, and those are not released promptly.
+  function enqueueUnmeasured() {
+    var items = root.allItems
+    var queue = root.measureQueue
+    // One pass to build the membership set, so the scan below stays linear in
+    // the number of tray items rather than quadratic against the queue.
+    var known = {}
+    for (var q = 0; q < queue.length; q++) known[queue[q]] = true
+    var pending = []
+    for (var i = 0; i < items.length; i++) {
+      var url = String(items[i].icon || "")
+      if (url === "") continue
+      if (root.autoRecolorMap[url] !== undefined) continue
+      if (url === root.measuringUrl) continue
+      if (known[url]) continue
+      known[url] = true
+      pending.push(url)
+    }
+    if (pending.length > 0) root.measureQueue = queue.concat(pending)
+    startNextMeasurement()
+  }
+
+  function startNextMeasurement() {
+    if (root.measuringUrl !== "") return
+    if (root.measureQueue.length === 0) return
+    var queue = root.measureQueue.slice()
+    var url = queue.shift()
+    root.measureQueue = queue
+    root.measuringUrl = url
+  }
+
+  function finishMeasurement(url, value) {
+    // Ignore anything that is not retiring the measurement currently in flight.
+    // Nothing can interleave here — QML runs onPaint and a Timer on the same
+    // thread — but this keeps a stale completion from ever being attributed to
+    // whichever URL happens to be next.
+    if (url === "" || url !== root.measuringUrl) return
+    root.noteAutoRecolor(url, value)
+    // Drop the decoded image; only one is held at a time.
+    iconProbe.unloadImage(url)
+    measureTimeout.stop()
+    root.measuringUrl = ""
+    startNextMeasurement()
+  }
+
+  // A verdict is relative to the bar, so a theme change invalidates all of them.
+  onBarBackgroundChanged: {
+    root.autoRecolorMap = ({})
+    root.measureQueue = []
+    root.measuringUrl = ""
+    enqueueUnmeasured()
+  }
+
+  onAllItemsChanged: enqueueUnmeasured()
+  Component.onCompleted: enqueueUnmeasured()
+
   function trayTooltip(item) {
     return item.tooltipTitle || item.title || item.id || ""
   }
@@ -208,6 +286,67 @@ BarWidget {
       if (pi !== -1) p.splice(pi, 1)
     }
     persistTrayState(p, h)
+  }
+
+  // Exactly one canvas for the widget's lifetime, working through measureQueue.
+  // Canvas is the only QML element that exposes pixels (Image has no accessor
+  // and grabToImage only offers saveToFile), and sampling through Qt's image
+  // pipeline means an icon delivered as a pixmap over D-Bus is measurable too.
+  //
+  // It stays in the render pass on purpose: a Canvas that is never rendered
+  // never paints, so visible:false silently skips every measurement. opacity 0
+  // still composites.
+  Canvas {
+    id: iconProbe
+    opacity: 0
+    z: -1
+    width: 24
+    height: 24
+    renderStrategy: Canvas.Immediate
+    renderTarget: Canvas.Image
+
+    onImageLoaded: requestPaint()
+    onPaint: {
+      var url = root.measuringUrl
+      if (url === "" || !isImageLoaded(url)) return
+
+      var ctx = getContext("2d")
+      ctx.clearRect(0, 0, width, height)
+      ctx.drawImage(url, 0, 0, width, height)
+
+      // The walk and its thresholds live in TrayModel: a threshold referenced
+      // from here as TrayModel.saturatedPixel reads undefined, because only the
+      // top-level names cross into QML and the camelCase exports are for the
+      // Node tests. Every comparison against it was false, so every icon looked
+      // like a silhouette and full-color icons were being recolored too.
+      var sample = TrayModel.samplePixels(ctx.getImageData(0, 0, width, height).data)
+      if (sample.opaque === 0) {
+        root.finishMeasurement(url, false)
+        return
+      }
+      var background = root.barBackground
+      root.finishMeasurement(url, TrayModel.sampleNeedsRecolor(
+        sample,
+        TrayModel.relativeLuminance(background.r, background.g, background.b)))
+    }
+  }
+
+  // An icon that never loads must not stall the queue behind it.
+  Timer {
+    id: measureTimeout
+    // Armed for one specific URL rather than reading measuringUrl when it fires:
+    // a timeout should only ever retire the measurement it was started for.
+    property string url: ""
+    interval: 2000
+    onTriggered: root.finishMeasurement(measureTimeout.url, false)
+  }
+
+  onMeasuringUrlChanged: {
+    if (root.measuringUrl === "") return
+    measureTimeout.url = root.measuringUrl
+    measureTimeout.restart()
+    iconProbe.loadImage(root.measuringUrl)
+    iconProbe.requestPaint()
   }
 
   visible: pinnedItems.length > 0 || drawerCount > 0
@@ -767,6 +906,7 @@ BarWidget {
     id: trayIconRoot
     required property var icon
     readonly property bool symbolic: root.iconIsSymbolic(icon)
+      || root.autoRecolorMap[String(icon)] === true
 
     Image {
       id: trayIconImage
