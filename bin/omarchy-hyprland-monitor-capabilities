@@ -1,0 +1,110 @@
+#!/bin/bash
+
+# omarchy:summary=Report per-display HDR capability from EDID
+# omarchy:group=hyprland
+# omarchy:hidden=true
+# omarchy:args=[OUTPUT]
+
+# Hyprland reports what a display is currently doing, not what it can do:
+# `hyprctl monitors` has colorManagementPreset and sdrMaxLuminance, but nothing
+# that says whether the panel understands HDR at all. Without that, a Display
+# panel can only offer an HDR switch to every display and let the ones that
+# cannot do it fail confusingly.
+#
+# The EDID does carry it. A display is treated as HDR-capable when it publishes
+# an HDR Static Metadata Data Block advertising the PQ transfer function
+# (SMPTE ST2084); that block also carries the mastering luminances Hyprland
+# wants for max_luminance / max_avg_luminance / min_luminance, so the same read
+# both gates the control and supplies sensible values for it.
+#
+# Prints one JSON object per line, or a single object when given an output.
+
+set -euo pipefail
+
+connector_edid() {
+  local output="$1"
+  local path
+
+  # sysfs reports these as zero-length regardless of content, so an `-s` test
+  # would reject every real EDID; read it to find out whether it has one.
+  for path in /sys/class/drm/card*/card*-"$output"; do
+    [[ -r $path/edid ]] || continue
+    (($(wc -c <"$path/edid") > 0)) || continue
+    printf '%s\n' "$path/edid"
+    return 0
+  done
+
+  return 1
+}
+
+capabilities_for() {
+  local output="$1"
+  local edid decoded block
+
+  if ! edid=$(connector_edid "$output"); then
+    jq -nc --arg name "$output" '{name: $name, hdr: false, reason: "no-edid"}'
+    return 0
+  fi
+
+  # A missing decoder would otherwise read as "this display has no PQ block",
+  # which is indistinguishable from a genuinely SDR panel: the HDR switch would
+  # simply never appear and nothing would say why.
+  if omarchy-cmd-missing edid-decode; then
+    jq -nc --arg name "$output" '{name: $name, hdr: false, reason: "no-decoder"}'
+    return 0
+  fi
+
+  decoded=$(edid-decode "$edid" 2>/dev/null) || decoded=""
+  block=$(printf '%s\n' "$decoded" | sed -n '/HDR Static Metadata Data Block:/,/^  [A-Za-z]/p')
+
+  if [[ -z $block ]] || ! grep -q "SMPTE ST2084" <<<"$block"; then
+    jq -nc --arg name "$output" '{name: $name, hdr: false, reason: "no-pq-eotf"}'
+    return 0
+  fi
+
+  # edid-decode prints "Desired content max luminance: 138 (993.486 cd/m^2)";
+  # the parenthesised value is the one Hyprland's luminance fields expect.
+  local peak average floor
+  peak=$(sed -n 's/.*Desired content max luminance:.*(\([0-9.]*\) cd\/m\^2).*/\1/p' <<<"$block" | head -1)
+  average=$(sed -n 's/.*Desired content max frame-average luminance:.*(\([0-9.]*\) cd\/m\^2).*/\1/p' <<<"$block" | head -1)
+  floor=$(sed -n 's/.*Desired content min luminance:.*(\([0-9.]*\) cd\/m\^2).*/\1/p' <<<"$block" | head -1)
+
+  jq -nc \
+    --arg name "$output" \
+    --arg peak "${peak:-}" \
+    --arg average "${average:-}" \
+    --arg floor "${floor:-}" \
+    '{
+      name: $name,
+      hdr: true,
+      max_luminance: (if $peak == "" then null else ($peak | tonumber | round) end),
+      max_avg_luminance: (if $average == "" then null else ($average | tonumber | round) end),
+      min_luminance: (if $floor == "" then null else ($floor | tonumber) end)
+    }'
+}
+
+case "${1:-}" in
+-h | --help)
+  cat <<'USAGE'
+Usage: omarchy-hyprland-monitor-capabilities [OUTPUT]
+
+Prints what a display advertises about HDR in its EDID, as JSON. With no
+OUTPUT, prints one line per connected display.
+USAGE
+  exit 0
+  ;;
+# A display is never named like a flag, so answering one as if it were a
+# display would report a confident "no HDR" for a typo.
+-*)
+  echo "Error: unknown option: $1" >&2
+  exit 1
+  ;;
+esac
+
+if (($# >= 1)); then
+  capabilities_for "$1"
+else
+  while read -r name; do
+    [[ -n $name ]] && capabilities_for "$name"
+  done < <(hyprctl monitors all -j 2>/dev/null | jq -r '.[].name')
+fi
