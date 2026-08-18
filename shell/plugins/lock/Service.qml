@@ -239,7 +239,6 @@ Item {
         sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
         root.startFingerprint()
-        Qt.callLater(function() { lockView.forcePasswordFocus() })
       }
     }
 
@@ -275,6 +274,7 @@ Item {
         authenticatingPassword: root.authenticatingPassword
         failureMessage: root.failureMessage
         failedAttempts: root.failedAttempts
+        secure: sessionLock.secure
         inputEnabled: root.lockRequested
         loadBackground: root.locked
         passwordText: root.enteredPassword
