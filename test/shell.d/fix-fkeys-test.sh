@@ -5,13 +5,16 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 leaf="$ROOT/install/hardware/fix-fkeys.sh"
+fix_t2="$ROOT/install/hardware/apple/fix-t2.sh"
 all="$ROOT/install/hardware/all.sh"
 migration="$ROOT/migrations/1787019665.sh"
 
 grep -q 'hardware/fix-fkeys.sh' "$all" ||
   fail "F-key hid_apple setup still runs during hardware setup"
-! grep -q 'fnmode=2' "$ROOT/install/hardware/apple/fix-t2.sh" ||
+[[ -f $fix_t2 ]] || fail "T2 setup script is present"
+if grep -q 'fnmode=2' "$fix_t2"; then
   fail "T2 setup does not own hid_apple fnmode"
+fi
 pass "F-key hid_apple setup has a single owner and runs during setup"
 
 test_tmp=$(mktemp -d)
