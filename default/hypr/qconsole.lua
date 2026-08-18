@@ -37,7 +37,7 @@ local function cover(bottom)
 
   hl.workspace_rule({
     workspace = "special:scratchpad",
-    gaps_in = 10,
+    gaps_in = 0,
     gaps_out = { top = 0, right = 0, bottom = bottom, left = 0 },
 
     -- Nothing to highlight in a console that is only ever focused when it is
