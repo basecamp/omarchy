@@ -245,12 +245,16 @@ def app(key, name, mem, cpu, procs, stall=0.0, peak=None, oom=0):
             "oomKills": oom}
 
 rows = sampler.merge_apps([
-    app("chromium", "chromium", 10_000, 5.0, 90, stall=2.0),
-    app("chromium", "chromium", 2_000, 1.0, 5, stall=7.5),
+    app("chromium", "chromium", 10_000, 5.0, 90, stall=2.0, peak=11_000),
+    app("chromium", "chromium", 2_000, 1.0, 5, stall=7.5, peak=9_000),
     app("podcast-worker", "podcast-worker", 500, 0.1, 1),
 ])
 check("merging folds one app's scopes into a single row", len(rows), 2)
 check("merged memory adds", rows[0]["mem"], 12_000)
+# A high-water mark is not additive: these two scopes never together held
+# 20,000, because each reached its own peak at its own moment.
+check("merged peak takes the worst scope rather than summing",
+      rows[0]["memPeak"], 11_000)
 close("merged cpu adds", rows[0]["cpu"], 6.0)
 check("merged process counts add", rows[0]["procs"], 95)
 check("merged rows record how many scopes they cover", rows[0]["scopes"], 2)

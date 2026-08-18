@@ -45,6 +45,16 @@ Canvas {
   onMaxValueChanged: requestPaint()
   onWidthChanged: requestPaint()
   onHeightChanged: requestPaint()
+  // Everything else the paint reads. A rendering input without one of these
+  // leaves the last frame on screen after the value behind it has changed.
+  onMinValueChanged: requestPaint()
+  onThresholdValueChanged: requestPaint()
+  onThresholdColorChanged: requestPaint()
+  onCapacityChanged: requestPaint()
+  onFillOpacityChanged: requestPaint()
+  onLineWidthChanged: requestPaint()
+  onBarGapChanged: requestPaint()
+  onShowBaselineChanged: requestPaint()
 
   onPaint: {
     var ctx = getContext("2d")
@@ -64,12 +74,15 @@ Canvas {
     }
 
     if (bars) {
-      var barWidth = Math.max(1, step - barGap)
+      // A bar occupies a slot; a line plot marks the points between them. Using
+      // the line's spacing for bars centres the first and last on the canvas
+      // edges, so each loses half its width off the side.
+      var barStep = width / slots
+      var barWidth = Math.max(1, barStep - barGap)
       ctx.fillStyle = stroke
       for (var b = 0; b < pointCount; b++) {
         var top = yFor(values[b])
-        var x = (offset + b) * step - barWidth / 2
-        ctx.fillRect(x, top, barWidth, Math.max(1, height - top))
+        ctx.fillRect((offset + b) * barStep, top, barWidth, Math.max(1, height - top))
       }
       return
     }

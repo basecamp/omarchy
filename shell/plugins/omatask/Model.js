@@ -174,7 +174,12 @@ function sortApps(apps, sortId, descending) {
     var left = sort.key(a), right = sort.key(b)
     if (left < right) return -direction
     if (left > right) return direction
-    return String(a.unit) < String(b.unit) ? -1 : 1
+    // The tie-break has to be a total order, equality included: a comparator
+    // that never returns 0 lets two identical rows swap places between renders.
+    var leftUnit = String(a.unit), rightUnit = String(b.unit)
+    if (leftUnit < rightUnit) return -1
+    if (leftUnit > rightUnit) return 1
+    return 0
   })
   return rows
 }

@@ -1113,7 +1113,9 @@ def merge_apps(apps):
             order.append(key)
             continue
         existing["mem"] += app["mem"]
-        existing["memPeak"] += app["memPeak"]
+        # A high-water mark is not additive: two scopes that peaked at
+        # different moments never held the sum of their peaks at once.
+        existing["memPeak"] = max(existing["memPeak"], app["memPeak"])
         existing["cpu"] = round(existing["cpu"] + app["cpu"], 1)
         existing["procs"] += app["procs"]
         existing["oomKills"] += app["oomKills"]
@@ -2029,10 +2031,9 @@ class Sampler:
             if devices is not None:
                 out["gpu"] = {"devices": devices}
         except Exception as error:
-            if True:
-                # A GPU that falls off the bus mid-session (driver reload, eGPU
-                # unplug) should cost the panel its GPU card, not its samples.
-                out["gpu"] = {"devices": [], "error": str(error)}
+            # A GPU that falls off the bus mid-session (driver reload, eGPU
+            # unplug) should cost the panel its GPU card, not its samples.
+            out["gpu"] = {"devices": [], "error": str(error)}
 
         if self.want_procs:
             out.update(self.process_table(cpu_jiffies, elapsed, len(cores)))
@@ -2362,15 +2363,21 @@ def main():
     want_procs = False
     limit = 60
 
+    # A malformed invocation should not take the sampler down: the stdin
+    # handlers already ignore values they cannot parse, and argv gets the same
+    # treatment, including a trailing flag with no value at all.
     args = sys.argv[1:]
     for i, arg in enumerate(args):
         value = args[i + 1] if i + 1 < len(args) else ""
-        if arg == "--interval":
-            interval = min(60.0, max(0.25, float(value)))
-        elif arg == "--limit":
-            limit = min(2000, max(1, int(value)))
-        elif arg == "--procs":
-            want_procs = value == "on"
+        try:
+            if arg == "--interval":
+                interval = min(60.0, max(0.25, float(value)))
+            elif arg == "--limit":
+                limit = min(2000, max(1, int(value)))
+            elif arg == "--procs":
+                want_procs = value == "on"
+        except ValueError:
+            pass
 
     sampler = Sampler(interval, want_procs, limit)
     stdin = StdinLines(sys.stdin.fileno())
