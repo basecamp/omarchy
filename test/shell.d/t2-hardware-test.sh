@@ -22,6 +22,21 @@ grep -Fq 'KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt pm_async=off mem_sl
   fail "the ISO no longer caches tiny-dfr"
 pass "fresh T2 setup uses t2bce-compatible suspend, fan, and Touch Bar defaults"
 
+# Overlay installs can run this leaf without omarchy-other.packages, so T2
+# audio support has to install the SPA plugin here (#7347).
+pkg_add_block=$(awk '
+  $0 ~ /omarchy-pkg-add/ { grab=1 }
+  grab {
+    print
+    if ($0 !~ /\\$/) exit
+  }
+' "$fix_t2")
+for pkg in pipewire-audio pipewire-alsa pipewire-pulse; do
+  grep -Fq "$pkg" <<<"$pkg_add_block" ||
+    fail "T2 setup omarchy-pkg-adds $pkg so WirePlumber can load sound cards"
+done
+pass "T2 setup installs the PipeWire ALSA SPA plugin"
+
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 
