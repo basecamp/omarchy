@@ -68,15 +68,38 @@ if [[ -r $cmdline_file ]]; then
   cmdline=${cmdline%%$'\n'}
 fi
 
+has_linux_t2_entry() {
+  local conf=$1
+
+  [[ -f $conf ]] || return 1
+
+  awk '
+    $0 == "/Omarchy" { expect_kernel = 1; next }
+    expect_kernel {
+      expect_kernel = 0
+      if ($0 == "//linux-t2") {
+        in_kernel = 1
+        next
+      }
+    }
+    in_kernel && /^[[:space:]]*protocol:[[:space:]]*linux[[:space:]]*$/ {
+      found = 1
+      exit
+    }
+    in_kernel && /^\// { in_kernel = 0 }
+    END { exit !found }
+  ' "$conf"
+}
+
 write_linux_t2_entry() {
   local conf=$1
 
-  if [[ -f $conf ]] && grep -qx '/Omarchy' "$conf" && grep -qx '//linux-t2' "$conf"; then
+  if has_linux_t2_entry "$conf"; then
     return 0
   fi
 
   if [[ ! -f $conf ]]; then
-    local template="$OMARCHY_PATH/default/limine/limine.conf"
+    local template="${OMARCHY_PATH:-/usr/share/omarchy}/default/limine/limine.conf"
     if [[ -f $template ]]; then
       sudo install -Dm644 "$template" "$conf"
     else

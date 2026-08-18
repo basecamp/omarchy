@@ -14,6 +14,8 @@ grep -Fq 'lspci -nn | grep "106b:180[12]" >/dev/null' "$migration" ||
   fail "T2 ESP migration uses the same PCI check as fix-t2.sh"
 ! grep -E 'lspci[^[:space:]]*[[:space:]].*grep -q' "$migration" >/dev/null ||
   fail "T2 ESP migration does not grep -q a chatty lspci"
+grep -Fq '${OMARCHY_PATH:-/usr/share/omarchy}' "$migration" ||
+  fail "T2 ESP migration defaults OMARCHY_PATH the same way as other migrations"
 pass "T2 ESP migration is a T2-gated quattro migration"
 
 test_tmp=$(mktemp -d)
@@ -67,33 +69,60 @@ printf 'limine-reset-enroll\n' >"$reset_enroll"
 printf 'root=/dev/mapper/root rw rootflags=subvol=@ intel_iommu=on iommu=pt\n' >"$cmdline_file"
 
 run_migration() {
-  PATH="$stub_bin:$PATH" \
-    TEST_LOG="$calls" \
-    OMARCHY_PATH="$ROOT" \
-    OMARCHY_T2_BOOT="$boot" \
-    OMARCHY_T2_ESP="$esp" \
-    OMARCHY_T2_BOOT_FSTYPE="$boot_fstype" \
-    OMARCHY_T2_ESP_FSTYPE="$esp_fstype" \
-    OMARCHY_T2_LIMINE_DEFAULT="$limine_default" \
-    OMARCHY_T2_RESET_ENROLL="$reset_enroll" \
-    OMARCHY_T2_RUNNING_CMDLINE="$cmdline_file" \
-    bash -euo pipefail "$migration" >/dev/null
+  local -a env=(
+    PATH="$stub_bin:$PATH"
+    TEST_LOG="$calls"
+    OMARCHY_T2_BOOT="$boot"
+    OMARCHY_T2_ESP="$esp"
+    OMARCHY_T2_BOOT_FSTYPE="$boot_fstype"
+    OMARCHY_T2_ESP_FSTYPE="$esp_fstype"
+    OMARCHY_T2_LIMINE_DEFAULT="$limine_default"
+    OMARCHY_T2_RESET_ENROLL="$reset_enroll"
+    OMARCHY_T2_RUNNING_CMDLINE="$cmdline_file"
+  )
+
+  if [[ ${SET_OMARCHY_PATH:-1} == 1 ]]; then
+    env+=(OMARCHY_PATH="$ROOT")
+    env "${env[@]}" bash -euo pipefail "$migration" >/dev/null
+  else
+    env -u OMARCHY_PATH "${env[@]}" bash -euo pipefail "$migration" >/dev/null
+  fi
+}
+
+has_contiguous_linux_t2_entry() {
+  local conf=$1
+
+  [[ -f $conf ]] || return 1
+
+  awk '
+    $0 == "/Omarchy" { expect_kernel = 1; next }
+    expect_kernel {
+      expect_kernel = 0
+      if ($0 == "//linux-t2") {
+        in_kernel = 1
+        next
+      }
+    }
+    in_kernel && /^[[:space:]]*protocol:[[:space:]]*linux[[:space:]]*$/ {
+      found = 1
+      exit
+    }
+    in_kernel && /^\// { in_kernel = 0 }
+    END { exit !found }
+  ' "$conf"
 }
 
 assert_linux_t2_entry() {
   local conf=$1
   local label=$2
 
-  grep -qx '/Omarchy' "$conf" || fail "$label writes /Omarchy"
-  grep -qx '//linux-t2' "$conf" || fail "$label writes //linux-t2"
-  grep -Fq 'protocol: linux' "$conf" || fail "$label writes a protocol: linux stanza"
+  has_contiguous_linux_t2_entry "$conf" ||
+    fail "$label writes contiguous /Omarchy, //linux-t2, protocol: linux"
   grep -Fq 'path: boot():/vmlinuz-linux-t2' "$conf" || fail "$label points at vmlinuz-linux-t2 on the ESP"
   grep -Fq 'module_path: boot():/initramfs-linux-t2.img' "$conf" ||
     fail "$label points at initramfs-linux-t2.img on the ESP"
   grep -Fq 'cmdline: root=/dev/mapper/root rw rootflags=subvol=@ intel_iommu=on iommu=pt' "$conf" ||
     fail "$label uses the running kernel command line"
-  grep -Fq 'interface_branding: Omarchy Bootloader' "$conf" ||
-    fail "$label keeps the Omarchy branding template"
 }
 
 boot_fstype=btrfs
@@ -107,6 +136,8 @@ grep -Eq '^ESP_PATH=["'\'']?/boot/efi["'\'']?$' "$limine_default" ||
 assert_linux_t2_entry "$esp/limine.conf" "ESP limine.conf"
 assert_linux_t2_entry "$esp/EFI/BOOT/limine.conf" "EFI fallback limine.conf"
 assert_linux_t2_entry "$esp/EFI/limine/limine.conf" "EFI/limine limine.conf"
+grep -Fq 'interface_branding: Omarchy Bootloader' "$esp/limine.conf" ||
+  fail "ESP limine.conf keeps the Omarchy branding template"
 cmp -s "$boot/vmlinuz-linux-t2" "$esp/vmlinuz-linux-t2" ||
   fail "overlay T2 migration copies vmlinuz-linux-t2 onto the ESP"
 cmp -s "$boot/initramfs-linux-t2.img" "$esp/initramfs-linux-t2.img" ||
@@ -123,7 +154,60 @@ T2_HARDWARE=1 run_migration
   fail "a second run does not duplicate /Omarchy"
 (( $(grep -c '^//linux-t2$' "$esp/limine.conf") == 1 )) ||
   fail "a second run does not duplicate //linux-t2"
+(( $(grep -c 'path: boot():/vmlinuz-linux-t2' "$esp/limine.conf") == 1 )) ||
+  fail "a second run does not duplicate the linux-t2 path"
 pass "T2 overlay ESP migration is idempotent"
+
+# The old grep -qx pair treated these leftover strings as a finished entry.
+write_scattered_limine_conf() {
+  {
+    cat "$ROOT/default/limine/limine.conf"
+    cat <<'EOF'
+
+/Other
+//linux-t2
+    protocol: efi
+    path: boot():/EFI/BOOT/BOOTX64.EFI
+
+/Omarchy
+    protocol: efi
+    path: boot():/EFI/Linux/omarchy_linux.efi
+EOF
+  } >"$1"
+}
+
+write_scattered_limine_conf "$esp/limine.conf"
+write_scattered_limine_conf "$esp/EFI/BOOT/limine.conf"
+write_scattered_limine_conf "$esp/EFI/limine/limine.conf"
+has_contiguous_linux_t2_entry "$esp/limine.conf" &&
+  fail "the scattered-stanza fixture must not already look like a linux-t2 entry"
+: >"$calls"
+
+T2_HARDWARE=1 run_migration
+
+assert_linux_t2_entry "$esp/limine.conf" "scattered ESP limine.conf"
+assert_linux_t2_entry "$esp/EFI/BOOT/limine.conf" "scattered EFI fallback limine.conf"
+assert_linux_t2_entry "$esp/EFI/limine/limine.conf" "scattered EFI/limine limine.conf"
+(( $(grep -c 'path: boot():/vmlinuz-linux-t2' "$esp/limine.conf") == 1 )) ||
+  fail "scattered leftover strings still get exactly one linux-t2 path"
+pass "split /Omarchy and //linux-t2 strings still get the real entry"
+
+: >"$calls"
+T2_HARDWARE=1 run_migration
+
+[[ ! -s $calls ]] || fail "a repaired scattered config is left unchanged" "$(cat "$calls")"
+(( $(grep -c 'path: boot():/vmlinuz-linux-t2' "$esp/limine.conf") == 1 )) ||
+  fail "a second run does not duplicate the linux-t2 path on a scattered config"
+(( $(grep -c '^/Omarchy$' "$esp/limine.conf") == 2 )) ||
+  fail "the leftover /Omarchy stanza is kept and not rewritten"
+pass "scattered-stanza repair is idempotent"
+
+rm -f "$esp/EFI/limine/limine.conf"
+: >"$calls"
+SET_OMARCHY_PATH=0 T2_HARDWARE=1 run_migration
+
+assert_linux_t2_entry "$esp/EFI/limine/limine.conf" "unset OMARCHY_PATH ESP limine.conf"
+pass "unset OMARCHY_PATH does not abort the template copy"
 
 cp "$ROOT/default/limine/default.conf" "$limine_default"
 cp "$ROOT/default/limine/limine.conf" "$boot/limine.conf"
