@@ -18,7 +18,7 @@ case "${1:-}" in
     ;;
 esac
 
-battery=$(upower -e 2>/dev/null | grep BAT | head -n 1)
+battery=$(upower -e 2>/dev/null | grep -i BAT | head -n 1)
 [[ -z $battery ]] && exit 0
 
 battery_info=$(upower -i "$battery")
