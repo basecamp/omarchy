@@ -117,7 +117,9 @@ ShellRoot {
   function pluginSupportStatus(pluginId, capability, minimumVersion) {
     var version = shell.pluginRegistry.capabilityVersion(pluginId, capability)
     if (version < 0) return "checking"
-    return version >= Math.max(1, Number(minimumVersion) || 1) ? "supported" : "unsupported"
+    var minimum = Number(minimumVersion)
+    if (!Number.isInteger(minimum) || minimum < 1) minimum = 1
+    return version >= minimum ? "supported" : "unsupported"
   }
 
   function publishAppSelectedAfterSearch(sourceId, event) {

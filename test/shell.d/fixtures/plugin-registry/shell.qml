@@ -116,6 +116,8 @@ ShellRoot {
     scan += block("thirdparty", "/third/missing", { schemaVersion: 1, id: "third.missing", name: "missing", version: "1.0.0", kinds: ["panel"] })
     scan += block("thirdparty", "/third/bad-section", manifest("third.bad-section", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "bottom" }))
     scan += block("thirdparty", "/third/bad-capability", manifest("third.bad-capability", ["panel"], { panel: "Panel.qml" }, null, { broken: 0 }))
+    scan += block("thirdparty", "/third/padded-capability", manifest("third.padded-capability", ["panel"], { panel: "Panel.qml" }, null, { " padded ": 1 }))
+    scan += block("thirdparty", "/third/reserved-capability", manifest("third.reserved-capability", ["panel"], { panel: "Panel.qml" }, null, { constructor: 1 }))
     scan += block("thirdparty", "/third/schema", { schemaVersion: 2, id: "third.schema", name: "schema", version: "1.0.0", kinds: ["panel"], entryPoints: { panel: "Panel.qml" } })
     scan += block("thirdparty", "/third/bad-json", "{")
 
@@ -149,6 +151,8 @@ ShellRoot {
     root.assertTrue(!has("third.missing"), "incomplete manifests are rejected")
     root.assertTrue(!has("third.bad-section"), "invalid default bar widget sections are rejected")
     root.assertTrue(!has("third.bad-capability"), "invalid capability versions are rejected")
+    root.assertTrue(!has("third.padded-capability"), "padded capability names are rejected")
+    root.assertTrue(!has("third.reserved-capability"), "reserved capability names are rejected")
     root.assertTrue(!has("third.schema"), "unsupported schema versions are rejected")
 
     root.assertTrue(registry.isEnabled("omarchy.first-widget"), "first-party plugins are implicitly enabled")
@@ -157,6 +161,7 @@ ShellRoot {
     root.assertTrue(!registry.isEnabled("third.panel"), "third-party plugins start disabled")
     root.assertEqual(registry.resolveEnabledId("omarchy.first-widget"), "omarchy.first-widget", "inactive clones do not replace their source id")
     root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "app-selected-after-search"), 1, "registry reads versioned plugin capabilities")
+    root.assertEqual(registry.capabilityVersion("omarchy.hybrid", " app-selected-after-search "), 1, "capability lookup trims caller input")
     root.assertEqual(registry.capabilityVersion("omarchy.hybrid", "missing"), 0, "registry reports unsupported capabilities")
 
     registry.setEnabled("third.bar", true)
