@@ -15,13 +15,8 @@ Panel {
   // "less prominent" on a dark ground; on a light theme it makes secondary text
   // darker — and therefore louder — than the primary text it sits behind. This
   // moves toward the background either way.
-  readonly property bool groundIsDark: {
-    var g = (root.bar ? root.bar.background : Color.popups.background)
-    return (g.r * 0.2126 + g.g * 0.7152 + g.b * 0.0722) < 0.5
-  }
-  function dim(c, amount) {
-    return groundIsDark ? Qt.darker(c, amount) : Qt.lighter(c, amount)
-  }
+  readonly property bool groundIsDark: Model.groundIsDark((root.bar ? root.bar.background : Color.popups.background))
+  function dim(c, amount) { return Model.dim((root.bar ? root.bar.background : Color.popups.background), c, amount) }
 
   moduleName: "omarchy.omatask"
   // Written once and bound everywhere else. Three copies of this string is how

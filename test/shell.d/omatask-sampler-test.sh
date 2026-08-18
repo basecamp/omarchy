@@ -6,7 +6,7 @@ require_command python3
 
 plugin_dir="$ROOT/shell/plugins/omatask"
 
-[[ -f "$plugin_dir/test_sampler.py" ]] || fail "omatask sampler suite is present"
+[[ -f "$plugin_dir/test_sampler.py" ]] || fail "omatask sampler suite exists: $plugin_dir/test_sampler.py"
 
 # The suite parses this machine's own /proc, /sys and cgroup files rather than
 # fixtures, so it also checks that the sampler still agrees with the kernel it

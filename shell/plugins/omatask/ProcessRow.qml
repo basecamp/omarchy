@@ -11,13 +11,8 @@ Rectangle {
   // "less prominent" on a dark ground; on a light theme it makes secondary text
   // darker — and therefore louder — than the primary text it sits behind. This
   // moves toward the background either way.
-  readonly property bool groundIsDark: {
-    var g = root.ground
-    return (g.r * 0.2126 + g.g * 0.7152 + g.b * 0.0722) < 0.5
-  }
-  function dim(c, amount) {
-    return groundIsDark ? Qt.darker(c, amount) : Qt.lighter(c, amount)
-  }
+  readonly property bool groundIsDark: Model.groundIsDark(root.ground)
+  function dim(c, amount) { return Model.dim(root.ground, c, amount) }
 
   // The surface this sits on, so dim() knows which way to move.
   property color ground: Color.popups.background

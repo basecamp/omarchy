@@ -2223,6 +2223,11 @@ class Sampler:
             if want == self.want_procs:
                 return False
             self.want_procs = want
+            if not want:
+                # Closing a view needs no baseline; re-priming for it would
+                # reset every other one and cost an off-cadence sample.
+                self.prev_procs = {}
+                return False
             return True
         if command == "interval":
             try:
@@ -2288,6 +2293,9 @@ class Sampler:
             if want == self.disk_detail:
                 return False
             self.disk_detail = want
+            if not want:
+                self.prev_proc_io = {}
+                return False
             return True
         if command == "netdetail":
             # Error counters and the socket table, for the expanded network card.
@@ -2321,6 +2329,9 @@ class Sampler:
             if pid == self.thread_pid:
                 return False
             self.thread_pid = max(0, pid)
+            if not self.thread_pid:
+                self.prev_threads = {}
+                return False
             return True
         return False
 

@@ -4,6 +4,18 @@
 // QML so the panel and the overlay format identically and neither has to
 // re-derive the rules.
 
+// Dimming has to know what it is dimming *against*. "Less prominent" means
+// darker on a dark ground and lighter on a light one; picking the wrong
+// direction makes secondary text louder than the text it sits behind. Six
+// components needed this, and six copies were six chances to diverge.
+function groundIsDark(ground) {
+  return (ground.r * 0.2126 + ground.g * 0.7152 + ground.b * 0.0722) < 0.5
+}
+
+function dim(ground, color, amount) {
+  return groundIsDark(ground) ? Qt.darker(color, amount) : Qt.lighter(color, amount)
+}
+
 var KIB = 1024
 
 function formatBytes(bytes, digits) {
