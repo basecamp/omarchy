@@ -96,10 +96,12 @@ ShellRoot {
     }
     if (entry.id === "omarchy.agents") {
       root.assertTrue(typeof item.iconCandidatesForProvider === "function", entry.id + " resolves provider marks by convention")
-      var darkIcons = item.iconCandidatesForProvider({ providerId: "codex" }, Qt.color("#1a1b26")).join(" ")
-      var lightIcons = item.iconCandidatesForProvider({ providerId: "codex" }, Qt.color("#ffffff")).join(" ")
+      var darkIcons = item.iconCandidatesForProvider({ providerId: "openai" }, Qt.color("#1a1b26")).join(" ")
+      var lightIcons = item.iconCandidatesForProvider({ providerId: "openai" }, Qt.color("#ffffff")).join(" ")
+      var anthropicIcons = item.iconCandidatesForProvider({ providerId: "anthropic" }, Qt.color("#1a1b26")).join(" ")
       root.assertTrue(darkIcons.indexOf("codex.svg") >= 0 && darkIcons.indexOf("codex-light.svg") < 0, entry.id + " uses the dark-theme Codex icon on dark surfaces")
       root.assertTrue(lightIcons.indexOf("codex-light.svg") >= 0, entry.id + " prefers the light-theme Codex icon on light surfaces")
+      root.assertTrue(anthropicIcons.indexOf("claude.svg") >= 0, entry.id + " maps Anthropic records to the Claude icon")
     }
 
     safeCall(item, "refresh", entry)

@@ -97,10 +97,14 @@ Item {
 
   function scheduleLimitsRetry() {
     var advising = []
+    var seen = {}
     for (var i = 0; i < agents.length; i++) {
       var record = agents[i] ? agents[i].record : null
-      if (record && record.retryAdvised === true && providerEnabled(String(record.id || "")))
-        advising.push(String(record.id))
+      var providerId = providerIdForRecord(record)
+      if (record && record.retryAdvised === true && providerEnabled(providerId) && !seen[providerId]) {
+        advising.push(providerId)
+        seen[providerId] = true
+      }
     }
     retryAgentIds = advising
     if (advising.length > 0) limitsRetry.restart()
@@ -148,8 +152,12 @@ Item {
     if (kind === "force") command.push("--force")
     if (kind === "limits") command.push("--limits-only")
     var providers = settings && settings.providers ? settings.providers : {}
+    var seen = {}
     for (var id in providers) {
-      if (providers[id] && providers[id].enabled === false) command.push("--except", id)
+      var providerId = canonicalProviderId(id)
+      if (seen[providerId]) continue
+      seen[providerId] = true
+      if (!providerEnabled(providerId)) command.push("--except", providerId)
     }
     if (agentIds) {
       for (var i = 0; i < agentIds.length; i++) command.push(agentIds[i])
@@ -178,6 +186,48 @@ Item {
 
   // ------------------------------------------------------------- providers
 
+  function canonicalProviderId(id) {
+    var value = String(id || "")
+    if (value === "claude") return "anthropic"
+    if (value === "codex") return "openai"
+    return value
+  }
+
+  function legacyProviderId(id) {
+    var value = canonicalProviderId(id)
+    if (value === "anthropic") return "claude"
+    if (value === "openai") return "codex"
+    return value
+  }
+
+  function providerIdForRecord(record) {
+    if (!record) return ""
+    var providerId = String(record.providerId || "")
+    if (providerId === "") providerId = String(record.id || "").split("@")[0]
+    return canonicalProviderId(providerId)
+  }
+
+  function accountIdForRecord(record) {
+    if (!record) return ""
+    if (record.accountId !== undefined && record.accountId !== null)
+      return String(record.accountId)
+    var id = String(record.id || "")
+    var separator = id.indexOf("@")
+    return separator >= 0 ? id.substring(separator + 1) : ""
+  }
+
+  // This deliberately derives identity from the two stable fields rather
+  // than trusting the display record id or the mutable account label.
+  function providerAccountKey(providerId, accountId) {
+    var provider = canonicalProviderId(providerId)
+    var account = String(accountId || "")
+    return account === "" ? provider : provider + "@" + account
+  }
+
+  function recordKey(record) {
+    return providerAccountKey(providerIdForRecord(record), accountIdForRecord(record))
+  }
+
   // An agent earns a place in the bar and the panel by being switched on in
   // settings and having actually produced numbers — locally or on a synced
   // device. With nothing to show, the whole module collapses out of the bar
@@ -186,13 +236,13 @@ Item {
     var rev = dataRevision
     var syncRev = syncRevision
     var result = []
-    var localIds = {}
+    var localKeys = {}
     for (var i = 0; i < agents.length; i++) {
       var record = agents[i] ? agents[i].record : null
-      if (!record || !record.id) continue
-      var id = String(record.id)
-      localIds[id] = true
-      if (!providerEnabled(id)) continue
+      if (!record || providerIdForRecord(record) === "") continue
+      var providerId = providerIdForRecord(record)
+      localKeys[recordKey(record)] = true
+      if (!providerEnabled(providerId)) continue
       var display = displayProvider(record)
       if (providerHasData(display)) result.push(display)
     }
@@ -200,18 +250,28 @@ Item {
     // its synced numbers still deserve a tab. Rate limits stay blank — they
     // are per-account and never travel.
     var syncedProviders = syncConfigured() && aggregateData && aggregateData.providers ? aggregateData.providers : {}
-    for (var syncedId in syncedProviders) {
-      if (localIds[syncedId] || !providerEnabled(syncedId)) continue
-      var stats = syncedProviders[syncedId] || {}
-      var syncedDisplay = displayProvider({ id: syncedId, name: stats.providerName || syncedId })
+    for (var syncedKey in syncedProviders) {
+      var stats = syncedProviders[syncedKey] || {}
+      var key = providerAccountKey(stats.providerId, stats.accountId)
+      if (localKeys[key] || !providerEnabled(stats.providerId)) continue
+      var syncedDisplay = displayProvider({
+        providerId: stats.providerId,
+        accountId: stats.accountId,
+        accountLabel: stats.accountLabel,
+        name: stats.providerName || stats.providerId
+      })
       if (providerHasData(syncedDisplay)) result.push(syncedDisplay)
     }
     return result
   }
 
   function providerEnabled(id) {
-    if (!settings || !settings.providers || !settings.providers[id]) return true
-    return settings.providers[id].enabled !== false
+    if (!settings || !settings.providers) return true
+    var providerId = canonicalProviderId(id)
+    if (settings.providers[providerId]) return settings.providers[providerId].enabled !== false
+    var legacyId = legacyProviderId(providerId)
+    if (settings.providers[legacyId]) return settings.providers[legacyId].enabled !== false
+    return true
   }
 
   // All-time keeps a quiet day from hiding an agent; today's counts admit a
@@ -240,16 +300,23 @@ Item {
   }
 
   function displayProvider(record) {
-    var stats = syncedStatsFor(String(record.id))
+    var providerId = providerIdForRecord(record)
+    var accountId = accountIdForRecord(record)
+    var stats = syncedStatsFor(providerId, accountId)
     var synced = !!stats
     var deviceCount = synced ? Number(stats.deviceCount || aggregateData.deviceCount || 0) : 0
 
     return {
-      providerId: String(record.id),
-      providerName: String(record.name || record.id),
+      recordKey: providerAccountKey(providerId, accountId),
+      providerId: providerId,
+      accountId: accountId,
+      accountLabel: String(record.accountLabel || (stats ? stats.accountLabel : "") || accountId),
+      accountActive: record.accountActive === true,
+      providerName: String(record.name || (stats ? stats.providerName : "") || providerId),
       ready: record.ready === true || synced,
       usageStatusText: String(record.usageStatusText || ""),
       authHelpText: String(record.authHelpText || ""),
+      includesSharedSessions: record.includesSharedSessions === true || (synced && stats.includesSharedSessions === true),
 
       // Rate limits and balances stay per-account and are never merged
       // across devices.
@@ -547,19 +614,35 @@ Item {
     for (var key in source) target[key] = combineNumber(additive, target[key], source[key])
   }
 
+  function snapshotIdentity(mapKey, stats) {
+    var providerId = String(stats.providerId || "")
+    var accountId = String(stats.accountId || "")
+    var key = String(mapKey || "")
+    var source = providerId.indexOf("@") >= 0 ? providerId : key
+    var separator = source.indexOf("@")
+    if (accountId === "" && separator >= 0) accountId = source.substring(separator + 1)
+    if (providerId === "" || providerId.indexOf("@") >= 0)
+      providerId = separator >= 0 ? source.substring(0, separator) : source
+    return { providerId: canonicalProviderId(providerId), accountId: accountId }
+  }
+
   function aggregateSnapshots(snapshots) {
     var dates = recentDateStrings()
     var devices = {}
     var providers = {}
 
-    function providerAcc(id) {
-      if (providers[id]) return providers[id]
+    function providerAcc(providerId, accountId) {
+      var key = providerAccountKey(providerId, accountId)
+      if (providers[key]) return providers[key]
       var recentByDay = {}
       for (var d = 0; d < dates.length; d++) recentByDay[dates[d]] = 0
-      providers[id] = {
-        providerId: id,
+      providers[key] = {
+        providerId: canonicalProviderId(providerId),
+        accountId: String(accountId || ""),
+        accountLabel: "",
         providerName: "",
         ready: false,
+        includesSharedSessions: false,
         hasLocalStats: false,
         hasPromptStats: false,
         todayPrompts: 0,
@@ -574,7 +657,7 @@ Item {
         modelUsage: ({}),
         devices: ({})
       }
-      return providers[id]
+      return providers[key]
     }
 
     for (var i = 0; i < snapshots.length; i++) {
@@ -582,12 +665,15 @@ Item {
       var device = safeDeviceId(snapshot.deviceId || "device")
       devices[device] = true
       var snapshotProviders = snapshot.providers || {}
-      for (var providerId in snapshotProviders) {
-        var stats = snapshotProviders[providerId] || {}
-        var acc = providerAcc(String(providerId))
+      for (var providerKey in snapshotProviders) {
+        var stats = snapshotProviders[providerKey] || {}
+        var identity = snapshotIdentity(providerKey, stats)
+        var acc = providerAcc(identity.providerId, identity.accountId)
         acc.devices[device] = true
         if (stats.providerName && acc.providerName === "") acc.providerName = String(stats.providerName)
+        if (stats.accountLabel && acc.accountLabel === "") acc.accountLabel = String(stats.accountLabel)
         acc.ready = acc.ready || stats.ready === true
+        acc.includesSharedSessions = acc.includesSharedSessions || stats.includesSharedSessions === true
         acc.hasLocalStats = acc.hasLocalStats || stats.hasLocalStats !== false
         // Snapshots from before the field existed only came from agents that
         // count prompts, so a missing value reads as true.
@@ -624,15 +710,18 @@ Item {
     }
 
     var outProviders = {}
-    for (var id in providers) {
-      var acc = providers[id]
+    for (var key in providers) {
+      var acc = providers[key]
       var recentDays = []
       for (var di = 0; di < dates.length; di++) recentDays.push({ date: dates[di], messageCount: acc.recentByDay[dates[di]] || 0 })
       var providerDevices = Object.keys(acc.devices).sort()
-      outProviders[id] = {
+      outProviders[key] = {
         providerId: acc.providerId,
+        accountId: acc.accountId,
+        accountLabel: acc.accountLabel,
         providerName: acc.providerName,
         ready: acc.ready || providerDevices.length > 0,
+        includesSharedSessions: acc.includesSharedSessions,
         hasLocalStats: acc.hasLocalStats,
         hasPromptStats: acc.hasPromptStats,
         todayPrompts: acc.todayPrompts,
@@ -663,9 +752,12 @@ Item {
   // of machines on mixed versions still merges cleanly in both directions.
   function providerSnapshot(record) {
     return {
-      providerId: String(record.id),
-      providerName: String(record.name || record.id),
+      providerId: providerIdForRecord(record),
+      accountId: accountIdForRecord(record),
+      accountLabel: String(record.accountLabel || accountIdForRecord(record)),
+      providerName: String(record.name || providerIdForRecord(record)),
       ready: record.ready === true,
+      includesSharedSessions: record.includesSharedSessions === true,
       hasLocalStats: record.hasLocalStats !== false,
       hasPromptStats: record.hasPromptStats !== false,
       scope: String(record.scope || "device"),
@@ -686,9 +778,10 @@ Item {
     var providerMap = {}
     for (var i = 0; i < agents.length; i++) {
       var record = agents[i] ? agents[i].record : null
-      if (!record || !record.id) continue
-      if (!providerEnabled(String(record.id))) continue
-      providerMap[String(record.id)] = providerSnapshot(record)
+      if (!record || providerIdForRecord(record) === "") continue
+      var providerId = providerIdForRecord(record)
+      if (!providerEnabled(providerId)) continue
+      providerMap[recordKey(record)] = providerSnapshot(record)
     }
     return {
       schemaVersion: 1,
@@ -698,10 +791,10 @@ Item {
     }
   }
 
-  function syncedStatsFor(providerId) {
+  function syncedStatsFor(providerId, accountId) {
     var rev = syncRevision
     if (!syncConfigured() || !aggregateData || !aggregateData.providers) return null
-    return aggregateData.providers[providerId] || null
+    return aggregateData.providers[providerAccountKey(providerId, accountId)] || null
   }
 
   // ---------------------------------------------------------------- format

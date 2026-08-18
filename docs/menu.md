@@ -108,12 +108,18 @@ can point a submenu at an existing provider but cannot declare a new one:
   the launcher. App rows are searchable by their desktop Keywords but never
   routable, so an installed app cannot capture a menu route (htop ships
   `Keywords=system;...`, and SUPER+ESCAPE must still open the system menu).
-- `fonts` and `power-profiles` are bash one-liners in the `providers` map in
+- `fonts`, `power-profiles`, and `agent-accounts` are bash one-liners in the `providers` map in
   `Menu.qml`. The contract is one tab-delimited line per row:
   `label\tvalue\tcurrent`. The row whose value equals `current` gets the ✓
   icon, and selection runs the spec's `actionFor(value)`. Row ids are
   `<menuId>.<slugify(value)>`, with a `-` appended on collision so two values
   that slugify alike cannot silently drop a row.
+
+`agent-accounts` turns `omarchy agent account list --json` into those rows.
+Its value carries the provider and immutable account ids, while the visible
+label shows the provider followed by the account label; selection runs
+`omarchy agent account switch`. It is volatile so a login, logout, or switch
+is reflected on the next entry.
 
 A provider marked `volatile` re-runs every time its submenu is entered — a
 font installed since the shell started shows up without a restart — but not

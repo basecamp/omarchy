@@ -2,7 +2,7 @@
 # omarchy:summary=Print the Claude Code usage record as JSON
 # omarchy:args=[--force] [--limits-only]
 # omarchy:hidden=true
-"""Collect Claude Code usage into one display-ready JSON record.
+"""Collect Anthropic usage into one display-ready account record.
 
 Everything the agents panel shows for Claude comes from this one
 command: local transcript stats from ~/.claude/projects, the stats-cache and
@@ -30,11 +30,17 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-AGENT_ID = "claude"
+PROVIDER_ID = "anthropic"
 AGENT_NAME = "Claude Code"
 AUTH_HELP = "Run `claude auth login` to restore authoritative usage."
 USAGE_ENDPOINT = "https://api.anthropic.com/api/oauth/usage"
 PROBE_MIN_INTERVAL_SECONDS = 15
+
+ACCOUNT_ID = os.environ.get("OMARCHY_AGENT_USAGE_ACCOUNT_ID", "")
+ACCOUNT_LABEL = os.environ.get("OMARCHY_AGENT_USAGE_ACCOUNT_LABEL", ACCOUNT_ID)
+ACCOUNT_ACTIVE = os.environ.get("OMARCHY_AGENT_USAGE_ACCOUNT_ACTIVE", "true").lower() == "true"
+RECORD_ID = PROVIDER_ID + (f"@{ACCOUNT_ID}" if ACCOUNT_ID else "")
+_SWITCH_LEDGER: list[tuple[float, str]] | None | bool = False
 
 
 def config_dir() -> Path:
@@ -49,6 +55,81 @@ def cache_root() -> Path:
   root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "omarchy" / "agent-usage"
   root.mkdir(parents=True, exist_ok=True)
   return root
+
+
+def path_digest(*paths: Path) -> str:
+  resolved = "\n".join(str(path.resolve()) for path in paths)
+  return hashlib.sha1(resolved.encode("utf-8")).hexdigest()[:16]
+
+
+def timestamp_seconds(value: Any) -> float | None:
+  if isinstance(value, (int, float)):
+    try:
+      numeric = float(value)
+      return numeric / 1000 if numeric > 10_000_000_000 else numeric
+    except Exception:
+      return None
+
+  raw = str(value or "").strip()
+  if not raw:
+    return None
+  try:
+    parsed = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+      parsed = parsed.astimezone()
+    return parsed.timestamp()
+  except Exception:
+    return None
+
+
+def switch_ledger() -> list[tuple[float, str]] | None:
+  global _SWITCH_LEDGER
+
+  if _SWITCH_LEDGER is not False:
+    return _SWITCH_LEDGER
+
+  path = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state")) / "omarchy" / "agents" / "switches" / f"{PROVIDER_ID}.json"
+  try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list) or not payload:
+      raise ValueError("empty switch ledger")
+    entries: list[tuple[float, str]] = []
+    for entry in payload:
+      if not isinstance(entry, dict) or entry.get("providerId") != PROVIDER_ID:
+        raise ValueError("invalid switch ledger entry")
+      timestamp = timestamp_seconds(entry.get("timestamp"))
+      account_id = entry.get("accountId")
+      if timestamp is None or not isinstance(account_id, str) or not account_id:
+        raise ValueError("invalid switch ledger entry")
+      entries.append((timestamp, account_id))
+    _SWITCH_LEDGER = sorted(entries, key=lambda entry: entry[0])
+  except Exception:
+    _SWITCH_LEDGER = None
+  return _SWITCH_LEDGER
+
+
+def shared_message_belongs_to_account(timestamp: Any) -> bool:
+  # An unmanaged provider has one implicit account, preserving the collector's
+  # pre-account behavior byte-for-byte at the stats level.
+  if not ACCOUNT_ID:
+    return True
+
+  ledger = switch_ledger()
+  if ledger is None:
+    return ACCOUNT_ACTIVE
+
+  message_time = timestamp_seconds(timestamp)
+  if message_time is None:
+    return ACCOUNT_ACTIVE
+
+  # The first known account owns earlier history. Equal timestamps retain
+  # append order, so the last switch written in that second wins.
+  owner = ledger[0][1]
+  for switched_at, account_id in ledger:
+    if switched_at > message_time:
+      break
+    owner = account_id
+  return owner == ACCOUNT_ID
 
 
 def date_string(value: dt.date) -> str:
@@ -337,12 +418,12 @@ def today_prompts_from_history(claude_dir: Path) -> tuple[int, int]:
 # provider, model, and token usage on every assistant message.
 
 
-def scan_pi_usage(max_age_seconds: float) -> dict[str, Any] | None:
+def scan_pi_usage(max_age_seconds: float, claude_dir: Path) -> dict[str, Any] | None:
   roots = [
     Path.home() / ".pi" / "agent" / "sessions",
     Path.home() / ".omp" / "agent" / "sessions",
   ]
-  cache_file = cache_root() / "claude-pi-sessions.json"
+  cache_file = cache_root() / f"claude-pi-sessions-{path_digest(claude_dir)}.json"
   cached = read_fresh_json(cache_file, max_age_seconds)
   if cached is not None:
     return cached.get("stats")
@@ -391,8 +472,11 @@ def scan_pi_usage(max_age_seconds: float) -> dict[str, Any] | None:
                 input_tokens = total
               if total <= 0:
                 continue
+              timestamp = entry.get("timestamp") or message.get("timestamp")
+              if not shared_message_belongs_to_account(timestamp):
+                continue
               model = str(message.get("model") or "claude")
-              day = local_date_from_timestamp(entry.get("timestamp") or message.get("timestamp"))
+              day = local_date_from_timestamp(timestamp)
             except Exception:
               continue
 
@@ -441,7 +525,7 @@ def scan_pi_usage(max_age_seconds: float) -> dict[str, Any] | None:
 # messages and merge the result into whatever the transcript scan found.
 
 
-def scan_opencode_usage(max_age_seconds: float) -> dict[str, Any] | None:
+def scan_opencode_usage(max_age_seconds: float, claude_dir: Path) -> dict[str, Any] | None:
   db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
   if not db.is_file():
     return None
@@ -449,7 +533,7 @@ def scan_opencode_usage(max_age_seconds: float) -> dict[str, Any] | None:
   # Same freshness contract as the transcript scan: --limits-only promises to
   # reuse recent local stats, and a big opencode history walked on every panel
   # open would break that promise.
-  cache_file = cache_root() / f"claude-opencode-{hashlib.sha1(str(db).encode('utf-8')).hexdigest()[:16]}.json"
+  cache_file = cache_root() / f"claude-opencode-{path_digest(claude_dir, db)}.json"
   cached = read_fresh_json(cache_file, max_age_seconds)
   if cached is not None:
     return cached.get("stats")
@@ -473,7 +557,7 @@ def scan_opencode_usage(max_age_seconds: float) -> dict[str, Any] | None:
     return None
   try:
     conn.execute("PRAGMA query_only = ON")
-    for session_id, raw in conn.execute("SELECT session_id, data FROM message"):
+    for session_id, row_created, raw in conn.execute("SELECT session_id, time_created, data FROM message"):
       # One malformed row must not abort the scan, so every shape assumption
       # lives inside the try.
       try:
@@ -495,7 +579,9 @@ def scan_opencode_usage(max_age_seconds: float) -> dict[str, Any] | None:
         if total <= 0:
           continue
 
-        created = number((entry.get("time") or {}).get("created"))
+        created = number((entry.get("time") or {}).get("created")) or number(row_created)
+        if not shared_message_belongs_to_account(created):
+          continue
         day = dt.datetime.fromtimestamp(created / 1000).strftime("%Y-%m-%d") if created > 0 else today
         model = str(entry.get("modelID") or "claude").rstrip("/").split("/")[-1]
       except Exception:
@@ -791,13 +877,13 @@ def usable_cached_limits(cached: dict[str, Any]) -> list[dict[str, Any]]:
   return [entry for entry in entries if isinstance(entry, dict) and limit_window_open(entry, now)]
 
 
-def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[str, Any]:
+def collect_limits(access_token: str, expires_at_ms: int, force: bool, claude_dir: Path) -> dict[str, Any]:
   result = {"limits": [], "usageStatusText": "", "authHelpText": AUTH_HELP}
 
   # A panel that is opened and shut repeatedly must not turn into a request
   # per flick, so recent probe results are reused for a short window — and
   # kept as the answer of record when a later probe fails.
-  probe_cache = cache_root() / "claude-limits.json"
+  probe_cache = cache_root() / f"claude-limits-{path_digest(claude_dir)}.json"
   cached = read_fresh_json(probe_cache, float("inf")) or {}
   fallback = usable_cached_limits(cached)
 
@@ -871,20 +957,24 @@ def main() -> int:
       if today_prompts or today_sessions:
         stats = dict(stats, todayPrompts=today_prompts, todaySessions=today_sessions)
 
-  pi_usage = scan_pi_usage(scan_age)
+  pi_usage = scan_pi_usage(scan_age, claude_dir)
   if pi_usage is not None:
     stats = merge_stats(stats, pi_usage)
 
-  opencode = scan_opencode_usage(scan_age)
+  opencode = scan_opencode_usage(scan_age, claude_dir)
   if opencode is not None:
     stats = merge_stats(stats, opencode)
 
   access_token, expires_at_ms, plan = oauth_login(claude_dir)
-  limits = collect_limits(access_token, expires_at_ms, args.force)
+  limits = collect_limits(access_token, expires_at_ms, args.force, claude_dir)
 
   record = {
     "schemaVersion": 1,
-    "id": AGENT_ID,
+    "id": RECORD_ID,
+    "providerId": PROVIDER_ID,
+    "accountId": ACCOUNT_ID,
+    "accountLabel": ACCOUNT_LABEL,
+    "accountActive": ACCOUNT_ACTIVE,
     "name": AGENT_NAME,
     "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
     "ready": number(stats.get("totalPrompts")) > 0 or len(limits["limits"]) > 0,
@@ -893,6 +983,7 @@ def main() -> int:
     "usageStatusText": limits["usageStatusText"],
     "authHelpText": limits["authHelpText"],
     "limits": limits["limits"],
+    "includesSharedSessions": pi_usage is not None or opencode is not None,
   }
   if limits.get("retryAdvised"):
     record["retryAdvised"] = True

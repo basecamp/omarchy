@@ -1,6 +1,6 @@
 # Agents
 
-One bar icon and one panel for every AI coding subscription on the machine.
+One bar icon and one panel for every AI coding subscription account on the machine.
 The panel is strictly a display: it watches the usage records that
 `omarchy-agent-usage-update` writes to `~/.local/state/omarchy/agents/usage/`
 and draws whatever appears there. `Panel.qml` owns the bar button and the
@@ -9,10 +9,14 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
 
 ## Panel
 
-- **Hero** — the mark, the tool, and the plan it runs on ("Max 20x", "Pro").
-  Auth and endpoint problems replace the plan line and repeat in a card.
-- **Subscription switch** — one chip per enabled agent (`h`/`l` or click).
-  It appears only when more than one agent is enabled.
+- **Hero** — the mark, the provider, the account, and the plan it runs on
+  ("Max 20x", "Pro"). Auth and endpoint problems replace the plan line and
+  repeat in a card. An inactive managed account has an explicit **Switch**
+  control; the active account is marked **Active**.
+- **Account view switch** — one chip per record (`h`/`l` or click). A provider
+  with several accounts labels each chip with both, such as "Claude · work";
+  a sole account keeps the plain provider label. This only changes the record
+  being viewed—it does not change the credentials in use.
 - **Limits** — the percentage of each allowance used, a matching meter, and
   the time until the session or weekly window resets.
 - **Balance** — prepaid agents report a credit ledger instead of limits:
@@ -24,11 +28,15 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
   to the heaviest model,
   the same way the weekly chart scales to its busiest day. Hover for the
   input / output / cache split.
+- **Shared-usage note** — records that include Pi, omp, or OpenCode sessions
+  explain that those tokens appear in the charts but do not move the plan's
+  limit meters. Pi bills subscription use through a third-party harness as
+  extra per-token usage.
 
-A subscription appears only when it is enabled in settings and has actually
-recorded usage — on this machine or on a synced one. With one such agent
-there is no switch row at all; with none, the module leaves the bar entirely
-rather than sitting there with nothing to say. A CLI installed mid-session
+A subscription account appears only when its provider is enabled in settings
+and it has actually recorded usage — on this machine or on a synced one. With
+one such record there is no switch row at all; with none, the module leaves
+the bar entirely rather than sitting there with nothing to say. A CLI installed mid-session
 shows up at the next refresh, so nothing polls the disk waiting for it.
 
 That self-hiding is why the widget ships in the default bar layout: a machine
@@ -38,22 +46,27 @@ its own the first time a scan finds usage. Drop it with
 
 ## Data
 
-Each agent is one JSON record in `~/.local/state/omarchy/agents/usage/`,
-written by `omarchy-agent-usage-update`. That command runs one
-`omarchy-agent-usage-<agent>` collector per agent; the widget invokes it
-on its refresh timer and whenever you ask for a refresh, and picks up any
-record that lands in the directory regardless of who wrote it.
+Each subscription account is one JSON record in
+`~/.local/state/omarchy/agents/usage/`, written by
+`omarchy-agent-usage-update`. Managed records are named
+`<providerId>@<accountId>.json` and carry `providerId`, immutable `accountId`,
+display `accountLabel`, and `accountActive` fields. The command still runs one
+`omarchy-agent-usage-<agent>` collector per provider, fanning it out over the
+managed accounts; the widget invokes it on its refresh timer and whenever you
+ask for a refresh.
 
-Adding an agent therefore never touches this plugin: ship a collector that
+Adding a provider therefore never touches this plugin: ship a collector that
 prints the record contract (see the `claude` and `codex` collectors in
 `bin/`), and the panel gains a tab. An `assets/<id>.svg` mark is optional —
 with an `assets/<id>-light.svg` twin if the mark needs a dark variant for
-light surfaces — and the bar glyph stands in when there is none.
+light surfaces — and the bar glyph stands in when there is none. Anthropic
+and OpenAI records deliberately reuse the established `claude.svg` and
+`codex.svg` asset names.
 
 | Collector | Limits | Local stats |
 |---|---|---|
-| `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
-| `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
+| `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, plus account-attributed Pi, omp, and OpenCode sessions on Anthropic |
+| `codex` | The Codex app-server RPC | native Codex CLI session files, plus account-attributed Pi, omp, and OpenCode sessions on OpenAI |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
@@ -63,6 +76,11 @@ falls back to local stats only. A non-default Claude directory is honored via
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
 signed in there.
+
+Shared harness sessions are attributed by the account-switch ledger. Their
+tokens belong in the token history for the subscription that was active at
+the time, but never in its native limit percentages; this is why a chart can
+grow while the corresponding limit meter does not.
 
 ### Fireworks balance
 
@@ -95,8 +113,11 @@ only adds the meter and the spent-of-funded line under the real figure.
 ## Interactions
 
 - Bar icon: left = panel, right = launch agent, middle = next subscription.
-- Panel: `h`/`l` switch subscription, `j`/`k` scroll, `r` or Enter refresh,
-  Tab moves to the neighboring bar panel, Esc closes.
+- Panel: `h`/`l` change the account record being viewed, `s` makes that
+  account active, `j`/`k` scroll, `r` or Enter refresh, Tab moves to the
+  neighboring bar panel, Esc closes. Switching runs
+  `omarchy agent account switch <providerId> <accountId>` and requests a
+  refresh when the credential swap completes.
 - IPC: `omarchy-shell omarchy.agents <open|close|toggle|refresh|next>`.
 
 ## Settings
@@ -120,21 +141,23 @@ omarchy bar set omarchy.agents refreshIntervalSec 300 --json
 omarchy bar set omarchy.agents syncDir '~/Sync/agent-usage'
 ```
 
-Per-agent enablement is nested, and `set` writes its key literally rather
+Per-provider enablement is nested, and `set` writes its key literally rather
 than walking a dotted path — so pass the whole `providers` object as JSON (or
 edit `shell.json` directly):
 
 ```bash
 omarchy bar set omarchy.agents providers '{
-  "claude": { "enabled": true },
-  "codex": { "enabled": false },
+  "anthropic": { "enabled": true },
+  "openai": { "enabled": false },
   "fireworks": { "enabled": true }
 }' --json
 ```
 
-`enabled` defaults to `true` for every discovered agent; set it to `false` to
-hide a subscription that is installed. Disabled agents are also skipped when
-the records regenerate.
+The canonical keys are `anthropic`, `openai`, and `fireworks` (`claude` and
+`codex` remain accepted for existing `shell.json` files). `enabled` defaults
+to `true` for every discovered provider; set it to `false` to hide all of that
+provider's account records. Disabled providers are also skipped when the
+records regenerate.
 
 With `syncMode` on, every `*.json` snapshot in `syncDir` is merged, so today,
 the last 7 days, and the all-time totals cover every machine you code on —
@@ -142,7 +165,10 @@ active days are unioned by date rather than summed. Rate limits stay
 per-account and are never merged. A record may declare `"scope": "account"`
 when its stats are account-global rather than machine-local (Fireworks'
 billing API); those merge by taking the widest value instead of summing, so
-the same account synced from two machines is not counted twice.
+the same account synced from two machines is not counted twice. Sync identity
+is the pair of `providerId` and immutable `accountId`: two accounts at one
+provider remain separate, while the same account from two machines merges
+even if its label changes.
 
 One caveat on "all-time": the Codex collector only reads native session files
 touched in the last 30 days, and Fireworks requests the last 30 days from its

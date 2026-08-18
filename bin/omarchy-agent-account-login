@@ -1,0 +1,98 @@
+#!/bin/bash
+
+# omarchy:summary=Fill one harness credential slot for a provider account
+# omarchy:args=[provider] <account> <slot>
+# omarchy:examples=omarchy agent account login anthropic work claude | omarchy agent account login openai personal pi
+
+set -euo pipefail
+
+source "$OMARCHY_PATH/bin/omarchy-agent-account-backends"
+
+usage() {
+  echo "Usage: omarchy agent account login [provider] <account> <slot>"
+}
+
+run_slot_login() {
+  local provider="$1"
+  local account="$2"
+  local slot="$3"
+  local config_dir status missing=()
+
+  agent_account_provider_load "$provider"
+  agent_account_validate_name "$account"
+  agent_account_slot_load "$slot"
+  if ! agent_account_slot_installed "$slot"; then
+    echo "$slot is not installed, so Omarchy cannot fill its $AGENT_ACCOUNT_PROVIDER_NAME credential slot." >&2
+    return 1
+  fi
+  agent_account_lock
+  trap agent_account_cleanup EXIT
+  agent_account_prepare_locked
+  agent_account_create_locked "$account"
+  agent_account_switch_locked "$account" false
+  agent_account_slot_load "$slot"
+
+  if [[ -n $AGENT_ACCOUNT_SLOT_LOGIN_NOTE ]]; then
+    printf '%s\n\n' "$AGENT_ACCOUNT_SLOT_LOGIN_NOTE"
+  fi
+
+  set +e
+  if [[ $AGENT_ACCOUNT_SLOT_KIND == "config-dir" ]]; then
+    config_dir=$(agent_account_config_path "$account")
+    env "$AGENT_ACCOUNT_SLOT_CONFIG_ENV=$config_dir" "${AGENT_ACCOUNT_SLOT_LOGIN_COMMAND[@]}"
+  else
+    "${AGENT_ACCOUNT_SLOT_LOGIN_COMMAND[@]}"
+  fi
+  status=$?
+  set -e
+
+  agent_account_capture_login_slot_locked "$account" "$slot"
+  mapfile -t missing < <(agent_account_missing_slots "$account")
+  if (( ${#missing[@]} > 0 )); then
+    echo "$AGENT_ACCOUNT_PROVIDER_NAME account '$account' has empty installed credential slots:" >&2
+    agent_account_report_missing_slots "$account" "${missing[@]}"
+  fi
+
+  agent_account_unlock
+  trap - EXIT
+  agent_account_refresh_shell
+  if (( status != 0 )); then
+    return "$status"
+  fi
+}
+
+if (( $# > 0 )) && [[ $1 == "--run-slot-login" ]]; then
+  if (( $# != 4 )); then
+    usage >&2
+    exit 1
+  fi
+  run_slot_login "$2" "$3" "$4"
+  exit
+fi
+
+requested=""
+if (( $# > 0 )) && agent_account_is_known_provider "$1"; then
+  requested="$1"
+  shift
+fi
+
+if (( $# == 1 )) && [[ $1 == "-h" || $1 == "--help" ]]; then
+  usage
+  exit 0
+fi
+if (( $# != 2 )); then
+  usage >&2
+  exit 1
+fi
+
+account="$1"
+slot="$2"
+agent_account_load_selected_provider "$requested"
+agent_account_validate_name "$account"
+if ! agent_account_slot_installed "$slot"; then
+  echo "$slot is not installed, so Omarchy cannot fill its $AGENT_ACCOUNT_PROVIDER_NAME credential slot." >&2
+  exit 1
+fi
+
+printf -v login_command '%q --run-slot-login %q %q %q' "$OMARCHY_PATH/bin/omarchy-agent-account-login" "$AGENT_ACCOUNT_PROVIDER_ID" "$account" "$slot"
+exec omarchy-launch-floating-terminal-with-presentation "$login_command"

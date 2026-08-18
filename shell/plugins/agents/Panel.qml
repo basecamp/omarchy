@@ -19,13 +19,13 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   readonly property var providers: usage.enabledProviders
-  // The selection follows the provider, not the slot it happens to sit in: a
-  // provider whose first scan lands while the panel is open would otherwise
-  // shift the list underneath you and swap out what you were reading.
-  property string selectedProviderId: ""
+  // The selection follows the provider/account identity, not the slot it
+  // happens to sit in: a record whose first scan lands while the panel is open
+  // would otherwise shift the list underneath you and swap what you were reading.
+  property string selectedRecordKey: ""
   readonly property int providerIndex: {
     for (var i = 0; i < providers.length; i++)
-      if (providers[i].providerId === selectedProviderId) return i
+      if (providers[i].recordKey === selectedRecordKey) return i
     return 0
   }
   readonly property var provider: providers.length > 0 ? providers[providerIndex] : null
@@ -52,7 +52,7 @@ Panel {
   function selectProvider(index) {
     if (providers.length === 0) return
     var wrapped = ((index % providers.length) + providers.length) % providers.length
-    selectedProviderId = providers[wrapped].providerId
+    selectedRecordKey = providers[wrapped].recordKey
   }
 
   function refreshNow() {
@@ -62,6 +62,35 @@ Panel {
   function launchAgent() {
     if (root.bar) root.bar.run("omarchy-agent --pick")
     root.close()
+  }
+
+  function accountSwitchable(p) {
+    if (!p || String(p.accountId || "") === "") return false
+    return p.providerId === "anthropic" || p.providerId === "openai"
+  }
+
+  function switchAccount() {
+    if (!accountSwitchable(root.provider) || root.provider.accountActive || !root.bar) return
+    root.bar.run("omarchy agent account switch "
+      + Util.shellQuote(root.provider.providerId) + " "
+      + Util.shellQuote(root.provider.accountId))
+    // The account command asks this panel to refresh after the credential
+    // bundle has finished switching, so keep it open for the new active mark.
+  }
+
+  function providerAccountCount(p) {
+    if (!p) return 0
+    var count = 0
+    for (var i = 0; i < providers.length; i++)
+      if (providers[i].providerId === p.providerId) count++
+    return count
+  }
+
+  function chipLabel(p) {
+    if (!p) return ""
+    if (providerAccountCount(p) > 1 && String(p.accountLabel || "") !== "")
+      return p.providerName + " · " + p.accountLabel
+    return p.providerName
   }
 
   // ---------------------------------------------------------------- limits
@@ -283,14 +312,21 @@ Panel {
   }
 
   // Marks resolve by convention, so a new agent's data file needs nothing
-  // from this panel: assets/<id>.svg if it ships one, the module's bar glyph
-  // if it doesn't.
+  // from this panel. The subscription providers retain their established
+  // Claude/Codex asset names even though records carry Anthropic/OpenAI ids.
+  function assetIdForProvider(providerId) {
+    if (providerId === "anthropic") return "claude"
+    if (providerId === "openai") return "codex"
+    return String(providerId || "")
+  }
+
   function iconCandidatesForProvider(p, surfaceColor) {
     if (!p) return []
     var candidates = []
+    var assetId = assetIdForProvider(p.providerId)
     if (colorLuminance(surfaceColor || Color.background) >= 0.5)
-      candidates.push(Qt.resolvedUrl("assets/" + p.providerId + "-light.svg"))
-    candidates.push(Qt.resolvedUrl("assets/" + p.providerId + ".svg"))
+      candidates.push(Qt.resolvedUrl("assets/" + assetId + "-light.svg"))
+    candidates.push(Qt.resolvedUrl("assets/" + assetId + ".svg"))
     return candidates
   }
 
@@ -376,7 +412,10 @@ Panel {
       onActivateRequested: root.refreshNow()
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
-      onTextKey: function(t) { if (t === "r" || t === "R") root.refreshNow() }
+      onTextKey: function(t) {
+        if (t === "r" || t === "R") root.refreshNow()
+        else if (t === "s" || t === "S") root.switchAccount()
+      }
 
       Flickable {
         id: panelFlick
@@ -399,10 +438,32 @@ Panel {
             id: hero
             visible: !!root.provider
             width: parent.width
+            readonly property bool accountCanSwitch: root.accountSwitchable(root.provider)
+            readonly property bool selectedAccountActive: !!root.provider && root.provider.accountActive === true
+            function makeAccountActive() { root.switchAccount() }
+
             title: root.provider ? root.provider.providerName : ""
             meta: root.heroMeta(root.provider)
+            detail: root.provider ? String(root.provider.accountLabel || "") : ""
             foreground: root.foreground
             fontFamily: root.fontFamily
+
+            trailingControl: Component {
+              Button {
+                visible: hero.accountCanSwitch
+                enabled: !hero.selectedAccountActive
+                opacity: enabled ? 1 : 0.65
+                text: hero.selectedAccountActive ? "Active" : "Switch"
+                iconText: hero.selectedAccountActive ? "✓" : ""
+                bordered: true
+                foreground: hero.foreground
+                fontFamily: hero.fontFamily
+                fontSize: Style.font.bodySmall
+                verticalPadding: Style.spacing.controlPaddingY
+                tooltipText: hero.selectedAccountActive ? "Active subscription account" : "Make this the active account (s)"
+                onClicked: hero.makeAccountActive()
+              }
+            }
 
             iconComponent: Component {
               Item {
@@ -458,14 +519,15 @@ Panel {
           }
 
           // ---------- Provider switch ----------
-          Row {
+          Grid {
             id: providerSwitch
             visible: root.providers.length > 1
             width: parent.width
+            columns: Math.min(2, root.providers.length)
             spacing: Style.spacing.md
 
             readonly property real cellWidth: root.providers.length > 0
-              ? (width - spacing * (root.providers.length - 1)) / root.providers.length
+              ? (width - spacing * (columns - 1)) / columns
               : 0
 
             Repeater {
@@ -476,7 +538,8 @@ Panel {
                 required property int index
 
                 width: providerSwitch.cellWidth
-                text: modelData.providerName
+                text: root.chipLabel(modelData)
+                iconText: modelData.accountActive ? "✓" : ""
                 selected: index === root.providerIndex
                 hasCursor: root.cursorActive && index === root.providerIndex
                 bordered: true
@@ -605,6 +668,17 @@ Panel {
                 window: modelData
               }
             }
+          }
+
+          Text {
+            visible: !!root.provider && root.provider.includesSharedSessions === true
+            width: parent.width
+            text: "Shared-harness tokens appear in the charts but never move these plan limits; Pi bills them as extra per-token usage."
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
           }
 
           // ---------- Usage ----------

@@ -236,7 +236,7 @@ assert(
 )
 assertDeepEqual(
   defaultItems
-    .filter(item => item.parent === 'setup.default.agent')
+    .filter(item => item.parent === 'setup.default.agent' && item.kind === 'action')
     .map(item => item.label),
   ['Claude', 'Codex', 'Copilot', 'Crush', 'Gemini', 'Grok', 'omp', 'OpenCode', 'Pi'],
   'menu sorts coding agents alphabetically'
@@ -385,6 +385,20 @@ const providerBlock = menuQml.match(/readonly property var providers: \(\{[\s\S]
 assert(
   /"fonts": \{[\s\S]*?volatile: true/.test(providerBlock),
   'menu re-enumerates the font list every time it is opened'
+)
+assert(
+  providerBlock.includes('"agent-accounts"')
+    && providerBlock.includes('omarchy agent account list --json')
+    && /"agent-accounts": \{[\s\S]*?volatile: true/.test(providerBlock),
+  'menu re-enumerates subscription accounts every time the submenu is opened'
+)
+assert(
+  providerBlock.includes('omarchy agent account switch '),
+  'menu account rows switch the provider and immutable account ids they carry'
+)
+assert(
+  defaultById['setup.default.agent.accounts'].provider === 'agent-accounts',
+  'menu exposes subscription accounts beneath the existing default-agent entries'
 )
 assert(
   /function setActiveMenu\([\s\S]*?root\.invalidateVolatileProvider\(id\)\s*\n\s*root\.loadProviderForMenu\(id\)/.test(menuQml)
@@ -612,3 +626,54 @@ JS
 font_charset=$(fc-query --format='%{charset}' "$ROOT/default/fonts/omarchy/omarchy.ttf")
 [[ $font_charset == *"e900-e907"* ]] || fail "Omarchy icon font includes every custom menu glyph"
 pass "Omarchy icon font includes the official agent marks"
+
+menu_test_tmp=$(mktemp -d)
+trap 'rm -rf "$menu_test_tmp"' EXIT
+menu_test_home="$menu_test_tmp/home"
+menu_test_bin="$menu_test_tmp/bin"
+mkdir -p \
+  "$menu_test_bin" \
+  "$menu_test_home/.local/share/omarchy/agents/anthropic/personal/claude" \
+  "$menu_test_home/.local/share/omarchy/agents/anthropic/work/claude" \
+  "$menu_test_home/.local/share/omarchy/agents/openai/personal/codex" \
+  "$menu_test_home/.local/share/omarchy/agents/openai/work/codex"
+ln -s "$menu_test_home/.local/share/omarchy/agents/anthropic/personal/claude" "$menu_test_home/.claude"
+ln -s "$menu_test_home/.local/share/omarchy/agents/openai/work/codex" "$menu_test_home/.codex"
+
+cat >"$menu_test_bin/omarchy-default-agent" <<'SH'
+#!/bin/bash
+exit 0
+SH
+cat >"$menu_test_bin/omarchy-cmd-missing" <<'SH'
+#!/bin/bash
+exit 0
+SH
+chmod +x "$menu_test_bin"/*
+
+agent_accounts_provider_script=$(
+  node - "$ROOT/shell/plugins/menu/Menu.qml" <<'JS'
+const fs = require('fs')
+const source = fs.readFileSync(process.argv[2], 'utf8')
+const match = source.match(/"agent-accounts":\s*\{\s*script:\s*("(?:[^"\\]|\\.)*")/)
+if (!match) process.exit(1)
+process.stdout.write(JSON.parse(match[1]))
+JS
+)
+if ! provider_output=$(
+  HOME="$menu_test_home" \
+    OMARCHY_PATH="$ROOT" \
+    PATH="$menu_test_bin:$ROOT/bin:$PATH" \
+    bash -c "$agent_accounts_provider_script"
+); then
+  fail "menu account provider script executes without a default agent"
+fi
+mapfile -t menu_account_rows <<<"$provider_output"
+expected_account_rows=(
+  $'Anthropic · personal\tanthropic@personal\tanthropic@personal'
+  $'Anthropic · work\tanthropic@work\t'
+  $'OpenAI · personal\topenai@personal\t'
+  $'OpenAI · work\topenai@work\topenai@work'
+)
+[[ ${menu_account_rows[*]} == "${expected_account_rows[*]}" ]] ||
+  fail "menu account provider emits labelled rows across providers with active rows marked" "$(printf 'actual:   %q\nexpected: %q' "${menu_account_rows[*]}" "${expected_account_rows[*]}")"
+pass "menu account provider emits labelled rows across providers with active rows marked"

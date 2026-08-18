@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # omarchy:summary=Regenerate the AI agent usage data files
-# omarchy:args=[--force] [--limits-only] [--except <agent>] [agent...]
-# omarchy:examples=omarchy agent usage-update | omarchy agent usage-update claude | omarchy agent usage-update --except codex
+# omarchy:args=[--force] [--limits-only] [--except <provider>] [provider...]
+# omarchy:examples=omarchy agent usage-update | omarchy agent usage-update anthropic | omarchy agent usage-update --except codex
 
-# Each omarchy-agent-usage-<agent> collector prints one display-ready JSON
-# record; this writes them to ~/.local/state/omarchy/agents/usage/ where the
-# agents panel watches them. Adding an agent is adding a collector — the
-# panel picks up any record that appears here.
+# Account-aware collectors still have one binary per provider. This updater
+# fans those binaries out over the managed subscription accounts and gives
+# each invocation its real config directory, while providers without managed
+# accounts keep one bare record.
 
 USAGE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/agents/usage"
 mkdir -p "$USAGE_DIR"
@@ -16,48 +16,252 @@ flags=()
 only=()
 declare -A excluded
 
-while [[ $# -gt 0 ]]; do
+normalize_provider() {
   case "$1" in
-  --force | --limits-only) flags+=("$1") ;;
+  anthropic | claude)
+    printf 'anthropic\n'
+    ;;
+  openai | codex)
+    printf 'openai\n'
+    ;;
+  *)
+    printf '%s\n' "$1"
+    ;;
+  esac
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+  --force | --limits-only)
+    flags+=("$1")
+    ;;
   --except)
-    excluded[$2]=1
+    if (( $# < 2 )); then
+      echo "omarchy-agent-usage-update: --except requires a provider" >&2
+      exit 1
+    fi
+    excluded["$(normalize_provider "$2")"]=1
     shift
     ;;
-  *) only+=("$1") ;;
+  *)
+    only+=("$(normalize_provider "$1")")
+    ;;
   esac
   shift
 done
 
 wanted() {
-  local agent="$1"
-  [[ -n ${excluded[$agent]} ]] && return 1
-  (( ${#only[@]} == 0 )) && return 0
+  local provider="$1"
   local candidate
+
+  [[ -n ${excluded[$provider]} ]] && return 1
+  (( ${#only[@]} == 0 )) && return 0
   for candidate in "${only[@]}"; do
-    [[ $candidate == "$agent" ]] && return 0
+    [[ $candidate == $provider ]] && return 0
   done
   return 1
 }
 
-collect() {
-  local collector="$1" agent="$2"
-  local record tmp
-  if ! record=$("$collector" "${flags[@]}") || [[ -z $record ]] || ! jq -e . >/dev/null 2>&1 <<<"$record"; then
-    echo "omarchy-agent-usage-update: $agent collector failed" >&2
+managed_provider_load() {
+  case "$1" in
+  claude)
+    PROVIDER_ID="anthropic"
+    LEGACY_ID="claude"
+    CONFIG_ENV="CLAUDE_CONFIG_DIR"
+    CONFIG_SLOT="claude"
+    CONFIG_CANONICAL="$HOME/.claude"
+    ;;
+  codex)
+    PROVIDER_ID="openai"
+    LEGACY_ID="codex"
+    CONFIG_ENV="CODEX_HOME"
+    CONFIG_SLOT="codex"
+    CONFIG_CANONICAL="$HOME/.codex"
+    ;;
+  *)
+    return 1
+    ;;
+  esac
+  MANAGED_ROOT="$HOME/.local/share/omarchy/agents/$PROVIDER_ID"
+}
+
+managed_accounts() {
+  local account profile
+
+  [[ -d $MANAGED_ROOT ]] || return 0
+  while IFS= read -r account; do
+    [[ $account =~ ^[a-z0-9][a-z0-9_-]{0,62}$ ]] || continue
+    profile="$MANAGED_ROOT/$account"
+    [[ -d $profile && ! -L $profile && -d $profile/$CONFIG_SLOT && ! -L $profile/$CONFIG_SLOT ]] || continue
+    printf '%s\n' "$account"
+  done < <(find "$MANAGED_ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -printf '%f\n' | LC_ALL=C sort)
+}
+
+active_account() {
+  local canonical_target account expected
+
+  [[ -L $CONFIG_CANONICAL ]] || return 0
+  canonical_target=$(realpath -m -- "$CONFIG_CANONICAL")
+  for account in "$@"; do
+    expected=$(realpath -m -- "$MANAGED_ROOT/$account/$CONFIG_SLOT")
+    if [[ $canonical_target == $expected ]]; then
+      printf '%s\n' "$account"
+      return 0
+    fi
+  done
+}
+
+collect_record() {
+  local collector="$1"
+  local record_id="$2"
+  local provider_id="$3"
+  local account_id="$4"
+  local account_label="$5"
+  local account_active="$6"
+  local config_env=${7:-}
+  local config_dir=${8:-}
+  local record normalized tmp
+  local -a collector_env=(
+    "OMARCHY_AGENT_USAGE_PROVIDER_ID=$provider_id"
+    "OMARCHY_AGENT_USAGE_ACCOUNT_ID=$account_id"
+    "OMARCHY_AGENT_USAGE_ACCOUNT_LABEL=$account_label"
+    "OMARCHY_AGENT_USAGE_ACCOUNT_ACTIVE=$account_active"
+  )
+
+  if [[ -n $config_env ]]; then
+    collector_env+=("$config_env=$config_dir")
+  fi
+
+  if ! record=$(env "${collector_env[@]}" "$collector" "${flags[@]}") ||
+    [[ -z $record ]] || ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"$record"; then
+    echo "omarchy-agent-usage-update: $record_id collector failed" >&2
     return 1
   fi
-  tmp=$(mktemp "$USAGE_DIR/.$agent.XXXXXX")
-  printf '%s\n' "$record" >"$tmp"
-  mv "$tmp" "$USAGE_DIR/$agent.json"
+
+  if ! normalized=$(jq -c \
+    --arg id "$record_id" \
+    --arg providerId "$provider_id" \
+    --arg accountId "$account_id" \
+    --arg accountLabel "$account_label" \
+    --argjson accountActive "$account_active" \
+    '. + {
+      id: $id,
+      providerId: $providerId,
+      accountId: $accountId,
+      accountLabel: $accountLabel,
+      accountActive: $accountActive
+    }' <<<"$record"); then
+    echo "omarchy-agent-usage-update: $record_id collector returned an invalid record" >&2
+    return 1
+  fi
+
+  tmp=$(mktemp "$USAGE_DIR/.$record_id.XXXXXX")
+  printf '%s\n' "$normalized" >"$tmp"
+  mv -Tf -- "$tmp" "$USAGE_DIR/$record_id.json"
+}
+
+record_expected() {
+  local record="$1"
+  shift
+  local expected
+
+  for expected in "$@"; do
+    [[ $record == ${expected}.json ]] && return 0
+  done
+  return 1
+}
+
+prune_managed_records() {
+  local path record
+  local expected=("$@")
+
+  for path in \
+    "$USAGE_DIR/$PROVIDER_ID.json" \
+    "$USAGE_DIR/$LEGACY_ID.json" \
+    "$USAGE_DIR/$PROVIDER_ID@"*.json \
+    "$USAGE_DIR/$LEGACY_ID@"*.json; do
+    [[ -e $path || -L $path ]] || continue
+    record=${path##*/}
+    record_expected "$record" "${expected[@]}" || rm -f -- "$path"
+  done
+}
+
+collect_managed_provider() {
+  local collector="$1"
+  local collector_id="$2"
+  local account active account_active record_id
+  local lock_fd=""
+  local status=0
+  local accounts=()
+  local expected=()
+
+  managed_provider_load "$collector_id"
+  if [[ -d $MANAGED_ROOT ]]; then
+    if ! exec {lock_fd}>"$MANAGED_ROOT/.lock" || ! flock "$lock_fd"; then
+      echo "omarchy-agent-usage-update: could not lock $PROVIDER_ID accounts" >&2
+      [[ -n $lock_fd ]] && exec {lock_fd}>&-
+      return 1
+    fi
+  fi
+
+  mapfile -t accounts < <(managed_accounts)
+  active=$(active_account "${accounts[@]}")
+
+  if (( ${#accounts[@]} == 0 )); then
+    record_id="$PROVIDER_ID"
+    expected+=("$record_id")
+    collect_record "$collector" "$record_id" "$PROVIDER_ID" "" "" true "$CONFIG_ENV" "$CONFIG_CANONICAL" || status=1
+  else
+    for account in "${accounts[@]}"; do
+      if [[ $account == $active ]]; then
+        account_active=true
+      else
+        account_active=false
+      fi
+      record_id="$PROVIDER_ID@$account"
+      expected+=("$record_id")
+      collect_record \
+        "$collector" "$record_id" "$PROVIDER_ID" "$account" "$account" "$account_active" \
+        "$CONFIG_ENV" "$MANAGED_ROOT/$account/$CONFIG_SLOT" || status=1
+    done
+  fi
+
+  if (( status == 0 )); then
+    prune_managed_records "${expected[@]}"
+  fi
+
+  if [[ -n $lock_fd ]]; then
+    flock -u "$lock_fd"
+    exec {lock_fd}>&-
+  fi
+  return "$status"
+}
+
+collect_bare_provider() {
+  local collector="$1"
+  local provider_id="$2"
+
+  collect_record "$collector" "$provider_id" "$provider_id" "" "" true
 }
 
 pids=()
 for collector in "$OMARCHY_PATH"/bin/omarchy-agent-usage-*; do
   [[ -x $collector ]] || continue
-  agent="${collector##*/omarchy-agent-usage-}"
-  [[ $agent == "update" ]] && continue
-  wanted "$agent" || continue
-  collect "$collector" "$agent" &
+  collector_id=${collector##*/omarchy-agent-usage-}
+  [[ $collector_id == "update" ]] && continue
+
+  if managed_provider_load "$collector_id"; then
+    provider_id="$PROVIDER_ID"
+  else
+    provider_id=$(normalize_provider "$collector_id")
+  fi
+  wanted "$provider_id" || continue
+
+  if managed_provider_load "$collector_id"; then
+    collect_managed_provider "$collector" "$collector_id" &
+  else
+    collect_bare_provider "$collector" "$provider_id" &
+  fi
   pids+=($!)
 done
 
@@ -65,4 +269,4 @@ status=0
 for pid in "${pids[@]}"; do
   wait "$pid" || status=1
 done
-exit $status
+exit "$status"

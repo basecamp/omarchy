@@ -1,0 +1,70 @@
+#!/bin/bash
+
+# omarchy:summary=Switch every credential slot for a subscription account
+# omarchy:args=[provider] [account|--next]
+# omarchy:examples=omarchy agent account switch work | omarchy agent account switch anthropic personal | omarchy agent account switch openai --next
+
+set -euo pipefail
+
+source "$OMARCHY_PATH/bin/omarchy-agent-account-backends"
+
+usage() {
+  echo "Usage: omarchy agent account switch [provider] [account|--next]"
+}
+
+requested=""
+if (( $# > 0 )) && agent_account_is_known_provider "$1"; then
+  requested="$1"
+  shift
+fi
+
+if (( $# > 1 )); then
+  usage >&2
+  exit 1
+fi
+if (( $# == 1 )) && [[ $1 == "-h" || $1 == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+agent_account_load_selected_provider "$requested"
+agent_account_lock
+trap agent_account_cleanup EXIT
+agent_account_prepare_locked
+
+mapfile -t accounts < <(agent_account_profiles)
+if (( ${#accounts[@]} == 0 )); then
+  echo "$AGENT_ACCOUNT_PROVIDER_NAME has no accounts. Fill a first slot with: omarchy agent account login $AGENT_ACCOUNT_PROVIDER_ID <account> <slot>" >&2
+  exit 1
+fi
+
+active=$(agent_account_active 2>/dev/null || true)
+if (( $# == 0 )); then
+  agent_account_unlock
+  trap - EXIT
+  name=$(printf '%s\n' "${accounts[@]}" | gum choose --header "Choose an $AGENT_ACCOUNT_PROVIDER_NAME account")
+  [[ -n $name ]] || exit 1
+  agent_account_lock
+  trap agent_account_cleanup EXIT
+  agent_account_prepare_locked
+  mapfile -t accounts < <(agent_account_profiles)
+  active=$(agent_account_active 2>/dev/null || true)
+elif [[ $1 == "--next" ]]; then
+  next_index=0
+  for index in "${!accounts[@]}"; do
+    if [[ ${accounts[$index]} == "$active" ]]; then
+      next_index=$(((index + 1) % ${#accounts[@]}))
+      break
+    fi
+  done
+  name=${accounts[$next_index]}
+else
+  name="$1"
+fi
+
+agent_account_validate_name "$name"
+agent_account_switch_locked "$name"
+agent_account_unlock
+trap - EXIT
+agent_account_refresh_shell
+echo "Switched $AGENT_ACCOUNT_PROVIDER_NAME to account '$name'."

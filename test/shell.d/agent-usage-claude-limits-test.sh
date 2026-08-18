@@ -79,6 +79,24 @@ pass "Claude collector adds no limit when the payload scopes none"
 CACHE_HOME=$(mktemp -d)
 trap 'rm -rf "$CACHE_HOME"' EXIT
 
+limit_cache_keys=$(COLLECTOR="$ROOT/bin/omarchy-agent-usage-claude" python3 - <<'PY'
+import importlib.machinery, importlib.util, os
+from pathlib import Path
+
+loader = importlib.machinery.SourceFileLoader("collector", os.environ["COLLECTOR"])
+spec = importlib.util.spec_from_loader(loader.name, loader)
+collector = importlib.util.module_from_spec(spec)
+loader.exec_module(collector)
+
+print(collector.path_digest(Path("/managed/anthropic/personal/claude")))
+print(collector.path_digest(Path("/managed/anthropic/work/claude")))
+PY
+)
+mapfile -t limit_cache_key < <(printf '%s\n' "$limit_cache_keys")
+[[ ${limit_cache_key[0]} != ${limit_cache_key[1]} ]] ||
+  fail "Claude limits cache keys differ between account config directories"
+pass "Claude limits cache is keyed by the resolved account config directory"
+
 collect_limits() {
   COLLECTOR="$ROOT/bin/omarchy-agent-usage-claude" TOKEN="$1" EXPIRES_AT="$2" CACHED="$3" \
     XDG_CACHE_HOME="$CACHE_HOME" python3 - <<'PY'
@@ -89,7 +107,8 @@ spec = importlib.util.spec_from_loader(loader.name, loader)
 collector = importlib.util.module_from_spec(spec)
 loader.exec_module(collector)
 
-cache = collector.cache_root() / "claude-limits.json"
+config_dir = pathlib.Path(os.environ["XDG_CACHE_HOME"]) / "claude-config"
+cache = collector.cache_root() / f"claude-limits-{collector.path_digest(config_dir)}.json"
 cached = os.environ["CACHED"]
 if cached:
   cache.write_text(cached, encoding="utf-8")
@@ -100,7 +119,7 @@ def unreachable(request, timeout=None):
   raise OSError("no route to host")
 
 collector.urllib.request.urlopen = unreachable
-print(json.dumps(collector.collect_limits(os.environ["TOKEN"], int(os.environ["EXPIRES_AT"]), False)))
+print(json.dumps(collector.collect_limits(os.environ["TOKEN"], int(os.environ["EXPIRES_AT"]), False, config_dir)))
 PY
 }
 
@@ -160,14 +179,15 @@ pass "Claude collector falls back to cache when the probe cannot connect"
 probe_with_cache() {
   COLLECTOR="$ROOT/bin/omarchy-agent-usage-claude" FORCE="$1" CACHED="$2" PAYLOAD="$3" \
     XDG_CACHE_HOME="$CACHE_HOME" python3 - <<'PY'
-import importlib.machinery, importlib.util, io, json, os
+import importlib.machinery, importlib.util, io, json, os, pathlib
 
 loader = importlib.machinery.SourceFileLoader("collector", os.environ["COLLECTOR"])
 spec = importlib.util.spec_from_loader(loader.name, loader)
 collector = importlib.util.module_from_spec(spec)
 loader.exec_module(collector)
 
-cache = collector.cache_root() / "claude-limits.json"
+config_dir = pathlib.Path(os.environ["XDG_CACHE_HOME"]) / "claude-config"
+cache = collector.cache_root() / f"claude-limits-{collector.path_digest(config_dir)}.json"
 cache.write_text(os.environ["CACHED"], encoding="utf-8")
 
 probes = []
@@ -177,7 +197,7 @@ def urlopen(request, timeout=None):
   return io.BytesIO(os.environ["PAYLOAD"].encode())
 
 collector.urllib.request.urlopen = urlopen
-result = collector.collect_limits("token", 0, os.environ["FORCE"] == "true")
+result = collector.collect_limits("token", 0, os.environ["FORCE"] == "true", config_dir)
 print(json.dumps({
   "result": result,
   "probes": len(probes),
