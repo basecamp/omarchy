@@ -5,8 +5,12 @@
 
 omarchy_path=${OMARCHY_PATH:-/usr/share/omarchy}
 omarchy_path=${omarchy_path%/}
+resolved_omarchy_path=$omarchy_path
+if [[ $omarchy_path != "/usr/share/omarchy" ]]; then
+  resolved_omarchy_path=$(readlink -f "$omarchy_path" 2>/dev/null || printf '%s\n' "$omarchy_path")
+fi
 
-[[ $omarchy_path != "/usr/share/omarchy" ]] || exit 1
+[[ $resolved_omarchy_path != "/usr/share/omarchy" ]] || exit 1
 
 branch=$(git -C "$omarchy_path" branch --show-current 2>/dev/null || true)
 if [[ -z $branch ]]; then

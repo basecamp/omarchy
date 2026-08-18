@@ -4,10 +4,15 @@
 
 set -euo pipefail
 
+resolved_omarchy_path=${OMARCHY_PATH%/}
+if [[ $resolved_omarchy_path != "/usr/share/omarchy" ]]; then
+  resolved_omarchy_path=$(readlink -f "$resolved_omarchy_path" 2>/dev/null || printf '%s\n' "$resolved_omarchy_path")
+fi
+
 # Dev is a linked source checkout: OMARCHY_PATH points somewhere other than
 # the package-backed install at /usr/share/omarchy. This takes precedence over
 # the package channels, since the checkout overrides whatever is installed.
-if [[ $OMARCHY_PATH != "/usr/share/omarchy" ]]; then
+if [[ $resolved_omarchy_path != "/usr/share/omarchy" ]]; then
   echo dev
   exit 0
 fi

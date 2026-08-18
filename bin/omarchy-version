@@ -4,8 +4,12 @@
 
 omarchy_path=${OMARCHY_PATH:-/usr/share/omarchy}
 omarchy_path=${omarchy_path%/}
-
+resolved_omarchy_path=$omarchy_path
 if [[ $omarchy_path != "/usr/share/omarchy" ]]; then
+  resolved_omarchy_path=$(readlink -f "$omarchy_path" 2>/dev/null || printf '%s\n' "$omarchy_path")
+fi
+
+if [[ $resolved_omarchy_path != "/usr/share/omarchy" ]]; then
   hash=$(git -C "$omarchy_path" rev-parse --short HEAD 2>/dev/null || true)
 
   if [[ -n $hash ]]; then

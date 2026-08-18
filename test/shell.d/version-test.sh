@@ -29,6 +29,16 @@ exit 1
 STUB
 chmod +x "$stub_bin/pacman"
 
+cat >"$stub_bin/readlink" <<'STUB'
+#!/bin/bash
+if [[ -n ${OMARCHY_TEST_RESOLVED_PATH:-} ]]; then
+  echo "$OMARCHY_TEST_RESOLVED_PATH"
+else
+  /usr/bin/readlink "$@"
+fi
+STUB
+chmod +x "$stub_bin/readlink"
+
 version() {
   OMARCHY_TEST_PACKAGES="$1" \
     OMARCHY_PATH="${2:-/usr/share/omarchy}" \
@@ -41,6 +51,14 @@ pass "version reports the stable package"
 
 [[ $(version omarchy-dev) == "4.0.0-1" ]] || fail "version reports the edge package"
 pass "version reports the edge package"
+
+[[ $(OMARCHY_TEST_RESOLVED_PATH=/usr/share/omarchy version omarchy "$test_tmp/legacy-omarchy-link") == "4.0.0-1" ]] ||
+  fail "version recognizes the legacy Omarchy path symlink"
+if OMARCHY_TEST_RESOLVED_PATH=/usr/share/omarchy OMARCHY_PATH="$test_tmp/legacy-omarchy-link" \
+  PATH="$stub_bin:$PATH" "$ROOT/bin/omarchy-version-branch" >/dev/null 2>&1; then
+  fail "version branch rejects the legacy Omarchy path symlink"
+fi
+pass "version commands recognize the legacy Omarchy path symlink"
 
 # A checkout reports its hash instead, so packages are irrelevant there.
 [[ $(version "" "$test_tmp/checkout") == "dev" ]] || fail "version reports a dev checkout"

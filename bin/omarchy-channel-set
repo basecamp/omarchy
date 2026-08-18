@@ -44,6 +44,10 @@ link_dev_checkout() {
 dev_checkout=""
 channel="$1"
 leaving_dev=0
+resolved_omarchy_path=${OMARCHY_PATH%/}
+if [[ $resolved_omarchy_path != "/usr/share/omarchy" ]]; then
+  resolved_omarchy_path=$(readlink -f "$resolved_omarchy_path" 2>/dev/null || printf '%s\n' "$resolved_omarchy_path")
+fi
 
 case "$channel" in
   stable)
@@ -72,7 +76,7 @@ case "$channel" in
     ;;
 esac
 
-if [[ -z $dev_checkout && $OMARCHY_PATH != "/usr/share/omarchy" ]]; then
+if [[ -z $dev_checkout && $resolved_omarchy_path != "/usr/share/omarchy" ]]; then
   leaving_dev=1
 fi
 

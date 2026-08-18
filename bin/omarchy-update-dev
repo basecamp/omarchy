@@ -4,7 +4,12 @@
 
 set -euo pipefail
 
-[[ $OMARCHY_PATH != "/usr/share/omarchy" ]] || exit 0
+resolved_omarchy_path=${OMARCHY_PATH%/}
+if [[ $resolved_omarchy_path != "/usr/share/omarchy" ]]; then
+  resolved_omarchy_path=$(readlink -f "$resolved_omarchy_path" 2>/dev/null || printf '%s\n' "$resolved_omarchy_path")
+fi
+
+[[ $resolved_omarchy_path != "/usr/share/omarchy" ]] || exit 0
 
 if ! git -C "$OMARCHY_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Error: OMARCHY_PATH is not a git checkout: $OMARCHY_PATH" >&2
