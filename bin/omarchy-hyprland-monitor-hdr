@@ -1,0 +1,264 @@
+#!/bin/bash
+
+# omarchy:summary=Show or set per-display HDR
+# omarchy:group=hyprland
+# omarchy:args=[on|off|status] [--monitor OUTPUT] [--sdr-brightness NITS] [--force]
+# omarchy:examples=omarchy hyprland monitor hdr | omarchy hyprland monitor hdr on | omarchy hyprland monitor hdr --sdr-brightness 250 --monitor DP-1
+
+# HDR is per display, so this never touches the catch-all rule: everything is
+# written through omarchy-hyprland-monitor-rule against one output.
+#
+# Two different brightness controls exist once HDR is on, and conflating them is
+# the thing to avoid:
+#
+#   * omarchy-brightness-display drives the panel's own backlight (or DDC/CI on
+#     an external). It dims everything the display shows, HDR highlights
+#     included, and is what the brightness keys use.
+#   * sdr_max_luminance, set here, is a compositor mapping: it decides how
+#     bright plain SDR white is inside the HDR volume. It moves SDR content
+#     only and leaves HDR highlights where the display put them.
+#
+# So on an HDR display the two are complementary rather than alternatives, and
+# the Display panel shows both rather than silently repurposing one slider.
+#
+# Panels dim under sustained full-field load (ABL), so a comfortable default for
+# SDR white sits below the EDID's max frame-average luminance rather than at the
+# peak, which only applies to small highlights.
+
+set -euo pipefail
+
+# Fraction of the display's sustained full-field luminance to map SDR white to
+# by default. Below the ABL ceiling, so a full white window does not visibly
+# dim as the panel pulls power back.
+SDR_DEFAULT_FRACTION=0.8
+SDR_DEFAULT_FLOOR=80
+SDR_DEFAULT_CEILING=300
+
+usage() {
+  cat <<'USAGE'
+Usage: omarchy-hyprland-monitor-hdr [on|off|status] [--monitor OUTPUT]
+                                    [--sdr-brightness NITS] [--force]
+
+  on     Enable HDR: 10-bit, wide colour, and the luminances the display
+         advertises in its EDID. Existing tuned values are kept.
+  off    Return the display to sRGB. Luminance values are left in place so
+         switching back restores your tuning.
+  status Print the display's HDR state as JSON.
+
+--sdr-brightness sets how bright SDR white is within the HDR volume
+(sdr_max_luminance, in nits). This is not the backlight: use the brightness
+keys or `omarchy brightness display` for that.
+
+Refuses to enable HDR on a display whose EDID does not advertise it, unless
+--force is given.
+USAGE
+}
+
+action="" monitor="" sdr_brightness="" force=0
+
+while (($#)); do
+  case "$1" in
+  on | off | status)
+    action="$1"
+    shift
+    ;;
+  --monitor)
+    (($# >= 2)) || {
+      echo "Error: --monitor needs a value." >&2
+      exit 1
+    }
+    monitor="$2"
+    shift 2
+    ;;
+  --monitor=*)
+    monitor="${1#*=}"
+    [[ -n $monitor ]] || {
+      echo "Error: --monitor needs a value." >&2
+      exit 1
+    }
+    shift
+    ;;
+  --sdr-brightness)
+    (($# >= 2)) || {
+      echo "Error: --sdr-brightness needs a value." >&2
+      exit 1
+    }
+    sdr_brightness="$2"
+    shift 2
+    ;;
+  --sdr-brightness=*)
+    sdr_brightness="${1#*=}"
+    [[ -n $sdr_brightness ]] || {
+      echo "Error: --sdr-brightness needs a value." >&2
+      exit 1
+    }
+    shift
+    ;;
+  --force)
+    force=1
+    shift
+    ;;
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  *)
+    usage >&2
+    exit 1
+    ;;
+  esac
+done
+
+monitors_json=$(hyprctl monitors all -j)
+
+if [[ -z $monitor ]]; then
+  monitor=$(printf '%s\n' "$monitors_json" | jq -r '[.[] | select(.focused == true)][0].name // ""')
+fi
+
+if [[ -z $monitor ]]; then
+  echo "Error: no display selected." >&2
+  exit 1
+fi
+
+monitor_json=$(printf '%s\n' "$monitors_json" | jq -c --arg name "$monitor" '[.[] | select(.name == $name)][0] // empty')
+
+if [[ -z $monitor_json ]]; then
+  echo "Error: no such display: $monitor" >&2
+  exit 1
+fi
+
+capabilities=$(omarchy-hyprland-monitor-capabilities "$monitor")
+hdr_capable=$(jq -r '.hdr' <<<"$capabilities")
+current_preset=$(jq -r '.colorManagementPreset // "srgb"' <<<"$monitor_json")
+
+print_status() {
+  jq -nc \
+    --argjson monitor "$monitor_json" \
+    --argjson capabilities "$capabilities" \
+    '{
+      name: $monitor.name,
+      enabled: ($monitor.colorManagementPreset == "hdr"),
+      preset: $monitor.colorManagementPreset,
+      capable: $capabilities.hdr,
+      format: $monitor.currentFormat,
+      sdr_max_luminance: $monitor.sdrMaxLuminance,
+      sdr_brightness: $monitor.sdrBrightness,
+      sdr_saturation: $monitor.sdrSaturation,
+      max_luminance: $capabilities.max_luminance,
+      max_avg_luminance: $capabilities.max_avg_luminance,
+      min_luminance: $capabilities.min_luminance
+    }'
+}
+
+# Only write a field the user has not already set, so enabling HDR does not
+# discard luminances someone tuned by hand.
+set_unless_present() {
+  local field="$1" value="$2"
+
+  [[ -n $value && $value != "null" ]] || return 0
+  [[ -z $(omarchy-hyprland-monitor-rule get "$monitor" "$field") ]] || return 0
+
+  rule_fields+=("$field=$value")
+}
+
+default_sdr_brightness() {
+  local average
+  average=$(jq -r '.max_avg_luminance // empty' <<<"$capabilities")
+
+  if [[ -z $average ]]; then
+    printf '%s\n' "$SDR_DEFAULT_FLOOR"
+    return 0
+  fi
+
+  awk -v average="$average" -v fraction="$SDR_DEFAULT_FRACTION" \
+    -v floor="$SDR_DEFAULT_FLOOR" -v ceiling="$SDR_DEFAULT_CEILING" 'BEGIN {
+      value = int(average * fraction + 0.5)
+      if (value < floor) value = floor
+      if (value > ceiling) value = ceiling
+      print value
+    }'
+}
+
+apply_live() {
+  local assignments="$1"
+
+  hyprctl eval "hl.monitor({ output = \"$monitor\", $assignments })" >/dev/null
+}
+
+if [[ -z $action && -z $sdr_brightness ]]; then
+  print_status
+  exit 0
+fi
+
+# `status` prints, but asking for a brightness at the same time is still a
+# request to set it -- dropping it silently is worse than either alone.
+if [[ $action == "status" && -z $sdr_brightness ]]; then
+  print_status
+  exit 0
+fi
+
+rule_fields=()
+
+if [[ $action == "on" ]]; then
+  if [[ $hdr_capable != "true" ]] && ((force == 0)); then
+    echo "Error: $monitor does not advertise HDR support in its EDID." >&2
+    echo "Use --force to enable it anyway." >&2
+    exit 1
+  fi
+
+  rule_fields+=("cm=hdr" "bitdepth=10" "supports_hdr=1" "supports_wide_color=1")
+  set_unless_present max_luminance "$(jq -r '.max_luminance // empty' <<<"$capabilities")"
+  set_unless_present max_avg_luminance "$(jq -r '.max_avg_luminance // empty' <<<"$capabilities")"
+  set_unless_present min_luminance "$(jq -r '.min_luminance // empty' <<<"$capabilities")"
+  set_unless_present sdr_max_luminance "$(default_sdr_brightness)"
+elif [[ $action == "off" ]]; then
+  # Luminance fields are inert under sRGB, so they stay: switching back on
+  # should restore the tuning rather than reset it to the EDID defaults. The
+  # capability flags are not inert -- leaving them on keeps the display
+  # advertising HDR and wide colour to clients after it has been turned off,
+  # a state this command could set but not undo.
+  rule_fields+=("cm=srgb" "bitdepth=8" "supports_hdr=0" "supports_wide_color=0")
+fi
+
+if [[ -n $sdr_brightness ]]; then
+  if ! [[ $sdr_brightness =~ ^[0-9]+$ ]] || ((sdr_brightness < 1)); then
+    echo "Error: --sdr-brightness takes a whole number of nits." >&2
+    exit 1
+  fi
+
+  if [[ $action != "on" && $current_preset != "hdr" ]]; then
+    echo "Note: $monitor is not in HDR, so SDR brightness has no visible effect yet." >&2
+  fi
+
+  # An explicit value replaces whatever is there, unlike the defaults above.
+  rule_fields=("${rule_fields[@]/#sdr_max_luminance=*/}")
+  rule_fields+=("sdr_max_luminance=$sdr_brightness")
+fi
+
+# Drop any entries blanked out above.
+filtered=()
+for field in "${rule_fields[@]}"; do
+  [[ -n $field ]] && filtered+=("$field")
+done
+rule_fields=("${filtered[@]}")
+
+((${#rule_fields[@]})) || exit 0
+
+assignments=""
+for field in "${rule_fields[@]}"; do
+  name="${field%%=*}"
+  value="${field#*=}"
+  [[ -n $assignments ]] && assignments+=", "
+  if [[ $value =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+    assignments+="$name = $value"
+  else
+    assignments+="$name = \"$value\""
+  fi
+done
+
+apply_live "$assignments"
+omarchy-hyprland-monitor-rule set "$monitor" "${rule_fields[@]}"
+
+# Re-read so the printed state reflects what the compositor actually accepted.
+monitor_json=$(hyprctl monitors all -j | jq -c --arg name "$monitor" '[.[] | select(.name == $name)][0] // empty')
+print_status
