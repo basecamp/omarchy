@@ -1,0 +1,75 @@
+#!/bin/bash
+
+# omarchy:summary=Remove face authentication from sudo, polkit, and lock screen
+# omarchy:requires-sudo=true
+
+set -e
+
+# True when $1's module is in the lock service, or failing that $1 is installed:
+# setup can be refused after its wizard has run, and a hand-deleted lock service
+# still leaves the package behind.
+provider_configured() {
+  grep -Es '^[[:space:]]*auth[[:space:]]' /etc/pam.d/omarchy-lock-face | grep -q "pam_$1\.so" ||
+    omarchy-cmd-present "$1"
+}
+
+# Delete the lock service once nothing but pam_deny is left. A line from any
+# other backend keeps it, without this script knowing that backend's name.
+remove_lock_face_service() {
+  [[ -f /etc/pam.d/omarchy-lock-face ]] || return 0
+
+  if grep -E '^[[:space:]]*auth' /etc/pam.d/omarchy-lock-face | grep -qv 'pam_deny\.so'; then
+    echo "Another face backend still uses the lock screen; leaving its service in place."
+    return 0
+  fi
+
+  echo "Removing the lock screen face service..."
+  sudo rm -f /etc/pam.d/omarchy-lock-face
+}
+
+# --- facelock ---
+
+remove_facelock() {
+  # Only facelock knows the shape of the lines it wrote.
+  if omarchy-cmd-missing facelock; then
+    echo -e "\e[31mfacelock's PAM lines are present, but facelock is not installed.\e[0m" >&2
+    echo "Reinstall it and re-run this command so it can withdraw its own lines." >&2
+    exit 1
+  fi
+
+  echo "Removing face authentication from sudo, polkit, and the lock screen..."
+  sudo facelock pam remove --service sudo --service polkit-1 --service omarchy-lock-face --if-present --no-confirm
+  sudo rm -f /etc/pam.d/omarchy-lock-face.facelock-backup
+
+  echo "Removing enrolled face models..."
+  sudo facelock clear --yes
+}
+
+# --- howdy ---
+#
+# remove_howdy() { ... }
+
+# ---
+
+echo -e "\e[32mRemoving face authentication.\n\e[0m"
+
+provider=""
+provider_configured facelock && provider="facelock"
+# provider_configured howdy && provider="howdy"
+
+case $provider in
+facelock) packages="facelock facelock-bin facelock-git" ;;
+# howdy) packages="..." ;;
+esac
+
+if [[ -n $provider ]]; then
+  "remove_$provider"
+
+  echo "Removing $provider..."
+  # Only what pacman owns; a hand-built backend is not ours to delete.
+  omarchy-pkg-drop $packages
+fi
+
+remove_lock_face_service
+
+echo -e "\e[32mFace authentication has been removed.\e[0m"
