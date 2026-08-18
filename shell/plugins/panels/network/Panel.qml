@@ -1603,6 +1603,9 @@ Panel {
       : false
     readonly property bool canForget: root.canForgetNetwork(net)
     readonly property bool isSelected: root.focusSection === "wifi" && root.selectedIndex === index
+    property bool autoConnect: false
+    property bool autoConnectLoaded: false
+    property bool autoConnectBusy: false
     readonly property bool forgetFocused: isSelected && root.wifiActionFocused && canForget
     readonly property bool forgetVisible: canForget && (!requiresCredentials || forgetFocused || rightMouse.containsMouse)
 
@@ -1719,53 +1722,72 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
       }
 
-      // The right edge shows a lock for networks that require credentials and
-      // reveals Forget on hover. Known passwordless networks show Forget
-      // directly rather than reserving an invisible or misleading target.
-      Item {
+      // Saved visible networks expose NetworkManager's auto-connect state.
+      // Turning it off changes only future automatic activation.
+      Row {
         id: rightAction
-        visible: row.requiresCredentials || row.canForget
-        width: Style.space(22)
-        implicitHeight: lockIndicator.implicitHeight
+        visible: row.isKnown || row.requiresCredentials
+        spacing: Style.space(4)
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
 
-        Text {
-          id: lockIndicator
-          visible: row.requiresCredentials || row.forgetVisible
-          width: parent.width
-          anchors.verticalCenter: parent.verticalCenter
-          horizontalAlignment: Text.AlignHCenter
-          text: row.forgetVisible ? "󰅙" : "󰌾"
-          color: row.forgetVisible ? root.bar.urgent : Qt.darker(root.bar.foreground, 1.4)
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.subtitle
+        ToggleSwitch {
+          visible: row.isKnown && row.autoConnectLoaded
+          checked: row.autoConnect
+          busy: row.autoConnectBusy
+          cursorRing: false
+          foreground: root.bar.foreground
+          onToggled: row.setAutoConnect(!row.autoConnect)
+
+          PanelToolTip {
+            visible: parent.containsMouse
+            text: row.autoConnect ? "Auto-connect enabled" : "Auto-connect disabled"
+            fontFamily: root.bar.fontFamily
+          }
         }
 
-        BorderSurface {
-          anchors.fill: parent
-          visible: row.forgetFocused
-          color: Style.hoverFillFor(root.bar.urgent, root.bar.urgent)
-          borderSpec: Border.controlSpec("hover-cursor", root.bar.urgent, root.bar.urgent)
-          radius: Style.cornerRadius
-          z: -1
-        }
+        Item {
+          visible: row.requiresCredentials || row.canForget
+          width: Style.space(22)
+          height: lockIndicator.implicitHeight
 
-        MouseArea {
-          id: rightMouse
-          anchors.fill: parent
-          hoverEnabled: true
-          acceptedButtons: Qt.LeftButton
-          enabled: row.canForget && !root.busy
-          cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-          onContainsMouseChanged: if (containsMouse) { root.cursorActive = true; root.focusSection = "wifi"; root.selectedIndex = row.index; root.wifiActionFocused = true }
-          onClicked: if (row.net) root.forget(row.net)
-        }
+          Text {
+            id: lockIndicator
+            visible: row.requiresCredentials || row.forgetVisible
+            width: parent.width
+            anchors.verticalCenter: parent.verticalCenter
+            horizontalAlignment: Text.AlignHCenter
+            text: row.forgetVisible ? "󰅙" : "󰌾"
+            color: row.forgetVisible ? root.bar.urgent : Qt.darker(root.bar.foreground, 1.4)
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.subtitle
+          }
 
-        PanelToolTip {
-          visible: rightMouse.containsMouse || row.forgetFocused
-          text: "Forget network"
-          fontFamily: root.bar.fontFamily
+          BorderSurface {
+            anchors.fill: parent
+            visible: row.forgetFocused
+            color: Style.hoverFillFor(root.bar.urgent, root.bar.urgent)
+            borderSpec: Border.controlSpec("hover-cursor", root.bar.urgent, root.bar.urgent)
+            radius: Style.cornerRadius
+            z: -1
+          }
+
+          MouseArea {
+            id: rightMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton
+            enabled: row.canForget && !root.busy
+            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onContainsMouseChanged: if (containsMouse) { root.cursorActive = true; root.focusSection = "wifi"; root.selectedIndex = row.index; root.wifiActionFocused = true }
+            onClicked: if (row.net) root.forget(row.net)
+          }
+
+          PanelToolTip {
+            visible: rightMouse.containsMouse || row.forgetFocused
+            text: "Forget network"
+            fontFamily: root.bar.fontFamily
+          }
         }
       }
 
@@ -1803,6 +1825,47 @@ Panel {
         }
       }
     }
+
+    function refreshAutoConnect() {
+      if (!row.isKnown || !row.net || autoConnectState.running) return
+      autoConnectState.command = ["nmcli", "-g", "connection.autoconnect", "connection", "show", "id", row.net.ssid]
+      autoConnectState.running = true
+    }
+
+    function setAutoConnect(enabled) {
+      if (!row.net || row.autoConnectBusy) return
+      row.autoConnectBusy = true
+      autoConnectChange.desired = enabled
+      autoConnectChange.command = ["nmcli", "connection", "modify", "id", row.net.ssid, "connection.autoconnect", enabled ? "yes" : "no"]
+      autoConnectChange.running = true
+    }
+
+    Process {
+      id: autoConnectState
+      stdout: StdioCollector {
+        waitForEnd: true
+        onStreamFinished: {
+          row.autoConnect = text.trim().split("\n")[0] === "yes"
+          row.autoConnectLoaded = true
+        }
+      }
+    }
+
+    Process {
+      id: autoConnectChange
+      property bool desired: false
+      onExited: function(exitCode) {
+        row.autoConnectBusy = false
+        if (exitCode === 0) {
+          row.autoConnect = desired
+          row.autoConnectLoaded = true
+        } else {
+          row.refreshAutoConnect()
+        }
+      }
+    }
+
+    Component.onCompleted: refreshAutoConnect()
 
     Timer {
       id: failureTimer
