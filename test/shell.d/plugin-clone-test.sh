@@ -191,3 +191,23 @@ fi
 [[ ! -e $TMPDIR/home/.config/omarchy/plugins/tester.osd ]] ||
   fail "failed clone discovery leaves a partial clone behind"
 pass "clone removes a partial clone when switching fails"
+
+# USER=omarchy produces omarchy.clock, which PluginRegistry rejects as reserved
+# while discovery still matches the built-in and the CLI reports success.
+omarchy_user_calls="$TMPDIR/calls-omarchy"
+HOME="$TMPDIR/home" USER=omarchy OMARCHY_PATH="$ROOT" PATH="$TMPDIR/bin:$ROOT/bin:$PATH" \
+  FAKE_CALLS="$omarchy_user_calls" OMARCHY_TEST_ROOT="$ROOT" \
+  omarchy-plugin-clone omarchy.clock >/dev/null
+omarchy_clock="$TMPDIR/home/.config/omarchy/plugins/user.omarchy.clock"
+[[ ! -e $TMPDIR/home/.config/omarchy/plugins/omarchy.clock ]] ||
+  fail "clone for user omarchy lands in the reserved omarchy.* path"
+[[ -f $omarchy_clock/manifest.json ]] ||
+  fail "clone for user omarchy did not write user.omarchy.clock"
+jq -e '
+  .id == "user.omarchy.clock" and
+  .omarchy.clonedFrom == "omarchy.clock"
+' "$omarchy_clock/manifest.json" >/dev/null ||
+  fail "clone for user omarchy kept a reserved manifest id"
+grep -qx 'omarchy-plugin-enable user.omarchy.clock' "$omarchy_user_calls" ||
+  fail "clone does not enable the reserved-safe id"
+pass "clone keeps USER=omarchy out of the reserved omarchy.* namespace"
