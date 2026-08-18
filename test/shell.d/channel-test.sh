@@ -91,7 +91,7 @@ write_stub readlink '#!/bin/bash
 if [[ -n ${OMARCHY_TEST_RESOLVED_PATH:-} ]]; then
   echo "$OMARCHY_TEST_RESOLVED_PATH"
 else
-  /usr/bin/readlink "$@"
+  command -p readlink "$@"
 fi
 '
 
@@ -123,7 +123,6 @@ fi
 pass "stable does not require reboot when already package-backed"
 
 OMARCHY_TEST_PATH="$test_tmp/legacy-omarchy-link" OMARCHY_TEST_RESOLVED_PATH=/usr/share/omarchy run_channel stable
-unset OMARCHY_TEST_RESOLVED_PATH
 if grep -q $'^state\tset\treboot-required$' "$log_file"; then
   fail "stable does not require reboot through the legacy Omarchy path symlink" "$(cat "$log_file")"
 fi
@@ -200,7 +199,6 @@ pass "current channel detects package-backed edge"
 
 [[ $(OMARCHY_TEST_RESOLVED_PATH=/usr/share/omarchy current_channel stable stable "$test_tmp/legacy-omarchy-link") == "stable" ]] ||
   fail "current channel recognizes the legacy Omarchy path symlink"
-unset OMARCHY_TEST_RESOLVED_PATH
 pass "current channel recognizes the legacy Omarchy path symlink"
 
 [[ $(current_channel edge dev "$test_tmp/dev-checkout") == "dev" ]] || fail "current channel detects dev from OMARCHY_PATH"

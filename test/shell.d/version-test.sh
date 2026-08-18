@@ -34,7 +34,7 @@ cat >"$stub_bin/readlink" <<'STUB'
 if [[ -n ${OMARCHY_TEST_RESOLVED_PATH:-} ]]; then
   echo "$OMARCHY_TEST_RESOLVED_PATH"
 else
-  /usr/bin/readlink "$@"
+  command -p readlink "$@"
 fi
 STUB
 chmod +x "$stub_bin/readlink"

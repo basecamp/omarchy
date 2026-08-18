@@ -95,7 +95,7 @@ cat >"$stub_bin/readlink" <<'SH'
 if [[ -n ${TEST_RESOLVED_OMARCHY_PATH:-} ]]; then
   echo "$TEST_RESOLVED_OMARCHY_PATH"
 else
-  /usr/bin/readlink "$@"
+  command -p readlink "$@"
 fi
 SH
 chmod +x "$stub_bin/readlink"
@@ -165,7 +165,6 @@ if TEST_OMARCHY_PATH="$test_tmp/legacy-omarchy-link" TEST_RESOLVED_OMARCHY_PATH=
 else
   status=$?
 fi
-unset TEST_RESOLVED_OMARCHY_PATH
 [[ $status -eq 0 ]] || fail "update checker handles the legacy Omarchy path symlink"
 [[ ! -s $git_log ]] || fail "update checker does not inspect the legacy Omarchy path symlink as git" "$(cat "$git_log")"
 pass "update checker recognizes the legacy Omarchy path symlink"
