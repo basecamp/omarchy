@@ -22,11 +22,6 @@ hl.config({
   decoration = {
     rounding = 0,
 
-    -- Dimming only kicks in while a special workspace is open, so the
-    -- scratchpad gets its overlay separation without costing anything the
-    -- rest of the time.
-    dim_special = 0.6,
-
     shadow = {
       enabled = false,
     },
@@ -69,16 +64,6 @@ hl.config({
   },
 })
 
--- Give the scratchpad a floating Quake-console presentation. Shadow and blur
--- stay off globally (they cost GPU on every frame for almost no visual gain,
--- and windows are near-opaque anyway), so the inset, the dimming, and the
--- slide carry the effect.
-hl.workspace_rule({
-  workspace = "special:scratchpad",
-  gaps_out = 80,
-  gaps_in = 40,
-})
-
 -- Default animations, see https://wiki.hypr.land/Configuring/Advanced-and-Cool/Animations/
 hl.curve("easeOutQuint", { type = "bezier", points = { { 0.23, 1 }, { 0.32, 1 } } })
 hl.curve("easeInOutCubic", { type = "bezier", points = { { 0.65, 0.05 }, { 0.36, 1 } } })
@@ -101,11 +86,6 @@ hl.animation({ leaf = "layersOut", enabled = true, speed = 1.5, bezier = "linear
 hl.animation({ leaf = "fadeLayersIn", enabled = true, speed = 1.79, bezier = "almostLinear" })
 hl.animation({ leaf = "fadeLayersOut", enabled = true, speed = 1.39, bezier = "almostLinear" })
 hl.animation({ leaf = "workspaces", enabled = false })
--- The direction names the edge the offset is measured from, not where the
--- workspace goes: "slide top" drops it down into view, and "slide bottom"
--- retracts it back up the way a Quake console does.
-hl.animation({ leaf = "specialWorkspaceIn", enabled = true, speed = 3, bezier = "easeOutQuint", style = "slide top" })
-hl.animation({ leaf = "specialWorkspaceOut", enabled = true, speed = 2, bezier = "easeInOutCubic", style = "slide bottom" })
 
 hl.config({
   dwindle = {
