@@ -23,7 +23,18 @@ hl.config({
   },
 })
 
+-- Refitting replaces the rule in place rather than stacking a new one, but it
+-- still schedules a monitor and window state refresh, and monitor.focused fires
+-- on every hop between screens. Most of those hops do not change the number, so
+-- only write the rule when it actually moves.
+local covering = nil
+
 local function cover(bottom)
+  if covering == bottom then
+    return
+  end
+  covering = bottom
+
   hl.workspace_rule({
     workspace = "special:scratchpad",
     gaps_in = 10,
@@ -40,6 +51,10 @@ end
 -- is recomputed whenever the monitor layout changes.
 local function fit()
   local monitor = hl.get_active_monitor()
+
+  -- A monitor handle whose output has gone away answers nil to every field, and
+  -- layout changes are exactly when that happens, so this also covers reading
+  -- height and reserved below.
   if not monitor or not monitor.scale or monitor.scale <= 0 then
     return
   end

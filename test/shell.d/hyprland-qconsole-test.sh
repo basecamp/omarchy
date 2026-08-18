@@ -63,6 +63,27 @@ assert(final.on_created_empty:find("omarchy%-agent"), "refitting keeps the conso
 local before = current().gaps_out.bottom
 monitor = nil
 handlers["monitor.layout_changed"]()
-assert(current().gaps_out.bottom == before, "an unreadable monitor leaves the console as it was")
+assert(current().gaps_out.bottom == before, "an absent monitor leaves the console as it was")
+
+-- A monitor handle outliving its output answers nil to everything, which is
+-- what a layout change looks like mid-flight. Reading height or reserved off
+-- that would throw, so the scale guard has to catch it first.
+monitor = setmetatable({}, { __index = function() return nil end })
+handlers["monitor.layout_changed"]()
+assert(current().gaps_out.bottom == before, "an expired monitor handle is not read to pieces")
+
+-- Refitting to the size it already is would still cost a state refresh, and
+-- monitor.focused fires on every hop between screens.
+monitor = { height = 1440, scale = 1, reserved = { top = 0, bottom = 0, left = 0, right = 0 } }
+handlers["monitor.layout_changed"]()
+local written = #rules
+handlers["monitor.focused"]()
+handlers["monitor.layout_changed"]()
+assert(#rules == written, "refitting to the same size does not rewrite the rule")
+
+monitor.scale = 2
+handlers["monitor.layout_changed"]()
+assert(#rules == written + 1, "a real change still rewrites it")
+assert(current().gaps_out.bottom == 360, "and lands on half the rescaled screen")
 LUA
 pass "the console covers half the work area at any monitor scale"
