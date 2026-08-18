@@ -20,24 +20,19 @@ hl.config({
   },
 
   decoration = {
-    rounding = 5,
+    rounding = 0,
+
+    -- Dimming only kicks in while a special workspace is open, so the
+    -- scratchpad gets its overlay separation without costing anything the
+    -- rest of the time.
     dim_special = 0.6,
 
     shadow = {
-      enabled = true,
-      range = 8,
-      render_power = 2,
-      color = "rgba(50, 50, 50, 0.35)",
+      enabled = false,
     },
 
     blur = {
-      enabled = true,
-      size = 1,
-      passes = 1,
-      new_optimizations = true,
-      xray = true,
-      brightness = 0.5,
-      special = true,
+      enabled = false,
     },
   },
 
@@ -74,16 +69,18 @@ hl.config({
   },
 })
 
--- Give the scratchpad a floating Quake-console presentation.
+-- Give the scratchpad a floating Quake-console presentation. Shadow and blur
+-- stay off globally (they cost GPU on every frame for almost no visual gain,
+-- and windows are near-opaque anyway), so the inset, the dimming, and the
+-- slide carry the effect.
 hl.workspace_rule({
   workspace = "special:scratchpad",
   gaps_out = 80,
   gaps_in = 40,
-  no_border = false,
-  no_rounding = false,
-  no_shadow = false,
-  decorate = true,
 })
+
+-- Round just the scratchpad, so the global default can stay square.
+hl.window_rule({ match = { workspace = "special:scratchpad" }, rounding = 8 })
 
 -- Default animations, see https://wiki.hypr.land/Configuring/Advanced-and-Cool/Animations/
 hl.curve("easeOutQuint", { type = "bezier", points = { { 0.23, 1 }, { 0.32, 1 } } })
@@ -107,6 +104,9 @@ hl.animation({ leaf = "layersOut", enabled = true, speed = 1.5, bezier = "linear
 hl.animation({ leaf = "fadeLayersIn", enabled = true, speed = 1.79, bezier = "almostLinear" })
 hl.animation({ leaf = "fadeLayersOut", enabled = true, speed = 1.39, bezier = "almostLinear" })
 hl.animation({ leaf = "workspaces", enabled = false })
+-- The direction names the edge the offset is measured from, not where the
+-- workspace goes: "slide top" drops it down into view, and "slide bottom"
+-- retracts it back up the way a Quake console does.
 hl.animation({ leaf = "specialWorkspaceIn", enabled = true, speed = 3, bezier = "easeOutQuint", style = "slide top" })
 hl.animation({ leaf = "specialWorkspaceOut", enabled = true, speed = 2, bezier = "easeInOutCubic", style = "slide bottom" })
 
