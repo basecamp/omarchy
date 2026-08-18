@@ -36,13 +36,17 @@ export PATH="$tmp_dir/bin:$ROOT/bin:$PATH"
 export POWERPROFILES_LOG="$tmp_dir/calls"
 export OMARCHY_POWERPROFILES_STATE_DIR="$tmp_dir/state"
 
-: >"$POWERPROFILES_LOG"
+reset_calls_log() {
+  : >|"$POWERPROFILES_LOG"
+}
+
+reset_calls_log
 "$ROOT/bin/omarchy-powerprofiles-set" ac balanced
 [[ $(<"$tmp_dir/state/ac") == "balanced" ]] || fail "power profile stores AC preference"
 [[ $(tail -n 1 "$tmp_dir/calls") == "balanced" ]] || fail "power profile applies selected AC preference"
 pass "power profile stores and applies AC preference"
 
-: >"$POWERPROFILES_LOG"
+reset_calls_log
 "$ROOT/bin/omarchy-powerprofiles-set" ac
 [[ $(tail -n 1 "$tmp_dir/calls") == "balanced" ]] || fail "power profile restores AC preference"
 pass "power profile restores AC preference"
@@ -57,24 +61,24 @@ pass "power profile persists only successful selections"
 [[ $(<"$tmp_dir/state/battery") == "performance" ]] || fail "power profile stores battery preference"
 pass "power profile stores battery preference separately"
 
-: >"$POWERPROFILES_LOG"
+reset_calls_log
 "$ROOT/bin/omarchy-powerprofiles-set" ac
 [[ $(tail -n 1 "$tmp_dir/calls") == "balanced" ]] || fail "battery preference does not replace AC preference"
 pass "power profile keeps AC and battery preferences separate"
 
-: >"$POWERPROFILES_LOG"
+reset_calls_log
 ON_BATTERY=1 "$ROOT/bin/omarchy-powerprofiles-set"
 [[ $(tail -n 1 "$tmp_dir/calls") == "performance" ]] || fail "autodetect restores battery preference"
 pass "power profile autodetect restores battery preference"
 
 rm "$tmp_dir/state/ac"
-: >"$POWERPROFILES_LOG"
+reset_calls_log
 ON_BATTERY=0 "$ROOT/bin/omarchy-powerprofiles-set"
 [[ $(tail -n 1 "$tmp_dir/calls") == "performance" ]] || fail "power profile uses performance as AC default"
 pass "power profile retains performance as AC default"
 
 "$ROOT/bin/omarchy-powerprofiles-set" ac power-saver
-: >"$POWERPROFILES_LOG"
+reset_calls_log
 "$ROOT/bin/omarchy-powerprofiles-init"
 [[ $(tail -n 1 "$tmp_dir/calls") == "power-saver" ]] || fail "init restores the autodetected preference"
 pass "power profile init restores the autodetected preference"
