@@ -74,7 +74,9 @@ QtObject {
         console.warn("PluginRegistry: capabilities must be an object at " + sourcePath)
         return null
       }
-      for (var capability in manifest.capabilities) {
+      var capabilityNames = Object.keys(manifest.capabilities)
+      for (var capabilityIndex = 0; capabilityIndex < capabilityNames.length; capabilityIndex++) {
+        var capability = capabilityNames[capabilityIndex]
         var capabilityVersion = Number(manifest.capabilities[capability])
         if (!capability || !Number.isInteger(capabilityVersion) || capabilityVersion < 1) {
           console.warn("PluginRegistry: capability versions must be positive integers at " + sourcePath)
@@ -173,7 +175,10 @@ QtObject {
   // positive integer is the declared capability contract version.
   function capabilityVersion(id, capability) {
     if (scanning) return -1
-    var resolvedId = resolveEnabledId(id)
+    return capabilityVersionForResolvedId(resolveEnabledId(id), capability)
+  }
+
+  function capabilityVersionForResolvedId(resolvedId, capability) {
     var manifest = installedPlugins[resolvedId]
     var capabilities = manifest && Util.isPlainObject(manifest.capabilities)
       ? manifest.capabilities : null

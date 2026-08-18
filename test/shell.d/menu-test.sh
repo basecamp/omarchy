@@ -17,16 +17,14 @@ assertEqual(
   1,
   'menu declares the searched-app selection event contract'
 )
-const publishIndex = menuQml.indexOf('root.shell.publishAppSelectedAfterSearch(')
-const clearFilterIndex = menuQml.indexOf('filterText = ""', publishIndex)
-assert(publishIndex >= 0, 'menu publishes explicit app selections made after search')
-assert(clearFilterIndex > publishIndex, 'menu publishes before clearing its search state')
-const publishedEvent = menuQml.slice(publishIndex, clearFilterIndex)
-assert(publishedEvent.includes('desktopId: appId') && publishedEvent.includes('name: label'), 'menu publishes stable app identity and display name')
-assert(!publishedEvent.includes('filterText') && !publishedEvent.includes('query:'), 'menu does not publish the search query')
-assert(shellQml.includes('signal appSelectedAfterSearch(var event)'), 'shell exposes a semantic searched-app event')
-assert(shellQml.includes('String(sourceId || "") !== activeMenuId'), 'shell rejects publications from inactive menu implementations')
-assert(shellQml.includes('function pluginSupports(id: string, capability: string, minimumVersion: string)'), 'shell IPC exposes capability detection')
+const publishedSelection = menuQml.match(
+  /publishAppSelectedAfterSearch\s*\([\s\S]*?\{\s*schemaVersion\s*:\s*1\s*,\s*desktopId\s*:\s*appId\s*,\s*name\s*:\s*label\s*\}[\s\S]*?\)[\s\S]*?filterText\s*=\s*""/
+)
+assert(publishedSelection, 'menu publishes explicit app selections before clearing its search state')
+assert(!publishedSelection[0].includes('query:'), 'menu does not publish the search query')
+assert(/signal\s+appSelectedAfterSearch\s*\(\s*var\s+event\s*\)/.test(shellQml), 'shell exposes a semantic searched-app event')
+assert(/String\s*\(\s*sourceId\s*\|\|\s*""\s*\)\s*!==\s*activeMenuId/.test(shellQml), 'shell rejects publications from inactive menu implementations')
+assert(/function\s+pluginSupports\s*\(\s*id\s*:\s*string\s*,\s*capability\s*:\s*string\s*,\s*minimumVersion\s*:\s*string\s*\)/.test(shellQml), 'shell IPC exposes capability detection')
 
 const parsed = menu.parseMenuJsonc(`
 {

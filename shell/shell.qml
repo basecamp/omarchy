@@ -123,7 +123,7 @@ ShellRoot {
   function publishAppSelectedAfterSearch(sourceId, event) {
     var activeMenuId = shell.pluginRegistry.resolveEnabledId("omarchy.menu")
     if (String(sourceId || "") !== activeMenuId) return false
-    if (shell.pluginSupportStatus("omarchy.menu", "app-selected-after-search", 1) !== "supported") return false
+    if (shell.pluginRegistry.capabilityVersionForResolvedId(activeMenuId, "app-selected-after-search") < 1) return false
     if (!Util.isPlainObject(event) || Number(event.schemaVersion) !== 1) return false
 
     var desktopId = String(event.desktopId || "").trim()
