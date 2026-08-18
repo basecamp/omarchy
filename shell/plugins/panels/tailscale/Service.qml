@@ -152,7 +152,7 @@ Item {
     }
     if (!whichProcess.running) {
       refreshing = true
-      whichProcess.command = ["which", "tailscale"]
+      whichProcess.command = ["bash", "-c", "command -v tailscale"]
       whichProcess.running = true
     }
   }
