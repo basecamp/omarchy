@@ -104,7 +104,7 @@ TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=0 \
 
 grep -Fxq 'options apple-gmux force_igd=y' "$gmux_conf" ||
   fail "T2 hybrid graphics can switch to integrated graphics"
-grep -Fxq 'SUBSYSTEM=="drm", DRIVERS=="amdgpu", ATTR{device/power_dpm_force_performance_level}="low"' "$dpm_rule" ||
+grep -Fxq 'SUBSYSTEM=="drm", ENV{DEVTYPE}=="drm_minor", KERNEL=="card[0-9]*", ATTR{device/vendor}=="0x1002", ATTR{device/power_dpm_force_performance_level}="low"' "$dpm_rule" ||
   fail "T2 integrated graphics keeps Radeon in its safe low-power mode"
 cmp -s "$renderer_source" "$renderer_env" ||
   fail "T2 integrated graphics prioritizes Intel rendering through UWSM"

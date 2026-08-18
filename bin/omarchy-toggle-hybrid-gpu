@@ -29,7 +29,7 @@ toggle_t2_hybrid_gpu() {
     fi
 
     if [[ $force_igd == "y" ]]; then
-      if ! echo 'SUBSYSTEM=="drm", DRIVERS=="amdgpu", ATTR{device/power_dpm_force_performance_level}="low"' | sudo tee "$dpm_rule" >/dev/null; then
+      if ! echo 'SUBSYSTEM=="drm", ENV{DEVTYPE}=="drm_minor", KERNEL=="card[0-9]*", ATTR{device/vendor}=="0x1002", ATTR{device/power_dpm_force_performance_level}="low"' | sudo tee "$dpm_rule" >/dev/null; then
         echo "Could not write $dpm_rule. Graphics mode change incomplete." >&2
         exit 1
       fi
