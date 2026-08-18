@@ -1,0 +1,239 @@
+#!/bin/bash
+
+# omarchy:summary=Move overlapping displays clear of each other
+# omarchy:group=hyprland
+# omarchy:args=[check|apply] [--dry-run] [--intended JSON]
+# omarchy:examples=omarchy hyprland monitor tidy | omarchy hyprland monitor tidy check
+
+# Changing a display's scale or rotation changes how much desk space it takes
+# up, but every display keeps the position it already had. Nothing moves to make
+# room, so the displays start overlapping -- which is what Hyprland's "Your
+# monitor layout is set up incorrectly" warning means.
+#
+# This re-packs the displays along whichever axis they were already arranged on,
+# keeping their order and the first one anchored where it is, so they sit edge
+# to edge again. It is called automatically after a rotation or scale change.
+#
+# Rotation matters to the arithmetic: `hyprctl` reports the mode, not the
+# rotated result, so a display on an odd transform occupies height-by-width.
+
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: omarchy-hyprland-monitor-tidy [check|apply] [--dry-run]
+
+  check    Report overlapping displays. Exits non-zero when any overlap.
+  apply    Move overlapping displays clear of each other (the default).
+
+Gaps are left alone: a gap is not an error, and closing one would move
+displays that were placed on purpose.
+
+--dry-run prints what apply would do without changing anything.
+
+--intended takes a monitor listing describing the layout a change is about to
+produce, and positions the displays for that instead of for the current one.
+A caller growing a display uses it to move the neighbours clear first, so the
+displays never overlap even for an instant -- Hyprland notifies the moment they
+do, and that warning stays on screen after the layout is valid again.
+USAGE
+}
+
+action="apply" dry_run=0 intended=
+
+while (($#)); do
+  case "$1" in
+  check | apply)
+    action="$1"
+    shift
+    ;;
+  --dry-run)
+    dry_run=1
+    shift
+    ;;
+  --intended)
+    (($# >= 2)) || {
+      echo "Error: --intended needs a value." >&2
+      exit 1
+    }
+    intended="$2"
+    shift 2
+    ;;
+  --intended=*)
+    intended="${1#*=}"
+    shift
+    ;;
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  *)
+    usage >&2
+    exit 1
+    ;;
+  esac
+done
+
+# OMARCHY_MONITOR_JSON lets the tests describe a layout without a compositor.
+if [[ -n $intended ]]; then
+  monitors_json=$intended
+else
+  monitors_json=${OMARCHY_MONITOR_JSON:-$(hyprctl monitors -j)}
+fi
+
+plan=$(printf '%s' "$monitors_json" | python3 -c '
+import json
+import sys
+
+monitors = json.load(sys.stdin)
+
+
+def occupies_space(monitor):
+    if monitor.get("disabled"):
+        return False
+    # A mirrored display repeats what another one shows and shares its
+    # position, so it is not a second area of desk. Counting it reads as a total
+    # overlap, and tidying would move the display being mirrored out from under
+    # it -- silently breaking the mirror.
+    mirror_of = monitor.get("mirrorOf") or "none"
+    return mirror_of == "none"
+
+
+active = [m for m in monitors if occupies_space(m)]
+
+
+def rect(monitor):
+    scale = float(monitor.get("scale") or 1) or 1
+    width = float(monitor.get("width") or 0) / scale
+    height = float(monitor.get("height") or 0) / scale
+    # Odd transforms are the quarter turns, which swap the axes.
+    if int(monitor.get("transform") or 0) % 2:
+        width, height = height, width
+    return {
+        "name": monitor.get("name", ""),
+        "x": float(monitor.get("x") or 0),
+        "y": float(monitor.get("y") or 0),
+        "w": round(width),
+        "h": round(height),
+    }
+
+
+rects = [rect(m) for m in active]
+
+if len(rects) < 2:
+    print(json.dumps({"ok": True, "problems": [], "moves": []}))
+    sys.exit(0)
+
+
+def overlap(a, b):
+    horizontal = min(a["x"] + a["w"], b["x"] + b["w"]) - max(a["x"], b["x"])
+    vertical = min(a["y"] + a["h"], b["y"] + b["h"]) - max(a["y"], b["y"])
+    if horizontal > 0 and vertical > 0:
+        return (round(horizontal), round(vertical))
+    return None
+
+
+problems = []
+for i in range(len(rects)):
+    for j in range(i + 1, len(rects)):
+        collision = overlap(rects[i], rects[j])
+        if collision:
+            problems.append({
+                "kind": "overlap",
+                "a": rects[i]["name"],
+                "b": rects[j]["name"],
+                "by": collision,
+            })
+
+# Which way are these displays laid out? Compare how far apart their centres are
+# on each axis and pack along the wider spread, so a stacked arrangement is not
+# flattened into a row.
+def spread(key, size):
+    centres = [r[key] + r[size] / 2 for r in rects]
+    return max(centres) - min(centres)
+
+
+axis = "x" if spread("x", "w") >= spread("y", "h") else "y"
+size = "w" if axis == "x" else "h"
+
+# Only overlapping displays are moved, and each is pushed just clear of what it
+# runs into along the layout axis.
+#
+# Closing gaps as well was tried and is wrong: a gap is not an error. Hyprland
+# only ever complains about overlaps, and a layout can be deliberately spaced or
+# arranged in rows. Packing everything onto one axis flattened valid L-shaped
+# layouts, and a tall display beside two stacked ones dragged a whole row
+# sideways because it shared the cross axis with both rows.
+moves = []
+placed = sorted(rects, key=lambda r: (r[axis], r["name"]))
+
+for index, r in enumerate(placed):
+    target = r[axis]
+    # Clear of every display already settled ahead of this one that it hits.
+    for earlier in placed[:index]:
+        probe = dict(r)
+        probe[axis] = target
+        if overlap(probe, earlier) is not None:
+            target = earlier[axis] + earlier[size]
+
+    if target != r[axis]:
+        moves.append({
+            "name": r["name"],
+            "axis": axis,
+            "from": round(r[axis]),
+            "to": round(target),
+            "x": round(target if axis == "x" else r["x"]),
+            "y": round(target if axis == "y" else r["y"]),
+        })
+        r[axis] = target
+
+# Order matters as much as the destinations. Applied left to right, a display
+# shifting outward lands on its neighbour before that neighbour has moved, and
+# Hyprland notifies on the overlap even though the finished layout is fine.
+# Displays moving outward are therefore moved outermost first, and displays
+# moving inward innermost first, so no intermediate state overlaps.
+outward = sorted([m for m in moves if m["to"] > m["from"]], key=lambda m: -m["to"])
+inward = sorted([m for m in moves if m["to"] < m["from"]], key=lambda m: m["to"])
+moves = outward + inward
+
+print(json.dumps({"ok": not problems and not moves, "problems": problems, "moves": moves, "axis": axis}))
+')
+
+ok=$(jq -r '.ok' <<<"$plan")
+moves=$(jq -c '.moves' <<<"$plan")
+
+describe_problems() {
+  jq -r '
+    .problems[] |
+    "  \(.a) and \(.b) overlap by \(.by[0])x\(.by[1]) logical pixels"
+  ' <<<"$plan"
+}
+
+if [[ $ok == "true" ]]; then
+  [[ $action == "check" ]] && echo "No displays overlap."
+  exit 0
+fi
+
+if [[ $action == "check" ]]; then
+  echo "Display layout needs tidying:"
+  describe_problems
+  exit 1
+fi
+
+if ((dry_run)); then
+  echo "Would move:"
+  jq -r '.moves[] | "  \(.name): \(.axis) \(.from) -> \(.to)"' <<<"$plan"
+  exit 0
+fi
+
+count=$(jq -r 'length' <<<"$moves")
+((count)) || exit 0
+
+while read -r name x y; do
+  [[ -n $name ]] || continue
+  hyprctl eval "hl.monitor({ output = \"$name\", position = \"${x}x${y}\" })" >/dev/null
+  omarchy-hyprland-monitor-rule set "$name" "position=${x}x${y}"
+done < <(jq -r '.[] | "\(.name) \(.x) \(.y)"' <<<"$moves")
+
+echo "Moved $count display(s) clear of an overlap:"
+jq -r '.[] | "  \(.name): \(.axis) \(.from) -> \(.to)"' <<<"$moves"
