@@ -27,7 +27,12 @@ import tempfile
 sys.dont_write_bytecode = True
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location("sampler", os.path.join(HERE, "sampler.py"))
+SAMPLER = os.path.join(HERE, "sampler.py")
+spec = importlib.util.spec_from_file_location("sampler", SAMPLER)
+if spec is None or spec.loader is None:
+    # Otherwise this dies with an AttributeError on None, which says nothing
+    # about the file that is actually missing or unreadable.
+    sys.exit("cannot load the sampler under test: %s" % SAMPLER)
 sampler = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sampler)
 

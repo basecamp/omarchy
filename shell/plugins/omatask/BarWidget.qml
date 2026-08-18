@@ -24,7 +24,10 @@ Panel {
   }
 
   moduleName: "omarchy.omatask"
-  ipcTarget: "omarchy.omatask"
+  // Written once and bound everywhere else. Three copies of this string is how
+  // a rename gets partially applied — which already happened once here, leaving
+  // ipcTarget naming a target no handler answered on.
+  ipcTarget: moduleName
   // The base Panel would register its own handler for that target; this widget
   // owns the single allowed one so it can add expand() alongside the standard
   // open/close/toggle.
@@ -197,7 +200,7 @@ Panel {
   }
 
   IpcHandler {
-    target: "omarchy.omatask"
+    target: root.ipcTarget
 
     function open(): void { root.open() }
     function close(): void { root.close() }

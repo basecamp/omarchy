@@ -431,7 +431,11 @@ Item {
     try {
       data = JSON.parse(text)
     } catch (error) {
-      lastError = "unparseable sample: " + error
+      // Without a piece of the offending line this says only that parsing
+      // failed, which is the one thing already obvious from the error.
+      var snippet = String(text).slice(0, 120)
+      if (String(text).length > 120) snippet += "…"
+      lastError = "unparseable sample: " + error + " — " + snippet
       return
     }
 
