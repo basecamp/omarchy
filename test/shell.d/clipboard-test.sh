@@ -348,6 +348,10 @@ capture_output=$(printf 'secret' | CLIPBOARD_STATE=sensitive XDG_RUNTIME_DIR="$T
 [[ -z $capture_output ]] || fail "clipboard capture ignores sensitive watched text"
 pass "clipboard capture ignores sensitive watched text"
 
+capture_output=$(printf 'generated screenshot path' | WL_PASTE_TYPES="image/png\napplication/x-omarchy-file-backed-image\ntext/plain\n" XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text)
+[[ -z $capture_output ]] || fail "clipboard capture hides file-backed screenshot paths"
+pass "clipboard capture hides file-backed screenshot paths"
+
 capture_output=$(CLIPBOARD_STATE=sensitive XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
 [[ -z $capture_output ]] || fail "clipboard capture ignores sensitive clipboard events"
 pass "clipboard capture ignores sensitive clipboard events"

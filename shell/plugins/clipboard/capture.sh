@@ -65,7 +65,12 @@ emit_text() {
 }
 
 case "${1:-}" in
-text) emit_text; exit 0 ;;
+text)
+  # File-backed screenshots expose their path for terminal paste. The image
+  # watcher records the same selection, so do not add a duplicate text entry.
+  grep -qx 'application/x-omarchy-file-backed-image' <<<"$types" || emit_text
+  exit 0
+  ;;
 image/*) emit_image "$1"; exit 0 ;;
 esac
 
