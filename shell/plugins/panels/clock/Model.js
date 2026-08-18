@@ -67,6 +67,23 @@ function nextClockFormat(ring, current) {
   return ring[(index + 1) % ring.length]
 }
 
+// Whether a label format asks for seconds, so the widget can tick once a
+// second only when the label would otherwise sit frozen between minutes.
+// Qt reads single quotes as literal text ("'W'ww"), so an 's' inside them is
+// a letter rather than the seconds token.
+function formatHasSeconds(format) {
+  var text = String(format === undefined || format === null ? "" : format)
+  var quoted = false
+  for (var i = 0; i < text.length; i++) {
+    if (text[i] === "'") {
+      quoted = !quoted
+    } else if (!quoted && text[i] === "s") {
+      return true
+    }
+  }
+  return false
+}
+
 // Two-digit ISO week, substituted into a format's 'ww' token before Qt
 // formats it -- Qt has no ISO week specifier of its own.
 function isoWeekLiteral(year, month, day) {
@@ -291,6 +308,7 @@ if (typeof module !== "undefined") {
     clockFormats: clockFormats,
     clockFormatRing: clockFormatRing,
     nextClockFormat: nextClockFormat,
+    formatHasSeconds: formatHasSeconds,
     isoWeekLiteral: isoWeekLiteral
   }
 }

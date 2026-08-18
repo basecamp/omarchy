@@ -111,7 +111,10 @@ BarWidget {
 
   SystemClock {
     id: clock
-    precision: SystemClock.Minutes
+    // Follow the label: a format carrying seconds needs a tick a second, and
+    // one without it should not wake the shell 60 times a minute to redraw
+    // the same string.
+    precision: Model.formatHasSeconds(root.activeFormat) ? SystemClock.Seconds : SystemClock.Minutes
     onDateChanged: root.displayDate = date
   }
 

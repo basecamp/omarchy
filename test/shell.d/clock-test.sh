@@ -166,7 +166,28 @@ assertEqual(
 )
 assertEqual(calendar.isoWeekLiteral(2026, 0, 5), '02', 'clock zero-pads the ISO week token')
 
+// ---- seconds in the label
+// The widget ticks once a minute unless the format asks for seconds, so a
+// hand-written 'ss' would otherwise sit frozen until the minute rolled over.
+assert(calendar.formatHasSeconds('HH:mm:ss'), 'clock sees seconds in a 24-hour format')
+assert(calendar.formatHasSeconds('ddd d MMM h:mm:ss AP'), 'clock sees seconds in a dated AM/PM format')
+assert(calendar.formatHasSeconds('HH\nmm\nss'), 'clock sees seconds in a stacked format')
+assert(calendar.formatHasSeconds('h:mm:s AP'), 'clock sees a single-digit seconds token')
+assert(!calendar.formatHasSeconds('HH:mm'), 'clock sees no seconds in the default format')
+assert(!calendar.formatHasSeconds('dddd h:mm AP'), 'clock reads the AM/PM twin as secondless')
+assert(!calendar.formatHasSeconds(''), 'clock reads an empty format as secondless')
+assert(!calendar.formatHasSeconds(null), 'clock reads a missing format as secondless')
+// Qt reads single quotes as literal text, so letters inside them are not tokens.
+assert(!calendar.formatHasSeconds("d MMMM 'W'ww yyyy"), 'clock ignores the quoted week literal')
+assert(!calendar.formatHasSeconds("'seconds' HH:mm"), 'clock ignores an s inside a quoted literal')
+assert(calendar.formatHasSeconds("'W'ww HH:mm:ss"), 'clock still sees seconds after a quoted literal')
+assert(!calendar.formatHasSeconds("dd\nMMM\n'W'ww\n''yy"), 'clock reads the stacked week preset as secondless')
+assert(calendar.clockFormats(false).every(format => !calendar.formatHasSeconds(format)), 'clock ships no seconds preset, so the default tick stays at a minute')
+
+
 // ---- widget wiring
+assert(/precision: Model\.formatHasSeconds\(root\.activeFormat\) \? SystemClock\.Seconds : SystemClock\.Minutes/.test(widgetSource), 'clock ticks per second only when the label shows seconds')
+assert(/precision: SystemClock\.Minutes/.test(panelSource), 'calendar panel keeps a minute tick, since it only watches for the day to roll over')
 assert(/moduleName: "omarchy\.clock"/.test(panelSource), 'calendar panel declares its module name')
 assert(/ipcTarget: "omarchy\.clock"/.test(panelSource), 'calendar panel registers its IPC target')
 assert(/manageIpc: false/.test(panelSource), 'calendar panel leaves the IPC target to the bar widget')
