@@ -43,12 +43,12 @@ reset_calls_log() {
 reset_calls_log
 "$ROOT/bin/omarchy-powerprofiles-set" ac balanced
 [[ $(<"$tmp_dir/state/ac") == "balanced" ]] || fail "power profile stores AC preference"
-[[ $(tail -n 1 "$tmp_dir/calls") == "balanced" ]] || fail "power profile applies selected AC preference"
+[[ $(tail -n 1 "$POWERPROFILES_LOG") == "balanced" ]] || fail "power profile applies selected AC preference"
 pass "power profile stores and applies AC preference"
 
 reset_calls_log
 "$ROOT/bin/omarchy-powerprofiles-set" ac
-[[ $(tail -n 1 "$tmp_dir/calls") == "balanced" ]] || fail "power profile restores AC preference"
+[[ $(tail -n 1 "$POWERPROFILES_LOG") == "balanced" ]] || fail "power profile restores AC preference"
 pass "power profile restores AC preference"
 
 if POWERPROFILES_SET_FAIL=1 "$ROOT/bin/omarchy-powerprofiles-set" ac performance; then
@@ -63,24 +63,24 @@ pass "power profile stores battery preference separately"
 
 reset_calls_log
 "$ROOT/bin/omarchy-powerprofiles-set" ac
-[[ $(tail -n 1 "$tmp_dir/calls") == "balanced" ]] || fail "battery preference does not replace AC preference"
+[[ $(tail -n 1 "$POWERPROFILES_LOG") == "balanced" ]] || fail "battery preference does not replace AC preference"
 pass "power profile keeps AC and battery preferences separate"
 
 reset_calls_log
 ON_BATTERY=1 "$ROOT/bin/omarchy-powerprofiles-set"
-[[ $(tail -n 1 "$tmp_dir/calls") == "performance" ]] || fail "autodetect restores battery preference"
+[[ $(tail -n 1 "$POWERPROFILES_LOG") == "performance" ]] || fail "autodetect restores battery preference"
 pass "power profile autodetect restores battery preference"
 
 rm "$tmp_dir/state/ac"
 reset_calls_log
 ON_BATTERY=0 "$ROOT/bin/omarchy-powerprofiles-set"
-[[ $(tail -n 1 "$tmp_dir/calls") == "performance" ]] || fail "power profile uses performance as AC default"
+[[ $(tail -n 1 "$POWERPROFILES_LOG") == "performance" ]] || fail "power profile uses performance as AC default"
 pass "power profile retains performance as AC default"
 
 "$ROOT/bin/omarchy-powerprofiles-set" ac power-saver
 reset_calls_log
 "$ROOT/bin/omarchy-powerprofiles-init"
-[[ $(tail -n 1 "$tmp_dir/calls") == "power-saver" ]] || fail "init restores the autodetected preference"
+[[ $(tail -n 1 "$POWERPROFILES_LOG") == "power-saver" ]] || fail "init restores the autodetected preference"
 pass "power profile init restores the autodetected preference"
 
 rg -F '["omarchy-powerprofiles-set", pendingPowerSource]' "$ROOT/shell/plugins/services/battery/Service.qml" >/dev/null ||
