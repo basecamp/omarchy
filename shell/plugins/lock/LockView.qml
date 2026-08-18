@@ -56,6 +56,28 @@ Item {
     passwordInput.forceActiveFocus()
   }
 
+  function retryPasswordFocus() {
+    if (!inputEnabled || authenticatingPassword) return
+    forcePasswordFocus()
+    focusRetryTimer.attemptsLeft = 20
+    focusRetryTimer.restart()
+  }
+
+  Timer {
+    id: focusRetryTimer
+    interval: 150
+    repeat: true
+    property int attemptsLeft: 0
+    onTriggered: {
+      attemptsLeft -= 1
+      if (passwordInput.activeFocus || attemptsLeft <= 0) {
+        stop()
+        return
+      }
+      root.forcePasswordFocus()
+    }
+  }
+
   function clearPassword() {
     passwordTextEdited("")
   }
@@ -69,11 +91,11 @@ Item {
 
   onPasswordTextChanged: syncPasswordText()
   onInputEnabledChanged: {
-    if (inputEnabled) Qt.callLater(forcePasswordFocus)
+    if (inputEnabled) Qt.callLater(retryPasswordFocus)
   }
   Component.onCompleted: {
     syncPasswordText()
-    if (inputEnabled) Qt.callLater(forcePasswordFocus)
+    if (inputEnabled) Qt.callLater(retryPasswordFocus)
   }
 
   // Measures the masked password at full size; passwordDotScale compares this
