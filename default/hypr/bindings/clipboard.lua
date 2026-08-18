@@ -8,7 +8,8 @@
 --
 -- Letter keysyms in send_key_state are resolved against the active layout, so
 -- SUPER+C/V/X fail with "key not found" while a non-Latin layout is active.
--- Physical keycodes keep the shortcuts working on every layout.
+-- Use Hyprland's `code:` key identifiers here so these shortcuts do not depend
+-- on active-layout keysym resolution.
 local KEY_X = "code:53"
 local KEY_C = "code:54"
 local KEY_V = "code:55"
