@@ -17,11 +17,12 @@ Item {
   readonly property string currentBackgroundLink: stateHome + "/omarchy/current/background"
 
   readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle : ({})
+  readonly property int defaultBlankSeconds: 5
   // Seconds the unlock screen stays lit without input before the display
   // blanks, validated the same way the idle service reads its timeouts.
   readonly property int blankTimeoutSeconds: {
     var seconds = Number(idleConfig.lockBlank)
-    return isFinite(seconds) && seconds >= 0 ? Math.floor(seconds) : 5
+    return isFinite(seconds) && seconds >= 0 ? Math.floor(seconds) : defaultBlankSeconds
   }
 
   property bool lockRequested: false

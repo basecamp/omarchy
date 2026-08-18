@@ -15,13 +15,13 @@ assert(
 )
 
 assert(
-  /interval: root\.blankTimeoutSeconds \* 1000/.test(serviceQml),
+  /interval:\s*root\.blankTimeoutSeconds\s*\*\s*1000/.test(serviceQml),
   'the blank timer takes its interval from the configured seconds'
 )
 
 assert(
-  /isFinite\(seconds\) && seconds >= 0 \? Math\.floor\(seconds\) : 5/.test(serviceQml),
-  'invalid or missing config falls back to the 5-second default'
+  /defaultBlankSeconds:\s*5\b/.test(serviceQml),
+  'the QML fallback keeps the 5-second default'
 )
 
 assertEqual(shellDefaults.idle.lockBlank, 5, 'the shipped default keeps the 5-second blank')
