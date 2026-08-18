@@ -31,8 +31,10 @@ home="$test_dir/home"
 config="$home/.config/omarchy/shell.json"
 
 run_migration() {
+  local migration_path="${1:-$migration}"
+
   : >"$SHELL_RESTARTS"
-  HOME="$home" PATH="$test_dir/bin:$PATH" bash -euo pipefail "$migration" >/dev/null
+  HOME="$home" PATH="$test_dir/bin:$PATH" bash -euo pipefail "$migration_path" >/dev/null
 }
 
 # The shipped default minus the widget is what every machine installed before
@@ -90,7 +92,7 @@ run_migration
 
 [[ $(ids center) == *'"omarchy.model-usage"'* ]] || fail "migration leaves the former widget id alone" "$(ids center)"
 [[ $(ids right) != *'"omarchy.agents"'* ]] || fail "migration does not add an agents copy beside the former widget id" "$(ids right)"
-HOME="$home" PATH="$test_dir/bin:$PATH" bash -euo pipefail "$rename_migration" >/dev/null
+run_migration "$rename_migration"
 [[ $(jq '[.bar.layout[][]? | if type == "object" then .id else . end] | map(select(. == "omarchy.agents")) | length' "$config") == 1 ]] ||
   fail "migration sequence leaves exactly one agents widget" "$(jq -c '.bar.layout' "$config")"
 pass "migration sequence recognizes and renames the former model usage widget once"
