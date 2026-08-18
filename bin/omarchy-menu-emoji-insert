@@ -1,11 +1,12 @@
 #!/bin/bash
 
-# omarchy:summary=Insert an emoji into the focused application
+# omarchy:summary=Insert an emoji into the window that had focus when the picker opened
 # omarchy:group=menu
-# omarchy:args=<emoji>
+# omarchy:args=<emoji> [focus-address]
 # omarchy:hidden=true
 
 emoji="${1:-}"
+focus="${2:-}"
 copy_pid=""
 
 [[ -n $emoji ]] || exit
@@ -14,6 +15,16 @@ printf '%s' "$emoji" | wl-copy --type text/plain --sensitive --foreground &
 copy_pid=$!
 
 sleep 0.15
+# The picker overlay is gone by the time this script runs, and the compositor
+# refocuses whichever window sits under the clicked cell. When the picker card
+# spans two windows (split layout, multi-monitor), that is not the window the
+# user was typing in. Restore the focus captured when the picker opened so the
+# paste lands where the user expects.
+if [[ -n $focus ]]; then
+  hyprctl dispatch "hl.dsp.focus({ window = \"address:${focus}\" })" >/dev/null 2>&1 \
+    || hyprctl dispatch focuswindow "address:${focus}" >/dev/null 2>&1 || true
+  sleep 0.1
+fi
 wtype -M shift -k Insert -m shift 2>/dev/null || true
 sleep 0.2
 

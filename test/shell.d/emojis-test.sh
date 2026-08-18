@@ -68,14 +68,20 @@ cat >"$TMPDIR/bin/wtype" <<'SH'
 printf '%s\n' "$*" >"$WTYPE_OUT"
 SH
 
+cat >"$TMPDIR/bin/hyprctl" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >>"$HYPRCTL_OUT"
+SH
+
 cat >"$TMPDIR/bin/sleep" <<'SH'
 #!/bin/bash
 exit 0
 SH
 
-chmod +x "$TMPDIR/bin/wl-copy" "$TMPDIR/bin/wtype" "$TMPDIR/bin/sleep"
+chmod +x "$TMPDIR/bin/wl-copy" "$TMPDIR/bin/wtype" "$TMPDIR/bin/hyprctl" "$TMPDIR/bin/sleep"
 
-WL_COPY_OUT="$TMPDIR/copy" WL_COPY_EMOJI_OUT="$TMPDIR/emoji" WTYPE_OUT="$TMPDIR/wtype" PATH="$TMPDIR/bin:$PATH" \
+WL_COPY_OUT="$TMPDIR/copy" WL_COPY_EMOJI_OUT="$TMPDIR/emoji" WTYPE_OUT="$TMPDIR/wtype" \
+  HYPRCTL_OUT="$TMPDIR/hyprctl" PATH="$TMPDIR/bin:$PATH" \
   "$ROOT/bin/omarchy-menu-emoji-insert" "😀"
 
 [[ $(<"$TMPDIR/emoji") == "😀" ]] || fail "emoji insert helper copies emoji transiently"
@@ -86,3 +92,16 @@ pass "emoji insert helper serves transient clipboard in foreground"
 
 [[ $(<"$TMPDIR/wtype") == "-M shift -k Insert -m shift" ]] || fail "emoji insert helper pastes with shift insert"
 pass "emoji insert helper pastes with shift insert"
+
+# With a focus address, the helper restores that window's focus before pasting.
+# No hyprctl call is expected without one, so the stub stays empty here.
+[[ ! -s "$TMPDIR/hyprctl" ]] || fail "emoji insert helper skips focus restore without a focus address"
+pass "emoji insert helper skips focus restore without a focus address"
+
+WL_COPY_OUT="$TMPDIR/copy" WL_COPY_EMOJI_OUT="$TMPDIR/emoji2" WTYPE_OUT="$TMPDIR/wtype2" \
+  HYPRCTL_OUT="$TMPDIR/hyprctl" PATH="$TMPDIR/bin:$PATH" \
+  "$ROOT/bin/omarchy-menu-emoji-insert" "😀" "0x1234abcd"
+
+[[ $(<"$TMPDIR/hyprctl") == 'dispatch hl.dsp.focus({ window = "address:0x1234abcd" })' ]] \
+  || fail "emoji insert helper restores the focus captured at picker open"
+pass "emoji insert helper restores the focus captured at picker open"
