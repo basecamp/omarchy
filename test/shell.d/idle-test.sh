@@ -33,6 +33,27 @@ assertDeepEqual(
   { windows: { a: true }, count: 1 },
   'idle leaves screensaver windows unchanged without an address'
 )
+
+assertDeepEqual(
+  idle.dismissStateAfter(false, true, true),
+  { settled: true, dismiss: false },
+  'idle settles the dismiss monitor once the screensaver goes quiet'
+)
+assertDeepEqual(
+  idle.dismissStateAfter(true, false, true),
+  { settled: false, dismiss: true },
+  'idle dismisses the screensaver on input after it has settled'
+)
+assertDeepEqual(
+  idle.dismissStateAfter(false, false, true),
+  { settled: false, dismiss: false },
+  'idle ignores the activity caused by launching the screensaver'
+)
+assertDeepEqual(
+  idle.dismissStateAfter(true, false, false),
+  { settled: false, dismiss: false },
+  'idle never dismisses without a screensaver on screen'
+)
 JS
 
 test_tmp=$(mktemp -d)
