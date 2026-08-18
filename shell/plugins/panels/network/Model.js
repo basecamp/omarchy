@@ -312,6 +312,43 @@ function canForgetNetwork(network) {
   return !!(network && network.known && !network.connected)
 }
 
+function splitNmcliFields(line) {
+  var fields = []
+  var field = ""
+  var escaped = false
+
+  for (var i = 0; i < line.length; i++) {
+    var character = line[i]
+    if (escaped) {
+      field += character
+      escaped = false
+    } else if (character === "\\") {
+      escaped = true
+    } else if (character === ":") {
+      fields.push(field)
+      field = ""
+    } else {
+      field += character
+    }
+  }
+
+  fields.push(field)
+  return fields
+}
+
+function parseAutoConnectProfiles(raw) {
+  var profiles = {}
+  var lines = String(raw || "").trim().split("\n")
+
+  for (var i = 0; i < lines.length; i++) {
+    var parts = splitNmcliFields(lines[i])
+    if (parts.length !== 3 || parts[1] !== "802-11-wireless") continue
+    profiles[parts[0]] = { id: parts[0], enabled: parts[2] === "yes" }
+  }
+
+  return profiles
+}
+
 // The password arrives on stdin and reaches nmcli through the scriptable
 // `connection edit` editor -- argv is world-readable in /proc, so the secret
 // must never be an argument (printf is a bash builtin, so no process spawns
@@ -373,6 +410,8 @@ if (typeof module !== "undefined") {
     wifiSectionTitle: wifiSectionTitle,
     requiresCredentials: requiresCredentials,
     canForgetNetwork: canForgetNetwork,
+    splitNmcliFields: splitNmcliFields,
+    parseAutoConnectProfiles: parseAutoConnectProfiles,
     enterpriseConnectScript: enterpriseConnectScript,
     networkFailureReason: networkFailureReason,
     shouldRepromptPassphrase: shouldRepromptPassphrase

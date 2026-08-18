@@ -294,8 +294,12 @@ assertDeepEqual(
 assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '', 'network keeps wifi band state out of the hero')
 assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit', 'network keeps ethernet speed in the hero')
 
-assert(/ToggleSwitch[\s\S]*?visible: row\.isKnown && row\.autoConnectLoaded/.test(panelSource), 'known visible networks show an auto-connect switch')
-assert(/connection\.autoconnect/.test(panelSource), 'network reads and writes NetworkManager auto-connect state')
-assert(/Turning it off changes only future automatic activation/.test(panelSource), 'network documents that the switch does not disconnect')
-assert(/\["nmcli", "connection", "modify", "id", row\.net\.ssid, "connection\.autoconnect"/.test(panelSource), 'network writes auto-connect by saved connection id')
+assertDeepEqual(
+  network.parseAutoConnectProfiles('Home:802-11-wireless:yes\nCafe\\:Guest:802-11-wireless:no\n'),
+  { Home: { id: 'Home', enabled: true }, 'Cafe:Guest': { id: 'Cafe:Guest', enabled: false } },
+  'network parses escaped NetworkManager Wi-Fi auto-connect profiles'
+)
+assert(/ToggleSwitch[\s\S]*?visible: row\.isKnown && row\.autoConnectProfile !== undefined/.test(panelSource), 'known visible networks show an auto-connect switch when a profile exists')
+assert(/id: autoConnectProfilesProc[\s\S]*?NAME,TYPE,AUTOCONNECT/.test(panelSource), 'network loads auto-connect profiles in one NetworkManager query')
+assert(/function setAutoConnect\(id, enabled\)[\s\S]*?connection\.autoconnect/.test(panelSource), 'network writes auto-connect by saved connection id')
 JS

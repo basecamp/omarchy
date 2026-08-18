@@ -71,6 +71,9 @@ Panel {
   readonly property var wifiNetworkObjects: wifiDevice && wifiDevice.networks ? wifiDevice.networks.values : []
   readonly property var connectedWifiNetwork: findConnectedWifiNetwork()
   property var wifiNetworks: []
+  property var autoConnectProfiles: ({})
+  property string pendingAutoConnectId: ""
+  property bool pendingAutoConnectEnabled: false
   property bool scanning: false
   property bool wifiStationAvailable: false
   property string dnsProvider: ""
@@ -468,6 +471,18 @@ Panel {
     bar.shell.summon("omarchy.wifiqr", JSON.stringify(payload))
   }
 
+  function refreshAutoConnectProfiles() {
+    if (!autoConnectProfilesProc.running) autoConnectProfilesProc.running = true
+  }
+
+  function setAutoConnect(id, enabled) {
+    if (!id || pendingAutoConnectId !== "") return
+    pendingAutoConnectId = id
+    pendingAutoConnectEnabled = enabled
+    autoConnectChangeProc.command = ["nmcli", "connection", "modify", "id", id, "connection.autoconnect", enabled ? "yes" : "no"]
+    autoConnectChangeProc.running = true
+  }
+
   function refresh(scanWifi) {
     if (scanWifi === undefined) scanWifi = false
     if (!detailsProc.running) detailsProc.running = true
@@ -491,6 +506,7 @@ Panel {
       }
     }
     syncWifiNetworks()
+    refreshAutoConnectProfiles()
   }
 
   function formatHeaderSpeed(mbps) {
@@ -807,6 +823,25 @@ Panel {
   Component.onCompleted: refresh()
 
   // Pulls everything we want about the active route's interface in one shot.
+  // One NetworkManager query supplies every visible row; row delegates never
+  // spawn their own nmcli processes while a scan adds or removes access points.
+  Process {
+    id: autoConnectProfilesProc
+    command: ["nmcli", "-t", "--escape", "yes", "-f", "NAME,TYPE,AUTOCONNECT", "connection", "show"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.autoConnectProfiles = Model.parseAutoConnectProfiles(text)
+    }
+  }
+
+  Process {
+    id: autoConnectChangeProc
+    onExited: function(exitCode) {
+      pendingAutoConnectId = ""
+      if (exitCode === 0) refreshAutoConnectProfiles()
+    }
+  }
+
   Process {
     id: detailsProc
     command: ["omarchy-network-status", "--verbose"]
@@ -1603,9 +1638,7 @@ Panel {
       : false
     readonly property bool canForget: root.canForgetNetwork(net)
     readonly property bool isSelected: root.focusSection === "wifi" && root.selectedIndex === index
-    property bool autoConnect: false
-    property bool autoConnectLoaded: false
-    property bool autoConnectBusy: false
+    readonly property var autoConnectProfile: row.net ? root.autoConnectProfiles[row.net.ssid] : undefined
     readonly property bool forgetFocused: isSelected && root.wifiActionFocused && canForget
     readonly property bool forgetVisible: canForget && (!requiresCredentials || forgetFocused || rightMouse.containsMouse)
 
@@ -1732,16 +1765,16 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
 
         ToggleSwitch {
-          visible: row.isKnown && row.autoConnectLoaded
-          checked: row.autoConnect
-          busy: row.autoConnectBusy
+          visible: row.isKnown && row.autoConnectProfile !== undefined
+          checked: row.autoConnectProfile ? row.autoConnectProfile.enabled : false
+          busy: root.pendingAutoConnectId === (row.autoConnectProfile ? row.autoConnectProfile.id : "")
           cursorRing: false
           foreground: root.bar.foreground
-          onToggled: row.setAutoConnect(!row.autoConnect)
+          onToggled: if (row.autoConnectProfile) root.setAutoConnect(row.autoConnectProfile.id, !row.autoConnectProfile.enabled)
 
           PanelToolTip {
             visible: parent.containsMouse
-            text: row.autoConnect ? "Auto-connect enabled" : "Auto-connect disabled"
+            text: row.autoConnectProfile && row.autoConnectProfile.enabled ? "Auto-connect enabled" : "Auto-connect disabled"
             fontFamily: root.bar.fontFamily
           }
         }
@@ -1825,47 +1858,6 @@ Panel {
         }
       }
     }
-
-    function refreshAutoConnect() {
-      if (!row.isKnown || !row.net || autoConnectState.running) return
-      autoConnectState.command = ["nmcli", "-g", "connection.autoconnect", "connection", "show", "id", row.net.ssid]
-      autoConnectState.running = true
-    }
-
-    function setAutoConnect(enabled) {
-      if (!row.net || row.autoConnectBusy) return
-      row.autoConnectBusy = true
-      autoConnectChange.desired = enabled
-      autoConnectChange.command = ["nmcli", "connection", "modify", "id", row.net.ssid, "connection.autoconnect", enabled ? "yes" : "no"]
-      autoConnectChange.running = true
-    }
-
-    Process {
-      id: autoConnectState
-      stdout: StdioCollector {
-        waitForEnd: true
-        onStreamFinished: {
-          row.autoConnect = text.trim().split("\n")[0] === "yes"
-          row.autoConnectLoaded = true
-        }
-      }
-    }
-
-    Process {
-      id: autoConnectChange
-      property bool desired: false
-      onExited: function(exitCode) {
-        row.autoConnectBusy = false
-        if (exitCode === 0) {
-          row.autoConnect = desired
-          row.autoConnectLoaded = true
-        } else {
-          row.refreshAutoConnect()
-        }
-      }
-    }
-
-    Component.onCompleted: refreshAutoConnect()
 
     Timer {
       id: failureTimer
