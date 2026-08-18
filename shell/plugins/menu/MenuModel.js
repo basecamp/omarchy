@@ -4,6 +4,24 @@ function stripJsonc(raw) {
     .replace(/,(\s*[}\]])/g, "$1")
 }
 
+// Everything read out of the menu JSONC goes through here rather than
+// stripping and parsing the text again per caller. Anything that is not a JSON
+// object — including a file that fails to parse — comes back null, and the
+// caller falls back to contributing nothing.
+function parseJsoncObject(raw) {
+  var stripped = stripJsonc(raw)
+  if (!stripped.trim()) return null
+
+  var parsed
+  try {
+    parsed = JSON.parse(stripped)
+  } catch (e) {
+    return null
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null
+  return parsed
+}
+
 function normalizeAliases(value) {
   if (Array.isArray(value)) return value.filter(function(v) { return v })
   if (typeof value === "string" && value) return [value]
@@ -40,16 +58,8 @@ function normalizeItem(id, raw) {
 }
 
 function parseMenuJsonc(raw) {
-  var stripped = stripJsonc(raw)
-  if (!stripped.trim()) return []
-
-  var parsed
-  try {
-    parsed = JSON.parse(stripped)
-  } catch (e) {
-    return []
-  }
-  if (typeof parsed !== "object" || parsed === null) return []
+  var parsed = parseJsoncObject(raw)
+  if (!parsed) return []
 
   var source = (parsed.items && typeof parsed.items === "object" && !Array.isArray(parsed.items))
     ? parsed.items
@@ -495,6 +505,7 @@ if (typeof module !== "undefined") {
     guardReaders: GUARD_READERS,
     guardScript: guardScript,
     stripJsonc: stripJsonc,
+    parseJsoncObject: parseJsoncObject,
     normalizeAliases: normalizeAliases,
     normalizeItem: normalizeItem,
     parseMenuJsonc: parseMenuJsonc,
