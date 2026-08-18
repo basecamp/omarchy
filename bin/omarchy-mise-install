@@ -12,6 +12,16 @@ package=$1
 command=${2:-$1}
 bin=${3:-$command}
 
+# omp is the command; the mise registry name is the GitHub backend.
+# `omarchy-mise-install omp` used to write a stub that looked up "omp".
+if [[ $package == "omp" || $package == "oh-my-pi" ]]; then
+  package="github:can1357/oh-my-pi"
+  if [[ -z ${2:-} ]]; then
+    command=omp
+    bin=omp
+  fi
+fi
+
 mkdir -p "$HOME/.local/bin"
 
 # These tools install and upgrade on first run, so mise's release cooldown would
