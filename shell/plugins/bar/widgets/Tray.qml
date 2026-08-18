@@ -623,12 +623,12 @@ BarWidget {
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: parent.right
             iconText: "\uf08d"
-            text: rowRoot.isPinned ? "Unpin" : "Pin"
+            tooltipText: rowRoot.isPinned ? "Unpin" : "Pin"
+            selected: rowRoot.isPinned
             foreground: root.foreground
             horizontalPadding: 8
             verticalPadding: 3
             iconSize: Style.font.bodySmall
-            fontSize: Style.font.bodySmall
             onClicked: root.togglePin(rowRoot.itemId)
           }
 
@@ -638,12 +638,12 @@ BarWidget {
             anchors.right: rowPinBtn.left
             anchors.rightMargin: Style.space(6)
             iconText: "\uf06e"
-            text: rowRoot.isHidden ? "Show" : "Hide"
+            tooltipText: rowRoot.isHidden ? "Show" : "Hide"
+            selected: rowRoot.isHidden
             foreground: root.foreground
             horizontalPadding: 8
             verticalPadding: 3
             iconSize: Style.font.bodySmall
-            fontSize: Style.font.bodySmall
             onClicked: root.toggleHide(rowRoot.itemId)
           }
         }
