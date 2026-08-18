@@ -7,6 +7,11 @@
 
 set -euo pipefail
 
+# Plugin ids are ASCII, and the range expressions below say so. POSIX resolves
+# ranges through the collation, not ASCII, so a locale whose alphabet omits a
+# Latin letter drops it from A-Z: tr_TR has no dotted i, lv_LV no q/w/x/y, etc.
+export LC_ALL=C
+
 PLUGINS_DIR="$HOME/.config/omarchy/plugins"
 ASSUME_YES=0
 

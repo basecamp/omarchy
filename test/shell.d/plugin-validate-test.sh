@@ -115,3 +115,28 @@ output=$(validate "$dir") && fail "validate refuses an entry point file that is 
 grep -qF "entry point file not found" <<<"$output" \
   || fail "validate reports a missing file as a missing file" "$output"
 pass "validate refuses an entry point file that is not there"
+
+# Ids are checked with range expressions, and POSIX resolves ranges through
+# the collation rather than ASCII: tr_TR drops the dotted i, lv_LV has no
+# q/w/x/y. The scripts force LC_ALL=C so the answer is the same everywhere.
+# Exported here to prove the script overrides an inherited locale, not merely
+# that it works under the one the suite happens to run in.
+dir=$(write_plugin "locale-id" '["bar-widget"]' '{"barWidget":"Panel.qml"}')
+jq '.id = "io.github.woogy7.vitals"' "$dir/manifest.json" >"$dir/manifest.tmp"
+mv "$dir/manifest.tmp" "$dir/manifest.json"
+
+for locale in tr_TR.UTF-8 lv_LV.UTF-8; do
+  installed=$(locale -a 2>/dev/null | grep -ixF -e "$locale" -e "${locale/UTF-8/utf8}" | head -n1) || true
+  [[ -n $installed ]] || continue
+  LC_ALL="$installed" validate "$dir" >/dev/null \
+    || fail "validate rejects an ASCII id under $installed"
+  pass "validate accepts an ASCII id under $installed"
+done
+
+# Forcing C is what keeps the id set identical everywhere, so a non-ASCII id
+# stays rejected even where the locale would call it alphanumeric.
+jq '.id = "acme.\u0131d"' "$dir/manifest.json" >"$dir/manifest.tmp"
+mv "$dir/manifest.tmp" "$dir/manifest.json"
+validate "$dir" >/dev/null \
+  && fail "validate rejects a non-ASCII id regardless of locale"
+pass "validate rejects a non-ASCII id regardless of locale"
