@@ -58,7 +58,7 @@ printf 'chatgpt-icon\n' >"$backup/ChatGPT.png"
 printf 'unrelated\n' >"$backup/windows.png"
 write_desktop "$apps/GitHub.desktop" "$icons/GitHub.png"
 write_desktop "$apps/ChatGPT.desktop" "$icons/ChatGPT.png"
-write_desktop "$apps/Alacritty.desktop" "Alacritty"
+cp "$ROOT/default/alacritty/Alacritty.desktop" "$apps/Alacritty.desktop"
 ALACRITTY_PRESENT=0 run_migration
 
 [[ -f $icons/GitHub.png ]] || fail "migration restores a referenced GitHub icon from the Quattro backup"
@@ -71,11 +71,18 @@ pass "migration restores referenced icons and drops a ghost Alacritty launcher"
 reset_home
 printf 'github-icon\n' >"$backup/GitHub.png"
 write_desktop "$apps/GitHub.desktop" "$icons/GitHub.png"
-write_desktop "$apps/Alacritty.desktop" "Alacritty"
+cp "$ROOT/default/alacritty/Alacritty.desktop" "$apps/Alacritty.desktop"
 ALACRITTY_PRESENT=1 run_migration
 
 [[ -f $apps/Alacritty.desktop ]] || fail "migration keeps Alacritty.desktop when alacritty is installed"
 pass "migration keeps Alacritty.desktop when alacritty is installed"
+
+reset_home
+write_desktop "$apps/Alacritty.desktop" "Alacritty"
+ALACRITTY_PRESENT=0 run_migration
+
+[[ -f $apps/Alacritty.desktop ]] || fail "migration keeps a custom Alacritty.desktop when alacritty is missing"
+pass "migration keeps a custom Alacritty.desktop when alacritty is missing"
 
 reset_home
 mkdir -p "$icons"
@@ -96,3 +103,17 @@ ALACRITTY_PRESENT=0 run_migration
 [[ ! -e $apps/GitHub.png ]] || fail "migration does not restore through a parent path in Icon="
 [[ ! -e $icons/GitHub.png ]] || fail "migration does not restore a non-exact Icon= path"
 pass "migration ignores Icon= paths that leave the icons directory"
+
+reset_home
+mkdir -p "$icons"
+ln -s "$icons/missing.png" "$icons/GitHub.png"
+printf 'github-icon\n' >"$backup/GitHub.png"
+write_desktop "$apps/GitHub.desktop" "$icons/GitHub.png"
+printf 'chatgpt-icon\n' >"$backup/ChatGPT.png"
+write_desktop "$apps/ChatGPT.desktop" "$icons/ChatGPT.png"
+ALACRITTY_PRESENT=0 run_migration
+
+[[ -L $icons/GitHub.png ]] || fail "migration leaves a dangling icon symlink in place"
+[[ ! -e $icons/GitHub.png ]] || fail "migration does not replace a dangling icon symlink"
+[[ -f $icons/ChatGPT.png ]] || fail "migration still restores later launchers after a dangling icon symlink"
+pass "migration skips a dangling icon symlink without aborting"

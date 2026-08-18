@@ -139,20 +139,18 @@ pass "Omarchy 4 upgrade refreshes application launchers"
 # matching PNGs move, so a leftover custom launcher that still names one of
 # those files keeps a working icon instead of a dangling path.
 packaged_apps_line=$(grep -n -F 'find "$root/applications"' "$upgrade_to_quattro" | head -1 | cut -d: -f1)
-icon_move_line=$(grep -n 'legacy_desktop_names_icon' "$upgrade_to_quattro" | head -1 | cut -d: -f1)
+icon_move_line=$(grep -n -F 'if [[ -e $legacy_icons_dir/$icon ]] && ! legacy_desktop_names_icon' "$upgrade_to_quattro" | cut -d: -f1)
 [[ -n $packaged_apps_line && -n $icon_move_line ]] ||
   fail "upgrade copies packaged launchers before moving leftover icons"
 (( packaged_apps_line < icon_move_line )) ||
   fail "upgrade copies packaged launchers before moving leftover icons"
-grep -F 'legacy_desktop_names_icon' "$upgrade_to_quattro" >/dev/null
-# The Alacritty copy is on the line after the command -v guard.
-alacritty_copy=$(grep -n -F 'cp "$root/default/alacritty/Alacritty.desktop"' "$upgrade_to_quattro" | head -1 | cut -d: -f1)
-alacritty_guard=$(grep -n 'command -v alacritty' "$upgrade_to_quattro" | head -1 | cut -d: -f1)
-[[ -n $alacritty_copy && -n $alacritty_guard ]] ||
-  fail "upgrade copies Alacritty.desktop only when alacritty is installed"
-(( alacritty_guard < alacritty_copy )) ||
-  fail "upgrade copies Alacritty.desktop only when alacritty is installed"
-(( alacritty_copy - alacritty_guard < 5 )) ||
+# The copy must sit inside the command -v guard, not merely near a matching line.
+alacritty_block=$(awk '
+  /if command -v alacritty/ { inside = 1 }
+  inside { print }
+  inside && /^[[:space:]]*fi$/ { exit }
+' "$upgrade_to_quattro")
+grep -F 'cp "$root/default/alacritty/Alacritty.desktop"' <<<"$alacritty_block" >/dev/null ||
   fail "upgrade copies Alacritty.desktop only when alacritty is installed"
 pass "Omarchy 4 upgrade keeps referenced launcher icons and skips a ghost Alacritty"
 

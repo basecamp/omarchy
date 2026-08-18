@@ -16,7 +16,9 @@ for desktop in "$apps_dir"/*.desktop; do
   icon=$(sed -n 's/^Icon=//p' "$desktop" | head -1)
   icon_name="${icon##*/}"
   [[ $icon == "$icons_dir/$icon_name" ]] || continue
-  [[ -e $icon ]] && continue
+  # A dangling symlink is not -e, and GNU cp then refuses to write through it
+  # and exits 1. Under bash -euo pipefail that aborts the rest of the loop.
+  [[ -e $icon || -L $icon ]] && continue
   for backup in "$apps_dir"/icons.omarchy-upgrade-to-quattro.*.bak/"$icon_name"; do
     [[ -f $backup ]] || continue
     mkdir -p "$icons_dir"
@@ -27,7 +29,10 @@ for desktop in "$apps_dir"/*.desktop; do
 done
 
 removed_alacritty=0
-if [[ -f $apps_dir/Alacritty.desktop ]] && omarchy-cmd-missing alacritty; then
+# The upgrade-installed ghost carries TryExec=alacritty. A hand-written
+# Alacritty.desktop that launches a Flatpak, wrapper, or SSH session does not.
+if [[ -f $apps_dir/Alacritty.desktop ]] && omarchy-cmd-missing alacritty &&
+  grep -qxF 'TryExec=alacritty' "$apps_dir/Alacritty.desktop"; then
   rm -f "$apps_dir/Alacritty.desktop"
   removed_alacritty=1
 fi
