@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Check whether NetBird is installed and running
+# omarchy:hidden=true
+
+set -euo pipefail
+
+if omarchy-cmd-present netbird && netbird status --json >/dev/null 2>&1; then
+  exit 0
+fi
+
+systemctl is-active --quiet netbird.service >/dev/null 2>&1 || pgrep -x netbird >/dev/null 2>&1

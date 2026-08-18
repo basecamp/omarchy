@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# omarchy:summary=Install the NetBird mesh VPN service and a web app for the NetBird Admin Console.
+# omarchy:requires-sudo=true
+
+echo -e "\nInstalling NetBird..."
+omarchy-pkg-add netbird
+
+echo -e "\nStarting NetBird..."
+sudo systemctl enable --now netbird.service
+
+echo -e "\nLogging in to NetBird..."
+netbird login
+
+echo -e "\nConnecting to the NetBird network..."
+netbird up
+
+echo -e "\nAdding NetBird to the bar..."
+omarchy-plugin-enable omarchy.netbird
+
+omarchy-webapp-install "NetBird" "https://app.netbird.io" https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/netbird.png
