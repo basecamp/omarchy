@@ -23,19 +23,21 @@ grep -Fq 'KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt pm_async=off mem_sl
 pass "fresh T2 setup uses t2bce-compatible suspend, fan, and Touch Bar defaults"
 
 # Overlay installs can run this leaf without omarchy-other.packages, so T2
-# audio support has to install the SPA plugin here (#7347).
+# audio support has to install the full PipeWire audio stack here (#7347).
 pkg_add_block=$(awk '
   $0 ~ /omarchy-pkg-add/ { grab=1 }
   grab {
     print
-    if ($0 !~ /\\$/) exit
+    line = $0
+    sub(/[[:space:]]+$/, "", line)
+    if (line !~ /\\$/) exit
   }
 ' "$fix_t2")
 for pkg in pipewire-audio pipewire-alsa pipewire-pulse; do
   grep -Fq "$pkg" <<<"$pkg_add_block" ||
-    fail "T2 setup omarchy-pkg-adds $pkg so WirePlumber can load sound cards"
+    fail "T2 setup omarchy-pkg-adds $pkg as part of the PipeWire audio stack"
 done
-pass "T2 setup installs the PipeWire ALSA SPA plugin"
+pass "T2 setup installs the full PipeWire audio stack"
 
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
@@ -256,9 +258,17 @@ PATH="$stub_bin:$PATH" \
   T2_HARDWARE=1 \
   bash -euo pipefail "$pipewire_migration" >/dev/null
 
-grep -Fq $'omarchy-pkg-add\tpipewire-audio\tpipewire-alsa\tpipewire-pulse' "$calls" ||
-  fail "T2 PipeWire migration omarchy-pkg-adds the ALSA SPA plugin" "$(cat "$calls")"
-pass "T2 PipeWire migration installs the ALSA SPA plugin on T2 hardware"
+pkg_add_call=$(awk '/^omarchy-pkg-add(\t| |$)/ { print; exit }' "$calls")
+[[ -n $pkg_add_call ]] ||
+  fail "T2 PipeWire migration calls omarchy-pkg-add" "$(cat "$calls")"
+for pkg in pipewire-audio pipewire-alsa pipewire-pulse; do
+  awk -F '[\t ]+' -v pkg="$pkg" '{
+    for (i = 1; i <= NF; i++) if ($i == pkg) found = 1
+  }
+  END { exit !found }' <<<"$pkg_add_call" ||
+    fail "T2 PipeWire migration omarchy-pkg-adds $pkg as part of the PipeWire audio stack" "$(cat "$calls")"
+done
+pass "T2 PipeWire migration installs the full PipeWire audio stack on T2 hardware"
 
 : >"$calls"
 
