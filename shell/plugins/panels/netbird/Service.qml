@@ -421,11 +421,13 @@ Item {
       } else {
         root.lastError = ""
         root.actionStatus = ""
-        // Force profile refresh after switch.
-        _profilesOutput = ""
-        _profilesError = ""
-        profilesProcess.command = ["netbird", "profile", "list"]
-        profilesProcess.running = true
+        // Force profile refresh after switch, but avoid clobbering an in-flight refresh.
+        if (!profilesProcess.running) {
+          _profilesOutput = ""
+          _profilesError = ""
+          profilesProcess.command = ["netbird", "profile", "list"]
+          profilesProcess.running = true
+        }
       }
       root.switchingProfileId = ""
       delayedRefresh.restart()
