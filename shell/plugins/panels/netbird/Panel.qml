@@ -123,7 +123,7 @@ Panel {
   }
 
   function scrollCursorIntoView() {
-    if (focusSection === "peers" && peerColumn && peerIndex >= 0 && peerIndex < peerColumn.children.length) scrollItemIntoView(peerColumn.children[peerIndex])
+    if (focusSection === "peers") scrollItemIntoView(peerRepeater.itemAt(peerIndex))
   }
 
   function setPeerCursor(index) {
@@ -146,8 +146,8 @@ Panel {
   }
 
   function openSelectedPeerCopyMenu() {
-    if (!peerColumn || peerIndex < 0 || peerIndex >= peerColumn.children.length) return
-    var item = peerColumn.children[peerIndex]
+    if (!peerRepeater || peerIndex < 0 || peerIndex >= netbird.peers.length) return
+    var item = peerRepeater.itemAt(peerIndex)
     if (item && item.openCopyMenu) item.openCopyMenu()
   }
 
@@ -393,6 +393,7 @@ Panel {
               spacing: Style.space(6)
 
               Repeater {
+                id: peerRepeater
                 model: netbird.peers
                 PeerRow {
                   required property var modelData
