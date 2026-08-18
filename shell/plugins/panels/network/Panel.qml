@@ -838,7 +838,7 @@ Panel {
     id: autoConnectChangeProc
     onExited: function(exitCode) {
       pendingAutoConnectId = ""
-      if (exitCode === 0) refreshAutoConnectProfiles()
+      refreshAutoConnectProfiles()
     }
   }
 
