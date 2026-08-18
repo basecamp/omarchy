@@ -10,7 +10,9 @@ Item {
   id: root
 
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
+  property var shell: null
   property bool opened: false
+
   property string filterText: ""
   property int selectedIndex: 0
   property bool cursorActive: false
@@ -605,5 +607,13 @@ Item {
         }
       }
     }
+  }
+
+  CaptureTarget {
+    shell: root.shell
+    window: panel
+    item: card
+    targetId: "omarchy.clipboard"
+    active: panel.visible
   }
 }

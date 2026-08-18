@@ -169,4 +169,12 @@ Item {
       }
     }
   }
+
+  CaptureTarget {
+    shell: root.shell
+    window: panel
+    item: card
+    targetId: "omarchy.reminders"
+    active: panel.visible
+  }
 }

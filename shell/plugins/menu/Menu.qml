@@ -1470,4 +1470,12 @@ Item {
       }
     }
   }
+
+  CaptureTarget {
+    shell: root.shell
+    window: panel
+    item: card
+    targetId: "omarchy.menu"
+    active: panel.visible
+  }
 }

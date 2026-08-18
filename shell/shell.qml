@@ -412,6 +412,36 @@ ShellRoot {
   // QML to notice the change.
   property var openPanelIds: ({})
 
+  // Visible plugin panels are often full-screen transparent layer-shell
+  // windows. Keep their inner-card geometry separately so tools such as the
+  // screenshot picker can target what the user actually sees.
+  property var captureTargets: []
+
+  function registerCaptureTarget(target) {
+    if (!target || captureTargets.indexOf(target) !== -1) return
+    captureTargets = captureTargets.concat([target])
+  }
+
+  function unregisterCaptureTarget(target) {
+    captureTargets = captureTargets.filter(function(item) { return item !== target })
+  }
+
+  function captureTargetGeometry() {
+    var out = []
+    function append(target) {
+      if (!target || typeof target.captureGeometry !== "function") return
+      var geometry = null
+      try { geometry = target.captureGeometry() } catch (e) {
+        console.warn("capture geometry failed for", target.targetId || "unknown target", e)
+        return
+      }
+      if (!geometry || !geometry.visible || geometry.width <= 0 || geometry.height <= 0) return
+      out.push(geometry)
+    }
+    for (var i = 0; i < captureTargets.length; i++) append(captureTargets[i])
+    return out
+  }
+
   // Pending payloads to deliver to a plugin's open() once its loader resolves.
   // Keyed by plugin id; the value is an array so two summon() calls before
   // the Loader resolves both reach the plugin in arrival order rather than
@@ -997,6 +1027,10 @@ ShellRoot {
 
     function debugBarGeometry(): string {
       return JSON.stringify(shell.bar && shell.bar.debugBarGeometry ? shell.bar.debugBarGeometry() : [])
+    }
+
+    function listCaptureTargets(): string {
+      return JSON.stringify(shell.captureTargetGeometry())
     }
 
     function summon(id: string, payloadJson: string): string {

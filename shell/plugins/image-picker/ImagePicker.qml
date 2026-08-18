@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
 import qs.Commons
+import qs.Ui
 import "ImagePickerModel.js" as ImagePickerModel
 
 Item {
@@ -12,6 +13,7 @@ Item {
 
   // Injected by omarchy-shell; defaults to the session OMARCHY_PATH.
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
+  property var shell: null
   property string stateHome: Quickshell.env("HOME") + "/.local/state"
   property string imageDirs: Quickshell.env("OMARCHY_IMAGE_SELECTOR_DIRS") || Quickshell.env("OMARCHY_IMAGE_SELECTOR_DIR") || Quickshell.env("OMARCHY_STOCK_BACKGROUNDS_DIR") || (stateHome + "/omarchy/current/theme/backgrounds")
   property string imageRows: ""
@@ -21,6 +23,7 @@ Item {
   property int selectedIndex: 0
   property bool imagesLoaded: false
   property bool opened: false
+
   property bool showLabels: false
   property bool filterable: false
   property bool layoutSettled: false
@@ -576,5 +579,13 @@ Item {
           elide: Text.ElideRight
         }
     }
+  }
+
+  CaptureTarget {
+    shell: root.shell
+    window: panel
+    item: card
+    targetId: "omarchy.image-picker"
+    active: panel.visible && card.visible
   }
 }

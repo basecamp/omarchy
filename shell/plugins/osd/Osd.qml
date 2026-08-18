@@ -9,6 +9,7 @@ import "OsdModel.js" as OsdModel
 Item {
   id: root
 
+  property var shell: null
   property bool opened: false
   property string icon: ""
   property string message: ""
@@ -200,5 +201,13 @@ Item {
         }
       }
     }
+  }
+
+  CaptureTarget {
+    shell: root.shell
+    window: panel
+    item: card
+    targetId: "omarchy.osd"
+    active: panel.visible
   }
 }

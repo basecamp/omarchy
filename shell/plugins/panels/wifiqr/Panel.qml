@@ -211,6 +211,7 @@ Item {
   }
 
   PanelWindow {
+    id: panel
     visible: root.opened
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
@@ -239,6 +240,7 @@ Item {
       Keys.onEscapePressed: root.dismiss()
 
       Item {
+        id: card
         anchors.centerIn: parent
         width: content.implicitWidth
         height: content.implicitHeight
@@ -362,5 +364,13 @@ Item {
         }
       }
     }
+  }
+
+  CaptureTarget {
+    shell: root.shell
+    window: panel
+    item: card
+    targetId: "omarchy.wifiqr"
+    active: panel.visible
   }
 }

@@ -415,4 +415,12 @@ PanelWindow {
       }
     }
   }
+
+  CaptureTarget {
+    shell: root.bar && root.bar.shell ? root.bar.shell : null
+    window: root
+    item: card
+    targetId: root.owner && root.owner.moduleName ? String(root.owner.moduleName) : "plugin-panel"
+    active: root.open
+  }
 }

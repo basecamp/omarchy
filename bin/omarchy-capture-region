@@ -49,13 +49,36 @@ window_rects() {
     '[.[] | select(.workspace.id == ($ws | tonumber) and .hidden != true) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"] | unique[]'
 }
 
+open_plugin_rects() {
+  local geometry
+
+  # Plugin panels are commonly full-screen transparent layer-shell surfaces.
+  # Ask the shell for their visible card geometry, rather than selecting their
+  # bar icon or the invisible full-screen surface.
+  geometry=$(omarchy-shell shell listCaptureTargets 2>/dev/null) || return 0
+
+  jq -r '
+    .[] |
+    select(.visible == true and .width > 0 and .height > 0) |
+    "\(.x),\(.y) \(.width)x\(.height)"
+  ' <<<"$geometry" 2>/dev/null
+}
+
+capture_target_rects() {
+  open_plugin_rects
+  window_rects
+}
+
 monitor_rects() {
-  hyprctl monitors -j | jq -r --arg ws "$(active_workspace)" "${JQ_MONITOR_GEO} .[] | select(.activeWorkspace.id == (\$ws | tonumber)) | format_geo"
+  # A monitor can show a workspace other than the focused one. It remains a
+  # valid capture target even when it has no windows, so do not limit these
+  # rectangles to active_workspace().
+  hyprctl monitors -j | jq -r "${JQ_MONITOR_GEO} .[] | select(.disabled != true) | format_geo"
 }
 
 get_rectangles() {
   monitor_rects
-  window_rects
+  capture_target_rects
 }
 
 focused_monitor_geo() {
@@ -64,9 +87,10 @@ focused_monitor_geo() {
 
 # slurp highlights the smallest box containing the point and keeps the first
 # one on a tie, so overlapping rectangles resolve the same way here (e.g.
-# floating over tiled). Reads candidates on stdin and leaves the answer in
-# RESOLVED_RECT; returns 1 when no candidate contains the point. Assigning to
-# a global rather than printing keeps the probing in warp_point_in fork-free.
+# a plugin card over its monitor). Reads candidates on stdin and leaves the
+# answer in RESOLVED_RECT; returns 1 when no candidate contains the point.
+# Assigning to a global rather than printing keeps the probing in
+# warp_point_in fork-free.
 resolve_rect_at() {
   local x=$1 y=$2
   local rect area
@@ -116,15 +140,15 @@ warp_point_in() {
   return 1
 }
 
-# Whatever slurp is highlighting under the cursor. It is fed monitor rects as
-# well as window rects, so a cursor in a gap or over the bar highlights the
-# monitor rather than any window.
+# Whatever slurp is highlighting under the cursor. It is fed monitor,
+# application-window, and open-plugin-panel rects, so a cursor in a gap
+# highlights the monitor while a cursor over an open plugin selects its card.
 geo_at_cursor() {
   local pos=$(hyprctl cursorpos)
   local x=${pos%,*}
   local y=${pos#*, }
 
-  if resolve_rect_at "$x" "$y" < <(window_rects) || resolve_rect_at "$x" "$y" < <(monitor_rects); then
+  if resolve_rect_at "$x" "$y" < <(capture_target_rects) || resolve_rect_at "$x" "$y" < <(monitor_rects); then
     echo "$RESOLVED_RECT"
   else
     focused_monitor_geo
@@ -148,7 +172,7 @@ if [[ ${1:-} == "--take-window" ]]; then
   exit 0
 fi
 
-# Warps the cursor to another window's center, so slurp's own hover
+# Warps the cursor to another capture target's center, so slurp's own hover
 # highlight tracks the selection.
 if [[ ${1:-} == "--select-window" ]]; then
   pgrep -x slurp >/dev/null || exit 0
@@ -158,7 +182,7 @@ if [[ ${1:-} == "--select-window" ]]; then
   origin_x=${pos%,*}
   origin_y=${pos#*, }
 
-  candidates=$(window_rects)
+  candidates=$(capture_target_rects)
 
   # Eighth fractions of a rectangle's width and height, ordered by distance
   # from its center so warp_point_in prefers the most central point it can use.
@@ -321,8 +345,9 @@ region)
   SELECTION=$(pick)
   ;;
 windows)
+  RECTS=$(get_rectangles)
   freeze_screen
-  SELECTION=$(get_rectangles | pick -r)
+  SELECTION=$(pick -r <<<"$RECTS")
   ;;
 fullscreen)
   SELECTION=$(focused_monitor_geo)

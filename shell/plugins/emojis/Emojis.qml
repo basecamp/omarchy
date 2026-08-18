@@ -339,4 +339,12 @@ Item {
       }
     }
   }
+
+  CaptureTarget {
+    shell: root.shell
+    window: panel
+    item: card
+    targetId: "omarchy.emojis"
+    active: panel.visible
+  }
 }
