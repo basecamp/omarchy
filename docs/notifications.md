@@ -5,7 +5,7 @@ hosts a Quickshell `NotificationServer` that claims `org.freedesktop.Notificatio
 on the session bus. There is no dunst or mako — anything that speaks the
 freedesktop notification protocol (notify-send, libnotify apps, Chromium web
 apps) lands in the shell, which renders it as a toast card stacked in the
-top-right corner. The pure decision logic lives in `NotificationLogic.js`,
+top-right corner, or top-center when configured to (see [Placement](#placement)). The pure decision logic lives in `NotificationLogic.js`,
 which is also loadable from Node so `test/shell.d/` can exercise it without
 a compositor.
 
@@ -36,6 +36,22 @@ in place, under the popup's original file identity. Restored rows carry ids
 from a dead server generation (ids restart from 1 each shell process), so
 they are keyed by timestamp+id and never matched against live objects — a
 fresh notification reusing an old id must not dismiss or replace them.
+
+## Placement
+
+Toasts stack down from the top edge, anchored right by default. On a wide or
+multi-monitor desk that corner is a long way from where the eyes are, so the
+column can be centered instead:
+
+```json
+{ "notifications": { "position": "center" } }
+```
+
+in `~/.config/omarchy/shell.json`. The value is `right` (default) or `center`;
+anything else falls back to `right`. `NotificationLogic.popupPlacement()` turns
+it into anchors and margins, and drops the right-bar clearance when centered,
+since a centered column is not held off any side edge. There is one popup
+window per screen, so the choice applies to every monitor.
 
 ## Silencing
 

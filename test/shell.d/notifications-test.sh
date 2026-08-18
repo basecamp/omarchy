@@ -52,7 +52,7 @@ assert(!notifications.isEphemeralApp('omarchy-menu-keybindings'), 'notifications
 assertDeepEqual(
   notifications.popupPlacement('top', 32, 6),
   {
-    anchors: { top: true, bottom: false, left: false, right: true },
+    anchors: { top: true, bottom: false, left: false, right: true, horizontalCenter: false },
     margins: { top: 32, bottom: 6, left: 6, right: 6 }
   },
   'notifications clear a top bar while staying anchored top-right'
@@ -60,7 +60,7 @@ assertDeepEqual(
 assertDeepEqual(
   notifications.popupPlacement('right', 32, 6),
   {
-    anchors: { top: true, bottom: false, left: false, right: true },
+    anchors: { top: true, bottom: false, left: false, right: true, horizontalCenter: false },
     margins: { top: 6, bottom: 6, left: 6, right: 32 }
   },
   'notifications clear a right bar while staying anchored top-right'
@@ -68,7 +68,7 @@ assertDeepEqual(
 assertDeepEqual(
   notifications.popupPlacement('bottom', 32, 6),
   {
-    anchors: { top: true, bottom: false, left: false, right: true },
+    anchors: { top: true, bottom: false, left: false, right: true, horizontalCenter: false },
     margins: { top: 6, bottom: 6, left: 6, right: 6 }
   },
   'notifications ignore a bottom bar for popup placement'
@@ -76,10 +76,31 @@ assertDeepEqual(
 assertDeepEqual(
   notifications.popupPlacement('left', 32, 6),
   {
-    anchors: { top: true, bottom: false, left: false, right: true },
+    anchors: { top: true, bottom: false, left: false, right: true, horizontalCenter: false },
     margins: { top: 6, bottom: 6, left: 6, right: 6 }
   },
   'notifications ignore a left bar for popup placement'
+)
+assertDeepEqual(
+  notifications.popupPlacement('top', 32, 6, 'center'),
+  {
+    anchors: { top: true, bottom: false, left: false, right: false, horizontalCenter: true },
+    margins: { top: 32, bottom: 6, left: 6, right: 6 }
+  },
+  'centered notifications clear a top bar and drop the right anchor'
+)
+assertDeepEqual(
+  notifications.popupPlacement('right', 32, 6, 'center'),
+  {
+    anchors: { top: true, bottom: false, left: false, right: false, horizontalCenter: true },
+    margins: { top: 6, bottom: 6, left: 6, right: 6 }
+  },
+  'centered notifications need no clearance for a right bar'
+)
+assertDeepEqual(
+  notifications.popupPlacement('top', 32, 6, 'right'),
+  notifications.popupPlacement('top', 32, 6),
+  'an explicit right alignment matches the default'
 )
 
 const notification = {

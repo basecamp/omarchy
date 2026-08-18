@@ -113,6 +113,7 @@ ShellRoot {
   }
 
   readonly property var barConfig: shellConfig && Util.isPlainObject(shellConfig.bar) ? shellConfig.bar : builtinShellConfig.bar
+  readonly property var notificationsConfig: shellConfig && Util.isPlainObject(shellConfig.notifications) ? shellConfig.notifications : builtinShellConfig.notifications
   onBarConfigChanged: if (bar && "barConfig" in bar) bar.barConfig = shell.barConfig
   FileView {
     id: defaultsFile

@@ -4,6 +4,9 @@
     "screensaver": 150,
     "lock": 300
   },
+  "notifications": {
+    "position": "right"
+  },
   "bar": {
     "position": "top",
     "transparent": false,
