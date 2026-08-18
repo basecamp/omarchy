@@ -475,11 +475,11 @@ Panel {
     if (!autoConnectProfilesProc.running) autoConnectProfilesProc.running = true
   }
 
-  function setAutoConnect(id, enabled) {
-    if (!id || pendingAutoConnectId !== "") return
-    pendingAutoConnectId = id
+  function setAutoConnect(uuid, enabled) {
+    if (!uuid || pendingAutoConnectId !== "") return
+    pendingAutoConnectId = uuid
     pendingAutoConnectEnabled = enabled
-    autoConnectChangeProc.command = ["nmcli", "connection", "modify", "id", id, "connection.autoconnect", enabled ? "yes" : "no"]
+    autoConnectChangeProc.command = ["nmcli", "connection", "modify", "uuid", uuid, "connection.autoconnect", enabled ? "yes" : "no"]
     autoConnectChangeProc.running = true
   }
 
@@ -827,7 +827,7 @@ Panel {
   // spawn their own nmcli processes while a scan adds or removes access points.
   Process {
     id: autoConnectProfilesProc
-    command: ["nmcli", "-t", "--escape", "yes", "-f", "NAME,TYPE,AUTOCONNECT", "connection", "show"]
+    command: ["bash", "-c", Model.autoConnectProfilesScript]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.autoConnectProfiles = Model.parseAutoConnectProfiles(text)
@@ -1767,10 +1767,10 @@ Panel {
         ToggleSwitch {
           visible: row.isKnown && row.autoConnectProfile !== undefined
           checked: row.autoConnectProfile ? row.autoConnectProfile.enabled : false
-          busy: root.pendingAutoConnectId === (row.autoConnectProfile ? row.autoConnectProfile.id : "")
+          busy: root.pendingAutoConnectId === (row.autoConnectProfile ? row.autoConnectProfile.uuid : "")
           cursorRing: false
           foreground: root.bar.foreground
-          onToggled: if (row.autoConnectProfile) root.setAutoConnect(row.autoConnectProfile.id, !row.autoConnectProfile.enabled)
+          onToggled: if (row.autoConnectProfile) root.setAutoConnect(row.autoConnectProfile.uuid, !row.autoConnectProfile.enabled)
 
           PanelToolTip {
             visible: parent.containsMouse

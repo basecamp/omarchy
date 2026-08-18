@@ -295,11 +295,11 @@ assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '', 'network k
 assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit', 'network keeps ethernet speed in the hero')
 
 assertDeepEqual(
-  network.parseAutoConnectProfiles('Home:802-11-wireless:yes\nCafe\\:Guest:802-11-wireless:no\n'),
-  { Home: { id: 'Home', enabled: true }, 'Cafe:Guest': { id: 'Cafe:Guest', enabled: false } },
-  'network parses escaped NetworkManager Wi-Fi auto-connect profiles'
+  network.parseAutoConnectProfiles('uuid-home\tHome\tyes\nuuid-cafe\tCafe:Guest\tno\n'),
+  { Home: { uuid: 'uuid-home', enabled: true }, 'Cafe:Guest': { uuid: 'uuid-cafe', enabled: false } },
+  'network parses NetworkManager Wi-Fi profiles by SSID and UUID'
 )
 assert(/ToggleSwitch[\s\S]*?visible: row\.isKnown && row\.autoConnectProfile !== undefined/.test(panelSource), 'known visible networks show an auto-connect switch when a profile exists')
-assert(/id: autoConnectProfilesProc[\s\S]*?NAME,TYPE,AUTOCONNECT/.test(panelSource), 'network loads auto-connect profiles in one NetworkManager query')
-assert(/function setAutoConnect\(id, enabled\)[\s\S]*?connection\.autoconnect/.test(panelSource), 'network writes auto-connect by saved connection id')
+assert(/id: autoConnectProfilesProc[\s\S]*?Model\.autoConnectProfilesScript/.test(panelSource), 'network loads auto-connect profiles in one panel-level query')
+assert(/function setAutoConnect\(uuid, enabled\)[\s\S]*?"uuid", uuid, "connection\.autoconnect"/.test(panelSource), 'network writes auto-connect by stable NetworkManager UUID')
 JS

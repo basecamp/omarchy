@@ -312,42 +312,29 @@ function canForgetNetwork(network) {
   return !!(network && network.known && !network.connected)
 }
 
-function splitNmcliFields(line) {
-  var fields = []
-  var field = ""
-  var escaped = false
-
-  for (var i = 0; i < line.length; i++) {
-    var character = line[i]
-    if (escaped) {
-      field += character
-      escaped = false
-    } else if (character === "\\") {
-      escaped = true
-    } else if (character === ":") {
-      fields.push(field)
-      field = ""
-    } else {
-      field += character
-    }
-  }
-
-  fields.push(field)
-  return fields
-}
-
 function parseAutoConnectProfiles(raw) {
   var profiles = {}
   var lines = String(raw || "").trim().split("\n")
 
   for (var i = 0; i < lines.length; i++) {
-    var parts = splitNmcliFields(lines[i])
-    if (parts.length !== 3 || parts[1] !== "802-11-wireless") continue
-    profiles[parts[0]] = { id: parts[0], enabled: parts[2] === "yes" }
+    var parts = lines[i].split("\t")
+    if (parts.length !== 3 || !parts[0] || !parts[1]) continue
+    profiles[parts[1]] = { uuid: parts[0], enabled: parts[2] === "yes" }
   }
 
   return profiles
 }
+
+// NetworkManager profile names are user-editable and are neither stable nor
+// unique. Resolve each Wi-Fi profile's SSID once and return UUID, SSID, and
+// auto-connect state as tab-separated rows for the panel.
+var autoConnectProfilesScript =
+  "nmcli -t --escape yes -f UUID,TYPE,AUTOCONNECT connection show | " +
+  "while IFS=: read -r uuid type enabled; do " +
+  "[[ $type == 802-11-wireless ]] || continue; " +
+  "ssid=$(nmcli -g 802-11-wireless.ssid connection show uuid \"$uuid\") || continue; " +
+  "printf '%s\\t%s\\t%s\\n' \"$uuid\" \"$ssid\" \"$enabled\"; " +
+  "done"
 
 // The password arrives on stdin and reaches nmcli through the scriptable
 // `connection edit` editor -- argv is world-readable in /proc, so the secret
@@ -410,8 +397,8 @@ if (typeof module !== "undefined") {
     wifiSectionTitle: wifiSectionTitle,
     requiresCredentials: requiresCredentials,
     canForgetNetwork: canForgetNetwork,
-    splitNmcliFields: splitNmcliFields,
     parseAutoConnectProfiles: parseAutoConnectProfiles,
+    autoConnectProfilesScript: autoConnectProfilesScript,
     enterpriseConnectScript: enterpriseConnectScript,
     networkFailureReason: networkFailureReason,
     shouldRepromptPassphrase: shouldRepromptPassphrase
