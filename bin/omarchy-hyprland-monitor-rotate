@@ -1,0 +1,165 @@
+#!/bin/bash
+
+# omarchy:summary=Show or set display rotation
+# omarchy:group=hyprland
+# omarchy:args=[0|90|180|270|left|right|flip] [--monitor OUTPUT] [--flipped] [--no-tidy]
+# omarchy:examples=omarchy hyprland monitor rotate | omarchy hyprland monitor rotate 90 | omarchy hyprland monitor rotate 0 --monitor DP-3
+
+# Rotation is a `transform` on the Hyprland monitor rule, which is an integer
+# 0-7 rather than an angle: 0-3 are the plain rotations and 4-7 repeat them
+# mirrored. Users think in degrees, so this speaks degrees and keeps the
+# mirrored half behind --flipped.
+#
+# The change is applied live with `hyprctl eval` and persisted per display via
+# omarchy-hyprland-monitor-rule, so it survives a reload without touching any
+# other display's rule.
+
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: omarchy-hyprland-monitor-rotate [ROTATION] [--monitor OUTPUT] [--flipped]
+
+Rotations: 0 / normal, 90 / left, 180 / flip, 270 / right.
+Add --flipped to mirror the display as well as rotating it, and --no-flipped
+to stop mirroring. An already-mirrored display stays mirrored otherwise.
+
+Displays that the turn would collide with are moved clear first; --no-tidy
+leaves every position alone.
+
+With no rotation, prints the current one in degrees.
+USAGE
+}
+
+rotation="" monitor="" flipped=0 unflip=0 tidy=1
+
+while (($#)); do
+  case "$1" in
+  --monitor)
+    (($# >= 2)) || {
+      echo "Error: --monitor needs a value." >&2
+      exit 1
+    }
+    monitor="$2"
+    shift 2
+    ;;
+  --monitor=*)
+    monitor="${1#*=}"
+    [[ -n $monitor ]] || {
+      echo "Error: --monitor needs a value." >&2
+      exit 1
+    }
+    shift
+    ;;
+  --flipped)
+    flipped=1
+    shift
+    ;;
+  --no-tidy)
+    tidy=0
+    shift
+    ;;
+  --no-flipped)
+    flipped=0
+    unflip=1
+    shift
+    ;;
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  *)
+    if [[ -n $rotation ]]; then
+      usage >&2
+      exit 1
+    fi
+    rotation="$1"
+    shift
+    ;;
+  esac
+done
+
+monitors_json=$(hyprctl monitors all -j)
+
+if [[ -z $monitor ]]; then
+  monitor=$(printf '%s\n' "$monitors_json" | jq -r '[.[] | select(.focused == true)][0].name // ""')
+fi
+
+if [[ -z $monitor ]]; then
+  echo "Error: no display to rotate." >&2
+  exit 1
+fi
+
+if ! printf '%s\n' "$monitors_json" | jq -e --arg name "$monitor" 'any(.[]; .name == $name)' >/dev/null; then
+  echo "Error: no such display: $monitor" >&2
+  exit 1
+fi
+
+current_transform=$(printf '%s\n' "$monitors_json" |
+  jq -r --arg name "$monitor" '[.[] | select(.name == $name)][0].transform // 0')
+
+# Transforms 4-7 are the mirrored counterparts of 0-3, so the angle is the
+# transform modulo 4 scaled by 90.
+degrees_for_transform() {
+  echo $((($1 % 4) * 90))
+}
+
+# With no rotation there is nothing to turn, but --flipped/--no-flipped are
+# still a request to change the mirroring, so only a bare call just reports.
+if [[ -z $rotation ]] && ((flipped == 0 && unflip == 0)); then
+  degrees_for_transform "$current_transform"
+  exit 0
+fi
+
+# Flipping on its own keeps whatever angle the display already has.
+if [[ -z $rotation ]]; then
+  rotation=$(degrees_for_transform "$current_transform")
+fi
+
+case "${rotation,,}" in
+0 | normal | none) base=0 ;;
+90 | left) base=1 ;;
+180 | flip | inverted | upside-down) base=2 ;;
+270 | right) base=3 ;;
+*)
+  echo "Error: unsupported rotation: $rotation" >&2
+  usage >&2
+  exit 1
+  ;;
+esac
+
+# Keep the display mirrored if it already was and the caller did not say
+# otherwise, so rotating a mirrored display does not silently unmirror it.
+# --no-flipped is the way back, since degrees alone cannot express it.
+if ((flipped)) || { ((current_transform >= 4)) && ((unflip == 0)); }; then
+  transform=$((base + 4))
+else
+  transform=$base
+fi
+
+# A quarter turn swaps how much desk space the display takes up, but nothing
+# else moves to make room. Hyprland notifies the instant two displays overlap
+# and that warning stays up after the layout is valid again, so the neighbours
+# have to be clear BEFORE the display grows into them -- repairing afterwards is
+# too late.
+#
+# Only a turn that widens the display along the layout axis can collide, and
+# only then is a clearance pass needed. A turn that narrows it just opens a gap,
+# which is not an error and is left alone.
+if ((tidy)); then
+  turned=$(printf '%s\n' "$monitors_json" |
+    jq -c --arg name "$monitor" --argjson transform "$transform" \
+      '[.[] | if .name == $name then .transform = $transform else . end]')
+
+  omarchy-hyprland-monitor-tidy apply --intended "$turned" >/dev/null || true
+fi
+
+hyprctl eval "hl.monitor({ output = \"$monitor\", transform = $transform })" >/dev/null
+
+omarchy-hyprland-monitor-rule set "$monitor" "transform=$transform"
+
+# The turn itself can leave the display overlapping something the clearance
+# pass could not predict, so settle the layout once more.
+((tidy)) && omarchy-hyprland-monitor-tidy apply >/dev/null || true
+
+degrees_for_transform "$transform"
