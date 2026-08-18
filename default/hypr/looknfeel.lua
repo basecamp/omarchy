@@ -77,6 +77,15 @@ hl.workspace_rule({
   workspace = "special:scratchpad",
   gaps_out = 80,
   gaps_in = 40,
+
+  -- Seed the console with the default agent the first time it opens, rather
+  -- than at boot, so nothing is running until it is wanted. The exec rule has
+  -- to pin the workspace itself: Hyprland only tags a spawn with the workspace
+  -- it came from when misc.initial_workspace_tracking is on, and it is off
+  -- below. Omarchy ships without a default agent, and omarchy-agent exits
+  -- without opening anything when none is set, so until one is picked this
+  -- just opens an empty scratchpad.
+  on_created_empty = "[workspace special:scratchpad silent] omarchy-agent",
 })
 
 -- Default animations, see https://wiki.hypr.land/Configuring/Advanced-and-Cool/Animations/
