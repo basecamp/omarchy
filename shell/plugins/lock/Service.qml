@@ -239,7 +239,7 @@ Item {
         sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
         root.startFingerprint()
-        Qt.callLater(function() { lockView.retryPasswordFocus() })
+        Qt.callLater(function() { lockView.forcePasswordFocus() })
       }
     }
 
