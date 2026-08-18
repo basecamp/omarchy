@@ -7,19 +7,29 @@ require_version("Nautilus", "4.1")
 from gi.repository import GObject, Gio, Nautilus
 
 
+def _resolve_launch_command():
+    launcher = shutil.which("uwsm-app")
+    terminal = shutil.which("xdg-terminal-exec")
+
+    if not launcher or not terminal:
+        return None
+
+    return [launcher, "--", terminal]
+
+
+# PATH does not change under a running Files session, so resolve once at import
+# rather than on every menu build.
+LAUNCH_COMMAND = _resolve_launch_command()
+
+
 class OpenInTerminalAction(GObject.GObject, Nautilus.MenuProvider):
     def _launch_terminal(self, path):
-        launcher = shutil.which("uwsm-app")
-        terminal = shutil.which("xdg-terminal-exec")
-        if not launcher or not terminal:
-            return
-
         # xdg-terminal-exec resolves the terminal the same way `omarchy default
         # terminal` sets it, and --dir works whether or not the entry declares a
         # working-directory flag: it falls back to chdir before exec. That keeps
         # this working across alacritty, foot, ghostty and kitty alike.
         Gio.Subprocess.new(
-            [launcher, "--", terminal, f"--dir={path}"],
+            LAUNCH_COMMAND + [f"--dir={path}"],
             Gio.SubprocessFlags.NONE,
         )
 
@@ -48,6 +58,11 @@ class OpenInTerminalAction(GObject.GObject, Nautilus.MenuProvider):
         self._launch_terminal(path)
 
     def _items_for(self, file):
+        # Offering an entry that cannot launch anything is worse than offering
+        # none, so stay out of the menu unless the launcher is really there.
+        if not LAUNCH_COMMAND:
+            return []
+
         path = self._directory_path(file)
         if not path:
             return []
