@@ -13,11 +13,11 @@ set -e
 echo "Installing the Hermes CLI..."
 omarchy-install-hermes-cli --now
 
-echo "Installing Hermes..."
+echo "Installing Hermes Desktop..."
 omarchy-pkg-add hermes-desktop
 
-echo "Opening Hermes..."
+echo "Opening Hermes Desktop..."
 setsid uwsm-app -- /usr/bin/hermes-desktop >/dev/null 2>&1 &
 
 echo ""
-echo "Hermes has been installed."
+echo "Hermes Desktop has been installed."
