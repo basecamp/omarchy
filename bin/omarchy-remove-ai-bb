@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# omarchy:summary=Remove bb along with its settings and data.
+
+set -e
+
+rm -rf \
+  "$HOME/.local/share/bb" \
+  "$HOME/.config/bb" \
+  "$HOME/.cache/bb" \
+  "$HOME/.bb"
+rm -f \
+  "$HOME/.local/share/applications/bb.desktop" \
+  "$HOME/.local/share/icons/hicolor/1024x1024/apps/bb.png"
+
+update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
+
+echo ""
+echo "bb has been removed."

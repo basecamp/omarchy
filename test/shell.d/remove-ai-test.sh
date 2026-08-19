@@ -24,6 +24,34 @@ fresh_home() {
   export HOME="$tmp_dir/home"
 }
 
+# bb's own data goes with the AppImage, while the provider credentials and
+# configuration it uses remain available to the standalone agents.
+fresh_home
+mkdir -p \
+  "$HOME/.local/share/bb" \
+  "$HOME/.local/share/applications" \
+  "$HOME/.local/share/icons/hicolor/1024x1024/apps" \
+  "$HOME/.config/bb" \
+  "$HOME/.cache/bb" \
+  "$HOME/.bb" \
+  "$HOME/.codex" \
+  "$HOME/.claude"
+touch \
+  "$HOME/.local/share/bb/bb.AppImage" \
+  "$HOME/.local/share/applications/bb.desktop" \
+  "$HOME/.local/share/icons/hicolor/1024x1024/apps/bb.png"
+"$ROOT/bin/omarchy-remove-ai-bb" >/dev/null
+
+for removed in .local/share/bb .local/share/applications/bb.desktop .local/share/icons/hicolor/1024x1024/apps/bb.png .config/bb .cache/bb .bb; do
+  [[ ! -e $HOME/$removed ]] || fail "bb removal deletes its own files" "$removed"
+done
+pass "bb removal deletes the app and its own data"
+
+for kept in .codex .claude; do
+  [[ -d $HOME/$kept ]] || fail "bb removal keeps provider state" "$kept"
+done
+pass "bb removal keeps provider state"
+
 # The Codex CLI ships in its own package and resolves its runtime out of
 # ~/.cache/codex-runtimes, so removing the desktop app must not take it.
 fresh_home
