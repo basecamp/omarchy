@@ -6,6 +6,8 @@
 
 set -euo pipefail
 
+source "$OMARCHY_PATH/default/bash/i18n"
+
 headline=""
 description=""
 glyph=
@@ -76,6 +78,23 @@ while (($# > 0)); do
   fi
 done
 
+translate_notification_text() {
+  local text="$1"
+  case "$text" in
+    "Timezone is now set to "*) text=$(omarchy_t "Timezone is now set to %1" "${text#Timezone is now set to }") ;;
+    "Workspace layout set to "*) text=$(omarchy_t "Workspace layout set to %1" "${text#Workspace layout set to }") ;;
+    "Could not send to "*) text=$(omarchy_t "Could not send to %1" "${text#Could not send to }") ;;
+    "Sent to "*) text=$(omarchy_t "Sent to %1" "${text#Sent to }") ;;
+    "No plugin to "*) text=$(omarchy_t "No plugin to %1" "${text#No plugin to }") ;;
+    "Transcoded to "*)
+      local transcoded=${text#Transcoded to }
+      text=$(omarchy_t "Transcoded to %1 %2" "${transcoded%% *}" "${transcoded#* }")
+      ;;
+    *) text=$(omarchy_t "$text") ;;
+  esac
+  printf '%s' "$text"
+}
+
 if (($# < 1)); then
   echo "Usage: omarchy-notification-send [--exec <command>] [--app-name <app-name>] [-g <glyph>] [-u <low|normal|critical>] [--image <path-or-uri>] <headline> [description] [notify-send options]"
   exit 1
@@ -97,6 +116,9 @@ while (($# > 0)); do
     shift
   fi
 done
+
+headline=$(translate_notification_text "$headline")
+[[ -n $description ]] && description=$(translate_notification_text "$description")
 
 # Tag as a user-action toast so it pops through DND.
 args+=("-a" "$app_name" "-u" "$urgency")
