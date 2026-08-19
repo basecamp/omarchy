@@ -22,10 +22,28 @@ while read -r request; do
       jq -cn --argjson id "$id" '{id: $id, result: {}}'
       ;;
     account/read)
-      jq -cn --argjson id "$id" '{id: $id, result: {account: {}}}'
+      jq -cn --argjson id "$id" '{id: $id, result: {account: {planType: "pro"}}}'
       ;;
     account/rateLimits/read)
-      jq -cn --argjson id "$id" '{id: $id, result: {rateLimits: {}}}'
+      jq -cn --argjson id "$id" '{id: $id, result: {
+        rateLimits: {
+          limitId: "codex",
+          planType: "pro",
+          primary: {usedPercent: 94, windowDurationMins: 10080, resetsAt: 1787196799}
+        },
+        rateLimitsByLimitId: {
+          codex: {
+            limitId: "codex",
+            limitName: null,
+            primary: {usedPercent: 94, windowDurationMins: 10080, resetsAt: 1787196799}
+          },
+          codex_bengalfox: {
+            limitId: "codex_bengalfox",
+            limitName: "GPT-5.3-Codex-Spark",
+            primary: {usedPercent: 12, windowDurationMins: 10080, resetsAt: 1787357885}
+          }
+        }
+      }}'
       ;;
   esac
 done
@@ -51,9 +69,9 @@ pass "Codex collector counts each turn once"
   fail "Codex collector does not double-count cache or reasoning tokens" "$result"
 pass "Codex collector does not double-count cache or reasoning tokens"
 
-[[ $(jq -c '.id + "/" + (.limits|tostring)' <<<"$result") == '"codex/[]"' ]] ||
-  fail "Codex collector identifies itself with an empty limits list" "$result"
-pass "Codex collector identifies itself with an empty limits list"
+[[ $(jq -c '{id, tierLabel, limits}' <<<"$result") == '{"id":"codex","tierLabel":"pro","limits":[{"label":"Weekly (7-day)","percent":0.94,"resetsAt":"2026-08-20T03:33:19+00:00"},{"label":"GPT-5.3-Codex-Spark · Weekly (7-day)","percent":0.12,"resetsAt":"2026-08-22T00:18:05+00:00"}]}' ]] ||
+  fail "Codex collector includes every named usage pool without duplicating the default pool" "$result"
+pass "Codex collector includes every named usage pool without duplicating the default pool"
 
 # Pi and omp can both spend a Codex subscription without creating native
 # Codex sessions. Their compatible JSONL transcripts must be included.

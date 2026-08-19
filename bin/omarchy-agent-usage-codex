@@ -495,7 +495,7 @@ def rpc_request(proc, request_id, method, params=None, timeout=8):
   raise TimeoutError(method)
 
 
-def limit_window(window):
+def limit_window(window, limit_name=""):
   if not isinstance(window, dict):
     return None
   used = window.get("usedPercent")
@@ -512,7 +512,7 @@ def limit_window(window):
     label = "Limit"
   reset = window.get("resetsAt")
   return {
-    "label": label,
+    "label": f"{limit_name} · {label}" if limit_name else label,
     "percent": float(used) / 100.0,
     "resetsAt": datetime.fromtimestamp(number(reset), timezone.utc).isoformat() if reset else "",
   }
@@ -548,14 +548,32 @@ def fetch_codex_rpc():
     limits_msg = rpc_request(proc, 3, "account/rateLimits/read", timeout=4)
 
     account = (account_msg.get("result") or {}).get("account") or {}
-    limits = (limits_msg.get("result") or {}).get("rateLimits") or {}
+    limits_result = limits_msg.get("result") or {}
+    limits = limits_result.get("rateLimits") or {}
     plan = limits.get("planType") or account.get("planType") or account.get("type") or ""
     result["tierLabel"] = str(plan) if plan else ""
 
-    for window in (limits.get("primary"), limits.get("secondary")):
-      entry = limit_window(window)
-      if entry:
-        result["limits"].append(entry)
+    limits_by_id = limits_result.get("rateLimitsByLimitId") or {}
+    if isinstance(limits_by_id, dict) and limits_by_id:
+      default_limit_id = limits.get("limitId")
+      ordered_limit_ids = list(limits_by_id)
+      if default_limit_id in limits_by_id:
+        ordered_limit_ids.remove(default_limit_id)
+        ordered_limit_ids.insert(0, default_limit_id)
+      for limit_id in ordered_limit_ids:
+        grouped_limits = limits_by_id.get(limit_id)
+        if not isinstance(grouped_limits, dict):
+          continue
+        limit_name = str(grouped_limits.get("limitName") or "")
+        for window in (grouped_limits.get("primary"), grouped_limits.get("secondary")):
+          entry = limit_window(window, limit_name)
+          if entry:
+            result["limits"].append(entry)
+    if not result["limits"]:
+      for window in (limits.get("primary"), limits.get("secondary")):
+        entry = limit_window(window)
+        if entry:
+          result["limits"].append(entry)
   except Exception as exc:
     result["usageStatusText"] = "Codex limits unavailable"
     result["authHelpText"] = str(exc)
