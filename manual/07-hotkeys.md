@@ -31,8 +31,8 @@ You can see all the main keyboard bindings with `Super + K` (Tmux bindings with 
 | `Super + Shift + Alt + Arrows` | Move workspaces to directional monitor |
 | `Super + Arrow`  | Move focus to window in direction of arrow              |
 | `Super + Shift + Arrow`  | Swap window with another in direction of arrow     |
-| `Super + Minus` | Expand window left |
-| `Super + Equal` | Shrink window left |
+| `Super + Minus` | Shrink window horizontally |
+| `Super + Equal` | Grow window horizontally |
 | `Super + Shift + Minus` | Shrink window up |
 | `Super + Shift + Equal` | Expand window down |
 | `Super + Alt + Minus/Equal` | Same resizing in smaller steps |
