@@ -14,6 +14,17 @@ right place:
   https://omarchy.org/discord. Start here when the problem isn't clearly a bug
   in Omarchy itself.
 
+## Before You Start
+
+Search both open and closed issues and pull requests before filing or coding. An open bug may already define the expected scope, while a closed PR may contain a valid approach that only needs rebasing onto the current architecture.
+
+```bash
+gh issue list --repo basecamp/omarchy --state all --search '<terms>'
+gh pr list --repo basecamp/omarchy --state all --search '<terms>'
+```
+
+Confirm the problem still exists on the latest upstream default branch and inspect active PRs that touch the same files. Also identify whether the root cause belongs in Omarchy or an upstream dependency; an Omarchy workaround is appropriate when its shipped defaults expose broken behavior and can fix it without hiding a broader upstream regression.
+
 ## Filing a Good Bug Report
 
 The bug template asks for system details (CPU, GPU, Omarchy version), a
@@ -58,8 +69,12 @@ gh repo fork basecamp/omarchy --clone
 cd omarchy
 ```
 
-Follow the repository's own `AGENTS.md` for style, testing, and commit
-conventions — it is the authority on contributions. Keep commits atomic, run
-`./test/all` before pushing, and open the PR with `gh pr create`. A PR that
-fixes a visual problem should include before/after captures (again, see
-[`capture.md`](capture.md)).
+Fetch the latest upstream default branch and create a focused branch from that commit. Follow the repository's own `AGENTS.md` and every matching task guide before editing; they are authoritative for style, testing, and commit conventions.
+
+Test in layers before publishing:
+
+1. Add and run a focused regression test that exercises the real changed code, including alternate modes and fallbacks that must retain old behavior.
+2. Run `./test/all` and resolve every failure attributable to the change.
+3. Follow the repository's visual-verification guide for anything visible. Compositor-level shortcuts require the disposable VM acceptance harness and QMP keyboard input; in-session `wtype` does not prove a global Hyprland bind.
+
+Keep commits atomic. Before staging, inspect `git status` and the complete diff, then stage only intended paths. Push the branch and open a draft PR with the root cause, user impact, validation performed, and `Fixes #...` when an issue exists. A visual fix should include before/after captures (see [`capture.md`](capture.md)).
