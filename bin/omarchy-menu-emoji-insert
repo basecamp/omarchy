@@ -6,15 +6,18 @@
 # omarchy:hidden=true
 
 emoji="${1:-}"
-copy_pid=""
 
 [[ -n $emoji ]] || exit
 
-printf '%s' "$emoji" | wl-copy --type text/plain --sensitive --foreground &
-copy_pid=$!
+# Copy the emoji to the clipboard. Without --foreground, wl-copy daemonizes
+# and the content persists — the previous --foreground + kill pattern cleared
+# the clipboard after 0.35s, leaving neither a paste nor a manual copy working.
+printf '%s' "$emoji" | wl-copy --type text/plain
 
+# Give the layer-shell surface time to release keyboard focus before typing.
 sleep 0.15
-wtype -M shift -k Insert -m shift 2>/dev/null || true
-sleep 0.2
 
-kill "$copy_pid" 2>/dev/null || true
+# Best-effort auto-paste into the focused window. Some apps don't bind
+# Shift+Insert to paste, but the clipboard content persists regardless so
+# the user can paste manually.
+wtype -M shift -k Insert -m shift 2>/dev/null || true

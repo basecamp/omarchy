@@ -53,14 +53,8 @@ mkdir -p "$TMPDIR/bin"
 
 cat >"$TMPDIR/bin/wl-copy" <<'SH'
 #!/bin/bash
-args="$*"
-target="$WL_COPY_OUT"
-if [[ $args == "--type text/plain --sensitive --foreground" ]]; then
-  target="$WL_COPY_EMOJI_OUT"
-fi
-
-printf '%s\n' "$args" >"$target.args"
-cat >"$target"
+printf '%s\n' "$*" >"$WL_COPY_ARGS_OUT"
+cat >"$WL_COPY_OUT"
 SH
 
 cat >"$TMPDIR/bin/wtype" <<'SH'
@@ -75,14 +69,19 @@ SH
 
 chmod +x "$TMPDIR/bin/wl-copy" "$TMPDIR/bin/wtype" "$TMPDIR/bin/sleep"
 
-WL_COPY_OUT="$TMPDIR/copy" WL_COPY_EMOJI_OUT="$TMPDIR/emoji" WTYPE_OUT="$TMPDIR/wtype" PATH="$TMPDIR/bin:$PATH" \
+WL_COPY_OUT="$TMPDIR/copy" WL_COPY_ARGS_OUT="$TMPDIR/copy.args" WTYPE_OUT="$TMPDIR/wtype" PATH="$TMPDIR/bin:$PATH" \
   "$ROOT/bin/omarchy-menu-emoji-insert" "😀"
 
-[[ $(<"$TMPDIR/emoji") == "😀" ]] || fail "emoji insert helper copies emoji transiently"
-pass "emoji insert helper copies emoji transiently"
+[[ $(<"$TMPDIR/copy") == "😀" ]] || fail "emoji insert helper copies emoji to clipboard"
+pass "emoji insert helper copies emoji to clipboard"
 
-[[ $(<"$TMPDIR/emoji.args") == "--type text/plain --sensitive --foreground" ]] || fail "emoji insert helper serves sensitive transient clipboard in foreground"
-pass "emoji insert helper serves transient clipboard in foreground"
+# Without --foreground, wl-copy daemonizes and the content persists instead of
+# being cleared after 0.35s by a kill — the root cause of both #7378 (keyboard)
+# and #7379 (mouse) where the emoji ended up in neither the clipboard nor the
+# target window.
+[[ $(<"$TMPDIR/copy.args") == "--type text/plain" ]] ||
+  fail "emoji insert helper copies persistently without --foreground" "args: $(<"$TMPDIR/copy.args")"
+pass "emoji insert helper copies persistently without --foreground"
 
 [[ $(<"$TMPDIR/wtype") == "-M shift -k Insert -m shift" ]] || fail "emoji insert helper pastes with shift insert"
 pass "emoji insert helper pastes with shift insert"
