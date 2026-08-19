@@ -223,8 +223,11 @@ Item {
 
   function runBlank() {
     displayBlanked = true
-    // Nobody is there to swipe, so let the reader sit idle and cool.
+    // Nobody is there to swipe, so let the reader sit idle and cool. Aborting
+    // does not raise completed, so the in-flight flag has to be cleared here or
+    // every later arm returns early against an attempt that is already gone.
     if (fingerprintPam.active) fingerprintPam.abort()
+    fingerprintAuthenticating = false
     fingerprintRetryTimer.stop()
     updateThermalRatio(false)
     if (!blankProcess.running) blankProcess.running = true

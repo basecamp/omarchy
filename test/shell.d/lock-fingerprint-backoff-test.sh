@@ -364,4 +364,58 @@ assert(
   /function scheduleFingerprintRetry\([\s\S]*?Math\.max\(fingerprintRetryDelay\(fingerprintErrorStreak\), thermalCooldownMs\(\)\)/.test(serviceQml),
   'a scheduled retry never fires earlier than the sensor can take it'
 )
+
+// Blanking disarms the reader, so waking has to be able to arm it again. PAM's
+// abort() does not raise completed, so anything the completion handler would
+// normally clear has to be cleared by the blank itself -- otherwise the reader
+// is disarmed for the rest of the lock and the user is left swiping a dead
+// sensor, which is worse than the overheating this gate exists to prevent.
+const startBody = capture(
+  /function startFingerprint\(\) \{([\s\S]*?)\n  \}/,
+  'the reader is armed by startFingerprint()'
+)
+const blankBody = capture(
+  /function runBlank\(\) \{([\s\S]*?)\n  \}/,
+  'the display is blanked by runBlank()'
+)
+
+const makeLockScreen = () => {
+  const service = makeService()
+  service.clock = 1e9
+  service.sessionLock = { secure: true }
+  service.displayBlanked = false
+  service.blankProcess = { running: false }
+  service.fingerprintRetryTimer.running = false
+  service.fingerprintRetryTimer.stop = function() { this.running = false }
+  service.fingerprintPam = {
+    active: false,
+    aborted: 0,
+    start() { this.active = true; return true },
+    abort() { this.active = false; this.aborted++ },
+  }
+  service.startFingerprint = new Function(`with (this) { ${startBody} }`).bind(service)
+  service.runBlank = new Function(`with (this) { ${blankBody} }`).bind(service)
+  return service
+}
+
+const cycled = makeLockScreen()
+cycled.startFingerprint()
+assert(cycled.fingerprintPam.active, 'locking arms the reader')
+
+cycled.runBlank()
+assert(cycled.fingerprintPam.aborted === 1, 'blanking releases the reader so it can cool')
+assert(!cycled.fingerprintPam.active, 'the reader is not left armed at a dark screen')
+
+// The wake path clears displayBlanked before arming, so mirror that here.
+cycled.displayBlanked = false
+cycled.startFingerprint()
+assert(
+  cycled.fingerprintPam.active,
+  'waking re-arms the reader after a blank rather than bailing on a stale attempt'
+)
+
+const dark = makeLockScreen()
+dark.runBlank()
+dark.startFingerprint()
+assert(!dark.fingerprintPam.active, 'a blanked screen does not arm the reader')
 JS
