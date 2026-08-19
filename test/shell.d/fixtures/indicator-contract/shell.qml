@@ -196,6 +196,10 @@ ShellRoot {
         screenRecording.recording = true
         screenRecording.triggerPress(Qt.LeftButton)
         root.assertTrue(root.commandCount("omarchy-capture-screenrecording --stop-recording") === 1, "Screen Recording left click stops active recording")
+        screenRecording.paused = true
+        screenRecording.triggerPress(Qt.LeftButton)
+        root.assertTrue(root.commandCount("omarchy-capture-screenrecording --pause-recording") === 1, "Screen Recording left click resumes a paused recording")
+        screenRecording.paused = false
       }
 
       var dictation = root.createIndicator("Dictation")

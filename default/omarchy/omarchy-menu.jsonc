@@ -58,6 +58,8 @@
   "trigger.capture": {"icon":"","label":"Capture","aliases":["capture","screenshot","screenrecord","screen-record","screenrecording"]},
   "trigger.capture.screenshot": {"icon":"","label":"Screenshot","action":"omarchy-capture-screenshot"},
   "trigger.capture.screenrecord.stop": {"icon":"","label":"Stop Screenrecording","when":"pgrep -f '^gpu-screen-recorder'","action":"omarchy-capture-screenrecording --stop-recording"},
+  "trigger.capture.screenrecord.pause": {"icon":"","label":"Pause Recording","when":"pgrep -f '^gpu-screen-recorder' && [[ ! -f /tmp/omarchy-screenrecord-paused ]]","action":"omarchy-capture-screenrecording --pause-recording"},
+  "trigger.capture.screenrecord.resume": {"icon":"","label":"Resume Recording","when":"pgrep -f '^gpu-screen-recorder' && [[ -f /tmp/omarchy-screenrecord-paused ]]","action":"omarchy-capture-screenrecording --pause-recording"},
   "trigger.capture.screenrecord": {"icon":"","label":"Screenrecord"},
   "trigger.capture.text": {"icon":"󰴑","label":"Text","action":"omarchy-capture-text"},
   "trigger.capture.qr": {"icon":"󰐲","label":"QR Code","action":"omarchy-capture-qr"},
