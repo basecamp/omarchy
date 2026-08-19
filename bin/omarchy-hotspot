@@ -62,6 +62,17 @@ band_from_nm() {
   esac
 }
 
+# NetworkManager auto-picks the AP channel and tends to land on 12/13 for
+# 2.4 GHz, which many phones refuse to join - they only support channels
+# 1-11. Pin a safe low channel per band.
+nm_channel_for() {
+  case "$1" in
+    2.4) echo "6" ;;
+    5) echo "36" ;;
+    6) echo "" ;;
+  esac
+}
+
 # Any wireless PHY that can run AP mode at all?
 ap_capable() {
   iw phy 2>/dev/null | grep -Eq '^[[:space:]]*\*[[:space:]]*AP[[:space:]]*$'
@@ -303,7 +314,7 @@ firewall_ensure() {
 # Password arrives on stdin (never argv). band is optional, default 2.4.
 start() {
   local ssid=$1 band=${2:-2.4} password
-  local device nm_band
+  local device nm_band nm_channel
 
   ap_capable || fail "no Wi-Fi adapter supports AP mode"
   band_supported "$band" || fail "band '$band' is not available on this adapter"
@@ -315,6 +326,7 @@ start() {
   [[ ${#password} -ge 8 && ${#password} -le 63 ]] ||
     fail "password must be 8-63 characters"
   nm_band=$(nm_band_for "$band") || fail "unknown band '$band' (use 2.4, 5 or 6)"
+  nm_channel=$(nm_channel_for "$band")
   if omarchy-cmd-missing dnsmasq; then
     fail "dnsmasq is missing; run 'omarchy migrate' to install the hotspot dependency"
   fi
@@ -338,6 +350,10 @@ start() {
     printf 'set wifi-sec.psk %s\nsave\nquit\n' "$password" |
       nmcli connection edit "$PROFILE" >/dev/null 2>&1 ||
       fail "could not set hotspot password"
+  fi
+
+  if [[ -n $nm_channel ]]; then
+    nmcli connection modify "$PROFILE" 802-11-wireless.channel "$nm_channel" >/dev/null 2>&1
   fi
 
   if ! nmcli connection up "$PROFILE" >/dev/null 2>&1; then
@@ -405,7 +421,7 @@ qr() {
 # restarts even when the user never turns the hotspot on. `apply` is
 # idempotent: it creates the profile on first use, then updates it.
 apply() {
-  local ssid=$1 band=${2:-2.4} password device nm_band
+  local ssid=$1 band=${2:-2.4} password device nm_band nm_channel
 
   ap_capable || fail "no Wi-Fi adapter supports AP mode"
   band_supported "$band" || fail "band '$band' is not available on this adapter"
@@ -417,6 +433,7 @@ apply() {
   [[ ${#password} -ge 8 && ${#password} -le 63 ]] ||
     fail "password must be 8-63 characters"
   nm_band=$(nm_band_for "$band") || fail "unknown band '$band' (use 2.4, 5 or 6)"
+  nm_channel=$(nm_channel_for "$band")
 
   if profile_configured; then
     # SSID/band ride argv (not secret); the passphrase goes through the
@@ -435,6 +452,10 @@ apply() {
     printf 'set wifi-sec.psk %s\nsave\nquit\n' "$password" |
       nmcli connection edit "$PROFILE" >/dev/null 2>&1 ||
       fail "could not set hotspot password"
+  fi
+
+  if [[ -n $nm_channel ]]; then
+    nmcli connection modify "$PROFILE" 802-11-wireless.channel "$nm_channel" >/dev/null 2>&1
   fi
 }
 
