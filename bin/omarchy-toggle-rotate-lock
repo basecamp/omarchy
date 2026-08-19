@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# omarchy:summary=Lock or unlock automatic screen rotation from the accelerometer
+# omarchy:args=[on|off|toggle|--status]
+# omarchy:examples=omarchy toggle rotate-lock | omarchy toggle rotate-lock on
+
+set -euo pipefail
+
+FLAG="rotate-lock"
+
+status_json() {
+  local locked available
+
+  if omarchy-toggle-enabled "$FLAG"; then locked=true; else locked=false; fi
+  if omarchy-hw-accelerometer; then available=true; else available=false; fi
+
+  jq -cn --argjson locked "$locked" --argjson available "$available" \
+    '{locked:$locked, available:$available}'
+}
+
+if [[ ${1:-} == "--status" ]]; then
+  status_json
+  exit 0
+fi
+
+case "${1:-toggle}" in
+  on | off | toggle) omarchy-toggle "$FLAG" "${1:-toggle}" ;;
+  *)
+    echo "Usage: omarchy-toggle-rotate-lock [on|off|toggle|--status]" >&2
+    exit 1
+    ;;
+esac
+
+# Nothing about the screen changes at the moment the lock flips, so say so.
+if omarchy-toggle-enabled "$FLAG"; then
+  omarchy-osd -i rotate-lock -m "Rotate lock on"
+else
+  omarchy-osd -i rotate -m "Rotate lock off"
+fi

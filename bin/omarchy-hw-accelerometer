@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true when the machine has an accelerometer that can report screen orientation.
+
+# The kernel exposes accelerometers through the IIO subsystem, and that is also
+# where iio-sensor-proxy reads them from. Devices differ in which interface they
+# offer: polled sensors publish `in_accel_x_raw`, hid-sensor-hub ones publish
+# `in_accel_x_input`, and buffer-only sensors publish neither but still declare
+# the axis as a scan element.
+iio_path="${OMARCHY_IIO_PATH:-/sys/bus/iio/devices}"
+
+for device in "$iio_path"/iio:device*; do
+  [[ -d $device ]] || continue
+
+  for axis in "$device/in_accel_x_raw" "$device/in_accel_x_input" "$device/scan_elements/in_accel_x_en"; do
+    [[ -e $axis ]] && exit 0
+  done
+done
+
+exit 1

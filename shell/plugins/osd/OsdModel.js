@@ -18,6 +18,8 @@ function iconFor(name, percent) {
   if (n === "brightness" || n === "display") return "󰍹"
   if (n === "touchpad") return "󰟸"
   if (n === "touch" || n === "touchscreen") return "󰝁"
+  if (n === "rotate" || n === "rotation" || n === "orientation") return "󰑦"
+  if (n === "rotate-lock" || n === "rotation-lock") return "󰌾"
   if (n === "reboot" || n === "restart") return "󰜉"
   if (n === "shutdown" || n === "power" || n === "poweroff") return "󰐥"
   if (n === "logout" || n === "sign-out" || n === "leave") return "󰍃"

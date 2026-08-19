@@ -56,6 +56,9 @@ vulkan-intel
 vulkan-radeon
 vulkan-asahi
 
+# Screen auto-rotation on machines with an accelerometer
+iio-sensor-proxy
+
 # Surface laptop support packages
 linux-firmware-marvell
 
