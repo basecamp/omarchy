@@ -11,6 +11,8 @@ restart_pid_two=""
 cleanup() {
   [[ -n $restart_pid_one ]] && kill "$restart_pid_one" 2>/dev/null || true
   [[ -n $restart_pid_two ]] && kill "$restart_pid_two" 2>/dev/null || true
+  [[ -n $restart_pid_one ]] && wait "$restart_pid_one" 2>/dev/null || true
+  [[ -n $restart_pid_two ]] && wait "$restart_pid_two" 2>/dev/null || true
   rm -rf "$test_tmp"
 }
 trap cleanup EXIT
@@ -116,13 +118,30 @@ case " $* " in
   *' kill -p '*)
     pid=$(head -n 1 "$OMARCHY_TEST_QS_STATE")
     [[ $pid =~ ^[0-9]+$ ]] || exit 1
-    kill "$pid" 2>/dev/null
-    while kill -0 "$pid" 2>/dev/null; do sleep 0.01; done
-    awk 'NR > 1' "$OMARCHY_TEST_QS_STATE" >"$OMARCHY_TEST_QS_STATE.next"
-    mv "$OMARCHY_TEST_QS_STATE.next" "$OMARCHY_TEST_QS_STATE"
+
+    # Stock Quickshell 0.3.0 returns before the instance exits. A second kill
+    # during that shutdown is the update-time crash reproduced by this test.
+    if [[ -f $OMARCHY_TEST_QS_STATE.pending.$pid ]]; then
+      touch "$OMARCHY_TEST_QS_STATE.crashed"
+      exit 134
+    fi
+
+    touch "$OMARCHY_TEST_QS_STATE.pending.$pid"
+    (sleep 0.1; kill "$pid" 2>/dev/null) &
     ;;
   *' -n -p '*)
     printf '%s\n' "${OMARCHY_TEST_TRANSIENT_ENV-unset}" >"$OMARCHY_TEST_QS_ENV_LOG"
+
+    if [[ ${OMARCHY_TEST_QS_LONG_RUNNING:-0} == 1 ]]; then
+      stop_shell() {
+        awk -v pid="$PPID" '$0 != pid' "$OMARCHY_TEST_QS_STATE" >"$OMARCHY_TEST_QS_STATE.$$.next"
+        mv "$OMARCHY_TEST_QS_STATE.$$.next" "$OMARCHY_TEST_QS_STATE"
+        exit 0
+      }
+      trap stop_shell TERM INT
+      while true; do sleep 1; done
+    fi
+
     printf '303\n' >"$OMARCHY_TEST_QS_STATE"
     ;;
 esac
@@ -142,7 +161,7 @@ if [[ ${1:-} == "-j" && ${2:-} == "monitors" ]]; then
 elif [[ ${1:-} == "dispatch" && ${2:-} == hl.dsp.exec_cmd* ]]; then
   printf '%s\n' "${2:-}" >>"$OMARCHY_TEST_DISPATCH_LOG"
   OMARCHY_PATH="$OMARCHY_TEST_SESSION_PATH" \
-    env -u OMARCHY_TEST_TRANSIENT_ENV omarchy-launch-shell
+    env -u OMARCHY_TEST_TRANSIENT_ENV -u OMARCHY_TEST_QS_LONG_RUNNING omarchy-launch-shell
   printf 'ok\n'
 elif [[ ${1:-} == "dispatch" ]]; then
   exit 1
@@ -174,11 +193,25 @@ SH
 
 chmod +x "$restart_bin/qs" "$restart_bin/quickshell" "$restart_bin/hyprctl" "$restart_bin/systemd-cat" "$restart_bin/systemctl"
 
-sleep 30 &
+PATH="$restart_bin:$PATH" \
+OMARCHY_PATH="$restart_root" \
+OMARCHY_TEST_QS_LONG_RUNNING=1 \
+OMARCHY_TEST_QS_STATE="$restart_state" \
+OMARCHY_TEST_QS_LOG="$restart_log" \
+OMARCHY_TEST_QS_ENV_LOG="$restart_env_log" \
+  /bin/bash "$restart_bin/omarchy-launch-shell" &
 restart_pid_one=$!
-sleep 30 &
+PATH="$restart_bin:$PATH" \
+OMARCHY_PATH="$restart_root" \
+OMARCHY_TEST_QS_LONG_RUNNING=1 \
+OMARCHY_TEST_QS_STATE="$restart_state" \
+OMARCHY_TEST_QS_LOG="$restart_log" \
+OMARCHY_TEST_QS_ENV_LOG="$restart_env_log" \
+  /bin/bash "$restart_bin/omarchy-launch-shell" &
 restart_pid_two=$!
 printf '%s\n%s\n' "$restart_pid_one" "$restart_pid_two" >"$restart_state"
+sleep 0.1
+: >"$restart_log"
 
 caller_root="$test_tmp/caller-root"
 mkdir -p "$caller_root/shell"
@@ -208,7 +241,10 @@ restart_pid_one=""
 restart_pid_two=""
 [[ $(<"$restart_state") == 303 ]] || fail "restart leaves exactly one fresh shell instance"
 [[ $(grep -c '^-n -p ' "$restart_log") == 1 ]] || fail "restart launches one fresh shell process"
-grep -F "kill -p $restart_root/shell --any-display" "$restart_log" >/dev/null || fail "restart stops the shell from the session checkout"
+[[ ! -f $restart_state.crashed ]] || fail "restart does not send a second stop request while stock Quickshell is shutting down"
+if grep -F "kill -p $restart_root/shell --any-display" "$restart_log" >/dev/null; then
+  fail "restart does not depend on Quickshell's version-specific kill command"
+fi
 [[ $(<"$restart_env_log") == "unset" ]] || fail "restart uses the Hyprland session environment for the fresh shell"
 grep -F 'hl.dsp.exec_cmd("omarchy-launch-shell")' "$dispatch_log" >/dev/null || fail "restart launches the fresh shell through Hyprland"
 grep -F "ipc -n -p $restart_root/shell call -- shell ping" "$ipc_log" >/dev/null || fail "restart checks readiness in the session checkout"
@@ -237,9 +273,16 @@ pass "restart preserves the shell while its lock is active"
 # A LOCK session without an active locker — dead shell or a crash-handler
 # relaunch holding no lock — is the failsafe: restart must proceed,
 # re-acquire the session lock, and wait for it to report secure.
-sleep 30 &
+PATH="$restart_bin:$PATH" \
+OMARCHY_PATH="$restart_root" \
+OMARCHY_TEST_QS_LONG_RUNNING=1 \
+OMARCHY_TEST_QS_STATE="$restart_state" \
+OMARCHY_TEST_QS_LOG="$restart_log" \
+OMARCHY_TEST_QS_ENV_LOG="$restart_env_log" \
+  /bin/bash "$restart_bin/omarchy-launch-shell" &
 restart_pid_one=$!
 printf '%s\n' "$restart_pid_one" >"$restart_state"
+sleep 0.1
 rm -f "$restart_state.locked"
 : >"$restart_log"
 : >"$ipc_log"

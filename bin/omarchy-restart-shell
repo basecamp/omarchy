@@ -61,10 +61,52 @@ relock_session() {
   return 1
 }
 
-# Each kill stops the oldest matching instance and only returns once it has
-# fully exited, so the no-duplicate launch below can't race a dying shell.
-# Requires our quickshell-git build; 0.3.0's kill returns immediately.
-while timeout 5 quickshell kill -p "$CONFIG_DIR" --any-display >/dev/null 2>&1; do :; done
+shell_launcher_pid_matches() {
+  local pid="$1"
+  local -a command=()
+
+  [[ -r /proc/$pid/cmdline ]] || return 1
+  mapfile -d '' -t command <"/proc/$pid/cmdline" 2>/dev/null || return 1
+
+  [[ ${command[0]##*/} == "bash" &&
+    ${command[1]:-} == "$session_omarchy_path/bin/omarchy-launch-shell" &&
+    ${#command[@]} == 2 ]]
+}
+
+shell_launcher_pids() {
+  local proc pid
+
+  for proc in /proc/[0-9]*; do
+    pid=${proc##*/}
+    shell_launcher_pid_matches "$pid" && printf '%s\n' "$pid"
+  done
+}
+
+# The launcher owns Quickshell and forwards TERM to it. Stop every launcher and
+# wait for its child to exit before starting a replacement. This avoids
+# Quickshell's version-specific IPC kill behavior and cannot stack instances
+# when a child crashes during shutdown.
+mapfile -t shell_launchers < <(shell_launcher_pids)
+if ((${#shell_launchers[@]})); then
+  for pid in "${shell_launchers[@]}"; do
+    shell_launcher_pid_matches "$pid" && kill -TERM "$pid" 2>/dev/null
+  done
+
+  deadline=$((SECONDS + 5))
+  while (( SECONDS < deadline )); do
+    for pid in "${shell_launchers[@]}"; do
+      shell_launcher_pid_matches "$pid" && { sleep 0.05; continue 2; }
+    done
+    break
+  done
+
+  for pid in "${shell_launchers[@]}"; do
+    if shell_launcher_pid_matches "$pid"; then
+      echo "Could not stop all Omarchy shell instances." >&2
+      exit 1
+    fi
+  done
+fi
 
 # Spawn from Hyprland so the shell inherits the canonical session environment,
 # not transient variables from a terminal, SSH connection, or development tool.
