@@ -4,6 +4,13 @@
 # omarchy:group=system
 # omarchy:hidden=true
 
+# Resolve dbus-monitor by absolute path so a shadowing PATH entry (e.g.
+# Homebrew's relocatable dbus build, which looks for a system bus socket
+# under $HOMEBREW_PREFIX) cannot redirect the monitor to the wrong bus and
+# leave omarchy-sleep-lock.service restart-looping silently. Tests override
+# DBUS_MONITOR with a mock.
+DBUS_MONITOR="${DBUS_MONITOR:-/usr/bin/dbus-monitor}"
+
 consume_sleep_events() {
   local line sleep_lock
   sleep_lock="$OMARCHY_PATH/bin/omarchy-system-sleep-lock"
@@ -20,7 +27,7 @@ monitor_sleep_events() {
   local monitor_fd monitor_pid status
 
   coproc SLEEP_EVENTS {
-    exec dbus-monitor --system \
+    exec "$DBUS_MONITOR" --system \
       "type='signal',sender='org.freedesktop.login1',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'"
   }
   monitor_fd=${SLEEP_EVENTS[0]}
