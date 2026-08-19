@@ -10,8 +10,11 @@ trap 'rm -rf "$TEST_HOME"' EXIT
 
 today="$(date +%Y-%m-%d)"
 timestamp="${today}T12:00:00Z"
-session_id="019fa899-624e-7611-bf0f-9f6a99eae149"
-session_dir="$TEST_HOME/.grok/sessions/%2Ftmp%2Fproj/$session_id"
+# Synthetic UUIDv7-shaped id. turn_line reads $session_id, which later tests
+# overwrite, so paths that must stay on the fixture use this name.
+fixture_session_id="019fb000-0000-7000-8000-000000000001"
+session_id="$fixture_session_id"
+session_dir="$TEST_HOME/.grok/sessions/%2Ftmp%2Fproj/$fixture_session_id"
 mkdir -p "$session_dir"
 
 write_summary() {
@@ -103,7 +106,7 @@ pass "Grok collector counts the parent session once"
 
 # A subagent fork writes its own updates.jsonl. Parent turn_completed already
 # includes that spend, so the child file must not add another copy.
-child_id="01a00057-c26d-7442-aa2a-8bb92c921e18"
+child_id="019fb000-0000-7000-8000-000000000004"
 child_dir="$TEST_HOME/.grok/sessions/%2Ftmp%2Fproj/$child_id"
 mkdir -p "$child_dir"
 write_summary "$child_dir" "subagent_fork" "$session_id"
@@ -173,6 +176,7 @@ loader.exec_module(collector)
 billing = json.loads(sys.argv[1])
 user = json.loads(sys.argv[2])
 force = sys.argv[3] == "force"
+settings = json.loads(sys.argv[4]) if len(sys.argv) > 4 else {}
 seen = []
 
 def urlopen(request, timeout=None):
@@ -182,6 +186,8 @@ def urlopen(request, timeout=None):
     return io.BytesIO(json.dumps(billing).encode())
   if "user?include=subscription" in url:
     return io.BytesIO(json.dumps(user).encode())
+  if url.endswith("/v1/settings") or url.endswith("/settings"):
+    return io.BytesIO(json.dumps(settings).encode())
   raise AssertionError("unexpected url " + url)
 
 collector.urllib.request.urlopen = urlopen
@@ -214,9 +220,15 @@ limits=$(probe_record "$billing" "$user" force)
   fail "Grok collector reads the weekly credit pool" "$limits"
 [[ $(jq -c '{remaining: .balance.remaining, funded: .balance.funded, spent: .balance.spent, currency: .balance.currency}' <<<"$limits") == '{"remaining":12.5,"funded":15.0,"spent":2.5,"currency":"USD"}' ]] ||
   fail "Grok collector reports prepaid and leftover on-demand credits" "$limits"
-[[ $(jq -r '._probed | length' <<<"$limits") == "2" ]] ||
-  fail "Grok collector probes billing and user once" "$limits"
+[[ $(jq -r '._probed | length' <<<"$limits") == "3" ]] ||
+  fail "Grok collector probes billing, user, and settings once" "$limits"
 pass "Grok collector reads weekly limits and extra credits"
+
+# The live display string from /v1/settings beats the machine subscriptionTier.
+display=$(probe_record "$billing" "$user" force '{"subscription_tier_display":"SuperGrok Heavy"}')
+[[ $(jq -r '.tierLabel' <<<"$display") == "SuperGrok Heavy" ]] ||
+  fail "Grok collector prefers subscription_tier_display" "$display"
+pass "Grok collector prefers subscription_tier_display"
 
 # creditUsagePercent is a 0-100 percentage, so 0.4 is under one percent used.
 fraction=$(probe_record '{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","end":"2026-08-15T14:46:02.562637+00:00"},"creditUsagePercent":0.4}}' "$user" force)
@@ -273,8 +285,8 @@ result=$(HOME="$scan_home" XDG_CACHE_HOME="$scan_home/.cache" GROK_HOME="$scan_h
   fail "Grok collector --force sees the fixture turns" "$result"
 
 # Add another turn. A fresh --limits-only must keep the cached count.
-session_id="019fa899-624e-7611-bf0f-9f6a99eae149" \
-  turn_line "prompt-3" "grok-4.6" 20 2 0 0 >>"$scan_home/.grok/sessions/%2Ftmp%2Fproj/$session_id/updates.jsonl"
+session_id="$fixture_session_id" \
+  turn_line "prompt-3" "grok-4.6" 20 2 0 0 >>"$scan_home/.grok/sessions/%2Ftmp%2Fproj/$fixture_session_id/updates.jsonl"
 
 result=$(HOME="$scan_home" XDG_CACHE_HOME="$scan_home/.cache" GROK_HOME="$scan_home/.grok" \
   "$ROOT/bin/omarchy-agent-usage-grok" --limits-only)
@@ -287,6 +299,17 @@ result=$(HOME="$scan_home" XDG_CACHE_HOME="$scan_home/.cache" GROK_HOME="$scan_h
 [[ $(jq -r '.todayPrompts' <<<"$result") == "4" ]] ||
   fail "Grok collector --force rescans past the cache" "$result"
 pass "Grok collector --force rescans past the cache"
+
+# A cache older than the old 900s TTL must still be reused: opening the
+# panel is --limits-only and must not walk transcripts to refresh the meter.
+session_id="$fixture_session_id" \
+  turn_line "prompt-4" "grok-4.6" 20 2 0 0 >>"$scan_home/.grok/sessions/%2Ftmp%2Fproj/$fixture_session_id/updates.jsonl"
+find "$scan_home/.cache/omarchy/agent-usage" -name 'grok-scan-*.json' -exec touch -d '2 hours ago' {} +
+result=$(HOME="$scan_home" XDG_CACHE_HOME="$scan_home/.cache" GROK_HOME="$scan_home/.grok" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --limits-only)
+[[ $(jq -r '.todayPrompts' <<<"$result") == "4" ]] ||
+  fail "Grok collector --limits-only reuses a stale same-day scan cache" "$result"
+pass "Grok collector --limits-only reuses a stale same-day scan cache"
 
 # An unwritable cache must not take the record down.
 UNWRITABLE_HOME=$(mktemp -d)
@@ -402,6 +425,8 @@ def urlopen(request, timeout=None):
   url = request.full_url
   if "billing" in url:
     return io.BytesIO(json.dumps(billing).encode())
+  if url.endswith("/settings"):
+    return io.BytesIO(b"{}")
   return io.BytesIO(json.dumps(user).encode())
 
 collector.urllib.request.urlopen = urlopen
@@ -483,3 +508,56 @@ PY
 [[ $(jq -r '.retryAdvised' <<<"$unreachable") == "true" ]] ||
   fail "Grok collector advises a retry after a transport failure" "$unreachable"
 pass "Grok collector advises a retry after a transport failure"
+
+# Flat turn_completed (ledger on the update) and event_name both count.
+FLAT_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$OTHER_HOME" "$CACHE_HOME" "$EXPIRED_HOME" "$UNWRITABLE_HOME" "$SHAPE_HOME" "$FORK_HOME" "$AUTH_HOME" "$FLAT_HOME"' EXIT
+flat_id="019fb000-0000-7000-8000-000000000003"
+flat_dir="$FLAT_HOME/.grok/sessions/%2Ftmp%2Fflat/$flat_id"
+mkdir -p "$flat_dir"
+write_summary "$flat_dir"
+python3 - "$timestamp" "$flat_id" >"$flat_dir/updates.jsonl" <<'PY'
+import json, sys
+ts, sid = sys.argv[1:]
+print(json.dumps({
+  "timestamp": ts,
+  "method": "session/update",
+  "params": {
+    "sessionId": sid,
+    "update": {
+      "sessionUpdate": "turn_completed",
+      "prompt_id": "flat-1",
+      "inputTokens": 40,
+      "outputTokens": 6,
+      "cachedReadTokens": 10,
+      "cacheCreationTokens": 0,
+      "reasoningTokens": 2
+    }
+  }
+}))
+print(json.dumps({
+  "timestamp": ts,
+  "method": "session/update",
+  "params": {
+    "sessionId": sid,
+    "update": {
+      "event_name": "turn_completed",
+      "prompt_id": "named-1",
+      "usage": {
+        "inputTokens": 20,
+        "outputTokens": 4,
+        "cachedReadTokens": 0,
+        "cacheCreationTokens": 0,
+        "reasoningTokens": 0
+      }
+    }
+  }
+}))
+PY
+result=$(HOME="$FLAT_HOME" XDG_CACHE_HOME="$FLAT_HOME/.cache" GROK_HOME="$FLAT_HOME/.grok" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --force)
+[[ $(jq -r '.todayPrompts' <<<"$result") == "2" ]] ||
+  fail "Grok collector counts flat and event_name turn_completed rows" "$result"
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "70" ]] ||
+  fail "Grok collector reads a flat turn_completed ledger" "$result"
+pass "Grok collector reads flat and event_name turn_completed rows"
