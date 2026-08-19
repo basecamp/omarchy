@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# omarchy:summary=Install the Hermes desktop app
+# omarchy:requires-sudo=true
+
+set -e
+
+# The desktop app is only a shell: it runs `hermes serve` and, finding no
+# Hermes on PATH, clones its own copy with the upstream install script instead
+# -- an unpinned checkout in ~/.hermes that nothing here manages. So the CLI
+# goes first, and installed rather than merely stubbed: the app gives its PATH
+# probe 15 seconds, which a first-run mise install does not fit inside.
+echo "Installing the Hermes CLI..."
+omarchy-install-hermes-cli --now
+
+echo "Installing Hermes..."
+omarchy-pkg-add hermes-desktop
+
+echo "Opening Hermes..."
+setsid uwsm-app -- /usr/bin/hermes-desktop >/dev/null 2>&1 &
+
+echo ""
+echo "Hermes has been installed."

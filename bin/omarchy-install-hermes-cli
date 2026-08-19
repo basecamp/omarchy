@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# omarchy:summary=Install the Hermes CLI as a mise-backed wrapper in ~/.local/bin
+# omarchy:args=[--now]
+# omarchy:examples=omarchy install hermes cli | omarchy install hermes cli --now
+
+# Hermes pins every one of its dependencies exactly and declares
+# Requires-Python >=3.11,<3.14, so it can neither be built against Arch's
+# Python nor share the python-* packages. mise builds it a private environment
+# instead.
+#
+# It gets its own installer rather than a line in omarchy-mise-install because
+# of the interpreter pin. Given no compatible interpreter to hand, uv builds
+# the venv against the system Python in violation of Hermes' own bound,
+# reports success, and leaves the breakage to surface later inside a
+# dependency -- and omarchy-mise-install writes a fixed stub with nowhere to
+# say otherwise.
+
+set -euo pipefail
+
+warm=false
+[[ ${1:-} == "--now" ]] && warm=true
+
+tool='pipx:hermes-agent[extras=all]'
+python='3.13'
+
+mkdir -p "$HOME/.local/bin"
+rm -f "$HOME/.local/bin/hermes"
+
+cat >"$HOME/.local/bin/hermes" <<EOF
+#!/bin/bash
+
+# Written by omarchy-install-hermes-cli.
+
+export UV_PYTHON="$python"
+
+# mise up -- which omarchy update runs -- reinstalls without that pin, so this
+# asks which interpreter is actually there rather than whether anything is.
+if ! [[ -d "\$(mise where '$tool' 2>/dev/null)/hermes-agent/lib/python$python" ]]; then
+  echo "Installing Hermes on Python $python (this takes a minute)..." >&2
+
+  # Hermes ships several times a week, so mise's release cooldown would hold a
+  # new version back for days.
+  MISE_MINIMUM_RELEASE_AGE=0 mise use -g --quiet --force '$tool' || exit 1
+fi
+
+exec mise x '$tool' -- hermes "\$@"
+EOF
+
+chmod +x "$HOME/.local/bin/hermes"
+
+# The desktop app resolves a hermes on PATH by running `hermes --version` with
+# a 15 second budget, then falls back to cloning its own copy when that times
+# out. A first-run mise install does not fit in 15 seconds, so anything that
+# hands Hermes to the GUI has to install it here rather than leave it stubbed.
+if [[ $warm == "true" ]]; then
+  "$HOME/.local/bin/hermes" --version
+fi

@@ -238,7 +238,7 @@
   "install.ai.chatgpt": {"icon":"","iconFont":"omarchy","label":"ChatGPT Desktop","disabled":"omarchy-pkg-present openai-codex-desktop","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-ai-chatgpt"},
   "install.ai.dictation": {"icon":"","label":"Dictation","disabled":"omarchy-pkg-present voxtype-bin","action":"omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install"},
   "install.ai.grok-bot": {"icon":"","iconFont":"omarchy","label":"Grok Bot","disabled":"omarchy-pkg-present grok-bot","action":"omarchy-install-and-launch 'Grok Bot' grok-bot grok-bot"},
-  "install.ai.hermes": {"icon":"󰛓","label":"Hermes","disabled":"omarchy-pkg-present hermes-agent","action":"omarchy-install-and-launch Hermes hermes-agent hermes"},
+  "install.ai.hermes": {"icon":"󰛓","label":"Hermes","disabled":"omarchy-pkg-present hermes-desktop","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-ai-hermes"},
   "install.ai.lm-studio": {"icon":"","iconFont":"omarchy","label":"LM Studio","disabled":"omarchy-pkg-present lmstudio-bin","action":"omarchy-install-app 'LM Studio' lmstudio-bin"},
   "install.ai.ollama": {"icon":"","iconFont":"omarchy","label":"Ollama","disabled":"omarchy-cmd-present ollama","action":"if omarchy-cmd-present nvidia-smi; then ollama_pkg=ollama-cuda; elif omarchy-cmd-present rocminfo; then ollama_pkg=ollama-rocm; else ollama_pkg=ollama; fi; omarchy-install-app Ollama \"$ollama_pkg\""},
   "install.gaming.steam": {"icon":"","label":"Steam","disabled":"omarchy-pkg-present steam","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-steam"},

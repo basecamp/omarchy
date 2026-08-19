@@ -31,7 +31,7 @@ claude | claude-code) agent="claude"; name="Claude Code" ;;
 codex) agent="codex"; name="Codex" ;;
 crush) agent="crush"; name="Crush" ;;
 grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
-hermes) agent="hermes"; name="Hermes"; agent_pkg="hermes-agent" ;;
+hermes) agent="hermes"; name="Hermes"; agent_installer="omarchy-install-hermes-cli" ;;
 gemini | gemini-cli) agent="gemini"; name="Gemini" ;;
 copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
 *)
@@ -42,16 +42,13 @@ esac
 
 agent_package=${agent_package:-$agent}
 
-# Hermes is the one agent that arrives as a package instead of straight from
-# mise. hermes-agent owns /usr/bin/hermes, which pins the interpreter Hermes
-# needs before handing it to mise; installing it here through mise instead
-# would build it against Arch's Python and leave the desktop launcher behind.
-if [[ -n ${agent_pkg:-} ]]; then
-  installer="pacman"
+# Hermes reaches mise through its own installer rather than straight from
+# here: it needs its interpreter pinned, and a bare `mise use` has nowhere to
+# say so. See omarchy-install-hermes-cli.
+if [[ -n ${agent_installer:-} ]]; then
   agent_present() { omarchy-cmd-present "$agent"; }
-  agent_install() { omarchy-pkg-add "$agent_pkg"; }
+  agent_install() { "$agent_installer" --now; }
 else
-  installer="mise"
   agent_present() { mise where "$agent_package" &>/dev/null; }
   agent_install() { mise use -g "$agent_package"; }
 fi
@@ -62,7 +59,7 @@ fi
 
 if ! agent_install; then
   if [[ $installing == "true" ]]; then
-    echo "Could not install $name with $installer" >&2
+    echo "Could not install $name with mise" >&2
   else
     echo "Could not set $name as the default coding agent" >&2
   fi
