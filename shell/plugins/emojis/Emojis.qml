@@ -326,7 +326,7 @@ Item {
             }
 
             Text {
-              text: "No matches for “" + root.filterText + "”"
+              text: I18n.tr("No matches for “%1”", [root.filterText])
               color: root.foreground
               opacity: 0.7
               font.family: root.fontFamily

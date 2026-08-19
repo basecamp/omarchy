@@ -163,7 +163,7 @@ PanelWindow {
         // Centered on the dial pair. Fades rather than unmounts while a run
         // is in flight, so the cluster never shifts.
         Button {
-          text: "Run Again"
+          text: I18n.tr("Run Again")
           tooltipText: root.runAgainTooltip
           bordered: true
           enabled: !root.running

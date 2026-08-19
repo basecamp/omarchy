@@ -335,7 +335,7 @@ Panel {
 
               PanelToolTip {
                 visible: heroMouse.containsMouse
-                text: "Back to today"
+                text: I18n.tr("Back to today")
                 fontFamily: root.contentFontFamily
               }
             }
@@ -594,7 +594,7 @@ Panel {
 
                   PanelToolTip {
                     visible: weekStartMouse.containsMouse
-                    text: "Start weeks on " + root.nextWeekStartLabel
+                    text: I18n.tr("Start weeks on %1", [root.nextWeekStartLabel])
                     fontFamily: root.contentFontFamily
                   }
                 }
