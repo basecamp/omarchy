@@ -15,6 +15,13 @@
 # reports success, and leaves the breakage to surface later inside a
 # dependency -- and omarchy-mise-install writes a fixed stub with nowhere to
 # say otherwise.
+#
+# There is only ever one Hermes on a machine. hermes-desktop cannot run against
+# this one -- it needs a runtime built from its own commit, and the version gap
+# fails its readiness probe -- so it installs its own under ~/.hermes and puts
+# that on PATH. When the package is present it therefore owns Hermes outright:
+# this installer stands aside and removes its own copy, so the terminal, the
+# default agent and the app are all the same installation.
 
 set -euo pipefail
 
@@ -22,6 +29,16 @@ mode=${1:-}
 
 tool='pipx:hermes-agent[extras=all]'
 python='3.13'
+
+# The package, not the runtime directory: it is installed before the app has
+# ever run, and that is exactly when we must not start building a second copy.
+desktop_owns_hermes() {
+  omarchy-pkg-present hermes-desktop
+}
+
+desktop_hermes_ready() {
+  [[ -x $HOME/.hermes/hermes-agent/venv/bin/hermes ]]
+}
 
 # Whether Hermes is really installed, not merely whether the stub exists. A
 # stub on its own is cold: running it installs Hermes, which takes minutes.
@@ -32,7 +49,27 @@ installed() {
 # --check lets callers tell a cold stub from a working one before they commit
 # to a path that assumes Hermes is ready.
 if [[ $mode == "--check" ]]; then
+  if desktop_owns_hermes; then
+    if desktop_hermes_ready; then exit 0; else exit 1; fi
+  fi
   if installed; then exit 0; else exit 1; fi
+fi
+
+# Hand Hermes over to the app rather than keeping a second copy beside it.
+if desktop_owns_hermes; then
+  if installed; then
+    echo "Hermes Desktop provides Hermes; removing the separate CLI install..." >&2
+    mise rm -g "$tool" >/dev/null 2>&1 || true
+    mise uninstall --all "$tool" >/dev/null 2>&1 || true
+  fi
+
+  if desktop_hermes_ready; then
+    exit 0
+  fi
+
+  echo "Hermes Desktop is installed but has not set Hermes up yet." >&2
+  echo "Launch Hermes Desktop once to finish installing it." >&2
+  exit 1
 fi
 
 # mise's pipx backend shells out to uv (or pipx) and neither is on a stock

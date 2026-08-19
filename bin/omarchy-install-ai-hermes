@@ -13,6 +13,11 @@ set -e
 echo "Installing Hermes Desktop..."
 omarchy-pkg-add hermes-desktop
 
+# If Hermes was already installed for the terminal, the app supersedes it: one
+# machine, one Hermes. This drops that copy so the terminal, the default agent
+# and the app all end up on the app's installation.
+omarchy-install-hermes-cli || true
+
 echo "Opening Hermes Desktop..."
 setsid uwsm-app -- /usr/bin/hermes-desktop >/dev/null 2>&1 &
 
