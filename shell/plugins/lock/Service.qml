@@ -31,17 +31,15 @@ Item {
   readonly property int fingerprintRetryMaxMs: 30000
   readonly property int fingerprintFastErrorMs: 2000
   readonly property int fingerprintNudgeCooldownMs: 2000
-  // libfprint models sensor heat as an exponential duty cycle (fpi-device.c):
-  // the ratio rises toward 1 with a 180s constant while the reader is armed and
-  // decays with a 540s one while it is idle, the device is refused above 0.731,
-  // and that refusal latches until the ratio falls back under 0.5. An unswiped
-  // verify holds the reader armed for its whole timeout, so re-arming on
-  // completion is a 100% duty cycle and trips the limit ~3 minutes into a lock.
-  // Track the same ratio and stop short of the latch threshold.
+  // libfprint charges for time the reader is armed, not time a finger is on it
+  // (fpi-device.c): a ratio rising toward 1 at 180s and decaying at 540s, cut
+  // off above 0.731 until it falls back under 0.5. An unswiped verify stays
+  // armed for its whole timeout, so re-arming on completion is a 100% duty
+  // cycle and trips the cut-off ~3 minutes in. Track the ratio and stop short.
   readonly property real thermalHeatSeconds: 180
   readonly property real thermalCoolSeconds: 540
   readonly property real thermalArmCeiling: 0.5
-  // libfprint assumes a device starts at the top of its COLD band.
+  // Where libfprint starts a device: the top of its COLD band.
   property real thermalRatio: 0.269
   property double thermalUpdatedAt: 0
   property bool thermalArmed: false
@@ -147,8 +145,7 @@ Item {
     fingerprintAttemptErrored = false
     fingerprintNudgedAt = 0
     displayBlanked = false
-    // The heat estimate deliberately survives: it tracks the device, not the
-    // lock session, and unlocking does not cool the sensor.
+    // The estimate tracks the device, not the session; unlocking cools nothing.
     updateThermalRatio(false)
     fingerprintRetryTimer.stop()
     if (passwordPam.active) passwordPam.abort()
@@ -199,17 +196,14 @@ Item {
     displayBlanked = false
     if (!wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
-    // Unblanking is the user arriving: the reader has been cooling and should
-    // be armed now, not after whatever backoff was pending when we blanked.
+    // Unblanking is the user arriving, so arm now rather than after a backoff.
     if (wasBlanked) startFingerprint()
     else nudgeFingerprint()
   }
 
-  // Backing off is right while nobody is there, but it leaves the reader
-  // unarmed for up to the ceiling, so someone who walks up and swipes gets
-  // nothing. Any sign of the user is a reason to try again now. The streak
-  // survives, so a still-wedged reader keeps its long gaps, and the cooldown
-  // stops a moving cursor from spinning the loop back up.
+  // Any sign of the user cuts the backoff short. The streak survives so a still
+  // wedged reader keeps its long gaps, and the cooldown stops a moving cursor
+  // from spinning the loop back up.
   function nudgeFingerprint() {
     if (!lockRequested || !fingerprintConfigured) return
     if (fingerprintAuthenticating || fingerprintPam.active) return
@@ -223,9 +217,8 @@ Item {
 
   function runBlank() {
     displayBlanked = true
-    // Nobody is there to swipe, so let the reader sit idle and cool. Aborting
-    // does not raise completed, so the in-flight flag has to be cleared here or
-    // every later arm returns early against an attempt that is already gone.
+    // Let the reader cool while nobody is there. Aborting raises no completed,
+    // so clear the in-flight flag here or every later arm returns early.
     if (fingerprintPam.active) fingerprintPam.abort()
     fingerprintAuthenticating = false
     fingerprintRetryTimer.stop()
@@ -266,9 +259,8 @@ Item {
     runWake()
   }
 
-  // Integrates the heat estimate up to now under the previous armed state, then
-  // records the new one. Every arm and disarm has to pass through here or the
-  // estimate drifts away from what libfprint is charging us.
+  // Integrates up to now under the previous armed state. Every arm and disarm
+  // has to pass through here or the estimate drifts from libfprint's.
   function updateThermalRatio(armed) {
     var now = Date.now()
 
@@ -288,7 +280,6 @@ Item {
     thermalUpdatedAt = now
   }
 
-  // Idle time needed to bring the estimate back under the ceiling.
   function thermalCooldownMs() {
     if (thermalRatio <= thermalArmCeiling) return 0
     return Math.ceil(thermalCoolSeconds * Math.log(thermalRatio / thermalArmCeiling) * 1000)
@@ -297,8 +288,7 @@ Item {
   function startFingerprint() {
     if (!lockRequested || !sessionLock.secure || !fingerprintConfigured) return
     if (fingerprintPam.active || fingerprintAuthenticating) return
-    // A blanked display means nobody is watching, and an armed reader with
-    // nobody to swipe it is pure heat. Waking re-arms it.
+    // An armed reader with nobody to swipe it is pure heat; waking re-arms it.
     if (displayBlanked) return
 
     updateThermalRatio(false)
@@ -326,14 +316,10 @@ Item {
     return Math.min(fingerprintRetryBaseMs * Math.pow(2, streak - 1), fingerprintRetryMaxMs)
   }
 
-  // A device error (fprintd down, reader thermally throttled) returns instantly
-  // and keeps returning instantly, so retrying at the base interval spins as
-  // fast as PAM sessions can be created and never lets the reader recover.
-  // Back those off. A swipe that timed out reports the same PAM code but only
-  // after the full wait, so elapsed time is what separates the two -- backing
-  // off on a timeout would leave the reader unarmed when the user does swipe.
-  // A failed attempt raises both error and completed, so the device error has
-  // to win the attempt no matter which signal arrives first.
+  // A broken reader errors instantly and repeats, so back those off. A swipe
+  // timeout reports the same PAM code after the full wait, so elapsed time is
+  // what separates them. A failed attempt raises both error and completed, so
+  // the device error has to win the attempt whichever arrives first.
   function scheduleFingerprintRetry(isDeviceError) {
     if (!lockRequested || !fingerprintConfigured) return
 
@@ -357,8 +343,8 @@ Item {
   function handleFingerprintFinished(result) {
     fingerprintAuthenticating = false
 
-    if (!lockRequested) return
     updateThermalRatio(false)
+    if (!lockRequested) return
     if (result === PamResult.Success) {
       fingerprintErrorStreak = 0
       fingerprintAttemptErrored = false
