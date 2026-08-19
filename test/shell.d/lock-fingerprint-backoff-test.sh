@@ -48,6 +48,10 @@ const makeService = () => {
 
   state.Date = { now: () => state.clock }
   state.Math = Math
+  // The backoff cases all assume a sensor with heat to spare; the thermal cases
+  // below swap these for the real bodies.
+  state.updateThermalRatio = () => {}
+  state.thermalCooldownMs = () => 0
   state.fingerprintRetryDelay = new Function(
     'streak',
     `with (this) { ${delayBody} }`
@@ -199,5 +203,165 @@ assert(
 assert(
   !/interval: 250/.test(serviceQml),
   'the retry timer interval is not hardcoded alongside the backoff'
+)
+
+// libfprint's own model, from fpi-device.c. The lock screen has to stay under
+// this, so the assertions below run the real arming policy against it rather
+// than against a restatement of the policy's own arithmetic.
+const LIBFPRINT = {
+  heatSeconds: 180,
+  coolSeconds: 540,
+  // TEMP_WARM_HOT_THRESH: the device starts refusing here...
+  hotThresh: 1 - 0.26894142136999512075,
+  // ...and TEMP_HOT_WARM_THRESH: the refusal latches until it falls back here.
+  clearThresh: 0.5,
+  startRatio: 0.26894142136999512075,
+}
+
+const reals = {}
+const real = (name) => {
+  if (!(name in reals)) {
+    reals[name] = Number(capture(
+      new RegExp(`readonly property real ${name}: ([\\d.]+)`),
+      `${name} is declared`
+    ))
+  }
+  return reals[name]
+}
+
+assert(
+  real('thermalHeatSeconds') === LIBFPRINT.heatSeconds,
+  'the heating constant tracks libfprint'
+)
+assert(
+  real('thermalCoolSeconds') === LIBFPRINT.coolSeconds,
+  'the cooling constant tracks libfprint'
+)
+assert(
+  real('thermalArmCeiling') <= LIBFPRINT.clearThresh,
+  'the arming ceiling stays at or below the threshold that clears a latched refusal'
+)
+
+const updateBody = capture(
+  /function updateThermalRatio\(armed\) \{([\s\S]*?)\n  \}/,
+  'the heat estimate is integrated by updateThermalRatio()'
+)
+const cooldownBody = capture(
+  /function thermalCooldownMs\(\) \{([\s\S]*?)\n  \}/,
+  'the wait for a cool sensor is computed by thermalCooldownMs()'
+)
+
+// Drives the real policy and an independent libfprint model off one clock. Only
+// `armSeconds` of each cycle is time the reader is actually held open, which is
+// the sole thing either model charges for.
+const simulate = ({ armSeconds, minutes, gated }) => {
+  const service = makeService()
+  service.clock = 1e9
+  service.thermalHeatSeconds = real('thermalHeatSeconds')
+  service.thermalCoolSeconds = real('thermalCoolSeconds')
+  service.thermalArmCeiling = real('thermalArmCeiling')
+  service.thermalRatio = LIBFPRINT.startRatio
+  service.thermalUpdatedAt = 0
+  service.thermalArmed = false
+  service.updateThermalRatio = new Function('armed', `with (this) { ${updateBody} }`).bind(service)
+  service.thermalCooldownMs = new Function(`with (this) { ${cooldownBody} }`).bind(service)
+
+  let fp = LIBFPRINT.startRatio
+  let hot = false
+  let everHot = false
+  let armedMs = 0
+  let maxGapMs = 0
+  let gapMs = 0
+  const advance = (ms, armed) => {
+    if (armed) gapMs = 0
+    else {
+      gapMs += ms
+      if (gapMs > maxGapMs) maxGapMs = gapMs
+    }
+    const seconds = ms / 1000
+    if (armed) {
+      const a = Math.exp(-seconds / LIBFPRINT.heatSeconds)
+      fp = a * fp + 1 - a
+      armedMs += ms
+    } else {
+      fp = Math.exp(-seconds / LIBFPRINT.coolSeconds) * fp
+    }
+    if (fp >= LIBFPRINT.hotThresh) hot = true
+    else if (hot && fp < LIBFPRINT.clearThresh) hot = false
+    if (hot) everHot = true
+    service.clock += ms
+  }
+
+  const deadline = service.clock + minutes * 60000
+  while (service.clock < deadline) {
+    service.updateThermalRatio(false)
+    const wait = gated ? service.thermalCooldownMs() : 0
+    if (wait > 0) {
+      advance(wait, false)
+      continue
+    }
+    service.updateThermalRatio(true)
+    advance(armSeconds * 1000, true)
+    service.updateThermalRatio(false)
+  }
+
+  return { everHot, maxGapMs, duty: armedMs / (minutes * 60000), peak: fp }
+}
+
+// The bug: an unswiped verify holds the reader open for its full timeout and the
+// lock screen re-arms the moment it returns, so the reader is armed essentially
+// all the time and libfprint cuts it off about three minutes into every lock.
+const ungated = simulate({ armSeconds: 30, minutes: 60, gated: false })
+assert(
+  ungated.everHot,
+  're-arming on completion overheats the reader, so the guard has something to prevent'
+)
+
+// The fix, under the worst case the guard has to survive: someone sitting at an
+// unblanked lock screen for an hour who never once touches the reader.
+const gated = simulate({ armSeconds: 30, minutes: 60, gated: true })
+assert(
+  !gated.everHot,
+  `the arming ceiling keeps libfprint below its cutoff, peaked at ${gated.peak.toFixed(3)}`
+)
+assert(
+  gated.duty < 0.475,
+  `the duty cycle stays under what libfprint tolerates, got ${(gated.duty * 100).toFixed(1)}%`
+)
+
+// The ceiling rations total armed time, so the duty cycle settles in the same
+// place whatever the arm length -- what changes is how long a user can be left
+// waiting. Attempts that end quickly have to keep the reader responsive.
+const brief = simulate({ armSeconds: 2, minutes: 60, gated: true })
+assert(!brief.everHot, 'short attempts stay under the cutoff too')
+assert(
+  brief.maxGapMs < 15000,
+  `quick attempts leave the reader responsive, waited ${(brief.maxGapMs / 1000).toFixed(1)}s`
+)
+// The worst gap belongs to the case the nudge and the blanking gate exist to
+// cover: a full unswiped timeout at an unblanked screen.
+assert(
+  gated.maxGapMs < 120000,
+  `a full timeout still re-arms within two minutes, waited ${(gated.maxGapMs / 1000).toFixed(1)}s`
+)
+
+// The cheapest fix is not arming the reader when nobody is in front of it. That
+// is what keeps it cold for the case that actually matters -- the user walking
+// up to a blanked screen.
+assert(
+  /function startFingerprint\(\) \{[\s\S]*?if \(displayBlanked\) return/.test(serviceQml),
+  'a blanked display does not arm the reader'
+)
+assert(
+  /function runBlank\(\) \{[\s\S]*?fingerprintRetryTimer\.stop\(\)/.test(serviceQml),
+  'blanking cancels a pending re-arm instead of letting it fire at a dark screen'
+)
+assert(
+  /function runWake\(\) \{[\s\S]*?wasBlanked[\s\S]*?startFingerprint\(\)/.test(serviceQml),
+  'unblanking arms the reader immediately rather than waiting out a backoff'
+)
+assert(
+  /function scheduleFingerprintRetry\([\s\S]*?Math\.max\(fingerprintRetryDelay\(fingerprintErrorStreak\), thermalCooldownMs\(\)\)/.test(serviceQml),
+  'a scheduled retry never fires earlier than the sensor can take it'
 )
 JS
