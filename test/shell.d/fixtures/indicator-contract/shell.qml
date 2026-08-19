@@ -195,10 +195,10 @@ ShellRoot {
         root.assertTrue(root.commandCount("omarchy-menu toggle trigger.capture.screenrecord") === 1, "Screen Recording left click opens capture menu when idle")
         screenRecording.recording = true
         screenRecording.triggerPress(Qt.LeftButton)
-        root.assertTrue(root.commandCount("omarchy-capture-screenrecording --stop-recording") === 1, "Screen Recording left click stops active recording")
+        root.assertTrue(root.commandCount("omarchy-capture-screenrecording --prompt") === 1, "Screen Recording mid-capture click prompts for stop or pause")
         screenRecording.paused = true
         screenRecording.triggerPress(Qt.LeftButton)
-        root.assertTrue(root.commandCount("omarchy-capture-screenrecording --pause-recording") === 1, "Screen Recording left click resumes a paused recording")
+        root.assertTrue(root.commandCount("omarchy-capture-screenrecording --prompt") === 2, "Screen Recording paused click prompts for stop or resume")
         screenRecording.paused = false
       }
 

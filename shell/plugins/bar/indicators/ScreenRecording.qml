@@ -52,10 +52,8 @@ BarIndicator {
     if (!root.bar) return
     if (!root.recording) {
       root.bar.run("omarchy-menu toggle trigger.capture.screenrecord")
-    } else if (root.paused) {
-      root.bar.run("omarchy-capture-screenrecording --pause-recording")
     } else {
-      root.bar.run("omarchy-capture-screenrecording --stop-recording")
+      root.bar.run("omarchy-capture-screenrecording --prompt")
     }
   }
 }
