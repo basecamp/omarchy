@@ -36,6 +36,17 @@ Item {
     if (!listProcess.running) listProcess.running = true
   }
 
+  // Re-read every record from disk now. watchChanges keeps each FileView
+  // current on its own, but reloading on open makes sure the panel shows the
+  // latest numbers the moment it is shown rather than whatever the last watch
+  // event picked up.
+  function reloadRecords() {
+    for (var i = 0; i < agents.length; i++) {
+      var agent = agents[i]
+      if (agent && agent.reload) agent.reload()
+    }
+  }
+
   function applyAgentListing(output) {
     var ids = []
     var lines = String(output || "").split("\n")

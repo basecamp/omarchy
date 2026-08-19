@@ -306,6 +306,11 @@ Panel {
     cursorActive = false
     nowMs = Date.now()
     if (panelFlick) panelFlick.contentY = 0
+    // Show the latest on-disk numbers immediately, discover any record a
+    // standalone collector wrote since the last scan, then regenerate and let
+    // the atomic-write watchers pick up the fresh records.
+    usage.reloadRecords()
+    usage.rescanAgents()
     usage.refreshLimits()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
