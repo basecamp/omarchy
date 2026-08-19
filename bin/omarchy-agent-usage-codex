@@ -511,11 +511,14 @@ def limit_window(window, limit_name=""):
   else:
     label = "Limit"
   reset = window.get("resetsAt")
-  return {
+  result = {
     "label": f"{limit_name} · {label}" if limit_name else label,
     "percent": float(used) / 100.0,
     "resetsAt": datetime.fromtimestamp(number(reset), timezone.utc).isoformat() if reset else "",
   }
+  if limit_name:
+    result["title"] = limit_name
+  return result
 
 
 def fetch_codex_rpc():
