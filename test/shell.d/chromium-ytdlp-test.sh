@@ -33,6 +33,14 @@ jq -e --arg path "$ROOT/bin/omarchy-chromium-ytdlp-host" '
 ' "$manifest_path" >/dev/null
 pass "yt-dlp native host manifest uses Omarchy host path and extension id"
 
+# Brave Origin's profile root must be populated alongside the other Chromium
+# family browsers, or the yt-dlp extension loads but silently does nothing.
+brave_origin_manifest="$test_home/.config/BraveSoftware/Brave-Origin/NativeMessagingHosts/com.omarchy.ytdlp.json"
+brave_origin_beta_manifest="$test_home/.config/BraveSoftware/Brave-Origin-Beta/NativeMessagingHosts/com.omarchy.ytdlp.json"
+[[ -f $brave_origin_manifest ]] || fail "yt-dlp native host installer covers Brave Origin"
+[[ -f $brave_origin_beta_manifest ]] || fail "yt-dlp native host installer covers Brave Origin Beta"
+pass "yt-dlp native host installer covers Brave Origin profiles"
+
 parse_result=$(bash -c '
   OMARCHY_PATH="$3"
   source "$1"

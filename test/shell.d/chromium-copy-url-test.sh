@@ -71,6 +71,14 @@ jq -e --arg path "$ROOT/bin/omarchy-chromium-copy-url-host" '
 ' "$native_manifest" >/dev/null || fail "copy-url native host manifest uses Omarchy host path and extension id"
 pass "copy-url native host installer registers the stable extension id"
 
+# Brave Origin's profile root must be populated alongside the other Chromium
+# family browsers, or the Copy URL extension loads but silently does nothing.
+brave_origin_manifest="$test_home/.config/BraveSoftware/Brave-Origin/NativeMessagingHosts/com.omarchy.copy_url.json"
+brave_origin_beta_manifest="$test_home/.config/BraveSoftware/Brave-Origin-Beta/NativeMessagingHosts/com.omarchy.copy_url.json"
+[[ -f $brave_origin_manifest ]] || fail "copy-url native host installer covers Brave Origin"
+[[ -f $brave_origin_beta_manifest ]] || fail "copy-url native host installer covers Brave Origin Beta"
+pass "copy-url native host installer covers Brave Origin profiles"
+
 # Chromium ships in the base packages, so fresh installs do not go through
 # omarchy-install-browser, and they mark every migration as already applied.
 # The user install still has to register the host itself.
