@@ -3,9 +3,11 @@
 # omarchy:summary=Pick a webcam and start a screen recording with it
 # omarchy:examples=omarchy capture screenrecording-with-webcam
 
+source "$OMARCHY_PATH/default/bash/i18n"
+
 mapfile -t devices < <(omarchy-capture-webcam-list)
 if (( ${#devices[@]} == 0 )); then
-  omarchy-notification-send "No webcam devices found" -u critical -t 3000
+  omarchy-notification-send "$(omarchy_t "No webcam devices found")" -u critical -t 3000
   exit 1
 fi
 
