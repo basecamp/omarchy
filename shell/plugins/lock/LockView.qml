@@ -14,6 +14,7 @@ Item {
   property int failedAttempts: 0
   property bool inputEnabled: true
   property bool loadBackground: true
+  property bool displayBlanked: false
   property string passwordText: ""
   property bool syncingPasswordText: false
 
@@ -70,6 +71,12 @@ Item {
   onPasswordTextChanged: syncPasswordText()
   onInputEnabledChanged: {
     if (inputEnabled) Qt.callLater(forcePasswordFocus)
+  }
+  // DPMS takes this surface's keyboard focus with it, and lighting the panel
+  // back up does not hand it back. Re-take it as the display returns, or the
+  // field stays deaf to everything but the click that focused it.
+  onDisplayBlankedChanged: {
+    if (!displayBlanked && inputEnabled) Qt.callLater(forcePasswordFocus)
   }
   Component.onCompleted: {
     syncPasswordText()

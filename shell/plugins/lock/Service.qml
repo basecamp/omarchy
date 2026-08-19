@@ -33,6 +33,7 @@ Item {
   property string lastEventAt: ""
   property bool strandedLock: false
   property bool strandedLockResolved: false
+  property bool displayBlanked: false
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
@@ -165,11 +166,13 @@ Item {
   }
 
   function runWake() {
+    displayBlanked = false
     if (!wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
   }
 
   function runBlank() {
+    displayBlanked = true
     if (!blankProcess.running) blankProcess.running = true
   }
 
@@ -277,6 +280,7 @@ Item {
         inputEnabled: root.lockRequested
         loadBackground: root.locked
         passwordText: root.enteredPassword
+        displayBlanked: root.displayBlanked
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
         onSubmitPassword: function(password) { root.submitPassword(password) }
         onClearFailureRequested: root.failureMessage = ""
@@ -351,6 +355,19 @@ Item {
       root.fingerprintAuthenticating = false
       if (root.lockRequested && root.fingerprintConfigured) fingerprintRetryTimer.restart()
     }
+  }
+
+  // Hyprland drops the lock surface's keyboard focus when the display goes
+  // DPMS-off, which severs the only route a keystroke has to runWake(): the
+  // password field's Keys handler. That leaves the blanked lock screen wakeable
+  // by pointer alone — the field cannot hear the key that would light the panel
+  // it needs to be lit to hear. The compositor still reports input as activity no
+  // matter who holds focus, so watch that instead and let any key wake the screen.
+  IdleMonitor {
+    enabled: root.lockRequested && root.displayBlanked
+    timeout: 1
+    respectInhibitors: false
+    onIsIdleChanged: if (!isIdle) root.runWake()
   }
 
   Timer {
