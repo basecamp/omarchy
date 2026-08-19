@@ -129,3 +129,11 @@ grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling down skips d
 grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
   fail "monitor scaling down persists 2x after skipping duplicate approximation"
 pass "monitor scaling down skips duplicate approximation"
+
+# Asserting a position on scale change re-places the monitor (#7326).
+write_monitor_config
+run_scaling 1.25
+if grep -F 'position' "$eval_out" >/dev/null; then
+  fail "monitor scaling must not assert a position"
+fi
+pass "monitor scaling leaves position to the existing declaration"
