@@ -509,7 +509,28 @@ ShellRoot {
 
   function toggle(pluginId, payloadJson) {
     var id = shell.pluginRegistry.resolveEnabledId(pluginId)
-    return isPluginOpen(id) ? hide(id) : summon(id, payloadJson)
+    if (isPluginOpen(id)) return hide(id)
+    // A menu action (e.g. style.background, style.theme) self-closes the menu
+    // and then spawns a separate panel (image-picker) via shell.summon. The
+    // menu's own openPanelIds entry stays true from the original summon because
+    // the menu sets `opened = false` directly without calling shell.hide, so
+    // isPluginOpen above reports false even though the entry is stale. When
+    // that stale entry exists, close any panel the action left open instead of
+    // re-running the action on the next key press. Clean up the stale entry
+    // either way so a normal menu action (which spawns nothing) reopens the
+    // menu on the next press instead of no-op'ing.
+    if (openPanelIds[id]) {
+      var closedAny = false
+      for (var openId in openPanelIds) {
+        if (openId !== id && isPluginOpen(openId)) {
+          hide(openId)
+          closedAny = true
+        }
+      }
+      hide(id)
+      if (closedAny) return true
+    }
+    return summon(id, payloadJson)
   }
 
   // Map of pluginId -> Loader, populated by the Instantiator delegate below.
