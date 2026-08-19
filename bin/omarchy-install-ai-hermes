@@ -5,14 +5,11 @@
 
 set -e
 
-# The desktop app is only a shell: it runs `hermes serve` and, finding no
-# Hermes on PATH, clones its own copy with the upstream install script instead
-# -- an unpinned checkout in ~/.hermes that nothing here manages. So the CLI
-# goes first, and installed rather than merely stubbed: the app gives its PATH
-# probe 15 seconds, which a first-run mise install does not fit inside.
-echo "Installing the Hermes CLI..."
-omarchy-install-hermes-cli --now
-
+# No CLI is installed here on purpose. Hermes Desktop only runs against a
+# runtime built from its own commit, so it provisions one itself under
+# ~/.hermes on first launch, which takes a few minutes and shows its own
+# progress. Handing it the mise CLI instead fails: PyPI trails the tags, and
+# the version gap fails the app's readiness probe with a 401.
 echo "Installing Hermes Desktop..."
 omarchy-pkg-add hermes-desktop
 
@@ -21,3 +18,4 @@ setsid uwsm-app -- /usr/bin/hermes-desktop >/dev/null 2>&1 &
 
 echo ""
 echo "Hermes Desktop has been installed."
+echo "Its first launch installs the Hermes runtime, which takes a few minutes."
