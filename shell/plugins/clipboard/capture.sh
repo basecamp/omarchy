@@ -50,12 +50,27 @@ emit_text() {
     my $encoding;
     if ($raw =~ /^(?:\xFF\xFE|\xFE\xFF)/) {
       $encoding = "UTF-16";
-    } elsif ($raw =~ /^(?:[^\0]\0)+\z/s) {
-      # BOM-less UTF-16 is indistinguishable from NUL-separated bytes, so only
-      # decode the consistent whole-payload pattern seen from affected apps.
-      $encoding = "UTF-16LE";
-    } elsif ($raw =~ /^(?:\0[^\0])+\z/s) {
-      $encoding = "UTF-16BE";
+    } elsif (length($raw) % 2 == 0) {
+      my @bytes = unpack("C*", $raw);
+      my ($even_nuls, $odd_nuls) = (0, 0);
+      for my $index (0 .. $#bytes) {
+        next unless $bytes[$index] == 0;
+        if ($index % 2 == 0) {
+          $even_nuls++;
+        } else {
+          $odd_nuls++;
+        }
+      }
+
+      # BOM-less UTF-16 is indistinguishable from NUL-separated bytes. Decode
+      # only when at least three quarters of the code units have consistent
+      # padding, while allowing Unicode punctuation and other non-ASCII units.
+      my $units = @bytes / 2;
+      if ($odd_nuls > $even_nuls && $odd_nuls * 4 >= $units * 3) {
+        $encoding = "UTF-16LE";
+      } elsif ($even_nuls > $odd_nuls && $even_nuls * 4 >= $units * 3) {
+        $encoding = "UTF-16BE";
+      }
     }
 
     my $text = $encoding ? eval { decode($encoding, $raw, FB_CROAK) } : undef;

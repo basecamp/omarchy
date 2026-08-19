@@ -296,8 +296,16 @@ capture_output=$(printf '%s' 'UTF-16 clipboard - fixed' | iconv -f UTF-8 -t UTF-
 [[ $capture_output == '{"type":"text","text":"UTF-16 clipboard - fixed"}' ]] || fail "clipboard capture decodes UTF-16LE text"
 pass "clipboard capture decodes UTF-16LE text"
 
-# BOM-less UTF-16LE "A" is byte-identical to UTF-8 "A\0". The strict
-# whole-payload pattern intentionally resolves that ambiguity as UTF-16.
+capture_output=$(printf '%s' 'https://example.com/image — preview …' | iconv -f UTF-8 -t UTF-16LE | XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text)
+[[ $capture_output == '{"type":"text","text":"https://example.com/image — preview …"}' ]] || fail "clipboard capture decodes mostly ASCII UTF-16LE text with Unicode punctuation"
+pass "clipboard capture decodes mostly ASCII UTF-16LE text with Unicode punctuation"
+
+capture_output=$(printf '%s' 'Text with 日本 and 😀' | iconv -f UTF-8 -t UTF-16BE | XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text)
+[[ $capture_output == '{"type":"text","text":"Text with 日本 and 😀"}' ]] || fail "clipboard capture decodes mostly ASCII UTF-16BE text with Unicode characters"
+pass "clipboard capture decodes mostly ASCII UTF-16BE text with Unicode characters"
+
+# BOM-less UTF-16LE "A" is byte-identical to UTF-8 "A\0". The padding
+# heuristic intentionally resolves that ambiguity as UTF-16.
 capture_output=$(printf 'A' | iconv -f UTF-8 -t UTF-16LE | XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text)
 [[ $capture_output == '{"type":"text","text":"A"}' ]] || fail "clipboard capture decodes exact NUL-padded UTF-16LE text"
 pass "clipboard capture decodes exact NUL-padded UTF-16LE text"
@@ -326,6 +334,12 @@ assert_ambiguous_utf16_falls_back() {
 assert_ambiguous_utf16_falls_back "clipboard capture leaves BOM-less UTF-16 punctuation undecoded" '—'
 assert_ambiguous_utf16_falls_back "clipboard capture leaves BOM-less UTF-16 CJK undecoded" '日本'
 assert_ambiguous_utf16_falls_back "clipboard capture leaves BOM-less UTF-16 surrogate pairs undecoded" '😀'
+
+printf 'foo\0bar\0' >"$TMPDIR/nul-separated-utf8"
+expected=$(jq -cRs '{type:"text", text:.}' <"$TMPDIR/nul-separated-utf8")
+capture_output=$(XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text <"$TMPDIR/nul-separated-utf8")
+[[ $capture_output == "$expected" ]] || fail "clipboard capture leaves sparse NUL-separated UTF-8 undecoded" "expected: $expected\nactual: $capture_output"
+pass "clipboard capture leaves sparse NUL-separated UTF-8 undecoded"
 
 printf '\377\376\075\330' >"$TMPDIR/malformed-utf16"
 expected=$(jq -cRs '{type:"text", text:.}' <"$TMPDIR/malformed-utf16")
