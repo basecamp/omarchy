@@ -28,24 +28,17 @@ provider_from_arg() {
   esac
 }
 
-# The path and the providers etc/sudoers.d/omarchy-dns names. Both halves have
-# to match the rule exactly for sudo to accept it without a password, so the
-# test pins them to that file.
+# The path etc/sudoers.d/omarchy-dns names. The privileged half always runs from
+# there rather than from whichever copy was invoked, so the rule matches even
+# where $OMARCHY_PATH points at a checkout.
 PACKAGED_PATH=/usr/bin/omarchy-dns
 
-self_path() {
-  readlink -f "$OMARCHY_PATH/bin/${BASH_SOURCE[0]##*/}"
-}
-
-# True when etc/sudoers.d/omarchy-dns covers this exact invocation. All three
-# halves of the rule have to hold -- the packaged path, one of the three
-# providers, and %wheel -- or sudo asks for a password like any other command.
+# True when etc/sudoers.d/omarchy-dns covers this invocation. Both halves of the
+# rule have to hold -- one of the three providers, and %wheel -- or sudo asks
+# for a password like any other command.
 grant_covers() {
-  local self="$1"
-  local provider="${2:-}"
+  local provider="${1:-}"
   local group
-
-  [[ $self == "$PACKAGED_PATH" ]] || return 1
 
   case "$provider" in
   Cloudflare | Google | DHCP) ;;
@@ -61,34 +54,24 @@ grant_covers() {
 
 require_root() {
   if (( EUID == 0 )); then
-    # sudo's secure_path is normally root-owned, but `omarchy dev link` puts a
-    # user-writable checkout ahead of it for every command, and a passwordless
-    # grant on a script that resolves helpers through PATH would hand root to
-    # whoever can write there. Nothing below is an omarchy-* command, so a
-    # fixed system PATH costs dev-linked checkouts nothing.
-    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
     return
   fi
 
-  local self
-  self=$(self_path)
-
   # A terminal can carry sudo's own password prompt. Without one, sudo is still
-  # right when etc/sudoers.d/omarchy-dns covers this exact invocation: that
-  # grant is what keeps the panel's one-click provider switch from raising a
-  # polkit prompt. Everything else -- Custom, a dev-linked checkout the rule
-  # does not name, a user outside %wheel -- still goes through polkit, which
+  # right when etc/sudoers.d/omarchy-dns covers this invocation: that grant is
+  # what keeps the panel's one-click provider switch from raising a polkit
+  # prompt. Custom and a caller outside %wheel still go through polkit, which
   # can at least offer to authenticate as someone else.
   #
   # Do not swap this for a `sudo -n -l` probe. That reports whether a command is
   # permitted, not whether it is passwordless, so the blanket %wheel rule
   # answers yes for every argument and Custom dies on `sudo -n` instead of
   # falling through to pkexec.
-  if [[ -t 0 ]] || grant_covers "$self" "${1:-}"; then
-    exec sudo "$self" "$@"
+  if [[ -t 0 ]] || grant_covers "${1:-}"; then
+    exec sudo "$PACKAGED_PATH" "$@"
   fi
 
-  exec pkexec "$self" "$@"
+  exec pkexec "$PACKAGED_PATH" "$@"
 }
 
 networkmanager_global_dns() {
