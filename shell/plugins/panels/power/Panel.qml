@@ -54,7 +54,14 @@ Panel {
 
   function modeLabel() {
     var device = UPower.displayDevice
-    return Model.modeLabel(device, root.discharging, upowerStates())
+    return I18n.tr(Model.modeLabel(device, root.discharging, upowerStates()))
+  }
+
+  function profileLabel(name) {
+    if (name === "power-saver") return I18n.tr("Power saver")
+    if (name === "balanced") return I18n.tr("Balanced")
+    if (name === "performance") return I18n.tr("Performance")
+    return name
   }
 
   function profileIcon(name) {
@@ -127,7 +134,7 @@ Panel {
   readonly property bool rotatingPhrases: activePhrases.length > 0
 
   readonly property string heroStatusText: {
-    if (fullyCharged) return "Fully charged"
+    if (fullyCharged) return I18n.tr("Fully charged")
     if (rotatingPhrases) return activePhrases[phraseIndex % activePhrases.length]
     return modeLabel()
   }
@@ -480,7 +487,7 @@ Panel {
                 width: profileRow.cellWidth
                 iconText: root.profileIcon(String(modelData))
                 iconSize: Style.font.title
-                text: String(modelData).charAt(0).toUpperCase() + String(modelData).slice(1)
+                text: root.profileLabel(String(modelData))
                 fontSize: Style.font.bodySmall
                 foreground: root.bar.foreground
                 fontFamily: root.bar.fontFamily

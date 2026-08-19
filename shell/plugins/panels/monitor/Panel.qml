@@ -287,7 +287,7 @@ Panel {
   // span ~10–20 points so casual tweaks change the label, while small
   // nudges within one band don't.
   function brightnessName(percent) {
-    return Model.brightnessName(percent)
+    return I18n.tr(Model.brightnessName(percent))
   }
 
   function updateDisplays(displaysJson) {
@@ -563,7 +563,7 @@ Panel {
                   if (root.brightnessAvailable) {
                     return root.brightnessName(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent).toUpperCase()
                   }
-                  return "FIXED BRIGHTNESS"
+                  return I18n.tr("FIXED BRIGHTNESS")
                 }
                 color: Qt.darker(root.bar.foreground, 1.4)
                 font.family: root.bar.fontFamily
@@ -887,7 +887,7 @@ Panel {
       }
 
       Text {
-        text: monitorRow.display.name + (monitorRow.display.focused ? " · focused" : "")
+        text: monitorRow.display.name + (monitorRow.display.focused ? " · " + I18n.tr("focused") : "")
         color: root.bar.foreground
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.body

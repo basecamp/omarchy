@@ -174,7 +174,7 @@ Panel {
   readonly property bool hasOutput: !!(volumeSink && volumeSink.audio)
   readonly property bool hasInput: !!(source && source.audio)
   readonly property bool anyAudible: (hasOutput && !outputMuted) || (hasInput && !inputMuted)
-  readonly property string toggleHint: anyAudible ? "Mute" : "Unmute"
+  readonly property string toggleHint: anyAudible ? I18n.tr("Mute") : I18n.tr("Unmute")
 
   readonly property color hoverFill: bar
     ? Style.hoverFillFor(bar.foreground, Color.accent)
@@ -420,7 +420,7 @@ Panel {
   // panel's brightnessName ladder; bands are wide enough that small
   // tweaks don't rename the room you're in.
   function outputVolumeName(volume, muted) {
-    return Model.outputVolumeName(volume, muted)
+    return I18n.tr(Model.outputVolumeName(volume, muted))
   }
 
   function setOutputVolume(v) {
@@ -500,7 +500,17 @@ Panel {
   }
 
   function nodeLabel(node) {
-    return Model.nodeLabel(node)
+    var label = String(Model.nodeLabel(node))
+    if (label === "Stereo Microphone") return I18n.tr("Stereo Microphone")
+    if (label === "Digital Microphone") return I18n.tr("Digital Microphone")
+    return label
+      .replace(/\bSpeakers\b/g, I18n.tr("Speakers"))
+      .replace(/\bSpeaker\b/g, I18n.tr("Speaker"))
+      .replace(/\bMicrophones\b/g, I18n.tr("Microphones"))
+      .replace(/\bMicrophone\b/g, I18n.tr("Microphone"))
+      .replace(/\bHeadphones\b/g, I18n.tr("Headphones"))
+      .replace(/\bStereo\b/g, I18n.tr("Stereo"))
+      .replace(/\bUnknown\b/g, I18n.tr("Unknown"))
   }
 
   function nodeProps(node) {

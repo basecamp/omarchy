@@ -75,8 +75,8 @@ Panel {
   ]
   readonly property bool rotatingPhrases: adapter && adapter.enabled
   readonly property string heroStatusText: {
-    if (!adapter) return "No adapter"
-    if (!adapter.enabled) return "Turned Off"
+    if (!adapter) return I18n.tr("No adapter")
+    if (!adapter.enabled) return I18n.tr("Turned Off")
     return activePhrases[phraseIndex % activePhrases.length]
   }
 
@@ -101,7 +101,7 @@ Panel {
   // sits above the device sections so the adapter can be toggled by keyboard
   // even when it is off and no device rows exist.
   readonly property bool headerHasCursor: cursorActive && focusSection === "header"
-  readonly property string toggleHint: root.adapter && root.adapter.enabled ? "Turn Bluetooth off" : "Turn Bluetooth on"
+  readonly property string toggleHint: root.adapter && root.adapter.enabled ? I18n.tr("Turn Bluetooth off") : I18n.tr("Turn Bluetooth on")
 
   readonly property color hoverFill: bar
     ? Style.hoverFillFor(bar.foreground, Color.accent)
@@ -183,7 +183,7 @@ Panel {
     var rows = scrollRows
     if (index < 0 || index >= rows.length) return ""
     if (index > 0 && rows[index - 1].section === rows[index].section) return ""
-    return rows[index].section === "known" ? "PAIRED" : "AVAILABLE"
+    return rows[index].section === "known" ? I18n.tr("PAIRED") : I18n.tr("AVAILABLE")
   }
 
   function audioSinks() {
@@ -891,9 +891,9 @@ Panel {
     readonly property string action: root.pendingAction(dev ? dev.address : "")
     readonly property string actionTooltip: {
       if (!dev) return ""
-      if (isConnected) return "Disconnect"
-      if (isDiscovered) return "Pair"
-      return "Connect"
+      if (isConnected) return I18n.tr("Disconnect")
+      if (isDiscovered) return I18n.tr("Pair")
+      return I18n.tr("Connect")
     }
 
     readonly property bool rowSelected: root.cursorActive && root.focusSection === sectionName && root.selectedIndex === rowIndex
@@ -908,13 +908,13 @@ Panel {
 
     readonly property string statusText: {
       if (!dev) return ""
-      if (action === "forgetting") return "Forgetting…"
-      if (action === "disconnecting" || devState === 2) return "Disconnecting…"
+      if (action === "forgetting") return I18n.tr("Forgetting…")
+      if (action === "disconnecting" || devState === 2) return I18n.tr("Disconnecting…")
       if (isConnected) {
         if (dev.batteryAvailable) return Math.round(dev.battery * 100) + "%"
-        return sectionName === "connected" ? "" : "Connected"
+        return sectionName === "connected" ? "" : I18n.tr("Connected")
       }
-      if (action === "connecting" || devState === 3 || dev.pairing === true) return "Connecting…"
+      if (action === "connecting" || devState === 3 || dev.pairing === true) return I18n.tr("Connecting…")
       if (isDiscovered) return ""
       return ""
     }
@@ -989,7 +989,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
-          text: root.deviceLabel(row.dev) || "Device"
+          text: root.deviceLabel(row.dev) || I18n.tr("Device")
           color: root.bar.foreground
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.body
