@@ -364,8 +364,10 @@ function parseHotspotStatus(raw) {
   return next
 }
 
-// AP bands the adapter can serve, e.g. ["2.4"] or ["2.4", "5"]. Populated
-// from `iw phy`, so a card that cannot run a 5 GHz AP never offers it.
+// AP bands the adapter reports, e.g. ["2.4"] or ["2.4", "5"]. Derived from
+// `iw phy` band presence, which over-approximates AP support, so this is a
+// best-effort hint; a card that cannot actually serve a reported band just
+// surfaces the real NetworkManager reason when the AP fails.
 function hotspotBands(status) {
   var raw = (status && status.ap_bands) || ""
   var bands = String(raw).split(",").map(function(b) { return b.trim() })

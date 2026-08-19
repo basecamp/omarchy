@@ -180,8 +180,10 @@ Panel {
   // The band the AP is configured for. Empty until the first status poll
   // fills it from the card's capabilities (see Model.hotspotDefaultBand).
   property string hotspotBand: ""
-  // AP bands the card can actually serve (["2.4"], ["2.4", "5"], ...). The
-  // selector only appears when there is more than one.
+  // AP bands the card reports (["2.4"], ["2.4", "5"], ...). `omarchy-hotspot`
+  // derives them from `iw phy` band presence, which over-approximates AP
+  // support, so this is a best-effort hint. The selector only appears when
+  // there is more than one.
   property var hotspotBands: []
   property string hotspotError: ""
   // The credential fields hide behind a cog so the section stays compact.
@@ -892,6 +894,7 @@ Panel {
     var ssid = hotspotSsid.trim()
     if (ssid === "") { hotspotError = "Enter a hotspot name"; return }
     if (hotspotPassword.length < 8) { hotspotError = "Password needs 8+ characters"; return }
+    if (hotspotPassword.length > 63) { hotspotError = "Password can't exceed 63 characters"; return }
     hotspotActionKind = "start"
     hotspotBusy = true
     hotspotError = ""
@@ -934,6 +937,7 @@ Panel {
     var ssid = hotspotSsid.trim()
     if (ssid === "") { hotspotError = "Enter a hotspot name"; return }
     if (hotspotPassword.length < 8) { hotspotError = "Password needs 8+ characters"; return }
+    if (hotspotPassword.length > 63) { hotspotError = "Password can't exceed 63 characters"; return }
     hotspotActionKind = "apply"
     hotspotBusy = true
     hotspotError = ""

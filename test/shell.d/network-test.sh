@@ -317,7 +317,7 @@ assertDeepEqual(network.hotspotClients({ clients: 'garbage' }), [], 'network ign
 assertEqual(network.hotspotClientLabel({ mac: 'aa:bb:cc', signal: -42 }), 'AA:BB:CC · -42 dBm', 'network labels a hotspot client with signal')
 assertEqual(network.hotspotClientLabel({ mac: 'aa:bb:cc' }), 'AA:BB:CC', 'network labels a hotspot client without signal')
 assertEqual(network.hotspotClientLabel({}), '', 'network labels an empty hotspot client')
-assert(/^[A-HJ-NP-Za-km-z2-9]{10}$/.test(network.generateHotspotPassword()), 'network generates a 10-char unambigious hotspot password')
+assert(/^[A-HJ-NP-Za-km-z2-9]{10}$/.test(network.generateHotspotPassword()), 'network generates a 10-char unambiguous hotspot password')
 
 // The hotspot section in the panel: dynamic AP bands drive the selector, the
 // whole wifi list hides while the AP owns the radio, and the command runs by
