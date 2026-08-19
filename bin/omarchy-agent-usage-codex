@@ -510,14 +510,16 @@ def limit_window(window, limit_name=""):
     label = f"{mins}m window"
   else:
     label = "Limit"
+  title = "Weekly limit" if mins == 10080 else label
+  if limit_name:
+    title = f"{limit_name} {title}"
   reset = window.get("resetsAt")
   result = {
     "label": f"{limit_name} · {label}" if limit_name else label,
     "percent": float(used) / 100.0,
     "resetsAt": datetime.fromtimestamp(number(reset), timezone.utc).isoformat() if reset else "",
+    "title": title,
   }
-  if limit_name:
-    result["title"] = limit_name
   return result
 
 

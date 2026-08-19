@@ -69,7 +69,7 @@ pass "Codex collector counts each turn once"
   fail "Codex collector does not double-count cache or reasoning tokens" "$result"
 pass "Codex collector does not double-count cache or reasoning tokens"
 
-[[ $(jq -c '{id, tierLabel, limits}' <<<"$result") == '{"id":"codex","tierLabel":"pro","limits":[{"label":"Weekly (7-day)","percent":0.94,"resetsAt":"2026-08-20T03:33:19+00:00"},{"label":"GPT-5.3-Codex-Spark · Weekly (7-day)","percent":0.12,"resetsAt":"2026-08-22T00:18:05+00:00","title":"GPT-5.3-Codex-Spark"}]}' ]] ||
+[[ $(jq -c '{id, tierLabel, limits}' <<<"$result") == '{"id":"codex","tierLabel":"pro","limits":[{"label":"Weekly (7-day)","percent":0.94,"resetsAt":"2026-08-20T03:33:19+00:00","title":"Weekly limit"},{"label":"GPT-5.3-Codex-Spark · Weekly (7-day)","percent":0.12,"resetsAt":"2026-08-22T00:18:05+00:00","title":"GPT-5.3-Codex-Spark Weekly limit"}]}' ]] ||
   fail "Codex collector includes every named usage pool without duplicating the default pool" "$result"
 pass "Codex collector includes every named usage pool without duplicating the default pool"
 
