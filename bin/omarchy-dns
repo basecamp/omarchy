@@ -28,8 +28,28 @@ provider_from_arg() {
   esac
 }
 
-self_path() {
-  readlink -f "$OMARCHY_PATH/bin/${BASH_SOURCE[0]##*/}"
+# The path etc/sudoers.d/omarchy-dns names. The privileged half always runs from
+# there rather than from whichever copy was invoked, so the rule matches even
+# where $OMARCHY_PATH points at a checkout.
+PACKAGED_PATH=/usr/bin/omarchy-dns
+
+# True when etc/sudoers.d/omarchy-dns covers this invocation. Both halves of the
+# rule have to hold -- one of the three providers, and %wheel -- or sudo asks
+# for a password like any other command.
+grant_covers() {
+  local provider="${1:-}"
+  local group
+
+  case "$provider" in
+  Cloudflare | Google | DHCP) ;;
+  *) return 1 ;;
+  esac
+
+  for group in $(id -nG 2>/dev/null); do
+    [[ $group == wheel ]] && return 0
+  done
+
+  return 1
 }
 
 require_root() {
@@ -37,11 +57,21 @@ require_root() {
     return
   fi
 
-  if [[ -t 0 ]]; then
-    exec sudo "$(self_path)" "$@"
-  else
-    exec pkexec "$(self_path)" "$@"
+  # A terminal can carry sudo's own password prompt. Without one, sudo is still
+  # right when etc/sudoers.d/omarchy-dns covers this invocation: that grant is
+  # what keeps the panel's one-click provider switch from raising a polkit
+  # prompt. Custom and a caller outside %wheel still go through polkit, which
+  # can at least offer to authenticate as someone else.
+  #
+  # Do not swap this for a `sudo -n -l` probe. That reports whether a command is
+  # permitted, not whether it is passwordless, so the blanket %wheel rule
+  # answers yes for every argument and Custom dies on `sudo -n` instead of
+  # falling through to pkexec.
+  if [[ -t 0 ]] || grant_covers "${1:-}"; then
+    exec sudo "$PACKAGED_PATH" "$@"
   fi
+
+  exec pkexec "$PACKAGED_PATH" "$@"
 }
 
 networkmanager_global_dns() {
