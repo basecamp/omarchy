@@ -5,7 +5,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/base-test.sh"
 require_command lua
 
 resolved_input() {
-  OMARCHY_PATH="$ROOT" OMARCHY_VCONSOLE="${1-}" lua <<'LUA'
+  OMARCHY_PATH="$ROOT" OMARCHY_VCONSOLE="${1-}" lua - <<'LUA'
 package.path = os.getenv("OMARCHY_PATH") .. "/?.lua;" .. package.path
 
 local vconsole = os.getenv("OMARCHY_VCONSOLE")
