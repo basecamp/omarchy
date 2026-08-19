@@ -53,7 +53,7 @@ light surfaces — and the bar glyph stands in when there is none.
 | Collector | Limits | Local stats |
 |---|---|---|
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
-| `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
+| `codex` | The Codex app-server RPC, including a distinct OpenCode OpenAI OAuth account | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
@@ -63,6 +63,8 @@ falls back to local stats only. A non-default Claude directory is honored via
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
 signed in there.
+
+When OpenCode has an OAuth login for its `openai` provider, the Codex collector compares its ChatGPT account id with the native Codex login. A different account gets separately labelled `OpenCode` limit meters through an isolated Codex app-server external-token session; the same account is skipped so its meters do not appear twice. This reuses the login already stored by OpenCode and never changes either tool's saved credentials. If account identity cannot be established or the OpenCode token no longer works, the native limits and combined local stats remain available.
 
 ### Fireworks balance
 
