@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.freedesktop.impl.portal.desktop.omarchy
+Exec=/usr/bin/omarchy-portal-wallpaper

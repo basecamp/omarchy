@@ -5,3 +5,5 @@ Every theme ships with its own set of backgrounds, and you can add extras of you
 You can do this most easily by going to _Install > Style > Background_ in the Omarchy Menu. That'll bring up the folder where the backgrounds for that theme is stored. Hit `Super + Shift + F` to start another file manager, find your background, copy it over.  Now it'll be included in the choices of backgrounds you can select between using `Super + Ctrl + Space`.
 
 You can find a huge collection of cool curated backgrounds on https://github.com/dharmx/walls.
+
+You can also right-click any image in Files and pick _Set as Background_. That sets it right away and adds a copy to the current theme's backgrounds, so it shows up in the background switcher too.
