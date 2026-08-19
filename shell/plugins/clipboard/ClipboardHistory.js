@@ -1,3 +1,8 @@
+// The history file is user-editable, so cap ocrText on load: searchableText
+// scans it on every keystroke and an oversized value would lag the picker.
+// Matches OCR_MAX_CHARS in capture.sh.
+var ocrTextLimit = 4000
+
 function normalizeEntry(value) {
   if (typeof value === "string")
     return value.trim().length > 0 ? { type: "text", text: value } : null
@@ -21,7 +26,7 @@ function normalizeEntry(value) {
     if (value.capturedAt !== undefined && value.capturedAt !== null)
       entry.capturedAt = String(value.capturedAt)
     if (value.ocrText !== undefined && value.ocrText !== null && String(value.ocrText).length > 0)
-      entry.ocrText = String(value.ocrText)
+      entry.ocrText = String(value.ocrText).slice(0, ocrTextLimit)
     return entry
   }
 
