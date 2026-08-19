@@ -62,6 +62,8 @@ Nothing is lost, though. A silenced notification is written straight into your n
 
 Two kinds of message still get through: Omarchy's own confirmation toasts for something you just did ("Theme changed", "Screenshot saved"), and critical alerts sent from the command line. Chat apps that mark everything critical to force their way in front of you don't qualify.
 
+Open _Setup > Notifications_ to choose a permanent delivery mode for launcher applications. **Normal** shows the popup and keeps it in history, **History only** keeps it without interrupting you, and **Off** discards it. Installed Omarchy web apps use their own origin setting; launchers for the same origin share one setting, while other websites and browser extensions follow their browser's setting.
+
 ### Idle
 
 The Omarchy shell owns idle behavior, and the timings are a top-level `idle` block in `~/.config/omarchy/shell.json`:

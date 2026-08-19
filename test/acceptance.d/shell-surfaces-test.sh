@@ -94,6 +94,37 @@ screenshot "success-notification-popup"
 omarchy-shell notifications dismissAll >/dev/null
 wait_until "notification popup closes" 15 layer_absent "omarchy-notifications"
 
+# Open the notification controls, exercise its focused search field, and close
+# it through the keyboard. Delivery routing remains covered by shell tests.
+omarchy-shell shell summon omarchy.notifications >/dev/null
+wait_until "notification controls open" 15 layer_present "omarchy-notification-controls"
+wait_until "notification controls content is visible" 15 screen_contains "History only"
+screenshot "success-notification-controls-open"
+wtype "chromium"
+sleep 1
+screenshot "success-notification-controls-search"
+wtype -k Escape
+wait_until "notification controls close" 15 layer_absent "omarchy-notification-controls"
+
+# One end-to-end policy check: Chromium in history-only mode must skip the
+# popup and remain available through notification history.
+chromium_mode=$(omarchy-shell notifications listApplications |
+  jq -r 'map(select(.key == "desktop:chromium"))[0].mode // empty')
+[[ -n $chromium_mode ]] || fail "notification controls list Chromium"
+[[ $(omarchy-shell notifications setApplicationMode desktop:chromium history) == "ok" ]] ||
+  fail "notification controls set history-only mode"
+omarchy-shell notifications clear >/dev/null
+omarchy-notification-send --app-name Chromium "Acceptance history-only notification" \
+  "This should skip the popup" --hint=string:desktop-entry:chromium
+sleep 1
+layer_absent "omarchy-notifications" || fail "history-only notification skips its popup"
+omarchy-shell notifications showHistory >/dev/null
+wait_until "history-only notification remains in history" 15 screen_contains "Acceptance history-only notification"
+screenshot "success-notification-controls-history-only"
+omarchy-shell notifications dismissAll >/dev/null
+omarchy-shell notifications clear >/dev/null
+omarchy-shell notifications setApplicationMode desktop:chromium "$chromium_mode" >/dev/null
+
 # The menu's Apps submenu does the full launcher loop: open, search by
 # typing, launch the top hit.
 if window_present "(?i)omawrite" >/dev/null 2>&1; then

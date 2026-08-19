@@ -4,12 +4,13 @@
   "name": "Notifications",
   "version": "1.0.0",
   "author": "Omarchy",
-  "description": "Notification daemon, popups, DND, and history",
+  "description": "Notification daemon, per-application controls, popups, DND, and history",
   "kinds": [
-    "service"
+    "service",
+    "panel"
   ],
-  "keepLoaded": true,
   "entryPoints": {
-    "service": "Service.qml"
+    "service": "Service.qml",
+    "panel": "Panel.qml"
   }
 }

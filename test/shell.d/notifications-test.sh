@@ -10,7 +10,81 @@ const notifications = requireFromRoot('shell/plugins/notifications/NotificationL
 
 assert(notifications.isChromiumDerived('Brave Browser', ''), 'notifications detect chromium-derived apps by name')
 assert(notifications.isChromiumDerived('', 'microsoft-edge'), 'notifications detect chromium-derived apps by icon')
+assert(notifications.isChromiumDerived('Helium', ''), 'notifications recognize Helium as chromium-derived')
 assert(!notifications.isChromiumDerived('Slack', ''), 'notifications do not treat unrelated apps as chromium-derived')
+
+assertEqual(
+  notifications.notificationSource({ appName: 'Slack', desktopEntry: 'com.slack.Slack.desktop' }).key,
+  'desktop:com.slack.slack',
+  'notifications identify native applications by desktop entry'
+)
+assertEqual(
+  notifications.notificationSource({
+    appName: 'Chromium',
+    desktopEntry: 'chromium',
+    hints: { 'x-kde-origin-name': 'app.slack.com' }
+  }).key,
+  'desktop:chromium/source:https%3A%2F%2Fapp.slack.com',
+  'notifications distinguish Chromium websites by advertised origin'
+)
+assertEqual(
+  notifications.notificationSource({
+    appName: 'Chromium',
+    desktopEntry: 'chromium',
+    body: '<a href="https://tenant-one.very-long-example.com/path">very-long-example.com</a>\n\nMessage'
+  }).source,
+  'https://tenant-one.very-long-example.com',
+  'notifications keep the full Chromium website origin when its display label is shortened'
+)
+assertEqual(notifications.validApplicationMode('history'), 'history', 'notifications accept history-only delivery')
+
+assertEqual(
+  notifications.webAppOrigin({ 0: 'omarchy-launch-webapp', 1: 'https://user@Example.com/path?q=1', length: 2 }),
+  'https://example.com',
+  'notifications read canonical origins from Quickshell command lists'
+)
+assertEqual(
+  notifications.webAppOrigin('env OMARCHY_WEBAPP_ORIGIN=https://Example.com:443 custom-handler'),
+  'https://example.com',
+  'notifications read canonical origins preserved for custom handlers'
+)
+
+const catalog = notifications.buildApplicationCatalog([
+  { id: 'com.slack.Slack', label: 'Slack', startupClass: 'Slack', appIcon: 'slack', command: ['slack'] },
+  { id: 'first-web', label: 'First Web', command: ['omarchy-launch-webapp', 'https://example.com/first'] },
+  { id: 'second-web', label: 'Second Web', command: ['env', 'OMARCHY_WEBAPP_ORIGIN=https://example.com', 'second-handler'] },
+  { id: 'one-chat', label: 'Chat', startupClass: 'one-chat', command: ['one-chat'] },
+  { id: 'two-chat', label: 'Chat', startupClass: 'two-chat', command: ['two-chat'] }
+])
+assertEqual(
+  notifications.applicationAlias(catalog.aliases, 'SLACK'),
+  'desktop:com.slack.slack',
+  'notifications resolve exact unique application names and startup classes'
+)
+assertEqual(
+  notifications.applicationAlias(catalog.aliases, 'Chat'),
+  '',
+  'notifications do not guess between applications sharing an alias'
+)
+const groupedWebApp = catalog.keys['origin:https%3A%2F%2Fexample.com']
+assertEqual(groupedWebApp.memberCount, 2, 'notifications group launchers that share an indistinguishable origin')
+
+const deliveryCases = [
+  ['normal', false, false, false, 'popup'],
+  ['normal', true, false, false, 'history'],
+  ['normal', true, false, true, 'drop'],
+  ['normal', true, true, true, 'popup'],
+  ['history', false, true, false, 'history'],
+  ['history', false, true, true, 'drop'],
+  ['off', false, true, false, 'drop']
+]
+for (const [mode, dnd, bypass, ephemeral, expected] of deliveryCases) {
+  assertEqual(
+    notifications.deliveryTarget(mode, dnd, bypass, ephemeral),
+    expected,
+    `notifications route ${mode} delivery with DND=${dnd}, bypass=${bypass}, ephemeral=${ephemeral}`
+  )
+}
 
 assertEqual(
   notifications.sanitizeBody('<img src="x">Hello', 'Slack', ''),
@@ -123,6 +197,7 @@ assertDeepEqual(
   },
   'notifications create stable snapshots'
 )
+assertEqual(snapshot.sourceKey, 'name:mail', 'notifications carry source identity in popup snapshots')
 
 // An in-place update keeps the popup's identity — the file name it was
 // persisted under — and takes everything the card draws from the new content.
@@ -185,13 +260,27 @@ assert(
 
 const settings = notifications.parseSettings(JSON.stringify({ version: 3, dnd: true }))
 assertEqual(settings.dnd, true, 'notifications parse the persisted DND state')
-assertEqual(settings.legacy, false, 'notifications do not flag a current settings file as legacy')
+assertEqual(settings.legacy, true, 'notifications migrate settings written before application controls')
 assertEqual(notifications.parseSettings('').dnd, null, 'notifications leave DND unset without a settings file')
+const applicationSettings = notifications.parseSettings(JSON.stringify({
+  version: 4,
+  dnd: false,
+  modes: {
+    'desktop:slack': 'off',
+    broken: 'loud'
+  }
+}))
+assertEqual(applicationSettings.legacy, false, 'notifications recognize current application settings')
+assertEqual(applicationSettings.modes['desktop:slack'], 'off', 'notifications restore application delivery modes')
+assertEqual(applicationSettings.modes.broken, undefined, 'notifications discard invalid persisted delivery modes')
 assertEqual(
   notifications.parseSettings(JSON.stringify({ dnd: false, pending: [], past: [] })).legacy,
   true,
   'notifications flag a settings file still carrying the retired history rows'
 )
+const futureSettings = notifications.parseSettings(JSON.stringify({ version: 5, dnd: true }))
+assertEqual(futureSettings.future, true, 'notifications recognize settings written by a newer version')
+assertEqual(futureSettings.legacy, false, 'notifications never downgrade settings written by a newer version')
 assert(notifications.parseSettings('{').error, 'notifications flag invalid settings JSON')
 
 // History is the notification files moved into the history dir, read back
@@ -435,8 +524,8 @@ assert(
   'notifications service deletes a superseded popup\'s image copies with its file'
 )
 assert(
-  /if \(!isEphemeral\(notification\)\) \{\s*\n\s*writeSilenced\(notification, snapshot\)/.test(serviceQml),
-  'notifications service records DND-silenced notifications straight into history'
+  /if \(delivery === "history"\) \{\s*\n\s*writeSilenced\(notification, snapshot\)/.test(serviceQml),
+  'notifications service records history-only deliveries straight into history'
 )
 assert(
   /function releaseSilenced\(notification, originalId\)[\s\S]{0,300}?notification\.tracked = false/.test(serviceQml),
@@ -447,7 +536,7 @@ assert(
   'notifications service re-persists a silenced notification updated while its write was queued'
 )
 assert(
-  /rows\.push\(NotificationLogic\.persistablePopup\(\{[\s\S]{0,400}?\}, imagesDir\)\.entry\)/.test(serviceQml),
+  /function liveRowsForReplay\(\)[\s\S]*?rows\.push\(NotificationLogic\.persistablePopup\(\{[\s\S]*?\}, imagesDir\)\.entry\)[\s\S]*?return rows/.test(serviceQml),
   'notifications service replays carried-over toasts from their persisted image copies'
 )
 assert(
@@ -533,6 +622,26 @@ assert(
 assert(
   /function clear\(\): string \{\s*service\.clearHistory\(\)/.test(serviceQml),
   'notifications clear IPC forgets the recorded history'
+)
+assert(
+  /if \(!service\.routingReady\) \{[\s\S]{0,250}?service\.pendingNotifications\.push\(pending\)/.test(serviceQml),
+  'notifications wait for persisted policy and the application catalog before routing startup notifications'
+)
+assert(
+  /function drainPendingNotifications\(\)[\s\S]{0,450}?if \(!service\.routingReady[\s\S]{0,450}?service\.processNotification/.test(serviceQml),
+  'notifications drain startup notifications only after routing is ready'
+)
+assert(
+  /NotificationLogic\.deliveryTarget\([\s\S]{0,250}?applicationMode\(snapshot\.sourceKey\)/.test(serviceQml),
+  'notifications delegate application mode and DND routing to tested logic'
+)
+assert(
+  /version: 4,[\s\S]{0,120}?modes: service\.applicationModes/.test(serviceQml),
+  'notifications persist application controls beside DND state'
+)
+assert(
+  /function listApplications\(\): string[\s\S]{0,300}?function setApplicationMode\(key: string, mode: string\): string/.test(serviceQml),
+  'notifications expose application controls over IPC'
 )
 assert(
   !/pendingModel|pastModel/.test(serviceQml),
