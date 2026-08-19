@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# omarchy:summary=Sync the generated Omarchy theme to Zen
+# omarchy:hidden=true
+
+ZEN_SOURCE_PATH="$HOME/.local/state/omarchy/current/theme/zen.js"
+ZEN_PROFILES_DIR="$HOME/.config/zen"
+
+[[ -f $ZEN_SOURCE_PATH ]] || exit 0
+[[ -d $ZEN_PROFILES_DIR ]] || exit 0
+
+# Zen reads its accent from a preference rather than a Chromium-style policy,
+# and policies live under a root-owned distribution directory that a theme
+# change cannot write to. So the generated prefs go into each profile's
+# user.js, which the user also owns: replace only the lines the theme file
+# declares and leave the rest of the file alone.
+merge_theme_prefs() {
+  local user_js="$1"
+  local managed updated
+
+  managed=$(mktemp)
+  updated=$(mktemp)
+
+  sed -n 's/^\(user_pref("[^"]*"\).*/\1/p' "$ZEN_SOURCE_PATH" >"$managed"
+
+  if [[ -f $user_js && -s $managed ]]; then
+    grep -vF -f "$managed" "$user_js" >"$updated"
+  elif [[ -f $user_js ]]; then
+    cat "$user_js" >"$updated"
+  fi
+
+  cat "$ZEN_SOURCE_PATH" >>"$updated"
+
+  mv "$updated" "$user_js"
+  rm -f "$managed"
+}
+
+for profile in "$ZEN_PROFILES_DIR"/*/; do
+  [[ -f $profile/prefs.js ]] || continue
+
+  merge_theme_prefs "$profile/user.js"
+done
