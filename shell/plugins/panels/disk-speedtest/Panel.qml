@@ -133,10 +133,10 @@ Item {
     fontFamily: Style.font.family
     layerNamespace: "omarchy-disk-speedtest"
     title: root.diskName
-    leftLabel: "READ"
-    rightLabel: "WRITE"
+    leftLabel: I18n.tr("READ")
+    rightLabel: I18n.tr("WRITE")
     unit: "MB/s"
-    runAgainTooltip: "Measure again"
+    runAgainTooltip: I18n.tr("Measure again")
     running: root.running
     leftValue: root.toRate(root.readMBps)
     rightValue: root.toRate(root.writeMBps)

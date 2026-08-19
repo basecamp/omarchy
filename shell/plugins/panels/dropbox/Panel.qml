@@ -20,16 +20,16 @@ Panel {
   property int phraseIndex: 0
 
   readonly property var activePhrases: [
-    "Filing files",
-    "Distributing data",
-    "Shuffling folders",
-    "Boxing bytes",
-    "Sorting stuff",
-    "Syncing secrets",
-    "Packing packets",
-    "Moving memories",
-    "Wrangling revisions",
-    "Cataloging chaos"
+    I18n.tr("Filing files"),
+    I18n.tr("Distributing data"),
+    I18n.tr("Shuffling folders"),
+    I18n.tr("Boxing bytes"),
+    I18n.tr("Sorting stuff"),
+    I18n.tr("Syncing secrets"),
+    I18n.tr("Packing packets"),
+    I18n.tr("Moving memories"),
+    I18n.tr("Wrangling revisions"),
+    I18n.tr("Cataloging chaos")
   ]
   readonly property string heroPhraseText: activePhrases[phraseIndex % activePhrases.length]
   readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -164,7 +164,7 @@ Panel {
     function toggle(): void { root.toggle() }
     function refresh(): string { dropbox.refresh(); return "ok" }
     function login(): string { dropbox.login(); return "ok" }
-    function status(): string { return dropbox.statusText }
+    function status(): string { return I18n.tr(dropbox.statusText) }
   }
 
   BarIconButton {
@@ -244,7 +244,7 @@ Panel {
               id: hero
               width: parent.width
               title: "Dropbox"
-              meta: dropbox.active ? root.heroPhraseText : "Syncing paused"
+              meta: dropbox.active ? root.heroPhraseText : I18n.tr("Syncing paused")
               foreground: root.foreground
               fontFamily: root.fontFamily
               iconOpacity: dropbox.active ? 1.0 : 0.5
@@ -283,7 +283,7 @@ Panel {
           Text {
             visible: dropbox.actionStatus !== "" || dropbox.lastError !== ""
             width: parent.width
-            text: dropbox.actionStatus !== "" ? dropbox.actionStatus : dropbox.lastError
+            text: I18n.tr(dropbox.actionStatus !== "" ? dropbox.actionStatus : dropbox.lastError)
             color: dropbox.lastError !== "" && dropbox.actionStatus === "" ? root.urgent : root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
@@ -303,7 +303,7 @@ Panel {
             Column {
               width: parent.width
               spacing: Style.spacing.labelGap
-              InfoPair { label: "Stored"; value: Model.usageText(dropbox.usedBytes, dropbox.quotaBytes, dropbox.quotaKnown) }
+              InfoPair { label: I18n.tr("Stored"); value: Model.usageText(dropbox.usedBytes, dropbox.quotaBytes, dropbox.quotaKnown) }
             }
           }
 
@@ -318,7 +318,7 @@ Panel {
             spacing: Style.space(10)
 
             PanelSectionHeader {
-              text: "RECENT FILES"
+              text: I18n.tr("RECENT FILES")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -326,7 +326,7 @@ Panel {
             Text {
               visible: dropbox.files.length === 0
               width: parent.width
-              text: "No synced files found."
+              text: I18n.tr("No synced files found.")
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
@@ -422,7 +422,7 @@ Panel {
 
         Text {
           Layout.fillWidth: true
-          text: dropbox.installed ? "Login to Dropbox" : "Dropbox CLI is not installed"
+          text: dropbox.installed ? I18n.tr("Login to Dropbox") : I18n.tr("Dropbox CLI is not installed")
           color: root.foreground
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
@@ -431,7 +431,7 @@ Panel {
 
         Text {
           Layout.fillWidth: true
-          text: dropbox.installed ? "Start the authentication flow" : "Install Dropbox from the service menu"
+          text: dropbox.installed ? I18n.tr("Start the authentication flow") : I18n.tr("Install Dropbox from the service menu")
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

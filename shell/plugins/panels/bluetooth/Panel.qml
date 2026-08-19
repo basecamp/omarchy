@@ -64,14 +64,14 @@ Panel {
 
   property int phraseIndex: 0
   readonly property var activePhrases: [
-    "Untangling wires",
-    "Streaming vikings",
-    "Pairing mysteries",
-    "Herding headsets",
-    "Taming radios",
-    "Summoning speakers",
-    "Wrangling codecs",
-    "Polishing packets"
+    I18n.tr("Untangling wires"),
+    I18n.tr("Streaming vikings"),
+    I18n.tr("Pairing mysteries"),
+    I18n.tr("Herding headsets"),
+    I18n.tr("Taming radios"),
+    I18n.tr("Summoning speakers"),
+    I18n.tr("Wrangling codecs"),
+    I18n.tr("Polishing packets")
   ]
   readonly property bool rotatingPhrases: adapter && adapter.enabled
   readonly property string heroStatusText: {
@@ -737,7 +737,7 @@ Panel {
             spacing: Style.space(2)
 
             Text {
-              text: "Bluetooth"
+              text: I18n.tr("Bluetooth")
               color: root.bar.foreground
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.title
@@ -773,7 +773,7 @@ Panel {
           spacing: Style.space(10)
 
           PanelSectionHeader {
-            text: "CONNECTED"
+            text: I18n.tr("CONNECTED")
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
           }
@@ -864,9 +864,9 @@ Panel {
 
         Text {
           visible: root.connectedDevices.length === 0 && root.scrollRows.length === 0
-          text: !root.adapter ? "No Bluetooth adapter"
-              : !root.adapter.enabled ? "Turn Bluetooth on to scan"
-              : "Scanning for devices…"
+          text: !root.adapter ? I18n.tr("No Bluetooth adapter")
+              : !root.adapter.enabled ? I18n.tr("Turn Bluetooth on to scan")
+              : I18n.tr("Scanning for devices…")
           color: Qt.darker(root.bar.foreground, 1.5)
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.bodySmall
@@ -1013,7 +1013,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
         visible: row.showForgetButton
         iconText: "󰅙"
-        tooltipText: "Forget"
+        tooltipText: I18n.tr("Forget")
         foreground: root.bar.foreground
         hoverColor: root.bar.foreground
         fontFamily: root.bar.fontFamily

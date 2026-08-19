@@ -43,6 +43,8 @@ if (( EUID != 0 )); then
 fi
 
 export PATH="$OMARCHY_PATH/bin:$PATH"
+source "$OMARCHY_PATH/default/bash/i18n"
+omarchy_i18n_load
 
 log() {
   echo "$1" | tee -a "$LOG_FILE" >/dev/null
@@ -111,20 +113,20 @@ trap cleanup EXIT
 
 confirm_reset() {
   echo
-  gum style --bold --foreground 1 "Reset this computer to factory state?"
+  gum style --bold --foreground 1 "$(omarchy_t "Reset this computer to factory state?")"
   echo
-  gum style "This will permanently erase:"
-  gum style "  • All user accounts and everything in /home"
-  gum style "  • All packages and system changes made since installation"
-  gum style "  • Machine identity (network connections, host keys, machine-id)"
+  gum style "$(omarchy_t "This will permanently erase:")"
+  gum style "  • $(omarchy_t "All user accounts and everything in /home")"
+  gum style "  • $(omarchy_t "All packages and system changes made since installation")"
+  gum style "  • $(omarchy_t "Machine identity (network connections, host keys, machine-id)")"
   echo
-  gum style "The next boot asks for a new user, exactly like a fresh install."
-  gum style --foreground 8 "Note: on disks without encryption this is deletion, not secure erasure."
+  gum style "$(omarchy_t "The next boot asks for a new user, exactly like a fresh install.")"
+  gum style --foreground 8 "$(omarchy_t "Note: on disks without encryption this is deletion, not secure erasure.")"
   echo
 
   local typed
-  typed=$(gum input --placeholder "Type 'reset' to continue" --prompt "> ") || exit 1
-  [[ $typed == "reset" ]] || fail "Reset not confirmed."
+  typed=$(gum input --placeholder "$(omarchy_t "Type 'reset' to continue")" --prompt "> ") || exit 1
+  [[ $typed == "reset" ]] || fail "$(omarchy_t "Reset not confirmed.")"
 }
 
 # Re-key to a throwaway passphrase whose keyfile auto-unlocks boot during the
@@ -136,14 +138,14 @@ stage_luks_rekey() {
   [[ -e $device ]] || fail "LUKS device $device not found"
 
   echo
-  gum style "Confirm your disk encryption passphrase to authorize the re-key."
+  gum style "$(omarchy_t "Confirm your disk encryption passphrase to authorize the re-key.")"
   local current
   while true; do
-    current=$(gum input --password --placeholder "Current disk encryption passphrase" --prompt "Passphrase> ") || exit 1
+    current=$(gum input --password --placeholder "$(omarchy_t "Current disk encryption passphrase")" --prompt "$(omarchy_t "Passphrase")> ") || exit 1
     if cryptsetup open --test-passphrase --key-file <(printf '%s' "$current") "$device" 2>/dev/null; then
       break
     fi
-    gum style --foreground 1 "That passphrase does not unlock $device. Try again."
+    gum style --foreground 1 "$(omarchy_t "That passphrase does not unlock %1. Try again." "$device")"
   done
 
   passphrase=$(generate_passphrase)
@@ -388,14 +390,14 @@ require_factory_snapshot() {
   [[ -d $TOP_MNT/@factory ]] && return 0
 
   echo
-  gum style --bold --foreground 3 "This machine has no factory snapshot to reset to."
+  gum style --bold --foreground 3 "$(omarchy_t "This machine has no factory snapshot to reset to.")"
   echo
-  gum style "A reset restores the @factory snapshot the Omarchy Quattro installer takes"
-  gum style "right after installing. Machines upgraded to Quattro from an earlier version,"
-  gum style "or installed some other way, never got one, so there is no baseline here to"
-  gum style "return to."
+  gum style "$(omarchy_t "A reset restores the @factory snapshot the Omarchy Quattro installer takes")"
+  gum style "$(omarchy_t "right after installing. Machines upgraded to Quattro from an earlier version,")"
+  gum style "$(omarchy_t "or installed some other way, never got one, so there is no baseline here to")"
+  gum style "$(omarchy_t "return to.")"
   echo
-  gum style --foreground 8 "Reinstall from the Omarchy ISO to make this machine resettable."
+  gum style --foreground 8 "$(omarchy_t "Reinstall from the Omarchy ISO to make this machine resettable.")"
   exit 1
 }
 
@@ -430,11 +432,11 @@ main() {
   umount -R "$TOP_MNT" 2>/dev/null || true
 
   echo
-  gum style --bold "Reset staged. The wipe finishes on the next boot."
-  if gum confirm --affirmative "Reboot now" --negative "Reboot later" "Reboot to complete the reset?"; then
+  gum style --bold "$(omarchy_t "Reset staged. The wipe finishes on the next boot.")"
+  if gum confirm --affirmative "$(omarchy_t "Reboot now")" --negative "$(omarchy_t "Reboot later")" "$(omarchy_t "Reboot to complete the reset?")"; then
     systemctl reboot
   else
-    gum style --foreground 3 "Do not keep using this machine — changes made now will be lost."
+    gum style --foreground 3 "$(omarchy_t "Do not keep using this machine — changes made now will be lost.")"
   fi
 }
 

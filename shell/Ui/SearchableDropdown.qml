@@ -22,7 +22,7 @@ Item {
   property string value: ""
   property var options: []
   property string placeholderText: I18n.tr("Search...")
-  property string emptyText: "No matches"
+  property string emptyText: I18n.tr("No matches")
   property string triggerLabel: ""
 
   property color foreground: Color.popups.text

@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell.Io
+import qs.Commons
 import qs.Ui
 
 BarIndicator {
@@ -10,8 +11,8 @@ BarIndicator {
   active: recording
   activeText: "󰻂"
   inactiveText: "󰻂"
-  activeTooltipText: "Stop recording"
-  inactiveTooltipText: "Screen Recording"
+  activeTooltipText: I18n.tr("Stop recording")
+  inactiveTooltipText: I18n.tr("Screen Recording")
 
   function refresh() {
     if (!root.bar || statusProc.running) return

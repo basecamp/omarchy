@@ -6,6 +6,8 @@
 # omarchy:requires-sudo=true
 
 set -e
+source "$OMARCHY_PATH/default/bash/i18n"
+omarchy_i18n_load
 
 AUTHORIZED_KEYS="$HOME/.ssh/authorized_keys"
 KEY=""
@@ -17,7 +19,7 @@ GITHUB_USER=""
 # username and set the server up on its way to failing.
 require_github_user() {
   if [[ -z $1 || $1 == -* ]]; then
-    echo "omarchy-setup-security-sshd: --gh-keys needs a GitHub username." >&2
+    echo "omarchy-setup-security-sshd: $(omarchy_t "--gh-keys needs a GitHub username.")" >&2
     exit 2
   fi
 }
@@ -35,17 +37,17 @@ while (( $# > 0 )); do
     require_github_user "$GITHUB_USER"
     ;;
   -h | --help)
-    echo "Usage: omarchy-setup-security-sshd [--key=<public-key>] [--gh-keys <github-username>]"
+    echo "$(omarchy_t "Usage:") omarchy-setup-security-sshd [--key=<public-key>] [--gh-keys <github-username>]"
     echo
-    echo "Sets up the OpenSSH server, opens the SSH port in the UFW firewall,"
-    echo "and authorizes an SSH key (from GitHub, pasted, or passed via --key)."
+    echo "$(omarchy_t "Sets up the OpenSSH server, opens the SSH port in the UFW firewall,")"
+    echo "$(omarchy_t "and authorizes an SSH key (from GitHub, pasted, or passed via --key).")"
     echo
-    echo "Passing --key or --gh-keys skips the prompts, so the command can run"
-    echo "unattended from a script or a fresh machine's first login."
+    echo "$(omarchy_t "Passing --key or --gh-keys skips the prompts, so the command can run")"
+    echo "$(omarchy_t "unattended from a script or a fresh machine's first login.")"
     exit 0
     ;;
   *)
-    echo "omarchy-setup-security-sshd: unknown option '$1'. Try --help." >&2
+    echo "omarchy-setup-security-sshd: $(omarchy_t "unknown option '%1'. Try --help." "$1")" >&2
     exit 2
     ;;
   esac
@@ -53,23 +55,23 @@ while (( $# > 0 )); do
 done
 
 if [[ -n $KEY && -n $GITHUB_USER ]]; then
-  echo "omarchy-setup-security-sshd: pass either --key or --gh-keys, not both." >&2
+  echo "omarchy-setup-security-sshd: $(omarchy_t "pass either --key or --gh-keys, not both.")" >&2
   exit 2
 fi
 
 setup_sshd() {
-  echo "Installing and starting the OpenSSH server..."
+  echo "$(omarchy_t "Installing and starting the OpenSSH server...")"
   omarchy-pkg-add openssh
   sudo systemctl enable --now sshd.service
 }
 
 open_firewall() {
   if omarchy-cmd-missing ufw; then
-    echo "UFW is not installed; skipping firewall rule."
+    echo "$(omarchy_t "UFW is not installed; skipping firewall rule.")"
     return
   fi
 
-  echo "Opening the SSH port in the firewall (rate limited against brute force)..."
+  echo "$(omarchy_t "Opening the SSH port in the firewall (rate limited against brute force)...")"
   sudo ufw limit 22/tcp comment "omarchy-sshd" >/dev/null
   sudo ufw reload >/dev/null
 }
@@ -82,7 +84,7 @@ authorize_key() {
   local key="$1"
 
   if ! valid_key "$key"; then
-    echo -e "\e[31mNot a valid SSH public key: $key\e[0m" >&2
+    echo -e "\e[31m$(omarchy_t "Not a valid SSH public key: %1" "$key")\e[0m" >&2
     return 1
   fi
 
@@ -92,19 +94,19 @@ authorize_key() {
   chmod 600 "$AUTHORIZED_KEYS"
 
   if grep -qxF "$key" "$AUTHORIZED_KEYS"; then
-    echo "Key already authorized: $(ssh-keygen -lf /dev/stdin <<<"$key")"
+    echo "$(omarchy_t "Key already authorized:") $(ssh-keygen -lf /dev/stdin <<<"$key")"
   else
     echo "$key" >>"$AUTHORIZED_KEYS"
-    echo "Authorized key: $(ssh-keygen -lf /dev/stdin <<<"$key")"
+    echo "$(omarchy_t "Authorized key:") $(ssh-keygen -lf /dev/stdin <<<"$key")"
   fi
 }
 
 authorize_keys_from_github() {
   local username="$1" keys added=0
 
-  echo "Fetching keys from https://github.com/$username.keys..."
+  echo "$(omarchy_t "Fetching keys from %1..." "https://github.com/$username.keys")"
   if ! keys=$(curl -fsSL "https://github.com/$username.keys") || [[ -z $keys ]]; then
-    echo -e "\e[31mCould not fetch any SSH keys for GitHub user '$username'.\e[0m" >&2
+    echo -e "\e[31m$(omarchy_t "Could not fetch any SSH keys for GitHub user '%1'." "$username")\e[0m" >&2
     exit 1
   fi
 
@@ -114,7 +116,7 @@ authorize_keys_from_github() {
   done <<<"$keys"
 
   if (( added == 0 )); then
-    echo -e "\e[31mNo valid SSH keys found for GitHub user '$username'.\e[0m" >&2
+    echo -e "\e[31m$(omarchy_t "No valid SSH keys found for GitHub user '%1'." "$username")\e[0m" >&2
     exit 1
   fi
 }
@@ -122,9 +124,9 @@ authorize_keys_from_github() {
 prompt_for_github_user() {
   local username
 
-  username=$(gum input --prompt "GitHub username> " --placeholder "dhh") || exit 1
+  username=$(gum input --prompt "$(omarchy_t "GitHub username")> " --placeholder "dhh") || exit 1
   if [[ -z $username ]]; then
-    echo -e "\e[31mNo GitHub username given.\e[0m" >&2
+    echo -e "\e[31m$(omarchy_t "No GitHub username given.")\e[0m" >&2
     exit 1
   fi
 
@@ -134,16 +136,16 @@ prompt_for_github_user() {
 authorize_pasted_key() {
   local key
 
-  key=$(gum input --prompt "Public key> " --placeholder "ssh-ed25519 AAAA... user@host") || exit 1
+  key=$(gum input --prompt "$(omarchy_t "Public key")> " --placeholder "ssh-ed25519 AAAA... user@host") || exit 1
   if [[ -z $key ]]; then
-    echo -e "\e[31mNo SSH key given.\e[0m" >&2
+    echo -e "\e[31m$(omarchy_t "No SSH key given.")\e[0m" >&2
     exit 1
   fi
 
   authorize_key "$key" || exit 1
 }
 
-echo -e "\e[32mSetting up SSH server access with key-based authentication.\n\e[0m"
+echo -e "\e[32m$(omarchy_t "Setting up SSH server access with key-based authentication.")\n\e[0m"
 
 setup_sshd
 open_firewall
@@ -154,12 +156,14 @@ if [[ -n $KEY ]]; then
 elif [[ -n $GITHUB_USER ]]; then
   authorize_keys_from_github "$GITHUB_USER"
 else
-  case $(gum choose "Grab key from GitHub" "Paste key manually" --header "How would you like to add your SSH key?") in
-  "Grab key from GitHub") prompt_for_github_user ;;
-  "Paste key manually") authorize_pasted_key ;;
+  github_choice=$(omarchy_t "Grab key from GitHub")
+  paste_choice=$(omarchy_t "Paste key manually")
+  case $(gum choose "$github_choice" "$paste_choice" --header "$(omarchy_t "How would you like to add your SSH key?")") in
+  "$github_choice") prompt_for_github_user ;;
+  "$paste_choice") authorize_pasted_key ;;
   *) exit 1 ;;
   esac
 fi
 
-echo -e "\e[32m\nPerfect! The SSH server is running and your key is authorized.\e[0m"
-echo "You can now connect with: ssh $USER@$(hostname)"
+echo -e "\e[32m\n$(omarchy_t "Perfect! The SSH server is running and your key is authorized.")\e[0m"
+echo "$(omarchy_t "You can now connect with:") ssh $USER@$(hostname)"

@@ -1,4 +1,5 @@
 import QtQuick
+import qs.Commons
 import qs.Ui
 
 BarIndicator {
@@ -9,8 +10,8 @@ BarIndicator {
   active: idleService ? idleService.stayAwake : false
   activeText: "󰅶"
   inactiveText: "󰅶"
-  activeTooltipText: "Allow Idle Lock & Screensaver"
-  inactiveTooltipText: "Stay Awake"
+  activeTooltipText: I18n.tr("Allow Idle Lock & Screensaver")
+  inactiveTooltipText: I18n.tr("Stay Awake")
 
   function toggle() {
     if (root.idleService) root.idleService.setIdleEnabled(root.active)

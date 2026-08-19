@@ -28,7 +28,7 @@ Item {
   property var optionsCommand: []
   property string optionsCommandCwd: ""
   property string placeholderText: I18n.tr("Search...")
-  property string emptyText: "No options"
+  property string emptyText: I18n.tr("No options")
   property string noSelectionText: "None selected"
   property string triggerLabel: ""
   property bool showLabel: true

@@ -185,7 +185,9 @@ assert(/function close\(\) \{\s*\n\s*setCenterHoverRevealSuppressed\(false\)/.te
 assert(/width: Math\.max\(calendarScroll\.width, gridColumn\.width\)/.test(panelSource), 'calendar scrolls rather than clipping the grid on a narrow popup')
 assert(/enabled: !root\.viewingCurrentMonth/.test(panelSource) && /onClicked: root\.goToToday\(\)/.test(panelSource), 'calendar hero returns to today once the view has stepped away')
 assert(!/clampMonth/.test(panelSource), 'calendar steps freely into future months')
-assert(/Qt\.formatDate\(root\.today, "MMMM d"\)/.test(panelSource), 'calendar hero spells out today')
+assert(/labelLocale\.toString\(root\.today, "MMMM d"\)/.test(panelSource), 'calendar hero spells out today in the active locale')
+assert(/readonly property var labelLocale: Qt\.locale\(\)/.test(panelSource), 'calendar labels use the active locale')
+assert(/labelLocale\.toString\(root\.viewDate, "MMMM yyyy"\)/.test(panelSource), 'calendar month navigation uses the active locale')
 assert(/id: yearLabel/.test(panelSource) && /root\.yearDone/.test(panelSource), 'calendar panel shows the year progress bar')
 
 // The memento mori bar is opt-in: double-tapping the year bar asks for an age,
@@ -198,8 +200,8 @@ assert(/readonly property int lifeExpectancy: Model\.parseLifeExpectancy\(settin
 assert(/id: expectancyField/.test(panelSource) && /id: bornField/.test(panelSource), 'calendar offers both inputs')
 assert(/visible: root\.editingLife\s*\n\s*anchors\.horizontalCenter: parent\.horizontalCenter/.test(panelSource), 'calendar centers the inputs over the bar they replace')
 assert(/visible: root\.birthYear > 0/.test(panelSource), 'calendar hides the life bar until a birth year is known')
-assert(/text: "LIFE"/.test(panelSource) && /root\.lifeDone/.test(panelSource), 'calendar shows the life bar')
-assert(/text: "Memento Mori"/.test(panelSource), 'calendar names the life bar on hover')
+assert(/text: I18n\.tr\("LIFE"\)/.test(panelSource) && /root\.lifeDone/.test(panelSource), 'calendar shows the life bar')
+assert(/text: I18n\.tr\("Memento Mori"\)/.test(panelSource), 'calendar names the life bar on hover')
 assert(/onDoubleTapped: root\.clearLife\(\)/.test(panelSource), 'calendar puts the life bar away when it is double-tapped')
 assert(/persistSettings\(\{ birthYear: 0 \}\)/.test(panelSource), 'calendar clears the birth year to hide the life bar')
 assertEqual(calendar.parseBirthYear(0, 2026), 0, 'a cleared birth year reads back as unset')

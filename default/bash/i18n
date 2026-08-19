@@ -1,0 +1,40 @@
+# Shared translation helper for interactive Omarchy Bash commands.
+
+declare -gA OMARCHY_TRANSLATIONS
+OMARCHY_TRANSLATIONS_LOADED="false"
+
+omarchy_i18n_load() {
+  [[ $OMARCHY_TRANSLATIONS_LOADED == "false" ]] || return 0
+  OMARCHY_TRANSLATIONS_LOADED="true"
+
+  local locale="${LANGUAGE:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}"
+  locale="${locale%%:*}"
+  locale="${locale%%.*}"
+  locale="${locale%%@*}"
+  locale="${locale%%_*}"
+  locale="${locale%%-*}"
+  [[ $locale == "es" ]] || return 0
+
+  local catalog="$OMARCHY_PATH/shell/translations/es.json"
+  [[ -r $catalog ]] || return 0
+
+  local source=""
+  local translated=""
+  while IFS=$'\t' read -r source translated; do
+    [[ -n $source ]] && OMARCHY_TRANSLATIONS["$source"]="$translated"
+  done < <(jq -r 'to_entries[] | select((.key | contains("\n")) | not) | [.key, .value] | @tsv' "$catalog")
+}
+
+omarchy_t() {
+  local source="$1"
+  shift
+  omarchy_i18n_load
+  local translated="${OMARCHY_TRANSLATIONS[$source]:-$source}"
+  local index=1
+  local argument=""
+  for argument in "$@"; do
+    translated="${translated//%$index/$argument}"
+    index=$((index + 1))
+  done
+  printf '%s' "$translated"
+}

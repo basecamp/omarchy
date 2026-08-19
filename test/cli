@@ -53,6 +53,13 @@ trap cleanup EXIT
 
 output=$("$CLI" --help)
 assert_output_contains "main help renders" "$output" "Omarchy command center"
+
+spanish_output=$(LANGUAGE=es LANG=es_AR.UTF-8 OMARCHY_PATH="$ROOT" "$CLI" --help)
+assert_output_contains "main help localizes for Spanish" "$spanish_output" "Centro de comandos de Omarchy"
+assert_output_contains "Spanish help keeps command routes stable" "$spanish_output" "omarchy theme set <nombre>"
+
+spanish_output=$(LANGUAGE=es LANG=es_AR.UTF-8 OMARCHY_PATH="$ROOT" "$CLI" system --help)
+assert_output_contains "group help localizes descriptions for Spanish" "$spanish_output" "Estado, reinicio, apagado, cierre de sesión y bloqueo del sistema"
 assert_output_contains "main help includes hardware group" "$output" "hw"
 assert_output_contains "main help includes package group" "$output" "pkg"
 if grep -Eq '^  [a-z0-9-]+[[:space:]].*\([0-9]+\)$' <<<"$output"; then

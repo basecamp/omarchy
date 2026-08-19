@@ -449,7 +449,7 @@ Panel {
             visible: root.providers.length === 0
             width: parent.width
             topPadding: Style.space(24)
-            text: "No AI coding subscriptions found.\nAgents show up here once you've used them."
+            text: I18n.tr("No AI coding subscriptions found.\nAgents show up here once you've used them.")
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
@@ -537,7 +537,7 @@ Panel {
 
             PanelSectionHeader {
               width: parent.width
-              text: "BALANCE"
+              text: I18n.tr("BALANCE")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -548,7 +548,7 @@ Panel {
 
               Text {
                 id: balanceLabel
-                text: "Prepaid credits"
+                text: I18n.tr("Prepaid credits")
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body
@@ -591,7 +591,7 @@ Panel {
             spacing: Style.space(10)
 
             PanelSectionHeader {
-              text: "LIMITS"
+              text: I18n.tr("LIMITS")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -624,7 +624,7 @@ Panel {
 
             PanelSectionHeader {
               width: parent.width
-              text: "TOKENS BY DAY"
+              text: I18n.tr("TOKENS BY DAY")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -660,7 +660,7 @@ Panel {
 
             PanelSectionHeader {
               width: parent.width
-              text: "TOKENS BY MODEL"
+              text: I18n.tr("TOKENS BY MODEL")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -747,7 +747,7 @@ Panel {
       width: parent.width
       text: {
         var remainingMs = root.resetMsFor(limitRow.window)
-        return remainingMs > 0 ? "Resets in " + root.formatDuration(remainingMs) : ""
+        return remainingMs > 0 ? I18n.tr("Resets in %1", [root.formatDuration(remainingMs)]) : ""
       }
       color: root.dim
       font.family: root.fontFamily

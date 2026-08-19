@@ -56,13 +56,13 @@ Panel {
   readonly property bool hasTransferStats: info.rx_bytes !== undefined
   property int connectionPhraseIndex: 0
   readonly property var connectionPhrases: [
-    "Wiring bits",
-    "Handling packets",
-    "Sorting frames",
-    "Hauling bytes",
-    "Routing crumbs",
-    "Counting collisions",
-    "Bending light",
+    I18n.tr("Wiring bits"),
+    I18n.tr("Handling packets"),
+    I18n.tr("Sorting frames"),
+    I18n.tr("Hauling bytes"),
+    I18n.tr("Routing crumbs"),
+    I18n.tr("Counting collisions"),
+    I18n.tr("Bending light"),
   ]
   readonly property string connectionPhrase: connectionPhrases[connectionPhraseIndex % connectionPhrases.length]
   readonly property bool networkManagerAvailable: Networking.backend === NetworkBackendType.NetworkManager
@@ -159,7 +159,7 @@ Panel {
   // Under Automatic there is nothing to pick, so the pills collapse away and
   // the header states the live band instead.
   readonly property bool bandPillsVisible: canSelectBand && bandPinned
-  readonly property string bandSectionTitle: Model.bandSectionTitle(bandEffective, bandCurrent)
+  readonly property string bandSectionTitle: Model.bandSectionTitle(bandEffective, bandCurrent).replace("WI-FI BAND", I18n.tr("WI-FI BAND"))
   readonly property bool bandBusy: pendingBand !== ""
   // The speed test needs an interface to test, so its hero action only
   // appears once there is one.
@@ -1111,7 +1111,7 @@ Panel {
             id: qrAction
             visible: root.canShareWifi
             iconText: "󰐲"
-            tooltipText: "Show QR code"
+            tooltipText: I18n.tr("Show QR code")
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
             iconSize: Style.font.subtitle * 1.5
@@ -1127,7 +1127,7 @@ Panel {
             id: speedAction
             visible: root.canRunSpeedTest
             iconText: "󰓅"
-            tooltipText: "Run a speed test"
+            tooltipText: I18n.tr("Run a speed test")
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
             iconSize: Style.font.subtitle * 1.5
@@ -1174,7 +1174,7 @@ Panel {
 
             readonly property string title: {
               if (root.info.type === "wifi") return root.info.ssid || "Wi-Fi"
-              if (root.info.type === "ethernet") return "Ethernet"
+              if (root.info.type === "ethernet") return I18n.tr("Ethernet")
               return root.info.iface || (root.kind === "disconnected" ? "Disconnected" : "No connection")
             }
             readonly property string detail: root.headerDetail()
@@ -1193,11 +1193,11 @@ Panel {
             text: {
               if (root.info.type === "wifi") {
                 if (root.canDisconnect) return root.connectionPhrase.toUpperCase()
-                if (root.kind === "disconnected") return "NOT CONNECTED"
+                if (root.kind === "disconnected") return I18n.tr("NOT CONNECTED")
                 return ""
               }
               if (root.info.type === "ethernet") return root.connectionPhrase.toUpperCase()
-              if (root.kind === "disconnected") return "NOT CONNECTED"
+              if (root.kind === "disconnected") return I18n.tr("NOT CONNECTED")
               return ""
             }
             visible: text !== ""
@@ -1228,38 +1228,38 @@ Panel {
           // opened, once the first probe returned, shoving everything below
           // them down. They now hold their place and read "--" until there is
           // a sample.
-          InfoLabel { text: "Ping" }
+          InfoLabel { text: I18n.tr("Ping") }
           DetailValue {
             text: root.formatPingLatency(root.internetPingLatency)
             color: root.internetPingPacketLoss > 0 ? root.bar.urgent : root.bar.foreground
           }
-          InfoLabel { text: "Packet Loss" }
+          InfoLabel { text: I18n.tr("Packet Loss") }
           DetailValue {
             text: root.formatPacketLoss(root.internetPingPacketLoss)
             color: root.internetPingPacketLoss > 0 ? root.bar.urgent : root.bar.foreground
           }
 
-          InfoLabel { text: "Receiving" }
+          InfoLabel { text: I18n.tr("Receiving") }
           DetailValue { text: root.hasTransferStats ? root.formatRate(root.downloadRate) : "--" }
-          InfoLabel { text: "Sending" }
+          InfoLabel { text: I18n.tr("Sending") }
           DetailValue { text: root.hasTransferStats ? root.formatRate(root.uploadRate) : "--" }
 
-          InfoLabel { text: "Downloaded" }
+          InfoLabel { text: I18n.tr("Downloaded") }
           DetailValue { text: root.hasTransferStats ? root.formatBytes(parseFloat(root.info.rx_bytes || "0")) : "--" }
-          InfoLabel { text: "Uploaded" }
+          InfoLabel { text: I18n.tr("Uploaded") }
           DetailValue { text: root.hasTransferStats ? root.formatBytes(parseFloat(root.info.tx_bytes || "0")) : "--" }
 
-          InfoLabel { text: "IP Address" }
+          InfoLabel { text: I18n.tr("IP Address") }
           DetailValue {
             text: root.info.ip || "--"
             copyable: !!root.info.ip
-            tooltipText: "Copy IP"
+            tooltipText: I18n.tr("Copy IP")
           }
-          InfoLabel { text: "Gateway" }
+          InfoLabel { text: I18n.tr("Gateway") }
           DetailValue {
             text: root.info.gateway || "--"
             copyable: !!root.info.gateway
-            tooltipText: "Copy gateway"
+            tooltipText: I18n.tr("Copy gateway")
           }
         }
       }
@@ -1300,7 +1300,7 @@ Panel {
 
             PanelSectionHeader {
               id: bandAutoLabel
-              text: "AUTOMATIC"
+              text: I18n.tr("AUTOMATIC")
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
               anchors.verticalCenter: parent.verticalCenter
@@ -1333,8 +1333,8 @@ Panel {
               PanelToolTip {
                 visible: bandAutoSwitch.containsMouse
                 text: root.bandPinned
-                  ? "Let Wi-Fi pick the band"
-                  : "Stay on " + root.bandLabel(root.bandCurrent)
+                  ? I18n.tr("Let Wi-Fi pick the band")
+                  : I18n.tr("Stay on %1", [root.bandLabel(root.bandCurrent)])
                 fontFamily: root.bar.fontFamily
               }
             }
@@ -1405,7 +1405,7 @@ Panel {
         spacing: Style.space(10)
 
         PanelSectionHeader {
-          text: "DNS PROVIDER"
+          text: I18n.tr("DNS PROVIDER")
           foreground: root.bar.foreground
           fontFamily: root.bar.fontFamily
         }
@@ -1421,7 +1421,7 @@ Panel {
           DnsProviderPill {
             provider: "DHCP"
             index: 0
-            tooltipText: "Use DNS from DHCP"
+            tooltipText: I18n.tr("Use DNS from DHCP")
             width: dnsRow.cellWidth
             onClicked: root.setDns(provider)
           }
@@ -1429,7 +1429,7 @@ Panel {
           DnsProviderPill {
             provider: "Cloudflare"
             index: 1
-            tooltipText: "Set DNS to Cloudflare"
+            tooltipText: I18n.tr("Set DNS to Cloudflare")
             width: dnsRow.cellWidth
             onClicked: root.setDns(provider)
           }
@@ -1437,7 +1437,7 @@ Panel {
           DnsProviderPill {
             provider: "Google"
             index: 2
-            tooltipText: "Set DNS to Google"
+            tooltipText: I18n.tr("Set DNS to Google")
             width: dnsRow.cellWidth
             onClicked: root.setDns(provider)
           }
@@ -1445,7 +1445,7 @@ Panel {
           DnsProviderPill {
             provider: "Custom"
             index: 3
-            tooltipText: "Set custom DNS servers"
+            tooltipText: I18n.tr("Set custom DNS servers")
             width: dnsRow.cellWidth
             onClicked: root.setDns(provider)
           }
@@ -1461,7 +1461,7 @@ Panel {
 
       PanelSectionHeader {
         visible: root.wifiStationAvailable && root.scanning
-        text: "SCANNING WI-FI…"
+        text: I18n.tr("SCANNING WI-FI…")
         foreground: root.bar.foreground
         fontFamily: root.bar.fontFamily
       }
@@ -1493,7 +1493,7 @@ Panel {
         delegate: Item {
           required property var modelData
           required property int index
-          readonly property string sectionTitle: root.wifiSectionTitle(index)
+            readonly property string sectionTitle: I18n.tr(root.wifiSectionTitle(index))
           width: ListView.view.width
           height: delegateColumn.implicitHeight
 
@@ -1564,7 +1564,7 @@ Panel {
     required property string provider
     required property int index
 
-    text: provider
+    text: I18n.tr(provider)
     fontSize: Style.font.bodySmall
     foreground: root.bar.foreground
     fontFamily: root.bar.fontFamily
@@ -1647,11 +1647,11 @@ Panel {
     readonly property string statusText: {
       if (!net) return ""
       if (isPasswordOpen) return ""
-      if (isBusy && root.actionKind === "connect") return "Connecting…"
-      if (isBusy && root.actionKind === "disconnect") return "Disconnecting…"
-      if (isBusy && root.actionKind === "forget") return "Forgetting…"
-      if (isFailed) return root.failureReason || "Failed"
-      if (isConnected) return "Connected"
+      if (isBusy && root.actionKind === "connect") return I18n.tr("Connecting…")
+      if (isBusy && root.actionKind === "disconnect") return I18n.tr("Disconnecting…")
+      if (isBusy && root.actionKind === "forget") return I18n.tr("Forgetting…")
+      if (isFailed) return I18n.tr(root.failureReason || "Failed")
+      if (isConnected) return I18n.tr("Connected")
       return ""
     }
 
@@ -1764,7 +1764,7 @@ Panel {
 
         PanelToolTip {
           visible: rightMouse.containsMouse || row.forgetFocused
-          text: "Forget network"
+          text: I18n.tr("Forget network")
           fontFamily: root.bar.fontFamily
         }
       }
@@ -1779,7 +1779,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
-          text: row.net ? (row.net.ssid || "Hidden") : ""
+          text: row.net ? (row.net.ssid || I18n.tr("Hidden")) : ""
           color: root.bar.foreground
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.body
@@ -1838,7 +1838,7 @@ Panel {
         anchors.right: connectPwBtn.left
         anchors.top: parent.top
         anchors.rightMargin: Style.space(6)
-        placeholderText: "Identity (user@domain)"
+        placeholderText: I18n.tr("Identity (user@domain)")
         font.family: Style.font.family
         font.pixelSize: Style.font.body
         foreground: root.bar.foreground
@@ -1864,7 +1864,7 @@ Panel {
         anchors.bottomMargin: Style.spacing.rowGap / 2
         anchors.rightMargin: Style.space(6)
         password: true
-        placeholderText: "Passphrase"
+        placeholderText: I18n.tr("Passphrase")
         font.family: Style.font.family
         font.pixelSize: Style.font.body
         foreground: root.bar.foreground
@@ -1896,7 +1896,7 @@ Panel {
           anchors.fill: parent
           horizontalAlignment: Text.AlignHCenter
           verticalAlignment: Text.AlignVCenter
-          text: row.isFailed ? "Wrong password" : "Connecting..."
+          text: row.isFailed ? I18n.tr("Wrong password") : I18n.tr("Connecting...")
           color: row.isFailed ? root.bar.urgent : root.bar.foreground
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.bodySmall
@@ -1913,7 +1913,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
         enabled: row.net && pwField.text.length > 0 && (!row.isEnterprise || idField.text.length > 0)
         iconText: "󰄬"
-        tooltipText: "Connect"
+        tooltipText: I18n.tr("Connect")
         foreground: root.bar.foreground
         fontFamily: root.bar.fontFamily
         onClicked: row.submitCredentials()
@@ -1924,7 +1924,7 @@ Panel {
 
   component DetailValue: InfoValue {
     property bool copyable: false
-    property string tooltipText: "Copy to clipboard"
+    property string tooltipText: I18n.tr("Copy to clipboard")
 
     Layout.fillWidth: true
     horizontalAlignment: Text.AlignRight

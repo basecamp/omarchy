@@ -25,6 +25,8 @@ declare -A ROUTE_TO_KEY
 declare -A ROUTE_IS_ALIAS
 declare -A BINARY_TO_KEY
 declare -A GROUP_DESCRIPTIONS
+declare -A CLI_TRANSLATIONS
+CLI_TRANSLATIONS_LOADED="false"
 
 GROUP_DESCRIPTIONS[agent]="AI coding agent usage data"
 GROUP_DESCRIPTIONS[audio]="Audio input and output controls"
@@ -92,6 +94,34 @@ GROUP_DESCRIPTIONS[weather]="Weather status"
 GROUP_DESCRIPTIONS[webapp]="Web app launchers"
 GROUP_DESCRIPTIONS[wifi]="Wi-Fi helpers"
 GROUP_DESCRIPTIONS[windows]="Windows VM management"
+
+load_cli_translations() {
+  [[ $CLI_TRANSLATIONS_LOADED == "false" ]] || return 0
+  CLI_TRANSLATIONS_LOADED="true"
+
+  local locale="${LANGUAGE:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}"
+  locale="${locale%%:*}"
+  locale="${locale%%.*}"
+  locale="${locale%%@*}"
+  locale="${locale%%_*}"
+  locale="${locale%%-*}"
+  [[ $locale == "es" ]] || return 0
+
+  local catalog="$OMARCHY_PATH/shell/translations/es.json"
+  [[ -r $catalog ]] || return 0
+
+  local source=""
+  local translated=""
+  while IFS=$'\t' read -r source translated; do
+    [[ -n $source ]] && CLI_TRANSLATIONS["$source"]="$translated"
+  done < <(jq -r 'to_entries[] | select((.key | contains("\n")) | not) | [.key, .value] | @tsv' "$catalog")
+}
+
+translate() {
+  local source="$1"
+  load_cli_translations
+  printf '%s' "${CLI_TRANSLATIONS[$source]:-$source}"
+}
 
 join_words() {
   local separator="$1"
@@ -508,11 +538,44 @@ show_group_list() {
 
   printf '%s\n' "${!GROUP_DESCRIPTIONS[@]}" | sort | while IFS= read -r sorted_group; do
     [[ -n $sorted_group ]] || continue
-    printf '  %-14s %s\n' "$sorted_group" "${GROUP_DESCRIPTIONS[$sorted_group]}"
+    printf '  %-14s %s\n' "$sorted_group" "$(translate "${GROUP_DESCRIPTIONS[$sorted_group]}")"
   done
 }
 
 show_main_help() {
+  load_cli_translations
+  if [[ $(translate "Omarchy command center") != "Omarchy command center" ]]; then
+    cat <<'EOF'
+Centro de comandos de Omarchy
+
+Uso:
+  omarchy <comando> [argumentos...]
+  omarchy commands [--all] [--json] [--check]
+  omarchy <grupo> --help
+  omarchy <grupo> <comando> --help
+
+Comandos frecuentes:
+  omarchy update              Actualizar Omarchy y los paquetes del sistema
+  omarchy theme list          Listar los temas disponibles
+  omarchy theme set <nombre>  Aplicar un tema
+  omarchy font list           Listar las fuentes disponibles
+  omarchy screenshot          Realizar una captura de pantalla
+  omarchy debug               Mostrar información de diagnóstico
+
+Grupos:
+EOF
+    show_group_list
+    cat <<'EOF'
+
+Descubrimiento:
+  omarchy commands            Listar todos los comandos
+  omarchy commands --all      Incluir comandos marcados explícitamente como ocultos
+  omarchy commands --json     Lista de comandos legible por máquinas
+  omarchy commands --check    Validar metadatos y rutas de comandos
+EOF
+    return
+  fi
+
   cat <<'EOF'
 Omarchy command center
 
@@ -587,16 +650,18 @@ show_commands() {
   local rows=""
   local alias_rows=""
 
+  load_cli_translations
+
   if [[ $include_all == "true" ]]; then
-    echo "Omarchy commands (all):"
+    echo "$(translate "Omarchy commands (all):")"
   else
-    echo "Omarchy commands:"
+    echo "$(translate "Omarchy commands:")"
   fi
 
   while IFS= read -r key; do
     [[ -n $key ]] || continue
     usage="${COMMAND_USAGE[$key]}"
-    rows+="$usage"$'\t'"${COMMAND_SUMMARY[$key]}"$'\n'
+    rows+="$usage"$'\t'"$(translate "${COMMAND_SUMMARY[$key]}")"$'\n'
   done < <(sorted_keys "$include_all")
 
   print_command_table "$rows"
@@ -611,7 +676,7 @@ show_commands() {
 
   if [[ -n $alias_rows ]]; then
     echo ""
-    echo "Aliases:"
+    echo "$(translate "Aliases:")"
     print_command_table "$(printf '%s' "$alias_rows" | sort)"
   fi
 }
@@ -799,22 +864,34 @@ show_group_help() {
   local key=""
   local rows=""
   local title="${GROUP_DESCRIPTIONS[$group]}"
+  local group_label=""
+
+  load_cli_translations
+  group_label=$(translate "${group^}")
 
   if [[ -n $title ]]; then
-    echo "${group^} commands — $title:"
+    if [[ $(translate "commands") == "commands" ]]; then
+      echo "$group_label commands — $(translate "$title"):"
+    else
+      echo "Comandos de $group_label — $(translate "$title"):"
+    fi
   else
-    echo "${group^} commands:"
+    if [[ $(translate "commands") == "commands" ]]; then
+      echo "$group_label commands:"
+    else
+      echo "Comandos de $group_label:"
+    fi
   fi
 
   while IFS= read -r key; do
     [[ -n $key ]] || continue
-    rows+="$(command_usage_for_group "$key" "$group")"$'\t'$'\t'"${COMMAND_SUMMARY[$key]}"$'\n'
+    rows+="$(command_usage_for_group "$key" "$group")"$'\t'$'\t'"$(translate "${COMMAND_SUMMARY[$key]}")"$'\n'
   done < <(sorted_group_keys "$group" "$include_all")
 
   if [[ -n $rows ]]; then
     print_command_table "$rows"
   else
-    echo "  No documented commands found. Try: omarchy commands --all"
+    echo "  $(translate "No documented commands found. Try: omarchy commands --all")"
   fi
 }
 
@@ -824,16 +901,18 @@ show_prefix_help() {
   local key=""
   local rows=""
 
+  load_cli_translations
+
   while IFS= read -r key; do
     [[ -n $key ]] || continue
     if [[ ${COMMAND_USAGE[$key]} == $prefix_with_space* ]]; then
-      rows+="${COMMAND_USAGE[$key]}"$'\t'$'\t'"${COMMAND_SUMMARY[$key]}"$'\n'
+      rows+="${COMMAND_USAGE[$key]}"$'\t'$'\t'"$(translate "${COMMAND_SUMMARY[$key]}")"$'\n'
     fi
   done < <(sorted_keys false)
 
   [[ -n $rows ]] || return 1
 
-  echo "${prefix#omarchy } commands:"
+  echo "${prefix#omarchy } $(translate "commands"):"
   print_command_table "$rows"
 }
 
@@ -847,12 +926,12 @@ show_related_commands() {
 
   while IFS= read -r child_key; do
     [[ -n $child_key && $child_key != "$key" ]] || continue
-    rows+="$(command_usage_for_group "$child_key" "$group")"$'\t'$'\t'"${COMMAND_SUMMARY[$child_key]}"$'\n'
+    rows+="$(command_usage_for_group "$child_key" "$group")"$'\t'$'\t'"$(translate "${COMMAND_SUMMARY[$child_key]}")"$'\n'
   done < <(sorted_group_keys "$group" false)
 
   if [[ -n $rows ]]; then
     echo ""
-    echo "Related commands:"
+    echo "$(translate "Related commands:")"
     print_command_table "$rows"
   fi
 }
@@ -865,20 +944,22 @@ show_command_help() {
   local example=""
   local alias=""
 
-  echo "Usage:"
+  load_cli_translations
+
+  echo "$(translate "Usage:")"
   echo "  ${COMMAND_USAGE[$key]}"
   echo ""
-  echo "${COMMAND_SUMMARY[$key]}"
+  echo "$(translate "${COMMAND_SUMMARY[$key]}")"
 
   if [[ -n $args ]]; then
     echo ""
-    echo "Arguments:"
+    echo "$(translate "Arguments:")"
     echo "  $args"
   fi
 
   if [[ -n $examples ]]; then
     echo ""
-    echo "Examples:"
+    echo "$(translate "Examples:")"
     while IFS= read -r example; do
       printf '  %s\n' "$example"
     done < <(examples_as_lines "$examples")
@@ -886,7 +967,7 @@ show_command_help() {
 
   if [[ -n $aliases ]]; then
     echo ""
-    echo "Aliases:"
+    echo "$(translate "Aliases:")"
     while IFS= read -r alias; do
       printf '  %s\n' "$alias"
     done < <(pipe_values_as_lines "$aliases")

@@ -24,16 +24,16 @@ Panel {
   property string mullvadQuery: ""
   property int phraseIndex: 0
   readonly property var activePhrases: [
-    "Encrypting connections",
-    "Sending secrets",
-    "Guarding wires",
-    "Braiding packets",
-    "Polishing tunnels",
-    "Hiding routes",
-    "Sealing ports",
-    "Sorting tailnets",
-    "Shuffling keys",
-    "Watching machines"
+    I18n.tr("Encrypting connections"),
+    I18n.tr("Sending secrets"),
+    I18n.tr("Guarding wires"),
+    I18n.tr("Braiding packets"),
+    I18n.tr("Polishing tunnels"),
+    I18n.tr("Hiding routes"),
+    I18n.tr("Sealing ports"),
+    I18n.tr("Sorting tailnets"),
+    I18n.tr("Shuffling keys"),
+    I18n.tr("Watching machines")
   ]
   readonly property string heroPhraseText: activePhrases[phraseIndex % activePhrases.length]
 
@@ -374,7 +374,7 @@ Panel {
     function up(): string { tailscale.loginOrUp(); return "ok" }
     function down(): string { tailscale.down(); return "ok" }
     function toggleTailscale(): string { tailscale.toggleTailscale(); return "ok" }
-    function status(): string { return tailscale.statusText }
+    function status(): string { return I18n.tr(tailscale.statusText) }
   }
 
   BarIconButton {
@@ -458,7 +458,7 @@ Panel {
               id: hero
               width: parent.width
               title: tailscale.installed ? (tailscale.selfName || "Tailscale") : "Tailscale"
-              meta: tailscale.active ? root.heroPhraseText : "Tailscale is disconnected"
+              meta: tailscale.active ? root.heroPhraseText : I18n.tr("Tailscale is disconnected")
               foreground: root.foreground
               fontFamily: root.fontFamily
               iconOpacity: tailscale.active ? 1.0 : 0.5
@@ -500,7 +500,7 @@ Panel {
           Text {
             visible: tailscale.actionStatus !== "" || tailscale.lastError !== ""
             width: parent.width
-            text: tailscale.actionStatus !== "" ? tailscale.actionStatus : tailscale.lastError
+            text: I18n.tr(tailscale.actionStatus !== "" ? tailscale.actionStatus : tailscale.lastError)
             color: tailscale.lastError !== "" && tailscale.actionStatus === "" ? root.urgent : root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
@@ -519,7 +519,7 @@ Panel {
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
               anchors.margins: Style.space(12)
-              text: "Tailscale CLI is not installed or not on PATH."
+              text: I18n.tr("Tailscale CLI is not installed or not on PATH.")
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
@@ -538,7 +538,7 @@ Panel {
             spacing: Style.space(10)
 
             PanelSectionHeader {
-              text: "CONNECTIONS"
+              text: I18n.tr("CONNECTIONS")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -571,7 +571,7 @@ Panel {
             spacing: Style.space(10)
 
             PanelSectionHeader {
-              text: "EXIT NODES"
+              text: I18n.tr("EXIT NODES")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -601,7 +601,7 @@ Panel {
                   id: mullvadSearch
                   width: parent.width
                   foreground: root.foreground
-                  placeholderText: "Search regions"
+                  placeholderText: I18n.tr("Search regions")
                   text: root.mullvadQuery
                   onTextChanged: {
                     root.mullvadQuery = text
@@ -637,7 +637,7 @@ Panel {
                 Text {
                   visible: root.filteredMullvadRegions.length === 0
                   width: parent.width
-                  text: "No Mullvad regions found."
+                  text: I18n.tr("No Mullvad regions found.")
                   color: root.dim
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.bodySmall
@@ -675,7 +675,7 @@ Panel {
             spacing: Style.space(10)
 
             PanelSectionHeader {
-              text: "MACHINES"
+              text: I18n.tr("MACHINES")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -683,7 +683,7 @@ Panel {
             Text {
               visible: tailscale.installed && tailscale.active && tailscale.peers.length === 0
               width: parent.width
-              text: "No machines found on this tailnet."
+              text: I18n.tr("No machines found on this tailnet.")
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
@@ -776,7 +776,7 @@ Panel {
 
         Text {
           Layout.fillWidth: true
-          text: "Authorize Tailscale operator"
+          text: I18n.tr("Authorize Tailscale operator")
           color: root.foreground
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
@@ -785,7 +785,7 @@ Panel {
 
         Text {
           Layout.fillWidth: true
-          text: "Allow this user to operate this Tailscale profile"
+          text: I18n.tr("Allow this user to operate this Tailscale profile")
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -973,7 +973,7 @@ Panel {
         id: sendButton
         visible: tailscale.canSendFiles(peerRow.peer)
         iconText: "󰒊"
-        tooltipText: "Send files"
+        tooltipText: I18n.tr("Send files")
         foreground: root.foreground
         fontFamily: root.fontFamily
         Layout.alignment: Qt.AlignVCenter

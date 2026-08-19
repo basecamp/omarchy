@@ -206,7 +206,7 @@ Item {
       if (root.pwExpectedStop) return
       if (!root.opened) return
       if (exitCode === 0 && root.password !== "") root.passwordVisible = true
-      else root.passwordError = "Could not read the Wi-Fi password"
+      else root.passwordError = I18n.tr("Could not read the Wi-Fi password")
     }
   }
 
@@ -309,7 +309,7 @@ Item {
 
           Text {
             visible: root.loading
-            text: "Generating QR code…"
+            text: I18n.tr("Generating QR code…")
             color: root.onScrimDim
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
@@ -331,7 +331,7 @@ Item {
 
           Text {
             visible: root.showingQr
-            text: "Scan to join this network"
+            text: I18n.tr("Scan to join this network")
             color: root.onScrimDim
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
@@ -343,7 +343,7 @@ Item {
             visible: root.showingQr && root.secured
             text: root.passwordError !== "" ? root.passwordError
               : root.passwordVisible ? root.password
-              : "Show password"
+              : I18n.tr("Show password")
             color: root.passwordError !== "" ? root.onScrimUrgent : root.onScrim
             opacity: root.passwordVisible || root.passwordError !== "" ? 1 : 0.6
             font.family: root.fontFamily

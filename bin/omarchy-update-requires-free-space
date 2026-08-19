@@ -4,13 +4,15 @@
 # omarchy:hidden=true
 
 set -e
+source "$OMARCHY_PATH/default/bash/i18n"
 
 if [[ ${OMARCHY_UPDATE_FORCE:-0} == "1" ]]; then
   exit 0
 elif read -r available_bytes < <(df --output=avail --block-size=1 / 2>/dev/null | tail -n 1) &&
   [[ $available_bytes =~ ^[0-9]+$ ]] &&
   (( available_bytes < 10 * 1024 * 1024 * 1024 )); then
-  echo "You need at least 10 GiB free to safely update Omarchy."
+  omarchy_t "You need at least 10 GiB free to safely update Omarchy."
+  echo
   exit 1
 else
   exit 0

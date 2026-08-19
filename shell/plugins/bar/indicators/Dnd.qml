@@ -11,8 +11,8 @@ BarIndicator {
   active: dnd
   activeText: "󰂛"
   inactiveText: "󰂛"
-  activeTooltipText: "Allow Notifications"
-  inactiveTooltipText: "Silence Notifications"
+  activeTooltipText: I18n.tr("Allow Notifications")
+  inactiveTooltipText: I18n.tr("Silence Notifications")
 
   onPressed: function() {
     if (root.notificationService) {
