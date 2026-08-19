@@ -2,6 +2,8 @@
 
 # omarchy:summary=Launch the Omarchy screensaver in the default terminal on the system with the correct font configuration.
 
+source "$OMARCHY_PATH/default/bash/i18n"
+
 if omarchy-cmd-missing ttfx; then
   exit 1
 fi
@@ -20,7 +22,7 @@ terminal=$(xdg-terminal-exec --print-id)
 case $terminal in
 *Alacritty* | *ghostty* | *foot* | *kitty*) ;;
 *)
-  omarchy-notification-send -g ✋ "Screensaver only runs in Alacritty, Foot, Ghostty, or Kitty"
+  omarchy-notification-send -g ✋ "$(omarchy_t "Screensaver only runs in Alacritty, Foot, Ghostty, or Kitty")"
   exit 1
   ;;
 esac
