@@ -4,6 +4,11 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+service_lookup=$(sed -n '/function firstPartyServiceFor(pluginId)/,/^  }/p' "$ROOT/shell/shell.qml")
+grep -F 'pluginRegistry.resolveEnabledId(pluginId)' <<<"$service_lookup" >/dev/null || \
+  fail "first-party service lookup routes cloned source ids"
+pass "first-party service lookup routes cloned source ids"
+
 TMPDIR=""
 QS_PID=""
 

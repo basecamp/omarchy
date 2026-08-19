@@ -277,7 +277,8 @@ ShellRoot {
   }
 
   function firstPartyServiceFor(pluginId) {
-    return serviceFor(pluginId)
+    var id = pluginRegistry ? pluginRegistry.resolveEnabledId(pluginId) : pluginId
+    return serviceFor(id)
   }
 
   function ensureService(pluginId) {
