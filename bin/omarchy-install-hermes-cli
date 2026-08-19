@@ -39,7 +39,7 @@ fi
 # Omarchy, so without this the install fails with "pipx is required". Take it
 # from mise rather than pacman: this also runs from the Defaults > Agent route,
 # where no package is being installed and there is no reason to need root.
-if ! command -v uv >/dev/null 2>&1 && ! mise where uv >/dev/null 2>&1; then
+if omarchy-cmd-missing uv && ! mise where uv >/dev/null 2>&1; then
   echo "Installing uv, which mise needs to build Hermes..." >&2
   mise use -g --quiet uv@latest || exit 1
 fi
