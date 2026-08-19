@@ -2,19 +2,31 @@
 
 # omarchy:summary=List discovered shell plugins
 # omarchy:group=plugin
-# omarchy:args=[--json]
+# omarchy:args=[--json] [--source=<first-party|third-party>] [--state=<enabled|disabled>] [--kinds=<kind[,kind...]>]
 
 set -euo pipefail
 
 json="false"
+source_filter=""
+state_filter=""
+kinds_filter=""
 
 while (( $# > 0 )); do
   case "$1" in
   --json)
     json="true"
     ;;
+  --source=*)
+    source_filter="${1#*=}"
+    ;;
+  --state=*)
+    state_filter="${1#*=}"
+    ;;
+  --kinds=*)
+    kinds_filter="${1#*=}"
+    ;;
   -h | --help)
-    echo "Usage: omarchy plugin list [--json]"
+    echo "Usage: omarchy plugin list [--json] [--source=<first-party|third-party>] [--state=<enabled|disabled>] [--kinds=<kind[,kind...]>]"
     exit 0
     ;;
   *)
@@ -25,10 +37,34 @@ while (( $# > 0 )); do
   shift
 done
 
+if [[ -n $source_filter && $source_filter != "first-party" && $source_filter != "third-party" ]]; then
+  echo "omarchy-plugin-list: --source must be first-party or third-party" >&2
+  exit 1
+fi
+
+if [[ -n $state_filter && $state_filter != "enabled" && $state_filter != "disabled" ]]; then
+  echo "omarchy-plugin-list: --state must be enabled or disabled" >&2
+  exit 1
+fi
+
 plugins=$(omarchy-shell shell listPlugins)
 
+filtered=$(jq -r \
+  --arg source "$source_filter" \
+  --arg state "$state_filter" \
+  --arg kind "$kinds_filter" '
+    [ .[] | select(
+        ($source == "" or (if $source == "first-party" then .firstParty else (.firstParty | not) end))
+      ) | select(
+        ($state == "" or (if $state == "enabled" then .enabled else (.enabled | not) end))
+      ) | select(
+        ($kind == "" or ((.kinds // []) as $kinds | all($kind | split(",")[]; . as $wanted | $kinds | index($wanted) != null)))
+      )
+    ]
+  ' <<<"$plugins")
+
 if [[ $json == "true" ]]; then
-  printf '%s\n' "$plugins"
+  printf '%s\n' "$filtered"
   exit 0
 fi
 
@@ -40,7 +76,7 @@ jq -r '
     ((.kinds // []) | join(",")),
     (.name // "")
   ] | @tsv
-' <<<"$plugins" | awk -F '\t' '
+' <<<"$filtered" | awk -F '\t' '
   BEGIN { printf "%-32s %-9s %-11s %-18s %s\n", "ID", "STATE", "SOURCE", "KINDS", "NAME" }
   { printf "%-32s %-9s %-11s %-18s %s\n", $1, $2, $3, $4, $5 }
 '
