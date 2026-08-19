@@ -111,19 +111,25 @@ wait_until "notification controls close" 15 layer_absent "omarchy-notification-c
 chromium_mode=$(omarchy-shell notifications listApplications |
   jq -r 'map(select(.key == "desktop:chromium"))[0].mode // empty')
 [[ -n $chromium_mode ]] || fail "notification controls list Chromium"
-[[ $(omarchy-shell notifications setApplicationMode desktop:chromium history) == "ok" ]] ||
-  fail "notification controls set history-only mode"
-omarchy-shell notifications clear >/dev/null
-omarchy-notification-send --app-name Chromium "Acceptance history-only notification" \
-  "This should skip the popup" --hint=string:desktop-entry:chromium
-sleep 1
-layer_absent "omarchy-notifications" || fail "history-only notification skips its popup"
-omarchy-shell notifications showHistory >/dev/null
-wait_until "history-only notification remains in history" 15 screen_contains "Acceptance history-only notification"
-screenshot "success-notification-controls-history-only"
-omarchy-shell notifications dismissAll >/dev/null
-omarchy-shell notifications clear >/dev/null
-omarchy-shell notifications setApplicationMode desktop:chromium "$chromium_mode" >/dev/null
+(
+  restore_notification_policy() {
+    omarchy-shell notifications dismissAll >/dev/null 2>&1 || true
+    omarchy-shell notifications clear >/dev/null 2>&1 || true
+    omarchy-shell notifications setApplicationMode desktop:chromium "$chromium_mode" >/dev/null 2>&1 || true
+  }
+  trap restore_notification_policy EXIT
+
+  [[ $(omarchy-shell notifications setApplicationMode desktop:chromium history) == "ok" ]] ||
+    fail "notification controls set history-only mode"
+  omarchy-shell notifications clear >/dev/null
+  omarchy-notification-send --app-name Chromium "Acceptance history-only notification" \
+    "This should skip the popup" --hint=string:desktop-entry:chromium
+  sleep 1
+  layer_absent "omarchy-notifications" || fail "history-only notification skips its popup"
+  omarchy-shell notifications showHistory >/dev/null
+  wait_until "history-only notification remains in history" 15 screen_contains "Acceptance history-only notification"
+  screenshot "success-notification-controls-history-only"
+)
 
 # The menu's Apps submenu does the full launcher loop: open, search by
 # typing, launch the top hit.

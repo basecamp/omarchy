@@ -139,7 +139,9 @@ Item {
   }
 
   function applicationMode(key) {
-    return NotificationLogic.validApplicationMode(applicationModes[String(key || "")])
+    var id = String(key || "")
+    if (!applicationForKey(id)) return "normal"
+    return NotificationLogic.validApplicationMode(applicationModes[id])
   }
 
   function applicationForKey(key) {

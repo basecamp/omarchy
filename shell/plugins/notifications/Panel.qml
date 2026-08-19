@@ -202,6 +202,12 @@ Item {
               Keys.onReturnPressed: root.toggleDoNotDisturb()
               Keys.onEnterPressed: root.toggleDoNotDisturb()
               Keys.onSpacePressed: root.toggleDoNotDisturb()
+              Accessible.role: Accessible.CheckBox
+              Accessible.name: "Do not disturb"
+              Accessible.checkable: true
+              Accessible.checked: root.service ? root.service.doNotDisturb : false
+              Accessible.onPressAction: root.toggleDoNotDisturb()
+              Accessible.onToggleAction: root.toggleDoNotDisturb()
 
               Row {
                 id: dndRow
@@ -289,10 +295,22 @@ Item {
                   fill: Style.hoverFillFor(root.foreground, Color.accent)
                   currentFill: Style.selectedFillFor(root.foreground, Color.accent)
 
-                  Keys.onReturnPressed: root.selectedKey = String(modelData.key)
-                  Keys.onEnterPressed: root.selectedKey = String(modelData.key)
-                  Keys.onSpacePressed: root.selectedKey = String(modelData.key)
+                  function selectApplication() {
+                    root.selectedKey = String(modelData.key)
+                    root.cursorKey = root.selectedKey
+                  }
+
+                  Keys.onReturnPressed: selectApplication()
+                  Keys.onEnterPressed: selectApplication()
+                  Keys.onSpacePressed: selectApplication()
                   onActiveFocusChanged: if (activeFocus) root.cursorKey = String(modelData.key)
+                  Accessible.role: Accessible.ListItem
+                  Accessible.name: modelData.label || modelData.app || "Unknown application"
+                  Accessible.description: subtitle
+                  Accessible.focusable: true
+                  Accessible.selectable: true
+                  Accessible.selected: chosen
+                  Accessible.onPressAction: selectApplication()
 
                   RowLayout {
                     id: rowContent
@@ -355,8 +373,7 @@ Item {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                      root.selectedKey = String(applicationRow.modelData.key)
-                      root.cursorKey = root.selectedKey
+                      applicationRow.selectApplication()
                       applicationRow.forceActiveFocus()
                     }
                   }

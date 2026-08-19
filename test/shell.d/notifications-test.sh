@@ -475,6 +475,7 @@ assertEqual(
 )
 
 const serviceQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/Service.qml'), 'utf8')
+const panelQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/Panel.qml'), 'utf8')
 assert(
   /readonly property int historyLimit: 10/.test(serviceQml),
   'notifications service keeps the last ten notifications in history'
@@ -636,6 +637,10 @@ assert(
   'notifications delegate application mode and DND routing to tested logic'
 )
 assert(
+  /function applicationMode\(key\) \{\s*var id = String\(key \|\| ""\)\s*if \(!applicationForKey\(id\)\) return "normal"/.test(serviceQml),
+  'notifications ignore saved policies whose applications are absent from the catalog'
+)
+assert(
   /version: 4,[\s\S]{0,120}?modes: service\.applicationModes/.test(serviceQml),
   'notifications persist application controls beside DND state'
 )
@@ -646,5 +651,17 @@ assert(
 assert(
   !/pendingModel|pastModel/.test(serviceQml),
   'notifications service keeps no in-memory history models'
+)
+assert(
+  panelQml.includes('Accessible.role: Accessible.CheckBox') &&
+    panelQml.includes('Accessible.name: "Do not disturb"') &&
+    panelQml.includes('Accessible.onToggleAction: root.toggleDoNotDisturb()'),
+  'notification controls expose DND as an accessible checkbox'
+)
+assert(
+  panelQml.includes('Accessible.role: Accessible.ListItem') &&
+    panelQml.includes('Accessible.name: modelData.label || modelData.app || "Unknown application"') &&
+    panelQml.includes('Accessible.onPressAction: selectApplication()'),
+  'notification controls expose application rows as accessible selectable items'
 )
 JS
