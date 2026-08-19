@@ -18,5 +18,7 @@ fi
 # Ensure we have the latest archlinux-keyring, maintainer keys might have changed
 # Always reinstall, as the keyring can be updated without a package version bump.
 echo -e "\e[32m\nUpdate Arch signing keys\e[0m"
-sudo pacman -Sy --noconfirm archlinux-keyring >/dev/null 2> >(grep -vE '^warning: archlinux-keyring-[^ ]+ is up to date -- reinstalling$' >&2)
+# LC_ALL=C keeps pacman's messages English, so the "reinstalling" filter below
+# matches regardless of the user's locale (the filter is English-only).
+sudo env LC_ALL=C pacman -Sy --noconfirm archlinux-keyring >/dev/null 2> >(grep -vE '^warning: archlinux-keyring-[^ ]+ is up to date -- reinstalling$' >&2)
 echo "Keys are correct"
