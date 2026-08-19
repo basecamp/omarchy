@@ -86,6 +86,15 @@ codex)
   command=(codex --approve-for-me)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
+hermes)
+  # Hermes has no "start interactive, seeded with this prompt" mode. --oneshot
+  # answers the prompt and exits, which is the closest it offers.
+  if [[ -n ${prompt:-} ]]; then
+    command=(hermes --yolo --oneshot "$prompt")
+  else
+    command=(hermes --yolo)
+  fi
+  ;;
 omp)
   command=(omp --auto-approve)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
