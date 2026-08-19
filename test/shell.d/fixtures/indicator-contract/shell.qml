@@ -206,6 +206,14 @@ ShellRoot {
         dictation.triggerPress(Qt.RightButton)
         root.assertTrue(root.commandCount("omarchy-voxtype-config") === 2, "Dictation clicks run config command")
         root.assertTrue(root.commandCount("omarchy-voxtype-model") === 0, "Dictation clicks do not run model command")
+        dictation.update('{"class":"transcribing"}')
+        root.assertTrue(dictation.effectiveActive === true, "Dictation indicator is active while transcribing")
+        root.assertTrue(dictation.icon === "󰔟", "Dictation transcribing icon is the hourglass")
+        root.assertTrue(dictation.text === dictation.icon, "Dictation indicator shows the transcribing icon while active")
+        dictation.update('{"class":"idle"}')
+        root.assertTrue(dictation.effectiveActive === false, "Dictation indicator is inactive when idle")
+        dictation.update('{"class":"recording"}')
+        root.assertTrue(dictation.effectiveActive === true, "Dictation indicator is active while recording")
       }
 
       var stayAwake = root.createIndicator("StayAwake")
