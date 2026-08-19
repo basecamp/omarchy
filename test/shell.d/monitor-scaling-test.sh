@@ -33,7 +33,24 @@ write_monitor_config() {
   cat >"$monitor_lua" <<'LUA'
 local omarchy_gdk_scale = 2
 local omarchy_monitor_scale = 2
+
+hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
 LUA
+}
+
+# Persistence is per-monitor: the focused monitor gets its own rule while the
+# catch-all defaults that govern every other monitor stay untouched.
+assert_persisted_rule() {
+  local description="$1"
+  local scale="$2"
+
+  grep -Fx "hl.monitor({ output = \"eDP-1\", mode = \"preferred\", position = \"auto\", scale = $scale })" \
+    "$monitor_lua" >/dev/null || fail "$description"
+  grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+    fail "$description leaves the catch-all scale variable untouched"
+  grep -Fx 'hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })' \
+    "$monitor_lua" >/dev/null || fail "$description leaves the catch-all rule untouched"
 }
 
 run_scaling() {
@@ -48,26 +65,26 @@ run_scaling() {
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 run_scaling up
 grep -F 'scale = 3' "$eval_out" >/dev/null || fail "monitor scaling up reaches 3x"
-grep -Fx 'local omarchy_monitor_scale = 3' "$monitor_lua" >/dev/null || fail "monitor scaling up persists 3x"
+assert_persisted_rule "monitor scaling up persists 3x for the focused monitor" 3
 grep -F $'requested=up\tcurrent=2\tnew=3\tmonitor=eDP-1' "$scale_log" >/dev/null || fail "monitor scaling up writes audit log"
 pass "monitor scaling up reaches 3x"
 
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=3 run_scaling down
 grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling down recovers 3x to 2x"
-grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null || fail "monitor scaling down persists 2x from 3x"
+assert_persisted_rule "monitor scaling down persists 2x from 3x for the focused monitor" 2
 pass "monitor scaling down recovers 3x to 2x"
 
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=3.0000000000000004 run_scaling down
 grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling down snaps floating point 3x to 2x"
-grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null || fail "monitor scaling down persists 2x from floating point 3x"
+assert_persisted_rule "monitor scaling down persists 2x from floating point 3x" 2
 pass "monitor scaling down snaps floating point 3x to 2x"
 
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 3
 grep -F 'scale = 3' "$eval_out" >/dev/null || fail "monitor scaling explicit 3x remains available"
-grep -Fx 'local omarchy_monitor_scale = 3' "$monitor_lua" >/dev/null || fail "monitor scaling explicit 3x persists"
+assert_persisted_rule "monitor scaling explicit 3x persists for the focused monitor" 3
 grep -Fx 'local omarchy_gdk_scale = 3' "$monitor_lua" >/dev/null || fail "monitor scaling explicit 3x persists GDK scale"
 pass "monitor scaling explicit 3x remains available"
 
@@ -76,13 +93,13 @@ pass "monitor scaling explicit 3x remains available"
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
 grep -F 'scale = 1.6' "$eval_out" >/dev/null || fail "monitor scaling explicit 1.6x remains available"
-grep -Fx 'local omarchy_monitor_scale = 1.6' "$monitor_lua" >/dev/null || fail "monitor scaling explicit 1.6x persists"
+assert_persisted_rule "monitor scaling explicit 1.6x persists for the focused monitor" 1.6
 grep -Fx 'local omarchy_gdk_scale = 2' "$monitor_lua" >/dev/null || fail "monitor scaling 1.6x persists integer GDK scale 2"
 pass "monitor scaling 1.6x persists integer GDK scale 2"
 
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.25
-grep -Fx 'local omarchy_monitor_scale = 1.25' "$monitor_lua" >/dev/null || fail "monitor scaling explicit 1.25x persists"
+assert_persisted_rule "monitor scaling explicit 1.25x persists for the focused monitor" 1.25
 grep -Fx 'local omarchy_gdk_scale = 1' "$monitor_lua" >/dev/null || fail "monitor scaling 1.25x persists integer GDK scale 1"
 pass "monitor scaling 1.25x persists integer GDK scale 1"
 
@@ -98,8 +115,7 @@ pass "monitor scaling reports the actual non-preset scale"
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 OMARCHY_TEST_MONITOR_WIDTH=1280 OMARCHY_TEST_MONITOR_HEIGHT=800 run_scaling 3
 grep -F 'scale = 3.2' "$eval_out" >/dev/null || fail "monitor scaling approximates explicit 3x as 3.2x"
-grep -Fx 'local omarchy_monitor_scale = 3.2' "$monitor_lua" >/dev/null ||
-  fail "monitor scaling persists approximated 3.2x"
+assert_persisted_rule "monitor scaling persists approximated 3.2x" 3.2
 pass "monitor scaling approximates explicit 3x as 3.2x"
 
 write_monitor_config
@@ -126,6 +142,39 @@ pass "monitor scaling accepts displayed approximate values"
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=4 OMARCHY_TEST_MONITOR_WIDTH=1280 OMARCHY_TEST_MONITOR_HEIGHT=804 run_scaling down
 grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling down skips duplicate 4x approximation"
-grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
-  fail "monitor scaling down persists 2x after skipping duplicate approximation"
+assert_persisted_rule "monitor scaling down persists 2x after skipping duplicate approximation" 2
 pass "monitor scaling down skips duplicate approximation"
+
+# A config with an explicit rule for the focused monitor gets that rule updated
+# in place — no appended duplicate, and the catch-all stays untouched, so the
+# config auto-reload re-applies the NEW value instead of reverting it.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 1.6
+
+hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
+hl.monitor({ output = "eDP-1", mode = "2560x1440@165", position = "1920x0", scale = 1 })
+LUA
+OMARCHY_TEST_MONITOR_SCALE=1 run_scaling 1.25
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "2560x1440@165", position = "1920x0", scale = 1.25 })' \
+  "$monitor_lua" >/dev/null || fail "monitor scaling updates an existing per-monitor rule in place"
+grep -Fx 'local omarchy_monitor_scale = 1.6' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling with an existing rule leaves the catch-all scale variable untouched"
+rule_count=$(grep -Ec '^hl\.monitor\(\{ output = "eDP-1",' "$monitor_lua")
+(( rule_count == 1 )) || fail "monitor scaling does not append a duplicate rule" "actual: $rule_count"
+pass "monitor scaling updates an existing per-monitor rule in place"
+
+# A hand-managed rule (scale is a variable, not a numeric literal) is left
+# entirely alone — no write means no config auto-reload to revert the runtime
+# change that was just applied.
+cat >"$monitor_lua" <<'LUA'
+local laptop_scale = 1.25
+hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = laptop_scale })
+LUA
+before=$(cat "$monitor_lua")
+OMARCHY_TEST_MONITOR_SCALE=1.25 run_scaling 2
+grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling still applies at runtime on a hand-managed config"
+[[ $(cat "$monitor_lua") == "$before" ]] ||
+  fail "monitor scaling leaves a hand-managed config file untouched"
+pass "monitor scaling leaves a hand-managed config file untouched"
