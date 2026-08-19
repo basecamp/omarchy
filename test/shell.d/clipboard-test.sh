@@ -304,6 +304,16 @@ capture_output=$(printf '%s' 'Text with 日本 and 😀' | iconv -f UTF-8 -t UTF
 [[ $capture_output == '{"type":"text","text":"Text with 日本 and 😀"}' ]] || fail "clipboard capture decodes mostly ASCII UTF-16BE text with Unicode characters"
 pass "clipboard capture decodes mostly ASCII UTF-16BE text with Unicode characters"
 
+capture_output=$(printf '%s' 'ABC—' | iconv -f UTF-8 -t UTF-16LE | XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text)
+[[ $capture_output == '{"type":"text","text":"ABC—"}' ]] || fail "clipboard capture decodes UTF-16LE text at the padding threshold"
+pass "clipboard capture decodes UTF-16LE text at the padding threshold"
+
+printf '%s' 'ABC——' | iconv -f UTF-8 -t UTF-16LE >"$TMPDIR/below-utf16-threshold"
+expected=$(jq -cRs '{type:"text", text:.}' <"$TMPDIR/below-utf16-threshold")
+capture_output=$(XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text <"$TMPDIR/below-utf16-threshold")
+[[ $capture_output == "$expected" ]] || fail "clipboard capture leaves UTF-16LE text below the padding threshold undecoded" "expected: $expected\nactual: $capture_output"
+pass "clipboard capture leaves UTF-16LE text below the padding threshold undecoded"
+
 # BOM-less UTF-16LE "A" is byte-identical to UTF-8 "A\0". The padding
 # heuristic intentionally resolves that ambiguity as UTF-16.
 capture_output=$(printf 'A' | iconv -f UTF-8 -t UTF-16LE | XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text)
@@ -340,6 +350,18 @@ expected=$(jq -cRs '{type:"text", text:.}' <"$TMPDIR/nul-separated-utf8")
 capture_output=$(XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text <"$TMPDIR/nul-separated-utf8")
 [[ $capture_output == "$expected" ]] || fail "clipboard capture leaves sparse NUL-separated UTF-8 undecoded" "expected: $expected\nactual: $capture_output"
 pass "clipboard capture leaves sparse NUL-separated UTF-8 undecoded"
+
+printf 'Hello\0\0\0\0\0\0\0\0\0\0\0' >"$TMPDIR/nul-padded-utf8"
+expected=$(jq -cRs '{type:"text", text:.}' <"$TMPDIR/nul-padded-utf8")
+capture_output=$(XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text <"$TMPDIR/nul-padded-utf8")
+[[ $capture_output == "$expected" ]] || fail "clipboard capture leaves NUL-padded UTF-8 undecoded" "expected: $expected\nactual: $capture_output"
+pass "clipboard capture leaves NUL-padded UTF-8 undecoded"
+
+printf '\001\000\001\000\001\000\001\000' >"$TMPDIR/ambiguous-control-text"
+expected=$(jq -cRs '{type:"text", text:.}' <"$TMPDIR/ambiguous-control-text")
+capture_output=$(XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text <"$TMPDIR/ambiguous-control-text")
+[[ $capture_output == "$expected" ]] || fail "clipboard capture leaves endian-ambiguous control text undecoded" "expected: $expected\nactual: $capture_output"
+pass "clipboard capture leaves endian-ambiguous control text undecoded"
 
 printf '\377\376\075\330' >"$TMPDIR/malformed-utf16"
 expected=$(jq -cRs '{type:"text", text:.}' <"$TMPDIR/malformed-utf16")

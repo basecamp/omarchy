@@ -43,37 +43,42 @@ emit_image() {
 }
 
 emit_text() {
-  perl -MEncode=decode,FB_CROAK -MJSON::PP=encode_json -0777 -e '
+  perl -MEncode=decode,FB_CROAK,LEAVE_SRC -MJSON::PP=encode_json -0777 -e '
     my $raw = <STDIN>;
     exit unless length $raw;
 
     my $encoding;
+    my $heuristic_encoding = 0;
     if ($raw =~ /^(?:\xFF\xFE|\xFE\xFF)/) {
       $encoding = "UTF-16";
-    } elsif (length($raw) % 2 == 0) {
-      my @bytes = unpack("C*", $raw);
-      my ($even_nuls, $odd_nuls) = (0, 0);
-      for my $index (0 .. $#bytes) {
-        next unless $bytes[$index] == 0;
-        if ($index % 2 == 0) {
-          $even_nuls++;
-        } else {
-          $odd_nuls++;
-        }
-      }
+    } elsif (length($raw) % 2 == 0 && index($raw, "\0") >= 0) {
+      my $units = length($raw) / 2;
+
+      my $even_bytes = $raw;
+      $even_bytes =~ s/(.)./$1/sg;
+      my $even_nuls = $even_bytes =~ tr/\0/\0/;
+      undef $even_bytes;
+
+      my $odd_bytes = $raw;
+      $odd_bytes =~ s/.(.)/$1/sg;
+      my $odd_nuls = $odd_bytes =~ tr/\0/\0/;
 
       # BOM-less UTF-16 is indistinguishable from NUL-separated bytes. Decode
       # only when at least three quarters of the code units have consistent
-      # padding, while allowing Unicode punctuation and other non-ASCII units.
-      my $units = @bytes / 2;
-      if ($odd_nuls > $even_nuls && $odd_nuls * 4 >= $units * 3) {
+      # padding and fewer than one quarter have NULs in the opposite byte.
+      if ($odd_nuls * 4 >= $units * 3 && $even_nuls * 4 < $units) {
         $encoding = "UTF-16LE";
-      } elsif ($even_nuls > $odd_nuls && $even_nuls * 4 >= $units * 3) {
+        $heuristic_encoding = 1;
+      } elsif ($even_nuls * 4 >= $units * 3 && $odd_nuls * 4 < $units) {
         $encoding = "UTF-16BE";
+        $heuristic_encoding = 1;
       }
     }
 
-    my $text = $encoding ? eval { decode($encoding, $raw, FB_CROAK) } : undef;
+    my $text = $encoding ? eval { decode($encoding, $raw, FB_CROAK | LEAVE_SRC) } : undef;
+    if ($heuristic_encoding && defined($text) && $text =~ /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/) {
+      $text = undef;
+    }
     $text = decode("UTF-8", $raw) unless defined $text;
     print "{\"type\":\"text\",\"text\":", encode_json($text), "}\n";
   '
