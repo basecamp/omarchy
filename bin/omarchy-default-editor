@@ -56,4 +56,18 @@ fi
 mkdir -p "$(dirname "$editor_file")"
 printf '%s\n' "$editor" >"$editor_file"
 
+# Nautilus and other XDG-aware file managers pick the app for text files from
+# mimeapps.list, not from Omarchy's internal default. Point every text MIME
+# type at the omarchy-launch-editor handler, which delegates to the editor
+# recorded above — so changing the default editor from the menu also changes
+# what double-clicking a text file opens in Nautilus.
+if command -v xdg-mime >/dev/null 2>&1; then
+  xdg-mime default omarchy-launch-editor.desktop \
+    text/plain text/english text/x-makefile \
+    text/x-c++hdr text/x-c++src text/x-chdr text/x-csrc \
+    text/x-java text/x-moc text/x-pascal text/x-tcl text/x-tex \
+    application/x-shellscript text/x-c text/x-c++ \
+    application/xml text/xml
+fi
+
 omarchy-notification-send -g $glyph "$name is now the default editor"
