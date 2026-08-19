@@ -11,10 +11,32 @@ fi
 
 BACKGROUND="$(realpath "$1")"
 CURRENT_BACKGROUND_LINK="$HOME/.local/state/omarchy/current/background"
+THEME_NAME=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null)
+THEME_BACKGROUNDS_PATH=$(realpath "$HOME/.local/state/omarchy/current/theme/backgrounds" 2>/dev/null)
+USER_BACKGROUNDS_PATH="$HOME/.config/omarchy/backgrounds/$THEME_NAME"
 
 if [[ ! -f $BACKGROUND ]]; then
   echo "File does not exist: $BACKGROUND" >&2
   exit 1
+fi
+
+# Adopt images from outside the theme's background collections into the user's
+# per-theme collection, so they show up in the background switcher and keep
+# working even if the original file is moved or deleted.
+if [[ -n $THEME_NAME && $BACKGROUND != "$THEME_BACKGROUNDS_PATH"/* && $BACKGROUND != "$USER_BACKGROUNDS_PATH"/* ]]; then
+  case ${BACKGROUND,,} in
+    *.jpg | *.jpeg | *.png | *.gif | *.bmp | *.webp)
+      mkdir -p "$USER_BACKGROUNDS_PATH"
+      target="$USER_BACKGROUNDS_PATH/$(basename "$BACKGROUND")"
+      if [[ -e $target ]] && ! cmp -s "$BACKGROUND" "$target"; then
+        target="$USER_BACKGROUNDS_PATH/$(date +%s)-$(basename "$BACKGROUND")"
+      fi
+      if [[ ! -e $target ]]; then
+        cp "$BACKGROUND" "$target"
+      fi
+      BACKGROUND="$target"
+      ;;
+  esac
 fi
 
 # Create symlink to the new background
