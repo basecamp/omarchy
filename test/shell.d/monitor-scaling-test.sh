@@ -12,6 +12,7 @@ eval_out="$test_tmp/hyprctl-eval"
 home_dir="$test_tmp/home"
 monitor_lua="$home_dir/.config/hypr/monitors.lua"
 scale_log="$home_dir/.local/state/omarchy/monitor-scaling.log"
+scale_file="$test_tmp/omarchy-monitor-scale"
 
 mkdir -p "$stub_bin" "$home_dir/.config/hypr"
 
@@ -39,9 +40,10 @@ LUA
 run_scaling() {
   HOME="$home_dir" \
     XDG_STATE_HOME="$home_dir/.local/state" \
-    PATH="$stub_bin:$PATH" \
+    PATH="$stub_bin:$ROOT/bin:$PATH" \
     OMARCHY_TEST_HYPRCTL_EVAL_OUT="$eval_out" \
     OMARCHY_TEST_MONITOR_SCALE="${OMARCHY_TEST_MONITOR_SCALE:-2}" \
+    OMARCHY_SDDM_MONITOR_SCALE="$scale_file" \
     "$ROOT/bin/omarchy-hyprland-monitor-scaling" "$@"
 }
 
@@ -49,6 +51,7 @@ write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 run_scaling up
 grep -F 'scale = 3' "$eval_out" >/dev/null || fail "monitor scaling up reaches 3x"
 grep -Fx 'local omarchy_monitor_scale = 3' "$monitor_lua" >/dev/null || fail "monitor scaling up persists 3x"
+grep -Fx '3' "$scale_file" >/dev/null || fail "monitor scaling up persists 3x to the greeter"
 grep -F $'requested=up\tcurrent=2\tnew=3\tmonitor=eDP-1' "$scale_log" >/dev/null || fail "monitor scaling up writes audit log"
 pass "monitor scaling up reaches 3x"
 
@@ -77,6 +80,7 @@ write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
 grep -F 'scale = 1.6' "$eval_out" >/dev/null || fail "monitor scaling explicit 1.6x remains available"
 grep -Fx 'local omarchy_monitor_scale = 1.6' "$monitor_lua" >/dev/null || fail "monitor scaling explicit 1.6x persists"
+grep -Fx '1.6' "$scale_file" >/dev/null || fail "monitor scaling 1.6x persists to the greeter"
 grep -Fx 'local omarchy_gdk_scale = 2' "$monitor_lua" >/dev/null || fail "monitor scaling 1.6x persists integer GDK scale 2"
 pass "monitor scaling 1.6x persists integer GDK scale 2"
 
