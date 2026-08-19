@@ -289,6 +289,26 @@ assert(
     && defaultById['remove.browser.zen'].when === 'omarchy-pkg-present zen-browser-bin',
   'menu still hides Remove rows for software that is not installed'
 )
+assertDeepEqual(
+  defaultItems
+    .filter(item => item.parent === 'remove')
+    .map(item => item.id),
+  [
+    'remove.package',
+    'remove.ai',
+    'remove.service',
+    'remove.development',
+    'remove.theme',
+    'remove.gaming',
+    'remove.browser',
+    'remove.webapp',
+    'remove.tui',
+    'remove.windows',
+    'remove.preinstalls',
+    'remove.security'
+  ],
+  'menu orders Remove categories like their Install counterparts, followed by Remove-only categories'
+)
 assert(
   defaultById['setup.security.passwordless-sudo'].action.includes('omarchy-sudo-passwordless'),
   'menu places Passwordless Sudo under Setup > Security'
