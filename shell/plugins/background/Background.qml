@@ -26,6 +26,11 @@ Item {
   property string pendingShellRaw: ""
   property real revealProgress: 1
 
+  // Pause video wallpapers while the focused application is fullscreen so the
+  // wallpaper's decode and render work stops when it is fully covered.
+  readonly property var activeToplevel: ToplevelManager.activeToplevel
+  readonly property bool fullscreenActive: activeToplevel ? activeToplevel.fullscreen : false
+
   function isVideo(path) {
     return Util.isVideoPath(path)
   }
@@ -228,6 +233,7 @@ Item {
         id: base
         anchors.fill: parent
         path: root.displayedBackground
+        playbackEnabled: !root.fullscreenActive
         onReadyChanged: {
           if (ready && root.finishingTransition) {
             root.incomingBackground = ""
