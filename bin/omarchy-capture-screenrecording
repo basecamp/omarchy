@@ -198,7 +198,33 @@ start_screenrecording() {
   if kill -0 $pid 2>/dev/null; then
     echo "$filename" >"$RECORDING_FILE"
     toggle_screenrecording_indicator
+    return 0
   fi
+
+  # gsr exited without writing the file. On a hybrid laptop the kms backend
+  # connects to the iGPU's DRM card, so it can't see an external monitor wired
+  # to the dGPU — gsr logs "failed to find monitor by name" and exits. gsr has
+  # no capture-time card selector, so fall back to the portal backend, the
+  # documented path for external-GPU monitors. The portal pops the
+  # xdg-desktop-portal picker, which is the only way to capture a dGPU-driven
+  # display; skip it when the user already opted into portal above.
+  if [[ $target != portal ]]; then
+    omarchy-notification-send -t 4000 "Retrying screen recording via the portal backend" \
+      "The kms backend couldn't capture this monitor — the portal picker will ask you to confirm the source"
+    capture_args=(-w portal -s "${RESOLUTION:-0x0}")
+    gpu-screen-recorder "${capture_args[@]}" -k auto -f 60 -fm cfr -fallback-cpu-encoding yes -o "$filename" "${audio_args[@]}" 2>>"$LOG_FILE" &
+    pid=$!
+    while kill -0 $pid 2>/dev/null && [[ ! -f $filename ]]; do
+      sleep 0.2
+    done
+    if kill -0 $pid 2>/dev/null; then
+      echo "$filename" >"$RECORDING_FILE"
+      toggle_screenrecording_indicator
+      return 0
+    fi
+  fi
+
+  return 1
 }
 
 stop_screenrecording() {
