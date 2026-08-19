@@ -8,11 +8,12 @@ dns="$ROOT/bin/omarchy-dns"
 sudoers_file="$ROOT/etc/sudoers.d/omarchy-dns"
 rule='%wheel ALL=(root) NOPASSWD: /usr/bin/omarchy-dns Cloudflare, /usr/bin/omarchy-dns Google, /usr/bin/omarchy-dns DHCP'
 
-grep -Fx "$rule" "$sudoers_file" >/dev/null ||
-  fail "dns sudoers rule grants exactly the stock providers passwordlessly"
-
-! grep -F 'omarchy-dns Custom' "$sudoers_file" >/dev/null ||
-  fail "dns sudoers rule does not grant Custom, which takes caller-supplied servers"
+# Exactly one rule, matched whole. A second line -- or the same command with
+# its arguments dropped, which sudoers reads as "any arguments" -- would widen
+# the grant while leaving this line in place.
+rules=$(grep -vE '^[[:space:]]*(#|$)' "$sudoers_file")
+[[ $rules == "$rule" ]] ||
+  fail "dns sudoers file carries exactly the stock-provider rule and nothing else" "got: $rules"
 
 if command -v visudo >/dev/null; then
   visudo -cf "$sudoers_file" >/dev/null || fail "dns sudoers rule parses"
@@ -32,6 +33,13 @@ grep -Fx '    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin' "$dns" >/d
   fail "omarchy-dns pins a root-owned PATH once elevated, so a dev-linked checkout on sudo's secure_path cannot supply its helpers"
 
 pass "dns sudoers rule is scoped to the stock providers"
+
+# require_root returns immediately for root, so the stubs below would not stand
+# between the script and the host's real NetworkManager and resolved config.
+if (( EUID == 0 )); then
+  pass "running as root; skipping the elevation checks, which would rewrite this machine's DNS"
+  exit 0
+fi
 
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
@@ -57,6 +65,16 @@ mkdir -p "$test_tmp/packaged/bin" "$test_tmp/checkout/bin"
 ln -sfn /usr/bin/omarchy-dns "$test_tmp/packaged/bin/omarchy-dns"
 cp "$dns" "$test_tmp/checkout/bin/omarchy-dns"
 
+# The rule is %wheel-scoped, so group membership decides the route as much as
+# the path and the provider do. Stub id rather than reading the real groups:
+# the suite has to give the same answer on a build user outside wheel.
+cat >"$stub_bin/id" <<'SH'
+#!/bin/bash
+[[ ${1:-} == -nG ]] || exec /usr/bin/id "$@"
+printf '%s\n' "${STUB_GROUPS-users wheel}"
+SH
+chmod +x "$stub_bin/id"
+
 elevation_for() {
   local omarchy_path="$1"
   local provider="$2"
@@ -80,6 +98,10 @@ pass "omarchy-dns elevates the stock providers through sudo, not polkit"
 custom=$(elevation_for "$test_tmp/packaged" Custom)
 [[ $custom == "pkexec /usr/bin/omarchy-dns Custom" ]] ||
   fail "omarchy-dns leaves Custom on the polkit path, since no sudoers rule covers it" "got: $custom"
+
+non_wheel=$(STUB_GROUPS="users" elevation_for "$test_tmp/packaged" Cloudflare)
+[[ $non_wheel == "pkexec /usr/bin/omarchy-dns Cloudflare" ]] ||
+  fail "omarchy-dns leaves a user outside %wheel on the polkit path, since the rule cannot match them" "got: $non_wheel"
 
 dev_linked=$(elevation_for "$test_tmp/checkout" Cloudflare)
 [[ $dev_linked == "pkexec $test_tmp/checkout/bin/omarchy-dns Cloudflare" ]] ||

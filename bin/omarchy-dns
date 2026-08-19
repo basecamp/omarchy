@@ -37,15 +37,26 @@ self_path() {
   readlink -f "$OMARCHY_PATH/bin/${BASH_SOURCE[0]##*/}"
 }
 
-granted_provider() {
-  case "${1:-}" in
-  Cloudflare | Google | DHCP)
-    return 0
-    ;;
-  *)
-    return 1
-    ;;
+# True when etc/sudoers.d/omarchy-dns covers this exact invocation. All three
+# halves of the rule have to hold -- the packaged path, one of the three
+# providers, and %wheel -- or sudo asks for a password like any other command.
+grant_covers() {
+  local self="$1"
+  local provider="${2:-}"
+  local group
+
+  [[ $self == "$PACKAGED_PATH" ]] || return 1
+
+  case "$provider" in
+  Cloudflare | Google | DHCP) ;;
+  *) return 1 ;;
   esac
+
+  for group in $(id -nG 2>/dev/null); do
+    [[ $group == wheel ]] && return 0
+  done
+
+  return 1
 }
 
 require_root() {
@@ -66,13 +77,14 @@ require_root() {
   # right when etc/sudoers.d/omarchy-dns covers this exact invocation: that
   # grant is what keeps the panel's one-click provider switch from raising a
   # polkit prompt. Everything else -- Custom, a dev-linked checkout the rule
-  # does not name -- still goes through polkit.
+  # does not name, a user outside %wheel -- still goes through polkit, which
+  # can at least offer to authenticate as someone else.
   #
   # Do not swap this for a `sudo -n -l` probe. That reports whether a command is
   # permitted, not whether it is passwordless, so the blanket %wheel rule
   # answers yes for every argument and Custom dies on `sudo -n` instead of
   # falling through to pkexec.
-  if [[ -t 0 ]] || { [[ $self == "$PACKAGED_PATH" ]] && granted_provider "${1:-}"; }; then
+  if [[ -t 0 ]] || grant_covers "$self" "${1:-}"; then
     exec sudo "$self" "$@"
   fi
 
