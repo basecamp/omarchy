@@ -10,6 +10,7 @@ Item {
   property color badgeColor: Color.urgent
   property bool crossed: false
   property bool warning: false
+  property bool routed: false
 
   width: iconSize
   height: iconSize
@@ -23,15 +24,15 @@ Item {
   // Native rendering of the Tailscale mark from the SVG: a 3×3 dot grid
   // with the inactive dots faded. This avoids Qt SVG/effect rendering quirks
   // in tiny bar slots while keeping the official silhouette.
-  Dot { x: 0; y: 0; opacity: 0.24 }
-  Dot { x: root.mid; y: 0; opacity: 0.24 }
-  Dot { x: root.end; y: 0; opacity: 0.24 }
+  Dot { x: 0; y: 0; opacity: root.routed ? 1.0 : 0.24 }
+  Dot { x: root.mid; y: 0; opacity: root.routed ? 1.0 : 0.24 }
+  Dot { x: root.end; y: 0; opacity: root.routed ? 1.0 : 0.24 }
   Dot { x: 0; y: root.mid; opacity: 1.0 }
   Dot { x: root.mid; y: root.mid; opacity: 1.0 }
   Dot { x: root.end; y: root.mid; opacity: 1.0 }
-  Dot { x: 0; y: root.end; opacity: 0.24 }
+  Dot { x: 0; y: root.end; opacity: root.routed ? 1.0 : 0.24 }
   Dot { x: root.mid; y: root.end; opacity: 1.0 }
-  Dot { x: root.end; y: root.end; opacity: 0.24 }
+  Dot { x: root.end; y: root.end; opacity: root.routed ? 1.0 : 0.24 }
 
   Rectangle {
     visible: root.crossed

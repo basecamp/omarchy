@@ -5,8 +5,10 @@ Native Omarchy bar widget for Tailscale.
 ## Features
 
 - Shows Tailscale connection state in the bar
+- Fills in the mark's faded dots while an exit node is routing traffic
 - Left click opens a keyboard-friendly panel
-- Right click toggles Tailscale on/off
+- Right click toggles the exit node name shown inline in the bar
+- Middle click toggles Tailscale on/off
 - Switch between available Tailscale connections when multiple are available
 - Browse machines from `tailscale status --json`
 - Copy a machine's Tailscale IP, host name, or DNS name
@@ -43,6 +45,12 @@ runs the same loop by hand.
 ## Icon
 
 Renders the Tailscale mark natively as a theme-colored 3×3 dot grid, matching the official SVG silhouette while avoiding tiny-SVG rendering quirks in the bar.
+
+With an exit node active the grid's faded dots come up to full opacity, so a
+tunnelled connection reads differently from a healthy direct one at a glance.
+The signal is carried by shape rather than color: on a light-on-dark bar the
+resting mark is already near-white, so any tint would *lower* contrast and read
+as dimmed rather than lit.
 
 ## Add to the bar
 

@@ -19,7 +19,8 @@
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "refreshIntervalSec": 30
+      "refreshIntervalSec": 30,
+      "showNodeName": false
     },
     "schema": [
       {
@@ -30,6 +31,12 @@
         "max": 3600,
         "step": 5,
         "defaultValue": 30
+      },
+      {
+        "key": "showNodeName",
+        "type": "boolean",
+        "label": "Show exit node name in bar",
+        "defaultValue": false
       }
     ]
   }
