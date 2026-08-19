@@ -2,7 +2,7 @@
 
 # omarchy:summary=Share this machine's internet as a Wi-Fi access point (hotspot)
 # omarchy:group=network
-# omarchy:args=<status|start|stop|toggle|qr|apply|setup|teardown|diagnose> [ssid] [band]
+# omarchy:args=<status|start|stop|toggle|qr|apply|setup|teardown|diagnose|generate-password> [ssid] [band]
 # omarchy:examples=omarchy hotspot status | omarchy hotspot toggle | omarchy hotspot apply MyWifi 2.4 | omarchy hotspot diagnose
 
 # Drives NetworkManager's shared-mode AP profile so other devices can join
@@ -311,6 +311,14 @@ firewall_ensure() {
   fi
 }
 
+# A freshly-generated hotspot passphrase: unambiguously typable (no O/0, I/l,
+# 1) and drawn from /dev/urandom, since a WPA2 pre-shared key is the hotspot's
+# only gate and Math.random() would be predictable.
+generate_password() {
+  tr -dc 'A-HJ-NP-Za-km-z2-9' </dev/urandom | head -c 10 || true
+  echo
+}
+
 # Password arrives on stdin (never argv). band is optional, default 2.4.
 start() {
   local ssid=$1 band=${2:-2.4} password
@@ -539,7 +547,7 @@ diagnose() {
 }
 
 usage() {
-  echo "Usage: omarchy-hotspot <status|start|stop|toggle|qr|apply|setup|teardown|diagnose> [ssid] [band]" >&2
+  echo "Usage: omarchy-hotspot <status|start|stop|toggle|qr|apply|setup|teardown|diagnose|generate-password> [ssid] [band]" >&2
 }
 
 case "${1:-}" in
@@ -553,5 +561,6 @@ case "${1:-}" in
   teardown) teardown ;;
   firewall-apply) shift; firewall_apply "$1" ;;
   diagnose) diagnose ;;
+  generate-password) generate_password ;;
   *) usage; exit 2 ;;
 esac

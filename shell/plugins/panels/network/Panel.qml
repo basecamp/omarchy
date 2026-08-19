@@ -947,7 +947,11 @@ Panel {
   }
 
   function generateHotspotPassword() {
-    hotspotPassword = Model.generateHotspotPassword()
+    if (hotspotPasswordProc.running) return
+    // The secret comes from omarchy-hotspot over /dev/urandom, never from
+    // Math.random(): a WPA2 pre-shared key must not be predictable.
+    hotspotPasswordProc.command = [hotspotCommand, "generate-password"]
+    hotspotPasswordProc.running = true
   }
 
   function focusHotspot() {
@@ -1090,6 +1094,19 @@ Panel {
     }
   }
 
+  // Fill the editable password field with a fresh secret from omarchy-hotspot
+  // (see generateHotspotPassword). The command prints only the 10-char key.
+  Process {
+    id: hotspotPasswordProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var pw = String(text || "").replace(/\s+/g, "").trim()
+        if (pw !== "") root.hotspotPassword = pw
+      }
+    }
+  }
+
   // Start/stop/apply runner. The passphrase travels over stdin for `start`
   // and `apply`, never argv (see omarchy-hotspot). onExited refreshes both
   // the hotspot state and the hero/connection rows, since switching the radio
@@ -1099,6 +1116,7 @@ Panel {
     property string secret: ""
     stdinEnabled: true
     stdout: StdioCollector { waitForEnd: true }
+    stderr: StdioCollector { id: hotspotErr; waitForEnd: true }
     onStarted: {
       if (secret !== "") {
         write(secret + "\n")
@@ -1111,6 +1129,17 @@ Panel {
         var verb = root.hotspotActionKind === "stop" ? "stop"
           : root.hotspotActionKind === "apply" ? "apply" : "start"
         root.hotspotError = "Failed to " + verb + " hotspot"
+        // stderr may still be draining when the process exits, so read it
+        // after the event loop settles and surface the command's own reason
+        // (missing dnsmasq, unsupported band, ...) instead of a generic line.
+        Qt.callLater(function() {
+          var reason = String(hotspotErr.text || "").replace(/\s+/g, " ").trim()
+          if (reason !== "") {
+            root.hotspotError = "Failed to " + verb + " hotspot: " + reason
+          } else {
+            root.hotspotError = "Failed to " + verb + " hotspot (run `omarchy hotspot diagnose` for details)"
+          }
+        })
       }
       root.hotspotActionKind = ""
       Qt.callLater(function() {

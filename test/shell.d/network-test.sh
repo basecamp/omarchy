@@ -317,7 +317,8 @@ assertDeepEqual(network.hotspotClients({ clients: 'garbage' }), [], 'network ign
 assertEqual(network.hotspotClientLabel({ mac: 'aa:bb:cc', signal: -42 }), 'AA:BB:CC · -42 dBm', 'network labels a hotspot client with signal')
 assertEqual(network.hotspotClientLabel({ mac: 'aa:bb:cc' }), 'AA:BB:CC', 'network labels a hotspot client without signal')
 assertEqual(network.hotspotClientLabel({}), '', 'network labels an empty hotspot client')
-assert(/^[A-HJ-NP-Za-km-z2-9]{10}$/.test(network.generateHotspotPassword()), 'network generates a 10-char unambiguous hotspot password')
+assert(/hotspotPasswordProc\.command = \[hotspotCommand, "generate-password"\]/.test(panelSource), 'network generates the hotspot password through the first-party command')
+assert(!/Model\.generateHotspotPassword/.test(panelSource), 'network does not generate the hotspot password with a JS Math.random')
 
 // The hotspot section in the panel: dynamic AP bands drive the selector, the
 // whole wifi list hides while the AP owns the radio, and the command runs by
@@ -331,4 +332,6 @@ assert(/function toggleHotspot\(\) \{ root\.toggleHotspot\(\) \}/.test(panelSour
 assert(/function openHotspotSetup\(\) \{ root\.openHotspotSetup\(\) \}/.test(panelSource), 'network exposes an IPC opener for the hotspot setup')
 assert(/if \(\(next\.active === "1"\) !== wasActive\) syncWifiNetworks\(\)/.test(panelSource), 'network re-syncs the wifi list when the hotspot active state changes')
 assert(/focusSection === "hotspot"/.test(panelSource), 'network has a keyboard cursor zone for the hotspot section')
+assert(/stderr: StdioCollector \{ id: hotspotErr; waitForEnd: true \}/.test(panelSource), 'network surfaces the hotspot command stderr')
+assert(/omarchy hotspot diagnose` for details/.test(panelSource), 'network points hotspot failures at the diagnose command')
 JS

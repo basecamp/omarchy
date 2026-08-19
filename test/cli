@@ -111,6 +111,9 @@ pass "hotspot routes under its own group and is listed with the network group"
 [[ $("$CLI" hotspot status | awk -F'\t' '$1 == "ap_capable" { print $2 }') =~ ^[01]$ ]]
 pass "hotspot status reports a boolean AP capability"
 
+[[ $("$CLI" hotspot generate-password) =~ ^[A-HJ-NP-Za-km-z2-9]{10}$ ]]
+pass "hotspot generate-password emits an unambiguous 10-char secret"
+
 "$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-refresh-pacman" and .requires_sudo == true)' >/dev/null
 pass "sudo metadata marks sudo commands"
 

@@ -404,16 +404,6 @@ function hotspotClientLabel(client) {
   return mac
 }
 
-// Plaintext hotspot secret, random 10-char alphanumeric (no ambiguous chars).
-function generateHotspotPassword() {
-  var alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
-  var out = ""
-  for (var i = 0; i < 10; i++) {
-    out += alphabet[Math.floor(Math.random() * alphabet.length)]
-  }
-  return out
-}
-
 if (typeof module !== "undefined") {
   module.exports = {
     parseNetworkStatus: parseNetworkStatus,
@@ -447,7 +437,6 @@ if (typeof module !== "undefined") {
     hotspotBands: hotspotBands,
     hotspotDefaultBand: hotspotDefaultBand,
     hotspotClients: hotspotClients,
-    hotspotClientLabel: hotspotClientLabel,
-    generateHotspotPassword: generateHotspotPassword
+    hotspotClientLabel: hotspotClientLabel
   }
 }
