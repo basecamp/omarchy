@@ -10,8 +10,12 @@ Item {
   id: root
 
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
+  // Injected by the shell's panel loader (see shell.qml onLoaded).
+  property var shell: null
+  property var manifest: null
   property bool opened: false
   property string filterText: ""
+  property bool imagesOnly: false
   property int selectedIndex: 0
   property bool cursorActive: false
   property bool clearConfirmOpen: false
@@ -38,11 +42,29 @@ Item {
   property int cardWidth: Math.min(Style.space(875), panel.width - Style.gapsOut * 2)
   property int cardHeight: Math.min(Style.space(600), panel.height - Style.gapsOut * 2)
   property int rowHeight: Math.max(Style.space(50), Style.font.body + Style.font.caption + Style.spacing.rowPaddingX * 2)
-  property int historyLimit: 300
+  // Optional settings on this plugin's entry in shell.json, e.g.
+  //   "plugins": [{ "id": "omarchy.clipboard", "historyLimit": 500, "ocr": true }]
+  // Defaults preserve the previous fixed behavior. shell.shellConfig
+  // re-parses when shell.json is saved, so these are live.
+  readonly property var pluginSettings: {
+    var cfg = root.shell ? root.shell.shellConfig : null
+    var list = cfg && Array.isArray(cfg.plugins) ? cfg.plugins : []
+    var id = root.manifest && root.manifest.id ? String(root.manifest.id) : "omarchy.clipboard"
+    for (var i = 0; i < list.length; i++)
+      if (list[i] && list[i].id === id) return list[i]
+    return ({})
+  }
+  property int historyLimit: Number(root.pluginSettings.historyLimit) > 0 ? Math.floor(Number(root.pluginSettings.historyLimit)) : 300
+  property int maxRows: Number(root.pluginSettings.maxRows) > 0 ? Math.floor(Number(root.pluginSettings.maxRows)) : 50
+  // false = Enter/click only copies to the clipboard (paste manually);
+  // true keeps the default copy-and-auto-paste. Shift+Enter always does
+  // the other action.
+  property bool autoPaste: root.pluginSettings.autoPaste !== false
 
   function open(payloadJson) {
     root.opened = true
     root.filterText = ""
+    root.imagesOnly = false
     root.selectedIndex = 0
     root.cursorActive = true
     root.disarmPointer()
@@ -136,7 +158,7 @@ Item {
   }
 
   function rebuildDisplay() {
-    var rows = ClipboardHistory.displayRows(root.history, root.filterText, 50)
+    var rows = ClipboardHistory.displayRows(root.history, root.filterText, root.maxRows, root.imagesOnly ? "image" : "")
 
     displayModel.clear()
     for (var i = 0; i < rows.length; i++) {
@@ -189,6 +211,14 @@ Item {
     root.rebuildDisplay()
   }
 
+  function toggleImagesOnly() {
+    root.imagesOnly = !root.imagesOnly
+    root.selectedIndex = 0
+    root.cursorActive = true
+    root.disarmPointer()
+    root.rebuildDisplay()
+  }
+
   function disarmPointer() {
     pointerGate.reset()
   }
@@ -215,6 +245,16 @@ Item {
     if (index < 0 || index >= displayModel.count) return
     var row = displayModel.get(index)
     root.openSelected(row)
+  }
+
+  function primaryIndex(index) {
+    if (root.autoPaste) root.activateIndex(index)
+    else root.copyIndex(index)
+  }
+
+  function secondaryIndex(index) {
+    if (root.autoPaste) root.copyIndex(index)
+    else root.activateIndex(index)
   }
 
   function applySelected(row) {
@@ -370,7 +410,11 @@ Item {
 
           if (event.key === Qt.Key_Escape) {
             if (root.filterText) root.setFilter("")
+            else if (root.imagesOnly) root.toggleImagesOnly()
             else root.close()
+            event.accepted = true
+          } else if (event.key === Qt.Key_I && (event.modifiers & Qt.ControlModifier)) {
+            root.toggleImagesOnly()
             event.accepted = true
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
@@ -399,8 +443,8 @@ Item {
             event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             if (root.cursorActive && (event.modifiers & Qt.AltModifier)) root.openIndex(root.selectedIndex)
-            else if (root.cursorActive && (event.modifiers & Qt.ShiftModifier)) root.copyIndex(root.selectedIndex)
-            else if (root.cursorActive) root.activateIndex(root.selectedIndex)
+            else if (root.cursorActive && (event.modifiers & Qt.ShiftModifier)) root.secondaryIndex(root.selectedIndex)
+            else if (root.cursorActive) root.primaryIndex(root.selectedIndex)
             else if (displayModel.count > 0) root.cursorActive = true
             event.accepted = true
           } else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127) {
@@ -447,7 +491,7 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: root.filterText || "Search clipboard…"
+            text: (root.imagesOnly ? "[images] " : "") + (root.filterText || (root.imagesOnly ? "Search image text…" : "Search clipboard…"))
             textFormat: Text.PlainText
             color: root.foreground
             opacity: root.filterText ? 1 : 0.58
@@ -539,7 +583,7 @@ Item {
                     onClicked: {
                       root.cursorActive = true
                       root.selectedIndex = row.index
-                      root.activateIndex(row.index)
+                      root.primaryIndex(row.index)
                     }
                   }
                 }
@@ -610,7 +654,9 @@ Item {
             }
 
             Text {
-              text: root.history.length === 0 ? "Clipboard is empty" : "No matches for “" + root.filterText + "”"
+              text: root.history.length === 0 ? "Clipboard is empty"
+                : (root.imagesOnly && !root.filterText ? "No images in history"
+                : "No matches for “" + root.filterText + "”")
               textFormat: Text.PlainText
               color: root.foreground
               opacity: 0.7
