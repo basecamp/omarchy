@@ -2,5 +2,7 @@
 
 # omarchy:summary=Print the detected Hyprland touchpad or trackpad device name
 
-device=$(hyprctl devices -j | jq -r '[.mice[] | .name | select(test("touchpad|trackpad"; "i"))] | first // empty')
+# "multi-touch" matches Apple Silicon internal trackpads, which Hyprland
+# names after the MTP HID interface (e.g. "apple-mtp-multi-touch").
+device=$(hyprctl devices -j | jq -r '[.mice[] | .name | select(test("touchpad|trackpad|multi-touch"; "i"))] | first // empty')
 [[ -n $device ]] && echo "$device"
