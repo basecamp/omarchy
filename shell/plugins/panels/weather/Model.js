@@ -153,6 +153,45 @@ function openMeteoForecastDays(dailyForecastReport, todayString) {
   return result
 }
 
+// Today's own daily entry. The forecast strip shows only future days (see
+// isFutureForecastDate), so today's high/low is resolved separately for the
+// hero read-out. Matches on date rather than trusting index 0.
+function openMeteoTodayForecast(dailyForecastReport, todayString) {
+  var daily = dailyForecastReport && dailyForecastReport.daily ? dailyForecastReport.daily : null
+  if (!daily || !daily.time) return null
+
+  var today = String(todayString || "")
+  for (var i = 0; i < daily.time.length; ++i) {
+    if (String(daily.time[i]).slice(0, 10) !== today) continue
+
+    var maxC = daily.temperature_2m_max ? daily.temperature_2m_max[i] : ""
+    var minC = daily.temperature_2m_min ? daily.temperature_2m_min[i] : ""
+    return {
+      date: daily.time[i],
+      maxtempC: roundedTemp(maxC),
+      mintempC: roundedTemp(minC),
+      maxtempF: roundedTemp(celsiusToFahrenheit(maxC)),
+      mintempF: roundedTemp(celsiusToFahrenheit(minC)),
+      openMeteoWeatherCode: daily.weather_code ? daily.weather_code[i] : null
+    }
+  }
+  return null
+}
+
+function wttrTodayForecast(report, todayString) {
+  var days = report && report.weather ? report.weather : []
+  var today = String(todayString || "")
+  for (var i = 0; i < days.length; ++i) {
+    if (String(days[i].date || "").slice(0, 10) === today) return days[i]
+  }
+  return null
+}
+
+function buildTodayForecast(report, dailyForecastReport, todayString) {
+  return openMeteoTodayForecast(dailyForecastReport, todayString)
+    || wttrTodayForecast(report, todayString)
+}
+
 // Open-Meteo bundles current conditions with the daily forecast request and
 // answers far faster than wttr.in. Normalize them to wttr's
 // current_condition shape so the panel can use either source
@@ -281,6 +320,9 @@ if (typeof module !== "undefined") {
     shouldUseImperial: shouldUseImperial,
     dayName: dayName,
     openMeteoForecastDays: openMeteoForecastDays,
+    openMeteoTodayForecast: openMeteoTodayForecast,
+    wttrTodayForecast: wttrTodayForecast,
+    buildTodayForecast: buildTodayForecast,
     openMeteoCurrentCondition: openMeteoCurrentCondition,
     currentIcon: currentIcon,
     provisionalCurrentIcon: provisionalCurrentIcon,

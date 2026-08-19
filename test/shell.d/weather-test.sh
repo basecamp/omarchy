@@ -86,6 +86,19 @@ assertDeepEqual(
 )
 
 assertDeepEqual(
+  weather.openMeteoTodayForecast(openMeteo, '2026-05-25'),
+  { date: '2026-05-25', maxtempC: '20', mintempC: '12', maxtempF: '68', mintempF: '54', openMeteoWeatherCode: 0 },
+  'weather resolves today from the Open-Meteo daily forecast'
+)
+assertDeepEqual(
+  weather.openMeteoTodayForecast(openMeteo, '2026-05-27'),
+  { date: '2026-05-27', maxtempC: '18', mintempC: '11', maxtempF: '65', mintempF: '51', openMeteoWeatherCode: 95 },
+  'weather matches today by date rather than trusting the first daily entry'
+)
+assertEqual(weather.openMeteoTodayForecast(openMeteo, '2026-06-01'), null, 'weather returns no today forecast when the day is absent')
+assertEqual(weather.openMeteoTodayForecast({}, '2026-05-25'), null, 'weather returns no today forecast without Open-Meteo data')
+
+assertDeepEqual(
   weather.openMeteoCurrentCondition({ current: { temperature_2m: 21.4, apparent_temperature: 19.8, wind_speed_10m: 14.3, relative_humidity_2m: 63 } }),
   { temp_C: '21', temp_F: '71', FeelsLikeC: '20', FeelsLikeF: '68', windspeedKmph: '14', windspeedMiles: '9', humidity: '63' },
   'weather normalizes open-meteo current conditions to the wttr shape'
@@ -100,6 +113,12 @@ const wttr = {
   ]
 }
 assertEqual(weather.buildForecastDays(wttr, {}, '2026-05-25')[0].date, '2026-05-26', 'weather falls back to wttr forecast')
+assertEqual(weather.wttrTodayForecast(wttr, '2026-05-25').maxtempC, '20', 'weather resolves today from the wttr forecast')
+assertEqual(weather.wttrTodayForecast(wttr, '2026-06-01'), null, 'weather returns no wttr today forecast when the day is absent')
+
+assertEqual(weather.buildTodayForecast(wttr, openMeteo, '2026-05-25').maxtempF, '68', 'weather prefers Open-Meteo for today')
+assertEqual(weather.buildTodayForecast(wttr, {}, '2026-05-25').maxtempC, '20', 'weather falls back to wttr for today')
+assertEqual(weather.buildTodayForecast({}, {}, '2026-05-25'), null, 'weather returns no today forecast without either source')
 assertEqual(weather.bareTempForDay({ maxtempC: '22', mintempC: '13', maxtempF: '72', mintempF: '55' }, 'max', false), '22°', 'weather formats forecast metric highs')
 assertEqual(weather.bareTempForDay({ maxtempC: '22', mintempC: '13', maxtempF: '72', mintempF: '55' }, 'min', true), '55°', 'weather formats forecast imperial lows')
 
@@ -136,6 +155,18 @@ assert(
 assert(
   panelSource.includes('text: root.label || "—"'),
   'weather hero and bar use the same resolved icon'
+)
+
+// The forecast strip starts at tomorrow, so today's range is only ever
+// reachable from the hero block.
+assert(
+  panelSource.includes('bareTempForDay(todayForecast, "max")') &&
+    panelSource.includes('bareTempForDay(todayForecast, "min")'),
+  'weather derives today high and low through the shared forecast formatter'
+)
+assert(
+  /visible: root\.todayHigh !== "" \|\| root\.todayLow !== ""/.test(panelSource),
+  'weather hides the today high-low row when neither value resolved'
 )
 assert(
   panelSource.includes('onReturnRequested: root.startEditingLocation()'),

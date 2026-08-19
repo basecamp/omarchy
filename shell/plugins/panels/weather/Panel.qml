@@ -133,6 +133,7 @@ Panel {
   readonly property var current: (hasConfiguredCoordinates && openMeteoCurrent) ? openMeteoCurrent : ((report && report.current_condition && report.current_condition[0]) ? report.current_condition[0] : openMeteoCurrent)
   readonly property var areaInfo: report && report.nearest_area && report.nearest_area[0] ? report.nearest_area[0] : null
   readonly property var forecastDays: buildForecastDays()
+  readonly property var todayForecast: buildTodayForecast()
   readonly property string reportCountry: areaInfo && areaInfo.country && areaInfo.country[0] ? areaInfo.country[0].value : ""
 
   readonly property bool useImperial: Model.shouldUseImperial(setting("unit", ""), Qt.locale().name, reportCountry)
@@ -146,6 +147,8 @@ Panel {
   readonly property string reportFeels:     current ? formatTemp(useImperial ? current.FeelsLikeF : current.FeelsLikeC) : ""
   readonly property string reportWind:      current ? (useImperial ? (current.windspeedMiles + " mph") : (current.windspeedKmph + " km/h")) : ""
   readonly property string reportHumidity:  current ? (current.humidity + "%") : ""
+  readonly property string todayHigh:       bareTempForDay(todayForecast, "max")
+  readonly property string todayLow:        bareTempForDay(todayForecast, "min")
 
   function refresh() {
     // Each full refresh cycle gets a fresh retry budget, so an earlier
@@ -279,6 +282,10 @@ Panel {
 
   function buildForecastDays() {
     return Model.buildForecastDays(report, dailyForecastReport, Qt.formatDate(new Date(), "yyyy-MM-dd"))
+  }
+
+  function buildTodayForecast() {
+    return Model.buildTodayForecast(report, dailyForecastReport, Qt.formatDate(new Date(), "yyyy-MM-dd"))
   }
 
   function openMeteoForecastDays() {
@@ -541,27 +548,51 @@ Panel {
             font.pixelSize: 64
           }
 
-          Row {
+          Column {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(2)
 
-            Text {
-              id: tempBig
-              text: root.reportTempNum || "—"
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              // Hero temperature read-out; deliberately oversized, outside
-              // the Style.font.* scale.
-              font.pixelSize: 56
-              font.bold: true
+            Row {
+              spacing: Style.space(2)
+
+              Text {
+                id: tempBig
+                text: root.reportTempNum || "—"
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                // Hero temperature read-out; deliberately oversized, outside
+                // the Style.font.* scale.
+                font.pixelSize: 56
+                font.bold: true
+              }
+              Text {
+                text: root.current ? root.tempUnit : ""
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.display
+                anchors.top: tempBig.top
+                anchors.topMargin: Style.space(10)
+              }
             }
-            Text {
-              text: root.current ? root.tempUnit : ""
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.display
-              anchors.top: tempBig.top
-              anchors.topMargin: Style.space(10)
+
+            // ---- Today's high/low. The forecast strip starts at tomorrow,
+            //      so today's range only appears here.
+            Row {
+              visible: root.todayHigh !== "" || root.todayLow !== ""
+              spacing: Style.space(8)
+
+              Text {
+                text: root.todayHigh === "" ? "" : "H:" + root.todayHigh
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.body
+              }
+              Text {
+                text: root.todayLow === "" ? "" : "L:" + root.todayLow
+                color: Qt.darker(root.bar.foreground, 1.5)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.body
+              }
             }
           }
         }
