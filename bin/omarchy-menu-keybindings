@@ -506,7 +506,17 @@ localized_binding_records() {
     combo=${display%% → *}
     action=${display#* → }
     if [[ $action != "$display" ]]; then
-      action=$(omarchy_t "$action")
+      case "$action" in
+        "Switch to workspace "*)
+          action="$(omarchy_t "Switch to workspace ")${action#Switch to workspace }" ;;
+        "Move window to workspace "*)
+          action="$(omarchy_t "Move window to workspace ")${action#Move window to workspace }" ;;
+        "Move window silently to workspace "*)
+          action="$(omarchy_t "Move window silently to workspace ")${action#Move window silently to workspace }" ;;
+        "Switch to group window "*)
+          action="$(omarchy_t "Switch to group window ")${action#Switch to group window }" ;;
+        *) action=$(omarchy_t "$action") ;;
+      esac
       display="$combo → $action"
     fi
     printf '%s\t%s\t%s\n' "$display" "$dispatcher" "$arg"
