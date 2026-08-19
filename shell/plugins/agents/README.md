@@ -55,6 +55,18 @@ light surfaces — and the bar glyph stands in when there is none.
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `opencode-go` | OpenCode's zen usage endpoint (5-hour session + 7-day weekly + 30-day monthly) | opencode's `message` database (`~/.local/share/opencode/opencode.db`), filtered to the `opencode-go` provider, via a watermark incremental scan |
+
+OpenCode Go limits need a signed-in opencode (`~/.local/share/opencode/auth.json` key named
+`opencode-go`) or `OPENCODE_GO_API_KEY`; without one the panel says so and shows local
+stats only. An alternate endpoint can be pointed to with `--api-base-url` /
+`OPENCODE_API_BASE_URL` (https-only). The opencode scan is the panel's fastest: a
+cached envelope is served without opening SQLite while the database is unchanged, and a
+changed database only rescans the rows newer than the last watermark (with a 10-minute
+overlap band) and merges the deltas into the cached totals. When several
+`opencode-*.db` channel databases exist the freshest one is scanned. A day rollover, a
+band-width change, or a shrunken table forces a fresh full scan so stale or deleted
+state is never served.
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via

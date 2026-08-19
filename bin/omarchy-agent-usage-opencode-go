@@ -1,0 +1,865 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the OpenCode (Go) usage record as JSON
+# omarchy:args=[--force] [--limits-only] [--cache-seconds <seconds>] [--api-base-url <url>]
+# omarchy:hidden=true
+"""Collect OpenCode Go usage into one display-ready JSON record.
+
+Everything the agents panel shows for a "Go" subscription comes from this one
+command: local token/session stats aggregated from opencode's message
+database (~/.local/share/opencode/opencode.db, filtered to the opencode-go
+provider) plus the authoritative rate limits from OpenCode's zen usage
+endpoint. The panel only ever reads the JSON this prints.
+
+The headline difference from the claude/codex collectors is the incremental
+watermark scan. opencode DBs grow huge (every historical message, JSON
+included), so instead of walking ~60k rows of JSON on every panel refresh it
+caches an envelope and, when the database changed, only rescans the rows newer
+than the last watermark -- with a 10-minute overlap band for rows that landed
+mid-write -- merging the deltas into the cached totals. A day rollover, a
+band-width change, or an envelope that does not validate forces a fresh full
+scan so stale or shrunken state is never served.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import fcntl
+import hashlib
+import json
+import os
+import sqlite3
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "opencode-go"
+AGENT_NAME = "OpenCode"
+TIER_LABEL = "Go"
+AUTH_HELP = "Sign in to opencode with an OpenCode Go key, or set OPENCODE_GO_API_KEY."
+DEFAULT_API_BASE = "https://opencode.ai"
+USAGE_PATH = "/zen/go/v1/usage"
+
+# The cache envelope and the incremental scan live together.
+ENVELOPE_VERSION = 3
+# How far below the watermark an incremental scan re-reads so that rows which
+# landed between the previous scan and the watermark (opencode writes the DB
+# asynchronously) are not double-counted nor lost.
+INCREMENTAL_OVERLAP_MS = 600000  # 10 minutes
+
+
+def local_date_string() -> str:
+  return dt.datetime.now().date().strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = dt.datetime.now().date()
+  return [(today - dt.timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
+
+
+def date_from_ms(ms: int) -> str:
+  try:
+    return dt.datetime.fromtimestamp(ms / 1000.0).strftime("%Y-%m-%d")
+  except Exception:
+    return local_date_string()
+
+
+def number(value: Any) -> int:
+  try:
+    return round(float(value or 0))
+  except Exception:
+    return 0
+
+
+def data_root() -> Path:
+  return Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share"))
+
+
+def expand_path(value: str) -> Path:
+  return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
+
+
+def cache_root() -> Path:
+  # Empty XDG_CACHE_HOME means "unset": fall back to ~/.cache rather than a
+  # cwd-relative "".omarchy/agent-usage dir.
+  base = os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")
+  root = Path(base) / "omarchy" / "agent-usage"
+  try:
+    root.mkdir(parents=True, exist_ok=True)
+    os.chmod(root, 0o700)
+  except OSError:
+    pass
+  sweep_stale_tmp(root)
+  return root
+
+
+def sweep_stale_tmp(root: Path) -> None:
+  # Best-effort: a half-written atomic temp left by a crashed collector must
+  # not accumulate forever.
+  try:
+    now = time.time()
+    for path in root.glob("*.tmp"):
+      try:
+        if now - path.stat().st_mtime > 3600:
+          path.unlink(missing_ok=True)
+      except OSError:
+        pass
+  except OSError:
+    pass
+
+
+def file_mtime(path: Path) -> float | None:
+  try:
+    return path.stat().st_mtime
+  except OSError:
+    return None
+
+
+def empty_stats() -> dict[str, Any]:
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [{"date": day, "messageCount": 0} for day in recent_date_strings()],
+    "modelUsage": {},
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+  }
+
+
+# ------------------------------------------------------- multi-db selection
+#
+# opencode can maintain channel databases (one per configured channel) named
+# opencode-<name>.db. All of them are real subscription traffic, so this
+# collector scans the freshest one: the channel whose <db>-wal was touched
+# most recently (the WAL is where live writes land), falling back to the db
+# mtime. The plain opencode.db is only used when no channel db exists.
+
+
+def choose_database(root: Path) -> tuple[Path | None, bool]:
+  opendir = root / "opencode"
+  candidates: list[Path] = []
+  try:
+    for path in opendir.glob("opencode-*.db"):
+      name = path.name
+      if ".bak" in name or name.endswith("-shm") or name.endswith("-wal"):
+        continue
+      if "default" in name:
+        continue
+      candidates.append(path)
+  except OSError:
+    pass
+
+  if candidates:
+    def key(path: Path) -> float:
+      wal = Path(str(path) + "-wal")
+      t = file_mtime(wal)
+      if t is None:
+        t = file_mtime(path) or 0
+      return t
+    chosen = max(candidates, key=key)
+    return chosen, True
+
+  plain = opendir / "opencode.db"
+  if plain.is_file():
+    return plain, False
+  return None, False
+
+
+# ------------------------------------------------------------- safe network
+
+# A redirect must not carry the Authorization header to a different origin:
+# (scheme, netloc) must match exactly, which also strips the key on a
+# https -> http same-host downgrade.
+
+
+class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+  def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+    new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
+    if new_req is None:
+      return None
+    orig = urllib.parse.urlsplit(req.full_url)
+    dest = urllib.parse.urlsplit(newurl)
+    if (orig.scheme, orig.netloc) != (dest.scheme, dest.netloc):
+      keys = list(new_req.headers.keys())
+      for key in keys:
+        if key.lower() == "authorization":
+          del new_req.headers[key]
+    return new_req
+
+
+def api_base_is_secure(url: str) -> bool:
+  return url.startswith("https://")
+
+
+# ------------------------------------------------------------ limits probe
+
+USAGE_WINDOWS = (("rolling", "Session (5-hour)"), ("weekly", "Weekly (7-day)"), ("monthly", "Monthly (30-day)"))
+
+
+def parse_utilization(value: Any) -> float:
+  try:
+    return float(str(value).strip().replace("%", ""))
+  except Exception:
+    return float("nan")
+
+
+def normalize_utilization(value: Any, percent_scale: bool) -> float:
+  n = parse_utilization(value)
+  if not (n >= 0):
+    return -1.0
+  # One payload speaks one convention: if any value is >= 1 it is percent
+  # scaled (e.g. 41.0 means 41%), so normalize by /100. Otherwise it is
+  # already a 0..1 fraction.
+  if percent_scale or n > 1:
+    return min(1.0, n / 100.0)
+  return min(1.0, n)
+
+
+def normalize_reset_at(value: Any) -> str:
+  if value is None:
+    return ""
+  raw = str(value).strip()
+  if raw == "":
+    return ""
+  if raw.isdigit():
+    ts = int(raw)
+    if ts < 1e12:
+      ts *= 1000
+    try:
+      return dt.datetime.fromtimestamp(ts / 1000, dt.timezone.utc).isoformat()
+    except Exception:
+      return raw
+  try:
+    return dt.datetime.fromisoformat(raw.replace("Z", "+00:00")).isoformat()
+  except Exception:
+    return raw
+
+
+def parse_limits_payload(payload: Any) -> dict[str, Any]:
+  if not isinstance(payload, dict):
+    return {"ok": False, "usageStatusText": "OpenCode limits unavailable",
+            "authHelpText": "OpenCode's usage endpoint returned an unexpected payload."}
+
+  raw_percents: list[Any] = []
+  usage = payload.get("usage")
+  if isinstance(usage, dict):
+    for key, _label in USAGE_WINDOWS:
+      bucket = usage.get(key)
+      if isinstance(bucket, dict) and bucket.get("percent") is not None:
+        raw_percents.append(bucket["percent"])
+  # Upstream-PR shape: a single flat usagePercent / resetInSec pair.
+  if payload.get("usagePercent") is not None:
+    raw_percents.append(payload["usagePercent"])
+
+  percent_scale = any(parse_utilization(v) >= 1 for v in raw_percents)
+
+  limits: list[dict[str, Any]] = []
+  if isinstance(usage, dict):
+    for key, label in USAGE_WINDOWS:
+      bucket = usage.get(key)
+      if isinstance(bucket, dict):
+        percent = normalize_utilization(bucket.get("percent"), percent_scale)
+        if percent >= 0:
+          limits.append({"label": label, "percent": percent,
+                         "resetsAt": normalize_reset_at(bucket.get("resetsAt") or bucket.get("resets_at"))})
+
+  if payload.get("usagePercent") is not None:
+    percent = normalize_utilization(payload.get("usagePercent"), percent_scale)
+    if percent >= 0:
+      reset_in = payload.get("resetInSec")
+      resets_at = normalize_reset_at((time.time() + (number(reset_in) if reset_in is not None else 0)) * 1000) if reset_in is not None else ""
+      limits.append({"label": "Weekly (7-day)", "percent": percent, "resetsAt": resets_at})
+
+  if not limits:
+    return {"ok": False, "usageStatusText": "OpenCode limits unavailable",
+            "authHelpText": "OpenCode's usage endpoint returned no limits. Local stats are still shown."}
+  return {"ok": True, "limits": limits}
+
+
+def http_error_result(error: urllib.error.HTTPError) -> dict[str, Any]:
+  code = error.code
+  if code in (401, 403):
+    return {"ok": False, "usageStatusText": "OpenCode limits unavailable",
+            "authHelpText": f"OpenCode's usage endpoint rejected the key (status {code}). {AUTH_HELP}"}
+  if code in (429,):
+    return {"ok": False, "usageStatusText": "OpenCode limits unavailable",
+            "authHelpText": "OpenCode's usage endpoint is rate limiting checks right now. Local stats are still shown.",
+            "retryAdvised": True}
+  if 500 <= code < 600:
+    return {"ok": False, "usageStatusText": "OpenCode limits unavailable",
+            "authHelpText": f"OpenCode's usage endpoint had a server error (status {code}). Retrying shortly.",
+            "retryAdvised": True}
+  return {"ok": False, "usageStatusText": "OpenCode limits unavailable",
+          "authHelpText": f"OpenCode's usage endpoint returned status {code}. Local stats are still shown."}
+
+
+def probe_limits(access_token: str, api_base: str) -> dict[str, Any]:
+  host = urllib.parse.urlsplit(api_base).netloc
+  if host != urllib.parse.urlsplit(DEFAULT_API_BASE).netloc:
+    print(f"sending API key to non-default endpoint {host}", file=sys.stderr)
+  url = api_base.rstrip("/") + USAGE_PATH
+  opener = urllib.request.build_opener(SafeRedirectHandler())
+  request = urllib.request.Request(url, headers={"Authorization": "Bearer " + access_token, "Accept": "application/json"})
+  try:
+    with opener.open(request, timeout=10) as response:
+      body = response.read().decode("utf-8", errors="replace")
+  except urllib.error.HTTPError as error:
+    return http_error_result(error)
+  except Exception:
+    return {"ok": False, "transport": True, "usageStatusText": "OpenCode limits unavailable",
+            "authHelpText": "Couldn't reach OpenCode's usage endpoint. Retrying shortly. Local stats are still shown.",
+            "retryAdvised": True}
+
+  if not body.strip():
+    return {"ok": False, "usageStatusText": "OpenCode limits unavailable",
+            "authHelpText": "OpenCode's usage endpoint returned an empty payload.", "retryAdvised": True}
+  try:
+    payload = json.loads(body)
+  except Exception:
+    return {"ok": False, "usageStatusText": "OpenCode limits unavailable",
+            "authHelpText": "OpenCode's usage endpoint returned unparseable data.", "retryAdvised": True}
+  return parse_limits_payload(payload)
+
+
+def limit_window_open(entry: dict[str, Any], now: dt.datetime) -> bool:
+  raw = str(entry.get("resetsAt") or "")
+  if raw == "":
+    return True
+  try:
+    resets_at = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+  except Exception:
+    return True
+  if resets_at.tzinfo is None:
+    resets_at = resets_at.replace(tzinfo=dt.timezone.utc)
+  return resets_at > now
+
+
+def usable_cached_limits(cached: dict[str, Any]) -> list[dict[str, Any]]:
+  entries = cached.get("limits")
+  if not isinstance(entries, list):
+    return []
+  now = dt.datetime.now(dt.timezone.utc)
+  return [e for e in entries if isinstance(e, dict) and limit_window_open(e, now)]
+
+
+def read_limits_cache(path: Path) -> dict[str, Any]:
+  try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return data if isinstance(data, dict) else {}
+  except Exception:
+    return {}
+
+
+def write_limits_cache(path: Path, payload: dict[str, Any]) -> None:
+  try:
+    write_json(path, payload)
+  except Exception as exc:
+    print(f"omarchy-agent-usage-opencode-go: limits cache unavailable ({exc})", file=sys.stderr)
+
+
+def resolve_token() -> str:
+  env = os.environ.get("OPENCODE_GO_API_KEY")
+  if env:
+    return env
+  auth = data_root() / "opencode" / "auth.json"
+  try:
+    data = json.loads(auth.read_text(encoding="utf-8"))
+  except Exception:
+    return ""
+  entry = data.get("opencode-go")
+  if isinstance(entry, dict):
+    return str(entry.get("key") or "")
+  return ""
+
+
+def collect_limits(access_token: str, api_base: str, force: bool, cache_seconds: float, insecure: bool) -> dict[str, Any]:
+  result = {"limits": [], "usageStatusText": "", "authHelpText": AUTH_HELP, "tierLabel": TIER_LABEL}
+
+  probe_cache = cache_root() / "opencode-limits.json"
+  cached = read_limits_cache(probe_cache)
+  fallback = usable_cached_limits(cached)
+
+  if access_token == "":
+    result["limits"] = fallback
+    result["usageStatusText"] = "Waiting for auth"
+    return result
+
+  if insecure:
+    result["usageStatusText"] = "OpenCode limits unavailable"
+    result["authHelpText"] = ("Refusing to send the API key over an insecure (http) endpoint. "
+                              "Use a https:// --api-base-url.")
+    print("refusing to send API key to non-https endpoint", file=sys.stderr)
+    return result
+
+  fetched_at = number(cached.get("fetchedAtMs")) / 1000
+  if fallback and not force and time.time() - fetched_at < cache_seconds:
+    result["limits"] = fallback
+    return result
+
+  probe = probe_limits(access_token, api_base)
+  if probe["ok"]:
+    result["limits"] = probe["limits"]
+    write_limits_cache(probe_cache, {"fetchedAtMs": round(time.time() * 1000), "limits": probe["limits"]})
+    return result
+
+  if probe.get("transport"):
+    result["retryAdvised"] = True
+  result["usageStatusText"] = probe.get("usageStatusText", "OpenCode limits unavailable")
+  result["authHelpText"] = probe.get("authHelpText", "")
+  if fallback:
+    result["limits"] = fallback
+  return result
+
+
+# ------------------------------------------------------------- local scan
+#
+# The SQL is the authority: role == "assistant" and providerID ==
+# "opencode-go", guarded by json_valid so a malformed row cannot abort the
+# scan (json_extract RAISES on malformed JSON). The LIKE gates in front are
+# pure acceleration: they skip rows whose JSON cannot contain the two
+# key/value pairs, avoiding the JSON parse of tens-of-MB blobs. The SELECT
+# streams lightweight tuples (day, model, and the token split) straight out
+# of SQLite -- Python never holds the raw JSON blobs.
+
+
+def connect_ro(db_path: Path) -> sqlite3.Connection | None:
+  try:
+    conn = sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+  except sqlite3.Error:
+    return None
+  try:
+    conn.execute("PRAGMA query_only = ON")
+  except sqlite3.Error:
+    conn.close()
+    return None
+  return conn
+
+
+def detect_unit(conn: sqlite3.Connection) -> int:
+  # Guard: if the largest time_created is below 1e12 the column holds seconds
+  # rather than milliseconds, so convert before bucketing by day.
+  try:
+    row = conn.execute("SELECT MAX(time_created) FROM message").fetchone()
+  except sqlite3.Error:
+    return 1
+  if row is None or row[0] is None:
+    return 1
+  return 1000 if row[0] < 1e12 else 1
+
+
+def scan_query(conn: sqlite3.Connection, ms_per_unit: int, min_ms: int | None):
+  sql = (
+    "SELECT id, session_id, time_created,"
+    " CAST(json_extract(data, '$.modelID') AS TEXT),"
+    " CAST(COALESCE(json_extract(data, '$.tokens.input'), 0) AS INTEGER),"
+    " CAST(COALESCE(json_extract(data, '$.tokens.output'), 0) AS INTEGER),"
+    " CAST(COALESCE(json_extract(data, '$.tokens.reasoning'), 0) AS INTEGER),"
+    " CAST(COALESCE(json_extract(data, '$.tokens.cache.read'), 0) AS INTEGER),"
+    " CAST(COALESCE(json_extract(data, '$.tokens.cache.write'), 0) AS INTEGER)"
+    " FROM message"
+    " WHERE data LIKE '%\"role\"%:%\"assistant\"%'"
+    " AND data LIKE '%\"providerID\"%:%\"opencode-go\"%'"
+    " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.role') END = 'assistant'"
+    " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.providerID') END = 'opencode-go'"
+  )
+  params: list[Any] = []
+  if min_ms is not None:
+    sql += " AND time_created > ?"
+    params.append(min_ms / ms_per_unit)
+  return conn.execute(sql, params)
+
+
+def process_row(row: tuple, ms_per_unit: int) -> tuple:
+  row_id, session, created, model, inp, out, reason, cread, cwrite = row
+  try:
+    ms = int(created) * ms_per_unit
+  except Exception:
+    return row_id, session, None, None, None
+  bucket = {
+    "input": inp or 0,
+    "output": out or 0,
+    "reasoning": reason or 0,
+    "cacheRead": cread or 0,
+    "cacheCreation": cwrite or 0,
+  }
+  if sum(bucket.values()) <= 0:
+    return row_id, session, ms, model, None
+  model = str(model or "opencode").rstrip("/").split("/")[-1] or "opencode"
+  return row_id, session, ms, model, bucket
+
+
+def new_accumulator() -> dict[str, Any]:
+  return {
+    "recent": {day: 0 for day in recent_date_strings()},
+    "model_usage": {},
+    "active_dates": set(),
+    "session_min": {},
+    "all_sessions": set(),
+    "today_prompts": 0,
+    "today_tokens": 0,
+    "today_by_model": {},
+    "total_prompts": 0,
+  }
+
+
+def add_row(acc: dict[str, Any], session: str, ms: int, model: str, bucket: dict[str, int]) -> None:
+  day = date_from_ms(ms)
+  total = sum(bucket.values())
+  prev = acc["session_min"].get(session)
+  if prev is None or ms < prev:
+    acc["session_min"][session] = ms
+  acc["all_sessions"].add(session)
+  acc["active_dates"].add(day)
+  acc["total_prompts"] += 1
+
+  target = acc["model_usage"].setdefault(model, {"input": 0, "output": 0, "reasoning": 0, "cacheRead": 0, "cacheCreation": 0})
+  for key, value in bucket.items():
+    target[key] += value
+
+  if day in acc["recent"]:
+    acc["recent"][day] += total
+
+  if day == local_date_string():
+    acc["today_prompts"] += 1
+    acc["today_tokens"] += total
+    acc["today_by_model"][model] = acc["today_by_model"].get(model, 0) + total
+
+
+def build_stats(acc: dict[str, Any], today_sessions: set[str]) -> dict[str, Any]:
+  return {
+    "todayPrompts": acc["today_prompts"],
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": acc["today_tokens"],
+    "todayTokensByModel": acc["today_by_model"],
+    "recentDays": [{"date": day, "messageCount": acc["recent"][day]} for day in recent_date_strings()],
+    "modelUsage": acc["model_usage"],
+    "totalPrompts": acc["total_prompts"],
+    "totalSessions": len(acc["all_sessions"]),
+    "activeDays": len(acc["active_dates"]),
+    "activeDates": sorted(acc["active_dates"]),
+  }
+
+
+def full_scan(db_path: Path, db_mtime: float | None, wal_mtime: float | None) -> dict[str, Any] | None:
+  conn = connect_ro(db_path)
+  if conn is None:
+    return None
+  try:
+    ms_per_unit = detect_unit(conn)
+    acc = new_accumulator()
+    band_rows: list[tuple[str, int]] = []
+    max_ms = 0
+    for row in scan_query(conn, ms_per_unit, min_ms=None):
+      row_id, session, ms, model, bucket = process_row(row, ms_per_unit)
+      if ms is None or bucket is None:
+        continue
+      add_row(acc, session, ms, model, bucket)
+      band_rows.append((row_id, ms))
+      if ms > max_ms:
+        max_ms = ms
+  except sqlite3.Error:
+    return None  # interrupted; must not be cached
+  finally:
+    conn.close()
+
+  today_sessions = {sid for sid, ms in acc["session_min"].items() if date_from_ms(ms) == local_date_string()}
+  stats = build_stats(acc, today_sessions)
+  overlap = [row_id for row_id, ms in band_rows if ms > max_ms - INCREMENTAL_OVERLAP_MS]
+  return {
+    "schemaVersion": ENVELOPE_VERSION,
+    "scanDate": local_date_string(),
+    "watermark": max_ms,
+    "dbMtime": db_mtime,
+    "walMtime": wal_mtime,
+    "stats": stats,
+    "todaySessionIds": sorted(today_sessions),
+    "allSessionIds": sorted(acc["all_sessions"]),
+    "watermarkOverlap": overlap,
+    "bandMs": INCREMENTAL_OVERLAP_MS,
+    "complete": True,
+  }
+
+
+def accumulator_from_stats(stats: dict[str, Any] | None, cached_all: set[str]) -> dict[str, Any]:
+  stats = stats or {}
+  acc = new_accumulator()
+  acc["today_prompts"] = number(stats.get("todayPrompts"))
+  acc["today_tokens"] = number(stats.get("todayTotalTokens"))
+  acc["today_by_model"] = dict(stats.get("todayTokensByModel") or {})
+  for model, bucket in (stats.get("modelUsage") or {}).items():
+    acc["model_usage"][model] = dict(bucket)
+  for day in stats.get("recentDays") or []:
+    if isinstance(day, dict) and day.get("date") in acc["recent"]:
+      acc["recent"][day["date"]] = number(day.get("messageCount"))
+  acc["active_dates"] = set(stats.get("activeDates") or [])
+  acc["total_prompts"] = number(stats.get("totalPrompts"))
+  acc["all_sessions"] = set(cached_all)
+  return acc
+
+
+def incremental_scan(db_path: Path, base_env: dict[str, Any], db_mtime: float | None, wal_mtime: float | None) -> dict[str, Any] | None:
+  conn = connect_ro(db_path)
+  if conn is None:
+    return None
+  cached_watermark = number(base_env.get("watermark"))
+  cached_overlap = set(base_env.get("watermarkOverlap") or [])
+  cached_all = set(base_env.get("allSessionIds") or [])
+  cached_today = set(base_env.get("todaySessionIds") or [])
+  acc = accumulator_from_stats(base_env.get("stats"), cached_all)
+  # Every row that lands in the scanned band and was ALREADY counted must be
+  # carried forward into the new watermarkOverlap, or a deduped row would fall
+  # out of the overlap set and get re-counted on the next incremental pass.
+  counted_band: list[tuple[str, int]] = []
+  max_ms = cached_watermark
+  seen_new: set[str] = set()
+  try:
+    ms_per_unit = detect_unit(conn)
+    min_ms = cached_watermark - INCREMENTAL_OVERLAP_MS
+    for row in scan_query(conn, ms_per_unit, min_ms=min_ms):
+      row_id, session, ms, model, bucket = process_row(row, ms_per_unit)
+      if ms is None:
+        continue
+      # Precise filter: only rows strictly newer than the overlap threshold.
+      if ms <= min_ms:
+        continue
+      # Rows already counted in the previous band are skipped for the merge,
+      # but their ids still belong to the new band's "already counted" set.
+      if row_id in cached_overlap:
+        counted_band.append((row_id, ms))
+        continue
+      if row_id in seen_new:
+        continue
+      if bucket is None:
+        continue
+      seen_new.add(row_id)
+      add_row(acc, session, ms, model, bucket)
+      counted_band.append((row_id, ms))
+      if ms > max_ms:
+        max_ms = ms
+  except sqlite3.Error:
+    return None  # interrupted; must not be cached
+  finally:
+    conn.close()
+
+  # A session counts toward today only when its FIRST message falls in the
+  # scanned window. Sessions already known from an earlier scan already had
+  # their first message counted, so only brand-new sessions are added here.
+  today_sessions = set(cached_today)
+  for sid, ms in acc["session_min"].items():
+    if sid in cached_all:
+      continue
+    if date_from_ms(ms) == local_date_string():
+      today_sessions.add(sid)
+
+  stats = build_stats(acc, today_sessions)
+  overlap = [row_id for row_id, ms in counted_band if ms > max_ms - INCREMENTAL_OVERLAP_MS]
+  return {
+    "schemaVersion": ENVELOPE_VERSION,
+    "scanDate": local_date_string(),
+    "watermark": max_ms,
+    "dbMtime": db_mtime,
+    "walMtime": wal_mtime,
+    "stats": stats,
+    "todaySessionIds": sorted(today_sessions),
+    "allSessionIds": sorted(acc["all_sessions"]),
+    "watermarkOverlap": overlap,
+    "bandMs": INCREMENTAL_OVERLAP_MS,
+    "complete": True,
+  }
+
+
+def db_max_ms(db_path: Path) -> int | None:
+  conn = connect_ro(db_path)
+  if conn is None:
+    return None
+  try:
+    row = conn.execute("SELECT MAX(time_created) FROM message").fetchone()
+    maxv = row[0] if row else None
+  except sqlite3.Error:
+    return None
+  finally:
+    conn.close()
+  if maxv is None:
+    return 0
+  ms_per_unit = 1000 if maxv < 1e12 else 1
+  return int(maxv) * ms_per_unit
+
+
+# -------------------------------------------------------------- envelope IO
+
+
+def read_envelope(path: Path) -> dict[str, Any] | None:
+  try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+  return data if isinstance(data, dict) else None
+
+
+def is_valid_env(env: dict[str, Any] | None) -> bool:
+  return (isinstance(env, dict)
+          and env.get("schemaVersion") == ENVELOPE_VERSION
+          and env.get("complete") is True
+          and isinstance(env.get("stats"), dict))
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+  # A temp name unique to this writer, not derived from the target: several
+  # collectors can run at once (the update command backgrounds one per agent,
+  # the panel refreshes on its own). mkstemp opens at 0600; the cache holds
+  # nothing sensitive but is kept locked-down per this collector's contract.
+  handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n")
+    tmp.replace(path)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
+
+
+def acquire_lock(lock_path: Path) -> int:
+  flags = os.O_CREAT | os.O_WRONLY
+  if hasattr(os, "O_NOFOLLOW"):
+    flags |= os.O_NOFOLLOW
+  fd = os.open(lock_path, flags, 0o600)
+  os.fchmod(fd, 0o600)
+  fcntl.flock(fd, fcntl.LOCK_EX)
+  return fd
+
+
+def release_lock(fd: int) -> None:
+  try:
+    fcntl.flock(fd, fcntl.LOCK_UN)
+  finally:
+    os.close(fd)
+
+
+def commit_envelope(cache_file: Path, lock_file: Path, env: dict[str, Any], force: bool, mode: str) -> dict[str, Any]:
+  # The scan ran outside the lock; only the cache read + write are serialized.
+  fd = acquire_lock(lock_file)
+  try:
+    re_env = read_envelope(cache_file)
+    # Serve-fresh gate: on the INCREMENTAL path only, a concurrent collector
+    # that already wrote a STRICTLY higher watermark (same scanDate) has
+    # caught up -- serve theirs rather than clobbering it with our older
+    # merge. Equal watermark still overwrites so new in-band rows land.
+    if not force and mode == "incremental" and is_valid_env(re_env) \
+       and re_env.get("scanDate") == env.get("scanDate") \
+       and re_env.get("watermark", 0) > env.get("watermark", 0):
+      return re_env
+    # FULL / --force always overwrite with the fresh scan so shrunken or
+    # deleted rows are reflected.
+    write_envelope(cache_file, env)
+    return env
+  finally:
+    release_lock(fd)
+
+
+def write_envelope(path: Path, env: dict[str, Any]) -> None:
+  write_json(path, env)
+
+
+def scan_cache_paths(db_path: Path) -> tuple[Path, Path]:
+  digest = hashlib.sha1(str(db_path).encode("utf-8")).hexdigest()[:16]
+  root = cache_root()
+  return root / f"opencode-scan-{digest}.json", root / f"opencode-scan-{digest}.lock"
+
+
+def scan_local(force: bool) -> dict[str, Any]:
+  db_path, channel = choose_database(data_root())
+  if db_path is None:
+    return empty_stats()
+  cache_file, lock_file = scan_cache_paths(db_path)
+  if channel:
+    print(f"scanning channel database {db_path.name}", file=sys.stderr)
+
+  today = local_date_string()
+  env = read_envelope(cache_file)
+  db_mtime = file_mtime(db_path)
+  wal_mtime = file_mtime(Path(str(db_path) + "-wal"))
+
+  if not force:
+    # FAST: same day, unchanged db/wal mtimes, and a valid band -> serve the
+    # cache without opening SQLite at all. A missing/mismatched bandMs is a
+    # cache miss even when the mtimes match, so a band migration can never be
+    # served (which would risk double-counting on the next incremental pass).
+    if is_valid_env(env) and env.get("scanDate") == today \
+       and env.get("bandMs") == INCREMENTAL_OVERLAP_MS \
+       and env.get("dbMtime") == db_mtime and env.get("walMtime") == wal_mtime:
+      return env["stats"]
+
+    # INCREMENTAL: db changed but the envelope is a valid same-day base with a
+    # matching band. A shrunken top (db max below the cached watermark) forces
+    # a full scan instead so deleted rows are reflected.
+    if is_valid_env(env) and env.get("scanDate") == today \
+       and env.get("bandMs") == INCREMENTAL_OVERLAP_MS:
+      current_max = db_max_ms(db_path)
+      if current_max is not None and env.get("watermark", 0) <= current_max:
+        new_env = incremental_scan(db_path, env, db_mtime, wal_mtime)
+        if new_env is not None:
+          result = commit_envelope(cache_file, lock_file, new_env, force=False, mode="incremental")
+          return result["stats"]
+      # else fall through to a full scan (shrink or interrupted incremental)
+
+  # FULL: no/invalid envelope, day rollover, band mismatch, shrink, or --force.
+  new_env = full_scan(db_path, db_mtime, wal_mtime)
+  if new_env is None:
+    return empty_stats()  # interrupted; never cache
+  try:
+    result = commit_envelope(cache_file, lock_file, new_env, force=force, mode="full")
+    return result["stats"]
+  except Exception as exc:
+    print(f"omarchy-agent-usage-opencode-go: cache unavailable ({exc}); serving fresh scan", file=sys.stderr)
+    return new_env["stats"]
+
+
+# -------------------------------------------------------------------- record
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--force", action="store_true", help="rescan the database and re-probe limits, ignoring caches")
+  parser.add_argument("--limits-only", action="store_true", help="reuse the local scan cache; only the limits probe must be fresh")
+  parser.add_argument("--cache-seconds", type=float, default=20, help="how fresh the limits probe cache must be (seconds)")
+  parser.add_argument("--api-base-url", default=None, help="OpenCode usage endpoint base (default: https://opencode.ai)")
+  args = parser.parse_args()
+
+  api_base = (args.api_base_url or os.environ.get("OPENCODE_API_BASE_URL") or DEFAULT_API_BASE).rstrip("/")
+  insecure = not api_base_is_secure(api_base)
+
+  stats = scan_local(force=args.force)
+  access_token = resolve_token()
+  limits = collect_limits(access_token, api_base, args.force, args.cache_seconds, insecure)
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+    "ready": number(stats.get("totalPrompts")) > 0 or len(limits["limits"]) > 0,
+    "hasLocalStats": True,
+    "tierLabel": TIER_LABEL,
+    "usageStatusText": limits["usageStatusText"],
+    "authHelpText": limits["authHelpText"],
+    "limits": limits["limits"],
+    "dbStats": stats,
+  }
+  if limits.get("retryAdvised"):
+    record["retryAdvised"] = True
+  print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
