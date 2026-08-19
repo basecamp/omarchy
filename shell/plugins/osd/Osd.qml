@@ -114,6 +114,12 @@ Item {
 
   IpcHandler {
     target: "osd"
+    // quickshell 0.3.0's IpcHandler destructor cannot resolve its engine
+    // generation and silently skips deregistration, leaving a dangling
+    // registry pointer that later segfaults the shell (quickshell#898).
+    // Deregistering here runs while the QML context is still alive. Remove
+    // once quickshell deregisters correctly on destruction.
+    Component.onDestruction: enabled = false
     function show(payloadJson: string): string {
       root.open(payloadJson)
       return "ok"
