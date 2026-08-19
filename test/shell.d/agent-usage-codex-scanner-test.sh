@@ -603,3 +603,136 @@ result=$(HOME="$INTERRUPTED_HOME" CODEX_HOME="$INTERRUPTED_HOME/.codex" XDG_CACH
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "9" ]] ||
   fail "Codex collector does not reuse a snapshot from an interrupted scan" "$result"
 pass "Codex collector does not cache an interrupted opencode scan"
+
+# OpenCode can hold a different ChatGPT subscription from the native Codex
+# CLI. Its OAuth token should be handed to an isolated app-server process,
+# and its limits should only be added when the stable account ids differ.
+LIMITS_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$CACHE_HOME" "$FRESH_HOME" "$MALFORMED_HOME" "$UNWRITABLE_HOME" "$INTERRUPTED_HOME" "$LIMITS_HOME"' EXIT
+mkdir -p "$LIMITS_HOME/bin" "$LIMITS_HOME/.codex" "$LIMITS_HOME/.local/share/opencode"
+
+cat >"$LIMITS_HOME/bin/codex" <<'EOF'
+#!/bin/bash
+
+external=false
+while read -r request; do
+  id=$(jq -r '.id // empty' <<<"$request")
+  method=$(jq -r '.method // empty' <<<"$request")
+
+  case "$method" in
+    initialize)
+      experimental=$(jq -r '.params.capabilities.experimentalApi // false' <<<"$request")
+      printf 'initialize:%s\n' "$experimental" >>"$RPC_LOG"
+      jq -cn --argjson id "$id" '{id: $id, result: {}}'
+      ;;
+    account/login/start)
+      external=true
+      type=$(jq -r '.params.type // empty' <<<"$request")
+      has_access=$(jq -r '(.params.accessToken // "") != ""' <<<"$request")
+      has_account=$(jq -r '(.params.chatgptAccountId // "") != ""' <<<"$request")
+      printf 'login:%s:%s:%s\n' "$type" "$has_access" "$has_account" >>"$RPC_LOG"
+      if [[ ${FAIL_EXTERNAL_LOGIN:-false} == "true" ]]; then
+        jq -cn --argjson id "$id" '{id: $id, error: {message: "login failed"}}'
+      else
+        jq -cn --argjson id "$id" '{id: $id, result: {type: "chatgptAuthTokens"}}'
+      fi
+      ;;
+    account/read)
+      if [[ $external == "true" ]]; then
+        jq -cn --argjson id "$id" --arg email "${OPENCODE_TEST_EMAIL-opencode@example.com}" \
+          '{id: $id, result: {account: {type: "chatgpt", email: $email, planType: "plus"}}}'
+      else
+        jq -cn --argjson id "$id" --arg email "${NATIVE_TEST_EMAIL-codex@example.com}" \
+          '{id: $id, result: {account: {type: "chatgpt", email: $email, planType: "pro"}}}'
+      fi
+      ;;
+    account/rateLimits/read)
+      if [[ $external == "true" ]]; then
+        if [[ ${NO_EXTERNAL_LIMITS:-false} == "true" ]]; then
+          jq -cn --argjson id "$id" '{id: $id, result: {rateLimits: {}}}'
+        else
+          jq -cn --argjson id "$id" '{id: $id, result: {rateLimits: {primary: {usedPercent: 25, windowDurationMins: 300, resetsAt: 1780000000}}}}'
+        fi
+      else
+        jq -cn --argjson id "$id" '{id: $id, result: {rateLimits: {primary: {usedPercent: 10, windowDurationMins: 10080, resetsAt: 1780000000}}}}'
+      fi
+      ;;
+  esac
+done
+EOF
+chmod +x "$LIMITS_HOME/bin/codex"
+
+printf '%s\n' '{"tokens":{"account_id":"native-account"}}' >"$LIMITS_HOME/.codex/auth.json"
+printf '%s\n' '{"openai":{"type":"oauth","access":"secret-opencode-token","accountId":"opencode-account"}}' >"$LIMITS_HOME/.local/share/opencode/auth.json"
+
+RPC_LOG="$LIMITS_HOME/rpc.log" result=$(HOME="$LIMITS_HOME" CODEX_HOME="$LIMITS_HOME/.codex" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+  RPC_LOG="$LIMITS_HOME/rpc.log" PATH="$LIMITS_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(jq -c '[.limits[] | [.label, .percent]]' <<<"$result") == '[["Weekly (7-day)",0.1]]' ]] ||
+  fail "Codex collector leaves OpenCode limits disabled by default" "$result"
+[[ $(grep -c '^login:' "$LIMITS_HOME/rpc.log") == "0" ]] ||
+  fail "Codex collector does not use OpenCode OAuth without opt-in" "$(<"$LIMITS_HOME/rpc.log")"
+pass "Codex collector requires opt-in for OpenCode limits"
+
+: >"$LIMITS_HOME/rpc.log"
+RPC_LOG="$LIMITS_HOME/rpc.log" result=$(HOME="$LIMITS_HOME" CODEX_HOME="$LIMITS_HOME/.codex" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+  RPC_LOG="$LIMITS_HOME/rpc.log" PATH="$LIMITS_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --opencode-openai-limits)
+
+[[ $(jq -c '[.limits[] | [.label, .percent]]' <<<"$result") == '[["codex@example.com · Weekly (7-day)",0.1],["opencode@example.com · 5h window",0.25]]' ]] ||
+  fail "Codex collector labels distinct account limits with their emails" "$result"
+[[ $(jq -c '[.limits[].title]' <<<"$result") == '["codex@example.com · Weekly","opencode@example.com · Session"]' ]] ||
+  fail "Codex collector supplies display titles that preserve account emails" "$result"
+[[ $(jq -r '.tierLabel' <<<"$result") == "pro" ]] ||
+  fail "Codex collector keeps the native subscription as the hero plan" "$result"
+[[ $(grep -c '^login:chatgptAuthTokens:true:true$' "$LIMITS_HOME/rpc.log") == "1" ]] ||
+  fail "Codex collector supplies OpenCode OAuth through external-token auth" "$(<"$LIMITS_HOME/rpc.log")"
+[[ $(grep -c '^initialize:true$' "$LIMITS_HOME/rpc.log") == "1" ]] ||
+  fail "Codex collector enables the experimental external-token API only for OpenCode" "$(<"$LIMITS_HOME/rpc.log")"
+[[ $result != *"secret-opencode-token"* && $result != *"native-account"* && $result != *"opencode-account"* ]] ||
+  fail "Codex collector keeps account credentials out of its record" "$result"
+pass "Codex collector labels distinct account limits with their emails"
+
+# Empty external windows and a failed external login are both best-effort
+# outcomes. Neither should relabel or otherwise disturb native Codex limits.
+for failure_mode in empty login; do
+  : >"$LIMITS_HOME/rpc.log"
+  if [[ $failure_mode == "empty" ]]; then
+    result=$(HOME="$LIMITS_HOME" CODEX_HOME="$LIMITS_HOME/.codex" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+      RPC_LOG="$LIMITS_HOME/rpc.log" NO_EXTERNAL_LIMITS=true PATH="$LIMITS_HOME/bin:$PATH" \
+      "$ROOT/bin/omarchy-agent-usage-codex" --opencode-openai-limits)
+  else
+    result=$(HOME="$LIMITS_HOME" CODEX_HOME="$LIMITS_HOME/.codex" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+      RPC_LOG="$LIMITS_HOME/rpc.log" FAIL_EXTERNAL_LOGIN=true PATH="$LIMITS_HOME/bin:$PATH" \
+      "$ROOT/bin/omarchy-agent-usage-codex" --opencode-openai-limits)
+  fi
+  [[ $(jq -c '[.limits[] | [.label, .percent]]' <<<"$result") == '[["Weekly (7-day)",0.1]]' ]] ||
+    fail "Codex collector preserves native limits after an OpenCode $failure_mode result" "$result"
+  [[ $(jq -r '.usageStatusText' <<<"$result") == "" ]] ||
+    fail "Codex collector keeps an OpenCode $failure_mode result best-effort" "$result"
+done
+pass "Codex collector preserves native limits when optional OpenCode limits are unavailable"
+
+# App-server account emails are nullable. Both meters still need distinct,
+# stable source labels when neither account supplies one.
+: >"$LIMITS_HOME/rpc.log"
+result=$(HOME="$LIMITS_HOME" CODEX_HOME="$LIMITS_HOME/.codex" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+  RPC_LOG="$LIMITS_HOME/rpc.log" NATIVE_TEST_EMAIL="" OPENCODE_TEST_EMAIL="" PATH="$LIMITS_HOME/bin:$PATH" \
+  "$ROOT/bin/omarchy-agent-usage-codex" --opencode-openai-limits)
+
+[[ $(jq -c '[.limits[].title]' <<<"$result") == '["Codex · Weekly","OpenCode · Session"]' ]] ||
+  fail "Codex collector falls back to source names when account emails are unavailable" "$result"
+pass "Codex collector falls back when account emails are unavailable"
+
+# The same ChatGPT account in both tools must not produce duplicate meters or
+# even start a second app-server authentication flow.
+printf '%s\n' '{"openai":{"type":"oauth","access":"secret-opencode-token","accountId":"native-account"}}' >"$LIMITS_HOME/.local/share/opencode/auth.json"
+: >"$LIMITS_HOME/rpc.log"
+
+RPC_LOG="$LIMITS_HOME/rpc.log" result=$(HOME="$LIMITS_HOME" CODEX_HOME="$LIMITS_HOME/.codex" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+  RPC_LOG="$LIMITS_HOME/rpc.log" PATH="$LIMITS_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --opencode-openai-limits)
+
+[[ $(jq -c '[.limits[] | [.label, .percent]]' <<<"$result") == '[["Weekly (7-day)",0.1]]' ]] ||
+  fail "Codex collector deduplicates matching native and OpenCode accounts" "$result"
+[[ $(grep -c '^login:' "$LIMITS_HOME/rpc.log") == "0" ]] ||
+  fail "Codex collector skips external auth for a matching account" "$(<"$LIMITS_HOME/rpc.log")"
+pass "Codex collector deduplicates matching native and OpenCode accounts"

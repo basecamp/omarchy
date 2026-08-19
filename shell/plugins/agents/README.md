@@ -53,7 +53,7 @@ light surfaces — and the bar glyph stands in when there is none.
 | Collector | Limits | Local stats |
 |---|---|---|
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
-| `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
+| `codex` | The Codex app-server RPC, including a distinct OpenCode OpenAI OAuth account | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
@@ -63,6 +63,8 @@ falls back to local stats only. A non-default Claude directory is honored via
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
 signed in there.
+
+OpenCode OpenAI limits are opt-in. Set `providers.codex.openCodeOpenAiLimits` to `true` to reuse the OpenAI OAuth login already stored by OpenCode without changing either tool's saved credentials. The Codex collector then compares its ChatGPT account id with the native Codex login. When they differ, both accounts' limit meters are labelled with their account emails through an isolated Codex app-server external-token session; the same account is skipped so its meters do not appear twice. An unavailable email falls back to a `Codex` or `OpenCode` label. If account identity cannot be established or the OpenCode token no longer works, the native limits and combined local stats remain available.
 
 ### Fireworks balance
 
@@ -126,15 +128,15 @@ edit `shell.json` directly):
 
 ```bash
 omarchy bar set omarchy.agents providers '{
-  "claude": { "enabled": true },
-  "codex": { "enabled": false },
+  "claude": { "enabled": false },
+  "codex": { "enabled": true, "openCodeOpenAiLimits": true },
   "fireworks": { "enabled": true }
 }' --json
 ```
 
 `enabled` defaults to `true` for every discovered agent; set it to `false` to
 hide a subscription that is installed. Disabled agents are also skipped when
-the records regenerate.
+the records regenerate. `providers.codex.openCodeOpenAiLimits` defaults to `false`; set it to `true` to include limits from a distinct OpenCode OpenAI account.
 
 With `syncMode` on, every `*.json` snapshot in `syncDir` is merged, so today,
 the last 7 days, and the all-time totals cover every machine you code on —

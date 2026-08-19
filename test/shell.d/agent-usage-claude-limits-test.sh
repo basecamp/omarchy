@@ -226,11 +226,13 @@ eval(source.slice(start, end))
 assertDeepEqual(
   limitWindows({ limits: [
     { label: 'Session (5-hour)', percent: 0.78, resetsAt: '' },
-    { label: 'Opus 5 (1M context) Weekly', title: 'Opus 5 (1M context) Weekly', percent: 0.42, resetsAt: '' }
+    { label: 'Opus 5 (1M context) Weekly', title: 'Opus 5 (1M context) Weekly', percent: 0.42, resetsAt: '' },
+    { label: 'account@example.com · Weekly (7-day)', title: 'account@example.com · Weekly', percent: 0.12, resetsAt: '' }
   ] }),
   [
     { title: 'Session', percent: 0.78, resetAt: '' },
-    { title: 'Opus 5 (1M context) Weekly', percent: 0.42, resetAt: '' }
+    { title: 'Opus 5 (1M context) Weekly', percent: 0.42, resetAt: '' },
+    { title: 'account@example.com · Weekly', percent: 0.12, resetAt: '' }
   ],
   'agents panel titles a limit off the collector when it states one'
 )

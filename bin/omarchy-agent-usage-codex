@@ -1,13 +1,14 @@
 #!/usr/bin/python3
 # omarchy:summary=Print the Codex usage record as JSON
-# omarchy:args=[--force] [--limits-only]
+# omarchy:args=[--force] [--limits-only] [--opencode-openai-limits]
 # omarchy:hidden=true
 """Collect Codex usage into one display-ready JSON record.
 
 Local stats come from native Codex CLI session files, pi/omp sessions that
 ran through openai-codex, and opencode sessions that ran on an OpenAI
-provider; rate limits and the plan come from the Codex app-server RPC. The agents
-panel only ever reads the JSON this prints.
+provider. Rate limits come from the native Codex login and, when it belongs
+to a different account, OpenCode's OpenAI OAuth login. The agents panel only
+ever reads the JSON this prints.
 """
 
 import argparse
@@ -495,7 +496,7 @@ def rpc_request(proc, request_id, method, params=None, timeout=8):
   raise TimeoutError(method)
 
 
-def limit_window(window):
+def limit_window(window, prefix=""):
   if not isinstance(window, dict):
     return None
   used = window.get("usedPercent")
@@ -504,21 +505,138 @@ def limit_window(window):
   mins = number(window.get("windowDurationMins"))
   if mins == 10080:
     label = "Weekly (7-day)"
+    title = "Weekly"
+  elif mins == 43200:
+    label = "Monthly (30-day)"
+    title = "Monthly"
   elif mins and mins % 60 == 0:
     label = f"{mins // 60}h window"
+    title = "Session"
   elif mins:
     label = f"{mins}m window"
+    title = "Session"
   else:
     label = "Limit"
+    title = "Limit"
+  if prefix:
+    label = f"{prefix} · {label}"
+    title = f"{prefix} · {title}"
   reset = window.get("resetsAt")
-  return {
+  entry = {
     "label": label,
     "percent": float(used) / 100.0,
     "resetsAt": datetime.fromtimestamp(number(reset), timezone.utc).isoformat() if reset else "",
   }
+  if prefix:
+    entry["title"] = title
+  return entry
 
 
-def fetch_codex_rpc():
+def read_json(path):
+  try:
+    with path.open() as handle:
+      data = json.load(handle)
+    return data if isinstance(data, dict) else {}
+  except Exception:
+    return {}
+
+
+def codex_account_id():
+  codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+  auth = read_json(codex_home / "auth.json")
+  tokens = auth.get("tokens") or {}
+  return str(tokens.get("account_id") or "") if isinstance(tokens, dict) else ""
+
+
+def opencode_openai_auth():
+  data_home = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share"))
+  auth = read_json(data_home / "opencode" / "auth.json").get("openai") or {}
+  if not isinstance(auth, dict) or auth.get("type") != "oauth":
+    return None
+  access_token = str(auth.get("access") or "")
+  account_id = str(auth.get("accountId") or "")
+  if not access_token or not account_id:
+    return None
+  return {"accessToken": access_token, "accountId": account_id}
+
+
+def stop_process(proc):
+  try:
+    proc.terminate()
+    proc.wait(timeout=1)
+  except Exception:
+    try:
+      proc.kill()
+    except Exception:
+      pass
+
+
+def start_codex_app_server(codex, env):
+  return subprocess.Popen(
+    [codex, "-s", "read-only", "-a", "on-request", "app-server"],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.DEVNULL,
+    text=True,
+    env=env,
+  )
+
+
+def initialize_app_server(proc, experimental=False):
+  params = {"clientInfo": {"name": "omarchy-agent-usage", "version": "1"}}
+  if experimental:
+    params["capabilities"] = {"experimentalApi": True}
+  rpc_request(proc, 1, "initialize", params, timeout=8)
+  proc.stdin.write(json.dumps({"method": "initialized", "params": {}}) + "\n")
+  proc.stdin.flush()
+
+
+def fetch_opencode_rpc(codex, native_account):
+  auth = opencode_openai_auth()
+  if not auth:
+    return None
+
+  native_id = codex_account_id()
+  if native_id and native_id == auth["accountId"]:
+    return None
+
+  try:
+    with tempfile.TemporaryDirectory(prefix="omarchy-opencode-openai-") as temp_codex_home:
+      env = ENV.copy()
+      env["CODEX_HOME"] = temp_codex_home
+      env.pop("OPENAI_API_KEY", None)
+      proc = start_codex_app_server(codex, env)
+      try:
+        initialize_app_server(proc, experimental=True)
+        login_msg = rpc_request(proc, 2, "account/login/start", {
+          "type": "chatgptAuthTokens",
+          "accessToken": auth["accessToken"],
+          "chatgptAccountId": auth["accountId"],
+        }, timeout=4)
+        if login_msg.get("error"):
+          return None
+        account_msg = rpc_request(proc, 3, "account/read", {"refreshToken": False}, timeout=4)
+        limits_msg = rpc_request(proc, 4, "account/rateLimits/read", timeout=4)
+      finally:
+        stop_process(proc)
+  except Exception:
+    return None
+
+  account = (account_msg.get("result") or {}).get("account") or {}
+  # File-backed Codex auth gives an exact account-id comparison. If Codex
+  # stores credentials elsewhere, use the account email as a conservative
+  # fallback rather than drawing duplicate meters for the same subscription.
+  if not native_id and native_account.get("type") == "chatgpt":
+    native_email = str(native_account.get("email") or "")
+    opencode_email = str(account.get("email") or "")
+    if not native_email or not opencode_email or native_email == opencode_email:
+      return None
+
+  limits = (limits_msg.get("result") or {}).get("rateLimits") or {}
+  return {"account": account, "limits": limits}
+
+
+def fetch_codex_rpc(include_opencode=False):
   result = {"limits": [], "tierLabel": "", "usageStatusText": "", "authHelpText": AUTH_HELP}
   codex = find_command("codex")
   if not codex:
@@ -527,23 +645,14 @@ def fetch_codex_rpc():
     return result
 
   try:
-    proc = subprocess.Popen(
-      [codex, "-s", "read-only", "-a", "on-request", "app-server"],
-      stdin=subprocess.PIPE,
-      stdout=subprocess.PIPE,
-      stderr=subprocess.DEVNULL,
-      text=True,
-      env=ENV,
-    )
+    proc = start_codex_app_server(codex, ENV)
   except Exception as exc:
     result["usageStatusText"] = "Codex unavailable"
     result["authHelpText"] = str(exc)
     return result
 
   try:
-    rpc_request(proc, 1, "initialize", {"clientInfo": {"name": "omarchy-agent-usage", "version": "1"}}, timeout=8)
-    proc.stdin.write(json.dumps({"method": "initialized", "params": {}}) + "\n")
-    proc.stdin.flush()
+    initialize_app_server(proc)
     account_msg = rpc_request(proc, 2, "account/read", timeout=4)
     limits_msg = rpc_request(proc, 3, "account/rateLimits/read", timeout=4)
 
@@ -556,18 +665,32 @@ def fetch_codex_rpc():
       entry = limit_window(window)
       if entry:
         result["limits"].append(entry)
+
+    opencode = fetch_opencode_rpc(codex, account) if include_opencode else None
+    if opencode:
+      opencode_email = str(opencode["account"].get("email") or "OpenCode")
+      opencode_entries = []
+      for window in (opencode["limits"].get("primary"), opencode["limits"].get("secondary")):
+        entry = limit_window(window, opencode_email)
+        if entry:
+          opencode_entries.append(entry)
+      if opencode_entries:
+        native_email = str(account.get("email") or "Codex")
+        native_entries = []
+        for window in (limits.get("primary"), limits.get("secondary")):
+          entry = limit_window(window, native_email)
+          if entry:
+            native_entries.append(entry)
+        result["limits"] = native_entries + opencode_entries
+      if opencode_entries and not result["tierLabel"]:
+        opencode_account = opencode["account"]
+        plan = opencode["limits"].get("planType") or opencode_account.get("planType") or ""
+        result["tierLabel"] = str(plan) if plan else ""
   except Exception as exc:
     result["usageStatusText"] = "Codex limits unavailable"
     result["authHelpText"] = str(exc)
   finally:
-    try:
-      proc.terminate()
-      proc.wait(timeout=1)
-    except Exception:
-      try:
-        proc.kill()
-      except Exception:
-        pass
+    stop_process(proc)
   return result
 
 
@@ -580,11 +703,12 @@ def main():
   # collector runs.
   parser.add_argument("--force", action="store_true")
   parser.add_argument("--limits-only", action="store_true")
+  parser.add_argument("--opencode-openai-limits", action="store_true")
   args = parser.parse_args()
 
   max_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else SCAN_REUSE_SECONDS)
   stats = cached_local_stats(max_age)
-  rpc = fetch_codex_rpc()
+  rpc = fetch_codex_rpc(args.opencode_openai_limits)
 
   record = {
     "schemaVersion": 1,

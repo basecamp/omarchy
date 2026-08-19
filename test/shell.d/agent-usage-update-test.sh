@@ -25,6 +25,12 @@ cat >"$FAKE_OMARCHY/bin/omarchy-agent-usage-skipped" <<'EOF'
 echo '{"id":"skipped"}'
 EOF
 
+cat >"$FAKE_OMARCHY/bin/omarchy-agent-usage-codex" <<'EOF'
+#!/bin/bash
+[[ -n ${ARG_LOG:-} ]] && printf '%s\n' "$*" >"$ARG_LOG"
+echo '{"schemaVersion":1,"id":"codex","name":"Codex","totalPrompts":3}'
+EOF
+
 # The updater itself lives in the same namespace as the collectors it globs.
 cat >"$FAKE_OMARCHY/bin/omarchy-agent-usage-update" <<'EOF'
 #!/bin/bash
@@ -63,3 +69,10 @@ pass "update succeeds when the requested collectors all pass"
 [[ -e $usage_dir/skipped.json && ! -e $usage_dir/noisy.json ]] ||
   fail "update with agent arguments only runs the named collectors"
 pass "update with agent arguments only runs the named collectors"
+
+ARG_LOG="$TEST_HOME/codex-args" HOME="$TEST_HOME" OMARCHY_PATH="$FAKE_OMARCHY" XDG_STATE_HOME="" \
+  "$ROOT/bin/omarchy-agent-usage-update" --opencode-openai-limits codex 2>/dev/null ||
+  fail "update forwards opted-in OpenCode limits to Codex"
+[[ $(<"$TEST_HOME/codex-args") == "--opencode-openai-limits" ]] ||
+  fail "update forwards the OpenCode limits flag only to Codex" "$(<"$TEST_HOME/codex-args")"
+pass "update forwards opted-in OpenCode limits to Codex"

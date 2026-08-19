@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Regenerate the AI agent usage data files
-# omarchy:args=[--force] [--limits-only] [--except <agent>] [agent...]
+# omarchy:args=[--force] [--limits-only] [--opencode-openai-limits] [--except <agent>] [agent...]
 # omarchy:examples=omarchy agent usage-update | omarchy agent usage-update claude | omarchy agent usage-update --except codex
 
 # Each omarchy-agent-usage-<agent> collector prints one display-ready JSON
@@ -13,12 +13,14 @@ USAGE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/agents/usage"
 mkdir -p "$USAGE_DIR"
 
 flags=()
+codex_flags=()
 only=()
 declare -A excluded
 
 while (( $# > 0 )); do
   case "$1" in
   --force | --limits-only) flags+=("$1") ;;
+  --opencode-openai-limits) codex_flags+=("$1") ;;
   --except)
     excluded[$2]=1
     shift
@@ -42,7 +44,9 @@ wanted() {
 collect() {
   local collector="$1" agent="$2"
   local record tmp
-  if ! record=$("$collector" "${flags[@]}") || [[ -z $record ]] || ! jq -e . >/dev/null 2>&1 <<<"$record"; then
+  local -a collector_flags=("${flags[@]}")
+  [[ $agent == "codex" ]] && collector_flags+=("${codex_flags[@]}")
+  if ! record=$("$collector" "${collector_flags[@]}") || [[ -z $record ]] || ! jq -e . >/dev/null 2>&1 <<<"$record"; then
     echo "omarchy-agent-usage-update: $agent collector failed" >&2
     return 1
   fi

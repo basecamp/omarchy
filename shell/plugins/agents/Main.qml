@@ -148,6 +148,8 @@ Item {
     if (kind === "force") command.push("--force")
     if (kind === "limits") command.push("--limits-only")
     var providers = settings && settings.providers ? settings.providers : {}
+    if (providers.codex && providers.codex.openCodeOpenAiLimits === true)
+      command.push("--opencode-openai-limits")
     for (var id in providers) {
       if (providers[id] && providers[id].enabled === false) command.push("--except", id)
     }
