@@ -19,6 +19,7 @@ mise_history="$test_tmp/mise-history"
 stub_log="$test_tmp/stubs"
 terminal_log="$test_tmp/terminal"
 menu_log="$test_tmp/menu"
+cursor_install_log="$test_tmp/cursor-install"
 mkdir -p "$mock_bin" "$test_home"
 
 cat >"$mock_bin/omarchy-notification-send" <<'SH'
@@ -49,6 +50,18 @@ SH
 cat >"$mock_bin/omarchy-mise-install" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >>"$OMARCHY_TEST_STUB_LOG"
+SH
+
+cat >"$mock_bin/omarchy-install-cursor-agent" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >>"$OMARCHY_TEST_CURSOR_INSTALL_LOG"
+
+if [[ $1 == "--check" ]]; then
+  [[ ${OMARCHY_TEST_CURSOR_INSTALLED:-false} == "true" ]]
+  exit
+fi
+
+[[ ${OMARCHY_TEST_CURSOR_INSTALL_FAIL:-false} != "true" ]]
 SH
 
 cat >"$mock_bin/mise" <<'SH'
@@ -91,6 +104,7 @@ export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
+export OMARCHY_TEST_CURSOR_INSTALL_LOG="$cursor_install_log"
 export OMARCHY_PATH="$ROOT"
 
 grok_package="npm:@xai-official/grok"
@@ -98,7 +112,6 @@ omp_package="github:can1357/oh-my-pi"
 crush_package="crush"
 agy_package="antigravity-cli"
 ori_package="github:OpenRouterLabs/ori-releases"
-cursor_package="asdf:icholy/asdf-cursor-agent"
 
 assert_lazy_stub() {
   local package=$1
@@ -117,7 +130,6 @@ assert_lazy_stub "$grok_package" grok
 assert_lazy_stub "$omp_package" omp
 assert_lazy_stub "$crush_package" crush
 assert_lazy_stub "$ori_package" ori
-assert_lazy_stub "$cursor_package" cursor-agent
 pass "custom agent lazy stubs preserve their mise packages"
 
 source "$ROOT/install/user/mise.sh"
@@ -126,7 +138,10 @@ grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
 grep -Fx "$ori_package ori" "$stub_log" >/dev/null || fail "user setup creates the Ori lazy stub"
-grep -Fx "$cursor_package cursor-agent" "$stub_log" >/dev/null || fail "user setup creates the Cursor lazy stub"
+grep -F "asdf:icholy/asdf-cursor-agent" "$stub_log" >/dev/null &&
+  fail "user setup does not create a Cursor asdf stub"
+grep -F "cursor-agent" "$stub_log" >/dev/null &&
+  fail "user setup does not create a Cursor mise stub"
 pass "user setup creates the custom agent lazy stubs"
 
 : >"$stub_log"
@@ -213,8 +228,18 @@ source "$ROOT/migrations/1786719479.sh" >/dev/null
 pass "Antigravity migration preserves an existing Antigravity install"
 
 : >"$stub_log"
+mkdir -p "$test_home/.local/bin"
+printf '#!/bin/bash\nmise use -g --quiet "asdf:icholy/asdf-cursor-agent" || exit 1\n' >"$test_home/.local/bin/cursor-agent"
+chmod +x "$test_home/.local/bin/cursor-agent"
 source "$ROOT/migrations/1786797150.sh" >/dev/null
-grep -Fx "$cursor_package cursor-agent" "$stub_log" >/dev/null || fail "Cursor migration creates the Cursor lazy stub"
+[[ ! -e $test_home/.local/bin/cursor-agent ]] || fail "Cursor migration removes the unofficial asdf stub"
+grep -F "asdf:icholy/asdf-cursor-agent" "$stub_log" >/dev/null &&
+  fail "Cursor migration does not install Cursor through mise"
+
+printf '#!/bin/bash\nexec /opt/cursor-agent/cursor-agent "$@"\n' >"$test_home/.local/bin/cursor-agent"
+chmod +x "$test_home/.local/bin/cursor-agent"
+source "$ROOT/migrations/1786797150.sh" >/dev/null
+[[ -e $test_home/.local/bin/cursor-agent ]] || fail "Cursor migration leaves a real cursor-agent in place"
 
 mkdir -p "$test_home/.local/state/omarchy"
 touch "$test_home/.local/state/omarchy/preinstalls-removed"
@@ -226,6 +251,7 @@ source "$ROOT/migrations/1787342993.sh" >/dev/null
 source "$ROOT/migrations/1786797150.sh" >/dev/null
 [[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
 [[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
+[[ -e $test_home/.local/bin/cursor-agent ]] || fail "Cursor migration still leaves a real cursor-agent after opt-out"
 
 # The matcher has to catch a bare oh-my-pi wrapper from either generation of the
 # installer, and leave a wrapper built on the fully qualified package alone.
@@ -250,9 +276,10 @@ pass "agent migrations install working wrappers without overriding the preinstal
 
 touch "$test_home/.local/bin/agy" "$test_home/.local/bin/ori" "$test_home/.local/bin/cursor-agent"
 omarchy-remove-preinstalls >/dev/null
-for command in agy omp ori grok crush cursor-agent; do
+for command in agy omp ori grok crush; do
   [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
 done
+[[ -e $test_home/.local/bin/cursor-agent ]] || fail "Remove Preinstalls leaves a user-installed Cursor Agent in place"
 pass "Remove Preinstalls deletes every optional agent lazy stub"
 
 [[ -z $(omarchy-default-agent) ]] || fail "default agent is unset until one is chosen"
@@ -327,7 +354,6 @@ declare -A expected_packages=(
   [claude]="claude"
   [codex]="codex"
   [crush]="$crush_package"
-  [cursor-agent]="$cursor_package"
   [grok]="$grok_package"
   [agy]="$agy_package"
   [copilot]="copilot"
@@ -336,12 +362,21 @@ declare -A expected_packages=(
 for selection in "${!expected_agents[@]}"; do
   expected=${expected_agents[$selection]}
   : >"$agent_open_log"
-  OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent "$selection"
-  [[ $(omarchy-default-agent) == $expected ]] || fail "default agent canonicalizes $selection"
+  : >"$mise_log"
+  : >"$cursor_install_log"
+  if [[ $expected == "cursor-agent" ]]; then
+    OMARCHY_TEST_CURSOR_INSTALLED=true omarchy-default-agent "$selection"
+    [[ ! -s $mise_log ]] || fail "default agent does not install Cursor through mise"
+    [[ $(<"$cursor_install_log") == "--check" ]] ||
+      fail "default agent reuses a cursor-agent already on PATH"
+  else
+    OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent "$selection"
+    mapfile -d '' -t mise_args <"$mise_log"
+    [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
+      fail "default agent installs $selection globally through mise"
+  fi
 
-  mapfile -d '' -t mise_args <"$mise_log"
-  [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
-    fail "default agent installs $selection globally through mise"
+  [[ $(omarchy-default-agent) == $expected ]] || fail "default agent canonicalizes $selection"
 
   mapfile -d '' -t agent_open_args <"$agent_open_log"
   [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
@@ -390,6 +425,45 @@ mapfile -d '' -t agent_open_args <"$agent_open_log"
 [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
   fail "installed agent opens in a new terminal after selection"
 pass "installed agents select and open without notifications"
+
+: >"$notification_history"
+: >"$agent_open_log"
+: >"$terminal_log"
+: >"$cursor_install_log"
+: >"$mise_log"
+omarchy-default-agent cursor
+mapfile -d '' -t terminal_args <"$terminal_log"
+[[ ${terminal_args[0]} == "omarchy-default-agent" && ${terminal_args[1]} == "--install" && ${terminal_args[2]} == "cursor-agent" ]] ||
+  fail "missing Cursor installation opens in a terminal"
+[[ $(<"$cursor_install_log") == "--check" ]] || fail "missing Cursor installation checks PATH before downloading"
+[[ ! -s $mise_log ]] || fail "missing Cursor installation does not use mise"
+[[ $(omarchy-default-agent) == "copilot" ]] || fail "missing Cursor installation waits to change the selection"
+
+: >"$cursor_install_log"
+: >"$mise_log"
+omarchy-default-agent --install cursor-agent >"$test_tmp/cursor-install-output"
+mapfile -t cursor_install_calls <"$cursor_install_log"
+[[ ${cursor_install_calls[0]} == "--check" && ${cursor_install_calls[1]} == "" ]] ||
+  fail "visible Cursor installation fetches the official CLI after PATH misses"
+[[ ! -s $mise_log ]] || fail "visible Cursor installation does not use mise"
+[[ $(omarchy-default-agent) == "cursor-agent" ]] || fail "visible Cursor installation changes the selection after install succeeds"
+mapfile -d '' -t agent_open_args <"$agent_open_log"
+[[ ${#agent_open_args[@]} == 2 && ${agent_open_args[0]} == "omarchy-agent" && ${agent_open_args[1]} == "--inline" ]] ||
+  fail "newly installed Cursor opens in the installation terminal"
+pass "missing Cursor installs from the official tarball"
+
+printf '%s\n' "copilot" >"$agent_file"
+: >"$notification_history"
+: >"$agent_open_log"
+: >"$cursor_install_log"
+if OMARCHY_TEST_CURSOR_INSTALL_FAIL=true omarchy-default-agent --install cursor >"$test_tmp/cursor-install-failure-output" 2>&1; then
+  fail "default agent rejects a failed Cursor installation"
+fi
+[[ $(omarchy-default-agent) == "copilot" ]] || fail "failed Cursor installation preserves the current default agent"
+grep -F "Could not install Cursor" "$test_tmp/cursor-install-failure-output" >/dev/null ||
+  fail "default agent reports a failed Cursor installation in the terminal"
+[[ ! -s $agent_open_log ]] || fail "failed Cursor installation does not open an agent"
+pass "default agent opens Cursor only after the official CLI is present"
 
 : >"$agent_open_log"
 if omarchy-default-agent unsupported >"$test_tmp/invalid-output" 2>&1; then

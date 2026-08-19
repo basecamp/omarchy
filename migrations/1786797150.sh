@@ -1,5 +1,6 @@
-echo "Install Cursor Agent mise wrapper"
+echo "Remove the unofficial Cursor asdf stub"
 
-if [[ ! -f $HOME/.local/state/omarchy/preinstalls-removed ]]; then
-  omarchy-mise-install asdf:icholy/asdf-cursor-agent cursor-agent
+stub="$HOME/.local/bin/cursor-agent"
+if [[ -f $stub ]] && grep -Fq 'asdf:icholy/asdf-cursor-agent' "$stub"; then
+  rm -f "$stub"
 fi
