@@ -46,7 +46,11 @@ agent_package=${agent_package:-$agent}
 # here: it needs its interpreter pinned, and a bare `mise use` has nowhere to
 # say so. See omarchy-install-hermes-cli.
 if [[ -n ${agent_installer:-} ]]; then
-  agent_present() { omarchy-cmd-present "$agent"; }
+  # Not omarchy-cmd-present: the stub is on PATH from first boot and says
+  # nothing about whether Hermes is installed behind it. Treating a cold stub
+  # as installed skips the floating terminal and runs the minute-long install
+  # inside the menu action instead.
+  agent_present() { "$agent_installer" --check; }
   agent_install() { "$agent_installer" --now; }
 else
   agent_present() { mise where "$agent_package" &>/dev/null; }

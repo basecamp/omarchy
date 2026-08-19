@@ -18,11 +18,22 @@
 
 set -euo pipefail
 
-warm=false
-[[ ${1:-} == "--now" ]] && warm=true
+mode=${1:-}
 
 tool='pipx:hermes-agent[extras=all]'
 python='3.13'
+
+# Whether Hermes is really installed, not merely whether the stub exists. A
+# stub on its own is cold: running it installs Hermes, which takes minutes.
+installed() {
+  [[ -d "$(mise where "$tool" 2>/dev/null)/hermes-agent/lib/python$python" ]]
+}
+
+# --check lets callers tell a cold stub from a working one before they commit
+# to a path that assumes Hermes is ready.
+if [[ $mode == "--check" ]]; then
+  if installed; then exit 0; else exit 1; fi
+fi
 
 mkdir -p "$HOME/.local/bin"
 rm -f "$HOME/.local/bin/hermes"
@@ -34,14 +45,17 @@ cat >"$HOME/.local/bin/hermes" <<EOF
 
 export UV_PYTHON="$python"
 
+# Exported rather than set on the install line alone, so the version resolved
+# to run agrees with the one just installed. Hermes ships several times a week
+# and mise's cooldown would otherwise hold a new release back for days.
+export MISE_MINIMUM_RELEASE_AGE=0
+
 # mise up -- which omarchy update runs -- reinstalls without that pin, so this
 # asks which interpreter is actually there rather than whether anything is.
 if ! [[ -d "\$(mise where '$tool' 2>/dev/null)/hermes-agent/lib/python$python" ]]; then
   echo "Installing Hermes on Python $python (this takes a minute)..." >&2
 
-  # Hermes ships several times a week, so mise's release cooldown would hold a
-  # new version back for days.
-  MISE_MINIMUM_RELEASE_AGE=0 mise use -g --quiet --force '$tool' || exit 1
+  mise use -g --quiet --force '$tool' || exit 1
 fi
 
 exec mise x '$tool' -- hermes "\$@"
@@ -53,6 +67,6 @@ chmod +x "$HOME/.local/bin/hermes"
 # a 15 second budget, then falls back to cloning its own copy when that times
 # out. A first-run mise install does not fit in 15 seconds, so anything that
 # hands Hermes to the GUI has to install it here rather than leave it stubbed.
-if [[ $warm == "true" ]]; then
+if [[ $mode == "--now" ]]; then
   "$HOME/.local/bin/hermes" --version
 fi
