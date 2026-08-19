@@ -1,4 +1,6 @@
 {
+  "%1 disabled": "%1 desactivado",
+  "%1 enabled": "%1 activado",
   "Activity": "Actividad",
   "Apps menu": "Menú de aplicaciones",
   "Background switcher": "Selector de fondos",
@@ -176,6 +178,9 @@
   "Monthly": "Mensual",
   "No outstanding reminders": "No hay recordatorios pendientes",
   "No audio devices found": "No se encontraron dispositivos de audio",
+  "Logging out": "Cerrando sesión",
+  "Rebooting": "Reiniciando",
+  "Shutting down": "Apagando",
   "Select next window to capture": "Seleccionar la siguiente ventana para capturar",
   "Select previous window to capture": "Seleccionar la ventana anterior para capturar",
   "Select window to capture": "Seleccionar ventana para capturar",

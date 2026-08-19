@@ -4,11 +4,13 @@
 # omarchy:examples=omarchy reboot | omarchy system reboot
 # omarchy:aliases=omarchy reboot
 
+source "$OMARCHY_PATH/default/bash/i18n"
+
 # Schedule the reboot in the user manager so closing the terminal's systemd
 # scope cannot terminate it before it runs.
 systemd-run --user --collect --quiet --on-active="2s" --timer-property=AccuracySec=100ms systemctl reboot --no-wall || exit 1
 
-omarchy-osd -i reboot -m "Rebooting" -d 5000
+omarchy-osd -i reboot -m "$(omarchy_t "Rebooting")" -d 5000
 
 omarchy-state clear re*-required
 

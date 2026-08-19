@@ -4,6 +4,8 @@
 # omarchy:args=<touchpad|touchscreen> [on|off|toggle]
 # omarchy:hidden=true
 
+source "$OMARCHY_PATH/default/bash/i18n"
+
 KIND="${1:-}"
 ACTION="${2:-toggle}"
 
@@ -29,14 +31,14 @@ fi
 enable() {
   hyprctl eval "hl.device({ name = \"$device\", enabled = true })" >/dev/null
   rm -f "$STATE_FILE"
-  omarchy-osd -i "$ICON" -m "$LABEL enabled"
+  omarchy-osd -i "$ICON" -m "$(omarchy_t "%1 enabled" "$(omarchy_t "$LABEL")")"
 }
 
 disable() {
   hyprctl eval "hl.device({ name = \"$device\", enabled = false })" >/dev/null
   mkdir -p "$(dirname "$STATE_FILE")"
   printf 'hl.device({ name = "%s", enabled = false })\n' "$device" >"$STATE_FILE"
-  omarchy-osd -i "$ICON" -m "$LABEL disabled"
+  omarchy-osd -i "$ICON" -m "$(omarchy_t "%1 disabled" "$(omarchy_t "$LABEL")")"
 }
 
 case "$ACTION" in
