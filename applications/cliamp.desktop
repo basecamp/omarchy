@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Name=cliamp
+GenericName=Music Player
+Comment=A retro terminal music player inspired by Winamp 2.x
+Exec=omarchy-launch-tui --app-id=org.omarchy.cliamp cliamp
+Icon=cliamp
+Terminal=false
+Type=Application
+Categories=Audio;Music;Player;AudioVideo;
+Keywords=music;audio;player;terminal;tui;winamp;radio;podcast;
+StartupNotify=false
