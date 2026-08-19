@@ -239,6 +239,7 @@
   "install.ai.grok-bot": {"icon":"","iconFont":"omarchy","label":"Grok Bot","disabled":"omarchy-pkg-present grok-bot","action":"omarchy-install-and-launch 'Grok Bot' grok-bot grok-bot"},
   "install.ai.lm-studio": {"icon":"","iconFont":"omarchy","label":"LM Studio","disabled":"omarchy-pkg-present lmstudio-bin","action":"omarchy-install-app 'LM Studio' lmstudio-bin"},
   "install.ai.ollama": {"icon":"","iconFont":"omarchy","label":"Ollama","disabled":"omarchy-cmd-present ollama","action":"if omarchy-cmd-present nvidia-smi; then ollama_pkg=ollama-cuda; elif omarchy-cmd-present rocminfo; then ollama_pkg=ollama-rocm; else ollama_pkg=ollama; fi; omarchy-install-app Ollama \"$ollama_pkg\""},
+  "install.ai.t3-code": {"icon":"","iconFont":"omarchy","label":"T3 Code","disabled":"omarchy-pkg-present t3code-bin","action":"omarchy-install-and-launch 'T3 Code' t3code-bin t3code"},
   "install.gaming.steam": {"icon":"","label":"Steam","disabled":"omarchy-pkg-present steam","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-steam"},
   "install.gaming.retroarch": {"icon":"󰯉","label":"RetroArch","disabled":"omarchy-pkg-present retroarch","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-retroarch"},
   "install.gaming.minecraft": {"icon":"󰍳","label":"Minecraft","disabled":"omarchy-pkg-present minecraft-launcher","action":"omarchy-install-and-launch Minecraft minecraft-launcher minecraft-launcher"},
