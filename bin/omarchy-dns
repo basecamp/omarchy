@@ -28,32 +28,55 @@ provider_from_arg() {
   esac
 }
 
+# The path and the providers etc/sudoers.d/omarchy-dns names. Both halves have
+# to match the rule exactly for sudo to accept it without a password, so the
+# test pins them to that file.
+PACKAGED_PATH=/usr/bin/omarchy-dns
+
 self_path() {
   readlink -f "$OMARCHY_PATH/bin/${BASH_SOURCE[0]##*/}"
 }
 
+granted_provider() {
+  case "${1:-}" in
+  Cloudflare | Google | DHCP)
+    return 0
+    ;;
+  *)
+    return 1
+    ;;
+  esac
+}
+
 require_root() {
   if (( EUID == 0 )); then
+    # sudo's secure_path is normally root-owned, but `omarchy dev link` puts a
+    # user-writable checkout ahead of it for every command, and a passwordless
+    # grant on a script that resolves helpers through PATH would hand root to
+    # whoever can write there. Nothing below is an omarchy-* command, so a
+    # fixed system PATH costs dev-linked checkouts nothing.
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
     return
   fi
 
   local self
   self=$(self_path)
 
-  # etc/sudoers.d/omarchy-dns grants the stock providers passwordlessly, so use
-  # sudo whenever the grant covers this invocation, terminal or not. The network
-  # panel and the menu switch DNS from a process with no tty, where the pkexec
-  # fallback below would put a polkit password prompt on screen for what is
-  # meant to be a one-click toggle.
-  if sudo -n -l "$self" "$@" >/dev/null 2>&1; then
-    exec sudo -n "$self" "$@"
+  # A terminal can carry sudo's own password prompt. Without one, sudo is still
+  # right when etc/sudoers.d/omarchy-dns covers this exact invocation: that
+  # grant is what keeps the panel's one-click provider switch from raising a
+  # polkit prompt. Everything else -- Custom, a dev-linked checkout the rule
+  # does not name -- still goes through polkit.
+  #
+  # Do not swap this for a `sudo -n -l` probe. That reports whether a command is
+  # permitted, not whether it is passwordless, so the blanket %wheel rule
+  # answers yes for every argument and Custom dies on `sudo -n` instead of
+  # falling through to pkexec.
+  if [[ -t 0 ]] || { [[ $self == "$PACKAGED_PATH" ]] && granted_provider "${1:-}"; }; then
+    exec sudo "$self" "$@"
   fi
 
-  if [[ -t 0 ]]; then
-    exec sudo "$self" "$@"
-  else
-    exec pkexec "$self" "$@"
-  fi
+  exec pkexec "$self" "$@"
 }
 
 networkmanager_global_dns() {
