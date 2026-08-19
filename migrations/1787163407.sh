@@ -12,10 +12,15 @@ needs_limine_rebuild=0
 
 [[ -f $limine_conf ]] || exit 0
 
+limine_default_has_param() {
+  local param="$1"
+  grep -Eq "^[[:space:]]*KERNEL_CMDLINE\\[default\\]\\+=.*([[:space:]\"])${param}([[:space:]\"]|$)" "$limine_conf"
+}
+
 for param in "${required_params[@]}"; do
-  if ! grep -Eq "(^|[[:space:]\"])${param}([[:space:]\"]|$)" "$limine_conf"; then
+  if ! limine_default_has_param "$param"; then
     sudo sed -i "/^KERNEL_CMDLINE\[default\]+=/ s/\"[[:space:]]*$/ $param\"/" "$limine_conf"
-    grep -Eq "(^|[[:space:]\"])${param}([[:space:]\"]|$)" "$limine_conf" || {
+    limine_default_has_param "$param" || {
       echo "Could not add $param to $limine_conf" >&2
       exit 1
     }
