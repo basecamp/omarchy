@@ -104,32 +104,32 @@ run_prompt() {
   "$ROOT/bin/omarchy-capture-screenrecording" --prompt
 }
 
-# Pause choice -> SIGUSR1, marker set, no SIGINT.
+# Pause choice -> SIGUSR2, marker set, no SIGINT.
 OMARCHY_TEST_SELECT_CHOICE="Pause recording" run_prompt
 [[ -f $PAUSED_FILE ]] || fail "pause choice creates the paused marker"
-grep -qx -- '-SIGUSR1 -f ^gpu-screen-recorder' "$PKILL_LOG" || \
-  fail "pause choice sends SIGUSR1" "$(cat "$PKILL_LOG")"
+grep -qx -- '-SIGUSR2 -f ^gpu-screen-recorder' "$PKILL_LOG" || \
+  fail "pause choice sends SIGUSR2" "$(cat "$PKILL_LOG")"
 ! grep -q -- '-SIGINT' "$PKILL_LOG" || fail "pause choice does not send SIGINT"
 pass "pause choice pauses the capture without stopping"
 
-# Resume choice (marker pre-set) -> SIGUSR1, marker cleared.
+# Resume choice (marker pre-set) -> SIGUSR2, marker cleared.
 echo active >"$PGREP_STATE"
 touch "$PAUSED_FILE"
 : >"$PKILL_LOG"
 OMARCHY_TEST_SELECT_CHOICE="Resume recording" "$ROOT/bin/omarchy-capture-screenrecording" --prompt
 [[ ! -f $PAUSED_FILE ]] || fail "resume choice clears the paused marker"
-grep -qx -- '-SIGUSR1 -f ^gpu-screen-recorder' "$PKILL_LOG" || \
-  fail "resume choice sends SIGUSR1" "$(cat "$PKILL_LOG")"
+grep -qx -- '-SIGUSR2 -f ^gpu-screen-recorder' "$PKILL_LOG" || \
+  fail "resume choice sends SIGUSR2" "$(cat "$PKILL_LOG")"
 pass "resume choice resumes the capture"
 
-# Stop choice -> SIGINT, never SIGUSR1.
+# Stop choice -> SIGINT, never SIGUSR2.
 echo active >"$PGREP_STATE"
 rm -f "$PAUSED_FILE"
 : >"$PKILL_LOG"
 OMARCHY_TEST_SELECT_CHOICE="Stop recording" "$ROOT/bin/omarchy-capture-screenrecording" --prompt
 grep -qx -- '-SIGINT -f ^gpu-screen-recorder' "$PKILL_LOG" || \
   fail "stop choice sends SIGINT" "$(cat "$PKILL_LOG")"
-! grep -q -- '-SIGUSR1' "$PKILL_LOG" || fail "stop choice does not send SIGUSR1"
+! grep -q -- '-SIGUSR2' "$PKILL_LOG" || fail "stop choice does not send SIGUSR2"
 pass "stop choice stops the capture"
 
 # The picker gets the right options per state: pause option when recording,

@@ -263,11 +263,12 @@ screenrecording_paused() {
   [[ -f $PAUSED_FILE ]]
 }
 
-# SIGUSR1 toggles capture pause in gpu-screen-recorder. The process won't report
-# its paused state back, so the marker file is the source of truth — every
-# pause/resume goes through here, which keeps it in lockstep with the process.
+# SIGUSR2 toggles capture pause in gpu-screen-recorder (SIGUSR1 saves a replay
+# instead). The process won't report its paused state back, so the marker file
+# is the source of truth — every pause/resume goes through here, which keeps it
+# in lockstep with the process.
 pause_screenrecording() {
-  pkill -SIGUSR1 -f "^gpu-screen-recorder"
+  pkill -SIGUSR2 -f "^gpu-screen-recorder"
 
   if screenrecording_paused; then
     rm -f "$PAUSED_FILE"

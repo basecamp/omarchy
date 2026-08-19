@@ -49,14 +49,14 @@ export OMARCHY_TEST_NOTIF_ARGS="$tmp_dir/notif.log"
 : >"$OMARCHY_TEST_PKILL_LOG"
 : >"$OMARCHY_TEST_NOTIF_ARGS"
 
-# Active recording -> pause creates the marker, sends SIGUSR1, and notifies.
+# Active recording -> pause creates the marker, sends SIGUSR2, and notifies.
 OMARCHY_TEST_REC_ACTIVE=true "$ROOT/bin/omarchy-capture-screenrecording" --pause-recording
 [[ -f $PAUSED_FILE ]] || fail "pause creates the paused marker file"
-grep -qx -- '-SIGUSR1 -f ^gpu-screen-recorder' "$OMARCHY_TEST_PKILL_LOG" || \
-  fail "pause signals SIGUSR1 to gpu-screen-recorder" "$(cat "$OMARCHY_TEST_PKILL_LOG")"
+grep -qx -- '-SIGUSR2 -f ^gpu-screen-recorder' "$OMARCHY_TEST_PKILL_LOG" || \
+  fail "pause signals SIGUSR2 to gpu-screen-recorder" "$(cat "$OMARCHY_TEST_PKILL_LOG")"
 grep -Fx -- 'Recording paused' "$OMARCHY_TEST_NOTIF_ARGS" || \
   fail "pause notifies that recording paused" "$(cat "$OMARCHY_TEST_NOTIF_ARGS")"
-pass "pause signals SIGUSR1, sets the marker, and notifies"
+pass "pause signals SIGUSR2, sets the marker, and notifies"
 
 # Second toggle -> resume removes the marker and notifies.
 OMARCHY_TEST_REC_ACTIVE=true "$ROOT/bin/omarchy-capture-screenrecording" --pause-recording
@@ -65,12 +65,12 @@ grep -Fx -- 'Recording resumed' "$OMARCHY_TEST_NOTIF_ARGS" || \
   fail "resume notifies that recording resumed" "$(cat "$OMARCHY_TEST_NOTIF_ARGS")"
 pass "resume clears the marker and notifies"
 
-# Toggling twice sent SIGUSR1 both times (pause then resume), never SIGINT.
-[[ $(grep -c -- '-SIGUSR1' "$OMARCHY_TEST_PKILL_LOG") -eq 2 ]] || \
-  fail "pause/resume only ever sends SIGUSR1" "$(cat "$OMARCHY_TEST_PKILL_LOG")"
+# Toggling twice sent SIGUSR2 both times (pause then resume), never SIGINT.
+[[ $(grep -c -- '-SIGUSR2' "$OMARCHY_TEST_PKILL_LOG") -eq 2 ]] || \
+  fail "pause/resume only ever sends SIGUSR2" "$(cat "$OMARCHY_TEST_PKILL_LOG")"
 ! grep -q -- '-SIGINT' "$OMARCHY_TEST_PKILL_LOG" || \
   fail "pause/resume never sends the stop signal" "$(cat "$OMARCHY_TEST_PKILL_LOG")"
-pass "pause/resume toggles only SIGUSR1"
+pass "pause/resume toggles only SIGUSR2"
 
 # No active recording -> --pause-recording is a no-op that exits nonzero.
 : >"$OMARCHY_TEST_PKILL_LOG"
