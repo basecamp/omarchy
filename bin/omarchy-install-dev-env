@@ -2,12 +2,12 @@
 
 # omarchy:summary=Install a supported development environment
 # omarchy:name=dev-env
-# omarchy:args=<ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>
+# omarchy:args=<ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala|firebase>
 # omarchy:examples=omarchy install dev-env ruby | omarchy install dev-env node
 # omarchy:requires-sudo=true
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala|firebase>" >&2
   exit 1
 fi
 
@@ -151,5 +151,13 @@ scala)
   mise use --global java@latest
   mise use --global scala@latest
   mise use --global scala-cli@latest
+  ;;
+firebase)
+  echo -e "Installing Firebase CLI...\n"
+  mkdir -p "$HOME/.local/bin"
+  curl --proto '=https' --tlsv1.2 -fsSL -o "$HOME/.local/bin/firebase" https://firebase.tools/bin/linux/latest || exit 1
+  chmod +x "$HOME/.local/bin/firebase"
+  "$HOME/.local/bin/firebase" --version
+  echo -e "\nYou can now run: firebase login"
   ;;
 esac
