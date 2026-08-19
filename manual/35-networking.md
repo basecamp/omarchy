@@ -10,6 +10,16 @@ Rather than reading a long password out loud, run _Setup > Network > QR Code_ wh
 
 If you actually need the password itself, `omarchy network password <interface>` prints it.
 
+## Hosting a hotspot
+
+You can turn this machine into a Wi-Fi access point that other devices join and route through your internet. Open the network panel (_Super + Ctrl + W_), scroll to the **HOTSPOT** section, and flip the switch. The first time it asks for your permission once — through the system password prompt — to open the firewall rules a shared connection needs.
+
+Give the hotspot a name and a password by pressing the gear next to the toggle. The checkmark saves them without starting, the eye reveals the password, and the dice rolls you a random one. Credentials live in NetworkManager, not in a config file. Most adapters serve a single band and get no choice; when yours can do several, a band row appears next to the toggle.
+
+A hotspot runs on the Wi-Fi radio, so the internet it shares has to come from somewhere else — plug in ethernet or share your phone's connection. The panel warns when there's no such upstream, but a LAN-only hotspot still works.
+
+From the terminal it's `omarchy hotspot toggle`, or `omarchy hotspot start <ssid> <band>` with the password typed in after. `omarchy hotspot qr` prints a scannable join code, and _Trigger > Wi-Fi Hotspot_ in the menu toggles it too.
+
 ## DNS
 
 Omarchy uses whatever DNS your network hands out over DHCP. You can override that for the whole machine under _Setup > Network > DNS_, where Cloudflare and Google are one click away. Pick _Custom_ to type in your own servers.

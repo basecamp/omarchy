@@ -38,6 +38,14 @@ On some laptops, Omarchy automatically applies a speaker tuning that corrects th
 
 You probably typed it wrong too many times and got locked out. If this is happening on the lock screen, you can hit `CTRL + ALT + F2` to start a new TTY where you can login as root, then run `faillock --reset --user [your-username]`. That'll reset the lockout, and you're good to go.
 
+### My hotspot won't start, or clients connect but get no internet
+
+`omarchy hotspot diagnose` prints one report covering AP support, the bands your adapter can serve, the interface, NetworkManager state, the firewall, and the driver's allowed interface combinations. Most hotspot problems are one of these:
+
+- The adapter's driver doesn't allow AP mode on the band you picked — switch to the other band in the panel's HOTSPOT section.
+- No upstream. The hotspot borrows the Wi-Fi radio, so clients can only reach the internet if something else — ethernet or a phone tether — is providing it.
+- `dnsmasq` is missing, which NetworkManager needs for sharing. Run `omarchy migrate` to install it.
+
 ### Why isn't my 1Password authorization prompts for 1Password SSH Agent / CLI appearing?
 
 This can happen for 2 reasons:
