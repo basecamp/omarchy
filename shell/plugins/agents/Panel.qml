@@ -17,6 +17,7 @@ Panel {
   readonly property color surface: Color.popups.background
   readonly property color track: Style.selectedFillFor(foreground, Color.accent)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+  readonly property bool showAvailableUsage: String(settings?.limitDisplayMode || "Used") === "Available"
 
   readonly property var providers: usage.enabledProviders
   // The selection follows the provider, not the slot it happens to sit in: a
@@ -48,6 +49,12 @@ Panel {
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
   function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
+
+  function displayedLimitPercent(window) {
+    if (!window || window.percent < 0) return -1
+    var used = clamp(window.percent, 0, 1)
+    return showAvailableUsage ? 1 - used : used
+  }
 
   function selectProvider(index) {
     if (providers.length === 0) return
@@ -725,9 +732,11 @@ Panel {
 
       Text {
         id: limitValue
-        text: limitRow.window && limitRow.window.percent >= 0
-          ? Math.round(limitRow.window.percent * 100) + "%"
-          : "—"
+        text: {
+          var percent = root.displayedLimitPercent(limitRow.window)
+          if (percent < 0) return "—"
+          return Math.round(percent * 100) + (root.showAvailableUsage ? "% left" : "%")
+        }
         color: limitRow.alarming ? root.urgent : root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -738,7 +747,7 @@ Panel {
 
     Meter {
       width: parent.width
-      value: limitRow.window ? limitRow.window.percent : -1
+      value: root.displayedLimitPercent(limitRow.window)
       alarming: limitRow.alarming
     }
 
@@ -755,7 +764,7 @@ Panel {
     }
   }
 
-  // Rounded track showing the percentage of the allowance used.
+  // Rounded track showing the configured used or available percentage.
   component Meter: Item {
     id: meter
     property real value: -1
