@@ -12,15 +12,17 @@ HISTORY="$STATE_DIR/clipboard-history.json"
 
 [[ -d $IMAGE_DIR ]] || exit 0
 
-referenced=""
+declare -A referenced=()
 if [[ -f $HISTORY ]]; then
-  referenced=$(jq -r '.[]? | select(.type == "image") | .path // empty' "$HISTORY" 2>/dev/null || true)
+  while IFS= read -r path; do
+    [[ -n $path ]] && referenced["$path"]=1
+  done < <(jq -r '.[]? | select(.type == "image") | .path // empty' "$HISTORY" 2>/dev/null || true)
 fi
 
 # Only touch files older than 10 minutes: capture.sh writes the image before
 # its history entry lands (OCR runs in between), so a fresh file can be
 # unreferenced while its entry is still in flight.
 while IFS= read -r -d '' file; do
-  grep -qxF -- "$file" <<<"$referenced" && continue
+  [[ ${referenced["$file"]+x} ]] && continue
   rm -f -- "$file"
 done < <(find "$IMAGE_DIR" -maxdepth 1 -type f -mmin +10 -print0)
