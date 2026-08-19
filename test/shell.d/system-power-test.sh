@@ -21,7 +21,11 @@ for command in omarchy-osd omarchy-state omarchy-hyprland-window-close-all sleep
   cat >"$mock_bin/$command" <<'SH'
 #!/bin/bash
 
-printf '%s %s\n' "$(basename "$0")" "$*" >>"$CALL_LOG"
+printf '%s' "$(basename "$0")" >>"$CALL_LOG"
+for arg in "$@"; do
+  printf '\t%s' "$arg" >>"$CALL_LOG"
+done
+printf '\n' >>"$CALL_LOG"
 SH
 done
 chmod +x "$mock_bin"/*
@@ -38,13 +42,14 @@ assert_power_calls() {
   local systemctl_action="$2"
   local osd_message="$3"
   local expected_log="$test_tmp/$action-expected.log"
+  local tab=$'\t'
 
   cat >"$expected_log" <<EOF
 systemd-run --user --collect --quiet --on-active=2s --timer-property=AccuracySec=100ms systemctl $systemctl_action --no-wall
-omarchy-osd -i $action -m $osd_message -d 5000
-omarchy-state clear re*-required
-omarchy-hyprland-window-close-all 
-sleep 1
+omarchy-osd${tab}-i${tab}$action${tab}-m${tab}$osd_message${tab}-d${tab}5000
+omarchy-state${tab}clear${tab}re*-required
+omarchy-hyprland-window-close-all
+sleep${tab}1
 EOF
 
   diff -u "$expected_log" "$call_log" || fail "$action runs after being scheduled outside the terminal scope"
