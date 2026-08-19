@@ -216,13 +216,14 @@ Item {
     }
     if (maxLabel <= 0) return 0
 
-    // Horizontal chrome around the label: card padding, icon gutter
-    // (reserved border + margin + 36px icon + column margin), right column
-    // margin, trail gutter (14px + reserved border + margin), scrollbar.
+    // Horizontal chrome around the label: card padding and card borders
+    // (contentLeftInset/contentRightInset are subtracted from the list),
+    // icon gutter (reserved border + margin + 36px icon + column margin),
+    // right column margin, trail gutter (14px + reserved border + margin).
     var chrome = root.contentMargin * 2
+      + Border.left(root.borderSpec) + Border.right(root.borderSpec)
       + root.rowReservedBorderLeft + Style.space(8) + Style.space(36) + Style.space(6)
       + Style.space(6) + Style.space(14) + root.rowReservedBorderRight + Style.space(8)
-      + Style.space(8)
     return Math.ceil(maxLabel) + chrome
   }
 
