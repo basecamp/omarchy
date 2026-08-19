@@ -6,6 +6,8 @@
 
 set -euo pipefail
 
+source "$OMARCHY_PATH/default/bash/i18n"
+
 format_remaining() {
   local seconds=$1
   local minutes=$((seconds / 60))
@@ -75,7 +77,8 @@ show_json() {
   local reminder_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-reminders"
   local now=$(date +%s)
   local count=0
-  local tooltip="Set Reminder"
+  local tooltip
+  tooltip=$(omarchy_t "Set Reminder")
 
   while IFS=$'\t' read -r timer next; do
     count=$((count + 1))
@@ -109,9 +112,9 @@ show_json() {
   done < <(active_reminder_timers "$now")
 
   if ((count == 1)); then
-    tooltip="1 reminder"
+    tooltip=$(omarchy_t "1 reminder")
   elif ((count > 1)); then
-    tooltip="$count reminders"
+    tooltip=$(omarchy_t "%1 reminders" "$count")
   fi
 
   jq -cn --argjson count "$count" --arg tooltip "$tooltip" --argjson reminders "$reminders_json" '{count:$count,active:($count > 0),tooltip:$tooltip,reminders:$reminders}'
