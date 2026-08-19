@@ -10,6 +10,7 @@ The private-use glyphs in `omarchy.ttf` are:
 - `U+E905` — Codex, from the OpenAI mark on <https://developers.openai.com/codex/>
 - `U+E906` — LM Studio, from <https://simpleicons.org/icons/lmstudio.svg>
 - `U+E907` — Ollama, from <https://simpleicons.org/icons/ollama.svg>
+- `U+E908` — T3 Code, traced from the app icon in <https://aur.archlinux.org/cgit/aur.git/plain/t3code-icon.png?h=t3code-bin>, since upstream publishes no monochrome SVG
 
 The agent marks are monochrome so the menu can render them using the active
 theme's foreground and selection colors.
