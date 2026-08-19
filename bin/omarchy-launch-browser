@@ -23,7 +23,7 @@ systemd-run --user --quiet --collect --unit="omarchy-browser-$(date +%s%N)" \
 
 url=""
 for argument in "$@"; do
-  if [[ $argument != "--private" ]]; then
+  if [[ $argument != -* ]]; then
     url=$argument
     break
   fi
