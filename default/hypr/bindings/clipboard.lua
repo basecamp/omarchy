@@ -8,12 +8,12 @@
 --
 -- Letter keysyms in send_key_state are resolved against the active layout, so
 -- SUPER+C/V/X fail with "key not found" while a non-Latin layout is active.
--- Use Hyprland's `code:` key identifiers here so these shortcuts do not depend
--- on active-layout keysym resolution.
-local KEY_X = "code:53"
-local KEY_C = "code:54"
-local KEY_V = "code:55"
-local KEY_INSERT = "code:118"
+-- Use Hyprland's `code:` key identifiers with evdev scancodes so these
+-- shortcuts work regardless of the active keyboard layout.
+local KEY_X      = "code:53"   -- KEY_X      (linux/input-event-codes.h)
+local KEY_C      = "code:54"   -- KEY_C
+local KEY_V      = "code:55"   -- KEY_V
+local KEY_INSERT = "code:118"  -- KEY_INSERT
 
 local function send_shortcut_once(mods, key)
   return function()
