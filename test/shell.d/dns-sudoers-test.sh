@@ -22,12 +22,11 @@ fi
 grep -Fx 'PACKAGED_PATH=/usr/bin/omarchy-dns' "$dns" >/dev/null ||
   fail "omarchy-dns elevates the path the sudoers rule names"
 
-# sudo -l answers whether a command is permitted, not whether it is
-# passwordless, and Omarchy ships a blanket %wheel rule that permits
-# everything. A probe built on it sends Custom into `sudo -n`, which fails
-# outright instead of falling through to pkexec.
-! grep -E '^[[:space:]]*[^#[:space:]].*sudo -n -l' "$dns" >/dev/null ||
-  fail "omarchy-dns does not decide elevation with a sudo -l probe"
+# `sudo -l` on its own answers whether a command is permitted, not whether it
+# is passwordless, and Omarchy ships a blanket %wheel rule that permits
+# everything. Only the long listing prints the matched entry's tags.
+grep -E 'sudo -n -l -l' "$dns" >/dev/null ||
+  fail "omarchy-dns reads the grant from the long sudo listing"
 
 pass "dns sudoers rule is scoped to the stock providers"
 
@@ -44,25 +43,32 @@ trap 'rm -rf "$test_tmp"' EXIT
 stub_bin="$test_tmp/bin"
 mkdir -p "$stub_bin"
 
-# Both stubs stand in for the exec at the end of require_root, so the DNS writes
-# below it never run, and neither real sudo nor real pkexec is reached.
-for command in sudo pkexec; do
-  cat >"$stub_bin/$command" <<SH
+# pkexec stands in for the exec at the end of require_root, so the DNS writes
+# below it never run and real pkexec is never reached.
+cat >"$stub_bin/pkexec" <<'SH'
 #!/bin/bash
-printf '$command %s\n' "\$*" >"\$ELEVATION_LOG"
+printf 'pkexec %s\n' "$*" >"$ELEVATION_LOG"
 SH
-  chmod +x "$stub_bin/$command"
-done
+chmod +x "$stub_bin/pkexec"
 
-# The rule is %wheel-scoped, so group membership decides the route as much as
-# the provider does. Stub id rather than reading the real groups: the suite has
-# to give the same answer on a build user outside wheel.
-cat >"$stub_bin/id" <<'SH'
+# The sudo stub plays both parts: it answers the passwordless probe from
+# STUB_GRANTED, the providers etc/sudoers.d/omarchy-dns covers on this machine,
+# and logs the elevation otherwise. STUB_GRANTED empty stands for an install
+# whose omarchy-settings predates the file.
+cat >"$stub_bin/sudo" <<'SH'
 #!/bin/bash
-[[ ${1:-} == -nG ]] || exec /usr/bin/id "$@"
-printf '%s\n' "${STUB_GROUPS-users wheel}"
+if [[ $1 == -n && $2 == -l ]]; then
+  for granted in ${STUB_GRANTED-Cloudflare Google DHCP}; do
+    [[ ${!#} == "$granted" ]] || continue
+    echo "    Options: !authenticate"
+    exit 0
+  done
+  echo "    Matched: ${!#}"
+  exit 0
+fi
+printf 'sudo %s\n' "$*" >"$ELEVATION_LOG"
 SH
-chmod +x "$stub_bin/id"
+chmod +x "$stub_bin/sudo"
 
 elevation_for() {
   : >"$test_tmp/elevation"
@@ -90,8 +96,12 @@ custom=$(elevation_for Custom)
 [[ $custom == "pkexec /usr/bin/omarchy-dns Custom" ]] ||
   fail "omarchy-dns leaves Custom on the polkit path, since no sudoers rule covers it" "got: $custom"
 
-non_wheel=$(STUB_GROUPS="users" elevation_for Cloudflare)
-[[ $non_wheel == "pkexec /usr/bin/omarchy-dns Cloudflare" ]] ||
-  fail "omarchy-dns leaves a user outside %wheel on the polkit path, since the rule cannot match them" "got: $non_wheel"
+# The grant is what makes sudo passwordless, so its absence -- an install still
+# on an older omarchy-settings, or a user outside %wheel the rule cannot match
+# -- has to route to polkit. Betting on sudo here leaves the panel's one-click
+# toggle execing into a password prompt it has no terminal to show.
+ungranted=$(STUB_GRANTED="" elevation_for Cloudflare)
+[[ $ungranted == "pkexec /usr/bin/omarchy-dns Cloudflare" ]] ||
+  fail "omarchy-dns falls back to polkit where the sudoers grant is not installed" "got: $ungranted"
 
 pass "omarchy-dns falls back to polkit wherever the grant does not reach"
