@@ -25,7 +25,14 @@ while read -r request; do
       jq -cn --argjson id "$id" '{id: $id, result: {account: {planType: "pro"}}}'
       ;;
     account/rateLimits/read)
-      jq -cn --argjson id "$id" '{id: $id, result: {
+      if [[ ${LEGACY_LIMITS:-false} == "true" ]]; then
+        jq -cn --argjson id "$id" '{id: $id, result: {rateLimits: {
+          limitId: "codex",
+          planType: "pro",
+          primary: {usedPercent: 94, windowDurationMins: 10080, resetsAt: 1787196799}
+        }}}'
+      else
+        jq -cn --argjson id "$id" '{id: $id, result: {
         rateLimits: {
           limitId: "codex",
           planType: "pro",
@@ -44,6 +51,7 @@ while read -r request; do
           }
         }
       }}'
+      fi
       ;;
   esac
 done
@@ -72,6 +80,13 @@ pass "Codex collector does not double-count cache or reasoning tokens"
 [[ $(jq -c '{id, tierLabel, limits}' <<<"$result") == '{"id":"codex","tierLabel":"pro","limits":[{"label":"Weekly (7-day)","percent":0.94,"resetsAt":"2026-08-20T03:33:19+00:00","title":"Weekly limit"},{"label":"GPT-5.3-Codex-Spark · Weekly (7-day)","percent":0.12,"resetsAt":"2026-08-22T00:18:05+00:00","title":"GPT-5.3-Codex-Spark Weekly limit"}]}' ]] ||
   fail "Codex collector includes every named usage pool without duplicating the default pool" "$result"
 pass "Codex collector includes every named usage pool without duplicating the default pool"
+
+legacy_result=$(HOME="$TEST_HOME" CODEX_HOME="$TEST_HOME/.codex" XDG_DATA_HOME="$TEST_HOME/.local/share" \
+  LEGACY_LIMITS=true PATH="$TEST_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --force)
+
+[[ $(jq -c '.limits' <<<"$legacy_result") == '[{"label":"Weekly (7-day)","percent":0.94,"resetsAt":"2026-08-20T03:33:19+00:00","title":"Weekly limit"}]' ]] ||
+  fail "Codex collector supports legacy top-level rate limits" "$legacy_result"
+pass "Codex collector supports legacy top-level rate limits"
 
 # Pi and omp can both spend a Codex subscription without creating native
 # Codex sessions. Their compatible JSONL transcripts must be included.
