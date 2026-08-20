@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Remove the Hermes desktop app and the Hermes runtime it installed
+# omarchy:summary=Remove the Hermes desktop app along with the Hermes runtime it installed.
 # omarchy:requires-sudo=true
 
 set -e
@@ -8,11 +8,19 @@ set -e
 omarchy-pkg-drop hermes-desktop
 
 # The app installs a Hermes of its own under ~/.hermes and puts its command on
-# PATH, and neither is any use once the app is gone. What stays is everything
-# in ~/.hermes that is yours -- chats, memories, the skills Hermes wrote for
-# itself -- which is small and worth surviving a reinstall.
-rm -rf "$HOME/.hermes/hermes-agent" "$HOME/.hermes/bootstrap-cache" "$HOME/.config/Hermes"
-rm -f "$HOME/.local/bin/hermes" "$HOME/.local/bin/hermes-agent" "$HOME/.local/bin/hermes-acp"
+# PATH, and neither is any use once the app is gone. Not the rest of ~/.hermes:
+# the chats, memories and the skills Hermes wrote for itself are the user's,
+# they are small, and finding them still there after a reinstall is the better
+# surprise.
+rm -rf \
+  "$HOME/.hermes/hermes-agent" \
+  "$HOME/.hermes/bootstrap-cache" \
+  "$HOME/.config/Hermes"
+
+rm -f \
+  "$HOME/.local/bin/hermes" \
+  "$HOME/.local/bin/hermes-agent" \
+  "$HOME/.local/bin/hermes-acp"
 
 echo ""
 echo "Hermes Desktop has been removed."
