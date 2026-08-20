@@ -93,3 +93,9 @@ tab_bar_right = [{ type = "zoom" }, { type = "hostname" }]
 # the basename of the pane cwd. This is what Hyprland shows in the group bar,
 # and it resolves on the server so remote sessions name the remote host.
 window_title = "{hostname}: {workspace}"
+
+# No tmux equivalent; the default "dots" marks separate working from done by
+# color alone (ANSI yellow vs cyan), which collapses on a palette that can't
+# spare two clearly different hues - Hackerman draws both as the same green.
+# Symbols keep the color and add a distinct glyph per state.
+status_indicators = "symbols"
