@@ -31,11 +31,14 @@ fi
 if (( needs_rebuild )); then
   sudo limine-mkinitcpio
   sudo install -Dm644 /dev/null "$repair_marker"
+fi
 
-  # Someone who already added the cap by hand (e.g. straight into
-  # /etc/default/limine) is running fixed and only needed the drop-in baked in.
-  if [[ ! -r $running_cmdline ]] ||
-    ! grep -Eq '(^| )intel_idle\.max_cstate=1( |$)' "$running_cmdline"; then
-    omarchy-state set reboot-required
-  fi
+# The reboot state is per-user while the rebuild is machine-wide, so this runs
+# independently of who rebuilt: a second user whose migration skips the rebuild
+# still boots an uncapped kernel and still needs the prompt. Someone who
+# already added the cap by hand (e.g. straight into /etc/default/limine) is
+# running fixed and only needed the drop-in baked in.
+if [[ ! -r $running_cmdline ]] ||
+  ! grep -Eq '(^| )intel_idle\.max_cstate=1( |$)' "$running_cmdline"; then
+  omarchy-state set reboot-required
 fi

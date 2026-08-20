@@ -113,9 +113,21 @@ grep -Fq $'omarchy-state\tset\treboot-required' "$calls" ||
 [[ -e $marker ]] || fail "the migration records the machine-wide rebuild"
 pass "the migration fixes an install that never got the cap"
 
+# A second user on the same machine: the drop-in and marker exist, so the
+# machine-wide rebuild must not repeat, but this user's kernel is still
+# uncapped and their per-user state still needs the reboot prompt.
 run_migration "MacBookAir4,1" "quiet splash"
-[[ ! -s $calls ]] || fail "a repaired install is left untouched" "$(cat "$calls")"
-pass "the migration is idempotent"
+! grep -Fq 'limine-mkinitcpio' "$calls" ||
+  fail "a recorded rebuild is not repeated" "$(cat "$calls")"
+grep -Fq $'omarchy-state\tset\treboot-required' "$calls" ||
+  fail "a second user is still asked for the pending reboot" "$(cat "$calls")"
+pass "a second user skips the rebuild but still gets the reboot prompt"
+
+# After the reboot the cap is live, and a later user's migration has nothing
+# left to do at all.
+run_migration "MacBookAir4,1" "quiet splash intel_idle.max_cstate=1"
+[[ ! -s $calls ]] || fail "a fully applied install is left untouched" "$(cat "$calls")"
+pass "a fully applied install is left untouched"
 
 # Someone who already added the cap by hand boots fixed and only needs the
 # drop-in baked in, not another reboot.
