@@ -38,6 +38,25 @@ install_user_icon() {
 }
 
 download_icon() {
+  local temp
+
+  if temp=$(mktemp); then
+    if curl -fsSL --max-time 10 -o "$temp" "$1" 2>/dev/null &&
+      [[ -s $temp && $(file -b --mime-type "$temp") == image/* ]]; then
+      { omarchy-cmd-present magick && magick "$temp[0]" "$2" 2>/dev/null; } ||
+        mv "$temp" "$2" || {
+          rm -f "$temp" || true
+          return 1
+        }
+      rm -f "$temp" || true
+      return 0
+    fi
+
+    rm -f "$temp" || true
+    return 1
+  fi
+
+  # Preserve the original behavior if a temporary file cannot be created.
   curl -fsSL --max-time 10 -o "$2" "$1" 2>/dev/null &&
     [[ -s $2 && $(file -b --mime-type "$2") == image/* ]]
 }
