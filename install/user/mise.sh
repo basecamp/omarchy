@@ -1,7 +1,7 @@
 omarchy-mise-install codex
 omarchy-mise-install claude
 omarchy-mise-install crush
-omarchy-mise-install gemini
+omarchy-mise-install ubi:google-antigravity/antigravity-cli agy
 omarchy-mise-install gh
 omarchy-mise-install copilot
 omarchy-mise-install opencode

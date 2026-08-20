@@ -95,6 +95,7 @@ export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
 grok_package="npm:@xai-official/grok"
 omp_package="github:can1357/oh-my-pi"
 crush_package="crush"
+antigravity_package="ubi:google-antigravity/antigravity-cli"
 
 assert_lazy_stub() {
   local package=$1
@@ -130,14 +131,32 @@ grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "agent migration repa
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "agent migration creates the Grok lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "agent migration creates the Crush lazy stub"
 
+: >"$stub_log"
+printf '#!/bin/bash\nmise use -g --quiet "gemini" || exit 1\n' >"$test_home/.local/bin/gemini"
+mkdir -p "$(dirname "$agent_file")"
+printf 'gemini\n' >"$agent_file"
+source "$ROOT/migrations/1786800000.sh" >/dev/null
+grep -Fx "$antigravity_package agy" "$stub_log" >/dev/null || fail "Antigravity migration creates the agy lazy stub"
+[[ ! -e $test_home/.local/bin/gemini ]] || fail "Antigravity migration removes the obsolete gemini wrapper"
+[[ $(<"$agent_file") == "antigravity" ]] || fail "Antigravity migration updates persisted default agent from gemini to antigravity"
+rm -f "$agent_file"
+
+printf '#!/bin/bash\necho custom gemini\n' >"$test_home/.local/bin/gemini"
+source "$ROOT/migrations/1786800000.sh" >/dev/null
+[[ -e $test_home/.local/bin/gemini ]] || fail "Antigravity migration keeps custom non-mise gemini binary"
+rm -f "$test_home/.local/bin/gemini"
+
 mkdir -p "$test_home/.local/state/omarchy"
 touch "$test_home/.local/state/omarchy/preinstalls-removed"
+printf 'gemini\n' >"$agent_file"
 "$ROOT/bin/omarchy-mise-install" oh-my-pi omp
 : >"$stub_log"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
 source "$ROOT/migrations/1785846769.sh" >/dev/null
+source "$ROOT/migrations/1786800000.sh" >/dev/null
 [[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
 [[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
+[[ ! -e $agent_file ]] || fail "Antigravity migration clears saved gemini default when preinstalls are removed"
 
 # The matcher has to catch a bare oh-my-pi wrapper from either generation of the
 # installer, and leave a wrapper built on the fully qualified package alone.
@@ -216,8 +235,9 @@ declare -A expected_agents=(
   [codex]="codex"
   [crush]="crush"
   [grok]="grok"
-  [gemini]="gemini"
-  [gemini-cli]="gemini"
+  [antigravity]="antigravity"
+  [antigravity-cli]="antigravity"
+  [agy]="antigravity"
   [copilot]="copilot"
   [github-copilot]="copilot"
 )
@@ -230,7 +250,7 @@ declare -A expected_packages=(
   [codex]="codex"
   [crush]="$crush_package"
   [grok]="$grok_package"
-  [gemini]="gemini"
+  [antigravity]="$antigravity_package"
   [copilot]="copilot"
 )
 
@@ -373,7 +393,7 @@ assert_launch claude claude --permission-mode auto -- "Review this project"
 assert_launch codex codex --approve-for-me -- "Review this project"
 assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
-assert_launch gemini gemini --yolo --prompt-interactive "Review this project"
+assert_launch antigravity agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
 
@@ -384,7 +404,7 @@ assert_bypass claude claude --permission-mode auto
 assert_bypass codex codex --approve-for-me
 assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
-assert_bypass gemini gemini --yolo
+assert_bypass antigravity agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
 pass "agent launcher skips permission prompts for every supported agent"
 
