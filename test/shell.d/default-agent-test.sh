@@ -118,6 +118,8 @@ source "$ROOT/install/user/mise.sh"
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates the Grok lazy stub"
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
+grep -Fx "antigravity-cli agy" "$stub_log" >/dev/null || fail "user setup creates the Antigravity lazy stub"
+grep -Fx "antigravity-cli antigravity agy" "$stub_log" >/dev/null || fail "user setup creates the Antigravity alias lazy stub"
 pass "user setup creates the custom agent lazy stubs"
 
 : >"$stub_log"
@@ -130,12 +132,18 @@ grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "agent migration repa
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "agent migration creates the Grok lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "agent migration creates the Crush lazy stub"
 
+: >"$stub_log"
+source "$ROOT/migrations/1786650000.sh" >/dev/null
+grep -Fx "antigravity-cli agy" "$stub_log" >/dev/null || fail "agent migration creates the Antigravity agy lazy stub"
+grep -Fx "antigravity-cli antigravity agy" "$stub_log" >/dev/null || fail "agent migration creates the Antigravity alias lazy stub"
+
 mkdir -p "$test_home/.local/state/omarchy"
 touch "$test_home/.local/state/omarchy/preinstalls-removed"
 "$ROOT/bin/omarchy-mise-install" oh-my-pi omp
 : >"$stub_log"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
 source "$ROOT/migrations/1785846769.sh" >/dev/null
+source "$ROOT/migrations/1786650000.sh" >/dev/null
 [[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
 [[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
 
@@ -159,8 +167,9 @@ rm -f "$test_home/.local/bin/omp"
 rm "$test_home/.local/state/omarchy/preinstalls-removed"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"
 
+touch "$test_home/.local/bin/omp" "$test_home/.local/bin/grok" "$test_home/.local/bin/crush" "$test_home/.local/bin/agy" "$test_home/.local/bin/antigravity"
 omarchy-remove-preinstalls >/dev/null
-for command in omp grok crush; do
+for command in omp grok crush agy antigravity; do
   [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
 done
 pass "Remove Preinstalls deletes every optional agent lazy stub"
@@ -216,8 +225,9 @@ declare -A expected_agents=(
   [codex]="codex"
   [crush]="crush"
   [grok]="grok"
-  [gemini]="gemini"
-  [gemini-cli]="gemini"
+  [antigravity]="antigravity"
+  [agy]="antigravity"
+  [antigravity-cli]="antigravity"
   [copilot]="copilot"
   [github-copilot]="copilot"
 )
@@ -230,7 +240,7 @@ declare -A expected_packages=(
   [codex]="codex"
   [crush]="$crush_package"
   [grok]="$grok_package"
-  [gemini]="gemini"
+  [antigravity]="antigravity-cli"
   [copilot]="copilot"
 )
 
@@ -373,7 +383,7 @@ assert_launch claude claude --permission-mode auto -- "Review this project"
 assert_launch codex codex --approve-for-me -- "Review this project"
 assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
-assert_launch gemini gemini --yolo --prompt-interactive "Review this project"
+assert_launch antigravity agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
 
@@ -384,7 +394,7 @@ assert_bypass claude claude --permission-mode auto
 assert_bypass codex codex --approve-for-me
 assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
-assert_bypass gemini gemini --yolo
+assert_bypass antigravity agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
 pass "agent launcher skips permission prompts for every supported agent"
 

@@ -46,8 +46,11 @@ if [[ -z $agent ]]; then
   exit 1
 fi
 
-if omarchy-cmd-missing "$agent"; then
-  echo "$agent is not installed. Choose an installed agent with: omarchy default agent <name>" >&2
+cmd_to_check=$agent
+[[ $agent == "antigravity" ]] && cmd_to_check="agy"
+
+if omarchy-cmd-missing "$cmd_to_check"; then
+  echo "$cmd_to_check is not installed. Choose an installed agent with: omarchy default agent <name>" >&2
   exit 1
 fi
 
@@ -58,8 +61,8 @@ opencode)
   command=(opencode --auto)
   [[ -n ${prompt:-} ]] && command+=(--prompt "$prompt")
   ;;
-gemini)
-  command=(gemini --yolo)
+antigravity)
+  command=(agy --dangerously-skip-permissions)
   [[ -n ${prompt:-} ]] && command+=(--prompt-interactive "$prompt")
   ;;
 copilot)
