@@ -58,6 +58,13 @@ assert(
   'lock screen bypasses its image effect for video output'
 )
 assert(
+  /obscured:\s*fullscreenActive \|\| lockActive \|\| screensaverActive/.test(backgroundQml) &&
+    backgroundQml.includes('playbackEnabled: !root.obscured') &&
+    backgroundQml.includes('omarchy.lock') &&
+    backgroundQml.includes('omarchy.idle'),
+  'desktop playback stops while locked or screensaved, not only while fullscreen'
+)
+assert(
   barTextColor.includes('magick "$background_path[0]"'),
   'bar colour sampling reads one frame instead of decoding a whole video'
 )

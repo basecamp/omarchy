@@ -26,10 +26,20 @@ Item {
   property string pendingShellRaw: ""
   property real revealProgress: 1
 
-  // Pause video wallpapers while the focused application is fullscreen so the
-  // wallpaper's decode and render work stops when it is fully covered.
+  // Injected by the first-party service loader; used to reach the lock and idle
+  // services so playback can stop whenever nothing can see the wallpaper.
+  property var shell: null
+
+  // Stop a video wallpaper's decoding whenever it is covered. Qt's FFmpeg
+  // engine drives its own clock, so an unseen player keeps decoding until it
+  // is told not to — a locked laptop would otherwise decode until it died.
+  readonly property var lockService: shell && shell.services ? shell.firstPartyServiceFor("omarchy.lock") : null
+  readonly property var idleService: shell && shell.services ? shell.firstPartyServiceFor("omarchy.idle") : null
   readonly property var activeToplevel: ToplevelManager.activeToplevel
   readonly property bool fullscreenActive: activeToplevel ? activeToplevel.fullscreen : false
+  readonly property bool lockActive: lockService ? lockService.locked : false
+  readonly property bool screensaverActive: idleService ? idleService.screensaverWindowCount > 0 : false
+  readonly property bool obscured: fullscreenActive || lockActive || screensaverActive
 
   function isVideo(path) {
     return Util.isVideoPath(path)
@@ -207,9 +217,9 @@ Item {
       color: "transparent"
       // Keep render updates enabled. The background layer has been observed to
       // lose its committed buffer while parked with updatesEnabled=false,
-      // leaving a black desktop until omarchy-shell is restarted. The wallpaper
-      // itself is static, so this favors correctness over a small render-loop
-      // optimization.
+      // leaving a black desktop until omarchy-shell is restarted. A still
+      // wallpaper costs nothing to keep enabled, and a video one is throttled
+      // by pausing playback rather than by parking the layer.
       updatesEnabled: true
 
       property bool maskReady: false
@@ -233,7 +243,7 @@ Item {
         id: base
         anchors.fill: parent
         path: root.displayedBackground
-        playbackEnabled: !root.fullscreenActive
+        playbackEnabled: !root.obscured
         onReadyChanged: {
           if (ready && root.finishingTransition) {
             root.incomingBackground = ""
