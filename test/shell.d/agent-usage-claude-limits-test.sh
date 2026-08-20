@@ -240,4 +240,17 @@ assertDeepEqual(
   [{ title: 'Weekly', percent: 0.12, resetAt: '' }],
   'agents panel still reads a window out of a label that carries no title'
 )
+
+assertDeepEqual(
+  limitWindows({ limits: [
+    { label: '5h window', percent: 0, resetsAt: '' },
+    { label: 'Weekly (7-day)', percent: 0, resetsAt: '' },
+    { label: 'Session (5-hour)', percent: 0.01, resetsAt: '' }
+  ] }),
+  [
+    { title: 'Weekly', percent: 0, resetAt: '' },
+    { title: 'Session', percent: 0.01, resetAt: '' }
+  ],
+  'agents panel hides only untouched five-hour windows'
+)
 JS

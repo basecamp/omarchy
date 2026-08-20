@@ -116,7 +116,11 @@ Panel {
     for (var i = 0; i < list.length; i++) {
       var entry = list[i] || {}
       var percent = Number(entry.percent)
-      if (percent >= 0) out.push(limitWindow(entry.label, percent, entry.resetsAt, entry.title))
+      // An untouched five-hour allowance is just noise beside the longer and
+      // model-specific pools. Reveal it as soon as any of it has been used.
+      var isUnusedFiveHour = windowSpanMs(entry.label) === 5 * 3600 * 1000 && percent === 0
+      if (percent >= 0 && !isUnusedFiveHour)
+        out.push(limitWindow(entry.label, percent, entry.resetsAt, entry.title))
     }
     return out
   }
