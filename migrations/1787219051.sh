@@ -5,19 +5,22 @@ comment='# Distinct glyphs per state, so working and done read on every theme.'
 
 [[ -f $config ]] || exit 0
 
-# Leave a config that already sets it alone, whichever value it chose
-grep -q '^status_indicators' "$config" && exit 0
+# Leave a config that already chose a value alone, indented or not
+if grep -qE '^[[:space:]]*status_indicators[[:space:]]*=' "$config"; then
+  exit 0
+fi
 
-if grep -q '^\[ui\]$' "$config"; then
+if grep -qE '^[[:space:]]*\[ui\][[:space:]]*(#.*)?$' "$config"; then
   awk -v comment="$comment" '
     { print }
-    /^\[ui\]$/ && !inserted {
+    !inserted && /^[[:space:]]*\[ui\][[:space:]]*(#.*)?$/ {
       print ""
       print comment
       print "status_indicators = \"symbols\""
       inserted = 1
     }
-  ' "$config" >"$config.omarchy-new" && mv "$config.omarchy-new" "$config"
+  ' "$config" >"$config.omarchy-new"
+  mv "$config.omarchy-new" "$config"
 else
   printf '\n[ui]\n%s\nstatus_indicators = "symbols"\n' "$comment" >>"$config"
 fi
