@@ -60,11 +60,15 @@ assert(
   'lock screen bypasses its image effect for video output'
 )
 assert(
-  /obscured:\s*fullscreenActive \|\| lockActive \|\| screensaverActive/.test(backgroundQml) &&
-    backgroundQml.includes('playbackEnabled: !root.obscured') &&
+  /sessionObscured:\s*lockActive \|\| screensaverActive/.test(backgroundQml) &&
+    backgroundQml.includes('playbackEnabled: !root.sessionObscured && !panel.fullscreenHere') &&
     backgroundQml.includes('omarchy.lock') &&
     backgroundQml.includes('omarchy.idle'),
   'desktop playback stops while locked or screensaved, not only while fullscreen'
+)
+assert(
+  /fullscreenHere:[\s\S]*?Hyprland\.focusedMonitor\.name \|\| ""\) === String\(modelData\.name/.test(backgroundQml),
+  'a fullscreen window pauses only the output it covers, not every wallpaper'
 )
 assert(
   barTextColor.includes('magick "$background_path[0]"'),

@@ -1,4 +1,5 @@
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
@@ -39,7 +40,9 @@ Item {
   readonly property bool fullscreenActive: activeToplevel ? activeToplevel.fullscreen : false
   readonly property bool lockActive: lockService ? lockService.locked : false
   readonly property bool screensaverActive: idleService ? idleService.screensaverWindowCount > 0 : false
-  readonly property bool obscured: fullscreenActive || lockActive || screensaverActive
+  // A lock or a screensaver covers every output, so it is decided once here.
+  // Fullscreen is decided per output below, because it only covers its own.
+  readonly property bool sessionObscured: lockActive || screensaverActive
 
   function isVideo(path) {
     return Util.isVideoPath(path)
@@ -222,6 +225,12 @@ Item {
       // by pausing playback rather than by parking the layer.
       updatesEnabled: true
 
+      // Pausing every wallpaper for one fullscreen window would freeze the one
+      // still on show next to it, which costs a viewer more than it saves.
+      readonly property bool fullscreenHere: root.fullscreenActive
+        && !!Hyprland.focusedMonitor
+        && String(Hyprland.focusedMonitor.name || "") === String(modelData.name || "")
+
       property bool maskReady: false
 
       function maybeStartReveal() {
@@ -243,7 +252,7 @@ Item {
         id: base
         anchors.fill: parent
         path: root.displayedBackground
-        playbackEnabled: !root.obscured
+        playbackEnabled: !root.sessionObscured && !panel.fullscreenHere
         onReadyChanged: {
           if (ready && root.finishingTransition) {
             root.incomingBackground = ""
