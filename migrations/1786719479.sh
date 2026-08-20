@@ -21,6 +21,14 @@ fi
 
 # Remove Preinstalls no longer lists gemini, so Omarchy's own wrapper would
 # linger with nothing left to clean it up. A hand-written one is left alone.
-if [[ -f $HOME/.local/bin/gemini ]] && grep -Fq 'mise use -g "gemini"' "$HOME/.local/bin/gemini"; then
+if [[ -f $HOME/.local/bin/gemini ]] && grep -Eq 'mise use -g .*"gemini"' "$HOME/.local/bin/gemini"; then
   rm -f "$HOME/.local/bin/gemini"
 fi
+
+export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+mkdir -p "$HOME/.gemini/config/skills"
+for skill in "$OMARCHY_PATH"/default/agents/skills/*/; do
+  skill=${skill%/}
+  name=${skill##*/}
+  ln -sfn "$skill" "$HOME/.gemini/config/skills/$name"
+done

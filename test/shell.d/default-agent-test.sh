@@ -91,6 +91,7 @@ export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
+export OMARCHY_PATH="$ROOT"
 
 grok_package="npm:@xai-official/grok"
 omp_package="github:can1357/oh-my-pi"
@@ -141,14 +142,28 @@ source "$ROOT/migrations/1786719479.sh" >/dev/null
 unset OMARCHY_TEST_MISSING_COMMAND
 grep -Fx "$agy_package agy" "$stub_log" >/dev/null || fail "Antigravity migration creates its lazy stub"
 [[ $(<"$agent_file") == "agy" ]] || fail "Antigravity migration replaces a Gemini default"
-[[ ! -e $test_home/.local/bin/gemini ]] || fail "Antigravity migration removes the dead Gemini wrapper"
-pass "Antigravity migration transitions the Gemini coding agent"
 
-printf '%s\n' '#!/bin/bash' 'exec /opt/gemini "$@"' >"$test_home/.local/bin/gemini"
+for obsolete_form in 'mise use -g "gemini"' 'mise use -g --quiet "gemini"'; do
+  printf '#!/bin/bash\n%s || exit 1\n' "$obsolete_form" >"$test_home/.local/bin/gemini"
+  chmod +x "$test_home/.local/bin/gemini"
+  source "$ROOT/migrations/1786719479.sh" >/dev/null
+  [[ ! -e $test_home/.local/bin/gemini ]] ||
+    fail "Antigravity migration removes a wrapper built on [$obsolete_form]"
+done
+
+printf '#!/bin/bash\nexec /opt/gemini "$@"\n' >"$test_home/.local/bin/gemini"
+chmod +x "$test_home/.local/bin/gemini"
 source "$ROOT/migrations/1786719479.sh" >/dev/null
 [[ -e $test_home/.local/bin/gemini ]] || fail "Antigravity migration leaves a hand-written gemini alone"
-rm "$test_home/.local/bin/gemini"
+rm -f "$test_home/.local/bin/gemini"
 pass "Antigravity migration only removes the Gemini wrapper Omarchy wrote"
+
+[[ -L "$test_home/.gemini/config/skills/omarchy" && $(readlink "$test_home/.gemini/config/skills/omarchy") == "$ROOT/default/agents/skills/omarchy" ]] ||
+   fail "Antigravity migration provisions the omarchy skill"
+[[ -L "$test_home/.gemini/config/skills/diagnose-crash" && $(readlink "$test_home/.gemini/config/skills/diagnose-crash") == "$ROOT/default/agents/skills/diagnose-crash" ]] ||
+   fail "Antigravity migration provisions the diagnose-crash skill"
+pass "Antigravity migration provisions Antigravity skills"
+
 
 : >"$stub_log"
 mkdir -p "$test_home/.local/state/omarchy"
