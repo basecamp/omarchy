@@ -320,3 +320,13 @@ write_quirk_conf
 run_cleanup 4425
 [[ ! -e $conf ]] || fail "the cleanup covers BCM4378 too" "$(cat "$conf")"
 pass "the cleanup covers BCM4378 too"
+
+# Naming the architecture the repair is for keeps every other one out, rather
+# than treating everything that is not an Intel Mac as an Apple Silicon one.
+rm -rf "$test_tmp/etc"
+write_quirk_conf
+run_cleanup 4433 riscv64
+grep -qx 'options brcmfmac feature_disable=0x82000' "$conf" ||
+  fail "an unrelated architecture is left alone" "$(cat "$conf")"
+[[ ! -s $calls ]] || fail "the cleanup escalates nothing on an unrelated architecture" "$(cat "$calls")"
+pass "the cleanup leaves unrelated architectures alone"

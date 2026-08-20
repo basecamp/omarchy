@@ -8,7 +8,7 @@ echo "Stop disabling the Broadcom Wi-Fi offload on Apple Silicon Macs"
 # including any that ran migrations/1786391100.sh.
 conf="${OMARCHY_BRCMFMAC_CONF:-/etc/modprobe.d/brcmfmac.conf}"
 
-[[ $(uname -m) == "x86_64" ]] && exit 0
+[[ $(uname -m) == "aarch64" ]] || exit 0
 [[ -f $conf ]] || exit 0
 
 # Only the two parts that gate could have matched. brcmfmac drives plenty of
