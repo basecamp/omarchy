@@ -39,9 +39,10 @@ PLATFORMS = {
 }
 QUOTA_PATH = "/api/monitor/usage/quota/limit"
 
-# Coding-plan token windows are tagged by (unit, number); the monitor endpoint
-# reuses TOKENS_LIMIT for both the 5-hour and the weekly window.
-TOKEN_WINDOWS = {
+# Coding-plan limit windows are tagged by (unit, number); the monitor endpoint
+# reports one CREDIT_LIMIT row per window (older responses used TOKENS_LIMIT).
+LIMIT_TYPES = {"CREDIT_LIMIT", "TOKENS_LIMIT"}
+LIMIT_WINDOWS = {
   (3, 5): "Session (5-hour)",
   (6, 1): "Weekly (7-day)",
 }
@@ -232,9 +233,9 @@ def fetch_limits(api_key: str, platform: str) -> dict[str, Any]:
 
   limits = []
   for item in data["limits"]:
-    if not isinstance(item, dict) or item.get("type") != "TOKENS_LIMIT":
+    if not isinstance(item, dict) or item.get("type") not in LIMIT_TYPES:
       continue
-    label = TOKEN_WINDOWS.get((item.get("unit"), item.get("number")))
+    label = LIMIT_WINDOWS.get((item.get("unit"), item.get("number")))
     if not label:
       continue
     try:
