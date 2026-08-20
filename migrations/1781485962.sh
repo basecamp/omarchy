@@ -100,12 +100,32 @@ ensure_capslock_cancel_option() {
   local input_file="$1"
   [[ -f $input_file ]] || return 0
 
-  local current_options
-  current_options=$(active_lua_string_value kb_options "$input_file")
+  local tmp_file
+  tmp_file=$(mktemp)
 
-  if [[ -n $current_options && ! "$current_options" == *"shift:both_capslock_cancel"* ]]; then
-    sed -i "s/kb_options = \"$current_options\"/kb_options = \"$current_options,shift:both_capslock_cancel\"/" "$input_file"
-  fi
+  awk -v key="kb_options" -v option="shift:both_capslock_cancel" '
+    $0 ~ "^[[:space:]]*" key "[[:space:]]*=" && !updated {
+      # Work only on the quoted Lua string so comments or trailing commas stay intact.
+      quote_start = index($0, "\"")
+      if (quote_start) {
+        rest = substr($0, quote_start + 1)
+        quote_end = index(rest, "\"")
+        value = substr(rest, 1, quote_end - 1)
+
+        if (quote_end > 1 && index(value, option) == 0) {
+          # Rebuild the line with the new option before the closing quote.
+          print substr($0, 1, quote_start) value "," option substr(rest, quote_end)
+          updated = 1
+          next
+        }
+      }
+    }
+
+    { print }
+  ' "$input_file" > "$tmp_file"
+
+  cp "$tmp_file" "$input_file"
+  rm -f "$tmp_file"
 }
 
 ensure_capslock_cancel_option "$input_file"
