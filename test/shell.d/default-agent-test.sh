@@ -95,29 +95,39 @@ export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
 grok_package="npm:@xai-official/grok"
 omp_package="github:can1357/oh-my-pi"
 crush_package="crush"
+opencode_package="npm:@opencode-ai/cli"
 
 assert_lazy_stub() {
   local package=$1
   local command=$2
 
   : >"$mise_history"
-  "$ROOT/bin/omarchy-mise-install" "$package" "$command"
-  "$test_home/.local/bin/$command" --version
+  OMARCHY_TEST_AGENT_INSTALLED=false "$ROOT/bin/omarchy-mise-install" "$package" "$command"
+  OMARCHY_TEST_AGENT_INSTALLED=false "$test_home/.local/bin/$command" --version
   mapfile -t mise_calls <"$mise_history"
 
-  [[ ${mise_calls[0]} == "use -g --quiet $package" && ${mise_calls[1]} == "x $package -- $command --version" ]] ||
-    fail "$command lazy stub preserves its mise package"
+  [[ ${mise_calls[0]} == "where $package" && ${mise_calls[1]} == "use -g --quiet $package" && ${mise_calls[2]} == "x $package -- $command --version" ]] ||
+    fail "$command lazy stub installs through mise on first run"
+
+  : >"$mise_history"
+  OMARCHY_TEST_AGENT_INSTALLED=true "$test_home/.local/bin/$command" --version
+  mapfile -t mise_calls <"$mise_history"
+
+  [[ ${mise_calls[0]} == "where $package" && ${mise_calls[1]} == "x $package -- $command --version" ]] ||
+    fail "$command lazy stub preserves an existing mise pin"
 }
 
 assert_lazy_stub "$grok_package" grok
 assert_lazy_stub "$omp_package" omp
 assert_lazy_stub "$crush_package" crush
+assert_lazy_stub "$opencode_package" opencode
 pass "custom agent lazy stubs preserve their mise packages"
 
 source "$ROOT/install/user/mise.sh"
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates the Grok lazy stub"
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
+grep -Fx "$opencode_package opencode" "$stub_log" >/dev/null || fail "user setup creates the OpenCode lazy stub"
 pass "user setup creates the custom agent lazy stubs"
 
 : >"$stub_log"
@@ -158,6 +168,18 @@ rm -f "$test_home/.local/bin/omp"
 
 rm "$test_home/.local/state/omarchy/preinstalls-removed"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"
+
+: >"$stub_log"
+printf '#!/bin/bash\nmise use -g --quiet "opencode" || exit 1\n' >"$test_home/.local/bin/opencode"
+chmod +x "$test_home/.local/bin/opencode"
+mkdir -p "$test_home/.config/mise"
+printf '[tools]\n"npm:@opencode-ai/cli" = "next"\n' >"$test_home/.config/mise/config.toml"
+PATH="$ROOT/bin:$mock_bin:$PATH" source "$ROOT/migrations/1786891392.sh" >/dev/null
+grep -Fq "$opencode_package" "$test_home/.local/bin/opencode" ||
+  fail "OpenCode migration installs the npm lazy stub"
+grep -Fq 'mise where "npm:@opencode-ai/cli"' "$test_home/.local/bin/opencode" ||
+  fail "OpenCode migration preserves existing mise pins in the wrapper"
+pass "OpenCode migration points existing v2 installs at the npm package"
 
 omarchy-remove-preinstalls >/dev/null
 for command in omp grok crush; do
@@ -225,7 +247,7 @@ declare -A expected_agents=(
 declare -A expected_packages=(
   [pi]="pi"
   [omp]="$omp_package"
-  [opencode]="opencode"
+  [opencode]="$opencode_package"
   [claude]="claude"
   [codex]="codex"
   [crush]="$crush_package"
@@ -237,12 +259,18 @@ declare -A expected_packages=(
 for selection in "${!expected_agents[@]}"; do
   expected=${expected_agents[$selection]}
   : >"$agent_open_log"
+  : >"$mise_history"
   OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent "$selection"
   [[ $(omarchy-default-agent) == $expected ]] || fail "default agent canonicalizes $selection"
 
-  mapfile -d '' -t mise_args <"$mise_log"
-  [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
-    fail "default agent installs $selection globally through mise"
+  if [[ $expected == "opencode" ]]; then
+    grep -Eq '^use -g ' "$mise_history" &&
+      fail "default agent preserves an existing OpenCode mise pin"
+  else
+    mapfile -d '' -t mise_args <"$mise_log"
+    [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
+      fail "default agent installs $selection globally through mise"
+  fi
 
   mapfile -d '' -t agent_open_args <"$agent_open_log"
   [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||

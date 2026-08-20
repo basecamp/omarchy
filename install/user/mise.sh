@@ -4,7 +4,7 @@ omarchy-mise-install crush
 omarchy-mise-install gemini
 omarchy-mise-install gh
 omarchy-mise-install copilot
-omarchy-mise-install opencode
+omarchy-mise-install npm:@opencode-ai/cli opencode
 omarchy-mise-install npm:playwright playwright
 omarchy-mise-install pi
 omarchy-mise-install github:can1357/oh-my-pi omp

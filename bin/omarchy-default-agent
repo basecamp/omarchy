@@ -26,7 +26,7 @@ fi
 case "$1" in
 pi) agent="pi"; name="Pi" ;;
 omp | oh-my-pi) agent="omp"; name="Oh My Pi"; agent_package="github:can1357/oh-my-pi" ;;
-opencode | open-code) agent="opencode"; name="OpenCode" ;;
+opencode | open-code) agent="opencode"; name="OpenCode"; agent_package="npm:@opencode-ai/cli" ;;
 claude | claude-code) agent="claude"; name="Claude Code" ;;
 codex) agent="codex"; name="Codex" ;;
 crush) agent="crush"; name="Crush" ;;
@@ -45,7 +45,9 @@ if [[ $installing == "false" ]] && ! mise where "$agent_package" &>/dev/null; th
   exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$agent"
 fi
 
-if ! mise use -g "$agent_package"; then
+if [[ $agent == "opencode" ]] && mise where "$agent_package" &>/dev/null; then
+  :
+elif ! mise use -g "$agent_package"; then
   if [[ $installing == "true" ]]; then
     echo "Could not install $name with mise" >&2
   else
