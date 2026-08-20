@@ -2,7 +2,7 @@
 
 # omarchy:summary=Update installed git-managed plugins
 # omarchy:group=plugin
-# omarchy:args=[id] [--yes]
+# omarchy:args=[id] [--verify-with-agent|--no-verify-with-agent] [--skill <file>] [--yes]
 
 set -euo pipefail
 
@@ -32,6 +32,52 @@ confirm() {
   fi
 }
 
+unattended() {
+  (( ASSUME_YES )) || ! interactive
+}
+
+resolve_verification() {
+  [[ -n $verify ]] && return 0
+
+  agent=$(omarchy-default-agent)
+  if [[ -n $agent ]] && omarchy-toggle-enabled agent-security-scan; then
+    verify=true
+  else
+    verify=false
+  fi
+}
+
+verify_update() {
+  local dir="$1"
+  local revision="$2"
+  local outcome choice
+  local -a review=(omarchy-plugin-verify "$dir" --revision "$revision")
+
+  [[ -n $verify_skill ]] && review+=(--skill "$verify_skill")
+  while :; do
+    outcome=0
+    "${review[@]}" || outcome=$?
+    (( outcome == 0 )) && return 0
+
+    if (( outcome == 1 )); then
+      unattended && return 1
+      gum confirm "Update it anyway?" || return 1
+      return 0
+    fi
+
+    unattended && return 1
+    choice=$(gum choose --header="The review did not finish. What now?" \
+      "Run the review again" \
+      "Skip the review and update it" \
+      "Keep the installed version") || return 1
+    case "$choice" in
+    "Run the review again") continue ;;
+    "Skip the review and update it") return 0 ;;
+    *) return 1 ;;
+    esac
+  done
+}
+
 valid_plugin_id() {
   [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $1 != *..* ]]
 }
@@ -39,13 +85,25 @@ valid_plugin_id() {
 update_one() {
   local id="$1"
   local dir="$PLUGINS_DIR/$id"
+  local candidate candidate_revision installed_revision
+
+  if [[ -n $(git -C "$dir" status --porcelain --untracked-files=all) ]]; then
+    echo "omarchy-plugin-update: '$id' has local changes; refusing to replace unreviewed source" >&2
+    return 1
+  fi
+  installed_revision=$(git -C "$dir" rev-parse HEAD)
 
   if ! git -C "$dir" fetch --quiet origin HEAD; then
     echo "omarchy-plugin-update: fetch failed for '$id'" >&2
     return 1
   fi
 
-  if [[ $(git -C "$dir" rev-parse HEAD) == $(git -C "$dir" rev-parse FETCH_HEAD) ]]; then
+  candidate_revision=$(git -C "$dir" rev-parse FETCH_HEAD^{commit}) || {
+    echo "omarchy-plugin-update: fetched revision for '$id' is not a commit" >&2
+    return 1
+  }
+
+  if [[ $installed_revision == $candidate_revision ]]; then
     echo "$id is up to date."
     return 0
   fi
@@ -53,9 +111,9 @@ update_one() {
   if (( ! ASSUME_YES )); then
     echo "Changes for $id:"
     if omarchy-cmd-present delta; then
-      git -C "$dir" diff HEAD FETCH_HEAD | delta --paging=never
+      git -C "$dir" diff "$installed_revision" "$candidate_revision" | delta --paging=never
     else
-      git -C "$dir" diff HEAD FETCH_HEAD
+      git -C "$dir" diff "$installed_revision" "$candidate_revision"
     fi
     echo
     confirm "Update $id?" || {
@@ -64,7 +122,32 @@ update_one() {
     }
   fi
 
-  if ! git -C "$dir" merge --ff-only FETCH_HEAD >/dev/null 2>&1; then
+  if [[ $verify == true ]]; then
+    candidate=$(mktemp -d "${TMPDIR:-/tmp}/omarchy-plugin-update-XXXXXXXXXXXX") || {
+      echo "omarchy-plugin-update: could not stage '$id' for validation" >&2
+      return 1
+    }
+    if ! git -C "$dir" archive "$candidate_revision" | tar -x -C "$candidate" ||
+      ! omarchy-plugin-validate "$candidate"; then
+      rm -rf "$candidate"
+      echo "omarchy-plugin-update: candidate update of '$id' failed validation" >&2
+      return 1
+    fi
+    rm -rf "$candidate"
+
+    if ! verify_update "$dir" "$candidate_revision"; then
+      echo "Held $id at its installed version because the security review did not clear the update." >&2
+      return 1
+    fi
+  fi
+
+  if [[ $(git -C "$dir" rev-parse HEAD) != $installed_revision ||
+    -n $(git -C "$dir" status --porcelain --untracked-files=all) ]]; then
+    echo "omarchy-plugin-update: '$id' changed while its update was being reviewed" >&2
+    return 1
+  fi
+
+  if ! git -C "$dir" merge --ff-only "$candidate_revision" >/dev/null 2>&1; then
     echo "omarchy-plugin-update: cannot fast-forward '$id'; you have local changes in $dir" >&2
     return 1
   fi
@@ -80,15 +163,31 @@ update_one() {
 }
 
 id=""
+verify=""
+verify_skill=""
+agent=""
 
 while (( $# > 0 )); do
   case "$1" in
+  --verify-with-agent)
+    verify=true
+    shift
+    ;;
+  --no-verify-with-agent)
+    verify=false
+    shift
+    ;;
+  --skill)
+    verify_skill=${2:?--skill needs a path}
+    [[ -n $verify ]] || verify=true
+    shift 2
+    ;;
   --yes | -y)
     ASSUME_YES=1
     shift
     ;;
   -h | --help)
-    echo "Usage: omarchy plugin update [id] [--yes]"
+    echo "Usage: omarchy plugin update [id] [--verify-with-agent|--no-verify-with-agent] [--skill <file>] [--yes]"
     exit 0
     ;;
   -*)
@@ -101,6 +200,13 @@ while (( $# > 0 )); do
     ;;
   esac
 done
+
+resolve_verification
+if [[ $verify == true && -z $agent ]]; then
+  agent=$(omarchy-default-agent)
+  [[ -n $agent ]] ||
+    fail "no default coding agent to verify with; choose one with: omarchy default agent <name>"
+fi
 
 [[ -d $PLUGINS_DIR ]] || fail "no plugins installed"
 

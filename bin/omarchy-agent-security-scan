@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# omarchy:summary=Enable or disable agent security scans for untrusted software
+# omarchy:group=agent
+# omarchy:args=[toggle|on|off|status]
+
+set -euo pipefail
+
+flag="agent-security-scan"
+action=${1:-toggle}
+
+case "$action" in
+status)
+  if omarchy-toggle-enabled "$flag"; then
+    echo "enabled"
+  else
+    echo "disabled"
+  fi
+  exit 0
+  ;;
+toggle | on | off) ;;
+*)
+  echo "Usage: omarchy agent security scan [toggle|on|off|status]" >&2
+  exit 1
+  ;;
+esac
+
+if [[ $action != "off" ]] && ! omarchy-toggle-enabled "$flag"; then
+  agent=$(omarchy-default-agent)
+  if [[ -z $agent ]]; then
+    echo "Choose a default coding agent before enabling security scans:" >&2
+    echo "  omarchy default agent <name>" >&2
+    exit 1
+  fi
+fi
+
+omarchy-toggle "$flag" "$action"
+if omarchy-toggle-enabled "$flag"; then
+  omarchy-notification-send -g 󰒃 "Agent security scans enabled"
+else
+  omarchy-notification-send -g 󰒃 "Agent security scans disabled"
+fi

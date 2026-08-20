@@ -60,6 +60,13 @@ omarchy plugin update                # fetches, shows a diff, fast-forwards
 omarchy plugin remove acme.weather
 ```
 
+Plugins run unsandboxed inside `omarchy-shell`. The optional [agent security
+scans](agent-security-scans.md) gate reviews plugin installs and updates before
+the checkout changes. `omarchy plugin verify <id>` also reviews an installed
+plugin directly. What the agent looks for comes from the `verify-plugin` skill;
+replace `~/.agents/skills/verify-plugin` with your own method, or pass `--skill
+<file>` for one command.
+
 **Setup › Plugins** offers Enable, Disable, Add, Clone, and Remove. Enable and
 Disable include built-ins as well as installed plugins. Clone is limited to
 built-ins, while Remove is limited to installed plugins since a built-in has

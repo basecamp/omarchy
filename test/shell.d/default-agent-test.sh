@@ -366,6 +366,15 @@ assert_bypass() {
   assert_launched "$agent" "skips permission prompts" "$@"
 }
 
+assert_non_interactive() {
+  local agent=$1
+  shift
+
+  printf '%s\n' "$agent" >"$agent_file"
+  omarchy-agent --non-interactive --prompt "Review this project"
+  assert_launched "$agent" "uses its deterministic review mode" "$@"
+}
+
 assert_launch pi pi "Review this project"
 assert_launch omp omp --auto-approve -- "Review this project"
 assert_launch opencode opencode --auto --prompt "Review this project"
@@ -387,6 +396,26 @@ assert_bypass grok grok --permission-mode bypassPermissions
 assert_bypass gemini gemini --yolo
 assert_bypass copilot copilot --allow-all
 pass "agent launcher skips permission prompts for every supported agent"
+
+assert_non_interactive pi pi --no-session --no-extensions --no-skills --no-context-files \
+  --no-approve -p "Review this project"
+assert_non_interactive omp omp --auto-approve --no-session --no-extensions --no-skills \
+  --no-rules --cwd "$PWD" -p "Review this project"
+assert_non_interactive opencode opencode run --pure --auto "Review this project"
+assert_non_interactive claude claude --print --no-session-persistence --safe-mode \
+  --disable-slash-commands --strict-mcp-config --mcp-config '{}' \
+  --permission-mode bypassPermissions -- "Review this project"
+assert_non_interactive codex codex exec --dangerously-bypass-approvals-and-sandbox \
+  --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check \
+  -C "$PWD" "Review this project"
+assert_non_interactive crush crush --data-dir "$PWD/crush-data" run --cwd "$PWD" "Review this project"
+assert_non_interactive grok grok --permission-mode bypassPermissions --no-memory \
+  --no-subagents --disable-web-search --single "Review this project"
+assert_non_interactive gemini gemini --yolo --prompt "Review this project"
+assert_non_interactive copilot copilot --allow-all --prompt "Review this project" \
+  --no-custom-instructions --disable-builtin-mcps --no-remote --no-remote-export \
+  --no-auto-update --log-dir "$PWD/copilot-logs"
+pass "agent launcher has a non-interactive review mode for every supported agent"
 
 printf '%s\n' "opencode" >"$agent_file"
 omarchy-agent

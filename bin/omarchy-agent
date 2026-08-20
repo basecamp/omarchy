@@ -1,11 +1,12 @@
 #!/bin/bash
 
 # omarchy:summary=Launch the default coding agent in a terminal
-# omarchy:args=[--inline] [--pick]
+# omarchy:args=[--inline] [--pick] [--non-interactive]
 # omarchy:examples=omarchy agent | omarchy agent --inline
 
 inline=false
 pick=false
+non_interactive=false
 
 # Flags only. A bare prompt would shadow the subcommands under this group, so
 # prompts go through omarchy-agent-prompt, which passes one here as --prompt.
@@ -19,6 +20,10 @@ while (($#)); do
       pick=true
       shift
       ;;
+    --non-interactive)
+      non_interactive=true
+      shift
+      ;;
     --prompt)
       prompt=${2:?--prompt needs a value}
       shift 2
@@ -30,6 +35,11 @@ while (($#)); do
       ;;
   esac
 done
+
+if [[ $non_interactive == "true" && -z ${prompt+x} ]]; then
+  echo "--non-interactive requires --prompt" >&2
+  exit 1
+fi
 
 # Agents refuse to remember trust for $HOME, so launches from the keybinding or
 # menu start in the work directory instead of re-asking on every session.
@@ -55,44 +65,88 @@ fi
 # with its own spelling of "don't stop to ask". Pi has no approval prompts.
 case "$agent" in
 opencode)
-  command=(opencode --auto)
-  [[ -n ${prompt:-} ]] && command+=(--prompt "$prompt")
+  if [[ $non_interactive == "true" ]]; then
+    command=(opencode run --pure --auto "$prompt")
+  else
+    command=(opencode --auto)
+    [[ -n ${prompt:-} ]] && command+=(--prompt "$prompt")
+  fi
   ;;
 gemini)
   command=(gemini --yolo)
-  [[ -n ${prompt:-} ]] && command+=(--prompt-interactive "$prompt")
+  if [[ $non_interactive == "true" ]]; then
+    command+=(--prompt "$prompt")
+  elif [[ -n ${prompt:-} ]]; then
+    command+=(--prompt-interactive "$prompt")
+  fi
   ;;
 copilot)
-  command=(copilot --allow-all)
-  [[ -n ${prompt:-} ]] && command+=(--interactive "$prompt")
+  if [[ $non_interactive == "true" ]]; then
+    command=(copilot --allow-all --prompt "$prompt"
+      --no-custom-instructions --disable-builtin-mcps
+      --no-remote --no-remote-export --no-auto-update
+      --log-dir "$PWD/copilot-logs")
+  else
+    command=(copilot --allow-all)
+    [[ -n ${prompt:-} ]] && command+=(--interactive "$prompt")
+  fi
   ;;
 crush)
   # --yolo belongs to the interactive command only; `crush run` never prompts.
-  if [[ -n ${prompt:-} ]]; then
+  if [[ $non_interactive == "true" ]]; then
+    command=(crush --data-dir "$PWD/crush-data" run --cwd "$PWD" "$prompt")
+  elif [[ -n ${prompt:-} ]]; then
     command=(crush run "$prompt")
   else
     command=(crush --yolo)
   fi
   ;;
 claude)
-  command=(claude --permission-mode auto)
-  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  if [[ $non_interactive == "true" ]]; then
+    command=(claude --print --no-session-persistence --safe-mode
+      --disable-slash-commands --strict-mcp-config --mcp-config '{}'
+      --permission-mode bypassPermissions -- "$prompt")
+  else
+    command=(claude --permission-mode auto)
+    [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  fi
   ;;
 grok)
-  command=(grok --permission-mode bypassPermissions)
-  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  if [[ $non_interactive == "true" ]]; then
+    command=(grok --permission-mode bypassPermissions --no-memory
+      --no-subagents --disable-web-search --single "$prompt")
+  else
+    command=(grok --permission-mode bypassPermissions)
+    [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  fi
   ;;
 codex)
-  command=(codex --approve-for-me)
-  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  if [[ $non_interactive == "true" ]]; then
+    command=(codex exec --dangerously-bypass-approvals-and-sandbox
+      --ephemeral --ignore-user-config --ignore-rules
+      --skip-git-repo-check -C "$PWD" "$prompt")
+  else
+    command=(codex --approve-for-me)
+    [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  fi
   ;;
 omp)
-  command=(omp --auto-approve)
-  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  if [[ $non_interactive == "true" ]]; then
+    command=(omp --auto-approve --no-session --no-extensions --no-skills
+      --no-rules --cwd "$PWD" -p "$prompt")
+  else
+    command=(omp --auto-approve)
+    [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  fi
   ;;
 pi)
-  command=(pi)
-  [[ -n ${prompt:-} ]] && command+=("$prompt")
+  if [[ $non_interactive == "true" ]]; then
+    command=(pi --no-session --no-extensions --no-skills --no-context-files
+      --no-approve -p "$prompt")
+  else
+    command=(pi)
+    [[ -n ${prompt:-} ]] && command+=("$prompt")
+  fi
   ;;
 *)
   echo "Unsupported default agent: $agent" >&2

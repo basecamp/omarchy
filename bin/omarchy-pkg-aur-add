@@ -1,18 +1,45 @@
 #!/bin/bash
 
-# omarchy:summary=Add the named packages to the system from the AUR if they're missing. Returns false if it couldn't be done.
+# omarchy:summary=Add named AUR packages, reviewing recipes first when enabled
 # omarchy:args=<packages...>
 
-if omarchy-pkg-missing "$@"; then
-  yay -S --noconfirm --needed "$@" || exit 1
+security_scans_enabled() {
+  [[ -n $(omarchy-default-agent) ]] && omarchy-toggle-enabled agent-security-scan
+}
+
+if ! security_scans_enabled; then
+  if omarchy-pkg-missing "$@"; then
+    yay -S --noconfirm --needed "$@" || exit 1
+  fi
+
+  for pkg in "$@"; do
+    if ! pacman -Q "${pkg#aur/}" &>/dev/null; then
+      echo -e "\033[31mError: Package '$pkg' did not install\033[0m" >&2
+      exit 1
+    fi
+  done
+  exit 0
 fi
 
+rc=0
 for pkg in "$@"; do
-  # Secondary check to handle states where pacman doesn't actually register an error
-  if ! pacman -Q "$pkg" &>/dev/null; then
+  installed_name=${pkg#aur/}
+  if omarchy-pkg-missing "$installed_name"; then
+    if ! yay -S --noconfirm --needed \
+      --editmenu --answeredit All \
+      --editor omarchy-pkg-aur-verify --editorflags "" \
+      "$pkg"; then
+      echo -e "\033[33mHeld AUR package '$pkg'; other requested packages will continue.\033[0m" >&2
+      rc=1
+      continue
+    fi
+  fi
+
+  # Secondary check to handle states where pacman doesn't actually register an error.
+  if ! pacman -Q "$installed_name" &>/dev/null; then
     echo -e "\033[31mError: Package '$pkg' did not install\033[0m" >&2
-    exit 1
+    rc=1
   fi
 done
 
-exit 0
+exit $rc

@@ -5,7 +5,25 @@
 if pacman -Qem >/dev/null; then
   if omarchy-pkg-aur-accessible; then
     echo -e "\e[32m\nUpdate AUR packages\e[0m"
-    yay -Sua --noconfirm --cleanafter --ignore gcc14,gcc14-libs
+    if [[ -n $(omarchy-default-agent) ]] && omarchy-toggle-enabled agent-security-scan; then
+      mapfile -t aur_updates < <(yay -Qua --quiet)
+      held=()
+      for pkg in "${aur_updates[@]}"; do
+        [[ -n $pkg ]] || continue
+        if ! yay -S --noconfirm --cleanafter --ignore gcc14,gcc14-libs \
+          --editmenu --answeredit All \
+          --editor omarchy-pkg-aur-verify --editorflags "" \
+          "$pkg"; then
+          held+=("$pkg")
+          echo "Held $pkg; continuing with other AUR updates." >&2
+        fi
+      done
+      if (( ${#held[@]} > 0 )); then
+        printf 'AUR updates held by security review or build failure: %s\n' "${held[*]}" >&2
+      fi
+    else
+      yay -Sua --noconfirm --cleanafter --ignore gcc14,gcc14-libs
+    fi
     echo
   else
     echo -e "\e[31m\nAUR is unavailable (so skipping updates)\e[0m"

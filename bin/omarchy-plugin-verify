@@ -1,0 +1,96 @@
+#!/bin/bash
+
+# omarchy:summary=Have the default coding agent audit a plugin's code
+# omarchy:group=plugin
+# omarchy:args=<plugin-folder|plugin-id> [--skill <file>]
+# omarchy:examples=omarchy plugin verify ./my-plugin | omarchy plugin verify acme.weather --skill ~/my-review.md
+
+set -euo pipefail
+
+fail() {
+  echo "omarchy-plugin-verify: $*" >&2
+  exit 1
+}
+
+resolve_skill() {
+  local candidate resolved
+
+  if [[ -n $skill ]]; then
+    candidate=$skill
+    [[ -d $candidate ]] && candidate="$candidate/SKILL.md"
+    [[ -f $candidate ]] || fail "no skill file at $skill"
+    [[ -r $candidate ]] || fail "cannot read the skill file at $candidate"
+    resolved=$(realpath -- "$candidate") || fail "could not resolve the skill file at $candidate"
+    printf '%s' "$resolved"
+    return 0
+  fi
+
+  for candidate in "$HOME/.agents/skills/verify-plugin/SKILL.md" \
+    "$OMARCHY_PATH/default/agents/skills/verify-plugin/SKILL.md"; do
+    if [[ -f $candidate && -r $candidate ]]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  fail "no verify-plugin skill to review with; point at one with --skill"
+}
+
+target=""
+skill=""
+revision=""
+while (( $# > 0 )); do
+  case "$1" in
+  --skill) skill=${2:?--skill needs a path}; shift 2 ;;
+  --revision) revision=${2:?--revision needs a commit}; shift 2 ;;
+  -h | --help)
+    echo "Usage: omarchy plugin verify <plugin-folder|plugin-id> [--skill <file>]"
+    exit 0
+    ;;
+  -*) fail "unknown verify option: $1" ;;
+  *)
+    [[ -z $target ]] || fail "unexpected argument: $1"
+    target=$1
+    shift
+    ;;
+  esac
+done
+
+[[ -n $target ]] || fail "a plugin folder or an installed plugin id is required"
+if [[ -d $target ]]; then
+  plugin_dir=$(cd -- "$target" && pwd) || fail "could not read plugin folder: $target"
+else
+  plugin_dir=$(omarchy-plugin-catalog | jq -r --arg id "$target" 'map(select(.id == $id))[0].sourceDir // empty') ||
+    fail "could not look up installed plugins"
+  [[ -n $plugin_dir ]] || fail "no such plugin folder or installed plugin id: $target"
+fi
+
+manifest="$plugin_dir/manifest.json"
+if [[ -n $revision ]]; then
+  manifest_json=$(git -C "$plugin_dir" show "$revision:manifest.json" 2>/dev/null) ||
+    fail "missing manifest.json at $revision in $plugin_dir"
+  manifest_fields=$(jq -r '[.id // "", .name // .id // ""] | @tsv' <<<"$manifest_json") ||
+    fail "manifest.json is not valid JSON at $revision in $plugin_dir"
+else
+  [[ -f $manifest ]] || fail "missing manifest.json in $plugin_dir"
+  manifest_fields=$(jq -r '[.id // "", .name // .id // ""] | @tsv' "$manifest") ||
+    fail "manifest.json is not valid JSON: $manifest"
+fi
+IFS=$'\t' read -r id name <<<"$manifest_fields"
+[[ -n $id ]] || fail "manifest 'id' is empty: $manifest"
+[[ -n $(omarchy-default-agent) ]] ||
+  fail "no default coding agent to review with; choose one with: omarchy default agent <name>"
+
+args=(
+  --kind plugin
+  --target "$plugin_dir"
+  --id "$id"
+  --name "$name"
+  --skill "$(resolve_skill)"
+  --run-prefix verify-plugin
+)
+if [[ -n $revision ]]; then
+  args+=(--revision "$revision")
+elif git -C "$plugin_dir" rev-parse --verify HEAD^{commit} >/dev/null 2>&1; then
+  args+=(--revision HEAD --worktree)
+fi
+exec omarchy-agent-security-review "${args[@]}"

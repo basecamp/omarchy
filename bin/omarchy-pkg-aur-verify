@@ -1,0 +1,113 @@
+#!/bin/bash
+
+# omarchy:summary=Review AUR build recipes before yay builds them
+# omarchy:hidden=true
+
+set -euo pipefail
+
+fail() {
+  echo "omarchy-pkg-aur-verify: $*" >&2
+  exit 1
+}
+
+interactive() {
+  [[ ${OMARCHY_SECURITY_UNATTENDED:-0} != "1" && ${OMARCHY_UPDATE_UNATTENDED:-0} != "1" && -t 0 && -t 1 ]]
+}
+
+resolve_skill() {
+  local candidate
+  for candidate in "$HOME/.agents/skills/verify-aur-package/SKILL.md" \
+    "$OMARCHY_PATH/default/agents/skills/verify-aur-package/SKILL.md"; do
+    if [[ -f $candidate && -r $candidate ]]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  fail "no verify-aur-package skill is available"
+}
+
+review_one() {
+  local dir="$1"
+  local id name revision outcome choice
+  local -a review
+
+  id=$(sed -n 's/^[[:space:]]*pkgbase[[:space:]]*=[[:space:]]*//p' "$dir/.SRCINFO" 2>/dev/null | head -1)
+  [[ -n $id ]] || id=$(basename "$dir")
+  if ! [[ $id =~ ^[A-Za-z0-9@._+:-]+$ ]]; then
+    echo "Cannot review an AUR recipe with an invalid pkgbase: $id" >&2
+    return 2
+  fi
+  name=$id
+  revision=$(git -C "$dir" rev-parse HEAD 2>/dev/null) || {
+    echo "Cannot review $id: its AUR checkout has no committed recipe." >&2
+    return 2
+  }
+  if ! git -C "$dir" diff --quiet "$revision" --; then
+    echo "Cannot review $id: its tracked recipe differs from $revision." >&2
+    return 2
+  fi
+  review=(omarchy-agent-security-review
+    --kind aur
+    --target "$dir"
+    --id "$id"
+    --name "$name"
+    --skill "$skill_file"
+    --revision "$revision"
+    --run-prefix verify-aur)
+
+  while :; do
+    outcome=0
+    "${review[@]}" || outcome=$?
+    if (( outcome == 0 )); then
+      if git -C "$dir" diff --quiet "$revision" --; then
+        return 0
+      fi
+      echo "Cannot accept the $id verdict: its tracked recipe changed during review." >&2
+      outcome=2
+    fi
+
+    if (( outcome == 1 )); then
+      interactive || return 1
+      gum confirm "Install $id despite the security verdict?" || return 1
+      echo "Security verdict overridden for $id."
+      return 0
+    fi
+
+    interactive || return 2
+    choice=$(gum choose --header="The $id security review did not finish. What now?" \
+      "Run the review again" \
+      "Install without a completed review" \
+      "Hold this package") || return 2
+    case "$choice" in
+    "Run the review again") continue ;;
+    "Install without a completed review")
+      echo "Incomplete security review overridden for $id."
+      return 0
+      ;;
+    *) return 2 ;;
+    esac
+  done
+}
+
+(( $# > 0 )) || fail "yay did not provide any recipe paths to review"
+skill_file=$(resolve_skill)
+declare -A seen=()
+rc=0
+
+for path in "$@"; do
+  if [[ -d $path ]]; then
+    dir=$(realpath -- "$path")
+  elif [[ -f $path ]]; then
+    dir=$(dirname "$(realpath -- "$path")")
+  else
+    echo "Cannot review missing AUR recipe: $path" >&2
+    rc=1
+    continue
+  fi
+
+  [[ -z ${seen[$dir]:-} ]] || continue
+  seen[$dir]=1
+  review_one "$dir" || rc=1
+done
+
+exit $rc

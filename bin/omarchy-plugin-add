@@ -2,7 +2,7 @@
 
 # omarchy:summary=Add a shell plugin from git
 # omarchy:group=plugin
-# omarchy:args=[git-url] [--enable] [--yes]
+# omarchy:args=[git-url] [--enable] [--verify-with-agent|--no-verify-with-agent] [--skill <file>] [--yes]
 # omarchy:examples=omarchy plugin add https://github.com/acme/omarchy-weather.git --enable
 # omarchy:alias=omarchy plugin install
 
@@ -23,6 +23,12 @@ interactive() {
   [[ -t 0 && -t 1 ]]
 }
 
+# --yes is a promise that nobody is watching, so it decides the questions rather
+# than asking them.
+unattended() {
+  (( ASSUME_YES )) || ! interactive
+}
+
 confirm() {
   local prompt="$1"
   (( ASSUME_YES )) && return 0
@@ -31,6 +37,61 @@ confirm() {
   else
     fail "refusing to continue without confirmation; pass --yes"
   fi
+}
+
+# Explicit flags win. Otherwise the shared security toggle is deliberately the
+# only preference, so AUR and plugin installs cannot silently disagree.
+resolve_verification() {
+  [[ -n $verify ]] && return 0
+
+  agent=$(omarchy-default-agent)
+  if [[ -n $agent ]] && omarchy-toggle-enabled agent-security-scan; then
+    verify=true
+  else
+    verify=false
+  fi
+}
+
+# The agent reads the staged clone before any of it is installed, and the
+# install waits on the answer. Anything short of a clean verdict is the user's
+# call to make, except when nobody is there to make it.
+verify_plugin() {
+  local dir="$1"
+  local revision="$2"
+  local outcome choice
+  local -a review=(omarchy-plugin-verify "$dir" --revision "$revision")
+
+  # Someone who brought their own review method said what they wanted reviewed
+  # with; the rest take the skill Omarchy ships.
+  [[ -n $verify_skill ]] && review+=(--skill "$verify_skill")
+
+  while :; do
+    outcome=0
+    "${review[@]}" || outcome=$?
+    (( outcome == 0 )) && return 0
+
+    if (( outcome != 1 )); then
+      # A verdict is the only outcome there is anything to decide about. A
+      # review that died, never started, or could not be run at all says nothing
+      # about the plugin, so the offer is to run it again.
+      unattended && return 1
+      choice=$(gum choose --header="The review did not finish. What now?" \
+        "Run the review again" \
+        "Skip the review and add it" \
+        "Stop the install") || return 1
+      case "$choice" in
+      "Run the review again") continue ;;
+      "Skip the review and add it") return 0 ;;
+      *) return 1 ;;
+      esac
+    fi
+
+    # A verdict came back and it was not "safe". --yes cannot wave that through:
+    # the whole point of asking for a review was to stop exactly this.
+    unattended && return 1
+    gum confirm "Add it anyway?" || return 1
+    return 0
+  done
 }
 
 ENABLE_PLACEMENT=()
@@ -60,6 +121,9 @@ plugin_id_manifest() {
 
 url=""
 enable_after=""
+verify=""
+verify_skill=""
+agent=""
 
 while (( $# > 0 )); do
   case "$1" in
@@ -67,12 +131,27 @@ while (( $# > 0 )); do
     enable_after=true
     shift
     ;;
+  --verify-with-agent)
+    verify=true
+    shift
+    ;;
+  --no-verify-with-agent)
+    verify=false
+    shift
+    ;;
+  --skill)
+    verify_skill=${2:?--skill needs a path}
+    # Bringing a review method is asking for the review, unless the answer was
+    # already given either way on the same line.
+    [[ -n $verify ]] || verify=true
+    shift 2
+    ;;
   --yes | -y)
     ASSUME_YES=1
     shift
     ;;
   -h | --help)
-    echo "Usage: omarchy plugin add [git-url] [--enable] [--yes]"
+    echo "Usage: omarchy plugin add [git-url] [--enable] [--verify-with-agent|--no-verify-with-agent] [--skill <file>] [--yes]"
     exit 0
     ;;
   -*)
@@ -106,10 +185,22 @@ WARN
   confirm "Clone and add this plugin?" || fail "aborted"
 fi
 
+resolve_verification
+
+if [[ $verify == true && -z $agent ]]; then
+  agent=$(omarchy-default-agent)
+  [[ -n $agent ]] ||
+    fail "no default coding agent to verify with; choose one with: omarchy default agent <name>"
+fi
+
 mkdir -p "$PLUGINS_DIR"
 
 stage="$PLUGINS_DIR/.add.tmp.$$"
 rm -rf "$stage"
+# A review runs for as long as the agent takes to read the plugin, which is long
+# enough for someone to give up on it. Ctrl-C should not leave the clone behind
+# in the plugins directory.
+trap 'rm -rf "$stage"' EXIT
 if ! git clone -- "$url" "$stage"; then
   rm -rf "$stage"
   fail "failed to clone $url"
@@ -118,6 +209,15 @@ fi
 if ! omarchy-plugin-validate "$stage"; then
   rm -rf "$stage"
   fail "refusing to add: validation failed"
+fi
+
+staged_revision=$(git -C "$stage" rev-parse HEAD^{commit}) || {
+  rm -rf "$stage"
+  fail "refusing to add: the staged plugin has no committed revision"
+}
+if [[ -n $(git -C "$stage" status --porcelain --untracked-files=all) ]]; then
+  rm -rf "$stage"
+  fail "refusing to add: the staged plugin differs from its committed revision"
 fi
 
 id=$(jq -r '.id' "$stage/manifest.json")
@@ -134,6 +234,22 @@ target="$PLUGINS_DIR/$id"
 if [[ -e $target || -L $target ]]; then
   rm -rf "$stage"
   fail "plugin '$id' is already installed; update it with: omarchy plugin update $id"
+fi
+
+# Last, because a review is the expensive part and there is no point spending an
+# agent on a clone that is about to be rejected anyway. Still before the move:
+# nothing the agent read gets installed unless the install survives its verdict.
+if [[ $verify == true ]]; then
+  if ! verify_plugin "$stage" "$staged_revision"; then
+    rm -rf "$stage"
+    fail "aborted: '$id' was not added"
+  fi
+  if [[ $(git -C "$stage" rev-parse HEAD^{commit}) != $staged_revision ||
+    -n $(git -C "$stage" status --porcelain --untracked-files=all) ]] ||
+    ! omarchy-plugin-validate "$stage"; then
+    rm -rf "$stage"
+    fail "aborted: '$id' changed after its security review"
+  fi
 fi
 
 mv "$stage" "$target"

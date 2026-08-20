@@ -20,10 +20,19 @@ fzf_args=(
 pkg_names=$(yay -Slqa | fzf "${fzf_args[@]}")
 
 if [[ -n $pkg_names ]]; then
-  # Add aur/ prefix to each package name and convert to space-separated for yay
   source omarchy-sudo-keepalive
 
-  echo "$pkg_names" | sed 's/^/aur\//' | tr '\n' ' ' | xargs yay -S --noconfirm
+  mapfile -t packages <<<"$pkg_names"
+  for index in "${!packages[@]}"; do
+    packages[index]="aur/${packages[index]}"
+  done
+  rc=0
+  omarchy-pkg-aur-add "${packages[@]}" || rc=1
   sudo updatedb
-  omarchy-show-done
+  if (( rc == 0 )); then
+    omarchy-show-done
+  else
+    echo "Finished with one or more AUR packages held or failed." >&2
+  fi
+  exit $rc
 fi
