@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# omarchy:summary=Install a screensaver package if missing
+# omarchy:hidden=true
+
+case "${1:-}" in
+  neo-matrix) omarchy-pkg-add neo-matrix ;;
+  cbonsai)    omarchy-pkg-add cbonsai ;;
+  pipes)      omarchy-pkg-add pipes.sh ;;
+  lavat)      omarchy-pkg-add lavat ;;
+  default)    ;;  # built-in, no package needed
+  *)
+    echo "Usage: omarchy-screensaver-install <default|neo-matrix|cbonsai|pipes|lavat>" >&2
+    exit 1
+    ;;
+esac

@@ -398,7 +398,8 @@ var GUARD_READERS = [
   "omarchy-default-browser",
   "omarchy-default-editor",
   "omarchy-default-terminal",
-  "omarchy-dns"
+  "omarchy-dns",
+  "omarchy-screensaver-get"
 ]
 
 // Package and command presence account for most of what the guards ask, and
