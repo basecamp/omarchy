@@ -7,6 +7,11 @@ import heapq
 from pathlib import Path
 
 
+# What a plan ships with, which is not always what an account has. Bonus space
+# — referral bonuses on Basic, storage add-ons on the paid tiers — raises the
+# real quota permanently, and `subscription_type` still reads "Basic". Nothing
+# the local daemon exposes reveals the true figure, so these are a starting
+# point that `quota_override_bytes` can correct.
 PLAN_QUOTAS = {
   "basic": 2_000_000_000,
   "plus": 2_000_000_000_000,
@@ -80,6 +85,18 @@ def scan_dropbox(path, limit):
   return total, rows
 
 
+def quota_override_bytes(raw):
+  """Megabytes from the widget's quotaOverrideMB setting, as a byte count.
+
+  Returns 0 for anything unusable, which leaves PLAN_QUOTAS in charge.
+  """
+  try:
+    megabytes = int(raw)
+  except (TypeError, ValueError):
+    return 0
+  return megabytes * 1_000_000 if megabytes > 0 else 0
+
+
 def main():
   limit = 25
   if len(sys.argv) > 1:
@@ -93,7 +110,8 @@ def main():
   account = dropbox_account(info)
   account_path = account.get("path") if isinstance(account.get("path"), str) else ""
   plan = account.get("subscription_type") if isinstance(account.get("subscription_type"), str) else ""
-  quota = PLAN_QUOTAS.get(plan.lower(), 0)
+  override = quota_override_bytes(sys.argv[2] if len(sys.argv) > 2 else 0)
+  quota = override or PLAN_QUOTAS.get(plan.lower(), 0)
   authenticated = account_path != "" and Path(account_path).exists()
 
   running = False

@@ -19,7 +19,8 @@
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "refreshIntervalSec": 60
+      "refreshIntervalSec": 60,
+      "quotaOverrideMB": 0
     },
     "schema": [
       {
@@ -30,6 +31,15 @@
         "max": 3600,
         "step": 5,
         "defaultValue": 60
+      },
+      {
+        "key": "quotaOverrideMB",
+        "type": "integer",
+        "label": "Storage quota override (MB, 0 for plan default)",
+        "min": 0,
+        "max": 2000000000,
+        "step": 100,
+        "defaultValue": 0
       }
     ]
   }

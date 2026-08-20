@@ -32,6 +32,10 @@ Item {
   property string lastError: ""
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 60, 10, 3600)
+  // 0 leaves the plan lookup in charge. Accounts carrying bonus space have a
+  // real quota the plan name cannot describe, so they set this to correct it.
+  // Megabytes, not bytes: a quota in bytes overflows a QML int.
+  readonly property int quotaOverrideMB: intSetting("quotaOverrideMB", 0, 0, 2000000000)
   readonly property bool busy: statusProcess.running || loginProcess.running || controlProcess.running
   readonly property string helperPath: (omarchyPath || "") + "/shell/plugins/panels/dropbox/status.py"
 
@@ -61,7 +65,7 @@ Item {
     _statusOutput = ""
     _statusError = ""
     refreshing = true
-    statusProcess.command = ["python3", helperPath, "25"]
+    statusProcess.command = ["python3", helperPath, "25", String(quotaOverrideMB)]
     statusProcess.running = true
   }
 
