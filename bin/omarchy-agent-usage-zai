@@ -1,0 +1,400 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Z.ai GLM Coding Plan usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Z.ai (GLM Coding Plan) usage into one display-ready JSON record.
+
+Rate limits and the plan tier come from Z.ai's coding-plan monitor endpoint
+(…/api/monitor/usage/quota/limit), which reports the rolling 5-hour and weekly
+token windows. That endpoint only answers for keys that carry a Coding Plan; a
+generic pay-as-you-go key gets "no coding plan" and the record falls back to
+local stats alone, exactly like the claude collector without a signed-in CLI.
+
+Local stats come from pi/omp sessions that ran through the Z.ai provider (the
+`glm-*` models). The agents panel only ever reads the JSON this prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "zai"
+AGENT_NAME = "GLM Coding Plan"
+AUTH_HELP_NO_KEY = (
+  "Set ZAI_API_KEY (or add ~/.config/omarchy/agents/zai.json) to show Coding Plan limits."
+)
+
+# Global (Z.ai) vs China (Zhipu / BigModel) split the same API under two hosts.
+PLATFORMS = {
+  "zai": "https://api.z.ai",
+  "zhipu": "https://open.bigmodel.cn",
+}
+QUOTA_PATH = "/api/monitor/usage/quota/limit"
+
+# Coding-plan token windows are tagged by (unit, number); the monitor endpoint
+# reuses TOKENS_LIMIT for both the 5-hour and the weekly window.
+TOKEN_WINDOWS = {
+  (3, 5): "Session (5-hour)",
+  (6, 1): "Weekly (7-day)",
+}
+
+
+def number(value: Any) -> int:
+  try:
+    return max(0, int(value or 0))
+  except (TypeError, ValueError):
+    return 0
+
+
+def local_day(value: Any) -> str:
+  if value is None:
+    return datetime.now().strftime("%Y-%m-%d")
+  if isinstance(value, (int, float)):
+    # pi/omp message timestamps are milliseconds.
+    if value > 10_000_000_000:
+      value = value / 1000
+    return datetime.fromtimestamp(value).strftime("%Y-%m-%d")
+  text = str(value)
+  try:
+    if text.endswith("Z"):
+      dt = datetime.fromisoformat(text[:-1] + "+00:00")
+    else:
+      dt = datetime.fromisoformat(text)
+    if dt.tzinfo is not None:
+      dt = dt.astimezone()
+    return dt.strftime("%Y-%m-%d")
+  except ValueError:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def empty_stats() -> dict[str, Any]:
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  }
+
+
+def base_record(**overrides: Any) -> dict[str, Any]:
+  record: dict[str, Any] = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": False,
+    "hasLocalStats": False,
+    "hasPromptStats": True,
+    "tierLabel": "",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "limits": [],
+  }
+  record.update(empty_stats())
+  record.update(overrides)
+  return record
+
+
+# --------------------------------------------------------------------------
+# Credentials
+# --------------------------------------------------------------------------
+
+def read_env_file(path: Path) -> dict[str, str]:
+  values: dict[str, str] = {}
+  try:
+    for line in path.read_text().splitlines():
+      line = line.strip()
+      if not line or line.startswith("#") or "=" not in line:
+        continue
+      key, _, val = line.partition("=")
+      values[key.strip()] = val.strip().strip("'\"")
+  except OSError:
+    return {}
+  return values
+
+
+def read_config() -> dict[str, Any]:
+  config_home = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+  try:
+    parsed = json.loads((config_home / "omarchy" / "agents" / "zai.json").read_text())
+    return parsed if isinstance(parsed, dict) else {}
+  except (OSError, json.JSONDecodeError):
+    return {}
+
+
+def credentials() -> tuple[str, str]:
+  """Return (api_key, platform). Platform is a PLATFORMS key."""
+  config = read_config()
+
+  # An explicit config file wins, then live env, then whatever omp/pi stored.
+  key = str(config.get("apiKey") or "").strip()
+  platform = str(config.get("platform") or "").strip().lower()
+
+  if not key:
+    if os.environ.get("ZAI_API_KEY"):
+      key, platform = os.environ["ZAI_API_KEY"].strip(), platform or "zai"
+    elif os.environ.get("ZHIPU_API_KEY") or os.environ.get("ZHIPUAI_API_KEY"):
+      key = (os.environ.get("ZHIPU_API_KEY") or os.environ.get("ZHIPUAI_API_KEY")).strip()
+      platform = platform or "zhipu"
+
+  if not key:
+    for env_path in (
+      Path.home() / ".omp" / "agent" / ".env",
+      Path.home() / ".pi" / "agent" / ".env",
+    ):
+      values = read_env_file(env_path)
+      if values.get("ZAI_API_KEY"):
+        key, platform = values["ZAI_API_KEY"], platform or "zai"
+        break
+      if values.get("ZHIPU_API_KEY") or values.get("ZHIPUAI_API_KEY"):
+        key = values.get("ZHIPU_API_KEY") or values["ZHIPUAI_API_KEY"]
+        platform = platform or "zhipu"
+        break
+
+  if platform not in PLATFORMS:
+    platform = "zai"
+  return key, platform
+
+
+# --------------------------------------------------------------------------
+# Coding-plan limits
+# --------------------------------------------------------------------------
+
+def iso_from_ms(value: Any) -> str:
+  try:
+    ms = float(value)
+  except (TypeError, ValueError):
+    return ""
+  if ms <= 0:
+    return ""
+  return datetime.fromtimestamp(ms / 1000, timezone.utc).isoformat()
+
+
+def fetch_limits(api_key: str, platform: str) -> dict[str, Any]:
+  """Return {"limits": [...], "tierLabel": str} or {"status": str} on miss.
+
+  The monitor endpoint answers HTTP 200 even when the key has no plan, carrying
+  {"success": false, "msg": "…coding plan…"} instead of a data payload.
+  """
+  url = PLATFORMS[platform] + QUOTA_PATH
+  request = urllib.request.Request(
+    url,
+    method="GET",
+    headers={
+      # This endpoint takes the raw token, not a Bearer prefix.
+      "Authorization": api_key,
+      "Accept-Language": "en-US,en",
+      "Content-Type": "application/json",
+    },
+  )
+  try:
+    with urllib.request.urlopen(request, timeout=15) as response:
+      body = json.load(response)
+  except urllib.error.HTTPError as error:
+    if error.code in (401, 403):
+      return {"status": "Z.ai rejected the API key"}
+    return {"status": f"Z.ai monitor returned HTTP {error.code}"}
+  except (urllib.error.URLError, TimeoutError):
+    return {"status": "Could not reach the Z.ai monitor endpoint"}
+  except json.JSONDecodeError:
+    return {"status": "Z.ai returned an invalid monitor response"}
+
+  data = body.get("data") if isinstance(body, dict) else None
+  if not isinstance(data, dict) or not isinstance(data.get("limits"), list):
+    msg = str((body or {}).get("msg") or "").strip()
+    status = "No GLM Coding Plan on this key" if "coding plan" in msg.lower() else (
+      msg or "Coding Plan limits unavailable"
+    )
+    return {"status": status}
+
+  limits = []
+  for item in data["limits"]:
+    if not isinstance(item, dict) or item.get("type") != "TOKENS_LIMIT":
+      continue
+    label = TOKEN_WINDOWS.get((item.get("unit"), item.get("number")))
+    if not label:
+      continue
+    try:
+      percent = max(0.0, min(1.0, float(item.get("percentage") or 0) / 100.0))
+    except (TypeError, ValueError):
+      percent = 0.0
+    limits.append({
+      "label": label,
+      "percent": percent,
+      "resetsAt": iso_from_ms(item.get("nextResetTime")),
+    })
+
+  tier = str(data.get("level") or "").strip()
+  return {"limits": limits, "tierLabel": tier[:1].upper() + tier[1:].lower() if tier else ""}
+
+
+# --------------------------------------------------------------------------
+# Local session stats
+# --------------------------------------------------------------------------
+
+def scan_sessions() -> dict[str, Any]:
+  now = datetime.now()
+  today = now.strftime("%Y-%m-%d")
+  recent_dates = [(now - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+
+  model_usage: dict[str, dict[str, int]] = {}
+  today_by_model: dict[str, int] = {}
+  active_dates: set[str] = set()
+  total_sessions: set[str] = set()
+  today_sessions: set[str] = set()
+  seen: set[str] = set()
+  totals = {"today_prompts": 0, "today_tokens": 0, "total_prompts": 0}
+
+  def add_usage(day, session_key, model, inp, out, cread, cwrite):
+    total = inp + out + cread + cwrite
+    totals["total_prompts"] += 1
+    total_sessions.add(session_key)
+    active_dates.add(day)
+    bucket = model_usage.setdefault(model, empty_bucket())
+    bucket["inputTokens"] += inp
+    bucket["outputTokens"] += out
+    bucket["cacheReadInputTokens"] += cread
+    bucket["cacheCreationInputTokens"] += cwrite
+    if day in recent:
+      recent[day]["messageCount"] += total
+    if day == today:
+      totals["today_prompts"] += 1
+      today_sessions.add(session_key)
+      totals["today_tokens"] += total
+      today_by_model[model] = today_by_model.get(model, 0) + total
+
+  roots = [
+    Path.home() / ".pi" / "agent" / "sessions",
+    Path.home() / ".omp" / "agent" / "sessions",
+  ]
+  for root in roots:
+    if not root.exists():
+      continue
+    for path in root.rglob("*.jsonl"):
+      try:
+        handle = path.open(errors="replace")
+      except OSError:
+        continue
+      with handle:
+        for line in handle:
+          # Cheap substring gate before the JSON parse: an assistant turn on a
+          # Z.ai provider always carries both markers.
+          if '"usage"' not in line or ('"zai"' not in line and '"zhipu"' not in line):
+            continue
+          try:
+            entry = json.loads(line)
+          except json.JSONDecodeError:
+            continue
+          if not isinstance(entry, dict) or entry.get("type") != "message":
+            continue
+          message = entry.get("message") or {}
+          if message.get("role") != "assistant":
+            continue
+          provider = str(message.get("provider") or "").lower()
+          if "zai" not in provider and "zhipu" not in provider:
+            continue
+          usage = message.get("usage") or {}
+          inp = number(usage.get("input"))
+          out = number(usage.get("output"))
+          cread = number(usage.get("cacheRead"))
+          cwrite = number(usage.get("cacheWrite"))
+          if not (inp or out or cread or cwrite):
+            inp = number(usage.get("totalTokens"))
+          if not (inp or out or cread or cwrite):
+            continue
+          message_key = str(path) + ":" + str(entry.get("id") or "")
+          if message_key in seen:
+            continue
+          seen.add(message_key)
+          day = local_day(entry.get("timestamp") or message.get("ts"))
+          model = str(message.get("model") or "glm")
+          add_usage(day, str(path), model, inp, out, cread, cwrite)
+
+  return {
+    "hasLocalStats": bool(model_usage),
+    "todayPrompts": totals["today_prompts"],
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": totals["today_tokens"],
+    "todayTokensByModel": today_by_model,
+    "recentDays": [recent[day] for day in recent_dates],
+    "totalPrompts": totals["total_prompts"],
+    "totalSessions": len(total_sessions),
+    "activeDays": len(active_dates),
+    "activeDates": sorted(active_dates),
+    "modelUsage": model_usage,
+  }
+
+
+# --------------------------------------------------------------------------
+# Assembly
+# --------------------------------------------------------------------------
+
+def scan() -> dict[str, Any]:
+  record = base_record()
+  stats = scan_sessions()
+  record.update(stats)
+
+  api_key, platform = credentials()
+  if not api_key:
+    record["authHelpText"] = AUTH_HELP_NO_KEY
+    record["ready"] = record["hasLocalStats"]
+    return record
+
+  result = fetch_limits(api_key, platform)
+  if result.get("limits"):
+    record["limits"] = result["limits"]
+    if result.get("tierLabel"):
+      record["tierLabel"] = result["tierLabel"]
+  else:
+    # A key with no plan (or an endpoint error) still shows local usage.
+    record["usageStatusText"] = result.get("status", "Coding Plan limits unavailable")
+    record["authHelpText"] = AUTH_HELP_NO_KEY
+
+  record["ready"] = bool(record["limits"] or record["hasLocalStats"])
+  return record
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description="Print the Z.ai GLM usage record as JSON")
+  # Limits and stats come from one endpoint and a local scan, so there is no
+  # cache to force past or a faster limits-only path; the flags exist only so
+  # every collector accepts the same invocation.
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  parser.parse_args()
+
+  try:
+    record = scan()
+  except Exception as error:  # noqa: BLE001 - a collector must always emit a record
+    record = base_record(usageStatusText="Z.ai unavailable", authHelpText="Z.ai usage scan failed")
+    print(f"omarchy-agent-usage-zai: {type(error).__name__}", file=sys.stderr)
+  print(json.dumps(record, separators=(",", ":")))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
