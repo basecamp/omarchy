@@ -153,6 +153,14 @@ link is followed to its target. The default Hyprland bindings in
 `default/hypr/bindings/utilities.lua` all go through this surface
 (SUPER+SPACE toggles root, SUPER+ESCAPE the system menu, and so on).
 
+## Quick-select
+
+Holding Alt labels the first nine selectable rows `Alt 1` through `Alt 9`, and Alt+N activates the row carrying that label. The row under the cursor shows `↵` in place of its number, since Enter already opens it; its Alt+N still works, there is just no label spelling it out. The numbering counts selectable rows, so it skips `disabled` rows exactly as the cursor does and every label a user can see is a label that works. Rows past the ninth get none.
+
+The digit reads Alt off its own key event rather than off the tracked hold, so a menu summoned by a binding that already carries Alt still quick-selects; the tracked hold only drives the labels, and it clears when the menu closes or loses focus, since a release that lands elsewhere never reaches the menu.
+
+Alt rather than Super because Hyprland's workspace bindings claim Super+number before the menu ever sees it. Quick-select is inactive in select and input modes, where digits belong to the prompt.
+
 ## Select and input modes
 
 The same plugin doubles as the system's dmenu. `omarchy-menu-select` and

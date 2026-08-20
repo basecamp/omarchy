@@ -58,6 +58,22 @@ You can see all the main keyboard bindings with `Super + K` (Tmux bindings with 
 | `Ctrl + Alt + Tab`| Cycle focus forward through monitors |
 | `Ctrl + Alt + Shift + Tab`| Cycle focus backwards through monitors |
 
+## Inside the Omarchy menu
+
+Once the menu is open (`Super + Space`), it takes the keyboard for itself.
+
+| Hotkey                  | Function              |
+| ----------------------- | --------------------- |
+| `Type anything` | Filter the list |
+| `Arrow Up/Down` | Move the cursor |
+| `Return` / `Arrow Right` | Open the highlighted row |
+| `Backspace` / `Arrow Left` | Go back a level (or delete a character while filtering) |
+| `Alt` (hold) | Number the first nine rows |
+| `Alt + 1-9` | Open the numbered row directly |
+| `Escape` | Clear the filter, then close the menu |
+
+Holding `Alt` labels the rows it can reach, so you can see the number before you commit to it. The highlighted row shows `↵` instead of a number, since `Return` already opens it. Rows that are dimmed — software you already have installed, say — are skipped in the numbering, so every number you can see is a number that works.
+
 ## System controls
 
 | Hotkey                  | Function              |

@@ -80,7 +80,9 @@ Item {
   readonly property var appLibrary: root.shell ? root.shell.appLibrary : null
   property bool deleteConfirmOpen: false
   property var deleteTarget: null
-  onOpenedChanged: if (!opened) { deleteConfirmOpen = false; deleteTarget = null }
+  // Holding Alt reveals direct-selection labels for the first nine selectable rows.
+  property bool quickSelectHeld: false
+  onOpenedChanged: if (!opened) { deleteConfirmOpen = false; deleteTarget = null; quickSelectHeld = false }
   // Bound to the central [menu] section in shell.toml via Color.qml.
   // Each color already includes its alpha companion (composed in the
   // singleton), so consumers can drop them straight into a Rectangle.
@@ -548,6 +550,20 @@ Item {
     var target = root.nextSelectable(root.selectedIndex, 1)
     root.selectedIndex = target >= 0 ? target : 0
     root.cursorActive = target >= 0
+  }
+
+  // displayModel index for the Nth selectable row, for Alt+N activation.
+  function quickSelectIndexForOrdinal(ordinal) {
+    var rows = []
+    for (var i = 0; i < displayModel.count; i++) rows.push(displayModel.get(i))
+    return MenuModel.quickSelectIndexForOrdinal(rows, ordinal)
+  }
+
+  // Inverse of quickSelectIndexForOrdinal, for labeling a row with its number.
+  function quickSelectOrdinalForIndex(index) {
+    var rows = []
+    for (var i = 0; i <= index && i < displayModel.count; i++) rows.push(displayModel.get(i))
+    return MenuModel.quickSelectOrdinalForIndex(rows, index)
   }
 
   function rebuildDmenuDisplay() {
@@ -1126,7 +1142,18 @@ Item {
             return
           }
 
-          if (event.key === Qt.Key_Delete) {
+          // The digit reads the modifier off its own event rather than the held
+          // flag: a menu summoned by an Alt-bearing binding never sees the Alt
+          // press, and Alt+N has to work there too.
+          if (event.key === Qt.Key_Alt) {
+            root.quickSelectHeld = true
+            event.accepted = true
+          } else if (!root.dmenuActive && (event.modifiers & Qt.AltModifier)
+                     && event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
+            var target = root.quickSelectIndexForOrdinal(event.key - Qt.Key_1 + 1)
+            if (target >= 0) root.activateIndex(target)
+            event.accepted = true
+          } else if (event.key === Qt.Key_Delete) {
             root.requestDeleteSelected()
             event.accepted = true
           } else if (event.key === Qt.Key_Escape) {
@@ -1163,6 +1190,14 @@ Item {
             event.accepted = true
           }
         }
+
+        Keys.onReleased: function(event) {
+          if (event.key === Qt.Key_Alt) root.quickSelectHeld = false
+        }
+
+        // Alt can go up while something else holds focus, and that release
+        // never arrives here — without this the labels stay lit until close.
+        onActiveFocusChanged: if (!activeFocus) root.quickSelectHeld = false
 
         ConfirmDialog {
           id: deleteConfirm
@@ -1351,7 +1386,7 @@ Item {
 
               Row {
                 id: trail
-                width: Style.space(14)
+                width: root.quickSelectHeld && !root.dmenuActive ? Style.space(46) : Style.space(14)
                 anchors.right: parent.right
                 anchors.rightMargin: root.rowReservedBorderRight + Style.space(8)
                 y: contentColumn.y + labelText.y + (labelText.height - height) / 2
@@ -1368,12 +1403,29 @@ Item {
                 }
 
                 Text {
-                  text: row.kind === "menu" || row.kind === "link" ? "›" : ""
+                  readonly property int quickSelectOrdinal: root.quickSelectOrdinalForIndex(row.index)
+
+                  visible: root.quickSelectHeld && !root.dmenuActive && quickSelectOrdinal > 0 && !row.hasCursor
+                  text: "Alt " + quickSelectOrdinal
                   color: row.hasCursor ? root.selectedText : root.foreground
-                  opacity: row.kind === "menu" || row.kind === "link" ? 0.36 : 0
+                  opacity: 0.72
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.heading
-                  font.weight: Font.Normal
+                  font.pixelSize: Style.font.bodySmall
+                  font.weight: Font.Bold
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                  text: root.quickSelectHeld && !root.dmenuActive
+                    ? (row.hasCursor ? "↵" : "")
+                    : (row.kind === "menu" || row.kind === "link" ? "›" : "")
+                  color: row.hasCursor ? root.selectedText : root.foreground
+                  opacity: root.quickSelectHeld && !root.dmenuActive
+                    ? (row.hasCursor ? 0.8 : 0)
+                    : (row.kind === "menu" || row.kind === "link" ? 0.36 : 0)
+                  font.family: root.fontFamily
+                  font.pixelSize: root.quickSelectHeld && !root.dmenuActive ? Style.font.bodySmall : Style.font.heading
+                  font.weight: root.quickSelectHeld && !root.dmenuActive ? Font.Bold : Font.Normal
                   anchors.verticalCenter: parent.verticalCenter
                 }
               }
