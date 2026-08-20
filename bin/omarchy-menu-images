@@ -173,7 +173,9 @@ generate_thumbnail() {
   # Callers fan out one generator per file, so keep each image conversion
   # single-threaded. ffmpegthumbnailer provides a still preview for videos.
   if is_video_path "$image"; then
-    thumbnail_command=(ffmpegthumbnailer -i "$image" -o "$tmp" -s 1536 -q 8)
+    # Videos are generated before the picker opens, so one unreadable or
+    # stalled file must not hold it shut. A failed run drops the row.
+    thumbnail_command=(timeout 10 ffmpegthumbnailer -i "$image" -o "$tmp" -s 1536 -q 8)
   else
     thumbnail_command=(env VIPS_CONCURRENCY=1 vipsthumbnail "$image" --size 1536x864 --smartcrop=centre --path "$tmp[Q=82,strip]")
   fi
