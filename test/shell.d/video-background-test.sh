@@ -39,7 +39,6 @@ assert(
 )
 assert(
   /^\s*audioOutput: null$/m.test(videoQml) &&
-    /^\s*activeAudioTrack: -1$/m.test(videoQml) &&
     !/^\s*Video\s*\{/m.test(videoQml) &&
     !/AudioOutput\s*\{/.test(videoQml) &&
     !/^\s*muted\s*:/m.test(videoQml),

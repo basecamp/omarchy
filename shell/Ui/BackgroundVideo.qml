@@ -27,7 +27,6 @@ Item {
     source: root.mediaSource
     videoOutput: output
     audioOutput: null
-    activeAudioTrack: -1
     loops: MediaPlayer.Infinite
     autoPlay: root.playbackEnabled
   }
