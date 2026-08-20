@@ -17,6 +17,7 @@ omarchy_i18n_load() {
 
   local catalog="$OMARCHY_PATH/shell/translations/es.json"
   [[ -r $catalog ]] || return 0
+  command -v jq >/dev/null || return 0
 
   local source=""
   local translated=""

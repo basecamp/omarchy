@@ -66,5 +66,9 @@ source_text=$(LANGUAGE=en LANG=en_US.UTF-8 OMARCHY_PATH="$ROOT" bash -c 'source 
 [[ $source_text == "Ready to update?" ]] || fail "Bash helper preserves source text outside Spanish" "actual: $source_text"
 pass "Bash helper preserves source text outside Spanish"
 
+without_jq=$(LANGUAGE=es LANG=es_AR.UTF-8 OMARCHY_PATH="$ROOT" bash -c 'PATH=/nonexistent; source "$OMARCHY_PATH/default/bash/i18n"; omarchy_t "Ready to update?"')
+[[ $without_jq == "Ready to update?" ]] || fail "Bash helper falls back to source text when jq is unavailable" "actual: $without_jq"
+pass "Bash helper falls back to source text when jq is unavailable"
+
 grep -q 'Qt.locale().toString' "$ROOT/shell/plugins/panels/clock/BarWidget.qml" || fail "clock formats with the active locale"
 pass "clock formats with the active locale"
