@@ -114,6 +114,17 @@ assert_lazy_stub "$omp_package" omp
 assert_lazy_stub "$crush_package" crush
 pass "custom agent lazy stubs preserve their mise packages"
 
+for alias in omp oh-my-pi; do
+  : >"$mise_history"
+  "$ROOT/bin/omarchy-mise-install" "$alias"
+  [[ -x $test_home/.local/bin/omp ]] || fail "omarchy-mise-install $alias writes the omp stub"
+  "$test_home/.local/bin/omp" --version
+  mapfile -t mise_calls <"$mise_history"
+  [[ ${mise_calls[0]} == "use -g --quiet $omp_package" && ${mise_calls[1]} == "x $omp_package -- omp --version" ]] ||
+    fail "omarchy-mise-install $alias maps to $omp_package"
+done
+pass "omarchy-mise-install remaps omp aliases to the GitHub package"
+
 source "$ROOT/install/user/mise.sh"
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates the Grok lazy stub"
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
@@ -130,9 +141,10 @@ grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "agent migration repa
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "agent migration creates the Grok lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "agent migration creates the Crush lazy stub"
 
-mkdir -p "$test_home/.local/state/omarchy"
+mkdir -p "$test_home/.local/state/omarchy" "$test_home/.local/bin"
 touch "$test_home/.local/state/omarchy/preinstalls-removed"
-"$ROOT/bin/omarchy-mise-install" oh-my-pi omp
+printf '#!/bin/bash\nmise use -g --quiet "oh-my-pi" || exit 1\n' >"$test_home/.local/bin/omp"
+chmod +x "$test_home/.local/bin/omp"
 : >"$stub_log"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
 source "$ROOT/migrations/1785846769.sh" >/dev/null
@@ -158,6 +170,38 @@ rm -f "$test_home/.local/bin/omp"
 
 rm "$test_home/.local/state/omarchy/preinstalls-removed"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"
+
+write_omp_wrapper() {
+  printf '#!/bin/bash\n%s || exit 1\n' "$1" >"$test_home/.local/bin/omp"
+  chmod +x "$test_home/.local/bin/omp"
+}
+
+for obsolete_form in 'mise use -g "omp"' 'mise use -g --quiet "omp"' 'mise use -g "oh-my-pi"' 'mise use -g --quiet "oh-my-pi"'; do
+  : >"$stub_log"
+  write_omp_wrapper "$obsolete_form"
+  source "$ROOT/migrations/1787030398.sh" >/dev/null
+  grep -Fx "$omp_package omp" "$stub_log" >/dev/null ||
+    fail "omp repair migration rewrites a wrapper built on [$obsolete_form]"
+done
+
+write_omp_wrapper "mise use -g --quiet \"$omp_package\""
+: >"$stub_log"
+source "$ROOT/migrations/1787030398.sh" >/dev/null
+[[ ! -s $stub_log ]] || fail "omp repair migration leaves a working wrapper alone"
+[[ -e $test_home/.local/bin/omp ]] || fail "omp repair migration keeps a working wrapper"
+
+mkdir -p "$test_home/.local/state/omarchy"
+touch "$test_home/.local/state/omarchy/preinstalls-removed"
+for obsolete_form in 'mise use -g "omp"' 'mise use -g --quiet "omp"'; do
+  write_omp_wrapper "$obsolete_form"
+  : >"$stub_log"
+  source "$ROOT/migrations/1787030398.sh" >/dev/null
+  [[ ! -s $stub_log ]] || fail "omp repair migration respects the preinstall opt-out"
+  [[ ! -e $test_home/.local/bin/omp ]] ||
+    fail "omp repair migration removes a wrapper built on [$obsolete_form] after opt-out"
+done
+rm "$test_home/.local/state/omarchy/preinstalls-removed"
+pass "omp repair migration rewrites leftover bare-name wrappers"
 
 omarchy-remove-preinstalls >/dev/null
 for command in omp grok crush; do
