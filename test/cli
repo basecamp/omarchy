@@ -8,6 +8,10 @@ TMPDIRS=()
 
 export PATH="$ROOT/bin:$PATH"
 
+# English-output assertions assume this; Spanish tests override LANGUAGE/LANG per call.
+export LANG=C
+export LANGUAGE=
+
 # Assigns a fresh temporary directory to the named variable and registers it for
 # removal on exit, so every scratch directory this suite makes is cleaned up.
 make_tmpdir() {

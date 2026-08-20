@@ -10,6 +10,11 @@ SHELL_TEST_DIR="$ROOT/test/shell.d"
 
 export ROOT
 
+# English-output assertions assume this; Spanish tests override LANGUAGE/LANG per call.
+# LANG, not LC_ALL: LC_ALL would outrank a test's own `env -u LANG` fallback logic.
+export LANG=C
+export LANGUAGE=
+
 pass() {
   printf 'ok - %s\n' "$1"
 }
