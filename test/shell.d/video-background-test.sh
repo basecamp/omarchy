@@ -76,6 +76,10 @@ assert(
   'video thumbnails fan out narrower than single-threaded vips jobs'
 )
 assert(
+  /lazy_thumbnails == true && \$cache_only != true \]\] && ! is_video_path/.test(menuImages),
+  'a video never stands in as its own lazy thumbnail, so the fan out cap always applies'
+)
+assert(
   lockView.includes('playbackEnabled: root.loadBackground && !root.displaysBlank') &&
     /displaysBlank: root\.displaysBlank/.test(lockService) &&
     /function runBlank\(\) \{\s*\n\s*root\.displaysBlank = true/.test(lockService) &&
