@@ -73,7 +73,12 @@ assert(
   menuImages.includes('pending_video_file') && /video_jobs=\$\(\( \$\(nproc\) \/ 4 \)\)/.test(menuImages),
   'video thumbnails fan out narrower than single-threaded vips jobs'
 )
-assert(themeSwitcher.includes("-iname '*.mp4'") && themeSwitcher.includes('mp4 m4v mov webm mkv avi'), 'theme switcher previews video-only themes')
+assert(
+  themeSwitcher.includes("-iname '*.mp4'") &&
+    themeSwitcher.includes('mp4 m4v mov webm mkv avi') &&
+    themeSwitcher.includes('preview.mp4'),
+  'theme switcher previews video-only themes, named preview files included'
+)
 assert(quattroUpgrade.includes("-iname '*.mp4'"), 'Quattro upgrade can seed a video-only theme background')
 assert(
   multimediaMigration.includes('omarchy-pkg-add qt6-multimedia qt6-multimedia-ffmpeg'),

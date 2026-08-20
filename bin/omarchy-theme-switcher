@@ -22,7 +22,7 @@ find_preview() {
   local theme_path="$1"
   local preview preview_name
 
-  for preview_name in preview.png preview.jpg preview.jpeg preview.webp preview.gif preview.bmp; do
+  for preview_name in preview.png preview.jpg preview.jpeg preview.webp preview.gif preview.bmp preview.mp4 preview.m4v preview.mov preview.webm preview.mkv preview.avi; do
     preview=$(find -L "$theme_path" -maxdepth 1 -type f -iname "$preview_name" -print -quit 2>/dev/null)
 
     if [[ -n $preview ]]; then
