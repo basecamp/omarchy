@@ -143,11 +143,11 @@ pass "a Mac with no wireless device is left alone"
 # Installs that predate the quirk never ran the leaf, so the migration has to
 # reach them. It runs as the user under pipefail, the context #6608 was about.
 run_migration() {
-  local vendor="$1" wifi_id="${2:-}" t2="${3:-0}"
+  local vendor="$1" wifi_id="${2:-}" t2="${3:-0}" arch="${4:-x86_64}"
   printf '%s' "$vendor" >"$test_tmp/dmi/sys_vendor"
   : >"$calls"
 
-  WIFI_ID="$wifi_id" T2_HARDWARE="$t2" PATH="$stub_bin:$PATH" TEST_LOG="$calls" \
+  WIFI_ID="$wifi_id" T2_HARDWARE="$t2" ARCH="$arch" PATH="$stub_bin:$PATH" TEST_LOG="$calls" \
     OMARCHY_BRCMFMAC_DMI_VENDOR="$test_tmp/dmi/sys_vendor" \
     OMARCHY_BRCMFMAC_CONF="$conf" \
     bash -euo pipefail "$migration" >/dev/null
@@ -199,3 +199,9 @@ run_migration "Apple Inc." 43a0 0
 [[ ! -e $conf ]] || fail "the migration skips a Mac brcmfmac does not drive" "$(cat "$conf")"
 [[ ! -s $calls ]] || fail "the migration escalates nothing on unaffected Macs" "$(cat "$calls")"
 pass "the migration skips hardware brcmfmac does not drive"
+
+rm -rf "$test_tmp/etc"
+run_migration "Apple Inc." 4433 0 aarch64
+[[ ! -e $conf ]] || fail "the migration skips an Apple Silicon Mac" "$(cat "$conf")"
+[[ ! -s $calls ]] || fail "the migration escalates nothing on an Apple Silicon Mac" "$(cat "$calls")"
+pass "the migration skips an Apple Silicon Mac"
