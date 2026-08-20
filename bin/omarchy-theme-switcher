@@ -51,7 +51,7 @@ add_theme_preview() {
   ln -s "$preview" "$preview_dir/$theme_name.$extension"
 }
 
-fast_signature="v1"$'\n'
+fast_signature="v2"$'\n'
 for theme_dir in "$USER_THEMES_PATH" "$OMARCHY_THEMES_PATH"; do
   if [[ -d $theme_dir ]]; then
     fast_signature+="$theme_dir:$(stat -Lc '%Y' "$theme_dir")"$'\n'
