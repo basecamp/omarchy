@@ -1,5 +1,4 @@
 import QtQuick
-import QtMultimedia
 import qs.Commons
 
 Item {
@@ -8,23 +7,41 @@ Item {
   property string path: ""
   property int version: 0
   property bool playbackEnabled: true
-  readonly property bool ready: loader.item ? loader.item.ready : false
+  readonly property var current: video ? videoLoader.item : imageLoader.item
+  readonly property bool ready: current ? current.ready : false
   readonly property bool video: Util.isVideoPath(path)
   // Cache-bust images selected in a running lock session. FFmpeg treats the
   // query as part of a local filename, so videos must keep their plain URL.
   readonly property url mediaUrl: path ? Util.fileUrl(path) + (!video && version ? "?v=" + version : "") : ""
 
-  onPlaybackEnabledChanged: {
-    if (!video || !loader.item) return
-    if (playbackEnabled) loader.item.play()
-    else loader.item.pause()
+  Loader {
+    id: imageLoader
+    anchors.fill: parent
+    active: root.path !== "" && !root.video
+    sourceComponent: imageComponent
   }
 
+  // Loaded by URL rather than from a Component here, so QtMultimedia and its
+  // audio dependency closure never map into a session that only shows images.
   Loader {
-    id: loader
+    id: videoLoader
     anchors.fill: parent
-    active: root.path !== ""
-    sourceComponent: root.video ? videoComponent : imageComponent
+    active: root.path !== "" && root.video
+    source: "BackgroundVideo.qml"
+  }
+
+  Binding {
+    target: videoLoader.item
+    property: "mediaSource"
+    value: root.mediaUrl
+    when: videoLoader.item !== null
+  }
+
+  Binding {
+    target: videoLoader.item
+    property: "playbackEnabled"
+    value: root.playbackEnabled
+    when: videoLoader.item !== null
   }
 
   Component {
@@ -36,23 +53,8 @@ Item {
       fillMode: Image.PreserveAspectCrop
       asynchronous: true
       cache: root.version === 0
-      smooth: true
-      mipmap: true
       sourceSize.width: root.version > 0 ? width : 0
       sourceSize.height: root.version > 0 ? height : 0
-    }
-  }
-
-  Component {
-    id: videoComponent
-
-    Video {
-      readonly property bool ready: hasVideo
-      source: root.mediaUrl
-      fillMode: VideoOutput.PreserveAspectCrop
-      loops: MediaPlayer.Infinite
-      autoPlay: root.playbackEnabled
-      muted: true
     }
   }
 }

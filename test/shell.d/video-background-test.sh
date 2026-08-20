@@ -9,6 +9,7 @@ const fs = require('fs')
 
 const utilQml = fs.readFileSync(path.join(root, 'shell/Commons/Util.qml'), 'utf8')
 const mediaQml = fs.readFileSync(path.join(root, 'shell/Ui/BackgroundMedia.qml'), 'utf8')
+const videoQml = fs.readFileSync(path.join(root, 'shell/Ui/BackgroundVideo.qml'), 'utf8')
 const backgroundQml = fs.readFileSync(path.join(root, 'shell/plugins/background/Background.qml'), 'utf8')
 const lockQml = fs.readFileSync(path.join(root, 'shell/plugins/lock/LockView.qml'), 'utf8')
 const themeSwitcher = fs.readFileSync(path.join(root, 'bin/omarchy-theme-switcher'), 'utf8')
@@ -22,13 +23,28 @@ assert(
   'shared media helper identifies video paths without truncating valid local names'
 )
 assert(
-  mediaQml.includes('import QtMultimedia') &&
-    mediaQml.includes('loops: MediaPlayer.Infinite') &&
-    mediaQml.includes('autoPlay: root.playbackEnabled') &&
-    mediaQml.includes('muted: true') &&
-    mediaQml.includes('fillMode: VideoOutput.PreserveAspectCrop') &&
+  videoQml.includes('loops: MediaPlayer.Infinite') &&
+    videoQml.includes('autoPlay: root.playbackEnabled') &&
+    videoQml.includes('fillMode: VideoOutput.PreserveAspectCrop') &&
     mediaQml.includes('!video && version'),
-  'background media plays muted aspect-cropped videos on a loop'
+  'background media plays aspect-cropped videos on a loop'
+)
+assert(
+  !/^\s*import QtMultimedia/m.test(mediaQml) &&
+    mediaQml.includes('source: "BackgroundVideo.qml"'),
+  'the still-image path never imports QtMultimedia, so image-only sessions do not map it'
+)
+assert(
+  /^\s*audioOutput: null$/m.test(videoQml) &&
+    /^\s*activeAudioTrack: -1$/m.test(videoQml) &&
+    !/^\s*Video\s*\{/m.test(videoQml) &&
+    !/AudioOutput\s*\{/.test(videoQml) &&
+    !/^\s*muted\s*:/m.test(videoQml),
+  'wallpaper playback builds no audio output, which a muted Video convenience type would'
+)
+assert(
+  !mediaQml.includes('mipmap'),
+  'the shared image path leaves mipmapping off, as the desktop background had it'
 )
 assert(
   /instant \|\| !displayedBackground \|\| isVideo\(path\) \|\| isVideo\(displayedBackground\)[\s\S]*displayedBackground = finalPath/.test(backgroundQml),
