@@ -116,7 +116,7 @@ main() {
   local length payload url
 
   # Detached worker: this is what actually runs yt-dlp and fires notifications.
-  if [[ "${1:-}" == "--download" ]]; then
+  if [[ ${1:-} == "--download" ]]; then
     download_url "$2"
   fi
 

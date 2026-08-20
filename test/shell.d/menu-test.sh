@@ -291,6 +291,26 @@ assert(
     && defaultById['remove.browser.zen'].when === 'omarchy-pkg-present zen-browser-bin',
   'menu still hides Remove rows for software that is not installed'
 )
+assertDeepEqual(
+  defaultItems
+    .filter(item => item.parent === 'remove')
+    .map(item => item.id),
+  [
+    'remove.package',
+    'remove.ai',
+    'remove.service',
+    'remove.development',
+    'remove.theme',
+    'remove.gaming',
+    'remove.browser',
+    'remove.webapp',
+    'remove.tui',
+    'remove.windows',
+    'remove.preinstalls',
+    'remove.security'
+  ],
+  'menu orders Remove categories like their Install counterparts, followed by Remove-only categories'
+)
 assert(
   defaultById['setup.security.passwordless-sudo'].action.includes('omarchy-sudo-passwordless'),
   'menu places Passwordless Sudo under Setup > Security'
@@ -612,5 +632,5 @@ assert(
 JS
 
 font_charset=$(fc-query --format='%{charset}' "$ROOT/default/fonts/omarchy/omarchy.ttf")
-[[ $font_charset == *"e900-e907"* ]] || fail "Omarchy icon font includes every custom menu glyph"
+[[ $font_charset == *"e900-e908"* ]] || fail "Omarchy icon font includes every custom menu glyph"
 pass "Omarchy icon font includes the official agent marks"

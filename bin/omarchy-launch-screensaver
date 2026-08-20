@@ -4,10 +4,6 @@
 
 source "$OMARCHY_PATH/default/bash/i18n"
 
-if omarchy-cmd-missing ttfx; then
-  exit 1
-fi
-
 # Exit early if screensaver is already running
 pgrep -f '[o]rg.omarchy.screensaver' && exit 0
 
