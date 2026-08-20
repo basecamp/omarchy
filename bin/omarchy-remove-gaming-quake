@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# omarchy:summary=Remove Quake and its Omarchy plugin. Saves and shareware stay unless --purge.
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+omarchy-plugin-disable quake.omarchy >/dev/null 2>&1 || true
+rm -rf "$HOME/.config/omarchy/plugins/quake.omarchy"
+rm -f "$HOME/.config/hypr/apps/quake-omarchy.lua"
+
+omarchy-pkg-drop omarchy-quake
+
+if [[ ${1:-} == --purge ]]; then
+  rm -rf \
+    "$HOME/.config/quake-omarchy" \
+    "$HOME/.local/share/quake-omarchy" \
+    "$HOME/.local/state/quake-omarchy" \
+    "$HOME/.cache/quake-omarchy"
+  echo "Quake and its saves have been removed."
+else
+  echo "Quake removed. Saves and shareware in ~/.local/share/quake-omarchy were kept."
+  echo "Pass --purge to delete those too."
+fi
