@@ -43,6 +43,18 @@ for _ in {1..4096}; do
 done
 SH
 
+# The quirk is for Intel Macs, so every case has to say which architecture it
+# runs on rather than inherit whichever machine the suite is running on.
+cat >"$stub_bin/uname" <<'SH'
+#!/bin/bash
+
+if [[ ${1:-} == "-m" ]]; then
+  echo "${ARCH:-x86_64}"
+else
+  exec /usr/bin/uname "$@"
+fi
+SH
+
 cat >"$stub_bin/sudo" <<'SH'
 #!/bin/bash
 
@@ -67,7 +79,7 @@ chmod +x "$stub_bin"/*
 # running with a fake root on PATH-independent state. pipefail is on, so a
 # grep -q gate would go silent here the way #6608 did.
 run_leaf() {
-  local vendor="$1" wifi_id="${2:-}" t2="${3:-0}"
+  local vendor="$1" wifi_id="${2:-}" t2="${3:-0}" arch="${4:-x86_64}"
   rm -rf "$test_tmp/etc"
   mkdir -p "$test_tmp/etc"
   printf '%s' "$vendor" >"$test_tmp/dmi/sys_vendor"
@@ -78,7 +90,7 @@ run_leaf() {
       -e "s|/etc/modprobe.d|$test_tmp/etc/modprobe.d|g" \
       "$leaf" >"$script"
 
-  WIFI_ID="$wifi_id" T2_HARDWARE="$t2" PATH="$stub_bin:$PATH" \
+  WIFI_ID="$wifi_id" T2_HARDWARE="$t2" ARCH="$arch" PATH="$stub_bin:$PATH" \
     bash -eE -o pipefail -c 'source "$1"' bash "$script" </dev/null
 }
 
@@ -89,13 +101,24 @@ grep -q 'feature_disable=0x82000' "$conf" 2>/dev/null ||
   fail "a T2 Mac still gets the quirk" "$(ls -R "$test_tmp/etc" 2>&1)"
 pass "a T2 Mac still gets the quirk"
 
-# Every Broadcom part brcmfmac drives, on a Mac with no T2 to detect: BCM43602
-# and its single-band variants, BCM4350, BCM4355, BCM4364, BCM4378, BCM4387.
+# Every Broadcom part brcmfmac drives, on an Intel Mac with no T2 to detect:
+# BCM43602 and its single-band variants, BCM4350, BCM4355, BCM4364, BCM4378,
+# BCM4387.
 for wifi_id in 43ba 43bb 43bc 43a3 43dc 4464 4425 4433; do
   run_leaf "Apple Inc." "$wifi_id" 0 >/dev/null
   [[ -f $conf ]] || fail "a Mac without a T2 gets the quirk" "14e4:$wifi_id"
 done
 pass "every brcmfmac part on a Mac without a T2 gets the quirk"
+
+# BCM4378 and BCM4387 are Apple Silicon parts too, and there the offload is the
+# half that works: with it disabled a BCM4387 cannot associate at all (#7439).
+# Same vendor string and the same PCI IDs, so only the architecture tells them
+# apart.
+for wifi_id in 4425 4433; do
+  run_leaf "Apple Inc." "$wifi_id" 0 aarch64 >/dev/null
+  [[ ! -f $conf ]] || fail "an Apple Silicon Mac is left alone" "14e4:$wifi_id"
+done
+pass "an Apple Silicon Mac is left alone"
 
 # Older Macs report the vendor differently.
 run_leaf "Apple Computer, Inc." 43ba 0 >/dev/null
