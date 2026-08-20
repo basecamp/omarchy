@@ -98,4 +98,19 @@ The logo it draws is yours to change, under _Style > Screensaver_. Upload a png 
 
 `Super + Ctrl + L` locks the machine. That runs the lock screen from the Omarchy shell, blanks the display, resets your keyboard layout to the first one so you're not typing your password in the wrong alphabet, and — if you have it running — locks 1Password on the way out.
 
+The display does not stay lit behind it. Five seconds after your last key or mouse input on the lock screen, the backlight goes off — the session is still locked, and the next touch brings the screen right back. Typing your password holds the light on while it is checked. Five seconds is short on purpose, and `idle.blank` is where you change it:
+
+```json
+{
+  "version": 1,
+  "idle": {
+    "screensaver": 150,
+    "lock": 300,
+    "blank": 5
+  }
+}
+```
+
+Unlike the other two timings, that one counts from your last input on the lock screen rather than from the moment you went idle, so it applies to a lock you asked for with `Super + Ctrl + L` just as much as to one you idled into.
+
 The lock screen takes a password, and it'll take a fingerprint too once you've set one up. That, and the other ways to authenticate, are covered in [hardware authentication](37-hardware-authentication.md).

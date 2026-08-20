@@ -13,7 +13,9 @@ $OMARCHY_PATH/config/omarchy/shell.json  # Canonical defaults
 ```
 
 The shell hot-reloads `shell.json` on save — no restart needed for layout
-changes. `idle.screensaver` and `idle.lock` are seconds since user idle began.
+changes. `idle.screensaver` and `idle.lock` are seconds since user idle began,
+and `idle.blank` is seconds of inactivity on the lock screen before the
+backlight goes off.
 
 **Commands:** `omarchy restart shell`, `omarchy refresh shell`
 
@@ -50,3 +52,8 @@ automatically. If a change somehow fails to apply, force a reload with
 Set `idle.screensaver` and `idle.lock` in `~/.config/omarchy/shell.json`,
 in seconds since user idle began. Example: "lock after ten minutes" means
 setting `idle.lock` to `600`.
+
+`idle.blank` is the third timing: seconds of inactivity on the lock screen
+before the display backlight goes off (default `5`). It counts from the last
+key or mouse input on the lock screen, not from when idle began. Example:
+"stop the lock screen going dark so fast" means raising `idle.blank`.
