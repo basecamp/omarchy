@@ -1020,8 +1020,8 @@ ShellRoot {
         ? shell.bar.panelWidgetIdAt(section, index)
         : ""
       if (!id) return "unknown"
-      shell.toggle(id, "{}")
-      return id
+      return shell.bar && typeof shell.bar.toggleBarWidget === "function"
+        && shell.bar.toggleBarWidget(id) ? id : "unknown"
     }
 
     function call(id: string, method: string, arg: string): string {
