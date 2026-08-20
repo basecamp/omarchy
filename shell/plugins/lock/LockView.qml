@@ -14,6 +14,10 @@ Item {
   property int failedAttempts: 0
   property bool inputEnabled: true
   property bool loadBackground: true
+  // A locked session blanks the displays after a few seconds. Nothing is
+  // visible from then until the user wakes it, so a video must not keep
+  // decoding through what is usually the longest part of a lock.
+  property bool displaysBlank: false
   property string passwordText: ""
   property bool syncingPasswordText: false
 
@@ -86,7 +90,7 @@ Item {
       anchors.fill: parent
       path: root.loadBackground ? root.backgroundPath : ""
       version: root.backgroundVersion
-      playbackEnabled: root.loadBackground
+      playbackEnabled: root.loadBackground && !root.displaysBlank
     }
 
     MultiEffect {

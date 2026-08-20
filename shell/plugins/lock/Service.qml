@@ -31,6 +31,7 @@ Item {
   property int backgroundVersion: 0
   property string lastEvent: "init"
   property string lastEventAt: ""
+  property bool displaysBlank: false
   property bool strandedLock: false
   property bool strandedLockResolved: false
 
@@ -165,11 +166,13 @@ Item {
   }
 
   function runWake() {
+    root.displaysBlank = false
     if (!wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
   }
 
   function runBlank() {
+    root.displaysBlank = true
     if (!blankProcess.running) blankProcess.running = true
   }
 
@@ -276,6 +279,7 @@ Item {
         failedAttempts: root.failedAttempts
         inputEnabled: root.lockRequested
         loadBackground: root.locked
+        displaysBlank: root.displaysBlank
         passwordText: root.enteredPassword
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
         onSubmitPassword: function(password) { root.submitPassword(password) }

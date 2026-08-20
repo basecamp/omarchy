@@ -17,6 +17,8 @@ const quattroUpgrade = fs.readFileSync(path.join(root, 'bin/omarchy-upgrade-to-q
 const multimediaMigration = fs.readFileSync(path.join(root, 'migrations/1786609204.sh'), 'utf8')
 const barTextColor = fs.readFileSync(path.join(root, 'bin/omarchy-bar-text-color'), 'utf8')
 const menuImages = fs.readFileSync(path.join(root, 'bin/omarchy-menu-images'), 'utf8')
+const lockView = fs.readFileSync(path.join(root, 'shell/plugins/lock/LockView.qml'), 'utf8')
+const lockService = fs.readFileSync(path.join(root, 'shell/plugins/lock/Service.qml'), 'utf8')
 
 assert(
   /function isVideoPath\(path\)[\s\S]*\.test\(String\(path \|\| ""\)\)/.test(utilQml) &&
@@ -72,6 +74,13 @@ assert(
 assert(
   menuImages.includes('pending_video_file') && /video_jobs=\$\(\( \$\(nproc\) \/ 4 \)\)/.test(menuImages),
   'video thumbnails fan out narrower than single-threaded vips jobs'
+)
+assert(
+  lockView.includes('playbackEnabled: root.loadBackground && !root.displaysBlank') &&
+    /displaysBlank: root\.displaysBlank/.test(lockService) &&
+    /function runBlank\(\) \{\s*\n\s*root\.displaysBlank = true/.test(lockService) &&
+    /function runWake\(\) \{\s*\n\s*root\.displaysBlank = false/.test(lockService),
+  'the lock screen stops its own playback once the displays go dark'
 )
 assert(
   themeSwitcher.includes("-iname '*.mp4'") &&
