@@ -9,8 +9,12 @@ omarchy-hw-match "MacBookAir4," || exit 0
 needs_rebuild=0
 
 # Installs that predate install/hardware/apple/fix-sandy-bridge-idle.sh never
-# got the drop-in from hardware setup.
-if [[ ! -f $limine_conf ]]; then
+# got the drop-in from hardware setup. Check for the active setting rather
+# than the file: an interrupted first run can leave the drop-in truncated, and
+# a hand-edited one can hold the parameter commented out — either way a later
+# rebuild would bake nothing and still look repaired. This drop-in exists only
+# to carry this parameter, so reinstalling it whole is safe.
+if ! grep -Fxq 'KERNEL_CMDLINE[default]+=" intel_idle.max_cstate=1"' "$limine_conf" 2>/dev/null; then
   sudo install -Dm644 /dev/stdin "$limine_conf" <<'EOF'
 # 2011 MacBook Air (Sandy Bridge) hard-locks when idling into deep C-states
 KERNEL_CMDLINE[default]+=" intel_idle.max_cstate=1"

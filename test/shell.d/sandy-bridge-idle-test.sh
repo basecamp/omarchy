@@ -139,6 +139,27 @@ grep -Fq 'limine-mkinitcpio' "$calls" ||
   fail "a hand-fixed install is not asked to reboot" "$(cat "$calls")"
 pass "a hand-fixed install gets the drop-in without a reboot prompt"
 
+# A run interrupted mid-install can leave the drop-in truncated; the rerun
+# must not trust the file's existence and rebuild an empty config into the
+# boot image.
+rm -rf "$test_tmp/etc" "$test_tmp/var"
+mkdir -p "$(dirname "$conf")"
+: >"$conf"
+run_migration "MacBookAir4,1" "quiet splash"
+grep -Fq 'KERNEL_CMDLINE[default]+=" intel_idle.max_cstate=1"' "$conf" ||
+  fail "a truncated drop-in is reinstalled" "$(cat "$conf")"
+grep -Fq 'limine-mkinitcpio' "$calls" ||
+  fail "a reinstalled drop-in is baked into the boot image" "$(cat "$calls")"
+pass "a truncated drop-in is reinstalled and baked in"
+
+# Someone who commented the line out is still on the freezing default.
+printf '#KERNEL_CMDLINE[default]+=" intel_idle.max_cstate=1"\n' >"$conf"
+rm -rf "$test_tmp/var"
+run_migration "MacBookAir4,1" "quiet splash"
+grep -Fxq 'KERNEL_CMDLINE[default]+=" intel_idle.max_cstate=1"' "$conf" ||
+  fail "a commented-out parameter does not count as applied" "$(cat "$conf")"
+pass "a commented-out parameter does not count as applied"
+
 # An interrupted rebuild leaves the drop-in without a marker; the rerun must
 # retry rather than trust the config.
 rm -rf "$test_tmp/var"
