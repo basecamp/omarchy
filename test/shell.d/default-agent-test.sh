@@ -143,6 +143,15 @@ unset OMARCHY_TEST_MISSING_COMMAND
 grep -Fx "$agy_package agy" "$stub_log" >/dev/null || fail "Antigravity migration creates its lazy stub"
 [[ $(<"$agent_file") == "agy" ]] || fail "Antigravity migration replaces a Gemini default"
 
+: >"$stub_log"
+printf '  %s  \n' gemini >"$agent_file"
+export OMARCHY_TEST_MISSING_COMMAND=agy
+source "$ROOT/migrations/1786719479.sh" >/dev/null
+unset OMARCHY_TEST_MISSING_COMMAND
+[[ $(<"$agent_file") == "agy" ]] ||
+  fail "Antigravity migration replaces a padded Gemini default the launcher would still read"
+pass "Antigravity migration reads the default the way the launcher does"
+
 for obsolete_form in 'mise use -g "gemini"' 'mise use -g --quiet "gemini"'; do
   printf '#!/bin/bash\n%s || exit 1\n' "$obsolete_form" >"$test_home/.local/bin/gemini"
   chmod +x "$test_home/.local/bin/gemini"
@@ -155,6 +164,12 @@ printf '#!/bin/bash\nexec /opt/gemini "$@"\n' >"$test_home/.local/bin/gemini"
 chmod +x "$test_home/.local/bin/gemini"
 source "$ROOT/migrations/1786719479.sh" >/dev/null
 [[ -e $test_home/.local/bin/gemini ]] || fail "Antigravity migration leaves a hand-written gemini alone"
+
+printf '#!/bin/bash\n# replaced: mise use -g --quiet "gemini"\nexec /opt/gemini "$@"\n' >"$test_home/.local/bin/gemini"
+chmod +x "$test_home/.local/bin/gemini"
+source "$ROOT/migrations/1786719479.sh" >/dev/null
+[[ -e $test_home/.local/bin/gemini ]] ||
+  fail "Antigravity migration leaves a wrapper that only mentions the installer line"
 rm -f "$test_home/.local/bin/gemini"
 pass "Antigravity migration only removes the Gemini wrapper Omarchy wrote"
 
