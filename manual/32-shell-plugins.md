@@ -100,3 +100,12 @@ For the full picture, the source is the documentation: `shell/README.md` in the 
 Once you've made something you like, put it in a public git repo. That's the whole distribution mechanism — anyone can then run `omarchy plugin add` against your URL and have it running in seconds.
 
 To help people actually find it, list it at [omarchyplugins.com](https://omarchyplugins.com). That's the community directory of Omarchy shell plugins, and it's the first place to look when you're wondering whether someone has already built the widget you're about to write. Browse it before you start!
+
+If you have a web page for your plugin, you can give it an install link. Omarchy registers itself as the handler for `omarchy://` links, so this opens a terminal running `omarchy plugin add` with the URL already filled in:
+
+```html
+<a href="omarchy://plugin/add?url=https%3A%2F%2Fgithub.com%2Facme%2Fomarchy-weather.git&enable=1">Install in Omarchy</a>
+```
+
+The `url` parameter is the https URL of your git repo, percent-encoded; add `enable=1` to enable the plugin right after it's added. The link only pre-fills the command — the same trust warning and confirmation apply, and only `https://` repos are accepted, so a page can't point the handler at anything else.
+
