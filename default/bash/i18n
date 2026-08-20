@@ -49,11 +49,13 @@ omarchy_t() {
   shift
   omarchy_i18n_load
   local translated="${OMARCHY_TRANSLATIONS[$source]:-$source}"
-  local index=1
-  local argument=""
-  for argument in "$@"; do
-    translated="${translated//%$index/$argument}"
-    index=$((index + 1))
+  local args=("$@")
+  local index
+  # Substitute from the highest index downward so a lower-numbered argument's
+  # own text (e.g. a user message containing "%2") can't be re-touched by a
+  # later substitution, mirroring I18nModel.js's interpolate().
+  for ((index = ${#args[@]}; index >= 1; index--)); do
+    translated="${translated//%$index/${args[index - 1]}}"
   done
   printf '%s' "$translated"
 }

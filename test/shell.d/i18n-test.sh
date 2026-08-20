@@ -73,6 +73,11 @@ translated=$(LANGUAGE=es LANG=es_AR.UTF-8 OMARCHY_PATH="$ROOT" bash -c 'source "
 [[ $translated == "¿Eliminar 3 paquetes huérfanos?" ]] || fail "Bash helper interpolates translation arguments" "actual: $translated"
 pass "Bash helper interpolates translation arguments"
 
+translated=$(LANGUAGE=es LANG=es_AR.UTF-8 OMARCHY_PATH="$ROOT" bash -c 'source "$OMARCHY_PATH/default/bash/i18n"; omarchy_t "%1 in %2 minutes" "check %2 tasks" 5')
+[[ $translated == "check %2 tasks en 5 minutos" ]] ||
+  fail "Bash helper does not let one argument's text collide with a later placeholder" "actual: $translated"
+pass "Bash helper does not let one argument's text collide with a later placeholder"
+
 source_text=$(LANGUAGE=en LANG=en_US.UTF-8 OMARCHY_PATH="$ROOT" bash -c 'source "$OMARCHY_PATH/default/bash/i18n"; omarchy_t "Ready to update?"')
 [[ $source_text == "Ready to update?" ]] || fail "Bash helper preserves source text outside Spanish" "actual: $source_text"
 pass "Bash helper preserves source text outside Spanish"
