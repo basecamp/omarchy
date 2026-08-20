@@ -65,6 +65,42 @@ Item {
   property string _exitNodeError: ""
   property string _operatorOutput: ""
   property string _operatorError: ""
+  // Change signatures for the big arrays. A 4k-machine tailnet makes every
+  // status poll rebuild thousands of delegate rows if the arrays are
+  // reassigned unconditionally, so only publish an array whose content
+  // actually changed.
+  property string _peersSig: "[]"
+  property string _tailnetExitNodesSig: "[]"
+  property string _exitNodesSig: "[]"
+  property string _mullvadRegionsSig: "[]"
+
+  // The full status JSON is ~4.6MB on a 4k-machine tailnet, and the bar icon
+  // only needs Self/BackendState. Poll light (--peers=false) while the panel
+  // is closed; the panel binds peersWanted and forces a full fetch on open.
+  property bool peersWanted: false
+  property bool _statusFullPeers: false
+
+  function publishPeers(next) {
+    var sig = JSON.stringify(next)
+    if (sig === _peersSig) return
+    _peersSig = sig
+    peers = next
+  }
+
+  function publishTailnetExitNodes(next) {
+    var sig = JSON.stringify(next)
+    if (sig === _tailnetExitNodesSig) return
+    _tailnetExitNodesSig = sig
+    tailnetExitNodes = next
+  }
+
+  function syncExitNodes() {
+    var next = running ? tailnetExitNodes.concat(mullvadRegions) : []
+    var sig = JSON.stringify(next)
+    if (sig === _exitNodesSig) return
+    _exitNodesSig = sig
+    exitNodes = next
+  }
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
@@ -145,9 +181,9 @@ Item {
     Quickshell.execDetached(["omarchy-tailscale-send", target])
   }
 
-  function refresh(forceAccounts) {
+  function refresh(forceAccounts, fullPeers) {
     if (installed) {
-      refreshStatusAndAccounts(forceAccounts === true)
+      refreshStatusAndAccounts(forceAccounts === true, fullPeers === true)
       return
     }
     if (!whichProcess.running) {
@@ -157,14 +193,17 @@ Item {
     }
   }
 
-  function refreshStatusAndAccounts(forceAccounts) {
+  function refreshStatusAndAccounts(forceAccounts, fullPeers) {
     if (!installed) return
     var launched = false
     if (!statusProcess.running) {
       _statusOutput = ""
       _statusError = ""
       refreshing = true
-      statusProcess.command = ["tailscale", "status", "--json"]
+      _statusFullPeers = fullPeers === true || peersWanted
+      statusProcess.command = _statusFullPeers
+        ? ["tailscale", "status", "--json"]
+        : ["tailscale", "status", "--json", "--peers=false"]
       statusProcess.running = true
       launched = true
     }
@@ -209,11 +248,12 @@ Item {
     selfUserId = ""
     fileSharing = false
     authUrl = ""
-    peers = []
-    exitNodes = []
-    tailnetExitNodes = []
+    publishPeers([])
+    publishTailnetExitNodes([])
+    syncExitNodes()
     mullvadExitNodes = []
     mullvadRegions = []
+    _mullvadRegionsSig = "[]"
     accounts = []
     selectedAccountId = ""
     selectedAccountLabel = ""
@@ -247,9 +287,16 @@ Item {
     selfIp = parsed.selfIp
     selfUserId = parsed.selfUserId
     fileSharing = parsed.fileSharing
-    peers = parsed.running ? parsed.peers : []
-    tailnetExitNodes = parsed.running ? parsed.exitNodes : []
-    exitNodes = parsed.running ? tailnetExitNodes.concat(mullvadRegions) : []
+    // A light poll carries no peer data — keep the last full machine list
+    // while running, and only clear it when tailscale actually went down.
+    if (_statusFullPeers) {
+      publishPeers(parsed.running ? parsed.peers : [])
+      publishTailnetExitNodes(parsed.running ? parsed.exitNodes : [])
+    } else if (!parsed.running) {
+      publishPeers([])
+      publishTailnetExitNodes([])
+    }
+    syncExitNodes()
 
     if (needsLogin) statusText = "Needs login"
     else if (running) {
@@ -275,9 +322,15 @@ Item {
   }
 
   function parseMullvadExitNodes(raw) {
-    mullvadExitNodes = Model.parseExitNodeList(raw)
-    mullvadRegions = Model.mullvadRegionOptions(mullvadExitNodes)
-    exitNodes = running ? tailnetExitNodes.concat(mullvadRegions) : []
+    var nextExitNodes = Model.parseExitNodeList(raw)
+    var nextRegions = Model.mullvadRegionOptions(nextExitNodes)
+    var sig = JSON.stringify(nextRegions)
+    if (sig !== _mullvadRegionsSig) {
+      _mullvadRegionsSig = sig
+      mullvadExitNodes = nextExitNodes
+      mullvadRegions = nextRegions
+    }
+    syncExitNodes()
   }
 
   function toggleTailscale() {
