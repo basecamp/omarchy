@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Keep AMD xHCI controllers awake to avoid the resume dead-USB bug
+# omarchy:requires-sudo=true
+
+omarchy-toggle \
+  --enabled-notification "󰾅  AMD xHCI wake fix enabled" \
+  --disabled-notification "󰾅  AMD xHCI wake fix disabled" \
+  amd-xhci-wakeup
+
+source "$OMARCHY_PATH/install/config/hardware/amd/fix-xhci-resume.sh"
