@@ -46,6 +46,11 @@ cat >"$stub_bin/omarchy-hyprland-monitor-internal-mirror" <<'SH'
 exit 0
 SH
 
+cat >"$stub_bin/omarchy-hyprland-monitor-laptop" <<'SH'
+#!/bin/bash
+echo eDP-1
+SH
+
 cat >"$stub_bin/omarchy-hyprland-monitor-external-active" <<'SH'
 #!/bin/bash
 [[ ${OMARCHY_TEST_EXTERNAL_ACTIVE:-false} == "true" ]]

@@ -2,10 +2,6 @@
 
 # omarchy:summary=Launch the Omarchy screensaver in the default terminal on the system with the correct font configuration.
 
-if omarchy-cmd-missing ttfx; then
-  exit 1
-fi
-
 # Exit early if screensaver is already running
 pgrep -f '[o]rg.omarchy.screensaver' && exit 0
 

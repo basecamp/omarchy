@@ -4,6 +4,12 @@
 # omarchy:args=[chromium|chrome|brave|brave-origin|edge|firefox|zen]
 # omarchy:examples=omarchy default browser firefox | omarchy default browser brave
 
+installing=false
+if [[ ${1:-} == "--install" ]]; then
+  installing=true
+  shift
+fi
+
 if (($# == 0)); then
   case "$(env -u BROWSER xdg-settings get default-web-browser)" in
   chromium.desktop) echo "chromium" ;;
@@ -19,18 +25,26 @@ if (($# == 0)); then
 fi
 
 case "$1" in
-chromium) desktop_id="chromium.desktop"; name="Chromium"; glyph= ;;
-chrome) desktop_id="google-chrome.desktop"; name="Chrome"; glyph=󰊯 ;;
-brave) desktop_id="brave-browser.desktop"; name="Brave"; glyph=󰖟 ;;
-brave-origin) desktop_id="brave-origin.desktop"; name="Brave Origin"; glyph=󰖟 ;;
-edge) desktop_id="microsoft-edge.desktop"; name="Edge"; glyph=󰇩 ;;
-firefox) desktop_id="firefox.desktop"; name="Firefox"; glyph=󰈹 ;;
-zen) desktop_id="zen.desktop"; name="Zen"; glyph=󰖟 ;;
+chromium) browser="chromium"; command="chromium"; desktop_id="chromium.desktop"; name="Chromium"; glyph= ;;
+chrome) browser="chrome"; command="google-chrome-stable"; desktop_id="google-chrome.desktop"; name="Chrome"; glyph=󰊯 ;;
+brave) browser="brave"; command="brave"; desktop_id="brave-browser.desktop"; name="Brave"; glyph=󰖟 ;;
+brave-origin) browser="brave-origin"; command="brave-origin"; desktop_id="brave-origin.desktop"; name="Brave Origin"; glyph=󰖟 ;;
+edge) browser="edge"; command="microsoft-edge-stable"; desktop_id="microsoft-edge.desktop"; name="Edge"; glyph=󰇩 ;;
+firefox) browser="firefox"; command="firefox"; desktop_id="firefox.desktop"; name="Firefox"; glyph=󰈹 ;;
+zen) browser="zen"; command="zen-browser"; desktop_id="zen.desktop"; name="Zen"; glyph=󰖟 ;;
 *)
   echo "Usage: omarchy-default-browser <chromium|chrome|brave|brave-origin|edge|firefox|zen>"
   exit 1
   ;;
 esac
+
+if omarchy-cmd-missing "$command"; then
+  if [[ $installing == "false" ]]; then
+    exec omarchy-launch-floating-terminal-with-presentation omarchy-default-browser --install "$browser"
+  else
+    omarchy-install-browser "$browser" || exit 1
+  fi
+fi
 
 env -u BROWSER xdg-settings set default-web-browser "$desktop_id" || exit 1
 

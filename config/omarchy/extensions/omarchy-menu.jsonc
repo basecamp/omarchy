@@ -10,7 +10,7 @@
   //   label       Visible row title.
   //   action      Shell command to run. If omitted, the row is a submenu.
   //   target      Existing submenu id to open. Use for links/aliases.
-  //   provider    Runtime provider function/command returning JSON rows.
+  //   provider    Name of a shell-defined runtime row source (e.g. "fonts").
   //   aliases     alternate `omarchy menu summon <name>` routes; also searchable.
   //   description Optional subtitle and extra search text.
   //   when        Shell condition; hide row when it fails.
@@ -21,8 +21,8 @@
   // "personal.notes": {"icon":"󰎞","label":"Notes","action":"omarchy-launch-editor ~/notes"},
   // "personal.files": {"icon":"","label":"Files","action":"uwsm-app -- nautilus ~/Documents"},
   //
-  // Only use provider when a provider_name function or command named "name"
-  // returns JSON rows. Static submenus only need dotted ids.
+  // provider can only reference row sources the shell already defines (the
+  // providers map in Menu.qml). Static submenus only need dotted ids.
   //
   // Example: replace the default About action by reusing the same id. Existing
   // fields are kept unless overridden.

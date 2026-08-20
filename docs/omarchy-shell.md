@@ -2,9 +2,12 @@
 
 A single long-running [Quickshell](https://quickshell.org/) instance
 that hosts the Omarchy desktop. The bar, panels, overlays, menus, and
-services all run inside as plugins. IPC is the canonical way for CLIs
-to talk to a running shell — `omarchy-shell-ipc` auto-starts it on
-first call.
+services all run inside as plugins. Hyprland autostart launches the
+shell via `omarchy-launch-shell`; restart it with `omarchy-restart-shell`.
+IPC is the canonical way for CLIs to talk to a running shell —
+`omarchy-shell` forwards a call and fails when the shell is not running
+(`-q` makes it quiet best-effort; `OMARCHY_SHELL_IPC_TIMEOUT` bounds the
+wait).
 
 ## Plugin manifest
 
@@ -34,9 +37,14 @@ first call.
 
 Only one full bar option is active at a time. The built-in `omarchy.bar` is
 used when `bar.id` is omitted or when a selected third-party bar cannot load.
-Panels, overlays, and menus are loaded when summoned. Plugins can set
-`keepLoaded: true` to survive between summons. First-party services are
-loaded at startup.
+Panels, overlays, and menus are loaded when summoned. Plugins can set the
+top-level manifest key `keepLoaded: true` to survive between summons.
+First-party services are loaded at startup.
+
+Entry points are QML `Item`s. Panel, overlay, and menu entry points expose
+`open(payloadJson)` and `close()` for summon/hide; on load the host injects
+`omarchyPath`, `shell`, `manifest`, and the registries (`pluginRegistry` /
+`barWidgetRegistry`) as properties.
 
 Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegistry.qml).
 
@@ -76,20 +84,25 @@ widgets that omit it default to `center`.
 Plugins run as **unsandboxed code** inside `omarchy-shell`. Adding warns you
 before cloning, plugins land disabled so you can review the code before
 `omarchy plugin enable`, and updates show a diff before touching anything.
-Commands prompt when run bare in a terminal and run unattended when given
-arguments — add `--yes` to skip every prompt (the path for scripts and agents).
+Commands confirm in a terminal even when given arguments; without one they
+refuse rather than guess. Add `--yes` to skip every prompt (the path for
+scripts and agents).
 
 You can still install by hand: drop a plugin into
 `~/.config/omarchy/plugins/<id>/`, run `omarchy-shell shell rescanPlugins`, then
 `omarchy plugin enable <id>`. A bar widget starts in its declared default
-section and can be moved with `omarchy bar move`; enabling a full bar
-replaces the one in use.
+section; enabling a full bar replaces the one in use. `omarchy bar` drives the
+bar from the CLI — `use | reset | defaults | position | transparent | put |
+move | set`, with placement flags such as `--section` and `--index`.
 The lower-level IPC methods remain available through `omarchy-shell shell ...`.
 
 ## IPC
 
-The shell exposes a `shell` target plus extra targets registered by
-individual plugins (`bar`, `image-selector`, …).
+The shell exposes a `shell` target (the host also registers
+`image-selector`) plus targets registered by individual plugins, named
+for the plugin rather than for where it appears: `background`, `osd`,
+`media`, `notifications`, and per-widget targets such as `omarchy.clock`
+or `omarchy.power`. There is no `bar` target.
 
 | Method                                | Effect                          |
 |---------------------------------------|---------------------------------|
@@ -97,17 +110,24 @@ individual plugins (`bar`, `image-selector`, …).
 | `summon <id> <payloadJson>`           | load + open a plugin            |
 | `hide <id>`                           | close a previously-summoned     |
 | `toggle <id> <payloadJson>`           | summon if closed, hide if open  |
+| `togglePanelAt <section> <index>`     | toggle the panel at a bar position |
 | `call <id> <method> <arg>`            | call an already-loaded plugin   |
 | `rescanPlugins`                       | re-walk plugin dirs and hot-reload plugin code |
 | `reloadConfig`                        | reload shell.json               |
+| `applyTheme <colorsB64> <shellB64>`   | push theme colors + shell.toml  |
 | `toggleBarTransparency`               | flip the bar background between solid and transparent |
 | `setPluginEnabled <id> <"true"\|…>`   | flip enabled bit (`ok` / `unknown`) |
 | `enablePlugin <id> <placementJson>`   | enable and place in one mutation |
+| `putBarWidget <id> <placementJson>`   | place a widget only where absent (`omarchy bar put`) |
 | `moveBarWidget <id> <placementJson>`  | move a configured widget        |
 | `setBarWidget <id> <key> <valueJson> <selectorJson>` | set an inline widget option |
 | `listPlugins`                         | JSON of every discovered plugin |
+| `listShellConfig`                     | effective shell.json as JSON    |
+| `debugBarGeometry`                    | bar geometry dump for debugging |
 
-`setPluginEnabled` takes a string; only literal `"true"` enables.
+`setPluginEnabled` takes a string; only literal `"true"` enables. Methods
+answer on stdout with exit 0 — `ok` on success, `unknown` or an error
+string on a miss.
 
 ## shell.json
 
@@ -122,8 +142,7 @@ individual plugins (`bar`, `image-selector`, …).
     "id": "omarchy.bar",
     "position": "top",
     "transparent": false,
-    "centerAnchor": "calendar",
-    "fontFamily": "JetBrainsMono Nerd Font",
+    "centerAnchor": "omarchy.clock",
     "layout": {
       "left":   [ { "id": "omarchy.menu" } ],
       "center": [ { "id": "omarchy.clock", "format": "HH:mm" } ],
@@ -146,16 +165,21 @@ Rules:
 3. Settings are inline on the entry. No `config:` sub-object, no
    merge layers.
 4. Built-in bar widget ids are namespaced (`omarchy.clock`, `omarchy.audio`, …).
-   The migration rewrites older ids such as `Clock` and `AudioPanel` forward.
 5. Third-party enabled ⇔ present; for full bar options that means `bar.id`.
    First-party non-bar plugins are enabled unless listed in `disabledPlugins[]`.
-6. `allowMultiple: true` in the manifest permits multiple instances.
+6. `barWidget.allowMultiple: true` in the manifest permits multiple instances.
 7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
 8. `version: 1` is required.
 
 `config/omarchy/shell.json` describes the fresh-install state. When no
 user `shell.json` exists, defaults are used verbatim. Once the user
 customizes, `shell.json` is canonical — there is no deep-merge.
+
+`shell.json` is shell configuration; theme tokens live in `shell.toml`
+(next section). Both are current — they answer different questions. A
+machine-level `~/.config/omarchy/shell.toml` is watched live by the
+shell and its keys win over the active theme's `shell.toml`, so
+overrides like `omarchy display text size` survive theme switches.
 
 ## Theme tokens
 
@@ -165,20 +189,23 @@ including generated `*.tpl` files, gradient helpers, and shell border syntax.
 Themes ship colors in `themes/<name>/colors.toml` and surface roles +
 sizing in `themes/<name>/shell.toml`. Defaults are generated from
 `default/themed/shell.toml.tpl`; a theme may also drop a hand-written
-`shell.toml` next to its `colors.toml` to replace the generated file.
+`shell.toml` next to its `colors.toml` to replace the generated file,
+or override a single section with `shell.<section>.toml`, merged in by
+`omarchy-theme-set-templates` (see [`theming.md`](theming.md)).
 
 `colors.toml` uses `foreground` and `background` for the foundational
 text/background palette, exposed to QML as `Color.foreground` and
 `Color.background`.
 
-The shell exposes these tokens to QML via two singletons in
+The shell exposes these tokens to QML via three singletons in
 `qs.Commons`:
 
 - `Color` — palette (`foreground`, `background`, `accent`, `urgent`)
   and per-surface roles (`Color.bar.*`, `Color.popups.*`,
   `Color.tooltip.*`, `Color.notifications.*`, `Color.menu.*`,
-  `Color.launcher.*`, `Color.imagePicker.*`, `Color.polkit.*`,
-  `Color.lock.*`). Clipboard and emojis share `Color.menu.*`.
+  `Color.polkit.*`, `Color.lock.*`, `Color.imagePicker.*`). Clipboard
+  and emojis share `Color.menu.*`; the `[launcher]` section is consumed
+  by the launcher outside shell QML.
 - `Style` — structural tokens (`cornerRadius`), shared interactive
   state tokens/helpers, spacing (`Style.spacing.*` / `Style.space(px)`),
   the type scale (`Style.font.*`), and bar dimensions
@@ -371,5 +398,6 @@ Then `~/.config/omarchy/bar/modules/gpu.qml` (or set `source` to point
 elsewhere). The module is an `Item` and receives `bar`, `moduleName`,
 `settings` properties. `bar` exposes `foreground` / `background` /
 `urgent` / `fontFamily` / `position` / `vertical` / `barSize`, plus
-`run(cmd)`, `shellQuote(v)`, `showTooltip(t, s)` / `hideTooltip(t)`,
-`requestPopout(o)` / `releasePopout(o)`.
+`run(cmd)`, `showTooltip(t, s)` / `hideTooltip(t)`,
+`requestPopout(o)` / `releasePopout(o)`. To shell-quote arguments for
+`run`, use `Util.shellQuote(v)` from `qs.Commons`.

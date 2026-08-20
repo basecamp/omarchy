@@ -74,12 +74,16 @@ crush)
     command=(crush --yolo)
   fi
   ;;
-claude | grok)
-  command=("$agent" --permission-mode bypassPermissions)
+claude)
+  command=(claude --permission-mode auto)
+  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
+grok)
+  command=(grok --permission-mode bypassPermissions)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
 codex)
-  command=(codex --dangerously-bypass-approvals-and-sandbox)
+  command=(codex --approve-for-me)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
 omp)

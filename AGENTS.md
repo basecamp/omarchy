@@ -9,14 +9,24 @@ matching guide before starting:
 - [`agents/skills/icon-font.md`](agents/skills/icon-font.md) - adding branded glyphs to `default/fonts/omarchy/omarchy.ttf`
 - [`agents/skills/acceptance-tests.md`](agents/skills/acceptance-tests.md) - writing or running graphical acceptance tests under `test/acceptance.d/`
 - [`agents/skills/visual-verification.md`](agents/skills/visual-verification.md) - verifying any change with a visual effect in the running UI
-- [`docs/migrations.md`](docs/migrations.md) - creating or changing migrations under `migrations/`
+- [`agents/skills/migrations.md`](agents/skills/migrations.md) - creating or changing migrations under `migrations/`
+
+# Documentation Layout
+
+Three documentation trees, split by genre and audience:
+
+- `agents/skills/` - task procedure ("do this when doing X"), for anyone working on the codebase
+- `docs/` - reference on how the system is shaped (file layout, update pipeline, theming, shell architecture), for anyone working on the codebase; skills link here for depth
+- `manual/` - end-user documentation for using Omarchy, published; never codebase internals
 
 # Style
 
+- In markdown documents (`plans/`, `docs/`, `manual/`), write full lines — no hard wrapping at 80 columns; break only at structural boundaries like headings and list items
 - Two spaces for indentation, no tabs
 - Use bash 5 conditionals: use `[[ ]]` for string/file tests and `(( ))` for numeric tests
 - In `[[ ]]`, don't quote variables, but do quote string literals when comparing values (e.g., `[[ $branch == "dev" ]]`)
 - Prefer `(( ))` over numeric operators inside `[[ ]]` (e.g., `(( count < 50 ))`, not `[[ $count -lt 50 ]]`)
+- Prefer a full `if`/`else` conditional for simple two-path control flow; don't rely on `exec` or `exit` in one branch to make following statements unreachable
 - For strings/paths with spaces, quote them instead of escaping spaces with `\ ` (e.g., `"$APP_DIR/Disk Usage.desktop"`, not `$APP_DIR/Disk\ Usage.desktop`)
 - Shebangs must use `#!/bin/bash` consistently (never `#!/usr/bin/env bash`)
 - Scripts under `install/` and `migrations/` may be sourced and intentionally omit shebangs
@@ -81,7 +91,8 @@ Exceptions are allowed for migration and package-helper scripts where the helper
 
 # Menu
 
-- The menu definition lives in `default/omarchy/omarchy-menu.jsonc`.
+- The menu definition lives in `default/omarchy/omarchy-menu.jsonc`;
+  [`docs/menu.md`](docs/menu.md) covers the schema, guards, and providers.
 - Do not add `aliases` to new menu entries. Aliases are reserved for
   established alternate names users already type, kept for compatibility.
 
@@ -93,7 +104,9 @@ Exceptions are allowed for migration and package-helper scripts where the helper
 
 # Tests
 
-Run focused automated tests for the area you changed. Current test entry points:
+Run focused automated tests for the area you changed;
+[`docs/testing.md`](docs/testing.md) covers how the suites are shaped. Current
+test entry points:
 
 - `./test/all` - aggregate runner for CLI and shell tests; it intentionally does not run graphical acceptance tests
 - `./test/cli` - CLI routing, command metadata, theme helpers, and safe dispatch coverage

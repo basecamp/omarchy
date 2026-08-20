@@ -317,6 +317,7 @@ Item {
         aliases: aliases,
         when: "",
         checked: "",
+        disabled: "",
         order: 0
       })
     }
@@ -382,6 +383,7 @@ Item {
         aliases: [],
         when: "",
         checked: "",
+        disabled: "",
         order: 0
       })
     }
@@ -470,9 +472,10 @@ Item {
     return MenuModel.isVisible(root.items, root.itemOrder, root.whenResults, entry)
   }
 
-  // Label with the ✓ marker baked in when `checked:` evaluated truthy.
+  // Label with the ✓ marker baked in when `checked:` or `disabled:` evaluated
+  // truthy.
   function labelFor(entry) {
-    return MenuModel.labelFor(entry, root.checkedResults)
+    return MenuModel.labelFor(entry, root.checkedResults, root.disabledResults)
   }
 
   function searchableToken(value) {
@@ -495,8 +498,17 @@ Item {
     return MenuModel.descriptionTextMatches(query, text)
   }
 
+  // Rows whose `disabled:` evaluated truthy stay listed but dimmed, and the
+  // cursor steps over them.
+  function isDisabled(entry) {
+    return MenuModel.isDisabled(root.disabledResults, entry)
+  }
+
+  // A disabled row earns its place in the submenu it belongs to, where the
+  // list around it is the point. Search is a list of what you can do, so it
+  // leaves them out.
   function matchesQuery(entry, query) {
-    return MenuModel.matchesQuery(entry, query, root.isVisible(entry))
+    return MenuModel.matchesQuery(entry, query, root.isVisible(entry) && !root.isDisabled(entry))
   }
 
   function searchScore(entry, query) {
@@ -504,7 +516,38 @@ Item {
   }
 
   function displayRow(entry, detail, score, section) {
-    return MenuModel.displayRow(root.items, root.itemOrder, root.checkedResults, entry, detail, score, section)
+    return MenuModel.displayRow(root.items, root.itemOrder, root.checkedResults, root.disabledResults, entry, detail, score, section)
+  }
+
+  function rowSelectable(index) {
+    if (index < 0 || index >= displayModel.count) return false
+    return !displayModel.get(index).disabled
+  }
+
+  // First selectable row at or past `from`, continuing in the direction of
+  // travel and wrapping. -1 when every row is disabled, which leaves the menu
+  // with no cursor at all rather than one parked on a row Enter won't run.
+  function nextSelectable(from, direction) {
+    var count = displayModel.count
+    if (count === 0) return -1
+
+    var step = direction < 0 ? -1 : 1
+    var index = ((from % count) + count) % count
+    for (var i = 0; i < count; i++) {
+      if (root.rowSelectable(index)) return index
+      index = (index + step + count) % count
+    }
+
+    return -1
+  }
+
+  // Park the cursor on a selectable row after the rows underneath it changed.
+  // A menu with nothing selectable in it -- every app in it already installed
+  // -- shows no cursor at all, and grows one the moment a row can take it.
+  function settleCursor() {
+    var target = root.nextSelectable(root.selectedIndex, 1)
+    root.selectedIndex = target >= 0 ? target : 0
+    root.cursorActive = target >= 0
   }
 
   function rebuildDmenuDisplay() {
@@ -530,6 +573,7 @@ Item {
           && detail.toLowerCase().indexOf(query) < 0) continue
       displayModel.append({
         itemId: "dmenu." + i,
+        disabled: false,
         kind: "dmenu",
         icon: icon,
         iconFont: "",
@@ -630,9 +674,7 @@ Item {
     for (var k = 0; k < rows.length; k++) displayModel.append(rows[k])
     layoutSerial += 1
 
-    if (displayModel.count === 0) selectedIndex = 0
-    else if (selectedIndex >= displayModel.count) selectedIndex = displayModel.count - 1
-    else if (selectedIndex < 0) selectedIndex = 0
+    root.settleCursor()
 
     Qt.callLater(function() {
       if (displayModel.count > 0) root.revealCursor()
@@ -665,12 +707,12 @@ Item {
     if (displayModel.count === 0) return
 
     root.disarmPointer()
-    if (!cursorActive) {
-      cursorActive = true
-      selectedIndex = delta < 0 ? displayModel.count - 1 : 0
-    } else {
-      selectedIndex = (selectedIndex + delta + displayModel.count) % displayModel.count
-    }
+    var from = cursorActive ? selectedIndex + delta : (delta < 0 ? displayModel.count - 1 : 0)
+    var target = root.nextSelectable(from, delta)
+    if (target < 0) return
+
+    cursorActive = true
+    selectedIndex = target
     revealCursor()
   }
 
@@ -727,7 +769,7 @@ Item {
       return
     }
 
-    if (index < 0 || index >= displayModel.count) return
+    if (!root.rowSelectable(index)) return
 
     var row = displayModel.get(index)
     if (row.kind === "menu" || row.kind === "link") {
@@ -874,6 +916,7 @@ Item {
 
   function selectFromPointer(index, item, mouse) {
     if (!pointerGate.moved(item, mouse)) return
+    if (!root.rowSelectable(index)) return
     root.cursorActive = true
     root.selectedIndex = index
   }
@@ -947,6 +990,7 @@ Item {
 
   property var whenResults: ({})       // id → true|false (allow visibility)
   property var checkedResults: ({})    // id → true|false (show ✓)
+  property var disabledResults: ({})   // id → true|false (dim, skip cursor)
   property bool guardsPending: false
 
   function evaluateGuards() {
@@ -966,6 +1010,7 @@ Item {
     if (!script) {
       root.whenResults = ({})
       root.checkedResults = ({})
+      root.disabledResults = ({})
       return
     }
     guardProc.collected = ""
@@ -991,6 +1036,7 @@ Item {
 
       var nextWhen = ({})
       var nextChecked = ({})
+      var nextDisabled = ({})
       var lines = guardProc.collected.split("\n")
       for (var i = 0; i < lines.length; i++) {
         var line = lines[i].trim()
@@ -1005,9 +1051,11 @@ Item {
         var tag = rest.substring(tagAt + 1)
         if (tag === "w") nextWhen[id] = value
         else if (tag === "c") nextChecked[id] = value
+        else if (tag === "d") nextDisabled[id] = value
       }
       root.whenResults = nextWhen
       root.checkedResults = nextChecked
+      root.disabledResults = nextDisabled
       if (root.opened) root.rebuildDisplay()
       // Run the evaluation that had to stand aside. Deferred by a turn so the
       // process is settled before its command is set again.
@@ -1108,7 +1156,7 @@ Item {
               if (root.mode === "input") root.applyDmenuSelection(root.filterText)
               else if (displayModel.count > 0) root.activateIndex(root.cursorActive ? root.selectedIndex : 0)
             } else if (root.cursorActive) root.activateIndex(root.selectedIndex)
-            else if (displayModel.count > 0) root.cursorActive = true
+            else root.settleCursor()
             event.accepted = true
           } else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
             root.setFilter(root.filterText + event.text)
@@ -1211,6 +1259,7 @@ Item {
               required property string path
               required property string action
               required property int childCount
+              required property bool disabled
 
               readonly property bool hasCursor: root.cursorActive && row.index === root.selectedIndex
               readonly property bool isApp: row.kind === "app"
@@ -1218,6 +1267,9 @@ Item {
 
               width: ListView.view.width
               height: root.rowHeightForDetail(row.detail)
+              // Faded: the row is here to say the software is already
+              // installed, not to be picked.
+              opacity: row.disabled ? 0.4 : 1
               radius: root.cornerRadius
               color: row.hasCursor ? root.selectedBackground : "transparent"
               borderSpec: row.hasCursor ? root.selectedBorderSpec : Border.none()
@@ -1330,7 +1382,7 @@ Item {
                 id: mouseArea
                 anchors.fill: parent
                 hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
+                cursorShape: row.disabled ? Qt.ArrowCursor : Qt.PointingHandCursor
                 onEntered: root.selectFromPointer(row.index, row, {
                   x: mouseArea.mouseX,
                   y: mouseArea.mouseY
@@ -1339,6 +1391,7 @@ Item {
                   root.selectFromPointer(row.index, row, mouse)
                 }
                 onClicked: {
+                  if (row.disabled) return
                   root.cursorActive = true
                   root.selectedIndex = row.index
                   root.activateIndex(row.index, true)
