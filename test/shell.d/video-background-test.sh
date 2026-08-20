@@ -83,6 +83,10 @@ assert(
   'a video never stands in as its own lazy thumbnail, so the fan out cap always applies'
 )
 assert(
+  /function onScreensChanged\(\) \{[\s\S]*?root\.displaysBlank = false/.test(lockService),
+  'a display coming back gives up the blank state instead of freezing a visible wallpaper'
+)
+assert(
   lockView.includes('playbackEnabled: root.loadBackground && !root.displaysBlank') &&
     /displaysBlank: root\.displaysBlank/.test(lockService) &&
     /function runBlank\(\) \{\s*\n\s*root\.displaysBlank = true/.test(lockService) &&

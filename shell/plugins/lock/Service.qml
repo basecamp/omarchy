@@ -471,6 +471,10 @@ Item {
   Connections {
     target: Quickshell
     function onScreensChanged() {
+      // A panel coming back is a display turning on that runWake did not ask
+      // for, so the blank state has to be given up here or a visible lock
+      // wallpaper stays frozen until the next keypress.
+      root.displaysBlank = false
       root.requestSessionLock()
 
       // A monitor still coming up has no workspace, so cannot answer yet.
