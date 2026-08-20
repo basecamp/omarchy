@@ -373,8 +373,8 @@
   "update.password.drive": {"icon":"","label":"Drive Encryption","action":"omarchy-launch-floating-terminal-with-presentation omarchy-drive-password"},
   "update.password.user": {"icon":"","label":"User","action":"omarchy-launch-floating-terminal-with-presentation passwd"},
   "remove.screensaver": {"icon":"󱄄","label":"Screensaver","title":"Remove"},
-  "remove.screensaver.neo-matrix": {"icon":"","label":"Neo Matrix","when":"omarchy-pkg-present neo-matrix","action":"omarchy-pkg-drop neo-matrix"},
-  "remove.screensaver.cbonsai": {"icon":"","label":"CBonsai","when":"omarchy-pkg-present cbonsai","action":"omarchy-pkg-drop cbonsai"},
-  "remove.screensaver.pipes": {"icon":"","label":"Pipes.sh","when":"omarchy-pkg-present pipes.sh","action":"omarchy-pkg-drop pipes.sh"},
-  "remove.screensaver.lavat": {"icon":"","label":"Lavat","when":"omarchy-pkg-present lavat","action":"omarchy-pkg-drop lavat"},
+  "remove.screensaver.neo-matrix": {"icon":"","label":"Neo Matrix","when":"omarchy-pkg-present neo-matrix","action":"omarchy-pkg-drop neo-matrix && if [[ $(omarchy-screensaver-get) == \"neo-matrix\" ]]; then omarchy-screensaver-set default; fi"},
+  "remove.screensaver.cbonsai": {"icon":"","label":"CBonsai","when":"omarchy-pkg-present cbonsai","action":"omarchy-pkg-drop cbonsai && if [[ $(omarchy-screensaver-get) == \"cbonsai\" ]]; then omarchy-screensaver-set default; fi"},
+  "remove.screensaver.pipes": {"icon":"","label":"Pipes.sh","when":"omarchy-pkg-present pipes.sh","action":"omarchy-pkg-drop pipes.sh && if [[ $(omarchy-screensaver-get) == \"pipes\" ]]; then omarchy-screensaver-set default; fi"},
+  "remove.screensaver.lavat": {"icon":"","label":"Lavat","when":"omarchy-pkg-present lavat","action":"omarchy-pkg-drop lavat && if [[ $(omarchy-screensaver-get) == \"lavat\" ]]; then omarchy-screensaver-set default; fi"}
 }
