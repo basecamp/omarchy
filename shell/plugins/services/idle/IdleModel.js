@@ -1,10 +1,7 @@
-// Timer.interval and IdleMonitor.timeout are signed 32-bit millisecond
-// properties. A timeout past this ceiling wraps to a negative interval, which
-// Qt clamps to 1ms and re-arms for the whole idle cycle, flooding the instance
-// log. Clamp here rather than fall back to the default: someone writing a huge
-// number means "as good as never", and a silent drop to 5 minutes locks them
-// out of their session. Every derived delay is at most the timeout it came
-// from, so this one ceiling keeps the delay timers in range too.
+// Timer.interval is int32 milliseconds, and a larger timeout wraps negative:
+// Qt then re-arms it at 1ms for the whole idle cycle. Clamp instead of falling
+// back, since a huge number means "never" and the 5 minute default would lock
+// the user out. Delays never exceed their timeout, so one ceiling covers both.
 var MAX_TIMEOUT_SECONDS = Math.floor(2147483647 / 1000)
 
 function secondsFromConfig(value, fallback) {
