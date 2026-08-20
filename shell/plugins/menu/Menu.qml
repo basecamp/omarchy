@@ -1150,8 +1150,12 @@ Item {
             event.accepted = true
           } else if (!root.dmenuActive && (event.modifiers & Qt.AltModifier)
                      && event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
-            var target = root.quickSelectIndexForOrdinal(event.key - Qt.Key_1 + 1)
-            if (target >= 0) root.activateIndex(target)
+            // A held digit auto-repeats, and the first press may have opened a
+            // submenu — a repeat would then activate a row the user never chose.
+            if (!event.isAutoRepeat) {
+              var target = root.quickSelectIndexForOrdinal(event.key - Qt.Key_1 + 1)
+              if (target >= 0) root.activateIndex(target)
+            }
             event.accepted = true
           } else if (event.key === Qt.Key_Delete) {
             root.requestDeleteSelected()

@@ -658,6 +658,10 @@ assert(
   /root\.quickSelectIndexForOrdinal\(event\.key - Qt\.Key_1 \+ 1\)/.test(menuQml),
   'menu activates a row by its quick-select ordinal, not its raw digit'
 )
+assert(
+  /if \(!event\.isAutoRepeat\) \{\s*\n\s*var target = root\.quickSelectIndexForOrdinal/.test(menuQml),
+  'menu ignores auto-repeat digits, so a held Alt+N cannot drill into a submenu'
+)
 JS
 
 font_charset=$(fc-query --format='%{charset}' "$ROOT/default/fonts/omarchy/omarchy.ttf")
