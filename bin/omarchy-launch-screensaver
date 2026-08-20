@@ -10,6 +10,12 @@ if omarchy-toggle-enabled screensaver-off && [[ $1 != "force" ]]; then
   exit 1
 fi
 
+# Auto-install selected screensaver if not present
+SCREENSAVER=$(omarchy-screensaver-get)
+if [[ $SCREENSAVER != "default" ]] && ! omarchy-pkg-present "$SCREENSAVER" 2>/dev/null; then
+  omarchy-screensaver-install "$SCREENSAVER"
+fi
+
 focused=$(omarchy-hyprland-monitor-focused)
 terminal=$(xdg-terminal-exec --print-id)
 
