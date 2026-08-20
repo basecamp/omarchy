@@ -87,7 +87,7 @@ assert(
   'a video never stands in as its own lazy thumbnail, so the fan out cap always applies'
 )
 assert(
-  /thumbnail_command=\(timeout \d+ ffmpegthumbnailer/.test(menuImages),
+  /thumbnail_command=\(timeout -k \d+ \d+ ffmpegthumbnailer/.test(menuImages),
   'a stalled video cannot hold the picker shut, because its generator is time bounded'
 )
 assert(

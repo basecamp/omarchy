@@ -175,7 +175,7 @@ generate_thumbnail() {
   if is_video_path "$image"; then
     # Videos are generated before the picker opens, so one unreadable or
     # stalled file must not hold it shut. A failed run drops the row.
-    thumbnail_command=(timeout 10 ffmpegthumbnailer -i "$image" -o "$tmp" -s 1536 -q 8)
+    thumbnail_command=(timeout -k 5 10 ffmpegthumbnailer -i "$image" -o "$tmp" -s 1536 -q 8)
   else
     thumbnail_command=(env VIPS_CONCURRENCY=1 vipsthumbnail "$image" --size 1536x864 --smartcrop=centre --path "$tmp[Q=82,strip]")
   fi
