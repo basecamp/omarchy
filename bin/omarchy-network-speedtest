@@ -10,6 +10,8 @@ direction="${1:-}"
 probe=1.1.1.1
 parallel=8
 url_count=3
+worker_lifetime=${OMARCHY_SPEEDTEST_WORKER_LIFETIME:-30}
+request_timeout=${OMARCHY_SPEEDTEST_REQUEST_TIMEOUT:-5}
 
 case "$direction" in
   down | up)
@@ -19,6 +21,22 @@ case "$direction" in
     exit 2
     ;;
 esac
+
+validate_bounded_positive_integer() {
+  local setting_name="$1"
+  local setting_value="$2"
+  local maximum="$3"
+
+  if [[ $setting_value =~ ^[1-9][0-9]?$ ]] && (( 10#$setting_value <= maximum )); then
+    return 0
+  fi
+
+  echo "$setting_name must be an integer between 1 and $maximum" >&2
+  return 1
+}
+
+validate_bounded_positive_integer "OMARCHY_SPEEDTEST_WORKER_LIFETIME" "$worker_lifetime" 30 || exit 2
+validate_bounded_positive_integer "OMARCHY_SPEEDTEST_REQUEST_TIMEOUT" "$request_timeout" 5 || exit 2
 
 format_mbps() {
   awk -v value="$1" 'BEGIN {
@@ -67,23 +85,32 @@ cleanup() {
 trap cleanup EXIT
 
 # Round-robin across the returned URLs so we spread load across Netflix OCA nodes.
+# Cleanup only runs when the EXIT trap does, so a SIGKILL, a compositor crash,
+# or session teardown reparents these workers and leaves them saturating the
+# link. Each worker therefore watches the main shell and expires on its own.
 traffic_worker() {
   local urls=("$@")
   local url_count=${#urls[@]}
   local idx=$RANDOM
-  if [[ $direction == "down" ]]; then
-    while true; do
-      url=${urls[$((idx % url_count))]}
-      curl -fsS -o /dev/null "$url" 2>/dev/null || return
-      idx=$((idx + 1))
-    done
-  else
-    while true; do
-      url=${urls[$((idx % url_count))]}
-      dd if=/dev/zero bs=1M count=64 2>/dev/null | curl -fsS -o /dev/null -X POST --data-binary @- "$url" 2>/dev/null || return
-      idx=$((idx + 1))
-    done
-  fi
+  local deadline=$((SECONDS + worker_lifetime))
+  local url status
+
+  while (( SECONDS < deadline )) && kill -0 $$ 2>/dev/null; do
+    url=${urls[$((idx % url_count))]}
+    status=0
+    if [[ $direction == "down" ]]; then
+      curl -fsS --max-time "$request_timeout" -o /dev/null "$url" 2>/dev/null || status=$?
+    else
+      dd if=/dev/zero bs=1M count=64 2>/dev/null | curl -fsS --max-time "$request_timeout" -o /dev/null -X POST --data-binary @- "$url" 2>/dev/null || status=$?
+    fi
+
+    # 28 is the --max-time cutoff, which is the normal end of a request on any
+    # link slow enough that a transfer outlasts the timeout. Treating it as a
+    # failure would retire every worker on the first request and end the test
+    # seconds in, so only a genuine curl error stops the loop.
+    (( status == 0 || status == 28 )) || return
+    idx=$((idx + 1))
+  done
 }
 
 for (( i = 0; i < parallel; i++ )); do
