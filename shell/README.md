@@ -256,28 +256,32 @@ becomes the authoritative file — we do **not** deep-merge defaults back in.
 1. **The active bar option is `bar.id`.** Omit it or set it to `omarchy.bar`
    to use the built-in bar. Set it to another plugin id whose manifest declares
    `kind: "bar"` to replace the full bar.
-2. **Every plugin instance is one entry.** Either in `bar.layout.<section>`
+2. **Bar transparency supports three modes.** Set `bar.transparent` to `false`
+   for solid, `true` for transparent, or `"dynamic"` to stay transparent on an
+   empty or floating-only focused workspace and turn solid for a visible tiled
+   client.
+3. **Every plugin instance is one entry.** Either in `bar.layout.<section>`
    for bar widgets, or in `plugins[]` for panels, overlays, services,
    menus, and anything else non-bar.
-3. **Settings are inline on the entry.** No `config:` sub-object, no
+4. **Settings are inline on the entry.** No `config:` sub-object, no
    separate per-plugin settings file, no merge layers. The fields on each
    entry are the values the plugin sees.
-4. **Built-in widget ids are namespaced.** Use ids such as `omarchy.clock`,
+5. **Built-in widget ids are namespaced.** Use ids such as `omarchy.clock`,
    `omarchy.audio`, and `omarchy.network`. The migration rewrites older ids
    like `Clock` and `AudioPanel` forward.
-5. **Third-party enabled ⇔ present.** A third-party plugin is enabled iff
+6. **Third-party enabled ⇔ present.** A third-party plugin is enabled iff
    its id appears somewhere in shell.json. For full bar options, that means
    `bar.id`; for bar widgets, plugin enable/disable adds/removes layout entries;
    other plugin kinds are enabled the same way. First-party non-bar plugins
    are enabled unless listed in `disabledPlugins[]`.
-6. **Multiple instances** are allowed when a manifest sets
+7. **Multiple instances** are allowed when a manifest sets
    `allowMultiple: true`. Each instance is independent — e.g. two clock
    widgets in different timezones are just two `{"id":"omarchy.clock", "timezone": ...}`
    entries with their own values.
-7. **Idle timings are top-level.** `idle.screensaver` and `idle.lock`
+8. **Idle timings are top-level.** `idle.screensaver` and `idle.lock`
    are seconds since user idle began, so the default lock fires at 300s
    even if the 150s screensaver starts first.
-8. **`version: 1` is required** at the top level. The shell will fall back
+9. **`version: 1` is required** at the top level. The shell will fall back
    to defaults rather than load an unknown version.
 
 ## Implementation history

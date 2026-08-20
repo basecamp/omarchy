@@ -38,6 +38,38 @@ const shellSource = fs.readFileSync(root + '/shell/shell.qml', 'utf8')
 
 assert(/function toggleBarTransparency\(\): string \{[\s\S]*?shell\.bar\.toggleTransparency\(\)/.test(shellSource), 'shell exposes the bar transparency toggle over IPC')
 
+assertEqual(bar.normalizeTransparencyMode(false), 'solid', 'false keeps the bar solid')
+assertEqual(bar.normalizeTransparencyMode(true), 'transparent', 'true keeps the bar transparent')
+assertEqual(bar.normalizeTransparencyMode('dynamic'), 'dynamic', 'dynamic enables workspace-aware transparency')
+assertEqual(bar.normalizeTransparencyMode('unknown'), 'solid', 'unknown transparency modes fall back to solid')
+assertEqual(bar.toggledTransparencyValue(false), true, 'transparency toggle enables transparency from solid')
+assertEqual(bar.toggledTransparencyValue(true), false, 'transparency toggle disables forced transparency')
+assertEqual(bar.toggledTransparencyValue('dynamic'), false, 'transparency toggle exits dynamic mode to solid')
+
+const tiledClient = {
+  mapped: true,
+  hidden: false,
+  visible: true,
+  floating: false,
+  workspace: { id: 2 }
+}
+const floatingClient = { ...tiledClient, floating: true }
+assertEqual(bar.workspaceHasTiledClient([tiledClient], 2), true, 'dynamic transparency finds a tiled client on the workspace')
+assertEqual(bar.workspaceHasTiledClient([floatingClient], 2), false, 'dynamic transparency ignores floating clients')
+assertEqual(bar.workspaceHasTiledClient([{ ...tiledClient, hidden: true }], 2), false, 'dynamic transparency ignores hidden clients')
+assertEqual(bar.workspaceHasTiledClient([{ ...tiledClient, workspace: { id: 3 } }], 2), false, 'dynamic transparency ignores other workspaces')
+assertEqual(bar.workspaceHasTiledClient([], 2), false, 'dynamic transparency handles an empty workspace')
+assertEqual(bar.workspaceHasTiledClient(null, 2), false, 'dynamic transparency tolerates a missing client list')
+
+assert(
+  /command: \["hyprctl", "-j", "clients"\]/.test(barSource),
+  'dynamic transparency reads authoritative Hyprland client state'
+)
+assert(
+  /transparent = true[\s\S]*?scheduleTransparentForegroundRefresh\(\)/.test(barSource),
+  'transparent surfaces do not wait for wallpaper color sampling'
+)
+
 // put tolerates a placement target the bar does not carry, so the IPC call
 // must reach the registry's put rather than route back through enable.
 assert(

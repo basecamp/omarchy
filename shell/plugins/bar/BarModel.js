@@ -7,6 +7,30 @@ function normalizePosition(value) {
   return /^(top|bottom|left|right)$/.test(next) ? next : "top"
 }
 
+function normalizeTransparencyMode(value) {
+  if (value === true) return "transparent"
+  if (value === "dynamic") return "dynamic"
+  return "solid"
+}
+
+function toggledTransparencyValue(value) {
+  return normalizeTransparencyMode(value) === "solid"
+}
+
+function workspaceHasTiledClient(clients, workspaceId) {
+  var values = Array.isArray(clients) ? clients : []
+  var targetId = Number(workspaceId)
+  if (!isFinite(targetId)) return false
+
+  for (var i = 0; i < values.length; i++) {
+    var client = values[i]
+    if (!client || client.mapped === false || client.hidden === true || client.visible === false) continue
+    if (!client.workspace || Number(client.workspace.id) !== targetId) continue
+    if (client.floating !== true) return true
+  }
+  return false
+}
+
 function entrySettings(entry) {
   if (!isPlainObject(entry)) return {}
   var copy = {}
@@ -215,6 +239,9 @@ if (typeof module !== "undefined") {
     pickPanelSlot: pickPanelSlot,
     nearestDropTarget: nearestDropTarget,
     normalizePosition: normalizePosition,
+    normalizeTransparencyMode: normalizeTransparencyMode,
+    toggledTransparencyValue: toggledTransparencyValue,
+    workspaceHasTiledClient: workspaceHasTiledClient,
     entrySettings: entrySettings,
     entryId: entryId,
     pinTrayToInner: pinTrayToInner,

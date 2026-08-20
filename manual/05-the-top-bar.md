@@ -89,10 +89,13 @@ The same things have commands, which is what you want for a [dotfiles](31-dotfil
 ```bash
 omarchy bar position bottom
 omarchy bar transparent toggle
+omarchy bar transparent dynamic
 omarchy bar move omarchy.clock --section center --index 0
 omarchy bar set omarchy.clock format "HH:mm"
 omarchy bar defaults          # back to the shipped layout
 ```
+
+Transparency can be `true` (always transparent), `false` (always solid), or `dynamic`. Dynamic transparency keeps the bar transparent while the focused workspace is empty or contains only floating windows, then makes it solid as soon as a visible tiled window appears. Double-clicking the bar or running `omarchy bar transparent toggle` exits dynamic mode and makes the bar solid.
 
 To add or remove a widget entirely, use the plugin commands. `omarchy plugin list` prints every widget the shell knows about with its id, and then:
 

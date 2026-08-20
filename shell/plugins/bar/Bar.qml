@@ -41,6 +41,9 @@ Item {
   })
   property var layoutConfig: fallbackBarConfig.layout
   property string centerAnchor: ""
+  property string transparencyMode: "solid"
+  property bool focusedWorkspaceHasTiled: true
+  property bool clientRefreshPending: false
   property bool requestedTransparent: false
   property bool useTransparentForeground: false
   property bool transparent: false
@@ -356,7 +359,10 @@ Item {
     var config = Util.isPlainObject(barConfig) ? barConfig : fallbackBarConfig
 
     position = normalizePosition(config.position)
-    setRequestedTransparency(config.transparent === true)
+    transparencyMode = BarModel.normalizeTransparencyMode(config.transparent)
+    setRequestedTransparency(effectiveTransparency)
+    if (transparencyMode === "dynamic") automaticTransparencyRefreshTimer.restart()
+    else automaticTransparencyRefreshTimer.stop()
     centerAnchor = Util.canonicalWidgetId(config.centerAnchor || "")
 
     // layoutEntries feeds plain JS arrays to the module Repeaters, and QML
@@ -615,13 +621,14 @@ Item {
   }
 
   function toggleTransparency() {
-    var nextTransparent = !(root.requestedTransparent === true)
+    var nextTransparent = BarModel.toggledTransparencyValue(root.transparencyMode)
     if (root.shell && typeof root.shell.mutateShellConfig === "function") {
       root.shell.mutateShellConfig(function(config) {
         if (!Util.isPlainObject(config.bar)) config.bar = {}
         config.bar.transparent = nextTransparent
       })
     } else {
+      root.transparencyMode = BarModel.normalizeTransparencyMode(nextTransparent)
       root.setRequestedTransparency(nextTransparent)
     }
   }
@@ -799,6 +806,78 @@ Item {
     return "#" + hexChannel(c.r) + hexChannel(c.g) + hexChannel(c.b)
   }
 
+  readonly property bool effectiveTransparency: transparencyMode === "transparent"
+    || (transparencyMode === "dynamic" && !focusedWorkspaceHasTiled)
+  onEffectiveTransparencyChanged: setRequestedTransparency(effectiveTransparency)
+
+  function applyClientSnapshot(output) {
+    if (transparencyMode !== "dynamic") return
+
+    var workspace = Hyprland.focusedWorkspace
+    if (!workspace) {
+      focusedWorkspaceHasTiled = false
+      return
+    }
+
+    var clients = []
+    try {
+      clients = JSON.parse(String(output || "[]"))
+    } catch (e) {
+      console.warn("dynamic bar transparency: invalid hyprctl clients output:", e)
+      return
+    }
+    focusedWorkspaceHasTiled = BarModel.workspaceHasTiledClient(clients, workspace.id)
+  }
+
+  function refreshClientSnapshot() {
+    if (automaticTransparencyClientProc.running) {
+      clientRefreshPending = true
+      return
+    }
+    automaticTransparencyClientProc.running = true
+  }
+
+  Timer {
+    id: automaticTransparencyRefreshTimer
+    interval: 16
+    repeat: false
+    onTriggered: root.refreshClientSnapshot()
+  }
+
+  Process {
+    id: automaticTransparencyClientProc
+    command: ["hyprctl", "-j", "clients"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.applyClientSnapshot(text)
+    }
+    onExited: function() {
+      if (!root.clientRefreshPending) return
+      root.clientRefreshPending = false
+      if (root.transparencyMode === "dynamic") automaticTransparencyRefreshTimer.restart()
+    }
+  }
+
+  Connections {
+    target: Hyprland
+
+    function onFocusedWorkspaceChanged() {
+      if (root.transparencyMode === "dynamic") automaticTransparencyRefreshTimer.restart()
+    }
+
+    function onRawEvent(event) {
+      if (root.transparencyMode !== "dynamic") return
+
+      var name = String(event.name || "")
+      var relevant = [
+        "openwindow", "closewindow", "movewindow", "movewindowv2",
+        "workspace", "workspacev2", "focusedmon", "changefloatingmode",
+        "fullscreen"
+      ]
+      if (relevant.indexOf(name) !== -1) automaticTransparencyRefreshTimer.restart()
+    }
+  }
+
   function setRequestedTransparency(value) {
     var nextTransparent = value === true
     requestedTransparent = nextTransparent
@@ -806,10 +885,16 @@ Item {
       foregroundAnimationEnabled = false
       useTransparentForeground = false
       transparent = false
-      transparentForeground = themeForeground
       restoreForegroundAnimation()
       return
     }
+
+    // Change opacity immediately. Wallpaper sampling only refines the text
+    // color and must not delay the surface transition.
+    foregroundAnimationEnabled = false
+    useTransparentForeground = true
+    transparent = true
+    restoreForegroundAnimation()
     scheduleTransparentForegroundRefresh()
   }
 
@@ -820,10 +905,7 @@ Item {
   }
 
   function scheduleTransparentForegroundRefresh() {
-    if (!requestedTransparent) {
-      transparentForeground = themeForeground
-      return
-    }
+    if (!requestedTransparent) return
     transparentForegroundTimer.restart()
   }
 
@@ -842,7 +924,10 @@ Item {
 
   onRequestedTransparentChanged: scheduleTransparentForegroundRefresh()
   onPositionChanged: scheduleTransparentForegroundRefresh()
-  onThemeForegroundChanged: scheduleTransparentForegroundRefresh()
+  onThemeForegroundChanged: {
+    if (!requestedTransparent) transparentForeground = themeForeground
+    scheduleTransparentForegroundRefresh()
+  }
   onThemeContrastForegroundChanged: scheduleTransparentForegroundRefresh()
 
   Timer {
