@@ -79,6 +79,7 @@ Item {
   // is closed; the panel binds peersWanted and forces a full fetch on open.
   property bool peersWanted: false
   property bool _statusFullPeers: false
+  property bool _pendingFullPeers: false
 
   function publishPeers(next) {
     var sig = JSON.stringify(next)
@@ -200,12 +201,17 @@ Item {
       _statusOutput = ""
       _statusError = ""
       refreshing = true
-      _statusFullPeers = fullPeers === true || peersWanted
+      _statusFullPeers = fullPeers === true || peersWanted || _pendingFullPeers
+      if (_statusFullPeers) _pendingFullPeers = false
       statusProcess.command = _statusFullPeers
         ? ["tailscale", "status", "--json"]
         : ["tailscale", "status", "--json", "--peers=false"]
       statusProcess.running = true
       launched = true
+    } else if ((fullPeers === true || peersWanted) && !_statusFullPeers) {
+      // A full-peer request arrived while a light poll is in flight; remember
+      // it so the panel is not left stale until the next periodic refresh.
+      _pendingFullPeers = true
     }
     if (!mullvadExitNodesProcess.running) {
       _mullvadExitNodesOutput = ""
@@ -535,6 +541,10 @@ Item {
       else {
         root.resetUnavailable("Disconnected")
         root.lastError = stderr.trim()
+      }
+      if (root._pendingFullPeers) {
+        root._pendingFullPeers = false
+        root.refreshStatusAndAccounts(false, true)
       }
     }
   }

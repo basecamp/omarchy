@@ -123,6 +123,9 @@ Panel {
 
   function openCopyMenuFor(peer, row) {
     if (!peer || copyOptionsFor(peer).length === 0) return
+    // The popup is shared across rows, so a cursor position left over from
+    // another machine's menu must not carry into this one.
+    if (!copyPeer || String(copyPeer.id || "") !== String(peer.id || "")) copyIndex = 0
     copyPeer = peer
     clampCopyIndex()
     var anchor = row || peerList
