@@ -57,6 +57,17 @@ hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
 
 On Dell XPS laptops with a haptic touchpad, you can also set the click strength to low, mid, or high under _Trigger > Hardware > Touchpad Haptics_.
 
+### Typing ç on US International
+
+On the US International layout (`kb_variant = "intl"`), `'` followed by `c` gives ć rather than ç, because that's what the system's compose table maps it to. If you write French, Portuguese, or Catalan, override it in `~/.XCompose`:
+
+```
+<dead_acute> <c> : "ç"
+<dead_acute> <C> : "Ç"
+```
+
+Then run `omarchy-restart-xcompose` to pick up the change.
+
 ### Typing in Chinese, Japanese, and other languages
 
 Omarchy runs the [fcitx5](https://fcitx-im.org/) input method framework as part of every session — it's what powers the CapsLock compose sequences. That means the plumbing for non-Latin input is already in place: install an input engine like `fcitx5-mozc` (Japanese) or `fcitx5-chinese-addons` (Chinese) with `omarchy pkg add`, plus `fcitx5-configtool` to add the engine to your input methods and set the key that switches between them.
