@@ -56,11 +56,12 @@ ShellRoot {
   property var shellConfig: builtinShellConfig
   property bool pluginReloading: false
   property bool pluginReloadPending: false
+  property bool pendingReloadKeepsFirstParty: true
 
   Timer {
     id: localPluginReloadTimer
     interval: 150
-    onTriggered: shell.reloadPlugins()
+    onTriggered: shell.reloadLocalPlugins()
   }
 
   onShellConfigChanged: {
@@ -345,12 +346,27 @@ ShellRoot {
     }
   }
 
-  function unloadPluginServices() {
+  function unloadPluginServices(keepFirstParty) {
+    var retained = ({})
     for (var existingId in _services) {
       var inst = _services[existingId]
+      var manifest = pluginRegistry && pluginRegistry.installedPlugins
+        ? pluginRegistry.installedPlugins[existingId] : null
+
+      // A local plugin edit must not tear down first-party infrastructure.
+      // In particular, destroying omarchy.lock while it owns ext-session-lock
+      // strands the compositor lock and can make Quickshell abort while the
+      // replacement service races to create lock surfaces. First-party code is
+      // package-owned and cannot have changed through the local plugin watcher,
+      // so keep those services alive across the rescan.
+      if (keepFirstParty && manifest && manifest.__isFirstParty) {
+        retained[existingId] = inst
+        continue
+      }
+
       if (inst && typeof inst.destroy === "function") inst.destroy()
     }
-    _services = ({})
+    _services = retained
   }
 
   Connections {
@@ -736,14 +752,20 @@ ShellRoot {
     pluginWidgetComponents = ({})
   }
 
-  function reloadPlugins() {
+  function reloadLocalPlugins() {
+    reloadPlugins(true)
+  }
+
+  function reloadPlugins(keepFirstParty) {
     if (shell.pluginReloading || shell.pluginRegistry.scanning) {
       shell.pluginReloadPending = true
+      shell.pendingReloadKeepsFirstParty = shell.pendingReloadKeepsFirstParty
+        && keepFirstParty === true
       return
     }
     shell.pluginReloading = true
     shell.unloadPanels()
-    shell.unloadPluginServices()
+    shell.unloadPluginServices(keepFirstParty === true)
     shell.unloadPluginWidgets()
     Qt.callLater(shell.finishPluginReload)
   }
@@ -766,9 +788,15 @@ ShellRoot {
     }
     function onScanFinished() {
       if (shell.pluginReloadPending) {
+        var keepFirstParty = shell.pendingReloadKeepsFirstParty
         shell.pluginReloadPending = false
+        shell.pendingReloadKeepsFirstParty = true
         shell.pluginReloading = false
-        Qt.callLater(shell.reloadPlugins)
+        if (keepFirstParty) {
+          Qt.callLater(shell.reloadLocalPlugins)
+        } else {
+          Qt.callLater(shell.reloadPlugins)
+        }
         return
       }
       shell.pluginReloading = false
