@@ -14,6 +14,7 @@ const lockQml = fs.readFileSync(path.join(root, 'shell/plugins/lock/LockView.qml
 const themeSwitcher = fs.readFileSync(path.join(root, 'bin/omarchy-theme-switcher'), 'utf8')
 const quattroUpgrade = fs.readFileSync(path.join(root, 'bin/omarchy-upgrade-to-quattro'), 'utf8')
 const multimediaMigration = fs.readFileSync(path.join(root, 'migrations/1786609204.sh'), 'utf8')
+const barTextColor = fs.readFileSync(path.join(root, 'bin/omarchy-bar-text-color'), 'utf8')
 
 assert(
   /function isVideoPath\(path\)[\s\S]*\.test\(String\(path \|\| ""\)\)/.test(utilQml) &&
@@ -39,6 +40,10 @@ assert(
     lockQml.includes('visible: !wallpaper.video') &&
     lockQml.includes('visible: wallpaper.video'),
   'lock screen bypasses its image effect for video output'
+)
+assert(
+  barTextColor.includes('magick "$background_path[0]"'),
+  'bar colour sampling reads one frame instead of decoding a whole video'
 )
 assert(themeSwitcher.includes("-iname '*.mp4'") && themeSwitcher.includes('mp4 m4v mov webm mkv avi'), 'theme switcher previews video-only themes')
 assert(quattroUpgrade.includes("-iname '*.mp4'"), 'Quattro upgrade can seed a video-only theme background')
