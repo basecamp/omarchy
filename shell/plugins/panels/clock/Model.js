@@ -43,10 +43,11 @@ var VERTICAL_CLOCK_FORMATS = [
 
 // Whether a format prints seconds, so the widget can tick once a second only
 // for the formats that show them. Quoted literals go first: the s in a 'Sat'
-// is text rather than a token.
+// is text rather than a token, and an opening quote with no closing one runs
+// to the end of the format the way Qt reads it.
 function clockNeedsSeconds(format) {
   var text = String(format === undefined || format === null ? "" : format)
-  return /s/.test(text.replace(/'[^']*'/g, ""))
+  return /s/.test(text.replace(/'[^']*'?/g, ""))
 }
 
 function clockFormats(vertical) {
