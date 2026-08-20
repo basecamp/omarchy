@@ -33,6 +33,6 @@ BarIndicator {
 
   onPressed: function() {
     if (!root.bar) return
-    root.bar.run("omarchy-voxtype-config")
+    root.bar.run("omarchy-voxtype-open-config")
   }
 }
