@@ -26,8 +26,10 @@ You can see all the main keyboard bindings with `Super + K` (Tmux bindings with 
 | `Super + Ctrl + Tab` | Jump to former workspace |
 | `Super + Shift + 1/2/3/4` | Move window to workspace |
 | `Super + Shift + Alt + 1/2/3/4` | Move window to workspace without following |
-| `Super + S` / `Super + Grave` | Toggle scratchpad |
-| `Super + Alt + S` / `Super + Shift + Grave` | Move window to scratchpad |
+| `Super + S` | Toggle full scratchpad |
+| `Super + Alt + S` | Move window to full scratchpad |
+| `Super + Grave` | Toggle Quake console |
+| `Super + Shift + Grave` | Move window to Quake console |
 | `Super + Shift + Alt + Arrows` | Move workspaces to directional monitor |
 | `Super + Arrow`  | Move focus to window in direction of arrow              |
 | `Super + Shift + Arrow`  | Swap window with another in direction of arrow     |

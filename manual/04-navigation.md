@@ -60,11 +60,11 @@ You can pop a window out of its workspace allocation with `Super + O`. That'll p
 
  ![navigation-popped-window](images/navigation-popped-window.webp)
 
-### Scratchpad workspace
+### Scratchpad workspaces
 
-Finally, there's a special scratchpad workspace that drops down over whatever workspace you're currently on, much like a Quake console. Toggle it with `Super + Grave` or `Super + S`, and place a window there using `Super + Shift + Grave` or `Super + Alt + S`.
+Finally, there are two special scratchpad workspaces that open over whatever workspace you're currently on. `Super + S` toggles a full-size scratchpad styled like a regular workspace, and `Super + Alt + S` places a window there.
 
-It works especially well for a terminal running an agent, or for controls you want to interact with quickly without leaving the current workspace. To move a window off the scratchpad, send it directly to another workspace with something like `Super + Shift + 1`.
+`Super + Grave` drops down a half-height Quake console seeded with your default agent, and `Super + Shift + Grave` places a window there. To move a window off either scratchpad, send it directly to another workspace with something like `Super + Shift + 1`.
 
 ### It takes some getting used to!
 
