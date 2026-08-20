@@ -145,6 +145,7 @@ assertDeepEqual(
   calendar.clockFormats(false),
   [
     'dddd HH:mm', 'dddd h:mm AP',
+    'dddd HH:mm:ss', 'dddd h:mm:ss AP',
     'HH:mm', 'h:mm AP',
     'ddd d MMM HH:mm', 'ddd d MMM h:mm AP',
     "d MMMM 'W'ww yyyy",
@@ -166,6 +167,16 @@ assertEqual(
 )
 assertEqual(calendar.isoWeekLiteral(2026, 0, 5), '02', 'clock zero-pads the ISO week token')
 
+// ---- seconds detection, which decides how often the widget's clock ticks
+assert(calendar.clockNeedsSeconds('dddd HH:mm:ss'), 'clock sees seconds in the live preset')
+assert(calendar.clockNeedsSeconds('h:mm:ss AP'), 'clock sees seconds in an AM/PM format')
+assert(!calendar.clockNeedsSeconds('dddd HH:mm'), 'clock sees no seconds in a minute format')
+assert(!calendar.clockNeedsSeconds("d MMMM 'W'ww yyyy"), 'clock sees no seconds in the long date format')
+assert(!calendar.clockNeedsSeconds("dd\nMMM\n'W'ww\n''yy"), 'clock sees no seconds in the stacked date format')
+assert(!calendar.clockNeedsSeconds("HH:mm 'since'"), 'clock reads an s inside a quoted literal as text')
+assert(!calendar.clockNeedsSeconds(''), 'clock sees no seconds in an empty format')
+assert(!calendar.clockNeedsSeconds(null), 'clock sees no seconds in a missing format')
+
 // ---- widget wiring
 assert(/moduleName: "omarchy\.clock"/.test(panelSource), 'calendar panel declares its module name')
 assert(/ipcTarget: "omarchy\.clock"/.test(panelSource), 'calendar panel registers its IPC target')
@@ -173,6 +184,7 @@ assert(/manageIpc: false/.test(panelSource), 'calendar panel leaves the IPC targ
 assert(/anchorItem: root\.anchorItem/.test(panelSource), 'calendar panel anchors to the host widget button')
 assert(/function toggleWeekStart\(\)/.test(panelSource), 'calendar panel exposes a week start toggle')
 assert(/function toggleWeekStart\(\): void \{ root\.toggleWeekStart\(\) \}/.test(widgetSource), 'clock exposes the week start toggle over IPC')
+assert(/precision: root\.showsSeconds \? SystemClock\.Seconds : SystemClock\.Minutes/.test(widgetSource), 'clock ticks per second only for a format that prints seconds')
 assert(/setting\("weekStartDay", null\)/.test(panelSource) && /persistSettings\(\{ weekStartDay:/.test(panelSource), 'calendar reads and writes the week start as weekStartDay')
 assert(/updateEntryInline/.test(panelSource), 'calendar panel persists the week start to shell.json')
 assert(/function moveMonth\(delta\)/.test(panelSource), 'calendar panel steps between months')

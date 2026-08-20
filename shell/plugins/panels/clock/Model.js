@@ -21,6 +21,8 @@ var WEEKDAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "fr
 var CLOCK_FORMATS = [
   "dddd HH:mm",
   "dddd h:mm AP",
+  "dddd HH:mm:ss",
+  "dddd h:mm:ss AP",
   "HH:mm",
   "h:mm AP",
   "ddd d MMM HH:mm",
@@ -38,6 +40,14 @@ var VERTICAL_CLOCK_FORMATS = [
   "dd\nMMM\n'W'ww\n''yy",
   "HH\nmm"
 ]
+
+// Whether a format prints seconds, so the widget can tick once a second only
+// for the formats that show them. Quoted literals go first: the s in a 'Sat'
+// is text rather than a token.
+function clockNeedsSeconds(format) {
+  var text = String(format === undefined || format === null ? "" : format)
+  return /s/.test(text.replace(/'[^']*'/g, ""))
+}
 
 function clockFormats(vertical) {
   return vertical ? VERTICAL_CLOCK_FORMATS.slice() : CLOCK_FORMATS.slice()
@@ -289,6 +299,7 @@ if (typeof module !== "undefined") {
     monthGrid: monthGrid,
     stepMonth: stepMonth,
     clockFormats: clockFormats,
+    clockNeedsSeconds: clockNeedsSeconds,
     clockFormatRing: clockFormatRing,
     nextClockFormat: nextClockFormat,
     isoWeekLiteral: isoWeekLiteral
