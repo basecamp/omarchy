@@ -7,12 +7,30 @@ omarchy_i18n_load() {
   [[ $OMARCHY_TRANSLATIONS_LOADED == "false" ]] || return 0
   OMARCHY_TRANSLATIONS_LOADED="true"
 
-  local locale="${LANGUAGE:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}"
-  locale="${locale%%:*}"
-  locale="${locale%%.*}"
-  locale="${locale%%@*}"
-  locale="${locale%%_*}"
-  locale="${locale%%-*}"
+  local raw="${LANGUAGE:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}"
+  local -a candidates=()
+  if [[ -n $LANGUAGE ]]; then
+    IFS=':' read -ra candidates <<<"$raw"
+  else
+    candidates=("$raw")
+  fi
+
+  # LANGUAGE is an ordered preference list. Walk it until we find a supported
+  # translation or hit "en", the untranslated source language -- a
+  # lower-priority catalog must not override the language actually requested.
+  local candidate normalized locale=""
+  for candidate in "${candidates[@]}"; do
+    normalized="${candidate%%.*}"
+    normalized="${normalized%%@*}"
+    normalized="${normalized%%_*}"
+    normalized="${normalized%%-*}"
+    [[ -n $normalized ]] || continue
+    [[ $normalized == "en" ]] && return 0
+    if [[ $normalized == "es" ]]; then
+      locale="es"
+      break
+    fi
+  done
   [[ $locale == "es" ]] || return 0
 
   local catalog="$OMARCHY_PATH/shell/translations/es.json"

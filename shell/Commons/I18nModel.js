@@ -28,7 +28,12 @@ function selectCatalog(environment, available) {
   var catalogs = Array.isArray(available) ? available : []
   var candidates = localeCandidates(environment)
   for (var i = 0; i < candidates.length; i++) {
-    if (catalogs.indexOf(candidates[i]) !== -1) return candidates[i]
+    var candidate = candidates[i]
+    // "en" is the untranslated source language, not a catalog. Once it is
+    // reached in the preference order, stop rather than let a lower-priority
+    // language override the language the caller actually asked for.
+    if (candidate === "en") return ""
+    if (catalogs.indexOf(candidate) !== -1) return candidate
   }
   return ""
 }
@@ -36,7 +41,9 @@ function selectCatalog(environment, available) {
 function interpolate(value, args) {
   var output = String(value === undefined || value === null ? "" : value)
   var values = Array.isArray(args) ? args : []
-  for (var i = 0; i < values.length; i++) {
+  // Replace higher indices first so "%1" can't consume the leading digit of
+  // "%10", "%11", etc. before those placeholders get their turn.
+  for (var i = values.length - 1; i >= 0; i--) {
     output = output.split("%" + (i + 1)).join(String(values[i]))
   }
   return output

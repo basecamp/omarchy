@@ -9,8 +9,12 @@ TMPDIRS=()
 export PATH="$ROOT/bin:$PATH"
 
 # English-output assertions assume this; Spanish tests override LANGUAGE/LANG per call.
+# LC_ALL and LC_MESSAGES outrank LANG in the translation lookup, so an inherited
+# value (e.g. a host set up in Spanish) must be cleared too, not just LANG.
 export LANG=C
 export LANGUAGE=
+export LC_ALL=
+export LC_MESSAGES=
 
 # Assigns a fresh temporary directory to the named variable and registers it for
 # removal on exit, so every scratch directory this suite makes is cleaned up.

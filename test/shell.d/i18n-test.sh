@@ -49,6 +49,17 @@ for (const file of qmlFiles) {
   }
 }
 pass('Spanish catalog covers every static QML translation key')
+
+const binFiles = fs.readdirSync(path.join(root, 'bin')).map((name) => path.join(root, 'bin', name))
+for (const file of binFiles) {
+  if (!fs.statSync(file).isFile()) continue
+  const source = fs.readFileSync(file, 'utf8')
+  for (const match of source.matchAll(/\bomarchy_t "([^"$]*)"/g)) {
+    const key = match[1]
+    assert(Object.prototype.hasOwnProperty.call(catalog, key), 'Spanish catalog includes: ' + key + ' (' + path.relative(root, file) + ')')
+  }
+}
+pass('Spanish catalog covers every static Bash translation key')
 JS
 
 grep -q '^singleton I18n 1.0 I18n.qml$' "$ROOT/shell/Commons/qmldir" || fail "I18n singleton is exported"
