@@ -420,6 +420,11 @@ Item {
     interval: root.blankTimeoutSeconds * 1000
     repeat: false
     property double armedAt: 0
+    // A hot-reloaded timeout restarts the countdown from zero, so the arming
+    // timestamp has to move with it. Left behind, it reads to the guard below
+    // as a suspend gap, and the lock screen stays lit for another full
+    // interval after the edit.
+    onIntervalChanged: if (running) root.armBlankTimer()
     onTriggered: {
       // A countdown frozen by suspend fires right after resume, which would
       // blank the freshly woken unlock screen under the user. Wall-clock time

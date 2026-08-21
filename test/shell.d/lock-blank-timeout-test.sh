@@ -31,6 +31,13 @@ assert(
   /id: idleBlankTimer\s*interval: root\.blankTimeoutSeconds \* 1000/.test(serviceQml),
   'the blank timer takes its interval from the configured timeout'
 )
+
+// Qt restarts a running timer's countdown when the interval changes. Leaving
+// `armedAt` behind makes the next trigger read the edit as a suspend gap.
+assert(
+  /onIntervalChanged: if \(running\) root\.armBlankTimer\(\)/.test(serviceQml),
+  'an edited timeout re-arms the blank timer instead of tripping the suspend guard'
+)
 JS
 
 jq -e '.idle.blank == 5' "$ROOT/config/omarchy/shell.json" >/dev/null
