@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Cursor">
+  <path fill="#EDECEC" d="M32 32h192v192H32z"/>
+  <path fill="#14120B" d="M56 56h144v144H56z"/>
+  <path fill="#F54E00" d="M72 72h48v48H72z"/>
+  <path fill="#EDECEC" d="M136 72h48v48h-48z"/>
+  <path fill="#14120B" d="M72 136h48v48H72z"/>
+  <path fill="#F54E00" d="M136 136h48v48h-48z"/>
+</svg>

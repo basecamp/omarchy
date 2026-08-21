@@ -55,6 +55,7 @@ light surfaces — and the bar glyph stands in when there is none.
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `cursor` | Cursor dashboard billing cycle (included spend, auto/API pools) | `~/.config/cursor/auth.json` session token + dashboard API; agent CLI transcripts under `~/.cursor/projects/*/agent-transcripts/` |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
@@ -62,7 +63,9 @@ falls back to local stats only. A non-default Claude directory is honored via
 `FIREWORKS_API_KEY` and `FIREWORKS_ACCOUNT_ID` first, then
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
-signed in there.
+signed in there. Cursor reads `~/.config/cursor/auth.json` (written by the
+IDE or `agent` CLI). Override with `CURSOR_AUTH_PATH`, `CURSOR_CONFIG_DIR`,
+or `CURSOR_PROJECTS_DIR` for the transcript scan root.
 
 ### Fireworks balance
 
@@ -128,7 +131,8 @@ edit `shell.json` directly):
 omarchy bar set omarchy.agents providers '{
   "claude": { "enabled": true },
   "codex": { "enabled": false },
-  "fireworks": { "enabled": true }
+  "fireworks": { "enabled": true },
+  "cursor": { "enabled": true }
 }' --json
 ```
 

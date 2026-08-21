@@ -1,0 +1,387 @@
+#!/usr/bin/env python3
+# omarchy:summary=Print the Cursor agent usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Cursor agent usage into one display-ready JSON record.
+
+Billing limits and per-model totals come from Cursor's dashboard API
+(api2.cursor.sh). Local prompt/session stats come from agent CLI
+transcripts under ~/.cursor/projects/*/agent-transcripts/.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import os
+import re
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "cursor"
+AGENT_NAME = "Cursor"
+AUTH_HELP = "Sign in to Cursor (IDE or `agent`) to restore usage data."
+API_BASE = os.environ.get("CURSOR_API_ENDPOINT", "https://api2.cursor.sh").rstrip("/")
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+TIMESTAMP_RE = re.compile(
+  r"<timestamp>\s*([A-Za-z]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4},\s+\d{1,2}:\d{2}\s+[AP]M\s+\([^)]+\))\s*</timestamp>"
+)
+
+
+def number(value: Any) -> int:
+  try:
+    n = float(value or 0)
+    return round(n) if n == n else 0
+  except Exception:
+    return 0
+
+
+def cents_to_dollars(value: Any) -> float:
+  return round(number(value) / 100.0, 2)
+
+
+def date_string(value: dt.date) -> str:
+  return value.strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = dt.datetime.now().date()
+  return [date_string(today - dt.timedelta(days=offset)) for offset in range(6, -1, -1)]
+
+
+def local_date_string() -> str:
+  return date_string(dt.datetime.now().date())
+
+
+def cache_root() -> Path:
+  root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def auth_paths() -> list[Path]:
+  paths: list[Path] = []
+  if os.environ.get("CURSOR_AUTH_PATH"):
+    paths.append(Path(os.path.expanduser(os.environ["CURSOR_AUTH_PATH"])))
+  if os.environ.get("CURSOR_CONFIG_DIR"):
+    paths.append(Path(os.path.expanduser(os.environ["CURSOR_CONFIG_DIR"])) / "auth.json")
+  home = Path.home()
+  paths.extend(
+    [
+      home / ".config" / "cursor" / "auth.json",
+      home / ".config" / "Cursor" / "auth.json",
+    ]
+  )
+  return paths
+
+
+def load_access_token() -> str | None:
+  for path in auth_paths():
+    if not path.is_file():
+      continue
+    try:
+      payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+      continue
+    token = payload.get("accessToken") or payload.get("refreshToken")
+    if token:
+      return str(token)
+  return None
+
+
+def agent_transcript_root() -> Path:
+  if os.environ.get("CURSOR_PROJECTS_DIR"):
+    return Path(os.path.expanduser(os.environ["CURSOR_PROJECTS_DIR"]))
+  return Path.home() / ".cursor" / "projects"
+
+
+def parse_transcript_day(text: str, fallback_mtime: float) -> str:
+  match = TIMESTAMP_RE.search(text)
+  if match:
+    raw = match.group(1)
+    for fmt in ("%A, %B %d, %Y, %I:%M %p (UTC)", "%A, %b %d, %Y, %I:%M %p (UTC)"):
+      try:
+        parsed = dt.datetime.strptime(raw, fmt).replace(tzinfo=dt.timezone.utc)
+        return date_string(parsed.date())
+      except Exception:
+        continue
+  return date_string(dt.datetime.fromtimestamp(fallback_mtime).date())
+
+
+def empty_stats() -> dict[str, Any]:
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_date_strings()}
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": list(recent.values()),
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  }
+
+
+def scan_transcripts() -> dict[str, Any]:
+  root = agent_transcript_root()
+  stats = empty_stats()
+  if not root.is_dir():
+    return stats
+
+  today = local_date_string()
+  recent_map = {entry["date"]: entry for entry in stats["recentDays"]}
+  active_dates: set[str] = set()
+  sessions: set[str] = set()
+  today_sessions: set[str] = set()
+  prompts = 0
+  today_prompts = 0
+
+  for path in root.glob("*/agent-transcripts/*/*.jsonl"):
+    try:
+      mtime = path.stat().st_mtime
+      session_key = str(path)
+      sessions.add(session_key)
+      with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+          if '"role":"user"' not in line and '"role": "user"' not in line:
+            continue
+          try:
+            entry = json.loads(line)
+          except Exception:
+            continue
+          if entry.get("role") != "user":
+            continue
+          day = parse_transcript_day(line, mtime)
+          active_dates.add(day)
+          prompts += 1
+          if day == today:
+            today_prompts += 1
+            today_sessions.add(session_key)
+          if day in recent_map:
+            recent_map[day]["messageCount"] += 1
+    except Exception:
+      continue
+
+  stats["todayPrompts"] = today_prompts
+  stats["todaySessions"] = len(today_sessions)
+  stats["totalPrompts"] = prompts
+  stats["totalSessions"] = len(sessions)
+  stats["activeDays"] = len(active_dates)
+  stats["activeDates"] = sorted(active_dates)
+  stats["recentDays"] = [recent_map[day] for day in recent_date_strings()]
+  return stats
+
+
+def cache_key(prefix: str, *parts: str) -> Path:
+  digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+  return cache_root() / f"{prefix}-{digest}.json"
+
+
+def cached_scan(max_age_seconds: float) -> dict[str, Any]:
+  key = cache_key("cursor-scan", str(agent_transcript_root()))
+  if max_age_seconds > 0 and key.is_file():
+    age = time.time() - key.stat().st_mtime
+    if age <= max_age_seconds:
+      try:
+        return json.loads(key.read_text(encoding="utf-8"))
+      except Exception:
+        pass
+  stats = scan_transcripts()
+  tmp = key.with_suffix(".tmp")
+  tmp.write_text(json.dumps(stats, separators=(",", ":")), encoding="utf-8")
+  tmp.replace(key)
+  return stats
+
+
+def dashboard_request(token: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+  payload = json.dumps(body or {}).encode("utf-8")
+  request = urllib.request.Request(
+    f"{API_BASE}{path}",
+    data=payload,
+    headers={
+      "Authorization": f"Bearer {token}",
+      "Content-Type": "application/json",
+      "Connect-Protocol-Version": "1",
+    },
+    method="POST",
+  )
+  with urllib.request.urlopen(request, timeout=12) as response:
+    return json.loads(response.read().decode("utf-8"))
+
+
+def ms_to_iso(value: Any) -> str:
+  if value in (None, ""):
+    return ""
+  try:
+    ms = int(str(value))
+  except Exception:
+    return ""
+  return dt.datetime.fromtimestamp(ms / 1000, tz=dt.timezone.utc).isoformat()
+
+
+def collect_limits(token: str) -> dict[str, Any]:
+  result = {
+    "limits": [],
+    "tierLabel": "",
+    "usageStatusText": "",
+    "authHelpText": AUTH_HELP,
+    "scope": "account",
+  }
+  try:
+    usage = dashboard_request(token, "/aiserver.v1.DashboardService/GetCurrentPeriodUsage")
+    plan = dashboard_request(token, "/aiserver.v1.DashboardService/GetPlanInfo")
+  except urllib.error.HTTPError as error:
+    if error.code in (401, 403):
+      result["usageStatusText"] = "Sign-in expired"
+      result["authHelpText"] = "Open Cursor and sign in again, or run `agent about` to verify your session."
+    else:
+      result["usageStatusText"] = "Cursor limits unavailable"
+      result["authHelpText"] = f"HTTP {error.code}"
+    result["retryAdvised"] = True
+    return result
+  except Exception as error:
+    result["usageStatusText"] = "Cursor limits unavailable"
+    result["authHelpText"] = str(error)
+    result["retryAdvised"] = True
+    return result
+
+  plan_info = (plan.get("planInfo") or {}) if isinstance(plan, dict) else {}
+  plan_usage = (usage.get("planUsage") or {}) if isinstance(usage, dict) else {}
+  tier = str(plan_info.get("planName") or "").strip()
+  price = str(plan_info.get("price") or "").strip()
+  if tier and price:
+    result["tierLabel"] = f"{tier} ({price})"
+  elif tier:
+    result["tierLabel"] = tier
+  elif price:
+    result["tierLabel"] = price
+
+  reset_at = ms_to_iso(usage.get("billingCycleEnd"))
+  # usageStatusText makes the panel's status card visible and that card shows
+  # authHelpText — reserve both fields for auth problems, not billing copy.
+  result["usageStatusText"] = ""
+  result["authHelpText"] = ""
+
+  total_percent = float(plan_usage.get("totalPercentUsed") or 0) / 100.0
+  auto_percent = float(plan_usage.get("autoPercentUsed") or 0) / 100.0
+  api_percent = float(plan_usage.get("apiPercentUsed") or 0) / 100.0
+
+  if total_percent >= 0:
+    result["limits"].append(
+      {
+        "label": "Billing cycle",
+        "percent": min(max(total_percent, 0.0), 1.0),
+        "resetsAt": reset_at,
+      }
+    )
+  if auto_percent > 0:
+    result["limits"].append(
+      {
+        "label": "Auto models",
+        "title": "Auto models",
+        "percent": min(max(auto_percent, 0.0), 1.0),
+        "resetsAt": reset_at,
+      }
+    )
+  if api_percent > 0:
+    result["limits"].append(
+      {
+        "label": "API models",
+        "title": "API models",
+        "percent": min(max(api_percent, 0.0), 1.0),
+        "resetsAt": reset_at,
+      }
+    )
+
+  limit_cents = number(plan_usage.get("limit"))
+  remaining_cents = number(plan_usage.get("remaining"))
+  spent_cents = number(plan_usage.get("totalSpend") or plan_usage.get("includedSpend"))
+  if limit_cents > 0:
+    result["balance"] = {
+      "remaining": cents_to_dollars(remaining_cents),
+      "funded": cents_to_dollars(limit_cents),
+      "spent": cents_to_dollars(spent_cents),
+      "currency": "USD",
+      "estimated": False,
+    }
+
+  return result
+
+
+def collect_model_usage(token: str) -> dict[str, dict[str, int]]:
+  try:
+    payload = dashboard_request(token, "/aiserver.v1.DashboardService/GetAggregatedUsageEvents")
+  except Exception:
+    return {}
+
+  usage: dict[str, dict[str, int]] = {}
+  for row in payload.get("aggregations") or []:
+    model = str(row.get("modelIntent") or "cursor").strip() or "cursor"
+    bucket = usage.setdefault(
+      model,
+      {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0,
+      },
+    )
+    bucket["inputTokens"] += number(row.get("inputTokens"))
+    bucket["outputTokens"] += number(row.get("outputTokens"))
+    bucket["cacheReadInputTokens"] += number(row.get("cacheReadTokens"))
+    bucket["cacheCreationInputTokens"] += number(row.get("cacheWriteTokens"))
+  return usage
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  args = parser.parse_args()
+
+  max_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else SCAN_REUSE_SECONDS)
+  stats = cached_scan(max_age)
+
+  token = load_access_token()
+  limits = {
+    "limits": [],
+    "tierLabel": "",
+    "usageStatusText": "Not signed in",
+    "authHelpText": AUTH_HELP,
+    "retryAdvised": True,
+  }
+  model_usage: dict[str, dict[str, int]] = {}
+
+  if token:
+    limits = collect_limits(token)
+    if not args.limits_only:
+      model_usage = collect_model_usage(token)
+
+  if model_usage:
+    stats["modelUsage"] = model_usage
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+    "ready": number(stats.get("totalPrompts")) > 0 or len(limits.get("limits") or []) > 0,
+    "hasLocalStats": True,
+    "hasPromptStats": True,
+  }
+  record.update(stats)
+  record.update(limits)
+  print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
