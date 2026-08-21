@@ -5,9 +5,10 @@
 """Collect Codex usage into one display-ready JSON record.
 
 Local stats come from native Codex CLI session files, pi/omp sessions that
-ran through openai-codex, and opencode sessions that ran on an OpenAI
-provider; rate limits and the plan come from the Codex app-server RPC. The agents
-panel only ever reads the JSON this prints.
+ran through openai-codex, and opencode sessions (classic and v2) that ran on
+an OpenAI provider within the last 30 days; rate limits and the plan come
+from the Codex app-server RPC. The agents panel only ever reads the JSON
+this prints.
 """
 
 import argparse
@@ -36,6 +37,13 @@ AUTH_HELP = "Run `codex login` to authenticate."
 # may reuse a scan for up to 15 minutes.
 SCAN_REUSE_SECONDS = 20
 LIMITS_ONLY_REUSE_SECONDS = 900
+LOCAL_STATS_CACHE_SCHEMA_VERSION = 2
+
+# A month is the horizon every local source is windowed to: older usage is
+# history, not subscription burn, and the panel never shows it. Native Codex
+# session files are picked by mtime against this cutoff; the opencode
+# database skips older messages in SQL before their blobs are ever parsed.
+SCAN_WINDOW_SECONDS = 30 * 24 * 60 * 60
 
 
 def local_day(value):
@@ -205,16 +213,24 @@ def scan_pi_sessions():
       proc.kill()
 
 
+def opencode_db_path():
+  return Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
+
+
 def scan_opencode_sessions():
   # A subscription burned entirely through opencode leaves no native session
   # files, but opencode records per-message provider, model, and token usage
   # in its own database. Read-only: opencode may be writing right now.
+  # Only the trailing month is read: time_created is an indexed column, so
+  # months of unrelated providers (deepseek, opencode-go, github-copilot,
+  # ...) are skipped in SQL instead of paying to parse their blobs.
   # Returns whether the scan ran to completion: a scan cut short by a
   # database error still contributes what it read, but must not be cached
   # as if it were the whole story.
-  db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
+  db = opencode_db_path()
   if not db.is_file():
     return True
+  cutoff_ms = int((time.time() - SCAN_WINDOW_SECONDS) * 1000)
   try:
     conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
   except sqlite3.Error:
@@ -245,10 +261,12 @@ def scan_opencode_sessions():
     #     but fail json.loads.
     for session_id, raw in conn.execute(
       "SELECT session_id, data FROM message"
-      " WHERE data LIKE '%\"role\"%:%\"assistant\"%'"
+      " WHERE time_created >= ?"
+      " AND data LIKE '%\"role\"%:%\"assistant\"%'"
       " AND data LIKE '%\"providerID\"%:%\"openai\"%'"
       " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.role') END = 'assistant'"
-      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.providerID') END = 'openai'"
+      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.providerID') END = 'openai'",
+      (cutoff_ms,),
     ):
       # One malformed row must not abort the scan, so every shape assumption
       # lives inside the try.
@@ -283,11 +301,75 @@ def scan_opencode_sessions():
   return True
 
 
+def scan_opencode_v2_sessions():
+  # OpenCode v2 writes its messages to session_message (keyed to session_v2)
+  # in the same database; the classic message table never sees them, so a
+  # subscription burned through v2 on an OpenAI provider is invisible without
+  # this scan. Same trailing-month window, same exact provider match.
+  # Returns whether the scan ran to completion, like the classic scan.
+  db = opencode_db_path()
+  if not db.is_file():
+    return True
+  try:
+    conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+  except sqlite3.Error:
+    return False
+  try:
+    conn.execute("PRAGMA query_only = ON")
+    # Machines whose opencode predates v2 have no session_message table:
+    # nothing to read is a complete scan, not an interrupted one, or the
+    # zero snapshot would disable caching until opencode upgrades.
+    if not conn.execute(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_message'"
+    ).fetchone():
+      return True
+    cutoff_ms = int((time.time() - SCAN_WINDOW_SECONDS) * 1000)
+    for session_id, raw in conn.execute(
+      "SELECT session_id, data FROM session_message"
+      " WHERE time_created >= ?"
+      " AND type = 'assistant'"
+      " AND data LIKE '%\"providerID\"%:%\"openai\"%'"
+      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.model.providerID') END = 'openai'",
+      (cutoff_ms,),
+    ):
+      # One malformed row must not abort the scan, so every shape assumption
+      # lives inside the try.
+      try:
+        entry = json.loads(raw)
+        if not isinstance(entry, dict):
+          continue
+        # Exact match, like the classic scan: v2 nests the model object, and
+        # ids are free-form ("opencode" routing a GPT model is not this
+        # subscription).
+        model = entry.get("model") or {}
+        if str(model.get("providerID") or "") != "openai":
+          continue
+        tokens = entry.get("tokens") or {}
+        cache = tokens.get("cache") or {}
+        input_tokens = number(tokens.get("input"))
+        # opencode keeps thinking tokens out of output; both are generated.
+        output_tokens = number(tokens.get("output")) + number(tokens.get("reasoning"))
+        cache_read = number(cache.get("read"))
+        cache_write = number(cache.get("write"))
+        if not (input_tokens or output_tokens or cache_read or cache_write):
+          continue
+        day = local_day((entry.get("time") or {}).get("created"))
+        name = model_name(str(model.get("id") or ""))
+      except Exception:
+        continue
+      add_usage(day, "opencode-v2:" + str(session_id), name, input_tokens, output_tokens, cache_read, cache_write)
+  except sqlite3.Error:
+    return False
+  finally:
+    conn.close()
+  return True
+
+
 def scan_native_codex_sessions():
   codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
   roots = [codex_home / "sessions", codex_home / "archived_sessions"]
   files = []
-  cutoff = time.time() - 30 * 24 * 60 * 60
+  cutoff = time.time() - SCAN_WINDOW_SECONDS
   for root in roots:
     if not root.exists():
       continue
@@ -391,7 +473,7 @@ def write_json(path, payload):
 # of a crash or a garbage record.
 def read_cached_stats(cache_file, max_age_seconds):
   cached = read_fresh_json(cache_file, max_age_seconds)
-  if not isinstance(cached, dict) or cached.get("schemaVersion") != 1:
+  if not isinstance(cached, dict) or cached.get("schemaVersion") != LOCAL_STATS_CACHE_SCHEMA_VERSION:
     return None
   # today* fields only mean "today" on the day they were scanned. A cache
   # from another local date (midnight passed, or the clock moved) is a miss,
@@ -408,7 +490,7 @@ def read_cached_stats(cache_file, max_age_seconds):
 
 def write_cached_stats(cache_file, stats):
   try:
-    write_json(cache_file, {"schemaVersion": 1, "scanDate": today, "stats": stats})
+    write_json(cache_file, {"schemaVersion": LOCAL_STATS_CACHE_SCHEMA_VERSION, "scanDate": today, "stats": stats})
   except Exception as exc:
     print(f"omarchy-agent-usage-codex: could not write usage cache ({exc})", file=sys.stderr)
 
@@ -436,6 +518,8 @@ def run_local_scans():
   scan_pi_sessions()
   scan_native_codex_sessions()
   complete = scan_opencode_sessions()
+  if not scan_opencode_v2_sessions():
+    complete = False
   return local_stats(), complete
 
 
