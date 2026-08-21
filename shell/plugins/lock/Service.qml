@@ -156,7 +156,7 @@ Item {
     idleBlankTimer.stop()
     sessionLock.locked = false
     logEvent("unlocked")
-    runWake()
+    forceWake()
   }
 
   function armBlankTimer() {
@@ -164,13 +164,23 @@ Item {
     idleBlankTimer.restart()
   }
 
+  // Pointer motion calls this at input rate, so coalesce. The reused Process
+  // this replaced coalesced too, until a child that never exited pinned it.
   function runWake() {
-    if (!wakeProcess.running) wakeProcess.running = true
+    if (!wakeCoalesceTimer.running) forceWake()
     if (lockRequested) armBlankTimer()
   }
 
+  // Unlock gets no second chance: the surface is gone, so no later input can
+  // ask again for a wake the coalescing window swallowed.
+  function forceWake() {
+    wakeCoalesceTimer.restart()
+    Quickshell.execDetached(["bash", "-c", "omarchy-system-wake"])
+  }
+
   function runBlank() {
-    if (!blankProcess.running) blankProcess.running = true
+    logEvent("blank-requested")
+    Quickshell.execDetached(["bash", "-c", "omarchy-brightness-keyboard off; omarchy-brightness-display off"])
   }
 
   function submitPassword(value) {
@@ -257,7 +267,7 @@ Item {
         sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
         root.resetAuthenticationState()
-        root.runWake()
+        root.forceWake()
       }
     }
 
@@ -401,14 +411,10 @@ Item {
     }
   }
 
-  Process {
-    id: wakeProcess
-    command: ["bash", "-c", "omarchy-system-wake"]
-  }
-
-  Process {
-    id: blankProcess
-    command: ["bash", "-c", "omarchy-brightness-keyboard off; omarchy-brightness-display off"]
+  Timer {
+    id: wakeCoalesceTimer
+    interval: 1000
+    repeat: false
   }
 
   Timer {
