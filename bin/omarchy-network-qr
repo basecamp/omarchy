@@ -22,7 +22,7 @@ if [[ -z $interface ]]; then
   # menu's visibility gate describe. Fall back to the first connected Wi-Fi
   # device. nmcli localizes state names, so pin the locale, and the prefix
   # match accepts states like "connected (externally)".
-  route_device=$(ip route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
+  route_device=$(ip route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }' || true)
   if [[ -n $route_device && -d /sys/class/net/$route_device/wireless ]]; then
     interface=$route_device
   else
