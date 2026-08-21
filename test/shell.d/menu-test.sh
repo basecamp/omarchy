@@ -136,6 +136,7 @@ const rankBase = menu.mergeMenuSources(defaultItems, [])
 const ranked = menu.mergeAppRows(rankBase.items, rankBase.itemOrder, [
   { id: 'apps.brave', parent: 'apps', kind: 'app', label: 'Brave', description: '', aliases: [] },
   { id: 'apps.fontforge', parent: 'apps', kind: 'app', label: 'FontForge', description: '', aliases: [] },
+  { id: 'apps.rustdesk', parent: 'apps', kind: 'app', label: 'RustDesk', description: '', aliases: [] },
   { id: 'apps.zen', parent: 'apps', kind: 'app', label: 'Zen Browser', description: '', aliases: [] }
 ])
 const rankScore = (id, query) => menu.searchScore(ranked.items, ranked.items[id], query)
@@ -154,6 +155,10 @@ assert(
 assert(
   rankScore('style.font', 'font') < rankScore('apps.fontforge', 'font'),
   'menu keeps a better-matching menu entry above a weaker app match'
+)
+assert(
+  rankScore('apps.rustdesk', 'rust') < rankScore('remove.development.rust', 'rust'),
+  'menu keeps a destructive exact match below an app prefix match'
 )
 
 // Routing: htop ships `Keywords=system;...`, which app rows carry as aliases.

@@ -355,6 +355,9 @@ function searchScore(items, entry, query) {
   else if (descriptionTextMatches(needle, descriptionText)) score = 60
 
   if (entry.kind === "menu" || entry.kind === "link") score -= 2
+  // Global search should not put destructive package actions above apps that
+  // begin with the query (for example, Remove > Rust above RustDesk).
+  if (entry.id.indexOf("install.") === 0 || entry.id.indexOf("remove.") === 0) score += 20
   // App rows sort after all menu items, so they lose the tiebreak below to an
   // equal match. Outrank those, but stay inside the tier so better ones win.
   if (entry.kind === "app") score -= 5
