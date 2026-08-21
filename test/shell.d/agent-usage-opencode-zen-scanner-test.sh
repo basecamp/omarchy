@@ -14,7 +14,7 @@ empty=$(HOME="$TEST_HOME" XDG_DATA_HOME="$TEST_HOME/.local/share" XDG_CACHE_HOME
   "$ROOT/bin/omarchy-agent-usage-opencode-zen")
 
 [[ $(jq -r '.id + ":" + (.ready | tostring) + ":" + .name + ":" + .tierLabel' <<<"$empty") == \
-  "opencode-zen:false:OpenCode:Zen" ]] ||
+  "opencode-zen:false:OpenCode Zen:Zen" ]] ||
   fail "OpenCode Zen collector prints a valid record without a database" "$empty"
 pass "OpenCode Zen collector prints a valid record without a database"
 
@@ -161,7 +161,7 @@ PY
 )
 
 [[ $(jq -c '.record' <<<"$result") == \
-  '{"schemaVersion":1,"id":"opencode-zen","name":"OpenCode","ready":true,"hasLocalStats":true,"scope":"device","hasPromptStats":true,"tierLabel":"Zen","usageStatusText":"","authHelpText":"","limits":[]}' ]] ||
+  '{"schemaVersion":1,"id":"opencode-zen","name":"OpenCode Zen","ready":true,"hasLocalStats":true,"scope":"device","hasPromptStats":true,"tierLabel":"Zen","usageStatusText":"","authHelpText":"","limits":[]}' ]] ||
   fail "OpenCode Zen collector follows the display record contract" "$result"
 pass "OpenCode Zen collector follows the display record contract"
 
