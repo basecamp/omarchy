@@ -791,7 +791,7 @@ Panel {
 
               Text {
                 id: outputMuteGlyph
-                text: root.outputMuted ? "" : "󰓃"
+                text: root.hasOutput && !root.outputMuted ? "󰓃" : ""
                 color: root.bar.foreground
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.title
@@ -820,7 +820,7 @@ Panel {
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.caption
                 font.bold: true
-                anchors.right: outputMuteSwitch.left
+                anchors.right: root.hasOutput ? outputMuteSwitch.left : parent.right
                 anchors.rightMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
                 opacity: root.outputMuted ? 0.5 : 1.0
@@ -831,6 +831,7 @@ Panel {
               ToggleSwitch {
                 id: outputMuteSwitch
                 checked: root.hasOutput && !root.outputMuted
+                visible: root.hasOutput
                 foreground: root.bar.foreground
                 anchors.right: parent.right
                 anchors.rightMargin: Style.space(6)
@@ -910,7 +911,7 @@ Panel {
 
               Text {
                 id: inputMuteGlyph
-                text: root.inputMuted ? "󰍭" : "󰍬"
+                text: root.hasInput && !root.inputMuted ? "󰍬" : "󰍭"
                 color: root.bar.foreground
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.title
@@ -939,7 +940,7 @@ Panel {
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.caption
                 font.bold: true
-                anchors.right: inputMuteSwitch.left
+                anchors.right: root.hasInput ? inputMuteSwitch.left : parent.right
                 anchors.rightMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
                 opacity: root.inputMuted ? 0.5 : 1.0
@@ -951,6 +952,7 @@ Panel {
               ToggleSwitch {
                 id: inputMuteSwitch
                 checked: root.hasInput && !root.inputMuted
+                visible: root.hasInput
                 foreground: root.bar.foreground
                 anchors.right: parent.right
                 anchors.rightMargin: Style.space(6)
