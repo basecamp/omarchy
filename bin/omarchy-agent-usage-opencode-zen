@@ -56,7 +56,7 @@ def local_date_string() -> str:
 def number(value: Any) -> int:
   try:
     parsed = float(value or 0)
-    return round(parsed) if parsed == parsed else 0
+    return max(0, round(parsed)) if parsed == parsed else 0
   except Exception:
     return 0
 
