@@ -134,7 +134,18 @@ ShellRoot {
     return hyprlandPluginState.enabled.indexOf(String(id)) !== -1
   }
 
+  function removeLegacyHyprlandPluginEntry(id) {
+    shell.mutateShellConfig(function(config) {
+      if (!Array.isArray(config.plugins)) return
+      config.plugins = config.plugins.filter(function(entry) {
+        return String(Util.isPlainObject(entry) ? entry.id : entry) !== String(id)
+      })
+      if (config.plugins.length === 0) delete config.plugins
+    })
+  }
+
   function setHyprlandPluginEnabled(id, enabled) {
+    shell.removeLegacyHyprlandPluginEntry(id)
     Quickshell.execDetached([
       shell.omarchyPath + "/bin/omarchy-plugin-hyprland-set-enabled",
       String(id), enabled ? "true" : "false"
