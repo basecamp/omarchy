@@ -11,6 +11,7 @@ The private-use glyphs in `omarchy.ttf` are:
 - `U+E906` — LM Studio, from <https://simpleicons.org/icons/lmstudio.svg>
 - `U+E907` — Ollama, from <https://simpleicons.org/icons/ollama.svg>
 - `U+E908` — T3 Code, traced from the app icon in <https://aur.archlinux.org/cgit/aur.git/plain/t3code-icon.png?h=t3code-bin>, since upstream publishes no monochrome SVG
+- `U+E909` — Llama.cpp, from <https://github.com/ggml-org/llama.brand>, flattened to a single path since the source splits the mark across two
 
 The agent marks are monochrome so the menu can render them using the active
 theme's foreground and selection colors.

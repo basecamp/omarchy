@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# omarchy:summary=Remove Llama.cpp along with the GGUF models it downloaded.
+# omarchy:requires-sudo=true
+
+set -e
+
+# The user unit is the one the install offers; the system unit ships in the
+# same package and may have been enabled by hand. Both hold a model open.
+systemctl --user disable --now llama-server.service 2>/dev/null || true
+sudo systemctl disable --now llama-server.service 2>/dev/null || true
+
+# The backends are separate packages that nothing else here needs, so they go
+# with llama-cpp. Whichever ones the installer picked are the ones present, and
+# omarchy-pkg-drop ignores the rest. ggml itself stays: it is a shared library
+# other packages build against.
+omarchy-pkg-drop llama-cpp ggml-cpu ggml-cuda ggml-hip ggml-vulkan
+
+# llama-server writes its downloads under the XDG cache, which is where -hf
+# and --model-url land. LLAMA_CACHE relocates that, and the pointer to where
+# it went is the variable itself, so an unset variable means the default.
+rm -rf "${LLAMA_CACHE:-$HOME/.cache/llama.cpp}"
+
+echo ""
+echo "Llama.cpp and its models have been removed."
