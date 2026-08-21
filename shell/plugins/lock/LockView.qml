@@ -67,6 +67,14 @@ Item {
     passwordTextEdited("")
   }
 
+  // Shared by the mouse toggle and the Ctrl+Space shortcut. Guarded on
+  // non-empty input so neither path can arm a reveal that then applies to
+  // the next attempt's first keystrokes once the field re-fills.
+  function toggleReveal() {
+    if (passwordInput.text.length === 0) return
+    passwordRevealed = !passwordRevealed
+  }
+
   function syncPasswordText() {
     if (passwordInput.text === passwordText) return
     syncingPasswordText = true
@@ -207,7 +215,7 @@ Item {
             // Ctrl+Space (not Alt-based, so it won't collide with AltGr
             // composition on non-US keyboard layouts) reveals the password
             // without touching the mouse.
-            root.passwordRevealed = !root.passwordRevealed
+            root.toggleReveal()
             event.accepted = true
           }
         }
@@ -259,6 +267,12 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         color: eyeArea.containsMouse ? Util.alpha(Color.lock.text, 0.12) : "transparent"
 
+        Accessible.role: Accessible.Button
+        Accessible.name: root.passwordRevealed ? "Hide password" : "Show password"
+        Accessible.description: "Toggle whether the typed password is shown in plain text"
+        Accessible.focusable: passwordInput.text.length > 0
+        Accessible.onPressAction: root.toggleReveal()
+
         Text {
           id: eyeIcon
           anchors.centerIn: parent
@@ -272,12 +286,13 @@ Item {
 
         MouseArea {
           id: eyeArea
+          objectName: "passwordRevealMouseArea"
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: passwordInput.text.length > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
           enabled: passwordInput.text.length > 0
           onClicked: {
-            root.passwordRevealed = !root.passwordRevealed
+            root.toggleReveal()
             root.forcePasswordFocus()
           }
         }
