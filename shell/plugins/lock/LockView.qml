@@ -296,6 +296,11 @@ Item {
             root.forcePasswordFocus()
           }
         }
+
+        PanelToolTip {
+          visible: eyeArea.containsMouse
+          text: (root.passwordRevealed ? "Hide password" : "Show password") + "  ·  Ctrl+Space"
+        }
       }
     }
   }
