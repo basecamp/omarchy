@@ -34,6 +34,7 @@ wait).
 | `overlay`    | Fullscreen overlay (e.g. background picker)    |
 | `menu`       | Summoned menu surface                          |
 | `service`    | Headless singleton, no UI                      |
+| `hyprland`   | Lua entry point loaded by the Hyprland config  |
 
 Only one full bar option is active at a time. The built-in `omarchy.bar` is
 used when `bar.id` is omitted or when a selected third-party bar cannot load.
@@ -45,6 +46,12 @@ Entry points are QML `Item`s. Panel, overlay, and menu entry points expose
 `open(payloadJson)` and `close()` for summon/hide; on load the host injects
 `omarchyPath`, `shell`, `manifest`, and the registries (`pluginRegistry` /
 `barWidgetRegistry`) as properties.
+
+Hyprland plugins use `entryPoints.hyprland` and may declare numeric `priority`
+(default `50`) plus plugin-id `dependencies`. Enabling one generates a loader
+under `~/.local/state/omarchy/hypr/plugins.lua`; dependencies load first, then
+enabled plugins by priority and ID. The loader is reloaded automatically after
+plugin activation changes.
 
 Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegistry.qml).
 

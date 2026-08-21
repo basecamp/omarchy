@@ -736,6 +736,10 @@ ShellRoot {
     pluginWidgetComponents = ({})
   }
 
+  function syncHyprlandPlugins() {
+    Quickshell.execDetached([shell.omarchyPath + "/bin/omarchy-plugin-hyprland-sync"])
+  }
+
   function reloadPlugins() {
     if (shell.pluginReloading || shell.pluginRegistry.scanning) {
       shell.pluginReloadPending = true
@@ -905,13 +909,18 @@ ShellRoot {
     }
 
     function setPluginEnabled(id: string, enabled: string): string {
-      return shell.pluginRegistry.setEnabled(id, enabled === "true") ? "ok" : "unknown"
+      var ok = shell.pluginRegistry.setEnabled(id, enabled === "true")
+      if (ok) shell.syncHyprlandPlugins()
+      return ok ? "ok" : "unknown"
     }
 
     function enablePlugin(id: string, placementJson: string): string {
       try {
         var placement = JSON.parse(placementJson || "{}")
-        if (shell.pluginRegistry.setEnabled(id, true, placement)) return "ok"
+        if (shell.pluginRegistry.setEnabled(id, true, placement)) {
+          shell.syncHyprlandPlugins()
+          return "ok"
+        }
         return shell.pluginRegistry.lastEnableError || "unknown"
       } catch (e) {
         return "invalid placement: " + e

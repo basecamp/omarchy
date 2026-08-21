@@ -100,7 +100,8 @@ for kind_entry_point in \
   "menu:menu" \
   "overlay:overlay" \
   "panel:panel" \
-  "service:service"; do
+  "service:service" \
+  "hyprland:hyprland"; do
   kind="${kind_entry_point%%:*}"
   entry_point="${kind_entry_point##*:}"
   jq -e --arg kind "$kind" '(.kinds | index($kind)) != null' "$MANIFEST" >/dev/null 2>&1 || continue

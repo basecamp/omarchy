@@ -19,5 +19,8 @@ require("default.hypr.qconsole")
 require("default.hypr.input")
 require("default.hypr.windows")
 
+-- User-installed Hyprland plugins, generated in the XDG state directory.
+require("default.hypr.plugins")
+
 -- Current theme overrides.
 require_optional.module("omarchy.current.theme.hyprland")

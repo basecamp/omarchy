@@ -115,6 +115,8 @@ else
 fi
 
 omarchy-shell shell rescanPlugins >/dev/null
+omarchy-plugin-hyprland-sync >/dev/null ||
+  echo "omarchy-plugin-remove: warning: Hyprland plugins were not synchronized" >&2
 
 if [[ -n $cloned_from && $was_enabled == "true" ]]; then
   echo "Restored $cloned_from."
