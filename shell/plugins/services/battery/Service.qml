@@ -42,6 +42,11 @@ Item {
     warningProcess.running = true
   }
 
+  function dismissLowBatteryWarningOnAc() {
+    if (UPower.onBattery) return
+    Quickshell.execDetached(["omarchy-battery-low", "--dismiss"])
+  }
+
   function applyPowerProfile() {
     pendingPowerSource = UPower.onBattery ? "battery" : "ac"
     if (!powerProfileProcess.running) runPendingPowerProfile()
@@ -53,7 +58,11 @@ Item {
     powerProfileProcess.running = true
   }
 
-  Process { id: warningProcess }
+  Process {
+    id: warningProcess
+    // Retry if AC connects before the popup is inserted.
+    onExited: Qt.callLater(root.dismissLowBatteryWarningOnAc)
+  }
 
   Process {
     id: powerProfileProcess
@@ -72,6 +81,7 @@ Item {
     target: UPower
     function onOnBatteryChanged() {
       root.checkBattery()
+      root.dismissLowBatteryWarningOnAc()
       root.applyPowerProfile()
     }
   }
