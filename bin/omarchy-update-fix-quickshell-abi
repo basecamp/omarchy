@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# omarchy:summary=Rebuild quickshell from source if it broke after a Qt upgrade
+
+# The prebuilt quickshell-git in the omarchy repo links Qt private symbols.
+# When qt6-base is upgraded, those symbols change and quickshell fails to load
+# with a symbol lookup error, leaving a dark desktop. This step detects the
+# mismatch and rebuilds quickshell from AUR source against the installed Qt.
+#
+# Runs after system packages are updated but before the shell restart, so the
+# restart picks up a working binary.
+
+if ! quickshell --version >/dev/null 2>&1; then
+  echo -e "\e[33mQuickshell ABI mismatch detected — rebuilding from source...\e[0m"
+
+  if ! omarchy-cmd-present yay; then
+    echo -e "\e[31mCannot rebuild: yay is not installed.\e[0m" >&2
+    echo "Run manually: sudo pacman -U /var/cache/pacman/pkg/quickshell-git-*.pkg.tar.zst" >&2
+    return 1 2>/dev/null || exit 1
+  fi
+
+  builddir=$(mktemp -d)
+  trap 'rm -rf "$builddir"' EXIT
+
+  if yay -S --noconfirm --aur --rebuild --redownload --builddir "$builddir" quickshell-git; then
+    if quickshell --version >/dev/null 2>&1; then
+      echo -e "\e[32mQuickshell rebuilt successfully.\e[0m"
+    else
+      echo -e "\e[31mRebuild succeeded but quickshell still fails to load.\e[0m" >&2
+      echo "Run manually: sudo pacman -U /var/cache/pacman/pkg/quickshell-git-*.pkg.tar.zst" >&2
+      return 1 2>/dev/null || exit 1
+    fi
+  else
+    echo -e "\e[31mRebuild failed. Run manually:\e[0m" >&2
+    echo "  sudo pacman -U /var/cache/pacman/pkg/quickshell-git-*.pkg.tar.zst" >&2
+    return 1 2>/dev/null || exit 1
+  fi
+fi
