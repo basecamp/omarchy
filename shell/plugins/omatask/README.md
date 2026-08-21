@@ -33,7 +33,7 @@ Omacut / Omacalc family. Everything a person reads says "Task Manager".
 
 | Surface | Reached by | Shows |
 |---|---|---|
-| **Bar widget** | always visible | CPU history graph and current percentage |
+| **Bar widget** | always visible | CPU history graph and current percentage, and optionally a second metric — memory, swap or GPU — beside it |
 | **Panel** | click the widget | CPU graph, per-core grid, memory, swap, GPU, network and disk rates, busiest eight processes |
 | **Window** | `Expand` in the panel · right-click the widget | Five stat cards that each expand, plus the full process table with filter, sort, threads and signals |
 
@@ -268,8 +268,9 @@ Per bar-widget entry in `~/.config/omarchy/shell.json`, or through
 | `intervalSec` | `2` | Seconds between samples |
 | `historyPoints` | `60` | Samples kept for the graphs — 60 × 2s is two minutes |
 | `processLimit` | `60` | How many command lines are resolved (not how many processes are listed) |
-| `showPercent` | `true` | CPU percentage beside the bar graph |
+| `showPercent` | `true` | Percentage beside each bar graph |
 | `barGraph` | `"sparkline"` | `sparkline`, `bars`, or `none` |
+| `secondaryMetric` | `"none"` | A second reading in the bar beside CPU: `mem`, `swap`, `gpu`, or `none` |
 | `alerts` | `false` | Desktop notifications |
 | `groupApps` | `true` | Fold an app's scopes into one row |
 | `listMode` | `"processes"` | Which list the overlay opens on |

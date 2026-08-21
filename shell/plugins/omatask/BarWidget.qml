@@ -44,6 +44,14 @@ Panel {
   readonly property string sortBy: String(setting("sortBy", "cpu"))
   readonly property bool sortDescending: setting("sortDescending", true) === true
   readonly property string barGraph: String(setting("barGraph", "sparkline"))
+  // Checked here rather than trusted: `omarchy bar set` writes whatever value
+  // it is handed straight into shell.json without consulting the manifest
+  // schema, so a typo arrives intact. An unrecognised metric reads as off,
+  // instead of falling through to memory and captioning it wrongly.
+  readonly property string secondaryMetric: {
+    var value = String(setting("secondaryMetric", "none"))
+    return ["mem", "swap", "gpu"].indexOf(value) >= 0 ? value : "none"
+  }
 
   // How many samples the in-bar graph shows. Deliberately shorter than the
   // panel's history: at 30px wide, sixty points is noise.
@@ -54,6 +62,56 @@ Panel {
   property bool cursorActive: false
 
   readonly property real cpuPercent: service ? service.cpuPercent : 0
+
+  // A second metric alongside CPU, so both are readable without opening
+  // anything. Every candidate is already in the sample the shared service
+  // receives each tick, so this costs a second strip of bar and nothing else —
+  // with one exception, noted at syncSecondaryGpu().
+  readonly property bool secondaryVisible: {
+    if (!service || secondaryMetric === "none") return false
+    // Plenty of Omarchy machines run zram or no swap, and a discrete GPU is
+    // hardly universal; either would otherwise sit in the bar as a strip that
+    // never moves. Same reason the panel hides those rows outright.
+    if (secondaryMetric === "swap") return service.swapTotal > 0
+    if (secondaryMetric === "gpu") return service.hasGpu
+    return true
+  }
+  readonly property real secondaryPercent: {
+    if (!service) return 0
+    if (secondaryMetric === "swap") return service.swapPercent
+    if (secondaryMetric === "gpu") return service.gpuPercent
+    return service.memPercent
+  }
+  readonly property var secondaryHistory: {
+    if (!service) return []
+    var series = secondaryMetric === "swap" ? service.swapUsedHistory
+      : secondaryMetric === "gpu" ? service.gpuHistory
+      : service.memHistory
+    return series.slice(-barPoints)
+  }
+  // Swap history is kept in bytes rather than percent, so its graph scales to
+  // the partition instead of to 100.
+  readonly property real secondaryCeiling: secondaryMetric === "swap" && service ? service.swapTotal : 100
+  // Memory and GPU turn urgent where the panel's meters do. Swap does not:
+  // a half-full swap file is ordinary on a machine that has been up a while,
+  // and the panel leaves that meter in the foreground colour for the same
+  // reason.
+  readonly property bool secondaryHot: secondaryMetric !== "swap" && secondaryPercent >= 90
+  readonly property string secondaryLabel: secondaryMetric === "swap" ? "SWAP"
+    : secondaryMetric === "gpu" ? "GPU" : "MEM"
+  // Nerd font glyphs, the same vocabulary the bar's indicators already speak.
+  // They caption the pair and only the pair: one percentage beside a graph on a
+  // system monitor needs no caption, and adding one would widen the widget for
+  // everyone who never asked for a second metric.
+  //
+  // Chosen by silhouette at 13px rather than by name. Material's md-memory is a
+  // chip, indistinguishable from a CPU at this size and the whole reason the
+  // caption exists; fa-memory is a DIMM stick and shares no outline with the
+  // processor. oct-cpu rasterises cleaner than md-cpu_64_bit here.
+  readonly property string cpuIcon: ""          // oct-cpu
+  readonly property string secondaryIcon: secondaryMetric === "swap" ? "󰓡"   // md-swap_horizontal
+    : secondaryMetric === "gpu" ? "󰾲"   // md-expansion_card_variant
+    : ""  // fa-memory
   readonly property var panelProcesses: {
     if (!service) return []
     var rows = service.processes || []
@@ -77,7 +135,10 @@ Panel {
     service.widgetSettings = settings || ({})
   }
 
-  onServiceChanged: syncService()
+  onServiceChanged: {
+    syncService()
+    syncSecondaryGpu()
+  }
   onIntervalSecChanged: syncService()
   onHistoryPointsChanged: syncService()
   onProcessLimitChanged: syncService()
@@ -90,7 +151,10 @@ Panel {
   // at Component.onCompleted would still be the default. Re-sync whenever the
   // entry itself changes — including when this widget writes back to it.
   onSettingsChanged: syncService()
-  Component.onCompleted: syncService()
+  Component.onCompleted: {
+    syncService()
+    syncSecondaryGpu()
+  }
 
   // The sampler skips the process walk unless something is showing it.
   onOpenedChanged: {
@@ -106,11 +170,42 @@ Panel {
     }
   }
 
-    Component.onDestruction: {
-    if (!service || !opened) return
-    service.releaseProcesses()
-    service.releaseGpu()
+  Component.onDestruction: {
+    if (!service) return
+    if (opened) {
+      service.releaseProcesses()
+      service.releaseGpu()
+    }
+    if (_gpuHeldOn) {
+      _gpuHeldOn.releaseGpu()
+      _gpuHeldOn = null
+    }
   }
+
+  // The service the retain below was taken against, rather than a bare held
+  // flag: the setting and the service arrive in either order, and a flag
+  // cleared on the way past takes a second retain without giving one back.
+  property var _gpuHeldOn: null
+
+  // Memory and swap ride along in a sample the service already receives every
+  // tick, so putting either in the bar starts nothing. GPU is the exception —
+  // it costs a driver query per tick, so the sampler leaves it off until some
+  // view asks for it. Choosing it here holds that reference for the life of the
+  // widget rather than for the life of an open panel, which is the price of an
+  // always-visible metric and is what the settings copy warns about.
+  //
+  // Keyed on the setting and not on secondaryVisible: hasGpu only becomes true
+  // *after* sampling starts, so gating the retain on it would leave the strip
+  // permanently hidden and the GPU permanently unpolled.
+  function syncSecondaryGpu() {
+    var wanted = secondaryMetric === "gpu" ? service : null
+    if (_gpuHeldOn === wanted) return
+    if (_gpuHeldOn) _gpuHeldOn.releaseGpu()
+    if (wanted) wanted.retainGpu()
+    _gpuHeldOn = wanted
+  }
+
+  onSecondaryMetricChanged: syncSecondaryGpu()
 
   function expand() {
     close()
@@ -144,52 +239,124 @@ Panel {
     bar: root.bar
     labelVisible: false
     hasVisualContent: true
-    tooltipText: root.service && root.service.ready
-      ? "CPU " + Model.formatPercent(root.cpuPercent) + " · MEM " + Model.formatPercent(root.service.memPercent)
-      : "Task Manager"
+    // The glyphs caption the pair on a horizontal bar; the tooltip spells the
+    // same thing out in words, and is the only identity a vertical bar carries.
+    tooltipText: {
+      if (!root.service || !root.service.ready) return "Task Manager"
+      var parts = ["CPU " + Model.formatPercent(root.cpuPercent),
+                   "MEM " + Model.formatPercent(root.service.memPercent)]
+      if (root.secondaryVisible && root.secondaryMetric !== "mem") {
+        parts.push(root.secondaryLabel + " " + Model.formatPercent(root.secondaryPercent))
+      }
+      return parts.join(" · ")
+    }
 
     // Vertical bars have no room for a history graph, so they fall back to the
     // percentage alone — the same compromise the media widget makes.
     readonly property bool graphVisible: !vertical && root.barGraph !== "none"
-    readonly property real graphWidth: graphVisible ? Style.space(34) : 0
+    // Two strips at the single-metric width would very nearly double what the
+    // widget takes out of the bar. Narrowing them means the pair costs about
+    // half again as much as CPU alone, which is what makes this wearable on a
+    // laptop panel that is already carrying a workspace list and a clock.
+    readonly property real graphWidth: graphVisible ? Style.space(root.secondaryVisible ? 22 : 34) : 0
 
-    fixedWidth: vertical ? -1 : graphWidth + (root.showPercent ? percentLabel.implicitWidth + Style.space(5) : 0) + Style.space(10)
-    fixedHeight: vertical ? Style.bar.iconSlot : -1
+    // Measured from the content rather than recomputed: with a second strip
+    // that arithmetic has to know about spacing, visibility and orientation
+    // all at once, and the positioner already does.
+    fixedWidth: vertical ? -1 : metrics.implicitWidth + Style.space(10)
+    // One slot is sized for a single row of glyphs; stacked percentages need
+    // the second row's worth of bar.
+    fixedHeight: vertical
+      ? (root.secondaryVisible ? metrics.implicitHeight + Style.space(6) : Style.bar.iconSlot)
+      : -1
 
     onPressed: function(mouseButton) {
       if (mouseButton === Qt.RightButton) root.expand()
       else root.toggle()
     }
 
-    Row {
-      anchors.centerIn: parent
+    // Captions are for telling two otherwise identical strips apart, so they
+    // arrive with the second metric and leave with it. A vertical bar has room
+    // for neither — it is already down to bare stacked numbers.
+    readonly property bool iconsVisible: root.secondaryVisible && !vertical
+
+    // One metric's caption, graph and percentage.
+    component MetricStrip: Row {
+      id: metric
+
+      property string icon: ""
+      property var series: []
+      property real percent: 0
+      property real ceiling: 100
+      property bool hot: false
+
       spacing: Style.space(5)
 
       Sparkline {
-        id: barGraphCanvas
         visible: button.graphVisible
         width: button.graphWidth
         height: Math.max(Style.space(9), button.barSize - Style.space(14))
         anchors.verticalCenter: parent.verticalCenter
-        values: root.service ? root.service.cpuHistory.slice(-root.barPoints) : []
+        values: metric.series
         capacity: root.barPoints
-        maxValue: 100
+        maxValue: metric.ceiling
         bars: root.barGraph === "bars"
-        stroke: root.cpuPercent >= 85 ? button.activeColor : button.foreground
+        stroke: metric.hot ? button.activeColor : button.foreground
         lineWidth: 1
         fillOpacity: 0.22
         barGap: 1
       }
 
       Text {
-        id: percentLabel
-        visible: root.showPercent || button.vertical
+        visible: button.iconsVisible && metric.icon !== ""
         anchors.verticalCenter: parent.verticalCenter
-        text: Math.round(root.cpuPercent) + (button.vertical ? "" : "%")
-        color: root.cpuPercent >= 85 ? button.activeColor : button.foreground
+        text: metric.icon
+        // The caption runs hot with the reading it names, so a spike colours the
+        // whole strip rather than leaving the glyph behind in the plain colour.
+        color: metric.hot ? button.activeColor : button.foreground
         font.family: button.fontFamily
         font.pixelSize: Style.bar.iconFont
         renderType: Text.NativeRendering
+      }
+
+      Text {
+        visible: root.showPercent || button.vertical
+        anchors.verticalCenter: parent.verticalCenter
+        text: Math.round(metric.percent) + (button.vertical ? "" : "%")
+        color: metric.hot ? button.activeColor : button.foreground
+        font.family: button.fontFamily
+        font.pixelSize: Style.bar.iconFont
+        renderType: Text.NativeRendering
+      }
+    }
+
+    // CPU always leads and the second metric always follows, on every monitor
+    // and in both orientations: a pair that swapped places by context would be
+    // unreadable at this size.
+    Grid {
+      id: metrics
+      anchors.centerIn: parent
+      // Side by side along a horizontal bar. Stacked on a vertical one, which
+      // has width for two digits and never for two strips — the same place the
+      // graph itself already drops out.
+      columns: button.vertical ? 1 : 2
+      columnSpacing: Style.space(7)
+      rowSpacing: Style.space(1)
+
+      MetricStrip {
+        icon: root.cpuIcon
+        series: root.service ? root.service.cpuHistory.slice(-root.barPoints) : []
+        percent: root.cpuPercent
+        hot: root.cpuPercent >= 85
+      }
+
+      MetricStrip {
+        visible: root.secondaryVisible
+        icon: root.secondaryIcon
+        series: root.secondaryHistory
+        percent: root.secondaryPercent
+        ceiling: root.secondaryCeiling
+        hot: root.secondaryHot
       }
     }
   }
