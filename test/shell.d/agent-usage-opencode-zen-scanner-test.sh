@@ -208,9 +208,45 @@ pass "OpenCode Zen collector dates its cache"
   fail "OpenCode Zen collector never caches an interrupted scan" "$result"
 pass "OpenCode Zen collector never caches an interrupted scan"
 
+# Pi sessions: the collector discovers Zen-originated assistant messages in
+# ~/.pi/agent/sessions/*.jsonl and prefixes the model name so the panel shows
+# the harness source.
+PI_HOME=$(mktemp -d)
+mkdir -p "$PI_HOME/.pi/agent/sessions"
+cat > "$PI_HOME/.pi/agent/sessions/test.jsonl" <<'JSONL'
+{"type":"message","id":"pi-zen-1","timestamp":"2026-08-21T12:00:00.000Z","message":{"role":"assistant","provider":"opencode","model":"kimi-k2.6","usage":{"input":100,"output":50,"cacheRead":10,"cacheWrite":5,"totalTokens":165}}}
+{"type":"message","id":"pi-zen-2","timestamp":"2026-08-21T12:00:00.000Z","message":{"role":"assistant","provider":"opencode","model":"big-pickle","usage":{"input":200,"output":100,"totalTokens":300}}}
+{"type":"message","id":"pi-claude-1","timestamp":"2026-08-21T12:00:00.000Z","message":{"role":"assistant","provider":"anthropic","model":"claude-haiku","usage":{"input":999,"output":999,"totalTokens":1998}}}
+{"type":"message","id":"pi-user-1","timestamp":"2026-08-21T12:00:00.000Z","message":{"role":"user","provider":"opencode","model":"kimi-k2.6","usage":{"input":999,"output":999,"totalTokens":1998}}}
+JSONL
+
+pi_only=$(HOME="$PI_HOME" XDG_DATA_HOME="$PI_HOME/.local/share" XDG_CACHE_HOME="$PI_HOME/.cache" "$ROOT/bin/omarchy-agent-usage-opencode-zen")
+
+[[ $(jq -r '.totalPrompts' <<<"$pi_only") == "2" ]] ||
+  fail "Zen collector counts only Pi assistant messages on the opencode provider" "$pi_only"
+pass "Zen collector counts only Pi assistant messages on the opencode provider"
+
+[[ $(jq -r '.modelUsage["Pi-kimi-k2.6"].inputTokens' <<<"$pi_only") == "100" ]] ||
+  fail "Zen collector preserves Pi token splits" "$pi_only"
+[[ $(jq -r '.modelUsage["Pi-kimi-k2.6"].outputTokens' <<<"$pi_only") == "50" ]] ||
+  fail "Zen collector preserves Pi token splits" "$pi_only"
+[[ $(jq -r '.modelUsage["Pi-kimi-k2.6"].cacheReadInputTokens' <<<"$pi_only") == "10" ]] ||
+  fail "Zen collector preserves Pi token splits" "$pi_only"
+[[ $(jq -r '.modelUsage["Pi-kimi-k2.6"].cacheCreationInputTokens' <<<"$pi_only") == "5" ]] ||
+  fail "Zen collector preserves Pi token splits" "$pi_only"
+pass "Zen collector preserves Pi token splits"
+
+[[ $(jq -r '.modelUsage["Pi-big-pickle"].inputTokens' <<<"$pi_only") == "200" ]] ||
+  fail "Zen collector counts multiple Pi models" "$pi_only"
+pass "Zen collector counts multiple Pi models"
+
+[[ $(jq -r '.modelUsage["Pi-claude-haiku"] // "missing"' <<<"$pi_only") == "missing" ]] ||
+  fail "Zen collector excludes Pi messages from other providers" "$pi_only"
+pass "Zen collector excludes Pi messages from other providers"
+
 # The update runner must discover the collector by filename and write its id.
 UPDATE_HOME=$(mktemp -d)
-trap 'rm -rf "$TEST_HOME" "$UPDATE_HOME"' EXIT
+trap 'rm -rf "$TEST_HOME" "$UPDATE_HOME" "$PI_HOME"' EXIT
 HOME="$UPDATE_HOME" XDG_DATA_HOME="$TEST_HOME/data" XDG_CACHE_HOME="$UPDATE_HOME/.cache" \
   XDG_STATE_HOME="$UPDATE_HOME/.state" OMARCHY_PATH="$ROOT" \
   "$ROOT/bin/omarchy-agent-usage-update" opencode-zen
