@@ -25,8 +25,7 @@ declare -A ROUTE_TO_KEY
 declare -A ROUTE_IS_ALIAS
 declare -A BINARY_TO_KEY
 declare -A GROUP_DESCRIPTIONS
-declare -A CLI_TRANSLATIONS
-CLI_TRANSLATIONS_LOADED="false"
+CLI_I18N_LOADED="false"
 
 GROUP_DESCRIPTIONS[agent]="AI coding agent usage data"
 GROUP_DESCRIPTIONS[audio]="Audio input and output controls"
@@ -96,31 +95,21 @@ GROUP_DESCRIPTIONS[wifi]="Wi-Fi helpers"
 GROUP_DESCRIPTIONS[windows]="Windows VM management"
 
 load_cli_translations() {
-  [[ $CLI_TRANSLATIONS_LOADED == "false" ]] || return 0
-  CLI_TRANSLATIONS_LOADED="true"
+  [[ $CLI_I18N_LOADED == "false" ]] || return 0
+  CLI_I18N_LOADED="true"
 
-  local locale="${LANGUAGE:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}"
-  locale="${locale%%:*}"
-  locale="${locale%%.*}"
-  locale="${locale%%@*}"
-  locale="${locale%%_*}"
-  locale="${locale%%-*}"
-  [[ $locale == "es" ]] || return 0
-
-  local catalog="$OMARCHY_PATH/shell/translations/es.json"
-  [[ -r $catalog ]] || return 0
-
-  local source=""
-  local translated=""
-  while IFS=$'\t' read -r source translated; do
-    [[ -n $source ]] && CLI_TRANSLATIONS["$source"]="$translated"
-  done < <(jq -r 'to_entries[] | select((.key | contains("\n")) | not) | [.key, .value] | @tsv' "$catalog")
+  local helper="${OMARCHY_PATH:-}/default/bash/i18n"
+  [[ -r $helper ]] && source "$helper"
 }
 
 translate() {
   local source="$1"
   load_cli_translations
-  printf '%s' "${CLI_TRANSLATIONS[$source]:-$source}"
+  if declare -F omarchy_t >/dev/null; then
+    omarchy_t "$source"
+  else
+    printf '%s' "$source"
+  fi
 }
 
 join_words() {

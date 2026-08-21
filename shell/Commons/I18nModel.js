@@ -41,12 +41,12 @@ function selectCatalog(environment, available) {
 function interpolate(value, args) {
   var output = String(value === undefined || value === null ? "" : value)
   var values = Array.isArray(args) ? args : []
-  // Replace higher indices first so "%1" can't consume the leading digit of
-  // "%10", "%11", etc. before those placeholders get their turn.
-  for (var i = values.length - 1; i >= 0; i--) {
-    output = output.split("%" + (i + 1)).join(String(values[i]))
-  }
-  return output
+  // Replace the template in one pass so placeholder-like text inside an
+  // argument is inserted verbatim and never processed as template syntax.
+  return output.replace(/%([1-9][0-9]*)/g, function(match, rawIndex) {
+    var index = Number(rawIndex) - 1
+    return index < values.length ? String(values[index]) : match
+  })
 }
 
 function translate(source, translations, args) {
@@ -56,10 +56,15 @@ function translate(source, translations, args) {
   return interpolate(translated, args)
 }
 
+function translatePlural(count, singular, plural, translations, args) {
+  return translate(Number(count) === 1 ? singular : plural, translations, args)
+}
+
 if (typeof module !== "undefined") module.exports = {
   normalizeLocale: normalizeLocale,
   localeCandidates: localeCandidates,
   selectCatalog: selectCatalog,
   interpolate: interpolate,
-  translate: translate
+  translate: translate,
+  translatePlural: translatePlural
 }

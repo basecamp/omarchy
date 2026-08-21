@@ -212,13 +212,16 @@ Panel {
     var label = isNaN(parsed.getTime())
       ? String(day.date)
       : dayName(day.date) + " " + (parsed.getMonth() + 1) + "/" + parsed.getDate()
-    var text = label + " · " + I18n.tr("%1 tokens", [usage.formatTokenCount(Number(day.messageCount || 0))])
+    var tokenCount = Number(day.messageCount || 0)
+    var text = label + " · " + I18n.ntr(tokenCount, "%1 token", "%1 tokens", [usage.formatTokenCount(tokenCount)])
     // Prompt and session counts only exist for today, so they ride along here
     // instead of taking a section of their own. Billing-API agents never
     // count prompts, and "0 prompts" would read as a quiet day, not a gap.
     if (today && provider && provider.hasPromptStats !== false)
-      text += " · " + I18n.tr("%1 prompts", [Number(provider.todayPrompts || 0)]) + " · "
-        + I18n.tr("%1 sessions", [Number(provider.todaySessions || 0)])
+      var promptCount = Number(provider.todayPrompts || 0)
+      var sessionCount = Number(provider.todaySessions || 0)
+      text += " · " + I18n.ntr(promptCount, "%1 prompt", "%1 prompts", [promptCount]) + " · "
+        + I18n.ntr(sessionCount, "%1 session", "%1 sessions", [sessionCount])
     return text
   }
 
@@ -263,7 +266,7 @@ Panel {
   function footerText() {
     if (usage.syncStatusText !== "") return usage.syncStatusText
     if (provider && provider.syncEnabled && provider.syncDeviceCount > 0)
-      return I18n.tr(provider.syncDeviceCount === 1 ? "Merged from %1 device" : "Merged from %1 devices", [provider.syncDeviceCount])
+      return I18n.ntr(provider.syncDeviceCount, "Merged from %1 device", "Merged from %1 devices", [provider.syncDeviceCount])
     return ""
   }
 

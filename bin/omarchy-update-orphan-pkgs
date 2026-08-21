@@ -15,13 +15,16 @@ printf '  %s\n' "${orphans[@]}"
 echo
 
 if [[ ! -t 0 || ! -t 1 ]]; then
-  omarchy_t "%1 orphaned package(s) found. Re-run omarchy-update-orphan-pkgs in a terminal to review/remove them." "${#orphans[@]}"
+  omarchy_nt "${#orphans[@]}" \
+    "%1 orphaned package found. Re-run omarchy-update-orphan-pkgs in a terminal to review/remove it." \
+    "%1 orphaned packages found. Re-run omarchy-update-orphan-pkgs in a terminal to review/remove them." \
+    "${#orphans[@]}"
   echo
   echo
   exit 0
 fi
 
-if ! gum confirm --default=false "$(omarchy_t "Remove %1 orphaned package(s)?" "${#orphans[@]}")"; then
+if ! gum confirm --default=false "$(omarchy_nt "${#orphans[@]}" "Remove %1 orphaned package?" "Remove %1 orphaned packages?" "${#orphans[@]}")"; then
   echo "$(omarchy_t "Keeping orphaned packages.")"
   echo
   exit 0

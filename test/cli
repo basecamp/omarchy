@@ -68,6 +68,9 @@ assert_output_contains "Spanish help keeps command routes stable" "$spanish_outp
 
 spanish_output=$(LANGUAGE=es LANG=es_AR.UTF-8 OMARCHY_PATH="$ROOT" "$CLI" system --help)
 assert_output_contains "group help localizes descriptions for Spanish" "$spanish_output" "Estado, reinicio, apagado, cierre de sesión y bloqueo del sistema"
+
+spanish_output=$(LANGUAGE=fr_FR:es_AR:en LANG=en_US.UTF-8 OMARCHY_PATH="$ROOT" "$CLI" --help)
+assert_output_contains "main help follows the LANGUAGE preference list" "$spanish_output" "Centro de comandos de Omarchy"
 assert_output_contains "main help includes hardware group" "$output" "hw"
 assert_output_contains "main help includes package group" "$output" "pkg"
 if grep -Eq '^  [a-z0-9-]+[[:space:]].*\([0-9]+\)$' <<<"$output"; then

@@ -7,7 +7,7 @@ import "I18nModel.js" as Model
 QtObject {
   id: root
 
-  readonly property var availableCatalogs: ["es"]
+  property var availableCatalogs: []
   readonly property string catalog: Model.selectCatalog({
     LANGUAGE: Quickshell.env("LANGUAGE"),
     LC_ALL: Quickshell.env("LC_ALL"),
@@ -21,6 +21,20 @@ QtObject {
 
   function tr(source, args) {
     return Model.translate(source, translations, args)
+  }
+
+  function ntr(count, singular, plural, args) {
+    return Model.translatePlural(count, singular, plural, translations, args)
+  }
+
+  function loadCatalogs(raw) {
+    try {
+      var parsed = JSON.parse(String(raw || ""))
+      availableCatalogs = Array.isArray(parsed) ? parsed.filter(function(value) { return typeof value === "string" }) : []
+    } catch (error) {
+      console.warn("translation catalog manifest parse failed:", error)
+      availableCatalogs = []
+    }
   }
 
   function load(raw) {
@@ -44,6 +58,16 @@ QtObject {
     printErrors: false
     onLoaded: root.load(text())
     onLoadFailed: function(error) { root.load("") }
+    onFileChanged: reload()
+  }
+
+
+  property FileView catalogsFile: FileView {
+    path: Quickshell.env("OMARCHY_PATH") + "/shell/translations/catalogs.json"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.loadCatalogs(text())
+    onLoadFailed: function(error) { root.loadCatalogs("") }
     onFileChanged: reload()
   }
 }
