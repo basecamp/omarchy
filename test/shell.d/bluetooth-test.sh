@@ -260,6 +260,10 @@ assert(/onOpenedChanged: \{[\s\S]{0,200}?cancelRename\(\)/.test(panelSource), 'b
 // Every action a row offers is reachable from the keyboard: h/l walk the row,
 // its pencil, and its forget button rather than toggling one action slot.
 assert(/order\[next\] === "rename" && !focusedRowCanRename/.test(panelSource), 'bluetooth steps the cursor over a pencil the row is not showing')
+
+// A panel opens with cursorActive false and selectedIndex 0, so an unguarded
+// 'r' opens an editor on a row the user never picked and cannot see picked.
+assert(/if \(t === "r" \|\| t === "R"\) \{ if \(root\.cursorActive\) root\.startRenameSelected\(\) \}/.test(panelSource), "bluetooth ignores 'r' until the cursor is on screen")
 JS
 
 # Turning Bluetooth off is an rfkill soft block, not a bluetoothctl power off,

@@ -800,7 +800,9 @@ Panel {
       onDeleteRequested: if (root.cursorActive) root.deleteSelected()
       onTextKey: function(t) {
         if (t === "b" || t === "B") root.toggleBluetooth()
-        else if (t === "r" || t === "R") root.startRenameSelected()
+        // Guarded like 'x': both act on the selected row, and the selection is
+        // not on screen until the cursor is.
+        else if (t === "r" || t === "R") { if (root.cursorActive) root.startRenameSelected() }
       }
 
       Column {
