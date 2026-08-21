@@ -99,8 +99,8 @@ Item {
   property int contentMargin: Style.spacing.panelPadding
   property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
   property int contentSpacing: Style.spacing.md
-  property int baseRowHeight: Math.max(Style.space(50), Style.font.body + Style.spacing.rowPaddingX * 2)
-  property int detailRowHeight: Math.max(Style.space(58), Style.font.body + Style.font.caption + Style.spacing.rowPaddingX * 2)
+  property int baseRowHeight: Math.max(Style.space(46), Style.font.body + Style.spacing.rowPaddingX * 2)
+  property int detailRowHeight: Math.max(Style.space(46), Style.font.body + Style.spacing.rowPaddingX * 2)
   // How much of the first hidden row stays visible at the fold — enough to
   // read as a cut-off row rather than a bottom border.
   property int rowPeek: Math.round(baseRowHeight * 0.55)
@@ -108,11 +108,12 @@ Item {
   property int dividerHeight: Style.space(17)
   property bool searchDivider: false
   property int layoutSerial: 0
-  property int cardWidth: Math.min(root.dmenuActive ? Style.space(root.dmenuWidth) : ((root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") ? Style.space(520) : Style.space(300)), panel.width - Style.gapsOut * 2)
+  property int cardWidth: Math.min(root.dmenuActive ? Style.space(root.dmenuWidth) : ((root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") ? Style.space(520) : Style.space(380)), panel.width - Style.gapsOut * 2)
   property int visibleRowsHeight: root.dmenuActive ? dmenuRowListHeight(layoutSerial, displayModel.count, filterText) : rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)
+  property int footerHeight: (displayModel.count > 0 && root.cursorActive) ? Style.space(28) : 0
   property int cardHeight: root.dmenuActive
-    ? Math.min(contentMargin * 2 + headerHeight + (mode === "input" ? 0 : contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
-    : Math.min(contentMargin * 2 + headerHeight + contentSpacing + visibleRowsHeight, panel.height - Style.gapsOut * 2)
+    ? Math.min(contentMargin * 2 + headerHeight + (mode === "input" ? 0 : contentSpacing + visibleRowsHeight + (footerHeight > 0 ? (contentSpacing + footerHeight) : 0)), panel.height - Style.gapsOut * 2)
+    : Math.min(contentMargin * 2 + headerHeight + contentSpacing + visibleRowsHeight + (footerHeight > 0 ? (contentSpacing + footerHeight) : 0), panel.height - Style.gapsOut * 2)
 
   function finishRequest(selection) {
     if (!root.requestActive || !root.doneFile) {
@@ -141,10 +142,29 @@ Item {
     Util.execDetached(command)
   }
 
+  function selectedActionHint() {
+    if (displayModel.count === 0 || root.selectedIndex < 0 || root.selectedIndex >= displayModel.count)
+      return "Select an item"
+
+    var current = displayModel.get(root.selectedIndex)
+    if (!current) return "Execute"
+
+    var label = String(current.label || "")
+    var kind = String(current.kind || "")
+    var detail = String(current.detail || "").toLowerCase()
+
+    if (kind === "app") return "Launch " + label
+    if (kind === "menu" || kind === "link") return "Open " + label
+    if (detail.indexOf("install") >= 0) return "Run installer for " + label
+    if (detail.indexOf("setup") >= 0 || detail.indexOf("network") >= 0 || detail.indexOf("dns") >= 0) return "Configure " + label
+    if (detail.indexOf("system") >= 0 || label.toLowerCase() === "logout") return "Execute " + label
+    return "Run " + label
+  }
+
   // Menu rows only surface their detail while a search is narrowing them;
   // dmenu rows carry caller-supplied subtext that must always be visible.
   function rowHeightForDetail(detail) {
-    return (root.filterText || root.dmenuActive) && detail ? root.detailRowHeight : root.baseRowHeight
+    return root.baseRowHeight
   }
 
   // Height the card can devote to rows before running off the screen — or
@@ -153,7 +173,8 @@ Item {
   // derived from the card height, which this value feeds.
   function availableRowsHeight() {
     var top = panel.cardTop >= 0 ? panel.cardTop : Style.gapsOut
-    var available = panel.height - top - Style.gapsOut - root.contentMargin * 2 - root.headerHeight - root.contentSpacing
+    var extraFooter = (displayModel.count > 0 && root.cursorActive) ? (root.contentSpacing + Style.space(28)) : 0
+    var available = panel.height - top - Style.gapsOut - root.contentMargin * 2 - root.headerHeight - root.contentSpacing - extraFooter
     // The starting menu sets the ceiling along with the offset: drilling into
     // a longer submenu scrolls behind the fold instead of growing the card.
     if (panel.maxRowsHeight >= 0) available = Math.min(available, panel.maxRowsHeight)
@@ -1292,12 +1313,12 @@ Item {
                 color: row.hasCursor ? root.selectedText : root.foreground
                 font.family: row.iconFont.length > 0 ? row.iconFont : root.fontFamily
                 font.pixelSize: Style.font.iconLarge
-                width: Style.space(36)
+                width: Style.space(32)
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
                 anchors.left: parent.left
                 anchors.leftMargin: root.rowReservedBorderLeft + Style.space(8)
-                y: contentColumn.y + labelText.y + (labelText.height - height) / 2
+                anchors.verticalCenter: parent.verticalCenter
               }
 
               Image {
@@ -1313,64 +1334,53 @@ Item {
                 source: row.isApp && root.appLibrary ? root.appLibrary.iconSource(row.appIcon) : ""
                 asynchronous: true
                 anchors.left: parent.left
-                anchors.leftMargin: root.rowReservedBorderLeft + Style.space(8) + (Style.space(36) - width) / 2
-                y: contentColumn.y + labelText.y + (labelText.height - height) / 2
-              }
-
-              Column {
-                id: contentColumn
-                anchors.left: row.hasIcon ? iconText.right : parent.left
-                anchors.leftMargin: row.hasIcon ? Style.space(6) : root.rowReservedBorderLeft + Style.space(18)
-                anchors.right: trail.left
-                anchors.rightMargin: Style.space(6)
+                anchors.leftMargin: root.rowReservedBorderLeft + Style.space(8) + (Style.space(32) - width) / 2
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.space(3)
-
-                Text {
-                  id: labelText
-                  width: parent.width
-                  text: row.label
-                  color: row.hasCursor ? root.selectedText : root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.heading
-                  font.weight: Font.Medium
-                  elide: Text.ElideRight
-                }
-
-                Text {
-                  width: parent.width
-                  text: row.detail
-                  visible: (root.filterText || row.kind === "dmenu") && row.detail.length > 0
-                  color: root.foreground
-                  opacity: 0.52
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.bodySmall
-                  elide: Text.ElideRight
-                }
               }
 
-              Row {
-                id: trail
-                width: Style.space(14)
+              Text {
+                id: detailText
+                visible: (root.filterText.length > 0 || row.kind === "dmenu") && row.detail.length > 0
+                anchors.right: trailContainer.left
+                anchors.rightMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+                text: row.detail
+                color: row.hasCursor ? root.selectedText : root.foreground
+                opacity: row.hasCursor ? 0.72 : 0.42
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                elide: Text.ElideRight
+              }
+
+              Text {
+                id: labelText
+                anchors.left: row.hasIcon ? (row.isApp ? appIconImage.right : iconText.right) : parent.left
+                anchors.leftMargin: row.hasIcon ? Style.space(8) : root.rowReservedBorderLeft + Style.space(12)
+                anchors.right: detailText.visible ? detailText.left : trailContainer.left
+                anchors.rightMargin: Style.space(10)
+                anchors.verticalCenter: parent.verticalCenter
+                text: row.label
+                color: row.hasCursor ? root.selectedText : root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.heading
+                font.weight: Font.Medium
+                elide: Text.ElideRight
+              }
+
+              Item {
+                id: trailContainer
                 anchors.right: parent.right
                 anchors.rightMargin: root.rowReservedBorderRight + Style.space(8)
-                y: contentColumn.y + labelText.y + (labelText.height - height) / 2
-                spacing: 0
+                anchors.verticalCenter: parent.verticalCenter
+                height: parent.height
+                width: childrenRect.width
 
                 Text {
-                  visible: false
-                  text: row.childCount
-                  color: root.foreground
-                  opacity: 0.45
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.body
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Text {
-                  text: row.kind === "menu" || row.kind === "link" ? "›" : ""
+                  id: menuArrow
+                  visible: row.kind === "menu" || row.kind === "link"
+                  text: "›"
                   color: row.hasCursor ? root.selectedText : root.foreground
-                  opacity: row.kind === "menu" || row.kind === "link" ? 0.36 : 0
+                  opacity: 0.4
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.heading
                   font.weight: Font.Normal
@@ -1463,9 +1473,35 @@ Item {
           }
         }
 
-        Item {
+        Rectangle {
+          id: footerContainer
           width: parent.width
-          height: 0
+          height: (displayModel.count > 0 && root.cursorActive) ? Style.space(22) : 0
+          visible: height > 0
+          clip: true
+          color: "transparent"
+
+          Rectangle {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: Style.spacing.hairline
+            color: Util.alpha(root.foreground, 0.12)
+          }
+
+          Text {
+            anchors.left: parent.left
+            anchors.leftMargin: Style.space(8)
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(8)
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.selectedActionHint()
+            color: root.foreground
+            opacity: 0.45
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            elide: Text.ElideRight
+          }
         }
       }
     }
