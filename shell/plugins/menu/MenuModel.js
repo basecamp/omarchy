@@ -37,8 +37,6 @@ function normalizeItem(id, raw) {
     checked: value.checked || "",
     disabled: value.disabled || ""
   }
-  if (value.keybinding) item.keybinding = value.keybinding
-  return item
 }
 
 function parseMenuJsonc(raw) {
