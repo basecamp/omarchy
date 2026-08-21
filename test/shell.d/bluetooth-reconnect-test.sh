@@ -155,6 +155,29 @@ run_reconnect
   fail "reconnect reports a device it could not connect" "actual: $(<"$tmp/err")"
 pass "reconnect reports a device it could not connect"
 
+service="$ROOT/default/systemd/user/omarchy-bluetooth-reconnect.service"
+grep -Fx 'ExecStart=/usr/bin/omarchy-bluetooth-reconnect' "$service" >/dev/null
+grep -Fx 'ExecCondition=/usr/bin/systemctl is-active --quiet bluetooth.service' "$service" >/dev/null ||
+  fail "reconnect spends the adapter wait on machines where bluetoothd never runs"
+grep -Fx 'WantedBy=graphical-session.target' "$service" >/dev/null ||
+  fail "reconnect is never pulled in at login without a WantedBy"
+grep -Fx 'After=graphical-session.target' "$service" >/dev/null ||
+  fail "a oneshot that waits for the adapter can hold graphical-session.target open"
+pass "reconnect runs once per login after the graphical session is ready"
+
+first_run_units="$ROOT/install/user/first-run/enable-user-units.sh"
+grep -F 'omarchy-bluetooth-reconnect.service' "$first_run_units" >/dev/null ||
+  fail "first-run does not enable the reconnect unit, so new installs never get it"
+pass "first-run enables the reconnect unit"
+
+# The unit has to be installed by the package before anything can enable it by
+# name: first-run enables every unit in one command under `set -e`, so a unit
+# missing from /usr/lib/systemd/user takes bt-agent and the sleep lock down with
+# it. config-test.sh holds the PKGBUILD mapping that keeps that honest.
+grep -F 'default/systemd/user/omarchy-bluetooth-reconnect.service' "$ROOT/test/shell.d/config-test.sh" >/dev/null ||
+  fail "reconnect unit is enabled by name with no PKGBUILD coverage asserting the package installs it"
+pass "reconnect unit is covered by the PKGBUILD mapping"
+
 migration="$ROOT/migrations/1787330669.sh"
 grep -F 'systemctl --user enable omarchy-bluetooth-reconnect.service' "$migration" >/dev/null ||
   fail "migration must enable without --now; --now starts the unit before the session-gate check"
