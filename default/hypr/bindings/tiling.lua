@@ -1,3 +1,30 @@
+-- Full width on a scrolling workspace widens the column instead of
+-- fullscreening the window, so the other columns stay reachable. Press again to
+-- return to the configured column width. Other layouts keep maximizing.
+local function full_width()
+  local workspace = hl.get_active_special_workspace() or hl.get_active_workspace()
+  local window = hl.get_active_window()
+  local tiled_scrolling =
+    workspace and workspace.tiled_layout == "scrolling"
+    and window and not window.floating
+    and window.fullscreen == 0
+
+  if not tiled_scrolling then
+    hl.dispatch(hl.dsp.window.fullscreen({ mode = "maximized" }))
+    return
+  end
+
+  local monitor = window.monitor
+  local rotated = monitor.transform % 2 == 1
+  local monitor_width = (rotated and monitor.height or monitor.width) / monitor.scale
+
+  -- Gaps and borders keep a full column just under the monitor width.
+  local already_full = window.size.x > monitor_width * 0.85
+  local column_width = already_full and (hl.get_config("scrolling.column_width") or 0.5) or 1.0
+
+  hl.dispatch(hl.dsp.layout("colresize " .. column_width))
+end
+
 o.bind("SUPER + W", "Close window", hl.dsp.window.close())
 o.bind("CTRL + ALT + DELETE", "Close all windows", "omarchy-hyprland-window-close-all")
 
@@ -6,7 +33,7 @@ o.bind("SUPER + P", "Pseudo window", hl.dsp.window.pseudo())
 o.bind("SUPER + T", "Toggle window floating/tiling", hl.dsp.window.float({ action = "toggle" }))
 o.bind("SUPER + F", "Full screen", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
 o.bind("SUPER + CTRL + F", "Tiled full screen", "omarchy-hyprland-window-tiled-fullscreen-toggle")
-o.bind("SUPER + ALT + F", "Full width", hl.dsp.window.fullscreen({ mode = "maximized" }))
+o.bind("SUPER + ALT + F", "Full width", full_width)
 o.bind("SUPER + O", "Pop window out (float & pin)", "omarchy-hyprland-window-pop")
 o.bind("SUPER + ALT + Home", "Save window width", "omarchy-hyprland-window-width save")
 o.bind("SUPER + Home", "Restore window width", "omarchy-hyprland-window-width restore")
