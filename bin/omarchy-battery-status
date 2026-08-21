@@ -1,16 +1,23 @@
 #!/bin/bash
 
 # omarchy:summary=Returns a formatted battery status string with percentage and power draw/charge.
-# omarchy:args=[--shell]
+# omarchy:args=[--shell|--record-plugged-at <online> <timestamp>]
 
 shell_output=false
 power_supply_path="${OMARCHY_POWER_SUPPLY_PATH:-/sys/class/power_supply}"
+plugged_state="${OMARCHY_BATTERY_PLUGGED_STATE:-$HOME/.local/state/omarchy/battery-plugged-at}"
 
 case "${1:-}" in
   "")
     ;;
   --shell)
     shell_output=true
+    ;;
+  --record-plugged-at)
+    [[ ${2:-} == "1" && ${3:-} =~ ^[0-9]+$ ]] || exit 2
+    mkdir -p "$(dirname "$plugged_state")"
+    printf 'online=1\ntimestamp=%s\n' "$3" >"$plugged_state"
+    exit 0
     ;;
   *)
     echo "Usage: omarchy-battery-status [--shell]" >&2
@@ -106,6 +113,12 @@ if [[ $shell_output == "true" ]]; then
   printf 'rate\t%s\n' "${power_rate}W"
   printf 'size\t%s\n' "${capacity}Wh"
   printf 'time\t%s\n' "$time_remaining"
+
+  plugged_at=""
+  if [[ -r $plugged_state ]]; then
+    plugged_at=$(awk -F= '$1 == "timestamp" && $2 ~ /^[0-9]+$/ { print $2; exit }' "$plugged_state")
+  fi
+  printf 'plugged-at\t%s\n' "$plugged_at"
 
   cycles=$(cat "$power_supply_path"/BAT*/cycle_count 2>/dev/null | head -1)
 

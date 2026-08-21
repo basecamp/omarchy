@@ -20,6 +20,17 @@ function parseKeyValue(raw) {
   return next
 }
 
+function hoursSincePluggedAt(value, now) {
+  var seconds = Number(value)
+  if (!Number.isFinite(seconds) || seconds <= 0) return "—"
+
+  var elapsed = Math.max(0, Number(now === undefined ? Date.now() : now) - seconds * 1000)
+  var hours = Math.floor(elapsed / (60 * 60 * 1000))
+  var minutes = Math.floor((elapsed % (60 * 60 * 1000)) / (60 * 1000))
+  if (hours === 0 && minutes === 0) return "less than 1 minute"
+  return hours + "h " + minutes + "m"
+}
+
 function parseProfiles(raw, previousIndex) {
   var lines = String(raw || "").split("\n")
   var list = []
@@ -94,6 +105,7 @@ if (typeof module !== "undefined") {
     clampIndex: clampIndex,
     selectProfileIndex: selectProfileIndex,
     parseKeyValue: parseKeyValue,
+    hoursSincePluggedAt: hoursSincePluggedAt,
     parseProfiles: parseProfiles,
     profileIcon: profileIcon,
     batteryFraction: batteryFraction,
