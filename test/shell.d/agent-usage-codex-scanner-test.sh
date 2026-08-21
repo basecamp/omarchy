@@ -132,7 +132,7 @@ pass "Codex collector ignores prefix-colliding providers, user messages, and mal
 # The opencode database keeps every historical message, but only the trailing
 # month is subscription burn: older OpenAI messages must be skipped in SQL,
 # and OpenCode Go traffic is another subscription entirely.
-WINDOW_HOME=$(mktemp -d)
+WINDOW_HOME="$TEST_HOME/window-home"
 trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$WINDOW_HOME"' EXIT
 mkdir -p "$WINDOW_HOME/bin"
 cp "$TEST_HOME/bin/codex" "$WINDOW_HOME/bin/codex"
