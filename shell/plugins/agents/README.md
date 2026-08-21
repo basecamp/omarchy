@@ -52,6 +52,7 @@ light surfaces — and the bar glyph stands in when there is none.
 
 | Collector | Limits | Local stats |
 |---|---|---|
+| `antigravity` | The Antigravity CLI `/usage` rate limits (5-hour session + 7-day weekly for Gemini and Claude & GPT) | `~/.gemini/antigravity-cli/brain` transcripts and `history.jsonl` |
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
@@ -126,6 +127,7 @@ edit `shell.json` directly):
 
 ```bash
 omarchy bar set omarchy.agents providers '{
+  "antigravity": { "enabled": true },
   "claude": { "enabled": true },
   "codex": { "enabled": false },
   "fireworks": { "enabled": true }

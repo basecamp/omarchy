@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "license": "MIT",
-  "description": "Claude Code, Codex, and Fireworks usage, limits, and pace in a native Omarchy bar panel.",
+  "description": "Antigravity, Claude Code, Codex, and Fireworks usage, limits, and pace in a native Omarchy bar panel.",
   "kinds": ["bar-widget"],
   "activation": "on-demand",
   "entryPoints": {
@@ -19,6 +19,7 @@
     "allowMultiple": false,
     "defaults": {
       "providers": {
+        "antigravity": { "enabled": true },
         "claude": { "enabled": true },
         "codex": { "enabled": true },
         "fireworks": { "enabled": true }
