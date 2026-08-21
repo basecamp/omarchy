@@ -117,6 +117,7 @@ assertDeepEqual(
     label: 'Theme picker',
     target: 'style.theme',
     detail: 'Style',
+    keybinding: '',
     path: 'Style › Theme picker',
     childCount: 0,
     action: 'custom-theme',
@@ -126,6 +127,31 @@ assertDeepEqual(
   },
   'menu builds display rows'
 )
+
+const sampleRecords = [
+  "SUPER + K                           → Keybindings\texec\tomarchy-menu-keybindings",
+  "SUPER + ESCAPE                      → System menu\texec\tomarchy-menu toggle system",
+  "SUPER CTRL + L                      → Lock screen\texec\tomarchy-system-lock",
+  "SUPER + RETURN                      → Terminal\texec\tomarchy-launch-terminal",
+  "SUPER CTRL + R                      → Set reminder\texec\tomarchy-menu toggle reminder-set"
+].join("\n")
+
+const parsedBindings = menu.parseKeybindingRecords(sampleRecords)
+assert(parsedBindings.length === 5, 'menu parses keybinding records')
+assert(parsedBindings[0].combo === 'SUPER + K' && parsedBindings[0].desc === 'Keybindings', 'menu extracts combo and description')
+assert(menu.findKeybinding(parsedBindings, { id: 'system.lock', action: 'omarchy-system-lock' }) === 'SUPER CTRL + L', 'menu matches direct action keybinding')
+assert(menu.findKeybinding(parsedBindings, { id: 'system', kind: 'menu' }) === 'SUPER + ESCAPE', 'menu matches route keybinding')
+assert(menu.findKeybinding(parsedBindings, { id: 'trigger.reminder.set', kind: 'action', action: 'omarchy-reminder -i', aliases: ['reminder-set'] }) === 'SUPER CTRL + R', 'menu matches action alias route keybinding')
+assert(menu.findKeybinding(parsedBindings, { id: 'apps.terminal', kind: 'app', label: 'Terminal' }) === 'SUPER + RETURN', 'menu matches app keybinding')
+assert(menu.findKeybinding(parsedBindings, { id: 'unknown', action: 'something-else' }) === '', 'menu returns empty string when no binding matches')
+
+const testItems = {
+  'system.lock': { id: 'system.lock', action: 'omarchy-system-lock' },
+  'apps.term': { id: 'apps.term', kind: 'app', label: 'Terminal' }
+}
+menu.applyKeybindings(testItems, ['system.lock', 'apps.term'], parsedBindings)
+assert(testItems['system.lock'].keybinding === 'SUPER CTRL + L', 'applyKeybindings attaches keybinding to items')
+assert(testItems['apps.term'].keybinding === 'SUPER + RETURN', 'applyKeybindings attaches keybinding to app items')
 
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))

@@ -36,6 +36,7 @@ Item {
   }
 
   function refresh() {
+    if (root.keybindingsLoaded) root.loadKeybindings()
     defaultMenuFile.reload()
     userMenuFile.reload()
     return "ok"
@@ -74,13 +75,39 @@ Item {
   property var providersLoaded: ({})
   property var providerQueue: []
   property int providerRevision: 0
+  property var keybindings: []
+  property bool keybindingsLoaded: false
+  readonly property bool defaultShowKeybindings: Boolean(root.shell && root.shell.shellConfig && root.shell.shellConfig.menu && root.shell.shellConfig.menu.keybindings)
+  property bool showKeybindings: false
+
+  function applyKeybindings() {
+    MenuModel.applyKeybindings(root.items, root.itemOrder, root.keybindings)
+  }
+
+  function loadKeybindings() {
+    if (keybindingsProc.running) return
+    keybindingsProc.collected = ""
+    keybindingsProc.command = ["bash", "-c", "/usr/bin/omarchy-menu-keybindings -p >/dev/null 2>&1; cache_file=$(ls -t \"${XDG_CACHE_HOME:-$HOME/.cache}/omarchy\"/keybindings-*.records 2>/dev/null | head -n1); [[ -s \"$cache_file\" ]] && cat \"$cache_file\""]
+    keybindingsProc.running = true
+  }
 
   // Shared application engine (entries, hidden filters, icons, launch,
   // removal), owned by the shell and also used by the standalone launcher.
   readonly property var appLibrary: root.shell ? root.shell.appLibrary : null
   property bool deleteConfirmOpen: false
   property var deleteTarget: null
-  onOpenedChanged: if (!opened) { deleteConfirmOpen = false; deleteTarget = null }
+  onOpenedChanged: {
+    if (!opened) {
+      deleteConfirmOpen = false
+      deleteTarget = null
+      showKeybindings = false
+    } else {
+      showKeybindings = root.defaultShowKeybindings
+      if (root.showKeybindings && !root.keybindingsLoaded) {
+        root.loadKeybindings()
+      }
+    }
+  }
   // Bound to the central [menu] section in shell.toml via Color.qml.
   // Each color already includes its alpha companion (composed in the
   // singleton), so consumers can drop them straight into a Rectangle.
@@ -108,7 +135,8 @@ Item {
   property int dividerHeight: Style.space(17)
   property bool searchDivider: false
   property int layoutSerial: 0
-  property int cardWidth: Math.min(root.dmenuActive ? Style.space(root.dmenuWidth) : ((root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") ? Style.space(520) : Style.space(300)), panel.width - Style.gapsOut * 2)
+  property int baseCardWidth: Math.min(root.dmenuActive ? Style.space(root.dmenuWidth) : ((root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") ? Style.space(520) : Style.space(300)), panel.width - Style.gapsOut * 2)
+  property int cardWidth: Math.min(root.baseCardWidth + (root.showKeybindings ? Style.space(130) : 0), panel.width - Style.gapsOut * 2)
   property int visibleRowsHeight: root.dmenuActive ? dmenuRowListHeight(layoutSerial, displayModel.count, filterText) : rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)
   property int cardHeight: root.dmenuActive
     ? Math.min(contentMargin * 2 + headerHeight + (mode === "input" ? 0 : contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
@@ -250,6 +278,7 @@ Item {
     root.providerQueue = []
     root.items = mergedMenu.items
     root.itemOrder = mergedMenu.itemOrder
+    root.applyKeybindings()
     root.rowsLoaded = true
     root.evaluateGuards()
     if (root.opened) {
@@ -325,6 +354,7 @@ Item {
     var merged = MenuModel.mergeAppRows(root.items, root.itemOrder, appRows)
     root.items = merged.items
     root.itemOrder = merged.itemOrder
+    root.applyKeybindings()
     if (root.opened) root.rebuildDisplay()
   }
 
@@ -582,6 +612,7 @@ Item {
         label: label,
         target: "",
         detail: detail,
+        keybinding: "",
         path: "",
         childCount: 0,
         action: "",
@@ -947,6 +978,22 @@ Item {
     }
   }
 
+  Process {
+    id: keybindingsProc
+    property string collected: ""
+    stdout: SplitParser {
+      onRead: function(data) { keybindingsProc.collected += data + "\n" }
+    }
+    onExited: function(exitCode, exitStatus) {
+      if (exitCode === 0) {
+        root.keybindings = MenuModel.parseKeybindingRecords(keybindingsProc.collected)
+        root.keybindingsLoaded = true
+        root.applyKeybindings()
+        if (root.opened) root.rebuildDisplay()
+      }
+    }
+  }
+
   PointerMoveGate {
     id: pointerGate
     referenceItem: card
@@ -1105,7 +1152,7 @@ Item {
       width: root.cardWidth
       height: Math.min(root.cardHeight, panel.height - Style.gapsOut - panel.effectiveCardTop)
       radius: root.cornerRadius
-      anchors.horizontalCenter: parent.horizontalCenter
+      x: Math.max(Style.gapsOut, Math.round((panel.width - root.baseCardWidth) / 2))
       y: panel.effectiveCardTop
       color: root.background
       borderSpec: root.borderSpec
@@ -1132,6 +1179,10 @@ Item {
           } else if (event.key === Qt.Key_Escape) {
             if (root.filterText) root.setFilter("")
             else root.cancel()
+            event.accepted = true
+          } else if (event.text === "?" || event.key === Qt.Key_Question) {
+            if (!root.keybindingsLoaded) root.loadKeybindings()
+            root.showKeybindings = !root.showKeybindings
             event.accepted = true
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
@@ -1256,6 +1307,7 @@ Item {
               required property string label
               required property string target
               required property string detail
+              required property string keybinding
               required property string path
               required property string action
               required property int childCount
@@ -1326,23 +1378,44 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Style.space(3)
 
-                Text {
-                  id: labelText
+                Item {
+                  id: labelRow
                   width: parent.width
-                  text: row.label
-                  color: row.hasCursor ? root.selectedText : root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.heading
-                  font.weight: Font.Medium
-                  elide: Text.ElideRight
+                  height: labelText.implicitHeight
+
+                  Text {
+                    id: labelText
+                    anchors.left: parent.left
+                    anchors.right: keybindingText.visible ? keybindingText.left : parent.right
+                    anchors.rightMargin: keybindingText.visible ? Style.space(8) : 0
+                    anchors.top: parent.top
+                    text: row.label
+                    color: row.hasCursor ? root.selectedText : root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.heading
+                    font.weight: Font.Medium
+                    elide: Text.ElideRight
+                  }
+
+                  Text {
+                    id: keybindingText
+                    anchors.right: parent.right
+                    anchors.baseline: labelText.baseline
+                    text: row.keybinding
+                    visible: root.showKeybindings && row.keybinding.length > 0
+                    color: row.hasCursor ? root.selectedText : root.foreground
+                    opacity: row.hasCursor ? 0.75 : 0.52
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
                 }
 
                 Text {
                   width: parent.width
                   text: row.detail
                   visible: (root.filterText || row.kind === "dmenu") && row.detail.length > 0
-                  color: root.foreground
-                  opacity: 0.52
+                  color: row.hasCursor ? root.selectedText : root.foreground
+                  opacity: row.hasCursor ? 0.75 : 0.52
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.bodySmall
                   elide: Text.ElideRight
