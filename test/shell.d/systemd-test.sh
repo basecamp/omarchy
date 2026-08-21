@@ -116,6 +116,8 @@ cpuweight_migration=$(grep -rl 'session.slice.d/10-cpuweight.conf' "$ROOT/migrat
   fail "existing installs never reload the user manager, so the session weight waits for the next login"
 grep -F 'systemctl --user daemon-reload' "$cpuweight_migration" >/dev/null ||
   fail "migration does not reload the user manager, so the session weight waits for the next login"
+grep -F 'set-property --runtime session.slice CPUWeight=1000' "$cpuweight_migration" >/dev/null ||
+  fail "migration runs once; without a runtime fallback a session updated before the package ships the drop-in never gets the weight until relogin"
 pass "the session slice out-ranks app scopes for CPU, live on existing installs"
 
 oomd_conf="$ROOT/etc/systemd/oomd.conf.d/10-omarchy.conf"
