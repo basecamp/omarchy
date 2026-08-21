@@ -112,7 +112,7 @@ pass "sleep monitor cleans up its producer when terminated"
 # system bus and leave omarchy-sleep-lock.service restart-looping silently.
 grep -q 'DBUS_MONITOR="${DBUS_MONITOR:-/usr/bin/dbus-monitor}"' "$sleep_monitor" ||
   fail "sleep monitor resolves dbus-monitor by absolute path by default"
-grep -Eq 'exec[[:space:]]+dbus-monitor[[:space:]]' "$sleep_monitor" &&
-  fail "sleep monitor still invokes bare dbus-monitor from PATH" ||
-  true
+if grep -Eq 'exec[[:space:]]+dbus-monitor[[:space:]]' "$sleep_monitor"; then
+  fail "sleep monitor still invokes bare dbus-monitor from PATH"
+fi
 pass "sleep monitor resolves dbus-monitor by absolute path by default"
