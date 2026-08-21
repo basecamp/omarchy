@@ -19,10 +19,27 @@ function shouldWarnLowBattery(device, onBattery, dischargingState, threshold, al
   }
 }
 
+function observePowerSource(powerSourceInitialized, wasOnBattery, onBattery) {
+  if (!powerSourceInitialized) {
+    return {
+      recordPluggedAt: false,
+      powerSourceInitialized: true,
+      wasOnBattery: onBattery
+    }
+  }
+
+  return {
+    recordPluggedAt: wasOnBattery && !onBattery,
+    powerSourceInitialized: true,
+    wasOnBattery: onBattery
+  }
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     batteryPercentage: batteryPercentage,
     isDischarging: isDischarging,
-    shouldWarnLowBattery: shouldWarnLowBattery
+    shouldWarnLowBattery: shouldWarnLowBattery,
+    observePowerSource: observePowerSource
   }
 }

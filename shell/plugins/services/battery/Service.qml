@@ -51,17 +51,14 @@ Item {
 
   function observePowerSource() {
     var onBattery = UPower.onBattery
-    if (!persisted.powerSourceInitialized) {
-      persisted.powerSourceInitialized = true
-      persisted.wasOnBattery = onBattery
-      return
-    }
+    var state = BatteryModel.observePowerSource(persisted.powerSourceInitialized, persisted.wasOnBattery, onBattery)
+    persisted.powerSourceInitialized = state.powerSourceInitialized
+    persisted.wasOnBattery = state.wasOnBattery
 
-    if (persisted.wasOnBattery && !onBattery) {
+    if (state.recordPluggedAt) {
       pluggedAtProcess.command = ["omarchy-battery-status", "--record-plugged-at", "1", String(Math.floor(Date.now() / 1000))]
       pluggedAtProcess.running = true
     }
-    persisted.wasOnBattery = onBattery
   }
 
   function runPendingPowerProfile() {
