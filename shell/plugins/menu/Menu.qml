@@ -726,13 +726,18 @@ Item {
     root.rebuildDisplay()
   }
 
-  function setActiveMenu(id, pushHistory, fromPointer) {
+  function setActiveMenu(id, pushHistory, fromPointer, restoreIndex) {
     panel.freezeCardTop()
     if (!root.item(id)) id = "root"
-    if (pushHistory && id !== root.activeMenu) root.navStack = root.navStack.concat([root.activeMenu])
+    // Remember where the cursor sat in the menu being left, keyed to it on
+    // the stack, so goBack() can restore it instead of always landing on the
+    // first row. settleCursor() still runs via rebuildDisplay(), so a stale
+    // index (rows changed underneath) lands on the nearest selectable row.
+    if (pushHistory && id !== root.activeMenu)
+      root.navStack = root.navStack.concat([{ id: root.activeMenu, selectedIndex: root.selectedIndex }])
     root.activeMenu = id
     root.filterText = ""
-    root.selectedIndex = 0
+    root.selectedIndex = restoreIndex >= 0 ? restoreIndex : 0
     root.cursorActive = true
     if (fromPointer) pointerGate.allowInitialSample()
     else root.disarmPointer()
@@ -747,7 +752,7 @@ Item {
     if (root.navStack.length > 0) {
       var previous = root.navStack[root.navStack.length - 1]
       root.navStack = root.navStack.slice(0, root.navStack.length - 1)
-      root.setActiveMenu(previous, false)
+      root.setActiveMenu(previous.id, false, false, previous.selectedIndex)
       return true
     }
 

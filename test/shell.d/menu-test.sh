@@ -480,8 +480,18 @@ assert(
   'menu filter changes disarm pointer selection'
 )
 assert(
-  /function setActiveMenu\(id, pushHistory, fromPointer\)[\s\S]*if \(fromPointer\) pointerGate\.allowInitialSample\(\)\s*else root\.disarmPointer\(\)/.test(menuQml),
+  /function setActiveMenu\(id, pushHistory, fromPointer, restoreIndex\)[\s\S]*if \(fromPointer\) pointerGate\.allowInitialSample\(\)\s*else root\.disarmPointer\(\)/.test(menuQml),
   'menu route changes only accept an initial pointer sample for mouse activation'
+)
+// Going back should return the cursor to the row that was highlighted before
+// descending, not reset it to the top of the parent menu.
+assert(
+  /root\.navStack = root\.navStack\.concat\(\[\{ id: root\.activeMenu, selectedIndex: root\.selectedIndex \}\]\)/.test(menuQml),
+  'menu remembers the selected row alongside the menu id when descending'
+)
+assert(
+  /function goBack\(\)[\s\S]*?root\.setActiveMenu\(previous\.id, false, false, previous\.selectedIndex\)/.test(menuQml),
+  'menu restores the remembered selected row when going back'
 )
 assert(
   /\(event\.key === Qt\.Key_Backspace \|\| event\.key === Qt\.Key_Left\) && !root\.filterText[\s\S]*root\.goBack\(\)/.test(menuQml),
