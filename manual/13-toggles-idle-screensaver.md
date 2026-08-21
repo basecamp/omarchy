@@ -108,7 +108,16 @@ The lock screen is a shell plugin, so you change it by cloning it:
 omarchy plugin clone omarchy.lock
 ```
 
-`Service.qml` owns the session lock and the PAM flows. Leave it alone. `LockView.qml` is the part you see — the blurred wallpaper, the password field, and whatever you add.
+`Service.qml` owns the session lock and the PAM flows. `LockView.qml` is the part you see — the blurred wallpaper, the password field, and whatever you add. Edit the view, leave the service alone.
+
+Cloning copies the whole plugin, so your `Service.qml` is frozen at the moment you cloned it. `omarchy plugin update` only tracks git-managed plugins, and a clone isn't one, so later fixes to the built-in lock screen — including authentication ones — never reach your copy. After an Omarchy update, diff the two and carry anything you're missing across:
+
+```
+diff ~/.config/omarchy/plugins/<username>.lock/Service.qml \
+     /usr/share/omarchy/shell/plugins/lock/Service.qml
+```
+
+The clone rewrites the plugin id, so that shows up in the diff every time. Ignore it and read the rest.
 
 Preview your work without locking the machine:
 
