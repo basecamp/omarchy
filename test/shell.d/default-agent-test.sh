@@ -95,6 +95,7 @@ export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
 grok_package="npm:@xai-official/grok"
 omp_package="github:can1357/oh-my-pi"
 crush_package="crush"
+antigravity_package="aqua:google-antigravity/antigravity-cli"
 
 assert_lazy_stub() {
   local package=$1
@@ -112,17 +113,23 @@ assert_lazy_stub() {
 assert_lazy_stub "$grok_package" grok
 assert_lazy_stub "$omp_package" omp
 assert_lazy_stub "$crush_package" crush
+assert_lazy_stub "$antigravity_package" agy
 pass "custom agent lazy stubs preserve their mise packages"
 
 source "$ROOT/install/user/mise.sh"
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates the Grok lazy stub"
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
+grep -Fx "$antigravity_package agy" "$stub_log" >/dev/null || fail "user setup creates the Antigravity lazy stub"
 pass "user setup creates the custom agent lazy stubs"
 
 : >"$stub_log"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "Oh My Pi migration creates a working lazy stub"
+
+: >"$stub_log"
+source "$ROOT/migrations/1787242932.sh" >/dev/null
+grep -Fx "$antigravity_package agy" "$stub_log" >/dev/null || fail "Antigravity migration creates a working lazy stub"
 
 : >"$stub_log"
 source "$ROOT/migrations/1785846769.sh" >/dev/null
@@ -136,6 +143,7 @@ touch "$test_home/.local/state/omarchy/preinstalls-removed"
 : >"$stub_log"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
 source "$ROOT/migrations/1785846769.sh" >/dev/null
+source "$ROOT/migrations/1787242932.sh" >/dev/null
 [[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
 [[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
 
@@ -160,7 +168,7 @@ rm "$test_home/.local/state/omarchy/preinstalls-removed"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"
 
 omarchy-remove-preinstalls >/dev/null
-for command in omp grok crush; do
+for command in omp grok crush agy; do
   [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
 done
 pass "Remove Preinstalls deletes every optional agent lazy stub"
@@ -213,6 +221,8 @@ declare -A expected_agents=(
   [open-code]="opencode"
   [claude]="claude"
   [claude-code]="claude"
+  [antigravity]="agy"
+  [agy]="agy"
   [codex]="codex"
   [crush]="crush"
   [grok]="grok"
@@ -227,6 +237,7 @@ declare -A expected_packages=(
   [omp]="$omp_package"
   [opencode]="opencode"
   [claude]="claude"
+  [agy]="$antigravity_package"
   [codex]="codex"
   [crush]="$crush_package"
   [grok]="$grok_package"
@@ -370,6 +381,7 @@ assert_launch pi pi "Review this project"
 assert_launch omp omp --auto-approve -- "Review this project"
 assert_launch opencode opencode --auto --prompt "Review this project"
 assert_launch claude claude --permission-mode auto -- "Review this project"
+assert_launch agy agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch codex codex --approve-for-me -- "Review this project"
 assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
@@ -381,6 +393,7 @@ assert_bypass pi pi
 assert_bypass omp omp --auto-approve
 assert_bypass opencode opencode --auto
 assert_bypass claude claude --permission-mode auto
+assert_bypass agy agy --dangerously-skip-permissions
 assert_bypass codex codex --approve-for-me
 assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions

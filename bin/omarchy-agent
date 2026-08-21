@@ -78,6 +78,10 @@ claude)
   command=(claude --permission-mode auto)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
+agy)
+  command=(agy --dangerously-skip-permissions)
+  [[ -n ${prompt:-} ]] && command+=(--prompt-interactive "$prompt")
+  ;;
 grok)
   command=(grok --permission-mode bypassPermissions)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
