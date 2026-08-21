@@ -98,9 +98,55 @@ assertDeepEqual(
   'bluetooth projects device rows with primitives only'
 )
 assertEqual(
-  bluetooth.deviceLabel(bluetooth.deviceRow({ name: 'Generic', deviceName: 'MX Master 3S', address: '2', connected: true })),
+  bluetooth.deviceRow({ name: 'Generic', deviceName: 'MX Master 3S', address: '2', connected: true }).deviceName,
   'MX Master 3S',
-  'bluetooth keeps deviceName in row projections so labels survive QObject-free rows'
+  'bluetooth keeps deviceName in row projections so the reported name survives QObject-free rows'
+)
+
+// BlueZ reports Alias (device.name) as a copy of Name until a user sets one,
+// so the alias is the display name and deviceName is only the fallback.
+assertEqual(
+  bluetooth.deviceLabel(bluetooth.deviceRow({ name: 'Comfy Mouse', deviceName: 'MX Master 3S', address: '2', connected: true })),
+  'Comfy Mouse',
+  'bluetooth labels a device by its BlueZ alias so a renamed device shows the custom name'
+)
+
+// Writing an empty alias is how a custom name is dropped, and quickshell holds
+// that empty value locally until BlueZ echoes the device name back.
+assertEqual(
+  bluetooth.deviceLabel({ name: '', deviceName: 'MX Master 3S' }),
+  'MX Master 3S',
+  'bluetooth falls back to the reported name while a cleared alias is in flight'
+)
+assertEqual(bluetooth.deviceRealName({ name: 'Comfy Mouse', deviceName: 'MX Master 3S' }), 'MX Master 3S', 'bluetooth can still name the device behind an alias')
+
+// hasHumanName gates every list, and after the alias takes precedence it gates
+// on a string the user picked. A MAC typed as a name must not drop the row out
+// of the panel that is the only place to change it back.
+assert(bluetooth.hasHumanName({ name: 'AA:BB:CC:DD:EE:FF', deviceName: 'MX Master 3S' }), 'bluetooth keeps listing a device whose alias looks like an address')
+assert(bluetooth.hasHumanName({ name: 'Tile Tracker', deviceName: '' }), 'bluetooth lists an aliased device that reports no name of its own')
+assert(!bluetooth.hasHumanName({ name: 'AA-BB-CC-DD-EE-FF', deviceName: '' }), "bluetooth still filters BlueZ's address-derived alias for a nameless device")
+
+// A device that reports no name of its own, renamed to something address-shaped,
+// would otherwise vanish from the only panel that could rename it back.
+assertEqual(
+  bluetooth.deviceLists([{ address: '1', name: 'AA:BB:CC:DD:EE:FF', deviceName: '', paired: true }]).known.length,
+  1,
+  'bluetooth keeps a remembered device listed whatever it ends up called'
+)
+assertEqual(
+  bluetooth.deviceLists([{ address: '1', name: 'AA:BB:CC:DD:EE:FF', deviceName: '' }]).discovered.length,
+  0,
+  'bluetooth still keeps address-named junk out of a scan'
+)
+
+assertDeepEqual(
+  bluetooth.deviceLists([
+    { name: 'Aardvark', deviceName: 'Zeta Speaker', paired: true, address: '1' },
+    { name: 'Zulu', deviceName: 'Alpha Buds', paired: true, address: '2' }
+  ]).known.map(bluetooth.deviceLabel),
+  ['Aardvark', 'Zulu'],
+  'bluetooth sorts remembered devices by the name the user sees'
 )
 
 assertDeepEqual(
@@ -139,6 +185,36 @@ assert(
 assert(
   !bluetooth.bluetoothSinkMatchesDevice({ isSink: false, isStream: false, ready: true, name: 'bluez_output.AA_BB_CC_DD_EE_FF.1', properties: {} }, { address: 'AA:BB:CC:DD:EE:FF', name: 'JBL Go 3' }),
   'bluetooth ignores non-sink nodes when matching audio outputs'
+)
+assert(
+  bluetooth.bluetoothSinkMatchesDevice(
+    {
+      isSink: true,
+      isStream: false,
+      ready: true,
+      name: 'alsa_output.usb-speaker',
+      properties: { 'device.product.name': 'JBL Go 3' }
+    },
+    { address: '11:22:33:44:55:66', name: 'Kitchen Speaker', deviceName: 'JBL Go 3' }
+  ),
+  'bluetooth still matches a renamed device to its sink by the name PipeWire knows it under'
+)
+// A short alias as an unconstrained substring matches unrelated nodes: "Pro" is
+// in pro-output-3, "Car" is in alsa_card. Matching only the reported name keeps
+// a renamed headset from stealing an HDMI or USB output.
+assert(
+  !bluetooth.bluetoothSinkMatchesDevice(
+    { isSink: true, isStream: false, ready: true, name: 'alsa_output.pci-0000_c1_00.1.pro-output-3', properties: {} },
+    { address: 'AA:BB:CC:DD:EE:FF', name: 'Pro', deviceName: 'AirPods Pro' }
+  ),
+  'bluetooth does not match an unrelated sink on a short user alias'
+)
+assert(
+  !bluetooth.bluetoothSinkMatchesDevice(
+    { isSink: true, isStream: false, ready: true, name: 'alsa_output.hifi__speaker__sink', properties: { 'device.name': 'alsa_card.pci-0000_c1_00.6' } },
+    { address: 'AA:BB:CC:DD:EE:FF', name: 'Car', deviceName: 'AirPods Pro' }
+  ),
+  'bluetooth does not match a sink because an alias is a substring of its card name'
 )
 JS
 
