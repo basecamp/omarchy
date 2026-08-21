@@ -726,21 +726,43 @@ Item {
     root.rebuildDisplay()
   }
 
-  function setActiveMenu(id, pushHistory, fromPointer, restoreIndex) {
+  // Index of the row currently showing `itemId`, or -1 if it isn't in the
+  // current (possibly filtered) displayModel at all.
+  function indexOfItemId(itemId) {
+    if (!itemId) return -1
+    for (var i = 0; i < displayModel.count; i++) {
+      if (displayModel.get(i).itemId === itemId) return i
+    }
+    return -1
+  }
+
+  function setActiveMenu(id, pushHistory, fromPointer, restoreFilterText) {
     panel.freezeCardTop()
     if (!root.item(id)) id = "root"
-    // Remember where the cursor sat in the menu being left, keyed to it on
-    // the stack, so goBack() can restore it instead of always landing on the
-    // first row. settleCursor() still runs via rebuildDisplay(), so a stale
-    // index (rows changed underneath) lands on the nearest selectable row.
-    if (pushHistory && id !== root.activeMenu)
-      root.navStack = root.navStack.concat([{ id: root.activeMenu, selectedIndex: root.selectedIndex }])
+    // Remember which row was selected -- and what search filter was active,
+    // if any -- in the menu being left, so goBack() can restore the exact
+    // view instead of always landing on the first row of the unfiltered
+    // menu. The row is keyed by itemId rather than index: the parent may
+    // have been filtered when this row was activated (search results), and
+    // a raw index would land on whatever unrelated row now occupies that
+    // position once the filter is restored (or cleared).
+    if (pushHistory && id !== root.activeMenu) {
+      var currentRow = (root.cursorActive && root.selectedIndex >= 0 && root.selectedIndex < displayModel.count)
+        ? displayModel.get(root.selectedIndex)
+        : null
+      root.navStack = root.navStack.concat([{
+        id: root.activeMenu,
+        filterText: root.filterText,
+        selectedItemId: currentRow ? currentRow.itemId : ""
+      }])
+    }
     root.activeMenu = id
-    root.filterText = ""
-    root.selectedIndex = restoreIndex >= 0 ? restoreIndex : 0
+    root.filterText = restoreFilterText || ""
+    root.selectedIndex = 0
     root.cursorActive = true
     if (fromPointer) pointerGate.allowInitialSample()
     else root.disarmPointer()
+    if (!root.dmenuActive && root.filterText.trim()) root.loadProvidersForSearch()
     root.rebuildDisplay()
     root.invalidateVolatileProvider(id)
     root.loadProviderForMenu(id)
@@ -752,7 +774,12 @@ Item {
     if (root.navStack.length > 0) {
       var previous = root.navStack[root.navStack.length - 1]
       root.navStack = root.navStack.slice(0, root.navStack.length - 1)
-      root.setActiveMenu(previous.id, false, false, previous.selectedIndex)
+      root.setActiveMenu(previous.id, false, false, previous.filterText)
+      var restored = root.indexOfItemId(previous.selectedItemId)
+      if (restored >= 0) {
+        root.selectedIndex = restored
+        root.cursorActive = true
+      }
       return true
     }
 
