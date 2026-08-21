@@ -102,6 +102,22 @@ candidates=$(grep -rlE '^ManagedOOM(MemoryPressure|Swap)=kill' "$ROOT/default/sy
   fail "systemd-oomd kill candidacy is set outside app.slice, which can select the compositor: $candidates"
 pass "only user app scopes are systemd-oomd kill candidates"
 
+# The compositor shares cpu.weight=100 with app.slice by default, so a couple
+# of builds in terminals stall its input loop: libinput logs "event processing
+# lagging behind by N ms", the pointer stutters, keys queue. Weighting the
+# interactive tier above apps is what keeps the desktop usable while compiling.
+cpu_slice="$ROOT/default/systemd/user/session.slice.d/10-cpuweight.conf"
+grep -Fx 'CPUWeight=1000' "$cpu_slice" >/dev/null ||
+  fail "session.slice has no CPU weight over app.slice, so saturating builds stall compositor input"
+grep -rlE '^CPUWeight=' "$ROOT/default/systemd/user" 2>/dev/null | grep -vFx "$cpu_slice" | grep -q . &&
+  fail "CPU weight is set on something other than session.slice; app scopes must stay at the default so the compositor out-ranks them"
+cpuweight_migration=$(grep -rl 'session.slice.d/10-cpuweight.conf' "$ROOT/migrations" | head -n 1 || true)
+[[ -n $cpuweight_migration ]] ||
+  fail "existing installs never reload the user manager, so the session weight waits for the next login"
+grep -F 'systemctl --user daemon-reload' "$cpuweight_migration" >/dev/null ||
+  fail "migration does not reload the user manager, so the session weight waits for the next login"
+pass "the session slice out-ranks app scopes for CPU, live on existing installs"
+
 oomd_conf="$ROOT/etc/systemd/oomd.conf.d/10-omarchy.conf"
 grep -Fx 'DefaultMemoryPressureLimit=50%' "$oomd_conf" >/dev/null ||
   fail "no pressure limit; the 60% default rides thrashing longer than a desktop stays usable"
