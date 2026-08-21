@@ -10,9 +10,6 @@ o.bind("XF86PowerOff", "Power menu", "omarchy-menu toggle system", { locked = tr
 o.bind("SUPER + K", "Keybindings", "omarchy-menu-keybindings")
 o.bind("SUPER + ALT + K", "Tmux keybindings", "omarchy-menu-tmux-keybindings")
 o.bind("SUPER + CTRL + K", "Herdr keybindings", "omarchy-menu-herdr-keybindings")
-o.bind("SUPER + CTRL + Q", "Calculator", "omacalc")
-o.bind("XF86Calculator", "Calculator", "omacalc")
-
 o.bind_toggle("SUPER + SHIFT + SPACE", "Toggle top bar", "bar")
 o.bind("SUPER + CTRL + SPACE", "Background switcher", "omarchy-menu toggle background")
 o.bind("SUPER + SHIFT + CTRL + SPACE", "Theme menu", "omarchy-menu toggle theme")
