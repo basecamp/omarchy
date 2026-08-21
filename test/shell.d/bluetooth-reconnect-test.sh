@@ -154,3 +154,12 @@ run_reconnect
 [[ $(<"$tmp/err") == *"$keyboard did not connect"* ]] ||
   fail "reconnect reports a device it could not connect" "actual: $(<"$tmp/err")"
 pass "reconnect reports a device it could not connect"
+
+migration="$ROOT/migrations/1787330669.sh"
+grep -F 'systemctl --user enable omarchy-bluetooth-reconnect.service' "$migration" >/dev/null ||
+  fail "migration must enable without --now; --now starts the unit before the session-gate check"
+grep -F 'graphical-session.target.wants' "$migration" >/dev/null ||
+  fail "an update over SSH has no user manager to enable into, so the migration completes with the unit unenabled and no second chance"
+grep -F 'is-active --quiet graphical-session.target' "$migration" >/dev/null ||
+  fail "migration reaches for the peripherals of whoever is at the machine during an update from a TTY"
+pass "migration enables for existing installs with or without a live user manager"
