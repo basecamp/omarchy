@@ -135,7 +135,11 @@ const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item])
 const rankBase = menu.mergeMenuSources(defaultItems, [])
 const ranked = menu.mergeAppRows(rankBase.items, rankBase.itemOrder, [
   { id: 'apps.brave', parent: 'apps', kind: 'app', label: 'Brave', description: '', aliases: [] },
+  { id: 'apps.chrome', parent: 'apps', kind: 'app', label: 'Google Chrome', description: 'Web Browser', aliases: ['google-chrome', 'chrome'] },
   { id: 'apps.fontforge', parent: 'apps', kind: 'app', label: 'FontForge', description: '', aliases: [] },
+  { id: 'apps.rustdesk', parent: 'apps', kind: 'app', label: 'RustDesk', description: 'Remote Desktop', aliases: ['rustdesk'] },
+  { id: 'apps.thunderbird', parent: 'apps', kind: 'app', label: 'Thunderbird', description: 'Email Client', aliases: ['email', 'mail'] },
+  { id: 'apps.vscode', parent: 'apps', kind: 'app', label: 'Visual Studio Code', description: 'Code Editor', aliases: ['code', 'vsc'] },
   { id: 'apps.zen', parent: 'apps', kind: 'app', label: 'Zen Browser', description: '', aliases: [] }
 ])
 const rankScore = (id, query) => menu.searchScore(ranked.items, ranked.items[id], query)
@@ -155,6 +159,33 @@ assert(
   rankScore('style.font', 'font') < rankScore('apps.fontforge', 'font'),
   'menu keeps a better-matching menu entry above a weaker app match'
 )
+assert(
+  rankScore('apps.rustdesk', 'rust') < rankScore('remove.development.rust', 'rust'),
+  'menu keeps a destructive exact match below an app prefix match'
+)
+assert(
+  rankScore('apps.rustdesk', 'rust') < rankScore('install.development.rust', 'rust'),
+  'menu keeps an installer match below an app prefix match'
+)
+
+// Acronym & initialism search
+assert(menu.matchesQuery(ranked.items['apps.chrome'], 'gc', true), 'menu matches app acronym (gc -> Google Chrome)')
+assert(menu.matchesQuery(ranked.items['apps.vscode'], 'vsc', true), 'menu matches app acronym (vsc -> Visual Studio Code)')
+assert(menu.matchesQuery(ranked.items['apps.thunderbird'], 'tb', true), 'menu matches app acronym (tb -> Thunderbird)')
+assert(menu.matchesQuery(ranked.items['apps.chrome'], 'gch', true), 'menu matches app prefix sequence (gch -> Google Chrome)')
+assert(menu.matchesQuery(ranked.items['apps.vscode'], 'vs', true), 'menu matches app prefix sequence (vs -> Visual Studio Code)')
+assert(
+  rankScore('apps.chrome', 'gc') < rankScore('setup.default.browser', 'gc'),
+  'menu ranks acronym app match above menu items'
+)
+assert(
+  rankScore('apps.vscode', 'vsc') < rankScore('setup.default.editor', 'vsc'),
+  'menu ranks acronym app match above menu items'
+)
+
+// Fuzzy subsequence search
+assert(menu.matchesQuery({ id: 'config', label: 'Config', aliases: [] }, 'cf', true), 'menu matches fuzzy subsequence (cf -> Config)')
+assert(menu.matchesQuery({ id: 'voxtype', label: 'Voxtype Configuration', aliases: [] }, 'cfg', true), 'menu matches fuzzy subsequence (cfg -> Configuration)')
 
 // Routing: htop ships `Keywords=system;...`, which app rows carry as aliases.
 // An installed app must never capture a menu route (SUPER+ESCAPE opens the
