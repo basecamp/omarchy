@@ -78,7 +78,7 @@ pass "zen preferences fall back to a plain copy without package policies"
 # /opt/zen-browser path from the original report.
 grep -q "zen-browser-bin/distribution" "$ROOT/bin/omarchy-install-browser" ||
   fail "zen installer targets the zen-browser-bin install path"
-grep -q "zen-browser/distribution" "$ROOT/bin/omarchy-install-browser" &&
-  fail "zen installer still references the unused zen-browser path" ||
-  true
+if grep -q "zen-browser/distribution" "$ROOT/bin/omarchy-install-browser"; then
+  fail "zen installer still references the unused zen-browser path"
+fi
 pass "zen installer targets the path Zen reads from"
