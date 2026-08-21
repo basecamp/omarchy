@@ -1,3 +1,17 @@
+# Community BCM43602 board calibration from kernel.org bugzilla attachment
+# 290569 (https://bugzilla.kernel.org/attachment.cgi?id=290569). Not provided
+# or licensed by Broadcom or Apple. linux-firmware ships only the .bin for this
+# part; without an NVRAM, brcmfmac advertises 2.4 GHz only.
+#
+# ccode=00 / regrev=245 defers channel legality to the host regulatory domain.
+# Omarchy already persists that from the timezone via set-wireless-regdom.sh.
+# The values below are otherwise this dump's calibration data; do not edit them.
+#
+# Lines starting with # are comments; the brcmfmac NVRAM parser ignores them.
+# macaddr= is a placeholder (00:90:4c is the Broadcom OUI, not a device MAC).
+# The install leaf and migration substitute the NIC's live address or strip
+# the line so this value is never used verbatim.
+
 sromrev=11
 subvid=0x14e4
 boardtype=0x61b
