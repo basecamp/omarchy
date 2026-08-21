@@ -42,7 +42,7 @@ Panel {
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property bool showConnections: tailscale.accounts.length > 1 || tailscale.accountsAccessDenied
-  readonly property bool showPeers: tailscale.active && tailscale.peers.length > 0
+  readonly property bool showPeers: tailscale.active && filteredPeers.length > 0
   readonly property var recentMullvadRegions: settings.recentMullvadRegions instanceof Array ? settings.recentMullvadRegions : (settings.recentMullvadCountries instanceof Array ? settings.recentMullvadCountries : [])
   readonly property var recentMullvadExitNodes: recentMullvadNodes()
   readonly property var exitNodes: displayExitNodes()
@@ -362,6 +362,7 @@ Panel {
   function scrollCursorIntoView() {
     if (focusSection === "peers" && peerList && filteredPeers.length > 0) {
       peerList.positionViewAtIndex(Math.max(0, Math.min(peerIndex, filteredPeers.length - 1)), ListView.Contain)
+      peerList.rememberPosition()
       scrollItemIntoView(peerList)
     } else if (focusSection === "exitNodes" && exitNodeColumn && exitNodeIndex >= 0 && exitNodeIndex < exitNodeColumn.children.length) scrollItemIntoView(exitNodeColumn.children[exitNodeIndex])
   }
@@ -388,6 +389,7 @@ Panel {
     if (filteredPeers.length === 0) return
     ensureCursor()
     peerList.positionViewAtIndex(peerIndex, ListView.Contain)
+    peerList.rememberPosition()
     openCopyMenuFor(selectedPeer(), peerList.itemAtIndex(peerIndex))
   }
 
@@ -421,8 +423,14 @@ Panel {
   onOpenedChanged: if (opened) {
     cursorActive = false
     if (panelFlick) panelFlick.contentY = 0
+    peerList.rememberedY = 0
+    peerList.positionViewAtBeginning()
     tailscale.refresh(false, true)
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  } else if (peerSearch.text !== "") {
+    // A query must not survive the panel: reopening to a silently filtered
+    // list looks like machines are missing.
+    peerSearch.text = ""
   }
   onPeerIndexChanged: scrollCursorIntoView()
   onExitNodeIndexChanged: scrollCursorIntoView()
@@ -774,9 +782,15 @@ Panel {
               width: parent.width
               foreground: root.foreground
               placeholderText: "Search machines  ( / )"
+              // The field can disappear (account switch to a small tailnet)
+              // while a query is typed; a filter with no visible box and no
+              // `/` shortcut to clear it would look like missing machines.
+              onVisibleChanged: if (!visible && text !== "") text = ""
               onTextChanged: {
                 root.peerQuery = text
                 root.peerIndex = 0
+                peerList.rememberedY = 0
+                peerList.positionViewAtBeginning()
               }
               onAccepted: {
                 root.setPeerCursor(0)
@@ -785,6 +799,13 @@ Panel {
               Keys.onPressed: function(event) {
                 if (event.key === Qt.Key_Down) {
                   root.setPeerCursor(0)
+                  keyCatcher.forceActiveFocus()
+                  event.accepted = true
+                  return
+                }
+                if (event.key === Qt.Key_Up) {
+                  // Unhandled Up propagates past the field and moves the
+                  // panel's section cursor out from under the query.
                   keyCatcher.forceActiveFocus()
                   event.accepted = true
                   return
@@ -798,9 +819,21 @@ Panel {
             }
 
             Text {
-              visible: tailscale.installed && tailscale.active && tailscale.peers.length === 0
+              // Only claim an empty tailnet once a full peer fetch has
+              // answered; before that the panel is simply still loading.
+              visible: tailscale.installed && tailscale.active && tailscale.peersLoaded && tailscale.peers.length === 0
               width: parent.width
               text: "No machines found on this tailnet."
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              horizontalAlignment: Text.AlignHCenter
+            }
+
+            Text {
+              visible: tailscale.installed && tailscale.active && !tailscale.peersLoaded && tailscale.peers.length === 0
+              width: parent.width
+              text: "Loading machines…"
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
@@ -821,7 +854,7 @@ Panel {
             // delegates, and rows are pooled instead of destroyed on refresh.
             ListView {
               id: peerList
-              visible: root.showPeers && root.filteredPeers.length > 0
+              visible: root.showPeers
               width: parent.width
               height: Math.min(contentHeight, Style.space(300))
               clip: true
@@ -831,7 +864,20 @@ Panel {
               boundsBehavior: Flickable.StopAtBounds
               flickableDirection: Flickable.VerticalFlick
               interactive: contentHeight > height
-              ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+              // Qt resets contentY whenever a JS-array model is reassigned,
+              // and any poll where a peer changed publishes a new array — so
+              // without this a background refresh scrolls the list to the top
+              // under the user's finger. Remember the position the user (or
+              // keyboard cursor) chose and put it back; filter changes and
+              // panel opens reset it explicitly instead.
+              property real rememberedY: 0
+              function rememberPosition() { rememberedY = contentY }
+              onContentYChanged: if (moving || dragging) rememberedY = contentY
+              onModelChanged: contentY = Math.max(0, Math.min(rememberedY, Math.max(0, contentHeight - height)))
+              ScrollBar.vertical: ScrollBar {
+                policy: ScrollBar.AsNeeded
+                onPressedChanged: if (!pressed) peerList.rememberPosition()
+              }
 
               delegate: PeerRow {
                 required property var modelData

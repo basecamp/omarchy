@@ -80,6 +80,9 @@ Item {
   property bool peersWanted: false
   property bool _statusFullPeers: false
   property bool _pendingFullPeers: false
+  // False until a full peer fetch has answered, so the panel can tell
+  // "still loading" apart from "this tailnet has no machines".
+  property bool peersLoaded: false
 
   function publishPeers(next) {
     var sig = JSON.stringify(next)
@@ -256,6 +259,7 @@ Item {
     authUrl = ""
     publishPeers([])
     publishTailnetExitNodes([])
+    peersLoaded = false
     syncExitNodes()
     mullvadExitNodes = []
     mullvadRegions = []
@@ -298,6 +302,7 @@ Item {
     if (_statusFullPeers) {
       publishPeers(parsed.running ? parsed.peers : [])
       publishTailnetExitNodes(parsed.running ? parsed.exitNodes : [])
+      peersLoaded = true
     } else if (!parsed.running) {
       publishPeers([])
       publishTailnetExitNodes([])
@@ -328,12 +333,13 @@ Item {
   }
 
   function parseMullvadExitNodes(raw) {
-    var nextExitNodes = Model.parseExitNodeList(raw)
-    var nextRegions = Model.mullvadRegionOptions(nextExitNodes)
+    // The raw node list is small and nothing hot binds to it, so publish it
+    // unconditionally; only the derived regions need the churn guard.
+    mullvadExitNodes = Model.parseExitNodeList(raw)
+    var nextRegions = Model.mullvadRegionOptions(mullvadExitNodes)
     var sig = JSON.stringify(nextRegions)
     if (sig !== _mullvadRegionsSig) {
       _mullvadRegionsSig = sig
-      mullvadExitNodes = nextExitNodes
       mullvadRegions = nextRegions
     }
     syncExitNodes()
