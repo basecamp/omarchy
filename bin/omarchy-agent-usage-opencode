@@ -36,7 +36,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 AGENT_ID = "opencode-go"
-AGENT_NAME = "OpenCode Go"
+AGENT_NAME = "Opencode"
 AUTH_HELP = "Sign in to OpenCode Go at https://opencode.ai/auth to restore limits."
 USAGE_URL = os.environ.get("OPENCODE_GO_USAGE_URL") or "https://opencode.ai/zen/go/v1/usage"
 
@@ -320,7 +320,7 @@ def fetch_limits():
   percentage of the allowance used. Any failure returns empty limits and a
   status note so the tab keeps showing local token usage instead of hiding.
   """
-  result = {"limits": [], "tierLabel": "Go", "usageStatusText": "", "authHelpText": ""}
+  result = {"limits": [], "tierLabel": "GO", "usageStatusText": "", "authHelpText": ""}
   payload = fetch_usage()
   if payload is None:
     result["usageStatusText"] = "OpenCode Go limits unavailable"

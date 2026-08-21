@@ -12,6 +12,9 @@ const agentSource = fs.readFileSync(root + '/shell/plugins/agents/Agent.qml', 'u
 
 assert(/function launchAgent\(\)/.test(panelSource), 'agents panel launches the default agent')
 assert(/root\.bar\.run\("omarchy-agent --pick"\)/.test(panelSource), 'agents panel uses the desktop agent launcher')
+assert(/source: root\.provider \? Qt\.resolvedUrl\("assets\/" \+ root\.provider\.providerId \+ "\.svg"\) : ""/.test(panelSource), 'agents bar icon uses the current provider svg')
+assert(/property var candidates: root\.iconCandidatesForProvider\(root\.provider, root\.surface\)/.test(panelSource), 'agents panel header resolves the provider svg')
+assert(!/text: button\.text/.test(panelSource), 'agents panel never falls back to the generic bar glyph')
 assert(/if \(buttonCode === Qt\.RightButton\) root\.launchAgent\(\)/.test(panelSource), 'agents right click launches the agent')
 assert(/else if \(buttonCode === Qt\.MiddleButton\) root\.selectProvider\(root\.providerIndex \+ 1\)/.test(panelSource), 'agents middle click still advances the subscription')
 assert(/else root\.toggle\(\)/.test(panelSource), 'agents left click still toggles the panel')

@@ -56,7 +56,7 @@ result=$(HOME="$TEST_HOME" XDG_DATA_HOME="$TEST_HOME/.local/share" \
   OPENCODE_GO_USAGE_URL="file://$TEST_HOME/usage.json" \
   "$ROOT/bin/omarchy-agent-usage-opencode" --force)
 
-[[ $(jq -c '.id + "/" + .name + "/" + (.hasLocalStats|tostring)' <<<"$result") == '"opencode-go/OpenCode Go/true"' ]] ||
+[[ $(jq -c '.id + "/" + .name + "/" + (.hasLocalStats|tostring)' <<<"$result") == '"opencode-go/Opencode/true"' ]] ||
   fail "OpenCode Go collector identifies itself" "$result"
 pass "OpenCode Go collector identifies itself"
 
@@ -72,7 +72,7 @@ pass "OpenCode Go collector ignores other providers, user messages, and malforme
   fail "OpenCode Go collector counts sessions across messages" "$result"
 pass "OpenCode Go collector counts sessions across messages"
 
-[[ $(jq -c '(.tierLabel|tostring) + "/" + ((.limits|length)|tostring)' <<<"$result") == '"Go/3"' ]] ||
+[[ $(jq -c '(.tierLabel|tostring) + "/" + ((.limits|length)|tostring)' <<<"$result") == '"GO/3"' ]] ||
   fail "OpenCode Go collector reads its plan and three limit windows" "$result"
 pass "OpenCode Go collector reads its plan and three limit windows"
 
