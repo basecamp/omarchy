@@ -540,6 +540,7 @@ Item {
         passwordPam: root.passwordPamConfigured,
         fingerprint: root.fingerprintConfigured,
         authenticating: root.authenticating,
+        blank: root.blankTimeoutSeconds,
         lastEvent: root.lastEvent,
         lastEventAt: root.lastEventAt
       })
