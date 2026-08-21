@@ -9,7 +9,7 @@ require_command jq
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-mkdir -p "$TMPDIR/home" "$TMPDIR/bin" "$TMPDIR/plugins"
+mkdir -p "$TMPDIR/home/.config/omarchy" "$TMPDIR/bin" "$TMPDIR/plugins"
 calls="$TMPDIR/calls"
 
 make_plugin() {
@@ -35,6 +35,10 @@ make_plugin "acme.dependency" 1 '[]'
 make_plugin "acme.main" 50 '["acme.dependency"]'
 make_plugin "acme.disabled" 0 '[]'
 
+cat >"$TMPDIR/home/.config/omarchy/hypr-plugins.json" <<'JSON'
+{"enabled":["acme.main"]}
+JSON
+
 cat >"$TMPDIR/bin/omarchy-plugin-list" <<'SH'
 #!/bin/bash
 cat <<'JSON'
@@ -53,9 +57,9 @@ jq -n \
   --arg main "$TMPDIR/plugins/acme.main" \
   --arg disabled "$TMPDIR/plugins/acme.disabled" '
 [
-  {id:"acme.dependency", sourceDir:\$dep, entryPoints:{hyprland:"plugin.lua"}, priority:1, dependencies:[]},
-  {id:"acme.main", sourceDir:\$main, entryPoints:{hyprland:"plugin.lua"}, priority:50, dependencies:["acme.dependency"]},
-  {id:"acme.disabled", sourceDir:\$disabled, entryPoints:{hyprland:"plugin.lua"}, priority:0, dependencies:[]}
+  {id:"acme.dependency", sourceDir:\$dep, kinds:["hyprland"], entryPoints:{hyprland:"plugin.lua"}, priority:1, dependencies:[]},
+  {id:"acme.main", sourceDir:\$main, kinds:["hyprland"], entryPoints:{hyprland:"plugin.lua"}, priority:50, dependencies:["acme.dependency"]},
+  {id:"acme.disabled", sourceDir:\$disabled, kinds:["hyprland"], entryPoints:{hyprland:"plugin.lua"}, priority:0, dependencies:[]}
 ]
 '
 CATALOG

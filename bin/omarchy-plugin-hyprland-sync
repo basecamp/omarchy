@@ -13,12 +13,18 @@ fail() {
 
 state_home="$HOME/.local/state/omarchy/hypr"
 loader="$state_home/plugins.lua"
+state_file="$HOME/.config/omarchy/hypr-plugins.json"
 mkdir -p "$state_home"
 
 catalog=$(omarchy-plugin-catalog)
-enabled=$(omarchy-plugin-list --json)
+if [[ -f $state_file ]]; then
+  enabled=$(<"$state_file")
+else
+  enabled='{"enabled":[]}'
+fi
 jq -e . >/dev/null <<<"$catalog" || fail "plugin catalog is not valid JSON"
-jq -e . >/dev/null <<<"$enabled" || fail "plugin list is not valid JSON"
+jq -e '.enabled | type == "array" and all(.[]; type == "string")' <<<"$enabled" >/dev/null \
+  || fail "Hyprland plugin state is not valid JSON: $state_file"
 
 declare -A manifest_json source_dir entry_point priority dependencies
 declare -A visiting visited
@@ -65,8 +71,12 @@ visit() {
 }
 
 mapfile -t roots < <(
-  jq -r '.[] | select(.enabled == true and ((.kinds // []) | index("hyprland")) != null) | .id' <<<"$enabled" |
+  jq -r '.enabled[]' <<<"$enabled" |
     while IFS= read -r id; do
+      manifest=$(manifest_for "$id")
+      [[ -n $manifest ]] || fail "enabled plugin '$id' is not installed"
+      jq -e '(.kinds // []) | index("hyprland") != null' <<<"$manifest" >/dev/null \
+        || fail "enabled plugin '$id' is not a Hyprland plugin"
       load_plugin "$id"
       printf '%s\t%s\n' "${priority[$id]}" "$id"
     done | sort -n -k1,1 -k2,2 | cut -f2

@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# omarchy:summary=Enable or disable a Hyprland plugin
+# omarchy:group=plugin
+# omarchy:hidden=true
+# omarchy:args=<plugin-id> <true|false>
+
+set -euo pipefail
+
+fail() {
+  echo "omarchy-plugin-hyprland-set-enabled: $*" >&2
+  exit 1
+}
+
+id="${1:-}"
+enabled="${2:-}"
+[[ $id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $id != *..* ]] || fail "invalid plugin id '$id'"
+[[ $enabled == true || $enabled == false ]] || fail "state must be true or false"
+
+state_file="$HOME/.config/omarchy/hypr-plugins.json"
+mkdir -p "$(dirname "$state_file")"
+
+if [[ -f $state_file ]]; then
+  state=$(<"$state_file")
+else
+  state='{"enabled":[]}'
+fi
+jq -e '.enabled | type == "array" and all(.[]; type == "string")' <<<"$state" >/dev/null \
+  || fail "invalid Hyprland plugin state: $state_file"
+
+if [[ $enabled == true ]]; then
+  state=$(jq --arg id "$id" '.enabled = ((.enabled + [$id]) | unique | sort)' <<<"$state")
+else
+  state=$(jq --arg id "$id" '.enabled = [.enabled[] | select(. != $id)]' <<<"$state")
+fi
+
+tmp="$state_file.tmp.$$"
+printf '%s\n' "$state" >"$tmp"
+mv "$tmp" "$state_file"
+omarchy-plugin-hyprland-sync >/dev/null
+if [[ $enabled == true ]]; then
+  echo "Enabled $id"
+else
+  echo "Disabled $id"
+fi

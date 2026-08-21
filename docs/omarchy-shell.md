@@ -50,7 +50,9 @@ Entry points are QML `Item`s. Panel, overlay, and menu entry points expose
 Hyprland plugins use `entryPoints.hyprland` and may declare numeric `priority`
 (default `50`) plus plugin-id `dependencies`. Enabling one generates a loader
 under `~/.local/state/omarchy/hypr/plugins.lua`; dependencies load first, then
-enabled plugins by priority and ID. The loader is reloaded automatically after
+enabled plugins by priority and ID. Their activation state is stored separately
+in `~/.config/omarchy/hypr-plugins.json`, so the shell's `plugins[]` list stays
+reserved for Quickshell plugins. The loader is reloaded automatically after
 plugin activation changes.
 
 Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegistry.qml).
