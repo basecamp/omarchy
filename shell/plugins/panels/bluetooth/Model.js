@@ -90,12 +90,23 @@ function nodeText(node) {
   ].join(" ").toLowerCase()
 }
 
-function bluetoothSinkMatchesDevice(node, device) {
-  if (!node || !node.isSink || node.isStream || !device) return false
+function isCandidateSink(node, device) {
+  return !!node && !!node.isSink && !node.isStream && !!device
+}
 
+// An exact identifier: the device's address, as PipeWire spells it into a
+// bluez_output node's name and properties.
+function bluetoothSinkMatchesAddress(node, device) {
+  if (!isCandidateSink(node, device)) return false
   var address = normalizedAddress(device.address)
+  if (address === "") return false
+  return normalizedAddress(nodeText(node)).indexOf(address) !== -1
+}
+
+// A substring guess, for a sink that carries no address at all.
+function bluetoothSinkMatchesName(node, device) {
+  if (!isCandidateSink(node, device)) return false
   var text = nodeText(node)
-  if (address !== "" && normalizedAddress(text).indexOf(address) !== -1) return true
 
   // Prefer the name the device reports. PipeWire fills a node's properties when
   // the device connects and does not follow a later alias change, so that is
@@ -107,6 +118,13 @@ function bluetoothSinkMatchesDevice(node, device) {
   // bluez_output node, and those carry the address matched above.
   var name = (deviceRealName(device) || deviceLabel(device)).toLowerCase()
   return name !== "" && text.indexOf(name) !== -1
+}
+
+// Kept for callers that just want "does this sink belong to this device"; the
+// panel applies the two criteria in separate passes so an exact address match
+// is never beaten by a name guess on an earlier sink.
+function bluetoothSinkMatchesDevice(node, device) {
+  return bluetoothSinkMatchesAddress(node, device) || bluetoothSinkMatchesName(node, device)
 }
 
 function sortedByLabel(devices) {
@@ -209,6 +227,8 @@ if (typeof module !== "undefined") {
     hasHumanName: hasHumanName,
     nodeProps: nodeProps,
     nodeText: nodeText,
+    bluetoothSinkMatchesAddress: bluetoothSinkMatchesAddress,
+    bluetoothSinkMatchesName: bluetoothSinkMatchesName,
     bluetoothSinkMatchesDevice: bluetoothSinkMatchesDevice,
     sortedByLabel: sortedByLabel,
     deviceRow: deviceRow,

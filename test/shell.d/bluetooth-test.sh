@@ -195,6 +195,30 @@ assert(
   !bluetooth.bluetoothSinkMatchesDevice({ isSink: false, isStream: false, ready: true, name: 'bluez_output.AA_BB_CC_DD_EE_FF.1', properties: {} }, { address: 'AA:BB:CC:DD:EE:FF', name: 'JBL Go 3' }),
   'bluetooth ignores non-sink nodes when matching audio outputs'
 )
+
+// The panel walks every sink for an address before it guesses at names, so the
+// two criteria have to be separable. Testing each sink against both in turn
+// would let a name guess on an earlier node beat the addressed node below it.
+const addressedLast = [
+  { isSink: true, isStream: false, ready: true, name: 'alsa_output.hifi__speaker__sink', properties: {} },
+  { isSink: true, isStream: false, ready: true, name: 'bluez_output.AA_BB_CC_DD_EE_FF.1', properties: { 'api.bluez5.address': 'AA:BB:CC:DD:EE:FF' } }
+]
+// A device whose own reported name is a substring of an unrelated sink: plenty
+// of speakers report themselves as "Speaker".
+const speaker = { address: 'AA:BB:CC:DD:EE:FF', deviceName: 'Speaker' }
+assertEqual(
+  addressedLast.filter(function(n) { return bluetooth.bluetoothSinkMatchesAddress(n, speaker) }).length,
+  1,
+  'bluetooth matches exactly one sink on the device address'
+)
+assert(
+  bluetooth.bluetoothSinkMatchesName(addressedLast[0], speaker),
+  'bluetooth would match the earlier unrelated sink by name, which is why the address pass runs first'
+)
+assert(
+  bluetooth.bluetoothSinkMatchesAddress(addressedLast[1], speaker),
+  'bluetooth finds the addressed sink even though it sorts after the name match'
+)
 assert(
   bluetooth.bluetoothSinkMatchesDevice(
     {

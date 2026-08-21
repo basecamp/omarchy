@@ -216,10 +216,17 @@ Panel {
     return sinks
   }
 
+  // Address across every sink before falling back to names. Testing each sink
+  // against both criteria in turn would let a name guess on an earlier node
+  // win over the addressed node further down the list, and PipeWire's ordering
+  // is not ours to rely on.
   function bluetoothAudioSink(device) {
     var sinks = audioSinks()
     for (var i = 0; i < sinks.length; i++) {
-      if (Model.bluetoothSinkMatchesDevice(sinks[i], device)) return sinks[i]
+      if (Model.bluetoothSinkMatchesAddress(sinks[i], device)) return sinks[i]
+    }
+    for (var j = 0; j < sinks.length; j++) {
+      if (Model.bluetoothSinkMatchesName(sinks[j], device)) return sinks[j]
     }
     return null
   }
