@@ -99,3 +99,28 @@ The logo it draws is yours to change, under _Style > Screensaver_. Upload a png 
 `Super + Ctrl + L` locks the machine. That runs the lock screen from the Omarchy shell, blanks the display, resets your keyboard layout to the first one so you're not typing your password in the wrong alphabet, and — if you have it running — locks 1Password on the way out.
 
 The lock screen takes a password, and it'll take a fingerprint too once you've set one up. That, and the other ways to authenticate, are covered in [hardware authentication](37-hardware-authentication.md).
+
+#### Customizing the lock screen
+
+The lock screen is a shell plugin, so you change it by cloning it:
+
+```
+omarchy plugin clone omarchy.lock
+```
+
+`Service.qml` owns the session lock and the PAM flows. Leave it alone. `LockView.qml` is the part you see — the blurred wallpaper, the password field, and whatever you add.
+
+Preview your work without locking the machine:
+
+```
+omarchy-shell lock preview
+omarchy-shell lock hidePreview
+```
+
+That draws the same view in an ordinary window, so a broken layout costs you nothing. Clicking it closes it.
+
+Edits to the lock plugin don't land on save the way bar widgets do. Run `omarchy restart shell` to see them.
+
+Take colors from `Color.lock.text`, `Color.lock.placeholder` and `Color.accent`, and type from `Style.font`. Hardcode them instead and your lock screen stops following theme switches.
+
+Lock for real with `Super + Ctrl + L` before you trust it. If it ever comes up broken, `Ctrl + Alt + F2` gets you a TTY, and `omarchy plugin remove <username>.lock` puts the built-in back.
