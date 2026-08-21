@@ -143,6 +143,7 @@
   "setup.default.agent.grok": {"icon":"","iconFont":"omarchy","label":"Grok","checked":"[[ \"$(omarchy-default-agent)\" == \"grok\" ]]","action":"omarchy-default-agent grok"},
   "setup.default.agent.omp": {"icon":"","iconFont":"omarchy","label":"omp","checked":"[[ \"$(omarchy-default-agent)\" == \"omp\" ]]","action":"omarchy-default-agent omp"},
   "setup.default.agent.opencode": {"icon":"","iconFont":"omarchy","label":"OpenCode","checked":"[[ \"$(omarchy-default-agent)\" == \"opencode\" ]]","action":"omarchy-default-agent opencode"},
+  "setup.default.agent.ori": {"icon":"","iconFont":"omarchy","label":"Ori","checked":"[[ \"$(omarchy-default-agent)\" == \"ori\" ]]","action":"omarchy-default-agent ori"},
   "setup.default.agent.pi": {"icon":"","iconFont":"omarchy","label":"Pi","checked":"[[ \"$(omarchy-default-agent)\" == \"pi\" ]]","action":"omarchy-default-agent pi"},
   "setup.default.browser": {"icon":"","label":"Browser","title":"Default Browser"},
   "setup.default.browser.chromium": {"icon":"","label":"Chromium","checked":"[[ \"$(omarchy-default-browser)\" == \"chromium\" ]]","action":"omarchy-default-browser chromium"},
