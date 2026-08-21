@@ -13,6 +13,16 @@ function deviceRealName(device) {
   return String(device.deviceName || "").trim()
 }
 
+// A device carries a user-set alias when BlueZ reports an Alias that is not
+// simply a copy of Name. Two cases read as "no alias" deliberately: an alias
+// typed to match the device name exactly, which is indistinguishable and whose
+// removal would change nothing on screen, and the empty alias quickshell holds
+// locally while a clear is still in flight.
+function hasAlias(device) {
+  var alias = device ? String(device.name || "").trim() : ""
+  return alias !== "" && alias !== deviceRealName(device)
+}
+
 function toArray(values) {
   if (!values) return []
   if (Array.isArray(values)) return values.slice()
@@ -190,6 +200,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     deviceLabel: deviceLabel,
     deviceRealName: deviceRealName,
+    hasAlias: hasAlias,
     toArray: toArray,
     isUuidLike: isUuidLike,
     isAddressLike: isAddressLike,

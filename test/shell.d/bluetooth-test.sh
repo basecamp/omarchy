@@ -120,6 +120,15 @@ assertEqual(
 )
 assertEqual(bluetooth.deviceRealName({ name: 'Comfy Mouse', deviceName: 'MX Master 3S' }), 'MX Master 3S', 'bluetooth can still name the device behind an alias')
 
+assert(bluetooth.hasAlias({ name: 'Comfy Mouse', deviceName: 'MX Master 3S' }), 'bluetooth sees a user alias when it differs from the device name')
+// BlueZ answers a cleared alias with a copy of Name, so an alias equal to the
+// name is indistinguishable from none — and clearing it would be a no-op write
+// that BlueZ reports nothing back for.
+assert(!bluetooth.hasAlias({ name: 'MX Master 3S', deviceName: 'MX Master 3S' }), 'bluetooth reads BlueZ echoing Name back as Alias as no alias at all')
+assert(!bluetooth.hasAlias({ name: '', deviceName: 'MX Master 3S' }), 'bluetooth reads the empty alias of an in-flight reset as no alias')
+assert(bluetooth.hasAlias({ name: 'Tile Tracker', deviceName: '' }), 'bluetooth sees an alias on a device that reports no name of its own')
+assert(!bluetooth.hasAlias(null), 'bluetooth tolerates a missing device when checking for an alias')
+
 // hasHumanName gates every list, and after the alias takes precedence it gates
 // on a string the user picked. A MAC typed as a name must not drop the row out
 // of the panel that is the only place to change it back.
@@ -216,6 +225,41 @@ assert(
   ),
   'bluetooth does not match a sink because an alias is a substring of its card name'
 )
+
+// What follows pins the decisions whose violation is silent — a rename that
+// still looks right on screen. Anything that would visibly stop working on the
+// first keypress is left to the eye, not asserted against the source.
+//
+// Renaming is a plain write of BlueZ's Alias on the live device object. Unlike
+// pair/connect/forget there is nothing to sequence, so it must not grow a
+// helper in bin/ — the mirror of the adapter.enabled assertion above.
+assert(!/deviceCommand\("rename"|execDetached\(\[[^\]]*rename/.test(panelSource), 'bluetooth renames over D-Bus instead of shelling out')
+
+// BlueZ answers a write of "" with Alias = Name, which is not a change when
+// Alias already equals Name — nothing comes back, and quickshell's optimistic
+// local value would sit empty. So the clear only goes out when there is one.
+assert(/if \(Model\.hasAlias\(device\)\) device\.name = ""/.test(panelSource), 'bluetooth only clears an alias that exists')
+
+const nameField = panelSource.match(/id: nameField[\s\S]*?\n {6}\}/)
+assert(nameField && /text: row\.isRenameOpen \? root\.renameText : ""/.test(nameField[0]), 'bluetooth keeps the rename draft on the panel so a rebuilt delegate does not lose it')
+assert(nameField && /Component\.onCompleted: if \(visible\) Qt\.callLater\(forceActiveFocus\)/.test(nameField[0]), 'bluetooth takes focus back when discovery rebuilds the row mid-edit')
+
+// The row's click handler covers the whole row, editor included.
+assert(/id: rowMouse[\s\S]{0,400}enabled: !row\.isRenameOpen/.test(panelSource), 'bluetooth stops a row click from connecting the device being renamed')
+
+// BlueZ persists an alias only for a device it stores, and a renameAddress left
+// pointing at a vanished row would leave the catcher blocked and the panel deaf.
+assert(/renameAvailable: forgetAvailable/.test(panelSource), 'bluetooth offers renaming exactly where it offers forgetting')
+// Hung off deviceGroups rather than devices: the latter only re-evaluates when
+// the set of device objects changes, so an unpair that leaves the object in
+// place would strand renameAddress and block the key catcher for good.
+assert(/function cancelRenameIfGone\(\)/.test(panelSource) && /onDeviceGroupsChanged: cancelRenameIfGone\(\)/.test(panelSource), 'bluetooth closes the editor when the device it points at stops being remembered')
+assert(/function startRename\(device\)[\s\S]*?pendingAction\(device\.address\) === "forgetting"\) return/.test(panelSource), 'bluetooth refuses to open an editor on a device already being forgotten')
+assert(/onOpenedChanged: \{[\s\S]{0,200}?cancelRename\(\)/.test(panelSource), 'bluetooth drops an open rename editor when the panel closes')
+
+// Every action a row offers is reachable from the keyboard: h/l walk the row,
+// its pencil, and its forget button rather than toggling one action slot.
+assert(/order\[next\] === "rename" && !focusedRowCanRename/.test(panelSource), 'bluetooth steps the cursor over a pencil the row is not showing')
 JS
 
 # Turning Bluetooth off is an rfkill soft block, not a bluetoothctl power off,
