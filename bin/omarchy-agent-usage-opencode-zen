@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 AGENT_ID = "opencode-zen"
-AGENT_NAME = "OpenCode Zen"
+AGENT_NAME = "OpenCode"
 PROVIDER_ID = "opencode"
 
 
@@ -449,7 +449,7 @@ def scan(db: Path, force: bool = False, limits_only: bool = False, cache_seconds
     "hasLocalStats": True,
     "scope": "device",
     "hasPromptStats": True,
-    "tierLabel": "Zen",
+    "tierLabel": "Zen · Pay as you go",
     "usageStatusText": "",
     "authHelpText": "",
     "limits": [],
