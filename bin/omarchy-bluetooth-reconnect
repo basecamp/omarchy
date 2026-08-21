@@ -1,0 +1,75 @@
+#!/bin/bash
+
+# omarchy:summary=Reconnect trusted Bluetooth keyboards and mice
+# omarchy:group=bluetooth
+
+# BlueZ never connects a paired HID peripheral on its own initiative. Its policy
+# plugin reconnects only the profiles in ReconnectUUIDs, whose stock list is the
+# four audio ones -- HID (0x1124) is deliberately absent -- and even that path
+# covers a link that dropped, not an adapter that has only just come up. So a
+# keyboard or mouse that was connected before a reboot sits paired and idle until
+# something asks BlueZ for it, which is why reconnecting one meant opening the
+# Bluetooth panel and clicking it by hand after every boot. This asks, once, when
+# the session starts.
+#
+# Trusted rather than merely paired: trust is the standing "connect this without
+# asking" flag, and omarchy-bluetooth-device sets it on every pair and every
+# connect, so anything adopted through the Bluetooth panel already qualifies.
+#
+# Keyboards and mice only. Audio has both halves covered already -- ReconnectUUIDs
+# for a dropped link, wireplumber's a2dp autoconnect for the rest -- and pulling a
+# headset in at login would move audio off the speakers uninvited.
+
+HID_UUID="00001124-0000-1000-8000-00805f9b34fb"
+
+POWER_WAIT_SECONDS=${OMARCHY_BLUETOOTH_RECONNECT_WAIT_SECONDS:-10}
+CONNECT_ATTEMPTS=${OMARCHY_BLUETOOTH_RECONNECT_ATTEMPTS:-3}
+CONNECT_RETRY_SECONDS=${OMARCHY_BLUETOOTH_RECONNECT_RETRY_SECONDS:-2}
+
+powered() {
+  [[ $(timeout 2s bluetoothctl show 2>/dev/null) == *"Powered: yes"* ]]
+}
+
+# One deadline around the whole wait rather than a fixed number of probes, for the
+# same reason omarchy-bluetooth-power uses one: every probe can sit on its own
+# timeout when D-Bus is wedged, and counting probes then stretches the wait far
+# past what was asked for.
+wait_powered() {
+  local deadline=$((SECONDS + POWER_WAIT_SECONDS))
+
+  while :; do
+    powered && return 0
+    ((SECONDS < deadline)) || return 1
+    sleep 0.5
+  done
+}
+
+connect() {
+  local address=$1 attempt
+
+  for ((attempt = 1; attempt <= CONNECT_ATTEMPTS; attempt++)); do
+    timeout 20s bluetoothctl connect "$address" >/dev/null 2>&1 && return 0
+
+    # The peripheral has to be awake to answer. One woken by the same power-on as
+    # the machine can miss the first attempt while its own radio is still coming
+    # up, so leave it room to arrive rather than reporting it missing.
+    ((attempt < CONNECT_ATTEMPTS)) && sleep "$CONNECT_RETRY_SECONDS"
+  done
+
+  return 1
+}
+
+# Bluetooth being off is a decision -- held in the rfkill soft block, which
+# survives reboots -- so an adapter that never powers up means there is nothing to
+# do here, not that this command should power it on.
+if wait_powered; then
+  while read -r _ address _; do
+    # One info call per device, not one per question: each is a D-Bus round trip.
+    info=$(timeout 5s bluetoothctl info "$address" 2>/dev/null)
+
+    if [[ $info == *"$HID_UUID"* && $info != *"Connected: yes"* ]]; then
+      connect "$address" ||
+        echo "omarchy-bluetooth-reconnect: $address did not connect" >&2
+    fi
+  done < <(timeout 5s bluetoothctl devices Trusted 2>/dev/null)
+fi
