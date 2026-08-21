@@ -13,6 +13,10 @@ mkdir -p "$TEST_HOME/.codex/sessions/$(date +%Y/%m/%d)" "$TEST_HOME/bin"
 cat >"$TEST_HOME/bin/codex" <<'EOF'
 #!/bin/bash
 
+if [[ -n ${CODEX_ARGS_FILE:-} ]]; then
+  printf '%s\n' "$*" >"$CODEX_ARGS_FILE"
+fi
+
 while read -r request; do
   id=$(jq -r '.id // empty' <<<"$request")
   method=$(jq -r '.method // empty' <<<"$request")
@@ -40,8 +44,12 @@ cat >"$session" <<EOF
 {"timestamp":"$timestamp","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":180,"cached_input_tokens":110,"output_tokens":30,"reasoning_output_tokens":8,"total_tokens":210},"last_token_usage":{"input_tokens":80,"cached_input_tokens":50,"output_tokens":10,"reasoning_output_tokens":3,"total_tokens":90}}}}
 EOF
 
-result=$(HOME="$TEST_HOME" CODEX_HOME="$TEST_HOME/.codex" XDG_DATA_HOME="$TEST_HOME/.local/share" PATH="$TEST_HOME/bin:$PATH" \
+result=$(HOME="$TEST_HOME" CODEX_HOME="$TEST_HOME/.codex" CODEX_ARGS_FILE="$TEST_HOME/codex-args" XDG_DATA_HOME="$TEST_HOME/.local/share" PATH="$TEST_HOME/bin:$PATH" \
   "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(<"$TEST_HOME/codex-args") == "-s read-only -a on-request app-server" ]] ||
+  fail "Codex collector uses the supported approval policy" "$(<"$TEST_HOME/codex-args")"
+pass "Codex collector uses the supported approval policy"
 
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "210" ]] ||
   fail "Codex collector counts each turn once" "$result"
