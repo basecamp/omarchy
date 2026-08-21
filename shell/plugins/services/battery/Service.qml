@@ -11,7 +11,14 @@ Item {
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
 
   readonly property int batteryThreshold: 10
+  readonly property string lowBatteryNotificationApp: "omarchy-battery"
+  readonly property string legacyLowBatteryNotificationApp: "omarchy-action"
+  readonly property string lowBatteryNotificationSummary: "Time to recharge!"
+  readonly property var batteryDevice: UPower.displayDevice
+  readonly property var notificationService: shell ? shell.firstPartyServiceFor("omarchy.notifications") : null
   property string pendingPowerSource: ""
+
+  onNotificationServiceChanged: dismissLowBatteryWarning()
 
   PersistentProperties {
     id: persisted
@@ -40,6 +47,16 @@ Item {
       String(level)
     ]
     warningProcess.running = true
+  }
+
+  function dismissLowBatteryWarning() {
+    if (!BatteryModel.shouldDismissLowBatteryWarning(batteryDevice, UPower.onBattery)) return
+    if (!notificationService) return
+
+    notificationService.dismissByApp(lowBatteryNotificationApp)
+    // Warnings persisted before the dedicated app identity was introduced
+    // used omarchy-action, so match their exact headline during the upgrade.
+    notificationService.dismissByApp(legacyLowBatteryNotificationApp, lowBatteryNotificationSummary)
   }
 
   function applyPowerProfile() {
@@ -72,7 +89,30 @@ Item {
     target: UPower
     function onOnBatteryChanged() {
       root.checkBattery()
+      root.dismissLowBatteryWarning()
       root.applyPowerProfile()
+    }
+  }
+
+  Connections {
+    target: root.batteryDevice
+    function onReadyChanged() {
+      // On AC, clear a warning latch preserved while UPower was unready.
+      // On battery, the regular timer avoids racing popup restoration with
+      // a duplicate warning during shell startup.
+      if (!UPower.onBattery) root.checkBattery()
+      root.dismissLowBatteryWarning()
+    }
+  }
+
+  Connections {
+    target: root.notificationService
+    function onPopupAdded(appName, summary) {
+      if (appName === root.lowBatteryNotificationApp
+          || (appName === root.legacyLowBatteryNotificationApp
+              && summary === root.lowBatteryNotificationSummary)) {
+        root.dismissLowBatteryWarning()
+      }
     }
   }
 }

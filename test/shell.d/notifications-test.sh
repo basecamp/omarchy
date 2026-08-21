@@ -44,10 +44,17 @@ assert(!notifications.shouldRenderCompactGlyph('K', 'file:///tmp/image.png', tru
 
 assert(notifications.shouldBypassDnd({ appName: 'omarchy-action', urgency: 1 }, 2), 'omarchy action toasts bypass DND')
 assert(notifications.shouldBypassDnd({ appName: 'notify-send', urgency: 2 }, 2), 'critical notify-send bypasses DND')
+assert(notifications.shouldBypassDnd({ appName: 'omarchy-battery', urgency: 2 }, 2), 'critical battery warnings bypass DND')
+assert(!notifications.shouldBypassDnd({ appName: 'omarchy-battery', urgency: 1 }, 2), 'non-critical battery notifications respect DND')
 assert(!notifications.shouldBypassDnd({ appName: 'notify-send', urgency: 1 }, 2), 'normal notify-send does not bypass DND')
 assert(!notifications.shouldBypassDnd({ appName: 'Slack', urgency: 2 }, 2), 'critical app notifications do not bypass DND')
 assert(!notifications.shouldBypassDnd({ appName: 'omarchy-menu-keybindings', urgency: 1 }, 2), 'omarchy command app names do not bypass DND')
 assert(!notifications.isEphemeralApp('omarchy-menu-keybindings'), 'notifications treat omarchy command app names as normal apps')
+
+assert(notifications.popupMatchesApp({ app: 'omarchy-battery', summary: 'Low' }, 'omarchy-battery'), 'notifications match an exact app identity')
+assert(!notifications.popupMatchesApp({ app: 'omarchy-battery-helper', summary: 'Low' }, 'omarchy-battery'), 'notifications reject an app identity prefix')
+assert(notifications.popupMatchesApp({ app: 'omarchy-action', summary: 'Time to recharge!' }, 'omarchy-action', 'Time to recharge!'), 'notifications can narrow an app match by exact summary')
+assert(!notifications.popupMatchesApp({ app: 'omarchy-action', summary: 'Theme changed' }, 'omarchy-action', 'Time to recharge!'), 'notifications reject a different summary when narrowed')
 
 assertDeepEqual(
   notifications.popupPlacement('top', 32, 6),
@@ -386,6 +393,56 @@ assertEqual(
 )
 
 const serviceQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/Service.qml'), 'utf8')
+assert(
+  /signal popupAdded\(string appName, string summary\)/.test(serviceQml),
+  'notifications service announces active popup insertion'
+)
+assert(
+  /function dismissByApp\(appName, summary\)/.test(serviceQml),
+  'notifications service can dismiss popups by exact app identity'
+)
+const liveHandler = serviceQml.slice(
+  serviceQml.indexOf('function handleNotification(notification)'),
+  serviceQml.indexOf('function writeSilenced(notification, written)')
+)
+const liveInsertIndex = liveHandler.indexOf('popupModel.insert(0, snapshot)')
+const liveAnnounceIndex = liveHandler.indexOf('service.popupAdded(inserted.app, inserted.summary)')
+assert(
+  liveInsertIndex >= 0 && liveAnnounceIndex > liveInsertIndex,
+  'notifications announce a live popup after insertion'
+)
+const replayHandler = serviceQml.slice(
+  serviceQml.indexOf('function replayHistory(raw)'),
+  serviceQml.indexOf('id: restorePopupsProc')
+)
+assert(!replayHandler.includes('popupAdded('), 'notifications do not announce explicit history replay')
+const restoreHandler = serviceQml.slice(
+  serviceQml.indexOf('function restorePopups(raw)'),
+  serviceQml.indexOf('// ---------------------------------------------------- settings persistence')
+)
+const restoreInsertIndex = restoreHandler.indexOf('popupModel.append(restored)')
+const restoreAnnounceIndex = restoreHandler.indexOf('service.popupAdded(restored.app, restored.summary)')
+assert(
+  restoreInsertIndex >= 0 && restoreAnnounceIndex > restoreInsertIndex,
+  'notifications announce a startup-restored popup after insertion'
+)
+const batteryServiceQml = fs.readFileSync(path.join(root, 'shell/plugins/services/battery/Service.qml'), 'utf8')
+const batteryReadyHandler = batteryServiceQml.slice(
+  batteryServiceQml.indexOf('function onReadyChanged()'),
+  batteryServiceQml.indexOf('target: root.notificationService')
+)
+assert(
+  batteryReadyHandler.includes('root.dismissLowBatteryWarning()'),
+  'battery retries dismissal after UPower becomes ready'
+)
+const batteryPopupHandler = batteryServiceQml.slice(
+  batteryServiceQml.indexOf('function onPopupAdded(appName, summary)'),
+  batteryServiceQml.lastIndexOf('\n  }')
+)
+assert(
+  batteryPopupHandler.includes('root.dismissLowBatteryWarning()'),
+  'battery reconciles warnings inserted after an earlier dismissal'
+)
 assert(
   /readonly property int historyLimit: 10/.test(serviceQml),
   'notifications service keeps the last ten notifications in history'

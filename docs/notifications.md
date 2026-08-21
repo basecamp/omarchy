@@ -46,14 +46,11 @@ Do-not-disturb is a single boolean, persisted as the `dnd` key in
 bar's `omarchy.indicators` widget, whose Dnd indicator binds directly to the
 service's `doNotDisturb` property.
 
-Two kinds of notification punch through DND, chosen to be intentional and
-rare:
+Three kinds of notification punch through DND, chosen to be intentional and rare:
 
-- `app_name` = `omarchy-action` — Omarchy's own user-action confirmation
-  toasts ("Theme changed"). The user just did something; their feedback shows.
-- urgency critical *and* `app_name` = `notify-send` — bare-CLI emergency
-  alerts. Critical alone is not enough, because chat apps abuse it to force
-  visibility; they set `app_name` to their brand, which fails this rule.
+- `app_name` = `omarchy-action` — Omarchy's own user-action confirmation toasts ("Theme changed"). The user just did something; their feedback shows.
+- urgency critical *and* `app_name` = `notify-send` — bare-CLI emergency alerts. Critical alone is not enough, because chat apps abuse it to force visibility; they set `app_name` to their brand, which fails this rule.
+- urgency critical *and* `app_name` = `omarchy-battery` — the low-battery warning, which must surface even while notifications are silenced.
 
 A silenced notification that anyone might look back at is written straight
 into history — "what did I miss while silenced" is what history is for.
@@ -110,8 +107,7 @@ variants map to the IPC methods `dismissOne`, `dismissAll`, `invokeLast`,
 
 Everything goes through the same sender contract, so the pieces are small:
 
-- **Low battery** — `omarchy-battery-low` sends a critical toast and runs the
-  `battery-low` hook.
+- **Low battery** — `omarchy-battery-low` sends a critical `omarchy-battery` toast and runs the `battery-low` hook. The battery service dismisses active warnings when UPower reports that the machine is back on AC.
 - **Crash capture** — `omarchy-crash-watch` follows the systemd-coredump
   journal stream and announces each crashed program (deduped per minute) as a
   critical toast whose `--exec` runs `omarchy-agent-crash`. It waits for the

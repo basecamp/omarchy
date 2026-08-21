@@ -34,7 +34,15 @@ function summaryStartsWithGlyph(summary) {
 function shouldBypassDnd(notification, criticalUrgency) {
   var appName = String((notification && notification.appName) || "")
   if (appName === "omarchy-action") return true
-  return appName === "notify-send" && notification && notification.urgency === criticalUrgency
+  return (appName === "notify-send" || appName === "omarchy-battery")
+    && notification && notification.urgency === criticalUrgency
+}
+
+function popupMatchesApp(row, appName, summary) {
+  var name = String(appName || "")
+  if (!row || !name || String(row.app || "") !== name) return false
+  if (summary === undefined || summary === null) return true
+  return String(row.summary || "") === String(summary)
 }
 
 function isEphemeralApp(appName) {
@@ -343,6 +351,7 @@ if (typeof module !== "undefined") {
     sanitizeBody: sanitizeBody,
     summaryStartsWithGlyph: summaryStartsWithGlyph,
     shouldBypassDnd: shouldBypassDnd,
+    popupMatchesApp: popupMatchesApp,
     isEphemeralApp: isEphemeralApp,
     stringHint: stringHint,
     glyphFromHints: glyphFromHints,

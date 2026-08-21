@@ -17,6 +17,10 @@ Item {
   // Injected by omarchy-shell (the first-party service loader).
   property var shell: null
 
+  // Emitted only for new and startup-restored active popups. History replay
+  // does not announce an archived row as newly active.
+  signal popupAdded(string appName, string summary)
+
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   readonly property string home: Quickshell.env("HOME")
   // History + DND live under XDG_STATE_HOME: they're persistent user state
@@ -127,6 +131,7 @@ Item {
   //     Trusted because it's almost always omarchy or system shell scripts —
   //     chat apps set app_name to their brand (Discord/Slack/Vesktop), which
   //     falls outside this rule.
+  //   - urgency=critical AND app_name=omarchy-battery: the low-battery warning.
   function shouldBypassDnd(notification) {
     return NotificationLogic.shouldBypassDnd(notification, NotificationUrgency.Critical)
   }
@@ -194,6 +199,8 @@ Item {
       // write to, and a property that already changed will not change again.
       // Reading the object once the row exists catches up on it.
       service.refreshPopup(notification, snapshot.originalId, snapshot.timestamp)
+      var inserted = popupModel.get(0)
+      if (inserted) service.popupAdded(inserted.app, inserted.summary)
     })
   }
 
@@ -350,6 +357,20 @@ Item {
 
   function clearPopups() {
     while (popupModel.count > 0) dismissPopup(0)
+  }
+
+  // Dismiss every popup from an exact app identity. Supplying a summary
+  // narrows the match to that exact headline, which supports callers
+  // transitioning away from a previously shared app name.
+  function dismissByApp(appName, summary) {
+    var hit = false
+    for (var i = popupModel.count - 1; i >= 0; i--) {
+      var row = popupModel.get(i)
+      if (!NotificationLogic.popupMatchesApp(row, appName, summary)) continue
+      dismissPopup(i)
+      hit = true
+    }
+    return hit
   }
 
   // Run the popup's click action, then dismiss. Omarchy's own toasts carry the
@@ -771,6 +792,7 @@ Item {
         // old shell — so dismissal and action fallbacks degrade gracefully.
         service.restoredPopups[NotificationLogic.popupFileName(restored)] = true
         popupModel.append(restored)
+        service.popupAdded(restored.app, restored.summary)
       }
     })
   }
