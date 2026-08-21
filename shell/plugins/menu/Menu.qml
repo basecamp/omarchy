@@ -36,6 +36,7 @@ Item {
   }
 
   function refresh() {
+    root.showKeybindings = root.defaultShowKeybindings
     if (root.keybindingsLoaded) root.loadKeybindings()
     defaultMenuFile.reload()
     userMenuFile.reload()
@@ -78,7 +79,8 @@ Item {
   property var keybindings: []
   property bool keybindingsLoaded: false
   readonly property bool defaultShowKeybindings: Boolean(root.shell && root.shell.shellConfig && root.shell.shellConfig.menu && root.shell.shellConfig.menu.keybindings)
-  property bool showKeybindings: false
+  property bool showKeybindings: defaultShowKeybindings
+  onDefaultShowKeybindingsChanged: showKeybindings = defaultShowKeybindings
 
   function applyKeybindings() {
     MenuModel.applyKeybindings(root.items, root.itemOrder, root.keybindings)
@@ -100,9 +102,7 @@ Item {
     if (!opened) {
       deleteConfirmOpen = false
       deleteTarget = null
-      showKeybindings = false
     } else {
-      showKeybindings = root.defaultShowKeybindings
       if (root.showKeybindings && !root.keybindingsLoaded) {
         root.loadKeybindings()
       }
