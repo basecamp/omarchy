@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true when running on battery below the given percentage
+# omarchy:args=<percent>
+# omarchy:examples=omarchy battery below 20
+
+# A quiet predicate for scheduled work that should wait for power, unlike
+# omarchy-battery-low, which exists to notify.
+
+threshold="${1:-}"
+power_supply_path="${OMARCHY_POWER_SUPPLY_PATH:-/sys/class/power_supply}"
+
+if [[ ! $threshold =~ ^[0-9]+$ ]]; then
+  echo "Usage: omarchy-battery-below <percent>" >&2
+  exit 2
+fi
+
+for supply in "$power_supply_path"/*; do
+  [[ -r $supply/type && $(<"$supply/type") == "Battery" ]] || continue
+  [[ -r $supply/status && $(<"$supply/status") == "Discharging" ]] || continue
+  [[ -r $supply/capacity ]] || continue
+
+  (( $(<"$supply/capacity") < threshold )) && exit 0
+done
+
+exit 1
