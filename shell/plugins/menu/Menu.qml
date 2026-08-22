@@ -1152,7 +1152,7 @@ Item {
       width: root.cardWidth
       height: Math.min(root.cardHeight, panel.height - Style.gapsOut - panel.effectiveCardTop)
       radius: root.cornerRadius
-      x: Math.max(Style.gapsOut, Math.round((panel.width - root.baseCardWidth) / 2))
+      x: Math.max(Style.gapsOut, Math.min(Math.round((panel.width - root.baseCardWidth) / 2), panel.width - Style.gapsOut - card.width))
       y: panel.effectiveCardTop
       color: root.background
       borderSpec: root.borderSpec
