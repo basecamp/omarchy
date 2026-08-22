@@ -8,6 +8,7 @@ test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 
 stub_bin="$test_tmp/bin"
+git_log="$test_tmp/git.log"
 mkdir -p "$stub_bin"
 
 # The edge channel installs omarchy-dev. Older builds did not declare
@@ -29,6 +30,15 @@ exit 1
 STUB
 chmod +x "$stub_bin/pacman"
 
+# Fails the way a non-checkout does, so only the log distinguishes a package-backed
+# path that skipped git from one that asked git and got nothing.
+cat >"$stub_bin/git" <<'STUB'
+#!/bin/bash
+printf '%s\n' "$*" >>"$TEST_GIT_LOG"
+exit 1
+STUB
+chmod +x "$stub_bin/git"
+
 cat >"$stub_bin/readlink" <<'STUB'
 #!/bin/bash
 if [[ -n ${OMARCHY_TEST_RESOLVED_PATH:-} ]]; then
@@ -42,6 +52,7 @@ chmod +x "$stub_bin/readlink"
 version() {
   OMARCHY_TEST_PACKAGES="$1" \
     OMARCHY_PATH="${2:-/usr/share/omarchy}" \
+    TEST_GIT_LOG="$git_log" \
     PATH="$stub_bin:$PATH" \
     "$ROOT/bin/omarchy-version"
 }
@@ -54,10 +65,13 @@ pass "version reports the edge package"
 
 [[ $(OMARCHY_TEST_RESOLVED_PATH=/usr/share/omarchy version omarchy "$test_tmp/legacy-omarchy-link") == "4.0.0-1" ]] ||
   fail "version recognizes the legacy Omarchy path symlink"
+: >"$git_log"
 if OMARCHY_TEST_RESOLVED_PATH=/usr/share/omarchy OMARCHY_PATH="$test_tmp/legacy-omarchy-link" \
-  PATH="$stub_bin:$PATH" "$ROOT/bin/omarchy-version-branch" >/dev/null 2>&1; then
+  TEST_GIT_LOG="$git_log" PATH="$stub_bin:$PATH" "$ROOT/bin/omarchy-version-branch" >/dev/null 2>&1; then
   fail "version branch rejects the legacy Omarchy path symlink"
 fi
+[[ ! -s $git_log ]] ||
+  fail "version branch does not inspect the legacy Omarchy path symlink as git" "$(cat "$git_log")"
 pass "version commands recognize the legacy Omarchy path symlink"
 
 # A checkout reports its hash instead, so packages are irrelevant there.
