@@ -108,6 +108,12 @@ write_logo '$1████' '  ████'
 refuses "a logo built from colour placeholders is left still"
 write_logo "$(printf 'A\tB')" 'CC'
 refuses "a logo with a tab someone else expands is left still"
+write_logo 'AAA中文BBB' 'CCCCCCCCCC'
+refuses "a logo with double-width glyphs is left still"
+write_logo "$(printf 'AAAe\xcc\x81BBB')" 'CCCCCCCC'
+refuses "a logo with a combining mark is left still"
+write_logo "$(printf 'AA\xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9BB')" 'CCCCCCC'
+refuses "a logo with a joined emoji is left still"
 
 write_logo '████████████████████████' '████████        ████████'
 columns=10

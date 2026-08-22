@@ -105,6 +105,13 @@ sheen_build() {
       return 1
     fi
 
+    # These frames slice by character and a terminal draws by column, so one
+    # character has to be one cell. A wide glyph, a combining mark or a joined
+    # emoji is neither, and a cut through one moves the rest of the row.
+    if (( ${#line} != $(printf '%s' "$line" | LC_ALL=C.UTF-8 wc -L) )); then
+      return 1
+    fi
+
     if (( ${#line} > width )); then
       width=${#line}
     fi
