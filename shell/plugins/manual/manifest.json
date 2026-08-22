@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.manual",
+  "name": "Manual",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Reader window for the Omarchy manual shipped at $OMARCHY_PATH/manual. Summon with: omarchy-shell shell summon omarchy.manual '{}' (or run: omarchy launch manual).",
+  "kinds": [
+    "panel"
+  ],
+  "entryPoints": {
+    "panel": "ManualPanel.qml"
+  }
+}

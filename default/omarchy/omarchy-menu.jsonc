@@ -42,6 +42,7 @@
   "system.shutdown": {"icon":"󰐥","label":"Shutdown","action":"omarchy-system-shutdown"},
 
   // Learn
+  "learn.manual": {"icon":"󰂺","label":"Manual","action":"omarchy-launch-manual"},
   "learn.keybindings": {"icon":"","label":"Keybindings","action":"omarchy-menu-keybindings"},
   "learn.omarchy": {"icon":"","label":"Omarchy","action":"omarchy-launch-webapp 'https://omarchy.org/manual/'"},
   "learn.hyprland": {"icon":"","label":"Hyprland","action":"omarchy-launch-webapp 'https://wiki.hypr.land/'"},

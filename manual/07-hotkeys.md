@@ -1,6 +1,6 @@
 # Hotkeys
 
-You can see all the main keyboard bindings with `Super + K` (Tmux bindings with `Super + Alt + K` and Herdr bindings with `Super + Ctrl + K`).
+You can see all the main keyboard bindings with `Super + K` (Tmux bindings with `Super + Alt + K` and Herdr bindings with `Super + Ctrl + K`), and open this manual with `Super + Ctrl + /`.
 
 ## Navigating
 
