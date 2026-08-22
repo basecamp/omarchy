@@ -81,17 +81,18 @@ ShellRoot {
     if (userText.trim()) {
       try {
         var parsed = JSON.parse(userText)
-        if (Util.isPlainObject(parsed) && parsed.version === 1) {
-          user = parsed
-          _lastGoodUserConfig = parsed
-        }
+        if (Util.isPlainObject(parsed) && parsed.version === 1) user = parsed
         else if (Util.isPlainObject(parsed)) console.warn("shell.json missing version: 1, using defaults")
       } catch (e) {
         hadParseError = true
         console.warn("shell.json parse failed, using " + (_lastGoodUserConfig ? "last good config" : "defaults") + ":", e)
       }
     }
-    shellConfig = user || (hadParseError ? _lastGoodUserConfig : null) || defaults
+    // Only an unreadable file keeps the remembered config alive. A file that
+    // reads is the user's intent whatever it holds, so emptying or deleting one
+    // forgets what was there instead of restoring it on the next typo.
+    if (!hadParseError) _lastGoodUserConfig = user
+    shellConfig = user || _lastGoodUserConfig || defaults
   }
 
   function loadDefaults(raw) {
