@@ -143,8 +143,14 @@ resize_foot_windows() {
     steps=$((-steps))
   fi
 
+  # No addresses means there is no compositor to ask (or no foot windows to
+  # step); report failure so the caller can fall back to the notification.
+  local addresses
+  addresses="$(hyprctl clients -j 2>/dev/null | jq -r '.[] | select(.class == "foot" or .class == "footclient") | .address')"
+  [[ -n $addresses ]] || return 1
+
   local address press
-  for address in $(hyprctl clients -j 2>/dev/null | jq -r '.[] | select(.class == "foot" or .class == "footclient") | .address'); do
+  for address in $addresses; do
     for ((press = 0; press < steps; press++)); do
       hyprctl dispatch "hl.dsp.send_shortcut({ window = \"address:$address\", mods = \"CTRL\", key = \"$key\" })" >/dev/null 2>&1 ||
         hyprctl dispatch sendshortcut "CTRL, $key, address:$address" >/dev/null 2>&1 ||
