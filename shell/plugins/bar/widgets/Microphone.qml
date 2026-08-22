@@ -29,7 +29,10 @@ BarWidget {
   implicitHeight: button.implicitHeight
 
   function toggleMute() {
-    if (source && source.audio) source.audio.muted = !source.audio.muted
+    var nextMute = !muted
+    if (source && source.audio) source.audio.muted = nextMute
+    var target = (source && source.id !== undefined) ? String(source.id) : "@DEFAULT_AUDIO_SOURCE@"
+    Quickshell.execDetached(["wpctl", "set-mute", target, nextMute ? "1" : "0"])
   }
 
   PwObjectTracker { objects: root.source ? [root.source] : [] }
@@ -48,7 +51,10 @@ BarWidget {
     onWheelMoved: function(delta) {
       if (!root.source || !root.source.audio) return
       var step = 0.05
-      root.source.audio.volume = Math.max(0, Math.min(1, root.volume + (delta > 0 ? step : -step)))
+      var nextVol = Math.max(0, Math.min(1, root.volume + (delta > 0 ? step : -step)))
+      root.source.audio.volume = nextVol
+      var target = (root.source && root.source.id !== undefined) ? String(root.source.id) : "@DEFAULT_AUDIO_SOURCE@"
+      Quickshell.execDetached(["wpctl", "set-volume", target, nextVol.toFixed(3)])
     }
   }
 }
