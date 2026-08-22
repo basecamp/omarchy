@@ -55,6 +55,7 @@ streams[1].audio = { volume: 0.8 }
 assertEqual(audio.mprisPlayerForStream(streams[1], players, streams), players[0], 'audio finds the MPRIS player for a stream')
 const qmlPlayerList = { 0: players[0], length: 1 }
 assertEqual(audio.mprisPlayerForStream(streams[1], qmlPlayerList, streams), players[0], 'audio reads Quickshell array-like player lists')
+assertEqual(audio.streamLabel(streams[1], qmlPlayerList, streams), 'Spotify', 'audio labels generic streams from array-like player lists')
 assertEqual(audio.streamVolume(streams[1], players[0]), 0.39, 'audio reads persistent player volume when available')
 assertEqual(audio.setStreamVolume(streams[1], players[0], 0.65), 0.65, 'audio returns the updated stream volume')
 assertEqual(players[0].volume, 0.65, 'audio updates persistent player volume')
