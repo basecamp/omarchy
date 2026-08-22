@@ -341,10 +341,17 @@ var enterpriseConnectScript =
   " && nmcli connection up uuid \"$u\"" +
   " || { nmcli connection delete uuid \"$u\" >/dev/null 2>&1; false; }"
 
-// Same stdin-secret shape as enterpriseConnectScript above: SSID is a
-// positional arg, the passphrase is never interpolated into the script text.
+// Same stdin-secret shape as enterpriseConnectScript above: create the hidden
+// profile first, then push the PSK through the scriptable `connection edit`
+// editor over stdin. `nmcli device wifi connect ... password "$pw"` would put
+// the passphrase in argv (world-readable via /proc), so it must not be used.
 var hiddenPskConnectScript =
-  "IFS= read -r pw; nmcli device wifi connect \"$1\" password \"$pw\" hidden yes"
+  "u=$(uuidgen); IFS= read -r pw;" +
+  " nmcli connection add type wifi con-name \"$1\" ssid \"$1\" connection.uuid \"$u\"" +
+  " 802-11-wireless.hidden yes wifi-sec.key-mgmt wpa-psk >/dev/null" +
+  " && printf 'set wifi-sec.psk %s\\nsave\\nquit\\n' \"$pw\" | nmcli connection edit uuid \"$u\" >/dev/null" +
+  " && nmcli connection up uuid \"$u\"" +
+  " || { nmcli connection delete uuid \"$u\" >/dev/null 2>&1; false; }"
 
 var hiddenEnterpriseConnectScript =
   "u=$(uuidgen); IFS= read -r pw;" +

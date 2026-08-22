@@ -299,8 +299,10 @@ assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit',
 // must be marked hidden so NetworkManager probes for it instead of waiting
 // on a beacon that will never arrive.
 assert(/"\$1"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script maps ssid to the positional $1 arg')
-assert(/hidden yes/.test(network.hiddenPskConnectScript), 'hidden PSK connect script marks the network hidden')
+assert(/802-11-wireless\.hidden yes/.test(network.hiddenPskConnectScript), 'hidden PSK connect script marks the profile hidden')
 assert(/IFS= read -r pw/.test(network.hiddenPskConnectScript), 'hidden PSK connect script reads the passphrase from stdin, not argv')
+assert(/set wifi-sec\.psk %s/.test(network.hiddenPskConnectScript), 'hidden PSK connect script sets the psk through the connection editor')
+assert(!/password "\$pw"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script never passes the passphrase in argv')
 
 assert(/"\$1"/.test(network.hiddenEnterpriseConnectScript), 'hidden enterprise connect script maps ssid to the positional $1 arg')
 assert(/"\$2"/.test(network.hiddenEnterpriseConnectScript), 'hidden enterprise connect script maps identity to the positional $2 arg')
