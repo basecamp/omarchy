@@ -1180,7 +1180,7 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.cancel()
             event.accepted = true
-          } else if (event.text === "?" || event.key === Qt.Key_Question) {
+          } else if (!root.dmenuActive && (event.text === "?" || event.key === Qt.Key_Question)) {
             if (!root.keybindingsLoaded) root.loadKeybindings()
             root.showKeybindings = !root.showKeybindings
             event.accepted = true
