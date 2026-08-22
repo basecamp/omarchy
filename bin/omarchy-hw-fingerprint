@@ -31,6 +31,17 @@ has_kernel_driver() {
   return 1
 }
 
+has_fingerprint_interface() {
+  local intf name
+  for intf in "$1"/*:*; do
+    [[ -r $intf/interface ]] || continue
+    name=$(<"$intf/interface")
+    name=${name,,}
+    [[ $name == *fingerprint* || $name == *biometric* ]] && return 0
+  done
+  return 1
+}
+
 for dev in "$usb_devices_path"/*; do
   # The device's own product descriptor usually names it, e.g. "Goodix
   # Fingerprint USB Device" — driver-independent and vendor-agnostic.
@@ -45,6 +56,10 @@ for dev in "$usb_devices_path"/*; do
     # three letters are little to match on, so require the prefix.
     [[ $product == *fingerprint* || $product == *biometric* || $product == *elan:arm-m4* || $product == "fpc "* ]] && exit 0
   fi
+
+  # Composite devices can expose a generic product name while identifying the
+  # fingerprint reader only on one USB interface.
+  has_fingerprint_interface "$dev" && exit 0
 
   if [[ -r $dev/idVendor ]]; then
     vendor=$(<"$dev/idVendor")
