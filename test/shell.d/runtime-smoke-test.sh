@@ -74,6 +74,44 @@ Item {
 }
 QML
 
+widget_reload_id="acme.widget-hot-reload"
+widget_reload_dir="$test_home/.config/omarchy/plugins/$widget_reload_id"
+widget_reload_result="$TMPDIR/widget-hot-reload-result"
+mkdir -p "$widget_reload_dir"
+cat >"$widget_reload_dir/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$widget_reload_id",
+  "name": "Widget Hot Reload",
+  "version": "1.0.0",
+  "kinds": ["bar-widget"],
+  "entryPoints": {"barWidget": "BarWidget.qml"},
+  "barWidget": {"defaultSection": "left"}
+}
+JSON
+cat >"$widget_reload_dir/BarWidget.qml" <<'QML'
+import QtQuick
+import Quickshell
+import Quickshell.Io
+
+Item {
+  implicitWidth: 1
+  implicitHeight: 1
+
+  FileView {
+    id: resultFile
+    path: Quickshell.env("OMARCHY_QML_HOT_RELOAD_RESULT")
+    atomicWrites: true
+  }
+
+  Component.onCompleted: resultFile.setText("before")
+}
+QML
+
+mkdir -p "$test_home/.config/omarchy"
+jq --arg id "$widget_reload_id" '.bar.layout.left += [{id: $id}]' \
+  "$ROOT/config/omarchy/shell.json" >"$test_home/.config/omarchy/shell.json"
+
 cat >"$stub_bin/omarchy-update-available" <<'SH'
 #!/bin/bash
 echo "Omarchy update available (test)"
@@ -99,6 +137,7 @@ SH
 chmod +x "$stub_bin/curl"
 
 OMARCHY_PATH="$test_root" \
+OMARCHY_QML_HOT_RELOAD_RESULT="$widget_reload_result" \
 HOME="$test_home" \
 XDG_CONFIG_HOME="$test_home/.config" \
 XDG_CACHE_HOME="$test_home/.cache" \
@@ -156,6 +195,39 @@ done
 [[ $hot_reload_name == "After Hot Reload" ]] ||
   fail_with_log "installed plugin changes reload without an explicit rescan"
 pass "installed plugin changes reload without an explicit rescan"
+
+for _ in {1..80}; do
+  [[ -s $widget_reload_result ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited before the local bar widget loaded"
+  fi
+  sleep 0.1
+done
+[[ $(<"$widget_reload_result") == "before" ]] ||
+  fail_with_log "local bar widget loads its initial QML source"
+pass "local bar widget loads its initial QML source"
+
+sed -i 's/setText("before")/setText("after")/' "$widget_reload_dir/BarWidget.qml"
+
+widget_reload_value=""
+for _ in {1..80}; do
+  widget_reload_value=$(<"$widget_reload_result")
+  [[ $widget_reload_value == "after" ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while reloading changed bar widget QML"
+  fi
+  sleep 0.1
+done
+[[ $widget_reload_value == "after" ]] ||
+  fail_with_log "installed bar widget QML changes replace the running component"
+pass "installed bar widget QML changes replace the running component"
+if rg -q "invalid context" "$log"; then
+  fail_with_log "plugin reload preserves live QML contexts"
+fi
+idle_ready_count=$(rg -c "omarchy idle .* service-ready" "$log" || true)
+(( idle_ready_count == 1 )) ||
+  fail_with_log "local plugin reload leaves first-party services running"
+pass "local plugin reload leaves first-party services running"
 
 [[ $(shell_ipc shell setPluginEnabled "$hot_reload_id" true) == "ok" ]] ||
   fail_with_log "installed plugin could not be enabled"
