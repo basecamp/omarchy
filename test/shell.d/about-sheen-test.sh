@@ -153,6 +153,14 @@ painted=$(play_sheen || true)
 [[ $painted == "firstsecondthird" ]] || fail "an undisturbed sweep writes every frame" "$(printf '%q' "$painted")"
 pass "an undisturbed sweep writes every frame"
 
+# Every builder above can be exercised while nothing on screen ever animates, so
+# check that the render loop is what calls them.
+render_block=$(sed -n '/--render/,$p' "$about")
+for called in build_sheen play_sheen rest_sheen; do
+  [[ $render_block == *"$called"* ]] || fail "the render loop plays the sheen" "it never calls $called"
+done
+pass "the render loop plays the sheen"
+
 measure_layout() { return 1; }
 refuses "a layout fastfetch cannot be measured from leaves it still"
 
