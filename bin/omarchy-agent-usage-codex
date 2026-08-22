@@ -528,7 +528,7 @@ def fetch_codex_rpc():
 
   try:
     proc = subprocess.Popen(
-      [codex, "-s", "read-only", "-a", "untrusted", "app-server"],
+      [codex, "-s", "read-only", "-a", "never", "app-server"],
       stdin=subprocess.PIPE,
       stdout=subprocess.PIPE,
       stderr=subprocess.DEVNULL,
@@ -548,7 +548,9 @@ def fetch_codex_rpc():
     limits_msg = rpc_request(proc, 3, "account/rateLimits/read", timeout=4)
 
     account = (account_msg.get("result") or {}).get("account") or {}
-    limits = (limits_msg.get("result") or {}).get("rateLimits") or {}
+    limits_result = limits_msg.get("result") or {}
+    limits = ((limits_result.get("rateLimitsByLimitId") or {}).get("codex")
+              or limits_result.get("rateLimits") or {})
     plan = limits.get("planType") or account.get("planType") or account.get("type") or ""
     result["tierLabel"] = str(plan) if plan else ""
 

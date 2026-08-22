@@ -13,6 +13,8 @@ mkdir -p "$TEST_HOME/.codex/sessions/$(date +%Y/%m/%d)" "$TEST_HOME/bin"
 cat >"$TEST_HOME/bin/codex" <<'EOF'
 #!/bin/bash
 
+[[ " $* " == *" -a never "* ]] || exit 64
+
 while read -r request; do
   id=$(jq -r '.id // empty' <<<"$request")
   method=$(jq -r '.method // empty' <<<"$request")
@@ -25,7 +27,22 @@ while read -r request; do
       jq -cn --argjson id "$id" '{id: $id, result: {account: {}}}'
       ;;
     account/rateLimits/read)
-      jq -cn --argjson id "$id" '{id: $id, result: {rateLimits: {}}}'
+      jq -cn --argjson id "$id" '{
+        id: $id,
+        result: {
+          rateLimits: {
+            planType: "legacy",
+            primary: {usedPercent: 90, windowDurationMins: 300}
+          },
+          rateLimitsByLimitId: {
+            codex: {
+              planType: "pro",
+              primary: {usedPercent: 20, windowDurationMins: 300},
+              secondary: {usedPercent: 30, windowDurationMins: 10080}
+            }
+          }
+        }
+      }'
       ;;
   esac
 done
@@ -51,9 +68,9 @@ pass "Codex collector counts each turn once"
   fail "Codex collector does not double-count cache or reasoning tokens" "$result"
 pass "Codex collector does not double-count cache or reasoning tokens"
 
-[[ $(jq -c '.id + "/" + (.limits|tostring)' <<<"$result") == '"codex/[]"' ]] ||
-  fail "Codex collector identifies itself with an empty limits list" "$result"
-pass "Codex collector identifies itself with an empty limits list"
+[[ $(jq -c '{id, tierLabel, limits}' <<<"$result") == '{"id":"codex","tierLabel":"pro","limits":[{"label":"5h window","percent":0.2,"resetsAt":""},{"label":"Weekly (7-day)","percent":0.3,"resetsAt":""}]}' ]] ||
+  fail "Codex collector reads the Codex-specific rate-limit bucket" "$result"
+pass "Codex collector uses the current app-server arguments and Codex-specific limits"
 
 # Pi and omp can both spend a Codex subscription without creating native
 # Codex sessions. Their compatible JSONL transcripts must be included.
