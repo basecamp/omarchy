@@ -7,8 +7,10 @@
 Local token stats come from documented session files under $GROK_HOME
 (default ~/.grok): each updates.jsonl turn_completed event is one prompt.
 pi/omp sessions that ran on an xAI provider are merged in, the same way
-Claude and Codex pick up those agents. The weekly SuperGrok pool and plan
-label come from the same cli-chat-proxy endpoints Grok's /usage command uses.
+Claude and Codex pick up those agents. The weekly SuperGrok pool comes from
+cli-chat-proxy `/v1/billing`. The plan label prefers `/v1/settings`
+`subscription_tier_display` (the same string Grok's own UI shows) and falls
+back to `/v1/user` `subscriptionTier`.
 The agents panel only ever reads the JSON this prints.
 """
 
@@ -33,9 +35,13 @@ AGENT_NAME = "Grok Build"
 AUTH_HELP = "Run `grok login` to restore usage limits."
 BILLING_PATH = "/v1/billing?format=credits"
 USER_PATH = "/v1/user?include=subscription"
+SETTINGS_PATH = "/v1/settings"
 DEFAULT_PROXY = "https://cli-chat-proxy.grok.com"
 SCAN_REUSE_SECONDS = 20
-LIMITS_ONLY_REUSE_SECONDS = 900
+# --limits-only is the panel-open path: refresh the weekly meter, do not walk
+# transcripts. Reuse any same-day scan. A 900s TTL made opening the panel
+# rescan every session just to paint a percentage.
+LIMITS_ONLY_REUSE_SECONDS = float("inf")
 CACHE_SCHEMA = 2
 
 
@@ -188,13 +194,23 @@ def model_turns(usage: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
   return [("grok", usage)]
 
 
+def extract_usage(update: dict[str, Any]) -> dict[str, Any] | None:
+  nested = update.get("usage")
+  if isinstance(nested, dict):
+    return nested
+  # Some Grok Build builds write the ledger on the update itself.
+  if any(key in update for key in ("inputTokens", "outputTokens", "cachedReadTokens")):
+    return update
+  return None
+
+
 def scan_updates(path: Path) -> list[dict[str, Any]]:
   turns: list[dict[str, Any]] = []
   seen: set[str] = set()
   try:
     with path.open("r", encoding="utf-8", errors="replace") as handle:
       for line_number, line in enumerate(handle, 1):
-        if "turn_completed" not in line or "usage" not in line:
+        if "turn_completed" not in line:
           continue
         try:
           entry = json.loads(line)
@@ -203,10 +219,13 @@ def scan_updates(path: Path) -> list[dict[str, Any]]:
         if not isinstance(entry, dict):
           continue
         update = ((entry.get("params") or {}).get("update") or {})
-        if not isinstance(update, dict) or update.get("sessionUpdate") != "turn_completed":
+        if not isinstance(update, dict):
           continue
-        usage = update.get("usage")
-        if not isinstance(usage, dict):
+        kind = update.get("sessionUpdate") or update.get("event_name")
+        if kind != "turn_completed":
+          continue
+        usage = extract_usage(update)
+        if usage is None:
           continue
         prompt_id = str(update.get("prompt_id") or f"{path}:{line_number}")
         if prompt_id in seen:
@@ -502,6 +521,15 @@ def plan_label(tier: str) -> str:
   return raw
 
 
+def display_label(value: Any) -> str:
+  if not isinstance(value, str):
+    return ""
+  text = " ".join(value.split())
+  if not text or any(ord(ch) < 32 for ch in text) or len(text) > 128:
+    return ""
+  return text
+
+
 def usage_percent(value: Any) -> float:
   try:
     n = float(value)
@@ -592,6 +620,10 @@ def collect_limits(token: str, expires_at: dt.datetime | None) -> dict[str, Any]
   try:
     billing = fetch_json(base + BILLING_PATH, token)
     user = fetch_json(base + USER_PATH, token)
+    try:
+      settings = fetch_json(base + SETTINGS_PATH, token)
+    except Exception:
+      settings = {}
   except PermissionError as error:
     result["usageStatusText"] = "Sign-in expired"
     result["authHelpText"] = str(error)
@@ -612,7 +644,8 @@ def collect_limits(token: str, expires_at: dt.datetime | None) -> dict[str, Any]
   result["limits"] = limits
   if balance is not None:
     result["balance"] = balance
-  result["tierLabel"] = plan_label(str(user.get("subscriptionTier") or ""))
+  result["tierLabel"] = display_label((settings or {}).get("subscription_tier_display")) \
+    or plan_label(str(user.get("subscriptionTier") or ""))
   result["authHelpText"] = ""
   return result
 
