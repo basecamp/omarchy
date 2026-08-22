@@ -13,6 +13,12 @@ fi
 
 status=0
 session_id=""
+tmp_file=""
+
+cleanup() {
+  [[ -n $tmp_file ]] && rm -f "$tmp_file"
+}
+trap cleanup EXIT
 
 # One-line heads-up before the first call: a full diagnosis takes minutes and
 # Hermes one-shot mode prints nothing until it finishes, so an unexplained
@@ -26,14 +32,14 @@ echo "Diagnosing with Hermes — this may take a few minutes."
 run_turn() {
   local question=$1
   shift
-  local tmp
-  tmp=$(mktemp)
-  hermes chat -q "$question" --yolo "$@" 2>&1 | tee "$tmp"
+  tmp_file=$(mktemp)
+  hermes chat -q "$question" --yolo "$@" 2>&1 | tee "$tmp_file"
   status=${PIPESTATUS[0]}
   if [[ -z $session_id ]]; then
-    session_id=$(sed -n -E 's/^(session_id|Session):[[:space:]]*([A-Za-z0-9_-]+).*/\2/p' "$tmp" | tail -1)
+    session_id=$(sed -n -E 's/^(session_id|Session):[[:space:]]*([A-Za-z0-9_-]+).*/\2/p' "$tmp_file" | tail -1)
   fi
-  rm -f "$tmp"
+  rm -f "$tmp_file"
+  tmp_file=""
 }
 
 run_turn "$1"

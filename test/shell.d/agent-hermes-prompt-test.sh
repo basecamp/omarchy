@@ -47,6 +47,12 @@ grep -Fq 'Portal crashed in its rendering worker.' "$output" ||
   fail "Hermes crash diagnosis prints its result"
 kill -0 "$diagnosis_pid" 2>/dev/null ||
   fail "Hermes crash diagnosis keeps the terminal open after the result"
+
+for _ in $(seq 1 100); do
+  grep -Fq 'Ask a follow-up, or press Enter to close' "$output" && break
+  sleep 0.01
+done
+
 grep -Fq 'Ask a follow-up, or press Enter to close' "$output" ||
   fail "Hermes crash diagnosis invites a typed follow-up"
 
