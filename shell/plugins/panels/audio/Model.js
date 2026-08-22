@@ -233,6 +233,41 @@ function streamRepresentsPlayer(node, player, players, streams) {
   return streamRepresentsMprisPlayer(streamLabel(node, players, streams), playerLabel)
 }
 
+function mprisPlayerForStream(node, players, streams) {
+  var values = Array.isArray(players) ? players : []
+  var candidate = null
+  var proxyCandidate = null
+
+  for (var i = 0; i < values.length; i++) {
+    var player = values[i]
+    if (!streamRepresentsPlayer(node, player, values, streams)) continue
+
+    if (mprisPlayerIsProxy(player)) {
+      if (!proxyCandidate || player.isPlaying) proxyCandidate = player
+    } else if (!candidate || player.isPlaying) {
+      candidate = player
+    }
+  }
+
+  return candidate || proxyCandidate
+}
+
+function playerControlsVolume(player) {
+  return !!(player && player.canControl && player.volumeSupported)
+}
+
+function streamVolume(node, player) {
+  if (playerControlsVolume(player) && typeof player.volume === "number") return player.volume
+  return node && node.audio && typeof node.audio.volume === "number" ? node.audio.volume : 0
+}
+
+function setStreamVolume(node, player, volume) {
+  var nextVolume = Math.max(0, Math.min(1.5, volume))
+  if (playerControlsVolume(player)) player.volume = nextVolume
+  if (node && node.audio) node.audio.volume = nextVolume
+  return nextVolume
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     isPlaybackStream: isPlaybackStream,
@@ -257,6 +292,10 @@ if (typeof module !== "undefined") {
     matchingMprisStreamLabel: matchingMprisStreamLabel,
     unmatchedMprisStreamLabel: unmatchedMprisStreamLabel,
     streamLabel: streamLabel,
-    streamRepresentsPlayer: streamRepresentsPlayer
+    streamRepresentsPlayer: streamRepresentsPlayer,
+    mprisPlayerForStream: mprisPlayerForStream,
+    playerControlsVolume: playerControlsVolume,
+    streamVolume: streamVolume,
+    setStreamVolume: setStreamVolume
   }
 }
