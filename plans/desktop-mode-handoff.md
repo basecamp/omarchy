@@ -4,6 +4,24 @@ This is a binding handoff for a fresh session running on the developer's local m
 
 Do not treat this file as advisory. It is a contract. Follow it in order and do not skip.
 
+## 0. Reviewer lock (2026-08-22)
+
+Keep `4ea1dcf3` and `a5b945da`. Those are the accepted repair. Do not amend them. Do not squash them. Do not redo the LTRB / `Hyprland.dispatch` / Start-label / click-handler work as if it were still dirty.
+
+The product call is still **REJECTED**. Windowing Gate W0 is still open. The same open gates, unchanged:
+
+- no compositor SSD (overlay captions are not SSD)
+- minimize is still `special:minimized`
+- snap still allowed 32px of slop (live 1054 vs 1040)
+- no mouse proof (title-bar drag, Alt+Tab clicks)
+- Tokyo Night
+- Nautilus
+- nvim as ordinary text
+- TTY first-boot
+- no product ISO
+
+Do not re-run the full review bench on that writeup. Do not ask for another product review of HEAD `a5b945da`. The next review is only when a new turn actually moves one of those gates.
+
 ## 1. Read-first contract (mandatory, non-skippable)
 
 Before writing a single line of code, running a test, or booting a VM, read these files in full, in this order. They are the Project Ultimate source of truth and they override intuition, memory, and habit.
@@ -22,7 +40,7 @@ Acknowledgement gate: in your first substantive reply, restate the seven doctrin
 
 - Remote: `github.com/jnadeau207-collab/omarchy-7-ultimate`. Default branch: `quattro`.
 - Foundation branch: `ultimate/foundation` (tip `4c3e985b`, WindowService). Do not reconstruct or re-derive it; it is on the remote and the slice stacks on it.
-- Work branch: `cursor/desktop-mode-slice-00d6`. It stacks on the foundation. Do not treat HEAD as a windowing go.
+- Work branch: `cursor/desktop-mode-slice-00d6`. Accepted repair tips: `4ea1dcf3` (windowing) + `a5b945da` (roadmap). Product call on that pair is REJECTED. Do not treat HEAD as a windowing go.
 - Open PR for the slice: #1.
 - Continue on `cursor/desktop-mode-slice-00d6`. Do not switch branches, do not force-push, do not amend existing commits, and do not edit the external `.plan.md` file that lives on the developer's machine.
 
@@ -32,7 +50,7 @@ Fetch and check out before doing anything else:
 git fetch origin --prune
 git checkout cursor/desktop-mode-slice-00d6
 git pull origin cursor/desktop-mode-slice-00d6
-git log --oneline -1   # expect 103d28b1 or a later commit on this branch
+git log --oneline -1   # expect a5b945da or a later commit that actually moved a locked gate
 ```
 
 ## 3. What is already proven (do not redo blindly, but re-run to confirm)
@@ -165,6 +183,7 @@ Live numbers from the follow-up turn (Hyprland 0.56.2, virtio-vga 1920×1080, re
 - Do not commit dispatcher changes that were never run on a live compositor.
 - Do not commit VM images, disks, or scratch artifacts into the repo.
 - Do not call windowing a go from IPC-only harness green, from screenshots that are not in the repo, or from this handoff.
+- Do not re-review `4ea1dcf3` + `a5b945da` as a product pass. Do not re-run the full bench on that writeup. Next review is when a new turn actually moves a locked gate.
 - Do not add `aliases` to new menu entries.
 
 ## 10. Definition of done
@@ -173,5 +192,5 @@ Live numbers from the follow-up turn (Hyprland 0.56.2, virtio-vga 1920×1080, re
 - `./test/all` is green except the three `omarchy-pkgs`-dependent files (or fully green with `OMARCHY_PKGS_PATH` set).
 - Snap geometry is LTRB work-area, maximize is in the harness, taskbar clicks use Hyprland addresses, Alt+Tab cards are clickable, and caption chrome exists as mouse affordances. Live proof is hyprctl geometry plus mapped layers, not a self-graded go.
 - Visual verification done for every UI-affecting change.
-- Work is committed only when asked; do not amend `c253d193` / `a7b2c093` / `18370335`.
+- Work is committed only when asked; do not amend `c253d193` / `a7b2c093` / `18370335` / `4ea1dcf3` / `a5b945da`.
 - This slice is still not the OS: Tokyo Night, Nautilus, nvim, TTY first boot, and the missing product ISO remain later work. Do not paper over them in the handoff.

@@ -11,7 +11,13 @@ Read this file together with:
 - `docs/design-tokens.md` — semantic surfaces, not a Tokyo Night restyle
 - `plans/desktop-mode-handoff.md` — local QEMU guest contract for the windowing slice only
 
-If those documents and this plan disagree, the doctrine wins. If this plan and a PR description disagree, this plan wins. Do not take PR #1’s “Windowing go/no-go — GO” as accepted; that writeup was rejected.
+If those documents and this plan disagree, the doctrine wins. If this plan and a PR description disagree, this plan wins. Do not take PR #1’s old “Windowing go/no-go — GO” as accepted; that writeup was rejected.
+
+## Reviewer lock (2026-08-22)
+
+Keep `4ea1dcf3` + `a5b945da`. Those are the accepted repair. The product call is still **REJECTED**. Same open gates: no SSD, special-workspace minimize, 32px snap slop, no mouse proof, Tokyo Night, Nautilus, nvim, TTY first-boot, no ISO.
+
+Do not re-run the full bench on that writeup. The next review is when a new turn actually moves one of those gates.
 
 ## Doctrine (do not weaken)
 
@@ -64,7 +70,7 @@ ultimate/main              Product integration (create when a slice is actually 
 
 ## Current position (2026-08-22)
 
-Honest status, not a go.
+Honest status, not a go. Reviewer lock: `4ea1dcf3` + `a5b945da` are kept; product is still REJECTED.
 
 **Phase 0 (foundation)** is mostly in the repo: doctrine, acceptance manifest, mode profiles, design-token singleton, settings-service convention, shell tests, VM acceptance skeleton.
 
@@ -160,13 +166,14 @@ Every hover, context menu, dialog, empty state, error, DPI, focus ring, reduced 
 
 ## What the next Cursor turn is allowed to do
 
-Wait for the Grokbot review of the current slice before declaring anything. Then:
+The `4ea1dcf3` + `a5b945da` writeup is locked. Do not re-submit it for product review. Do not wait on another bench of the same HEAD.
 
 1. Treat W0 as still open. Do not merge PR #1 as a go. Do not rewrite the PR body to claim the OS.
-2. If the review confirms the axis-fixed snap and typed dispatch, keep those. If it rejects overlay chrome or `special:minimized` as a WM, do not hide that behind more QML.
+2. Keep LTRB snap and typed `Hyprland.dispatch`. Overlay chrome and `special:minimized` are not a WM.
 3. The right-hand half-window in the guest is leftover snap geometry. W0 should restore a normal floating rect on open/unsnap, not 50/50 as the default look.
-4. Do not start Phase 2–9 work (theme pack, Dolphin swap, Settings app, ISO, OOBE) until W0 is decided.
+4. Do not start Phase 2–9 work (theme pack, Dolphin swap, Settings app, ISO, OOBE) until W0 is decided — except a later slice that is itself one of the locked product gates (Tokyo Night, Nautilus, nvim, TTY first-boot, ISO) after windowing is decided.
 5. Do not teach Super+K in Desktop Mode first boot.
+6. Ask for a review only after a commit that actually moves: SSD, minimize, snap slop, mouse proof, or one of the remaining product gates.
 
 ## Acceptance
 
