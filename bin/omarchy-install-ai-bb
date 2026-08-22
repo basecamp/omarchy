@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# omarchy:summary=Install and launch the bb desktop app
+# omarchy:requires-sudo=true
+
+set -e
+
+release_base_url="https://github.com/get-bb/bb/releases/download/desktop-latest"
+manifest_url="$release_base_url/desktop-version-linux.json"
+icon_url="https://raw.githubusercontent.com/get-bb/bb/main/apps/desktop/assets/icon.png"
+# The AppImage is bb's Electron desktop surface; npx bb-app starts the web surface.
+# Keep it writable so bb's built-in updater can replace it in place.
+app_dir="$HOME/.local/share/bb"
+app_image="$app_dir/bb.AppImage"
+desktop_dir="$HOME/.local/share/applications"
+desktop_file="$desktop_dir/bb.desktop"
+icon_dir="$HOME/.local/share/icons/hicolor/1024x1024/apps"
+icon_file="$icon_dir/bb.png"
+
+if [[ $(uname -m) != "x86_64" ]]; then
+  echo "bb's Linux desktop app is only available for x86_64." >&2
+  exit 1
+fi
+
+echo "Installing bb..."
+omarchy-pkg-add fuse2
+
+tmp_dir=$(mktemp -d)
+trap 'rm -rf "$tmp_dir"' EXIT
+
+manifest_file="$tmp_dir/desktop-version-linux.json"
+curl --fail --location --silent --show-error "$manifest_url" --output "$manifest_file"
+
+asset_name=$(jq -er '.files[] | select(.url | endswith("-x86_64.AppImage")) | .url' "$manifest_file")
+if [[ $asset_name != bb-*-x86_64.AppImage || $asset_name == */* ]]; then
+  echo "bb's release manifest did not contain a valid Linux AppImage." >&2
+  exit 1
+fi
+
+expected_sha512=$(jq -er --arg asset "$asset_name" '.files[] | select(.url == $asset) | .sha512' "$manifest_file")
+version=$(jq -er '.version' "$manifest_file")
+downloaded_app="$tmp_dir/$asset_name"
+downloaded_icon="$tmp_dir/bb.png"
+
+curl --fail --location --silent --show-error "$release_base_url/$asset_name" --output "$downloaded_app"
+curl --fail --location --silent --show-error "$icon_url" --output "$downloaded_icon"
+
+expected_sha512_hex=$(printf '%s' "$expected_sha512" | base64 --decode | od -An -tx1 | tr -d ' \n')
+actual_sha512_hex=$(sha512sum "$downloaded_app" | cut -d " " -f1)
+if [[ $actual_sha512_hex != "$expected_sha512_hex" ]]; then
+  echo "bb's downloaded AppImage did not match the release checksum." >&2
+  exit 1
+fi
+
+install -Dm755 "$downloaded_app" "$app_image"
+install -Dm644 "$downloaded_icon" "$icon_file"
+mkdir -p "$desktop_dir"
+
+cat >"$desktop_file" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=bb
+Comment=The agent IDE that builds itself
+Exec="$app_image" %U
+TryExec=$app_image
+Icon=bb
+Terminal=false
+StartupNotify=true
+StartupWMClass=bb
+Categories=Development;IDE;
+X-AppImage-Version=$version
+EOF
+
+update-desktop-database "$desktop_dir" >/dev/null 2>&1 || true
+
+echo "Opening bb..."
+setsid uwsm-app -- "$app_image" >/dev/null 2>&1 &
+
+echo ""
+echo "bb has been installed."
