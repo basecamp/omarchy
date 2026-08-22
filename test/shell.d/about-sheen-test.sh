@@ -109,6 +109,13 @@ rows_by_cols="$layout_rows 140"
 refuses "a window level with the layout's last line leaves it still"
 rows_by_cols="45 140"
 
+# fastfetch drops the logo's colour for a terminal that asked for none, but not
+# for the measurement, so the colour to restore would be measured wrong — and a
+# glint is colour besides.
+NO_COLOR=1
+refuses "a session that asked for no colour leaves the logo still"
+unset NO_COLOR
+
 measure_layout() { return 1; }
 refuses "a layout fastfetch cannot be measured from leaves it still"
 

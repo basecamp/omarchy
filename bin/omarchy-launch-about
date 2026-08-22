@@ -205,6 +205,13 @@ measure_layout() {
 # draw it. Whether the logo itself can be animated is the sheen's own question.
 build_sheen() {
   custom_fastfetch_config && return 1
+
+  # fastfetch honours NO_COLOR when it writes to a terminal but not when it writes
+  # to the measurement below, so a logo drawn without colour would be measured as
+  # green and left green by the first glint. A glint is colour anyway, which is
+  # the thing NO_COLOR asks for none of.
+  [[ -n ${NO_COLOR:-} ]] && return 1
+
   measure_layout || return 1
 
   # The layout needs a row for the cursor past its last line. Without one it has
