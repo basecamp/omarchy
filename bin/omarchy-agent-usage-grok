@@ -152,6 +152,13 @@ def session_kind(session_dir: Path) -> str:
   return str(data.get("session_kind") or "")
 
 
+def is_subagent(kind: str) -> bool:
+  # Grok 1.0.x writes "subagent"; older builds used "subagent_fork". Parent
+  # turn_completed already includes finished child spend, so counting the
+  # child file would double the tokens and invent extra prompts.
+  return kind.startswith("subagent")
+
+
 def turn_usage(usage: dict[str, Any]) -> tuple[int, int, int, int]:
   cache_read = number(usage.get("cachedReadTokens", usage.get("cacheReadInputTokens")))
   cache_write = number(usage.get("cacheCreationTokens", usage.get("cacheCreationInputTokens", usage.get("cachedWriteTokens"))))
@@ -224,8 +231,7 @@ def scan_updates(path: Path) -> list[dict[str, Any]]:
 
 def file_contrib(path: Path) -> dict[str, Any]:
   session_dir = path.parent
-  kind = session_kind(session_dir)
-  if kind == "subagent_fork":
+  if is_subagent(session_kind(session_dir)):
     return {"skip": True, "sessionKey": session_dir.name, "turns": []}
   return {"skip": False, "sessionKey": session_dir.name, "turns": scan_updates(path)}
 

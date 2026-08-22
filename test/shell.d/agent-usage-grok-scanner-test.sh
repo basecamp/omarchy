@@ -101,13 +101,27 @@ pass "Grok collector counts each turn once and keeps token buckets disjoint"
   fail "Grok collector counts the parent session once" "$result"
 pass "Grok collector counts the parent session once"
 
-# A subagent fork writes its own updates.jsonl. Parent turn_completed already
-# includes that spend, so the child file must not add another copy.
+# A child session writes its own updates.jsonl. Parent turn_completed already
+# includes that spend, so the child file must not add another copy. Grok 1.0.x
+# labels these "subagent"; older builds used "subagent_fork".
 child_id="01a00057-c26d-7442-aa2a-8bb92c921e18"
 child_dir="$TEST_HOME/.grok/sessions/%2Ftmp%2Fproj/$child_id"
 mkdir -p "$child_dir"
-write_summary "$child_dir" "subagent_fork" "$session_id"
+write_summary "$child_dir" "subagent" "$session_id"
 session_id="$child_id" turn_line "child-1" "grok-4.6" 5000 500 4000 100 >"$child_dir/updates.jsonl"
+
+result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" GROK_HOME="$TEST_HOME/.grok" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --force)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "1209" ]] ||
+  fail "Grok collector ignores subagent sessions" "$result"
+pass "Grok collector ignores subagent sessions"
+
+fork_id="01a00057-c26d-7442-aa2a-8bb92c921e19"
+fork_dir="$TEST_HOME/.grok/sessions/%2Ftmp%2Fproj/$fork_id"
+mkdir -p "$fork_dir"
+write_summary "$fork_dir" "subagent_fork" "$session_id"
+session_id="$fork_id" turn_line "fork-1" "grok-4.6" 9000 900 8000 100 >"$fork_dir/updates.jsonl"
 
 result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" GROK_HOME="$TEST_HOME/.grok" \
   "$ROOT/bin/omarchy-agent-usage-grok" --force)
