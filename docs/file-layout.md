@@ -125,7 +125,8 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   ├─ systemd/user/*.service                             /usr/lib/systemd/user/
   ├─ systemd/user/app.slice.d/10-oomd.conf              /usr/lib/systemd/user/app.slice.d/
   ├─ systemd/system-sleep/unmount-fuse                  /usr/lib/systemd/system-sleep/
-  │                                                       (keyboard-backlight and force-igpu only ship under /usr/share/omarchy/default/; omarchy-hibernation-setup and omarchy-toggle-hybrid-gpu install them on demand)
+  │                                                       (keyboard-backlight and force-igpu only ship under /usr/share/omarchy/default/;
+  │                                                        omarchy-hibernation-setup and omarchy-toggle-hybrid-gpu install them on demand)
   ├─ systemd/zram-generator.conf.d/90-omarchy.conf      /usr/lib/systemd/zram-generator.conf.d/
   ├─ fonts/omarchy/omarchy.ttf                          /usr/share/fonts/omarchy/
   ├─ sddm/omarchy/                                      /usr/share/sddm/themes/omarchy/
