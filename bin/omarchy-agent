@@ -94,6 +94,10 @@ pi)
   command=(pi)
   [[ -n ${prompt:-} ]] && command+=("$prompt")
   ;;
+kiro)
+  command=(kiro-cli chat --trust-all-tools)
+  [[ -n ${prompt:-} ]] && command+=("$prompt")
+  ;;
 *)
   echo "Unsupported default agent: $agent" >&2
   exit 1
