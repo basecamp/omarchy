@@ -1,3 +1,8 @@
+// The history file is user-editable, so cap ocrText on load: searchableText
+// scans it on every keystroke and an oversized value would lag the picker.
+// Matches OCR_MAX_CHARS in capture.sh.
+var ocrTextLimit = 4000
+
 function normalizeEntry(value) {
   if (typeof value === "string")
     return value.trim().length > 0 ? { type: "text", text: value } : null
@@ -20,6 +25,8 @@ function normalizeEntry(value) {
     }
     if (value.capturedAt !== undefined && value.capturedAt !== null)
       entry.capturedAt = String(value.capturedAt)
+    if (value.ocrText !== undefined && value.ocrText !== null && String(value.ocrText).length > 0)
+      entry.ocrText = String(value.ocrText).slice(0, ocrTextLimit)
     return entry
   }
 
@@ -91,7 +98,7 @@ function parseEntryJson(line) {
 
 function searchableText(entry) {
   if (!entry) return ""
-  if (entry.type === "image") return "image screenshot " + String(entry.mime || "") + " " + String(entry.capturedAt || "")
+  if (entry.type === "image") return "image screenshot " + String(entry.mime || "") + " " + String(entry.capturedAt || "") + " " + String(entry.ocrText || "")
   return String(entry.text || "") + " " + fileEntryText(entry)
 }
 
@@ -171,9 +178,10 @@ function cappedEntry(entry) {
   return { type: "text", text: entry.text.slice(0, cut > 0 ? cut : displayTextLimit) }
 }
 
-function displayRows(history, query, limit) {
+function displayRows(history, query, limit, typeFilter) {
   var values = Array.isArray(history) ? history : []
   var needle = String(query || "").trim().toLowerCase()
+  var wantType = String(typeFilter || "")
   var max = limit === undefined || limit === null ? 50 : Number(limit)
   if (isNaN(max)) max = 50
   max = Math.max(0, max)
@@ -184,6 +192,7 @@ function displayRows(history, query, limit) {
   for (var i = 0; i < values.length; i++) {
     var entry = cappedEntry(normalizeEntry(values[i]))
     if (!entry) continue
+    if (wantType && entry.type !== wantType) continue
     if (needle && searchableText(entry).toLowerCase().indexOf(needle) < 0) continue
 
     var paths = filePaths(entry)
