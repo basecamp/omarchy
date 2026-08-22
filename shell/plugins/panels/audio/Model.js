@@ -19,7 +19,12 @@ function isAudioSource(node) {
 }
 
 function listSnapshot(list) {
-  return list && list.slice ? list.slice() : []
+  if (!list) return []
+  if (list.slice) return list.slice()
+
+  var values = []
+  for (var i = 0; i < Number(list.length || 0); i++) values.push(list[i])
+  return values
 }
 
 function outputVolumeName(volume, muted) {
@@ -163,7 +168,7 @@ function streamRepresentsMprisPlayer(streamLabel, playerLabel) {
 }
 
 function mprisLabelsFor(players, predicate) {
-  var values = Array.isArray(players) ? players : []
+  var values = listSnapshot(players)
   var playingCandidates = []
   var candidates = []
   var playingProxyCandidates = []
@@ -204,7 +209,7 @@ function unmatchedMprisStreamLabel(label, players, streams) {
   if (!streamLabelIsGeneric(label)) return ""
 
   return mprisLabelsFor(players, function(playerLabel) {
-    var values = Array.isArray(streams) ? streams : []
+    var values = listSnapshot(streams)
     for (var i = 0; i < values.length; i++) {
       var stream = values[i]
       var streamLabel = rawStreamLabel(stream)
@@ -233,6 +238,41 @@ function streamRepresentsPlayer(node, player, players, streams) {
   return streamRepresentsMprisPlayer(streamLabel(node, players, streams), playerLabel)
 }
 
+function mprisPlayerForStream(node, players, streams) {
+  var values = listSnapshot(players)
+  var candidate = null
+  var proxyCandidate = null
+
+  for (var i = 0; i < values.length; i++) {
+    var player = values[i]
+    if (!streamRepresentsPlayer(node, player, values, streams)) continue
+
+    if (mprisPlayerIsProxy(player)) {
+      if (!proxyCandidate || player.isPlaying) proxyCandidate = player
+    } else if (!candidate || player.isPlaying) {
+      candidate = player
+    }
+  }
+
+  return candidate || proxyCandidate
+}
+
+function playerControlsVolume(player) {
+  return !!(player && player.canControl && player.volumeSupported)
+}
+
+function streamVolume(node, player) {
+  if (playerControlsVolume(player) && typeof player.volume === "number") return player.volume
+  return node && node.audio && typeof node.audio.volume === "number" ? node.audio.volume : 0
+}
+
+function setStreamVolume(node, player, volume) {
+  var nextVolume = Math.max(0, Math.min(1.5, volume))
+  if (playerControlsVolume(player)) player.volume = nextVolume
+  if (node && node.audio) node.audio.volume = nextVolume
+  return nextVolume
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     isPlaybackStream: isPlaybackStream,
@@ -257,6 +297,10 @@ if (typeof module !== "undefined") {
     matchingMprisStreamLabel: matchingMprisStreamLabel,
     unmatchedMprisStreamLabel: unmatchedMprisStreamLabel,
     streamLabel: streamLabel,
-    streamRepresentsPlayer: streamRepresentsPlayer
+    streamRepresentsPlayer: streamRepresentsPlayer,
+    mprisPlayerForStream: mprisPlayerForStream,
+    playerControlsVolume: playerControlsVolume,
+    streamVolume: streamVolume,
+    setStreamVolume: setStreamVolume
   }
 }
