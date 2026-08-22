@@ -207,4 +207,26 @@ assertDeepEqual(
 
 assertDeepEqual(tailscale.parseStatus('{'), { ok: false, unavailable: true, message: 'Status error', error: 'Failed to parse tailscale status' }, 'tailscale reports invalid status JSON')
 assertDeepEqual(tailscale.parseAccounts('{'), { accounts: [], selectedAccountId: '', selectedAccountLabel: '' }, 'tailscale handles invalid account JSON')
+
+assert(tailscale.allPollsSettled(false, false, false), 'tailscale stands the poll watchdog down once every guarded poll has exited')
+assert(!tailscale.allPollsSettled(true, false, false), 'tailscale keeps the poll watchdog armed while a status poll is in flight')
+assert(!tailscale.allPollsSettled(false, true, false), 'tailscale keeps the poll watchdog armed while an exit-node poll is in flight')
+assert(!tailscale.allPollsSettled(false, false, true), 'tailscale keeps the poll watchdog armed while an accounts poll is in flight')
+
+const serviceSource = fs.readFileSync(root + '/shell/plugins/panels/tailscale/Service.qml', 'utf8')
+
+assert(
+  /if \(launched && !pollWatchdog\.running\) pollWatchdog\.start\(\)/.test(serviceSource),
+  'tailscale arms the poll watchdog once per launch cycle'
+)
+
+function guardedProcessStandsDown(processId) {
+  var blocks = serviceSource.split('  Process {')
+  var block = blocks.find(function(candidate) { return candidate.indexOf('id: ' + processId) !== -1 })
+  return !!block && /onExited[\s\S]*?settlePollWatchdog\(\)/.test(block)
+}
+
+assert(guardedProcessStandsDown('statusProcess'), 'tailscale stands the poll watchdog down when the status poll exits')
+assert(guardedProcessStandsDown('mullvadExitNodesProcess'), 'tailscale stands the poll watchdog down when the exit-node poll exits')
+assert(guardedProcessStandsDown('accountsProcess'), 'tailscale stands the poll watchdog down when the accounts poll exits')
 JS

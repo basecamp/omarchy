@@ -188,8 +188,14 @@ Item {
     // Arm on the launch that needs watching and leave it alone after that.
     // Restarting it every refresh pushes the deadline out ahead of a hung
     // process forever once the refresh interval is shorter than the timeout,
-    // and refreshIntervalSec goes down to five seconds.
+    // and refreshIntervalSec goes down to five seconds. Once this cycle's
+    // polls exit, settlePollWatchdog stands it down so its fire can only ever
+    // land on a poll of its own launch cycle that exceeded the timeout.
     if (launched && !pollWatchdog.running) pollWatchdog.start()
+  }
+
+  function settlePollWatchdog() {
+    if (Model.allPollsSettled(statusProcess.running, mullvadExitNodesProcess.running, accountsProcess.running)) pollWatchdog.stop()
   }
 
   function elideStatus(text) {
@@ -423,7 +429,9 @@ Item {
     // never exits — tailscale can hang on a network that is coming and going —
     // silently stops the panel refreshing at all, and it stays stopped. Reap
     // anything still running well inside the refresh interval so the next tick
-    // starts clean.
+    // starts clean. Polls that finish normally stand it down first
+    // (settlePollWatchdog), so the fire only ever reaches a poll of its own
+    // launch cycle that is still running past the timeout.
     id: pollWatchdog
     interval: 15000
     repeat: false
@@ -475,6 +483,7 @@ Item {
     stdout: StdioCollector { id: statusStdout; waitForEnd: true; onStreamFinished: root._statusOutput = text }
     stderr: StdioCollector { id: statusStderr; waitForEnd: true; onStreamFinished: root._statusError = text }
     onExited: function(exitCode) {
+      root.settlePollWatchdog()
       root.refreshing = false
       var stdout = String(statusStdout.text || root._statusOutput || "")
       var stderr = String(statusStderr.text || root._statusError || "")
@@ -493,6 +502,7 @@ Item {
     stdout: StdioCollector { id: accountsStdout; waitForEnd: true; onStreamFinished: root._accountsOutput = text }
     stderr: StdioCollector { id: accountsStderr; waitForEnd: true; onStreamFinished: root._accountsError = text }
     onExited: function(exitCode) {
+      root.settlePollWatchdog()
       var stdout = String(accountsStdout.text || root._accountsOutput || "")
       var stderr = String(accountsStderr.text || root._accountsError || "")
       if (exitCode === 0) root.parseAccounts(stdout)
@@ -515,6 +525,7 @@ Item {
     stdout: StdioCollector { id: mullvadExitNodesStdout; waitForEnd: true; onStreamFinished: root._mullvadExitNodesOutput = text }
     stderr: StdioCollector { id: mullvadExitNodesStderr; waitForEnd: true; onStreamFinished: root._mullvadExitNodesError = text }
     onExited: function(exitCode) {
+      root.settlePollWatchdog()
       var stdout = String(mullvadExitNodesStdout.text || root._mullvadExitNodesOutput || "")
       if (exitCode === 0) root.parseMullvadExitNodes(stdout)
       else root.parseMullvadExitNodes("")
