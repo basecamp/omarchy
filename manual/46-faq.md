@@ -18,7 +18,7 @@ The bar will automatically show your current keyboard layout once you have multi
 
 ### How do I change the clock format to 12-hour?
 
-Right-click the clock in the bar to cycle through the common formats, including the 12-hour ones. You can also set the format directly:
+Pick _Setup > Time Format > 12-Hour_ in the Omarchy menu. You can also right-click the clock in the bar to cycle through the common formats, including the 12-hour ones, or set the format directly:
 
 ```
 omarchy bar set omarchy.clock format "dddd h:mm AP"

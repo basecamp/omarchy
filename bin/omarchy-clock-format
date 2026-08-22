@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# omarchy:summary=Show or set the bar clock time format
+# omarchy:args=[12|24]
+# omarchy:examples=omarchy-clock-format | omarchy-clock-format 12
+
+set -euo pipefail
+
+source omarchy-shell-config
+
+DEFAULT_FORMAT="dddd HH:mm"
+
+current_format() {
+  jq -r '
+    [.bar.layout.left[], .bar.layout.center[], .bar.layout.right[]]
+    | map(select((.id // "") == "omarchy.clock" and ((.format // "") | type) == "string"))
+    | (map(.format)[0] // "")
+  ' "$(source_file)"
+}
+
+format=$(current_format)
+
+if (($# == 0)); then
+  jq -rn --arg format "$format" 'if ($format | test("[Aa][Pp]")) then "12" else "24" end'
+  exit 0
+fi
+
+case "$1" in
+  12) convert="12"; label="12-hour" ;;
+  24) convert="24"; label="24-hour" ;;
+  *)
+    echo "Usage: omarchy-clock-format <12|24>" >&2
+    exit 1
+    ;;
+esac
+
+commit '
+  def to12:
+    if type != "string" then .
+    elif test("[Aa][Pp]") then .
+    else gsub("HH"; "h") + (if contains("\n") then "\nAP" else " AP" end)
+    end;
+  def to24:
+    if type != "string" then .
+    else gsub("(^|[ \n])[Aa][Pp]"; "") | gsub("\\bh\\b"; "HH")
+    end;
+  def converted:
+    if $convert == "12" then to12 else to24 end;
+  def clockentry:
+    if type != "object" or .id != "omarchy.clock" then .
+    else
+      .format = (((.format // "") | if . == "" then "'"$DEFAULT_FORMAT"'" else . end) | converted)
+      | (if has("verticalFormat") then .verticalFormat = (.verticalFormat | converted) else . end)
+    end;
+  '"$NORMALIZE"'
+  | .bar.layout.left = (.bar.layout.left | map(clockentry))
+  | .bar.layout.center = (.bar.layout.center | map(clockentry))
+  | .bar.layout.right = (.bar.layout.right | map(clockentry))
+' --arg convert "$convert"
+echo "Clock set to $label time"
