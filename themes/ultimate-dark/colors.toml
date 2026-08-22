@@ -1,0 +1,34 @@
+mode = "dark"
+
+# Project Ultimate dark: deep neutral canvas, layered for the surface
+# doctrine (canvas/base/raised/glass), warm glass-blue accent. Original
+# palette — precision + depth + warmth, not an Aero clone.
+accent = "#6aa3cf"
+selection = "#2c4257"
+muted = "#66727d"
+
+background = "#14181c"
+dark_background = "#0e1114"
+darker_background = "#0a0c0e"
+lighter_background = "#1d2228"
+
+foreground = "#dde4ea"
+dark_foreground = "#8b96a0"
+light_foreground = "#b9c3cc"
+bright_foreground = "#f2f6f9"
+
+red = "#c96f68"
+yellow = "#c9a45c"
+orange = "#c98d5c"
+green = "#79a880"
+cyan = "#63a3b5"
+blue = "#6aa3cf"
+magenta = "#a97fb1"
+brown = "#8a6e55"
+
+bright_red = "#d8827b"
+bright_yellow = "#d8b56e"
+bright_green = "#89ba90"
+bright_cyan = "#73b5c7"
+bright_blue = "#7db2da"
+bright_magenta = "#bb90c2"

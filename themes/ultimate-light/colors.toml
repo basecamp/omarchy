@@ -1,0 +1,33 @@
+mode = "light"
+
+# Project Ultimate light: airy canvas, ink text, the same warm glass accent as
+# ultimate-dark so switching modes reads as the same product, not two themes.
+accent = "#3a76a8"
+selection = "#cfe2ef"
+muted = "#83919d"
+
+background = "#f4f6f8"
+dark_background = "#e8ecf0"
+darker_background = "#dde3e9"
+lighter_background = "#ffffff"
+
+foreground = "#20262c"
+dark_foreground = "#5c6873"
+light_foreground = "#3d4854"
+bright_foreground = "#0e1318"
+
+red = "#b85750"
+yellow = "#a8823f"
+orange = "#b57a42"
+green = "#55875c"
+cyan = "#41879a"
+blue = "#3a76a8"
+magenta = "#8a5f92"
+brown = "#6e5642"
+
+bright_red = "#a04a44"
+bright_yellow = "#8f6e35"
+bright_green = "#48734e"
+bright_cyan = "#377184"
+bright_blue = "#316592"
+bright_magenta = "#75517c"

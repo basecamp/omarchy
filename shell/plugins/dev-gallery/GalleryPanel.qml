@@ -114,7 +114,7 @@ Item {
   readonly property var visibleSections: [
     "cursor-surface", "button", "button-group", "panel-action-button",
     "panel-tool-tip", "slider", "text-field", "number-field",
-    "toggle", "toggle-switch", "dropdown", "searchable-dropdown", "composed"
+    "toggle", "toggle-switch", "dropdown", "searchable-dropdown", "ultimate", "composed"
   ]
 
   function sectionCount(section) {
@@ -131,6 +131,7 @@ Item {
       case "toggle-switch":       return 2
       case "dropdown":            return 1
       case "searchable-dropdown": return 1
+      case "ultimate":            return 5
       case "composed":            return 2
     }
     return 0
@@ -1833,7 +1834,236 @@ Item {
             }
           }
 
-          Item { width: 1; height: Style.spacing.rowPaddingX }
+          // ---- Ultimate kit --------------------------------------------------
+          Column {
+            width: parent.width
+            spacing: Style.space(8)
+
+            Text {
+              text: "Ultimate kit"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.subtitle
+              font.bold: true
+            }
+            Text {
+              text: "Project Ultimate components consuming qs.Commons.Tokens (semantic surface / text / accent / state tokens): Card, IconButton, Badge, Checkbox, RadioButton, SearchBox, ProgressBar, ProgressRing, Toast, EmptyState, ErrorState."
+              color: Qt.darker(root.foreground, 1.5)
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              width: parent.width
+              wrapMode: Text.WordWrap
+            }
+
+            QtObject {
+              id: ultimateDemo
+              property bool checkedDemo: true
+              property string densityDemo: "comfortable"
+              property int iconIndex: -1
+            }
+
+            BorderSurface {
+              width: parent.width
+              implicitHeight: ultimateCol.implicitHeight + Style.spacing.rowPaddingX * 2
+              color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
+              radius: Style.cornerRadius
+              borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10), 1)
+
+              Column {
+                id: ultimateCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: Style.space(14)
+                anchors.rightMargin: Style.space(14)
+                spacing: Style.space(12)
+
+                // Clickable cards (cursor target 0).
+                Row {
+                  spacing: Style.space(12)
+
+                  Card {
+                    width: 180
+                    height: 64
+                    clickable: true
+                    hasCursor: root.focusSection === "ultimate" && root.selectedIndex === 0
+                    onHovered: function(h) {
+                      if (h) { root.focusSection = "ultimate"; root.selectedIndex = 0 }
+                    }
+                    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+
+                    Text {
+                      anchors.centerIn: parent
+                      text: "base card"
+                      color: Tokens.text.secondary
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.bodySmall
+                    }
+                  }
+
+                  Card {
+                    width: 180
+                    height: 64
+                    elevation: "raised"
+
+                    Text {
+                      anchors.centerIn: parent
+                      text: "raised card"
+                      color: Tokens.text.secondary
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.bodySmall
+                    }
+                  }
+                }
+
+                // Icon buttons incl. danger flavor (cursor target 1).
+                Row {
+                  spacing: Style.space(10)
+
+                  IconButton {
+                    iconText: "\u2212"
+                    tooltipText: "Minimize"
+                    focusable: true
+                    hasCursor: root.focusSection === "ultimate" && root.selectedIndex === 1 && ultimateDemo.iconIndex === 0
+                    onClicked: ultimateDemo.iconIndex = 0
+                    onHovered: function(h) {
+                      if (h) { root.focusSection = "ultimate"; ultimateDemo.iconIndex = 0; root.selectedIndex = 1 }
+                    }
+                    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  }
+                  IconButton {
+                    iconText: "\u25a1"
+                    tooltipText: "Maximize"
+                    focusable: true
+                    hasCursor: root.focusSection === "ultimate" && root.selectedIndex === 1 && ultimateDemo.iconIndex === 1
+                    onClicked: ultimateDemo.iconIndex = 1
+                    onHovered: function(h) {
+                      if (h) { root.focusSection = "ultimate"; ultimateDemo.iconIndex = 1; root.selectedIndex = 1 }
+                    }
+                    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  }
+                  IconButton {
+                    iconText: "\u00d7"
+                    tooltipText: "Close"
+                    danger: true
+                    focusable: true
+                    hasCursor: root.focusSection === "ultimate" && root.selectedIndex === 1 && ultimateDemo.iconIndex === 2
+                    onClicked: ultimateDemo.iconIndex = 2
+                    onHovered: function(h) {
+                      if (h) { root.focusSection = "ultimate"; ultimateDemo.iconIndex = 2; root.selectedIndex = 1 }
+                    }
+                    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  }
+                }
+
+                // Checkbox + radio row (cursor targets 2 and 3).
+                Column {
+                  spacing: Style.space(6)
+
+                  Checkbox {
+                    label: "Show desktop icons"
+                    checked: ultimateDemo.checkedDemo
+                    focusable: true
+                    hasCursor: root.focusSection === "ultimate" && root.selectedIndex === 2
+                    onToggled: ultimateDemo.checkedDemo = !ultimateDemo.checkedDemo
+                    onHovered: function(h) {
+                      if (h) { root.focusSection = "ultimate"; root.selectedIndex = 2 }
+                    }
+                    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  }
+
+                  Row {
+                    spacing: Style.space(16)
+
+                    RadioButton {
+                      group: "density"
+                      label: "Compact"
+                      checked: ultimateDemo.densityDemo === "compact"
+                      focusable: true
+                      hasCursor: root.focusSection === "ultimate" && root.selectedIndex === 3
+                      onToggled: ultimateDemo.densityDemo = "compact"
+                      onHovered: function(h) {
+                        if (h) { root.focusSection = "ultimate"; root.selectedIndex = 3 }
+                      }
+                      onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                    }
+                    RadioButton {
+                      group: "density"
+                      label: "Comfortable"
+                      checked: ultimateDemo.densityDemo === "comfortable"
+                      focusable: true
+                      hasCursor: root.focusSection === "ultimate" && root.selectedIndex === 3
+                      onToggled: ultimateDemo.densityDemo = "comfortable"
+                      onHovered: function(h) {
+                        if (h) { root.focusSection = "ultimate"; root.selectedIndex = 3 }
+                      }
+                      onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                    }
+                  }
+                }
+
+                // SearchBox (cursor target 4).
+                SearchBox {
+                  width: 280
+                  placeholderText: "Search settings"
+                  font.family: root.fontFamily
+                  hasCursor: root.focusSection === "ultimate" && root.selectedIndex === 4
+                  onHoveredChanged: if (hovered) {
+                    root.focusSection = "ultimate"; root.selectedIndex = 4
+                  }
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                }
+
+                // Progress + badges.
+                Row {
+                  spacing: Style.space(20)
+
+                  ProgressBar {
+                    width: 160
+                    anchors.verticalCenter: parent.verticalCenter
+                    value: 0.64
+                  }
+                  ProgressBar {
+                    width: 120
+                    anchors.verticalCenter: parent.verticalCenter
+                    indeterminate: true
+                  }
+                  ProgressRing {
+                    anchors.verticalCenter: parent.verticalCenter
+                    value: 0.75
+                  }
+                  ProgressRing {
+                    anchors.verticalCenter: parent.verticalCenter
+                    indeterminate: true
+                  }
+                  Badge { count: 3; anchors.verticalCenter: parent.verticalCenter }
+                  Badge { tone: "danger"; count: 12; anchors.verticalCenter: parent.verticalCenter }
+                }
+
+                // Toast with recovery actions.
+                Toast {
+                  width: parent.width
+                  title: "Bluetooth couldn't be turned on"
+                  message: "The Bluetooth service did not start."
+                  tone: "danger"
+                  actions: ["Try again", "Details"]
+                }
+
+                // Empty + error states.
+                EmptyState {
+                  width: parent.width
+                  title: "No results"
+                  message: "Nothing matches your search. Try a different term."
+                }
+
+                ErrorState {
+                  width: parent.width
+                  title: "Update failed to install"
+                  explanation: "The system update was rolled back. Your files are unaffected."
+                  detail: "pacman returned exit status 1: conflicting files (/etc/hosts.pacnew)"
+                }
+
+                Item { width: 1; height: Style.spacing.rowPaddingX }
         }
       }
       }

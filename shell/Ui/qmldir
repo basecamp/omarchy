@@ -1,5 +1,6 @@
 module qs.Ui
 
+Badge 1.0 Badge.qml
 BarIndicator 1.0 BarIndicator.qml
 BarIconButton 1.0 BarIconButton.qml
 BarWidget 1.0 BarWidget.qml
@@ -7,9 +8,14 @@ BorderOverlay 1.0 BorderOverlay.qml
 BorderSurface 1.0 BorderSurface.qml
 Button 1.0 Button.qml
 ButtonGroup 1.0 ButtonGroup.qml
+Card 1.0 Card.qml
+Checkbox 1.0 Checkbox.qml
 ConfirmDialog 1.0 ConfirmDialog.qml
 CursorSurface 1.0 CursorSurface.qml
 Dropdown 1.0 Dropdown.qml
+EmptyState 1.0 EmptyState.qml
+ErrorState 1.0 ErrorState.qml
+IconButton 1.0 IconButton.qml
 KeyboardPanel 1.0 KeyboardPanel.qml
 MultiSelect 1.0 MultiSelect.qml
 NumberField 1.0 NumberField.qml
@@ -24,11 +30,16 @@ PanelSeparator 1.0 PanelSeparator.qml
 PanelSlider 1.0 PanelSlider.qml
 PanelToolTip 1.0 PanelToolTip.qml
 PointerMoveGate 1.0 PointerMoveGate.qml
+ProgressBar 1.0 ProgressBar.qml
+ProgressRing 1.0 ProgressRing.qml
+RadioButton 1.0 RadioButton.qml
 ScreenMoveRemap 1.0 ScreenMoveRemap.qml
+SearchBox 1.0 SearchBox.qml
 PopupCard 1.0 PopupCard.qml
 SearchableDropdown 1.0 SearchableDropdown.qml
 SpeedTestOverlay 1.0 SpeedTestOverlay.qml
 TextField 1.0 TextField.qml
+Toast 1.0 Toast.qml
 Toggle 1.0 Toggle.qml
 ToggleSwitch 1.0 ToggleSwitch.qml
 WidgetButton 1.0 WidgetButton.qml
