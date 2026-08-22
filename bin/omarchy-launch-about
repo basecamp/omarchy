@@ -31,14 +31,21 @@ source omarchy-logo-sheen
 # ask fastfetch for that order rather than keep a copy here for its next release
 # to outdate.
 custom_fastfetch_config() {
-  local directory
+  local directory listed=false
 
-  while read -r directory _; do
+  # A whole line at a time, because a home directory may contain a space, and the
+  # marker fastfetch puts beside the config it settled on is not part of the path.
+  while IFS= read -r directory; do
+    listed=true
+    directory=${directory% (\*)}
     [[ ${directory%/} == "$OMARCHY_FASTFETCH_DIR" ]] && return 1
     [[ -f ${directory%/}/config.jsonc ]] && return 0
   done < <(fastfetch --list-config-paths 2>/dev/null)
 
-  return 1
+  # Silence is not the same answer as "none of them", so fall back to the
+  # directory fastfetch has always looked in first rather than read it as one.
+  [[ $listed == true ]] && return 1
+  [[ -f $HOME/.config/fastfetch/config.jsonc ]]
 }
 
 # wc -L counts display columns only in a UTF-8 locale. A session that never set

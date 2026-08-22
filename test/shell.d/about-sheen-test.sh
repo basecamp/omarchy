@@ -116,6 +116,27 @@ NO_COLOR=1
 refuses "a session that asked for no colour leaves the logo still"
 unset NO_COLOR
 
+# A home directory may contain a space, and the marker fastfetch puts beside the
+# config it settled on is not part of the path.
+spacey="$tmp_dir/example user/.config/fastfetch"
+mkdir -p "$spacey"
+touch "$spacey/config.jsonc"
+config_paths=("$tmp_dir/example user/.config/fastfetch/" "$OMARCHY_FASTFETCH_DIR/ (*)")
+custom_fastfetch_config || fail "a fastfetch config in a path with a space is found"
+pass "a fastfetch config in a path with a space is found"
+rm -r "$tmp_dir/example user"
+config_paths=("$HOME/.config/fastfetch/" "$HOME/fastfetch/" "$OMARCHY_FASTFETCH_DIR/ (*)")
+
+# An enumeration that said nothing is not the same answer as "none of them".
+mkdir -p "$HOME/.config/fastfetch"
+touch "$HOME/.config/fastfetch/config.jsonc"
+listing=$(declare -f fastfetch)
+fastfetch() { return 7; }
+custom_fastfetch_config || fail "an enumeration that failed does not read as no config"
+pass "an enumeration that failed does not read as no config"
+eval "$listing"
+rm -r "${HOME:?}/.config/fastfetch"
+
 measure_layout() { return 1; }
 refuses "a layout fastfetch cannot be measured from leaves it still"
 
