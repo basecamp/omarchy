@@ -59,6 +59,11 @@ assertEqual(merged.items['style.theme'].order, 2, 'menu preserves original order
 assert(merged.items.root, 'menu injects root when merging sources')
 
 assertEqual(menu.slugify('Power Saver!'), 'power-saver', 'menu slugifies provider rows')
+assert(
+  /root\.navStack = root\.navStack\.concat\(\[\{ id: root\.activeMenu, selectedIndex: root\.selectedIndex \}\]\)/.test(menuQml)
+    && /root\.setActiveMenu\(previous\.id, false, false, previous\.selectedIndex\)/.test(menuQml),
+  'menu uses navigation history when entering and leaving submenus'
+)
 assertEqual(menu.pathFor(merged.items, 'style.theme'), 'Style › Theme picker', 'menu builds item paths')
 assertEqual(menu.parentPathFor(merged.items, 'style.theme'), 'Style', 'menu builds parent paths')
 assert(menu.isDescendantOf(merged.items, 'style.theme', 'style'), 'menu detects descendants')
@@ -485,7 +490,7 @@ assert(
   'menu filter changes disarm pointer selection'
 )
 assert(
-  /function setActiveMenu\(id, pushHistory, fromPointer\)[\s\S]*if \(fromPointer\) pointerGate\.allowInitialSample\(\)\s*else root\.disarmPointer\(\)/.test(menuQml),
+  /function setActiveMenu\(id, pushHistory, fromPointer, restoredIndex\)[\s\S]*if \(fromPointer\) pointerGate\.allowInitialSample\(\)\s*else root\.disarmPointer\(\)/.test(menuQml),
   'menu route changes only accept an initial pointer sample for mouse activation'
 )
 assert(
