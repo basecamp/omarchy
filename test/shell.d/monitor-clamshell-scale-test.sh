@@ -70,6 +70,18 @@ local omarchy_monitor_scale = "auto"
 LUA
 }
 
+# The shipped default's own shape: the catch-all rule hands the panel a
+# bare-word reference to the "auto" local.
+write_default_auto_config() {
+  cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = "auto"
+
+hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
+LUA
+}
+
 write_internal_monitor_config() {
   cat >"$monitor_lua" <<'LUA'
 hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = 1.25 })
@@ -213,19 +225,38 @@ run_clamshell() {
     "$ROOT/bin/omarchy-hyprland-monitor-clamshell"
 }
 
+# Regression (#7265, #7301): with scale = "auto" the compositor's resolution of
+# it IS the configured scale, not a transient to correct. Forcing a number here
+# made the scale flap: every idle-wake applied the fallback 2, every config
+# reload resolved auto back to the panel's own value.
 write_auto_monitor_config
 : >"$eval_log"
 OMARCHY_TEST_INTERNAL_SCALE=3 run_clamshell
-grep -F 'scale = 2' "$eval_log" >/dev/null || fail "clamshell recovery ignores transient auto scale"
-! grep -F 'scale = "auto"' "$eval_log" >/dev/null || fail "clamshell recovery does not apply auto scale"
+! grep -F 'scale = ' "$eval_log" >/dev/null || fail "clamshell recovery leaves an auto-scaled panel alone"
 [[ ! -f $scale_state ]] || fail "clamshell recovery does not remember transient scale"
-pass "clamshell recovery ignores transient auto scale"
+pass "clamshell recovery leaves an auto-scaled panel alone"
 
-write_auto_monitor_config
+# The same delegation through the shipped default config, where "auto" reaches
+# the panel via the catch-all rule's bare-word reference to the local.
+write_default_auto_config
 : >"$eval_log"
-OMARCHY_TEST_INTERNAL_SCALE=2 run_clamshell
+OMARCHY_TEST_INTERNAL_SCALE=3 run_clamshell
+! grep -F 'scale = ' "$eval_log" >/dev/null || fail "clamshell recovery leaves the shipped auto default alone"
+pass "clamshell recovery leaves the shipped auto default alone"
+
+# A numeric config keeps both sync behaviors: a matching active scale is not
+# reapplied, and a drifted one is corrected back to the configured value.
+write_internal_monitor_config
+: >"$eval_log"
+OMARCHY_TEST_INTERNAL_SCALE=1.25 run_clamshell
 ! grep -F 'scale = ' "$eval_log" >/dev/null || fail "clamshell recovery does not reapply matching scale"
 pass "clamshell recovery avoids redundant scale apply"
+
+write_internal_monitor_config
+: >"$eval_log"
+OMARCHY_TEST_INTERNAL_SCALE=3 run_clamshell
+grep -F 'scale = 1.25' "$eval_log" >/dev/null || fail "clamshell recovery corrects a drifted numeric scale"
+pass "clamshell recovery corrects a drifted numeric scale"
 
 write_auto_monitor_config
 : >"$eval_log"
@@ -239,6 +270,15 @@ OMARCHY_TEST_INTERNAL_DISABLED=true run_clamshell
 grep -F 'scale = 1.6' "$eval_log" >/dev/null || fail "clamshell recovery uses remembered internal scale"
 ! grep -F 'scale = "auto"' "$eval_log" >/dev/null || fail "clamshell recovery avoids auto after disabled internal display"
 pass "clamshell recovery uses remembered internal scale"
+
+# Recovery of a panel that is off, under an auto config with nothing
+# remembered, still needs a number: the historical default 2.
+write_auto_monitor_config
+rm -f "$scale_state"
+: >"$eval_log"
+OMARCHY_TEST_INTERNAL_DISABLED=true run_clamshell
+grep -F 'scale = 2' "$eval_log" >/dev/null || fail "clamshell recovery falls back to the default scale"
+pass "clamshell recovery falls back to the default scale"
 
 write_internal_monitor_config
 : >"$eval_log"
@@ -312,6 +352,15 @@ OMARCHY_TEST_INTERNAL_DISABLED=true run_clamshell
 grep -F 'scale = 1.75' "$eval_log" >/dev/null || fail "clamshell recovery leaves an expression scale unresolved"
 pass "clamshell recovery leaves an expression scale unresolved"
 
+# An expression is Hyprland's to evaluate, not this parser's: like "auto", it
+# names no number to correct an enabled panel toward.
+write_expression_scale_config
+remember_scale 1.75
+: >"$eval_log"
+OMARCHY_TEST_INTERNAL_SCALE=3 run_clamshell
+! grep -F 'scale = ' "$eval_log" >/dev/null || fail "clamshell recovery leaves an expression-scaled panel alone"
+pass "clamshell recovery leaves an expression-scaled panel alone"
+
 # A quoted value is a string, not a reference to a local of the same name.
 write_shadowed_auto_config
 remember_scale 1.75
@@ -319,6 +368,15 @@ remember_scale 1.75
 OMARCHY_TEST_INTERNAL_DISABLED=true run_clamshell
 grep -F 'scale = 1.75' "$eval_log" >/dev/null || fail "clamshell recovery does not resolve a quoted scale against a local"
 pass "clamshell recovery does not resolve a quoted scale against a local"
+
+# An explicit "auto" on the internal rule delegates just the same: while the
+# panel is enabled, it is not corrected toward the remembered scale.
+write_shadowed_auto_config
+remember_scale 1.75
+: >"$eval_log"
+OMARCHY_TEST_INTERNAL_SCALE=3 run_clamshell
+! grep -F 'scale = ' "$eval_log" >/dev/null || fail "clamshell recovery leaves an explicitly auto panel alone"
+pass "clamshell recovery leaves an explicitly auto panel alone"
 
 # Half of `3 / 2` is no better inside the rule than inside a local.
 write_expression_rule_config
