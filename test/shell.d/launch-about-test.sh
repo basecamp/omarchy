@@ -76,8 +76,8 @@ pass "a roomy window animates"
 # how much room it has left of the module column.
 [[ ${handed[0]} == "$HOME/.config/omarchy/branding/about.txt" ]] || fail "the sheen is given the logo About draws" "${handed[0]}"
 pass "the sheen is given the logo About draws"
-[[ ${handed[1]} == "$config_top" && ${handed[2]} == "$config_left" ]] || fail "the sheen is given the config's padding" "${handed[1]}/${handed[2]}"
-pass "the sheen is given the config's padding"
+[[ ${handed[1]} == "$((config_top + 1))" && ${handed[2]} == "$((config_left + 1))" ]] || fail "the sheen is given the cell the logo starts on" "${handed[1]}/${handed[2]}"
+pass "the sheen is given the cell the logo starts on"
 [[ ${handed[3]} == $'\e[0m'"$logo_color" ]] || fail "the sheen is given fastfetch's own colour to restore" "$(printf '%q' "${handed[3]}")"
 pass "the sheen is given fastfetch's own colour to restore"
 [[ ${handed[4]} == "$((140 - config_left))" ]] || fail "the sheen is given the columns left of the module column" "${handed[4]}"
@@ -108,6 +108,15 @@ pass "a window with one row past the layout animates"
 rows_by_cols="$layout_rows 140"
 refuses "a window level with the layout's last line leaves it still"
 rows_by_cols="45 140"
+
+# The loop plays whatever frames are left lying about, so a build that failed has
+# to leave none of the last one's.
+SHEEN_FRAMES=(stale frames)
+NO_COLOR=1
+build_sheen || true
+unset NO_COLOR
+(( ${#SHEEN_FRAMES[@]} == 0 )) || fail "a build that failed leaves no frames to replay" "${#SHEEN_FRAMES[@]} left"
+pass "a build that failed leaves no frames to replay"
 
 # fastfetch drops the logo's colour for a terminal that asked for none, but not
 # for the measurement, so the colour to restore would be measured wrong — and a

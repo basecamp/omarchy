@@ -14,59 +14,36 @@
 # columns per row puts it at 45 degrees on screen, where a cell is twice as tall
 # as it is wide.
 ESC=$'\e'
-SHEEN_HALO_COLOR="${ESC}[1m${ESC}[92m"
-SHEEN_CORE_COLOR="${ESC}[1m${ESC}[97m"
+SHEEN_BAND="${ESC}[1m${ESC}[92m"
 SHEEN_SLANT=2
-SHEEN_CORE=1
-SHEEN_HALO=5
+SHEEN_HALF=3
 SHEEN_FRAME_SECONDS=0.025
 SHEEN_REST_TICKS=8
 # Re-measure the grid every half second, the cadence a still logo already cost,
 # rather than spawning a process per frame.
 SHEEN_POLL_FRAMES=20
-# A multi-byte glyph, to ask the shell whether it is counting characters, and the
-# control characters whoever drew the logo would have expanded itself.
-SHEEN_PROBE='█'
-SHEEN_CONTROL=$'\t\e\r\b\f\v'
-
-# Keeps a cut inside the row, so a band that has not reached the logo yet, or has
-# already left it, slices nothing out of the line.
-clamp_cut() {
-  local -n cut=$1
-  local limit=$2
-
-  if (( cut < 0 )); then
-    cut=0
-  elif (( cut > limit )); then
-    cut=$limit
-  fi
-}
 
 # A frame is one string holding every row of the logo, positioned and coloured,
 # so a tick writes the whole logo at once and never shows it half drawn.
 compose_frame() {
   local centre=$1
-  local row line length at halo_in core_in core_out halo_out frame=""
+  local row line length at from to frame=""
 
   for (( row = 0; row < SHEEN_ROWS; row++ )); do
     line=${SHEEN_LINES[row]}
     length=${#line}
 
+    # Where the band crosses this row. Running off the right needs no clamp,
+    # because a slice that starts past the end of a line is already empty, but a
+    # negative offset would count from the end of it instead of off the left.
     at=$(( centre - row * SHEEN_SLANT ))
-    halo_in=$(( at - SHEEN_HALO ))
-    core_in=$(( at - SHEEN_CORE ))
-    core_out=$(( at + SHEEN_CORE + 1 ))
-    halo_out=$(( at + SHEEN_HALO + 1 ))
-    clamp_cut halo_in "$length"
-    clamp_cut core_in "$length"
-    clamp_cut core_out "$length"
-    clamp_cut halo_out "$length"
+    from=$(( at - SHEEN_HALF ))
+    from=$(( from < 0 ? 0 : from ))
+    to=$(( at + SHEEN_HALF + 1 ))
+    to=$(( to < 0 ? 0 : to ))
 
-    frame+="${ESC}[$((SHEEN_PAD_TOP + row + 1));$((SHEEN_PAD_LEFT + 1))H${SHEEN_BASE}${line:0:halo_in}"
-    frame+="${SHEEN_HALO_COLOR}${line:halo_in:core_in - halo_in}"
-    frame+="${SHEEN_CORE_COLOR}${line:core_in:core_out - core_in}"
-    frame+="${SHEEN_HALO_COLOR}${line:core_out:halo_out - core_out}"
-    frame+="${SHEEN_BASE}${line:halo_out}"
+    frame+="${ESC}[$((SHEEN_TOP + row));${SHEEN_LEFT}H"
+    frame+="${SHEEN_BASE}${line:0:from}${SHEEN_BAND}${line:from:to - from}${SHEEN_BASE}${line:to}"
   done
 
   SHEEN_COMPOSED=$frame
@@ -75,20 +52,15 @@ compose_frame() {
 # Builds every frame up front: a tick that recomputed a logo's worth of colour
 # spans in bash would not hold the frame rate, and the sweep is the same every
 # time. Leaves them in SHEEN_FRAMES, and answers whether this logo can be
-# animated at all — a logo it cannot put back exactly as it found it is one to
-# leave alone, because nothing on screen would say the difference.
+# animated at all — one it cannot put back exactly as it found it is one to leave
+# alone, because nothing on screen would say the difference.
 #
-#   sheen_build <logo-file> <pad-top> <pad-left> <base-colour> <columns-available>
+#   sheen_build <logo-file> <top-row> <left-column> <base-colour> <columns-available>
 sheen_build() {
   local file=$1 columns=$5
-  SHEEN_PAD_TOP=$2
-  SHEEN_PAD_LEFT=$3
+  SHEEN_TOP=$2
+  SHEEN_LEFT=$3
   SHEEN_BASE=$4
-
-  # Bash slices a string by character only in a UTF-8 locale, and a logo is drawn
-  # in multi-byte glyphs. Forcing one here would hand the caller's own children a
-  # locale to format their dates and numbers in, so leave the logo still instead.
-  (( ${#SHEEN_PROBE} == 1 )) || return 1
 
   SHEEN_LINES=()
   # A failing redirection reports itself before 2>/dev/null would apply, so order
@@ -101,19 +73,16 @@ sheen_build() {
   for (( row = 0; row < SHEEN_ROWS; row++ )); do
     line=${SHEEN_LINES[row]}
 
-    # A renderer substitutes $1 to $9 for colours and expands a tab itself, so a
-    # line carrying either is not the cells it drew, and putting the file's own
-    # characters back would land the rest of that row somewhere else.
-    if [[ $line == *'$'* || $line == *[$SHEEN_CONTROL]* ]]; then
-      return 1
-    fi
+    # A renderer substitutes $1 to $9 for colours, so a logo written with those is
+    # not the text that reached the screen.
+    [[ $line == *'$'* ]] && return 1
 
-    # These frames slice by character and a terminal draws by column, so one
-    # character has to be one cell. A wide glyph, a combining mark or a joined
-    # emoji is neither, and a cut through one moves the rest of the row.
-    if (( ${#line} != $(printf '%s' "$line" | LC_ALL=C.UTF-8 wc -L) )); then
-      return 1
-    fi
+    # These frames slice the row by character and a terminal draws it by column,
+    # so one character has to be one cell — and everything that breaks that breaks
+    # it here. A wide glyph, a combining mark or a joined emoji is not one cell; a
+    # tab or an escape is one the renderer expanded itself; and a shell whose
+    # locale is counting bytes is not counting characters at all.
+    (( ${#line} == $(printf '%s' "$line" | LC_ALL=C.UTF-8 wc -L) )) || return 1
 
     if (( ${#line} > width )); then
       width=${#line}
@@ -122,8 +91,8 @@ sheen_build() {
   (( width > 0 && width <= columns )) || return 1
 
   SHEEN_FRAMES=()
-  local centre last=$(( width + SHEEN_ROWS * SHEEN_SLANT + SHEEN_HALO ))
-  for (( centre = -SHEEN_HALO; centre <= last; centre++ )); do
+  local centre last=$(( width + SHEEN_ROWS * SHEEN_SLANT + SHEEN_HALF ))
+  for (( centre = -SHEEN_HALF; centre <= last; centre++ )); do
     compose_frame "$centre"
     SHEEN_FRAMES+=("$SHEEN_COMPOSED")
   done

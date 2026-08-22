@@ -190,7 +190,7 @@ fit_window() {
 measure_layout() {
   [[ -n ${LAYOUT_ROWS:-} ]] && return 0
 
-  local rendered row prefix
+  local rendered row
 
   # --pipe false because fastfetch drops its colours when it is not writing to a
   # terminal, and it is writing to this substitution.
@@ -199,18 +199,22 @@ measure_layout() {
   LAYOUT_ROWS=$(printf '%s' "$rendered" | wc -l)
   (( LAYOUT_ROWS > LOGO_PAD_TOP )) || return 1
 
+  # Whatever fastfetch set before the first row of the logo is what the sheen has
+  # to give those cells back.
   row=$(printf '%s' "$rendered" | sed -n "$((LOGO_PAD_TOP + 1))p")
   LOGO_COLOR=""
-  while [[ $row =~ ^($ESC\[[0-9;]*m) ]]; do
-    prefix=${BASH_REMATCH[1]}
-    LOGO_COLOR+=$prefix
-    row=${row#"$prefix"}
-  done
+  [[ $row =~ ^(($ESC\[[0-9;]*m)+) ]] && LOGO_COLOR=${BASH_REMATCH[1]}
+
+  return 0
 }
 
 # The About screen's own reasons the logo might not be where these frames would
 # draw it. Whether the logo itself can be animated is the sheen's own question.
 build_sheen() {
+  # Whatever the last build left is not this window's, and the loop below plays
+  # whatever is here — so a build that fails has to leave nothing to play.
+  SHEEN_FRAMES=()
+
   custom_fastfetch_config && return 1
 
   # fastfetch honours NO_COLOR when it writes to a terminal but not when it writes
@@ -227,9 +231,10 @@ build_sheen() {
   read -r rows cols <<<"$(stty size)"
   (( rows > LAYOUT_ROWS )) || return 1
 
-  # Hand it every attribute fastfetch left on those cells, so a glint that has
-  # passed leaves them as it found them.
-  sheen_build "$LOGO_FILE" "$LOGO_PAD_TOP" "$LOGO_PAD_LEFT" "${ESC}[0m${LOGO_COLOR}" "$(( cols - LOGO_PAD_LEFT ))"
+  # The cell the logo's first row starts on, every attribute fastfetch left on
+  # those cells so a glint that has passed leaves them as it found them, and the
+  # room it has to work in left of the module column.
+  sheen_build "$LOGO_FILE" "$(( LOGO_PAD_TOP + 1 ))" "$(( LOGO_PAD_LEFT + 1 ))" "${ESC}[0m${LOGO_COLOR}" "$(( cols - LOGO_PAD_LEFT ))"
 }
 
 # What the frames were built against. A window that resized, or a logo that was
@@ -304,13 +309,10 @@ if [[ ${1:-} == "--render" ]]; then
     if [[ $fitted == false ]] && (( ++passes <= 2 )); then
       fit_window && fitted=true
     fi
-    if build_sheen; then
-      while play_sheen && rest_sheen; do :; done
-    else
-      while ! content_changed; do
-        tick "$POLL_SECONDS"
-      done
-    fi
+    # An empty frame list plays nothing, so a logo that cannot be animated waits
+    # here exactly as the still one did, and there is one loop rather than two.
+    build_sheen
+    while play_sheen && rest_sheen; do :; done
     # A rebranded logo changes the content dimensions, so measure again.
     if [[ $(stat -c %Y "$LOGO_FILE" 2>/dev/null) != $logo_stamp ]]; then
       fitted=false
