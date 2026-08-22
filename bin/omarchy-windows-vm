@@ -287,9 +287,6 @@ launch_windows() {
   if [[ $CONTAINER_STATUS != "running" ]]; then
     echo "Starting Windows VM..."
 
-    # Send desktop notification
-    omarchy-notification-send -g  "Starting Windows VM" "This can take 15-30 seconds" -t 15000
-
     if ! docker-compose -f "$COMPOSE_FILE" up -d 2>&1; then
       echo "❌ Failed to start Windows VM!"
       echo "   Try checking: omarchy-windows-vm status"
