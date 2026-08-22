@@ -19,6 +19,7 @@ Item {
   property string fontFamily: Style.font.menuFamily
 
   property color background: Color.menu.background
+  property var backgroundSpec: Color.menu.backgroundSpec
   property color foreground: Color.menu.text
   property color border: Color.menu.border
   property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
@@ -118,7 +119,8 @@ Item {
       height: root.cardHeight
       radius: root.cornerRadius
       anchors.centerIn: parent
-      color: root.background
+      fillColor: root.background
+      fillSpec: root.backgroundSpec
       borderSpec: root.borderSpec
       padding: root.contentMargin
 

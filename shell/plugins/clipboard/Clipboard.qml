@@ -23,11 +23,13 @@ Item {
   // style the clipboard. Selected-row colors composed in the
   // singleton so consumers drop them straight into Rectangle bindings.
   property color background: Color.menu.background
+  property var backgroundSpec: Color.menu.backgroundSpec
   property color foreground: Color.menu.text
   property color border: Color.menu.border
   property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
   property color scrim: Color.menu.scrim
   property color selectedBackground: Color.menu.selectedBackground
+  property var selectedBackgroundSpec: Color.menu.selectedBackgroundSpec
   property color selectedText: Color.menu.selectedText
   readonly property int cornerRadius: Style.cornerRadius
   property string fontFamily: Style.font.menuFamily
@@ -337,7 +339,8 @@ Item {
       height: root.cardHeight
       radius: root.cornerRadius
       anchors.centerIn: parent
-      color: root.background
+      fillColor: root.background
+      fillSpec: root.backgroundSpec
       borderSpec: root.borderSpec
       padding: root.contentMargin
 
@@ -466,7 +469,7 @@ Item {
                 spacing: Style.space(4)
                 boundsBehavior: Flickable.StopAtBounds
 
-                delegate: Rectangle {
+                delegate: BorderSurface {
                   id: row
                   required property int index
                   required property string entryType
@@ -479,7 +482,8 @@ Item {
                   width: ListView.view.width
                   height: root.rowHeight
                   radius: root.cornerRadius
-                  color: hasCursor ? root.selectedBackground : "transparent"
+                  fillColor: hasCursor ? root.selectedBackground : "transparent"
+                  fillSpec: hasCursor ? root.selectedBackgroundSpec : null
 
                   Row {
                     anchors.fill: parent

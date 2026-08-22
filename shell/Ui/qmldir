@@ -10,6 +10,7 @@ ButtonGroup 1.0 ButtonGroup.qml
 ConfirmDialog 1.0 ConfirmDialog.qml
 CursorSurface 1.0 CursorSurface.qml
 Dropdown 1.0 Dropdown.qml
+FillOverlay 1.0 FillOverlay.qml
 KeyboardPanel 1.0 KeyboardPanel.qml
 MultiSelect 1.0 MultiSelect.qml
 NumberField 1.0 NumberField.qml

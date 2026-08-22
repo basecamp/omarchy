@@ -24,11 +24,13 @@ Item {
   // style emojis. Selected-cell colors composed in the
   // singleton so consumers drop them straight into Rectangle bindings.
   property color background: Color.menu.background
+  property var backgroundSpec: Color.menu.backgroundSpec
   property color foreground: Color.menu.text
   property color border: Color.menu.border
   property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
   property color scrim: Color.menu.scrim
   property color selectedBackground: Color.menu.selectedBackground
+  property var selectedBackgroundSpec: Color.menu.selectedBackgroundSpec
   property color selectedText: Color.menu.selectedText
   readonly property int cornerRadius: Style.cornerRadius
   property string fontFamily: Style.font.menuFamily
@@ -183,7 +185,8 @@ Item {
       height: root.cardHeight
       radius: root.cornerRadius
       anchors.centerIn: parent
-      color: root.background
+      fillColor: root.background
+      fillSpec: root.backgroundSpec
       borderSpec: root.borderSpec
       padding: root.contentMargin
 
@@ -272,7 +275,7 @@ Item {
             cellHeight: root.cellHeight
             boundsBehavior: Flickable.StopAtBounds
 
-            delegate: Rectangle {
+            delegate: BorderSurface {
               required property int index
               required property string emoji
 
@@ -281,7 +284,8 @@ Item {
               width: root.cellWidth
               height: root.cellHeight
               radius: root.cornerRadius
-              color: hasCursor ? root.selectedBackground : "transparent"
+              fillColor: hasCursor ? root.selectedBackground : "transparent"
+              fillSpec: hasCursor ? root.selectedBackgroundSpec : null
 
               Text {
                 text: parent.emoji

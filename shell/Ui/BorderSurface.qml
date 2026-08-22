@@ -8,6 +8,8 @@ Rectangle {
   id: root
 
   property var borderSpec: Border.none()
+  property var fillSpec: null
+  property color fillColor: "transparent"
   property real padding: 0
   property real topPadding: padding
   property real rightPadding: padding
@@ -22,10 +24,24 @@ Rectangle {
   readonly property real contentRightInset: borderRight + rightPadding
   readonly property real contentBottomInset: borderBottom + bottomPadding
   readonly property real contentLeftInset: borderLeft + leftPadding
+  readonly property bool usesGradientFill: !!(fillSpec && fillSpec.gradient && fillSpec.gradient.enabled)
   readonly property bool usesOverlayBorder: Border.needsOverlay(borderSpec)
+    || (usesGradientFill && !Border.isNone(borderSpec))
 
-  border.color: Border.canUseNative(borderSpec) ? Border.color(borderSpec) : "transparent"
-  border.width: Border.canUseNative(borderSpec) ? Border.uniformWidth(borderSpec) : 0
+  color: usesGradientFill ? "transparent" : fillColor
+  border.color: Border.canUseNative(borderSpec) && !usesGradientFill ? Border.color(borderSpec) : "transparent"
+  border.width: Border.canUseNative(borderSpec) && !usesGradientFill ? Border.uniformWidth(borderSpec) : 0
+
+  Loader {
+    anchors.fill: parent
+    active: root.usesGradientFill
+
+    sourceComponent: FillOverlay {
+      anchors.fill: parent
+      radius: root.radius
+      fillSpec: root.fillSpec
+    }
+  }
 
   Loader {
     anchors.fill: parent
