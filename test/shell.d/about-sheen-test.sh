@@ -137,6 +137,22 @@ pass "an enumeration that failed does not read as no config"
 eval "$listing"
 rm -r "${HOME:?}/.config/fastfetch"
 
+# The grid costs a process and is only read on the poll interval, so a resize can
+# land while it is being read. The sweep has to see that before it paints again.
+SHEEN_FRAMES=("first" "second" "third")
+tick() { :; }
+resized=false
+content_changed() { resized=true; return 1; }
+painted=$(play_sheen || true)
+[[ -z $painted ]] || fail "a resize landing during the check stops the sweep before it paints" "$(printf '%q' "$painted")"
+pass "a resize landing during the check stops the sweep before it paints"
+
+resized=false
+content_changed() { return 1; }
+painted=$(play_sheen || true)
+[[ $painted == "firstsecondthird" ]] || fail "an undisturbed sweep writes every frame" "$(printf '%q' "$painted")"
+pass "an undisturbed sweep writes every frame"
+
 measure_layout() { return 1; }
 refuses "a layout fastfetch cannot be measured from leaves it still"
 

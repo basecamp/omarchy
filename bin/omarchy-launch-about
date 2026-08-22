@@ -253,8 +253,11 @@ play_sheen() {
   for (( index = 0; index < ${#SHEEN_FRAMES[@]}; index++ )); do
     # Stop before painting a frame rather than after: a resize has already moved
     # the cells these address, and the rest of a sweep would land across them.
-    [[ $resized == true ]] && return 1
+    # The grid costs a process, so it stays on the poll interval. The trap costs
+    # nothing, so it is read last — a signal that arrived while the grid was being
+    # read would otherwise be seen only after another frame had gone out.
     (( index % SHEEN_POLL_FRAMES == 0 )) && content_changed && return 1
+    [[ $resized == true ]] && return 1
 
     printf '%s' "${SHEEN_FRAMES[index]}"
     tick "$SHEEN_FRAME_SECONDS"
