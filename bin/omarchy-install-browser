@@ -51,6 +51,7 @@ chrome)
 
   setup_policy_directory /etc/opt/chrome/policies/managed
   copy_chromium_flags ~/.config/chrome-flags.conf
+  omarchy-install-chrome-extensions
   omarchy-theme-set-browser
   announce_browser_installed "Chrome"
   ;;
