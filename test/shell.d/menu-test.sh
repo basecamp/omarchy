@@ -193,6 +193,10 @@ assert(
   'menu update Omarchy entry renders the private glyph with the Omarchy font'
 )
 assert(
+  defaultById['update.themes'].when.includes('.config/omarchy/themes'),
+  'menu hides Extra Themes until a theme cloned from git is there to update'
+)
+assert(
   defaultById['setup.input'].action.includes('input.lua'),
   'menu keeps Input as a direct config action'
 )

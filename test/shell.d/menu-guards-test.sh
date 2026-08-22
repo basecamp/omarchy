@@ -194,3 +194,46 @@ printf "survived\n"' 2>/dev/null)
 [[ $errexit_result == $'hit:c:1\nmiss:c:0\nsurvived' ]] ||
   fail "guard batch survives a failing reader under errexit" "got: $errexit_result"
 pass "guard batch survives a reader that exits nonzero under errexit"
+
+# Update > Extra Themes runs omarchy-theme-update, which pulls the themes that
+# came from a git clone and skips everything else, so the guard has to answer
+# for the same set: a row that appears over a symlinked theme or a worktree's
+# `.git` file opens a terminal that prints nothing and closes.
+themes_guard=$(node -e '
+  const fs = require("fs")
+  const path = require("path")
+  const menu = require(path.join(process.env.ROOT, "shell/plugins/menu/MenuModel.js"))
+  const items = menu.parseMenuJsonc(fs.readFileSync(path.join(process.env.ROOT, "default/omarchy/omarchy-menu.jsonc"), "utf8"))
+  process.stdout.write(items.find(item => item.id === "update.themes").when)
+')
+
+printf '#!/bin/bash\nexit 0\n' >"$stub_dir/git"
+chmod +x "$stub_dir/git"
+
+# The updater names each theme it pulls, so what it printed is what the row
+# would have been for. Run the guard the way the batch does, braces and all.
+assert_themes_guard_agrees() {
+  local description="$1" home="$2"
+  local guarded=0 updated=0
+
+  HOME="$home" bash -e -c "{ $themes_guard; } >/dev/null 2>&1" || guarded=$?
+  [[ -n $(HOME="$home" PATH="$stub_dir:$PATH" "$ROOT/bin/omarchy-theme-update" 2>/dev/null) ]] || updated=1
+  ((guarded == updated)) || fail "$description" "$home: guard=$guarded update=$updated"
+}
+
+themes_home=$(mktemp -d)
+trap 'rm -rf "$stub_dir" "$themes_home"' EXIT
+
+mkdir -p "$themes_home/none"
+mkdir -p "$themes_home/empty/.config/omarchy/themes"
+mkdir -p "$themes_home/copied/.config/omarchy/themes/handmade"
+mkdir -p "$themes_home/cloned/.config/omarchy/themes/tokyo-night/.git"
+mkdir -p "$themes_home/linked/.config/omarchy/themes" "$themes_home/checkout/.git"
+ln -s "$themes_home/checkout" "$themes_home/linked/.config/omarchy/themes/in-progress"
+mkdir -p "$themes_home/worktree/.config/omarchy/themes/branch"
+printf 'gitdir: /elsewhere\n' >"$themes_home/worktree/.config/omarchy/themes/branch/.git"
+
+for shape in none empty copied cloned linked worktree; do
+  assert_themes_guard_agrees "Extra Themes shows exactly when omarchy-theme-update has something to pull" "$themes_home/$shape"
+done
+pass "Extra Themes shows exactly when omarchy-theme-update has something to pull"
