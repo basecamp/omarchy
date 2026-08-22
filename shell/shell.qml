@@ -1093,8 +1093,22 @@ ShellRoot {
     }
 
     function commitCycle(): string {
-      shell.windowService.commitCycle()
+      var svc = shell.windowService
+      var address = ""
+      if (svc && svc.cycling)
+        address = String(svc.cycleList[svc.cycleIndex] || "")
+      // Hide first so layer unmap cannot steal focus. Capture the address
+      // before hide: Switcher.close() cancels the cycle.
       shell.hide("omarchy.ultimate-task-switcher")
+      if (svc) {
+        svc.cancelCycle()
+        if (address) svc.activate(address)
+      }
+      return "ok"
+    }
+
+    function activate(address: string): string {
+      shell.windowService.activate(address)
       return "ok"
     }
 

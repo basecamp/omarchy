@@ -72,10 +72,41 @@ grep -Fq 'function moveTo' "$ws" || fail "caption drag uses WindowService.moveTo
 grep -Fq 'function _windowRecord' "$ws" || fail "taskbar windows are Hyprland records with addresses"
 pass "snap and maximize use addressed Lua dispatchers through Hyprland.dispatch"
 
+grep -Eq '^  function activate\(' "$ws" || fail "WindowService exposes activate for Alt+Tab and taskbar"
 grep -Fq 'function cycleNext' "$ws" || fail "WindowService exposes cycleNext for Alt+Tab"
 grep -Fq 'function commitCycle' "$ws" || fail "WindowService exposes commitCycle for Alt release"
 grep -Fq 'function activateFromSwitcher' "$ws" || fail "WindowService exposes activateFromSwitcher for clickable Alt+Tab cards"
 grep -Fq 'function cancelCycle' "$ws" || fail "WindowService can cancel an Alt+Tab cycle without commitCycle"
+if awk '
+  $0 ~ /function activateFromSwitcher\(/ { infn = 1 }
+  infn && /root.activate/ { found = 1 }
+  infn && /^  function / && $0 !~ /function activateFromSwitcher\(/ { infn = 0 }
+  END { exit found ? 0 : 1 }
+' "$ws"; then
+  :
+else
+  fail "activateFromSwitcher must activate the clicked address, not only restore"
+fi
+if awk '
+  $0 ~ /function commitCycle\(/ { infn = 1 }
+  infn && /root.activate/ { found = 1 }
+  infn && /^  function / && $0 !~ /function commitCycle\(/ { infn = 0 }
+  END { exit found ? 0 : 1 }
+' "$ws"; then
+  :
+else
+  fail "commitCycle must activate the highlighted address, not only restore"
+fi
+if awk '
+  $0 ~ /function toggleFromTaskbar\(/ { infn = 1 }
+  infn && /root.activate/ { found = 1 }
+  infn && /^  function / && $0 !~ /function toggleFromTaskbar\(/ { infn = 0 }
+  END { exit found ? 0 : 1 }
+' "$ws"; then
+  :
+else
+  fail "inactive taskbar click must activate, not only restore"
+fi
 grep -Fq 'function toggleShowDesktop' "$ws" || fail "WindowService exposes toggleShowDesktop"
 grep -Fq 'function pin' "$ws" || fail "WindowService exposes pin for the taskbar"
 pass "WindowService exposes task-switcher, Show Desktop, and pin verbs"
@@ -91,6 +122,20 @@ if grep -E 'mon\.width \|\| ipc\.width|mon\.height \|\| ipc\.height' "$ws"; then
   fail "snap must not prefer Quickshell monitor size over compositor JSON"
 fi
 grep -Fq 'function restoreNormal(address: string)' "$ROOT/shell/shell.qml" || fail "window IPC restoreNormal takes a window address"
+grep -Fq 'function activate(address: string)' "$ROOT/shell/shell.qml" \
+  || fail "window IPC activate takes a window address"
+if awk '
+  $0 ~ /function commitCycle\(\): string/ { infn = 1 }
+  infn && /cycleList/ { captured = 1 }
+  infn && /shell.hide\("omarchy.ultimate-task-switcher"\)/ { hid = 1 }
+  infn && captured && hid { found = 1 }
+  infn && /^    function / && $0 !~ /function commitCycle/ { infn = 0 }
+  END { exit found ? 0 : 1 }
+' "$ROOT/shell/shell.qml"; then
+  :
+else
+  fail "commitCycle must capture the highlighted address before hiding the overlay"
+fi
 pass "shell registers a window IPC target"
 
 run_node_test <<'JS'

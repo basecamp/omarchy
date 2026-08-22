@@ -15,13 +15,13 @@ If those documents and this plan disagree, the doctrine wins. If this plan and a
 
 ## Reviewer lock (2026-08-22)
 
-Keep `4ea1dcf3` + `a5b945da`. Those are the accepted repair. Keep `eddd0b57` and `9d80ecd6`. Do not re-open `eddd0b57`. Do not re-bench that pair. The product call is still **REJECTED**. Windowing Gate W0 is still open. Bench stays idle.
+Keep `4ea1dcf3` + `a5b945da`. Those are the accepted repair. Keep `eddd0b57`, `9d80ecd6`, `aaf601ca`, and `5942beaa`. Do not re-open those SHAs. Do not re-bench that pair. The product call is still **REJECTED**. Windowing Gate W0 is still open. Bench stays idle.
 
-HEAD is still `eddd0b57`. Dirty tree is harness and cycle cleanup on top of Tranche B, not a new product SHA.
+Pushed HEAD was `5942beaa` before Tranche F.
 
-Moved and locked: overlay-as-SSD and 1054-vs-1040 (Tranche B); hyprbars hittable with an absolute USB-tablet-class pointer — close at `1384,224` / `1516,309`, drag `[520,240]` → `[652,325]` (Tranche C mouse gate only). Relative ydotool was the wrong seat. Native minimize is in-place `CWindow::setHidden` via `omarchy-minimize` (Tranche D): live feet stay on workspace `1` with `hidden: true`, not `special:minimized`. hyprbars runtime path is `/usr/lib/hyprland-plugins/hyprbars.so` from `omarchy-apply-hyprland-plugins` (Tranche E), not `/var/cache/hyprpm/`.
+Moved and locked: overlay-as-SSD and 1054-vs-1040 (Tranche B); hyprbars hittable with an absolute USB-tablet-class pointer — close at `1384,224` / `1516,309`, drag `[520,240]` → `[652,325]` (Tranche C mouse gate only). Relative ydotool was the wrong seat. Native minimize is in-place `CWindow::setHidden` via `omarchy-minimize` (Tranche D): live feet stay on workspace `1` with `hidden: true`, not `special:minimized`. hyprbars runtime path is `/usr/lib/hyprland-plugins/hyprbars.so` from `omarchy-apply-hyprland-plugins` (Tranche E), not `/var/cache/hyprpm/`. Idle Start is consumer-first (`5942beaa`). Alt+Tab address-change is a held number on this guest (Tranche F): commitCycle `0x56298316a300` → `0x56298351ec30`; card click `0x56298351ec30` → `0x56298316a300`.
 
-Did not move: Alt+Tab address-change (a painted-card click that hides the overlay is not activate-the-other-foot); hyprbars as a pacman package in the ISO mirror; Tokyo Night, Nautilus, nvim, TTY first-boot, no ISO. 32px is bar-height inset, not snap slop.
+Did not move: hyprbars as a pacman package in the ISO mirror; peek/jump lists; quarter snap; multi-monitor; Tokyo Night, Nautilus, nvim, TTY first-boot, no ISO. 32px is bar-height inset, not snap slop.
 
 W0 is still open.
 
@@ -93,10 +93,10 @@ What exists:
 - Default overlapping float: `[520,240] 880×560`. `restoreNormal` returned that rect after a right snap.
 - Maximize `fullscreen: 1` `[2,34] 1916×1004` (title bar in the top of the work area; occupied bottom 1038 vs 1040).
 - Minimize identity still holds — Desktop Mode now uses in-place `CWindow::setHidden` (`hidden: true` on the same workspace), not `special:minimized`. Restore returns the same address to the same workspace.
+- Alt+Tab is a held address change on this guest: `commitCycle` and a card click both activate the other foot. The switcher does not take keyboard focus; activate runs after overlay hide.
 
 What W0 still does not have (gate stays closed):
 
-- Alt+Tab address-change as a held number. hyprbars close/drag moved on an absolute pointer (Tranche C); a painted-card click that hides the overlay is not activate-the-other-foot.
 - Peek / jump lists / grouped previews as product, not a timer flyout.
 - Quarter snap, maximize-button layout chooser, saved layouts.
 - Multi-monitor, virtual desktops, parented dialogs, Steam / Wine / Electron / GTK / Qt matrix.
@@ -173,14 +173,14 @@ Every hover, context menu, dialog, empty state, error, DPI, focus ring, reduced 
 
 ## What the next Cursor turn is allowed to do
 
-The `4ea1dcf3` + `a5b945da` writeup is locked. Keep `eddd0b57` / `9d80ecd6`. Do not re-submit those SHAs for product review. Do not wait on another bench of the same HEAD. Dirty tree is not a new product SHA.
+The `4ea1dcf3` + `a5b945da` writeup is locked. Keep `eddd0b57` / `9d80ecd6` / `aaf601ca` / `5942beaa`. Do not re-submit those SHAs for product review. Do not wait on another bench of the same HEAD. Tranche F is Alt+Tab address-change; it is not a windowing go.
 
 1. Treat W0 as still open. Do not merge PR #1 as a go. Do not rewrite the PR body to claim the OS.
-2. Keep LTRB snap and typed `Hyprland.dispatch`. hyprbars is the Desktop Mode title bar and is hittable with an absolute pointer. Minimize is `hl.plugin.omarchy_minimize` (`setHidden`), not a special workspace. Relative ydotool is not a mouse proof.
+2. Keep LTRB snap and typed `Hyprland.dispatch`. hyprbars is the Desktop Mode title bar and is hittable with an absolute pointer. Minimize is `hl.plugin.omarchy_minimize` (`setHidden`), not a special workspace. Relative ydotool is not a mouse proof. Alt+Tab is `WindowService.activate` after overlay hide; the switcher does not take keyboard focus.
 3. New windows open as 880×560 floats. `restoreNormal` unsnaps to the remembered client rect. Snap insets 32px (bar height, not slop) so hyprbars stays on screen.
 4. Do not start Phase 2–9 work (theme pack, Dolphin swap, Settings app, ISO, OOBE) until W0 is decided — except a later slice that is itself one of the locked product gates after windowing is decided.
 5. Do not teach Super+K in Desktop Mode first boot.
-6. Do not treat Alt+Tab address-change or the helper’s address-change assert as proven. hyprbars loads from `/usr/lib/hyprland-plugins/`; it is still not a pacman package in the ISO mirror.
+6. hyprbars loads from `/usr/lib/hyprland-plugins/`; it is still not a pacman package in the ISO mirror. Next W0-adjacent work that can move without `omarchy-pkgs` is peek/jump lists or quarter snap — not Software Center.
 
 ## Acceptance
 

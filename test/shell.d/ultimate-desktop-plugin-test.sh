@@ -146,9 +146,12 @@ grep -Fq 'relative ydotool is not this gate' "$ROOT/test/acceptance.d/windows-na
   || fail "windows-native harness must not skip-pass the mouse gate"
 grep -Fq 'hyprbars-pointer-proof.py' "$ROOT/test/acceptance.d/windows-native-test.sh" \
   || fail "windows-native harness runs the absolute pointer proof"
-if grep -A8 '"use Alt+Tab")' "$ROOT/test/acceptance.d/windows-native-test.sh" | grep -Fq commitCycle; then
-  fail "Alt+Tab harness must not treat commitCycle as the mouse proof"
-fi
+grep -Fq 'commitCycle' "$ROOT/test/acceptance.d/windows-native-test.sh" \
+  || fail "Alt+Tab harness proves address-change with commitCycle, not only overlay summon"
+grep -Fq 'WlrKeyboardFocus.None' "$ROOT/shell/plugins/ultimate-task-switcher/Switcher.qml" \
+  || fail "task switcher must not steal keyboard focus; unmap would restore the previous window"
+grep -Fq 'pendingActivate' "$ROOT/shell/plugins/ultimate-task-switcher/Switcher.qml" \
+  || fail "card pick activates after overlay hide so unmap cannot steal focus"
 grep -Fq 'activateFromSwitcher' "$ROOT/shell/plugins/ultimate-task-switcher/Switcher.qml" \
   || fail "task switcher cards call activateFromSwitcher"
 grep -Fq 'cancelCycle' "$ROOT/shell/plugins/ultimate-task-switcher/Switcher.qml" \

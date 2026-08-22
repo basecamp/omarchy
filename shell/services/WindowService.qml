@@ -284,7 +284,18 @@ QtObject {
 
   function toggleFromTaskbar(address) {
     if (root.isActive(address)) root.minimize(address)
-    else root.restore(address)
+    else root.activate(address)
+  }
+
+  // Alt+Tab and taskbar activation: unhide if needed, then focus. restore()
+  // alone is a no-op for a visible window and is undone if the switcher overlay
+  // unmaps and returns keyboard focus to the previous client.
+  function activate(address) {
+    var target = root._addr(address)
+    if (!target) return
+    var rec = root._record(target)
+    if (rec && rec.minimized) root.restore(target)
+    root.focus(target)
   }
 
   function maximize(address) {
@@ -417,7 +428,7 @@ QtObject {
     if (!root.cycling) return
     var address = root.cycleList[root.cycleIndex]
     root.cancelCycle()
-    if (address) root.restore(address)
+    if (address) root.activate(address)
   }
 
   function cancelCycle() {
@@ -428,7 +439,7 @@ QtObject {
   function activateFromSwitcher(address) {
     var target = root._canonAddr(address)
     root.cancelCycle()
-    if (target) root.restore(target)
+    if (target) root.activate(target)
   }
 
   property Process ensurePinsDir: Process {

@@ -257,12 +257,20 @@ for task in "${tasks[@]}"; do
     ;;
   "use Alt+Tab")
     launch_feet 2
+    mapfile -t addrs < <(foot_addresses)
+    (( ${#addrs[@]} >= 2 )) || fail "use Alt+Tab" "only ${#addrs[@]} foot windows"
+    last="${addrs[-1]}"
+    omarchy-shell window focus "$last" >/dev/null
+    before=$(hyprctl -j activewindow | jq -r .address)
     omarchy-shell window cycleNext >/dev/null
     wait_until "task switcher overlay is visible" 10 layer_present "omarchy-task-switcher"
     screenshot "success-alt-tab"
-    # Activation is the absolute-pointer proof at the end of this file, not the keyboard commit.
-    omarchy-shell shell hide omarchy.ultimate-task-switcher >/dev/null 2>&1 || true
-    pass "use Alt+Tab overlay summons"
+    omarchy-shell window commitCycle >/dev/null
+    wait_until "task switcher overlay closes" 10 layer_absent "omarchy-task-switcher"
+    after=$(hyprctl -j activewindow | jq -r .address)
+    [[ $after != "$before" ]] || fail "use Alt+Tab" "commitCycle kept focus on $before; expected the other foot"
+    screenshot "success-alt-tab-commit"
+    pass "use Alt+Tab"
     ;;
   *)
     skip_task "$task"

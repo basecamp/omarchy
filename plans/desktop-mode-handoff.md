@@ -100,7 +100,20 @@ Did not move:
 
 W0 is still open. This is not Software Center and not a windowing go.
 
-Idle Start was listing AppSearch sort wrappers as apps, so the menu led with **foot** and **vim** and generic gear icons. Start now unwraps `.entry`, hides developer tools unless the user is searching (`developerToolsInStart` is false on the desktop profile), and loads shipped pins Chrome and Files when the user has no `taskbar-pins.json`. Search still finds foot/vim.
+Idle Start was listing AppSearch sort wrappers as apps, so the menu led with **foot** and **vim** and generic gear icons. Start now unwraps `.entry`, hides developer tools unless the user is searching (`developerToolsInStart` is false on the desktop profile), and loads shipped pins Chrome and Files when the user has no `taskbar-pins.json`. Search still finds foot/vim. Landed as `5942beaa`.
+
+## 0g. W0 Tranche F (2026-08-22) — Alt+Tab address-change; W0 is still open
+
+Keep `aaf601ca` and `5942beaa`. Do not re-open `eddd0b57`. Windowing is still not a go.
+
+Moved:
+
+- `omarchy-shell window commitCycle` changed the active foot `0x56298316a300` → `0x56298351ec30`. Overlay `omarchy-task-switcher` unmapped.
+- Absolute pointer click on the highlighted card (`896,540`) changed active `0x56298351ec30` → `0x56298316a300`. Overlay unmapped. Drag `[520,240]` → `[652,325]`. Close at `1516,309` unmapped.
+
+Root cause: the switcher took `WlrKeyboardFocus.OnDemand`, so hide restored the previous window. `restore()` did not focus a visible client. Hide invoked `close()` which cancelled the cycle before commit could read `cycleList`. Fix: `WindowService.activate` (restore-if-hidden, then `hl.dsp.focus`); capture address before hide; `WlrKeyboardFocus.None`; card pick activates after overlay hide.
+
+Did not move: hyprbars as a pacman package; peek/jump lists; quarter snap; multi-monitor; Tokyo Night, Nautilus, nvim, TTY, ISO.
 
 ## 1. Read-first contract (mandatory, non-skippable)
 

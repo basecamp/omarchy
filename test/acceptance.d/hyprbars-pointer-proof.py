@@ -186,6 +186,16 @@ class AbsPointer:
       pass
 
 
+def card_center(index: int, count: int, gw: int, gh: int) -> tuple[int, int]:
+  """Center of an Alt+Tab card. Switcher panel is 120px cards, 8px gap, 40px pad, height 160, centered."""
+  n = max(1, count)
+  row_w = 120 * n + 8 * (n - 1)
+  row_x = gw / 2 - row_w / 2
+  x = int(row_x + index * 128 + 60)
+  y = int(gh / 2)
+  return x, y
+
+
 def monitor_size() -> tuple[int, int]:
   mons = json.loads(hypr("-j", "monitors") or "[]")
   focused = next((m for m in mons if m.get("focused")), mons[0])
@@ -243,7 +253,9 @@ def main() -> int:
     pointer = AbsPointer()
     gw, gh = monitor_size()
     report["monitor"] = [gw, gh]
-    pointer.move(896, 540, gw, gh)
+    click_x, click_y = card_center(0, len(addrs), gw, gh)
+    report["card_aim"] = [click_x, click_y]
+    pointer.move(click_x, click_y, gw, gh)
     time.sleep(0.25)
     def cursor_near():
       raw = hypr("cursorpos").replace(" ", "")
@@ -251,12 +263,12 @@ def main() -> int:
         cx, cy = (int(p) for p in raw.split(","))
       except ValueError:
         return False
-      return abs(cx - 896) <= 16 and abs(cy - 540) <= 16
-    wait_until("abs pointer reached the card", 4, cursor_near)
+      return abs(cx - click_x) <= 16 and abs(cy - click_y) <= 16
+    wait_until("abs pointer reached the highlighted card", 4, cursor_near)
     pointer.button(True)
     time.sleep(0.3)
     pointer.button(False)
-    time.sleep(0.5)
+    time.sleep(0.6)
     if layer_named("omarchy-task-switcher"):
       raise ProofError("Alt+Tab card click left omarchy-task-switcher mapped; MouseArea did not pick")
     active = json.loads(hypr("-j", "activewindow") or "{}")

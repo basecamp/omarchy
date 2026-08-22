@@ -12,10 +12,23 @@ Item {
   property var shell: null
   property var manifest: null
   property bool opened: false
+  property string pendingActivate: ""
 
   readonly property var windowService: shell ? shell.windowService : null
   readonly property var cycleList: windowService ? windowService.cycleList : []
   readonly property int cycleIndex: windowService ? windowService.cycleIndex : 0
+
+  Timer {
+    id: activateAfterHide
+    interval: 16
+    repeat: false
+    onTriggered: {
+      var target = root.pendingActivate
+      root.pendingActivate = ""
+      if (target && windowService && typeof windowService.activateFromSwitcher === "function")
+        windowService.activateFromSwitcher(target)
+    }
+  }
 
   function open(payloadJson) {
     root.opened = true
@@ -23,16 +36,21 @@ Item {
 
   function close() {
     root.opened = false
+    // pick() stashes pendingActivate then hide() invokes close(). Do not
+    // cancel that commit; dismiss-without-pick leaves pendingActivate empty.
+    if (root.pendingActivate !== "")
+      return
+    activateAfterHide.stop()
     if (windowService && typeof windowService.cancelCycle === "function")
       windowService.cancelCycle()
   }
 
   function pick(address) {
-    if (windowService && typeof windowService.activateFromSwitcher === "function")
-      windowService.activateFromSwitcher(address)
-    root.close()
+    root.pendingActivate = String(address || "")
+    root.opened = false
     if (root.shell && typeof root.shell.hide === "function")
       root.shell.hide("omarchy.ultimate-task-switcher")
+    activateAfterHide.restart()
   }
 
   PanelWindow {
@@ -44,7 +62,10 @@ Item {
     anchors { top: true; bottom: true; left: true; right: true }
     WlrLayershell.namespace: "omarchy-task-switcher"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+    // Keyboard Alt+Tab is WindowService IPC, not this surface. Taking
+    // OnDemand/Exclusive focus makes unmap restore the previous window and
+    // undo the card pick (painted-card click with no address change).
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
     Rectangle {
       anchors.centerIn: parent
@@ -84,7 +105,7 @@ Item {
               anchors.fill: parent
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
-              onClicked: root.pick(modelData)
+              onClicked: root.pick(String(modelData || ""))
             }
           }
         }
