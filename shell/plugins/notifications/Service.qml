@@ -405,6 +405,39 @@ Item {
   }
 
   property var urgentFocusEntry: null
+
+  // Same match omarchy-hyprland-focus-app uses: class, then agent-terminal title.
+  function ipcClassMatches(toplevel, app) {
+    if (!toplevel || !app) return false
+    var ipc = toplevel.lastIpcObject || {}
+    var pattern = String(app)
+    var re
+    try { re = new RegExp(pattern, "i") } catch (e) { re = null }
+    function matches(value) {
+      var text = String(value || "")
+      if (re) return re.test(text)
+      return text.toLowerCase().indexOf(pattern.toLowerCase()) !== -1
+    }
+    if (matches(ipc["class"])) return true
+    if (ipc["initialClass"] === "org.omarchy.agent" && matches(ipc["initialTitle"])) return true
+    return false
+  }
+
+  function toplevelByAddress(addr) {
+    var want = String(addr || "").replace(/^0x/i, "").toLowerCase()
+    if (!want || !Hyprland.toplevels) return null
+    var values = Hyprland.toplevels.values
+    for (var i = 0; i < values.length; i++) {
+      var have = String(values[i].address || "").replace(/^0x/i, "").toLowerCase()
+      if (have === want) return values[i]
+    }
+    return null
+  }
+
+  function senderAlreadyFocused(entry) {
+    return !!(entry && ipcClassMatches(Hyprland.activeToplevel, entry.app))
+  }
+
   function armUrgentFocus(entry) {
     // Plain copy: dismissPopup() deletes the model row right after this and
     // QML nulls `var` references to destroyed objects.
@@ -418,7 +451,9 @@ Item {
     onTriggered: {
       var entry = service.urgentFocusEntry
       service.urgentFocusEntry = null
-      if (entry) service.focusApp(entry)
+      // Hyprland 0.56 skips the urgent event when the requested window is
+      // already focused. Do not then class-match onto a sibling window.
+      if (entry && !service.senderAlreadyFocused(entry)) service.focusApp(entry)
     }
   }
   Connections {
@@ -427,9 +462,11 @@ Item {
       if (!service.urgentFocusEntry || !event || String(event.name) !== "urgent") return
       var addr = String(event.data || "").trim()
       if (!addr) return
+      var win = service.toplevelByAddress(addr)
+      if (!win || !service.ipcClassMatches(win, service.urgentFocusEntry.app)) return
       service.urgentFocusEntry = null
       urgentFocusTimer.stop()
-      Hyprland.dispatch('hl.dsp.focus({ window = "address:0x' + addr.replace(/^0x/, "") + '" })')
+      Hyprland.dispatch('hl.dsp.focus({ window = "address:0x' + addr.replace(/^0x/i, "") + '" })')
     }
   }
 
