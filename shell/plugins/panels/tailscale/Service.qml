@@ -302,10 +302,13 @@ Item {
     if (_statusFullPeers) {
       publishPeers(parsed.running ? parsed.peers : [])
       publishTailnetExitNodes(parsed.running ? parsed.exitNodes : [])
-      peersLoaded = true
+      // A stopped tailnet publishes no peers, so a later light poll finding it
+      // running again must not read as "fetched, and this tailnet is empty".
+      peersLoaded = parsed.running
     } else if (!parsed.running) {
       publishPeers([])
       publishTailnetExitNodes([])
+      peersLoaded = false
     }
     syncExitNodes()
 
