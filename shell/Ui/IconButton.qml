@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import qs.Commons
 
 // Icon-only button for toolbars, caption bars, and tray-adjacent chrome.

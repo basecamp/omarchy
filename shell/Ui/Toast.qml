@@ -1,5 +1,7 @@
 import QtQuick
+import QtQuick.Controls
 import qs.Commons
+import qs.Ui
 
 // Toast: transient notification card for operation results (Rule 6 — every
 // consequential operation reports its result with a recovery path). The

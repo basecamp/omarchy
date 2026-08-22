@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import qs.Commons
 
 // Search field: TextField with a magnifier glyph, a clear button once text
