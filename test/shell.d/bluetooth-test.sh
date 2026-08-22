@@ -288,6 +288,14 @@ assert(/order\[next\] === "rename" && !focusedRowCanRename/.test(panelSource), '
 // A panel opens with cursorActive false and selectedIndex 0, so an unguarded
 // 'r' opens an editor on a row the user never picked and cannot see picked.
 assert(/if \(t === "r" \|\| t === "R"\) \{ if \(root\.cursorActive\) root\.startRenameSelected\(\) \}/.test(panelSource), "bluetooth ignores 'r' until the cursor is on screen")
+
+// The separated criteria above only help if the panel walks the sinks twice:
+// one loop testing both would still let a name guess on an earlier node beat
+// the addressed node below it, and audio would simply come out of the wrong
+// speaker. The `} for (` between them is what pins the second pass.
+const audioSinkLookup = panelSource.match(/function bluetoothAudioSink\(device\)[\s\S]*?\n {2}\}/)
+assert(audioSinkLookup, 'bluetooth has the audio sink lookup')
+assert(/MatchesAddress[\s\S]*?\}\s*for \([\s\S]*?MatchesName/.test(audioSinkLookup[0]), 'bluetooth searches every sink for the address before it falls back to names')
 JS
 
 # Turning Bluetooth off is an rfkill soft block, not a bluetoothctl power off,
