@@ -49,6 +49,8 @@ Not a go. Numbers from the running guest after this tranche.
 ## Out of scope / still open
 
 - Declaring W0 passed
+- Treating the live commitCycle / card-click addresses as a locked Alt+Tab gate. `a4a046b3` stays; the reviewer will not lock those numbers.
 - Peek / jump lists, quarter snap, multi-monitor
 - hyprbars as a pacman package in the ISO mirror
-- Tokyo Night, Nautilus-as-Files product, nvim-as-ordinary-text, TTY first-boot, ISO
+- Tokyo Night, generic gear icons, Nautilus-as-Files product, nvim-as-ordinary-text, TTY first-boot, ISO
+- A live path to Chrome, games, or an arbitrary Windows app

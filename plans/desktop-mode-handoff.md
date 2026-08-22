@@ -115,6 +115,30 @@ Root cause: the switcher took `WlrKeyboardFocus.OnDemand`, so hide restored the 
 
 Did not move: hyprbars as a pacman package; peek/jump lists; quarter snap; multi-monitor; Tokyo Night, Nautilus, nvim, TTY, ISO.
 
+`a4a046b3` stays. The reviewer will not lock these address-change numbers as a held gate.
+
+## 0h. Reviewer lock (2026-08-22) — aaf601ca + 5942beaa stay; W0 is still open
+
+Keep `eddd0b57` and `9d80ecd6`. Do not re-bench `4ea1dcf3` + `a5b945da`. Keep `aaf601ca` (hyprbars + omarchy-minimize built into `/usr/lib/hyprland-plugins`, no hyprpm). Keep `5942beaa` (idle Start is Chrome and Files; foot and vim stay installed and searchable, they are not the front of the OS). The last two commits stay (`5942beaa`, `a4a046b3`). Do not amend them. Do not squash them.
+
+Windowing is still not a go. Bench stays idle.
+
+What actually moved:
+
+- Title bars and hide survive a wiped user cache. Live maps are `/usr/lib/hyprland-plugins/hyprbars.so` and `/usr/lib/hyprland-plugins/omarchy-minimize.so`. Minimize is `CWindow::setHidden` on the same workspace, not `special:minimized`. Overlay chrome is still gone.
+- The QEMU postage stamp was virtio-vga coming up `640×480`; grim at 1080p was a lie. The GTK window is the proof.
+- SearchBox using Qt’s stock white field was a real Start bug.
+
+What did not move:
+
+- hyprbars is still not an ISO-mirror pacman package. The AUR name still must not go in `install/omarchy-other.packages`.
+- Alt+Tab address-change is still not a held number this lock will accept.
+- This guest Start only listing foot and vim is a disk contents problem, not a reason to make the terminal first-class.
+- Tokyo Night, generic gear icons, Nautilus, nvim, TTY first-boot, no product ISO — still open.
+- Chrome, games, and “install any Windows app” are still not a live path.
+
+Plans still win: `PRODUCT_DOCTRINE.md` plus `plans/project-ultimate.md`. Windows 7 Ultimate IA for 2026. Every normal Windows job has to work with a mouse. Terminal stays a powerful app. It is not how you own the machine. The written “not a clone” line is ads, telemetry, and forced accounts — not permission to ship a Linux developer box.
+
 ## 1. Read-first contract (mandatory, non-skippable)
 
 Before writing a single line of code, running a test, or booting a VM, read these files in full, in this order. They are the Project Ultimate source of truth and they override intuition, memory, and habit.
@@ -276,8 +300,10 @@ Live numbers from the follow-up turn (Hyprland 0.56.2, virtio-vga 1920×1080, re
 - Do not commit dispatcher changes that were never run on a live compositor.
 - Do not commit VM images, disks, or scratch artifacts into the repo.
 - Do not call windowing a go from IPC-only harness green, from screenshots that are not in the repo, or from this handoff.
-- Do not re-review `4ea1dcf3` + `a5b945da` as a product pass. Do not re-run the full bench on that writeup. Do not re-open `eddd0b57`. Next review is when a new turn actually moves a locked gate.
-- Do not treat a painted-card click that only hides the Alt+Tab overlay as activate-the-other-foot.
+- Do not re-review `4ea1dcf3` + `a5b945da` as a product pass. Do not re-run the full bench on that writeup. Do not re-open `eddd0b57` / `9d80ecd6` / `aaf601ca` / `5942beaa` / `a4a046b3`. Next review is when a new turn actually moves a locked gate.
+- Do not treat Alt+Tab address-change as a locked number. Do not treat a painted-card click that only hides the overlay as activate-the-other-foot.
+- Do not grade grim as the QEMU window. The GTK window is the proof. virtio-vga `preferred` was `640×480`.
+- Do not make foot/vim first class because a guest disk lacked consumer apps.
 - Do not add `aliases` to new menu entries.
 - Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`. Do not load hyprbars from `/var/cache/hyprpm/`.
 
@@ -287,5 +313,5 @@ Live numbers from the follow-up turn (Hyprland 0.56.2, virtio-vga 1920×1080, re
 - `./test/all` is green except the three `omarchy-pkgs`-dependent files (or fully green with `OMARCHY_PKGS_PATH` set).
 - Snap geometry is LTRB work-area, maximize is in the harness, taskbar clicks use Hyprland addresses, Alt+Tab cards are clickable, and caption chrome exists as mouse affordances. Live proof is hyprctl geometry plus mapped layers, not a self-graded go.
 - Visual verification done for every UI-affecting change.
-- Work is committed only when asked; do not amend `c253d193` / `a7b2c093` / `18370335` / `4ea1dcf3` / `a5b945da` / `eddd0b57` / `9d80ecd6`.
-- This slice is still not the OS: Tokyo Night, Nautilus, nvim, TTY first boot, and the missing product ISO remain later work. Do not paper over them in the handoff.
+- Work is committed only when asked; do not amend `c253d193` / `a7b2c093` / `18370335` / `4ea1dcf3` / `a5b945da` / `eddd0b57` / `9d80ecd6` / `aaf601ca` / `5942beaa` / `a4a046b3`.
+- This slice is still not the OS: Tokyo Night, generic gear icons, Nautilus, nvim, TTY first boot, Chrome/games/Windows-app install, and the missing product ISO remain later work. Do not paper over them in the handoff.

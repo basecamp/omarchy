@@ -15,15 +15,26 @@ If those documents and this plan disagree, the doctrine wins. If this plan and a
 
 ## Reviewer lock (2026-08-22)
 
-Keep `4ea1dcf3` + `a5b945da`. Those are the accepted repair. Keep `eddd0b57`, `9d80ecd6`, `aaf601ca`, and `5942beaa`. Do not re-open those SHAs. Do not re-bench that pair. The product call is still **REJECTED**. Windowing Gate W0 is still open. Bench stays idle.
+Keep `4ea1dcf3` + `a5b945da`. Those are the accepted repair. Do not re-bench that pair. Keep `eddd0b57` and `9d80ecd6`. Keep `aaf601ca` (hyprbars + omarchy-minimize built into `/usr/lib/hyprland-plugins`, no hyprpm). Keep `5942beaa` (idle Start is Chrome and Files; foot and vim stay installed and searchable, they are not the front of the OS). The last two commits stay (`5942beaa`, `a4a046b3`). Do not amend them. Do not squash them.
 
-Pushed HEAD was `5942beaa` before Tranche F.
+The product call is still **REJECTED**. Windowing is still not a go. Bench stays idle.
 
-Moved and locked: overlay-as-SSD and 1054-vs-1040 (Tranche B); hyprbars hittable with an absolute USB-tablet-class pointer — close at `1384,224` / `1516,309`, drag `[520,240]` → `[652,325]` (Tranche C mouse gate only). Relative ydotool was the wrong seat. Native minimize is in-place `CWindow::setHidden` via `omarchy-minimize` (Tranche D): live feet stay on workspace `1` with `hidden: true`, not `special:minimized`. hyprbars runtime path is `/usr/lib/hyprland-plugins/hyprbars.so` from `omarchy-apply-hyprland-plugins` (Tranche E), not `/var/cache/hyprpm/`. Idle Start is consumer-first (`5942beaa`). Alt+Tab address-change is a held number on this guest (Tranche F): commitCycle `0x56298316a300` → `0x56298351ec30`; card click `0x56298351ec30` → `0x56298316a300`.
+What actually moved:
 
-Did not move: hyprbars as a pacman package in the ISO mirror; peek/jump lists; quarter snap; multi-monitor; Tokyo Night, Nautilus, nvim, TTY first-boot, no ISO. 32px is bar-height inset, not snap slop.
+- Title bars and hide survive a wiped user cache. Live maps are `/usr/lib/hyprland-plugins/hyprbars.so` and `/usr/lib/hyprland-plugins/omarchy-minimize.so`.
+- Minimize is `CWindow::setHidden` on the same workspace, not `special:minimized`. Overlay chrome is still gone.
+- The QEMU postage stamp was virtio-vga coming up `640×480`; grim at 1080p was a lie. The GTK window is the proof.
+- SearchBox using Qt’s stock white field was a real Start bug.
 
-W0 is still open.
+What did not move:
+
+- hyprbars is still not an ISO-mirror pacman package. The AUR name `hyprland-plugin-hyprbars` still must not go in `install/omarchy-other.packages`.
+- Alt+Tab address-change is still not a held number this lock will accept. `a4a046b3` stays; do not treat its helper addresses as a locked gate.
+- This guest Start only listing foot and vim is a disk contents problem, not a reason to make the terminal first-class.
+- Tokyo Night, generic gear icons, Nautilus, nvim, TTY first-boot, no product ISO — still open.
+- Chrome, games, and “install any Windows app” are still not a live path.
+
+Plans still win: `PRODUCT_DOCTRINE.md` plus `plans/project-ultimate.md`. Windows 7 Ultimate information architecture for 2026. Every normal Windows job has to work with a mouse. Terminal stays a powerful app. It is not how you own the machine. The written “not a clone” line is ads, telemetry, and forced accounts — not permission to ship a Linux developer box.
 
 ## Doctrine (do not weaken)
 
@@ -42,6 +53,8 @@ Service rule: QML never assembles shell strings for windowing or settings. UI ca
 ## What this product is not
 
 Not a Windows clone. Not Aero. Not “Arch for Windows users.” Not a nicer Omarchy theme. Upstream Omarchy is a keyboard-first tiling distro on purpose. This fork keeps that plumbing and replaces the default product experience.
+
+“Not a clone” refuses Windows ads, telemetry, and forced accounts. It does not license shipping a Linux developer box. Desktop Mode is Windows 7’s information architecture: Start, taskbar, files, Chrome, install apps, games, settings, printers, Wi-Fi — with a mouse. The terminal is an application. Power User Mode is where Linux tools stay first class.
 
 Do not initially write a compositor, file manager, browser, package manager, audio stack, or installer. Use KDE as a component mine (Dolphin, Kate, Okular, Ark), not as the desktop. Study Zorin as the Windows-migration competitor, then go deeper than “layout that looks like Windows.”
 
@@ -76,13 +89,13 @@ ultimate/main              Product integration (create when a slice is actually 
 
 ## Current position (2026-08-22)
 
-Honest status, not a go. Reviewer lock: `4ea1dcf3` + `a5b945da` are kept; product is still REJECTED.
+Honest status, not a go. Reviewer lock: `4ea1dcf3` + `a5b945da` are kept; product is still REJECTED. Windowing is still not a go.
 
 **Phase 0 (foundation)** is mostly in the repo: doctrine, acceptance manifest, mode profiles, design-token singleton, settings-service convention, shell tests, VM acceptance skeleton.
 
 **Phase 1 (Windowing Gate W0)** is in progress on Hyprland 0.56.2 in the QEMU guest. It is not passed.
 
-Start is a Desktop Mode surface now, not a developer launcher: idle Start hides Terminal/Vim (`developerToolsInStart` is false on the desktop profile), search still finds them, and shipped taskbar pins are Chrome and Files. That is not Phase 6 Software Center and not a windowing go.
+Start is a Desktop Mode surface now, not a developer launcher: idle Start hides Terminal/Vim (`developerToolsInStart` is false on the desktop profile), search still finds them, and shipped taskbar pins are Chrome and Files (`5942beaa`). A guest disk that only had foot and vim is a disk contents problem, not a reason to put the terminal on the Start menu. That is not Phase 6 Software Center and not a windowing go.
 
 What exists:
 
@@ -93,16 +106,19 @@ What exists:
 - Default overlapping float: `[520,240] 880×560`. `restoreNormal` returned that rect after a right snap.
 - Maximize `fullscreen: 1` `[2,34] 1916×1004` (title bar in the top of the work area; occupied bottom 1038 vs 1040).
 - Minimize identity still holds — Desktop Mode now uses in-place `CWindow::setHidden` (`hidden: true` on the same workspace), not `special:minimized`. Restore returns the same address to the same workspace.
-- Alt+Tab is a held address change on this guest: `commitCycle` and a card click both activate the other foot. The switcher does not take keyboard focus; activate runs after overlay hide.
+- SearchBox must not import `QtQuick.Controls` (that shadows `qs.Ui.TextField` with a stock white field).
 
 What W0 still does not have (gate stays closed):
 
+- Alt+Tab address-change as a number this lock will accept. `a4a046b3` stays; do not re-lock it as a go.
 - Peek / jump lists / grouped previews as product, not a timer flyout.
 - Quarter snap, maximize-button layout chooser, saved layouts.
 - Multi-monitor, virtual desktops, parented dialogs, Steam / Wine / Electron / GTK / Qt matrix.
 - hyprbars as a pacman package in the ISO mirror (runtime `.so` is now `/usr/lib/hyprland-plugins/hyprbars.so`, built by `omarchy-apply-hyprland-plugins`; `hyprland-plugin-hyprbars` still must not go in `install/omarchy-other.packages`).
+- Tokyo Night as the locked visual, generic gear icons, Nautilus as Files, nvim as ordinary text, TTY first-boot, product ISO.
+- A live path to install Chrome, games, or an arbitrary Windows app. That is Phase 6–7, not this windowing PR.
 
-The leftover half-tile from the W0 probe is gone: new feet open as 880×560 floats, and unsnap restores the remembered rect.
+The leftover half-tile from the W0 probe is gone: new feet open as 880×560 floats, and unsnap restores the remembered rect. The GTK window is the visual proof; grim at 1080p while virtio preferred `640×480` was a lie.
 
 **Phases 2–10** have not started as product. Tokens and `IconButton` exist as seeds. Start is not the masterpiece. There is no desktop icon surface, no Quick Settings composition, no Settings app, no Dolphin default, no Software Center, no Compatibility Center, no OOBE, no ISO.
 
@@ -173,14 +189,14 @@ Every hover, context menu, dialog, empty state, error, DPI, focus ring, reduced 
 
 ## What the next Cursor turn is allowed to do
 
-The `4ea1dcf3` + `a5b945da` writeup is locked. Keep `eddd0b57` / `9d80ecd6` / `aaf601ca` / `5942beaa`. Do not re-submit those SHAs for product review. Do not wait on another bench of the same HEAD. Tranche F is Alt+Tab address-change; it is not a windowing go.
+The `4ea1dcf3` + `a5b945da` writeup is locked. Keep `eddd0b57` / `9d80ecd6` / `aaf601ca` / `5942beaa`. The last two commits stay (`5942beaa`, `a4a046b3`). Do not re-submit those SHAs for product review. Do not wait on another bench of the same HEAD. Do not treat `a4a046b3` as a locked Alt+Tab gate.
 
 1. Treat W0 as still open. Do not merge PR #1 as a go. Do not rewrite the PR body to claim the OS.
-2. Keep LTRB snap and typed `Hyprland.dispatch`. hyprbars is the Desktop Mode title bar and is hittable with an absolute pointer. Minimize is `hl.plugin.omarchy_minimize` (`setHidden`), not a special workspace. Relative ydotool is not a mouse proof. Alt+Tab is `WindowService.activate` after overlay hide; the switcher does not take keyboard focus.
+2. Keep LTRB snap and typed `Hyprland.dispatch`. hyprbars is the Desktop Mode title bar, loaded from `/usr/lib/hyprland-plugins/`. Minimize is `hl.plugin.omarchy_minimize` (`setHidden`), not a special workspace. Relative ydotool is not a mouse proof. The GTK window is the visual proof; grim at 1080p is not.
 3. New windows open as 880×560 floats. `restoreNormal` unsnaps to the remembered client rect. Snap insets 32px (bar height, not slop) so hyprbars stays on screen.
-4. Do not start Phase 2–9 work (theme pack, Dolphin swap, Settings app, ISO, OOBE) until W0 is decided — except a later slice that is itself one of the locked product gates after windowing is decided.
-5. Do not teach Super+K in Desktop Mode first boot.
-6. hyprbars loads from `/usr/lib/hyprland-plugins/`; it is still not a pacman package in the ISO mirror. Next W0-adjacent work that can move without `omarchy-pkgs` is peek/jump lists or quarter snap — not Software Center.
+4. Do not start Phase 2–9 work (theme pack, Dolphin swap, Settings app, ISO, OOBE, Software Center, Compatibility Center) until W0 is decided — except a later slice that is itself one of the locked product gates after windowing is decided. Chrome, games, and “install any Windows app” are not a live path and are not this windowing PR.
+5. Do not teach Super+K in Desktop Mode first boot. Do not make foot/vim first class because a guest disk lacked consumer `.desktop` files.
+6. Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`. Do not treat Alt+Tab address-change as a locked number. Generic gear icons, Tokyo Night, Nautilus, nvim, TTY first-boot, and the missing product ISO remain open.
 
 ## Acceptance
 

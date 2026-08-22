@@ -58,6 +58,8 @@ If an action will compile an AUR package, take a while, reboot, download gigabyt
 
 Windows 7 supplies the information architecture (desktop → taskbar → Start → Explorer → settings → applications); Windows 11 supplies visual restraint and polish; we supply the final design language. We do not copy Windows' ads, promoted apps, forced cloud accounts, web results hijacking local search, telemetry dark patterns, surprise restarts, or unexplained background installations. We also do not copy Linux's "just edit this file," "read the Arch Wiki," terminal-during-setup, hotkey dependence, or config syntax exposed to normal users.
 
+"Not a clone" is that refusal of ads, telemetry, and forced accounts. It is not permission to ship a Linux developer box as the default product. Every normal Windows job still has to work with a mouse: install apps, Chrome, files, games, settings, printers, Wi-Fi. The terminal stays a powerful application. It is not how you own the machine.
+
 ## Mode Profiles
 
 One toggle: **Desktop Mode / Power User Mode**. Power User Mode enables tiling-first layout, Omarchy's Super-key bindings, workspace-centric navigation, raw config editing, developer tooling in Start, and the original Omarchy menu. It is a profile over one underlying platform — do not build two operating systems. Profiles are defined in `default/ultimate/profiles/` and documented in `docs/mode-profiles.md`.
