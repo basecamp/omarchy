@@ -63,10 +63,10 @@ function parseMenuJsonc(raw) {
   return out
 }
 
-function mergeMenuSources(defaultItems, userItems) {
+function mergeMenuSources(defaultItems, userItems, pluginItems) {
   var nextItems = ({})
   var nextOrder = []
-  var sources = [defaultItems || [], userItems || []]
+  var sources = [defaultItems || [], userItems || [], pluginItems || []]
 
   for (var s = 0; s < sources.length; s++) {
     var src = sources[s]

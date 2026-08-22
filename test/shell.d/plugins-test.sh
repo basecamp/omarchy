@@ -14,7 +14,8 @@ const kindEntryPoints = {
   'menu': 'menu',
   'overlay': 'overlay',
   'panel': 'panel',
-  'service': 'service'
+  'service': 'service',
+  'menu-entry': null
 }
 
 function isPlainObject(value) {
@@ -124,7 +125,7 @@ for (const manifestPath of manifests) {
   for (const kind of manifest.kinds || []) {
     check(kindEntryPoints[kind], `${manifest.id} must use supported plugin kind ${kind}`)
     const entryPointKey = kindEntryPoints[kind]
-    check(manifest.entryPoints && manifest.entryPoints[entryPointKey], `${manifest.id} must declare ${entryPointKey} entry point`)
+    if (entryPointKey) check(manifest.entryPoints && manifest.entryPoints[entryPointKey], `${manifest.id} must declare ${entryPointKey} entry point`)
   }
 
   for (const key of Object.keys(manifest.entryPoints || {})) {
@@ -150,6 +151,13 @@ for (const manifestPath of manifests) {
         ['left', 'center', 'right'].includes(manifest.barWidget.defaultSection),
         `${manifest.id} barWidget defaultSection must be left, center, or right`
       )
+    }
+  }
+
+  if ((manifest.kinds || []).includes('menu-entry')) {
+    check(Array.isArray(manifest.menuEntries) && manifest.menuEntries.length > 0, `${manifest.id} menu-entry plugins must declare menuEntries`)
+    for (const entry of manifest.menuEntries || []) {
+      check(isPlainObject(entry) && typeof entry.id === 'string' && entry.id.length > 0 && typeof entry.action === 'string' && entry.action.length > 0, `${manifest.id} menu entries must have id and action`)
     }
   }
 

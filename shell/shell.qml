@@ -136,6 +136,34 @@ ShellRoot {
     return manifest.kinds.some(function(kind) { return kind !== "hyprland" })
   }
 
+  function isPluginEnabled(id) {
+    if (shell.isHyprlandPlugin(id) && shell.hasShellPluginKind(id)) {
+      return shell.isHyprlandPluginEnabled(id) && shell.pluginRegistry.isEnabled(id)
+    }
+    if (shell.isHyprlandPlugin(id)) return shell.isHyprlandPluginEnabled(id)
+    return shell.pluginRegistry.isEnabled(id)
+  }
+
+  function pluginMenuItems() {
+    var out = []
+    var plugins = shell.pluginRegistry.installedPlugins || ({})
+    for (var id in plugins) {
+      var manifest = plugins[id]
+      if (!shell.isPluginEnabled(id)
+          || !Array.isArray(manifest.kinds)
+          || manifest.kinds.indexOf("menu-entry") === -1
+          || !Array.isArray(manifest.menuEntries)) continue
+      for (var i = 0; i < manifest.menuEntries.length; i++) {
+        var entry = manifest.menuEntries[i]
+        if (!entry || !entry.id || !entry.action) continue
+        var item = Util.cloneJson(entry)
+        item.pluginId = id
+        out.push(item)
+      }
+    }
+    return out
+  }
+
   function isHyprlandPluginEnabled(id) {
     return hyprlandPluginState.enabled.indexOf(String(id)) !== -1
   }
@@ -1044,11 +1072,7 @@ ShellRoot {
           kinds: kinds,
           // What `omarchy plugin enable/disable` toggles: for a widget that is
           // its place in the bar, not whether its component is loadable.
-          enabled: isHyprland && shell.hasShellPluginKind(id)
-            ? shell.isHyprlandPluginEnabled(id) && shell.pluginRegistry.isEnabled(id)
-            : (isHyprland ? shell.isHyprlandPluginEnabled(id)
-            : (isBarOption ? active
-              : (isBarWidget ? shell.pluginRegistry.inBar(id) : shell.pluginRegistry.isEnabled(id)))),
+          enabled: shell.isPluginEnabled(id),
           active: active,
           // A bar has no off, only a successor: you leave one by enabling
           // another, so there is nothing for disable to do to it. Said here so

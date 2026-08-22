@@ -33,6 +33,7 @@ wait).
 | `panel`      | Floating window (e.g. OSD)                     |
 | `overlay`    | Fullscreen overlay (e.g. background picker)    |
 | `menu`       | Summoned menu surface                          |
+| `menu-entry` | Entry contributed to the main Omarchy menu      |
 | `service`    | Headless singleton, no UI                      |
 | `hyprland`   | Lua entry point loaded by the Hyprland config  |
 
@@ -46,6 +47,10 @@ Entry points are QML `Item`s. Panel, overlay, and menu entry points expose
 `open(payloadJson)` and `close()` for summon/hide; on load the host injects
 `omarchyPath`, `shell`, `manifest`, and the registries (`pluginRegistry` /
 `barWidgetRegistry`) as properties.
+
+`menu-entry` plugins declare `menuEntries` instead of an entry point. Each
+entry supplies a menu id, label, and shell action; entries are merged into the
+main menu only while their plugin is enabled.
 
 Hyprland plugins use `entryPoints.hyprland` and may declare numeric `priority`
 (default `50`) plus plugin-id `dependencies`. A plugin may also declare

@@ -22,6 +22,8 @@ Item {
     var payload = ({})
     try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
 
+    root.rebuildItemsFromSources()
+
     if (payload.fontFamily) root.fontFamily = payload.fontFamily
 
     if (payload.mode === "select" || payload.mode === "input") {
@@ -240,11 +242,17 @@ Item {
     return MenuModel.parseMenuJsonc(raw)
   }
 
+  function pluginMenuItems() {
+    if (!root.shell || typeof root.shell.pluginMenuItems !== "function") return []
+    var raw = root.shell.pluginMenuItems()
+    return raw.map(function(entry) { return MenuModel.normalizeItem(entry.id, entry) })
+  }
+
   // Merge defaults + user extension. Later entries override earlier ones
   // on a per-key basis (so the user can tweak label/icon/action without
   // re-declaring the whole row).
   function rebuildItemsFromSources() {
-    var mergedMenu = MenuModel.mergeMenuSources(root.defaultMenuItems, root.userMenuItems)
+    var mergedMenu = MenuModel.mergeMenuSources(root.defaultMenuItems, root.userMenuItems, root.pluginMenuItems())
     root.providerRevision += 1
     root.providersLoaded = ({})
     root.providerQueue = []
@@ -969,6 +977,11 @@ Item {
     printErrors: false
     onLoaded: { root.defaultMenuItems = root.parseMenuJsonc(text()); root.rebuildItemsFromSources() }
     onFileChanged: reload()
+  }
+
+  Connections {
+    target: root.shell ? root.shell.pluginRegistry : null
+    function onPluginsChanged() { root.rebuildItemsFromSources() }
   }
 
   FileView {
