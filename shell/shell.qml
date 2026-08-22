@@ -88,7 +88,7 @@ ShellRoot {
         else if (Util.isPlainObject(parsed)) console.warn("shell.json missing version: 1, using defaults")
       } catch (e) {
         hadParseError = true
-        console.warn("shell.json parse failed, using last good config:", e)
+        console.warn("shell.json parse failed, using " + (_lastGoodUserConfig ? "last good config" : "defaults") + ":", e)
       }
     }
     shellConfig = user || (hadParseError ? _lastGoodUserConfig : null) || defaults
