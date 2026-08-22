@@ -20,7 +20,11 @@ case "${1:-}" in
   exit
   ;;
 --stub)
-  if is_installed; then
+  if [[ -e $hermes_command ]]; then
+    if ! is_installer_stub; then
+      exit 0
+    fi
+  elif [[ ! -L $hermes_command ]] && is_installed; then
     exit 0
   fi
 

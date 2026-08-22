@@ -44,11 +44,26 @@ export OMARCHY_TEST_CURL_LOG="$curl_log"
 export OMARCHY_TEST_INSTALLER_LOG="$installer_log"
 export OMARCHY_TEST_INSTALLER="$test_tmp/installer"
 
+printf '#!/bin/bash\nprintf real-hermes\n' >"$test_home/.local/bin/hermes"
+chmod +x "$test_home/.local/bin/hermes"
+PATH="$mock_bin:$ROOT/bin:/usr/bin" omarchy-install-hermes-cli --stub
+grep -Fxq 'printf real-hermes' "$test_home/.local/bin/hermes" ||
+  fail "Hermes stub setup preserves an exact-path real launcher outside PATH"
+pass "Hermes stub setup preserves an exact-path real launcher outside PATH"
+
+rm "$test_home/.local/bin/hermes"
 ln -s "$test_home/.hermes/missing-hermes" "$test_home/.local/bin/hermes"
 omarchy-install-hermes-cli --stub
 grep -Fxq '# omarchy-hermes-installer-stub' "$test_home/.local/bin/hermes" ||
   fail "Hermes preinstall is a supported-installer lazy stub"
 pass "Hermes preinstall creates a supported-installer lazy stub"
+
+printf '# stale marked stub\n' >>"$test_home/.local/bin/hermes"
+omarchy-install-hermes-cli --stub
+if grep -Fxq '# stale marked stub' "$test_home/.local/bin/hermes"; then
+  fail "Hermes stub setup replaces a marked Omarchy stub"
+fi
+pass "Hermes stub setup replaces a marked Omarchy stub"
 
 "$test_home/.local/bin/hermes" --version
 mapfile -d '' -t installer_args <"$installer_log"
