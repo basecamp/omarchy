@@ -17,8 +17,14 @@ if awk '
 fi
 pass "restore does not park windows in special:minimized"
 
-grep -Fq 'Hyprland.focusedWorkspace' "$ws" || fail "restore uses Hyprland.focusedWorkspace, not a bash subshell"
-pass "restore returns windows from the minimized special workspace"
+grep -Fq 'hl.plugin.omarchy_minimize.restore' "$ws" || fail "restore unhides via omarchy-minimize, not a workspace move"
+pass "restore uses in-place omarchy-minimize.restore"
+
+if grep -Fq 'special:minimized' "$ws"; then
+  fail "WindowService must not park windows on special:minimized"
+fi
+grep -Fq 'hl.plugin.omarchy_minimize.minimize' "$ws" || fail "minimize uses CWindow::setHidden through omarchy-minimize"
+grep -Fq 'ipc.hidden === true' "$ws" || fail "minimized state is compositor hidden, not a special workspace name"
 
 grep -Fq 'hl.dsp.window.float' "$ws" || fail "snap uses hl.dsp.window.float instead of toggling tile state"
 if grep -Fq 'togglefloating' "$ws"; then
@@ -31,7 +37,6 @@ if grep -Fq '"fullscreen", "2"' "$ws"; then
   fail "maximize must not dispatch classic fullscreen 2"
 fi
 grep -Fq 'mode = \"maximized\"' "$ws" || fail "maximize uses hl.dsp.window.fullscreen maximized"
-grep -Fq 'special:minimized' "$ws" || fail "minimize parks on special:minimized via Lua move"
 grep -Fq 'hl.dsp.window.float' "$ws" || fail "snap issues Lua float before resize/move"
 grep -Fq 'property FileView pinFile' "$ws" || fail "pin FileView is a named property so QtObject can load"
 grep -Fq 'import Quickshell.Hyprland' "$ws" || fail "WindowService reads Hyprland.toplevels for window addresses"
@@ -70,6 +75,7 @@ pass "snap and maximize use addressed Lua dispatchers through Hyprland.dispatch"
 grep -Fq 'function cycleNext' "$ws" || fail "WindowService exposes cycleNext for Alt+Tab"
 grep -Fq 'function commitCycle' "$ws" || fail "WindowService exposes commitCycle for Alt release"
 grep -Fq 'function activateFromSwitcher' "$ws" || fail "WindowService exposes activateFromSwitcher for clickable Alt+Tab cards"
+grep -Fq 'function cancelCycle' "$ws" || fail "WindowService can cancel an Alt+Tab cycle without commitCycle"
 grep -Fq 'function toggleShowDesktop' "$ws" || fail "WindowService exposes toggleShowDesktop"
 grep -Fq 'function pin' "$ws" || fail "WindowService exposes pin for the taskbar"
 pass "WindowService exposes task-switcher, Show Desktop, and pin verbs"
@@ -88,6 +94,7 @@ grep -Fq 'function restoreNormal(address: string)' "$ROOT/shell/shell.qml" || fa
 pass "shell registers a window IPC target"
 
 run_node_test <<'JS'
+const fs = require('fs')
 const m = requireFromRoot('shell/services/WindowModel.js')
 
 assertEqual(m.normalizeId('Firefox.desktop'), 'firefox', 'normalizeId strips .desktop and case')
@@ -97,6 +104,14 @@ assertEqual(m.windowAppId({ class: 'foot' }), 'foot', 'windowAppId reads Hyprlan
 const pins = m.withPin([], { desktopId: 'firefox', name: 'Firefox', icon: 'firefox' })
 assertEqual(pins.length, 1, 'withPin adds a pin')
 assertEqual(m.withoutPin(pins, 'firefox').length, 0, 'withoutPin removes a pin')
+
+const shipped = m.parsePins(fs.readFileSync(path.join(root, 'default/ultimate/taskbar-pins.json'), 'utf8'))
+assertEqual(shipped[0].name, 'Chrome', 'shipped pins lead with Chrome')
+assertEqual(shipped[1].name, 'Files', 'shipped pins include Files')
+assert(
+  shipped.every(pin => pin.id !== 'foot' && pin.desktopId !== 'foot' && pin.id !== 'vim'),
+  'shipped pins do not make foot or vim first class'
+)
 
 const groups = m.buildGroups(
   [

@@ -19,7 +19,8 @@ Item {
   readonly property var modeProfile: shell ? shell.modeProfileService : null
   readonly property var windowService: shell ? shell.windowService : null
   readonly property var pins: windowService ? windowService.pins : []
-  readonly property var entries: appLibrary ? appLibrary.sortedEntries(root.filter) : []
+  readonly property bool hideDeveloperTools: !(modeProfile && modeProfile.feature("developerToolsInStart"))
+  readonly property var entries: appLibrary ? appLibrary.visibleEntries(root.filter, root.hideDeveloperTools) : []
 
   function open(payloadJson) {
     var payload = ({})
@@ -63,6 +64,7 @@ Item {
 
     Rectangle {
       anchors.fill: parent
+      clip: true
       color: Tokens.surface.glass
       radius: Tokens.radius.large
       border.color: Tokens.border.subtle
@@ -108,6 +110,7 @@ Item {
         }
 
         ListView {
+          visible: root.entries.length > 0
           Layout.fillWidth: true
           Layout.fillHeight: true
           clip: true
@@ -115,12 +118,20 @@ Item {
           delegate: Item {
             width: ListView.view.width
             height: 36
+            clip: true
             RowLayout {
               anchors.fill: parent
               spacing: 10
               Image {
+                Layout.preferredWidth: 20
+                Layout.preferredHeight: 20
+                Layout.alignment: Qt.AlignVCenter
                 width: 20
                 height: 20
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                sourceSize.width: 20 * Screen.devicePixelRatio
+                sourceSize.height: 20 * Screen.devicePixelRatio
                 source: root.appLibrary ? root.appLibrary.iconSource(modelData.icon) : ""
               }
               Text {
@@ -141,6 +152,14 @@ Item {
           }
         }
 
+        EmptyState {
+          visible: root.entries.length === 0
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          title: root.filter.length > 0 ? "No matching apps" : "Search for apps"
+          message: root.filter.length > 0 ? "Try a different name." : "Chrome, Files, and other programs show here. Terminal and Vim stay available from search."
+        }
+
         RowLayout {
           Layout.fillWidth: true
           spacing: 8
@@ -156,7 +175,7 @@ Item {
           Item { Layout.fillWidth: true }
 
           IconButton {
-            iconText: "\u23FB"
+            iconText: "\uF023"
             tooltipText: "Lock"
             onClicked: { Util.execDetached("omarchy-system-lock"); root.close() }
           }

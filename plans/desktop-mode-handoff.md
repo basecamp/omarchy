@@ -41,6 +41,67 @@ Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages` (pacma
 
 Do not re-bench `4ea1dcf3` + `a5b945da`. The next review is this tranche’s commits plus the live numbers above — and only as a gate update, not as an OS go.
 
+## 0c. W0 Tranche C lock (2026-08-22) — mouse gate only; W0 is still open
+
+Keep `eddd0b57` and `9d80ecd6`. Do not re-bench `4ea1dcf3` + `a5b945da`. Do not re-open `eddd0b57`. Windowing is still not a go. Bench stays idle.
+
+HEAD is still `eddd0b57`. The dirty tree is a harness and cycle cleanup on top of Tranche B, not a new product SHA. Do not treat uncommitted files as a windowing go or as a new review SHA.
+
+Tranche C is the mouse gate only. What actually moved:
+
+- hyprbars is hittable with an absolute USB-tablet-class pointer. Relative ydotool was the wrong seat (`cursorpos` follows, buttons do not). That is compositor chrome, not “hyprbars ignores clicks.”
+- Close at `1384,224` then `1516,309` unmapped the foot. Overlay chrome is still gone (layer count 0).
+- Title-bar drag `[520,240]` → `[652,325]` (Δ132×85, over the 8px slop).
+- 32px is bar-height inset, not snap slop.
+
+What did not move:
+
+- Alt+Tab address-change is not a held number. One painted-card click hid the overlay; that is not activate-the-other-foot. Do not treat the helper’s address-change assert as proven on this multi-pointer VM seat.
+- Minimize is still `special:minimized`.
+- hyprbars is still a hyprpm cache `.so`.
+- Theme, Nautilus, nvim, TTY, ISO did not move.
+
+The uncommitted helper is honest: missing `/dev/uinput` fails, it does not skip. `windows-native-test.sh` runs it. Alt+Tab in the harness is summon + screenshot, not `commitCycle` as the mouse proof. `cancelCycle` on overlay hide is correct. Cards are 120×120.
+
+Next gate that can actually move is native minimize, or hyprbars as a real package. Stay idle until one of those lands.
+
+## 0d. W0 Tranche D (2026-08-22) — native minimize; W0 is still open
+
+Worker slice after the Tranche C lock. Keep `eddd0b57` and `9d80ecd6`. Do not re-bench `4ea1dcf3` + `a5b945da`. Windowing is still not a go.
+
+Moved:
+
+- Minimize is no longer a `special:minimized` park. `omarchy-minimize` calls `CWindow::setHidden` on the same workspace. Live: four feet `hidden: true`, `workspace.id == 1`. Grim of the empty desktop is wallpaper `(17,17,17)` at the old client box; restore of `0x555bb2579650` returns `hidden: false` on workspace `1` with close-button red `(227,158,152)`.
+- `WindowService.minimize` / `restore` dispatch `hl.plugin.omarchy_minimize.*`. Caption minimize still goes through `omarchy-shell window`.
+
+Did not move:
+
+- hyprbars is still a hyprpm cache `.so`.
+- Alt+Tab address-change is still not a held number.
+- Theme, Nautilus, nvim, TTY, ISO did not move.
+- The plugin `.so` is ABI-pinned and built on the Hyprland machine (`/usr/lib/hyprland-plugins/omarchy-minimize.so`). That is not a pacman package in the ISO mirror.
+
+## 0e. W0 Tranche E (2026-08-22) — hyprbars off hyprpm; W0 is still open
+
+Worker slice after the Tranche D lock. Keep `eddd0b57` and `9d80ecd6`. Do not re-bench `4ea1dcf3` + `a5b945da`. Windowing is still not a go.
+
+Moved:
+
+- hyprbars is no longer a hyprpm cache `.so`. `omarchy-apply-hyprland-plugins` builds vendored hyprbars `v0.56.0` and `omarchy-minimize` into `/usr/lib/hyprland-plugins/`. Live `/proc/Hyprland/maps`: `/usr/lib/hyprland-plugins/hyprbars.so` and `/usr/lib/hyprland-plugins/omarchy-minimize.so`. No `/var/cache/hyprpm/` mapping. Overlay chrome still gone. Close pixel `(227,158,152)` on a `[520,240] 880×560` foot.
+- `desktop-windows.lua` does not call `hyprpm reload` and does not load `/var/cache/hyprpm/`.
+
+Did not move:
+
+- Not a pacman package in the ISO mirror. Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`.
+- Alt+Tab address-change is still not a held number.
+- Theme, Nautilus, nvim, TTY, ISO did not move.
+
+## 0f. Desktop Mode Start is consumer-first (2026-08-22)
+
+W0 is still open. This is not Software Center and not a windowing go.
+
+Idle Start was listing AppSearch sort wrappers as apps, so the menu led with **foot** and **vim** and generic gear icons. Start now unwraps `.entry`, hides developer tools unless the user is searching (`developerToolsInStart` is false on the desktop profile), and loads shipped pins Chrome and Files when the user has no `taskbar-pins.json`. Search still finds foot/vim.
+
 ## 1. Read-first contract (mandatory, non-skippable)
 
 Before writing a single line of code, running a test, or booting a VM, read these files in full, in this order. They are the Project Ultimate source of truth and they override intuition, memory, and habit.
@@ -202,8 +263,10 @@ Live numbers from the follow-up turn (Hyprland 0.56.2, virtio-vga 1920×1080, re
 - Do not commit dispatcher changes that were never run on a live compositor.
 - Do not commit VM images, disks, or scratch artifacts into the repo.
 - Do not call windowing a go from IPC-only harness green, from screenshots that are not in the repo, or from this handoff.
-- Do not re-review `4ea1dcf3` + `a5b945da` as a product pass. Do not re-run the full bench on that writeup. Next review is when a new turn actually moves a locked gate.
+- Do not re-review `4ea1dcf3` + `a5b945da` as a product pass. Do not re-run the full bench on that writeup. Do not re-open `eddd0b57`. Next review is when a new turn actually moves a locked gate.
+- Do not treat a painted-card click that only hides the Alt+Tab overlay as activate-the-other-foot.
 - Do not add `aliases` to new menu entries.
+- Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`. Do not load hyprbars from `/var/cache/hyprpm/`.
 
 ## 10. Definition of done
 
@@ -211,5 +274,5 @@ Live numbers from the follow-up turn (Hyprland 0.56.2, virtio-vga 1920×1080, re
 - `./test/all` is green except the three `omarchy-pkgs`-dependent files (or fully green with `OMARCHY_PKGS_PATH` set).
 - Snap geometry is LTRB work-area, maximize is in the harness, taskbar clicks use Hyprland addresses, Alt+Tab cards are clickable, and caption chrome exists as mouse affordances. Live proof is hyprctl geometry plus mapped layers, not a self-graded go.
 - Visual verification done for every UI-affecting change.
-- Work is committed only when asked; do not amend `c253d193` / `a7b2c093` / `18370335` / `4ea1dcf3` / `a5b945da`.
+- Work is committed only when asked; do not amend `c253d193` / `a7b2c093` / `18370335` / `4ea1dcf3` / `a5b945da` / `eddd0b57` / `9d80ecd6`.
 - This slice is still not the OS: Tokyo Night, Nautilus, nvim, TTY first boot, and the missing product ISO remain later work. Do not paper over them in the handoff.

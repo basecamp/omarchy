@@ -1,5 +1,74 @@
+var DEVELOPER_TOOL_IDS = {
+  "alacritty": true,
+  "cmake-gui": true,
+  "docker": true,
+  "emacs": true,
+  "emacsclient": true,
+  "foot": true,
+  "foot-server": true,
+  "footclient": true,
+  "gvim": true,
+  "helix": true,
+  "kitty": true,
+  "nano": true,
+  "neovim": true,
+  "nvim": true,
+  "org.freedesktop.xwayland": true,
+  "org.gnupg.pinentry-qt": true,
+  "org.wezfurlong.wezterm": true,
+  "vim": true,
+  "wezterm": true
+}
+
 function entryName(entry) {
   return String((entry && entry.name) || (entry && entry.id) || "")
+}
+
+function unwrapEntry(row) {
+  if (row && row.entry) return row.entry
+  return row
+}
+
+function normalizeEntryId(entry) {
+  var id = String((entry && entry.id) || "").trim().toLowerCase()
+  if (id.slice(-8) === ".desktop") id = id.slice(0, -8)
+  return id
+}
+
+function entryCategories(entry) {
+  var cats = entry && entry.categories
+  var list = []
+  var i
+  if (typeof cats === "string") list = cats.split(";")
+  else if (cats && typeof cats.length === "number") {
+    for (i = 0; i < cats.length; i++) list.push(String(cats[i]))
+  }
+  return list
+}
+
+function isDeveloperTool(entry) {
+  if (!entry) return false
+  if (DEVELOPER_TOOL_IDS[normalizeEntryId(entry)]) return true
+  var generic = String((entry && entry.genericName) || "").toLowerCase()
+  if (generic === "terminal" || generic === "terminal emulator") return true
+  var cats = entryCategories(entry)
+  var i
+  for (i = 0; i < cats.length; i++) {
+    if (String(cats[i]).replace(/\s+/g, "").toLowerCase() === "terminalemulator") return true
+  }
+  return false
+}
+
+function visibleEntries(rows, query, hideDeveloperTools) {
+  var hide = !!hideDeveloperTools && String(query || "").trim().length === 0
+  var out = []
+  var i
+  for (i = 0; i < (rows || []).length; i++) {
+    var entry = unwrapEntry(rows[i])
+    if (hide && isDeveloperTool(entry)) continue
+    if (entry) out.push(entry)
+  }
+  return out
 }
 
 function entrySubtext(entry) {
@@ -129,6 +198,9 @@ if (typeof module !== "undefined") {
     entrySearchText: entrySearchText,
     entryAcronym: entryAcronym,
     fuzzyScore: fuzzyScore,
-    sortedEntries: sortedEntries
+    sortedEntries: sortedEntries,
+    unwrapEntry: unwrapEntry,
+    isDeveloperTool: isDeveloperTool,
+    visibleEntries: visibleEntries
   }
 }

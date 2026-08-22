@@ -1,0 +1,16 @@
+{
+  "pins": [
+    {
+      "id": "chromium",
+      "desktopId": "chromium",
+      "name": "Chrome",
+      "icon": "chromium"
+    },
+    {
+      "id": "org.gnome.nautilus",
+      "desktopId": "org.gnome.Nautilus",
+      "name": "Files",
+      "icon": "org.gnome.Nautilus"
+    }
+  ]
+}

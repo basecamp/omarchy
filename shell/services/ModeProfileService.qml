@@ -31,7 +31,8 @@ QtObject {
     omarchyBindings: false,
     powerUserMenu: false,
     topBar: false,
-    configEditingExposed: false
+    configEditingExposed: false,
+    developerToolsInStart: false
   })
   property var desktopProfile: ({})
   property var powerUserProfile: ({})

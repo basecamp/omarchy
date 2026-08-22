@@ -15,6 +15,7 @@
     "omarchyBindings": true,
     "powerUserMenu": true,
     "topBar": true,
-    "configEditingExposed": true
+    "configEditingExposed": true,
+    "developerToolsInStart": true
   }
 }

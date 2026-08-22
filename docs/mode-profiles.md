@@ -29,6 +29,8 @@ features.powerUserMenu   original Omarchy menu available
 features.topBar          bar shown at top (Power User heritage layout)
 features.configEditingExposed
                          config-file entry points surfaced in Settings
+features.developerToolsInStart
+                         Terminal, Vim, and other developer tools appear in the idle Start list. Desktop Mode keeps them searchable, not first class.
 ```
 
 ## Resolution order

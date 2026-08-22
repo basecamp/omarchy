@@ -9,11 +9,11 @@ require_command jq
 desktop="$ROOT/default/ultimate/profiles/desktop.json"
 power="$ROOT/default/ultimate/profiles/power-user.json"
 
-jq -e '.mode == "desktop" and .features.taskbar == true and .features.topBar == false and .features.startMenu == true' "$desktop" >/dev/null \
-  || fail "desktop profile enables taskbar and Start, not the top bar"
+jq -e '.mode == "desktop" and .features.taskbar == true and .features.topBar == false and .features.startMenu == true and .features.developerToolsInStart == false' "$desktop" >/dev/null \
+  || fail "desktop profile enables taskbar and Start, not the top bar, and keeps developer tools out of idle Start"
 pass "desktop profile enables taskbar and Start, not the top bar"
 
-jq -e '.mode == "power-user" and .features.taskbar == false and .features.topBar == true and .features.omarchyBindings == true' "$power" >/dev/null \
+jq -e '.mode == "power-user" and .features.taskbar == false and .features.topBar == true and .features.omarchyBindings == true and .features.developerToolsInStart == true' "$power" >/dev/null \
   || fail "power-user profile keeps tiling heritage flags"
 pass "power-user profile keeps tiling heritage flags"
 

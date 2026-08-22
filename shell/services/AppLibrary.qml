@@ -54,6 +54,14 @@ Item {
     return AppSearch.sortedEntries(values, query, function(entry) { return root.isHiddenEntry(entry) })
   }
 
+  function isDeveloperTool(entry) {
+    return AppSearch.isDeveloperTool(entry)
+  }
+
+  function visibleEntries(query, hideDeveloperTools) {
+    return AppSearch.visibleEntries(root.sortedEntries(query), query, hideDeveloperTools)
+  }
+
   function iconSource(icon) {
     var value = String(icon || "")
     if (value.length === 0) return Quickshell.iconPath("application-x-executable", true)

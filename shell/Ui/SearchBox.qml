@@ -1,10 +1,12 @@
 import QtQuick
-import QtQuick.Controls
 import qs.Commons
 
-// Search field: TextField with a magnifier glyph, a clear button once text
+// Search field: kit TextField with a magnifier glyph, a clear button once text
 // is present, and `Esc clears` behavior. Start menu, Settings search, and
 // every filterable list use this one component.
+//
+// Do not `import QtQuick.Controls` here: that shadows qs.Ui.TextField with the
+// stock QQC field, which paints a solid near-white bar on dark glass.
 TextField {
   id: root
 

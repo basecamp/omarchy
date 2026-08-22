@@ -69,6 +69,36 @@ assertEqual(acronymMatches[0], 'Google Contacts', 'short acronym matching still 
 const directMatches = search.sortedEntries(entries, 'obs').map(row => search.entryName(row.entry))
 assertEqual(directMatches[0], 'OBS Studio', 'direct app-name matching still works')
 
+const foot = {
+  name: 'Foot',
+  genericName: 'Terminal',
+  id: 'foot',
+  categories: 'System;TerminalEmulator;',
+  icon: 'foot'
+}
+const chromium = {
+  name: 'Chromium',
+  genericName: 'Web Browser',
+  id: 'chromium',
+  categories: 'Network;WebBrowser;',
+  icon: 'chromium'
+}
+assert(search.isDeveloperTool(foot), 'foot is a developer tool')
+assert(!search.isDeveloperTool(chromium), 'chromium is a consumer app')
+const idle = search.visibleEntries(
+  search.sortedEntries([foot, chromium], '', function() { return false }),
+  '',
+  true
+).map(entry => search.entryName(entry))
+assertDeepEqual(idle, ['Chromium'], 'idle Start hides terminal emulators and keeps the browser')
+const searched = search.visibleEntries(
+  search.sortedEntries([foot, chromium], 'foot', function() { return false }),
+  'foot',
+  true
+).map(entry => search.entryName(entry))
+assertDeepEqual(searched, ['Foot'], 'search still finds Foot')
+assertEqual(search.unwrapEntry({ entry: foot, score: 1 }), foot, 'unwrapEntry reads the desktop entry off a sort row')
+
 // The menu's Apps submenu is the launcher now: app rows launch and uninstall
 // through the shared app library instead of running commands themselves.
 const activateMatch = menuQml.match(/function activateIndex\(index, fromPointer\) \{([\s\S]*?)\n  \}/)

@@ -32,7 +32,8 @@ Item {
     var query = String(root.command || "").trim()
     if (!query) return
     if (matches.length > 0 && appLibrary) {
-      appLibrary.launch(matches[0].id, appLibrary.entryName(matches[0]))
+      var entry = matches[0].entry || matches[0]
+      appLibrary.launch(entry.id, appLibrary.entryName(entry))
     } else {
       Util.execDetached("uwsm-app -- " + query)
     }

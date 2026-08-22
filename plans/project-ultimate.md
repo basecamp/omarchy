@@ -15,9 +15,15 @@ If those documents and this plan disagree, the doctrine wins. If this plan and a
 
 ## Reviewer lock (2026-08-22)
 
-Keep `4ea1dcf3` + `a5b945da`. Those are the accepted repair. The product call is still **REJECTED**. Same open gates: no SSD, special-workspace minimize, 32px snap slop, no mouse proof, Tokyo Night, Nautilus, nvim, TTY first-boot, no ISO.
+Keep `4ea1dcf3` + `a5b945da`. Those are the accepted repair. Keep `eddd0b57` and `9d80ecd6`. Do not re-open `eddd0b57`. Do not re-bench that pair. The product call is still **REJECTED**. Windowing Gate W0 is still open. Bench stays idle.
 
-Do not re-run the full bench on that writeup. The next review is when a new turn actually moves one of those gates.
+HEAD is still `eddd0b57`. Dirty tree is harness and cycle cleanup on top of Tranche B, not a new product SHA.
+
+Moved and locked: overlay-as-SSD and 1054-vs-1040 (Tranche B); hyprbars hittable with an absolute USB-tablet-class pointer — close at `1384,224` / `1516,309`, drag `[520,240]` → `[652,325]` (Tranche C mouse gate only). Relative ydotool was the wrong seat. Native minimize is in-place `CWindow::setHidden` via `omarchy-minimize` (Tranche D): live feet stay on workspace `1` with `hidden: true`, not `special:minimized`. hyprbars runtime path is `/usr/lib/hyprland-plugins/hyprbars.so` from `omarchy-apply-hyprland-plugins` (Tranche E), not `/var/cache/hyprpm/`.
+
+Did not move: Alt+Tab address-change (a painted-card click that hides the overlay is not activate-the-other-foot); hyprbars as a pacman package in the ISO mirror; Tokyo Night, Nautilus, nvim, TTY first-boot, no ISO. 32px is bar-height inset, not snap slop.
+
+W0 is still open.
 
 ## Doctrine (do not weaken)
 
@@ -76,23 +82,25 @@ Honest status, not a go. Reviewer lock: `4ea1dcf3` + `a5b945da` are kept; produc
 
 **Phase 1 (Windowing Gate W0)** is in progress on Hyprland 0.56.2 in the QEMU guest. It is not passed.
 
+Start is a Desktop Mode surface now, not a developer launcher: idle Start hides Terminal/Vim (`developerToolsInStart` is false on the desktop profile), search still finds them, and shipped taskbar pins are Chrome and Files. That is not Phase 6 Software Center and not a windowing go.
+
 What exists:
 
 - Desktop Mode profile (default) overlays the bottom `omarchy.ultimate-taskbar` without rewriting `shell.json`.
-- `default/hypr/desktop-windows.lua` floats by default (`size = { 880, 560 }`), zeros tiling gaps, enables `resize_on_border`, and loads **hyprbars** (not a shell overlay). Overlay plugin `omarchy.ultimate-window-chrome` is gone.
-- `WindowService` talks Lua `hl.dsp.window.*` through `Hyprland.dispatch`. Monitor and client geometry for snap/remember come from `hyprctl -j monitors` / `hyprctl -j clients`, not Quickshell `mon.width` or stale `lastIpcObject`.
+- `default/hypr/desktop-windows.lua` floats by default (`size = { 880, 560 }`), zeros tiling gaps, enables `resize_on_border`, and loads **hyprbars** from `/usr/lib/hyprland-plugins/hyprbars.so` (not a shell overlay, not hyprpm cache). Overlay plugin `omarchy.ultimate-window-chrome` is gone.
+- `WindowService` talks Lua `hl.dsp.window.*` through `Hyprland.dispatch`, and minimize/restore through `hl.plugin.omarchy_minimize`. Monitor and client geometry for snap/remember come from `hyprctl -j monitors` / `hyprctl -j clients`, not Quickshell `mon.width` or stale `lastIpcObject`.
 - Snap work area uses Hyprland 0.56 `reserved` as **left, top, right, bottom**. Live 1920×1080 reserved `[0,0,0,40]`. hyprbars draws above the hyprctl client box, so Desktop snap insets 32px: left `[0,32] 960×1008`, right `[960,32] 960×1008`. Pixel-checked close buttons sit at `y=9–22`.
 - Default overlapping float: `[520,240] 880×560`. `restoreNormal` returned that rect after a right snap.
 - Maximize `fullscreen: 1` `[2,34] 1916×1004` (title bar in the top of the work area; occupied bottom 1038 vs 1040).
-- Minimize identity still holds on `special:minimized` — that is still not a Windows minimize.
+- Minimize identity still holds — Desktop Mode now uses in-place `CWindow::setHidden` (`hidden: true` on the same workspace), not `special:minimized`. Restore returns the same address to the same workspace.
 
 What W0 still does not have (gate stays closed):
 
-- Mouse-proven title-bar drag / caption click / Alt+Tab card click. hyprbars is visible; this host could not actuate it through ydotool, QEMU HMP, or VNC.
+- Alt+Tab address-change as a held number. hyprbars close/drag moved on an absolute pointer (Tranche C); a painted-card click that hides the overlay is not activate-the-other-foot.
 - Peek / jump lists / grouped previews as product, not a timer flyout.
 - Quarter snap, maximize-button layout chooser, saved layouts.
 - Multi-monitor, virtual desktops, parented dialogs, Steam / Wine / Electron / GTK / Qt matrix.
-- Minimize that a Windows user would recognize. `special:minimized` is a compositor trick.
+- hyprbars as a pacman package in the ISO mirror (runtime `.so` is now `/usr/lib/hyprland-plugins/hyprbars.so`, built by `omarchy-apply-hyprland-plugins`; `hyprland-plugin-hyprbars` still must not go in `install/omarchy-other.packages`).
 
 The leftover half-tile from the W0 probe is gone: new feet open as 880×560 floats, and unsnap restores the remembered rect.
 
@@ -165,14 +173,14 @@ Every hover, context menu, dialog, empty state, error, DPI, focus ring, reduced 
 
 ## What the next Cursor turn is allowed to do
 
-The `4ea1dcf3` + `a5b945da` writeup is locked. Do not re-submit it for product review. Do not wait on another bench of the same HEAD.
+The `4ea1dcf3` + `a5b945da` writeup is locked. Keep `eddd0b57` / `9d80ecd6`. Do not re-submit those SHAs for product review. Do not wait on another bench of the same HEAD. Dirty tree is not a new product SHA.
 
 1. Treat W0 as still open. Do not merge PR #1 as a go. Do not rewrite the PR body to claim the OS.
-2. Keep LTRB snap and typed `Hyprland.dispatch`. hyprbars is the Desktop Mode title bar; `special:minimized` is still not a Windows minimize.
-3. New windows open as 880×560 floats. `restoreNormal` unsnaps to the remembered client rect. Snap insets 32px so hyprbars stays on screen.
-4. Do not start Phase 2–9 work (theme pack, Dolphin swap, Settings app, ISO, OOBE) until W0 is decided — except a later slice that is itself one of the locked product gates (Tokyo Night, Nautilus, nvim, TTY first-boot, ISO) after windowing is decided.
+2. Keep LTRB snap and typed `Hyprland.dispatch`. hyprbars is the Desktop Mode title bar and is hittable with an absolute pointer. Minimize is `hl.plugin.omarchy_minimize` (`setHidden`), not a special workspace. Relative ydotool is not a mouse proof.
+3. New windows open as 880×560 floats. `restoreNormal` unsnaps to the remembered client rect. Snap insets 32px (bar height, not slop) so hyprbars stays on screen.
+4. Do not start Phase 2–9 work (theme pack, Dolphin swap, Settings app, ISO, OOBE) until W0 is decided — except a later slice that is itself one of the locked product gates after windowing is decided.
 5. Do not teach Super+K in Desktop Mode first boot.
-6. Ask for a review only after a commit that actually moves: SSD, minimize, snap slop, mouse proof, or one of the remaining product gates.
+6. Do not treat Alt+Tab address-change or the helper’s address-change assert as proven. hyprbars loads from `/usr/lib/hyprland-plugins/`; it is still not a pacman package in the ISO mirror.
 
 ## Acceptance
 
