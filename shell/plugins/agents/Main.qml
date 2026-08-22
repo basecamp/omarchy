@@ -256,6 +256,7 @@ Item {
       limits: Array.isArray(record.limits) ? record.limits : [],
       tierLabel: String(record.tierLabel || ""),
       balance: balanceValue(record.balance),
+      resetCreditsAvailable: bankedResetsValue(record.resetCreditsAvailable),
 
       todayPrompts: synced ? numberValue(stats.todayPrompts) : numberValue(record.todayPrompts),
       todaySessions: synced ? numberValue(stats.todaySessions) : numberValue(record.todaySessions),
@@ -511,6 +512,15 @@ Item {
   function numberValue(value) {
     var n = Number(value || 0)
     return isFinite(n) ? Math.round(n) : 0
+  }
+
+  // Banked resets, normalized to -1 when the collector did not report them.
+  // A provider with none left says 0, which is an answer; a collector that
+  // never read them says nothing, and 0 would put words in its mouth.
+  function bankedResetsValue(value) {
+    if (value === undefined || value === null) return -1
+    var n = Number(value)
+    return isFinite(n) && n >= 0 ? Math.floor(n) : -1
   }
 
   function dateString(date) {
