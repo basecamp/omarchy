@@ -495,10 +495,10 @@ assert(
   'menu route changes only accept an initial pointer sample for mouse activation'
 )
 assert(
-  /else if \(event\.key === Qt\.Key_Left\) \{\s*root\.goBack\(\)\s*event\.accepted = true\s*\} else if \(Util\.editsFilter\(event, root\.filterText\)\)/.test(menuQml)
+  /else if \(event\.key === Qt\.Key_Left && !root\.dmenuActive\) \{\s*root\.goBack\(\)\s*event\.accepted = true\s*\} else if \(Util\.editsFilter\(event, root\.filterText\)\)/.test(menuQml)
     && /event\.key === Qt\.Key_Backspace && !root\.filterText[\s\S]*root\.goBack\(\)/.test(menuQml)
     && /function goBack\(\) \{\s*if \(root\.activeMenu === "root"\) \{\s*if \(root\.filterText\) root\.setFilter\(""\)\s*return false/.test(menuQml),
-  'menu Left key returns to an unfiltered start while Backspace edits the current search'
+  'menu Left key returns to an unfiltered start without changing dmenu input'
 )
 assert(
   /PointerMoveGate\s*\{[\s\S]*id: pointerGate[\s\S]*referenceItem: card[\s\S]*\}/.test(menuQml),

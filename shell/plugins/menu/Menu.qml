@@ -1137,7 +1137,7 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.cancel()
             event.accepted = true
-          } else if (event.key === Qt.Key_Left) {
+          } else if (event.key === Qt.Key_Left && !root.dmenuActive) {
             root.goBack()
             event.accepted = true
           } else if (Util.editsFilter(event, root.filterText)) {
