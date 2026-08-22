@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Show a Hermes one-shot result until the user closes it
+# omarchy:summary=Show a Hermes one-shot result and accept typed follow-ups
 # omarchy:args=<prompt>
 # omarchy:hidden=true
 
@@ -12,14 +12,34 @@ if (($# != 1)); then
 fi
 
 status=0
-hermes -z "$1" || status=$?
+session_id=""
 
-printf '\n'
-if ((status == 0)); then
-  echo "Hermes finished. Press Enter to close."
-else
+# The first call uses single-query mode with quiet output and the same
+# auto-bypass approval semantics as `hermes -z`. Unlike -z, it prints the
+# session id, which is how a typed follow-up resumes the same conversation.
+output=$(hermes chat -q "$1" -Q --yolo 2>&1)
+status=$?
+printf '%s\n' "$output"
+
+session_id=$(printf '%s\n' "$output" | sed -n 's/^session_id: //p' | tail -1)
+
+while true; do
+  printf 'Ask a follow-up, or press Enter to close: '
+  read -r followup || { printf '\n'; break; }
+  [[ -n $followup ]] || break
+
+  if [[ -n $session_id ]]; then
+    output=$(hermes chat -q "$followup" -Q --yolo --resume "$session_id" 2>&1)
+  else
+    output=$(hermes chat -q "$followup" -Q --yolo 2>&1)
+  fi
+  status=$?
+  printf '%s\n' "$output"
+done
+
+if ((status != 0)); then
   echo "Hermes exited with status $status. Press Enter to close." >&2
+  read -r || true
 fi
-read -r
 
 exit "$status"
