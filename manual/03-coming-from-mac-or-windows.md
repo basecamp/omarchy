@@ -35,6 +35,7 @@ Windows folks: your Win + V clipboard history lives on `Super + Ctrl + V`, and i
 | Cmd + Shift + 4 / Win + Shift + S | `Print Screen` — see [screenshots & recording](12-screenshots-recording.md) |
 | Notification Center | Notification history on `Super + Shift + Alt + ,` |
 | Time Machine (for the system) | Automatic [system snapshots](47-system-snapshots.md) on every update |
+| Time Machine (for your files) | Hourly, versioned, encrypted [backups](52-backups.md) to a bucket or a disk |
 | App Store / downloading an installer | _Install_ in the menu, or `omarchy pkg add` — see [other packages](29-other-packages.md) |
 | System Settings / Control Panel | _Setup_ in the menu, which edits plain config files — see [dotfiles](31-dotfiles.md) |
 
