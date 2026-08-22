@@ -6,9 +6,9 @@
 
 Local token stats come from documented session files under $GROK_HOME
 (default ~/.grok): each updates.jsonl turn_completed event is one prompt.
-pi/omp sessions that ran on an xAI provider are merged in, the same way
-Claude and Codex pick up those agents. The weekly SuperGrok pool comes from
-cli-chat-proxy `/v1/billing`. The plan label prefers `/v1/settings`
+pi/omp and opencode sessions that ran on an xAI provider are merged in, the
+same way Claude and Codex pick up those agents. The weekly SuperGrok pool
+comes from cli-chat-proxy `/v1/billing`. The plan label prefers `/v1/settings`
 `subscription_tier_display` (the same string Grok's own UI shows) and falls
 back to `/v1/user` `subscriptionTier`.
 The agents panel only ever reads the JSON this prints.
@@ -22,6 +22,7 @@ import fcntl
 import hashlib
 import json
 import os
+import sqlite3
 import sys
 import tempfile
 import time
@@ -42,7 +43,7 @@ SCAN_REUSE_SECONDS = 20
 # transcripts. Reuse any same-day scan. A 900s TTL made opening the panel
 # rescan every session just to paint a percentage.
 LIMITS_ONLY_REUSE_SECONDS = float("inf")
-CACHE_SCHEMA = 2
+CACHE_SCHEMA = 3
 
 
 def grok_home() -> Path:
@@ -116,6 +117,10 @@ def local_day(value: Any) -> str:
     return local_today()
 
 
+def opencode_db_path() -> Path:
+  return Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
+
+
 def cache_root() -> Path:
   root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "omarchy" / "agent-usage"
   root.mkdir(parents=True, exist_ok=True)
@@ -124,7 +129,11 @@ def cache_root() -> Path:
 
 def scan_cache_paths(sessions_root: Path) -> tuple[Path, Path]:
   # Home is in the digest because pi/omp sessions live there, not under GROK_HOME.
-  digest = hashlib.sha1((str(sessions_root) + "\n" + str(Path.home())).encode("utf-8")).hexdigest()[:16]
+  # The opencode DB is included so a SuperGrok subscription burned only through
+  # opencode still invalidates the cache when XDG_DATA_HOME moves.
+  digest = hashlib.sha1(
+    (str(sessions_root) + "\n" + str(Path.home()) + "\n" + str(opencode_db_path())).encode("utf-8")
+  ).hexdigest()[:16]
   root = cache_root()
   return root / f"grok-scan-{digest}.json", root / f"grok-scan-{digest}.lock"
 
@@ -402,12 +411,91 @@ def scan_pi_sessions() -> list[dict[str, Any]]:
   return contribs
 
 
-def scan_sessions(sessions_root: Path) -> list[dict[str, Any]]:
+def scan_opencode_sessions() -> tuple[list[dict[str, Any]], bool]:
+  # A SuperGrok subscription burned entirely through opencode never writes a
+  # Grok Build transcript, but opencode records per-message provider, model,
+  # and token usage in its own database. Read-only: opencode may be writing
+  # right now. Returns whether the scan ran to completion: a scan cut short
+  # by a database error still contributes what it read, but must not be
+  # cached as if it were the whole story.
+  db = opencode_db_path()
+  if not db.is_file():
+    return [], True
+  try:
+    conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+  except sqlite3.Error:
+    return [], False
+  by_session: dict[str, list[dict[str, Any]]] = {}
+  try:
+    conn.execute("PRAGMA query_only = ON")
+    # OpenCode DBs grow huge. The json_extract conditions are the authority
+    # (role == "assistant" and providerID == "xai"). LIKE gates skip rows
+    # that cannot contain those pairs so we do not json.loads tens-of-MB
+    # blobs. json_valid guards the parse: json_extract() raises on malformed
+    # JSON, and SQLite does not promise AND terms evaluate left to right, so
+    # each extract is wrapped in CASE. Exact match: a custom "xai-proxy"
+    # gateway is not this subscription.
+    for session_id, raw in conn.execute(
+      "SELECT session_id, data FROM message"
+      " WHERE data LIKE '%\"role\"%:%\"assistant\"%'"
+      " AND data LIKE '%\"providerID\"%:%\"xai\"%'"
+      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.role') END = 'assistant'"
+      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.providerID') END = 'xai'"
+    ):
+      try:
+        entry = json.loads(raw)
+        if not isinstance(entry, dict) or entry.get("role") != "assistant":
+          continue
+        if str(entry.get("providerID") or "") != "xai":
+          continue
+        tokens = entry.get("tokens") if isinstance(entry.get("tokens"), dict) else {}
+        cache = tokens.get("cache") if isinstance(tokens.get("cache"), dict) else {}
+        input_tokens = number(tokens.get("input"))
+        # opencode keeps thinking tokens out of output; both are generated.
+        output_tokens = number(tokens.get("output")) + number(tokens.get("reasoning"))
+        cache_read = number(cache.get("read"))
+        cache_write = number(cache.get("write"))
+        if not (input_tokens or output_tokens or cache_read or cache_write):
+          continue
+        created = (entry.get("time") if isinstance(entry.get("time"), dict) else {}).get("created")
+        day = local_day(created) if number(created) > 0 else local_today()
+        model = str(entry.get("modelID") or "grok").rstrip("/").split("/")[-1]
+      except Exception:
+        continue
+      session_key = "opencode:" + str(session_id)
+      prompt_id = str(entry.get("id") or f"{session_key}:{len(by_session.get(session_key, []))}")
+      by_session.setdefault(session_key, []).append({
+        "id": prompt_id,
+        "day": day,
+        "model": model,
+        "inputTokens": input_tokens,
+        "outputTokens": output_tokens,
+        "cacheReadInputTokens": cache_read,
+        "cacheCreationInputTokens": cache_write,
+      })
+  except sqlite3.Error:
+    contribs = [
+      {"skip": False, "sessionKey": key, "turns": turns}
+      for key, turns in by_session.items()
+    ]
+    return contribs, False
+  finally:
+    conn.close()
+  contribs = [
+    {"skip": False, "sessionKey": key, "turns": turns}
+    for key, turns in by_session.items()
+  ]
+  return contribs, True
+
+
+def scan_sessions(sessions_root: Path) -> tuple[list[dict[str, Any]], bool]:
   contribs: list[dict[str, Any]] = []
   for path in list_update_files(sessions_root):
     contribs.append(file_contrib(path))
   contribs.extend(scan_pi_sessions())
-  return contribs
+  extra, complete = scan_opencode_sessions()
+  contribs.extend(extra)
+  return contribs, complete
 
 
 def read_cached_scan(cache_file: Path, max_age: float, today: str) -> dict[str, Any] | None:
@@ -440,7 +528,8 @@ def local_stats(force: bool, limits_only: bool) -> dict[str, Any]:
     return _local_stats(sessions_root, today, max_age)
   except Exception as exc:
     print(f"omarchy-agent-usage-grok: cache unavailable ({exc}); scanning directly", file=sys.stderr)
-    return merge_stats(scan_sessions(sessions_root), today)
+    contribs, _ = scan_sessions(sessions_root)
+    return merge_stats(contribs, today)
 
 
 def _local_stats(sessions_root: Path, today: str, max_age: float) -> dict[str, Any]:
@@ -455,15 +544,19 @@ def _local_stats(sessions_root: Path, today: str, max_age: float) -> dict[str, A
     cached = read_cached_scan(cache_file, max_age, today)
     if cached is not None:
       return cached["stats"]
-    stats = merge_stats(scan_sessions(sessions_root), today)
-    try:
-      write_json(cache_file, {
-        "schemaVersion": CACHE_SCHEMA,
-        "scanDate": today,
-        "stats": stats,
-      })
-    except Exception as exc:
-      print(f"omarchy-agent-usage-grok: could not write usage cache ({exc})", file=sys.stderr)
+    contribs, complete = scan_sessions(sessions_root)
+    stats = merge_stats(contribs, today)
+    # An interrupted opencode scan still serves this run, but caching it
+    # would suppress the missing usage for every reader until the next day.
+    if complete:
+      try:
+        write_json(cache_file, {
+          "schemaVersion": CACHE_SCHEMA,
+          "scanDate": today,
+          "stats": stats,
+        })
+      except Exception as exc:
+        print(f"omarchy-agent-usage-grok: could not write usage cache ({exc})", file=sys.stderr)
     return stats
 
 
