@@ -743,7 +743,10 @@ Item {
   }
 
   function goBack() {
-    if (root.activeMenu === "root") return false
+    if (root.activeMenu === "root") {
+      if (root.filterText) root.setFilter("")
+      return false
+    }
 
     if (root.navStack.length > 0) {
       var previous = root.navStack[root.navStack.length - 1]
