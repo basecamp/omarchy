@@ -96,17 +96,37 @@ Prove each of these with evidence, not assertion:
 
 Go = every row 20–25 passes live with screenshots and the four core behaviors (overlap, drag, resize, maximize, minimize/restore identity) hold. No-go = any of them fails; document exactly which, with the `hyprctl -j clients` output and a screenshot, before changing code.
 
-## 7. Findings to verify live, then fix with proof (do not pre-apply blind)
+## 7. Live compositor findings (Hyprland 0.56.2) — verified, then fixed
 
-These came from reading `shell/services/WindowService.qml` against the Hyprland dispatcher reference (`https://wiki.hypr.land/`). They are hypotheses backed by documentation, not confirmed on a live compositor. Confirm each in the running guest first; then fix minimally and re-run the go/no-go so the fix is proven, never assumed.
+These were hypotheses in the first handoff. They were confirmed or contradicted on the live guest (Hyprland 0.56.2, virtio-vga 1920×1080, `omarchy`/`omarchy`). Trust the live result.
 
-- `maximize()` dispatches `fullscreen 2`. The `fullscreen` dispatcher accepts only mode `0` (fullscreen) or `1` (maximize); there is no mode `2`. Expected correct call: `fullscreen 1`. Verify what `fullscreen 2` actually does in the pinned Hyprland version before changing it.
-- `_snapActive()` calls `movewindowpixel exact …` with no window target. `movewindowpixel` takes `resizeparams,window`; the dispatcher that moves the active window is `moveactive`. Expected correct call: `moveactive exact 0 0` (left) and `moveactive exact 50% 0` (right), paired with the existing `resizeactive exact 50% 100%`.
-- `_snapActive()` issues `setfloating`, `resizeactive`, and the move as three independent asynchronous `hyprctl` processes with no ordering guarantee — a race. Dependent dispatches should be one ordered request (`hyprctl --batch "dispatch …; dispatch …; dispatch …"`) behind a typed service verb.
-- `maximize()`, `snapLeft()`, and `snapRight()` call `focus()` (async `activate()`) and then immediately dispatch against the active window — another ordering race. Prefer addressing the target window explicitly (`address:<addr>`) inside the batched request instead of relying on focus landing first.
-- `restore()` / `minimize()` identity across `special:minimized` (§6) is behavior, not syntax; only the live run settles it.
+Classic token dispatchers are dead. `hyprctl dispatch fullscreen 2`, `movewindowpixel`, `resizeactive`, and `movetoworkspacesilent` fail on the Lua parser. Working forms, always with `window = "address:0x…"`:
 
-If a live check contradicts a hypothesis, trust the live result and update this section's premise; do not force the documented behavior onto a version that differs.
+- Maximize: `hl.dsp.window.fullscreen({ mode = "maximized", action = "set", window = "address:…" })`. Omitting `action` toggles. Live result: `fullscreen: 1`, size `1916×1036` on 1920×1080 (work area, bar respected).
+- Snap: ordered `hl.dsp.window.float({ action = "enable" }) && resize({ x, y, relative = false }) && move({ x, y, relative = false })` in one `bash -c`. Percent sizes are rejected; pixels come from the focused monitor. Live snap: left `[40,0] 940×1080`, right `[980,0] 940×1080`.
+- Minimize: `hl.dsp.window.move({ workspace = "special:minimized", follow = false, window = "address:…" })`. Identity is not a compositor gate: three feet parked on workspace id `-98`; restoring `0x555bafb7f480` returned the same address to workspace 1 with title intact.
+- Restore: Lua move to `$(hyprctl activeworkspace -j | jq -r .id)` with `follow = true`. `Toplevel.activate()` on a parked client does not restore it.
+
+How hyprctl is fired from QML (root-cause, not a dispatcher issue):
+
+- `Qt.createQmlObject("… Process {}")` as a child of the WindowService `QtObject` never starts. IPC minimize returned ok and the window stayed on workspace 1; the same address moved when `hyprctl` ran from bash.
+- A named `Process` queue dropped the third of three minimizes and the restore that followed (`running = true` inside `onExited` is ignored).
+- Fix: `Quickshell.execDetached(["hyprctl", "dispatch", expr])`. Independent verbs (three minimizes) must not share one runner. Snap stays one `bash -c` so float/resize/move cannot race.
+
+Shell load (blocking chrome before any windowing IPC):
+
+- Bare `FileView`/`Process` children of `QtObject` fail (`Type WindowService unavailable`). Named `property FileView` / `property Process` load. Same fix in `ModeProfileService.qml`.
+- `Taskbar.qml` `required property string omarchyPath` is unset when the bar Loader instantiates from URL; drop `required` so `omarchy-taskbar` maps.
+- `Loader.errorString` is a property, not a function.
+
+Alt+Tab overlay:
+
+- A `PanelWindow` with only `implicitWidth`/`implicitHeight` never maps. Screen-edge `anchors { top, bottom, left, right }` (same pattern as the emoji overlay) produces `omarchy-task-switcher` at 1920×1080.
+- `Toplevel.address` is empty; cycle cards stay blank until addresses come from `Hyprland.toplevels` (hex, `0x`-canonicalized).
+
+§6 go/no-go after those fixes: `test/acceptance.d/windows-native-test.sh` rows 20–25 pass live (`success-pin-app.png`, `success-unpin-app.png`, `success-minimize-three.png`, `success-restore-one.png`, `success-snap-two.png`, `success-alt-tab.png`). Overlap: three floating feet at the same `at`/`size`. Maximize/unmaximize proven via IPC. `general:resize_on_border` is `true` in the live compositor; Super+mouse drag/resize are bound in `default/hypr/bindings/desktop.lua`. Pointer injection from the Windows QEMU monitor was not a reliable way to prove interactive title-bar drag from SSH (HID tablet is present; the GTK display owns the pointer).
+
+If a later live check contradicts this section, trust the live result and update it; do not force classic `fullscreen 1` / `moveactive` onto Hyprland 0.56.
 
 ## 8. Non-negotiable engineering rules for the code you write
 
