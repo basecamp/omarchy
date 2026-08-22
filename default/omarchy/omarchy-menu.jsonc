@@ -338,7 +338,7 @@
   "update.omarchy": {"icon":"","iconFont":"omarchy","label":"Omarchy","action":"omarchy-launch-floating-terminal-with-presentation omarchy-update"},
   "update.channel": {"icon":"󰔫","label":"Channel"},
   "update.config": {"icon":"","label":"Config","title":"Reset to default"},
-  "update.themes": {"icon":"󰸌","label":"Extra Themes","action":"omarchy-launch-floating-terminal-with-presentation omarchy-theme-update"},
+  "update.themes": {"icon":"󰸌","label":"Extra Themes","when":"omarchy-theme-extras","action":"omarchy-launch-floating-terminal-with-presentation omarchy-theme-update"},
   "update.process": {"icon":"","label":"Process","title":"Restart"},
   "update.hardware": {"icon":"󰇅","label":"Hardware","title":"Restart"},
   "update.firmware": {"icon":"","label":"Firmware","action":"omarchy-launch-floating-terminal-with-presentation omarchy-update-firmware"},
