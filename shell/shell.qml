@@ -18,6 +18,7 @@ ShellRoot {
   property PluginRegistry pluginRegistry: PluginRegistry { }
   property BarWidgetRegistry barWidgetRegistry: BarWidgetRegistry { }
   property AppLibrary appLibrary: AppLibrary { }
+  property WindowService windowService: WindowService { }
 
   property string home: Quickshell.env("HOME")
 
