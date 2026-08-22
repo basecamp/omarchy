@@ -31,6 +31,10 @@ measure_layout() {
   LAYOUT_ROWS=$layout_rows
   LOGO_COLOR=$logo_color
 }
+# Stand in for the terminal answering where the cursor came to rest. One row past
+# the layout's last line is a screen that did not scroll.
+landed_row=$(( layout_rows + 1 ))
+cursor_row() { CURSOR_ROW=$landed_row; }
 
 # fastfetch resolves the home directory from the passwd database rather than
 # $HOME, so it would answer for the real one. Stand in for it with the search
@@ -105,9 +109,30 @@ rm -r "${HOME:?}/searched-later"
 rows_by_cols="$((layout_rows + 1)) 140"
 build_sheen || fail "a window with one row past the layout animates"
 pass "a window with one row past the layout animates"
+
+# A window level with the layout's last line scrolls it, and the cursor lands on
+# the last line rather than past it — the two go together on a real terminal.
 rows_by_cols="$layout_rows 140"
+landed_row=$layout_rows
 refuses "a window level with the layout's last line leaves it still"
 rows_by_cols="45 140"
+landed_row=$(( layout_rows + 1 ))
+
+# The row count is arithmetic; where the cursor actually came to rest is the
+# render itself. A cursor short of the layout's end means the screen scrolled and
+# carried the logo off the rows the frames address, however roomy the window is.
+landed_row=$layout_rows
+refuses "a layout the terminal says scrolled leaves the logo still"
+landed_row=$(( layout_rows + 1 ))
+
+# A terminal that will not answer gets no say, and the arithmetic decides.
+cursor_row() { CURSOR_ROW=""; return 1; }
+build_sheen || fail "a terminal that will not answer still animates a roomy window"
+pass "a terminal that will not answer still animates a roomy window"
+rows_by_cols="$layout_rows 140"
+refuses "a terminal that will not answer still refuses a window that cannot fit"
+rows_by_cols="45 140"
+cursor_row() { CURSOR_ROW=$landed_row; }
 
 # The loop plays whatever frames are left lying about, so a build that failed has
 # to leave none of the last one's.

@@ -208,6 +208,26 @@ measure_layout() {
   return 0
 }
 
+# Where the cursor came to rest after fastfetch painted. An unscrolled layout
+# leaves it one row past the last line it wrote, so anything that made the real
+# render taller than the measurement — a module that appeared between the two
+# runs, a wrap the measurement never saw — shows up here as a smaller number.
+# Terminals that do not answer get no say; the caller falls back to arithmetic.
+# Answers into CURSOR_ROW rather than stdout, because a command substitution
+# would carry the query into its own pipe instead of to the terminal.
+cursor_row() {
+  local reply
+
+  CURSOR_ROW=""
+  printf '\e[6n'
+  IFS= read -rsd R -t 0.2 reply || return 1
+  reply=${reply#*[}
+  reply=${reply%%;*}
+  [[ $reply =~ ^[0-9]+$ ]] || return 1
+
+  CURSOR_ROW=$reply
+}
+
 # The About screen's own reasons the logo might not be where these frames would
 # draw it. Whether the logo itself can be animated is the sheen's own question.
 build_sheen() {
@@ -226,10 +246,16 @@ build_sheen() {
   measure_layout || return 1
 
   # The layout needs a row for the cursor past its last line. Without one it has
-  # scrolled, and the logo is no longer on the rows the frames address.
+  # scrolled, and the logo is no longer on the rows the frames address. Ask the
+  # terminal where the cursor actually is rather than trust the arithmetic, and
+  # keep the arithmetic for a terminal that will not say.
   local rows cols
   read -r rows cols <<<"$(stty size)"
-  (( rows > LAYOUT_ROWS )) || return 1
+  if cursor_row; then
+    (( CURSOR_ROW == LAYOUT_ROWS + 1 )) || return 1
+  else
+    (( rows > LAYOUT_ROWS )) || return 1
+  fi
 
   # The cell the logo's first row starts on, every attribute fastfetch left on
   # those cells so a glint that has passed leaves them as it found them, and the
