@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# omarchy:summary=Browse every backup as dated folders and copy files out
+
+set -uo pipefail
+
+source omarchy-backup-env
+
+if ! backup_configured; then
+  echo "Backups are not set up. Run: omarchy setup backup" >&2
+  exit 1
+fi
+
+if omarchy-cmd-missing fusermount; then
+  echo "Browsing needs fuse2. Install it with: omarchy-pkg-add fuse2" >&2
+  exit 1
+fi
+
+unmount() {
+  fusermount -u "$BACKUP_MOUNT_DIR" 2>/dev/null
+  rmdir "$BACKUP_MOUNT_DIR" 2>/dev/null
+}
+
+# A browse session that was killed rather than closed leaves the mountpoint
+# behind, and restic refuses to mount over it.
+unmount
+mkdir -p "$BACKUP_MOUNT_DIR"
+trap unmount EXIT
+
+backup_load_credentials
+
+echo -e "\e[32mMounting your backups at $BACKUP_MOUNT_DIR\e[0m"
+echo "Every backup appears as a dated folder. Copy out what you need."
+echo "Close this window or press Ctrl-C when you are done."
+echo
+
+backup_restic mount "$BACKUP_MOUNT_DIR" &
+mount_pid=$!
+
+for attempt in {1..30}; do
+  if mountpoint -q "$BACKUP_MOUNT_DIR"; then
+    xdg-open "$BACKUP_MOUNT_DIR" >/dev/null 2>&1 &
+    break
+  fi
+  sleep 0.5
+done
+
+wait "$mount_pid"

@@ -1,0 +1,210 @@
+#!/bin/bash
+
+# omarchy:summary=Load backup paths, settings, and credentials for the other backup commands
+# omarchy:hidden=true
+
+# Sourced rather than run: every other backup command starts with
+# `source omarchy-backup-env`. Keeping the layout in one place is what keeps a
+# delete-capable credential out of ~/.config, where the dots repo would sync it.
+
+BACKUP_SECRETS_DIR="$HOME/.local/share/omarchy/backup"
+BACKUP_ENV_FILE="$BACKUP_SECRETS_DIR/env"
+BACKUP_PASSPHRASE_FILE="$BACKUP_SECRETS_DIR/passphrase"
+
+BACKUP_CONFIG_DIR="$HOME/.config/omarchy/backup"
+BACKUP_SETTINGS_FILE="$BACKUP_CONFIG_DIR/settings"
+BACKUP_USER_EXCLUDE_FILE="$BACKUP_CONFIG_DIR/excludes"
+
+BACKUP_STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/backup"
+BACKUP_STATUS_FILE="$BACKUP_STATE_DIR/status.json"
+BACKUP_LOG_FILE="$BACKUP_STATE_DIR/backup.log"
+BACKUP_PAUSE_FILE="$BACKUP_STATE_DIR/pause"
+BACKUP_LOCK_FILE="$BACKUP_STATE_DIR/lock"
+BACKUP_EXCLUDE_FILE="$BACKUP_STATE_DIR/excludes"
+BACKUP_MAINTENANCE_FILE="$BACKUP_STATE_DIR/maintenance"
+BACKUP_SETUP_PHASE_FILE="$BACKUP_STATE_DIR/setup-phase"
+BACKUP_MOUNT_DIR="${XDG_RUNTIME_DIR:-/tmp}/omarchy-backup-browse"
+
+BACKUP_UNIT_DIR="$HOME/.config/systemd/user"
+BACKUP_SHIPPED_UNIT_DIR="$OMARCHY_PATH/default/systemd/user"
+BACKUP_DEFAULT_EXCLUDE_FILE="$OMARCHY_PATH/default/backup/excludes"
+
+# Overridable in the settings file, which the wizard writes and the user may edit.
+BACKUP_DESTINATION_LABEL=""
+BACKUP_DESTINATION_KIND="s3"
+BACKUP_DESTINATION_UUID=""
+BACKUP_KEEP_HOURLY=24
+BACKUP_KEEP_DAILY=7
+BACKUP_KEEP_WEEKLY=5
+BACKUP_KEEP_MONTHLY=12
+BACKUP_MAINTENANCE_HOST=""
+BACKUP_BATTERY_FLOOR=20
+
+if [[ -f $BACKUP_SETTINGS_FILE ]]; then
+  source "$BACKUP_SETTINGS_FILE"
+fi
+
+backup_configured() {
+  [[ -s $BACKUP_ENV_FILE && -s $BACKUP_PASSPHRASE_FILE ]]
+}
+
+# Credentials reach restic through the environment and a password file, never
+# through argv, where every other process on the machine could read them.
+backup_load_credentials() {
+  if ! backup_configured; then
+    return 1
+  fi
+
+  set -a
+  source "$BACKUP_ENV_FILE"
+  set +a
+  export RESTIC_PASSWORD_FILE="$BACKUP_PASSPHRASE_FILE"
+}
+
+# restic defaults to zero lock retries, which turns a second machine backing up
+# at the same minute into a failure rather than a wait.
+backup_restic() {
+  restic --retry-lock 5m "$@"
+}
+
+backup_destination_offsite() {
+  [[ $BACKUP_DESTINATION_KIND != "local" ]]
+}
+
+# A local destination whose disk is absent must skip the run: restic would
+# otherwise happily create a fresh repository in the empty mountpoint sitting on
+# the root filesystem, and report success for a backup that protects nothing.
+backup_local_destination_present() {
+  if [[ $BACKUP_DESTINATION_KIND != "local" || -z $BACKUP_DESTINATION_UUID ]]; then
+    return 0
+  fi
+
+  local path="${RESTIC_REPOSITORY#local:}"
+  [[ $(findmnt -no UUID --target "$path" 2>/dev/null) == "$BACKUP_DESTINATION_UUID" ]]
+}
+
+backup_write_settings() {
+  mkdir -p "$BACKUP_CONFIG_DIR"
+
+  cat >"$BACKUP_SETTINGS_FILE" <<SETTINGS
+# Omarchy backup settings. Credentials live in $BACKUP_SECRETS_DIR, not here.
+BACKUP_DESTINATION_LABEL="$BACKUP_DESTINATION_LABEL"
+BACKUP_DESTINATION_KIND="$BACKUP_DESTINATION_KIND"
+BACKUP_DESTINATION_UUID="$BACKUP_DESTINATION_UUID"
+BACKUP_KEEP_HOURLY=$BACKUP_KEEP_HOURLY
+BACKUP_KEEP_DAILY=$BACKUP_KEEP_DAILY
+BACKUP_KEEP_WEEKLY=$BACKUP_KEEP_WEEKLY
+BACKUP_KEEP_MONTHLY=$BACKUP_KEEP_MONTHLY
+BACKUP_MAINTENANCE_HOST="$BACKUP_MAINTENANCE_HOST"
+BACKUP_BATTERY_FLOOR=$BACKUP_BATTERY_FLOOR
+SETTINGS
+}
+
+# restic reads exclude patterns literally: a `~/` pattern excludes a directory
+# actually named "~", so patterns are expanded here instead of being trusted to
+# mean what they look like.
+backup_write_exclude_file() {
+  local line=""
+  local patterns=""
+
+  mkdir -p "$BACKUP_STATE_DIR"
+
+  {
+    # The repository must never contain the credentials that unlock it, and
+    # restic's own cache is regenerable by definition.
+    printf '%s\n' "$BACKUP_SECRETS_DIR"
+    printf '%s\n' "$HOME/.cache"
+    printf '%s\n' "$HOME/.local/share/Trash"
+
+    for patterns in "$BACKUP_DEFAULT_EXCLUDE_FILE" "$BACKUP_USER_EXCLUDE_FILE"; do
+      [[ -f $patterns ]] || continue
+
+      while IFS= read -r line; do
+        [[ -z $line || $line == \#* ]] && continue
+        if [[ $line == /* ]]; then
+          printf '%s\n' "$line"
+        else
+          printf '%s/%s\n' "$HOME" "${line#./}"
+        fi
+      done <"$patterns"
+    done
+  } >"$BACKUP_EXCLUDE_FILE"
+}
+
+backup_status_document() {
+  if [[ -s $BACKUP_STATUS_FILE ]] && jq -e . "$BACKUP_STATUS_FILE" >/dev/null 2>&1; then
+    cat "$BACKUP_STATUS_FILE"
+  else
+    backup_status_skeleton
+  fi
+}
+
+backup_status_skeleton() {
+  jq -n '{
+    phase: "unconfigured",
+    run_id: "",
+    pid: 0,
+    started_at: 0,
+    updated_at: 0,
+    progress: {percent: 0, bytes_done: 0, bytes_total: 0, files_done: 0},
+    last_backup: {time: 0, snapshot: "", result: "", error: "", unreadable: []},
+    last_complete: {time: 0, snapshot: ""},
+    last_maintenance: {time: 0, result: "", error: ""},
+    last_skip: {time: 0, reason: ""},
+    last_warning: 0,
+    snapshots: [],
+    destination: {label: "", kind: "", offsite: true},
+    repository: {size_bytes: 0, snapshot_count: 0},
+    pause: {until: 0, reason: ""}
+  }'
+}
+
+# Written by rename so the panel never reads half a document, and so a crash
+# mid-write leaves the previous status intact rather than an empty file.
+backup_status_update() {
+  local program="$1"
+  shift
+  local temporary="$BACKUP_STATUS_FILE.$$"
+
+  mkdir -p "$BACKUP_STATE_DIR"
+
+  if backup_status_document |
+    jq --argjson now "$(date +%s)" "$@" "$program | .updated_at = \$now" >"$temporary"; then
+    mv -f "$temporary" "$BACKUP_STATUS_FILE"
+  else
+    rm -f "$temporary"
+    return 1
+  fi
+}
+
+backup_log() {
+  mkdir -p "$BACKUP_STATE_DIR"
+  printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$BACKUP_LOG_FILE"
+
+  # A log that grows for years is its own bug report; keep the tail that a
+  # support question actually needs.
+  if (( $(wc -l <"$BACKUP_LOG_FILE") > 2000 )); then
+    tail -n 1000 "$BACKUP_LOG_FILE" >"$BACKUP_LOG_FILE.trimmed"
+    mv -f "$BACKUP_LOG_FILE.trimmed" "$BACKUP_LOG_FILE"
+  fi
+}
+
+backup_pause_active() {
+  local until=""
+
+  [[ -f $BACKUP_PAUSE_FILE ]] || return 1
+
+  until=$(<"$BACKUP_PAUSE_FILE")
+  if [[ $until == "manual" ]]; then
+    return 0
+  fi
+
+  if [[ $until =~ ^[0-9]+$ ]] && (( until > $(date +%s) )); then
+    return 0
+  fi
+
+  # An expired pause is cleared by whoever notices it first, so the timer can
+  # resume on its own rather than waiting for someone to press Resume.
+  rm -f "$BACKUP_PAUSE_FILE"
+  return 1
+}

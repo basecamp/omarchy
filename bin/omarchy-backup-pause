@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# omarchy:summary=Pause scheduled backups for a while, or until resumed
+# omarchy:args=[1h|today|until-resumed]
+# omarchy:examples=omarchy backup pause 1h | omarchy backup pause until-resumed
+
+set -uo pipefail
+
+source omarchy-backup-env
+
+duration="${1:-until-resumed}"
+
+case "$duration" in
+1h)
+  pause_until=$(date -d "+1 hour" +%s)
+  message="Paused until $(date -d "@$pause_until" '+%H:%M')"
+  ;;
+today)
+  pause_until=$(date -d "tomorrow 00:00" +%s)
+  message="Paused until tomorrow"
+  ;;
+until-resumed)
+  pause_until="manual"
+  message="Paused until resumed"
+  ;;
+-h | --help)
+  echo "Usage: omarchy backup pause [1h|today|until-resumed]"
+  exit 0
+  ;;
+*)
+  echo "omarchy-backup-pause: pause for 1h, today, or until-resumed." >&2
+  exit 2
+  ;;
+esac
+
+mkdir -p "$BACKUP_STATE_DIR"
+printf '%s\n' "$pause_until" >"$BACKUP_PAUSE_FILE"
+
+if [[ $pause_until == "manual" ]]; then
+  backup_status_update '.phase = "paused" | .pause = {until: 0, reason: "paused"}'
+else
+  backup_status_update '.phase = "paused" | .pause = {until: $until, reason: "paused"}' --argjson until "$pause_until"
+fi
+
+backup_log "$message"
+echo "$message"

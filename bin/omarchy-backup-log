@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# omarchy:summary=Show what the backups have been doing
+# omarchy:args=[--follow]
+
+set -uo pipefail
+
+source omarchy-backup-env
+
+if [[ ! -f $BACKUP_LOG_FILE ]]; then
+  echo "No backup log yet."
+  exit 0
+fi
+
+case "${1:-}" in
+"")
+  tail -n 50 "$BACKUP_LOG_FILE"
+  ;;
+--follow | -f)
+  tail -n 50 -f "$BACKUP_LOG_FILE"
+  ;;
+*)
+  echo "Usage: omarchy backup log [--follow]" >&2
+  exit 2
+  ;;
+esac

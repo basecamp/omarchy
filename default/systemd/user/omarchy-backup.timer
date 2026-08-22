@@ -1,0 +1,12 @@
+[Unit]
+Description=Back up the home folder every hour
+
+[Timer]
+OnCalendar=hourly
+# Spread the load so every Omarchy machine does not hit its bucket on the hour.
+RandomizedDelaySec=15m
+# Catch up after sleep or shutdown; only calendar timers can.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

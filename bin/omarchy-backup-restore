@@ -1,0 +1,148 @@
+#!/bin/bash
+
+# omarchy:summary=Restore files or folders from a backup
+# omarchy:args=<path> [--at <snapshot|time>] [--in-place]
+# omarchy:examples=omarchy backup restore ~/Documents/taxes.pdf | omarchy backup restore ~/Pictures --at 2026-01-15 | omarchy backup restore ~/Notes --in-place
+
+set -uo pipefail
+
+source omarchy-backup-env
+
+TARGET_PATH=""
+AT=""
+IN_PLACE="false"
+
+while (( $# > 0 )); do
+  case "$1" in
+  --at)
+    shift
+    AT="${1:-}"
+    if [[ -z $AT ]]; then
+      echo "omarchy-backup-restore: --at needs a snapshot id or a date." >&2
+      exit 2
+    fi
+    ;;
+  --at=*)
+    AT="${1#--at=}"
+    ;;
+  --in-place)
+    IN_PLACE="true"
+    ;;
+  -h | --help)
+    echo "Usage: omarchy backup restore <path> [--at <snapshot|time>] [--in-place]"
+    echo
+    echo "Restores into ~/Restored/<timestamp>/ by default, so nothing you still"
+    echo "have is overwritten. --in-place puts the files back where they came"
+    echo "from, after copying the current version aside first."
+    exit 0
+    ;;
+  -*)
+    echo "omarchy-backup-restore: unknown option '$1'. Try --help." >&2
+    exit 2
+    ;;
+  *)
+    if [[ -n $TARGET_PATH ]]; then
+      echo "omarchy-backup-restore: restore one path at a time." >&2
+      exit 2
+    fi
+    TARGET_PATH="$1"
+    ;;
+  esac
+  shift
+done
+
+if [[ -z $TARGET_PATH ]]; then
+  echo "Usage: omarchy backup restore <path> [--at <snapshot|time>] [--in-place]" >&2
+  exit 2
+fi
+
+if ! backup_configured; then
+  echo "Backups are not set up. Run: omarchy setup backup" >&2
+  exit 1
+fi
+
+# The path is turned into an absolute one here and handed to restic as a literal
+# include argument, never through a shell, so spaces and globs in a filename
+# restore the file rather than something else.
+if [[ $TARGET_PATH != /* ]]; then
+  TARGET_PATH="$(pwd)/$TARGET_PATH"
+fi
+TARGET_PATH="${TARGET_PATH%/}"
+
+backup_load_credentials
+
+# Defaults to the last snapshot known to be complete: a partial one is missing
+# files by definition, and quietly restoring from it is how you find that out
+# too late.
+resolve_snapshot() {
+  local candidate=""
+  local at_epoch=""
+  local id=""
+  local timestamp=""
+  local snapshot_epoch=0
+
+  if [[ -z $AT ]]; then
+    candidate=$(jq -r '.last_complete.snapshot // ""' "$BACKUP_STATUS_FILE" 2>/dev/null)
+    printf '%s' "${candidate:-latest}"
+    return
+  fi
+
+  if [[ $AT =~ ^[0-9a-f]{8,}$ ]]; then
+    printf '%s' "$AT"
+    return
+  fi
+
+  at_epoch=$(date -d "$AT" +%s 2>/dev/null)
+  if [[ -z $at_epoch ]]; then
+    echo "omarchy-backup-restore: could not read '$AT' as a date or a snapshot id." >&2
+    return
+  fi
+
+  # restic has no "the snapshot as of this time" selector, so the newest one
+  # taken before that time is picked here.
+  candidate=$(backup_restic snapshots --json --host "$(hostname)" 2>/dev/null |
+    jq -r 'sort_by(.time) | .[] | [(.short_id // .id), .time] | @tsv' |
+    while IFS=$'\t' read -r id timestamp; do
+      snapshot_epoch=$(date -d "$timestamp" +%s 2>/dev/null || echo 0)
+      (( snapshot_epoch <= at_epoch )) && printf '%s\n' "$id"
+    done | tail -n 1)
+
+  if [[ -z $candidate ]]; then
+    echo "omarchy-backup-restore: no backup from before $AT." >&2
+    return
+  fi
+
+  printf '%s' "$candidate"
+}
+
+snapshot=$(resolve_snapshot)
+if [[ -z $snapshot ]]; then
+  exit 1
+fi
+
+stamp=$(date '+%Y-%m-%d-%H%M%S')
+staging="$HOME/Restored/$stamp"
+
+if [[ $IN_PLACE == "true" ]]; then
+  echo -e "\e[33mRestoring $TARGET_PATH in place from snapshot $snapshot.\e[0m"
+  echo "The version you have now is copied to $staging first."
+  read -rp "Type 'restore' to continue: " confirmation
+  if [[ $confirmation != "restore" ]]; then
+    echo "Nothing restored."
+    exit 1
+  fi
+
+  if [[ -e $TARGET_PATH ]]; then
+    mkdir -p "$staging$(dirname "$TARGET_PATH")"
+    cp -a "$TARGET_PATH" "$staging$(dirname "$TARGET_PATH")/"
+  fi
+
+  backup_restic restore "$snapshot" --target / --include "$TARGET_PATH"
+  echo -e "\e[32mRestored $TARGET_PATH from $snapshot.\e[0m"
+  echo "The version it replaced is in $staging."
+else
+  mkdir -p "$staging"
+  backup_restic restore "$snapshot" --target "$staging" --include "$TARGET_PATH"
+  echo -e "\e[32mRestored $TARGET_PATH from $snapshot into:\e[0m"
+  echo "  $staging$TARGET_PATH"
+fi

@@ -1,0 +1,93 @@
+#!/bin/bash
+
+# omarchy:summary=Show what the backups are doing right now
+# omarchy:args=[--json]
+
+set -uo pipefail
+
+source omarchy-backup-env
+
+if [[ ${1:-} == "--json" ]]; then
+  backup_status_document
+  exit 0
+fi
+
+if [[ -n ${1:-} ]]; then
+  echo "Usage: omarchy backup status [--json]" >&2
+  exit 2
+fi
+
+status=$(backup_status_document)
+
+field() {
+  jq -r "$1" <<<"$status"
+}
+
+ago() {
+  local timestamp="$1"
+  local seconds=0
+
+  [[ $timestamp =~ ^[0-9]+$ ]] && (( timestamp > 0 )) || { echo "never"; return; }
+
+  seconds=$(( $(date +%s) - timestamp ))
+  if (( seconds < 60 )); then
+    echo "just now"
+  elif (( seconds < 3600 )); then
+    echo "$(( seconds / 60 )) minutes ago"
+  elif (( seconds < 172800 )); then
+    echo "$(( seconds / 3600 )) hours ago"
+  else
+    echo "$(( seconds / 86400 )) days ago"
+  fi
+}
+
+size() {
+  numfmt --to=iec --suffix=B --format='%.1f' "${1:-0}" 2>/dev/null || echo "${1:-0} B"
+}
+
+phase=$(field '.phase')
+destination=$(field '.destination.label')
+
+case "$phase" in
+unconfigured)
+  echo "Backups are not set up. Run: omarchy setup backup"
+  exit 0
+  ;;
+running)
+  echo "Backing up to ${destination:-the repository} — $(field '.progress.percent')% of $(size "$(field '.progress.bytes_total')")"
+  ;;
+paused)
+  pause_until=$(field '.pause.until')
+  if [[ $pause_until =~ ^[0-9]+$ ]] && (( pause_until > 0 )); then
+    echo "Paused until $(date -d "@$pause_until" '+%H:%M on %-d %B')"
+  else
+    echo "Paused until resumed"
+  fi
+  ;;
+*)
+  echo "Last backup $(ago "$(field '.last_backup.time')") to ${destination:-the repository}"
+  ;;
+esac
+
+result=$(field '.last_backup.result')
+if [[ $result == "failed" ]]; then
+  echo "Last run failed: $(field '.last_backup.error')"
+elif [[ $result == "partial" ]]; then
+  echo "Last run could not read: $(field '.last_backup.unreadable | join(", ")')"
+fi
+
+skip_reason=$(field '.last_skip.reason')
+if [[ -n $skip_reason ]] && (( $(field '.last_skip.time') > $(field '.last_backup.time') )); then
+  echo "Last run skipped: $skip_reason"
+fi
+
+echo "Repository: $(size "$(field '.repository.size_bytes')") in $(field '.repository.snapshot_count') snapshots"
+
+if [[ $(field '.destination.offsite') == "false" ]]; then
+  echo "This destination is local, so it dies with the machine it is plugged into."
+fi
+
+maintenance_result=$(field '.last_maintenance.result')
+if [[ $maintenance_result == "failed" ]]; then
+  echo "Last maintenance failed: $(field '.last_maintenance.error')"
+fi
