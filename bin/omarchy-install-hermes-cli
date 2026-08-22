@@ -1,0 +1,69 @@
+#!/bin/bash
+
+# omarchy:summary=Install Hermes CLI through its supported upstream installer
+# omarchy:args=[--check|--stub]
+
+hermes_command="$HOME/.local/bin/hermes"
+stub_marker="# omarchy-hermes-installer-stub"
+
+is_installer_stub() {
+  [[ -f $hermes_command ]] && grep -Fxq "$stub_marker" "$hermes_command"
+}
+
+is_installed() {
+  omarchy-cmd-present hermes && ! is_installer_stub
+}
+
+case "${1:-}" in
+--check)
+  is_installed
+  exit
+  ;;
+--stub)
+  if is_installed; then
+    exit 0
+  fi
+
+  mkdir -p "$HOME/.local/bin"
+  rm -f "$hermes_command"
+  cat >"$hermes_command" <<'STUB'
+#!/bin/bash
+# omarchy-hermes-installer-stub
+omarchy-install-hermes-cli || exit 1
+exec "$HOME/.local/bin/hermes" "$@"
+STUB
+  chmod +x "$hermes_command"
+  exit 0
+  ;;
+"") ;;
+*)
+  echo "Usage: omarchy-install-hermes-cli [--check|--stub]" >&2
+  exit 1
+  ;;
+esac
+
+# A real Hermes install owns its updates through `hermes update`. Omarchy only
+# bootstraps missing installations and never turns a normal system update into
+# an unrequested Hermes update.
+if is_installed; then
+  exit 0
+fi
+
+installer=$(mktemp)
+trap 'rm -f "$installer"' EXIT
+
+if ! curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o "$installer"; then
+  echo "Could not download the official Hermes installer" >&2
+  exit 1
+fi
+
+if ! bash "$installer" --skip-setup --non-interactive; then
+  echo "The official Hermes installer failed" >&2
+  exit 1
+fi
+
+hash -r
+if [[ ! -x $hermes_command ]] || is_installer_stub; then
+  echo "Hermes installer finished without creating $hermes_command" >&2
+  exit 1
+fi

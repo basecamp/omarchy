@@ -17,6 +17,8 @@ inline_log="$test_tmp/inline"
 mise_log="$test_tmp/mise"
 mise_history="$test_tmp/mise-history"
 stub_log="$test_tmp/stubs"
+hermes_install_log="$test_tmp/hermes-install"
+hermes_log="$test_tmp/hermes"
 terminal_log="$test_tmp/terminal"
 menu_log="$test_tmp/menu"
 mkdir -p "$mock_bin" "$test_home"
@@ -49,6 +51,21 @@ SH
 cat >"$mock_bin/omarchy-mise-install" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >>"$OMARCHY_TEST_STUB_LOG"
+SH
+
+cat >"$mock_bin/omarchy-install-hermes-cli" <<'SH'
+#!/bin/bash
+if [[ ${1:-} == "--check" ]]; then
+  [[ ${OMARCHY_TEST_MISSING_COMMAND:-} != "hermes" ]]
+  exit
+fi
+printf '%s\0' "$@" >"$OMARCHY_TEST_HERMES_INSTALL_LOG"
+[[ ${OMARCHY_TEST_HERMES_INSTALL_FAIL:-false} != "true" ]]
+SH
+
+cat >"$mock_bin/hermes" <<'SH'
+#!/bin/bash
+printf '%s\0' "$@" >"$OMARCHY_TEST_HERMES_LOG"
 SH
 
 cat >"$mock_bin/mise" <<'SH'
@@ -89,6 +106,8 @@ export OMARCHY_TEST_AGENT_INLINE_LOG="$inline_log"
 export OMARCHY_TEST_MISE_LOG="$mise_log"
 export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
+export OMARCHY_TEST_HERMES_INSTALL_LOG="$hermes_install_log"
+export OMARCHY_TEST_HERMES_LOG="$hermes_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
 export OMARCHY_PATH="$ROOT"
@@ -121,7 +140,34 @@ grep -Fx "$agy_package agy" "$stub_log" >/dev/null || fail "user setup creates t
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates the Grok lazy stub"
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
+mapfile -d '' -t hermes_install_args <"$hermes_install_log"
+[[ ${hermes_install_args[*]} == "--stub" ]] || fail "user setup creates the supported Hermes lazy stub"
 pass "user setup creates the custom agent lazy stubs"
+
+: >"$hermes_install_log"
+HOME="$test_home" OMARCHY_PATH="$ROOT" bash -euo pipefail "$ROOT/migrations/1787063342.sh" >/dev/null
+mapfile -d '' -t hermes_install_args <"$hermes_install_log"
+[[ ${hermes_install_args[*]} == "--stub" ]] || fail "Hermes migration creates the supported lazy stub under temporary HOME"
+for skill in omarchy diagnose-crash; do
+  link="$test_home/.hermes/skills/$skill"
+  [[ -L $link && $(readlink "$link") == "$ROOT/default/agents/skills/$skill" ]] ||
+    fail "Hermes migration provisions the $skill skill"
+done
+pass "Hermes migration installs its stub and both shipped skills"
+
+: >"$hermes_install_log"
+HOME="$test_home" OMARCHY_PATH="$ROOT" bash -euo pipefail "$ROOT/migrations/1787063342.sh" >/dev/null
+mapfile -d '' -t hermes_install_args <"$hermes_install_log"
+[[ ${hermes_install_args[*]} == "--stub" ]] || fail "Hermes migration rerun remains idempotent"
+pass "Hermes migration is idempotent"
+
+: >"$hermes_install_log"
+mkdir -p "$test_home/.local/state/omarchy"
+touch "$test_home/.local/state/omarchy/preinstalls-removed"
+HOME="$test_home" OMARCHY_PATH="$ROOT" bash -euo pipefail "$ROOT/migrations/1787063342.sh" >/dev/null
+[[ ! -s $hermes_install_log ]] || fail "Hermes migration respects removed preinstalls"
+pass "Hermes migration respects removed preinstalls"
+rm "$test_home/.local/state/omarchy/preinstalls-removed"
 
 : >"$stub_log"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
@@ -312,18 +358,22 @@ declare -A expected_packages=(
   [grok]="$grok_package"
   [agy]="$agy_package"
   [copilot]="copilot"
-  [hermes]="pipx:hermes-agent"
 )
 
+: >"$hermes_install_log"
 for selection in "${!expected_agents[@]}"; do
   expected=${expected_agents[$selection]}
   : >"$agent_open_log"
   OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent "$selection"
   [[ $(omarchy-default-agent) == $expected ]] || fail "default agent canonicalizes $selection"
 
-  mapfile -d '' -t mise_args <"$mise_log"
-  [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
-    fail "default agent installs $selection globally through mise"
+  if [[ $expected == "hermes" ]]; then
+    [[ ! -s $hermes_install_log ]] || fail "installed Hermes selection does not rerun its installer"
+  else
+    mapfile -d '' -t mise_args <"$mise_log"
+    [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
+      fail "default agent installs $selection globally through mise"
+  fi
 
   mapfile -d '' -t agent_open_args <"$agent_open_log"
   [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
@@ -358,6 +408,35 @@ mapfile -d '' -t agent_open_args <"$agent_open_log"
 [[ ${#agent_open_args[@]} == 2 && ${agent_open_args[0]} == "omarchy-agent" && ${agent_open_args[1]} == "--inline" ]] ||
   fail "newly installed agent opens in the installation terminal"
 pass "missing agents install visibly and open in the same terminal"
+
+: >"$terminal_log"
+OMARCHY_TEST_MISSING_COMMAND=hermes omarchy-default-agent hermes
+mapfile -d '' -t terminal_args <"$terminal_log"
+[[ ${terminal_args[*]} == "omarchy-default-agent --install hermes" ]] ||
+  fail "missing Hermes installation opens in a terminal"
+
+: >"$hermes_install_log"
+: >"$hermes_log"
+OMARCHY_TEST_MISSING_COMMAND=hermes omarchy-default-agent --install hermes >"$test_tmp/hermes-install-output"
+mapfile -d '' -t hermes_install_args <"$hermes_install_log"
+[[ ${#hermes_install_args[@]} == 1 && -z ${hermes_install_args[0]} ]] || fail "Hermes uses its dedicated official installer"
+mapfile -d '' -t hermes_args <"$hermes_log"
+[[ ${hermes_args[*]} == "setup" ]] || fail "new Hermes install opens first-run setup"
+[[ $(omarchy-default-agent) == "hermes" ]] || fail "successful Hermes install changes the selection"
+pass "Hermes installs through the supported route and opens first-run setup"
+
+printf '%s\n' copilot >"$agent_file"
+: >"$hermes_install_log"
+: >"$hermes_log"
+if OMARCHY_TEST_MISSING_COMMAND=hermes OMARCHY_TEST_HERMES_INSTALL_FAIL=true \
+  omarchy-default-agent --install hermes >"$test_tmp/hermes-install-failure-output" 2>&1; then
+  fail "default agent rejects a failed Hermes installation"
+fi
+[[ $(omarchy-default-agent) == "copilot" ]] || fail "failed Hermes installation preserves the current default"
+[[ ! -s $hermes_log ]] || fail "failed Hermes installation does not start setup"
+grep -F "Could not install Hermes" "$test_tmp/hermes-install-failure-output" >/dev/null ||
+  fail "default agent reports a failed Hermes installation"
+pass "default agent preserves state when the Hermes installer fails"
 
 : >"$notification_history"
 : >"$agent_open_log"
@@ -457,7 +536,7 @@ assert_launch grok grok --permission-mode bypassPermissions -- "Review this proj
 assert_launch agy agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
 assert_launch hermes hermes -z "Review this project"
-pass "agent launcher adapts initial prompts for every supported agent"
+pass "agent launcher adapts prompts, with Hermes one-shot auto-bypassing approvals"
 
 assert_bypass pi pi
 assert_bypass omp omp --auto-approve
@@ -468,8 +547,12 @@ assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
 assert_bypass agy agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
-assert_bypass hermes hermes
-pass "agent launcher skips permission prompts for every supported agent"
+pass "agent launcher skips permission prompts for unattended interactive agents"
+
+printf '%s\n' hermes >"$agent_file"
+omarchy-agent
+assert_launched hermes "keeps ordinary interactive approval prompts" hermes
+pass "Hermes interactive launch remains approval-gated"
 
 printf '%s\n' "opencode" >"$agent_file"
 omarchy-agent

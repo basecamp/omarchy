@@ -1,7 +1,7 @@
-echo "Install Hermes lazy mise stub"
+echo "Install Hermes lazy official-installer stub"
 
 if [[ ! -f $HOME/.local/state/omarchy/preinstalls-removed ]]; then
-  omarchy-mise-install pipx:hermes-agent hermes
+  omarchy-install-hermes-cli --stub
 fi
 
 echo "Link Omarchy skills into the Hermes skill directory"

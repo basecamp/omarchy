@@ -32,7 +32,7 @@ codex) agent="codex"; name="Codex" ;;
 crush) agent="crush"; name="Crush" ;;
 grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
 agy | antigravity | antigravity-cli | gemini | gemini-cli) agent="agy"; name="Antigravity"; agent_package="antigravity-cli" ;;
-hermes | nous-hermes) agent="hermes"; name="Hermes"; agent_package="pipx:hermes-agent" ;;
+hermes | nous-hermes) agent="hermes"; name="Hermes" ;;
 copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
 *)
   echo "Usage: omarchy-default-agent <pi|omp|opencode|claude|codex|grok|agy|copilot|crush|hermes>"
@@ -43,11 +43,22 @@ esac
 
 agent_package=${agent_package:-$agent}
 
-if [[ $installing == "false" ]] && ! mise where "$agent_package" &>/dev/null; then
-  exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$agent"
+if [[ $installing == "false" ]]; then
+  if [[ $agent == "hermes" ]]; then
+    if ! omarchy-install-hermes-cli --check; then
+      exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$agent"
+    fi
+  elif ! mise where "$agent_package" &>/dev/null; then
+    exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$agent"
+  fi
 fi
 
-if ! mise use -g "$agent_package"; then
+if [[ $agent == "hermes" ]]; then
+  if [[ $installing == "true" ]] && ! omarchy-install-hermes-cli; then
+    echo "Could not install Hermes" >&2
+    exit 1
+  fi
+elif ! mise use -g "$agent_package"; then
   if [[ $installing == "true" ]]; then
     echo "Could not install $name with mise" >&2
   else
@@ -61,7 +72,11 @@ printf '%s\n' "$agent" >"$agent_file"
 
 if [[ $installing == "true" ]]; then
   printf '\033[2J\033[3J\033[H'
-  exec omarchy-agent --inline
+  if [[ $agent == "hermes" ]]; then
+    exec hermes setup
+  else
+    exec omarchy-agent --inline
+  fi
 else
   exec omarchy-agent
 fi

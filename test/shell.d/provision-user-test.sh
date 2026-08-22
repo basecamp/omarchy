@@ -26,10 +26,12 @@ HOME="$test_tmp/home" PATH="$mock_bin:$ROOT/bin:$PATH" OMARCHY_PATH="$ROOT" \
   OMARCHY_INSTALL="$test_tmp/install" bash "$ROOT/bin/omarchy-provision-user" >/dev/null ||
   fail "omarchy-provision-user finishes"
 
-for skill in omarchy diagnose-crash; do
-  link="$test_tmp/home/.gemini/config/skills/$skill"
-  [[ -L $link && $(readlink "$link") == "$ROOT/default/agents/skills/$skill" ]] ||
-    fail "omarchy-provision-user provisions the $skill skill for Antigravity"
+for agent_dir in .gemini/config/skills .hermes/skills; do
+  for skill in omarchy diagnose-crash; do
+    link="$test_tmp/home/$agent_dir/$skill"
+    [[ -L $link && $(readlink "$link") == "$ROOT/default/agents/skills/$skill" ]] ||
+      fail "omarchy-provision-user provisions the $skill skill in $agent_dir"
+  done
 done
 
-pass "omarchy-provision-user provisions Antigravity skills"
+pass "omarchy-provision-user provisions both shipped skills for Antigravity and Hermes"

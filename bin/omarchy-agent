@@ -51,8 +51,10 @@ if omarchy-cmd-missing "$agent"; then
   exit 1
 fi
 
-# Agents launched from the keybinding or menu run unattended, so each one starts
-# with its own spelling of "don't stop to ask". Pi has no approval prompts.
+# Prompt launches run unattended, so each agent gets its own spelling of
+# "don't stop to ask". Plain Hermes is the exception: its interactive launch
+# remains approval-gated, while its one-shot prompt mode bypasses approvals.
+# Pi has no approval prompts.
 case "$agent" in
 opencode)
   command=(opencode --auto)
@@ -63,9 +65,8 @@ agy)
   [[ -n ${prompt:-} ]] && command+=(--prompt-interactive "$prompt")
   ;;
 hermes)
-  # Hermes has no unattended flag in the spirit of the other harnesses'
-  # "don't stop to ask" modes, so it launches in its normal approval mode.
-  # One-shot prompts go through -z, which still asks before dangerous work.
+  # Plain Hermes stays interactive and approval-gated. A supplied prompt uses
+  # one-shot mode, which Hermes documents as auto-bypassing approvals.
   command=(hermes)
   [[ -n ${prompt:-} ]] && command+=(-z "$prompt")
   ;;

@@ -233,7 +233,7 @@ assert(
       && !entry.when
       && entry.checked.includes(`== \"${agent}\"`)
   }),
-  'menu exposes every mise-installable coding agent with its own glyph under Defaults > Agent'
+  'menu exposes every installable coding agent with its own glyph under Defaults > Agent'
 )
 assertDeepEqual(
   defaultItems
