@@ -159,6 +159,7 @@ The menu resolves shortcuts from Hyprland's keybinding records asynchronously on
 
 ```json
 {
+  "version": 1,
   "menu": {
     "keybindings": true
   }

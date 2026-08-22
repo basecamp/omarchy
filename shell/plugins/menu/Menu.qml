@@ -89,7 +89,7 @@ Item {
   function loadKeybindings() {
     if (keybindingsProc.running) return
     keybindingsProc.collected = ""
-    keybindingsProc.command = ["bash", "-c", "\"" + root.omarchyPath + "/bin/omarchy-menu-keybindings\" -p >/dev/null 2>&1; cache_file=$(ls -t \"${XDG_CACHE_HOME:-$HOME/.cache}/omarchy\"/keybindings-*.records 2>/dev/null | head -n1); [[ -s \"$cache_file\" ]] && cat \"$cache_file\""]
+    keybindingsProc.command = [root.omarchyPath + "/bin/omarchy-menu-keybindings", "--records"]
     keybindingsProc.running = true
   }
 

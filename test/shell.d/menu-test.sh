@@ -156,6 +156,8 @@ const applied = menu.applyKeybindings(testItems, ['system.lock', 'apps.term'], p
 assert(applied['system.lock'].keybinding === 'SUPER CTRL + L', 'applyKeybindings attaches keybinding to items')
 assert(applied['apps.term'].keybinding === 'SUPER + RETURN', 'applyKeybindings attaches keybinding to app items')
 assert(testItems['system.lock'].keybinding === undefined, 'applyKeybindings leaves the map it was handed untouched')
+assert(menu.matchesQuery(applied['system.lock'], 'super', true), 'menu matches item by keybinding token in query')
+assert(menu.matchesQuery(applied['system.lock'], 'ctrl lock', true), 'menu matches item by combined keybinding and label query')
 
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
