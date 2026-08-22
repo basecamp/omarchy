@@ -17,7 +17,7 @@ set -euo pipefail
 # the user the Remove button. So take the route that leaves them removable.
 EXTENSIONS=(copy-url yt-dlp whatsapp-slim)
 STATE_DIR="$HOME/.local/state/omarchy/chrome-extensions"
-EXTERNAL_DIR="/usr/share/google-chrome/extensions"
+EXTERNAL_DIR="${OMARCHY_CHROME_EXTENSIONS_DIR:-/usr/share/google-chrome/extensions}"
 FLAGS_FILE="$HOME/.config/chrome-flags.conf"
 
 # Chrome takes an extension's id from the key that signed the CRX, ignoring the

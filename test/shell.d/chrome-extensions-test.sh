@@ -117,3 +117,105 @@ if command -v google-chrome-stable >/dev/null; then
 else
   pass "Google Chrome not installed; skipping CRX packing"
 fi
+
+# Everything above drives one function at a time, which leaves the installer's
+# own orchestration -- the loop over all three extensions, the registration
+# Chrome reads, and the native host refresh -- resting on sudo and a Chrome
+# binary the test machine may not have. Run the script itself against stubs for
+# both so that work is covered wherever the suite runs.
+stub_bin="$TMPDIR/stub-bin"
+mkdir -p "$stub_bin"
+
+cat >"$stub_bin/sudo" <<'STUB'
+#!/bin/bash
+exec "$@"
+STUB
+chmod +x "$stub_bin/sudo"
+
+# Chrome writes <dir>.crx beside the directory it packs. Standing in for the
+# CRX3 container, the stub copies the manifest through, which keeps the key the
+# extension was packed with readable below.
+cat >"$stub_bin/google-chrome-stable" <<'STUB'
+#!/bin/bash
+set -euo pipefail
+
+for arg in "$@"; do
+  case $arg in
+  --pack-extension=*) dir=${arg#*=} ;;
+  --pack-extension-key=*) key=${arg#*=} ;;
+  esac
+done
+
+[[ -s $key ]] || { echo "packed without a signing key" >&2; exit 1; }
+cp "$dir/manifest.json" "$dir.crx"
+STUB
+chmod +x "$stub_bin/google-chrome-stable"
+
+e2e_home="$TMPDIR/e2e"
+e2e_state="$e2e_home/.local/state/omarchy/chrome-extensions"
+e2e_external="$e2e_home/usr/share/google-chrome/extensions"
+
+mkdir -p "$e2e_home/.config"
+cat >"$e2e_home/.config/chrome-flags.conf" <<'CONF'
+--ozone-platform=wayland
+--load-extension=/usr/share/omarchy/default/chromium/extensions/copy-url
+CONF
+
+install_into_chrome() {
+  HOME="$e2e_home" \
+    OMARCHY_PATH="$ROOT" \
+    OMARCHY_CHROME_EXTENSIONS_DIR="$e2e_external" \
+    PATH="$stub_bin:$PATH" \
+    omarchy-install-chrome-extensions
+}
+
+install_into_chrome
+
+for name in "${EXTENSIONS[@]}"; do
+  [[ -s $e2e_state/$name.crx ]] || fail "the installer packs a CRX for $name"
+  [[ $(stat -c '%a' "$e2e_state/$name.pem") == "600" ]] ||
+    fail "the installer keeps $name's signing key private" "$(stat -c '%a' "$e2e_state/$name.pem")"
+
+  id=$(<"$e2e_state/$name.id")
+
+  # The id Chrome derives from the CRX signature has to be the one the
+  # registration is filed under, or Chrome installs nothing.
+  packed_id=$(jq -r '.key' "$e2e_state/$name.crx" | base64 -d | extension_id)
+  [[ $id == "$packed_id" ]] ||
+    fail "$name is registered under the id Chrome derives from the CRX" "registered: $id, packed: $packed_id"
+
+  jq -e --arg crx "$e2e_state/$name.crx" --arg version "$(extension_version "$name")" \
+    '.external_crx == $crx and .external_version == $version' \
+    "$e2e_external/$id.json" >/dev/null ||
+    fail "Chrome's registration for $name points at the packed CRX and its manifest version"
+done
+pass "the installer packs, signs and registers every bundled extension for Chrome"
+
+[[ $(ls "$e2e_external" | wc -l) == "3" ]] ||
+  fail "the installer registers only the bundled extensions" "$(ls "$e2e_external")"
+pass "the installer registers only the bundled extensions"
+
+grep -q -- "--load-extension" "$e2e_home/.config/chrome-flags.conf" &&
+  fail "the installer drops the switch Chrome refuses from the flags file"
+grep -q -- "--ozone-platform=wayland" "$e2e_home/.config/chrome-flags.conf" ||
+  fail "the installer keeps the switches Chrome honours in the flags file"
+pass "the installer leaves the flags file with only the switches Chrome honours"
+
+for host in com.omarchy.copy_url:copy-url com.omarchy.ytdlp:yt-dlp; do
+  jq -e --arg origin "chrome-extension://$(<"$e2e_state/${host#*:}.id")/" \
+    '.allowed_origins | index($origin)' \
+    "$e2e_home/.config/google-chrome/NativeMessagingHosts/${host%%:*}.json" >/dev/null ||
+    fail "the installer teaches ${host%%:*} the id Chrome minted"
+done
+pass "the installer teaches the native messaging hosts the ids Chrome minted"
+
+# A second run must land on the same ids: minting fresh ones would leave Chrome
+# with the old copy installed beside the new one.
+before=$(cat "$e2e_state"/*.id)
+install_into_chrome
+
+[[ $before == "$(cat "$e2e_state"/*.id)" ]] ||
+  fail "reinstalling keeps the ids Chrome already installed under"
+[[ $(ls "$e2e_external" | wc -l) == "3" ]] ||
+  fail "reinstalling leaves one registration per extension" "$(ls "$e2e_external")"
+pass "reinstalling is idempotent"
