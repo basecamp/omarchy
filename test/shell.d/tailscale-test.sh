@@ -208,22 +208,25 @@ assertDeepEqual(
 assertDeepEqual(tailscale.parseStatus('{'), { ok: false, unavailable: true, message: 'Status error', error: 'Failed to parse tailscale status' }, 'tailscale reports invalid status JSON')
 assertDeepEqual(tailscale.parseAccounts('{'), { accounts: [], selectedAccountId: '', selectedAccountLabel: '' }, 'tailscale handles invalid account JSON')
 
-assert(tailscale.allPollsSettled(false, false, false), 'tailscale stands the poll watchdog down once every guarded poll has exited')
-assert(!tailscale.allPollsSettled(true, false, false), 'tailscale keeps the poll watchdog armed while a status poll is in flight')
-assert(!tailscale.allPollsSettled(false, true, false), 'tailscale keeps the poll watchdog armed while an exit-node poll is in flight')
-assert(!tailscale.allPollsSettled(false, false, true), 'tailscale keeps the poll watchdog armed while an accounts poll is in flight')
+assert(tailscale.allPollsSettled(1, false, 0, false, 0, false, 0), 'tailscale stands the poll watchdog down once its launch cycle has fully exited')
+assert(!tailscale.allPollsSettled(1, true, 1, false, 0, false, 0), 'tailscale keeps the poll watchdog armed while its own status launch is in flight')
+assert(!tailscale.allPollsSettled(1, false, 0, true, 1, false, 0), 'tailscale keeps the poll watchdog armed while its own exit-node launch is in flight')
+assert(!tailscale.allPollsSettled(1, false, 0, false, 0, true, 1), 'tailscale keeps the poll watchdog armed while its own accounts launch is in flight')
+assert(tailscale.allPollsSettled(1, true, 2, false, 0, true, 2), 'tailscale stands the poll watchdog down when only newer-cycle relaunches remain in flight')
+assert(!tailscale.allPollsSettled(2, true, 2, false, 0, false, 0), 'tailscale keeps the watchdog of its own cycle armed across overlapping older cycles')
 
 const serviceSource = fs.readFileSync(root + '/shell/plugins/panels/tailscale/Service.qml', 'utf8')
 
 assert(
-  /if \(launched && !pollWatchdog\.running\) pollWatchdog\.start\(\)/.test(serviceSource),
-  'tailscale arms the poll watchdog once per launch cycle'
+  /if \(launched && !pollWatchdog\.running\) \{\n      armedCycle = cycle\n      pollWatchdog\.start\(\)\n    \}/.test(serviceSource),
+  'tailscale arms the poll watchdog once per launch cycle and records the armed cycle'
 )
 
 function guardedProcessStandsDown(processId) {
   var blocks = serviceSource.split('  Process {')
   var block = blocks.find(function(candidate) { return candidate.indexOf('id: ' + processId) !== -1 })
-  return !!block && /onExited[\s\S]*?settlePollWatchdog\(\)/.test(block)
+  if (!block) return false
+  return /property int launchCycle: 0/.test(block) && /onExited[\s\S]*?settlePollWatchdog\(\)/.test(block)
 }
 
 assert(guardedProcessStandsDown('statusProcess'), 'tailscale stands the poll watchdog down when the status poll exits')

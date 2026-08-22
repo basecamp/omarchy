@@ -19,6 +19,11 @@ Item {
   property int _desired: -1
   readonly property bool active: _desired === -1 ? running : (_desired === 1)
   property bool refreshing: false
+  // Launch cycles for the poll watchdog: every refresh that starts at least
+  // one poll bumps lastLaunchCycle and stamps its polls; the armed watchdog
+  // remembers its own cycle so settlePollWatchdog can ignore newer ones.
+  property int lastLaunchCycle: 0
+  property int armedCycle: 0
   property string backendState: "Unknown"
   property string statusText: "Checking…"
   property string selfName: ""
@@ -160,11 +165,13 @@ Item {
   function refreshStatusAndAccounts(forceAccounts) {
     if (!installed) return
     var launched = false
+    var cycle = lastLaunchCycle + 1
     if (!statusProcess.running) {
       _statusOutput = ""
       _statusError = ""
       refreshing = true
       statusProcess.command = ["tailscale", "status", "--json"]
+      statusProcess.launchCycle = cycle
       statusProcess.running = true
       launched = true
     }
@@ -172,6 +179,7 @@ Item {
       _mullvadExitNodesOutput = ""
       _mullvadExitNodesError = ""
       mullvadExitNodesProcess.command = ["tailscale", "exit-node", "list"]
+      mullvadExitNodesProcess.launchCycle = cycle
       mullvadExitNodesProcess.running = true
       launched = true
     }
@@ -182,20 +190,31 @@ Item {
       _accountsError = ""
       _lastAccountsRefreshMs = now
       accountsProcess.command = ["tailscale", "switch", "--list", "--json"]
+      accountsProcess.launchCycle = cycle
       accountsProcess.running = true
       launched = true
     }
+    if (launched) lastLaunchCycle = cycle
     // Arm on the launch that needs watching and leave it alone after that.
     // Restarting it every refresh pushes the deadline out ahead of a hung
     // process forever once the refresh interval is shorter than the timeout,
-    // and refreshIntervalSec goes down to five seconds. Once this cycle's
-    // polls exit, settlePollWatchdog stands it down so its fire can only ever
-    // land on a poll of its own launch cycle that exceeded the timeout.
-    if (launched && !pollWatchdog.running) pollWatchdog.start()
+    // and refreshIntervalSec goes down to five seconds. Once every launch of
+    // the armed cycle has exited, settlePollWatchdog stands it down — cycles
+    // overlap, so membership is tracked per launch (launchCycle), not per
+    // instant — and its fire can only ever land on a poll of its own cycle
+    // that exceeded the timeout.
+    if (launched && !pollWatchdog.running) {
+      armedCycle = cycle
+      pollWatchdog.start()
+    }
   }
 
   function settlePollWatchdog() {
-    if (Model.allPollsSettled(statusProcess.running, mullvadExitNodesProcess.running, accountsProcess.running)) pollWatchdog.stop()
+    var settled = Model.allPollsSettled(armedCycle,
+      statusProcess.running, statusProcess.launchCycle,
+      mullvadExitNodesProcess.running, mullvadExitNodesProcess.launchCycle,
+      accountsProcess.running, accountsProcess.launchCycle)
+    if (settled) pollWatchdog.stop()
   }
 
   function elideStatus(text) {
@@ -480,6 +499,7 @@ Item {
     id: statusProcess
     running: false
     command: []
+    property int launchCycle: 0
     stdout: StdioCollector { id: statusStdout; waitForEnd: true; onStreamFinished: root._statusOutput = text }
     stderr: StdioCollector { id: statusStderr; waitForEnd: true; onStreamFinished: root._statusError = text }
     onExited: function(exitCode) {
@@ -499,6 +519,7 @@ Item {
     id: accountsProcess
     running: false
     command: []
+    property int launchCycle: 0
     stdout: StdioCollector { id: accountsStdout; waitForEnd: true; onStreamFinished: root._accountsOutput = text }
     stderr: StdioCollector { id: accountsStderr; waitForEnd: true; onStreamFinished: root._accountsError = text }
     onExited: function(exitCode) {
@@ -522,6 +543,7 @@ Item {
     id: mullvadExitNodesProcess
     running: false
     command: []
+    property int launchCycle: 0
     stdout: StdioCollector { id: mullvadExitNodesStdout; waitForEnd: true; onStreamFinished: root._mullvadExitNodesOutput = text }
     stderr: StdioCollector { id: mullvadExitNodesStderr; waitForEnd: true; onStreamFinished: root._mullvadExitNodesError = text }
     onExited: function(exitCode) {
