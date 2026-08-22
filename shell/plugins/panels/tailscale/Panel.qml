@@ -448,7 +448,9 @@ Panel {
   }
 
   Connections {
+    id: serviceEvents
     target: tailscale
+    property string lastAccountId: ""
     function onPeersChanged() { root.ensureCursor() }
     function onAccountsChanged() { root.ensureCursor() }
     function onAccountsAccessDeniedChanged() { root.ensureCursor() }
@@ -456,6 +458,11 @@ Panel {
       // A remembered scroll position belongs to the tailnet it was scrolled
       // in; restoring it midway into another account's machine list would
       // land the user somewhere they have never been.
+      var next = tailscale.selectedAccountId
+      // A failed account poll publishes an empty id for the tailnet the user
+      // is still on, so compare against the last one actually seen.
+      if (next === "" || next === serviceEvents.lastAccountId) return
+      serviceEvents.lastAccountId = next
       root.peerIndex = 0
       peerList.rememberedY = 0
       peerList.positionViewAtBeginning()
