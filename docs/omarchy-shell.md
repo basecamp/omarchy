@@ -55,6 +55,24 @@ in `~/.config/omarchy/hypr-plugins.json`, so the shell's `plugins[]` list stays
 reserved for Quickshell plugins. The loader is reloaded automatically after
 plugin activation changes.
 
+For example, a raw Lua Hyprland plugin can use this manifest:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "my.org.vim-bindings",
+  "name": "Vim-style bindings",
+  "version": "1.0.0",
+  "kinds": ["hyprland"],
+  "entryPoints": { "hyprland": "bindings.lua" },
+  "priority": 100,
+  "dependencies": []
+}
+```
+
+The Lua entry point runs in Hyprland's configuration environment, after
+Omarchy's defaults and before the user's `~/.config/hypr/*.lua` modules.
+
 Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegistry.qml).
 
 ## Installing a third-party plugin
