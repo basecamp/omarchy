@@ -66,6 +66,8 @@ One toggle: **Desktop Mode / Power User Mode**. Power User Mode enables tiling-f
 
 Shell UI → typed services → existing Omarchy/system mechanisms. Never QML button → random Bash string. See `docs/settings-service-api.md`.
 
+The living roadmap against that architecture is `plans/project-ultimate.md`. Session-specific windowing proof lives in `plans/desktop-mode-handoff.md`. The forty-task gate is `WINDOWS_NATIVE_ACCEPTANCE.md`.
+
 ## Release gate
 
 `WINDOWS_NATIVE_ACCEPTANCE.md` defines the acceptance test this product ships against.
