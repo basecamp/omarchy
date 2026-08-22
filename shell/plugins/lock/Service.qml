@@ -167,7 +167,11 @@ Item {
 
   function runWake() {
     displayBlanked = false
-    if (!wakeProcess.running) wakeProcess.running = true
+    // A wake dispatched while the blank is still running finds the display lit,
+    // skips its DPMS enable, and is then taken down by the very blank it meant
+    // to undo: dark panel, blanked flag false, monitor disarmed. Let the blank
+    // land and undo it on the way out instead.
+    if (!blankProcess.running && !wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
   }
 
@@ -430,6 +434,9 @@ Item {
   Process {
     id: blankProcess
     command: ["bash", "-c", "omarchy-brightness-keyboard off; omarchy-brightness-display off"]
+    // Any wake that arrived mid-blank was held back above, so run it here,
+    // where the DPMS off it has to undo has actually landed.
+    onExited: if (!root.displayBlanked && !wakeProcess.running) wakeProcess.running = true
   }
 
   Timer {
