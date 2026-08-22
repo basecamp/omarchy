@@ -24,6 +24,7 @@ Item {
   readonly property int lockDelaySeconds: Math.max(0, lockTimeoutSeconds - firstIdleTimeoutSeconds)
   readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
   readonly property string screensaverClass: "org.omarchy.screensaver"
+  readonly property int screensaverDismissSettleSeconds: 1
 
   property bool stayAwake: false
   property bool stayAwakeStateLoaded: false
@@ -35,6 +36,7 @@ Item {
   property string lastEventAt: ""
   property var screensaverWindows: ({})
   property int screensaverWindowCount: 0
+  property bool screensaverDismissArmed: false
 
   function secondsFromConfig(value, fallback) {
     return IdleModel.secondsFromConfig(value, fallback)
@@ -113,6 +115,29 @@ Item {
   function resetScreensaverWindows() {
     root.screensaverWindows = ({})
     root.screensaverWindowCount = 0
+    root.screensaverDismissArmed = false
+  }
+
+  function dismissScreensaver(reason) {
+    logEvent("screensaver-dismiss", reason || "input")
+    root.screensaverDismissArmed = false
+    runProcess(dismissProcess, "dismiss", "pkill -f '[o]rg.omarchy.screensaver'")
+  }
+
+  // The main idle monitor reports activity once while the screensaver maps its
+  // window and then stays active for as long as it is up, so it never sees the
+  // input that should dismiss it. A second monitor, armed only while the
+  // screensaver is on screen, supplies that signal for every input device the
+  // compositor knows about.
+  function handleScreensaverDismissSignal() {
+    var action = IdleModel.screensaverDismissAction(root.screensaverDismissArmed, screensaverDismissMonitor.isIdle, root.screensaverWindowCount > 0)
+
+    if (action === "arm") {
+      root.screensaverDismissArmed = true
+      logEvent("screensaver-dismiss-armed")
+    } else if (action === "dismiss") {
+      dismissScreensaver("input")
+    }
   }
 
   function setScreensaverWindow(address, visible) {
@@ -128,6 +153,7 @@ Item {
 
   function handleScreensaverWindowClosed(address) {
     setScreensaverWindow(address, false)
+    if (root.screensaverWindowCount === 0) root.screensaverDismissArmed = false
 
     if (!root.idleEnabled || !root.idledThisCycle || !root.screensaverStartedThisCycle) return
     if (root.screensaverWindowCount > 0) return
@@ -191,6 +217,7 @@ Item {
       screensaverDelay: root.screensaverDelaySeconds,
       lockDelay: root.lockDelaySeconds,
       screensaverWindows: root.screensaverWindowCount,
+      screensaverDismissArmed: root.screensaverDismissArmed,
       timers: {
         screensaver: screensaverTimer.running,
         lock: lockTimer.running,
@@ -199,7 +226,8 @@ Item {
       processes: {
         screensaver: screensaverProcess.running,
         lock: lockProcess.running,
-        wake: wakeProcess.running
+        wake: wakeProcess.running,
+        dismiss: dismissProcess.running
       },
       lastEvent: root.lastEvent,
       lastEventAt: root.lastEventAt
@@ -255,6 +283,14 @@ Item {
     onIsIdleChanged: root.handleIdleChanged()
   }
 
+  IdleMonitor {
+    id: screensaverDismissMonitor
+    enabled: root.idleEnabled && root.screensaverWindowCount > 0
+    timeout: root.screensaverDismissSettleSeconds
+    respectInhibitors: false
+    onIsIdleChanged: root.handleScreensaverDismissSignal()
+  }
+
   Timer {
     id: screensaverTimer
     interval: root.screensaverDelaySeconds * 1000
@@ -296,6 +332,11 @@ Item {
   Process {
     id: wakeProcess
     onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "wake exitCode=" + exitCode + " status=" + exitStatus) }
+  }
+
+  Process {
+    id: dismissProcess
+    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "dismiss exitCode=" + exitCode + " status=" + exitStatus) }
   }
 
   Process {

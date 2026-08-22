@@ -43,10 +43,21 @@ function screensaverWindowsAfter(windows, address, visible) {
   }
 }
 
+// The screensaver's own window mapping registers as input, so a dismissal
+// monitor cannot treat its first activity as the user. It arms only once input
+// has gone quiet while the screensaver is on screen; the next activity after
+// that is a real keypress, click, or pointer move and dismisses the screensaver.
+function screensaverDismissAction(armed, isIdle, screensaverVisible) {
+  if (!screensaverVisible) return "ignore"
+  if (isIdle) return armed ? "ignore" : "arm"
+  return armed ? "dismiss" : "ignore"
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     secondsFromConfig: secondsFromConfig,
     eventParts: eventParts,
-    screensaverWindowsAfter: screensaverWindowsAfter
+    screensaverWindowsAfter: screensaverWindowsAfter,
+    screensaverDismissAction: screensaverDismissAction
   }
 }
