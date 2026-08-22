@@ -30,6 +30,8 @@ There are three entries in that menu:
 
 The same three options are under _Style > About_ for the _About_ screen you get from the Omarchy menu, and they work identically — the file is `~/.config/omarchy/branding/about.txt`, and the About window pops up after each change. The About art is converted to a smaller size than the screensaver's, since it has to fit in a window rather than fill your display.
 
+While the window is open a glint of green leans across the art every few seconds and then leaves it still again. It is drawn from whatever text is in the file, so your own logo gets it too.
+
  ![branding-about](images/branding-about.webp)
 
 ### Converting images yourself
