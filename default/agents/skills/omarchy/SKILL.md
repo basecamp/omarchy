@@ -42,7 +42,7 @@ Deeper instructions for common areas live next to this file. Read the
 matching guide before starting:
 
 - [`hyprland.md`](hyprland.md) - keybindings, monitors, window rules, and other Hyprland config
-- [`plugins.md`](plugins.md) - the Omarchy shell: bar layout, widgets, plugins, idle behavior, and safe plugin UI data
+- [`plugins.md`](plugins.md) - the Omarchy shell: bar layout, widgets, plugins, idle behavior
 - [`theming.md`](theming.md) - themes, backgrounds, and fonts
 - [`hooks.md`](hooks.md) - automation hooks that run on system events
 - [`capture.md`](capture.md) - screenshots, screen recordings, OCR text capture, and file sharing
