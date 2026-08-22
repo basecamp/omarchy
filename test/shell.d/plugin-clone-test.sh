@@ -191,3 +191,16 @@ fi
 [[ ! -e $TMPDIR/home/.config/omarchy/plugins/tester.osd ]] ||
   fail "failed clone discovery leaves a partial clone behind"
 pass "clone removes a partial clone when switching fails"
+
+# A clone copies only the plugin's own directory, so a relative import that
+# climbs out of it (import "../../Commons/X.js") has nothing to resolve against
+# once cloned. Shared code has to come through a qs.* module instead.
+escaping=""
+while IFS=: read -r file _ target; do
+  plugin_root=$(realpath --relative-to="$ROOT/shell/plugins" "$file" | cut -d/ -f1)
+  resolved=$(realpath -m "$(dirname "$file")/$target")
+  [[ $resolved == "$ROOT/shell/plugins/$plugin_root/"* ]] ||
+    escaping+="$file imports $target"$'\n'
+done < <(rg -on --no-heading 'import\s+"(\.\./[^"]+)"' -r '$1' "$ROOT/shell/plugins" -g '*.qml' -g '*.js' || true)
+[[ -z $escaping ]] || fail "plugin files import outside their plugin directory:"$'\n'"$escaping"
+pass "plugins only import shared code through qs.* modules"
