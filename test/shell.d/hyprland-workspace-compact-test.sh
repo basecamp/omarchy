@@ -68,3 +68,35 @@ output=$(HYPRCTL_LOG="$log_file" PATH="$stub_dir:$PATH" "$ROOT/bin/omarchy-hyprl
 [[ -s $log_file ]] && fail "workspace compact dry run does not dispatch"
 grep -Fx 'workspace 7 -> 3 (eDP-1)' <<<"$output" >/dev/null || fail "workspace compact dry run prints the plan"
 pass "workspace compact dry run only prints the plan"
+
+HYPRCTL_LOG="$log_file" PATH="$stub_dir:$PATH" "$ROOT/bin/omarchy-hyprland-workspace-compact" --help >/dev/null ||
+  fail "workspace compact --help exits 0"
+HYPRCTL_LOG="$log_file" PATH="$stub_dir:$PATH" "$ROOT/bin/omarchy-hyprland-workspace-compact" --bogus >/dev/null 2>&1 &&
+  fail "workspace compact unknown flags must not compact"
+pass "workspace compact rejects unknown flags"
+
+# A named workspace occupying id 2 (renameworkspace) must not be a landing slot.
+cat >"$stub_dir/hyprctl" <<'EOF2'
+#!/bin/bash
+case "$1" in
+  activeworkspace) printf '{"id":3}\n' ;;
+  monitors) printf '[{"name":"eDP-1"}]\n' ;;
+  workspaces)
+    printf '[{"id":2,"name":"mail","monitor":"eDP-1","windows":1},{"id":3,"name":"3","monitor":"eDP-1","windows":1},{"id":4,"name":"4","monitor":"eDP-1","windows":1}]\n'
+    ;;
+  clients)
+    printf '[{"address":"0xmail","workspace":{"id":2}},{"address":"0xa","workspace":{"id":3}},{"address":"0xb","workspace":{"id":4}}]\n'
+    ;;
+  dispatch) printf '%s\n' "$*" >>"$HYPRCTL_LOG" ;;
+esac
+exit 0
+EOF2
+: >"$log_file"
+HYPRCTL_LOG="$log_file" PATH="$stub_dir:$PATH" "$ROOT/bin/omarchy-hyprland-workspace-compact"
+grep -Fx 'dispatch hl.dsp.workspace.change_id({ workspace = "3", id = 1 })' "$log_file" >/dev/null ||
+  fail "workspace compact packs around a named workspace occupying a low id"
+grep -E 'id = 2' "$log_file" >/dev/null &&
+  fail "workspace compact must not land on a named workspace's id"
+grep -F '0xmail' "$log_file" >/dev/null &&
+  fail "workspace compact must not move windows onto a named workspace"
+pass "workspace compact skips named-workspace ids when packing"

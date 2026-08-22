@@ -12,7 +12,22 @@
 # active workspace to its new number.
 
 dry_run=false
-[[ ${1:-} == "-n" || ${1:-} == "--dry-run" ]] && dry_run=true
+case ${1:-} in
+  "") ;;
+  -n|--dry-run) dry_run=true ;;
+  -h|--help)
+    echo "Usage: omarchy-hyprland-workspace-compact [--dry-run]"
+    exit 0
+    ;;
+  *)
+    echo "Usage: omarchy-hyprland-workspace-compact [--dry-run]" >&2
+    exit 2
+    ;;
+esac
+if (($# > 1)); then
+  echo "Usage: omarchy-hyprland-workspace-compact [--dry-run]" >&2
+  exit 2
+fi
 
 hypr_dispatch() {
   local lua="$1"
@@ -27,10 +42,15 @@ clients=$(hyprctl clients -j)
 workspaces=$(hyprctl workspaces -j)
 new_active=$active
 
-declare -A taken=()
+declare -A taken=() blocked=()
 while IFS= read -r id; do
   [[ $id =~ ^[0-9]+$ ]] && taken[$id]=1
 done < <(jq -r '.[] | select(.id > 0) | .id' <<<"$workspaces")
+# Named workspaces keep a numeric id. Never land on those — change_id would
+# fail (id taken, rc=0) and the window-move fallback would merge into them.
+while IFS= read -r id; do
+  [[ $id =~ ^[0-9]+$ ]] && blocked[$id]=1
+done < <(jq -r '.[] | select(.id > 0 and ((.name // "") | test("^[0-9]+$") | not)) | .id' <<<"$workspaces")
 
 move_windows() { # src dst
   while IFS= read -r addr; do
@@ -55,6 +75,9 @@ renumber() { # src dst monitor
 target=1
 while IFS=$'\t' read -r ws monitor; do
   [[ $ws =~ ^[0-9]+$ ]] || continue
+  while [[ -n ${blocked[$target]+x} ]]; do
+    target=$((target + 1))
+  done
   if ((ws != target)); then
     if $dry_run; then
       echo "workspace $ws -> $target ($monitor)"
