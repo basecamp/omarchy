@@ -145,6 +145,9 @@ assert(menu.findKeybinding(parsedBindings, { id: 'trigger.reminder.set', kind: '
 assert(menu.findKeybinding(parsedBindings, { id: 'apps.terminal', kind: 'app', label: 'Terminal' }) === 'SUPER + RETURN', 'menu matches app keybinding')
 assert(menu.findKeybinding(parsedBindings, { id: 'unknown', action: 'something-else' }) === '', 'menu returns empty string when no binding matches')
 
+const compoundRecords = menu.parseKeybindingRecords("ALT + PRINT → Screenrecord\texec\tomarchy-capture-screenrecording --stop-recording || omarchy-menu toggle trigger.capture.screenrecord")
+assert(menu.findKeybinding(compoundRecords, { id: 'trigger.capture.screenrecord.none', action: 'omarchy-capture-screenrecording' }) === '', 'menu does not match compound binding to bare prefix action')
+
 const testItems = {
   'system.lock': { id: 'system.lock', action: 'omarchy-system-lock' },
   'apps.term': { id: 'apps.term', kind: 'app', label: 'Terminal' }

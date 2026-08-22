@@ -335,7 +335,6 @@ function findKeybinding(bindings, entry) {
       var bArg = String(bindings[i].arg || "").trim()
       if (!bArg) continue
       if (bArg === action) return bindings[i].combo
-      if (action.indexOf(bArg + " ") === 0 || bArg.indexOf(action + " ") === 0) return bindings[i].combo
     }
   }
 
