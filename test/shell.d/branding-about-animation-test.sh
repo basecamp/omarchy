@@ -100,6 +100,13 @@ done
 [[ ${SHEEN_FRAMES[-1]} == "$settled" ]] || fail "a glint settles back to the logo it was given"
 pass "a glint settles back to the logo it was given"
 
+# A terminal that renders bold text in bright colours — foot's bold-text-in-bright
+# does exactly this — maps a bold regular colour to its bright counterpart, so a
+# band using one of those vanishes into a logo drawn in the matching regular
+# colour, and nobody sees the animation at all.
+[[ ! $SHEEN_BAND =~ \[9[0-6]m ]] || fail "the band avoids the colours a bold logo can brighten into" "$(printf '%q' "$SHEEN_BAND")"
+pass "the band avoids the colours a bold logo can brighten into"
+
 # One character has to be one cell, or putting a row back moves what follows it.
 # Everything that breaks that is refused by the one check, so everything that
 # breaks it is tested against the one check.
