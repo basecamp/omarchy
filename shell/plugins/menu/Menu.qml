@@ -726,13 +726,13 @@ Item {
     root.rebuildDisplay()
   }
 
-  function setActiveMenu(id, pushHistory, fromPointer, restoredIndex) {
+  function setActiveMenu(id, pushHistory, fromPointer, restoredIndex, restoredFilter) {
     panel.freezeCardTop()
     if (!root.item(id)) id = "root"
     if (pushHistory && id !== root.activeMenu)
-      root.navStack = root.navStack.concat([{ id: root.activeMenu, selectedIndex: root.selectedIndex }])
+      root.navStack = root.navStack.concat([{ id: root.activeMenu, selectedIndex: root.selectedIndex, filterText: root.filterText }])
     root.activeMenu = id
-    root.filterText = ""
+    root.filterText = restoredFilter === undefined ? root.filterText : restoredFilter
     root.selectedIndex = restoredIndex === undefined ? 0 : restoredIndex
     root.cursorActive = true
     if (fromPointer) pointerGate.allowInitialSample()
@@ -748,7 +748,7 @@ Item {
     if (root.navStack.length > 0) {
       var previous = root.navStack[root.navStack.length - 1]
       root.navStack = root.navStack.slice(0, root.navStack.length - 1)
-      root.setActiveMenu(previous.id, false, false, previous.selectedIndex)
+      root.setActiveMenu(previous.id, false, false, previous.selectedIndex, previous.filterText)
       return true
     }
 
