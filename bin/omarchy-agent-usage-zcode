@@ -1,0 +1,577 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the ZCode usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect ZCode usage into one display-ready JSON record.
+
+Local stats come from the ZCode database (~/.zcode/cli/db/db.sqlite), which
+logs one row per model request and one per turn — for every provider the
+app ran, coding plan or not. Rate limits and the plan come from the quota
+endpoint the app itself reads, with the coding-plan API key ZCode stores in
+~/.zcode/v2/config.json; the desktop app rotates that key, so the collector
+rereads it on every probe instead of asking anyone to configure anything.
+The agents panel only ever reads the JSON this prints.
+"""
+
+import argparse
+import datetime as dt
+import fcntl
+import hashlib
+import json
+import os
+import sqlite3
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+AGENT_ID = "zcode"
+AGENT_NAME = "ZCode"
+AUTH_HELP = "Open ZCode and sign in to your GLM coding plan to restore limits."
+REJECTED_KEY_HELP = (
+  "ZCode's saved coding-plan key was rejected — open ZCode once to refresh it."
+)
+
+# Every coding plan speaks the same monitor API beside its Anthropic endpoint.
+DEFAULT_QUOTA_URL = "https://api.z.ai/api/monitor/usage/quota/limit"
+QUOTA_TIMEOUT_SECONDS = 10
+# A panel opened and closed on a flick must not become a probe per flick; a
+# forced refresh outranks the reuse window by skipping it entirely.
+PROBE_MIN_INTERVAL_SECONDS = 15
+
+# A scan this recent is only reused to dedup concurrent collector runs (the
+# update command backgrounds one per agent while the panel refreshes on its
+# own); every periodic widget refresh lands a real rescan, however low
+# refreshIntervalSec is set. --limits-only promises only fresh limits, so it
+# may reuse a scan for up to 15 minutes.
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+
+now = dt.datetime.now()
+today = now.strftime("%Y-%m-%d")
+recent_dates = [(now - dt.timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
+
+
+def zcode_home():
+  return Path.home() / ".zcode"
+
+
+def db_path():
+  return zcode_home() / "cli" / "db" / "db.sqlite"
+
+
+def config_path():
+  return zcode_home() / "v2" / "config.json"
+
+
+def cache_root():
+  root = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def cache_paths():
+  # The digest covers every data path the collector reads: the database, the
+  # provider config, and (via Path.home()) the ZCode home they live under.
+  digest = hashlib.sha1(
+    (str(Path.home()) + "\n" + str(db_path()) + "\n" + str(config_path())).encode("utf-8")
+  ).hexdigest()[:16]
+  root = cache_root()
+  return root / f"zcode-scan-{digest}.json", root / f"zcode-scan-{digest}.lock"
+
+
+def write_json(path, payload):
+  # A temp name unique to this writer, not derived from the target: several
+  # collectors can run at once (the update command backgrounds one per agent,
+  # the panel refreshes on its own), and a shared temp path means the second
+  # replace finds the first one's file already moved away.
+  handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    # mkstemp opens at 0600; nothing in the cache is sensitive, so open it
+    # up to the usual 0644.
+    tmp.chmod(0o644)
+    tmp.replace(path)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
+
+
+def read_fresh_json(path, max_age_seconds):
+  if max_age_seconds <= 0 or not path.exists():
+    return None
+  try:
+    # A negative age means the mtime is in the future: the clock moved
+    # backwards since the write, so the cache's freshness cannot be trusted.
+    age = time.time() - path.stat().st_mtime
+    if 0 <= age <= max_age_seconds:
+      return json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+  return None
+
+
+# ---------------------------------------------------------------- local stats
+
+
+def run_local_scan():
+  """One connection, one pass per question the record asks of the database.
+
+  Timestamps are epoch milliseconds; day buckets use the local calendar so
+  the panel's "today" and the machine's agree.
+  """
+  stats = empty_stats()
+  if not db_path().exists():
+    return stats
+
+  week_start_ms = dt.datetime.combine(
+    now.date() - dt.timedelta(days=6), dt.time.min
+  ).timestamp() * 1000
+
+  try:
+    connection = sqlite3.connect(f"file:{db_path()}?mode=ro", uri=True)
+  except sqlite3.Error as exc:
+    print(f"omarchy-agent-usage-zcode: cannot open database ({exc})", file=sys.stderr)
+    return stats
+
+  try:
+    connection.row_factory = sqlite3.Row
+    # Every provider the app ran is real usage — coding plan, off-peak plan,
+    # or a key of the user's own — so nothing is filtered here. The
+    # endpoint's input_tokens already contains the cached portion of the
+    # prompt (its own total is input + output), so the day chart counts each
+    # token once by leaving the cache columns out — the same counting the
+    # subscription page reports.
+    per_day_model = connection.execute(
+      """
+      SELECT date(started_at / 1000, 'unixepoch', 'localtime') AS day,
+             model_id AS model,
+             SUM(input_tokens + output_tokens) AS total
+      FROM model_usage
+      WHERE started_at >= ?
+      GROUP BY day, model
+      """,
+      (week_start_ms,),
+    ).fetchall()
+    per_day_turns = connection.execute(
+      """
+      SELECT date(started_at / 1000, 'unixepoch', 'localtime') AS day,
+             COUNT(*) AS turns,
+             COUNT(DISTINCT session_id) AS sessions
+      FROM turn_usage
+      WHERE started_at >= ?
+      GROUP BY day
+      """,
+      (week_start_ms,),
+    ).fetchall()
+    per_model = connection.execute(
+      """
+      SELECT model_id AS model,
+             SUM(input_tokens) AS input,
+             SUM(output_tokens) AS output,
+             SUM(cache_read_input_tokens) AS cache_read,
+             SUM(cache_creation_input_tokens) AS cache_write
+      FROM model_usage
+      GROUP BY model
+      """
+    ).fetchall()
+    totals = connection.execute(
+      "SELECT COUNT(*) AS turns, COUNT(DISTINCT session_id) AS sessions FROM turn_usage"
+    ).fetchone()
+    active_dates = [row[0] for row in connection.execute(
+      """
+      SELECT DISTINCT date(started_at / 1000, 'unixepoch', 'localtime')
+      FROM turn_usage ORDER BY 1
+      """
+    )]
+  except sqlite3.Error as exc:
+    # A database mid-migration, or a schema the app rewrote, must not take
+    # the whole record down: the limits half still deserves to print.
+    print(f"omarchy-agent-usage-zcode: database unreadable ({exc})", file=sys.stderr)
+    return stats
+  finally:
+    connection.close()
+
+  days = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+  today_models = {}
+  for row in per_day_model:
+    if row["day"] in days:
+      days[row["day"]]["messageCount"] += row["total"] or 0
+    if row["day"] == today:
+      today_models[row["model"]] = today_models.get(row["model"], 0) + (row["total"] or 0)
+
+  turns_today = sessions_today = 0
+  for row in per_day_turns:
+    if row["day"] == today:
+      turns_today = row["turns"] or 0
+      sessions_today = row["sessions"] or 0
+
+  stats.update({
+    "todayPrompts": turns_today,
+    "todaySessions": sessions_today,
+    "todayTotalTokens": sum(today_models.values()),
+    "todayTokensByModel": today_models,
+    "recentDays": [days[day] for day in recent_dates],
+    "totalPrompts": totals["turns"] or 0,
+    "totalSessions": totals["sessions"] or 0,
+    # Days with any recorded usage, for the all-time "N days" summary. The
+    # dates travel too: merging snapshots from several machines needs their
+    # union, which a count alone cannot give.
+    "activeDays": len(active_dates),
+    "activeDates": active_dates,
+    # The panel adds all four buckets for a model row's total, and the
+    # endpoint's input_tokens contains the cached portion, so input ships
+    # cache-free: fresh + cache + output then adds up to the same
+    # count-once totals as the day chart.
+    "modelUsage": {
+      row["model"]: {
+        "inputTokens": max(0, (row["input"] or 0) - (row["cache_read"] or 0) - (row["cache_write"] or 0)),
+        "outputTokens": row["output"] or 0,
+        "cacheReadInputTokens": row["cache_read"] or 0,
+        "cacheCreationInputTokens": row["cache_write"] or 0,
+      }
+      for row in per_model
+    },
+  })
+  return stats
+
+
+def empty_stats():
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [{"date": day, "messageCount": 0} for day in recent_dates],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  }
+
+
+def cached_local_stats(max_age):
+  """Local stats, with the cache as a pure optimization.
+
+  The cache must never take the collector down: any cache-layer failure
+  (unwritable cache root, lock errors, disk full) degrades to a direct scan
+  and a warning on stderr. The JSON record is the contract; the cache is not.
+  """
+  try:
+    return _cached_local_stats(max_age)
+  except Exception as exc:
+    print(f"omarchy-agent-usage-zcode: cache unavailable ({exc}); scanning directly", file=sys.stderr)
+    return run_local_scan()
+
+
+def _cached_local_stats(max_age):
+  cache_file, lock_file = cache_paths()
+
+  cached = read_cached_stats(cache_file, max_age)
+  if cached is not None:
+    return cached
+
+  with lock_file.open("w") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    cached = read_cached_stats(cache_file, max_age)
+    if cached is not None:
+      return cached
+    stats = run_local_scan()
+    write_json(cache_file, {"schemaVersion": 1, "scanDate": today, "stats": stats})
+    return stats
+
+
+# The cache payload is a versioned envelope around the local-stats dict, so a
+# corrupted or foreign-shaped file is a cache miss (rescan + rewrite) instead
+# of a crash or a garbage record.
+def read_cached_stats(cache_file, max_age_seconds):
+  cached = read_fresh_json(cache_file, max_age_seconds)
+  if not isinstance(cached, dict) or cached.get("schemaVersion") != 1:
+    return None
+  # today* fields only mean "today" on the day they were scanned. A cache
+  # from another local date (midnight passed, or the clock moved) is a miss,
+  # not merely old, whatever its mtime says.
+  if cached.get("scanDate") != today:
+    return None
+  stats = cached.get("stats")
+  if not isinstance(stats, dict):
+    return None
+  if not all(key in stats for key in ("todayPrompts", "todayTotalTokens", "recentDays", "activeDates", "modelUsage")):
+    return None
+  return stats
+
+
+# ------------------------------------------------------------------- limits
+
+
+def resolve_credentials():
+  """The coding-plan API key and quota URL, from the app's own storage.
+
+  The env pair mirrors what the ZCode app itself honors, so a proxy or an
+  account the app cannot see can still be pointed at.
+  """
+  api_key = (
+    os.environ.get("ZCODE_BIGMODEL_USAGE_API_KEY", "").strip()
+    or os.environ.get("BIGMODEL_USAGE_API_KEY", "").strip()
+  )
+  quota_url = (
+    os.environ.get("ZCODE_BIGMODEL_USAGE_QUOTA_URL", "").strip()
+    or os.environ.get("BIGMODEL_USAGE_QUOTA_URL", "").strip()
+  )
+  if api_key and quota_url:
+    return api_key, quota_url
+
+  try:
+    config = json.loads(config_path().read_text(encoding="utf-8"))
+  except (OSError, ValueError):
+    return api_key, quota_url or DEFAULT_QUOTA_URL
+  providers = config.get("provider") if isinstance(config, dict) else None
+  if not isinstance(providers, dict):
+    return api_key, quota_url or DEFAULT_QUOTA_URL
+
+  # Z.ai's plan is the default account; BigModel's is the same product for a
+  # different region, and any other coding-plan provider speaks the same API.
+  # The provider's id is the key it is stored under, not a field inside it.
+  preferences = ["builtin:zai-coding-plan", "builtin:bigmodel-coding-plan"]
+  candidates = sorted(
+    providers.items(),
+    key=lambda item: preferences.index(item[0]) if item[0] in preferences else len(preferences),
+  )
+  for provider_id, provider in candidates:
+    if not isinstance(provider, dict) or "coding-plan" not in provider_id:
+      continue
+    options = provider.get("options")
+    key = options.get("apiKey") if isinstance(options, dict) else ""
+    if not isinstance(key, str) or not key.strip():
+      continue
+    if not api_key:
+      api_key = key.strip().removeprefix("Bearer ").strip()
+    if not quota_url:
+      quota_url = quota_url_from_base_url(options.get("baseURL"))
+    break
+  return api_key, quota_url or DEFAULT_QUOTA_URL
+
+
+def quota_url_from_base_url(base_url):
+  # Both coding plans expose the quota monitor beside their Anthropic
+  # endpoint: …/api/anthropic becomes …/api/monitor/usage/quota/limit.
+  base = str(base_url or "").strip()
+  if not base:
+    return DEFAULT_QUOTA_URL
+  if "/api/anthropic" in base:
+    base = base.split("/api/anthropic")[0]
+  return base.rstrip("/") + "/api/monitor/usage/quota/limit"
+
+
+# The app describes the coding plan as "5-hour prompt pool, weekly quota, and
+# monthly tool quota", and looks each one up by (type, unit, number) — the
+# same triple keys the rows here, in the order the app lists them: the
+# prompts pool first, the weekly window when the plan reports one, the
+# monthly allowance for MCP tools (web search, reader, zread) last. Titles
+# stay bare ("Session", "Tools") because the reset line already carries the
+# cadence; labels keep the window words the panel parses for span and
+# styling. A limit outside those shapes still carries real numbers, so it
+# keeps its type's name without a window claim. Every percentage the
+# endpoint reports describes usage, not what is left.
+LIMIT_WINDOWS = (
+  (("TOKENS_LIMIT", 3, 5), "Session (5-hour)", "Session"),
+  (("TOKENS_LIMIT", 6, None), "Weekly", "Weekly"),
+  (("TIME_LIMIT", 5, 1), "Tools (monthly)", "Tools"),
+)
+
+
+def map_limits(data):
+  entries = data.get("limits") if isinstance(data.get("limits"), list) else []
+  rows = {}
+  for entry in entries:
+    if not isinstance(entry, dict):
+      continue
+    kind = str(entry.get("type") or "")
+    if kind not in ("TOKENS_LIMIT", "TIME_LIMIT"):
+      continue
+    label = None
+    title = None
+    for (match_type, unit, number), window_label, window_title in LIMIT_WINDOWS:
+      if kind != match_type or entry.get("unit") != unit:
+        continue
+      if number is not None and entry.get("number") != number:
+        continue
+      label = window_label
+      title = window_title
+      break
+    percent = read_percent(entry.get("percentage"))
+    if percent is None and kind == "TIME_LIMIT":
+      # The tool quota's fallback scale is per-mille of the allowance.
+      current = read_per_mille(entry.get("currentValue"))
+      remaining = read_per_mille(entry.get("remaining"))
+      percent = round(1 - remaining, 3) if remaining is not None else current
+    if percent is None:
+      continue
+    if label is None:
+      label = "Prompts" if kind == "TOKENS_LIMIT" else "Tools"
+      title = label
+    resets_at = iso_from_ms(entry.get("nextResetTime"))
+    # The panel titles a row from `title` verbatim and parses only `label`
+    # for its window; without a title, "Tools (monthly)" would display as
+    # just "Monthly" — indistinguishable from a monthly prompt quota.
+    rows[title] = {"label": label, "title": title, "percent": round(percent, 3), "resetsAt": resets_at}
+
+  ordered = [window_title for _, _, window_title in LIMIT_WINDOWS]
+  ordered += [title for title in rows if title not in ordered]
+  return [rows[title] for title in ordered if title in rows]
+
+
+# The endpoint's percentages are whole numbers on a 0-100 scale describing
+# usage, so 1 means one percent used — never a fraction of the allowance.
+def read_percent(value):
+  number = value if isinstance(value, (int, float)) else None
+  if number is None or number < 0:
+    return None
+  return min(round(number / 100, 3), 1.0)
+
+
+def read_per_mille(value):
+  number = value if isinstance(value, (int, float)) else None
+  if number is None or number < 0:
+    return None
+  return number / 1000
+
+
+def iso_from_ms(value):
+  number = value if isinstance(value, (int, float)) else 0
+  if number <= 0:
+    return ""
+  return dt.datetime.fromtimestamp(number / 1000, dt.timezone.utc).isoformat()
+
+
+def tier_label(level):
+  text = str(level or "").strip()
+  if not text:
+    return ""
+  return f"GLM Coding {text.capitalize()}"
+
+
+def payload_has_limits(payload):
+  data = payload.get("data") if isinstance(payload, dict) else None
+  return isinstance(data, dict) and isinstance(data.get("limits"), list) and len(data["limits"]) > 0
+
+
+# A cached percentage outlives the probe that measured it, but only until its
+# window rolls over: once a window has reset, the figure describes a period
+# that is over, and a stale 78% would misreport an allowance that is now
+# untouched. A window with no reset time, or one that will not parse, is kept
+# — an unreadable timestamp is no reason to throw away a real number.
+def payload_windows_open(payload):
+  if not payload_has_limits(payload):
+    return False
+  for entry in payload["data"]["limits"]:
+    if not isinstance(entry, dict) or not map_limits({"limits": [entry]}):
+      continue
+    reset_ms = entry.get("nextResetTime")
+    if not isinstance(reset_ms, (int, float)) or reset_ms <= 0:
+      return True
+    if reset_ms > time.time() * 1000:
+      return True
+  return False
+
+
+def collect_limits(api_key, quota_url, force=False):
+  result = {"limits": [], "tierLabel": "", "usageStatusText": "", "authHelpText": AUTH_HELP}
+  if api_key == "":
+    result["usageStatusText"] = "Waiting for sign-in"
+    return result
+
+  cache_file = cache_root() / "zcode-quota.json"
+  cached = read_fresh_json(cache_file, float("inf")) or {}
+  payload = cached.get("payload") if isinstance(cached, dict) else None
+
+  # --force is a person asking for fresh numbers, so it skips the reuse
+  # window entirely; the interval is there to absorb repeated panel opens,
+  # not to overrule someone who pressed refresh.
+  fetched_at = cached.get("fetchedAtMs", 0) / 1000 if isinstance(cached, dict) else 0
+  if not force and payload_has_limits(payload) and time.time() - fetched_at < PROBE_MIN_INTERVAL_SECONDS:
+    return result_from_payload(payload, result)
+
+  request = urllib.request.Request(
+    quota_url, headers={"Authorization": api_key, "Accept": "application/json"}
+  )
+  try:
+    with urllib.request.urlopen(request, timeout=QUOTA_TIMEOUT_SECONDS) as response:
+      fresh = json.loads(response.read().decode("utf-8"))
+    if not payload_has_limits(fresh):
+      raise ValueError("quota payload carried no limits")
+    write_json(cache_file, {"fetchedAtMs": round(time.time() * 1000), "payload": fresh})
+    return result_from_payload(fresh, result)
+  except urllib.error.HTTPError as error:
+    # Only the app can mint a coding-plan key, so a rejected one is a
+    # sign-in problem to explain, not a probe to retry.
+    result["usageStatusText"] = "ZCode limits unavailable"
+    result["authHelpText"] = REJECTED_KEY_HELP if error.code in (401, 403) else (
+      f"ZCode's quota endpoint answered HTTP {error.code}."
+    )
+  except (urllib.error.URLError, ValueError, OSError) as error:
+    reason = getattr(error, "reason", error)
+    print(f"omarchy-agent-usage-zcode: quota probe failed ({reason})", file=sys.stderr)
+    result["usageStatusText"] = "ZCode limits unavailable"
+    result["retryAdvised"] = True
+
+  # Whatever the probe met — a dead network, a rotating key — the last
+  # reading still describes every window that has not reset since.
+  if payload_windows_open(payload):
+    fresh_result = result_from_payload(payload, result)
+    fresh_result.pop("retryAdvised", None)
+    return fresh_result
+  return result
+
+
+def result_from_payload(payload, result):
+  data = payload.get("data") or {}
+  result["limits"] = map_limits(data)
+  result["tierLabel"] = tier_label(data.get("level"))
+  return result
+
+
+# --------------------------------------------------------------------- main
+
+
+def main():
+  parser = argparse.ArgumentParser()
+  # --force rescans everything and re-probes the quota endpoint.
+  # --limits-only is kept for CLI compatibility with the panel's
+  # refreshLimits() call: only the limits probe must be fresh, so it may
+  # reuse a scan for far longer than a normal run, whose short window exists
+  # purely to dedup concurrent collector runs.
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  args = parser.parse_args()
+
+  max_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else SCAN_REUSE_SECONDS)
+  stats = cached_local_stats(max_age)
+  api_key, quota_url = resolve_credentials()
+  limits = collect_limits(api_key, quota_url, args.force)
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+    "ready": stats["totalPrompts"] > 0 or len(limits["limits"]) > 0,
+    "hasLocalStats": stats["totalPrompts"] > 0,
+    "tierLabel": limits["tierLabel"],
+    "usageStatusText": limits["usageStatusText"],
+    "authHelpText": limits["authHelpText"],
+    "limits": limits["limits"],
+  }
+  if limits.get("retryAdvised"):
+    record["retryAdvised"] = True
+  record.update(stats)
+  print(json.dumps(record, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+  main()
