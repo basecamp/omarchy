@@ -19,6 +19,15 @@ LOGO_PAD_LEFT=2
 LOGO_PAD_TOP=2
 LOGO_PAD_RIGHT=6
 
+# The content is measured once and then goes on living: an uptime that turns
+# minutes into hours and hours into days, a version string that grows, a module
+# that shows up on the next boot. A window fitted to exactly what was measured
+# has nowhere to put any of it, and the layout clips or scrolls the moment it
+# grows — which is also the moment the logo stops being where it was drawn. Keep
+# a little in hand rather than measure again every time something ticks over.
+FIT_SPARE_COLUMNS=2
+FIT_SPARE_ROWS=1
+
 POLL_SECONDS=0.5
 
 # fastfetch has no animation of its own, so the sheen is ours. It knows about a
@@ -144,9 +153,9 @@ fit_window() {
 
   # Mirror the logo block in the fastfetch config: 2 columns of padding left of
   # the logo, 6 between logo and modules. Then 2 columns of right padding to
-  # match, and a row for the cursor so the trailing break shows.
-  local target_c=$(( LOGO_PAD_LEFT + logo_w + LOGO_PAD_RIGHT + module_w + LOGO_PAD_LEFT ))
-  local target_r=$(( LAYOUT_ROWS + 1 ))
+  # match, a row for the cursor so the trailing break shows, and the spare above.
+  local target_c=$(( LOGO_PAD_LEFT + logo_w + LOGO_PAD_RIGHT + module_w + LOGO_PAD_LEFT + FIT_SPARE_COLUMNS ))
+  local target_r=$(( LAYOUT_ROWS + 1 + FIT_SPARE_ROWS ))
 
   local nudges=0 rows cols address width height shift_w shift_h target_w target_h
   while :; do

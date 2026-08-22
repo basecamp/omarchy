@@ -205,12 +205,23 @@ hyprctl() {
   return 0
 }
 
-# logo 10 wide + the config's padding + a 65-column module block.
-fit_cols=$(( config_left + 10 + config_right + 65 + config_left ))
+# logo 10 wide + the config's padding + a 65-column module block, plus the spare
+# the fit keeps in hand for content that grows after it was measured.
+fit_cols=$(( config_left + 10 + config_right + 65 + config_left + FIT_SPARE_COLUMNS ))
+fit_rows=$(( layout_rows + 1 + FIT_SPARE_ROWS ))
 
-rows_by_cols="$((layout_rows + 1)) $fit_cols"
-fit_window || fail "the fit is satisfied by a window with a row past the layout"
-pass "the fit is satisfied by a window with a row past the layout"
+rows_by_cols="$fit_rows $fit_cols"
+fit_window || fail "the fit is satisfied by a window with the spare in it"
+pass "the fit is satisfied by a window with the spare in it"
+
+# Exactly the content and not a cell more is what used to be asked for, and it is
+# the size that clips or scrolls as soon as an uptime turns over.
+rows_by_cols="$(( layout_rows + 1 )) $(( fit_cols - FIT_SPARE_COLUMNS ))"
+if fit_window; then
+  fail "the fit asks for more than the bare content"
+else
+  pass "the fit asks for more than the bare content"
+fi
 
 rows_by_cols="$layout_rows $fit_cols"
 if fit_window; then
