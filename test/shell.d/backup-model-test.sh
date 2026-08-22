@@ -25,8 +25,8 @@ assertEqual(Model.parseStatus('{oh no').phase, 'unconfigured', 'a corrupt status
 
 assertEqual(
   Model.heroMeta(status({}), 24, now),
-  'Backed up 1 hour ago to photos at s3.example.com',
-  'the hero says when and where'
+  'Backed up 1 hour ago',
+  'the hero says when the last backup was'
 )
 assertEqual(
   Model.heroMeta(status({phase: 'running', progress: {percent: 42}}), 24, now),

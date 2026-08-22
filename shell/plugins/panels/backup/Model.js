@@ -97,8 +97,6 @@ function attention(status, staleAfterHours, nowMs) {
 }
 
 function heroMeta(status, staleAfterHours, nowMs) {
-  var destination = String(status.destination.label || "")
-
   switch (status.phase) {
   case "unconfigured":
     return "Not set up"
@@ -111,8 +109,9 @@ function heroMeta(status, staleAfterHours, nowMs) {
   if (status.last_backup.result === "failed") return "Last run failed"
   if (Number(status.last_backup.time || 0) <= 0) return "No backup yet"
 
-  var when = relativeTime(status.last_backup.time, nowMs)
-  return destination === "" ? "Backed up " + when : "Backed up " + when + " to " + destination
+  // The destination has its own line below. Naming it here too only made the
+  // hero long enough to elide.
+  return "Backed up " + relativeTime(status.last_backup.time, nowMs)
 }
 
 function pauseText(status, nowMs) {

@@ -418,9 +418,15 @@ Panel {
     width: parent.width
     spacing: Style.space(8)
 
-    InfoLabel { text: label }
-    Item { width: Math.max(0, parent.width - parent.children[0].implicitWidth - parent.children[2].implicitWidth - parent.spacing * 2); height: 1 }
-    InfoValue { text: value }
+    InfoLabel { id: pairLabel; text: label }
+
+    // Bounded rather than implicit, so a long bucket name elides at the panel
+    // edge instead of running under it.
+    InfoValue {
+      text: value
+      width: Math.max(0, parent.width - pairLabel.implicitWidth - parent.spacing)
+      horizontalAlignment: Text.AlignRight
+    }
   }
 
   component InfoLabel: Text {
