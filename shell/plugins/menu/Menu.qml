@@ -136,7 +136,7 @@ Item {
   property bool searchDivider: false
   property int layoutSerial: 0
   property int baseCardWidth: Math.min(root.dmenuActive ? Style.space(root.dmenuWidth) : ((root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") ? Style.space(520) : Style.space(300)), panel.width - Style.gapsOut * 2)
-  property int cardWidth: Math.min(root.baseCardWidth + (root.showKeybindings ? Style.space(130) : 0), panel.width - Style.gapsOut * 2)
+  property int cardWidth: Math.min(root.baseCardWidth + ((root.showKeybindings && !root.dmenuActive) ? Style.space(130) : 0), panel.width - Style.gapsOut * 2)
   property int visibleRowsHeight: root.dmenuActive ? dmenuRowListHeight(layoutSerial, displayModel.count, filterText) : rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)
   property int cardHeight: root.dmenuActive
     ? Math.min(contentMargin * 2 + headerHeight + (mode === "input" ? 0 : contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
