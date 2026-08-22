@@ -193,7 +193,8 @@ pass "OpenCode Go collector --force rescans past the cache"
 # The limits fetch and key resolution are exercised without the network by
 # importing the module and stubbing urlopen, the same way the Fireworks
 # scanner test stubs its client.
-if ! python3 - "$ROOT/bin/omarchy-agent-usage-opencode-go" "$TEST_HOME/.local/share" <<'PY'
+if ! HOME="$TEST_HOME" XDG_DATA_HOME="$TEST_HOME/.local/share" XDG_CACHE_HOME="$TEST_HOME/.cache" \
+  python3 - "$ROOT/bin/omarchy-agent-usage-opencode-go" "$TEST_HOME/.local/share" <<'PY'
 import importlib.machinery
 import importlib.util
 import json
