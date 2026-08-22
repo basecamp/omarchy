@@ -112,7 +112,14 @@ grep -Fq 'function pin' "$ws" || fail "WindowService exposes pin for the taskbar
 pass "WindowService exposes task-switcher, Show Desktop, and pin verbs"
 
 grep -Fq 'target: "window"' "$ROOT/shell/shell.qml" || fail "shell registers a window IPC target"
-grep -Fq 'function snapLeft(address: string)' "$ROOT/shell/shell.qml" || fail "window IPC snapLeft takes a window address"
+grep -Fq 'function snapTo' "$ws" || fail "WindowService exposes snapTo for quarters and the layout chooser"
+grep -Fq 'function snapArrow' "$ws" || fail "WindowService exposes snapArrow for Win+Arrow"
+grep -Fq 'function aeroDragEnd' "$ws" || fail "WindowService exposes aeroDragEnd for title-bar drag-to-edge"
+grep -Fq 'function saveLayout' "$ws" || fail "WindowService exposes saveLayout"
+grep -Fq 'function restoreLayout' "$ws" || fail "WindowService exposes restoreLayout"
+grep -Fq 'rect = root._clientRect(list[i])' "$ws" || fail "saveLayout reads compositor client boxes, not stale lastIpcObject"
+grep -Fq 'function snapChooser' "$ROOT/shell/shell.qml" || fail "window IPC snapChooser summons the layout overlay"
+grep -Fq 'aeroDragEnd(address: string, x: string, y: string)' "$ROOT/shell/shell.qml" || fail "aeroDragEnd IPC takes cursor coordinates"
 grep -Fq 'function maximize(address: string)' "$ROOT/shell/shell.qml" || fail "window IPC maximize takes a window address"
 grep -Fq 'function restoreOrMinimize(address: string)' "$ROOT/shell/shell.qml" || fail "window IPC restoreOrMinimize takes a window address"
 grep -Fq 'function restoreNormal' "$ws" || fail "WindowService exposes restoreNormal to unsnap"
@@ -188,16 +195,52 @@ assertEqual(right.height, 1040, 'snap right height respects the bottom reserved 
 const leftBar = m.snapRect(mon, 'l', 32)
 assertEqual(leftBar.y, 32, 'desktop snap leaves 32px for hyprbars above the client box')
 assertEqual(leftBar.height, 1008, 'desktop snap height is work area minus hyprbars')
+const tl = m.snapRect(mon, 'tl', 32)
+assertEqual(tl.x, 0, 'top-left quarter starts at work-area x')
+assertEqual(tl.y, 32, 'top-left quarter sits under hyprbars')
+assertEqual(tl.width, 960, 'top-left quarter is half width')
+assertEqual(tl.height, 504, 'top-left quarter is half of the titled work height')
+const br = m.snapRect(mon, 'br', 32)
+assertEqual(br.x, 960, 'bottom-right quarter starts at the midpoint')
+assertEqual(br.y, 32 + 504, 'bottom-right quarter sits under the top quarter')
+assertEqual(br.height, 504, 'bottom-right quarter consumes the remaining titled height')
+assertEqual(m.snapKind({ x: 0, y: 32, width: 960, height: 1008 }, mon, 8, 32), 'l', 'full left half is kind l')
+assertEqual(m.snapKind(tl, mon, 8, 32), 'tl', 'top-left rect is kind tl')
+assertEqual(m.nextSnap('float', 'l'), 'l', 'Win+Left from float is left half')
+assertEqual(m.nextSnap('float', 'u'), 'max', 'Win+Up from float is maximize')
+assertEqual(m.nextSnap('l', 'u'), 'tl', 'Win+Up from left half is top-left')
+assertEqual(m.nextSnap('l', 'd'), 'bl', 'Win+Down from left half is bottom-left')
+assertEqual(m.nextSnap('max', 'd'), 'normal', 'Win+Down from maximize restores')
+assertEqual(m.nextSnap('float', 'd'), 'min', 'Win+Down from float minimizes')
+assertEqual(m.aeroZone({ x: 0, y: 0 }, mon), 'tl', 'cursor in the top-left corner is top-left')
+assertEqual(m.aeroZone({ x: 0, y: 200 }, mon), 'l', 'cursor on the left edge is left half')
+assertEqual(m.aeroZone({ x: 400, y: 0 }, mon), 'max', 'cursor on the top edge is maximize')
+assertEqual(m.aeroZone({ x: 400, y: 200 }, mon), '', 'interior cursor does not snap')
+assertEqual(m.aeroZone({ x: 960, y: 540 }, mon), '', 'cursor in the middle of a maximized window does not snap')
+const saved = m.captureLayout([
+  { address: '0x1', appId: 'foot', title: 'left', x: 0, y: 32, width: 960, height: 1008, fullscreen: 0 },
+  { address: '0x2', appId: 'foot', title: 'right', x: 960, y: 32, width: 960, height: 1008, fullscreen: 0 }
+], mon, 32)
+assertEqual(saved.windows.length, 2, 'captureLayout records both windows')
+assertEqual(saved.windows[0].kind, 'l', 'left half is saved as kind l')
+assertEqual(saved.windows[1].kind, 'r', 'right half is saved as kind r')
+assertEqual(saved.windows[0].address, '0x1', 'captureLayout stores the compositor address')
+const matched = m.matchLayout([
+  { address: '0x2', appId: 'foot' },
+  { address: '0x1', appId: 'foot' }
+], saved)
+assertEqual(matched[0].address, '0x1', 'matchLayout prefers the saved address even when list order changes')
+assertEqual(matched[0].kind, 'l', 'address 0x1 restores left')
+assertEqual(matched[1].address, '0x2', 'second saved address still restores')
+assertEqual(matched[1].kind, 'r', 'address 0x2 restores right')
 
 const mixed = m.compositorMonitor({ width: 1920, height: 1080, reserved: [0, 0, 0, 40] })
 assertEqual(mixed.height, 1080, 'compositorMonitor keeps the output height, not a gap-subtracted 1054')
 const floated = m.defaultFloatRect(mon)
-if (!(floated.width < 960 && floated.height < 1040)) {
-  throw new Error('default float must not be a work-area half-tile')
-}
+assert(floated.width < 960 && floated.height < 1040, 'default float must not be a work-area half-tile')
 const snapped = { x: 0, y: 0, width: 960, height: 1040 }
-if (!m.isSnapped(snapped, mon, 8)) throw new Error('960x1040 at origin is the left snap')
+assert(m.isSnapped(snapped, mon, 8), '960x1040 at origin is the left snap')
 const snappedBar = { x: 0, y: 32, width: 960, height: 1008 }
-if (!m.isSnapped(snappedBar, mon, 8, 32)) throw new Error('960x1008 at y=32 is the desktop left snap')
-if (m.isSnapped(floated, mon, 8)) throw new Error('default float must not count as snapped')
+assert(m.isSnapped(snappedBar, mon, 8, 32), '960x1008 at y=32 is the desktop left snap')
+assert(!m.isSnapped(floated, mon, 8), 'default float must not count as snapped')
 JS

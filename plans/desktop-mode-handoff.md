@@ -137,7 +137,24 @@ What did not move:
 - Tokyo Night, generic gear icons, Nautilus, nvim, TTY first-boot, no product ISO — still open.
 - Chrome, games, and “install any Windows app” are still not a live path.
 
-Plans still win: `PRODUCT_DOCTRINE.md` plus `plans/project-ultimate.md`. Windows 7 Ultimate IA for 2026. Every normal Windows job has to work with a mouse. Terminal stays a powerful app. It is not how you own the machine. The written “not a clone” line is ads, telemetry, and forced accounts — not permission to ship a Linux developer box.
+Plans still win: `PRODUCT_DOCTRINE.md` plus `plans/project-ultimate.md`. Windows 7 Ultimate information architecture for 2026. Every normal Windows job has to work with a mouse. Terminal stays a powerful app. It is not how you own the machine. The written “not a clone” line is ads, telemetry, and forced accounts — not permission to ship a Linux developer box.
+
+## 0i. W0 Tranche G (2026-08-22) — mouse window manager; W0 is still open
+
+Keep `aaf601ca`, `5942beaa`, and `a4a046b3`. Do not re-open them. Windowing is still not a go.
+
+Moved on the live guest (Virtual-1 1920×1080, reserved `[0,0,0,40]`):
+
+- Quarters: Win+Arrow left then up is `[0,32] 960×504`. Halves stay `[0,32] 960×1008` / `[960,32] 960×1008`.
+- Snap chooser layer `omarchy-snap-chooser` 1920×1080. hyprbars `▦` and Win+Z summon it.
+- `aeroDragEnd` uses cursor coordinates. Top-center `960,0` maximizes `[2,34] 1916×1004` fullscreen `1`. Interior `960,400` restores the remembered float `[208,80] 880×560`.
+- `saveLayout` / `restoreLayout` return the same two halves after an unsnap. Match is by compositor address.
+- Show Desktop hides both feet (`hidden: true`, workspace `1`) and restores them.
+- Grouped taskbar click cycles; peek lists each window title (not bitmap Aero Peek).
+
+Did not move: Alt+Tab as a held number; peek thumbnails / jump lists; multi-monitor; virtual desktops; parented dialogs; Steam/Wine/Electron matrix; hyprbars as a pacman package; Tokyo Night, Nautilus, nvim, TTY, ISO.
+
+The GTK window is the proof. Do not treat this tranche as a windowing go.
 
 ## 1. Read-first contract (mandatory, non-skippable)
 

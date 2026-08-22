@@ -37,13 +37,18 @@ Item {
       windowService.toggleFromTaskbar(windows[0].address)
       return
     }
-    for (var i = 0; i < windows.length; i++) {
+    var activeIndex = -1
+    var i
+    for (i = 0; i < windows.length; i++) {
       if (windowService.isActive(windows[i].address)) {
-        windowService.minimize(windows[i].address)
-        return
+        activeIndex = i
+        break
       }
     }
-    windowService.restore(windows[0].address)
+    if (activeIndex >= 0)
+      windowService.activate(windows[(activeIndex + 1) % windows.length].address)
+    else
+      windowService.activate(windows[0].address)
   }
 
   Rectangle {
@@ -162,38 +167,63 @@ Item {
         }
 
         Repeater {
-          model: [
-            { label: "Restore", action: "restore" },
-            { label: "Minimize", action: "minimize" },
-            { label: "Maximize", action: "maximize" },
-            { label: "Close", action: "close" }
-          ]
+          model: windows
           delegate: Item {
             width: peekCol.width
-            height: 26
+            height: 28
+
+            Rectangle {
+              anchors.fill: parent
+              radius: Tokens.radius.small
+              color: rowMouse.containsMouse ? Util.alpha(Tokens.accent.primary, 0.18) : "transparent"
+            }
 
             Text {
               anchors.verticalCenter: parent.verticalCenter
               anchors.left: parent.left
               anchors.leftMargin: 6
-              text: modelData.label
+              anchors.right: peekClose.left
+              anchors.rightMargin: 4
+              text: (modelData.title || modelData.appId || "Window") + (modelData.minimized ? " (minimized)" : "")
               color: Tokens.text.primary
               font.pixelSize: Style.font.bodySmall
               font.family: "sans-serif"
+              elide: Text.ElideRight
+            }
+
+            Text {
+              id: peekClose
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.right: parent.right
+              anchors.rightMargin: 6
+              text: "×"
+              color: Tokens.text.primary
+              font.pixelSize: Style.font.body
+              font.family: "sans-serif"
+              visible: windowService ? true : false
             }
 
             MouseArea {
+              id: rowMouse
               anchors.fill: parent
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: {
-                var addr = windows.length ? windows[0].address : ""
-                if (modelData.action === "restore") windowService.restore(addr)
-                if (modelData.action === "minimize") windowService.minimize(addr)
-                if (modelData.action === "maximize") windowService.toggleMaximize(addr)
-                if (modelData.action === "close") {
-                  for (var i = 0; i < windows.length; i++) windowService.close(windows[i].address)
-                }
+                if (windowService) windowService.activate(modelData.address)
+                peek.visible = false
+              }
+            }
+
+            MouseArea {
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.right: parent.right
+              width: 22
+              height: parent.height
+              z: 2
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                if (windowService) windowService.close(modelData.address)
                 peek.visible = false
               }
             }

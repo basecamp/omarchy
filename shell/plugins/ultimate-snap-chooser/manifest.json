@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.ultimate-snap-chooser",
+  "name": "Snap layout chooser",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Maximize-button snap layouts: halves, quarters, maximize",
+  "kinds": ["overlay"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Chooser.qml"
+  }
+}

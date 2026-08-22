@@ -27,6 +27,8 @@
 #include "BarPassElement.hpp"
 
 #include <climits>
+#include <cstdint>
+#include <format>
 
 using namespace Render::GL;
 
@@ -123,13 +125,15 @@ bool CHyprBar::inputIsValid() {
 }
 
 void CHyprBar::onMouseButton(Event::SCallbackInfo& info, IPointer::SButtonEvent e) {
-    if (!inputIsValid())
-        return;
-
     if (e.state != WL_POINTER_BUTTON_STATE_PRESSED) {
-        handleUpEvent(info);
+        // Drag can end with the pointer on a screen edge, off the title bar.
+        if (m_bDraggingThis || inputIsValid())
+            handleUpEvent(info);
         return;
     }
+
+    if (!inputIsValid())
+        return;
 
     handleDownEvent(info, std::nullopt);
 }
@@ -260,6 +264,13 @@ void CHyprBar::handleUpEvent(Event::SCallbackInfo& info) {
         m_bDraggingThis = false;
         if (m_bTouchEv)
             (void)Config::Actions::floatWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_DISABLE);
+
+        const auto PWINDOW = m_pWindow.lock();
+        if (PWINDOW) {
+            const auto mouse = g_pInputManager->getMouseCoordsInternal();
+            Config::Supplementary::executor()->spawn(std::format("omarchy-shell window aeroDragEnd 0x{:x} {} {}", reinterpret_cast<uintptr_t>(PWINDOW.get()),
+                                                                 static_cast<int>(mouse.x), static_cast<int>(mouse.y)));
+        }
 
         Log::logger->log(Log::DEBUG, "[hyprbars] Dragging ended on {:x}", (uintptr_t)m_pWindow.lock().get());
     }

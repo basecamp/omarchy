@@ -254,6 +254,13 @@ for task in "${tasks[@]}"; do
       || fail "snap two windows" "right geometry was not the work-area right half: $(hyprctl -j clients | jq --arg a "${addrs[1]}" '.[] | select(.address == $a) | {at,size}') work=$(work_area_json)"
     screenshot "success-snap-two"
     pass "snap two windows"
+    omarchy-shell window snapTo "${addrs[0]}" tl >/dev/null
+    sleep 1
+    qh=$(jq -r '((.h - 32) / 2) | floor' <<<"$area")
+    window_near_rect "${addrs[0]}" "$left_x" "$left_y" "$half" "$qh" \
+      || fail "snap two windows" "top-left quarter was wrong: $(hyprctl -j clients | jq --arg a "${addrs[0]}" '.[] | select(.address == $a) | {at,size}')"
+    screenshot "success-snap-quarter"
+    pass "snap top-left quarter"
     ;;
   "use Alt+Tab")
     launch_feet 2
@@ -319,6 +326,67 @@ hyprctl -j clients | jq -e --arg addr "${addrs[0]}" --argjson half "$half" '
   .[] | select(.address == $addr) | (.size[0] < $half - 8)
 ' >/dev/null || fail "restoreNormal unsnaps" "window still at snap width: $(hyprctl -j clients | jq --arg a "${addrs[0]}" '.[] | select(.address == $a) | {at,size}')"
 pass "restoreNormal unsnaps to an overlapping float"
+
+launch_feet 2
+mapfile -t addrs < <(foot_addresses)
+(( ${#addrs[@]} >= 2 )) || fail "Win+Arrow quarters" "need two feet"
+omarchy-shell window snapTo "${addrs[0]}" l >/dev/null
+sleep 1
+omarchy-shell window snapArrow "${addrs[0]}" u >/dev/null
+sleep 1
+area=$(work_area_json)
+left_x=$(jq -r .x <<<"$area")
+left_y=$(jq -r '.y + 32' <<<"$area")
+half=$(jq -r '.w / 2 | floor' <<<"$area")
+qh=$(jq -r '((.h - 32) / 2) | floor' <<<"$area")
+window_near_rect "${addrs[0]}" "$left_x" "$left_y" "$half" "$qh" \
+  || fail "Win+Arrow quarters" "left then up was not top-left: $(hyprctl -j clients | jq --arg a "${addrs[0]}" '.[] | select(.address == $a) | {at,size}')"
+pass "Win+Arrow left then up is the top-left quarter"
+
+omarchy-shell window snapTo "${addrs[0]}" l >/dev/null
+omarchy-shell window snapTo "${addrs[1]}" r >/dev/null
+sleep 1
+omarchy-shell window saveLayout >/dev/null
+omarchy-shell window restoreNormal "${addrs[0]}" >/dev/null
+omarchy-shell window restoreNormal "${addrs[1]}" >/dev/null
+sleep 1
+omarchy-shell window restoreLayout >/dev/null
+sleep 1
+left_h=$(jq -r '.h - 32' <<<"$area")
+right_x=$((left_x + half))
+right_w=$(jq -r .w <<<"$area")
+right_w=$((right_w - half))
+window_near_rect "${addrs[0]}" "$left_x" "$left_y" "$half" "$left_h" \
+  || fail "restoreLayout" "first foot did not return to the left half: $(hyprctl -j clients | jq --arg a "${addrs[0]}" '.[] | select(.address == $a) | {at,size}')"
+window_near_rect "${addrs[1]}" "$right_x" "$left_y" "$right_w" "$left_h" \
+  || fail "restoreLayout" "second foot did not return to the right half: $(hyprctl -j clients | jq --arg a "${addrs[1]}" '.[] | select(.address == $a) | {at,size}')"
+pass "saveLayout then restoreLayout returns the snapped pair"
+
+omarchy-shell window snapChooser "${addrs[0]}" >/dev/null
+wait_until "snap layout chooser is visible" 10 layer_present "omarchy-snap-chooser"
+screenshot "success-snap-chooser"
+omarchy-shell shell hide omarchy.ultimate-snap-chooser >/dev/null || true
+wait_until "snap layout chooser closes" 10 layer_absent "omarchy-snap-chooser"
+pass "snap layout chooser summons omarchy-snap-chooser"
+
+omarchy-shell window restoreNormal "${addrs[0]}" >/dev/null
+sleep 1
+omarchy-shell window aeroDragEnd "${addrs[0]}" 960 0 >/dev/null
+wait_until "aero drag to top maximizes" 10 window_is_maximized "${addrs[0]}"
+pass "aeroDragEnd at the top edge maximizes"
+omarchy-shell window aeroDragEnd "${addrs[0]}" 960 400 >/dev/null
+sleep 1
+hyprctl -j clients | jq -e --arg a "${addrs[0]}" '.[] | select(.address == $a) | .fullscreen == 0' >/dev/null \
+  || fail "drag-away restore" "interior aeroDragEnd left the window maximized: $(hyprctl -j clients | jq --arg a "${addrs[0]}" '.[] | select(.address == $a) | {at,size,fullscreen}')"
+pass "aeroDragEnd away from an edge restores"
+
+omarchy-shell window toggleShowDesktop >/dev/null
+sleep 1
+hidden=$(hyprctl -j clients | jq '[.[] | select(.class == "foot" and .hidden == true)] | length')
+(( hidden >= 1 )) || fail "Show Desktop" "no foot is hidden after Win+D: $(hyprctl -j clients | jq '[.[] | select(.class == "foot") | {address,hidden}]')"
+omarchy-shell window toggleShowDesktop >/dev/null
+sleep 1
+pass "Show Desktop hides and restores"
 
 # Mouse proof: one absolute pointer (USB-tablet class), not relative ydotool.
 # Missing /dev/uinput is a failure, not a skip.

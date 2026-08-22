@@ -24,6 +24,7 @@ QtObject {
   property var _normalBounds: ({})
   property bool _desktopShown: false
   property var _batch: []
+  property var savedLayout: ({ windows: [] })
   property bool cycling: false
   property int cycleIndex: 0
   property var cycleList: []
@@ -49,6 +50,7 @@ QtObject {
   }
   readonly property var groups: WindowModel.buildGroups(root.windows, root.pins)
   readonly property string pinsPath: root.home + "/.local/state/omarchy/ultimate/taskbar-pins.json"
+  readonly property string layoutPath: root.home + "/.local/state/omarchy/ultimate/window-layout.json"
   readonly property string shippedPinsPath: Quickshell.env("OMARCHY_PATH") + "/default/ultimate/taskbar-pins.json"
 
   function _applyShippedPinsIfNeeded() {
@@ -87,8 +89,6 @@ QtObject {
   function _windowRecord(hypr) {
     if (!hypr) return null
     var ipc = hypr.lastIpcObject || {}
-    var at = ipc.at || [0, 0]
-    var size = ipc.size || [0, 0]
     var ws = hypr.workspace
     var wsName = ws ? String(ws.name || "") : String((ipc.workspace && ipc.workspace.name) || "")
     var wsId = ws ? ws.id : (ipc.workspace && ipc.workspace.id)
@@ -96,7 +96,10 @@ QtObject {
     var mon = hypr.monitor
     var address = root._canonAddr(hypr.address || ipc.address)
     var client = root._clientIpc(address)
+    var at = ipc.at || (client && client.at) || [0, 0]
+    var size = ipc.size || (client && client.size) || [0, 0]
     var hidden = (client && client.hidden === true) || ipc.hidden === true
+    var fullscreen = Number((ipc.fullscreen != null && ipc.fullscreen !== 0) ? ipc.fullscreen : ((client && client.fullscreen) || 0))
     return {
       address: address,
       title: String(hypr.title || ipc.title || ""),
@@ -108,7 +111,7 @@ QtObject {
       height: Number(size[1] || 0),
       mapped: ipc.mapped !== false,
       floating: ipc.floating === true,
-      fullscreen: Number(ipc.fullscreen || 0),
+      fullscreen: fullscreen,
       workspace: wsName,
       workspaceId: wsId,
       minimized: hidden,
@@ -278,8 +281,18 @@ QtObject {
   }
 
   function isMaximized(address) {
-    var rec = root._clientRect(root._addr(address))
-    return !!(rec && rec.fullscreen === 1)
+    var target = root._addr(address)
+    var rec = root._clientRect(target) || root._record(target)
+    if (rec && Number(rec.fullscreen) === 1) return true
+    var geom = root._monitorGeom()
+    if (!rec || !geom.width) return false
+    var area = WindowModel.workArea(geom)
+    return Math.abs(Number(rec.width) - area.width) <= 16 && Number(rec.height) >= area.height - 48
+  }
+
+  function isMinimized(address) {
+    var rec = root._record(root._addr(address))
+    return !!(rec && rec.minimized)
   }
 
   function toggleFromTaskbar(address) {
@@ -319,28 +332,20 @@ QtObject {
   }
 
   function restoreOrMinimize(address) {
-    var target = root._addr(address)
-    if (!target) return
-    if (root.isMaximized(target)) {
-      root.unmaximize(target)
-      return
-    }
-    var rec = root._clientRect(target)
-    var geom = root._monitorGeom()
-    if (rec && geom.width && WindowModel.isSnapped(rec, geom, 8, 32)) {
-      root.restoreNormal(target)
-      return
-    }
-    root.minimize(target)
+    root.snapArrow(address, "d")
   }
 
   function restoreNormal(address) {
     var target = root._addr(address)
     if (!target) return
-    if (root.isMaximized(target)) root.unmaximize(target)
     var bounds = root._normalBounds[target]
     if (!bounds) bounds = WindowModel.defaultFloatRect(root._monitorGeom())
-    if (!bounds.width || !bounds.height) return
+    root._applyRect(target, bounds)
+  }
+
+  function _applyRect(target, bounds) {
+    if (!target || !bounds || !bounds.width || !bounds.height) return
+    root.unmaximize(target)
     var win = root._luaWindow(target)
     root._dispatchLua("hl.dsp.window.float({ action = \"enable\", " + win + " })")
     root._dispatchLua("hl.dsp.window.resize({ x = " + Math.round(Number(bounds.width)) + ", y = " + Math.round(Number(bounds.height)) + ", relative = false, " + win + " })")
@@ -360,17 +365,115 @@ QtObject {
   }
 
   function snapLeft(address) {
-    root._snap(root._addr(address), "l")
+    root.snapTo(address, "l")
   }
 
   function snapRight(address) {
-    root._snap(root._addr(address), "r")
+    root.snapTo(address, "r")
+  }
+
+  function snapTo(address, side) {
+    root._applySnapKind(root._addr(address), String(side || ""))
+  }
+
+  function snapArrow(address, dir) {
+    var target = root._addr(address)
+    if (!target) return
+    var kind = "float"
+    if (root.isMaximized(target)) kind = "max"
+    else {
+      var rec = root._clientRect(target) || root._record(target)
+      var geom = root._monitorGeom()
+      if (rec && geom.width) kind = WindowModel.snapKind(rec, geom, 8, 32)
+    }
+    root._applySnapKind(target, WindowModel.nextSnap(kind, dir))
+  }
+
+  function aeroDragEnd(address, x, y) {
+    var target = root._addr(address)
+    if (!target) return
+    Hyprland.refreshToplevels()
+    var geom = root._monitorGeom()
+    if (!geom.width) return
+    var px = Number(x)
+    var py = Number(y)
+    if (x === undefined || y === undefined || x === "" || y === "" || isNaN(px) || isNaN(py)) {
+      root.lastError = "aeroDragEnd needs cursor coordinates"
+      return
+    }
+    var zone = WindowModel.aeroZone({ x: px, y: py }, geom)
+    if (zone) {
+      root._applySnapKind(target, zone)
+      return
+    }
+    var rec = root._clientRect(target) || root._record(target)
+    if (root.isMaximized(target) || (rec && WindowModel.isSnapped(rec, geom, 8, 32)))
+      root.restoreNormal(target)
+  }
+
+  function saveLayout() {
+    Hyprland.refreshToplevels()
+    var geom = root._monitorGeom()
+    var recs = []
+    var list = root._addresses()
+    var i
+    var rec
+    var rect
+    for (i = 0; i < list.length; i++) {
+      rec = root._record(list[i]) || {}
+      rect = root._clientRect(list[i]) || rec
+      recs.push({
+        address: list[i],
+        appId: rec.appId || rec.class || "",
+        title: rec.title || "",
+        fullscreen: Number(rect.fullscreen || rec.fullscreen || 0),
+        minimized: !!(rect.minimized || rec.minimized),
+        x: Number(rect.x || 0),
+        y: Number(rect.y || 0),
+        width: Number(rect.width || 0),
+        height: Number(rect.height || 0)
+      })
+    }
+    root.savedLayout = WindowModel.captureLayout(recs, geom, 32)
+    root.layoutFile.setText(WindowModel.serializeLayout(root.savedLayout))
+  }
+
+  function restoreLayout() {
+    var matches = WindowModel.matchLayout(root.windows, root.savedLayout)
+    var i
+    var entry
+    for (i = 0; i < matches.length; i++) {
+      entry = matches[i]
+      if (entry.kind === "float") root._applyRect(entry.address, entry)
+      else root._applySnapKind(entry.address, entry.kind)
+    }
+  }
+
+  function _applySnapKind(target, kind) {
+    if (!target) return
+    kind = String(kind || "")
+    if (kind === "min") {
+      root.minimize(target)
+      return
+    }
+    if (kind === "normal") {
+      root.restoreNormal(target)
+      return
+    }
+    if (kind === "max") {
+      root.maximize(target)
+      return
+    }
+    if (kind === "l" || kind === "r" || kind === "tl" || kind === "tr" || kind === "bl" || kind === "br") {
+      root._snap(target, kind)
+    }
   }
 
   function _snap(target, direction) {
     if (!target) return
     var geom = root._monitorGeom()
     if (!geom.width || !geom.height) return
+    if (root.isMaximized(target)) root.unmaximize(target)
     root._rememberNormal(target)
     // hyprbars draws above hyprctl's client box even with bar_part_of_window.
     // Inset the client top by bar_height (32, matching desktop-windows.lua) so
@@ -496,6 +599,15 @@ QtObject {
   property Timer clientsRestart: Timer {
     interval: 400
     onTriggered: root.clientsReader.running = true
+  }
+
+  property FileView layoutFile: FileView {
+    path: root.layoutPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.savedLayout = WindowModel.parseLayout(text())
+    onLoadFailed: root.savedLayout = { windows: [] }
+    onFileChanged: reload()
   }
 
   property FileView pinFile: FileView {

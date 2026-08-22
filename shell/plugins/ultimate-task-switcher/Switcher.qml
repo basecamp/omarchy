@@ -94,7 +94,12 @@ Item {
               width: parent.width - 8
               wrapMode: Text.Wrap
               horizontalAlignment: Text.AlignHCenter
-              text: windowService ? windowService.windowTitle(modelData) : String(modelData)
+              text: {
+                var title = windowService ? windowService.windowTitle(modelData) : String(modelData)
+                if (windowService && typeof windowService.isMinimized === "function" && windowService.isMinimized(modelData))
+                  return title + "\nminimized"
+                return title
+              }
               color: Tokens.text.primary
               font.pixelSize: Style.font.bodySmall
               font.family: "sans-serif"

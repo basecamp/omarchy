@@ -6,7 +6,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 require_command jq
 
-for plugin in ultimate-taskbar ultimate-start ultimate-run ultimate-settings ultimate-task-switcher; do
+for plugin in ultimate-taskbar ultimate-start ultimate-run ultimate-settings ultimate-task-switcher ultimate-snap-chooser; do
   manifest="$ROOT/shell/plugins/$plugin/manifest.json"
   [[ -f $manifest ]] || fail "plugin manifest exists: $plugin"
   jq -e '.schemaVersion == 1 and .id and .kinds and .entryPoints' "$manifest" >/dev/null \
@@ -130,8 +130,24 @@ grep -Fq 'WindowModel.compositorMonitor' "$ROOT/shell/services/WindowService.qml
   || fail "snap geometry comes from compositor monitor JSON"
 grep -Fq 'function restoreNormal' "$ROOT/shell/services/WindowService.qml" \
   || fail "WindowService can restore the pre-snap rectangle"
-grep -Fq 'restoreOrMinimize' "$ROOT/default/hypr/bindings/desktop.lua" \
-  || fail "Win+Down restores or minimizes"
+grep -Fq 'snapArrow' "$ROOT/default/hypr/bindings/desktop.lua" \
+  || fail "Win+Arrow cycles halves then quarters through snapArrow"
+grep -Fq 'snapChooser' "$ROOT/default/hypr/bindings/desktop.lua" \
+  || fail "Win+Z summons the snap layout chooser"
+grep -Fq 'omarchy-shell window snapChooser active' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "hyprbars has a maximize-adjacent snap layout button"
+grep -Fq 'aeroDragEnd 0x{:x} {} {}' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
+  || fail "hyprbars drag end sends cursor coordinates to aeroDragEnd"
+grep -Fq 'm_bDraggingThis || inputIsValid()' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
+  || fail "hyprbars drag end still fires when the pointer is off the title bar"
+grep -Fq 'windows[(activeIndex + 1)' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml" \
+  || fail "grouped taskbar click cycles windows"
+grep -Fq 'modelData.minimized' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml" \
+  || fail "taskbar peek lists each window including minimized"
+grep -Fq 'function saveLayout' "$ROOT/shell/plugins/ultimate-snap-chooser/Chooser.qml" \
+  || fail "snap chooser can save the current layout"
+grep -Fq 'omarchy-snap-chooser' "$ROOT/shell/plugins/ultimate-snap-chooser/Chooser.qml" \
+  || fail "snap chooser uses a distinct layer namespace"
 pass "desktop Hyprland path floats windows, uses hyprbars, and allows maximize"
 
 [[ -f $ROOT/test/vm/vm-run.ps1 ]] || fail "portable VM helper exists"

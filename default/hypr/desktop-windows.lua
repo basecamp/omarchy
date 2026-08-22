@@ -180,6 +180,13 @@ local function add_hyprbars_buttons()
     bg_color = "rgb(3d3d3d)",
     fg_color = "rgb(ffffff)",
     size = 14,
+    icon = "▦",
+    action = "omarchy-shell window snapChooser active",
+  })
+  plugin.hyprbars.add_button({
+    bg_color = "rgb(3d3d3d)",
+    fg_color = "rgb(ffffff)",
+    size = 14,
     icon = "–",
     action = "omarchy-shell window minimize active",
   })

@@ -1075,6 +1075,37 @@ ShellRoot {
       return "ok"
     }
 
+    function snapTo(address: string, side: string): string {
+      shell.windowService.snapTo(address, side)
+      return "ok"
+    }
+
+    function snapArrow(address: string, dir: string): string {
+      shell.windowService.snapArrow(address, dir)
+      return "ok"
+    }
+
+    function aeroDragEnd(address: string, x: string, y: string): string {
+      shell.windowService.aeroDragEnd(address, x, y)
+      return "ok"
+    }
+
+    function saveLayout(): string {
+      shell.windowService.saveLayout()
+      return "ok"
+    }
+
+    function restoreLayout(): string {
+      shell.windowService.restoreLayout()
+      return "ok"
+    }
+
+    function snapChooser(address: string): string {
+      var target = address || "active"
+      shell.summon("omarchy.ultimate-snap-chooser", JSON.stringify({ address: target }))
+      return "ok"
+    }
+
     function closeActive(): string {
       shell.windowService.closeActive()
       return "ok"

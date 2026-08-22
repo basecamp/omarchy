@@ -107,12 +107,12 @@ What exists:
 - Maximize `fullscreen: 1` `[2,34] 1916×1004` (title bar in the top of the work area; occupied bottom 1038 vs 1040).
 - Minimize identity still holds — Desktop Mode now uses in-place `CWindow::setHidden` (`hidden: true` on the same workspace), not `special:minimized`. Restore returns the same address to the same workspace.
 - SearchBox must not import `QtQuick.Controls` (that shadows `qs.Ui.TextField` with a stock white field).
+- Quarter snap, Win+Arrow cycling, maximize-adjacent snap chooser, cursor-based Aero drag-to-edge, drag-away restore, Show Desktop, and address-matched saved layouts. Live: left then up `[0,32] 960×504`; `aeroDragEnd 960,0` → `[2,34] 1916×1004` fullscreen `1`; interior drag-end → `[208,80] 880×560`. Overlay `omarchy-snap-chooser`. Grouped taskbar click cycles; peek lists each window.
 
 What W0 still does not have (gate stays closed):
 
 - Alt+Tab address-change as a number this lock will accept. `a4a046b3` stays; do not re-lock it as a go.
-- Peek / jump lists / grouped previews as product, not a timer flyout.
-- Quarter snap, maximize-button layout chooser, saved layouts.
+- Peek thumbnails / jump lists. Grouped taskbar peek is a window list with cycle and close, not bitmap Aero Peek.
 - Multi-monitor, virtual desktops, parented dialogs, Steam / Wine / Electron / GTK / Qt matrix.
 - hyprbars as a pacman package in the ISO mirror (runtime `.so` is now `/usr/lib/hyprland-plugins/hyprbars.so`, built by `omarchy-apply-hyprland-plugins`; `hyprland-plugin-hyprbars` still must not go in `install/omarchy-other.packages`).
 - Tokyo Night as the locked visual, generic gear icons, Nautilus as Files, nvim as ordinary text, TTY first-boot, product ISO.
