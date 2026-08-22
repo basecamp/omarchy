@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.voxtype",
+  "name": "Voxtype",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Voxtype dictation state and microphone levels.",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}
