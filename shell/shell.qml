@@ -263,12 +263,19 @@ ShellRoot {
     // and onBarConfigChanged keeps barConfig current from then on. A binding here
     // would be replaced moments after it was made.
     function loadPluginBar() {
-      if (!active) {
+      // `active` already covers activeBarSourceUrl !== "", but a signal handler can
+      // run before that binding is re-evaluated: on the change that empties the
+      // url, onActiveBarSourceUrlChanged fires while `active` is still true, and
+      // setSource("") with a property map is a needless load error. Reading the url
+      // once and checking it here keeps this correct whichever order they arrive in.
+      var url = shell.activeBarSourceUrl
+
+      if (!active || url === "") {
         setSource("")
         return
       }
 
-      setSource(shell.activeBarSourceUrl, {
+      setSource(url, {
         omarchyPath: shell.omarchyPath,
         barWidgetRegistry: shell.barWidgetRegistry,
         barConfig: shell.barConfig,
