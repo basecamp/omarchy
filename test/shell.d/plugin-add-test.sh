@@ -140,6 +140,6 @@ grep -Fqx 'shell discoverPlugins acme.local' "$calls" ||
   fail "URL add does not request targeted discovery"
 grep -Fq 'shell enablePlugin acme.local {}' "$calls" ||
   fail "add --enable does not enable the discovered plugin"
-[[ $(grep -Fc 'shell discoverPlugins acme.local' "$calls") -eq 1 ]] ||
+(( $(grep -Fc 'shell discoverPlugins acme.local' "$calls") == 1 )) ||
   fail "add --enable requests explicit discovery more than once"
 pass "URL add --enable discovers once and then enables the new plugin"

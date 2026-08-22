@@ -63,6 +63,9 @@ ShellRoot {
   // watcher idempotent regardless of which reaches the shell first.
   property var requestedPluginDiscoveries: ({})
   property var watcherPluginDiscoveries: ({})
+  // Values are true when a request arrived during a scan and therefore needs
+  // one follow-up scan if that scan did not discover the plugin.
+  property var pendingPluginDiscoveries: ({})
   property bool initialPluginScanFinished: false
 
   Timer {
@@ -770,6 +773,35 @@ ShellRoot {
     shell[setName] = next
   }
 
+  function requestPluginDiscovery(pluginId) {
+    var key = String(pluginId)
+    var pending = ({})
+    for (var id in shell.pendingPluginDiscoveries) pending[id] = shell.pendingPluginDiscoveries[id]
+    pending[key] = Boolean(pending[key]) || shell.pluginRegistry.scanning
+    shell.pendingPluginDiscoveries = pending
+    if (!shell.pluginRegistry.scanning) shell.pluginRegistry.rescan()
+  }
+
+  function finishPluginDiscoveries() {
+    var pending = ({})
+    var followUp = false
+    for (var id in shell.pendingPluginDiscoveries) {
+      if (shell.pluginRegistry.installedPlugins[id]) {
+        shell.rememberLocalPlugin(id)
+        shell.forgetDiscovery("requestedPluginDiscoveries", id)
+        shell.forgetDiscovery("watcherPluginDiscoveries", id)
+      } else if (shell.pendingPluginDiscoveries[id]) {
+        pending[id] = false
+        followUp = true
+      } else {
+        shell.forgetDiscovery("requestedPluginDiscoveries", id)
+        shell.forgetDiscovery("watcherPluginDiscoveries", id)
+      }
+    }
+    shell.pendingPluginDiscoveries = pending
+    if (followUp) Qt.callLater(shell.pluginRegistry.rescan)
+  }
+
   function finishPluginReload() {
     if (!shell.pluginReloading) return
     if (shell.pluginRegistry.scanning) {
@@ -788,7 +820,6 @@ ShellRoot {
       // plugins. Session-known IDs include removed plugins, whose QML URLs may
       // still be cached and therefore require the code-reload path below.
       if (!shell.knownLocalPluginIds[pluginId]) {
-        shell.rememberLocalPlugin(pluginId)
         if (shell.requestedPluginDiscoveries[pluginId])
           shell.forgetDiscovery("requestedPluginDiscoveries", pluginId)
         else {
@@ -798,13 +829,14 @@ ShellRoot {
           shell.watcherPluginDiscoveries = acknowledged
         }
         console.log("Local plugin added, discovering:", pluginId)
-        shell.pluginRegistry.rescan()
+        shell.requestPluginDiscovery(pluginId)
         return
       }
       console.log("Local plugin changed, reloading:", pluginId)
       localPluginReloadTimer.restart()
     }
     function onScanFinished() {
+      shell.finishPluginDiscoveries()
       if (!shell.initialPluginScanFinished) {
         for (var id in shell.pluginRegistry.installedPlugins) {
           var manifest = shell.pluginRegistry.installedPlugins[id]
@@ -945,7 +977,7 @@ ShellRoot {
       var pluginId = String(id || "")
       if (shell.watcherPluginDiscoveries[pluginId]) {
         shell.forgetDiscovery("watcherPluginDiscoveries", pluginId)
-        shell.pluginRegistry.rescan()
+        shell.requestPluginDiscovery(pluginId)
       } else if (shell.knownLocalPluginIds[pluginId]) {
         shell.reloadPlugins()
       } else {
@@ -953,7 +985,7 @@ ShellRoot {
         for (var key in shell.requestedPluginDiscoveries) requested[key] = true
         requested[pluginId] = true
         shell.requestedPluginDiscoveries = requested
-        shell.pluginRegistry.rescan()
+        shell.requestPluginDiscovery(pluginId)
       }
     }
 

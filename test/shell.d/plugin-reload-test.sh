@@ -21,7 +21,7 @@ assert(
   /watcherPluginDiscoveries/.test(discover[1])
     && /knownLocalPluginIds/.test(discover[1])
     && /shell\.reloadPlugins\(\)/.test(discover[1])
-    && /shell\.pluginRegistry\.rescan\(\)/.test(discover[1]),
+    && /requestPluginDiscovery\(pluginId\)/.test(discover[1]),
   'plugin discovery is idempotent and same-id reinstalls use code reload semantics'
 )
 
@@ -29,13 +29,22 @@ const localChange = shell.match(/function onLocalPluginChanged\(pluginId\) \{([\
 assert(localChange, 'shell handles local plugin filesystem changes')
 assert(
   /!shell\.knownLocalPluginIds\[pluginId\]/.test(localChange[1])
-    && /rememberLocalPlugin\(pluginId\)/.test(localChange[1])
-    && /shell\.pluginRegistry\.rescan\(\)/.test(localChange[1]),
+    && /requestPluginDiscovery\(pluginId\)/.test(localChange[1]),
   'new plugin directories use discovery without global teardown'
 )
 assert(
   /localPluginReloadTimer\.restart\(\)/.test(localChange[1]),
   'changes to installed plugins retain debounced code reload'
+)
+
+assert(
+  /function requestPluginDiscovery\(pluginId\)[\s\S]*?pluginRegistry\.scanning[\s\S]*?pluginRegistry\.rescan\(\)/.test(shell),
+  'targeted discovery queues requests that arrive during a registry scan'
+)
+assert(
+  /function onScanFinished\(\)[\s\S]*?finishPluginDiscoveries\(\)/.test(shell)
+    && /function finishPluginDiscoveries\(\)[\s\S]*?Qt\.callLater\(shell\.pluginRegistry\.rescan\)/.test(shell),
+  'scan completion drains queued targeted discovery with a metadata-only follow-up'
 )
 
 const add = fs.readFileSync(path.join(root, 'bin/omarchy-plugin-add'), 'utf8')
