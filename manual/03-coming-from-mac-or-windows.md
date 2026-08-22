@@ -46,7 +46,7 @@ Updates come through one command — _Update > Omarchy_ — that updates Omarchy
 
 Software comes from a package manager, not from downloaded installers.
 
-And when you close a window, the app actually quits. There's no macOS limbo where the program keeps running with no windows. `Super + W` means gone.
+And when you close a window, the app actually quits. There's no macOS limbo where the program keeps running with no windows. `Super + W` — or `Super + Q`, if that's the finger memory you arrived with — means gone.
 
 ### On Mac hardware
 
