@@ -13,6 +13,8 @@ mkdir -p "$TEST_HOME/.codex/sessions/$(date +%Y/%m/%d)" "$TEST_HOME/bin"
 cat >"$TEST_HOME/bin/codex" <<'EOF'
 #!/bin/bash
 
+printf '%s\n' "$*" >"$HOME/codex-args"
+
 while read -r request; do
   id=$(jq -r '.id // empty' <<<"$request")
   method=$(jq -r '.method // empty' <<<"$request")
@@ -42,6 +44,10 @@ EOF
 
 result=$(HOME="$TEST_HOME" CODEX_HOME="$TEST_HOME/.codex" XDG_DATA_HOME="$TEST_HOME/.local/share" PATH="$TEST_HOME/bin:$PATH" \
   "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(<"$TEST_HOME/codex-args") == "-s read-only -a never app-server" ]] ||
+  fail "Codex collector starts app-server with a supported approval policy" "$(<"$TEST_HOME/codex-args")"
+pass "Codex collector starts app-server with a supported approval policy"
 
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "210" ]] ||
   fail "Codex collector counts each turn once" "$result"
