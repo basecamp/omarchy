@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# omarchy:summary=Remove LM Studio along with its configuration and every model it downloaded.
+# omarchy:requires-sudo=true
+
+set -e
+
+omarchy-pkg-drop lmstudio-bin
+
+# LM Studio's home is relocatable and the pointer is the only record of where
+# the models went, so it has to be read before it is deleted with everything else.
+lmstudio_home=""
+if [[ -f $HOME/.lmstudio-home-pointer ]]; then
+  read -r lmstudio_home <"$HOME/.lmstudio-home-pointer" || true
+fi
+
+rm -rf \
+  "$HOME/.config/LM Studio" \
+  "$HOME/.config/LM-Studio" \
+  "$HOME/.lmstudio" \
+  "$HOME/.lmstudio-home-pointer"
+
+if [[ -n $lmstudio_home && $lmstudio_home == /* && -d $lmstudio_home ]] &&
+  [[ $lmstudio_home != "/" && $lmstudio_home != "$HOME" ]]; then
+  rm -rf "$lmstudio_home"
+fi
+
+echo ""
+echo "LM Studio and its models have been removed."

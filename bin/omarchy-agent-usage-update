@@ -16,7 +16,7 @@ flags=()
 only=()
 declare -A excluded
 
-while [[ $# -gt 0 ]]; do
+while (( $# > 0 )); do
   case "$1" in
   --force | --limits-only) flags+=("$1") ;;
   --except)

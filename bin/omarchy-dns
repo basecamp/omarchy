@@ -28,19 +28,32 @@ provider_from_arg() {
   esac
 }
 
-self_path() {
-  readlink -f "$OMARCHY_PATH/bin/${BASH_SOURCE[0]##*/}"
+# The path etc/sudoers.d/omarchy-dns names. The privileged half always runs from
+# there rather than from whichever copy was invoked, so the rule matches even
+# where $OMARCHY_PATH points at a checkout.
+PACKAGED_PATH=/usr/bin/omarchy-dns
+
+# True when sudo would run this exact command without stopping for a password.
+# `sudo -l` on its own reports whether a command is permitted, which the blanket
+# %wheel rule answers yes to for everything; the long listing prints the matched
+# entry's tags, so !authenticate is the grant in etc/sudoers.d/omarchy-dns and
+# nothing else. Listing runs nothing and, under -n, prompts for nothing, so a
+# machine whose omarchy-settings predates that file falls through to polkit
+# instead of dying on a password prompt it has no terminal to show.
+sudo_grants_passwordless() {
+  sudo -n -l -l "$PACKAGED_PATH" "$@" 2>/dev/null | grep -q '!authenticate'
 }
 
 require_root() {
   if (( EUID == 0 )); then
     return
-  fi
-
-  if [[ -t 0 ]]; then
-    exec sudo "$(self_path)" "$@"
+  elif [[ -t 0 ]] || sudo_grants_passwordless "$@"; then
+    # A terminal can carry sudo's own password prompt. Without one, sudo is
+    # right only where the grant reaches; polkit can at least put a prompt on
+    # screen, and offer to authenticate as someone else.
+    exec sudo "$PACKAGED_PATH" "$@"
   else
-    exec pkexec "$(self_path)" "$@"
+    exec pkexec "$PACKAGED_PATH" "$@"
   fi
 }
 
