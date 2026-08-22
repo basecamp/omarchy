@@ -20,12 +20,40 @@ Panel {
   function close() {
     root.controller.hide()
     cancelPasswordPrompt()
+    cancelHiddenForm()
   }
 
   function cancelPasswordPrompt() {
     passwordSsid = ""
     passwordText = ""
     identityText = ""
+  }
+
+  function cancelHiddenForm() {
+    hiddenFormOpen = false
+    hiddenPasswordText = ""
+    // A connect still in flight is tracked by ssid/security/identity
+    // (hiddenBusy derives from hiddenSsidText) -- clearing them here would
+    // drop the in-flight state a reopened panel needs to keep rendering
+    // "Connecting…" instead of a silently-busy panel with nothing shown.
+    if (hiddenBusy) return
+    hiddenSsidText = ""
+    hiddenSecurity = "personal"
+    hiddenIdentityText = ""
+    // Done with this attempt (if any) -- past this point the shared
+    // actionSsid/failureSsid state no longer belongs to the hidden form.
+    hiddenConnecting = false
+    // Dropdown.selectCurrent() imperatively assigns its own `value` on a
+    // user pick, which severs the `value: root.hiddenSecurity` binding.
+    // Re-arm it here so a programmatic reset (like the line above) is
+    // reflected in what the dropdown displays next time the form opens.
+    hiddenSecurityDropdown.value = Qt.binding(function() { return root.hiddenSecurity })
+  }
+
+  function toggleHiddenForm() {
+    if (busy) return
+    if (hiddenFormOpen) cancelHiddenForm()
+    else hiddenFormOpen = true
   }
 
   // Live connection details from `ip` / /sys / iw.
@@ -98,6 +126,30 @@ Panel {
   property string passwordText: ""
   property string identityText: ""
 
+  // "Join hidden network" form state. Hidden SSIDs never scan in, so this
+  // form gathers everything up front instead of expanding out of a row.
+  // Reuses actionSsid/actionKind/failureSsid/failureReason above so the
+  // panel-wide busy gate covers this action too.
+  property bool hiddenFormOpen: false
+  property string hiddenSsidText: ""
+  property string hiddenSecurity: "personal"  // "personal" | "enterprise" | "none"
+  property string hiddenIdentityText: ""
+  property string hiddenPasswordText: ""
+  // Discriminates a hidden connect from a scanned row's -- actionSsid /
+  // failureSsid are shared with row state, and a typed hidden SSID that
+  // happens to match a scanned row's SSID would otherwise cross-talk with
+  // that row's own busy/failed rendering (and vice versa).
+  property bool hiddenConnecting: false
+  readonly property bool hiddenBusy: hiddenConnecting && actionKind === "connect" && hiddenSsidText !== "" && actionSsid === hiddenSsidText
+  readonly property bool hiddenFailed: hiddenConnecting && failureReason !== "" && hiddenSsidText !== "" && failureSsid === hiddenSsidText
+
+  // The Dropdown disappears with the rest of the form, so a cursor left
+  // pointing at it would be stuck on nothing -- same shape as
+  // onCanSelectBandChanged.
+  onHiddenFormOpenChanged: {
+    if (!hiddenFormOpen && focusSection === "hiddenSecurity") focusSection = "dns"
+  }
+
   // ConnectionFailReason values as a plain object, so Model.js helpers stay
   // pure JS and Node-testable.
   readonly property var connectionFailReasons: ({
@@ -119,9 +171,12 @@ Panel {
   property bool cursorActive: false
 
   // Keyboard focus zone for the panel. j/k crosses row boundaries:
-  // header actions ⇄ portal ⇄ band ⇄ DNS row ⇄ Wi-Fi networks. h/l move
-  // within header actions, band pills, or DNS providers.
-  property string focusSection: "dns"  // "header" | "portal" | "band" | "dns" | "wifi"
+  // header actions ⇄ portal ⇄ band ⇄ DNS row ⇄ Wi-Fi networks ⇄
+  // hidden-network security Dropdown (only reachable while the
+  // hidden-network form is open; the Dropdown owns its own option
+  // navigation once opened). h/l move within header actions, band pills,
+  // or DNS providers.
+  property string focusSection: "dns"  // "header" | "portal" | "band" | "dns" | "wifi" | "hiddenSecurity"
   property int headerIndex: 0
   readonly property bool canDisconnect: !!connectedWifiNetwork
   readonly property bool headerHasDisconnect: false
@@ -778,7 +833,10 @@ Panel {
 
   function clearNetworkAction() {
     actionTimeout.stop()
-    if (actionKind === "connect") passwordSsid = ""
+    // Guard on actionSsid matching the open prompt -- a completing hidden
+    // connect (or any other row's connect) must not clobber an unrelated
+    // row's still-open passphrase prompt.
+    if (actionKind === "connect" && actionSsid === passwordSsid) passwordSsid = ""
     failureSsid = ""
     failureReason = ""
     actionSsid = ""
@@ -836,6 +894,91 @@ Panel {
     onStarted: {
       write(secret + "\n")
       secret = ""
+    }
+  }
+
+  // Hidden networks never show up in a scan, so there is no WifiNetwork
+  // object to hand runNetworkAction or to watch for connected/failed signals
+  // -- completion is read straight off nmcli's exit code instead.
+  function runHiddenAction(ssid, callback) {
+    if (actionKind !== "" || !ssid) return
+    actionSsid = ssid
+    actionKind = "connect"
+    failureSsid = ""
+    failureReason = ""
+    // Marks the shared actionSsid/failureSsid state above as attributable to
+    // THIS hidden attempt -- without it, a scanned row's own in-flight
+    // connect/failure that happens to share the typed hidden SSID string
+    // would read as the hidden form's own busy/failed state (or vice versa).
+    hiddenConnecting = true
+    callback()
+    actionTimeout.restart()
+  }
+
+  function connectHidden(ssid, security, identity, passphrase) {
+    runHiddenAction(ssid, function() {
+      if (security === "enterprise") {
+        hiddenConnect.secret = passphrase
+        hiddenConnect.command = ["bash", "-c", Model.hiddenEnterpriseConnectScript, "nmcli-hidden-eap", ssid, identity]
+      } else if (security === "none") {
+        hiddenConnect.secret = ""
+        hiddenConnect.command = ["nmcli", "device", "wifi", "connect", ssid, "hidden", "yes"]
+      } else {
+        hiddenConnect.secret = passphrase
+        hiddenConnect.command = ["bash", "-c", Model.hiddenPskConnectScript, "nmcli-hidden-psk", ssid]
+      }
+      hiddenConnect.running = true
+    })
+  }
+
+  function submitHiddenNetwork() {
+    var ssid = hiddenSsidText.trim()
+    var identity = hiddenIdentityText.trim()
+    if (busy || ssid.length === 0) return
+    if (hiddenSecurity !== "none" && hiddenPasswordText.length === 0) return
+    if (hiddenSecurity === "enterprise" && identity.length === 0) return
+    // Normalize the stored text to the trimmed value submitted below so
+    // hiddenBusy/hiddenFailed (which compare actionSsid === hiddenSsidText)
+    // keep matching once actionSsid is set to the trimmed ssid.
+    hiddenSsidText = ssid
+    hiddenIdentityText = identity
+    connectHidden(ssid, hiddenSecurity, identity, hiddenPasswordText)
+  }
+
+  function completeHiddenAction() {
+    clearNetworkAction()
+    cancelHiddenForm()
+  }
+
+  function failHiddenAction(reason) {
+    if (actionKind === "") return
+    actionTimeout.stop()
+    failureSsid = actionSsid
+    failureReason = reason
+    actionSsid = ""
+    actionKind = ""
+    // hiddenConnecting deliberately stays true here (and through the shared
+    // actionTimeout timeout path) -- it still needs to gate hiddenFailed so
+    // this attempt's "Failed"/"Timed out" message renders. It clears once
+    // the user dismisses the form (cancelHiddenForm) or retries
+    // (runHiddenAction resets failureSsid/failureReason for the new attempt
+    // regardless of hiddenConnecting's prior value).
+  }
+
+  // Runs the hidden-network nmcli command (see Model.hiddenPskConnectScript /
+  // Model.hiddenEnterpriseConnectScript). Same stdin-secret handoff as
+  // enterpriseConnect; the open path never sets a secret.
+  Process {
+    id: hiddenConnect
+    property string secret: ""
+    stdinEnabled: true
+    onStarted: {
+      write(secret + "\n")
+      secret = ""
+    }
+    onExited: function(exitCode) {
+      if (exitCode === 0) root.completeHiddenAction()
+      else root.failHiddenAction("Failed to connect")
     }
   }
 
@@ -1049,9 +1192,10 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      // Freeze the cursor model while the inline password prompt is open;
-      // the TextField inside owns input until Esc/Enter/Cancel.
-      blocked: root.passwordSsid !== ""
+      // Freeze the cursor model while the inline password prompt or the
+      // hidden-security Dropdown's popup is open; the TextField / Dropdown's
+      // own ListView owns input until Esc/Enter/Cancel closes it.
+      blocked: root.passwordSsid !== "" || hiddenSecurityDropdown.popupOpen
 
       onMoveRequested: function(dx, dy) {
         if (!root.cursorActive) {
@@ -1114,14 +1258,30 @@ Panel {
               root.focusSection = "wifi"
               if (root.selectedIndex < 0) root.selectedIndex = 0
             }
-          } else {  // wifi
+          } else if (root.focusSection === "wifi") {
             // k from the top row escapes back up to the DNS row rather than
-            // wrapping around to the bottom of the list.
+            // wrapping around to the bottom of the list. j from the bottom
+            // row drops into the hidden-network security Dropdown when that
+            // form is open; otherwise the list just clamps.
             if (dy < 0 && root.selectedIndex <= 0) {
               root.focusSection = "dns"
               root.wifiActionFocused = false
+            } else if (dy > 0 && root.selectedIndex >= root.wifiNetworks.length - 1 && root.hiddenFormOpen) {
+              root.focusSection = "hiddenSecurity"
+            } else {
+              root.selectByDelta(dy)
             }
-            else root.selectByDelta(dy)
+          } else {  // hiddenSecurity
+            // Nothing below the Dropdown to escape into; k climbs back to
+            // the wifi list (or DNS, if the list is empty).
+            if (dy < 0) {
+              if (root.wifiNetworks.length > 0) {
+                root.focusSection = "wifi"
+                root.selectedIndex = root.wifiNetworks.length - 1
+              } else {
+                root.focusSection = "dns"
+              }
+            }
           }
         }
         if (dx !== 0) {
@@ -1137,6 +1297,7 @@ Panel {
           else if (root.focusSection === "portal") root.openCaptivePortal()
           else if (root.focusSection === "band") root.activateBand()
           else if (root.focusSection === "dns") root.activateDns()
+          else if (root.focusSection === "hiddenSecurity") hiddenSecurityDropdown.open()
           else root.activateSelected()
         }
       }
@@ -1632,6 +1793,162 @@ Panel {
               width: parent.width
               net: modelData
               index: parent.parent.index
+            }
+          }
+        }
+      }
+
+      // Join hidden network — non-broadcasting SSIDs never scan in, so
+      // joining one gathers SSID/security/credentials up front and goes
+      // straight to nmcli (see connectHidden) instead of picking a row above.
+      PanelSeparator {
+        visible: root.wifiStationAvailable
+        foreground: root.bar.foreground
+      }
+
+      Column {
+        visible: root.wifiStationAvailable
+        width: parent.width
+        spacing: Style.space(8)
+
+        Button {
+          id: hiddenToggleButton
+          width: parent.width
+          leftAlign: true
+          text: root.hiddenFormOpen ? "Cancel" : "Join hidden network"
+          foreground: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+          horizontalPadding: Style.space(10)
+          enabled: !root.busy
+          onClicked: root.toggleHiddenForm()
+        }
+
+        Column {
+          visible: root.hiddenFormOpen
+          width: parent.width
+          spacing: Style.space(6)
+
+          TextField {
+            id: hiddenSsidField
+            visible: root.hiddenFormOpen
+            width: parent.width
+            placeholderText: "Network name (SSID)"
+            font.family: Style.font.family
+            font.pixelSize: Style.font.body
+            foreground: root.bar.foreground
+            horizontalPadding: Style.spacing.controlGap
+            verticalPadding: Style.spacing.controlPaddingY
+            enabled: !root.hiddenBusy
+            text: root.hiddenSsidText
+
+            onAccepted: {
+              if (hiddenIdentityField.visible) hiddenIdentityField.forceActiveFocus()
+              else if (hiddenPasswordField.visible) hiddenPasswordField.forceActiveFocus()
+              else root.submitHiddenNetwork()
+            }
+            onTextChanged: if (text !== root.hiddenSsidText) root.hiddenSsidText = text
+            Keys.onEscapePressed: root.cancelHiddenForm()
+
+            onVisibleChanged: if (visible) Qt.callLater(forceActiveFocus)
+            Component.onCompleted: if (visible) Qt.callLater(forceActiveFocus)
+          }
+
+          Dropdown {
+            id: hiddenSecurityDropdown
+            label: "Security"
+            width: parent.width
+            fontFamily: root.bar.fontFamily
+            foreground: root.bar.foreground
+            options: [
+              { value: "personal",   label: "WPA/WPA2/WPA3 Personal" },
+              { value: "enterprise", label: "WPA/WPA2 Enterprise" },
+              { value: "none",       label: "None" }
+            ]
+            value: root.hiddenSecurity
+            hasCursor: root.cursorActive && root.focusSection === "hiddenSecurity"
+            onHovered: function(h) { if (h) { root.cursorActive = true; root.focusSection = "hiddenSecurity" } }
+            onChanged: function(v) { root.hiddenSecurity = v }
+          }
+
+          TextField {
+            id: hiddenIdentityField
+            visible: root.hiddenSecurity === "enterprise"
+            width: parent.width
+            placeholderText: "Identity (user@domain)"
+            font.family: Style.font.family
+            font.pixelSize: Style.font.body
+            foreground: root.bar.foreground
+            horizontalPadding: Style.spacing.controlGap
+            verticalPadding: Style.spacing.controlPaddingY
+            enabled: !root.hiddenBusy
+            text: root.hiddenIdentityText
+
+            onAccepted: hiddenPasswordField.forceActiveFocus()
+            onTextChanged: if (text !== root.hiddenIdentityText) root.hiddenIdentityText = text
+            Keys.onEscapePressed: root.cancelHiddenForm()
+          }
+
+          TextField {
+            id: hiddenPasswordField
+            visible: root.hiddenSecurity !== "none"
+            width: parent.width
+            password: true
+            placeholderText: "Passphrase"
+            font.family: Style.font.family
+            font.pixelSize: Style.font.body
+            foreground: root.bar.foreground
+            horizontalPadding: Style.spacing.controlGap
+            verticalPadding: Style.spacing.controlPaddingY
+            enabled: !root.hiddenBusy
+            text: root.hiddenPasswordText
+
+            onAccepted: root.submitHiddenNetwork()
+            onTextChanged: if (text !== root.hiddenPasswordText) root.hiddenPasswordText = text
+            Keys.onEscapePressed: root.cancelHiddenForm()
+          }
+
+          Item {
+            width: parent.width
+            implicitHeight: Math.max(Style.spacing.controlHeight, hiddenConnectBtn.implicitHeight)
+
+            // Same status-pill chrome as the scanned-row inline prompt
+            // (statusMsgWrapper below) so the two connecting/failed states
+            // in this file read consistently.
+            BorderSurface {
+              id: hiddenStatusWrapper
+              visible: root.hiddenBusy || root.hiddenFailed
+              anchors.left: parent.left
+              anchors.right: hiddenConnectBtn.left
+              anchors.rightMargin: Style.space(8)
+              anchors.verticalCenter: parent.verticalCenter
+              height: Style.spacing.controlHeight
+              color: Style.normalFillFor(root.bar.foreground)
+              borderSpec: Border.controlSpec("normal", root.bar.foreground, Color.accent)
+              radius: Style.cornerRadius
+
+              Text {
+                anchors.fill: parent
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                text: root.hiddenBusy ? "Connecting…" : (root.failureReason || "Failed")
+                color: root.hiddenFailed ? root.bar.urgent : root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.bodySmall
+              }
+            }
+
+            PanelActionButton {
+              id: hiddenConnectBtn
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              enabled: !root.busy && root.hiddenSsidText.trim().length > 0
+                && (root.hiddenSecurity === "none" || root.hiddenPasswordText.length > 0)
+                && (root.hiddenSecurity !== "enterprise" || root.hiddenIdentityText.trim().length > 0)
+              iconText: "󰄬"
+              tooltipText: "Connect"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              onClicked: root.submitHiddenNetwork()
             }
           }
         }

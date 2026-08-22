@@ -341,6 +341,21 @@ var enterpriseConnectScript =
   " && nmcli connection up uuid \"$u\"" +
   " || { nmcli connection delete uuid \"$u\" >/dev/null 2>&1; false; }"
 
+// Same stdin-secret shape as enterpriseConnectScript above: SSID is a
+// positional arg, the passphrase is never interpolated into the script text.
+var hiddenPskConnectScript =
+  "IFS= read -r pw; nmcli device wifi connect \"$1\" password \"$pw\" hidden yes"
+
+var hiddenEnterpriseConnectScript =
+  "u=$(uuidgen); IFS= read -r pw;" +
+  " nmcli connection add type wifi con-name \"$1\" ssid \"$1\" connection.uuid \"$u\"" +
+  " 802-11-wireless.hidden yes" +
+  " wifi-sec.key-mgmt wpa-eap 802-1x.eap peap 802-1x.phase2-auth mschapv2" +
+  " 802-1x.identity \"$2\" 802-1x.auth-timeout 8 >/dev/null" +
+  " && printf 'set 802-1x.password %s\\nsave\\nquit\\n' \"$pw\" | nmcli connection edit uuid \"$u\" >/dev/null" +
+  " && nmcli connection up uuid \"$u\"" +
+  " || { nmcli connection delete uuid \"$u\" >/dev/null 2>&1; false; }"
+
 function networkFailureReason(reason, needsCredentials, reasons) {
   var r = reasons || {}
   if (needsCredentials && reason === r.NoSecrets) return "Passphrase required"
@@ -392,6 +407,8 @@ if (typeof module !== "undefined") {
     requiresCredentials: requiresCredentials,
     canForgetNetwork: canForgetNetwork,
     enterpriseConnectScript: enterpriseConnectScript,
+    hiddenPskConnectScript: hiddenPskConnectScript,
+    hiddenEnterpriseConnectScript: hiddenEnterpriseConnectScript,
     networkFailureReason: networkFailureReason,
     shouldRepromptPassphrase: shouldRepromptPassphrase
   }

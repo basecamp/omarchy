@@ -293,4 +293,17 @@ assertDeepEqual(
 
 assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '', 'network keeps wifi band state out of the hero')
 assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit', 'network keeps ethernet speed in the hero')
+
+// Hidden-network connect scripts: SSID (and identity, for enterprise) must
+// travel as positional args -- never string-interpolated -- and the profile
+// must be marked hidden so NetworkManager probes for it instead of waiting
+// on a beacon that will never arrive.
+assert(/"\$1"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script maps ssid to the positional $1 arg')
+assert(/hidden yes/.test(network.hiddenPskConnectScript), 'hidden PSK connect script marks the network hidden')
+assert(/IFS= read -r pw/.test(network.hiddenPskConnectScript), 'hidden PSK connect script reads the passphrase from stdin, not argv')
+
+assert(/"\$1"/.test(network.hiddenEnterpriseConnectScript), 'hidden enterprise connect script maps ssid to the positional $1 arg')
+assert(/"\$2"/.test(network.hiddenEnterpriseConnectScript), 'hidden enterprise connect script maps identity to the positional $2 arg')
+assert(/802-11-wireless\.hidden yes/.test(network.hiddenEnterpriseConnectScript), 'hidden enterprise connect script marks the profile hidden')
+assert(/IFS= read -r pw/.test(network.hiddenEnterpriseConnectScript), 'hidden enterprise connect script reads the passphrase from stdin, not argv')
 JS
