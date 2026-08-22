@@ -949,15 +949,14 @@ Panel {
   }
 
   function submitHiddenNetwork() {
-    var ssid = hiddenSsidText.trim()
+    // Leading/trailing spaces are legal SSID bytes, so trim only for the
+    // empty-input guard -- the exact typed SSID is what gets connected and
+    // what hiddenBusy/hiddenFailed compare against.
+    var ssid = hiddenSsidText
     var identity = hiddenIdentityText.trim()
-    if (busy || ssid.length === 0) return
+    if (busy || ssid.trim().length === 0) return
     if (hiddenSecurity !== "none" && hiddenPasswordText.length === 0) return
     if (hiddenSecurity === "enterprise" && identity.length === 0) return
-    // Store the trimmed ssid back so hiddenBusy/hiddenFailed's
-    // actionSsid===hiddenSsidText comparison still matches once actionSsid
-    // is set below.
-    hiddenSsidText = ssid
     hiddenIdentityText = identity
     connectHidden(ssid, hiddenSecurity, identity, hiddenPasswordText)
   }
