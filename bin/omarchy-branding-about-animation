@@ -1,11 +1,14 @@
 #!/bin/bash
 
-# omarchy:summary=Shared helpers for leaning a band of light across an ASCII logo (source this, don't run it).
+# omarchy:summary=Shared helpers for animating the About branding (source this, don't run it).
+# omarchy:group=branding
+# omarchy:name=about-animation
 # omarchy:hidden=true
 
-# What the sheen looks like, and the frames that make it. *When* those frames are
-# written stays with the caller, because that is inseparable from how the
-# caller's window closes and resizes; this only says what to write, and where.
+# The About branding's animation: a sheen, and the frames that make it. *When*
+# those frames are written stays with the caller, because that is inseparable
+# from how the caller's window closes and resizes; this only says what to write,
+# and where — it is handed a logo and knows nothing about About beyond that.
 
 # A band of light leans across the logo, rests, and leans across again. Two
 # columns per row puts it at 45 degrees on screen, where a cell is twice as tall

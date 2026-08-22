@@ -23,7 +23,7 @@ POLL_SECONDS=0.5
 
 # fastfetch has no animation of its own, so the sheen is ours. It knows about a
 # logo and nothing about About, which is why it is a file of its own.
-source omarchy-logo-sheen
+source omarchy-branding-about-animation
 
 # A user's own fastfetch config can relocate or restyle the logo in ways this
 # measurement cannot see, so leave sizing to the float rule in that case. It can
