@@ -1,6 +1,6 @@
 # Getting Started
 
-Omarchy is installed using an ISO. You can choose between a full-disk install, which takes over the entire drive, or a free-space install, which puts Omarchy in the unallocated space on a drive — that's how you dual boot alongside Windows or another OS (see [dual-boot install](51-dual-boot-install.md) — note that you'll need to turn off BitLocker in Windows first). Either way, the installation uses full-disk encryption, and the full-disk option will wipe the selected drive, so be sure to take a backup before using an existing one!
+Omarchy is installed using an ISO. You can choose between a full-disk install, which takes over the entire drive, or a free-space install, which puts Omarchy in the unallocated space on a drive — that's how you dual boot alongside Windows or another OS (see [dual-boot install](50-dual-boot-install.md) — note that you'll need to turn off BitLocker in Windows first). Either way, the installation defaults to full encryption, and the full-disk option will wipe the selected drive, so be sure to take a backup before using an existing one!
 
 [Download the Omarchy ISO](https://omarchy.org/) first, put it on a USB stick (use [balenaEtcher](https://etcher.balena.io/) on Mac/Windows or [caligula](https://github.com/ifd3f/caligula) on Linux), and boot off the stick.
 
@@ -8,11 +8,11 @@ _You must turn off Secure Boot and/or TPM in the BIOS. You have to turn these of
 
 Then answer the configuration questions, and confirm them like this:
 
- ![omarchy-install.png](https://learn.omacom.io/u/omarchy-install-k5Iksv.png)
+ ![install-config](images/install-config.webp)
 
-Then select a drive for your installation, and sit back and watch the installation show go. It takes between 2-10 minutes, depending on the speed of your computer.
+Then select a drive for your installation, and sit back and watch the installation show go. It can be done in under a minute on the fastest modern machines, but it shouldn't take more than 5 minutes even on an older computer.
 
- ![omarchy-installed.png](https://learn.omacom.io/u/omarchy-installed-NR1wu1.png)
+ ![install-done](images/install-done.webp)
 
 Now you're ready to Omarchy!
 
@@ -22,17 +22,11 @@ The full-disk encryption won't allow you to enter the password from a Bluetooth 
 
 ### Installing for another owner
 
-If you're setting up a machine for someone else — a family member, a new employee, a buyer — you shouldn't be answering the personal questions on their behalf. Hit `Ctrl + C` on the very first screen of the installer (the keyboard selection), and Omarchy will offer to prepare the machine for another owner instead. The system installs right away, but all the personal setup — keyboard layout, username, password — is deferred until the machine boots for the first time. The drive is still encrypted by default, and the password the new owner picks on that first boot becomes the encryption password too.
-
-### Passing on a machine you've already used
-
-If the machine is one you've been using yourself, you don't have to reinstall it to hand it over. Run _Setup > Reset Computer_ in the Omarchy menu, type `reset` to confirm, and reboot. That wipes every user account and everything in `/home`, throws away all the packages and system changes you made since installation, and clears the machine's identity — network connections, host keys, and all. What comes back up is the setup wizard from the first boot, ready for its new owner to enter their own name, password, and encryption password.
-
-It works by restoring the baseline snapshot the installer takes, so it's only available on machines installed from the Omarchy ISO. And on a drive without encryption, a reset is deletion rather than a secure erase, so if the data was sensitive, do a fresh install instead.
+If you're setting up a machine for someone else — a family member, a new employee, a buyer — you shouldn't be answering the personal questions on their behalf. Hit `Ctrl + C` on the very first screen of the installer (the keyboard selection), and Omarchy will offer to prepare the machine for another owner instead. The system installs right away, but all the personal setup — keyboard layout, username, password — is deferred until the machine boots for the first time. The drive is still encrypted by default, and the password the new owner picks on that first boot becomes the encryption password too. (A machine you've already been using can be handed over without a reinstall too — see [resetting the computer](48-security.md).)
 
 ### Unattended installs
 
-The ISO can also install completely on its own — no keyboard, no wizard — when it's handed its configuration on a second drive. That's the way to treat Omarchy as a base image for VMs and fleet machines. See [unattended installs](52-unattended-installs.md).
+The ISO can also install completely on its own — no keyboard, no wizard — when it's handed its configuration on a second drive. That's the way to treat Omarchy as a base image for VMs and fleet machines. See [unattended installs](51-unattended-installs.md).
 
 ### No-encryption installations
 

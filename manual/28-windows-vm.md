@@ -6,7 +6,7 @@ Your machine needs KVM virtualization for this, which most do — but it's somet
 
 The installer asks how much RAM, how many CPU cores, and how much disk to hand over (64GB or more is the sensible floor), then for a Windows username and password. Leave those blank and you get `docker` / `admin`. The download takes a while — 10-15 minutes is normal — and you can follow the progress in the browser at `http://127.0.0.1:8006`.
 
- ![windows.png](https://learn.omacom.io/u/windows-bhXSXL.png)
+ ![windows-vm](images/windows-vm.webp)
 
 ## Using it
 
@@ -35,6 +35,8 @@ The VM's ports are bound to localhost only, so nothing on your network can reach
 There's no GPU passthrough with this setup, so it's not suitable for gaming or video editing. It's a great way to run Microsoft Office or whatever else you absolutely must have.
 
 The version installed is Windows 11 Pro, unactivated. You'll need your own license key to use the gated features.
+
+If this computer shipped with Windows, the OEM key is still in firmware even after installing Omarchy. Print it with `omarchy windows key`. That key is bound to this machine — it will activate Windows reinstalled on this hardware, but it usually will not activate the VM.
 
 You can change the resource allocation later by editing `~/.config/windows/docker-compose.yml`, which is also where you'd mount a USB device. See all the options on [the Dockur Windows project](https://github.com/dockur/windows).
 

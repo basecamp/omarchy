@@ -2,11 +2,11 @@ function text(value) {
   return String(value || "").toLowerCase()
 }
 
-function isDropboxTrayItem(item) {
+function itemNamed(item, name) {
   if (!item) return false
-  return text(item.id).indexOf("dropbox") !== -1
-    || text(item.title).indexOf("dropbox") !== -1
-    || text(item.tooltipTitle).indexOf("dropbox") !== -1
+  return text(item.id).indexOf(name) !== -1
+    || text(item.title).indexOf(name) !== -1
+    || text(item.tooltipTitle).indexOf(name) !== -1
 }
 
 function entryId(entry) {
@@ -30,15 +30,19 @@ function layoutHasWidget(layout, id) {
   return false
 }
 
-function ownedByDedicatedWidget(item, layout) {
-  return layoutHasWidget(layout, "omarchy.dropbox") && isDropboxTrayItem(item)
+// LocalSend's item shows no state, offers only Open and Quit, and its primary
+// click is a no-op, so Share > Receive is the whole surface. Hiding it by hand
+// doesn't stick either: LocalSend picks a fresh tray id every launch.
+function ownedByOmarchy(item, layout) {
+  return itemNamed(item, "localsend")
+    || (layoutHasWidget(layout, "omarchy.dropbox") && itemNamed(item, "dropbox"))
 }
 
 if (typeof module !== "undefined") {
   module.exports = {
-    isDropboxTrayItem: isDropboxTrayItem,
+    itemNamed: itemNamed,
     entryId: entryId,
     layoutHasWidget: layoutHasWidget,
-    ownedByDedicatedWidget: ownedByDedicatedWidget
+    ownedByOmarchy: ownedByOmarchy
   }
 }

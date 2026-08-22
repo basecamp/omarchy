@@ -6,7 +6,7 @@
 # omarchy:examples=omarchy theme install git@github.com:example/omarchy-example-theme.git
 
 if [[ -z $1 ]]; then
-  echo -e "\e[32mSee https://manuals.omamix.org/2/the-omarchy-manual/90/extra-themes\n\e[0m"
+  echo -e "\e[32mSee https://omarchy.org/themes/\n\e[0m"
   REPO_URL=$(gum input --placeholder="Git repo URL (https or git@host:org/repo.git)" --header="")
 else
   REPO_URL="$1"

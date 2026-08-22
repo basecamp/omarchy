@@ -4,7 +4,7 @@
 
 If you're totally new to vim-style editing, I recommend you checkout [ThePrimeagen's Vim As Your Editor series](https://www.youtube.com/watch?v=X6AR2RMB5tE&list=PLm323Lc7iSW_wuxqmKx_xxNtJC_hJbQ7R) on YouTube. That'll teach you the basics. Just know that unlike more similar mainstream editors, it's going to take you longer to get basic proficiency with vim. But once you do, the payoff is also larger.
 
-Now Neovim is basically infinitely configurable. If you really want to go nuts, you can create your own Neovim configuration from scratch. There's a great course from [Typecraft on setting up Neovim from scratch](https://www.youtube.com/watch?v=zHTeCSVAFNY). And [ThePrimegean has one as well](https://www.youtube.com/watch?v=w7i4amO_zaE).
+Now Neovim is basically infinitely configurable. If you really want to go nuts, you can create your own Neovim configuration from scratch. There's a great course from [Typecraft on setting up Neovim from scratch](https://www.youtube.com/watch?v=zHTeCSVAFNY). And [ThePrimeagen has one as well](https://www.youtube.com/watch?v=w7i4amO_zaE).
 
 But Omarchy ships with a complete Neovim setup — the `omarchy-nvim` package — that's been lovingly tuned to showcase the best of what's possible out of the box. Without you having to write a single line of configuration! It's built on [LazyVim](https://www.lazyvim.org/), a distribution of Neovim plugins and configurations. It's awesome.
 

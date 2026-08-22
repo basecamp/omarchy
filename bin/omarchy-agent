@@ -58,8 +58,8 @@ opencode)
   command=(opencode --auto)
   [[ -n ${prompt:-} ]] && command+=(--prompt "$prompt")
   ;;
-gemini)
-  command=(gemini --yolo)
+agy)
+  command=(agy --dangerously-skip-permissions)
   [[ -n ${prompt:-} ]] && command+=(--prompt-interactive "$prompt")
   ;;
 copilot)
@@ -74,12 +74,16 @@ crush)
     command=(crush --yolo)
   fi
   ;;
-claude | grok)
-  command=("$agent" --permission-mode bypassPermissions)
+claude)
+  command=(claude --permission-mode auto)
+  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
+grok)
+  command=(grok --permission-mode bypassPermissions)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
 codex)
-  command=(codex --dangerously-bypass-approvals-and-sandbox)
+  command=(codex --approve-for-me)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
 omp)
@@ -88,7 +92,7 @@ omp)
   ;;
 pi)
   command=(pi)
-  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  [[ -n ${prompt:-} ]] && command+=("$prompt")
   ;;
 *)
   echo "Unsupported default agent: $agent" >&2

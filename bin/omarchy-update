@@ -21,6 +21,10 @@ trap 'omarchy-update-stay-awake stop' EXIT
 
 omarchy-update-requires-free-space
 
+# -y is a promise not to ask anything. Steps that would need an answer report
+# and move on instead of waiting on a prompt nobody is here to give.
+[[ ${1:-} != "-y" ]] || export OMARCHY_UPDATE_UNATTENDED=1
+
 if [[ ${1:-} == "-y" ]] || omarchy-update-confirm; then
   # Before the snapshot: the cache is on the snapshotted subvolume, so pruning
   # after it frees nothing until that snapshot ages out.
@@ -36,6 +40,10 @@ if [[ ${1:-} == "-y" ]] || omarchy-update-confirm; then
 
   omarchy-update-dev
   omarchy-update-keyring
+
+  # Migrations ship with the packages installed here and are written against
+  # them, so everything below waits on this finishing. An upgrade that stopped
+  # takes the update with it rather than migrating against what is still on disk.
   omarchy-update-system-pkgs
   omarchy-migrate
   omarchy-hook post-update

@@ -159,9 +159,9 @@ BarWidget {
     return "drawer"
   }
 
-  function ownedByDedicatedWidget(item) {
+  function ownedByOmarchy(item) {
     var layout = root.bar && root.bar.layoutConfig ? root.bar.layoutConfig : null
-    return TrayModel.ownedByDedicatedWidget(item, layout)
+    return TrayModel.ownedByOmarchy(item, layout)
   }
 
   function bucket(category) {
@@ -170,7 +170,7 @@ BarWidget {
     for (var i = 0; i < values.length; i++) {
       var item = values[i]
       if (item.status === Status.Passive) continue
-      if (ownedByDedicatedWidget(item)) continue
+      if (ownedByOmarchy(item)) continue
       if (category === "all") {
         result.push(item)
         continue

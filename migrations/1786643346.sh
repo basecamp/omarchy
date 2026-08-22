@@ -122,10 +122,36 @@ unverified_repairs_exist() {
   return 1
 }
 
-# Only this user's browsers matter — another user's cannot rewrite these
-# Preferences.
-browsers_running() {
-  pgrep -x -u "$UID" 'chromium|chrome|brave|msedge|vivaldi-bin|vivaldi|opera|helium' >/dev/null 2>&1
+# A browser only rewrites its own Preferences on exit, so a repair can only be
+# reverted by a browser attached to a profile this migration has to touch.
+# Whether a profile is open is mechanical: a running Chromium-family browser
+# holds a SingletonLock (and socket) inside its user-data-dir.
+profile_open() {
+  # -L catches a SingletonLock left as a dangling symlink; -e covers a plain
+  # file, and -S the socket — any of them means a browser is attached.
+  [[ -L $1/SingletonLock || -e $1/SingletonLock || -S $1/SingletonSocket ]]
+}
+
+# Gate on a pending — or to-be-verified — profile actually being open, not on
+# browsers in general. Waiting on every browser process deadlocks the update on
+# machines whose main browser is effectively never closed: the pending ghosts
+# commonly sit in a stale profile nobody has open, yet the update blocks on the
+# always-open one.
+affected_profile_open() {
+  local preferences backup profile_root
+
+  for preferences in "${pending[@]}"; do
+    profile_open "$(dirname "$(dirname "$preferences")")" && return 0
+  done
+
+  for profile_root in "${profile_roots[@]}"; do
+    for backup in "$profile_root"/*/Preferences.omarchy-copy-url-repair.bak; do
+      [[ -f $backup ]] || continue
+      profile_open "$(dirname "$(dirname "$backup")")" && return 0
+    done
+  done
+
+  return 1
 }
 
 find_pending
@@ -134,14 +160,16 @@ if (( ! ${#pending[@]} )) && ! unverified_repairs_exist; then
 fi
 
 # A running browser holds Preferences in memory and rewrites the file on exit,
-# reverting the repair, so ask for the windows to be closed first. Without a
-# terminal to ask in, gum fails; then — as on decline — fail so the migration
-# stays pending, and the login notifier keeps prompting until a rerun goes
-# through with browsers closed.
-while browsers_running; do
-  if ! gum confirm "Close all browser windows to repair the Copy URL shortcut, then continue" 2>/dev/null; then
+# reverting the repair, so ask for the affected windows to be closed first. gum
+# draws the prompt on stderr, so it must stay attached: suppressing it leaves
+# gum waiting for a keypress behind an unpainted screen. Without a terminal to
+# ask in, gum fails; then — as on decline — fail so the migration stays
+# pending, and the login notifier keeps prompting until a rerun goes through
+# with the affected profiles closed.
+while affected_profile_open; do
+  if ! gum confirm "Close the browser windows to repair the Copy URL shortcut, then continue"; then
     echo "A running browser would undo the Copy URL shortcut repair." >&2
-    echo "Close all browser windows, then run: omarchy-migrate" >&2
+    echo "Close the browser windows, then run: omarchy-migrate" >&2
     exit 1
   fi
 done
@@ -157,9 +185,9 @@ done
 # A browser that started mid-repair read the stale Preferences and will write
 # them back on exit; stay pending so the next browser-free run can verify the
 # repair stuck.
-if browsers_running; then
+if affected_profile_open; then
   echo "A browser started during the Copy URL shortcut repair and may undo it on exit." >&2
-  echo "Close all browser windows, then run: omarchy-migrate" >&2
+  echo "Close the browser windows, then run: omarchy-migrate" >&2
   exit 1
 fi
 
@@ -170,7 +198,7 @@ fi
 for preferences in "${pending[@]}"; do
   if python3 -c "$repair_py" "$preferences" "$pinned_id" check; then
     echo "A browser undid the Copy URL shortcut repair on exit." >&2
-    echo "Close all browser windows, then run: omarchy-migrate" >&2
+    echo "Close the browser windows, then run: omarchy-migrate" >&2
     exit 1
   fi
 done

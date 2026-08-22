@@ -4,6 +4,12 @@
 # omarchy:args=[alacritty|foot|ghostty|kitty]
 # omarchy:examples=omarchy default terminal ghostty | omarchy default terminal kitty
 
+installing=false
+if [[ ${1:-} == "--install" ]]; then
+  installing=true
+  shift
+fi
+
 if (($# == 0)); then
   desktop_id=$(xdg-terminal-exec --print-id 2>/dev/null || true)
   desktop_id=${desktop_id%%:*}
@@ -18,15 +24,23 @@ if (($# == 0)); then
 fi
 
 case "$1" in
-alacritty) desktop_id="Alacritty.desktop"; name="Alacritty"; glyph= ;;
-foot) desktop_id="foot.desktop"; name="Foot"; glyph= ;;
-ghostty) desktop_id="com.mitchellh.ghostty.desktop"; name="Ghostty"; glyph= ;;
-kitty) desktop_id="kitty.desktop"; name="Kitty"; glyph= ;;
+alacritty) terminal="alacritty"; desktop_id="Alacritty.desktop"; name="Alacritty"; glyph= ;;
+foot) terminal="foot"; desktop_id="foot.desktop"; name="Foot"; glyph= ;;
+ghostty) terminal="ghostty"; desktop_id="com.mitchellh.ghostty.desktop"; name="Ghostty"; glyph= ;;
+kitty) terminal="kitty"; desktop_id="kitty.desktop"; name="Kitty"; glyph= ;;
 *)
   echo "Usage: omarchy-default-terminal <alacritty|foot|ghostty|kitty>"
   exit 1
   ;;
 esac
+
+if omarchy-cmd-missing "$terminal"; then
+  if [[ $installing == "false" ]]; then
+    exec omarchy-launch-floating-terminal-with-presentation omarchy-default-terminal --install "$terminal"
+  else
+    omarchy-install-terminal "$terminal" || exit 1
+  fi
+fi
 
 cat >~/.config/xdg-terminals.list <<EOF
 # Terminal emulator preference order for xdg-terminal-exec

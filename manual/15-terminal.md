@@ -22,18 +22,18 @@ Because Tmux is programmable, we can use functions to create layouts. Omarchy sh
 
 So `tdl c` would start this (or just `ic`):
 
- ![tmux-tdl-x.png](https://learn.omacom.io/u/tmux-tdl-x-dxhZe9.png)
+ ![tmux-tdl](images/tmux-tdl.webp)
 
 You can also start a second agent with `tdl c cx` (opencode + claude) (or just `icx`):
 
- ![tmux-tdl2-x.png](https://learn.omacom.io/u/tmux-tdl2-x-5FoPqh.png)
+ ![tmux-tdl2](images/tmux-tdl2.webp)
 
 There's also `tds`, which starts a four-way square with the editor top left, a live diff watcher top right, a terminal bottom left, and opencode bottom right.
 
 You can also start this layout configuration for every subdirectory in the current directory using `tdlm [agent]`, then navigate using `alt + 1/2/3/4/5/...`:
 
- ![tdlm-x.png](https://learn.omacom.io/u/tdlm-x-RPg6sr.png)
+ ![tmux-tdlm](images/tmux-tdlm.webp)
 
 Finally, you can start a swarm of agents using `tsl [panes] [command]`. So `tsl 4 c` will give you a four-way grid of opencode agents:
 
- ![tsl-x.png](https://learn.omacom.io/u/tsl-x-SFzDeo.png)
+ ![tmux-tsl](images/tmux-tsl.webp)
