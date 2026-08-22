@@ -984,13 +984,19 @@ Panel {
   Process {
     id: hiddenConnect
     property string secret: ""
+    // Set by actionTimeout before it kills this process, so the exit it
+    // provokes is reported as a timeout rather than a plain failure.
+    property bool timedOut: false
     stdinEnabled: true
     onStarted: {
       write(secret + "\n")
       secret = ""
     }
     onExited: function(exitCode) {
-      if (exitCode === 0) root.completeHiddenAction()
+      var wasTimeout = timedOut
+      timedOut = false
+      if (wasTimeout) root.failHiddenAction("Timed out connecting")
+      else if (exitCode === 0) root.completeHiddenAction()
       else root.failHiddenAction("Failed to connect")
     }
   }
@@ -1152,6 +1158,15 @@ Panel {
     repeat: false
     onTriggered: {
       if (!root.actionKind) return
+      // A hidden connect owns a long-lived nmcli process. Clearing the action
+      // here would strand that process: it can't be restarted while running,
+      // and its late exit would clobber whatever action started next. Kill it
+      // instead and let hiddenConnect.onExited settle the state.
+      if (root.actionIsHidden) {
+        hiddenConnect.timedOut = true
+        hiddenConnect.running = false
+        return
+      }
       var reason
       if (root.actionKind === "connect") reason = "Timed out connecting"
       else if (root.actionKind === "disconnect") reason = "Timed out disconnecting"
