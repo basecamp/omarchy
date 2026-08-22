@@ -452,6 +452,14 @@ Panel {
     function onPeersChanged() { root.ensureCursor() }
     function onAccountsChanged() { root.ensureCursor() }
     function onAccountsAccessDeniedChanged() { root.ensureCursor() }
+    function onSelectedAccountIdChanged() {
+      // A remembered scroll position belongs to the tailnet it was scrolled
+      // in; restoring it midway into another account's machine list would
+      // land the user somewhere they have never been.
+      root.peerIndex = 0
+      peerList.rememberedY = 0
+      peerList.positionViewAtBeginning()
+    }
   }
 
   IpcHandler {
