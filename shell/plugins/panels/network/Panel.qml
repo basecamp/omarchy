@@ -2040,8 +2040,11 @@ Panel {
     currentFill: root.selectedFill
     // Gate on the matching *Kind/*Reason being non-empty so a hidden-SSID
     // row (ssid == "") doesn't match the "" defaults of actionSsid etc.
-    readonly property bool isBusy: root.actionKind !== "" && root.actionSsid === (net ? net.ssid : "")
-    readonly property bool isFailed: root.failureReason !== "" && root.failureSsid === (net ? net.ssid : "")
+    // Also gate on !actionIsHidden: a hidden attempt whose typed SSID equals a
+    // scanned row's would otherwise light up that row with the hidden form's
+    // connecting/failure state.
+    readonly property bool isBusy: !root.actionIsHidden && root.actionKind !== "" && root.actionSsid === (net ? net.ssid : "")
+    readonly property bool isFailed: !root.actionIsHidden && root.failureReason !== "" && root.failureSsid === (net ? net.ssid : "")
     readonly property bool isPasswordOpen: root.passwordSsid !== "" && root.passwordSsid === (net ? net.ssid : "")
 
     function submitCredentials() {
