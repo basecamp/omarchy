@@ -67,6 +67,15 @@ const pluginMerged = menu.mergeMenuSources(parsed, user, [
 ])
 assertEqual(pluginMerged.items['setup.keyboard-tweaks'].action, "omarchy-shell shell summon catlee.keyboard-tweaks '{}'", 'menu merges enabled plugin entries')
 
+const toggle = menu.normalizeItem('trigger.toggle.peek', {
+  label: 'Peek',
+  icon: '󰐱',
+  checked: 'peek-enabled',
+  action: 'peek toggle'
+})
+assertEqual(toggle.parent, 'trigger.toggle', 'plugin toggles default to Trigger > Toggle')
+assertEqual(toggle.action, 'peek toggle', 'menu preserves plugin toggle actions')
+
 assertEqual(menu.slugify('Power Saver!'), 'power-saver', 'menu slugifies provider rows')
 assertEqual(menu.pathFor(merged.items, 'style.theme'), 'Style › Theme picker', 'menu builds item paths')
 assertEqual(menu.parentPathFor(merged.items, 'style.theme'), 'Style', 'menu builds parent paths')

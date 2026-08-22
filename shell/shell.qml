@@ -150,15 +150,27 @@ ShellRoot {
     for (var id in plugins) {
       var manifest = plugins[id]
       if (!shell.isPluginEnabled(id)
-          || !Array.isArray(manifest.kinds)
-          || manifest.kinds.indexOf("menu-entry") === -1
-          || !Array.isArray(manifest.menuEntries)) continue
-      for (var i = 0; i < manifest.menuEntries.length; i++) {
-        var entry = manifest.menuEntries[i]
-        if (!entry || !entry.id || !entry.action) continue
-        var item = Util.cloneJson(entry)
-        item.pluginId = id
-        out.push(item)
+          || !Array.isArray(manifest.kinds)) continue
+
+      if (manifest.kinds.indexOf("menu-entry") !== -1 && Array.isArray(manifest.menuEntries)) {
+        for (var i = 0; i < manifest.menuEntries.length; i++) {
+          var entry = manifest.menuEntries[i]
+          if (!entry || !entry.id || !entry.action) continue
+          var item = Util.cloneJson(entry)
+          item.pluginId = id
+          out.push(item)
+        }
+      }
+
+      if (manifest.kinds.indexOf("toggle") !== -1 && Array.isArray(manifest.toggles)) {
+        for (var j = 0; j < manifest.toggles.length; j++) {
+          var toggle = manifest.toggles[j]
+          if (!toggle || !toggle.id || !toggle.action) continue
+          var toggleItem = Util.cloneJson(toggle)
+          if (!toggleItem.parent) toggleItem.parent = "trigger.toggle"
+          toggleItem.pluginId = id
+          out.push(toggleItem)
+        }
       }
     }
     return out

@@ -36,6 +36,7 @@ wait).
 | `menu-entry` | Entry contributed to the main Omarchy menu      |
 | `service`    | Headless singleton, no UI                      |
 | `hyprland`   | Lua entry point loaded by the Hyprland config  |
+| `toggle`     | On/off action contributed under Trigger > Toggle |
 
 Only one full bar option is active at a time. The built-in `omarchy.bar` is
 used when `bar.id` is omitted or when a selected third-party bar cannot load.
@@ -51,6 +52,11 @@ Entry points are QML `Item`s. Panel, overlay, and menu entry points expose
 `menu-entry` plugins declare `menuEntries` instead of an entry point. Each
 entry supplies a menu id, label, and shell action; entries are merged into the
 main menu only while their plugin is enabled.
+
+`toggle` plugins declare `toggles` instead of an entry point. Each toggle uses
+the menu row fields `id`, `label`, `icon`, `when`, `checked`, and `action`; it
+defaults to `Trigger > Toggle` and is merged there only while its plugin is
+enabled.
 
 Hyprland plugins use `entryPoints.hyprland` and may declare numeric `priority`
 (default `50`) plus plugin-id `dependencies`. A plugin may also declare

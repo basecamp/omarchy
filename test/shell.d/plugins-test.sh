@@ -15,7 +15,8 @@ const kindEntryPoints = {
   'overlay': 'overlay',
   'panel': 'panel',
   'service': 'service',
-  'menu-entry': null
+  'menu-entry': null,
+  'toggle': null
 }
 
 function isPlainObject(value) {
@@ -158,6 +159,18 @@ for (const manifestPath of manifests) {
     check(Array.isArray(manifest.menuEntries) && manifest.menuEntries.length > 0, `${manifest.id} menu-entry plugins must declare menuEntries`)
     for (const entry of manifest.menuEntries || []) {
       check(isPlainObject(entry) && typeof entry.id === 'string' && entry.id.length > 0 && typeof entry.action === 'string' && entry.action.length > 0, `${manifest.id} menu entries must have id and action`)
+    }
+  }
+
+  if ((manifest.kinds || []).includes('toggle')) {
+    check(Array.isArray(manifest.toggles) && manifest.toggles.length > 0, `${manifest.id} toggle plugins must declare toggles`)
+    for (const toggle of manifest.toggles || []) {
+      check(
+        isPlainObject(toggle)
+          && typeof toggle.id === 'string' && toggle.id.length > 0
+          && typeof toggle.action === 'string' && toggle.action.length > 0,
+        `${manifest.id} toggles must have id and action`
+      )
     }
   }
 

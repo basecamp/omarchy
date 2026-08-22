@@ -102,6 +102,7 @@ for kind_entry_point in \
   "panel:panel" \
   "service:service" \
   "menu-entry:" \
+  "toggle:" \
   "hyprland:hyprland"; do
   kind="${kind_entry_point%%:*}"
   entry_point="${kind_entry_point##*:}"
@@ -121,6 +122,18 @@ if jq -e '(.kinds | index("menu-entry")) != null' "$MANIFEST" >/dev/null 2>&1; t
     ))
   ' "$MANIFEST" >/dev/null 2>&1 \
     || fail "kind 'menu-entry' requires non-empty menuEntries with id and action"
+fi
+
+if jq -e '(.kinds | index("toggle")) != null' "$MANIFEST" >/dev/null 2>&1; then
+  jq -e '
+    (.toggles | type) == "array" and (.toggles | length) > 0
+    and (.toggles | all(.[ ];
+      type == "object"
+      and (.id | type) == "string" and (.id | length) > 0
+      and (.action | type) == "string" and (.action | length) > 0
+    ))
+  ' "$MANIFEST" >/dev/null 2>&1 \
+    || fail "kind 'toggle' requires non-empty toggles with id and action"
 fi
 
 # Refuse any symlink anywhere inside the plugin folder. Symlinks could point a
