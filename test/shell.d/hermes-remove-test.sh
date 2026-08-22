@@ -27,6 +27,9 @@ seed_install() {
   printf 'memory\n' >"$test_home/.hermes/memories/one.md"
   printf 'soul\n' >"$test_home/.hermes/SOUL.md"
   printf 'uv\n' >"$test_home/.hermes/bin/uv"
+  ln -sf "$test_home/.hermes/node/bin/node" "$test_home/.local/bin/node"
+  ln -sf "$test_home/.hermes/node/bin/npm" "$test_home/.local/bin/npm"
+  ln -sf /usr/bin/npx "$test_home/.local/bin/npx"
   printf 'node\n' >"$test_home/.hermes/node/bin/node"
 }
 
@@ -43,8 +46,17 @@ remove || fail "remove succeeds"
 [[ ! -d $test_home/.hermes/hermes-agent ]] || fail "the runtime checkout is removed"
 [[ ! -d $test_home/.hermes/bin ]] || fail "the uv the app installed is removed"
 [[ ! -d $test_home/.hermes/node ]] || fail "the node the app installed is removed"
-[[ ! -d $test_home/.config/Hermes ]] || fail "the app's own state is removed"
 pass "removal takes the whole runtime the app installed"
+
+[[ -d $test_home/.config/Hermes ]] ||
+  fail "gateway connections, tokens and settings survive removal"
+pass "removal keeps the app's connections and settings"
+
+# -L, not -e: a dangling symlink fails -e while very much still being there.
+[[ ! -L $test_home/.local/bin/node ]] || fail "a node symlink into ~/.hermes is removed"
+[[ ! -L $test_home/.local/bin/npm ]] || fail "an npm symlink into ~/.hermes is removed"
+[[ -L $test_home/.local/bin/npx ]] || fail "an npx symlink pointing elsewhere survives"
+pass "removal clears only the managed Node links it stranded"
 
 [[ -f $test_home/.hermes/sessions/one.json ]] || fail "chats survive removal"
 [[ -f $test_home/.hermes/memories/one.md ]] || fail "memories survive removal"

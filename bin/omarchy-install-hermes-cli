@@ -40,7 +40,13 @@ desktop_owns_hermes() {
 # installs the command, so its presence says nothing about being usable. The
 # marker is written last, and the command is what the agent actually runs.
 desktop_hermes_ready() {
-  [[ -f $HOME/.hermes/hermes-agent/.hermes-bootstrap-complete && -x $HOME/.local/bin/hermes ]]
+  [[ -f $HOME/.hermes/hermes-agent/.hermes-bootstrap-complete ]] || return 1
+  [[ -x $HOME/.local/bin/hermes ]] || return 1
+
+  # An executable of that name proves nothing about whose it is; the app's own
+  # points into ~/.hermes, and anything else is not the install we are asking
+  # about.
+  grep -q "$HOME/.hermes" "$HOME/.local/bin/hermes"
 }
 
 # Whether Hermes is really installed, not merely whether the stub exists. A

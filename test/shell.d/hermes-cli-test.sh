@@ -92,7 +92,14 @@ printf '%s\n' "#!/bin/bash" >"$test_home/.hermes/hermes-agent/venv/bin/hermes"
 chmod +x "$test_home/.hermes/hermes-agent/venv/bin/hermes"
 run_installer 1 --check && fail "--check waits for the install to finish, not just the venv"
 touch "$test_home/.hermes/hermes-agent/.hermes-bootstrap-complete"
-printf '%s\n' "#!/bin/bash" "$HOME/.hermes/hermes-agent/venv/bin/hermes" >"$test_home/.local/bin/hermes"
+printf '%s\n' "#!/bin/bash" "exec $test_home/.hermes/hermes-agent/venv/bin/hermes \"\$@\"" >"$test_home/.local/bin/hermes"
 chmod +x "$test_home/.local/bin/hermes"
 run_installer 1 --check || fail "--check reports Hermes present once the app has finished"
 pass "--check follows the app's completed install"
+
+# An executable called hermes that belongs to something else is not this
+# install being ready.
+printf '%s\n' "#!/bin/bash" "exec /usr/local/bin/somebody-elses-hermes \"\$@\"" >"$test_home/.local/bin/hermes"
+chmod +x "$test_home/.local/bin/hermes"
+run_installer 1 --check && fail "--check rejects a hermes command belonging to something else"
+pass "--check rejects a foreign hermes command"
