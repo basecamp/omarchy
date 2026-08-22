@@ -107,6 +107,38 @@ layer_off_screen() {
   ! layer_on_screen "$1"
 }
 
+# Desktop Mode's taskbar and Power User Mode's heritage bar are the same chrome
+# role with different layer namespaces. Prefer the taskbar when both are mapped.
+chrome_layer_namespace() {
+  if layer_present "omarchy-taskbar"; then
+    printf '%s\n' "omarchy-taskbar"
+    return 0
+  fi
+  if layer_present "omarchy-bar"; then
+    printf '%s\n' "omarchy-bar"
+    return 0
+  fi
+  return 1
+}
+
+chrome_layer_on_screen() {
+  local ns
+  ns=$(chrome_layer_namespace) || return 1
+  layer_on_screen "$ns"
+}
+
+chrome_layer_off_screen() {
+  local ns
+  ns=$(chrome_layer_namespace) || return 1
+  layer_off_screen "$ns"
+}
+
+chrome_layer_present() {
+  local ns
+  ns=$(chrome_layer_namespace) || return 1
+  layer_present "$ns"
+}
+
 # Close every window matching a class regex, by address so multi-window apps
 # are fully closed. Tries the quattro Lua dispatcher first, then classic.
 close_windows() {

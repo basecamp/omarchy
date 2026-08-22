@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.ultimate-run",
+  "name": "Run",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Desktop Mode Run dialog",
+  "kinds": ["menu"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "menu": "Run.qml"
+  }
+}

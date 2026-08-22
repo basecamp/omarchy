@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# omarchy:summary=Get or set Desktop Mode / Power User Mode
+# omarchy:args=[get|set] [desktop|power-user]
+# omarchy:examples=omarchy mode get | omarchy mode set desktop | omarchy mode set power-user
+
+set -euo pipefail
+
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/ultimate"
+MODE_FILE="$STATE_DIR/mode"
+DEFAULT=desktop
+
+usage() {
+  echo "Usage: omarchy mode [get|set] [desktop|power-user]" >&2
+  exit 1
+}
+
+read_mode() {
+  if [[ -f $MODE_FILE ]]; then
+    local value
+    value=$(<"$MODE_FILE")
+    value=${value//$'\n'/}
+    if [[ $value == "desktop" || $value == "power-user" ]]; then
+      printf '%s\n' "$value"
+      return
+    fi
+  fi
+  printf '%s\n' "$DEFAULT"
+}
+
+cmd=${1:-get}
+
+if [[ $cmd == "get" ]]; then
+  read_mode
+  exit 0
+fi
+
+if [[ $cmd != "set" ]]; then
+  usage
+fi
+
+next=${2:-}
+if [[ $next != "desktop" && $next != "power-user" ]]; then
+  usage
+fi
+
+mkdir -p "$STATE_DIR"
+printf '%s\n' "$next" >"$MODE_FILE"
+
+if [[ ${OMARCHY_ULTIMATE_MODE_SKIP_RELOAD:-} != 1 ]]; then
+  hyprctl reload >/dev/null 2>&1 || true
+  if command -v omarchy-restart-shell >/dev/null 2>&1; then
+    omarchy-restart-shell >/dev/null 2>&1 || true
+  fi
+fi
+
+printf '%s\n' "$next"

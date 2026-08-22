@@ -1,0 +1,103 @@
+# Desktop Mode guest VM helper
+#
+# Portable QEMU launcher for the Ultimate Desktop Mode windowing go/no-go
+# (overlapping float, drag, resize, maximize, minimize/restore identity,
+# snap, Show Desktop, Alt+Tab). Acceptance screenshots are collected by the
+# in-guest suite under the ISO harness; this script only boots a machine.
+#
+# On a Windows host the usual layout is C:\dev\omarchy-vm with an Arch disk
+# and this script copied or invoked from the repo:
+#
+#   pwsh -File test/vm/vm-run.ps1 -Disk C:\dev\omarchy-vm\arch.qcow2
+#
+# TCG is the default so it runs without KVM/WHPX. Pass -Accel kvm or
+# -Accel whpx when the host can use it. Shut the VM down when idle rather
+# than leaving a guest running overnight.
+
+[CmdletBinding()]
+param(
+  [string]$Disk = $(if ($env:OMARCHY_VM_DISK) { $env:OMARCHY_VM_DISK } else { "" }),
+  [string]$Iso = $(if ($env:OMARCHY_VM_ISO) { $env:OMARCHY_VM_ISO } else { "" }),
+  [int]$MemoryMb = 4096,
+  [int]$Cpus = 4,
+  [string]$Accel = "tcg",
+  [string]$ScreenshotDir = $(if ($env:OMARCHY_VM_SCREENSHOTS) { $env:OMARCHY_VM_SCREENSHOTS } else { "" }),
+  [switch]$Headless,
+  [switch]$ListOnly
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+function Find-Qemu {
+  $names = @("qemu-system-x86_64", "qemu-system-x86_64.exe")
+  foreach ($name in $names) {
+    $cmd = Get-Command $name -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+  }
+  throw "qemu-system-x86_64 is not on PATH. Install QEMU and retry."
+}
+
+if (-not $Disk -and -not $Iso) {
+  $candidates = @(
+    (Join-Path $PSScriptRoot "arch.qcow2"),
+    (Join-Path $PSScriptRoot "disk.qcow2")
+  )
+  if ($env:OS -eq "Windows_NT") {
+    $candidates += @("C:\dev\omarchy-vm\arch.qcow2", "C:\dev\omarchy-vm\disk.qcow2")
+  }
+  foreach ($candidate in $candidates) {
+    if (Test-Path -LiteralPath $candidate) {
+      $Disk = $candidate
+      break
+    }
+  }
+}
+
+if ($ListOnly) {
+  Write-Output "qemu=$(Find-Qemu)"
+  Write-Output "disk=$Disk"
+  Write-Output "iso=$Iso"
+  Write-Output "accel=$Accel"
+  Write-Output "memoryMb=$MemoryMb"
+  Write-Output "cpus=$Cpus"
+  Write-Output "screenshotDir=$ScreenshotDir"
+  exit 0
+}
+
+if (-not $Disk -and -not $Iso) {
+  throw "Pass -Disk <qcow2> or -Iso <iso>, or set OMARCHY_VM_DISK / OMARCHY_VM_ISO."
+}
+
+$qemu = Find-Qemu
+$args = @(
+  "-machine", "q35",
+  "-cpu", "max",
+  "-smp", "$Cpus",
+  "-m", "$MemoryMb",
+  "-accel", $Accel,
+  "-device", "virtio-vga",
+  "-display", $(if ($Headless) { "none" } else { "gtk" }),
+  "-device", "qemu-xhci",
+  "-device", "usb-tablet",
+  "-netdev", "user,id=net0",
+  "-device", "virtio-net-pci,netdev=net0"
+)
+
+if ($Disk) {
+  if (-not (Test-Path -LiteralPath $Disk)) { throw "Disk image not found: $Disk" }
+  $args += @("-drive", "file=$Disk,if=virtio,format=qcow2")
+}
+
+if ($Iso) {
+  if (-not (Test-Path -LiteralPath $Iso)) { throw "ISO not found: $Iso" }
+  $args += @("-cdrom", $Iso, "-boot", "d")
+}
+
+if ($ScreenshotDir) {
+  New-Item -ItemType Directory -Force -Path $ScreenshotDir | Out-Null
+  Write-Output "Guest acceptance screenshots should be copied to $ScreenshotDir after the run."
+}
+
+Write-Output "Starting QEMU with $Accel. Close the guest from inside the session when idle."
+& $qemu @args

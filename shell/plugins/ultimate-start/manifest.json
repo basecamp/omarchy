@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.ultimate-start",
+  "name": "Start",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Desktop Mode Start menu",
+  "kinds": ["menu"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "menu": "Start.qml"
+  }
+}

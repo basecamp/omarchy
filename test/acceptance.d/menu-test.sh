@@ -28,7 +28,27 @@ restore_bar_config() {
   rm -f "$config_backup"
 }
 
-trap restore_bar_config EXIT
+saved_mode=desktop
+if command -v omarchy-mode >/dev/null 2>&1; then
+  saved_mode=$(omarchy-mode get 2>/dev/null || echo desktop)
+fi
+
+restore_menu_test() {
+  restore_bar_config
+  if command -v omarchy-mode >/dev/null 2>&1; then
+    omarchy-mode set "$saved_mode" >/dev/null 2>&1 || true
+  fi
+}
+
+trap restore_menu_test EXIT
+
+# Bar-position items in the Omarchy menu drive the heritage top bar. Desktop
+# Mode overlays a bottom taskbar, so this file switches to Power User Mode.
+if command -v omarchy-mode >/dev/null 2>&1 && [[ $saved_mode == "desktop" ]]; then
+  omarchy-mode set power-user >/dev/null
+  wait_until "omarchy-shell responds after Power User Mode switch" 60 omarchy-shell shell ping
+  wait_until "heritage bar layer is on screen" 30 layer_on_screen "omarchy-bar"
+fi
 
 bar_is_vertical() {
   local width height
@@ -104,4 +124,4 @@ fi
 screenshot "success-menu-07-bar-restored"
 
 trap - EXIT
-restore_bar_config
+restore_menu_test

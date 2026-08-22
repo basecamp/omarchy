@@ -4,6 +4,13 @@ source "$(dirname "${BASH_SOURCE[0]}")/base-test.sh"
 
 require_command lua
 
+write_mode() {
+  local home="$1"
+  local mode="$2"
+  mkdir -p "$home/.local/state/omarchy/ultimate"
+  printf '%s\n' "$mode" >"$home/.local/state/omarchy/ultimate/mode"
+}
+
 run_application_bindings() {
   local home="$1"
   local prelude="${2:-}"
@@ -175,10 +182,26 @@ if grep -Fq $'SUPER + CTRL + X	Toggle dictation' <<<"$missing_voxtype_output"; t
 fi
 pass "missing Voxtype skips dictation bindings"
 
+# Desktop Mode is the Ultimate default: Windows keybindings, no Omarchy menu.
+desktop_home="$tmpdir/desktop-home"
+mkdir -p "$desktop_home"
+desktop_output=$(run_omarchy_bindings "$desktop_home")
+grep -Fq $'SUPER + E	Files' <<<"$desktop_output" || fail "desktop mode binds Win+E to Files"
+grep -Fq $'SUPER + D	Show desktop' <<<"$desktop_output" || fail "desktop mode binds Win+D to Show desktop"
+grep -Fq $'SUPER + L	Lock' <<<"$desktop_output" || fail "desktop mode binds Win+L to Lock"
+grep -Fq $'SUPER + Super_L	Start' <<<"$desktop_output" || fail "desktop mode binds Super release to Start"
+grep -Fq $'ALT + F4	Close window' <<<"$desktop_output" || fail "desktop mode binds Alt+F4 to close"
+grep -Fq $'ALT + TAB	Switch windows' <<<"$desktop_output" || fail "desktop mode binds Alt+Tab to the task switcher"
+if grep -Fq $'SUPER + SPACE	Omarchy menu' <<<"$desktop_output"; then
+  fail "desktop mode does not bind the Omarchy menu to Super+Space"
+fi
+pass "desktop mode ships the Windows keybinding set"
+
 # The Grave shortcuts are aliases, so the original SUPER + S pair has to keep
 # working alongside them.
 scratchpad_home="$tmpdir/scratchpad-home"
 mkdir -p "$scratchpad_home"
+write_mode "$scratchpad_home" "power-user"
 scratchpad_output=$(run_omarchy_bindings "$scratchpad_home")
 grep -Fqx $'SUPER + S	Toggle scratchpad' <<<"$scratchpad_output" ||
   fail "scratchpad keeps its existing toggle binding"
@@ -190,11 +213,22 @@ grep -Fqx $'SUPER + SHIFT + grave	Move window to scratchpad' <<<"$scratchpad_out
   fail "scratchpad supports a Quake-style move binding"
 pass "scratchpad retains existing bindings and adds Grave shortcuts"
 
+power_home="$tmpdir/power-user-home"
+mkdir -p "$power_home"
+write_mode "$power_home" "power-user"
+power_output=$(run_omarchy_bindings "$power_home")
+grep -Fq $'SUPER + SPACE	Omarchy menu' <<<"$power_output" || fail "power-user mode keeps the Omarchy menu binding"
+if grep -Fq $'SUPER + Super_L	Start' <<<"$power_output"; then
+  fail "power-user mode does not bind Super release to Start"
+fi
+pass "power-user mode keeps Omarchy Super-key bindings"
+
 # The panel hotkeys claim a row of keys that workspace switching already uses
 # under other modifiers, so the count matters as much as the bindings: a tenth
 # claim on SUPER + CTRL + a number is a collision with one of these.
 panels_home="$tmpdir/panels-home"
 mkdir -p "$panels_home"
+write_mode "$panels_home" "power-user"
 panels_output=$(run_omarchy_bindings "$panels_home")
 for panel in 1 2 3 4 5 6 7 8 9; do
   grep -Fqx "SUPER + CTRL + code:$((panel + 9))"$'\t'"Bar panel $panel" <<<"$panels_output" ||

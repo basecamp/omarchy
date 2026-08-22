@@ -14,6 +14,11 @@ User-installed plugins live alongside these conceptually but on disk under
 | Plugin        | id                        | kinds                   | entry point                           |
 |---------------|---------------------------|-------------------------|---------------------------------------|
 | Bar           | `omarchy.bar`             | `bar`                   | `bar/Bar.qml`                         |
+| Ultimate taskbar | `omarchy.ultimate-taskbar` | `bar`                | `ultimate-taskbar/Taskbar.qml`        |
+| Start         | `omarchy.ultimate-start`  | `menu`                  | `ultimate-start/Start.qml`            |
+| Run           | `omarchy.ultimate-run`    | `menu`                  | `ultimate-run/Run.qml`                |
+| Settings dest.| `omarchy.ultimate-settings` | `menu`                | `ultimate-settings/Settings.qml`      |
+| Task switcher | `omarchy.ultimate-task-switcher` | `overlay`          | `ultimate-task-switcher/Switcher.qml` |
 | Image picker  | `omarchy.image-picker`    | `overlay`               | `image-picker/ImagePicker.qml`        |
 | Emojis        | `omarchy.emojis`          | `overlay`               | `emojis/Emojis.qml`                   |
 | Clipboard mgr | `omarchy.clipboard`       | `overlay`               | `clipboard/Clipboard.qml`             |

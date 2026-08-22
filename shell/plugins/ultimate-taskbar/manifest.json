@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.ultimate-taskbar",
+  "name": "Ultimate taskbar",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Desktop Mode taskbar: Start, running apps, tray, clock, Show Desktop",
+  "kinds": ["bar"],
+  "entryPoints": {
+    "bar": "Taskbar.qml"
+  }
+}

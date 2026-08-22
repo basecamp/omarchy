@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.ultimate-settings",
+  "name": "Settings",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Desktop Mode settings destinations",
+  "kinds": ["menu"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "menu": "Settings.qml"
+  }
+}

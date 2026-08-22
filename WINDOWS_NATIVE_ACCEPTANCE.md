@@ -29,12 +29,12 @@ Status legend: `pending` (no automated coverage yet), `manual` (human-tested onl
 | 17 | Open a PDF | pending |
 | 18 | Edit a text file | pending |
 | 19 | Change the default browser | pending |
-| 20 | Pin an app | pending |
-| 21 | Unpin an app | pending |
-| 22 | Minimize three windows | pending |
-| 23 | Restore the one they want | pending |
-| 24 | Snap two windows | pending |
-| 25 | Use Alt+Tab | pending |
+| 20 | Pin an app | automated |
+| 21 | Unpin an app | automated |
+| 22 | Minimize three windows | automated |
+| 23 | Restore the one they want | automated |
+| 24 | Snap two windows | automated |
+| 25 | Use Alt+Tab | automated |
 | 26 | Find an application that is consuming CPU | pending |
 | 27 | Disable a startup application | pending |
 | 28 | Install system updates | pending |

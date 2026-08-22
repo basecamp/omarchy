@@ -19,6 +19,7 @@ ShellRoot {
   property BarWidgetRegistry barWidgetRegistry: BarWidgetRegistry { }
   property AppLibrary appLibrary: AppLibrary { }
   property WindowService windowService: WindowService { }
+  property ModeProfileService modeProfileService: ModeProfileService { }
 
   property string home: Quickshell.env("HOME")
 
@@ -113,7 +114,10 @@ ShellRoot {
     userConfigFile.setText(JSON.stringify(payload, null, 2) + "\n")
   }
 
-  readonly property var barConfig: shellConfig && Util.isPlainObject(shellConfig.bar) ? shellConfig.bar : builtinShellConfig.bar
+  readonly property var barConfig: {
+    var config = shell.effectiveShellConfig
+    return config && Util.isPlainObject(config.bar) ? config.bar : builtinShellConfig.bar
+  }
   onBarConfigChanged: if (bar && "barConfig" in bar) bar.barConfig = shell.barConfig
   FileView {
     id: defaultsFile
@@ -147,7 +151,7 @@ ShellRoot {
       "defaultsPath=" + shell.defaultsPath,
       "userConfigPath=" + shell.userConfigPath)
     pluginRegistry.firstPartyDir = shell.firstPartyPluginsDir
-    pluginRegistry.shellConfigProvider = function() { return shell.shellConfig }
+    pluginRegistry.shellConfigProvider = function() { return shell.effectiveShellConfig }
     pluginRegistry.shellConfigMutator = function(mutate) { shell.mutateShellConfig(mutate) }
     // PluginRegistry.ensureUserDir() runs in its own Component.onCompleted and
     // chains rescan() once the directory exists. We also kick a scan here in
@@ -164,6 +168,27 @@ ShellRoot {
 
   // Exposed as a property so child plugins (notifications, future panels)
   // can read barSize/barHidden/position to anchor relative to the active bar.
+  function overlayShellConfig(config) {
+    var next = JSON.parse(JSON.stringify(config || builtinShellConfig))
+    if (!Util.isPlainObject(next.bar)) next.bar = {}
+    var profile = shell.modeProfileService
+    if (profile && profile.feature("taskbar") && !profile.feature("topBar")) {
+      next.bar.id = "omarchy.ultimate-taskbar"
+      next.bar.position = "bottom"
+    }
+    return next
+  }
+
+  readonly property var effectiveShellConfig: {
+    var _mode = shell.modeProfileService ? shell.modeProfileService.mode : "desktop"
+    var _rev = shell.modeProfileService ? shell.modeProfileService.revision : 0
+    return overlayShellConfig(shell.shellConfig)
+  }
+
+  onEffectiveShellConfigChanged: {
+    if (pluginRegistry) pluginRegistry.registryRevision++
+  }
+
   readonly property string defaultBarId: "omarchy.bar"
   readonly property string selectedBarId: {
     var config = shell.barConfig
@@ -1027,6 +1052,80 @@ ShellRoot {
 
     function call(id: string, method: string, arg: string): string {
       return shell.callIfLoaded(id, method, arg)
+    }
+  }
+
+  IpcHandler {
+    target: "window"
+
+    function ping(): string { return "ok" }
+
+    function toggleShowDesktop(): string {
+      shell.windowService.toggleShowDesktop()
+      return "ok"
+    }
+
+    function snapLeft(): string {
+      shell.windowService.snapLeft()
+      return "ok"
+    }
+
+    function snapRight(): string {
+      shell.windowService.snapRight()
+      return "ok"
+    }
+
+    function closeActive(): string {
+      shell.windowService.closeActive()
+      return "ok"
+    }
+
+    function cycleNext(): string {
+      shell.windowService.cycleNext()
+      shell.summon("omarchy.ultimate-task-switcher", "{}")
+      return "ok"
+    }
+
+    function cyclePrev(): string {
+      shell.windowService.cyclePrev()
+      shell.summon("omarchy.ultimate-task-switcher", "{}")
+      return "ok"
+    }
+
+    function commitCycle(): string {
+      shell.windowService.commitCycle()
+      shell.hide("omarchy.ultimate-task-switcher")
+      return "ok"
+    }
+
+    function focus(address: string): string {
+      shell.windowService.focus(address)
+      return "ok"
+    }
+
+    function minimize(address: string): string {
+      shell.windowService.minimize(address)
+      return "ok"
+    }
+
+    function restore(address: string): string {
+      shell.windowService.restore(address)
+      return "ok"
+    }
+
+    function pin(desktopId: string): string {
+      shell.windowService.pin({ id: desktopId, desktopId: desktopId })
+      return "ok"
+    }
+
+    function unpin(desktopId: string): string {
+      shell.windowService.unpin(desktopId)
+      return "ok"
+    }
+
+    function toggleFromTaskbar(address: string): string {
+      shell.windowService.toggleFromTaskbar(address)
+      return "ok"
     }
   }
 }

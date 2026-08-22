@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.ultimate-task-switcher",
+  "name": "Task switcher",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Alt+Tab window switcher overlay",
+  "kinds": ["overlay"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Switcher.qml"
+  }
+}

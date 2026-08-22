@@ -35,6 +35,24 @@ features.configEditingExposed
 
 User choice (`~/.local/state/omarchy/ultimate/mode`) wins over the shipped default (`desktop.json`). Services read the effective profile; UI surfaces register against feature flags rather than checking mode strings directly, so adding a third profile later is a data change, not a refactor.
 
+The CLI is `omarchy mode`:
+
+```text
+omarchy mode get
+omarchy mode set desktop
+omarchy mode set power-user
+```
+
+`set` writes the state file, reloads Hyprland, and restarts the shell so bindings and chrome swap together. `OMARCHY_ULTIMATE_MODE_SKIP_RELOAD=1` skips the reload for tests. Start's footer toggle writes the same file through `ModeProfileService` and reloads Hyprland without a reboot.
+
+## Shell overlay
+
+Desktop Mode does not rewrite `~/.config/omarchy/shell.json`. `shell.qml` computes an effective config: when `features.taskbar` is on and `features.topBar` is off, `bar.id` becomes `omarchy.ultimate-taskbar` and `bar.position` becomes `bottom`. Plugin enable/disable and Settings still persist the on-disk file, so switching back to Power User Mode restores the heritage bar without a migration.
+
+## Hyprland
+
+`default/hypr/omarchy.lua` reads the same state file. Desktop Mode loads `default/hypr/bindings/desktop.lua` and `default/hypr/desktop-windows.lua` (float by default, resize on border, real maximize, Windows keybindings). Power User Mode keeps the original tiling bindings and `default/hypr/windows.lua`.
+
 ## Rules
 
 - Power User Mode must never be framed as "advanced because you're smart" — it is just a different workflow over the same platform.

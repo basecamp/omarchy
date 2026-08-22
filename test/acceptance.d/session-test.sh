@@ -18,13 +18,17 @@ for plugin in \
   omarchy.audio omarchy.background omarchy.bar omarchy.bluetooth \
   omarchy.clipboard omarchy.emojis omarchy.menu \
   omarchy.monitor omarchy.network omarchy.notifications omarchy.power \
-  omarchy.reminders omarchy.weather; do
+  omarchy.reminders omarchy.weather \
+  omarchy.ultimate-taskbar omarchy.ultimate-start omarchy.ultimate-run \
+  omarchy.ultimate-settings omarchy.ultimate-task-switcher; do
   [[ $plugins == *"$plugin"* ]] || fail "shell plugin is loaded: $plugin" "loaded plugins: $plugins"
   pass "shell plugin is loaded: $plugin"
 done
 
-# The bar and background are actually on screen
-wait_until "bar layer is on screen" 30 layer_on_screen "omarchy-bar"
+# Desktop Mode shows the taskbar; Power User Mode keeps the heritage top bar.
+wait_until "shell chrome layer is mapped" 30 chrome_layer_namespace
+chrome_ns=$(chrome_layer_namespace)
+wait_until "bar layer is on screen" 30 layer_on_screen "$chrome_ns"
 wait_until "background layer is on screen" 30 layer_on_screen "omarchy-background"
 
 # Hiding parks the bar off-screen without unmapping its layer surface, and
@@ -35,12 +39,12 @@ restore_bar_visibility() {
 trap restore_bar_visibility EXIT
 
 omarchy-toggle-bar on
-wait_until "hidden bar layer stays mapped" 15 layer_present "omarchy-bar"
-wait_until "hidden bar layer parks off screen" 15 layer_off_screen "omarchy-bar"
+wait_until "hidden bar layer stays mapped" 15 layer_present "$chrome_ns"
+wait_until "hidden bar layer parks off screen" 15 layer_off_screen "$chrome_ns"
 screenshot "success-bar-hidden"
 
 omarchy-toggle-bar off
-wait_until "revealed bar layer returns on screen" 15 layer_on_screen "omarchy-bar"
+wait_until "revealed bar layer returns on screen" 15 layer_on_screen "$chrome_ns"
 screenshot "success-bar-revealed"
 trap - EXIT
 
