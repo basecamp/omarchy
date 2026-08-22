@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+import json
+import subprocess
+import datetime as dt
+from pathlib import Path
+import os
+
+USAGE_DIR = Path(os.path.expanduser("~/.local/state/omarchy/agents/usage"))
+
+def get_brain_dir() -> Path:
+    return Path(os.path.expanduser("~/.gemini/antigravity-cli/brain"))
+
+def scan_usage():
+    brain = get_brain_dir()
+    if not brain.exists():
+        return None
+
+    today = dt.datetime.now(dt.timezone.utc).date()
+    
+    sessions = set()
+    active_days = set()
+    today_sessions = set()
+    total_prompts = 0
+    today_prompts = 0
+    recent = { (today - dt.timedelta(days=i)).isoformat(): 0 for i in range(6, -1, -1) }
+
+    for brain_folder in brain.iterdir():
+        if not brain_folder.is_dir():
+            continue
+        transcript = brain_folder / ".system_generated" / "logs" / "transcript.jsonl"
+        if not transcript.is_file():
+            continue
+        
+        sessions.add(brain_folder.name)
+        try:
+            with transcript.open("r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if '"type":"USER_INPUT"' not in line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        if entry.get("type") != "USER_INPUT":
+                            continue
+                        
+                        total_prompts += 1
+                        created_at_raw = entry.get("created_at")
+                        if not created_at_raw:
+                            continue
+                            
+                        created_at = dt.datetime.fromisoformat(created_at_raw.replace("Z", "+00:00"))
+                        day = created_at.date()
+                        active_days.add(day.isoformat())
+                        
+                        if day == today:
+                            today_prompts += 1
+                            today_sessions.add(brain_folder.name)
+                            
+                        if day.isoformat() in recent:
+                            recent[day.isoformat()] += 1
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    return {
+        "todayPrompts": today_prompts,
+        "todaySessions": len(today_sessions),
+        "todayTotalTokens": 0,
+        "todayTokensByModel": {},
+        "recentDays": [{"date": d, "messageCount": c} for d, c in recent.items()],
+        "modelUsage": {},
+        "totalPrompts": total_prompts,
+        "totalSessions": len(sessions),
+        "activeDays": len(active_days),
+        "activeDates": sorted(list(active_days)),
+    }
+
+def fetch_limits():
+    limits = []
+    try:
+        res = subprocess.run(
+            ["agy", "-p", "/usage", "--output-format", "json"],
+            capture_output=True, text=True, check=True
+        )
+        data = json.loads(res.stdout)
+        
+        groups = data.get("command", {}).get("data", {}).get("groups", [])
+        for group in groups:
+            group_name = group.get("name", "")
+            desc = group.get("description", "")
+            prefix = "Models within this group: "
+            if desc.startswith(prefix):
+                models_str = desc[len(prefix):]
+            else:
+                models_str = group_name
+                
+            for bucket in group.get("buckets", []):
+                used_pct = 1.0 - float(bucket.get("remaining_fraction", 1.0))
+                window = bucket.get("window", "")
+                if window == "weekly":
+                    label = f"{models_str} (Weekly)"
+                elif window == "5h":
+                    label = f"{models_str} (Session)"
+                else:
+                    label = f"{models_str} {bucket.get('name')}"
+                    
+                limits.append({
+                    "label": label,
+                    "title": label,
+                    "percent": max(0.0, min(1.0, used_pct)),
+                    "resetsAt": bucket.get("reset_time", "")
+                })
+    except Exception:
+        pass
+    return limits
+
+def main():
+    USAGE_DIR.mkdir(parents=True, exist_ok=True)
+    now_iso = dt.datetime.now(dt.timezone.utc).isoformat()
+    
+    stats = scan_usage() or {
+        "todayPrompts": 0, "todaySessions": 0, "todayTotalTokens": 0,
+        "todayTokensByModel": {}, "recentDays": [], "modelUsage": {},
+        "totalPrompts": 0, "totalSessions": 0, "activeDays": 0, "activeDates": []
+    }
+    
+    limits = fetch_limits()
+    
+    antigravity_record = {
+        "schemaVersion": 1,
+        "id": "agy",
+        "name": "Antigravity",
+        "updatedAt": now_iso,
+        "ready": True,
+        "hasLocalStats": True,
+        "tierLabel": "Gemini 3.1 Pro",
+        "usageStatusText": "",
+        "authHelpText": "",
+        "limits": limits
+    }
+    antigravity_record.update(stats)
+    
+    with open(USAGE_DIR / "antigravity.json", "w") as f:
+        json.dump(antigravity_record, f, separators=(",", ":"), sort_keys=True)
+        
+    # Remove gemini record to merge them back
+    gemini_file = USAGE_DIR / "gemini.json"
+    if gemini_file.exists():
+        gemini_file.unlink()
+
+if __name__ == "__main__":
+    main()
