@@ -19,7 +19,6 @@ User-installed plugins live alongside these conceptually but on disk under
 | Run           | `omarchy.ultimate-run`    | `menu`                  | `ultimate-run/Run.qml`                |
 | Settings dest.| `omarchy.ultimate-settings` | `menu`                | `ultimate-settings/Settings.qml`      |
 | Task switcher | `omarchy.ultimate-task-switcher` | `overlay`          | `ultimate-task-switcher/Switcher.qml` |
-| Window chrome | `omarchy.ultimate-window-chrome` | `overlay`          | `ultimate-window-chrome/Chrome.qml`   |
 | Image picker  | `omarchy.image-picker`    | `overlay`               | `image-picker/ImagePicker.qml`        |
 | Emojis        | `omarchy.emojis`          | `overlay`               | `emojis/Emojis.qml`                   |
 | Clipboard mgr | `omarchy.clipboard`       | `overlay`               | `clipboard/Clipboard.qml`             |
@@ -42,6 +41,8 @@ User-installed plugins live alongside these conceptually but on disk under
 | Lock screen   | `omarchy.lock`            | `service`               | `lock/Service.qml`                    |
 | OSD           | `omarchy.osd`             | `panel`                 | `osd/Osd.qml`                         |
 | Polkit agent  | `omarchy.polkit`          | `service`               | `polkit/PolkitAgent.qml`              |
+
+Desktop Mode window title bars are **not** a shell overlay. Hyprland has no core SSD; Desktop Mode loads the `hyprbars` compositor plugin (`default/hypr/desktop-windows.lua`) so min/max/close and title-bar drag are part of the window.
 
 First-party bar-only widgets also carry manifests next to their QML files,
 e.g. `bar/widgets/Workspaces.manifest.json`. Rich popup widgets live in their

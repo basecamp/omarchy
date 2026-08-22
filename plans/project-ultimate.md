@@ -79,23 +79,22 @@ Honest status, not a go. Reviewer lock: `4ea1dcf3` + `a5b945da` are kept; produc
 What exists:
 
 - Desktop Mode profile (default) overlays the bottom `omarchy.ultimate-taskbar` without rewriting `shell.json`.
-- `default/hypr/desktop-windows.lua` floats by default and enables `resize_on_border`.
-- `WindowService` talks Lua `hl.dsp.window.*` through `Hyprland.dispatch` (typed), not `bash -c` around a raw address.
-- Snap work area uses Hyprland 0.56 `reserved` as **left, top, right, bottom**. The old live numbers `[40,0] 940×1080` were that axis bug, not a left exclusive zone.
-- Live after the axis fix (1920×1080, reserved `[0,0,0,40]`): taskbar at `y=1040`; snap left `[0,0] 960×1054`, right `[960,0] 960×1054`; maximize `fullscreen: 1` `1916×1036`; minimize identity holds on `special:minimized`.
-- First-cut taskbar, Start, Run, Settings destinations, Alt+Tab overlay, caption overlay plugin.
+- `default/hypr/desktop-windows.lua` floats by default (`size = { 880, 560 }`), zeros tiling gaps, enables `resize_on_border`, and loads **hyprbars** (not a shell overlay). Overlay plugin `omarchy.ultimate-window-chrome` is gone.
+- `WindowService` talks Lua `hl.dsp.window.*` through `Hyprland.dispatch`. Monitor and client geometry for snap/remember come from `hyprctl -j monitors` / `hyprctl -j clients`, not Quickshell `mon.width` or stale `lastIpcObject`.
+- Snap work area uses Hyprland 0.56 `reserved` as **left, top, right, bottom**. Live 1920×1080 reserved `[0,0,0,40]`. hyprbars draws above the hyprctl client box, so Desktop snap insets 32px: left `[0,32] 960×1008`, right `[960,32] 960×1008`. Pixel-checked close buttons sit at `y=9–22`.
+- Default overlapping float: `[520,240] 880×560`. `restoreNormal` returned that rect after a right snap.
+- Maximize `fullscreen: 1` `[2,34] 1916×1004` (title bar in the top of the work area; occupied bottom 1038 vs 1040).
+- Minimize identity still holds on `special:minimized` — that is still not a Windows minimize.
 
 What W0 still does not have (gate stays closed):
 
-- Conventional overlapping open size/position. Apps must not look tiled because two things opened, and they must not remain parked at a 50% snap from a probe.
-- Real non-client chrome (minimize / maximize / close as Windows caption buttons, title-bar drag proven with the mouse, drag-to-top maximize, drag-away restore). Overlay captions on the client are a stand-in, not SSD.
+- Mouse-proven title-bar drag / caption click / Alt+Tab card click. hyprbars is visible; this host could not actuate it through ydotool, QEMU HMP, or VNC.
 - Peek / jump lists / grouped previews as product, not a timer flyout.
-- Clickable Alt+Tab proven with the mouse (cards exist in QML).
 - Quarter snap, maximize-button layout chooser, saved layouts.
 - Multi-monitor, virtual desktops, parented dialogs, Steam / Wine / Electron / GTK / Qt matrix.
-- Minimize that a Windows user would recognize. `special:minimized` is a compositor trick. If it becomes an unmaintainable special-workspace state machine, stop and replace the compositor before building more desktop.
+- Minimize that a Windows user would recognize. `special:minimized` is a compositor trick.
 
-The screenshot from 2026-08-22 11:43 is this state: Tokyo Night canvas, bottom taskbar, a Start that is still a search box plus `foot` / `vim`, Power User Mode footer, and **one floating window left at the right-hand snap from the W0 probe**. That right pane is not Hyprland tiling two clients. Desktop Mode’s window rule is `float = true`. It looks like a tile because snap parked it at half width with Hyprland’s active border. Leave it until W0 defines restore-to-normal bounds; do not “fix” it with a theme.
+The leftover half-tile from the W0 probe is gone: new feet open as 880×560 floats, and unsnap restores the remembered rect.
 
 **Phases 2–10** have not started as product. Tokens and `IconButton` exist as seeds. Start is not the masterpiece. There is no desktop icon surface, no Quick Settings composition, no Settings app, no Dolphin default, no Software Center, no Compatibility Center, no OOBE, no ISO.
 
@@ -169,8 +168,8 @@ Every hover, context menu, dialog, empty state, error, DPI, focus ring, reduced 
 The `4ea1dcf3` + `a5b945da` writeup is locked. Do not re-submit it for product review. Do not wait on another bench of the same HEAD.
 
 1. Treat W0 as still open. Do not merge PR #1 as a go. Do not rewrite the PR body to claim the OS.
-2. Keep LTRB snap and typed `Hyprland.dispatch`. Overlay chrome and `special:minimized` are not a WM.
-3. The right-hand half-window in the guest is leftover snap geometry. W0 should restore a normal floating rect on open/unsnap, not 50/50 as the default look.
+2. Keep LTRB snap and typed `Hyprland.dispatch`. hyprbars is the Desktop Mode title bar; `special:minimized` is still not a Windows minimize.
+3. New windows open as 880×560 floats. `restoreNormal` unsnaps to the remembered client rect. Snap insets 32px so hyprbars stays on screen.
 4. Do not start Phase 2–9 work (theme pack, Dolphin swap, Settings app, ISO, OOBE) until W0 is decided — except a later slice that is itself one of the locked product gates (Tokyo Night, Nautilus, nvim, TTY first-boot, ISO) after windowing is decided.
 5. Do not teach Super+K in Desktop Mode first boot.
 6. Ask for a review only after a commit that actually moves: SSD, minimize, snap slop, mouse proof, or one of the remaining product gates.

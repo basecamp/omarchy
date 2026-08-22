@@ -84,13 +84,64 @@ function workArea(monitor) {
   }
 }
 
-function snapRect(monitor, side) {
+function snapRect(monitor, side, titleBar) {
   var area = workArea(monitor)
+  var top = Number(titleBar || 0)
+  var y = area.y + top
+  var height = area.height - top
+  if (height < 1) height = area.height
   var half = Math.floor(area.width / 2)
   if (side === "l") {
-    return { x: area.x, y: area.y, width: half, height: area.height }
+    return { x: area.x, y: y, width: half, height: height }
   }
-  return { x: area.x + half, y: area.y, width: area.width - half, height: area.height }
+  return { x: area.x + half, y: y, width: area.width - half, height: height }
+}
+
+// Quickshell Hyprland.Monitor.width/height can already exclude gaps. Snap must
+// use compositor JSON (hyprctl -j monitors / lastIpcObject) only.
+function compositorMonitor(ipc) {
+  ipc = ipc || {}
+  return {
+    width: Number(ipc.width || 0),
+    height: Number(ipc.height || 0),
+    reserved: ipc.reserved || [0, 0, 0, 0]
+  }
+}
+
+function nearRect(win, rect, slop) {
+  if (!win || !rect) return false
+  var n = slop == null ? 8 : Number(slop)
+  var x = Number(win.x)
+  var y = Number(win.y)
+  var w = Number(win.width)
+  var h = Number(win.height)
+  if (win.at) {
+    if (win.x == null) x = Number(win.at[0] || 0)
+    if (win.y == null) y = Number(win.at[1] || 0)
+  }
+  if (win.size) {
+    if (win.width == null) w = Number(win.size[0] || 0)
+    if (win.height == null) h = Number(win.size[1] || 0)
+  }
+  return Math.abs(x - rect.x) <= n
+    && Math.abs(y - rect.y) <= n
+    && Math.abs(w - rect.width) <= n
+    && Math.abs(h - rect.height) <= n
+}
+
+function isSnapped(win, monitor, slop, titleBar) {
+  return nearRect(win, snapRect(monitor, "l", titleBar), slop) || nearRect(win, snapRect(monitor, "r", titleBar), slop)
+}
+
+function defaultFloatRect(monitor) {
+  var area = workArea(monitor)
+  var width = Math.min(880, Math.max(640, Math.floor(area.width * 0.46)))
+  var height = Math.min(560, Math.max(400, Math.floor(area.height * 0.54)))
+  if (area.width > 0 && width > area.width - 96) width = Math.max(320, area.width - 96)
+  if (area.height > 0 && height > area.height - 96) height = Math.max(240, area.height - 96)
+  var x = area.x + Math.max(48, Math.floor((area.width - width) / 5))
+  var y = area.y + Math.max(48, Math.floor((area.height - height) / 6))
+  return { x: x, y: y, width: width, height: height }
 }
 
 function buildGroups(windows, pins) {
@@ -162,6 +213,10 @@ if (typeof module !== "undefined") {
     buildGroups: buildGroups,
     reservedLTRB: reservedLTRB,
     workArea: workArea,
-    snapRect: snapRect
+    snapRect: snapRect,
+    compositorMonitor: compositorMonitor,
+    nearRect: nearRect,
+    isSnapped: isSnapped,
+    defaultFloatRect: defaultFloatRect
   }
 }

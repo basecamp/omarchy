@@ -19,6 +19,7 @@ QtObject {
 
   property string lastError: ""
   property var _minimized: ({})
+  property var _normalBounds: ({})
   property bool _desktopShown: false
   property var _batch: []
   property bool cycling: false
@@ -26,7 +27,8 @@ QtObject {
   property var cycleList: []
   property var pins: []
   property string home: Quickshell.env("HOME")
-  readonly property int captionHeight: 28
+  property var monitorIpc: ({})
+  property var clientsIpc: []
 
   readonly property var windows: {
     var values = Hyprland.toplevels.values
@@ -152,15 +154,54 @@ QtObject {
   }
 
   function _monitorGeom() {
-    var mon = Hyprland.focusedMonitor
-    if (!mon) return { width: 0, height: 0, reserved: [] }
-    Hyprland.refreshMonitors()
-    var ipc = mon.lastIpcObject || {}
-    return {
-      width: Number(mon.width || ipc.width || 0),
-      height: Number(mon.height || ipc.height || 0),
-      reserved: ipc.reserved
+    var ipc = root.monitorIpc
+    if (ipc && ipc.width && ipc.height && ipc.reserved)
+      return WindowModel.compositorMonitor(ipc)
+    root.lastError = "compositor monitor geometry is unavailable"
+    return { width: 0, height: 0, reserved: [0, 0, 0, 0] }
+  }
+
+  function _copyMap(src) {
+    var next = ({})
+    for (var key in src) next[key] = src[key]
+    return next
+  }
+
+  function _clientIpc(address) {
+    var target = root._canonAddr(address)
+    if (!target) return null
+    var list = root.clientsIpc || []
+    var i
+    for (i = 0; i < list.length; i++) {
+      if (root._canonAddr(list[i].address) === target) return list[i]
     }
+    return null
+  }
+
+  function _clientRect(address) {
+    var ipc = root._clientIpc(address)
+    if (!ipc || !ipc.at || !ipc.size || Number(ipc.size[0]) <= 0 || Number(ipc.size[1]) <= 0) {
+      root.lastError = "compositor client geometry is unavailable"
+      return null
+    }
+    return {
+      x: Number(ipc.at[0] || 0),
+      y: Number(ipc.at[1] || 0),
+      width: Number(ipc.size[0]),
+      height: Number(ipc.size[1]),
+      fullscreen: Number(ipc.fullscreen || 0),
+      minimized: !!(ipc.workspace && ipc.workspace.name === "special:minimized")
+    }
+  }
+
+  function _rememberNormal(address) {
+    var rec = root._clientRect(address)
+    if (!rec || rec.fullscreen || rec.minimized) return
+    var geom = root._monitorGeom()
+    if (geom.width && WindowModel.isSnapped(rec, geom, 8, 32)) return
+    var next = root._copyMap(root._normalBounds)
+    next[address] = { x: rec.x, y: rec.y, width: rec.width, height: rec.height }
+    root._normalBounds = next
   }
 
   function _workArea() {
@@ -226,10 +267,8 @@ QtObject {
   }
 
   function isMaximized(address) {
-    var hypr = root._forAddress(root._addr(address))
-    if (!hypr) return false
-    var ipc = hypr.lastIpcObject || {}
-    return Number(ipc.fullscreen || 0) === 1
+    var rec = root._clientRect(root._addr(address))
+    return !!(rec && rec.fullscreen === 1)
   }
 
   function toggleFromTaskbar(address) {
@@ -240,6 +279,7 @@ QtObject {
   function maximize(address) {
     var target = root._addr(address)
     if (!target) return
+    root._rememberNormal(target)
     root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"maximized\", action = \"set\", " + root._luaWindow(target) + " })", true)
   }
 
@@ -259,8 +299,30 @@ QtObject {
   function restoreOrMinimize(address) {
     var target = root._addr(address)
     if (!target) return
+    if (root.isMaximized(target)) {
+      root.unmaximize(target)
+      return
+    }
+    var rec = root._clientRect(target)
+    var geom = root._monitorGeom()
+    if (rec && geom.width && WindowModel.isSnapped(rec, geom, 8, 32)) {
+      root.restoreNormal(target)
+      return
+    }
+    root.minimize(target)
+  }
+
+  function restoreNormal(address) {
+    var target = root._addr(address)
+    if (!target) return
     if (root.isMaximized(target)) root.unmaximize(target)
-    else root.minimize(target)
+    var bounds = root._normalBounds[target]
+    if (!bounds) bounds = WindowModel.defaultFloatRect(root._monitorGeom())
+    if (!bounds.width || !bounds.height) return
+    var win = root._luaWindow(target)
+    root._dispatchLua("hl.dsp.window.float({ action = \"enable\", " + win + " })")
+    root._dispatchLua("hl.dsp.window.resize({ x = " + Math.round(Number(bounds.width)) + ", y = " + Math.round(Number(bounds.height)) + ", relative = false, " + win + " })")
+    root._dispatchLua("hl.dsp.window.move({ x = " + Math.round(Number(bounds.x)) + ", y = " + Math.round(Number(bounds.y)) + ", relative = false, " + win + " })", true)
   }
 
   function moveTo(address, x, y) {
@@ -287,7 +349,11 @@ QtObject {
     if (!target) return
     var geom = root._monitorGeom()
     if (!geom.width || !geom.height) return
-    var rect = WindowModel.snapRect(geom, direction)
+    root._rememberNormal(target)
+    // hyprbars draws above hyprctl's client box even with bar_part_of_window.
+    // Inset the client top by bar_height (32, matching desktop-windows.lua) so
+    // the title bar stays in the work area instead of clipping off-screen.
+    var rect = WindowModel.snapRect(geom, direction, 32)
     var win = root._luaWindow(target)
     root._dispatchLua("hl.dsp.window.float({ action = \"enable\", " + win + " })")
     root._dispatchLua("hl.dsp.window.resize({ x = " + rect.width + ", y = " + rect.height + ", relative = false, " + win + " })")
@@ -354,6 +420,57 @@ QtObject {
   property Process ensurePinsDir: Process {
     command: ["bash", "-c", "mkdir -p \"$0\"", root.home + "/.local/state/omarchy/ultimate"]
     running: true
+  }
+
+  property Process monitorReader: Process {
+    command: ["hyprctl", "-j", "monitors"]
+    running: true
+    stdout: StdioCollector {
+      id: monitorStdout
+      waitForEnd: true
+    }
+    onExited: {
+      try {
+        var list = JSON.parse(monitorStdout.text || "[]")
+        var picked = null
+        var i
+        for (i = 0; i < list.length; i++) {
+          if (list[i] && list[i].focused) picked = list[i]
+        }
+        if (!picked && list.length) picked = list[0]
+        if (picked && picked.width && picked.reserved) root.monitorIpc = picked
+      } catch (e) {
+        root.lastError = "compositor monitor geometry is unavailable"
+      }
+      monitorRestart.restart()
+    }
+  }
+
+  property Timer monitorRestart: Timer {
+    interval: 400
+    onTriggered: root.monitorReader.running = true
+  }
+
+  property Process clientsReader: Process {
+    command: ["hyprctl", "-j", "clients"]
+    running: true
+    stdout: StdioCollector {
+      id: clientsStdout
+      waitForEnd: true
+    }
+    onExited: {
+      try {
+        var list = JSON.parse(clientsStdout.text || "[]")
+        if (Array.isArray(list)) root.clientsIpc = list
+      } catch (e) {
+      }
+      clientsRestart.restart()
+    }
+  }
+
+  property Timer clientsRestart: Timer {
+    interval: 400
+    onTriggered: root.clientsReader.running = true
   }
 
   property FileView pinFile: FileView {

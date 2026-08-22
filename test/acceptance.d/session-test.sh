@@ -20,11 +20,16 @@ for plugin in \
   omarchy.monitor omarchy.network omarchy.notifications omarchy.power \
   omarchy.reminders omarchy.weather \
   omarchy.ultimate-taskbar omarchy.ultimate-start omarchy.ultimate-run \
-  omarchy.ultimate-settings omarchy.ultimate-task-switcher \
-  omarchy.ultimate-window-chrome; do
+  omarchy.ultimate-settings omarchy.ultimate-task-switcher; do
   [[ $plugins == *"$plugin"* ]] || fail "shell plugin is loaded: $plugin" "loaded plugins: $plugins"
   pass "shell plugin is loaded: $plugin"
 done
+
+hyprctl plugin list 2>/dev/null | grep -qi hyprbars \
+  || fail "hyprbars is loaded for Desktop Mode title bars" "$(hyprctl plugin list 2>/dev/null || true)"
+pass "hyprbars is loaded for Desktop Mode title bars"
+layer_absent "omarchy-window-chrome" || fail "overlay caption layer is gone"
+pass "overlay caption layer is gone"
 
 # Desktop Mode shows the taskbar; Power User Mode keeps the heritage top bar.
 wait_until "shell chrome layer is mapped" 30 chrome_layer_namespace

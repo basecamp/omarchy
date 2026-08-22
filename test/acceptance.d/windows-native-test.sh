@@ -116,7 +116,9 @@ work_area_json() {
 taskbar_reserves_bottom() {
   local area
   area=$(work_area_json)
-  jq -e '.bottom >= 32 and .left < 16' <<<"$area" >/dev/null
+  # Desktop Mode's only exclusive chrome is the bottom taskbar. A ghost top
+  # reserved band (the 173px leak) would make snap follow a false work area.
+  jq -e '.bottom >= 32 and .left < 16 and .top < 8 and .right < 8' <<<"$area" >/dev/null
 }
 
 window_near_rect() {
@@ -127,10 +129,10 @@ window_near_rect() {
   local h="$5"
   hyprctl -j clients | jq -e --arg addr "$addr" --argjson x "$x" --argjson y "$y" --argjson w "$w" --argjson h "$h" '
     .[] | select(.address == $addr)
-    | (((.at[0] - $x) | fabs) <= 16)
-    and (((.at[1] - $y) | fabs) <= 16)
-    and (((.size[0] - $w) | fabs) <= 32)
-    and (((.size[1] - $h) | fabs) <= 32)
+    | (((.at[0] - $x) | fabs) <= 8)
+    and (((.at[1] - $y) | fabs) <= 8)
+    and (((.size[0] - $w) | fabs) <= 8)
+    and (((.size[1] - $h) | fabs) <= 8)
   ' >/dev/null
 }
 
@@ -138,11 +140,17 @@ window_is_maximized() {
   local addr="$1"
   local area
   area=$(work_area_json)
+  # hyprctl size is the client box. hyprbars sits in the top of the work area
+  # (~32px), so height can be work-area minus the title bar. The occupied
+  # span must still meet the work-area edges within 8px.
   hyprctl -j clients | jq -e --arg addr "$addr" --argjson area "$area" '
     .[] | select(.address == $addr)
     | (.fullscreen == 1)
-    and ((.size[0] - $area.w) | fabs) <= 32
-    and ((.size[1] - $area.h) | fabs) <= 32
+    and ((.at[0] - $area.x) | fabs) <= 8
+    and (.at[1] - $area.y) >= -8
+    and (.at[1] - $area.y) <= 40
+    and (((.at[0] + .size[0]) - ($area.x + $area.w)) | fabs) <= 8
+    and (((.at[1] + .size[1]) - ($area.y + $area.h)) | fabs) <= 8
   ' >/dev/null
 }
 
@@ -231,8 +239,10 @@ for task in "${tasks[@]}"; do
     sleep 1
     area=$(work_area_json)
     left_x=$(jq -r .x <<<"$area")
-    left_y=$(jq -r .y <<<"$area")
-    left_h=$(jq -r .h <<<"$area")
+    # hyprctl at/size is the client box. hyprbars (32px) sits above it, so the
+    # client is inset from the work-area top so the title bar stays on screen.
+    left_y=$(jq -r '.y + 32' <<<"$area")
+    left_h=$(jq -r '.h - 32' <<<"$area")
     half=$(jq -r '.w / 2 | floor' <<<"$area")
     right_x=$((left_x + half))
     right_w=$(jq -r .w <<<"$area")
@@ -270,8 +280,25 @@ screenshot "success-maximize"
 omarchy-shell window unmaximize "${addrs[0]}" >/dev/null
 pass "maximize fills the work area"
 
-layer_present "omarchy-window-chrome" || fail "caption chrome is mapped" "no omarchy-window-chrome layer"
-pass "caption chrome is mapped"
+hyprctl plugin list 2>/dev/null | grep -qi hyprbars \
+  || fail "hyprbars is loaded" "$(hyprctl plugin list 2>/dev/null || true)"
+pass "hyprbars is loaded"
+layer_absent "omarchy-window-chrome" || fail "overlay captions are gone" "omarchy-window-chrome still mapped"
+pass "overlay captions are gone"
+
+launch_feet 1
+mapfile -t addrs < <(foot_addresses)
+(( ${#addrs[@]} >= 1 )) || fail "restoreNormal unsnaps" "no foot window"
+omarchy-shell window snapRight "${addrs[0]}" >/dev/null
+sleep 1
+omarchy-shell window restoreNormal "${addrs[0]}" >/dev/null
+sleep 1
+area=$(work_area_json)
+half=$(jq -r '.w / 2 | floor' <<<"$area")
+hyprctl -j clients | jq -e --arg addr "${addrs[0]}" --argjson half "$half" '
+  .[] | select(.address == $addr) | (.size[0] < $half - 8)
+' >/dev/null || fail "restoreNormal unsnaps" "window still at snap width: $(hyprctl -j clients | jq --arg a "${addrs[0]}" '.[] | select(.address == $a) | {at,size}')"
+pass "restoreNormal unsnaps to an overlapping float"
 
 trap - EXIT
 restore_native_windows

@@ -22,6 +22,25 @@ The product call is still **REJECTED**. Windowing Gate W0 is still open. The sam
 
 Do not re-run the full review bench on that writeup. Do not ask for another product review of HEAD `a5b945da`. The next review is only when a new turn actually moves one of those gates.
 
+## 0b. W0 Tranche B (2026-08-22) — gates that moved, gates that did not
+
+This is not a product go. Windowing Gate W0 is still open. Two locked gates moved on the live guest; the others did not.
+
+Moved:
+
+- Snap slop / 1054 vs 1040. Snap geometry is compositor `hyprctl -j monitors` only (LTRB reserved). Live reserved `[0,0,0,40]`. After insetting 32px for hyprbars (which draws above the hyprctl client box), snap is left `[0,32] 960×1008`, right `[960,32] 960×1008`. Title-bar close buttons are on-screen at `y=9–22`. Default float is `880×560` at `[520,240]`. `restoreNormal` returned that same rect after a right snap.
+- Overlay-as-SSD. `omarchy.ultimate-window-chrome` is deleted. hyprbars is loaded via hyprpm (`hyprpm enable hyprbars`; `.so` at `/var/cache/hyprpm/omarchy/hyprland-plugins/hyprbars.so`). Overlay layer count 0. Caption buttons are compositor decorations.
+
+Still open:
+
+- Minimize is still `special:minimized`.
+- Mouse proof. Cursor can sit on the measured close button; ydotool / QEMU HMP / VNC clicks from this host did not actuate it. Do not call title-bar drag a go.
+- Tokyo Night, Nautilus, nvim, TTY first-boot, no product ISO.
+
+Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages` (pacman-only; package is not in the repos). Desktop Mode loads hyprpm’s `.so` and `hyprpm reload -n` on `hyprland.start`.
+
+Do not re-bench `4ea1dcf3` + `a5b945da`. The next review is this tranche’s commits plus the live numbers above — and only as a gate update, not as an OS go.
+
 ## 1. Read-first contract (mandatory, non-skippable)
 
 Before writing a single line of code, running a test, or booting a VM, read these files in full, in this order. They are the Project Ultimate source of truth and they override intuition, memory, and habit.
@@ -154,7 +173,7 @@ The turn that landed `a7b2c093` + `18370335` was **REJECTED**. Do not call windo
 
 This file must not grade the session. A later turn that ships caption chrome and LTRB snap still does not make Tokyo Night + a TTY first boot into Windows 7 Ultimate.
 
-Live numbers from the follow-up turn (Hyprland 0.56.2, virtio-vga 1920×1080, reserved `[0,0,0,40]` as left/top/right/bottom). These are evidence, not a go:
+Live numbers from the follow-up turn (Hyprland 0.56.2, virtio-vga 1920×1080, reserved `[0,0,0,40]` as left/top/right/bottom). These are evidence, not a go. **Superseded for snap/SSD by §0b** (1054 height and overlay captions are the pre-Tranche-B state):
 
 - Taskbar layer `omarchy-taskbar` at `x=0 y=1040 w=1920 h=40`. Exclusive zone is the bottom edge.
 - IPC snap via `Hyprland.dispatch`: left `[0,0] 960×1054`, right `[960,0] 960×1054`. The old `[40,0] 940×1080` left-inset geometry is gone. Height is 14px taller than the 1040px work area (within the harness 32px slop).

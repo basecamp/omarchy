@@ -62,7 +62,7 @@ if awk '
 ' "$ws"; then
   fail "restore must not assemble bash -c around a raw window address"
 fi
-grep -Fq 'WindowModel.snapRect' "$ws" || fail "snap geometry comes from WindowModel.snapRect (LTRB reserved)"
+grep -Fq 'WindowModel.snapRect(geom, direction, 32)' "$ws" || fail "desktop snap insets 32px for hyprbars above the client box"
 grep -Fq 'function moveTo' "$ws" || fail "caption drag uses WindowService.moveTo"
 grep -Fq 'function _windowRecord' "$ws" || fail "taskbar windows are Hyprland records with addresses"
 pass "snap and maximize use addressed Lua dispatchers through Hyprland.dispatch"
@@ -78,6 +78,13 @@ grep -Fq 'target: "window"' "$ROOT/shell/shell.qml" || fail "shell registers a w
 grep -Fq 'function snapLeft(address: string)' "$ROOT/shell/shell.qml" || fail "window IPC snapLeft takes a window address"
 grep -Fq 'function maximize(address: string)' "$ROOT/shell/shell.qml" || fail "window IPC maximize takes a window address"
 grep -Fq 'function restoreOrMinimize(address: string)' "$ROOT/shell/shell.qml" || fail "window IPC restoreOrMinimize takes a window address"
+grep -Fq 'function restoreNormal' "$ws" || fail "WindowService exposes restoreNormal to unsnap"
+grep -Fq 'hyprctl", "-j", "monitors"' "$ws" || fail "monitor geometry is read from hyprctl -j monitors, not stale lastIpcObject"
+grep -Fq 'hyprctl", "-j", "clients"' "$ws" || fail "client geometry for remember/restore is read from hyprctl -j clients"
+if grep -E 'mon\.width \|\| ipc\.width|mon\.height \|\| ipc\.height' "$ws"; then
+  fail "snap must not prefer Quickshell monitor size over compositor JSON"
+fi
+grep -Fq 'function restoreNormal(address: string)' "$ROOT/shell/shell.qml" || fail "window IPC restoreNormal takes a window address"
 pass "shell registers a window IPC target"
 
 run_node_test <<'JS'
@@ -118,4 +125,19 @@ const right = m.snapRect(mon, 'r')
 assertEqual(right.x, 960, 'snap right starts at the midpoint')
 assertEqual(right.width, 960, 'snap right takes the remaining half')
 assertEqual(right.height, 1040, 'snap right height respects the bottom reserved edge')
+const leftBar = m.snapRect(mon, 'l', 32)
+assertEqual(leftBar.y, 32, 'desktop snap leaves 32px for hyprbars above the client box')
+assertEqual(leftBar.height, 1008, 'desktop snap height is work area minus hyprbars')
+
+const mixed = m.compositorMonitor({ width: 1920, height: 1080, reserved: [0, 0, 0, 40] })
+assertEqual(mixed.height, 1080, 'compositorMonitor keeps the output height, not a gap-subtracted 1054')
+const floated = m.defaultFloatRect(mon)
+if (!(floated.width < 960 && floated.height < 1040)) {
+  throw new Error('default float must not be a work-area half-tile')
+}
+const snapped = { x: 0, y: 0, width: 960, height: 1040 }
+if (!m.isSnapped(snapped, mon, 8)) throw new Error('960x1040 at origin is the left snap')
+const snappedBar = { x: 0, y: 32, width: 960, height: 1008 }
+if (!m.isSnapped(snappedBar, mon, 8, 32)) throw new Error('960x1008 at y=32 is the desktop left snap')
+if (m.isSnapped(floated, mon, 8)) throw new Error('default float must not count as snapped')
 JS

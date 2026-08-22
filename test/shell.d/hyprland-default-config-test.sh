@@ -185,7 +185,11 @@ pass "missing Voxtype skips dictation bindings"
 # Desktop Mode is the Ultimate default: Windows keybindings, no Omarchy menu.
 desktop_home="$tmpdir/desktop-home"
 mkdir -p "$desktop_home"
-desktop_output=$(run_omarchy_bindings "$desktop_home")
+desktop_err="$tmpdir/desktop-err"
+desktop_output=$(run_omarchy_bindings "$desktop_home" 2>"$desktop_err")
+if [[ -s $desktop_err ]]; then
+  fail "desktop Hyprland config loads" "$(cat "$desktop_err")"
+fi
 grep -Fq $'SUPER + E	Files' <<<"$desktop_output" || fail "desktop mode binds Win+E to Files"
 grep -Fq $'SUPER + UP	Maximize window' <<<"$desktop_output" || fail "desktop mode binds Win+Up to maximize"
 grep -Fq $'SUPER + DOWN	Restore or minimize window' <<<"$desktop_output" || fail "desktop mode binds Win+Down to restore or minimize"
@@ -198,6 +202,12 @@ if grep -Fq $'SUPER + SPACE	Omarchy menu' <<<"$desktop_output"; then
   fail "desktop mode does not bind the Omarchy menu to Super+Space"
 fi
 pass "desktop mode ships the Windows keybinding set"
+
+grep -Fq 'gaps_out = 0' "$ROOT/default/hypr/desktop-windows.lua" || fail "desktop mode zeros gaps_out"
+grep -Fq 'plugin load' "$ROOT/default/hypr/desktop-windows.lua" || fail "desktop mode loads hyprbars from an absolute plugin path"
+grep -Fq '/var/cache/hyprpm/' "$ROOT/default/hypr/desktop-windows.lua" || fail "desktop mode loads the hyprpm-built hyprbars.so"
+grep -Fq 'hyprpm reload' "$ROOT/default/hypr/desktop-windows.lua" || fail "desktop mode reloads hyprpm plugins on Hyprland start"
+pass "desktop mode compositor chrome is hyprbars, not overlay captions"
 
 # The Grave shortcuts are aliases, so the original SUPER + S pair has to keep
 # working alongside them.
