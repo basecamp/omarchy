@@ -1,0 +1,194 @@
+#!/bin/bash
+
+# omarchy:summary=Restore configs, packages, themes and webapps from your backup repo (to revert a bad update, see omarchy snapshot instead)
+# omarchy:args=[git-url] [packages|configs|themes|webapps|extras]
+# omarchy:examples=omarchy restore | omarchy restore git@github.com:user/omarchy-backup.git | omarchy restore configs
+# omarchy:requires-sudo=true
+
+BACKUP_DIR="$HOME/omarchy-backup"
+STAMP=$(date +%s)
+ASIDES=0
+FAILURES=0
+
+usage() {
+  echo "Usage: omarchy restore [git-url] [packages|configs|themes|webapps|extras]" >&2
+  exit 1
+}
+
+warn() {
+  echo -e "\e[33m$1\e[0m" >&2
+}
+
+# A leading git-url argument clones the backup repo on a fresh machine
+if [[ ${1:-} == *"://"* || ${1:-} == *"@"*:* ]]; then
+  if [[ -d $BACKUP_DIR ]]; then
+    warn "Using the existing backup at $BACKUP_DIR; the given URL was ignored."
+  else
+    git clone "$1" "$BACKUP_DIR" || exit 1
+  fi
+  shift
+fi
+
+# No backup and no URL: ask for one, the way omarchy-theme-install does.
+# For a private repo, git prompts for credentials during the clone.
+if [[ ! -d $BACKUP_DIR ]]; then
+  echo -e "\e[32mRestore your machine from its backup repo\e[0m\n"
+  REPO_URL=$(gum input --placeholder="Git repo URL (https or git@host:org/repo.git)" --header="")
+
+  if [[ -z $REPO_URL ]]; then
+    echo "No backup found at $BACKUP_DIR. Pass your repo URL to clone it:" >&2
+    usage
+  fi
+
+  git clone "$REPO_URL" "$BACKUP_DIR" || exit 1
+fi
+
+declare -A RESTORE
+if (( $# == 0 )); then
+  RESTORE=([packages]=1 [configs]=1 [themes]=1 [webapps]=1 [extras]=1)
+else
+  for part in "$@"; do
+    case $part in
+    packages | configs | themes | webapps | extras) RESTORE[$part]=1 ;;
+    *) usage ;;
+    esac
+  done
+fi
+
+# Freshen the backup when possible; a local copy is still a valid source
+if git -C "$BACKUP_DIR" remote get-url origin &>/dev/null; then
+  git -C "$BACKUP_DIR" pull --ff-only --quiet 2>/dev/null ||
+    warn "Could not pull latest backup; restoring from local copy."
+fi
+
+# Copy one file into place, setting aside any differing existing version.
+# Symlinks are compared by link target and replaced, never followed, so a
+# link to a directory can't cause a copy into the directory it points at.
+restore_file() {
+  local source=$1 target=$2
+
+  if [[ -L $source && -L $target ]]; then
+    [[ $(readlink "$source") == "$(readlink "$target")" ]] && return 0
+  elif [[ ! -L $source && ! -L $target && -f $target ]]; then
+    cmp -s "$source" "$target" && return 0
+  fi
+
+  if [[ -e $target || -L $target ]]; then
+    if ! cp -a "$target" "$target.bak.$STAMP"; then
+      warn "Could not set aside $target; leaving it untouched."
+      FAILURES=$((FAILURES + 1))
+      return 1
+    fi
+    ASIDES=$((ASIDES + 1))
+    rm -rf "$target"
+  fi
+  mkdir -p "$(dirname "$target")"
+  cp -a "$source" "$target"
+}
+
+restore_tree() {
+  local source_root=$1 target_root=$2
+  [[ -d $source_root ]] || return 0
+  while IFS= read -r -d '' file; do
+    restore_file "$file" "$target_root/${file#"$source_root"/}"
+  done < <(find "$source_root" \( -type f -o -type l \) -print0)
+}
+
+validate_restored_plugins() {
+  local plugins_root="$HOME/.config/omarchy/plugins"
+  local plugin
+  [[ -d $plugins_root ]] || return 0
+
+  while IFS= read -r -d '' plugin; do
+    if ! omarchy-plugin-validate "$plugin"; then
+      warn "Restored plugin failed validation: ${plugin##*/}"
+      FAILURES=$((FAILURES + 1))
+    fi
+  done < <(find "$plugins_root" -mindepth 1 -maxdepth 1 -type d -print0)
+
+  # A fresh shell discovers restored plugins at startup. If it is already
+  # running, rescan now so restored plugin files and shell.json take effect.
+  omarchy-shell -q shell rescanPlugins
+}
+
+if [[ -n ${RESTORE[packages]:-} ]]; then
+  echo -e "\e[32mRestoring packages\e[0m"
+  if [[ -f $BACKUP_DIR/packages.txt ]]; then
+    missing=$(comm -23 <(sort "$BACKUP_DIR/packages.txt") <(pacman -Qqen | sort))
+    if [[ -n $missing ]]; then
+      # shellcheck disable=SC2086
+      if ! sudo pacman -S --needed --noconfirm $missing; then
+        warn "Some packages did not install; retry with: omarchy restore packages"
+        FAILURES=$((FAILURES + 1))
+      fi
+    fi
+  else
+    warn "No packages.txt in the backup; skipping packages."
+  fi
+
+  if [[ -f $BACKUP_DIR/packages-aur.txt ]]; then
+    missing_aur=$(comm -23 <(sort "$BACKUP_DIR/packages-aur.txt") <(pacman -Qqem | sort))
+    if [[ -n $missing_aur ]]; then
+      # shellcheck disable=SC2086
+      if ! yay -S --needed --noconfirm $missing_aur; then
+        warn "Some AUR packages did not install; retry with: omarchy restore packages"
+        FAILURES=$((FAILURES + 1))
+      fi
+    fi
+  fi
+fi
+
+if [[ -n ${RESTORE[configs]:-} ]]; then
+  echo -e "\e[32mRestoring configs\e[0m"
+  restore_tree "$BACKUP_DIR/config" "$HOME/.config"
+  validate_restored_plugins
+fi
+
+if [[ -n ${RESTORE[themes]:-} ]]; then
+  echo -e "\e[32mRestoring themes\e[0m"
+  if [[ -f $BACKUP_DIR/themes.txt ]]; then
+    while read -r name url; do
+      [[ -z $name || $name == builtin:* || -z $url ]] && continue
+      if [[ ! -d $HOME/.config/omarchy/themes/$name ]]; then
+        if ! git clone "$url" "$HOME/.config/omarchy/themes/$name"; then
+          warn "Could not clone theme: $url"
+          FAILURES=$((FAILURES + 1))
+        fi
+      fi
+    done <"$BACKUP_DIR/themes.txt"
+  else
+    warn "No themes.txt in the backup; skipping themes."
+  fi
+fi
+
+if [[ -n ${RESTORE[webapps]:-} ]]; then
+  echo -e "\e[32mRestoring webapps\e[0m"
+  mkdir -p "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/256x256/apps"
+  cp -f "$BACKUP_DIR/webapps"/*.desktop "$HOME/.local/share/applications/" 2>/dev/null
+  cp -f "$BACKUP_DIR/webapps/icons"/* "$HOME/.local/share/icons/hicolor/256x256/apps/" 2>/dev/null
+  gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" 2>/dev/null
+fi
+
+if [[ -n ${RESTORE[extras]:-} ]]; then
+  echo -e "\e[32mRestoring extras\e[0m"
+  restore_tree "$BACKUP_DIR/extras" "$HOME"
+fi
+
+# Reapply the active theme so every component reloads with restored settings
+if [[ -n ${RESTORE[configs]:-} || -n ${RESTORE[themes]:-} ]] && [[ -f $BACKUP_DIR/theme-current.txt ]]; then
+  if ! omarchy-theme-set "$(<"$BACKUP_DIR/theme-current.txt")"; then
+    warn "Could not reapply the previous theme."
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+
+if (( ASIDES > 0 )); then
+  echo "$ASIDES files that differed were kept next to the restored copies as *.bak.$STAMP"
+fi
+
+if (( FAILURES > 0 )); then
+  warn "Restore finished with $FAILURES problems; see the warnings above."
+  exit 1
+else
+  echo -e "\e[32mRestore complete.\e[0m Run omarchy update to apply any pending migrations."
+fi

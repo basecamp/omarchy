@@ -1,0 +1,195 @@
+#!/bin/bash
+
+# omarchy:summary=Back up your configs, packages, themes and webapps to a git repo in ~/omarchy-backup
+# omarchy:args=[git-remote-url]
+# omarchy:examples=omarchy backup | omarchy backup git@github.com:user/omarchy-backup.git
+
+BACKUP_DIR="$HOME/omarchy-backup"
+REMOTE_URL=${1:-}
+
+seed_readme() {
+  cat >"$BACKUP_DIR/README.md" <<'README'
+# Omarchy Backup
+
+Your Omarchy system state, captured by `omarchy backup`: configs, package lists,
+theme sources, and webapps. Replay it on a fresh install with:
+
+    omarchy restore <git-url>
+
+**Keep this repository PRIVATE.** Configs can contain tokens, hostnames, and
+other details you don't want public.
+
+Add extra paths to back up in `backup.list` (one $HOME-relative path per line).
+Local Omarchy plugins and their bar placement are captured automatically with
+`~/.config/omarchy`; installed theme repositories remain source references.
+
+## Emergency recovery
+
+`recovery/` is a reference snapshot of how this machine boots, captured while
+it works: partition layout with UUIDs (`disk-map.txt`), kernel command line,
+fstab, bootloader config, and EFI boot entries. `omarchy restore` never
+applies these files — machine-specific IDs must be regenerated, not copied.
+Their job is the day the machine won't boot: open this repo from any device,
+and `recovery/` tells you which partition to unlock and mount from a live USB
+session, and what the boot setup looked like when it was healthy.
+README
+}
+
+seed_backup_list() {
+  cat >"$BACKUP_DIR/backup.list" <<'LIST'
+# Extra paths for omarchy backup, one per line, relative to your home directory.
+# List config files, not state directories (sockets, caches, logs).
+# Paths that are git repos are captured as plain files, without their history.
+# Lines starting with # are ignored.
+#
+# Examples:
+# .config/nvim
+# .config/starship.toml
+# .local/bin/my-script
+LIST
+}
+
+mirror_dir() {
+  local source=$1 target=$2
+  [[ -d $source ]] || return 0
+  mkdir -p "$(dirname "$target")"
+  cp -a "$source" "$target"
+}
+
+# First run: initialize the repo and seed its files
+if [[ ! -d $BACKUP_DIR/.git ]]; then
+  mkdir -p "$BACKUP_DIR"
+  git -C "$BACKUP_DIR" init --quiet
+  seed_readme
+  seed_backup_list
+  echo -e "\e[32mInitialized backup repo at $BACKUP_DIR\e[0m"
+fi
+
+if [[ -n $REMOTE_URL ]]; then
+  if git -C "$BACKUP_DIR" remote get-url origin &>/dev/null; then
+    git -C "$BACKUP_DIR" remote set-url origin "$REMOTE_URL"
+  else
+    git -C "$BACKUP_DIR" remote add origin "$REMOTE_URL"
+  fi
+fi
+
+# Mirror managed subtrees fresh each run so deletions are captured
+rm -rf "$BACKUP_DIR/config" "$BACKUP_DIR/webapps" "$BACKUP_DIR/extras"
+
+# Configs: omarchy (sans themes), hypr, and any terminal configs present
+mirror_dir "$HOME/.config/omarchy" "$BACKUP_DIR/config/omarchy"
+rm -rf "$BACKUP_DIR/config/omarchy/themes"
+mirror_dir "$HOME/.config/hypr" "$BACKUP_DIR/config/hypr"
+
+for terminal in alacritty ghostty kitty foot; do
+  mirror_dir "$HOME/.config/$terminal" "$BACKUP_DIR/config/$terminal"
+done
+
+# Packages: explicitly installed, native and AUR
+pacman -Qqen >"$BACKUP_DIR/packages.txt"
+pacman -Qqem >"$BACKUP_DIR/packages-aur.txt"
+
+# Themes: record where each installed theme came from
+: >"$BACKUP_DIR/themes.txt"
+for theme in "$HOME/.config/omarchy/themes"/*; do
+  [[ -e $theme || -L $theme ]] || continue
+  name=$(basename "$theme")
+  if [[ $name == *[[:space:]]* ]]; then
+    echo -e "\e[33mSkipping theme with whitespace in its name: $name\e[0m" >&2
+  elif [[ -L $theme ]]; then
+    echo "builtin:$name" >>"$BACKUP_DIR/themes.txt"
+  elif [[ -d $theme/.git ]]; then
+    if url=$(git -C "$theme" remote get-url origin 2>/dev/null); then
+      echo "$name $url" >>"$BACKUP_DIR/themes.txt"
+    else
+      echo -e "\e[33mSkipping theme without git remote: $name\e[0m" >&2
+    fi
+  else
+    echo -e "\e[33mSkipping theme without git history: $name\e[0m" >&2
+  fi
+done
+
+if [[ -f $HOME/.local/state/omarchy/current/theme.name ]]; then
+  cp -f "$HOME/.local/state/omarchy/current/theme.name" "$BACKUP_DIR/theme-current.txt"
+fi
+
+# Webapps: launchers created by omarchy, plus their icons
+ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
+mkdir -p "$BACKUP_DIR/webapps/icons"
+for desktop in "$HOME/.local/share/applications"/*.desktop; do
+  [[ -f $desktop ]] || continue
+  grep -q omarchy-launch-webapp "$desktop" || continue
+  cp -f "$desktop" "$BACKUP_DIR/webapps/"
+  icon=$(grep -m1 "^Icon=" "$desktop" | cut -d= -f2-)
+  if [[ -f $icon ]]; then
+    cp -f "$icon" "$BACKUP_DIR/webapps/icons/"
+  else
+    for ext in png svg; do
+      [[ -f $ICON_DIR/$icon.$ext ]] && cp -f "$ICON_DIR/$icon.$ext" "$BACKUP_DIR/webapps/icons/"
+    done
+  fi
+done
+
+# Recovery reference: how this machine boots, captured while it works.
+# Never applied by omarchy-restore. When the machine won't boot, read these
+# from a live USB session to identify partitions, boot entries and the
+# kernel command line instead of guessing.
+mkdir -p "$BACKUP_DIR/recovery"
+lsblk -o NAME,FSTYPE,LABEL,SIZE,PARTUUID,UUID,MOUNTPOINTS >"$BACKUP_DIR/recovery/disk-map.txt" 2>/dev/null
+cat /proc/cmdline >"$BACKUP_DIR/recovery/cmdline.txt" 2>/dev/null
+cp -f /etc/fstab "$BACKUP_DIR/recovery/fstab" 2>/dev/null
+[[ -r /boot/limine.conf ]] && cp -f /boot/limine.conf "$BACKUP_DIR/recovery/limine.conf"
+if [[ -d /sys/firmware/efi ]]; then
+  efibootmgr -v >"$BACKUP_DIR/recovery/efi-entries.txt" 2>/dev/null ||
+    rm -f "$BACKUP_DIR/recovery/efi-entries.txt"
+fi
+
+# Extras: user-listed paths from backup.list
+if [[ -f $BACKUP_DIR/backup.list ]]; then
+  while IFS= read -r line; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [[ -z $line || $line == \#* ]] && continue
+    if [[ $line == *..* ]]; then
+      echo -e "\e[33mIgnoring backup.list entry with '..': $line\e[0m" >&2
+      continue
+    fi
+    source_path="$HOME/$line"
+    if [[ -e $source_path ]]; then
+      mkdir -p "$BACKUP_DIR/extras/$(dirname "$line")"
+      cp -a "$source_path" "$BACKUP_DIR/extras/$line"
+    else
+      echo -e "\e[33mbackup.list entry not found: $line\e[0m" >&2
+    fi
+  done <"$BACKUP_DIR/backup.list"
+fi
+
+# Keep the mirrors committable: drop restore's .bak asides, and strip nested
+# .git dirs so cloned configs are captured as files, not as embedded repos
+# that git add would silently skip.
+find "$BACKUP_DIR/config" "$BACKUP_DIR/extras" \( -name "*.bak" -o -name "*.bak.*" \) -delete 2>/dev/null
+find "$BACKUP_DIR/config" "$BACKUP_DIR/extras" -name .git -prune -exec rm -rf {} + 2>/dev/null
+
+# Commit, and push when a remote is configured
+git -C "$BACKUP_DIR" add -A
+
+if git -C "$BACKUP_DIR" diff --cached --quiet; then
+  echo "No changes since last backup."
+else
+  git -C "$BACKUP_DIR" status --short
+  if git -C "$BACKUP_DIR" commit --quiet -m "Backup from $(hostname) on $(date '+%Y-%m-%d %H:%M')"; then
+    echo -e "\e[32mBackup committed.\e[0m"
+  else
+    echo -e "\e[31mCommit failed; backup is staged but NOT saved.\e[0m" >&2
+    exit 1
+  fi
+fi
+
+if git -C "$BACKUP_DIR" remote get-url origin &>/dev/null; then
+  if ! git -C "$BACKUP_DIR" push --quiet -u origin HEAD 2>/dev/null; then
+    echo -e "\e[33mPush failed; backup is committed locally.\e[0m" >&2
+  fi
+else
+  echo "No remote configured. Create a PRIVATE repo, then run:"
+  echo "  omarchy backup <git-url>"
+fi
