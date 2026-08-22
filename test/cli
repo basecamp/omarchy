@@ -513,7 +513,7 @@ pass "claude theme activation preserves configured settings"
 make_tmpdir THEME_TMPDIR
 OMARCHY_PATH="$ROOT" HOME="$THEME_TMPDIR" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" "Tokyo Night"
 background_path=$(readlink -f "$THEME_TMPDIR/.local/state/omarchy/current/background" 2>/dev/null || true)
-expected_background="$THEME_TMPDIR/.local/state/omarchy/current/theme/backgrounds/0-winding-road.jpg"
+expected_background="$THEME_TMPDIR/.local/state/omarchy/current/theme/backgrounds/0-winding-road.webp"
 [[ $background_path == "$expected_background" ]] || fail "headless theme set creates current background symlink"
 [[ -f $background_path ]] || fail "headless theme background target exists"
 [[ ! -e $THEME_TMPDIR/.config/omarchy/current ]] || fail "headless theme set avoids config current state"

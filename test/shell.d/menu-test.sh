@@ -211,13 +211,13 @@ assertEqual(
   'menu lists Reset Computer last under Setup'
 )
 const expectedAgents = {
+  agy: { icon: '󰫢', label: 'Antigravity' },
   pi: { icon: '\ue901', iconFont: 'omarchy', label: 'Pi' },
   omp: { icon: '\ue903', iconFont: 'omarchy', label: 'omp' },
   opencode: { icon: '\ue902', iconFont: 'omarchy', label: 'OpenCode' },
   claude: { icon: '󰛄', label: 'Claude' },
   codex: { icon: '\ue905', iconFont: 'omarchy', label: 'Codex' },
   grok: { icon: '\ue904', iconFont: 'omarchy', label: 'Grok' },
-  gemini: { icon: '󰫢', label: 'Gemini' },
   copilot: { icon: '', label: 'Copilot' },
   crush: { icon: '󰋑', label: 'Crush' },
 }
@@ -238,7 +238,7 @@ assertDeepEqual(
   defaultItems
     .filter(item => item.parent === 'setup.default.agent')
     .map(item => item.label),
-  ['Claude', 'Codex', 'Copilot', 'Crush', 'Gemini', 'Grok', 'omp', 'OpenCode', 'Pi'],
+  ['Antigravity', 'Claude', 'Codex', 'Copilot', 'Crush', 'Grok', 'omp', 'OpenCode', 'Pi'],
   'menu sorts coding agents alphabetically'
 )
 const expectedDefaults = {
@@ -288,6 +288,26 @@ assert(
   defaultItems.filter(item => item.id.startsWith('remove.')).every(item => !item.disabled)
     && defaultById['remove.browser.zen'].when === 'omarchy-pkg-present zen-browser-bin',
   'menu still hides Remove rows for software that is not installed'
+)
+assertDeepEqual(
+  defaultItems
+    .filter(item => item.parent === 'remove')
+    .map(item => item.id),
+  [
+    'remove.package',
+    'remove.ai',
+    'remove.service',
+    'remove.development',
+    'remove.theme',
+    'remove.gaming',
+    'remove.browser',
+    'remove.webapp',
+    'remove.tui',
+    'remove.windows',
+    'remove.preinstalls',
+    'remove.security'
+  ],
+  'menu orders Remove categories like their Install counterparts, followed by Remove-only categories'
 )
 assert(
   defaultById['setup.security.passwordless-sudo'].action.includes('omarchy-sudo-passwordless'),
@@ -610,5 +630,5 @@ assert(
 JS
 
 font_charset=$(fc-query --format='%{charset}' "$ROOT/default/fonts/omarchy/omarchy.ttf")
-[[ $font_charset == *"e900-e907"* ]] || fail "Omarchy icon font includes every custom menu glyph"
+[[ $font_charset == *"e900-e908"* ]] || fail "Omarchy icon font includes every custom menu glyph"
 pass "Omarchy icon font includes the official agent marks"
