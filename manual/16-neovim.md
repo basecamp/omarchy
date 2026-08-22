@@ -1,6 +1,6 @@
 # Neovim
 
-[Neovim](https://neovim.io/) is a modern implementation of [the vi editor](<https://en.wikipedia.org/wiki/Vi_(text_editor)>) created by Bill Joy all the way back in 1976. It's a modal editor where insert mode and command mode are separated, and it's a bit of a superpower once you learn even just a subset of the incredibly deep key command set. But it's also quite the learning curve!
+[Neovim](https://neovim.io/) is a modern implementation of [the vi editor](https://en.wikipedia.org/wiki/Vi_(text_editor)) created by Bill Joy all the way back in 1976. It's a modal editor where insert mode and command mode are separated, and it's a bit of a superpower once you learn even just a subset of the incredibly deep key command set. But it's also quite the learning curve!
 
 If you're totally new to vim-style editing, I recommend you checkout [ThePrimeagen's Vim As Your Editor series](https://www.youtube.com/watch?v=X6AR2RMB5tE&list=PLm323Lc7iSW_wuxqmKx_xxNtJC_hJbQ7R) on YouTube. That'll teach you the basics. Just know that unlike more similar mainstream editors, it's going to take you longer to get basic proficiency with vim. But once you do, the payoff is also larger.
 
