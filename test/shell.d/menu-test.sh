@@ -41,6 +41,10 @@ assert(
   menuQml.includes('root.calculatorResultQuery = answer ? completedQuery : ""'),
   'menu clears stale calculator results when a current evaluation fails'
 )
+assert(
+  menuQml.includes('!(event.modifiers & ~(Qt.ShiftModifier | Qt.KeypadModifier))'),
+  'menu accepts numpad text while preserving modified-key shortcuts'
+)
 
 const parsed = menu.parseMenuJsonc(`
 {
