@@ -71,7 +71,7 @@ if ! jq -e '.ok == true' "$result" >/dev/null; then
   fixture_failed=1
 fi
 
-for name in a b; do
+for name in a b c d; do
   if [[ ! -e $scratch/done-$name ]]; then
     printf 'done-%s was never written; the displaced omarchy-menu-select waiter would spin forever\n' "$name" >&2
     fixture_failed=1

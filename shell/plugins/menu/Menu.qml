@@ -68,6 +68,16 @@ Item {
   property bool cursorActive: false
   property int requestSerial: 0
   property int applySerial: 0
+  // Completion writes share one Process, so they queue: a supersede can land
+  // while the previous write is still spawning, and reassigning a running
+  // Process would silently drop its command.
+  property var pendingDoneWrites: []
+
+  function runNextDoneWrite() {
+    if (resultProc.running || root.pendingDoneWrites.length === 0) return
+    resultProc.command = root.pendingDoneWrites.shift()
+    resultProc.running = true
+  }
   property var items: ({})
   property var itemOrder: []
   property var navStack: []
@@ -127,11 +137,11 @@ Item {
     root.doneFile = ""
 
     if (selection === null || selection === undefined) {
-      resultProc.command = ["bash", "-c", ": > " + Util.shellQuote(activeDoneFile)]
+      root.pendingDoneWrites.push(["bash", "-c", ": > " + Util.shellQuote(activeDoneFile)])
     } else {
-      resultProc.command = ["bash", "-c", "printf '%s\\n' " + Util.shellQuote(selection) + " > " + Util.shellQuote(activeSelectionFile) + "; : > " + Util.shellQuote(activeDoneFile)]
+      root.pendingDoneWrites.push(["bash", "-c", "printf '%s\\n' " + Util.shellQuote(selection) + " > " + Util.shellQuote(activeSelectionFile) + "; : > " + Util.shellQuote(activeDoneFile)])
     }
-    resultProc.running = true
+    root.runNextDoneWrite()
   }
 
   function runAction(action) {
@@ -948,6 +958,7 @@ Item {
   Process {
     id: resultProc
     onExited: {
+      root.runNextDoneWrite()
       if (root.applySerial === root.requestSerial)
         root.opened = false
     }

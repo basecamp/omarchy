@@ -82,12 +82,17 @@ ShellRoot {
           root.assertTrue(root.menu.mode === "menu", "the regular menu takes over from select A")
         }
 
-        // Scenario B: a live select request is superseded by another select.
+        // Scenario B: several requests opened back-to-back with no delay in
+        // between, so b, c and d are displaced synchronously — possibly while
+        // an earlier completion write is still spawning. Their done files must
+        // all land anyway.
         if (tick === 12) {
           root.menu.open(root.selectPayload("B", "b"))
           root.assertTrue(root.menu.requestActive === true, "select B becomes the active request")
           root.menu.open(root.selectPayload("C", "c"))
-          root.assertTrue(root.menu.doneFile === root.scratchDir + "/done-c", "select C holds the live request afterwards")
+          root.menu.open(root.selectPayload("D", "d"))
+          root.menu.open(root.selectPayload("E", "e"))
+          root.assertTrue(root.menu.doneFile === root.scratchDir + "/done-e", "select E holds the live request afterwards")
         }
 
         if (tick === 20) root.finish()
