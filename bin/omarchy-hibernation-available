@@ -2,17 +2,35 @@
 
 # omarchy:summary=Check if hibernation is supported
 
-if [[ ! -f /sys/power/image_size ]]; then
+SYS_POWER_PATH="${OMARCHY_SYS_POWER_PATH:-/sys/power}"
+SWAPS_PATH="${OMARCHY_SWAPS_PATH:-/proc/swaps}"
+RESUME_CONF_PATH="${OMARCHY_RESUME_CONF_PATH:-/etc/mkinitcpio.conf.d/omarchy_resume.conf}"
+
+if [[ ! -r $SYS_POWER_PATH/state || ! -r $SYS_POWER_PATH/image_size ]]; then
+  exit 1
+fi
+
+# The kernel drops "disk" from the sleep states whenever it will refuse the
+# request outright: lockdown, nohibernate, secretmem or an active CXL device.
+SLEEP_STATES=" $(<"$SYS_POWER_PATH/state") "
+
+if [[ $SLEEP_STATES != *" disk "* ]]; then
   exit 1
 fi
 
 # Sum all swap sizes (excluding zram)
-SWAPSIZE_KB=$(awk '!/Filename|zram/ {sum += $3} END {print sum+0}' /proc/swaps)
+SWAPSIZE_KB=$(awk '!/Filename|zram/ {sum += $3} END {print sum+0}' "$SWAPS_PATH")
 SWAPSIZE=$(( 1024 * ${SWAPSIZE_KB:-0} ))
 
-HIBERNATION_IMAGE_SIZE=$(cat /sys/power/image_size)
+HIBERNATION_IMAGE_SIZE=$(<"$SYS_POWER_PATH/image_size")
 
-if (( SWAPSIZE > HIBERNATION_IMAGE_SIZE )) && [[ -f /etc/mkinitcpio.conf.d/omarchy_resume.conf ]]; then
+# A size that did not read is worth zero to the comparison below, and any swap
+# at all beats zero.
+if [[ ! $HIBERNATION_IMAGE_SIZE =~ ^[0-9]+$ ]]; then
+  exit 1
+fi
+
+if (( SWAPSIZE > HIBERNATION_IMAGE_SIZE )) && [[ -f $RESUME_CONF_PATH ]]; then
   exit 0
 else
   exit 1
