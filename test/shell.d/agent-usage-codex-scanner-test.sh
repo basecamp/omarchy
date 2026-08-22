@@ -13,6 +13,12 @@ mkdir -p "$TEST_HOME/.codex/sessions/$(date +%Y/%m/%d)" "$TEST_HOME/bin"
 cat >"$TEST_HOME/bin/codex" <<'EOF'
 #!/bin/bash
 
+# Fail if the collector regresses to `-a untrusted` (Codex 0.149 / #7648).
+if [[ $1 != "-s" || $2 != "read-only" || $3 != "-a" || $4 != "on-request" || ${5:-} != "app-server" ]]; then
+  echo "unexpected codex invocation: $*" >&2
+  exit 1
+fi
+
 while read -r request; do
   id=$(jq -r '.id // empty' <<<"$request")
   method=$(jq -r '.method // empty' <<<"$request")
