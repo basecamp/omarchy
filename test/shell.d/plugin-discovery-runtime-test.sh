@@ -158,11 +158,12 @@ shell_ipc shell setPluginEnabled test.service-c false >/dev/null
 rm -rf "$plugins_dir/test.service-c"
 shell_ipc shell rescanPlugins >/dev/null
 wait_for_plugin test.service-c 0 || fail_with_log "removed plugin leaves the registry"
+before_a=$(instance_count test.service-a 1)
+before_b=$(instance_count test.service-b 1)
 write_service "$plugins_dir/.add.test" test.service-c 2
 mv "$plugins_dir/.add.test" "$plugins_dir/test.service-c"
 shell_ipc shell discoverPlugins test.service-c >/dev/null
 wait_for_plugin test.service-c 1 || fail_with_log "same-id plugin is rediscovered"
-sleep 0.3
-[[ $(instance_count test.service-a 1) -ge 4 && $(instance_count test.service-b 1) -ge 4 ]] ||
-  fail_with_log "same-id reinstallation takes the full reload path"
+wait_for_count test.service-a 1 "$((before_a + 1))" || fail_with_log "same-id reinstallation reloads service A"
+wait_for_count test.service-b 1 "$((before_b + 1))" || fail_with_log "same-id reinstallation reloads service B"
 pass "remove and re-add of a session-known id uses full reload semantics"
