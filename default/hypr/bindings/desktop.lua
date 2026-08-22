@@ -8,8 +8,8 @@ o.bind("SUPER + I", "Settings", "omarchy-shell shell toggle omarchy.ultimate-set
 o.bind("SUPER + R", "Run", "omarchy-shell shell toggle omarchy.ultimate-run '{}'")
 o.bind("SUPER + D", "Show desktop", "omarchy-shell window toggleShowDesktop")
 o.bind("SUPER + L", "Lock", "omarchy-system-lock")
-o.bind("SUPER + LEFT", "Snap window left", "omarchy-shell window snapLeft")
-o.bind("SUPER + RIGHT", "Snap window right", "omarchy-shell window snapRight")
+o.bind("SUPER + LEFT", "Snap window left", "omarchy-shell window snapLeft active")
+o.bind("SUPER + RIGHT", "Snap window right", "omarchy-shell window snapRight active")
 o.bind("SUPER + SHIFT + S", "Screenshot", "omarchy-capture-screenshot")
 
 o.bind("ALT + F4", "Close window", "omarchy-shell window closeActive")

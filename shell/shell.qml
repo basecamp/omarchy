@@ -279,7 +279,7 @@ ShellRoot {
     onActiveChanged: if (!active) shell.bar = null
     onStatusChanged: {
       if (status === Loader.Error) {
-        var detail = errorString && errorString() ? errorString() : ""
+        var detail = errorString ? errorString : ""
         console.warn("bar option " + shell.activeBarId + " failed to load, falling back to " + shell.defaultBarId + ":", detail)
         shell.failedBarId = shell.activeBarId
       }
@@ -668,7 +668,7 @@ ShellRoot {
             // Loader.errorString() reflects the source-load failure even when
             // sourceComponent is null. Surface both so the user sees something
             // actionable instead of a panel that silently refuses to open.
-            var detail = errorString && errorString() ? errorString() : ""
+            var detail = errorString ? errorString : ""
             if (!detail && sourceComponent) detail = sourceComponent.errorString()
             console.warn("panel plugin " + panelEntry.pluginId + " failed to load:", detail)
             shell.hide(panelEntry.pluginId)
@@ -1065,13 +1065,13 @@ ShellRoot {
       return "ok"
     }
 
-    function snapLeft(): string {
-      shell.windowService.snapLeft()
+    function snapLeft(address: string): string {
+      shell.windowService.snapLeft(address)
       return "ok"
     }
 
-    function snapRight(): string {
-      shell.windowService.snapRight()
+    function snapRight(address: string): string {
+      shell.windowService.snapRight(address)
       return "ok"
     }
 
@@ -1110,6 +1110,16 @@ ShellRoot {
 
     function restore(address: string): string {
       shell.windowService.restore(address)
+      return "ok"
+    }
+
+    function maximize(address: string): string {
+      shell.windowService.maximize(address)
+      return "ok"
+    }
+
+    function unmaximize(address: string): string {
+      shell.windowService.unmaximize(address)
       return "ok"
     }
 

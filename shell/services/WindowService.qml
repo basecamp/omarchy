@@ -2,12 +2,18 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import "WindowModel.js" as WindowModel
 
 // WindowService: the typed window-management capability behind the Ultimate
 // taskbar, Start, and every window affordance (docs/settings-service-api.md).
 // UI never runs hyprctl and never touches ToplevelManager directly; it calls
 // these intent-named verbs.
+//
+// Hyprland 0.55+ parses `hyprctl dispatch …` as Lua (`hl.dispatch(…)`). Classic
+// token dispatchers (`fullscreen 2`, classic pixel-move, `resizeactive`) fail
+// with a parse error on that parser. Verbs below send `hl.dsp.window.*` forms,
+// always naming `window = "address:…"`, proven live on Hyprland 0.56.2.
 QtObject {
   id: root
 
@@ -26,42 +32,104 @@ QtObject {
   readonly property var groups: WindowModel.buildGroups(root.windows, root.pins)
   readonly property string pinsPath: root.home + "/.local/state/omarchy/ultimate/taskbar-pins.json"
 
+  // Quickshell.execDetached, not a Process child of this QtObject. Live:
+  // a dynamic Process object never started; a named Process queue dropped
+  // the third minimize and the restore that followed. Independent hyprctl
+  // verbs (three minimizes) must not share one runner. Snap stays one bash
+  // -c so float && resize && move cannot race.
   function _spawn(command) {
-    var proc = Qt.createQmlObject("import Quickshell.Io; Process {}", root, "ws-proc")
-    proc.command = command
-    proc.exited = function(code) {
-      if (code !== 0) root.lastError = command.join(" ") + " exited " + code
-      proc.destroy()
-    }
-    proc.running = true
+    Quickshell.execDetached(command)
   }
 
-  function _run(args) {
-    root._spawn(["hyprctl"].concat(args))
+  function _dispatchLua(expr) {
+    Quickshell.execDetached(["hyprctl", "dispatch", expr])
   }
 
-  function _dispatchTokens(tokens) {
-    root._run(["dispatch"].concat(tokens))
+  function _addr(address) {
+    var target = String(address || "")
+    if (target === "" || target === "active") return root._activeAddress()
+    return target
+  }
+
+  function _luaWindow(address) {
+    return 'window = "address:' + String(address || "") + '"'
   }
 
   function _restoreFromSpecial(address) {
     root._spawn([
       "bash", "-c",
-      "hyprctl dispatch movetoworkspacesilent \"$(hyprctl activeworkspace -j | jq -r .id),address:$0\"",
+      "hyprctl dispatch \"hl.dsp.window.move({ workspace = \\\"$(hyprctl activeworkspace -j | jq -r .id)\\\", follow = true, " + 'window = \\"address:$1\\" })"',
+      "omarchy-restore",
       String(address || "")
     ])
   }
 
   function _forAddress(address) {
+    var target = root._canonAddr(address)
+    var hypr = root._hyprlandToplevels()
+    var i
+    for (i = 0; i < hypr.length; i++) {
+      if (hypr[i] && root._canonAddr(hypr[i].address) === target) return hypr[i].wayland || hypr[i]
+    }
     var values = ToplevelManager.toplevels.values
-    for (var i = 0; i < values.length; i++) {
-      if (values[i].address === address) return values[i]
+    for (i = 0; i < values.length; i++) {
+      var win = values[i]
+      if (!win) continue
+      var addr = win.address
+      if (!addr && win.HyprlandToplevel) addr = win.HyprlandToplevel.address
+      if (root._canonAddr(addr) === target) return win
     }
     return null
   }
 
   function _activeAddress() {
-    return root.activeToplevel ? root.activeToplevel.address : ""
+    var hypr = root._hyprlandToplevels()
+    var i
+    for (i = 0; i < hypr.length; i++) {
+      if (hypr[i] && hypr[i].activated && hypr[i].address) return root._canonAddr(hypr[i].address)
+    }
+    var active = root.activeToplevel
+    if (!active) return ""
+    var addr = active.address
+    if (!addr && active.HyprlandToplevel) addr = active.HyprlandToplevel.address
+    return root._canonAddr(addr)
+  }
+
+  function _canonAddr(addr) {
+    var s = String(addr || "")
+    if (s === "") return ""
+    if (s.indexOf("0x") === 0 || s.indexOf("0X") === 0) return s
+    if (/^[0-9a-fA-F]+$/.test(s)) return "0x" + s
+    return s
+  }
+
+  function _hyprlandToplevels() {
+    try {
+      if (Hyprland.toplevels && Hyprland.toplevels.values) return Hyprland.toplevels.values
+    } catch (e) {
+    }
+    return []
+  }
+
+  function _addresses() {
+    var list = []
+    var hypr = root._hyprlandToplevels()
+    var i
+    for (i = 0; i < hypr.length; i++) {
+      var hyprAddr = root._canonAddr(hypr[i] && hypr[i].address)
+      if (hyprAddr) list.push(hyprAddr)
+    }
+    if (list.length) return list
+    var values = ToplevelManager.toplevels.values
+    for (i = 0; i < values.length; i++) {
+      var win = values[i]
+      if (!win) continue
+      var addr = win.address
+      if (!addr && win.HyprlandToplevel) addr = win.HyprlandToplevel.address
+      addr = root._canonAddr(addr)
+      if (addr) list.push(addr)
+    }
+    return list
   }
 
   function _markMinimized(address, parked) {
@@ -73,7 +141,7 @@ QtObject {
   }
 
   function _persistPins() {
-    pinFile.setText(WindowModel.serializePins(root.pins))
+    root.pinFile.setText(WindowModel.serializePins(root.pins))
   }
 
   function pin(entry) {
@@ -93,8 +161,10 @@ QtObject {
   }
 
   function focus(address) {
-    var win = root._forAddress(address)
+    var target = root._addr(address)
+    var win = root._forAddress(target)
     if (win) win.activate()
+    else if (target) root._dispatchLua("hl.dsp.focus({ " + root._luaWindow(target) + " })")
   }
 
   function close(address) {
@@ -108,24 +178,20 @@ QtObject {
   }
 
   function minimize(address) {
-    if (!address) return
-    root._markMinimized(address, true)
-    root._dispatchTokens(["movetoworkspacesilent", "special:minimized,address:" + address])
+    var target = root._addr(address)
+    if (!target) return
+    root._markMinimized(target, true)
+    root._dispatchLua("hl.dsp.window.move({ workspace = \"special:minimized\", follow = false, " + root._luaWindow(target) + " })")
   }
 
   function restore(address) {
-    if (root._minimized[address]) {
-      root._restoreFromSpecial(address)
-      root._markMinimized(address, false)
-    }
-    var win = root._forAddress(address)
-    if (win) {
-      if (typeof win.minimize === "function") win.minimize(false)
-      win.activate()
-      return
-    }
-    root._restoreFromSpecial(address)
-    root._dispatchTokens(["focuswindow", "address:" + address])
+    var target = root._addr(address)
+    if (!target) return
+    // Always move onto the active workspace. Toplevel.activate() on a
+    // special:minimized client does not restore it (live: address stayed
+    // on workspace -98 until a later hyprctl move ran).
+    root._restoreFromSpecial(target)
+    root._markMinimized(target, false)
   }
 
   function isActive(address) {
@@ -138,31 +204,50 @@ QtObject {
   }
 
   function maximize(address) {
-    root.focus(address)
-    root._dispatchTokens(["fullscreen", "2"])
+    var target = root._addr(address)
+    if (!target) return
+    root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"maximized\", action = \"set\", " + root._luaWindow(target) + " })")
   }
 
   function unmaximize(address) {
-    root._dispatchTokens(["fullscreen", "0"])
+    var target = root._addr(address)
+    if (!target) return
+    root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"maximized\", action = \"unset\", " + root._luaWindow(target) + " })")
   }
 
   function snapLeft(address) {
-    var target = address || root._activeAddress()
-    if (target) root.focus(target)
-    root._snapActive("l")
+    root._snap(root._addr(address), "l")
   }
 
   function snapRight(address) {
-    var target = address || root._activeAddress()
-    if (target) root.focus(target)
-    root._snapActive("r")
+    root._snap(root._addr(address), "r")
   }
 
-  function _snapActive(direction) {
-    root._dispatchTokens(["setfloating"])
-    root._dispatchTokens(["resizeactive", "exact", "50%", "100%"])
-    if (direction === "l") root._dispatchTokens(["movewindowpixel", "exact", "0", "0"])
-    else root._dispatchTokens(["movewindowpixel", "exact", "50%", "0"])
+  function _snap(target, direction) {
+    if (!target) return
+    // Percent sizes are rejected by hl.dsp.window.resize; compute pixels from
+    // the focused monitor and issue float → resize → move as one ordered shell
+    // so they cannot race. Live-proven on Hyprland 0.56.2 / virtio-vga 1920x1080.
+    root._spawn([
+      "bash", "-c",
+      'mon=$(hyprctl -j monitors | jq -c ".[] | select(.focused == true)")\n' +
+      'w=$(jq -r .width <<<"$mon")\n' +
+      'h=$(jq -r .height <<<"$mon")\n' +
+      'top=$(jq -r ".reserved[0]" <<<"$mon")\n' +
+      'right=$(jq -r ".reserved[1]" <<<"$mon")\n' +
+      'bot=$(jq -r ".reserved[2]" <<<"$mon")\n' +
+      'left=$(jq -r ".reserved[3]" <<<"$mon")\n' +
+      'ww=$((w - left - right))\n' +
+      'wh=$((h - top - bot))\n' +
+      'half=$((ww / 2))\n' +
+      'if [[ $1 == l ]]; then x=$left; else x=$((left + half)); fi\n' +
+      'hyprctl dispatch "hl.dsp.window.float({ action = \\"enable\\", window = \\"address:$2\\" })" && ' +
+      'hyprctl dispatch "hl.dsp.window.resize({ x = $half, y = $wh, relative = false, window = \\"address:$2\\" })" && ' +
+      'hyprctl dispatch "hl.dsp.window.move({ x = $x, y = $top, relative = false, window = \\"address:$2\\" })"',
+      "omarchy-snap",
+      direction,
+      target
+    ])
   }
 
   function toggleShowDesktop() {
@@ -170,24 +255,11 @@ QtObject {
       for (var i = 0; i < root._batch.length; i++) root.restore(root._batch[i])
       root._batch = []
     } else {
-      var values = ToplevelManager.toplevels.values
-      var batch = []
-      for (var j = 0; j < values.length; j++) {
-        batch.push(values[j].address)
-        root.minimize(values[j].address)
-      }
+      var batch = root._addresses()
+      for (var j = 0; j < batch.length; j++) root.minimize(batch[j])
       root._batch = batch
     }
     root._desktopShown = !root._desktopShown
-  }
-
-  function _addresses() {
-    var values = ToplevelManager.toplevels.values
-    var list = []
-    for (var i = 0; i < values.length; i++) {
-      if (values[i] && values[i].address) list.push(values[i].address)
-    }
-    return list
   }
 
   function cycleNext() {
@@ -228,13 +300,12 @@ QtObject {
     if (address) root.restore(address)
   }
 
-  Process {
+  property Process ensurePinsDir: Process {
     command: ["bash", "-c", "mkdir -p \"$0\"", root.home + "/.local/state/omarchy/ultimate"]
     running: true
   }
 
-  FileView {
-    id: pinFile
+  property FileView pinFile: FileView {
     path: root.pinsPath
     watchChanges: true
     printErrors: false

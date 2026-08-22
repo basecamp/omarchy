@@ -32,6 +32,11 @@ grep -Fq 'omarchy.ultimate-start' "$ROOT/shell/plugins/ultimate-taskbar/StartBut
   || fail "Start button toggles the Start plugin"
 grep -Fq 'Power User Mode' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
   || fail "Start footer exposes the mode toggle"
+grep -Fq 'omarchy-task-switcher' "$ROOT/shell/plugins/ultimate-task-switcher/Switcher.qml" \
+  || fail "task switcher uses a distinct layer namespace"
+grep -Fq 'anchors { top: true; bottom: true; left: true; right: true }' \
+  "$ROOT/shell/plugins/ultimate-task-switcher/Switcher.qml" \
+  || fail "task switcher PanelWindow is anchored to screen edges so Hyprland maps it"
 pass "taskbar and Start entry points exist"
 
 [[ -f $ROOT/default/hypr/bindings/desktop.lua ]] || fail "desktop bindings exist"

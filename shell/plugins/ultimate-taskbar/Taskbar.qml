@@ -9,7 +9,7 @@ import qs.Ui
 Item {
   id: root
 
-  required property string omarchyPath
+  property string omarchyPath: ""
   property var barWidgetRegistry: null
   property var barConfig: ({})
   property var shell: null

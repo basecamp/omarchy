@@ -26,18 +26,21 @@ Item {
   }
 
   PanelWindow {
-    visible: root.opened && windowService && windowService.cycling
+    visible: root.opened
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
-    implicitWidth: Math.min(900, 120 * Math.max(1, cycleList.length) + 40)
-    implicitHeight: 140
+    // Quickshell only maps a layer surface when it is anchored to screen
+    // edges. implicitWidth/Height alone never produced omarchy-task-switcher
+    // (live: emojis overlay mapped, this one did not, with two feet open).
+    anchors { top: true; bottom: true; left: true; right: true }
     WlrLayershell.namespace: "omarchy-task-switcher"
     WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
 
     Rectangle {
       anchors.centerIn: parent
-      width: parent.width - 16
-      height: parent.height - 16
+      width: Math.min(parent.width - 32, 120 * Math.max(1, cycleList.length) + 40)
+      height: 140
       color: Tokens.surface.glass
       radius: Tokens.radius.large
       border.color: Tokens.border.subtle
@@ -62,9 +65,10 @@ Item {
               wrapMode: Text.Wrap
               horizontalAlignment: Text.AlignHCenter
               text: {
-                if (!windowService) return ""
+                if (!windowService) return String(modelData)
                 var win = windowService._forAddress ? windowService._forAddress(modelData) : null
-                return win && win.title ? win.title : String(modelData)
+                if (win && win.title) return win.title
+                return String(modelData)
               }
               color: Tokens.text.primary
               font.pixelSize: Style.font.bodySmall

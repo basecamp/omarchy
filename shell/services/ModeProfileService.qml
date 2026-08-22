@@ -85,8 +85,7 @@ QtObject {
     return true
   }
 
-  FileView {
-    id: desktopProfileFile
+  property FileView desktopProfileFile: FileView {
     path: root.desktopProfilePath
     watchChanges: true
     printErrors: false
@@ -98,8 +97,7 @@ QtObject {
     onFileChanged: reload()
   }
 
-  FileView {
-    id: powerUserProfileFile
+  property FileView powerUserProfileFile: FileView {
     path: root.powerUserProfilePath
     watchChanges: true
     printErrors: false
@@ -111,8 +109,7 @@ QtObject {
     onFileChanged: reload()
   }
 
-  FileView {
-    id: modeFile
+  property FileView modeFile: FileView {
     path: root.modeFilePath
     watchChanges: true
     printErrors: false
@@ -121,7 +118,6 @@ QtObject {
     onFileChanged: reload()
   }
 
-  Process {
-    id: writeMode
+  property Process writeMode: Process {
   }
 }
