@@ -139,7 +139,7 @@ fi
 mv "$stage" "$target"
 echo "Added $id into $target"
 
-omarchy-shell shell rescanPlugins >/dev/null
+omarchy-shell shell discoverPlugins "$id" >/dev/null
 
 if [[ -z $enable_after ]]; then
   if (( ASSUME_YES )) || ! interactive; then
