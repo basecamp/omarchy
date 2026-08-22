@@ -63,7 +63,6 @@ relock_session() {
 
 # Each kill stops the oldest matching instance and only returns once it has
 # fully exited, so the no-duplicate launch below can't race a dying shell.
-# Requires our quickshell-git build; 0.3.0's kill returns immediately.
 while timeout 5 quickshell kill -p "$CONFIG_DIR" --any-display >/dev/null 2>&1; do :; done
 
 # Spawn from Hyprland so the shell inherits the canonical session environment,

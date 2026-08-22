@@ -192,6 +192,11 @@ assert(
   defaultById['update.omarchy'].iconFont === 'omarchy',
   'menu update Omarchy entry renders the private glyph with the Omarchy font'
 )
+assertEqual(
+  defaultById['update.themes'].when,
+  'omarchy-theme-extras',
+  'menu hides Extra Themes until a theme cloned from git is there to update'
+)
 assert(
   defaultById['setup.input'].action.includes('input.lua'),
   'menu keeps Input as a direct config action'
@@ -211,6 +216,7 @@ assertEqual(
   'menu lists Reset Computer last under Setup'
 )
 const expectedAgents = {
+  agy: { icon: '󰫢', label: 'Antigravity' },
   pi: { icon: '\ue901', iconFont: 'omarchy', label: 'Pi' },
   omp: { icon: '\ue903', iconFont: 'omarchy', label: 'omp' },
   opencode: { icon: '\ue902', iconFont: 'omarchy', label: 'OpenCode' },
@@ -218,7 +224,6 @@ const expectedAgents = {
   codex: { icon: '\ue905', iconFont: 'omarchy', label: 'Codex' },
   grok: { icon: '\ue904', iconFont: 'omarchy', label: 'Grok' },
   hermes: { icon: '\ue909', iconFont: 'omarchy', label: 'Hermes' },
-  gemini: { icon: '󰫢', label: 'Gemini' },
   copilot: { icon: '', label: 'Copilot' },
   crush: { icon: '󰋑', label: 'Crush' },
 }
@@ -239,7 +244,7 @@ assertDeepEqual(
   defaultItems
     .filter(item => item.parent === 'setup.default.agent')
     .map(item => item.label),
-  ['Claude', 'Codex', 'Copilot', 'Crush', 'Gemini', 'Grok', 'Hermes', 'omp', 'OpenCode', 'Pi'],
+  ['Antigravity', 'Claude', 'Codex', 'Copilot', 'Crush', 'Grok', 'Hermes', 'omp', 'OpenCode', 'Pi'],
   'menu sorts coding agents alphabetically'
 )
 const expectedDefaults = {
