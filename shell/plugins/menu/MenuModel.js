@@ -376,17 +376,6 @@ function findKeybinding(bindings, entry) {
   return ""
 }
 
-function cloneItem(item) {
-  if (!item || typeof item !== "object") return item
-  var clone = {}
-  for (var k in item) {
-    if (Object.prototype.hasOwnProperty.call(item, k)) {
-      clone[k] = item[k]
-    }
-  }
-  return clone
-}
-
 function applyKeybindings(items, itemOrder, bindings) {
   var source = items || ({})
   var order = Array.isArray(itemOrder) ? itemOrder : []
@@ -397,9 +386,9 @@ function applyKeybindings(items, itemOrder, bindings) {
     var id = order[i]
     var existing = source[id]
     if (!existing) continue
-    var cloned = cloneItem(existing)
-    cloned.keybinding = findKeybinding(list, cloned)
-    nextItems[id] = cloned
+    nextItems[id] = Object.assign({}, existing, {
+      keybinding: findKeybinding(list, existing)
+    })
   }
   return nextItems
 }
