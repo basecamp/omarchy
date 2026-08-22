@@ -23,6 +23,7 @@ Item {
   property bool opened: false
   property bool showLabels: false
   property bool filterable: false
+  property bool fitImages: false
   property bool layoutSettled: false
   property bool requestActive: false
   property int requestSerial: 0
@@ -207,7 +208,7 @@ Item {
     }
   }
 
-  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextShowLabels, nextFilterable) {
+  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextShowLabels, nextFilterable, nextFitImages) {
     if (requestActive && doneFile && doneFile !== nextDoneFile)
       finishDoneFile(doneFile)
 
@@ -221,6 +222,7 @@ Item {
     requestActive = !!doneFile
     showLabels = nextShowLabels === true || nextShowLabels === "true"
     filterable = nextFilterable === true || nextFilterable === "true"
+    fitImages = nextFitImages === true || nextFitImages === "true"
     filterText = ""
     layoutSettled = false
 
@@ -316,14 +318,15 @@ Item {
     var doneF = String(args.doneFile || "")
     var labels = args.showLabels === true || args.showLabels === "true"
     var filter = args.filterable === true || args.filterable === "true"
-    openSelector(dirs, rows, sel, selFile, doneF, labels, filter)
+    var fit = args.fitImages === true || args.fitImages === "true"
+    openSelector(dirs, rows, sel, selFile, doneF, labels, filter, fit)
   }
 
   function close() {
     cancel()
   }
 
-  function preloadRows(nextImageRows, nextSelectedImage, nextShowLabels, nextFilterable) {
+  function preloadRows(nextImageRows, nextSelectedImage, nextShowLabels, nextFilterable, nextFitImages) {
     // Theme/background set hooks can warm selector rows after a picker was
     // dismissed. Ignore those preloads while a user-visible request is open;
     // otherwise the preload resets layoutSettled without revealing again,
@@ -335,6 +338,7 @@ Item {
     selectedImage = nextSelectedImage
     showLabels = nextShowLabels === true || nextShowLabels === "true"
     filterable = nextFilterable === true || nextFilterable === "true"
+    fitImages = nextFitImages === true || nextFitImages === "true"
     filterText = ""
     layoutSettled = false
 
@@ -499,6 +503,11 @@ Item {
                   maskSpreadAtMin: 0.3
                 }
 
+                Rectangle {
+                  anchors.fill: parent
+                  color: root.fitImages ? "#000000" : "transparent"
+                }
+
                 Image {
                   id: image
                   anchors.fill: parent
@@ -506,8 +515,9 @@ Item {
                   // source once activated so Qt does not tear textures down as
                   // selection moves through the carousel.
                   source: item.sourceActivated && item.thumbnailPath ? Util.fileUrl(item.thumbnailPath) : ""
-                  fillMode: Image.PreserveAspectCrop
-                  asynchronous: false
+                  sourceSize: Qt.size(Math.ceil(root.expandedWidth), Math.ceil(root.expandedHeight))
+                  fillMode: root.fitImages ? Image.PreserveAspectFit : Image.PreserveAspectCrop
+                  asynchronous: !item.selected
                   cache: true
                   smooth: true
                 }

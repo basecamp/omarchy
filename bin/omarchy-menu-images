@@ -1,20 +1,22 @@
 #!/bin/bash
 
 # omarchy:summary=Open a generic image selector menu
-# omarchy:args=[--selected <image>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>...
+# omarchy:args=[--selected <image>] [--print-name] [--show-labels] [--filterable] [--fit] [--lazy-thumbnails] [--no-thumbnails] [--preload] [--cache-only] <image-dir>...
 
 selected_image=""
 print_name=false
 show_labels=false
 filterable=false
+fit_images=false
 lazy_thumbnails=false
+no_thumbnails=false
 prepare_only=false
 preload=false
 cache_only=false
 image_dirs=()
 
 usage() {
-  echo "Usage: omarchy-menu-images [--selected <image>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>..."
+  echo "Usage: omarchy-menu-images [--selected <image>] [--print-name] [--show-labels] [--filterable] [--fit] [--lazy-thumbnails] [--no-thumbnails] [--preload] [--cache-only] <image-dir>..."
 }
 
 while (( $# > 0 )); do
@@ -40,8 +42,16 @@ while (( $# > 0 )); do
       filterable=true
       shift
       ;;
+    --fit)
+      fit_images=true
+      shift
+      ;;
     --lazy-thumbnails)
       lazy_thumbnails=true
+      shift
+      ;;
+    --no-thumbnails)
+      no_thumbnails=true
       shift
       ;;
     --prepare-only)
@@ -77,7 +87,6 @@ done_file=$(mktemp)
 pending_file=$(mktemp)
 rm -f "$done_file"
 trap 'rm -f "$selection_file" "$done_file" "$pending_file"' EXIT
-
 image_dirs_env=""
 for dir in "${image_dirs[@]}"; do
   if [[ -z $image_dirs_env ]]; then
@@ -107,7 +116,9 @@ index_file="$cache_dir/index.tsv"
 rows=""
 mkdir -p "$cache_dir"
 
-cache_key=$(printf '%s' "$image_dirs_env" | md5sum | cut -d ' ' -f 1)
+cache_key_input="$image_dirs_env"
+[[ $no_thumbnails == true ]] && cache_key_input+=$'\ntrue'
+cache_key=$(printf '%s' "$cache_key_input" | md5sum | cut -d ' ' -f 1)
 rows_cache_file="$cache_dir/$cache_key.rows"
 rows_signature_file="$cache_dir/$cache_key.signature"
 rows_fast_signature_file="$cache_dir/$cache_key.fast-signature"
@@ -116,6 +127,15 @@ rows_fast_signature="v2"$'\n'
 rows_cacheable=true
 rows_cache_hit=false
 image_files=()
+image_find_args=(
+  -iname '*.jpg' -o
+  -iname '*.jpeg' -o
+  -iname '*.png' -o
+  -iname '*.gif' -o
+  -iname '*.bmp' -o
+  -iname '*.webp'
+)
+[[ $no_thumbnails == true ]] && image_find_args+=( -o -iname '*.svg' )
 
 for dir in "${image_dirs[@]}"; do
   [[ -d $dir ]] && rows_fast_signature+="$dir:$(stat -Lc '%Y' "$dir")"$'\n'
@@ -133,7 +153,7 @@ else
         image_files+=("$image")
         image_signature=$(stat -Lc '%s:%Y' "$image") || continue
         rows_signature+="$image:$image_signature"$'\n'
-      done < <(find -L "$dir" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print0 2>/dev/null | sort -z)
+      done < <(find -L "$dir" -maxdepth 1 -type f \( "${image_find_args[@]}" \) -print0 2>/dev/null | sort -z)
     fi
   done
 fi
@@ -174,6 +194,11 @@ generate_thumbnail() {
 thumbnail_for() {
   local image="$1"
   local signature hash thumbnail
+
+  if [[ $no_thumbnails == true ]]; then
+    printf '%s' "$image"
+    return
+  fi
 
   signature=$(stat -Lc '%s:%Y' "$image") || return
   hash=$(awk -F '\t' -v path="$image" -v sig="$signature" '$1 == path && $2 == sig { print $3; exit }' "$index_file" 2>/dev/null)
@@ -223,10 +248,16 @@ elif [[ $rows_cache_hit != true ]]; then
       rows_cacheable=false
     fi
 
-    if [[ -z $rows ]]; then
-      rows="$image"$'\t'"$thumbnail"
+    if [[ $thumbnail == "$image" ]]; then
+      row="$image"
     else
-      rows+=$'\n'"$image"$'\t'"$thumbnail"
+      row="$image"$'\t'"$thumbnail"
+    fi
+
+    if [[ -z $rows ]]; then
+      rows="$row"
+    else
+      rows+=$'\n'"$row"
     fi
   done
 
@@ -277,11 +308,15 @@ fi
 rows_b64=$(printf '%s' "$rows" | base64 -w 0)
 
 if [[ $preload == true ]]; then
-  omarchy-shell image-selector preload "$rows_b64" "$selected_list_image" "$show_labels" "$filterable" >/dev/null || true
+  preload_method=preload
+  [[ $fit_images == true ]] && preload_method=preloadFitted
+  omarchy-shell image-selector "$preload_method" "$rows_b64" "$selected_list_image" "$show_labels" "$filterable" >/dev/null || true
   exit 0
 fi
 
-if ! open_result=$(omarchy-shell image-selector open \
+open_method=open
+[[ $fit_images == true ]] && open_method=openFitted
+if ! open_result=$(omarchy-shell image-selector "$open_method" \
      "" \
      "$rows_b64" \
      "$selected_list_image" \

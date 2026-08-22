@@ -10,6 +10,7 @@ const picker = requireFromRoot('shell/plugins/image-picker/ImagePickerModel.js')
 
 assertEqual(picker.nameForPath('/themes/nord-river.png'), 'nord-river', 'image picker strips directory and extension')
 assertEqual(picker.labelForPath('/themes/nord_river.png'), 'Nord River', 'image picker builds display labels')
+assertEqual(picker.labelForPath('/previews/ANSI_SHADOW.svg'), 'ANSI SHADOW', 'image picker preserves uppercase preview labels')
 
 const rows = [
   '/themes/a/nord-river.png\t/cache/nord-river.jpg',
@@ -48,7 +49,19 @@ assert(
   'image picker ignores cache preloads while a request is visible'
 )
 assert(
-  /source: item\.sourceActivated && item\.thumbnailPath \? Util\.fileUrl\(item\.thumbnailPath\) : ""[\s\S]*asynchronous: false/.test(imagePickerQml),
-  'image picker loads activated thumbnails synchronously to avoid carousel flicker'
+  /readonly property bool nearby: matched && Math\.abs\(relativeIndex\) <= 16/.test(imagePickerQml),
+  'image picker activates only nearby carousel images'
+)
+assert(
+  /sourceSize: Qt\.size\(Math\.ceil\(root\.expandedWidth\), Math\.ceil\(root\.expandedHeight\)\)[\s\S]*fillMode: root\.fitImages \? Image\.PreserveAspectFit : Image\.PreserveAspectCrop[\s\S]*asynchronous: !item\.selected/.test(imagePickerQml),
+  'image picker synchronously fits the selected preview while loading neighbors asynchronously'
+)
+assert(
+  /visible: root\.opened && root\.imagesLoaded[\s\S]*color: root\.scrim/.test(imagePickerQml),
+  'image picker keeps the desktop-visible wallpaper scrim for fitted ASCII previews'
+)
+assert(
+  /color: root\.fitImages \? "#000000" : "transparent"[\s\S]*Image \{[\s\S]*fillMode: root\.fitImages \? Image\.PreserveAspectFit : Image\.PreserveAspectCrop/.test(imagePickerQml),
+  'image picker keeps the fitted ASCII preview card black'
 )
 JS

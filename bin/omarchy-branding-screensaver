@@ -1,28 +1,78 @@
 #!/bin/bash
 
-# omarchy:summary=Edit, set, or reset screensaver branding
+# omarchy:summary=Edit, generate, set, or reset screensaver branding
 # omarchy:group=branding
 # omarchy:name=screensaver
-# omarchy:args=<image|text|reset>
-# omarchy:examples=omarchy branding screensaver image | omarchy branding screensaver text | omarchy branding screensaver reset
+# omarchy:args=<figlet|image|text|reset>
+# omarchy:examples=omarchy branding screensaver figlet | omarchy branding screensaver image | omarchy branding screensaver text | omarchy branding screensaver reset
 
 set -euo pipefail
 
+SCREENSAVER_PATH="$HOME/.config/omarchy/branding/screensaver.txt"
+TAAG_DIR="$OMARCHY_PATH/default/figlet"
+TAAG_CATALOG_PATH="$TAAG_DIR/taag-fonts.tsv"
+TAAG_RENDERER_PATH="$TAAG_DIR/render-previews.py"
+TAAG_TEXT_RENDERER_PATH="$TAAG_DIR/render_text.py"
+
+generate_figlet() {
+  local text selection font preview_cache_key preview_root preview_dir complete_marker temporary_path
+
+  text=$(omarchy-menu-input "Screensaver text" --width 520 --multiline) || return 0
+  preview_cache_key=$(
+    {
+      printf '%s' "$text"
+      python -c 'import importlib.metadata; print(importlib.metadata.version("pyfiglet"))'
+      sha256sum "$TAAG_CATALOG_PATH" "$TAAG_RENDERER_PATH" "$TAAG_TEXT_RENDERER_PATH"
+    } | sha256sum | cut -d ' ' -f 1
+  )
+  preview_root="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/figlet-selector/previews"
+  preview_dir="$preview_root/$preview_cache_key"
+  complete_marker="$preview_dir/.complete"
+  mkdir -p "$preview_dir"
+
+  if [[ ! -f $complete_marker ]]; then
+    python "$TAAG_RENDERER_PATH" "$text" "$preview_dir" "$TAAG_CATALOG_PATH"
+    touch "$complete_marker"
+  fi
+
+  selection=$(omarchy-menu-images \
+    --selected "$preview_dir/STANDARD.svg" \
+    --print-name \
+    --no-thumbnails \
+    --fit \
+    "$preview_dir") || return 0
+  [[ -n $selection ]] || return 0
+  font=$(awk -F '\t' -v selection="$selection" 'toupper($1) == selection { print $3; exit }' "$TAAG_CATALOG_PATH")
+  [[ -n $font ]] || return 0
+
+  temporary_path=$(mktemp "$SCREENSAVER_PATH.XXXXXX")
+  trap "rm -f -- $(printf '%q' "$temporary_path")" EXIT
+  python "$TAAG_TEXT_RENDERER_PATH" "$text" "$font" >"$temporary_path"
+  chmod 644 "$temporary_path"
+  mv "$temporary_path" "$SCREENSAVER_PATH"
+  trap - EXIT
+
+  omarchy-launch-screensaver force >/dev/null 2>&1
+}
+
 case "${1:-}" in
+figlet)
+  generate_figlet
+  ;;
 image)
   image=$(omarchy-file-select --title "Pick PNG or SVG for screensaver" --extensions "png svg")
-  if omarchy-transcode-ascii "$image" ~/.config/omarchy/branding/screensaver.txt; then
+  if omarchy-transcode-ascii "$image" "$SCREENSAVER_PATH"; then
     omarchy-launch-screensaver force >/dev/null 2>&1
   fi
   ;;
 text)
-  omarchy-launch-editor ~/.config/omarchy/branding/screensaver.txt >/dev/null 2>&1 && omarchy-launch-screensaver force >/dev/null 2>&1
+  omarchy-launch-editor "$SCREENSAVER_PATH" >/dev/null 2>&1 && omarchy-launch-screensaver force >/dev/null 2>&1
   ;;
 reset)
-  cp "$OMARCHY_PATH/logo.txt" ~/.config/omarchy/branding/screensaver.txt && omarchy-launch-screensaver force >/dev/null 2>&1
+  cp "$OMARCHY_PATH/logo.txt" "$SCREENSAVER_PATH" && omarchy-launch-screensaver force >/dev/null 2>&1
   ;;
 *)
-  echo "Usage: omarchy-branding-screensaver <image|text|reset>" >&2
+  echo "Usage: omarchy-branding-screensaver <figlet|image|text|reset>" >&2
   exit 1
   ;;
 esac
