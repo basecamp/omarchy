@@ -279,12 +279,29 @@ rm -f "$agent_file"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"
 
 touch "$test_home/.local/bin/agy"
-touch "$test_home/.local/bin/hermes"
+printf '#!/bin/bash\n# omarchy-hermes-installer-stub\n' >"$test_home/.local/bin/hermes"
+chmod +x "$test_home/.local/bin/hermes"
 omarchy-remove-preinstalls >/dev/null
 for command in agy omp grok crush hermes; do
   [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
 done
-pass "Remove Preinstalls deletes every optional agent lazy stub"
+pass "Remove Preinstalls deletes the marked Hermes lazy stub"
+
+mkdir -p "$test_home/.hermes/hermes-agent/venv/bin"
+printf '#!/bin/bash\nexit 0\n' >"$test_home/.hermes/hermes-agent/venv/bin/hermes"
+chmod +x "$test_home/.hermes/hermes-agent/venv/bin/hermes"
+ln -s "$test_home/.hermes/hermes-agent/venv/bin/hermes" "$test_home/.local/bin/hermes"
+omarchy-remove-preinstalls >/dev/null
+[[ -L $test_home/.local/bin/hermes ]] || fail "Remove Preinstalls preserves the official Hermes launcher"
+pass "Remove Preinstalls preserves the official Hermes launcher"
+
+rm "$test_home/.local/bin/hermes"
+printf '#!/bin/bash\nprintf user-hermes\n' >"$test_home/.local/bin/hermes"
+chmod +x "$test_home/.local/bin/hermes"
+omarchy-remove-preinstalls >/dev/null
+grep -Fxq 'printf user-hermes' "$test_home/.local/bin/hermes" ||
+  fail "Remove Preinstalls preserves an unrelated Hermes launcher"
+pass "Remove Preinstalls preserves an unrelated Hermes launcher"
 
 [[ -z $(omarchy-default-agent) ]] || fail "default agent is unset until one is chosen"
 pass "default agent is unset until one is chosen"
