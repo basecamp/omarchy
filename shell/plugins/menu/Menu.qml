@@ -835,6 +835,9 @@ Item {
   }
 
   function openExistingMenu(initialMenu) {
+    // Taking the surface over must not drop a live select/input request:
+    // its waiter polls the done file forever once these handles are cleared.
+    root.finishRequest(null)
     requestSerial += 1
     mode = "menu"
     requestActive = false
@@ -859,6 +862,9 @@ Item {
   }
 
   function openDmenu(payload) {
+    // Same contract as openExistingMenu: a request displaced by a newer one
+    // still gets its done file written, or the waiting script never exits.
+    root.finishRequest(null)
     requestSerial += 1
     mode = payload.mode === "input" ? "input" : "select"
     dmenuPrompt = String(payload.prompt || (mode === "input" ? "Input" : "Select"))
