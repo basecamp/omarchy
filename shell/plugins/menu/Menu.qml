@@ -1211,15 +1211,14 @@ Item {
           clip: root.dmenuMultiline && root.mode === "input"
 
           Text {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
+            anchors.fill: parent
             text: root.filterText || (root.dmenuActive ? (root.dmenuPrompt + "…") : ((root.item(root.activeMenu) ? (root.item(root.activeMenu).title || root.item(root.activeMenu).label) : "Go") + "…"))
             color: root.foreground
             opacity: root.filterText ? 1 : 0.58
             font.family: root.fontFamily
             font.pixelSize: Style.font.heading
             lineHeight: 1.35
+            verticalAlignment: root.dmenuMultiline && root.mode === "input" ? Text.AlignBottom : Text.AlignVCenter
             elide: root.dmenuMultiline && root.mode === "input" ? Text.ElideNone : Text.ElideRight
           }
 

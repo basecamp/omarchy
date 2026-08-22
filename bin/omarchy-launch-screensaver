@@ -96,6 +96,11 @@ while IFS=$'\t' read -r m viewport_width viewport_height; do
   esac
 
   wait_for_screensaver_window
-done < <(hyprctl monitors -j | jq -r '.[] | [.name, ((.width / .scale) | floor), ((.height / .scale) | floor)] | @tsv')
+done < <(hyprctl monitors -j | jq -r '
+  .[] | . as $m
+  | (if (($m.transform // 0) % 2 == 1) then $m.height else $m.width end) / $m.scale | floor as $width
+  | (if (($m.transform // 0) % 2 == 1) then $m.width else $m.height end) / $m.scale | floor as $height
+  | [$m.name, $width, $height] | @tsv
+')
 
 hypr_focus_monitor "$focused"

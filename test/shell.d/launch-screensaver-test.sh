@@ -53,7 +53,8 @@ if [[ $1 == "monitors" && $2 == "-j" ]]; then
   cat <<'JSON'
 [
   {"name":"Large","width":1920,"height":1080,"scale":1},
-  {"name":"Small","width":941,"height":509,"scale":1}
+  {"name":"Small","width":941,"height":509,"scale":1},
+  {"name":"Portrait","width":1200,"height":1920,"scale":1,"transform":1}
 ]
 JSON
 else
@@ -66,7 +67,8 @@ cat >"$stub_bin/socat" <<'SH'
 
 printf '%s\n' \
   "openwindow>>1,0,org.omarchy.screensaver,title" \
-  "openwindow>>2,0,org.omarchy.screensaver,title"
+  "openwindow>>2,0,org.omarchy.screensaver,title" \
+  "openwindow>>3,0,org.omarchy.screensaver,title"
 SH
 
 chmod +x "$stub_bin"/*
@@ -82,21 +84,24 @@ assert_terminal_sizes() {
   local terminal="$1"
   local large_pattern="$2"
   local small_pattern="$3"
+  local portrait_pattern="$4"
 
   export OMARCHY_TEST_TERMINAL="$terminal"
   : >"$OMARCHY_TEST_HYPRCTL_LOG"
   "$ROOT/bin/omarchy-launch-screensaver" force
 
-  (( $(grep -c 'hl.dsp.exec_cmd' "$OMARCHY_TEST_HYPRCTL_LOG") == 2 )) \
+  (( $(grep -c 'hl.dsp.exec_cmd' "$OMARCHY_TEST_HYPRCTL_LOG") == 3 )) \
     || fail "Screensaver launches once per monitor for $terminal"
   grep -Fq -- "$large_pattern" "$OMARCHY_TEST_HYPRCTL_LOG" \
     || fail "Screensaver keeps the normal font size on the large monitor for $terminal" "$(<"$OMARCHY_TEST_HYPRCTL_LOG")"
   grep -Fq -- "$small_pattern" "$OMARCHY_TEST_HYPRCTL_LOG" \
     || fail "Screensaver scales oversized text on the small monitor for $terminal" "$(<"$OMARCHY_TEST_HYPRCTL_LOG")"
+  grep -Fq -- "$portrait_pattern" "$OMARCHY_TEST_HYPRCTL_LOG" \
+    || fail "Screensaver swaps dimensions for rotated monitors on $terminal" "$(<"$OMARCHY_TEST_HYPRCTL_LOG")"
 }
 
-assert_terminal_sizes "Alacritty.desktop" "font.size=18" "font.size=9"
-assert_terminal_sizes "ghostty.desktop" "--font-size=18" "--font-size=9"
-assert_terminal_sizes "foot.desktop" "--font=JetBrainsMono\\ Nerd\\ Font:size=18" "--font=JetBrainsMono\\ Nerd\\ Font:size=9"
-assert_terminal_sizes "kitty.desktop" "font_size=18" "font_size=9"
+assert_terminal_sizes "Alacritty.desktop" "font.size=18" "font.size=9" "font.size=18"
+assert_terminal_sizes "ghostty.desktop" "--font-size=18" "--font-size=9" "--font-size=18"
+assert_terminal_sizes "foot.desktop" "--font=JetBrainsMono\\ Nerd\\ Font:size=18" "--font=JetBrainsMono\\ Nerd\\ Font:size=9" "--font=JetBrainsMono\\ Nerd\\ Font:size=18"
+assert_terminal_sizes "kitty.desktop" "font_size=18" "font_size=9" "font_size=18"
 pass "Screensaver scales generated ASCII art for every supported terminal"

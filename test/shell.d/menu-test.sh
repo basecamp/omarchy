@@ -18,6 +18,10 @@ assert(
   /root\.mode === "input" && root\.dmenuMultiline[\s\S]*event\.modifiers === Qt\.ShiftModifier[\s\S]*root\.setFilter\(root\.filterText \+ "\\n"\)/.test(menuQml),
   'multiline menu input inserts a line break with Shift+Enter'
 )
+assert(
+  /verticalAlignment: root\.dmenuMultiline && root\.mode === "input" \? Text\.AlignBottom : Text\.AlignVCenter/.test(menuQml),
+  'multiline menu input keeps the latest lines visible'
+)
 
 const parsed = menu.parseMenuJsonc(`
 {
