@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# omarchy:summary=Close the focused window, or hide an open shell panel
+
+result=$(OMARCHY_SHELL_IPC_TIMEOUT=0.5s omarchy-shell shell hideOpen 2>/dev/null) || true
+[[ $result == hidden ]] && exit 0
+
+hyprctl dispatch 'hl.dsp.window.close()' >/dev/null 2>&1 || hyprctl dispatch killactive >/dev/null

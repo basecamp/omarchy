@@ -109,6 +109,7 @@ or `omarchy.power`. There is no `bar` target.
 | `ping`                                | health check                    |
 | `summon <id> <payloadJson>`           | load + open a plugin            |
 | `hide <id>`                           | close a previously-summoned     |
+| `hideOpen`                            | close an open panel/overlay (`hidden` / `none`) |
 | `toggle <id> <payloadJson>`           | summon if closed, hide if open  |
 | `togglePanelAt <section> <index>`     | toggle the panel at a bar position |
 | `call <id> <method> <arg>`            | call an already-loaded plugin   |

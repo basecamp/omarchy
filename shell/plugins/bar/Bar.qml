@@ -534,6 +534,27 @@ Item {
     return !!item && item.opened === true
   }
 
+  // Super+W (and hideOpen) need the open popout without knowing its plugin id.
+  function hideOpenPanel() {
+    if (activePopout && typeof activePopout.close === "function") {
+      activePopout.close()
+      return true
+    }
+    var candidates = []
+    for (var i = 0; i < moduleSlots.length; i++) {
+      var slot = moduleSlots[i]
+      if (!slot || !slot.activeItem) continue
+      var item = slot.activeItem
+      if (typeof item.close === "function" && item.opened === true)
+        candidates.push({ slot: slot, screenName: slotScreenName(slot), opened: true })
+    }
+    var chosen = BarModel.pickPanelSlot(candidates, focusedScreenName())
+    var openItem = chosen ? chosen.activeItem : null
+    if (!openItem || typeof openItem.close !== "function") return false
+    openItem.close()
+    return true
+  }
+
   function entrySettings(entry) {
     return BarModel.entrySettings(entry)
   }

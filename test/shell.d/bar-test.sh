@@ -216,6 +216,19 @@ assert(
   'shell toggles a bar panel by its position over IPC'
 )
 
+assert(
+  /function hideOpenPanel\(\) \{[\s\S]*?activePopout[\s\S]*?opened === true/.test(barSource),
+  'bar can close the open popout without a plugin id'
+)
+assert(
+  /function hideOpen\(\) \{[\s\S]*?omarchy\.osd[\s\S]*?hideOpenPanel/.test(shellSource),
+  'shell hideOpen skips OSD and then closes a bar popout'
+)
+assert(
+  /function hideOpen\(\): string \{[\s\S]*?shell\.hideOpen\(\)/.test(shellSource),
+  'shell exposes hideOpen over IPC'
+)
+
 const clockSlot = { id: 'clock' }
 const traySlot = { id: 'tray' }
 const horizontalTargets = [
