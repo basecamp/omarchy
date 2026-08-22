@@ -777,8 +777,12 @@ Item {
       root.setActiveMenu(previous.id, false, false, previous.filterText)
       var restored = root.indexOfItemId(previous.selectedItemId)
       if (restored >= 0) {
+        // Re-settle rather than force the cursor onto `restored`: if that row
+        // went disabled while its submenu was open, settleCursor() walks
+        // forward to the nearest selectable row instead of parking the
+        // cursor somewhere Enter won't run.
         root.selectedIndex = restored
-        root.cursorActive = true
+        root.settleCursor()
       }
       return true
     }

@@ -497,6 +497,15 @@ assert(
   /function goBack\(\)[\s\S]*?root\.setActiveMenu\(previous\.id, false, false, previous\.filterText\)\s*\n\s*var restored = root\.indexOfItemId\(previous\.selectedItemId\)/.test(menuQml),
   'menu restores the remembered search filter, then looks up the remembered row by id'
 )
+// The lookup by itself proves nothing if its result is never applied --
+// assert the found index actually drives the cursor, and that it goes
+// through settleCursor() rather than a bare cursorActive flip, so a row that
+// went disabled while its submenu was open still resolves to the nearest
+// selectable one instead of parking the cursor where Enter won't run.
+assert(
+  /if \(restored >= 0\) \{[\s\S]*?root\.selectedIndex = restored\s*\n\s*root\.settleCursor\(\)\s*\n\s*\}/.test(menuQml),
+  'menu applies the restored row index and re-settles the cursor onto it'
+)
 assert(
   /function indexOfItemId\(itemId\)[\s\S]*?displayModel\.get\(i\)\.itemId === itemId\) return i/.test(menuQml),
   'menu can find a row by id in the current, possibly filtered, display model'
