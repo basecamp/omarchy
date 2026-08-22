@@ -59,6 +59,40 @@ function withoutPin(pins, desktopId) {
   return next
 }
 
+// Hyprland 0.56 `hyprctl -j monitors` reserved is left, top, right, bottom
+// (CReservedArea in HyprCtl.cpp). Older wiki text said top, right, bottom, left;
+// reading that order turns a bottom taskbar into a left inset.
+function reservedLTRB(reserved) {
+  var r = reserved || []
+  return {
+    left: Number(r[0] || 0),
+    top: Number(r[1] || 0),
+    right: Number(r[2] || 0),
+    bottom: Number(r[3] || 0)
+  }
+}
+
+function workArea(monitor) {
+  var width = Number((monitor && monitor.width) || 0)
+  var height = Number((monitor && monitor.height) || 0)
+  var r = reservedLTRB(monitor && monitor.reserved)
+  return {
+    x: r.left,
+    y: r.top,
+    width: width - r.left - r.right,
+    height: height - r.top - r.bottom
+  }
+}
+
+function snapRect(monitor, side) {
+  var area = workArea(monitor)
+  var half = Math.floor(area.width / 2)
+  if (side === "l") {
+    return { x: area.x, y: area.y, width: half, height: area.height }
+  }
+  return { x: area.x + half, y: area.y, width: area.width - half, height: area.height }
+}
+
 function buildGroups(windows, pins) {
   var list = []
   var used = ({})
@@ -125,6 +159,9 @@ if (typeof module !== "undefined") {
     pinIndex: pinIndex,
     withPin: withPin,
     withoutPin: withoutPin,
-    buildGroups: buildGroups
+    buildGroups: buildGroups,
+    reservedLTRB: reservedLTRB,
+    workArea: workArea,
+    snapRect: snapRect
   }
 }

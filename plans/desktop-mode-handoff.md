@@ -22,7 +22,7 @@ Acknowledgement gate: in your first substantive reply, restate the seven doctrin
 
 - Remote: `github.com/jnadeau207-collab/omarchy-7-ultimate`. Default branch: `quattro`.
 - Foundation branch: `ultimate/foundation` (tip `4c3e985b`, WindowService). Do not reconstruct or re-derive it; it is on the remote and the slice stacks on it.
-- Work branch: `cursor/desktop-mode-slice-00d6` (tip `103d28b1`). It stacks on the foundation and already contains the merged Cloud Agent environment (`.cursor/environment.json`, `.cursor/install.sh` from PR #2).
+- Work branch: `cursor/desktop-mode-slice-00d6`. It stacks on the foundation. Do not treat HEAD as a windowing go.
 - Open PR for the slice: #1.
 - Continue on `cursor/desktop-mode-slice-00d6`. Do not switch branches, do not force-push, do not amend existing commits, and do not edit the external `.plan.md` file that lives on the developer's machine.
 
@@ -91,42 +91,59 @@ Prove each of these with evidence, not assertion:
 - Title-bar drag moves; edge/corner drag resizes. `default/hypr/desktop-windows.lua` sets `resize_on_border = true` and floats by default; confirm the border resize and drag actually work in the session.
 - Maximize is real and not suppressed: maximize an active window and confirm it fills the work area (respecting the bar) and restores. This is the first place a dispatcher bug will surface — see §7.
 - Minimize three, then restore the specific one: minimize sends to `special:minimized`; restoring must return the exact same window (same address) to the active workspace with its title/app identity intact. This is the compositor gate. If identity is lost, stop and report it as a go/no-go failure.
-- Snap two windows: snap one left and one right; confirm left/right geometry (`$l.at[0] <= $r.at[0]`, both non-zero width) as the harness checks.
-- Alt+Tab: cycle raises the task-switcher overlay and commit focuses the chosen window.
+- Snap two windows: snap one left and one right; confirm each matches the Hyprland 0.56 work area (`reserved` is **left, top, right, bottom**). A bottom taskbar of 40px on 1920×1080 is left `[0,0] 960×1040` and right `[960,0] 960×1040`. `at[0] <=` plus non-zero width is not enough.
+- Maximize fills that same work area (`fullscreen == 1`, size within 32px of work width/height). This is required even though it is not a numbered acceptance row.
+- Alt+Tab: cycle raises the task-switcher overlay; cards are clickable; commit focuses the chosen window.
 
-Go = every row 20–25 passes live with screenshots and the four core behaviors (overlap, drag, resize, maximize, minimize/restore identity) hold. No-go = any of them fails; document exactly which, with the `hyprctl -j clients` output and a screenshot, before changing code.
+Do not call this a go from IPC-only green, from screenshots that are not in the repo, or from a handoff writeup. The bar is a Windows 7 Ultimate desktop on Omarchy, mouse-first, not a theme. A QML service that fires Lua dispatchers is not that product.
 
-## 7. Live compositor findings (Hyprland 0.56.2) — verified, then fixed
-
-These were hypotheses in the first handoff. They were confirmed or contradicted on the live guest (Hyprland 0.56.2, virtio-vga 1920×1080, `omarchy`/`omarchy`). Trust the live result.
+## 7. Live compositor findings (Hyprland 0.56.2)
 
 Classic token dispatchers are dead. `hyprctl dispatch fullscreen 2`, `movewindowpixel`, `resizeactive`, and `movetoworkspacesilent` fail on the Lua parser. Working forms, always with `window = "address:0x…"`:
 
-- Maximize: `hl.dsp.window.fullscreen({ mode = "maximized", action = "set", window = "address:…" })`. Omitting `action` toggles. Live result: `fullscreen: 1`, size `1916×1036` on 1920×1080 (work area, bar respected).
-- Snap: ordered `hl.dsp.window.float({ action = "enable" }) && resize({ x, y, relative = false }) && move({ x, y, relative = false })` in one `bash -c`. Percent sizes are rejected; pixels come from the focused monitor. Live snap: left `[40,0] 940×1080`, right `[980,0] 940×1080`.
-- Minimize: `hl.dsp.window.move({ workspace = "special:minimized", follow = false, window = "address:…" })`. Identity is not a compositor gate: three feet parked on workspace id `-98`; restoring `0x555bafb7f480` returned the same address to workspace 1 with title intact.
-- Restore: Lua move to `$(hyprctl activeworkspace -j | jq -r .id)` with `follow = true`. `Toplevel.activate()` on a parked client does not restore it.
+- Maximize: `hl.dsp.window.fullscreen({ mode = "maximized", action = "set", window = "address:…" })`. Omitting `action` toggles.
+- Snap: ordered `hl.dsp.window.float({ action = "enable" })`, then `resize({ x, y, relative = false })`, then `move({ x, y, relative = false })`. Percent sizes are rejected. Pixels come from the focused monitor's work area.
+- Minimize: `hl.dsp.window.move({ workspace = "special:minimized", follow = false, window = "address:…" })`. Identity at the compositor holds: restoring the same address returns it to the active workspace with title intact. Parking on `special:minimized` is still a compositor trick, not a Windows minimize, until caption chrome and the taskbar are the mouse path.
+- Restore: Lua move to `Hyprland.focusedWorkspace.id` with `follow = true`. `Toplevel.activate()` on a parked client does not restore it.
 
-How hyprctl is fired from QML (root-cause, not a dispatcher issue):
+How dispatch is fired from QML:
 
-- `Qt.createQmlObject("… Process {}")` as a child of the WindowService `QtObject` never starts. IPC minimize returned ok and the window stayed on workspace 1; the same address moved when `hyprctl` ran from bash.
-- A named `Process` queue dropped the third of three minimizes and the restore that followed (`running = true` inside `onExited` is ignored).
-- Fix: `Quickshell.execDetached(["hyprctl", "dispatch", expr])`. Independent verbs (three minimizes) must not share one runner. Snap stays one `bash -c` so float/resize/move cannot race.
+- `Qt.createQmlObject("… Process {}")` as a child of the WindowService `QtObject` never starts.
+- A named `Process` queue drops independent verbs (`running = true` inside `onExited` is ignored).
+- `Quickshell.execDetached(["hyprctl", …])` plus `bash -c` with a raw address interpolates shell and breaks the typed-service rule (UI → typed verb → tooling). Use `Hyprland.dispatch(expr)`.
 
-Shell load (blocking chrome before any windowing IPC):
+Reserved axes (the snap `[40,0] 940×1080` bug): Hyprland 0.56 JSON `reserved` is **`[left, top, right, bottom]`** (`m_reservedArea.left/top/right/bottom` in HyprCtl.cpp). A bottom taskbar reports `[0,0,0,40]`. Reading that as the older wiki `[top, right, bottom, left]` treats 40 as a left inset. `WindowModel.reservedLTRB` / `snapRect` lock the 0.56 order. The taskbar also sets `ExclusionMode.Normal` and `exclusiveZone` so the bottom edge is explicit.
 
-- Bare `FileView`/`Process` children of `QtObject` fail (`Type WindowService unavailable`). Named `property FileView` / `property Process` load. Same fix in `ModeProfileService.qml`.
-- `Taskbar.qml` `required property string omarchyPath` is unset when the bar Loader instantiates from URL; drop `required` so `omarchy-taskbar` maps.
+Wayland `Toplevel.address` is empty. Taskbar groups, Alt+Tab, and caption chrome must use `Hyprland.toplevels` addresses (`0x`-canonicalized). Comparing `Toplevel.address` for `isActive` focuses the wrong window.
+
+Shell load:
+
+- Bare `FileView`/`Process` children of `QtObject` fail. Named `property FileView` / `property Process` load.
+- `Taskbar.qml` must not `require` `omarchyPath`; injection is too late in `configureBar` onLoaded.
 - `Loader.errorString` is a property, not a function.
+- A `PanelWindow` with only `implicitWidth`/`implicitHeight` never maps. Screen-edge anchors map the task switcher.
 
-Alt+Tab overlay:
+## 7b. Reviewer rejection of the dispatcher turn
 
-- A `PanelWindow` with only `implicitWidth`/`implicitHeight` never maps. Screen-edge `anchors { top, bottom, left, right }` (same pattern as the emoji overlay) produces `omarchy-task-switcher` at 1920×1080.
-- `Toplevel.address` is empty; cycle cards stay blank until addresses come from `Hyprland.toplevels` (hex, `0x`-canonicalized).
+The turn that landed `a7b2c093` + `18370335` was **REJECTED**. Do not call windowing a go from that work. It was useful as 0.56 dispatcher debug. It was not implementation. Locked findings from that review, still in force unless a later live proof contradicts them:
 
-§6 go/no-go after those fixes: `test/acceptance.d/windows-native-test.sh` rows 20–25 pass live (`success-pin-app.png`, `success-unpin-app.png`, `success-minimize-three.png`, `success-restore-one.png`, `success-snap-two.png`, `success-alt-tab.png`). Overlap: three floating feet at the same `at`/`size`. Maximize/unmaximize proven via IPC. `general:resize_on_border` is `true` in the live compositor; Super+mouse drag/resize are bound in `default/hypr/bindings/desktop.lua`. Pointer injection from the Windows QEMU monitor was not a reliable way to prove interactive title-bar drag from SSH (HID tablet is present; the GTK display owns the pointer).
+- Windowing is not a WM without title-bar chrome, glass, peek, clickable Alt+Tab, and taskbar clicks that hit the button's address.
+- Minimize via `special:minimized` is not a Windows minimize.
+- Snap used the wrong reserved axes; `[40,0] 940×1080` was that bug.
+- Maximize was missing from the harness; snap only checked left x ≤ right x.
+- Rows 20–25 "passed" without repo screenshots and without mouse.
+- Default theme, Start-as-hamburger, monospace, Super+E → Nautilus, nvim for text, no product ISO, TTY first boot, unreproducible VM recipe (no disk/ISO/guest agent in the product repo) mean this is not the OS.
 
-If a later live check contradicts this section, trust the live result and update it; do not force classic `fullscreen 1` / `moveactive` onto Hyprland 0.56.
+This file must not grade the session. A later turn that ships caption chrome and LTRB snap still does not make Tokyo Night + a TTY first boot into Windows 7 Ultimate.
+
+Live numbers from the follow-up turn (Hyprland 0.56.2, virtio-vga 1920×1080, reserved `[0,0,0,40]` as left/top/right/bottom). These are evidence, not a go:
+
+- Taskbar layer `omarchy-taskbar` at `x=0 y=1040 w=1920 h=40`. Exclusive zone is the bottom edge.
+- IPC snap via `Hyprland.dispatch`: left `[0,0] 960×1054`, right `[960,0] 960×1054`. The old `[40,0] 940×1080` left-inset geometry is gone. Height is 14px taller than the 1040px work area (within the harness 32px slop).
+- Maximize: `fullscreen: 1`, `[2,2] 1916×1036`.
+- Minimize identity: both feet on workspace `-98`; restore of `0x555bafb7f480` returned that address to workspace 1 with title intact.
+- Caption layer `omarchy-window-chrome` maps. Start button text is `Start`, not a hamburger.
+- Default theme, Nautilus, nvim, TTY first boot, and the missing product ISO are unchanged.
 
 ## 8. Non-negotiable engineering rules for the code you write
 
@@ -147,14 +164,14 @@ If a later live check contradicts this section, trust the live result and update
 - Do not hide a `special:minimized` identity failure behind taskbar chrome. Report it.
 - Do not commit dispatcher changes that were never run on a live compositor.
 - Do not commit VM images, disks, or scratch artifacts into the repo.
+- Do not call windowing a go from IPC-only harness green, from screenshots that are not in the repo, or from this handoff.
 - Do not add `aliases` to new menu entries.
 
 ## 10. Definition of done
 
 - The read-first contract in §1 is satisfied and acknowledged.
 - `./test/all` is green except the three `omarchy-pkgs`-dependent files (or fully green with `OMARCHY_PKGS_PATH` set).
-- Acceptance rows 20–25 pass live in the guest with saved `success-*.png` screenshots, and the four core behaviors (overlap, drag, resize, maximize, minimize/restore identity) are demonstrated.
-- Any §7 fix that was applied is backed by a before/after live run, and the relevant `test/shell.d` coverage is updated to lock the corrected behavior in.
+- Snap geometry is LTRB work-area, maximize is in the harness, taskbar clicks use Hyprland addresses, Alt+Tab cards are clickable, and caption chrome exists as mouse affordances. Live proof is hyprctl geometry plus mapped layers, not a self-graded go.
 - Visual verification done for every UI-affecting change.
-- Work committed in atomic commits on `cursor/desktop-mode-slice-00d6`, pushed, and PR #1 updated with the go/no-go evidence.
-- If windowing is a no-go, the slice stops at an honest, documented compositor gate instead of shipping chrome over a broken foundation.
+- Work is committed only when asked; do not amend `c253d193` / `a7b2c093` / `18370335`.
+- This slice is still not the OS: Tokyo Night, Nautilus, nvim, TTY first boot, and the missing product ISO remain later work. Do not paper over them in the handoff.

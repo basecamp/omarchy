@@ -95,6 +95,57 @@ window_is_minimized() {
   ' >/dev/null
 }
 
+focused_monitor_json() {
+  hyprctl -j monitors | jq -c '.[] | select(.focused == true)'
+}
+
+# Hyprland 0.56 reserved is [left, top, right, bottom], not the older wiki TRBL order.
+work_area_json() {
+  focused_monitor_json | jq -c '{
+    x: .reserved[0],
+    y: .reserved[1],
+    w: (.width - .reserved[0] - .reserved[2]),
+    h: (.height - .reserved[1] - .reserved[3]),
+    left: .reserved[0],
+    top: .reserved[1],
+    right: .reserved[2],
+    bottom: .reserved[3]
+  }'
+}
+
+taskbar_reserves_bottom() {
+  local area
+  area=$(work_area_json)
+  jq -e '.bottom >= 32 and .left < 16' <<<"$area" >/dev/null
+}
+
+window_near_rect() {
+  local addr="$1"
+  local x="$2"
+  local y="$3"
+  local w="$4"
+  local h="$5"
+  hyprctl -j clients | jq -e --arg addr "$addr" --argjson x "$x" --argjson y "$y" --argjson w "$w" --argjson h "$h" '
+    .[] | select(.address == $addr)
+    | (((.at[0] - $x) | fabs) <= 16)
+    and (((.at[1] - $y) | fabs) <= 16)
+    and (((.size[0] - $w) | fabs) <= 32)
+    and (((.size[1] - $h) | fabs) <= 32)
+  ' >/dev/null
+}
+
+window_is_maximized() {
+  local addr="$1"
+  local area
+  area=$(work_area_json)
+  hyprctl -j clients | jq -e --arg addr "$addr" --argjson area "$area" '
+    .[] | select(.address == $addr)
+    | (.fullscreen == 1)
+    and ((.size[0] - $area.w) | fabs) <= 32
+    and ((.size[1] - $area.h) | fabs) <= 32
+  ' >/dev/null
+}
+
 pin_has() {
   local id="$1"
   [[ -f $PINS_FILE ]] && grep -Fq "\"id\": \"$id\"" "$PINS_FILE"
@@ -174,16 +225,22 @@ for task in "${tasks[@]}"; do
     launch_feet 2
     mapfile -t addrs < <(foot_addresses)
     (( ${#addrs[@]} >= 2 )) || fail "snap two windows" "only ${#addrs[@]} foot windows"
+    taskbar_reserves_bottom || fail "snap two windows" "taskbar exclusive zone is not the bottom reserved edge: $(work_area_json)"
     omarchy-shell window snapLeft "${addrs[0]}" >/dev/null
     omarchy-shell window snapRight "${addrs[1]}" >/dev/null
     sleep 1
-    hyprctl -j clients | jq -e --arg left "${addrs[0]}" --arg right "${addrs[1]}" '
-      (map(select(.address == $left))[0]) as $l
-      | (map(select(.address == $right))[0]) as $r
-      | ($l != null) and ($r != null)
-      and ($l.at[0] <= $r.at[0])
-      and ($l.size[0] > 0) and ($r.size[0] > 0)
-    ' >/dev/null || fail "snap two windows" "snapped geometry was not left/right"
+    area=$(work_area_json)
+    left_x=$(jq -r .x <<<"$area")
+    left_y=$(jq -r .y <<<"$area")
+    left_h=$(jq -r .h <<<"$area")
+    half=$(jq -r '.w / 2 | floor' <<<"$area")
+    right_x=$((left_x + half))
+    right_w=$(jq -r .w <<<"$area")
+    right_w=$((right_w - half))
+    window_near_rect "${addrs[0]}" "$left_x" "$left_y" "$half" "$left_h" \
+      || fail "snap two windows" "left geometry was not the work-area left half: $(hyprctl -j clients | jq --arg a "${addrs[0]}" '.[] | select(.address == $a) | {at,size}') work=$(work_area_json)"
+    window_near_rect "${addrs[1]}" "$right_x" "$left_y" "$right_w" "$left_h" \
+      || fail "snap two windows" "right geometry was not the work-area right half: $(hyprctl -j clients | jq --arg a "${addrs[1]}" '.[] | select(.address == $a) | {at,size}') work=$(work_area_json)"
     screenshot "success-snap-two"
     pass "snap two windows"
     ;;
@@ -201,6 +258,20 @@ for task in "${tasks[@]}"; do
     ;;
   esac
 done
+
+# Maximize is not a numbered acceptance row, but the windowing gate requires it.
+# These extra proofs fail the file if geometry is wrong; they are not a self-graded go.
+launch_feet 1
+mapfile -t addrs < <(foot_addresses)
+(( ${#addrs[@]} >= 1 )) || fail "maximize fills the work area" "no foot window"
+omarchy-shell window maximize "${addrs[0]}" >/dev/null
+wait_until "maximized window fills the work area" 10 window_is_maximized "${addrs[0]}"
+screenshot "success-maximize"
+omarchy-shell window unmaximize "${addrs[0]}" >/dev/null
+pass "maximize fills the work area"
+
+layer_present "omarchy-window-chrome" || fail "caption chrome is mapped" "no omarchy-window-chrome layer"
+pass "caption chrome is mapped"
 
 trap - EXIT
 restore_native_windows

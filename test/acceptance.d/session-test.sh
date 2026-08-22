@@ -20,7 +20,8 @@ for plugin in \
   omarchy.monitor omarchy.network omarchy.notifications omarchy.power \
   omarchy.reminders omarchy.weather \
   omarchy.ultimate-taskbar omarchy.ultimate-start omarchy.ultimate-run \
-  omarchy.ultimate-settings omarchy.ultimate-task-switcher; do
+  omarchy.ultimate-settings omarchy.ultimate-task-switcher \
+  omarchy.ultimate-window-chrome; do
   [[ $plugins == *"$plugin"* ]] || fail "shell plugin is loaded: $plugin" "loaded plugins: $plugins"
   pass "shell plugin is loaded: $plugin"
 done

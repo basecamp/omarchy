@@ -1123,6 +1123,21 @@ ShellRoot {
       return "ok"
     }
 
+    function restoreOrMinimize(address: string): string {
+      shell.windowService.restoreOrMinimize(address)
+      return "ok"
+    }
+
+    function toggleMaximize(address: string): string {
+      shell.windowService.toggleMaximize(address)
+      return "ok"
+    }
+
+    function moveTo(address: string, x: string, y: string): string {
+      shell.windowService.moveTo(address, Number(x), Number(y))
+      return "ok"
+    }
+
     function pin(desktopId: string): string {
       shell.windowService.pin({ id: desktopId, desktopId: desktopId })
       return "ok"

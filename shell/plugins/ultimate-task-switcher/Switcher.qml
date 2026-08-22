@@ -25,13 +25,20 @@ Item {
     root.opened = false
   }
 
+  function pick(address) {
+    if (windowService && typeof windowService.activateFromSwitcher === "function")
+      windowService.activateFromSwitcher(address)
+    root.close()
+    if (root.shell && typeof root.shell.hide === "function")
+      root.shell.hide("omarchy.ultimate-task-switcher")
+  }
+
   PanelWindow {
     visible: root.opened
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     // Quickshell only maps a layer surface when it is anchored to screen
-    // edges. implicitWidth/Height alone never produced omarchy-task-switcher
-    // (live: emojis overlay mapped, this one did not, with two feet open).
+    // edges. implicitWidth/Height alone never produced omarchy-task-switcher.
     anchors { top: true; bottom: true; left: true; right: true }
     WlrLayershell.namespace: "omarchy-task-switcher"
     WlrLayershell.layer: WlrLayer.Overlay
@@ -64,16 +71,18 @@ Item {
               width: parent.width - 8
               wrapMode: Text.Wrap
               horizontalAlignment: Text.AlignHCenter
-              text: {
-                if (!windowService) return String(modelData)
-                var win = windowService._forAddress ? windowService._forAddress(modelData) : null
-                if (win && win.title) return win.title
-                return String(modelData)
-              }
+              text: windowService ? windowService.windowTitle(modelData) : String(modelData)
               color: Tokens.text.primary
               font.pixelSize: Style.font.bodySmall
-              font.family: Style.font.family
+              font.family: "sans-serif"
               elide: Text.ElideRight
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.pick(modelData)
             }
           }
         }

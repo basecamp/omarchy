@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Layouts
 import Quickshell
 import qs.Commons
 import qs.Ui
@@ -81,7 +82,7 @@ Item {
       text: root.label ? root.label.charAt(0).toUpperCase() : "?"
       color: Tokens.text.primary
       font.pixelSize: Style.font.body
-      font.family: Style.font.family
+      font.family: "sans-serif"
     }
   }
 
@@ -92,6 +93,8 @@ Item {
     acceptedButtons: Qt.LeftButton | Qt.RightButton
     cursorShape: Qt.PointingHandCursor
     onClicked: function(event) {
+      peekTimer.stop()
+      peek.visible = false
       if (event.button === Qt.RightButton) {
         menu.visible = !menu.visible
         return
@@ -102,6 +105,101 @@ Item {
         return
       }
       root.activate()
+    }
+    onContainsMouseChanged: {
+      if (mouse.containsMouse && root.running && !menu.visible) peekTimer.restart()
+      else {
+        peekTimer.stop()
+        peek.visible = false
+      }
+    }
+  }
+
+  Timer {
+    id: peekTimer
+    interval: 400
+    repeat: false
+    onTriggered: {
+      if (mouse.containsMouse && root.running && !menu.visible)
+        peek.visible = true
+    }
+  }
+
+  PopupWindow {
+    id: peek
+    visible: false
+    color: "transparent"
+    implicitWidth: 220
+    implicitHeight: peekCol.implicitHeight + 16
+    anchor.window: root.QsWindow ? root.QsWindow.window : null
+    anchor.item: root
+    anchor.edges: Edges.Top | Edges.Left
+    anchor.gravity: Edges.Top | Edges.Right
+    anchor.rect.y: -8
+
+    Rectangle {
+      anchors.fill: parent
+      color: Tokens.surface.glass
+      radius: Tokens.radius.medium
+      border.color: Tokens.border.subtle
+      border.width: 1
+
+      Column {
+        id: peekCol
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: 8
+        spacing: 6
+
+        Text {
+          width: peekCol.width
+          text: root.label
+          color: Tokens.text.primary
+          font.pixelSize: Style.font.body
+          font.family: "sans-serif"
+          elide: Text.ElideRight
+        }
+
+        Repeater {
+          model: [
+            { label: "Restore", action: "restore" },
+            { label: "Minimize", action: "minimize" },
+            { label: "Maximize", action: "maximize" },
+            { label: "Close", action: "close" }
+          ]
+          delegate: Item {
+            width: peekCol.width
+            height: 26
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.left: parent.left
+              anchors.leftMargin: 6
+              text: modelData.label
+              color: Tokens.text.primary
+              font.pixelSize: Style.font.bodySmall
+              font.family: "sans-serif"
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                var addr = windows.length ? windows[0].address : ""
+                if (modelData.action === "restore") windowService.restore(addr)
+                if (modelData.action === "minimize") windowService.minimize(addr)
+                if (modelData.action === "maximize") windowService.toggleMaximize(addr)
+                if (modelData.action === "close") {
+                  for (var i = 0; i < windows.length; i++) windowService.close(windows[i].address)
+                }
+                peek.visible = false
+              }
+            }
+          }
+        }
+      }
     }
   }
 
@@ -149,7 +247,7 @@ Item {
               text: modelData.label
               color: Tokens.text.primary
               font.pixelSize: Style.font.body
-              font.family: Style.font.family
+              font.family: "sans-serif"
             }
 
             MouseArea {

@@ -1,11 +1,12 @@
 import QtQuick
+import QtQuick.Layouts
 import qs.Commons
 import qs.Ui
 
 Item {
   id: root
   property var bar: null
-  implicitWidth: 48
+  implicitWidth: 76
   implicitHeight: parent ? parent.height : 40
 
   Rectangle {
@@ -16,12 +17,34 @@ Item {
       : mouse.containsMouse ? Util.alpha(Tokens.accent.primary, 0.18)
       : "transparent"
 
-    Text {
+    Row {
       anchors.centerIn: parent
-      text: "\u2630"
-      color: Tokens.text.primary
-      font.pixelSize: Style.font.iconLarge
-      font.family: Style.font.family
+      spacing: 6
+
+      Grid {
+        anchors.verticalCenter: parent.verticalCenter
+        columns: 2
+        rows: 2
+        rowSpacing: 1
+        columnSpacing: 1
+        Repeater {
+          model: 4
+          Rectangle {
+            width: 5
+            height: 5
+            color: Tokens.accent.primary
+            opacity: 0.45 + index * 0.15
+          }
+        }
+      }
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: "Start"
+        color: Tokens.text.primary
+        font.pixelSize: Style.font.body
+        font.family: "sans-serif"
+      }
     }
   }
 

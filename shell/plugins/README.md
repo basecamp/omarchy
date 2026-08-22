@@ -19,6 +19,7 @@ User-installed plugins live alongside these conceptually but on disk under
 | Run           | `omarchy.ultimate-run`    | `menu`                  | `ultimate-run/Run.qml`                |
 | Settings dest.| `omarchy.ultimate-settings` | `menu`                | `ultimate-settings/Settings.qml`      |
 | Task switcher | `omarchy.ultimate-task-switcher` | `overlay`          | `ultimate-task-switcher/Switcher.qml` |
+| Window chrome | `omarchy.ultimate-window-chrome` | `overlay`          | `ultimate-window-chrome/Chrome.qml`   |
 | Image picker  | `omarchy.image-picker`    | `overlay`               | `image-picker/ImagePicker.qml`        |
 | Emojis        | `omarchy.emojis`          | `overlay`               | `emojis/Emojis.qml`                   |
 | Clipboard mgr | `omarchy.clipboard`       | `overlay`               | `clipboard/Clipboard.qml`             |

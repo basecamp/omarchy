@@ -10,6 +10,8 @@ o.bind("SUPER + D", "Show desktop", "omarchy-shell window toggleShowDesktop")
 o.bind("SUPER + L", "Lock", "omarchy-system-lock")
 o.bind("SUPER + LEFT", "Snap window left", "omarchy-shell window snapLeft active")
 o.bind("SUPER + RIGHT", "Snap window right", "omarchy-shell window snapRight active")
+o.bind("SUPER + UP", "Maximize window", "omarchy-shell window maximize active")
+o.bind("SUPER + DOWN", "Restore or minimize window", "omarchy-shell window restoreOrMinimize active")
 o.bind("SUPER + SHIFT + S", "Screenshot", "omarchy-capture-screenshot")
 
 o.bind("ALT + F4", "Close window", "omarchy-shell window closeActive")

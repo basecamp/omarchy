@@ -142,7 +142,11 @@ Item {
         required property var modelData
         screen: modelData
         visible: !remapGuard.remapping && !root.barHidden
-        exclusionMode: root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Auto
+        // Exclusive zone needs 1 or 3 anchors. Auto guessed the thickness
+        // onto the wrong edge on Hyprland 0.56; Normal + exclusiveZone pins
+        // the bottom inset the snap math reads as reserved[3].
+        exclusionMode: root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Normal
+        exclusiveZone: root.barHidden ? 0 : implicitHeight
         color: root.background
         implicitHeight: root.barSize
         implicitWidth: 0
@@ -164,7 +168,7 @@ Item {
 
           StartButton {
             bar: root
-            Layout.preferredWidth: 48
+            Layout.preferredWidth: 76
             Layout.fillHeight: true
           }
 

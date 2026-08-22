@@ -35,7 +35,22 @@ function Find-Qemu {
     $cmd = Get-Command $name -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
   }
+  $windowsDefault = "C:\Program Files\qemu\qemu-system-x86_64.exe"
+  if (Test-Path -LiteralPath $windowsDefault) { return $windowsDefault }
   throw "qemu-system-x86_64 is not on PATH. Install QEMU and retry."
+}
+
+function Find-OvmfCode {
+  $candidates = @(
+    "C:\Program Files\qemu\share\edk2-x86_64-code.fd",
+    "/usr/share/edk2/x64/OVMF_CODE.fd",
+    "/usr/share/OVMF/OVMF_CODE.fd",
+    "/usr/share/qemu/edk2-x86_64-code.fd"
+  )
+  foreach ($candidate in $candidates) {
+    if (Test-Path -LiteralPath $candidate) { return $candidate }
+  }
+  return ""
 }
 
 if (-not $Disk -and -not $Iso) {
@@ -44,7 +59,7 @@ if (-not $Disk -and -not $Iso) {
     (Join-Path $PSScriptRoot "disk.qcow2")
   )
   if ($env:OS -eq "Windows_NT") {
-    $candidates += @("C:\dev\omarchy-vm\arch.qcow2", "C:\dev\omarchy-vm\disk.qcow2")
+    $candidates += @("C:\dev\omarchy-vm\omarchy-test.qcow2", "C:\dev\omarchy-vm\arch.qcow2", "C:\dev\omarchy-vm\disk.qcow2")
   }
   foreach ($candidate in $candidates) {
     if (Test-Path -LiteralPath $candidate) {
@@ -70,6 +85,7 @@ if (-not $Disk -and -not $Iso) {
 }
 
 $qemu = Find-Qemu
+$ovmf = Find-OvmfCode
 $args = @(
   "-machine", "q35",
   "-cpu", "max",
@@ -80,9 +96,29 @@ $args = @(
   "-display", $(if ($Headless) { "none" } else { "gtk" }),
   "-device", "qemu-xhci",
   "-device", "usb-tablet",
-  "-netdev", "user,id=net0",
+  "-netdev", "user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22",
   "-device", "virtio-net-pci,netdev=net0"
 )
+
+if ($ovmf) {
+  $varsDir = if ($Disk) { [System.IO.Path]::GetDirectoryName($Disk) } else { $PSScriptRoot }
+  $vars = Join-Path $varsDir "ovmf-vars.fd"
+  $varsSrc = Join-Path ([System.IO.Path]::GetDirectoryName($ovmf)) "edk2-i386-vars.fd"
+  if (-not (Test-Path -LiteralPath $varsSrc)) {
+    $varsSrc = Join-Path ([System.IO.Path]::GetDirectoryName($ovmf)) "OVMF_VARS.fd"
+  }
+  if ((Test-Path -LiteralPath $varsSrc) -and -not (Test-Path -LiteralPath $vars) -and $Disk) {
+    Copy-Item -LiteralPath $varsSrc -Destination $vars
+  }
+  $args += @(
+    "-drive", "if=pflash,format=raw,readonly=on,file=$ovmf"
+  )
+  if (Test-Path -LiteralPath $vars) {
+    $args += @("-drive", "if=pflash,format=raw,file=$vars")
+  }
+} else {
+  Write-Warning "No OVMF firmware found. systemd-boot guests will not start without -drive if=pflash edk2/OVMF code."
+}
 
 if ($Disk) {
   if (-not (Test-Path -LiteralPath $Disk)) { throw "Disk image not found: $Disk" }

@@ -187,6 +187,8 @@ desktop_home="$tmpdir/desktop-home"
 mkdir -p "$desktop_home"
 desktop_output=$(run_omarchy_bindings "$desktop_home")
 grep -Fq $'SUPER + E	Files' <<<"$desktop_output" || fail "desktop mode binds Win+E to Files"
+grep -Fq $'SUPER + UP	Maximize window' <<<"$desktop_output" || fail "desktop mode binds Win+Up to maximize"
+grep -Fq $'SUPER + DOWN	Restore or minimize window' <<<"$desktop_output" || fail "desktop mode binds Win+Down to restore or minimize"
 grep -Fq $'SUPER + D	Show desktop' <<<"$desktop_output" || fail "desktop mode binds Win+D to Show desktop"
 grep -Fq $'SUPER + L	Lock' <<<"$desktop_output" || fail "desktop mode binds Win+L to Lock"
 grep -Fq $'SUPER + Super_L	Start' <<<"$desktop_output" || fail "desktop mode binds Super release to Start"
