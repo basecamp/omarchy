@@ -32,10 +32,9 @@ Panel {
   function cancelHiddenForm() {
     hiddenFormOpen = false
     hiddenPasswordText = ""
-    // A connect still in flight is tracked by ssid/security/identity
-    // (hiddenBusy derives from hiddenSsidText) -- clearing them here would
-    // drop the in-flight state a reopened panel needs to keep rendering
-    // "Connecting…" instead of a silently-busy panel with nothing shown.
+    // Leave ssid/security/identity in place while busy: hiddenBusy keys off
+    // hiddenSsidText, so clearing it here would erase the in-flight state
+    // and a reopened form would show nothing instead of "Connecting…".
     if (hiddenBusy) return
     hiddenSsidText = ""
     hiddenSecurity = "personal"
@@ -52,8 +51,12 @@ Panel {
 
   function toggleHiddenForm() {
     if (busy) return
-    if (hiddenFormOpen) cancelHiddenForm()
-    else hiddenFormOpen = true
+    if (hiddenFormOpen) {
+      cancelHiddenForm()
+    } else {
+      cancelPasswordPrompt()
+      hiddenFormOpen = true
+    }
   }
 
   // Live connection details from `ip` / /sys / iw.
@@ -122,6 +125,12 @@ Panel {
   property string actionKind: ""  // "connect" | "disconnect" | "forget"
   property string failureSsid: ""
   property string failureReason: ""
+  // Which code path currently owns the shared action* state above -- a row
+  // (runNetworkAction) or the hidden form (runHiddenAction). String equality
+  // on actionSsid alone can't tell those apart when a typed hidden SSID
+  // happens to match a scanned row's, so hiddenBusy/hiddenFailed also check
+  // this before claiming the state as their own.
+  property bool actionIsHidden: false
   property string passwordSsid: ""
   property string passwordText: ""
   property string identityText: ""
@@ -135,19 +144,26 @@ Panel {
   property string hiddenSecurity: "personal"  // "personal" | "enterprise" | "none"
   property string hiddenIdentityText: ""
   property string hiddenPasswordText: ""
-  // Discriminates a hidden connect from a scanned row's -- actionSsid /
-  // failureSsid are shared with row state, and a typed hidden SSID that
-  // happens to match a scanned row's SSID would otherwise cross-talk with
-  // that row's own busy/failed rendering (and vice versa).
+  // Marks this attempt as the hidden form's own, so a scanned row sharing
+  // the typed SSID doesn't read as this attempt (or vice versa).
   property bool hiddenConnecting: false
-  readonly property bool hiddenBusy: hiddenConnecting && actionKind === "connect" && hiddenSsidText !== "" && actionSsid === hiddenSsidText
-  readonly property bool hiddenFailed: hiddenConnecting && failureReason !== "" && hiddenSsidText !== "" && failureSsid === hiddenSsidText
+  readonly property bool hiddenBusy: hiddenConnecting && actionIsHidden && actionKind === "connect" && hiddenSsidText !== "" && actionSsid === hiddenSsidText
+  readonly property bool hiddenFailed: hiddenConnecting && actionIsHidden && failureReason !== "" && hiddenSsidText !== "" && failureSsid === hiddenSsidText
 
   // The Dropdown disappears with the rest of the form, so a cursor left
   // pointing at it would be stuck on nothing -- same shape as
   // onCanSelectBandChanged.
   onHiddenFormOpenChanged: {
     if (!hiddenFormOpen && focusSection === "hiddenSecurity") focusSection = "dns"
+  }
+
+  // The whole hidden-form section vanishes with the Wi-Fi station, so a form
+  // left open (or a cursor left on its Dropdown) would be stuck on nothing --
+  // same shape as onCanSelectBandChanged. Set hiddenFormOpen directly rather
+  // than through cancelHiddenForm(), since the section is being hidden anyway.
+  onWifiStationAvailableChanged: if (!wifiStationAvailable) {
+    hiddenFormOpen = false
+    if (focusSection === "hiddenSecurity") focusSection = "dns"
   }
 
   // ConnectionFailReason values as a plain object, so Model.js helpers stay
@@ -795,6 +811,7 @@ Panel {
   }
 
   function openPasswordPrompt(ssid) {
+    cancelHiddenForm()
     if (passwordSsid !== ssid) {
       passwordText = ""
       identityText = ""
@@ -824,6 +841,7 @@ Panel {
     actionKind = kind
     failureSsid = ""
     failureReason = ""
+    actionIsHidden = false
     callback(network)
     // Safety net: if onExited never fires (process death, signal handler
     // throws, etc.), clear the busy state so the row doesn't get stuck on
@@ -906,11 +924,10 @@ Panel {
     actionKind = "connect"
     failureSsid = ""
     failureReason = ""
-    // Marks the shared actionSsid/failureSsid state above as attributable to
-    // THIS hidden attempt -- without it, a scanned row's own in-flight
-    // connect/failure that happens to share the typed hidden SSID string
-    // would read as the hidden form's own busy/failed state (or vice versa).
+    // Marks this attempt as the hidden form's own, so a scanned row sharing
+    // the typed SSID doesn't read as this attempt (or vice versa).
     hiddenConnecting = true
+    actionIsHidden = true
     callback()
     actionTimeout.restart()
   }
@@ -937,9 +954,9 @@ Panel {
     if (busy || ssid.length === 0) return
     if (hiddenSecurity !== "none" && hiddenPasswordText.length === 0) return
     if (hiddenSecurity === "enterprise" && identity.length === 0) return
-    // Normalize the stored text to the trimmed value submitted below so
-    // hiddenBusy/hiddenFailed (which compare actionSsid === hiddenSsidText)
-    // keep matching once actionSsid is set to the trimmed ssid.
+    // Store the trimmed ssid back so hiddenBusy/hiddenFailed's
+    // actionSsid===hiddenSsidText comparison still matches once actionSsid
+    // is set below.
     hiddenSsidText = ssid
     hiddenIdentityText = identity
     connectHidden(ssid, hiddenSecurity, identity, hiddenPasswordText)
@@ -957,12 +974,9 @@ Panel {
     failureReason = reason
     actionSsid = ""
     actionKind = ""
-    // hiddenConnecting deliberately stays true here (and through the shared
-    // actionTimeout timeout path) -- it still needs to gate hiddenFailed so
-    // this attempt's "Failed"/"Timed out" message renders. It clears once
-    // the user dismisses the form (cancelHiddenForm) or retries
-    // (runHiddenAction resets failureSsid/failureReason for the new attempt
-    // regardless of hiddenConnecting's prior value).
+    // hiddenConnecting deliberately stays true (through this and the shared
+    // actionTimeout path) so hiddenFailed can render; it only clears via
+    // cancelHiddenForm (dismiss) or a fresh runHiddenAction (retry).
   }
 
   // Runs the hidden-network nmcli command (see Model.hiddenPskConnectScript /
@@ -1907,49 +1921,29 @@ Panel {
             Keys.onEscapePressed: root.cancelHiddenForm()
           }
 
-          Item {
+          Button {
+            id: hiddenConnectBtn
             width: parent.width
-            implicitHeight: Math.max(Style.spacing.controlHeight, hiddenConnectBtn.implicitHeight)
+            text: root.hiddenBusy ? "Connecting…" : "Connect"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            horizontalPadding: Style.space(10)
+            enabled: !root.busy && !root.hiddenBusy && root.hiddenSsidText.trim().length > 0
+              && (root.hiddenSecurity === "none" || root.hiddenPasswordText.length > 0)
+              && (root.hiddenSecurity !== "enterprise" || root.hiddenIdentityText.trim().length > 0)
+            onClicked: root.submitHiddenNetwork()
+          }
 
-            // Same status-pill chrome as the scanned-row inline prompt
-            // (statusMsgWrapper below) so the two connecting/failed states
-            // in this file read consistently.
-            BorderSurface {
-              id: hiddenStatusWrapper
-              visible: root.hiddenBusy || root.hiddenFailed
-              anchors.left: parent.left
-              anchors.right: hiddenConnectBtn.left
-              anchors.rightMargin: Style.space(8)
-              anchors.verticalCenter: parent.verticalCenter
-              height: Style.spacing.controlHeight
-              color: Style.normalFillFor(root.bar.foreground)
-              borderSpec: Border.controlSpec("normal", root.bar.foreground, Color.accent)
-              radius: Style.cornerRadius
-
-              Text {
-                anchors.fill: parent
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-                text: root.hiddenBusy ? "Connecting…" : (root.failureReason || "Failed")
-                color: root.hiddenFailed ? root.bar.urgent : root.bar.foreground
-                font.family: root.bar.fontFamily
-                font.pixelSize: Style.font.bodySmall
-              }
-            }
-
-            PanelActionButton {
-              id: hiddenConnectBtn
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-              enabled: !root.busy && root.hiddenSsidText.trim().length > 0
-                && (root.hiddenSecurity === "none" || root.hiddenPasswordText.length > 0)
-                && (root.hiddenSecurity !== "enterprise" || root.hiddenIdentityText.trim().length > 0)
-              iconText: "󰄬"
-              tooltipText: "Connect"
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-              onClicked: root.submitHiddenNetwork()
-            }
+          // Shows once hiddenBusy clears with a failure pending; fields
+          // stay populated so the user can fix and retry without retyping.
+          Text {
+            visible: root.hiddenFailed
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: root.failureReason || "Failed to connect"
+            color: root.bar.urgent
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
           }
         }
       }
