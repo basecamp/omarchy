@@ -219,8 +219,8 @@ for _ in {1..80}; do
   sleep 0.1
 done
 [[ $widget_reload_value == "after" ]] ||
-  fail_with_log "installed bar widget QML changes replace the running component"
-pass "installed bar widget QML changes replace the running component"
+  fail_with_log "local bar widget QML changes replace the running component"
+pass "local bar widget QML changes replace the running component"
 if rg -q "invalid context" "$log"; then
   fail_with_log "plugin reload preserves live QML contexts"
 fi

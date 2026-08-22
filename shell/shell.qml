@@ -750,11 +750,6 @@ ShellRoot {
     }
   }
 
-  function unloadPluginWidgets() {
-    for (var id in pluginWidgetComponents) shell.barWidgetRegistry.unregister(id)
-    pluginWidgetComponents = ({})
-  }
-
   function reloadPlugins() {
     if (shell.pluginReloading || shell.pluginRegistry.scanning) {
       shell.pluginReloadPending = true
