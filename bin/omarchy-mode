@@ -49,9 +49,7 @@ printf '%s\n' "$next" >"$MODE_FILE"
 
 if [[ ${OMARCHY_ULTIMATE_MODE_SKIP_RELOAD:-} != 1 ]]; then
   hyprctl reload >/dev/null 2>&1 || true
-  if command -v omarchy-restart-shell >/dev/null 2>&1; then
-    omarchy-restart-shell >/dev/null 2>&1 || true
-  fi
+  omarchy-restart-shell >/dev/null 2>&1 || true
 fi
 
 printf '%s\n' "$next"

@@ -135,6 +135,13 @@ is_allowed_duplicate() {
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 
+write_mode() {
+  local home="$1"
+  local mode="$2"
+  mkdir -p "$home/.local/state/omarchy/ultimate"
+  printf '%s\n' "$mode" >"$home/.local/state/omarchy/ultimate/mode"
+}
+
 # A fresh home keeps the preinstalled app bindings on, and a stub Voxtype adds
 # its conditional ones, so the check covers the largest set a user can get.
 home="$tmpdir/home"
@@ -143,6 +150,23 @@ mkdir -p "$home" "$stub_bin"
 touch "$stub_bin/voxtype"
 chmod +x "$stub_bin/voxtype"
 
+# Desktop Mode is the Ultimate default. It must not collide with itself even
+# though it does not ship the Omarchy application chords.
+desktop_home="$tmpdir/desktop-home"
+mkdir -p "$desktop_home"
+desktop_bindings=$(PATH="$stub_bin:$PATH" list_bindings "$desktop_home")
+[[ -n $desktop_bindings ]] || fail "desktop bindings load for the conflict check"
+grep -Fq $'SUPER + E	Files' <<<"$desktop_bindings" || fail "desktop conflict check sees Win+E"
+grep -Fq $'ALT + TAB	Switch windows' <<<"$desktop_bindings" || fail "desktop conflict check sees Alt+Tab"
+desktop_duplicates=$(duplicate_signatures <<<"$desktop_bindings")
+while read -r signature; do
+  [[ -n $signature ]] || continue
+  fail "no two desktop bindings claim the same chord" \
+    "$(awk -F'\t' -v signature="$signature" '$1 == signature { print $2 " -> " $3 }' <<<"$desktop_bindings")"
+done <<<"$desktop_duplicates"
+pass "desktop mode bindings have no colliding chords"
+
+write_mode "$home" "power-user"
 bindings=$(PATH="$stub_bin:$PATH" list_bindings "$home")
 [[ -n $bindings ]] || fail "default bindings load for the conflict check"
 
