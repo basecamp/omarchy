@@ -112,3 +112,39 @@ rows_by_cols="45 140"
 measure_layout() { return 1; }
 refuses "a layout fastfetch cannot be measured from leaves it still"
 
+# Once the logo is taller than the module column, fastfetch writes a row more
+# than logo-plus-padding, so a window sized by that arithmetic scrolls its top
+# padding away — and a scrolled layout is one the sheen then refuses. The fit
+# asks fastfetch how tall the layout came out instead.
+rm -rf "${HOME:?}/.local"
+printf '%s\n' $(for i in $(seq 40); do echo '██████████'; done) >"$HOME/.config/omarchy/branding/about.txt"
+layout_rows=43
+measure_layout() {
+  LAYOUT_ROWS=$layout_rows
+  LOGO_COLOR=$logo_color
+}
+fastfetch() {
+  case ${1:-} in
+    --list-config-paths) printf '%s\n' "${config_paths[@]}" ;;
+    --logo) for i in $(seq 29); do printf '%065d\n' 0; done ;;
+    *) return 1 ;;
+  esac
+}
+hyprctl() {
+  [[ $1 == "clients" ]] && printf '[{"class":"org.omarchy.about","address":"0x1","size":[800,600]}]\n'
+  return 0
+}
+
+# logo 10 wide + the config's padding + a 65-column module block.
+fit_cols=$(( config_left + 10 + config_right + 65 + config_left ))
+
+rows_by_cols="$((layout_rows + 1)) $fit_cols"
+fit_window || fail "the fit is satisfied by a window with a row past the layout"
+pass "the fit is satisfied by a window with a row past the layout"
+
+rows_by_cols="$layout_rows $fit_cols"
+if fit_window; then
+  fail "the fit is not satisfied by a window that scrolls the layout"
+else
+  pass "the fit is not satisfied by a window that scrolls the layout"
+fi
