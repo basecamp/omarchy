@@ -495,7 +495,7 @@ def rpc_request(proc, request_id, method, params=None, timeout=8):
   raise TimeoutError(method)
 
 
-def limit_window(window):
+def limit_window(window, title=None):
   if not isinstance(window, dict):
     return None
   used = window.get("usedPercent")
@@ -504,18 +504,47 @@ def limit_window(window):
   mins = number(window.get("windowDurationMins"))
   if mins == 10080:
     label = "Weekly (7-day)"
+  elif mins == 300:
+    label = "Session (5-hour)"
   elif mins and mins % 60 == 0:
-    label = f"{mins // 60}h window"
+    label = f"Session ({mins // 60}-hour)"
   elif mins:
     label = f"{mins}m window"
   else:
     label = "Limit"
   reset = window.get("resetsAt")
-  return {
+  entry = {
     "label": label,
     "percent": float(used) / 100.0,
     "resetsAt": datetime.fromtimestamp(number(reset), timezone.utc).isoformat() if reset else "",
   }
+  if title:
+    # A model-scoped window, like Claude's "Fable Weekly": the panel shows
+    # the title verbatim instead of parsing a window out of the label.
+    short = "Weekly" if mins == 10080 else ("Session" if mins else "Limit")
+    entry["title"] = f"{title} {short}"
+    entry["label"] = f"{title} {label}"
+  return entry
+
+
+PLAN_LABELS = {
+  "free": "Free",
+  "go": "Go",
+  "plus": "Plus",
+  "pro": "Pro",
+  "prolite": "Pro Lite",
+  "team": "Team",
+  "business": "Business",
+  "edu": "Edu",
+  "enterprise": "Enterprise",
+}
+
+
+def plan_label(plan):
+  raw = str(plan or "").strip()
+  if not raw:
+    return ""
+  return PLAN_LABELS.get(raw.lower(), raw.replace("_", " ").title())
 
 
 def fetch_codex_rpc():
@@ -528,7 +557,7 @@ def fetch_codex_rpc():
 
   try:
     proc = subprocess.Popen(
-      [codex, "-s", "read-only", "-a", "untrusted", "app-server"],
+      [codex, "-s", "read-only", "-a", "on-request", "app-server"],
       stdin=subprocess.PIPE,
       stdout=subprocess.PIPE,
       stderr=subprocess.DEVNULL,
@@ -550,12 +579,28 @@ def fetch_codex_rpc():
     account = (account_msg.get("result") or {}).get("account") or {}
     limits = (limits_msg.get("result") or {}).get("rateLimits") or {}
     plan = limits.get("planType") or account.get("planType") or account.get("type") or ""
-    result["tierLabel"] = str(plan) if plan else ""
+    result["tierLabel"] = plan_label(plan)
 
     for window in (limits.get("primary"), limits.get("secondary")):
       entry = limit_window(window)
       if entry:
         result["limits"].append(entry)
+
+    # Model-scoped allowances (e.g. "GPT-5.3-Codex-Spark") ride alongside the
+    # account-wide ones, the way the Claude collector reports "Fable Weekly".
+    by_id = (limits_msg.get("result") or {}).get("rateLimitsByLimitId") or {}
+    main_id = limits.get("limitId")
+    for limit_id, scoped in by_id.items():
+      if not isinstance(scoped, dict) or limit_id == main_id:
+        continue
+      title = str(scoped.get("limitName") or limit_id)
+      for window in (scoped.get("primary"), scoped.get("secondary")):
+        entry = limit_window(window, title=title)
+        if entry:
+          result["limits"].append(entry)
+
+    if limits.get("spendControlReached"):
+      result["usageStatusText"] = "Codex spend control reached"
   except Exception as exc:
     result["usageStatusText"] = "Codex limits unavailable"
     result["authHelpText"] = str(exc)
