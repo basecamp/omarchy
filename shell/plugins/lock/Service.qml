@@ -363,11 +363,15 @@ Item {
   // by pointer alone — the field cannot hear the key that would light the panel
   // it needs to be lit to hear. The compositor still reports input as activity no
   // matter who holds focus, so watch that instead and let any key wake the screen.
+  // Armed for the whole lock rather than only while blanked: the notification
+  // starts active and reports idle a second later, and typing restarts that
+  // second, so one armed at blank time never primes under a user who wakes the
+  // screen by typing their password straight in.
   IdleMonitor {
-    enabled: root.lockRequested && root.displayBlanked
+    enabled: root.lockRequested
     timeout: 1
     respectInhibitors: false
-    onIsIdleChanged: if (!isIdle) root.runWake()
+    onIsIdleChanged: if (!isIdle && root.displayBlanked) root.runWake()
   }
 
   Timer {
