@@ -30,6 +30,7 @@ from typing import Any
 AGENT_ID = "opencode-zen"
 AGENT_NAME = "OpenCode"
 PROVIDER_ID = "opencode"
+CACHE_SCHEMA_VERSION = 2
 
 
 def data_home() -> Path:
@@ -37,7 +38,7 @@ def data_home() -> Path:
 
 
 def cache_root() -> Path:
-  root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "omarchy" / "agent-usage"
   root.mkdir(parents=True, exist_ok=True)
   return root
 
@@ -104,6 +105,7 @@ def scan_opencode_db(db: Path) -> tuple[dict[str, Any], bool]:
   prompts = 0
   today_prompt_count = 0
   today_token_total = 0
+  seen_messages: set[str] = set()
 
   try:
     conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
@@ -112,54 +114,83 @@ def scan_opencode_db(db: Path) -> tuple[dict[str, Any], bool]:
 
   try:
     conn.execute("PRAGMA query_only = ON")
-    for session_id, raw in conn.execute(
-      "SELECT session_id, data FROM message"
-      " WHERE data LIKE '%\"role\"%:%\"assistant\"%'"
-      " AND data LIKE '%\"providerID\"%:%\"opencode\"%'"
-      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.role') END = 'assistant'"
-      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.providerID') END = 'opencode'"
-    ):
-      try:
-        entry = json.loads(raw)
-        if not isinstance(entry, dict) or entry.get("role") != "assistant":
+    tables = {
+      row[0]
+      for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('message', 'session_message')"
+      )
+    }
+    if not tables:
+      return empty_stats(), False
+
+    queries = []
+    if "message" in tables:
+      queries.append(
+        "SELECT id, session_id, data FROM message"
+        " WHERE data LIKE '%\"role\"%:%\"assistant\"%'"
+        " AND data LIKE '%\"providerID\"%:%\"opencode\"%'"
+        " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.role') END = 'assistant'"
+        " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.providerID') END = 'opencode'"
+      )
+    if "session_message" in tables:
+      queries.append(
+        "SELECT id, session_id, data FROM session_message"
+        " WHERE type = 'assistant'"
+        " AND data LIKE '%\"providerID\"%:%\"opencode\"%'"
+        " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.model.providerID') END = 'opencode'"
+      )
+
+    for query in queries:
+      for message_id, session_id, raw in conn.execute(query):
+        message_key = str(message_id)
+        if message_key in seen_messages:
           continue
-        if str(entry.get("providerID") or "") != PROVIDER_ID:
+        seen_messages.add(message_key)
+        try:
+          entry = json.loads(raw)
+          if not isinstance(entry, dict):
+            continue
+          if entry.get("role") is not None and entry.get("role") != "assistant":
+            continue
+          model_info = entry.get("model") or {}
+          provider = str(entry.get("providerID") or model_info.get("providerID") or "")
+          if provider != PROVIDER_ID:
+            continue
+          tokens = entry.get("tokens") or {}
+          cache = tokens.get("cache") or {}
+          input_tokens = number(tokens.get("input"))
+          # OpenCode stores generated reasoning separately from generated output.
+          output_tokens = number(tokens.get("output")) + number(tokens.get("reasoning"))
+          cache_read = number(cache.get("read"))
+          cache_write = number(cache.get("write"))
+          total = input_tokens + output_tokens + cache_read + cache_write
+          if total <= 0:
+            continue
+
+          created = number((entry.get("time") or {}).get("created"))
+          day = dt.datetime.fromtimestamp(created / 1000).strftime("%Y-%m-%d") if created > 0 else today
+          model = str(entry.get("modelID") or model_info.get("id") or "opencode").rstrip("/").split("/")[-1]
+        except Exception:
           continue
-        tokens = entry.get("tokens") or {}
-        cache = tokens.get("cache") or {}
-        input_tokens = number(tokens.get("input"))
-        # OpenCode stores generated reasoning separately from generated output.
-        output_tokens = number(tokens.get("output")) + number(tokens.get("reasoning"))
-        cache_read = number(cache.get("read"))
-        cache_write = number(cache.get("write"))
-        total = input_tokens + output_tokens + cache_read + cache_write
-        if total <= 0:
-          continue
 
-        created = number((entry.get("time") or {}).get("created"))
-        day = dt.datetime.fromtimestamp(created / 1000).strftime("%Y-%m-%d") if created > 0 else today
-        model = str(entry.get("modelID") or "opencode").rstrip("/").split("/")[-1]
-      except Exception:
-        continue
+        session_key = AGENT_ID + ":" + str(session_id)
+        sessions.add(session_key)
+        active_days.add(day)
+        prompts += 1
 
-      session_key = AGENT_ID + ":" + str(session_id)
-      sessions.add(session_key)
-      active_days.add(day)
-      prompts += 1
+        bucket = usage_by_model.setdefault(model, empty_bucket())
+        bucket["inputTokens"] += input_tokens
+        bucket["outputTokens"] += output_tokens
+        bucket["cacheReadInputTokens"] += cache_read
+        bucket["cacheCreationInputTokens"] += cache_write
 
-      bucket = usage_by_model.setdefault(model, empty_bucket())
-      bucket["inputTokens"] += input_tokens
-      bucket["outputTokens"] += output_tokens
-      bucket["cacheReadInputTokens"] += cache_read
-      bucket["cacheCreationInputTokens"] += cache_write
-
-      if day in recent:
-        recent[day]["messageCount"] += total
-      if day == today:
-        today_prompt_count += 1
-        today_sessions.add(session_key)
-        today_token_total += total
-        today_tokens[model] = today_tokens.get(model, 0) + total
+        if day in recent:
+          recent[day]["messageCount"] += total
+        if day == today:
+          today_prompt_count += 1
+          today_sessions.add(session_key)
+          today_token_total += total
+          today_tokens[model] = today_tokens.get(model, 0) + total
   except sqlite3.Error:
     return empty_stats(), False
   finally:
@@ -211,7 +242,7 @@ def scan_pi_zen_sessions() -> dict[str, Any] | None:
     harness = "Pi" if "/.pi/" in str(root) else "Omp" if "/.omp/" in str(root) else ""
     try:
       proc = subprocess.Popen(
-        [rg, "--json", "-e", r'"provider"\s*:\s*"opencode"', "-e", r'"api"\s*:\s*"opencode', str(root)],
+        [rg, "--json", "-e", r'"provider"\s*:\s*"opencode"', "-e", r'"api"\s*:\s*"opencode"', str(root)],
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True,
@@ -243,7 +274,10 @@ def scan_pi_zen_sessions() -> dict[str, Any] | None:
         continue
       provider = str(message.get("provider") or "")
       api = str(message.get("api") or "")
-      if provider != "opencode" and not api.startswith("opencode"):
+      if provider:
+        if provider != PROVIDER_ID:
+          continue
+      elif api != PROVIDER_ID:
         continue
 
       usage = message.get("usage") or {}
@@ -396,7 +430,7 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def read_cached_stats(cache_file: Path, max_age_seconds: float) -> dict[str, Any] | None:
   cached = read_fresh_json(cache_file, max_age_seconds)
-  if not cached or cached.get("schemaVersion") != 1 or cached.get("scanDate") != local_date_string():
+  if not cached or cached.get("schemaVersion") != CACHE_SCHEMA_VERSION or cached.get("scanDate") != local_date_string():
     return None
   stats = cached.get("stats")
   if not isinstance(stats, dict):
@@ -406,7 +440,7 @@ def read_cached_stats(cache_file: Path, max_age_seconds: float) -> dict[str, Any
 
 
 def write_cached_stats(cache_file: Path, stats: dict[str, Any]) -> None:
-  write_json(cache_file, {"schemaVersion": 1, "scanDate": local_date_string(), "stats": stats})
+  write_json(cache_file, {"schemaVersion": CACHE_SCHEMA_VERSION, "scanDate": local_date_string(), "stats": stats})
 
 
 def cached_scan(db: Path, max_age_seconds: float) -> dict[str, Any]:
