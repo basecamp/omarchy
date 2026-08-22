@@ -200,7 +200,8 @@ const quickSettingsPanels = {
   wifi: 'omarchy.network',
   bluetooth: 'omarchy.bluetooth',
   audio: 'omarchy.audio',
-  display: 'omarchy.monitor'
+  display: 'omarchy.monitor',
+  power: 'omarchy.power'
 }
 assertEqual(
   defaultById['setup.quick-settings'].kind,
@@ -212,6 +213,11 @@ assert(
     defaultById[`setup.quick-settings.${entry}`].action === `omarchy-shell shell summon ${panel}`
   ),
   'menu opens every Quick Settings panel from Setup'
+)
+assertEqual(
+  defaultById['setup.quick-settings.power'].when,
+  'omarchy-hw-laptop',
+  'menu only offers the battery-dependent Power panel on laptops'
 )
 assert(
   defaultById['setup.direct-boot'].action.includes('omarchy-setup-direct-boot'),
