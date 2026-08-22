@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# omarchy:summary=Collapse occupied workspaces down to the lowest numbers (3,4,7 -> 1,2,3).
+# omarchy:args=[--dry-run]
+
+# Hyprland can't renumber a workspace, so move every window from each occupied
+# workspace into the lowest free slot, ascending per monitor. The target is
+# always empty by construction. Special workspaces (id < 1) are left alone and
+# focus follows the active workspace to its new number.
+
+dry_run=false
+[[ ${1:-} == "-n" || ${1:-} == "--dry-run" ]] && dry_run=true
+
+hypr_dispatch() {
+  local lua="$1"
+  shift
+
+  hyprctl dispatch "$lua" >/dev/null 2>&1 || hyprctl dispatch "$@" >/dev/null
+}
+
+active=$(hyprctl activeworkspace -j | jq -r '.id')
+[[ $active =~ ^-?[0-9]+$ ]] || exit 1
+clients=$(hyprctl clients -j)
+workspaces=$(hyprctl workspaces -j)
+new_active=$active
+
+while IFS= read -r monitor; do
+  target=1
+  while IFS= read -r ws; do
+    if ((ws != target)); then
+      if $dry_run; then
+        echo "workspace $ws -> $target ($monitor)"
+      else
+        while IFS= read -r addr; do
+          hypr_dispatch "hl.dsp.window.move({ window = \"address:$addr\", workspace = \"$target\", follow = false })" \
+            movetoworkspacesilent "$target,address:$addr"
+        done < <(jq -r --argjson w "$ws" '.[] | select(.workspace.id == $w) | .address' <<<"$clients")
+      fi
+      ((ws == active)) && new_active=$target
+    fi
+    target=$((target + 1))
+  done < <(jq -r --arg m "$monitor" '.[] | select(.monitor == $m and .id > 0 and .windows > 0) | .id' <<<"$workspaces" | sort -n)
+done < <(hyprctl monitors -j | jq -r '.[].name')
+
+if ! $dry_run && ((new_active != active)); then
+  hypr_dispatch "hl.dsp.focus({ workspace = \"$new_active\" })" workspace "$new_active"
+fi
