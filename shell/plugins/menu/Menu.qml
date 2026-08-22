@@ -732,7 +732,7 @@ Item {
     if (pushHistory && id !== root.activeMenu)
       root.navStack = root.navStack.concat([{ id: root.activeMenu, selectedIndex: root.selectedIndex, filterText: root.filterText }])
     root.activeMenu = id
-    root.filterText = restoredFilter === undefined ? root.filterText : restoredFilter
+    root.filterText = restoredFilter === undefined ? "" : restoredFilter
     root.selectedIndex = restoredIndex === undefined ? 0 : restoredIndex
     root.cursorActive = true
     if (fromPointer) pointerGate.allowInitialSample()
