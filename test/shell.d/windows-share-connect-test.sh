@@ -75,7 +75,7 @@ run_connect() {
 run_connect GLENN-PC
 grep -Fq -- '-W GLENN-PC' "$LOG" || fail "domain is the Windows PC hostname, not WORKGROUP"
 grep -Fq -- '-U glenn%secret' "$LOG" || fail "signs in as the Windows username"
-grep -Fq -- 'smb://GLENN-PC/C$' "$TMPDIR/mounted.log" || fail "local admin opens C$ first"
+grep -Fq -- 'smb://GLENN-PC/' "$TMPDIR/mounted.log" || fail "opens the PC so shared folders are listed"
 ! grep -Fq har0x "$LOG" || fail "does not use the Linux username"
 pass "local admin username and password open the Windows PC"
 

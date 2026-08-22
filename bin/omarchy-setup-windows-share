@@ -66,19 +66,16 @@ prompt_password() {
   gum input --password --placeholder "Password"
 }
 
-list_disk_shares() {
-  local host=$1 user=$2 pass=$3 domain=$4
-
-  smbclient -L "//$host" -U "$user%$pass" -W "$domain" 2>/dev/null |
-    awk '/Disk/ { print $1 }' |
-    grep -v '^IPC$' || true
-}
-
 mount_share() {
   local host=$1 user=$2 pass=$3 domain=$4 share=$5
+  local uri="smb://$host/"
+
+  if [[ -n $share ]]; then
+    uri="smb://$host/$share"
+  fi
 
   printf '%s\n%s\n%s\n' "$user" "$domain" "$pass" |
-    timeout 20 gio mount "smb://$host/$share"
+    timeout 20 gio mount "$uri"
 }
 
 host=$(pick_host "${1:-}")
@@ -95,19 +92,10 @@ if ! smbclient -L "//$host" -U "$user%$pass" -W "$domain" >/dev/null 2>&1; then
   exit 1
 fi
 
-mounted=
-for share in 'C$' $(list_disk_shares "$host" "$user" "$pass" "$domain"); do
-  [[ -n $share ]] || continue
-  if mount_share "$host" "$user" "$pass" "$domain" "$share"; then
-    mounted=$share
-    break
-  fi
-done
-
-if [[ -z $mounted ]]; then
-  omarchy-notification-send -u critical -g  "Signed in to $host" "No share could be opened."
+if ! mount_share "$host" "$user" "$pass" "$domain" ""; then
+  omarchy-notification-send -u critical -g  "Signed in to $host" "Could not open the share list."
   exit 1
 fi
 
-gio open "smb://$host/$mounted"
+gio open "smb://$host/"
 omarchy-notification-send -g  "Connected to $host"
