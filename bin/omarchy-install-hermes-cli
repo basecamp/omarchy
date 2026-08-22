@@ -36,8 +36,11 @@ desktop_owns_hermes() {
   omarchy-pkg-present hermes-desktop
 }
 
+# The venv appears at the python-deps stage, several stages before the one that
+# installs the command, so its presence says nothing about being usable. The
+# marker is written last, and the command is what the agent actually runs.
 desktop_hermes_ready() {
-  [[ -x $HOME/.hermes/hermes-agent/venv/bin/hermes ]]
+  [[ -f $HOME/.hermes/hermes-agent/.hermes-bootstrap-complete && -x $HOME/.local/bin/hermes ]]
 }
 
 # Whether Hermes is really installed, not merely whether the stub exists. A
@@ -57,10 +60,21 @@ fi
 
 # Hand Hermes over to the app rather than keeping a second copy beside it.
 if desktop_owns_hermes; then
-  if installed; then
+  # Not gated on that copy being healthy: `mise up` can rebuild it against the
+  # wrong interpreter and a half-finished install answers to neither test, and
+  # either way it is still a second Hermes. Removing nothing is harmless.
+  if mise where "$tool" >/dev/null 2>&1; then
     echo "Hermes Desktop provides Hermes; removing the separate CLI install..." >&2
-    mise rm -g "$tool" >/dev/null 2>&1 || true
-    mise uninstall --all "$tool" >/dev/null 2>&1 || true
+  fi
+
+  mise rm -g "$tool" >/dev/null 2>&1 || true
+  mise uninstall --all "$tool" >/dev/null 2>&1 || true
+
+  # Our own stub has to go with it. Left in place it still answers `hermes`
+  # until the app's bootstrap overwrites it, and answering means building the
+  # second Hermes this whole arrangement exists to avoid.
+  if [[ -f $HOME/.local/bin/hermes ]] && grep -q omarchy-install-hermes-cli "$HOME/.local/bin/hermes"; then
+    rm -f "$HOME/.local/bin/hermes"
   fi
 
   if desktop_hermes_ready; then
@@ -70,15 +84,6 @@ if desktop_owns_hermes; then
   echo "Hermes Desktop is installed but has not set Hermes up yet." >&2
   echo "Launch Hermes Desktop once to finish installing it." >&2
   exit 1
-fi
-
-# mise's pipx backend shells out to uv (or pipx) and neither is on a stock
-# Omarchy, so without this the install fails with "pipx is required". Take it
-# from mise rather than pacman: this also runs from the Defaults > Agent route,
-# where no package is being installed and there is no reason to need root.
-if omarchy-cmd-missing uv && ! mise where uv >/dev/null 2>&1; then
-  echo "Installing uv, which mise needs to build Hermes..." >&2
-  mise use -g --quiet uv@latest || exit 1
 fi
 
 mkdir -p "$HOME/.local/bin"
@@ -100,6 +105,13 @@ export MISE_MINIMUM_RELEASE_AGE=0
 # asks which interpreter is actually there rather than whether anything is.
 if ! [[ -d "\$(mise where '$tool' 2>/dev/null)/hermes-agent/lib/python$python" ]]; then
   echo "Installing Hermes on Python $python (this takes a minute)..." >&2
+
+  # mise's pipx backend shells out to uv, which a stock Omarchy does not have.
+  # It is fetched here rather than when this stub was written, so setting up a
+  # machine that never runs Hermes costs nothing.
+  if omarchy-cmd-missing uv && ! mise where uv >/dev/null 2>&1; then
+    mise use -g --quiet uv@latest || exit 1
+  fi
 
   mise use -g --quiet --force '$tool' || exit 1
 fi

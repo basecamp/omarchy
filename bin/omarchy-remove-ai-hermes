@@ -7,20 +7,29 @@ set -e
 
 omarchy-pkg-drop hermes-desktop
 
-# The app installs a Hermes of its own under ~/.hermes and puts its command on
-# PATH, and neither is any use once the app is gone. Not the rest of ~/.hermes:
+# The app installs a Hermes of its own under ~/.hermes -- the checkout and venv,
+# its own uv, its own node -- and puts its commands on PATH. None of it is any
+# use once the app is gone. Not the rest of ~/.hermes:
 # the chats, memories and the skills Hermes wrote for itself are the user's,
 # they are small, and finding them still there after a reinstall is the better
 # surprise.
 rm -rf \
   "$HOME/.hermes/hermes-agent" \
   "$HOME/.hermes/bootstrap-cache" \
+  "$HOME/.hermes/bin" \
+  "$HOME/.hermes/node" \
   "$HOME/.config/Hermes"
 
-rm -f \
-  "$HOME/.local/bin/hermes" \
-  "$HOME/.local/bin/hermes-agent" \
-  "$HOME/.local/bin/hermes-acp"
+# Only the wrappers pointing into ~/.hermes. The app writes these at its own
+# path stage, so a machine where it was installed but never launched still has
+# whatever was there before, and that is not ours to delete.
+for command in hermes hermes-agent hermes-acp; do
+  wrapper="$HOME/.local/bin/$command"
+
+  if [[ -f $wrapper ]] && grep -q "$HOME/.hermes" "$wrapper"; then
+    rm -f "$wrapper"
+  fi
+done
 
 echo ""
 echo "Hermes Desktop has been removed."
