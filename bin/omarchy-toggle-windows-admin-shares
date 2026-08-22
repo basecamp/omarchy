@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# omarchy:summary=Show Windows admin shares (C$, ADMIN$) in Files
+# omarchy:args=[toggle|on|off]
+
+SCHEMA=org.gnome.nautilus.preferences
+KEY=show-hidden-files
+
+is_on() {
+  [[ $(gsettings get "$SCHEMA" "$KEY" 2>/dev/null) == "true" ]]
+}
+
+set_hidden_files() {
+  gsettings set "$SCHEMA" "$KEY" "$1"
+}
+
+ACTION=${1:-toggle}
+
+case $ACTION in
+  on)
+    set_hidden_files true
+    ;;
+  off)
+    set_hidden_files false
+    ;;
+  toggle)
+    if is_on; then
+      set_hidden_files false
+    else
+      set_hidden_files true
+    fi
+    ;;
+  *)
+    echo "Usage: omarchy toggle windows-admin-shares [toggle|on|off]" >&2
+    exit 1
+    ;;
+esac
+
+if is_on; then
+  omarchy-notification-send -g  "Windows admin shares visible"
+else
+  omarchy-notification-send -g  "Windows admin shares hidden"
+fi

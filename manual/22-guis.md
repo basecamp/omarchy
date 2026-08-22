@@ -6,6 +6,11 @@ Files (Nautilus) is the graphical file manager. `Super + Shift + F` opens it, an
 
 Plug in a USB stick or an SD card and it's mounted automatically, so it just shows up in the sidebar. For anything more involved — formatting a drive, checking SMART health, creating partitions — launch _Disks_ from the app launcher (`Super + Space`).
 
+Windows PCs on the same network show up under Other Locations. Click one and sign in with the Windows account. Admin shares like `C$` stay hidden until you turn them on with `Ctrl + H` in Files, or _Trigger > Toggle > Windows Admin Shares_. You can also type a path with `Ctrl + L`, the same idea as `\\HOST\C$` in Explorer:
+
+`smb://HOST/C$`
+
+
 Double-clicking follows sensible defaults: images open in imv, video in mpv, PDFs in Document Viewer, and plain text in Neovim.
 
 ## Obsidian
