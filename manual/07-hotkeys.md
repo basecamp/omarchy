@@ -26,6 +26,8 @@ You can see all the main keyboard bindings with `Super + K` (Tmux bindings with 
 | `Super + Ctrl + Tab` | Jump to former workspace |
 | `Super + Shift + 1/2/3/4` | Move window to workspace |
 | `Super + Shift + Alt + 1/2/3/4` | Move window to workspace without following |
+| `Super + S` / `Super + Grave` | Toggle scratchpad |
+| `Super + Alt + S` / `Super + Shift + Grave` | Move window to scratchpad |
 | `Super + Shift + Alt + Arrows` | Move workspaces to directional monitor |
 | `Super + Arrow`  | Move focus to window in direction of arrow              |
 | `Super + Shift + Arrow`  | Swap window with another in direction of arrow     |
@@ -47,8 +49,6 @@ You can see all the main keyboard bindings with `Super + K` (Tmux bindings with 
 | `Super + Alt + 1/2/3/4/5`               | Jump to specific window in grouping      |
 | `Super + Alt + Arrow`  | Move window into grouping in direction of arrow  |
 | `Super + Ctrl + Left/Right`  | Move between windows inside a tiling group |
-| `Super + S` | Show scratchpad workspace overlay |
-| `Super + Alt + S` | Move window to scratchpad workspace |
 | `Super + Ctrl + Z` | Zoom in on screen (repeat for more zoom) |
 | `Super + Ctrl + Alt + Z` | Zoom fully out from screen |
 | `Super + /` | Step forward through monitor scaling options |

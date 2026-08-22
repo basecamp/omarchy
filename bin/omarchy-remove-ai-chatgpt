@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:summary=Remove the ChatGPT desktop app along with its configuration and caches.
+# omarchy:requires-sudo=true
+
+set -e
+
+omarchy-pkg-drop openai-codex-desktop
+
+# Not ~/.cache/codex-runtimes: the Codex CLI resolves its own runtime under
+# there, and it ships in a different package that survives this one.
+rm -rf \
+  "$HOME/.config/Codex" \
+  "$HOME/.cache/Codex"
+
+echo ""
+echo "ChatGPT has been removed."
