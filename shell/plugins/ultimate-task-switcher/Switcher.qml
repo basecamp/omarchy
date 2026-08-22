@@ -23,6 +23,8 @@ Item {
 
   function close() {
     root.opened = false
+    if (windowService && typeof windowService.cancelCycle === "function")
+      windowService.cancelCycle()
   }
 
   function pick(address) {
@@ -47,7 +49,7 @@ Item {
     Rectangle {
       anchors.centerIn: parent
       width: Math.min(parent.width - 32, 120 * Math.max(1, cycleList.length) + 40)
-      height: 140
+      height: 160
       color: Tokens.surface.glass
       radius: Tokens.radius.large
       border.color: Tokens.border.subtle
@@ -59,8 +61,8 @@ Item {
         Repeater {
           model: cycleList
           delegate: Rectangle {
-            width: 96
-            height: 96
+            width: 120
+            height: 120
             radius: Tokens.radius.medium
             color: index === cycleIndex ? Util.alpha(Tokens.accent.primary, 0.28) : Tokens.surface.raised
             border.color: index === cycleIndex ? Tokens.accent.primary : Tokens.border.subtle

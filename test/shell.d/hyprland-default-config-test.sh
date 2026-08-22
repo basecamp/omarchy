@@ -205,8 +205,14 @@ pass "desktop mode ships the Windows keybinding set"
 
 grep -Fq 'gaps_out = 0' "$ROOT/default/hypr/desktop-windows.lua" || fail "desktop mode zeros gaps_out"
 grep -Fq 'plugin load' "$ROOT/default/hypr/desktop-windows.lua" || fail "desktop mode loads hyprbars from an absolute plugin path"
-grep -Fq '/var/cache/hyprpm/' "$ROOT/default/hypr/desktop-windows.lua" || fail "desktop mode loads the hyprpm-built hyprbars.so"
-grep -Fq 'hyprpm reload' "$ROOT/default/hypr/desktop-windows.lua" || fail "desktop mode reloads hyprpm plugins on Hyprland start"
+grep -Fq '/usr/lib/hyprland-plugins/hyprbars.so' "$ROOT/default/hypr/desktop-windows.lua" || fail "desktop mode loads hyprbars from /usr/lib/hyprland-plugins"
+if grep -Fq '/var/cache/hyprpm/' "$ROOT/default/hypr/desktop-windows.lua"; then
+  fail "desktop mode must not load hyprbars from the hyprpm cache"
+fi
+if grep -Fq 'hyprpm' "$ROOT/default/hypr/desktop-windows.lua"; then
+  fail "desktop mode must not reload hyprpm plugins"
+fi
+grep -Fq 'omarchy-minimize' "$ROOT/default/hypr/desktop-windows.lua" || fail "desktop mode loads omarchy-minimize for in-place hide"
 pass "desktop mode compositor chrome is hyprbars, not overlay captions"
 
 # The Grave shortcuts are aliases, so the original SUPER + S pair has to keep

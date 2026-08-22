@@ -42,7 +42,7 @@ User-installed plugins live alongside these conceptually but on disk under
 | OSD           | `omarchy.osd`             | `panel`                 | `osd/Osd.qml`                         |
 | Polkit agent  | `omarchy.polkit`          | `service`               | `polkit/PolkitAgent.qml`              |
 
-Desktop Mode window title bars are **not** a shell overlay. Hyprland has no core SSD; Desktop Mode loads the `hyprbars` compositor plugin (`default/hypr/desktop-windows.lua`) so min/max/close and title-bar drag are part of the window.
+Desktop Mode window title bars are **not** a shell overlay. Hyprland has no core SSD; Desktop Mode loads `/usr/lib/hyprland-plugins/hyprbars.so` (`default/hypr/desktop-windows.lua`, built by `omarchy-apply-hyprland-plugins`) so min/max/close and title-bar drag are part of the window.
 
 First-party bar-only widgets also carry manifests next to their QML files,
 e.g. `bar/widgets/Workspaces.manifest.json`. Rich popup widgets live in their

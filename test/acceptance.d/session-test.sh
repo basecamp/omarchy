@@ -28,6 +28,20 @@ done
 hyprctl plugin list 2>/dev/null | grep -qi hyprbars \
   || fail "hyprbars is loaded for Desktop Mode title bars" "$(hyprctl plugin list 2>/dev/null || true)"
 pass "hyprbars is loaded for Desktop Mode title bars"
+hypr_pid=$(pgrep -n Hyprland || true)
+[[ -n $hypr_pid ]] || fail "Hyprland is running"
+grep -F '/usr/lib/hyprland-plugins/hyprbars.so' /proc/$hypr_pid/maps >/dev/null \
+  || fail "hyprbars is mapped from /usr/lib/hyprland-plugins" "$(awk '{print $6}' /proc/$hypr_pid/maps | sort -u | grep hypr || true)"
+pass "hyprbars is mapped from /usr/lib/hyprland-plugins"
+if grep -Fq '/var/cache/hyprpm/' /proc/$hypr_pid/maps; then
+  fail "hyprbars must not be mapped from the hyprpm cache" "$(awk '{print $6}' /proc/$hypr_pid/maps | sort -u | grep hypr || true)"
+fi
+hyprctl plugin list 2>/dev/null | grep -qi omarchy-minimize \
+  || fail "omarchy-minimize is loaded for native hide" "$(hyprctl plugin list 2>/dev/null || true)"
+pass "omarchy-minimize is loaded for native hide"
+grep -F '/usr/lib/hyprland-plugins/omarchy-minimize.so' /proc/$hypr_pid/maps >/dev/null \
+  || fail "omarchy-minimize is mapped from /usr/lib/hyprland-plugins"
+pass "omarchy-minimize is mapped from /usr/lib/hyprland-plugins"
 layer_absent "omarchy-window-chrome" || fail "overlay caption layer is gone"
 pass "overlay caption layer is gone"
 

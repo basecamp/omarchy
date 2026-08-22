@@ -86,14 +86,16 @@ if (-not $Disk -and -not $Iso) {
 
 $qemu = Find-Qemu
 $ovmf = Find-OvmfCode
+# virtio-vga's default EDID prefers 640x480@240 and xres=1280,yres=800. Pin 1080p
+# so Hyprland `preferred` is a real work area, and zoom the GTK window to that FB.
 $args = @(
   "-machine", "q35",
   "-cpu", "max",
   "-smp", "$Cpus",
   "-m", "$MemoryMb",
   "-accel", $Accel,
-  "-device", "virtio-vga",
-  "-display", $(if ($Headless) { "none" } else { "gtk" }),
+  "-device", "virtio-vga,xres=1920,yres=1080",
+  "-display", $(if ($Headless) { "none" } else { "gtk,zoom-to-fit=on" }),
   "-device", "qemu-xhci",
   "-device", "usb-tablet",
   "-netdev", "user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22",

@@ -63,8 +63,11 @@ hl.config({
 
 pcall(function()
   hl.permission("/usr/lib/hyprland-plugins/hyprbars.so", "plugin", "allow")
-  hl.permission("/usr/(bin|local/bin)/hyprpm", "plugin", "allow")
-  hl.permission("/var/cache/hyprpm/.*/hyprland-plugins/hyprbars.so", "plugin", "allow")
+  hl.permission("/usr/lib/hyprland-plugins/omarchy-minimize.so", "plugin", "allow")
+  hl.permission("/usr/local/lib/hyprland-plugins/hyprbars.so", "plugin", "allow")
+  hl.permission("/usr/local/lib/hyprland-plugins/omarchy-minimize.so", "plugin", "allow")
+  hl.permission(".*/default/hypr/plugins/hyprbars/hyprbars.so", "plugin", "allow")
+  hl.permission(".*/default/hypr/plugins/omarchy-minimize/omarchy-minimize.so", "plugin", "allow")
 end)
 
 local function plugin_table()
@@ -80,29 +83,74 @@ local function hyprbars_ready()
   return plugin ~= nil and plugin.hyprbars ~= nil
 end
 
+local function file_exists(path)
+  local file = io.open(path, "r")
+  if not file then
+    return false
+  end
+  file:close()
+  return true
+end
+
+local function load_so(path)
+  if not file_exists(path) then
+    return false
+  end
+  hl.exec_cmd("hyprctl plugin load " .. path)
+  return true
+end
+
+local function first_existing(candidates)
+  local i
+  for i = 1, #candidates do
+    if file_exists(candidates[i]) then
+      return candidates[i]
+    end
+  end
+  return nil
+end
+
 local function load_hyprbars()
   if hyprbars_ready() then
     return true
   end
-  local user = os.getenv("USER") or os.getenv("LOGNAME") or ""
+  local omarchy = os.getenv("OMARCHY_PATH") or ""
   local candidates = {
     "/usr/lib/hyprland-plugins/hyprbars.so",
     "/usr/local/lib/hyprland-plugins/hyprbars.so",
   }
-  if user ~= "" then
-    candidates[#candidates + 1] = "/var/cache/hyprpm/" .. user .. "/hyprland-plugins/hyprbars.so"
+  if omarchy ~= "" then
+    candidates[#candidates + 1] = omarchy .. "/default/hypr/plugins/hyprbars/hyprbars.so"
   end
-  local i
-  for i = 1, #candidates do
-    local path = candidates[i]
-    local file = io.open(path, "r")
-    if file then
-      file:close()
-      hl.exec_cmd("hyprctl plugin load " .. path)
-      return true
-    end
+  local path = first_existing(candidates)
+  if not path then
+    return false
   end
-  return false
+  return load_so(path)
+end
+
+local function minimize_ready()
+  local plugin = plugin_table()
+  return plugin ~= nil and plugin.omarchy_minimize ~= nil
+end
+
+local function load_omarchy_minimize()
+  if minimize_ready() then
+    return true
+  end
+  local omarchy = os.getenv("OMARCHY_PATH") or ""
+  local candidates = {
+    "/usr/lib/hyprland-plugins/omarchy-minimize.so",
+    "/usr/local/lib/hyprland-plugins/omarchy-minimize.so",
+  }
+  if omarchy ~= "" then
+    candidates[#candidates + 1] = omarchy .. "/default/hypr/plugins/omarchy-minimize/omarchy-minimize.so"
+  end
+  local path = first_existing(candidates)
+  if not path then
+    return false
+  end
+  return load_so(path)
 end
 
 local function add_hyprbars_buttons()
@@ -140,11 +188,10 @@ end
 
 load_hyprbars()
 add_hyprbars_buttons()
+load_omarchy_minimize()
 
 hl.on("hyprland.start", function()
-  if o.cmd_present("hyprpm") then
-    hl.exec_cmd("hyprpm reload -n")
-  end
   load_hyprbars()
   add_hyprbars_buttons()
+  load_omarchy_minimize()
 end)

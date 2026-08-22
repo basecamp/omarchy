@@ -83,7 +83,7 @@ window_on_active_workspace() {
   local active
   active=$(hyprctl activeworkspace -j | jq -r .id)
   hyprctl -j clients | jq -e --arg addr "$addr" --argjson active "$active" '
-    .[] | select(.address == $addr) | select(.workspace.id == $active)
+    .[] | select(.address == $addr) | select(.workspace.id == $active and .hidden != true)
   ' >/dev/null
 }
 
@@ -91,7 +91,8 @@ window_is_minimized() {
   local addr="$1"
   hyprctl -j clients | jq -e --arg addr "$addr" '
     .[] | select(.address == $addr)
-    | select(.workspace.name == "special:minimized" or .mapped == false or .hidden == true)
+    | select(.hidden == true)
+    | select(.workspace.name != "special:minimized")
   ' >/dev/null
 }
 
@@ -259,9 +260,9 @@ for task in "${tasks[@]}"; do
     omarchy-shell window cycleNext >/dev/null
     wait_until "task switcher overlay is visible" 10 layer_present "omarchy-task-switcher"
     screenshot "success-alt-tab"
-    omarchy-shell window commitCycle >/dev/null
-    wait_until "task switcher overlay closes" 10 layer_absent "omarchy-task-switcher"
-    pass "use Alt+Tab"
+    # Activation is the absolute-pointer proof at the end of this file, not the keyboard commit.
+    omarchy-shell shell hide omarchy.ultimate-task-switcher >/dev/null 2>&1 || true
+    pass "use Alt+Tab overlay summons"
     ;;
   *)
     skip_task "$task"
@@ -283,6 +284,17 @@ pass "maximize fills the work area"
 hyprctl plugin list 2>/dev/null | grep -qi hyprbars \
   || fail "hyprbars is loaded" "$(hyprctl plugin list 2>/dev/null || true)"
 pass "hyprbars is loaded"
+hypr_pid=$(pgrep -n Hyprland || true)
+[[ -n $hypr_pid ]] || fail "hyprbars is loaded from /usr/lib/hyprland-plugins" "Hyprland is not running"
+grep -F '/usr/lib/hyprland-plugins/hyprbars.so' /proc/$hypr_pid/maps >/dev/null \
+  || fail "hyprbars is loaded from /usr/lib/hyprland-plugins" "$(awk '{print $6}' /proc/$hypr_pid/maps | sort -u | grep hypr || true)"
+pass "hyprbars is loaded from /usr/lib/hyprland-plugins"
+if grep -Fq '/var/cache/hyprpm/' /proc/$hypr_pid/maps; then
+  fail "hyprbars must not be loaded from the hyprpm cache" "$(awk '{print $6}' /proc/$hypr_pid/maps | sort -u | grep hypr || true)"
+fi
+hyprctl plugin list 2>/dev/null | grep -qi omarchy-minimize \
+  || fail "omarchy-minimize is loaded" "$(hyprctl plugin list 2>/dev/null || true)"
+pass "omarchy-minimize is loaded"
 layer_absent "omarchy-window-chrome" || fail "overlay captions are gone" "omarchy-window-chrome still mapped"
 pass "overlay captions are gone"
 
@@ -299,6 +311,28 @@ hyprctl -j clients | jq -e --arg addr "${addrs[0]}" --argjson half "$half" '
   .[] | select(.address == $addr) | (.size[0] < $half - 8)
 ' >/dev/null || fail "restoreNormal unsnaps" "window still at snap width: $(hyprctl -j clients | jq --arg a "${addrs[0]}" '.[] | select(.address == $a) | {at,size}')"
 pass "restoreNormal unsnaps to an overlapping float"
+
+# Mouse proof: one absolute pointer (USB-tablet class), not relative ydotool.
+# Missing /dev/uinput is a failure, not a skip.
+run_hyprbars_pointer_proof() {
+  local script="$ROOT/test/acceptance.d/hyprbars-pointer-proof.py"
+  [[ -f $script ]] || fail "hyprbars pointer proof" "missing $script"
+  if [[ ! -e /dev/uinput ]]; then
+    fail "hyprbars pointer proof" "/dev/uinput is missing; relative ydotool is not this gate"
+  fi
+  if [[ -w /dev/uinput ]]; then
+    python3 "$script" || fail "hyprbars pointer proof" "absolute pointer did not close, drag, and pick an Alt+Tab card"
+    return
+  fi
+  if sudo -n true >/dev/null 2>&1; then
+    sudo -n python3 "$script" || fail "hyprbars pointer proof" "absolute pointer did not close, drag, and pick an Alt+Tab card"
+    return
+  fi
+  fail "hyprbars pointer proof" "cannot write /dev/uinput and sudo -n is unavailable; relative ydotool is not this gate"
+}
+
+run_hyprbars_pointer_proof
+pass "hyprbars close, title-bar drag, and Alt+Tab card click via an absolute pointer"
 
 trap - EXIT
 restore_native_windows

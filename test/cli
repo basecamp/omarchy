@@ -204,7 +204,7 @@ if [[ $output == *"apply"* ]]; then
 fi
 pass "a group whose commands are all hidden stays out of the top-level listing"
 
-for internal in omarchy-apply-system omarchy-apply-hardware omarchy-apply-lock; do
+for internal in omarchy-apply-system omarchy-apply-hardware omarchy-apply-lock omarchy-apply-hyprland-plugins; do
   if "$CLI" commands --json | jq -e --arg binary "$internal" \
     '.commands[] | select(.binary == $binary)' >/dev/null; then
     fail "$internal stays out of the default command listing"

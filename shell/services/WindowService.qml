@@ -14,6 +14,8 @@ import "WindowModel.js" as WindowModel
 // dispatchers (`fullscreen 2`, movewindowpixel, resizeactive) fail on that
 // parser. Verbs below send `hl.dsp.window.*` forms, always naming
 // `window = "address:…"`.
+// Minimize is CWindow::setHidden on the same workspace via the
+// omarchy-minimize plugin (`hl.plugin.omarchy_minimize.*`).
 QtObject {
   id: root
 
@@ -26,6 +28,8 @@ QtObject {
   property int cycleIndex: 0
   property var cycleList: []
   property var pins: []
+  property var shippedPins: []
+  property bool userPinsMissing: false
   property string home: Quickshell.env("HOME")
   property var monitorIpc: ({})
   property var clientsIpc: []
@@ -45,6 +49,12 @@ QtObject {
   }
   readonly property var groups: WindowModel.buildGroups(root.windows, root.pins)
   readonly property string pinsPath: root.home + "/.local/state/omarchy/ultimate/taskbar-pins.json"
+  readonly property string shippedPinsPath: Quickshell.env("OMARCHY_PATH") + "/default/ultimate/taskbar-pins.json"
+
+  function _applyShippedPinsIfNeeded() {
+    if (root.userPinsMissing && root.pins.length === 0 && root.shippedPins.length > 0)
+      root.pins = root.shippedPins
+  }
 
   function _dispatchLua(expr, refresh) {
     Hyprland.dispatch(expr)
@@ -84,8 +94,11 @@ QtObject {
     var wsId = ws ? ws.id : (ipc.workspace && ipc.workspace.id)
     var cls = String(ipc.class || hypr.appId || "")
     var mon = hypr.monitor
+    var address = root._canonAddr(hypr.address || ipc.address)
+    var client = root._clientIpc(address)
+    var hidden = (client && client.hidden === true) || ipc.hidden === true
     return {
-      address: root._canonAddr(hypr.address || ipc.address),
+      address: address,
       title: String(hypr.title || ipc.title || ""),
       appId: cls,
       class: cls,
@@ -98,7 +111,7 @@ QtObject {
       fullscreen: Number(ipc.fullscreen || 0),
       workspace: wsName,
       workspaceId: wsId,
-      minimized: wsName === "special:minimized",
+      minimized: hidden,
       monitorName: mon ? String(mon.name || "") : ""
     }
   }
@@ -190,7 +203,7 @@ QtObject {
       width: Number(ipc.size[0]),
       height: Number(ipc.size[1]),
       fullscreen: Number(ipc.fullscreen || 0),
-      minimized: !!(ipc.workspace && ipc.workspace.name === "special:minimized")
+      minimized: ipc.hidden === true
     }
   }
 
@@ -249,15 +262,13 @@ QtObject {
     var target = root._addr(address)
     if (!target) return
     root._markMinimized(target, true)
-    root._dispatchLua("hl.dsp.window.move({ workspace = \"special:minimized\", follow = false, " + root._luaWindow(target) + " })", true)
+    root._dispatchLua("hl.plugin.omarchy_minimize.minimize({ " + root._luaWindow(target) + " })", true)
   }
 
   function restore(address) {
     var target = root._addr(address)
     if (!target) return
-    var ws = Hyprland.focusedWorkspace
-    var id = ws ? String(ws.id) : "1"
-    root._dispatchLua("hl.dsp.window.move({ workspace = \"" + id + "\", follow = true, " + root._luaWindow(target) + " })", true)
+    root._dispatchLua("hl.plugin.omarchy_minimize.restore({ " + root._luaWindow(target) + " })", true)
     root._markMinimized(target, false)
   }
 
@@ -405,15 +416,18 @@ QtObject {
   function commitCycle() {
     if (!root.cycling) return
     var address = root.cycleList[root.cycleIndex]
+    root.cancelCycle()
+    if (address) root.restore(address)
+  }
+
+  function cancelCycle() {
     root.cycling = false
     root.cycleList = []
-    if (address) root.restore(address)
   }
 
   function activateFromSwitcher(address) {
     var target = root._canonAddr(address)
-    root.cycling = false
-    root.cycleList = []
+    root.cancelCycle()
     if (target) root.restore(target)
   }
 
@@ -477,8 +491,26 @@ QtObject {
     path: root.pinsPath
     watchChanges: true
     printErrors: false
-    onLoaded: root.pins = WindowModel.parsePins(text())
-    onLoadFailed: root.pins = []
+    onLoaded: {
+      root.userPinsMissing = false
+      root.pins = WindowModel.parsePins(text())
+    }
+    onLoadFailed: {
+      root.userPinsMissing = true
+      root._applyShippedPinsIfNeeded()
+    }
+    onFileChanged: reload()
+  }
+
+  property FileView shippedPinFile: FileView {
+    path: root.shippedPinsPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: {
+      root.shippedPins = WindowModel.parsePins(text())
+      root._applyShippedPinsIfNeeded()
+    }
+    onLoadFailed: root.shippedPins = []
     onFileChanged: reload()
   }
 }

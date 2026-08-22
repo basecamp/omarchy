@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# omarchy:summary=Build Desktop Mode Hyprland plugins into /usr/lib/hyprland-plugins
+# omarchy:requires-sudo=true
+# omarchy:hidden=true
+
+set -euo pipefail
+
+if [[ -z ${OMARCHY_PATH:-} ]]; then
+  echo "Error: OMARCHY_PATH is not set" >&2
+  exit 1
+fi
+
+if ! pkg-config --exists hyprland; then
+  echo "Error: hyprland headers are not installed (pkg-config hyprland)" >&2
+  exit 1
+fi
+
+plugin_dir=/usr/lib/hyprland-plugins
+src_root="$OMARCHY_PATH/default/hypr/plugins"
+
+as_root() {
+  if (( EUID == 0 )); then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+build_and_install() {
+  local name=$1
+  local dir=$src_root/$name
+  local so=$dir/$name.so
+
+  if [[ ! -d $dir ]]; then
+    echo "Error: missing plugin source $dir" >&2
+    exit 1
+  fi
+
+  make -C "$dir" clean all
+  if [[ ! -f $so ]]; then
+    echo "Error: $so was not produced" >&2
+    exit 1
+  fi
+  as_root install -Dm755 "$so" "$plugin_dir/$name.so"
+  echo "installed $plugin_dir/$name.so"
+}
+
+build_and_install hyprbars
+build_and_install omarchy-minimize
