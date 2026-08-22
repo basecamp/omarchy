@@ -6,9 +6,10 @@
 
 Local token stats come from documented session files under $GROK_HOME
 (default ~/.grok): each updates.jsonl turn_completed event is one prompt.
-The weekly SuperGrok pool and plan label come from the same cli-chat-proxy
-endpoints Grok's /usage command uses. The agents panel only ever reads the
-JSON this prints.
+pi/omp sessions that ran on an xAI provider are merged in, the same way
+Claude and Codex pick up those agents. The weekly SuperGrok pool and plan
+label come from the same cli-chat-proxy endpoints Grok's /usage command uses.
+The agents panel only ever reads the JSON this prints.
 """
 
 from __future__ import annotations
@@ -116,7 +117,8 @@ def cache_root() -> Path:
 
 
 def scan_cache_paths(sessions_root: Path) -> tuple[Path, Path]:
-  digest = hashlib.sha1(str(sessions_root).encode("utf-8")).hexdigest()[:16]
+  # Home is in the digest because pi/omp sessions live there, not under GROK_HOME.
+  digest = hashlib.sha1((str(sessions_root) + "\n" + str(Path.home())).encode("utf-8")).hexdigest()[:16]
   root = cache_root()
   return root / f"grok-scan-{digest}.json", root / f"grok-scan-{digest}.lock"
 
@@ -313,10 +315,74 @@ def list_update_files(sessions_root: Path) -> list[Path]:
   return files
 
 
+def scan_pi_sessions() -> list[dict[str, Any]]:
+  # A SuperGrok subscription burned through pi or omp never writes a Grok
+  # Build transcript, but those agents record provider, model, and usage on
+  # every assistant message. Claude and Codex already merge the same trees.
+  contribs: list[dict[str, Any]] = []
+  roots = [
+    Path.home() / ".pi" / "agent" / "sessions",
+    Path.home() / ".omp" / "agent" / "sessions",
+  ]
+  for root in roots:
+    if not root.is_dir():
+      continue
+    for path in root.rglob("*.jsonl"):
+      turns: list[dict[str, Any]] = []
+      try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+          for line_number, line in enumerate(handle, 1):
+            if '"usage"' not in line or '"assistant"' not in line:
+              continue
+            try:
+              entry = json.loads(line)
+            except json.JSONDecodeError:
+              continue
+            if not isinstance(entry, dict):
+              continue
+            message = entry.get("message") if isinstance(entry.get("message"), dict) else {}
+            if not isinstance(message, dict):
+              continue
+            if entry.get("type") != "message" or message.get("role") != "assistant":
+              continue
+            provider = str(message.get("provider") or entry.get("provider") or "")
+            if provider not in ("xai", "xai-auth"):
+              continue
+            usage = message.get("usage") if isinstance(message.get("usage"), dict) else {}
+            if not usage:
+              continue
+            input_tokens = number(usage.get("input") or usage.get("inputTokens"))
+            output_tokens = number(usage.get("output") or usage.get("outputTokens"))
+            reasoning = number(usage.get("reasoning") or usage.get("reasoningTokens"))
+            cache_read = number(usage.get("cacheRead") or usage.get("cacheReadInputTokens"))
+            cache_write = number(usage.get("cacheWrite") or usage.get("cacheCreationInputTokens"))
+            if input_tokens >= cache_read + cache_write:
+              input_tokens -= cache_read + cache_write
+            if reasoning > output_tokens:
+              output_tokens += reasoning - output_tokens
+            if not (input_tokens or output_tokens or cache_read or cache_write):
+              continue
+            turns.append({
+              "id": str(entry.get("id") or f"{path}:{line_number}"),
+              "day": local_day(entry.get("timestamp") or message.get("timestamp")),
+              "model": str(message.get("model") or "grok"),
+              "inputTokens": input_tokens,
+              "outputTokens": output_tokens,
+              "cacheReadInputTokens": cache_read,
+              "cacheCreationInputTokens": cache_write,
+            })
+      except OSError:
+        continue
+      if turns:
+        contribs.append({"skip": False, "sessionKey": str(path), "turns": turns})
+  return contribs
+
+
 def scan_sessions(sessions_root: Path) -> list[dict[str, Any]]:
   contribs: list[dict[str, Any]] = []
   for path in list_update_files(sessions_root):
     contribs.append(file_contrib(path))
+  contribs.extend(scan_pi_sessions())
   return contribs
 
 

@@ -153,6 +153,29 @@ pass "Grok collector honors GROK_HOME"
   fail "Grok collector says how to restore limits" "$result"
 pass "Grok collector reports a missing login"
 
+# pi/omp xAI sessions count; other providers do not. Added after the GROK_HOME
+# check so HOME=$TEST_HOME cannot leak these rows into that assertion.
+pi_dir="$TEST_HOME/.pi/agent/sessions/proj"
+mkdir -p "$pi_dir"
+now_ms=$(python3 -c 'import time; print(int(time.time() * 1000))')
+cat >"$pi_dir/chat.jsonl" <<EOF
+{"type":"message","id":"m1","timestamp":$now_ms,"message":{"role":"assistant","provider":"xai","model":"grok-4.6","usage":{"input":100,"output":20,"cacheRead":10,"cacheWrite":0,"reasoning":5}}}
+{"type":"message","id":"m2","timestamp":$now_ms,"message":{"role":"assistant","provider":"anthropic","model":"claude","usage":{"input":999,"output":999}}}
+EOF
+
+result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" GROK_HOME="$TEST_HOME/.grok" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --force)
+
+[[ $(jq -r '.todayPrompts' <<<"$result") == "4" ]] ||
+  fail "Grok collector counts pi xAI messages and ignores other providers" "$result"
+# Native turns 1209 + pi (90 uncached + 20 output + 10 cache). Reasoning is
+# already below output, so it is not added again.
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "1329" ]] ||
+  fail "Grok collector merges pi xAI tokens without double-counting" "$result"
+[[ $(jq -r '.todaySessions' <<<"$result") == "2" ]] ||
+  fail "Grok collector counts the pi session separately" "$result"
+pass "Grok collector counts pi xAI messages and ignores other providers"
+
 # Billing and user probes are stubbed: the collector must not reach the network.
 CACHE_HOME=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME" "$OTHER_HOME" "$CACHE_HOME"' EXIT
