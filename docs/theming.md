@@ -177,6 +177,22 @@ The running shell reads `shell.toml` into two QML singletons:
 - `Color` for palette and surface roles like `Color.menu.border`.
 - `Style` for controls, spacing, font scale, corner radius, and bar sizing.
 
+### Surface fills
+
+The `[menu]` `background` and `selected-background` tokens accept either a solid color or a 2–10 stop gradient in the same space-separated syntax as shell borders:
+
+```toml
+[menu]
+background = "#111827 #312e81 25deg"
+background-alpha = 0.95
+selected-background = "#7c3aed #2563eb 0deg"
+selected-background-alpha = 0.35
+```
+
+Stops are distributed evenly. `0deg` runs left to right and `90deg` runs top to bottom. For gradient values, the alpha companion multiplies every stop's own alpha; solid values retain the shell's existing alpha behavior. Menu, Clipboard, Emojis, and Reminders share the menu card fill; Menu, Clipboard, and Emojis also share the selected-item fill. Color-only consumers use the first stop as a compatibility fallback.
+
+Do not add separate `background-gradient` or `selected-background-gradient` keys. The canonical token itself holds either the solid color or gradient.
+
 ### Borders
 
 Shell border tokens accept either a solid color or a gradient in the same key:
