@@ -33,7 +33,7 @@ Text {
 
 - When passing dynamic text to an Omarchy-owned component whose internal `Text` format cannot be controlled, use a documented markup-neutralizing helper and add a regression test. Prefer extending the shared component with a plain-text property when that is feasible.
 - Bound and validate downloaded data before displaying or saving it: limit response and collection sizes, string lengths, identifiers, and timestamps.
-- Keep network access explicit and user-initiated. Use fixed HTTPS sources, timeouts, response-size limits, and validation. Never execute downloaded content or interpolate untrusted values into shell commands.
+- Keep network access explicit. Use fixed HTTPS sources, timeouts, response-size limits, and validation. For periodic background refreshes, disclose the behavior and let users enable or disable it. Never execute downloaded content or interpolate untrusted values into shell commands.
 - Add regression coverage for markup-shaped input and every shared tooltip or notification sink that receives dynamic text.
 
 ## Bar Layout
