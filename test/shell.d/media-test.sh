@@ -46,7 +46,7 @@ assertEqual(media.osdMessage(null, 'Fallback'), 'Fallback', 'media falls back OS
 
 assert(widgetSource.includes('setting("scrollLabel", true) !== false'), 'media scrolls labels unless explicitly disabled')
 assert(widgetSource.includes('Number(setting("maxLabelWidth", 180)) > 0'), 'media accepts positive configured label widths')
-assert(widgetSource.includes('width: scrollClip.width'), 'media constrains static labels to the scroll clip width')
-assert(widgetSource.includes('elide: Text.ElideRight'), 'media elides labels that do not fit')
+assert(widgetSource.includes('width: root.scrollLabel ? implicitWidth : scrollClip.width'), 'media constrains only static labels to the scroll clip width')
+assert(widgetSource.includes('elide: root.scrollLabel ? Text.ElideNone : Text.ElideRight'), 'media elides only static labels that do not fit')
 assert(widgetSource.includes('running: root.scrollLabel && labelText.needsScroll'), 'media only animates labels when scrolling is enabled')
 JS
