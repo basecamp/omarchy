@@ -196,10 +196,11 @@ def model_turns(usage: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
 
 def extract_usage(update: dict[str, Any]) -> dict[str, Any] | None:
   nested = update.get("usage")
-  if isinstance(nested, dict):
+  if isinstance(nested, dict) and nested:
     return nested
-  # Some Grok Build builds write the ledger on the update itself.
-  if any(key in update for key in ("inputTokens", "outputTokens", "cachedReadTokens")):
+  # Some Grok Build builds write the ledger on the update itself, or put an
+  # empty usage object next to the flat token fields.
+  if any(key in update for key in ("inputTokens", "outputTokens", "cachedReadTokens", "cacheCreationTokens")):
     return update
   return None
 
@@ -214,37 +215,41 @@ def scan_updates(path: Path) -> list[dict[str, Any]]:
           continue
         try:
           entry = json.loads(line)
-        except json.JSONDecodeError:
-          continue
-        if not isinstance(entry, dict):
-          continue
-        update = ((entry.get("params") or {}).get("update") or {})
-        if not isinstance(update, dict):
-          continue
-        kind = update.get("sessionUpdate") or update.get("event_name")
-        if kind != "turn_completed":
-          continue
-        usage = extract_usage(update)
-        if usage is None:
-          continue
-        prompt_id = str(update.get("prompt_id") or f"{path}:{line_number}")
-        if prompt_id in seen:
-          continue
-        seen.add(prompt_id)
-        day = local_day(entry.get("timestamp") or ((entry.get("params") or {}).get("_meta") or {}).get("agentTimestampMs"))
-        for model, bucket in model_turns(usage):
-          input_tokens, output_tokens, cache_read, cache_write = turn_usage(bucket)
-          if not (input_tokens or output_tokens or cache_read or cache_write):
+          if not isinstance(entry, dict):
             continue
-          turns.append({
-            "id": prompt_id,
-            "day": day,
-            "model": model,
-            "inputTokens": input_tokens,
-            "outputTokens": output_tokens,
-            "cacheReadInputTokens": cache_read,
-            "cacheCreationInputTokens": cache_write,
-          })
+          params = entry.get("params")
+          if not isinstance(params, dict):
+            continue
+          update = params.get("update") or {}
+          if not isinstance(update, dict):
+            continue
+          kind = update.get("sessionUpdate") or update.get("event_name")
+          if kind != "turn_completed":
+            continue
+          usage = extract_usage(update)
+          if usage is None:
+            continue
+          prompt_id = str(update.get("prompt_id") or f"{path}:{line_number}")
+          if prompt_id in seen:
+            continue
+          seen.add(prompt_id)
+          meta = params.get("_meta") if isinstance(params.get("_meta"), dict) else {}
+          day = local_day(entry.get("timestamp") or meta.get("agentTimestampMs"))
+          for model, bucket in model_turns(usage):
+            input_tokens, output_tokens, cache_read, cache_write = turn_usage(bucket)
+            if not (input_tokens or output_tokens or cache_read or cache_write):
+              continue
+            turns.append({
+              "id": prompt_id,
+              "day": day,
+              "model": model,
+              "inputTokens": input_tokens,
+              "outputTokens": output_tokens,
+              "cacheReadInputTokens": cache_read,
+              "cacheCreationInputTokens": cache_write,
+            })
+        except Exception:
+          continue
   except OSError:
     return []
   return turns
@@ -355,41 +360,41 @@ def scan_pi_sessions() -> list[dict[str, Any]]:
               continue
             try:
               entry = json.loads(line)
-            except json.JSONDecodeError:
+              if not isinstance(entry, dict):
+                continue
+              message = entry.get("message") if isinstance(entry.get("message"), dict) else {}
+              if not isinstance(message, dict):
+                continue
+              if entry.get("type") != "message" or message.get("role") != "assistant":
+                continue
+              provider = str(message.get("provider") or entry.get("provider") or "")
+              if provider not in ("xai", "xai-auth"):
+                continue
+              usage = message.get("usage") if isinstance(message.get("usage"), dict) else {}
+              if not usage:
+                continue
+              input_tokens = number(usage.get("input") or usage.get("inputTokens"))
+              output_tokens = number(usage.get("output") or usage.get("outputTokens"))
+              reasoning = number(usage.get("reasoning") or usage.get("reasoningTokens"))
+              cache_read = number(usage.get("cacheRead") or usage.get("cacheReadInputTokens"))
+              cache_write = number(usage.get("cacheWrite") or usage.get("cacheCreationInputTokens"))
+              if input_tokens >= cache_read + cache_write:
+                input_tokens -= cache_read + cache_write
+              if reasoning > output_tokens:
+                output_tokens += reasoning - output_tokens
+              if not (input_tokens or output_tokens or cache_read or cache_write):
+                continue
+              turns.append({
+                "id": str(entry.get("id") or f"{path}:{line_number}"),
+                "day": local_day(entry.get("timestamp") or message.get("timestamp")),
+                "model": str(message.get("model") or "grok"),
+                "inputTokens": input_tokens,
+                "outputTokens": output_tokens,
+                "cacheReadInputTokens": cache_read,
+                "cacheCreationInputTokens": cache_write,
+              })
+            except Exception:
               continue
-            if not isinstance(entry, dict):
-              continue
-            message = entry.get("message") if isinstance(entry.get("message"), dict) else {}
-            if not isinstance(message, dict):
-              continue
-            if entry.get("type") != "message" or message.get("role") != "assistant":
-              continue
-            provider = str(message.get("provider") or entry.get("provider") or "")
-            if provider not in ("xai", "xai-auth"):
-              continue
-            usage = message.get("usage") if isinstance(message.get("usage"), dict) else {}
-            if not usage:
-              continue
-            input_tokens = number(usage.get("input") or usage.get("inputTokens"))
-            output_tokens = number(usage.get("output") or usage.get("outputTokens"))
-            reasoning = number(usage.get("reasoning") or usage.get("reasoningTokens"))
-            cache_read = number(usage.get("cacheRead") or usage.get("cacheReadInputTokens"))
-            cache_write = number(usage.get("cacheWrite") or usage.get("cacheCreationInputTokens"))
-            if input_tokens >= cache_read + cache_write:
-              input_tokens -= cache_read + cache_write
-            if reasoning > output_tokens:
-              output_tokens += reasoning - output_tokens
-            if not (input_tokens or output_tokens or cache_read or cache_write):
-              continue
-            turns.append({
-              "id": str(entry.get("id") or f"{path}:{line_number}"),
-              "day": local_day(entry.get("timestamp") or message.get("timestamp")),
-              "model": str(message.get("model") or "grok"),
-              "inputTokens": input_tokens,
-              "outputTokens": output_tokens,
-              "cacheReadInputTokens": cache_read,
-              "cacheCreationInputTokens": cache_write,
-            })
       except OSError:
         continue
       if turns:
@@ -680,7 +685,7 @@ def build_record(force: bool = False, limits_only: bool = False) -> dict[str, An
 def main() -> int:
   parser = argparse.ArgumentParser()
   parser.add_argument("--force", action="store_true", help="rescan sessions and re-probe limits, ignoring caches")
-  parser.add_argument("--limits-only", action="store_true", help="reuse any recent session scan; only the limits probe must be fresh")
+  parser.add_argument("--limits-only", action="store_true", help="reuse any same-day session scan; only the limits probe must be fresh")
   args = parser.parse_args()
   record = build_record(force=args.force, limits_only=args.limits_only)
   print(json.dumps(record, separators=(",", ":"), sort_keys=True))

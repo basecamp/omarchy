@@ -79,6 +79,7 @@ write_summary "$session_dir"
   turn_line "prompt-1" "grok-4.6" 100 20 60 5
   turn_line "prompt-2" "grok-4.6" 80 10 50 3
   echo '{not json'
+  echo '{"method":"session/update","params":["turn_completed"]}'
   echo '{"method":"session/update","params":{"update":{"sessionUpdate":"turn_completed","usage":{"inputTokens":999}}}}'
 } >"$session_dir/updates.jsonl"
 
@@ -164,6 +165,8 @@ now_ms=$(python3 -c 'import time; print(int(time.time() * 1000))')
 cat >"$pi_dir/chat.jsonl" <<EOF
 {"type":"message","id":"m1","timestamp":$now_ms,"message":{"role":"assistant","provider":"xai","model":"grok-4.6","usage":{"input":100,"output":20,"cacheRead":10,"cacheWrite":0,"reasoning":5}}}
 {"type":"message","id":"m2","timestamp":$now_ms,"message":{"role":"assistant","provider":"anthropic","model":"claude","usage":{"input":999,"output":999}}}
+{"type":"message","id":"m-user","timestamp":$now_ms,"message":{"role":"user","provider":"xai","model":"grok-4.6","usage":{"input":50,"output":1}}}
+["usage","assistant"]
 EOF
 
 result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" GROK_HOME="$TEST_HOME/.grok" \
@@ -590,11 +593,28 @@ print(json.dumps({
     }
   }
 }))
+print(json.dumps({
+  "timestamp": ts,
+  "method": "session/update",
+  "params": {
+    "sessionId": sid,
+    "update": {
+      "sessionUpdate": "turn_completed",
+      "prompt_id": "empty-nested",
+      "usage": {},
+      "inputTokens": 8,
+      "outputTokens": 1,
+      "cachedReadTokens": 0,
+      "cacheCreationTokens": 0,
+      "reasoningTokens": 0
+    }
+  }
+}))
 PY
 result=$(HOME="$FLAT_HOME" XDG_CACHE_HOME="$FLAT_HOME/.cache" GROK_HOME="$FLAT_HOME/.grok" \
   "$ROOT/bin/omarchy-agent-usage-grok" --force)
-[[ $(jq -r '.todayPrompts' <<<"$result") == "2" ]] ||
+[[ $(jq -r '.todayPrompts' <<<"$result") == "3" ]] ||
   fail "Grok collector counts flat and event_name turn_completed rows" "$result"
-[[ $(jq -r '.todayTotalTokens' <<<"$result") == "70" ]] ||
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "79" ]] ||
   fail "Grok collector reads a flat turn_completed ledger" "$result"
 pass "Grok collector reads flat and event_name turn_completed rows"
