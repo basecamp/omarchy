@@ -38,6 +38,12 @@ parse_keycodes() {
         if (code != "" && symbol != "" && symbol != "NoSymbol") keycode_symbol[code] = toupper(symbol)
       }
 
+      # Read off the keysym rather than the keycode, so the key left of 1 reads
+      # as the symbol printed on it whichever key the active layout puts it on.
+      for (code in keycode_symbol) {
+        if (keycode_symbol[code] == "GRAVE") keycode_symbol[code] = "~"
+      }
+
       mouse_symbol["272"] = "LEFT MOUSE BUTTON"
       mouse_symbol["273"] = "RIGHT MOUSE BUTTON"
       mouse_symbol["274"] = "MIDDLE MOUSE BUTTON"
@@ -305,6 +311,7 @@ dynamic_bindings() {
 
       case "$key" in
         comma) key="COMMA" ;;
+        grave) key="~" ;;
         period) key="PERIOD" ;;
         minus) key="MINUS" ;;
         equal) key="EQUAL" ;;
@@ -324,15 +331,41 @@ static_bindings() {
   echo "SHIFT ALT,D,Download Video from Web App,sendshortcut,SHIFT ALT,D,"
 }
 
+# Actions Omarchy binds to a second chord meant as an alternative, named one at
+# a time. A rule would be wrong here: Alt + Tab and Shift + Alt + Tab both say
+# "Reveal active window on top" while cycling opposite ways, and a media key is
+# nobody's idea of an alternative to a Super chord. Only chords a user reaches
+# for interchangeably belong on one row.
+alternative_chord_actions() {
+  cat <<'ACTIONS'
+Close window
+Calculator
+Toggle scratchpad
+Move window to scratchpad
+ACTIONS
+}
+
 # Parse and format keybindings
 #
 # `awk` does the heavy lifting:
 # - Set the field separator to a comma ','.
 # - Joins the key combination (e.g., "SUPER + Q").
 # - Joins the command that the key executes.
+# - Puts an action's alternative chord on the row with the first one.
 # - Prints display text and dispatch metadata as tab-separated fields.
 parse_binding_records() {
-  awk -F, '
+  awk -F, -v alternatives="$(alternative_chord_actions)" '
+BEGIN {
+    # The column every row pads its chords to. Nothing is allowed past it: the
+    # menu renders in monospace, and a row that overruns pushes its arrow out
+    # of a column the eye reads straight down.
+    column = 35;
+
+    split(alternatives, named, "\n");
+    for (i in named) {
+        if (named[i] != "") shares_a_row[named[i]] = 1;
+    }
+}
 {
     # Combine the modifier and key (first two fields)
     key_combo = $1 " + " $2;
@@ -365,8 +398,35 @@ parse_binding_records() {
         gsub(/[ \t]+/, " ", key_combo);  # Collapse multiple spaces to one
     }
 
+    # An alternative chord joins the row the first one opened: "SUPER + W /
+    # SUPER + Q -> Close window". Both halves have to agree on what they run,
+    # since a label is only what a chord is called; an unresolved dispatcher
+    # says nothing at all, so it never counts as agreement.
     if (action != "") {
-        printf "%-35s → %s\t%s\t%s\n", key_combo, action, dispatcher, arg;
+        action_key = action SUBSEP dispatcher SUBSEP arg;
+        together = "";
+
+        if (action in shares_a_row && dispatcher != "" && action_key in leads) {
+            together = chords[leads[action_key]] " / " key_combo;
+        }
+
+        if (together != "" && length(together) <= column) {
+            chords[leads[action_key]] = together;
+        } else {
+            # Also the path a pair too wide for the column takes: two rows in
+            # line beat one that juts out of it.
+            entries++;
+            chords[entries] = key_combo;
+            actions[entries] = action;
+            dispatchers[entries] = dispatcher;
+            args[entries] = arg;
+            leads[action_key] = entries;
+        }
+    }
+}
+END {
+    for (entry = 1; entry <= entries; entry++) {
+        printf "%-*s → %s\t%s\t%s\n", column, chords[entry], actions[entry], dispatchers[entry], args[entry];
     }
 }'
 }
@@ -374,7 +434,13 @@ parse_binding_records() {
 prioritize_entries() {
   awk -F '\t' '
   {
+    # Alternative chords are display only. Classifying on them would read
+    # "SUPER SHIFT + RETURN / SUPER SHIFT + B" as the alternate browser chord
+    # and drop the browser 20 rows down its own list, so match the chord that
+    # leads the row and ignore the rest.
     line = $1
+    sub(/ \/ [^→]*→/, " →", line)
+
     prio = 50
     if (match(line, /Keybindings/)) prio = 0
     if (match(line, /Omarchy menu/))  prio = 1
@@ -436,6 +502,12 @@ prioritize_entries() {
   cut -f2-
 }
 
+# Drop repeated records while keeping the order Hyprland reported them in, so
+# the chord a user declared first is the one that leads a merged entry.
+dedupe_binding_records() {
+  awk '!seen[$0]++'
+}
+
 output_binding_records_uncached() {
   local dynamic
 
@@ -446,7 +518,7 @@ output_binding_records_uncached() {
     [[ -n $dynamic ]] && printf '%s\n' "$dynamic"
     static_bindings
   } |
-    sort -u |
+    dedupe_binding_records |
     parse_keycodes |
     parse_binding_records |
     prioritize_entries
@@ -458,7 +530,7 @@ output_binding_records_uncached() {
 
 keybindings_cache_key() {
   {
-    printf 'v11\n'
+    printf 'v13\n'
     hyprctl devices 2>/dev/null | grep -F 'active keymap:'
     hyprctl binds 2>/dev/null
   } | sha256sum | awk '{ print $1 }'
