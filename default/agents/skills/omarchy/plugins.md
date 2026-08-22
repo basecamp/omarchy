@@ -54,9 +54,10 @@ allocation in a process the user cannot afford to have balloon.
 
 - `FileView` (`Quickshell.Io`) reads the *entire* file before any code can
   validate or reject it. Do not use it for user-writable files.
-- Read such files with a stat-gated `Process` instead: `stat -c%s` reads only
-  metadata (no content), so check it first and `cat` only when the size is
-  under a hard cap (e.g. 64 KiB).
+- Read such files with a bounded `Process` instead: read at most one byte over
+  the hard cap (e.g. `timeout 5 head -c 65537 -- "$path"` for a 64 KiB cap)
+  and reject output over the cap. A preliminary `stat -c%s` can fast-reject an
+  oversized file, but cannot enforce the bound because the file may change.
 - Bound the in-memory model too. A file under the byte cap can still hold a
   huge array — cap collection counts (dice lists, side lists, rows) to a sane
   maximum while parsing.
