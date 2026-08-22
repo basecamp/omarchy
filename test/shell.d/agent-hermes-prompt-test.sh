@@ -18,6 +18,7 @@ printf '%s\0' "$@" >>"$OMARCHY_TEST_HERMES_LOG"
 if [[ " $* " == *" --resume "* ]]; then
   printf 'Follow-up answer.\n'
 else
+  printf 'Initializing agent...\n'
   printf 'session_id: mock-session-123\nPortal crashed in its rendering worker.\n'
 fi
 SH
@@ -65,6 +66,6 @@ printf '\n' >&"${DIAGNOSIS[1]}"
 wait "$diagnosis_pid"
 
 mapfile -d '' -t hermes_args <"$hermes_log"
-[[ ${hermes_args[*]} == "chat -q Crash facts -Q --yolo chat -q why did it crash? -Q --yolo --resume mock-session-123" ]] ||
+[[ ${hermes_args[*]} == "chat -q Crash facts --yolo chat -q why did it crash? --yolo --resume mock-session-123" ]] ||
   fail "Hermes crash diagnosis resumes the same session for follow-ups" "${hermes_args[*]}"
 pass "Hermes crash diagnosis accepts typed follow-ups in the same session"

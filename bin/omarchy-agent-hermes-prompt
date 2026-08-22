@@ -19,14 +19,24 @@ session_id=""
 # blank window reads as a hang. This line is what makes the wait legible.
 echo "Diagnosing with Hermes — this may take a few minutes."
 
-# The first call uses single-query mode with quiet output and the same
-# auto-bypass approval semantics as `hermes -z`. Unlike -z, it prints the
-# session id, which is how a typed follow-up resumes the same conversation.
-output=$(hermes chat -q "$1" -Q --yolo 2>&1)
-status=$?
-printf '%s\n' "$output"
+# The first call uses single-query mode with the same auto-bypass approval
+# semantics as `hermes -z`. Output is teed so Hermes' live progress (agent
+# startup, reasoning, tool activity) streams to the window instead of being
+# buffered until the end, and the session id is captured for follow-ups.
+run_turn() {
+  local question=$1
+  shift
+  local tmp
+  tmp=$(mktemp)
+  hermes chat -q "$question" --yolo "$@" 2>&1 | tee "$tmp"
+  status=${PIPESTATUS[0]}
+  if [[ -z $session_id ]]; then
+    session_id=$(sed -n -E 's/^(session_id|Session):[[:space:]]*([A-Za-z0-9_-]+).*/\2/p' "$tmp" | tail -1)
+  fi
+  rm -f "$tmp"
+}
 
-session_id=$(printf '%s\n' "$output" | sed -n 's/^session_id: //p' | tail -1)
+run_turn "$1"
 
 while true; do
   printf 'Ask a follow-up, or press Enter to close: '
@@ -34,12 +44,10 @@ while true; do
   [[ -n $followup ]] || break
 
   if [[ -n $session_id ]]; then
-    output=$(hermes chat -q "$followup" -Q --yolo --resume "$session_id" 2>&1)
+    run_turn "$followup" --resume "$session_id"
   else
-    output=$(hermes chat -q "$followup" -Q --yolo 2>&1)
+    run_turn "$followup"
   fi
-  status=$?
-  printf '%s\n' "$output"
 done
 
 if ((status != 0)); then
