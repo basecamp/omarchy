@@ -1205,10 +1205,14 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      // Freeze the cursor model while the inline password prompt or the
-      // hidden-security Dropdown's popup is open; the TextField / Dropdown's
-      // own ListView owns input until Esc/Enter/Cancel closes it.
+      // Freeze the cursor model while the inline password prompt, a hidden-form
+      // text field, or the hidden-security Dropdown's popup owns input. Without
+      // gating on the hidden fields, this BeforeItem catcher would eat Space,
+      // Enter, arrows, and h/j/k/l/x before the focused field saw them --
+      // blocking many valid SSIDs, identities, and passphrases.
       blocked: root.passwordSsid !== "" || hiddenSecurityDropdown.popupOpen
+        || hiddenSsidField.activeFocus || hiddenIdentityField.activeFocus
+        || hiddenPasswordField.activeFocus
 
       onMoveRequested: function(dx, dy) {
         if (!root.cursorActive) {
