@@ -246,6 +246,20 @@ assert usage_status == "" and auth_help == "" and retry is False
 limits, usage_status, auth_help, retry = scanner.fetch_limits("", "https://stub")
 assert limits == [] and usage_status == "" and auth_help == "" and retry is False
 
+# A 200 carrying no usage object — an error body, or a key the endpoint has
+# nothing to say about — reads as no limits rather than raising.
+for payload in ({}, {"usage": None}, {"usage": ["rolling"]}, {"error": "no subscription"}):
+  scanner.urllib.request.urlopen = respond(payload)
+  limits, usage_status, auth_help, retry = scanner.fetch_limits("sk-test", "https://stub")
+  assert limits == [] and auth_help == "No usage data returned for this key.", (payload, limits, auth_help)
+
+# The percentage is the number that decides whether the next prompt lands, so a
+# window keeps its meter when the reset time is missing; the panel just drops
+# the countdown.
+scanner.urllib.request.urlopen = respond({"usage": {"rolling": {"status": "ok", "percent": 93}}})
+limits, _, _, _ = scanner.fetch_limits("sk-test", "https://stub")
+assert limits == [{"label": "Rolling (5-hour)", "percent": 0.93, "resetsAt": ""}], limits
+
 # Auth failures map to stable help text and never reuse stale limits.
 scanner.urllib.request.urlopen = http_error(401)
 limits, usage_status, auth_help, retry = scanner.fetch_limits("sk-test", "https://stub")

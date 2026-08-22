@@ -406,7 +406,9 @@ def fetch_limits(api_key_value: str, usage_url: str) -> tuple[list[Any], str, st
       return cached, "OpenCode Go limits stale", "", True
     return [], "OpenCode Go limits unavailable", "Could not reach opencode.ai.", True
 
-  usage = payload.get("usage") if isinstance(payload, dict) else {}
+  usage = payload.get("usage") if isinstance(payload, dict) else None
+  if not isinstance(usage, dict):
+    usage = {}
   windows = [
     ("Rolling (5-hour)", usage.get("rolling")),
     ("Weekly (7-day)", usage.get("weekly")),
@@ -416,7 +418,7 @@ def fetch_limits(api_key_value: str, usage_url: str) -> tuple[list[Any], str, st
   for label, window in windows:
     if not isinstance(window, dict):
       continue
-    if window.get("percent") is None or not window.get("resetsAt"):
+    if window.get("percent") is None:
       continue
     limits.append({
       "label": label,
