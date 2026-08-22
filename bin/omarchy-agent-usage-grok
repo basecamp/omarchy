@@ -38,6 +38,18 @@ BILLING_PATH = "/v1/billing?format=credits"
 USER_PATH = "/v1/user?include=subscription"
 SETTINGS_PATH = "/v1/settings"
 DEFAULT_PROXY = "https://cli-chat-proxy.grok.com"
+# Banked resets ("reset tokens") clear the credit period early. The CLI chat
+# proxy does not carry them, so they come from the same grpc-web RPC grok.com
+# calls, on the same bearer token. Empty request body, so the frame is a bare
+# five-byte grpc-web header.
+RESETS_URL = "https://grok.com/prod_mc_billing.ConsumerUiSvc/GetRemainingResets"
+# ConsumerGetRemainingResetsResp.reset_tokens, then ConsumerResetToken.id and
+# .validity_end. Field numbers come off grok.com's own protos; they are not
+# guessable, so leave them alone unless a response stops decoding.
+RESET_TOKEN_FIELD = 10
+RESET_TOKEN_ID_FIELD = 10
+RESET_TOKEN_END_FIELD = 30
+TIMESTAMP_SECONDS_FIELD = 1
 SCAN_REUSE_SECONDS = 20
 # --limits-only is the panel-open path: refresh the weekly meter, do not walk
 # transcripts. Reuse any same-day scan. A 900s TTL made opening the panel
@@ -667,6 +679,161 @@ def fetch_json(url: str, token: str) -> dict[str, Any]:
     raise
 
 
+def read_varint(data: bytes, index: int) -> tuple[int | None, int]:
+  value = 0
+  shift = 0
+  while index < len(data) and shift < 64:
+    byte = data[index]
+    index += 1
+    value |= (byte & 0x7F) << shift
+    if not byte & 0x80:
+      return value, index
+    shift += 7
+  return None, index
+
+
+def proto_fields(data: bytes) -> Any:
+  """Yield (number, wire, payload) for one protobuf message.
+
+  Enough of the wire format to walk a response and stop cleanly on anything
+  malformed. Groups (wire types 3 and 4) end the walk; nothing here uses them.
+  """
+  index = 0
+  while index < len(data):
+    key, index = read_varint(data, index)
+    if key is None:
+      return
+    number, wire = key >> 3, key & 0x07
+    if wire == 0:
+      value, index = read_varint(data, index)
+      if value is None:
+        return
+      yield number, wire, value
+    elif wire == 1:
+      if index + 8 > len(data):
+        return
+      yield number, wire, data[index:index + 8]
+      index += 8
+    elif wire == 2:
+      length, index = read_varint(data, index)
+      if length is None or index + length > len(data):
+        return
+      yield number, wire, data[index:index + length]
+      index += length
+    elif wire == 5:
+      if index + 4 > len(data):
+        return
+      yield number, wire, data[index:index + 4]
+      index += 4
+    else:
+      return
+
+
+def proto_timestamp(data: bytes) -> dt.datetime | None:
+  for number, wire, value in proto_fields(data):
+    if number == TIMESTAMP_SECONDS_FIELD and wire == 0:
+      try:
+        return dt.datetime.fromtimestamp(value, dt.timezone.utc)
+      except (OverflowError, OSError, ValueError):
+        return None
+  return None
+
+
+def grpc_web_frames(data: bytes) -> tuple[list[bytes], list[bytes]]:
+  """Split a grpc-web body into its data frames and trailer blocks."""
+  frames: list[bytes] = []
+  trailers: list[bytes] = []
+  index = 0
+  while index + 5 <= len(data):
+    flags = data[index]
+    length = int.from_bytes(data[index + 1:index + 5], "big")
+    start = index + 5
+    end = start + length
+    if end > len(data):
+      raise ValueError("grpc-web frame is truncated")
+    (trailers if flags & 0x80 else frames).append(data[start:end])
+    index = end
+  if index != len(data):
+    raise ValueError("grpc-web frame is truncated")
+  return frames, trailers
+
+
+def check_grpc_status(trailers: list[bytes]) -> None:
+  """Raise on a trailer that reports the call failed.
+
+  grpc-web answers 200 and puts the real status in the trailer, so a failure
+  looks like success until this reads it.
+  """
+  for block in trailers:
+    try:
+      text = block.decode("utf-8")
+    except UnicodeDecodeError:
+      continue
+    for line in text.replace("\r", "\n").split("\n"):
+      key, _, value = line.partition(":")
+      if key.strip().lower() != "grpc-status":
+        continue
+      try:
+        status = int(value.strip())
+      except ValueError:
+        continue
+      if status == 16:
+        raise PermissionError("Grok rejected the saved login")
+      if status != 0:
+        raise ValueError(f"Grok reset tokens RPC failed with status {status}")
+
+
+def count_reset_tokens(body: bytes) -> int:
+  """Banked resets still inside their validity window."""
+  frames, trailers = grpc_web_frames(body)
+  check_grpc_status(trailers)
+  if not frames:
+    raise ValueError("Grok reset tokens RPC returned no payload")
+  now = dt.datetime.now(dt.timezone.utc)
+  count = 0
+  for frame in frames:
+    for number, wire, payload in proto_fields(frame):
+      if number != RESET_TOKEN_FIELD or wire != 2:
+        continue
+      token_id = None
+      validity_end = None
+      for inner, inner_wire, value in proto_fields(payload):
+        if inner == RESET_TOKEN_ID_FIELD and inner_wire == 2:
+          token_id = value.decode("utf-8", "replace").strip() or None
+        elif inner == RESET_TOKEN_END_FIELD and inner_wire == 2:
+          validity_end = proto_timestamp(value)
+      if token_id and validity_end and validity_end > now:
+        count += 1
+  return count
+
+
+def fetch_reset_tokens(token: str) -> int | None:
+  """Banked resets for the signed-in account, or None when unknown.
+
+  Advisory: the weekly meter is the point of this collector, and a reset count
+  is a footnote beside it. Every failure here reports nothing so the rest of
+  the record still reaches the panel.
+  """
+  request = urllib.request.Request(
+    RESETS_URL,
+    data=bytes(5),
+    headers={
+      "Authorization": "Bearer " + token,
+      "Accept": "*/*",
+      "Content-Type": "application/grpc-web+proto",
+      "Origin": "https://grok.com",
+      "User-Agent": "omarchy-agent-usage-grok",
+      "x-grpc-web": "1",
+    },
+    method="POST",
+  )
+  try:
+    with urllib.request.urlopen(request, timeout=12) as response:
+      return count_reset_tokens(response.read())
+  except Exception:
+    return None
+
+
 def parse_billing(payload: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
   config = payload.get("config") if isinstance(payload.get("config"), dict) else payload
   if not isinstance(config, dict):
@@ -744,6 +911,9 @@ def collect_limits(token: str, expires_at: dt.datetime | None) -> dict[str, Any]
     result["balance"] = balance
   result["tierLabel"] = display_label((settings or {}).get("subscription_tier_display")) \
     or plan_label(str(user.get("subscriptionTier") or ""))
+  resets = fetch_reset_tokens(token)
+  if resets is not None:
+    result["resetCreditsAvailable"] = resets
   result["authHelpText"] = ""
   return result
 
@@ -771,6 +941,8 @@ def build_record(force: bool = False, limits_only: bool = False) -> dict[str, An
     record["retryAdvised"] = True
   if limits.get("balance") is not None:
     record["balance"] = limits["balance"]
+  if limits.get("resetCreditsAvailable") is not None:
+    record["resetCreditsAvailable"] = limits["resetCreditsAvailable"]
   record.update(stats)
   return record
 

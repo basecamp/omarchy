@@ -206,7 +206,7 @@ PY
 probe_record() {
   COLLECTOR="$ROOT/bin/omarchy-agent-usage-grok" HOME="$CACHE_HOME" \
     XDG_CACHE_HOME="$CACHE_HOME/.cache" GROK_HOME="$CACHE_HOME/.grok" python3 - "$@" <<'PY'
-import importlib.machinery, importlib.util, io, json, os, sys
+import importlib.machinery, importlib.util, io, json, os, sys, time
 
 loader = importlib.machinery.SourceFileLoader("collector", os.environ["COLLECTOR"])
 spec = importlib.util.spec_from_loader(loader.name, loader)
@@ -217,7 +217,37 @@ billing = json.loads(sys.argv[1])
 user = json.loads(sys.argv[2])
 force = sys.argv[3] == "force"
 settings = json.loads(sys.argv[4]) if len(sys.argv) > 4 else {}
+# Seconds from now for each banked reset's validity_end; a negative one has
+# lapsed and must not be counted.
+resets = json.loads(sys.argv[5]) if len(sys.argv) > 5 else []
 seen = []
+
+
+def varint(value):
+  out = bytearray()
+  while True:
+    byte = value & 0x7F
+    value >>= 7
+    out.append(byte | (0x80 if value else 0))
+    if not value:
+      return bytes(out)
+
+
+def tagged(number, payload):
+  return varint(number << 3 | 2) + varint(len(payload)) + payload
+
+
+def reset_tokens_body(offsets):
+  """A grpc-web response carrying one ConsumerResetToken per offset."""
+  message = b""
+  for index, offset in enumerate(offsets):
+    stamp = varint(collector.TIMESTAMP_SECONDS_FIELD << 3) + varint(int(time.time()) + offset)
+    token = tagged(collector.RESET_TOKEN_ID_FIELD, f"token-{index}".encode())
+    token += tagged(collector.RESET_TOKEN_END_FIELD, stamp)
+    message += tagged(collector.RESET_TOKEN_FIELD, token)
+  frame = bytes([0]) + len(message).to_bytes(4, "big") + message
+  trailer = b"grpc-status:0\r\n"
+  return frame + bytes([0x80]) + len(trailer).to_bytes(4, "big") + trailer
 
 def urlopen(request, timeout=None):
   url = request.full_url
@@ -228,6 +258,8 @@ def urlopen(request, timeout=None):
     return io.BytesIO(json.dumps(user).encode())
   if url.endswith("/v1/settings") or url.endswith("/settings"):
     return io.BytesIO(json.dumps(settings).encode())
+  if url.endswith("GetRemainingResets"):
+    return io.BytesIO(reset_tokens_body(resets))
   raise AssertionError("unexpected url " + url)
 
 collector.urllib.request.urlopen = urlopen
@@ -260,8 +292,19 @@ limits=$(probe_record "$billing" "$user" force)
   fail "Grok collector reads the weekly credit pool" "$limits"
 [[ $(jq -c '{remaining: .balance.remaining, funded: .balance.funded, spent: .balance.spent, currency: .balance.currency}' <<<"$limits") == '{"remaining":12.5,"funded":15.0,"spent":2.5,"currency":"USD"}' ]] ||
   fail "Grok collector reports prepaid and leftover on-demand credits" "$limits"
-[[ $(jq -r '._probed | length' <<<"$limits") == "3" ]] ||
-  fail "Grok collector probes billing, user, and settings once" "$limits"
+[[ $(jq -r '._probed | length' <<<"$limits") == "4" ]] ||
+  fail "Grok collector probes billing, user, settings, and reset tokens once" "$limits"
+
+# Banked resets: two are still inside their validity window, one lapsed.
+banked=$(probe_record "$billing" "$user" force '{}' '[3600, 86400, -3600]')
+[[ $(jq -r '.resetCreditsAvailable' <<<"$banked") == "2" ]] ||
+  fail "Grok collector counts only banked resets that have not lapsed" "$banked"
+pass "Grok collector counts only banked resets that have not lapsed"
+
+none=$(probe_record "$billing" "$user" force '{}' '[]')
+[[ $(jq -r '.resetCreditsAvailable' <<<"$none") == "0" ]] ||
+  fail "Grok collector reports no banked resets as zero" "$none"
+pass "Grok collector reports no banked resets as zero"
 pass "Grok collector reads weekly limits and extra credits"
 
 # The live display string from /v1/settings beats the machine subscriptionTier.
