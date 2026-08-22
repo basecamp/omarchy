@@ -200,8 +200,7 @@ const quickSettingsPanels = {
   wifi: 'omarchy.network',
   bluetooth: 'omarchy.bluetooth',
   audio: 'omarchy.audio',
-  display: 'omarchy.monitor',
-  power: 'omarchy.power'
+  display: 'omarchy.monitor'
 }
 assertEqual(
   defaultById['setup.quick-settings'].kind,
