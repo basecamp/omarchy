@@ -41,9 +41,7 @@ The installer detects Mac hardware and applies the needed fixes automatically: B
 
 Omarchy supports the exact DMI model `MacBookPro13,1` (the 13-inch 2016 MacBook Pro with two Thunderbolt 3 ports, model A1708) on the stock Omarchy kernel. Fresh installations and hardware replay automatically install the Cirrus audio driver and FaceTime HD camera driver and firmware. The keyboard uses the kernel's in-tree `applespi` driver, and Omarchy's existing NVMe power workaround remains enabled.
 
-The support contract covers built-in speaker and headphone playback, internal microphone capture, FaceTime HD camera capture, and keyboard backlight control after a normal boot. Deep suspend and hibernation are not supported on this model in the first iteration. Resuming from deep suspend can leave both the built-in speakers and 3.5 mm headphone output silent until the next reboot.
-
-The internal microphone works at a lower capture gain than under macOS because of an upstream audio-driver limitation. Omarchy does not patch the audio driver's experimental deep-suspend resume path or add a speculative camera module unload/reload workaround.
+After a normal boot, the built-in speakers, headphones, microphone, camera, and keyboard backlight are supported. Deep suspend and hibernation are not supported because audio and camera do not always recover after wake and may remain unavailable until reboot. Use a normal shutdown instead. For technical background, see the upstream [deep-suspend audio proposal](https://github.com/davidjo/snd_hda_macbookpro/pull/198) and [jack-detection issue](https://github.com/davidjo/snd_hda_macbookpro/issues/199).
 
 ### Known Limitations
 

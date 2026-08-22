@@ -185,7 +185,10 @@ run_migration 0
 pass "the compatibility migration leaves other models untouched"
 
 grep -Fq '`MacBookPro13,1`' "$mac_support_manual" &&
-  grep -Eqi 'microphone.*gain' "$mac_support_manual" &&
-  grep -Eqi 'camera.*suspend|suspend.*camera' "$mac_support_manual" ||
+  grep -Eqi 'deep suspend.*not supported|not supported.*deep suspend' "$mac_support_manual" &&
+  grep -Eqi 'hibernation.*not supported|not supported.*hibernation' "$mac_support_manual" &&
+  grep -Eqi 'audio.*camera.*do not always recover' "$mac_support_manual" &&
+  grep -Eqi 'shutdown.*reboot|reboot.*shutdown' "$mac_support_manual" &&
+  ! grep -Eqi 'first[- ]iteration' "$mac_support_manual" ||
   fail "the Mac manual documents the exact support contract and upstream limitations"
 pass "the Mac manual documents the exact support contract and upstream limitations"
