@@ -192,8 +192,9 @@ assert(
   defaultById['update.omarchy'].iconFont === 'omarchy',
   'menu update Omarchy entry renders the private glyph with the Omarchy font'
 )
-assert(
-  defaultById['update.themes'].when.includes('.config/omarchy/themes'),
+assertEqual(
+  defaultById['update.themes'].when,
+  'omarchy-theme-extras',
   'menu hides Extra Themes until a theme cloned from git is there to update'
 )
 assert(
