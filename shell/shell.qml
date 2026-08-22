@@ -130,6 +130,12 @@ ShellRoot {
     return manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("hyprland") !== -1
   }
 
+  function hasShellPluginKind(id) {
+    var manifest = shell.pluginRegistry.installedPlugins[String(id)]
+    if (!manifest || !Array.isArray(manifest.kinds)) return false
+    return manifest.kinds.some(function(kind) { return kind !== "hyprland" })
+  }
+
   function isHyprlandPluginEnabled(id) {
     return hyprlandPluginState.enabled.indexOf(String(id)) !== -1
   }
@@ -958,6 +964,10 @@ ShellRoot {
     function setPluginEnabled(id: string, enabled: string): string {
       if (shell.isHyprlandPlugin(id)) {
         shell.setHyprlandPluginEnabled(id, enabled === "true")
+        if (shell.hasShellPluginKind(id)) {
+          var shellEnabled = shell.pluginRegistry.setEnabled(id, enabled === "true")
+          if (!shellEnabled) return shell.pluginRegistry.lastEnableError || "unknown"
+        }
         return "ok"
       }
       var ok = shell.pluginRegistry.setEnabled(id, enabled === "true")
@@ -968,8 +978,13 @@ ShellRoot {
       try {
         var placement = JSON.parse(placementJson || "{}")
         if (shell.isHyprlandPlugin(id)) {
-          if (Object.keys(placement).length) return "Hyprland plugins do not support placement"
           shell.setHyprlandPluginEnabled(id, true)
+          if (!shell.hasShellPluginKind(id) && Object.keys(placement).length)
+            return "Hyprland plugins do not support placement"
+          if (shell.hasShellPluginKind(id)
+              && !shell.pluginRegistry.setEnabled(id, true, placement)) {
+            return shell.pluginRegistry.lastEnableError || "unknown"
+          }
           return "ok"
         }
         if (shell.pluginRegistry.setEnabled(id, true, placement)) {
@@ -1029,9 +1044,11 @@ ShellRoot {
           kinds: kinds,
           // What `omarchy plugin enable/disable` toggles: for a widget that is
           // its place in the bar, not whether its component is loadable.
-          enabled: isHyprland ? shell.isHyprlandPluginEnabled(id)
+          enabled: isHyprland && shell.hasShellPluginKind(id)
+            ? shell.isHyprlandPluginEnabled(id) && shell.pluginRegistry.isEnabled(id)
+            : (isHyprland ? shell.isHyprlandPluginEnabled(id)
             : (isBarOption ? active
-              : (isBarWidget ? shell.pluginRegistry.inBar(id) : shell.pluginRegistry.isEnabled(id))),
+              : (isBarWidget ? shell.pluginRegistry.inBar(id) : shell.pluginRegistry.isEnabled(id)))),
           active: active,
           // A bar has no off, only a successor: you leave one by enabling
           // another, so there is nothing for disable to do to it. Said here so

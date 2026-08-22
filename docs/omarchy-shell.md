@@ -48,12 +48,13 @@ Entry points are QML `Item`s. Panel, overlay, and menu entry points expose
 `barWidgetRegistry`) as properties.
 
 Hyprland plugins use `entryPoints.hyprland` and may declare numeric `priority`
-(default `50`) plus plugin-id `dependencies`. Enabling one generates a loader
-under `~/.local/state/omarchy/hypr/plugins.lua`; dependencies load first, then
-enabled plugins by priority and ID. Their activation state is stored separately
-in `~/.config/omarchy/hypr-plugins.json`, so the shell's `plugins[]` list stays
-reserved for Quickshell plugins. The loader is reloaded automatically after
-plugin activation changes.
+(default `50`) plus plugin-id `dependencies`. A plugin may also declare
+`panel`, `overlay`, `menu`, `service`, or another shell kind: enabling it then
+updates both its Hyprland activation state and its shell configuration entry.
+The Hyprland loader is generated under `~/.local/state/omarchy/hypr/plugins.lua`;
+dependencies load first, then enabled plugins by priority and ID. Hyprland
+activation is stored separately in `~/.config/omarchy/hypr-plugins.json`, while
+shell activation remains in `shell.json`.
 
 For example, a raw Lua Hyprland plugin can use this manifest:
 
