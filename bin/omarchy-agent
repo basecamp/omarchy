@@ -66,9 +66,18 @@ agy)
   ;;
 hermes)
   # Plain Hermes stays interactive and approval-gated. A supplied prompt uses
-  # one-shot mode, which Hermes documents as auto-bypassing approvals.
-  command=(hermes)
-  [[ -n ${prompt:-} ]] && command+=(-z "$prompt")
+  # one-shot mode, which auto-bypasses approvals. New terminal launches go
+  # through a small holder so the final answer stays visible; --inline returns
+  # it directly to the terminal the user already has open.
+  if [[ -n ${prompt:-} ]]; then
+    if [[ $inline == "true" ]]; then
+      command=(hermes -z "$prompt")
+    else
+      command=(omarchy-agent-hermes-prompt "$prompt")
+    fi
+  else
+    command=(hermes)
+  fi
   ;;
 copilot)
   command=(copilot --allow-all)

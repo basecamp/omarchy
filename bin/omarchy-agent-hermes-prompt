@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# omarchy:summary=Show a Hermes one-shot result until the user closes it
+# omarchy:args=<prompt>
+# omarchy:hidden=true
+
+set -u
+
+if (($# != 1)); then
+  echo "Usage: omarchy-agent-hermes-prompt <prompt>" >&2
+  exit 1
+fi
+
+status=0
+hermes -z "$1" || status=$?
+
+printf '\n'
+if ((status == 0)); then
+  echo "Hermes finished. Press Enter to close."
+else
+  echo "Hermes exited with status $status. Press Enter to close." >&2
+fi
+read -r
+
+exit "$status"

@@ -553,8 +553,8 @@ assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
 assert_launch agy agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
-assert_launch hermes hermes -z "Review this project"
-pass "agent launcher adapts prompts, with Hermes one-shot auto-bypassing approvals"
+assert_launch hermes omarchy-agent-hermes-prompt "Review this project"
+pass "agent launcher adapts prompts and keeps Hermes one-shot results visible"
 
 assert_bypass pi pi
 assert_bypass omp omp --auto-approve
@@ -571,6 +571,13 @@ printf '%s\n' hermes >"$agent_file"
 omarchy-agent
 assert_launched hermes "keeps ordinary interactive approval prompts" hermes
 pass "Hermes interactive launch remains approval-gated"
+
+: >"$hermes_log"
+omarchy-agent-prompt --inline "Review this project"
+mapfile -d '' -t hermes_args <"$hermes_log"
+[[ ${hermes_args[*]} == "-z Review this project" ]] ||
+  fail "inline Hermes prompt returns its one-shot result to the current terminal"
+pass "inline Hermes prompts remain direct one-shot commands"
 
 printf '%s\n' "opencode" >"$agent_file"
 omarchy-agent
