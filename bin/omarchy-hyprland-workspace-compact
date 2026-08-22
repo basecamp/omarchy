@@ -3,10 +3,13 @@
 # omarchy:summary=Collapse occupied workspaces down to the lowest numbers (3,4,7 -> 1,2,3).
 # omarchy:args=[--dry-run]
 
-# Hyprland can't renumber a workspace, so move every window from each occupied
-# workspace into the lowest free slot, ascending per monitor. The target is
-# always empty by construction. Special workspaces (id < 1) are left alone and
-# focus follows the active workspace to its new number.
+# Hyprland can't renumber a workspace from the keyboard, so walk the occupied
+# workspaces ascending and give each the lowest free number. Prefer
+# hl.dsp.workspace.change_id (keeps monitor, windows and tiling layout); when
+# the target id is already taken by an empty persistent workspace, or the Lua
+# dispatcher is unavailable, fall back to moving the windows. Special
+# workspaces (id < 1) and named workspaces are left alone; focus follows the
+# active workspace to its new number.
 
 dry_run=false
 [[ ${1:-} == "-n" || ${1:-} == "--dry-run" ]] && dry_run=true
@@ -24,23 +27,44 @@ clients=$(hyprctl clients -j)
 workspaces=$(hyprctl workspaces -j)
 new_active=$active
 
-while IFS= read -r monitor; do
-  target=1
-  while IFS= read -r ws; do
-    if ((ws != target)); then
-      if $dry_run; then
-        echo "workspace $ws -> $target ($monitor)"
-      else
-        while IFS= read -r addr; do
-          hypr_dispatch "hl.dsp.window.move({ window = \"address:$addr\", workspace = \"$target\", follow = false })" \
-            movetoworkspacesilent "$target,address:$addr"
-        done < <(jq -r --argjson w "$ws" '.[] | select(.workspace.id == $w) | .address' <<<"$clients")
-      fi
-      ((ws == active)) && new_active=$target
+declare -A taken=()
+while IFS= read -r id; do
+  [[ $id =~ ^[0-9]+$ ]] && taken[$id]=1
+done < <(jq -r '.[] | select(.id > 0) | .id' <<<"$workspaces")
+
+move_windows() { # src dst
+  while IFS= read -r addr; do
+    [[ -n $addr && $addr != null ]] || continue
+    hypr_dispatch "hl.dsp.window.move({ window = \"address:$addr\", workspace = \"$2\", follow = false })" \
+      movetoworkspacesilent "$2,address:$addr"
+  done < <(jq -r --argjson w "$1" '.[] | select(.workspace.id == $w) | .address' <<<"$clients")
+}
+
+renumber() { # src dst monitor
+  if [[ -z ${taken[$2]+x} ]] &&
+    hyprctl dispatch "hl.dsp.workspace.change_id({ workspace = \"$1\", id = $2 })" >/dev/null 2>&1; then
+    unset "taken[$1]"
+    taken[$2]=1
+    return 0
+  fi
+  move_windows "$1" "$2"
+  hypr_dispatch "hl.dsp.workspace.move({ workspace = \"$2\", monitor = \"$3\" })" moveworkspacetomonitor "$2" "$3"
+  taken[$2]=1
+}
+
+target=1
+while IFS=$'\t' read -r ws monitor; do
+  [[ $ws =~ ^[0-9]+$ ]] || continue
+  if ((ws != target)); then
+    if $dry_run; then
+      echo "workspace $ws -> $target ($monitor)"
+    else
+      renumber "$ws" "$target" "$monitor"
     fi
-    target=$((target + 1))
-  done < <(jq -r --arg m "$monitor" '.[] | select(.monitor == $m and .id > 0 and .windows > 0) | .id' <<<"$workspaces" | sort -n)
-done < <(hyprctl monitors -j | jq -r '.[].name')
+    ((ws == active)) && new_active=$target
+  fi
+  target=$((target + 1))
+done < <(jq -r '.[] | select(.id > 0 and .windows > 0 and ((.name // "") | test("^[0-9]+$"))) | "\(.id)\t\(.monitor)"' <<<"$workspaces" | sort -n)
 
 if ! $dry_run && ((new_active != active)); then
   hypr_dispatch "hl.dsp.focus({ workspace = \"$new_active\" })" workspace "$new_active"
