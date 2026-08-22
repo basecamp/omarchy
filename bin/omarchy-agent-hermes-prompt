@@ -14,6 +14,11 @@ fi
 status=0
 session_id=""
 
+# One-line heads-up before the first call: a full diagnosis takes minutes and
+# Hermes one-shot mode prints nothing until it finishes, so an unexplained
+# blank window reads as a hang. This line is what makes the wait legible.
+echo "Diagnosing with Hermes — this may take a few minutes."
+
 # The first call uses single-query mode with quiet output and the same
 # auto-bypass approval semantics as `hermes -z`. Unlike -z, it prints the
 # session id, which is how a typed follow-up resumes the same conversation.

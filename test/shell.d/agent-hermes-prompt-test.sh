@@ -30,6 +30,14 @@ coproc DIAGNOSIS { omarchy-agent-hermes-prompt "Crash facts" >"$output" 2>&1; }
 diagnosis_pid=$DIAGNOSIS_PID
 
 for _ in $(seq 1 100); do
+  grep -Fq 'may take a few minutes' "$output" && break
+  sleep 0.01
+done
+
+grep -Fq 'may take a few minutes' "$output" ||
+  fail "Hermes crash diagnosis explains that the run takes a while"
+
+for _ in $(seq 1 100); do
   grep -Fq 'Portal crashed in its rendering worker.' "$output" && break
   sleep 0.01
 done
