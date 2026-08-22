@@ -70,12 +70,17 @@ brcmfmac43602_dmi_name() {
   printf '%s\n' "brcmfmac43602-pcie.${vendor}-${product}.txt"
 }
 
+# Arch compresses everything under /usr/lib/firmware, so a packaged board file
+# arrives as brcmfmac43602-pcie.<dmi>.txt.zst, not under the name the driver
+# asks for. Checking only the plain name would miss it and shadow it anyway.
 brcmfmac43602_installed() {
-  local name dir
+  local name dir suffix
+  name=$(brcmfmac43602_dmi_name)
   for dir in "$(brcmfmac43602_fwdir)" "$(brcmfmac43602_packaged_fwdir)"; do
-    [[ -e $dir/brcmfmac43602-pcie.txt ]] && return 0
-    name=$(brcmfmac43602_dmi_name)
-    [[ -n $name && -e "$dir/$name" ]] && return 0
+    for suffix in "" .zst .xz; do
+      [[ -e $dir/brcmfmac43602-pcie.txt$suffix ]] && return 0
+      [[ -n $name && -e "$dir/$name$suffix" ]] && return 0
+    done
   done
   return 1
 }

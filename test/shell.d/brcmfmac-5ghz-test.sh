@@ -248,6 +248,18 @@ invoke_leaf 43ba >/dev/null
 [[ ! -e "$(generic)" ]] || fail "a packaged NVRAM prevents writing the override"
 pass "a packaged NVRAM prevents writing the override"
 
+# Arch ships every firmware file zstd-compressed, so this is the name a real
+# linux-firmware board file would arrive under.
+rm -rf "$fwdir" "$packaged" "$pci_devices"
+mkdir -p "$fwdir" "$packaged"
+provide_mac
+printf '%s' "Apple Inc." >"$test_tmp/dmi/sys_vendor"
+printf '%s' "MacBookPro14,3" >"$test_tmp/dmi/product_name"
+printf 'package-shipped\n' >"$packaged/brcmfmac43602-pcie.Apple Inc.-MacBookPro14,3.txt.zst"
+invoke_leaf 43ba >/dev/null
+[[ ! -e "$(generic)" ]] || fail "a compressed packaged NVRAM prevents writing the override"
+pass "a compressed packaged NVRAM prevents writing the override"
+
 # A failed install must not look like success. Stub install(1) to fail after
 # the gate has matched, so the leaf's set -e surfaces the error.
 rm -rf "$fwdir" "$packaged" "$pci_devices"
