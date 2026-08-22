@@ -1,0 +1,271 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the GitHub Copilot usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect GitHub Copilot usage and quota into one display-ready JSON record.
+
+Reads Copilot session data from ~/.copilot/session-store.db for historical
+usage statistics, and fetches account quota from the GitHub API using OAuth
+tokens managed by official Copilot clients (VS Code, JetBrains, CLI).
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import sqlite3
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "copilot"
+AGENT_NAME = "Copilot"
+AUTH_HELP = "Sign in with the Copilot CLI or an editor (VS Code, JetBrains)"
+
+GITHUB_API_BASE = "https://api.github.com"
+COPILOT_INTERNAL_URL = f"{GITHUB_API_BASE}/copilot_internal/user"
+
+COPILOT_CONFIG_DIR = Path("~/.config/github-copilot").expanduser()
+COPILOT_TOKEN_FILES = ("apps.json", "hosts.json", "oauth.json")
+
+QUOTA_PRIORITY = ("premium_interactions", "premium_requests", "chat", "completions")
+QUOTA_DISPLAY_NAMES = {
+  "premium_interactions": "AI Credits",
+  "premium_requests": "Premium Requests",
+  "chat": "Chat",
+  "completions": "Completions",
+}
+
+
+def expand_path(value: str) -> Path:
+  return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
+
+
+def copilot_dir() -> Path:
+  return expand_path(os.environ.get("COPILOT_DIR") or "~/.copilot")
+
+
+def date_string(value: dt.date) -> str:
+  return value.strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = dt.datetime.now().date()
+  return [date_string(today - dt.timedelta(days=offset)) for offset in range(6, -1, -1)]
+
+
+def local_date_string() -> str:
+  return date_string(dt.datetime.now().date())
+
+
+def config_path() -> Path:
+  config_home = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+  return config_home / "omarchy" / "agents" / "copilot.json"
+
+
+def read_config() -> dict:
+  try:
+    return json.loads(config_path().read_text())
+  except (OSError, json.JSONDecodeError):
+    return {}
+
+
+def get_oauth_token() -> str | None:
+  """Read OAuth token from official Copilot client config."""
+  for token_file in COPILOT_TOKEN_FILES:
+    token_path = COPILOT_CONFIG_DIR / token_file
+    if not token_path.exists():
+      continue
+    try:
+      data = json.loads(token_path.read_text())
+      if isinstance(data, dict):
+        for host_data in data.values():
+          if isinstance(host_data, dict) and "oauth_token" in host_data:
+            return host_data["oauth_token"]
+    except (OSError, json.JSONDecodeError):
+      continue
+  return None
+
+
+def fetch_quota(token: str) -> dict[str, Any] | None:
+  """Fetch quota from GitHub API."""
+  try:
+    req = urllib.request.Request(
+      COPILOT_INTERNAL_URL,
+      headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+    )
+    with urllib.request.urlopen(req, timeout=5) as response:
+      data = json.loads(response.read())
+      if "quota_snapshots" in data and data["quota_snapshots"]:
+        snapshots = data["quota_snapshots"]
+        for quota_key in QUOTA_PRIORITY:
+          if quota_key in snapshots:
+            snapshot = snapshots[quota_key]
+            if snapshot.get("has_quota"):
+              used = snapshot.get("credits_used", 0)
+              total = snapshot.get("entitlement", 0)
+              return {
+                "displayName": QUOTA_DISPLAY_NAMES.get(quota_key, quota_key),
+                "used": used,
+                "total": total,
+              }
+      return None
+  except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, TimeoutError):
+    return None
+
+
+def read_copilot_stats() -> dict[str, Any]:
+  """Read usage statistics from Copilot session store."""
+  db_path = copilot_dir() / "session-store.db"
+
+  empty_stats = {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTokensByModel": {},
+    "todayTotalTokens": 0,
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "recentDays": [{"date": d, "messageCount": 0} for d in recent_date_strings()],
+    "activeDates": [],
+    "activeDays": 0,
+    "modelUsage": {},
+  }
+
+  if not db_path.exists():
+    return empty_stats
+
+  try:
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(DISTINCT session_id) FROM turns")
+    total_sessions = cursor.fetchone()[0] or 0
+
+    cursor.execute("""
+      SELECT DATE(created_at), COUNT(*),
+             SUM(input_tokens), SUM(output_tokens),
+             SUM(cache_read_tokens), SUM(cache_write_tokens),
+             model
+      FROM assistant_usage_events
+      WHERE created_at IS NOT NULL
+      GROUP BY DATE(created_at), model
+      ORDER BY DATE(created_at) DESC
+      LIMIT 70
+    """)
+
+    date_stats = {}
+    model_stats = {}
+    today_model_stats = {}
+    today = local_date_string()
+
+    for date_str, event_count, input_tokens, output_tokens, cache_read, cache_write, model in cursor.fetchall():
+      if not date_str:
+        continue
+
+      tokens = (input_tokens or 0) + (output_tokens or 0) + (cache_read or 0) + (cache_write or 0)
+
+      if date_str not in date_stats:
+        date_stats[date_str] = {"count": 0, "tokens": 0}
+
+      date_stats[date_str]["count"] += event_count
+      date_stats[date_str]["tokens"] += tokens
+
+      if model:
+        if model not in model_stats:
+          model_stats[model] = {
+            "inputTokens": 0,
+            "outputTokens": 0,
+            "cacheReadInputTokens": 0,
+            "cacheCreationInputTokens": 0
+          }
+        model_stats[model]["inputTokens"] += input_tokens or 0
+        model_stats[model]["outputTokens"] += output_tokens or 0
+        model_stats[model]["cacheReadInputTokens"] += cache_read or 0
+        model_stats[model]["cacheCreationInputTokens"] += cache_write or 0
+
+        if date_str == today:
+          if model not in today_model_stats:
+            today_model_stats[model] = {
+              "inputTokens": 0,
+              "outputTokens": 0,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0
+            }
+          today_model_stats[model]["inputTokens"] += input_tokens or 0
+          today_model_stats[model]["outputTokens"] += output_tokens or 0
+          today_model_stats[model]["cacheReadInputTokens"] += cache_read or 0
+          today_model_stats[model]["cacheCreationInputTokens"] += cache_write or 0
+
+    stats = empty_stats.copy()
+    stats["totalSessions"] = total_sessions
+
+    if today in date_stats:
+      stats["todayPrompts"] = date_stats[today]["count"]
+      stats["todayTotalTokens"] = date_stats[today]["tokens"]
+      stats["todayTokensByModel"] = today_model_stats
+
+    stats["modelUsage"] = model_stats
+
+    for i, date_str in enumerate(recent_date_strings()):
+      if date_str in date_stats:
+        stats["recentDays"][i]["messageCount"] = date_stats[date_str]["tokens"]
+        if date_str not in stats["activeDates"]:
+          stats["activeDates"].append(date_str)
+
+    stats["activeDays"] = len(stats["activeDates"])
+
+    cursor.execute("SELECT COUNT(*) FROM assistant_usage_events")
+    stats["totalPrompts"] = cursor.fetchone()[0] or 0
+
+    conn.close()
+  except Exception:
+    return empty_stats
+
+  return stats
+
+
+def main() -> None:
+  parser = argparse.ArgumentParser(description=__doc__)
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  args = parser.parse_args()
+
+  stats = read_copilot_stats()
+
+  token = get_oauth_token()
+  quota = None
+  if token:
+    quota = fetch_quota(token)
+
+  limits = []
+  if quota:
+    pct = 0
+    if quota["total"] > 0:
+      pct = quota["used"] / quota["total"]
+    limits = [{
+      "label": quota["displayName"],
+      "percent": pct,
+    }]
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "ready": True,
+    "hasLocalStats": bool(stats.get("modelUsage")),
+    "authHelpText": AUTH_HELP,
+    "usageStatusText": "",
+    "tierLabel": "",
+    "limits": limits,
+    "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+    **stats,
+  }
+
+  print(json.dumps(record, indent=2))
+
+
+if __name__ == "__main__":
+  main()
