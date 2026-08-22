@@ -149,9 +149,10 @@ const testItems = {
   'system.lock': { id: 'system.lock', action: 'omarchy-system-lock' },
   'apps.term': { id: 'apps.term', kind: 'app', label: 'Terminal' }
 }
-menu.applyKeybindings(testItems, ['system.lock', 'apps.term'], parsedBindings)
-assert(testItems['system.lock'].keybinding === 'SUPER CTRL + L', 'applyKeybindings attaches keybinding to items')
-assert(testItems['apps.term'].keybinding === 'SUPER + RETURN', 'applyKeybindings attaches keybinding to app items')
+const applied = menu.applyKeybindings(testItems, ['system.lock', 'apps.term'], parsedBindings)
+assert(applied['system.lock'].keybinding === 'SUPER CTRL + L', 'applyKeybindings attaches keybinding to items')
+assert(applied['apps.term'].keybinding === 'SUPER + RETURN', 'applyKeybindings attaches keybinding to app items')
+assert(testItems['system.lock'].keybinding === undefined, 'applyKeybindings leaves the map it was handed untouched')
 
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))

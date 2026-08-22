@@ -83,7 +83,7 @@ Item {
   onDefaultShowKeybindingsChanged: showKeybindings = defaultShowKeybindings
 
   function applyKeybindings() {
-    MenuModel.applyKeybindings(root.items, root.itemOrder, root.keybindings)
+    root.items = MenuModel.applyKeybindings(root.items, root.itemOrder, root.keybindings)
   }
 
   function loadKeybindings() {

@@ -376,16 +376,32 @@ function findKeybinding(bindings, entry) {
   return ""
 }
 
-function applyKeybindings(items, itemOrder, bindings) {
-  if (!items || !itemOrder || !bindings) return items
-  for (var i = 0; i < itemOrder.length; i++) {
-    var id = itemOrder[i]
-    var entry = items[id]
-    if (entry) {
-      entry.keybinding = findKeybinding(bindings, entry)
+function cloneItem(item) {
+  if (!item || typeof item !== "object") return item
+  var clone = {}
+  for (var k in item) {
+    if (Object.prototype.hasOwnProperty.call(item, k)) {
+      clone[k] = item[k]
     }
   }
-  return items
+  return clone
+}
+
+function applyKeybindings(items, itemOrder, bindings) {
+  var source = items || ({})
+  var order = Array.isArray(itemOrder) ? itemOrder : []
+  var list = Array.isArray(bindings) ? bindings : []
+  var nextItems = {}
+
+  for (var i = 0; i < order.length; i++) {
+    var id = order[i]
+    var existing = source[id]
+    if (!existing) continue
+    var cloned = cloneItem(existing)
+    cloned.keybinding = findKeybinding(list, cloned)
+    nextItems[id] = cloned
+  }
+  return nextItems
 }
 
 function nameSearchText(entry) {
