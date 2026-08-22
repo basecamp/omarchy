@@ -1,0 +1,20 @@
+{
+  "mode": "desktop",
+  "description": "Consumer default profile: floating windows, taskbar, Start, desktop icons, visible-before-memorable affordances. Windows muscle memory is the API.",
+  "features": {
+    "desktopIcons": true,
+    "taskbar": true,
+    "startMenu": true,
+    "systemTray": true,
+    "quickSettings": true,
+    "notificationCenter": true,
+    "floatingWindows": true,
+    "tilingDefault": false,
+    "snapLayouts": true,
+    "taskView": true,
+    "omarchyBindings": false,
+    "powerUserMenu": false,
+    "topBar": false,
+    "configEditingExposed": false
+  }
+}

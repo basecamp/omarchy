@@ -1,0 +1,20 @@
+{
+  "mode": "power-user",
+  "description": "Omarchy heritage profile over the same platform: tiling-first layout, Super-key bindings, workspace-centric navigation, raw config editing, original Omarchy menu.",
+  "features": {
+    "desktopIcons": true,
+    "taskbar": false,
+    "startMenu": false,
+    "systemTray": true,
+    "quickSettings": true,
+    "notificationCenter": true,
+    "floatingWindows": false,
+    "tilingDefault": true,
+    "snapLayouts": true,
+    "taskView": true,
+    "omarchyBindings": true,
+    "powerUserMenu": true,
+    "topBar": true,
+    "configEditingExposed": true
+  }
+}
