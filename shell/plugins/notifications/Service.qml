@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import Quickshell.Services.Notifications
 import qs.Commons
 
@@ -391,8 +392,45 @@ Item {
     // libnotify action — they just expect clicking the notification to
     // focus their window. Fall back to focusing the sending app by class so
     // that click-to-jump actually works.
-    if (!invoked) focusApp(entry)
+    //
+    // When the sender does have a default action it usually answers with an
+    // xdg-activation request. With misc:focus_on_activate=false Hyprland
+    // denies that request but still emits `urgent>>ADDR` for the exact window
+    // that asked. Catch that for a moment after the click and focus by address
+    // — precise even when the app owns many windows (terminals, editors). If
+    // no urgent event arrives, fall back to the class match as before.
+    if (invoked) armUrgentFocus(entry)
+    else focusApp(entry)
     dismissPopup(index)
+  }
+
+  property var urgentFocusEntry: null
+  function armUrgentFocus(entry) {
+    // Plain copy: dismissPopup() deletes the model row right after this and
+    // QML nulls `var` references to destroyed objects.
+    urgentFocusEntry = { app: String(entry && entry.app ? entry.app : "") }
+    urgentFocusTimer.restart()
+  }
+  Timer {
+    id: urgentFocusTimer
+    interval: 1000
+    repeat: false
+    onTriggered: {
+      var entry = service.urgentFocusEntry
+      service.urgentFocusEntry = null
+      if (entry) service.focusApp(entry)
+    }
+  }
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (!service.urgentFocusEntry || !event || String(event.name) !== "urgent") return
+      var addr = String(event.data || "").trim()
+      if (!addr) return
+      service.urgentFocusEntry = null
+      urgentFocusTimer.stop()
+      Hyprland.dispatch('hl.dsp.focus({ window = "address:0x' + addr.replace(/^0x/, "") + '" })')
+    }
   }
 
   // Try to focus an existing Hyprland window matching the notification's
