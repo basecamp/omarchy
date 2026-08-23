@@ -78,6 +78,21 @@ load
 [[ ${args[9]} == "42" ]] || fail "notification wrapper sets replaces_id from -r" "${args[9]}"
 pass "notification wrapper supports -p (print id) and -r (replace id)"
 
+# Options may follow the headline and description (Taildrop appends -u critical
+# and -g after the two positionals); they still land on the call, and urgency
+# stays a single hint rather than doubling.
+: >"$args_file"
+send "Received photo.png" "Saved to ~/Downloads" -u critical -g K >/dev/null
+load
+[[ ${args[11]} == "Received photo.png" ]] || fail "notification wrapper keeps the summary before trailing options" "${args[11]}"
+[[ ${args[12]} == "Saved to ~/Downloads" ]] || fail "notification wrapper keeps the body before trailing options" "${args[12]}"
+[[ $(hint_value urgency) == "2" ]] || fail "notification wrapper reads an urgency that follows the description" "$(hint_value urgency)"
+[[ $(hint_value omarchy-glyph) == "K" ]] || fail "notification wrapper reads a glyph that follows the description"
+urgency_hits=0
+for ((i = 15; i < 15 + 3 * ${args[14]}; i += 3)); do [[ ${args[i]} == urgency ]] && urgency_hits=$((urgency_hits + 1)); done
+((urgency_hits == 1)) || fail "notification wrapper sets the urgency once" "$urgency_hits"
+pass "notification wrapper reads options that follow the headline and description"
+
 # The --flag=value form works too (the acceptance suite uses --expire-time=15000).
 : >"$args_file"
 send "Acceptance" "Body" --expire-time=15000 >/dev/null
