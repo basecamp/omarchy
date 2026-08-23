@@ -20,16 +20,16 @@ Panel {
   property int phraseIndex: 0
 
   readonly property var activePhrases: [
-    "Filing files",
-    "Distributing data",
-    "Shuffling folders",
-    "Boxing bytes",
-    "Sorting stuff",
-    "Syncing secrets",
-    "Packing packets",
-    "Moving memories",
-    "Wrangling revisions",
-    "Cataloging chaos"
+    I18n.tr("dropbox.active_0"),
+    I18n.tr("dropbox.active_1"),
+    I18n.tr("dropbox.active_2"),
+    I18n.tr("dropbox.active_3"),
+    I18n.tr("dropbox.active_4"),
+    I18n.tr("dropbox.active_5"),
+    I18n.tr("dropbox.active_6"),
+    I18n.tr("dropbox.active_7"),
+    I18n.tr("dropbox.active_8"),
+    I18n.tr("dropbox.active_9")
   ]
   readonly property string heroPhraseText: activePhrases[phraseIndex % activePhrases.length]
   readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -37,7 +37,7 @@ Panel {
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property color iconColor: dropbox.authenticated && dropbox.active ? foreground : dim
-  readonly property string toggleHint: dropbox.active ? "Pause syncing" : "Resume syncing"
+  readonly property string toggleHint: dropbox.active ? I18n.tr("dropbox.toggle_pause") : I18n.tr("dropbox.toggle_resume")
   readonly property color barIconColor: dropbox.authenticated && dropbox.active ? barForeground : Qt.darker(barForeground, 1.55)
   // Only claim the header cursor when the switch is actually on screen —
   // "header" stays navigable, but an absent CLI leaves nothing to highlight.
@@ -243,8 +243,8 @@ Panel {
             PanelHero {
               id: hero
               width: parent.width
-              title: "Dropbox"
-              meta: dropbox.active ? root.heroPhraseText : "Syncing paused"
+              title: I18n.tr("dropbox.title")
+              meta: dropbox.active ? root.heroPhraseText : I18n.tr("dropbox.syncing_paused")
               foreground: root.foreground
               fontFamily: root.fontFamily
               iconOpacity: dropbox.active ? 1.0 : 0.5
@@ -303,7 +303,7 @@ Panel {
             Column {
               width: parent.width
               spacing: Style.spacing.labelGap
-              InfoPair { label: "Stored"; value: Model.usageText(dropbox.usedBytes, dropbox.quotaBytes, dropbox.quotaKnown) }
+              InfoPair { label: I18n.tr("dropbox.stored"); value: Model.usageText(dropbox.usedBytes, dropbox.quotaBytes, dropbox.quotaKnown) }
             }
           }
 
@@ -318,7 +318,7 @@ Panel {
             spacing: Style.space(10)
 
             PanelSectionHeader {
-              text: "RECENT FILES"
+              text: I18n.tr("dropbox.recent_files")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -326,7 +326,7 @@ Panel {
             Text {
               visible: dropbox.files.length === 0
               width: parent.width
-              text: "No synced files found."
+              text: I18n.tr("dropbox.no_files")
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
@@ -422,7 +422,7 @@ Panel {
 
         Text {
           Layout.fillWidth: true
-          text: dropbox.installed ? "Login to Dropbox" : "Dropbox CLI is not installed"
+          text: dropbox.installed ? I18n.tr("dropbox.login") : I18n.tr("dropbox.not_installed")
           color: root.foreground
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
@@ -431,7 +431,7 @@ Panel {
 
         Text {
           Layout.fillWidth: true
-          text: dropbox.installed ? "Start the authentication flow" : "Install Dropbox from the service menu"
+          text: dropbox.installed ? I18n.tr("dropbox.start_auth") : I18n.tr("dropbox.install_hint")
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -454,7 +454,7 @@ Panel {
     id: fileRow
     property var file: null
     property int rowIndex: 0
-    readonly property string fileName: file ? String(file.name || "Untitled") : "Untitled"
+    readonly property string fileName: file ? String(file.name || I18n.tr("dropbox.untitled")) : I18n.tr("dropbox.untitled")
 
     hasCursor: root.cursorActive && root.focusSection === "files" && root.fileIndex === rowIndex
     foreground: root.foreground

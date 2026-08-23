@@ -90,11 +90,11 @@ Panel {
 
   function windowTitle(label) {
     var text = String(label || "").toLowerCase()
-    if (text.indexOf("month") >= 0) return "Monthly"
-    if (windowIsLong(text)) return "Weekly"
-    if (text.indexOf("session") >= 0 || windowSpanMs(label) > 0) return "Session"
+    if (text.indexOf("month") >= 0) return I18n.tr("agents.monthly")
+    if (windowIsLong(text)) return I18n.tr("agents.weekly")
+    if (text.indexOf("session") >= 0 || windowSpanMs(label) > 0) return I18n.tr("agents.session")
     var plain = String(label || "").replace(/\s*\(.*\)\s*/, "").trim()
-    return plain === "" ? "Limit" : plain
+    return plain === "" ? I18n.tr("agents.limit") : plain
   }
 
   // A collector that already knows which window a limit belongs to says so,
@@ -182,7 +182,7 @@ Panel {
     if (!p) return ""
     if (String(p.usageStatusText || "") !== "") return p.usageStatusText
     var tier = String(p.tierLabel || "")
-    if (tier === "") return "Subscription"
+    if (tier === "") return I18n.tr("agents.subscription")
     return tier.charAt(0).toUpperCase() + tier.slice(1)
   }
 
@@ -202,7 +202,7 @@ Panel {
   }
 
   function dayLabel(date, today) {
-    if (today) return "Today"
+    if (today) return I18n.tr("agents.today")
     return dayName(date)
   }
 
@@ -212,13 +212,13 @@ Panel {
     var label = isNaN(parsed.getTime())
       ? String(day.date)
       : dayName(day.date) + " " + (parsed.getMonth() + 1) + "/" + parsed.getDate()
-    var text = label + " · " + usage.formatTokenCount(Number(day.messageCount || 0)) + " tokens"
+    var text = label + " · " + usage.formatTokenCount(Number(day.messageCount || 0)) + I18n.tr("agents.tokens")
     // Prompt and session counts only exist for today, so they ride along here
     // instead of taking a section of their own. Billing-API agents never
     // count prompts, and "0 prompts" would read as a quiet day, not a gap.
     if (today && provider && provider.hasPromptStats !== false)
-      text += " · " + Number(provider.todayPrompts || 0) + " prompts · "
-        + Number(provider.todaySessions || 0) + " sessions"
+      text += " · " + Number(provider.todayPrompts || 0) + I18n.tr("agents.prompts") + " · "
+        + Number(provider.todaySessions || 0) + I18n.tr("agents.sessions")
     return text
   }
 
@@ -253,17 +253,17 @@ Panel {
 
   function modelTooltip(row) {
     if (!row) return ""
-    return "In " + usage.formatTokenCount(row.input)
-      + " · out " + usage.formatTokenCount(row.output)
-      + " · cache read " + usage.formatTokenCount(row.cacheRead)
-      + " · cache write " + usage.formatTokenCount(row.cacheWrite)
+    return I18n.tr("agents.in") + usage.formatTokenCount(row.input)
+      + " · " + I18n.tr("agents.out") + usage.formatTokenCount(row.output)
+      + " · " + I18n.tr("agents.cache_read") + usage.formatTokenCount(row.cacheRead)
+      + " · " + I18n.tr("agents.cache_write") + usage.formatTokenCount(row.cacheWrite)
   }
 
   // Only speaks up when the numbers cover more than this machine.
   function footerText() {
     if (usage.syncStatusText !== "") return usage.syncStatusText
     if (provider && provider.syncEnabled && provider.syncDeviceCount > 0)
-      return "Merged from " + provider.syncDeviceCount + " device" + (provider.syncDeviceCount === 1 ? "" : "s")
+      return I18n.tr("agents.merged_from") + provider.syncDeviceCount + (provider.syncDeviceCount === 1 ? I18n.tr("agents.device_single") : I18n.tr("agents.device_plural"))
     return ""
   }
 
@@ -449,7 +449,7 @@ Panel {
             visible: root.providers.length === 0
             width: parent.width
             topPadding: Style.space(24)
-            text: "No AI coding subscriptions found.\nAgents show up here once you've used them."
+            text: I18n.tr("agents.no_subscriptions")
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
@@ -537,7 +537,7 @@ Panel {
 
             PanelSectionHeader {
               width: parent.width
-              text: "BALANCE"
+              text: I18n.tr("agents.balance")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -548,7 +548,7 @@ Panel {
 
               Text {
                 id: balanceLabel
-                text: "Prepaid credits"
+                text: I18n.tr("agents.prepaid_credits")
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body
@@ -591,7 +591,7 @@ Panel {
             spacing: Style.space(10)
 
             PanelSectionHeader {
-              text: "LIMITS"
+              text: I18n.tr("agents.limits")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -624,7 +624,7 @@ Panel {
 
             PanelSectionHeader {
               width: parent.width
-              text: "TOKENS BY DAY"
+              text: I18n.tr("agents.tokens_by_day")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -660,7 +660,7 @@ Panel {
 
             PanelSectionHeader {
               width: parent.width
-              text: "TOKENS BY MODEL"
+              text: I18n.tr("agents.tokens_by_model")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -747,7 +747,7 @@ Panel {
       width: parent.width
       text: {
         var remainingMs = root.resetMsFor(limitRow.window)
-        return remainingMs > 0 ? "Resets in " + root.formatDuration(remainingMs) : ""
+        return remainingMs > 0 ? I18n.tr("agents.resets_in") + root.formatDuration(remainingMs) : ""
       }
       color: root.dim
       font.family: root.fontFamily

@@ -64,19 +64,19 @@ Panel {
 
   property int phraseIndex: 0
   readonly property var activePhrases: [
-    "Untangling wires",
-    "Streaming vikings",
-    "Pairing mysteries",
-    "Herding headsets",
-    "Taming radios",
-    "Summoning speakers",
-    "Wrangling codecs",
-    "Polishing packets"
+    I18n.tr("bluetooth.active_0"),
+    I18n.tr("bluetooth.active_1"),
+    I18n.tr("bluetooth.active_2"),
+    I18n.tr("bluetooth.active_3"),
+    I18n.tr("bluetooth.active_4"),
+    I18n.tr("bluetooth.active_5"),
+    I18n.tr("bluetooth.active_6"),
+    I18n.tr("bluetooth.active_7")
   ]
   readonly property bool rotatingPhrases: adapter && adapter.enabled
   readonly property string heroStatusText: {
-    if (!adapter) return "No adapter"
-    if (!adapter.enabled) return "Turned Off"
+    if (!adapter) return I18n.tr("bluetooth.no_adapter")
+    if (!adapter.enabled) return I18n.tr("bluetooth.turned_off")
     return activePhrases[phraseIndex % activePhrases.length]
   }
 
@@ -737,7 +737,7 @@ Panel {
             spacing: Style.space(2)
 
             Text {
-              text: "Bluetooth"
+              text: I18n.tr("bluetooth.title")
               color: root.bar.foreground
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.title
@@ -773,7 +773,7 @@ Panel {
           spacing: Style.space(10)
 
           PanelSectionHeader {
-            text: "CONNECTED"
+            text: I18n.tr("bluetooth.connected")
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
           }
@@ -891,9 +891,9 @@ Panel {
     readonly property string action: root.pendingAction(dev ? dev.address : "")
     readonly property string actionTooltip: {
       if (!dev) return ""
-      if (isConnected) return "Disconnect"
-      if (isDiscovered) return "Pair"
-      return "Connect"
+      if (isConnected) return I18n.tr("bluetooth.disconnect")
+      if (isDiscovered) return I18n.tr("bluetooth.pair")
+      return I18n.tr("bluetooth.connect")
     }
 
     readonly property bool rowSelected: root.cursorActive && root.focusSection === sectionName && root.selectedIndex === rowIndex
@@ -912,7 +912,7 @@ Panel {
       if (action === "disconnecting" || devState === 2) return "Disconnecting…"
       if (isConnected) {
         if (dev.batteryAvailable) return Math.round(dev.battery * 100) + "%"
-        return sectionName === "connected" ? "" : "Connected"
+        return sectionName === "connected" ? "" : I18n.tr("common.connected")
       }
       if (action === "connecting" || devState === 3 || dev.pairing === true) return "Connecting…"
       if (isDiscovered) return ""
@@ -989,7 +989,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
-          text: root.deviceLabel(row.dev) || "Device"
+          text: root.deviceLabel(row.dev) || I18n.tr("bluetooth.device")
           color: root.bar.foreground
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.body
@@ -1013,7 +1013,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
         visible: row.showForgetButton
         iconText: "󰅙"
-        tooltipText: "Forget"
+        tooltipText: I18n.tr("bluetooth.forget")
         foreground: root.bar.foreground
         hoverColor: root.bar.foreground
         fontFamily: root.bar.fontFamily

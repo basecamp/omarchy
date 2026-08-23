@@ -135,7 +135,7 @@ Item {
     title: root.diskName
     leftLabel: "READ"
     rightLabel: "WRITE"
-    unit: "MB/s"
+    unit: I18n.tr("disk_speedtest.unit")
     runAgainTooltip: "Measure again"
     running: root.running
     leftValue: root.toRate(root.readMBps)

@@ -94,26 +94,26 @@ Panel {
   // Cute agent-flavored phrases shown in the hero status line, rotated on a
   // timer so the panel feels alive when current is flowing (either direction).
   readonly property var chargingPhrases: [
-    "Pumping power",
-    "Injecting electrons",
-    "Pouring juice",
-    "Amassing watts",
-    "Hoarding joules",
-    "Sucking volts",
-    "Topping reserves",
-    "Soaking amps",
-    "Inhaling kilowatts"
+    I18n.tr("power.charging_0"),
+    I18n.tr("power.charging_1"),
+    I18n.tr("power.charging_2"),
+    I18n.tr("power.charging_3"),
+    I18n.tr("power.charging_4"),
+    I18n.tr("power.charging_5"),
+    I18n.tr("power.charging_6"),
+    I18n.tr("power.charging_7"),
+    I18n.tr("power.charging_8")
   ]
   readonly property var onBatteryPhrases: [
-    "Slurping power",
-    "Spending joules",
-    "Draining watts",
-    "Burning electrons",
-    "Sipping juice",
-    "Spending coulombs",
-    "Bleeding amps",
-    "Guzzling volts",
-    "Munching reserves"
+    I18n.tr("power.on_battery_0"),
+    I18n.tr("power.on_battery_1"),
+    I18n.tr("power.on_battery_2"),
+    I18n.tr("power.on_battery_3"),
+    I18n.tr("power.on_battery_4"),
+    I18n.tr("power.on_battery_5"),
+    I18n.tr("power.on_battery_6"),
+    I18n.tr("power.on_battery_7"),
+    I18n.tr("power.on_battery_8")
   ]
   property int phraseIndex: 0
 
@@ -127,7 +127,7 @@ Panel {
   readonly property bool rotatingPhrases: activePhrases.length > 0
 
   readonly property string heroStatusText: {
-    if (fullyCharged) return "Fully charged"
+    if (fullyCharged) return I18n.tr("power.fully_charged")
     if (rotatingPhrases) return activePhrases[phraseIndex % activePhrases.length]
     return modeLabel()
   }
@@ -345,7 +345,7 @@ Panel {
             spacing: Style.space(2)
 
             Text {
-              text: "Battery"
+              text: I18n.tr("power.battery")
               color: root.bar.foreground
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.title
@@ -430,20 +430,20 @@ Panel {
           Column {
             width: (parent.width - parent.spacing) / 2
             spacing: Style.spacing.labelGap
-            InfoPair { label: "Battery size"; value: root.batteryInfo.size || "" }
-            InfoPair { label: "Charge cycles"; value: root.batteryInfo.cycles || "—" }
+            InfoPair { label: I18n.tr("power.battery_size"); value: root.batteryInfo.size || "" }
+            InfoPair { label: I18n.tr("power.charge_cycles"); value: root.batteryInfo.cycles || "—" }
           }
 
           Column {
             width: (parent.width - parent.spacing) / 2
             spacing: Style.spacing.labelGap
             InfoPair {
-              label: root.chargeThresholdActive ? "Charge limit" : (root.discharging ? "Time left" : "Time to full")
+              label: root.chargeThresholdActive ? I18n.tr("power.charge_limit") : (root.discharging ? I18n.tr("power.time_left") : I18n.tr("power.time_to_full"))
               value: root.chargeThresholdActive ? (root.batteryInfo.threshold || "-") : (root.batteryFlowIdle ? "-" : (root.batteryInfo.time || "—"))
             }
             InfoPair {
-              label: root.chargeThresholdActive ? "Battery state" : (root.discharging ? "Discharging" : "Charging")
-              value: root.chargeThresholdActive ? "Holding" : (root.batteryFull ? "-" : (root.batteryInfo.rate || ""))
+              label: root.chargeThresholdActive ? I18n.tr("power.battery_state") : (root.discharging ? I18n.tr("power.discharging") : I18n.tr("power.charging"))
+              value: root.chargeThresholdActive ? I18n.tr("power.holding") : (root.batteryFull ? "-" : (root.batteryInfo.rate || ""))
             }
           }
         }
@@ -458,7 +458,7 @@ Panel {
           spacing: Style.space(10)
 
           PanelSectionHeader {
-            text: "POWER PROFILE"
+            text: I18n.tr("power.profile")
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
           }

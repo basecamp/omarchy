@@ -1170,8 +1170,8 @@ Item {
           anchors.fill: parent
           opened: root.deleteConfirmOpen
           z: 10
-          message: "Do you want to uninstall " + ((root.deleteTarget && root.deleteTarget.label) || "") + "?"
-          confirmText: "Uninstall"
+          message: I18n.tr("menu.uninstall_confirm") + ((root.deleteTarget && root.deleteTarget.label) || "") + "?"
+          confirmText: I18n.tr("menu.uninstall")
           background: root.background
           foreground: root.foreground
           scrim: root.scrim
