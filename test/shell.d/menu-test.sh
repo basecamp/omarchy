@@ -192,6 +192,11 @@ assert(
   defaultById['update.omarchy'].iconFont === 'omarchy',
   'menu update Omarchy entry renders the private glyph with the Omarchy font'
 )
+assertEqual(
+  defaultById['update.themes'].when,
+  'omarchy-theme-extras',
+  'menu hides Extra Themes until a theme cloned from git is there to update'
+)
 assert(
   defaultById['setup.input'].action.includes('input.lua'),
   'menu keeps Input as a direct config action'
