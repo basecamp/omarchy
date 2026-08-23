@@ -72,7 +72,7 @@ That overlay currently **sets a Desktop Mode notification-area layout** that inc
 
 ## Hyprland
 
-`default/hypr/omarchy.lua` reads the same state file. Desktop Mode loads `default/hypr/bindings/desktop.lua` and `default/hypr/desktop-windows.lua` (float by default, resize on border, real maximize, Windows keybindings). Power User Mode keeps the original tiling bindings and `default/hypr/windows.lua`.
+`default/hypr/omarchy.lua` reads the same state file. Desktop Mode loads `default/hypr/bindings/desktop.lua` and `default/hypr/desktop-windows.lua` (float by default, resize on border, real maximize, Windows keybindings, Caps Lock is Caps Lock). Power User Mode keeps the original tiling bindings, `default/hypr/windows.lua`, and Omarchy's CapsLock-as-compose sequences.
 
 ## Rules
 

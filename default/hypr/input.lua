@@ -26,15 +26,33 @@ end
 local non_latin_layouts =
   " af am ara bd bg by et ge gr il in iq ir kg kh kz la lk mk mm mn mv np rs ru sy th tj ua "
 
+local function ultimate_mode()
+  local env = os.getenv("OMARCHY_ULTIMATE_MODE")
+  if env == "power-user" or env == "desktop" then
+    return env
+  end
+  local ok, ultimate = pcall(require, "default.hypr.ultimate")
+  if ok and ultimate and type(ultimate.mode) == "function" then
+    return ultimate.mode()
+  end
+  return "desktop"
+end
+
 local vconsole = read_vconsole()
 
 local kb_layout = vconsole.XKBLAYOUT or "us"
 local kb_variant = vconsole.XKBVARIANT or ""
--- CapsLock is the compose key, so Caps Lock itself has to live somewhere else.
--- Both Shifts together is the usual home for it, but it's easy to hit by
--- accident while typing. The _cancel variant sets Caps Lock the same way and
--- releases it on the next lone Shift, so a misfire clears itself.
-local kb_options = "compose:caps,shift:both_capslock_cancel"
+-- Power User Mode keeps Omarchy's CapsLock-as-compose sequences. Desktop Mode
+-- is Windows muscle memory: Caps Lock must toggle caps. Tests set
+-- OMARCHY_ULTIMATE_MODE so they do not depend on the live state file.
+local kb_options = ""
+if ultimate_mode() == "power-user" then
+  -- CapsLock is the compose key, so Caps Lock itself has to live somewhere else.
+  -- Both Shifts together is the usual home for it, but it's easy to hit by
+  -- accident while typing. The _cancel variant sets Caps Lock the same way and
+  -- releases it on the next lone Shift, so a misfire clears itself.
+  kb_options = "compose:caps,shift:both_capslock_cancel"
+end
 
 -- Hyprland resolves keybindings against the first entry in kb_layout, not the
 -- layout that's currently active, so Omarchy's Latin-keysym bindings (SUPER + W
@@ -44,7 +62,11 @@ if non_latin_layouts:find(" " .. kb_layout:match("^[^,]*") .. " ", 1, true) then
   kb_layout = "us," .. kb_layout
   kb_variant = "," .. kb_variant
   -- Reach the original layout with Left Alt + Right Alt.
-  kb_options = kb_options .. ",grp:alts_toggle"
+  if kb_options ~= "" then
+    kb_options = kb_options .. ",grp:alts_toggle"
+  else
+    kb_options = "grp:alts_toggle"
+  end
 end
 
 hl.config({
