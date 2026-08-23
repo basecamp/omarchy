@@ -31,8 +31,12 @@ BarIndicator {
     }
   }
 
-  onPressed: function() {
+  onPressed: function(button) {
     if (!root.bar) return
-    root.bar.run("omarchy-voxtype-config")
+    // Left click toggles dictation, matching the SUPER+CTRL+X binding and the
+    // toggle-on-click behavior of every sibling indicator. Any other button
+    // opens the Voxtype config TUI.
+    if (button === Qt.LeftButton) root.bar.run("voxtype record toggle")
+    else root.bar.run("omarchy-voxtype-config")
   }
 }
