@@ -58,36 +58,23 @@ Do not initially write a compositor, file manager, browser, package manager, aud
 
 ## Branch strategy
 
-Do not turn `quattro` into the experimental branch.
+Hard rule: this fork has two branches only.
 
 ```text
 upstream/quattro
       │
       ▼
-quattro                    Clean tracking branch
+main                       Clean tracking of upstream (default)
       │
       ▼
-ultimate/foundation        Typed WindowService + doctrine docs (exists)
-      │
-      ▼
-ultimate/main              Product integration (create when a slice is actually accepted)
-      │
-      ├── ultimate/windowing     W0 / Phase 1  ← current work lives on cursor/desktop-mode-slice-00d6
-      ├── ultimate/design-system
-      ├── ultimate/taskbar
-      ├── ultimate/start
-      ├── ultimate/settings
-      ├── ultimate/desktop
-      ├── ultimate/files
-      ├── ultimate/software
-      └── ultimate/oobe
+work                       All Ultimate product work
 ```
 
-`cursor/desktop-mode-slice-00d6` is a local/cloud slice branch stacked on `ultimate/foundation`. It is not `ultimate/main`. Do not merge it because a harness printed green.
+Do not create `cursor/*`, `ultimate/*`, or any other slice branches. Do not turn `main` into the experimental line. Phase work happens as commits on `work`. A full-repo backup of the pre-reconcile refs lives at `C:\dev\omarchy-vm\omarchy-all-refs-2026-08-22.bundle` on the Windows workstation, not in git.
 
 ## Current position (2026-08-22)
 
-Windowing Gate W0 is **GO** on the metal Hyprland 0.56.2 session. The product is still **REJECTED**. Do not merge PR #1 as the OS.
+Windowing Gate W0 is **GO** on the metal Hyprland 0.56.2 session. The product is still **REJECTED**. Do not merge `work` into `main` as the OS.
 
 **Phase 0 (foundation)** is mostly in the repo: doctrine, acceptance manifest, mode profiles, design-token singleton, settings-service convention, shell tests, VM acceptance skeleton.
 
@@ -121,9 +108,9 @@ Copied from the doctrine’s release architecture. Do not reorder to “make QML
 
 ### Phase 0 — Foundation
 
-Done enough to build on: doctrine, acceptance manifest, profiles, token layer, service convention, test/acceptance harness skeleton, `ultimate/foundation` branch.
+Done enough to build on: doctrine, acceptance manifest, profiles, token layer, service convention, test/acceptance harness skeleton. That foundation is on `work`.
 
-Still open: clean `quattro` tracking vs `ultimate/main` integration branch; visual regression gallery; merge procedure written down.
+Still open: visual regression gallery.
 
 ### Phase 1 — Windowing Gate W0
 

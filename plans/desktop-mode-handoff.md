@@ -188,19 +188,18 @@ Acknowledgement gate: in your first substantive reply, restate the seven doctrin
 
 ## 2. Ground truth: repository state
 
-- Remote: `github.com/jnadeau207-collab/omarchy-7-ultimate`. Default branch: `quattro`.
-- Foundation branch: `ultimate/foundation` (tip `4c3e985b`, WindowService). Do not reconstruct or re-derive it; it is on the remote and the slice stacks on it.
-- Work branch: `cursor/desktop-mode-slice-00d6`. Accepted repair tips: `4ea1dcf3` (windowing) + `a5b945da` (roadmap). Product call on that pair is REJECTED. Do not treat HEAD as a windowing go.
-- Open PR for the slice: #1.
-- Continue on `cursor/desktop-mode-slice-00d6`. Do not switch branches, do not force-push, do not amend existing commits, and do not edit the external `.plan.md` file that lives on the developer's machine.
+- Remote: `github.com/jnadeau207-collab/omarchy-7-ultimate`. Default branch: `main` (clean upstream tracking). Work branch: `work` (all Ultimate product commits, including the locked W0 stack through `c1d6e6a6` plus later quattro).
+- Do not reconstruct deleted slice branches (`ultimate/foundation`, `cursor/desktop-mode-slice-00d6`, `cursor/cloud-agent-dev-environment-a448`). Those commits are ancestors of `work`.
+- Product is still REJECTED. Do not merge `work` into `main` as the OS.
+- Continue on `work`. Do not create new branches. Do not force-push. Do not amend locked SHAs `4ea1dcf3` through `c1d6e6a6`. Do not edit the external `.plan.md` file that lives on the developer's machine.
 
 Fetch and check out before doing anything else:
 
 ```bash
 git fetch origin --prune
-git checkout cursor/desktop-mode-slice-00d6
-git pull origin cursor/desktop-mode-slice-00d6
-git log --oneline -1   # expect a5b945da or a later commit that actually moved a locked gate
+git checkout work
+git pull origin work
+git log --oneline -1
 ```
 
 ## 3. What is already proven (do not redo blindly, but re-run to confirm)
@@ -326,7 +325,7 @@ Live numbers from the follow-up turn (Hyprland 0.56.2, virtio-vga 1920×1080, re
 
 ## 9. Explicit do-not list
 
-- Do not reconstruct `ultimate/foundation` from memory; it is on the remote.
+- Do not reconstruct deleted slice branches from memory; they are ancestors of `work`.
 - Do not edit the developer's local `.plan.md`.
 - Do not skip the live windowing go/no-go, and do not substitute a non-Hyprland compositor (Sway/Weston) — its dispatchers and behavior differ and prove nothing here.
 - Do not hide a `special:minimized` identity failure behind taskbar chrome. Report it.
