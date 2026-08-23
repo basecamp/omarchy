@@ -172,6 +172,19 @@ grep -Fq 'modal = true' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "xdg modal dialogs stay centered with the parent"
 grep -Fq 'window_w' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "modal dialogs keep the size they asked for instead of 880x560"
+grep -Fq 'chromeGlow' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml" \
+  || fail "taskbar pins a Windows 7 Superbar glow instead of the theme accent"
+if grep -Fq 'Tokens.accent.primary' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml"; then
+  fail "taskbar buttons must not use the theme accent as the running indicator"
+fi
+if grep -Fq 'Tokens.accent.primary' "$ROOT/shell/plugins/ultimate-taskbar/StartButton.qml"; then
+  fail "Start must not use the theme accent for the orb"
+fi
+if grep -Fq 'Tokens.surface.glass' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml"; then
+  fail "taskbar must not fill with theme glass (Tokyo Night blue)"
+fi
+grep -Fq 'WaylandWindowDecorations' "$ROOT/config/chromium-flags.conf" \
+  || fail "Chromium must use compositor SSD instead of a second Wayland title bar"
 jq -e '.features.taskView == true' "$ROOT/default/ultimate/profiles/desktop.json" >/dev/null \
   || fail "desktop profile enables Task View"
 grep -Fq 'omarchy-snap-chooser' "$ROOT/shell/plugins/ultimate-snap-chooser/Chooser.qml" \

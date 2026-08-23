@@ -9,7 +9,7 @@ Item {
 
   Rectangle {
     anchors.fill: parent
-    color: mouse.containsMouse ? Tokens.accent.primary : Tokens.border.subtle
+    color: mouse.containsMouse ? bar.chromeGlow : Tokens.border.subtle
   }
 
   MouseArea {

@@ -218,6 +218,13 @@ if grep -Fq 'hyprpm' "$ROOT/default/hypr/desktop-windows.lua"; then
   fail "desktop mode must not reload hyprpm plugins"
 fi
 grep -Fq 'omarchy-minimize' "$ROOT/default/hypr/desktop-windows.lua" || fail "desktop mode loads omarchy-minimize for in-place hide"
+grep -Fq 'rgba(6a6a6aff)' "$ROOT/default/hypr/desktop-windows.lua" || fail "desktop mode uses a solid gray active border"
+if grep -Fq '33ccff' "$ROOT/default/hypr/desktop-windows.lua"; then
+  fail "desktop windowing must not keep the Omarchy cyan border"
+fi
+desktop_req=$(grep -n 'require("default.hypr.desktop-windows")' "$ROOT/default/hypr/omarchy.lua" | tail -1 | cut -d: -f1)
+theme_req=$(grep -n 'omarchy.current.theme.hyprland' "$ROOT/default/hypr/omarchy.lua" | tail -1 | cut -d: -f1)
+(( desktop_req > theme_req )) || fail "desktop-windows must load after the theme so Omarchy/theme borders do not win"
 pass "desktop mode compositor chrome is hyprbars, not overlay captions"
 
 # The Grave shortcuts are aliases, so the original SUPER + S pair has to keep

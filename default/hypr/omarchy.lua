@@ -23,11 +23,14 @@ require("default.hypr.envs")
 require("default.hypr.looknfeel")
 require("default.hypr.qconsole")
 require("default.hypr.input")
-if mode == "desktop" then
-  require("default.hypr.desktop-windows")
-else
+if mode ~= "desktop" then
   require("default.hypr.windows")
 end
 
 -- Current theme overrides.
 require_optional.module("omarchy.current.theme.hyprland")
+
+-- Desktop Mode chrome must win over looknfeel and theme accent borders.
+if mode == "desktop" then
+  require("default.hypr.desktop-windows")
+end

@@ -12,8 +12,8 @@ Item {
     anchors.fill: parent
     anchors.margins: 4
     radius: Tokens.radius.small
-    color: mouse.pressed ? Util.alpha(Tokens.accent.primary, 0.3)
-      : mouse.containsMouse ? Util.alpha(Tokens.accent.primary, 0.18)
+    color: mouse.pressed ? bar.chromePressed
+      : mouse.containsMouse ? bar.chromeHover
       : "transparent"
 
     Column {

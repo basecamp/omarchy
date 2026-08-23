@@ -30,7 +30,17 @@ hl.config({
     resize_on_border = true,
     gaps_in = 0,
     gaps_out = 0,
-    border_size = 2,
+    border_size = 1,
+    col = {
+      active_border = "rgba(6a6a6aff)",
+      inactive_border = "rgba(3a3a3aff)",
+    },
+  },
+  group = {
+    col = {
+      border_active = "rgba(6a6a6aff)",
+      border_inactive = "rgba(3a3a3aff)",
+    },
   },
   decoration = {
     shadow = {

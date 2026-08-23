@@ -13,8 +13,8 @@ Item {
     anchors.fill: parent
     anchors.margins: 4
     radius: Tokens.radius.small
-    color: mouse.pressed ? Util.alpha(Tokens.accent.primary, 0.3)
-      : mouse.containsMouse ? Util.alpha(Tokens.accent.primary, 0.18)
+    color: mouse.pressed ? bar.chromePressed
+      : mouse.containsMouse ? bar.chromeHover
       : "transparent"
 
     Row {
@@ -32,7 +32,7 @@ Item {
           Rectangle {
             width: 5
             height: 5
-            color: Tokens.accent.primary
+            color: bar.chromeStart
             opacity: 0.45 + index * 0.15
           }
         }

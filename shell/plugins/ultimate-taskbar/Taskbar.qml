@@ -24,7 +24,15 @@ Item {
   property string fontFamily: Style.font.family
   property color foreground: Tokens.text.primary
   property color barForeground: Tokens.text.primary
-  property color background: Tokens.surface.glass
+  // Windows 7 Superbar: charcoal glass + orange active glow, not Tokyo Night blue.
+  readonly property color chromeBar: "#1b1b1b"
+  readonly property color chromeHover: "#333333"
+  readonly property color chromeActive: "#3a3a3a"
+  readonly property color chromePressed: "#4a4a4a"
+  readonly property color chromeGlow: "#e8943a"
+  readonly property color chromeStart: "#9cbc0d"
+  readonly property color chromeEdge: "#55ffffff"
+  property color background: chromeBar
   property var moduleSlots: []
   readonly property var windowService: shell ? shell.windowService : null
   readonly property var appLibrary: shell ? shell.appLibrary : null
@@ -156,6 +164,15 @@ Item {
         anchors.bottom: true
         anchors.left: true
         anchors.right: true
+
+        Rectangle {
+          anchors.top: parent.top
+          anchors.left: parent.left
+          anchors.right: parent.right
+          height: 1
+          z: 2
+          color: root.chromeEdge
+        }
 
         ScreenMoveRemap {
           id: remapGuard

@@ -56,9 +56,9 @@ Item {
     anchors.fill: parent
     anchors.margins: 4
     radius: Tokens.radius.small
-    color: mouse.pressed ? Util.alpha(Tokens.accent.primary, 0.28)
-      : mouse.containsMouse ? Util.alpha(Tokens.accent.primary, 0.16)
-      : root.active ? Util.alpha(Tokens.accent.primary, 0.22)
+    color: mouse.pressed ? bar.chromePressed
+      : mouse.containsMouse ? bar.chromeHover
+      : root.active ? bar.chromeActive
       : "transparent"
 
     Rectangle {
@@ -69,7 +69,7 @@ Item {
       width: root.active ? 16 : (windows.length > 1 ? 12 : 8)
       height: 2
       radius: 1
-      color: Tokens.accent.primary
+      color: bar.chromeGlow
     }
 
     Image {
@@ -176,7 +176,7 @@ Item {
             Rectangle {
               anchors.fill: parent
               radius: Tokens.radius.small
-              color: rowMouse.containsMouse ? Util.alpha(Tokens.accent.primary, 0.18) : "transparent"
+              color: rowMouse.containsMouse ? bar.chromeHover : "transparent"
             }
 
             Text {
