@@ -403,12 +403,103 @@ pass "wifi recover bounds iw and nmcli probes"
 
 grep -F 'rm -f "$staged"' "$ROOT/install/user/first-run/enable-user-units.sh" >/dev/null ||
   fail "first-run does not unstage a packaged wifi recover unit"
-grep -F 'rm -f "$config_home/systemd/user/omarchy-wifi-recover.service"' \
-  "$ROOT/migrations/1787444800.sh" >/dev/null ||
-  fail "migration does not unstage a packaged wifi recover unit"
 grep -F 'sudo install -Dm440' "$ROOT/migrations/1787444800.sh" >/dev/null ||
-  fail "first-run and migration unstage a packaged wifi recover unit"
-pass "first-run and migration unstage a packaged wifi recover unit"
+  fail "migration does not install the sudoers grant"
+pass "first-run unstages a packaged wifi recover unit"
+
+# The migration runs on every existing install and had no test at all, which
+# is how it came to disagree with the two other paths that stage this unit.
+# Run it rather than grepping it. `visudo` and `systemctl` are absent or
+# unusable in a test environment, and the runner supplies OMARCHY_PATH.
+cat >"$tmp_dir/bin/visudo" <<'EOF'
+#!/bin/bash
+exit "${VISUDO_RC:-0}"
+EOF
+cat >"$tmp_dir/bin/systemctl" <<'EOF'
+#!/bin/bash
+exit 1
+EOF
+chmod +x "$tmp_dir/bin/visudo" "$tmp_dir/bin/systemctl"
+
+mig_home="$tmp_dir/mig"
+run_migration() {
+  : >"$tmp_dir/calls"
+  rm -rf "$mig_home"
+  mkdir -p "$mig_home/.config/systemd/user"
+  "$@"
+  set +e
+  CALLS="$tmp_dir/calls" HOME="$mig_home" XDG_CONFIG_HOME="$mig_home/.config" \
+    OMARCHY_PATH="$ROOT" \
+    OMARCHY_WIFI_SUDOERS_DEST="$tmp_dir/sudoers-dest" \
+    OMARCHY_WIFI_RECOVER_PACKAGED_UNIT="$tmp_dir/mig-packaged.service" \
+    RESTART_FAIL="${MIG_SUDO_FAIL:-0}" VISUDO_RC="${MIG_VISUDO_RC:-0}" \
+    PATH="$tmp_dir/bin:$PATH" \
+    bash -euo pipefail "$ROOT/migrations/1787444800.sh" >"$tmp_dir/mig.out" 2>&1
+  echo $? >"$tmp_dir/mig.rc"
+  set -e
+}
+
+mig_staged="$mig_home/.config/systemd/user/omarchy-wifi-recover.service"
+unit_src="$ROOT/default/systemd/user/omarchy-wifi-recover.service"
+rm -f "$tmp_dir/sudoers-dest" "$tmp_dir/mig-packaged.service"
+
+# A user who cancels the sudo prompt, or is not in %wheel, must not lose every
+# migration queued behind this one.
+MIG_SUDO_FAIL=1 run_migration true
+[[ $(<"$tmp_dir/mig.rc") == 0 ]] ||
+  fail "migration survives a refused sudo" "$(cat "$tmp_dir/mig.out")"
+grep -q 'Could not install' "$tmp_dir/mig.out" ||
+  fail "migration says the grant was not installed" "$(cat "$tmp_dir/mig.out")"
+pass "migration survives a refused sudo"
+
+MIG_VISUDO_RC=1 run_migration true
+[[ $(<"$tmp_dir/mig.rc") == 0 ]] ||
+  fail "migration survives an unparsable sudoers file" "$(cat "$tmp_dir/mig.out")"
+grep -q 'does not parse' "$tmp_dir/mig.out" ||
+  fail "migration says the sudoers file did not parse" "$(cat "$tmp_dir/mig.out")"
+pass "migration reports an unparsable sudoers file"
+MIG_VISUDO_RC=0
+
+# Packaged unit present and the staged copy is stock: clean it up.
+run_migration cp "$unit_src" "$tmp_dir/mig-packaged.service"
+install -Dm644 "$unit_src" "$mig_staged"
+CALLS="$tmp_dir/calls" HOME="$mig_home" XDG_CONFIG_HOME="$mig_home/.config" \
+  OMARCHY_PATH="$ROOT" OMARCHY_WIFI_SUDOERS_DEST="$tmp_dir/sudoers-dest" \
+  OMARCHY_WIFI_RECOVER_PACKAGED_UNIT="$tmp_dir/mig-packaged.service" \
+  PATH="$tmp_dir/bin:$PATH" \
+  bash -euo pipefail "$ROOT/migrations/1787444800.sh" >/dev/null 2>&1
+[[ ! -e $mig_staged ]] ||
+  fail "migration removes a stock staged unit once the packaged one exists"
+pass "migration removes a stock staged unit once the packaged one exists"
+
+# The same, with the user's own edits in it. The watcher and first-run both
+# leave that alone; the migration used to delete it.
+printf 'customized\n' >"$mig_staged"
+CALLS="$tmp_dir/calls" HOME="$mig_home" XDG_CONFIG_HOME="$mig_home/.config" \
+  OMARCHY_PATH="$ROOT" OMARCHY_WIFI_SUDOERS_DEST="$tmp_dir/sudoers-dest" \
+  OMARCHY_WIFI_RECOVER_PACKAGED_UNIT="$tmp_dir/mig-packaged.service" \
+  PATH="$tmp_dir/bin:$PATH" \
+  bash -euo pipefail "$ROOT/migrations/1787444800.sh" >/dev/null 2>&1
+[[ $(<"$mig_staged") == customized ]] ||
+  fail "migration leaves a customized staged unit alone"
+pass "migration leaves a customized staged unit alone"
+
+# No packaged unit yet: stage ours, but never over the user's.
+rm -f "$tmp_dir/mig-packaged.service"
+run_migration true
+cmp -s "$mig_staged" "$unit_src" ||
+  fail "migration stages the unit when no packaged copy exists"
+pass "migration stages the unit when no packaged copy exists"
+
+printf 'customized\n' >"$mig_staged"
+CALLS="$tmp_dir/calls" HOME="$mig_home" XDG_CONFIG_HOME="$mig_home/.config" \
+  OMARCHY_PATH="$ROOT" OMARCHY_WIFI_SUDOERS_DEST="$tmp_dir/sudoers-dest" \
+  OMARCHY_WIFI_RECOVER_PACKAGED_UNIT="$tmp_dir/mig-packaged.service" \
+  PATH="$tmp_dir/bin:$PATH" \
+  bash -euo pipefail "$ROOT/migrations/1787444800.sh" >/dev/null 2>&1
+[[ $(<"$mig_staged") == customized ]] ||
+  fail "migration does not restage over a customized unit"
+pass "migration does not restage over a customized unit"
 
 sudoers="$ROOT/etc/sudoers.d/omarchy-restart-wifi"
 rule='%wheel ALL=(root) NOPASSWD: /usr/bin/omarchy-restart-wifi ""'

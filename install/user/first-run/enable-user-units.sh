@@ -27,6 +27,8 @@ stage_user_unit() {
   fi
 
   [[ -f $src ]] || return 0
+  # first-run reruns with --force, so never clobber a copy already there.
+  [[ -f $staged ]] && return 0
 
   install -Dm644 "$src" "$staged"
 }

@@ -10,7 +10,7 @@ set -e
 # a stream, because an upgrade without --noconfirm prompts on stderr. The
 # handler has already said why, so no heading here either.
 if [[ ${OMARCHY_UPDATE_CONFLICT:-} == 1 && ${OMARCHY_UPDATE_INTERACTIVE:-} == 1 ]]; then
-  exec sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --overwrite '/usr/share/omarchy/*' --overwrite '/etc/sudoers.d/omarchy-restart-wifi'
+  exec sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --overwrite '/usr/share/omarchy/*'
 fi
 
 echo -e "\e[32m\nUpdate system packages\e[0m"
@@ -24,8 +24,7 @@ trap 'rm -f "$errors"' EXIT
 # Progress bars stay on stdout. Errors are on stderr, kept for the conflict
 # handler below; LC_ALL=C is what keeps them parseable in any locale.
 if sudo env LC_ALL=C OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm \
-  --overwrite '/usr/share/omarchy/*' \
-  --overwrite '/etc/sudoers.d/omarchy-restart-wifi' 2>"$errors"; then
+  --overwrite '/usr/share/omarchy/*' 2>"$errors"; then
   cat "$errors" >&2
   exit 0
 fi
