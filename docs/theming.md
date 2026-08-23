@@ -13,8 +13,8 @@ ship `backgrounds/` (users overlay their own via
 `preview-unlock.png` for the theme switcher, `icons.theme`, `keyboard.rgb`,
 `unlock.png`, and a `light.mode` marker file.
 
-A theme under `~/.config/omarchy/themes/` is held to a much shorter list; see
-[What an extra theme may ship](#what-an-extra-theme-may-ship).
+A theme installed from a git repo is held to a much shorter list; see
+[What an installed theme may not ship](#what-an-installed-theme-may-not-ship).
 
 ## Theme activation flow
 
@@ -22,7 +22,8 @@ A theme under `~/.config/omarchy/themes/` is held to a much shorter list; see
 `~/.local/state/omarchy/current/next-theme`:
 
 1. Copy the first-party theme from `themes/<name>/`.
-2. Overlay the allowed files from `~/.config/omarchy/themes/<name>/`, naming
+2. Overlay `~/.config/omarchy/themes/<name>/`, in full when the user wrote it
+   and filtered to the allowed list when it came from a git repo, naming
    anything it dropped on stderr.
 3. If needed, generate `colors.toml` from `alacritty.toml`.
 4. Run `omarchy-theme-set-templates` to render templates into the staging
@@ -47,28 +48,40 @@ Making a new app follow theme changes means adding its restart/retint command
 to that list. Runs serialize on a `flock`, so scripted theme changes queue
 instead of racing.
 
-## What an extra theme may ship
+## What an installed theme may not ship
 
-`themes/<name>/` in this repo is Omarchy's own code and is trusted. A theme
-under `~/.config/omarchy/themes/<name>/` is not: `omarchy theme install <url>`
-clones a stranger's git repo straight into it, and nothing on disk distinguishes
-that from a theme the user wrote. So `omarchy-theme-set` stages only:
+`themes/<name>/` in this repo is Omarchy's own code and is trusted. So is a
+theme the user wrote by hand in `~/.config/omarchy/themes/<name>/`: it is their
+machine and their file, and both stage in full.
 
-- `colors.toml`
-- `light.mode`
-- `preview.png`, `preview-unlock.png`, `unlock.png`
-- `backgrounds/` — files with an image extension (`jpg`, `jpeg`, `png`, `gif`,
-  `bmp`, `webp`), matching what the background chooser will pick from
+`omarchy theme install <url>` is different. It clones a stranger's git repo
+straight into that same directory, so the contents are whatever the theme author
+pushed. `omarchy-theme-set` tells the two apart the way `omarchy-theme-extras`
+already does — a `.git` directory means it was cloned, while a plain directory or
+a symlink to a working copy is the user's own — and from a cloned one it drops
+only what can run code:
 
-Symlinks are never followed; in an untrusted theme they point wherever the theme
-author chose. Everything else is ignored and named on stderr, and the themed
-file with that name is generated from `default/themed/*.tpl` instead.
+- any `*.lua` — Hyprland `require`s a theme's `hyprland.lua` and `gum_env.lua` at
+  login, and Neovim loads its `neovim.lua` at startup
+- `alacritty.toml`, `foot.ini`, `ghostty.conf`, `kitty.conf` — each names the
+  program the terminal launches
+- `vscode.json` — names the extension `omarchy-theme-set-vscode` installs, and a
+  VS Code extension is arbitrary JavaScript
 
-The list is short because most themed files are code. A theme's `hyprland.lua`
-and `gum_env.lua` are Lua that Hyprland `require`s at login, `neovim.lua` is Lua
-the editor runs at startup, and `alacritty.toml`, `kitty.conf`, `foot.ini` and
-`ghostty.conf` each name the program the terminal launches. Staging any of them
-would make installing a theme the same act as running its code.
+Symlinks are dropped with them, at any depth; in a cloned theme they point
+wherever the theme author chose. Everything a cloned theme ships that is colour
+is kept, including files Omarchy would otherwise have generated —
+`btop.theme`, `chromium.theme`, `helix.toml`, `shell.toml`, `icons.theme`,
+`keyboard.rgb` and the rest — so a theme can still say exactly how it wants each
+app to look. What it is dropped gets generated from `default/themed/*.tpl`
+instead, and is named on stderr.
+
+A denylist is only right while it is maintained. Adding a template for another
+terminal, or for another editor that loads Lua, means adding it to
+`INSTALLED_THEME_DENIED` in `bin/omarchy-theme-set`;
+`test/shell.d/theme-staging-test.sh` fails on any `default/themed/*.tpl` whose
+output is recorded as neither code nor colour, so a new template cannot be added
+without that decision being made.
 
 A theme predating `colors.toml` is not left without a palette: its
 `alacritty.toml` is read through `omarchy-theme-colors-from-alacritty` into a
@@ -77,16 +90,14 @@ survive and the terminal config does not.
 
 The restriction lives in `omarchy-theme-set` rather than in
 `omarchy-theme-install` on purpose. Filtering at staging also covers themes
-installed before the rule existed, themes copied in by hand, and files a theme
-gains later through `omarchy theme update`.
+installed before the rule existed and files a theme gains later through
+`omarchy theme update`.
 
-Per-theme overrides of a generated file are not available to user themes as a
-result. Override the template instead: `~/.config/omarchy/themed/<file>.tpl`
-takes priority over the built-in template and applies to every theme. It does
-not beat a first-party theme's hand-written file, which is copied into the
-staging directory before any template runs — so `icons.theme`, which every
-first-party theme ships, cannot be overridden this way and is no longer settable
-by a user theme at all.
+What this does not cover: a theme distributed as an archive rather than a git
+repo, extracted into `~/.config/omarchy/themes/` by hand, is indistinguishable
+from one the user wrote and stages in full. `omarchy theme install` only takes
+git URLs, so the supported path is always filtered, but the check is a statement
+about where a theme came from and not a sandbox.
 
 ## `colors.toml`
 
@@ -397,8 +408,9 @@ local active_border_color = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, a
 ## Adding or overriding theme files
 
 - Add palette values to `themes/<name>/colors.toml`.
-- Hand-written overrides work in `themes/<name>/` only. A user theme that ships
-  one is ignored; see [What an extra theme may ship](#what-an-extra-theme-may-ship).
+- Hand-written overrides work everywhere except a `.lua`, a terminal config or a
+  `vscode.json` in a theme cloned from a git repo; see
+  [What an installed theme may not ship](#what-an-installed-theme-may-not-ship).
 - Prefer generated files when the theme can be expressed with templates.
 - Add a hand-written file in `themes/<name>/` only when that theme needs to
   override the generated output entirely.

@@ -6,13 +6,15 @@ The main file you have to tweak is `colors.toml`. That defines the color set tha
 
 You can also use the included Aether application to create a new theme using a lovely GUI interface to play with colors and search for backgrounds. Just start it via the apps menu on `Super + Alt + Space`.
 
-### What a theme can contain
+### What an installed theme can contain
 
-A theme supplies `colors.toml`, the images in `backgrounds/`, `preview.png`, `unlock.png`, `preview-unlock.png`, and the `light.mode` marker. That's the whole list. Every other file Omarchy themes — Hyprland, Neovim, the terminals, btop, Chromium, Helix, VSCode, Obsidian, and the shell — is generated on your own machine from that palette, and a copy of one shipped inside a theme is ignored when the theme is applied.
+A theme you write yourself in `~/.config/omarchy/themes` can contain whatever you like — it's your machine and your file, and Omarchy applies all of it.
 
-That's deliberate, because several of those files are code rather than colors. A theme's `hyprland.lua` is Lua your compositor runs at login, and a terminal config names the program your terminal starts. Installing a theme should change what your desktop looks like, never what it runs — and since nothing on disk distinguishes a theme you wrote from one you installed from a stranger's repo, the rule is the same for both.
+A theme you install from someone else's repo with `omarchy theme install` keeps everything that's colour, and loses the handful of files that would run code on your machine: any `.lua` file, the terminal configs (`alacritty.toml`, `foot.ini`, `ghostty.conf`, `kitty.conf`), and `vscode.json`. A theme's `hyprland.lua` is Lua your compositor runs at login, a terminal config names the program your terminal starts, and `vscode.json` names a VSCode extension to install. Installing someone's theme should change what your desktop looks like, never what it runs.
 
-To change how Omarchy themes an app, write a template instead — see [Theming apps Omarchy doesn't cover](#theming-apps-omarchy-doesnt-cover) below. Templates live in your own config, apply to every theme, and are not something a theme can install for you.
+Everything else still works exactly as the theme author wrote it — `btop.theme`, `chromium.theme`, `helix.toml`, `icons.theme`, `shell.toml`, the backgrounds and the previews are all kept. Only what was dropped gets regenerated from `colors.toml` on your machine.
+
+Omarchy tells the two apart by whether the theme has its own git repo inside it, which is what `omarchy theme install` leaves behind when it clones. So a theme you wrote stays yours, and one you pulled off the internet stays colours.
 
 ### Light mode
 
@@ -20,7 +22,7 @@ If you're making a light mode theme, set `mode = "light"` at the top of your `co
 
 ### Icon colors
 
-Omarchy's own themes each name a matching icon set in an `icons.theme` file. A theme you write or install can't set one — it's not on the list above — so it gets `Yaru-blue`. To pick another, run `gsettings set org.gnome.desktop.interface icon-theme Yaru-red`; the options are `Yaru Yaru-blue Yaru-dark Yaru-magenta Yaru-olive Yaru-prussiangreen Yaru-purple Yaru-red Yaru-sage Yaru-wartybrown Yaru-yellow`. Switching to one of Omarchy's own themes sets it back to that theme's choice.
+If you'd like to color-match the file manager icons to your theme, add a file called `icons.theme` with the name of the icon set you want to use. By default, the options are: `Yaru Yaru-blue Yaru-dark Yaru-magenta Yaru-olive Yaru-prussiangreen Yaru-purple Yaru-red Yaru-sage Yaru-wartybrown Yaru-yellow`.
 
 ### Unlock image
 
@@ -35,5 +37,7 @@ There's a fully commented `alacritty.toml.tpl.sample` in that folder to copy fro
 ### Distributing your theme
 
 If you want to distribute your theme so others can use it, you need to put it on a public git server, like GitHub. Then people can install it using _Install > Style > Theme_ in the Omarchy menu using that URL. It's recommended that you follow the naming convention of `omarchy-[themename]-theme`, as the theme will show correctly as just `[themename]` in the theme selection menu after installation.
+
+Remember that once it's installed from a repo, any `.lua`, terminal config or `vscode.json` it ships is dropped, so don't build the theme around those.
 
 You can have your theme added to [the extra themes page](https://omarchy.org/themes/) by sending a pull request to [the omarchy-site repo](https://github.com/omacom-io/omarchy-site).

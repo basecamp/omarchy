@@ -22,31 +22,37 @@ omarchy theme install <url>     # Install from git repo
 Additional user backgrounds for any theme (stock or custom) go in
 `~/.config/omarchy/backgrounds/<theme-slug>/`.
 
-## What a Theme Under `~/.config/omarchy/themes` May Contain
+## What a Theme Installed From a Repo May Not Contain
 
-Only `colors.toml`, `light.mode`, `preview.png`, `preview-unlock.png`,
-`unlock.png`, and images under `backgrounds/`. Anything else in that directory
-is ignored when the theme is applied, and named on stderr.
+A theme the user wrote by hand in `~/.config/omarchy/themes` is unrestricted, as
+are Omarchy's own themes. From a theme cloned by `omarchy theme install`, Omarchy
+drops only what runs code: any `*.lua` (Hyprland requires a theme's
+`hyprland.lua` and `gum_env.lua` at login, Neovim loads `neovim.lua` at startup),
+the terminal configs `alacritty.toml`, `foot.ini`, `ghostty.conf` and
+`kitty.conf` (each names the program the terminal launches), and `vscode.json`
+(names a VS Code extension to install). Those are regenerated from `colors.toml`
+through `$OMARCHY_PATH/default/themed/*.tpl`, and named on stderr.
 
-`omarchy theme install <url>` clones a stranger's repo into that directory, and
-nothing on disk tells that apart from a theme written by hand, so both are held
-to the same list. Most themed files are code: a theme's `hyprland.lua` is Lua
-Hyprland runs at login and a terminal config names the program the terminal
-launches. Every one of them is generated from `colors.toml` through
-`$OMARCHY_PATH/default/themed/*.tpl` instead.
+Everything else a cloned theme ships is kept, including `btop.theme`,
+`chromium.theme`, `helix.toml`, `icons.theme`, `keyboard.rgb` and `shell.toml`.
+Omarchy tells a cloned theme from the user's own by the `.git` directory a clone
+leaves behind.
 
-To change how Omarchy themes an app, write the template, not the theme: a file
-at `~/.config/omarchy/themed/<config-name>.tpl` overrides the built-in one and
-applies to every theme. See `docs/theming.md` in the Omarchy repo.
+To change how Omarchy themes an app for every theme, write the template rather
+than the theme: `~/.config/omarchy/themed/<config-name>.tpl` overrides the
+built-in one. See `docs/theming.md` in the Omarchy repo.
 
 ## Customizing a Stock Theme
 
 Never edit stock themes under `/usr/share/omarchy/themes/` — changes are lost
 on update. Two safe options:
 
+Both write into `~/.config/omarchy/themes`, where a theme the user wrote is
+unrestricted — the list above applies only to a theme cloned from a repo.
+
 **Overlay (preferred for small tweaks):** create a user theme directory with
-the SAME slug containing only the palette you want to change. When the theme is
-applied, the stock theme is copied first and your `colors.toml` wins on top:
+the SAME slug containing only the files you want to change. When the theme is
+applied, the stock theme is copied first and your files win on top:
 
 ```bash
 mkdir -p ~/.config/omarchy/themes/catppuccin
@@ -55,13 +61,12 @@ cp /usr/share/omarchy/themes/catppuccin/colors.toml ~/.config/omarchy/themes/cat
 omarchy theme set catppuccin
 ```
 
-**Fork:** copy a stock theme's palette and backgrounds under a new name for a
-fully independent variant:
+**Fork:** copy the whole stock theme under a new name for a fully independent
+variant:
 
 ```bash
-mkdir -p ~/.config/omarchy/themes/catppuccin-custom
-cp -r /usr/share/omarchy/themes/catppuccin/{colors.toml,backgrounds} ~/.config/omarchy/themes/catppuccin-custom/
-# Edit ~/.config/omarchy/themes/catppuccin-custom/colors.toml, then:
+cp -r /usr/share/omarchy/themes/catppuccin ~/.config/omarchy/themes/catppuccin-custom
+# Edit ~/.config/omarchy/themes/catppuccin-custom/, then:
 omarchy theme set catppuccin-custom
 ```
 
