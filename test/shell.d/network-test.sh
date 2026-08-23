@@ -318,7 +318,9 @@ assert(/\[\[ \$2 == "sae" \]\] && pmf="wifi-sec\.pmf 3"/.test(network.hiddenPskC
 // type + ssid + hidden, captured before the new profile exists, and only
 // removed after the new one activates -- never up front, and never by name.
 assert(!/connection delete id "\$1"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script never deletes an existing profile by name')
+assert(!network.hiddenPskConnectScript.includes('connection delete id '), 'hidden PSK connect script never deletes any existing profile by name (id), regardless of the argument')
 assert(/nmcli -t -f UUID connection show/.test(network.hiddenPskConnectScript), 'hidden PSK connect script enumerates existing connections by UUID to find prior hidden profiles for this SSID')
+assert(/nmcli --escape no -g connection\.type,802-11-wireless\.ssid,802-11-wireless\.hidden/.test(network.hiddenPskConnectScript), 'hidden PSK connect script disables nmcli escaping so a colon/backslash SSID still compares equal to the raw $1')
 assert(/connection\.type[\s\S]*"802-11-wireless"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only considers 802-11-wireless connections for cleanup')
 assert(/802-11-wireless\.ssid[\s\S]*"\$1"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script matches prior profiles by this SSID, not by name')
 assert(/802-11-wireless\.hidden[\s\S]*"yes"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only considers hidden profiles for cleanup, never a broadcast network of the same SSID')

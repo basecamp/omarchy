@@ -359,14 +359,20 @@ var enterpriseConnectScript =
 // 802-11-wireless profiles whose ssid == "$1" and hidden == yes (matched by
 // UUID/field, never by name) BEFORE adding the new one, and only remove them
 // AFTER the new profile activates successfully; a failed attempt deletes
-// nothing but its own new (still-unproven) profile.
+// nothing but its own new (still-unproven) profile. The type/ssid/hidden
+// fields are fetched in one `-g` call (one value per line) instead of three
+// separate nmcli invocations per candidate UUID, with `--escape no` so a
+// backslash-escaped SSID (nmcli escapes ":" and "\\" by default) still
+// compares equal to the raw "$1".
 var hiddenPskConnectScript =
   "u=$(uuidgen); IFS= read -r pw; pmf=\"\"; [[ $2 == \"sae\" ]] && pmf=\"wifi-sec.pmf 3\";" +
   " old=\"\";" +
   " for c in $(nmcli -t -f UUID connection show); do" +
-  "   [[ $(nmcli -g connection.type connection show uuid \"$c\" 2>/dev/null) == \"802-11-wireless\" ]] || continue;" +
-  "   [[ $(nmcli -g 802-11-wireless.ssid connection show uuid \"$c\" 2>/dev/null) == \"$1\" ]] || continue;" +
-  "   [[ $(nmcli -g 802-11-wireless.hidden connection show uuid \"$c\" 2>/dev/null) == \"yes\" ]] || continue;" +
+  "   info=$(nmcli --escape no -g connection.type,802-11-wireless.ssid,802-11-wireless.hidden connection show uuid \"$c\" 2>/dev/null);" +
+  "   type=$(printf '%s\\n' \"$info\" | sed -n 1p); ssid=$(printf '%s\\n' \"$info\" | sed -n 2p); hidden=$(printf '%s\\n' \"$info\" | sed -n 3p);" +
+  "   [[ $type == \"802-11-wireless\" ]] || continue;" +
+  "   [[ $ssid == \"$1\" ]] || continue;" +
+  "   [[ $hidden == \"yes\" ]] || continue;" +
   "   old=\"$old $c\";" +
   " done;" +
   " nmcli connection add type wifi con-name \"$1\" ssid \"$1\" connection.uuid \"$u\"" +

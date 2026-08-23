@@ -161,9 +161,17 @@ Panel {
   // left open (or a cursor left on its Dropdown) would be stuck on nothing --
   // same shape as onCanSelectBandChanged. Set hiddenFormOpen directly rather
   // than through cancelHiddenForm(), since the section is being hidden anyway.
+  // The field reset below is skipped while a hidden connect is in flight, same
+  // reasoning as cancelHiddenForm: don't yank state out from under a pending action.
   onWifiStationAvailableChanged: if (!wifiStationAvailable) {
     hiddenFormOpen = false
     if (focusSection === "hiddenSecurity") focusSection = "dns"
+    if (!hiddenBusy) {
+      hiddenSsidText = ""
+      hiddenSecurity = "wpa-psk"
+      hiddenPasswordText = ""
+      hiddenSecurityDropdown.value = Qt.binding(function() { return root.hiddenSecurity })
+    }
   }
 
   // ConnectionFailReason values as a plain object, so Model.js helpers stay
@@ -1879,7 +1887,7 @@ Panel {
             foreground: root.bar.foreground
             horizontalPadding: Style.spacing.controlGap
             verticalPadding: Style.spacing.controlPaddingY
-            enabled: !root.hiddenBusy
+            enabled: !root.busy
             text: root.hiddenSsidText
 
             onAccepted: {
@@ -1925,7 +1933,7 @@ Panel {
             foreground: root.bar.foreground
             horizontalPadding: Style.spacing.controlGap
             verticalPadding: Style.spacing.controlPaddingY
-            enabled: !root.hiddenBusy
+            enabled: !root.busy
             text: root.hiddenPasswordText
 
             onAccepted: root.submitHiddenNetwork()
