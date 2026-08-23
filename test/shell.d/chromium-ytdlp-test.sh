@@ -51,20 +51,28 @@ bash -c '
   fail "yt-dlp native host rejects non-web URLs"
 pass "yt-dlp native host rejects non-web URLs"
 
+host_fn() {
+  OMARCHY_PATH="$ROOT" OMARCHY_YTDLP_DIR="${download_dir:-$TMPDIR}" bash -c '
+    source "$1"
+    shift
+    "$@"
+  ' bash "$ROOT/bin/omarchy-chromium-ytdlp-host" "$@"
+}
+
+host_fn metadata_ok "Night Storm Terminal" ||
+  fail "yt-dlp native host accepts a normal video title"
+pass "yt-dlp native host accepts a normal video title"
+
+host_fn metadata_ok $'safe\nOMARCHY_FILE\tCLICK' &&
+  fail "yt-dlp native host rejects a title containing control characters"
+pass "yt-dlp native host rejects a title containing control characters"
+
 download_dir="$TMPDIR/videos"
 mkdir -p "$download_dir" "$TMPDIR/outside"
 good_file="$download_dir/clip [id].mp4"
 printf 'x' >"$good_file"
 printf 'x' >"$TMPDIR/outside/secret"
 ln -s "$TMPDIR/outside/secret" "$download_dir/escape.mp4"
-
-host_fn() {
-  OMARCHY_PATH="$ROOT" OMARCHY_YTDLP_DIR="$download_dir" bash -c '
-    source "$1"
-    shift
-    "$@"
-  ' bash "$ROOT/bin/omarchy-chromium-ytdlp-host" "$@"
-}
 
 resolved=$(host_fn resolve_download_file "$good_file")
 expected=$(realpath -e -- "$good_file")

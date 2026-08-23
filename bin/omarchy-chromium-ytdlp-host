@@ -25,6 +25,12 @@ valid_url() {
   [[ $1 =~ ^https?:// ]]
 }
 
+# Page metadata is not a line-oriented protocol. Newlines/tabs in a title
+# are how a site forges extra OMARCHY_FILE records and ugly filenames.
+metadata_ok() {
+  [[ ! $1 =~ [[:cntrl:]] ]]
+}
+
 # A printed path is only usable if it is a regular file inside DOWNLOAD_DIR.
 # Forged records (leading-dash mpv options, paths with control chars, or
 # anything that escaped the download directory) must not reach --exec.
@@ -74,8 +80,14 @@ download_url() {
   mkdir -p "$DOWNLOAD_DIR"
 
   # Don't show anything until yt-dlp confirms there's actually a video to grab.
-  if ! yt-dlp --no-playlist --simulate --quiet --no-warnings --no-exec -- "$url" >/dev/null 2>&1; then
+  local meta_title
+  if ! meta_title=$(yt-dlp --no-playlist --simulate --quiet --no-warnings --no-exec --print '%(title)s' -- "$url" 2>/dev/null); then
     omarchy-notification-send -u critical -g 󰅖 "No video found for download" "$url"
+    exit 0
+  fi
+
+  if ! metadata_ok "$meta_title"; then
+    omarchy-notification-send -u critical -g 󰅖 "Download refused" "The video title contains invalid characters"
     exit 0
   fi
 
