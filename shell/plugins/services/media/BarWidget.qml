@@ -60,8 +60,8 @@ BarWidget {
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.body
         anchors.verticalCenter: parent.verticalCenter
-        width: scrollClip.width
-        elide: Text.ElideRight
+        width: root.scrollLabel ? implicitWidth : scrollClip.width
+        elide: root.scrollLabel ? Text.ElideNone : Text.ElideRight
 
         property bool needsScroll: implicitWidth > scrollClip.width
 
