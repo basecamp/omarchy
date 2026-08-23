@@ -1,11 +1,62 @@
 #!/bin/bash
 
-# omarchy:summary=Unblock and restart the Wi-Fi service.
+# omarchy:summary=Unblock Wi-Fi and reload the radio driver.
+# omarchy:requires-sudo=true
 
-echo -e "Unblocking wifi...\n"
+# rfkill / nmcli radio on is enough when the interface is merely blocked.
+# Intel iwlwifi and Realtek rtw89 firmware can wedge the phy so hard that
+# userspace has nothing to talk to — in-driver reset times out, BAR reads
+# return 0xffffffff, and the existing radio toggle hangs. Reloading the
+# PCI driver is what actually brings the radio back. See #7003.
+
+NET_ROOT=${OMARCHY_WIFI_NET_ROOT:-/sys/class/net}
+
+echo -e "Restarting wifi...\n"
 
 rfkill unblock wifi
-nmcli networking on
-nmcli radio wifi on
-nmcli device wifi rescan 2>/dev/null || true
-rfkill list wifi
+
+seen=" "
+reload_failed=0
+for iface in "$NET_ROOT"/*; do
+  [[ -d $iface/wireless || -d $iface/phy80211 ]] || continue
+  [[ -L $iface/device/driver ]] || continue
+
+  driver=$(basename "$(readlink "$iface/device/driver")")
+  [[ -n $driver ]] || continue
+  [[ $seen == *" $driver "* ]] && continue
+  seen+="$driver "
+
+  unload=()
+  if [[ $driver == iwlwifi ]]; then
+    # iwlmld (BE200+), iwlmvm (AX210), and iwldvm all hold iwlwifi.
+    for helper in iwlmld iwlmvm iwldvm; do
+      if lsmod | grep -q "^${helper}[[:space:]]"; then
+        unload+=("$helper")
+      fi
+    done
+  fi
+  unload+=("$driver")
+
+  echo "Reloading ${unload[*]}..."
+  if ! sudo modprobe -r "${unload[@]}"; then
+    reload_failed=1
+    continue
+  fi
+  if ! sudo modprobe "$driver"; then
+    if sudo modprobe "$driver"; then
+      : # retry recovered the radio
+    else
+      reload_failed=1
+      echo "omarchy-restart-wifi: $driver left unloaded; run: sudo modprobe $driver" >&2
+    fi
+  fi
+done
+
+if ((reload_failed == 0)); then
+  nmcli networking on
+  nmcli radio wifi on
+  nmcli device wifi rescan 2>/dev/null || true
+  rfkill list wifi
+fi
+
+exit "$reload_failed"

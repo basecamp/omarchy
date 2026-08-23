@@ -1,0 +1,3 @@
+# The wifi recover watcher has no terminal. Reloading a wedged radio is
+# module unload/reload only. Empty argv so this is not "any arguments".
+%wheel ALL=(root) NOPASSWD: /usr/bin/omarchy-restart-wifi ""

@@ -1,0 +1,206 @@
+#!/bin/bash
+
+# omarchy:summary=Reload a wedged Wi-Fi radio without waiting for the user.
+# omarchy:hidden=true
+
+# NetworkManager can keep a wifi device "connected" after Intel/Realtek
+# firmware dies. The hardware menu now reloads the driver; this watcher
+# does that once the phy stays wedged, so a roam or radio toggle is not
+# enough to yank the module.
+
+set -uo pipefail
+
+PACKAGED_RESTART=/usr/bin/omarchy-restart-wifi
+PACKAGED_UNIT=${OMARCHY_WIFI_RECOVER_PACKAGED_UNIT:-/usr/lib/systemd/user/omarchy-wifi-recover.service}
+POLL_SECONDS=${OMARCHY_WIFI_RECOVER_POLL:-15}
+COOLDOWN_SECONDS=${OMARCHY_WIFI_RECOVER_COOLDOWN:-120}
+CONFIRM_POLLS=${OMARCHY_WIFI_RECOVER_CONFIRM:-2}
+MAX_POLLS=${OMARCHY_WIFI_RECOVER_MAX_POLLS:-0}
+ONCE=${OMARCHY_WIFI_RECOVER_ONCE:-0}
+NET_ROOT=${OMARCHY_WIFI_NET_ROOT:-/sys/class/net}
+NM_TIMEOUT=${OMARCHY_WIFI_RECOVER_NM_TIMEOUT:-10}
+IW_TIMEOUT=${OMARCHY_WIFI_RECOVER_IW_TIMEOUT:-5}
+RESTART_TIMEOUT=${OMARCHY_WIFI_RECOVER_RESTART_TIMEOUT:-60}
+
+# nf-md-wifi-sync, escaped so this file reads without a Nerd Font.
+readonly WIFI_GLYPH=$'\U000f16b5'
+
+last_reload=0
+wedge_streak=0
+grant_warned=0
+notified_this_wedge=0
+polls=0
+
+# A staged ~/.config copy shadows /usr/lib forever. Drop it only when it
+# still matches the packaged unit, so a user edit is left alone.
+unstage_if_packaged() {
+  local config="${XDG_CONFIG_HOME:-$HOME/.config}"
+  local staged="$config/systemd/user/omarchy-wifi-recover.service"
+  local wants="$config/systemd/user/graphical-session.target.wants/omarchy-wifi-recover.service"
+
+  [[ -f $PACKAGED_UNIT && -f $staged ]] || return 0
+  cmp -s "$staged" "$PACKAGED_UNIT" || return 0
+  rm -f "$staged"
+  if [[ -L $wants ]]; then
+    ln -sfn "$PACKAGED_UNIT" "$wants"
+  fi
+  systemctl --user daemon-reload >/dev/null 2>&1 || true
+}
+
+sudo_grants_passwordless() {
+  sudo -n -l -l "$PACKAGED_RESTART" 2>/dev/null | grep -q '!authenticate'
+}
+
+radio_on() {
+  local out rc
+
+  # Only a hung nmcli (timeout 124) is the wedge. NM down or missing is not.
+  out=$(LC_ALL=C timeout "$NM_TIMEOUT" nmcli radio wifi 2>/dev/null)
+  rc=$?
+  if ((rc == 124)); then
+    return 0
+  fi
+  ((rc == 0)) || return 1
+  [[ $out == enabled ]]
+}
+
+rfkill_blocked() {
+  LC_ALL=C rfkill list wifi 2>/dev/null | grep -q 'blocked: yes'
+}
+
+has_wireless_iface() {
+  local iface
+
+  for iface in "$NET_ROOT"/*; do
+    if [[ -d $iface/wireless || -d $iface/phy80211 ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+kernel_link_up() {
+  # nl80211 dumps can block when the driver holds rtnl. timeout → no link.
+  LC_ALL=C timeout "$IW_TIMEOUT" iw dev "$1" link 2>/dev/null | grep -q '^Connected '
+}
+
+# Instantaneous: radio on, not blocked, phy present, and either NM still
+# says connected with no kernel link, or the device is unavailable / gone
+# from NM. A roam or a radio-on race can look like this for one poll.
+looks_wedged() {
+  local dev state found=0 nm_out nm_rc
+
+  radio_on || return 1
+  rfkill_blocked && return 1
+  has_wireless_iface || return 1
+
+  nm_out=$(LC_ALL=C timeout "$NM_TIMEOUT" nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null)
+  nm_rc=$?
+  if ((nm_rc == 124)); then
+    return 0
+  fi
+  ((nm_rc == 0)) || return 1
+
+  while IFS=$'\t' read -r dev state; do
+    [[ -n $dev ]] || continue
+    found=1
+
+    case $state in
+      connected*)
+        kernel_link_up "$dev" || return 0
+        ;;
+      unavailable)
+        return 0
+        ;;
+    esac
+  done < <(awk -F: '$2 == "wifi" { print $1 "\t" $3 }' <<<"$nm_out")
+
+  # NM listed nothing, but the phy is still in sysfs: same class of wedge.
+  ((found == 0))
+}
+
+# Two consecutive polls (~30s) before we unload the driver. One miss is a
+# roam, a scan, or the user flipping the radio back on.
+wifi_wedged() {
+  if looks_wedged; then
+    wedge_streak=$((wedge_streak + 1))
+    ((wedge_streak >= CONFIRM_POLLS))
+    return
+  fi
+
+  wedge_streak=0
+  notified_this_wedge=0
+  return 1
+}
+
+try_reload() {
+  local now=$EPOCHSECONDS
+
+  if ((now - last_reload < COOLDOWN_SECONDS)); then
+    return 1
+  fi
+
+  if ! sudo_grants_passwordless; then
+    if ((grant_warned == 0)); then
+      echo "omarchy-wifi-recover: passwordless sudo is required for $PACKAGED_RESTART" >&2
+      grant_warned=1
+    fi
+    return 1
+  fi
+
+  # Cool down even on a failed reload so we do not hammer modprobe -r.
+  last_reload=$now
+
+  if ! timeout "$RESTART_TIMEOUT" sudo -n "$PACKAGED_RESTART"; then
+    echo "omarchy-wifi-recover: $PACKAGED_RESTART failed" >&2
+    return 1
+  fi
+
+  grant_warned=0
+
+  # Reload is not proof the phy came back. One toast per wedge episode.
+  if ((notified_this_wedge == 0)); then
+    omarchy-notification-send -g "$WIFI_GLYPH" "Wi-Fi radio reloaded" \
+      "The radio firmware wedged and the driver was reloaded." || true
+    notified_this_wedge=1
+  fi
+  return 0
+}
+
+if [[ ${1:-} == --check ]]; then
+  # Instantaneous: for debugging. The daemon still requires CONFIRM_POLLS.
+  if looks_wedged; then
+    echo wedged
+    exit 0
+  fi
+
+  echo ok
+  exit 1
+fi
+
+if ((ONCE)); then
+  if looks_wedged; then
+    try_reload
+  fi
+  exit 0
+fi
+
+unstage_if_packaged
+
+if ! [[ $POLL_SECONDS =~ ^[0-9]+$ ]]; then
+  POLL_SECONDS=15
+fi
+
+while true; do
+  if wifi_wedged; then
+    try_reload
+  fi
+
+  polls=$((polls + 1))
+  if ((MAX_POLLS > 0 && polls >= MAX_POLLS)); then
+    exit 0
+  fi
+
+  sleep "$POLL_SECONDS"
+done
