@@ -98,7 +98,22 @@ work                       All Ultimate product work
 
 Do not create `cursor/*`, `ultimate/*`, or any other slice branches. Do not turn `main` into the experimental line. Phase work happens as commits on `work`. Do not merge `work` into `main` as the OS.
 
-A full-repo backup of the pre-reconcile refs lives at `C:\dev\omarchy-vm\omarchy-all-refs-2026-08-22.bundle` on the Windows workstation, not in git. A reconciliation ledger should be produced from that bundle. This turn did not verify the bundle; do not claim proof of zero unique Jesse commits on deleted tips.
+## Branch reconciliation (locked 2026-08-22)
+
+Do not re-audit this from memory. The ledger is **outside the product repo** — do not commit the bundle or copy ~240 MB into git:
+
+- Bundle: `C:\dev\omarchy-vm\omarchy-all-refs-2026-08-22.bundle` (251209890 bytes, 145 refs, `git bundle verify` okay)
+- Ledger: `C:\dev\omarchy-vm\branch-reconciliation-ledger-2026-08-22.md`
+
+**Heads PASS.** GitHub / Windows / box `refs/heads/*` are only `main` and `work`. `main` == `2c247e39` == live `basecamp/omarchy` **`quattro`** (not `master`; `master` is `f4378f0d`). At ledger time `work` was `c4c6ce29`, **35 ahead / 0 behind** `main`, merge-base is `main`. Docs commits after the ledger (`e03f777e`, then `25b6e6de` and later) moved `work` — do not reset. All named Ultimate SHAs and the 16 locked W0 SHAs are ancestors of `work`. `.cursor/environment.json` and `.cursor/install.sh` are on `work`.
+
+**Claim 6 content PASS.** 73 deleted origin/local tip names vs `work`: 240 unique commits (almost all upstream DHH/Omabot), 386 unique blobs (upstream, not Jesse). **Jesse unique blobs: 0.** No Jesse-looking file is present on a deleted tip and missing from the `work` tree.
+
+**Claim 6 strict unique-commit SHA FAIL — one exception.** `30aac92fccb2a03118e4c7bb461cdd54d7b29050` “Merge branch 'basecamp:quattro' into cursor/cloud-agent-dev-environment-a448” by jnadeau207-collab. Parents `28a8bdfb` and `2c247e39` are **both** already ancestors of `work`. Unique blobs on that tip: 0. `git diff --diff-filter=A work 30aac92f` is empty. No file content lost; only that merge SHA is absent from `work` ancestry. 72/73 deleted names have zero unique Jesse commit or blob.
+
+Do **not** claim mathematical zero unique Jesse *commits*. Claim zero unique Jesse *content*, plus one orphan merge SHA with an empty tree diff.
+
+**Caveats (not branches):** 65 version tags remain; `refs/pull/1/head` and `refs/pull/2/head` remain. If someone reads “GitHub has no refs except main and work,” that reading fails. The two-branch **head** claim passes.
 
 ## Current position (2026-08-22)
 
@@ -148,7 +163,7 @@ Claims from the 2026-08-22 course-correction that this turn **verified in the tr
 - Superbar **does** load a tray (`Tray.qml`). “Hard-coded widget list” is the defect, not “no tray.”
 - Nautilus two-row: expected from class-regex + GTK CSD; not live-reverified this run.
 - ~15–20% is a product estimate, not a test metric.
-- The refs bundle was not verified this run.
+- Branch/bundle uniqueness: see the locked ledger section above. Zero unique Jesse **content**; one orphan merge SHA (`30aac92f`) with an empty diff. Do not restate “unverified.”
 
 ## Phases (vertical product capability)
 
