@@ -94,6 +94,18 @@ screenshot "success-notification-popup"
 omarchy-shell notifications dismissAll >/dev/null
 wait_until "notification popup closes" 15 layer_absent "omarchy-notifications"
 
+# A sender closing its own notification through the freedesktop
+# CloseNotification method must take the toast off the screen, without the
+# shell's own dismiss path being involved. The notification is posted with no
+# expiry so that only the close request can end it.
+notification_id=$(notify-send -p -t 0 "Acceptance close request" "Closed by its sender")
+wait_until "sender notification popup opens" 15 layer_present "omarchy-notifications"
+screenshot "success-notification-close-request"
+gdbus call --session --dest org.freedesktop.Notifications \
+  --object-path /org/freedesktop/Notifications \
+  --method org.freedesktop.Notifications.CloseNotification "$notification_id" >/dev/null
+wait_until "sender-closed notification popup closes" 15 layer_absent "omarchy-notifications"
+
 # The menu's Apps submenu does the full launcher loop: open, search by
 # typing, launch the top hit.
 if window_present "(?i)omawrite" >/dev/null 2>&1; then
