@@ -222,6 +222,10 @@ if grep -Fq 'hyprpm' "$ROOT/default/hypr/desktop-windows.lua"; then
   fail "desktop mode must not reload hyprpm plugins"
 fi
 grep -Fq 'omarchy-minimize' "$ROOT/default/hypr/desktop-windows.lua" || fail "desktop mode loads omarchy-minimize for in-place hide"
+grep -Fq 'pcall' "$ROOT/default/hypr/desktop-windows.lua" || fail "plugin load must not abort the lua config before monitors apply"
+first_monitors=$(grep -n 'require("hypr.monitors")' "$ROOT/config/hypr/hyprland.lua" | head -1 | cut -d: -f1)
+omarchy_line=$(grep -n 'require("default.hypr.omarchy")' "$ROOT/config/hypr/hyprland.lua" | head -1 | cut -d: -f1)
+(( first_monitors < omarchy_line )) || fail "hyprland.lua must pin monitors before Desktop Mode plugins load"
 grep -Fq 'rgba(6a6a6aff)' "$ROOT/default/hypr/desktop-windows.lua" || fail "desktop mode uses a solid gray active border"
 if grep -Fq '33ccff' "$ROOT/default/hypr/desktop-windows.lua"; then
   fail "desktop windowing must not keep the Omarchy cyan border"

@@ -160,8 +160,13 @@ local function load_so(path)
   if not file_exists(path) then
     return false
   end
-  hl.exec_cmd("hyprctl plugin load " .. path)
-  return true
+  -- A failed plugin load must not abort the lua config. hyprland.lua
+  -- requires monitors after omarchy; an error here skips the HDMI pin
+  -- and this TV's preferred mode is 4K@30 (no signal).
+  local ok = pcall(function()
+    hl.exec_cmd("hyprctl plugin load " .. path)
+  end)
+  return ok
 end
 
 local function first_existing(candidates)

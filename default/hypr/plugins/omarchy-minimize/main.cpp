@@ -11,6 +11,7 @@
 #include "src/render/Renderer.hpp"
 #include "src/xwayland/XSurface.hpp"
 #include "src/managers/fullscreen/FullscreenController.hpp"
+#include "src/managers/eventLoop/EventLoopManager.hpp"
 #include "src/desktop/rule/windowRule/WindowRuleEffectContainer.hpp"
 #include "src/helpers/MiscFunctions.hpp"
 #include "src/output/Monitor.hpp"
@@ -22,6 +23,7 @@
 #include <cctype>
 #include <cmath>
 #include <format>
+#include <functional>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -151,6 +153,17 @@ static CHyprSignalListener                     g_onDestroy;
 static CHyprSignalListener                     g_onFullscreen;
 static CHyprSignalListener                     g_onUpdateRules;
 static Desktop::Rule::CWindowRuleEffectContainer::storageType g_nobarEffectIdx = 0;
+static bool                                    g_inPluginApply = false;
+
+// xdg stateChanged runs inside wl_event_loop_dispatch. Calling
+// setFullscreenMode / setMaximized from that stack throws
+// std::bad_variant_access and aborts Hyprland (Chrome/Cursor map, 15:49
+// and 03:23). Apply on the event-loop idle after the request finishes.
+static void later(std::function<void()> fn) {
+  if (!g_pEventLoopManager)
+    return;
+  g_pEventLoopManager->doLater(std::move(fn));
+}
 
 static std::optional<bool> requestedMinimized(PHLWINDOW w) {
   if (!w)
@@ -273,33 +286,52 @@ static void restoreFloatOnScreen(PHLWINDOW w) {
   w->setBox(CBox(pos, size));
 }
 
-static void applyRequestedMinimize(PHLWINDOWREF ref) {
+static void applyRequestedMinimize(PHLWINDOWREF ref, std::optional<bool> want) {
   auto w = ref.lock();
-  if (!w)
-    return;
-  const auto want = requestedMinimized(w);
-  if (!want.has_value())
+  if (!w || !want.has_value())
     return;
   setMinimized(w, *want);
 }
 
-static void applyRequestedMaximize(PHLWINDOWREF ref) {
+static void applyRequestedMaximize(PHLWINDOWREF ref, std::optional<bool> want) {
   auto w = ref.lock();
-  if (!w)
+  if (!w || !want.has_value() || g_inPluginApply)
     return;
-  const auto want = requestedMaximized(w);
-  if (!want.has_value())
+  // Hyprland arms this on fullscreen exit (and we arm it when clearing the
+  // fake map-time MAXIMIZED). Chromium echoes set_maximized; honoring that
+  // from this plugin is what aborted the compositor.
+  if (w->m_suppressNextMaximize) {
+    w->m_suppressNextMaximize = false;
+    return;
+  }
+  if (!w->m_isMapped)
     return;
   if (*want && !isMaximizedNow(w))
     saveNormalFloat(w);
+  if (isMaximizedNow(w) == *want) {
+    if (!*want)
+      restoreFloatOnScreen(w);
+    return;
+  }
+  g_inPluginApply = true;
   setMaximized(w, *want);
+  g_inPluginApply = false;
   if (!*want)
     restoreFloatOnScreen(w);
 }
 
 static void applyRequestedState(PHLWINDOWREF ref) {
-  applyRequestedMinimize(ref);
-  applyRequestedMaximize(ref);
+  auto w = ref.lock();
+  if (!w)
+    return;
+  // CXDGToplevelResource::m_state.requests* is reset when stateChanged
+  // returns. Capture here, apply on idle.
+  const auto wantMin = requestedMinimized(w);
+  const auto wantMax = requestedMaximized(w);
+  later([ref, wantMin, wantMax]() {
+    applyRequestedMinimize(ref, wantMin);
+    applyRequestedMaximize(ref, wantMax);
+  });
 }
 
 // Hyprland sends XDG_TOPLEVEL_STATE_MAXIMIZED on first map to suppress CSD.
@@ -315,20 +347,26 @@ static bool isCsdWindow(PHLWINDOW w) {
 }
 
 static void syncCsdMaximizedState(PHLWINDOW w) {
-  if (!w || !isCsdWindow(w))
+  if (!w || !isCsdWindow(w) || g_inPluginApply)
     return;
-  auto xdg = w->m_xdgSurface.lock();
-  if (!xdg)
-    return;
-  auto top = xdg->m_toplevel.lock();
-  if (!top)
-    return;
-  bool actually = false;
-  if (auto& fs = Fullscreen::controller(); fs)
-    actually = fs->isFullscreen(w, Fullscreen::FSMODE_MAXIMIZED);
-  if (!actually)
-    w->m_suppressNextMaximize = true;
-  top->setMaximized(actually);
+  PHLWINDOWREF ref = w;
+  later([ref]() {
+    auto live = ref.lock();
+    if (!live || !isCsdWindow(live) || g_inPluginApply)
+      return;
+    auto xdg = live->m_xdgSurface.lock();
+    if (!xdg)
+      return;
+    auto top = xdg->m_toplevel.lock();
+    if (!top)
+      return;
+    bool actually = false;
+    if (auto& fs = Fullscreen::controller(); fs)
+      actually = fs->isFullscreen(live, Fullscreen::FSMODE_MAXIMIZED);
+    if (!actually)
+      live->m_suppressNextMaximize = true;
+    top->setMaximized(actually);
+  });
 }
 
 static void advertiseWmCapabilities(PHLWINDOW w) {
@@ -426,8 +464,12 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
   });
   g_onFullscreen = Event::bus()->m_events.window.fullscreen.listen([](PHLWINDOW w) {
     syncCsdMaximizedState(w);
-    if (w && !isMaximizedNow(w) && !isCoveringFullscreen(w))
-      restoreFloatOnScreen(w);
+    PHLWINDOWREF ref = w;
+    later([ref]() {
+      auto live = ref.lock();
+      if (live && !isMaximizedNow(live) && !isCoveringFullscreen(live))
+        restoreFloatOnScreen(live);
+    });
   });
   g_onUpdateRules = Event::bus()->m_events.window.updateRules.listen([](PHLWINDOW w) { watchWindow(w); });
   watchAllWindows();

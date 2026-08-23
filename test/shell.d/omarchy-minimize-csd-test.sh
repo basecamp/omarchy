@@ -19,6 +19,8 @@ grep -Fq 'saveNormalFloat' "$cpp" \
   || fail "CSD maximize must remember the on-screen float before Hyprland eats it"
 grep -Fq 'hyprbars:no_bar' "$cpp" || fail "fake maximized is cleared only for hyprbars:no_bar CSD clients"
 grep -Fq 'm_suppressNextMaximize' "$cpp" || fail "clearing fake maximized must not be echoed back as a maximize request"
+grep -Fq 'doLater' "$cpp" || fail "CSD min/max must apply on the event-loop idle, not inside the Wayland request"
+grep -Fq 'm_isMapped' "$cpp" || fail "CSD maximize must not run setFullscreenMode before the window is mapped"
 if grep -Fq 'omarchy-shell' "$cpp"; then
   fail "omarchy-minimize must not exec omarchy-shell from the compositor"
 fi

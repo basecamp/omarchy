@@ -185,6 +185,9 @@ pass "package-owned defaults live outside config"
 
 grep -F 'dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/bootstrap.lua")' "$ROOT/config/hypr/hyprland.lua" >/dev/null
 grep -F 'require("default.hypr.omarchy")' "$ROOT/config/hypr/hyprland.lua" >/dev/null
+first_monitors=$(grep -n 'require("hypr.monitors")' "$ROOT/config/hypr/hyprland.lua" | head -1 | cut -d: -f1)
+omarchy_line=$(grep -n 'require("default.hypr.omarchy")' "$ROOT/config/hypr/hyprland.lua" | head -1 | cut -d: -f1)
+(( first_monitors < omarchy_line )) || fail "hyprland.lua must pin monitors before Desktop Mode plugins load"
 grep -F 'package.path = home' "$ROOT/default/hypr/bootstrap.lua" >/dev/null
 grep -F '/.local/state/?.lua;' "$ROOT/default/hypr/bootstrap.lua" >/dev/null
 pass "Hyprland user entrypoint keeps package and state path bootstrap in defaults"
