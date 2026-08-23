@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# A fingerprint verify still open when the machine suspends leaves fprintd
+# unable to hand the reader back: the verify dies with "Cannot run while
+# suspended" and the follow-up ReleaseDevice fails on the still-busy device.
+# The wedged claim then rejects every lock-screen attempt after resume until
+# fprintd exits on its own 30-second idle timer — so the reader looks dead for
+# up to half a minute while retries keep it from ever reaching that timer.
+#
+# Restarting fprintd on resume drops the claim so the reader answers on the
+# first touch instead. try-restart is a no-op when fprintd is not running,
+# which is the common case (nothing held the reader across the suspend), so a
+# healthy resume pays nothing.
+#
+# Installed by omarchy-setup-security-fingerprint, so its presence already
+# means a fingerprint reader is configured.
+
+if [[ $1 == "post" ]]; then
+  systemctl try-restart fprintd.service 2>/dev/null || true
+fi
