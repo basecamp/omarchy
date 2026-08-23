@@ -36,6 +36,17 @@ grep -Fq 'exclusiveZone:' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml" \
   || fail "taskbar sets an explicit exclusive zone so snap reads a bottom inset"
 grep -Fq 'omarchy.ultimate-start' "$ROOT/shell/plugins/ultimate-taskbar/StartButton.qml" \
   || fail "Start button toggles the Start plugin"
+grep -Fq 'anchors { top: true; bottom: true; left: true; right: true }' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
+  || fail "Start overlay covers the output so outside clicks reach it"
+grep -Fq 'onClicked: root.close()' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
+  || fail "clicking outside the Start card closes Start"
+grep -Fq 'shell.hide("omarchy.ultimate-start")' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
+  || fail "Start hide stays in sync with the shell so Super and the orb can reopen"
+grep -Fq 'Loader {' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
+  || fail "closed Start unmaps its overlay instead of leaving a click sink"
+if grep -Fq 'scrim' "$ROOT/shell/plugins/ultimate-start/Start.qml"; then
+  fail "Start must not dim the desktop when open"
+fi
 if grep -Fq $'\u2630' "$ROOT/shell/plugins/ultimate-taskbar/StartButton.qml"; then
   fail "Start button must not be a hamburger"
 fi

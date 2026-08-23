@@ -27,18 +27,19 @@ Item {
     try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
     root.focusSearch = payload.focusSearch === true
     root.filter = ""
-    if (searchField) searchField.text = ""
     root.opened = true
     if (appLibrary) appLibrary.refreshIcons()
-    Qt.callLater(function() {
-      if (root.focusSearch) searchField.forceActiveFocus()
-    })
   }
 
   function close() {
+    if (!root.opened) {
+      root.filter = ""
+      return
+    }
     root.opened = false
     root.filter = ""
-    if (searchField) searchField.text = ""
+    if (root.shell && typeof root.shell.hide === "function")
+      root.shell.hide("omarchy.ultimate-start")
   }
 
   function launchEntry(entry) {
@@ -47,28 +48,43 @@ Item {
     root.close()
   }
 
-  PanelWindow {
-    id: panel
-    visible: root.opened
+  // Exclusive keyboard focus on a 440×560 overlay eats pointer events that
+  // miss the card, including the Start button on the Superbar. A mapped
+  // full-screen layer catches those clicks. Loader unmaps it when closed so
+  // keepLoaded cannot leave an invisible input sink.
+  Loader {
+    active: root.opened
+    sourceComponent: PanelWindow {
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
-    implicitWidth: 440
-    implicitHeight: 560
-    margins.bottom: 48
-    margins.left: 8
-    anchors.bottom: true
-    anchors.left: true
+    anchors { top: true; bottom: true; left: true; right: true }
     WlrLayershell.namespace: "omarchy-start"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
-    Rectangle {
+    MouseArea {
       anchors.fill: parent
+      onClicked: root.close()
+    }
+
+    Rectangle {
+      z: 1
+      anchors.left: parent.left
+      anchors.bottom: parent.bottom
+      anchors.leftMargin: 8
+      anchors.bottomMargin: 48
+      width: 440
+      height: 560
       clip: true
       color: Tokens.surface.glass
       radius: Tokens.radius.large
       border.color: Tokens.border.subtle
       border.width: 1
+
+      MouseArea {
+        anchors.fill: parent
+        onClicked: {}
+      }
 
       ColumnLayout {
         anchors.fill: parent
@@ -79,6 +95,7 @@ Item {
           id: searchField
           Layout.fillWidth: true
           onTextChanged: root.filter = text
+          Component.onCompleted: if (root.focusSearch) forceActiveFocus()
           Keys.onReturnPressed: {
             if (root.entries.length > 0) root.launchEntry(root.entries[0])
           }
@@ -194,10 +211,11 @@ Item {
       }
     }
 
-    PanelKeyCatcher {
-      anchors.fill: parent
-      blocked: searchField.activeFocus
-      onCloseRequested: root.close()
+      PanelKeyCatcher {
+        anchors.fill: parent
+        blocked: searchField.activeFocus
+        onCloseRequested: root.close()
+      }
     }
   }
 }
