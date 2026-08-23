@@ -15,7 +15,14 @@ calls="$test_dir/calls.log"
 package_installed="$test_dir/zram-generator.installed"
 swap_active="$test_dir/dev-zram0.swap.active"
 state_dir="$test_dir/state"
-mkdir -p "$stub_bin" "$state_dir"
+test_root="$test_dir/omarchy"
+migration_name=$(basename "$migration")
+default_home="$test_dir/home"
+second_user_home="$test_dir/second-user-home"
+default_marker="$default_home/.local/state/omarchy/migrations/$migration_name"
+second_user_marker="$second_user_home/.local/state/omarchy/migrations/$migration_name"
+mkdir -p "$stub_bin" "$state_dir" "$test_root/migrations"
+cp "$migration" "$test_root/migrations/$migration_name"
 
 cat >"$stub_bin/omarchy-pkg-missing" <<'STUB'
 #!/bin/bash
@@ -76,16 +83,24 @@ reset_case() {
   local installed="$1" active="$2"
 
   : >"$calls"
-  rm -f "$package_installed" "$swap_active" "$state_dir/reboot-required"
+  rm -f \
+    "$package_installed" \
+    "$swap_active" \
+    "$state_dir/reboot-required" \
+    "$default_marker" \
+    "$second_user_marker"
   (( installed == 0 )) || touch "$package_installed"
   (( active == 0 )) || touch "$swap_active"
 }
 
 run_migration() {
-  local home="${1:-$test_dir/home}"
+  local home="${1:-$default_home}"
 
   mkdir -p "$home"
-  HOME="$home" PATH="$stub_bin:$PATH" bash -euo pipefail "$migration" >/dev/null
+  HOME="$home" \
+  OMARCHY_PATH="$test_root" \
+  PATH="$stub_bin:$PATH" \
+    "$ROOT/bin/omarchy-migrate" >/dev/null
 }
 
 assert_no_activation_work() {
@@ -115,19 +130,21 @@ grep -Fxq $'systemctl\tdaemon-reload' "$calls" ||
 grep -Fxq $'systemctl\tstart dev-zram0.swap' "$calls" ||
   fail "migration starts the generated swap unit" "$(cat "$calls")"
 assert_privileged_activation
+[[ -e $default_marker ]] || fail "successful zram repair is marked complete by omarchy-migrate"
 pass "migration installs and activates missing zram support"
 
 : >"$calls"
-run_migration "$test_dir/second-user-home"
+run_migration "$second_user_home"
 ! grep -Eq $'^(pkg-add|sudo|systemctl\t(daemon-reload|start)|state)' "$calls" ||
   fail "a second user leaves the repaired machine unchanged" "$(cat "$calls")"
+[[ -e $second_user_marker ]] || fail "a second user records the machine-wide repair as complete"
 pass "migration is a multi-user no-op after repair"
 
 reset_case 1 1
 run_migration
 ! grep -q '^pkg-add' "$calls" || fail "installed zram-generator is not reinstalled" "$(cat "$calls")"
 assert_no_activation_work
-pass "migration exits early when zram swap is already active"
+pass "migration leaves active zram swap unchanged"
 
 reset_case 1 0
 run_migration
@@ -142,6 +159,8 @@ reset_case 1 0
 DAEMON_RELOAD_STATUS=1 run_migration
 [[ -e $state_dir/reboot-required ]] ||
   fail "a failed systemd reload requests a reboot" "$(cat "$calls")"
+[[ -e $default_marker ]] ||
+  fail "a reboot-deferred zram repair is marked complete by omarchy-migrate" "$(cat "$calls")"
 ! grep -Fxq $'systemctl\tstart dev-zram0.swap' "$calls" ||
   fail "a failed systemd reload does not try to start the unit" "$(cat "$calls")"
 pass "migration finishes cleanly when systemd cannot reload"
@@ -162,8 +181,14 @@ reset_case 0 0
 if PKG_ADD_FAIL=1 run_migration; then
   fail "package installation failure keeps the migration pending" "$(cat "$calls")"
 fi
+[[ ! -e $default_marker ]] ||
+  fail "package installation failure is not marked complete by omarchy-migrate" "$(cat "$calls")"
 [[ ! -e $state_dir/reboot-required ]] ||
   fail "package installation failure is not converted to a reboot request" "$(cat "$calls")"
 ! grep -q '^systemctl' "$calls" ||
   fail "package installation failure stops before systemd changes" "$(cat "$calls")"
-pass "package installation failure remains a migration failure"
+run_migration
+[[ -e $default_marker ]] || fail "a repaired package installation retry is marked complete"
+[[ -e $package_installed && -e $swap_active ]] ||
+  fail "a package installation failure is retried on the next migration run" "$(cat "$calls")"
+pass "package installation failure remains pending and retries successfully"
