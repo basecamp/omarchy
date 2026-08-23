@@ -19,8 +19,9 @@ cat >"$stub_bin/hyprctl" <<'SH'
 #!/bin/bash
 
 if [[ $1 == "monitors" && $2 == "-j" ]]; then
-  printf '[{"name":"eDP-1","focused":true,"scale":%s,"width":%s,"height":%s,"refreshRate":120.0}]' \
-    "${OMARCHY_TEST_MONITOR_SCALE:-2}" "${OMARCHY_TEST_MONITOR_WIDTH:-2880}" "${OMARCHY_TEST_MONITOR_HEIGHT:-1800}"
+  printf '[{"name":"eDP-1","focused":true,"scale":%s,"width":%s,"height":%s,"refreshRate":120.0,"x":%s,"y":%s}]' \
+    "${OMARCHY_TEST_MONITOR_SCALE:-2}" "${OMARCHY_TEST_MONITOR_WIDTH:-2880}" "${OMARCHY_TEST_MONITOR_HEIGHT:-1800}" \
+    "${OMARCHY_TEST_MONITOR_X:-0}" "${OMARCHY_TEST_MONITOR_Y:-0}"
 elif [[ $1 == "eval" ]]; then
   printf '%s\n' "$2" >"$OMARCHY_TEST_HYPRCTL_EVAL_OUT"
 else
@@ -42,6 +43,8 @@ run_scaling() {
     PATH="$stub_bin:$PATH" \
     OMARCHY_TEST_HYPRCTL_EVAL_OUT="$eval_out" \
     OMARCHY_TEST_MONITOR_SCALE="${OMARCHY_TEST_MONITOR_SCALE:-2}" \
+    OMARCHY_TEST_MONITOR_X="${OMARCHY_TEST_MONITOR_X:-0}" \
+    OMARCHY_TEST_MONITOR_Y="${OMARCHY_TEST_MONITOR_Y:-0}" \
     "$ROOT/bin/omarchy-hyprland-monitor-scaling" "$@"
 }
 
@@ -129,3 +132,10 @@ grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling down skips d
 grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
   fail "monitor scaling down persists 2x after skipping duplicate approximation"
 pass "monitor scaling down skips duplicate approximation"
+
+# Rescaling a monitor away from the origin must keep its position, not
+# reflow it via "auto" and displace the other monitor.
+write_monitor_config
+OMARCHY_TEST_MONITOR_SCALE=2 OMARCHY_TEST_MONITOR_X=3440 OMARCHY_TEST_MONITOR_Y=0 run_scaling 3
+grep -F 'position = "3440x0"' "$eval_out" >/dev/null || fail "monitor scaling preserves the monitor's current position"
+pass "monitor scaling preserves the monitor's current position"
