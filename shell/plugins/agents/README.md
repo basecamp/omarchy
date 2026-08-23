@@ -55,6 +55,7 @@ light surfaces — and the bar glyph stands in when there is none.
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `copilot` | GitHub's `copilot_internal/user` quota snapshot (monthly) | none — Copilot keeps no local session files, so the tab is limits-only |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
@@ -63,6 +64,39 @@ falls back to local stats only. A non-default Claude directory is honored via
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
 signed in there.
+
+### Copilot quota
+
+The collector reads the OAuth token the official Copilot editor/CLI plugins
+already keep under `~/.config/github-copilot/` (`apps.json`, `hosts.json`, or
+`oauth.json` — VS Code, JetBrains, Neovim, and the Copilot CLI all delegate to
+the same copilot-language-server today, so on a modern install they share one
+token file regardless of which client signed in). That token authenticates
+the same `copilot_internal/user` endpoint those clients call, which reports
+the account's metered quota — labelled "AI Credits" on Business/Enterprise
+plans, "Premium Requests" on older ones — and works for org-managed EMU seats
+where a personal access token gets a 400 from the public billing API.
+
+For a personal account with no editor signed in, set `githubToken` in
+`~/.config/omarchy/agents/copilot.json` to a fine-grained PAT with
+"Plan (read)" to read the public billing API instead:
+
+```json
+{
+  "githubToken": "github_pat_...",
+  "quota": 300
+}
+```
+
+That API reports a raw request count with no entitlement to divide by, so
+`quota` (or `COPILOT_QUOTA`) is what turns it into a percentage; without it
+the tab still shows the raw count in its status line, just no meter.
+`GITHUB_TOKEN` overrides `githubToken` the same way the other collectors let
+an environment variable win over their config file.
+
+Copilot has no local session files the way Claude Code and Codex do, so its
+tab is limits-only: no tokens-by-day or tokens-by-model sections, the same as
+any agent whose record carries an empty `recentDays`/`modelUsage`.
 
 ### Fireworks balance
 
