@@ -82,7 +82,24 @@ If you dismiss the screensaver before the lock deadline, that counts as activity
 
 To stop locking on idle entirely, `Super + Ctrl + I` — or `omarchy toggle idle` — flips stay awake on, and the coffee cup indicator appears in the bar. That's the one to hit before a long presentation or a build you want to watch. Hit it again to go back to normal. `omarchy toggle idle status` prints the current state as JSON if you need it from a script.
 
-This is about locking and the screensaver, not power. Suspend and hibernation have their own setup in [system sleep](36-system-sleep.md).
+### Blanking the display without locking
+
+Locking always blanks the display a few seconds after it engages, but you don't have to reach for the lock screen just to save power. Add a third number, `blank`, to turn off the display and keyboard backlight on its own schedule, independent of the lock:
+
+```json
+{
+  "version": 1,
+  "idle": {
+    "screensaver": 900,
+    "blank": 1200,
+    "lock": 86400
+  }
+}
+```
+
+`blank` counts from the same idle start as the other two. Here the screensaver comes up at 15 minutes and the display powers off at 20 minutes, while the lock is effectively parked out at a full day. Any input wakes the display back up the same way it cancels the screensaver or an in-progress lock. Leave `blank` out entirely and nothing changes — the display keeps blanking only as part of locking, same as before.
+
+This is about locking, the screensaver, and now display power — not suspend. Suspend and hibernation have their own setup in [system sleep](36-system-sleep.md).
 
 ### The screensaver
 

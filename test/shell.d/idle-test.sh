@@ -11,6 +11,11 @@ assertEqual(idle.secondsFromConfig('42.9', 10), 42, 'idle floors configured seco
 assertEqual(idle.secondsFromConfig('-1', 10), 10, 'idle rejects negative seconds')
 assertEqual(idle.secondsFromConfig('nope', 10), 10, 'idle rejects invalid seconds')
 
+assertEqual(idle.blankEnabled(1200), true, 'idle treats a configured blank seconds value as enabled')
+assertEqual(idle.blankEnabled(0), true, 'idle treats an explicit zero blank seconds value as enabled')
+assertEqual(idle.blankEnabled(undefined), false, 'idle treats a missing blank key as disabled')
+assertEqual(idle.blankEnabled(null), false, 'idle treats a null blank key as disabled')
+
 assertDeepEqual(idle.eventParts({ data: 'a,b,c' }, 2), ['a', 'b', 'c'], 'idle parses raw event data')
 assertDeepEqual(
   idle.eventParts({ parse: function(count) { return ['parsed', count] } }, 4),
