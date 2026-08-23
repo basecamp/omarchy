@@ -109,6 +109,10 @@ grep -Fx $'state\tcharging' <<<"$shell_output" >/dev/null || fail "battery statu
 grep -Fx $'rate\t2.2W' <<<"$shell_output" >/dev/null || fail "battery status reports the live pack's power" "$shell_output"
 grep -Fx $'size\t20Wh' <<<"$shell_output" >/dev/null || fail "battery status reports live capacity, not dead+live energy-full" "$shell_output"
 grep -Fx $'time\t14m' <<<"$shell_output" >/dev/null || fail "battery status reports the live pack's time to full" "$shell_output"
+grep -Fx $'pack.0.path\tBAT1' <<<"$shell_output" >/dev/null || fail "battery status names the live pack for the panel" "$shell_output"
+if grep -F $'pack.1.path' <<<"$shell_output" >/dev/null; then
+  fail "battery status does not name a dead pack" "$shell_output"
+fi
 
 pass "battery status ignores a present-but-dead pack"
 

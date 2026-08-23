@@ -70,28 +70,51 @@ function laptopDevices(devices) {
   return packs
 }
 
-// Present-but-dead packs (ThinkPad internal cells at 0 V / 0 Wh) still expose
-// energyCapacity, so DisplayDevice percentage is pulled down by empty mass.
+// Same liveness test as bin/omarchy-battery-status pack_is_live: a healthy
+// empty cell still shows voltage, while a present-but-dead pack is 0 V / 0 Wh.
+// Quickshell's UPowerDevice may omit voltage; the CLI then supplies pack.N.path.
 function isLivePack(device) {
   if (!device || !device.isPresent) return false
   if (Number(device.energy || 0) > 0.05) return true
   if (Math.abs(Number(device.changeRate || 0)) > 0.05) return true
   if (Number(device.percentage || 0) > 0) return true
+  if (Number(device.voltage || 0) > 0.5) return true
   return false
 }
 
-function liveLaptopDevices(devices) {
+function selectedPackPaths(info) {
+  var kv = info || {}
+  var paths = []
+  for (var i = 0; i < 16; i++) {
+    var path = kv["pack." + i + ".path"]
+    if (path === undefined || path === "") break
+    paths.push(String(path))
+  }
+  return paths
+}
+
+function liveLaptopDevices(devices, statusInfo) {
   var packs = laptopDevices(devices)
+  var selected = selectedPackPaths(statusInfo)
+  if (selected.length > 0) {
+    var wanted = {}
+    for (var i = 0; i < selected.length; i++) wanted[selected[i]] = true
+    var matched = []
+    for (var j = 0; j < packs.length; j++) {
+      if (wanted[String(packs[j].nativePath || "")]) matched.push(packs[j])
+    }
+    if (matched.length > 0) return matched
+  }
+
   var live = []
-  for (var i = 0; i < packs.length; i++) {
-    if (isLivePack(packs[i])) live.push(packs[i])
+  for (var k = 0; k < packs.length; k++) {
+    if (isLivePack(packs[k])) live.push(packs[k])
   }
   return live.length > 0 ? live : packs
 }
 
-function combinedEnergyFraction(devices) {
-  var packs = liveLaptopDevices(devices)
-  if (packs.length === 0) return -1
+function packsEnergyFraction(packs) {
+  if (!packs || packs.length === 0) return -1
   if (packs.length === 1) return batteryFraction(packs[0])
 
   var now = 0
@@ -104,6 +127,10 @@ function combinedEnergyFraction(devices) {
   return batteryFraction(packs[0])
 }
 
+function combinedEnergyFraction(devices, statusInfo) {
+  return packsEnergyFraction(liveLaptopDevices(devices, statusInfo))
+}
+
 function combinedFractionFromStatus(info) {
   var raw = info && info.percentage
   if (raw === undefined || raw === "") return -1
@@ -112,8 +139,8 @@ function combinedFractionFromStatus(info) {
   return Math.max(0, Math.min(1, value / 100))
 }
 
-function viewDevice(devices, fallback, states) {
-  var packs = liveLaptopDevices(devices)
+function viewDevice(devices, fallback, states, statusInfo) {
+  var packs = liveLaptopDevices(devices, statusInfo)
   if (packs.length === 0) return fallback || {}
   if (packs.length === 1) return packs[0]
 
@@ -132,7 +159,7 @@ function viewDevice(devices, fallback, states) {
 
   return {
     isPresent: true,
-    percentage: combinedEnergyFraction(packs),
+    percentage: packsEnergyFraction(packs),
     state: state,
     changeRate: changeRate,
     timeToFull: 0,
@@ -141,8 +168,8 @@ function viewDevice(devices, fallback, states) {
   }
 }
 
-function anyPackCharging(devices, states) {
-  var packs = liveLaptopDevices(devices)
+function anyPackCharging(devices, states, statusInfo) {
+  var packs = liveLaptopDevices(devices, statusInfo)
   var s = states || {}
   for (var i = 0; i < packs.length; i++) {
     if (packs[i].state === s.Charging && Number(packs[i].changeRate || 0) > 0.2) return true
@@ -168,11 +195,11 @@ function chargeThresholdActive(device, onBattery, states) {
 
 function chargeThresholdActiveForPacks(devices, onBattery, states, statusInfo) {
   if (onBattery) return false
-  if (anyPackCharging(devices, states)) return false
+  if (anyPackCharging(devices, states, statusInfo)) return false
   if (statusInfo && statusInfo.state === "holding") return true
   if (statusInfo && (statusInfo.state === "charging" || statusInfo.state === "discharging")) return false
 
-  var packs = liveLaptopDevices(devices)
+  var packs = liveLaptopDevices(devices, statusInfo)
   if (packs.length === 0) return chargeThresholdActive(null, onBattery, states)
 
   for (var i = 0; i < packs.length; i++) {
@@ -218,7 +245,9 @@ if (typeof module !== "undefined") {
     batteryFraction: batteryFraction,
     laptopDevices: laptopDevices,
     isLivePack: isLivePack,
+    selectedPackPaths: selectedPackPaths,
     liveLaptopDevices: liveLaptopDevices,
+    packsEnergyFraction: packsEnergyFraction,
     combinedEnergyFraction: combinedEnergyFraction,
     combinedFractionFromStatus: combinedFractionFromStatus,
     viewDevice: viewDevice,

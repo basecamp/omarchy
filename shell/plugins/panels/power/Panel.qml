@@ -21,7 +21,7 @@ Panel {
   property bool cursorActive: false
   readonly property bool showPercentage: setting("showPercentage", false) === true
   readonly property var powerDevices: UPower.devices ? UPower.devices.values : []
-  readonly property var livePacks: Model.liveLaptopDevices(powerDevices)
+  readonly property var livePacks: Model.liveLaptopDevices(powerDevices, opened ? batteryInfo : null)
   // With the percentage shown the button paints a text block wider than an
   // icon, so the open-panel mark takes the painted width instead of the
   // icon-sized fraction of the slot the fallback assumes.
@@ -51,7 +51,7 @@ Panel {
   }
 
   function viewDevice() {
-    return Model.viewDevice(root.livePacks, UPower.displayDevice, upowerStates())
+    return Model.viewDevice(root.powerDevices, UPower.displayDevice, upowerStates(), root.opened ? root.batteryInfo : null)
   }
 
   function batteryIcon() {
@@ -74,7 +74,7 @@ Panel {
     return !!(root.batteryPresent && UPower.onBattery)
   }
   readonly property bool chargeThresholdActive: {
-    return Model.chargeThresholdActiveForPacks(root.livePacks, root.discharging, upowerStates(), root.opened ? root.batteryInfo : null)
+    return Model.chargeThresholdActiveForPacks(root.powerDevices, root.discharging, upowerStates(), root.opened ? root.batteryInfo : null)
   }
   readonly property bool batteryFull: fullyCharged || (!root.discharging && batteryFraction >= 1)
   readonly property bool batteryFlowIdle: batteryFull || chargeThresholdActive
@@ -82,9 +82,9 @@ Panel {
   // 0..1 charge level, used by the visual progress bar. Prefer live packs
   // over DisplayDevice, which still counts a present-but-dead cell's energy-full.
   readonly property real batteryFraction: {
-    var fromStatus = Model.combinedFractionFromStatus(root.batteryInfo)
+    var fromStatus = root.opened ? Model.combinedFractionFromStatus(root.batteryInfo) : -1
     if (fromStatus >= 0) return fromStatus
-    var combined = Model.combinedEnergyFraction(root.livePacks)
+    var combined = Model.combinedEnergyFraction(root.powerDevices, root.opened ? root.batteryInfo : null)
     if (combined >= 0) return combined
     return Model.batteryFraction(UPower.displayDevice)
   }

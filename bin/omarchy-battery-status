@@ -366,6 +366,10 @@ if [[ $shell_output == "true" ]]; then
     fi
   fi
 
+  for i in "${!selected_paths[@]}"; do
+    printf 'pack.%s.path\t%s\n' "$i" "${path_for[${selected_paths[$i]}]}"
+  done
+
   exit 0
 fi
 
