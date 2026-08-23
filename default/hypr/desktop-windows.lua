@@ -63,6 +63,9 @@ for _, class_pat in ipairs(load_csd_patterns()) do
   o.window(class_pat, { float = true, ["hyprbars:no_bar"] = true })
 end
 
+-- Lock surfaces are not 880×560 app windows. Fullscreen per output, no hyprbars.
+o.window("org.omarchy.screensaver", { float = true, fullscreen = true, ["hyprbars:no_bar"] = true })
+
 o.window({ tag = "default-opacity" }, { opacity = "0.985 0.96" })
 
 hl.config({

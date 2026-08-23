@@ -9,6 +9,19 @@ function windowAppId(win) {
   return normalizeId(win.appId || win["class"] || "")
 }
 
+function isLockSurface(win) {
+  var ids = [
+    normalizeId(win && (win.appId || "")),
+    normalizeId(win && (win["class"] || "")),
+    normalizeId(win && (win.initialClass || win.initial_class || ""))
+  ]
+  var i
+  for (i = 0; i < ids.length; i++) {
+    if (ids[i] === "org.omarchy.screensaver") return true
+  }
+  return false
+}
+
 // Canonical CSD classes live in default/ultimate/csd-clients.json.
 // Lua (hyprbars:no_bar) and this module both compile that file.
 var _csdRegexes = null
@@ -580,6 +593,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     normalizeId: normalizeId,
     windowAppId: windowAppId,
+    isLockSurface: isLockSurface,
     usesWaylandCsd: usesWaylandCsd,
     hyprbarsSnapInset: hyprbarsSnapInset,
     windowMatchesPin: windowMatchesPin,
