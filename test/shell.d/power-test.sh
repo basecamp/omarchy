@@ -23,7 +23,18 @@ assertDeepEqual(
 assert(power.profileIcon('performance').length > 0, 'power maps profile icons')
 assertEqual(power.batteryFraction({ isPresent: true, percentage: 1.5 }), 1, 'power clamps battery fraction')
 
-assert(power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.PendingCharge }, false, states), 'power detects threshold by pending charge state')
+assert(power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.PendingCharge }, false, states, '75-80%'), 'power detects threshold by pending charge state')
+assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0, state: states.PendingCharge }, false, states, '75-80%'), 'power does not flag a pack below the hold band as threshold')
+assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.5, state: states.PendingCharge }, false, states), 'power does not flag pending charge as threshold without a limit')
+assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.5, state: states.PendingCharge }, false, states, '0-100%'), 'power reads a 100% end threshold as no limit')
+assert(power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.PendingCharge }, false, states, '80%'), 'power holds at a single-value threshold')
+assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.7, state: states.PendingCharge }, false, states, '80%'), 'power does not hold below a single-value threshold')
+assertEqual(power.chargeHoldFloor('0-80%'), 0.8, 'power reads a zero start threshold as no start band')
+assertEqual(
+  power.modeLabel({ isPresent: true, percentage: 0, state: states.PendingCharge }, false, states, '75-80%'),
+  'Charging',
+  'power does not label a stalled pack below the band as Threshold'
+)
 assert(power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.Charging, changeRate: 0.1, timeToFull: 120 }, false, states), 'power detects threshold by stalled charging')
 assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.Charging, changeRate: 1.0, timeToFull: 120 }, false, states), 'power does not flag active charging as threshold')
 assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states), 'power does not flag discharging as threshold')
