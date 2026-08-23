@@ -67,15 +67,20 @@ signed in there.
 
 ### Copilot quota
 
-The collector reads the OAuth token the official Copilot editor/CLI plugins
+The collector reads the OAuth token the official Copilot *editor* plugins
 already keep under `~/.config/github-copilot/` (`apps.json`, `hosts.json`, or
-`oauth.json` — VS Code, JetBrains, Neovim, and the Copilot CLI all delegate to
-the same copilot-language-server today, so on a modern install they share one
-token file regardless of which client signed in). That token authenticates
-the same `copilot_internal/user` endpoint those clients call, which reports
-the account's metered quota — labelled "AI Credits" on Business/Enterprise
-plans, "Premium Requests" on older ones — and works for org-managed EMU seats
-where a personal access token gets a 400 from the public billing API.
+`oauth.json` — VS Code, JetBrains, and copilot.vim all delegate to the same
+copilot-language-server today, so on a modern install they share one token
+file regardless of which editor signed in). That token authenticates the same
+`copilot_internal/user` endpoint those clients call, which reports the
+account's metered quota — labelled "AI Credits" on Business/Enterprise plans,
+"Premium Requests" on older ones — and works for org-managed EMU seats where
+a personal access token gets a 400 from the public billing API.
+
+The standalone `copilot` CLI is not an editor plugin and keeps its own login
+separately (`COPILOT_HOME`, by default `~/.copilot/`, or the system
+credential store), so signing in there alone gives this collector nothing to
+read yet.
 
 For a personal account with no editor signed in, set `githubToken` in
 `~/.config/omarchy/agents/copilot.json` to a fine-grained PAT with

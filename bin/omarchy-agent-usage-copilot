@@ -12,13 +12,18 @@ reports the account's metered quota, the same "AI credits" usage shown at
 github.com/settings/billing/usage and github.com/settings/copilot/features.
 
 The quota comes from api.github.com/copilot_internal/user, authenticated with
-the OAuth token the official Copilot editor/CLI plugins already keep under
-~/.config/github-copilot/. VS Code, JetBrains, Neovim, and the Copilot CLI
-all delegate to the same copilot-language-server, so on a modern install they
-share one token file regardless of which client signed in; older copilot.vim
-installs used a differently-named file, which is why three names are tried.
-This covers Business and Enterprise/EMU seats where the public billing API
-400s a personal access token.
+the OAuth token the official Copilot editor plugins already keep under
+~/.config/github-copilot/. VS Code, JetBrains, and copilot.vim all delegate
+to the same copilot-language-server, so on a modern install they share one
+token file regardless of which editor signed in; older copilot.vim installs
+used a differently-named file, which is why three names are tried. This
+covers Business and Enterprise/EMU seats where the public billing API 400s a
+personal access token.
+
+The standalone `copilot` CLI (github.com/github/copilot-cli) is not an
+editor plugin and keeps its own login separately (COPILOT_HOME, by default
+~/.copilot/, or the system credential store) rather than in this directory,
+so signing in there alone does not give this collector anything to read yet.
 
 Set githubToken in ~/.config/omarchy/agents/copilot.json (or GITHUB_TOKEN in
 the environment) to a fine-grained PAT with "Plan (read)" to read the public
@@ -40,7 +45,7 @@ from pathlib import Path
 AGENT_ID = "copilot"
 AGENT_NAME = "Copilot"
 AUTH_HELP = (
-  "Sign in to Copilot from an editor (VS Code, JetBrains) or the Copilot CLI, "
+  "Sign in to Copilot from an editor (VS Code, JetBrains, or copilot.vim), "
   "or set githubToken in ~/.config/omarchy/agents/copilot.json to a "
   "fine-grained PAT with 'Plan (read)'."
 )
@@ -48,7 +53,7 @@ AUTH_HELP = (
 GITHUB_API_BASE = "https://api.github.com"
 COPILOT_INTERNAL_URL = f"{GITHUB_API_BASE}/copilot_internal/user"
 
-# Local Copilot editor/CLI credentials, written by the official plugins.
+# Local Copilot editor credentials, written by the official editor plugins.
 COPILOT_CONFIG_DIR = Path(os.environ.get("GITHUB_COPILOT_CONFIG_DIR", "~/.config/github-copilot")).expanduser()
 COPILOT_TOKEN_FILES = ("apps.json", "hosts.json", "oauth.json")
 
@@ -129,7 +134,7 @@ def normalize_reset_at(value):
 
 
 def local_oauth_token():
-  """Read the token the official Copilot editor/CLI plugins store locally.
+  """Read the token the official Copilot editor plugins store locally.
 
   apps.json, hosts.json, and oauth.json all map a host key (e.g.
   "github.com:Ov23li..." or plain "github.com") to an object holding
@@ -294,7 +299,7 @@ def scan():
       quota = float(os.environ.get("COPILOT_QUOTA") or config.get("quota") or 0)
       return scan_billing_api(pat, quota)
     except CopilotError:
-      pass  # Fall through to the local editor/CLI token below.
+      pass  # Fall through to the local editor token below.
 
   token = local_oauth_token()
   if not token:
